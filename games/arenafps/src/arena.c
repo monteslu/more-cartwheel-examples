@@ -361,15 +361,16 @@ void arena_mood(int id, cw_node env, cw_node sun, cw_node sky, cw_node fog) {
   cw_node_set(env, "background", cw_val_color(p->sky_bottom.r, p->sky_bottom.g, p->sky_bottom.b, 1));
   cw_node_set(env, "sky_color", cw_val_color(p->sky_top.r, p->sky_top.g, p->sky_top.b, 1));
   cw_node_set(env, "ground_color", cw_val_color(p->floor.r * 0.4f, p->floor.g * 0.4f, p->floor.b * 0.4f, 1));
-  cw_node_set(env, "ambient_energy", cw_val_float(p->ambient));
+  cw_node_set(env, "ambient_energy", cw_val_float(p->ambient * 0.3f));
   cw_node_set(env, "fog_color", cw_val_color(p->sky_bottom.r, p->sky_bottom.g, p->sky_bottom.b, 1));
-  static const float TOD[ARENAS] = { 15.2f, 10.8f, 18.1f }, DECL[ARENAS] = { 12, 18, 8 }, NORTH[ARENAS] = { 20, 130, 250 };
+  static const float TOD[ARENAS] = { 15.2f, 10.8f, 16.6f }, DECL[ARENAS] = { 12, 18, 8 }, NORTH[ARENAS] = { 20, 130, 250 };
   cw_node_set(sky, "time_of_day", cw_val_float(TOD[id]));
   cw_node_set(sky, "declination", cw_val_float(DECL[id]));
   cw_node_set(sky, "north", cw_val_float(NORTH[id]));
-  cw_node_set(sky, "sun_energy", cw_val_float(p->sun * 1.2f));
+  cw_node_set(sky, "sun_energy", cw_val_float(p->sun * 1.1f));
+  cw_node_set(sky, "sky_energy", cw_val_float(0.45));
   cw_node_set(sky, "mie", cw_val_float(id == 2 ? 2.2 : 1.3));
-  cw_node_set(fog, "density", cw_val_float(id == 2 ? 0.006 : 0.0025));
+  cw_node_set(fog, "density", cw_val_float(id == 2 ? 0.003 : 0.0012));
   cw_node_set(fog, "color", cw_val_color(p->sky_bottom.r, p->sky_bottom.g, p->sky_bottom.b, 1));
   (void)sun;
 }

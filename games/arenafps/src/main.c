@@ -1384,7 +1384,7 @@ static void init(void *user) {
   G.fog = cw_node_new("HeightFog", "Fog");
   cw_node_add_child(G.root, G.fog);
   cw_node_set(G.fog, "height_falloff", cw_val_float(0.05));
-  cw_node_set(G.fog, "use_sky_color", cw_val_bool(true));
+  cw_node_set(G.fog, "use_sky_color", cw_val_bool(false));
   G.post = cw_node_new("PostProcess", "Post");
   cw_node_add_child(G.root, G.post);
   cw_node_set(G.post, "hdr", cw_val_bool(true));
