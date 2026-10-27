@@ -40,7 +40,10 @@ static t3_geometry *merge(part *ps, int n) {
       pos[(v0 + v) * 3] = m->e[0] * x + m->e[4] * y + m->e[8] * z + m->e[12];
       pos[(v0 + v) * 3 + 1] = m->e[1] * x + m->e[5] * y + m->e[9] * z + m->e[13];
       pos[(v0 + v) * 3 + 2] = m->e[2] * x + m->e[6] * y + m->e[10] * z + m->e[14];
-      col[(v0 + v) * 3] = ps[i].c.r, col[(v0 + v) * 3 + 1] = ps[i].c.g, col[(v0 + v) * 3 + 2] = ps[i].c.b;
+      {
+        t3_color lc = ps[i].c.r > 1.5f || ps[i].c.g > 1.5f || ps[i].c.b > 1.5f ? ps[i].c : lin(ps[i].c.r, ps[i].c.g, ps[i].c.b); /* above 1.5: an emissive eye, kept as is */
+        col[(v0 + v) * 3] = lc.r, col[(v0 + v) * 3 + 1] = lc.g, col[(v0 + v) * 3 + 2] = lc.b;
+      }
     }
     if (g->index) {
       for (int k = 0; k < g->index->count; k++)
@@ -83,7 +86,6 @@ static struct {
   view_stats st;
   float cx, cy, cd;
   bool cam_init;
-  t3_texture *ground_tex;
 } V;
 
 static const t3_mat4 ZERO;
@@ -182,47 +184,142 @@ static t3_geometry *geo_boss(void) {
   return merge(p, 8);
 }
 
-/* the yard's floor: a generated concrete with cracks and oil stains */
-static t3_texture *make_ground(void) {
-  enum { N = 256 };
-  uint8_t *px = malloc(N * N * 4);
-  for (int y = 0; y < N; y++)
-    for (int x = 0; x < N; x++) {
-      float n = 0, a = 0.5f, norm = 0;
-      int p = 4;
-      for (int o = 0; o < 4; o++) {
-        float fx = (float)x / N * (float)p, fy = (float)y / N * (float)p;
-        int x0 = (int)floorf(fx), y0 = (int)floorf(fy);
-        float tx = fx - (float)x0, ty = fy - (float)y0;
-        tx = tx * tx * (3 - 2 * tx), ty = ty * ty * (3 - 2 * ty);
-        uint32_t s = (uint32_t)o * 77u;
-        float v00 = h01((uint32_t)(x0 % p) + s, (uint32_t)(y0 % p)), v10 = h01((uint32_t)((x0 + 1) % p) + s, (uint32_t)(y0 % p));
-        float v01 = h01((uint32_t)(x0 % p) + s, (uint32_t)((y0 + 1) % p)), v11 = h01((uint32_t)((x0 + 1) % p) + s, (uint32_t)((y0 + 1) % p));
-        n += a * (v00 + (v10 - v00) * tx + (v01 - v00) * ty + (v00 - v10 - v01 + v11) * tx * ty);
-        norm += a;
-        a *= 0.5f;
-        p *= 2;
-      }
-      n /= norm;
-      float slab = ((x % 64) < 2 || (y % 64) < 2) ? 0.55f : 1.0f; /* slab joints */
-      float grit = 0.9f + 0.2f * h01((uint32_t)x, (uint32_t)y + 999u);
-      float v = (0.30f + 0.28f * n) * slab * grit;
-      px[(y * N + x) * 4] = (uint8_t)(CW_CLAMP(v * 1.02f, 0, 1) * 255);
-      px[(y * N + x) * 4 + 1] = (uint8_t)(CW_CLAMP(v * 0.97f, 0, 1) * 255);
-      px[(y * N + x) * 4 + 2] = (uint8_t)(CW_CLAMP(v * 0.9f, 0, 1) * 255);
-      px[(y * N + x) * 4 + 3] = 255;
-    }
-  t3_texture *t = t3_texture_new(N, N, px);
-  free(px);
+/* procedural PBR sets (albedo sRGB, tangent normal map from a height field,
+ * roughness), all from integer hashes so every host makes the same texels */
+enum { TX_GROUND, TX_CRATE, TX_WALL, TX_PILLAR, TX_KINDS };
+typedef struct pbr { t3_texture *map, *normal, *rough; uint8_t *px[3]; } pbr;
+static pbr PB[TX_KINDS];
+
+static float vnoise(float fx, float fy, int p, uint32_t seed) {
+  int x0 = (int)floorf(fx), y0 = (int)floorf(fy);
+  float tx = fx - (float)x0, ty = fy - (float)y0;
+  tx = tx * tx * (3 - 2 * tx), ty = ty * ty * (3 - 2 * ty);
+  uint32_t xa = (uint32_t)(((x0 % p) + p) % p), xb = (uint32_t)((((x0 + 1) % p) + p) % p);
+  uint32_t ya = (uint32_t)(((y0 % p) + p) % p), yb = (uint32_t)((((y0 + 1) % p) + p) % p);
+  float v00 = h01(xa + seed, ya), v10 = h01(xb + seed, ya), v01 = h01(xa + seed, yb), v11 = h01(xb + seed, yb);
+  return v00 + (v10 - v00) * tx + (v01 - v00) * ty + (v00 - v10 - v01 + v11) * tx * ty;
+}
+static float fbm(float u, float v, int p, int oct, uint32_t seed) {
+  float n = 0, a = 0.5f, norm = 0;
+  for (int o = 0; o < oct; o++) {
+    n += a * vnoise(u * (float)p, v * (float)p, p, seed + (uint32_t)o * 77u);
+    norm += a, a *= 0.5f, p *= 2;
+  }
+  return n / norm;
+}
+static t3_texture *tex_finish(const uint8_t *px, bool srgb) {
+  t3_texture *t = t3_texture_new(256, 256, px);
   t->wrap_s = t->wrap_t = T3_REPEAT;
   t->flip_y = false;
   t->generate_mipmaps = true;
   t->min_filter = T3_LINEAR_MIPMAP_LINEAR;
   t->mag_filter = T3_LINEAR;
   t->anisotropy = 8;
-  t->color_space = T3_SRGB_COLOR_SPACE;
-  t->repeat = (t3_vec2){ 14, 14 };
+  t->color_space = srgb ? T3_SRGB_COLOR_SPACE : T3_NO_COLOR_SPACE;
   return t;
+}
+static const pbr *pbr_get(int kind) {
+  pbr *r = &PB[kind];
+  if (r->map) return r;
+  enum { N = 256 };
+  float *h = malloc(sizeof(float) * N * N), *alb = malloc(sizeof(float) * N * N * 3), *ro = malloc(sizeof(float) * N * N);
+  for (int y = 0; y < N; y++)
+    for (int x = 0; x < N; x++) {
+      float u = (float)x / N, v = (float)y / N, ht, c0, c1, c2, rough;
+      float n = fbm(u, v, 4, 5, 10u + (uint32_t)kind * 31u), g = h01((uint32_t)x + 5000u * (uint32_t)kind, (uint32_t)y);
+      switch (kind) {
+      case TX_GROUND: { /* concrete slabs with joints, cracks and oil stains */
+        int sx = x % 128, sy = y % 128;
+        float joint = (sx < 3 || sy < 3) ? 1.0f : 0.0f;
+        float crack = fbm(u + 0.3f * n, v, 8, 3, 99u);
+        crack = (crack > 0.49f && crack < 0.505f) ? 1.0f : 0.0f;
+        float stain = fbm(u, v, 3, 3, 123u);
+        stain = stain > 0.62f ? (stain - 0.62f) * 5.0f : 0.0f;
+        ht = 0.5f + 0.25f * n + 0.06f * g - 0.5f * joint - 0.25f * crack;
+        float k = 0.33f + 0.22f * n + 0.04f * g - 0.15f * joint - 0.1f * crack - 0.12f * stain;
+        c0 = k * 1.03f, c1 = k * 0.98f, c2 = k * 0.92f;
+        rough = 0.9f - 0.5f * stain - 0.1f * joint;
+        break;
+      }
+      case TX_CRATE: { /* planks with grain and nails */
+        int plank = (int)(v * 4.0f);
+        float pv = v * 4.0f - (float)plank;
+        float grain = fbm(u * 0.4f + (float)plank * 0.37f, pv * 3.0f, 8, 3, 301u);
+        float seam = (pv < 0.04f || pv > 0.96f) ? 1.0f : 0.0f;
+        ht = 0.55f + 0.2f * grain - 0.5f * seam;
+        float k = 0.45f + 0.35f * grain - 0.25f * seam;
+        c0 = k * 0.85f + 0.12f, c1 = k * 0.55f + 0.05f, c2 = k * 0.28f;
+        rough = 0.75f + 0.2f * grain;
+        break;
+      }
+      case TX_WALL: { /* cinder block courses */
+        int row = (int)(v * 4.0f);
+        float bu = u * 2.0f + ((row & 1) ? 0.25f : 0.0f);
+        bu -= floorf(bu);
+        float bv = v * 4.0f - (float)row;
+        float mortar = (bu < 0.04f || bu > 0.96f || bv < 0.06f || bv > 0.94f) ? 1.0f : 0.0f;
+        ht = 0.6f + 0.15f * n + 0.05f * g - 0.55f * mortar;
+        float k = 0.5f + 0.2f * n + 0.05f * g - 0.2f * mortar;
+        c0 = k * 0.95f, c1 = k * 0.93f, c2 = k * 0.88f;
+        rough = 0.95f - 0.2f * mortar;
+        break;
+      }
+      default: { /* pillar: poured concrete with bands */
+        float band = ((int)(v * 8.0f) % 2) ? 0.04f : 0.0f;
+        ht = 0.5f + 0.2f * n - band;
+        float k = 0.38f + 0.2f * n - band;
+        c0 = k, c1 = k, c2 = k * 1.05f;
+        rough = 0.7f;
+      }
+      }
+      h[y * N + x] = ht;
+      alb[(y * N + x) * 3] = c0, alb[(y * N + x) * 3 + 1] = c1, alb[(y * N + x) * 3 + 2] = c2;
+      ro[y * N + x] = rough;
+    }
+  uint8_t *a8 = malloc(N * N * 4), *n8 = malloc(N * N * 4), *r8 = malloc(N * N * 4);
+  for (int y = 0; y < N; y++)
+    for (int x = 0; x < N; x++) {
+      float dx = (h[y * N + (x + 1) % N] - h[y * N + (x + N - 1) % N]) * 4.0f, dy = (h[((y + 1) % N) * N + x] - h[((y + N - 1) % N) * N + x]) * 4.0f;
+      float l = sqrtf(dx * dx + dy * dy + 1.0f);
+      int i = (y * N + x) * 4;
+      n8[i] = (uint8_t)CW_CLAMP((-dx / l * 0.5f + 0.5f) * 255.0f, 0, 255);
+      n8[i + 1] = (uint8_t)CW_CLAMP((dy / l * 0.5f + 0.5f) * 255.0f, 0, 255);
+      n8[i + 2] = (uint8_t)CW_CLAMP((1.0f / l * 0.5f + 0.5f) * 255.0f, 0, 255);
+      n8[i + 3] = 255;
+      for (int k = 0; k < 3; k++) a8[i + k] = (uint8_t)(CW_CLAMP(alb[(y * N + x) * 3 + k], 0, 1) * 255.0f);
+      a8[i + 3] = 255;
+      r8[i] = r8[i + 1] = r8[i + 2] = (uint8_t)(CW_CLAMP(ro[y * N + x], 0, 1) * 255.0f);
+      r8[i + 3] = 255;
+    }
+  r->map = tex_finish(a8, true);
+  r->normal = tex_finish(n8, false);
+  r->rough = tex_finish(r8, false);
+  r->px[0] = a8, r->px[1] = n8, r->px[2] = r8; /* kept: repeated copies are made from them */
+  free(h), free(alb), free(ro);
+  return r;
+}
+static void pbr_apply(t3_material *m, int kind, float repeat, float normal_scale) {
+  const pbr *p = pbr_get(kind);
+  t3_texture *ts[3] = { p->map, p->normal, p->rough };
+  t3_map_slot slots[3] = { T3_MAP, T3_NORMAL_MAP, T3_ROUGHNESS_MAP };
+  for (int i = 0; i < 3; i++) {
+    t3_texture *c = ts[i];
+    if (repeat != 1) { /* the repeat lives on the texture in three.js: a copy that shares the pixels */
+      c = t3_texture_new(256, 256, p->px[i]);
+      c->wrap_s = c->wrap_t = T3_REPEAT;
+      c->flip_y = false;
+      c->generate_mipmaps = true;
+      c->min_filter = T3_LINEAR_MIPMAP_LINEAR;
+      c->mag_filter = T3_LINEAR;
+      c->anisotropy = 8;
+      c->color_space = i == 0 ? T3_SRGB_COLOR_SPACE : T3_NO_COLOR_SPACE;
+      c->repeat = (t3_vec2){ repeat, repeat };
+    }
+    t3_material_set_texture(m, slots[i], c);
+    if (c != ts[i]) t3_release(c);
+  }
+  m->normal_scale = (t3_vec2){ normal_scale, normal_scale };
+  m->roughness = 1.0f;
 }
 
 void view_init(cw_node root) {
@@ -233,9 +330,7 @@ void view_init(cw_node root) {
   t3_geometry *pg = t3_plane_geometry_new(HALF * 2 + 16, HALF * 2 + 16, 1, 1);
   t3_geometry_apply_matrix4(pg, &(t3_mat4){ { 1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1 } }); /* face +Y */
   t3_material *gm = t3_mesh_standard_material_new(0xffffff);
-  V.ground_tex = make_ground();
-  t3_material_set_texture(gm, T3_MAP, V.ground_tex);
-  gm->roughness = 0.92f;
+  pbr_apply(gm, TX_GROUND, 14, 1.2f);
   t3_mesh *gmesh = t3_mesh_new(pg, gm);
   gmesh->base.receive_shadow = true;
   cw_node gn = cw_node_new("Node3D", "Ground");
@@ -253,7 +348,11 @@ void view_init(cw_node root) {
   V.rocket = imesh("Rockets", t3_cylinder_geometry_new(0.1f, 0.1f, 0.7f, 8, 1, false), glow(1, 0.45f, 0.12f, 5), 64, false);
   V.gem = imesh("Gems", t3_octahedron_geometry_new(0.16f, 0), glow(0.3f, 1, 0.8f, 3.5f), MAXG, false);
   V.health = imesh("Health", t3_box_geometry_new(0.34f, 0.34f, 0.34f, 1, 1, 1), glow(1, 0.2f, 0.25f, 3.5f), 64, false);
-  V.crate = imesh("Crates", t3_box_geometry_new(1.3f, 1.3f, 1.3f, 1, 1, 1), mat(0.62f, 0.42f, 0.2f, 0.85f, 0, false), MAXO, true);
+  {
+    t3_material *cm = mat(1, 1, 1, 0.85f, 0, false);
+    pbr_apply(cm, TX_CRATE, 1, 1.0f);
+    V.crate = imesh("Crates", t3_box_geometry_new(1.3f, 1.3f, 1.3f, 1, 1, 1), cm, MAXO, true);
+  }
   {
     part bp[] = {
       { t3_cylinder_geometry_new(0.5f, 0.5f, 1.1f, 14, 1, false), M(0, 0.55f, 0, 1, 1, 1), { 0.8f, 0.12f, 0.1f } },
@@ -262,8 +361,16 @@ void view_init(cw_node root) {
     };
     V.barrel = imesh("Barrels", merge(bp, 3), mat(1, 1, 1, 0.4f, 0.4f, true), MAXO, true);
   }
-  V.wall = imesh("Walls", t3_box_geometry_new(2.0f, 2.2f, 2.0f, 1, 1, 1), mat(0.55f, 0.55f, 0.52f, 0.9f, 0, false), MAXO, true);
-  V.pillar = imesh("Pillars", t3_cylinder_geometry_new(1.2f, 1.3f, 4.5f, 10, 1, false), mat(0.38f, 0.38f, 0.42f, 0.7f, 0.2f, false), 16, true);
+  {
+    t3_material *wm = mat(1, 1, 1, 0.9f, 0, false);
+    pbr_apply(wm, TX_WALL, 1, 1.0f);
+    V.wall = imesh("Walls", t3_box_geometry_new(2.0f, 2.2f, 2.0f, 1, 1, 1), wm, MAXO, true);
+  }
+  {
+    t3_material *pm = mat(1, 1, 1, 0.7f, 0.0f, false);
+    pbr_apply(pm, TX_PILLAR, 1, 1.0f);
+    V.pillar = imesh("Pillars", t3_cylinder_geometry_new(1.2f, 1.3f, 4.5f, 16, 3, false), pm, 16, true);
+  }
   /* players */
   static const float PC[MAXP][3] = { { 0.2f, 0.7f, 1 }, { 1, 0.55f, 0.1f }, { 0.4f, 0.95f, 0.35f }, { 0.95f, 0.3f, 0.75f } };
   for (int i = 0; i < MAXP; i++) {
@@ -296,7 +403,12 @@ void view_init(cw_node root) {
 }
 
 void view_free(void) {
-  if (V.ground_tex) t3_release(V.ground_tex);
+  for (int i = 0; i < TX_KINDS; i++) {
+    if (!PB[i].map) continue;
+    t3_release(PB[i].map), t3_release(PB[i].normal), t3_release(PB[i].rough);
+    free(PB[i].px[0]), free(PB[i].px[1]), free(PB[i].px[2]);
+  }
+  memset(PB, 0, sizeof PB);
   memset(&V, 0, sizeof V);
 }
 

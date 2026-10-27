@@ -33,7 +33,15 @@
 #include "cartwheel/scene_file.h"
 #include "cartwheel/shell.h"
 #include "cartwheel/ui.h"
+#include <time.h>
 #include "game.h"
+
+/* wall clock for the bench (cw_time is the fixed test clock there) */
+static double cw_wall(void) {
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
+}
 
 typedef struct save_data { int32_t best_wave, best_score; } save_data;
 
@@ -183,8 +191,20 @@ static void bot(const sim *s, int i, input *in) {
     float l = sqrtf(gd);
     mx += gx / l * 0.7f, my += gy / l * 0.7f;
   }
-  /* stay in the yard and near the other players */
-  mx -= p->x * 0.02f, my -= p->y * 0.02f;
+  /* keep off the walls and crates, apart from the other bots, and in the yard */
+  for (int k = 0; k < MAXO; k++) {
+    const obstacle *o = &s->o[k];
+    if (!o->alive) continue;
+    float dx = p->x - o->x, dy = p->y - o->y, d2 = dx * dx + dy * dy, r = 3.2f + o->hx;
+    if (d2 < r * r && d2 > 0.01f) mx += dx / d2 * 4.0f, my += dy / d2 * 4.0f;
+  }
+  for (int k = 0; k < MAXP; k++) {
+    const player *q = &s->p[k];
+    if (k == i || !q->active) continue;
+    float dx = p->x - q->x, dy = p->y - q->y, d2 = dx * dx + dy * dy;
+    if (d2 < 100 && d2 > 0.01f) mx += dx / d2 * 6.0f, my += dy / d2 * 6.0f;
+  }
+  mx -= p->x * 0.03f, my -= p->y * 0.03f;
   float t = (float)s->tick * 0.01f + (float)i * 2.0f;
   mx += cw_sin(t) * 0.25f, my += cw_cos(t * 1.3f) * 0.25f;
   in->mx = mx, in->my = my;
@@ -222,9 +242,9 @@ static void fixed_update(void *u, double dt) {
   int before_level[MAXP];
   for (int i = 0; i < MAXP; i++) before_level[i] = G.S.p[i].level;
   int booms = G.S.nboom_total, kills = G.S.killed_total;
-  double t0 = cw_time();
+  double t0 = cw_wall();
   sim_step(&G.S, in);
-  T_sim += (cw_time() - t0) * 1000;
+  T_sim += (cw_wall() - t0) * 1000;
   G.ticks = G.S.tick;
   G.wave = G.S.wave;
   G.enemies = G.S.nenemies;
@@ -323,14 +343,14 @@ static void render(void *u, double alpha) {
     fx_shake(&sx, &sy);
     int w, h;
     cw_window_size(&w, &h);
-    double t0 = cw_time();
+    double t0 = cw_wall();
     view_sync(&G.S, t);
-    T_view += (cw_time() - t0) * 1000;
+    T_view += (cw_wall() - t0) * 1000;
     view_camera(&G.S, G.camera, (float)w / (float)h, sx, sy);
-    t0 = cw_time();
+    t0 = cw_wall();
     fx_events(&G.S);
     if (sc == CW_SHELL_PLAY) fx_tick(&G.S);
-    T_fx += (cw_time() - t0) * 1000;
+    T_fx += (cw_wall() - t0) * 1000;
     if (cw_node_valid(G.sun)) {
       float cx, cy, hw, hh;
       sim_team_box(&G.S, &cx, &cy, &hw, &hh);
@@ -339,7 +359,7 @@ static void render(void *u, double alpha) {
   }
   if (G.in_match && (sc == CW_SHELL_PLAY || sc == CW_SHELL_PAUSE)) hud();
   cw_quality_auto_measure(sc == CW_SHELL_PLAY);
-  double now = cw_time();
+  double now = cw_wall();
   if (T_last > 0) T_frame += (now - T_last) * 1000;
   T_last = now;
   T_n++;

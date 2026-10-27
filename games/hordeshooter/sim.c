@@ -423,6 +423,16 @@ static void player_step(sim *s, int i, const input *in) {
     if (px < py) p->x += dx < 0 ? -px : px;
     else p->y += dy < 0 ? -py : py;
   }
+  for (int k = 0; k < MAXP; k++) { /* friends are solid, softly */
+    const player *q = &s->p[k];
+    if (k == i || !q->active || q->down) continue;
+    float dx = p->x - q->x, dy = p->y - q->y, d2 = dx * dx + dy * dy;
+    if (d2 < 0.8f * 0.8f) {
+      float d = d2 > 0.0001f ? cw_v2_length(cw_v2(dx, dy)) : 0.01f, push = (0.8f - d) * 0.5f;
+      p->x += (d2 > 0.0001f ? dx / d : (i > k ? 1.0f : -1.0f)) * push;
+      p->y += (d2 > 0.0001f ? dy / d : 0.0f) * push;
+    }
+  }
   float al = cw_v2_length(cw_v2(in->ax, in->ay));
   if (al > 0.25f) p->aim = cw_atan2(in->ay, in->ax);
   if (p->cd > 0) p->cd--;
