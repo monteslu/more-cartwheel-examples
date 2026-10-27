@@ -2,6 +2,7 @@
   {
     "name": "coopplatformer-2p",
     "app": "coopplatformer_auto",
+    "webgpu": true,
     "frames": 400,
     "fields": [
       "g.tick",
@@ -35,6 +36,7 @@
   {
     "name": "coopplatformer-4p",
     "app": "coopplatformer_auto4",
+    "webgpu": true,
     "frames": 400,
     "fields": [
       "g.tick",
@@ -68,6 +70,7 @@
   {
     "name": "coopplatformer-boss",
     "app": "coopplatformer_auto_boss",
+    "webgpu": true,
     "frames": 1500,
     "fields": [
       "g.tick",
