@@ -1,0 +1,10 @@
+/deps/
+/build/
+/out/
+.cwcache/
+*.wasm
+*.wasc
+__pycache__/
+*.pyc
+.claude
+
