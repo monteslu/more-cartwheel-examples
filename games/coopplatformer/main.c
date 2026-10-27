@@ -41,9 +41,13 @@ static struct {
   cw_node plight[MAX_PLAYERS];
   cw_node torch[4];
   cw_node pnode[MAX_PLAYERS];
-  t3_mesh *parts[MAX_PLAYERS][8]; /* body, head, eyeL, eyeR, footL, footR, bubble, ring */
-  cw_node enode[MAX_ENEMIES];
-  t3_mesh *emesh[MAX_ENEMIES][3];
+  t3_mesh *bubble[MAX_PLAYERS];
+  rig *prig[MAX_PLAYERS];
+  cw_node pmodel[MAX_PLAYERS];
+  float yaw[MAX_PLAYERS], runph[MAX_PLAYERS];
+  cw_node enode[MAX_ENEMIES], emodel[MAX_ENEMIES];
+  rig *erig[MAX_ENEMIES];
+  float ephase[MAX_ENEMIES], eyaw[MAX_ENEMIES];
   cw_node coin_node[MAX_COINS];
   t3_mesh *coin_mesh[MAX_COINS];
   cw_node pick_node[MAX_PICKUPS];
@@ -283,28 +287,17 @@ static void build_scene(void) {
     cw_node3d_set_position(S.coin_node[i], (t3_vec3){ L->coins[i].x, L->coins[i].y, 0 });
   }
   t3_release(cg);
-  /* enemies */
+  /* enemies: skinned models, posed in sync_scene */
   for (int i = 0; i < L->nenemies; i++) {
     const enemy *e = &L->enemies[i];
     S.enode[i] = make_node("Node3D", S.world, "Enemy");
-    cw_node eo = S.enode[i];
-    float sc = e->kind == 2 ? 2.2f : 1.0f;
-    uint32_t col = e->kind == 2 ? 0x8a1a1a : e->kind == 1 ? 0x7a3fb0 : 0xcc4422;
-    t3_material *bm = phys(col, 0.4f, 0.0f);
-    t3_geometry *sg = t3_sphere_geometry_new(0.5f * sc, 20, 14);
-    S.emesh[i][0] = part(eo, sg, bm, 0, 0.45f * sc, 0, 1.0f, 0.85f, 1.0f);
-    t3_release(sg);
-    t3_material *em = phys(0xffffff, 0.2f, 0);
-    em->emissive = (t3_color){ 1, 0.9f, 0.5f }, em->emissive_intensity = 0.6f;
-    t3_geometry *eg = t3_sphere_geometry_new(0.13f * sc, 10, 8);
-    S.emesh[i][1] = part(eo, eg, em, -0.18f * sc, 0.6f * sc, 0.42f * sc, 1, 1, 1);
-    S.emesh[i][2] = part(eo, eg, em, 0.18f * sc, 0.6f * sc, 0.42f * sc, 1, 1, 1);
-    t3_release(eg);
-    if (e->kind != 1) { /* spikes on the shell */
-      t3_geometry *sk = t3_cone_geometry_new(0.1f * sc, 0.3f * sc, 6, 1, false);
-      for (int k = 0; k < 5; k++) part(eo, sk, phys(0x2a1a1a, 0.5f, 0.3f), (-0.3f + 0.15f * (float)k) * sc, (0.85f + (k % 2 ? 0.05f : 0)) * sc, 0, 1, 1, 1);
-      t3_release(sk);
-    }
+    S.emodel[i] = make_node("Node3D", S.enode[i], "Model");
+    rig_free(S.erig[i]);
+    S.erig[i] = rig_load(e->kind == 2 ? RIG_BOSS : e->kind == 1 ? RIG_FLYER : RIG_WALKER);
+    if (S.erig[i]) rig_attach(S.erig[i], S.emodel[i]);
+    float sc = e->kind == 2 ? 1.25f : e->kind == 1 ? 0.85f : 0.95f;
+    cw_node3d_set_scale(S.emodel[i], (t3_vec3){ sc, sc, sc });
+    S.ephase[i] = (float)i * 1.7f;
   }
   /* moving platforms */
   for (int i = 0; i < L->nplat; i++) {
@@ -312,37 +305,29 @@ static void build_scene(void) {
     S.plat_mesh[i] = part(wobj, pg, phys(0x8a7a5a, 0.5f, 0.5f), 0, 0, 0, 1, 1, 1);
     t3_release(pg);
   }
-  /* characters */
-  t3_geometry *body = t3_sphere_geometry_new(0.42f, 24, 16);
-  t3_geometry *head = t3_sphere_geometry_new(0.36f, 24, 16);
-  t3_geometry *eye = t3_sphere_geometry_new(0.1f, 12, 8);
-  t3_geometry *pupil = t3_sphere_geometry_new(0.055f, 8, 6);
-  t3_geometry *foot = t3_sphere_geometry_new(0.18f, 12, 8);
-  t3_geometry *bub = t3_sphere_geometry_new(1.0f, 24, 16);
+  /* characters: skinned heroes, one headgear each (a marker that is not a colour) */
+  t3_geometry *bub = t3_sphere_geometry_new(1.0f, 32, 20);
+  static const float ACCENT[MAX_PLAYERS][3] = { { 1.0f, 0.85f, 0.25f }, { 0.95f, 0.95f, 0.95f }, { 1.0f, 0.45f, 0.65f }, { 0.3f, 0.8f, 0.95f } };
   for (int i = 0; i < MAX_PLAYERS; i++) {
+    if (cw_node_valid(S.pnode[i])) cw_node_free(S.pnode[i]);
     S.pnode[i] = make_node("Node3D", S.root, "Player");
     cw_node po = S.pnode[i];
-    uint32_t rgb = ((uint32_t)(PLAYER_RGB[i][0] * 255) << 16) | ((uint32_t)(PLAYER_RGB[i][1] * 255) << 8) | (uint32_t)(PLAYER_RGB[i][2] * 255);
-    t3_material *bm = phys(rgb, 0.35f, 0.0f);
-    bm->clearcoat = 0.6f, bm->clearcoat_roughness = 0.2f;
-    S.parts[i][0] = part(po, body, bm, 0, 0.5f, 0, 1, 1.05f, 0.9f);
-    S.parts[i][1] = part(po, head, bm, 0, 1.15f, 0, 1, 1, 0.95f);
-    t3_material *wm = phys(0xffffff, 0.2f, 0);
-    S.parts[i][2] = part(po, eye, wm, -0.15f, 1.2f, 0.3f, 1, 1.1f, 0.8f);
-    S.parts[i][3] = part(po, eye, wm, 0.15f, 1.2f, 0.3f, 1, 1.1f, 0.8f);
-    t3_material *pm = phys(0x101018, 0.1f, 0);
-    part(po, pupil, pm, -0.15f, 1.2f, 0.37f, 1, 1, 1);
-    part(po, pupil, pm, 0.15f, 1.2f, 0.37f, 1, 1, 1);
-    S.parts[i][4] = part(po, foot, bm, -0.2f, 0.14f, 0.05f, 1, 0.7f, 1.3f);
-    S.parts[i][5] = part(po, foot, bm, 0.2f, 0.14f, 0.05f, 1, 0.7f, 1.3f);
+    S.pmodel[i] = make_node("Node3D", po, "Model");
+    rig_free(S.prig[i]);
+    S.prig[i] = rig_load(RIG_HERO);
+    if (S.prig[i]) {
+      rig_attach(S.prig[i], S.pmodel[i]);
+      float fur[3] = { PLAYER_RGB[i][0], PLAYER_RGB[i][1], PLAYER_RGB[i][2] };
+      rig_tint(S.prig[i], fur, ACCENT[i], i);
+    }
     t3_material *bu = phys(0xaaddff, 0.05f, 0);
     bu->transparent = true, bu->opacity = 0.3f, bu->depth_write = false;
-    S.parts[i][6] = part(po, bub, bu, 0, 0.9f, 0, 1, 1, 1);
-    S.parts[i][6]->base.visible = false;
-    S.parts[i][6]->base.cast_shadow = false;
+    S.bubble[i] = part(po, bub, bu, 0, 0.9f, 0, 1, 1, 1);
+    S.bubble[i]->base.visible = false;
+    S.bubble[i]->base.cast_shadow = false;
     cw_node3d_set_position(S.pnode[i], (t3_vec3){ 0, -100, 0 });
   }
-  t3_release(body), t3_release(head), t3_release(eye), t3_release(pupil), t3_release(foot), t3_release(bub);
+  t3_release(bub);
   /* effects */
   if (!cw_node_valid(S.fx_spark)) {
     for (int i = 0; i < MAX_PLAYERS; i++) {
@@ -425,43 +410,39 @@ static void sync_scene(float alpha, float dt) {
     }
     cw_pos2 ip = cw_mover2d_interpolated(&p->pf.body, alpha);
     float x = (float)ip.x, y = (float)ip.y;
-    bool inv = p->invuln > 0 && ((p->invuln / 4) & 1);
     if (p->bubble) {
       bubbles++;
       x = p->bubble_x, y = p->bubble_y - 0.6f + 0.1f * sinf(S.time * 3 + (float)i);
-      S.parts[i][6]->base.visible = true;
+      S.bubble[i]->base.visible = true;
       p->squash = 0;
-    } else S.parts[i][6]->base.visible = false;
+    } else S.bubble[i]->base.visible = false;
     if (!p->alive && !p->bubble) {
       cw_node3d_set_position(S.pnode[i], (t3_vec3){ x, -100, 0 });
       continue;
     }
     cw_node3d_set_position(S.pnode[i], (t3_vec3){ x, y, 0 });
     float face = (float)p->pf.facing;
-    po->rotation.y = 0;
-    t3_object_set_rotation(po, 0, face > 0 ? 0.35f : -0.35f, 0);
-    /* secondary animation: squash and stretch, run bounce, foot swing */
+    /* turn toward the way it faces, smoothly: three quarters on to the camera */
+    float want = face > 0 ? 1.05f : -1.05f;
+    if (p->anim == 4) want = -want; /* on a wall it looks back along the wall */
+    S.yaw[i] += (want - S.yaw[i]) * (1.0f - expf(-14.0f * dt));
+    cw_node3d_set_rotation(S.pmodel[i], (t3_vec3){ 0, S.yaw[i], 0 });
+    /* secondary animation: squash and stretch from events, a run cycle and the pose from the bones */
     if (p->land_fx) p->squash = 0.35f;
     if (p->jump_fx) p->squash = -0.3f;
     p->squash *= 1.0f - 6.0f * dt > 0 ? 1.0f - 6.0f * dt : 0;
     float vy = p->pf.body.velocity.y;
     float stretch = p->squash < 0 ? -p->squash : 0.0f;
     float sq = p->squash > 0 ? p->squash : 0.0f;
-    float st = 1.0f + stretch * 0.6f + (vy > 4 ? 0.1f : 0) - sq * 0.5f;
+    float st = 1.0f + stretch * 0.6f + (vy > 4 ? 0.06f : 0) - sq * 0.5f;
     float wd = 1.0f - stretch * 0.3f + sq * 0.4f;
-    p->run_phase += (p->anim == 1 ? 14.0f : 3.0f) * dt;
-    float bob = p->anim == 1 ? 0.06f * fabsf(sinf(p->run_phase)) : 0.02f * sinf(S.time * 2 + (float)i);
-    S.parts[i][0]->base.scale = (t3_vec3){ wd, 1.05f * st, 0.9f * wd };
-    S.parts[i][0]->base.position.y = 0.5f + bob;
-    S.parts[i][1]->base.position.y = 1.15f * st + bob;
-    for (int k = 2; k <= 3; k++) S.parts[i][k]->base.position.y = 1.2f * st + bob;
-    float sw = p->anim == 1 ? sinf(p->run_phase) * 0.22f : 0;
-    S.parts[i][4]->base.position.z = 0.05f + sw;
-    S.parts[i][5]->base.position.z = 0.05f - sw;
-    if (p->anim == 2 || p->anim == 3) S.parts[i][4]->base.position.y = S.parts[i][5]->base.position.y = 0.22f;
-    else S.parts[i][4]->base.position.y = S.parts[i][5]->base.position.y = 0.14f;
-    for (int k = 0; k < 8; k++)
-      if (S.parts[i][k] && k != 6) S.parts[i][k]->base.visible = !inv;
+    float spd = fabsf((float)p->pf.body.velocity.x);
+    S.runph[i] += (p->anim == 5 ? 7.0f : 4.0f + spd * 0.9f) * dt;
+    if (S.prig[i]) {
+      rig_pose_hero(S.prig[i], p->anim, S.runph[i], S.time + (float)i, st, wd, vy);
+      bool inv = p->invuln > 0 && ((p->invuln / 4) & 1);
+      cw_node_set(S.pmodel[i], "visible", cw_val_bool(!inv));
+    }
     cw_node3d_set_position(S.plight[i], (t3_vec3){ x, y + 1.2f, 2.0f });
     cw_node_set(S.plight[i], "energy", cw_val_float(p->bubble ? 3.0f : 2.0f));
     /* effects from this frame's events */
@@ -488,12 +469,20 @@ static void sync_scene(float alpha, float dt) {
   for (int i = 0; i < L->nenemies; i++) {
     const enemy *e = &L->enemies[i];
     cw_node_set(S.enode[i], "visible", cw_val_bool(e->alive));
-    if (!e->alive) continue;
-    float flash = e->hurt > 0 && (e->hurt / 3) % 2 ? 1.4f : 1.0f;
+    if (!e->alive || !S.erig[i]) continue;
     cw_node3d_set_position(S.enode[i], (t3_vec3){ e->x, e->y + (e->kind == 1 ? 0.2f * sinf(S.time * 5 + (float)i) : 0), 0 });
-    t3_object *eo = cw_node3d_object(S.enode[i]);
-    t3_object_set_rotation(eo, 0, e->dir > 0 ? 1.1f : -1.1f, 0);
-    S.emesh[i][0]->base.scale = (t3_vec3){ flash, 0.85f / flash + 0.05f * sinf(S.time * 8 + (float)i), flash };
+    float want = e->dir > 0 ? 1.2f : -1.2f;
+    S.eyaw[i] += (want - S.eyaw[i]) * (1.0f - expf(-10.0f * dt));
+    cw_node3d_set_rotation(S.emodel[i], (t3_vec3){ 0, S.eyaw[i], 0 });
+    float flash = e->hurt > 0 && (e->hurt / 3) % 2 ? 1.0f : 0.0f;
+    S.ephase[i] += dt * (e->kind == 1 ? 16.0f : 11.0f);
+    if (e->kind == 0) rig_pose_walker(S.erig[i], S.ephase[i], S.time, 1.0f);
+    else if (e->kind == 1) rig_pose_flyer(S.erig[i], S.ephase[i], S.time);
+    else {
+      rig_pose_boss(S.erig[i], S.time, 1.0f - (float)e->hp / 9.0f);
+      rig_glow(S.erig[i], 1.0f + 0.4f * sinf(S.time * 4) + (1.0f - (float)e->hp / 9.0f));
+    }
+    rig_flash(S.erig[i], flash);
   }
   /* the nearest few light sources to the camera */
   int pick[NTORCH], np = 0;

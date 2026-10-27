@@ -95,6 +95,20 @@ typedef struct game {
 
 extern game G;
 
+/* chars.c: skinned characters (glTF from tools/blender/characters.py) posed in code */
+typedef struct rig rig;
+enum { RIG_HERO, RIG_WALKER, RIG_FLYER, RIG_BOSS, RIG_KINDS };
+rig *rig_load(int kind);
+void rig_attach(rig *r, cw_node holder);
+void rig_free(rig *r);
+void rig_tint(rig *r, const float fur[3], const float scarf[3], int accessory);
+void rig_flash(rig *r, float k);
+void rig_glow(rig *r, float k);
+void rig_pose_hero(rig *r, int anim, float ph, float t, float st, float wd, float vy);
+void rig_pose_walker(rig *r, float ph, float t, float squash);
+void rig_pose_flyer(rig *r, float ph, float t);
+void rig_pose_boss(rig *r, float t, float rage);
+
 /* world.c */
 void world_generate(level *L, uint32_t seed);
 void world_build_physics(game *g);
