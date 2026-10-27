@@ -310,7 +310,11 @@ void ent_hurt(ent *v, ent *a, float dmg, int knock, float fx) {
 static void start_attack(ent *e, akind k) {
   e->st = S_ATK, e->atk = k, e->t = 0, e->hitmask = 0, e->chain_ok = 0;
   const atk_data *a = &ATK[k];
-  char_restart(e, a->clip, 0.04f);
+  if (!e->player) { /* a readable telegraph: guard pose and a flash before the swing (12+ frames, 24+ for heavies) */
+    e->t = (k == A_SLAM || k == A_SWING || k == A_BSPIN) ? -26 : -14;
+    char_restart(e, "block", 0.06f);
+    e->hurtflash = 1.4f;
+  } else char_restart(e, a->clip, 0.04f);
   if (k == A_SLAM || k == A_SPIN || k == A_BSPIN) sfx(SFX_WHIFF);
 }
 
@@ -633,7 +637,6 @@ static int nearest_player(const ent *e) {
   return best;
 }
 
-static int max_tokens(void) { return 1 + W.players; }
 
 static void enemy_pick_attack(ent *e) {
   const char_def *d = &DEFS[e->def];
@@ -674,6 +677,8 @@ static void enemy_update(int ei) {
   case S_ATK: {
     const atk_data *ad = &ATK[e->atk];
     e->t++;
+    if (e->t == 0) char_restart(e, ad->clip, 0.05f);
+    if (e->t < 0) { e->hurtflash = 0.6f; break; }
     if (e->atk == A_CHARGE) {
       e->x += e->vx / TPS;
       if (e->t > ad->a1) e->vx *= 0.8f;
@@ -695,9 +700,11 @@ static void enemy_update(int ei) {
     float dx = p->x - e->x, dz = p->z - e->z;
     float reach = boss ? 1.3f : 0.95f;
     /* token: one request per think */
-    bool want = !e->token && e->cd == 0 && (boss || W.tokens_out < max_tokens());
+    int held = 0; /* attackers already on this target: two at most per fighter */
+    for (int k = 0; k < MAXE; k++) if (W.e[k].used && W.e[k].token && W.e[k].target == ti && !DEFS[W.e[k].def].boss) held++;
+    bool want = !e->token && e->cd == 0 && (boss || held < 2);
     float dist = sqrtf(dx * dx + dz * dz);
-    if (want && dist < 5.0f) { e->token = 1; if (!boss) W.tokens_out++; }
+    if (want && dist < 5.0f) { e->token = 1; e->target = ti; W.tokens_out++; }
     float tx, tz;
     if (e->token) {
       tx = p->x + side * reach * 0.9f;

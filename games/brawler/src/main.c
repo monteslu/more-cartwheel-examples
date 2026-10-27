@@ -30,7 +30,7 @@ static cw_action a_left, a_right, a_up, a_down, a_atk, a_kick, a_jump, a_grab, a
 static cw_sound snd_move, snd_select, snd_back, snd_music[4];
 static cw_voice music;
 static int music_stage = -1;
-static int32_t d_ticks, d_players, d_stage, d_phase, d_enemies, d_kills, d_wave, d_score, d_tokens, d_boss_hp;
+static int32_t d_leak, d_ticks, d_players, d_stage, d_phase, d_enemies, d_kills, d_wave, d_score, d_tokens, d_boss_hp;
 static float d_hp[MAXP], d_px[MAXP], d_cam;
 static uint32_t d_hash;
 static float d_ex[8][4];
@@ -119,6 +119,7 @@ static void init(void *user) {
     .title = "Brawler",
     .subtitle = "four fighters, one street",
     .max_players = MAXP,
+    .shared_screen = true,
     .start = start,
     .sound = shell_sound,
     .screen_changed = shell_screen,
@@ -145,6 +146,7 @@ static void init(void *user) {
   cw_debug_i32("game.wave", &d_wave);
   cw_debug_i32("game.score", &d_score);
   cw_debug_i32("game.tokens", &d_tokens);
+  cw_debug_i32("game.token_leak", &d_leak);
   cw_debug_i32("game.boss_hp", &d_boss_hp);
   cw_debug_field("game.hp", d_hp, CW_DBG_F32, MAXP);
   cw_debug_field("game.px", d_px, CW_DBG_F32, MAXP);
@@ -163,6 +165,7 @@ static void publish(void) {
   int n = 0;
   for (int i = 0; i < MAXE; i++) if (W.e[i].used && W.e[i].st != S_DEAD) n++;
   d_enemies = n;
+  { int held = 0; for (int i = 0; i < MAXE; i++) if (W.e[i].used && W.e[i].token) held++; d_leak = W.tokens_out - held; } /* the leak audit: zero always */
   { int k = 0; for (int i = 0; i < MAXE && k < 8; i++) if (W.e[i].used) { d_ex[k][0] = W.e[i].x; d_ex[k][1] = W.e[i].z; d_ex[k][2] = (float)W.e[i].st; d_ex[k][3] = (float)W.e[i].token * 100 + (float)W.e[i].cd; k++; } for (; k < 8; k++) memset(d_ex[k], 0, sizeof d_ex[k]); }
   d_boss_hp = (W.boss_active && W.boss_idx >= 0 && W.e[W.boss_idx].used) ? (int)W.e[W.boss_idx].hp : 0;
   for (int i = 0; i < MAXP; i++) d_hp[i] = W.p[i].used ? W.p[i].hp : 0, d_px[i] = W.p[i].x, d_states[i] = W.p[i].used ? (int)W.p[i].st : -1;
