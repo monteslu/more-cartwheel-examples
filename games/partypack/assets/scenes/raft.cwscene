@@ -93,3 +93,15 @@ position = vec3(0, 2, 16.5)
 shape = BOX
 size = vec3(48, 8, 4)
 
+
+[node name="FillE" parent="." type="OmniLight3D"]
+position = vec3(14, 9, 3)
+color = color(0.75, 0.85, 1, 1)
+energy = 55
+range = 46
+
+[node name="FillW" parent="." type="OmniLight3D"]
+position = vec3(-14, 9, 6)
+color = color(1, 0.9, 0.8, 1)
+energy = 35
+range = 46
