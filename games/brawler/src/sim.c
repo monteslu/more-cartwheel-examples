@@ -373,6 +373,10 @@ void ent_hurt(ent *v, ent *a, float dmg, int knock, float fx) {
   }
   if (v->player && v->st == S_JUMP && knock < 2) knock = 1;
   v->hp -= dmg;
+  if (DEFS[v->def].boss && v->phase < 2) { /* no phase is skipped: it cannot fall below the next one until that one began */
+    float floor_hp = v->phase == 0 ? v->maxhp * 0.335f : 1.0f;
+    if (v->hp < floor_hp) v->hp = floor_hp;
+  }
   v->hurtflash = 1;
   int dir = a ? (a->x <= v->x ? 1 : -1) : -v->face;
   W.hitstop = knock >= 2 ? 8 : 4; /* frozen frames: 4 on a light blow, 8 on a heavy one */
@@ -833,12 +837,35 @@ static void enemy_pick_attack(ent *e) {
   (void)d;
 }
 
+/* boss phases: below two thirds and one third of its health it stops, roars, calls help and comes back with more.
+   Checked whenever it is on its feet or lying down, so a beating on the ground cannot skip a phase (ent_hurt also keeps
+   its health above the next threshold until that phase has begun). */
+static void boss_phase(ent *e) {
+  if (!DEFS[e->def].boss || !alive(e) || e->phase >= 2) return;
+  if (!(e->st == S_IDLE || e->st == S_WALK || e->st == S_DOWN || e->st == S_GETUP || e->st == S_HIT || (e->st == S_ATK && e->t < 0))) return;
+  int want = e->hp < e->maxhp * 0.34f ? 2 : e->hp < e->maxhp * 0.67f ? 1 : 0;
+  if (want <= e->phase) return;
+  e->phase++;
+  e->st = S_TAUNT; e->t = 0; e->invuln = 90; e->atk = A_NONE; e->y = 0;
+  char_restart(e, "taunt", 0.05f);
+  if (e->token) { e->token = 0; W.tokens_out--; }
+  W.phase_banner = 150, W.shake = 24, W.shake_amp = 0.1f;
+  sfx(SFX_SLAM);
+  fx_flash(e->x, 1.5f, e->z, 1, 0.3f, 0.2f, 18);
+  fx_dust(e->x, e->z, 2.5f);
+  if (e->phase > W.st.boss_phase) W.st.boss_phase = e->phase;
+  static const int ADDS[4][2][2] = { { { D_THUG, D_THUG }, { D_THROWER, D_GUARD } }, { { D_KNIFER, D_PUNK }, { D_THROWER, D_RUNNER } },
+                                     { { D_PUNK, D_RUNNER }, { D_GUARD, D_THROWER } }, { { D_GUARD, D_KNIFER }, { D_THROWER, D_RUNNER } } };
+  for (int k = 0; k < 2; k++) ent_spawn_enemy(ADDS[(e->def - D_FOREMAN) & 3][e->phase - 1][k], W.cam_x + (k ? 9.0f : -9.0f), rf(-2, 2));
+}
+
 static void enemy_update(int ei) {
   ent *e = &W.e[ei];
   if (!e->used) return;
   apply_invuln(e);
   if (e->hold > 0) { e->hold--; return; }
   if (e->cd > 0) e->cd--;
+  boss_phase(e);
   if (common_state(e)) {
     if (e->st == S_DEAD && e->t > 70) {
       e->fade = 1;
@@ -917,7 +944,10 @@ static void enemy_update(int ei) {
         if (!on_screen(tx, tz, 0.7f)) tx = p->x - side * reach * 0.9f; /* no room on that side of the picture: the other flank */
       } else {
         /* waiting: a ring slot around the fighter, and something to do in it (BR4: nobody stands frozen) */
-        if (e->still > 30 && e->mood != 1) e->mood = 1, e->mood_t = ri(120, 200), e->side_pref = 0, e->orbit += 1.5f; /* blocked where it stands: circle instead */
+        if (e->still > 30) { /* blocked where it stands: circle, or if circling is blocked too, go round to the other side */
+          if (e->mood != 1) e->mood = 1, e->mood_t = ri(120, 200), e->side_pref = 0, e->orbit += 1.5f;
+          else e->mood = 4, e->mood_t = 150, e->side_pref = (int)-side;
+        }
         if (--e->mood_t <= 0) {
           int r = ri(0, 9);
           e->mood = r < 4 ? 1 : r < 6 ? 2 : r < 7 ? 3 : r < 8 ? 4 : 0;
@@ -985,24 +1015,6 @@ static void enemy_update(int ei) {
       enemy_pick_attack(e); /* the runner charges from a distance */
     } else if (e->token && e->t++ > 600) { /* a token held too long is returned */
       e->token = 0; W.tokens_out--; e->cd = 60; e->t = 0;
-    }
-    /* boss phases: below two thirds and one third of its health it stops, roars and comes back with more */
-    if (boss) {
-      int want = e->hp < e->maxhp * 0.34f ? 2 : e->hp < e->maxhp * 0.67f ? 1 : 0;
-      if (want > e->phase) {
-        e->phase++;
-        e->st = S_TAUNT; e->t = 0; e->invuln = 90;
-        char_restart(e, "taunt", 0.05f);
-        if (e->token) { e->token = 0; W.tokens_out--; }
-        W.phase_banner = 150, W.shake = 24, W.shake_amp = 0.1f;
-        sfx(SFX_SLAM);
-        fx_flash(e->x, 1.5f, e->z, 1, 0.3f, 0.2f, 18);
-        fx_dust(e->x, e->z, 2.5f);
-        if (e->phase > W.st.boss_phase) W.st.boss_phase = e->phase;
-        static const int ADDS[4][2][2] = { { { D_THUG, D_THUG }, { D_THROWER, D_GUARD } }, { { D_KNIFER, D_PUNK }, { D_THROWER, D_RUNNER } },
-                                           { { D_PUNK, D_RUNNER }, { D_GUARD, D_THROWER } }, { { D_GUARD, D_KNIFER }, { D_THROWER, D_RUNNER } } };
-        for (int k = 0; k < 2; k++) ent_spawn_enemy(ADDS[(e->def - D_FOREMAN) & 3][e->phase - 1][k], W.cam_x + (k ? 9.0f : -9.0f), rf(-2, 2));
-      }
     }
     break;
   }

@@ -135,11 +135,11 @@
   },
   {
     "name": "brawler-boss",
-    "note": "Stage 4's boss wave with three bots: the boss goes through its phases (game.boss_phase), the danger rings show on the street.",
+    "note": "Stage 1 boss wave with three bots: the boss goes through its three phases (game.boss_phase 2 reached) and the danger rings show on the street.",
     "app": "brawler_auto",
     "frames": 2400,
     "startCmds": [
-      "stage 3",
+      "stage 0",
       "wave 4"
     ],
     "fields": [
