@@ -974,7 +974,7 @@ void world_scene_build(game *g, cw_node root) {
           /* depth colour: bright turquoise at the surface, deep blue at the bottom */
           if (pass == 0) {
             float d = k ? 1.0f : 0.0f;
-            col[v * 3] = mixf(0.01f, 0.1f, d), col[v * 3 + 1] = mixf(0.07f, 0.45f, d), col[v * 3 + 2] = mixf(0.2f, 0.6f, d);
+            col[v * 3] = mixf(0.0f, 0.04f, d), col[v * 3 + 1] = mixf(0.035f, 0.3f, d), col[v * 3 + 2] = mixf(0.1f, 0.42f, d);
           } else col[v * 3] = col[v * 3 + 1] = col[v * 3 + 2] = k ? 0.0f : 1.1f;
         }
       }
@@ -1048,8 +1048,8 @@ void world_hide_crack(int x, int y) {
  * different depths (the camera's perspective makes the parallax). Each region's layers rise out of the ground where
  * the region begins and sink again where it ends, so the scenery changes with the ground under the players. ── */
 
-static const float SKY_HOR[BIOMES][3] = { { 0.8f, 0.86f, 0.92f }, { 0.07f, 0.1f, 0.2f }, { 0.72f, 0.85f, 0.7f }, { 1.0f, 0.4f, 0.12f } };
-static const float SKY_MID[BIOMES][3] = { { 0.36f, 0.6f, 0.95f }, { 0.04f, 0.05f, 0.12f }, { 0.3f, 0.55f, 0.6f }, { 0.4f, 0.1f, 0.08f } };
+static const float SKY_HOR[BIOMES][3] = { { 0.56f, 0.7f, 0.86f }, { 0.07f, 0.1f, 0.2f }, { 0.5f, 0.68f, 0.62f }, { 1.0f, 0.4f, 0.12f } };
+static const float SKY_MID[BIOMES][3] = { { 0.24f, 0.46f, 0.86f }, { 0.04f, 0.05f, 0.12f }, { 0.2f, 0.42f, 0.5f }, { 0.4f, 0.1f, 0.08f } };
 static const float SKY_TOP[BIOMES][3] = { { 0.16f, 0.38f, 0.82f }, { 0.015f, 0.02f, 0.06f }, { 0.1f, 0.25f, 0.34f }, { 0.08f, 0.02f, 0.03f } };
 /* silhouette colours per region and layer, far to near (already hazed toward the sky: far layers are pale) */
 static const float LAYER_COL[BIOMES][4][3] = {
@@ -1207,7 +1207,7 @@ static void ridge3d(int b, int l) {
       float gully = 0.75f + 0.35f * n2;
       for (int c = 0; c < 3; c++) c3[c] = rc[c] * gully;
       if (b == BIOME_MEADOW && l == 0) { /* snow on the high peaks */
-        float snow = sstep(46.0f, 52.0f, y + 4.0f * (n2 - 0.5f));
+        float snow = sstep(52.0f, 57.0f, y + 4.0f * (n2 - 0.5f));
         for (int c = 0; c < 3; c++) c3[c] = mixf(c3[c], 0.92f, snow);
       }
       if (b == BIOME_VOLCANO && l < 3) c3[0] += 0.35f * sstep(0.62f, 0.9f, n2) * (1.0f - sh); /* glowing scree low down */
@@ -1370,7 +1370,7 @@ void world_backdrop(game *g) {
     if (i >= 8) x = g_bx0[2] + (float)(i - 8) * 24.0f;
     bool ruin = i >= 8;
     float z = -100.0f - 20.0f * hh(i, 2, 160);
-    g_clouds[g_ncloud] = sprite_quad(cl, x, 38.0f + 22.0f * hh(i, 3, 160), z, 70.0f + 40.0f * hh(i, 4, 160), 28.0f + 10.0f * hh(i, 5, 160), ruin ? 0.9f : 1.15f, ruin ? 1.05f : 1.12f, ruin ? 1.0f : 1.1f, false, ruin ? 0.55f : 0.85f);
+    g_clouds[g_ncloud] = sprite_quad(cl, x, 38.0f + 22.0f * hh(i, 3, 160), z, 70.0f + 40.0f * hh(i, 4, 160), 28.0f + 10.0f * hh(i, 5, 160), ruin ? 0.8f : 0.95f, ruin ? 0.92f : 0.95f, ruin ? 0.88f : 0.98f, false, ruin ? 0.45f : 0.7f);
     g_cloud_x[g_ncloud] = x;
     g_ncloud++;
   }

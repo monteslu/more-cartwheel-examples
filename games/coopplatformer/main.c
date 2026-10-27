@@ -152,7 +152,7 @@ static const mood MOODS[BIOMES] = {
     -0.9f, 0.2f, { 0.25f, 0.65f, 1.0f }, 1.6f, 0.003f, 0.5f, 0.3f, { 0.3f, 0.5f, 0.9f }, 0.02f, 0.0f },
   /* ruins: green daylight through broken stone, hard shafts */
   { { 0.22f, 0.42f, 0.46f }, { 0.4f, 0.62f, 0.6f }, { 1.0f, 0.95f, 0.78f }, 3.6f, 0.4f, 0.9f, 1.05f, 0.12f, 45, 360, 0.5f,
-    -1.0f, -0.45f, { 0.7f, 1.0f, 0.85f }, 1.0f, 0.0025f, 0.7f, 0.4f, { 0.8f, 1.0f, 0.9f }, 0.014f, 0.0f },
+    -1.0f, -0.45f, { 0.7f, 1.0f, 0.85f }, 1.0f, 0.0012f, 0.7f, 0.4f, { 0.8f, 1.0f, 0.9f }, 0.014f, 0.0f },
   /* volcano: a low red sun behind the cone, lava orange rim, ash haze */
   { { 0.25f, 0.06f, 0.04f }, { 0.4f, 0.12f, 0.06f }, { 1.0f, 0.5f, 0.3f }, 1.8f, 0.28f, 0.6f, 1.25f, 0.24f, 34, 300, 0.8f,
     -0.35f, 0.9f, { 1.0f, 0.38f, 0.1f }, 2.4f, 0.0015f, 0.4f, 0.3f, { 1.0f, 0.5f, 0.3f }, 0.016f, 0.0015f },
@@ -467,7 +467,7 @@ static void build_scene(void) {
       cw_node_set(w, "wave_count", cw_val_int(2));
       cw_node_set(w, "wave0", val_vec4(90, 3.2f, 0.06f, 0.4f));
       cw_node_set(w, "wave1", val_vec4(0, 1.7f, 0.03f, 0.3f));
-      cw_node_set(w, "color", cw_val_color(0.35f, 0.75f, 0.85f, 1));
+      cw_node_set(w, "color", cw_val_color(0.12f, 0.42f, 0.5f, 1));
       cw_node_set(w, "deep_color", cw_val_color(0.01f, 0.08f, 0.16f, 1));
       cw_node_set(w, "reflection", cw_val_bool(true));
       cw_node_set(w, "refraction", cw_val_bool(false));
@@ -656,10 +656,10 @@ static void update_spans(float camx) {
       if (pass == 0) {
         cw_node_set(v, "size", cw_val_vec3(w, sp[3] - sp[2], 3.6f));
         cw_node3d_set_position(v, (t3_vec3){ cx, (sp[2] + sp[3]) * 0.5f, 0 });
-        cw_node_set(v, "density", cw_val_float(0.25));
-        cw_node_set(v, "albedo", cw_val_color(0.1f, 0.45f, 0.65f, 1));
-        cw_node_set(v, "emission", cw_val_color(0.02f, 0.14f, 0.22f, 1));
-        cw_node_set(v, "emission_energy", cw_val_float(0.6));
+        cw_node_set(v, "density", cw_val_float(0.22));
+        cw_node_set(v, "albedo", cw_val_color(0.03f, 0.22f, 0.33f, 1));
+        cw_node_set(v, "emission", cw_val_color(0.01f, 0.07f, 0.12f, 1));
+        cw_node_set(v, "emission_energy", cw_val_float(0.35));
         cw_node_set(v, "noise_wind", cw_val_vec3(0.15f, 0.05f, 0));
       } else {
         cw_node_set(v, "size", cw_val_vec3(w + 6, 8, 5));
