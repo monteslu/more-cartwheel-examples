@@ -15,7 +15,7 @@
 #include "cartwheel/math.h"
 #include "game.h"
 
-#define N 256
+#define N 512
 
 static uint32_t hash2(int x, int y, uint32_t seed) {
   uint32_t h = (uint32_t)x * 374761393u + (uint32_t)y * 668265263u + seed * 2246822519u;
@@ -105,7 +105,7 @@ static void g_dirt(float u, float v, texel *t) {
 static void g_concrete(float u, float v, texel *t) {
   float n = fbm(u, v, 8, 5, 21), pit = h01((int)(u * N), (int)(v * N), 22) > 0.982f;
   float stain = clamp01((fbm(u, v, 3, 3, 23) - 0.5f) * 3);
-  float streak = clamp01((fbm(u * 0.25f, v * 4, 4, 3, 24) - 0.55f) * 4) * (1 - v); /* rain runs down */
+  float streak = clamp01((fbm(u * 4, v, 4, 3, 24) - 0.55f) * 4); /* rain runs down */
   float d1, d2;
   uint32_t id;
   cells(u, v, 6, 25, &d1, &d2, &id);
@@ -301,8 +301,222 @@ static void g_glass(float u, float v, texel *t) {
   t->ao = 1;
 }
 
-static const gen_fn GEN[TEX_KINDS] = { g_dirt, g_concrete, g_rubber, g_paint, g_rust, g_steel, g_wood, g_gravel, g_grass, g_chain, g_glass, g_primer };
-static const float NORMAL_STRENGTH[TEX_KINDS] = { 3, 2.5f, 4, 1, 5, 1.5f, 3, 3, 2, 2, 0.5f, 1.5f };
+/* ── arena sets: each carries its own colour (the level tint stays near white) and real contrast ── */
+
+/* poured floor slabs, 2 m (two a tile), saw-cut joints, per-slab tone, aggregate speckle, oil and wet stains, scuffs */
+static void g_slab(float u, float v, texel *t) {
+  int sx = (int)floorf(u * 2), sy = (int)floorf(v * 2);
+  float ju = fminf(fractf(u * 2), 1 - fractf(u * 2)), jv = fminf(fractf(v * 2), 1 - fractf(v * 2));
+  float joint = 1 - clamp01((fminf(ju, jv) - 0.004f) * 300); /* 1 in the cut */
+  float tone = (h01(sx, sy, 201) - 0.5f) * 0.12f;
+  float n = fbm(u, v, 6, 5, 202), fine = fbm(u, v, 48, 2, 203), speck = h01((int)(u * N), (int)(v * N), 204);
+  float oil = clamp01((fbm(u, v, 3, 4, 205) - 0.64f) * 5) * 0.75f;
+  float scuff = clamp01((fbm(u, v * 8, 4, 3, 206) - 0.6f) * 4) * 0.6f;
+  float patch = clamp01((fbm(u, v, 2, 3, 207) - 0.6f) * 6); /* a patched repair, lighter and smoother */
+  float c = 0.5f + tone + 0.14f * (n - 0.5f) + 0.05f * (fine - 0.5f) + (speck > 0.93f ? 0.07f : speck < 0.05f ? -0.08f : 0) - 0.08f * scuff + 0.07f * patch;
+  rgb(t, c * 1.02f, c, c * 0.95f);
+  t->r = mixf(t->r, 0.12f, oil * 0.8f), t->g = mixf(t->g, 0.11f, oil * 0.8f), t->b = mixf(t->b, 0.1f, oil * 0.8f);
+  t->r = mixf(t->r, 0.1f, joint), t->g = mixf(t->g, 0.1f, joint), t->b = mixf(t->b, 0.1f, joint);
+  t->h = 0.6f + 0.12f * fine + 0.05f * n - 0.5f * joint + 0.04f * (speck > 0.93f);
+  t->rough = mixf(0.88f - 0.1f * patch, 0.3f, oil) + 0.06f * (fine - 0.5f);
+  t->ao = 1 - 0.6f * joint - 0.1f * oil;
+}
+
+/* painted steel cladding in `col`: 1 m panels, 2 m high, seams, rivet rows, pillowed faces, chipped edges showing rust,
+ * streaks running down from the rivets, grime at the foot of each panel */
+static void panel(float u, float v, texel *t, float cr, float cg, float cb, uint32_t seed) {
+  float pu = fractf(u * 4), pv = fractf(v * 2);
+  int px = (int)floorf(u * 4), py = (int)floorf(v * 2);
+  float eu = fminf(pu, 1 - pu), ev = fminf(pv, 1 - pv);
+  float seam = 1 - clamp01((fminf(eu, ev) - 0.006f) * 250);
+  /* rivets: rows 4 cm in from the horizontal seams, every 12.5 cm */
+  float ru = fractf(u * 32) - 0.5f;
+  float dm = fminf(fabsf(pv - 0.02f), fabsf(pv - 0.98f)) * 2.0f, um = ru * 0.125f; /* metres from the rivet */
+  float rivet = clamp01(1.4f - sqrtf(um * um + dm * dm) / 0.012f);
+  float pillow = (1 - cw_pow(fabsf(pu - 0.5f) * 2, 4)) * (1 - cw_pow(fabsf(pv - 0.5f) * 2, 4));
+  float n = fbm(u, v, 8, 4, seed), fine = fbm(u, v, 64, 2, seed + 1);
+  float edge = clamp01(1 - fminf(eu * 4, ev * 2) * 6); /* near a seam */
+  float chip = clamp01((fbm(u, v, 24, 4, seed + 2) + 0.35f * edge - 0.78f) * 8);
+  float streak = 0;
+  { /* rust runs below each rivet column: vertical stripes in u, fading down from the top seam */
+    float sx = fabsf(ru) < 0.12f ? 1 : 0;
+    float run = clamp01((fbm(u * 8, v, 8, 2, seed + 3) - 0.45f) * 3);
+    streak = sx * run * clamp01(1 - (0.97f - pv) * 2.2f) * 0.7f + clamp01((fbm(u * 6, v, 4, 3, seed + 4) - 0.62f) * 3) * 0.35f;
+  }
+  float grime = clamp01((0.3f - pv) * 3) * (0.5f + 0.5f * n);
+  float tone = (h01(px, py, seed + 5) - 0.5f) * 0.08f;
+  float k = 1 + tone + 0.08f * (n - 0.5f) + 0.03f * (fine - 0.5f) - 0.35f * grime;
+  float r = cr * k, g = cg * k, b = cb * k;
+  r = mixf(r, 0.36f, streak), g = mixf(g, 0.2f, streak), b = mixf(b, 0.1f, streak);
+  float rust = clamp01(fbm(u, v, 16, 3, seed + 6) * 1.5f);
+  r = mixf(r, mixf(0.18f, 0.42f, rust), chip), g = mixf(g, mixf(0.17f, 0.22f, rust), chip), b = mixf(b, mixf(0.17f, 0.1f, rust), chip);
+  r = mixf(r, 0.05f, seam), g = mixf(g, 0.05f, seam), b = mixf(b, 0.05f, seam);
+  r = mixf(r, cr * 0.75f, rivet), g = mixf(g, cg * 0.75f, rivet), b = mixf(b, cb * 0.75f, rivet);
+  rgb(t, r, g, b);
+  t->h = 0.5f + 0.12f * pillow - 0.45f * seam + 0.35f * rivet - 0.06f * chip + 0.02f * fine;
+  t->rough = mixf(0.45f + 0.2f * grime + 0.1f * n, 0.85f, fmaxf(chip, streak * 0.8f));
+  t->ao = 1 - 0.55f * seam - 0.15f * grime;
+}
+static void g_panel_steel(float u, float v, texel *t) { panel(u, v, t, 0.24f, 0.34f, 0.42f, 300); } /* blue-grey */
+static void g_panel_teal(float u, float v, texel *t) { panel(u, v, t, 0.1f, 0.42f, 0.42f, 310); }
+static void g_panel_red(float u, float v, texel *t) { panel(u, v, t, 0.52f, 0.13f, 0.08f, 320); }
+
+/* hazard trim: 45 degree yellow and black stripes (a quarter tile each), worn to steel at the edges and in scuffs */
+static void g_hazard(float u, float v, texel *t) {
+  float s = fractf((u + v) * 4);
+  float stripe = clamp01((fabsf(s - 0.5f) - 0.25f) * 80 + 0.5f); /* 1 = yellow */
+  float n = fbm(u, v, 8, 4, 401), fine = fbm(u, v, 64, 2, 402);
+  float wear = clamp01((fbm(u, v, 16, 4, 403) - 0.66f) * 6) + clamp01((fbm(u, v * 8, 4, 2, 404) - 0.7f) * 5);
+  wear = clamp01(wear);
+  float dirt = clamp01((fbm(u, v, 4, 3, 405) - 0.45f) * 2) * 0.35f;
+  float yr = 0.86f, yg = 0.62f, yb = 0.04f, kr = 0.05f;
+  float r = mixf(kr, yr, stripe), g = mixf(kr, yg, stripe), b = mixf(kr, yb, stripe);
+  float k = 0.92f + 0.12f * (n - 0.5f) + 0.05f * (fine - 0.5f) - dirt;
+  r *= k, g *= k, b *= k;
+  r = mixf(r, 0.4f, wear), g = mixf(g, 0.39f, wear), b = mixf(b, 0.37f, wear);
+  rgb(t, r, g, b);
+  t->h = 0.55f - 0.08f * wear + 0.03f * fine;
+  t->rough = mixf(0.55f, 0.4f, wear) + 0.2f * dirt;
+  t->ao = 1 - 0.2f * dirt;
+}
+
+/* bar grating: bearing bars and cross rods over a dark void */
+static void g_grate(float u, float v, texel *t) {
+  float a = fractf(u * 24), b = fractf(v * 6);
+  float bar = 1 - clamp01((fabsf(a - 0.5f) - 0.09f) * 60);      /* bearing bars across u */
+  float rod = 1 - clamp01((fabsf(b - 0.5f) - 0.04f) * 80);       /* cross rods */
+  float m = fmaxf(bar, rod);
+  float n = fbm(u, v, 8, 3, 501), rust = clamp01((fbm(u, v, 4, 3, 502) - 0.6f) * 4);
+  float c = 0.42f + 0.1f * n;
+  float r = mixf(c, 0.4f, rust), g = mixf(c, 0.24f, rust), bl = mixf(c * 1.03f, 0.12f, rust);
+  rgb(t, mixf(0.015f, r, m), mixf(0.015f, g, m), mixf(0.018f, bl, m));
+  t->h = 0.15f + 0.85f * m + 0.1f * rod;
+  t->rough = mixf(0.9f, mixf(0.4f, 0.85f, rust), m);
+  t->ao = mixf(0.1f, 1, m);
+}
+
+/* square tiles (8 a tile), grout, per-tile colour and wear, chipped corners, a few cracks */
+static void tiles(float u, float v, texel *t, float cr, float cg, float cb, float var, uint32_t seed) {
+  float tu = fractf(u * 8), tv = fractf(v * 8);
+  int ix = (int)floorf(u * 8), iy = (int)floorf(v * 8);
+  float e = fminf(fminf(tu, 1 - tu), fminf(tv, 1 - tv));
+  float grout = 1 - clamp01((e - 0.025f) * 120);
+  float bevel = clamp01(e * 25);
+  float id = h01(ix & 7, iy & 7, seed), id2 = h01(ix & 7, iy & 7, seed + 1);
+  float n = fbm(u, v, 16, 4, seed + 2), fine = fbm(u, v, 64, 2, seed + 3);
+  float d1, d2;
+  uint32_t cid;
+  cells(u, v, 8, seed + 4, &d1, &d2, &cid);
+  float crack = (id2 > 0.8f) ? (1 - clamp01((d2 - d1) * 40)) * 0.8f : 0;
+  float dirt = clamp01((fbm(u, v, 3, 3, seed + 5) - 0.5f) * 2.5f);
+  float k = 1 + var * (id - 0.5f) + 0.12f * (n - 0.5f) + 0.05f * (fine - 0.5f) - 0.25f * dirt;
+  float r = cr * k, g = cg * k * (1 + 0.05f * (id2 - 0.5f)), b = cb * k;
+  r = mixf(r, 0.16f, crack), g = mixf(g, 0.15f, crack), b = mixf(b, 0.14f, crack);
+  float gr = 0.3f - 0.12f * dirt;
+  rgb(t, mixf(r, gr, grout), mixf(g, gr * 0.97f, grout), mixf(b, gr * 0.92f, grout));
+  t->h = 0.35f + 0.5f * bevel * (1 - grout) + 0.04f * n - 0.2f * crack;
+  t->rough = mixf(0.55f + 0.25f * id2 + 0.15f * dirt, 0.95f, grout);
+  t->ao = 1 - 0.5f * grout - 0.2f * crack;
+}
+static void g_tiles_sand(float u, float v, texel *t) { tiles(u, v, t, 0.74f, 0.58f, 0.42f, 0.22f, 600); }
+static void g_tiles_slate(float u, float v, texel *t) { tiles(u, v, t, 0.34f, 0.38f, 0.4f, 0.3f, 610); }
+
+/* ashlar stone: courses a quarter tile... an eighth high (0.5 m), random lengths, recessed mortar, weathering */
+static void g_blocks(float u, float v, texel *t) {
+  float rowf = v * 8;
+  int row = (int)floorf(rowf);
+  float rv = fractf(rowf);
+  float off = h01(row & 7, 0, 701);
+  float x = u * 4 + off * 4; /* a block is about a metre: 4 a tile */
+  float bx = floorf(x), fu = fractf(x);
+  int bid = ((int)bx & 3) + (row & 7) * 4;
+  float e = fminf(fminf(fu * 2, (1 - fu) * 2), fminf(rv, 1 - rv)); /* in block units (half for u) */
+  float mortar = 1 - clamp01((e - 0.03f) * 60);
+  float tone = h01(bid, row & 7, 702), n = fbm(u, v, 8, 5, 703), fine = fbm(u, v, 64, 2, 704);
+  float weather = clamp01((fbm(u, v, 3, 4, 705) - 0.45f) * 2);
+  float streak = clamp01((fbm(u * 4, v, 4, 3, 706) - 0.55f) * 3);
+  float k = 0.9f + 0.22f * (tone - 0.5f) + 0.12f * (n - 0.5f) + 0.05f * (fine - 0.5f) - 0.18f * streak - 0.1f * weather;
+  float r = 0.72f * k, g = 0.62f * k, b = 0.5f * k;
+  r = mixf(r, 0.42f, weather * 0.3f), g = mixf(g, 0.44f, weather * 0.3f), b = mixf(b, 0.36f, weather * 0.3f); /* lichen-grey */
+  rgb(t, mixf(r, 0.3f, mortar), mixf(g, 0.28f, mortar), mixf(b, 0.25f, mortar));
+  t->h = 0.5f + 0.3f * clamp01(e * 10) * (1 - mortar) + 0.1f * n + 0.03f * fine - 0.3f * mortar;
+  t->rough = mixf(0.8f + 0.1f * n, 0.95f, mortar);
+  t->ao = 1 - 0.55f * mortar - 0.1f * weather;
+}
+
+/* plaster render: warm, patched, cracked, dirt rising from the ground */
+static void g_plaster(float u, float v, texel *t) {
+  float n = fbm(u, v, 6, 5, 801), fine = fbm(u, v, 48, 3, 802);
+  float patch = clamp01((fbm(u, v, 2, 4, 803) - 0.55f) * 5);
+  float d1, d2;
+  uint32_t id;
+  cells(u, v, 5, 804, &d1, &d2, &id);
+  float crack = ((id & 3) == 0) ? (1 - clamp01((d2 - d1) * 70)) : 0;
+  float rise = clamp01((0.35f - v) * 2.5f) * (0.6f + 0.4f * n);
+  float k = 0.95f + 0.12f * (n - 0.5f) + 0.06f * (fine - 0.5f) - 0.3f * rise - 0.1f * patch;
+  rgb(t, 0.86f * k, 0.72f * k, 0.55f * k);
+  t->r = mixf(t->r, 0.2f, crack), t->g = mixf(t->g, 0.17f, crack), t->b = mixf(t->b, 0.14f, crack);
+  t->h = 0.5f + 0.15f * fine + 0.1f * n + 0.06f * patch - 0.4f * crack;
+  t->rough = 0.88f + 0.08f * fine;
+  t->ao = 1 - 0.4f * crack - 0.1f * rise;
+}
+
+/* steel tread plate: raised diagonal lozenges, worn bright on the tops, rust in the low ground */
+static void g_tread(float u, float v, texel *t) {
+  float a = u * 32, b = v * 32;
+  int cx = (int)floorf(a), cy = (int)floorf(b);
+  float fu = fractf(a) - 0.5f, fv = fractf(b) - 0.5f;
+  float dir = ((cx + cy) & 1) ? 1.f : -1.f; /* alternate the lozenge direction */
+  float p = (fu + dir * fv) * 0.7071f, q = (fu - dir * fv) * 0.7071f;
+  float lz = clamp01((1 - (p * p / 0.09f + q * q / 0.0049f)) * 2.5f);
+  float n = fbm(u, v, 8, 4, 901), rust = clamp01((fbm(u, v, 4, 4, 902) - 0.66f) * 3) * (1 - lz);
+  float dirt = clamp01((fbm(u, v, 3, 3, 903) - 0.4f) * 2) * (1 - lz) * 0.6f;
+  float c = 0.36f + 0.1f * (n - 0.5f) + 0.16f * lz - 0.18f * dirt;
+  rgb(t, mixf(c, 0.38f, rust), mixf(c, 0.2f, rust), mixf(c * 1.04f, 0.09f, rust));
+  t->h = 0.3f + 0.6f * lz + 0.05f * n;
+  t->rough = mixf(mixf(0.55f, 0.28f, lz), 0.9f, fmaxf(rust, dirt));
+  t->ao = 1 - 0.3f * (1 - lz) * dirt - 0.15f * (1 - lz);
+}
+
+/* board-formed concrete: plank marks, tie holes on a grid, streaks, real contrast */
+static void g_formed(float u, float v, texel *t) {
+  float n = fbm(u, v, 8, 5, 1001), fine = fbm(u, v, 64, 2, 1002);
+  float plank = fractf(v * 26); /* boards about 15 cm */
+  int pid = (int)floorf(v * 26);
+  float board = (h01(pid & 63, 0, 1003) - 0.5f) * 0.1f;
+  float grain = fbm(u, v * 8, 8, 3, 1004 + (uint32_t)(pid & 7));
+  float line = 1 - clamp01(fminf(plank, 1 - plank) * 40);
+  float hu = fractf(u * 6) - 0.5f, hv = fractf(v * 4) - 0.5f;
+  float hole = clamp01(1 - sqrtf(hu * hu + hv * hv * 2.25f) * 22);
+  float stain = clamp01((fbm(u, v, 3, 3, 1005) - 0.5f) * 3), streak = clamp01((fbm(u * 4, v, 4, 3, 1006) - 0.55f) * 4);
+  float c = 0.56f + board + 0.12f * (n - 0.5f) + 0.06f * (grain - 0.5f) + 0.04f * (fine - 0.5f) - 0.14f * stain - 0.12f * streak - 0.12f * line;
+  rgb(t, c, c * 0.99f, c * 0.96f);
+  t->r = mixf(t->r, 0.08f, hole), t->g = mixf(t->g, 0.08f, hole), t->b = mixf(t->b, 0.08f, hole);
+  t->h = 0.5f + 0.15f * grain + 0.1f * n - 0.2f * line - 0.5f * hole;
+  t->rough = 0.86f + 0.08f * (n - 0.5f);
+  t->ao = 1 - 0.6f * hole - 0.2f * line - 0.1f * stain;
+}
+
+/* factory glazing: a steel grid of small panes, the light behind them uneven; the map is the albedo AND the emissive mask
+ * (the level gives it a dark tint and an emissive colour) */
+static void g_windows(float u, float v, texel *t) {
+  float a = fractf(u * 8), b = fractf(v * 8);
+  int ix = (int)floorf(u * 8), iy = (int)floorf(v * 8);
+  float frame = 1 - clamp01((fminf(fminf(a, 1 - a), fminf(b, 1 - b)) - 0.07f) * 60);
+  float lit = h01(ix, iy, 1101), grime = fbm(u, v, 8, 3, 1102);
+  float k = lit < 0.12f ? 0.08f : 0.55f + 0.45f * h01(ix, iy, 1103); /* a few dark panes */
+  k *= 0.75f + 0.35f * grime;
+  float glow = 0.3f + 0.7f * (1 - fabsf(b - 0.5f) * 1.2f); /* brighter in the middle of a pane */
+  rgb(t, mixf(0.95f * k * glow, 0.02f, frame), mixf(0.72f * k * glow, 0.02f, frame), mixf(0.45f * k * glow, 0.022f, frame));
+  t->h = 0.3f + 0.6f * frame;
+  t->rough = mixf(0.15f + 0.3f * grime, 0.6f, frame);
+  t->ao = 1 - 0.2f * frame;
+}
+
+static const gen_fn GEN[TEX_KINDS] = { g_dirt, g_concrete, g_rubber, g_paint, g_rust, g_steel, g_wood, g_gravel, g_grass, g_chain, g_glass, g_primer,
+                                       g_slab, g_panel_steel, g_panel_teal, g_panel_red, g_hazard, g_grate, g_tiles_sand, g_tiles_slate, g_blocks, g_plaster, g_tread, g_formed, g_windows };
+static const float NORMAL_STRENGTH[TEX_KINDS] = { 3, 2.5f, 4, 1, 5, 1.5f, 3, 3, 2, 2, 0.5f, 1.5f,
+                                                  6, 8, 8, 8, 3, 10, 8, 8, 8, 5, 10, 6, 3 };
 
 static tex_set SETS[TEX_KINDS];
 uint32_t tex_hash = 2166136261u;
@@ -350,7 +564,7 @@ bool tex_warm(int kind) {
   if (warm_row < N) return false;
   warm_kind = -1;
   uint8_t *a = malloc(N * N * 4), *nm = malloc(N * N * 4), *ro = malloc(N * N * 4), *ao = malloc(N * N * 4);
-  float st = NORMAL_STRENGTH[kind];
+  float st = NORMAL_STRENGTH[kind] * N / 256.0f;
   for (int y = 0; y < N; y++)
     for (int x = 0; x < N; x++) {
       const texel *t = &tx[y * N + x];
@@ -541,10 +755,21 @@ void mb_add_geo(mesh_build *b, const t3_geometry *g, t3_vec3 pos, float yaw, t3_
   }
 }
 
+float mb_macro = 0;
+
+/* a smooth world-space tint wobble (about 7 m across) */
+static float macro_at(t3_vec3 p) {
+  if (mb_macro <= 0) return 1;
+  float a = vnoise(p.x * 0.14f + p.y * 0.05f + 512, p.z * 0.14f - p.y * 0.09f + 512, 4096, 77);
+  float b = vnoise(p.x * 0.5f + 300, p.z * 0.5f + p.y * 0.4f + 300, 4096, 78);
+  return 1 + mb_macro * ((a - 0.5f) * 1.6f + (b - 0.5f) * 0.5f);
+}
+
 void mb_box(mesh_build *b, t3_vec3 c, t3_quat q, t3_vec3 s, float uv_m, const float rgb[3]) {
   t3_mat4 m;
   t3_mat4_compose(&m, c, q, (t3_vec3){ 1, 1, 1 });
   t3_vec3 h = { s.x / 2, s.y / 2, s.z / 2 };
+  bool upright = fabsf(q.x) < 1e-4f && fabsf(q.z) < 1e-4f, axis = upright && fabsf(q.y) < 1e-4f;
   /* per face: normal, u axis, v axis (local), half extents along them */
   static const float F[6][9] = {
     { 1, 0, 0, 0, 0, -1, 0, 1, 0 }, { -1, 0, 0, 0, 0, 1, 0, 1, 0 }, { 0, 1, 0, 1, 0, 0, 0, 0, -1 },
@@ -558,14 +783,34 @@ void mb_box(mesh_build *b, t3_vec3 c, t3_quat q, t3_vec3 s, float uv_m, const fl
     float hn = fabsf(n.x) * h.x + fabsf(n.y) * h.y + fabsf(n.z) * h.z;
     /* offset per face so neighbouring boxes do not tile in step */
     float ou = (float)(((int)(c.x * 7.3f) + (int)(c.z * 3.1f) + f * 5) & 7) * 0.37f, ov = (float)(((int)(c.y * 5.9f) + (int)(c.x * 1.7f)) & 7) * 0.41f;
-    int vi[4];
-    for (int k = 0; k < 4; k++) {
-      float su = (k == 1 || k == 2) ? 1.f : -1.f, sv = (k >= 2) ? 1.f : -1.f;
-      t3_vec3 lp = { n.x * hn + u.x * hu * su + v.x * hv * sv, n.y * hn + u.y * hu * su + v.y * hv * sv, n.z * hn + u.z * hu * su + v.z * hv * sv };
-      t3_vec3 wp = t3_vec3_apply_mat4(lp, &m), wn = t3_vec3_transform_direction(n, &m);
-      vi[k] = mb_vert(b, wp, wn, (su * hu + hu) / uv_m + ou, (sv * hv + hv) / uv_m + ov);
-      mb_color(b, vi[k], rgb[0], rgb[1], rgb[2]);
-    }
-    mb_quad(b, vi[0], vi[1], vi[2], vi[3]);
+    t3_vec3 wn = t3_vec3_transform_direction(n, &m);
+    /* uvs anchored to the world where that keeps boxes in step: floors and tops of unrotated boxes by x/z,
+     * the sides of upright boxes by height (panel seams and grime line up along a wall) */
+    int mode = (axis && f >= 2 && f <= 3) ? 1 : (upright && f != 2 && f != 3) ? 2 : 0;
+    float cell = uv_m > 4 ? uv_m : 4;
+    int nu = (int)ceilf(2 * hu / cell - 0.01f), nv = (int)ceilf(2 * hv / cell - 0.01f);
+    if (nu < 1 || mb_macro <= 0) nu = 1;
+    if (nv < 1 || mb_macro <= 0) nv = 1;
+    if (nu > 32) nu = 32;
+    if (nv > 32) nv = 32;
+    int base = b->nv;
+    for (int j = 0; j <= nv; j++)
+      for (int i = 0; i <= nu; i++) {
+        float lu = -hu + 2 * hu * (float)i / (float)nu, lv = -hv + 2 * hv * (float)j / (float)nv;
+        t3_vec3 lp = { n.x * hn + u.x * lu + v.x * lv, n.y * hn + u.y * lu + v.y * lv, n.z * hn + u.z * lu + v.z * lv };
+        t3_vec3 wp = t3_vec3_apply_mat4(lp, &m);
+        float tu, tv;
+        if (mode == 1) tu = wp.x / uv_m, tv = (f == 2 ? -wp.z : wp.z) / uv_m;
+        else if (mode == 2) tu = (lu + hu) / uv_m + ou, tv = wp.y / uv_m;
+        else tu = (lu + hu) / uv_m + ou, tv = (lv + hv) / uv_m + ov;
+        int vi = mb_vert(b, wp, wn, tu, tv);
+        float k = macro_at(wp);
+        mb_color(b, vi, rgb[0] * k, rgb[1] * k, rgb[2] * k);
+      }
+    for (int j = 0; j < nv; j++)
+      for (int i = 0; i < nu; i++) {
+        int v0 = base + j * (nu + 1) + i;
+        mb_quad(b, v0, v0 + 1, v0 + nu + 2, v0 + nu + 1);
+      }
   }
 }

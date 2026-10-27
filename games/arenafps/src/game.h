@@ -61,7 +61,8 @@ static inline t3_vec3 look_dir(float yaw, float pitch) {
 }
 
 /* ── gfx.c: procedural PBR textures and a mesh builder ── */
-enum { TEX_DIRT, TEX_CONCRETE, TEX_RUBBER, TEX_PAINT, TEX_RUST, TEX_STEEL, TEX_WOOD, TEX_GRAVEL, TEX_GRASS, TEX_CHAIN, TEX_GLASS, TEX_PRIMER, TEX_KINDS };
+enum { TEX_DIRT, TEX_CONCRETE, TEX_RUBBER, TEX_PAINT, TEX_RUST, TEX_STEEL, TEX_WOOD, TEX_GRAVEL, TEX_GRASS, TEX_CHAIN, TEX_GLASS, TEX_PRIMER,
+       TEX_SLAB, TEX_PANEL_STEEL, TEX_PANEL_TEAL, TEX_PANEL_RED, TEX_HAZARD, TEX_GRATE, TEX_TILES_SAND, TEX_TILES_SLATE, TEX_BLOCKS, TEX_PLASTER, TEX_TREAD, TEX_FORMED, TEX_WINDOWS, TEX_KINDS };
 typedef struct tex_set { t3_texture *map, *normal, *rough, *ao; } tex_set;
 const tex_set *tex_get(int kind);
 void tex_apply(t3_material *m, int kind, float repeat, float normal_scale, float ao_intensity);
@@ -82,6 +83,8 @@ t3_geometry *mb_finish(mesh_build *b);
 void mb_add_geo(mesh_build *b, const t3_geometry *g, t3_vec3 pos, float yaw, t3_vec3 scale, const float rgb[3], float uv_scale);
 /* a box (centre, rotation, full size) with metre-projected uvs (one repeat per uv_m metres), tinted */
 void mb_box(mesh_build *b, t3_vec3 centre, t3_quat q, t3_vec3 size, float uv_m, const float rgb[3]);
+/* the tint variation mb_box lays over big faces (0 = none): breaks up the tiling over tens of metres */
+extern float mb_macro;
 
 /* ── the arena (arena.c) ───────────────────────────────────────────── */
 
