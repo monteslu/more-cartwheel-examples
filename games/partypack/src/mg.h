@@ -21,6 +21,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "cartwheel/audio.h"
@@ -80,8 +81,9 @@ typedef struct mg_def {
   float (*music_bpm)(void);                          /* optional: own music */
 } mg_def;
 
-#define MG_COUNT 9
-extern const mg_def *const MG_LIST[MG_COUNT];
+#define MG_MAX 16
+extern int MG_N;
+extern const mg_def *MG_LIST[MG_MAX];
 extern const mg_def mg_dodge, mg_memory, mg_beat, mg_quiz, mg_tower, mg_blast, mg_raft, mg_kart, mg_sumo;
 
 /* ── shared looks and sounds (common.c) ─────────────────────────────── */
