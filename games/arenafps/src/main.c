@@ -587,8 +587,8 @@ static void bot_think(fighter *f, int idx) {
       if (f->target < 0 && f->wander_wait++ < 240 && bi < 0) bi = -2;
     }
     /* hunt: co-op bots (both sides) go after the nearest enemy, and any bot that has seen no enemy for 20 s goes looking
-     * (the longest stretch without an encounter stays short); only a pressing need (health, a power weapon) comes first */
-    if ((G.mode == MODE_COOP || f->alive_t - f->saw_t > 20 * 60) && (bi < 0 || bs < 0.12f)) {
+     * (the longest stretch without an encounter stays short); only health when hurt comes first */
+    if ((G.mode == MODE_COOP || f->alive_t - f->saw_t > 20 * 60) && !(bi >= 0 && A.items[bi].kind == ITEM_HEALTH && f->hp < 50)) {
       float hd = 1e9f;
       int hi = -1;
       for (int i = 0; i < G.nf; i++) {
