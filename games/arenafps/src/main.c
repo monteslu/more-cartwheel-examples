@@ -932,6 +932,13 @@ static void begin_match(void) {
   memset(G.aim, 0, sizeof G.aim);
   G.frag_limit = G.mode == MODE_TDM ? 30 : 15;
   G.time_limit = 60 * 60 * 5;
+#ifdef ARENA_AUTOPILOT
+  { /* ARENA_FRAGS and ARENA_SECS shorten the autopilot's matches (tests, program tables) */
+    const char *e;
+    if ((e = getenv("ARENA_FRAGS"))) G.frag_limit = CW_MAX(1, atoi(e));
+    if ((e = getenv("ARENA_SECS"))) G.time_limit = 60 * CW_MAX(5, atoi(e));
+  }
+#endif
   if (cw_node_valid(A.water)) { /* planar reflection and refraction per view: only when the screen is not split three or four ways */
     bool rich = G.players < 3;
     cw_node_set(A.water, "reflection", cw_val_bool(rich));
@@ -1076,7 +1083,12 @@ static void fixed_update(void *user, double dt) {
       if (AUTO && G.over_ticks < 60 * 8) return;
       G.state = ST_SETUP;
       G.ticks = 0;
-      if (AUTO) { begin_match(); set_views(); }
+      if (AUTO) { /* the autopilot plays the next arena and mode: a soak test sees them all */
+        G.arena_id = (G.arena_id + 1) % ARENAS;
+        G.mode = (G.mode + 1) % MODE_COUNT;
+        begin_match();
+        set_views();
+      }
       else { build_world(G.arena_id); }
     }
     return;
