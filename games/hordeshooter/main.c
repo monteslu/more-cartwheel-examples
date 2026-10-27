@@ -49,14 +49,15 @@ static struct {
   sim S;
   bool in_match, built;
   int players;
-  int32_t ticks, wave, enemies, kills, alive_players, boss, best_wave;
+  int32_t state, ticks, wave, enemies, kills, alive_players, boss, best_wave;
   int32_t hp[MAXP], level[MAXP], score[MAXP], pkills[MAXP], px[MAXP], py[MAXP];
   uint32_t hash;
   int banner_t, banner_kind, banner_n;
   float frame_ms;
   double ms_acc;
   int ms_n;
-  cw_action move[4], aim[4], fire, bomb;
+  cw_action move[4], aim[4], fire, bomb, pick[3];
+  int won_ticks;
   cw_node camera, sun;
   int level_flash[MAXP], level_up[MAXP];
 } G;
@@ -130,6 +131,7 @@ static void init(void *u) {
   for (int i = 0; i < 4; i++) G.move[i] = cw_action_find(names[i]), G.aim[i] = cw_action_find(an[i]);
   G.fire = cw_action_find("fire");
   G.bomb = cw_action_find("bomb");
+  G.pick[0] = cw_action_find("pick1"), G.pick[1] = cw_action_find("pick2"), G.pick[2] = cw_action_find("pick3");
   cw_shell_init(&(cw_shell_desc){ .title = "HORDE", .subtitle = "hold the yard together", .max_players = MAXP,
                                   .game_save_size = sizeof(save_data), .game_save_version = 1, .start = start,
                                   .sound = shell_sound, .screen_changed = shell_screen });
@@ -144,6 +146,7 @@ static void init(void *u) {
   snd_back = synth(0.12f, 520, 260, 0, 0.3f, 3);
   snd_music = synth(2.0f, 55, 55, 0.05f, 0.3f, 0.2f);
   G.best_wave = ((save_data *)cw_shell_game_save())->best_wave;
+  cw_debug_i32("game.state", &G.state);
   cw_debug_i32("game.ticks", &G.ticks);
   cw_debug_i32("game.wave", &G.wave);
   cw_debug_i32("game.enemies", &G.enemies);
@@ -214,6 +217,7 @@ static void bot(const sim *s, int i, input *in) {
   } else in->ax = cw_cos(p->aim), in->ay = cw_sin(p->aim);
   in->fire = best < 400;
   in->bomb = crowd > 28;
+  if (p->offer_ticks > 0 && p->offer_ticks < 60 * 8 - 45) in->pick = 1 + (p->level + i) % 3; /* a bot takes a while, then picks */
 }
 #endif
 
@@ -224,8 +228,10 @@ static void read_input(input in[MAXP]) {
     bot(&G.S, i, &in[i]);
 #else
     cw_vec2 m = cw_input_vector(i, G.move[0], G.move[1], G.move[2], G.move[3], CW_DEADZONE_SCALED_RADIAL, 0.2f);
-    cw_vec2 a = cw_input_vector(i, G.aim[0], G.aim[1], G.aim[2], G.aim[3], CW_DEADZONE_SCALED_RADIAL, 0.25f);
-    in[i] = (input){ m.x, m.y, a.x, a.y, cw_action_pressed(i, G.fire), cw_action_just_pressed(i, G.bomb) };
+    cw_vec2 a = cw_input_vector(i, G.aim[0], G.aim[1], G.aim[2], G.aim[3], CW_DEADZONE_SCALED_RADIAL, 0.15f);
+    in[i] = (input){ m.x, m.y, a.x, a.y, cw_action_pressed(i, G.fire), cw_action_just_pressed(i, G.bomb), 0 };
+    for (int k = 0; k < 3; k++)
+      if (cw_action_just_pressed(i, G.pick[k])) in[i].pick = k + 1;
     if (in[i].fire && cw_v2_length(a) < 0.25f) { /* fire toward the walking direction when not aiming */
       if (cw_v2_length(m) > 0.3f) in[i].ax = m.x, in[i].ay = m.y;
     }
@@ -247,6 +253,7 @@ static void fixed_update(void *u, double dt) {
   T_sim += (cw_wall() - t0) * 1000;
   G.ticks = G.S.tick;
   G.wave = G.S.wave;
+  G.state = G.S.state;
   G.enemies = G.S.nenemies;
   G.kills = G.S.killed_total;
   G.alive_players = sim_alive_players(&G.S);
@@ -268,6 +275,7 @@ static void fixed_update(void *u, double dt) {
   if (G.S.tick % 9 == 0 && G.S.nbullets >= 0)
     for (int i = 0; i < MAXP; i++)
       if (G.S.p[i].active && !G.S.p[i].down && G.S.p[i].cd > 0) { play(snd_shot, cw_shell_sfx_bus(), 0.25f); break; }
+  if (G.S.state == ST_WON && G.S.state_ticks > 60 * 10) start(G.players, NULL); /* a new run */
   if (G.banner_t > 0) G.banner_t--;
   static int last_wave;
   if (G.S.wave != last_wave) {
@@ -310,6 +318,16 @@ static void hud(void) {
     cw_r2d_rect(cw_rect_make(x + 12 * u, y + 26 * u, (w - 22 * u) * f, 9 * u), p->down ? rgba(0.5f, 0.5f, 0.5f, 1) : rgba(0.25f + 0.7f * (1 - f), 0.9f * f + 0.1f, 0.2f, 1));
     float xf = (float)p->xp / (float)p->xp_next;
     cw_r2d_rect(cw_rect_make(x + 12 * u, y + 40 * u, (w - 22 * u) * cw_clampf(xf, 0, 1), 4 * u), rgba(0.3f, 1, 0.8f, 1));
+    if (p->offer_ticks > 0) {
+      static const char *const KEYS[3] = { "X/1", "Y/2", "B/3" };
+      float oy = (i & 2) ? y - 64 * u : y + h + 4 * u;
+      cw_r2d_rect(cw_rect_make(x, oy, w, 60 * u), rgba(0.05f, 0.08f, 0.1f, 0.8f));
+      for (int k = 0; k < 3; k++) {
+        snprintf(b, sizeof b, "%s  %s", KEYS[k], sim_upgrade_name(p->offer[k]));
+        text(b, x + 10 * u, oy + 3 * u + (float)k * 18 * u, 14 * u, k == 0 ? rgba(0.6f, 1, 0.85f, 1) : rgba(1, 1, 1, 1), CW_ALIGN_LEFT);
+      }
+      cw_r2d_rect(cw_rect_make(x, oy + 58 * u, w * (float)p->offer_ticks / 480.0f, 2 * u), rgba(0.3f, 1, 0.8f, 1));
+    }
     if (p->down) text("DOWN: a friend can pull you up", x + 12 * u, y + h + 2 * u, 12 * u, rgba(1, 0.6f, 0.5f, 1), CW_ALIGN_LEFT);
     if (G.level_flash[i] > 0) {
       snprintf(b, sizeof b, "P%d: %s", i + 1, sim_upgrade_name(G.level_up[i]));
@@ -317,12 +335,17 @@ static void hud(void) {
     }
   }
   char b[96];
-  snprintf(b, sizeof b, "WAVE %d     %d kills     %d on the yard", G.S.wave, G.S.killed_total, G.S.nenemies);
+  snprintf(b, sizeof b, "WAVE %d / %d     %d kills     %d on the yard", G.S.wave, FINAL_WAVE, G.S.killed_total, G.S.nenemies);
   text(b, cs.x * 0.5f, 10 * u, 16 * u, rgba(1, 0.95f, 0.8f, 1), CW_ALIGN_CENTER);
   if (G.banner_t > 0) {
     float a = cw_clampf(G.banner_t / 40.0f, 0, 1);
     snprintf(b, sizeof b, G.banner_kind == 2 ? "WAVE %d  -  BOSS INCOMING" : G.banner_kind == 1 ? "WAVE %d" : "HOLD THE YARD", G.banner_n);
     text(b, cs.x * 0.5f, cs.y * 0.28f, 38 * u, rgba(1, G.banner_kind == 2 ? 0.35f : 0.85f, 0.3f, a), CW_ALIGN_CENTER);
+  }
+  if (G.S.state == ST_WON) {
+    text("THE YARD HOLDS", cs.x * 0.5f, cs.y * 0.36f, 56 * u, rgba(1, 0.85f, 0.35f, 1), CW_ALIGN_CENTER);
+    snprintf(b, sizeof b, "%d kills in %d minutes  -  a new run in a moment", G.S.killed_total, G.S.tick / 3600);
+    text(b, cs.x * 0.5f, cs.y * 0.5f, 18 * u, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
   }
   if (G.S.state == ST_OVER) {
     text("OVERRUN", cs.x * 0.5f, cs.y * 0.4f, 52 * u, rgba(1, 0.3f, 0.25f, 1), CW_ALIGN_CENTER);

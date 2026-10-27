@@ -8,6 +8,8 @@
 
 #include "cartwheel/math.h"
 #include "cartwheel/render3d.h"
+#include "cartwheel/vfs.h"
+#include "cartwheel/core.h"
 #include "game.h"
 
 t3_color lin(float r, float g, float b) {
@@ -74,14 +76,80 @@ static t3_mat4 MR(float x, float y, float z, float sx, float sy, float sz, float
   return m;
 }
 
+/* ── baked characters ────────────────────────────────────────────────────
+ * tools/blender/hordechars.py models, skins and poses each character in
+ * Blender and writes every animation frame as positions and normals over one
+ * shared topology (assets/models/*.cwchar). Each frame becomes a geometry;
+ * the horde draws one instanced mesh per frame of the cycle, so an animated
+ * crowd of thousands is a handful of draws and costs no skinning on the GPU. */
+enum { CH_MAXF = 24, CH_MAXG = 2, CH_MAXC = 2 };
+typedef struct chr {
+  int nclip, ngroup, nf[CH_MAXC], first[CH_MAXC];
+  t3_geometry *geo[CH_MAXG][CH_MAXF];
+} chr;
+
+static uint32_t rd32(const uint8_t *p) { uint32_t v; memcpy(&v, p, 4); return v; }
+static bool chr_load(chr *c, const char *path) {
+  size_t len = 0;
+  uint8_t *buf = cw_vfs_read(path, &len);
+  if (!buf || len < 16 || memcmp(buf, "CWCH", 4) != 0) {
+    cw_error("horde: cannot read the character file %s", path);
+    free(buf);
+    return false;
+  }
+  memset(c, 0, sizeof *c);
+  c->nclip = (int)rd32(buf + 8), c->ngroup = (int)rd32(buf + 12);
+  const uint8_t *p = buf + 16;
+  int total = 0;
+  for (int k = 0; k < c->nclip; k++, p += 4) c->nf[k] = (int)rd32(p), c->first[k] = total, total += c->nf[k];
+  for (int g = 0; g < c->ngroup; g++) {
+    int nv = (int)rd32(p), nt = (int)rd32(p + 4);
+    p += 8;
+    const uint8_t *uv = p, *col = p + 8 * nv, *idx = p + 20 * nv;
+    size_t idxb = ((size_t)nt * 6 + 3) & ~(size_t)3;
+    p += 20 * (size_t)nv + idxb;
+    float *cl = malloc(sizeof(float) * 3 * (size_t)nv);
+    for (int v = 0; v < nv; v++) {
+      float rgb[3];
+      memcpy(rgb, col + 12 * v, 12);
+      bool emi = rgb[0] > 1.5f || rgb[1] > 1.5f || rgb[2] > 1.5f;
+      t3_color l = emi ? (t3_color){ rgb[0], rgb[1], rgb[2] } : lin(rgb[0], rgb[1], rgb[2]);
+      cl[v * 3] = l.r, cl[v * 3 + 1] = l.g, cl[v * 3 + 2] = l.b;
+    }
+    for (int f = 0; f < total; f++) {
+      t3_geometry *geo = t3_geometry_new();
+      t3_geometry_set_attribute(geo, T3_ATTR_POSITION, t3_attribute_new(T3_FLOAT32, p, nv, 3));
+      t3_geometry_set_attribute(geo, T3_ATTR_NORMAL, t3_attribute_new(T3_FLOAT32, p + 12 * (size_t)nv, nv, 3));
+      p += 24 * (size_t)nv;
+      t3_geometry_set_attribute(geo, T3_ATTR_UV, t3_attribute_new(T3_FLOAT32, uv, nv, 2));
+      t3_geometry_set_attribute(geo, T3_ATTR_COLOR, t3_attribute_new(T3_FLOAT32, cl, nv, 3));
+      t3_geometry_set_index(geo, t3_attribute_new(T3_UINT16, idx, nt * 3, 1));
+      c->geo[g][f] = geo;
+    }
+    free(cl);
+  }
+  free(buf);
+  return true;
+}
+static void chr_free(chr *c) {
+  for (int g = 0; g < CH_MAXG; g++)
+    for (int f = 0; f < CH_MAXF; f++)
+      if (c->geo[g][f]) t3_release(c->geo[g][f]);
+  memset(c, 0, sizeof *c);
+}
+
 /* ── state ──────────────────────────────────────────────────────────── */
 
 static struct {
   cw_node root;
-  t3_instanced_mesh *enemy[EK_KINDS], *bullet, *rocket, *gem, *health, *crate, *barrel, *wall, *pillar, *shadowblob;
+  chr ch[EK_KINDS], soldier;
+  int bn[EK_KINDS]; /* frames per cycle */
+  t3_instanced_mesh *eb[EK_KINDS][CH_MAXF];
+  t3_mesh *pm[MAXP][CH_MAXC * CH_MAXF][CH_MAXG];
+  t3_instanced_mesh *bullet, *rocket, *gem, *health, *crate, *barrel, *wall, *pillar, *shadowblob;
   t3_object *pl[MAXP];
   cw_node pn[MAXP];
-  t3_mesh *pl_gun[MAXP];
+  int pl_frame[MAXP];
   t3_mesh *pl_ring[MAXP];
   view_stats st;
   float cx, cy, cd;
@@ -137,57 +205,10 @@ static t3_material *glow(float r, float g, float b, float k) {
   return m;
 }
 
-static t3_geometry *geo_runner(void) {
-  part p[] = {
-    { t3_sphere_geometry_new(0.34f, 10, 8), M(0, 0.32f, 0, 1, 0.8f, 1.25f), { 0.85f, 0.4f, 0.3f } },
-    { t3_cone_geometry_new(0.1f, 0.34f, 6, 1, false), MR(-0.17f, 0.62f, 0.12f, 1, 1, 1, 0.0f), { 0.95f, 0.9f, 0.7f } },
-    { t3_cone_geometry_new(0.1f, 0.34f, 6, 1, false), MR(0.17f, 0.62f, 0.12f, 1, 1, 1, 0.0f), { 0.95f, 0.9f, 0.7f } },
-    { t3_sphere_geometry_new(0.07f, 6, 4), M(-0.14f, 0.42f, 0.34f, 1, 1, 1), { 5, 4, 0.5f } },
-    { t3_sphere_geometry_new(0.07f, 6, 4), M(0.14f, 0.42f, 0.34f, 1, 1, 1), { 5, 4, 0.5f } },
-    { t3_box_geometry_new(0.1f, 0.14f, 0.5f, 1, 1, 1), M(-0.3f, 0.1f, -0.1f, 1, 1, 1), { 0.35f, 0.3f, 0.3f } },
-    { t3_box_geometry_new(0.1f, 0.14f, 0.5f, 1, 1, 1), M(0.3f, 0.1f, -0.1f, 1, 1, 1), { 0.35f, 0.3f, 0.3f } },
-  };
-  return merge(p, 7);
-}
-static t3_geometry *geo_brute(void) {
-  part p[] = {
-    { t3_sphere_geometry_new(0.72f, 12, 9), M(0, 0.7f, 0, 1, 0.85f, 1.15f), { 0.42f, 0.2f, 0.17f } },
-    { t3_cone_geometry_new(0.16f, 0.6f, 6, 1, false), M(-0.4f, 1.3f, 0.1f, 1, 1, 1), { 0.9f, 0.85f, 0.7f } },
-    { t3_cone_geometry_new(0.16f, 0.6f, 6, 1, false), M(0.4f, 1.3f, 0.1f, 1, 1, 1), { 0.9f, 0.85f, 0.7f } },
-    { t3_cone_geometry_new(0.14f, 0.5f, 6, 1, false), M(0, 1.35f, -0.35f, 1, 1, 1), { 0.9f, 0.85f, 0.7f } },
-    { t3_sphere_geometry_new(0.1f, 6, 4), M(-0.26f, 0.95f, 0.7f, 1, 1, 1), { 5, 1.2f, 0.4f } },
-    { t3_sphere_geometry_new(0.1f, 6, 4), M(0.26f, 0.95f, 0.7f, 1, 1, 1), { 5, 1.2f, 0.4f } },
-  };
-  return merge(p, 6);
-}
-static t3_geometry *geo_bloater(void) {
-  part p[] = {
-    { t3_sphere_geometry_new(0.55f, 12, 9), M(0, 0.62f, 0, 1.1f, 1, 1.1f), { 0.7f, 0.85f, 0.35f } },
-    { t3_sphere_geometry_new(0.2f, 8, 6), M(0.3f, 0.95f, 0.1f, 1, 1, 1), { 1.0f, 0.95f, 0.4f } },
-    { t3_sphere_geometry_new(0.15f, 8, 6), M(-0.35f, 0.4f, 0.2f, 1, 1, 1), { 1.0f, 0.95f, 0.4f } },
-    { t3_sphere_geometry_new(0.08f, 6, 4), M(-0.18f, 0.75f, 0.52f, 1, 1, 1), { 4, 0.4f, 0.2f } },
-    { t3_sphere_geometry_new(0.08f, 6, 4), M(0.18f, 0.75f, 0.52f, 1, 1, 1), { 4, 0.4f, 0.2f } },
-  };
-  return merge(p, 5);
-}
-static t3_geometry *geo_boss(void) {
-  part p[] = {
-    { t3_sphere_geometry_new(1.7f, 16, 12), M(0, 1.6f, 0, 1.1f, 0.9f, 1.3f), { 0.55f, 0.2f, 0.25f } },
-    { t3_cone_geometry_new(0.35f, 1.6f, 8, 1, false), M(-1.1f, 3.0f, 0.3f, 1, 1, 1), { 0.95f, 0.85f, 0.7f } },
-    { t3_cone_geometry_new(0.35f, 1.6f, 8, 1, false), M(1.1f, 3.0f, 0.3f, 1, 1, 1), { 0.95f, 0.85f, 0.7f } },
-    { t3_cone_geometry_new(0.3f, 1.3f, 8, 1, false), M(0, 3.2f, -0.7f, 1, 1, 1), { 0.95f, 0.85f, 0.7f } },
-    { t3_sphere_geometry_new(0.28f, 8, 6), M(-0.7f, 2.0f, 1.8f, 1, 1, 1), { 6, 3, 0.4f } },
-    { t3_sphere_geometry_new(0.28f, 8, 6), M(0.7f, 2.0f, 1.8f, 1, 1, 1), { 6, 3, 0.4f } },
-    { t3_box_geometry_new(0.6f, 0.5f, 1.8f, 1, 1, 1), M(-1.9f, 0.4f, 0.3f, 1, 1, 1), { 0.3f, 0.2f, 0.2f } },
-    { t3_box_geometry_new(0.6f, 0.5f, 1.8f, 1, 1, 1), M(1.9f, 0.4f, 0.3f, 1, 1, 1), { 0.3f, 0.2f, 0.2f } },
-  };
-  return merge(p, 8);
-}
-
 /* procedural PBR sets (albedo sRGB, tangent normal map from a height field,
  * roughness), all from integer hashes so every host makes the same texels */
-enum { TX_GROUND, TX_CRATE, TX_WALL, TX_PILLAR, TX_KINDS };
-typedef struct pbr { t3_texture *map, *normal, *rough; uint8_t *px[3]; } pbr;
+enum { TX_GROUND, TX_CRATE, TX_WALL, TX_PILLAR, TX_HIDE, TX_ARMOR, TX_KINDS };
+typedef struct pbr { t3_texture *map, *normal, *rough; uint8_t *px[3]; int n; } pbr;
 static pbr PB[TX_KINDS];
 
 static float vnoise(float fx, float fy, int p, uint32_t seed) {
@@ -207,8 +228,8 @@ static float fbm(float u, float v, int p, int oct, uint32_t seed) {
   }
   return n / norm;
 }
-static t3_texture *tex_finish(const uint8_t *px, bool srgb) {
-  t3_texture *t = t3_texture_new(256, 256, px);
+static t3_texture *tex_finish(const uint8_t *px, bool srgb, int n) {
+  t3_texture *t = t3_texture_new(n, n, px);
   t->wrap_s = t->wrap_t = T3_REPEAT;
   t->flip_y = false;
   t->generate_mipmaps = true;
@@ -221,24 +242,34 @@ static t3_texture *tex_finish(const uint8_t *px, bool srgb) {
 static const pbr *pbr_get(int kind) {
   pbr *r = &PB[kind];
   if (r->map) return r;
-  enum { N = 256 };
+  const int N = kind == TX_GROUND ? 1024 : 256; /* the yard floor is one big sheet with painted features, the rest tile small */
   float *h = malloc(sizeof(float) * N * N), *alb = malloc(sizeof(float) * N * N * 3), *ro = malloc(sizeof(float) * N * N);
   for (int y = 0; y < N; y++)
     for (int x = 0; x < N; x++) {
       float u = (float)x / N, v = (float)y / N, ht, c0, c1, c2, rough;
       float n = fbm(u, v, 4, 5, 10u + (uint32_t)kind * 31u), g = h01((uint32_t)x + 5000u * (uint32_t)kind, (uint32_t)y);
       switch (kind) {
-      case TX_GROUND: { /* concrete slabs with joints, cracks and oil stains */
-        int sx = x % 128, sy = y % 128;
-        float joint = (sx < 3 || sy < 3) ? 1.0f : 0.0f;
+      case TX_GROUND: { /* wet asphalt yard: slabs with joints, repair patches, cracks, oil, puddles, a painted dashed lane */
+        const int S = N / 4;
+        int sx = x % S, sy = y % S, cx = x / S, cy = y / S;
+        float slab = h01((uint32_t)(cx * 7 + 1), (uint32_t)(cy * 13 + 5));
+        float joint = (sx < 4 || sy < 4) ? 1.0f : 0.0f;
         float crack = fbm(u + 0.3f * n, v, 8, 3, 99u);
-        crack = (crack > 0.49f && crack < 0.505f) ? 1.0f : 0.0f;
+        crack = (crack > 0.485f && crack < 0.51f) ? 1.0f : 0.0f;
         float stain = fbm(u, v, 3, 3, 123u);
-        stain = stain > 0.62f ? (stain - 0.62f) * 5.0f : 0.0f;
-        ht = 0.5f + 0.25f * n + 0.06f * g - 0.5f * joint - 0.25f * crack;
-        float k = 0.33f + 0.22f * n + 0.04f * g - 0.15f * joint - 0.1f * crack - 0.12f * stain;
-        c0 = k * 1.03f, c1 = k * 0.98f, c2 = k * 0.92f;
-        rough = 0.9f - 0.5f * stain - 0.1f * joint;
+        stain = stain > 0.58f ? CW_MIN((stain - 0.58f) * 6.0f, 1.0f) : 0.0f;
+        float pd = fbm(u + 0.06f * n, v, 5, 4, 555u);
+        float puddle = pd > 0.6f ? CW_MIN((pd - 0.6f) * 14.0f, 1.0f) : 0.0f;
+        float patch = slab > 0.8f ? 1.0f : 0.0f;
+        float paint = 0.0f;
+        if (cy == 1 && sy > S / 2 - 7 && sy < S / 2 + 7 && ((x / 56) & 1) == 0 && n > 0.3f) paint = 1.0f - 0.7f * h01((uint32_t)x, (uint32_t)(y / 3)); /* worn dashes */
+        ht = 0.5f + 0.22f * n + 0.05f * g - 0.5f * joint - 0.2f * crack - 0.05f * patch;
+        ht = ht + (0.5f - ht) * puddle * 0.9f;
+        float k = 0.2f + 0.1f * n + 0.03f * g + 0.04f * (slab - 0.5f) - 0.1f * joint - 0.08f * crack - 0.07f * stain - 0.05f * puddle - 0.03f * patch;
+        c0 = k * 1.04f, c1 = k * 0.99f, c2 = k * 0.94f;
+        c0 += 0.62f * paint * 0.9f, c1 += 0.5f * paint * 0.9f, c2 += 0.06f * paint;
+        rough = 0.86f - 0.5f * stain - 0.1f * joint - 0.8f * puddle + 0.1f * g * 0.5f;
+        if (paint > 0.0f) rough = 0.8f;
         break;
       }
       case TX_CRATE: { /* planks with grain and nails */
@@ -262,6 +293,24 @@ static const pbr *pbr_get(int kind) {
         float k = 0.5f + 0.2f * n + 0.05f * g - 0.2f * mortar;
         c0 = k * 0.95f, c1 = k * 0.93f, c2 = k * 0.88f;
         rough = 0.95f - 0.2f * mortar;
+        break;
+      }
+      case TX_HIDE: { /* creature skin: pores, ridges and mottling; albedo stays near white so the baked vertex colours lead */
+        float pores = fbm(u, v, 16, 3, 700u), ridge = fbm(u + 0.2f * n, v, 6, 3, 710u);
+        ridge = 1.0f - 2.0f * fabsf(ridge - 0.5f);
+        ht = 0.5f + 0.18f * pores + 0.2f * ridge * ridge;
+        float k = 0.82f + 0.2f * n - 0.12f * ridge * ridge;
+        c0 = k, c1 = k * 0.97f, c2 = k * 0.94f;
+        rough = 0.55f + 0.3f * pores;
+        break;
+      }
+      case TX_ARMOR: { /* worn plate: brushed scratches, dents, edge wear */
+        float scr = h01((uint32_t)(y * 7 + x / 40), 900u) * (fbm(u * 8.0f, v, 8, 2, 910u) > 0.55f ? 1.0f : 0.0f);
+        float dent = fbm(u, v, 3, 4, 920u);
+        ht = 0.5f + 0.25f * dent - 0.08f * scr + 0.02f * g;
+        float k = 0.86f + 0.12f * dent - 0.18f * scr;
+        c0 = k, c1 = k, c2 = k * 1.03f;
+        rough = 0.35f + 0.35f * (1.0f - dent) + 0.2f * scr;
         break;
       }
       default: { /* pillar: poured concrete with bands */
@@ -291,9 +340,10 @@ static const pbr *pbr_get(int kind) {
       r8[i] = r8[i + 1] = r8[i + 2] = (uint8_t)(CW_CLAMP(ro[y * N + x], 0, 1) * 255.0f);
       r8[i + 3] = 255;
     }
-  r->map = tex_finish(a8, true);
-  r->normal = tex_finish(n8, false);
-  r->rough = tex_finish(r8, false);
+  r->map = tex_finish(a8, true, N);
+  r->normal = tex_finish(n8, false, N);
+  r->rough = tex_finish(r8, false, N);
+  r->n = N;
   r->px[0] = a8, r->px[1] = n8, r->px[2] = r8; /* kept: repeated copies are made from them */
   free(h), free(alb), free(ro);
   return r;
@@ -305,7 +355,7 @@ static void pbr_apply(t3_material *m, int kind, float repeat, float normal_scale
   for (int i = 0; i < 3; i++) {
     t3_texture *c = ts[i];
     if (repeat != 1) { /* the repeat lives on the texture in three.js: a copy that shares the pixels */
-      c = t3_texture_new(256, 256, p->px[i]);
+      c = t3_texture_new(p->n, p->n, p->px[i]);
       c->wrap_s = c->wrap_t = T3_REPEAT;
       c->flip_y = false;
       c->generate_mipmaps = true;
@@ -322,15 +372,138 @@ static void pbr_apply(t3_material *m, int kind, float repeat, float normal_scale
   m->roughness = 1.0f;
 }
 
+static void put(t3_instanced_mesh *im, int i, float x, float y, float z, float yaw, float sx, float sy, float sz);
+static void touch(t3_instanced_mesh *im, bool color);
+/* ── the yard's set dressing: Blender-made props (tools/blender/hordeprops.py)
+ * placed once, deterministically, as instanced meshes. A concrete wall round
+ * the yard, floodlight masts with real lights, and the industrial ground
+ * outside it (containers, barriers, rubble, tyres, pipes) that the high camera
+ * sees over the wall. */
+typedef struct place { float x, y, z, yaw; } place;
+enum { LAMPS = 6 };
+static t3_vec3 lamp_head[LAMPS];
+
+static void dress_mesh(const char *name, const char *file, int tx, float rep, float rough, float metal, const place *pl, int n, bool shadow, bool lamp) {
+  chr c;
+  if (!chr_load(&c, file)) return;
+  t3_instanced_mesh *ims[2] = { 0, 0 };
+  for (int g = 0; g < c.ngroup; g++) {
+    t3_material *m;
+    if (g == 0) {
+      m = mat(1, 1, 1, rough, metal, true);
+      pbr_apply(m, tx, rep, 0.9f);
+    } else
+      m = glow(1.0f, 0.88f, 0.62f, 6);
+    t3_retain(c.geo[g][0]);
+    ims[g] = imesh(name, c.geo[g][0], m, n, shadow && g == 0);
+  }
+  chr_free(&c);
+  for (int g = 0; g < 2; g++) {
+    if (!ims[g]) continue;
+    for (int i = 0; i < n; i++) put(ims[g], i, pl[i].x, pl[i].y, pl[i].z, pl[i].yaw, 1, 1, 1);
+    ims[g]->count = n;
+    touch(ims[g], true);
+    t3_sphere sph = { { 0, 0, 0 }, HALF * 2.5f };
+    t3_instanced_mesh_set_bounding_sphere(ims[g], &sph);
+  }
+  (void)lamp;
+}
+
+static void view_dress(void) {
+  enum { PI_ = 3 };
+  const float PI = 3.14159265f, W = HALF + 1.0f;
+  static place wall[80], lamp[LAMPS], cont[96], barr[48], rub[48], tyr[32], pipe[24];
+  int nw = 0, nl = 0, nc = 0, nb = 0, nr = 0, nt = 0, np = 0;
+  for (int side = 0; side < 4; side++) {
+    float yaw = side == 0 ? 0 : side == 1 ? PI : side == 2 ? PI * 0.5f : -PI * 0.5f;
+    for (int i = 0; i < 19; i++) {
+      float a = -HALF + 2.0f + 4.0f * (float)i;
+      place p = side < 2 ? (place){ a, 0, side == 0 ? -W : W, yaw } : (place){ side == 2 ? -W : W, 0, a, yaw };
+      wall[nw++] = p;
+    }
+  }
+  static const float LP[LAMPS][3] = { { -22, 0, 0 }, { 22, 0, 0 }, { -22, 0, 1 }, { 22, 0, 1 }, { 0, 0, 2 }, { 0, 0, 3 } };
+  for (int i = 0; i < LAMPS; i++) {
+    int side = (int)LP[i][2];
+    float yaw = side == 0 ? 0 : side == 1 ? PI : side == 2 ? PI * 0.5f : -PI * 0.5f;
+    float m = HALF - 1.3f;
+    float x = side < 2 ? LP[i][0] : (side == 2 ? -m : m), z = side < 2 ? (side == 0 ? -m : m) : LP[i][1];
+    if (side >= 2) { x = side == 2 ? -m : m; z = LP[i][1]; }
+    lamp[nl++] = (place){ x, 0, z, yaw };
+    float s = cw_sin(yaw), c = cw_cos(yaw);
+    lamp_head[i] = (t3_vec3){ x + 1.66f * s, 7.0f, z + 1.66f * c };
+  }
+  for (int side = 0; side < 4; side++) {
+    float yaw = side == 0 ? 0 : side == 1 ? PI : side == 2 ? PI * 0.5f : -PI * 0.5f;
+    for (int i = 0; i < 12; i++) {
+      uint32_t h = hash2((uint32_t)side * 100u + (uint32_t)i, 17u);
+      float a = -HALF - 4.0f + 7.2f * (float)i + (float)(h & 7) * 0.2f, d = HALF + 7.0f + (float)((h >> 4) & 3);
+      float jy = ((float)((h >> 8) & 15) - 7.5f) * 0.012f;
+      float x = side < 2 ? a : (side == 2 ? -d : d), z = side < 2 ? (side == 0 ? -d : d) : a;
+      float cy = yaw + jy + (side < 2 ? PI * 0.5f : 0.0f); /* the container's long side runs along the wall */
+      if ((h >> 12) % 10 < 7 && nc < 90) {
+        cont[nc++] = (place){ x, 0, z, cy };
+        if ((h >> 16) % 10 < 4 && nc < 90) cont[nc++] = (place){ x, 2.45f, z, cy + 0.02f };
+      } else if (nb < 44) {
+        for (int k = 0; k < 3 && nb < 44; k++) { /* a short run of barriers */
+          float ox = side < 2 ? (float)k * 2.5f : 0, oz = side < 2 ? 0 : (float)k * 2.5f;
+          barr[nb++] = (place){ x + ox, 0, z + oz, yaw + PI * 0.5f * (side < 2 ? 1 : 0) + jy };
+        }
+      }
+      if (nr < 44 && (h >> 20) % 3 == 0) rub[nr++] = (place){ x + 3.0f, 0, z + 2.2f, (float)(h & 63) * 0.1f };
+      if (nt < 30 && (h >> 22) % 3 == 0) tyr[nt++] = (place){ x - 3.4f, 0, z - 2.0f, (float)(h & 31) * 0.2f };
+      if (np < 22 && (h >> 24) % 4 == 0) pipe[np++] = (place){ x + 1.0f, 0, z - 3.0f, yaw + PI * 0.5f };
+    }
+  }
+  /* the four corners of the yard hold a rubble pile each */
+  for (int k = 0; k < 4 && nr < 48; k++) rub[nr++] = (place){ (k & 1 ? 1 : -1) * (HALF - 3.2f), 0, (k & 2 ? 1 : -1) * (HALF - 3.2f), (float)k * 1.3f };
+  dress_mesh("Walls", "models/wall.cwchar", TX_PILLAR, 1.0f, 0.9f, 0.0f, wall, nw, true, false);
+  dress_mesh("Lamps", "models/lamp.cwchar", TX_ARMOR, 1.0f, 0.55f, 0.5f, lamp, nl, true, true);
+  dress_mesh("Containers", "models/container.cwchar", TX_ARMOR, 0.7f, 0.55f, 0.35f, cont, nc, true, false);
+  dress_mesh("Barriers", "models/barrier.cwchar", TX_PILLAR, 1.0f, 0.9f, 0.0f, barr, nb, true, false);
+  dress_mesh("Rubble", "models/rubble.cwchar", TX_PILLAR, 1.4f, 0.95f, 0.0f, rub, nr, true, false);
+  dress_mesh("Tyres", "models/tyres.cwchar", TX_HIDE, 3.0f, 0.8f, 0.0f, tyr, nt, false, false);
+  dress_mesh("Pipes", "models/pipes.cwchar", TX_ARMOR, 1.0f, 0.5f, 0.5f, pipe, np, false, false);
+  /* a floodlight at each lamp head: a cool white pool on the yard, no shadow maps (clustered lights) */
+  for (int i = 0; i < LAMPS; i++) {
+    cw_node l = cw_node_new("SpotLight3D", "Flood");
+    cw_node_add_child(V.root, l);
+    cw_node3d_set_position(l, lamp_head[i]);
+    cw_node_set(l, "color", cw_val_color(0.72f, 0.86f, 1.0f, 1));
+    cw_node_set(l, "energy", cw_val_float(700));
+    cw_node_set(l, "range", cw_val_float(46));
+    cw_node_set(l, "decay", cw_val_float(2));
+    cw_node_set(l, "angle", cw_val_float(0.75f));
+    cw_node_set(l, "penumbra", cw_val_float(0.7f));
+    cw_node3d_look_at(l, (t3_vec3){ lamp_head[i].x * 0.35f, 0, lamp_head[i].z * 0.35f }, (t3_vec3){ 0, 1, 0 });
+  }
+}
+
 void view_init(cw_node root) {
   memset(&V, 0, sizeof V);
   V.root = cw_node_new("Node3D", "View");
   cw_node_add_child(root, V.root);
   /* ground */
-  t3_geometry *pg = t3_plane_geometry_new(HALF * 2 + 16, HALF * 2 + 16, 1, 1);
+  const float GS = HALF * 2 + 70;
+  t3_geometry *pg = t3_plane_geometry_new(GS, GS, 136, 136);
   t3_geometry_apply_matrix4(pg, &(t3_mat4){ { 1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1 } }); /* face +Y */
+  { /* macro variation the tiling texture cannot give: slow mottling, the rim dirtier than the middle */
+    const t3_attribute *pa = pg->attributes[T3_ATTR_POSITION];
+    const float *pp = t3_attribute_f32((t3_attribute *)pa);
+    float *col = malloc(sizeof(float) * 3 * (size_t)pa->count);
+    for (int i = 0; i < pa->count; i++) {
+      float x = pp[i * 3], z = pp[i * 3 + 2];
+      float m = 0.72f + 0.6f * fbm(x / GS + 0.5f, z / GS + 0.5f, 6, 4, 4242u);
+      float rim = CW_CLAMP((CW_MAX(fabsf(x), fabsf(z)) - (HALF - 6.0f)) / 8.0f, 0.0f, 1.0f);
+      m *= 1.0f - 0.35f * rim;
+      col[i * 3] = m * 1.0f, col[i * 3 + 1] = m * 0.97f, col[i * 3 + 2] = m * 0.93f;
+    }
+    t3_geometry_set_attribute(pg, T3_ATTR_COLOR, t3_attribute_new(T3_FLOAT32, col, pa->count, 3));
+    free(col);
+  }
   t3_material *gm = t3_mesh_standard_material_new(0xffffff);
-  pbr_apply(gm, TX_GROUND, 14, 1.2f);
+  gm->vertex_colors = true;
+  pbr_apply(gm, TX_GROUND, GS / 19.0f, 1.2f);
   t3_mesh *gmesh = t3_mesh_new(pg, gm);
   gmesh->base.receive_shadow = true;
   cw_node gn = cw_node_new("Node3D", "Ground");
@@ -340,10 +513,25 @@ void view_init(cw_node root) {
   cw_node3d_set_object(gn, w);
   t3_release(w), t3_release(gmesh), t3_release(pg), t3_release(gm);
   /* the yard's wall: a low rim of blocks round the edge, one instanced mesh */
-  V.enemy[EK_RUNNER] = imesh("Runners", geo_runner(), mat(1, 1, 1, 0.6f, 0.0f, true), MAXE, false);
-  V.enemy[EK_BRUTE] = imesh("Brutes", geo_brute(), mat(1, 1, 1, 0.55f, 0.0f, true), 400, true);
-  V.enemy[EK_BLOATER] = imesh("Bloaters", geo_bloater(), mat(1, 1, 1, 0.45f, 0.0f, true), 600, false);
-  V.enemy[EK_BOSS] = imesh("Bosses", geo_boss(), mat(1, 1, 1, 0.5f, 0.1f, true), 4, true);
+  {
+    static const char *files[EK_KINDS] = { "models/runner.cwchar", "models/brute.cwchar", "models/bloater.cwchar", "models/boss.cwchar" };
+    static const int cap[EK_KINDS] = { MAXE, 400, 600, 4 };
+    static const float rough[EK_KINDS] = { 0.7f, 0.62f, 0.5f, 0.55f };
+    static const float rep_[EK_KINDS] = { 1.6f, 1.2f, 1.4f, 0.9f };
+    static const char *nm[EK_KINDS] = { "Runners", "Brutes", "Bloaters", "Bosses" };
+    static const bool shadow[EK_KINDS] = { false, true, false, true };
+    for (int k = 0; k < EK_KINDS; k++) {
+      if (!chr_load(&V.ch[k], files[k])) continue;
+      V.bn[k] = V.ch[k].nf[0];
+      int bc = k == EK_BOSS ? 4 : cap[k] / V.bn[k] * 3 / 2 + 48;
+      for (int f = 0; f < V.bn[k]; f++) {
+        t3_material *m = mat(1, 1, 1, rough[k], 0.0f, true);
+        pbr_apply(m, TX_HIDE, rep_[k], 0.8f);
+        t3_retain(V.ch[k].geo[0][f]);
+        V.eb[k][f] = imesh(nm[k], V.ch[k].geo[0][f], m, bc, shadow[k]);
+      }
+    }
+  }
   V.bullet = imesh("Bullets", t3_box_geometry_new(0.07f, 0.07f, 0.7f, 1, 1, 1), glow(1, 0.85f, 0.35f, 6), MAXB, false);
   V.rocket = imesh("Rockets", t3_cylinder_geometry_new(0.1f, 0.1f, 0.7f, 8, 1, false), glow(1, 0.45f, 0.12f, 5), 64, false);
   V.gem = imesh("Gems", t3_octahedron_geometry_new(0.16f, 0), glow(0.3f, 1, 0.8f, 3.5f), MAXG, false);
@@ -371,38 +559,43 @@ void view_init(cw_node root) {
     pbr_apply(pm, TX_PILLAR, 1, 1.0f);
     V.pillar = imesh("Pillars", t3_cylinder_geometry_new(1.2f, 1.3f, 4.5f, 16, 3, false), pm, 16, true);
   }
-  /* players */
+  view_dress();
+  /* players: the soldier's cycles, one mesh per frame (shown by turns), body plus a team-coloured trim */
   static const float PC[MAXP][3] = { { 0.2f, 0.7f, 1 }, { 1, 0.55f, 0.1f }, { 0.4f, 0.95f, 0.35f }, { 0.95f, 0.3f, 0.75f } };
+  bool have = chr_load(&V.soldier, "models/soldier.cwchar");
   for (int i = 0; i < MAXP; i++) {
     t3_object *g = t3_group_new();
-    t3_material *bm = mat(PC[i][0], PC[i][1], PC[i][2], 0.45f, 0.1f, false);
-    t3_material *dm = mat(0.12f, 0.12f, 0.14f, 0.5f, 0.6f, false);
-    t3_geometry *body = t3_cylinder_geometry_new(0.34f, 0.4f, 0.9f, 12, 1, false), *head = t3_sphere_geometry_new(0.3f, 12, 8), *gun = t3_box_geometry_new(0.16f, 0.2f, 0.9f, 1, 1, 1);
-    t3_mesh *mb = t3_mesh_new(body, bm), *mh = t3_mesh_new(head, bm), *mg = t3_mesh_new(gun, dm);
-    mb->base.position = (t3_vec3){ 0, 0.55f, 0 };
-    mh->base.position = (t3_vec3){ 0, 1.2f, 0 };
-    mg->base.position = (t3_vec3){ 0.0f, 0.85f, -0.55f }; /* the model faces -Z */
-    mb->base.cast_shadow = mh->base.cast_shadow = mg->base.cast_shadow = true;
-    t3_object_add(g, mb), t3_object_add(g, mh), t3_object_add(g, mg);
+    t3_material *bm = mat(1, 1, 1, 0.5f, 0.35f, true);
+    pbr_apply(bm, TX_ARMOR, 2.0f, 0.9f);
+    t3_material *tm = glow(PC[i][0], PC[i][1], PC[i][2], 3);
+    if (have)
+      for (int f = 0; f < V.soldier.nf[0] + V.soldier.nf[1]; f++) {
+        t3_mesh *mb = t3_mesh_new(V.soldier.geo[0][f], bm), *mt = t3_mesh_new(V.soldier.geo[1][f], tm);
+        mb->base.cast_shadow = true;
+        mb->base.visible = mt->base.visible = f == 0;
+        t3_object_add(g, mb), t3_object_add(g, mt);
+        V.pm[i][f][0] = mb, V.pm[i][f][1] = mt;
+        t3_release(mb), t3_release(mt);
+      }
     t3_material *rm = glow(PC[i][0], PC[i][1], PC[i][2], 3);
     t3_geometry *ring = t3_cylinder_geometry_new(0.7f, 0.7f, 0.03f, 24, 1, true);
     t3_mesh *mr = t3_mesh_new(ring, rm);
     mr->base.position = (t3_vec3){ 0, 0.03f, 0 };
     t3_object_add(g, mr);
     V.pl[i] = g;
-    V.pl_gun[i] = mg;
     V.pl_ring[i] = mr;
     cw_node pn = cw_node_new("Node3D", "Player");
     cw_node_add_child(V.root, pn);
     cw_node3d_set_object(pn, g);
     V.pn[i] = pn;
-    t3_release(mb), t3_release(mh), t3_release(mg), t3_release(mr);
-    t3_release(body), t3_release(head), t3_release(gun), t3_release(ring), t3_release(bm), t3_release(dm), t3_release(rm);
+    t3_release(mr), t3_release(ring), t3_release(bm), t3_release(tm), t3_release(rm);
     t3_release(g);
   }
 }
 
 void view_free(void) {
+  for (int k = 0; k < EK_KINDS; k++) chr_free(&V.ch[k]);
+  chr_free(&V.soldier);
   for (int i = 0; i < TX_KINDS; i++) {
     if (!PB[i].map) continue;
     t3_release(PB[i].map), t3_release(PB[i].normal), t3_release(PB[i].rough);
@@ -427,31 +620,34 @@ view_stats view_get_stats(void) { return V.st; }
 
 void view_sync(const sim *s, float time) {
   if (!V.root.id) return;
-  int cnt[EK_KINDS] = { 0 };
-  float cull = 0;
-  (void)cull;
+  int cnt[EK_KINDS][CH_MAXF];
+  memset(cnt, 0, sizeof cnt);
+  static const float rate[EK_KINDS] = { 1.9f, 0.9f, 1.1f, 0.6f }; /* cycles per second */
   for (int i = 0; i < MAXE; i++) {
     const enemy *e = &s->e[i];
     if (!e->alive) continue;
-    int k = e->kind;
-    t3_instanced_mesh *im = V.enemy[k];
-    int n = cnt[k];
+    int k = e->kind, nf = V.bn[k];
+    if (nf <= 0) continue;
+    float ph = time * rate[k] * (0.85f + 0.3f * h01((uint32_t)i, 3)) + h01((uint32_t)i, 4) * 8.0f;
+    int fr = (int)((ph - floorf(ph)) * (float)nf);
+    t3_instanced_mesh *im = V.eb[k][fr];
+    int n = cnt[k][fr];
     if (n >= im->instance_matrix->count) continue;
-    cnt[k]++;
-    float bob = 0.06f * cw_sin(time * (9.0f + (float)(i & 7)) + (float)i) * (k == EK_RUNNER ? 1.0f : 0.5f);
-    float sq = 1.0f + (e->flash > 0 ? 0.18f : 0);
+    cnt[k][fr]++;
+    float sq = 1.0f + (e->flash > 0 ? 0.1f : 0);
     float yaw = -e->face + 1.5708f; /* the model faces +Z; face is atan2(z, x) */
-    put(im, n, e->x, bob, e->y, yaw, sq, sq, sq);
+    put(im, n, e->x, 0.0f, e->y, yaw, sq, sq, sq);
     float tint = 0.8f + 0.4f * h01((uint32_t)i, 5);
     t3_color c = e->flash > 0 ? (t3_color){ 4, 2.8f, 2.2f } : (t3_color){ tint, tint * (0.9f + 0.2f * h01((uint32_t)i, 9)), tint };
     t3_instanced_mesh_set_color_at(im, n, c);
   }
   V.st.enemies_drawn = 0;
-  for (int k = 0; k < EK_KINDS; k++) {
-    V.enemy[k]->count = cnt[k];
-    touch(V.enemy[k], true);
-    V.st.enemies_drawn += cnt[k];
-  }
+  for (int k = 0; k < EK_KINDS; k++)
+    for (int f = 0; f < V.bn[k]; f++) {
+      V.eb[k][f]->count = cnt[k][f];
+      touch(V.eb[k][f], true);
+      V.st.enemies_drawn += cnt[k][f];
+    }
   /* bullets */
   int nb = 0, nr = 0;
   for (int i = 0; i < MAXB; i++) {
@@ -521,7 +717,21 @@ void view_sync(const sim *s, float time) {
       continue;
     }
     cw_node3d_set_position(V.pn[i], (t3_vec3){ p->x, p->down ? -0.6f : 0, p->y });
-    cw_node3d_set_rotation(V.pn[i], (t3_vec3){ p->down ? 1.4f : 0, -p->aim - 1.5708f, 0 }); /* the gun is on -Z */
+    cw_node3d_set_rotation(V.pn[i], (t3_vec3){ p->down ? 1.4f : 0, -p->aim + 1.5708f, 0 }); /* the model faces +Z */
+    if (V.soldier.nclip < 2) continue;
+    float speed = sqrtf(p->vx * p->vx + p->vy * p->vy);
+    bool run = speed > 0.6f && !p->down;
+    int clip = run ? 0 : 1, nf = V.soldier.nf[clip];
+    float cyc = run ? CW_MIN(speed / 6.0f, 1.3f) * 1.7f : 0.5f; /* run cycles per second follow the pace */
+    float ph = time * cyc + (float)i * 0.31f;
+    int fr = V.soldier.first[clip] + (int)((ph - floorf(ph)) * (float)nf);
+    if (fr != V.pl_frame[i]) {
+      for (int g = 0; g < 2; g++) {
+        V.pm[i][V.pl_frame[i]][g]->base.visible = false;
+        V.pm[i][fr][g]->base.visible = true;
+      }
+      V.pl_frame[i] = fr;
+    }
   }
 }
 
@@ -531,7 +741,7 @@ void view_camera(const sim *s, cw_node camera, float aspect, float shake_x, floa
   const float fov = 38.0f * 3.14159f / 180.0f, tilt = 62.0f * 3.14159f / 180.0f;
   /* distance so the spread of the players plus a margin fits the view */
   float half_h = CW_MAX(hh + 8.0f, (hw + 10.0f) / aspect);
-  float d = CW_CLAMP(half_h / cw_sin(fov * 0.5f) * cw_cos(fov * 0.5f) * 0.92f, 24.0f, 50.0f);
+  float d = CW_CLAMP(half_h / cw_sin(fov * 0.5f) * cw_cos(fov * 0.5f) * 0.92f, 24.0f, 36.0f);
   if (!V.cam_init) V.cx = cx, V.cy = cy, V.cd = d, V.cam_init = true;
   V.cx += (cx - V.cx) * 0.08f;
   V.cy += (cy - V.cy) * 0.08f;

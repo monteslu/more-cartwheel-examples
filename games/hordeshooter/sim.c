@@ -80,11 +80,7 @@ static void drop(sim *s, int kind, float x, float y) {
     }
 }
 
-static void level_up(sim *s, player *p, int pi) {
-  p->level++;
-  p->xp -= p->xp_next;
-  p->xp_next = 6 + p->level * 5;
-  int u = LADDER[(p->level - 2) % (int)sizeof LADDER];
+static void apply_upgrade(sim *s, player *p, int pi, int u) {
   p->last_up = u;
   switch (u) {
   case 0: p->rate++; break;
@@ -99,6 +95,29 @@ static void level_up(sim *s, player *p, int pi) {
   }
   p->hp = CW_MIN(p->hp + 25, 100.0f);
   ev(s, EV_LEVEL, p->x, p->y, 0, 0, pi, u);
+}
+
+/* three different upgrades to choose from; the ladder's next one is always
+ * among them, so a player who ignores the offer still grows */
+static void roll_offer(sim *s, player *p) {
+  p->offer[0] = LADDER[(p->level - 2) % (int)sizeof LADDER];
+  for (int k = 1; k < 3; k++) {
+    int u;
+    do {
+      u = (int)(cw_rng_u32(&s->rng) % 9u);
+    } while (u == p->offer[0] || (k == 2 && u == p->offer[1]));
+    p->offer[k] = u;
+  }
+  p->offer_ticks = 60 * 8; /* the first offer is taken when the time runs out */
+}
+
+static void level_up(sim *s, player *p, int pi) {
+  (void)pi;
+  p->level++;
+  p->xp -= p->xp_next;
+  p->xp_next = 6 + p->level * 5;
+  if (p->offer_ticks > 0) p->pending++;
+  else roll_offer(s, p);
 }
 
 static void kill_enemy(sim *s, int i, int owner, float dx, float dy) {
@@ -433,6 +452,32 @@ static void player_step(sim *s, int i, const input *in) {
       p->y += (d2 > 0.0001f ? dy / d : 0.0f) * push;
     }
   }
+  /* a living team stays within one view: a player far from the others is held back */
+  {
+    float ox = 0, oy = 0;
+    int n = 0;
+    for (int k = 0; k < MAXP; k++) {
+      const player *q = &s->p[k];
+      if (k == i || !q->active || q->down) continue;
+      ox += q->x, oy += q->y, n++;
+    }
+    if (n) {
+      ox /= (float)n, oy /= (float)n;
+      float dx = p->x - ox, dy = p->y - oy, d = cw_v2_length(cw_v2(dx, dy));
+      if (d > 20.0f) p->x = ox + dx / d * 20.0f, p->y = oy + dy / d * 20.0f;
+    }
+  }
+  if (p->offer_ticks > 0) {
+    int pick = in->pick >= 1 && in->pick <= 3 ? in->pick - 1 : --p->offer_ticks == 0 ? 0 : -1;
+    if (pick >= 0) {
+      p->offer_ticks = 0;
+      apply_upgrade(s, p, i, p->offer[pick]);
+      if (p->pending > 0) {
+        p->pending--;
+        roll_offer(s, p);
+      }
+    }
+  }
   float al = cw_v2_length(cw_v2(in->ax, in->ay));
   if (al > 0.25f) p->aim = cw_atan2(in->ay, in->ax);
   if (p->cd > 0) p->cd--;
@@ -495,16 +540,28 @@ static void bullets_step(sim *s) {
 
 static void spawn_director(sim *s) {
   s->wave_tick++;
-  if (s->wave_tick >= 60 * 30) {
+  if (s->wave_tick >= 60 * 30 && !(s->wave == FINAL_WAVE && s->boss_alive)) { /* the last wave lasts until its boss falls */
     s->wave_tick = 0;
     s->wave++;
     ev(s, EV_WAVE, 0, 0, 0, 0, s->wave, 0);
   }
-  s->spawn_cap = CW_MIN(40 + s->wave * 90, 2900);
+  /* a slow start, a horde late: about 25 at wave 1, 330 at 5, 1000 at 10,
+   * 2900 by 20, more with more players */
+  {
+    int w = s->wave;
+    float k = 0.6f + 0.2f * (float)s->players;
+    s->spawn_cap = CW_MIN((int)((float)(20 + 40 * (w - 1) + 6 * w * w) * k), 2900);
+  }
   float cx, cy, hw, hh;
   sim_team_box(s, &cx, &cy, &hw, &hh);
   s->cam_x = cx, s->cam_y = cy;
+  if (s->state == ST_PLAY && s->wave == FINAL_WAVE && s->boss_wave == FINAL_WAVE && s->boss_alive == 0 && s->wave_tick > 90) {
+    s->state = ST_WON; /* the last boss is down: the yard is held */
+    s->state_ticks = 0;
+    return;
+  }
   if (s->wave % 5 == 0 && s->wave_tick == 30 && s->boss_alive == 0) {
+    s->boss_wave = s->wave;
     float a = rf(s) * 6.28f;
     float bx = cw_clampf(cx + cw_cos(a) * 24, -HALF + 3, HALF - 3), by = cw_clampf(cy + cw_sin(a) * 24, -HALF + 3, HALF - 3);
     if (spawn_enemy(s, EK_BOSS, bx, by) >= 0) ev(s, EV_BOSS, bx, by, 0, 0, 0, 0);
@@ -515,6 +572,13 @@ static void spawn_director(sim *s) {
     float x = cw_clampf(cx + cw_cos(a) * d, -HALF + 1, HALF - 1), y = cw_clampf(cy + cw_sin(a) * d, -HALF + 1, HALF - 1);
     int gx = (int)(x + HALF), gy = (int)(y + HALF);
     if (s->blocked[gy * FW + gx]) continue;
+    bool close = false; /* never on top of a player (a corner of the yard can bring the ring near one) */
+    for (int k = 0; k < MAXP; k++) {
+      const player *p = &s->p[k];
+      float dx = p->x - x, dy = p->y - y;
+      if (p->active && dx * dx + dy * dy < 14.0f * 14.0f) close = true;
+    }
+    if (close) continue;
     float r = rf(s);
     int kind = EK_RUNNER;
     if (s->wave >= 2 && r < CW_MIN(0.02f + 0.004f * (float)s->wave, 0.07f)) kind = EK_BRUTE;
@@ -680,6 +744,13 @@ void sim_team_box(const sim *s, float *cx, float *cy, float *hw, float *hh) {
 void sim_step(sim *s, const input in[MAXP]) {
   s->tick++;
   s->ev_n = s->ev_n > MAXEV - 400 ? 0 : s->ev_n; /* nothing draws these: drop the backlog */
+  if (s->state == ST_WON) { /* the horde falls apart, nobody gets hurt */
+    s->state_ticks++;
+    for (int i = 0; i < MAXP; i++) s->p[i].inv = 10;
+    int n = 0;
+    for (int i = 0; i < MAXE && n < 30; i++)
+      if (s->e[i].alive && (i + s->tick) % 3 == 0) kill_enemy(s, i, -1, 0, 0), n++;
+  }
   if (s->state == ST_OVER) {
     if (++s->state_ticks > 60 * 6) {
       for (int i = 0; i < MAXP; i++)

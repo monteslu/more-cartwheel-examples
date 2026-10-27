@@ -4,60 +4,85 @@
 
 [node name="Sky" parent="." type="ProceduralSky"]
 sun = "../Sun"
-time_of_day = 17.2
+time_of_day = 17.6
 latitude = 40
 declination = 12
 north = 30
-sun_energy = 9
-sky_energy = 0.8
-mie = 1.5
-sun_disk_intensity = 1.2
-ground_color = color(0.05, 0.05, 0.06, 1)
+sun_energy = 8
+sky_energy = 0.7
+mie = 2.2
+sun_disk_intensity = 1.5
+ground_color = color(0.04, 0.04, 0.05, 1)
 env_update_angle = 2
 
+; the key: a low warm sun with three cascades so the long shadows of the wall,
+; the masts and the crowd reach across the whole yard
 [node name="Sun" parent="." type="DirectionalLight3D"]
-position = vec3(-8, 30, -12)
-color = color(1, 0.72, 0.5, 1)
+position = vec3(-26, 17, -10)
+color = color(1, 0.62, 0.34, 1)
 shadow = true
+shadow_cascades = 3
+shadow_distance = 78
 shadow_size = 2048
-shadow_extent = 26
-shadow_far = 90
+shadow_extent = 30
+shadow_far = 110
 shadow_bias = -0.0004
 shadow_normal_bias = 0.03
+fog_energy = 1.5
+
+; the rim: a cool light from the opposite side and low, edging every character
+[node name="Rim" parent="." type="DirectionalLight3D"]
+position = vec3(24, 9, 18)
+color = color(0.42, 0.58, 1, 1)
+energy = 1.4
+fog_energy = 0
 
 [node name="Env" parent="." type="WorldEnvironment"]
-background = color(0.05, 0.07, 0.12, 1)
-ambient_color = color(0.45, 0.5, 0.7, 1)
-ambient_energy = 0.2
-sky_color = color(0.4, 0.5, 0.75, 1)
-ground_color = color(0.05, 0.05, 0.06, 1)
-hemi_energy = 0.3
+background = color(0.05, 0.06, 0.1, 1)
+ambient_color = color(0.4, 0.48, 0.72, 1)
+ambient_energy = 0.3
+sky_color = color(0.45, 0.5, 0.75, 1)
+ground_color = color(0.07, 0.06, 0.06, 1)
+hemi_energy = 0.4
 
+; haze that the floodlights and the sun draw into beams
 [node name="Fog" parent="." type="HeightFog"]
-density = 0.006
-height_falloff = 0.2
+density = 0.011
+height_falloff = 0.12
 base_height = 0
 use_sky_color = true
-sun_scatter = 0.5
-sun_g = 0.7
-max_opacity = 0.65
-start_distance = 20
-sky_distance = 300
+sun_scatter = 0.7
+sun_g = 0.74
+max_opacity = 0.75
+start_distance = 18
+sky_distance = 260
+volumetric = true
+volumetric_distance = 70
+volumetric_ambient = 0.5
+volumetric_albedo = color(1, 0.84, 0.7, 1)
 
 [node name="Post" parent="." type="PostProcess"]
 tonemap = AGX
-exposure = 1.15
+exposure = 1.1
 bloom = true
-bloom_intensity = 0.06
-bloom_threshold = 1.1
+bloom_intensity = 0.14
+bloom_threshold = 1.0
 bloom_knee = 0.6
 ssao = true
-ssao_radius = 0.7
-ssao_intensity = 1.0
+ssao_radius = 0.8
+ssao_intensity = 1.3
+ssr = true
+ssr_intensity = 0.85
+ssr_max_distance = 30
 aa = SMAA
+grade = true
+grade_intensity = 0.9
+lut = "grade/dusk.cube"
 vignette = true
-vignette_intensity = 0.3
+vignette_intensity = 0.38
 vignette_smoothness = 0.6
+grain = true
+grain_intensity = 0.035
 
 [node name="Camera" parent="." type="Camera3D"]
 position = vec3(0, 30, 18)

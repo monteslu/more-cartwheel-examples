@@ -16,6 +16,7 @@
 #include <string.h>
 
 #include "cartwheel/decals.h"
+#include "cartwheel/explosions.h"
 #include "cartwheel/math.h"
 #include "cartwheel/particles.h"
 #include "cartwheel/quality.h"
@@ -31,8 +32,9 @@
 #define LIGHTS 8
 #define GIBS 3000
 #define RINGS 24
+#define WAVES 6
 
-typedef struct bundle { cw_node burst, flame, sparks, embers, smoke, flash; } bundle;
+typedef struct bundle { cw_node burst, flame, sparks, embers, smoke, haze, flash; } bundle;
 typedef struct gib { t3_vec3 p, v, rot, spin; float size; int life; t3_color col; } gib;
 
 static struct {
@@ -42,7 +44,10 @@ static struct {
   cw_node small[SMALLS], hit[HITS], splat[SPLATS], fire[FIRES], fire_light[FIRES];
   int fire_age[FIRES];
   int nb, ns, nh, nsp, nf, nsc, nst, nl, ring_i;
-  cw_node scorch[SCORCH], stain[STAIN], light[LIGHTS];
+  cw_node scorch[SCORCH], glow[SCORCH], stain[STAIN], light[LIGHTS], wave[WAVES], fire_haze[FIRES];
+  float glow_a[SCORCH], light_e0[LIGHTS];
+  t3_vec3 fire_pos[FIRES];
+  int nw;
   float light_e[LIGHTS], light_c[LIGHTS][3];
   float scorch_a[SCORCH], stain_a[STAIN];
   t3_instanced_mesh *gibs, *rings;
@@ -101,12 +106,13 @@ static const char *const FLAME[] = { "amount", "140", "lifetime", "0.9", "lifeti
   "emission_shape", "SPHERE", "emission_radius", "1.2", "direction", "vec3(0, 1, 0)", "spread", "60", "speed_min", "0.5", "speed_max", "3",
   "gravity", "vec3(0, 4, 0)", "damping", "1.5", "size", "1.4", "size_random", "0.4", "size_curve", "\"0 0.6, 0.25 1.1, 1 0.1\"",
   "color_ramp", "\"0 1 0.85 0.5 1, 0.2 1 0.5 0.1 1, 0.6 0.85 0.18 0.03 0.7, 1 0.35 0.04 0.02 0\"", "energy", "2.4", "blend", "ADD",
+  "texture", "\"fx/fire_sheet.png\"", "hframes", "4", "vframes", "4", "spin", "1.5",
   "turbulence", "1.2", "turbulence_scale", "0.5", NULL };
 static const char *const SPARKS[] = { "amount", "160", "lifetime", "1.1", "lifetime_random", "0.4", "explosiveness", "1",
   "one_shot", "true", "emission_shape", "SPHERE", "emission_radius", "0.3", "spread", "180", "speed_min", "6", "speed_max", "16",
   "direction", "vec3(0, 1, 0)", "gravity", "vec3(0, -14, 0)", "damping", "0.5", "draw_mode", "STRETCHED", "stretch", "0.05",
   "size", "0.06", "color_ramp", "\"0 1 0.95 0.7 1, 0.3 1 0.6 0.15 1, 1 0.7 0.12 0.04 0\"", "energy", "6", "bounce", "0.45",
-  "collision_radius", "0.03", "collide_depth", "true", NULL };
+  "collision_radius", "0.03", "collide_depth", "true", "trail_length", "10", "trail_width", "0.035", NULL };
 static const char *const EMBERS[] = { "amount", "90", "lifetime", "2.2", "lifetime_random", "0.5", "explosiveness", "0.8",
   "one_shot", "true", "emission_shape", "SPHERE", "emission_radius", "1.0", "spread", "180", "speed_min", "0.5", "speed_max", "3",
   "gravity", "vec3(0, 1.2, 0)", "damping", "1", "size", "0.07", "size_random", "0.5",
@@ -115,8 +121,20 @@ static const char *const EMBERS[] = { "amount", "90", "lifetime", "2.2", "lifeti
 static const char *const SMOKE[] = { "amount", "90", "lifetime", "3.2", "lifetime_random", "0.3", "explosiveness", "0.85",
   "one_shot", "true", "emission_shape", "SPHERE", "emission_radius", "0.9", "spread", "180", "speed_min", "0.4", "speed_max", "2",
   "gravity", "vec3(0, 1.4, 0)", "damping", "1.2", "size", "1.1", "size_random", "0.5", "size_curve", "\"0 0.2, 0.3 1, 1 1.5\"",
-  "color_ramp", "\"0 0.12 0.11 0.1 0, 0.15 0.15 0.14 0.13 0.4, 1 0.3 0.29 0.28 0\"", "blend", "ALPHA", "soft_distance", "0.6",
+  "color_ramp", "\"0 0.16 0.14 0.13 0, 0.12 0.2 0.18 0.17 0.55, 0.6 0.26 0.25 0.24 0.35, 1 0.34 0.33 0.32 0\"", "blend", "ALPHA", "soft_distance", "0.6",
+  "texture", "\"fx/smoke_sheet.png\"", "hframes", "4", "vframes", "4", "spin", "0.6",
   "turbulence", "1", "turbulence_scale", "0.35", NULL };
+/* heat haze over a blast and over a fire: slow big particles that bend what is behind them (blend DISTORT) */
+static const char *const HAZE[] = { "amount", "46", "lifetime", "2.6", "lifetime_random", "0.3", "explosiveness", "0.5", "one_shot", "true",
+  "emission_shape", "SPHERE", "emission_radius", "1.6", "direction", "vec3(0, 1, 0)", "spread", "35", "speed_min", "0.4", "speed_max", "1.6",
+  "gravity", "vec3(0, 1.5, 0)", "damping", "0.8", "size", "2.6", "size_random", "0.4", "size_curve", "\"0 0.4, 0.3 1, 1 1.4\"",
+  "color_ramp", "\"0 1 1 1 0, 0.2 1 1 1 0.8, 1 1 1 1 0\"", "blend", "DISTORT", "distort_strength", "0.22",
+  "texture", "\"fx/haze.png\"", "turbulence", "0.8", "turbulence_scale", "0.4", NULL };
+static const char *const FIREHAZE[] = { "amount", "26", "lifetime", "1.8", "lifetime_random", "0.3", "emitting", "false", "one_shot", "false",
+  "emission_shape", "SPHERE", "emission_radius", "0.8", "direction", "vec3(0, 1, 0)", "spread", "15", "speed_min", "0.8", "speed_max", "1.8",
+  "gravity", "vec3(0, 2.5, 0)", "damping", "0.6", "size", "1.6", "size_random", "0.4", "size_curve", "\"0 0.5, 0.4 1, 1 1.3\"",
+  "color_ramp", "\"0 1 1 1 0, 0.25 1 1 1 0.7, 1 1 1 1 0\"", "blend", "DISTORT", "distort_strength", "0.16",
+  "texture", "\"fx/haze.png\"", "turbulence", "1.0", "turbulence_scale", "0.5", NULL };
 static const char *const SBURST[] = { "amount", "50", "lifetime", "0.4", "explosiveness", "1", "one_shot", "true",
   "emission_shape", "SPHERE", "emission_radius", "0.2", "spread", "180", "speed_min", "1", "speed_max", "4",
   "gravity", "vec3(0, 2, 0)", "damping", "4", "size", "0.7", "size_random", "0.5", "size_curve", "\"0 0.5, 0.2 1.2, 1 0.2\"",
@@ -133,6 +151,7 @@ static const char *const FIREP[] = { "amount", "70", "lifetime", "1.1", "lifetim
   "emission_shape", "SPHERE", "emission_radius", "0.9", "direction", "vec3(0, 1, 0)", "spread", "25", "speed_min", "0.8", "speed_max", "2.6",
   "gravity", "vec3(0, 3, 0)", "damping", "1", "size", "0.9", "size_random", "0.4", "size_curve", "\"0 0.5, 0.3 1, 1 0.1\"",
   "color_ramp", "\"0 1 0.8 0.4 1, 0.3 1 0.45 0.08 0.9, 1 0.3 0.04 0.02 0\"", "energy", "2.2", "blend", "ADD",
+  "texture", "\"fx/fire_sheet.png\"", "hframes", "4", "vframes", "4", "spin", "1.2",
   "turbulence", "1.4", "turbulence_scale", "0.5", NULL };
 
 void fx_free(void) {
@@ -188,12 +207,14 @@ void fx_init(cw_node root) {
     b->sparks = pnode(FX.root, "Sparks", SPARKS, 300 + i);
     b->embers = pnode(FX.root, "Embers", EMBERS, 400 + i);
     b->smoke = pnode(FX.root, "Smoke", SMOKE, 500 + i);
+    b->haze = pnode(FX.root, "Haze", HAZE, 550 + i);
   }
   for (int i = 0; i < SMALLS; i++) FX.small[i] = pnode(FX.root, "Small", SBURST, 600 + i);
   for (int i = 0; i < HITS; i++) FX.hit[i] = pnode(FX.root, "Hit", HIT, 700 + i);
   for (int i = 0; i < SPLATS; i++) FX.splat[i] = pnode(FX.root, "Splat", SPLAT, 800 + i);
   for (int i = 0; i < FIRES; i++) {
     FX.fire[i] = pnode(FX.root, "Fire", FIREP, 900 + i);
+    FX.fire_haze[i] = pnode(FX.root, "FireHaze", FIREHAZE, 950 + i);
     FX.fire_light[i] = cw_node_new("OmniLight3D", "FireLight");
     cw_node_add_child(FX.root, FX.fire_light[i]);
     cw_node3d_set_position(FX.fire_light[i], (t3_vec3){ 0, -60, 0 });
@@ -201,8 +222,27 @@ void fx_init(cw_node root) {
     cw_node_set(FX.fire_light[i], "range", cw_val_float(7));
     cw_node_set(FX.fire_light[i], "decay", cw_val_float(2));
     cw_node_set(FX.fire_light[i], "color", cw_val_color(1, 0.5f, 0.15f, 1));
+    cw_node_set(FX.fire_light[i], "fog_energy", cw_val_float(0.5f));
   }
-  for (int i = 0; i < SCORCH; i++) FX.scorch[i] = decal("Scorch", 0.2f, 0.16f, 0.13f, 0);
+  for (int i = 0; i < SCORCH; i++) {
+    FX.scorch[i] = decal("Scorch", 0.2f, 0.16f, 0.13f, 0);
+    FX.glow[i] = decal("Glow", 1, 0.4f, 0.08f, 0); /* the hot ground: an additive decal that cools to nothing */
+    cw_node_set(FX.glow[i], "blend", cw_val_enum("ADD"));
+    cw_node_set(FX.glow[i], "energy", cw_val_float(3));
+  }
+  for (int i = 0; i < WAVES; i++) {
+    cw_node w = FX.wave[i] = cw_node_new("Shockwave3D", "Wave");
+    cw_node_add_child(FX.root, w);
+    cw_node_set(w, "ground", cw_val_bool(true));
+    cw_node_set(w, "autostart", cw_val_bool(false));
+    cw_node_set(w, "loop", cw_val_bool(false));
+    cw_node_set(w, "playing", cw_val_bool(false));
+    cw_node_set(w, "duration", cw_val_float(0.7f));
+    cw_node_set(w, "thickness", cw_val_float(1.6f));
+    cw_node_set(w, "strength", cw_val_float(0.9f));
+    cw_node_set(w, "max_radius", cw_val_float(8));
+    cw_node3d_set_position(w, (t3_vec3){ 0, -60, 0 });
+  }
   for (int i = 0; i < STAIN; i++) FX.stain[i] = decal("Stain", 0.5f, 0.1f, 0.08f, 0);
   cw_node ls = cw_node_new("LightingSettings", "Lighting");
   cw_node_add_child(FX.root, ls);
@@ -215,6 +255,7 @@ void fx_init(cw_node root) {
     cw_node_set(l, "energy", cw_val_float(0));
     cw_node_set(l, "range", cw_val_float(12));
     cw_node_set(l, "decay", cw_val_float(2));
+    cw_node_set(l, "fog_energy", cw_val_float(0));
   }
   /* gibs: small chunks */
   t3_material *gm = t3_mesh_standard_material_new(0xffffff);
@@ -254,6 +295,7 @@ static void flash_light(t3_vec3 at, float e, float r, float g, float b) {
   int i = FX.nl++ % LIGHTS;
   cw_node3d_set_position(FX.light[i], (t3_vec3){ at.x, 1.6f, at.z });
   FX.light_e[i] = e;
+  FX.light_e0[i] = e;
   FX.light_c[i][0] = r, FX.light_c[i][1] = g, FX.light_c[i][2] = b;
 }
 
@@ -285,9 +327,16 @@ static void blast(t3_vec3 at, float r, bool big) {
     burst_at(b->sparks, (t3_vec3){ at.x, 0.5f, at.z });
     if (lvl >= 1) burst_at(b->embers, (t3_vec3){ at.x, 0.6f, at.z });
     burst_at(b->smoke, (t3_vec3){ at.x, 0.9f, at.z });
+    if (lvl >= 1) burst_at(b->haze, (t3_vec3){ at.x, 1.2f, at.z });
     (void)k;
     FX.shake = CW_MIN(FX.shake + 0.6f * r / 4.0f, 2.2f);
-    flash_light(at, 90, 1, 0.6f, 0.25f);
+    flash_light(at, 170, 1, 0.55f, 0.2f);
+    { /* a distortion ring that races over the floor, pooled */
+      cw_node w = FX.wave[FX.nw++ % WAVES];
+      cw_node3d_set_position(w, (t3_vec3){ at.x, 0.3f, at.z });
+      cw_node_set(w, "max_radius", cw_val_float(r * 1.9f));
+      cw_shockwave_fire(w);
+    }
   } else {
     burst_at(FX.small[FX.ns++ % SMALLS], (t3_vec3){ at.x, 0.5f, at.z });
     FX.shake = CW_MIN(FX.shake + 0.25f, 2.2f);
@@ -299,6 +348,8 @@ static void blast(t3_vec3 at, float r, bool big) {
   int si = FX.nsc++ % SCORCH;
   set_decal(FX.scorch[si], at, r * (big ? 1.7f : 1.4f), rnd() * 6.28f);
   FX.scorch_a[si] = 0.9f;
+  set_decal(FX.glow[si], at, r * (big ? 1.5f : 1.2f), rnd() * 6.28f);
+  FX.glow_a[si] = big ? 1.0f : 0.6f;
 }
 
 void fx_events(sim *s) {
@@ -342,6 +393,7 @@ void fx_events(sim *s) {
       cw_node3d_set_position(FX.fire[f], (t3_vec3){ at.x, 0.2f, at.z });
       cw_node_set(FX.fire[f], "emitting", cw_val_bool(true));
       cw_node3d_set_position(FX.fire_light[f], (t3_vec3){ at.x, 1.2f, at.z });
+      FX.fire_pos[f] = (t3_vec3){ at.x, 0.4f, at.z };
       FX.fire_age[f] = 1;
       break;
     }
@@ -415,16 +467,26 @@ void fx_tick(const sim *s) {
   FX.rings->instance_color->version++;
   /* lights */
   for (int i = 0; i < LIGHTS; i++) {
-    FX.light_e[i] *= 0.88f;
+    FX.light_e[i] *= 0.9f;
     if (FX.light_e[i] < 0.05f) FX.light_e[i] = 0;
     cw_node_set(FX.light[i], "energy", cw_val_float(FX.light_e[i]));
-    cw_node_set(FX.light[i], "color", cw_val_color(FX.light_c[i][0], FX.light_c[i][1], FX.light_c[i][2], 1));
+    { /* white-hot at the flash, the blast's own orange as it dies */
+      float hot = FX.light_e0[i] > 0 ? CW_CLAMP(FX.light_e[i] / FX.light_e0[i], 0.0f, 1.0f) : 0;
+      hot = hot * hot;
+      cw_node_set(FX.light[i], "color", cw_val_color(FX.light_c[i][0], FX.light_c[i][1] + (1 - FX.light_c[i][1]) * hot * 0.7f, FX.light_c[i][2] + (1 - FX.light_c[i][2]) * hot * 0.8f, 1));
+    }
   }
   /* decals fade */
   for (int i = 0; i < SCORCH; i++)
     if (FX.scorch_a[i] > 0) {
       FX.scorch_a[i] = FX.scorch_a[i] > 0.0015f ? FX.scorch_a[i] - 0.0007f : 0;
       cw_node_set(FX.scorch[i], "color", cw_val_color(0.2f, 0.16f, 0.13f, FX.scorch_a[i]));
+    }
+  for (int i = 0; i < SCORCH; i++)
+    if (FX.glow_a[i] > 0) { /* the ground cools: white-orange, deep red, out over about five seconds */
+      float a = FX.glow_a[i] = FX.glow_a[i] > 0.004f ? FX.glow_a[i] - 0.0033f : 0;
+      float c = a * a;
+      cw_node_set(FX.glow[i], "color", cw_val_color(1.0f * a, 0.38f * c + 0.05f * a * a * a, 0.06f * c * c, a * 0.8f));
     }
   for (int i = 0; i < STAIN; i++)
     if (FX.stain_a[i] > 0) {
@@ -441,5 +503,7 @@ void fx_tick(const sim *s) {
       e = 0;
     }
     cw_node_set(FX.fire_light[f], "energy", cw_val_float(e > 0 ? e : 0));
+    if (a == 2) { cw_node3d_set_position(FX.fire_haze[f], FX.fire_pos[f]); cw_node_set(FX.fire_haze[f], "emitting", cw_val_bool(g_fx_level >= 1)); }
+    if (a > 440) cw_node_set(FX.fire_haze[f], "emitting", cw_val_bool(false));
   }
 }

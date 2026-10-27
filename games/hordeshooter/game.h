@@ -24,7 +24,7 @@ enum { EK_RUNNER, EK_BRUTE, EK_BLOATER, EK_BOSS, EK_KINDS };
 enum { OK_CRATE, OK_BARREL, OK_WALL, OK_PILLAR, OK_KINDS };
 enum { EV_SHOT, EV_HIT, EV_KILL, EV_BOOM, EV_CRATE, EV_BARREL, EV_WALL, EV_GEM, EV_HURT, EV_LEVEL, EV_WAVE, EV_BOSS, EV_DOWN, EV_ROCKET };
 
-typedef struct input { float mx, my, ax, ay; bool fire, bomb; } input;
+typedef struct input { float mx, my, ax, ay; bool fire, bomb; int pick; /* 1..3 takes that upgrade offer, 0 none */ } input;
 
 typedef struct player {
   bool active, down;
@@ -33,6 +33,7 @@ typedef struct player {
   /* upgrades */
   int rate, shots, dmg, pierce, rocket, speed, magnet, radius, armor;
   int last_up;
+  int offer[3], offer_ticks, pending; /* an upgrade choice on screen: offer_ticks > 0 */
 } player;
 
 typedef struct enemy {
@@ -51,7 +52,7 @@ typedef struct event { uint8_t kind, a, b; float x, y, z, w; } event;
 
 typedef struct sim {
   int tick, wave, wave_tick, players, state, state_ticks;
-  int kills, killed_total, spawn_cap, boss_alive;
+  int kills, killed_total, spawn_cap, boss_alive, boss_wave;
   cw_rng rng;
   player p[MAXP];
   enemy e[MAXE];
@@ -79,7 +80,8 @@ typedef struct sim {
   float crowd_ms;
 } sim;
 
-enum { ST_PLAY, ST_OVER };
+enum { ST_PLAY, ST_OVER, ST_WON };
+#define FINAL_WAVE 20 /* the boss of this wave ends the run */
 
 void sim_init(sim *s, int players, uint32_t seed, int start_wave);
 void sim_free(sim *s);
