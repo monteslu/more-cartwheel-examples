@@ -68,6 +68,7 @@ static struct {
   float clock;                 /* seconds, render time for animation */
   bool new_best;
   int32_t humans;
+  float load_ms, start_ms;     /* measured: scene switch and the game's own setup (not in gates) */
 } G;
 
 static cw_action a_left, a_right, a_up, a_down, a_a, a_b, a_x, a_y, u_up, u_down, u_left, u_right, u_ok, u_back;
@@ -127,8 +128,11 @@ static void begin_game(int idx) {
   G.serial++;
   fx_reset();
   G.scene3d = d->scene != NULL;
+  double t0 = cw_time();
   load_scene(d->scene);
+  G.load_ms = (float)((cw_time() - t0) * 1000.0);
   d->start(&G.c);
+  G.start_ms = (float)((cw_time() - t0) * 1000.0) - G.load_ms;
   memset(G.ready, 0, sizeof G.ready);
   for (int p = G.humans; p < NP; p++) G.ready[p] = true;
   set_state(S_INTRO);
@@ -300,6 +304,16 @@ static void on_quit(void *user) {
 static void on_sound(cw_shell_sound s, void *user) {
   (void)user;
   sfx(s == CW_SHELL_SND_MOVE ? SFX_BLIP : s == CW_SHELL_SND_BACK ? SFX_BACK : SFX_SELECT, 1, 1);
+}
+static void on_background(cw_shell_screen s, cw_vec2 canvas, void *user) {
+  (void)user, (void)canvas;
+  stage_begin();
+  ui_backdrop(G.clock, cw_rgba(0.12f, 0.1f, 0.35f, 1), cw_rgba(0.45f, 0.18f, 0.5f, 1));
+  if (s != CW_SHELL_PAUSE) for (int p = 0; p < NP; p++) {
+    float bob = sinf(G.clock * 3 + (float)p) * 10;
+    ui_blob(cw_v2(STAGE_W / 2 - 330 + (float)p * 220, 560 + bob), 70, p, sinf(G.clock + (float)p), 0, 1 + 0.05f * sinf(G.clock * 6 + (float)p), 1, false);
+  }
+  stage_end();
 }
 static void on_screen(cw_shell_screen from, cw_shell_screen to, void *user) {
   (void)from, (void)user;
@@ -699,6 +713,7 @@ static void init(void *user) {
     .quit = on_quit,
     .sound = on_sound,
     .screen_changed = on_screen,
+    .draw_background = on_background,
   });
   u_up = cw_action_find("ui_up"); u_down = cw_action_find("ui_down");
   u_left = cw_action_find("ui_left"); u_right = cw_action_find("ui_right");
@@ -719,6 +734,8 @@ static void init(void *user) {
   cw_debug_i32("game.points_total", &SV->points_total);
   cw_debug_u32("game.unlocked", &SV->unlocked);
   cw_debug_i32("game.winner", &G.winner);
+  cw_debug_field("probe.load_ms", &G.load_ms, CW_DBG_F32, 1);
+  cw_debug_field("probe.start_ms", &G.start_ms, CW_DBG_F32, 1);
 #ifdef PP_AUTOPILOT
   cw_shell_start(1); /* straight into a tournament of four CPUs */
 #endif
