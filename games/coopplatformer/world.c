@@ -657,9 +657,9 @@ static void wall_detail(const level *L, int x0, int x1, mb *prop, mb *glow) {
       if (bi == BIOME_VOLCANO && interior(L, x, y)) {
         /* basalt columns: a hexagonal prism per tile, stacked into columns, every other column set back */
         float lo[3], hi[3];
-        shade(lo, base, 0.3f), shade(hi, base, 0.55f);
-        float back = (x & 1) ? 0.1f : 0.0f;
-        mb_cone(prop, fx + 0.5f, fy, zf - 0.32f - back, 0.5f, 0.5f, 1.0f, 0, 0, 6, lo, hi);
+        rgb(lo, 0.07f, 0.055f, 0.055f), rgb(hi, 0.13f, 0.1f, 0.1f); /* near-black glassy rock: the lava light gives it its edges */
+        float back = 0.06f + 0.14f * wn(fx, 0, 0.4f, 418);
+        mb_cone(prop, fx + 0.5f, fy, zf - 0.36f - back, 0.48f, 0.48f, 1.0f, 0, 0, 6, lo, hi);
         if (r < 0.05f) { /* a glowing seam between two columns */
           float g0[3] = { 1.6f, 0.4f, 0.05f }, g1[3] = { 2.6f, 0.8f, 0.12f };
           mb_box(glow, fx + 1.0f, fy + 0.5f, zf + 0.0f, 0.03f, 0.5f, 0.05f, g0, g1);
@@ -671,7 +671,7 @@ static void wall_detail(const level *L, int x0, int x1, mb *prop, mb *glow) {
         float rx = 0.35f + 0.5f * hh(x, y, 412), ry = rx * (0.55f + 0.35f * hh(x, y, 413));
         float lo[3], hi[3];
         shade(lo, base, 0.6f), shade(hi, base, 1.15f);
-        mb_ellip(prop, fx + 0.5f, fy + 0.5f, zf - 0.05f, rx, ry, 0.22f, lo, hi, 9, 6);
+        mb_ellip(prop, fx + 0.5f + 0.2f * (hh(x, y, 419) - 0.5f), fy + 0.5f, zf - rx * 0.35f, rx, ry, rx * 0.6f, lo, hi, 10, 7); /* a bulge, half buried */
       }
       if (bi == BIOME_CAVES && r > 0.93f) { /* a vein of glowing crystal */
         float g0[3] = { 0.2f, 0.9f, 1.8f }, g1[3] = { 0.5f, 1.6f, 2.6f };
