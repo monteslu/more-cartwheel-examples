@@ -412,6 +412,7 @@ fighter_model *model_new(int def, cw_node parent) {
   m->node = cw_node_new("Node3D", def % 2 ? "Fighter1" : "Fighter0");
   cw_node_add_child(parent, m->node);
   cw_node3d_set_object(m->node, m->root);
+  cw_node_set(m->node, "interpolate", cw_val_bool(false));
   return m;
 }
 
@@ -646,8 +647,8 @@ void model_pose(fighter_model *m, const ft_game *g, int who, float dt) {
   float yaw[3] = { 0, face + m->yaw, 0 };
   t3_quat yq;
   quat_euler(yaw, &yq);
-  m->root->quaternion = yq;
-  m->root->position = (t3_vec3){ (float)f->x / 1000.0f, (float)f->y / 1000.0f, 0 };
+  cw_node3d_set_quaternion(m->node, yq);
+  cw_node3d_set_position(m->node, (t3_vec3){ (float)f->x / 1000.0f, (float)f->y / 1000.0f, 0 });
   /* secondary motion: tails lag behind the body's velocity */
   float vx = ((float)f->x - m->last_x) / 1000.0f / dt;
   m->last_x = (float)f->x;

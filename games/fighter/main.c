@@ -165,7 +165,8 @@ static void begin_match(void) {
   G.sim.cpu_level[1] = (uint8_t)G.difficulty;
   int d0 = G.sel[0], d1 = G.sel[1];
 #ifdef FIGHTER_AUTOPILOT
-  G.sim.cpu[0] = G.sim.cpu[1] = true;
+  G.sim.cpu[0] = G.sim.cpu[1] = !G.training;
+  if (G.training) G.sim.dummy = T_STAND;
 #endif
   ft_game_start(&G.sim, &G.roster, d0, d1);
   G.sim.rng = 12345u + (uint32_t)(d0 * 31 + d1 * 7 + G.sel_stage);
@@ -222,7 +223,16 @@ static void fixed(void *u, double dt) {
   (void)u; (void)dt;
   if (!cw_shell_update()) return;
 #if defined(FIGHTER_AUTOPILOT) || defined(FIGHTER_SCRIPTED)
-  if (G.state == GS_SELECT) { G.sel[0] = 0; G.sel[1] = 2; G.sel_stage = 0; G.players = 2; begin_match(); }
+  if (G.state == GS_SELECT && !getenv("FIGHTER_SELECT")) {
+    const char *e;
+    G.sel[0] = (e = getenv("FIGHTER_P1")) ? atoi(e) & 3 : 0;
+    G.sel[1] = (e = getenv("FIGHTER_P2")) ? atoi(e) & 3 : 2;
+    G.sel_stage = (e = getenv("FIGHTER_STAGE")) ? atoi(e) % STAGES : 0;
+    G.players = 2;
+    G.training = getenv("FIGHTER_TRAINING") != NULL;
+    G.show_boxes = getenv("FIGHTER_BOXES") != NULL;
+    begin_match();
+  }
 #endif
   G.d_tick++;
   if (G.state == GS_SELECT) { update_select(); return; }
