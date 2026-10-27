@@ -320,6 +320,7 @@ void model_pose(fighter_model *m, const ft_game *g, int who, float dt) {
   /* joints ease toward the target (about 3 ticks), so state changes read as motion, not snaps */
   float k = m->inited ? 1.0f - cw_exp(-dt * 28.0f) : 1.0f;
   if (f->state == S_ATTACK) k = 1.0f - cw_exp(-dt * 60.0f);
+  if (f->state == S_ATTACK && f->t > g->roster->d[f->def].mv[f->mv].su) k = 1.0f; /* active frames: the limb is where the hitbox is, no easing lag */
   for (int j = 0; j < JN; j++) for (int c = 0; c < 3; c++) m->cur[j][c] += (p.r[j][c] - m->cur[j][c]) * k;
   for (int c = 0; c < 3; c++) m->root_off[c] += (p.off[c] - m->root_off[c]) * k;
   for (int h = 0; h < 2; h++) m->fist[h] += (p.fist[h] - m->fist[h]) * (m->inited ? 1.0f - cw_exp(-dt * 30.0f) : 1.0f);

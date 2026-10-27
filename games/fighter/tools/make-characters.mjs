@@ -279,7 +279,7 @@ function build(sp) {
   const hairCut = sp.hair ?? 'crop';
   const scalp = (k = 1.06, add = 0.006, seed = 1) => {
     m.loft('hair', [...shell(0.28, 1.0, k, add, 9, { mod: tuft(seed, 0.1) })], { n: 28, bone: BI.Head, tile: 0.25 }); // crown down to the hairline
-    m.loft('hair', shell(-0.55, 0.3, k, add, 6, { mod: tuft(seed + 3, 0.08) }), { n: 18, arc: [BACK - 2.05, BACK + 2.05], bone: BI.Head, tile: 0.25 }); // the sides and back
+    m.loft('hair', shell(-0.4, 0.3, k, add, 6, { mod: tuft(seed + 3, 0.08) }), { n: 18, arc: [BACK - 1.8, BACK + 1.8], bone: BI.Head, tile: 0.25 }); // the sides and back
   };
   // swept clumps over the scalp break up the outline (a smooth shell reads as a helmet)
   const clumps = (rows, len, rad, sweep, seed) => {
@@ -457,30 +457,50 @@ function writeFace(sp) {
   writeSet(TEX, 'face_' + sp.name, face({ size: sp.lod ? 128 : 512, name: sp.name, skin, eyes: sp.eyes ? hexRaw(sp.eyes) : [0.28, 0.17, 0.09], brow: hair.map((c) => c * 0.5), stubble: sp.stubble, scar: sp.scar, frown: sp.frown, war: sp.war ? hexRaw(sp.war) : null, seed: sp.name.length, lip: sp.lip ? hexRaw(sp.lip) : undefined }), 1.5);
 }
 // material names start with a class the game reads (skin_, cloth_, hair_, ...) to give them sheen and softer specular
+// The material table: every garment slot names its fabric, and each fabric has one explicit class (the game's shading,
+// secondary.c), texture set and roughness. Ordinary cloth (cotton, canvas, denim, knit, wool) is matte; only leather,
+// vinyl, rubber, metal and plastic trims are allowed a gloss; skin sits at a moderate roughness.
+// rough is the glTF roughness factor: it multiplies the texture's own roughness (cloth sets about 0.88, leather about
+// 0.5, skin about 0.58), so the effective values are: cloth 0.85-0.95, leather 0.45-0.6, vinyl about 0.3, skin about 0.55.
+export const FABRICS = {
+  cotton: { cls: 'cloth', set: 'fab_cloth', rough: 1, normal: 0.45 },
+  canvas: { cls: 'cloth', set: 'fab_gi', rough: 1, normal: 0.6 },
+  denim: { cls: 'cloth', set: 'fab_denim', rough: 1, normal: 0.5 },
+  knit: { cls: 'cloth', set: 'fab_knit', rough: 1, normal: 0.5 },
+  wool: { cls: 'cloth', set: 'fab_knit', rough: 1, normal: 0.4 },
+  leather: { cls: 'leather', set: 'fab_leather', rough: 1, normal: 0.6 },
+  vinyl: { cls: 'leather', set: 'fab_leather', rough: 0.6, normal: 0.3 },
+  rubber: { cls: 'rubber', set: 'fab_cloth', rough: 0.75, normal: 0.3 },
+  metal: { cls: 'metal', set: 'paint_metal', rough: 0.4, metal: 1 },
+  plastic: { cls: 'gloss', set: 'fab_leather', rough: 0.3, metal: 0 },
+  skin: { cls: 'skin', set: 'fab_skin', rough: 0.95, normal: 0.7 },
+  hair: { cls: 'hair', set: 'fab_hair', rough: 1, normal: 1.2 },
+};
+// old spec words to fabrics
+const FAB_OF = { cloth: 'cotton', gi: 'canvas', denim: 'denim', knit: 'knit', leather: 'leather', vinyl: 'vinyl', wool: 'wool' };
 function materials(glb, sp) {
   const c = Object.fromEntries(Object.entries(sp.colors).map(([k, v]) => [k, Array.isArray(v) ? v : hex(v)]));
-  const d = TEX, P = (n, cls, set, o) => [n, glb.pbr(cls + '_' + n, d, set, o)];
-  const fab = (k) => (k === 'gi' ? 'fab_gi' : k === 'denim' ? 'fab_denim' : k === 'knit' ? 'fab_knit' : k === 'leather' ? 'fab_leather' : 'fab_cloth');
+  // garment slot -> fabric, explicit per slot (a spec may override with shirtFab, pantsFab, outerFab, hatFab)
+  const slot = {
+    shirt: FAB_OF[sp.shirtFab ?? 'cloth'], pants: FAB_OF[sp.pantsFab ?? 'denim'], outer: FAB_OF[sp.outerFab ?? 'leather'], hat: FAB_OF[sp.hatFab ?? 'cloth'],
+    band: 'cotton', wrap: 'cotton', mask: 'cotton', shoe: 'leather', sole: 'rubber', belt: sp.obi ? 'canvas' : 'leather', glove: 'leather', pad: 'vinyl', harness: 'leather',
+    buckle: 'metal', metal: 'metal', helmet: sp.hair === 'hardhat' ? 'plastic' : 'metal', shades: 'plastic',
+  };
+  const P = (n, fab, o = {}) => { const F = FABRICS[fab]; return [n, glb.pbr(F.cls + '_' + n, TEX, o.set === undefined ? F.set : o.set, { rough: F.rough, normal: F.normal, metal: F.metal ?? 0, ...o })]; };
+  const G = (n, tint, o = {}) => P(n, slot[n], { tint, ...o });
   return Object.fromEntries([
-    P('skin', 'skin', 'fab_skin', { tint: c.skin, rough: 1, normal: 0.7 }),
-    P('face', 'skin', 'face_' + sp.name, { clamp: true, rough: 1, normal: 1 }),
-    P('shirt', sp.shirtFab === 'leather' ? 'leather' : 'cloth', fab(sp.shirtFab ?? 'cloth'), { tint: c.shirt, rough: 1, normal: 0.45 }),
-    P('pants', sp.pantsFab === 'leather' ? 'leather' : 'cloth', fab(sp.pantsFab ?? 'denim'), { tint: c.pants, rough: 1, normal: 0.5 }),
-    P('outer', (sp.outerFab ?? 'leather') === 'leather' ? 'leather' : 'cloth', fab(sp.outerFab ?? 'leather'), { tint: c.outer ?? c.accent, rough: 1, normal: 0.6, doubleSided: true }),
-    P('shoe', 'leather', 'fab_leather', { tint: c.shoes, rough: 0.85 }), P('sole', 'cloth', 'fab_leather', { tint: [0.035, 0.035, 0.035], rough: 1 }),
-    P('belt', 'leather', 'fab_leather', { tint: c.belt || [0.03, 0.025, 0.02], rough: 0.9 }), P('buckle', 'metal', 'paint_metal', { tint: [0.85, 0.75, 0.45], rough: 0.45 }),
-    P('glove', 'leather', 'fab_leather', { tint: c.glove ?? c.accent, rough: 0.7 }),
-    P('hair', 'hair', 'fab_hair', { tint: c.hair, rough: 1, normal: 1.2, doubleSided: true }), P('stubble', 'hair', 'fab_hair', { tint: (c.roots ?? c.hair).map((x, i) => x * 0.35 + c.skin[i] * 0.45), rough: 1 }),
-    P('hat', sp.hatFab === 'knit' ? 'cloth' : 'cloth', fab(sp.hatFab ?? 'cloth'), { tint: c.hat ?? c.accent, rough: 1 }),
-    P('band', 'cloth', 'fab_cloth', { tint: c.band ?? c.accent, rough: 1 }),
-    P('wrap', 'cloth', 'fab_cloth', { tint: c.wrap ?? [0.9, 0.88, 0.84], rough: 1, normal: 0.8 }),
-    P('harness', 'leather', 'fab_leather', { tint: c.harness ?? [0.08, 0.06, 0.05], rough: 0.75 }),
-    P('trim', 'gloss', null, { tint: c.accent, rough: 0.3, emissive: (c.glow ?? [0, 0, 0]).map((x) => x * 0.6) }),
-    P('mask', 'cloth', 'fab_cloth', { tint: c.mask ?? c.accent, rough: 1 }), P('pad', 'leather', 'fab_leather', { tint: c.pad ?? c.accent, rough: 0.7 }),
-    P('helmet', sp.hair === 'hardhat' ? 'gloss' : 'metal', 'paint_metal', { tint: c.helmet ?? c.hair, rough: sp.hair === 'hardhat' ? 0.35 : 0.5, metal: sp.hair === 'hardhat' ? 0 : 1 }), P('metal', 'metal', 'paint_metal', { tint: c.metal ?? [0.5, 0.52, 0.55], rough: 0.4 }),
-    P('shades', 'gloss', 'fab_leather', { tint: [0.015, 0.015, 0.02], rough: 0.15, metal: 0 }),
-    P('reflect', 'gloss', 'fab_cloth', { tint: [0.7, 0.72, 0.68], rough: 0.4, emissive: [0.22, 0.24, 0.2] }),
-    P('glow', 'gloss', null, { tint: [0.1, 0.4, 0.5], rough: 0.2, emissive: c.glow ?? [0.2, 1.4, 1.8] }),
+    P('skin', 'skin', { tint: c.skin }),
+    P('face', 'skin', { set: 'face_' + sp.name, clamp: true, normal: 1 }),
+    G('shirt', c.shirt), G('pants', c.pants), G('outer', c.outer ?? c.accent, { doubleSided: true }),
+    G('shoe', c.shoes), G('sole', [0.035, 0.035, 0.035]), G('belt', c.belt || [0.03, 0.025, 0.02]), G('buckle', [0.85, 0.75, 0.45]),
+    G('glove', c.glove ?? c.accent),
+    P('hair', 'hair', { tint: c.hair, doubleSided: true }), P('stubble', 'hair', { tint: (c.roots ?? c.hair).map((x, i) => x * 0.35 + c.skin[i] * 0.45) }),
+    G('hat', c.hat ?? c.accent), G('band', c.band ?? c.accent), G('wrap', c.wrap ?? [0.9, 0.88, 0.84], { normal: 0.8 }),
+    G('harness', c.harness ?? [0.08, 0.06, 0.05]), G('mask', c.mask ?? c.accent), G('pad', c.pad ?? c.accent),
+    G('helmet', c.helmet ?? c.hair), G('metal', c.metal ?? [0.5, 0.52, 0.55]), G('shades', [0.015, 0.015, 0.02]),
+    P('trim', 'plastic', { set: null, tint: c.accent, emissive: (c.glow ?? [0, 0, 0]).map((x) => x * 0.6) }),
+    P('reflect', 'plastic', { set: 'fab_cloth', tint: [0.7, 0.72, 0.68], rough: 0.5, emissive: [0.22, 0.24, 0.2] }),
+    P('glow', 'plastic', { set: null, tint: [0.1, 0.4, 0.5], rough: 0.2, emissive: c.glow ?? [0.2, 1.4, 1.8] }),
   ]);
 }
 
@@ -535,9 +555,9 @@ export const CROWD = [
   { ...C, name: 'crowd3', hair: 'crop', top: 'longsleeve', outer: true, outerKind: 'jacket', outerFab: 'leather', openFront: 0.35, bottom: 'jeans', beard: true, colors: { skin: 0xd8a882, shirt: 0x2a2a2a, pants: 0x2c4a80, shoes: 0x3b2618, hair: 0x5a3a20, accent: 0x202020, outer: 0x3a2418 } },
   { ...C, name: 'crowd4', scale: 0.95, shoulder: 0.9, bulk: 0.92, hair: 'long', hairRoot: [0, 0.08, -0.12], hairB: [0, -0.16, -0.02], bust: 0.9, hips: 1.08, jaw: 0.72, top: 'tank', bottom: 'jeans', lip: 0x902838, colors: { skin: 0x9a6a48, shirt: 0xc02858, pants: 0x202838, shoes: 0x101010, hair: 0x101010, accent: 0xc02858 } },
   { ...C, name: 'crowd5', scale: 1.05, bulk: 1.15, shoulder: 1.1, hair: 'mohawk', mohawk: 0.9, top: 'none', outer: true, outerKind: 'vest', outerFab: 'leather', openFront: 0.55, bottom: 'tight', pantsFab: 'cloth', boots: true, colors: { skin: 0xe0b890, shirt: 0x2a2a30, pants: 0x3a2a4a, shoes: 0x101010, hair: 0xd03060, accent: 0xa0a0b0, outer: 0x18181c } },
-  { ...C, name: 'crowd6', hair: 'crop', top: 'none', outer: true, outerKind: 'gi', outerFab: 'gi', openFront: 0.28, sleeves: 'three', bottom: 'gi', pantsFab: 'gi', obi: true, colors: { skin: 0xd09a70, outer: 0xe8e4d8, pants: 0xe4dfd2, shoes: 0x2a1a14, hair: 0x1a1410, accent: 0x202020, belt: 0x2a5a2a } },
-  { ...C, name: 'crowd7', scale: 0.95, shoulder: 0.9, bulk: 0.9, hair: 'ponytail', hairRoot: [0, 0.2, -0.1], hairB: [0, -0.13, -0.06], bust: 0.7, hips: 1.05, jaw: 0.75, top: 'none', outer: true, outerKind: 'gi', outerFab: 'gi', openFront: 0.16, sleeves: 'three', bottom: 'gi', pantsFab: 'gi', obi: true, colors: { skin: 0xf0c8a8, outer: 0xe8e4d8, pants: 0xe4dfd2, shoes: 0x2a1a14, hair: 0x101010, accent: 0x202020, belt: 0x8a5a20 } },
-  { ...C, name: 'crowd8', scale: 1.02, hair: 'none', beard: true, top: 'none', outer: true, outerKind: 'gi', outerFab: 'gi', openFront: 0.22, sleeves: 'long', bottom: 'gi', pantsFab: 'gi', obi: true, colors: { skin: 0xb07a52, outer: 0x2a2a34, pants: 0x2a2a34, shoes: 0x1a1a14, hair: 0xd0d0d0, accent: 0x202020, belt: 0x101010 } },
+  { ...C, name: 'crowd6', hair: 'crop', top: 'none', outer: true, outerKind: 'gi', outerFab: 'gi', openFront: 0.1, sleeves: 'three', bottom: 'gi', pantsFab: 'gi', obi: true, colors: { skin: 0xd09a70, outer: 0xe8e4d8, pants: 0xe4dfd2, shoes: 0x2a1a14, hair: 0x1a1410, accent: 0x202020, belt: 0x2a5a2a } },
+  { ...C, name: 'crowd7', scale: 0.95, shoulder: 0.9, bulk: 0.9, hair: 'ponytail', hairRoot: [0, 0.2, -0.1], hairB: [0, -0.13, -0.06], bust: 0.7, hips: 1.05, jaw: 0.75, top: 'none', outer: true, outerKind: 'gi', outerFab: 'gi', openFront: 0.08, sleeves: 'three', bottom: 'gi', pantsFab: 'gi', obi: true, colors: { skin: 0xf0c8a8, outer: 0xe8e4d8, pants: 0xe4dfd2, shoes: 0x2a1a14, hair: 0x101010, accent: 0x202020, belt: 0x8a5a20 } },
+  { ...C, name: 'crowd8', scale: 1.02, hair: 'none', beard: true, top: 'none', outer: true, outerKind: 'gi', outerFab: 'gi', openFront: 0.1, sleeves: 'long', bottom: 'gi', pantsFab: 'gi', obi: true, colors: { skin: 0xb07a52, outer: 0x2a2a34, pants: 0x2a2a34, shoes: 0x1a1a14, hair: 0xd0d0d0, accent: 0x202020, belt: 0x101010 } },
 ];
 const only = process.argv.slice(2);
 for (const s of [...SPECS, ...CROWD]) if ((!only.length && !s.lod) || only.includes(s.name) || (only.includes('crowd') && s.lod)) emit(s);

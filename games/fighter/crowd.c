@@ -49,6 +49,7 @@ void crowd_load(crowd *c, int stage, cw_node parent) {
     snprintf(nm, sizeof nm, "Crowd%d", i);
     m->node = cw_node_new("Node3D", nm);
     cw_node_add_child(parent, m->node);
+    char_shade(m->g->scene);
     cw_node3d_set_object(m->node, m->g->scene);
     cw_node3d_set_position(m->node, (t3_vec3){ s->x, s->y, s->z });
     m->x = s->x; m->z = s->z;

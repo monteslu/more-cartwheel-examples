@@ -8,7 +8,7 @@
  * Only + - * / and sqrt: the same on every host.
  *
  * Shading: the characters' glb splits its meshes by material class (BodySkin, BodyCloth, BodyLeather, BodyHair). Skin,
- * cloth and hair become physical materials with sheen (a soft scattering rim on skin, the fuzz of fabric, the sheen of
+ * cloth and hair become physical materials with sheen (a soft scattering rim on skin, a low velvet-like lift on matte cloth, the sheen of
  * hair) and a lower specular so skin stops reading as plastic; leather gets a thin clear coat. */
 #include <math.h>
 #include <string.h>
@@ -144,19 +144,21 @@ static void shade_material(t3_mesh *m, int i, shade_class k) {
   t3_color c = old->color;
   switch (k) {
   case SH_SKIN: /* light scattered under the skin shows as a warm soft rim; little mirror-like specular */
-    p->sheen = 0.7f, p->sheen_roughness = 0.5f;
-    p->sheen_color = (t3_color){ 0.1f + 0.35f * c.r, 0.03f + 0.15f * c.g, 0.02f + 0.1f * c.b };
-    p->specular_intensity = 0.45f, p->ior = 1.4f;
+    p->sheen = 0.35f, p->sheen_roughness = 0.6f;
+    p->sheen_color = (t3_color){ 0.08f + 0.3f * c.r, 0.03f + 0.12f * c.g, 0.02f + 0.08f * c.b };
+    p->specular_intensity = 0.4f, p->ior = 1.4f; /* roughness stays the table's moderate value (about 0.55 with the map) */
     break;
-  case SH_CLOTH:
-    p->sheen = 0.6f, p->sheen_roughness = 0.65f;
-    p->sheen_color = (t3_color){ 0.02f + 0.55f * c.r, 0.02f + 0.55f * c.g, 0.02f + 0.55f * c.b };
-    p->specular_intensity = 0.35f;
+  case SH_CLOTH: /* matte: no sharp highlight, only a soft velvet-like lift at grazing angles; never a clear coat */
+    p->roughness = fmaxf(p->roughness, 0.95f);
+    p->sheen = 0.25f, p->sheen_roughness = 0.9f;
+    p->sheen_color = (t3_color){ 0.01f + 0.25f * c.r, 0.01f + 0.25f * c.g, 0.01f + 0.25f * c.b };
+    p->specular_intensity = 0.12f;
+    p->clearcoat = 0;
     break;
   case SH_HAIR:
-    p->sheen = 0.6f, p->sheen_roughness = 0.35f;
-    p->sheen_color = (t3_color){ 0.06f + 0.5f * c.r, 0.05f + 0.5f * c.g, 0.04f + 0.5f * c.b };
-    p->specular_intensity = 0.6f;
+    p->sheen = 0.35f, p->sheen_roughness = 0.5f;
+    p->sheen_color = (t3_color){ 0.04f + 0.35f * c.r, 0.03f + 0.35f * c.g, 0.03f + 0.35f * c.b };
+    p->specular_intensity = 0.35f;
     break;
   case SH_LEATHER:
     p->clearcoat = 0.35f, p->clearcoat_roughness = 0.38f;

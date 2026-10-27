@@ -46,3 +46,10 @@ standard+map+rep+nmap+ao+rmap+mmap+skin+senv+ds+l1801
 standard+map+rep+nmap+ao+rmap+mmap+skin+senv+l1801
 standard+shadow+senv+l1801+s100
 standard+map+rep+nmap+ao+rmap+mmap+shadow+skin+senv+l1801+s100
+physical+map+nmap+ao+rmap+mmap+skin+senv+sheen+l1801
+physical+map+rep+nmap+ao+rmap+mmap+skin+senv+cc+l1801
+physical+map+rep+nmap+ao+rmap+mmap+skin+senv+ds+cc+l1801
+physical+map+rep+nmap+ao+rmap+mmap+skin+senv+ds+sheen+l1801
+physical+map+rep+nmap+ao+rmap+mmap+skin+senv+sheen+l1801
+physical+map+rep+nmap+ao+rmap+mmap+shadow+skin+senv+ds+cc+l1801+s100
+standard+shadow+skin+senv+l1801+s100
