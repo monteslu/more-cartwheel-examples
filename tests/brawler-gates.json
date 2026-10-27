@@ -146,15 +146,28 @@
       "game.proj",
       "game.rigs"
     ],
-    "expect": {},
+    "expect": {
+      "game.ticks": 1382,
+      "game.kills": 6,
+      "game.score": 6430,
+      "game.hash": 350711934,
+      "game.wave": 1,
+      "game.hits": 18,
+      "game.first_hit": 295,
+      "game.deaths": 0,
+      "game.unfair": 0,
+      "game.token_leak": 0,
+      "game.nan": 0,
+      "game.blocks": 0
+    },
     "webgpu": {
       "hosts": [
         "native",
         "romdev",
         "chromium"
       ],
-      "vsGl": 0.05,
-      "note": "the same dual cart on romdev and Chromium against native WebGPU (state exact). vsGl 5 percent: GL and WebGPU differ by up to 4 percent of pixels on the brick and cracked-asphalt detail (texture edges; the characters and the game state are identical), see findings/brawler.md"
+      "vsGl": 0.12,
+      "note": "state exact on every host. vsGl 12 percent: on the docks the corrugated walls (32 fine ribs per tile under a grazing rim light) differ on 10.6 percent of pixels between GL and WebGPU, the same texture-sampling difference as the brick in the other gates (findings/brawler.md, engine note 1); characters and state are identical"
     }
   },
   {
@@ -190,7 +203,18 @@
       "game.proj",
       "game.rigs"
     ],
-    "expect": {},
+    "expect": {
+      "game.ticks": 2175,
+      "game.kills": 3,
+      "game.score": 11910,
+      "game.hash": 4200580302,
+      "game.wave": 4,
+      "game.deaths": 0,
+      "game.unfair": 0,
+      "game.token_leak": 0,
+      "game.nan": 0,
+      "game.boss_phase": 2
+    },
     "webgpu": {
       "hosts": [
         "native",
