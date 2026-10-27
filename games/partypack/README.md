@@ -1,0 +1,67 @@
+# Party Pack (working title)
+
+A party game for one to four players on one shared screen. Empty seats are
+filled by CPU players, so you can play alone or with friends, and every
+mini-game can be played by four CPUs on their own.
+
+## How it plays
+
+The title, player join, pause and settings screens are the engine's game
+shell: each pad joins with A, Start pauses.
+
+After joining you get the hub:
+
+- **Party Tournament**: 4, 6 or 8 rounds. Each round is one mini-game picked
+  from the ones you have unlocked. First place moves four spaces on the board,
+  second three, third two, fourth one; the last round counts double, and the
+  first player to land on a +2 space takes the bonus. The player furthest
+  along when the rounds run out wins.
+- **Free Play**: pick any unlocked mini-game and play it on its own.
+- **Trophy Room**: party points, tournament wins per seat, best scores.
+- **Rounds** and **CPU Skill** (easy, medium, hard) are set on the menu.
+
+Every mini-game opens with a card (how to play, press A to be ready), a
+3-2-1 countdown, play, a finish banner and results.
+
+## Mini-games
+
+| Name | Kind | Idea | Unlock |
+|---|---|---|---|
+| Hurdle Dash | 2D | jump rocks, duck bars, three lives | open |
+| Echo | 2D | repeat a growing pattern on A B X Y | open |
+| Stack Attack | 2D physics | crane and blocks, tallest standing tower | 4 points |
+| Blast Ring | 3D physics | bombs shove you, the ring shrinks | 8 points |
+| Beat Box | 2D rhythm | hit the notes as they land | 12 points |
+| Loop Racers | 3D racing | four laps, hazards on the short lane | 16 points |
+| Quick Quiz | 2D trivia | four answers on A B X Y | 20 points |
+| Raft Rush | 3D water | paddle a raft for floating buoys | open |
+
+Party points are the lifetime total of the points people (not CPUs) earn.
+Everything is saved by the shell.
+
+## Controls
+
+Stick or d-pad or arrows / WASD move. A (Space, Enter) is the main button,
+B (Shift) the second, X (Z) and Y (X) the others. Player 1 can also use the
+keyboard. Each mini-game's card names the buttons it uses.
+
+## Building
+
+    CARTWHEEL_ENGINE=<engine checkout> scripts/fetch-deps.sh
+    scripts/build.sh                 # native, cart, cart-wgpu
+    scripts/shot.sh partypack_auto 900 out/shot.png   # a screenshot of four CPUs playing
+
+`partypack_auto` plays a whole tournament with four CPU players and no input
+(tests, screenshots, soak runs). Set `PP_GAME=<id>` (hurdle, echo, stack,
+blast, beatbox, loop, quiz, raft) to repeat one mini-game.
+
+Tests: `node deps/cartwheel-engine/tests/gate.mjs --gates-file partypack-gates.json`
+with `CW_PROJECT_ROOT` set to the repository (`tests/partypack-gates.json`).
+
+## Adding a mini-game
+
+Write an `mg_def` (see `src/mg.h`: start, tick, think for the CPU, draw) in
+its own `src/g_*.c`, add it to the list in `src/main.c`. A game reads
+`ctx->in[p]` for every player, never a pad, so CPUs and people are the same
+to it. 3D games name a scene in `assets/scenes/` and build the rest in code
+with the helpers in `src/common3d.c`.
