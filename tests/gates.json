@@ -98,7 +98,65 @@
       "game.hash",
       "game.state",
       "game.boss"
-    ]
+    ],
+    "expect": {
+      "game.ticks": 900,
+      "game.wave": 1,
+      "game.enemies": 25,
+      "game.kills": 65,
+      "game.alive_players": 2,
+      "player.hp": [
+        100,
+        100,
+        0,
+        0
+      ],
+      "player.level": [
+        2,
+        1,
+        0,
+        0
+      ],
+      "player.score": [
+        390,
+        288,
+        0,
+        0
+      ],
+      "player.kills": [
+        37,
+        28,
+        0,
+        0
+      ],
+      "player.x": [
+        276,
+        -1107,
+        0,
+        0
+      ],
+      "player.y": [
+        552,
+        -586,
+        0,
+        0
+      ],
+      "game.hash": 2862193817,
+      "game.state": 0,
+      "game.boss": 0
+    },
+    "hosts": [
+      "native"
+    ],
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "maxGt16": 0.25,
+      "vsGl": 0.25
+    }
   },
   {
     "name": "hordeshooter-pace",
@@ -121,6 +179,64 @@
       "game.hash",
       "game.state",
       "game.boss"
-    ]
+    ],
+    "expect": {
+      "game.ticks": 2400,
+      "game.wave": 2,
+      "game.enemies": 84,
+      "game.kills": 200,
+      "game.alive_players": 2,
+      "player.hp": [
+        100,
+        100,
+        0,
+        0
+      ],
+      "player.level": [
+        2,
+        2,
+        0,
+        0
+      ],
+      "player.score": [
+        1204,
+        858,
+        0,
+        0
+      ],
+      "player.kills": [
+        118,
+        82,
+        0,
+        0
+      ],
+      "player.x": [
+        79,
+        -662,
+        0,
+        0
+      ],
+      "player.y": [
+        693,
+        645,
+        0,
+        0
+      ],
+      "game.hash": 1441199322,
+      "game.state": 0,
+      "game.boss": 0
+    },
+    "hosts": [
+      "native"
+    ],
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "maxGt16": 0.25,
+      "vsGl": 0.25
+    }
   }
 ]
