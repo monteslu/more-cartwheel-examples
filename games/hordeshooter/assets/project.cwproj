@@ -1,0 +1,21 @@
+; hordeshooter project settings
+name = Horde
+app = hordeshooter
+main_scene = scenes/arena.cwscene
+version = 0.1.0
+app_id = org.cartwheel.hordeshooter
+; gameplay actions; the menus' (ui_*, pause) come from the engine's shell
+input.move_left = key:a, pad:left, axis:lx-
+input.move_right = key:d, pad:right, axis:lx+
+input.move_up = key:w, pad:up, axis:ly-
+input.move_down = key:s, pad:down, axis:ly+
+input.aim_left = key:left, axis:rx-
+input.aim_right = key:right, axis:rx+
+input.aim_up = key:up, axis:ry-
+input.aim_down = key:down, axis:ry+
+input.fire = key:space, mouse:left, pad:south, axis:rt+@0.4
+input.bomb = key:lshift, key:e, pad:lshoulder, pad:east
+render.width = 1280
+render.height = 720
+render.msaa = 1
+render.vsync = true

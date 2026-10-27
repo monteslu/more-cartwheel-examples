@@ -1,0 +1,8 @@
+
+depth+instbig+xcluster
+standard+map+rep+shadow+senv+l1001+xcluster
+standard+vcol+instbig+shadow+senv+icol+l1001+xcluster
+standard+instbig+shadow+senv+icol+l1001+xcluster
+standard+instbig+senv+icol+l1001+xcluster
+basic+trans+instbig+ds+icol
+standard+senv+l1001+xcluster

@@ -1,0 +1,10 @@
+; hordeshooter's release builds: node <host sdk>/tools/cwexport.mjs --project games/hordeshooter --preset <preset>
+name = "Horde"
+app = "hordeshooter"
+version = "0.1.0"
+app_id = "org.cartwheel.hordeshooter"
+export.linux-x64.platform = "linux-x64"
+export.linux-arm64.platform = "linux-arm64"
+export.windows-x64.platform = "windows-x64"
+export.macos-arm64.platform = "macos"
+export.android-arm64.platform = "android-arm64"
