@@ -30,7 +30,19 @@
       "game.proj",
       "game.rigs"
     ],
-    "expect": {},
+    "expect": {
+      "game.ticks": 1124,
+      "game.kills": 5,
+      "game.score": 6150,
+      "game.hash": 236753779,
+      "game.wave": 1,
+      "game.hits": 17,
+      "game.first_hit": 309,
+      "game.deaths": 0,
+      "game.unfair": 0,
+      "game.token_leak": 0,
+      "game.nan": 0
+    },
     "webgpu": {
       "hosts": [
         "native",
@@ -75,7 +87,19 @@
       "game.proj",
       "game.rigs"
     ],
-    "expect": {},
+    "expect": {
+      "game.ticks": 1443,
+      "game.kills": 3,
+      "game.score": 3080,
+      "game.hash": 921368584,
+      "game.wave": 1,
+      "game.hits": 8,
+      "game.first_hit": 261,
+      "game.deaths": 0,
+      "game.unfair": 0,
+      "game.token_leak": 0,
+      "game.nan": 0
+    },
     "webgpu": {
       "hosts": [
         "native",
