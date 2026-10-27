@@ -194,7 +194,7 @@ static void init(void *user) {
   cw_debug_command("cam", "cam <zoom> [dx dz]: camera zoom toward the street", cmd_cam);
   cw_debug_command("spawn", "spawn <3-11> [dx dz]: an enemy near the camera", cmd_spawn);
   cw_debug_command("freeze", "freeze <0|1>: enemies and bots hold still", cmd_freeze);
-  cw_shell_start(3);
+  { const char *np = getenv("BRAWLER_PLAYERS"); cw_shell_start(np ? atoi(np) : 3); } /* BRAWLER_PLAYERS: 1 to 4 bots (native perf runs) */
 #endif
 }
 
@@ -225,6 +225,15 @@ static void fixed_update(void *user, double dt) {
     in[i].grab = cw_action_just_pressed(i, a_grab), in[i].special = cw_action_just_pressed(i, a_special);
 #endif
   }
+#ifdef BRAWLER_AUTOPILOT
+  { /* BRAWLER_CROWD=N (native perf runs): keep N enemies on the street, a full wave all the time */
+    static int crowd_n = -1;
+    if (crowd_n < 0) { const char *c = getenv("BRAWLER_CROWD"); crowd_n = c ? atoi(c) : 0; }
+    int alive = 0;
+    for (int k = 0; k < MAXE; k++) if (W.e[k].used && W.e[k].st != S_DEAD) alive++;
+    if (crowd_n && W.phase == PH_PLAY && alive < crowd_n && W.tick % 20 == 0) ent_spawn_enemy(D_THUG + (W.tick / 20) % 5, W.cam_x + ((W.tick / 20) & 1 ? 7.5f : -7.5f), (float)((W.tick / 20) % 5) - 2.0f);
+  }
+#endif
   sim_tick(in);
   chars_secondary();
   /* the stage is done: the next one, or the end */

@@ -790,7 +790,7 @@ export const SPECS = [
     colors: { skin: 0xe0b890, shirt: 0xf0ece0, pants: 0xe8e4d8, shoes: 0x0a0a0a, hair: 0x1a1a1a, accent: 0xe8c840, outer: 0xb01a28, hat: 0x141414, band: 0xb01a28 } },
   { name: 'colossus', scar: true, frown: true, scale: 1.62, width: 1.7, chest: 1.2, sw: 0.27, hw: 0.115, arm: 1.6, leg: 1.35, head: 1.0, hand: 1.5, jaw: 1.5, neck: 1.5, hair: 'helmet', pads: true, padMat: 'metal', armor: true, bracers: true, gloves: true, boots: true, belt: true,
     top: 'longsleeve', shirtFab: 'leather', bottom: 'cargo', pantsFab: 'leather',
-    colors: { skin: 0x7a8a8a, shirt: 0x26303a, pants: 0x20282e, shoes: 0x0e1014, hair: 0x6a7a8a, accent: 0x40c0d0, metal: 0x5a6a78, helmet: 0x4a5866, glove: 0x1a2028, belt: 0x101418 }, eyes: 0x40e0ff },
+    colors: { skin: 0x8a9696, shirt: 0x5a4030, pants: 0x3e3c40, shoes: 0x1a1612, hair: 0x6a7a8a, accent: 0x40c0d0, metal: 0xa0acb8, helmet: 0x8a96a2, glove: 0x4a3426, belt: 0x2a1c14, pad: 0x9aa6b2 }, eyes: 0x40e0ff },
 ];
 const only = process.argv.slice(2);
 for (const s of SPECS) if (!only.length || only.includes(s.name)) emit(s);
