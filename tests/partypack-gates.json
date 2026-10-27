@@ -27,6 +27,15 @@
       ],
       "game.hash": 3018185753,
       "game.points_total": 0
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "maxGt16": 0.01,
+      "vsGl": 0.05
     }
   },
   {
@@ -48,7 +57,16 @@
       "game.round",
       "game.mg",
       "game.points"
-    ]
+    ],
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "maxGt16": 0.01,
+      "vsGl": 0.05
+    }
   },
   {
     "name": "partypack-join",
@@ -72,7 +90,16 @@
       "game.state": 3,
       "game.humans": 2
     },
-    "note": "a second pad takes a seat on the board (Y opens the join screen, A joins, Start confirms): two people play; control: the pad never presses A, one person"
+    "note": "a second pad takes a seat on the board (Y opens the join screen, A joins, Start confirms): two people play; control: the pad never presses A, one person",
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "maxGt16": 0.01,
+      "vsGl": 0.05
+    }
   },
   {
     "name": "partypack-drop",
@@ -96,7 +123,16 @@
       "game.state": 3,
       "game.humans": 1
     },
-    "note": "a pad leaves with B, another joins, then it is unplugged and its seat frees by itself: one person is left; control: that pad stays plugged in, two people"
+    "note": "a pad leaves with B, another joins, then it is unplugged and its seat frees by itself: one person is left; control: that pad stays plugged in, two people",
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "maxGt16": 0.01,
+      "vsGl": 0.05
+    }
   },
   {
     "name": "partypack-join-press",
@@ -120,7 +156,16 @@
       "game.state": 3,
       "game.humans": 2
     },
-    "note": "PP16 one-press join: on the board a second pad presses A once and plays from then on (no join screen); control: it presses B, one person"
+    "note": "PP16 one-press join: on the board a second pad presses A once and plays from then on (no join screen); control: it presses B, one person",
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "maxGt16": 0.01,
+      "vsGl": 0.05
+    }
   },
   {
     "name": "partypack-game-hurdle",
@@ -158,6 +203,12 @@
         7
       ],
       "game.hash": 345231733
+    },
+    "webgpu": {
+      "hosts": [
+        "native"
+      ],
+      "vsGl": 0.05
     }
   },
   {
@@ -196,6 +247,12 @@
         14
       ],
       "game.hash": 3789681255
+    },
+    "webgpu": {
+      "hosts": [
+        "native"
+      ],
+      "vsGl": 0.05
     }
   },
   {
@@ -234,6 +291,12 @@
         2
       ],
       "game.hash": 1338107420
+    },
+    "webgpu": {
+      "hosts": [
+        "native"
+      ],
+      "vsGl": 0.05
     }
   },
   {
@@ -272,6 +335,12 @@
         1
       ],
       "game.hash": 3922103096
+    },
+    "webgpu": {
+      "hosts": [
+        "native"
+      ],
+      "vsGl": 0.05
     }
   },
   {
@@ -310,6 +379,12 @@
         7
       ],
       "game.hash": 3302209870
+    },
+    "webgpu": {
+      "hosts": [
+        "native"
+      ],
+      "vsGl": 0.05
     }
   },
   {
@@ -348,6 +423,12 @@
         7
       ],
       "game.hash": 2270606427
+    },
+    "webgpu": {
+      "hosts": [
+        "native"
+      ],
+      "vsGl": 0.05
     }
   },
   {
@@ -386,6 +467,12 @@
         8
       ],
       "game.hash": 362587856
+    },
+    "webgpu": {
+      "hosts": [
+        "native"
+      ],
+      "vsGl": 0.05
     }
   },
   {
@@ -424,6 +511,12 @@
         5
       ],
       "game.hash": 2610167409
+    },
+    "webgpu": {
+      "hosts": [
+        "native"
+      ],
+      "vsGl": 0.05
     }
   },
   {
@@ -462,6 +555,12 @@
         5
       ],
       "game.hash": 1360226592
+    },
+    "webgpu": {
+      "hosts": [
+        "native"
+      ],
+      "vsGl": 0.05
     }
   },
   {
@@ -500,6 +599,12 @@
         1
       ],
       "game.hash": 705133566
+    },
+    "webgpu": {
+      "hosts": [
+        "native"
+      ],
+      "vsGl": 0.05
     }
   },
   {
@@ -538,6 +643,12 @@
         4
       ],
       "game.hash": 2639598356
+    },
+    "webgpu": {
+      "hosts": [
+        "native"
+      ],
+      "vsGl": 0.05
     }
   }
 ]
