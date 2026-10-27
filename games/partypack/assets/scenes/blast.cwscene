@@ -82,18 +82,6 @@ color = color(0.3, 0.9, 1, 1)
 energy = 16
 range = 10
 
-[node name="PillarLightB" parent="." type="OmniLight3D"]
-position = vec3(8.5, 5, -8.5)
-color = color(0.3, 0.9, 1, 1)
-energy = 16
-range = 10
-
-[node name="PillarLightC" parent="." type="OmniLight3D"]
-position = vec3(-8.5, 5, 8.5)
-color = color(1, 0.4, 0.8, 1)
-energy = 16
-range = 10
-
 [node name="PillarLightD" parent="." type="OmniLight3D"]
 position = vec3(8.5, 5, 8.5)
 color = color(1, 0.4, 0.8, 1)

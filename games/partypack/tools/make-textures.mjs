@@ -1,6 +1,6 @@
 // Procedural PBR texture sets for the 3D scenes: albedo (_c), normal (_n), occlusion-roughness-metal (_orm), emissive (_e).
 // Everything tiles. node tools/make-textures.mjs [name ...]   -> assets/textures/
-import { Tex, writeSet, fbm, cells, hash2, smooth, clamp, lerp } from './texlib.mjs';
+import { Tex, writeSet, fbm, cells, hash2, smooth, clamp, lerp, save } from './texlib.mjs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -45,10 +45,10 @@ const mats = {
     const grain = fbm(u * 1.0, v * 40, 8, 3, 2) * 0.5 + fbm(u * 40, v * 1.0, 8, 3, 6) * 0.5;
     const wear = smooth(0.55, 0.8, fbm(u, v, 5, 4, 9));
     const bolt = [[0.09, 0.09], [0.91, 0.09], [0.09, 0.91], [0.91, 0.91]].reduce((m, [bx, by]) => Math.max(m, smooth(0.045, 0.02, Math.hypot(fx - bx, fy - by))), 0);
-    const k = 0.34 + 0.1 * id + 0.08 * grain + 0.05 * wear;
+    const k = 0.55 + 0.12 * id + 0.08 * grain + 0.05 * wear;
     set(o, [0.5, 0.55, 0.64], k);
     o.h = bevel * 0.6 + bolt * 0.5 + grain * 0.05 - groove * 0.2;
-    o.ro = 0.4 + 0.22 * wear + 0.12 * grain; o.me = 0.4 - wear * 0.2;
+    o.ro = 0.4 + 0.22 * wear + 0.12 * grain; o.me = 0.12;
     o.ao = 0.55 + 0.45 * bevel;
     if (groove > 0.05) { o.er = 0.05 * groove; o.eg = 0.55 * groove; o.eb = 0.75 * groove; mixc(o, [0.02, 0.1, 0.12], groove * 0.7); }
   }),
@@ -156,3 +156,11 @@ const mats = {
 };
 
 if (MAIN) for (const [name, fn] of Object.entries(mats)) if (want(name)) { const t = fn(); writeSet(OUT, name, t, name === 'rock' || name === 'steel' || name === 'wood' || name === 'lava' ? 3 : 1.6); console.log('texture', name); }
+
+// a tileable ripple normal map for Water3D (art/water_n.png): broad swell cells over fine chop
+if (MAIN && want('water')) {
+  const t = bake(512, (u, v, o) => { o.h = 0.7 * fbm(u, v, 6, 4, 11) + 0.5 * (1 - Math.abs(2 * fbm(u * 1, v * 1, 14, 3, 5) - 1)) + 0.25 * fbm(u, v, 40, 2, 3); });
+  const n = t.normals(5);
+  save(join(OUT, '..', 'art', 'water_n.png'), 512, 512, 3, n);
+  console.log('texture water');
+}

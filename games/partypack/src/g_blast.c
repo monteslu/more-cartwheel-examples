@@ -159,16 +159,8 @@ static void spawn_bomb(mg_ctx *c) {
   K.bomb[s].mesh = n3_prim(n3_level(), "Bomb", "SPHERE", (t3_vec3){ x, 9, z }, (t3_vec3){ 0.7f, 0.7f, 0.7f }, (cw_color){ 0.03f, 0.03f, 0.04f, 1 });
   cw_node_set(K.bomb[s].mesh, "metalness", cw_val_float(0.8));
   cw_node_set(K.bomb[s].mesh, "roughness", cw_val_float(0.3));
-  K.bomb[s].ring = cw_node_new("MeshInstance3D", "Ring");
-  cw_node_set(K.bomb[s].ring, "primitive", cw_val_enum("CYLINDER"));
-  cw_node_set(K.bomb[s].ring, "size", cw_val_vec3(RAD * 2, 0.04f, RAD * 2));
-  cw_node_set(K.bomb[s].ring, "color", cw_val_color(0.12f, 0.01f, 0.01f, 1));
-  cw_node_set(K.bomb[s].ring, "emissive", cw_val_color(0.6f, 0.05f, 0.03f, 1));
-  cw_node_add_child(n3_level(), K.bomb[s].ring);
-  cw_node3d_set_position(K.bomb[s].ring, (t3_vec3){ x, 0.03f, z });
-  cw_node in = n3_prim(K.bomb[s].ring, "Fill", "CYLINDER", (t3_vec3){ 0, 0.012f, 0 }, (t3_vec3){ RAD * 1.8f, 0.04f, RAD * 1.8f }, (cw_color){ 0.05f, 0.03f, 0.035f, 1 });
-  cw_node_set(in, "cast_shadow", cw_val_bool(false));
-  n3_emissive(in, (cw_color){ 0.08f, 0.01f, 0.01f, 1 });
+  K.bomb[s].ring = n3_decal("art/decal_ring.png", (t3_vec3){ x, 0.3f, z }, RAD * 2, (cw_color){ 1, 1, 1, 1 }, "ADD");
+  cw_node_set(K.bomb[s].ring, "size", cw_val_vec3(RAD * 2, RAD * 2, 0.8f));
 }
 
 static void tick(mg_ctx *c) {
@@ -207,7 +199,7 @@ static void tick(mg_ctx *c) {
     K.bomb[b].fuse--;
     float blink = sinf((float)K.bomb[b].fuse * (0.25f + (80 - K.bomb[b].fuse) * 0.01f));
     n3_emissive(K.bomb[b].mesh, (cw_color){ blink > 0 ? 2.5f : 0.15f, 0.1f, 0.05f, 1 });
-    cw_node_set(K.bomb[b].ring, "emissive", cw_val_color(0.25f + 0.5f * (blink > 0), 0.03f, 0.015f, 1));
+    cw_node_set(K.bomb[b].ring, "energy", cw_val_float(0.7f + 1.6f * (blink > 0)));
     if (K.bomb[b].fuse <= 0) explode(b);
   }
   /* bots */

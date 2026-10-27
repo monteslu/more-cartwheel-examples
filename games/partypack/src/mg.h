@@ -175,6 +175,7 @@ void n3_flash(t3_vec3 pos, cw_color c, float energy, float range);
 void n3_fx_tick(void);
 void n3_shockwave(t3_vec3 pos, float radius, float seconds, float strength);
 cw_node n3_glb(cw_node parent, const char *name, const char *path, bool cast); /* a model from models/ as a node */
+void n3_receive(cw_node n, bool on);
 cw_node n3_decal(const char *texture, t3_vec3 pos, float size, cw_color c, const char *blend); /* projected down, blend MIX MULTIPLY ADD */
 
 /* ── the 3D hub (hub.c): table, board tiles, tokens, trophy, podium ── */

@@ -6,7 +6,7 @@
 
 #define NBUOY 7
 static struct {
-  cw_node raft[NP], rider[NP], face[NP], water;
+  cw_node raft[NP], rider[NP], face[NP], water, foam[NP];
   int boost_cd[NP], boost_fx[NP], got[NP];
   struct { bool on; float x, z; int value, respawn; cw_node node; } buoy[NBUOY];
   uint32_t seed;
@@ -45,6 +45,7 @@ static void make_raft(int i, float x, float z, bool cpu) {
   cw_node_add_child(n3_level(), b);
   cw_node3d_set_position(b, (t3_vec3){ x, 0.1f, z });
   R.raft[i] = b; R.rider[i] = rider; R.face[i] = face;
+  R.foam[i] = n3_decal("art/decal_foam.png", (t3_vec3){ x, 0.4f, z }, 3.3f, (cw_color){ 1, 1, 1, 0.9f }, "ADD");
 }
 
 static void place_buoy(mg_ctx *c, int k) {
@@ -71,7 +72,7 @@ static void start(mg_ctx *c) {
   n3_glb(n3_find("CliffE"), "Rock", "models/cliff_ew.glb", true);
   n3_glb(n3_find("CliffN"), "Rock", "models/cliff_ns.glb", true);
   n3_glb(n3_find("CliffS"), "Rock", "models/cliff_ns.glb", true);
-  { cw_node sd = n3_glb(n3_find("Seabed"), "Sand", "models/seabed.glb", false); n3_pos(sd, 0, 0.5f, 0); }
+  { cw_node sd = n3_glb(n3_find("Seabed"), "Sand", "models/seabed.glb", false); n3_pos(sd, 0, 0.5f, 0); n3_receive(sd, false); }
   static const float sx[4] = { -9, 9, -9, 9 }, sz[4] = { -5, -5, 5, 5 };
   for (int i = 0; i < NP; i++) make_raft(i, sx[i], sz[i], i >= c->humans);
   for (int k = 0; k < NBUOY; k++) place_buoy(c, k);
@@ -103,6 +104,7 @@ static void tick(mg_ctx *c) {
     }
     if (R.boost_fx[i] > 0) { R.boost_fx[i]--; if (R.boost_fx[i] % 4 == 0) n3_fx("dust", (t3_vec3){ p.x, 0.1f, p.z }, 0.5f); }
     cw_node_set(R.raft[i], "linear_velocity", cw_val_vec3(vx, v.v[1], vz));
+    { float sp = sqrtf(vx * vx + vz * vz); float wh = cw_water_height_at(R.water, p.x, p.z, wt); n3_pos(R.foam[i], p.x, wh + 0.25f, p.z); cw_node_set(R.foam[i], "energy", cw_val_float(0.3f + 0.12f * sp)); }
     if (fabsf(vx) + fabsf(vz) > 0.6f) cw_node3d_set_rotation(R.face[i], (t3_vec3){ 0, cw_atan2(vx, vz) - 0, 0 });
     /* an upright raft: lean it back toward flat when it tips far (rivals bump hard) */
     cw_value av;

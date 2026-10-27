@@ -185,3 +185,16 @@ cw_node n3_decal(const char *texture, t3_vec3 pos, float size, cw_color c, const
   cw_node3d_set_rotation(d, (t3_vec3){ -1.5707963f, 0, 0 });
   return d;
 }
+
+/* a model that casts or receives no shadows at all (a far floor seen through water) */
+void n3_receive(cw_node n, bool on) {
+  t3_object *o = cw_node3d_object(n);
+  if (!o) return;
+  /* walk the tree: meshes only */
+  t3_object *stack[64]; int sp = 0; stack[sp++] = o;
+  while (sp) {
+    t3_object *x = stack[--sp];
+    if (x->type == T3_SKINNED_MESH || x->type == T3_MESH) { x->receive_shadow = on; if (!on) x->cast_shadow = false; }
+    for (int i = 0; i < x->child_count && sp < 63; i++) stack[sp++] = x->children[i];
+  }
+}

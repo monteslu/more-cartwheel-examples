@@ -229,6 +229,9 @@ function band(name, W, H, fn) {
   const b = new Uint8Array(W * H * 4);
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const c = fn(x, y, x / W, y / H); const i = (y * W + x) * 4; b[i] = Math.round(clamp(c[0]) * 255); b[i + 1] = Math.round(clamp(c[1]) * 255); b[i + 2] = Math.round(clamp(c[2]) * 255); b[i + 3] = Math.round(clamp(c[3]) * 255); }
   save(join(OUT, name + '.png'), W, H, 4, b);
+  save(join(OUT, name + '_a.png'), W, H, 4, b); // the lit layers load the albedo with a flat normal map
+  const nn = new Uint8Array(W * H * 4); for (let i = 0; i < W * H; i++) { nn[i * 4] = 128; nn[i * 4 + 1] = 128; nn[i * 4 + 2] = 255; nn[i * 4 + 3] = 255; }
+  save(join(OUT, name + '_n.png'), W, H, 4, nn);
 }
 export function bakeBackdrops() {
   // a ridge line that tiles: height from 1D tiling noise; colour fades toward the horizon
@@ -289,6 +292,18 @@ export function bakeDecals() {
     const rag = 0.5 + 0.35 * Math.pow(fbm(Math.cos(an) * 0.5 + 0.5, Math.sin(an) * 0.5 + 0.5, 6, 3, 5), 2) * 2;
     const drops = smooth(0.06, 0.03, Math.min(...[[0.2, 0.25], [0.78, 0.3], [0.7, 0.8], [0.25, 0.74], [0.5, 0.1]].map(([a, b]) => Math.hypot(u - a, v - b))));
     return [1, 1, 1, clamp(smooth(rag, rag - 0.12, r) + drops)];
+  });
+  band('decal_ring', 256, 256, (x, y, u, v) => {
+    const r = Math.hypot(u - 0.5, v - 0.5) * 2;
+    const ring = smooth(0.93, 0.9, r) * smooth(0.8, 0.86, r), fill = smooth(1, 0.0, r) * 0.18;
+    const dash = 0.7 + 0.3 * Math.sin(Math.atan2(v - 0.5, u - 0.5) * 24);
+    return [1, 0.25, 0.1, clamp(ring * dash + fill)];
+  });
+  band('decal_foam', 256, 256, (x, y, u, v) => {
+    const r = Math.hypot(u - 0.5, v - 0.5) * 2, f = fbm(u, v, 9, 4, 6), g = fbm(u, v, 22, 3, 9);
+    const ring = smooth(0.95, 0.7, r) * smooth(0.25, 0.5, r + (f - 0.5) * 0.35);
+    const lace = smooth(0.45, 0.7, g);
+    return [1, 1, 1, clamp(ring * (0.35 + 0.65 * lace))];
   });
   band('decal_tyre', 128, 256, (x, y, u, v) => {
     const a = smooth(0.2, 0.3, u) * smooth(0.8, 0.7, u), f = fbm(u * 2, v * 3, 4, 3, 6);

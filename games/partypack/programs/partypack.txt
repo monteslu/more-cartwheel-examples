@@ -22,3 +22,4 @@ standard+map+rep+nmap+ao+rmap+mmap+shadow+senv+l1800+s100+xgi
 standard+map+rep+nmap+ao+emap+rmap+mmap+shadow+senv+l1800+s100+xgi
 standard+senv+l1800+xgibuf
 standard+senv+l1800+xgi
+standard+map+rep+nmap+ao+rmap+mmap+senv+l1300

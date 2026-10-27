@@ -121,7 +121,7 @@ static const char *PAD_ON[4] = { "pad_mint_on", "pad_ruby_on", "pad_sky_on", "pa
 static void draw_pad(cw_vec2 ctr, int s, bool lit, float r) {
   cw_color col = PAD_COL[s];
   art_draw("shadow", cw_v2(ctr.x, ctr.y + r * 1.0f), cw_v2(r * 2.3f, r * 0.55f), 0, cw_rgba(1, 1, 1, 0.6f));
-  art_draw(lit ? PAD_ON[s] : PAD[s], ctr, cw_v2(r * 2.2f * (lit ? 1.05f : 1), r * 2.2f * (lit ? 1.05f : 1)), 0, (cw_color){ 0 });
+  art_draw(lit ? PAD_ON[s] : PAD[s], ctr, cw_v2(r * 1.55f * (lit ? 1.06f : 1), r * 1.55f * (lit ? 1.06f : 1)), 0, (cw_color){ 0 });
   if (lit) {
     art_light(ctr, 520, col, 1.8f, false);
     art_glow("glow", ctr, r * 5, col_a(col, 0.45f));
@@ -134,16 +134,16 @@ static void draw(mg_ctx *c, float alpha, float t) {
   (void)alpha;
   art_ambient = cw_rgba(0.7f, 0.66f, 0.85f, 1);
   ui_backdrop(t, cw_rgba(0.12f, 0.12f, 0.3f, 1), cw_rgba(0.3f, 0.12f, 0.4f, 1));
-  cw_vec2 mid = cw_v2(STAGE_W / 2, 300);
+  cw_vec2 mid = cw_v2(STAGE_W / 2, 350);
   float d = 96;
   cw_vec2 pos[4] = { cw_v2(mid.x, mid.y + d), cw_v2(mid.x + d * 1.2f, mid.y), cw_v2(mid.x - d * 1.2f, mid.y), cw_v2(mid.x, mid.y - d) };
   art_light(cw_v2(mid.x, mid.y - 200), 900, cw_rgba(0.8f, 0.8f, 1, 1), 0.6f, false);
   for (int s = 0; s < 4; s++) draw_pad(pos[s], s, M.lit == s, 70);
   const char *msg = M.ph == PH_SHOW ? "Watch!" : M.ph == PH_INPUT ? "Your turn!" : "Get ready";
-  ui_text(msg, cw_v2(STAGE_W / 2, 130), 44, cw_rgba(1, 1, 1, 0.9f), CW_ALIGN_CENTER);
+  ui_text(msg, cw_v2(STAGE_W / 2, 98), 44, cw_rgba(1, 1, 1, 0.9f), CW_ALIGN_CENTER);
   char s[40];
   snprintf(s, sizeof s, "Pattern length %d", M.len);
-  ui_text(s, cw_v2(STAGE_W / 2, 180), 28, cw_rgba(1, 1, 1, 0.7f), CW_ALIGN_CENTER);
+  ui_text(s, cw_v2(STAGE_W / 2, 148), 28, cw_rgba(1, 1, 1, 0.7f), CW_ALIGN_CENTER);
   for (int p = 0; p < NP; p++) { /* each player's progress */
     float x = 90 + p * 280, y = 520;
     art_nine("panel", cw_rect_make(x, y, 260, 140), 26, 1.0f, cw_rgba(0.9f, 0.9f, 1.0f, M.alive[p] ? 0.8f : 0.45f));

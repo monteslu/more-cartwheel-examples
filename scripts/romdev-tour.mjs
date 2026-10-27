@@ -22,7 +22,7 @@ while (frames < 60000) {
   if (st === 3 && !seen.has('board') && frames > 100) { seen.add('board'); await call('frame', { op: 'screenshot', path: `${ROOT}out/v/${tag}-board.png` }); console.log('shot board'); }
   if (st === 8 && !seen.has('r' + mg)) { seen.add('r' + mg); await call('frame', { op: 'screenshot', path: `${ROOT}out/v/${tag}-results-${NAMES[mg]}.png` }); console.log('shot results', NAMES[mg]); }
   if (st === 9 && !seen.has('final') ) { seen.add('final'); await new Promise((r) => setTimeout(r, 100)); await call('frame', { op: 'step', frames: 150 }); await call('frame', { op: 'screenshot', path: `${ROOT}out/v/${tag}-final.png` }); console.log('shot final'); }
-  if (seen.size >= 30) break;
+  if (NAMES.every((_, i) => seen.has('p' + i)) && seen.has('final')) break;
   last = key;
 }
 console.log('done', frames, [...seen].join(','));

@@ -5,7 +5,7 @@
 [node name="Post" parent="." type="PostProcess"]
 msaa = 4
 tonemap = ACES_FILMIC
-exposure = 1.55
+exposure = 1.35
 grade = true
 lut = "luts/kart.cube"
 bloom = true

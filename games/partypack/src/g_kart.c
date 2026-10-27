@@ -101,7 +101,7 @@ static void start(mg_ctx *c) {
     cw_node n;
     if (Rc.haz[k].kind == 0) { n = n3_prim(n3_level(), "Oil", "CYLINDER", (t3_vec3){ x, 0.08f, z }, (t3_vec3){ 2.0f, 0.02f, 2.0f }, col); cw_node_set(n, "roughness", cw_val_float(0.05)); cw_node_set(n, "cast_shadow", cw_val_bool(false)); }
     else if (Rc.haz[k].kind == 1) { n = n3_glb(n3_level(), "Barrel", "models/barrel.glb", true); n3_pos(n, x, 0.5f, z); n3_scale(n, 0.8f, 0.9f, 0.8f); }
-    else { n = n3_box(n3_level(), "Pad", (t3_vec3){ x, 0.08f, z }, (t3_vec3){ 1.6f, 0.03f, 2.4f }, col); n3_emissive(n, (cw_color){ 0.1f, 0.5f, 3.0f, 1 }); n3_rot(n, 0, cw_atan2(-hz, hx), 0); cw_node_set(n, "cast_shadow", cw_val_bool(false)); }
+    else { n = n3_box(n3_level(), "Pad", (t3_vec3){ x, 0.08f, z }, (t3_vec3){ 1.6f, 0.03f, 2.4f }, col); n3_emissive(n, (cw_color){ 0.03f, 0.22f, 1.1f, 1 }); n3_rot(n, 0, cw_atan2(-hz, hx), 0); cw_node_set(n, "cast_shadow", cw_val_bool(false)); }
     Rc.haz[k].node = n;
   }
   Rc.seed = cw_rng_u32(&c->rng);

@@ -22,7 +22,7 @@ const linc = (c) => c.map(lin); // baseColorFactor is linear
 const DEFS = {
   steel: { set: 'steel', emissive: [1.6, 1.6, 1.6], rough: 1 },
   metal: { set: 'metal', tint: [0.9, 0.92, 1] },
-  metal_dark: { set: 'metal', tint: [0.3, 0.32, 0.38], rough: 1.1 },
+  metal_dark: { set: 'metal', tint: [0.55, 0.58, 0.68], rough: 1.0 },
   lava: { set: 'lava', emissive: [1.0, 1.0, 1.0] },
   wood: { set: 'wood' },
   wood_dark: { set: 'wood', tint: [0.55, 0.5, 0.48] },
@@ -205,7 +205,7 @@ function cliff(name, w, h, d, seed) {
       const dd = disp(p[0], p[1], p[2]) * 2.2 * edge;
       p = [p[0] + f.n[0] * dd, p[1] + f.n[1] * dd, p[2] + f.n[2] * dd];
       pos.push(...p); nrm.push(...f.n);
-      uv.push((a + f.su / 2) / 5 + seed, (b + f.sv / 2) / 5);
+      uv.push((a + f.su / 2) / 2.6 + seed, (b + f.sv / 2) / 2.6);
     }
     for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) { const q = base + j * (nu + 1) + i; idx.push(q, q + 1, q + nu + 2, q, q + nu + 2, q + nu + 1); }
   }

@@ -41,12 +41,18 @@ far = 300
 size = vec2(90, 90)
 subdivisions = 220
 wave_count = 3
-wave0 = vec4(25, 14, 0.22, 0.4)
-wave1 = vec4(80, 8, 0.12, 0.4)
+wave0 = vec4(25, 11, 0.26, 0.5)
+wave1 = vec4(80, 6, 0.14, 0.5)
 wave2 = vec4(-30, 4, 0.05, 0.35)
 color = color(0.55, 0.85, 0.9, 1)
 deep_color = color(0.02, 0.18, 0.22, 1)
-murk = 0.55
+murk = 0.5
+detail = 0.7
+normal_map = "art/water_n.png"
+normal_scale = 0.35
+reflectivity = 0.05
+roughness = 0.05
+distortion = 0.06
 
 [node name="Seabed" parent="." type="StaticBody3D"]
 position = vec3(0, -3.5, 0)
