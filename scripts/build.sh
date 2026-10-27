@@ -6,7 +6,7 @@
 # project (CW_PROJECT_DIR).
 #
 #   scripts/build.sh                        native (this machine) and cart-wgpu trees
-#   TARGETS="native" scripts/build.sh       some trees: native, cart-wgpu, cart, or (SDK
+#   TARGETS="native" scripts/build.sh       some trees: native, cart-wgpu, or (SDK
 #                                           builds) an export target: linux-x64, linux-arm64,
 #                                           windows-x64, android-arm64, macos-arm64
 #   BUILD_TYPE=Debug scripts/build.sh
@@ -18,8 +18,7 @@
 # Trees: build/native (this machine's compiler; the gates run it),
 # build/cart-wgpu (THE cart: one .wasc with GL and WebGPU, the one releases
 # ship; a host picks WebGPU where it has it and GL otherwise, so test GL by
-# running this same cart on a GL host), build/cart (a GL-only cart, not
-# shipped, built only when asked for with TARGETS=cart), build/<target>
+# running this same cart on a GL host; there is no GL-only cart), build/<target>
 # (the target's toolchain: what the release
 # packages ship). The cart trees and cross builds pack assets with the host's
 # cwpack. CW_CART_LINK_JOBS (default 4) caps the threads one cart link
@@ -60,10 +59,10 @@ if [ -z "${CARTWHEEL_ENGINE_SOURCE:-}" ] && [ ! -L "$ENGINE" ] && [ -d "$SDKS" ]
   for t in ${TARGETS:-$DEFAULT}; do
     case "$t" in
       native) sdk=$HOST; args=() ;;
-      cart|cart-wgpu) sdk=$t; args=(-DCMAKE_TOOLCHAIN_FILE="$SDKS/$t/cmake/cart.cmake" ${JOBS[@]+"${JOBS[@]}"} -DCW_CART_DEV="$DEV") ;;
+      cart-wgpu) sdk=$t; args=(-DCMAKE_TOOLCHAIN_FILE="$SDKS/$t/cmake/cart.cmake" ${JOBS[@]+"${JOBS[@]}"} -DCW_CART_DEV="$DEV") ;;
       linux-x64|linux-arm64|windows-x64|android-arm64|macos-arm64)
         sdk=$t; args=(-DCMAKE_TOOLCHAIN_FILE="$SDKS/$t/cmake/export/$t.cmake" -DCW_EXPORT_DEPS="$HSDK/deps/export") ;;
-      *) echo "unknown target tree: $t (native, cart, cart-wgpu, linux-x64, linux-arm64, windows-x64, android-arm64, macos-arm64)" >&2; exit 2 ;;
+      *) echo "unknown target tree: $t (native, cart-wgpu, linux-x64, linux-arm64, windows-x64, android-arm64, macos-arm64)" >&2; exit 2 ;;
     esac
     [ -f "$SDKS/$sdk/lib/cmake/cartwheel/cartwheelConfig.cmake" ] || { echo "no $sdk SDK in deps/cartwheel-sdk: CW_SDK_TARGETS=$sdk scripts/fetch-deps.sh" >&2; exit 1; }
     fresh "$ROOT/build/$t" "$ROOT"
@@ -87,11 +86,9 @@ for t in ${TARGETS:-native cart-wgpu}; do
   fresh "$ROOT/build/$t" "$ENGINE" "$(cd "$ENGINE" && pwd -P)"
   case "$t" in
     native) cmake -S "$ENGINE" -B "$ROOT/build/native" "${COMMON[@]}" >/dev/null ;;
-    cart) cmake -S "$ENGINE" -B "$ROOT/build/cart" "${COMMON[@]}" ${JOBS[@]+"${JOBS[@]}"} -DCW_CART_DEV="$DEV" \
-            -DCMAKE_TOOLCHAIN_FILE="$ENGINE/cmake/cart.cmake" -DCW_CWPACK="$CWPACK" >/dev/null ;;
     cart-wgpu) cmake -S "$ENGINE" -B "$ROOT/build/cart-wgpu" "${COMMON[@]}" ${JOBS[@]+"${JOBS[@]}"} -DCW_CART_DEV="$DEV" \
                  -DCMAKE_TOOLCHAIN_FILE="$ENGINE/cmake/cart.cmake" -DCW_WGPU=ON -DCW_CWPACK="$CWPACK" >/dev/null ;;
-    *) echo "unknown target tree: $t (native, cart, cart-wgpu; export targets build against the SDKs)" >&2; exit 2 ;;
+    *) echo "unknown target tree: $t (native, cart-wgpu; export targets build against the SDKs)" >&2; exit 2 ;;
   esac
   ninja -C "$ROOT/build/$t" "$@"
 done
