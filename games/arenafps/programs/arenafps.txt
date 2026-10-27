@@ -1,0 +1,5 @@
+# r186 program states for arenafps (tools/programs.mjs adds what runs lack)
+depth+xcluster
+standard+fog2+l1001+xcluster
+standard+shadow+fog2+l1001+xcluster
+physical+map+vcol+rep+nmap+ao+rmap+shadow+fog2+l1001+xcluster
