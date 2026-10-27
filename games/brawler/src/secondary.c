@@ -146,10 +146,13 @@ static void shade_material(t3_mesh *m, int i, shade_class k) {
     p->sheen_color = (t3_color){ 0.1f + 0.35f * c.r, 0.03f + 0.15f * c.g, 0.02f + 0.1f * c.b };
     p->specular_intensity = 0.45f, p->ior = 1.4f;
     break;
-  case SH_CLOTH:
-    p->sheen = 0.6f, p->sheen_roughness = 0.65f;
-    p->sheen_color = (t3_color){ 0.02f + 0.55f * c.r, 0.02f + 0.55f * c.g, 0.02f + 0.55f * c.b };
-    p->specular_intensity = 0.35f;
+  case SH_CLOTH: /* ordinary cloth is not shiny: rough (0.85 to 0.95 with the fabric map), little specular, no clear
+                    coat, only a soft fuzz at grazing angles */
+    p->roughness = 1.0f;
+    p->sheen = 0.3f, p->sheen_roughness = 0.85f;
+    p->sheen_color = (t3_color){ 0.02f + 0.3f * c.r, 0.02f + 0.3f * c.g, 0.02f + 0.3f * c.b };
+    p->specular_intensity = 0.12f;
+    p->clearcoat = 0;
     break;
   case SH_HAIR:
     p->sheen = 0.6f, p->sheen_roughness = 0.35f;

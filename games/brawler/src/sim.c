@@ -10,6 +10,7 @@
 #include "cartwheel/nav.h"
 #include "cartwheel/render3d.h"
 #include "cartwheel/scene_file.h"
+#include "cartwheel/resource.h"
 #include "cartwheel/vfs.h"
 #include "game.h"
 
@@ -58,7 +59,11 @@ const atk_data ATK[] = {
 static bool heavy_atk(int k) { return k == A_SLAM || k == A_SWING || k == A_BSPIN || k == A_RUSH; }
 
 /* ── character rigs: a pool per model, so a spawn never parses a glb twice ── */
-typedef struct rig { int def; bool busy; cw_node root, model, anim, wnode, blob, shield; t3_gltf *gltf, *blobg; spring_rig sr; } rig;
+typedef struct rig { int def; bool busy; cw_node root, model, anim, wnode, blob, shield; const t3_gltf *gltf; spring_rig sr; } rig;
+/* one glTF resource per model: every rig is an instance (cw_gltf_instantiate) sharing its geometry, textures and
+   clips, so a crowd of one kind costs a skeleton each, not a parsed glb each */
+static cw_res RES[D_COUNT], BLOB;
+static bool clip_checked[D_COUNT];
 static const float BODY_SCALE[D_COUNT] = { 1.08f, 0.98f, 1.0f, 1.0f, 0.96f, 0.94f, 1.0f, 1.28f, 1.0f, 1.08f, 1.4f, 1.22f, 1.15f, 1.7f };
 static rig RIGS[96];
 static int rig_n;
@@ -79,11 +84,16 @@ static rig *rig_get(int def) {
   r->def = def;
   char path[64];
   snprintf(path, sizeof path, "models/%s.glb", DEFS[def].model);
-  size_t len;
-  void *glb = cw_asset_load(path, &len);
-  if (!glb) { cw_error("brawler: %s missing", path); return NULL; }
-  r->gltf = t3_gltf_parse(glb, len, NULL, NULL);
-  free(glb);
+  if (!RES[def].id) {
+    RES[def] = cw_res_load(path, CW_RES_GLTF);
+    const cw_gltf *g = cw_res_gltf(RES[def]);
+    if (!g) { cw_error("brawler: %s did not load", path); rig_n--; return NULL; }
+    char_shade(g->gltf->scene); /* the shared materials, once */
+  }
+  if (!BLOB.id) BLOB = cw_res_load("models/blob.glb", CW_RES_GLTF);
+  r->gltf = cw_res_gltf(RES[def])->gltf;
+  t3_object *inst = cw_gltf_instantiate(RES[def]);
+  if (!inst) { cw_error("brawler: %s has no instance", path); rig_n--; return NULL; }
   char nm[32];
   snprintf(nm, sizeof nm, "Rig%d", rig_n);
   r->root = cw_node_new("Node3D", nm);
@@ -92,26 +102,27 @@ static rig *rig_get(int def) {
   r->wnode = cw_node_new("MeshInstance3D", "Weapon");
   r->blob = cw_node_new("Node3D", "Blob");
   cw_node_add_child(world_node(), r->blob);
-  { size_t bl; void *bg = cw_asset_load("models/blob.glb", &bl); if (bg) { r->blobg = t3_gltf_parse(bg, bl, NULL, NULL); free(bg); if (r->blobg) cw_node3d_set_object(r->blob, r->blobg->scene); } }
+  { t3_object *bi = cw_gltf_instantiate(BLOB); if (bi) { cw_node3d_set_object(r->blob, bi); t3_release(bi); } }
   cw_node_add_child(world_node(), r->root);
   cw_node_add_child(r->root, r->model);
   cw_node_add_child(r->root, r->anim);
   cw_node_add_child(r->root, r->wnode);
-  cw_node3d_set_object(r->model, r->gltf->scene);
-  set_shadows(r->gltf->scene);
-  char_shade(r->gltf->scene);
-  sb_bind(&r->sr, r->gltf->scene);
+  cw_node3d_set_object(r->model, inst);
+  set_shadows(inst);
+  sb_bind(&r->sr, inst);
+  t3_release(inst); /* the node holds it */
   for (int i = 0; i < r->gltf->animation_count; i++) {
     cw_anim a = cw_anim_from_t3_clip(r->gltf->animations[i], "Model");
     cw_anim_set_stored(a, false);
     /* the hit windows live in ATK (fixed ticks, so the simulation never waits on the render-side animation clock);
        a clip shorter than its window would swing at the air: say so once per model */
-    for (int k = 1; k < A_COUNT && rig_n <= D_COUNT; k++)
-      if (ATK[k].clip && !strcmp(ATK[k].clip, r->gltf->animations[i]->name) && cw_anim_length(a) + 0.02f < (float)ATK[k].a1 / TPS)
+    for (int k = 1; k < A_COUNT && !clip_checked[def]; k++)
+      if (k != A_JKICK && k != A_RUSH && ATK[k].clip /* those two hold or loop their clip for the whole window */ && !strcmp(ATK[k].clip, r->gltf->animations[i]->name) && cw_anim_length(a) + 0.02f < (float)ATK[k].a1 / TPS)
         cw_warn("brawler: clip %s of %s is %.2f s, shorter than attack %d's hit window (%d ticks)", ATK[k].clip, DEFS[def].model, cw_anim_length(a), k, ATK[k].a1);
     cw_anim_player_add(r->anim, r->gltf->animations[i]->name, a);
     cw_anim_release(a);
   }
+  clip_checked[def] = true;
   cw_node_set(r->wnode, "primitive", cw_val_enum("BOX"));
   cw_node_set(r->wnode, "size", cw_val_vec3(0.07f, 0.8f, 0.07f));
   cw_node_set(r->wnode, "visible", cw_val_bool(false));
@@ -140,11 +151,8 @@ static float ent_yaw(const ent *e) { return g_freeze ? (float)e->face * 0.45f : 
 static int ent_index(const ent *e) { return e->player ? (int)(e - W.p) : MAXP + (int)(e - W.e); }
 
 /* a new scene (a game started again from the title) freed every rig's nodes: start the pool over */
-void chars_reset(void) {
-  for (int i = 0; i < rig_n; i++) {
-    if (RIGS[i].gltf) t3_release(RIGS[i].gltf);
-    if (RIGS[i].blobg) t3_release(RIGS[i].blobg);
-  }
+int rig_count(void) { return rig_n; }
+void chars_reset(void) { /* (the glTF resources stay loaded: the next game instances them again) */
   memset(RIGS, 0, sizeof RIGS);
   rig_n = 0;
   memset(&W, 0, sizeof W); /* every entity's node handles went with the scene */
@@ -536,7 +544,9 @@ static void proj_update(void) {
 static void arena_clamp(ent *e) {
   /* fighters stay inside the picture: the view is narrower in the near lane */
   e->z = clampf(e->z, -LANE_Z, LANE_Z);
-  float hw = e->player ? view_halfw(e->z, 1.0f) - 0.6f : level_cam_halfw() + 3.0f;
+  /* enemies walk in from off camera; once they have been in the picture they stay in it (one standing just outside,
+     behind fighters held at the edge, could neither be reached nor reach anyone: a soft lock the soak found) */
+  float hw = e->player ? view_halfw(e->z, 1.0f) - 0.6f : e->ptimer >= 20 ? view_halfw(e->z, 1.0f) - 0.3f : level_cam_halfw() + 3.0f;
   e->x = clampf(e->x, W.cam_x - hw, W.cam_x + hw);
 }
 
@@ -724,7 +734,7 @@ static void player_update(int pi, const inputs *in) {
     }
     if (e->t >= ad->total) {
       e->st = S_IDLE, e->t = 0;
-      if (e->atk == A_PUNCH1 || e->atk == A_PUNCH2) e->combo_t = 40;
+      if (e->atk == A_PUNCH1 || e->atk == A_PUNCH2) e->combo_t = 14; /* the next press within 14 ticks after the swing ends continues the chain (presses during the swing are buffered) */
       e->atk = A_NONE;
     }
     break;
@@ -904,8 +914,10 @@ static void enemy_update(int ei) {
         for (int k = 0; k < ei; k++) { const ent *o = &W.e[k]; if (o->used && o->token && o->target == ti && ((o->x < p->x) == (e->x < p->x))) { side = -side; break; } }
         tx = p->x + side * reach * 0.9f;
         tz = p->z;
+        if (!on_screen(tx, tz, 0.7f)) tx = p->x - side * reach * 0.9f; /* no room on that side of the picture: the other flank */
       } else {
         /* waiting: a ring slot around the fighter, and something to do in it (BR4: nobody stands frozen) */
+        if (e->still > 30 && e->mood != 1) e->mood = 1, e->mood_t = ri(120, 200), e->side_pref = 0, e->orbit += 1.5f; /* blocked where it stands: circle instead */
         if (--e->mood_t <= 0) {
           int r = ri(0, 9);
           e->mood = r < 4 ? 1 : r < 6 ? 2 : r < 7 ? 3 : r < 8 ? 4 : 0;
@@ -945,11 +957,17 @@ static void enemy_update(int ei) {
         }
         tx = p->x + side * r0;
         tz = p->z + oz;
+        if (!on_screen(tx, tz, 0.7f) && on_screen(p->x - side * r0, tz, 0.7f)) tx = p->x - side * r0; /* that side is off camera */
         if (tz < -LANE_Z + 0.2f || tz > LANE_Z - 0.2f) tz = p->z - oz; /* mirrored when the lane edge is in the way */
         if (e->side_pref && (e->x < p->x) == (side < 0) && absf(e->x - tx) < 0.6f) e->side_pref = 0, e->mood_t = 1; /* got round */
       }
     }
     tz = clampf(tz, -LANE_Z + 0.2f, LANE_Z - 0.2f);
+    { /* every place an enemy waits or fights is inside the picture (the near lane sees far less street than the far one):
+         a slot off camera left an enemy waiting where nobody could reach it and it could never be allowed to attack */
+      float hw = view_halfw(tz, 1.0f) - 0.7f;
+      tx = clampf(tx, W.cam_x - hw, W.cam_x + hw);
+    }
     if (crowd.id && e->agent) {
       e->thinkt++;
       if (e->thinkt % 6 == 0) cw_crowd_set_target(crowd, AG(e->agent), (t3_vec3){ tx, 0, tz });
@@ -1206,6 +1224,12 @@ void sim_tick(const inputs *in) {
     last_cam = W.cam_x, last_kills = W.kills, last_wave = W.wave, last_ehp = ehp;
     W.st.stall = progress ? 0 : W.st.stall + 1;
     if (W.st.stall > W.st.stall_max) W.st.stall_max = W.st.stall;
+    if (g_log_frozen && W.st.stall == 1800) { /* 30 s without progress: say who is where */
+      cw_info("brawler-stall stage=%d wave=%d cam=%.2f lock=%.2f spawned=%d qn=%d", W.stage, W.wave, W.cam_x, W.lock_x, W.wave_spawned, W.spawn_q_n);
+      for (int i = 0; i < W.players; i++) cw_info("  P%d x=%.2f z=%.2f st=%d hp=%.0f", i + 1, W.p[i].x, W.p[i].z, W.p[i].st, W.p[i].hp);
+      for (int i = 0; i < MAXE; i++) if (W.e[i].used) cw_info("  E%d %s x=%.2f z=%.2f st=%d hp=%.0f tok=%d rng=%d cd=%d pt=%d mood=%d on=%d", i, DEFS[W.e[i].def].name, W.e[i].x, W.e[i].z, W.e[i].st, W.e[i].hp, W.e[i].token, W.e[i].ranged, W.e[i].cd, W.e[i].ptimer, W.e[i].mood, on_screen(W.e[i].x, W.e[i].z, 0.8f));
+      for (int i = 0; i < W.spawn_q_n; i++) if (W.spawn_q[i].def >= 0) cw_info("  Q%d %s delay=%d", i, DEFS[W.spawn_q[i].def].name, W.spawn_q[i].delay);
+    }
     if (W.boss_active && W.st.boss_t0 < 0) W.st.boss_t0 = W.tick;
   }
   /* the hash the gates compare */

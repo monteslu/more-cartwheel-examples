@@ -65,7 +65,7 @@ if (argv.includes('--all-stages')) for (const [s, c] of cleared.entries()) {
   else if (c.boss_phase < 2) problems.push(`stage ${s + 1} boss reached phase ${c.boss_phase + 1} only`);
 }
 const summary = {
-  players, minutes, turbo, exit: code, statusLines: status.length, stages: stats, rssKb: { minute5: rss0, end: rssEnd, growth },
+  players, minutes, turbo, exit: code, trace: status.map((s) => [s.run, s.stage, s.rss, s.rigs]), statusLines: status.length, stages: stats, rssKb: { minute5: rss0, end: rssEnd, growth },
   stallMaxTicks: stall, stillMaxTicks: worst('still_max'), unfair: worst('unfair'), nan: worst('nan'),
   reached: [...new Set(status.map((s) => s.stage))], cleared: cleared.map((c) => !!c), problems,
 };

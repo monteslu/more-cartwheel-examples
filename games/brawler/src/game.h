@@ -142,6 +142,7 @@ void sim_sync_extras(void);
 void stats_log(const char *why);
 int token_leak(void);
 void chars_reset(void);
+int rig_count(void);
 void sim_goto_wave(int wave);
 /* fx.c */
 void fx_init(void);

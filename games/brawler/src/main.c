@@ -145,6 +145,13 @@ static void bot(int i, inputs *in) {
     for (int j = 0; j < i; j++) if (bot_pick[j] == k) d += 9; /* spread out: another bot already has this one */
     if (d < bd) bd = d, best = k;
   }
+  if (best < 0) /* nobody inside the picture: go to the nearest one anyway */
+    for (int k = 0; k < MAXE; k++) {
+      const ent *v = &W.e[k];
+      if (!v->used || v->st == S_DEAD || v->st == S_DOWN || v->x < W.cam_x - 12 || v->x > W.cam_x + 12) continue;
+      float d = (v->x - e->x) * (v->x - e->x) + (v->z - e->z) * (v->z - e->z);
+      if (d < bd) bd = d, best = k;
+    }
   bot_pick[i] = best;
   float tx, tz;
   if (best < 0) { /* nothing to fight: walk on when the wave is clear, else hold the middle of the screen */
@@ -334,8 +341,8 @@ static void sim_step(void) {
       int alive = 0, en = 0;
       for (int i = 0; i < W.players; i++) alive += W.p[i].used && W.p[i].st != S_DEAD;
       for (int i = 0; i < MAXE; i++) en += W.e[i].used && W.e[i].st != S_DEAD;
-      cw_info("brawler-status run=%lld stage=%d wave=%d phase=%d enemies=%d alive=%d tokens=%d leak=%d nan=%d stall=%d boss_hp=%d boss_phase=%d unfair=%d still_max=%d",
-              (long long)run_ticks, W.stage, W.wave, W.phase, en, alive, W.tokens_out, token_leak(), W.st.nan, W.st.stall, d_boss_hp, W.st.boss_phase, W.st.unfair, W.st.still_max);
+      cw_info("brawler-status run=%lld stage=%d wave=%d phase=%d enemies=%d alive=%d tokens=%d leak=%d nan=%d stall=%d boss_hp=%d boss_phase=%d unfair=%d still_max=%d rigs=%d",
+              (long long)run_ticks, W.stage, W.wave, W.phase, en, alive, W.tokens_out, token_leak(), W.st.nan, W.st.stall, d_boss_hp, W.st.boss_phase, W.st.unfair, W.st.still_max, rig_count());
     } }
 #endif
 }

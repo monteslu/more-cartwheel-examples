@@ -18,6 +18,17 @@ static void text(const char *s, float x, float y, float size, cw_color c, bool c
   cw_r2d_text(f, s, cw_v2(x, y), &st);
 }
 
+/* the game camera's projection (level.c places it: cam_x, 3.9 m up, 7.7 m out, pitched 0.3 rad down, 40 degrees) */
+static bool to_screen(float x, float y, float z, cw_vec2 sz, cw_vec2 *out) {
+  float ry = y - 3.9f, rz = z - 7.7f;
+  float cy = ry * 0.95534f - rz * 0.29552f, cz = ry * 0.29552f + rz * 0.95534f;
+  if (cz > -0.1f) return false;
+  float t = 0.36397f, asp = sz.x / sz.y;
+  out->x = sz.x * 0.5f * (1 + ((x - W.cam_x) / -cz) / (t * asp));
+  out->y = sz.y * 0.5f * (1 - (cy / -cz) / t);
+  return true;
+}
+
 void ui_draw(void) {
   cw_vec2 sz = cw_r2d_canvas_size();
   float u = sz.y / 36.0f;
@@ -33,6 +44,17 @@ void ui_draw(void) {
     bar(cw_rect_make(x, y + u * 1.3f, w, u * 0.7f), p->hp / p->maxhp, p->hp / p->maxhp > 0.3f ? cw_rgba(0.9f, 0.25f, 0.2f, 1) : cw_rgba(1, 0.5f, 0.1f, 1), cw_rgba(0.1f, 0.1f, 0.1f, 0.8f));
     snprintf(b, sizeof b, "%07d   x%d", p->score, p->lives);
     text(b, x, y + u * 2.1f, u * 0.9f, cw_rgba(1, 1, 1, 0.95f), false);
+  }
+  /* a number over every fighter's head in its colour (players differ by more than colour) */
+  for (int i = 0; i < W.players; i++) {
+    const ent *p = &W.p[i];
+    cw_vec2 s;
+    if (!p->used || p->st == S_DEAD || !to_screen(p->x, p->y + 1.95f * (p->def == D_ROOK ? 1.08f : 1.0f), p->z, sz, &s)) continue;
+    char b[8];
+    snprintf(b, sizeof b, "P%d", i + 1);
+    text(b, s.x, s.y - u * 1.05f, u * 0.95f, PC[i], true);
+    cw_vec2 tri[3] = { cw_v2(s.x - u * 0.3f, s.y - u * 0.15f), cw_v2(s.x + u * 0.3f, s.y - u * 0.15f), cw_v2(s.x, s.y + u * 0.25f) };
+    cw_r2d_polygon(tri, 3, PC[i]);
   }
   /* the boss bar */
   if (W.boss_active && W.boss_idx >= 0 && W.e[W.boss_idx].used) {
