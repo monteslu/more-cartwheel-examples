@@ -50,7 +50,7 @@ const rims = (s, c, e) => { for (let i = 0; i < 2; i++) s.omni(`Rim${i}`, [0, 2.
     sky_color: col(lin([0.55, 0.5, 0.75])), ground_color: col(lin([0.35, 0.22, 0.18])), hemi_energy: '0.45' });
   s.node('Fog', 'HeightFog', { density: '0.0045', height_falloff: '0.02', base_height: '-34', use_sky_color: 'true', sun_scatter: '0.6', sun_g: '0.8', max_opacity: '0.85', start_distance: '14', sky_distance: '400' });
   s.node('Post', 'PostProcess', { tonemap: 'AGX', exposure: '1.05', bloom: 'true', bloom_intensity: '0.12', bloom_threshold: '1.0', bloom_knee: '0.6', ssao: 'true', ssao_radius: '0.7',
-    ssao_intensity: '1.1', aa: 'SMAA', vignette: 'true', vignette_intensity: '0.32', vignette_smoothness: '0.6', grade: 'true', lut: '"grades/dusk.cube"', grade_intensity: '0.85' });
+    ssao_intensity: '1.0', aa: 'SMAA', vignette: 'true', vignette_intensity: '0.32', vignette_smoothness: '0.6', grade: 'true', lut: '"grades/dusk.cube"', grade_intensity: '0.85' });
   s.node('Camera', 'Camera3D', { position: v3([0, 1.6, 9]), fov: '34', near: '0.3', far: '700', interpolate: 'false' });
   // warm string lights over the back of the roof, the door lamp, a cool fill from the city
   s.omni('Warm1', [-5, 3.6, -5.6], [1, 0.62, 0.32], 7, 12);
@@ -71,7 +71,7 @@ const rims = (s, c, e) => { for (let i = 0; i < 2; i++) s.omni(`Rim${i}`, [0, 2.
     sky_color: col(lin([0.12, 0.16, 0.4])), ground_color: col(lin([0.05, 0.04, 0.08])), hemi_energy: '0.8' });
   s.node('Fog', 'HeightFog', { density: '0.02', height_falloff: '0.16', base_height: '0', color: col(lin([0.12, 0.08, 0.22])), sun_scatter: '0.0', max_opacity: '0.75', start_distance: '7', sky_distance: '200' });
   s.node('Post', 'PostProcess', { tonemap: 'AGX', exposure: '1.5', bloom: 'true', bloom_intensity: '0.24', bloom_threshold: '0.85', bloom_knee: '0.6', ssao: 'true', ssao_radius: '0.8',
-    ssao_intensity: '1.1', aa: 'SMAA', vignette: 'true', vignette_intensity: '0.38', vignette_smoothness: '0.55', grade: 'true', lut: '"grades/neon.cube"', grade_intensity: '0.85',
+    ssao_intensity: '1.0', aa: 'SMAA', vignette: 'true', vignette_intensity: '0.38', vignette_smoothness: '0.55', grade: 'true', lut: '"grades/neon.cube"', grade_intensity: '0.85',
     chromatic_aberration: 'false' });
   s.node('Camera', 'Camera3D', { position: v3([0, 1.6, 9]), fov: '34', near: '0.3', far: '300', interpolate: 'false' });
   // each neon sign lights the wet ground and the fighters in its colour; the lanterns glow red; the passage glows violet
@@ -79,7 +79,6 @@ const rims = (s, c, e) => { for (let i = 0; i < 2; i++) s.omni(`Rim${i}`, [0, 2.
   signs.forEach(([x, y, c], i) => s.omni(`NeonL${i}`, [x, y - 0.6, -4.6], c, 11, 13));
   s.omni('Lanterns', [0, 6.2, -2], [1, 0.25, 0.12], 7, 12);
   s.omni('Passage', [0, 3, -12], [0.55, 0.3, 1], 14, 16);
-  s.omni('Vending', [2, 1.2, -4.8], [0.8, 0.9, 1], 3, 5);
   rims(s, [0.4, 0.65, 1], 26);
   s.omni('Fill', [0, 3.2, 6], [0.75, 0.55, 1], 6, 16);
   s.flashes();

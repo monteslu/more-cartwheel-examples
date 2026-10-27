@@ -43,7 +43,7 @@ bloom_threshold = 0.85
 bloom_knee = 0.6
 ssao = true
 ssao_radius = 0.8
-ssao_intensity = 1.1
+ssao_intensity = 1.0
 aa = SMAA
 vignette = true
 vignette_intensity = 0.38
@@ -100,13 +100,6 @@ position = vec3(0, 3, -12)
 color = color(0.2633, 0.0732, 1, 1)
 energy = 14
 range = 16
-decay = 2
-
-[node name="Vending" parent="." type="OmniLight3D"]
-position = vec3(2, 1.2, -4.8)
-color = color(0.6038, 0.7874, 1, 1)
-energy = 3
-range = 5
 decay = 2
 
 [node name="Rim0" parent="." type="OmniLight3D"]

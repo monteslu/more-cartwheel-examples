@@ -172,7 +172,7 @@ function stage2() {
   m.box('steel_blue', [6.8, 0.7, -5.2], [2.2, 1.3, 1.2], { uv: 1.2 }); m.box('steel_dark', [6.8, 1.42, -5.25], [2.3, 0.12, 1.3], { uv: 1 });
   for (const [x, z, s] of [[-9.6, -4.9, 0.9], [-9.4, -4.9, 0.8], [10.3, -5.2, 0.85]]) m.box('wood', [x, s / 2 + (x === -9.4 ? 0.9 : 0), z], [s, s, s], { uv: 0.9 });
   for (let i = 0; i < 6; i++) m.sphere('bag', [-5 + (i % 3) * 0.55 + (i > 2 ? 11.2 : 0), 0.3, -5.3 + (i % 2) * 0.3], 0.38, 0.32, 0.34, { n: 12, rings: 8, bump: (x, y, z) => 1 + 0.08 * Math.sin(x * 9 + z * 7) + (y < -0.5 ? -0.25 : 0) });
-  m.box('vending', [2.0, 1.0, -5.6], [1.0, 1.8, 0.05], { uv: 1 }); m.box('steel_red', [2.0, 1.0, -5.95], [1.1, 2.0, 0.7], { uv: 1 });
+  m.box('glass_dark', [2.0, 1.15, -5.6], [0.8, 1.2, 0.05], { uv: 1 }); m.box('neon_cyan', [2.0, 1.8, -5.57], [0.8, 0.06, 0.02], { uv: 1 }); m.box('neon_amber', [2.0, 0.42, -5.57], [0.5, 0.05, 0.02], { uv: 1 }); m.box('steel_red', [2.0, 1.0, -5.95], [1.1, 2.0, 0.7], { uv: 1 });
   acUnit(st, m, -13, 5.2, -5.3, 0);
   // neon signs on the walls (they flicker: separate parts), and a sign arch over the passage
   sign(st, 'Sign0', -6.5, 5.2, -5.9, 3.2, 1.0, 'neon_pink');

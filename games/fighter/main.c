@@ -326,7 +326,7 @@ static void update_camera(float dt, float aspect) {
   int npts = 2;
   if (G.state == GS_SELECT || G.state == GS_RESULT) { /* faces: both fighters' heads on the select screen, the winner's on the result screen */
     int w = G.state == GS_RESULT ? g->match_winner : -1;
-    if (w >= 0) { pts[0] = (cw_frame_point){ (float)g->f[w].x / 1000.0f, 1.45f, 0, 0.45f }; npts = 1; }
+    if (w >= 0) { pts[0] = (cw_frame_point){ (float)g->f[w].x / 1000.0f, 1.62f, 0, 0.55f }; npts = 1; }
     else for (int i = 0; i < 2; i++) pts[i] = (cw_frame_point){ (float)g->f[i].x / 1000.0f, 1.3f, 0, 0.5f }; /* aimed low: the heads sit above the cards */
     p.min_dist = w >= 0 ? 2.4f : 2.6f; p.margin = 0.02f; p.yaw = w >= 0 ? (g->f[w].facing > 0 ? 0.35f : -0.35f) : 0;
     stage_set_showcase(true);
@@ -567,15 +567,16 @@ static void draw_select(float W, float H, float s) {
 }
 
 static void draw_result(float W, float H, float s) {
-  draw_hud(W, H, s);
+  /* the winner's face fills the middle (update_camera); the words sit in bands above and below it */
   const ft_game *g = &G.sim;
-  cw_r2d_rect(cw_rect_make(0, 0, W, H), rgba(0, 0, 0, 0.45f));
+  cw_r2d_rect(cw_rect_make(0, 0, W, 120 * s), rgba(0.02f, 0.02f, 0.04f, 0.6f));
+  cw_r2d_rect(cw_rect_make(0, H - 70 * s, W, 70 * s), rgba(0.02f, 0.02f, 0.04f, 0.6f));
   char b[80];
   snprintf(b, sizeof b, "%s WINS", g->roster->d[g->f[g->match_winner].def].name);
-  text(G.font_score, b, W * 0.5f, H * 0.32f, 64 * s, rgba(1, 0.9f, 0.4f, 1), CW_ALIGN_CENTER);
+  text(G.font_score, b, W * 0.5f, 14 * s, 60 * s, rgba(1, 0.9f, 0.4f, 1), CW_ALIGN_CENTER);
   snprintf(b, sizeof b, "%d - %d", g->f[0].wins, g->f[1].wins);
-  text(G.font_bold, b, W * 0.5f, H * 0.32f + 80 * s, 40 * s, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
-  text(G.font_ui, "A: rematch      B: back to fighter select", W * 0.5f, H * 0.7f, 22 * s, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
+  text(G.font_bold, b, W * 0.5f, 78 * s, 30 * s, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
+  text(G.font_ui, "A: rematch      B: back to fighter select", W * 0.5f, H - 50 * s, 22 * s, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
 }
 
 static void render(void *u, double alpha) {
