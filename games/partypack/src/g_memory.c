@@ -1,7 +1,11 @@
 /* Echo (2D, memory): watch a pattern of four coloured pads light up, then
  * play it back on your pad: A, B, X, Y or the matching direction (down,
  * right, left, up). One wrong press and you are out. Every round adds a
- * step; the last player standing, or the longest memory, wins. */
+ * step; the last player standing, or the longest memory, wins.
+ * A player who is out plays on as a ghost: every round they can play the
+ * pattern too, and each full round earns a little bonus that only breaks ties
+ * between players who went out in the same round (it never beats a player
+ * who lasted a round longer). */
 #include "mg.h"
 
 enum { PH_GAP, PH_SHOW, PH_INPUT };
@@ -9,6 +13,7 @@ enum { PH_GAP, PH_SHOW, PH_INPUT };
 static struct {
   int seq[MAXSEQ], len, ph, t;
   int prog[NP], done[NP], rounds[NP];
+  int gprog[NP], gdone[NP]; /* a ghost's progress in this round, and the full rounds it played */
   bool alive[NP];
   float dirprev_x[NP], dirprev_y[NP];
   int flash[NP], lit; /* ticks left for a player's last press / the shown pad */
@@ -72,11 +77,27 @@ static void tick(mg_ctx *c) {
     M.lit = -1;
     if (i < M.len && j < step - 8) M.lit = M.seq[i];
     if (i < M.len && j == 0) sfx(SFX_NOTE0 + NOTE_OF[M.seq[i]], 0.7f, 1);
-    if (M.t > M.len * step + 20) { M.ph = PH_INPUT; M.t = 0; M.lit = -1; for (int p = 0; p < NP; p++) { M.prog[p] = 0; M.cpu_wait[p] = 40; } sfx(SFX_GO, 0.5f, 1.3f); }
+    if (M.t > M.len * step + 20) { M.ph = PH_INPUT; M.t = 0; M.lit = -1; for (int p = 0; p < NP; p++) { M.prog[p] = 0; M.gprog[p] = 0; M.cpu_wait[p] = 40; } sfx(SFX_GO, 0.5f, 1.3f); }
   } else {
     bool all = true;
     for (int p = 0; p < NP; p++) {
-      if (!M.alive[p] || M.prog[p] >= M.len) continue;
+      if (!M.alive[p]) { /* a ghost plays along: a slip just ends its round */
+        if (M.gprog[p] >= M.len) continue;
+        int gs = pressed_symbol(c, p);
+        if (gs < 0) continue;
+        M.flash[p] = 12;
+        M.last_sym[p] = gs;
+        if (gs == M.seq[M.gprog[p]]) {
+          sfx(SFX_NOTE0 + NOTE_OF[gs], c->human[p] ? 0.3f : 0.1f, 1);
+          if (++M.gprog[p] >= M.len) {
+            M.gdone[p]++;
+            c->score[p] = (float)M.rounds[p] + fminf(0.1f * (float)M.gdone[p], 0.4f);
+            fx_text(cw_v2(250 + p * 260, 560), "ghost +", PCOL[p], 24);
+          }
+        } else { M.gprog[p] = M.len; sfx(SFX_BUZZ, 0.3f, 1.4f); }
+        continue;
+      }
+      if (M.prog[p] >= M.len) continue;
       all = false;
       int s = pressed_symbol(c, p);
       if (s < 0) continue;
@@ -104,11 +125,13 @@ static void tick(mg_ctx *c) {
 
 static void think(mg_ctx *c, int p, mg_in *out) {
   memset(out, 0, sizeof *out);
-  if (M.ph != PH_INPUT || !M.alive[p] || M.prog[p] >= M.len) return;
+  if (M.ph != PH_INPUT) return;
+  int *pr = M.alive[p] ? &M.prog[p] : &M.gprog[p];
+  if (*pr >= M.len) return;
   if (--M.cpu_wait[p] > 0) return;
   static const int err_pct[3] = { 6, 3, 1 }; /* per step, plus a little for length */
   int r = cw_rng_int(&c->rng, 0, 99);
-  int s = M.seq[M.prog[p]];
+  int s = M.seq[*pr];
   if (r < err_pct[c->cpu_skill[p]] + M.len / 3) s = (s + 1) % 4;
   int d = cw_rng_int(&c->rng, 0, 1);
   if (d) { out->a = s == 0; out->b = s == 1; out->c = s == 2; out->d = s == 3; }
@@ -157,6 +180,7 @@ static void draw(mg_ctx *c, float alpha, float t) {
       art_draw(M.ph == PH_INPUT && got ? GEMS[M.seq[i]] : "gem_sun", q, cw_v2(20, 20), 0, got ? (M.ph == PH_INPUT ? (cw_color){ 0 } : cw_rgba(1, 1, 1, 0.9f)) : cw_rgba(0.25f, 0.25f, 0.3f, 0.5f));
     }
     if (M.flash[p] > 0) art_draw(GEMS[M.last_sym[p]], cw_v2(x + 40, y + 100), cw_v2(30, 30), 0, (cw_color){ 0 });
+    if (!M.alive[p]) ui_text(M.ph == PH_INPUT && M.gprog[p] < M.len ? "ghost: play along" : "ghost", cw_v2(x + 130, y + 112), 20, cw_rgba(1, 1, 1, 0.8f), CW_ALIGN_CENTER);
     snprintf(s, sizeof s, "%d", M.rounds[p]);
     ui_text(s, cw_v2(x + 240, y + 90), 36, cw_rgba(1, 1, 1, M.alive[p] ? 1 : 0.4f), CW_ALIGN_RIGHT);
   }
@@ -166,7 +190,7 @@ static void score_text(mg_ctx *c, int p, char *buf, int cap) { snprintf(buf, (si
 
 const mg_def mg_memory = {
   .id = "echo", .name = "Echo", .tagline = "Repeat the pattern. One slip and you are out.",
-  .how = { "Flick the stick (or A B X Y) to match", "Watch the pads, then play it back", "Each round adds one step" },
+  .how = { "Flick the stick (or A B X Y) to match", "Watch the pads, then play it back", "Out? Play along as a ghost for a tie-break" },
   .buttons = 0, .keys = "S",
   .kind = "2D", .scene = NULL, .seconds = 0, .unlock_points = 0, .higher_is_better = true,
   .start = start, .tick = tick, .think = think, .draw = draw, .score_text = score_text,

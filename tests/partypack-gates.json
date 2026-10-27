@@ -90,5 +90,291 @@
       "game.humans": 1
     },
     "note": "a pad leaves with B, another joins, then it is unplugged and its seat frees by itself: one person is left; control: that pad stays plugged in, two people"
+  },
+  {
+    "name": "partypack-game-hurdle",
+    "app": "partypack_auto",
+    "assets": "games/partypack/assets",
+    "frames": 4800,
+    "hosts": [
+      "native"
+    ],
+    "env": {
+      "PP_GAME": "hurdle"
+    },
+    "controlEnv": {
+      "PP_GAME": "echo"
+    },
+    "minColors": 60,
+    "fields": [
+      "game.state",
+      "game.round",
+      "game.mg",
+      "game.tick",
+      "game.score",
+      "game.points",
+      "game.hash"
+    ],
+    "note": "one mini-game on repeat by the autopilot (all four seats CPU); the control runs the next game, so game.mg and the hash must differ"
+  },
+  {
+    "name": "partypack-game-echo",
+    "app": "partypack_auto",
+    "assets": "games/partypack/assets",
+    "frames": 4800,
+    "hosts": [
+      "native"
+    ],
+    "env": {
+      "PP_GAME": "echo"
+    },
+    "controlEnv": {
+      "PP_GAME": "beatbox"
+    },
+    "minColors": 60,
+    "fields": [
+      "game.state",
+      "game.round",
+      "game.mg",
+      "game.tick",
+      "game.score",
+      "game.points",
+      "game.hash"
+    ],
+    "note": "one mini-game on repeat by the autopilot (all four seats CPU); the control runs the next game, so game.mg and the hash must differ"
+  },
+  {
+    "name": "partypack-game-beatbox",
+    "app": "partypack_auto",
+    "assets": "games/partypack/assets",
+    "frames": 4800,
+    "hosts": [
+      "native"
+    ],
+    "env": {
+      "PP_GAME": "beatbox"
+    },
+    "controlEnv": {
+      "PP_GAME": "quiz"
+    },
+    "minColors": 60,
+    "fields": [
+      "game.state",
+      "game.round",
+      "game.mg",
+      "game.tick",
+      "game.score",
+      "game.points",
+      "game.hash"
+    ],
+    "note": "one mini-game on repeat by the autopilot (all four seats CPU); the control runs the next game, so game.mg and the hash must differ"
+  },
+  {
+    "name": "partypack-game-quiz",
+    "app": "partypack_auto",
+    "assets": "games/partypack/assets",
+    "frames": 4800,
+    "hosts": [
+      "native"
+    ],
+    "env": {
+      "PP_GAME": "quiz"
+    },
+    "controlEnv": {
+      "PP_GAME": "blast"
+    },
+    "minColors": 60,
+    "fields": [
+      "game.state",
+      "game.round",
+      "game.mg",
+      "game.tick",
+      "game.score",
+      "game.points",
+      "game.hash"
+    ],
+    "note": "one mini-game on repeat by the autopilot (all four seats CPU); the control runs the next game, so game.mg and the hash must differ"
+  },
+  {
+    "name": "partypack-game-blast",
+    "app": "partypack_auto",
+    "assets": "games/partypack/assets",
+    "frames": 4800,
+    "hosts": [
+      "native"
+    ],
+    "env": {
+      "PP_GAME": "blast"
+    },
+    "controlEnv": {
+      "PP_GAME": "raft"
+    },
+    "minColors": 60,
+    "fields": [
+      "game.state",
+      "game.round",
+      "game.mg",
+      "game.tick",
+      "game.score",
+      "game.points",
+      "game.hash"
+    ],
+    "note": "one mini-game on repeat by the autopilot (all four seats CPU); the control runs the next game, so game.mg and the hash must differ"
+  },
+  {
+    "name": "partypack-game-raft",
+    "app": "partypack_auto",
+    "assets": "games/partypack/assets",
+    "frames": 4800,
+    "hosts": [
+      "native"
+    ],
+    "env": {
+      "PP_GAME": "raft"
+    },
+    "controlEnv": {
+      "PP_GAME": "stack"
+    },
+    "minColors": 60,
+    "fields": [
+      "game.state",
+      "game.round",
+      "game.mg",
+      "game.tick",
+      "game.score",
+      "game.points",
+      "game.hash"
+    ],
+    "note": "one mini-game on repeat by the autopilot (all four seats CPU); the control runs the next game, so game.mg and the hash must differ"
+  },
+  {
+    "name": "partypack-game-stack",
+    "app": "partypack_auto",
+    "assets": "games/partypack/assets",
+    "frames": 4800,
+    "hosts": [
+      "native"
+    ],
+    "env": {
+      "PP_GAME": "stack"
+    },
+    "controlEnv": {
+      "PP_GAME": "loop"
+    },
+    "minColors": 60,
+    "fields": [
+      "game.state",
+      "game.round",
+      "game.mg",
+      "game.tick",
+      "game.score",
+      "game.points",
+      "game.hash"
+    ],
+    "note": "one mini-game on repeat by the autopilot (all four seats CPU); the control runs the next game, so game.mg and the hash must differ"
+  },
+  {
+    "name": "partypack-game-loop",
+    "app": "partypack_auto",
+    "assets": "games/partypack/assets",
+    "frames": 4800,
+    "hosts": [
+      "native"
+    ],
+    "env": {
+      "PP_GAME": "loop"
+    },
+    "controlEnv": {
+      "PP_GAME": "sumo"
+    },
+    "minColors": 60,
+    "fields": [
+      "game.state",
+      "game.round",
+      "game.mg",
+      "game.tick",
+      "game.score",
+      "game.points",
+      "game.hash"
+    ],
+    "note": "one mini-game on repeat by the autopilot (all four seats CPU); the control runs the next game, so game.mg and the hash must differ"
+  },
+  {
+    "name": "partypack-game-sumo",
+    "app": "partypack_auto",
+    "assets": "games/partypack/assets",
+    "frames": 4800,
+    "hosts": [
+      "native"
+    ],
+    "env": {
+      "PP_GAME": "sumo"
+    },
+    "controlEnv": {
+      "PP_GAME": "coins"
+    },
+    "minColors": 60,
+    "fields": [
+      "game.state",
+      "game.round",
+      "game.mg",
+      "game.tick",
+      "game.score",
+      "game.points",
+      "game.hash"
+    ],
+    "note": "one mini-game on repeat by the autopilot (all four seats CPU); the control runs the next game, so game.mg and the hash must differ"
+  },
+  {
+    "name": "partypack-game-coins",
+    "app": "partypack_auto",
+    "assets": "games/partypack/assets",
+    "frames": 4800,
+    "hosts": [
+      "native"
+    ],
+    "env": {
+      "PP_GAME": "coins"
+    },
+    "controlEnv": {
+      "PP_GAME": "tiles"
+    },
+    "minColors": 60,
+    "fields": [
+      "game.state",
+      "game.round",
+      "game.mg",
+      "game.tick",
+      "game.score",
+      "game.points",
+      "game.hash"
+    ],
+    "note": "one mini-game on repeat by the autopilot (all four seats CPU); the control runs the next game, so game.mg and the hash must differ"
+  },
+  {
+    "name": "partypack-game-tiles",
+    "app": "partypack_auto",
+    "assets": "games/partypack/assets",
+    "frames": 4800,
+    "hosts": [
+      "native"
+    ],
+    "env": {
+      "PP_GAME": "tiles"
+    },
+    "controlEnv": {
+      "PP_GAME": "hurdle"
+    },
+    "minColors": 60,
+    "fields": [
+      "game.state",
+      "game.round",
+      "game.mg",
+      "game.tick",
+      "game.score",
+      "game.points",
+      "game.hash"
+    ],
+    "note": "one mini-game on repeat by the autopilot (all four seats CPU); the control runs the next game, so game.mg and the hash must differ"
   }
 ]

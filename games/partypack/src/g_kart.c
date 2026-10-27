@@ -1,14 +1,14 @@
-/* Loop Racers (3D, racing): four karts race four laps of a stadium oval.
+/* Loop Racers (3D, racing): four karts race three laps of a stadium oval.
  * Left / Right slide across the track, A is a nitro burst (three of them),
  * oil slicks and barrels slow you, blue pads give a free boost. The inside
  * lane is shorter, so everyone wants it, and the hazards sit there. First
- * past four laps wins; the rest rank by distance. */
+ * past three laps wins; the rest rank by distance. */
 #include "mg.h"
 
 #define SLEN 22.0f
 #define RAD_ 8.0f
 #define TW 9.5f /* track width */
-#define LAPS 4
+#define LAPS 3
 #define NSEG 96
 #define NHAZ 14
 #define PI_ 3.14159265f
@@ -243,9 +243,9 @@ static void score_text(mg_ctx *c, int p, char *buf, int cap) {
 }
 
 const mg_def mg_kart = {
-  .id = "loop", .name = "Loop Racers", .tagline = "Four laps. The inside lane is short and full of traps.",
+  .id = "loop", .name = "Loop Racers", .tagline = "Three laps. The inside lane is short and full of traps.",
   .how = { "Left / Right: change lane", "A: nitro burst (three of them)", "Blue pads boost, oil and barrels slow" },
   .buttons = 1, .keys = "SA",
-  .kind = "3D", .scene = "scenes/kart.cwscene", .seconds = 80, .unlock_points = 16, .higher_is_better = true,
+  .kind = "3D", .scene = "scenes/kart.cwscene", .seconds = 60, .unlock_points = 16, .higher_is_better = true,
   .start = start, .tick = tick, .think = think, .draw = draw, .score_text = score_text,
 };

@@ -1,10 +1,14 @@
 /* Hurdle Dash (2D, platform dodging): four lanes, the same course for all.
  * A jumps the rocks, Down (or B) ducks the hanging bars. Three lives; the
- * runner who lasts the farthest wins. The course speeds up. */
+ * runner who lasts the farthest wins. The course speeds up.
+ * A runner who is out becomes a pebble thrower: A drops a rock into the lane
+ * of the runner with the most lives left (a few seconds between throws). It
+ * can cost that runner a life but never changes an out runner's own score. */
 #include "mg.h"
 
 #define LANES NP
 #define MAXOBS 64
+#define MAXPEB 6 /* thrown rocks alive in one lane at once */
 typedef struct { float x; int kind; } obs; /* kind 0 rock (jump), 1 bar (duck), 2 tall rock (jump high) */
 
 static struct {
@@ -13,6 +17,8 @@ static struct {
   int n_obs;
   float next_x;
   struct { float y, vy; bool duck, air; int lives; int inv; float out_at; bool alive; float run; int combo; float look; int passed; } p[LANES];
+  struct { float x; int by; int roll; } peb[LANES][MAXPEB]; /* x < 0: free slot */
+  int throw_cd[LANES], throws[LANES];
   int roll[LANES][MAXOBS]; /* a CPU's decision per obstacle: 0 clean, 1 miss */
   uint8_t rolled[LANES][MAXOBS];
 } D;
@@ -23,7 +29,10 @@ static void start(mg_ctx *c) {
   memset(&D, 0, sizeof D);
   D.speed = 380;
   D.next_x = 900;
-  for (int i = 0; i < LANES; i++) { D.p[i].lives = 3; D.p[i].alive = true; }
+  for (int i = 0; i < LANES; i++) {
+    D.p[i].lives = 3; D.p[i].alive = true;
+    for (int k = 0; k < MAXPEB; k++) D.peb[i][k].x = -1;
+  }
   /* the whole course up front: every runner meets the same obstacles */
   D.dist = 0;
   while (D.n_obs < MAXOBS) {
@@ -86,7 +95,48 @@ static void tick(mg_ctx *c) {
         }
       }
     }
+    for (int k = 0; k < MAXPEB; k++) {
+      if (D.peb[i][k].x < 0) continue;
+      float dx = D.peb[i][k].x - D.dist;
+      if (dx < -60) { D.peb[i][k].x = -1; continue; }
+      obs po = { D.peb[i][k].x, 0 };
+      if (fabsf(dx) < 26 && p->inv == 0 && hits(i, &po)) {
+        p->lives--;
+        p->inv = 100;
+        D.peb[i][k].x = -1;
+        fx_burst(cw_v2(PX, GROUND0 + i * LANE_H - 30), 14, PCOL[D.peb[i][k].by], 260, 0.7f, 8);
+        fx_shake = fmaxf(fx_shake, 6);
+        fx_hitstop(p->lives <= 0 ? 8 : 4);
+        sfx(SFX_HIT, 0.8f, 1);
+        if (p->lives <= 0) {
+          p->alive = false;
+          p->out_at = D.dist;
+          c->eliminated[i] = true;
+          fx_text(cw_v2(PX, GROUND0 + i * LANE_H - 80), "OUT", PCOL[i], 36);
+        }
+      }
+    }
     p->passed = 0;
+  }
+  /* out runners throw pebbles */
+  for (int g = 0; g < LANES; g++) {
+    if (D.p[g].alive) continue;
+    if (D.throw_cd[g] > 0) D.throw_cd[g]--;
+    if (!c->in[g].pa || D.throw_cd[g] > 0) continue;
+    int tgt = -1;
+    for (int i = 0; i < LANES; i++) if (D.p[i].alive && (tgt < 0 || D.p[i].lives > D.p[tgt].lives)) tgt = i;
+    if (tgt < 0) continue;
+    for (int k = 0; k < MAXPEB; k++) {
+      if (D.peb[tgt][k].x >= 0) continue;
+      D.peb[tgt][k].x = D.dist + 620;
+      D.peb[tgt][k].by = g;
+      D.peb[tgt][k].roll = cw_rng_int(&c->rng, 0, 99);
+      D.throw_cd[g] = 150;
+      D.throws[g]++;
+      sfx(SFX_POP, 0.5f, 1);
+      fx_text(cw_v2(STAGE_W - 120, GROUND0 + tgt * LANE_H - 60), "!", PCOL[g], 34);
+      break;
+    }
   }
   for (int i = 0; i < LANES; i++) {
     float d = D.p[i].alive ? D.dist : D.p[i].out_at;
@@ -98,6 +148,18 @@ static void tick(mg_ctx *c) {
 
 static void think(mg_ctx *c, int p, mg_in *out) {
   memset(out, 0, sizeof *out);
+  if (!D.p[p].alive) { /* a CPU ghost throws now and then */
+    out->a = D.throw_cd[p] == 0 && cw_rng_int(&c->rng, 0, 99) < 4;
+    return;
+  }
+  /* a thrown rock in my lane that is nearer than the next course obstacle: a jump, like a rock */
+  for (int q = 0; q < MAXPEB; q++) {
+    if (D.peb[p][q].x < 0) continue;
+    float pdx = D.peb[p][q].x - D.dist;
+    if (pdx < -30 || D.peb[p][q].roll < (int[3]){ 30, 12, 3 }[c->cpu_skill[p]]) continue;
+    float plead = D.speed * 0.31f;
+    if (pdx < plead && pdx > plead - D.speed * 0.08f && D.p[p].y <= 0) { out->a = true; return; }
+  }
   int k = 0;
   while (k < D.n_obs && D.o[k].x - D.dist < -30) k++;
   if (k >= D.n_obs) return;
@@ -153,6 +215,12 @@ static void draw(mg_ctx *c, float alpha, float t) {
       }
       (void)sh;
     }
+    for (int k = 0; k < MAXPEB; k++) {
+      if (D.peb[i][k].x < 0) continue;
+      float sx = PX + D.peb[i][k].x - D.dist;
+      if (sx < -80 || sx > STAGE_W + 80) continue;
+      art_draw_ex("rock", cw_v2(sx, gy + 6), cw_v2(64, 60), cw_v2(0.5f, 1), 0, col_a(PCOL[D.peb[i][k].by], 0.55f), false, false);
+    }
     __typeof__(D.p[0]) *p = &D.p[i];
     if (p->alive || (c->tick % 20 < 10)) {
       bool blink = p->inv > 0 && (p->inv / 4) % 2 == 0;
@@ -167,6 +235,7 @@ static void draw(mg_ctx *c, float alpha, float t) {
         else ui_blob(cw_v2(PX - (D.dist - p->out_at), gy - r), r, i, 0, 0, 0.8f, 3, !c->human[i]);
       }
     }
+    if (!p->alive && c->tick % 40 < 28) ui_text(D.throw_cd[i] > 0 ? "ghost" : "A: throw a rock", cw_v2(STAGE_W / 2, gy - 40), 24, col_a(c->human[i] ? PCOL[i] : cw_rgba(1, 1, 1, 1), 0.9f), CW_ALIGN_CENTER);
     for (int l = 0; l < 3; l++) /* lives */
       art_draw("star", cw_v2(46 + l * 34, gy - 98), cw_v2(30, 30), 0, l < p->lives ? cw_rgba(1, 0.45f, 0.55f, 1) : cw_rgba(0.1f, 0.1f, 0.14f, 0.55f));
   }
@@ -176,7 +245,7 @@ static void score_text(mg_ctx *c, int p, char *buf, int cap) { snprintf(buf, (si
 
 const mg_def mg_dodge = {
   .id = "hurdle", .name = "Hurdle Dash", .tagline = "Jump the rocks, duck the bars, last the longest.",
-  .how = { "A: jump (hold for a quick re-jump)", "Down or B: duck under the bars", "Three lives. The course speeds up." },
+  .how = { "A: jump (hold for a quick re-jump)", "Down or B: duck under the bars", "Out? A throws a rock at the leader" },
   .buttons = 1, .keys = "AS",
   .kind = "2D", .scene = NULL, .seconds = 45, .unlock_points = 0, .higher_is_better = true,
   .start = start, .tick = tick, .think = think, .draw = draw, .score_text = score_text,

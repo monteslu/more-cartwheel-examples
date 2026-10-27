@@ -32,7 +32,7 @@ Every mini-game opens with a card (how to play, press A to be ready), a
 | Stack Attack | 2D physics | crane and blocks, tallest standing tower | 4 points |
 | Blast Ring | 3D physics | bombs shove you, the ring shrinks | 8 points |
 | Beat Box | 2D rhythm | hit the notes as they land | 12 points |
-| Loop Racers | 3D racing | four laps, hazards on the short lane | 16 points |
+| Loop Racers | 3D racing | three laps, hazards on the short lane | 16 points |
 | Quick Quiz | 2D trivia | four answers on A B X Y | 20 points |
 | Raft Rush | 3D water | paddle a raft for floating buoys | open |
 

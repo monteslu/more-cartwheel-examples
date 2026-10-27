@@ -1,7 +1,9 @@
 /* Blast Ring (3D, physics and explosions): four rolling bots on a steel
  * ring over a lava pit. Bombs drop; each blast shoves everything near it.
  * The ring shrinks. Stick to move, A to dash (a dash knocks others hard).
- * Last bot on the ring wins; otherwise the longest survivor. */
+ * Last bot on the ring wins; otherwise the longest survivor.
+ * A bot that is knocked off becomes a bomber: its stick moves a marker over
+ * the ring and A calls a bomb down there (every few seconds). */
 #include "mg.h"
 
 #define NBOMB 6
@@ -9,6 +11,8 @@ static struct {
   cw_node ball[NP], face[NP], arena_shape, arena_top, edge[4], line[14];
   bool alive[NP];
   int dash_cd[NP], dash_fx[NP];
+  float cur_x[NP], cur_z[NP]; /* a ghost bomber's marker */
+  int call_cd[NP];
   float size;               /* arena side, metres */
   int shrink_stage, warn;
   struct { bool on; float x, z; int fuse, drop; cw_node mesh, ring; } bomb[NBOMB];
@@ -142,6 +146,7 @@ static void explode(int b) {
   K.bomb[b].on = false;
 }
 
+static bool spawn_bomb_at(float x, float z);
 static void spawn_bomb(mg_ctx *c) {
   int s = -1;
   for (int i = 0; i < NBOMB; i++) if (!K.bomb[i].on) { s = i; break; }
@@ -156,12 +161,20 @@ static void spawn_bomb(mg_ctx *c) {
   if (pick < 55 && K.alive[who]) { cw_vec2 p = ball_xz(who); x = p.x + jx; z = p.y + jz; } else { x = rx; z = rz; }
   x = fclampf(x, -lim, lim);
   z = fclampf(z, -lim, lim);
+  spawn_bomb_at(x, z);
+}
+
+static bool spawn_bomb_at(float x, float z) {
+  int s = -1;
+  for (int i = 0; i < NBOMB; i++) if (!K.bomb[i].on) { s = i; break; }
+  if (s < 0) return false;
   K.bomb[s].on = true; K.bomb[s].x = x; K.bomb[s].z = z; K.bomb[s].fuse = 80; K.bomb[s].drop = 34;
   K.bomb[s].mesh = n3_prim(n3_level(), "Bomb", "SPHERE", (t3_vec3){ x, 9, z }, (t3_vec3){ 0.7f, 0.7f, 0.7f }, (cw_color){ 0.03f, 0.03f, 0.04f, 1 });
   cw_node_set(K.bomb[s].mesh, "metalness", cw_val_float(0.8));
   cw_node_set(K.bomb[s].mesh, "roughness", cw_val_float(0.3));
   K.bomb[s].ring = n3_decal("art/decal_ring.png", (t3_vec3){ x, 0.3f, z }, RAD * 2, (cw_color){ 1, 1, 1, 1 }, "ADD");
   cw_node_set(K.bomb[s].ring, "size", cw_val_vec3(RAD * 2, RAD * 2, 0.8f));
+  return true;
 }
 
 static void tick(mg_ctx *c) {
@@ -203,6 +216,16 @@ static void tick(mg_ctx *c) {
     cw_node_set(K.bomb[b].ring, "energy", cw_val_float(0.7f + 1.6f * (blink > 0)));
     if (K.bomb[b].fuse <= 0) explode(b);
   }
+  /* ghost bombers: the marker follows the stick, A calls a bomb down on it */
+  for (int g = 0; g < NP; g++) {
+    if (K.alive[g]) continue;
+    const mg_in *gi = &c->in[g];
+    float lim = K.size * 0.5f - 1.0f;
+    K.cur_x[g] = fclampf(K.cur_x[g] + gi->x * 7.0f * dt, -lim, lim);
+    K.cur_z[g] = fclampf(K.cur_z[g] + gi->y * 7.0f * dt, -lim, lim);
+    if (K.call_cd[g] > 0) K.call_cd[g]--;
+    if (gi->pa && K.call_cd[g] == 0 && spawn_bomb_at(K.cur_x[g], K.cur_z[g])) { K.call_cd[g] = 200; sfx(SFX_POP, 0.6f, 0.8f); }
+  }
   /* bots */
   int alive = 0;
   for (int i = 0; i < NP; i++) {
@@ -231,6 +254,9 @@ static void tick(mg_ctx *c) {
     if (fabsf(vx) + fabsf(vz) > 0.8f) cw_node3d_set_rotation(K.face[i], (t3_vec3){ 0, cw_atan2(vx, vz), 0 });
     if (p.y < -3.0f) {
       K.alive[i] = false;
+      K.cur_x[i] = fclampf(p.x, -K.size * 0.5f + 1, K.size * 0.5f - 1);
+      K.cur_z[i] = fclampf(p.z, -K.size * 0.5f + 1, K.size * 0.5f - 1);
+      K.call_cd[i] = 90;
       c->eliminated[i] = true;
       c->score[i] = (float)c->tick;
       n3_fx("fire", (t3_vec3){ p.x, -7.6f, p.z }, 1.0f);
@@ -255,7 +281,21 @@ static void tick(mg_ctx *c) {
 
 static void think(mg_ctx *c, int p, mg_in *out) {
   memset(out, 0, sizeof *out);
-  if (!K.alive[p]) return;
+  if (!K.alive[p]) { /* a CPU ghost steers its marker to a bot and calls the bomb when it is close */
+    int best = -1; float bd = 1e9f;
+    for (int i = 0; i < NP; i++) {
+      if (!K.alive[i]) continue;
+      cw_vec2 q = ball_xz(i);
+      float d = (q.x - K.cur_x[p]) * (q.x - K.cur_x[p]) + (q.y - K.cur_z[p]) * (q.y - K.cur_z[p]);
+      if (d < bd) { bd = d; best = i; }
+    }
+    if (best < 0) return;
+    cw_vec2 q = ball_xz(best);
+    float dx = q.x - K.cur_x[p], dz = q.y - K.cur_z[p], d = sqrtf(dx * dx + dz * dz);
+    if (d > 0.4f) { out->x = dx / d; out->y = dz / d; }
+    out->a = K.call_cd[p] == 0 && d < 1.8f - 0.4f * (float)c->cpu_skill[p] && ((hash_u32(K.seed + (uint32_t)p, (uint32_t)(c->tick / 30)) & 3) == 0);
+    return;
+  }
   cw_vec2 me = ball_xz(p);
   float mx = 0, mz = 0;
   bool flee = false;
@@ -310,6 +350,13 @@ static void draw(mg_ctx *c, float alpha, float t) {
     cw_r2d_polygon(tri, 3, PCOL[i]);
     ui_text(!c->human[i] ? "CPU" : PNAME[i], cw_v2(s.x, s.y - 40), 24, PCOL[i], CW_ALIGN_CENTER);
   }
+  for (int g = 0; g < NP; g++) { /* a ghost bomber's marker */
+    if (K.alive[g] || !c->eliminated[g]) continue;
+    cw_vec2 s = n3_project((t3_vec3){ K.cur_x[g], 0.5f, K.cur_z[g] });
+    cw_r2d_circle_lines(s, 18, 4, 20, PCOL[g]);
+    cw_r2d_circle(s, 5, 10, PCOL[g]);
+    if (c->human[g]) ui_text(K.call_cd[g] > 0 ? "ghost" : "A: bomb", cw_v2(s.x, s.y - 44), 22, PCOL[g], CW_ALIGN_CENTER);
+  }
   if (K.warn && (c->tick / 15) % 2 == 0) ui_text("The ring is shrinking!", cw_v2(STAGE_W / 2, 640), 44, cw_rgba(1, 0.6f, 0.3f, 1), CW_ALIGN_CENTER);
 }
 
@@ -320,7 +367,7 @@ static void score_text(mg_ctx *c, int p, char *buf, int cap) {
 
 const mg_def mg_blast = {
   .id = "blast", .name = "Blast Ring", .tagline = "Bombs shove, the ring shrinks. Stay on.",
-  .how = { "Stick: roll", "A: dash (knocks others hard)", "Stay clear of the red rings" },
+  .how = { "Stick: roll", "A: dash (knocks others hard)", "Out? Aim a marker, A drops a bomb" },
   .buttons = 1, .keys = "SA",
   .kind = "3D", .scene = "scenes/blast.cwscene", .seconds = 60, .unlock_points = 8, .higher_is_better = true,
   .start = start, .tick = tick, .think = think, .draw = draw, .score_text = score_text,
