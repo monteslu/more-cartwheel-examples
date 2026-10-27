@@ -102,6 +102,9 @@ typedef struct world_t {
   int slow;
 } world_t;
 extern world_t W;
+/* debug views (set by the autopilot build's commands): camera zoom and offset, enemies and bots frozen */
+extern float g_cam[3];
+extern bool g_freeze;
 
 /* sim.c */
 void sim_reset(int players, int stage);
@@ -137,3 +140,15 @@ void char_free(ent *e);
 /* fx.c audio */
 void audio_init(void);
 cw_sound music_make(int stage);
+/* secondary.c: spring bones (hair, coat tails, belly) and character shading */
+#include "three.h"
+enum { SB_MAX = 5 };
+typedef struct spring_bone { t3_object *bone; t3_vec3 rest, tip, T, V; bool live; } spring_bone;
+typedef struct spring_rig { t3_object *scene; spring_bone b[SB_MAX]; } spring_rig;
+void sb_bind(spring_rig *s, t3_object *scene);
+void sb_reset(spring_rig *s);
+void sb_jolt(spring_rig *s, float x, float y, float z);
+void sb_step(spring_rig *s, t3_vec3 pos, float yaw, float dt);
+void char_shade(t3_object *scene);
+void chars_secondary(void);
+void char_jolt(ent *e, float dir, float k);

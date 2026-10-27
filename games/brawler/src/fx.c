@@ -188,13 +188,13 @@ void fx_flash(float x, float y, float z, float r, float g, float b, float e) {
   int i = nf++ % NFLASH;
   cw_node3d_set_position(flash[i], (t3_vec3){ x, y + 0.3f, z + 0.8f });
   cw_node_set(flash[i], "color", cw_val_color(r, g, b, 1));
-  flash_e[i] = e * 10;
+  flash_e[i] = e * 4; /* bright enough to light the faces near a hit, not to burn them white */
   cw_node_set(flash[i], "energy", cw_val_float(flash_e[i]));
 }
 void fx_tick(void) {
   for (int i = 0; i < NFLASH; i++)
     if (flash_e[i] > 0) {
-      flash_e[i] *= 0.7f;
+      flash_e[i] *= 0.62f;
       if (flash_e[i] < 0.5f) flash_e[i] = 0;
       cw_node_set(flash[i], "energy", cw_val_float(flash_e[i]));
     }

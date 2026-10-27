@@ -314,7 +314,8 @@ void level_camera(float dt) {
     float a = W.shake_amp * (float)W.shake / 10.0f;
     shx = (hf(W.tick, 1) - 0.5f) * a * 2, shy = (hf(W.tick, 2) - 0.5f) * a * 2;
   }
-  cw_node3d_set_position(cam, (t3_vec3){ W.cam_x + shx, 3.9f + shy, 7.7f });
+  /* g_cam (debug "cam" command in the autopilot build): zoom toward a point on the street for close-ups */
+  cw_node3d_set_position(cam, (t3_vec3){ W.cam_x + g_cam[1] + shx, 1.0f + 2.9f * g_cam[0] + shy, -1.66f + g_cam[2] + 9.36f * g_cam[0] });
   cw_node3d_set_rotation(cam, (t3_vec3){ -0.3f, 0, 0 });
   cw_node sun = cw_node_get(tree_root(), "Sun");
   cw_node3d_set_position(sun, (t3_vec3){ W.cam_x - 8, 14, -8 });

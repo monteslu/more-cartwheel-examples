@@ -14,6 +14,8 @@
 #include "game.h"
 
 world_t W;
+float g_cam[3] = { 1, 0, 0 };
+bool g_freeze;
 static cw_crowd crowd;
 static cw_navmesh navm;
 
@@ -48,7 +50,7 @@ const atk_data ATK[] = {
 };
 
 /* ── character rigs: a pool per model, so a spawn never parses a glb twice ── */
-typedef struct rig { int def; bool busy; cw_node root, model, anim, wnode, blob; t3_gltf *gltf, *blobg; } rig;
+typedef struct rig { int def; bool busy; cw_node root, model, anim, wnode, blob; t3_gltf *gltf, *blobg; spring_rig sr; } rig;
 static const float BODY_SCALE[D_COUNT] = { 1.08f, 0.98f, 1.0f, 1.0f, 0.96f, 0.94f, 1.0f, 1.28f, 1.4f, 1.22f, 1.15f, 1.7f };
 static rig RIGS[96];
 static int rig_n;
@@ -89,6 +91,8 @@ static rig *rig_get(int def) {
   cw_node_add_child(r->root, r->wnode);
   cw_node3d_set_object(r->model, r->gltf->scene);
   set_shadows(r->gltf->scene);
+  char_shade(r->gltf->scene);
+  sb_bind(&r->sr, r->gltf->scene);
   for (int i = 0; i < r->gltf->animation_count; i++) {
     cw_anim a = cw_anim_from_t3_clip(r->gltf->animations[i], "Model");
     cw_anim_set_stored(a, false);
@@ -103,6 +107,13 @@ static rig *rig_get(int def) {
   return r;
 }
 
+/* idle variety: a neck roll now and then, light fighters bounce on their toes (clip names only, not simulation) */
+static const char *idle_clip(const ent *e) {
+  if ((W.tick + e->idx * 97 + e->def * 31) % 720 < 120) return "idle2";
+  return (e->def == D_JET || e->def == D_MIKA || e->def == D_PUNK || e->def == D_RUNNER) ? "idle3" : "idle";
+}
+/* the model faces +x or -x; frozen for a screenshot it turns three quarters to the camera */
+static float ent_yaw(const ent *e) { return g_freeze ? (float)e->face * 0.45f : (float)e->face * 1.5708f; }
 static int ent_index(const ent *e) { return e->player ? (int)(e - W.p) : MAXP + (int)(e - W.e); }
 
 void char_attach(ent *e) {
@@ -114,7 +125,21 @@ void char_attach(ent *e) {
   e->clipname = NULL;
   cw_node_set(e->root, "visible", cw_val_bool(true));
   cw_node_set(e->anim, "speed_scale", cw_val_float(1));
+  sb_reset(&r->sr);
   char_play(e, "idle", 0);
+}
+/* secondary motion: every live character's springs, once per fixed tick after the animation */
+void chars_secondary(void) {
+  for (int i = 0; i < MAXP + MAXE; i++) {
+    ent *e = i < MAXP ? &W.p[i] : &W.e[i - MAXP];
+    if (!e->used || !e->root.id) continue;
+    sb_step(&RIGS[rig_of[i]].sr, (t3_vec3){ e->x, e->y, e->z }, ent_yaw(e), 1.0f / TPS);
+  }
+}
+/* a hit shakes the hair, tails and belly away from the attacker */
+void char_jolt(ent *e, float dir, float k) {
+  if (!e->root.id) return;
+  sb_jolt(&RIGS[rig_of[ent_index(e)]].sr, dir * 2.2f * k, 1.2f * k, 0);
 }
 void char_free(ent *e) {
   if (!e->root.id) return;
@@ -180,7 +205,7 @@ static void crowd_setup(void) {
 static uint64_t agent_add(float x, float z, float speed, bool is_player) {
   if (!crowd.id) return 0;
   cw_crowd_agent_params p = cw_crowd_agent_params_default();
-  p.radius = 0.38f;
+  p.radius = 0.46f;
   p.max_speed = speed;
   p.max_accel = 14;
   p.neighbor_dist = 3.0f;
@@ -261,6 +286,7 @@ void ent_hurt(ent *v, ent *a, float dmg, int knock, float fx) {
   W.shake = knock >= 2 ? 10 : 4;
   W.shake_amp = knock >= 2 ? 0.12f : 0.05f;
   fx_hit(v->x, v->y + 1.1f, v->z, knock, dir);
+  char_jolt(v, (float)dir, knock >= 2 ? 1.6f : 1.0f);
   sfx(knock >= 2 ? SFX_HIT3 : ((int)v->hp & 1) ? SFX_HIT1 : SFX_HIT2);
   if (a && a->player) {
     a->score += (int)dmg * 10;
@@ -306,7 +332,8 @@ void ent_hurt(ent *v, ent *a, float dmg, int knock, float fx) {
       v->st = S_HIT, v->t = 0;
       v->stun = knock >= 1 ? 22 : 15;
       v->x += (float)dir * 0.18f;
-      char_restart(v, knock >= 1 ? "hit_hard" : "hit", 0.02f);
+      bool body = a && (a->atk == A_KICK || a->atk == A_KNEE || a->atk == A_CHARGE || a->atk == A_SWING);
+      char_restart(v, knock >= 1 ? "hit_hard" : body ? "hit_gut" : "hit", 0.02f);
     }
   }
   if (boss && v->st != S_FALL && v->st != S_HIT) v->hurtflash = 1;
@@ -437,7 +464,7 @@ static bool common_state(ent *e) {
     }
     return true;
   case S_GETUP:
-    if (++e->t > 54) { e->st = S_IDLE, e->t = 0; e->invuln = 40; char_play(e, "idle", 0.1f); }
+    if (++e->t > 54) { e->st = S_IDLE, e->t = 0; e->invuln = 40; char_play(e, idle_clip(e), 0.1f); }
     return true;
   case S_DEAD:
     e->t++;
@@ -515,7 +542,7 @@ static void player_update(int pi, const inputs *in) {
     if (mx < -0.2f) e->face = -1;
     bool mv = mx * mx + mz * mz > 0.04f;
     e->st = mv ? S_WALK : S_IDLE;
-    char_play(e, mv ? (spd > 3.5f ? "run" : "walk") : "idle", 0.12f);
+    char_play(e, mv ? (spd > 3.5f ? "run" : "walk") : idle_clip(e), 0.12f);
     if (in->jump) { e->st = S_JUMP, e->vy = 6.8f, e->vx = mx * spd, e->t = 0; char_restart(e, "jump", 0.05f); break; }
     if (in->grab) { /* grab a body in front, or a weapon underfoot */
       int best = -1;
@@ -625,7 +652,7 @@ static void player_update(int pi, const inputs *in) {
     const ent *o = &W.p[k];
     if (k == pi || !o->used || o->st == S_DEAD) continue;
     float dx = e->x - o->x, dz = e->z - o->z, d2 = dx * dx + dz * dz;
-    if (d2 < 0.2f) { float d = sqrtf(d2) + 0.001f; e->x += dx / d * 0.02f; e->z += dz / d * 0.02f; if (d2 < 0.0001f) e->z += (pi > k ? 0.03f : -0.03f); }
+    if (d2 < 0.5f) { float d = sqrtf(d2) + 0.001f; e->x += dx / d * 0.03f; e->z += dz / d * 0.03f; if (d2 < 0.0001f) e->z += (pi > k ? 0.03f : -0.03f); } /* about 0.7 m apart: the bodies are broad now */
   }
   arena_clamp(e);
 }
@@ -679,6 +706,7 @@ static void enemy_update(int ei) {
   }
   const char_def *d = &DEFS[e->def];
   bool boss = d->boss;
+  if (g_freeze && (e->st == S_IDLE || e->st == S_WALK)) { e->face = -1; e->st = S_IDLE; char_play(e, idle_clip(e), 0.2f); if (e->agent && crowd.id) cw_crowd_set_target(crowd, AG(e->agent), (t3_vec3){ e->x, 0, e->z }); arena_clamp(e); return; }
   switch (e->st) {
   case S_ATK: {
     const atk_data *ad = &ATK[e->atk];
@@ -700,7 +728,7 @@ static void enemy_update(int ei) {
   }
   default: {
     int ti = nearest_player(e);
-    if (ti < 0) { e->st = S_IDLE; char_play(e, "idle", 0.2f); if (e->agent && crowd.id) cw_crowd_set_velocity(crowd, AG(e->agent), (t3_vec3){ 0, 0, 0 }); break; }
+    if (ti < 0) { e->st = S_IDLE; char_play(e, idle_clip(e), 0.2f); if (e->agent && crowd.id) cw_crowd_set_velocity(crowd, AG(e->agent), (t3_vec3){ 0, 0, 0 }); break; }
     ent *p = &W.p[ti];
     float side = (e->x < p->x) ? -1.0f : 1.0f; /* the side it is already on */
     float dx = p->x - e->x, dz = p->z - e->z;
@@ -713,13 +741,25 @@ static void enemy_update(int ei) {
     if (want && dist < 5.0f) { e->token = 1; e->target = ti; W.tokens_out++; }
     float tx, tz;
     if (e->token) {
+      /* a second attacker on this fighter takes the other flank instead of standing inside the first */
+      for (int k = 0; k < ei; k++) { const ent *o = &W.e[k]; if (o->used && o->token && o->target == ti && ((o->x < p->x) == (e->x < p->x))) { side = -side; break; } }
       tx = p->x + side * reach * 0.9f;
       tz = p->z;
-    } else { /* wait in a ring around the player */
-      float rr = 2.4f + (float)(e->slot % 3) * 0.55f;
-      float sd = (e->slot & 1) ? 1.0f : -1.0f;
-      tx = p->x + sd * rr;
-      tz = p->z + ((float)(e->slot % 5) - 2.0f) * 0.55f;
+    } else { /* wait in a ring around the fighter: each waiting enemy on this side takes the next free slot */
+      static const float SLOT[8][2] = { { 2.2f, 0 }, { 2.45f, 1.05f }, { 2.45f, -1.05f }, { 3.25f, 0.5f }, { 3.25f, -0.5f }, { 3.6f, 1.55f }, { 3.6f, -1.55f }, { 4.3f, 0 } };
+      int rank = 0;
+      for (int k = 0; k < ei; k++) {
+        const ent *o = &W.e[k];
+        if (!o->used || o->token || o->st == S_DEAD || DEFS[o->def].boss || (o->x < p->x) != (e->x < p->x)) continue;
+        if (nearest_player(o) == ti) rank++;
+      }
+      const float *sl = SLOT[rank & 7];
+      float shuffle = (float)((W.tick + e->idx * 53) % 240) / 120.0f - 1.0f; /* a slow sway in the slot */
+      shuffle = (absf(shuffle) * 2 - 1) * 0.22f;
+      tx = p->x + side * (sl[0] + (float)(rank >> 3) * 0.8f);
+      float dz = sl[1] + shuffle;
+      tz = p->z + dz;
+      if (tz < -LANE_Z + 0.2f || tz > LANE_Z - 0.2f) tz = p->z - dz; /* mirrored when the lane edge is in the way */
     }
     tz = clampf(tz, -LANE_Z + 0.2f, LANE_Z - 0.2f);
     if (crowd.id && e->agent) {
@@ -730,7 +770,7 @@ static void enemy_update(int ei) {
     bool arrived = to_x * to_x + to_z * to_z < 0.12f;
     e->face = dx >= 0 ? 1 : -1;
     e->st = arrived ? S_IDLE : S_WALK;
-    char_play(e, arrived ? "idle" : (d->speed > 2.4f ? "run" : "walk"), 0.15f);
+    char_play(e, arrived ? idle_clip(e) : (d->speed > 2.4f ? "run" : "walk"), 0.15f);
     if (e->token && absf(dx) < reach + 0.15f && absf(dz) < 0.45f && e->cd == 0) {
       if (e->agent && crowd.id) cw_crowd_clear_target(crowd, AG(e->agent));
       e->cd = 0;
@@ -916,7 +956,7 @@ void char_sync(ent *e) {
     cw_node3d_set_position(r->blob, (t3_vec3){ e->x, 0.03f, e->z });
     cw_node3d_set_scale(r->blob, (t3_vec3){ bs, 1, bs });
   }
-  float yaw = (float)e->face * 1.5708f;
+  float yaw = ent_yaw(e);
   /* lean a little toward the lane when walking */
   cw_node3d_set_rotation(e->root, (t3_vec3){ 0, yaw, 0 });
   if (e->weapon && e->wnode.id) {

@@ -275,33 +275,41 @@ function neonStrips({ seed = 10, hues = [[1, 0.2, 0.7], [0.2, 0.9, 1], [1, 0.7, 
   };
 }
 // ── characters ──────────────────────────────────────────────────────────
+/** soft cloth wrinkles: ridges stretched across the garment (u runs around a limb or body, v along it), two scales */
+function wrinkles(u, v, seed) {
+  const r1 = 1 - Math.abs(2 * fbm(u * 1, v * 1, 2, 3, seed + 40) - 1), r2 = 1 - Math.abs(2 * fbm(u, v * 2, 3, 3, seed + 41) - 1);
+  const wa = fbm(u, v, 2, 2, seed + 42) - 0.5, wb = fbm(u, v, 3, 2, seed + 45) - 0.5;
+  const w1 = fbm(u + 0.2 * wb, v + 0.35 * wa, 6, 2, seed + 43), w2 = fbm(u - 0.3 * wa, v + 0.3 * wb, 9, 2, seed + 44);
+  return 0.7 * Math.pow(1 - Math.abs(2 * w1 - 1), 3) * (0.4 + 0.6 * r1) + 0.4 * Math.pow(1 - Math.abs(2 * w2 - 1), 4) * (0.3 + 0.7 * r2);
+}
 function fabric({ seed = 11, knit = false }) {
   return (u, v, o) => {
-    const N = 48, x = u * N, y = v * N;
+    const N = knit ? 64 : 112, x = u * N, y = v * N;
     const wx = Math.sin(x * Math.PI * 2), wy = Math.sin(y * Math.PI * 2);
     const over = ((Math.floor(x) + Math.floor(y)) & 1) ? wx : wy;
-    const g = fbm(u, v, 24, 3, seed), fz = hash2(Math.floor(u * 512), Math.floor(v * 512), seed);
-    const k = knit ? 0.8 + 0.12 * Math.sin((x + Math.sin(y * 3) * 0.2) * Math.PI * 2) : 0.82 + 0.1 * over;
-    setc(o, [1, 1, 1], k + 0.12 * (g - 0.5) + 0.05 * (fz - 0.5));
-    o.h = knit ? Math.sin((x + Math.sin(y * 3) * 0.2) * Math.PI * 2) * 0.8 + wy * 0.3 : over * 0.9 + (fz - 0.5) * 0.3;
-    o.ro = 0.85 + 0.1 * (fz - 0.5); o.ao = 0.9 + 0.1 * over;
+    const g = fbm(u, v, 12, 3, seed), fz = hash2(Math.floor(u * 512), Math.floor(v * 512), seed);
+    const wr = wrinkles(u, v, seed);
+    const rib = knit ? Math.sin((x + Math.sin(y * 3) * 0.2) * Math.PI * 2) : over;
+    setc(o, [1, 1, 1], 0.86 + 0.035 * rib + 0.1 * (g - 0.5) + 0.03 * (fz - 0.5) + 0.06 * wr);
+    o.h = 0.12 * rib + 1.0 * wr + 0.05 * (fz - 0.5);
+    o.ro = 0.88 + 0.06 * (fz - 0.5) - 0.06 * wr; o.ao = 0.93 + 0.05 * rib - 0.0 + 0.07 * (wr - 0.3);
   };
 }
 function denim({ seed = 12 }) {
   return (u, v, o) => {
-    const N = 40, d = (u + v) * N, t = Math.sin(d * Math.PI * 2);
-    const g = fbm(u, v, 16, 4, seed), wear = smooth(0.55, 0.8, fbm(u, v, 3, 4, seed + 3));
-    const fz = hash2(Math.floor(u * 512), Math.floor(v * 512), seed);
-    setc(o, [1, 1, 1], 0.7 + 0.12 * t + 0.3 * g + 0.06 * (fz - 0.5) + wear * 0.18);
-    o.h = t * 0.8 + (fz - 0.5) * 0.4; o.ro = 0.88 - wear * 0.1; o.ao = 0.92 + 0.08 * t;
+    const N = 110, d = (u + v) * N, t = Math.sin(d * Math.PI * 2);
+    const g = fbm(u, v, 12, 4, seed), wear = smooth(0.55, 0.8, fbm(u, v, 3, 4, seed + 3));
+    const fz = hash2(Math.floor(u * 512), Math.floor(v * 512), seed), wr = wrinkles(u, v, seed);
+    setc(o, [1, 1, 1], 0.74 + 0.05 * t + 0.22 * g + 0.04 * (fz - 0.5) + wear * 0.16 + 0.12 * wr);
+    o.h = t * 0.12 + 1.0 * wr + (fz - 0.5) * 0.05; o.ro = 0.88 - wear * 0.08; o.ao = 0.95 + 0.04 * t + 0.05 * (wr - 0.3);
   };
 }
 function leather({ seed = 13 }) {
   return (u, v, o) => {
-    const [f1, f2] = cells(u, v, 28, seed, 1), g = fbm(u, v, 5, 4, seed + 2), scr = smooth(0.82, 0.95, fbm(u * 30, v * 2, 30, 2, seed + 4));
-    const crease = 1 - smooth(0, 0.14, f2 - f1);
-    setc(o, [1, 1, 1], 0.62 + 0.3 * g + 0.08 * (1 - crease) - crease * 0.2 + scr * 0.3);
-    o.h = (1 - crease) * 0.8 - scr * 0.1; o.ro = clamp(0.4 + crease * 0.25 + (1 - g) * 0.15, 0.2, 1); o.ao = 1 - crease * 0.4;
+    const [f1, f2] = cells(u, v, 72, seed, 1), g = fbm(u, v, 5, 4, seed + 2), scr = smooth(0.82, 0.95, fbm(u * 30, v * 2, 30, 2, seed + 4));
+    const crease = 1 - smooth(0, 0.1, f2 - f1), wr = wrinkles(u, v, seed);
+    setc(o, [1, 1, 1], 0.66 + 0.24 * g + 0.04 * (1 - crease) - crease * 0.08 + scr * 0.2 + 0.1 * wr);
+    o.h = (1 - crease) * 0.15 - scr * 0.05 + 0.9 * wr; o.ro = clamp(0.42 + crease * 0.12 + (1 - g) * 0.15 - 0.12 * wr, 0.2, 1); o.ao = 1 - crease * 0.15;
   };
 }
 function skinTex({ seed = 14 }) {
@@ -453,10 +461,10 @@ const jobs = {
   facade_arcade: () => [bake(1024, facade({ wall: neonStrips({ seed: 53 }), seed: 53, lit: 0.75, lamps: [[1, 0.25, 0.7], [0.25, 0.9, 1], [1, 0.7, 0.25], [0.6, 0.4, 1]], glass: [0.06, 0.05, 0.1], frame: [0.1, 0.1, 0.14], win: [0.14, 0.14, 0.86, 0.82] })), 1.6],
   facade_factory: () => [bake(1024, facade({ wall: plate({ color: [0.3, 0.29, 0.3], seed: 54, rust: 0.2, diamonds: 4, panels: 4 }), seed: 54, lit: 0.55, lamps: [[1, 0.5, 0.18], [1, 0.62, 0.25], [1, 0.4, 0.15]], glass: [0.08, 0.06, 0.05], frame: [0.12, 0.1, 0.09], slit: true })), 2.0],
   // characters
-  fab_cloth: () => [bake(256, fabric({ seed: 11 })), 0.7],
-  fab_knit: () => [bake(256, fabric({ seed: 12, knit: true })), 0.8],
-  fab_denim: () => [bake(256, denim({ seed: 13 })), 0.8],
-  fab_leather: () => [bake(256, leather({ seed: 14 })), 0.7],
+  fab_cloth: () => [bake(256, fabric({ seed: 11 })), 1.6],
+  fab_knit: () => [bake(256, fabric({ seed: 12, knit: true })), 1.6],
+  fab_denim: () => [bake(256, denim({ seed: 13 })), 1.6],
+  fab_leather: () => [bake(256, leather({ seed: 14 })), 1.4],
   fab_skin: () => [bake(256, skinTex({ seed: 15 })), 0.5],
   fab_hair: () => [bake(256, hairTex({ seed: 16 })), 1.6],
 };

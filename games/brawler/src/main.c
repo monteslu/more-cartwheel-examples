@@ -78,10 +78,30 @@ static void cmd_stage(int argc, const char **argv, cw_reply *r) {
   play_music(st);
   cw_reply_printf(r, "{\"stage\":%d}", st);
 }
+/* cam <zoom> [dx dz]: zoom the camera toward the street (1 is the game view) */
+static void cmd_cam(int argc, const char **argv, cw_reply *r) {
+  g_cam[0] = argc > 1 ? (float)atof(argv[1]) : 1, g_cam[1] = argc > 2 ? (float)atof(argv[2]) : 0, g_cam[2] = argc > 3 ? (float)atof(argv[3]) : 0;
+  cw_reply_printf(r, "{\"zoom\":%g}", g_cam[0]);
+}
+/* spawn <kind 3-11> [dx dz]: an enemy near the camera */
+static void cmd_spawn(int argc, const char **argv, cw_reply *r) {
+  if (argc < 2) { cw_reply_error(r, "usage: spawn <3-11> [dx dz]"); return; }
+  int d = atoi(argv[1]);
+  if (d < 3 || d >= D_COUNT) { cw_reply_error(r, "kind 3-11"); return; }
+  int i = ent_spawn_enemy(d, W.cam_x + (argc > 2 ? (float)atof(argv[2]) : 0), argc > 3 ? (float)atof(argv[3]) : 0);
+  cw_reply_printf(r, "{\"index\":%d}", i);
+}
+/* freeze <0|1>: enemies hold their place and bots stop (for screenshots of the characters) */
+static void cmd_freeze(int argc, const char **argv, cw_reply *r) {
+  g_freeze = argc > 1 && atoi(argv[1]) != 0;
+  cw_reply_printf(r, "{\"freeze\":%d}", g_freeze);
+}
 /* bots: walk to the nearest enemy and fight; grab, kick and jump now and then */
+static int bot_pick[MAXP] = { -1, -1, -1, -1 };
 static void bot(int i, inputs *in) {
   const ent *e = &W.p[i];
   memset(in, 0, sizeof *in);
+  if (g_freeze) return;
   int best = -1;
   float bd = 1e9f;
   for (int k = 0; k < MAXE; k++) {
@@ -89,8 +109,10 @@ static void bot(int i, inputs *in) {
     if (!v->used || v->st == S_DEAD || v->st == S_DOWN) continue;
     if (v->x < W.cam_x - level_cam_halfw() + 0.8f || v->x > W.cam_x + level_cam_halfw() - 0.8f) continue; /* still coming on */
     float d = (v->x - e->x) * (v->x - e->x) + (v->z - e->z) * (v->z - e->z) * 3;
+    for (int j = 0; j < i; j++) if (bot_pick[j] == k) d += 9; /* spread out: another bot already has this one */
     if (d < bd) bd = d, best = k;
   }
+  bot_pick[i] = best;
   float tx, tz;
   if (best < 0) { /* nothing to fight: walk on when the wave is clear, else hold the middle of the screen */
     bool clear = true;
@@ -169,6 +191,9 @@ static void init(void *user) {
   cw_debug_u32("game.hash", &d_hash);
 #ifdef BRAWLER_AUTOPILOT
   cw_debug_command("stage", "stage <0-3>: jump to a stage", cmd_stage);
+  cw_debug_command("cam", "cam <zoom> [dx dz]: camera zoom toward the street", cmd_cam);
+  cw_debug_command("spawn", "spawn <3-11> [dx dz]: an enemy near the camera", cmd_spawn);
+  cw_debug_command("freeze", "freeze <0|1>: enemies and bots hold still", cmd_freeze);
   cw_shell_start(3);
 #endif
 }
@@ -190,7 +215,7 @@ static void fixed_update(void *user, double dt) {
   if (!cw_shell_update()) return;
   inputs in[MAXP];
   memset(in, 0, sizeof in);
-  for (int i = 0; i < W.players; i++) {
+  for (int i = 0; i < W.players && i < MAXP; i++) {
 #ifdef BRAWLER_AUTOPILOT
     bot(i, &in[i]);
 #else
@@ -201,6 +226,7 @@ static void fixed_update(void *user, double dt) {
 #endif
   }
   sim_tick(in);
+  chars_secondary();
   /* the stage is done: the next one, or the end */
   if (W.phase == PH_CLEAR && W.phase_t > 240) {
     if (W.stage + 1 >= 4) W.phase = PH_WIN, W.phase_t = 0;
