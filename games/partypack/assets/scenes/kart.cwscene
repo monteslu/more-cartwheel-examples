@@ -5,7 +5,9 @@
 [node name="Post" parent="." type="PostProcess"]
 msaa = 4
 tonemap = ACES_FILMIC
-exposure = 1.05
+exposure = 1.55
+grade = true
+lut = "luts/kart.cube"
 bloom = true
 bloom_intensity = 0.07
 bloom_threshold = 1.1
@@ -17,11 +19,12 @@ aa = SMAA
 
 [node name="Sky" parent="." type="ProceduralSky"]
 sun = "../Sun"
-time_of_day = 16.8
+time_of_day = 15.5
 latitude = 30
 declination = 15
 north = 100
-sun_energy = 3.5
+sun_energy = 5.5
+sky_energy = 1.4
 environment = true
 
 [node name="Sun" parent="." type="DirectionalLight3D"]

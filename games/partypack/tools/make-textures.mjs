@@ -48,7 +48,7 @@ const mats = {
     const k = 0.34 + 0.1 * id + 0.08 * grain + 0.05 * wear;
     set(o, [0.5, 0.55, 0.64], k);
     o.h = bevel * 0.6 + bolt * 0.5 + grain * 0.05 - groove * 0.2;
-    o.ro = 0.34 + 0.22 * wear + 0.12 * grain; o.me = 0.9 - wear * 0.3;
+    o.ro = 0.4 + 0.22 * wear + 0.12 * grain; o.me = 0.4 - wear * 0.2;
     o.ao = 0.55 + 0.45 * bevel;
     if (groove > 0.05) { o.er = 0.05 * groove; o.eg = 0.55 * groove; o.eb = 0.75 * groove; mixc(o, [0.02, 0.1, 0.12], groove * 0.7); }
   }),

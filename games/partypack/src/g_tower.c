@@ -174,20 +174,20 @@ static void block(cw_xform2 x, float w, float h, int p, cw_color tint) {
 
 static void draw(mg_ctx *c, float alpha, float t) {
   (void)alpha;
-  art_ambient = cw_rgba(0.62f, 0.64f, 0.74f, 1);
+  art_ambient = cw_rgba(0.5f, 0.52f, 0.62f, 1);
   ui_grad(cw_rect_make(0, 0, STAGE_W, STAGE_H), cw_rgba(0.34f, 0.62f, 0.95f, 1), cw_rgba(0.9f, 0.94f, 1, 1));
   bg_clouds(t, 40, 1.2f, 0.95f);
   bg_ridge("ridge_far", t * 6, GROUND_Y, 230, cw_rgba(1, 1, 1, 1));
   bg_ridge("ridge_mid", t * 12, GROUND_Y, 170, cw_rgba(1, 1, 1, 1));
   bg_ridge("ridge_near", t * 22, GROUND_Y + 10, 110, cw_rgba(1, 1, 1, 1));
-  art_light(cw_v2(380, -200), 2400, cw_rgba(1, 0.94f, 0.82f, 1), 0.85f, false);
+  art_light(cw_v2(380, -200), 2400, cw_rgba(1, 0.94f, 0.82f, 1), 0.45f, false);
   /* a lawn: lit rubber-track texture tinted green on dark earth */
   ui_grad(cw_rect_make(0, GROUND_Y + 14, STAGE_W, STAGE_H - GROUND_Y - 14), cw_rgba(0.25f, 0.18f, 0.12f, 1), cw_rgba(0.1f, 0.08f, 0.07f, 1));
   for (float x = 0; x < STAGE_W; x += 144) art_draw_ex("track", cw_v2(x, GROUND_Y - 10), cw_v2(145, 34), cw_v2(0, 0), 0, cw_rgba(0.45f, 0.95f, 0.5f, 1), false, false);
   for (int p = 0; p < NP; p++) {
     float px = to_px_x(col_x(p));
     ui_grad(cw_rect_make(px - 160, 120, 320, GROUND_Y - 120), col_a(PCOL[p], 0.0f), col_a(PCOL[p], 0.14f));
-    art_light(cw_v2(px, 150), 420, col_mix(PCOL[p], cw_rgba(1, 1, 1, 1), 0.4f), 0.6f, false);
+    art_light(cw_v2(px, 150), 420, col_mix(PCOL[p], cw_rgba(1, 1, 1, 1), 0.4f), 0.45f, false);
     art_draw("shadow", cw_v2(px, GROUND_Y + 20), cw_v2(250, 36), 0, cw_rgba(1, 1, 1, 0.8f));
     art_nine("tile", cw_rect_make(px - 112, GROUND_Y - 6, 224, 30), 24, 0.5f, col_mix(PCOL[p], cw_rgba(0.3f, 0.3f, 0.35f, 1), 0.4f));
     /* height ruler */

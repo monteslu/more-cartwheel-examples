@@ -57,8 +57,9 @@ void art_glow(const char *name, cw_vec2 center, float size, cw_color tint) {
   cw_r2d_set_blend(CW_BLEND_ALPHA);
 }
 void art_light(cw_vec2 p, float radius, cw_color c, float energy, bool shadows) {
-  if (!LIT) return;
+  cw_r2d_use_layer(0); /* lights always go to the lit world layer */
   cw_r2d_light(&(cw_light2d){ .pos = p, .radius = radius, .color = c, .energy = energy, .height = radius * 0.35f, .shadows = shadows });
+  cw_r2d_use_layer(LIT ? 0 : 1);
 }
 /* a stretchable plate: the corners keep their size (margin in texture pixels, scaled by `scale`) */
 void art_nine(const char *name, cw_rect dst, float margin, float scale, cw_color tint) {

@@ -125,16 +125,16 @@ static void draw_lane(int i) {
   float tw = 144, x0 = -fmodf(D.dist * 0.9f, tw);
   for (float x = x0; x < STAGE_W; x += tw) art_draw_ex("track", cw_v2(x, gy - 6), cw_v2(tw + 1, 30), cw_v2(0, 0), 0, (cw_color){ 0 }, false, false);
   cw_r2d_rect(cw_rect_make(0, gy - 6, STAGE_W, 4), col_a(c, 0.95f));
-  art_light(cw_v2(PX + 40, gy - 70), 300, col_mix(c, cw_rgba(1, 1, 1, 1), 0.35f), 0.75f, false);
+  art_light(cw_v2(PX + 40, gy - 70), 300, col_mix(c, cw_rgba(1, 1, 1, 1), 0.35f), 0.6f, false);
 }
 
 static void draw(mg_ctx *c, float alpha, float t) {
   (void)alpha;
-  art_ambient = cw_rgba(0.62f, 0.64f, 0.74f, 1);
+  art_ambient = cw_rgba(0.5f, 0.52f, 0.62f, 1);
   cw_r2d_rect(cw_rect_make(0, 0, STAGE_W, STAGE_H), cw_rgba(0.1f, 0.14f, 0.3f, 1));
   ui_grad(cw_rect_make(0, 0, STAGE_W, 150), cw_rgba(0.3f, 0.55f, 0.92f, 1), cw_rgba(0.6f, 0.78f, 0.98f, 1));
   bg_clouds(t, 20, 1.0f, 0.9f);
-  art_light(cw_v2(STAGE_W * 0.35f, -140), 2000, cw_rgba(1, 0.93f, 0.8f, 1), 0.9f, false);
+  art_light(cw_v2(STAGE_W * 0.35f, -140), 2000, cw_rgba(1, 0.93f, 0.8f, 1), 0.4f, false);
   for (int i = 0; i < LANES; i++) {
     draw_lane(i);
     float gy = GROUND0 + i * LANE_H;

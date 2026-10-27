@@ -132,7 +132,7 @@ static void draw_pad(cw_vec2 ctr, int s, bool lit, float r) {
 
 static void draw(mg_ctx *c, float alpha, float t) {
   (void)alpha;
-  art_ambient = cw_rgba(0.34f, 0.32f, 0.5f, 1);
+  art_ambient = cw_rgba(0.7f, 0.66f, 0.85f, 1);
   ui_backdrop(t, cw_rgba(0.12f, 0.12f, 0.3f, 1), cw_rgba(0.3f, 0.12f, 0.4f, 1));
   cw_vec2 mid = cw_v2(STAGE_W / 2, 300);
   float d = 96;

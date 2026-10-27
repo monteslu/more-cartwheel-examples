@@ -120,7 +120,7 @@ static const char *KPAD_ON[3] = { "pad_mint_on", "pad_ruby_on", "pad_sky_on" };
 static void draw(mg_ctx *c, float alpha, float t) {
   (void)alpha;
   float pulse = fabsf(sinf((float)c->tick * 3.14159f / BPM_TICKS));
-  art_ambient = cw_rgba(0.4f + 0.12f * pulse, 0.36f, 0.55f, 1);
+  art_ambient = cw_rgba(0.72f + 0.1f * pulse, 0.68f, 0.85f, 1);
   ui_backdrop(t, cw_rgba(0.2f + 0.08f * pulse, 0.06f, 0.35f, 1), cw_rgba(0.05f, 0.05f, 0.2f, 1));
   /* stage lights sweeping over the crowd */
   for (int i = 0; i < 3; i++) {
@@ -138,6 +138,7 @@ static void draw(mg_ctx *c, float alpha, float t) {
     float lx = 40 + p * 310, w = 270;
     art_nine("panel", cw_rect_make(lx, 130, w, 540), 26, 1.0f, cw_rgba(0.9f, 0.9f, 1.0f, 0.78f));
     cw_r2d_rect_lines(cw_rect_make(lx + 3, 133, w - 6, 534), 3, col_a(PCOL[p], 0.85f));
+    art_world(false); /* glossy pads and gems keep their baked light */
     for (int k = 0; k < 3; k++) {
       float x = lx + w / 2 + (k - 1) * 70;
       cw_r2d_rect(cw_rect_make(x - 28, 140, 56, 520), cw_rgba(1, 1, 1, 0.05f));
@@ -158,6 +159,7 @@ static void draw(mg_ctx *c, float alpha, float t) {
       art_draw(GEM[B.n[i].kind], cw_v2(x, y), cw_v2(54, 54), t * 0.3f, tint);
       if (B.hit[p][i] != 2) art_glow("glow", cw_v2(x, y), 90, col_a(KCOL[B.n[i].kind], 0.35f));
     }
+    art_world(true);
     ui_blob(cw_v2(lx + w / 2, 640 - pulse * 10), 26, p, 0, 0, 1 + 0.12f * pulse, B.combo[p] > 5 ? 1 : 0, p >= c->humans);
     if (B.judge_t[p] > 0) {
       const char *j = B.judge[p] == 2 ? "PERFECT" : B.judge[p] == 1 ? "good" : "miss";

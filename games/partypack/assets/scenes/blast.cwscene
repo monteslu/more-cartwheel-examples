@@ -24,12 +24,12 @@ aa = SMAA
 
 [node name="Sky" parent="." type="ProceduralSky"]
 sun = "../Sun"
-time_of_day = 19.0
+time_of_day = 17.6
 latitude = 35
 declination = 12
 north = 30
-sun_energy = 2.2
-sky_energy = 0.7
+sun_energy = 3.4
+sky_energy = 1.1
 rayleigh = 1.4
 environment = true
 
@@ -55,7 +55,7 @@ size = vec3(13, 1, 13)
 [node name="LavaGlow" parent="." type="OmniLight3D"]
 position = vec3(0, -5, 0)
 color = color(1, 0.4, 0.1, 1)
-energy = 60
+energy = 30
 range = 30
 
 [node name="UnderGlow" parent="." type="OmniLight3D"]

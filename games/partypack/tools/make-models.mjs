@@ -23,7 +23,7 @@ const DEFS = {
   steel: { set: 'steel', emissive: [1.6, 1.6, 1.6], rough: 1 },
   metal: { set: 'metal', tint: [0.9, 0.92, 1] },
   metal_dark: { set: 'metal', tint: [0.3, 0.32, 0.38], rough: 1.1 },
-  lava: { set: 'lava', emissive: [2.4, 2.4, 2.4] },
+  lava: { set: 'lava', emissive: [1.0, 1.0, 1.0] },
   wood: { set: 'wood' },
   wood_dark: { set: 'wood', tint: [0.55, 0.5, 0.48] },
   rock: { set: 'rock' },

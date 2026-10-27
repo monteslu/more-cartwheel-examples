@@ -81,7 +81,7 @@ void hub_mode(int mode) {
     cw_node_set(H.star[i], "visible", cw_val_bool(false));
     cw_node_set(H.endt[i], "visible", cw_val_bool(false));
   }
-  if (mode == 1) { float c[6] = { 0, 15.5f, 10.5f, 0, 0, 0.9f }; memcpy(H.cam_t, c, sizeof c); }
+  if (mode == 1) { float c[6] = { 0, 20.0f, 13.5f, 0, 0, 1.0f }; memcpy(H.cam_t, c, sizeof c); }
   else if (mode == 2) { float c[6] = { 0, 3.2f, 8.2f, 0, 1.0f, 0 }; memcpy(H.cam_t, c, sizeof c); }
   else { float c[6] = { 0, 2.3f, 9.0f, 0, 1.1f, 0 }; memcpy(H.cam_t, c, sizeof c); }
   cw_node_set(H.podium, "visible", cw_val_bool(mode == 2));
@@ -94,7 +94,7 @@ void hub_cell(int i, int kind) {
   cw_node_set(H.tile[i], "visible", cw_val_bool(H.mode == 1 && kind == 0));
   cw_node_set(H.star[i], "visible", cw_val_bool(H.mode == 1 && kind == 1));
   cw_node_set(H.endt[i], "visible", cw_val_bool(H.mode == 1 && kind == 2));
-  if (kind == 2) n3_scale(H.endt[i], 1.25f, 1, 1.25f);
+  if (kind == 2) n3_scale(H.endt[i], 1.1f, 1, 1.1f);
 }
 void hub_token(int p, float cell, float hop) { if (H.built) { H.cell[p] = cell; H.hop[p] = hop; } }
 void hub_podium_slot(int p, int rank, float lift) { if (H.built) { H.podium_rank[p] = rank; H.lift[p] = lift; } }
@@ -127,7 +127,7 @@ void hub_update(float dt) {
       int c1 = c0 + 1 > H.ncells ? H.ncells : c0 + 1;
       float f = H.cell[p] - (float)c0, x0, z0, x1, z1;
       cell_xz(c0, &x0, &z0); cell_xz(c1, &x1, &z1);
-      pos = (t3_vec3){ flerp(x0, x1, f) + ((float)p - 1.5f) * 0.28f, 0.62f + H.hop[p] + fabsf(sinf(H.cell[p] * 3.14159f)) * 0.5f, flerp(z0, z1, f) + ((float)p - 1.5f) * 0.12f };
+      pos = (t3_vec3){ flerp(x0, x1, f) + ((float)p - 1.5f) * 0.42f, 0.62f + H.hop[p] + fabsf(sinf(H.cell[p] * 3.14159f)) * 0.5f, flerp(z0, z1, f) + ((float)p - 1.5f) * 0.12f };
       yaw = cw_atan2(x1 - x0 + 0.001f, z1 - z0);
       if (f < 0.001f || f > 0.999f) yaw = sinf(H.clock + (float)p) * 0.3f;
     } else {
