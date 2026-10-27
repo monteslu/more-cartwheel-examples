@@ -9,9 +9,9 @@ H = math.pi / 2
 
 def mats():
     return dict(
-        dark=material('vm_dark', (0.04, 0.045, 0.05), 0.38, 0.9),
-        steel=material('vm_steel', (0.45, 0.47, 0.5), 0.3, 1.0),
-        body=material('vm_body', (0.16, 0.18, 0.2), 0.45, 0.7),
+        dark=material('vm_dark', (0.07, 0.075, 0.08), 0.42, 0.6),
+        steel=material('vm_steel', (0.55, 0.57, 0.6), 0.28, 1.0),
+        body=material('vm_body', (0.26, 0.29, 0.32), 0.4, 0.45),
         wood=material('vm_wood', (0.30, 0.17, 0.08), 0.55, 0.0),
         orange=material('vm_orange', (0.9, 0.35, 0.05), 0.4, 0.2),
         glove=material('vm_glove', (0.07, 0.075, 0.08), 0.8, 0.0),

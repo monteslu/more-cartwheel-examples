@@ -30,11 +30,12 @@ BONES = {
 def build(team):
     reset()
     col = TEAMS[team]
-    suit = material('suit', (0.05, 0.055, 0.06), 0.85, 0.0)
-    armor = material('armor', (0.20, 0.22, 0.25), 0.42, 0.75)
-    plate = material('plate', (0.34, 0.36, 0.40), 0.5, 0.5)
-    trim = material('trim', col, 0.45, 0.1)
-    visor = material('visor', (col[0] * 0.2, col[1] * 0.2, col[2] * 0.2), 0.15, 0.0, emit=col, emit_strength=6.0)
+    # team readability at split-screen sizes: the armour itself carries the team colour, the trims glow it
+    suit = material('suit', (0.06, 0.065, 0.07), 0.85, 0.0)
+    armor = material('armor', (0.08 + col[0] * 0.32, 0.08 + col[1] * 0.3, 0.08 + col[2] * 0.32), 0.38, 0.35)
+    plate = material('plate', (0.30, 0.31, 0.33), 0.45, 0.6)
+    trim = material('trim', col, 0.4, 0.0, emit=col, emit_strength=2.5)
+    visor = material('visor', (col[0] * 0.2, col[1] * 0.2, col[2] * 0.2), 0.15, 0.0, emit=col, emit_strength=8.0)
     gun = material('gunmetal', (0.07, 0.07, 0.08), 0.35, 0.9)
     parts = []   # (object, bone name or weights fn)
 
