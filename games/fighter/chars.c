@@ -70,6 +70,7 @@ typedef struct seg {
   bool cap0, cap1;
 } seg;
 
+static float srgb2lin(float c) { return c <= 0.04045f ? c / 12.92f : cw_pow((c + 0.055f) / 1.055f, 2.4f); }
 static float sm(float e0, float e1, float x) { float t = cw_clampf((x - e0) / (e1 - e0), 0, 1); return t * t * (3 - 2 * t); }
 
 #define SIDES 14
@@ -139,7 +140,7 @@ static void add_tube(vbuf *vb, const seg *s) {
       vb->uv[i * 2] = (float)k / SIDES;
       vb->uv[i * 2 + 1] = (rings[r].d / 0.5f);
       float tt = cw_clampf(t, 0, 1);
-      for (int c = 0; c < 3; c++) vb->c[i * 3 + c] = s->col[c] + (s->col2[c] - s->col[c]) * tt;
+      for (int c = 0; c < 3; c++) vb->c[i * 3 + c] = srgb2lin(s->col[c] + (s->col2[c] - s->col[c]) * tt);
       vb->si[i * 4] = (float)s->pb; vb->si[i * 4 + 1] = (float)s->ob; vb->si[i * 4 + 2] = (float)s->cb; vb->si[i * 4 + 3] = 0;
       vb->sw[i * 4] = wp; vb->sw[i * 4 + 1] = 1 - wp - wc; vb->sw[i * 4 + 2] = wc; vb->sw[i * 4 + 3] = 0;
     }
@@ -386,7 +387,7 @@ fighter_model *model_new(int def, cw_node parent) {
   t3_material *msuit = phys(lin(1, 1, 1), 0.62f, 0.0f);
   msuit->vertex_colors = true;
   msuit->sheen = 0.5f;
-  tex_apply(msuit, TEX_FABRIC, 1, 1, 0.6f, 0.8f);
+  tex_apply(msuit, TEX_FABRIC, 1, 1, 0.25f, 0.5f);
   t3_material *mskin = phys(lin(1, 1, 1), 0.55f, 0.0f);
   mskin->vertex_colors = true;
   mskin->sheen = 0.3f;

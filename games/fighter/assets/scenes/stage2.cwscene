@@ -19,13 +19,13 @@ shadow_distance = 40
 [node name="Env" parent="." type="WorldEnvironment"]
 background = color(0.0015, 0.0019, 0.0049, 1)
 ambient_color = color(0.1005, 0.1329, 0.6038, 1)
-ambient_energy = 0.1
+ambient_energy = 0.35
 sky_color = color(0.0134, 0.022, 0.1329, 1)
 ground_color = color(0.0039, 0.0031, 0.0072, 1)
-hemi_energy = 0.4
+hemi_energy = 0.9
 
 [node name="Fog" parent="." type="HeightFog"]
-density = 0.02
+density = 0.012
 height_falloff = 0.18
 base_height = 0
 color = color(0.01, 0.006, 0.0331, 1)
@@ -36,7 +36,7 @@ sky_distance = 200
 
 [node name="Post" parent="." type="PostProcess"]
 tonemap = AGX
-exposure = 1.1
+exposure = 1.6
 bloom = true
 bloom_intensity = 0.22
 bloom_threshold = 0.8
@@ -44,8 +44,6 @@ bloom_knee = 0.6
 ssao = true
 ssao_radius = 0.8
 ssao_intensity = 1.1
-ssr = true
-ssr_intensity = 0.6
 aa = SMAA
 vignette = true
 vignette_intensity = 0.38
@@ -53,8 +51,7 @@ vignette_smoothness = 0.55
 grade = true
 lut = "grades/neon.cube"
 grade_intensity = 0.85
-chromatic_aberration = true
-ca_intensity = 0.15
+chromatic_aberration = false
 
 [node name="Camera" parent="." type="Camera3D"]
 position = vec3(0, 1.6, 9)

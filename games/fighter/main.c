@@ -31,6 +31,9 @@ static struct {
   int sel[2], ready[2], sel_stage;
   int result_t;
   cw_node stage_node, camera;
+  int tex_done;
+  int32_t d_tex_nodes, d_tex_objs, d_tex_meshes;
+  int tex_pending;
   fighter_model *mdl[2];
   cw_frame_state fs;
   cw_font font_ui, font_bold, font_score;
@@ -94,6 +97,9 @@ static void apply_textures(cw_node n) {
     { "tex_tile", TEX_TILE, 5, 2 }, { "tex_concrete", TEX_CONCRETE, 2, 1 }, { "tex_wood", TEX_WOOD, 4, 2 }, { "tex_metal", TEX_METAL, 3, 2 }, { "tex_brick", TEX_BRICK, 6, 3 } };
   const char *name = cw_node_name(n);
   t3_object *o = cw_node3d_object(n);
+  G.d_tex_nodes++;
+  if (o) G.d_tex_objs++;
+  if (o && o->type == T3_MESH) G.d_tex_meshes++;
   if (o && o->type == T3_MESH && name) {
     for (size_t i = 0; i < sizeof MAP / sizeof MAP[0]; i++)
       if (!strncmp(name, MAP[i].prefix, strlen(MAP[i].prefix))) {
@@ -101,6 +107,7 @@ static void apply_textures(cw_node n) {
         if (m->material_count > 0 || m->materials) {
           t3_material *mat = m->materials[0];
           tex_apply(mat, MAP[i].kind, MAP[i].ru, MAP[i].rv, 0.8f, 0.9f);
+          G.tex_done++;
           mat->color = (t3_color){ fminf(1.0f, mat->color.r * 1.9f), fminf(1.0f, mat->color.g * 1.9f), fminf(1.0f, mat->color.b * 1.9f) };
         }
         break;
@@ -122,7 +129,7 @@ static void make_debug_boxes(void) {
   t3_object *root = t3_group_new();
   for (int i = 0; i < 10; i++) {
     t3_material *m = t3_mesh_basic_material_new(0xffffff);
-    m->transparent = true; m->depth_test = false; m->depth_write = false; m->opacity = 0.35f;
+    m->transparent = true; m->depth_test = false; m->depth_write = false; m->opacity = 0.2f;
     t3_mesh *b = t3_mesh_new(t3_box_geometry_new(1, 1, 1, 1, 1, 1), m);
     b->base.visible = false;
     b->base.render_order = 50;
@@ -152,7 +159,8 @@ static void load_match(void) {
   make_debug_boxes();
   memset(&G.fs, 0, sizeof G.fs);
   G.ev_seen = G.sim.ev_seq;
-  G.shown_hp[0] = G.shown_hp[1] = G.lag_hp[0] = G.lag_hp[1] = 1000;
+  G.shown_hp[0] = G.shown_hp[1] = G.lag_hp[0] = G.lag_hp[1] = 1.0f;
+  G.tex_pending = 3;
   if (!CW_HANDLE_IS_NULL(G.music[G.sel_stage])) G.music_voice = cw_audio_play(G.music[G.sel_stage], &(cw_play_desc){ .bus = G.music_bus, .loop = true, .volume = 0.55f });
 }
 
@@ -173,6 +181,15 @@ static void begin_match(void) {
   load_match();
   G.state = GS_MATCH;
   G.result_t = 0;
+}
+
+static void backdrop(void) {
+  /* the title and join screens sit over a stage with two fighters in their guard */
+  G.sim.training = true;
+  ft_game_start(&G.sim, &G.roster, 0, 2);
+  G.sel_stage = 0;
+  load_match();
+  G.state = GS_SELECT;
 }
 
 static void start(int players, void *user) {
@@ -305,7 +322,7 @@ static void update_camera(float dt, float aspect) {
   const ft_game *g = &G.sim;
   cw_frame_point pts[2];
   for (int i = 0; i < 2; i++) pts[i] = (cw_frame_point){ (float)g->f[i].x / 1000.0f, 0.95f + (float)g->f[i].y / 1000.0f, 0, 0.8f };
-  cw_frame_params p = { .yaw = 0, .pitch = -0.04f, .fov_y = 34.0f * 0.0174533f, .aspect = aspect, .margin = 0.12f, .min_dist = 6.6f, .max_dist = 15.0f };
+  cw_frame_params p = { .yaw = 0, .pitch = -0.04f, .fov_y = 34.0f * 0.0174533f, .aspect = aspect, .margin = 0.12f, .min_dist = 5.4f, .max_dist = 15.0f };
   cw_frame_result fit, cam;
   if (!cw_frame_fit(&p, pts, 2, &fit)) return;
   cw_frame_follow(&G.fs, &p, &fit, dt, 7.0f, &cam);
@@ -359,8 +376,14 @@ static void update_debug_boxes(void) {
 static void update(void *u, double dtd) {
   (void)u;
   float dt = (float)dtd;
-  if (G.state == GS_SELECT || !G.mdl[0]) return;
-  if (cw_shell_screen_now() != CW_SHELL_PLAY) return;
+  if (G.tex_pending > 0 && cw_node_valid(G.stage_node)) {
+    G.tex_done = 0; G.d_tex_nodes = G.d_tex_objs = G.d_tex_meshes = 0;
+    apply_textures(G.stage_node);
+    if (G.tex_done > 0) G.tex_pending = 0;
+  }
+  if (!G.mdl[0]) return;
+  cw_shell_screen sc = cw_shell_screen_now();
+  if (sc != CW_SHELL_PLAY && sc != CW_SHELL_TITLE && sc != CW_SHELL_JOIN) return;
   for (int i = 0; i < 2; i++) model_pose(G.mdl[i], &G.sim, i, dt);
   fx_frame(&G.sim, dt);
   sound_events();
@@ -373,7 +396,11 @@ static void update(void *u, double dtd) {
 
 static cw_color rgba(float r, float g, float b, float a) { return cw_rgba(r, g, b, a); }
 static void text(cw_font f, const char *s, float x, float y, float size, cw_color c, cw_text_align al) {
-  cw_text_style st = { .size = size, .color = c, .align = al, .outline_color = rgba(0, 0, 0, 0.85f), .outline_width = size * 0.07f };
+  if (al != CW_ALIGN_LEFT) {
+    float w = cw_font_measure(f, s, &(cw_text_style){ .size = size }).width;
+    x -= al == CW_ALIGN_CENTER ? w * 0.5f : w;
+  }
+  cw_text_style st = { .size = size, .color = c, .align = CW_ALIGN_LEFT, .outline_color = rgba(0, 0, 0, 0.85f), .outline_width = size * 0.07f };
   cw_r2d_text(f, s, (cw_vec2){ x, y }, &st);
 }
 
@@ -513,7 +540,7 @@ static void draw_select(float W, float H, float s) {
     cw_r2d_rect(cw_rect_make(cx + 22 * s, by - 50 * s, 10 * s, 40 * s), rgba(c[0] * 0.8f, c[1] * 0.8f, c[2] * 0.8f, 1));
     text(G.font_bold, d->name, cx, y0 + 128 * s, 26 * s, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
     char b[64];
-    snprintf(b, sizeof b, "Life %d  Walk %d", d->hp, d->walk);
+    snprintf(b, sizeof b, "Life %d", d->hp);
     text(G.font_ui, b, cx, y0 + 160 * s, 14 * s, rgba(0.8f, 0.85f, 0.95f, 1), CW_ALIGN_CENTER);
     cw_text_style st = { .size = 13 * s, .color = rgba(0.75f, 0.8f, 0.9f, 1), .align = CW_ALIGN_CENTER, .wrap_width = cw_ - 20 * s };
     cw_r2d_text(G.font_ui, BLURB[i & 3], (cw_vec2){ cx - (cw_ - 20 * s) * 0.5f, y0 + 184 * s }, &st);
@@ -562,7 +589,7 @@ static void render(void *u, double alpha) {
 
 static void screen_changed(cw_shell_screen from, cw_shell_screen to, void *u) {
   (void)from; (void)u;
-  if (to == CW_SHELL_TITLE) { unload_match(); G.state = GS_SELECT; }
+  if (to == CW_SHELL_TITLE) { unload_match(); G.state = GS_SELECT; backdrop(); }
 }
 static void shell_sound(cw_shell_sound s, void *u) {
   (void)u;
@@ -596,6 +623,9 @@ static void init(void *u) {
   cw_shell_init(&(cw_shell_desc){ .title = "Fighter", .subtitle = "one on one", .max_players = 2, .game_save_size = sizeof(save_t), .game_save_version = 1, .start = start,
                                   .sound = shell_sound, .screen_changed = screen_changed, .font = G.font_bold, .accent = rgba(1, 0.5f, 0.3f, 1) });
   SAVE = cw_shell_game_save();
+#if !defined(FIGHTER_AUTOPILOT) && !defined(FIGHTER_SCRIPTED)
+  backdrop();
+#endif
   G.sfx_bus = cw_shell_sfx_bus();
   G.music_bus = cw_shell_music_bus();
   for (int i = 0; i < SFX_N; i++) G.sfx[i] = cw_sound_load(SFX_FILE[i], NULL);
@@ -607,6 +637,7 @@ static void init(void *u) {
   cw_debug_field("sim.pos", G.d_pos, CW_DBG_I32, 4); cw_debug_field("sim.fstate", G.d_fstate, CW_DBG_I32, 2); cw_debug_field("sim.def", G.d_def, CW_DBG_I32, 2);
   cw_debug_u32("sim.hash", &G.d_hash); cw_debug_i32("sim.combo", &G.d_combo); cw_debug_i32("sim.adv", &G.d_adv); cw_debug_i32("ticks", &G.d_tick);
   cw_debug_i32("fx.hits", &G.d_hitcount); cw_debug_i32("fx.blocks", &G.d_blockcount); cw_debug_i32("view.boxes", &G.d_boxes);
+  cw_debug_i32("tex.nodes", &G.d_tex_nodes); cw_debug_i32("tex.objs", &G.d_tex_objs); cw_debug_i32("tex.meshes", &G.d_tex_meshes); cw_debug_i32("tex.applied", &G.tex_done);
   cw_debug_u32("tex.hash", &tex_hash); cw_debug_f32_array("cam.pos", G.d_cam, 3);
 #if defined(FIGHTER_AUTOPILOT) || defined(FIGHTER_SCRIPTED)
   cw_shell_start(2);

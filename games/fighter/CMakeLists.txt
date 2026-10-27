@@ -3,6 +3,7 @@
 #   fighter        the game
 #   fighter_auto   starts a match between two CPU fighters by itself (the gates, screenshots and the soak)
 set(SRC main.c sim.c ai.c chars.c textures.c fx.c)
+set(CW_PROGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/programs/fighter.txt)
 set(PACK ${CMAKE_CURRENT_SOURCE_DIR}/assets/roots.txt)
 cw_add_app(fighter SOURCES ${SRC} PACK ${PACK})
 cw_add_app(fighter_auto SOURCES ${SRC} PACK ${PACK})

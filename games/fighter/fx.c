@@ -72,7 +72,7 @@ static const char *const STREAKS[] = { "amount", "70", "lifetime", "0.5", "explo
   "direction", "vec3(1, 0, 0)", "spread", "180", "speed_min", "14", "speed_max", "22", "damping", "2.5", "draw_mode", "STRETCHED", "stretch", "0.08", "size", "0.07",
   "color_ramp", "\"0 1 1 1 1, 0.4 0.7 0.9 1 0.8, 1 0.3 0.4 1 0\"", "energy", "8", "blend", "ADD", NULL };
 static const char *const CORE[] = { "amount", "14", "lifetime", "0.18", "emission_shape", "POINT", "speed_min", "0", "speed_max", "0.5", "size", "0.7", "size_curve", "\"0 1, 1 0.3\"",
-  "color_ramp", "\"0 1 0.95 0.8 1, 0.5 1 0.5 0.15 0.9, 1 1 0.3 0.05 0\"", "energy", "6", "blend", "ADD", "local_coords", "false", NULL };
+  "color_ramp", "\"0 1 0.95 0.8 1, 0.5 1 0.5 0.15 0.9, 1 1 0.3 0.05 0\"", "energy", "2.2", "blend", "ADD", "local_coords", "false", NULL };
 static const char *const EMBER[] = { "amount", "40", "lifetime", "0.4", "lifetime_random", "0.4", "emission_shape", "SPHERE", "emission_radius", "0.1", "spread", "180",
   "speed_min", "0.2", "speed_max", "1.2", "gravity", "vec3(0, 0.6, 0)", "size", "0.18", "size_curve", "\"0 1, 1 0\"",
   "color_ramp", "\"0 1 0.8 0.3 1, 0.5 1 0.35 0.05 0.7, 1 0.5 0.1 0.02 0\"", "energy", "4", "blend", "ADD", "local_coords", "false", NULL };
@@ -208,7 +208,7 @@ void fx_frame(const ft_game *g, float dt) {
       bool big = g->roster->d[g->f[P->owner].def].mv[P->mv].flags & FM_SUPER;
       tint(FX.proj[i], c[0], c[1], c[2]);
       tint(FX.ember[i], c[0], c[1], c[2]);
-      cw_node_set(FX.proj[i], "size", cw_val_float(big ? 2.2 : 0.7 + (double)P->size / 600.0));
+      cw_node_set(FX.proj[i], "size", cw_val_float(big ? 1.8 : 0.45 + (double)P->size / 900.0));
     }
   }
   /* lights decay */

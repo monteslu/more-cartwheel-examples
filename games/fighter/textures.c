@@ -111,7 +111,7 @@ static void gen(int kind, float u, float v, int c, int r, texel *t) {
     break;
   }
   default: { /* fabric: a woven twill */
-    float wu = u * 64, wv = v * 64;
+    float wu = u * 24, wv = v * 24;
     float a = 0.5f + 0.5f * (float)cw_sin((wu + wv) * 3.14159265f);
     float b = 0.5f + 0.5f * (float)cw_sin((wu - wv) * 3.14159265f);
     float k = 0.8f + 0.12f * (a * b) + 0.06f * n2;

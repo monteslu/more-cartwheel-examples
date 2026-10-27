@@ -44,7 +44,7 @@ class Scene {
     shadow_cascades: '3', shadow_distance: '40' });
   s.node('Env', 'WorldEnvironment', { background: col(lin([0.1, 0.12, 0.25])), ambient_color: col(lin([1, 0.6, 0.4])), ambient_energy: '0.05',
     sky_color: col(lin([1, 0.62, 0.42])), ground_color: col(lin([0.35, 0.22, 0.18])), hemi_energy: '0.35' });
-  s.node('Fog', 'HeightFog', { density: '0.006', height_falloff: '0.08', base_height: '0', use_sky_color: 'true', sun_scatter: '0.45', sun_g: '0.8', max_opacity: '0.65', start_distance: '12', sky_distance: '300' });
+  s.node('Fog', 'HeightFog', { density: "0.003", height_falloff: "0.08", base_height: '0', use_sky_color: 'true', sun_scatter: '0.45', sun_g: '0.8', max_opacity: '0.65', start_distance: '12', sky_distance: '300' });
   s.node('Post', 'PostProcess', { tonemap: 'AGX', exposure: '1.0', bloom: 'true', bloom_intensity: '0.09', bloom_threshold: '1.0', bloom_knee: '0.6', ssao: 'true', ssao_radius: '0.7',
     ssao_intensity: '1.0', aa: 'SMAA', vignette: 'true', vignette_intensity: '0.3', vignette_smoothness: '0.6', grade: 'true', lut: '"grades/dusk.cube"', grade_intensity: '0.8' });
   s.node('Camera', 'Camera3D', { position: v3([0, 1.6, 9]), fov: '34', near: '0.5', far: '400', interpolate: 'false' });
@@ -81,12 +81,12 @@ class Scene {
   const s = new Scene('Neon Alley');
   s.node('Sun', 'DirectionalLight3D', { color: col(lin([0.45, 0.55, 1])), energy: '0.7', rotation: v3([-0.9, 0.6, 0]), shadow: 'true', shadow_size: '2048', shadow_extent: '14', shadow_far: '60',
     shadow_bias: '-0.0003', shadow_normal_bias: '0.03', shadow_cascades: '2', shadow_distance: '40' });
-  s.node('Env', 'WorldEnvironment', { background: col(lin([0.02, 0.025, 0.06])), ambient_color: col(lin([0.35, 0.4, 0.8])), ambient_energy: '0.1',
-    sky_color: col(lin([0.12, 0.16, 0.4])), ground_color: col(lin([0.05, 0.04, 0.08])), hemi_energy: '0.4' });
-  s.node('Fog', 'HeightFog', { density: '0.02', height_falloff: '0.18', base_height: '0', color: col(lin([0.1, 0.07, 0.2])), sun_scatter: '0.0', max_opacity: '0.7', start_distance: '8', sky_distance: '200' });
-  s.node('Post', 'PostProcess', { tonemap: 'AGX', exposure: '1.1', bloom: 'true', bloom_intensity: '0.22', bloom_threshold: '0.8', bloom_knee: '0.6', ssao: 'true', ssao_radius: '0.8',
-    ssao_intensity: '1.1', ssr: 'true', ssr_intensity: '0.6', aa: 'SMAA', vignette: 'true', vignette_intensity: '0.38', vignette_smoothness: '0.55', grade: 'true', lut: '"grades/neon.cube"', grade_intensity: '0.85',
-    chromatic_aberration: 'true', ca_intensity: '0.15' });
+  s.node('Env', 'WorldEnvironment', { background: col(lin([0.02, 0.025, 0.06])), ambient_color: col(lin([0.35, 0.4, 0.8])), ambient_energy: '0.35',
+    sky_color: col(lin([0.12, 0.16, 0.4])), ground_color: col(lin([0.05, 0.04, 0.08])), hemi_energy: '0.9' });
+  s.node('Fog', 'HeightFog', { density: '0.012', height_falloff: '0.18', base_height: '0', color: col(lin([0.1, 0.07, 0.2])), sun_scatter: '0.0', max_opacity: '0.7', start_distance: '8', sky_distance: '200' });
+  s.node('Post', 'PostProcess', { tonemap: 'AGX', exposure: '1.6', bloom: 'true', bloom_intensity: '0.22', bloom_threshold: '0.8', bloom_knee: '0.6', ssao: 'true', ssao_radius: '0.8',
+    ssao_intensity: '1.1', aa: 'SMAA', vignette: 'true', vignette_intensity: '0.38', vignette_smoothness: '0.55', grade: 'true', lut: '"grades/neon.cube"', grade_intensity: '0.85',
+    chromatic_aberration: 'false' });
   s.node('Camera', 'Camera3D', { position: v3([0, 1.6, 9]), fov: '34', near: '0.5', far: '300', interpolate: 'false' });
   s.mesh('tex_metal_floor', 'BOX', [20, 0.5, 9], [0, -0.25, -0.5], [0.45, 0.47, 0.5], { rough: 0.45, metal: 0.4 });
   s.mesh('tex_brick_back', 'BOX', [24, 9, 0.8], [0, 4.5, -5], [0.55, 0.42, 0.38]);
