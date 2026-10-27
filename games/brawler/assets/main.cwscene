@@ -1,0 +1,48 @@
+[scene format=1]
+
+[node name="Level" type="Node3D"]
+
+[node name="Env" parent="." type="WorldEnvironment"]
+background = color(0.05, 0.04, 0.09, 1)
+ambient_color = color(0.55, 0.5, 0.7, 1)
+ambient_energy = 0.35
+sky_color = color(0.25, 0.22, 0.4, 1)
+ground_color = color(0.08, 0.07, 0.07, 1)
+hemi_energy = 0.4
+fog_mode = EXP
+fog_color = color(0.12, 0.1, 0.18, 1)
+fog_density = 0.012
+
+[node name="Post" parent="." type="PostProcess"]
+bloom = true
+bloom_intensity = 0.12
+bloom_threshold = 0.8
+ssao = true
+ssao_radius = 0.7
+aa = FXAA
+vignette = true
+vignette_intensity = 0.3
+tonemap = AGX
+exposure_ev = 0.4
+
+[node name="Lighting" parent="." type="LightingSettings"]
+mode = "CLUSTERED"
+
+[node name="Sun" parent="." type="DirectionalLight3D"]
+position = vec3(6, 10, 4)
+rotation = vec3(-0.7, 0.5, 0)
+color = color(1, 0.62, 0.4, 1)
+energy = 2.2
+shadow = true
+shadow_extent = 16
+
+[node name="Camera" parent="." type="Camera3D"]
+position = vec3(0, 4.7, 9.2)
+rotation = vec3(-0.37, 0, 0)
+fov = 42
+near = 0.3
+far = 150
+
+[node name="World" parent="." type="Node3D"]
+
+[node name="Fx" parent="." type="Node3D"]

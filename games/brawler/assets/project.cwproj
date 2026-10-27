@@ -1,0 +1,11 @@
+; brawler project settings
+game_app = brawler
+name = "Brawler"
+app = "brawler"
+export.linux.platform = "linux-x64"
+export.windows.platform = "windows-x64"
+export.macos.platform = "macos"
+export.web.platform = "web"
+export.cart.platform = "wasc"
+export.android.platform = "android-arm64"
+export.android.app_id = "org.cartwheel.brawler"
