@@ -211,6 +211,15 @@ static void level_courtyard(const palette *p) {
 
 static void level_terraces(const palette *p) {
   const float H = 26;
+  /* water over the pit floor: it ripples and reflects, shallow enough to wade (visual only) */
+  A.water = cw_node_new("Water3D", "Pit");
+  cw_node_set(A.water, "size", cw_val_vec2(48, 48));
+  cw_node_set(A.water, "subdivisions", cw_val_int(64));
+  cw_node_set(A.water, "color", cw_val_color(0.12f, 0.35f, 0.4f, 1));
+  cw_node_set(A.water, "deep_color", cw_val_color(0.03f, 0.12f, 0.16f, 1));
+  cw_node_set(A.water, "murk", cw_val_float(0.55));
+  cw_node3d_set_position(A.water, v3(0, 0.3f, 0));
+  cw_node_add_child(A.root, A.water);
   shell_walls(H, 10, K_WALL, K_FLOOR, p->trim);
   /* a stepped bowl: the middle is a pit (water in the picture), levels climb to the rim */
   block(0, 0, 0, 52, 0.01f, 52, K_FLOOR);

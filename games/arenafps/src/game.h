@@ -111,6 +111,7 @@ typedef struct arena {
   int nitems;
   t3_vec3 bounds_min, bounds_max;
   float kill_y;
+  cw_node water;          /* Water3D of the Terraces pit (null elsewhere) */
   float nav_build_ms;
   int nav_polys;
 } arena;

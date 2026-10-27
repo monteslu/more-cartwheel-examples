@@ -932,6 +932,11 @@ static void begin_match(void) {
   memset(G.aim, 0, sizeof G.aim);
   G.frag_limit = G.mode == MODE_TDM ? 30 : 15;
   G.time_limit = 60 * 60 * 5;
+  if (cw_node_valid(A.water)) { /* planar reflection and refraction per view: only when the screen is not split three or four ways */
+    bool rich = G.players < 3;
+    cw_node_set(A.water, "reflection", cw_val_bool(rich));
+    cw_node_set(A.water, "refraction", cw_val_bool(rich));
+  }
   setup_fighters();
   G.state = ST_PLAY;
 }
@@ -1257,6 +1262,7 @@ static void hud_over(void) {
 static void render(void *user, double alpha) {
   (void)user, (void)alpha;
   cw_shell_screen sc = cw_shell_screen_now();
+  cw_quality_auto_measure(sc == CW_SHELL_PLAY && G.state == ST_PLAY); /* Auto steps the preset down when play runs slow */
   if (sc == CW_SHELL_PLAY || sc == CW_SHELL_PAUSE) {
     cw_r2d_begin(NULL);
     if (G.state != ST_SETUP) for (int h = 0; h < G.players; h++) hud_view(h);
