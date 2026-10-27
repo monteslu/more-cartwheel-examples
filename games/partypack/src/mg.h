@@ -156,5 +156,6 @@ void n3_fx_reset(void);
 void n3_fx(const char *kind, t3_vec3 pos, float scale); /* "fire" "smoke" "sparks" "splash" "dust" */
 void n3_flash(t3_vec3 pos, cw_color c, float energy, float range);
 void n3_fx_tick(void);
+void n3_shockwave(t3_vec3 pos, float radius, float seconds, float strength);
 
 #endif

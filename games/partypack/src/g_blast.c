@@ -110,6 +110,7 @@ static void explode(int b) {
   n3_fx("fire", at, 1);
   n3_fx("sparks", at, 1);
   n3_fx("smoke", (t3_vec3){ bx, 0.6f, bz }, 1);
+  n3_shockwave((t3_vec3){ bx, 0.3f, bz }, RAD * 1.25f, 0.55f, 1.0f);
   n3_flash((t3_vec3){ bx, 1.6f, bz }, (cw_color){ 1, 0.55f, 0.22f, 1 }, 70, 12);
   sfx(SFX_BOOM, 0.9f, 0.9f + 0.2f * (float)(b % 3) / 3);
   K.shake = 0.5f;

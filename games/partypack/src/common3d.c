@@ -139,3 +139,15 @@ void n3_fx_tick(void) {
     if (f->light) { float k = (float)f->ttl / (float)f->max; cw_node_set(f->n, "energy", cw_val_float(f->energy * k * k)); }
   }
 }
+
+/* an expanding ring that bends the picture (the engine's Shockwave3D) */
+void n3_shockwave(t3_vec3 pos, float radius, float seconds, float strength) {
+  cw_node n = cw_node_new("Shockwave3D", "Wave");
+  cw_node_set(n, "max_radius", cw_val_float(radius));
+  cw_node_set(n, "duration", cw_val_float(seconds));
+  cw_node_set(n, "strength", cw_val_float(strength));
+  cw_node_add_child(n3_level(), n);
+  cw_node3d_set_position(n, pos);
+  fxn *f = fx_slot();
+  f->n = n; f->ttl = f->max = (int)(seconds * 60) + 6; f->light = false;
+}

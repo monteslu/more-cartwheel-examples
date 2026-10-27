@@ -157,8 +157,10 @@ static void think(mg_ctx *c, int p, mg_in *out) {
   else if (T.cooldown[p] == 0) {
     bool calm = true;
     if (T.dropped[p] > 0) {
-      cw_vec2 v = cw_body2d_velocity(T.blk[p][T.dropped[p] - 1].body);
-      calm = !T.blk[p][T.dropped[p] - 1].alive || v.x * v.x + v.y * v.y < 0.6f;
+      if (T.blk[p][T.dropped[p] - 1].alive) {
+        cw_vec2 v = cw_body2d_velocity(T.blk[p][T.dropped[p] - 1].body);
+        calm = v.x * v.x + v.y * v.y < 0.6f;
+      }
     }
     if (calm) { out->a = true; T.cpu_plan_t[p] = 0; }
   }
