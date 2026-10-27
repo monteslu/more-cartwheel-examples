@@ -22,3 +22,9 @@ standard+senv+l1001+xgibuf
 standard+senv+l1001+xcluster_csm_gi
 depth+instbig+xcluster_csm_gi
 depth+xcluster_csm_gi
+standard+map+vcol+rep+nmap+rmap+senv+l1001+xcluster_csm
+standard+map+vcol+rep+instbig+nmap+rmap+senv+icol+l1001+xcluster_csm
+standard+instbig+senv+icol+l1001+xcluster_csm
+standard+map+rep+instbig+nmap+rmap+senv+icol+l1001+xcluster_csm
+standard+vcol+instbig+senv+icol+l1001+xcluster_csm
+standard+senv+l1001+xcluster_csm
