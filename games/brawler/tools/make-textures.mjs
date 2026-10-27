@@ -53,8 +53,8 @@ function asphalt({ base = [0.2, 0.2, 0.21], wet = 0, seed = 1, stripe = false })
     o.h = grain * 0.3 + peb * 0.5 + g * 0.25 - crack * 1.1 - patch * 0.1;
     o.ro = clamp(0.88 - peb * 0.15 + stain * 0.08 - patch * 0.05, 0.4, 1);
     o.ao = 1 - crack * 0.6;
-    if (wet > 0) {
-      const pud = smooth(0.58, 0.66, fbm(u, v, 3, 4, seed + 51)) * wet;
+    if (wet > 0) { // damp sheen only: the puddles are separate meshes now (tools/make-world.mjs), so they never repeat
+      const pud = 0;
       mulc(o, 1 - pud * 0.5); o.ro = lerp(o.ro, 0.06, pud); o.h = lerp(o.h, 0.15, pud);
       o.ro = lerp(o.ro, 0.55, (1 - pud) * wet * 0.3);
     }
@@ -476,6 +476,50 @@ for (const [name, f] of Object.entries(jobs)) {
   const [t, s] = f();
   writeSet(OUT, name, t, s);
   console.log(name, t.w);
+}
+// ── puddle masks: 8 cells (4 x 2) of one 1024 x 512 atlas, each a different irregular shape: round and ragged pools,
+// long ones that lie along a kerb or a crack, a two-lobed one, and clusters of small splashes. RGB is near-black wet
+// asphalt, alpha the water (a soft rim, a darker edge line); the street shows through and the low roughness reflects.
+function puddleShape(k, u, v) { // u, v in -1..1 inside the cell; returns coverage 0..1
+  const warp = (a, f, sd) => (fbm((u + 1) * 0.5, (v + 1) * 0.5, f, 4, sd) - 0.5) * a;
+  const blob = (cx, cy, rx, ry, sd, rough) => {
+    const x = (u - cx) / rx, y = (v - cy) / ry;
+    return 1 - Math.hypot(x, y) + warp(rough, 4, sd) + warp(rough * 0.4, 11, sd + 7);
+  };
+  let d;
+  switch (k) {
+    case 0: d = blob(0, 0, 0.8, 0.7, 101, 0.55); break;
+    case 1: d = blob(0.05, -0.05, 0.85, 0.6, 102, 0.8); break;
+    case 2: d = Math.max(blob(-0.3, 0.05, 0.55, 0.5, 103, 0.5), blob(0.35, -0.1, 0.5, 0.42, 104, 0.5)); break; // two lobes
+    case 3: d = blob(0, 0, 0.95, 0.24, 105, 0.35); break; // a long strip (kerb, gutter)
+    case 4: d = Math.max(blob(-0.2, 0.02, 0.75, 0.2, 106, 0.3), blob(0.45, 0.12, 0.4, 0.18, 107, 0.3)); break; // a crack line with a pool
+    case 5: d = blob(0.0, 0.0, 0.9, 0.82, 108, 1.0); break; // ragged pool
+    default: { // splash clusters
+      d = -1;
+      const n = k === 6 ? 7 : 11;
+      for (let i = 0; i < n; i++) {
+        const cx = (hash2(i, k, 1) - 0.5) * 1.5, cy = (hash2(i, k, 2) - 0.5) * 1.5, r = 0.1 + 0.22 * hash2(i, k, 3) * (k === 6 ? 1.3 : 0.8);
+        d = Math.max(d, blob(cx, cy, r, r * (0.7 + 0.5 * hash2(i, k, 4)), 120 + i + k * 20, 0.25));
+      }
+    }
+  }
+  const edge = Math.min(Math.abs(u), Math.abs(v)) > 0.92 ? 0 : 1; // nothing touches the cell border
+  return d * edge;
+}
+if (want('puddles')) {
+  const W = 1024, H = 512, C = 256, bytes = new Uint8Array(W * H * 4);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const k = Math.floor(x / C) + 4 * Math.floor(y / C);
+    const u = ((x % C) + 0.5) / C * 2 - 1, v = ((y % C) + 0.5) / C * 2 - 1;
+    const d = puddleShape(k, u, v);
+    const body = smooth(0.0, 0.08, d), rim = smooth(0.0, 0.03, d) * (1 - smooth(0.03, 0.09, d));
+    const a = clamp(body * 0.8 + rim * 0.3);
+    // the water reads as a mirror of the dim sky (blue-grey), not as a shadow; a thin pale lip where it meets the street
+    const i = (y * W + x) * 4, c = 0.1 + rim * 0.25;
+    bytes[i] = Math.round(c * 255); bytes[i + 1] = Math.round((c + 0.02) * 255); bytes[i + 2] = Math.round((c + 0.05) * 255); bytes[i + 3] = Math.round(a * 255);
+  }
+  save(`${OUT}/puddles.png`, W, H, 4, bytes);
+  console.log('puddles');
 }
 if (want('decals')) {
   decalTex('decal_scuff1', 256, scuff(1)); decalTex('decal_scuff2', 256, scuff(2)); decalTex('decal_crack', 256, crack(3));

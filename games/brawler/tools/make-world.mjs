@@ -230,6 +230,65 @@ function blobMesh() {
   console.log('blob');
 }
 
+/** puddles: one glb per wet stage, every puddle a quad cut from the 8-shape atlas (make-textures puddles), turned,
+ * stretched and flipped from a seeded random stream (the same every build), placed where water collects: strips along the
+ * kerb by the drain grates, splashes and a strip under every drain pipe, pools in low spots of the road, some overlapping
+ * into larger irregular pools, and clusters of small splashes. Alpha blended over the street, near-black and glossy. */
+function puddles(stage, count) {
+  let st = (0x9e3779b9 ^ (stage * 7919 + 13)) >>> 0;
+  const rnd = () => { st = (st + 0x6d2b79f5) >>> 0; let t = st; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const r = (a, b) => a + (b - a) * rnd();
+  const P = []; // [x, y, z, halfX, halfZ, rot, kind, flip]
+  const add = (x, y, z, hx, hz, rot, kind) => P.push([x, y, z, hx, hz, rot, kind, rnd() < 0.5]);
+  const LO = -10, HI = 80; // the part of the street a stage plays on
+  // the kerb: drain grates (same spacing as street()) and drain pipes (the same building walk)
+  for (let x = X0 + 2; x < X1; x += 9 + hf(x, 3) * 5) if (x > LO && x < HI && rnd() < 0.7) add(x + r(-1.2, 1.2), 0, r(-3.12, -2.95), r(0.9, 1.8), r(0.18, 0.32), r(-0.06, 0.06), rnd() < 0.6 ? 3 : 4);
+  let bx = X0, bi = 0;
+  while (bx < X1) {
+    const w = 5 + hf(bi, stage + 1) * 3.4, cx = bx + w / 2;
+    if (hf(bi, 13) > 0.5) {
+      const px = cx + w / 2 - 0.55;
+      if (px > LO && px < HI) {
+        add(px + r(-0.2, 0.2), 0.172, r(-5.95, -5.6), r(0.25, 0.45), r(0.2, 0.35), r(0, 6.28), 6 + (rnd() < 0.5 ? 1 : 0));
+        add(px + r(-0.6, 0.6), 0, r(-3.1, -2.98), r(1.0, 1.6), r(0.16, 0.28), r(-0.05, 0.05), 3);
+      }
+    }
+    bx += w + 0.2 + hf(bi, 7) * 0.9;
+    bi++;
+  }
+  // low spots in the road; some spill into a neighbour and make one larger pool
+  for (let i = 0; i < count; i++) {
+    const x = r(LO, HI), z = r(-2.5, 3.6), s = r(0.6, 1.8), asp = r(0.55, 1.4), rot = r(0, 6.28);
+    const kinds = [0, 1, 2, 5];
+    add(x, 0, z, s * asp, s / asp, rot, kinds[Math.floor(rnd() * 4)]);
+    if (rnd() < 0.35) { const a = r(0, 6.28), d = s * r(0.6, 1.1); add(x + Math.cos(a) * d, 0, z + Math.sin(a) * d * 0.7, s * r(0.5, 0.9), s * r(0.4, 0.8), r(0, 6.28), kinds[Math.floor(rnd() * 4)]); }
+    if (rnd() < 0.3) add(x + r(-1.5, 1.5), 0, z + r(-0.8, 0.8), r(0.3, 0.6), r(0.3, 0.6), r(0, 6.28), 6 + (rnd() < 0.5 ? 1 : 0));
+  }
+  const pos = [], nrm = [], uv = [], idx = [];
+  P.forEach(([x, y, z, hx, hz, rot, k, flip], n) => {
+    const c = Math.cos(rot), sn = Math.sin(rot), base = pos.length / 3, yy = y + 0.02 + n * 0.0004; // clear of the street in the depth buffer (4 mm fought it at 10 m)
+    const u0 = (k % 4) / 4, v0 = Math.floor(k / 4) / 2;
+    for (const [a, b] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+      const lx = a * hx, lz = b * hz;
+      pos.push(x + lx * c - lz * sn, yy, z + lx * sn + lz * c);
+      nrm.push(0, 1, 0);
+      const fu = flip ? 1 - (a + 1) / 2 : (a + 1) / 2;
+      uv.push(u0 + fu * 0.25, v0 + (b + 1) / 2 * 0.5);
+    }
+    idx.push(base, base + 2, base + 1, base, base + 3, base + 2);
+  });
+  const glb = new Glb();
+  const mat = glb.pbr('puddle', TEX, null, { alphaMode: 'BLEND' });
+  const pm = glb.materials[mat].pbrMetallicRoughness;
+  pm.baseColorTexture = { index: glb.tex(join(TEX, 'puddles.png')) };
+  pm.baseColorFactor = [1, 1, 1, 1]; pm.metallicFactor = 0; pm.roughnessFactor = 0.12;
+  glb.materials[mat].extensions = undefined;
+  glb.sceneNodes.push(glb.node({ name: 'Puddles', mesh: glb.mesh('puddles', { pos, nrm, uv, idx }, mat) }));
+  glb.write(join(OUT, `puddles${stage}.glb`));
+  console.log('puddles', stage, P.length);
+}
+
 for (let i = 0; i < 4; i++) writeStage(i);
+puddles(0, 22); puddles(1, 55); puddles(3, 10);
 writeProp('crate', crate); writeProp('barrel', barrel); writeProp('bin', bin);
 blobMesh();

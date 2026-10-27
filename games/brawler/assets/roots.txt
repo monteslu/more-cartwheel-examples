@@ -20,6 +20,9 @@ models/stage0.glb
 models/stage1.glb
 models/stage2.glb
 models/stage3.glb
+models/puddles0.glb
+models/puddles1.glb
+models/puddles3.glb
 models/crate.glb
 models/barrel.glb
 models/bin.glb

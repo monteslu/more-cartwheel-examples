@@ -138,6 +138,11 @@ static void shadows_on(t3_object *o, bool cast) {
   if (o->type == T3_SKINNED_MESH || o->type == T3_MESH) o->cast_shadow = cast, o->receive_shadow = true;
   for (int i = 0; i < o->child_count; i++) shadows_on(o->children[i], cast);
 }
+/* the puddles take no shadow map: the street under them shows its own shadows through the water */
+static void dry_shadow(t3_object *o) {
+  if (o->type == T3_MESH) o->cast_shadow = false, o->receive_shadow = false;
+  for (int i = 0; i < o->child_count; i++) dry_shadow(o->children[i]);
+}
 /* every glTF a stage parsed: released with the stage (each stage used to leak its scenery and props) */
 static t3_gltf *kept[MAXPROP + 8];
 static int nkept;
@@ -226,6 +231,13 @@ void level_build(int stage) {
   snprintf(path, sizeof path, "models/stage%d.glb", stage & 3);
   cw_node scen = spawn_glb(s, path, &stage_gltf, true);
   (void)scen;
+  /* puddles (wet stages): glossy water blended over the street, many shapes, placed where water collects (make-world.mjs) */
+  if ((stage & 3) != 2) {
+    t3_gltf *pg = NULL;
+    snprintf(path, sizeof path, "models/puddles%d.glb", stage & 3);
+    spawn_glb(s, path, &pg, false);
+    if (pg) dry_shadow(pg->scene);
+  }
   /* a light under every lamp post, and the stage's coloured accents (they follow the camera) */
   for (float x = 2; x < len + 6; x += 11.0f)
     light(s, "L", (t3_vec3){ x, 3.9f, -2.9f }, th->lamp, th->lamp_e * 38, 11);
