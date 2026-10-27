@@ -178,7 +178,8 @@ static void select_scene(void) {
   shown_sel[0] = G.sel[0]; shown_sel[1] = b; shown_sel[2] = G.sel_stage;
   G.sim.training = true;
   ft_game_start(&G.sim, &G.roster, G.sel[0], b);
-  G.sim.f[0].x = -800; G.sim.f[1].x = 800; /* close together, turned three quarters to the camera */
+  G.sim.f[0].x = -800; G.sim.f[1].x = 800; /* close together, turned three quarters to the camera, in their guard */
+  G.sim.f[0].state = G.sim.f[1].state = S_IDLE;
   load_match();
   for (int i = 0; i < 2; i++) model_set_showcase(G.mdl[i], 0.9f);
 }
