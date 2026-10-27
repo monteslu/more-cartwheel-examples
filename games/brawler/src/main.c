@@ -13,6 +13,7 @@
  * has bots play it (no input needed). Debug fields: game.* (see init). */
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "cartwheel/audio.h"
@@ -60,8 +61,12 @@ static void start(int players, void *user) {
   cw_scene_app_change_scene("main.cwscene", false);
   memset(&W, 0, sizeof W);
   fx_init();
-  sim_reset(players, 0);
-  play_music(0);
+  int stage0 = 0;
+#ifdef BRAWLER_AUTOPILOT
+  { const char *e = getenv("BRAWLER_STAGE"); if (e) stage0 = atoi(e) & 3; } /* screenshots and the program survey start on any stage */
+#endif
+  sim_reset(players, stage0);
+  play_music(stage0);
 }
 
 #ifdef BRAWLER_AUTOPILOT

@@ -7,7 +7,10 @@
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Glb, Geo } from './gltf-writer.mjs';
+import { Glb } from './gltf-writer.mjs';
+import { SkinMesh } from './charmesh.mjs';
+import { face } from './make-textures.mjs';
+import { writeSet } from './texlib.mjs';
 
 const OUT = join(dirname(fileURLToPath(import.meta.url)), '..', 'assets', 'models');
 mkdirSync(OUT, { recursive: true });
@@ -228,58 +231,117 @@ function quat(r) { // rest-relative euler, applied x then y then z
 }
 
 // ── the body ────────────────────────────────────────────────────────────
-const hex = (h) => [((h >> 16) & 255) / 255, ((h >> 8) & 255) / 255, (h & 255) / 255].map((c) => Math.pow(c, 2.2));
-const shade = (c, k) => c.map((x) => Math.min(1, x * k));
+const hexRaw = (h) => [((h >> 16) & 255) / 255, ((h >> 8) & 255) / 255, (h & 255) / 255];
+const hex = (h) => hexRaw(h).map((c) => Math.pow(c, 2.2));
+const TEX = join(dirname(fileURLToPath(import.meta.url)), '..', 'assets', 'textures');
+const ss = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+
+/** weights for a limb segment: own bone, half to the child at the far joint and half to the parent at the near joint */
+const limbW = (A, B, prev) => (t) => {
+  const wB = t > 0.78 ? 0.5 * ss(0.78, 1, t) : 0, wP = prev != null && t < 0.22 ? 0.5 * (1 - ss(0, 0.22, t)) : 0;
+  return [[A, 1 - wB - wP], [B, wB], [prev ?? A, wP]];
+};
 
 function build(spec) {
-  const g = new Geo();
-  const S_ = spec.scale ?? 1, W = spec.width ?? 1;
+  const m = new SkinMesh();
+  const W = spec.width ?? 1, AR = spec.arm ?? 1, LG = spec.leg ?? 1, bw = 0.75 + 0.25 * W;
   const B = (n) => world[BI[n]];
-  const cl = Object.fromEntries(Object.entries(spec.colors).map(([k, v]) => [k, hex(v)]));
-  const rel = (bone, p) => [p[0] - world[BI[bone]][0], p[1] - world[BI[bone]][1], p[2] - world[BI[bone]][2]]; // keep in model space; skin handles it
-  // all geometry is authored in model space at rest; the inverse bind matrices place it in each bone
-  const hipC = B('Hips');
-  // pelvis, torso
-  g.frustum([0, hipC[1] - 0.02, 0], 0.17 * W, 0.11 * W, 0.17 * W, 0.11 * W, 0.2, cl.pants, BI.Hips);
-  g.frustum([0, B('Spine')[1] + 0.1, 0], 0.17 * W, 0.1 * W, 0.2 * W, 0.115 * W, 0.22, cl.shirt, BI.Spine);
-  g.frustum([0, B('Chest')[1] + 0.12, 0], 0.2 * W, 0.115 * W, 0.24 * W, 0.12 * W, 0.26, shade(cl.shirt, 1.1), BI.Chest);
-  if (spec.belt) g.frustum([0, hipC[1] + 0.1, 0], 0.175 * W, 0.105 * W, 0.175 * W, 0.105 * W, 0.05, cl.belt || cl.accent, BI.Hips);
-  if (spec.vest) g.frustum([0, B('Chest')[1] + 0.12, 0.0], 0.21 * W, 0.125 * W, 0.25 * W, 0.13 * W, 0.24, cl.accent, BI.Chest);
-  if (spec.pads) for (const sd of [1, -1]) g.blob([sd * 0.27 * W, B('Chest')[1] + 0.24, 0], 0.1 * W, 0.07, 0.1 * W, cl.accent, BI.Chest);
-  // head
-  g.limb(B('Neck'), [0, B('Neck')[1] + 0.09, 0], 0.06, 0.055, cl.skin, BI.Neck);
-  const hc = [0, B('Head')[1] + 0.12, 0.0];
-  g.blob(hc, 0.115, 0.135, 0.125, cl.skin, BI.Head, 9, 6);
-  g.box([0, hc[1] - 0.02, 0.125], 0.04, 0.045, 0.04, shade(cl.skin, 0.95), BI.Head); // nose
-  for (const sd of [1, -1]) g.box([sd * 0.045, hc[1] + 0.025, 0.115], 0.035, 0.025, 0.02, spec.eyes ? hex(spec.eyes) : [0.02, 0.02, 0.02], BI.Head);
-  if (spec.hair === 'cap') g.blob([0, hc[1] + 0.04, -0.01], 0.125, 0.1, 0.135, cl.hair, BI.Head, 9, 4);
-  else if (spec.hair === 'mohawk') g.frustum([0, hc[1] + 0.11, -0.01], 0.02, 0.11, 0.02, 0.09, 0.09, cl.hair, BI.Head);
-  else if (spec.hair === 'long') { g.blob([0, hc[1] + 0.03, -0.01], 0.125, 0.11, 0.135, cl.hair, BI.Head, 9, 4); g.frustum([0, hc[1] - 0.08, -0.1], 0.1, 0.03, 0.09, 0.03, 0.26, cl.hair, BI.Head); }
-  else if (spec.hair === 'hat') { g.frustum([0, hc[1] + 0.1, 0], 0.13, 0.13, 0.12, 0.12, 0.09, cl.hair, BI.Head); g.frustum([0, hc[1] + 0.06, 0.06], 0.16, 0.2, 0.16, 0.2, 0.02, cl.hair, BI.Head); }
-  else if (spec.hair === 'helmet') g.blob([0, hc[1] + 0.02, 0], 0.14, 0.14, 0.145, cl.hair, BI.Head, 9, 5);
-  if (spec.headband) g.frustum([0, hc[1] + 0.07, 0], 0.122, 0.132, 0.122, 0.132, 0.03, cl.accent, BI.Head);
-  if (spec.shades) g.box([0, hc[1] + 0.03, 0.125], 0.19, 0.04, 0.03, [0.01, 0.01, 0.01], BI.Head);
-  if (spec.mask) g.box([0, hc[1] - 0.06, 0.1], 0.2, 0.11, 0.07, cl.accent, BI.Head);
+  const X = [1, 0, 0], Z = [0, 0, 1];
+  // torso: lofted superellipse rings; weights follow the spine chain by height
+  const torsoW = (k, P) => {
+    const y = P[1];
+    if (y < 0.97) return [[BI.Hips, 1]];
+    if (y < 1.09) { const t = ss(0.97, 1.09, y); return [[BI.Hips, 1 - t], [BI.Spine, t]]; }
+    if (y < 1.29) { const t = ss(1.09, 1.29, y); return [[BI.Spine, 1 - t], [BI.Chest, t]]; }
+    return [[BI.Chest, 1]];
+  };
+  const PROF = [[0.80, 0.03, 0.03, 0], [0.84, 0.12, 0.085, 0], [0.9, 0.165, 0.115, 0], [0.97, 0.178, 0.122, 0], [1.04, 0.165, 0.112, 0], [1.12, 0.15, 0.1, 0],
+    [1.2, 0.158, 0.106, 0.004], [1.29, 0.19, 0.122, 0.01], [1.38, 0.212, 0.126, 0.0], [1.45, 0.2, 0.105, -0.005], [1.49, 0.12, 0.085, -0.008], [1.51, 0.06, 0.06, -0.01]];
+  const ring = (p, k = 1, kz = 1) => ({ c: [0, p[0], p[3]], U: X, V: Z, ru: p[1] * bw * k, rv: p[2] * (0.85 + 0.15 * W) * kz, e: 2.5 });
+  const rowsBetween = (y0, y1, k = 1) => PROF.filter((p) => p[0] >= y0 && p[0] <= y1).map((p) => ring(p, k, k));
+  m.loft('pants', rowsBetween(0.8, 1.05), { n: 24, bone: BI.Hips, weights: torsoW, tile: 0.5 });
+  const hem = rowsBetween(1.04, 1.51, 1.0); hem[0] = ring(PROF[4], 1.045, 1.06); // the hem flares a little
+  m.loft('shirt', hem, { n: 24, weights: torsoW, tile: 0.5 });
+  if (spec.belt) m.loft('belt', [ring([1.0, 0.18, 0.125, 0], 1.0), ring([1.06, 0.17, 0.115, 0], 1.0)].map((r) => ({ ...r, ru: r.ru * 1.04, rv: r.rv * 1.06 })), { n: 24, bone: BI.Hips, tile: 0.3 });
+  if (spec.belt) m.ellipsoid('buckle', [0, 1.03, 0.128 * (0.85 + 0.15 * W)], 0.03, 0.025, 0.012, { bone: BI.Hips, steps: 4, n: 8 });
+  if (spec.vest) m.loft('vest', PROF.filter((p) => p[0] >= 1.1 && p[0] <= 1.47).map((p) => ring(p, 1.04, 1.07)), { n: 24, weights: torsoW, tile: 0.5 });
+  // neck and head
+  const nk = B('Neck'), hd = B('Head'), hc = [0, hd[1] + 0.12, 0];
+  m.capsule('skin', [0, nk[1] - 0.03, -0.005], [0, hd[1] + 0.035, 0.0], 0.056, 0.05, { n: 12, bone: BI.Neck, caps: 3 });
+  const headRings = [];
+  for (let k = 0; k <= 12; k++) {
+    const t = -1 + (2 * k) / 12, s = Math.sqrt(Math.max(0, 1 - t * t)), jaw = 0.8 + 0.2 * ss(-0.9, 0.2, t);
+    headRings.push({ c: [0, hc[1] + 0.136 * t, 0.004 + (t < -0.3 ? 0.014 : 0)], U: X, V: Z, ru: Math.max(0.003, 0.113 * s * jaw), rv: Math.max(0.003, 0.125 * s * (t < -0.2 ? 0.92 : 1)), e: 2.35 });
+  }
+  m.loft('face', headRings, { n: 28, bone: BI.Head, uvFn: (p) => (p[2] < 0 ? [0.03, 0.03] : [0.5 + p[0] / 0.27, 0.5 - (p[1] - hc[1]) / 0.31]) });
+  const hb = { bone: BI.Head, steps: 6, n: 10 };
+  m.ellipsoid('skin', [0, hc[1] - 0.012, 0.125], 0.017, 0.034, 0.028, hb); // nose
+  m.ellipsoid('skin', [0, hc[1] - 0.04, 0.133], 0.022, 0.014, 0.02, hb);
+  for (const sd of [1, -1]) m.ellipsoid('skin', [sd * 0.115, hc[1] - 0.005, -0.005], 0.012, 0.032, 0.022, hb); // ears
+  m.ellipsoid('skin', [0, hc[1] + 0.036, 0.112], 0.088, 0.011, 0.02, { ...hb, e: 2 }); // brow ridge
+  if (spec.shades) m.ellipsoid('shades', [0, hc[1] + 0.012, 0.118], 0.1, 0.024, 0.02, { bone: BI.Head, steps: 6, n: 14 });
+  const hr = (k) => ({ n: 24, bone: BI.Head, ...k });
+  const shell = (t0, k = 1.05) => { const r = []; for (let i = 0; i <= 8; i++) { const t = t0 + (1 - t0) * (i / 8), s = Math.sqrt(Math.max(0, 1 - t * t)); r.push({ c: [0, hc[1] + 0.136 * t, -0.006], U: X, V: Z, ru: Math.max(0.003, 0.113 * s * k), rv: Math.max(0.003, 0.125 * s * k), e: 2.35 }); } return r; };
+  if (spec.hair === 'cap') { m.loft('hair', shell(0.42, 1.045), hr({})); m.ellipsoid('hair', [0, hc[1] + 0.0, -0.06], 0.108, 0.1, 0.07, { bone: BI.Head, steps: 6, n: 14 }); }
+  else if (spec.hair === 'mohawk') m.capsule('hair', [0, hc[1] + 0.12, 0.085], [0, hc[1] + 0.03, -0.14], 0.032, 0.04, { bone: BI.Head, ratio: 0.55, n: 10, caps: 3, e: 2 });
+  else if (spec.hair === 'long') { m.loft('hair', shell(0.3, 1.05), hr({})); m.capsule('hair', [0, hc[1] + 0.02, -0.085], [0, hc[1] - 0.3, -0.105], 0.05, 0.045, { bone: BI.Head, ratio: 2.1, n: 14, caps: 3, weights: (t) => [[BI.Head, 1 - 0.45 * t], [BI.Neck, 0.45 * t]] }); }
+  else if (spec.hair === 'hat') {
+    m.loft('hat', [0.06, 0.1, 0.17, 0.21].map((y, i) => ({ c: [0, hc[1] + y, -0.004], U: X, V: Z, ru: i === 3 ? 0.1 : 0.128, rv: i === 3 ? 0.11 : 0.138, e: 3 })), hr({}));
+    m.ellipsoid('hat', [0, hc[1] + 0.068, 0.05], 0.17, 0.011, 0.2, { bone: BI.Head, steps: 4, n: 20, e: 2.6 });
+  } else if (spec.hair === 'helmet') { m.loft('helmet', shell(0.1, 1.2), hr({ n: 24 })); m.ellipsoid('helmet', [0, hc[1] + 0.06, 0.12], 0.1, 0.012, 0.05, { bone: BI.Head, steps: 4, n: 10 }); }
+  if (spec.headband) m.loft('band', [-0.016, 0.016].map((y) => ({ c: [0, hc[1] + 0.075 + y, 0], U: X, V: Z, ru: 0.119, rv: 0.131, e: 2.35 })), hr({ n: 28, tile: 0.3 }));
+  if (spec.mask) { const r = []; for (let i = 0; i <= 5; i++) { const t = -1 + 0.9 * (i / 5), s = Math.sqrt(1 - t * t), jaw = 0.8 + 0.2 * ss(-0.9, 0.2, t); r.push({ c: [0, hc[1] + 0.136 * t, 0.008], U: X, V: Z, ru: Math.max(0.003, 0.113 * s * jaw * 1.07), rv: Math.max(0.003, 0.125 * s * 1.07), e: 2.35 }); } m.loft('mask', r, hr({})); }
+  // pads
+  if (spec.pads) for (const sd of [1, -1]) m.ellipsoid('pad', [sd * (0.205 * bw + 0.07), 1.47, 0], 0.095, 0.055, 0.1, { bone: BI.Chest, steps: 6, n: 14 });
   // arms
-  const armR = 0.05 * W * (spec.arm ?? 1);
+  const armR = 0.05 * AR * (0.8 + 0.2 * W);
   for (const sd of ['L', 'R']) {
-    const u = B('UpperArm' + sd), l = B('LowerArm' + sd), h = B('Hand' + sd);
-    g.blob(u, armR * 1.3, armR * 1.3, armR * 1.3, spec.sleeves ? cl.shirt : cl.skin, BI['UpperArm' + sd]);
-    g.limb(u, l, armR * 1.15, armR, spec.sleeves ? cl.shirt : cl.skin, BI['UpperArm' + sd]);
-    g.blob(l, armR * 1.05, armR * 1.05, armR * 1.05, cl.skin, BI['LowerArm' + sd]);
-    g.limb(l, h, armR, armR * 0.8, cl.skin, BI['LowerArm' + sd]);
-    g.blob([h[0], h[1] - 0.03, h[2]], armR * 1.5 * (spec.gloves ? 1.35 : 1), armR * 1.6 * (spec.gloves ? 1.25 : 1), armR * 1.4 * (spec.gloves ? 1.3 : 1), spec.gloves ? cl.accent : cl.skin, BI['Hand' + sd]);
+    const u = B('UpperArm' + sd), l = B('LowerArm' + sd), h = B('Hand' + sd), U = BI['UpperArm' + sd], Lw = BI['LowerArm' + sd];
+    const sleeved = !!spec.sleeves;
+    m.ellipsoid(spec.vest || sleeved || true ? 'shirt' : 'skin', [u[0], u[1] - 0.01, 0], armR * 1.35, armR * 1.3, armR * 1.3, { weights: () => [[BI.Chest, 0.5], [U, 0.5]], steps: 6, n: 12 });
+    m.capsule(sleeved ? 'shirt' : 'skin', u, l, armR * 1.12, armR * 0.92, { weights: limbW(U, Lw, BI.Chest), n: 14, caps: 3 });
+    if (!sleeved) { const e = [u[0], u[1] + (l[1] - u[1]) * 0.5, u[2]]; m.capsule('shirt', u, e, armR * 1.22, armR * 1.17, { weights: limbW(U, Lw, BI.Chest), n: 14, caps: 3 }); }
+    m.capsule(sleeved ? 'shirt' : 'skin', l, [h[0], h[1] + 0.03, h[2]], armR * 0.92, armR * 0.72, { weights: limbW(Lw, BI['Hand' + sd], U), n: 14, caps: 3 });
+    const g = spec.gloves ? 1.3 : 1;
+    m.ellipsoid(spec.gloves ? 'glove' : 'skin', [h[0], h[1] - 0.035, h[2] + 0.01], armR * 1.25 * g, armR * 1.45 * g, armR * 1.3 * g, { bone: BI['Hand' + sd], steps: 6, n: 12 });
+    if (spec.gloves) m.capsule('glove', [h[0], h[1] + 0.045, h[2]], [h[0], h[1] - 0.005, h[2]], armR * 0.95, armR * 1.15, { bone: BI['Hand' + sd], n: 12, caps: 2 });
   }
   // legs
-  const legR = 0.075 * W * (spec.leg ?? 1);
+  const legR = 0.078 * LG * (0.8 + 0.2 * W);
   for (const sd of ['L', 'R']) {
-    const u = B('UpperLeg' + sd), l = B('LowerLeg' + sd), f = B('Foot' + sd);
-    g.limb(u, l, legR, legR * 0.82, cl.pants, BI['UpperLeg' + sd]);
-    g.blob(l, legR * 0.85, legR * 0.85, legR * 0.85, cl.pants, BI['LowerLeg' + sd]);
-    g.limb(l, [f[0], f[1] + 0.03, f[2]], legR * 0.8, legR * 0.6, spec.shorts ? cl.skin : cl.pants, BI['LowerLeg' + sd]);
-    g.box([f[0], f[1] - 0.005, f[2] + 0.06], 0.11 * W, 0.08, 0.26, cl.shoes, BI['Foot' + sd]);
+    const u = B('UpperLeg' + sd), l = B('LowerLeg' + sd), f = B('Foot' + sd), Ub = BI['UpperLeg' + sd], Lb = BI['LowerLeg' + sd];
+    m.capsule('pants', [u[0], u[1] + 0.02, u[2]], l, legR, legR * 0.74, { weights: limbW(Ub, Lb, BI.Hips), n: 16, caps: 3 });
+    m.capsule(spec.shorts ? 'skin' : 'pants', l, [f[0], f[1] + 0.07, f[2]], legR * 0.74, legR * 0.56, { weights: limbW(Lb, BI['Foot' + sd], Ub), n: 16, caps: 3 });
+    // shoe: a loft along z, heel to toe
+    const sh = [[-0.1, 0.03, 0.022, 0], [-0.085, 0.05, 0.05, 0], [-0.03, 0.056, 0.06, 0], [0.05, 0.058, 0.044, 0], [0.13, 0.056, 0.035, 0], [0.19, 0.04, 0.026, 0], [0.222, 0.016, 0.012, 0]];
+    const wsh = 0.8 + 0.2 * W;
+    m.loft('shoe', sh.map(([z, w, hh]) => ({ c: [f[0], hh, f[2] + z], U: X, V: [0, 1, 0], ru: w * wsh * (1 + 0.06 * (LG - 1)), rv: hh, e: 2.4 })), { n: 16, bone: BI['Foot' + sd], tile: 0.3 });
+    m.loft('sole', [[-0.098, 0.052], [0.2, 0.05]].map(([z, w]) => ({ c: [f[0], 0.012, f[2] + z], U: X, V: [0, 1, 0], ru: w * wsh * 1.05, rv: 0.012, e: 3 })), { n: 12, bone: BI['Foot' + sd], tile: 0.3 });
   }
-  return g;
+  return m;
+}
+
+/** the face texture each character wears, and the materials a character is made of */
+function writeFace(spec) {
+  const skin = hexRaw(spec.colors.skin);
+  const hair = hexRaw(spec.colors.hair);
+  writeSet(TEX, 'face_' + spec.name, face({ name: spec.name, skin, eyes: spec.eyes ? hexRaw(spec.eyes) : [0.28, 0.17, 0.09], brow: hair.map((c) => c * 0.5), stubble: spec.stubble, scar: spec.scar, frown: spec.frown, war: spec.war ? hexRaw(spec.war) : null, seed: spec.name.length }), 1.5);
+}
+function materials(glb, spec) {
+  const c = Object.fromEntries(Object.entries(spec.colors).map(([k, v]) => [k, hex(v)]));
+  const d = TEX, P = (n, set, o) => [n, glb.pbr(n, d, set, o)];
+  return Object.fromEntries([
+    P('skin', 'fab_skin', { tint: c.skin, rough: 1, normal: 0.8 }),
+    P('face', 'face_' + spec.name, { clamp: true, rough: 1, normal: 1 }),
+    P('shirt', spec.knit ? 'fab_knit' : 'fab_cloth', { tint: c.shirt, rough: 1 }),
+    P('pants', 'fab_denim', { tint: c.pants, rough: 1 }),
+    P('shoe', 'fab_leather', { tint: c.shoes, rough: 0.9 }), P('sole', 'fab_leather', { tint: [0.04, 0.04, 0.04], rough: 0.9 }),
+    P('belt', 'fab_leather', { tint: c.belt || c.accent, rough: 1 }), P('buckle', 'paint_metal', { tint: [0.9, 0.75, 0.3], rough: 0.6 }),
+    P('vest', 'fab_leather', { tint: c.accent, rough: 1 }), P('glove', 'fab_leather', { tint: c.accent, rough: 0.9 }),
+    P('hair', 'fab_hair', { tint: c.hair, rough: 1 }), P('hat', 'fab_cloth', { tint: c.hair, rough: 1 }), P('band', 'fab_cloth', { tint: c.accent, rough: 1 }),
+    P('mask', 'fab_cloth', { tint: c.accent, rough: 1 }), P('pad', 'fab_leather', { tint: c.accent, rough: 0.8 }),
+    P('helmet', 'paint_metal', { tint: c.hair, rough: 0.6 }), P('shades', 'fab_leather', { tint: [0.02, 0.02, 0.025], rough: 0.25, metal: 0 }),
+  ]);
 }
 
 function skeletonNodes(glb) {
@@ -290,9 +352,10 @@ function skeletonNodes(glb) {
 
 function emit(spec) {
   const glb = new Glb();
-  const mat = glb.material(spec.name + '_mat', 0.75, 0);
+  writeFace(spec);
+  const mats = materials(glb, spec);
   const g = build(spec);
-  const mesh = glb.mesh(spec.name, g.geometry, mat);
+  const mesh = glb.mesh(spec.name, g.prims(mats));
   const jointNodes = skeletonNodes(glb);
   // inverse bind: translate(-world)
   const ibm = new Float32Array(BONES.length * 16);
@@ -334,17 +397,17 @@ function emit(spec) {
 
 // fighters and enemies
 const SPECS = [
-  { name: 'rook', scale: 1.08, width: 1.2, arm: 1.25, leg: 1.1, hair: 'cap', gloves: true, belt: true, sleeves: false, colors: { skin: 0xd9a066, shirt: 0xc8c2b0, pants: 0x2f4f8a, shoes: 0x3b2a20, hair: 0x2a1d14, accent: 0xb02a2a, belt: 0x201a14 } },
+  { name: 'rook', stubble: true, scale: 1.08, width: 1.2, arm: 1.25, leg: 1.1, hair: 'cap', gloves: true, belt: true, sleeves: false, colors: { skin: 0xd9a066, shirt: 0xc8c2b0, pants: 0x2f4f8a, shoes: 0x3b2a20, hair: 0x2a1d14, accent: 0xb02a2a, belt: 0x201a14 } },
   { name: 'mika', scale: 0.98, width: 0.9, hair: 'long', headband: true, sleeves: false, colors: { skin: 0xf0c8a0, shirt: 0xe6a02a, pants: 0x2a2a38, shoes: 0xe8e8e8, hair: 0x8a2d1a, accent: 0xd03040 } },
   { name: 'jet', scale: 1.0, width: 1.0, hair: 'mohawk', shades: true, shorts: true, colors: { skin: 0x8c5a3c, shirt: 0x3aa07a, pants: 0x202830, shoes: 0xf0d030, hair: 0xe0e0e8, accent: 0xf0d030 } },
-  { name: 'thug', scale: 1.0, width: 1.0, hair: 'cap', colors: { skin: 0xc89870, shirt: 0x7a3a3a, pants: 0x3a3a44, shoes: 0x1c1c1c, hair: 0x1a1410, accent: 0x303030 } },
-  { name: 'punk', scale: 0.96, width: 0.9, hair: 'mohawk', pads: true, colors: { skin: 0xe0b890, shirt: 0x2a2a30, pants: 0x4a2a5a, shoes: 0x101010, hair: 0x30d0a0, accent: 0xa0a0b0 } },
-  { name: 'runner', scale: 0.94, width: 0.8, hair: 'hat', sleeves: true, colors: { skin: 0xb88a60, shirt: 0x3a6aa8, pants: 0xc8c8c8, shoes: 0xd04030, hair: 0x2a2a60, accent: 0xd04030 } },
-  { name: 'knifer', scale: 1.0, width: 0.95, mask: true, hair: 'cap', vest: true, colors: { skin: 0xc89870, shirt: 0x303030, pants: 0x1c2a1c, shoes: 0x101010, hair: 0x101010, accent: 0x505850 } },
-  { name: 'bruiser', scale: 1.28, width: 1.5, arm: 1.5, leg: 1.2, hair: 'cap', belt: true, vest: true, gloves: true, colors: { skin: 0xb8805a, shirt: 0x5a5a5a, pants: 0x5a4a2a, shoes: 0x201810, hair: 0x181008, accent: 0x8a2a1a, belt: 0x141010 } },
-  { name: 'foreman', scale: 1.4, width: 1.55, arm: 1.5, leg: 1.2, hair: 'helmet', vest: true, belt: true, pads: true, gloves: true, colors: { skin: 0xa8704a, shirt: 0xd08020, pants: 0x30343a, shoes: 0x14100c, hair: 0xf0c020, accent: 0xe0b020, belt: 0x141010 } },
-  { name: 'matron', scale: 1.22, width: 1.25, hair: 'long', pads: true, colors: { skin: 0xe8c0a0, shirt: 0x7a2a6a, pants: 0x1a1a2a, shoes: 0x600a30, hair: 0xc8c8d8, accent: 0xe0d060 }, eyes: 0xe02060 },
+  { name: 'thug', stubble: true, frown: true, scale: 1.0, width: 1.0, hair: 'cap', colors: { skin: 0xc89870, shirt: 0x7a3a3a, pants: 0x3a3a44, shoes: 0x1c1c1c, hair: 0x1a1410, accent: 0x303030 } },
+  { name: 'punk', war: 0xb02060, frown: true, scale: 0.96, width: 0.9, hair: 'mohawk', pads: true, colors: { skin: 0xe0b890, shirt: 0x2a2a30, pants: 0x4a2a5a, shoes: 0x101010, hair: 0x30d0a0, accent: 0xa0a0b0 } },
+  { name: 'runner', knit: true, scale: 0.94, width: 0.8, hair: 'hat', sleeves: true, colors: { skin: 0xb88a60, shirt: 0x3a6aa8, pants: 0xc8c8c8, shoes: 0xd04030, hair: 0x2a2a60, accent: 0xd04030 } },
+  { name: 'knifer', frown: true, scale: 1.0, width: 0.95, mask: true, hair: 'cap', vest: true, colors: { skin: 0xc89870, shirt: 0x303030, pants: 0x1c2a1c, shoes: 0x101010, hair: 0x101010, accent: 0x505850 } },
+  { name: 'bruiser', stubble: true, scar: true, frown: true, scale: 1.28, width: 1.5, arm: 1.5, leg: 1.2, hair: 'cap', belt: true, vest: true, gloves: true, colors: { skin: 0xb8805a, shirt: 0x5a5a5a, pants: 0x5a4a2a, shoes: 0x201810, hair: 0x181008, accent: 0x8a2a1a, belt: 0x141010 } },
+  { name: 'foreman', stubble: true, frown: true, scale: 1.4, width: 1.55, arm: 1.5, leg: 1.2, hair: 'helmet', vest: true, belt: true, pads: true, gloves: true, colors: { skin: 0xa8704a, shirt: 0xd08020, pants: 0x30343a, shoes: 0x14100c, hair: 0xf0c020, accent: 0xe0b020, belt: 0x141010 } },
+  { name: 'matron', frown: true, scale: 1.22, width: 1.25, hair: 'long', pads: true, colors: { skin: 0xe8c0a0, shirt: 0x7a2a6a, pants: 0x1a1a2a, shoes: 0x600a30, hair: 0xc8c8d8, accent: 0xe0d060 }, eyes: 0xe02060 },
   { name: 'ringmaster', scale: 1.15, width: 1.1, hair: 'hat', vest: true, belt: true, colors: { skin: 0xe0b890, shirt: 0xb81a2a, pants: 0x1a1a1a, shoes: 0x0a0a0a, hair: 0x1a1a1a, accent: 0xe8c840 } },
-  { name: 'colossus', scale: 1.7, width: 1.6, arm: 1.6, leg: 1.3, hair: 'helmet', pads: true, vest: true, gloves: true, belt: true, colors: { skin: 0x7a8a8a, shirt: 0x2a3a4a, pants: 0x20282e, shoes: 0x0e1014, hair: 0x6a7a8a, accent: 0x40c0d0, belt: 0x101418 }, eyes: 0x40e0ff },
+  { name: 'colossus', scar: true, frown: true, scale: 1.7, width: 1.6, arm: 1.6, leg: 1.3, hair: 'helmet', pads: true, vest: true, gloves: true, belt: true, colors: { skin: 0x7a8a8a, shirt: 0x2a3a4a, pants: 0x20282e, shoes: 0x0e1014, hair: 0x6a7a8a, accent: 0x40c0d0, belt: 0x101418 }, eyes: 0x40e0ff },
 ];
 for (const s of SPECS) emit(s);

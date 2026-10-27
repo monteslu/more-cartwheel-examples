@@ -1,28 +1,56 @@
 /* brawler levels: four stages built from scene nodes, wave tables, breakable props, the camera. */
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "cartwheel/render3d.h"
 #include "cartwheel/scene_file.h"
 #include "game.h"
 
+/* per stage mood: the key light (a low sun or moon from behind the buildings, so they cast long shadows and
+   shafts across the street), a cool fill from the camera side, a rim from behind, fog, grade, coloured accents. */
+typedef struct accent { float dx, y, z, c[3], e, range; } accent;
 typedef struct theme {
-  const char *name;
-  float sky[3], ambient[3], amb_e, sun[3], sun_e, sun_rot[2];
-  float ground[3], wall[3][3], glow[3], lamp[3];
-  float lamp_e;
+  const char *name, *lut;
+  float bg[3], hemi_sky[3], hemi_ground[3], hemi_e;
+  float sun_dir[3], sun[3], sun_e;
+  float fill[3], fill_e, rim[3], rim_e;
+  float fog[3], fog_density, fog_fall;
+  float lamp[3], lamp_e;
+  float exposure, bloom, bloom_thr;
+  accent acc[3];
 } theme;
 
 static const theme THEMES[4] = {
-  { "Back Alley", { 0.05f, 0.04f, 0.09f }, { 0.55f, 0.5f, 0.7f }, 0.35f, { 1.0f, 0.62f, 0.4f }, 2.2f, { -0.7f, 0.5f },
-    { 0.16f, 0.16f, 0.17f }, { { 0.32f, 0.2f, 0.16f }, { 0.28f, 0.24f, 0.22f }, { 0.22f, 0.18f, 0.26f } }, { 1.0f, 0.78f, 0.4f }, { 1.0f, 0.7f, 0.35f }, 1.0f },
-  { "Foggy Docks", { 0.03f, 0.05f, 0.07f }, { 0.4f, 0.55f, 0.7f }, 0.4f, { 0.55f, 0.72f, 1.0f }, 1.6f, { -0.8f, -0.5f },
-    { 0.12f, 0.14f, 0.16f }, { { 0.18f, 0.24f, 0.3f }, { 0.26f, 0.28f, 0.3f }, { 0.3f, 0.2f, 0.14f } }, { 0.5f, 0.85f, 1.0f }, { 0.7f, 0.85f, 1.0f }, 1.2f },
-  { "Neon Arcade", { 0.04f, 0.02f, 0.07f }, { 0.55f, 0.4f, 0.8f }, 0.45f, { 0.8f, 0.5f, 1.0f }, 1.5f, { -0.75f, 0.3f },
-    { 0.1f, 0.09f, 0.14f }, { { 0.2f, 0.12f, 0.28f }, { 0.12f, 0.18f, 0.3f }, { 0.3f, 0.12f, 0.2f } }, { 1.0f, 0.3f, 0.8f }, { 0.4f, 0.9f, 1.0f }, 1.5f },
-  { "Factory Roof", { 0.12f, 0.07f, 0.05f }, { 0.8f, 0.55f, 0.4f }, 0.5f, { 1.0f, 0.5f, 0.25f }, 3.0f, { -0.35f, 0.7f },
-    { 0.2f, 0.18f, 0.17f }, { { 0.34f, 0.2f, 0.12f }, { 0.25f, 0.25f, 0.27f }, { 0.4f, 0.28f, 0.14f } }, { 1.0f, 0.5f, 0.2f }, { 1.0f, 0.6f, 0.3f }, 1.1f },
+  { "Back Alley", "luts/alley.cube",
+    { 0.07f, 0.05f, 0.09f }, { 0.45f, 0.42f, 0.62f }, { 0.16f, 0.1f, 0.08f }, 0.45f,
+    { 0.7f, -0.55f, 0.32f }, { 1.0f, 0.52f, 0.26f }, 4.2f,
+    { 0.38f, 0.5f, 0.85f }, 0.75f, { 0.9f, 0.45f, 0.7f }, 1.3f,
+    { 0.32f, 0.18f, 0.15f }, 0.014f, 0.06f,
+    { 1.0f, 0.62f, 0.3f }, 1.1f, 0.2f, 0.16f, 1.2f,
+    { { -7, 2.6f, -2.6f, { 1.0f, 0.35f, 0.18f }, 28, 9 }, { 6, 2.4f, -2.8f, { 0.25f, 0.5f, 1.0f }, 22, 9 }, { 0, 3.2f, 3.5f, { 1.0f, 0.7f, 0.4f }, 12, 10 } } },
+  { "Foggy Docks", "luts/docks.cube",
+    { 0.04f, 0.07f, 0.1f }, { 0.3f, 0.42f, 0.58f }, { 0.07f, 0.09f, 0.1f }, 0.5f,
+    { -0.6f, -0.5f, 0.45f }, { 0.55f, 0.72f, 1.0f }, 3.0f,
+    { 0.55f, 0.65f, 0.85f }, 0.7f, { 0.4f, 0.8f, 1.0f }, 1.2f,
+    { 0.14f, 0.2f, 0.25f }, 0.03f, 0.04f,
+    { 0.75f, 0.9f, 1.0f }, 1.3f, 0.2f, 0.14f, 1.2f,
+    { { -6, 3.0f, -2.5f, { 1.0f, 0.6f, 0.2f }, 40, 10 }, { 7, 3.0f, -2.5f, { 1.0f, 0.6f, 0.2f }, 40, 10 }, { 0, 2.0f, 4.0f, { 0.3f, 0.6f, 1.0f }, 10, 9 } } },
+  { "Neon Arcade", "luts/arcade.cube",
+    { 0.04f, 0.02f, 0.08f }, { 0.4f, 0.28f, 0.7f }, { 0.08f, 0.05f, 0.12f }, 0.5f,
+    { 0.5f, -0.6f, 0.4f }, { 0.65f, 0.45f, 1.0f }, 2.2f,
+    { 0.7f, 0.4f, 0.9f }, 0.5f, { 0.2f, 0.9f, 1.0f }, 1.4f,
+    { 0.12f, 0.06f, 0.2f }, 0.015f, 0.05f,
+    { 0.4f, 0.9f, 1.0f }, 1.4f, 0.22f, 0.18f, 1.2f,
+    { { -6, 2.0f, -1.0f, { 1.0f, 0.15f, 0.6f }, 70, 10 }, { 6, 2.0f, -1.0f, { 0.1f, 0.85f, 1.0f }, 70, 10 }, { 0, 1.6f, 4.2f, { 0.7f, 0.3f, 1.0f }, 30, 9 } } },
+  { "Factory Roof", "luts/factory.cube",
+    { 0.14f, 0.07f, 0.05f }, { 0.7f, 0.42f, 0.3f }, { 0.2f, 0.12f, 0.08f }, 0.55f,
+    { 0.55f, -0.42f, 0.3f }, { 1.0f, 0.45f, 0.18f }, 5.0f,
+    { 0.45f, 0.5f, 0.7f }, 0.6f, { 1.0f, 0.6f, 0.3f }, 1.4f,
+    { 0.38f, 0.17f, 0.1f }, 0.03f, 0.05f,
+    { 1.0f, 0.6f, 0.3f }, 1.1f, 0.22f, 0.15f, 1.2f,
+    { { -6, 1.2f, -3.0f, { 1.0f, 0.4f, 0.1f }, 45, 9 }, { 7, 1.4f, -3.0f, { 1.0f, 0.5f, 0.12f }, 45, 9 }, { 0, 3.0f, 3.5f, { 1.0f, 0.55f, 0.3f }, 16, 10 } } },
 };
 
 typedef struct wave_def { float lock; int n; int8_t def[10]; } wave_def;
@@ -79,8 +107,11 @@ void stage_wave_load(int stage, int wave) {
 
 /* ── nodes ──────────────────────────────────────────────────────────── */
 static cw_node stage_node;
+static t3_gltf *stage_gltf;
 static cw_node tree_root(void) { return cw_node_get(cw_tree_root(cw_scene_app_tree()), "Level"); }
 static int ncount;
+
+static float hf(int i, int salt) { uint32_t h = (uint32_t)(i * 2654435761u) ^ (uint32_t)(salt * 40503u); h ^= h >> 13; h *= 0x5bd1e995u; h ^= h >> 15; return (float)(h & 0xffff) / 65535.0f; }
 
 static cw_node mesh(cw_node parent, const char *prim, t3_vec3 pos, t3_vec3 size, const float *c, float rough, float metal) {
   char nm[24];
@@ -97,7 +128,45 @@ static cw_node mesh(cw_node parent, const char *prim, t3_vec3 pos, t3_vec3 size,
 }
 static void glow(cw_node n, const float *c, float e) { cw_node_set(n, "emissive", cw_val_color(c[0] * e, c[1] * e, c[2] * e, 1)); }
 
-static float hf(int i, int salt) { uint32_t h = (uint32_t)(i * 2654435761u) ^ (uint32_t)(salt * 40503u); h ^= h >> 13; h *= 0x5bd1e995u; h ^= h >> 15; return (float)(h & 0xffff) / 65535.0f; }
+static void shadows_on(t3_object *o, bool cast) {
+  if (o->type == T3_SKINNED_MESH || o->type == T3_MESH) o->cast_shadow = cast, o->receive_shadow = true;
+  for (int i = 0; i < o->child_count; i++) shadows_on(o->children[i], cast);
+}
+/* a glb from the pack as a node (the glTF is returned so the caller can keep it alive) */
+static cw_node spawn_glb(cw_node parent, const char *path, t3_gltf **keep, bool cast) {
+  char nm[24];
+  snprintf(nm, sizeof nm, "g%d", ncount++);
+  cw_node n = cw_node_new("Node3D", nm);
+  cw_node_add_child(parent, n);
+  size_t len;
+  void *glb = cw_asset_load(path, &len);
+  if (!glb) { cw_error("brawler: %s missing", path); return n; }
+  t3_gltf *g = t3_gltf_parse(glb, len, NULL, NULL);
+  free(glb);
+  if (!g) { cw_error("brawler: %s did not parse", path); return n; }
+  shadows_on(g->scene, cast);
+  cw_node3d_set_object(n, g->scene);
+  if (keep) *keep = g;
+  return n;
+}
+
+static cw_node light(cw_node parent, const char *prefix, t3_vec3 pos, const float *c, float energy, float range) {
+  char nm[24];
+  snprintf(nm, sizeof nm, "%s%d", prefix, ncount++);
+  cw_node l = cw_node_new("OmniLight3D", nm);
+  cw_node_add_child(parent, l);
+  cw_node3d_set_position(l, pos);
+  cw_node_set(l, "color", cw_val_color(c[0], c[1], c[2], 1));
+  cw_node_set(l, "energy", cw_val_float(energy));
+  cw_node_set(l, "range", cw_val_float(range));
+  cw_node_set(l, "fog_energy", cw_val_float(0)); /* only the accents scatter into the fog (the grid takes 8 lights) */
+  return l;
+}
+static cw_node acc_node[3];
+static void aim(cw_node n, const float *d) {
+  float h = sqrtf(d[0] * d[0] + d[2] * d[2]);
+  cw_node3d_set_rotation(n, (t3_vec3){ atan2f(d[1], h), atan2f(-d[0], -d[2]), 0 });
+}
 
 void level_free(void) {
   if (stage_node.id && cw_node_valid(stage_node)) cw_node_free(stage_node);
@@ -113,70 +182,56 @@ void level_build(int stage) {
   stage_node = cw_node_new("Node3D", "Stage");
   cw_node_add_child(tree_root(), stage_node);
   cw_node s = stage_node;
-  /* environment and lights from the theme */
+  /* environment, post and the lights from the theme */
   cw_node env = cw_node_get(tree_root(), "Env");
-  cw_node_set(env, "background", cw_val_color(th->sky[0], th->sky[1], th->sky[2], 1));
-  cw_node_set(env, "ambient_color", cw_val_color(th->ambient[0], th->ambient[1], th->ambient[2], 1));
-  cw_node_set(env, "ambient_energy", cw_val_float(th->amb_e));
-  cw_node rim = cw_node_get(tree_root(), "Rim");
-  cw_node_set(rim, "color", cw_val_color(th->glow[0] * 0.6f + 0.3f, th->glow[1] * 0.6f + 0.3f, th->glow[2] * 0.6f + 0.4f, 1));
+  cw_node_set(env, "background", cw_val_color(th->bg[0], th->bg[1], th->bg[2], 1));
+  cw_node_set(env, "sky_color", cw_val_color(th->hemi_sky[0], th->hemi_sky[1], th->hemi_sky[2], 1));
+  cw_node_set(env, "ground_color", cw_val_color(th->hemi_ground[0], th->hemi_ground[1], th->hemi_ground[2], 1));
+  cw_node_set(env, "hemi_energy", cw_val_float(th->hemi_e));
+  cw_node fog = cw_node_get(tree_root(), "Fog");
+  cw_node_set(fog, "color", cw_val_color(th->fog[0], th->fog[1], th->fog[2], 1));
+  cw_node_set(fog, "density", cw_val_float(th->fog_density));
+  cw_node_set(fog, "height_falloff", cw_val_float(th->fog_fall));
+  cw_node post = cw_node_get(tree_root(), "Post");
+  cw_node_set(post, "lut", cw_val_string(th->lut));
+  cw_node_set(post, "exposure_ev", cw_val_float(th->exposure + 0.25f));
+  cw_node_set(post, "bloom_intensity", cw_val_float(th->bloom));
+  cw_node_set(post, "bloom_threshold", cw_val_float(th->bloom_thr));
   cw_node sun = cw_node_get(tree_root(), "Sun");
   cw_node_set(sun, "color", cw_val_color(th->sun[0], th->sun[1], th->sun[2], 1));
-  cw_node_set(sun, "energy", cw_val_float(th->sun_e * 0.85f));
-  cw_node3d_set_rotation(sun, (t3_vec3){ th->sun_rot[0], th->sun_rot[1], 0 });
-  /* ground: asphalt road, raised pavement behind */
-  mesh(s, "BOX", (t3_vec3){ len * 0.5f, -0.15f, 0.8f }, (t3_vec3){ len + 50, 0.3f, 8.4f }, th->ground, 0.85f, 0.0f);
-  float pave[3] = { th->ground[0] * 1.5f, th->ground[1] * 1.5f, th->ground[2] * 1.5f };
-  mesh(s, "BOX", (t3_vec3){ len * 0.5f, 0.05f, -4.6f }, (t3_vec3){ len + 50, 0.34f, 2.4f }, pave, 0.7f, 0.0f);
-  mesh(s, "BOX", (t3_vec3){ len * 0.5f, -0.2f, -9.0f }, (t3_vec3){ len + 50, 0.2f, 12 }, th->ground, 0.9f, 0.0f);
-  float paint[3] = { 0.8f, 0.78f, 0.6f };
-  for (float x = -8; x < len + 12; x += 4.0f) mesh(s, "BOX", (t3_vec3){ x, 0.01f, 3.2f }, (t3_vec3){ 1.6f, 0.02f, 0.14f }, paint, 0.6f, 0);
-  /* buildings along the back with lit windows */
-  int bi = 0;
-  for (float x = -14; x < len + 20; x += 5.8f, bi++) {
-    float h = 5.0f + hf(bi, stage) * 7.0f;
-    float c[3] = { th->wall[bi % 3][0] * 0.55f, th->wall[bi % 3][1] * 0.55f, th->wall[bi % 3][2] * 0.55f };
-    mesh(s, "BOX", (t3_vec3){ x, h * 0.5f, -7.4f - hf(bi, 9) * 1.2f }, (t3_vec3){ 5.5f, h, 3.0f }, c, 0.8f, 0);
-    for (int wy = 0; wy < (int)(h / 1.7f); wy++)
-      for (int wx = 0; wx < 3; wx++) {
-        if (hf(bi * 31 + wy * 7 + wx, stage + 3) < 0.45f) continue;
-        float wc[3] = { th->glow[0], th->glow[1], th->glow[2] };
-        cw_node w = mesh(s, "BOX", (t3_vec3){ x - 1.8f + (float)wx * 1.8f, 1.7f + (float)wy * 1.6f, -5.88f - hf(bi, 9) * 1.2f }, (t3_vec3){ 0.8f, 0.9f, 0.06f }, wc, 0.3f, 0);
-        glow(w, wc, 1.1f);
-      }
-  }
-  /* lamp posts with a light each */
-  float steel[3] = { 0.12f, 0.12f, 0.14f };
-  for (float x = 2; x < len + 6; x += 11.0f) {
-    mesh(s, "CYLINDER", (t3_vec3){ x, 2.2f, -3.6f }, (t3_vec3){ 0.14f, 4.4f, 0 }, steel, 0.5f, 0.8f);
-    cw_node head = mesh(s, "BOX", (t3_vec3){ x, 4.45f, -3.4f }, (t3_vec3){ 0.5f, 0.12f, 0.5f }, steel, 0.5f, 0.8f);
-    (void)head;
-    cw_node bulb = mesh(s, "SPHERE", (t3_vec3){ x, 4.3f, -3.4f }, (t3_vec3){ 0.3f, 0, 0 }, th->lamp, 0.2f, 0);
-    glow(bulb, th->lamp, 6);
-    char nm[24];
-    snprintf(nm, sizeof nm, "L%d", ncount++);
-    cw_node l = cw_node_new("OmniLight3D", nm);
-    cw_node_add_child(s, l);
-    cw_node3d_set_position(l, (t3_vec3){ x, 4.0f, -2.2f });
-    cw_node_set(l, "color", cw_val_color(th->lamp[0], th->lamp[1], th->lamp[2], 1));
-    cw_node_set(l, "energy", cw_val_float(th->lamp_e * 40));
-    cw_node_set(l, "range", cw_val_float(11));
-  }
+  cw_node_set(sun, "energy", cw_val_float(th->sun_e));
+  aim(sun, th->sun_dir);
+  cw_node fill = cw_node_get(tree_root(), "Fill");
+  cw_node_set(fill, "color", cw_val_color(th->fill[0], th->fill[1], th->fill[2], 1));
+  cw_node_set(fill, "energy", cw_val_float(th->fill_e * 2.2f));
+  { float d[3] = { 0.25f, -0.5f, -0.85f }; aim(fill, d); }
+  cw_node rim = cw_node_get(tree_root(), "Rim");
+  cw_node_set(rim, "color", cw_val_color(th->rim[0], th->rim[1], th->rim[2], 1));
+  cw_node_set(rim, "energy", cw_val_float(th->rim_e * 1.6f));
+  { float d[3] = { -0.3f, -0.45f, 0.85f }; aim(rim, d); }
+  /* the scenery: street, kerb, pavement, buildings with lit windows, lamp posts (one glb per stage) */
+  char path[40];
+  snprintf(path, sizeof path, "models/stage%d.glb", stage & 3);
+  cw_node scen = spawn_glb(s, path, &stage_gltf, true);
+  (void)scen;
+  /* a light under every lamp post, and the stage's coloured accents (they follow the camera) */
+  for (float x = 2; x < len + 6; x += 11.0f)
+    light(s, "L", (t3_vec3){ x, 3.9f, -2.9f }, th->lamp, th->lamp_e * 38, 11);
+  for (int i = 0; i < 3; i++) acc_node[i] = light(s, "A", (t3_vec3){ th->acc[i].dx, th->acc[i].y, th->acc[i].z }, th->acc[i].c, th->acc[i].e * (i == 2 ? 2.5f : 1.0f), th->acc[i].range);
   /* breakable props */
   cw_rng r;
   cw_rng_seed(&r, 99 + (uint64_t)stage);
   int np = 0;
+  static const char *PROP_GLB[3] = { "models/crate.glb", "models/barrel.glb", "models/bin.glb" };
   for (float x = 8; x < len - 4 && np < MAXPROP; x += 5.2f + cw_rng_float(&r) * 2.0f, np++) {
     prop_t *p = &W.prop[np];
     p->used = true, p->kind = cw_rng_int(&r, 0, 2), p->hp = 3;
     p->x = x, p->z = cw_rng_range(&r, -2.0f, 2.0f);
     p->drop = cw_rng_int(&r, 0, 9);
-    float crate[3] = { 0.42f, 0.28f, 0.15f }, barrel[3] = { 0.2f, 0.32f, 0.5f }, bin[3] = { 0.22f, 0.4f, 0.26f };
-    if (p->kind == 0) p->node = mesh(s, "BOX", (t3_vec3){ x, 0.45f, p->z }, (t3_vec3){ 0.9f, 0.9f, 0.9f }, crate, 0.8f, 0);
-    else if (p->kind == 1) p->node = mesh(s, "CYLINDER", (t3_vec3){ x, 0.5f, p->z }, (t3_vec3){ 0.7f, 1.0f, 0 }, barrel, 0.4f, 0.6f);
-    else p->node = mesh(s, "BOX", (t3_vec3){ x, 0.55f, p->z }, (t3_vec3){ 0.8f, 1.1f, 0.7f }, bin, 0.5f, 0.5f);
-    cw_node_set(p->node, "cast_shadow", cw_val_bool(true));
-    cw_node_set(p->node, "receive_shadow", cw_val_bool(true));
+    p->node = spawn_glb(s, PROP_GLB[p->kind], NULL, true);
+    static const float PY[3] = { 0.42f, 0.49f, 0.57f };
+    cw_node3d_set_position(p->node, (t3_vec3){ x, PY[p->kind], p->z });
+    cw_node3d_set_rotation(p->node, (t3_vec3){ 0, (float)cw_rng_range(&r, -0.4f, 0.4f), 0 });
   }
   ncount = 0;
 }
@@ -212,7 +267,7 @@ void level_update(void) {
     if (p->shake > 0) {
       p->shake--;
       float s = (float)(p->shake & 1 ? 1 : -1) * 0.04f * (float)p->shake / 8.0f;
-      float y = p->kind == 0 ? 0.45f : p->kind == 1 ? 0.5f : 0.55f;
+      float y = p->kind == 0 ? 0.42f : p->kind == 1 ? 0.49f : 0.57f;
       cw_node3d_set_position(p->node, (t3_vec3){ p->x + s, y, p->z });
     }
   }
@@ -262,5 +317,10 @@ void level_camera(float dt) {
   cw_node3d_set_position(cam, (t3_vec3){ W.cam_x + shx, 3.9f + shy, 7.7f });
   cw_node3d_set_rotation(cam, (t3_vec3){ -0.3f, 0, 0 });
   cw_node sun = cw_node_get(tree_root(), "Sun");
-  cw_node3d_set_position(sun, (t3_vec3){ W.cam_x + 6, 10, 4 });
+  cw_node3d_set_position(sun, (t3_vec3){ W.cam_x - 8, 14, -8 });
+  {
+    const theme *th = &THEMES[W.stage & 3];
+    for (int i = 0; i < 3; i++)
+      if (acc_node[i].id && cw_node_valid(acc_node[i])) cw_node3d_set_position(acc_node[i], (t3_vec3){ W.cam_x + th->acc[i].dx, th->acc[i].y, th->acc[i].z });
+  }
 }

@@ -14,8 +14,10 @@
 #define NDUST 6
 #define NDEB 6
 #define NFLASH 4
-static cw_node spark[NSPARK], dust[NDUST], deb[NDEB], flash[NFLASH];
-static int ns, nd, nb, nf;
+#define NBURST 6
+#define NDECAL 18
+static cw_node spark[NSPARK], dust[NDUST], deb[NDEB], flash[NFLASH], burst[NBURST], decal[NDECAL];
+static int ns, nd, nb, nf, nbu, ndc;
 static float flash_e[NFLASH];
 static cw_node tree_root(void) { return cw_node_get(cw_tree_root(cw_scene_app_tree()), "Level"); }
 
@@ -99,6 +101,41 @@ void fx_init(void) {
     cw_node_set(n, "spin", cw_val_float(9));
     cw_node_set(n, "seed", cw_val_int(500 + i));
   }
+  /* a star of light at every connected hit: one billboard that lives a few frames */
+  for (int i = 0; i < NBURST; i++) {
+    snprintf(nm, sizeof nm, "burst%d", i);
+    cw_node n = burst[i] = psys(nm);
+    cw_node_set(n, "amount", cw_val_int(1));
+    cw_node_set(n, "lifetime", cw_val_float(0.14));
+    cw_node_set(n, "one_shot", cw_val_bool(true));
+    cw_node_set(n, "emitting", cw_val_bool(false));
+    cw_node_set(n, "explosiveness", cw_val_float(1));
+    cw_node_set(n, "emission_shape", cw_val_enum("POINT"));
+    cw_node_set(n, "speed_min", cw_val_float(0));
+    cw_node_set(n, "speed_max", cw_val_float(0));
+    cw_node_set(n, "texture", cw_val_string("decals/burst.png"));
+    cw_node_set(n, "blend", cw_val_enum("ADD"));
+    cw_node_set(n, "size", cw_val_float(0.9f));
+    cw_node_set(n, "energy", cw_val_float(5));
+    cw_node_set(n, "color", cw_val_color(1, 0.85f, 0.55f, 1));
+    cw_node_set(n, "color_ramp", cw_val_string("0 1 0.95 0.8 1, 0.5 1 0.7 0.35 0.8, 1 1 0.4 0.1 0"));
+    cw_node_set(n, "size_curve", cw_val_string("0 0.5, 0.3 1, 1 1.3"));
+    cw_node_set(n, "spin", cw_val_float(0));
+    cw_node_set(n, "seed", cw_val_int(700 + i));
+  }
+  /* scuffs and cracks stamped on the ground by hard hits and knockdowns (multiplied onto the lit street) */
+  static const char *DEC[3] = { "decals/scuff1.png", "decals/scuff2.png", "decals/crack.png" };
+  for (int i = 0; i < NDECAL; i++) {
+    snprintf(nm, sizeof nm, "decal%d", i);
+    cw_node d = decal[i] = cw_node_new("Decal3D", nm);
+    cw_node_add_child(cw_node_get(tree_root(), "Fx"), d);
+    cw_node_set(d, "texture", cw_val_string(DEC[i % 3]));
+    cw_node_set(d, "blend", cw_val_enum("MULTIPLY"));
+    cw_node_set(d, "size", cw_val_vec3(0.01f, 0.01f, 0.01f));
+    cw_node_set(d, "color", cw_val_color(1, 1, 1, 0));
+    cw_node3d_set_rotation(d, (t3_vec3){ -1.5708f, 0, 0 });
+    cw_node3d_set_position(d, (t3_vec3){ 0, -20, 0 });
+  }
   for (int i = 0; i < NFLASH; i++) {
     snprintf(nm, sizeof nm, "flash%d", i);
     cw_node n = flash[i] = cw_node_new("OmniLight3D", nm);
@@ -108,7 +145,18 @@ void fx_init(void) {
   }
 }
 
+/* a mark on the street where something heavy landed */
+static void fx_mark(float x, float z, float size) {
+  cw_node d = decal[ndc++ % NDECAL];
+  float yaw = (float)((ndc * 2654435761u) & 0xffff) / 65535.0f * 6.28318f;
+  cw_node3d_set_position(d, (t3_vec3){ x, 0.18f, z });
+  cw_node3d_set_rotation(d, (t3_vec3){ -1.5708f, 0, yaw });
+  cw_node_set(d, "size", cw_val_vec3(size, size, 0.36f));
+  cw_node_set(d, "color", cw_val_color(1, 1, 1, 0.75f));
+}
 void fx_hit(float x, float y, float z, int kind, int face) {
+  { cw_node b = burst[nbu++ % NBURST]; cw_node3d_set_position(b, (t3_vec3){ x, y, z + 0.3f }); cw_node_set(b, "size", cw_val_float(kind >= 2 ? 1.5f : 0.9f)); cw_particles_restart(b); }
+  if (kind >= 2) fx_mark(x, z, 1.1f);
   cw_node n = spark[ns++ % NSPARK];
   cw_node3d_set_position(n, (t3_vec3){ x, y, z });
   cw_node_set(n, "amount", cw_val_int(kind >= 2 ? 64 : 28));
@@ -123,6 +171,7 @@ void fx_hit(float x, float y, float z, int kind, int face) {
   fx_flash(x, y, z, 1, 0.8f, 0.5f, kind >= 2 ? 16 : 9);
 }
 void fx_dust(float x, float z, float scale) {
+  if (scale > 1.0f) fx_mark(x, z, 0.8f * scale);
   cw_node n = dust[nd++ % NDUST];
   cw_node3d_set_position(n, (t3_vec3){ x, 0.15f, z });
   cw_node_set(n, "emission_radius", cw_val_float(0.25f * scale));

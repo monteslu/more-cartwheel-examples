@@ -8,20 +8,35 @@ ambient_color = color(0.55, 0.5, 0.7, 1)
 ambient_energy = 0.1
 sky_color = color(0.25, 0.22, 0.4, 1)
 ground_color = color(0.08, 0.07, 0.07, 1)
-hemi_energy = 0.22
-fog_mode = EXP
-fog_color = color(0.12, 0.1, 0.18, 1)
-fog_density = 0.012
+hemi_energy = 0.3
+
+[node name="Fog" parent="." type="HeightFog"]
+volumetric = true
+density = 0.03
+height_falloff = 0.05
+color = color(0.2, 0.15, 0.2, 1)
+use_sky_color = false
+volumetric_distance = 40
+volumetric_ambient = 0.3
+sun_g = 0.55
+sky_distance = 0
 
 [node name="Post" parent="." type="PostProcess"]
 bloom = true
-bloom_intensity = 0.12
-bloom_threshold = 0.8
+bloom_intensity = 0.14
+bloom_threshold = 1.1
+bloom_knee = 0.6
 ssao = true
-ssao_radius = 0.7
-aa = FXAA
+ssao_radius = 0.9
+ssao_intensity = 1.0
+aa = SMAA
 vignette = true
-vignette_intensity = 0.3
+vignette_intensity = 0.28
+vignette_smoothness = 0.6
+grain = true
+grain_intensity = 0.018
+grade = true
+lut = "luts/alley.cube"
 tonemap = AGX
 exposure_ev = 0.0
 
@@ -34,7 +49,17 @@ rotation = vec3(-0.7, 0.5, 0)
 color = color(1, 0.62, 0.4, 1)
 energy = 2.2
 shadow = true
-shadow_extent = 16
+shadow_size = 2048
+shadow_cascades = 3
+shadow_distance = 45
+
+[node name="Fill" parent="." type="DirectionalLight3D"]
+position = vec3(0, 8, 8)
+rotation = vec3(-0.5, 0, 0)
+color = color(0.5, 0.6, 0.9, 1)
+energy = 0.6
+shadow = false
+fog_energy = 0
 
 [node name="Rim" parent="." type="DirectionalLight3D"]
 position = vec3(0, 8, -8)
@@ -42,6 +67,7 @@ rotation = vec3(-0.5, 3.14159, 0)
 color = color(0.5, 0.7, 1, 1)
 energy = 1.2
 shadow = false
+fog_energy = 0
 
 [node name="Camera" parent="." type="Camera3D"]
 position = vec3(0, 3.9, 7.7)

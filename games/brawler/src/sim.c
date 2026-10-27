@@ -48,14 +48,15 @@ const atk_data ATK[] = {
 };
 
 /* ── character rigs: a pool per model, so a spawn never parses a glb twice ── */
-typedef struct rig { int def; bool busy; cw_node root, model, anim, wnode; t3_gltf *gltf; } rig;
+typedef struct rig { int def; bool busy; cw_node root, model, anim, wnode, blob; t3_gltf *gltf, *blobg; } rig;
+static const float BODY_SCALE[D_COUNT] = { 1.08f, 0.98f, 1.0f, 1.0f, 0.96f, 0.94f, 1.0f, 1.28f, 1.4f, 1.22f, 1.15f, 1.7f };
 static rig RIGS[96];
 static int rig_n;
 static cw_node world_node(void) { return cw_node_get(cw_node_get(cw_tree_root(cw_scene_app_tree()), "Level"), "World"); }
 static int rig_of[MAXP + MAXE];
 
 static void set_shadows(t3_object *o) {
-  if (o->type == T3_SKINNED_MESH || o->type == T3_MESH) o->cast_shadow = true;
+  if (o->type == T3_SKINNED_MESH || o->type == T3_MESH) o->cast_shadow = true, o->receive_shadow = true;
   for (int i = 0; i < o->child_count; i++) set_shadows(o->children[i]);
 }
 
@@ -79,6 +80,9 @@ static rig *rig_get(int def) {
   r->model = cw_node_new("Node3D", "Model");
   r->anim = cw_node_new("AnimationPlayer", "Anim");
   r->wnode = cw_node_new("MeshInstance3D", "Weapon");
+  r->blob = cw_node_new("Node3D", "Blob");
+  cw_node_add_child(world_node(), r->blob);
+  { size_t bl; void *bg = cw_asset_load("models/blob.glb", &bl); if (bg) { r->blobg = t3_gltf_parse(bg, bl, NULL, NULL); free(bg); if (r->blobg) cw_node3d_set_object(r->blob, r->blobg->scene); } }
   cw_node_add_child(world_node(), r->root);
   cw_node_add_child(r->root, r->model);
   cw_node_add_child(r->root, r->anim);
@@ -106,6 +110,7 @@ void char_attach(ent *e) {
   if (!r) return;
   rig_of[ent_index(e)] = (int)(r - RIGS);
   e->root = r->root, e->model = r->model, e->anim = r->anim, e->wnode = r->wnode;
+  cw_node_set(r->blob, "visible", cw_val_bool(true));
   e->clipname = NULL;
   cw_node_set(e->root, "visible", cw_val_bool(true));
   cw_node_set(e->anim, "speed_scale", cw_val_float(1));
@@ -115,6 +120,7 @@ void char_free(ent *e) {
   if (!e->root.id) return;
   cw_node_set(e->wnode, "visible", cw_val_bool(false));
   cw_node_set(e->root, "visible", cw_val_bool(false));
+  cw_node_set(RIGS[rig_of[ent_index(e)]].blob, "visible", cw_val_bool(false));
   cw_node3d_set_position(e->root, (t3_vec3){ 0, -50, 0 });
   RIGS[rig_of[ent_index(e)]].busy = false;
   e->root = (cw_node){ 0 };
@@ -903,6 +909,13 @@ static const float HAND_OFF[3] = { 0, -0.05f, 0.05f };
 void char_sync(ent *e) {
   if (!e->root.id) return;
   cw_node3d_set_position(e->root, (t3_vec3){ e->x, e->y, e->z });
+  {
+    /* the soft shadow on the ground: stays under the actor, smaller and fainter in the air */
+    rig *r = &RIGS[rig_of[ent_index(e)]];
+    float bs = 0.75f * BODY_SCALE[e->def] * (1.0f - 0.25f * cw_clampf(e->y, 0, 2) / 2.0f);
+    cw_node3d_set_position(r->blob, (t3_vec3){ e->x, 0.03f, e->z });
+    cw_node3d_set_scale(r->blob, (t3_vec3){ bs, 1, bs });
+  }
   float yaw = (float)e->face * 1.5708f;
   /* lean a little toward the lane when walking */
   cw_node3d_set_rotation(e->root, (t3_vec3){ 0, yaw, 0 });

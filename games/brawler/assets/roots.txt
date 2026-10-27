@@ -14,3 +14,19 @@ models/foreman.glb
 models/matron.glb
 models/ringmaster.glb
 models/colossus.glb
+models/stage0.glb
+models/stage1.glb
+models/stage2.glb
+models/stage3.glb
+models/crate.glb
+models/barrel.glb
+models/bin.glb
+models/blob.glb
+decals/scuff1.png = textures/decal_scuff1.png
+decals/scuff2.png = textures/decal_scuff2.png
+decals/crack.png = textures/decal_crack.png
+decals/burst.png = textures/decal_burst.png
+luts/alley.cube
+luts/docks.cube
+luts/arcade.cube
+luts/factory.cube
