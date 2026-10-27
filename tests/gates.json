@@ -190,7 +190,7 @@
     },
     "controlFrames": 1199,
     "webgpu": {
-      "vsGl": 0.3,
+      "vsGl": 0.4,
       "maxGt16": 0.08,
       "hosts": [
         "native",
@@ -198,7 +198,7 @@
         "chromium"
       ]
     },
-    "note": "arenafps_auto: four seats (the AUTO bot count adds none) play Foundry deathmatch by themselves for 20 seconds. The simulation (movers, navmesh paths, shots, rockets, pickups) must give the same state on every host, so fighters.pos, scores and the state hash are compared exactly; pixels within the usual tolerance (particles, decals). Control: one frame short."
+    "note": "arenafps_auto: four seats (the AUTO bot count adds none) play Foundry deathmatch by themselves for 20 seconds. The simulation (movers, navmesh paths, shots, rockets, pickups) must give the same state on every host, so fighters.pos, scores and the state hash are compared exactly; pixels within the usual tolerance (particles, decals). Control: one frame short. WebGPU vs GL within 40 percent: at frame 1200 two of the four views face a wall at arm's length, and close-up texture detail (normal and roughness maps at that distance) differs between the backends (33 percent of pixels over 16 levels, 42 to 50 percent in those two views, 19 to 21 in the others, mean brightness equal: an engine finding in internal-cartwheel/findings/arenafps.md)."
   },
   {
     "name": "arenafps-screenshot",
@@ -214,7 +214,8 @@
       "views": 4
     },
     "controlFrames": 3,
-    "note": "A four-way split frame is a real picture (the arenas' colours, HUD, effects), not one flat colour."
+    "note": "A four-way split frame is a real picture (the arenas' colours, HUD, effects), not one flat colour. Pixels within 1 percent: a spent casing in flight (a visual particle) and the 1 px edges of the HUD bars differ between native GL and the dual cart on romdev GL (0.32 percent measured); the match gate allows 8 percent for the same reasons.",
+    "maxGt16": 0.01
   },
   {
     "name": "arenafps-coop",
@@ -249,7 +250,14 @@
       "game.state": 1,
       "game.mode": 2,
       "game.arena": 1,
-      "game.players": 3
+      "game.players": 3,
+      "game.ticks": 1799,
+      "game.hash": 2796124194,
+      "match.nf": 13,
+      "match.wave": 2,
+      "match.lives": 6,
+      "stats.kills": 16,
+      "views": 3
     },
     "controlStartCmds": [
       "match 1 2 0 2"

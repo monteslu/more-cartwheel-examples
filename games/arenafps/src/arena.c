@@ -140,7 +140,7 @@ static void strip(float x, float y, float z, float sx, float sy, float sz, cw_co
 
 /* a ramp from (x, y0, z) rising `rise` over `len` metres along dir (0 +x, 1 -x, 2 +z, 3 -z), width w */
 static void ramp(float x, float y0, float z, float len, float rise, float w, int dir, int kind) {
-  float a = atan2f(rise, len), l = sqrtf(len * len + rise * rise), th = 0.4f;
+  float a = cw_atan2(rise, len), l = sqrtf(len * len + rise * rise), th = 0.4f; /* cw_atan2: libm differs by host, the collision must not */
   float sn, cs;
   cw_sincos(a * 0.5f, &sn, &cs);
   float ca, sa;
@@ -424,8 +424,10 @@ static void vents(float half, float y, float every) {
 
 static void crate_stack(float x, float z, float yaw, float y0) {
   solid_prop("crate", x, y0, z, yaw, 1, 1, 1, 1.0f, 1.0f, 1.0f);
-  solid_prop("crate", x + 1.05f * cosf(yaw), y0, z - 1.05f * sinf(yaw), yaw + 0.1f, 1, 1, 1, 1.0f, 1.0f, 1.0f);
-  solid_prop("crate_s", x + 0.3f * cosf(yaw), y0 + 1.0f, z - 0.3f * sinf(yaw), yaw + 0.5f, 1, 1, 1, 0.6f, 0.6f, 0.6f);
+  float sy, cy; /* cw_sincos, not libm: these are collision shapes and every host must place them alike */
+  cw_sincos(yaw, &sy, &cy);
+  solid_prop("crate", x + 1.05f * cy, y0, z - 1.05f * sy, yaw + 0.1f, 1, 1, 1, 1.0f, 1.0f, 1.0f);
+  solid_prop("crate_s", x + 0.3f * cy, y0 + 1.0f, z - 0.3f * sy, yaw + 0.5f, 1, 1, 1, 0.6f, 0.6f, 0.6f);
 }
 static void barrels(float x, float z, float y0) {
   solid_prop("barrel", x, y0, z, 0, 1, 1, 1, 0.6f, 0.9f, 0.6f);

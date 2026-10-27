@@ -86,7 +86,7 @@ static struct game {
   float nav_tick_ms;
   int views;
   int32_t d_score[MAXF], d_hp[MAXF], d_deaths[MAXF], d_weapon[MAXF], d_alive[MAXF];
-  float d_pos[MAXF * 2];
+  float d_pos[MAXF * 2], d_yaw[MAXF];
   int32_t kills_total, rockets_fired;
   int32_t steps;
   int spawn_used[MAX_SPAWNS]; /* tick each spawn point was last used */
@@ -1405,6 +1405,7 @@ static void game_step(void) {
     const fighter *f = F(i);
     G.d_score[i] = f->score, G.d_hp[i] = f->hp, G.d_deaths[i] = f->deaths, G.d_weapon[i] = f->weapon, G.d_alive[i] = f->active && f->alive;
     G.d_pos[i * 2] = f->mv.position.x, G.d_pos[i * 2 + 1] = f->mv.position.z;
+    G.d_yaw[i] = f->yaw;
   }
   /* the state hash */
   for (int i = 0; i < G.nf; i++) {
@@ -1806,6 +1807,7 @@ static void init(void *user) {
   cw_debug_field("fighters.weapon", G.d_weapon, CW_DBG_I32, MAXF);
   cw_debug_field("fighters.alive", G.d_alive, CW_DBG_I32, MAXF);
   cw_debug_field("fighters.pos", G.d_pos, CW_DBG_F32, MAXF * 2);
+  cw_debug_field("fighters.yaw", G.d_yaw, CW_DBG_F32, MAXF);
   cw_debug_command("match", "match [arena] [mode] [bots] [players]: start a match now", cmd_match);
 #ifdef ARENA_AUTOPILOT
   /* the autopilot: ARENA_ID, ARENA_MODE, ARENA_BOTS, ARENA_PLAYERS choose the match (tests, benches) */
