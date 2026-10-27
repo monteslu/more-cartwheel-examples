@@ -1,0 +1,60 @@
+# Frame data. One line per move; every length is in frames at 60 per second,
+# distances in millimetres, speeds in millimetres per frame. tools/framedata.mjs
+# prints the table from this file and checks it; the game reads the same file.
+#
+#   move * <slot> k=v ...      the default for every fighter declared after it
+#   fighter <id> k=v ...       a fighter: name hp walk back jump jumpfx grav dash dashback
+#                              and the special motions sp1 sp2 sp3 super (numpad notation, [4]6 = charge)
+#   move <id> <slot> k=v ...   changes one move of that fighter
+#
+# Move keys: su ac rc (startup, active, recovery)  dmg  lv (h m l: how it must be blocked)
+#   hs bs (hitstun, blockstun)  hstop (hitstop)  pushh pushb (pushback speed on hit / block)
+#   kd (knockdown)  launch (upward speed, sends the target airborne)  mg (meter gain)
+#   hits rehit (several hits, frames between)  inv (invulnerable frames from the start)
+#   mv mvfrom mvto (forward speed on those frames)  hit=x0,y0,x1,y1  ext=x0,y0,x1,y1 (limb hurtbox)
+#   proj=speed,life,size  flags: air crouch throw special super
+
+move * 5L su=4 ac=2 rc=7 dmg=30 lv=m hs=13 bs=10 hstop=7 pushh=40 pushb=45 mg=20 hit=250,1000,950,1450 ext=250,1000,900,1450
+move * 5M su=7 ac=3 rc=13 dmg=60 lv=m hs=17 bs=13 hstop=9 pushh=45 pushb=50 mg=35 hit=250,900,1150,1500 ext=250,900,1100,1500 mv=14 mvfrom=1 mvto=6
+move * 5H su=11 ac=4 rc=20 dmg=100 lv=m hs=21 bs=16 hstop=12 pushh=45 pushb=60 mg=55 kd=1 launch=110 hit=200,800,1300,1550 ext=200,800,1250,1550
+move * 2L su=4 ac=2 rc=8 dmg=25 lv=l hs=12 bs=8 hstop=6 pushh=35 pushb=40 mg=15 flags=crouch hit=250,0,900,400 ext=250,0,850,400
+move * 2M su=7 ac=3 rc=14 dmg=55 lv=l hs=17 bs=12 hstop=8 pushh=40 pushb=45 mg=30 flags=crouch hit=250,0,1200,450 ext=250,0,1150,450
+move * 2H su=9 ac=3 rc=26 dmg=70 lv=l hs=0 bs=14 hstop=10 pushh=30 pushb=55 mg=45 kd=1 flags=crouch hit=300,0,1500,350 ext=300,0,1450,350
+move * JL su=4 ac=8 rc=3 dmg=30 lv=m hs=14 bs=10 hstop=6 pushh=40 pushb=40 mg=20 flags=air hit=100,0,750,700 ext=100,0,700,700
+move * JM su=6 ac=8 rc=3 dmg=55 lv=m hs=17 bs=12 hstop=8 pushh=40 pushb=40 mg=30 flags=air hit=150,-100,1000,800 ext=150,-100,950,800
+move * JH su=8 ac=8 rc=3 dmg=90 lv=m hs=20 bs=15 hstop=10 pushh=40 pushb=45 mg=50 kd=1 flags=air hit=100,-200,1100,900 ext=100,-200,1050,900
+move * THROW su=5 ac=2 rc=22 dmg=120 lv=m hs=40 bs=0 hstop=0 kd=1 mg=40 flags=throw hit=0,0,900,1500
+move * SP1 su=14 ac=1 rc=26 dmg=60 lv=m hs=18 bs=14 hstop=8 pushh=40 pushb=50 mg=40 flags=special,proj proj=90,100,240
+move * SP2 su=4 ac=8 rc=30 dmg=110 lv=m hs=0 bs=18 hstop=10 inv=6 kd=1 launch=150 mg=60 mv=25 mvfrom=1 mvto=6 flags=special hit=0,0,700,2100 ext=0,300,600,2000
+move * SP3 su=12 ac=10 rc=14 dmg=50 lv=m hs=18 bs=10 hstop=4 hits=2 rehit=5 kd=1 mv=60 mvfrom=12 mvto=22 flags=special hit=0,300,1000,1300 ext=0,300,950,1300
+move * SUPER su=20 ac=1 rc=36 dmg=260 lv=m hs=40 bs=24 hstop=14 inv=22 kd=1 flags=super,proj proj=130,60,420
+
+# Bolt: the all-rounder. Fireball, rising strike, spinning kick, a beam.
+fighter bolt name=Bolt hp=1000 walk=38 back=30 jump=160 jumpfx=45 grav=8 dash=110 dashback=90 sp1=236 sp2=623 sp3=214 super=236236
+
+# Grit: slow and huge. A command grab, a shoulder charge, a headbutt, a crushing grab super.
+fighter grit name=Grit hp=1200 walk=30 back=24 jump=150 jumpfx=36 grav=8 dash=90 dashback=70 sp1=41236 sp2=236 sp3=623 super=236236
+move grit 5L su=5 ac=2 rc=9 dmg=35 hs=13 bs=9 hit=250,1000,1050,1500
+move grit 5M su=8 ac=3 rc=16 dmg=75 hs=18 bs=13 hit=250,900,1250,1550
+move grit 5H su=14 ac=5 rc=24 dmg=130 hs=24 bs=18 kd=1 hit=200,800,1400,1650
+move grit SP1 su=6 ac=2 rc=32 dmg=170 hs=40 bs=0 kd=1 hstop=0 inv=0 mv=0 flags=special,throw hit=0,0,1000,1500 proj=0,0,0
+move grit SP2 su=16 ac=14 rc=22 dmg=90 hs=22 bs=12 kd=1 launch=0 mv=70 mvfrom=16 mvto=29 hit=0,300,950,1500 ext=0,300,900,1500
+move grit SP3 su=5 ac=9 rc=26 dmg=100 hs=0 inv=5 kd=1 launch=130 mv=0 hits=1 hit=0,800,650,2100 ext=0,800,600,2100
+move grit SUPER su=5 ac=2 rc=50 dmg=380 hs=40 bs=0 hstop=0 inv=7 kd=1 flags=super,throw hit=0,0,1100,1500 proj=0,0,0
+
+# Vex: fast and fragile. A low slide, a rising strike, an overhead leap, a flurry super.
+fighter vex name=Vex hp=900 walk=46 back=36 jump=170 jumpfx=55 grav=8 dash=150 dashback=110 sp1=236 sp2=623 sp3=214 super=236236
+move vex 5L su=3 ac=2 rc=6 dmg=25 hs=12 bs=9 hit=250,1000,900,1450
+move vex 5M su=6 ac=3 rc=12 dmg=50 hs=16 bs=12 hit=250,900,1100,1500
+move vex 5H su=9 ac=4 rc=19 dmg=85 hs=20 bs=15 hit=200,800,1250,1550
+move vex SP1 su=10 ac=10 rc=24 dmg=70 lv=l hs=0 bs=14 kd=1 mv=80 mvfrom=10 mvto=20 hit=0,0,1000,350 ext=0,0,900,350 proj=0,0,0 flags=special
+move vex SP2 su=5 ac=7 rc=28 dmg=90 inv=4 kd=1 launch=140 mv=0 hit=0,800,650,2000 ext=0,800,600,2000
+move vex SP3 su=24 ac=4 rc=18 dmg=80 lv=h hs=25 bs=16 hits=1 kd=0 mv=40 mvfrom=1 mvto=24 hit=0,900,900,1500 ext=0,900,850,1500
+move vex SUPER su=7 ac=24 rc=30 dmg=45 hs=30 bs=14 hstop=3 hits=5 rehit=4 inv=7 kd=1 mv=40 mvfrom=7 mvto=30 hit=0,500,1100,1600 ext=0,500,1050,1600 proj=0,0,0 flags=super
+
+# Mara: the zoner. A held-back sonic blade, a held-down flip kick, a slow orb, a wide beam.
+fighter mara name=Mara hp=950 walk=40 back=34 jump=165 jumpfx=50 grav=8 dash=120 dashback=100 sp1=[4]6 sp2=[2]8 sp3=236 super=236236
+move mara SP1 su=12 ac=1 rc=22 dmg=55 proj=140,80,200
+move mara SP2 su=6 ac=10 rc=24 dmg=100 inv=5 kd=1 launch=150 mv=0 hit=100,600,800,2000 ext=100,600,750,2000
+move mara SP3 su=18 ac=1 rc=30 dmg=40 hs=22 bs=16 hits=1 kd=0 mv=0 flags=special,proj proj=40,200,300 hit=0,0,0,0
+move mara SUPER su=14 ac=1 rc=40 dmg=240 inv=14 proj=100,80,500
