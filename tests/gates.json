@@ -215,5 +215,103 @@
     },
     "controlFrames": 3,
     "note": "A four-way split frame is a real picture (the arenas' colours, HUD, effects), not one flat colour."
+  },
+  {
+    "name": "arenafps-coop",
+    "app": "arenafps_auto",
+    "frames": 1800,
+    "startCmds": [
+      "match 1 2 0 3"
+    ],
+    "maxGt16": 0.08,
+    "fields": [
+      "game.state",
+      "game.mode",
+      "game.arena",
+      "game.players",
+      "game.ticks",
+      "game.hash",
+      "match.nf",
+      "match.wave",
+      "match.lives",
+      "fighters.score",
+      "fighters.deaths",
+      "fighters.weapon",
+      "fighters.alive",
+      "fighters.pos",
+      "views",
+      "stats.kills",
+      "stats.enc",
+      "stats.spawn_kills",
+      "stats.by_weapon"
+    ],
+    "expect": {
+      "game.state": 1,
+      "game.mode": 2,
+      "game.arena": 1,
+      "game.players": 3
+    },
+    "controlStartCmds": [
+      "match 1 2 0 2"
+    ],
+    "webgpu": {
+      "vsGl": 0.3,
+      "maxGt16": 0.08,
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ]
+    },
+    "note": "Co-op waves, three players (bots fill the seats) in the Courtyard: wave spawns, lives and bot paths must agree on every host. Control: two players."
+  },
+  {
+    "name": "arenafps-tdm",
+    "app": "arenafps_auto",
+    "frames": 1800,
+    "startCmds": [
+      "match 2 1 4 4"
+    ],
+    "maxGt16": 0.08,
+    "fields": [
+      "game.state",
+      "game.mode",
+      "game.arena",
+      "game.players",
+      "game.ticks",
+      "game.hash",
+      "match.nf",
+      "match.wave",
+      "match.lives",
+      "fighters.score",
+      "fighters.deaths",
+      "fighters.weapon",
+      "fighters.alive",
+      "fighters.pos",
+      "views",
+      "stats.kills",
+      "stats.enc",
+      "stats.spawn_kills",
+      "stats.by_weapon"
+    ],
+    "expect": {
+      "game.state": 1,
+      "game.mode": 1,
+      "game.arena": 2,
+      "game.players": 4
+    },
+    "controlStartCmds": [
+      "match 2 1 4 3"
+    ],
+    "webgpu": {
+      "vsGl": 0.3,
+      "maxGt16": 0.08,
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ]
+    },
+    "note": "Team deathmatch in the Terraces (water), four players and four bots, 30 s. Control: three players."
   }
 ]
