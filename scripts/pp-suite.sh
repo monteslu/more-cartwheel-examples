@@ -1,32 +1,41 @@
 #!/usr/bin/env bash
-# One GPU suite for the partypack checks, run as
-#   node deps/cartwheel-engine/tools/with-gpu-suite.mjs pp-suite bash scripts/pp-suite.sh [part ...]
-# parts: expect (record exact values for gates without any), gates (native, GL), wgpu (gates on native WebGPU),
-# hosts (the ONE shipped cart, the dual GL+WebGPU .wasc of build/cart-wgpu, on every host: native WebGPU as the
-# reference, romdev and chromium on WebGPU = "dual cart on WebGPU host", and romdev told to render that same cart
-# with GL, run-cart --dual-gl = loadMedia wgpu:false, checked against native GL = "dual cart on GL host"; gate.mjs
-# --gpu webgpu runs all of these legs), balance, soak (ten minutes of each mini-game). The GL-only build/cart tree
-# is not built or tested: it does not ship.
-# Default: expect gates wgpu hosts balance. Every part logs to out/pp/<part>.log and the script reports each exit code.
+# The partypack checks, in pieces that respect the GPU lock fair share (each with-gpu-suite call holds the lock
+# for about 10 minutes at most; long runs never take it):
+#   bash scripts/pp-suite.sh [part ...]       (run from anywhere; it takes the lock itself, one call per piece)
+# parts:
+#   expect   record exact `expect` values for gates that have none (one lock call per gate)
+#   gates    every gate on native GL (one lock call per gate)
+#   wgpu     every gate on native WebGPU (one lock call per gate)
+#   hosts    the ONE shipped cart, the dual GL+WebGPU .wasc of build/cart-wgpu, on every host (one lock call per
+#            gate): native WebGPU is the reference, romdev and chromium on WebGPU are "dual cart on WebGPU host",
+#            romdev told to render the same cart with GL (run-cart --dual-gl = loadMedia wgpu:false) against native
+#            GL is "dual cart on GL host". The GL-only build/cart tree does not ship and is not tested.
+#   balance  the balance harness, software GL, no lock
+#   soak     ten minutes (36000 frames) of each mini-game, software GL, no lock, one process at a time
+# Default: expect gates wgpu hosts balance. Logs go to out/pp/.
 set -u
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export CW_PROJECT_ROOT="$ROOT"
 E="$ROOT/deps/cartwheel-engine"
-mkdir -p "$ROOT/out/pp"
+O="$ROOT/out/pp"
+mkdir -p "$O"
 parts=("$@"); [ ${#parts[@]} -eq 0 ] && parts=(expect gates wgpu hosts balance)
-G="--gates-file partypack-gates.json"
+GF=partypack-gates.json
+names() { node -e "for (const g of JSON.parse(require('fs').readFileSync('$ROOT/tests/$GF','utf8'))) if (!process.argv[1] || !g.expect) console.log(g.name)" "${1:-}"; }
+CROSS="partypack-tournament-short partypack-menu partypack-join partypack-drop"
+# one short hold of the GPU lock
+locked() { local tag="$1"; shift; (cd "$E" && timeout 900 node tools/with-gpu-suite.mjs "pp-$tag" "$@"); }
+# software GL off the lock: llvmpipe, no display, no GPU device touched
+soft() { env -u DISPLAY -u WAYLAND_DISPLAY -u XAUTHORITY LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy "$@"; }
 for p in "${parts[@]}"; do
   case "$p" in
-    expect) timeout 3000 node "$ROOT/games/partypack/tools/pp-expect.mjs" > "$ROOT/out/pp/expect.log" 2>&1 ;;
-    gates) timeout 6000 node "$E/tests/gate.mjs" $G --hosts native > "$ROOT/out/pp/gates.log" 2>&1 ;;
-    wgpu) timeout 6000 node "$E/tests/gate.mjs" $G --hosts native --gpu webgpu > "$ROOT/out/pp/wgpu.log" 2>&1 ;;
-    hosts) timeout 6000 node "$E/tests/gate.mjs" $G partypack-tournament-short partypack-menu partypack-join partypack-drop --hosts native,romdev,chromium --gpu webgpu > "$ROOT/out/pp/hosts.log" 2>&1 ;;
-    balance) timeout 3000 bash "$ROOT/games/partypack/tools/balance.sh" "${PP_N:-100}" > "$ROOT/out/pp/balance.log" 2>&1 ;;
-    soak) # ten minutes (36000 frames) of each mini-game on repeat
-      for g in hurdle echo beatbox quiz stack blast raft loop sumo coins tiles; do
-        PP_GAME=$g CW_FRAMES=36000 timeout 1500 node "$E/tools/run-cart.mjs" --host native --app partypack_auto --frames 36000 --allow-skipped \
-          --state "$ROOT/out/pp/soak-$g.json" --log "$ROOT/out/pp/soak-$g.log" > "$ROOT/out/pp/soak-$g.out" 2>&1; echo "soak $g exit $?" ;
-      done > "$ROOT/out/pp/soak.log" 2>&1 ;;
+    expect) for n in $(names new); do locked "exp-$n" node "$ROOT/games/partypack/tools/pp-expect.mjs" "$n" >> "$O/expect.log" 2>&1; echo "expect $n exit $?"; done ;;
+    gates) for n in $(names); do locked "gl-$n" node "$E/tests/gate.mjs" --gates-file $GF "$n" --hosts native >> "$O/gates.log" 2>&1; echo "gate $n exit $?"; done ;;
+    wgpu) for n in $(names); do locked "wg-$n" node "$E/tests/gate.mjs" --gates-file $GF "$n" --hosts native --gpu webgpu >> "$O/wgpu.log" 2>&1; echo "wgpu $n exit $?"; done ;;
+    hosts) for n in $CROSS; do locked "dual-$n" node "$E/tests/gate.mjs" --gates-file $GF "$n" --hosts native,romdev,chromium --gpu webgpu >> "$O/hosts.log" 2>&1; echo "hosts $n exit $?"; done ;;
+    balance) soft timeout 3000 bash "$ROOT/games/partypack/tools/balance.sh" "${PP_N:-100}" > "$O/balance.log" 2>&1; echo "balance exit $?" ;;
+    soak) for g in hurdle echo beatbox quiz stack blast raft loop sumo coins tiles; do
+        PP_GAME=$g soft timeout 3600 node "$E/tools/run-cart.mjs" --host native --app partypack_auto --frames 36000 --allow-skipped \
+          --state "$O/soak-$g.json" --log "$O/soak-$g.log" > "$O/soak-$g.out" 2>&1; echo "soak $g exit $?"; done ;;
   esac
-  echo "part $p exit $?"
 done
