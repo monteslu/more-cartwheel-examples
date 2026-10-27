@@ -59,6 +59,7 @@ int main(int argc, char **argv) {
     input in[MAXP];
     memset(in, 0, sizeof in);
     for (int i = 0; i < players; i++) horde_bot(&S, i, &in[i]);
+    if (t == 100 && getenv("HORDE_SOAK_INJECT")) S.p[0].x = NAN; /* the control: the checks must catch this */
     int was = S.state;
     sim_step(&S, in);
     if (check(&S)) return 1;

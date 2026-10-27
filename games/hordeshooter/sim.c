@@ -796,7 +796,7 @@ void sim_step(sim *s, const input in[MAXP]) {
         float dx = q->x - p->x, dy = q->y - p->y, d = dx * dx + dy * dy;
         if (k != i && q->active && !q->down && d < bd) bd = d, near = k;
       }
-      if (near >= 0) { p->x = s->p[near].x + 1.0f, p->y = s->p[near].y, p->down = false, p->hp = 40, p->inv = 90; continue; }
+      if (near >= 0) { p->x = cw_clampf(s->p[near].x + 1.0f, -HALF + 0.6f, HALF - 0.6f), p->y = s->p[near].y, p->down = false, p->hp = 40, p->inv = 90; continue; }
     }
     for (int k = 0; k < MAXP; k++) {
       const player *q = &s->p[k];
@@ -804,6 +804,23 @@ void sim_step(sim *s, const input in[MAXP]) {
       float dx = q->x - p->x, dy = q->y - p->y;
       if (dx * dx + dy * dy < 2.5f * 2.5f && p->down_ticks > 60 * 2 && s->tick % 60 == 0) { p->down = false, p->hp = 40, p->inv = 90; }
     }
+  }
+  { /* a player who got up (a wave, a friend, a rescue) may be far from the others: the team box is pulled back to one view */
+    float x0 = 1e9f, x1 = -1e9f, y0 = 1e9f, y1 = -1e9f;
+    int n = 0;
+    for (int i = 0; i < MAXP; i++) {
+      const player *p = &s->p[i];
+      if (!p->active || p->down) continue;
+      x0 = CW_MIN(x0, p->x), x1 = CW_MAX(x1, p->x), y0 = CW_MIN(y0, p->y), y1 = CW_MAX(y1, p->y), n++;
+    }
+    if (n > 1)
+      for (int i = 0; i < MAXP; i++) {
+        player *p = &s->p[i];
+        if (!p->active || p->down) continue;
+        float mx = (x0 + x1) * 0.5f, my = (y0 + y1) * 0.5f;
+        if (x1 - x0 > 2 * TETHER_HW) p->x = cw_clampf(p->x, mx - TETHER_HW, mx + TETHER_HW);
+        if (y1 - y0 > 2 * TETHER_HH) p->y = cw_clampf(p->y, my - TETHER_HH, my + TETHER_HH);
+      }
   }
   if (s->state == ST_PLAY && s->players > 0 && sim_alive_players(s) == 0) {
     s->state = ST_OVER;
