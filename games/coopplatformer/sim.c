@@ -433,7 +433,7 @@ void sim_bot_input(const game *g, int i, input_state *in) {
   float minx = x;
   for (int k = 0; k < g->nplayers; k++)
     if (g->p[k].joined && g->p[k].alive && !g->p[k].bubble && pos_x(&g->p[k]) < minx) minx = pos_x(&g->p[k]);
-  in->x = (x - minx > 9.0f) ? 0.0f : 1.0f;
+  in->x = (x - minx > 22.0f) ? 0.0f : 1.0f; /* only a long lead waits: the bubble rescue does the rest */
   bool wet = pf->submerged > 0.5f;
   if (wet) {
     /* swim: stroke up when below the surface line or blocked, cross to the right */
@@ -447,11 +447,31 @@ void sim_bot_input(const game *g, int i, input_state *in) {
     in->y = blocked ? 1.0f : 0.0f;
     return;
   }
-  /* inside a shaft: wall jump up */
+  /* inside a shaft (a wall within 5 tiles on both sides): cross to the far wall and wall jump up */
+  if (!pf->body.on_floor && (g->abilities & AB_CLAWS)) {
+    bool lw = false, rw = false;
+    for (int k = 1; k <= 5; k++) {
+      if (world_solid(L, (int)floorf(x) - k, (int)floorf(y) + 5)) lw = true;
+      if (world_solid(L, (int)floorf(x) + k, (int)floorf(y) + 5)) rw = true;
+    }
+    if (lw && rw && !pf->body.on_wall) {
+      in->x = (float)pf->facing;
+      in->jump_held = true;
+      return;
+    }
+  }
   if (pf->body.on_wall && !pf->body.on_floor && (g->abilities & AB_CLAWS)) {
     in->jump_pressed = true, in->jump_held = true;
     in->x = (float)pf->facing;
     return;
+  }
+  /* a ledge just above the wall in front: hop (the air jump) onto it */
+  if (!pf->body.on_floor && pf->air_jumps_left > 0 && vy < 2.0f) {
+    int ex = (int)floorf(x + 0.9f), ey = (int)floorf(y + 0.3f);
+    if (world_solid(L, ex, ey) && !world_solid(L, ex, ey + 2) && !world_solid(L, ex, ey + 3)) {
+      in->x = 1.0f, in->jump_pressed = true, in->jump_held = true;
+      return;
+    }
   }
   if (!pf->body.on_floor && pf->wall_lock > 0) in->x = (float)pf->facing;
   float ax1 = x + 1.0f, ax2 = x + 2.2f;
@@ -468,7 +488,7 @@ void sim_bot_input(const game *g, int i, input_state *in) {
   int t1 = tile_at(L, ax1, y + 0.1f), t2 = tile_at(L, ax2, y + 0.1f);
   haz2 = t1 == T_SPIKE || t2 == T_SPIKE || t1 == T_LAVA || t2 == T_LAVA;
   int ft = tile_at(L, ax1, y - 0.5f);
-  bool pit = !ground2 || ft == T_AIR && !world_solid(L, (int)floorf(ax1), fy - 1) && !world_solid(L, (int)floorf(ax1), fy - 2);
+  bool pit = !ground2 || (ft == T_AIR && !world_solid(L, (int)floorf(ax1), fy - 1) && !world_solid(L, (int)floorf(ax1), fy - 2));
   /* a ledge or ceiling ahead high up: just keep going */
   if (pf->body.on_floor) {
     if (crack && (g->abilities & AB_DASH)) in->dash_pressed = true;

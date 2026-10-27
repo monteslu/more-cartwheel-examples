@@ -89,7 +89,9 @@ static void block(level *L, int x, int y0, int w, int y1, int t) {
 /* a cave ceiling over the next n columns, `clear` tiles above the surface */
 static void ceiling(gen *G, int x0, int n, int clear) {
   for (int x = x0; x < x0 + n && x < WORLD_W; x++) {
-    int g = G->L->ground[x];
+    int g = 0; /* the highest floor within 6 columns: a shaft or a gap does not lower the roof */
+    for (int k = x - 6; k <= x + 6; k++)
+      if (k >= 0 && k < WORLD_W && G->L->ground[k] > g && G->L->ground[k] < WORLD_H) g = G->L->ground[k];
     for (int y = g + clear; y < WORLD_H; y++)
       if (G->L->t[y][x] == T_AIR) set(G->L, x, y, T_ROCK);
   }
@@ -139,19 +141,19 @@ void world_generate(level *L, uint32_t seed) {
   spikes(G, 3, BIOME_CAVES);
   flat(G, 3, BIOME_CAVES);
   {
-    /* the shaft: two walls 4 apart, 9 tall; wall jump up the inside to the ledge on top */
+    /* the shaft: two walls 3 apart, 6 and 9 tall; wall jump up the inside to the ledge on top */
     int sx = G->x;
     int base = G->g;
     flat(G, 1, BIOME_CAVES);                       /* left wall base */
     block(L, sx, base, 1, base + 10, T_ROCK);
     L->ground[sx] = base + 10;
-    for (int i = 0; i < 4; i++) column(G, G->x++, base - 2, BIOME_CAVES); /* the well floor, 2 lower */
+    for (int i = 0; i < 3; i++) column(G, G->x++, base - 2, BIOME_CAVES); /* the well floor, 2 lower */
     int rx = G->x;
     column(G, G->x++, base, BIOME_CAVES);
-    block(L, rx, base, 1, base + 8, T_ROCK);
-    L->ground[rx] = base + 8;
-    G->g = base + 8;
-    for (int i = 0; i < 4; i++) column(G, G->x++, base + 8, BIOME_CAVES);
+    block(L, rx, base, 1, base + 6, T_ROCK);
+    L->ground[rx] = base + 6;
+    G->g = base + 6;
+    for (int i = 0; i < 4; i++) column(G, G->x++, base + 6, BIOME_CAVES);
     /* open the way in from the left under the left wall: a low door so the shaft can be entered */
     for (int y = base; y < base + 3; y++) set(L, sx, y, T_AIR);
     for (int y = base + 3; y < base + 10; y++) set(L, sx, y, T_ROCK);
@@ -160,11 +162,19 @@ void world_generate(level *L, uint32_t seed) {
   walker(G, G->x - 3, G->g, 3, 0);
   flat(G, 6, BIOME_CAVES);
   check(G);
-  /* the cracked wall: a dash breaks it; behind it a treasure nook */
-  block(L, G->x, G->g, 1, G->g + 4, T_CRACK);
-  flat(G, 1, BIOME_CAVES);
-  coin_row(G, G->x + 1, 4, G->g + 1);
-  for (int i = 0; i < 4; i++) L->coins[L->ncoins - 1 - i].secret = true;
+  /* a low mound with a sealed pocket in its foot: a dash into the cracked block opens it (the path goes over the top) */
+  {
+    int mx = G->x, mg = G->g;
+    for (int i = 0; i < 7; i++) {
+      column(G, G->x++, mg, BIOME_CAVES);
+      set(L, mx + i, mg, i == 0 ? T_CRACK : (i <= 3 ? T_AIR : T_ROCK));
+      set(L, mx + i, mg + 1, T_ROCK);
+      L->ground[mx + i] = mg + 2;
+    }
+    G->g = mg + 2;
+    coin_row(G, mx + 1, 3, mg);
+    for (int i = 0; i < 3; i++) L->coins[L->ncoins - 1 - i].secret = true;
+  }
   rise(G, -4, 3, BIOME_CAVES);
   rise(G, -3, 6, BIOME_CAVES);
   walker(G, G->x - 3, G->g, 3, 0);

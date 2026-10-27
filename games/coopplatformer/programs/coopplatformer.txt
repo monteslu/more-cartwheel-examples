@@ -1,0 +1,8 @@
+# r186 program states for coopplatformer (cmake/programs.cmake; tools/programs.mjs adds what runs lack)
+physical+map+vcol+rep+nmap+ao+rmap+shadow+l1801+s100
+physical+shadow+l1801+s100
+physical+map+vcol+fog+rep+nmap+ao+rmap+shadow+l1801+s100
+physical+fog+instbig+shadow+l1801+s100
+physical+fog+instbig+shadow+cc+l1801+s100
+physical+fog+shadow+cc+l1801+s100
+physical+fog+shadow+l1801+s100

@@ -32,13 +32,14 @@ typedef struct save_t {
   uint8_t seen[WORLD_H / 4][WORLD_W / 4];
 } save_t;
 
+#define NTORCH 4
 static const float PLAYER_RGB[MAX_PLAYERS][3] = { { 0.25f, 0.6f, 1.0f }, { 1.0f, 0.4f, 0.3f }, { 0.45f, 0.85f, 0.35f }, { 1.0f, 0.8f, 0.25f } };
 
 /* ── scene ─────────────────────────────────────────────────────────── */
 static struct {
   cw_node root, world, cam, sun, env, post;
   cw_node plight[MAX_PLAYERS];
-  cw_node torch[6];
+  cw_node torch[4];
   cw_node pnode[MAX_PLAYERS];
   t3_mesh *parts[MAX_PLAYERS][8]; /* body, head, eyeL, eyeR, footL, footR, bubble, ring */
   cw_node enode[MAX_ENEMIES];
@@ -98,7 +99,7 @@ static float sfx_fn(float t, float dur, void *u) {
   return (w * (1 - s->noise) + nz * s->noise) * env * s->vol;
 }
 static void audio_init(void) {
-  A.on = getenv("COOP_NO_AUDIO") == NULL && cw_audio_init(&(cw_audio_desc){ 0 });
+  A.on = getenv("COOP_NO_AUDIO") == NULL && cw_audio_sample_rate() > 0;
   if (!A.on) return;
   A.music_bus = cw_shell_music_bus();
   A.sfx_bus = cw_shell_sfx_bus();
@@ -123,10 +124,10 @@ static void sfx(int id, float vol) {
 /* ── lights, environment, post ────────────────────────────────────── */
 typedef struct mood { float sky[3], fog[3], sun[3], sun_e, amb, hemi, exposure, bloom, fog_near, fog_far, torch; } mood;
 static const mood MOODS[BIOMES] = {
-  { { 0.32f, 0.58f, 0.95f }, { 0.55f, 0.72f, 0.95f }, { 1.0f, 0.88f, 0.7f }, 3.6f, 0.55f, 1.3f, 1.05f, 0.05f, 40, 150, 0.0f },
-  { { 0.04f, 0.05f, 0.1f }, { 0.05f, 0.07f, 0.14f }, { 0.5f, 0.6f, 1.0f }, 0.5f, 0.12f, 0.25f, 1.35f, 0.08f, 12, 60, 1.0f },
-  { { 0.22f, 0.4f, 0.45f }, { 0.28f, 0.5f, 0.52f }, { 0.9f, 0.95f, 0.8f }, 2.4f, 0.4f, 0.8f, 1.1f, 0.06f, 24, 110, 0.4f },
-  { { 0.25f, 0.06f, 0.04f }, { 0.35f, 0.1f, 0.05f }, { 1.0f, 0.45f, 0.25f }, 1.8f, 0.25f, 0.5f, 1.2f, 0.1f, 18, 90, 0.8f },
+  { { 0.32f, 0.58f, 0.95f }, { 0.55f, 0.72f, 0.95f }, { 1.0f, 0.88f, 0.7f }, 3.6f, 0.55f, 1.3f, 1.05f, 0.05f, 60, 420, 0.0f },
+  { { 0.04f, 0.05f, 0.1f }, { 0.05f, 0.07f, 0.14f }, { 0.5f, 0.6f, 1.0f }, 0.5f, 0.12f, 0.25f, 1.35f, 0.08f, 20, 260, 1.0f },
+  { { 0.22f, 0.4f, 0.45f }, { 0.28f, 0.5f, 0.52f }, { 0.9f, 0.95f, 0.8f }, 2.4f, 0.4f, 0.8f, 1.1f, 0.06f, 40, 320, 0.4f },
+  { { 0.25f, 0.06f, 0.04f }, { 0.35f, 0.1f, 0.05f }, { 1.0f, 0.45f, 0.25f }, 1.8f, 0.25f, 0.5f, 1.2f, 0.1f, 30, 280, 0.8f },
 };
 static mood cur_mood;
 
@@ -183,6 +184,7 @@ static void build_scene(void) {
   S.world = make_node("Node3D", S.root, "World");
   S.nlight_src = 0;
   world_scene_build(g, S.world);
+  world_backdrop(g);
   cw_node wobj = S.world;
   const level *L = &g->L;
   /* environment, sun, post, camera: once */
@@ -210,7 +212,7 @@ static void build_scene(void) {
     cw_node_set(S.cam, "near", cw_val_float(0.5));
     cw_node_set(S.cam, "far", cw_val_float(400));
     cw_node_set(S.cam, "current", cw_val_bool(true));
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < NTORCH; i++) {
       S.torch[i] = make_node("OmniLight3D", S.root, "Torch");
       cw_node_set(S.torch[i], "range", cw_val_float(14));
       cw_node_set(S.torch[i], "decay", cw_val_float(2));
@@ -472,7 +474,7 @@ static void sync_scene(float alpha, float dt) {
   for (int i = 0; i < L->ncoins; i++) {
     bool tk = L->coins[i].taken;
     cw_node_set(S.coin_node[i], "visible", cw_val_bool(!tk));
-    if (!tk) S.coin_mesh[i]->base.rotation.z = S.time * 2.5f + (float)i;
+    if (!tk) cw_node3d_set_rotation(S.coin_node[i], (t3_vec3){ 0, S.time * 2.5f + (float)i, 0 });
   }
   for (int i = 0; i < L->npickups; i++) {
     cw_node_set(S.pick_node[i], "visible", cw_val_bool(!L->pickups[i].taken));
@@ -494,16 +496,16 @@ static void sync_scene(float alpha, float dt) {
     S.emesh[i][0]->base.scale = (t3_vec3){ flash, 0.85f / flash + 0.05f * sinf(S.time * 8 + (float)i), flash };
   }
   /* the nearest few light sources to the camera */
-  int pick[6], np = 0;
+  int pick[NTORCH], np = 0;
   for (int k = 0; k < S.nlight_src && np < 64; k++) {
     float d = fabsf(S.light_x[k] - c->x);
     if (d > 26) continue;
     int at = np++;
     while (at > 0 && fabsf(S.light_x[pick[at - 1]] - c->x) > d) pick[at] = pick[at - 1], at--;
-    if (at < 6) pick[at] = k; else np--;
-    if (np > 6) np = 6;
+    if (at < NTORCH) pick[at] = k; else np--;
+    if (np > NTORCH) np = NTORCH;
   }
-  for (int i = 0; i < 6; i++) {
+  for (int i = 0; i < NTORCH; i++) {
     if (i < np) {
       int k = pick[i];
       float flick = 1.0f + 0.12f * sinf(S.time * 11.0f + (float)k * 2.3f) + 0.06f * sinf(S.time * 23.0f + (float)k);
@@ -538,6 +540,20 @@ static void start_match(int players, void *user) {
   G.abilities = 0;
   sim_reset(&G, players);
   if (sv->abilities && !getenv("COOP_FRESH")) G.abilities = sv->abilities;
+  if (getenv("COOP_ABILITIES")) G.abilities = (uint32_t)atoi(getenv("COOP_ABILITIES"));
+  if (getenv("COOP_START_X")) { /* a test or a screenshot starts anywhere */
+    int sx = atoi(getenv("COOP_START_X"));
+    if (sx < 2) sx = 2;
+    if (sx > WORLD_W - 3) sx = WORLD_W - 3;
+    for (int i = 0; i < G.nplayers; i++) {
+      cw_platformer2d_teleport(&G.p[i].pf, (cw_pos2){ (double)sx + 0.7 * i, (double)G.L.ground[sx] + 0.05 });
+      G.p[i].invuln = 120;
+    }
+    G.cam.x = G.cam.tx = (float)sx, G.cam.y = G.cam.ty = (float)G.L.ground[sx] + 3;
+    G.checkpoint = -1;
+    for (int k = 0; k < G.L.nchecks; k++)
+      if (G.L.checks[k].x < sx) G.checkpoint = k;
+  }
   build_scene();
   g_run_ticks = 0;
   g_map_open = false;
@@ -556,6 +572,59 @@ static void sound_hook(cw_shell_sound s, void *user) {
     case CW_SHELL_SND_PAUSE: sfx(SFX_BUBBLE, 0.4f); break;
   }
 }
+
+#ifdef COOP_AUTOPILOT
+/* COOP_SOAK=<ticks>: run the bots through the whole game with no rendering and report (soft-lock and crash check). */
+static void soak(int ticks, int players) {
+  sim_reset(&G, players);
+  float best = 0;
+  int last_progress = 0, longest_stall = 0, wins = 0, resets = 0;
+  for (int t = 0; t < ticks; t++) {
+    for (int i = 0; i < MAX_PLAYERS; i++) sim_bot_input(&G, i, &INPUT[i]);
+    sim_step(&G, INPUT, 1.0f / 60.0f);
+    if (getenv("COOP_TRACE") && t >= atoi(getenv("COOP_TRACE")) && t < atoi(getenv("COOP_TRACE")) + 90) {
+      const player *q = &G.p[getenv("COOP_TRACE_P") ? atoi(getenv("COOP_TRACE_P")) : 0];
+      printf("tr t=%d pos=%.2f,%.2f vel=%.2f,%.2f fl=%d wl=%d ws=%d wc=%.2f fac=%d in=(%.0f,j%d%d) ev=%x\n", t, q->pf.body.position.x, q->pf.body.position.y, q->pf.body.velocity.x, q->pf.body.velocity.y, q->pf.body.on_floor, q->pf.body.on_wall, q->pf.wall_side, q->pf.wall_coyote, q->pf.facing, INPUT[getenv("COOP_TRACE_P") ? atoi(getenv("COOP_TRACE_P")) : 0].x, INPUT[getenv("COOP_TRACE_P") ? atoi(getenv("COOP_TRACE_P")) : 0].jump_pressed, INPUT[getenv("COOP_TRACE_P") ? atoi(getenv("COOP_TRACE_P")) : 0].jump_held, q->pf.events);
+    }
+    float lead = -1;
+    for (int i = 0; i < G.nplayers; i++) {
+      float x = (float)G.p[i].pf.body.position.x;
+      if (x > lead) lead = x;
+    }
+    if (lead > best + 0.5f) best = lead, last_progress = t;
+    if (t - last_progress > longest_stall) longest_stall = t - last_progress;
+    if (t % 3600 == 0) printf("soak t=%d lead=%.1f best=%.1f coins=%d deaths=%d rescues=%d abil=%u ck=%d boss=%d won=%d\n", t, lead, best, G.coins_total, G.deaths, G.rescues, G.abilities, G.checkpoint, G.boss_hp, G.won);
+    if (G.won && G.tick - G.win_tick > 300) {
+      wins++;
+      printf("soak WIN at t=%d (run %d)\n", t, wins);
+      sim_reset(&G, players);
+      best = 0, last_progress = t, resets++;
+    }
+    if (t - last_progress > 3600) {
+      printf("soak STALL at t=%d x=%.1f: respawning the group\n", t, best);
+      if (getenv("COOP_DUMP") && resets == 0) {
+        int x0 = (int)best - 12;
+        for (int y = 34; y >= 14; y--) {
+          for (int x = x0; x < x0 + 40; x++) {
+            int c = G.L.t[y][x];
+            bool pl = false;
+            for (int i = 0; i < G.nplayers; i++) pl |= (int)G.p[i].pf.body.position.x == x && (int)G.p[i].pf.body.position.y == y;
+            putchar(pl ? 0x40 : c == T_AIR ? 0x2e : c == T_ROCK ? 0x23 : c == T_GRASS ? 0x67 : c == T_ONEWAY ? 0x2d : c == T_SPIKE ? 0x5e : c == T_WATER ? 0x7e : c == T_BRICK ? 0x62 : c == T_CRACK ? 0x78 : 0x3f);
+          }
+          putchar(0x0a);
+        }
+        for (int i = 0; i < G.nplayers; i++) printf("p%d pos=%.2f,%.2f vel=%.2f,%.2f floor=%d wall=%d wallside=%d fac=%d lock=%.2f\n", i, G.p[i].pf.body.position.x, G.p[i].pf.body.position.y, G.p[i].pf.body.velocity.x, G.p[i].pf.body.velocity.y, G.p[i].pf.body.on_floor, G.p[i].pf.body.on_wall, G.p[i].pf.wall_side, G.p[i].pf.facing, G.p[i].pf.wall_lock);
+        printf("x0=%d\n", x0);
+      }
+      for (int i = 0; i < G.nplayers; i++) sim_respawn_player(&G, i);
+      last_progress = t;
+    }
+  }
+  printf("soak done ticks=%d wins=%d resets=%d best=%.1f longest_stall=%d deaths=%d rescues=%d hash=%u\n", ticks, wins, resets, best, longest_stall, G.deaths, G.rescues, G.hash);
+  fflush(stdout);
+  exit(0);
+}
+#endif
 
 static void init(void *user) {
   (void)user;
@@ -587,6 +656,7 @@ static void init(void *user) {
   cw_debug_i32("g.bubbles", &g_bubbles_dbg);
   cur_mood = MOODS[0];
 #ifdef COOP_AUTOPILOT
+  if (getenv("COOP_SOAK")) soak(atoi(getenv("COOP_SOAK")), getenv("COOP_PLAYERS") ? atoi(getenv("COOP_PLAYERS")) : 2);
   int n = getenv("COOP_PLAYERS") ? atoi(getenv("COOP_PLAYERS")) : 2;
   cw_shell_start(n < 1 ? 1 : n > 4 ? 4 : n);
 #endif

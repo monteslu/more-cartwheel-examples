@@ -126,7 +126,7 @@ static void gen_rock(float u, float v, texel *t) {
   float strata = vnoise(u * 0.5f, v * 6.0f + fbm(u, v, 4, 3, 5) * 1.5f, 2, 9);
   float n = fbm(u, v, 6, 5, 1), fine = fbm(u, v, 32, 3, 3);
   float crack = fabsf(fbm(u, v, 5, 4, 41) - 0.5f);
-  float c = crack < 0.025f ? 0.0f : 1.0f;
+  float c = crack < 0.018f ? 0.55f + crack * 25.0f : 1.0f;
   float k = 0.55f + 0.3f * n + 0.1f * strata + 0.08f * (fine - 0.5f);
   k *= 0.55f + 0.45f * c;
   t->r = k * 1.0f, t->g = k * 0.95f, t->b = k * 0.9f;
@@ -467,4 +467,80 @@ void world_hide_crack(int x, int y) {
     if ((int)floorf(m->base.position.x) == x && (int)floorf(m->base.position.y) == y) m->base.visible = false;
   }
   (void)nc;
+}
+
+/* ── backdrop: a sky gradient that changes with the region and three layers of ridges at different depths
+ * (the camera's perspective gives the parallax) ── */
+static const float SKY_TOP[BIOMES][3] = { { 0.18f, 0.42f, 0.85f }, { 0.02f, 0.03f, 0.08f }, { 0.12f, 0.28f, 0.34f }, { 0.12f, 0.03f, 0.03f } };
+static const float SKY_BOT[BIOMES][3] = { { 0.75f, 0.88f, 1.0f }, { 0.1f, 0.12f, 0.22f }, { 0.6f, 0.78f, 0.72f }, { 0.95f, 0.4f, 0.15f } };
+static const float RIDGE[BIOMES][3] = { { 0.22f, 0.42f, 0.3f }, { 0.12f, 0.14f, 0.24f }, { 0.28f, 0.42f, 0.4f }, { 0.2f, 0.08f, 0.07f } };
+
+static void strip_mesh(float z, float y0, float y1, const float (*top)[3], const float (*bot)[3], const float *xs, int n, bool ridge, int seed, float amp) {
+  /* a strip of n columns: bottom edge at y0, top edge at y1 (+ ridge noise) */
+  int nv = n * 2;
+  float *pos = malloc(sizeof(float) * 3 * (size_t)nv), *nor = malloc(sizeof(float) * 3 * (size_t)nv), *col = malloc(sizeof(float) * 3 * (size_t)nv);
+  uint32_t *idx = malloc(sizeof(uint32_t) * 6 * (size_t)n);
+  for (int i = 0; i < n; i++) {
+    float x = xs[i];
+    float h = ridge ? amp * (0.35f + 0.65f * fbm(x / 140.0f, 0.37f * (float)seed, 8, 4, 70 + seed)) : 0.0f;
+    float ys[2] = { y0, y1 + h };
+    for (int k = 0; k < 2; k++) {
+      int v = i * 2 + k;
+      pos[v * 3] = x, pos[v * 3 + 1] = ys[k], pos[v * 3 + 2] = z;
+      nor[v * 3] = 0, nor[v * 3 + 1] = 0, nor[v * 3 + 2] = 1;
+      const float *c = k == 0 ? bot[i] : top[i];
+      memcpy(&col[v * 3], c, 12);
+    }
+  }
+  for (int i = 0; i + 1 < n; i++) {
+    uint32_t a = (uint32_t)(i * 2), q[6] = { a, a + 2, a + 3, a, a + 3, a + 1 };
+    memcpy(&idx[i * 6], q, sizeof q);
+  }
+  t3_geometry *g = t3_geometry_new();
+  t3_attribute *at = t3_attribute_new(T3_FLOAT32, pos, nv, 3);
+  t3_geometry_set_attribute(g, T3_ATTR_POSITION, at), t3_release(at);
+  at = t3_attribute_new(T3_FLOAT32, nor, nv, 3);
+  t3_geometry_set_attribute(g, T3_ATTR_NORMAL, at), t3_release(at);
+  at = t3_attribute_new(T3_FLOAT32, col, nv, 3);
+  t3_geometry_set_attribute(g, T3_ATTR_COLOR, at), t3_release(at);
+  at = t3_attribute_new(T3_UINT32, idx, 6 * (n - 1), 1);
+  t3_geometry_set_index(g, at), t3_release(at);
+  free(pos), free(nor), free(col), free(idx);
+  t3_material *m = t3_mesh_basic_material_new(0xffffff);
+  m->vertex_colors = true;
+  m->side = T3_DOUBLE_SIDE;
+  m->fog = ridge;
+  add_mesh(g, m, 0, 0, 0, false);
+  t3_release(g);
+}
+
+void world_backdrop(game *g) {
+  (void)g;
+  enum { N = 40 };
+  float xs[N], top[N][3], bot[N][3], rc[N][3], rb[N][3];
+  for (int i = 0; i < N; i++) {
+    float x = -120.0f + (float)i * ((float)WORLD_W + 240.0f) / (float)(N - 1);
+    xs[i] = x;
+    /* blend between the regions: the biome centre of each quarter, linearly */
+    float u = (x / (float)WORLD_W) * 4.0f - 0.5f;
+    int b0 = (int)floorf(u < 0 ? 0 : u > 3 ? 3 : u), b1 = b0 + 1 > 3 ? 3 : b0 + 1;
+    float f = u - (float)b0;
+    f = f < 0 ? 0 : f > 1 ? 1 : f;
+    f = f * f * (3 - 2 * f);
+    for (int k = 0; k < 3; k++) {
+      top[i][k] = SKY_TOP[b0][k] + (SKY_TOP[b1][k] - SKY_TOP[b0][k]) * f;
+      bot[i][k] = SKY_BOT[b0][k] + (SKY_BOT[b1][k] - SKY_BOT[b0][k]) * f;
+      rc[i][k] = RIDGE[b0][k] + (RIDGE[b1][k] - RIDGE[b0][k]) * f;
+      rb[i][k] = rc[i][k] * 0.6f;
+    }
+  }
+  strip_mesh(-140, -60, 150, (const float(*)[3])top, (const float(*)[3])bot, xs, N, false, 0, 0);
+  /* three ridge layers, nearer ones darker and more saturated (fog lifts the far ones) */
+  static const float ZS[3] = { -95, -60, -34 }, AMP[3] = { 70, 50, 34 }, SH[3] = { 1.25f, 1.0f, 0.78f };
+  for (int l = 0; l < 3; l++) {
+    float ct[N][3], cb[N][3];
+    for (int i = 0; i < N; i++)
+      for (int k = 0; k < 3; k++) ct[i][k] = rc[i][k] * SH[l], cb[i][k] = rb[i][k] * SH[l];
+    strip_mesh(ZS[l], -30, 6.0f + 12.0f * (float)l, (const float(*)[3])ct, (const float(*)[3])cb, xs, N, true, l + 1, AMP[l]);
+  }
 }
