@@ -462,6 +462,47 @@ export function face(spec) {
   return t;
 }
 
+/** the skin of a modelled face (facemesh.mjs makes the eyes, lids, brows, nose and lips): pores, colour variation (warmer
+ * cheeks, nose and lips, a cooler beard zone), stubble, age lines, scars, war paint and makeup (eyeshadow, liner, blush).
+ * Front projected like face(): x across, y down, eyes at y -0.06 and x +-0.25, the mouth at y 0.54. */
+export function faceSkin(spec) {
+  const N = spec.size ?? 512, skin = spec.skin, seed = spec.seed ?? 1;
+  return bake(N, (u, v, o) => {
+    const x = (u - 0.5) * 2, y = (v - 0.5) * 2, ax = Math.abs(x);
+    const E = (cx, cy, rx, ry) => Math.hypot((x - cx) / rx, (y - cy) / ry);
+    const blot = fbm(u, v, 7, 4, seed + 20), fine = fbm(u, v, 40, 2, seed + 21);
+    setc(o, skin, 0.94 + 0.1 * (blot - 0.5) + 0.04 * (fine - 0.5));
+    // warmth: cheeks, nose, ears and the lip line carry more blood; the eye sockets are a little darker and cooler
+    const warm = smooth(1, 0, E(0.42, 0.22, 0.24, 0.18)) * 0.8 + smooth(1, 0, E(-0.42, 0.22, 0.24, 0.18)) * 0.8 + smooth(1, 0, E(0, 0.28, 0.09, 0.12)) * 0.6 + smooth(1, 0, E(0, 0.55, 0.2, 0.08));
+    o.r *= 1 + 0.08 * warm; o.g *= 1 - 0.03 * warm; o.b *= 1 - 0.04 * warm;
+    const sock = smooth(1, 0, E(0.25, -0.06, 0.2, 0.12)) + smooth(1, 0, E(-0.25, -0.06, 0.2, 0.12));
+    mulc(o, 1 - 0.1 * sock); o.b *= 1 + 0.03 * sock;
+    // pores: tiny pits, denser on the nose and cheeks
+    const [f1] = cells(u, v, 150, seed + 3, 1), pore = smooth(0.2, 0.0, f1) * (0.5 + 0.5 * warm);
+    o.h = -pore * 0.6 + 0.15 * (fine - 0.5); o.ro = 0.5 + 0.12 * pore + 0.08 * (blot - 0.5); o.ao = 1 - 0.15 * pore;
+    mulc(o, 1 - 0.05 * pore);
+    // the T zone is a little oilier (less rough)
+    o.ro -= 0.08 * (smooth(1, 0, E(0, -0.3, 0.35, 0.12)) + smooth(1, 0, E(0, 0.15, 0.08, 0.25)));
+    const age = spec.age ?? 0;
+    if (age > 0) { // forehead lines, crow's feet, lines from nose to mouth
+      const fh = Math.pow(Math.abs(Math.sin((y + 0.62) * 34)), 14) * smooth(-0.85, -0.6, y) * smooth(-0.3, -0.45, y) * smooth(0.65, 0.35, ax);
+      const crow = Math.pow(Math.abs(Math.sin(Math.atan2(y + 0.06, ax - 0.47) * 7)), 18) * smooth(0.16, 0.06, E(0.6, -0.06, 0.16, 0.12) - 0.9) * smooth(0.42, 0.5, ax);
+      const nl = smooth(0.012, 0, Math.abs(ax - (0.2 + 0.25 * (y - 0.3)))) * smooth(0.25, 0.32, y) * smooth(0.7, 0.6, y);
+      const k = (fh + crow + nl) * age; mulc(o, 1 - 0.18 * k); o.h -= 0.8 * k;
+    }
+    if (spec.stubble) { const s = hash2(Math.floor(u * N), Math.floor(v * N), 3) > 0.5 ? 1 : 0; const zone = smooth(0.25, 0.5, y) * smooth(1.0, 0.6, Math.hypot(x, y - 0.2)) * (1 - smooth(1, 0.5, E(0, 0.54, 0.2, 0.08))); mixc(o, [0.08, 0.06, 0.05], (0.25 + 0.35 * s) * zone * (spec.stubble === true ? 1 : spec.stubble)); o.h += 0.2 * s * zone; }
+    if (spec.scar && Math.abs((x - 0.38) * 0.7 + (y + 0.1) * 0.35) < 0.014 && y > -0.4 && y < 0.2) { mixc(o, [skin[0] * 1.1, skin[1] * 0.62, skin[2] * 0.6], 0.8); o.h += 0.8; o.ro = 0.35; }
+    if (spec.war) { const s = Math.abs(y - 0.18) < 0.03 && ax > 0.15 && ax < 0.75; if (s) { mixc(o, spec.war, 0.85); o.ro = 0.35; } }
+    if (spec.makeup) { // eyeshadow on the lids, a dark liner on the lid edge, blush on the cheekbones
+      const mk = spec.makeup, lidz = smooth(1, 0.3, E(0.26, -0.13, 0.17, 0.08)) + smooth(1, 0.3, E(-0.26, -0.13, 0.17, 0.08));
+      mixc(o, mk.shadow, 0.55 * Math.min(1, lidz));
+      const liner = (smooth(1, 0.7, E(0.26, -0.105, 0.17, 0.025)) + smooth(1, 0.7, E(-0.26, -0.105, 0.17, 0.025))) * smooth(0.06, 0.1, ax);
+      mixc(o, [0.04, 0.03, 0.03], Math.min(1, liner)); mixc(o, mk.blush, 0.25 * (smooth(1, 0, E(0.45, 0.2, 0.2, 0.12)) + smooth(1, 0, E(-0.45, 0.2, 0.2, 0.12))));
+    }
+    mixc(o, skin, smooth(0.86, 1.0, Math.max(ax, Math.abs(y))) * 0.8);
+  });
+}
+
 // ── decals (RGBA, white or dark marks with alpha) ───────────────────────
 function decalTex(name, size, fn) {
   const t = bake(size, (u, v, o) => fn(u, v, o));

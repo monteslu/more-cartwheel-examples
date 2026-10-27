@@ -53,3 +53,5 @@ physical+map+rep+nmap+ao+rmap+mmap+skin+senv+ds+sheen+l1801
 physical+map+rep+nmap+ao+rmap+mmap+skin+senv+sheen+l1801
 physical+map+rep+nmap+ao+rmap+mmap+shadow+skin+senv+ds+cc+l1801+s100
 standard+shadow+skin+senv+l1801+s100
+standard+skin+senv+l1801
+standard+map+nmap+ao+rmap+mmap+shadow+skin+senv+l1801+s100

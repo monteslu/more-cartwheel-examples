@@ -140,7 +140,9 @@ static void load_match(void) {
   if (!CW_HANDLE_IS_NULL(G.music[G.sel_stage])) G.music_voice = cw_audio_play(G.music[G.sel_stage], &(cw_play_desc){ .bus = G.music_bus, .loop = true, .volume = 0.55f });
 }
 
+static int shown_sel[3] = { -1, -1, -1 }; /* the fighters the select screen shows now */
 static void begin_match(void) {
+  shown_sel[0] = -1;
   G.sim.training = G.training;
   G.sim.dummy = T_STAND;
   G.sim.cpu[0] = false;
@@ -168,12 +170,25 @@ static void backdrop(void) {
   G.state = GS_SELECT;
 }
 
+/* the select screen: the two picked fighters face off on the chosen stage (the opponent shown is the one the computer
+ * would pick in a one player game), the camera close on their faces */
+static void select_scene(void) {
+  int b = G.players < 2 ? (G.sel[0] + 1 + (G.difficulty + G.sel_stage) % (G.roster.n - 1)) % G.roster.n : G.sel[1];
+  if (shown_sel[0] == G.sel[0] && shown_sel[1] == b && shown_sel[2] == G.sel_stage && G.mdl[0]) return;
+  shown_sel[0] = G.sel[0]; shown_sel[1] = b; shown_sel[2] = G.sel_stage;
+  G.sim.training = true;
+  ft_game_start(&G.sim, &G.roster, G.sel[0], b);
+  G.sim.f[0].x = -800; G.sim.f[1].x = 800; /* close together, turned three quarters to the camera */
+  load_match();
+  for (int i = 0; i < 2; i++) model_set_showcase(G.mdl[i], 0.9f);
+}
 static void start(int players, void *user) {
   (void)user;
   G.players = players;
   G.state = GS_SELECT;
   G.ready[0] = G.ready[1] = 0;
-  unload_match();
+  shown_sel[0] = -1;
+  select_scene();
 }
 
 /* ── the select screen ──────────────────────────────────────────────── */
@@ -200,6 +215,7 @@ static void update_select(void) {
     }
     if (p == 0 ? cw_action_just_pressed(0, G.a_t) : confirm(p)) { G.ready[p] = 1; sfx(SFX_ROUND, 0.6f, 1.0f); }
   }
+  select_scene();
   bool all = G.ready[0] && (G.players < 2 || G.ready[1]);
   if (all) {
     if (G.players < 2) {
@@ -232,7 +248,7 @@ static void fixed(void *u, double dt) {
   }
 #endif
   G.d_tick++;
-  if (G.state == GS_SELECT) { update_select(); return; }
+  if (G.state == GS_SELECT) { update_select(); G.sim.tick++; return; } /* the clock runs for blinks and idle motion */
   if (G.state == GS_RESULT) {
     G.result_t++;
     if (G.result_t > 40 && confirm(0)) begin_match();
@@ -253,6 +269,7 @@ static void fixed(void *u, double dt) {
   ft_step(&G.sim, in);
   if (G.sim.phase == P_MATCH_END) {
     G.state = GS_RESULT;
+    if (G.sim.match_winner >= 0) model_set_showcase(G.mdl[G.sim.match_winner], 0.9f);
     G.result_t = 0;
     if (SAVE && G.sim.match_winner >= 0) { SAVE->wins[G.sim.f[G.sim.match_winner].def & 3]++; SAVE->matches++; cw_shell_save_commit(); }
   }
@@ -307,6 +324,13 @@ static void update_camera(float dt, float aspect) {
   for (int i = 0; i < 2; i++) pts[i] = (cw_frame_point){ (float)g->f[i].x / 1000.0f, 0.95f + (float)g->f[i].y / 1000.0f, 0, 0.8f };
   cw_frame_params p = { .yaw = 0, .pitch = -0.04f, .fov_y = 34.0f * 0.0174533f, .aspect = aspect, .margin = 0.12f, .min_dist = 5.4f, .max_dist = 15.0f };
   int npts = 2;
+  if (G.state == GS_SELECT || G.state == GS_RESULT) { /* faces: both fighters' heads on the select screen, the winner's on the result screen */
+    int w = G.state == GS_RESULT ? g->match_winner : -1;
+    if (w >= 0) { pts[0] = (cw_frame_point){ (float)g->f[w].x / 1000.0f, 1.45f, 0, 0.45f }; npts = 1; }
+    else for (int i = 0; i < 2; i++) pts[i] = (cw_frame_point){ (float)g->f[i].x / 1000.0f, 1.3f, 0, 0.5f }; /* aimed low: the heads sit above the cards */
+    p.min_dist = w >= 0 ? 2.4f : 2.6f; p.margin = 0.02f; p.yaw = w >= 0 ? (g->f[w].facing > 0 ? 0.35f : -0.35f) : 0;
+    stage_set_showcase(true);
+  } else stage_set_showcase(false);
   if (g_cam[0] > 0) {
     int who = (int)g_cam[1];
     if (who < 2) { pts[0] = (cw_frame_point){ (float)g->f[who].x / 1000.0f, 1.25f + (float)g->f[who].y / 1000.0f, 0, 0.55f }; npts = 1; }
@@ -507,42 +531,39 @@ static void draw_hud(float W, float H, float s) {
 }
 
 static void draw_select(float W, float H, float s) {
-  cw_r2d_rect(cw_rect_make(0, 0, W, H), rgba(0.03f, 0.04f, 0.07f, 1));
-  for (int i = 0; i < 12; i++) cw_r2d_rect(cw_rect_make(W * (float)i / 12.0f, 0, W / 12.0f, H), rgba(0.05f + 0.01f * (float)(i & 1), 0.06f, 0.1f, 1));
-  text(G.font_score, "CHOOSE YOUR FIGHTER", W * 0.5f, 22 * s, 38 * s, rgba(1, 0.9f, 0.5f, 1), CW_ALIGN_CENTER);
+  /* the two picked fighters stand on the stage behind this, framed on their faces (update_camera) */
+  for (int i = 0; i < 32; i++) { /* a darkening toward the cards: bands that touch but never overlap (overlaps show as stripes) */
+    float y0b = floorf(H * (0.6f + 0.4f * (float)i / 32.0f)), y1b = floorf(H * (0.6f + 0.4f * (float)(i + 1) / 32.0f));
+    cw_r2d_rect(cw_rect_make(0, y0b, W, y1b - y0b), rgba(0.02f, 0.025f, 0.05f, 0.2f + 0.7f * (float)i / 31.0f));
+  }
+  cw_r2d_rect(cw_rect_make(0, 0, W, 130 * s), rgba(0.02f, 0.025f, 0.05f, 0.55f));
+  text(G.font_score, "CHOOSE YOUR FIGHTER", W * 0.5f, 14 * s, 34 * s, rgba(1, 0.9f, 0.5f, 1), CW_ALIGN_CENTER);
+  char b[160];
+  snprintf(b, sizeof b, "Stage: %s   (up / down)", STAGE_NAME[G.sel_stage]);
+  text(G.font_ui, b, W * 0.5f, 56 * s, 19 * s, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
+  snprintf(b, sizeof b, "Mode: %s   (X)", G.training ? "Training" : G.players > 1 ? "Versus" : "Versus the computer");
+  if (G.players < 2) { size_t l = strlen(b); snprintf(b + l, sizeof b - l, "      Computer: %s   (B)", DIFF_NAME[G.difficulty]); }
+  text(G.font_ui, b, W * 0.5f, 84 * s, 17 * s, rgba(1, 0.9f, 0.6f, 1), CW_ALIGN_CENTER);
   int n = G.roster.n;
-  float cw_ = 190 * s, ch = 250 * s, gap = 16 * s, total = (float)n * cw_ + (float)(n - 1) * gap, x0 = (W - total) * 0.5f, y0 = 100 * s;
+  float cw_ = 190 * s, ch = 132 * s, gap = 16 * s, total = (float)n * cw_ + (float)(n - 1) * gap, x0 = (W - total) * 0.5f, y0 = H - 176 * s;
   for (int i = 0; i < n; i++) {
     const ft_def *d = &G.roster.d[i];
-    float x = x0 + (float)i * (cw_ + gap);
+    float x = x0 + (float)i * (cw_ + gap), cx = x + cw_ * 0.5f;
     const float *c = FCOL[i & 3];
     bool p1 = G.sel[0] == i, p2 = G.players > 1 && G.sel[1] == i;
-    cw_r2d_round_rect(cw_rect_make(x, y0, cw_, ch), 12 * s, 8, rgba(0.08f, 0.09f, 0.13f, 1));
-    cw_r2d_round_rect(cw_rect_make(x + 8 * s, y0 + 8 * s, cw_ - 16 * s, 110 * s), 8 * s, 8, rgba(c[0] * 0.55f, c[1] * 0.55f, c[2] * 0.55f, 1));
-    /* a figure in the fighter's colour: a head, a body, limbs */
-    float cx = x + cw_ * 0.5f, by = y0 + 108 * s;
-    cw_r2d_circle((cw_vec2){ cx, by - 70 * s }, 15 * s, 16, rgba(0.9f, 0.75f, 0.62f, 1));
-    cw_r2d_round_rect(cw_rect_make(cx - 20 * s, by - 52 * s, 40 * s, 52 * s), 9 * s, 6, rgba(c[0], c[1], c[2], 1));
-    cw_r2d_rect(cw_rect_make(cx - 32 * s, by - 50 * s, 10 * s, 40 * s), rgba(c[0] * 0.8f, c[1] * 0.8f, c[2] * 0.8f, 1));
-    cw_r2d_rect(cw_rect_make(cx + 22 * s, by - 50 * s, 10 * s, 40 * s), rgba(c[0] * 0.8f, c[1] * 0.8f, c[2] * 0.8f, 1));
-    text(G.font_bold, d->name, cx, y0 + 128 * s, 26 * s, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
-    char b[64];
+    cw_r2d_round_rect(cw_rect_make(x, y0, cw_, ch), 12 * s, 8, rgba(0.06f, 0.07f, 0.1f, 0.88f));
+    cw_r2d_round_rect(cw_rect_make(x + 8 * s, y0 + 8 * s, cw_ - 16 * s, 5 * s), 2 * s, 4, rgba(c[0], c[1], c[2], 1));
+    text(G.font_bold, d->name, cx, y0 + 16 * s, 24 * s, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
     snprintf(b, sizeof b, "Life %d", d->hp);
-    text(G.font_ui, b, cx, y0 + 160 * s, 14 * s, rgba(0.8f, 0.85f, 0.95f, 1), CW_ALIGN_CENTER);
+    text(G.font_ui, b, cx, y0 + 46 * s, 13 * s, rgba(0.8f, 0.85f, 0.95f, 1), CW_ALIGN_CENTER);
     cw_text_style st = { .size = 13 * s, .color = rgba(0.75f, 0.8f, 0.9f, 1), .align = CW_ALIGN_CENTER, .wrap_width = cw_ - 20 * s };
-    cw_r2d_text(G.font_ui, BLURB[i & 3], (cw_vec2){ cx - (cw_ - 20 * s) * 0.5f, y0 + 184 * s }, &st);
+    cw_r2d_text(G.font_ui, BLURB[i & 3], (cw_vec2){ cx - (cw_ - 20 * s) * 0.5f, y0 + 66 * s }, &st);
     if (p1) cw_r2d_round_rect_lines(cw_rect_make(x - 4 * s, y0 - 4 * s, cw_ + 8 * s, ch + 8 * s), 14 * s, 4 * s, 8, G.ready[0] ? rgba(1, 0.85f, 0.2f, 1) : rgba(1, 0.4f, 0.3f, 1));
     if (p2) cw_r2d_round_rect_lines(cw_rect_make(x - 8 * s, y0 - 8 * s, cw_ + 16 * s, ch + 16 * s), 16 * s, 3 * s, 8, G.ready[1] ? rgba(1, 0.85f, 0.2f, 1) : rgba(0.3f, 0.6f, 1, 1));
     if (p1) text(G.font_bold, "P1", x + 10 * s, y0 - 24 * s, 18 * s, rgba(1, 0.5f, 0.4f, 1), CW_ALIGN_LEFT);
     if (p2) text(G.font_bold, "P2", x + cw_ - 10 * s, y0 - 24 * s, 18 * s, rgba(0.4f, 0.7f, 1, 1), CW_ALIGN_RIGHT);
   }
-  char b[160];
-  snprintf(b, sizeof b, "Stage: %s   (up / down)", STAGE_NAME[G.sel_stage]);
-  text(G.font_ui, b, W * 0.5f, H * 0.7f, 22 * s, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
-  snprintf(b, sizeof b, "Mode: %s   (X)", G.training ? "Training" : G.players > 1 ? "Versus" : "Versus the computer");
-  text(G.font_ui, b, W * 0.5f, H * 0.7f + 30 * s, 20 * s, rgba(1, 0.9f, 0.6f, 1), CW_ALIGN_CENTER);
-  if (G.players < 2) { snprintf(b, sizeof b, "Computer: %s   (B)", DIFF_NAME[G.difficulty]); text(G.font_ui, b, W * 0.5f, H * 0.7f + 58 * s, 20 * s, rgba(1, 0.9f, 0.6f, 1), CW_ALIGN_CENTER); }
-  text(G.font_ui, "Left / right: fighter     A: lock in     B: back out (two players) or computer level", W * 0.5f, H - 40 * s, 15 * s, rgba(0.7f, 0.75f, 0.85f, 1), CW_ALIGN_CENTER);
+  text(G.font_ui, "Left / right: fighter     A: lock in     B: back out (two players) or computer level", W * 0.5f, H - 30 * s, 14 * s, rgba(0.7f, 0.75f, 0.85f, 1), CW_ALIGN_CENTER);
 }
 
 static void draw_result(float W, float H, float s) {

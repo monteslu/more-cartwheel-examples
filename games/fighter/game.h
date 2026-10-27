@@ -44,6 +44,8 @@ void model_free(fighter_model *m);
 /* pose from the sim state: alpha is the render interpolation across the tick */
 void model_pose(fighter_model *m, const ft_game *g, int who, float dt);
 void model_set_visible(fighter_model *m, bool v);
+/* the select and result screens turn a fighter toward the camera by this many radians (0 in a fight) */
+void model_set_showcase(fighter_model *m, float turn);
 t3_vec3 model_joint(fighter_model *m, int joint); /* world position of a joint, for effects */
 float model_spring_speed(const fighter_model *m); /* summed spring tip speed (a probe for the secondary motion) */
 enum { J_HEAD, J_HAND_F, J_HAND_B, J_FOOT_F, J_CHEST, J_HIPS };
@@ -60,6 +62,7 @@ void crowd_frame(crowd *c, const ft_game *g, float dt);
 void stage_load(int stage, cw_node parent);
 void stage_free(void);
 void stage_frame(const ft_game *g, float dt);
+void stage_set_showcase(bool on); /* the rim lights become key lights on the faces (select and result screens) */
 
 /* fx.c: hit effects, all reading sim events */
 void fx_init(cw_node root);

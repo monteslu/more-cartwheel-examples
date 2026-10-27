@@ -117,6 +117,9 @@ void stage_free(void) {
   S.nparts = 0;
 }
 
+static bool showcase;
+void stage_set_showcase(bool on) { showcase = on; }
+
 static float hash01(uint32_t x) { x ^= x >> 16; x *= 0x7feb352dU; x ^= x >> 15; x *= 0x846ca68bU; x ^= x >> 16; return (float)(x & 0xffff) / 65535.0f; }
 
 void stage_frame(const ft_game *g, float dt) {
@@ -149,7 +152,8 @@ void stage_frame(const ft_game *g, float dt) {
   for (int i = 0; i < 2; i++) {
     if (!cw_node_valid(S.rim[i])) continue;
     const ft_fighter *f = &g->f[i];
-    cw_node3d_set_position(S.rim[i], (t3_vec3){ (float)f->x / 1000.0f - (float)f->facing * 0.35f, 2.3f + (float)f->y / 1000.0f, -1.7f });
+    if (showcase) cw_node3d_set_position(S.rim[i], (t3_vec3){ (float)f->x / 1000.0f + (float)f->facing * 0.6f, 1.9f, 1.3f }); /* a key light in front of the face */
+    else cw_node3d_set_position(S.rim[i], (t3_vec3){ (float)f->x / 1000.0f - (float)f->facing * 0.35f, 2.3f + (float)f->y / 1000.0f, -1.7f });
   }
   crowd_frame(&S.crowd, g, dt);
 }

@@ -38,7 +38,9 @@ struct fighter_model {
   const spec *sp;
   cw_node node;
   t3_gltf *gltf;
-  t3_object *root, *bones[JN], *fing[2][3];
+  t3_object *root, *bones[JN], *fing[2][3], *face[5];
+  t3_vec3 face_rest[5];
+  float jaw, lid, brow, pinch, showcase; /* expression now: jaw open, lids closed, brows lowered, brows pinched */
   t3_vec3 hips_rest;
   float cur[JN][3], root_off[3], yaw, tilt, fist[2];
   spring_rig springs;
@@ -72,6 +74,8 @@ fighter_model *model_new(int def, cw_node parent) {
   }
   for (int h = 0; h < 2; h++) for (int k = 0; k < 3; k++) m->fing[h][k] = t3_object_get_by_name(m->root, FING[h][k]);
   m->hips_rest = m->bones[HIPS]->position;
+  static const char *const FACE[5] = { "Jaw", "LidL", "LidR", "BrowL", "BrowR" };
+  for (int k = 0; k < 5; k++) { m->face[k] = t3_object_get_by_name(m->root, FACE[k]); if (m->face[k]) m->face_rest[k] = m->face[k]->position; }
   shadows_on(m->root);
   char_shade(m->root);
   sb_bind(&m->springs, m->root);
@@ -89,6 +93,7 @@ void model_free(fighter_model *m) {
   free(m);
 }
 void model_set_visible(fighter_model *m, bool v) { if (m) m->root->visible = v; }
+void model_set_showcase(fighter_model *m, float turn) { if (m) m->showcase = turn; }
 t3_vec3 model_joint(fighter_model *m, int j) {
   static const int MAP[] = { [J_HEAD] = HEAD, [J_HAND_F] = HAND_R, [J_HAND_B] = HAND_L, [J_FOOT_F] = FOO_R, [J_CHEST] = CHEST, [J_HIPS] = HIPS };
   const t3_mat4 *w = &m->bones[MAP[j]]->matrix_world;
@@ -312,6 +317,45 @@ static void pose_hand(fighter_model *m, int h, float fist) {
   }
 }
 
+/* the face: blinks, a focused frown in the guard, gritted teeth on heavy strikes and supers, a wince when hit (eyes
+ * squeezed, brows down and pinched, the mouth pulled open), eyes shut and the jaw slack when down, a shout when winning */
+static void pose_face(fighter_model *m, const ft_game *g, int who, float dt) {
+  const ft_fighter *f = &g->f[who];
+  float jaw = 0.02f, lid = 0.12f, brow = 0.4f, pinch = 0.3f;
+  uint32_t ph = (g->tick + (uint32_t)who * 97u + (uint32_t)m->def * 31u) % 211u;
+  if (ph < 6) lid = 1.0f; /* a blink */
+  switch (f->state) {
+  case S_HIT: case S_AIRHIT: case S_THROWN: jaw = 0.32f; lid = 0.8f; brow = 1.0f; pinch = 1.0f; break;
+  case S_KD: case S_KO: jaw = 0.38f; lid = 1.0f; brow = 0.2f; pinch = 0; break;
+  case S_GETUP: jaw = 0.1f; lid = 0.5f; brow = 0.8f; pinch = 0.8f; break;
+  case S_WIN: jaw = 0.42f; lid = 0.0f; brow = -0.8f; pinch = 0; break;
+  case S_BLOCK: jaw = 0.06f; lid = 0.45f; brow = 0.9f; pinch = 0.8f; break;
+  case S_ATTACK: {
+    const ft_move *mv = &g->roster->d[f->def].mv[f->mv];
+    bool big = (mv->flags & (FM_SUPER | FM_SPECIAL)) || f->mv == M_5H || f->mv == M_2H || f->mv == M_JH;
+    if (big) { jaw = f->t > mv->su ? 0.3f : 0.1f; lid = 0.35f; brow = 1.0f; pinch = 1.0f; } /* a shout on the strike, teeth gritted before it */
+    else { jaw = 0.08f; lid = 0.3f; brow = 0.8f; pinch = 0.7f; }
+    break;
+  }
+  default: break;
+  }
+  float k = 1.0f - cw_exp(-dt * 30.0f);
+  m->jaw += (jaw - m->jaw) * k; m->lid += (lid - m->lid) * (lid > m->lid ? 1.0f - cw_exp(-dt * 60.0f) : k);
+  m->brow += (brow - m->brow) * k; m->pinch += (pinch - m->pinch) * k;
+  float hs = m->sp->scale;
+  if (m->face[0]) { t3_quat q; float r[3] = { m->jaw * 0.45f, 0, 0 }; quat_euler(r, &q); m->face[0]->quaternion = q; }
+  for (int s = 0; s < 2; s++) {
+    float sg = s == 0 ? 1.0f : -1.0f;
+    if (m->face[1 + s]) { t3_quat q; float r[3] = { m->lid * 0.95f, 0, 0 }; quat_euler(r, &q); m->face[1 + s]->quaternion = q; }
+    if (m->face[3 + s]) {
+      t3_vec3 p = m->face_rest[3 + s];
+      p.y -= 0.0045f * hs * m->brow; p.x -= sg * 0.0025f * hs * m->pinch;
+      m->face[3 + s]->position = p;
+      t3_quat q; float r[3] = { 0, 0, sg * 0.22f * m->pinch }; quat_euler(r, &q); m->face[3 + s]->quaternion = q; /* the inner ends drop */
+    }
+  }
+}
+
 void model_pose(fighter_model *m, const ft_game *g, int who, float dt) {
   if (!m) return;
   const ft_fighter *f = &g->f[who];
@@ -334,6 +378,7 @@ void model_pose(fighter_model *m, const ft_game *g, int who, float dt) {
     m->bones[j]->quaternion = q;
   }
   for (int h = 0; h < 2; h++) pose_hand(m, h, m->fist[h]);
+  pose_face(m, g, who, dt);
   /* hips carry the body's offset and lean (the knockdown pitch) */
   float sc = m->sp->scale;
   m->bones[HIPS]->position = (t3_vec3){ m->hips_rest.x + m->root_off[0], m->hips_rest.y + m->root_off[1] * sc, m->hips_rest.z + m->root_off[2] };
@@ -344,7 +389,7 @@ void model_pose(fighter_model *m, const ft_game *g, int who, float dt) {
   m->bones[HIPS]->quaternion = t3_quat_multiply(tq, hq);
   /* the root: world position, facing, and a spin for the kick */
   float face = f->facing > 0 ? 1.5707963f : -1.5707963f;
-  float yaw[3] = { 0, face + m->yaw, 0 };
+  float yaw[3] = { 0, face + m->yaw - (f->facing > 0 ? 1.0f : -1.0f) * m->showcase, 0 };
   t3_quat yq;
   quat_euler(yaw, &yq);
   t3_vec3 pos = { (float)f->x / 1000.0f, (float)f->y / 1000.0f, 0 };
