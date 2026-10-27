@@ -666,11 +666,11 @@ static void wall_detail(const level *L, int x0, int x1, mb *prop, mb *glow) {
         }
         continue;
       }
-      if (interior(L, x, y) && r < (bi == BIOME_RUINS ? 0.03f : 0.07f)) {
+      if (bi != BIOME_CAVES && interior(L, x, y) && r < (bi == BIOME_RUINS ? 0.03f : 0.05f)) { /* not in the caves: lit blue they read as spots */
         /* a boulder set into the face */
         float rx = 0.35f + 0.5f * hh(x, y, 412), ry = rx * (0.55f + 0.35f * hh(x, y, 413));
         float lo[3], hi[3];
-        shade(lo, base, 0.6f), shade(hi, base, 1.15f);
+        shade(lo, base, 0.5f), shade(hi, base, 0.95f);
         mb_ellip(prop, fx + 0.5f + 0.2f * (hh(x, y, 419) - 0.5f), fy + 0.5f, zf - rx * 0.35f, rx, ry, rx * 0.6f, lo, hi, 10, 7); /* a bulge, half buried */
       }
       if (bi == BIOME_CAVES && r > 0.93f) { /* a vein of glowing crystal */
