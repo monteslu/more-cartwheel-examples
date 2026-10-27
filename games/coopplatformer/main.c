@@ -818,6 +818,21 @@ static void read_input(void) {
 }
 
 /* ── the shell and the game flow ──────────────────────────────────── */
+/* the autopilot builds that carry a start (gates on hosts that have no environment): players, start column, abilities */
+#ifndef COOP_DEF_PLAYERS
+#define COOP_DEF_PLAYERS 2
+#endif
+#ifndef COOP_DEF_START_X
+#define COOP_DEF_START_X (-1)
+#endif
+#ifndef COOP_DEF_ABILITIES
+#define COOP_DEF_ABILITIES (-1)
+#endif
+static int cfg_int(const char *env, int def) {
+  const char *v = getenv(env);
+  return v ? atoi(v) : def;
+}
+
 static void start_match(int players, void *user) {
   (void)user;
   save_t *sv = cw_shell_game_save();
@@ -825,9 +840,9 @@ static void start_match(int players, void *user) {
   sim_reset(&G, players);
   if (sv->abilities && !getenv("COOP_FRESH")) G.abilities = sv->abilities;
   G.reached |= sv->reached;
-  if (getenv("COOP_ABILITIES")) G.abilities = (uint32_t)atoi(getenv("COOP_ABILITIES"));
-  if (getenv("COOP_START_X")) { /* a test or a screenshot starts anywhere */
-    int sx = atoi(getenv("COOP_START_X"));
+  if (cfg_int("COOP_ABILITIES", COOP_DEF_ABILITIES) >= 0) G.abilities = (uint32_t)cfg_int("COOP_ABILITIES", COOP_DEF_ABILITIES);
+  if (cfg_int("COOP_START_X", COOP_DEF_START_X) >= 0) { /* a test or a screenshot starts anywhere */
+    int sx = cfg_int("COOP_START_X", COOP_DEF_START_X);
     if (sx < 2) sx = 2;
     if (sx > WORLD_W - 3) sx = WORLD_W - 3;
     for (int i = 0; i < G.nplayers; i++) {
@@ -837,7 +852,7 @@ static void start_match(int players, void *user) {
     G.cam.x = G.cam.tx = (float)sx, G.cam.y = G.cam.ty = (float)G.L.ground[sx] + 3;
     G.checkpoint = -1;
     for (int k = 0; k < G.L.nchecks; k++)
-      if (G.L.checks[k].x < sx) G.checkpoint = k;
+      if (G.L.checks[k].x < sx) G.checkpoint = k, G.reached |= 1u << k;
   }
   build_scene();
   cw_info("coopplatformer: pools %d, lava spans %d", S.nwspan, S.nlspan);
@@ -1186,6 +1201,8 @@ static void init(void *user) {
   cw_debug_i32("g.checkpoint", &G.checkpoint);
   cw_debug_i32("g.boss_hp", &G.boss_hp);
   cw_debug_i32("g.won", &G.won);
+  cw_debug_u32("g.reached", &G.reached);
+  cw_debug_i32("g.hitstops", &G.hitstops);
   cw_debug_u32("g.hash", &G.hash);
   cw_debug_f32_array("g.pos", g_pos_dbg, 2);
   cw_debug_f32_array("g.cam", g_cam_dbg, 3);
@@ -1197,7 +1214,7 @@ static void init(void *user) {
   if (getenv("COOP_SECRETS")) secret_routes(1);
   if (getenv("COOP_FUZZ")) fuzz(atoi(getenv("COOP_FUZZ")), getenv("COOP_PLAYERS") ? atoi(getenv("COOP_PLAYERS")) : 1);
   if (getenv("COOP_SOAK")) soak(atoi(getenv("COOP_SOAK")), getenv("COOP_PLAYERS") ? atoi(getenv("COOP_PLAYERS")) : 2);
-  int n = getenv("COOP_PLAYERS") ? atoi(getenv("COOP_PLAYERS")) : 2;
+  int n = cfg_int("COOP_PLAYERS", COOP_DEF_PLAYERS);
   cw_shell_start(n < 1 ? 1 : n > 4 ? 4 : n);
 #endif
 }
@@ -1258,7 +1275,9 @@ static void map_cursor(void) {
 
 static void fixed_update(void *user, double dt) {
   (void)user;
-  if (!cw_shell_update()) return;
+  bool run = cw_shell_update();
+  g_state_dbg = (int)cw_shell_screen_now(); /* even when the shell owns the tick */
+  if (!run) return;
   if (G.nplayers == 0 || !G.world.id) return;
   g_run_ticks++;
 #ifdef COOP_AUTOPILOT
@@ -1411,7 +1430,7 @@ static void draw_markers(float W, float H, float s) {
     glyph(i, sx, sy, r, c);
     char b[4];
     snprintf(b, sizeof b, "%d", i + 1);
-    text(b, sx - r, sy - r * 0.62f, 15 * s, cw_rgba(0.05f, 0.05f, 0.08f, 1), CW_ALIGN_CENTER, 2 * r);
+    cw_r2d_text(g_font, b, (cw_vec2){ sx - r, sy - r * 0.62f }, &(cw_text_style){ .size = 15 * s, .color = cw_rgba(0.05f, 0.05f, 0.08f, 1), .align = CW_ALIGN_CENTER, .wrap_width = 2 * r });
   }
 }
 
@@ -1549,7 +1568,7 @@ static void render(void *user, double alpha) {
     static const char *const AB[3] = { "AIR JUMP", "CLAWS", "DASH" };
     for (int k = 0; k < 3; k++) {
       bool on = (G.abilities >> k) & 1;
-      float cw_ = 76 * s, x = W - (16 + (float)(3 - k) * 82) * s, y = 20 * s;
+      float cw_ = 76 * s, x = W - (16 + (float)(3 - k) * 82) * s, y = (G.nplayers > 3 ? 84 : 20) * s; /* below the panels when four players fill the top */
       panel(x, y, cw_, 30 * s, 10 * s, on ? cw_rgba(0.2f, 0.45f, 0.6f, 0.9f) : cw_rgba(0.12f, 0.14f, 0.2f, 0.6f), on ? cw_rgba(0.05f, 0.12f, 0.2f, 0.9f) : cw_rgba(0.05f, 0.06f, 0.09f, 0.6f), on ? cw_rgba(0.5f, 0.9f, 1, 0.8f) : cw_rgba(0.4f, 0.4f, 0.5f, 0.3f));
       text(AB[k], x, y + 7 * s, 14 * s, on ? cw_rgba(0.85f, 0.98f, 1, 1) : cw_rgba(0.5f, 0.55f, 0.65f, 0.8f), CW_ALIGN_CENTER, cw_);
     }

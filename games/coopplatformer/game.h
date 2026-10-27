@@ -93,6 +93,7 @@ typedef struct game {
   int events;          /* bitmask of this tick's sound events */
   int checkpoint;      /* the flag respawns go to (the last one touched) */
   uint32_t reached;    /* bit k: flag k has been touched (the map can warp to it) */
+  int hitstops;        /* how many hit-stops have happened (a counter for tests) */
   int hitstop;         /* ticks the whole world stands still after a hit (stomp, hurt, boss down) */
   int hit_flash;       /* ticks of screen flash the renderer shows after a hit */
   int paused_map;

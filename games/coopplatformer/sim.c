@@ -61,7 +61,7 @@ void sim_reset(game *g, int players) {
   g->win_tick = 0;
   g->checkpoint = -1;
   g->reached = 0;
-  g->hitstop = g->hit_flash = 0;
+  g->hitstop = g->hit_flash = g->hitstops = 0;
   g->events = 0;
   g->boss_hp = 9;
   g->hash = 2166136261u;
@@ -97,6 +97,7 @@ static void hurt_player(game *g, int i, float kx, int dmg) {
   p->invuln = 100;
   p->hurt_fx = 1;
   g->hitstop = 5;
+  g->hitstops++;
   g->hit_flash = 8;
   g->events |= EV_HURT;
   p->pf.body.velocity.x = kx * 7.0f;
@@ -365,6 +366,7 @@ void sim_step(game *g, const input_state in[MAX_PLAYERS], float dt) {
         p->pf.air_jumps_left = p->pf.max_air_jumps;
         g->events |= EV_STOMP;
         g->hitstop = e->hp <= 0 ? 6 : 4;
+        g->hitstops++;
         g->hit_flash = 5;
         if (e->kind == 2) g->boss_hp = e->hp, g->cam.shake = 0.5f;
         if (e->hp <= 0) {
@@ -507,7 +509,7 @@ void sim_bot_input(const game *g, int i, input_state *in) {
   if (!pf->body.on_floor && (g->abilities & AB_CLAWS)) {
     bool lw = false, rw = false;
     for (int k = 1; k <= 5; k++) {
-      for (int dy = -1; dy <= 2; dy++) {
+      for (int dy = 1; dy <= 2; dy++) { /* beside the body, above the ground */
         if (world_solid(L, (int)floorf(x) - k, (int)floorf(y) + dy)) lw = true;
         if (world_solid(L, (int)floorf(x) + k, (int)floorf(y) + dy)) rw = true;
       }
