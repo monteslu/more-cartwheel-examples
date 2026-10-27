@@ -129,11 +129,15 @@ void char_attach(ent *e) {
   char_play(e, "idle", 0);
 }
 /* secondary motion: every live character's springs, once per fixed tick after the animation */
+float g_spring_motion; /* debug: summed speed of every spring tip, so a probe can see the springs move */
 void chars_secondary(void) {
+  g_spring_motion = 0;
   for (int i = 0; i < MAXP + MAXE; i++) {
     ent *e = i < MAXP ? &W.p[i] : &W.e[i - MAXP];
     if (!e->used || !e->root.id) continue;
-    sb_step(&RIGS[rig_of[i]].sr, (t3_vec3){ e->x, e->y, e->z }, ent_yaw(e), 1.0f / TPS);
+    spring_rig *sr = &RIGS[rig_of[i]].sr;
+    sb_step(sr, (t3_vec3){ e->x, e->y, e->z }, ent_yaw(e), 1.0f / TPS);
+    for (int k = 0; k < SB_MAX; k++) if (sr->b[k].bone) g_spring_motion += fabsf(sr->b[k].V.x) + fabsf(sr->b[k].V.y) + fabsf(sr->b[k].V.z);
   }
 }
 /* a hit shakes the hair, tails and belly away from the attacker */

@@ -189,6 +189,7 @@ static void init(void *user) {
   cw_debug_field("game.enemy", d_ex, CW_DBG_F32, 32);
   cw_debug_f32("game.cam", &d_cam);
   cw_debug_u32("game.hash", &d_hash);
+  { extern float g_spring_motion; cw_debug_f32("game.spring", &g_spring_motion); }
 #ifdef BRAWLER_AUTOPILOT
   cw_debug_command("stage", "stage <0-3>: jump to a stage", cmd_stage);
   cw_debug_command("cam", "cam <zoom> [dx dz]: camera zoom toward the street", cmd_cam);
