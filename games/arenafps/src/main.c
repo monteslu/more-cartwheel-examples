@@ -458,7 +458,7 @@ static void do_fire(fighter *f, int idx) {
   }
   if (cw_node_valid(f->light)) {
     cw_node_set(f->light, "energy", cw_val_float(f->weapon == 1 ? 60 : 28));
-    cw_node3d_set_position(f->light, muzzle);
+    cw_node3d_set_position(f->light, v3add(muzzle, v3scale(d0, 0.9f))); /* out past the barrel: at the barrel it bleaches the first person gun */
   }
 }
 
@@ -1578,6 +1578,7 @@ static void render(void *user, double alpha) {
 static void set_vm_layers(t3_object *o) {
   o->layers = 2;
   o->cast_shadow = false;
+  o->receive_shadow = false; /* the gun hangs at the eye: a sun shadow across it reads as a black slab */
   o->frustum_culled = false;
   for (int i = 0; i < o->child_count; i++) set_vm_layers(o->children[i]);
 }
@@ -1605,9 +1606,9 @@ static void make_viewmodels(void) {
     }
     G.vm_flash[h] = cw_node_new("MeshInstance3D", "Flash");
     cw_node_set(G.vm_flash[h], "primitive", cw_val_enum("SPHERE"));
-    cw_node_set(G.vm_flash[h], "size", cw_val_vec3(0.14f, 0, 0));
+    cw_node_set(G.vm_flash[h], "size", cw_val_vec3(0.06f, 0, 0));
     cw_node_set(G.vm_flash[h], "color", cw_val_color(1, 0.8f, 0.4f, 1));
-    cw_node_set(G.vm_flash[h], "emissive", cw_val_color(12, 8, 3, 1));
+    cw_node_set(G.vm_flash[h], "emissive", cw_val_color(7, 4.5f, 1.6f, 1));
     cw_node_set(G.vm_flash[h], "cast_shadow", cw_val_bool(false));
     cw_node_set(G.vm_flash[h], "visible", cw_val_bool(false));
     cw_node3d_set_position(G.vm_flash[h], v3(0, 0.02f, -0.72f));
