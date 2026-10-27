@@ -17,3 +17,6 @@ basic+vcol+trans+ds
 standard+fog+shadow+l2801+s100+xwater
 physical+vcol+fog+trans+nmap+shadow+ds+l2801+s100
 physical+map+fog+rep+nmap+ao+emap+rmap+shadow+l2801+s100
+physical+map+vcol+rep+nmap+ao+emap+rmap+shadow+l2801+s100
+standard+vcol+shadow+l2801+s100
+standard+vcol+fog+shadow+l2801+s100

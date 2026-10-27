@@ -387,6 +387,28 @@ enum { MT_ROCK, MT_GRASS, MT_CAVE, MT_BRICK, MT_BASALT, MT_PROP, MT_GLOW, MT_COU
 static const float STONE[BIOMES][3] = { { 0.95f, 0.72f, 0.55f }, { 0.55f, 0.66f, 0.9f }, { 1.0f, 0.88f, 0.66f }, { 1.1f, 0.85f, 0.85f } };
 static const float TOPS[BIOMES][3] = { { 0.85f, 1.0f, 0.7f }, { 0.55f, 0.7f, 0.95f }, { 1.0f, 0.9f, 0.7f }, { 1.2f, 0.9f, 0.85f } };
 
+/* world-space noise, one cell per unit at f = 1, for colour that runs smoothly across tiles */
+static float wn(float x, float y, float f, int s) { return vnoise(x * f / 4096.0f + 0.5f, y * f / 4096.0f + 0.5f, 4096, s); }
+/* the stone colour at a corner of the tile grid, so neighbouring faces agree and nothing reads as a square: a broad
+ * light/dark wash, a second warmer or cooler hue in patches, and a darkening with depth under the surface (counted
+ * from this corner up, over the two columns that share it) */
+static void corner_col(const level *L, int bi, float vx, float vy, float *out) {
+  const float *st = STONE[bi];
+  float broad = wn(vx, vy, 0.09f, 301), mid = wn(vx, vy, 0.31f, 302), hue = sstep(0.45f, 0.75f, wn(vx, vy, 0.12f, 303));
+  float var = 0.72f + 0.34f * broad + 0.12f * (mid - 0.5f);
+  int ix = (int)vx, iy = (int)vy, up = 0, cnt = 0;
+  for (int cx = ix - 1; cx <= ix; cx++) {
+    if (cx < 0 || cx >= WORLD_W) continue;
+    int u = 0;
+    while (iy + u < WORLD_H && u < 6 && world_solid(L, cx, iy + u)) u++;
+    up += u, cnt++;
+  }
+  float depth = cnt ? (float)up / (float)cnt : 0;
+  float dk = 1.0f - 0.075f * fminf(depth, 6.0f);
+  static const float HUE2[BIOMES][3] = { { 0.75f, 0.62f, 0.5f }, { 0.42f, 0.5f, 0.78f }, { 0.85f, 0.8f, 0.6f }, { 0.6f, 0.38f, 0.36f } };
+  for (int c = 0; c < 3; c++) out[c] = mixf(st[c], HUE2[bi][c], hue * 0.6f) * var * dk;
+}
+
 static int tile_mat(const level *L, int x, int y) {
   int t = L->t[y][x], bi = L->biome[x];
   if (t == T_BRICK) return MT_BRICK;
@@ -410,18 +432,22 @@ static void tile_faces(const level *L, int x, int y, mb *bs) {
   while (y - below > 0 && below < 6 && world_solid(L, x, y - below - 1)) below++;
   float depth_k = 1.0f;
   { int up = 0; while (y + up + 1 < WORLD_H && world_solid(L, x, y + up + 1) && up < 5) up++; depth_k = 1.0f - 0.06f * (float)up; }
-  float var = 0.86f + 0.14f * hh(x, y, 5);
+  float var = 0.86f + 0.14f * wn(fx + 0.5f, fy + 0.5f, 0.2f, 5);
   float cs[3] = { st[0] * var * depth_k, st[1] * var * depth_k, st[2] * var * depth_k };
   float ct[3] = { tp[0], tp[1], tp[2] };
   /* front face (toward the camera) */
   {
     float p[4][3] = { { fx, fy, DEPTH_FRONT }, { fx + 1, fy, DEPTH_FRONT }, { fx + 1, fy + 1, DEPTH_FRONT }, { fx, fy + 1, DEPTH_FRONT } };
     float n[3] = { 0, 0, 1 };
-    float bot[3], top[3];
-    /* a little ambient occlusion where the tile below is open (a ledge underside) and a lit lip where the top is open */
-    shade(bot, cs, 0.9f);
-    if (open_above) shade(top, cs, 1.15f); else shade(top, cs, 1.0f);
-    float c[4][3] = { { bot[0], bot[1], bot[2] }, { bot[0], bot[1], bot[2] }, { top[0], top[1], top[2] }, { top[0], top[1], top[2] } };
+    /* colour per corner (corner_col): smooth across tiles; a lit lip where the top is open, a little occlusion where
+     * the tile below is open (a ledge underside). A per-tile colour drew visible squares on big walls. */
+    float c[4][3];
+    corner_col(L, bi, fx, fy, c[0]), corner_col(L, bi, fx + 1, fy, c[1]), corner_col(L, bi, fx + 1, fy + 1, c[2]), corner_col(L, bi, fx, fy + 1, c[3]);
+    bool open_below = y > 0 && !world_solid(L, x, y - 1);
+    for (int k = 0; k < 4; k++) {
+      float m = (k >= 2 && open_above) ? 1.12f : (k < 2 && open_below) ? 0.8f : 1.0f;
+      shade(c[k], c[k], m);
+    }
     float uv[4][2] = { { fx / 4, fy / 4 }, { (fx + 1) / 4, fy / 4 }, { (fx + 1) / 4, (fy + 1) / 4 }, { fx / 4, (fy + 1) / 4 } };
     mb_quad(b, p, n, c, uv);
   }
@@ -578,6 +604,88 @@ static void lava_spire(mb *p, mb *g, float x, float y, float z, int seed, float 
   mb_cone(g, x, y + 0.03f, z + 0.16f * s, 0.045f * s, 0.01f, h * 0.55f, 0, 0, 4, gl0, gl1);
 }
 
+/* the faces that look at the camera, broken up: a grass fringe or a stone lip along every open top edge, strata ledges
+ * across big walls, boulders set into them, hexagonal basalt columns in the volcano, roots under the meadow turf and
+ * glowing veins in the caves. Everything sits on solid tiles (a boulder only where all eight neighbours are solid too),
+ * so nothing covers a player. */
+static bool interior(const level *L, int x, int y) {
+  for (int dy = -1; dy <= 1; dy++)
+    for (int dx = -1; dx <= 1; dx++)
+      if (x + dx < 0 || x + dx >= WORLD_W || y + dy < 0 || y + dy >= WORLD_H || !world_solid(L, x + dx, y + dy)) return false;
+  return true;
+}
+static void wall_detail(const level *L, int x0, int x1, mb *prop, mb *glow) {
+  const float zf = DEPTH_FRONT;
+  for (int x = x0; x < x1 && x < WORLD_W; x++) {
+    int bi = L->biome[x];
+    for (int y = 1; y < WORLD_H - 1; y++) {
+      int t = L->t[y][x];
+      if (!(t == T_ROCK || t == T_GRASS || t == T_BRICK)) continue;
+      float fx = (float)x, fy = (float)y;
+      bool open_above = !world_solid(L, x, y + 1);
+      float base[3];
+      corner_col(L, bi, fx + 0.5f, fy + 0.5f, base);
+      float r = hh(x, y, 400);
+      if (open_above) {
+        if (bi == BIOME_MEADOW && t != T_BRICK) {
+          /* turf that hangs over the edge: short dark blades, and now and then a root */
+          for (int k = 0; k < 7; k++) {
+            float bx = fx + ((float)k + hh(x, k, 401)) / 7.0f, len = 0.12f + 0.26f * hh(x, k, 402);
+            float c0[3] = { 0.12f, 0.32f, 0.06f }, c1[3] = { 0.05f, 0.14f, 0.03f };
+            mb_cone(prop, bx, fy + 1.03f, zf + 0.03f, 0.05f, 0.006f, -len, (hh(x, k, 403) - 0.5f) * 0.12f, 0.05f, 3, c0, c1);
+          }
+          if (r < 0.18f) {
+            float c0[3] = { 0.24f, 0.16f, 0.1f }, c1[3] = { 0.14f, 0.09f, 0.06f };
+            mb_cone(prop, fx + 0.2f + 0.6f * hh(x, y, 404), fy + 0.95f, zf + 0.02f, 0.035f, 0.008f, -(0.4f + 0.7f * hh(x, y, 405)), (hh(x, y, 406) - 0.5f) * 0.3f, 0.04f, 4, c0, c1);
+          }
+        } else {
+          /* a worn stone lip: lighter, a little proud of the face */
+          float lo[3], hi[3];
+          shade(lo, base, 0.85f), shade(hi, base, 1.25f);
+          mb_box(prop, fx + 0.5f, fy + 0.93f, zf + 0.03f, 0.5f, 0.07f + 0.02f * hh(x, y, 407), 0.07f, lo, hi);
+        }
+      }
+      if (open_above) continue;
+      /* strata: a ledge every few rows on a wall, its height wandering with the noise */
+      int phase = (int)(wn(fx, 0, 0.05f, 410) * 3.0f);
+      if (bi != BIOME_VOLCANO && t != T_BRICK && (y + phase) % 5 == 0 && world_solid(L, x - 1, y) && world_solid(L, x + 1, y)) {
+        float lo[3], hi[3];
+        shade(lo, base, 0.42f), shade(hi, base, 0.62f); /* a dark seam with a faint lit lip, not a bar */
+        float oy = 0.3f * (wn(fx, fy, 0.25f, 411) - 0.5f);
+        mb_box(prop, fx + 0.5f, fy + 0.5f + oy, zf + 0.005f, 0.53f, 0.035f, 0.02f, lo, hi);
+      }
+      if (bi == BIOME_VOLCANO && interior(L, x, y)) {
+        /* basalt columns: a hexagonal prism per tile, stacked into columns, every other column set back */
+        float lo[3], hi[3];
+        shade(lo, base, 0.3f), shade(hi, base, 0.55f);
+        float back = (x & 1) ? 0.1f : 0.0f;
+        mb_cone(prop, fx + 0.5f, fy, zf - 0.32f - back, 0.5f, 0.5f, 1.0f, 0, 0, 6, lo, hi);
+        if (r < 0.05f) { /* a glowing seam between two columns */
+          float g0[3] = { 1.6f, 0.4f, 0.05f }, g1[3] = { 2.6f, 0.8f, 0.12f };
+          mb_box(glow, fx + 1.0f, fy + 0.5f, zf + 0.0f, 0.03f, 0.5f, 0.05f, g0, g1);
+        }
+        continue;
+      }
+      if (interior(L, x, y) && r < (bi == BIOME_RUINS ? 0.03f : 0.07f)) {
+        /* a boulder set into the face */
+        float rx = 0.35f + 0.5f * hh(x, y, 412), ry = rx * (0.55f + 0.35f * hh(x, y, 413));
+        float lo[3], hi[3];
+        shade(lo, base, 0.6f), shade(hi, base, 1.15f);
+        mb_ellip(prop, fx + 0.5f, fy + 0.5f, zf - 0.05f, rx, ry, 0.22f, lo, hi, 9, 6);
+      }
+      if (bi == BIOME_CAVES && r > 0.93f) { /* a vein of glowing crystal */
+        float g0[3] = { 0.2f, 0.9f, 1.8f }, g1[3] = { 0.5f, 1.6f, 2.6f };
+        int n = 3 + (int)(hh(x, y, 414) * 4);
+        float px = fx + 0.5f, py = fy + 0.5f;
+        for (int k = 0; k < n; k++) {
+          mb_ellip(glow, px, py, zf + 0.01f, 0.06f + 0.04f * hh(x, k, 415), 0.025f, 0.02f, g0, g1, 6, 3);
+          px += 0.12f + 0.05f * hh(x, k, 416), py += (hh(x, k, 417) - 0.5f) * 0.16f;
+        }
+      }
+    }
+  }
+}
+
 /* scatter props over the surfaces of one chunk */
 static void scatter(const level *L, int x0, int x1, mb *prop, mb *glow) {
   for (int x = x0; x < x1 && x < WORLD_W; x++) {
@@ -699,6 +807,7 @@ void world_scene_build(game *g, cw_node root) {
         if (t == T_ROCK || t == T_GRASS || t == T_BRICK) tile_faces(L, x, y, bs);
       }
     scatter(L, cx, cx + CHUNK, &bs[MT_PROP], &bs[MT_GLOW]);
+    wall_detail(L, cx, cx + CHUNK, &bs[MT_PROP], &bs[MT_GLOW]);
     for (int m = 0; m < MT_COUNT; m++) {
       t3_geometry *gm = mb_done(&bs[m]);
       if (gm) add_mesh(gm, g_mat[m], 0, 0, 0, m != MT_GLOW), t3_release(gm);
@@ -775,10 +884,27 @@ void world_scene_build(game *g, cw_node root) {
       free(nor), free(idx);
       add_mesh(gt, g_lava_m, 0, 0, 0, false);
       g_surf[g_nsurf++] = (anim_surf){ gt, pos, uv, nv, (float)x, (float)x1, top, 0, 0, 0, cols };
-      /* front: a flat face below the surface */
-      float fp[4][3] = { { (float)x, 0, DEPTH_FRONT - 0.05f }, { (float)x1, 0, DEPTH_FRONT - 0.05f }, { (float)x1, top, DEPTH_FRONT - 0.05f }, { (float)x, top, DEPTH_FRONT - 0.05f } };
+      /* front: not a wall of lava. A bank of cooled basalt (its seams glow) holds the pool, a crust lip rides its top
+       * edge, and only a thin band of molten lava shows above it, so the flowing top surface is what reads */
+      float lip = top - 0.32f;
+      {
+        mb bank = { 0 };
+        float fp[4][3] = { { (float)x, 0, DEPTH_FRONT }, { (float)x1, 0, DEPTH_FRONT }, { (float)x1, lip, DEPTH_FRONT }, { (float)x, lip, DEPTH_FRONT } };
+        float fn[3] = { 0, 0, 1 }, fc[4][3] = { { 0.5f, 0.42f, 0.4f }, { 0.5f, 0.42f, 0.4f }, { 0.95f, 0.75f, 0.65f }, { 0.95f, 0.75f, 0.65f } };
+        float fuv[4][2] = { { (float)x / 4, 0 }, { (float)x1 / 4, 0 }, { (float)x1 / 4, lip / 4 }, { (float)x / 4, lip / 4 } };
+        mb_quad(&bank, fp, fn, fc, fuv);
+        /* the crust lip: lumps of cooled rock along the edge */
+        for (float lx = (float)x + 0.2f; lx < (float)x1; lx += 0.45f + 0.3f * hh((int)(lx * 7), 3, 700)) {
+          float lo[3] = { 0.08f, 0.06f, 0.06f }, hi[3] = { 0.22f, 0.16f, 0.14f };
+          float r = 0.18f + 0.16f * hh((int)(lx * 7), 4, 700);
+          mb_ellip(&bank, lx, lip + 0.02f, DEPTH_FRONT - 0.05f, r, r * 0.55f, 0.2f, lo, hi, 8, 5);
+        }
+        t3_geometry *gb = mb_done(&bank);
+        add_mesh(gb, g_mat[MT_BASALT], 0, 0, 0, false), t3_release(gb);
+      }
+      float fp[4][3] = { { (float)x, lip, DEPTH_FRONT - 0.08f }, { (float)x1, lip, DEPTH_FRONT - 0.08f }, { (float)x1, top, DEPTH_FRONT - 0.08f }, { (float)x, top, DEPTH_FRONT - 0.08f } };
       float fn[3] = { 0, 0, 1 }, fc[4][3] = { { 1, 1, 1 }, { 1, 1, 1 }, { 1, 1, 1 }, { 1, 1, 1 } };
-      float fuv[4][2] = { { (float)x / 3, 0 }, { (float)x1 / 3, 0 }, { (float)x1 / 3, top / 3 }, { (float)x / 3, top / 3 } };
+      float fuv[4][2] = { { (float)x / 3, lip / 3 }, { (float)x1 / 3, lip / 3 }, { (float)x1 / 3, top / 3 }, { (float)x / 3, top / 3 } };
       mb fb = { 0 };
       mb_quad(&fb, fp, fn, fc, fuv);
       t3_geometry *gf = mb_done(&fb);
@@ -922,8 +1048,8 @@ void world_hide_crack(int x, int y) {
  * different depths (the camera's perspective makes the parallax). Each region's layers rise out of the ground where
  * the region begins and sink again where it ends, so the scenery changes with the ground under the players. ── */
 
-static const float SKY_HOR[BIOMES][3] = { { 0.95f, 0.88f, 0.75f }, { 0.07f, 0.1f, 0.2f }, { 0.72f, 0.85f, 0.7f }, { 1.0f, 0.4f, 0.12f } };
-static const float SKY_MID[BIOMES][3] = { { 0.5f, 0.72f, 0.98f }, { 0.04f, 0.05f, 0.12f }, { 0.3f, 0.55f, 0.6f }, { 0.4f, 0.1f, 0.08f } };
+static const float SKY_HOR[BIOMES][3] = { { 0.8f, 0.86f, 0.92f }, { 0.07f, 0.1f, 0.2f }, { 0.72f, 0.85f, 0.7f }, { 1.0f, 0.4f, 0.12f } };
+static const float SKY_MID[BIOMES][3] = { { 0.36f, 0.6f, 0.95f }, { 0.04f, 0.05f, 0.12f }, { 0.3f, 0.55f, 0.6f }, { 0.4f, 0.1f, 0.08f } };
 static const float SKY_TOP[BIOMES][3] = { { 0.16f, 0.38f, 0.82f }, { 0.015f, 0.02f, 0.06f }, { 0.1f, 0.25f, 0.34f }, { 0.08f, 0.02f, 0.03f } };
 /* silhouette colours per region and layer, far to near (already hazed toward the sky: far layers are pale) */
 static const float LAYER_COL[BIOMES][4][3] = {
@@ -1029,6 +1155,97 @@ static t3_mesh *strip(float z, float step, const float *topc, const float *botc,
   t3_mesh *me = add_mesh(g, m, 0, 0, 0, false);
   t3_release(g);
   return me;
+}
+
+/* a backdrop layer as lit 3D ground instead of a flat card: a height field LAYER_DEPTH[l] deep around the layer z,
+ * highest along its middle row (the profile), falling to the front and back with noise, so the sun shapes its slopes and
+ * the shadows give it form. The ruins keep their blocks (flat tops, sheer sides). Colour: the layer colour, eased
+ * toward the horizon by distance (aerial perspective; the far layers are not washed out, only cooler and lighter), plus
+ * snow on the high meadow peaks and darker gullies. */
+static const float LAYER_DEPTH[4] = { 44, 30, 16, 9 };
+static const float RICH[BIOMES][4][3] = {
+  { { 0.36f, 0.45f, 0.62f }, { 0.22f, 0.4f, 0.33f }, { 0.13f, 0.34f, 0.15f }, { 0.2f, 0.42f, 0.13f } },
+  { { 0.1f, 0.12f, 0.22f }, { 0.08f, 0.1f, 0.18f }, { 0.07f, 0.08f, 0.15f }, { 0.08f, 0.09f, 0.14f } },
+  { { 0.4f, 0.48f, 0.45f }, { 0.4f, 0.4f, 0.33f }, { 0.36f, 0.33f, 0.26f }, { 0.24f, 0.3f, 0.15f } },
+  { { 0.28f, 0.1f, 0.08f }, { 0.2f, 0.07f, 0.06f }, { 0.13f, 0.06f, 0.05f }, { 0.09f, 0.05f, 0.05f } },
+};
+static const float AERIAL[4] = { 0.42f, 0.24f, 0.1f, 0.0f };
+static t3_material *g_ridge_m;
+static void ridge3d(int b, int l) {
+  float x0 = fmaxf(-140.0f, g_bx0[b] - 70.0f), x1 = fminf((float)WORLD_W + 140.0f, g_bx1[b] + 70.0f);
+  if (b == 0) x0 = -140.0f;
+  if (b == BIOMES - 1) x1 = (float)WORLD_W + 140.0f;
+  float step = l == 3 ? 0.5f : l == 2 ? 1.0f : l == 1 ? 2.0f : 3.0f;
+  int nx = (int)((x1 - x0) / step) + 1, nz = l == 3 ? 7 : l == 2 ? 9 : 11;
+  bool blocks = b == BIOME_RUINS && l < 3;
+  float zc = LAYER_Z[l], dz = LAYER_DEPTH[l];
+  float *pos = malloc(sizeof(float) * 3 * (size_t)(nx * nz)), *nor = malloc(sizeof(float) * 3 * (size_t)(nx * nz));
+  float *col = malloc(sizeof(float) * 3 * (size_t)(nx * nz)), *uv = malloc(sizeof(float) * 2 * (size_t)(nx * nz));
+  uint32_t *idx = malloc(sizeof(uint32_t) * 6 * (size_t)((nx - 1) * (nz - 1)));
+  float hor[3];
+  for (int c = 0; c < 3; c++) hor[c] = SKY_HOR[b][c];
+  for (int i = 0; i < nx; i++) {
+    float x = x0 + (float)i * step, m = bmask(b, x);
+    float top = mixf(-45.0f, profile(b, l, x), m);
+    float floor_y = l == 3 ? top - 7.0f : -30.0f;
+    for (int j = 0; j < nz; j++) {
+      float zr = -1.0f + 2.0f * (float)j / (float)(nz - 1); /* -1 the back row, +1 the front */
+      float n = wn(x, zr * dz, 0.08f, 500 + l * 7 + b), n2 = wn(x, zr * dz, 0.35f, 520 + l);
+      float sh;
+      if (blocks) sh = fabsf(zr) < 0.55f ? 1.0f : 0.0f;
+      else {
+        float a = fmaxf(0.0f, 1.0f - zr * zr);
+        sh = powf(a, 0.55f) * (0.78f + 0.3f * n) + 0.05f * (n2 - 0.5f);
+      }
+      if (j == 0 || j == nz - 1) sh = 0;
+      float y = floor_y + (top - floor_y) * sh;
+      int v = j * nx + i;
+      pos[v * 3] = x, pos[v * 3 + 1] = y, pos[v * 3 + 2] = zc + zr * dz * 0.5f;
+      uv[v * 2] = x / 5.0f, uv[v * 2 + 1] = (y - 0.5f * (zc + zr * dz * 0.5f)) / 5.0f;
+      float c3[3];
+      const float *rc = RICH[b][l];
+      float gully = 0.75f + 0.35f * n2;
+      for (int c = 0; c < 3; c++) c3[c] = rc[c] * gully;
+      if (b == BIOME_MEADOW && l == 0) { /* snow on the high peaks */
+        float snow = sstep(46.0f, 52.0f, y + 4.0f * (n2 - 0.5f));
+        for (int c = 0; c < 3; c++) c3[c] = mixf(c3[c], 0.92f, snow);
+      }
+      if (b == BIOME_VOLCANO && l < 3) c3[0] += 0.35f * sstep(0.62f, 0.9f, n2) * (1.0f - sh); /* glowing scree low down */
+      for (int c = 0; c < 3; c++) col[v * 3 + c] = mixf(c3[c], hor[c], AERIAL[l]);
+    }
+  }
+  /* normals from the grid */
+  for (int j = 0; j < nz; j++)
+    for (int i = 0; i < nx; i++) {
+      int v = j * nx + i, il = i > 0 ? v - 1 : v, ir = i < nx - 1 ? v + 1 : v, jb = j > 0 ? v - nx : v, jf = j < nz - 1 ? v + nx : v;
+      float ax = pos[ir * 3] - pos[il * 3], ay = pos[ir * 3 + 1] - pos[il * 3 + 1], az = pos[ir * 3 + 2] - pos[il * 3 + 2];
+      float bx = pos[jf * 3] - pos[jb * 3], by = pos[jf * 3 + 1] - pos[jb * 3 + 1], bz = pos[jf * 3 + 2] - pos[jb * 3 + 2];
+      float cx = by * az - bz * ay, cy = bz * ax - bx * az, cz = bx * ay - by * ax, ln = sqrtf(cx * cx + cy * cy + cz * cz) + 1e-6f;
+      if (cy < 0) cx = -cx, cy = -cy, cz = -cz;
+      nor[v * 3] = cx / ln, nor[v * 3 + 1] = cy / ln, nor[v * 3 + 2] = cz / ln;
+    }
+  int k = 0;
+  for (int j = 0; j + 1 < nz; j++)
+    for (int i = 0; i + 1 < nx; i++) {
+      uint32_t a = (uint32_t)(j * nx + i), b2 = a + 1, c = a + (uint32_t)nx, d = c + 1;
+      idx[k++] = a, idx[k++] = c, idx[k++] = b2, idx[k++] = b2, idx[k++] = c, idx[k++] = d;
+    }
+  t3_geometry *g = t3_geometry_new();
+  t3_attribute *at = t3_attribute_new(T3_FLOAT32, pos, nx * nz, 3);
+  t3_geometry_set_attribute(g, T3_ATTR_POSITION, at), t3_release(at);
+  at = t3_attribute_new(T3_FLOAT32, nor, nx * nz, 3);
+  t3_geometry_set_attribute(g, T3_ATTR_NORMAL, at), t3_release(at);
+  at = t3_attribute_new(T3_FLOAT32, col, nx * nz, 3);
+  t3_geometry_set_attribute(g, T3_ATTR_COLOR, at), t3_release(at);
+  at = t3_attribute_new(T3_FLOAT32, uv, nx * nz, 2);
+  t3_geometry_set_attribute(g, T3_ATTR_UV, at), t3_release(at);
+  at = t3_attribute_new(T3_UINT32, idx, k, 1);
+  t3_geometry_set_index(g, at), t3_release(at);
+  free(pos), free(nor), free(col), free(uv), free(idx);
+  /* the near layers wear the terrain textures (grass in the meadow, stone elsewhere); the far ones a plain matte */
+  t3_material *m = l >= 2 ? (b == BIOME_MEADOW && l == 3 ? g_mat[MT_GRASS] : b == BIOME_CAVES ? g_mat[MT_CAVE] : g_mat[MT_ROCK]) : g_ridge_m;
+  add_mesh(g, m, 0, 0, 0, false);
+  t3_release(g);
 }
 
 static t3_texture *tex_alpha(int w, int h, float (*fn)(float u, float v)) {
@@ -1158,14 +1375,14 @@ void world_backdrop(game *g) {
     g_ncloud++;
   }
   t3_release(cl);
-  /* silhouette layers: for each region, far to near */
+  /* the scenery layers: for each region, far to near, lit 3D ground (ridge3d) */
+  if (!g_ridge_m) {
+    g_ridge_m = t3_mesh_standard_material_new(0xffffff);
+    g_ridge_m->vertex_colors = true, g_ridge_m->roughness = 0.95f, g_ridge_m->metalness = 0.0f;
+  }
   for (int b = 0; b < BIOMES; b++)
-    for (int l = 0; l < 4; l++) {
-      float bot[3];
-      for (int c = 0; c < 3; c++) bot[c] = LAYER_COL[b][l][c] * (l == 3 ? 0.45f : l == 2 ? 0.6f : 0.75f);
-      float step = l == 3 ? 1.0f : l == 2 ? 1.5f : 3.0f;
-      strip(LAYER_Z[l], step, LAYER_COL[b][l], bot, b, l, b == BIOME_VOLCANO && l < 3 ? 0.35f : 0.0f);
-    }
+    for (int l = 0; l < 4; l++) ridge3d(b, l);
+  (void)strip;
   /* a hot glow at the foot of the volcano range */
   {
     enum { N = 60 };

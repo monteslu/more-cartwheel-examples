@@ -5,3 +5,8 @@ models/hero.glb
 models/walker.glb
 models/flyer.glb
 models/boss.glb
+decals.png
+grade/meadow.cube
+grade/caves.cube
+grade/ruins.cube
+grade/volcano.cube

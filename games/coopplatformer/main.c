@@ -80,6 +80,7 @@ enum { SFX_JUMP, SFX_LAND, SFX_COIN, SFX_HURT, SFX_SPLASH, SFX_DASH, SFX_POWER, 
 static cw_action a_left, a_right, a_up, a_down, a_jump, a_dash, a_map, a_retry;
 static input_state INPUT[MAX_PLAYERS];
 static bool g_map_open;
+static bool g_attract; /* the title and join screens: four bots play the meadow behind the menu */
 static int g_map_sel = -1; /* the flag the map's cursor is on */
 static cw_font g_font;
 static void title_background(cw_shell_screen scr, cw_vec2 cv, void *user);
@@ -145,7 +146,7 @@ typedef struct mood {
 static const mood MOODS[BIOMES] = {
   /* meadow: a warm afternoon, blue shade, soft haze, shafts under the trees */
   { { 0.32f, 0.58f, 0.95f }, { 0.62f, 0.76f, 0.95f }, { 1.0f, 0.9f, 0.72f }, 4.4f, 0.5f, 1.1f, 1.0f, 0.1f, 80, 520, 0.0f,
-    -0.7f, 0.55f, { 0.55f, 0.75f, 1.0f }, 0.9f, 0.0012f, 0.9f, 0.5f, { 0.85f, 0.92f, 1.0f }, 0.012f, 0.0f },
+    -0.7f, 0.55f, { 0.55f, 0.75f, 1.0f }, 0.9f, 0.0006f, 0.9f, 0.5f, { 0.85f, 0.92f, 1.0f }, 0.012f, 0.0f },
   /* caves: cold dark, the torches and crystals are the light, a cyan rim */
   { { 0.04f, 0.05f, 0.1f }, { 0.04f, 0.06f, 0.13f }, { 0.4f, 0.55f, 1.0f }, 0.4f, 0.14f, 0.35f, 1.7f, 0.2f, 24, 280, 1.0f,
     -0.9f, 0.2f, { 0.25f, 0.65f, 1.0f }, 1.6f, 0.003f, 0.5f, 0.3f, { 0.3f, 0.5f, 0.9f }, 0.02f, 0.0f },
@@ -214,6 +215,66 @@ static t3_material *phys(uint32_t rgb, float rough, float metal) {
   return m;
 }
 
+/* ── decals: one generated sheet (tools/gen-assets.mjs), 4 x 2 cells of 256 px, all MULTIPLY so the light stays right ── */
+enum { DC_DIRT, DC_SCORCH, DC_MOSS, DC_CRACK, DC_DAMP, DC_LEAVES, DC_SOOT, DC_CRAZE };
+static int g_ndecals;
+static float dhash(int x, int y, int s) {
+  uint32_t h = (uint32_t)x * 73856093u ^ (uint32_t)y * 19349663u ^ (uint32_t)s * 83492791u;
+  h ^= h >> 13, h *= 0x5bd1e995u, h ^= h >> 15;
+  return (float)(h & 0xffff) / 65535.0f;
+}
+/* a decal on the face that looks at the camera (down = false: projected along -Z onto it) or on a top (projected down) */
+static void decal(float x, float y, float w, float h, int cell, float strength, bool down, float spin) {
+  if (g_ndecals >= 220) return;
+  g_ndecals++;
+  cw_node d = make_node("Decal3D", S.world, "Decal");
+  cw_node_set(d, "texture", cw_val_string("decals.png"));
+  cw_node_set(d, "region", val_vec4((float)(cell % 4) * 256, (float)(cell / 4) * 256, 256, 256));
+  cw_node_set(d, "blend", cw_val_enum("MULTIPLY"));
+  cw_node_set(d, "color", cw_val_color(1, 1, 1, strength));
+  cw_node_set(d, "edge_fade", cw_val_float(0.3f));
+  cw_node_set(d, "normal_fade", cw_val_float(0.5f));
+  if (down) {
+    cw_node_set(d, "size", cw_val_vec3(w, h, 0.5f));
+    cw_node3d_set_position(d, (t3_vec3){ x, y + 0.12f, 0 });
+    cw_node3d_set_rotation(d, (t3_vec3){ -1.5708f, spin, 0 });
+  } else {
+    cw_node_set(d, "size", cw_val_vec3(w, h, 0.7f));
+    cw_node3d_set_position(d, (t3_vec3){ x, y, 1.75f });
+    cw_node3d_set_rotation(d, (t3_vec3){ 0, 0, spin });
+  }
+}
+/* dirt where the turf meets the cliff, damp runs under the ruin ledges, moss, cracks on big walls, soot over the lava,
+ * scorched and crazed ground beside it, leaf litter on the meadow paths */
+static void place_decals(const level *L) {
+  g_ndecals = 0;
+  for (int x = 1; x < WORLD_W - 1; x++) {
+    int bi = L->biome[x];
+    for (int y = 1; y < WORLD_H - 1; y++) {
+      int t = L->t[y][x];
+      if (!(t == T_ROCK || t == T_GRASS || t == T_BRICK)) continue;
+      bool top = !world_solid(L, x, y + 1);
+      float r = dhash(x, y, 900), fx = (float)x + 0.5f, fy = (float)y + 0.5f, spin = (dhash(x, y, 901) - 0.5f) * 0.6f;
+      bool lava_near = false;
+      for (int k = -4; k <= 4; k++)
+        if (x + k >= 0 && x + k < WORLD_W && L->t[2][x + k] == T_LAVA) lava_near = true;
+      if (top) {
+        if (bi == BIOME_MEADOW && r < 0.16f) decal(fx, fy - 0.15f, 2.2f, 1.1f, DC_DIRT, 0.75f, false, spin);
+        else if (bi == BIOME_RUINS && r < 0.22f) decal(fx, fy - 0.9f, 1.4f, 2.0f, DC_DAMP, 0.7f, false, 0);
+        else if (bi == BIOME_CAVES && r < 0.14f) decal(fx, fy - 0.9f, 1.3f, 2.0f, DC_DAMP, 0.6f, false, 0);
+        if (bi == BIOME_MEADOW && r > 0.9f) decal(fx, (float)y + 1.0f, 1.6f, 1.6f, DC_LEAVES, 0.8f, true, spin * 4);
+        if (bi == BIOME_VOLCANO && lava_near && r > 0.55f) decal(fx, (float)y + 1.0f, 2.0f, 2.0f, DC_SCORCH, 0.85f, true, spin * 4);
+        else if (bi == BIOME_VOLCANO && r > 0.8f) decal(fx, (float)y + 1.0f, 2.2f, 2.2f, DC_CRAZE, 0.7f, true, spin * 4);
+        continue;
+      }
+      if (y < L->ground[x] - 7 && !(bi == BIOME_VOLCANO && lava_near)) continue; /* deep rock under the surface is seldom on screen */
+      if (bi == BIOME_VOLCANO && lava_near && y < 9 && r < 0.12f) decal(fx, fy + 0.6f, 1.6f, 2.6f, DC_SOOT, 0.75f, false, 0);
+      else if ((bi == BIOME_RUINS || bi == BIOME_MEADOW) && r < 0.035f) decal(fx, fy, 1.8f, 1.8f, DC_MOSS, 0.6f, false, spin);
+      else if (r > 0.96f) decal(fx, fy, 1.8f, 1.8f, DC_CRACK, 0.7f, false, spin * 3);
+    }
+  }
+}
+
 static void build_scene(void) {
   game *g = &G;
   cw_tree *tree = cw_scene_app_tree();
@@ -224,6 +285,7 @@ static void build_scene(void) {
   S.nlight_src = 0;
   world_scene_build(g, S.world);
   world_backdrop(g);
+  place_decals(&g->L);
   cw_node wobj = S.world;
   const level *L = &g->L;
   /* environment, sun, post, camera: once */
@@ -557,6 +619,19 @@ static void apply_mood(float x) {
   cw_node_set(S.post, "bloom_intensity", cw_val_float(q->bloom));
   cw_node_set(S.post, "grain_intensity", cw_val_float(q->grain));
   cw_node_set(S.post, "ca_intensity", cw_val_float(q->ca));
+  /* a colour grade per region (assets/grade/*.cube, tools/gen-assets.mjs): when the region changes the grade fades out,
+   * the next LUT is loaded and it fades back in, so a border never snaps */
+  {
+    static const char *const LUTS[BIOMES] = { "grade/meadow.cube", "grade/caves.cube", "grade/ruins.cube", "grade/volcano.cube" };
+    static int lut_b = -1;
+    static float gk = 0;
+    if (b != lut_b) {
+      gk -= 0.04f;
+      if (gk <= 0 || lut_b < 0) gk = 0, lut_b = b, cw_node_set(S.post, "lut", cw_val_string(LUTS[b]));
+    } else gk += (0.9f - gk) * 0.04f;
+    cw_node_set(S.post, "grade", cw_val_bool(true));
+    cw_node_set(S.post, "grade_intensity", cw_val_float(gk));
+  }
   if (cw_node_valid(S.fog)) {
     cw_node_set(S.fog, "density", cw_val_float(q->vden));
     cw_node_set(S.fog, "color", cw_val_color(q->vcol[0], q->vcol[1], q->vcol[2], 1));
@@ -864,6 +939,7 @@ static int cfg_int(const char *env, int def) {
 
 static void start_match(int players, void *user) {
   (void)user;
+  g_attract = false;
   save_t *sv = cw_shell_game_save();
   G.abilities = 0;
   sim_reset(&G, players);
@@ -1307,7 +1383,28 @@ static void fixed_update(void *user, double dt) {
   (void)user;
   bool run = cw_shell_update();
   g_state_dbg = (int)cw_shell_screen_now(); /* even when the shell owns the tick */
-  if (!run) return;
+  if (!run) {
+    /* attract mode behind the title, join and settings screens: the real world, four bots with every ability running
+     * the meadow and the first cave, looped. Its sounds stay off; a match start (start_match) replaces it. */
+    cw_shell_screen scr = cw_shell_screen_now();
+    if (scr != CW_SHELL_TITLE && scr != CW_SHELL_JOIN && scr != CW_SHELL_SETTINGS) return;
+    if (!g_attract || !G.world.id || G.nplayers == 0 || G.tick > 60 * 75) {
+      G.abilities = AB_DOUBLE | AB_CLAWS | AB_DASH;
+      sim_reset(&G, MAX_PLAYERS);
+      G.abilities = AB_DOUBLE | AB_CLAWS | AB_DASH;
+      for (int i = 0; i < G.nplayers; i++) {
+        G.p[i].pf.can_dash = G.p[i].pf.can_wall_jump = true, G.p[i].pf.max_air_jumps = 1;
+        G.p[i].invuln = 0;
+      }
+      build_scene();
+      g_attract = true;
+    }
+    for (int i = 0; i < MAX_PLAYERS; i++) sim_bot_input(&G, i, &INPUT[i]);
+    sim_step(&G, INPUT, (float)dt);
+    G.events = 0;
+    return;
+  }
+  if (g_attract) return; /* the match has not started yet */
   if (G.nplayers == 0 || !G.world.id) return;
   g_run_ticks++;
 #ifdef COOP_AUTOPILOT
@@ -1552,6 +1649,23 @@ static void draw_map(float W, float H) {
 static void title_background(cw_shell_screen scr, cw_vec2 cv, void *user) {
   (void)user;
   float W = cv.x, H = cv.y, s = H / 540.0f, t = g_ui_t;
+  if (g_attract && G.world.id && S.built) {
+    /* the 3D world plays behind the menu: shade the top for the title and the bottom for the hints, nothing else */
+    for (int i = 0; i < 24; i++) {
+      float f = (float)i / 24.0f;
+      cw_r2d_rect(cw_rect_make(0, H * 0.42f * f, W, H * 0.42f / 24.0f + 1), cw_rgba(0.02f, 0.03f, 0.08f, 0.62f * (1 - f) * (1 - f)));
+      cw_r2d_rect(cw_rect_make(0, H - H * 0.3f * (f + 1.0f / 24.0f), W, H * 0.3f / 24.0f + 1), cw_rgba(0.02f, 0.03f, 0.06f, 0.55f * (1 - f) * (1 - f)));
+    }
+    if (scr == CW_SHELL_JOIN) {
+      int joined = cw_shell_players();
+      for (int i = 0; i < 4; i++) {
+        bool in = i < joined;
+        float x = W * (0.125f + 0.25f * (float)i), y = H * 0.625f - (in ? 7 * s * fabsf(sinf(t * 3.0f + (float)i * 0.9f)) : 0);
+        portrait((cw_vec2){ x, y }, 21 * s, i, !in);
+      }
+    }
+    return;
+  }
   static const float SKY[6][3] = { { 0.1f, 0.12f, 0.35f }, { 0.28f, 0.2f, 0.5f }, { 0.65f, 0.3f, 0.5f }, { 0.95f, 0.5f, 0.35f }, { 1.0f, 0.75f, 0.45f }, { 1.0f, 0.88f, 0.6f } };
   for (int i = 0; i < 80; i++) {
     float f = (float)i / 80.0f * 5.0f;
@@ -1613,7 +1727,7 @@ static void render(void *user, double alpha) {
   cw_r2d_begin(&(cw_r2d_pass_desc){ .clear = false });
   cw_vec2 cs = cw_r2d_canvas_size();
   float W = cs.x, H = cs.y, s = H / 540.0f;
-  if (G.nplayers && G.world.id && cw_shell_screen_now() != CW_SHELL_TITLE) {
+  if (G.nplayers && G.world.id && !g_attract && cw_shell_screen_now() != CW_SHELL_TITLE) {
     /* a panel per player: face, hearts, coins */
     for (int i = 0; i < G.nplayers; i++) {
       const player *p = &G.p[i];

@@ -11,6 +11,10 @@ Made by the game's own code (games/coopplatformer/*.c):
   - the backdrop: sky, ridges, trees, columns, spires, crystals, mushrooms, grass and flowers (generated meshes)
   - every sound (synthesized at start-up)
 
+Made by tools/gen-assets.mjs (our own script: value noise and curves, nothing downloaded):
+  - assets/decals.png: the decal sheet (dirt, scorch, moss, cracks, damp streaks, leaf litter, soot, crazed ground)
+  - assets/grade/*.cube: the colour grade of each region (3D lookup tables)
+
 Made by tools/blender/characters.py (Blender 5.2, run headless, our own script, no downloaded assets):
   - assets/models/hero.glb, walker.glb, flyer.glb, boss.glb: skinned meshes with PBR materials. The game poses
     their bones in code, so there are no baked animations.
