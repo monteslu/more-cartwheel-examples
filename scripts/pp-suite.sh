@@ -33,9 +33,9 @@ soft() { env -u DISPLAY -u WAYLAND_DISPLAY -u XAUTHORITY LIBGL_ALWAYS_SOFTWARE=1
 for p in "${parts[@]}"; do
   case "$p" in
     expect) chunks 4 $(names new) | while read -r c; do locked exp node "$ROOT/games/partypack/tools/pp-expect.mjs" $c >> "$O/expect.log" 2>&1; echo "expect [$c] exit $?"; done ;;
-    gates) chunks 3 $(names) | while read -r c; do locked gl node "$E/tests/gate.mjs" --gates-file $GF $c --hosts native >> "$O/gates.log" 2>&1; echo "gates [$c] exit $?"; done ;;
-    wgpu) chunks 3 $(names) | while read -r c; do locked wg node "$E/tests/gate.mjs" --gates-file $GF $c --hosts native --gpu webgpu >> "$O/wgpu.log" 2>&1; echo "wgpu [$c] exit $?"; done ;;
-    hosts) chunks 2 $CROSS | while read -r c; do locked dual node "$E/tests/gate.mjs" --gates-file $GF $c --hosts native,romdev,chromium --gpu webgpu >> "$O/hosts.log" 2>&1; echo "hosts [$c] exit $?"; done ;;
+    gates) chunks ${PP_CHUNK:-3} $(names) | while read -r c; do locked gl node "$E/tests/gate.mjs" --gates-file $GF $c --hosts native >> "$O/gates.log" 2>&1; echo "gates [$c] exit $?"; done ;;
+    wgpu) chunks ${PP_CHUNK:-3} $(names) | while read -r c; do locked wg node "$E/tests/gate.mjs" --gates-file $GF $c --hosts native --gpu webgpu >> "$O/wgpu.log" 2>&1; echo "wgpu [$c] exit $?"; done ;;
+    hosts) chunks ${PP_CHUNK_HOSTS:-2} $CROSS | while read -r c; do locked dual node "$E/tests/gate.mjs" --gates-file $GF $c --hosts native,romdev,chromium --gpu webgpu >> "$O/hosts.log" 2>&1; echo "hosts [$c] exit $?"; done ;;
     balance) soft timeout 3000 bash "$ROOT/games/partypack/tools/balance.sh" "${PP_N:-100}" > "$O/balance.log" 2>&1; echo "balance exit $?" ;;
     soak) # ten minutes of game time per mini-game. The 2D games run sim-only (PP_BATCH: four whole tournaments of that
           # one game inside the simulation, about 10 to 12 minutes of play, no rendering); the 3D games need their scene,
