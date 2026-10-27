@@ -146,14 +146,17 @@ static struct {
   int bn[EK_KINDS]; /* frames per cycle */
   t3_instanced_mesh *eb[EK_KINDS][CH_MAXF];
   t3_mesh *pm[MAXP][CH_MAXC * CH_MAXF][CH_MAXG];
-  t3_instanced_mesh *bullet, *rocket, *gem, *health, *crate, *barrel, *wall, *pillar, *shadowblob;
+  t3_instanced_mesh *bullet, *rocket, *gem[3], *health, *crate, *barrel, *wall, *pillar, *shadowblob;
   t3_object *pl[MAXP];
   cw_node pn[MAXP];
   int pl_frame[MAXP];
   t3_mesh *pl_ring[MAXP];
+  cw_node pl_light[MAXP];
   view_stats st;
   float cx, cy, cd;
   bool cam_init;
+  t3_vec3 eye, at; /* the camera last frame, for view_screen */
+  float aspect;
 } V;
 
 static const t3_mat4 ZERO;
@@ -265,7 +268,7 @@ static const pbr *pbr_get(int kind) {
         if (cy == 1 && sy > S / 2 - 7 && sy < S / 2 + 7 && ((x / 56) & 1) == 0 && n > 0.3f) paint = 1.0f - 0.7f * h01((uint32_t)x, (uint32_t)(y / 3)); /* worn dashes */
         ht = 0.5f + 0.22f * n + 0.05f * g - 0.5f * joint - 0.2f * crack - 0.05f * patch;
         ht = ht + (0.5f - ht) * puddle * 0.9f;
-        float k = 0.2f + 0.1f * n + 0.03f * g + 0.04f * (slab - 0.5f) - 0.1f * joint - 0.08f * crack - 0.07f * stain - 0.05f * puddle - 0.03f * patch;
+        float k = 0.3f + 0.1f * n + 0.03f * g + 0.05f * (slab - 0.5f) - 0.12f * joint - 0.1f * crack - 0.08f * stain - 0.06f * puddle - 0.03f * patch;
         c0 = k * 1.04f, c1 = k * 0.99f, c2 = k * 0.94f;
         c0 += 0.62f * paint * 0.9f, c1 += 0.5f * paint * 0.9f, c2 += 0.06f * paint;
         rough = 0.86f - 0.5f * stain - 0.1f * joint - 0.8f * puddle + 0.1f * g * 0.5f;
@@ -534,8 +537,31 @@ void view_init(cw_node root) {
   }
   V.bullet = imesh("Bullets", t3_box_geometry_new(0.07f, 0.07f, 0.7f, 1, 1, 1), glow(1, 0.85f, 0.35f, 6), MAXB, false);
   V.rocket = imesh("Rockets", t3_cylinder_geometry_new(0.1f, 0.1f, 0.7f, 8, 1, false), glow(1, 0.45f, 0.12f, 5), 64, false);
-  V.gem = imesh("Gems", t3_octahedron_geometry_new(0.16f, 0), glow(0.3f, 1, 0.8f, 3.5f), MAXG, false);
-  V.health = imesh("Health", t3_box_geometry_new(0.34f, 0.34f, 0.34f, 1, 1, 1), glow(1, 0.2f, 0.25f, 3.5f), 64, false);
+  { /* xp gems: a faceted shard (a stretched octahedron: each face keeps its own normal), glassy with a glowing core; a richer gem is
+     * bigger and changes colour: cool cyan, green, then gold */
+    static const float GC[3][3] = { { 0.25f, 0.9f, 1.0f }, { 0.35f, 1.0f, 0.45f }, { 1.0f, 0.86f, 0.3f } };
+    static const char *GN[3] = { "Gems", "GemsRich", "GemsGold" };
+    for (int k = 0; k < 3; k++) {
+      t3_geometry *g = t3_octahedron_geometry_new(0.17f, 0);
+      t3_geometry_apply_matrix4(g, &(t3_mat4){ { 1, 0, 0, 0, 0, 1.9f, 0, 0, 0, 0, 0.8f, 0, 0, 0, 0, 1 } });
+      /* leaning 40 degrees: from the high camera the shard shows its long diamond as it turns, not a square */
+      t3_geometry_apply_matrix4(g, &(t3_mat4){ { 1, 0, 0, 0, 0, 0.766f, 0.643f, 0, 0, -0.643f, 0.766f, 0, 0, 0, 0, 1 } });
+      t3_material *m = t3_mesh_standard_material_new(0xffffff);
+      m->color = lin(GC[k][0] * 0.35f, GC[k][1] * 0.35f, GC[k][2] * 0.35f);
+      m->emissive = lin(GC[k][0], GC[k][1], GC[k][2]);
+      m->emissive_intensity = k == 2 ? 1.5f : 1.6f + 0.4f * (float)k; /* gold kept gold, not tone-mapped to orange */
+      m->roughness = 0.12f;
+      m->metalness = 0.3f;
+      V.gem[k] = imesh(GN[k], g, m, k == 0 ? MAXG : 256, false);
+    }
+  }
+  {
+    part hp[] = {
+      { t3_box_geometry_new(0.42f, 0.14f, 0.14f, 1, 1, 1), M(0, 0, 0, 1, 1, 1), { 1, 1, 1 } },
+      { t3_box_geometry_new(0.14f, 0.42f, 0.14f, 1, 1, 1), M(0, 0, 0, 1, 1, 1), { 1, 1, 1 } },
+    };
+    V.health = imesh("Health", merge(hp, 2), glow(1, 0.18f, 0.2f, 3.0f), 64, false);
+  }
   {
     t3_material *cm = mat(1, 1, 1, 0.85f, 0, false);
     pbr_apply(cm, TX_CRATE, 1, 1.0f);
@@ -565,9 +591,11 @@ void view_init(cw_node root) {
   bool have = chr_load(&V.soldier, "models/soldier.cwchar");
   for (int i = 0; i < MAXP; i++) {
     t3_object *g = t3_group_new();
-    t3_material *bm = mat(1, 1, 1, 0.5f, 0.35f, true);
+    t3_material *bm = mat(1, 1, 1, 0.45f, 0.35f, true);
     pbr_apply(bm, TX_ARMOR, 2.0f, 0.9f);
-    t3_material *tm = glow(PC[i][0], PC[i][1], PC[i][2], 3);
+    bm->emissive = lin(PC[i][0] * 0.5f + 0.1f, PC[i][1] * 0.5f + 0.1f, PC[i][2] * 0.5f + 0.1f); /* a faint team glow: the soldier never sinks into the dusk */
+    bm->emissive_intensity = 0.35f;
+    t3_material *tm = glow(PC[i][0], PC[i][1], PC[i][2], 7);
     if (have)
       for (int f = 0; f < V.soldier.nf[0] + V.soldier.nf[1]; f++) {
         t3_mesh *mb = t3_mesh_new(V.soldier.geo[0][f], bm), *mt = t3_mesh_new(V.soldier.geo[1][f], tm);
@@ -577,8 +605,9 @@ void view_init(cw_node root) {
         V.pm[i][f][0] = mb, V.pm[i][f][1] = mt;
         t3_release(mb), t3_release(mt);
       }
-    t3_material *rm = glow(PC[i][0], PC[i][1], PC[i][2], 3);
-    t3_geometry *ring = t3_cylinder_geometry_new(0.7f, 0.7f, 0.03f, 24, 1, true);
+    t3_material *rm = glow(PC[i][0], PC[i][1], PC[i][2], 6);
+    t3_geometry *ring = t3_ring_geometry_new(0.78f, 0.95f, 40, 1);
+    t3_geometry_apply_matrix4(ring, &(t3_mat4){ { 1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1 } }); /* flat on the ground */
     t3_mesh *mr = t3_mesh_new(ring, rm);
     mr->base.position = (t3_vec3){ 0, 0.03f, 0 };
     t3_object_add(g, mr);
@@ -588,6 +617,17 @@ void view_init(cw_node root) {
     cw_node_add_child(V.root, pn);
     cw_node3d_set_object(pn, g);
     V.pn[i] = pn;
+    { /* a light that rides over the soldier: the team colour washed toward white, a pool on the floor round them */
+      cw_node l = cw_node_new("OmniLight3D", "PlayerLight");
+      cw_node_add_child(V.root, l);
+      cw_node_set(l, "color", cw_val_color(0.55f + 0.45f * PC[i][0], 0.55f + 0.45f * PC[i][1], 0.55f + 0.45f * PC[i][2], 1));
+      cw_node_set(l, "energy", cw_val_float(0));
+      cw_node_set(l, "range", cw_val_float(6));
+      cw_node_set(l, "decay", cw_val_float(2));
+      cw_node_set(l, "fog_energy", cw_val_float(0));
+      cw_node3d_set_position(l, (t3_vec3){ 0, -60, 0 });
+      V.pl_light[i] = l;
+    }
     t3_release(mr), t3_release(ring), t3_release(bm), t3_release(tm), t3_release(rm);
     t3_release(g);
   }
@@ -637,8 +677,8 @@ void view_sync(const sim *s, float time) {
     float sq = 1.0f + (e->flash > 0 ? 0.1f : 0);
     float yaw = -e->face + 1.5708f; /* the model faces +Z; face is atan2(z, x) */
     put(im, n, e->x, 0.0f, e->y, yaw, sq, sq, sq);
-    float tint = 0.8f + 0.4f * h01((uint32_t)i, 5);
-    t3_color c = e->flash > 0 ? (t3_color){ 4, 2.8f, 2.2f } : (t3_color){ tint, tint * (0.9f + 0.2f * h01((uint32_t)i, 9)), tint };
+    float tint = 0.5f + 0.2f * h01((uint32_t)i, 5);
+    t3_color c = e->flash > 0 ? (t3_color){ 4, 2.8f, 2.2f } : (t3_color){ tint * 0.82f, tint * (0.8f + 0.1f * h01((uint32_t)i, 9)), tint * 0.9f };
     t3_instanced_mesh_set_color_at(im, n, c);
   }
   V.st.enemies_drawn = 0;
@@ -670,18 +710,22 @@ void view_sync(const sim *s, float time) {
   touch(V.bullet, false), touch(V.rocket, false);
   V.st.bullets = nb + nr;
   /* pickups */
-  int ng = 0, nh = 0;
+  int ng[3] = { 0, 0, 0 }, nh = 0;
   for (int i = 0; i < MAXG; i++) {
     const pickup *g = &s->g[i];
     if (!g->alive) continue;
     float blink = g->life < 180 && ((g->life / 6) & 1) ? 0 : 1;
     if (g->kind == 0) {
-      put(V.gem, ng++, g->x, 0.35f + 0.08f * cw_sin(time * 4 + (float)i), g->y, time * 2 + (float)i, blink, blink, blink);
-    } else if (nh < 64) put(V.health, nh++, g->x, 0.5f + 0.1f * cw_sin(time * 3 + (float)i), g->y, time + (float)i, blink, blink, blink);
+      int t = g->value >= 20 ? 2 : g->value >= 5 ? 1 : 0;
+      if (ng[t] >= V.gem[t]->instance_matrix->count) continue;
+      float sc = blink * (t == 2 ? 1.9f : t == 1 ? 1.4f : 1.0f);
+      put(V.gem[t], ng[t]++, g->x, 0.45f + 0.12f * cw_sin(time * 3.2f + (float)i * 0.7f), g->y, time * 1.6f + (float)i, sc, sc, sc);
+    } else if (nh < 64) put(V.health, nh++, g->x, 0.55f + 0.1f * cw_sin(time * 3 + (float)i), g->y, time + (float)i, blink, blink, blink);
   }
-  V.gem->count = ng, V.health->count = nh;
-  touch(V.gem, false), touch(V.health, false);
-  V.st.pickups = ng + nh;
+  for (int t = 0; t < 3; t++) V.gem[t]->count = ng[t], touch(V.gem[t], false);
+  V.health->count = nh;
+  touch(V.health, false);
+  V.st.pickups = ng[0] + ng[1] + ng[2] + nh;
   /* the world's pieces */
   int nc = 0, nba = 0, nw = 0, np = 0;
   for (int i = 0; i < MAXO; i++) {
@@ -714,8 +758,11 @@ void view_sync(const sim *s, float time) {
     t3_object *g = V.pl[i];
     if (!p->active) {
       cw_node3d_set_position(V.pn[i], (t3_vec3){ 0, -100, 0 });
+      cw_node_set(V.pl_light[i], "energy", cw_val_float(0));
       continue;
     }
+    cw_node3d_set_position(V.pl_light[i], (t3_vec3){ p->x, 2.4f, p->y });
+    cw_node_set(V.pl_light[i], "energy", cw_val_float(p->down ? 8.0f : 22.0f));
     cw_node3d_set_position(V.pn[i], (t3_vec3){ p->x, p->down ? -0.6f : 0, p->y });
     cw_node3d_set_rotation(V.pn[i], (t3_vec3){ p->down ? 1.4f : 0, -p->aim + 1.5708f, 0 }); /* the model faces +Z */
     if (V.soldier.nclip < 2) continue;
@@ -750,4 +797,24 @@ void view_camera(const sim *s, cw_node camera, float aspect, float shake_x, floa
   t3_vec3 eye = { at.x, cw_sin(tilt) * V.cd, at.z + cw_cos(tilt) * V.cd };
   cw_node3d_set_position(camera, eye);
   cw_node3d_look_at(camera, at, (t3_vec3){ 0, 1, 0 });
+  V.eye = eye, V.at = at, V.aspect = aspect;
+}
+
+/* where a world point lands on screen (0..1, y down), from the camera view_camera placed; false behind it */
+bool view_screen(t3_vec3 p, float *u, float *v) {
+  t3_vec3 f = { V.at.x - V.eye.x, V.at.y - V.eye.y, V.at.z - V.eye.z };
+  float fl = sqrtf(f.x * f.x + f.y * f.y + f.z * f.z);
+  if (fl < 1e-4f || V.aspect <= 0) return false;
+  f.x /= fl, f.y /= fl, f.z /= fl;
+  t3_vec3 r = { -f.z, 0, f.x }; /* forward x up(0,1,0) */
+  float rl = sqrtf(r.x * r.x + r.z * r.z);
+  r.x /= rl, r.z /= rl;
+  t3_vec3 up = { r.y * f.z - r.z * f.y, r.z * f.x - r.x * f.z, r.x * f.y - r.y * f.x };
+  t3_vec3 d = { p.x - V.eye.x, p.y - V.eye.y, p.z - V.eye.z };
+  float z = d.x * f.x + d.y * f.y + d.z * f.z;
+  if (z <= 0.01f) return false;
+  float th = tanf(38.0f * 3.14159265f / 360.0f);
+  float x = (d.x * r.x + d.y * r.y + d.z * r.z) / (z * th * V.aspect), y = (d.x * up.x + d.y * up.y + d.z * up.z) / (z * th);
+  *u = 0.5f + 0.5f * x, *v = 0.5f - 0.5f * y;
+  return true;
 }

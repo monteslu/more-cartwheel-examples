@@ -11,8 +11,11 @@ Where each asset comes from
   Blender (Blender is used as a tool; its output is ours). Rerun them to
   rebuild the files.
 - assets/grade/dusk.cube: tools/gen-lut.mjs.
-- assets/fx/*.png (fire and smoke flipbooks, heat-haze swirl):
-  tools/gen-fx-sheets.mjs.
+- assets/fx/fire.png, fire_mv.png, smoke.png, smoke_mv.png, scorch.png (fire
+  and smoke flipbooks with their motion-vector sheets, the scorch shapes):
+  baked by cartwheel-engine's tools/fx/bake-flipbooks.mjs (procedural, CC0,
+  listed in the engine's NOTICE): node <engine>/tools/fx/bake-flipbooks.mjs assets/fx
+- assets/fx/haze.png (the heat-haze swirl): tools/gen-fx-sheets.mjs.
 - Surface textures (floor, crates, walls, skin, plate): generated at start-up by
   view.c from integer hashes.
 - Sounds: synthesised in main.c.

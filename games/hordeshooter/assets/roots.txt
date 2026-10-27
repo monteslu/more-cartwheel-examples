@@ -14,6 +14,9 @@ models/rubble.cwchar
 models/tyres.cwchar
 models/pipes.cwchar
 grade/dusk.cube
-fx/fire_sheet.png
-fx/smoke_sheet.png
+fx/fire.png
+fx/fire_mv.png
+fx/smoke.png
+fx/smoke_mv.png
+fx/scorch.png
 fx/haze.png

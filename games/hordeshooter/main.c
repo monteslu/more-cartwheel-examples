@@ -12,7 +12,7 @@
  *   hordeshooter_auto plays itself (for hosts that send no input).
  * Environment (development): HORDE_WAVE=n starts at wave n; HORDE_PLAYERS=n
  * sets the player count of the auto build; HORDE_BENCH=1 prints ms per
- * frame every 120 frames. */
+ * frame every 120 frames; HORDE_VFOG=0|1 turns the volumetric fog off or on. */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -110,6 +110,7 @@ static void build_world(void) {
   fx_init(root);
   G.camera = cw_node_get(root, "Arena/Camera");
   G.sun = cw_node_get(root, "Arena/Sun");
+  if (getenv("HORDE_VFOG")) cw_node_set(cw_node_get(root, "Arena/Fog"), "volumetric", cw_val_bool(atoi(getenv("HORDE_VFOG")) != 0)); /* development: the volumetric fog on (1) or off (0) */
   G.built = true;
 }
 
@@ -303,6 +304,14 @@ static void hud(void) {
       text(b, cs.x * 0.5f, cs.y * 0.62f + (float)i * 22 * u, 20 * u, rgba(PC[i][0], PC[i][1], PC[i][2], cw_clampf(G.level_flash[i] / 40.0f, 0, 1)), CW_ALIGN_CENTER);
     }
   }
+  for (int i = 0; i < G.S.players; i++) { /* P1..P4 over each soldier: who is who without the colours */
+    const player *p = &G.S.p[i];
+    float su, sv;
+    if (!p->active || !view_screen((t3_vec3){ p->x, 2.3f, p->y }, &su, &sv)) continue;
+    char t[8];
+    snprintf(t, sizeof t, "P%d", i + 1);
+    text(t, su * cs.x, sv * cs.y - 16 * u, 13 * u, rgba(0.55f + 0.45f * PC[i][0], 0.55f + 0.45f * PC[i][1], 0.55f + 0.45f * PC[i][2], 1), CW_ALIGN_CENTER);
+  }
   char b[96];
   snprintf(b, sizeof b, "WAVE %d / %d     %d kills     %d on the yard", G.S.wave, FINAL_WAVE, G.S.killed_total, G.S.nenemies);
   text(b, cs.x * 0.5f, 10 * u, 16 * u, rgba(1, 0.95f, 0.8f, 1), CW_ALIGN_CENTER);
@@ -375,6 +384,14 @@ static void render(void *u, double alpha) {
       fprintf(stderr, "bench frame_ms=%.2f sim_ms=%.2f view_ms=%.2f fx_ms=%.2f tick=%d wave=%d enemies=%d drawn=%d crowd_ms=%.2f cpu3d_ms=%.2f draws=%d tris=%d psys=%d palive=%d psteps=%d pdraw=%d decals=%d/%d gibs=%d lights=%d booms=%d\n",
              T_frame / T_n, T_sim / T_n, T_view / T_n, T_fx / T_n, G.S.tick, G.S.wave, G.S.nenemies, vs.enemies_drawn, G.S.crowd_ms, rs.cpu_ms, rs.draw_calls, rs.triangles, ps.systems, ps.alive,
              ps.sim_steps, ps.draw_calls, ds.visible, ds.decals, fs.gibs_live, fs.lights_live, fs.booms);
+      { /* the passes that cost most, GPU (CW_GPU_TIMERS=1) and CPU, averaged */
+        const cw_pass_stat *ps;
+        int np = cw_pipeline_pass_stats(cw_pipeline_of(cw_scene_app_tree()), &ps);
+        fprintf(stderr, "bench_passes gpu_total=%.2f", cw_pipeline_gpu_ms(cw_pipeline_of(cw_scene_app_tree())));
+        for (int k = 0; k < np; k++)
+          if (ps[k].ran && (ps[k].gpu_ms_avg > 0.3f || ps[k].cpu_ms_avg > 0.3f)) fprintf(stderr, " %s=%.2f/%.2f", ps[k].name, ps[k].gpu_ms_avg, ps[k].cpu_ms_avg);
+        fprintf(stderr, "\n");
+      }
       fflush(stderr);
       T_sim = T_view = T_fx = T_frame = 0;
       T_n = 0;
