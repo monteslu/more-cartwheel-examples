@@ -1,0 +1,404 @@
+[scene format=1]
+
+[node name="Stage" type="Node3D"]
+title = "Dojo Courtyard"
+
+[node name="Sky" parent="." type="ProceduralSky"]
+sun = "../Sun"
+time_of_day = 14.2
+latitude = 35
+declination = 20
+north = 30
+sun_energy = 9
+sky_energy = 1.3
+mie = 1.0
+sun_disk_intensity = 1.0
+ground_color = color(0.1329, 0.1005, 0.0637, 1)
+env_update_angle = 2
+
+[node name="Sun" parent="." type="DirectionalLight3D"]
+shadow = true
+shadow_size = 2048
+shadow_extent = 14
+shadow_far = 60
+shadow_bias = -0.0003
+shadow_normal_bias = 0.03
+shadow_cascades = 3
+shadow_distance = 40
+
+[node name="Env" parent="." type="WorldEnvironment"]
+background = color(0.1005, 0.2633, 0.7874, 1)
+ambient_color = color(0.448, 0.6038, 1, 1)
+ambient_energy = 0.1
+sky_color = color(0.2633, 0.448, 1, 1)
+ground_color = color(0.1329, 0.1005, 0.0637, 1)
+hemi_energy = 0.5
+
+[node name="Fog" parent="." type="HeightFog"]
+density = 0.004
+height_falloff = 0.05
+base_height = 0
+use_sky_color = true
+sun_scatter = 0.3
+sun_g = 0.7
+max_opacity = 0.4
+start_distance = 20
+sky_distance = 300
+
+[node name="Post" parent="." type="PostProcess"]
+tonemap = AGX
+exposure = 0.95
+bloom = true
+bloom_intensity = 0.07
+bloom_threshold = 1.1
+bloom_knee = 0.6
+ssao = true
+ssao_radius = 0.7
+ssao_intensity = 0.95
+aa = SMAA
+vignette = true
+vignette_intensity = 0.22
+vignette_smoothness = 0.6
+grade = true
+lut = "grades/day.cube"
+grade_intensity = 0.7
+
+[node name="Camera" parent="." type="Camera3D"]
+position = vec3(0, 1.6, 9)
+fov = 34
+near = 0.5
+far = 400
+interpolate = false
+
+[node name="tex_wood_floor" parent="." type="MeshInstance3D"]
+primitive = BOX
+size = vec3(20, 0.5, 9)
+position = vec3(0, -0.25, -0.5)
+color = color(0.6038, 0.3424, 0.1706, 1)
+roughness = 0.7
+metalness = 0
+cast_shadow = true
+receive_shadow = true
+
+[node name="tex_concrete_step" parent="." type="MeshInstance3D"]
+primitive = BOX
+size = vec3(20.6, 0.35, 1.2)
+position = vec3(0, -0.1, 4.6)
+color = color(0.214, 0.196, 0.1706, 1)
+roughness = 0.8
+metalness = 0
+cast_shadow = true
+receive_shadow = true
+
+[node name="pillar0" parent="." type="MeshInstance3D"]
+primitive = CYLINDER
+size = vec3(0.55, 6, 0.55)
+position = vec3(-9, 3, -4.4)
+color = color(0.3185, 0.01, 0.0072, 1)
+roughness = 0.45
+metalness = 0
+cast_shadow = true
+receive_shadow = true
+clearcoat = 0.5
+
+[node name="pillar1" parent="." type="MeshInstance3D"]
+primitive = CYLINDER
+size = vec3(0.55, 6, 0.55)
+position = vec3(-6, 3, -4.4)
+color = color(0.3185, 0.01, 0.0072, 1)
+roughness = 0.45
+metalness = 0
+cast_shadow = true
+receive_shadow = true
+clearcoat = 0.5
+
+[node name="pillar2" parent="." type="MeshInstance3D"]
+primitive = CYLINDER
+size = vec3(0.55, 6, 0.55)
+position = vec3(-3, 3, -4.4)
+color = color(0.3185, 0.01, 0.0072, 1)
+roughness = 0.45
+metalness = 0
+cast_shadow = true
+receive_shadow = true
+clearcoat = 0.5
+
+[node name="pillar3" parent="." type="MeshInstance3D"]
+primitive = CYLINDER
+size = vec3(0.55, 6, 0.55)
+position = vec3(0, 3, -4.4)
+color = color(0.3185, 0.01, 0.0072, 1)
+roughness = 0.45
+metalness = 0
+cast_shadow = true
+receive_shadow = true
+clearcoat = 0.5
+
+[node name="pillar4" parent="." type="MeshInstance3D"]
+primitive = CYLINDER
+size = vec3(0.55, 6, 0.55)
+position = vec3(3, 3, -4.4)
+color = color(0.3185, 0.01, 0.0072, 1)
+roughness = 0.45
+metalness = 0
+cast_shadow = true
+receive_shadow = true
+clearcoat = 0.5
+
+[node name="pillar5" parent="." type="MeshInstance3D"]
+primitive = CYLINDER
+size = vec3(0.55, 6, 0.55)
+position = vec3(6, 3, -4.4)
+color = color(0.3185, 0.01, 0.0072, 1)
+roughness = 0.45
+metalness = 0
+cast_shadow = true
+receive_shadow = true
+clearcoat = 0.5
+
+[node name="pillar6" parent="." type="MeshInstance3D"]
+primitive = CYLINDER
+size = vec3(0.55, 6, 0.55)
+position = vec3(9, 3, -4.4)
+color = color(0.3185, 0.01, 0.0072, 1)
+roughness = 0.45
+metalness = 0
+cast_shadow = true
+receive_shadow = true
+clearcoat = 0.5
+
+[node name="beam" parent="." type="MeshInstance3D"]
+primitive = BOX
+size = vec3(20, 0.5, 0.7)
+position = vec3(0, 6.1, -4.4)
+color = color(0.0732, 0.006, 0.0039, 1)
+roughness = 0.5
+metalness = 0
+cast_shadow = true
+receive_shadow = true
+clearcoat = 0.3
+
+[node name="roof" parent="." type="MeshInstance3D"]
+primitive = BOX
+size = vec3(22, 0.4, 5)
+position = vec3(0, 6.9, -4.8)
+color = color(0.0134, 0.0134, 0.0153, 1)
+roughness = 0.5
+metalness = 0.2
+cast_shadow = true
+receive_shadow = true
+
+[node name="screen0" parent="." type="MeshInstance3D"]
+primitive = BOX
+size = vec3(2.4, 4.6, 0.12)
+position = vec3(-7.5, 2.6, -4.2)
+color = color(0.89, 0.7874, 0.5705, 1)
+roughness = 0.9
+metalness = 0
+cast_shadow = false
+receive_shadow = true
+emissive = color(0.214, 0.1473, 0.0637, 1)
+
+[node name="screen1" parent="." type="MeshInstance3D"]
+primitive = BOX
+size = vec3(2.4, 4.6, 0.12)
+position = vec3(-4.5, 2.6, -4.2)
+color = color(0.89, 0.7874, 0.5705, 1)
+roughness = 0.9
+metalness = 0
+cast_shadow = false
+receive_shadow = true
+emissive = color(0.214, 0.1473, 0.0637, 1)
+
+[node name="screen2" parent="." type="MeshInstance3D"]
+primitive = BOX
+size = vec3(2.4, 4.6, 0.12)
+position = vec3(-1.5, 2.6, -4.2)
+color = color(0.89, 0.7874, 0.5705, 1)
+roughness = 0.9
+metalness = 0
+cast_shadow = false
+receive_shadow = true
+emissive = color(0.214, 0.1473, 0.0637, 1)
+
+[node name="screen3" parent="." type="MeshInstance3D"]
+primitive = BOX
+size = vec3(2.4, 4.6, 0.12)
+position = vec3(1.5, 2.6, -4.2)
+color = color(0.89, 0.7874, 0.5705, 1)
+roughness = 0.9
+metalness = 0
+cast_shadow = false
+receive_shadow = true
+emissive = color(0.214, 0.1473, 0.0637, 1)
+
+[node name="screen4" parent="." type="MeshInstance3D"]
+primitive = BOX
+size = vec3(2.4, 4.6, 0.12)
+position = vec3(4.5, 2.6, -4.2)
+color = color(0.89, 0.7874, 0.5705, 1)
+roughness = 0.9
+metalness = 0
+cast_shadow = false
+receive_shadow = true
+emissive = color(0.214, 0.1473, 0.0637, 1)
+
+[node name="screen5" parent="." type="MeshInstance3D"]
+primitive = BOX
+size = vec3(2.4, 4.6, 0.12)
+position = vec3(7.5, 2.6, -4.2)
+color = color(0.89, 0.7874, 0.5705, 1)
+roughness = 0.9
+metalness = 0
+cast_shadow = false
+receive_shadow = true
+emissive = color(0.214, 0.1473, 0.0637, 1)
+
+[node name="tex_concrete_lantern_b-8.6" parent="." type="MeshInstance3D"]
+primitive = BOX
+size = vec3(0.7, 0.4, 0.7)
+position = vec3(-8.6, 0.2, 2)
+color = color(0.214, 0.214, 0.196, 1)
+roughness = 0.8
+metalness = 0
+cast_shadow = true
+receive_shadow = true
+
+[node name="tex_concrete_lantern_c-8.6" parent="." type="MeshInstance3D"]
+primitive = CYLINDER
+size = vec3(0.3, 1.2, 0.3)
+position = vec3(-8.6, 1, 2)
+color = color(0.214, 0.214, 0.196, 1)
+roughness = 0.8
+metalness = 0
+cast_shadow = true
+receive_shadow = true
+
+[node name="lantern_l-8.6" parent="." type="MeshInstance3D"]
+primitive = BOX
+size = vec3(0.6, 0.5, 0.6)
+position = vec3(-8.6, 1.85, 2)
+color = color(0.7874, 0.448, 0.1329, 1)
+roughness = 0.6
+metalness = 0
+cast_shadow = true
+receive_shadow = true
+emissive = color(4.9538, 1.8233, 0.3185, 1)
+
+[node name="tex_concrete_lantern_t-8.6" parent="." type="MeshInstance3D"]
+primitive = BOX
+size = vec3(0.95, 0.2, 0.95)
+position = vec3(-8.6, 2.2, 2)
+color = color(0.214, 0.214, 0.196, 1)
+roughness = 0.8
+metalness = 0
+cast_shadow = true
+receive_shadow = true
+
+[node name="LanternL0" parent="." type="OmniLight3D"]
+position = vec3(-8.6, 1.85, 2)
+color = color(1, 0.448, 0.1005, 1)
+energy = 4
+range = 8
+decay = 2
+
+[node name="tex_concrete_lantern_b8.6" parent="." type="MeshInstance3D"]
+primitive = BOX
+size = vec3(0.7, 0.4, 0.7)
+position = vec3(8.6, 0.2, 2)
+color = color(0.214, 0.214, 0.196, 1)
+roughness = 0.8
+metalness = 0
+cast_shadow = true
+receive_shadow = true
+
+[node name="tex_concrete_lantern_c8.6" parent="." type="MeshInstance3D"]
+primitive = CYLINDER
+size = vec3(0.3, 1.2, 0.3)
+position = vec3(8.6, 1, 2)
+color = color(0.214, 0.214, 0.196, 1)
+roughness = 0.8
+metalness = 0
+cast_shadow = true
+receive_shadow = true
+
+[node name="lantern_l8.6" parent="." type="MeshInstance3D"]
+primitive = BOX
+size = vec3(0.6, 0.5, 0.6)
+position = vec3(8.6, 1.85, 2)
+color = color(0.7874, 0.448, 0.1329, 1)
+roughness = 0.6
+metalness = 0
+cast_shadow = true
+receive_shadow = true
+emissive = color(4.9538, 1.8233, 0.3185, 1)
+
+[node name="tex_concrete_lantern_t8.6" parent="." type="MeshInstance3D"]
+primitive = BOX
+size = vec3(0.95, 0.2, 0.95)
+position = vec3(8.6, 2.2, 2)
+color = color(0.214, 0.214, 0.196, 1)
+roughness = 0.8
+metalness = 0
+cast_shadow = true
+receive_shadow = true
+
+[node name="LanternL1" parent="." type="OmniLight3D"]
+position = vec3(8.6, 1.85, 2)
+color = color(1, 0.448, 0.1005, 1)
+energy = 4
+range = 8
+decay = 2
+
+[node name="trunk" parent="." type="MeshInstance3D"]
+primitive = CYLINDER
+size = vec3(0.7, 5, 0.7)
+position = vec3(-11, 2.5, -2.2)
+color = color(0.0509, 0.0245, 0.0134, 1)
+roughness = 0.95
+metalness = 0
+cast_shadow = true
+receive_shadow = true
+
+[node name="crown1" parent="." type="MeshInstance3D"]
+primitive = SPHERE
+size = vec3(5.5, 3.4, 5.5)
+position = vec3(-10.5, 6.2, -2.2)
+color = color(0.89, 0.2633, 0.3801, 1)
+roughness = 0.9
+metalness = 0
+cast_shadow = true
+receive_shadow = true
+sheen = 0.4
+
+[node name="crown2" parent="." type="MeshInstance3D"]
+primitive = SPHERE
+size = vec3(4, 2.6, 4)
+position = vec3(-8.2, 5.4, -3)
+color = color(0.89, 0.3185, 0.448, 1)
+roughness = 0.9
+metalness = 0
+cast_shadow = true
+receive_shadow = true
+sheen = 0.4
+
+[node name="Flash0" parent="." type="OmniLight3D"]
+position = vec3(0, -50, 0)
+color = color(1, 0.6921, 0.3185, 1)
+energy = 0
+range = 9
+decay = 2
+
+[node name="Flash1" parent="." type="OmniLight3D"]
+position = vec3(0, -50, 0)
+color = color(1, 0.6921, 0.3185, 1)
+energy = 0
+range = 9
+decay = 2
+
+[node name="Flash2" parent="." type="OmniLight3D"]
+position = vec3(0, -50, 0)
+color = color(1, 0.6921, 0.3185, 1)
+energy = 0
+range = 9
+decay = 2

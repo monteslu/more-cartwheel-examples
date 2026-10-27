@@ -1,0 +1,10 @@
+[
+  {
+    "name": "fighter-auto-120",
+    "app": "fighter_auto",
+    "frames": 120,
+    "maxGt16": 0.05,
+    "fields": ["game.state", "game.phase", "sim.hp", "sim.pos", "sim.hash", "ticks"],
+    "note": "scratch gate for screenshots"
+  }
+]

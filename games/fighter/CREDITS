@@ -1,0 +1,10 @@
+fighter: credits and licences
+
+Everything in this game is made by its own code (tools/ and the C sources): the characters, the stages, the
+textures, the sounds and the music. Nothing is downloaded.
+
+Fonts (SIL Open Font License 1.1, licence files shipped beside them in assets/fonts):
+  Bungee           (c) The Bungee Project Authors      https://github.com/djrrb/Bungee
+  Fredoka          (c) The Fredoka Project Authors     https://fonts.google.com/specimen/Fredoka
+
+Engine: cartwheel-engine (MIT) and three.c (MIT), as shipped with this repository's build.
