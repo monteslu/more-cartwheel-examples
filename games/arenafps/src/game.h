@@ -4,6 +4,7 @@
 #define ARENA_GAME_H
 
 #include <math.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -78,6 +79,7 @@ void mb_color(mesh_build *b, int v, float r, float g, float bl);
 void mb_tri(mesh_build *b, int a, int c, int d);
 void mb_quad(mesh_build *b, int a, int c, int d, int e);
 t3_geometry *mb_finish(mesh_build *b);
+void mb_add_geo(mesh_build *b, const t3_geometry *g, t3_vec3 pos, float yaw, t3_vec3 scale, const float rgb[3], float uv_scale);
 /* a box (centre, rotation, full size) with metre-projected uvs (one repeat per uv_m metres), tinted */
 void mb_box(mesh_build *b, t3_vec3 centre, t3_quat q, t3_vec3 size, float uv_m, const float rgb[3]);
 
@@ -119,7 +121,7 @@ extern arena A;
 
 void arena_build(int id, cw_node world_root);
 void arena_free(void);
-void arena_mood(int id, cw_node env, cw_node sun, cw_node sky, cw_node fog);
+void arena_mood(int id, cw_node env, cw_node sun, cw_node sky, cw_node fog, cw_node post);
 
 /* a ray through the level (not fighters): true on a hit */
 bool arena_ray(t3_vec3 from, t3_vec3 to, t3_vec3 *point, t3_vec3 *normal);
@@ -144,7 +146,9 @@ typedef struct fighter {
   float bob;
   cw_node body;          /* the third-person body */
   cw_node light;         /* muzzle flash */
-  cw_node leg[2];        /* hip pivots, swung while walking */
+  cw_node leg[2];        /* unused (the skinned rig animates itself) */
+  cw_node anim;          /* AnimationPlayer of the skinned body */
+  const char *clip;      /* the clip playing: idle, run, die */
   int flash;
   /* bot brain */
   float skill;           /* 0..1 */

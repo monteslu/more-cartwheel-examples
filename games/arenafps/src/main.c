@@ -14,6 +14,7 @@
  * nav.* (path queries, cost), views. */
 #include <stdlib.h>
 #include "cartwheel/aim.h"
+#include "cartwheel/anim.h"
 #include "cartwheel/ui.h"
 #include "cartwheel/environment.h"
 #include "fx.h"
@@ -25,6 +26,7 @@
 #define AUTO 0
 #endif
 
+#define VM_SCALE 0.62f
 #define MAXP 24 /* rockets in flight */
 #define MAX_FEED 5
 
@@ -37,15 +39,15 @@ typedef struct weapon {
 static const weapon W[NWEAP] = {
   { "PULSE RIFLE", 9, 6, 1, 200, 90, 0, 0.011f, 1.2f, 12 },
   { "SCATTER GUN", 8, 46, 11, 40, 14, 0, 0.07f, 4.0f, 6 },
-  { "ROCKET", 95, 52, 1, 20, 6, 1, 0, 0, 16 },
-  { "RAIL", 90, 84, 1, 20, 6, 2, 0.0015f, 8.0f, 24 },
+  { "ROCKET", 95, 44, 1, 20, 6, 1, 0, 0, 16 },
+  { "RAIL", 100, 84, 1, 20, 6, 2, 0.0015f, 8.0f, 24 },
 };
 
 typedef struct proj {
   bool on;
   t3_vec3 p, v;
   int owner, life;
-  cw_node node, light;
+  cw_node node, light, trail;
 } proj;
 
 typedef struct feed_line {
@@ -62,7 +64,7 @@ static struct game {
   cw_node root, world, env, sun, sky, fog, post, lighting;
   cw_node cam[MAXH], vm[MAXH], vm_flash[MAXH], vm_wp[MAXH][NWEAP];
   game_state state;
-  int mode, arena_id, bots_setting, players, nf;
+  int mode, arena_id, bots_setting, bot_level, players, nf;
   int setup_row;
   fighter f[MAXF];
   proj pr[MAXP];
@@ -74,7 +76,8 @@ static struct game {
   feed_line feed[MAX_FEED];
   int winner; /* fighter index or team, -1 none */
   /* per human view feedback */
-  float hit_marker[MAXH], dmg_flash[MAXH], dmg_dir[MAXH], shake[MAXH];
+  float hit_marker[MAXH], dmg_flash[MAXH], dmg_dir[MAXH], shake[MAXH], kill_flash[MAXH];
+  char kill_name[MAXH][16];
   cw_aim_state aim[MAXH];
   /* actions */
   cw_action mv_l, mv_r, mv_f, mv_b, lk_l, lk_r, lk_u, lk_d, fire, jump, w_next, w_prev;
@@ -145,8 +148,16 @@ static int pick_spawn(const fighter *self) {
       float dist = sqrtf(d.x * d.x + d.z * d.z);
       if (dist < md) md = dist;
     }
+    /* never in sight of a living enemy (a spawn kill), and under 15 m from one is penalised hard */
+    t3_vec3 eye = v3add(A.spawns[s], v3(0, EYE_H, 0));
+    bool seen = false;
+    for (int i = 0; i < G.nf && !seen; i++) {
+      const fighter *o = F(i);
+      if (!o->active || !o->alive || o == self || !enemies(self, o)) continue;
+      if (!arena_ray(eye, chest_pos(o), NULL, NULL)) seen = true;
+    }
     float jitter = cw_rng_float(&G.rng) * 4;
-    float sc = md + jitter;
+    float sc = md + jitter - (seen ? 40.0f : 0) - (md < 15 ? 15.0f : 0);
     if (sc > best_score) best_score = sc, best = s;
   }
   return best;
@@ -188,12 +199,16 @@ static void kill_fighter(fighter *v, fighter *k, int weapon) {
   v->dead_ticks = 0;
   v->deaths++;
   v->streak = 0;
-  if (cw_node_valid(v->body)) cw_node_set(v->body, "visible", cw_val_bool(false));
   fx_spark(chest_pos(v), v3(0, 1, 0), 1);
   fx_play(SND_DIE, v->mv.position, 0.8f, 1);
   if (k && k != v) {
     k->score++;
     k->streak++;
+    if (k->human >= 0) {
+      G.kill_flash[k->human] = 1;
+      snprintf(G.kill_name[k->human], sizeof G.kill_name[0], "%s", v->name);
+      fx_play_ui(SND_HIT, 0.8f);
+    }
     if (G.mode == MODE_TDM) G.team_score[k->team]++;
     feed("%s fragged %s", k->name, v->name);
     (void)weapon;
@@ -303,15 +318,38 @@ static void fire_rocket(fighter *f, int owner) {
     p->v = v3scale(d, 24);
     p->life = 60 * 5;
     cw_node_set(p->node, "visible", cw_val_bool(true));
-    cw_node_set(p->light, "energy", cw_val_float(12));
+    cw_node_set(p->trail, "emitting", cw_val_bool(true));
+    cw_node_set(p->light, "energy", cw_val_float(14));
     cw_node3d_set_position(p->node, p->p);
     return;
   }
 }
 
+/* a smoke and flame trail behind a rocket (continuous, world space), part of the rocket node */
+static cw_node rocket_trail(void) {
+  cw_node n = cw_node_new("GPUParticles3D", "Trail");
+  cw_node_set(n, "amount", cw_val_int(48));
+  cw_node_set(n, "lifetime", cw_val_float(0.9));
+  cw_node_set(n, "emitting", cw_val_bool(false));
+  cw_node_set(n, "direction", cw_val_vec3(0, 0, 1));
+  cw_node_set(n, "spread", cw_val_float(12));
+  cw_node_set(n, "speed_min", cw_val_float(0.4));
+  cw_node_set(n, "speed_max", cw_val_float(1.2));
+  cw_node_set(n, "gravity", cw_val_vec3(0, 0.6f, 0));
+  cw_node_set(n, "size", cw_val_float(0.34));
+  cw_node_set(n, "size_random", cw_val_float(0.3));
+  cw_node_set(n, "color_ramp", cw_val_string("0 0.9 0.8 0.6 0.5, 0.15 0.45 0.42 0.4 0.5, 1 0.2 0.2 0.2 0"));
+  cw_node_set(n, "size_curve", cw_val_string("0 0.4, 1 2.2"));
+  cw_node_set(n, "draw_mode", cw_val_enum("BILLBOARD"));
+  cw_node_set(n, "blend", cw_val_enum("ALPHA"));
+  cw_node3d_set_position(n, v3(0, 0, 0.35f));
+  return n;
+}
+
 static void explode(proj *p, t3_vec3 at, t3_vec3 n) {
   p->on = false;
   cw_node_set(p->node, "visible", cw_val_bool(false));
+  cw_node_set(p->trail, "emitting", cw_val_bool(false));
   cw_node_set(p->light, "energy", cw_val_float(0));
   cw_node3d_set_position(p->node, v3(0, -500, 0));
   cw_node3d_set_position(p->light, v3(0, -500, 0));
@@ -756,48 +794,48 @@ static void proj_tick(void) {
 
 static const char *BOT_NAMES[] = { "Ash", "Brick", "Cinder", "Dune", "Ember", "Flint", "Gale", "Husk", "Iron", "Jolt", "Knox", "Lark", "Moss", "Nox", "Onyx", "Pike" };
 
-static cw_node part(cw_node parent, const char *prim, t3_vec3 size, t3_vec3 pos, float r, float g, float b, float metal, float rough, float glow) {
-  cw_node m = cw_node_new("MeshInstance3D", "Part");
-  cw_node_set(m, "primitive", cw_val_enum(prim));
-  cw_node_set(m, "size", cw_val_vec3(size.x, size.y, size.z));
-  cw_node_set(m, "color", cw_val_color(r, g, b, 1));
-  cw_node_set(m, "roughness", cw_val_float(rough));
-  cw_node_set(m, "metalness", cw_val_float(metal));
-  if (glow > 0) cw_node_set(m, "emissive", cw_val_color(r * glow, g * glow, b * glow, 1));
-  cw_node_set(m, "cast_shadow", cw_val_bool(true));
-  cw_node3d_set_position(m, pos);
-  cw_node_add_child(parent, m);
-  return m;
+/* the skinned fighter (assets/models/soldier_*.glb, tools/blender/soldier.py): one mesh on a 15 bone rig, clips idle, run and die */
+static t3_gltf *RIG_GLTF[MAXF + 8];
+static int rig_count;
+static void *soldier_bytes[2];
+static size_t soldier_len[2];
+
+static void set_cast(t3_object *o) {
+  if (o->type == T3_SKINNED_MESH || o->type == T3_MESH) o->cast_shadow = true, o->receive_shadow = true, o->frustum_culled = false;
+  for (int i = 0; i < o->child_count; i++) set_cast(o->children[i]);
 }
 
-/* an armoured figure: boots, legs on hip pivots, chest plate, pauldrons, arms
- * holding a rifle, a helmet with a team coloured visor and a back light */
-static cw_node make_body(int team, cw_node leg_out[2]) {
-  cw_node b = cw_node_new("Node3D", "Body");
-  const float *c = TEAM_RGB[team & 1];
-  const float ar = 0.22f, ag = 0.24f, ab = 0.28f;
-  for (int side = 0; side < 2; side++) {
-    float x = side ? 0.15f : -0.15f;
-    cw_node hip = cw_node_new("Node3D", "Hip");
-    cw_node3d_set_position(hip, v3(x, 0.92f, 0));
-    cw_node_add_child(b, hip);
-    part(hip, "BOX", v3(0.2f, 0.5f, 0.22f), v3(0, -0.25f, 0), ar, ag, ab, 0.5f, 0.55f, 0);
-    part(hip, "BOX", v3(0.18f, 0.4f, 0.2f), v3(0, -0.68f, 0), ar * 0.8f, ag * 0.8f, ab * 0.8f, 0.5f, 0.55f, 0);
-    part(hip, "BOX", v3(0.22f, 0.12f, 0.34f), v3(0, -0.9f, -0.04f), 0.08f, 0.08f, 0.09f, 0.2f, 0.8f, 0);
-    leg_out[side] = hip;
+static cw_node make_body(int team, fighter *f) {
+  int variant = (team & 1) ? 0 : 1; /* soldier_a is the blue one, soldier_b the red one */
+  if (!soldier_bytes[variant]) {
+    char path[48];
+    snprintf(path, sizeof path, "models/soldier_%c.glb", variant ? 'b' : 'a');
+    soldier_bytes[variant] = cw_asset_load(path, &soldier_len[variant]);
   }
-  part(b, "BOX", v3(0.5f, 0.22f, 0.3f), v3(0, 0.98f, 0), ar, ag, ab, 0.5f, 0.55f, 0);
-  part(b, "BOX", v3(0.56f, 0.56f, 0.34f), v3(0, 1.38f, 0), 0.3f, 0.32f, 0.36f, 0.6f, 0.4f, 0);
-  part(b, "BOX", v3(0.36f, 0.1f, 0.02f), v3(0, 1.46f, -0.18f), c[0], c[1], c[2], 0, 0.4f, 1.6f);
-  part(b, "BOX", v3(0.2f, 0.18f, 0.3f), v3(-0.38f, 1.58f, 0), 0.3f, 0.32f, 0.36f, 0.6f, 0.4f, 0);
-  part(b, "BOX", v3(0.2f, 0.18f, 0.3f), v3(0.38f, 1.58f, 0), 0.3f, 0.32f, 0.36f, 0.6f, 0.4f, 0);
-  part(b, "BOX", v3(0.14f, 0.5f, 0.16f), v3(-0.38f, 1.28f, -0.12f), ar, ag, ab, 0.4f, 0.5f, 0);
-  part(b, "BOX", v3(0.14f, 0.46f, 0.16f), v3(0.3f, 1.3f, -0.26f), ar, ag, ab, 0.4f, 0.5f, 0);
-  part(b, "BOX", v3(0.09f, 0.12f, 0.78f), v3(0.24f, 1.26f, -0.5f), 0.08f, 0.08f, 0.09f, 0.9f, 0.3f, 0);
-  part(b, "SPHERE", v3(0.3f, 0, 0), v3(0, 1.8f, 0), 0.34f, 0.36f, 0.4f, 0.7f, 0.3f, 0);
-  part(b, "BOX", v3(0.26f, 0.08f, 0.04f), v3(0, 1.8f, -0.14f), c[0], c[1], c[2], 0, 0.2f, 3.0f);
-  part(b, "BOX", v3(0.1f, 0.2f, 0.08f), v3(0, 1.38f, 0.2f), c[0], c[1], c[2], 0, 0.3f, 1.2f);
+  cw_node b = cw_node_new("Node3D", "Body");
+  cw_node model = cw_node_new("Node3D", "Model");
+  cw_node anim = cw_node_new("AnimationPlayer", "Anim");
+  cw_node_add_child(b, model);
+  cw_node_add_child(b, anim);
   cw_node_add_child(G.world, b);
+  if (soldier_bytes[variant] && rig_count < (int)(sizeof RIG_GLTF / sizeof *RIG_GLTF)) {
+    t3_gltf *gl = t3_gltf_parse(soldier_bytes[variant], soldier_len[variant], NULL, NULL);
+    if (gl) {
+      RIG_GLTF[rig_count++] = gl;
+      cw_node3d_set_object(model, gl->scene);
+      set_cast(gl->scene);
+      for (int i = 0; i < gl->animation_count; i++) {
+        cw_anim a = cw_anim_from_t3_clip(gl->animations[i], "Model");
+        cw_anim_set_stored(a, false);
+        cw_anim_set_loop(a, gl->animations[i]->name && gl->animations[i]->name[0] == 'd' ? CW_LOOP_NONE : CW_LOOP_LINEAR);
+        cw_anim_player_add(anim, gl->animations[i]->name, a);
+        cw_anim_release(a);
+      }
+      cw_anim_player_play(anim, "idle", 0);
+    }
+  }
+  f->anim = anim;
+  f->clip = "idle";
   return b;
 }
 
@@ -805,6 +843,8 @@ static void clear_world(void) {
   if (cw_node_valid(G.world)) {
     fx_reset();
     cw_node_free(G.world);
+    for (int i = 0; i < rig_count; i++) t3_release(RIG_GLTF[i]);
+    rig_count = 0;
   }
   arena_free();
   memset(G.f, 0, sizeof G.f);
@@ -817,23 +857,64 @@ static void build_world(int arena_id) {
   G.world = cw_node_new("Node3D", "World");
   cw_node_add_child(G.root, G.world);
   arena_build(arena_id, G.world);
-  arena_mood(arena_id, G.env, G.sun, G.sky, G.fog);
+  arena_mood(arena_id, G.env, G.sun, G.sky, G.fog, G.post);
   fx_init(G.world);
   for (int i = 0; i < MAXP; i++) {
     proj *p = &G.pr[i];
-    p->node = cw_node_new("MeshInstance3D", "Rocket");
-    cw_node_set(p->node, "primitive", cw_val_enum("CYLINDER"));
-    cw_node_set(p->node, "size", cw_val_vec3(0.16f, 0.5f, 0));
-    cw_node_set(p->node, "color", cw_val_color(0.4f, 0.4f, 0.42f, 1));
-    cw_node_set(p->node, "emissive", cw_val_color(4, 1.8f, 0.4f, 1));
+    p->node = cw_node_new("Node3D", "Rocket");
     cw_node_set(p->node, "visible", cw_val_bool(false));
     cw_node_add_child(G.world, p->node);
+    {
+      /* the missile: a body along -Z (its heading), a nose cone, four fins, a glowing exhaust, a smoke trail and a flame */
+      cw_node body = cw_node_new("MeshInstance3D", "Body");
+      cw_node_set(body, "primitive", cw_val_enum("CYLINDER"));
+      cw_node_set(body, "size", cw_val_vec3(0.075f, 0.6f, 0));
+      cw_node_set(body, "color", cw_val_color(0.55f, 0.58f, 0.55f, 1));
+      cw_node_set(body, "metalness", cw_val_float(0.7f));
+      cw_node_set(body, "roughness", cw_val_float(0.35f));
+      cw_node3d_set_rotation(body, v3(1.5708f, 0, 0));
+      cw_node_add_child(p->node, body);
+      cw_node nose = cw_node_new("MeshInstance3D", "Nose");
+      cw_node_set(nose, "primitive", cw_val_enum("SPHERE"));
+      cw_node_set(nose, "size", cw_val_vec3(0.078f, 0, 0));
+      cw_node_set(nose, "color", cw_val_color(0.9f, 0.3f, 0.08f, 1));
+      cw_node_set(nose, "roughness", cw_val_float(0.4f));
+      cw_node3d_set_position(nose, v3(0, 0, -0.3f));
+      cw_node_add_child(p->node, nose);
+      for (int k = 0; k < 4; k++) {
+        cw_node fin = cw_node_new("MeshInstance3D", "Fin");
+        cw_node_set(fin, "primitive", cw_val_enum("BOX"));
+        cw_node_set(fin, "size", cw_val_vec3(0.012f, 0.14f, 0.16f));
+        cw_node_set(fin, "color", cw_val_color(0.2f, 0.2f, 0.22f, 1));
+        cw_node_set(fin, "metalness", cw_val_float(0.8f));
+        cw_node3d_set_position(fin, v3(0, 0, 0.22f));
+        cw_node3d_set_rotation(fin, v3(0, 0, (float)k * 1.5708f));
+        cw_node_add_child(p->node, fin);
+      }
+      cw_node ex = cw_node_new("MeshInstance3D", "Exhaust");
+      cw_node_set(ex, "primitive", cw_val_enum("SPHERE"));
+      cw_node_set(ex, "size", cw_val_vec3(0.07f, 0, 0));
+      cw_node_set(ex, "color", cw_val_color(1, 0.7f, 0.3f, 1));
+      cw_node_set(ex, "emissive", cw_val_color(14, 7, 1.8f, 1));
+      cw_node_set(ex, "cast_shadow", cw_val_bool(false));
+      cw_node3d_set_position(ex, v3(0, 0, 0.32f));
+      cw_node_add_child(p->node, ex);
+      p->trail = rocket_trail();
+      cw_node_add_child(p->node, p->trail);
+    }
     p->light = cw_node_new("OmniLight3D", "RocketLight");
     cw_node_set(p->light, "color", cw_val_color(1, 0.55f, 0.2f, 1));
     cw_node_set(p->light, "energy", cw_val_float(0));
     cw_node_set(p->light, "range", cw_val_float(9));
     cw_node_add_child(G.world, p->light);
   }
+}
+
+/* the setup's bot level scales every bot's skill: easy 0.65x, normal as drawn, hard pulled up toward 0.95 */
+static float bot_skill(float s) {
+  if (G.bot_level == 0) return s * 0.65f;
+  if (G.bot_level == 2) return CW_MIN(0.95f, 0.6f + s * 0.4f);
+  return s;
 }
 
 static void setup_fighters(void) {
@@ -849,7 +930,7 @@ static void setup_fighters(void) {
     f->human = i < G.players ? i : -1;
     f->team = G.mode == MODE_DM ? i : (G.mode == MODE_COOP ? (i < G.players ? 0 : 1) : i % 2);
     if (G.mode == MODE_TDM) f->team = i % 2;
-    f->skill = 0.35f + 0.5f * (float)((i * 37) % 10) / 10.0f;
+    f->skill = bot_skill(0.35f + 0.5f * (float)((i * 37) % 10) / 10.0f);
     if (f->human >= 0) snprintf(f->name, sizeof f->name, "P%d", i + 1);
     else snprintf(f->name, sizeof f->name, "%s", BOT_NAMES[i % 16]);
     cw_mover3d_def md = cw_mover3d_default_def();
@@ -859,7 +940,7 @@ static void setup_fighters(void) {
     cw_mover3d_init(&f->mv, A.world, &md, v3(0, 0, 0));
     f->target = -1;
     f->goal = v3(0, -1000, 0);
-    f->body = make_body(G.mode == MODE_DM ? i : f->team, f->leg);
+    f->body = make_body(G.mode == MODE_DM ? i : f->team, f);
     f->light = cw_node_new("OmniLight3D", "Muzzle");
     cw_node_set(f->light, "color", cw_val_color(1, 0.75f, 0.4f, 1));
     cw_node_set(f->light, "energy", cw_val_float(0));
@@ -882,7 +963,7 @@ static void spawn_wave(void) {
     f->active = true;
     f->human = -1;
     f->team = 1;
-    f->skill = CW_MIN(0.95f, 0.3f + 0.1f * (float)G.wave + 0.04f * (float)(i % 5));
+    f->skill = bot_skill(CW_MIN(0.95f, 0.3f + 0.1f * (float)G.wave + 0.04f * (float)(i % 5)));
     snprintf(f->name, sizeof f->name, "%s", BOT_NAMES[(slot + G.wave) % 16]);
     cw_mover3d_def md = cw_mover3d_default_def();
     md.radius = PLAYER_R;
@@ -890,7 +971,7 @@ static void spawn_wave(void) {
     md.step_height = 0.45f;
     cw_mover3d_init(&f->mv, A.world, &md, v3(0, 0, 0));
     f->goal = v3(0, -1000, 0);
-    f->body = make_body(1, f->leg);
+    f->body = make_body(1, f);
     f->light = cw_node_new("OmniLight3D", "Muzzle");
     cw_node_set(f->light, "color", cw_val_color(1, 0.75f, 0.4f, 1));
     cw_node_set(f->light, "energy", cw_val_float(0));
@@ -928,6 +1009,7 @@ static void begin_match(void) {
   G.lives = 4 + 3 * G.players;
   memset(G.feed, 0, sizeof G.feed);
   memset(G.hit_marker, 0, sizeof G.hit_marker);
+  memset(G.kill_flash, 0, sizeof G.kill_flash);
   memset(G.dmg_flash, 0, sizeof G.dmg_flash);
   memset(G.aim, 0, sizeof G.aim);
   G.frag_limit = G.mode == MODE_TDM ? 30 : 15;
@@ -994,9 +1076,15 @@ static void sync_nodes(void) {
     if (cw_node_valid(f->body)) {
       cw_node3d_set_position(f->body, f->mv.position);
       cw_node3d_set_rotation(f->body, v3(0, f->yaw, 0));
-      float spd = v3len(v3(f->mv.velocity.x, 0, f->mv.velocity.z)), sw = f->mv.on_floor ? cw_sin(f->bob * 2.4f) * 0.7f * CW_MIN(1, spd / 6) : 0.5f;
-      if (cw_node_valid(f->leg[0])) cw_node3d_set_rotation(f->leg[0], v3(sw, 0, 0));
-      if (cw_node_valid(f->leg[1])) cw_node3d_set_rotation(f->leg[1], v3(-sw, 0, 0));
+      float spd = v3len(v3(f->mv.velocity.x, 0, f->mv.velocity.z));
+      const char *want = !f->alive ? "die" : (spd > 1.2f && f->mv.on_floor ? "run" : "idle");
+      if (cw_node_valid(f->anim) && want != f->clip) {
+        f->clip = want;
+        cw_anim_player_play(f->anim, want, want[0] == 'd' ? 0.05f : 0.15f);
+        if (want[0] == 'd') cw_anim_player_seek(f->anim, 0, false);
+      }
+      if (cw_node_valid(f->anim)) cw_node_set(f->anim, "speed_scale", cw_val_float(want[0] == 'r' ? CW_CLAMP(spd / 6.0f, 0.6f, 1.5f) : 1.0f));
+      if (!f->alive && f->dead_ticks > 100) cw_node_set(f->body, "visible", cw_val_bool(false));
     }
     if (f->flash > 0) f->flash--;
     else if (cw_node_valid(f->light)) cw_node_set(f->light, "energy", cw_val_float(0));
@@ -1027,14 +1115,32 @@ static void sync_nodes(void) {
     cw_node3d_set_position(G.cam[h], v3add(e, v3(0, sy, 0)));
     cw_node3d_look_at(G.cam[h], v3add(v3add(e, v3(0, sy, 0)), d), v3(0, 1, 0));
     f->kick *= 0.82f;
-    /* the viewmodel: the current weapon, kick back on fire */
+    /* the viewmodel: the gun drops in when drawn, lags the look (sway), bobs with the stride and kicks back and up on fire */
+    static const float MUZ[NWEAP] = { 0.78f, 0.8f, 0.71f, 0.82f };
+    static int last_w[MAXH] = { -1, -1, -1, -1 };
+    static float draw[MAXH], dyaw[MAXH], dpitch[MAXH], lyaw[MAXH], lpitch[MAXH], bobph[MAXH];
+    if (last_w[h] != f->weapon) { last_w[h] = f->weapon; draw[h] = 1; }
+    draw[h] *= 0.86f;
     for (int w = 0; w < NWEAP; w++) cw_node_set(G.vm_wp[h][w], "visible", cw_val_bool(f->alive && w == f->weapon));
+    float turn_y = f->yaw - lyaw[h], turn_p = f->pitch - lpitch[h];
+    if (turn_y > 3.0f || turn_y < -3.0f) turn_y = 0;
+    lyaw[h] = f->yaw, lpitch[h] = f->pitch;
+    dyaw[h] += (CW_CLAMP(turn_y * 2.0f, -0.12f, 0.12f) - dyaw[h]) * 0.2f;
+    dpitch[h] += (CW_CLAMP(turn_p * 2.0f, -0.1f, 0.1f) - dpitch[h]) * 0.2f;
     float rec = f->cooldown > 0 ? (float)f->cooldown / (float)W[f->weapon].cooldown : 0;
-    rec = rec > 0.7f ? (rec - 0.7f) / 0.3f : 0;
-    cw_node3d_set_position(G.vm[h], v3(0.23f + (f->bob > 0 ? cw_sin(f->bob) * 0.006f : 0), -0.22f + bob * 0.6f, -0.42f + rec * 0.07f));
+    rec = rec > 0.6f ? (rec - 0.6f) / 0.4f : 0;
+    float spd = v3len(v3(f->mv.velocity.x, 0, f->mv.velocity.z)) / 7.0f;
+    spd = f->mv.on_floor ? CW_MIN(1, spd) : 0;
+    bobph[h] += 0.16f * (0.3f + spd);
+    float bx = cw_sin(bobph[h]) * 0.012f * spd, by = -fabsf(cw_cos(bobph[h])) * 0.014f * spd + cw_sin(bobph[h] * 0.5f) * 0.0025f;
+    float kick = rec * (f->weapon == 2 ? 1.5f : f->weapon == 3 ? 1.2f : 1.0f);
+    cw_node3d_set_position(G.vm[h], v3(0.2f + bx - dyaw[h] * 0.25f, -0.2f + by - draw[h] * 0.3f + dpitch[h] * 0.2f, -0.36f + kick * 0.075f));
+    cw_node3d_set_rotation(G.vm[h], v3(kick * 0.1f + draw[h] * 0.5f + dpitch[h] * 0.5f, dyaw[h] * 0.5f + 0.03f, -bx * 1.5f));
+    cw_node3d_set_position(G.vm_flash[h], v3(0, 0.04f * VM_SCALE, -(MUZ[f->weapon] + 0.05f) * VM_SCALE));
     cw_node_set(G.vm_flash[h], "visible", cw_val_bool(f->flash > 0 && f->alive));
     G.hit_marker[h] *= 0.9f;
     G.dmg_flash[h] *= 0.93f;
+    G.kill_flash[h] *= 0.965f;
   }
 }
 
@@ -1048,7 +1154,7 @@ static void view_hook(int view, void *u) {
   for (int h = 0; h < G.players; h++) set_obj_visible(G.vm[h], h == view && F(h)->alive);
   for (int i = 0; i < G.nf; i++) {
     fighter *f = F(i);
-    if (cw_node_valid(f->body) && f->alive) set_obj_visible(f->body, i != view);
+    if (cw_node_valid(f->body)) set_obj_visible(f->body, i != view && (f->alive || f->dead_ticks <= 100));
   }
 }
 
@@ -1057,17 +1163,18 @@ static void fixed_update(void *user, double dt) {
   if (!cw_shell_update()) return;
   if (G.state == ST_SETUP) {
     int h = 0;
-    if (cw_action_just_pressed(h, G.mv_f)) G.setup_row = (G.setup_row + 3) % 4, fx_play_ui(SND_CLICK, 0.4f);
-    if (cw_action_just_pressed(h, G.mv_b)) G.setup_row = (G.setup_row + 1) % 4, fx_play_ui(SND_CLICK, 0.4f);
+    if (cw_action_just_pressed(h, G.mv_f)) G.setup_row = (G.setup_row + 4) % 5, fx_play_ui(SND_CLICK, 0.4f);
+    if (cw_action_just_pressed(h, G.mv_b)) G.setup_row = (G.setup_row + 1) % 5, fx_play_ui(SND_CLICK, 0.4f);
     int dir = cw_action_just_pressed(h, G.mv_r) - cw_action_just_pressed(h, G.mv_l);
     if (dir) {
       fx_play_ui(SND_TICK, 0.5f);
       if (G.setup_row == 0) { G.arena_id = (G.arena_id + ARENAS + dir) % ARENAS; build_world(G.arena_id); }
       else if (G.setup_row == 1) G.mode = (G.mode + MODE_COUNT + dir) % MODE_COUNT;
       else if (G.setup_row == 2) G.bots_setting = CW_CLAMP(G.bots_setting + dir, 0, MAXF - 4);
+      else if (G.setup_row == 3) G.bot_level = (G.bot_level + 3 + dir) % 3;
     }
     if (cw_action_just_pressed(h, G.jump) || cw_action_just_pressed(h, G.fire)) {
-      if (G.setup_row == 3 || true) { begin_match(); set_views(); }
+      { begin_match(); set_views(); }
     }
     G.ticks++;
     item_tick();
@@ -1156,6 +1263,22 @@ static void hud_view(int h) {
     cw_r2d_rect(cw_rect_make(r.x, r.y, u * 0.8f, r.h), c);
     cw_r2d_rect(cw_rect_make(r.x + r.w - u * 0.8f, r.y, u * 0.8f, r.h), c);
   }
+  /* where the hit came from: a bar on a ring around the crosshair, rotated to the shooter's bearing */
+  if (G.dmg_flash[h] > 0.05f && f->alive) {
+    float sa, ca;
+    cw_sincos(G.dmg_dir[h], &sa, &ca);
+    float r0 = CW_MIN(r.w, r.h) * 0.26f, r1 = r0 + u * 1.6f;
+    cw_r2d_line(cw_v2(cx - sa * r0, cy - ca * r0), cw_v2(cx - sa * r1, cy - ca * r1), CW_MAX(3.0f, u * 0.4f), cw_rgba(1, 0.15f, 0.1f, CW_MIN(1.0f, G.dmg_flash[h] * 1.4f)));
+  }
+  /* low health: a slow red pulse on the view's edges */
+  if (f->alive && f->hp <= 30) {
+    float pulse = 0.5f + 0.5f * cw_sin((float)G.ticks * 0.14f);
+    cw_color c = cw_rgba(0.9f, 0.05f, 0.05f, 0.12f + 0.2f * pulse);
+    cw_r2d_rect(cw_rect_make(r.x, r.y, r.w, u * 0.5f), c);
+    cw_r2d_rect(cw_rect_make(r.x, r.y + r.h - u * 0.5f, r.w, u * 0.5f), c);
+    cw_r2d_rect(cw_rect_make(r.x, r.y, u * 0.5f, r.h), c);
+    cw_r2d_rect(cw_rect_make(r.x + r.w - u * 0.5f, r.y, u * 0.5f, r.h), c);
+  }
   if (f->alive) {
     /* crosshair, a gap that opens with the weapon's spread, a hit marker in red */
     float gap = u * (0.35f + (f->weapon == 1 ? 1.2f : 0.25f) + f->kick * 20), len = u * 0.7f, th = CW_MAX(2.0f, u * 0.12f);
@@ -1173,6 +1296,16 @@ static void hud_view(int h) {
       cw_r2d_line(cw_v2(cx - d, cy + d), cw_v2(cx - d * 0.45f, cy + d * 0.45f), th, hc);
       cw_r2d_line(cw_v2(cx + d, cy + d), cw_v2(cx + d * 0.45f, cy + d * 0.45f), th, hc);
     }
+  }
+  /* a kill: a gold cross over the crosshair and the victim's name, longer than a hit marker */
+  if (G.kill_flash[h] > 0.05f) {
+    float a = CW_MIN(1.0f, G.kill_flash[h] * 1.5f), d = u * 1.2f;
+    cw_color kc = cw_rgba(1, 0.85f, 0.2f, a);
+    cw_r2d_line(cw_v2(cx - d, cy - d), cw_v2(cx + d, cy + d), CW_MAX(3.0f, u * 0.2f), kc);
+    cw_r2d_line(cw_v2(cx + d, cy - d), cw_v2(cx - d, cy + d), CW_MAX(3.0f, u * 0.2f), kc);
+    char ks[40];
+    snprintf(ks, sizeof ks, "FRAGGED %s", G.kill_name[h]);
+    text(ks, r.x, cy + u * 2.6f, u * 1.2f, cw_rgba(1, 0.85f, 0.2f, a), CW_ALIGN_CENTER, r.w);
   }
   /* health and armour bars, bottom left */
   float bw = r.w * 0.28f, bh = u * 0.7f, bx = r.x + u, by = r.y + r.h - u * 3.2f;
@@ -1234,20 +1367,22 @@ static void hud_setup(void) {
   text("ARENA", 0, u * 1.2f, u * 2.4f, cw_rgba(1, 0.85f, 0.4f, 1), CW_ALIGN_CENTER, cs.x);
   text("choose the match, then press fire", 0, u * 3.6f, u * 0.9f, cw_rgba(1, 1, 1, 0.8f), CW_ALIGN_CENTER, cs.x);
   char s[96];
-  const char *rows[4];
-  char r0[64], r1[64], r2[64];
+  const char *rows[5];
+  char r0[64], r1[64], r2[64], r3[64];
   snprintf(r0, sizeof r0, "<  %s  >", ARENA_INFO[G.arena_id].name);
   snprintf(r1, sizeof r1, "<  %s  >", MODE_NAME[G.mode]);
   snprintf(r2, sizeof r2, G.mode == MODE_COOP ? "waves of bots" : "<  %d bots  >", G.bots_setting);
-  rows[0] = r0, rows[1] = r1, rows[2] = r2, rows[3] = "START";
-  for (int i = 0; i < 4; i++) {
+  static const char *LEVEL[3] = { "EASY", "NORMAL", "HARD" };
+  snprintf(r3, sizeof r3, "<  bots: %s  >", LEVEL[G.bot_level]);
+  rows[0] = r0, rows[1] = r1, rows[2] = r2, rows[3] = r3, rows[4] = "START";
+  for (int i = 0; i < 5; i++) {
     bool sel = i == G.setup_row;
     text(rows[i], 0, u * (6.0f + 1.7f * (float)i), u * 1.5f, sel ? cw_rgba(1, 0.9f, 0.3f, 1) : cw_rgba(1, 1, 1, 0.75f), CW_ALIGN_CENTER, cs.x);
   }
   snprintf(s, sizeof s, "%s", ARENA_INFO[G.arena_id].blurb);
-  text(s, 0, u * 13.2f, u * 0.9f, cw_rgba(1, 1, 1, 0.7f), CW_ALIGN_CENTER, cs.x);
+  text(s, 0, u * 14.9f, u * 0.9f, cw_rgba(1, 1, 1, 0.7f), CW_ALIGN_CENTER, cs.x);
   snprintf(s, sizeof s, "%d player%s", G.players, G.players == 1 ? "" : "s");
-  text(s, 0, u * 14.4f, u * 0.9f, cw_rgba(1, 1, 1, 0.7f), CW_ALIGN_CENTER, cs.x);
+  text(s, 0, u * 16.1f, u * 0.9f, cw_rgba(1, 1, 1, 0.7f), CW_ALIGN_CENTER, cs.x);
 }
 
 static void hud_over(void) {
@@ -1288,39 +1423,34 @@ static void render(void *user, double alpha) {
 
 /* ── start, init ───────────────────────────────────────────────────── */
 
+/* the glTF objects of a viewmodel sit on the viewmodel layer, never cast shadows (own body shadow would look wrong) and are never culled by their own bounds */
+static void set_vm_layers(t3_object *o) {
+  o->layers = 2;
+  o->cast_shadow = false;
+  o->frustum_culled = false;
+  for (int i = 0; i < o->child_count; i++) set_vm_layers(o->children[i]);
+}
+
 static void make_viewmodels(void) {
   for (int h = 0; h < MAXH; h++) {
     G.vm[h] = cw_node_new("Node3D", "VM");
     cw_node_set(G.vm[h], "layers", cw_val_int(2));
     cw_node_add_child(G.cam[h], G.vm[h]);
-    struct part { const char *prim; t3_vec3 size, pos; float r, g, b; float metal, glow; } parts[NWEAP][5] = {
-      { { "BOX", { 0.08f, 0.1f, 0.5f }, { 0, 0, 0 }, 0.2f, 0.22f, 0.25f, 0.8f, 0 }, { "BOX", { 0.05f, 0.05f, 0.3f }, { 0, 0.02f, -0.38f }, 0.1f, 0.1f, 0.12f, 0.9f, 0 },
-        { "BOX", { 0.06f, 0.14f, 0.09f }, { 0, -0.1f, 0.12f }, 0.15f, 0.12f, 0.1f, 0.2f, 0 }, { "BOX", { 0.082f, 0.02f, 0.2f }, { 0, 0.062f, -0.05f }, 1.0f, 0.5f, 0.1f, 0, 1.0f }, { NULL } },
-      { { "BOX", { 0.11f, 0.12f, 0.6f }, { 0, 0, 0 }, 0.25f, 0.2f, 0.15f, 0.5f, 0 }, { "CYLINDER", { 0.045f, 0.55f, 0 }, { -0.03f, 0.04f, -0.25f }, 0.12f, 0.12f, 0.14f, 0.9f, 0 },
-        { "CYLINDER", { 0.045f, 0.55f, 0 }, { 0.03f, 0.04f, -0.25f }, 0.12f, 0.12f, 0.14f, 0.9f, 0 }, { "BOX", { 0.07f, 0.12f, 0.08f }, { 0, -0.1f, 0.18f }, 0.3f, 0.2f, 0.12f, 0.1f, 0 }, { NULL } },
-      { { "CYLINDER", { 0.17f, 0.7f, 0 }, { 0, 0, -0.15f }, 0.28f, 0.3f, 0.26f, 0.6f, 0 }, { "BOX", { 0.07f, 0.16f, 0.1f }, { 0, -0.14f, 0.1f }, 0.15f, 0.12f, 0.1f, 0.2f, 0 },
-        { "BOX", { 0.18f, 0.03f, 0.3f }, { 0, 0.1f, -0.1f }, 0.9f, 0.3f, 0.1f, 0, 0.8f }, { NULL } },
-      { { "BOX", { 0.07f, 0.09f, 0.75f }, { 0, 0, -0.1f }, 0.35f, 0.36f, 0.4f, 0.9f, 0 }, { "BOX", { 0.02f, 0.05f, 0.5f }, { 0, 0, -0.1f }, 0.5f, 0.3f, 1.0f, 0, 2.5f },
-        { "BOX", { 0.06f, 0.14f, 0.09f }, { 0, -0.1f, 0.14f }, 0.15f, 0.12f, 0.1f, 0.2f, 0 }, { NULL } },
-    };
     for (int w = 0; w < NWEAP; w++) {
       cw_node g = cw_node_new("Node3D", "Weapon");
       cw_node_add_child(G.vm[h], g);
       G.vm_wp[h][w] = g;
-      for (int i = 0; parts[w][i].prim; i++) {
-        struct part *p = &parts[w][i];
-        cw_node m = cw_node_new("MeshInstance3D", "P");
-        cw_node_set(m, "primitive", cw_val_enum(p->prim));
-        cw_node_set(m, "size", cw_val_vec3(p->size.x, p->size.y, p->size.z));
-        cw_node_set(m, "color", cw_val_color(p->r, p->g, p->b, 1));
-        cw_node_set(m, "metalness", cw_val_float(p->metal));
-        cw_node_set(m, "roughness", cw_val_float(0.35));
-        cw_node_set(m, "cast_shadow", cw_val_bool(false));
-        if (p->glow > 0) cw_node_set(m, "emissive", cw_val_color(p->r * p->glow * 1.2f, p->g * p->glow * 1.2f, p->b * p->glow * 1.2f, 1));
-        cw_node3d_set_position(m, p->pos);
-        if (p->prim[0] == 'C') cw_node3d_set_rotation(m, v3(1.5708f, 0, 0));
-        cw_node_add_child(g, m);
-      }
+      static const char *FILE[NWEAP] = { "pulse", "scatter", "rocket", "rail" };
+      char path[48];
+      snprintf(path, sizeof path, "models/vm_%s.glb", FILE[w]);
+      size_t len;
+      void *glb = cw_asset_load(path, &len);
+      t3_gltf *gl = glb ? t3_gltf_parse(glb, len, NULL, NULL) : NULL; /* kept: the viewmodels live as long as the app */
+      free(glb);
+      if (!gl) { cw_error("arenafps: %s missing", path); continue; }
+      cw_node3d_set_object(g, gl->scene);
+      cw_node3d_set_scale(g, v3(VM_SCALE, VM_SCALE, VM_SCALE));
+      set_vm_layers(gl->scene);
     }
     G.vm_flash[h] = cw_node_new("MeshInstance3D", "Flash");
     cw_node_set(G.vm_flash[h], "primitive", cw_val_enum("SPHERE"));
@@ -1385,6 +1515,7 @@ static void init(void *user) {
   G.arena_id = 0;
   G.mode = MODE_DM;
   G.bots_setting = 5;
+  G.bot_level = 1;
   cw_shell_init(&(cw_shell_desc){ .title = "ARENA", .subtitle = "split screen shooter", .max_players = MAXH, .start = start });
   /* the persistent scene: environment, sun, post, lights, four cameras */
   G.env = cw_node_new("WorldEnvironment", "Env");

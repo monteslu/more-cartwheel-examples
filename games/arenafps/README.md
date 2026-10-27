@@ -24,6 +24,19 @@ Weapons (found on the map; you always have the rifle)
 Arenas: Foundry (a raised deck and pillars), Courtyard (buildings with doorways and roofs), Terraces (stepped
 levels and a pit).
 
+## How it is made (the look)
+
+- Fighters are one skinned mesh on a 15 bone rig with idle, run and die clips; the four weapons are first person models with
+  gloved hands that sway, bob, kick and drop in when drawn; arena props (crates, barrels, barriers, columns, planters, pipes,
+  vents, floodlights) are merged into the level meshes per material. All of it is modelled by the Blender scripts in
+  `tools/blender/` (`tools/blender/build.sh soldier.py`, `weapons.py`, `props.py`: headless Blender 5.2) and shipped as glTF in `models/`.
+- Each arena has its own light design: a sun with cascaded shadows, coloured accent and floodlight lights, height fog with
+  light shafts, a colour grade (`tools/make-luts.mjs`), bloom, ambient occlusion and reflections.
+- Rocket blasts use the engine's explosion tools: a shockwave ring and heat haze that bend the picture, fire, smoke, embers and
+  stone chunks. Bullet holes and scorch marks are mesh decals that stick to the wall or floor they hit.
+- In the autopilot build `ARENA_T_sun=2.5 ARENA_T_ev=-0.3 ...` (sun, sky, ambient, fog, ev, bloom, tod, shafts, ssr, grade)
+  tries other light values without a rebuild.
+
 ## Build
 
 See the repository README: `CARTWHEEL_ENGINE=<engine checkout> scripts/fetch-deps.sh`, then `scripts/build.sh`.

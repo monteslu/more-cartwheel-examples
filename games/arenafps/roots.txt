@@ -1,1 +1,13 @@
 project.cwproj
+models/soldier_a.glb
+models/soldier_b.glb
+models/vm_pulse.glb
+models/vm_scatter.glb
+models/vm_rocket.glb
+models/vm_rail.glb
+models/props.glb
+luts/foundry.cube
+luts/courtyard.cube
+luts/terraces.cube
+textures/hole.png
+textures/scorch.png

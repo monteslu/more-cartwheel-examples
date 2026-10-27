@@ -508,6 +508,39 @@ void mb_merge(mesh_build *a, mesh_build *b) {
   memset(b, 0, sizeof *b);
 }
 
+/* append a loaded geometry (positions, normals, uvs, optional index) scaled, turned about Y by yaw and moved to pos, tinted;
+ * uvs are multiplied by uv_scale (the authoring uvs are in metres) */
+void mb_add_geo(mesh_build *b, const t3_geometry *g, t3_vec3 pos, float yaw, t3_vec3 s, const float rgb[3], float uv_scale) {
+  const t3_attribute *P = g->attributes[T3_ATTR_POSITION], *N = g->attributes[T3_ATTR_NORMAL], *U = g->attributes[T3_ATTR_UV], *I = g->index;
+  if (!P || P->type != T3_FLOAT32) return;
+  float sn, cs;
+  cw_sincos(yaw, &sn, &cs);
+  int base = b->nv;
+  const float *pp = P->array, *nn = N ? N->array : NULL, *uu = U ? U->array : NULL;
+  for (int i = 0; i < P->count; i++) {
+    float x = pp[i * 3] * s.x, y = pp[i * 3 + 1] * s.y, z = pp[i * 3 + 2] * s.z;
+    t3_vec3 w = { pos.x + x * cs + z * sn, pos.y + y, pos.z - x * sn + z * cs };
+    t3_vec3 n = { 0, 1, 0 };
+    if (nn) {
+      float nx = nn[i * 3] / s.x, ny = nn[i * 3 + 1] / s.y, nz = nn[i * 3 + 2] / s.z;
+      float l = sqrtf(nx * nx + ny * ny + nz * nz);
+      if (l > 1e-6f) nx /= l, ny /= l, nz /= l;
+      n = (t3_vec3){ nx * cs + nz * sn, ny, -nx * sn + nz * cs };
+    }
+    int v = mb_vert(b, w, n, uu ? uu[i * 2] * uv_scale : 0, uu ? uu[i * 2 + 1] * uv_scale : 0);
+    mb_color(b, v, rgb[0], rgb[1], rgb[2]);
+  }
+  int flip = (s.x * s.y * s.z) < 0;
+  if (!I) return;
+  for (int i = 0; i + 2 < I->count; i += 3) {
+    uint32_t a, c, d;
+    if (I->type == T3_UINT16) { const uint16_t *ix = I->array; a = ix[i], c = ix[i + 1], d = ix[i + 2]; }
+    else { const uint32_t *ix = I->array; a = ix[i], c = ix[i + 1], d = ix[i + 2]; }
+    if (flip) mb_tri(b, base + (int)a, base + (int)d, base + (int)c);
+    else mb_tri(b, base + (int)a, base + (int)c, base + (int)d);
+  }
+}
+
 void mb_box(mesh_build *b, t3_vec3 c, t3_quat q, t3_vec3 s, float uv_m, const float rgb[3]) {
   t3_mat4 m;
   t3_mat4_compose(&m, c, q, (t3_vec3){ 1, 1, 1 });

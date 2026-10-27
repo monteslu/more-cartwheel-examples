@@ -3,6 +3,7 @@
  * simulation (its own random stream). */
 #include "fx.h"
 
+#include "cartwheel/explosions.h"
 #include "cartwheel/particles.h"
 
 static cw_rng R;
@@ -12,7 +13,7 @@ typedef struct pool {
   cw_node n[48];
   int cnt, next;
 } pool;
-static pool P_SPARK, P_DUST, P_HIT, P_FIRE, P_SMOKE, P_EMBER, P_DECAL, P_SCORCH, P_TRAIL, P_ELIGHT;
+static pool P_SPARK, P_DUST, P_HIT, P_FIRE, P_SMOKE, P_EMBER, P_TRAIL, P_ELIGHT, P_SHOCK, P_HAZE, P_FLASH, P_CHUNK;
 
 static cw_node new_ps(const char *name, int amount, float life, float smin, float smax, float spread, float gravity, float size,
                       const char *ramp, const char *curve, float energy, const char *mode, const char *blend) {
@@ -83,27 +84,58 @@ static cw_node mk_ember(int i) {
   cw_node_set(n, "bounce", cw_val_float(0.4));
   return n;
 }
-static cw_node mk_decal(int i) {
+/* decals that stick to the surface they hit (mode MESH: the engine clips the triangles under the box and keeps them with the mesh);
+ * the engine recycles the oldest past max_mesh_decals, so bullet holes and scorch marks are made as needed and forgotten */
+static cw_node make_decal(const char *name, const char *tex, t3_vec3 size, cw_color c, const char *blend, int keep) {
+  cw_node n = cw_node_new("Decal3D", name);
+  cw_node_set(n, "size", cw_val_vec3(size.x, size.y, size.z));
+  cw_node_set(n, "texture", cw_val_string(tex));
+  cw_node_set(n, "blend", cw_val_enum(blend));
+  cw_node_set(n, "color", cw_val_color(c.r, c.g, c.b, 1));
+  cw_node_set(n, "normal_fade", cw_val_float(0.35));
+  cw_node_set(n, "edge_fade", cw_val_float(0.15));
+  cw_node_set(n, "mode", cw_val_enum("MESH"));
+  cw_node_set(n, "max_mesh_decals", cw_val_int(keep));
+  cw_node_set(n, "max_triangles", cw_val_int(256));
+  return n;
+}
+static cw_node mk_shock(int i) {
   (void)i;
-  cw_node n = cw_node_new("Decal3D", "Hole");
-  cw_node_set(n, "size", cw_val_vec3(0.28f, 0.28f, 0.35f));
-  cw_node_set(n, "blend", cw_val_enum("MULTIPLY"));
-  cw_node_set(n, "color", cw_val_color(0.12f, 0.1f, 0.09f, 1));
-  cw_node_set(n, "normal_fade", cw_val_float(0.3));
+  cw_node n = cw_node_new("Shockwave3D", "Shock");
+  cw_node_set(n, "autostart", cw_val_bool(false));
+  cw_node_set(n, "playing", cw_val_bool(false));
+  cw_node_set(n, "ground", cw_val_bool(false));
+  cw_node_set(n, "max_radius", cw_val_float(6.5));
+  cw_node_set(n, "duration", cw_val_float(0.55));
+  cw_node_set(n, "thickness", cw_val_float(1.3));
+  cw_node_set(n, "strength", cw_val_float(0.6));
   cw_node3d_set_position(n, v3(0, -500, 0));
   cw_node_add_child(ROOT, n);
   return n;
 }
-static cw_node mk_scorch(int i) {
+/* heat haze over the blast: DISTORT particles bend the picture behind them */
+static cw_node mk_haze(int i) {
   (void)i;
-  cw_node n = cw_node_new("Decal3D", "Scorch");
-  cw_node_set(n, "size", cw_val_vec3(3.2f, 3.2f, 1.6f));
-  cw_node_set(n, "blend", cw_val_enum("MULTIPLY"));
-  cw_node_set(n, "color", cw_val_color(0.08f, 0.07f, 0.06f, 1));
-  cw_node_set(n, "normal_fade", cw_val_float(0.4));
-  cw_node_set(n, "edge_fade", cw_val_float(0.3));
-  cw_node3d_set_position(n, v3(0, -500, 0));
-  cw_node_add_child(ROOT, n);
+  cw_node n = new_ps("Haze", 36, 1.3f, 0.8f, 3.2f, 70, 1.0f, 1.9f, "0 1 1 1 0, 0.15 1 1 1 0.9, 1 1 1 1 0", "0 0.5, 1 1.5", 1, "BILLBOARD", "DISTORT");
+  cw_node_set(n, "distort_strength", cw_val_float(0.22));
+  cw_node_set(n, "emission_shape", cw_val_enum("SPHERE"));
+  cw_node_set(n, "emission_radius", cw_val_float(0.7));
+  cw_node_set(n, "turbulence", cw_val_float(0.8));
+  return n;
+}
+/* a one frame hot core: white-yellow, large, ADD */
+static cw_node mk_flash(int i) {
+  (void)i;
+  return new_ps("Flash", 3, 0.18f, 0, 0.3f, 180, 0, 3.2f, "0 1 0.95 0.8 1, 1 1 0.5 0.15 0", "0 0.6, 1 1.4", 14, "BILLBOARD", "ADD");
+}
+/* chunks of stone thrown out, small lit meshes that fall and bounce */
+static cw_node mk_chunk(int i) {
+  (void)i;
+  cw_node n = new_ps("Chunk", 14, 1.4f, 4, 11, 150, -16, 0.11f, "0 0.5 0.45 0.4 1, 1 0.3 0.28 0.25 1", "0 1, 1 0.8", 1, "MESH", "OPAQUE");
+  cw_node_set(n, "mesh_primitive", cw_val_enum("TETRA"));
+  cw_node_set(n, "spin", cw_val_float(8));
+  cw_node_set(n, "collide_depth", cw_val_bool(true));
+  cw_node_set(n, "bounce", cw_val_float(0.35));
   return n;
 }
 static cw_node mk_trail(int i) {
@@ -197,8 +229,10 @@ void fx_init(cw_node root) {
   fill(&P_FIRE, 5, mk_fire);
   fill(&P_SMOKE, 5, mk_smoke);
   fill(&P_EMBER, 5, mk_ember);
-  fill(&P_DECAL, 48, mk_decal);
-  fill(&P_SCORCH, 10, mk_scorch);
+  fill(&P_SHOCK, 4, mk_shock);
+  fill(&P_HAZE, 4, mk_haze);
+  fill(&P_FLASH, 4, mk_flash);
+  fill(&P_CHUNK, 4, mk_chunk);
   fill(&P_TRAIL, 24, mk_trail);
   fill(&P_ELIGHT, 6, mk_elight);
   for (int i = 0; i < NCASE; i++) {
@@ -227,7 +261,8 @@ void fx_reset(void) {
   /* the pools' nodes belong to the level root and were freed with it: fx_init again */
   memset(&P_SPARK, 0, sizeof P_SPARK), memset(&P_HIT, 0, sizeof P_HIT), memset(&P_DUST, 0, sizeof P_DUST);
   memset(&P_FIRE, 0, sizeof P_FIRE), memset(&P_SMOKE, 0, sizeof P_SMOKE), memset(&P_EMBER, 0, sizeof P_EMBER);
-  memset(&P_DECAL, 0, sizeof P_DECAL), memset(&P_SCORCH, 0, sizeof P_SCORCH), memset(&P_TRAIL, 0, sizeof P_TRAIL);
+  memset(&P_SHOCK, 0, sizeof P_SHOCK), memset(&P_HAZE, 0, sizeof P_HAZE), memset(&P_FLASH, 0, sizeof P_FLASH), memset(&P_CHUNK, 0, sizeof P_CHUNK);
+  memset(&P_TRAIL, 0, sizeof P_TRAIL);
   memset(&P_ELIGHT, 0, sizeof P_ELIGHT);
   memset(TR_LIFE, 0, sizeof TR_LIFE), memset(EL_LIFE, 0, sizeof EL_LIFE);
   memset(CASE, 0, sizeof CASE);
@@ -265,35 +300,51 @@ void fx_spark(t3_vec3 p, t3_vec3 n, int kind) {
 }
 
 void fx_hole(t3_vec3 p, t3_vec3 n) {
-  cw_node d = take(&P_DECAL, NULL);
+  float s = 0.22f + cw_rng_float(&R) * 0.1f;
+  cw_node d = make_decal("Hole", "textures/hole.png", v3(s, s, 0.3f), (cw_color){ 1, 1, 1, 1 }, "MIX", 80);
   cw_node3d_set_position(d, v3add(p, v3scale(n, 0.1f)));
   t3_vec3 up = fabsf(n.y) > 0.98f ? v3(1, 0, 0) : v3(0, 1, 0);
   cw_node3d_look_at(d, v3sub(p, n), up);
+  cw_node_add_child(ROOT, d);
 }
 
 void fx_explosion(t3_vec3 p, t3_vec3 n) {
   t3_vec3 up = v3(0, 1, 0);
-  cw_node f = take(&P_FIRE, NULL);
-  aim_node(f, p, up);
-  cw_particles_restart(f);
-  cw_node s = take(&P_SMOKE, NULL);
-  aim_node(s, p, up);
-  cw_particles_restart(s);
-  cw_node e = take(&P_EMBER, NULL);
-  aim_node(e, p, up);
-  cw_particles_restart(e);
-  cw_node d = take(&P_DUST, NULL);
-  aim_node(d, p, up);
-  cw_particles_restart(d);
-  cw_node sc = take(&P_SCORCH, NULL);
   t3_vec3 nn = n;
   if (v3len(nn) < 0.5f) nn = up;
+  t3_vec3 c = v3add(p, v3scale(nn, 0.4f)); /* the burst sits just off the surface */
+  cw_node f = take(&P_FIRE, NULL);
+  aim_node(f, c, up);
+  cw_particles_restart(f);
+  cw_node fl = take(&P_FLASH, NULL);
+  aim_node(fl, c, up);
+  cw_particles_restart(fl);
+  cw_node s = take(&P_SMOKE, NULL);
+  aim_node(s, c, up);
+  cw_particles_restart(s);
+  cw_node e = take(&P_EMBER, NULL);
+  aim_node(e, c, nn);
+  cw_particles_restart(e);
+  cw_node ch = take(&P_CHUNK, NULL);
+  aim_node(ch, c, nn);
+  cw_particles_restart(ch);
+  cw_node d = take(&P_DUST, NULL);
+  aim_node(d, c, up);
+  cw_particles_restart(d);
+  cw_node hz = take(&P_HAZE, NULL);
+  aim_node(hz, c, up);
+  cw_particles_restart(hz);
+  cw_node sw = take(&P_SHOCK, NULL);
+  cw_node3d_set_position(sw, c);
+  cw_shockwave_fire(sw);
+  cw_node sc = make_decal("Scorch", "textures/scorch.png", v3(3.4f, 3.4f, 1.6f), (cw_color){ 1, 1, 1, 1 }, "MIX", 16);
   cw_node3d_set_position(sc, v3add(p, v3scale(nn, 0.15f)));
   cw_node3d_look_at(sc, v3sub(p, nn), fabsf(nn.y) > 0.98f ? v3(1, 0, 0) : up);
+  cw_node_add_child(ROOT, sc);
   int li;
   cw_node l = take(&P_ELIGHT, &li);
   cw_node3d_set_position(l, v3add(p, v3scale(nn, 0.8f)));
-  EL_LIFE[li] = (life){ 16, 16 };
+  EL_LIFE[li] = (life){ 22, 22 };
   fx_play(SND_BOOM, p, 1.0f, 0.95f + cw_rng_float(&R) * 0.1f);
 }
 
@@ -344,7 +395,7 @@ void fx_tick(void) {
     if (EL_LIFE[i].t > 0) {
       EL_LIFE[i].t--;
       float k = (float)EL_LIFE[i].t / (float)EL_LIFE[i].t0;
-      e = 160.0f * k * k;
+      e = 260.0f * k * k * k;
     }
     cw_node_set(P_ELIGHT.n[i], "energy", cw_val_float(e));
   }

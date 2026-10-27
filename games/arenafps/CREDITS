@@ -5,7 +5,14 @@ Everything in this game is made by its own code:
     occlusion) generated at load by src/gfx.c, the same generators as the cartwheel demolition derby example
     (MIT, this repository),
   - sounds: synthesised at start from sine and noise in src/fx.c,
-  - models (levels, weapons, fighters): boxes, cylinders and spheres built in code,
+  - models: the fighters (skinned, 15 bones, clips idle / run / die), the four first person weapons with gloved
+    hands and the arena props (crates, barrels, barriers, columns, planters, pipes, vents, floodlights, consoles)
+    are modelled and rigged by our own Blender scripts in tools/blender/ (soldier.py, weapons.py, props.py,
+    run with tools/blender/build.sh, headless Blender 5.2) and exported as glTF into models/. Blender itself is
+    only the authoring tool (GPL); the exported models are our own work under this game's licence,
+  - level geometry (floors, walls, ramps, trim): boxes built in code and merged per material,
+  - colour grades: tools/make-luts.mjs writes the three .cube LUTs in luts/,
+  - decal sprites (bullet hole, scorch): tools/make-decals.mjs writes textures/*.png,
   - HUD and menus: the engine's shell and its built-in UI font.
 
 Fonts: the engine's built-in UI font; its licence is in the cartwheel-engine NOTICE (open font licence).
