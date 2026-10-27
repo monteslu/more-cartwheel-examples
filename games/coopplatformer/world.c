@@ -683,7 +683,7 @@ void world_scene_build(game *g, cw_node root) {
   g_nwaters = g_nlavas = 0;
   g_mat[MT_ROCK] = pbr(gen_rock, 3.0f, 1.0f, false, 0);
   g_mat[MT_GRASS] = pbr(gen_grass, 2.0f, 1.0f, false, 0);
-  g_mat[MT_CAVE] = pbr(gen_cave, 3.0f, 1.0f, true, 1.1f);
+  g_mat[MT_CAVE] = pbr(gen_cave, 3.0f, 1.0f, true, 0.7f);
   g_mat[MT_BRICK] = pbr(gen_brick, 4.0f, 1.0f, false, 0);
   g_mat[MT_BASALT] = pbr(gen_basalt, 3.5f, 1.0f, true, 2.2f);
   g_mat[MT_PROP] = t3_mesh_physical_material_new(0xffffff);
@@ -930,7 +930,7 @@ static const float LAYER_COL[BIOMES][4][3] = {
   { { 0.62f, 0.72f, 0.88f }, { 0.42f, 0.6f, 0.62f }, { 0.16f, 0.4f, 0.27f }, { 0.1f, 0.3f, 0.12f } },
   { { 0.08f, 0.1f, 0.2f }, { 0.06f, 0.08f, 0.16f }, { 0.05f, 0.06f, 0.13f }, { 0.04f, 0.05f, 0.1f } },
   { { 0.55f, 0.7f, 0.68f }, { 0.4f, 0.56f, 0.52f }, { 0.3f, 0.42f, 0.36f }, { 0.4f, 0.36f, 0.26f } },
-  { { 0.45f, 0.14f, 0.1f }, { 0.3f, 0.08f, 0.07f }, { 0.18f, 0.06f, 0.06f }, { 0.12f, 0.06f, 0.06f } },
+  { { 0.5f, 0.15f, 0.1f }, { 0.32f, 0.08f, 0.07f }, { 0.16f, 0.05f, 0.05f }, { 0.07f, 0.035f, 0.035f } },
 };
 static const float LAYER_Z[4] = { -125, -85, -48, -9 };
 
@@ -943,8 +943,8 @@ static t3_mesh *g_sun;
 
 /* 0..1: how much of region b is present at x (1 inside, easing over 30 units at the borders) */
 static float bmask(int b, float x) {
-  float lo = b == 0 ? 1.0f : sstep(g_bx0[b] - 22.0f, g_bx0[b] + 22.0f, x);
-  float hi = b == BIOMES - 1 ? 1.0f : 1.0f - sstep(g_bx1[b] - 22.0f, g_bx1[b] + 22.0f, x);
+  float lo = b == 0 ? 1.0f : sstep(g_bx0[b] - 14.0f, g_bx0[b] + 40.0f, x);
+  float hi = b == BIOMES - 1 ? 1.0f : 1.0f - sstep(g_bx1[b] - 40.0f, g_bx1[b] + 14.0f, x);
   return lo * hi;
 }
 static float ridge(float x, float sc, int s) { return 1.0f - fabsf(2.0f * fbm(x * sc, 0.31f, 8, 5, s) - 1.0f); }

@@ -14,3 +14,6 @@ physical+fog+instbig+shadow+l2801+s100
 physical+vcol+fog+shadow+ds+l2801+s100
 physical+fog+shadow+l2801+s100
 basic+vcol+trans+ds
+standard+fog+shadow+l2801+s100+xwater
+physical+vcol+fog+trans+nmap+shadow+ds+l2801+s100
+physical+map+fog+rep+nmap+ao+emap+rmap+shadow+l2801+s100

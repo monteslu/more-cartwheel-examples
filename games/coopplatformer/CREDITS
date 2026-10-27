@@ -1,8 +1,19 @@
 coopplatformer (working title)
 
-Everything in this game is made by its own code: the level generator, the stone and brick textures (value noise
-turned into albedo, normal, roughness and occlusion maps), the characters, enemies, effects and every sound
-(synthesized at start-up). No image, model or sound is taken from elsewhere.
+Everything in this game is made by its own code or by scripts in this folder. No image, model or sound is taken
+from elsewhere, so there is nothing to attribute beyond the font and the engine.
+
+Made by the game's own code (games/coopplatformer/*.c):
+  - the level generator and its four regions
+  - every texture: stone, grass, cave stone with crystal specks, sandstone brick, volcanic basalt with glowing seams,
+    lava, water ripples, the sun glow and the clouds (value noise turned into albedo, normal, roughness, occlusion
+    and emission maps at start-up)
+  - the backdrop: sky, ridges, trees, columns, spires, crystals, mushrooms, grass and flowers (generated meshes)
+  - every sound (synthesized at start-up)
+
+Made by tools/blender/characters.py (Blender 5.2, run headless, our own script, no downloaded assets):
+  - assets/models/hero.glb, walker.glb, flyer.glb, boss.glb: skinned meshes with PBR materials. The game poses
+    their bones in code, so there are no baked animations.
 
 Fonts: the engine's built-in UI font (Fira Sans, SIL Open Font License 1.1, shipped with the engine).
 

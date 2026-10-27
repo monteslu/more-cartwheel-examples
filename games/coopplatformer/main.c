@@ -79,6 +79,7 @@ static cw_action a_left, a_right, a_up, a_down, a_jump, a_dash, a_map;
 static input_state INPUT[MAX_PLAYERS];
 static bool g_map_open;
 static cw_font g_font;
+static void title_background(cw_shell_screen scr, cw_vec2 cv, void *user);
 static int g_state_dbg, g_players_dbg, g_bubbles_dbg, g_hp_dbg;
 static float g_pos_dbg[2], g_cam_dbg[3];
 static int g_run_ticks;
@@ -150,7 +151,7 @@ static const mood MOODS[BIOMES] = {
     -1.0f, -0.45f, { 0.7f, 1.0f, 0.85f }, 1.0f, 0.0025f, 0.7f, 0.4f, { 0.8f, 1.0f, 0.9f }, 0.014f, 0.0f },
   /* volcano: a low red sun behind the cone, lava orange rim, ash haze */
   { { 0.25f, 0.06f, 0.04f }, { 0.4f, 0.12f, 0.06f }, { 1.0f, 0.5f, 0.3f }, 1.8f, 0.28f, 0.6f, 1.25f, 0.24f, 34, 300, 0.8f,
-    -0.35f, 0.9f, { 1.0f, 0.38f, 0.1f }, 2.4f, 0.003f, 0.4f, 0.3f, { 1.0f, 0.5f, 0.3f }, 0.016f, 0.0015f },
+    -0.35f, 0.9f, { 1.0f, 0.38f, 0.1f }, 2.4f, 0.0015f, 0.4f, 0.3f, { 1.0f, 0.5f, 0.3f }, 0.016f, 0.0015f },
 };
 static mood cur_mood;
 
@@ -511,7 +512,7 @@ static void build_scene(void) {
     /* a real flame at the nearest torches */
     for (int i = 0; i < NTORCH; i++) {
       S.torchfire[i] = make_node("GPUParticles3D", S.torch[i], "Flame");
-      pfx(S.torchfire[i], 26, 0.7f, 0.5f, 1.4f, 0.32f, cw_rgba(1, 0.6f, 0.2f, 1), 2.2f, 1, "0 1 0.95 0.6 0, 0.15 1 0.7 0.25 1, 0.7 1 0.35 0.08 0.6, 1 0.4 0.1 0.03 0", "0 0.6, 0.3 1, 1 0.2", 4.5f);
+      pfx(S.torchfire[i], 40, 0.55f, 0.3f, 0.9f, 0.2f, cw_rgba(1, 0.6f, 0.2f, 1), 2.2f, 1, "0 1 0.95 0.6 0, 0.15 1 0.7 0.25 1, 0.7 1 0.35 0.08 0.6, 1 0.4 0.1 0.03 0", "0 0.6, 0.3 1, 1 0.2", 4.5f);
       cw_node_set(S.torchfire[i], "one_shot", cw_val_bool(false));
       cw_node_set(S.torchfire[i], "explosiveness", cw_val_float(0));
       cw_node_set(S.torchfire[i], "emitting", cw_val_bool(true));
@@ -916,7 +917,7 @@ static void init(void *user) {
   a_jump = cw_action_find("jump"), a_dash = cw_action_find("dash"), a_map = cw_action_find("map");
   cw_shell_init(&(cw_shell_desc){ .title = "Co-op Platformer", .subtitle = "one to four players", .max_players = 4,
                                   .game_save_size = sizeof(save_t), .game_save_version = 1, .start = start_match,
-                                  .quit = quit_match, .sound = sound_hook });
+                                  .quit = quit_match, .sound = sound_hook, .draw_background = title_background });
   g_font = cw_ui_font_sans();
   audio_init();
   cw_debug_i32("g.state", &g_state_dbg);
@@ -1009,92 +1010,244 @@ static void text(const char *s, float x, float y, float size, cw_color c, cw_tex
   cw_r2d_text(g_font, s, (cw_vec2){ x, y }, &(cw_text_style){ .size = size, .color = c, .align = al, .wrap_width = w });
 }
 
+
+static cw_color rgba3(const float *c, float a) { return cw_rgba(c[0], c[1], c[2], a); }
+static cw_color lerpc(cw_color a, cw_color b, float t) { return cw_rgba(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, a.a + (b.a - a.a) * t); }
+static float g_ui_t;
+
+/* a vertical gradient panel: a few bands between two colours, with a rounded top and bottom */
+static void panel(float x, float y, float w, float h, float r, cw_color top, cw_color bot, cw_color edge) {
+  cw_r2d_round_rect(cw_rect_make(x - 1.5f, y - 1.5f, w + 3, h + 3), r + 1.5f, 8, edge);
+  int n = 6;
+  cw_r2d_round_rect(cw_rect_make(x, y, w, h), r, 8, bot);
+  for (int i = 0; i < n; i++) {
+    float t0 = (float)i / (float)n, hh2 = h * 0.5f / (float)n;
+    cw_color c = lerpc(top, bot, t0 * 1.6f > 1 ? 1 : t0 * 1.6f);
+    c.a *= 0.8f;
+    cw_r2d_rect(cw_rect_make(x + r * 0.4f, y + 2 + h * 0.5f * t0 * 0.9f, w - r * 0.8f, hh2 * 0.9f), c);
+  }
+}
+static void heart(cw_vec2 c, float r, cw_color col) {
+  cw_r2d_circle((cw_vec2){ c.x - r * 0.5f, c.y - r * 0.25f }, r * 0.56f, 12, col);
+  cw_r2d_circle((cw_vec2){ c.x + r * 0.5f, c.y - r * 0.25f }, r * 0.56f, 12, col);
+  cw_vec2 tri[3] = { { c.x - r * 1.02f, c.y - r * 0.05f }, { c.x + r * 1.02f, c.y - r * 0.05f }, { c.x, c.y + r * 1.0f } };
+  cw_r2d_polygon(tri, 3, col);
+}
+/* a player's face with its headgear: ears, an antenna, a sprout or horns (the marker that is not a colour) */
+static void portrait(cw_vec2 c, float r, int i, bool dim) {
+  cw_color fur = rgba3(PLAYER_RGB[i], dim ? 0.45f : 1), acc = i == 0 ? cw_rgba(1, 0.85f, 0.25f, 1) : i == 1 ? cw_rgba(0.95f, 0.95f, 0.95f, 1) : i == 2 ? cw_rgba(1, 0.45f, 0.65f, 1) : cw_rgba(0.3f, 0.8f, 0.95f, 1);
+  if (dim) acc.a = 0.5f;
+  if (i == 1) { /* antenna */
+    cw_r2d_line((cw_vec2){ c.x, c.y - r * 0.8f }, (cw_vec2){ c.x, c.y - r * 1.5f }, r * 0.12f, acc);
+    cw_r2d_circle((cw_vec2){ c.x, c.y - r * 1.55f }, r * 0.22f, 8, acc);
+  } else if (i == 0) { /* ears */
+    for (int k = -1; k <= 1; k += 2) {
+      cw_vec2 t[3] = { { c.x + k * r * 0.35f, c.y - r * 0.7f }, { c.x + k * r * 0.95f, c.y - r * 0.7f }, { c.x + k * r * 0.75f, c.y - r * 1.4f } };
+      cw_r2d_polygon(t, 3, acc);
+    }
+  } else if (i == 2) { /* sprout */
+    for (int k = -1; k <= 1; k += 2) cw_r2d_circle((cw_vec2){ c.x + k * r * 0.35f, c.y - r * 1.0f }, r * 0.3f, 8, acc);
+  } else { /* horns */
+    for (int k = -1; k <= 1; k += 2) {
+      cw_vec2 t[3] = { { c.x + k * r * 0.55f, c.y - r * 0.6f }, { c.x + k * r * 1.0f, c.y - r * 0.5f }, { c.x + k * r * 1.1f, c.y - r * 1.3f } };
+      cw_r2d_polygon(t, 3, acc);
+    }
+  }
+  cw_r2d_circle(c, r, 18, fur);
+  cw_r2d_circle((cw_vec2){ c.x, c.y + r * 0.3f }, r * 0.5f, 12, cw_rgba(0.96f, 0.9f, 0.78f, dim ? 0.5f : 1));
+  cw_r2d_circle((cw_vec2){ c.x - r * 0.35f, c.y - r * 0.1f }, r * 0.22f, 8, cw_rgba(1, 1, 1, 1));
+  cw_r2d_circle((cw_vec2){ c.x + r * 0.35f, c.y - r * 0.1f }, r * 0.22f, 8, cw_rgba(1, 1, 1, 1));
+  cw_r2d_circle((cw_vec2){ c.x - r * 0.3f, c.y - r * 0.08f }, r * 0.1f, 6, cw_rgba(0.05f, 0.05f, 0.1f, 1));
+  cw_r2d_circle((cw_vec2){ c.x + r * 0.3f, c.y - r * 0.08f }, r * 0.1f, 6, cw_rgba(0.05f, 0.05f, 0.1f, 1));
+}
+static void coin_icon(cw_vec2 c, float r) {
+  cw_r2d_circle(c, r, 14, cw_rgba(0.75f, 0.5f, 0.1f, 1));
+  cw_r2d_circle(c, r * 0.82f, 14, cw_rgba(1, 0.8f, 0.25f, 1));
+  cw_r2d_circle((cw_vec2){ c.x - r * 0.2f, c.y - r * 0.2f }, r * 0.35f, 8, cw_rgba(1, 0.95f, 0.7f, 0.9f));
+}
+
+static const char *const REGION_NAMES[BIOMES] = { "Sunlit Meadow", "Glimmer Caves", "Drowned Ruins", "Ember Crater" };
+
 static cw_color tile_color(int t, int biome) {
   switch (t) {
-    case T_ROCK: case T_GRASS: case T_BRICK: return biome == BIOME_MEADOW ? cw_rgba(0.35f, 0.55f, 0.3f, 1) : biome == BIOME_CAVES ? cw_rgba(0.35f, 0.4f, 0.55f, 1) : biome == BIOME_RUINS ? cw_rgba(0.75f, 0.65f, 0.45f, 1) : cw_rgba(0.6f, 0.25f, 0.2f, 1);
-    case T_WATER: return cw_rgba(0.2f, 0.5f, 0.9f, 1);
-    case T_LAVA: return cw_rgba(1, 0.4f, 0.1f, 1);
-    case T_SPIKE: return cw_rgba(0.9f, 0.9f, 0.9f, 1);
-    case T_ONEWAY: return cw_rgba(0.7f, 0.5f, 0.3f, 1);
+    case T_ROCK: case T_GRASS: case T_BRICK: return biome == BIOME_MEADOW ? cw_rgba(0.3f, 0.6f, 0.28f, 1) : biome == BIOME_CAVES ? cw_rgba(0.35f, 0.45f, 0.7f, 1) : biome == BIOME_RUINS ? cw_rgba(0.8f, 0.7f, 0.48f, 1) : cw_rgba(0.7f, 0.28f, 0.2f, 1);
+    case T_WATER: return cw_rgba(0.2f, 0.55f, 0.95f, 1);
+    case T_LAVA: return cw_rgba(1, 0.45f, 0.1f, 1);
+    case T_SPIKE: return cw_rgba(0.9f, 0.9f, 0.95f, 1);
+    case T_ONEWAY: return cw_rgba(0.75f, 0.52f, 0.3f, 1);
     default: return cw_rgba(0, 0, 0, 0);
   }
 }
 
 static void draw_map(float W, float H) {
-  cw_r2d_rect(cw_rect_make(0, 0, W, H), cw_rgba(0.02f, 0.03f, 0.06f, 0.88f));
-  float mw = W * 0.92f, cell = mw / (WORLD_W / 4);
-  float ox = (W - mw) * 0.5f, oy = H * 0.5f - cell * (WORLD_H / 4) * 0.5f;
+  float s = H / 540.0f;
+  cw_r2d_rect(cw_rect_make(0, 0, W, H), cw_rgba(0.01f, 0.02f, 0.05f, 0.9f));
+  float mw = W * 0.9f, cell = mw / (WORLD_W / 4);
+  float ox = (W - mw) * 0.5f, oy = H * 0.52f - cell * (WORLD_H / 4) * 0.5f;
   const save_t *sv = cw_shell_game_save();
+  panel(ox - 10 * s, oy - 10 * s, mw + 20 * s, cell * (WORLD_H / 4) + 20 * s, 12 * s, cw_rgba(0.08f, 0.12f, 0.2f, 0.95f), cw_rgba(0.03f, 0.05f, 0.09f, 0.95f), cw_rgba(0.5f, 0.65f, 0.9f, 0.5f));
   for (int by = 0; by < WORLD_H / 4; by++)
     for (int bx = 0; bx < WORLD_W / 4; bx++) {
       if (!G.seen[by][bx] && !sv->seen[by][bx]) continue;
-      /* dominant tile of the 4x4 block */
       int best = T_AIR, bc = 0, cnt[9] = { 0 };
       for (int y = 0; y < 4; y++)
         for (int x = 0; x < 4; x++) cnt[G.L.t[by * 4 + y][bx * 4 + x]]++;
       for (int t = 1; t < 9; t++)
         if (cnt[t] > bc) bc = cnt[t], best = t;
       float px = ox + (float)bx * cell, py = oy + (float)(WORLD_H / 4 - 1 - by) * cell;
-      cw_r2d_rect(cw_rect_make(px, py, cell, cell), best == T_AIR ? cw_rgba(0.08f, 0.1f, 0.16f, 1) : tile_color(best, G.L.biome[bx * 4]));
+      int bi = G.L.biome[bx * 4];
+      cw_color air = lerpc(cw_rgba(0.1f, 0.13f, 0.22f, 1), rgba3(MOODS[bi].fog, 1), 0.25f);
+      cw_r2d_rect(cw_rect_make(px, py, cell + 0.5f, cell + 0.5f), best == T_AIR ? air : tile_color(best, bi));
     }
-  for (int i = 0; i < G.nplayers; i++) {
-    const player *p = &G.p[i];
-    float px = ox + (float)p->pf.body.position.x / 4 * cell, py = oy + ((float)WORLD_H / 4 - (float)p->pf.body.position.y / 4) * cell;
-    cw_r2d_circle((cw_vec2){ px, py }, cell * 0.9f, 12, cw_rgba(PLAYER_RGB[i][0], PLAYER_RGB[i][1], PLAYER_RGB[i][2], 1));
-  }
   for (int k = 0; k < G.L.npickups; k++) {
     const pickup *pk = &G.L.pickups[k];
     float px = ox + (float)pk->x / 4 * cell, py = oy + ((float)WORLD_H / 4 - (float)pk->y / 4) * cell;
-    if (G.seen[pk->y / 4][pk->x / 4]) cw_r2d_circle((cw_vec2){ px, py }, cell * 0.6f, 8, pk->taken ? cw_rgba(0.5f, 0.5f, 0.5f, 1) : cw_rgba(0.4f, 0.9f, 1, 1));
+    if (G.seen[pk->y / 4][pk->x / 4]) {
+      float pulse = 1.0f + 0.2f * sinf(g_ui_t * 4);
+      cw_r2d_circle((cw_vec2){ px, py }, cell * 1.0f * pulse, 10, pk->taken ? cw_rgba(0.5f, 0.5f, 0.5f, 0.7f) : cw_rgba(0.4f, 0.9f, 1, 0.45f));
+      cw_r2d_circle((cw_vec2){ px, py }, cell * 0.55f, 8, pk->taken ? cw_rgba(0.6f, 0.6f, 0.6f, 1) : cw_rgba(0.7f, 1, 1, 1));
+    }
   }
-  text("MAP   (M or Back to close)", 0, H * 0.04f, 26 * H / 540, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER, W);
+  for (int i = 0; i < G.nplayers; i++) {
+    const player *p = &G.p[i];
+    float px = ox + (float)p->pf.body.position.x / 4 * cell, py = oy + ((float)WORLD_H / 4 - (float)p->pf.body.position.y / 4) * cell;
+    cw_r2d_circle((cw_vec2){ px, py }, cell * (1.5f + 0.25f * sinf(g_ui_t * 5 + (float)i)), 16, rgba3(PLAYER_RGB[i], 0.35f));
+    portrait((cw_vec2){ px, py }, cell * 1.05f, i, false);
+  }
+  /* region names under the map, coloured by their light */
+  for (int b = 0; b < BIOMES; b++) {
+    int x0 = -1, x1 = -1;
+    for (int x = 0; x < WORLD_W; x++)
+      if (G.L.biome[x] == b && x < WORLD_W - 4) { if (x0 < 0) x0 = x; x1 = x; }
+    if (x0 < 0) continue;
+    float cx = ox + ((float)(x0 + x1) * 0.5f) / 4 * cell;
+    text(REGION_NAMES[b], cx - 110 * s, oy + cell * (WORLD_H / 4) + 16 * s, 16 * s, lerpc(rgba3(MOODS[b].sun, 1), cw_rgba(1, 1, 1, 1), 0.4f), CW_ALIGN_CENTER, 220 * s);
+  }
+  text("MAP", 0, H * 0.035f, 30 * s, cw_rgba(1, 0.95f, 0.8f, 1), CW_ALIGN_CENTER, W);
+  text("M or Back to close", 0, H * 0.93f, 16 * s, cw_rgba(0.8f, 0.85f, 1, 0.9f), CW_ALIGN_CENTER, W);
+}
+
+/* the title screen's picture: a painted dusk meadow with three drifting ridges, a sun, fireflies and the four heroes */
+static void title_background(cw_shell_screen scr, cw_vec2 cv, void *user) {
+  (void)user;
+  (void)scr;
+  float W = cv.x, H = cv.y, s = H / 540.0f, t = g_ui_t;
+  static const float SKY[6][3] = { { 0.1f, 0.12f, 0.35f }, { 0.28f, 0.2f, 0.5f }, { 0.65f, 0.3f, 0.5f }, { 0.95f, 0.5f, 0.35f }, { 1.0f, 0.75f, 0.45f }, { 1.0f, 0.88f, 0.6f } };
+  for (int i = 0; i < 80; i++) {
+    float f = (float)i / 80.0f * 5.0f;
+    int k0 = (int)f > 4 ? 4 : (int)f;
+    float fr = f - (float)k0;
+    cw_color c = cw_rgba(SKY[k0][0] + (SKY[k0 + 1][0] - SKY[k0][0]) * fr, SKY[k0][1] + (SKY[k0 + 1][1] - SKY[k0][1]) * fr, SKY[k0][2] + (SKY[k0 + 1][2] - SKY[k0][2]) * fr, 1);
+    cw_r2d_rect(cw_rect_make(0, H * 0.78f * (float)i / 80.0f, W, H * 0.78f / 80.0f + 1.5f), c);
+  }
+  cw_r2d_rect(cw_rect_make(0, H * 0.78f, W, H * 0.22f + 1), cw_rgba(0.12f, 0.2f, 0.22f, 1));
+  cw_vec2 sun = { W * 0.72f, H * 0.52f };
+  for (int k = 6; k >= 1; k--) cw_r2d_circle(sun, 28 * s * (float)k * 0.9f, 28, cw_rgba(1, 0.8f, 0.45f, 0.06f));
+  cw_r2d_circle(sun, 34 * s, 28, cw_rgba(1, 0.95f, 0.75f, 1));
+  static const float RC[3][3] = { { 0.4f, 0.3f, 0.55f }, { 0.2f, 0.25f, 0.4f }, { 0.08f, 0.14f, 0.2f } };
+  for (int l = 0; l < 3; l++) {
+    enum { N = 26 };
+    cw_vec2 p[N + 2];
+    float base = H * (0.58f + 0.1f * (float)l), amp = H * (0.12f - 0.02f * (float)l);
+    for (int i = 0; i <= N; i++) {
+      float x = W * (float)i / (float)N, ph = x / W * (4.0f + (float)l * 2.0f) + t * (0.02f + 0.015f * (float)l) + (float)l * 1.7f;
+      p[i] = (cw_vec2){ x, base - amp * (0.5f + 0.5f * sinf(ph * 2.0f) * cosf(ph * 0.7f + 1.0f)) };
+    }
+    p[N + 1] = (cw_vec2){ W, H };
+    cw_vec2 poly[N + 3];
+    poly[0] = (cw_vec2){ 0, H };
+    for (int i = 0; i <= N + 1; i++) poly[i + 1] = p[i];
+    cw_r2d_polygon(poly, N + 3, rgba3(RC[l], 1));
+  }
+  for (int i = 0; i < 40; i++) {
+    float fx = fmodf((float)i * 97.3f + t * (8.0f + (float)(i % 5) * 3.0f), W), fy = H * (0.45f + 0.5f * fabsf(sinf((float)i * 1.3f + t * 0.3f + (float)i)));
+    float a = 0.4f + 0.6f * fabsf(sinf(t * 1.5f + (float)i));
+    cw_r2d_circle((cw_vec2){ fx, fy }, 2.2f * s, 6, cw_rgba(1, 0.95f, 0.5f, a));
+    cw_r2d_circle((cw_vec2){ fx, fy }, 6 * s, 8, cw_rgba(1, 0.9f, 0.4f, 0.12f * a));
+  }
+  for (int i = 0; i < 4; i++) {
+    float x = W * (0.22f + 0.19f * (float)i), y = H * 0.84f - 8 * s * fabsf(sinf(t * 2.0f + (float)i * 0.9f));
+    cw_r2d_circle((cw_vec2){ x, H * 0.9f }, 30 * s, 16, cw_rgba(0, 0, 0, 0.25f));
+    portrait((cw_vec2){ x, y }, 26 * s, i, false);
+  }
 }
 
 static void render(void *user, double alpha) {
   (void)user;
   float dt = 1.0f / 60.0f;
+  g_ui_t += dt;
   if (G.nplayers && G.world.id && S.built) sync_scene((float)alpha, dt);
   cw_r2d_begin(&(cw_r2d_pass_desc){ .clear = false });
   cw_vec2 cs = cw_r2d_canvas_size();
   float W = cs.x, H = cs.y, s = H / 540.0f;
   if (G.nplayers && G.world.id && cw_shell_screen_now() != CW_SHELL_TITLE) {
-    /* hearts and coins per player */
+    /* a panel per player: face, hearts, coins */
     for (int i = 0; i < G.nplayers; i++) {
       const player *p = &G.p[i];
-      float x0 = 20 * s + (float)i * 170 * s, y0 = 18 * s;
-      cw_r2d_round_rect(cw_rect_make(x0 - 6 * s, y0 - 6 * s, 160 * s, 50 * s), 10 * s, 6, cw_rgba(0, 0, 0, 0.35f));
-      cw_r2d_circle((cw_vec2){ x0 + 10 * s, y0 + 12 * s }, 9 * s, 14, cw_rgba(PLAYER_RGB[i][0], PLAYER_RGB[i][1], PLAYER_RGB[i][2], 1));
+      float x0 = 20 * s + (float)i * 176 * s, y0 = 16 * s, pw = 166 * s, ph = 58 * s;
+      panel(x0, y0, pw, ph, 12 * s, cw_rgba(0.16f, 0.2f, 0.3f, 0.82f), cw_rgba(0.04f, 0.05f, 0.09f, 0.82f), rgba3(PLAYER_RGB[i], p->alive || p->bubble ? 0.9f : 0.3f));
+      portrait((cw_vec2){ x0 + 28 * s, y0 + 34 * s }, 17 * s, i, !(p->alive || p->bubble));
       for (int h = 0; h < 3; h++) {
-        cw_color hc = h < p->hp ? cw_rgba(1, 0.3f, 0.35f, 1) : cw_rgba(0.3f, 0.3f, 0.35f, 0.7f);
-        cw_r2d_circle((cw_vec2){ x0 + (34 + 22 * (float)h) * s, y0 + 12 * s }, 8 * s, 12, hc);
+        cw_vec2 hc = { x0 + (70 + 26 * (float)h) * s, y0 + 19 * s };
+        if (h < p->hp) {
+          heart(hc, 9 * s, cw_rgba(1, 0.3f, 0.38f, 1));
+          cw_r2d_circle((cw_vec2){ hc.x - 4 * s, hc.y - 4 * s }, 2.2f * s, 6, cw_rgba(1, 0.85f, 0.9f, 0.9f));
+        } else heart(hc, 9 * s, cw_rgba(0.25f, 0.27f, 0.36f, 0.9f));
       }
       char b[32];
       snprintf(b, sizeof b, "%d", p->coins);
-      cw_r2d_circle((cw_vec2){ x0 + 10 * s, y0 + 34 * s }, 5 * s, 10, cw_rgba(1, 0.8f, 0.25f, 1));
-      text(b, x0 + 24 * s, y0 + 24 * s, 18 * s, cw_rgba(1, 0.95f, 0.8f, 1), CW_ALIGN_LEFT, 0);
+      coin_icon((cw_vec2){ x0 + 78 * s, y0 + 44 * s }, 7 * s);
+      text(b, x0 + 90 * s, y0 + 31 * s, 18 * s, cw_rgba(1, 0.95f, 0.8f, 1), CW_ALIGN_LEFT, 0);
     }
-    char b[64];
-    snprintf(b, sizeof b, "%s%s%s", (G.abilities & AB_DOUBLE) ? "AIR JUMP  " : "", (G.abilities & AB_CLAWS) ? "CLAWS  " : "", (G.abilities & AB_DASH) ? "DASH" : "");
-    text(b, 0, 18 * s, 18 * s, cw_rgba(0.6f, 0.9f, 1, 1), CW_ALIGN_RIGHT, W - 20 * s);
+    /* the abilities: a chip each, lit when found */
+    static const char *const AB[3] = { "AIR JUMP", "CLAWS", "DASH" };
+    for (int k = 0; k < 3; k++) {
+      bool on = (G.abilities >> k) & 1;
+      float cw_ = 76 * s, x = W - (16 + (float)(3 - k) * 82) * s, y = 20 * s;
+      panel(x, y, cw_, 30 * s, 10 * s, on ? cw_rgba(0.2f, 0.45f, 0.6f, 0.9f) : cw_rgba(0.12f, 0.14f, 0.2f, 0.6f), on ? cw_rgba(0.05f, 0.12f, 0.2f, 0.9f) : cw_rgba(0.05f, 0.06f, 0.09f, 0.6f), on ? cw_rgba(0.5f, 0.9f, 1, 0.8f) : cw_rgba(0.4f, 0.4f, 0.5f, 0.3f));
+      text(AB[k], x, y + 7 * s, 14 * s, on ? cw_rgba(0.85f, 0.98f, 1, 1) : cw_rgba(0.5f, 0.55f, 0.65f, 0.8f), CW_ALIGN_CENTER, cw_);
+    }
+    /* the region you are in, fading in at the top when it changes */
+    {
+      static int last_reg = -1;
+      static float reg_t = 0;
+      int b = G.L.biome[(int)G.cam.x < 0 ? 0 : (int)G.cam.x >= WORLD_W ? WORLD_W - 1 : (int)G.cam.x];
+      if (b != last_reg) last_reg = b, reg_t = 3.2f;
+      if (reg_t > 0) {
+        reg_t -= dt;
+        float a = reg_t > 2.6f ? (3.2f - reg_t) / 0.6f : reg_t < 0.8f ? reg_t / 0.8f : 1.0f;
+        text(REGION_NAMES[b], 0, H * 0.2f, 34 * s, cw_rgba(1, 0.96f, 0.85f, a), CW_ALIGN_CENTER, W);
+        cw_r2d_rect(cw_rect_make(W * 0.5f - 90 * s, H * 0.2f + 44 * s, 180 * s, 2 * s), cw_rgba(1, 0.85f, 0.5f, a * 0.8f));
+      }
+    }
     /* boss bar */
     for (int i = 0; i < G.L.nenemies; i++)
       if (G.L.enemies[i].kind == 2 && G.L.enemies[i].alive && fabsf(G.cam.x - G.L.enemies[i].x) < 30) {
-        float bw = W * 0.5f, bx = (W - bw) * 0.5f, by = H - 44 * s;
-        cw_r2d_round_rect(cw_rect_make(bx, by, bw, 16 * s), 6 * s, 6, cw_rgba(0, 0, 0, 0.6f));
-        cw_r2d_round_rect(cw_rect_make(bx, by, bw * (float)G.L.enemies[i].hp / 9.0f, 16 * s), 6 * s, 6, cw_rgba(0.9f, 0.2f, 0.15f, 1));
+        float bw = W * 0.5f, bx = (W - bw) * 0.5f, by = H - 52 * s;
+        float f = (float)G.L.enemies[i].hp / 9.0f;
+        panel(bx - 6 * s, by - 6 * s, bw + 12 * s, 28 * s, 10 * s, cw_rgba(0.2f, 0.1f, 0.1f, 0.9f), cw_rgba(0.06f, 0.03f, 0.03f, 0.9f), cw_rgba(1, 0.5f, 0.3f, 0.6f));
+        cw_r2d_round_rect(cw_rect_make(bx, by, bw * f, 16 * s), 7 * s, 8, cw_rgba(0.8f, 0.12f, 0.1f, 1));
+        cw_r2d_round_rect(cw_rect_make(bx, by, bw * f, 7 * s), 5 * s, 8, cw_rgba(1, 0.5f, 0.3f, 0.9f));
+        text("THE WARDEN", 0, by - 30 * s, 17 * s, cw_rgba(1, 0.85f, 0.7f, 1), CW_ALIGN_CENTER, W);
       }
-    /* arrows to players carried in bubbles */
+    /* players carried in bubbles */
     for (int i = 0; i < G.nplayers; i++)
       if (G.p[i].bubble && G.p[i].joined) {
-        const char *t = "RESCUE";
-        text(t, 0, H - 80 * s, 20 * s, cw_rgba(PLAYER_RGB[i][0], PLAYER_RGB[i][1], PLAYER_RGB[i][2], 1), CW_ALIGN_CENTER, W);
+        float x = W * 0.5f + (float)(i - G.nplayers / 2) * 90 * s;
+        portrait((cw_vec2){ x - 54 * s, H - 100 * s }, 15 * s, i, false);
+        text("RESCUE", x - 34 * s, H - 110 * s, 18 * s, rgba3(PLAYER_RGB[i], 1), CW_ALIGN_LEFT, 0);
       }
     if (G.won) {
-      cw_r2d_rect(cw_rect_make(0, H * 0.3f, W, H * 0.3f), cw_rgba(0, 0, 0, 0.5f));
-      text("THE DEEP IS QUIET", 0, H * 0.34f, 48 * s, cw_rgba(1, 0.85f, 0.3f, 1), CW_ALIGN_CENTER, W);
-      char t[96];
-      snprintf(t, sizeof t, "coins %d   secrets %d   rescues %d   falls %d", G.coins_total, G.secrets, G.rescues, G.deaths);
-      text(t, 0, H * 0.47f, 24 * s, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER, W);
+      float k = fminf(1.0f, (float)(G.tick - G.win_tick) / 40.0f);
+      panel(0, H * 0.28f, W, H * 0.34f * k, 0, cw_rgba(0.1f, 0.08f, 0.02f, 0.88f), cw_rgba(0.02f, 0.02f, 0.03f, 0.88f), cw_rgba(1, 0.8f, 0.3f, 0.7f));
+      if (k > 0.9f) {
+        text("THE DEEP IS QUIET", 0, H * 0.31f, 52 * s, cw_rgba(1, 0.85f, 0.3f, 1), CW_ALIGN_CENTER, W);
+        char t[96];
+        coin_icon((cw_vec2){ W * 0.5f - 250 * s, H * 0.485f }, 11 * s);
+        snprintf(t, sizeof t, "coins %d     secrets %d     rescues %d     falls %d", G.coins_total, G.secrets, G.rescues, G.deaths);
+        text(t, 0, H * 0.46f, 24 * s, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER, W);
+        for (int i = 0; i < G.nplayers; i++) portrait((cw_vec2){ W * 0.5f + ((float)i - (float)(G.nplayers - 1) * 0.5f) * 64 * s, H * 0.56f }, 18 * s, i, false);
+      }
     }
     if (g_map_open) draw_map(W, H);
   }
