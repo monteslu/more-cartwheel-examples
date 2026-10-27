@@ -47,14 +47,14 @@ static void fill(pool *p, int count, cw_node (*make)(int i)) {
 
 static cw_node mk_spark(int i) {
   (void)i;
-  cw_node n = new_ps("Spark", 16, 0.45f, 3, 9, 65, -9, 0.045f, "0 1 0.9 0.5 1, 0.3 1 0.5 0.15 1, 1 0.4 0.1 0.05 0", "0 1, 1 0.3", 9, "STRETCHED", "ADD");
-  cw_node_set(n, "stretch", cw_val_float(0.07));
+  cw_node n = new_ps("Spark", 16, 0.45f, 3, 9, 65, -9, 0.03f, "0 1 0.9 0.5 1, 0.3 1 0.5 0.15 1, 1 0.4 0.1 0.05 0", "0 1, 1 0.3", 9, "STRETCHED", "ADD");
+  cw_node_set(n, "stretch", cw_val_float(0.022));
   return n;
 }
 static cw_node mk_hit(int i) {
   (void)i;
-  cw_node n = new_ps("HitSpark", 10, 0.3f, 2, 6, 80, -6, 0.05f, "0 1 1 1 1, 0.4 0.5 0.9 1 1, 1 0.2 0.5 1 0", "0 1, 1 0.2", 8, "STRETCHED", "ADD");
-  cw_node_set(n, "stretch", cw_val_float(0.06));
+  cw_node n = new_ps("HitSpark", 10, 0.3f, 2, 6, 80, -6, 0.03f, "0 1 0.95 0.8 1, 0.4 1 0.7 0.35 1, 1 0.5 0.2 0.05 0", "0 1, 1 0.2", 5, "STRETCHED", "ADD");
+  cw_node_set(n, "stretch", cw_val_float(0.018));
   return n;
 }
 static cw_node mk_dust(int i) {
@@ -79,7 +79,7 @@ static cw_node mk_smoke(int i) {
 static cw_node mk_ember(int i) {
   (void)i;
   cw_node n = new_ps("Ember", 40, 1.1f, 4, 13, 180, -9, 0.06f, "0 1 0.9 0.5 1, 0.5 1 0.45 0.1 1, 1 0.4 0.1 0.03 0", "0 1, 1 0.2", 8, "STRETCHED", "ADD");
-  cw_node_set(n, "stretch", cw_val_float(0.08));
+  cw_node_set(n, "stretch", cw_val_float(0.03));
   cw_node_set(n, "collide_depth", cw_val_bool(true));
   cw_node_set(n, "bounce", cw_val_float(0.4));
   return n;

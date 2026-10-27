@@ -500,11 +500,11 @@ static void g_formed(float u, float v, texel *t) {
 /* factory glazing: a steel grid of small panes, the light behind them uneven; the map is the albedo AND the emissive mask
  * (the level gives it a dark tint and an emissive colour) */
 static void g_windows(float u, float v, texel *t) {
-  float a = fractf(u * 8), b = fractf(v * 8);
-  int ix = (int)floorf(u * 8), iy = (int)floorf(v * 8);
-  float frame = 1 - clamp01((fminf(fminf(a, 1 - a), fminf(b, 1 - b)) - 0.07f) * 60);
+  float a = fractf(u * 12), b = fractf(v * 8);
+  int ix = (int)floorf(u * 12), iy = (int)floorf(v * 8);
+  float frame = 1 - clamp01((fminf(fminf(a, 1 - a), fminf(b, 1 - b)) - 0.045f) * 80);
   float lit = h01(ix, iy, 1101), grime = fbm(u, v, 8, 3, 1102);
-  float k = lit < 0.12f ? 0.08f : 0.55f + 0.45f * h01(ix, iy, 1103); /* a few dark panes */
+  float k = lit < 0.05f ? 0.15f : 0.6f + 0.4f * h01(ix, iy, 1103); /* a rare dark pane */
   k *= 0.75f + 0.35f * grime;
   float glow = 0.3f + 0.7f * (1 - fabsf(b - 0.5f) * 1.2f); /* brighter in the middle of a pane */
   rgb(t, mixf(0.95f * k * glow, 0.02f, frame), mixf(0.72f * k * glow, 0.02f, frame), mixf(0.45f * k * glow, 0.022f, frame));
@@ -813,4 +813,31 @@ void mb_box(mesh_build *b, t3_vec3 c, t3_quat q, t3_vec3 s, float uv_m, const fl
         mb_quad(b, v0, v0 + 1, v0 + nu + 2, v0 + nu + 1);
       }
   }
+}
+
+/* a tiling cloud layer for the sky plane: brightness premultiplied by cover (drawn additively), coverage 0..1 */
+t3_texture *tex_clouds(float coverage, uint32_t seed) {
+  const int n = 512;
+  uint8_t *px = malloc((size_t)n * n * 4);
+  for (int y = 0; y < n; y++)
+    for (int x = 0; x < n; x++) {
+      float u = (x + 0.5f) / n, v = (y + 0.5f) / n;
+      float base = fbm(u, v, 4, 6, seed), warp = fbm(u, v, 8, 3, seed + 9);
+      float d = clamp01((base + 0.25f * (warp - 0.5f) - (1 - coverage)) * 3.2f);
+      d = d * d * (3 - 2 * d);
+      float lit = 0.7f + 0.3f * clamp01((fbm(u + 0.004f, v + 0.004f, 4, 6, seed) - base) * 20 + 0.5f); /* a sunward rim */
+      float c = d * lit;
+      uint8_t *p = px + (y * n + x) * 4;
+      p[0] = p[1] = p[2] = b8(c), p[3] = 255;
+    }
+  t3_texture *t = t3_texture_new(n, n, px);
+  free(px);
+  t->wrap_s = t->wrap_t = T3_REPEAT;
+  t->flip_y = false;
+  t->generate_mipmaps = true;
+  t->min_filter = T3_LINEAR_MIPMAP_LINEAR;
+  t->mag_filter = T3_LINEAR;
+  t->anisotropy = 8;
+  t->color_space = T3_SRGB_COLOR_SPACE;
+  return t;
 }

@@ -1713,7 +1713,11 @@ static void init(void *user) {
     cw_node_set(G.cam[h], "fov", cw_val_float(78));
     cw_node_set(G.cam[h], "near", cw_val_float(0.08));
     cw_node_set(G.cam[h], "far", cw_val_float(220));
+#ifdef ARENA_AUTOPILOT
+    cw_node_set(G.cam[h], "viewmodel_layers", cw_val_int(getenv("ARENA_T_vm") && atoi(getenv("ARENA_T_vm")) == 0 ? 0 : 2));
+#else
     cw_node_set(G.cam[h], "viewmodel_layers", cw_val_int(2));
+#endif
     cw_node_set(G.cam[h], "viewmodel_fov", cw_val_float(52));
     cw_node_add_child(G.root, G.cam[h]);
   }

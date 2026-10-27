@@ -469,7 +469,8 @@ static void level_foundry(const palette *p) {
   for (int i = 0; i < 4; i++) {
     float sx = (i & 1) ? 1 : -1, sz = (i & 2) ? 1 : -1;
     block(sx * 18, 0, sz * 18, 2.4f, 9, 2.4f, K_WALL);
-    strip(sx * 18, 4.5f, sz * 18 + sz * 1.22f, 1.6f, 6, 0.04f, p->trim, 1.5f);
+    strip(sx * 18 - 0.75f, 4.7f, sz * 18 + sz * 1.22f, 0.12f, 6.0f, 0.04f, p->trim, 3.0f);
+    strip(sx * 18 + 0.75f, 4.7f, sz * 18 + sz * 1.22f, 0.12f, 6.0f, 0.04f, p->trim, 3.0f);
     block(sx * 18, 0, sz * 8.5f, 3, 1.2f, 3, K_WALL);
   }
   /* cover along the lanes */
@@ -782,6 +783,49 @@ void arena_build(int id, cw_node world_root) {
     cw_node_set(pr, "far", cw_val_float(150));
     cw_node_add_child(A.root, pr);
   }
+  /* clouds: a sky plane high over the arena, added over the procedural sky and faded out well before the far plane */
+  if (tune("clouds", 1) > 0.01f) {
+    static const float CL[ARENAS][5] = { /* coverage, tint r g b (linear), height */
+      { 0.42f, 1.9f, 1.7f, 1.45f, 70 }, { 0.32f, 2.0f, 2.0f, 2.05f, 80 }, { 0.55f, 1.5f, 0.7f, 0.55f, 60 } };
+    const float *cl = CL[id];
+    mesh_build g = { 0 };
+    const int cells = 24;
+    const float R = 230;
+    for (int j = 0; j <= cells; j++)
+      for (int i = 0; i <= cells; i++) {
+        float x = -R + 2 * R * (float)i / cells, z = -R + 2 * R * (float)j / cells, r = sqrtf(x * x + z * z);
+        int vi = mb_vert(&g, v3(x, cl[4], z), v3(0, -1, 0), x / 140.0f, z / 140.0f);
+        float f = 1 - fminf(1, fmaxf(0, (r - 80) / 110));
+        f *= f;
+        mb_color(&g, vi, f, f, f);
+      }
+    for (int j = 0; j < cells; j++)
+      for (int i = 0; i < cells; i++) {
+        int v0 = j * (cells + 1) + i;
+        mb_quad(&g, v0, v0 + cells + 1, v0 + cells + 2, v0 + 1);
+      }
+    t3_geometry *geo = mb_finish(&g);
+    t3_material *m = t3_mesh_basic_material_new(0xffffff);
+    m->color = (t3_color){ cl[1] * tune("clouds", 1), cl[2] * tune("clouds", 1), cl[3] * tune("clouds", 1) };
+    t3_texture *ct = tex_clouds(cl[0], 1200u + (uint32_t)id);
+    t3_material_set_texture(m, T3_MAP, ct);
+    t3_release(ct);
+    m->vertex_colors = true;
+    m->transparent = true;
+    m->blending = T3_ADDITIVE_BLENDING;
+    m->depth_write = false;
+    m->fog = false;
+    m->side = T3_DOUBLE_SIDE;
+    t3_mesh *mesh = t3_mesh_new(geo, m);
+    mesh->base.cast_shadow = false;
+    mesh->base.receive_shadow = false;
+    mesh->base.frustum_culled = false;
+    cw_node n = cw_node_new("MeshInstance3D", "Clouds");
+    cw_node_add_child(A.root, n);
+    cw_mesh3d_set_procedural(n, mesh);
+    t3_release(geo);
+    t3_release(m);
+  }
   /* pickups: a spinning gem and a small coloured light each */
   for (int i = 0; i < A.nitems; i++) {
     item *it = &A.items[i];
@@ -863,9 +907,9 @@ typedef struct mood {
 
 static const mood MOODS[ARENAS] = {
   /* FOUNDRY: late afternoon sun raking through the roof trusses, warm key, cool steel shadows, sodium lamps */
-  { 16.4f, 14, 20, 4.2f, 0.6f, 0.8f, 1.0f, 0.0f, 0.0025f, 0.12f, 0.45f, { 0.3f, 0.29f, 0.28f, 1 }, -0.1f, 0.3f, 1.6f, 1, "luts/foundry.cube", 0.12f, 1 },
+  { 16.0f, 14, 20, 4.4f, 1.0f, 0.8f, 1.0f, 0.0f, 0.0025f, 0.12f, 0.45f, { 0.3f, 0.29f, 0.28f, 1 }, -0.1f, 0.3f, 1.6f, 1, "luts/foundry.cube", 0.12f, 1 },
   /* COURTYARD: clear morning, crisp shadows, warm stone against a deep blue sky */
-  { 9.2f, 20, 130, 4.4f, 0.7f, 0.6f, 1.0f, 0.0f, 0.0015f, 0.1f, 0.35f, { 0.45f, 0.5f, 0.58f, 1 }, -0.15f, 0.25f, 1.8f, 0, "luts/courtyard.cube", 0.3f, 0 },
+  { 9.6f, 20, 130, 4.6f, 1.1f, 0.6f, 1.0f, 0.0f, 0.0015f, 0.1f, 0.35f, { 0.45f, 0.5f, 0.58f, 1 }, -0.15f, 0.25f, 1.8f, 0, "luts/courtyard.cube", 0.3f, 0 },
   /* TERRACES: dusk, a low red sun, violet haze, the lamps coming on over wet slate */
   { 18.0f, 10, 250, 3.4f, 0.55f, 1.2f, 1.1f, 0.0f, 0.004f, 0.1f, 0.6f, { 0.2f, 0.16f, 0.24f, 1 }, 0.1f, 0.4f, 1.4f, 1, "luts/terraces.cube", 0.15f, 1 },
 };
@@ -903,5 +947,12 @@ void arena_mood(int id, cw_node env, cw_node sun, cw_node sky, cw_node fog, cw_n
   }
   cw_node_set(sky, "environment", cw_val_bool(tune("skyenv", 1) > 0.5f));
   cw_node_set(fog, "volumetric_ambient", cw_val_float(tune("volamb", m->volamb)));
-  (void)sun;
+  cw_node_set(sun, "shadow", cw_val_bool(tune("sunshadow", 1) > 0.5f));
+  cw_node_set(sky, "background", cw_val_bool(tune("skybg", 1) > 0.5f));
+  cw_node_set(post, "ssao", cw_val_bool(tune("ssao", 1) > 0.5f));
+  {
+    static const char *DV[] = { "NONE", "DEPTH", "NORMALS", "AO", "VELOCITY", "BLOOM" };
+    int dv = (int)tune("dv", 0);
+    cw_node_set(post, "debug_view", cw_val_enum(DV[dv < 0 || dv > 5 ? 0 : dv]));
+  }
 }

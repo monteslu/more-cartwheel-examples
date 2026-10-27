@@ -85,6 +85,7 @@ void mb_add_geo(mesh_build *b, const t3_geometry *g, t3_vec3 pos, float yaw, t3_
 void mb_box(mesh_build *b, t3_vec3 centre, t3_quat q, t3_vec3 size, float uv_m, const float rgb[3]);
 /* the tint variation mb_box lays over big faces (0 = none): breaks up the tiling over tens of metres */
 extern float mb_macro;
+t3_texture *tex_clouds(float coverage, uint32_t seed);
 
 /* ── the arena (arena.c) ───────────────────────────────────────────── */
 
