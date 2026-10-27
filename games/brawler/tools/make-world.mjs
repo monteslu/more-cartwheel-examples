@@ -58,6 +58,40 @@ function lampPost(m, x, bulb) {
   m.box(bulb, [x, 4.32, -3.1], [0.42, 0.04, 0.32], { uv: 1 });
 }
 
+// ── the facade grid ────────────────────────────────────────────────────────────────────────────────────────────────
+// The window textures have 4 x 4 cells per FT metres: a bay (one window column) is BAY metres wide and a floor BAY metres
+// tall. A building is MARGIN + n bays + MARGIN wide, its grid starts on the plinth top (y0), its height is whole floors
+// plus a parapet. Buildings fill the street between lamp posts (every 11 m from x = 2, where the game puts the lamp
+// lights), so a lamp post always stands in a gap between buildings, never in front of a window; gaps are a seam or an
+// alley. Doors replace a ground-floor bay, shopfronts two, pipes run down bay boundaries, fire escapes and signs sit on
+// window columns and floor lines: nothing overlaps a window.
+const FT = 7.2, BAY = FT / 4, MARGIN = 0.3;
+const bw = (n) => n * BAY + 2 * MARGIN;
+function layout(stage, th) {
+  const out = [];
+  let bi = 0;
+  const floorsMin = Math.max(3, Math.round((th.hmin - 1) / BAY)), floorsMax = Math.max(floorsMin + 1, Math.round((th.hmax - 1) / BAY));
+  const put = (x0, n) => {
+    const y0 = 0.95, fl = floorsMin + Math.floor(hf(bi, stage + 2) * (floorsMax - floorsMin + 1));
+    const B = { bi, n, x0: x0 + MARGIN, y0, w: bw(n), cx: x0 + bw(n) / 2, h: y0 + fl * BAY + 0.35, floors: fl, zf: -6.0 - hf(bi, 9) * 0.4 };
+    B.door = hf(bi, 11) > 0.3 ? Math.floor(hf(bi, 12) * n) : -1;
+    B.shop = n >= 3 && hf(bi, 14) > 0.55 ? Math.floor(hf(bi, 15) * (n - 1)) : -1;
+    if (B.shop >= 0 && B.door >= B.shop && B.door <= B.shop + 1) B.door = B.shop + 2 < n ? B.shop + 2 : B.shop - 1 >= 0 ? B.shop - 1 : -1;
+    B.pipe = hf(bi, 13) > 0.5 ? 1 + Math.floor(hf(bi, 16) * (n - 1)) : -1; // an inner boundary between two bays
+    out.push(B); bi++;
+  };
+  // [buildings' bay counts, inner gap] per 11 m segment; the rest of the segment is the gap around the lamp post
+  const FILL = [[[5], 0], [[4], 0], [[2, 2], 0.4], [[3, 2], 0.2], [[2, 3], 0.2], [[3], 0]];
+  for (let L = 2 - 11 * Math.ceil((2 - X0) / 11); L < X1 + 11; L += 11) {
+    const k = Math.floor(hf(Math.round(L) + 500, stage + 61) * FILL.length);
+    const [ns, inner] = FILL[k];
+    const total = ns.reduce((a, n) => a + bw(n), 0) + inner * (ns.length - 1);
+    let x = L + (11 - total) / 2; // centred between two lamp posts: the gaps at both posts are equal
+    for (const n of ns) { put(x, n); x += bw(n) + inner; }
+  }
+  return out;
+}
+
 function street(m, th, stage) {
   // roadway, kerb, pavement
   m.box('g', [(X0 + X1) / 2, -0.15, 1.2], [X1 - X0, 0.3, 9.2], { uv: 4 });
@@ -66,49 +100,54 @@ function street(m, th, stage) {
   // kerb every few metres: a dark joint line is in the texture; add a drain grate and manholes
   for (let x = X0 + 2; x < X1; x += 9 + hf(x, 3) * 5) m.box('steel_dark', [x, 0.01, -3.1], [0.9, 0.02, 0.24], { uv: 1 });
   // the street's far lane edge: a deep void under the camera view
-  // building row A, close behind the pavement
-  let bx = X0, bi = 0;
-  while (bx < X1) {
-    const w = 5 + hf(bi, stage + 1) * 3.4, h = th.hmin + hf(bi, stage + 2) * (th.hmax - th.hmin);
-    const cx = bx + w / 2, zf = -6.0 - hf(bi, 9) * 0.4, d = 5;
-    const oxs = Math.floor(hf(bi, 5) * 4) / 4, oys = Math.floor(hf(bi, 6) * 4) / 4;
-    m.box({ front: th.facade, side: th.wall, top: th.trim }, [cx, h / 2, zf - d / 2], [w, h, d], { uv: 2.4, facade: { tile: 7.2, ox: oxs, oy: oys + 0.4 / 7.2 } });
-    // plinth, cornice, pilasters
-    m.box(th.base, [cx, 0.55, zf + 0.04], [w + 0.1, 0.9, 0.16], { uv: 2 });
+  // building row A, close behind the pavement: every building is laid out on its facade grid first (layout())
+  for (const B of layout(stage, th)) {
+    const { cx, w, h, zf, bi, x0, y0, n } = B, d = 5;
+    // the window texture's cells (BAY metres square) start exactly at the building's first bay and the plinth top
+    m.box({ front: th.facade, side: th.wall, top: th.trim }, [cx, h / 2, zf - d / 2], [w, h, d], { uv: 2.4, facade: { tile: FT, ox: -x0 / FT, oy: y0 / FT } });
+    // plinth (below the grid), cornice, pilasters on the side margins (never over a window)
+    m.box(th.base, [cx, (y0 - 0.05) / 2, zf + 0.04], [w + 0.1, y0 - 0.05, 0.16], { uv: 2 });
     m.box(th.trim, [cx, h + 0.17, zf + 0.1], [w + 0.3, 0.35, 0.5], { uv: 1.5 });
-    m.box(th.trim, [cx, h - 0.4, zf + 0.05], [w + 0.1, 0.12, 0.2], { uv: 1.5 });
-    for (const sd of [-1, 1]) m.box(th.trim, [cx + sd * (w / 2 - 0.12), h / 2, zf + 0.07], [0.28, h, 0.16], { uv: 1.5 });
-    // a door or a shutter at street level
-    if (hf(bi, 11) > 0.35) {
-      const dx = cx + (hf(bi, 12) - 0.5) * (w - 2.5);
-      m.box('steel_dark', [dx, 1.15, zf + 0.12], [1.3, 2.2, 0.12], { uv: 1 });
-      m.box(th.trim, [dx, 2.3, zf + 0.15], [1.6, 0.14, 0.2], { uv: 1 });
-      m.box('steel_yellow', [dx + 0.45, 1.1, zf + 0.2], [0.05, 0.2, 0.05], { uv: 1 });
+    m.box(th.trim, [cx, h - 0.2, zf + 0.05], [w + 0.1, 0.12, 0.2], { uv: 1.5 });
+    for (const sd of [-1, 1]) m.box(th.trim, [cx + sd * (w / 2 - MARGIN / 2), h / 2, zf + 0.07], [MARGIN - 0.04, h, 0.16], { uv: 1.5 });
+    // a door replaces one ground-floor bay (it covers that bay's window and nothing else)
+    if (B.door >= 0) {
+      const dx = x0 + (B.door + 0.5) * BAY;
+      m.box('steel_dark', [dx, 1.25, zf + 0.12], [1.3, 2.5, 0.12], { uv: 1 });
+      m.box(th.trim, [dx, 2.55, zf + 0.15], [1.6, 0.14, 0.2], { uv: 1 });
+      m.box('steel_yellow', [dx + 0.45, 1.2, zf + 0.2], [0.05, 0.2, 0.05], { uv: 1 });
     }
-    // a drain pipe
-    if (hf(bi, 13) > 0.5) m.cyl('steel', [cx + w / 2 - 0.55, h / 2, zf + 0.2], 0.07, h, { n: 10, uv: 1 });
-    stageDressing(m, th, stage, cx, w, h, zf, bi);
-    bx += w + 0.2 + hf(bi, 7) * 0.9;
-    bi++;
+    // a shopfront over two ground-floor bays: a dark glass front in a frame, a lit sign band above it
+    if (B.shop >= 0) {
+      const sx = x0 + (B.shop + 1) * BAY, sw = 2 * BAY - 0.2;
+      m.box('steel_dark', [sx, y0 + BAY / 2 - 0.1, zf + 0.1], [sw + 0.12, BAY + 0.1, 0.12], { uv: 1 });
+      m.box('plastic', [sx, y0 + BAY / 2 - 0.1, zf + 0.17], [sw - 0.1, BAY - 0.15, 0.04], { uv: 1 });
+      m.box(['neon_amber', 'neon_pink', 'neon_cyan', 'glow_orange'][bi % 4], [sx, y0 + BAY + 0.12, zf + 0.18], [sw * 0.8, 0.22, 0.05], { uv: 1 });
+    }
+    // a drain pipe down a bay boundary (the wall strip between two window columns)
+    if (B.pipe >= 0) m.cyl('steel', [x0 + B.pipe * BAY, h / 2, zf + 0.2], 0.07, h, { n: 10, uv: 1 });
+    stageDressing(m, th, stage, B);
   }
-  // row B, taller, further back: its windows glitter through the gaps and above row A
-  bx = X0 - 6; bi = 100;
+  // row B, taller, further back: whole cells of its own window tile, so no window is cut either
+  let bx = X0 - 6, bi = 100;
   while (bx < X1 + 10) {
-    const w = 8 + hf(bi, stage + 3) * 5, h = 16 + hf(bi, stage + 4) * 14;
-    m.box({ front: 'facade_far', side: th.wall, top: th.trim }, [bx + w / 2, h / 2, -17 - hf(bi, 9) * 3], [w, h, 8], { uv: 3, facade: { tile: 10, ox: hf(bi, 5), oy: 0.4 / 10 + Math.floor(hf(bi, 6) * 4) / 4 } });
+    const FB = 10, cb = FB / 4, nb = 3 + Math.floor(hf(bi, stage + 3) * 3), w = nb * cb, fl = 6 + Math.floor(hf(bi, stage + 4) * 6), h = fl * cb + 0.6;
+    m.box({ front: 'facade_far', side: th.wall, top: th.trim }, [bx + w / 2, h / 2, -17 - hf(bi, 9) * 3], [w, h, 8], { uv: 3, facade: { tile: FB, ox: -bx / FB, oy: 0 } });
     bx += w + 0.5 + hf(bi, 7) * 1.5; bi++;
   }
   // lamp posts every 11 m
   for (let x = 2; x < X1; x += 11) lampPost(m, x, th.bulb);
 }
 
-function stageDressing(m, th, stage, cx, w, h, zf, bi) {
+function stageDressing(m, th, stage, B) {
+  const { cx, w, h, zf, bi, x0, y0, n } = B;
+  const freeBay = (salt) => { for (let t = 0; t < n; t++) { const j = (Math.floor(hf(bi, salt) * n) + t) % n; if (j !== B.door && !(B.shop >= 0 && (j === B.shop || j === B.shop + 1))) return j; } return -1; };
   if (stage === 0) {
-    // fire escape landings and ladders on some buildings
-    if (hf(bi, 21) > 0.5) {
-      const fx = cx + (hf(bi, 22) - 0.5) * (w - 3);
-      for (let k = 0; k < 3; k++) {
-        const y = 3.2 + k * 3.1;
+    // fire escape landings and ladders on some buildings: centred on a window column, landings on the floor lines
+    if (hf(bi, 21) > 0.5 && B.floors >= 4) {
+      const fx = x0 + (Math.floor(hf(bi, 22) * n) + 0.5) * BAY;
+      for (let k = 0; k < Math.min(3, B.floors - 2); k++) {
+        const y = y0 + (k + 2) * BAY;
         m.box('plate', [fx, y, zf + 0.75], [2.4, 0.08, 1.3], { uv: 1.2 });
         m.box('steel_dark', [fx, y + 0.5, zf + 1.4], [2.4, 0.05, 0.05], { uv: 1 });
         for (const sd of [-1, 1]) m.box('steel_dark', [fx + sd * 1.2, y + 0.25, zf + 1.4], [0.05, 0.5, 0.05], { uv: 1 });
@@ -116,10 +155,10 @@ function stageDressing(m, th, stage, cx, w, h, zf, bi) {
         for (let s = 0; s < 8; s++) m.box('plate', [fx + 1.0 - s * 0.0, y - 0.22 - s * 0.36, zf + 0.5 + s * 0.0 + 0.9], [0.8, 0.05, 0.28], { uv: 1 });
       }
     }
-    if (hf(bi, 23) > 0.6) m.box('steel_green', [cx - w / 2 + 1.2, 0.0 + 0.6, -3.0 - 1.0], [0.0001, 0.0001, 0.0001], { uv: 1 });
   } else if (stage === 1) {
     // a stack of containers against some buildings
-    if (hf(bi, 31) > 0.45) {
+    const doorX = B.door >= 0 ? x0 + (B.door + 0.5) * BAY : 1e9;
+    if (hf(bi, 31) > 0.45 && Math.abs(doorX - (cx + (hf(bi, 33) - 0.5) * 2)) > 3.8) { // never in front of the door
       const mats = ['metal_red', 'metal_green', 'metal'];
       const cw = 6.0, ch = 2.5, n = 1 + Math.floor(hf(bi, 32) * 2.99);
       const cx0 = cx + (hf(bi, 33) - 0.5) * 2;
@@ -138,25 +177,32 @@ function stageDressing(m, th, stage, cx, w, h, zf, bi) {
   } else if (stage === 2) {
     // glowing kerb strip and a neon sign hung out from some buildings
     m.box(['neon_pink', 'neon_cyan', 'neon_violet', 'neon_amber'][bi % 4], [cx, 0.19, -3.45], [w * 0.9, 0.025, 0.05], { uv: 1 });
-    if (hf(bi, 41) > 0.5) {
+    if (hf(bi, 41) > 0.5 && n >= 2) { // a blade sign on the wall strip between two window columns, across a floor line
       const nm = ['neon_pink', 'neon_cyan', 'neon_amber'][Math.floor(hf(bi, 42) * 3) % 3];
-      m.box('steel_dark', [cx + w / 2 - 0.9, 5.2, zf + 0.55], [0.12, 1.5, 0.6], { uv: 1 });
-      m.box('steel_dark', [cx + w / 2 - 0.9, 5.2, zf + 0.9], [0.5, 1.4, 0.08], { uv: 1 });
-      m.box(nm, [cx + w / 2 - 0.9, 5.2, zf + 0.96], [0.36, 1.2, 0.03], { uv: 1 });
+      let k = 1 + Math.floor(hf(bi, 45) * (n - 1));
+      if (k === B.pipe) k = k > 1 ? k - 1 : k + 1 < n ? k + 1 : -1;
+      const sx = x0 + k * BAY, sy = y0 + 2 * BAY;
+      if (k > 0) {
+        m.box('steel_dark', [sx, sy, zf + 0.55], [0.12, 1.5, 0.6], { uv: 1 });
+        m.box('steel_dark', [sx, sy, zf + 0.9], [0.5, 1.4, 0.08], { uv: 1 });
+        m.box(nm, [sx, sy, zf + 0.96], [0.36, 1.2, 0.03], { uv: 1 });
+      }
     }
-    // an arcade cabinet by a wall
-    if (hf(bi, 43) > 0.55) {
-      const ax = cx + (hf(bi, 44) - 0.5) * (w - 2);
+    // an arcade cabinet against a bay with no door or shopfront
+    const cb = freeBay(44);
+    if (hf(bi, 43) > 0.55 && cb >= 0) {
+      const ax = x0 + (cb + 0.5) * BAY;
       m.box('steel_dark', [ax, 0.17 + 0.9, -4.6], [0.8, 1.8, 0.7], { uv: 1 });
       m.box('screen', [ax, 0.17 + 1.2, -4.24], [0.6, 0.5, 0.03], { uv: 1 });
       m.box(['neon_pink', 'neon_cyan', 'neon_amber'][bi % 3], [ax, 0.17 + 0.6, -4.24], [0.5, 0.06, 0.03], { uv: 1 });
     }
   } else {
     // roof: pipes along the wall, vents, a tank
-    m.cyl('steel', [cx, 1.4, zf + 0.35], 0.12, w + 0.2, { axis: 'x', n: 12, uv: 1.2 });
-    m.cyl('steel_dark', [cx, 2.2, zf + 0.35], 0.08, w + 0.2, { axis: 'x', n: 10, uv: 1 });
+    // pipes along the plinth and along the first floor line, between the window rows
+    m.cyl('steel', [cx, y0 - 0.3, zf + 0.35], 0.12, w + 0.2, { axis: 'x', n: 12, uv: 1.2 });
+    m.cyl('steel_dark', [cx, y0 + BAY, zf + 0.35], 0.08, w + 0.2, { axis: 'x', n: 10, uv: 1 });
     if (hf(bi, 51) > 0.5) {
-      const vx = cx + (hf(bi, 52) - 0.5) * (w - 2);
+      const vb = freeBay(52), vx = vb >= 0 ? x0 + (vb + 0.5) * BAY : cx;
       m.box('steel', [vx, 0.17 + 0.5, -4.7], [1.0, 1.0, 0.9], { uv: 1.2 });
       m.box('steel_dark', [vx, 0.17 + 1.05, -4.7], [1.1, 0.1, 1.0], { uv: 1 });
       m.cyl('glow_orange', [vx, 0.17 + 0.9, -4.2], 0.2, 0.02, { axis: 'z', n: 12, uv: 1, r1: 0.2 });
@@ -243,18 +289,14 @@ function puddles(stage, count) {
   const LO = -10, HI = 80; // the part of the street a stage plays on
   // the kerb: drain grates (same spacing as street()) and drain pipes (the same building walk)
   for (let x = X0 + 2; x < X1; x += 9 + hf(x, 3) * 5) if (x > LO && x < HI && rnd() < 0.7) add(x + r(-1.2, 1.2), 0, r(-3.12, -2.95), r(0.9, 1.8), r(0.18, 0.32), r(-0.06, 0.06), rnd() < 0.6 ? 3 : 4);
-  let bx = X0, bi = 0;
-  while (bx < X1) {
-    const w = 5 + hf(bi, stage + 1) * 3.4, cx = bx + w / 2;
-    if (hf(bi, 13) > 0.5) {
-      const px = cx + w / 2 - 0.55;
+  for (const B of layout(stage, THEMES[stage])) {
+    if (B.pipe >= 0) {
+      const px = B.x0 + B.pipe * BAY;
       if (px > LO && px < HI) {
         add(px + r(-0.2, 0.2), 0.172, r(-5.95, -5.6), r(0.25, 0.45), r(0.2, 0.35), r(0, 6.28), 6 + (rnd() < 0.5 ? 1 : 0));
         add(px + r(-0.6, 0.6), 0, r(-3.1, -2.98), r(1.0, 1.6), r(0.16, 0.28), r(-0.05, 0.05), 3);
       }
     }
-    bx += w + 0.2 + hf(bi, 7) * 0.9;
-    bi++;
   }
   // low spots in the road; some spill into a neighbour and make one larger pool
   for (let i = 0; i < count; i++) {
