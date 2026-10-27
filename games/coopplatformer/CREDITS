@@ -1,0 +1,10 @@
+coopplatformer (working title)
+
+Everything in this game is made by its own code: the level generator, the stone and brick textures (value noise
+turned into albedo, normal, roughness and occlusion maps), the characters, enemies, effects and every sound
+(synthesized at start-up). No image, model or sound is taken from elsewhere.
+
+Fonts: the engine's built-in UI font (Fira Sans, SIL Open Font License 1.1, shipped with the engine).
+
+Design reading (ideas only, no code or assets copied): the Celeste "feel" essay by Maddy Thorson
+(coyote time, jump buffering, apex gravity, short wall-jump grace), and the MetSys map-room notes (MIT).
