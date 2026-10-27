@@ -245,6 +245,7 @@ static void score_text(mg_ctx *c, int p, char *buf, int cap) {
 const mg_def mg_kart = {
   .id = "loop", .name = "Loop Racers", .tagline = "Four laps. The inside lane is short and full of traps.",
   .how = { "Left / Right: change lane", "A: nitro burst (three of them)", "Blue pads boost, oil and barrels slow" },
+  .buttons = 1, .keys = "SA",
   .kind = "3D", .scene = "scenes/kart.cwscene", .seconds = 80, .unlock_points = 16, .higher_is_better = true,
   .start = start, .tick = tick, .think = think, .draw = draw, .score_text = score_text,
 };

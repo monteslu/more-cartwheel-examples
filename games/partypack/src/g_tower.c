@@ -226,6 +226,7 @@ static void score_text(mg_ctx *c, int p, char *buf, int cap) { snprintf(buf, (si
 const mg_def mg_tower = {
   .id = "stack", .name = "Stack Attack", .tagline = "Drop blocks, build the tallest tower that stands.",
   .how = { "Left / Right: move the crane", "A: drop the block, B: turn it", "Blocks that fall off are lost" },
+  .buttons = 2, .keys = "SAB",
   .kind = "2D physics", .scene = NULL, .seconds = 50, .unlock_points = 4, .higher_is_better = true,
   .start = start, .tick = tick, .think = think, .draw = draw, .stop = stop, .score_text = score_text,
 };

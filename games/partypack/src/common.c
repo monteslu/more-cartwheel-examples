@@ -292,6 +292,18 @@ void ui_button_glyph(cw_vec2 p, float r, char which) {
   char s[2] = { which, 0 };
   ui_text(s, cw_v2(p.x, p.y - r * 0.7f), r * 1.3f, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
 }
+/* the stick as a picture: a rounded well, a knob, four arrows */
+void ui_stick_glyph(cw_vec2 p, float r) {
+  cw_r2d_circle(p, r, 20, cw_rgba(0.15f, 0.15f, 0.25f, 1));
+  cw_r2d_circle_lines(p, r, 3, 20, cw_rgba(1, 1, 1, 0.8f));
+  cw_r2d_circle(p, r * 0.42f, 14, cw_rgba(0.85f, 0.85f, 0.95f, 1));
+  for (int k = 0; k < 4; k++) {
+    float a = TAU * (float)k / 4.0f;
+    cw_vec2 tip = cw_v2(p.x + cosf(a) * r * 0.9f, p.y + sinf(a) * r * 0.9f), l = cw_v2(p.x + cosf(a + 0.35f) * r * 0.6f, p.y + sinf(a + 0.35f) * r * 0.6f), rr = cw_v2(p.x + cosf(a - 0.35f) * r * 0.6f, p.y + sinf(a - 0.35f) * r * 0.6f);
+    cw_vec2 tri[3] = { tip, l, rr };
+    cw_r2d_polygon(tri, 3, cw_rgba(1, 0.9f, 0.4f, 1));
+  }
+}
 /* a quad with a vertical colour gradient (smooth, unlike stacked bands) */
 void ui_grad(cw_rect r, cw_color top, cw_color bot) {
   cw_vertex2d v[4] = { { cw_v2(r.x, r.y), cw_v2(0, 0), top }, { cw_v2(r.x + r.w, r.y), cw_v2(1, 0), top }, { cw_v2(r.x + r.w, r.y + r.h), cw_v2(1, 1), bot }, { cw_v2(r.x, r.y + r.h), cw_v2(0, 1), bot } };

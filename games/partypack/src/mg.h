@@ -128,6 +128,7 @@ void ui_panel(cw_rect r, cw_color fill, cw_color edge);
 void ui_bar(cw_rect r, float f, cw_color c);
 void ui_pill(cw_rect r, cw_color c);
 void ui_button_glyph(cw_vec2 p, float r, char which); /* A B X Y in pad colours */
+void ui_stick_glyph(cw_vec2 p, float r);              /* the stick, as a picture */
 /* the party character: a round blob with eyes. look: -1..1 gaze; squash 1 = normal; blink; hat 0 none */
 void ui_blob(cw_vec2 p, float r, int player, float look_x, float look_y, float squash, int mood, bool cpu);
 cw_color col_mix(cw_color a, cw_color b, float t);

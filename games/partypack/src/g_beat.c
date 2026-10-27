@@ -15,11 +15,12 @@ static struct {
   int score[NP], perfects[NP], misses[NP];
   uint32_t seed;
   int beat_t;
+  float prev_y[NP]; /* stick up is the third lane, so a game needs only A, B and the stick */
 } B;
 
 static const int BPM_TICKS = 28; /* ticks per beat (about 128 bpm) */
 static const cw_color KCOL[3] = { { 0.3f, 0.85f, 0.4f, 1 }, { 0.95f, 0.3f, 0.3f, 1 }, { 0.3f, 0.5f, 0.98f, 1 } };
-static const char KLBL[3] = { 'A', 'B', 'X' };
+static const char KLBL[3] = { 'A', 'B', '^' };
 
 static void start(mg_ctx *c) {
   memset(&B, 0, sizeof B);
@@ -81,7 +82,8 @@ static void tick(mg_ctx *c) {
     const mg_in *in = &c->in[p];
     if (in->pa) judge(c, p, 0);
     if (in->pb) judge(c, p, 1);
-    if (in->pc) judge(c, p, 2);
+    if (in->pc || (in->y < -0.6f && B.prev_y[p] >= -0.6f)) judge(c, p, 2);
+    B.prev_y[p] = in->y;
     for (int i = 0; i < B.count; i++) {
       if (B.hit[p][i]) continue;
       if (B.n[i].t - c->tick < -9) { B.hit[p][i] = 2; B.combo[p] = 0; B.misses[p]++; B.judge[p] = 0; B.judge_t[p] = 20; }
@@ -178,7 +180,8 @@ static void score_text(mg_ctx *c, int p, char *buf, int cap) { snprintf(buf, (si
 
 const mg_def mg_beat = {
   .id = "beatbox", .name = "Beat Box", .tagline = "Hit the notes as they land on your line.",
-  .how = { "A green, B red, X blue", "Press as the note reaches the ring", "Perfect hits build a combo" },
+  .how = { "A green, B red, stick up blue", "Press as the note reaches the ring", "Perfect hits build a combo" },
+  .buttons = 2, .keys = "ABS",
   .kind = "2D", .scene = NULL, .seconds = 0, .unlock_points = 12, .higher_is_better = true,
   .start = start, .tick = tick, .think = think, .draw = draw, .score_text = score_text,
 };

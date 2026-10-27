@@ -177,6 +177,7 @@ static void score_text(mg_ctx *c, int p, char *buf, int cap) { snprintf(buf, (si
 const mg_def mg_dodge = {
   .id = "hurdle", .name = "Hurdle Dash", .tagline = "Jump the rocks, duck the bars, last the longest.",
   .how = { "A: jump (hold for a quick re-jump)", "Down or B: duck under the bars", "Three lives. The course speeds up." },
+  .buttons = 1, .keys = "AS",
   .kind = "2D", .scene = NULL, .seconds = 45, .unlock_points = 0, .higher_is_better = true,
   .start = start, .tick = tick, .think = think, .draw = draw, .score_text = score_text,
 };

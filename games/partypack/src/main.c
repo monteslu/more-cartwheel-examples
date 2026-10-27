@@ -504,6 +504,13 @@ static void tick_play(void) {
    * freeze is still a fresh press on the first tick after it */
   if (!G.scene3d && G.hold > 0) { G.hold--; G.hitstop_shown++; return; }
   read_inputs();
+  /* a knocked-out person is never left idle: A cheers (confetti and a note), and some games give ghosts a job */
+  for (int p = 0; p < NP; p++)
+    if (G.c.eliminated[p] && G.human[p] && G.c.in[p].pa) {
+      fx_burst(cw_v2(160 + 320 * (float)p, 700), 10, PCOL[p], 240, 0.8f, 6);
+      fx_text(cw_v2(160 + 320 * (float)p, 640), "Go!", PCOL[p], 30);
+      sfx(SFX_NOTE0 + (G.c.tick / 7 + p) % 8, 0.5f, 1);
+    }
   const mg_def *d = cur_def();
   d->tick(&G.c);
   { int hs = fx_hitstop_take();
@@ -768,7 +775,14 @@ static void draw_intro(void) {
   ui_panel(r, cw_rgba(0.1f, 0.1f, 0.25f, 0.95f), cw_rgba(1, 0.85f, 0.3f, 1));
   ui_text(d->name, cw_v2(STAGE_W / 2, r.y + 14), 72, cw_rgba(1, 0.92f, 0.5f, 1), CW_ALIGN_CENTER);
   ui_text(d->tagline, cw_v2(STAGE_W / 2, r.y + 100), 30, cw_rgba(1, 1, 1, 0.9f), CW_ALIGN_CENTER);
-  for (int i = 0; i < 3 && d->how[i]; i++) ui_text(d->how[i], cw_v2(r.x + 60, r.y + 160 + i * 44), 30, cw_rgba(1, 1, 1, 1), CW_ALIGN_LEFT);
+  /* the controls as pictures first (one glyph per letter of keys: A B X Y, or S for the stick), then the lines */
+  { int nk = d->keys ? (int)strlen(d->keys) : 0;
+    float gx = STAGE_W / 2 - (float)(nk - 1) * 40;
+    for (int i = 0; i < nk; i++) {
+      cw_vec2 gp = cw_v2(gx + (float)i * 80, r.y + 172);
+      if (d->keys[i] == 'S') ui_stick_glyph(gp, 26); else ui_button_glyph(gp, 24, d->keys[i]);
+    } }
+  for (int i = 0; i < 3 && d->how[i]; i++) ui_text(d->how[i], cw_v2(r.x + 60, r.y + 210 + i * 40), 28, cw_rgba(1, 1, 1, 1), CW_ALIGN_LEFT);
   for (int p = 0; p < NP; p++) {
     cw_vec2 c = cw_v2(r.x + 130 + p * 180, r.y + 350);
     ui_blob(c, 30, p, 0, 0, G.ready[p] ? 1 + 0.08f * sinf(G.clock * 8) : 1, G.ready[p] ? 1 : 0, !G.human[p]);

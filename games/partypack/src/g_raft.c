@@ -181,6 +181,7 @@ static void score_text(mg_ctx *c, int p, char *buf, int cap) { snprintf(buf, (si
 const mg_def mg_raft = {
   .id = "raft", .name = "Raft Rush", .tagline = "Paddle for the buoys. Gold ones count three.",
   .how = { "Stick: paddle", "A: burst of speed", "Bump rivals off the buoys" },
+  .buttons = 1, .keys = "SA",
   .kind = "3D", .scene = "scenes/raft.cwscene", .seconds = 45, .unlock_points = 0, .higher_is_better = true,
   .start = start, .tick = tick, .think = think, .draw = draw, .score_text = score_text,
 };

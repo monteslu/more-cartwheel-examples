@@ -321,6 +321,7 @@ static void score_text(mg_ctx *c, int p, char *buf, int cap) {
 const mg_def mg_blast = {
   .id = "blast", .name = "Blast Ring", .tagline = "Bombs shove, the ring shrinks. Stay on.",
   .how = { "Stick: roll", "A: dash (knocks others hard)", "Stay clear of the red rings" },
+  .buttons = 1, .keys = "SA",
   .kind = "3D", .scene = "scenes/blast.cwscene", .seconds = 60, .unlock_points = 8, .higher_is_better = true,
   .start = start, .tick = tick, .think = think, .draw = draw, .score_text = score_text,
 };

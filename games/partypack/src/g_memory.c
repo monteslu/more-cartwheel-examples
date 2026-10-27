@@ -166,7 +166,8 @@ static void score_text(mg_ctx *c, int p, char *buf, int cap) { snprintf(buf, (si
 
 const mg_def mg_memory = {
   .id = "echo", .name = "Echo", .tagline = "Repeat the pattern. One slip and you are out.",
-  .how = { "A B X Y, or Down Right Left Up", "Watch the pads, then play it back", "Each round adds one step" },
+  .how = { "Flick the stick (or A B X Y) to match", "Watch the pads, then play it back", "Each round adds one step" },
+  .buttons = 0, .keys = "S",
   .kind = "2D", .scene = NULL, .seconds = 0, .unlock_points = 0, .higher_is_better = true,
   .start = start, .tick = tick, .think = think, .draw = draw, .score_text = score_text,
 };

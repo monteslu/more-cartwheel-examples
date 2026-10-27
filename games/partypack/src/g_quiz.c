@@ -53,6 +53,7 @@ static struct {
   int gained[NP], total[NP];
   int cpu_slot[NP], cpu_t[NP];
   int right_slot;
+  float px[NP], py[NP]; /* the stick last tick: a flick picks an answer too (down A, right B, left X, up Y) */
 } Q;
 
 static void setup_round(mg_ctx *c) {
@@ -92,6 +93,8 @@ static void start(mg_ctx *c) {
 
 static void tick(mg_ctx *c) {
   Q.t++;
+  float ox[NP], oy[NP];
+  for (int p = 0; p < NP; p++) { ox[p] = Q.px[p]; oy[p] = Q.py[p]; Q.px[p] = c->in[p].x; Q.py[p] = c->in[p].y; }
   if (Q.phase == 0) {
     bool all = true;
     for (int p = 0; p < NP; p++) {
@@ -99,6 +102,10 @@ static void tick(mg_ctx *c) {
         int s = -1;
         const mg_in *in = &c->in[p];
         if (in->pa) s = 0; else if (in->pb) s = 1; else if (in->pc) s = 2; else if (in->pd) s = 3;
+        else if (in->y > 0.6f && oy[p] <= 0.6f) s = 0;
+        else if (in->x > 0.6f && ox[p] <= 0.6f) s = 1;
+        else if (in->x < -0.6f && ox[p] >= -0.6f) s = 2;
+        else if (in->y < -0.6f && oy[p] >= -0.6f) s = 3;
         if (s >= 0) {
           Q.ans[p] = s; Q.ans_t[p] = Q.t;
           sfx(SFX_BLIP, 0.6f, 1.2f);
@@ -182,7 +189,8 @@ static void score_text(mg_ctx *c, int p, char *buf, int cap) { snprintf(buf, (si
 
 const mg_def mg_quiz = {
   .id = "quiz", .name = "Quick Quiz", .tagline = "Eight questions. Fast and right scores most.",
-  .how = { "A B X Y pick the answer", "Faster correct answers score more", "Wrong answers score nothing" },
+  .how = { "Flick the stick or press A B X Y", "Faster correct answers score more", "Wrong answers score nothing" },
+  .buttons = 0, .keys = "S",
   .kind = "2D", .scene = NULL, .seconds = 0, .unlock_points = 20, .higher_is_better = true,
   .start = start, .tick = tick, .think = think, .draw = draw, .score_text = score_text,
 };

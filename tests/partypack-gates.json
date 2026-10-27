@@ -42,5 +42,53 @@
       "game.mg",
       "game.points"
     ]
+  },
+  {
+    "name": "partypack-join",
+    "app": "partypack",
+    "assets": "games/partypack/assets",
+    "frames": 180,
+    "input": "partypack-join.json",
+    "controlInput": "partypack-join-control.json",
+    "minColors": 50,
+    "fields": [
+      "shell.screen",
+      "shell.players",
+      "game.state",
+      "game.round",
+      "game.mg",
+      "game.humans",
+      "game.points"
+    ],
+    "expect": {
+      "shell.screen": 3,
+      "game.state": 3,
+      "game.humans": 2
+    },
+    "note": "a second pad takes a seat on the board (Y opens the join screen, A joins, Start confirms): two people play; control: the pad never presses A, one person"
+  },
+  {
+    "name": "partypack-drop",
+    "app": "partypack",
+    "assets": "games/partypack/assets",
+    "frames": 235,
+    "input": "partypack-drop.json",
+    "controlInput": "partypack-drop-control.json",
+    "minColors": 50,
+    "fields": [
+      "shell.screen",
+      "shell.players",
+      "game.state",
+      "game.round",
+      "game.mg",
+      "game.humans",
+      "game.points"
+    ],
+    "expect": {
+      "shell.screen": 3,
+      "game.state": 3,
+      "game.humans": 1
+    },
+    "note": "a pad leaves with B, another joins, then it is unplugged and its seat frees by itself: one person is left; control: that pad stays plugged in, two people"
   }
 ]
