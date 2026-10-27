@@ -3,10 +3,10 @@ standard+l1001
 standard+shadow+l1001
 standard+instbig+l1001
 standard+instbig+shadow+l1001
-physical+shadow+senv+cc+l1400+s100
-standard+shadow+senv+l1400+s100
-standard+senv+l1400
-standard+instbig+shadow+senv+l1400+s100
-standard+instbig+senv+l1400
-physical+instbig+shadow+senv+cc+l1300+s100
-standard+shadow+senv+l1300+s100+xwater
+standard+instbig+shadow+senv+l1500+s100
+physical+shadow+senv+cc+l1500+s100
+standard+shadow+senv+l1500+s100
+standard+senv+l1500
+standard+instbig+senv+l1500
+physical+instbig+shadow+senv+cc+l1400+s100
+standard+shadow+senv+l1400+s100+xwater

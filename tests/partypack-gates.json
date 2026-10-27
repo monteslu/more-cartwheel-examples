@@ -24,8 +24,8 @@
     "app": "partypack",
     "assets": "games/partypack/assets",
     "frames": 140,
-    "input": "partypack-menu.input",
-    "controlInput": "partypack-menu-control.input",
+    "input": "partypack-menu.json",
+    "controlInput": "partypack-menu-control.json",
     "hosts": [
       "native"
     ],
