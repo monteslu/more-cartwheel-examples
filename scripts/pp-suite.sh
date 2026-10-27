@@ -34,8 +34,14 @@ for p in "${parts[@]}"; do
     wgpu) for n in $(names); do locked "wg-$n" node "$E/tests/gate.mjs" --gates-file $GF "$n" --hosts native --gpu webgpu >> "$O/wgpu.log" 2>&1; echo "wgpu $n exit $?"; done ;;
     hosts) for n in $CROSS; do locked "dual-$n" node "$E/tests/gate.mjs" --gates-file $GF "$n" --hosts native,romdev,chromium --gpu webgpu >> "$O/hosts.log" 2>&1; echo "hosts $n exit $?"; done ;;
     balance) soft timeout 3000 bash "$ROOT/games/partypack/tools/balance.sh" "${PP_N:-100}" > "$O/balance.log" 2>&1; echo "balance exit $?" ;;
-    soak) for g in hurdle echo beatbox quiz stack blast raft loop sumo coins tiles; do
-        PP_GAME=$g soft timeout 3600 node "$E/tools/run-cart.mjs" --host native --app partypack_auto --frames 36000 --allow-skipped \
+    soak) # ten minutes of game time per mini-game. The 2D games run sim-only (PP_BATCH: four whole tournaments of that
+          # one game inside the simulation, about 10 to 12 minutes of play, no rendering); the 3D games need their scene,
+          # so they render 36000 frames on software GL. One process at a time, no lock.
+      for g in hurdle echo beatbox quiz stack sumo coins tiles; do
+        PP_GAME=$g PP_BATCH=4 soft timeout 1800 node "$E/tools/run-cart.mjs" --host native --app partypack_auto --frames 4 --allow-skipped \
+          --state "$O/soak-$g.json" --log "$O/soak-$g.log" > "$O/soak-$g.out" 2>&1; echo "soak $g exit $? $(grep -c '^GAME ' "$O/soak-$g.log") games $(grep -o 'BATCH DONE [0-9]*' "$O/soak-$g.log")"; done
+      for g in blast raft loop; do
+        PP_GAME=$g CW_RUN_TIMEOUT_MS=14400000 soft timeout 14500 node "$E/tools/run-cart.mjs" --host native --app partypack_auto --frames 36000 --allow-skipped \
           --state "$O/soak-$g.json" --log "$O/soak-$g.log" > "$O/soak-$g.out" 2>&1; echo "soak $g exit $?"; done ;;
   esac
 done
