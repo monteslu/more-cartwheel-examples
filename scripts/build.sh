@@ -5,8 +5,8 @@
 # engine's CMakeLists.txt is the top of the build and this repository its
 # project (CW_PROJECT_DIR).
 #
-#   scripts/build.sh                        native (this machine), cart and cart-wgpu trees
-#   TARGETS="native" scripts/build.sh       some trees: native, cart, cart-wgpu, or (SDK
+#   scripts/build.sh                        native (this machine) and cart-wgpu trees
+#   TARGETS="native" scripts/build.sh       some trees: native, cart-wgpu, cart, or (SDK
 #                                           builds) an export target: linux-x64, linux-arm64,
 #                                           windows-x64, android-arm64, macos-arm64
 #   BUILD_TYPE=Debug scripts/build.sh
@@ -15,8 +15,12 @@
 #                                           carts, in seconds, with the same simulation
 #   scripts/build.sh bikemesa derby_auto    only these apps (ninja targets)
 #
-# Trees: build/native (this machine's compiler; the gates run it), build/cart,
-# build/cart-wgpu, build/<target> (the target's toolchain: what the release
+# Trees: build/native (this machine's compiler; the gates run it),
+# build/cart-wgpu (THE cart: one .wasc with GL and WebGPU, the one releases
+# ship; a host picks WebGPU where it has it and GL otherwise, so test GL by
+# running this same cart on a GL host), build/cart (a GL-only cart, not
+# shipped, built only when asked for with TARGETS=cart), build/<target>
+# (the target's toolchain: what the release
 # packages ship). The cart trees and cross builds pack assets with the host's
 # cwpack. CW_CART_LINK_JOBS (default 4) caps the threads one cart link
 # (ThinLTO and wasm-opt) uses; at most two carts link at once.
@@ -52,7 +56,6 @@ if [ -z "${CARTWHEEL_ENGINE_SOURCE:-}" ] && [ ! -L "$ENGINE" ] && [ -d "$SDKS" ]
   DEV=ON
   [ -n "${RELEASE:-}" ] && DEV=OFF
   DEFAULT="native"
-  [ -d "$SDKS/cart" ] && DEFAULT="$DEFAULT cart"
   [ -d "$SDKS/cart-wgpu" ] && DEFAULT="$DEFAULT cart-wgpu"
   for t in ${TARGETS:-$DEFAULT}; do
     case "$t" in
@@ -77,7 +80,7 @@ COMMON=(-G Ninja -DCMAKE_BUILD_TYPE="$BT" -DCW_ENGINE_ONLY=ON -DCW_PROJECT_DIR="
 DEV=ON
 [ -n "${RELEASE:-}" ] && DEV=OFF
 CWPACK="$ROOT/build/native/tools/cwpack/cwpack"
-for t in ${TARGETS:-native cart cart-wgpu}; do
+for t in ${TARGETS:-native cart-wgpu}; do
   if [ "$t" != native ] && [ ! -x "$CWPACK" ]; then
     echo "build/native has no cwpack yet: build native first (TARGETS=\"native $t\")" >&2; exit 1
   fi
