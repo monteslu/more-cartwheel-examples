@@ -56,14 +56,14 @@ sun_g = 0.74
 max_opacity = 0.75
 start_distance = 18
 sky_distance = 260
-volumetric = true
+volumetric = false
 volumetric_distance = 70
 volumetric_ambient = 0.5
 volumetric_albedo = color(1, 0.84, 0.7, 1)
 
 [node name="Post" parent="." type="PostProcess"]
 tonemap = AGX
-exposure = 0.85
+exposure = 0.95
 bloom = true
 bloom_intensity = 0.14
 bloom_threshold = 1.0
