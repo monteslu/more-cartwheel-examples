@@ -1383,27 +1383,7 @@ static void fixed_update(void *user, double dt) {
   (void)user;
   bool run = cw_shell_update();
   g_state_dbg = (int)cw_shell_screen_now(); /* even when the shell owns the tick */
-  if (!run) {
-    /* attract mode behind the title, join and settings screens: the real world, four bots with every ability running
-     * the meadow and the first cave, looped. Its sounds stay off; a match start (start_match) replaces it. */
-    cw_shell_screen scr = cw_shell_screen_now();
-    if (scr != CW_SHELL_TITLE && scr != CW_SHELL_JOIN && scr != CW_SHELL_SETTINGS) return;
-    if (!g_attract || !G.world.id || G.nplayers == 0 || G.tick > 60 * 75) {
-      G.abilities = AB_DOUBLE | AB_CLAWS | AB_DASH;
-      sim_reset(&G, MAX_PLAYERS);
-      G.abilities = AB_DOUBLE | AB_CLAWS | AB_DASH;
-      for (int i = 0; i < G.nplayers; i++) {
-        G.p[i].pf.can_dash = G.p[i].pf.can_wall_jump = true, G.p[i].pf.max_air_jumps = 1;
-        G.p[i].invuln = 0;
-      }
-      build_scene();
-      g_attract = true;
-    }
-    for (int i = 0; i < MAX_PLAYERS; i++) sim_bot_input(&G, i, &INPUT[i]);
-    sim_step(&G, INPUT, (float)dt);
-    G.events = 0;
-    return;
-  }
+  if (!run) return;
   if (g_attract) return; /* the match has not started yet */
   if (G.nplayers == 0 || !G.world.id) return;
   g_run_ticks++;
@@ -1651,10 +1631,12 @@ static void title_background(cw_shell_screen scr, cw_vec2 cv, void *user) {
   float W = cv.x, H = cv.y, s = H / 540.0f, t = g_ui_t;
   if (g_attract && G.world.id && S.built) {
     /* the 3D world plays behind the menu: shade the top for the title and the bottom for the hints, nothing else */
-    for (int i = 0; i < 24; i++) {
-      float f = (float)i / 24.0f;
-      cw_r2d_rect(cw_rect_make(0, H * 0.42f * f, W, H * 0.42f / 24.0f + 1), cw_rgba(0.02f, 0.03f, 0.08f, 0.62f * (1 - f) * (1 - f)));
-      cw_r2d_rect(cw_rect_make(0, H - H * 0.3f * (f + 1.0f / 24.0f), W, H * 0.3f / 24.0f + 1), cw_rgba(0.02f, 0.03f, 0.06f, 0.55f * (1 - f) * (1 - f)));
+    for (int i = 0; i < 48; i++) { /* bands on whole pixels, edge to edge, so no seam is drawn twice */
+      float f = (float)i / 48.0f;
+      float t0 = floorf(H * 0.42f * f), t1 = floorf(H * 0.42f * (f + 1.0f / 48.0f));
+      float b0 = floorf(H - H * 0.3f * (f + 1.0f / 48.0f)), b1 = floorf(H - H * 0.3f * f);
+      cw_r2d_rect(cw_rect_make(0, t0, W, t1 - t0), cw_rgba(0.02f, 0.03f, 0.08f, 0.62f * (1 - f) * (1 - f)));
+      cw_r2d_rect(cw_rect_make(0, b0, W, b1 - b0), cw_rgba(0.02f, 0.03f, 0.06f, 0.55f * (1 - f) * (1 - f)));
     }
     if (scr == CW_SHELL_JOIN) {
       int joined = cw_shell_players();
@@ -1719,10 +1701,33 @@ static void title_background(cw_shell_screen scr, cw_vec2 cv, void *user) {
   }
 }
 
+/* attract mode behind the title, join and settings screens: the real world, four bots with every ability running
+ * the meadow and the first cave, looped. The shell pauses the tree under its menus, which stops fixed_update, so this
+ * runs from render, one fixed step per frame. Its sounds stay off; a match start (start_match) replaces it. */
+static void attract_step(void) {
+  cw_shell_screen scr = cw_shell_screen_now();
+  if (scr != CW_SHELL_TITLE && scr != CW_SHELL_JOIN && scr != CW_SHELL_SETTINGS) return;
+  if (!g_attract || !G.world.id || G.nplayers == 0 || G.tick > 60 * 75) {
+    G.abilities = AB_DOUBLE | AB_CLAWS | AB_DASH;
+    sim_reset(&G, MAX_PLAYERS);
+    G.abilities = AB_DOUBLE | AB_CLAWS | AB_DASH;
+    for (int i = 0; i < G.nplayers; i++) {
+      G.p[i].pf.can_dash = G.p[i].pf.can_wall_jump = true, G.p[i].pf.max_air_jumps = 1;
+      G.p[i].invuln = 0;
+    }
+    build_scene();
+    g_attract = true;
+  }
+  for (int i = 0; i < MAX_PLAYERS; i++) sim_bot_input(&G, i, &INPUT[i]);
+  sim_step(&G, INPUT, 1.0f / 60.0f);
+  G.events = 0;
+}
+
 static void render(void *user, double alpha) {
   (void)user;
   float dt = 1.0f / 60.0f;
   g_ui_t += dt;
+  attract_step();
   if (G.nplayers && G.world.id && S.built) sync_scene((float)alpha, dt);
   cw_r2d_begin(&(cw_r2d_pass_desc){ .clear = false });
   cw_vec2 cs = cw_r2d_canvas_size();
