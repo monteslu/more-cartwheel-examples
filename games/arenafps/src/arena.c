@@ -369,7 +369,7 @@ void arena_mood(int id, cw_node env, cw_node sun, cw_node sky, cw_node fog) {
   cw_node_set(sky, "north", cw_val_float(NORTH[id]));
   cw_node_set(sky, "sun_energy", cw_val_float(p->sun * 1.2f));
   cw_node_set(sky, "mie", cw_val_float(id == 2 ? 2.2 : 1.3));
-  cw_node_set(fog, "density", cw_val_float(id == 2 ? 0.022 : 0.012));
+  cw_node_set(fog, "density", cw_val_float(id == 2 ? 0.006 : 0.0025));
   cw_node_set(fog, "color", cw_val_color(p->sky_bottom.r, p->sky_bottom.g, p->sky_bottom.b, 1));
   (void)sun;
 }

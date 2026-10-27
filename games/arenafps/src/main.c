@@ -1027,12 +1027,16 @@ static void sync_nodes(void) {
 }
 
 /* the view hook: each view shows its own gun and hides its own body */
+static void set_obj_visible(cw_node n, bool v) {
+  t3_object *o = cw_node3d_object(n);
+  if (o) o->visible = v; /* the hook runs after the tree's pre-render: set the drawn object itself */
+}
 static void view_hook(int view, void *u) {
   (void)u;
-  for (int h = 0; h < G.players; h++) cw_node_set(G.vm[h], "visible", cw_val_bool(h == view));
+  for (int h = 0; h < G.players; h++) set_obj_visible(G.vm[h], h == view && F(h)->alive);
   for (int i = 0; i < G.nf; i++) {
     fighter *f = F(i);
-    if (cw_node_valid(f->body) && f->alive) cw_node_set(f->body, "visible", cw_val_bool(i != view));
+    if (cw_node_valid(f->body) && f->alive) set_obj_visible(f->body, i != view);
   }
 }
 
