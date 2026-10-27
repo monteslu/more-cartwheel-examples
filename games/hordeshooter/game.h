@@ -46,7 +46,7 @@ typedef struct enemy {
 
 typedef struct bullet { bool alive; uint8_t owner, kind; float x, y, vx, vy, dmg; int life, pierce; } bullet;
 typedef struct obstacle { bool alive; uint8_t kind; float x, y, hx, hy; int hp, maxhp; uint32_t nav; } obstacle;
-typedef struct pickup { bool alive; uint8_t kind; float x, y, vx, vy; int life; } pickup;
+typedef struct pickup { bool alive; uint8_t kind; float x, y, vx, vy; int life, value, age; } pickup; /* value: the xp a gem gives (gems close together merge) */
 typedef struct boom { float x, y, r, dmg; int delay; uint8_t owner; bool big; } boom;
 typedef struct event { uint8_t kind, a, b; float x, y, z, w; } event;
 
@@ -106,6 +106,7 @@ void view_init(cw_node root);
 void view_free(void);
 void view_sync(const sim *s, float time);
 void view_camera(const sim *s, cw_node camera, float aspect, float shake_x, float shake_y);
+bool view_screen(t3_vec3 p, float *u, float *v); /* a world point on screen (0..1, y down) */
 typedef struct view_stats { int enemies_drawn, bullets, pickups; } view_stats;
 view_stats view_get_stats(void);
 /* fx.c */

@@ -60,6 +60,8 @@ int main(int argc, char **argv) {
     memset(in, 0, sizeof in);
     for (int i = 0; i < players; i++) horde_bot(&S, i, &in[i]);
     if (t == 100 && getenv("HORDE_SOAK_INJECT")) S.p[0].x = NAN; /* the control: the checks must catch this */
+    if (getenv("HORDE_SOAK_NOXP")) /* the levels control: gems give nothing, so the levels gate must fail */
+      for (int i = 0; i < players; i++) S.p[i].xp = 0;
     int was = S.state;
     sim_step(&S, in);
     if (check(&S)) return 1;
@@ -69,6 +71,13 @@ int main(int argc, char **argv) {
       last_level[i] = S.p[i].level;
       if ((int)S.p[i].hp < last_hp[i]) lost_min += last_hp[i] - (int)S.p[i].hp;
       last_hp[i] = (int)S.p[i].hp;
+    }
+    if (getenv("HORDE_SOAK_TRACE") && t % 60 == 0) { /* a line a second: kills, gems on the ground, each player level and xp */
+      int ng = 0;
+      for (int k = 0; k < MAXG; k++) ng += S.g[k].alive && S.g[k].kind == 0;
+      printf("trace t=%ld kills=%d enemies=%d gems=%d", t / 60, S.killed_total, S.nenemies, ng);
+      for (int i = 0; i < players; i++) printf(" p%d=L%d/%d/%d", i, S.p[i].level, S.p[i].xp, S.p[i].xp_next);
+      printf("\n");
     }
     if (S.nenemies > worst_enemies) worst_enemies = S.nenemies;
     if (was != ST_OVER && S.state == ST_OVER) overs++;
@@ -81,6 +90,9 @@ int main(int argc, char **argv) {
       fflush(stdout);
     }
   }
+  int lo = 1 << 30, hi = 0;
+  for (int i = 0; i < players; i++) lo = S.p[i].level < lo ? S.p[i].level : lo, hi = S.p[i].level > hi ? S.p[i].level : hi;
+  printf("levels %d to %d (started at wave %d)\n", lo, hi, wave0);
   printf("soak ok: %d minutes, %d players, wins %d, overruns %d, restarts %d, most enemies %d, rss %ld kB\n", minutes, players, wins, overs, restarts, worst_enemies, rss_kb());
   sim_free(&S);
   return 0;

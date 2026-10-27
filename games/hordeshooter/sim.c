@@ -77,14 +77,30 @@ static void queue_boom(sim *s, float x, float y, float r, float dmg, int delay, 
     }
 }
 
-static void drop(sim *s, int kind, float x, float y) {
+/* a pickup at (x, y). A gem carries its xp; one dropped within GEM_MERGE of another gem joins it
+ * instead (the ground holds a few rich gems, not a carpet of poor ones) */
+#define GEM_MERGE 2.2f
+#define GEM_MAX 60
+static void drop_value(sim *s, int kind, float x, float y, int value) {
+  if (kind == 0)
+    for (int i = 0; i < MAXG; i++) {
+      pickup *g = &s->g[i];
+      if (!g->alive || g->kind != 0 || g->value + value > GEM_MAX) continue;
+      float dx = g->x - x, dy = g->y - y;
+      if (dx * dx + dy * dy < GEM_MERGE * GEM_MERGE) {
+        g->value += value;
+        g->life = CW_MAX(g->life, 60 * 30);
+        return;
+      }
+    }
   for (int i = 0; i < MAXG; i++)
     if (!s->g[i].alive) {
       float a = rf(s) * 6.28f, v = 1.5f + rf(s) * 2.5f;
-      s->g[i] = (pickup){ true, (uint8_t)kind, x, y, cw_cos(a) * v, cw_sin(a) * v, 60 * 40 };
+      s->g[i] = (pickup){ true, (uint8_t)kind, x, y, cw_cos(a) * v, cw_sin(a) * v, 60 * 40, value, 0 };
       return;
     }
 }
+static void drop(sim *s, int kind, float x, float y) { drop_value(s, kind, x, y, 1); }
 
 /* each upgrade stops at a top level, so power grows on a curve a design can keep up with */
 static const int UP_MAX[9] = { 7, 4, 8, 4, 4, 5, 5, 5, 6 };
@@ -143,16 +159,21 @@ static void kill_enemy(sim *s, int i, int owner, float dx, float dy) {
     s->p[owner].score += 10 * (1 + e->kind * 4);
   }
   ev(s, EV_KILL, e->x, e->y, dx, dy, e->kind, owner);
+  if (e->kind == EK_BOSS) s->boss_alive--;
+  if (owner < 0) return; /* the yard clearing itself (a reset, the win) drops nothing */
+  /* the kind's xp in gems. A runner leaves its gem less often as the waves thicken: a thick horde
+   * is many more kills a minute, so the xp a minute still grows on the curve the level costs follow */
   int xp = EK[e->kind].xp;
-  int gems = e->kind == EK_BOSS ? 24 : e->kind == EK_BRUTE ? 4 : 1;
-  if (e->kind != EK_RUNNER || rf(s) < 6.0f / (6.0f + (float)s->wave)) /* a runner leaves a gem less often as the waves thicken */
-    for (int k = 0; k < gems; k++) drop(s, 0, e->x, e->y);
-  (void)xp;
+  if (e->kind == EK_RUNNER) {
+    if (rf(s) < 6.0f / (6.0f + (float)s->wave)) drop_value(s, 0, e->x, e->y, xp);
+  } else {
+    int gems = e->kind == EK_BOSS ? 6 : 1;
+    for (int k = 0; k < gems; k++) drop_value(s, 0, e->x + (float)(k % 3) * 0.9f - 0.9f, e->y + (float)(k / 3) * 0.9f, xp / gems);
+  }
   float r = rf(s);
   if (e->kind != EK_RUNNER ? r < 0.35f : r < 0.012f) drop(s, 1, e->x, e->y);
   if (e->kind == EK_BLOATER) queue_boom(s, e->x, e->y, 3.4f, 14, 4, owner, false);
   if (e->kind == EK_BOSS) {
-    s->boss_alive--;
     for (int k = 0; k < 14; k++) {
       float a = rf(s) * 6.28f, d = rf(s) * 2.2f;
       queue_boom(s, e->x + cw_cos(a) * d, e->y + cw_sin(a) * d, 4.2f, 40, 6 + k * 7, owner, true);
@@ -311,9 +332,19 @@ void sim_init(sim *s, int players, uint32_t seed, int start_wave) {
   for (int i = 0; i < players; i++) {
     player *p = &s->p[i];
     float a = (float)i * 6.2832f / (float)players;
-    *p = (player){ .active = true, .hp = 100, .x = cw_cos(a) * 2.0f, .y = cw_sin(a) * 2.0f, .xp_next = 8, .level = 1, .aim = a };
+    *p = (player){ .active = true, .hp = 100, .x = cw_cos(a) * 2.0f, .y = cw_sin(a) * 2.0f, .xp_next = 14, .level = 1, .aim = a };
   }
   s->wave = start_wave > 0 ? start_wave : 1;
+  for (int i = 0; i < players; i++) { /* a run started at a later wave begins with about the levels a played run has there */
+    player *p = &s->p[i];
+    for (int k = 1; k < s->wave; k++) {
+      p->level++;
+      p->xp_next = 6 + p->level * 5 + p->level * p->level * 3 / 2;
+      int u = LADDER[(p->level - 2) % (int)sizeof LADDER];
+      int *lv = up_slot(p, u);
+      if (*lv < UP_MAX[u]) ++*lv;
+    }
+  }
   s->spawn_cap = 40 + s->wave * 90;
   build_flow(s);
 }
@@ -707,6 +738,20 @@ static void pickups_step(sim *s) {
     pickup *g = &s->g[i];
     if (!g->alive) continue;
     if (--g->life <= 0) { g->alive = false; continue; }
+    if (++g->age > 60 * 8 && g->kind == 0) { /* a gem left on the ground for 8 s flies to the nearest living player */
+      int near = -1;
+      float bd = 1e9f;
+      for (int k = 0; k < MAXP; k++) {
+        const player *p = &s->p[k];
+        if (!p->active || p->down) continue;
+        float dx = p->x - g->x, dy = p->y - g->y, d = dx * dx + dy * dy;
+        if (d < bd) bd = d, near = k;
+      }
+      if (near >= 0 && bd > 0.0001f) {
+        float d = cw_v2_length(cw_v2(s->p[near].x - g->x, s->p[near].y - g->y));
+        g->vx += (s->p[near].x - g->x) / d * 0.9f, g->vy += (s->p[near].y - g->y) / d * 0.9f;
+      }
+    }
     g->x += g->vx / TICK;
     g->y += g->vy / TICK;
     g->vx *= 0.93f;
@@ -716,7 +761,7 @@ static void pickups_step(sim *s) {
     for (int k = 0; k < MAXP; k++) {
       player *p = &s->p[k];
       if (!p->active || p->down) continue;
-      float dx = p->x - g->x, dy = p->y - g->y, d2 = dx * dx + dy * dy, mr = 2.0f + (float)p->magnet * 1.6f;
+      float dx = p->x - g->x, dy = p->y - g->y, d2 = dx * dx + dy * dy, mr = 3.0f + (float)p->magnet * 1.6f;
       if (d2 < mr * mr && d2 > 0.0001f) {
         float d = cw_v2_length(cw_v2(dx, dy)), pull = 0.22f;
         g->vx += dx / d * pull * TICK * 0.12f;
@@ -725,9 +770,9 @@ static void pickups_step(sim *s) {
       if (d2 < 0.55f) {
         g->alive = false;
         if (g->kind == 0) {
-          p->xp++;
-          p->score += 2;
-          if (p->xp >= p->xp_next) level_up(s, p, k);
+          p->xp += g->value;
+          p->score += 2 * g->value;
+          while (p->xp >= p->xp_next) level_up(s, p, k);
         } else p->hp = CW_MIN(p->hp + 35, 100.0f);
         ev(s, EV_GEM, g->x, g->y, 0, 0, g->kind, k);
         break;
