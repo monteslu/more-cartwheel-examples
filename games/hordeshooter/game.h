@@ -39,7 +39,7 @@ typedef struct player {
 typedef struct enemy {
   bool alive;
   uint8_t kind;
-  int hp, flash, atk, spawn_age;
+  int hp, flash, atk, spawn_age, ph;
   float x, y, kx, ky, face, speed;
   cw_crowd_agent agent;
 } enemy;
@@ -52,7 +52,7 @@ typedef struct event { uint8_t kind, a, b; float x, y, z, w; } event;
 
 typedef struct sim {
   int tick, wave, wave_tick, players, state, state_ticks;
-  int kills, killed_total, spawn_cap, boss_alive, boss_wave;
+  int kills, killed_total, spawn_cap, boss_alive, boss_wave, boss_hp, boss_maxhp, boss_phase; /* phase: 0 walking, 1 winding up a charge, 2 charging */
   cw_rng rng;
   player p[MAXP];
   enemy e[MAXE];
@@ -81,6 +81,8 @@ typedef struct sim {
 } sim;
 
 enum { ST_PLAY, ST_OVER, ST_WON };
+#define TETHER_HW 16.0f /* the living team box is at most 2 * this wide and 2 * TETHER_HH deep: one camera at its farthest (45 m) shows it */
+#define TETHER_HH 8.5f
 #define FINAL_WAVE 20 /* the boss of this wave ends the run */
 
 void sim_init(sim *s, int players, uint32_t seed, int start_wave);

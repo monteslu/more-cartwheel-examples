@@ -741,7 +741,7 @@ void view_camera(const sim *s, cw_node camera, float aspect, float shake_x, floa
   const float fov = 38.0f * 3.14159f / 180.0f, tilt = 62.0f * 3.14159f / 180.0f;
   /* distance so the spread of the players plus a margin fits the view */
   float half_h = CW_MAX(hh + 8.0f, (hw + 10.0f) / aspect);
-  float d = CW_CLAMP(half_h / cw_sin(fov * 0.5f) * cw_cos(fov * 0.5f) * 0.92f, 24.0f, 36.0f);
+  float d = CW_CLAMP(half_h / cw_sin(fov * 0.5f) * cw_cos(fov * 0.5f) * 0.92f, 30.0f, 45.0f); /* a 1.5x zoom range */
   if (!V.cam_init) V.cx = cx, V.cy = cy, V.cd = d, V.cam_init = true;
   V.cx += (cx - V.cx) * 0.08f;
   V.cy += (cy - V.cy) * 0.08f;

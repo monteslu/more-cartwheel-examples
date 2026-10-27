@@ -56,6 +56,9 @@ static int spawn_enemy(sim *s, int kind, float x, float y) {
   enemy *e = &s->e[slot];
   *e = (enemy){ .alive = true, .kind = (uint8_t)kind, .x = x, .y = y, .agent = a, .speed = sp };
   e->hp = EK[kind].hp_base + (int)(EK[kind].hp_wave * (float)s->wave * (kind == EK_RUNNER ? 0.5f : 1.0f));
+  /* more players, tougher enemies: 25% per extra player, a boss 60% */
+  e->hp = (int)((float)e->hp * (1.0f + (kind == EK_BOSS ? 0.6f : 0.25f) * (float)(s->players > 1 ? s->players - 1 : 0)));
+  if (kind == EK_BOSS) s->boss_maxhp = e->hp;
   e->face = rf(s) * 6.28f;
   e->atk = 0;
   s->nenemies++;
@@ -160,10 +163,6 @@ static void add_obstacle(sim *s, int kind, float x, float y, float hx, float hy)
       o->x = x, o->y = y, o->hx = hx, o->hy = hy;
       o->hp = o->maxhp = kind == OK_CRATE ? 14 : kind == OK_BARREL ? 6 : kind == OK_WALL ? 90 : 1 << 20;
       o->nav = cw_nav_obstacle_add_box(s->nav, (t3_vec3){ x, 0, y }, (t3_vec3){ hx, 1.5f, hy }, 0);
-      if (!o->nav) { /* the change queue is full: apply it and try again */
-        cw_nav_update(s->nav);
-        o->nav = cw_nav_obstacle_add_box(s->nav, (t3_vec3){ x, 0, y }, (t3_vec3){ hx, 1.5f, hy }, 0);
-      }
       s->nav_dirty = true;
       return;
     }
@@ -172,10 +171,7 @@ static void add_obstacle(sim *s, int kind, float x, float y, float hx, float hy)
 static void remove_obstacle(sim *s, int i) {
   obstacle *o = &s->o[i];
   o->alive = false;
-  if (o->nav && !cw_nav_obstacle_remove(s->nav, o->nav)) {
-    cw_nav_update(s->nav);
-    cw_nav_obstacle_remove(s->nav, o->nav);
-  }
+  if (o->nav) cw_nav_obstacle_remove(s->nav, o->nav); /* a full change queue is applied by the engine */
   o->nav = 0;
   s->nav_dirty = true;
   s->flow_age = 1000;
@@ -452,19 +448,18 @@ static void player_step(sim *s, int i, const input *in) {
       p->y += (d2 > 0.0001f ? dy / d : 0.0f) * push;
     }
   }
-  /* a living team stays within one view: a player far from the others is held back */
+  /* tether: the living team's box never grows past what the camera at its farthest shows */
   {
-    float ox = 0, oy = 0;
+    float x0 = 1e9f, x1 = -1e9f, y0 = 1e9f, y1 = -1e9f;
     int n = 0;
     for (int k = 0; k < MAXP; k++) {
       const player *q = &s->p[k];
       if (k == i || !q->active || q->down) continue;
-      ox += q->x, oy += q->y, n++;
+      x0 = CW_MIN(x0, q->x), x1 = CW_MAX(x1, q->x), y0 = CW_MIN(y0, q->y), y1 = CW_MAX(y1, q->y), n++;
     }
     if (n) {
-      ox /= (float)n, oy /= (float)n;
-      float dx = p->x - ox, dy = p->y - oy, d = cw_v2_length(cw_v2(dx, dy));
-      if (d > 20.0f) p->x = ox + dx / d * 20.0f, p->y = oy + dy / d * 20.0f;
+      p->x = cw_clampf(p->x, x1 - 2 * TETHER_HW, x0 + 2 * TETHER_HW);
+      p->y = cw_clampf(p->y, y1 - 2 * TETHER_HH, y0 + 2 * TETHER_HH);
     }
   }
   if (p->offer_ticks > 0) {
@@ -479,11 +474,11 @@ static void player_step(sim *s, int i, const input *in) {
     }
   }
   float al = cw_v2_length(cw_v2(in->ax, in->ay));
-  if (al > 0.25f) p->aim = cw_atan2(in->ay, in->ax);
+  if (al > 0.001f) p->aim = cw_atan2(in->ay, in->ax); /* the dead zone is applied where the stick is read */
   if (p->cd > 0) p->cd--;
   if (p->bomb_cd > 0) p->bomb_cd--;
   if (p->inv > 0) p->inv--;
-  bool fire = in->fire || al > 0.5f;
+  bool fire = in->fire || al > 0.3f;
   if (fire && p->cd == 0) {
     int period = CW_MAX(3, 11 - p->rate);
     p->cd = period;
@@ -568,8 +563,11 @@ static void spawn_director(sim *s) {
   }
   int budget = 14;
   while (s->nenemies < s->spawn_cap && budget-- > 0) {
-    float a = rf(s) * 6.2832f, d = 22.0f + rf(s) * 10.0f;
-    float x = cw_clampf(cx + cw_cos(a) * d, -HALF + 1, HALF - 1), y = cw_clampf(cy + cw_sin(a) * d, -HALF + 1, HALF - 1);
+    float a = rf(s) * 6.2832f, d = s->tick < 600 ? 16.0f + rf(s) * 6.0f : 22.0f + rf(s) * 10.0f; /* the opening is closer: a first kill within 3 s */
+    int host = (int)(cw_rng_u32(&s->rng) % (uint32_t)MAXP); /* the ring is around one living player, so every player is met at spawn distance */
+    for (int t = 0; t < MAXP && !(s->p[host].active && !s->p[host].down); t++) host = (host + 1) % MAXP;
+    float hx = s->p[host].active && !s->p[host].down ? s->p[host].x : cx, hy = s->p[host].active && !s->p[host].down ? s->p[host].y : cy;
+    float x = cw_clampf(hx + cw_cos(a) * d, -HALF + 1, HALF - 1), y = cw_clampf(hy + cw_sin(a) * d, -HALF + 1, HALF - 1);
     int gx = (int)(x + HALF), gy = (int)(y + HALF);
     if (s->blocked[gy * FW + gx]) continue;
     bool close = false; /* never on top of a player (a corner of the yard can bring the ring near one) */
@@ -631,6 +629,11 @@ static void enemies_step(sim *s) {
       }
     }
     float sp = e->speed * (e->spawn_age < 40 ? 0.5f : 1.0f);
+    if (e->kind == EK_BOSS) { /* walk, stand still and glow (the telegraph), then charge straight ahead */
+      e->ph = (e->ph + 1) % 330;
+      if (e->ph >= 230 && e->ph < 290) sp = 0;
+      else if (e->ph >= 290) sp *= 3.0f;
+    }
     e->spawn_age++;
     vx = vx * sp + e->kx * 60.0f;
     vy = vy * sp + e->ky * 60.0f;
@@ -675,10 +678,16 @@ static void enemies_step(sim *s) {
     }
   }
   /* the boss calls runners */
-  if (s->boss_alive && s->tick % 70 == 0)
+  s->boss_hp = 0, s->boss_phase = 0;
+  for (int i = 0; i < MAXE; i++)
+    if (s->e[i].alive && s->e[i].kind == EK_BOSS) {
+      s->boss_hp += s->e[i].hp;
+      s->boss_phase = s->e[i].ph >= 230 && s->e[i].ph < 290 ? 1 : s->e[i].ph >= 290 ? 2 : 0;
+    }
+  if (s->boss_alive && s->tick % 300 == 0)
     for (int i = 0; i < MAXE; i++)
       if (s->e[i].alive && s->e[i].kind == EK_BOSS) {
-        for (int k = 0; k < 6; k++) {
+        for (int k = 0; k < 3 + s->players; k++) {
           float a = rf(s) * 6.28f;
           spawn_enemy(s, EK_RUNNER, s->e[i].x + cw_cos(a) * 2.2f, s->e[i].y + cw_sin(a) * 2.2f);
         }
@@ -771,6 +780,16 @@ void sim_step(sim *s, const input in[MAXP]) {
     player *p = &s->p[i];
     if (!p->active || !p->down) continue;
     if (s->wave_tick == 1) { p->down = false, p->hp = 50, p->inv = 120; continue; }
+    if (p->down_ticks > 60 * 8) { /* nobody came: the downed player is carried to the nearest living friend */
+      int near = -1;
+      float bd = 1e9f;
+      for (int k = 0; k < MAXP; k++) {
+        const player *q = &s->p[k];
+        float dx = q->x - p->x, dy = q->y - p->y, d = dx * dx + dy * dy;
+        if (k != i && q->active && !q->down && d < bd) bd = d, near = k;
+      }
+      if (near >= 0) { p->x = s->p[near].x + 1.0f, p->y = s->p[near].y, p->down = false, p->hp = 40, p->inv = 90; continue; }
+    }
     for (int k = 0; k < MAXP; k++) {
       const player *q = &s->p[k];
       if (k == i || !q->active || q->down) continue;

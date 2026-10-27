@@ -95,7 +95,32 @@
       "player.kills",
       "player.x",
       "player.y",
-      "game.hash"
+      "game.hash",
+      "game.state",
+      "game.boss"
+    ]
+  },
+  {
+    "name": "hordeshooter-pace",
+    "note": "hordeshooter_auto: two bots for 40 s: first kill, the first upgrade choices (bots pick), wave 2. Exact state on every host.",
+    "app": "hordeshooter_auto",
+    "frames": 2400,
+    "maxGt16": 0.12,
+    "fields": [
+      "game.ticks",
+      "game.wave",
+      "game.enemies",
+      "game.kills",
+      "game.alive_players",
+      "player.hp",
+      "player.level",
+      "player.score",
+      "player.kills",
+      "player.x",
+      "player.y",
+      "game.hash",
+      "game.state",
+      "game.boss"
     ]
   }
 ]

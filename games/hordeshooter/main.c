@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "cartwheel/aim.h"
 #include "cartwheel/audio.h"
 #include "cartwheel/core.h"
 #include "cartwheel/decals.h"
@@ -221,6 +222,15 @@ static void bot(const sim *s, int i, input *in) {
 }
 #endif
 
+/* the aim stick through the engine's aim curve: a 15% dead zone, rescaled so the response starts at
+ * zero, direction kept; a twin stick aims at the stick's angle, so there is no turn-rate cap */
+static cw_vec2 aim_stick(cw_vec2 raw) {
+  static cw_aim_state st;
+  cw_aim_curve c = cw_aim_curve_default();
+  c.power = 1, c.yaw_rate = c.pitch_rate = 1, c.ramp_seconds = 0;
+  return cw_aim_step(&st, &c, raw, 1.0f, 0);
+}
+
 static void read_input(input in[MAXP]) {
   memset(in, 0, sizeof(input) * MAXP);
   for (int i = 0; i < G.S.players; i++) {
@@ -228,7 +238,7 @@ static void read_input(input in[MAXP]) {
     bot(&G.S, i, &in[i]);
 #else
     cw_vec2 m = cw_input_vector(i, G.move[0], G.move[1], G.move[2], G.move[3], CW_DEADZONE_SCALED_RADIAL, 0.2f);
-    cw_vec2 a = cw_input_vector(i, G.aim[0], G.aim[1], G.aim[2], G.aim[3], CW_DEADZONE_SCALED_RADIAL, 0.15f);
+    cw_vec2 a = aim_stick(cw_input_vector(i, G.aim[0], G.aim[1], G.aim[2], G.aim[3], CW_DEADZONE_RADIAL, 0));
     in[i] = (input){ m.x, m.y, a.x, a.y, cw_action_pressed(i, G.fire), cw_action_just_pressed(i, G.bomb), 0 };
     for (int k = 0; k < 3; k++)
       if (cw_action_just_pressed(i, G.pick[k])) in[i].pick = k + 1;
@@ -256,6 +266,18 @@ static void fixed_update(void *u, double dt) {
   G.state = G.S.state;
   G.enemies = G.S.nenemies;
   G.kills = G.S.killed_total;
+  if (getenv("HORDE_REPORT")) { /* development: the run's pacing as text, one line per event */
+    static int last_kills, last_level[MAXP], last_hp[MAXP];
+    if (!last_kills && G.kills) fprintf(stderr, "report first_kill tick=%d\n", G.S.tick);
+    last_kills = G.kills;
+    for (int i = 0; i < MAXP; i++) {
+      if (G.S.p[i].level != last_level[i] && G.S.p[i].level > 1) fprintf(stderr, "report levelup tick=%d player=%d level=%d\n", G.S.tick, i, G.S.p[i].level);
+      last_level[i] = G.S.p[i].level;
+      if ((int)G.S.p[i].hp < last_hp[i]) fprintf(stderr, "report damage tick=%d player=%d lost=%d\n", G.S.tick, i, last_hp[i] - (int)G.S.p[i].hp);
+      last_hp[i] = (int)G.S.p[i].hp;
+    }
+    if (G.S.tick % 1800 == 0) fprintf(stderr, "report minute tick=%d wave=%d enemies=%d kills=%d alive=%d state=%d boss_hp=%d\n", G.S.tick, G.S.wave, G.S.nenemies, G.S.killed_total, sim_alive_players(&G.S), G.S.state, G.S.boss_hp);
+  }
   G.alive_players = sim_alive_players(&G.S);
   G.boss = G.S.boss_alive;
   G.hash = G.S.hash;
@@ -341,6 +363,12 @@ static void hud(void) {
     float a = cw_clampf(G.banner_t / 40.0f, 0, 1);
     snprintf(b, sizeof b, G.banner_kind == 2 ? "WAVE %d  -  BOSS INCOMING" : G.banner_kind == 1 ? "WAVE %d" : "HOLD THE YARD", G.banner_n);
     text(b, cs.x * 0.5f, cs.y * 0.28f, 38 * u, rgba(1, G.banner_kind == 2 ? 0.35f : 0.85f, 0.3f, a), CW_ALIGN_CENTER);
+  }
+  if (G.S.boss_alive && G.S.boss_maxhp > 0) {
+    float bw = cs.x * 0.4f, bx = cs.x * 0.5f - bw * 0.5f, by = 34 * u;
+    cw_r2d_rect(cw_rect_make(bx - 2 * u, by - 2 * u, bw + 4 * u, 12 * u), rgba(0, 0, 0, 0.7f));
+    cw_r2d_rect(cw_rect_make(bx, by, bw * cw_clampf((float)G.S.boss_hp / (float)G.S.boss_maxhp, 0, 1), 8 * u), rgba(0.9f, 0.2f, 0.15f, 1));
+    if (G.S.boss_phase == 1) text("THE BOSS IS ABOUT TO CHARGE", cs.x * 0.5f, by + 14 * u, 16 * u, rgba(1, 0.4f, 0.2f, 1), CW_ALIGN_CENTER);
   }
   if (G.S.state == ST_WON) {
     text("THE YARD HOLDS", cs.x * 0.5f, cs.y * 0.36f, 56 * u, rgba(1, 0.85f, 0.35f, 1), CW_ALIGN_CENTER);
