@@ -123,7 +123,15 @@ void n3_fx(const char *kind, t3_vec3 pos, float s) {
   f->n = n; f->ttl = f->max = (int)(life * 60) + 8; f->light = false;
 }
 
+/* at most two flash lights live at once: the scenes carry up to six point lights of their own and three.c lights at
+ * most eight of a kind (a ninth lights nothing, which a soak of Blast Ring with ghost bombers hit); a new flash takes
+ * over the oldest one's slot */
+#define MAX_FLASH 2
 void n3_flash(t3_vec3 pos, cw_color c, float energy, float range) {
+  int live = 0, oldest = -1;
+  for (int i = 0; i < 48; i++)
+    if (cw_node_valid(FX[i].n) && FX[i].light) { live++; if (oldest < 0 || FX[i].ttl < FX[oldest].ttl) oldest = i; }
+  if (live >= MAX_FLASH && oldest >= 0) { cw_node_free(FX[oldest].n); FX[oldest].n = (cw_node){ 0 }; }
   cw_node n = cw_node_new("OmniLight3D", "Flash");
   cw_node_set(n, "color", cw_val_color(c.r, c.g, c.b, 1));
   cw_node_set(n, "energy", cw_val_float(energy));
