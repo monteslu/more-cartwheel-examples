@@ -1097,7 +1097,7 @@ static void spawn_wave(void) {
 
 static void set_views(void) {
   cw_node cams[MAXH];
-  for (int i = 0; i < G.players; i++) cams[i] = G.cam[i];
+  for (int i = 0; i < MAXH; i++) cams[i] = G.cam[i]; /* every slot: the shell reads as many as it has players */
   G.views = cw_shell_split(NULL, cams);
   cw_pipeline *pl = cw_pipeline_of(G.tree);
   cw_pipeline_set_views_shared_post(pl, G.players > 1);
@@ -1678,12 +1678,18 @@ static void start(int players, void *user) {
 #endif
 }
 
+/* match [arena] [mode] [bots] [players]: argv[0] is the command's own name. A different player count restarts the shell
+ * with that many seats (the views and HUD follow the shell's count). */
 static void cmd_match(int argc, const char **argv, cw_reply *r) {
-  if (argc > 0) G.arena_id = CW_CLAMP(atoi(argv[0]), 0, ARENAS - 1);
-  if (argc > 1) G.mode = CW_CLAMP(atoi(argv[1]), 0, MODE_COUNT - 1);
-  if (argc > 2) G.bots_setting = CW_CLAMP(atoi(argv[2]), -1, MAXF - 4);
-  if (argc > 3) G.players = CW_CLAMP(atoi(argv[3]), 1, MAXH);
-  if (G.players < 1) G.players = 1;
+  if (argc > 1) G.arena_id = CW_CLAMP(atoi(argv[1]), 0, ARENAS - 1);
+  if (argc > 2) G.mode = CW_CLAMP(atoi(argv[2]), 0, MODE_COUNT - 1);
+  if (argc > 3) G.bots_setting = CW_CLAMP(atoi(argv[3]), -1, MAXF - 4);
+  int players = argc > 4 ? CW_CLAMP(atoi(argv[4]), 1, MAXH) : CW_MAX(G.players, 1);
+  if (players != cw_shell_players()) {
+    cw_shell_start(players); /* start(): the autopilot begins the match there */
+    if (AUTO) { cw_reply_raw(r, "{\"ok\": true}"); return; }
+  }
+  G.players = players;
   begin_match();
   set_views();
   cw_reply_raw(r, "{\"ok\": true}");
