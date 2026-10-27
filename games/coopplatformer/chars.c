@@ -66,9 +66,11 @@ static void each_mesh(t3_object *o, rig *r, bool in_acc) {
       for (int k = 0; k < r->nmat; k++) seen |= r->mats[k] == mt;
       if (seen) continue;
       r->mats[r->nmat] = mt;
+      if (mt->emissive.r + mt->emissive.g + mt->emissive.b > 0.1f) mt->emissive_intensity = 2.6f; /* glowing parts bloom */
       r->emis[r->nmat] = mt->emissive;
       r->emis_i[r->nmat] = mt->emissive_intensity;
-      r->kind[r->nmat] = in_acc ? 3 : mt->clearcoat > 0.1f ? 1 : (mt->color.r > 0.8f && mt->color.g > 0.55f && mt->color.g < 0.95f && mt->color.b < 0.5f) ? 2 : 0;
+      r->kind[r->nmat] = in_acc ? 3 : (fabsf(mt->color.r - 0.9f) < 0.03f && fabsf(mt->color.g - 0.9f) < 0.03f && fabsf(mt->color.b - 0.9f) < 0.03f) ? 1 : (mt->color.r > 0.9f && mt->color.g > 0.7f && mt->color.g < 0.8f && mt->color.b < 0.3f) ? 2 : 0;
+      if (getenv("COOP_DEBUG_RIG")) cw_warn("rig mat %d: color %.2f %.2f %.2f emissive %.2f %.2f %.2f x %.2f kind %d", r->nmat, mt->color.r, mt->color.g, mt->color.b, mt->emissive.r, mt->emissive.g, mt->emissive.b, mt->emissive_intensity, r->kind[r->nmat]);
       r->nmat++;
     }
   }
@@ -152,7 +154,7 @@ void rig_flash(rig *r, float k) {
 /* the glowing parts (eyes, a core) pulse: every material that starts out emissive */
 void rig_glow(rig *r, float k) {
   for (int i = 0; i < r->nmat; i++)
-    if (r->emis_i[i] > 0.5f) r->mats[i]->emissive_intensity = r->emis_i[i] * k;
+    if (r->emis[i].r + r->emis[i].g + r->emis[i].b > 0.1f) r->mats[i]->emissive_intensity = r->emis_i[i] * k;
 }
 
 static const t3_vec3 AX = { 1, 0, 0 }, AY = { 0, 1, 0 }, AZ = { 0, 0, 1 };

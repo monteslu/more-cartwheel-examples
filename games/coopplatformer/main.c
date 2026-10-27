@@ -13,6 +13,7 @@
 
 #include "cartwheel/audio.h"
 #include "cartwheel/debug.h"
+#include "cartwheel/explosions.h"
 #include "cartwheel/input.h"
 #include "cartwheel/particles.h"
 #include "cartwheel/pipeline.h"
@@ -53,6 +54,11 @@ static struct {
   cw_node pick_node[MAX_PICKUPS];
   t3_mesh *plat_mesh[MAX_PLATFORMS];
   cw_node fx_dust[MAX_PLAYERS], fx_spark, fx_splash, fx_burst, fx_ember[4], fx_hit;
+  cw_node fog, rim, fvol[8], water3d[16], torchfire[4];
+  cw_node fx_boom, fx_boomsmoke, fx_boomspark, fx_wave, fx_motes, fx_haze[4], fx_bubbles, fx_foam, fx_lavapop[4], fx_debris;
+  bool prev_alive[MAX_ENEMIES];
+  int nwspan, nlspan;
+  float wspan[16][4], lspan[16][4];
   int nember;
   float time;
   float light_x[64], light_y[64], light_r[64], light_g[64], light_b[64], light_e[64], light_range[64];
@@ -126,15 +132,29 @@ static void sfx(int id, float vol) {
 }
 
 /* ── lights, environment, post ────────────────────────────────────── */
-typedef struct mood { float sky[3], fog[3], sun[3], sun_e, amb, hemi, exposure, bloom, fog_near, fog_far, torch; } mood;
+/* a region's whole look: the key light (colour, strength, direction), a rim light from behind, the hemisphere and the
+ * fog (analytic and a volumetric height fog that the key light shines through), exposure and bloom */
+typedef struct mood {
+  float sky[3], fog[3], sun[3], sun_e, amb, hemi, exposure, bloom, fog_near, fog_far, torch;
+  float sun_pitch, sun_yaw, rim[3], rim_e, vden, vamb, vg, vcol[3], grain, ca;
+} mood;
 static const mood MOODS[BIOMES] = {
-  { { 0.32f, 0.58f, 0.95f }, { 0.55f, 0.72f, 0.95f }, { 1.0f, 0.88f, 0.7f }, 3.6f, 0.55f, 1.3f, 1.05f, 0.05f, 60, 420, 0.0f },
-  { { 0.04f, 0.05f, 0.1f }, { 0.05f, 0.07f, 0.14f }, { 0.5f, 0.6f, 1.0f }, 0.5f, 0.12f, 0.25f, 1.35f, 0.08f, 20, 260, 1.0f },
-  { { 0.22f, 0.4f, 0.45f }, { 0.28f, 0.5f, 0.52f }, { 0.9f, 0.95f, 0.8f }, 2.4f, 0.4f, 0.8f, 1.1f, 0.06f, 40, 320, 0.4f },
-  { { 0.25f, 0.06f, 0.04f }, { 0.35f, 0.1f, 0.05f }, { 1.0f, 0.45f, 0.25f }, 1.8f, 0.25f, 0.5f, 1.2f, 0.1f, 30, 280, 0.8f },
+  /* meadow: a warm afternoon, blue shade, soft haze, shafts under the trees */
+  { { 0.32f, 0.58f, 0.95f }, { 0.62f, 0.76f, 0.95f }, { 1.0f, 0.9f, 0.72f }, 4.4f, 0.5f, 1.1f, 1.0f, 0.1f, 80, 520, 0.0f,
+    -0.7f, 0.55f, { 0.55f, 0.75f, 1.0f }, 0.9f, 0.0012f, 0.9f, 0.5f, { 0.85f, 0.92f, 1.0f }, 0.012f, 0.0f },
+  /* caves: cold dark, the torches and crystals are the light, a cyan rim */
+  { { 0.04f, 0.05f, 0.1f }, { 0.04f, 0.06f, 0.13f }, { 0.4f, 0.55f, 1.0f }, 0.4f, 0.14f, 0.35f, 1.7f, 0.2f, 24, 280, 1.0f,
+    -0.9f, 0.2f, { 0.25f, 0.65f, 1.0f }, 1.6f, 0.003f, 0.5f, 0.3f, { 0.3f, 0.5f, 0.9f }, 0.02f, 0.0f },
+  /* ruins: green daylight through broken stone, hard shafts */
+  { { 0.22f, 0.42f, 0.46f }, { 0.4f, 0.62f, 0.6f }, { 1.0f, 0.95f, 0.78f }, 3.6f, 0.4f, 0.9f, 1.05f, 0.12f, 45, 360, 0.5f,
+    -1.0f, -0.45f, { 0.7f, 1.0f, 0.85f }, 1.0f, 0.0025f, 0.7f, 0.4f, { 0.8f, 1.0f, 0.9f }, 0.014f, 0.0f },
+  /* volcano: a low red sun behind the cone, lava orange rim, ash haze */
+  { { 0.25f, 0.06f, 0.04f }, { 0.4f, 0.12f, 0.06f }, { 1.0f, 0.5f, 0.3f }, 1.8f, 0.28f, 0.6f, 1.25f, 0.24f, 34, 300, 0.8f,
+    -0.35f, 0.9f, { 1.0f, 0.38f, 0.1f }, 2.4f, 0.003f, 0.4f, 0.3f, { 1.0f, 0.5f, 0.3f }, 0.016f, 0.0015f },
 };
 static mood cur_mood;
 
+static cw_value val_vec4(float x, float y, float z, float w) { cw_value v = { CW_T_VEC4 }; v.v[0] = x; v.v[1] = y; v.v[2] = z; v.v[3] = w; return v; }
 static cw_node make_node(const char *type, cw_node parent, const char *name) {
   cw_node n = cw_node_new(type, name);
   cw_node_add_child(parent, n);
@@ -153,6 +173,17 @@ static void particles_cfg(cw_node n, int amount, float life, float smin, float s
   cw_node_set(n, "color", cw_val_color(col.r, col.g, col.b, col.a));
   cw_node_set(n, "gravity", cw_val_vec3(0, grav, 0));
   cw_node_set(n, "blend", cw_val_enum(blend ? "ADD" : "ALPHA"));
+}
+/* a particle system from one call: blend 0 ALPHA, 1 ADD, 2 OPAQUE (instanced meshes), 3 DISTORT */
+static void pfx(cw_node n, int amount, float life, float smin, float smax, float size, cw_color col, float grav, int blend, const char *ramp,
+                const char *curve, float energy) {
+  particles_cfg(n, amount, life, smin, smax, size, col, grav, blend == 1);
+  static const char *const B[4] = { "ALPHA", "ADD", "OPAQUE", "DISTORT" };
+  cw_node_set(n, "blend", cw_val_enum(B[blend]));
+  cw_node_set(n, "color_ramp", cw_val_string(ramp));
+  cw_node_set(n, "size_curve", cw_val_string(curve));
+  cw_node_set(n, "energy", cw_val_float(energy));
+  cw_node_set(n, "size_random", cw_val_float(0.3f));
 }
 static void burst(cw_node n, float x, float y, float z) {
   if (!cw_node_valid(n)) return;
@@ -200,7 +231,28 @@ static void build_scene(void) {
     cw_node_set(S.sun, "shadow_extent", cw_val_float(26));
     cw_node_set(S.sun, "shadow_far", cw_val_float(90));
     cw_node_set(S.sun, "shadow_bias", cw_val_float(-0.0006));
+    cw_node_set(S.sun, "fog_energy", cw_val_float(2.0));
     cw_node3d_set_rotation(S.sun, (t3_vec3){ -0.9f, 0.35f, 0 });
+    /* the rim light: from behind and the side, no shadow, so a character's edge catches colour */
+    S.rim = make_node("DirectionalLight3D", S.root, "Rim");
+    cw_node_set(S.rim, "energy", cw_val_float(1.0));
+    cw_node_set(S.rim, "fog_energy", cw_val_float(0.0));
+    cw_node3d_set_rotation(S.rim, (t3_vec3){ -0.35f, 3.14159f + 0.6f, 0 });
+    /* a height fog the lights shine through (shafts), a few fog volumes for water, lava and mist */
+    if (!getenv("COOP_NOFOG")) {
+      S.fog = make_node("HeightFog", S.root, "Fog");
+      cw_node_set(S.fog, "use_sky_color", cw_val_bool(false));
+      cw_node_set(S.fog, "volumetric", cw_val_bool(true));
+      cw_node_set(S.fog, "volumetric_distance", cw_val_float(60));
+      cw_node_set(S.fog, "height_falloff", cw_val_float(0.02));
+      for (int i = 0; i < 8; i++) {
+        S.fvol[i] = make_node("FogVolume3D", S.root, "Volume");
+        cw_node_set(S.fvol[i], "density", cw_val_float(0));
+        cw_node_set(S.fvol[i], "noise", cw_val_float(0.6));
+        cw_node_set(S.fvol[i], "noise_scale", cw_val_float(0.35));
+        cw_node_set(S.fvol[i], "edge_fade", cw_val_float(0.35));
+      }
+    }
     S.post = make_node("PostProcess", S.root, "Post");
     cw_node_set(S.post, "tonemap", cw_val_enum("ACES_FILMIC"));
     cw_node_set(S.post, "bloom", cw_val_bool(true));
@@ -211,6 +263,11 @@ static void build_scene(void) {
     cw_node_set(S.post, "vignette", cw_val_bool(true));
     cw_node_set(S.post, "vignette_intensity", cw_val_float(0.4));
     cw_node_set(S.post, "msaa", cw_val_int(4));
+    cw_node_set(S.post, "grain", cw_val_bool(true));
+    cw_node_set(S.post, "grain_intensity", cw_val_float(0.012));
+    cw_node_set(S.post, "chromatic_aberration", cw_val_bool(true));
+    cw_node_set(S.post, "ca_intensity", cw_val_float(0.0015));
+    cw_node_set(S.post, "bloom_radius", cw_val_float(0.8));
     S.cam = make_node("Camera3D", S.root, "Camera");
     cw_node_set(S.cam, "fov", cw_val_float(40));
     cw_node_set(S.cam, "near", cw_val_float(0.5));
@@ -226,6 +283,7 @@ static void build_scene(void) {
       cw_node_set(S.plight[i], "range", cw_val_float(8));
       cw_node_set(S.plight[i], "energy", cw_val_float(0));
       cw_node_set(S.plight[i], "color", cw_val_color(PLAYER_RGB[i][0], PLAYER_RGB[i][1], PLAYER_RGB[i][2], 1));
+      cw_node_set(S.plight[i], "fog_energy", cw_val_float(0));
     }
     S.built = true;
   }
@@ -328,37 +386,144 @@ static void build_scene(void) {
     cw_node3d_set_position(S.pnode[i], (t3_vec3){ 0, -100, 0 });
   }
   t3_release(bub);
+  /* water: a Water3D surface (Gerstner waves, a ripple normal map, sky reflection) over each pool, and a volume of
+   * tinted fog inside it. Lava spans are listed for the glow volumes and the heat haze. */
+  {
+    float sp[16][4];
+    S.nwspan = world_water_spans(sp, 16);
+    for (int i = 0; i < S.nwspan; i++) {
+      memcpy(S.wspan[i], sp[i], sizeof sp[i]);
+      if (cw_node_valid(S.water3d[i])) cw_node_free(S.water3d[i]);
+      S.water3d[i] = make_node("Water3D", S.world, "Pool");
+      cw_node w = S.water3d[i];
+      cw_node_set(w, "size", cw_val_vec2(sp[i][1] - sp[i][0], 2.9f));
+      cw_node_set(w, "subdivisions", cw_val_int(96));
+      cw_node_set(w, "wave_count", cw_val_int(2));
+      cw_node_set(w, "wave0", val_vec4(90, 3.2f, 0.06f, 0.4f));
+      cw_node_set(w, "wave1", val_vec4(0, 1.7f, 0.03f, 0.3f));
+      cw_node_set(w, "color", cw_val_color(0.35f, 0.75f, 0.85f, 1));
+      cw_node_set(w, "deep_color", cw_val_color(0.01f, 0.08f, 0.16f, 1));
+      cw_node_set(w, "reflection", cw_val_bool(true));
+      cw_node_set(w, "refraction", cw_val_bool(false));
+      cw_node_set(w, "resolution_scale", cw_val_float(0.5f));
+      cw_node_set(w, "flow_direction", cw_val_vec2(1, 0));
+      cw_node_set(w, "flow_speed", cw_val_float(0.05f));
+      cw_node3d_set_position(w, (t3_vec3){ (sp[i][0] + sp[i][1]) * 0.5f, sp[i][3] - 0.08f, 0 });
+    }
+    S.nlspan = world_lava_spans(sp, 16);
+    for (int i = 0; i < S.nlspan; i++) memcpy(S.lspan[i], sp[i], sizeof sp[i]);
+  }
   /* effects */
   if (!cw_node_valid(S.fx_spark)) {
     for (int i = 0; i < MAX_PLAYERS; i++) {
       S.fx_dust[i] = make_node("GPUParticles3D", S.root, "Dust");
-      particles_cfg(S.fx_dust[i], 24, 0.6f, 1.0f, 3.0f, 0.35f, cw_rgba(0.8f, 0.75f, 0.65f, 0.5f), -1.0f, 0);
+      pfx(S.fx_dust[i], 28, 0.7f, 1.0f, 3.2f, 0.4f, cw_rgba(0.85f, 0.78f, 0.66f, 0.6f), -0.5f, 0, "0 1 0.95 0.85 0.55, 1 0.8 0.75 0.65 0", "0 0.4, 0.4 1, 1 1.4", 1.0f);
+      cw_node_set(S.fx_dust[i], "spread", cw_val_float(70));
+      cw_node_set(S.fx_dust[i], "direction", cw_val_vec3(0, 1, 0));
+      cw_node_set(S.fx_dust[i], "soft_distance", cw_val_float(0.5f));
     }
     S.fx_spark = make_node("GPUParticles3D", S.root, "Spark");
-    particles_cfg(S.fx_spark, 24, 0.6f, 2.0f, 6.0f, 0.18f, cw_rgba(1, 0.8f, 0.2f, 1), -8.0f, 1);
+    pfx(S.fx_spark, 36, 0.7f, 2.0f, 6.5f, 0.1f, cw_rgba(1, 0.8f, 0.25f, 1), -8.0f, 1, "0 1 1 0.8 1, 0.5 1 0.7 0.2 1, 1 1 0.4 0.1 0", "0 1, 1 0.2", 5.0f);
+    cw_node_set(S.fx_spark, "draw_mode", cw_val_enum("STRETCHED"));
     S.fx_splash = make_node("GPUParticles3D", S.root, "Splash");
-    particles_cfg(S.fx_splash, 60, 0.9f, 3.0f, 8.0f, 0.18f, cw_rgba(0.6f, 0.85f, 1, 0.8f), -14.0f, 0);
+    pfx(S.fx_splash, 90, 1.0f, 3.0f, 9.0f, 0.14f, cw_rgba(0.75f, 0.92f, 1, 0.9f), -16.0f, 1, "0 1 1 1 0.9, 0.7 0.7 0.9 1 0.6, 1 0.6 0.85 1 0", "0 1, 1 0.4", 1.6f);
+    cw_node_set(S.fx_splash, "draw_mode", cw_val_enum("STRETCHED"));
+    cw_node_set(S.fx_splash, "spread", cw_val_float(38));
+    cw_node_set(S.fx_splash, "direction", cw_val_vec3(0, 1, 0));
+    S.fx_foam = make_node("GPUParticles3D", S.root, "Foam");
+    pfx(S.fx_foam, 36, 1.4f, 0.4f, 1.8f, 0.5f, cw_rgba(0.9f, 0.97f, 1, 0.7f), -0.2f, 0, "0 1 1 1 0.7, 1 0.9 1 1 0", "0 0.5, 0.3 1, 1 1.3", 1.0f);
+    cw_node_set(S.fx_foam, "spread", cw_val_float(85));
+    cw_node_set(S.fx_foam, "direction", cw_val_vec3(0, 1, 0));
+    S.fx_bubbles = make_node("GPUParticles3D", S.root, "Bubbles");
+    pfx(S.fx_bubbles, 30, 1.2f, 0.8f, 2.2f, 0.09f, cw_rgba(0.8f, 0.95f, 1, 0.8f), 2.0f, 1, "0 1 1 1 0.9, 1 0.8 0.95 1 0", "0 0.6, 0.2 1, 1 1", 1.4f);
     S.fx_burst = make_node("GPUParticles3D", S.root, "Burst");
-    particles_cfg(S.fx_burst, 80, 0.8f, 3.0f, 10.0f, 0.3f, cw_rgba(1, 0.55f, 0.2f, 1), -6.0f, 1);
+    pfx(S.fx_burst, 90, 0.9f, 3.0f, 10.0f, 0.3f, cw_rgba(1, 0.55f, 0.2f, 1), -6.0f, 1, "0 1 0.9 0.5 1, 0.4 1 0.4 0.1 0.8, 1 0.4 0.1 0.05 0", "0 0.5, 0.3 1, 1 1.5", 3.0f);
     S.fx_hit = make_node("GPUParticles3D", S.root, "Hit");
-    particles_cfg(S.fx_hit, 40, 0.5f, 3.0f, 9.0f, 0.22f, cw_rgba(1, 1, 0.8f, 1), -4.0f, 1);
-    /* embers rising from lava: continuous emitters along the lava spans */
-    for (int x = 0; x < WORLD_W && S.nember < 4; x++)
-      if (L->t[2][x] == T_LAVA && (x % 20) < 2) {
-        cw_node n = make_node("GPUParticles3D", S.root, "Ember");
-        particles_cfg(n, 60, 2.2f, 1.0f, 3.5f, 0.12f, cw_rgba(1, 0.5f, 0.1f, 1), 1.0f, 1);
-        cw_node_set(n, "one_shot", cw_val_bool(false));
-        cw_node_set(n, "explosiveness", cw_val_float(0));
-        cw_node_set(n, "emitting", cw_val_bool(true));
-        cw_node_set(n, "emission_shape", cw_val_enum("BOX"));
-        cw_node_set(n, "emission_extents", cw_val_vec3(4, 0.2f, 1));
-        cw_node_set(n, "spread", cw_val_float(30));
-        cw_node_set(n, "direction", cw_val_vec3(0, 1, 0));
-        cw_node3d_set_position(n, (t3_vec3){ (float)x + 4, 3.2f, 0.5f });
-        S.fx_ember[S.nember++] = n;
-        x += 18;
-      }
+    pfx(S.fx_hit, 48, 0.6f, 3.0f, 10.0f, 0.12f, cw_rgba(1, 1, 0.8f, 1), -5.0f, 1, "0 1 1 0.9 1, 1 1 0.5 0.2 0", "0 1, 1 0.1", 5.0f);
+    cw_node_set(S.fx_hit, "draw_mode", cw_val_enum("STRETCHED"));
+    /* rock debris: small instanced boxes that fall and bounce on what the camera sees */
+    S.fx_debris = make_node("GPUParticles3D", S.root, "Debris");
+    pfx(S.fx_debris, 24, 1.8f, 3.0f, 9.0f, 0.12f, cw_rgba(0.55f, 0.42f, 0.32f, 1), -20.0f, 2, "", "", 1.0f);
+    cw_node_set(S.fx_debris, "draw_mode", cw_val_enum("MESH"));
+    cw_node_set(S.fx_debris, "mesh_primitive", cw_val_enum("BOX"));
+    cw_node_set(S.fx_debris, "spin", cw_val_float(6));
+    cw_node_set(S.fx_debris, "size_random", cw_val_float(0.6f));
+    /* the death blast of an enemy: flash, smoke, sparks, and a ring that bends the picture */
+    S.fx_boom = make_node("GPUParticles3D", S.root, "Boom");
+    pfx(S.fx_boom, 40, 0.55f, 0.5f, 3.0f, 1.3f, cw_rgba(1, 0.7f, 0.3f, 1), 0.0f, 1, "0 1 0.95 0.7 1, 0.2 1 0.55 0.15 0.9, 1 0.35 0.08 0.03 0", "0 0.4, 0.3 1, 1 1.5", 6.0f);
+    S.fx_boomsmoke = make_node("GPUParticles3D", S.root, "BoomSmoke");
+    pfx(S.fx_boomsmoke, 36, 1.5f, 0.6f, 2.5f, 1.1f, cw_rgba(0.3f, 0.27f, 0.25f, 0.8f), 1.0f, 0, "0 0.3 0.26 0.24 0, 0.15 0.28 0.25 0.23 0.8, 1 0.4 0.38 0.36 0", "0 0.5, 0.5 1, 1 1.8", 1.0f);
+    cw_node_set(S.fx_boomsmoke, "soft_distance", cw_val_float(0.6f));
+    S.fx_boomspark = make_node("GPUParticles3D", S.root, "BoomSparks");
+    pfx(S.fx_boomspark, 90, 1.1f, 4.0f, 14.0f, 0.1f, cw_rgba(1, 0.8f, 0.4f, 1), -9.0f, 1, "0 1 0.95 0.6 1, 0.5 1 0.5 0.1 1, 1 0.6 0.1 0.05 0", "0 1, 1 0.2", 6.0f);
+    cw_node_set(S.fx_boomspark, "draw_mode", cw_val_enum("STRETCHED"));
+    S.fx_wave = make_node("Shockwave3D", S.root, "Wave");
+    cw_node_set(S.fx_wave, "autostart", cw_val_bool(false));
+    cw_node_set(S.fx_wave, "max_radius", cw_val_float(4.5f));
+    cw_node_set(S.fx_wave, "duration", cw_val_float(0.6f));
+    cw_node_set(S.fx_wave, "thickness", cw_val_float(0.8f));
+    cw_node_set(S.fx_wave, "strength", cw_val_float(0.45f));
+    /* ambient motes that follow the camera: fireflies, cave dust, pollen, ash */
+    S.fx_motes = make_node("GPUParticles3D", S.root, "Motes");
+    pfx(S.fx_motes, 70, 5.0f, 0.1f, 0.5f, 0.07f, cw_rgba(1, 1, 0.6f, 1), 0.0f, 1, "0 1 1 1 0, 0.2 1 1 1 1, 0.8 1 1 1 1, 1 1 1 1 0", "0 0.3, 0.5 1, 1 0.3", 3.0f);
+    cw_node_set(S.fx_motes, "one_shot", cw_val_bool(false));
+    cw_node_set(S.fx_motes, "explosiveness", cw_val_float(0));
+    cw_node_set(S.fx_motes, "emitting", cw_val_bool(true));
+    cw_node_set(S.fx_motes, "emission_shape", cw_val_enum("BOX"));
+    cw_node_set(S.fx_motes, "emission_extents", cw_val_vec3(22, 9, 3));
+    cw_node_set(S.fx_motes, "spread", cw_val_float(180));
+    cw_node_set(S.fx_motes, "turbulence", cw_val_float(0.5f));
+    cw_node_set(S.fx_motes, "preprocess", cw_val_float(3));
+    /* lava: embers over every span, a heat haze above, bubbles popping on the surface */
+    for (int i = 0; i < 4; i++) {
+      S.fx_haze[i] = make_node("GPUParticles3D", S.root, "Haze");
+      pfx(S.fx_haze[i], 14, 2.4f, 0.4f, 1.1f, 2.2f, cw_rgba(1, 1, 1, 1), 0.0f, 3, "0 1 1 1 0, 0.3 1 1 1 0.8, 1 1 1 1 0", "0 0.6, 1 1.4", 1.0f);
+      cw_node_set(S.fx_haze[i], "distort_strength", cw_val_float(0.10f));
+      cw_node_set(S.fx_haze[i], "one_shot", cw_val_bool(false));
+      cw_node_set(S.fx_haze[i], "explosiveness", cw_val_float(0));
+      cw_node_set(S.fx_haze[i], "emitting", cw_val_bool(false));
+      cw_node_set(S.fx_haze[i], "emission_shape", cw_val_enum("BOX"));
+      cw_node_set(S.fx_haze[i], "spread", cw_val_float(12));
+      cw_node_set(S.fx_haze[i], "direction", cw_val_vec3(0, 1, 0));
+      S.fx_lavapop[i] = make_node("GPUParticles3D", S.root, "LavaPop");
+      pfx(S.fx_lavapop[i], 40, 1.4f, 2.5f, 7.0f, 0.2f, cw_rgba(1, 0.5f, 0.1f, 1), -9.0f, 1, "0 1 0.8 0.3 1, 0.5 1 0.4 0.08 1, 1 0.5 0.1 0.03 0", "0 1, 1 0.3", 4.0f);
+      cw_node_set(S.fx_lavapop[i], "one_shot", cw_val_bool(false));
+      cw_node_set(S.fx_lavapop[i], "explosiveness", cw_val_float(0));
+      cw_node_set(S.fx_lavapop[i], "emitting", cw_val_bool(false));
+      cw_node_set(S.fx_lavapop[i], "emission_shape", cw_val_enum("BOX"));
+      cw_node_set(S.fx_lavapop[i], "spread", cw_val_float(25));
+      cw_node_set(S.fx_lavapop[i], "direction", cw_val_vec3(0, 1, 0));
+      cw_node_set(S.fx_lavapop[i], "draw_mode", cw_val_enum("STRETCHED"));
+    }
+    for (int i = 0; i < 4; i++) {
+      cw_node n = make_node("GPUParticles3D", S.root, "Ember");
+      pfx(n, 70, 2.8f, 0.8f, 3.0f, 0.1f, cw_rgba(1, 0.5f, 0.1f, 1), 0.8f, 1, "0 1 0.7 0.2 0, 0.15 1 0.55 0.1 1, 1 0.5 0.1 0.03 0", "0 1, 1 0.3", 4.0f);
+      cw_node_set(n, "one_shot", cw_val_bool(false));
+      cw_node_set(n, "explosiveness", cw_val_float(0));
+      cw_node_set(n, "emitting", cw_val_bool(false));
+      cw_node_set(n, "emission_shape", cw_val_enum("BOX"));
+      cw_node_set(n, "spread", cw_val_float(30));
+      cw_node_set(n, "turbulence", cw_val_float(0.4f));
+      cw_node_set(n, "direction", cw_val_vec3(0, 1, 0));
+      S.fx_ember[i] = n;
+    }
+    S.nember = 4;
+    /* a real flame at the nearest torches */
+    for (int i = 0; i < NTORCH; i++) {
+      S.torchfire[i] = make_node("GPUParticles3D", S.torch[i], "Flame");
+      pfx(S.torchfire[i], 26, 0.7f, 0.5f, 1.4f, 0.32f, cw_rgba(1, 0.6f, 0.2f, 1), 2.2f, 1, "0 1 0.95 0.6 0, 0.15 1 0.7 0.25 1, 0.7 1 0.35 0.08 0.6, 1 0.4 0.1 0.03 0", "0 0.6, 0.3 1, 1 0.2", 4.5f);
+      cw_node_set(S.torchfire[i], "one_shot", cw_val_bool(false));
+      cw_node_set(S.torchfire[i], "explosiveness", cw_val_float(0));
+      cw_node_set(S.torchfire[i], "emitting", cw_val_bool(true));
+      cw_node_set(S.torchfire[i], "emission_shape", cw_val_enum("SPHERE"));
+      cw_node_set(S.torchfire[i], "emission_radius", cw_val_float(0.1f));
+      cw_node_set(S.torchfire[i], "spread", cw_val_float(14));
+      cw_node_set(S.torchfire[i], "direction", cw_val_vec3(0, 1, 0));
+      cw_node_set(S.torchfire[i], "local_coords", cw_val_bool(false));
+    }
   }
+  /* enemies seen alive: a death is a blast */
+  for (int i = 0; i < L->nenemies; i++) S.prev_alive[i] = L->enemies[i].alive;
 }
 
 static void apply_mood(float x) {
@@ -381,8 +546,108 @@ static void apply_mood(float x) {
   cw_node_set(S.env, "fog_far", cw_val_float(q->fog_far));
   cw_node_set(S.sun, "color", cw_val_color(q->sun[0], q->sun[1], q->sun[2], 1));
   cw_node_set(S.sun, "energy", cw_val_float(q->sun_e));
+  cw_node3d_set_rotation(S.sun, (t3_vec3){ q->sun_pitch, q->sun_yaw, 0 });
+  cw_node_set(S.rim, "color", cw_val_color(q->rim[0], q->rim[1], q->rim[2], 1));
+  cw_node_set(S.rim, "energy", cw_val_float(q->rim_e));
   cw_node_set(S.post, "exposure", cw_val_float(q->exposure));
   cw_node_set(S.post, "bloom_intensity", cw_val_float(q->bloom));
+  cw_node_set(S.post, "grain_intensity", cw_val_float(q->grain));
+  cw_node_set(S.post, "ca_intensity", cw_val_float(q->ca));
+  if (cw_node_valid(S.fog)) {
+    cw_node_set(S.fog, "density", cw_val_float(q->vden));
+    cw_node_set(S.fog, "color", cw_val_color(q->vcol[0], q->vcol[1], q->vcol[2], 1));
+    cw_node_set(S.fog, "volumetric_ambient", cw_val_float(q->vamb));
+    cw_node_set(S.fog, "volumetric_albedo", cw_val_color(q->vcol[0], q->vcol[1], q->vcol[2], 1));
+    cw_node_set(S.fog, "sun_g", cw_val_float(q->vg));
+  }
+}
+
+/* the nearest water and lava spans get the fog volumes (water tint, lava glow) and the lava its haze, embers and pops */
+static void update_spans(float camx) {
+  int vi = 0;
+  for (int pass = 0; pass < 2; pass++) {
+    int n = pass == 0 ? S.nwspan : S.nlspan;
+    for (int i = 0; i < n && vi < 8; i++) {
+      const float *sp = pass == 0 ? S.wspan[i] : S.lspan[i];
+      float cx = (sp[0] + sp[1]) * 0.5f;
+      if (fabsf(cx - camx) > 46 + (sp[1] - sp[0]) * 0.5f) continue;
+      cw_node v = S.fvol[vi++];
+      if (!cw_node_valid(v)) continue;
+      float w = sp[1] - sp[0];
+      if (pass == 0) {
+        cw_node_set(v, "size", cw_val_vec3(w, sp[3] - sp[2], 3.6f));
+        cw_node3d_set_position(v, (t3_vec3){ cx, (sp[2] + sp[3]) * 0.5f, 0 });
+        cw_node_set(v, "density", cw_val_float(0.25));
+        cw_node_set(v, "albedo", cw_val_color(0.1f, 0.45f, 0.65f, 1));
+        cw_node_set(v, "emission", cw_val_color(0.02f, 0.14f, 0.22f, 1));
+        cw_node_set(v, "emission_energy", cw_val_float(0.6));
+        cw_node_set(v, "noise_wind", cw_val_vec3(0.15f, 0.05f, 0));
+      } else {
+        cw_node_set(v, "size", cw_val_vec3(w + 6, 8, 5));
+        cw_node3d_set_position(v, (t3_vec3){ cx, 5.5f, 0 });
+        cw_node_set(v, "density", cw_val_float(0.3));
+        cw_node_set(v, "albedo", cw_val_color(1.0f, 0.4f, 0.12f, 1));
+        cw_node_set(v, "emission", cw_val_color(1.0f, 0.3f, 0.05f, 1));
+        cw_node_set(v, "emission_energy", cw_val_float(1.6 + 0.3 * sinf(S.time * 1.7f)));
+        cw_node_set(v, "height_falloff", cw_val_float(0.25));
+        cw_node_set(v, "noise_wind", cw_val_vec3(0.1f, 0.5f, 0));
+      }
+    }
+  }
+  for (; vi < 8; vi++)
+    if (cw_node_valid(S.fvol[vi])) cw_node_set(S.fvol[vi], "density", cw_val_float(0));
+  /* lava effects ride the nearest four spans (configured when a slot changes span: setting amount restarts a system) */
+  static int slot_span[4] = { -2, -2, -2, -2 };
+  int nl = 0;
+  for (int i = 0; i < S.nlspan && nl < 4; i++) {
+    const float *sp = S.lspan[i];
+    float cx = (sp[0] + sp[1]) * 0.5f;
+    if (fabsf(cx - camx) > 40) continue;
+    float w = sp[1] - sp[0];
+    cw_node h = S.fx_haze[nl], pop = S.fx_lavapop[nl], em = S.fx_ember[nl];
+    if (slot_span[nl] != i) {
+      slot_span[nl] = i;
+      cw_node3d_set_position(h, (t3_vec3){ cx, 4.4f, 1.0f });
+      cw_node_set(h, "emission_extents", cw_val_vec3(w * 0.5f, 0.3f, 1.2f));
+      cw_node_set(h, "emitting", cw_val_bool(true));
+      cw_node3d_set_position(pop, (t3_vec3){ cx, 2.9f, 0.5f });
+      cw_node_set(pop, "emission_extents", cw_val_vec3(w * 0.5f, 0.1f, 1.2f));
+      cw_node_set(pop, "emitting", cw_val_bool(true));
+      cw_node3d_set_position(em, (t3_vec3){ cx, 3.2f, 0.5f });
+      cw_node_set(em, "emission_extents", cw_val_vec3(w * 0.5f, 0.2f, 1.0f));
+      cw_node_set(em, "emitting", cw_val_bool(true));
+    }
+    nl++;
+  }
+  for (; nl < 4; nl++)
+    if (slot_span[nl] != -1) {
+      slot_span[nl] = -1;
+      cw_node_set(S.fx_haze[nl], "emitting", cw_val_bool(false));
+      cw_node_set(S.fx_lavapop[nl], "emitting", cw_val_bool(false));
+      cw_node_set(S.fx_ember[nl], "emitting", cw_val_bool(false));
+    }
+  /* bubbles in the nearest pool */
+  static int bub_span = -2;
+  int want = -1;
+  for (int i = 0; i < S.nwspan; i++) {
+    const float *sp = S.wspan[i];
+    if (camx > sp[0] - 30 && camx < sp[1] + 30) want = i;
+  }
+  if (want != bub_span) {
+    bub_span = want;
+    if (want >= 0) {
+      const float *sp = S.wspan[want];
+      cw_node3d_set_position(S.fx_bubbles, (t3_vec3){ (sp[0] + sp[1]) * 0.5f, sp[2] + 0.4f, 0.6f });
+      cw_node_set(S.fx_bubbles, "one_shot", cw_val_bool(false));
+      cw_node_set(S.fx_bubbles, "explosiveness", cw_val_float(0));
+      cw_node_set(S.fx_bubbles, "emission_shape", cw_val_enum("BOX"));
+      cw_node_set(S.fx_bubbles, "emission_extents", cw_val_vec3((sp[1] - sp[0]) * 0.45f, 0.2f, 0.8f));
+      cw_node_set(S.fx_bubbles, "direction", cw_val_vec3(0, 1, 0));
+      cw_node_set(S.fx_bubbles, "spread", cw_val_float(10));
+      cw_node_set(S.fx_bubbles, "lifetime", cw_val_float(fmaxf(0.8f, (sp[3] - sp[2]) / 1.6f)));
+    }
+    cw_node_set(S.fx_bubbles, "emitting", cw_val_bool(want >= 0));
+  }
 }
 
 /* ── frame: sync the scene to the sim ─────────────────────────────── */
@@ -398,6 +663,22 @@ static void sync_scene(float alpha, float dt) {
   cw_node3d_set_position(S.sun, (t3_vec3){ c->x + 8, c->y + 18, 14 });
   apply_mood(c->x);
   world_update_water_mesh(S.time);
+  world_update_backdrop(S.time);
+  update_spans(c->x);
+  /* the motes follow the camera and take the region's character */
+  {
+    int b = g->L.biome[(int)c->x < 0 ? 0 : (int)c->x >= WORLD_W ? WORLD_W - 1 : (int)c->x];
+    static const float MC[BIOMES][4] = { { 1.0f, 0.95f, 0.5f, 3.0f }, { 0.4f, 0.8f, 1.0f, 2.0f }, { 1.0f, 1.0f, 0.8f, 1.2f }, { 1.0f, 0.4f, 0.1f, 4.0f } };
+    static const float MG[BIOMES] = { 0.0f, 0.0f, -0.05f, 0.9f };
+    static int last_b = -1;
+    cw_node3d_set_position(S.fx_motes, (t3_vec3){ c->x, c->y, 0 });
+    if (b != last_b) {
+      last_b = b;
+      cw_node_set(S.fx_motes, "color", cw_val_color(MC[b][0], MC[b][1], MC[b][2], 1));
+      cw_node_set(S.fx_motes, "energy", cw_val_float(MC[b][3]));
+      cw_node_set(S.fx_motes, "gravity", cw_val_vec3(0, MG[b], 0));
+    }
+  }
   /* players */
   int bubbles = 0;
   for (int i = 0; i < MAX_PLAYERS; i++) {
@@ -469,6 +750,16 @@ static void sync_scene(float alpha, float dt) {
   for (int i = 0; i < L->nenemies; i++) {
     const enemy *e = &L->enemies[i];
     cw_node_set(S.enode[i], "visible", cw_val_bool(e->alive));
+    if (S.prev_alive[i] && !e->alive) { /* it just died: a blast, bigger for the boss */
+      float bs = e->kind == 2 ? 2.4f : 1.0f, by = e->y + (e->kind == 2 ? 1.0f : 0.5f);
+      burst(S.fx_boom, e->x, by, 0.8f), burst(S.fx_boomsmoke, e->x, by, 0.6f), burst(S.fx_boomspark, e->x, by, 0.6f);
+      cw_node_set(S.fx_wave, "max_radius", cw_val_float(4.5f * bs));
+      cw_node3d_set_position(S.fx_wave, (t3_vec3){ e->x, by, 1.0f });
+      cw_shockwave_fire(S.fx_wave);
+      burst(S.fx_debris, e->x, by, 0.5f);
+      g->cam.shake = fmaxf(g->cam.shake, 0.25f * bs);
+    }
+    S.prev_alive[i] = e->alive;
     if (!e->alive || !S.erig[i]) continue;
     cw_node3d_set_position(S.enode[i], (t3_vec3){ e->x, e->y + (e->kind == 1 ? 0.2f * sinf(S.time * 5 + (float)i) : 0), 0 });
     float want = e->dir > 0 ? 1.2f : -1.2f;
@@ -544,6 +835,8 @@ static void start_match(int players, void *user) {
       if (G.L.checks[k].x < sx) G.checkpoint = k;
   }
   build_scene();
+  cw_info("coopplatformer: pools %d, lava spans %d", S.nwspan, S.nlspan);
+  for (int i = 0; i < S.nwspan; i++) cw_info("  pool x %.0f..%.0f y %.0f..%.0f", S.wspan[i][0], S.wspan[i][1], S.wspan[i][2], S.wspan[i][3]);
   g_run_ticks = 0;
   g_map_open = false;
 }

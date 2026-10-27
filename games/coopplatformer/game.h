@@ -116,6 +116,9 @@ void world_destroy_physics(game *g);
 void world_scene_build(game *g, cw_node root);
 void world_scene_free(void);
 void world_update_water_mesh(float time);
+void world_update_backdrop(float time);
+int world_water_spans(float out[][4], int cap); /* x0, x1, bottom, surface */
+int world_lava_spans(float out[][4], int cap);
 void world_backdrop(game *g);
 bool world_solid(const level *L, int x, int y);
 bool world_break_crack(game *g, int x, int y);
