@@ -47,6 +47,7 @@ static struct {
   rig *prig[MAX_PLAYERS];
   cw_node pmodel[MAX_PLAYERS];
   float yaw[MAX_PLAYERS], runph[MAX_PLAYERS];
+  float spread_x[MAX_PLAYERS], spread_z[MAX_PLAYERS]; /* drawn apart when players stand in one spot */
   cw_node enode[MAX_ENEMIES], emodel[MAX_ENEMIES];
   rig *erig[MAX_ENEMIES];
   float ephase[MAX_ENEMIES], eyaw[MAX_ENEMIES];
@@ -83,7 +84,7 @@ static int g_map_sel = -1; /* the flag the map's cursor is on */
 static cw_font g_font;
 static void title_background(cw_shell_screen scr, cw_vec2 cv, void *user);
 static int g_state_dbg, g_players_dbg, g_bubbles_dbg, g_hp_dbg;
-static float g_pos_dbg[2], g_cam_dbg[3];
+static float g_pos_dbg[2], g_cam_dbg[3], g_ppos_dbg[MAX_PLAYERS * 2];
 static int g_run_ticks;
 
 /* ── generated audio ───────────────────────────────────────────────── */
@@ -682,7 +683,31 @@ static void sync_scene(float alpha, float dt) {
       cw_node_set(S.fx_motes, "gravity", cw_val_vec3(0, MG[b], 0));
     }
   }
-  /* players */
+  /* players. Two players in one spot (they pass through each other) would draw as one merged figure: each one of a
+   * crowd is drawn a little apart, staggered sideways and in depth by its rank in the crowd, eased in and out. The
+   * simulation is untouched. */
+  float want_sx[MAX_PLAYERS] = { 0 }, want_sz[MAX_PLAYERS] = { 0 };
+  for (int i = 0; i < g->nplayers && i < MAX_PLAYERS; i++) {
+    const player *p = &g->p[i];
+    if (!p->joined || !p->alive || p->bubble) continue;
+    int rank = 0, crowd = 1;
+    for (int k = 0; k < g->nplayers && k < MAX_PLAYERS; k++) {
+      const player *q = &g->p[k];
+      if (k == i || !q->joined || !q->alive || q->bubble) continue;
+      double dx = q->pf.body.position.x - p->pf.body.position.x, dy = q->pf.body.position.y - p->pf.body.position.y;
+      if (dx * dx < 0.8 * 0.8 && dy * dy < 1.2 * 1.2) {
+        crowd++;
+        if (k < i) rank++;
+      }
+    }
+    if (crowd > 1) {
+      want_sx[i] = ((float)rank - 0.5f * (float)(crowd - 1)) * 0.55f;
+      want_sz[i] = (rank & 1 ? -0.5f : 0.35f) * (float)(1 + rank / 2);
+      /* never drawn into a wall: a sideways step that would put the body in rock goes the other way */
+      float bx = (float)p->pf.body.position.x + want_sx[i] + (want_sx[i] > 0 ? 0.35f : -0.35f);
+      if (world_solid(&g->L, (int)floorf(bx), (int)floorf((float)p->pf.body.position.y + 0.6f))) want_sx[i] = -want_sx[i];
+    }
+  }
   int bubbles = 0;
   for (int i = 0; i < MAX_PLAYERS; i++) {
     player *p = &g->p[i];
@@ -704,7 +729,9 @@ static void sync_scene(float alpha, float dt) {
       cw_node3d_set_position(S.pnode[i], (t3_vec3){ x, -100, 0 });
       continue;
     }
-    cw_node3d_set_position(S.pnode[i], (t3_vec3){ x, y, 0 });
+    float ease = 1.0f - expf(-8.0f * dt);
+    S.spread_x[i] += (want_sx[i] - S.spread_x[i]) * ease, S.spread_z[i] += (want_sz[i] - S.spread_z[i]) * ease;
+    cw_node3d_set_position(S.pnode[i], (t3_vec3){ x + S.spread_x[i], y, S.spread_z[i] });
     float face = (float)p->pf.facing;
     /* turn toward the way it faces, smoothly: three quarters on to the camera */
     float want = face > 0 ? 1.05f : -1.05f;
@@ -724,7 +751,9 @@ static void sync_scene(float alpha, float dt) {
     S.runph[i] += (p->anim == 5 ? 7.0f : 4.0f + spd * 0.9f) * dt;
     if (S.prig[i]) {
       rig_pose_hero(S.prig[i], p->anim, S.runph[i], S.time + (float)i, st, wd, vy);
-      bool inv = p->invuln > 0 && ((p->invuln / 4) & 1);
+      /* the blink while invulnerable: each player on its own phase, so a group that respawns together never vanishes
+       * all at once (the screen showed four markers and no one under them) */
+      bool inv = p->invuln > 0 && (((p->invuln + 2 * i) / 4) & 1);
       cw_node_set(S.pmodel[i], "visible", cw_val_bool(!inv));
     }
     cw_node3d_set_position(S.plight[i], (t3_vec3){ x, y + 1.2f, 2.0f });
@@ -1113,7 +1142,7 @@ static void soak(int ticks, int players) {
     if (getenv("COOP_TRACE") && t >= atoi(getenv("COOP_TRACE")) && t < atoi(getenv("COOP_TRACE")) + 90) {
       int tp = getenv("COOP_TRACE_P") ? atoi(getenv("COOP_TRACE_P")) : 0;
       const player *q = &G.p[tp];
-      printf("tr t=%d pos=%.2f,%.2f vel=%.2f,%.2f fl=%d wl=%d wet=%.1f in=(%.0f,%.0f,j%d%d,d%d) dr=%d dcd=%.2f al=%d ev=%x alive=%d bub=%d\n", t, q->pf.body.position.x, q->pf.body.position.y, q->pf.body.velocity.x, q->pf.body.velocity.y, q->pf.body.on_floor, q->pf.body.on_wall, q->pf.submerged, INPUT[tp].x, INPUT[tp].y, INPUT[tp].jump_pressed, INPUT[tp].jump_held, INPUT[tp].dash_pressed, q->pf.dash_ready, q->pf.dash_cd, q->pf.air_jumps_left, q->pf.events, q->alive, q->bubble);
+      printf("tr t=%d pos=%.2f,%.2f vel=%.2f,%.2f fl=%d wl=%d wet=%.1f in=(%.0f,%.0f,j%d%d,d%d) dr=%d dcd=%.2f al=%d ev=%x alive=%d bub=%d ab=%u\n", t, q->pf.body.position.x, q->pf.body.position.y, q->pf.body.velocity.x, q->pf.body.velocity.y, q->pf.body.on_floor, q->pf.body.on_wall, q->pf.submerged, INPUT[tp].x, INPUT[tp].y, INPUT[tp].jump_pressed, INPUT[tp].jump_held, INPUT[tp].dash_pressed, q->pf.dash_ready, q->pf.dash_cd, q->pf.air_jumps_left, q->pf.events, q->alive, q->bubble, G.abilities);
     }
     float lead = -1;
     for (int i = 0; i < G.nplayers; i++) {
@@ -1205,6 +1234,7 @@ static void init(void *user) {
   cw_debug_i32("g.hitstops", &G.hitstops);
   cw_debug_u32("g.hash", &G.hash);
   cw_debug_f32_array("g.pos", g_pos_dbg, 2);
+  cw_debug_f32_array("g.ppos", g_ppos_dbg, MAX_PLAYERS * 2); /* every player, x y (0 0 when not joined) */
   cw_debug_f32_array("g.cam", g_cam_dbg, 3);
   cw_debug_i32("g.hp", &g_hp_dbg);
   cw_debug_i32("g.bubbles", &g_bubbles_dbg);
@@ -1297,6 +1327,10 @@ static void fixed_update(void *user, double dt) {
   g_pos_dbg[0] = (float)G.p[0].pf.body.position.x, g_pos_dbg[1] = (float)G.p[0].pf.body.position.y;
   g_cam_dbg[0] = G.cam.x, g_cam_dbg[1] = G.cam.y, g_cam_dbg[2] = G.cam.z;
   g_hp_dbg = G.p[0].hp;
+  for (int i = 0; i < MAX_PLAYERS; i++) {
+    bool on = G.p[i].joined && i < G.nplayers;
+    g_ppos_dbg[2 * i] = on ? (float)G.p[i].pf.body.position.x : 0, g_ppos_dbg[2 * i + 1] = on ? (float)G.p[i].pf.body.position.y : 0;
+  }
   if (G.won && G.tick - G.win_tick > 600) {
     save_progress();
 #ifdef COOP_AUTOPILOT
@@ -1415,20 +1449,42 @@ static bool project(float wx, float wy, float wz, float W, float H, float *sx, f
 }
 
 static void draw_markers(float W, float H, float s) {
-  for (int i = 0; i < G.nplayers; i++) {
+  /* project every marker first, then push markers that would overlap apart along the row (players in one spot get
+   * one readable marker each, side by side, never a stack) */
+  float px[MAX_PLAYERS], py[MAX_PLAYERS];
+  int id[MAX_PLAYERS], n = 0;
+  float r = 11 * s;
+  for (int i = 0; i < G.nplayers && i < MAX_PLAYERS; i++) {
     const player *p = &G.p[i];
     if (!p->joined || (!p->alive && !p->bubble)) continue;
-    float wx = p->bubble ? p->bubble_x : (float)p->pf.body.position.x, wy = (p->bubble ? p->bubble_y + 0.9f : (float)p->pf.body.position.y) + 2.15f;
+    float wx = p->bubble ? p->bubble_x : (float)p->pf.body.position.x + S.spread_x[i], wy = (p->bubble ? p->bubble_y + 0.9f : (float)p->pf.body.position.y) + 2.15f;
     float sx, sy;
     if (!project(wx, wy, 0, W, H, &sx, &sy)) continue;
-    float r = 11 * s;
+    if (sy < r + 60 * s) sy = r + 60 * s;
+    px[n] = sx, py[n] = sy, id[n] = i, n++;
+  }
+  for (int a = 0; a < n; a++) /* by screen x, so the spreading keeps the order the players stand in */
+    for (int b = a + 1; b < n; b++)
+      if (px[b] < px[a]) {
+        float t = px[a]; px[a] = px[b], px[b] = t;
+        t = py[a]; py[a] = py[b], py[b] = t;
+        int k = id[a]; id[a] = id[b], id[b] = k;
+      }
+  float gap = 2.5f * r;
+  for (int pass = 0; pass < 4; pass++)
+    for (int a = 0; a + 1 < n; a++) {
+      float over = gap - (px[a + 1] - px[a]);
+      if (over > 0 && fabsf(py[a + 1] - py[a]) < gap) px[a] -= over * 0.5f, px[a + 1] += over * 0.5f;
+    }
+  for (int k = 0; k < n; k++) {
+    int i = id[k];
+    float sx = px[k], sy = py[k];
     if (sx < r) sx = r;
     if (sx > W - r) sx = W - r;
-    if (sy < r + 60 * s) sy = r + 60 * s;
     cw_color c = cw_rgba(PLAYER_RGB[i][0], PLAYER_RGB[i][1], PLAYER_RGB[i][2], 1);
     glyph(i, sx, sy, r + 2 * s, cw_rgba(0, 0, 0, 0.75f)); /* a dark outline so it reads on any background */
     glyph(i, sx, sy, r, c);
-    char b[4];
+    char b[12];
     snprintf(b, sizeof b, "%d", i + 1);
     cw_r2d_text(g_font, b, (cw_vec2){ sx - r, sy - r * 0.62f }, &(cw_text_style){ .size = 15 * s, .color = cw_rgba(0.05f, 0.05f, 0.08f, 1), .align = CW_ALIGN_CENTER, .wrap_width = 2 * r });
   }
@@ -1495,7 +1551,6 @@ static void draw_map(float W, float H) {
 /* the title screen's picture: a painted dusk meadow with three drifting ridges, a sun, fireflies and the four heroes */
 static void title_background(cw_shell_screen scr, cw_vec2 cv, void *user) {
   (void)user;
-  (void)scr;
   float W = cv.x, H = cv.y, s = H / 540.0f, t = g_ui_t;
   static const float SKY[6][3] = { { 0.1f, 0.12f, 0.35f }, { 0.28f, 0.2f, 0.5f }, { 0.65f, 0.3f, 0.5f }, { 0.95f, 0.5f, 0.35f }, { 1.0f, 0.75f, 0.45f }, { 1.0f, 0.88f, 0.6f } };
   for (int i = 0; i < 80; i++) {
@@ -1529,6 +1584,19 @@ static void title_background(cw_shell_screen scr, cw_vec2 cv, void *user) {
     float a = 0.4f + 0.6f * fabsf(sinf(t * 1.5f + (float)i));
     cw_r2d_circle((cw_vec2){ fx, fy }, 2.2f * s, 6, cw_rgba(1, 0.95f, 0.5f, a));
     cw_r2d_circle((cw_vec2){ fx, fy }, 6 * s, 8, cw_rgba(1, 0.9f, 0.4f, 0.12f * a));
+  }
+  if (scr == CW_SHELL_JOIN) {
+    /* on the join screen each hero stands in its own slot card (the shell draws four cards across, 0.3 to 0.7 of the
+     * height, its labels at 0.36 and 0.5), clear of the hint line at the bottom; a joined hero hops, an open slot waits
+     * dimmed */
+    int joined = cw_shell_players();
+    for (int i = 0; i < 4; i++) {
+      bool in = i < joined;
+      float x = W * (0.125f + 0.25f * (float)i), y = H * 0.625f - (in ? 7 * s * fabsf(sinf(t * 3.0f + (float)i * 0.9f)) : 0);
+      cw_r2d_circle((cw_vec2){ x, H * 0.672f }, 22 * s, 16, cw_rgba(0, 0, 0, 0.22f));
+      portrait((cw_vec2){ x, y }, 21 * s, i, !in);
+    }
+    return;
   }
   for (int i = 0; i < 4; i++) {
     float x = W * (0.22f + 0.19f * (float)i), y = H * 0.84f - 8 * s * fabsf(sinf(t * 2.0f + (float)i * 0.9f));

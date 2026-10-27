@@ -27,3 +27,12 @@ Stomp enemies from above. Spikes hurt, lava and pits do not forgive. Walk throug
     build/native/project/games/coopplatformer/coopplatformer
 
 `coopplatformer_auto` plays itself (two bots) for tests and screenshots.
+
+## Tests
+
+    CW_PROJECT_ROOT=$PWD node deps/cartwheel-engine/tests/gate.mjs --gates-file coopplatformer-gates.json
+
+runs the replay gates in `tests/coopplatformer-gates.json` (`--cpu` for the state checks on the software renderer).
+`COOP_SOAK=<ticks> COOP_PLAYERS=<n>` on `coopplatformer_auto` runs the bots through the whole game with no
+rendering and reports wins, stalls and deaths; `COOP_FUZZ=<runs>` checks that each ability gate needs its ability;
+`COOP_SECRETS=1` runs the scripted secret routes.

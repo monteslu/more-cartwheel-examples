@@ -1,0 +1,100 @@
+[
+  {
+    "name": "coopplatformer-2p",
+    "app": "coopplatformer_auto",
+    "frames": 400,
+    "fields": [
+      "g.tick",
+      "g.hash",
+      "g.pos",
+      "g.cam",
+      "g.abilities",
+      "g.coins",
+      "g.hp",
+      "g.deaths",
+      "g.checkpoint",
+      "g.state",
+      "g.reached",
+      "g.hitstops",
+      "g.players",
+      "g.ppos"
+    ],
+    "expect": {
+      "g.tick": 400,
+      "g.players": 2,
+      "g.state": 3,
+      "g.abilities": 1,
+      "g.coins": 8,
+      "g.checkpoint": 0,
+      "g.deaths": 0,
+      "g.hitstops": 2,
+      "g.reached": 1
+    },
+    "note": "two bots on the real game flow (title skipped): the air jump picked up under its arch, 8 coins, two stomps (hit-stops), cross-host state and picture"
+  },
+  {
+    "name": "coopplatformer-4p",
+    "app": "coopplatformer_auto4",
+    "frames": 400,
+    "fields": [
+      "g.tick",
+      "g.hash",
+      "g.pos",
+      "g.cam",
+      "g.abilities",
+      "g.coins",
+      "g.hp",
+      "g.deaths",
+      "g.checkpoint",
+      "g.state",
+      "g.reached",
+      "g.hitstops",
+      "g.players",
+      "g.ppos"
+    ],
+    "expect": {
+      "g.tick": 400,
+      "g.players": 4,
+      "g.state": 3,
+      "g.abilities": 1,
+      "g.coins": 8,
+      "g.checkpoint": 0,
+      "g.deaths": 0,
+      "g.hitstops": 4,
+      "g.reached": 1
+    },
+    "note": "four players on one camera: cross-host state"
+  },
+  {
+    "name": "coopplatformer-boss",
+    "app": "coopplatformer_auto_boss",
+    "frames": 1500,
+    "fields": [
+      "g.tick",
+      "g.hash",
+      "g.pos",
+      "g.abilities",
+      "g.deaths",
+      "g.checkpoint",
+      "g.boss_hp",
+      "g.won",
+      "g.kills",
+      "g.reached",
+      "g.hitstops",
+      "g.players",
+      "g.ppos"
+    ],
+    "expect": {
+      "g.tick": 1500,
+      "g.players": 2,
+      "g.abilities": 7,
+      "g.checkpoint": 8,
+      "g.kills": 1,
+      "g.won": 1,
+      "g.boss_hp": 0,
+      "g.hitstops": 12,
+      "g.reached": 511
+    },
+    "note": "two bots from the arena flag with every ability: boss fight, hit-stops and the win, cross-host state"
+  }
+]

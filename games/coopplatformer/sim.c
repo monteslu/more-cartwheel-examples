@@ -318,8 +318,10 @@ void sim_step(game *g, const input_state in[MAX_PLAYERS], float dt) {
     for (int k = 0; k < L->npickups; k++) {
       pickup *pk = &L->pickups[k];
       if (pk->taken) continue;
-      float dx = fx - ((float)pk->x + 0.5f), dy = fy + 0.7f - ((float)pk->y + 0.8f);
-      if (dx * dx + dy * dy < 1.6f) {
+      /* a box over the whole body: a player who jumps under the arch over a pedestal still touches it (a radius
+       * around the waist missed a jump that kept the feet 1.5 m up, and the group went on without the claws) */
+      float dx = fx - ((float)pk->x + 0.5f), dy = fy - (float)pk->y;
+      if (fabsf(dx) < 1.0f && dy > -0.8f && dy < 2.6f) {
         pk->taken = true;
         g->abilities |= (uint32_t)pk->ability;
         g->events |= EV_POWER;
@@ -502,6 +504,12 @@ void sim_bot_input(const game *g, int i, input_state *in) {
     if (blocked || (y < want - 1.5f && (g->tick % 9) == 0)) in->jump_pressed = true;
     in->jump_held = in->jump_pressed;
     in->y = blocked ? 1.0f : 0.0f;
+    /* against the pool wall: stroke straight up, off the wall (a stroke while touching it is a wall jump with the claws,
+     * which threw the bot back into the pool, over and over) */
+    if (blocked && pf->body.on_wall) {
+      in->x = -0.6f; /* back off the wall a little, then stroke: the next stroke is a swim stroke, not a wall jump */
+      in->jump_pressed = in->jump_held = false;
+    }
     return;
   }
   /* inside a shaft (a wall within 5 tiles on both sides): cross to the far wall and wall jump up */
@@ -526,6 +534,19 @@ void sim_bot_input(const game *g, int i, input_state *in) {
     in->jump_pressed = true, in->jump_held = true;
     in->x = (float)pf->facing;
     return;
+  }
+  /* on a wall in a pit too wide to count as a shaft (nothing to stand on for 4 tiles below): climb the one wall, a wall
+   * jump and then back in toward it, the way a player does. A bot used to slide down into the spikes of the ruins pit
+   * forever (2 bots, 30 s stalls) */
+  if (pf->body.on_wall && !pf->body.on_floor && (g->abilities & AB_CLAWS) && !in_shaft) {
+    bool deep = true;
+    for (int dy = 1; dy <= 4; dy++)
+      if (world_solid(L, (int)floorf(x), (int)floorf(y) - dy)) deep = false;
+    if (deep) {
+      in->jump_pressed = vy < 2.0f, in->jump_held = true;
+      in->x = 1.0f;
+      return;
+    }
   }
   /* a wall in front in mid-air: find the first free row above it; when the air jump can lift the feet that high, use
    * it now (while rising slowly or falling), else keep going and let the wall jump or the next hop deal with it */

@@ -104,10 +104,11 @@ static void check(gen *G) {
 static void pedestal(gen *G, int ability) {
   level *L = G->L;
   if (L->npickups < MAX_PICKUPS) L->pickups[L->npickups++] = (pickup){ G->x - 2, G->g, ability, false };
-  /* an arch over the pedestal, low enough that nobody can jump over it: the way on goes under it, so every player of the
-   * group (and every bot) touches it, and an ability is never missed */
+  /* an arch over the pedestal: the way on goes under it, so every player of the group (and every bot) touches it, and
+   * an ability is never missed. It is a tall lintel (7 tiles), not a thin one: a group that came down from higher
+   * ground used to run over a 2-tile arch and drop past the claws, then stall at the claws shaft */
   for (int x = G->x - 5; x < G->x - 1; x++)
-    for (int y = G->g + 3; y < G->g + 5; y++) set(L, x, y, T_ROCK);
+    for (int y = G->g + 3; y < G->g + 10; y++) set(L, x, y, T_ROCK);
 }
 /* a solid block of rock from (x, y0) to (x + w, y1) */
 static void block(level *L, int x, int y0, int w, int y1, int t) {
