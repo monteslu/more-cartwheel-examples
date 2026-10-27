@@ -152,11 +152,11 @@ static void fx_mark(float x, float z, float size) {
   cw_node3d_set_position(d, (t3_vec3){ x, 0.18f, z });
   cw_node3d_set_rotation(d, (t3_vec3){ -1.5708f, 0, yaw });
   cw_node_set(d, "size", cw_val_vec3(size, size, 0.36f));
-  cw_node_set(d, "color", cw_val_color(1, 1, 1, 0.75f));
+  cw_node_set(d, "color", cw_val_color(1, 1, 1, 0.5f));
 }
 void fx_hit(float x, float y, float z, int kind, int face) {
   { cw_node b = burst[nbu++ % NBURST]; cw_node3d_set_position(b, (t3_vec3){ x, y, z + 0.3f }); cw_node_set(b, "size", cw_val_float(kind >= 2 ? 1.5f : 0.9f)); cw_particles_restart(b); }
-  if (kind >= 2) fx_mark(x, z, 1.1f);
+  if (kind >= 2) fx_mark(x, z, 0.75f);
   cw_node n = spark[ns++ % NSPARK];
   cw_node3d_set_position(n, (t3_vec3){ x, y, z });
   cw_node_set(n, "amount", cw_val_int(kind >= 2 ? 64 : 28));
@@ -171,7 +171,7 @@ void fx_hit(float x, float y, float z, int kind, int face) {
   fx_flash(x, y, z, 1, 0.8f, 0.5f, kind >= 2 ? 16 : 9);
 }
 void fx_dust(float x, float z, float scale) {
-  if (scale > 1.0f) fx_mark(x, z, 0.8f * scale);
+  if (scale > 1.0f) fx_mark(x, z, 0.45f * scale);
   cw_node n = dust[nd++ % NDUST];
   cw_node3d_set_position(n, (t3_vec3){ x, 0.15f, z });
   cw_node_set(n, "emission_radius", cw_val_float(0.25f * scale));

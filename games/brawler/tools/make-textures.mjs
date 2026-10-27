@@ -153,7 +153,7 @@ function plate({ color = [0.3, 0.31, 0.33], seed = 6, rust = 0.4, diamonds = 8, 
     const worn = smooth(0.55, 0.8, fbm(u, v, 9, 3, seed + 8));
     setc(o, color, 0.7 + 0.35 * g + rib * 0.15);
     mulc(o, 1 - seam * 0.55);
-    mixc(o, [0.42, 0.2, 0.09], rm * 0.8);
+    mixc(o, [0.3, 0.2, 0.14], rm * 0.6);
     mixc(o, [0.6, 0.6, 0.62], worn * rib * 0.35 * (1 - rm));
     o.h = rib * 0.9 - seam * 0.9 - rm * 0.2;
     o.ro = lerp(0.38, 0.9, clamp(rm + (1 - rib) * 0.25));
@@ -432,7 +432,7 @@ const jobs = {
   ground_alley: () => [bake(1024, asphalt({ base: [0.26, 0.255, 0.26], seed: 1, wet: 0.2, stripe: true })), 2.2],
   ground_docks: () => [bake(1024, asphalt({ base: [0.22, 0.24, 0.26], seed: 21, wet: 1.0 })), 2.0],
   ground_arcade: () => [bake(1024, tiles({ a: [0.1, 0.1, 0.13], b: [0.14, 0.12, 0.19], n: 4, seed: 31 })), 1.6],
-  ground_roof: () => [bake(1024, plate({ color: [0.34, 0.33, 0.33], seed: 41, rust: 0.45, diamonds: 10, panels: 2 })), 1.8],
+  ground_roof: () => [bake(1024, plate({ color: [0.34, 0.33, 0.33], seed: 41, rust: 0.16, diamonds: 10, panels: 2 })), 1.8],
   pave_alley: () => [bake(512, slabs({ base: [0.55, 0.54, 0.5], seed: 2 })), 1.8],
   pave_docks: () => [bake(512, planks({ color: [0.34, 0.24, 0.15], n: 8, seed: 22, wet: 0.6, grey: 0.45 })), 2.0],
   pave_arcade: () => [bake(512, slabs({ base: [0.32, 0.3, 0.38], seed: 32, tint: [1, 0.95, 1.05] })), 1.6],
@@ -451,7 +451,7 @@ const jobs = {
   facade_alley: () => [bake(1024, facade({ wall: brick({ seed: 3, rows: 24, nx: 8, soot: 0.5 }), seed: 51, lit: 0.45 })), 2.4],
   facade_docks: () => [bake(1024, facade({ wall: corrugated({ color: [0.26, 0.34, 0.4], seed: 6, rust: 0.4, ribs: 32 }), seed: 52, lit: 0.35, lamps: [[0.6, 0.85, 1], [0.85, 0.95, 1], [1, 0.8, 0.5]], glass: [0.05, 0.08, 0.1], bars: true, win: [0.28, 0.3, 0.72, 0.62] })), 2.2],
   facade_arcade: () => [bake(1024, facade({ wall: neonStrips({ seed: 53 }), seed: 53, lit: 0.75, lamps: [[1, 0.25, 0.7], [0.25, 0.9, 1], [1, 0.7, 0.25], [0.6, 0.4, 1]], glass: [0.06, 0.05, 0.1], frame: [0.1, 0.1, 0.14], win: [0.14, 0.14, 0.86, 0.82] })), 1.6],
-  facade_factory: () => [bake(1024, facade({ wall: plate({ color: [0.3, 0.29, 0.3], seed: 54, rust: 0.45, diamonds: 4, panels: 4 }), seed: 54, lit: 0.55, lamps: [[1, 0.5, 0.18], [1, 0.62, 0.25], [1, 0.4, 0.15]], glass: [0.08, 0.06, 0.05], frame: [0.12, 0.1, 0.09], slit: true })), 2.0],
+  facade_factory: () => [bake(1024, facade({ wall: plate({ color: [0.3, 0.29, 0.3], seed: 54, rust: 0.2, diamonds: 4, panels: 4 }), seed: 54, lit: 0.55, lamps: [[1, 0.5, 0.18], [1, 0.62, 0.25], [1, 0.4, 0.15]], glass: [0.08, 0.06, 0.05], frame: [0.12, 0.1, 0.09], slit: true })), 2.0],
   // characters
   fab_cloth: () => [bake(256, fabric({ seed: 11 })), 0.7],
   fab_knit: () => [bake(256, fabric({ seed: 12, knit: true })), 0.8],

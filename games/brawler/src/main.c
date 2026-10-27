@@ -70,6 +70,14 @@ static void start(int players, void *user) {
 }
 
 #ifdef BRAWLER_AUTOPILOT
+/* debug channel: "stage N" jumps to a stage (carts under romdev have no environment variables) */
+static void cmd_stage(int argc, const char **argv, cw_reply *r) {
+  if (argc < 2) { cw_reply_error(r, "usage: stage <0-3>"); return; }
+  int st = atoi(argv[1]) & 3;
+  sim_reset(W.players, st);
+  play_music(st);
+  cw_reply_printf(r, "{\"stage\":%d}", st);
+}
 /* bots: walk to the nearest enemy and fight; grab, kick and jump now and then */
 static void bot(int i, inputs *in) {
   const ent *e = &W.p[i];
@@ -160,6 +168,7 @@ static void init(void *user) {
   cw_debug_f32("game.cam", &d_cam);
   cw_debug_u32("game.hash", &d_hash);
 #ifdef BRAWLER_AUTOPILOT
+  cw_debug_command("stage", "stage <0-3>: jump to a stage", cmd_stage);
   cw_shell_start(3);
 #endif
 }
