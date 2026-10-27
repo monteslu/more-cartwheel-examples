@@ -40,7 +40,7 @@ static const weapon W[NWEAP] = {
   { "PULSE RIFLE", 9, 6, 1, 200, 90, 0, 0.011f, 1.2f, 12 },
   { "SCATTER GUN", 8, 46, 11, 40, 14, 0, 0.07f, 4.0f, 6 },
   { "ROCKET", 95, 44, 1, 20, 6, 1, 0, 0, 16 },
-  { "RAIL", 100, 84, 1, 20, 6, 2, 0.0015f, 8.0f, 24 },
+  { "RAIL", 70, 46, 1, 20, 6, 2, 0.0015f, 8.0f, 24 },
 };
 
 typedef struct proj {
@@ -64,7 +64,7 @@ static struct game {
   cw_node root, world, env, sun, sky, fog, post, lighting;
   cw_node cam[MAXH], vm[MAXH], vm_flash[MAXH], vm_wp[MAXH][NWEAP];
   game_state state;
-  int mode, arena_id, bots_setting, bot_level, players, nf;
+  int mode, arena_id, bots_setting, bot_level, aim_assist, players, nf;
   int setup_row;
   fighter f[MAXF];
   proj pr[MAXP];
@@ -88,6 +88,9 @@ static struct game {
   int32_t d_score[MAXF], d_hp[MAXF], d_deaths[MAXF], d_weapon[MAXF], d_alive[MAXF];
   float d_pos[MAXF * 2];
   int32_t kills_total, rockets_fired;
+  /* measurements read by the playtest scripts: encounters (first sight of an enemy, at most one every 5 s per fighter), spawn kills
+   * (a death within 6 s of respawning), time from first damage to death, kills by weapon, the longest stretch without a kill */
+  struct { int32_t enc, enc_gap_max, kills, spawn_kills, ttk_sum, ttk_n, gap_max, last_kill, by_weapon[NWEAP], fighter_ticks; } st;
   cw_font font;
 } G;
 
@@ -186,6 +189,10 @@ static void spawn_fighter(fighter *f) {
   f->alive = true;
   f->dead_ticks = 0;
   f->spawn_guard = 120;
+  f->since_spawn = 0;
+  f->first_dmg_tick = -1;
+  f->seen_cool = 0;
+  f->last_enc_tick = G.ticks;
   f->target = -1;
   f->npath = 0;
   f->ticket = 0;
@@ -202,6 +209,12 @@ static void kill_fighter(fighter *v, fighter *k, int weapon) {
   fx_spark(chest_pos(v), v3(0, 1, 0), 1);
   fx_play(SND_DIE, v->mv.position, 0.8f, 1);
   if (k && k != v) {
+    G.st.kills++;
+    if (weapon >= 0 && weapon < NWEAP) G.st.by_weapon[weapon]++;
+    if (v->since_spawn < 360) G.st.spawn_kills++;
+    if (v->first_dmg_tick >= 0) G.st.ttk_sum += G.ticks - v->first_dmg_tick, G.st.ttk_n++;
+    if (G.ticks - G.st.last_kill > G.st.gap_max) G.st.gap_max = G.ticks - G.st.last_kill;
+    G.st.last_kill = G.ticks;
     k->score++;
     k->streak++;
     if (k->human >= 0) {
@@ -221,6 +234,7 @@ static void kill_fighter(fighter *v, fighter *k, int weapon) {
 
 static void damage(fighter *v, fighter *k, int dmg, t3_vec3 dir, float knock, int weapon, bool head) {
   if (!v->alive || v->spawn_guard > 0) return;
+  if (v->first_dmg_tick < 0) v->first_dmg_tick = G.ticks;
   if (k && !enemies(k, v) && k != v) return; /* no friendly fire */
   if (head) dmg = dmg * 3 / 2;
   int absorbed = CW_MIN(v->armor, dmg / 2);
@@ -682,15 +696,16 @@ static void human_tick(fighter *f, int idx) {
   int h = f->human;
   cw_vec2 mv = cw_input_vector(h, G.mv_l, G.mv_r, G.mv_f, G.mv_b, CW_DEADZONE_SCALED_RADIAL, 0.18f);
   cw_vec2 lk = cw_input_vector(h, G.lk_l, G.lk_r, G.lk_u, G.lk_d, CW_DEADZONE_RADIAL, 0);
-  static const cw_aim_curve curve = { .deadzone = 0.15f, .power = 1.8f, .yaw_rate = 3.6f, .pitch_rate = 2.4f, .ramp_seconds = 0.35f,
-                                      .ramp_gain = 0.6f, .ramp_edge = 0.9f, .assist = 0.35f };
+  cw_aim_curve curve = { .deadzone = 0.15f, .power = 1.8f, .yaw_rate = 3.6f, .pitch_rate = 2.4f, .ramp_seconds = 0.35f,
+                                      .ramp_gain = 0.6f, .ramp_edge = 0.9f, .assist = G.aim_assist ? 0.35f : 0 };
   /* the crosshair is on a fighter: a little aim assist */
   t3_vec3 d = look_dir(f->yaw, f->pitch);
   float on = 0;
   for (int i = 0; i < G.nf; i++) {
     fighter *o = F(i);
     if (i == idx || !o->active || !o->alive || !enemies(f, o)) continue;
-    if (ray_fighter(o, eye_pos(f), d, 60, NULL) >= 0) on = 1;
+    /* only a target in the open: never one behind a wall */
+    if (ray_fighter(o, eye_pos(f), d, 60, NULL) >= 0 && !arena_ray(eye_pos(f), chest_pos(o), NULL, NULL)) on = 1;
   }
   cw_vec2 turn = cw_aim_step(&G.aim[h], &curve, lk, TICK_DT, on);
   f->yaw -= turn.x;
@@ -953,7 +968,8 @@ static void setup_fighters(void) {
 
 static void spawn_wave(void) {
   G.wave++;
-  int n = CW_MIN(4 + 2 * G.wave, MAXF - G.players);
+  /* the wave grows with the wave number and with how many people hold the arena: 4 bots at wave 1 for one player, 8 for four */
+  int n = CW_MIN(2 + G.wave + G.players * (1 + G.wave / 2), MAXF - G.players);
   for (int i = 0; i < n; i++) {
     int slot = -1;
     for (int k = G.players; k < MAXF; k++) if (!F(k)->active || !F(k)->alive) { if (!F(k)->active) { slot = k; break; } }
@@ -1002,6 +1018,7 @@ static void begin_match(void) {
   G.over_ticks = 0;
   G.hash = 0;
   G.winner = -1;
+  G.st.last_kill = 0;
   G.team_score[0] = G.team_score[1] = 0;
   G.wave = 0;
   G.wave_state = 0;
@@ -1049,7 +1066,7 @@ static void check_rules(void) {
       G.wave_state = 0;
       G.wave_timer = 60 * 5;
       /* wave bonus: heal everyone */
-      for (int i = 0; i < G.players; i++) if (F(i)->alive) F(i)->hp = CW_MIN(100, F(i)->hp + 40);
+      for (int i = 0; i < G.players; i++) if (F(i)->alive) F(i)->hp = CW_MIN(100, F(i)->hp + 40), F(i)->ammo[0] = CW_MAX(F(i)->ammo[0], 120);
       for (int i = G.players; i < MAXF; i++) if (F(i)->active) { F(i)->active = false; if (cw_node_valid(F(i)->body)) cw_node_free(F(i)->body); F(i)->body = (cw_node){ 0 }; }
     }
     if (alive_humans == 0 && G.lives <= 0) end_match(-1);
@@ -1163,8 +1180,8 @@ static void fixed_update(void *user, double dt) {
   if (!cw_shell_update()) return;
   if (G.state == ST_SETUP) {
     int h = 0;
-    if (cw_action_just_pressed(h, G.mv_f)) G.setup_row = (G.setup_row + 4) % 5, fx_play_ui(SND_CLICK, 0.4f);
-    if (cw_action_just_pressed(h, G.mv_b)) G.setup_row = (G.setup_row + 1) % 5, fx_play_ui(SND_CLICK, 0.4f);
+    if (cw_action_just_pressed(h, G.mv_f)) G.setup_row = (G.setup_row + 5) % 6, fx_play_ui(SND_CLICK, 0.4f);
+    if (cw_action_just_pressed(h, G.mv_b)) G.setup_row = (G.setup_row + 1) % 6, fx_play_ui(SND_CLICK, 0.4f);
     int dir = cw_action_just_pressed(h, G.mv_r) - cw_action_just_pressed(h, G.mv_l);
     if (dir) {
       fx_play_ui(SND_TICK, 0.5f);
@@ -1172,6 +1189,7 @@ static void fixed_update(void *user, double dt) {
       else if (G.setup_row == 1) G.mode = (G.mode + MODE_COUNT + dir) % MODE_COUNT;
       else if (G.setup_row == 2) G.bots_setting = CW_CLAMP(G.bots_setting + dir, 0, MAXF - 4);
       else if (G.setup_row == 3) G.bot_level = (G.bot_level + 3 + dir) % 3;
+      else if (G.setup_row == 4) G.aim_assist = !G.aim_assist;
     }
     if (cw_action_just_pressed(h, G.jump) || cw_action_just_pressed(h, G.fire)) {
       { begin_match(); set_views(); }
@@ -1217,6 +1235,22 @@ static void fixed_update(void *user, double dt) {
         spawn_fighter(f);
       }
       continue;
+    }
+    f->since_spawn++;
+    G.st.fighter_ticks++;
+    if (f->seen_cool > 0) f->seen_cool--;
+    else if ((G.ticks + i) % 10 == 0) {
+      t3_vec3 e = eye_pos(f);
+      for (int j = 0; j < G.nf; j++) {
+        const fighter *o = F(j);
+        if (j == i || !o->active || !o->alive || !enemies(f, o)) continue;
+        if (v3len(v3sub(o->mv.position, f->mv.position)) > 45 || arena_ray(e, chest_pos(o), NULL, NULL)) continue;
+        G.st.enc++;
+        if (G.ticks - f->last_enc_tick > G.st.enc_gap_max) G.st.enc_gap_max = G.ticks - f->last_enc_tick;
+        f->last_enc_tick = G.ticks;
+        f->seen_cool = 300;
+        break;
+      }
     }
     if (is_bot(f)) bot_tick(f, i);
     else human_tick(f, i);
@@ -1318,8 +1352,10 @@ static void hud_view(int h) {
   snprintf(s, sizeof s, "%d", f->hp > 0 ? f->hp : 0);
   text(s, bx + bw + u * 0.4f, by - u * 0.45f, u * 1.8f, cw_rgba(1, 1, 1, 1), CW_ALIGN_LEFT, 0);
   /* weapon and ammo, bottom right */
-  snprintf(s, sizeof s, "%s  %d", W[f->weapon].name, f->ammo[f->weapon]);
-  text(s, r.x, r.y + r.h - u * 2.6f, u * 1.3f, cw_rgba(1, 0.9f, 0.6f, 1), CW_ALIGN_RIGHT, r.w - u);
+  /* the name over a big ammo count: two short lines, so neither meets the health number in a half-width view */
+  snprintf(s, sizeof s, "%d", f->ammo[f->weapon]);
+  text(s, r.x, r.y + r.h - u * 3.4f, u * 1.8f, cw_rgba(1, 0.9f, 0.6f, 1), CW_ALIGN_RIGHT, r.w - u);
+  text(W[f->weapon].name, r.x, r.y + r.h - u * 4.8f, u * 0.85f, cw_rgba(1, 0.9f, 0.6f, 0.85f), CW_ALIGN_RIGHT, r.w - u);
   /* weapon pips */
   for (int k = 0; k < NWEAP; k++) {
     bool have = f->have >> k & 1;
@@ -1336,6 +1372,11 @@ static void hud_view(int h) {
   }
   if (!f->alive) {
     text("DOWN", cx - r.w / 2, cy - u * 3, u * 3.2f, cw_rgba(1, 0.3f, 0.25f, 1), CW_ALIGN_CENTER, r.w);
+    if (!(G.mode == MODE_COOP && G.lives <= 0)) {
+      char rs[24];
+      snprintf(rs, sizeof rs, "back in %d", CW_MAX(1, (150 - f->dead_ticks + 59) / 60));
+      text(rs, cx - r.w / 2, cy + u * 0.3f, u * 1.2f, cw_rgba(1, 1, 1, 0.85f), CW_ALIGN_CENTER, r.w);
+    }
     if (G.mode == MODE_COOP && G.lives <= 0) text("NO LIVES LEFT", cx - r.w / 2, cy, u * 1.2f, cw_rgba(1, 1, 1, 0.9f), CW_ALIGN_CENTER, r.w);
   }
   if (f->spawn_guard > 0 && f->alive) cw_r2d_rect_lines(r, 3, cw_rgba(0.4f, 0.8f, 1, 0.5f));
@@ -1348,8 +1389,14 @@ static void hud_feed(void) {
   for (int i = 0; i < MAX_FEED; i++) {
     if (G.feed[i].ticks <= 0) continue;
     float a = CW_MIN(1.0f, (float)G.feed[i].ticks / 30.0f);
-    text(G.feed[i].text, cs.x - u, y, u * 1.05f, cw_rgba(1, 1, 1, a), CW_ALIGN_RIGHT, 0);
+    text(G.feed[i].text, 0, y, u * 1.05f, cw_rgba(1, 1, 1, a), CW_ALIGN_RIGHT, cs.x - u);
     y += u * 1.3f;
+  }
+  /* co-op: the next wave announced while the last is cleared, so the lull reads as a pause and not a stall */
+  if (G.state == ST_PLAY && G.mode == MODE_COOP && G.wave_state == 0) {
+    char s[48];
+    snprintf(s, sizeof s, "WAVE %d IN %d", G.wave + 1, G.wave_timer / 60 + 1);
+    text(s, 0, cs.y * 0.14f, u * 2.2f, cw_rgba(1, 0.85f, 0.3f, 1), CW_ALIGN_CENTER, cs.x);
   }
   /* the clock in the middle top */
   if (G.state == ST_PLAY) {
@@ -1367,22 +1414,23 @@ static void hud_setup(void) {
   text("ARENA", 0, u * 1.2f, u * 2.4f, cw_rgba(1, 0.85f, 0.4f, 1), CW_ALIGN_CENTER, cs.x);
   text("choose the match, then press fire", 0, u * 3.6f, u * 0.9f, cw_rgba(1, 1, 1, 0.8f), CW_ALIGN_CENTER, cs.x);
   char s[96];
-  const char *rows[5];
-  char r0[64], r1[64], r2[64], r3[64];
+  const char *rows[6];
+  char r0[64], r1[64], r2[64], r3[64], r4[64];
   snprintf(r0, sizeof r0, "<  %s  >", ARENA_INFO[G.arena_id].name);
   snprintf(r1, sizeof r1, "<  %s  >", MODE_NAME[G.mode]);
   snprintf(r2, sizeof r2, G.mode == MODE_COOP ? "waves of bots" : "<  %d bots  >", G.bots_setting);
   static const char *LEVEL[3] = { "EASY", "NORMAL", "HARD" };
   snprintf(r3, sizeof r3, "<  bots: %s  >", LEVEL[G.bot_level]);
-  rows[0] = r0, rows[1] = r1, rows[2] = r2, rows[3] = r3, rows[4] = "START";
-  for (int i = 0; i < 5; i++) {
+  rows[0] = r0, rows[1] = r1, rows[2] = r2, snprintf(r4, sizeof r4, "<  aim assist: %s  >", G.aim_assist ? "ON" : "OFF");
+  rows[3] = r3, rows[4] = r4, rows[5] = "START";
+  for (int i = 0; i < 6; i++) {
     bool sel = i == G.setup_row;
-    text(rows[i], 0, u * (6.0f + 1.7f * (float)i), u * 1.5f, sel ? cw_rgba(1, 0.9f, 0.3f, 1) : cw_rgba(1, 1, 1, 0.75f), CW_ALIGN_CENTER, cs.x);
+    text(rows[i], 0, u * (5.2f + 1.5f * (float)i), u * 1.3f, sel ? cw_rgba(1, 0.9f, 0.3f, 1) : cw_rgba(1, 1, 1, 0.75f), CW_ALIGN_CENTER, cs.x);
   }
   snprintf(s, sizeof s, "%s", ARENA_INFO[G.arena_id].blurb);
-  text(s, 0, u * 14.9f, u * 0.9f, cw_rgba(1, 1, 1, 0.7f), CW_ALIGN_CENTER, cs.x);
+  text(s, 0, u * 14.7f, u * 0.9f, cw_rgba(1, 1, 1, 0.7f), CW_ALIGN_CENTER, cs.x);
   snprintf(s, sizeof s, "%d player%s", G.players, G.players == 1 ? "" : "s");
-  text(s, 0, u * 16.1f, u * 0.9f, cw_rgba(1, 1, 1, 0.7f), CW_ALIGN_CENTER, cs.x);
+  text(s, 0, u * 15.9f, u * 0.9f, cw_rgba(1, 1, 1, 0.7f), CW_ALIGN_CENTER, cs.x);
 }
 
 static void hud_over(void) {
@@ -1464,21 +1512,25 @@ static void make_viewmodels(void) {
   }
 }
 
-static void start(int players, void *user) {
-  (void)user;
-  G.players = players;
-  G.state = ST_SETUP;
-  G.setup_row = 3;
-  for (int i = 0; i < MAXH; i++) cw_node_set(G.cam[i], "current", cw_val_bool(i == 0));
-  build_world(G.arena_id);
-  set_views();
-  /* in setup the cameras look over the arena */
+/* in setup and behind the join screen the cameras look over the arena */
+static void overview_cams(void) {
   for (int h = 0; h < MAXH; h++) {
     float a = (float)h * 1.5708f;
     cw_node3d_set_position(G.cam[h], v3(cw_sin(a) * 20, 12, cw_cos(a) * 20));
     cw_node3d_look_at(G.cam[h], v3(0, 1, 0), v3(0, 1, 0));
     cw_node_set(G.vm[h], "visible", cw_val_bool(false));
   }
+}
+
+static void start(int players, void *user) {
+  (void)user;
+  G.players = players;
+  G.state = ST_SETUP;
+  G.setup_row = 5;
+  for (int i = 0; i < MAXH; i++) cw_node_set(G.cam[i], "current", cw_val_bool(i == 0));
+  build_world(G.arena_id);
+  set_views();
+  overview_cams();
 #ifdef ARENA_AUTOPILOT
   begin_match();
   set_views();
@@ -1489,6 +1541,7 @@ static void cmd_match(int argc, const char **argv, cw_reply *r) {
   if (argc > 0) G.arena_id = CW_CLAMP(atoi(argv[0]), 0, ARENAS - 1);
   if (argc > 1) G.mode = CW_CLAMP(atoi(argv[1]), 0, MODE_COUNT - 1);
   if (argc > 2) G.bots_setting = CW_CLAMP(atoi(argv[2]), 0, MAXF - 4);
+  if (argc > 3) G.players = CW_CLAMP(atoi(argv[3]), 1, MAXH);
   if (G.players < 1) G.players = 1;
   begin_match();
   set_views();
@@ -1516,6 +1569,7 @@ static void init(void *user) {
   G.mode = MODE_DM;
   G.bots_setting = 5;
   G.bot_level = 1;
+  G.aim_assist = 1;
   cw_shell_init(&(cw_shell_desc){ .title = "ARENA", .subtitle = "split screen shooter", .max_players = MAXH, .start = start });
   /* the persistent scene: environment, sun, post, lights, four cameras */
   G.env = cw_node_new("WorldEnvironment", "Env");
@@ -1561,6 +1615,8 @@ static void init(void *user) {
   }
   cw_node_set(G.cam[0], "current", cw_val_bool(true));
   make_viewmodels();
+  build_world(G.arena_id); /* the join screen shows the arena, not an empty room */
+  overview_cams();
   cw_pipeline_set_view_hook(cw_pipeline_of(G.tree), view_hook, NULL);
   cw_quality_on_change(quality_changed, NULL);
   cw_quality_auto(true, 0);
@@ -1577,19 +1633,29 @@ static void init(void *user) {
   cw_debug_i32("nav.requests", &G.path_requests);
   cw_debug_i32("nav.done", &G.path_done);
   cw_debug_i32("views", &G.views);
+  cw_debug_i32("stats.enc", &G.st.enc);
+  cw_debug_i32("stats.enc_gap_max", &G.st.enc_gap_max);
+  cw_debug_i32("stats.kills", &G.st.kills);
+  cw_debug_i32("stats.spawn_kills", &G.st.spawn_kills);
+  cw_debug_i32("stats.ttk_sum", &G.st.ttk_sum);
+  cw_debug_i32("stats.ttk_n", &G.st.ttk_n);
+  cw_debug_i32("stats.gap_max", &G.st.gap_max);
+  cw_debug_i32("stats.fighter_ticks", &G.st.fighter_ticks);
+  cw_debug_field("stats.by_weapon", G.st.by_weapon, CW_DBG_I32, NWEAP);
   cw_debug_field("fighters.score", G.d_score, CW_DBG_I32, MAXF);
   cw_debug_field("fighters.hp", G.d_hp, CW_DBG_I32, MAXF);
   cw_debug_field("fighters.deaths", G.d_deaths, CW_DBG_I32, MAXF);
   cw_debug_field("fighters.weapon", G.d_weapon, CW_DBG_I32, MAXF);
   cw_debug_field("fighters.alive", G.d_alive, CW_DBG_I32, MAXF);
   cw_debug_field("fighters.pos", G.d_pos, CW_DBG_F32, MAXF * 2);
-  cw_debug_command("match", "match [arena] [mode] [bots]: start a match now", cmd_match);
+  cw_debug_command("match", "match [arena] [mode] [bots] [players]: start a match now", cmd_match);
 #ifdef ARENA_AUTOPILOT
   /* the autopilot: ARENA_ID, ARENA_MODE, ARENA_BOTS, ARENA_PLAYERS choose the match (tests, benches) */
   const char *e;
   if ((e = getenv("ARENA_ID"))) G.arena_id = CW_CLAMP(atoi(e), 0, ARENAS - 1);
   if ((e = getenv("ARENA_MODE"))) G.mode = CW_CLAMP(atoi(e), 0, MODE_COUNT - 1);
   if ((e = getenv("ARENA_BOTS"))) G.bots_setting = CW_CLAMP(atoi(e), 0, MAXF - 4);
+  if ((e = getenv("ARENA_LEVEL"))) G.bot_level = CW_CLAMP(atoi(e), 0, 2);
   cw_shell_start((e = getenv("ARENA_PLAYERS")) ? CW_CLAMP(atoi(e), 1, MAXH) : 4);
 #endif
 }

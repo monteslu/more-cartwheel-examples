@@ -165,6 +165,8 @@ typedef struct fighter {
   t3_vec3 last_pos;
   float aim_err_yaw, aim_err_pitch;
   int wander_wait;
+  /* playtest measurements (not part of the simulation) */
+  int since_spawn, first_dmg_tick, seen_cool, last_enc_tick;
 } fighter;
 
 #endif
