@@ -1,0 +1,11 @@
+[
+  {
+    "name": "partypack-tournament-short",
+    "app": "partypack_auto",
+    "assets": "games/partypack/assets",
+    "frames": 2400,
+    "hosts": ["native"],
+    "minColors": 100,
+    "fields": ["game.state", "game.round", "game.mg", "game.tick", "game.score", "game.points", "game.hash", "game.points_total"]
+  }
+]
