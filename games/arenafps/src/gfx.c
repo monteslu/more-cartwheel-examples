@@ -316,7 +316,7 @@ static void g_slab(float u, float v, texel *t) {
   float c = 0.5f + tone + 0.14f * (n - 0.5f) + 0.05f * (fine - 0.5f) + (speck > 0.93f ? 0.07f : speck < 0.05f ? -0.08f : 0) - 0.08f * scuff + 0.07f * patch;
   rgb(t, c * 1.02f, c, c * 0.95f);
   t->r = mixf(t->r, 0.12f, oil * 0.8f), t->g = mixf(t->g, 0.11f, oil * 0.8f), t->b = mixf(t->b, 0.1f, oil * 0.8f);
-  t->r = mixf(t->r, 0.1f, joint), t->g = mixf(t->g, 0.1f, joint), t->b = mixf(t->b, 0.1f, joint);
+  t->r = mixf(t->r, 0.2f, joint), t->g = mixf(t->g, 0.19f, joint), t->b = mixf(t->b, 0.18f, joint);
   t->h = 0.6f + 0.12f * fine + 0.05f * n - 0.5f * joint + 0.04f * (speck > 0.93f);
   t->rough = mixf(0.88f - 0.1f * patch, 0.3f, oil) + 0.06f * (fine - 0.5f);
   t->ao = 1 - 0.6f * joint - 0.1f * oil;

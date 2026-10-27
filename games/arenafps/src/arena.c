@@ -54,7 +54,7 @@ static void body_box(t3_vec3 center, t3_vec3 size, t3_quat q) {
 enum { K_FLOOR, K_WALL, K_ACCENT, K_METAL, K_CRATE, K_LEAF, K_CLAD, K_TRIM, K_GRATE, K_WINDOW, K_GIRDER, K_PILLAR, K_PAINT, K_LAMP, K_KINDS };
 static float tune(const char *name, float def);
 /* the glow behind each arena's windows (linear) and the colour of its practical lamps (sRGB) */
-static const float WINDOW_GLOW[ARENAS][3] = { { 2.2f, 1.5f, 0.8f }, { 2.4f, 1.4f, 0.6f }, { 2.6f, 1.7f, 0.9f } };
+static const float WINDOW_GLOW[ARENAS][3] = { { 1.4f, 1.0f, 0.55f }, { 1.6f, 1.0f, 0.45f }, { 1.8f, 1.2f, 0.65f } };
 static const float LAMP_RGB[ARENAS][3] = { { 1.0f, 0.62f, 0.25f }, { 1.0f, 0.7f, 0.35f }, { 1.0f, 0.75f, 0.45f } };
 static mesh_build MB[K_KINDS];
 static float TINT[K_KINDS][3];
@@ -97,7 +97,7 @@ static const kmat KMAT[ARENAS][K_KINDS] = {
   },
   { /* TERRACES: slate tiles, formed concrete, teal panels, hazard lips */
     [K_FLOOR] = { TEX_TILES_SLATE, 4, 1, 0, 1, { 1, 1, 1 } },
-    [K_WALL] = { TEX_FORMED, 4, 1, 0, 1, { 0.9f, 0.9f, 0.92f } },
+    [K_WALL] = { TEX_SLAB, 4, 1, 0, 1, { 0.92f, 0.92f, 0.95f } },
     [K_ACCENT] = { TEX_PANEL_TEAL, 4, 1, 0.1f, 1, { 1, 1, 1 } },
     [K_METAL] = { TEX_STEEL, 2, 0.9f, 0.85f, 1, { 0.7f, 0.72f, 0.75f } },
     [K_CRATE] = { TEX_WOOD, 4, 1, 0, 1, { 1, 0.9f, 0.75f } },
@@ -911,7 +911,7 @@ static const mood MOODS[ARENAS] = {
   /* COURTYARD: clear morning, crisp shadows, warm stone against a deep blue sky */
   { 9.6f, 20, 130, 4.6f, 1.1f, 0.6f, 1.0f, 0.0f, 0.0015f, 0.1f, 0.35f, { 0.45f, 0.5f, 0.58f, 1 }, -0.15f, 0.25f, 1.8f, 0, "luts/courtyard.cube", 0.3f, 0 },
   /* TERRACES: dusk, a low red sun, violet haze, the lamps coming on over wet slate */
-  { 18.0f, 10, 250, 3.4f, 0.55f, 1.2f, 1.1f, 0.0f, 0.004f, 0.1f, 0.6f, { 0.2f, 0.16f, 0.24f, 1 }, 0.1f, 0.4f, 1.4f, 1, "luts/terraces.cube", 0.15f, 1 },
+  { 17.5f, 10, 250, 3.6f, 1.0f, 1.2f, 1.1f, 0.0f, 0.004f, 0.1f, 0.6f, { 0.2f, 0.16f, 0.24f, 1 }, 0.1f, 0.4f, 1.4f, 1, "luts/terraces.cube", 0.15f, 1 },
 };
 
 void arena_mood(int id, cw_node env, cw_node sun, cw_node sky, cw_node fog, cw_node post) {
