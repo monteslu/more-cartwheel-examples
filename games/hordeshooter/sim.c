@@ -55,7 +55,10 @@ static int spawn_enemy(sim *s, int kind, float x, float y) {
   if (CW_HANDLE_IS_NULL(a)) return -1;
   enemy *e = &s->e[slot];
   *e = (enemy){ .alive = true, .kind = (uint8_t)kind, .x = x, .y = y, .agent = a, .speed = sp };
-  e->hp = EK[kind].hp_base + (int)(EK[kind].hp_wave * (float)s->wave * (kind == EK_RUNNER ? 0.5f : 1.0f));
+  {
+    float w = (float)s->wave, f = 1.0f + 0.1f * w + 0.008f * w * w; /* the horde toughens with the wave: x1.1 at 1, x2.8 at 10, x6.2 at 20 */
+    e->hp = kind == EK_BOSS ? EK[kind].hp_base + (int)(EK[kind].hp_wave * w) : CW_MAX(1, (int)((float)EK[kind].hp_base * f + 0.5f));
+  }
   /* more players, tougher enemies: 25% per extra player, a boss 60% */
   e->hp = (int)((float)e->hp * (1.0f + (kind == EK_BOSS ? 0.6f : 0.25f) * (float)(s->players > 1 ? s->players - 1 : 0)));
   if (kind == EK_BOSS) s->boss_maxhp = e->hp;
@@ -83,32 +86,36 @@ static void drop(sim *s, int kind, float x, float y) {
     }
 }
 
+/* each upgrade stops at a top level, so power grows on a curve a design can keep up with */
+static const int UP_MAX[9] = { 7, 4, 8, 4, 4, 5, 5, 5, 6 };
+static int *up_slot(player *p, int u) {
+  int *f[9] = { &p->rate, &p->shots, &p->dmg, &p->pierce, &p->rocket, &p->speed, &p->magnet, &p->radius, &p->armor };
+  return f[u % 9];
+}
+
 static void apply_upgrade(sim *s, player *p, int pi, int u) {
   p->last_up = u;
-  switch (u) {
-  case 0: p->rate++; break;
-  case 1: p->shots++; break;
-  case 2: p->dmg++; break;
-  case 3: p->pierce++; break;
-  case 4: p->rocket++; break;
-  case 5: p->speed++; break;
-  case 6: p->magnet++; break;
-  case 7: p->radius++; break;
-  default: p->armor++; break;
-  }
+  int *lv = up_slot(p, u);
+  if (*lv < UP_MAX[u % 9]) ++*lv;
   p->hp = CW_MIN(p->hp + 25, 100.0f);
   ev(s, EV_LEVEL, p->x, p->y, 0, 0, pi, u);
 }
 
-/* three different upgrades to choose from; the ladder's next one is always
- * among them, so a player who ignores the offer still grows */
+/* three different upgrades to choose from, none of them at its top level. The ladder's next one is
+ * offered first, so a player who ignores the offer still grows; once nearly everything is maxed the
+ * offer repeats what is left (a heal and a ring of sparks at the end of the road) */
 static void roll_offer(sim *s, player *p) {
-  p->offer[0] = LADDER[(p->level - 2) % (int)sizeof LADDER];
+  int avail[9], n = 0;
+  for (int u = 0; u < 9; u++)
+    if (*up_slot(p, u) < UP_MAX[u]) avail[n++] = u;
+  if (n == 0) avail[n++] = 8;
+  int first = LADDER[(p->level - 2) % (int)sizeof LADDER];
+  p->offer[0] = *up_slot(p, first) < UP_MAX[first] ? first : avail[(int)(cw_rng_u32(&s->rng) % (uint32_t)n)];
   for (int k = 1; k < 3; k++) {
-    int u;
+    int u = p->offer[0], tries = 0;
     do {
-      u = (int)(cw_rng_u32(&s->rng) % 9u);
-    } while (u == p->offer[0] || (k == 2 && u == p->offer[1]));
+      u = avail[(int)(cw_rng_u32(&s->rng) % (uint32_t)n)];
+    } while (tries++ < 20 && (u == p->offer[0] || (k == 2 && u == p->offer[1])));
     p->offer[k] = u;
   }
   p->offer_ticks = 60 * 8; /* the first offer is taken when the time runs out */
@@ -118,7 +125,7 @@ static void level_up(sim *s, player *p, int pi) {
   (void)pi;
   p->level++;
   p->xp -= p->xp_next;
-  p->xp_next = 6 + p->level * 5;
+  p->xp_next = 6 + p->level * 5 + p->level * p->level * 3 / 2; /* a choice every 25 to 60 s early, still about a minute late */
   if (p->offer_ticks > 0) p->pending++;
   else roll_offer(s, p);
 }
@@ -138,7 +145,8 @@ static void kill_enemy(sim *s, int i, int owner, float dx, float dy) {
   ev(s, EV_KILL, e->x, e->y, dx, dy, e->kind, owner);
   int xp = EK[e->kind].xp;
   int gems = e->kind == EK_BOSS ? 24 : e->kind == EK_BRUTE ? 4 : 1;
-  for (int k = 0; k < gems; k++) drop(s, 0, e->x, e->y);
+  if (e->kind != EK_RUNNER || rf(s) < 6.0f / (6.0f + (float)s->wave)) /* a runner leaves a gem less often as the waves thicken */
+    for (int k = 0; k < gems; k++) drop(s, 0, e->x, e->y);
   (void)xp;
   float r = rf(s);
   if (e->kind != EK_RUNNER ? r < 0.35f : r < 0.012f) drop(s, 1, e->x, e->y);
@@ -535,6 +543,11 @@ static void bullets_step(sim *s) {
 
 static void spawn_director(sim *s) {
   s->wave_tick++;
+  if (s->state == ST_PLAY && s->wave == FINAL_WAVE && s->boss_wave == FINAL_WAVE && s->boss_alive == 0 && s->wave_tick > 90) {
+    s->state = ST_WON; /* the last boss is down: the yard is held */
+    s->state_ticks = 0;
+    return;
+  }
   if (s->wave_tick >= 60 * 30 && !(s->wave == FINAL_WAVE && s->boss_alive)) { /* the last wave lasts until its boss falls */
     s->wave_tick = 0;
     s->wave++;
@@ -550,11 +563,6 @@ static void spawn_director(sim *s) {
   float cx, cy, hw, hh;
   sim_team_box(s, &cx, &cy, &hw, &hh);
   s->cam_x = cx, s->cam_y = cy;
-  if (s->state == ST_PLAY && s->wave == FINAL_WAVE && s->boss_wave == FINAL_WAVE && s->boss_alive == 0 && s->wave_tick > 90) {
-    s->state = ST_WON; /* the last boss is down: the yard is held */
-    s->state_ticks = 0;
-    return;
-  }
   if (s->wave % 5 == 0 && s->wave_tick == 30 && s->boss_alive == 0) {
     s->boss_wave = s->wave;
     float a = rf(s) * 6.28f;

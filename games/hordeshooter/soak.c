@@ -1,0 +1,86 @@
+/* hordeshooter_soak: the simulation and the bots with no window and no GPU, for long runs.
+ *   hordeshooter_soak [minutes] [players] [start_wave]
+ * Plays that many game minutes (60 ticks a second), restarting after a win or when the team has been
+ * overrun, and checks every tick: no NaN or escaped position, enemy and bullet counts inside their
+ * tables, the tether. Prints a line a game minute (wave, enemies, kills, upgrade levels, hp lost, resident
+ * memory) and the pacing events (first kill, every level-up). Exit 0 = nothing broke; 1 = a check failed. */
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "cartwheel/jobs.h"
+#include "game.h"
+
+static long rss_kb(void) {
+  long pages = 0, res = 0;
+  FILE *f = fopen("/proc/self/statm", "r");
+  if (f) { if (fscanf(f, "%ld %ld", &pages, &res) != 2) res = 0; fclose(f); }
+  return res * 4;
+}
+static int bad(const sim *s, const char *what) {
+  fprintf(stderr, "soak FAIL tick %d wave %d: %s\n", s->tick, s->wave, what);
+  return 1;
+}
+static int check(const sim *s) {
+  for (int i = 0; i < MAXP; i++) {
+    const player *p = &s->p[i];
+    if (!p->active) continue;
+    if (!isfinite(p->x) || !isfinite(p->y) || !isfinite(p->hp)) return bad(s, "player NaN");
+    if (fabsf(p->x) > HALF + 0.1f || fabsf(p->y) > HALF + 0.1f) return bad(s, "player out of the yard");
+  }
+  int n = 0;
+  for (int i = 0; i < MAXE; i++) {
+    const enemy *e = &s->e[i];
+    if (!e->alive) continue;
+    n++;
+    if (!isfinite(e->x) || !isfinite(e->y)) return bad(s, "enemy NaN");
+    if (fabsf(e->x) > HALF + 3 || fabsf(e->y) > HALF + 3) return bad(s, "enemy out of the yard");
+  }
+  if (n != s->nenemies) return bad(s, "enemy count disagrees with the table");
+  float x0 = 1e9f, x1 = -1e9f, y0 = 1e9f, y1 = -1e9f;
+  int alive = 0;
+  for (int i = 0; i < MAXP; i++)
+    if (s->p[i].active && !s->p[i].down) alive++, x0 = fminf(x0, s->p[i].x), x1 = fmaxf(x1, s->p[i].x), y0 = fminf(y0, s->p[i].y), y1 = fmaxf(y1, s->p[i].y);
+  if (alive > 1 && (x1 - x0 > 2 * TETHER_HW + 0.5f || y1 - y0 > 2 * TETHER_HH + 0.5f)) return bad(s, "the tether let the team spread past one view");
+  return 0;
+}
+
+int main(int argc, char **argv) {
+  int minutes = argc > 1 ? atoi(argv[1]) : 30, players = argc > 2 ? atoi(argv[2]) : 4, wave0 = argc > 3 ? atoi(argv[3]) : 1;
+  cw_jobs_init(3);
+  static sim S;
+  sim_init(&S, players, 4242, wave0);
+  long total = (long)minutes * 3600, rss0 = 0;
+  int first_kill = 0, restarts = 0, wins = 0, overs = 0, worst_enemies = 0, lost_min = 0, last_hp[MAXP];
+  int last_level[MAXP] = { 0 };
+  for (int i = 0; i < MAXP; i++) last_hp[i] = 100;
+  for (long t = 1; t <= total; t++) {
+    input in[MAXP];
+    memset(in, 0, sizeof in);
+    for (int i = 0; i < players; i++) horde_bot(&S, i, &in[i]);
+    int was = S.state;
+    sim_step(&S, in);
+    if (check(&S)) return 1;
+    if (!first_kill && S.killed_total) first_kill = S.tick, printf("first kill at tick %d (%.1f s)\n", S.tick, (float)S.tick / 60);
+    for (int i = 0; i < players; i++) {
+      if (S.p[i].level != last_level[i] && S.p[i].level > 1) printf("levelup tick %d (%.1f s) player %d level %d\n", S.tick, (float)S.tick / 60, i, S.p[i].level);
+      last_level[i] = S.p[i].level;
+      if ((int)S.p[i].hp < last_hp[i]) lost_min += last_hp[i] - (int)S.p[i].hp;
+      last_hp[i] = (int)S.p[i].hp;
+    }
+    if (S.nenemies > worst_enemies) worst_enemies = S.nenemies;
+    if (was != ST_OVER && S.state == ST_OVER) overs++;
+    if (S.state == ST_WON && S.state_ticks == 1) wins++;
+    if (S.state == ST_WON && S.state_ticks > 60 * 10) { sim_init(&S, players, 4242 + (uint32_t)restarts, wave0); restarts++; first_kill = 1; }
+    if (t % 3600 == 0) {
+      if (!rss0) rss0 = rss_kb();
+      printf("minute %ld: wave %d enemies %d kills %d hp_lost %d alive %d state %d rss %ld kB (first minute %ld)\n", t / 3600, S.wave, S.nenemies, S.killed_total, lost_min, sim_alive_players(&S), S.state, rss_kb(), rss0);
+      lost_min = 0;
+      fflush(stdout);
+    }
+  }
+  printf("soak ok: %d minutes, %d players, wins %d, overruns %d, restarts %d, most enemies %d, rss %ld kB\n", minutes, players, wins, overs, restarts, worst_enemies, rss_kb());
+  sim_free(&S);
+  return 0;
+}

@@ -89,6 +89,7 @@ void sim_init(sim *s, int players, uint32_t seed, int start_wave);
 void sim_free(sim *s);
 void sim_step(sim *s, const input in[MAXP]);
 int sim_alive_players(const sim *s);
+void horde_bot(const sim *s, int i, input *in); /* bot.c */
 const char *sim_upgrade_name(int u);
 /* team centre and the spread of the living players, for the camera */
 void sim_team_box(const sim *s, float *cx, float *cy, float *hw, float *hh);
