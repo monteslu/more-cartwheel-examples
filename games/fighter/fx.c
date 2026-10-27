@@ -10,7 +10,8 @@
  *            has its own colour
  *   super    a white screen flash, a huge ring and streaking lines, a shockwave that bends the picture
  *   KO       a big flash and shake, a shockwave in the air and one along the floor
- *   heavy hits bend the picture with a small fast shockwave at the contact (the engine's distortion pass) */
+ *   heavy hits fire a small Explosion3D at the contact (a hot burst, a fast shockwave that bends the picture, a flash);
+ *            supers and knockouts a big one on the floor (rings in the air and along the ground, a flash, a scorch mark) */
 #include <stdio.h>
 #include <string.h>
 
@@ -28,8 +29,8 @@ static struct {
   int light_age[3], next_light;
   float light_e[3];
   cw_node proj[8];
-  cw_node wave[3], gwave;
-  int wi;
+  cw_node hboom[3], sboom;
+  int hbi;
   cw_node ember[8];
   float shake, flash;
   uint32_t seen;
@@ -102,37 +103,50 @@ void fx_init(cw_node root) {
     snprintf(nm, sizeof nm, "Proj%d", i); FX.proj[i] = pnode(nm, CORE, 180 + i);
     snprintf(nm, sizeof nm, "Ember%d", i); FX.ember[i] = pnode(nm, EMBER, 190 + i);
   }
+  /* the explosion kit: a heavy hit is a small Explosion3D (a hot burst, a fast shockwave, a flash light); a super or a
+   * knockout a big one standing on the floor (a burst at body height, a ring in the air and one along the ground, a
+   * strong flash, a scorch mark that glows and cools) */
   for (int i = 0; i < 3; i++) {
-    snprintf(nm, sizeof nm, "Wave%d", i);
-    FX.wave[i] = cw_node_new("Shockwave3D", nm);
-    cw_node_set(FX.wave[i], "autostart", cw_val_bool(false));
-    cw_node_add_child(FX.root, FX.wave[i]);
+    snprintf(nm, sizeof nm, "HeavyBoom%d", i);
+    cw_node b = FX.hboom[i] = cw_node_new("Explosion3D", nm);
+    static const char *const KV[] = { "autostart", "false", "duration", "0.6", "flash_energy", "35", "flash_range", "6", "flash_duration", "0.14", "scorch_size", "0",
+      "shake_amount", "0", NULL };
+    for (int k = 0; KV[k]; k += 2) { const cw_prop *pp = cw_node_find_prop(b, KV[k], NULL); cw_value v; if (pp && cw_value_parse(KV[k + 1], pp->type, &v)) cw_node_set(b, KV[k], v); }
+    cw_node_add_child(FX.root, b);
+    cw_node w = cw_node_new("Shockwave3D", "Wave");
+    cw_node_set(w, "autostart", cw_val_bool(false)); cw_node_set(w, "max_radius", cw_val_float(1.3)); cw_node_set(w, "duration", cw_val_float(0.32));
+    cw_node_set(w, "thickness", cw_val_float(0.3)); cw_node_set(w, "strength", cw_val_float(0.09));
+    cw_node_add_child(b, w);
+    cw_node burst = cw_node_new("GPUParticles3D", "Burst");
+    cw_node_add_child(b, burst);
+    static const char *const BURST[] = { "amount", "18", "lifetime", "0.22", "explosiveness", "1", "one_shot", "true", "emission_shape", "SPHERE", "emission_radius", "0.05",
+      "spread", "180", "speed_min", "0.5", "speed_max", "2", "damping", "4", "size", "0.35", "size_curve", "\"0 0.5, 0.3 1, 1 0\"",
+      "color_ramp", "\"0 1 0.95 0.8 1, 0.5 1 0.6 0.2 0.8, 1 0.9 0.3 0.05 0\"", "energy", "5", "blend", "ADD", NULL };
+    for (int k = 0; BURST[k]; k += 2) { const cw_prop *pp = cw_node_find_prop(burst, BURST[k], NULL); cw_value v; if (pp && pp->type == CW_T_ENUM) { cw_node_set(burst, BURST[k], cw_val_enum(BURST[k + 1])); continue; } if (pp && cw_value_parse(BURST[k + 1], pp->type, &v)) cw_node_set(burst, BURST[k], v); }
+    cw_node_set(burst, "emitting", cw_val_bool(false)); cw_node_set(burst, "seed", cw_val_int(200 + i));
   }
-  FX.gwave = cw_node_new("Shockwave3D", "GroundWave");
-  cw_node_set(FX.gwave, "autostart", cw_val_bool(false));
-  cw_node_set(FX.gwave, "ground", cw_val_bool(true));
-  cw_node_add_child(FX.root, FX.gwave);
+  {
+    cw_node b = FX.sboom = cw_node_new("Explosion3D", "SuperBoom");
+    static const char *const KV[] = { "autostart", "false", "duration", "1.2", "flash_energy", "140", "flash_range", "12", "flash_duration", "0.35", "flash_color", "color(0.8, 0.85, 1, 1)",
+      "scorch_texture", "\"fx/scorch.png\"", "scorch_size", "2.0", "scorch_time", "1.6", "scorch_life", "10", "scorch_glow", "0.6", "shake_amount", "0", NULL };
+    for (int k = 0; KV[k]; k += 2) { const cw_prop *pp = cw_node_find_prop(b, KV[k], NULL); cw_value v; if (pp && cw_value_parse(KV[k + 1], pp->type, &v)) cw_node_set(b, KV[k], v); else cw_warn("fighter: Explosion3D %s", KV[k]); }
+    cw_node_add_child(FX.root, b);
+    cw_node w = cw_node_new("Shockwave3D", "AirWave");
+    cw_node_set(w, "autostart", cw_val_bool(false)); cw_node_set(w, "max_radius", cw_val_float(5.0)); cw_node_set(w, "duration", cw_val_float(0.7));
+    cw_node_set(w, "thickness", cw_val_float(1.0)); cw_node_set(w, "strength", cw_val_float(0.32));
+    cw_node3d_set_position(w, (t3_vec3){ 0, 1.05f, 0.2f });
+    cw_node_add_child(b, w);
+    cw_node gw = cw_node_new("Shockwave3D", "GroundWave");
+    cw_node_set(gw, "autostart", cw_val_bool(false)); cw_node_set(gw, "ground", cw_val_bool(true)); cw_node_set(gw, "max_radius", cw_val_float(6.0));
+    cw_node_set(gw, "duration", cw_val_float(0.75)); cw_node_set(gw, "thickness", cw_val_float(0.8)); cw_node_set(gw, "strength", cw_val_float(0.2));
+    cw_node3d_set_position(gw, (t3_vec3){ 0, 0.03f, 0 });
+    cw_node_add_child(b, gw);
+  }
   FX.ready = true;
 }
 
-/* a ring that bends the picture: radius it grows to, seconds, band width, push (world units) */
-static void wave(t3_vec3 p, float radius, float dur, float thick, float strength) {
-  cw_node w = FX.wave[FX.wi++ % 3];
-  cw_node_set(w, "max_radius", cw_val_float(radius));
-  cw_node_set(w, "duration", cw_val_float(dur));
-  cw_node_set(w, "thickness", cw_val_float(thick));
-  cw_node_set(w, "strength", cw_val_float(strength));
-  cw_node3d_set_position(w, p);
-  cw_shockwave_fire(w);
-}
-static void ground_wave(float x, float radius, float strength) {
-  cw_node_set(FX.gwave, "max_radius", cw_val_float(radius));
-  cw_node_set(FX.gwave, "duration", cw_val_float(0.7));
-  cw_node_set(FX.gwave, "thickness", cw_val_float(0.8));
-  cw_node_set(FX.gwave, "strength", cw_val_float(strength));
-  cw_node3d_set_position(FX.gwave, (t3_vec3){ x, 0.03f, 0 });
-  cw_shockwave_fire(FX.gwave);
-}
+static void heavy_boom(t3_vec3 p) { cw_node b = FX.hboom[FX.hbi++ % 3]; cw_node3d_set_position(b, p); cw_explosion_fire(b); }
+static void super_boom(float x) { cw_node3d_set_position(FX.sboom, (t3_vec3){ x, 0, 0 }); cw_explosion_fire(FX.sboom); }
 
 void fx_bind_lights(cw_node stage) {
   for (int i = 0; i < 3; i++) {
@@ -174,7 +188,7 @@ void fx_event(const ft_game *g, const ft_event *e) {
     light(p, big ? 90 : 50, 1, 0.75f, 0.4f);
     FX.shake = fmaxf(FX.shake, big ? 0.55f : 0.18f + 0.06f * k);
     if (big) at(FX.dust[FX.di++ % 4], (t3_vec3){ p.x, 0.05f, 0.1f });
-    if (big) wave(p, 1.3f, 0.32f, 0.3f, 0.09f);
+    if (big) heavy_boom(p);
     break;
   }
   case EV_BLOCK: {
@@ -202,8 +216,7 @@ void fx_event(const ft_game *g, const ft_event *e) {
     cw_node_set(FX.ring[r], "size", cw_val_float(0.6));
     at(FX.ring[r], (t3_vec3){ p.x, 1.0f, 0.2f });
     light((t3_vec3){ p.x, 1.2f, 1.0f }, 120, 0.7f, 0.8f, 1);
-    wave((t3_vec3){ p.x, 1.0f, 0.2f }, 4.5f, 0.65f, 0.9f, 0.28f);
-    ground_wave(p.x, 5.0f, 0.18f);
+    super_boom(p.x);
     break;
   }
   case EV_CLASH: at(FX.flash_p[FX.fi++ % 4], p); at(FX.sparks[FX.si++ % 4], p); light(p, 40, 1, 0.8f, 0.5f); break;
@@ -214,8 +227,7 @@ void fx_event(const ft_game *g, const ft_event *e) {
     for (int i = 0; i < 3; i++) at(FX.sparks[FX.si++ % 4], (t3_vec3){ p.x, 1.1f, 0.2f });
     at(FX.streaks[FX.sti++ % 2], (t3_vec3){ p.x, 1.1f, 0.2f });
     light((t3_vec3){ p.x, 1.2f, 1.0f }, 140, 1, 0.9f, 0.7f);
-    wave((t3_vec3){ p.x, 1.1f, 0.2f }, 6.0f, 0.8f, 1.1f, 0.35f);
-    ground_wave(p.x, 7.0f, 0.22f);
+    super_boom(p.x);
     break;
   }
   default: break;
