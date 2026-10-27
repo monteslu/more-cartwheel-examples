@@ -1,0 +1,55 @@
+[scene format=1]
+
+[node name="Level" type="Node3D"]
+
+[node name="Post" parent="." type="PostProcess"]
+msaa = 4
+tonemap = ACES_FILMIC
+exposure = 1.05
+bloom = true
+bloom_intensity = 0.07
+bloom_threshold = 1.1
+ssao = true
+ssao_radius = 0.7
+vignette = true
+vignette_intensity = 0.35
+aa = SMAA
+
+[node name="Sky" parent="." type="ProceduralSky"]
+sun = "../Sun"
+time_of_day = 16.8
+latitude = 30
+declination = 15
+north = 100
+sun_energy = 3.5
+environment = true
+
+[node name="Sun" parent="." type="DirectionalLight3D"]
+shadow = true
+shadow_extent = 30
+shadow_size = 2048
+
+[node name="Camera" parent="." type="Camera3D"]
+position = vec3(0, 36, 21)
+rotation = vec3(-1.05, 0, 0)
+fov = 50
+far = 300
+
+[node name="Grass" parent="." type="MeshInstance3D"]
+position = vec3(0, -0.15, 0)
+size = vec3(120, 0.2, 90)
+color = color(0.16, 0.34, 0.14, 1)
+roughness = 0.95
+receive_shadow = true
+
+[node name="LightA" parent="." type="OmniLight3D"]
+position = vec3(-16, 8, 0)
+color = color(1, 0.85, 0.6, 1)
+energy = 60
+range = 30
+
+[node name="LightB" parent="." type="OmniLight3D"]
+position = vec3(16, 8, 0)
+color = color(0.7, 0.85, 1, 1)
+energy = 60
+range = 30
