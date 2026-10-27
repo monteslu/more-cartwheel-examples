@@ -68,8 +68,66 @@ static const spring_def SDEF[SB_MAX] = {
   { "Belly", { 0, 0, 0.12f }, 260, 9, 0, 0, true },
 };
 
+/* ── blinks: the clips key the eyelid bones (expressions); every tick a blink is layered over the clip's lids ──
+ * Each rig blinks every 2 to 5.5 seconds (a fixed sequence per rig, so every host shows the same frames) and blinks at
+ * once when it is hit. The lid bones turn about their x axis; the upper lid closes by +x, the lower one rises by -x. */
+enum { FACE_MAX = 64 };
+typedef struct face_rig {
+  const spring_rig *key;
+  t3_object *lid[4]; /* upper L, upper R, lower L, lower R */
+  float clip[4], wrote[4]; /* the clip's angle, and what this code wrote last tick (to tell whether the clip wrote since) */
+  int t, next; /* ticks since the last blink started; when the next one starts */
+  uint32_t rng;
+} face_rig;
+static face_rig FR[FACE_MAX];
+static int fr_n;
+static face_rig *face_of(const spring_rig *s) {
+  for (int i = 0; i < fr_n; i++) if (FR[i].key == s) return &FR[i];
+  return NULL;
+}
+static uint32_t fr_rand(face_rig *f) { f->rng = f->rng * 1664525u + 1013904223u; return f->rng >> 8; }
+/* angle of a turn about x from its quaternion, and back, by short series (lid angles stay under 1.4 rad): no libm, so
+   every host computes the same pose */
+static float qangle_x(t3_quat q) { float x = q.w < 0 ? -q.x : q.x, x2 = x * x; return 2.0f * x * (1 + x2 / 6 + 3 * x2 * x2 / 40 + 5 * x2 * x2 * x2 / 112); }
+static t3_quat qturn_x(float a) { float h = a * 0.5f, h2 = h * h; return (t3_quat){ h * (1 - h2 / 6 + h2 * h2 / 120), 0, 0, 1 - h2 / 2 + h2 * h2 / 24 - h2 * h2 * h2 / 720 }; }
+static void face_bind(const spring_rig *s, t3_object *scene) {
+  static const char *LIDS[4] = { "LidUL", "LidUR", "LidLL", "LidLR" };
+  face_rig *f = face_of(s);
+  if (!f) { if (fr_n >= FACE_MAX) return; f = &FR[fr_n++]; }
+  memset(f, 0, sizeof *f);
+  f->key = s;
+  f->rng = 0x9e3779b9u ^ (uint32_t)(f - FR) * 2654435761u;
+  for (int i = 0; i < 4; i++) f->lid[i] = t3_object_get_by_name(scene, LIDS[i]);
+  f->t = 1000;
+  f->next = 60 + (int)(fr_rand(f) % 200);
+}
+/* the blink's closing amount at tick t of the blink: shut in 4 ticks, held 2, open in 7 */
+static float blink_at(int t) {
+  if (t < 4) return (float)(t + 1) / 4.0f;
+  if (t < 6) return 1.0f;
+  if (t < 13) return 1.0f - (float)(t - 5) / 7.0f;
+  return 0.0f;
+}
+static void face_step(face_rig *f) {
+  if (!f->lid[0]) return;
+  if (--f->next <= 0) { f->t = 0; f->next = 120 + (int)(fr_rand(f) % 210); }
+  float b = blink_at(f->t++);
+  for (int i = 0; i < 4; i++) {
+    t3_object *o = f->lid[i];
+    if (!o) continue;
+    float a = qangle_x(o->quaternion);
+    if (a != f->wrote[i]) f->clip[i] = a; /* the animation wrote this tick */
+    float shut = i < 2 ? 0.66f : -0.08f; /* where a closed lid sits */
+    float n = f->clip[i] + (shut - f->clip[i]) * (i < 2 ? b : b * 0.5f);
+    if (i < 2 && n < f->clip[i]) n = f->clip[i]; /* never open a lid the clip has closed further */
+    o->quaternion = qturn_x(n);
+    f->wrote[i] = qangle_x(o->quaternion);
+  }
+}
+
 void sb_bind(spring_rig *s, t3_object *scene) {
   memset(s, 0, sizeof *s);
+  face_bind(s, scene);
   s->scene = scene;
   for (int i = 0; i < SB_MAX; i++) {
     t3_object *b = t3_object_get_by_name(scene, SDEF[i].bone);
@@ -86,11 +144,15 @@ void sb_bind(spring_rig *s, t3_object *scene) {
 void sb_reset(spring_rig *s) { for (int i = 0; i < SB_MAX; i++) s->b[i].live = false; }
 
 void sb_jolt(spring_rig *s, float x, float y, float z) {
+  face_rig *f = face_of(s);
+  if (f && f->t > 8) f->t = 0; /* a hit makes the eyes blink */
   for (int i = 0; i < SB_MAX; i++) if (s->b[i].bone) s->b[i].V = vadd(s->b[i].V, v3(x, y, z));
 }
 
 void sb_step(spring_rig *s, t3_vec3 pos, float yaw, float dt) {
   if (!s->scene) return;
+  face_rig *fr = face_of(s);
+  if (fr) face_step(fr);
   /* the model's world transform: position, a turn about y */
   float h = yaw * 0.5f, ch, sh;
   { /* cos and sin of the half angle by a short series (yaw is +-pi/2 here, so |h| <= pi/4) */
@@ -133,7 +195,7 @@ void sb_step(spring_rig *s, t3_vec3 pos, float yaw, float dt) {
 }
 
 /* ── shading ─────────────────────────────────────────────────────────── */
-typedef enum { SH_SKIN, SH_CLOTH, SH_HAIR, SH_LEATHER } shade_class;
+typedef enum { SH_SKIN, SH_CLOTH, SH_HAIR, SH_LEATHER, SH_EYE } shade_class;
 static void shade_material(t3_mesh *m, int i, shade_class k) {
   t3_material *old = m->materials[i];
   if (old->type == T3_MESH_PHYSICAL_MATERIAL) return;
@@ -141,8 +203,8 @@ static void shade_material(t3_mesh *m, int i, shade_class k) {
   p->type = T3_MESH_PHYSICAL_MATERIAL;
   t3_color c = old->color;
   switch (k) {
-  case SH_SKIN: /* light scattered under the skin shows as a warm soft rim; little mirror-like specular */
-    p->sheen = 0.7f, p->sheen_roughness = 0.5f;
+  case SH_SKIN: /* light scattered under the skin shows as a warm soft rim; little mirror-like specular (never glossy) */
+    p->sheen = 0.45f, p->sheen_roughness = 0.6f;
     p->sheen_color = (t3_color){ 0.1f + 0.35f * c.r, 0.03f + 0.15f * c.g, 0.02f + 0.1f * c.b };
     p->specular_intensity = 0.45f, p->ior = 1.4f;
     break;
@@ -162,6 +224,9 @@ static void shade_material(t3_mesh *m, int i, shade_class k) {
   case SH_LEATHER:
     p->clearcoat = 0.35f, p->clearcoat_roughness = 0.38f;
     break;
+  case SH_EYE: /* a wet cornea over a matte iris: a sharp clear coat highlight (the catch light) */
+    p->clearcoat = 1.0f, p->clearcoat_roughness = 0.06f;
+    break;
   }
   m->materials[i] = p;
   t3_release(old);
@@ -175,7 +240,7 @@ static void shade_tree(t3_object *o, shade_class k) {
 }
 void char_shade(t3_object *scene) {
   static const struct { const char *node; shade_class k; } C[] = {
-    { "BodySkin", SH_SKIN }, { "BodyCloth", SH_CLOTH }, { "BodyHair", SH_HAIR }, { "BodyLeather", SH_LEATHER },
+    { "BodySkin", SH_SKIN }, { "BodyCloth", SH_CLOTH }, { "BodyHair", SH_HAIR }, { "BodyLeather", SH_LEATHER }, { "BodyEye", SH_EYE },
   };
   for (size_t i = 0; i < sizeof C / sizeof *C; i++) {
     t3_object *o = t3_object_get_by_name(scene, C[i].node);
