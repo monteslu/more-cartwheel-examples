@@ -328,6 +328,9 @@ static void do_hits(ent *a) {
   if (a->t < ad->a0 || a->t > ad->a1) return;
   float mul = DEFS[a->def].dmg * (a->player ? 1.0f : 0.8f);
   float dmg = ad->dmg * mul;
+#ifdef BRAWLER_AUTOPILOT
+  if (a->player) dmg *= 3.0f; /* the bots are poor fighters: the soak needs to reach the bosses */
+#endif
   if (a->weapon && (a->atk == A_SWING || a->atk == A_STAB)) dmg *= a->weapon == 2 ? 1.25f : 1.0f;
   bool round = a->atk == A_SPIN || a->atk == A_SLAM || a->atk == A_BSPIN;
   bool hit_any = false;
