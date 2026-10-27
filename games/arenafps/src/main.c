@@ -1240,6 +1240,7 @@ static void render(void *user, double alpha) {
 static void make_viewmodels(void) {
   for (int h = 0; h < MAXH; h++) {
     G.vm[h] = cw_node_new("Node3D", "VM");
+    cw_node_set(G.vm[h], "layers", cw_val_int(2));
     cw_node_add_child(G.cam[h], G.vm[h]);
     struct part { const char *prim; t3_vec3 size, pos; float r, g, b; float metal, glow; } parts[NWEAP][5] = {
       { { "BOX", { 0.08f, 0.1f, 0.5f }, { 0, 0, 0 }, 0.2f, 0.22f, 0.25f, 0.8f, 0 }, { "BOX", { 0.05f, 0.05f, 0.3f }, { 0, 0.02f, -0.38f }, 0.1f, 0.1f, 0.12f, 0.9f, 0 },
@@ -1368,6 +1369,8 @@ static void init(void *user) {
     cw_node_set(G.cam[h], "fov", cw_val_float(78));
     cw_node_set(G.cam[h], "near", cw_val_float(0.08));
     cw_node_set(G.cam[h], "far", cw_val_float(220));
+    cw_node_set(G.cam[h], "viewmodel_layers", cw_val_int(2));
+    cw_node_set(G.cam[h], "viewmodel_fov", cw_val_float(52));
     cw_node_add_child(G.root, G.cam[h]);
   }
   cw_node_set(G.cam[0], "current", cw_val_bool(true));
@@ -1404,6 +1407,13 @@ cw_app_desc cw_main(int argc, char **argv) {
   cw_scene_register_builtin_types();
   static cw_app_desc app = { .width = 960, .height = 540, .debug = true, .init = init, .fixed_update = fixed_update, .render = render };
   cw_project_apply_app(&app);
+#ifdef ARENA_AUTOPILOT
+  { /* ARENA_RES=WxH: the output size (benches) */
+    const char *r = getenv("ARENA_RES");
+    int w, h;
+    if (r && sscanf(r, "%dx%d", &w, &h) == 2) app.width = w, app.height = h;
+  }
+#endif
   app.save = cw_shell_save_region();
   app.save_size = cw_shell_save_region_size();
   return cw_scene_app(NULL, &app);
