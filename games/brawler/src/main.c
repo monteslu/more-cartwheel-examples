@@ -33,6 +33,7 @@ static int music_stage = -1;
 static int32_t d_ticks, d_players, d_stage, d_phase, d_enemies, d_kills, d_wave, d_score, d_tokens, d_boss_hp;
 static float d_hp[MAXP], d_px[MAXP], d_cam;
 static uint32_t d_hash;
+static float d_ex[8][4];
 static int32_t d_states[MAXP];
 
 static void play_music(int stage) {
@@ -73,13 +74,16 @@ static void bot(int i, inputs *in) {
   for (int k = 0; k < MAXE; k++) {
     const ent *v = &W.e[k];
     if (!v->used || v->st == S_DEAD || v->st == S_DOWN) continue;
+    if (v->x < W.cam_x - level_cam_halfw() + 0.8f || v->x > W.cam_x + level_cam_halfw() - 0.8f) continue; /* still coming on */
     float d = (v->x - e->x) * (v->x - e->x) + (v->z - e->z) * (v->z - e->z) * 3;
     if (d < bd) bd = d, best = k;
   }
   float tx, tz;
-  if (best < 0) { /* nothing to fight: walk on */
-    tx = W.lock_x + 2.0f + (float)i * 0.3f;
-    tz = -1.0f + (float)i * 0.8f;
+  if (best < 0) { /* nothing to fight: walk on when the wave is clear, else hold the middle of the screen */
+    bool clear = true;
+    for (int k = 0; k < MAXE; k++) if (W.e[k].used && W.e[k].st != S_DEAD) clear = false;
+    tx = (clear ? W.lock_x + 3.0f : W.cam_x - 1.0f) + (float)i * 1.2f;
+    tz = -1.2f + (float)i * 1.2f;
   } else {
     const ent *v = &W.e[best];
     tx = v->x - (e->x < v->x ? 0.9f : -0.9f);
@@ -145,6 +149,7 @@ static void init(void *user) {
   cw_debug_field("game.hp", d_hp, CW_DBG_F32, MAXP);
   cw_debug_field("game.px", d_px, CW_DBG_F32, MAXP);
   cw_debug_field("game.state", d_states, CW_DBG_I32, MAXP);
+  cw_debug_field("game.enemy", d_ex, CW_DBG_F32, 32);
   cw_debug_f32("game.cam", &d_cam);
   cw_debug_u32("game.hash", &d_hash);
 #ifdef BRAWLER_AUTOPILOT
@@ -158,6 +163,7 @@ static void publish(void) {
   int n = 0;
   for (int i = 0; i < MAXE; i++) if (W.e[i].used && W.e[i].st != S_DEAD) n++;
   d_enemies = n;
+  { int k = 0; for (int i = 0; i < MAXE && k < 8; i++) if (W.e[i].used) { d_ex[k][0] = W.e[i].x; d_ex[k][1] = W.e[i].z; d_ex[k][2] = (float)W.e[i].st; d_ex[k][3] = (float)W.e[i].token * 100 + (float)W.e[i].cd; k++; } for (; k < 8; k++) memset(d_ex[k], 0, sizeof d_ex[k]); }
   d_boss_hp = (W.boss_active && W.boss_idx >= 0 && W.e[W.boss_idx].used) ? (int)W.e[W.boss_idx].hp : 0;
   for (int i = 0; i < MAXP; i++) d_hp[i] = W.p[i].used ? W.p[i].hp : 0, d_px[i] = W.p[i].x, d_states[i] = W.p[i].used ? (int)W.p[i].st : -1;
 }

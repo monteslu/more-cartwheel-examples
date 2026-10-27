@@ -1,0 +1,12 @@
+[
+  {
+    "name": "brawler-brawl",
+    "note": "brawler_auto: three bots fight stage 1 for 1200 ticks. Fields are state the bots must have caused: fighters moved, enemies came on and were hit, the camera held its lock.",
+    "app": "brawler_auto",
+    "frames": 1200,
+    "expect": { "game.players": 3, "game.stage": 0, "game.phase": 0 },
+    "atLeast": { "game.score": 100, "game.ticks": 1000 },
+    "screenshot": { "min_colors": 400 },
+    "control": { "frames": 5 }
+  }
+]

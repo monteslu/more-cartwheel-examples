@@ -5,10 +5,10 @@
 [node name="Env" parent="." type="WorldEnvironment"]
 background = color(0.05, 0.04, 0.09, 1)
 ambient_color = color(0.55, 0.5, 0.7, 1)
-ambient_energy = 0.35
+ambient_energy = 0.1
 sky_color = color(0.25, 0.22, 0.4, 1)
 ground_color = color(0.08, 0.07, 0.07, 1)
-hemi_energy = 0.4
+hemi_energy = 0.22
 fog_mode = EXP
 fog_color = color(0.12, 0.1, 0.18, 1)
 fog_density = 0.012
@@ -23,7 +23,7 @@ aa = FXAA
 vignette = true
 vignette_intensity = 0.3
 tonemap = AGX
-exposure_ev = 0.4
+exposure_ev = 0.0
 
 [node name="Lighting" parent="." type="LightingSettings"]
 mode = "CLUSTERED"
@@ -36,10 +36,17 @@ energy = 2.2
 shadow = true
 shadow_extent = 16
 
+[node name="Rim" parent="." type="DirectionalLight3D"]
+position = vec3(0, 8, -8)
+rotation = vec3(-0.5, 3.14159, 0)
+color = color(0.5, 0.7, 1, 1)
+energy = 1.2
+shadow = false
+
 [node name="Camera" parent="." type="Camera3D"]
-position = vec3(0, 4.7, 9.2)
-rotation = vec3(-0.37, 0, 0)
-fov = 42
+position = vec3(0, 3.9, 7.7)
+rotation = vec3(-0.3, 0, 0)
+fov = 40
 near = 0.3
 far = 150
 

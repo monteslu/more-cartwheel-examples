@@ -171,8 +171,8 @@ static void crowd_setup(void) {
   if (navm.id) crowd = cw_crowd_new(navm, MAXE + MAXP);
   else cw_error("brawler: navmesh build failed");
 }
-static int agent_add(float x, float z, float speed, bool is_player) {
-  if (!crowd.id) return -1;
+static uint64_t agent_add(float x, float z, float speed, bool is_player) {
+  if (!crowd.id) return 0;
   cw_crowd_agent_params p = cw_crowd_agent_params_default();
   p.radius = 0.38f;
   p.max_speed = speed;
@@ -183,9 +183,9 @@ static int agent_add(float x, float z, float speed, bool is_player) {
   p.arrive_dist = 0.1f;
   p.slowdown_dist = 0.3f;
   p.avoidance_priority = is_player ? 0.0f : 0.5f;
-  return (int)cw_crowd_add(crowd, (t3_vec3){ x, 0, z }, &p).id;
+  return cw_crowd_add(crowd, (t3_vec3){ x, 0, z }, &p).id;
 }
-static cw_crowd_agent AG(int id) { cw_crowd_agent a = { .id = (uint32_t)id }; return a; }
+static cw_crowd_agent AG(uint64_t id) { cw_crowd_agent a = { .id = id }; return a; }
 
 /* ── spawning ───────────────────────────────────────────────────────── */
 static void ent_init(ent *e, int def, bool player, float x, float z) {
@@ -211,7 +211,7 @@ int ent_spawn_enemy(int def, float x, float z) {
   return -1;
 }
 static void ent_remove(ent *e) {
-  if (e->agent >= 0 && crowd.id) cw_crowd_remove(crowd, AG(e->agent));
+  if (e->agent && crowd.id) cw_crowd_remove(crowd, AG(e->agent));
   if (e->token) W.tokens_out--;
   char_free(e);
   e->used = false;
@@ -608,6 +608,12 @@ static void player_update(int pi, const inputs *in) {
   }
   default: e->st = S_IDLE; break;
   }
+  for (int k = 0; k < W.players; k++) { /* fighters do not stand inside each other */
+    const ent *o = &W.p[k];
+    if (k == pi || !o->used || o->st == S_DEAD) continue;
+    float dx = e->x - o->x, dz = e->z - o->z, d2 = dx * dx + dz * dz;
+    if (d2 < 0.2f) { float d = sqrtf(d2) + 0.001f; e->x += dx / d * 0.02f; e->z += dz / d * 0.02f; if (d2 < 0.0001f) e->z += (pi > k ? 0.03f : -0.03f); }
+  }
   arena_clamp(e);
 }
 
@@ -680,7 +686,7 @@ static void enemy_update(int ei) {
   }
   default: {
     int ti = nearest_player(e);
-    if (ti < 0) { e->st = S_IDLE; char_play(e, "idle", 0.2f); if (e->agent >= 0 && crowd.id) cw_crowd_set_velocity(crowd, AG(e->agent), (t3_vec3){ 0, 0, 0 }); break; }
+    if (ti < 0) { e->st = S_IDLE; char_play(e, "idle", 0.2f); if (e->agent && crowd.id) cw_crowd_set_velocity(crowd, AG(e->agent), (t3_vec3){ 0, 0, 0 }); break; }
     ent *p = &W.p[ti];
     float side = (e->x < p->x) ? -1.0f : 1.0f; /* the side it is already on */
     float dx = p->x - e->x, dz = p->z - e->z;
@@ -700,7 +706,7 @@ static void enemy_update(int ei) {
       tz = p->z + ((float)(e->slot % 5) - 2.0f) * 0.55f;
     }
     tz = clampf(tz, -LANE_Z + 0.2f, LANE_Z - 0.2f);
-    if (crowd.id && e->agent >= 0) {
+    if (crowd.id && e->agent) {
       e->thinkt++;
       if (e->thinkt % 6 == 0) cw_crowd_set_target(crowd, AG(e->agent), (t3_vec3){ tx, 0, tz });
     }
@@ -710,7 +716,7 @@ static void enemy_update(int ei) {
     e->st = arrived ? S_IDLE : S_WALK;
     char_play(e, arrived ? "idle" : (d->speed > 2.4f ? "run" : "walk"), 0.15f);
     if (e->token && absf(dx) < reach + 0.15f && absf(dz) < 0.45f && e->cd == 0) {
-      if (e->agent >= 0 && crowd.id) cw_crowd_clear_target(crowd, AG(e->agent));
+      if (e->agent && crowd.id) cw_crowd_clear_target(crowd, AG(e->agent));
       e->cd = 0;
       enemy_pick_attack(e);
     } else if (e->token && e->def == D_RUNNER && absf(dz) < 0.35f && absf(dx) > 3.0f && absf(dx) < 5.5f) {
@@ -821,10 +827,10 @@ void sim_tick(const inputs *in) {
 
   /* positions into the crowd: bodies not driven by it */
   if (crowd.id) {
-    for (int i = 0; i < MAXP; i++) if (W.p[i].used && W.p[i].agent >= 0) cw_crowd_set_position(crowd, AG(W.p[i].agent), (t3_vec3){ W.p[i].x, 0, W.p[i].z });
+    for (int i = 0; i < MAXP; i++) if (W.p[i].used && W.p[i].agent) cw_crowd_set_position(crowd, AG(W.p[i].agent), (t3_vec3){ W.p[i].x, 0, W.p[i].z });
     for (int i = 0; i < MAXE; i++) {
       ent *e = &W.e[i];
-      if (e->used && e->agent >= 0 && !(e->st == S_WALK || e->st == S_IDLE)) cw_crowd_set_position(crowd, AG(e->agent), (t3_vec3){ e->x, 0, e->z });
+      if (e->used && e->agent && !(e->st == S_WALK || e->st == S_IDLE)) cw_crowd_set_position(crowd, AG(e->agent), (t3_vec3){ e->x, 0, e->z });
     }
   }
   bool play = W.phase == PH_PLAY;
@@ -842,7 +848,7 @@ void sim_tick(const inputs *in) {
     cw_crowd_step(crowd, 1.0f / TPS);
     for (int i = 0; i < MAXE; i++) {
       ent *e = &W.e[i];
-      if (e->used && e->agent >= 0 && (e->st == S_WALK || e->st == S_IDLE)) {
+      if (e->used && e->agent && (e->st == S_WALK || e->st == S_IDLE)) {
         t3_vec3 p = cw_crowd_position(crowd, AG(e->agent));
         e->x = p.x, e->z = p.z;
       }

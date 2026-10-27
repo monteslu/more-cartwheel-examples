@@ -4,6 +4,6 @@ standard+shadow+l1001
 physical+shadow+l1001
 depth+skin+xcluster
 depth+xcluster
-standard+l1001+xcluster
 standard+shadow+l1001+xcluster
-standard+vcol+skin+l1001+xcluster
+standard+l2001+xcluster
+standard+vcol+skin+l2001+xcluster

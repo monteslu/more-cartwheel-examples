@@ -118,9 +118,11 @@ void level_build(int stage) {
   cw_node_set(env, "background", cw_val_color(th->sky[0], th->sky[1], th->sky[2], 1));
   cw_node_set(env, "ambient_color", cw_val_color(th->ambient[0], th->ambient[1], th->ambient[2], 1));
   cw_node_set(env, "ambient_energy", cw_val_float(th->amb_e));
+  cw_node rim = cw_node_get(tree_root(), "Rim");
+  cw_node_set(rim, "color", cw_val_color(th->glow[0] * 0.6f + 0.3f, th->glow[1] * 0.6f + 0.3f, th->glow[2] * 0.6f + 0.4f, 1));
   cw_node sun = cw_node_get(tree_root(), "Sun");
   cw_node_set(sun, "color", cw_val_color(th->sun[0], th->sun[1], th->sun[2], 1));
-  cw_node_set(sun, "energy", cw_val_float(th->sun_e));
+  cw_node_set(sun, "energy", cw_val_float(th->sun_e * 0.85f));
   cw_node3d_set_rotation(sun, (t3_vec3){ th->sun_rot[0], th->sun_rot[1], 0 });
   /* ground: asphalt road, raised pavement behind */
   mesh(s, "BOX", (t3_vec3){ len * 0.5f, -0.15f, 0.8f }, (t3_vec3){ len + 50, 0.3f, 8.4f }, th->ground, 0.85f, 0.0f);
@@ -133,14 +135,14 @@ void level_build(int stage) {
   int bi = 0;
   for (float x = -14; x < len + 20; x += 5.8f, bi++) {
     float h = 5.0f + hf(bi, stage) * 7.0f;
-    const float *c = th->wall[bi % 3];
+    float c[3] = { th->wall[bi % 3][0] * 0.55f, th->wall[bi % 3][1] * 0.55f, th->wall[bi % 3][2] * 0.55f };
     mesh(s, "BOX", (t3_vec3){ x, h * 0.5f, -7.4f - hf(bi, 9) * 1.2f }, (t3_vec3){ 5.5f, h, 3.0f }, c, 0.8f, 0);
     for (int wy = 0; wy < (int)(h / 1.7f); wy++)
       for (int wx = 0; wx < 3; wx++) {
         if (hf(bi * 31 + wy * 7 + wx, stage + 3) < 0.45f) continue;
         float wc[3] = { th->glow[0], th->glow[1], th->glow[2] };
         cw_node w = mesh(s, "BOX", (t3_vec3){ x - 1.8f + (float)wx * 1.8f, 1.7f + (float)wy * 1.6f, -5.88f - hf(bi, 9) * 1.2f }, (t3_vec3){ 0.8f, 0.9f, 0.06f }, wc, 0.3f, 0);
-        glow(w, wc, 2.5f);
+        glow(w, wc, 1.1f);
       }
   }
   /* lamp posts with a light each */
@@ -257,8 +259,8 @@ void level_camera(float dt) {
     float a = W.shake_amp * (float)W.shake / 10.0f;
     shx = (hf(W.tick, 1) - 0.5f) * a * 2, shy = (hf(W.tick, 2) - 0.5f) * a * 2;
   }
-  cw_node3d_set_position(cam, (t3_vec3){ W.cam_x + shx, 4.7f + shy, 9.2f });
-  cw_node3d_set_rotation(cam, (t3_vec3){ -0.37f, 0, 0 });
+  cw_node3d_set_position(cam, (t3_vec3){ W.cam_x + shx, 3.9f + shy, 7.7f });
+  cw_node3d_set_rotation(cam, (t3_vec3){ -0.3f, 0, 0 });
   cw_node sun = cw_node_get(tree_root(), "Sun");
   cw_node3d_set_position(sun, (t3_vec3){ W.cam_x + 6, 10, 4 });
 }

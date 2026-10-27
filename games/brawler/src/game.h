@@ -56,7 +56,7 @@ typedef struct ent {
   int knees;
   cw_node root, model, anim, wnode;
   const char *clipname;
-  int agent;
+  uint64_t agent;
   int fade;
   float hurtflash;
   bool hitflag;
