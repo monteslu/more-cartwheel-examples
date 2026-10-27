@@ -315,7 +315,6 @@ static void on_background(cw_shell_screen s, cw_vec2 canvas, void *user) {
   stage_begin();
   if (!G_hub_live) ui_backdrop(G.clock, cw_rgba(0.12f, 0.1f, 0.35f, 1), cw_rgba(0.45f, 0.18f, 0.5f, 1));
   else ui_vignette(1.4f);
-  if (s == CW_SHELL_TITLE) ui_title("PARTY PACK", cw_v2(STAGE_W / 2, 110), 120, G.clock);
   stage_end();
 }
 static void on_screen(cw_shell_screen from, cw_shell_screen to, void *user) {
@@ -731,6 +730,7 @@ static void init(void *user) {
   SV = cw_shell_game_save();
   for (int i = 0; i < MG_N; i++) if (MG_LIST[i]->unlock_points == 0) SV->unlocked |= 1u << i;
   sfx_init();
+  load_scene(NULL); /* the 3D hub behind the title and join screens */
   cw_debug_i32("game.state", &G.state);
   cw_debug_i32("game.round", &G.round);
   cw_debug_i32("game.mg", &G.cur);

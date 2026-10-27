@@ -338,8 +338,8 @@ void ui_title(const char *s, cw_vec2 p, float size, float t) {
       one[0] = s[i];
       char pre[64];
       memcpy(pre, s, (size_t)i);
-      pre[i] = 0;
-      float lx = x + ui_text_w(pre, size);
+      pre[i] = '|'; pre[i + 1] = 0;          /* a trailing space is not measured: end the prefix on a bar and subtract it */
+      float lx = x + ui_text_w(pre, size) - ui_text_w("|", size);
       float bob = sinf(t * 3.0f + (float)i * 0.6f) * size * 0.04f;
       cw_color c = PCOL[i % 4];
       cw_color top = col_mix(c, cw_rgba(1, 1, 1, 1), 0.35f);
