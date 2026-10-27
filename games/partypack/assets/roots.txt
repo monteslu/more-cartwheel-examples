@@ -2,3 +2,5 @@
 # (no third-party content).
 project.cwproj
 scenes/hub.cwscene
+scenes/blast.cwscene
+scenes/raft.cwscene

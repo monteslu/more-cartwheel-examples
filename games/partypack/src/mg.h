@@ -151,5 +151,10 @@ void n3_rot(cw_node n, float rx, float ry, float rz);
 void n3_scale(cw_node n, float x, float y, float z);
 cw_vec2 n3_project(t3_vec3 world);      /* a world point on the stage (for labels over 3D) */
 void n3_camera(float px, float py, float pz, float tx, float ty, float tz);
+/* one-shot effects (GPU particles and a light flash) that remove themselves */
+void n3_fx_reset(void);
+void n3_fx(const char *kind, t3_vec3 pos, float scale); /* "fire" "smoke" "sparks" "splash" "dust" */
+void n3_flash(t3_vec3 pos, cw_color c, float energy, float range);
+void n3_fx_tick(void);
 
 #endif

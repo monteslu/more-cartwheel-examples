@@ -14,6 +14,7 @@
  * Debug fields: game.state game.round game.mg game.tick game.score[4]
  * game.points[4] game.hash game.points_total game.unlocked */
 #include "mg.h"
+#include <stdlib.h>
 
 #include "cartwheel/platform.h"
 #include "cartwheel/project.h"
@@ -24,7 +25,7 @@ int MG_N;
 const mg_def *MG_LIST[MG_MAX];
 static void register_games(void) {
   static const mg_def *all[] = {
-    &mg_dodge, &mg_memory, &mg_beat, &mg_quiz,
+    &mg_dodge, &mg_memory, &mg_beat, &mg_quiz, &mg_blast, &mg_raft,
   };
   MG_N = (int)(sizeof all / sizeof all[0]);
   for (int i = 0; i < MG_N; i++) MG_LIST[i] = all[i];
@@ -286,6 +287,8 @@ static void on_start(int players, void *user) {
   SV->unlocked = ~0u;
   SV->rounds_opt = 0;
   start_tournament();
+  { const char *only = getenv("PP_GAME"); /* a single game on repeat, for screenshots and probes */
+    if (only) for (int i = 0; i < MG_N; i++) if (!strcmp(MG_LIST[i]->id, only)) for (int k = 0; k < G.rounds; k++) G.order[k] = i; }
 #endif
 }
 static void on_quit(void *user) {
