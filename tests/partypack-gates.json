@@ -36,7 +36,9 @@
       ],
       "maxGt16": 0.01,
       "vsGl": 0.05
-    }
+    },
+    "controlFrames": 1800,
+    "note": "the autopilot tournament at frame 2400 (the board after round 2); control: frame 1800, an earlier point of the same run, whose state and picture must differ (one frame short sits on the same still board under the WebGPU bound)"
   },
   {
     "name": "partypack-menu",
