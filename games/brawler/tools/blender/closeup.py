@@ -1,7 +1,7 @@
 # Close-up renders of one character's face or hand at one clip time, from several angles, in one contact sheet row
 # (CPU path tracing, no GPU use). Checks the sculpted faces, expressions and hand poses.
 # flatpak run --filesystem=home org.blender.Blender --background --factory-startup --python <abs>/closeup.py -- \
-#   <models dir> <out.png> <name> <clip> <fraction 0..1> <size px> <target: head|handL|handR> <yaw degrees,...> [clay]
+#   <models dir> <out.png> <name> <clip> <fraction 0..1> <size px> <target: head|handL|handR|legs|body> <yaw degrees,...> [clay]
 import bpy, sys, math, os
 from mathutils import Vector
 
@@ -29,10 +29,14 @@ if len(argv) > 8 and argv[8] == 'clay':  # every material grey: shows the geomet
     for o in bpy.data.objects:
         if o.type == 'MESH':
             for sl in o.material_slots: sl.material = clay
-bone = {'head': 'Head', 'handL': 'HandL', 'handR': 'HandR'}[target]
+bone = {'head': 'Head', 'handL': 'HandL', 'handR': 'HandR', 'legs': 'Hips', 'body': 'Spine'}[target]
 pb = arm.pose.bones[bone]
 m = arm.matrix_world @ pb.matrix
-if target == 'head':
+if target in ('legs', 'body'):  # the legs and crotch (leg webbing, coat skirts) or the whole figure
+    hips = arm.matrix_world @ pb.head
+    focus = hips + Vector((0, 0, -0.35 if target == 'legs' else 0.05))
+    dist, lens = (2.9, 50) if target == 'legs' else (3.6, 50)
+elif target == 'head':
     focus = (arm.matrix_world @ pb.head) + Vector((0, 0, 0.14))
     dist, lens = 0.95, 85
 else:
