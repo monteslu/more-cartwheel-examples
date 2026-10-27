@@ -4,9 +4,6 @@
     "app": "partypack_auto",
     "assets": "games/partypack/assets",
     "frames": 2400,
-    "hosts": [
-      "native"
-    ],
     "minColors": 100,
     "fields": [
       "game.state",
@@ -26,9 +23,6 @@
     "frames": 140,
     "input": "partypack-menu.json",
     "controlInput": "partypack-menu-control.json",
-    "hosts": [
-      "native"
-    ],
     "minColors": 50,
     "expect": {
       "shell.screen": 3,
