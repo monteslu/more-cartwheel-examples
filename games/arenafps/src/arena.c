@@ -454,6 +454,17 @@ static void spawn_nook(float sx, float sz, float half, float d, float y0, float 
   }
 }
 
+/* lane walls: each arena's long straight lanes (round the walls, across the middle) were open end to end, so every fighter saw
+ * most others most of the time (tools/pacing.mjs: an enemy in sight 60 to 90 percent of the time, an encounter every 4 to 6 s).
+ * A wall across the middle of each outer lane, with a gap on the inner side, splits a lane into two. */
+static void lane_walls(float half, float from, float y0, float h) {
+  float len = half - from, c = from + len / 2;
+  block(0, y0, -c, 0.6f, h, len, K_WALL);
+  block(0, y0, c, 0.6f, h, len, K_WALL);
+  block(-c, y0, 0, len, h, 0.6f, K_WALL);
+  block(c, y0, 0, len, h, 0.6f, K_WALL);
+}
+
 static void level_foundry(const palette *p) {
   const float H = 28;
   shell_walls(H, 9, K_WALL, K_FLOOR, p->trim);
@@ -521,6 +532,14 @@ static void level_foundry(const palette *p) {
   solid_prop("console", 0, 3.0f, -5.5f, 0, 1, 1, 1, 0.9f, 1.1f, 0.5f);
   solid_prop("console", 0, 3.0f, 5.5f, 3.14159265f, 1, 1, 1, 0.9f, 1.1f, 0.5f);
   for (int i = 0; i < 4; i++) spawn_nook((i & 1) ? 1 : -1, (i & 2) ? 1 : -1, H, 8, 0, 4.5f, i == 0 || i == 3);
+  lane_walls(H, 24, 0, 4.5f);
+  /* screens round the deck (each side two, the ramp between them): the deck no longer sees the outer ring */
+  for (int s = -1; s <= 1; s += 2) {
+    block(-8, 0, s * 14.0f, 10, 4, 0.6f, K_WALL);
+    block(8, 0, s * 14.0f, 10, 4, 0.6f, K_WALL);
+    block(s * 14.0f, 0, -8, 0.6f, 4, 10, K_WALL);
+    block(s * 14.0f, 0, 8, 0.6f, 4, 10, K_WALL);
+  }
   item_at(ITEM_ROCKET, 0, 3.4f, 0);
   item_at(ITEM_RAIL, 0, 0.5f, -22);
   item_at(ITEM_SCATTER, 0, 0.5f, 22);
@@ -631,6 +650,13 @@ static void level_courtyard(const palette *p) {
   item_at(ITEM_HEALTH, 8, 0.5f, 0);
   item_at(ITEM_AMMO, 22, 0.5f, 0);
   item_at(ITEM_AMMO, -22, 0.5f, 0);
+  lane_walls(H, 24, 0, 4);
+  /* the cross of lanes between the buildings ran 60 m end to end: staggered baffles at abs 20 (past the building corners),
+   * each closing two thirds of the lane, the gaps on opposite sides */
+  block(-2.5f, 0, -21, 11, 4, 0.6f, K_WALL);
+  block(2.5f, 0, 21, 11, 4, 0.6f, K_WALL);
+  block(21, 0, -2.5f, 0.6f, 4, 11, K_WALL);
+  block(-21, 0, 2.5f, 0.6f, 4, 11, K_WALL);
 }
 
 static void level_terraces(const palette *p) {
@@ -698,15 +724,30 @@ static void level_terraces(const palette *p) {
   floodlight(H - 0.2f, 8.2f, 0, 1.5708f, p->accent, 130);
   accent_light(0, 2.4f, 0, 0.2f, 0.85f, 0.8f, 60, 18);
   for (int i = 0; i < 4; i++) spawn_nook((i & 1) ? 1 : -1, (i & 2) ? 1 : -1, H, 7, t2, 3.6f, true);
+  lane_walls(H, 20.5f, t2, 3.6f);
+  /* a parapet 1 m high along the rim's inner edge (a 5 m gap in the middle of each side to drop into the pit): the rim and the
+   * pit no longer see each other end to end, only near the edge */
+  for (int s = -1; s <= 1; s += 2)
+    for (int k = -1; k <= 1; k += 2) {
+      block(k * 9.0f, t2, s * 16.3f, 13, 1.0f, 0.4f, K_WALL);
+      block(s * 16.3f, t2, k * 9.0f, 0.4f, 1.0f, 13, K_WALL);
+    }
+  /* in the pit, each island gets two 3.5 m walls on the sides facing the bridges: the pit splits into four rooms that see each
+   * other only along the bridges */
+  for (int i = 0; i < 4; i++) {
+    float sx = (i & 1) ? 1 : -1, sz = (i & 2) ? 1 : -1;
+    block(sx * 9, 0, sz * 4.6f, 4, 3.5f, 0.6f, K_WALL);
+    block(sx * 4.6f, 0, sz * 9, 0.6f, 3.5f, 4, K_WALL);
+  }
   item_at(ITEM_ROCKET, 0, 2.3f, 0);
-  item_at(ITEM_RAIL, 0, 3.0f, -22);
+  item_at(ITEM_RAIL, 0, 3.0f, -18.5f); /* in front of the lane wall */
   item_at(ITEM_SCATTER, 9, 1.5f, 9);
   item_at(ITEM_SCATTER, -9, 1.5f, -9);
-  item_at(ITEM_ARMOR, 0, 3.0f, 22);
+  item_at(ITEM_ARMOR, 0, 3.0f, 18.5f);
   item_at(ITEM_HEALTH, 9, 1.5f, -9);
   item_at(ITEM_HEALTH, -9, 1.5f, 9);
-  item_at(ITEM_HEALTH, -22, 3.0f, 0);
-  item_at(ITEM_HEALTH, 22, 3.0f, 0);
+  item_at(ITEM_HEALTH, -18.5f, 3.0f, 0);
+  item_at(ITEM_HEALTH, 18.5f, 3.0f, 0);
   item_at(ITEM_AMMO, 0, 1.2f, 10);
   item_at(ITEM_AMMO, 0, 1.2f, -10);
 }

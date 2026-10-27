@@ -204,6 +204,8 @@ static void spawn_fighter(fighter *f) {
   f->alive = true;
   f->dead_ticks = 0;
   f->spawn_guard = 120;
+  f->retreat = 0;
+  f->hold = 0;
   f->since_spawn = 0;
   f->first_dmg_tick = -1;
   f->seen_cool = 0;
@@ -555,6 +557,12 @@ static void bot_think(fighter *f, int idx) {
   }
   /* goal: fight, or fetch something */
   bool see = best >= 0;
+  if (see) f->hold = 0;
+  else if (f->hold == 0 && v3len(v3sub(f->goal, f->mv.position)) < 2.0f && cw_rng_int(&G.rng, 0, 1)) {
+    /* at a goal with nobody in sight: hold the spot a moment and look round, as a person does, before the next errand */
+    f->hold = 60 + cw_rng_int(&G.rng, 0, 120);
+  }
+  if (f->hp >= 60) f->retreat = 0;
   if (!see) {
     float bs = 0;
     int bi = -1;
@@ -578,9 +586,9 @@ static void bot_think(fighter *f, int idx) {
     if (f->last_pos.x != 0 || f->last_pos.z != 0) {
       if (f->target < 0 && f->wander_wait++ < 240 && bi < 0) bi = -2;
     }
-    /* hunt: co-op bots (both sides) go after the nearest enemy, and any bot that has seen no enemy for 12 s goes looking
+    /* hunt: co-op bots (both sides) go after the nearest enemy, and any bot that has seen no enemy for 20 s goes looking
      * (the longest stretch without an encounter stays short); only a pressing need (health, a power weapon) comes first */
-    if ((G.mode == MODE_COOP || f->alive_t - f->saw_t > 12 * 60) && (bi < 0 || bs < 0.12f)) {
+    if ((G.mode == MODE_COOP || f->alive_t - f->saw_t > 20 * 60) && (bi < 0 || bs < 0.12f)) {
       float hd = 1e9f;
       int hi = -1;
       for (int i = 0; i < G.nf; i++) {
@@ -611,7 +619,21 @@ static void bot_think(fighter *f, int idx) {
       }
     }
     if (v3len(v3sub(g, f->goal)) > 0.5f) bot_set_goal(f, g);
-  } else {
+  } else if (f->hp < 40 && f->retreat == 0) {
+    /* hurt in a fight: break off toward the nearest health (away from the enemy when there is none), as players do; a fight
+     * that ends this way is not a kill, so lives last longer and encounters spread out */
+    int hi = -1;
+    float hd = 1e9f;
+    for (int i = 0; i < A.nitems; i++) {
+      const item *it = &A.items[i];
+      if (it->kind != ITEM_HEALTH || it->respawn > 0) continue;
+      float d = v3len(v3sub(it->pos, f->mv.position));
+      if (d < hd) hd = d, hi = i;
+    }
+    t3_vec3 away = v3add(f->mv.position, v3scale(v3norm(v3sub(f->mv.position, F(best)->mv.position)), 12));
+    bot_set_goal(f, hi >= 0 ? A.items[hi].pos : away);
+    f->retreat = 150;
+  } else if (f->retreat == 0) {
     /* in a fight: hold a preferred range along the path toward the enemy when far */
     fighter *t = F(f->target);
     float dist = v3len(v3sub(t->mv.position, f->mv.position));
@@ -683,7 +705,16 @@ static void bot_tick(fighter *f, int idx) {
       }
     }
   }
-  if (see) {
+  if (f->retreat > 0) f->retreat--;
+  if (see && f->retreat > 0) {
+    /* breaking off: run the path, firing only when the enemy happens to be in front */
+    bot_follow(f, &fwd, &strafe, 1.0f);
+    if (f->npath > 0 && f->pidx < f->npath) {
+      t3_vec3 w = f->path[f->pidx];
+      float ty = cw_atan2(-(w.x - f->mv.position.x), -(w.z - f->mv.position.z));
+      f->yaw += cw_clampf(cw_wrap_angle(ty - f->yaw), -5.0f * TICK_DT, 5.0f * TICK_DT);
+    }
+  } else if (see) {
     /* strafe while fighting, close or open the range */
     if (--f->strafe_t <= 0) {
       f->strafe_t = 30 + cw_rng_int(&G.rng, 0, 50);
@@ -708,6 +739,9 @@ static void bot_tick(fighter *f, int idx) {
     f->pitch += cw_clampf(dp, -rate, rate);
     if (f->react > 0) f->react--;
     else if (fabsf(dy) < 0.06f + (1 - f->skill) * 0.06f && f->cooldown == 0) do_fire(f, idx);
+  } else if (f->hold > 0) {
+    f->hold--;
+    f->yaw += 1.2f * TICK_DT * ((idx & 1) ? 1 : -1);
   } else {
     bot_follow(f, &fwd, &strafe, 1.0f);
     /* look where we go */
@@ -989,13 +1023,10 @@ static float bot_skill(float s) {
   return s;
 }
 
-/* the bot count the AUTO setting fills in: the arenas play best with five or six fighters (an encounter every 8 to 20 s, see
- * tools/pacing.mjs), so one or two people get three bots, three or four people get two (team deathmatch rounds up to even teams) */
-static int auto_bots(void) {
-  int b = G.players <= 2 ? 3 : 2;
-  if (G.mode == MODE_TDM && ((G.players + b) & 1)) b++;
-  return b;
-}
+/* the bot count the AUTO setting fills in: four fighters in all (bots fill the empty seats, none with four people). Measured with
+ * tools/pacing.mjs: with six to nine fighters every fighter had an enemy in sight most of the time and met one every 4 to 7 s;
+ * four keep the arenas' lanes quiet between fights (and the teams even in team deathmatch) */
+static int auto_bots(void) { return CW_MAX(0, 4 - G.players); }
 
 static void setup_fighters(void) {
   G.nf = 0;
@@ -1225,6 +1256,12 @@ static void sync_nodes(void) {
     G.dmg_flash[h] *= 0.93f;
     G.kill_flash[h] *= 0.965f;
   }
+#ifdef ARENA_AUTOPILOT
+  if (getenv("ARENA_TOPDOWN")) { /* ARENA_TOPDOWN: view 1 looks straight down on the arena (layout checks) */
+    cw_node3d_set_position(G.cam[0], v3(0, 62, 0.01f));
+    cw_node3d_look_at(G.cam[0], v3(0, 0, 0), v3(0, 0, -1));
+  }
+#endif
 }
 
 /* the view hook: each view shows its own gun and hides its own body */

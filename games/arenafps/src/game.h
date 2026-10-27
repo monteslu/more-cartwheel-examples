@@ -169,6 +169,8 @@ typedef struct fighter {
   t3_vec3 last_pos;
   float aim_err_yaw, aim_err_pitch;
   int wander_wait;
+  int retreat;           /* ticks left breaking off a fight */
+  int hold;              /* ticks it holds a spot before the next errand */
   int saw_t;             /* alive_t when it last saw an enemy */
   t3_vec3 hunt;          /* where the enemy it hunts was */
   /* playtest measurements (not part of the simulation) */

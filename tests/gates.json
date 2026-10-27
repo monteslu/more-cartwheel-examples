@@ -198,7 +198,7 @@
         "chromium"
       ]
     },
-    "note": "arenafps_auto: four seats and the AUTO bot count (two) play Foundry deathmatch by themselves for 20 seconds. The simulation (movers, navmesh paths, shots, rockets, pickups) must give the same state on every host, so fighters.pos, scores and the state hash are compared exactly; pixels within the usual tolerance (particles, decals). Control: one frame short."
+    "note": "arenafps_auto: four seats (the AUTO bot count adds none) play Foundry deathmatch by themselves for 20 seconds. The simulation (movers, navmesh paths, shots, rockets, pickups) must give the same state on every host, so fighters.pos, scores and the state hash are compared exactly; pixels within the usual tolerance (particles, decals). Control: one frame short."
   },
   {
     "name": "arenafps-screenshot",
