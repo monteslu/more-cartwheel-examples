@@ -348,8 +348,8 @@ static void blast(t3_vec3 at, float r, bool big) {
   int si = FX.nsc++ % SCORCH;
   set_decal(FX.scorch[si], at, r * (big ? 1.7f : 1.4f), rnd() * 6.28f);
   FX.scorch_a[si] = 0.9f;
-  set_decal(FX.glow[si], at, r * (big ? 1.5f : 1.2f), rnd() * 6.28f);
-  FX.glow_a[si] = big ? 1.0f : 0.6f;
+  set_decal(FX.glow[si], at, r * (big ? 0.9f : 0.7f), rnd() * 6.28f);
+  FX.glow_a[si] = big ? 0.35f : 0.2f;
 }
 
 void fx_events(sim *s) {
@@ -484,7 +484,7 @@ void fx_tick(const sim *s) {
     }
   for (int i = 0; i < SCORCH; i++)
     if (FX.glow_a[i] > 0) { /* the ground cools: white-orange, deep red, out over about five seconds */
-      float a = FX.glow_a[i] = FX.glow_a[i] > 0.004f ? FX.glow_a[i] - 0.0033f : 0;
+      float a = FX.glow_a[i] = FX.glow_a[i] > 0.004f ? FX.glow_a[i] - 0.0012f : 0;
       float c = a * a;
       cw_node_set(FX.glow[i], "color", cw_val_color(1.0f * a, 0.38f * c + 0.05f * a * a * a, 0.06f * c * c, a * 0.8f));
     }

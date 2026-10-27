@@ -141,7 +141,7 @@ def make_runner():
     M = Model()
     hz = 0.62
     humanoid_rig(M, hz, 0.34, 0.34, 0.42, 0.18, 0.34, 0.38, 0.2, 0.1)
-    hide = (0.62, 0.3, 0.24); belly = (0.78, 0.55, 0.42); bone_c = (0.92, 0.86, 0.7); eye = (5.0, 4.0, 0.5); claw = (0.95, 0.9, 0.78)
+    hide = (0.3, 0.17, 0.24); belly = (0.62, 0.42, 0.4); bone_c = (0.92, 0.86, 0.7); eye = (5.0, 4.0, 0.5); claw = (0.95, 0.9, 0.78)
     torso_w = lambda p: {"hips": 1 - smoothstep(hz + 0.02, hz + 0.2, p.z), "spine": smoothstep(hz + 0.02, hz + 0.2, p.z) * (1 - smoothstep(hz + 0.22, hz + 0.38, p.z)), "chest": smoothstep(hz + 0.22, hz + 0.38, p.z)}
     M.ell("spine", (0, 0, hz + 0.2), (0.17, 0.14, 0.26), hide, w=torso_w, seg=(8, 6))
     M.ell("chest", (0, -0.05, hz + 0.34), (0.2, 0.17, 0.17), belly, seg=(8, 6))
@@ -179,7 +179,7 @@ def make_brute():
     M = Model()
     hz = 0.95
     humanoid_rig(M, hz, 0.5, 0.5, 0.75, 0.2, 0.45, 0.5, 0.5, 0.22)
-    hide = (0.36, 0.17, 0.15); plate = (0.55, 0.5, 0.45); bone_c = (0.9, 0.84, 0.7); eye = (5.0, 1.2, 0.4); dark = (0.12, 0.08, 0.08)
+    hide = (0.2, 0.12, 0.17); plate = (0.5, 0.48, 0.5); bone_c = (0.9, 0.84, 0.7); eye = (5.0, 1.2, 0.4); dark = (0.12, 0.08, 0.08)
     torso_w = lambda p: {"hips": 1 - smoothstep(hz + 0.05, hz + 0.3, p.z), "spine": smoothstep(hz + 0.05, hz + 0.3, p.z) * (1 - smoothstep(hz + 0.35, hz + 0.6, p.z)), "chest": smoothstep(hz + 0.35, hz + 0.6, p.z)}
     M.ell("spine", (0, 0, hz + 0.38), (0.4, 0.3, 0.42), hide, w=torso_w, seg=(10, 8))
     M.ell("chest", (0, 0.0, hz + 0.62), (0.52, 0.34, 0.3), hide, seg=(10, 7))

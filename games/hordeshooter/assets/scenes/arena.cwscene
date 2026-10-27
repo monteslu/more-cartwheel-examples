@@ -8,7 +8,7 @@ time_of_day = 17.6
 latitude = 40
 declination = 12
 north = 30
-sun_energy = 8
+sun_energy = 6
 sky_energy = 0.7
 mie = 2.2
 sun_disk_intensity = 1.5
@@ -19,7 +19,7 @@ env_update_angle = 2
 ; the masts and the crowd reach across the whole yard
 [node name="Sun" parent="." type="DirectionalLight3D"]
 position = vec3(-26, 17, -10)
-color = color(1, 0.62, 0.34, 1)
+color = color(1, 0.72, 0.5, 1)
 shadow = true
 shadow_cascades = 3
 shadow_distance = 78
@@ -47,7 +47,7 @@ hemi_energy = 0.4
 
 ; haze that the floodlights and the sun draw into beams
 [node name="Fog" parent="." type="HeightFog"]
-density = 0.011
+density = 0.007
 height_falloff = 0.12
 base_height = 0
 use_sky_color = true
@@ -63,7 +63,7 @@ volumetric_albedo = color(1, 0.84, 0.7, 1)
 
 [node name="Post" parent="." type="PostProcess"]
 tonemap = AGX
-exposure = 1.1
+exposure = 0.85
 bloom = true
 bloom_intensity = 0.14
 bloom_threshold = 1.0
