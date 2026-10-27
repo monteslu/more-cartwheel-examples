@@ -2,7 +2,11 @@
   {
     "name": "coopplatformer-2p",
     "app": "coopplatformer_auto",
-    "webgpu": true,
+    "webgpu": {
+      "vsGl": 0.08,
+      "maxArea": 0.005,
+      "note": "GL and WebGPU filter the generated grass and rock textures differently (mip and anisotropic choice): 5.8 to 6.2% of pixels differ by more than 16, all in textured interiors, state exact on every host; maxArea still catches a surface one backend misses"
+    },
     "frames": 400,
     "fields": [
       "g.tick",
@@ -36,7 +40,11 @@
   {
     "name": "coopplatformer-4p",
     "app": "coopplatformer_auto4",
-    "webgpu": true,
+    "webgpu": {
+      "vsGl": 0.08,
+      "maxArea": 0.005,
+      "note": "GL and WebGPU filter the generated grass and rock textures differently (mip and anisotropic choice): 5.8 to 6.2% of pixels differ by more than 16, all in textured interiors, state exact on every host; maxArea still catches a surface one backend misses"
+    },
     "frames": 400,
     "fields": [
       "g.tick",
@@ -70,7 +78,11 @@
   {
     "name": "coopplatformer-boss",
     "app": "coopplatformer_auto_boss",
-    "webgpu": true,
+    "webgpu": {
+      "vsGl": 0.08,
+      "maxArea": 0.005,
+      "note": "GL and WebGPU filter the generated grass and rock textures differently (mip and anisotropic choice): 5.8 to 6.2% of pixels differ by more than 16, all in textured interiors, state exact on every host; maxArea still catches a surface one backend misses"
+    },
     "frames": 1500,
     "fields": [
       "g.tick",
