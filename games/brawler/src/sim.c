@@ -915,6 +915,25 @@ void sim_tick(const inputs *in) {
     }
   }
   for (int i = 0; i < MAXE; i++) if (W.e[i].used && W.e[i].fade) ent_remove(&W.e[i]);
+  /* bodies the crowd does not steer (fighters, enemies mid attack or hit) never stand inside each other: a soft push
+     apart inside an ellipse 0.75 m along the street and 0.5 m across it, so a fight reads as separate people */
+  {
+    ent *b[MAXP + MAXE];
+    int n = 0;
+    for (int i = 0; i < MAXP + MAXE; i++) {
+      ent *e = i < MAXP ? &W.p[i] : &W.e[i - MAXP];
+      if (!e->used || e->st == S_DEAD || e->st == S_DOWN || e->st == S_FALL || e->st == S_GRAB || e->st == S_GRABBED || e->st == S_THROW || e->st == S_THROWN || e->y > 0.3f) continue;
+      b[n++] = e;
+    }
+    for (int i = 0; i < n; i++) for (int j = i + 1; j < n; j++) {
+      float dx = b[j]->x - b[i]->x, dz = b[j]->z - b[i]->z, q = dx * dx / 0.5625f + dz * dz / 0.25f;
+      if (q >= 1) continue;
+      float d = sqrtf(dx * dx + dz * dz);
+      float ux = d > 1e-4f ? dx / d : 0, uz = d > 1e-4f ? dz / d : (i & 1 ? 1.0f : -1.0f), k = 0.04f * (1 - q);
+      b[i]->x -= ux * k, b[i]->z -= uz * k, b[j]->x += ux * k, b[j]->z += uz * k;
+    }
+    for (int i = 0; i < n; i++) arena_clamp(b[i]);
+  }
   items_update();
 
   /* waves */
