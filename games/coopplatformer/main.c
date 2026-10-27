@@ -13,6 +13,7 @@
 
 #include "cartwheel/audio.h"
 #include "cartwheel/debug.h"
+#include "cartwheel/explosions.h"
 #include "cartwheel/input.h"
 #include "cartwheel/particles.h"
 #include "cartwheel/pipeline.h"
@@ -42,14 +43,23 @@ static struct {
   cw_node plight[MAX_PLAYERS];
   cw_node torch[4];
   cw_node pnode[MAX_PLAYERS];
-  t3_mesh *parts[MAX_PLAYERS][8]; /* body, head, eyeL, eyeR, footL, footR, bubble, ring */
-  cw_node enode[MAX_ENEMIES];
-  t3_mesh *emesh[MAX_ENEMIES][3];
+  t3_mesh *bubble[MAX_PLAYERS];
+  rig *prig[MAX_PLAYERS];
+  cw_node pmodel[MAX_PLAYERS];
+  float yaw[MAX_PLAYERS], runph[MAX_PLAYERS];
+  cw_node enode[MAX_ENEMIES], emodel[MAX_ENEMIES];
+  rig *erig[MAX_ENEMIES];
+  float ephase[MAX_ENEMIES], eyaw[MAX_ENEMIES];
   cw_node coin_node[MAX_COINS];
   t3_mesh *coin_mesh[MAX_COINS];
   cw_node pick_node[MAX_PICKUPS];
   t3_mesh *plat_mesh[MAX_PLATFORMS];
   cw_node fx_dust[MAX_PLAYERS], fx_spark, fx_splash, fx_burst, fx_ember[4], fx_hit;
+  cw_node fog, rim, fvol[8], water3d[16], torchfire[4];
+  cw_node fx_boom, fx_boomsmoke, fx_boomspark, fx_wave, fx_motes, fx_haze[4], fx_bubbles, fx_foam, fx_lavapop[4], fx_debris;
+  bool prev_alive[MAX_ENEMIES];
+  int nwspan, nlspan;
+  float wspan[16][4], lspan[16][4];
   int nember;
   float time;
   float light_x[64], light_y[64], light_r[64], light_g[64], light_b[64], light_e[64], light_range[64];
@@ -71,6 +81,7 @@ static input_state INPUT[MAX_PLAYERS];
 static bool g_map_open;
 static int g_map_sel = -1; /* the flag the map's cursor is on */
 static cw_font g_font;
+static void title_background(cw_shell_screen scr, cw_vec2 cv, void *user);
 static int g_state_dbg, g_players_dbg, g_bubbles_dbg, g_hp_dbg;
 static float g_pos_dbg[2], g_cam_dbg[3];
 static int g_run_ticks;
@@ -124,15 +135,29 @@ static void sfx(int id, float vol) {
 }
 
 /* ── lights, environment, post ────────────────────────────────────── */
-typedef struct mood { float sky[3], fog[3], sun[3], sun_e, amb, hemi, exposure, bloom, fog_near, fog_far, torch; } mood;
+/* a region's whole look: the key light (colour, strength, direction), a rim light from behind, the hemisphere and the
+ * fog (analytic and a volumetric height fog that the key light shines through), exposure and bloom */
+typedef struct mood {
+  float sky[3], fog[3], sun[3], sun_e, amb, hemi, exposure, bloom, fog_near, fog_far, torch;
+  float sun_pitch, sun_yaw, rim[3], rim_e, vden, vamb, vg, vcol[3], grain, ca;
+} mood;
 static const mood MOODS[BIOMES] = {
-  { { 0.32f, 0.58f, 0.95f }, { 0.55f, 0.72f, 0.95f }, { 1.0f, 0.88f, 0.7f }, 3.6f, 0.55f, 1.3f, 1.05f, 0.05f, 60, 420, 0.0f },
-  { { 0.04f, 0.05f, 0.1f }, { 0.05f, 0.07f, 0.14f }, { 0.5f, 0.6f, 1.0f }, 0.5f, 0.12f, 0.25f, 1.35f, 0.08f, 20, 260, 1.0f },
-  { { 0.22f, 0.4f, 0.45f }, { 0.28f, 0.5f, 0.52f }, { 0.9f, 0.95f, 0.8f }, 2.4f, 0.4f, 0.8f, 1.1f, 0.06f, 40, 320, 0.4f },
-  { { 0.25f, 0.06f, 0.04f }, { 0.35f, 0.1f, 0.05f }, { 1.0f, 0.45f, 0.25f }, 1.8f, 0.25f, 0.5f, 1.2f, 0.1f, 30, 280, 0.8f },
+  /* meadow: a warm afternoon, blue shade, soft haze, shafts under the trees */
+  { { 0.32f, 0.58f, 0.95f }, { 0.62f, 0.76f, 0.95f }, { 1.0f, 0.9f, 0.72f }, 4.4f, 0.5f, 1.1f, 1.0f, 0.1f, 80, 520, 0.0f,
+    -0.7f, 0.55f, { 0.55f, 0.75f, 1.0f }, 0.9f, 0.0012f, 0.9f, 0.5f, { 0.85f, 0.92f, 1.0f }, 0.012f, 0.0f },
+  /* caves: cold dark, the torches and crystals are the light, a cyan rim */
+  { { 0.04f, 0.05f, 0.1f }, { 0.04f, 0.06f, 0.13f }, { 0.4f, 0.55f, 1.0f }, 0.4f, 0.14f, 0.35f, 1.7f, 0.2f, 24, 280, 1.0f,
+    -0.9f, 0.2f, { 0.25f, 0.65f, 1.0f }, 1.6f, 0.003f, 0.5f, 0.3f, { 0.3f, 0.5f, 0.9f }, 0.02f, 0.0f },
+  /* ruins: green daylight through broken stone, hard shafts */
+  { { 0.22f, 0.42f, 0.46f }, { 0.4f, 0.62f, 0.6f }, { 1.0f, 0.95f, 0.78f }, 3.6f, 0.4f, 0.9f, 1.05f, 0.12f, 45, 360, 0.5f,
+    -1.0f, -0.45f, { 0.7f, 1.0f, 0.85f }, 1.0f, 0.0025f, 0.7f, 0.4f, { 0.8f, 1.0f, 0.9f }, 0.014f, 0.0f },
+  /* volcano: a low red sun behind the cone, lava orange rim, ash haze */
+  { { 0.25f, 0.06f, 0.04f }, { 0.4f, 0.12f, 0.06f }, { 1.0f, 0.5f, 0.3f }, 1.8f, 0.28f, 0.6f, 1.25f, 0.24f, 34, 300, 0.8f,
+    -0.35f, 0.9f, { 1.0f, 0.38f, 0.1f }, 2.4f, 0.0015f, 0.4f, 0.3f, { 1.0f, 0.5f, 0.3f }, 0.016f, 0.0015f },
 };
 static mood cur_mood;
 
+static cw_value val_vec4(float x, float y, float z, float w) { cw_value v = { CW_T_VEC4 }; v.v[0] = x; v.v[1] = y; v.v[2] = z; v.v[3] = w; return v; }
 static cw_node make_node(const char *type, cw_node parent, const char *name) {
   cw_node n = cw_node_new(type, name);
   cw_node_add_child(parent, n);
@@ -151,6 +176,17 @@ static void particles_cfg(cw_node n, int amount, float life, float smin, float s
   cw_node_set(n, "color", cw_val_color(col.r, col.g, col.b, col.a));
   cw_node_set(n, "gravity", cw_val_vec3(0, grav, 0));
   cw_node_set(n, "blend", cw_val_enum(blend ? "ADD" : "ALPHA"));
+}
+/* a particle system from one call: blend 0 ALPHA, 1 ADD, 2 OPAQUE (instanced meshes), 3 DISTORT */
+static void pfx(cw_node n, int amount, float life, float smin, float smax, float size, cw_color col, float grav, int blend, const char *ramp,
+                const char *curve, float energy) {
+  particles_cfg(n, amount, life, smin, smax, size, col, grav, blend == 1);
+  static const char *const B[4] = { "ALPHA", "ADD", "OPAQUE", "DISTORT" };
+  cw_node_set(n, "blend", cw_val_enum(B[blend]));
+  cw_node_set(n, "color_ramp", cw_val_string(ramp));
+  cw_node_set(n, "size_curve", cw_val_string(curve));
+  cw_node_set(n, "energy", cw_val_float(energy));
+  cw_node_set(n, "size_random", cw_val_float(0.3f));
 }
 static void burst(cw_node n, float x, float y, float z) {
   if (!cw_node_valid(n)) return;
@@ -198,7 +234,28 @@ static void build_scene(void) {
     cw_node_set(S.sun, "shadow_extent", cw_val_float(26));
     cw_node_set(S.sun, "shadow_far", cw_val_float(90));
     cw_node_set(S.sun, "shadow_bias", cw_val_float(-0.0006));
+    cw_node_set(S.sun, "fog_energy", cw_val_float(2.0));
     cw_node3d_set_rotation(S.sun, (t3_vec3){ -0.9f, 0.35f, 0 });
+    /* the rim light: from behind and the side, no shadow, so a character's edge catches colour */
+    S.rim = make_node("DirectionalLight3D", S.root, "Rim");
+    cw_node_set(S.rim, "energy", cw_val_float(1.0));
+    cw_node_set(S.rim, "fog_energy", cw_val_float(0.0));
+    cw_node3d_set_rotation(S.rim, (t3_vec3){ -0.35f, 3.14159f + 0.6f, 0 });
+    /* a height fog the lights shine through (shafts), a few fog volumes for water, lava and mist */
+    if (!getenv("COOP_NOFOG")) {
+      S.fog = make_node("HeightFog", S.root, "Fog");
+      cw_node_set(S.fog, "use_sky_color", cw_val_bool(false));
+      cw_node_set(S.fog, "volumetric", cw_val_bool(true));
+      cw_node_set(S.fog, "volumetric_distance", cw_val_float(60));
+      cw_node_set(S.fog, "height_falloff", cw_val_float(0.02));
+      for (int i = 0; i < 8; i++) {
+        S.fvol[i] = make_node("FogVolume3D", S.root, "Volume");
+        cw_node_set(S.fvol[i], "density", cw_val_float(0));
+        cw_node_set(S.fvol[i], "noise", cw_val_float(0.6));
+        cw_node_set(S.fvol[i], "noise_scale", cw_val_float(0.35));
+        cw_node_set(S.fvol[i], "edge_fade", cw_val_float(0.35));
+      }
+    }
     S.post = make_node("PostProcess", S.root, "Post");
     cw_node_set(S.post, "tonemap", cw_val_enum("ACES_FILMIC"));
     cw_node_set(S.post, "bloom", cw_val_bool(true));
@@ -209,6 +266,11 @@ static void build_scene(void) {
     cw_node_set(S.post, "vignette", cw_val_bool(true));
     cw_node_set(S.post, "vignette_intensity", cw_val_float(0.4));
     cw_node_set(S.post, "msaa", cw_val_int(4));
+    cw_node_set(S.post, "grain", cw_val_bool(true));
+    cw_node_set(S.post, "grain_intensity", cw_val_float(0.012));
+    cw_node_set(S.post, "chromatic_aberration", cw_val_bool(true));
+    cw_node_set(S.post, "ca_intensity", cw_val_float(0.0015));
+    cw_node_set(S.post, "bloom_radius", cw_val_float(0.8));
     S.cam = make_node("Camera3D", S.root, "Camera");
     cw_node_set(S.cam, "fov", cw_val_float(40));
     cw_node_set(S.cam, "near", cw_val_float(0.5));
@@ -224,6 +286,7 @@ static void build_scene(void) {
       cw_node_set(S.plight[i], "range", cw_val_float(8));
       cw_node_set(S.plight[i], "energy", cw_val_float(0));
       cw_node_set(S.plight[i], "color", cw_val_color(PLAYER_RGB[i][0], PLAYER_RGB[i][1], PLAYER_RGB[i][2], 1));
+      cw_node_set(S.plight[i], "fog_energy", cw_val_float(0));
     }
     S.built = true;
   }
@@ -285,28 +348,17 @@ static void build_scene(void) {
     cw_node3d_set_position(S.coin_node[i], (t3_vec3){ L->coins[i].x, L->coins[i].y, 0 });
   }
   t3_release(cg);
-  /* enemies */
+  /* enemies: skinned models, posed in sync_scene */
   for (int i = 0; i < L->nenemies; i++) {
     const enemy *e = &L->enemies[i];
     S.enode[i] = make_node("Node3D", S.world, "Enemy");
-    cw_node eo = S.enode[i];
-    float sc = e->kind == 2 ? 2.2f : 1.0f;
-    uint32_t col = e->kind == 2 ? 0x8a1a1a : e->kind == 1 ? 0x7a3fb0 : 0xcc4422;
-    t3_material *bm = phys(col, 0.4f, 0.0f);
-    t3_geometry *sg = t3_sphere_geometry_new(0.5f * sc, 20, 14);
-    S.emesh[i][0] = part(eo, sg, bm, 0, 0.45f * sc, 0, 1.0f, 0.85f, 1.0f);
-    t3_release(sg);
-    t3_material *em = phys(0xffffff, 0.2f, 0);
-    em->emissive = (t3_color){ 1, 0.9f, 0.5f }, em->emissive_intensity = 0.6f;
-    t3_geometry *eg = t3_sphere_geometry_new(0.13f * sc, 10, 8);
-    S.emesh[i][1] = part(eo, eg, em, -0.18f * sc, 0.6f * sc, 0.42f * sc, 1, 1, 1);
-    S.emesh[i][2] = part(eo, eg, em, 0.18f * sc, 0.6f * sc, 0.42f * sc, 1, 1, 1);
-    t3_release(eg);
-    if (e->kind != 1) { /* spikes on the shell */
-      t3_geometry *sk = t3_cone_geometry_new(0.1f * sc, 0.3f * sc, 6, 1, false);
-      for (int k = 0; k < 5; k++) part(eo, sk, phys(0x2a1a1a, 0.5f, 0.3f), (-0.3f + 0.15f * (float)k) * sc, (0.85f + (k % 2 ? 0.05f : 0)) * sc, 0, 1, 1, 1);
-      t3_release(sk);
-    }
+    S.emodel[i] = make_node("Node3D", S.enode[i], "Model");
+    rig_free(S.erig[i]);
+    S.erig[i] = rig_load(e->kind == 2 ? RIG_BOSS : e->kind == 1 ? RIG_FLYER : RIG_WALKER);
+    if (S.erig[i]) rig_attach(S.erig[i], S.emodel[i]);
+    float sc = e->kind == 2 ? 1.25f : e->kind == 1 ? 0.85f : 0.95f;
+    cw_node3d_set_scale(S.emodel[i], (t3_vec3){ sc, sc, sc });
+    S.ephase[i] = (float)i * 1.7f;
   }
   /* moving platforms */
   for (int i = 0; i < L->nplat; i++) {
@@ -314,68 +366,167 @@ static void build_scene(void) {
     S.plat_mesh[i] = part(wobj, pg, phys(0x8a7a5a, 0.5f, 0.5f), 0, 0, 0, 1, 1, 1);
     t3_release(pg);
   }
-  /* characters */
-  t3_geometry *body = t3_sphere_geometry_new(0.42f, 24, 16);
-  t3_geometry *head = t3_sphere_geometry_new(0.36f, 24, 16);
-  t3_geometry *eye = t3_sphere_geometry_new(0.1f, 12, 8);
-  t3_geometry *pupil = t3_sphere_geometry_new(0.055f, 8, 6);
-  t3_geometry *foot = t3_sphere_geometry_new(0.18f, 12, 8);
-  t3_geometry *bub = t3_sphere_geometry_new(1.0f, 24, 16);
+  /* characters: skinned heroes, one headgear each (a marker that is not a colour) */
+  t3_geometry *bub = t3_sphere_geometry_new(1.0f, 32, 20);
+  static const float ACCENT[MAX_PLAYERS][3] = { { 1.0f, 0.85f, 0.25f }, { 0.95f, 0.95f, 0.95f }, { 1.0f, 0.45f, 0.65f }, { 0.3f, 0.8f, 0.95f } };
   for (int i = 0; i < MAX_PLAYERS; i++) {
+    if (cw_node_valid(S.pnode[i])) cw_node_free(S.pnode[i]);
     S.pnode[i] = make_node("Node3D", S.root, "Player");
     cw_node po = S.pnode[i];
-    uint32_t rgb = ((uint32_t)(PLAYER_RGB[i][0] * 255) << 16) | ((uint32_t)(PLAYER_RGB[i][1] * 255) << 8) | (uint32_t)(PLAYER_RGB[i][2] * 255);
-    t3_material *bm = phys(rgb, 0.35f, 0.0f);
-    bm->clearcoat = 0.6f, bm->clearcoat_roughness = 0.2f;
-    S.parts[i][0] = part(po, body, bm, 0, 0.5f, 0, 1, 1.05f, 0.9f);
-    S.parts[i][1] = part(po, head, bm, 0, 1.15f, 0, 1, 1, 0.95f);
-    t3_material *wm = phys(0xffffff, 0.2f, 0);
-    S.parts[i][2] = part(po, eye, wm, -0.15f, 1.2f, 0.3f, 1, 1.1f, 0.8f);
-    S.parts[i][3] = part(po, eye, wm, 0.15f, 1.2f, 0.3f, 1, 1.1f, 0.8f);
-    t3_material *pm = phys(0x101018, 0.1f, 0);
-    part(po, pupil, pm, -0.15f, 1.2f, 0.37f, 1, 1, 1);
-    part(po, pupil, pm, 0.15f, 1.2f, 0.37f, 1, 1, 1);
-    S.parts[i][4] = part(po, foot, bm, -0.2f, 0.14f, 0.05f, 1, 0.7f, 1.3f);
-    S.parts[i][5] = part(po, foot, bm, 0.2f, 0.14f, 0.05f, 1, 0.7f, 1.3f);
+    S.pmodel[i] = make_node("Node3D", po, "Model");
+    rig_free(S.prig[i]);
+    S.prig[i] = rig_load(RIG_HERO);
+    if (S.prig[i]) {
+      rig_attach(S.prig[i], S.pmodel[i]);
+      float fur[3] = { PLAYER_RGB[i][0], PLAYER_RGB[i][1], PLAYER_RGB[i][2] };
+      rig_tint(S.prig[i], fur, ACCENT[i], i);
+    }
     t3_material *bu = phys(0xaaddff, 0.05f, 0);
     bu->transparent = true, bu->opacity = 0.3f, bu->depth_write = false;
-    S.parts[i][6] = part(po, bub, bu, 0, 0.9f, 0, 1, 1, 1);
-    S.parts[i][6]->base.visible = false;
-    S.parts[i][6]->base.cast_shadow = false;
+    S.bubble[i] = part(po, bub, bu, 0, 0.9f, 0, 1, 1, 1);
+    S.bubble[i]->base.visible = false;
+    S.bubble[i]->base.cast_shadow = false;
     cw_node3d_set_position(S.pnode[i], (t3_vec3){ 0, -100, 0 });
   }
-  t3_release(body), t3_release(head), t3_release(eye), t3_release(pupil), t3_release(foot), t3_release(bub);
+  t3_release(bub);
+  /* water: a Water3D surface (Gerstner waves, a ripple normal map, sky reflection) over each pool, and a volume of
+   * tinted fog inside it. Lava spans are listed for the glow volumes and the heat haze. */
+  {
+    float sp[16][4];
+    S.nwspan = world_water_spans(sp, 16);
+    for (int i = 0; i < S.nwspan; i++) {
+      memcpy(S.wspan[i], sp[i], sizeof sp[i]);
+      if (cw_node_valid(S.water3d[i])) cw_node_free(S.water3d[i]);
+      S.water3d[i] = make_node("Water3D", S.world, "Pool");
+      cw_node w = S.water3d[i];
+      cw_node_set(w, "size", cw_val_vec2(sp[i][1] - sp[i][0], 2.9f));
+      cw_node_set(w, "subdivisions", cw_val_int(96));
+      cw_node_set(w, "wave_count", cw_val_int(2));
+      cw_node_set(w, "wave0", val_vec4(90, 3.2f, 0.06f, 0.4f));
+      cw_node_set(w, "wave1", val_vec4(0, 1.7f, 0.03f, 0.3f));
+      cw_node_set(w, "color", cw_val_color(0.35f, 0.75f, 0.85f, 1));
+      cw_node_set(w, "deep_color", cw_val_color(0.01f, 0.08f, 0.16f, 1));
+      cw_node_set(w, "reflection", cw_val_bool(true));
+      cw_node_set(w, "refraction", cw_val_bool(false));
+      cw_node_set(w, "resolution_scale", cw_val_float(0.5f));
+      cw_node_set(w, "flow_direction", cw_val_vec2(1, 0));
+      cw_node_set(w, "flow_speed", cw_val_float(0.05f));
+      cw_node3d_set_position(w, (t3_vec3){ (sp[i][0] + sp[i][1]) * 0.5f, sp[i][3] - 0.08f, 0 });
+    }
+    S.nlspan = world_lava_spans(sp, 16);
+    for (int i = 0; i < S.nlspan; i++) memcpy(S.lspan[i], sp[i], sizeof sp[i]);
+  }
   /* effects */
   if (!cw_node_valid(S.fx_spark)) {
     for (int i = 0; i < MAX_PLAYERS; i++) {
       S.fx_dust[i] = make_node("GPUParticles3D", S.root, "Dust");
-      particles_cfg(S.fx_dust[i], 24, 0.6f, 1.0f, 3.0f, 0.35f, cw_rgba(0.8f, 0.75f, 0.65f, 0.5f), -1.0f, 0);
+      pfx(S.fx_dust[i], 28, 0.7f, 1.0f, 3.2f, 0.4f, cw_rgba(0.85f, 0.78f, 0.66f, 0.6f), -0.5f, 0, "0 1 0.95 0.85 0.55, 1 0.8 0.75 0.65 0", "0 0.4, 0.4 1, 1 1.4", 1.0f);
+      cw_node_set(S.fx_dust[i], "spread", cw_val_float(70));
+      cw_node_set(S.fx_dust[i], "direction", cw_val_vec3(0, 1, 0));
+      cw_node_set(S.fx_dust[i], "soft_distance", cw_val_float(0.5f));
     }
     S.fx_spark = make_node("GPUParticles3D", S.root, "Spark");
-    particles_cfg(S.fx_spark, 24, 0.6f, 2.0f, 6.0f, 0.18f, cw_rgba(1, 0.8f, 0.2f, 1), -8.0f, 1);
+    pfx(S.fx_spark, 36, 0.7f, 2.0f, 6.5f, 0.1f, cw_rgba(1, 0.8f, 0.25f, 1), -8.0f, 1, "0 1 1 0.8 1, 0.5 1 0.7 0.2 1, 1 1 0.4 0.1 0", "0 1, 1 0.2", 5.0f);
+    cw_node_set(S.fx_spark, "draw_mode", cw_val_enum("STRETCHED"));
     S.fx_splash = make_node("GPUParticles3D", S.root, "Splash");
-    particles_cfg(S.fx_splash, 60, 0.9f, 3.0f, 8.0f, 0.18f, cw_rgba(0.6f, 0.85f, 1, 0.8f), -14.0f, 0);
+    pfx(S.fx_splash, 90, 1.0f, 3.0f, 9.0f, 0.14f, cw_rgba(0.75f, 0.92f, 1, 0.9f), -16.0f, 1, "0 1 1 1 0.9, 0.7 0.7 0.9 1 0.6, 1 0.6 0.85 1 0", "0 1, 1 0.4", 1.6f);
+    cw_node_set(S.fx_splash, "draw_mode", cw_val_enum("STRETCHED"));
+    cw_node_set(S.fx_splash, "spread", cw_val_float(38));
+    cw_node_set(S.fx_splash, "direction", cw_val_vec3(0, 1, 0));
+    S.fx_foam = make_node("GPUParticles3D", S.root, "Foam");
+    pfx(S.fx_foam, 36, 1.4f, 0.4f, 1.8f, 0.5f, cw_rgba(0.9f, 0.97f, 1, 0.7f), -0.2f, 0, "0 1 1 1 0.7, 1 0.9 1 1 0", "0 0.5, 0.3 1, 1 1.3", 1.0f);
+    cw_node_set(S.fx_foam, "spread", cw_val_float(85));
+    cw_node_set(S.fx_foam, "direction", cw_val_vec3(0, 1, 0));
+    S.fx_bubbles = make_node("GPUParticles3D", S.root, "Bubbles");
+    pfx(S.fx_bubbles, 30, 1.2f, 0.8f, 2.2f, 0.09f, cw_rgba(0.8f, 0.95f, 1, 0.8f), 2.0f, 1, "0 1 1 1 0.9, 1 0.8 0.95 1 0", "0 0.6, 0.2 1, 1 1", 1.4f);
     S.fx_burst = make_node("GPUParticles3D", S.root, "Burst");
-    particles_cfg(S.fx_burst, 80, 0.8f, 3.0f, 10.0f, 0.3f, cw_rgba(1, 0.55f, 0.2f, 1), -6.0f, 1);
+    pfx(S.fx_burst, 90, 0.9f, 3.0f, 10.0f, 0.3f, cw_rgba(1, 0.55f, 0.2f, 1), -6.0f, 1, "0 1 0.9 0.5 1, 0.4 1 0.4 0.1 0.8, 1 0.4 0.1 0.05 0", "0 0.5, 0.3 1, 1 1.5", 3.0f);
     S.fx_hit = make_node("GPUParticles3D", S.root, "Hit");
-    particles_cfg(S.fx_hit, 40, 0.5f, 3.0f, 9.0f, 0.22f, cw_rgba(1, 1, 0.8f, 1), -4.0f, 1);
-    /* embers rising from lava: continuous emitters along the lava spans */
-    for (int x = 0; x < WORLD_W && S.nember < 4; x++)
-      if (L->t[2][x] == T_LAVA && (x % 20) < 2) {
-        cw_node n = make_node("GPUParticles3D", S.root, "Ember");
-        particles_cfg(n, 60, 2.2f, 1.0f, 3.5f, 0.12f, cw_rgba(1, 0.5f, 0.1f, 1), 1.0f, 1);
-        cw_node_set(n, "one_shot", cw_val_bool(false));
-        cw_node_set(n, "explosiveness", cw_val_float(0));
-        cw_node_set(n, "emitting", cw_val_bool(true));
-        cw_node_set(n, "emission_shape", cw_val_enum("BOX"));
-        cw_node_set(n, "emission_extents", cw_val_vec3(4, 0.2f, 1));
-        cw_node_set(n, "spread", cw_val_float(30));
-        cw_node_set(n, "direction", cw_val_vec3(0, 1, 0));
-        cw_node3d_set_position(n, (t3_vec3){ (float)x + 4, 3.2f, 0.5f });
-        S.fx_ember[S.nember++] = n;
-        x += 18;
-      }
+    pfx(S.fx_hit, 48, 0.6f, 3.0f, 10.0f, 0.12f, cw_rgba(1, 1, 0.8f, 1), -5.0f, 1, "0 1 1 0.9 1, 1 1 0.5 0.2 0", "0 1, 1 0.1", 5.0f);
+    cw_node_set(S.fx_hit, "draw_mode", cw_val_enum("STRETCHED"));
+    /* rock debris: small instanced boxes that fall and bounce on what the camera sees */
+    S.fx_debris = make_node("GPUParticles3D", S.root, "Debris");
+    pfx(S.fx_debris, 24, 1.8f, 3.0f, 9.0f, 0.12f, cw_rgba(0.55f, 0.42f, 0.32f, 1), -20.0f, 2, "", "", 1.0f);
+    cw_node_set(S.fx_debris, "draw_mode", cw_val_enum("MESH"));
+    cw_node_set(S.fx_debris, "mesh_primitive", cw_val_enum("BOX"));
+    cw_node_set(S.fx_debris, "spin", cw_val_float(6));
+    cw_node_set(S.fx_debris, "size_random", cw_val_float(0.6f));
+    /* the death blast of an enemy: flash, smoke, sparks, and a ring that bends the picture */
+    S.fx_boom = make_node("GPUParticles3D", S.root, "Boom");
+    pfx(S.fx_boom, 40, 0.55f, 0.5f, 3.0f, 1.3f, cw_rgba(1, 0.7f, 0.3f, 1), 0.0f, 1, "0 1 0.95 0.7 1, 0.2 1 0.55 0.15 0.9, 1 0.35 0.08 0.03 0", "0 0.4, 0.3 1, 1 1.5", 6.0f);
+    S.fx_boomsmoke = make_node("GPUParticles3D", S.root, "BoomSmoke");
+    pfx(S.fx_boomsmoke, 36, 1.5f, 0.6f, 2.5f, 1.1f, cw_rgba(0.3f, 0.27f, 0.25f, 0.8f), 1.0f, 0, "0 0.3 0.26 0.24 0, 0.15 0.28 0.25 0.23 0.8, 1 0.4 0.38 0.36 0", "0 0.5, 0.5 1, 1 1.8", 1.0f);
+    cw_node_set(S.fx_boomsmoke, "soft_distance", cw_val_float(0.6f));
+    S.fx_boomspark = make_node("GPUParticles3D", S.root, "BoomSparks");
+    pfx(S.fx_boomspark, 90, 1.1f, 4.0f, 14.0f, 0.1f, cw_rgba(1, 0.8f, 0.4f, 1), -9.0f, 1, "0 1 0.95 0.6 1, 0.5 1 0.5 0.1 1, 1 0.6 0.1 0.05 0", "0 1, 1 0.2", 6.0f);
+    cw_node_set(S.fx_boomspark, "draw_mode", cw_val_enum("STRETCHED"));
+    S.fx_wave = make_node("Shockwave3D", S.root, "Wave");
+    cw_node_set(S.fx_wave, "autostart", cw_val_bool(false));
+    cw_node_set(S.fx_wave, "max_radius", cw_val_float(4.5f));
+    cw_node_set(S.fx_wave, "duration", cw_val_float(0.6f));
+    cw_node_set(S.fx_wave, "thickness", cw_val_float(0.8f));
+    cw_node_set(S.fx_wave, "strength", cw_val_float(0.45f));
+    /* ambient motes that follow the camera: fireflies, cave dust, pollen, ash */
+    S.fx_motes = make_node("GPUParticles3D", S.root, "Motes");
+    pfx(S.fx_motes, 70, 5.0f, 0.1f, 0.5f, 0.07f, cw_rgba(1, 1, 0.6f, 1), 0.0f, 1, "0 1 1 1 0, 0.2 1 1 1 1, 0.8 1 1 1 1, 1 1 1 1 0", "0 0.3, 0.5 1, 1 0.3", 3.0f);
+    cw_node_set(S.fx_motes, "one_shot", cw_val_bool(false));
+    cw_node_set(S.fx_motes, "explosiveness", cw_val_float(0));
+    cw_node_set(S.fx_motes, "emitting", cw_val_bool(true));
+    cw_node_set(S.fx_motes, "emission_shape", cw_val_enum("BOX"));
+    cw_node_set(S.fx_motes, "emission_extents", cw_val_vec3(22, 9, 3));
+    cw_node_set(S.fx_motes, "spread", cw_val_float(180));
+    cw_node_set(S.fx_motes, "turbulence", cw_val_float(0.5f));
+    cw_node_set(S.fx_motes, "preprocess", cw_val_float(3));
+    /* lava: embers over every span, a heat haze above, bubbles popping on the surface */
+    for (int i = 0; i < 4; i++) {
+      S.fx_haze[i] = make_node("GPUParticles3D", S.root, "Haze");
+      pfx(S.fx_haze[i], 14, 2.4f, 0.4f, 1.1f, 2.2f, cw_rgba(1, 1, 1, 1), 0.0f, 3, "0 1 1 1 0, 0.3 1 1 1 0.8, 1 1 1 1 0", "0 0.6, 1 1.4", 1.0f);
+      cw_node_set(S.fx_haze[i], "distort_strength", cw_val_float(0.10f));
+      cw_node_set(S.fx_haze[i], "one_shot", cw_val_bool(false));
+      cw_node_set(S.fx_haze[i], "explosiveness", cw_val_float(0));
+      cw_node_set(S.fx_haze[i], "emitting", cw_val_bool(false));
+      cw_node_set(S.fx_haze[i], "emission_shape", cw_val_enum("BOX"));
+      cw_node_set(S.fx_haze[i], "spread", cw_val_float(12));
+      cw_node_set(S.fx_haze[i], "direction", cw_val_vec3(0, 1, 0));
+      S.fx_lavapop[i] = make_node("GPUParticles3D", S.root, "LavaPop");
+      pfx(S.fx_lavapop[i], 40, 1.4f, 2.5f, 7.0f, 0.2f, cw_rgba(1, 0.5f, 0.1f, 1), -9.0f, 1, "0 1 0.8 0.3 1, 0.5 1 0.4 0.08 1, 1 0.5 0.1 0.03 0", "0 1, 1 0.3", 4.0f);
+      cw_node_set(S.fx_lavapop[i], "one_shot", cw_val_bool(false));
+      cw_node_set(S.fx_lavapop[i], "explosiveness", cw_val_float(0));
+      cw_node_set(S.fx_lavapop[i], "emitting", cw_val_bool(false));
+      cw_node_set(S.fx_lavapop[i], "emission_shape", cw_val_enum("BOX"));
+      cw_node_set(S.fx_lavapop[i], "spread", cw_val_float(25));
+      cw_node_set(S.fx_lavapop[i], "direction", cw_val_vec3(0, 1, 0));
+      cw_node_set(S.fx_lavapop[i], "draw_mode", cw_val_enum("STRETCHED"));
+    }
+    for (int i = 0; i < 4; i++) {
+      cw_node n = make_node("GPUParticles3D", S.root, "Ember");
+      pfx(n, 70, 2.8f, 0.8f, 3.0f, 0.1f, cw_rgba(1, 0.5f, 0.1f, 1), 0.8f, 1, "0 1 0.7 0.2 0, 0.15 1 0.55 0.1 1, 1 0.5 0.1 0.03 0", "0 1, 1 0.3", 4.0f);
+      cw_node_set(n, "one_shot", cw_val_bool(false));
+      cw_node_set(n, "explosiveness", cw_val_float(0));
+      cw_node_set(n, "emitting", cw_val_bool(false));
+      cw_node_set(n, "emission_shape", cw_val_enum("BOX"));
+      cw_node_set(n, "spread", cw_val_float(30));
+      cw_node_set(n, "turbulence", cw_val_float(0.4f));
+      cw_node_set(n, "direction", cw_val_vec3(0, 1, 0));
+      S.fx_ember[i] = n;
+    }
+    S.nember = 4;
+    /* a real flame at the nearest torches */
+    for (int i = 0; i < NTORCH; i++) {
+      S.torchfire[i] = make_node("GPUParticles3D", S.torch[i], "Flame");
+      pfx(S.torchfire[i], 40, 0.55f, 0.3f, 0.9f, 0.2f, cw_rgba(1, 0.6f, 0.2f, 1), 2.2f, 1, "0 1 0.95 0.6 0, 0.15 1 0.7 0.25 1, 0.7 1 0.35 0.08 0.6, 1 0.4 0.1 0.03 0", "0 0.6, 0.3 1, 1 0.2", 4.5f);
+      cw_node_set(S.torchfire[i], "one_shot", cw_val_bool(false));
+      cw_node_set(S.torchfire[i], "explosiveness", cw_val_float(0));
+      cw_node_set(S.torchfire[i], "emitting", cw_val_bool(true));
+      cw_node_set(S.torchfire[i], "emission_shape", cw_val_enum("SPHERE"));
+      cw_node_set(S.torchfire[i], "emission_radius", cw_val_float(0.1f));
+      cw_node_set(S.torchfire[i], "spread", cw_val_float(14));
+      cw_node_set(S.torchfire[i], "direction", cw_val_vec3(0, 1, 0));
+      cw_node_set(S.torchfire[i], "local_coords", cw_val_bool(false));
+    }
   }
+  /* enemies seen alive: a death is a blast */
+  for (int i = 0; i < L->nenemies; i++) S.prev_alive[i] = L->enemies[i].alive;
 }
 
 static void apply_mood(float x) {
@@ -398,8 +549,108 @@ static void apply_mood(float x) {
   cw_node_set(S.env, "fog_far", cw_val_float(q->fog_far));
   cw_node_set(S.sun, "color", cw_val_color(q->sun[0], q->sun[1], q->sun[2], 1));
   cw_node_set(S.sun, "energy", cw_val_float(q->sun_e));
+  cw_node3d_set_rotation(S.sun, (t3_vec3){ q->sun_pitch, q->sun_yaw, 0 });
+  cw_node_set(S.rim, "color", cw_val_color(q->rim[0], q->rim[1], q->rim[2], 1));
+  cw_node_set(S.rim, "energy", cw_val_float(q->rim_e));
   cw_node_set(S.post, "exposure", cw_val_float(q->exposure));
   cw_node_set(S.post, "bloom_intensity", cw_val_float(q->bloom));
+  cw_node_set(S.post, "grain_intensity", cw_val_float(q->grain));
+  cw_node_set(S.post, "ca_intensity", cw_val_float(q->ca));
+  if (cw_node_valid(S.fog)) {
+    cw_node_set(S.fog, "density", cw_val_float(q->vden));
+    cw_node_set(S.fog, "color", cw_val_color(q->vcol[0], q->vcol[1], q->vcol[2], 1));
+    cw_node_set(S.fog, "volumetric_ambient", cw_val_float(q->vamb));
+    cw_node_set(S.fog, "volumetric_albedo", cw_val_color(q->vcol[0], q->vcol[1], q->vcol[2], 1));
+    cw_node_set(S.fog, "sun_g", cw_val_float(q->vg));
+  }
+}
+
+/* the nearest water and lava spans get the fog volumes (water tint, lava glow) and the lava its haze, embers and pops */
+static void update_spans(float camx) {
+  int vi = 0;
+  for (int pass = 0; pass < 2; pass++) {
+    int n = pass == 0 ? S.nwspan : S.nlspan;
+    for (int i = 0; i < n && vi < 8; i++) {
+      const float *sp = pass == 0 ? S.wspan[i] : S.lspan[i];
+      float cx = (sp[0] + sp[1]) * 0.5f;
+      if (fabsf(cx - camx) > 46 + (sp[1] - sp[0]) * 0.5f) continue;
+      cw_node v = S.fvol[vi++];
+      if (!cw_node_valid(v)) continue;
+      float w = sp[1] - sp[0];
+      if (pass == 0) {
+        cw_node_set(v, "size", cw_val_vec3(w, sp[3] - sp[2], 3.6f));
+        cw_node3d_set_position(v, (t3_vec3){ cx, (sp[2] + sp[3]) * 0.5f, 0 });
+        cw_node_set(v, "density", cw_val_float(0.25));
+        cw_node_set(v, "albedo", cw_val_color(0.1f, 0.45f, 0.65f, 1));
+        cw_node_set(v, "emission", cw_val_color(0.02f, 0.14f, 0.22f, 1));
+        cw_node_set(v, "emission_energy", cw_val_float(0.6));
+        cw_node_set(v, "noise_wind", cw_val_vec3(0.15f, 0.05f, 0));
+      } else {
+        cw_node_set(v, "size", cw_val_vec3(w + 6, 8, 5));
+        cw_node3d_set_position(v, (t3_vec3){ cx, 5.5f, 0 });
+        cw_node_set(v, "density", cw_val_float(0.3));
+        cw_node_set(v, "albedo", cw_val_color(1.0f, 0.4f, 0.12f, 1));
+        cw_node_set(v, "emission", cw_val_color(1.0f, 0.3f, 0.05f, 1));
+        cw_node_set(v, "emission_energy", cw_val_float(1.6 + 0.3 * sinf(S.time * 1.7f)));
+        cw_node_set(v, "height_falloff", cw_val_float(0.25));
+        cw_node_set(v, "noise_wind", cw_val_vec3(0.1f, 0.5f, 0));
+      }
+    }
+  }
+  for (; vi < 8; vi++)
+    if (cw_node_valid(S.fvol[vi])) cw_node_set(S.fvol[vi], "density", cw_val_float(0));
+  /* lava effects ride the nearest four spans (configured when a slot changes span: setting amount restarts a system) */
+  static int slot_span[4] = { -2, -2, -2, -2 };
+  int nl = 0;
+  for (int i = 0; i < S.nlspan && nl < 4; i++) {
+    const float *sp = S.lspan[i];
+    float cx = (sp[0] + sp[1]) * 0.5f;
+    if (fabsf(cx - camx) > 40) continue;
+    float w = sp[1] - sp[0];
+    cw_node h = S.fx_haze[nl], pop = S.fx_lavapop[nl], em = S.fx_ember[nl];
+    if (slot_span[nl] != i) {
+      slot_span[nl] = i;
+      cw_node3d_set_position(h, (t3_vec3){ cx, 4.4f, 1.0f });
+      cw_node_set(h, "emission_extents", cw_val_vec3(w * 0.5f, 0.3f, 1.2f));
+      cw_node_set(h, "emitting", cw_val_bool(true));
+      cw_node3d_set_position(pop, (t3_vec3){ cx, 2.9f, 0.5f });
+      cw_node_set(pop, "emission_extents", cw_val_vec3(w * 0.5f, 0.1f, 1.2f));
+      cw_node_set(pop, "emitting", cw_val_bool(true));
+      cw_node3d_set_position(em, (t3_vec3){ cx, 3.2f, 0.5f });
+      cw_node_set(em, "emission_extents", cw_val_vec3(w * 0.5f, 0.2f, 1.0f));
+      cw_node_set(em, "emitting", cw_val_bool(true));
+    }
+    nl++;
+  }
+  for (; nl < 4; nl++)
+    if (slot_span[nl] != -1) {
+      slot_span[nl] = -1;
+      cw_node_set(S.fx_haze[nl], "emitting", cw_val_bool(false));
+      cw_node_set(S.fx_lavapop[nl], "emitting", cw_val_bool(false));
+      cw_node_set(S.fx_ember[nl], "emitting", cw_val_bool(false));
+    }
+  /* bubbles in the nearest pool */
+  static int bub_span = -2;
+  int want = -1;
+  for (int i = 0; i < S.nwspan; i++) {
+    const float *sp = S.wspan[i];
+    if (camx > sp[0] - 30 && camx < sp[1] + 30) want = i;
+  }
+  if (want != bub_span) {
+    bub_span = want;
+    if (want >= 0) {
+      const float *sp = S.wspan[want];
+      cw_node3d_set_position(S.fx_bubbles, (t3_vec3){ (sp[0] + sp[1]) * 0.5f, sp[2] + 0.4f, 0.6f });
+      cw_node_set(S.fx_bubbles, "one_shot", cw_val_bool(false));
+      cw_node_set(S.fx_bubbles, "explosiveness", cw_val_float(0));
+      cw_node_set(S.fx_bubbles, "emission_shape", cw_val_enum("BOX"));
+      cw_node_set(S.fx_bubbles, "emission_extents", cw_val_vec3((sp[1] - sp[0]) * 0.45f, 0.2f, 0.8f));
+      cw_node_set(S.fx_bubbles, "direction", cw_val_vec3(0, 1, 0));
+      cw_node_set(S.fx_bubbles, "spread", cw_val_float(10));
+      cw_node_set(S.fx_bubbles, "lifetime", cw_val_float(fmaxf(0.8f, (sp[3] - sp[2]) / 1.6f)));
+    }
+    cw_node_set(S.fx_bubbles, "emitting", cw_val_bool(want >= 0));
+  }
 }
 
 /* ── frame: sync the scene to the sim ─────────────────────────────── */
@@ -415,6 +666,22 @@ static void sync_scene(float alpha, float dt) {
   cw_node3d_set_position(S.sun, (t3_vec3){ c->x + 8, c->y + 18, 14 });
   apply_mood(c->x);
   world_update_water_mesh(S.time);
+  world_update_backdrop(S.time);
+  update_spans(c->x);
+  /* the motes follow the camera and take the region's character */
+  {
+    int b = g->L.biome[(int)c->x < 0 ? 0 : (int)c->x >= WORLD_W ? WORLD_W - 1 : (int)c->x];
+    static const float MC[BIOMES][4] = { { 1.0f, 0.95f, 0.5f, 3.0f }, { 0.4f, 0.8f, 1.0f, 2.0f }, { 1.0f, 1.0f, 0.8f, 1.2f }, { 1.0f, 0.4f, 0.1f, 4.0f } };
+    static const float MG[BIOMES] = { 0.0f, 0.0f, -0.05f, 0.9f };
+    static int last_b = -1;
+    cw_node3d_set_position(S.fx_motes, (t3_vec3){ c->x, c->y, 0 });
+    if (b != last_b) {
+      last_b = b;
+      cw_node_set(S.fx_motes, "color", cw_val_color(MC[b][0], MC[b][1], MC[b][2], 1));
+      cw_node_set(S.fx_motes, "energy", cw_val_float(MC[b][3]));
+      cw_node_set(S.fx_motes, "gravity", cw_val_vec3(0, MG[b], 0));
+    }
+  }
   /* players */
   int bubbles = 0;
   for (int i = 0; i < MAX_PLAYERS; i++) {
@@ -427,43 +694,39 @@ static void sync_scene(float alpha, float dt) {
     }
     cw_pos2 ip = cw_mover2d_interpolated(&p->pf.body, alpha);
     float x = (float)ip.x, y = (float)ip.y;
-    bool inv = p->invuln > 0 && ((p->invuln / 4) & 1);
     if (p->bubble) {
       bubbles++;
       x = p->bubble_x, y = p->bubble_y - 0.6f + 0.1f * sinf(S.time * 3 + (float)i);
-      S.parts[i][6]->base.visible = true;
+      S.bubble[i]->base.visible = true;
       p->squash = 0;
-    } else S.parts[i][6]->base.visible = false;
+    } else S.bubble[i]->base.visible = false;
     if (!p->alive && !p->bubble) {
       cw_node3d_set_position(S.pnode[i], (t3_vec3){ x, -100, 0 });
       continue;
     }
     cw_node3d_set_position(S.pnode[i], (t3_vec3){ x, y, 0 });
     float face = (float)p->pf.facing;
-    po->rotation.y = 0;
-    t3_object_set_rotation(po, 0, face > 0 ? 0.35f : -0.35f, 0);
-    /* secondary animation: squash and stretch, run bounce, foot swing */
+    /* turn toward the way it faces, smoothly: three quarters on to the camera */
+    float want = face > 0 ? 1.05f : -1.05f;
+    if (p->anim == 4) want = -want; /* on a wall it looks back along the wall */
+    S.yaw[i] += (want - S.yaw[i]) * (1.0f - expf(-14.0f * dt));
+    cw_node3d_set_rotation(S.pmodel[i], (t3_vec3){ 0, S.yaw[i], 0 });
+    /* secondary animation: squash and stretch from events, a run cycle and the pose from the bones */
     if (p->land_fx) p->squash = 0.35f;
     if (p->jump_fx) p->squash = -0.3f;
     p->squash *= 1.0f - 6.0f * dt > 0 ? 1.0f - 6.0f * dt : 0;
     float vy = p->pf.body.velocity.y;
     float stretch = p->squash < 0 ? -p->squash : 0.0f;
     float sq = p->squash > 0 ? p->squash : 0.0f;
-    float st = 1.0f + stretch * 0.6f + (vy > 4 ? 0.1f : 0) - sq * 0.5f;
+    float st = 1.0f + stretch * 0.6f + (vy > 4 ? 0.06f : 0) - sq * 0.5f;
     float wd = 1.0f - stretch * 0.3f + sq * 0.4f;
-    p->run_phase += (p->anim == 1 ? 14.0f : 3.0f) * dt;
-    float bob = p->anim == 1 ? 0.06f * fabsf(sinf(p->run_phase)) : 0.02f * sinf(S.time * 2 + (float)i);
-    S.parts[i][0]->base.scale = (t3_vec3){ wd, 1.05f * st, 0.9f * wd };
-    S.parts[i][0]->base.position.y = 0.5f + bob;
-    S.parts[i][1]->base.position.y = 1.15f * st + bob;
-    for (int k = 2; k <= 3; k++) S.parts[i][k]->base.position.y = 1.2f * st + bob;
-    float sw = p->anim == 1 ? sinf(p->run_phase) * 0.22f : 0;
-    S.parts[i][4]->base.position.z = 0.05f + sw;
-    S.parts[i][5]->base.position.z = 0.05f - sw;
-    if (p->anim == 2 || p->anim == 3) S.parts[i][4]->base.position.y = S.parts[i][5]->base.position.y = 0.22f;
-    else S.parts[i][4]->base.position.y = S.parts[i][5]->base.position.y = 0.14f;
-    for (int k = 0; k < 8; k++)
-      if (S.parts[i][k] && k != 6) S.parts[i][k]->base.visible = !inv;
+    float spd = fabsf((float)p->pf.body.velocity.x);
+    S.runph[i] += (p->anim == 5 ? 7.0f : 4.0f + spd * 0.9f) * dt;
+    if (S.prig[i]) {
+      rig_pose_hero(S.prig[i], p->anim, S.runph[i], S.time + (float)i, st, wd, vy);
+      bool inv = p->invuln > 0 && ((p->invuln / 4) & 1);
+      cw_node_set(S.pmodel[i], "visible", cw_val_bool(!inv));
+    }
     cw_node3d_set_position(S.plight[i], (t3_vec3){ x, y + 1.2f, 2.0f });
     cw_node_set(S.plight[i], "energy", cw_val_float(p->bubble ? 3.0f : 2.0f));
     /* effects from this frame's events */
@@ -490,12 +753,30 @@ static void sync_scene(float alpha, float dt) {
   for (int i = 0; i < L->nenemies; i++) {
     const enemy *e = &L->enemies[i];
     cw_node_set(S.enode[i], "visible", cw_val_bool(e->alive));
-    if (!e->alive) continue;
-    float flash = e->hurt > 0 && (e->hurt / 3) % 2 ? 1.4f : 1.0f;
+    if (S.prev_alive[i] && !e->alive) { /* it just died: a blast, bigger for the boss */
+      float bs = e->kind == 2 ? 2.4f : 1.0f, by = e->y + (e->kind == 2 ? 1.0f : 0.5f);
+      burst(S.fx_boom, e->x, by, 0.8f), burst(S.fx_boomsmoke, e->x, by, 0.6f), burst(S.fx_boomspark, e->x, by, 0.6f);
+      cw_node_set(S.fx_wave, "max_radius", cw_val_float(4.5f * bs));
+      cw_node3d_set_position(S.fx_wave, (t3_vec3){ e->x, by, 1.0f });
+      cw_shockwave_fire(S.fx_wave);
+      burst(S.fx_debris, e->x, by, 0.5f);
+      g->cam.shake = fmaxf(g->cam.shake, 0.25f * bs);
+    }
+    S.prev_alive[i] = e->alive;
+    if (!e->alive || !S.erig[i]) continue;
     cw_node3d_set_position(S.enode[i], (t3_vec3){ e->x, e->y + (e->kind == 1 ? 0.2f * sinf(S.time * 5 + (float)i) : 0), 0 });
-    t3_object *eo = cw_node3d_object(S.enode[i]);
-    t3_object_set_rotation(eo, 0, e->dir > 0 ? 1.1f : -1.1f, 0);
-    S.emesh[i][0]->base.scale = (t3_vec3){ flash, 0.85f / flash + 0.05f * sinf(S.time * 8 + (float)i), flash };
+    float want = e->dir > 0 ? 1.2f : -1.2f;
+    S.eyaw[i] += (want - S.eyaw[i]) * (1.0f - expf(-10.0f * dt));
+    cw_node3d_set_rotation(S.emodel[i], (t3_vec3){ 0, S.eyaw[i], 0 });
+    float flash = e->hurt > 0 && (e->hurt / 3) % 2 ? 1.0f : 0.0f;
+    S.ephase[i] += dt * (e->kind == 1 ? 16.0f : 11.0f);
+    if (e->kind == 0) rig_pose_walker(S.erig[i], S.ephase[i], S.time, 1.0f);
+    else if (e->kind == 1) rig_pose_flyer(S.erig[i], S.ephase[i], S.time);
+    else {
+      rig_pose_boss(S.erig[i], S.time, 1.0f - (float)e->hp / 9.0f);
+      rig_glow(S.erig[i], 1.0f + 0.4f * sinf(S.time * 4) + (1.0f - (float)e->hp / 9.0f));
+    }
+    rig_flash(S.erig[i], flash);
   }
   /* the nearest few light sources to the camera */
   int pick[NTORCH], np = 0;
@@ -559,6 +840,8 @@ static void start_match(int players, void *user) {
       if (G.L.checks[k].x < sx) G.checkpoint = k;
   }
   build_scene();
+  cw_info("coopplatformer: pools %d, lava spans %d", S.nwspan, S.nlspan);
+  for (int i = 0; i < S.nwspan; i++) cw_info("  pool x %.0f..%.0f y %.0f..%.0f", S.wspan[i][0], S.wspan[i][1], S.wspan[i][2], S.wspan[i][3]);
   g_run_ticks = 0;
   g_map_open = false;
 }
@@ -888,7 +1171,7 @@ static void init(void *user) {
   a_jump = cw_action_find("jump"), a_dash = cw_action_find("dash"), a_map = cw_action_find("map"), a_retry = cw_action_find("retry");
   cw_shell_init(&(cw_shell_desc){ .title = "Co-op Platformer", .subtitle = "one to four players", .max_players = 4,
                                   .game_save_size = sizeof(save_t), .game_save_version = 2, .start = start_match,
-                                  .quit = quit_match, .sound = sound_hook });
+                                  .quit = quit_match, .sound = sound_hook, .draw_background = title_background });
   g_font = cw_ui_font_sans();
   audio_init();
   cw_debug_i32("g.state", &g_state_dbg);
@@ -1013,13 +1296,71 @@ static void text(const char *s, float x, float y, float size, cw_color c, cw_tex
   cw_r2d_text(g_font, s, (cw_vec2){ x, y }, &(cw_text_style){ .size = size, .color = c, .align = al, .wrap_width = w });
 }
 
+
+static cw_color rgba3(const float *c, float a) { return cw_rgba(c[0], c[1], c[2], a); }
+static cw_color lerpc(cw_color a, cw_color b, float t) { return cw_rgba(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, a.a + (b.a - a.a) * t); }
+static float g_ui_t;
+
+/* a vertical gradient panel: a few bands between two colours, with a rounded top and bottom */
+static void panel(float x, float y, float w, float h, float r, cw_color top, cw_color bot, cw_color edge) {
+  cw_r2d_round_rect(cw_rect_make(x - 1.5f, y - 1.5f, w + 3, h + 3), r + 1.5f, 8, edge);
+  int n = 6;
+  cw_r2d_round_rect(cw_rect_make(x, y, w, h), r, 8, bot);
+  for (int i = 0; i < n; i++) {
+    float t0 = (float)i / (float)n, hh2 = h * 0.5f / (float)n;
+    cw_color c = lerpc(top, bot, t0 * 1.6f > 1 ? 1 : t0 * 1.6f);
+    c.a *= 0.8f;
+    cw_r2d_rect(cw_rect_make(x + r * 0.4f, y + 2 + h * 0.5f * t0 * 0.9f, w - r * 0.8f, hh2 * 0.9f), c);
+  }
+}
+static void heart(cw_vec2 c, float r, cw_color col) {
+  cw_r2d_circle((cw_vec2){ c.x - r * 0.5f, c.y - r * 0.25f }, r * 0.56f, 12, col);
+  cw_r2d_circle((cw_vec2){ c.x + r * 0.5f, c.y - r * 0.25f }, r * 0.56f, 12, col);
+  cw_vec2 tri[3] = { { c.x - r * 1.02f, c.y - r * 0.05f }, { c.x + r * 1.02f, c.y - r * 0.05f }, { c.x, c.y + r * 1.0f } };
+  cw_r2d_polygon(tri, 3, col);
+}
+/* a player's face with its headgear: ears, an antenna, a sprout or horns (the marker that is not a colour) */
+static void portrait(cw_vec2 c, float r, int i, bool dim) {
+  cw_color fur = rgba3(PLAYER_RGB[i], dim ? 0.45f : 1), acc = i == 0 ? cw_rgba(1, 0.85f, 0.25f, 1) : i == 1 ? cw_rgba(0.95f, 0.95f, 0.95f, 1) : i == 2 ? cw_rgba(1, 0.45f, 0.65f, 1) : cw_rgba(0.3f, 0.8f, 0.95f, 1);
+  if (dim) acc.a = 0.5f;
+  if (i == 1) { /* antenna */
+    cw_r2d_line((cw_vec2){ c.x, c.y - r * 0.8f }, (cw_vec2){ c.x, c.y - r * 1.5f }, r * 0.12f, acc);
+    cw_r2d_circle((cw_vec2){ c.x, c.y - r * 1.55f }, r * 0.22f, 8, acc);
+  } else if (i == 0) { /* ears */
+    for (int k = -1; k <= 1; k += 2) {
+      cw_vec2 t[3] = { { c.x + k * r * 0.35f, c.y - r * 0.7f }, { c.x + k * r * 0.95f, c.y - r * 0.7f }, { c.x + k * r * 0.75f, c.y - r * 1.4f } };
+      cw_r2d_polygon(t, 3, acc);
+    }
+  } else if (i == 2) { /* sprout */
+    for (int k = -1; k <= 1; k += 2) cw_r2d_circle((cw_vec2){ c.x + k * r * 0.35f, c.y - r * 1.0f }, r * 0.3f, 8, acc);
+  } else { /* horns */
+    for (int k = -1; k <= 1; k += 2) {
+      cw_vec2 t[3] = { { c.x + k * r * 0.55f, c.y - r * 0.6f }, { c.x + k * r * 1.0f, c.y - r * 0.5f }, { c.x + k * r * 1.1f, c.y - r * 1.3f } };
+      cw_r2d_polygon(t, 3, acc);
+    }
+  }
+  cw_r2d_circle(c, r, 18, fur);
+  cw_r2d_circle((cw_vec2){ c.x, c.y + r * 0.3f }, r * 0.5f, 12, cw_rgba(0.96f, 0.9f, 0.78f, dim ? 0.5f : 1));
+  cw_r2d_circle((cw_vec2){ c.x - r * 0.35f, c.y - r * 0.1f }, r * 0.22f, 8, cw_rgba(1, 1, 1, 1));
+  cw_r2d_circle((cw_vec2){ c.x + r * 0.35f, c.y - r * 0.1f }, r * 0.22f, 8, cw_rgba(1, 1, 1, 1));
+  cw_r2d_circle((cw_vec2){ c.x - r * 0.3f, c.y - r * 0.08f }, r * 0.1f, 6, cw_rgba(0.05f, 0.05f, 0.1f, 1));
+  cw_r2d_circle((cw_vec2){ c.x + r * 0.3f, c.y - r * 0.08f }, r * 0.1f, 6, cw_rgba(0.05f, 0.05f, 0.1f, 1));
+}
+static void coin_icon(cw_vec2 c, float r) {
+  cw_r2d_circle(c, r, 14, cw_rgba(0.75f, 0.5f, 0.1f, 1));
+  cw_r2d_circle(c, r * 0.82f, 14, cw_rgba(1, 0.8f, 0.25f, 1));
+  cw_r2d_circle((cw_vec2){ c.x - r * 0.2f, c.y - r * 0.2f }, r * 0.35f, 8, cw_rgba(1, 0.95f, 0.7f, 0.9f));
+}
+
+static const char *const REGION_NAMES[BIOMES] = { "Sunlit Meadow", "Glimmer Caves", "Drowned Ruins", "Ember Crater" };
+
 static cw_color tile_color(int t, int biome) {
   switch (t) {
-    case T_ROCK: case T_GRASS: case T_BRICK: return biome == BIOME_MEADOW ? cw_rgba(0.35f, 0.55f, 0.3f, 1) : biome == BIOME_CAVES ? cw_rgba(0.35f, 0.4f, 0.55f, 1) : biome == BIOME_RUINS ? cw_rgba(0.75f, 0.65f, 0.45f, 1) : cw_rgba(0.6f, 0.25f, 0.2f, 1);
-    case T_WATER: return cw_rgba(0.2f, 0.5f, 0.9f, 1);
-    case T_LAVA: return cw_rgba(1, 0.4f, 0.1f, 1);
-    case T_SPIKE: return cw_rgba(0.9f, 0.9f, 0.9f, 1);
-    case T_ONEWAY: return cw_rgba(0.7f, 0.5f, 0.3f, 1);
+    case T_ROCK: case T_GRASS: case T_BRICK: return biome == BIOME_MEADOW ? cw_rgba(0.3f, 0.6f, 0.28f, 1) : biome == BIOME_CAVES ? cw_rgba(0.35f, 0.45f, 0.7f, 1) : biome == BIOME_RUINS ? cw_rgba(0.8f, 0.7f, 0.48f, 1) : cw_rgba(0.7f, 0.28f, 0.2f, 1);
+    case T_WATER: return cw_rgba(0.2f, 0.55f, 0.95f, 1);
+    case T_LAVA: return cw_rgba(1, 0.45f, 0.1f, 1);
+    case T_SPIKE: return cw_rgba(0.9f, 0.9f, 0.95f, 1);
+    case T_ONEWAY: return cw_rgba(0.75f, 0.52f, 0.3f, 1);
     default: return cw_rgba(0, 0, 0, 0);
   }
 }
@@ -1075,32 +1416,41 @@ static void draw_markers(float W, float H, float s) {
 }
 
 static void draw_map(float W, float H) {
-  cw_r2d_rect(cw_rect_make(0, 0, W, H), cw_rgba(0.02f, 0.03f, 0.06f, 0.88f));
-  float mw = W * 0.92f, cell = mw / (WORLD_W / 4);
-  float ox = (W - mw) * 0.5f, oy = H * 0.5f - cell * (WORLD_H / 4) * 0.5f;
+  float s = H / 540.0f;
+  cw_r2d_rect(cw_rect_make(0, 0, W, H), cw_rgba(0.01f, 0.02f, 0.05f, 0.9f));
+  float mw = W * 0.9f, cell = mw / (WORLD_W / 4);
+  float ox = (W - mw) * 0.5f, oy = H * 0.52f - cell * (WORLD_H / 4) * 0.5f;
   const save_t *sv = cw_shell_game_save();
+  panel(ox - 10 * s, oy - 10 * s, mw + 20 * s, cell * (WORLD_H / 4) + 20 * s, 12 * s, cw_rgba(0.08f, 0.12f, 0.2f, 0.95f), cw_rgba(0.03f, 0.05f, 0.09f, 0.95f), cw_rgba(0.5f, 0.65f, 0.9f, 0.5f));
   for (int by = 0; by < WORLD_H / 4; by++)
     for (int bx = 0; bx < WORLD_W / 4; bx++) {
       if (!G.seen[by][bx] && !sv->seen[by][bx]) continue;
-      /* dominant tile of the 4x4 block */
       int best = T_AIR, bc = 0, cnt[9] = { 0 };
       for (int y = 0; y < 4; y++)
         for (int x = 0; x < 4; x++) cnt[G.L.t[by * 4 + y][bx * 4 + x]]++;
       for (int t = 1; t < 9; t++)
         if (cnt[t] > bc) bc = cnt[t], best = t;
       float px = ox + (float)bx * cell, py = oy + (float)(WORLD_H / 4 - 1 - by) * cell;
-      cw_r2d_rect(cw_rect_make(px, py, cell, cell), best == T_AIR ? cw_rgba(0.08f, 0.1f, 0.16f, 1) : tile_color(best, G.L.biome[bx * 4]));
+      int bi = G.L.biome[bx * 4];
+      cw_color air = lerpc(cw_rgba(0.1f, 0.13f, 0.22f, 1), rgba3(MOODS[bi].fog, 1), 0.25f);
+      cw_r2d_rect(cw_rect_make(px, py, cell + 0.5f, cell + 0.5f), best == T_AIR ? air : tile_color(best, bi));
     }
-  for (int i = 0; i < G.nplayers; i++) {
-    const player *p = &G.p[i];
-    float px = ox + (float)p->pf.body.position.x / 4 * cell, py = oy + ((float)WORLD_H / 4 - (float)p->pf.body.position.y / 4) * cell;
-    cw_r2d_circle((cw_vec2){ px, py }, cell * 0.9f, 12, cw_rgba(PLAYER_RGB[i][0], PLAYER_RGB[i][1], PLAYER_RGB[i][2], 1));
-  }
   for (int k = 0; k < G.L.npickups; k++) {
     const pickup *pk = &G.L.pickups[k];
     float px = ox + (float)pk->x / 4 * cell, py = oy + ((float)WORLD_H / 4 - (float)pk->y / 4) * cell;
-    if (G.seen[pk->y / 4][pk->x / 4]) cw_r2d_circle((cw_vec2){ px, py }, cell * 0.6f, 8, pk->taken ? cw_rgba(0.5f, 0.5f, 0.5f, 1) : cw_rgba(0.4f, 0.9f, 1, 1));
+    if (G.seen[pk->y / 4][pk->x / 4]) {
+      float pulse = 1.0f + 0.2f * sinf(g_ui_t * 4);
+      cw_r2d_circle((cw_vec2){ px, py }, cell * 1.0f * pulse, 10, pk->taken ? cw_rgba(0.5f, 0.5f, 0.5f, 0.7f) : cw_rgba(0.4f, 0.9f, 1, 0.45f));
+      cw_r2d_circle((cw_vec2){ px, py }, cell * 0.55f, 8, pk->taken ? cw_rgba(0.6f, 0.6f, 0.6f, 1) : cw_rgba(0.7f, 1, 1, 1));
+    }
   }
+  for (int i = 0; i < G.nplayers; i++) {
+    const player *p = &G.p[i];
+    float px = ox + (float)p->pf.body.position.x / 4 * cell, py = oy + ((float)WORLD_H / 4 - (float)p->pf.body.position.y / 4) * cell;
+    cw_r2d_circle((cw_vec2){ px, py }, cell * (1.5f + 0.25f * sinf(g_ui_t * 5 + (float)i)), 16, rgba3(PLAYER_RGB[i], 0.35f));
+    portrait((cw_vec2){ px, py }, cell * 1.05f, i, false);
+  }
+  /* flags already touched: the map is also the shortcut (left and right pick one, Jump travels there) */
   for (int k = 0; k < G.L.nchecks; k++) {
     if (!(G.reached & (1u << k))) continue;
     float px = ox + (float)G.L.checks[k].x / 4 * cell, py = oy + ((float)WORLD_H / 4 - (float)G.L.checks[k].y / 4) * cell;
@@ -1110,57 +1460,142 @@ static void draw_map(float W, float H) {
     cw_r2d_polygon(fl, 3, sel ? cw_rgba(1, 0.85f, 0.2f, 1) : cw_rgba(0.9f, 0.9f, 0.95f, 1));
     if (sel) cw_r2d_circle_lines((cw_vec2){ px, py - cell }, cell * 2.6f, 2, 20, cw_rgba(1, 0.85f, 0.2f, 1));
   }
-  text("left and right pick a flag, Jump travels there", 0, H * 0.92f, 20 * H / 540, cw_rgba(1, 0.9f, 0.5f, 1), CW_ALIGN_CENTER, W);
-  text("MAP   (M or Back to close)", 0, H * 0.04f, 26 * H / 540, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER, W);
+  /* region names under the map, coloured by their light */
+  for (int b = 0; b < BIOMES; b++) {
+    int x0 = -1, x1 = -1;
+    for (int x = 0; x < WORLD_W; x++)
+      if (G.L.biome[x] == b && x < WORLD_W - 4) { if (x0 < 0) x0 = x; x1 = x; }
+    if (x0 < 0) continue;
+    float cx = ox + ((float)(x0 + x1) * 0.5f) / 4 * cell;
+    text(REGION_NAMES[b], cx - 110 * s, oy + cell * (WORLD_H / 4) + 16 * s, 16 * s, lerpc(rgba3(MOODS[b].sun, 1), cw_rgba(1, 1, 1, 1), 0.4f), CW_ALIGN_CENTER, 220 * s);
+  }
+  text("MAP", 0, H * 0.035f, 30 * s, cw_rgba(1, 0.95f, 0.8f, 1), CW_ALIGN_CENTER, W);
+  text("left and right pick a flag you have touched, Jump travels there   (M or Back to close)", 0, H * 0.93f, 16 * s, cw_rgba(0.8f, 0.85f, 1, 0.9f), CW_ALIGN_CENTER, W);
+}
+
+/* the title screen's picture: a painted dusk meadow with three drifting ridges, a sun, fireflies and the four heroes */
+static void title_background(cw_shell_screen scr, cw_vec2 cv, void *user) {
+  (void)user;
+  (void)scr;
+  float W = cv.x, H = cv.y, s = H / 540.0f, t = g_ui_t;
+  static const float SKY[6][3] = { { 0.1f, 0.12f, 0.35f }, { 0.28f, 0.2f, 0.5f }, { 0.65f, 0.3f, 0.5f }, { 0.95f, 0.5f, 0.35f }, { 1.0f, 0.75f, 0.45f }, { 1.0f, 0.88f, 0.6f } };
+  for (int i = 0; i < 80; i++) {
+    float f = (float)i / 80.0f * 5.0f;
+    int k0 = (int)f > 4 ? 4 : (int)f;
+    float fr = f - (float)k0;
+    cw_color c = cw_rgba(SKY[k0][0] + (SKY[k0 + 1][0] - SKY[k0][0]) * fr, SKY[k0][1] + (SKY[k0 + 1][1] - SKY[k0][1]) * fr, SKY[k0][2] + (SKY[k0 + 1][2] - SKY[k0][2]) * fr, 1);
+    cw_r2d_rect(cw_rect_make(0, H * 0.78f * (float)i / 80.0f, W, H * 0.78f / 80.0f + 1.5f), c);
+  }
+  cw_r2d_rect(cw_rect_make(0, H * 0.78f, W, H * 0.22f + 1), cw_rgba(0.12f, 0.2f, 0.22f, 1));
+  cw_vec2 sun = { W * 0.72f, H * 0.52f };
+  for (int k = 6; k >= 1; k--) cw_r2d_circle(sun, 28 * s * (float)k * 0.9f, 28, cw_rgba(1, 0.8f, 0.45f, 0.06f));
+  cw_r2d_circle(sun, 34 * s, 28, cw_rgba(1, 0.95f, 0.75f, 1));
+  static const float RC[3][3] = { { 0.4f, 0.3f, 0.55f }, { 0.2f, 0.25f, 0.4f }, { 0.08f, 0.14f, 0.2f } };
+  for (int l = 0; l < 3; l++) {
+    enum { N = 26 };
+    cw_vec2 p[N + 2];
+    float base = H * (0.58f + 0.1f * (float)l), amp = H * (0.12f - 0.02f * (float)l);
+    for (int i = 0; i <= N; i++) {
+      float x = W * (float)i / (float)N, ph = x / W * (4.0f + (float)l * 2.0f) + t * (0.02f + 0.015f * (float)l) + (float)l * 1.7f;
+      p[i] = (cw_vec2){ x, base - amp * (0.5f + 0.5f * sinf(ph * 2.0f) * cosf(ph * 0.7f + 1.0f)) };
+    }
+    p[N + 1] = (cw_vec2){ W, H };
+    cw_vec2 poly[N + 3];
+    poly[0] = (cw_vec2){ 0, H };
+    for (int i = 0; i <= N + 1; i++) poly[i + 1] = p[i];
+    cw_r2d_polygon(poly, N + 3, rgba3(RC[l], 1));
+  }
+  for (int i = 0; i < 40; i++) {
+    float fx = fmodf((float)i * 97.3f + t * (8.0f + (float)(i % 5) * 3.0f), W), fy = H * (0.45f + 0.5f * fabsf(sinf((float)i * 1.3f + t * 0.3f + (float)i)));
+    float a = 0.4f + 0.6f * fabsf(sinf(t * 1.5f + (float)i));
+    cw_r2d_circle((cw_vec2){ fx, fy }, 2.2f * s, 6, cw_rgba(1, 0.95f, 0.5f, a));
+    cw_r2d_circle((cw_vec2){ fx, fy }, 6 * s, 8, cw_rgba(1, 0.9f, 0.4f, 0.12f * a));
+  }
+  for (int i = 0; i < 4; i++) {
+    float x = W * (0.22f + 0.19f * (float)i), y = H * 0.84f - 8 * s * fabsf(sinf(t * 2.0f + (float)i * 0.9f));
+    cw_r2d_circle((cw_vec2){ x, H * 0.9f }, 30 * s, 16, cw_rgba(0, 0, 0, 0.25f));
+    portrait((cw_vec2){ x, y }, 26 * s, i, false);
+  }
 }
 
 static void render(void *user, double alpha) {
   (void)user;
   float dt = 1.0f / 60.0f;
+  g_ui_t += dt;
   if (G.nplayers && G.world.id && S.built) sync_scene((float)alpha, dt);
   cw_r2d_begin(&(cw_r2d_pass_desc){ .clear = false });
   cw_vec2 cs = cw_r2d_canvas_size();
   float W = cs.x, H = cs.y, s = H / 540.0f;
   if (G.nplayers && G.world.id && cw_shell_screen_now() != CW_SHELL_TITLE) {
-    /* hearts and coins per player */
+    /* a panel per player: face, hearts, coins */
     for (int i = 0; i < G.nplayers; i++) {
       const player *p = &G.p[i];
-      float x0 = 20 * s + (float)i * 170 * s, y0 = 18 * s;
-      cw_r2d_round_rect(cw_rect_make(x0 - 6 * s, y0 - 6 * s, 160 * s, 50 * s), 10 * s, 6, cw_rgba(0, 0, 0, 0.35f));
-      glyph(i, x0 + 10 * s, y0 + 12 * s, 10 * s, cw_rgba(PLAYER_RGB[i][0], PLAYER_RGB[i][1], PLAYER_RGB[i][2], 1));
+      float x0 = 20 * s + (float)i * 176 * s, y0 = 16 * s, pw = 166 * s, ph = 58 * s;
+      panel(x0, y0, pw, ph, 12 * s, cw_rgba(0.16f, 0.2f, 0.3f, 0.82f), cw_rgba(0.04f, 0.05f, 0.09f, 0.82f), rgba3(PLAYER_RGB[i], p->alive || p->bubble ? 0.9f : 0.3f));
+      portrait((cw_vec2){ x0 + 28 * s, y0 + 34 * s }, 17 * s, i, !(p->alive || p->bubble));
       for (int h = 0; h < 3; h++) {
-        cw_color hc = h < p->hp ? cw_rgba(1, 0.3f, 0.35f, 1) : cw_rgba(0.3f, 0.3f, 0.35f, 0.7f);
-        cw_r2d_circle((cw_vec2){ x0 + (34 + 22 * (float)h) * s, y0 + 12 * s }, 8 * s, 12, hc);
+        cw_vec2 hc = { x0 + (70 + 26 * (float)h) * s, y0 + 19 * s };
+        if (h < p->hp) {
+          heart(hc, 9 * s, cw_rgba(1, 0.3f, 0.38f, 1));
+          cw_r2d_circle((cw_vec2){ hc.x - 4 * s, hc.y - 4 * s }, 2.2f * s, 6, cw_rgba(1, 0.85f, 0.9f, 0.9f));
+        } else heart(hc, 9 * s, cw_rgba(0.25f, 0.27f, 0.36f, 0.9f));
       }
       char b[32];
       snprintf(b, sizeof b, "%d", p->coins);
-      cw_r2d_circle((cw_vec2){ x0 + 10 * s, y0 + 34 * s }, 5 * s, 10, cw_rgba(1, 0.8f, 0.25f, 1));
-      text(b, x0 + 24 * s, y0 + 24 * s, 18 * s, cw_rgba(1, 0.95f, 0.8f, 1), CW_ALIGN_LEFT, 0);
+      coin_icon((cw_vec2){ x0 + 78 * s, y0 + 44 * s }, 7 * s);
+      text(b, x0 + 90 * s, y0 + 31 * s, 18 * s, cw_rgba(1, 0.95f, 0.8f, 1), CW_ALIGN_LEFT, 0);
     }
-    char b[64];
-    snprintf(b, sizeof b, "%s%s%s", (G.abilities & AB_DOUBLE) ? "AIR JUMP  " : "", (G.abilities & AB_CLAWS) ? "CLAWS  " : "", (G.abilities & AB_DASH) ? "DASH" : "");
-    text(b, 0, 18 * s, 18 * s, cw_rgba(0.6f, 0.9f, 1, 1), CW_ALIGN_RIGHT, W - 20 * s);
+    /* the abilities: a chip each, lit when found */
+    static const char *const AB[3] = { "AIR JUMP", "CLAWS", "DASH" };
+    for (int k = 0; k < 3; k++) {
+      bool on = (G.abilities >> k) & 1;
+      float cw_ = 76 * s, x = W - (16 + (float)(3 - k) * 82) * s, y = 20 * s;
+      panel(x, y, cw_, 30 * s, 10 * s, on ? cw_rgba(0.2f, 0.45f, 0.6f, 0.9f) : cw_rgba(0.12f, 0.14f, 0.2f, 0.6f), on ? cw_rgba(0.05f, 0.12f, 0.2f, 0.9f) : cw_rgba(0.05f, 0.06f, 0.09f, 0.6f), on ? cw_rgba(0.5f, 0.9f, 1, 0.8f) : cw_rgba(0.4f, 0.4f, 0.5f, 0.3f));
+      text(AB[k], x, y + 7 * s, 14 * s, on ? cw_rgba(0.85f, 0.98f, 1, 1) : cw_rgba(0.5f, 0.55f, 0.65f, 0.8f), CW_ALIGN_CENTER, cw_);
+    }
+    /* the region you are in, fading in at the top when it changes */
+    {
+      static int last_reg = -1;
+      static float reg_t = 0;
+      int b = G.L.biome[(int)G.cam.x < 0 ? 0 : (int)G.cam.x >= WORLD_W ? WORLD_W - 1 : (int)G.cam.x];
+      if (b != last_reg) last_reg = b, reg_t = 3.2f;
+      if (reg_t > 0) {
+        reg_t -= dt;
+        float a = reg_t > 2.6f ? (3.2f - reg_t) / 0.6f : reg_t < 0.8f ? reg_t / 0.8f : 1.0f;
+        text(REGION_NAMES[b], 0, H * 0.2f, 34 * s, cw_rgba(1, 0.96f, 0.85f, a), CW_ALIGN_CENTER, W);
+        cw_r2d_rect(cw_rect_make(W * 0.5f - 90 * s, H * 0.2f + 44 * s, 180 * s, 2 * s), cw_rgba(1, 0.85f, 0.5f, a * 0.8f));
+      }
+    }
     /* boss bar */
     for (int i = 0; i < G.L.nenemies; i++)
       if (G.L.enemies[i].kind == 2 && G.L.enemies[i].alive && fabsf(G.cam.x - G.L.enemies[i].x) < 30) {
-        float bw = W * 0.5f, bx = (W - bw) * 0.5f, by = H - 44 * s;
-        cw_r2d_round_rect(cw_rect_make(bx, by, bw, 16 * s), 6 * s, 6, cw_rgba(0, 0, 0, 0.6f));
-        cw_r2d_round_rect(cw_rect_make(bx, by, bw * (float)G.L.enemies[i].hp / 9.0f, 16 * s), 6 * s, 6, cw_rgba(0.9f, 0.2f, 0.15f, 1));
+        float bw = W * 0.5f, bx = (W - bw) * 0.5f, by = H - 52 * s;
+        float f = (float)G.L.enemies[i].hp / 9.0f;
+        panel(bx - 6 * s, by - 6 * s, bw + 12 * s, 28 * s, 10 * s, cw_rgba(0.2f, 0.1f, 0.1f, 0.9f), cw_rgba(0.06f, 0.03f, 0.03f, 0.9f), cw_rgba(1, 0.5f, 0.3f, 0.6f));
+        cw_r2d_round_rect(cw_rect_make(bx, by, bw * f, 16 * s), 7 * s, 8, cw_rgba(0.8f, 0.12f, 0.1f, 1));
+        cw_r2d_round_rect(cw_rect_make(bx, by, bw * f, 7 * s), 5 * s, 8, cw_rgba(1, 0.5f, 0.3f, 0.9f));
+        text("THE WARDEN", 0, by - 30 * s, 17 * s, cw_rgba(1, 0.85f, 0.7f, 1), CW_ALIGN_CENTER, W);
       }
     draw_markers(W, H, s);
     text("hold R or Y: back to the last flag", 20 * s, H - 30 * s, 14 * s, cw_rgba(1, 1, 1, 0.45f), CW_ALIGN_LEFT, 0);
-    /* arrows to players carried in bubbles */
+    /* players carried in bubbles */
     for (int i = 0; i < G.nplayers; i++)
       if (G.p[i].bubble && G.p[i].joined) {
-        const char *t = "RESCUE";
-        text(t, 0, H - 80 * s, 20 * s, cw_rgba(PLAYER_RGB[i][0], PLAYER_RGB[i][1], PLAYER_RGB[i][2], 1), CW_ALIGN_CENTER, W);
+        float x = W * 0.5f + (float)(i - G.nplayers / 2) * 90 * s;
+        portrait((cw_vec2){ x - 54 * s, H - 100 * s }, 15 * s, i, false);
+        text("RESCUE", x - 34 * s, H - 110 * s, 18 * s, rgba3(PLAYER_RGB[i], 1), CW_ALIGN_LEFT, 0);
       }
     if (G.won) {
-      cw_r2d_rect(cw_rect_make(0, H * 0.3f, W, H * 0.3f), cw_rgba(0, 0, 0, 0.5f));
-      text("THE DEEP IS QUIET", 0, H * 0.34f, 48 * s, cw_rgba(1, 0.85f, 0.3f, 1), CW_ALIGN_CENTER, W);
-      char t[96];
-      snprintf(t, sizeof t, "coins %d   secrets %d   rescues %d   falls %d", G.coins_total, G.secrets, G.rescues, G.deaths);
-      text(t, 0, H * 0.47f, 24 * s, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER, W);
+      float k = fminf(1.0f, (float)(G.tick - G.win_tick) / 40.0f);
+      panel(0, H * 0.28f, W, H * 0.34f * k, 0, cw_rgba(0.1f, 0.08f, 0.02f, 0.88f), cw_rgba(0.02f, 0.02f, 0.03f, 0.88f), cw_rgba(1, 0.8f, 0.3f, 0.7f));
+      if (k > 0.9f) {
+        text("THE DEEP IS QUIET", 0, H * 0.31f, 52 * s, cw_rgba(1, 0.85f, 0.3f, 1), CW_ALIGN_CENTER, W);
+        char t[96];
+        coin_icon((cw_vec2){ W * 0.5f - 250 * s, H * 0.485f }, 11 * s);
+        snprintf(t, sizeof t, "coins %d     secrets %d     rescues %d     falls %d", G.coins_total, G.secrets, G.rescues, G.deaths);
+        text(t, 0, H * 0.46f, 24 * s, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER, W);
+        for (int i = 0; i < G.nplayers; i++) portrait((cw_vec2){ W * 0.5f + ((float)i - (float)(G.nplayers - 1) * 0.5f) * 64 * s, H * 0.56f }, 18 * s, i, false);
+      }
     }
     if (g_map_open) draw_map(W, H);
   }
