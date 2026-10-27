@@ -22,7 +22,7 @@ mkdir -p "$O"
 parts=("$@"); [ ${#parts[@]} -eq 0 ] && parts=(expect gates wgpu hosts balance)
 GF=partypack-gates.json
 names() { node -e "for (const g of JSON.parse(require('fs').readFileSync('$ROOT/tests/$GF','utf8'))) if (!process.argv[1] || !g.expect) console.log(g.name)" "${1:-}"; }
-CROSS="partypack-tournament-short partypack-menu partypack-join partypack-drop"
+CROSS="partypack-tournament-short partypack-menu partypack-join partypack-drop partypack-join-press"
 # one short hold of the GPU lock
 locked() { local tag="$1"; shift; (cd "$E" && timeout 900 node tools/with-gpu-suite.mjs "pp-$tag" "$@"); }
 # software GL off the lock: llvmpipe, no display, no GPU device touched

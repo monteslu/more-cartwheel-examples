@@ -86,6 +86,30 @@
     "note": "a pad leaves with B, another joins, then it is unplugged and its seat frees by itself: one person is left; control: that pad stays plugged in, two people"
   },
   {
+    "name": "partypack-join-press",
+    "app": "partypack",
+    "assets": "games/partypack/assets",
+    "frames": 140,
+    "input": "partypack-join-press.json",
+    "controlInput": "partypack-join-press-control.json",
+    "minColors": 50,
+    "fields": [
+      "shell.screen",
+      "shell.players",
+      "game.state",
+      "game.round",
+      "game.mg",
+      "game.humans",
+      "game.points"
+    ],
+    "expect": {
+      "shell.screen": 3,
+      "game.state": 3,
+      "game.humans": 2
+    },
+    "note": "PP16 one-press join: on the board a second pad presses A once and plays from then on (no join screen); control: it presses B, one person"
+  },
+  {
     "name": "partypack-game-hurdle",
     "app": "partypack_auto",
     "assets": "games/partypack/assets",

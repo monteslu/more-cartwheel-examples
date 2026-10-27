@@ -13,6 +13,7 @@ static struct {
   struct { float x, y, vx, vy; int cd, dash, stun; float fx, fy; int coins; } p[NP];
   struct { float x, y, vx, vy; int val, age; bool on; } c[MAXC];
   int next_gold;
+  uint32_t seed; /* this game's CPU noise, so no two games play the same */
 } C;
 
 static void spawn(mg_ctx *c, int val, float x, float y, float vx, float vy) {
@@ -29,10 +30,13 @@ static void spawn_random(mg_ctx *c, int val) {
 static void start(mg_ctx *c) {
   memset(&C, 0, sizeof C);
   for (int i = 0; i < NP; i++) {
-    C.p[i].x = AX0 + AW * (0.2f + 0.2f * (float)i);
-    C.p[i].y = AY0 + AH * 0.5f;
+    /* the four corners of a square round the middle: every seat has the same room and the same neighbours (a row
+     * put two seats in the crowd and two on the edges) */
+    C.p[i].x = AX0 + AW * (i % 2 ? 0.68f : 0.32f);
+    C.p[i].y = AY0 + AH * (i < 2 ? 0.28f : 0.72f);
     C.p[i].fy = 1;
   }
+  C.seed = cw_rng_u32(&c->rng);
   for (int i = 0; i < 8; i++) spawn_random(c, 1);
   C.next_gold = 360;
 }
@@ -67,11 +71,20 @@ static void tick(mg_ctx *c) {
     p->x = fclampf(p->x + p->vx * dt, AX0 + BR, AX0 + AW - BR);
     p->y = fclampf(p->y + p->vy * dt, AY0 + BR, AY0 + AH - BR);
   }
+  /* a dash that bumps another blob shakes a coin loose. Who hits whom is decided for every pair first and applied
+   * after, so two dashes that meet both land (the lower seat used to stun the other before its hit counted) */
+  bool hit[NP][NP] = { { false } };
   for (int i = 0; i < NP; i++)
-    for (int j = 0; j < NP; j++) { /* a dash that bumps another blob shakes a coin loose */
+    for (int j = 0; j < NP; j++) {
       if (i == j || C.p[i].dash == 0 || C.p[j].stun > 0) continue;
       float dx = C.p[j].x - C.p[i].x, dy = C.p[j].y - C.p[i].y, d = sqrtf(dx * dx + dy * dy);
-      if (d < BR * 2 && d > 0.01f) {
+      hit[i][j] = d < BR * 2 && d > 0.01f;
+    }
+  for (int i = 0; i < NP; i++)
+    for (int j = 0; j < NP; j++) {
+      if (!hit[i][j]) continue;
+      float dx = C.p[j].x - C.p[i].x, dy = C.p[j].y - C.p[i].y, d = sqrtf(dx * dx + dy * dy) + 0.001f;
+      {
         C.p[j].vx += dx / d * 380; C.p[j].vy += dy / d * 380;
         C.p[j].stun = 24;
         if (C.p[j].coins > 0) {
@@ -90,15 +103,22 @@ static void tick(mg_ctx *c) {
     C.c[k].y = fclampf(C.c[k].y + C.c[k].vy * dt, AY0 + 14, AY0 + AH - 14);
     C.c[k].vx *= 0.95f; C.c[k].vy *= 0.95f;
     if (C.c[k].age < 20) continue; /* a loosened coin hangs in the air for a moment */
-    for (int i = 0; i < NP; i++) {
-      float dx = C.p[i].x - C.c[k].x, dy = C.p[i].y - C.c[k].y;
-      if (dx * dx + dy * dy < (BR + 14) * (BR + 14)) {
+    /* the nearest blob in reach takes it (an exact tie goes to the seat the tick points at, never always seat 1) */
+    int who = -1;
+    float wd = (BR + 14) * (BR + 14);
+    for (int n = 0; n < NP; n++) {
+      int i = (n + c->tick) % NP;
+      float dx = C.p[i].x - C.c[k].x, dy = C.p[i].y - C.c[k].y, dd = dx * dx + dy * dy;
+      if (dd < wd) wd = dd, who = i;
+    }
+    if (who >= 0) {
+      int i = who;
+      {
         C.c[k].on = false;
         C.p[i].coins += C.c[k].val;
         sfx(C.c[k].val > 1 ? SFX_WIN : SFX_COIN, 0.5f, 1.0f + 0.1f * (float)(C.p[i].coins % 5));
         fx_burst(cw_v2(C.c[k].x, C.c[k].y), C.c[k].val > 1 ? 14 : 6, cw_rgba(1, 0.9f, 0.3f, 1), 150, 0.4f, 5);
         if (C.c[k].val > 1) { fx_text(cw_v2(C.c[k].x, C.c[k].y - 20), "+3", PCOL[i], 34); fx_hitstop(2); }
-        break;
       }
     }
   }
@@ -108,7 +128,7 @@ static void tick(mg_ctx *c) {
 static void think(mg_ctx *c, int p, mg_in *out) {
   memset(out, 0, sizeof *out);
   static const int greed[3] = { 40, 25, 10 }; /* how far a CPU will go for a one-coin pickup (smaller: pickier, nearer) */
-  uint32_t h = hash_u32((uint32_t)p * 31u + 1u, (uint32_t)(c->tick / (12 - 3 * c->cpu_skill[p])));
+  uint32_t h = hash_u32(C.seed + (uint32_t)p * 31u + 1u, (uint32_t)(c->tick / (12 - 3 * c->cpu_skill[p])));
   int best = -1;
   float bs = -1e9f;
   for (int k = 0; k < MAXC; k++) {

@@ -13,7 +13,8 @@ typedef struct { float w, h; } shape_t;
 static const shape_t SHAPES[5] = { { 1.7f, 0.4f }, { 0.8f, 0.8f }, { 0.5f, 1.1f }, { 1.1f, 0.55f }, { 0.6f, 0.6f } };
 
 static struct {
-  cw_world2d w;
+  cw_world2d w[NP]; /* one physics world per player: a block that topples off one tower can never prop up or knock
+                     * down a neighbour's, so no seat gains from where it stands in the row */
   cw_body2d ground[NP];
   struct { cw_body2d body; int shape, age; bool rot, alive; } blk[NP][MAXB];
   int dropped[NP], next_shape[NP][MAXB + 1], cur[NP];
@@ -37,12 +38,12 @@ static void start(mg_ctx *c) {
   cw_world2d_def d = cw_world2d_default_def();
   d.gravity = cw_v2(0, -14);
   d.workers = 1;
-  T.w = cw_world2d_create(&d);
   for (int p = 0; p < NP; p++) {
+    T.w[p] = cw_world2d_create(&d);
     cw_body2d_def bd = cw_body2d_default_def();
     bd.type = CW_BODY_STATIC;
     bd.position = (cw_pos2){ col_x(p), -0.25 };
-    T.ground[p] = cw_body2d_create(T.w, &bd);
+    T.ground[p] = cw_body2d_create(T.w[p], &bd);
     cw_shape2d_def sd = cw_shape2d_default_def();
     sd.material.friction = 0.9f;
     cw_shape2d_box(T.ground[p], &sd, cw_v2(1.35f, 0.25f), cw_xform2_identity());
@@ -60,7 +61,7 @@ static void start(mg_ctx *c) {
 
 static void stop(mg_ctx *c) {
   (void)c;
-  if (T.w.id) cw_world2d_destroy(T.w);
+  for (int p = 0; p < NP; p++) if (T.w[p].id) cw_world2d_destroy(T.w[p]);
   memset(&T, 0, sizeof T);
 }
 
@@ -72,7 +73,7 @@ static void drop(mg_ctx *c, int p) {
   cw_body2d_def bd = cw_body2d_default_def();
   bd.position = (cw_pos2){ col_x(p) + T.cx[p], 7.4 };
   bd.linear_damping = 0.05f;
-  cw_body2d b = cw_body2d_create(T.w, &bd);
+  cw_body2d b = cw_body2d_create(T.w[p], &bd);
   cw_shape2d_def sd = cw_shape2d_default_def();
   sd.material.friction = 0.8f;
   sd.density = 1;
@@ -97,7 +98,7 @@ static void tick(mg_ctx *c) {
     if (T.cooldown[p] > 0) T.cooldown[p]--;
     if (in->pa) drop(c, p);
   }
-  cw_world2d_step(T.w, dt);
+  for (int p = 0; p < NP; p++) cw_world2d_step(T.w[p], dt);
   for (int p = 0; p < NP; p++) {
     int top = 0;
     for (int i = 0; i < T.dropped[p]; i++) {

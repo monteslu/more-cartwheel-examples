@@ -12,9 +12,11 @@ shell: each pad joins with A, Start pauses.
 After joining you get the hub:
 
 - **Party Tournament**: 4, 6 or 8 rounds. Each round is one mini-game picked
-  from the ones you have unlocked. First place moves four spaces on the board,
-  second three, third two, fourth one; the last round counts double, and the
-  first player to land on a +2 space takes the bonus. The player furthest
+  from the ones you have unlocked. First place moves five spaces on the board,
+  second three, third two, fourth one. The round before the last counts double
+  and the last one triple, every player 5 or more behind the leader gets an
+  underdog point, and the first player to land on a +2 space takes the bonus.
+  A tie on points goes to the most round wins, then to a draw. The player furthest
   along when the rounds run out wins.
 - **Free Play**: pick any unlocked mini-game and play it on its own.
 - **Trophy Room**: party points, tournament wins per seat, best scores.

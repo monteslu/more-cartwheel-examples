@@ -56,12 +56,15 @@ for (const [id, m] of Object.entries(lad))
   console.log(`  ${id.padEnd(8)} ` + Object.entries(m).map(([sk, a]) => `skill ${sk}: ${(a.reduce((x, y) => x + y, 0) / a.length).toFixed(2)}`).join('   '));
 
 // PP7 comeback: last after two rounds wins the match
-let lastWins = 0, lastN = 0;
-for (const t of tourns.filter((t) => t.cfg === 'mid' || t.cfg === 'mid-long' || t.cfg === 'mixed')) {
-  const a = nums(t.after2), min = Math.min(...a);
-  const lasts = a.map((v, i) => (v === min ? i : -1)).filter((i) => i >= 0);
-  if (lasts.length === 1) { lastN++; if (+t.winner === lasts[0]) lastWins++; }
-}
-console.log(`\nPP7 last after round 2 wins the match: ${pct(lastWins, lastN)} (n=${lastN}; aim 15% to 30%)`);
+const comeback = (cfgs) => {
+  let w = 0, n = 0;
+  for (const t of tourns.filter((t) => cfgs.includes(t.cfg))) {
+    const a = nums(t.after2), min = Math.min(...a);
+    const lasts = a.map((v, i) => (v === min ? i : -1)).filter((i) => i >= 0);
+    if (lasts.length === 1) { n++; if (+t.winner === lasts[0]) w++; }
+  }
+  return `${pct(w, n)} (n=${n})`;
+};
+console.log(`\nPP7 last after round 2 wins the match: ${comeback(['mid', 'mid-long', 'mixed'])} (aim 15% to 30%); equal bots only (mid, mid-long): ${comeback(['mid', 'mid-long'])}`);
 const ties = tourns.filter((t) => t.tie !== 'no').length;
-console.log(`tie for first on points: ${pct(ties, tourns.length)} of tournaments (decided by round wins, then seat order, shown on screen)`);
+console.log(`tie for first on points: ${pct(ties, tourns.length)} of tournaments (decided by round wins, then a seeded draw, shown on screen)`);

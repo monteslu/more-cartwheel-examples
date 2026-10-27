@@ -123,8 +123,11 @@ static void tick(mg_ctx *c) {
     if (D.p[g].alive) continue;
     if (D.throw_cd[g] > 0) D.throw_cd[g]--;
     if (!c->in[g].pa || D.throw_cd[g] > 0) continue;
-    int tgt = -1;
-    for (int i = 0; i < LANES; i++) if (D.p[i].alive && (tgt < 0 || D.p[i].lives > D.p[tgt].lives)) tgt = i;
+    /* the runner with the most lives; a tie is drawn from the game's rng (not the lowest seat) */
+    int most = 0, cand[LANES], nc = 0;
+    for (int i = 0; i < LANES; i++) if (D.p[i].alive && D.p[i].lives > most) most = D.p[i].lives;
+    for (int i = 0; i < LANES; i++) if (D.p[i].alive && D.p[i].lives == most) cand[nc++] = i;
+    int tgt = nc ? cand[cw_rng_int(&c->rng, 0, nc - 1)] : -1;
     if (tgt < 0) continue;
     for (int k = 0; k < MAXPEB; k++) {
       if (D.peb[tgt][k].x >= 0) continue;

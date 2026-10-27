@@ -191,10 +191,11 @@ static void end_game_cleanup(void) {
   apply_scope();
 }
 
-/* Points per place: the winner gets 5, then 3, 2, 1; the last round counts double. A seat that is 8 or more
+/* Points per place: the winner gets 5, then 3, 2, 1; the round before the last counts double and the
+ * last one triple. Every seat that is 5 or more
  * points behind the leader gets 1 more (the underdog point, 20% of the winner's 5, shown on the board). */
 static const int PLACE_PTS[4] = { 5, 3, 2, 1 };
-enum { UNDERDOG_GAP = 8 };
+enum { UNDERDOG_GAP = 5 };
 
 /* Board cells with an event. Each cell's event happens once, to the first seat that lands on it exactly. */
 enum { EV_NONE, EV_STAR, EV_STEAL, EV_SWAP, EV_UNDERDOG };
@@ -211,6 +212,10 @@ static bool cell_used(int cell) { return cell < 64 && ((G.ev_taken[0] >> cell) &
 static int per_row(void) { int n = board_cells() + 1; return n <= 40 ? 10 : (n + 3) / 4; }
 #define BOARD_PER_ROW per_row()
 
+/* the round before the last counts double and the last one triple (said on the board before they start): a seat
+ * behind after the first rounds can still win, which the comeback target asks for */
+static bool is_double_round(int r) { return r >= G.rounds - 2; }
+
 static void rank_players(void) {
   const mg_def *d = cur_def();
   int idx[NP] = { 0, 1, 2, 3 };
@@ -226,7 +231,7 @@ static void rank_players(void) {
     if (i > 0 && G.c.score[idx[i]] != G.c.score[idx[i - 1]]) place = i;
     G.place[idx[i]] = place;
   }
-  int mult = (G.tournament && G.round == G.rounds - 1) ? 2 : 1;
+  int mult = !G.tournament ? 1 : G.round == G.rounds - 1 ? 3 : is_double_round(G.round) ? 2 : 1;
   for (int p = 0; p < NP; p++) G.round_pts[p] = PLACE_PTS[G.place[p]] * mult;
 }
 
@@ -250,11 +255,11 @@ static void board_round(void) {
     if (G.place[p] == 0) G.round_wins[p]++;
   }
   for (int p = 0; p < NP; p++)
-    if (G.from[p] <= G.from[leader] - UNDERDOG_GAP && G.from[p] == G.from[low] && G.place[p] != 0) { G.underdog[p] = 1; G.points[p] += 1; ev_add(EV_UNDERDOG, p, -1, 1); }
+    if (G.from[p] <= G.from[leader] - UNDERDOG_GAP && G.place[p] != 0) { G.underdog[p] = 1; G.points[p] += 1; ev_add(EV_UNDERDOG, p, -1, 1); }
   for (int p = 0; p < NP; p++) G.mid[p] = G.points[p];
   int order[NP], k = 0;
   (void)k;
-  for (int pl = 0; pl < NP; pl++) for (int p = 0; p < NP; p++) if (G.place[p] == pl) order[k++] = p;
+  for (int pl = 0; pl < NP; pl++) for (int j = 0; j < NP; j++) { int p = (j + G.round) % NP; if (G.place[p] == pl) order[k++] = p; } /* tied places: the seat that goes first rotates */
   cw_rng r;
   cw_rng_seed(&r, 31337u + (uint32_t)G.serial * 101u + (uint32_t)G.round);
   for (int i = 0; i < NP; i++) {
@@ -316,6 +321,19 @@ static void to_results(void) {
 static void new_order(void) {
   int pool[MG_MAX], n = 0;
   for (int i = 0; i < MG_N; i++) if (is_unlocked(i)) pool[n++] = i;
+#ifdef PP_AUTOPILOT
+  { /* balance runs play only games that need no scene; PP_GAME keeps every tournament on one game */
+    const char *only = getenv("PP_GAME");
+    int m = 0;
+    for (int k = 0; k < n; k++) {
+      const mg_def *d = MG_LIST[pool[k]];
+      if (batch_total && d->scene) continue;
+      if (only && strcmp(d->id, only)) continue;
+      pool[m++] = pool[k];
+    }
+    if (m > 0) n = m;
+  }
+#endif
   cw_rng r;
   cw_rng_seed(&r, 4242u + (uint32_t)SV->tournaments * 977u + (uint32_t)G.serial);
   int bag[MG_MAX], left = 0, last = -1;
@@ -352,17 +370,23 @@ static void start_tournament(void) {
 }
 
 static void finish_tournament(void) {
-  /* first by points; a tie goes to the seat with more round wins, then to the lower seat number (said on screen) */
-  int best = 0;
+  /* first by points; a tie goes to the seat with more round wins, then to a draw from the tournament's seeded rng
+   * (never the seat number, which favoured seat 1); the screen says which one decided it */
+  int top = G.points[0];
+  for (int p = 1; p < NP; p++) if (G.points[p] > top) top = G.points[p];
+  int cand[NP], nc = 0, most = -1;
+  for (int p = 0; p < NP; p++) if (G.points[p] == top && G.round_wins[p] > most) most = G.round_wins[p];
+  bool tied_pts = false;
+  { int n = 0; for (int p = 0; p < NP; p++) n += G.points[p] == top; tied_pts = n > 1; }
+  for (int p = 0; p < NP; p++) if (G.points[p] == top && G.round_wins[p] == most) cand[nc++] = p;
   G.tiebreak = NULL;
-  for (int p = 1; p < NP; p++) {
-    if (G.points[p] > G.points[best]) best = p;
-    else if (G.points[p] == G.points[best]) {
-      if (G.round_wins[p] > G.round_wins[best]) { best = p; G.tiebreak = "most round wins"; }
-      else if (G.round_wins[p] == G.round_wins[best]) G.tiebreak = "seat order";
-      else G.tiebreak = "most round wins";
-    }
-  }
+  int best = cand[0];
+  if (nc > 1) {
+    cw_rng r;
+    cw_rng_seed(&r, 7177u + (uint32_t)SV->tournaments * 433u + (uint32_t)G.serial * 29u);
+    best = cand[cw_rng_int(&r, 0, nc - 1)];
+    G.tiebreak = "a draw";
+  } else if (tied_pts) G.tiebreak = "most round wins";
   G.winner = best;
 #ifdef PP_AUTOPILOT
   if (batch_total) {
@@ -544,9 +568,11 @@ int pp_batch_active(void) { return batch_total != 0; }
 static void fixed_update(void *user, double dt) {
   (void)user, (void)dt;
   if (!cw_shell_update()) return;
-  /* join and leave in the middle of a session: a pad without a seat presses A or Start, or a seated player presses
-   * Y between rounds (the board, the menu, the picker), and the shell's join screen opens over the game */
+  /* join and leave in the middle of a session: a pad without a seat presses A and takes the CPU's seat at once (one
+   * press; players_changed hands the seat over); Start on such a pad, or Y from a seated player between rounds (the
+   * board, the menu, the picker), opens the shell's join screen over the game, which is also how a player leaves */
   if (!AUTO && G.state != S_COUNT && G.state != S_FINISH) {
+    if (cw_shell_join_press()) return;
     bool ask = cw_shell_join_requested();
     if (G.state == S_MENU || G.state == S_PICK || G.state == S_BOARD || G.state == S_RESULT || G.state == S_FINAL)
       for (int p = 0; p < NP; p++) if (G.human[p] && cw_action_just_pressed(p, a_y)) ask = true;
@@ -680,7 +706,7 @@ static void draw_menu(void) {
     if (v[0]) ui_text(v, cw_v2(r.x + r.w - 28, r.y + 6), 34, tc, CW_ALIGN_RIGHT);
   }
   char s[96];
-  snprintf(s, sizeof s, "%d player%s + %d CPU     Y: players join or leave", G.humans, G.humans == 1 ? "" : "s", NP - G.humans);
+  snprintf(s, sizeof s, "%d player%s + %d CPU     new pad: A joins     Y: join or leave", G.humans, G.humans == 1 ? "" : "s", NP - G.humans);
   ui_text(s, cw_v2(STAGE_W / 2, 668), 26, cw_rgba(1, 1, 1, 0.85f), CW_ALIGN_CENTER);
 }
 
@@ -759,7 +785,7 @@ static void draw_board(void) {
     }
   }
   if (G.round < G.rounds) {
-    snprintf(s, sizeof s, "Next: %s", MG_LIST[G.order[G.round]]->name);
+    snprintf(s, sizeof s, !G.tournament || !is_double_round(G.round) ? "Next: %s" : G.round == G.rounds - 1 ? "Next: %s   (triple points)" : "Next: %s   (double points)", MG_LIST[G.order[G.round]]->name);
     ui_text(s, cw_v2(STAGE_W / 2, 96), 40, cw_rgba(1, 0.92f, 0.5f, 1), CW_ALIGN_CENTER);
     if (G.st_ticks > 150) ui_text("press A", cw_v2(STAGE_W / 2, 580), 28, cw_rgba(1, 1, 1, 0.5f + 0.5f * sinf(G.clock * 6)), CW_ALIGN_CENTER);
   } else {

@@ -12,11 +12,12 @@ static struct {
   struct { float x, y, vx, vy, fx, fy; int cd, dash; bool alive; int out_t; float ang; int gcd; } b[NP];
   float radius;
   int alive;
+  uint32_t seed; /* this game's CPU noise */
 } S;
 
 static void start(mg_ctx *c) {
-  (void)c;
   memset(&S, 0, sizeof S);
+  S.seed = cw_rng_u32(&c->rng);
   S.radius = R0;
   S.alive = NP;
   for (int i = 0; i < NP; i++) {
@@ -33,7 +34,7 @@ static void start(mg_ctx *c) {
 static void tick(mg_ctx *c) {
   const float dt = 1.0f / 60.0f;
   /* the plate shrinks after 8 s, in steps you can see coming */
-  if (c->tick > 480) S.radius = fmaxf(120, R0 - (float)(c->tick - 480) * 0.11f);
+  if (c->tick > 420) S.radius = fmaxf(105, R0 - (float)(c->tick - 420) * 0.14f);
   for (int i = 0; i < NP; i++) {
     __typeof__(S.b[0]) *b = &S.b[i];
     const mg_in *in = &c->in[i];
@@ -120,7 +121,7 @@ static void tick(mg_ctx *c) {
   /* the survivors' score ticks up while they are in, so the strip reads right; the last one standing gets a bonus */
   for (int i = 0; i < NP; i++) if (S.b[i].alive) c->score[i] = (float)(c->tick / 6);
   if (S.alive <= 1) {
-    for (int i = 0; i < NP; i++) if (S.b[i].alive) c->score[i] += 100;
+    for (int i = 0; i < NP; i++) if (S.b[i].alive) c->score[i] += 5; /* the last one on: just ahead of the last to fall */
     c->done = true;
   }
 }
@@ -128,10 +129,16 @@ static void tick(mg_ctx *c) {
 static void think(mg_ctx *c, int p, mg_in *out) {
   memset(out, 0, sizeof *out);
   __typeof__(S.b[0]) *me = &S.b[p];
-  uint32_t h = hash_u32((uint32_t)p * 77u + 5u, (uint32_t)c->tick);
+  uint32_t h = hash_u32(S.seed + (uint32_t)p * 77u + 5u, (uint32_t)c->tick);
   if (!me->alive) { /* ghost: circle round to the thickest crowd and bump now and then */
-    float best = 0, bx = 0;
-    for (int k = 0; k < NP; k++) if (S.b[k].alive) { bx = atan2f(S.b[k].y - CY, S.b[k].x - CX); best = 1; break; }
+    /* the blob nearest round the rim from the ghost (the lowest seat used to be everyone's target) */
+    float best = 0, bx = 0, bd = 1e9f;
+    for (int k = 0; k < NP; k++) if (S.b[k].alive) {
+      float a = atan2f(S.b[k].y - CY, S.b[k].x - CX), da = a - me->ang;
+      while (da > 3.14159f) da -= TAU;
+      while (da < -3.14159f) da += TAU;
+      if (fabsf(da) < bd) bd = fabsf(da), bx = a, best = 1;
+    }
     if (best > 0) {
       float da = bx - me->ang;
       while (da > 3.14159f) da -= TAU;
@@ -141,27 +148,38 @@ static void think(mg_ctx *c, int p, mg_in *out) {
     out->a = me->gcd == 0 && (h % 100) < 8;
     return;
   }
-  static const float margin[3] = { 40, 75, 110 };
-  static const int dash_pct[3] = { 3, 7, 14 };
+  { static const int lag[3] = { 12, 5, 0 }; if ((int)(h % 100) < lag[c->cpu_skill[p]]) return; } /* lower skill reacts late now and then */
+  static const float margin[3] = { 20, 25, 30 };
+  static const int dash_pct[3] = { 3, 6, 14 };
   float mx = CX - me->x, my = CY - me->y, dc = sqrtf(mx * mx + my * my);
   int tgt = -1;
   float bd = 1e9f;
   for (int k = 0; k < NP; k++) {
     if (k == p || !S.b[k].alive) continue;
-    float d = hypotf(S.b[k].x - me->x, S.b[k].y - me->y);
+    /* nearest, with a little per-game noise so an exact tie (the square start) is not always the lower seat */
+    float d = hypotf(S.b[k].x - me->x, S.b[k].y - me->y) + (float)(hash_u32(S.seed + (uint32_t)p * 13u, (uint32_t)k + (uint32_t)(c->tick / 120) * 7u) % 24u);
+    if (c->cpu_skill[p] == 2) { /* a hard CPU goes for whoever is nearest the edge, within reach */
+      float er = hypotf(S.b[k].x - CX, S.b[k].y - CY);
+      if (d < 260) d -= er * 0.8f;
+    }
     if (d < bd) bd = d, tgt = k;
   }
   if (dc > S.radius - margin[c->cpu_skill[p]]) { /* too near the edge: back to the middle */
     out->x = mx / dc; out->y = my / dc;
   } else if (tgt >= 0) {
-    float dx = S.b[tgt].x - me->x, dy = S.b[tgt].y - me->y, d = bd;
+    float dx = S.b[tgt].x - me->x, dy = S.b[tgt].y - me->y, d = hypotf(dx, dy) + 0.001f;
     /* come at the target from the middle side, so a hit pushes it outward */
     float tx = S.b[tgt].x - CX, ty = S.b[tgt].y - CY, tl = sqrtf(tx * tx + ty * ty) + 0.001f;
     float gx = S.b[tgt].x - tx / tl * 46, gy = S.b[tgt].y - ty / tl * 46;
     dx = gx - me->x; dy = gy - me->y;
     float dl = sqrtf(dx * dx + dy * dy) + 0.001f;
     out->x = dx / dl; out->y = dy / dl;
-    if (d < 120 && me->cd == 0 && (int)(h % 100) < dash_pct[c->cpu_skill[p]] * 2) { out->a = true; out->x = (S.b[tgt].x - me->x) / d; out->y = (S.b[tgt].y - me->y) / d; }
+    /* a dash flies far: a careful CPU only dashes when the target is nearer the edge than itself and it has room
+     * behind it (an easy one dashes whenever) */
+    float ux = (S.b[tgt].x - me->x) / (d + 0.001f), uy = (S.b[tgt].y - me->y) / (d + 0.001f);
+    float after = hypotf(me->x + ux * 150 - CX, me->y + uy * 150 - CY); /* where the dash would carry me */
+    bool safe = c->cpu_skill[p] == 0 || after < S.radius + (c->cpu_skill[p] == 2 ? 15.0f : 30.0f);
+    if (safe && d < 120 && me->cd == 0 && (int)(h % 100) < dash_pct[c->cpu_skill[p]] * 2) { out->a = true; out->x = (S.b[tgt].x - me->x) / d; out->y = (S.b[tgt].y - me->y) / d; }
   }
 }
 

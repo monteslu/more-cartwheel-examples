@@ -4,7 +4,7 @@
  * step; the last player standing, or the longest memory, wins.
  * A player who is out plays on as a ghost: every round they can play the
  * pattern too, and each full round earns a little bonus that only breaks ties
- * between players who went out in the same round (it never beats a player
+ * between players who went out on the same pattern (the score is the longest pattern played back) (it never beats a player
  * who lasted a round longer). */
 #include "mg.h"
 
@@ -12,7 +12,7 @@ enum { PH_GAP, PH_SHOW, PH_INPUT };
 #define MAXSEQ 24
 static struct {
   int seq[MAXSEQ], len, ph, t;
-  int prog[NP], done[NP], rounds[NP];
+  int prog[NP], done[NP], rounds[NP], best[NP]; /* best: the longest pattern played back (the score) */
   int gprog[NP], gdone[NP]; /* a ghost's progress in this round, and the full rounds it played */
   bool alive[NP];
   float dirprev_x[NP], dirprev_y[NP];
@@ -55,7 +55,7 @@ static void next_round(mg_ctx *c) {
   for (int p = 0; p < NP; p++) alive += M.alive[p];
   if (alive == 0) { c->done = true; return; }
   if (alive == 1 && c->tick > 0) { /* the survivor gets credit for the round just played */
-    for (int p = 0; p < NP; p++) if (M.alive[p]) c->score[p] = (float)M.rounds[p] + 0.5f;
+    /* the survivor played the last pattern the others missed, so its score is already one step ahead */
     c->done = true;
     return;
   }
@@ -91,7 +91,7 @@ static void tick(mg_ctx *c) {
           sfx(SFX_NOTE0 + NOTE_OF[gs], c->human[p] ? 0.3f : 0.1f, 1);
           if (++M.gprog[p] >= M.len) {
             M.gdone[p]++;
-            c->score[p] = (float)M.rounds[p] + fminf(0.1f * (float)M.gdone[p], 0.4f);
+            c->score[p] = (float)M.best[p] + fminf(0.1f * (float)M.gdone[p], 0.4f);
             fx_text(cw_v2(250 + p * 260, 560), "ghost +", PCOL[p], 24);
           }
         } else { M.gprog[p] = M.len; sfx(SFX_BUZZ, 0.3f, 1.4f); }
@@ -106,7 +106,7 @@ static void tick(mg_ctx *c) {
       if (s == M.seq[M.prog[p]]) {
         M.prog[p]++;
         sfx(SFX_NOTE0 + NOTE_OF[s], c->human[p] ? 0.5f : 0.2f, 1);
-        if (M.prog[p] >= M.len) { M.rounds[p]++; c->score[p] = (float)M.rounds[p]; fx_text(cw_v2(250 + p * 260, 560), "done", PCOL[p], 30); }
+        if (M.prog[p] >= M.len) { M.rounds[p]++; M.best[p] = M.len; c->score[p] = (float)M.best[p]; fx_text(cw_v2(250 + p * 260, 560), "done", PCOL[p], 30); }
       } else {
         M.alive[p] = false;
         c->eliminated[p] = true;
@@ -181,17 +181,17 @@ static void draw(mg_ctx *c, float alpha, float t) {
     }
     if (M.flash[p] > 0) art_draw(GEMS[M.last_sym[p]], cw_v2(x + 40, y + 100), cw_v2(30, 30), 0, (cw_color){ 0 });
     if (!M.alive[p]) ui_text(M.ph == PH_INPUT && M.gprog[p] < M.len ? "ghost: play along" : "ghost", cw_v2(x + 130, y + 112), 20, cw_rgba(1, 1, 1, 0.8f), CW_ALIGN_CENTER);
-    snprintf(s, sizeof s, "%d", M.rounds[p]);
+    snprintf(s, sizeof s, "%d", M.best[p]);
     ui_text(s, cw_v2(x + 240, y + 90), 36, cw_rgba(1, 1, 1, M.alive[p] ? 1 : 0.4f), CW_ALIGN_RIGHT);
   }
 }
 
-static void score_text(mg_ctx *c, int p, char *buf, int cap) { snprintf(buf, (size_t)cap, "%d rounds", (int)c->score[p]); }
+static void score_text(mg_ctx *c, int p, char *buf, int cap) { snprintf(buf, (size_t)cap, "best %d", (int)c->score[p]); }
 
 const mg_def mg_memory = {
   .id = "echo", .name = "Echo", .tagline = "Repeat the pattern. One slip and you are out.",
   .how = { "Flick the stick (or A B X Y) to match", "Watch the pads, then play it back", "Out? Play along as a ghost for a tie-break" },
   .buttons = 0, .keys = "S",
-  .kind = "2D", .scene = NULL, .seconds = 0, .unlock_points = 0, .higher_is_better = true,
+  .kind = "2D", .scene = NULL, .seconds = 85, .unlock_points = 0, .higher_is_better = true,
   .start = start, .tick = tick, .think = think, .draw = draw, .score_text = score_text,
 };
