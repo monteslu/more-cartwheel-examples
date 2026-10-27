@@ -53,7 +53,7 @@ static struct {
   int32_t d_state, d_phase, d_hp[2], d_meter[2], d_wins[2], d_round, d_tick, d_combo, d_adv, d_boxes;
   int32_t d_pos[4], d_fstate[2], d_hitcount, d_blockcount, d_def[2];
   uint32_t d_hash;
-  float d_cam[3];
+  float d_cam[3], d_spring;
 } G;
 
 static save_t *SAVE;
@@ -92,34 +92,9 @@ static ft_input read_pad(int p) {
 
 /* ── stage and models ───────────────────────────────────────────────── */
 
-static void apply_textures(cw_node n) {
-  static const struct { const char *prefix; int kind; float ru, rv; } MAP[] = {
-    { "tex_tile", TEX_TILE, 5, 2 }, { "tex_concrete", TEX_CONCRETE, 2, 1 }, { "tex_wood", TEX_WOOD, 4, 2 }, { "tex_metal", TEX_METAL, 3, 2 }, { "tex_brick", TEX_BRICK, 6, 3 } };
-  const char *name = cw_node_name(n);
-  t3_object *o = cw_node3d_object(n);
-  G.d_tex_nodes++;
-  if (o) G.d_tex_objs++;
-  t3_object *mo = NULL;
-  if (o) for (int ci = 0; ci < o->child_count && !mo; ci++) if (o->children[ci]->type == T3_MESH) mo = o->children[ci];
-  if (mo) G.d_tex_meshes++;
-  if (mo && name) {
-    for (size_t i = 0; i < sizeof MAP / sizeof MAP[0]; i++)
-      if (!strncmp(name, MAP[i].prefix, strlen(MAP[i].prefix))) {
-        t3_mesh *m = (t3_mesh *)mo;
-        if (m->material_count > 0 || m->materials) {
-          t3_material *mat = m->materials[0];
-          tex_apply(mat, MAP[i].kind, MAP[i].ru, MAP[i].rv, 0.8f, 0.9f);
-          G.tex_done++;
-          mat->color = (t3_color){ fminf(1.0f, mat->color.r * 1.9f), fminf(1.0f, mat->color.g * 1.9f), fminf(1.0f, mat->color.b * 1.9f) };
-        }
-        break;
-      }
-  }
-  for (int i = 0; i < cw_node_child_count(n); i++) apply_textures(cw_node_child(n, i));
-}
-
 static void unload_match(void) {
   for (int i = 0; i < 2; i++) { model_free(G.mdl[i]); G.mdl[i] = NULL; }
+  stage_free();
   if (cw_node_valid(G.stage_node)) cw_node_free(G.stage_node);
   G.stage_node = (cw_node){ 0 };
   G.dbg_root = NULL;
@@ -153,7 +128,7 @@ static void load_match(void) {
   if (CW_HANDLE_IS_NULL(G.stage_node)) { cw_error("fighter: %s failed to load", path); return; }
   cw_node_add_child(cw_tree_root(cw_scene_app_tree()), G.stage_node);
   G.camera = cw_node_get(G.stage_node, "Camera");
-  apply_textures(G.stage_node);
+  stage_load(G.sel_stage, G.stage_node);
   fx_init(G.stage_node);
   fx_bind_lights(G.stage_node);
   fx_reset();
@@ -162,7 +137,6 @@ static void load_match(void) {
   memset(&G.fs, 0, sizeof G.fs);
   G.ev_seen = G.sim.ev_seq;
   G.shown_hp[0] = G.shown_hp[1] = G.lag_hp[0] = G.lag_hp[1] = 1.0f;
-  G.tex_pending = 3;
   if (!CW_HANDLE_IS_NULL(G.music[G.sel_stage])) G.music_voice = cw_audio_play(G.music[G.sel_stage], &(cw_play_desc){ .bus = G.music_bus, .loop = true, .volume = 0.55f });
 }
 
@@ -323,20 +297,30 @@ static void sound_events(void) {
   }
 }
 
+/* close-up camera for screenshots (debug command "cam", FIGHTER_CAM in test builds): zoom 0 is the normal framing;
+ * otherwise it frames one fighter (0 or 1) or both (2) from closer, at chest height, turned by yaw radians */
+static float g_cam[3];
 static void update_camera(float dt, float aspect) {
   if (!cw_node_valid(G.camera)) return;
   const ft_game *g = &G.sim;
   cw_frame_point pts[2];
   for (int i = 0; i < 2; i++) pts[i] = (cw_frame_point){ (float)g->f[i].x / 1000.0f, 0.95f + (float)g->f[i].y / 1000.0f, 0, 0.8f };
   cw_frame_params p = { .yaw = 0, .pitch = -0.04f, .fov_y = 34.0f * 0.0174533f, .aspect = aspect, .margin = 0.12f, .min_dist = 5.4f, .max_dist = 15.0f };
+  int npts = 2;
+  if (g_cam[0] > 0) {
+    int who = (int)g_cam[1];
+    if (who < 2) { pts[0] = (cw_frame_point){ (float)g->f[who].x / 1000.0f, 1.25f + (float)g->f[who].y / 1000.0f, 0, 0.55f }; npts = 1; }
+    p.min_dist = 5.4f / g_cam[0]; p.margin = 0.02f; p.yaw = g_cam[2];
+  }
   cw_frame_result fit, cam;
-  if (!cw_frame_fit(&p, pts, 2, &fit)) return;
+  if (!cw_frame_fit(&p, pts, npts, &fit)) return;
   cw_frame_follow(&G.fs, &p, &fit, dt, 7.0f, &cam);
   /* a settled look-at a little above the fighters so the stage reads under them */
   float sh = fx_shake();
   G.cam_t += dt;
   float sx = (hash01((uint32_t)(G.cam_t * 90.0f) * 3 + 1) - 0.5f) * sh * 0.5f, sy = (hash01((uint32_t)(G.cam_t * 90.0f) * 5 + 2) - 0.5f) * sh * 0.4f;
-  t3_vec3 pos = { cam.pos[0] + sx, cam.pos[1] + 0.45f + sy, cam.pos[2] };
+  float lift = g_cam[0] > 0 ? 0.45f / g_cam[0] : 0.45f;
+  t3_vec3 pos = { cam.pos[0] + sx, cam.pos[1] + lift + sy, cam.pos[2] };
   t3_vec3 tgt = { cam.target[0] + sx * 0.4f, cam.target[1] + 0.15f, cam.target[2] };
   cw_node3d_set_position(G.camera, pos);
   cw_node3d_look_at(G.camera, tgt, (t3_vec3){ 0, 1, 0 });
@@ -382,15 +366,12 @@ static void update_debug_boxes(void) {
 static void update(void *u, double dtd) {
   (void)u;
   float dt = (float)dtd;
-  if (G.tex_pending > 0 && cw_node_valid(G.stage_node)) {
-    G.tex_done = 0; G.d_tex_nodes = G.d_tex_objs = G.d_tex_meshes = 0;
-    apply_textures(G.stage_node);
-    if (G.tex_done > 0) G.tex_pending = 0;
-  }
   if (!G.mdl[0]) return;
   cw_shell_screen sc = cw_shell_screen_now();
   if (sc != CW_SHELL_PLAY && sc != CW_SHELL_TITLE && sc != CW_SHELL_JOIN) return;
   for (int i = 0; i < 2; i++) model_pose(G.mdl[i], &G.sim, i, dt);
+  G.d_spring = model_spring_speed(G.mdl[0]) + model_spring_speed(G.mdl[1]);
+  stage_frame(&G.sim, dt);
   fx_frame(&G.sim, dt);
   sound_events();
   cw_vec2 cs = cw_r2d_canvas_size();
@@ -603,8 +584,30 @@ static void shell_sound(cw_shell_sound s, void *u) {
            case CW_SHELL_SND_JOIN: sfx(SFX_BELL, 0.4f, 1.3f); break; case CW_SHELL_SND_PAUSE: sfx(SFX_BLOCK, 0.4f, 0.9f); break; }
 }
 
+#if defined(FIGHTER_AUTOPILOT) || defined(FIGHTER_SCRIPTED)
+/* test builds: "cam <zoom> [who 0|1|2] [yaw]" and "match <stage> <p1> <p2>" for close-ups and stage tours on any host */
+static void cmd_cam(int argc, const char **argv, cw_reply *r) {
+  g_cam[0] = argc > 1 ? (float)atof(argv[1]) : 0; g_cam[1] = argc > 2 ? (float)atof(argv[2]) : 2; g_cam[2] = argc > 3 ? (float)atof(argv[3]) : 0;
+  memset(&G.fs, 0, sizeof G.fs);
+  cw_reply_printf(r, "{\"zoom\":%g}", (double)g_cam[0]);
+}
+static void cmd_match(int argc, const char **argv, cw_reply *r) {
+  if (argc < 2) { cw_reply_error(r, "usage: match <stage 0-2> [p1 0-3] [p2 0-3]"); return; }
+  G.sel_stage = atoi(argv[1]) % STAGES;
+  if (argc > 2) G.sel[0] = atoi(argv[2]) & 3;
+  if (argc > 3) G.sel[1] = atoi(argv[3]) & 3;
+  begin_match();
+  cw_reply_printf(r, "{\"stage\":%d}", G.sel_stage);
+}
+#endif
+
 static void init(void *u) {
   (void)u;
+#if defined(FIGHTER_AUTOPILOT) || defined(FIGHTER_SCRIPTED)
+  cw_debug_command("cam", "cam <zoom> [who 0|1|2] [yaw]: close-up camera (zoom 0: normal)", cmd_cam);
+  cw_debug_command("match", "match <stage 0-2> [p1] [p2]: start a match on a stage", cmd_match);
+  { const char *e = getenv("FIGHTER_CAM"); if (e) sscanf(e, "%f %f %f", &g_cam[0], &g_cam[1], &g_cam[2]); }
+#endif
   cw_input_load_bindings_asset("input.cfg");
   cw_input_commit_defaults();
   G.a_left = cw_action_find("mv_left"); G.a_right = cw_action_find("mv_right"); G.a_up = cw_action_find("mv_up"); G.a_down = cw_action_find("mv_down");
@@ -644,7 +647,7 @@ static void init(void *u) {
   cw_debug_u32("sim.hash", &G.d_hash); cw_debug_i32("sim.combo", &G.d_combo); cw_debug_i32("sim.adv", &G.d_adv); cw_debug_i32("ticks", &G.d_tick);
   cw_debug_i32("fx.hits", &G.d_hitcount); cw_debug_i32("fx.blocks", &G.d_blockcount); cw_debug_i32("view.boxes", &G.d_boxes);
   cw_debug_i32("tex.nodes", &G.d_tex_nodes); cw_debug_i32("tex.objs", &G.d_tex_objs); cw_debug_i32("tex.meshes", &G.d_tex_meshes); cw_debug_i32("tex.applied", &G.tex_done);
-  cw_debug_u32("tex.hash", &tex_hash); cw_debug_f32_array("cam.pos", G.d_cam, 3);
+  cw_debug_u32("tex.hash", &tex_hash); cw_debug_f32_array("cam.pos", G.d_cam, 3); cw_debug_f32("fighter.spring", &G.d_spring);
 #if defined(FIGHTER_AUTOPILOT) || defined(FIGHTER_SCRIPTED)
   cw_shell_start(2);
 #endif

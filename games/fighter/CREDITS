@@ -2,6 +2,11 @@ fighter: credits and licences
 
 Everything in this game is made by its own code (tools/ and the C sources): the characters, the stages, the
 textures, the sounds and the music. Nothing is downloaded.
+  tools/make-textures.mjs, texlib.mjs   every PBR texture set (albedo, normal, occlusion-roughness-metal, emissive)
+  tools/make-characters.mjs, charmesh.mjs   the four fighters and the crowd (skinned glb files)
+  tools/make-world.mjs, mesher.mjs, gltf-writer.mjs   the three stage backgrounds
+The character, texture and glTF tools and secondary.c started as copies of the brawler game's in this repository
+(same authors, same licence) and were adapted here.
 
 Fonts (SIL Open Font License 1.1, licence files shipped beside them in assets/fonts):
   Bungee           (c) The Bungee Project Authors      https://github.com/djrrb/Bungee

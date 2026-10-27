@@ -26,7 +26,18 @@ void tex_free_all(void);
 extern uint32_t tex_hash;
 t3_color lin(float r, float g, float b); /* screen colour to linear */
 
-/* chars.c: skinned fighters built in code, posed from the simulation */
+/* secondary.c: spring bones (hair, headband tails, coat skirts, belly) and character shading */
+enum { SB_MAX = 5 };
+typedef struct spring_bone { t3_object *bone; t3_vec3 rest, tip, T, V; bool live; } spring_bone;
+typedef struct spring_rig { t3_object *scene; spring_bone b[SB_MAX]; } spring_rig;
+void sb_bind(spring_rig *s, t3_object *scene);
+void sb_reset(spring_rig *s);
+void sb_jolt(spring_rig *s, float x, float y, float z);
+void sb_step(spring_rig *s, t3_vec3 pos, float yaw, float dt);
+float sb_speed(const spring_rig *s);
+void char_shade(t3_object *scene);
+
+/* chars.c: skinned fighters (assets/models, made by tools/make-characters.mjs), posed from the simulation */
 typedef struct fighter_model fighter_model;
 fighter_model *model_new(int def, cw_node parent);
 void model_free(fighter_model *m);
@@ -34,7 +45,21 @@ void model_free(fighter_model *m);
 void model_pose(fighter_model *m, const ft_game *g, int who, float dt);
 void model_set_visible(fighter_model *m, bool v);
 t3_vec3 model_joint(fighter_model *m, int joint); /* world position of a joint, for effects */
+float model_spring_speed(const fighter_model *m); /* summed spring tip speed (a probe for the secondary motion) */
 enum { J_HEAD, J_HAND_F, J_HAND_B, J_FOOT_F, J_CHEST, J_HIPS };
+
+/* crowd.c: spectators around the stage, cheering from the sim's events */
+enum { CROWD_MAX = 10 };
+typedef struct crowd_member { t3_gltf *g; cw_node node; t3_object *b[10]; t3_vec3 hips; float x, z, phase, thr, cheer, clap; } crowd_member;
+typedef struct crowd { int n; crowd_member m[CROWD_MAX]; float excite; uint32_t seen; } crowd;
+void crowd_load(crowd *c, int stage, cw_node parent);
+void crowd_free(crowd *c);
+void crowd_frame(crowd *c, const ft_game *g, float dt);
+
+/* stage.c: the modelled stage background, its ambient life and the fighters' rim lights */
+void stage_load(int stage, cw_node parent);
+void stage_free(void);
+void stage_frame(const ft_game *g, float dt);
 
 /* fx.c: hit effects, all reading sim events */
 void fx_init(cw_node root);
