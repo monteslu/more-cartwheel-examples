@@ -2,7 +2,7 @@
 const [cart, tag, host = 'gl'] = process.argv.slice(2);
 const ROOT = new URL('..', import.meta.url).pathname;
 const call = async (tool, body) => (await fetch(`http://127.0.0.1:7331/tool/${tool}`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-romdev-session': 'partypack-live' }, body: JSON.stringify(body) })).json();
-await call('loadMedia', { platform: 'wasmcart', path: cart, ...(host === 'gl' ? { wgpu: false } : { gpuPower: 'low-power' }) });
+await call('loadMedia', { platform: 'wasmcart', path: cart, gpuPower: 'low-power', ...(host === 'gl' ? { wgpu: false } : {}) }); // gpuPower always: without it romdev takes the display GPU
 const shot = async (n, frames = 90) => { await call('frame', { op: 'step', frames }); const r = await call('frame', { op: 'screenshot', path: `${ROOT}out/v/${tag}-${n}.png` }); console.log(n, r.error ?? 'ok'); };
 const press = async (b, frames = 4) => { const r = await call('input', { op: 'press', button: b, frames }); if (r.error) console.log('press', b, r.error.slice(0, 100)); };
 await shot('title', 120);
