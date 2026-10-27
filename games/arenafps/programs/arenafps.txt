@@ -6,3 +6,4 @@ physical+map+vcol+rep+nmap+ao+rmap+shadow+fog2+l1001+xcluster
 standard+senv+l1001+xcluster
 standard+shadow+senv+l1001+xcluster
 physical+map+vcol+rep+nmap+ao+rmap+shadow+senv+l1001+xcluster
+standard+shadow+senv+l1001+xwater
