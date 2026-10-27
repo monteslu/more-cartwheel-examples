@@ -25,7 +25,7 @@ int MG_N;
 const mg_def *MG_LIST[MG_MAX];
 static void register_games(void) {
   static const mg_def *all[] = {
-    &mg_dodge, &mg_memory, &mg_beat, &mg_quiz, &mg_blast, &mg_raft,
+    &mg_dodge, &mg_memory, &mg_beat, &mg_quiz, &mg_blast, &mg_raft, &mg_tower,
   };
   MG_N = (int)(sizeof all / sizeof all[0]);
   for (int i = 0; i < MG_N; i++) MG_LIST[i] = all[i];
