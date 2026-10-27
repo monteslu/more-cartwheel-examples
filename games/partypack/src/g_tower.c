@@ -144,10 +144,10 @@ static void think(mg_ctx *c, int p, mg_in *out) {
   if (T.cpu_plan_t[p] <= 0) { /* plan the next block: aim a little off the tower's middle, turn wide blocks flat */
     static const float err[3] = { 0.55f, 0.32f, 0.14f };
     uint32_t h = hash_u32(T.seed + (uint32_t)p, (uint32_t)T.dropped[p]);
-    float jitter = ((float)(h % 2000) / 1000.0f - 1.0f) * err[c->skill % 3];
+    float jitter = ((float)(h % 2000) / 1000.0f - 1.0f) * err[c->cpu_skill[p]];
     T.cpu_aim[p] = jitter;
     int s = T.next_shape[p][T.dropped[p]];
-    T.cpu_turn[p] = s == 2 ? ((h >> 12) % 100 < 60 + c->skill * 15) : (s == 0 ? false : false);
+    T.cpu_turn[p] = s == 2 ? ((h >> 12) % 100 < 60 + c->cpu_skill[p] * 15) : (s == 0 ? false : false);
     if (T.cpu_turn[p] != T.turned[p]) out->b = true;
     T.cpu_plan_t[p] = 1;
     return;

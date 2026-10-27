@@ -66,7 +66,7 @@ static void start(mg_ctx *c) {
   cw_node lv = n3_glb(n3_level(), "LavaPlane", "models/lava.glb", false);
   n3_pos(lv, 0, -9, 0);
   static const float sx[4] = { -3.5f, 3.5f, -3.5f, 3.5f }, sz[4] = { -3.5f, -3.5f, 3.5f, 3.5f };
-  for (int i = 0; i < NP; i++) { make_ball(i, sx[i], sz[i], i >= c->humans); K.alive[i] = true; }
+  for (int i = 0; i < NP; i++) { make_ball(i, sx[i], sz[i], !c->human[i]); K.alive[i] = true; }
   for (int e = 0; e < 4; e++) {
     K.edge[e] = n3_box(n3_level(), "Edge", (t3_vec3){ 0, 0.07f, 0 }, (t3_vec3){ 13, 0.14f, 0.16f }, (cw_color){ 0.02f, 0.05f, 0.06f, 1 });
     n3_emissive(K.edge[e], (cw_color){ 0.2f, 1.4f, 1.8f, 1 });
@@ -112,6 +112,7 @@ static void explode(int b) {
   n3_shockwave((t3_vec3){ bx, 0.3f, bz }, RAD * 1.25f, 0.55f, 1.0f);
   n3_flash((t3_vec3){ bx, 1.6f, bz }, (cw_color){ 1, 0.55f, 0.22f, 1 }, 70, 12);
   sfx(SFX_BOOM, 0.9f, 0.9f + 0.2f * (float)(b % 3) / 3);
+  fx_hitstop(3);
   K.shake = 0.5f;
   { /* a scorch mark that stays, and an ember glow that cools */
     int si = K.nscorch++ % 12;
@@ -235,6 +236,7 @@ static void tick(mg_ctx *c) {
       n3_fx("fire", (t3_vec3){ p.x, -7.6f, p.z }, 1.0f);
       n3_flash((t3_vec3){ p.x, -5, p.z }, (cw_color){ 1, 0.4f, 0.1f, 1 }, 120, 12);
       sfx(SFX_SPLASH, 0.8f, 0.7f);
+      fx_hitstop(7); /* a knock-out: everything holds for a beat */
       cw_node_free(K.ball[i]);
       K.ball[i] = (cw_node){ 0 };
       continue;
@@ -260,7 +262,7 @@ static void think(mg_ctx *c, int p, mg_in *out) {
   for (int b = 0; b < NBOMB; b++) {
     if (!K.bomb[b].on || K.bomb[b].drop > 0) continue;
     float dx = me.x - K.bomb[b].x, dz = me.y - K.bomb[b].z, d = sqrtf(dx * dx + dz * dz);
-    if (d < RAD + 1.2f && K.bomb[b].fuse < 70 + c->skill * 15) {
+    if (d < RAD + 1.2f && K.bomb[b].fuse < 70 + c->cpu_skill[p] * 15) {
       if (d < 0.05f) { dx = 1; d = 1; }
       mx += dx / d; mz += dz / d; flee = true;
     }
@@ -280,12 +282,12 @@ static void think(mg_ctx *c, int p, mg_in *out) {
       if (d < bd) { bd = d; best = i; }
     }
     uint32_t h = hash_u32(K.seed + (uint32_t)p, (uint32_t)(c->tick / 40));
-    if (best >= 0 && c->skill > 0 && (h % 3) != 0) {
+    if (best >= 0 && c->cpu_skill[p] > 0 && (h % 3) != 0) {
       cw_vec2 q = ball_xz(best);
       mx = q.x - me.x; mz = q.y - me.y;
       float d = sqrtf(bd);
       float qe = fmaxf(fabsf(q.x), fabsf(q.y));
-      if (d < 2.6f && K.dash_cd[p] == 0 && qe > edge - 0.5f && ((h >> 4) % 100) < 20 + c->skill * 35) out->a = true;
+      if (d < 2.6f && K.dash_cd[p] == 0 && qe > edge - 0.5f && ((h >> 4) % 100) < 20 + c->cpu_skill[p] * 35) out->a = true;
     } else { /* drift about */
       mx = (float)((int)(h % 200) - 100) / 100.0f - me.x * 0.1f;
       mz = (float)((int)((h >> 9) % 200) - 100) / 100.0f - me.y * 0.1f;
@@ -306,7 +308,7 @@ static void draw(mg_ctx *c, float alpha, float t) {
     cw_vec2 s = n3_project((t3_vec3){ p.x, p.y + 1.3f, p.z });
     cw_vec2 tri[3] = { cw_v2(s.x - 12, s.y - 10), cw_v2(s.x + 12, s.y - 10), cw_v2(s.x, s.y + 4) };
     cw_r2d_polygon(tri, 3, PCOL[i]);
-    ui_text(i >= c->humans ? "CPU" : PNAME[i], cw_v2(s.x, s.y - 40), 24, PCOL[i], CW_ALIGN_CENTER);
+    ui_text(!c->human[i] ? "CPU" : PNAME[i], cw_v2(s.x, s.y - 40), 24, PCOL[i], CW_ALIGN_CENTER);
   }
   if (K.warn && (c->tick / 15) % 2 == 0) ui_text("The ring is shrinking!", cw_v2(STAGE_W / 2, 640), 44, cw_rgba(1, 0.6f, 0.3f, 1), CW_ALIGN_CENTER);
 }

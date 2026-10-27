@@ -76,6 +76,7 @@ static void tick(mg_ctx *c) {
         p->inv = 100;
         fx_burst(cw_v2(PX, GROUND0 + i * LANE_H - 30), 14, PCOL[i], 260, 0.7f, 8);
         fx_shake = fmaxf(fx_shake, 6);
+        fx_hitstop(p->lives <= 0 ? 8 : 4);
         sfx(SFX_HIT, 0.8f, 1);
         if (p->lives <= 0) {
           p->alive = false;
@@ -103,7 +104,7 @@ static void think(mg_ctx *c, int p, mg_in *out) {
   if (!D.rolled[p][k]) { /* decide once per obstacle whether this CPU slips */
     static const int miss_pct[3] = { 30, 12, 3 };
     int r = cw_rng_int(&c->rng, 0, 99);
-    D.roll[p][k] = r < miss_pct[c->skill % 3];
+    D.roll[p][k] = r < miss_pct[c->cpu_skill[p]];
     D.rolled[p][k] = 1;
   }
   if (D.roll[p][k]) return;
@@ -162,8 +163,8 @@ static void draw(mg_ctx *c, float alpha, float t) {
         /* a soft contact shadow that shrinks as the runner jumps */
         float sk = 1 - fminf(p->y / 220.0f, 0.6f);
         art_draw("shadow", cw_v2(PX, gy + 12), cw_v2(70 * sk, 18 * sk), 0, cw_rgba(1, 1, 1, 0.7f * sk));
-        if (p->alive) ui_blob(cw_v2(PX, bodyy), r, i, 0.8f, 0, sq, p->inv > 0 ? 2 : 0, i >= c->humans);
-        else ui_blob(cw_v2(PX - (D.dist - p->out_at), gy - r), r, i, 0, 0, 0.8f, 3, i >= c->humans);
+        if (p->alive) ui_blob(cw_v2(PX, bodyy), r, i, 0.8f, 0, sq, p->inv > 0 ? 2 : 0, !c->human[i]);
+        else ui_blob(cw_v2(PX - (D.dist - p->out_at), gy - r), r, i, 0, 0, 0.8f, 3, !c->human[i]);
       }
     }
     for (int l = 0; l < 3; l++) /* lives */

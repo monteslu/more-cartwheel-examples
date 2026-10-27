@@ -52,7 +52,9 @@ typedef struct mg_ctx {
   mg_in in[NP];
   cw_rng rng;
   int tick;          /* play ticks since GO */
-  int skill;         /* CPU skill 0 easy, 1 medium, 2 hard */
+  int skill;         /* CPU skill 0 easy, 1 medium, 2 hard (the setting; each CPU seat reads cpu_skill[p]) */
+  int cpu_skill[NP]; /* each seat's skill: a CPU seat plays at this level (the settings' level, or what PP_SKILLS asks for in a test) */
+  int underdog[NP];  /* 1 for a seat the board is helping this round (behind the leader): games may ease its start a little, never its score */
   float time_left;   /* seconds; the clock stops at 0 and ends the game */
   float time_total;
   float score[NP];   /* set by the game: higher ranks better */
@@ -64,7 +66,9 @@ typedef struct mg_ctx {
 typedef struct mg_def {
   const char *id;       /* save key and debug name */
   const char *name;
-  const char *tagline;  /* one line on the card */
+  const char *tagline;  /* the rule in one line on the card: what you do and how you win */
+  int buttons;          /* buttons the game needs besides the stick (0 to 2: the card shows them as pictures) */
+  const char *keys;     /* the pictogram on the card, one glyph per letter: A B X Y, or S for the stick */
   const char *how[3];   /* control lines on the intro card, NULL-terminated */
   const char *kind;     /* "2D", "3D" (shown on the card) */
   const char *scene;    /* a 3D game's scene (assets/scenes/...); NULL = drawn in 2D over the hub scene */
@@ -84,7 +88,7 @@ typedef struct mg_def {
 #define MG_MAX 16
 extern int MG_N;
 extern const mg_def *MG_LIST[MG_MAX];
-extern const mg_def mg_dodge, mg_memory, mg_beat, mg_quiz, mg_tower, mg_blast, mg_raft, mg_kart, mg_sumo;
+extern const mg_def mg_dodge, mg_memory, mg_beat, mg_quiz, mg_tower, mg_blast, mg_raft, mg_kart, mg_sumo, mg_coins, mg_tiles;
 
 /* ── shared looks and sounds (common.c) ─────────────────────────────── */
 extern const cw_color PCOL[NP];
@@ -108,6 +112,11 @@ void fx_burst(cw_vec2 p, int n, cw_color c, float speed, float life, float size)
 void fx_ring(cw_vec2 p, float r0, float r1, float life, cw_color c);
 void fx_text(cw_vec2 p, const char *s, cw_color c, float size);
 void fx_confetti(cw_rect area, int n);
+/* freeze the whole play for a few ticks on a big hit: a 2D game's tick is skipped, a 3D game's scene is paused,
+ * the clock holds either way. It is part of the simulation (counted in ticks), so a replay agrees. The longest
+ * request of a tick wins, at most 10 ticks. */
+void fx_hitstop(int ticks);
+int fx_hitstop_take(void); /* the framework, after each play tick: the freeze asked for (0 none), and clears it */
 void fx_update(float dt);
 void fx_draw(void);
 

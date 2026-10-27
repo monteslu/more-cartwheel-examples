@@ -109,11 +109,11 @@ static void think(mg_ctx *c, int p, mg_in *out) {
   static const int err_pct[3] = { 6, 3, 1 }; /* per step, plus a little for length */
   int r = cw_rng_int(&c->rng, 0, 99);
   int s = M.seq[M.prog[p]];
-  if (r < err_pct[c->skill % 3] + M.len / 3) s = (s + 1) % 4;
+  if (r < err_pct[c->cpu_skill[p]] + M.len / 3) s = (s + 1) % 4;
   int d = cw_rng_int(&c->rng, 0, 1);
   if (d) { out->a = s == 0; out->b = s == 1; out->c = s == 2; out->d = s == 3; }
   else { out->y = s == 0 ? 1.0f : s == 3 ? -1.0f : 0; out->x = s == 1 ? 1.0f : s == 2 ? -1.0f : 0; }
-  M.cpu_wait[p] = cw_rng_int(&c->rng, 14 - c->skill * 3, 26 - c->skill * 5);
+  M.cpu_wait[p] = cw_rng_int(&c->rng, 14 - c->cpu_skill[p] * 3, 26 - c->cpu_skill[p] * 5);
 }
 
 static const char *PAD[4] = { "pad_mint", "pad_ruby", "pad_sky", "pad_sun" };
@@ -148,7 +148,7 @@ static void draw(mg_ctx *c, float alpha, float t) {
     float x = 90 + p * 280, y = 520;
     art_nine("panel", cw_rect_make(x, y, 260, 140), 26, 1.0f, cw_rgba(0.9f, 0.9f, 1.0f, M.alive[p] ? 0.8f : 0.45f));
     cw_r2d_round_rect_lines(cw_rect_make(x + 2, y + 2, 256, 136), 16, 3, 8, col_a(PCOL[p], M.alive[p] ? 0.9f : 0.2f));
-    ui_blob(cw_v2(x + 40, y + 50), 26, p, 0, 0, M.flash[p] > 0 ? 1.15f : 1, M.alive[p] ? (M.flash[p] > 0 ? 2 : 0) : 3, p >= c->humans);
+    ui_blob(cw_v2(x + 40, y + 50), 26, p, 0, 0, M.flash[p] > 0 ? 1.15f : 1, M.alive[p] ? (M.flash[p] > 0 ? 2 : 0) : 3, !c->human[p]);
     int shown = M.len < 14 ? M.len : 14;
     static const char *GEMS[4] = { "gem_mint", "gem_ruby", "gem_sky", "gem_sun" };
     for (int i = 0; i < shown; i++) {

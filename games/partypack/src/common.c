@@ -118,8 +118,14 @@ void sfx_init(void) {
   music_game = make_music(138, game, 16, 293.66f, 2, 0.085f, true);
 }
 
+#ifdef PP_AUTOPILOT
+int pp_batch_active(void);
+#endif
 void sfx(int id, float vol, float pitch) {
   if (id < 0 || id >= SFX_N) return;
+#ifdef PP_AUTOPILOT
+  if (pp_batch_active()) return; /* a balance run plays no sound */
+#endif
   cw_audio_play(S[id], &(cw_play_desc){ .bus = pp_sfx_bus(), .volume = vol > 0 ? vol : 1, .pitch = pitch > 0 ? pitch : 1 });
 }
 void sfx_music_stop(void) {
@@ -145,6 +151,9 @@ static pop POP[NPOP];
 static int part_next;
 static float fx_rng_state = 1;
 float fx_shake;
+static int hitstop;
+void fx_hitstop(int ticks) { if (ticks > 10) ticks = 10; if (ticks > hitstop) hitstop = ticks; }
+int fx_hitstop_take(void) { int n = hitstop; hitstop = 0; return n; }
 
 static float frand(void) {
   fx_rng_state = fx_rng_state * 16807.0f;
@@ -156,6 +165,7 @@ void fx_reset(void) {
   memset(P, 0, sizeof P);
   memset(POP, 0, sizeof POP);
   fx_shake = 0;
+  hitstop = 0;
   fx_rng_state = 7;
 }
 static part *np(void) { part *p = &P[part_next++ % NPART]; memset(p, 0, sizeof *p); return p; }

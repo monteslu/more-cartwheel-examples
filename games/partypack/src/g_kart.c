@@ -86,7 +86,7 @@ static void start(mg_ctx *c) {
   n3_fx_reset();
   build_track();
   for (int i = 0; i < NP; i++) {
-    make_kart(i, i >= c->humans);
+    make_kart(i, !c->human[i]);
     Rc.s[i] = -1.0f - (float)(i / 2) * 2.6f;   /* a staggered grid */
     Rc.d[i] = (i % 2 ? 1.9f : -1.9f);
     Rc.nitro[i] = 3;
@@ -154,8 +154,8 @@ static void tick(mg_ctx *c) {
         if (Rc.haz[h].kind == 2) { if (Rc.boost[i] < 40) { Rc.boost[i] = 40; sfx(SFX_COIN, 0.35f, 1.5f); } }
         else if (Rc.slow[i] == 0 && Rc.spin[i] == 0) {
           Rc.slow[i] = 50;
-          if (Rc.haz[h].kind == 0) { Rc.spin[i] = 40; sfx(SFX_BOUNCE, 0.5f, 0.6f); n3_fx("dust", (t3_vec3){ x, 0.2f, z }, 1.0f); }
-          else { sfx(SFX_HIT, 0.6f, 1); n3_fx("sparks", (t3_vec3){ x, 0.5f, z }, 0.6f); n3_fx("dust", (t3_vec3){ x, 0.3f, z }, 1); Rc.spin[i] = 20; }
+          if (Rc.haz[h].kind == 0) { Rc.spin[i] = 40; sfx(SFX_BOUNCE, 0.5f, 0.6f); fx_hitstop(3); n3_fx("dust", (t3_vec3){ x, 0.2f, z }, 1.0f); }
+          else { sfx(SFX_HIT, 0.6f, 1); fx_hitstop(5); n3_fx("sparks", (t3_vec3){ x, 0.5f, z }, 0.6f); n3_fx("dust", (t3_vec3){ x, 0.3f, z }, 1); Rc.spin[i] = 20; }
         }
       }
     }
@@ -198,20 +198,20 @@ static void think(mg_ctx *c, int p, mg_in *out) {
   static const float look[3] = { 4.5f, 7, 10 };
   for (int h = 0; h < NHAZ; h++) {
     float rel = fmodf(Rc.haz[h].s - Rc.s[p] + LTOT * 8, LTOT);
-    if (rel > 0 && rel < look[c->skill % 3] && Rc.haz[h].kind != 2 && fabsf(Rc.haz[h].d - Rc.d[p]) < 1.7f) {
+    if (rel > 0 && rel < look[c->cpu_skill[p]] && Rc.haz[h].kind != 2 && fabsf(Rc.haz[h].d - Rc.d[p]) < 1.7f) {
       want = Rc.haz[h].d > Rc.d[p] ? Rc.haz[h].d - 2.2f : Rc.haz[h].d + 2.2f;
       if (want < -TW * 0.5f + 1) want = Rc.haz[h].d + 2.2f;
-    } else if (rel > 0 && rel < 9 && Rc.haz[h].kind == 2 && c->skill > 0) want = Rc.haz[h].d;
+    } else if (rel > 0 && rel < 9 && Rc.haz[h].kind == 2 && c->cpu_skill[p] > 0) want = Rc.haz[h].d;
   }
   /* skill 0 wanders */
-  if (c->skill == 0) want += ((float)(hash_u32(Rc.seed + (uint32_t)p, (uint32_t)(c->tick / 50)) % 100) - 50.0f) / 25.0f;
+  if (c->cpu_skill[p] == 0) want += ((float)(hash_u32(Rc.seed + (uint32_t)p, (uint32_t)(c->tick / 50)) % 100) - 50.0f) / 25.0f;
   float dx = want - Rc.d[p];
   out->x = fabsf(dx) < 0.15f ? 0.0f : (dx > 0 ? 1.0f : -1.0f);
   if (Rc.nitro[p] > 0 && Rc.boost[p] == 0 && Rc.slow[p] == 0 && c->tick > 120) {
     float st = fmodf(Rc.s[p], LTOT);
     bool straight = st < SLEN - 5 || (st > SLEN + PI_ * RAD_ && st < 2 * SLEN + PI_ * RAD_ - 5);
     uint32_t h = hash_u32(Rc.seed + (uint32_t)p * 7u, (uint32_t)(c->tick / 20));
-    if (straight && (h % 100) < 4 + (uint32_t)c->skill * 3) out->a = true;
+    if (straight && (h % 100) < 4 + (uint32_t)c->cpu_skill[p] * 3) out->a = true;
   }
 }
 

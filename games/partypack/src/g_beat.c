@@ -97,7 +97,7 @@ static void tick(mg_ctx *c) {
 static void think(mg_ctx *c, int p, mg_in *out) {
   memset(out, 0, sizeof *out);
   static const int range[3] = { 14, 8, 4 }, miss[3] = { 18, 8, 2 };
-  int s = c->skill % 3;
+  int s = c->cpu_skill[p];
   for (int i = 0; i < B.count; i++) {
     if (B.hit[p][i]) continue;
     int dt = B.n[i].t - c->tick;
@@ -160,7 +160,7 @@ static void draw(mg_ctx *c, float alpha, float t) {
       if (B.hit[p][i] != 2) art_glow("glow", cw_v2(x, y), 90, col_a(KCOL[B.n[i].kind], 0.35f));
     }
     art_world(true);
-    ui_blob(cw_v2(lx + w / 2, 640 - pulse * 10), 26, p, 0, 0, 1 + 0.12f * pulse, B.combo[p] > 5 ? 1 : 0, p >= c->humans);
+    ui_blob(cw_v2(lx + w / 2, 640 - pulse * 10), 26, p, 0, 0, 1 + 0.12f * pulse, B.combo[p] > 5 ? 1 : 0, !c->human[p]);
     if (B.judge_t[p] > 0) {
       const char *j = B.judge[p] == 2 ? "PERFECT" : B.judge[p] == 1 ? "good" : "miss";
       cw_color jc = B.judge[p] == 2 ? cw_rgba(1, 0.9f, 0.3f, 1) : B.judge[p] == 1 ? cw_rgba(0.7f, 1, 0.7f, 1) : cw_rgba(1, 0.5f, 0.5f, 1);

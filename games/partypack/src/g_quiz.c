@@ -66,8 +66,8 @@ static void setup_round(mg_ctx *c) {
     int r = cw_rng_int(&c->rng, 0, 99);
     int wrong = cw_rng_int(&c->rng, 0, 2);
     int ws = (Q.right_slot + 1 + wrong) % 4;
-    Q.cpu_slot[p] = r < know[c->skill % 3] ? Q.right_slot : ws;
-    Q.cpu_t[p] = 70 + cw_rng_int(&c->rng, 0, 220 - c->skill * 50);
+    Q.cpu_slot[p] = r < know[c->cpu_skill[p]] ? Q.right_slot : ws;
+    Q.cpu_t[p] = 70 + cw_rng_int(&c->rng, 0, 220 - c->cpu_skill[p] * 50);
   }
 }
 
@@ -167,12 +167,12 @@ static void draw(mg_ctx *c, float alpha, float t) {
     ui_text(q->a[Q.perm[Q.q][sl]], cw_v2(x + 90, y + 20), 34, cw_rgba(1, 1, 1, rev && !right ? 0.55f : 1), CW_ALIGN_LEFT);
     for (int p = 0; p < NP; p++) /* who picked it: shown after the reveal */
       if (Q.ans[p] == sl && (rev || c->human[p] == false)) {
-        if (rev) ui_blob(cw_v2(x + 330 + p * 38, y + 40), 16, p, 0, 0, 1, right ? 1 : 3, p >= c->humans);
+        if (rev) ui_blob(cw_v2(x + 330 + p * 38, y + 40), 16, p, 0, 0, 1, right ? 1 : 3, !c->human[p]);
       }
   }
   for (int p = 0; p < NP; p++) { /* locked-in markers */
     float x = 190 + p * 270;
-    ui_blob(cw_v2(x, 560), 30, p, 0, 0, Q.ans[p] >= 0 ? 1.1f : 1, Q.ans[p] < 0 ? 0 : Q.phase == 1 ? (Q.ans[p] == Q.right_slot ? 1 : 3) : 2, p >= c->humans);
+    ui_blob(cw_v2(x, 560), 30, p, 0, 0, Q.ans[p] >= 0 ? 1.1f : 1, Q.ans[p] < 0 ? 0 : Q.phase == 1 ? (Q.ans[p] == Q.right_slot ? 1 : 3) : 2, !c->human[p]);
     ui_text(Q.ans[p] >= 0 && Q.phase == 0 ? "locked" : Q.ans[p] < 0 ? "thinking" : "", cw_v2(x, 600), 22, cw_rgba(1, 1, 1, 0.7f), CW_ALIGN_CENTER);
     if (Q.phase == 1 && Q.gained[p]) { snprintf(s, sizeof s, "+%d", Q.gained[p]); ui_text(s, cw_v2(x, 625), 34, cw_rgba(0.6f, 1, 0.6f, 1), CW_ALIGN_CENTER); }
   }

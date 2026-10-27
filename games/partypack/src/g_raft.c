@@ -74,7 +74,7 @@ static void start(mg_ctx *c) {
   n3_glb(n3_find("CliffS"), "Rock", "models/cliff_ns.glb", true);
   { cw_node sd = n3_glb(n3_find("Seabed"), "Sand", "models/seabed.glb", false); n3_pos(sd, 0, 0.5f, 0); n3_receive(sd, false); }
   static const float sx[4] = { -9, 9, -9, 9 }, sz[4] = { -5, -5, 5, 5 };
-  for (int i = 0; i < NP; i++) make_raft(i, sx[i], sz[i], i >= c->humans);
+  for (int i = 0; i < NP; i++) make_raft(i, sx[i], sz[i], !c->human[i]);
   for (int k = 0; k < NBUOY; k++) place_buoy(c, k);
   R.seed = cw_rng_u32(&c->rng);
   n3_camera(0, 12, 19, 0, -0.5f, 0);
@@ -156,13 +156,13 @@ static void think(mg_ctx *c, int p, mg_in *out) {
     float d = dx * dx + dz * dz - (R.buoy[k].value == 3 ? 40.0f : 0.0f);
     /* easy CPUs sometimes chase a farther one: a hash of the buoy and bot decides */
     uint32_t h = hash_u32(R.seed + (uint32_t)p, (uint32_t)k);
-    if (c->skill == 0 && (h % 3) == 0) d += 120;
+    if (c->cpu_skill[p] == 0 && (h % 3) == 0) d += 120;
     if (d < bd) { bd = d; best = k; }
   }
   if (best < 0) return;
   float dx = R.buoy[best].x - me.x, dz = R.buoy[best].z - me.z, l = sqrtf(dx * dx + dz * dz);
   if (l > 0.05f) { out->x = dx / l; out->y = dz / l; }
-  if (c->skill > 0 && l > 6 && R.boost_cd[p] == 0 && c->skill + (int)(hash_u32(R.seed, (uint32_t)(c->tick / 30 + p)) % 3) >= 3) out->a = true;
+  if (c->cpu_skill[p] > 0 && l > 6 && R.boost_cd[p] == 0 && c->cpu_skill[p] + (int)(hash_u32(R.seed, (uint32_t)(c->tick / 30 + p)) % 3) >= 3) out->a = true;
 }
 
 static void draw(mg_ctx *c, float alpha, float t) {
@@ -172,7 +172,7 @@ static void draw(mg_ctx *c, float alpha, float t) {
     cw_vec2 s = n3_project((t3_vec3){ p.x, p.y + 2.3f, p.z });
     cw_vec2 tri[3] = { cw_v2(s.x - 12, s.y - 10), cw_v2(s.x + 12, s.y - 10), cw_v2(s.x, s.y + 4) };
     cw_r2d_polygon(tri, 3, PCOL[i]);
-    ui_text(i >= c->humans ? "CPU" : PNAME[i], cw_v2(s.x, s.y - 40), 24, PCOL[i], CW_ALIGN_CENTER);
+    ui_text(!c->human[i] ? "CPU" : PNAME[i], cw_v2(s.x, s.y - 40), 24, PCOL[i], CW_ALIGN_CENTER);
   }
 }
 
