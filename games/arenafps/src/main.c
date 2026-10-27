@@ -59,7 +59,7 @@ static const float TEAM_RGB[2][3] = { { 1.0f, 0.25f, 0.2f }, { 0.25f, 0.5f, 1.0f
 
 static struct game {
   cw_tree *tree;
-  cw_node root, world, env, sun, post, lighting;
+  cw_node root, world, env, sun, sky, fog, post, lighting;
   cw_node cam[MAXH], vm[MAXH], vm_flash[MAXH], vm_wp[MAXH][NWEAP];
   game_state state;
   int mode, arena_id, bots_setting, players, nf;
@@ -82,6 +82,9 @@ static struct game {
   int path_requests, path_done;
   float nav_tick_ms;
   int views;
+  int32_t d_score[MAXF], d_hp[MAXF], d_deaths[MAXF], d_weapon[MAXF], d_alive[MAXF];
+  float d_pos[MAXF * 2];
+  int32_t kills_total, rockets_fired;
   cw_font font;
 } G;
 
@@ -753,29 +756,47 @@ static void proj_tick(void) {
 
 static const char *BOT_NAMES[] = { "Ash", "Brick", "Cinder", "Dune", "Ember", "Flint", "Gale", "Husk", "Iron", "Jolt", "Knox", "Lark", "Moss", "Nox", "Onyx", "Pike" };
 
-static cw_node make_body(int team) {
+static cw_node part(cw_node parent, const char *prim, t3_vec3 size, t3_vec3 pos, float r, float g, float b, float metal, float rough, float glow) {
+  cw_node m = cw_node_new("MeshInstance3D", "Part");
+  cw_node_set(m, "primitive", cw_val_enum(prim));
+  cw_node_set(m, "size", cw_val_vec3(size.x, size.y, size.z));
+  cw_node_set(m, "color", cw_val_color(r, g, b, 1));
+  cw_node_set(m, "roughness", cw_val_float(rough));
+  cw_node_set(m, "metalness", cw_val_float(metal));
+  if (glow > 0) cw_node_set(m, "emissive", cw_val_color(r * glow, g * glow, b * glow, 1));
+  cw_node_set(m, "cast_shadow", cw_val_bool(true));
+  cw_node3d_set_position(m, pos);
+  cw_node_add_child(parent, m);
+  return m;
+}
+
+/* an armoured figure: boots, legs on hip pivots, chest plate, pauldrons, arms
+ * holding a rifle, a helmet with a team coloured visor and a back light */
+static cw_node make_body(int team, cw_node leg_out[2]) {
   cw_node b = cw_node_new("Node3D", "Body");
   const float *c = TEAM_RGB[team & 1];
-  struct { const char *prim; t3_vec3 size, pos; float r, g, bl; float glow; } parts[] = {
-    { "CYLINDER", { 0.62f, 0.8f, 0 }, { 0, 1.05f, 0 }, 0.25f, 0.27f, 0.3f, 0 },
-    { "SPHERE", { 0.34f, 0, 0 }, { 0, 1.62f, 0 }, 0.7f, 0.55f, 0.45f, 0 },
-    { "BOX", { 0.7f, 0.22f, 0.4f }, { 0, 1.35f, 0 }, c[0], c[1], c[2], 0.8f },
-    { "BOX", { 0.26f, 0.8f, 0.28f }, { -0.16f, 0.4f, 0 }, 0.18f, 0.19f, 0.22f, 0 },
-    { "BOX", { 0.26f, 0.8f, 0.28f }, { 0.16f, 0.4f, 0 }, 0.18f, 0.19f, 0.22f, 0 },
-    { "BOX", { 0.12f, 0.12f, 0.7f }, { 0.34f, 1.2f, -0.35f }, 0.1f, 0.1f, 0.11f, 0 },
-  };
-  for (size_t i = 0; i < sizeof parts / sizeof *parts; i++) {
-    cw_node m = cw_node_new("MeshInstance3D", "Part");
-    cw_node_set(m, "primitive", cw_val_enum(parts[i].prim));
-    cw_node_set(m, "size", cw_val_vec3(parts[i].size.x, parts[i].size.y, parts[i].size.z));
-    cw_node_set(m, "color", cw_val_color(parts[i].r, parts[i].g, parts[i].bl, 1));
-    cw_node_set(m, "roughness", cw_val_float(0.45));
-    cw_node_set(m, "metalness", cw_val_float(parts[i].glow > 0 ? 0.0 : 0.5));
-    if (parts[i].glow > 0) cw_node_set(m, "emissive", cw_val_color(parts[i].r * parts[i].glow * 2, parts[i].g * parts[i].glow * 2, parts[i].bl * parts[i].glow * 2, 1));
-    cw_node_set(m, "cast_shadow", cw_val_bool(true));
-    cw_node3d_set_position(m, parts[i].pos);
-    cw_node_add_child(b, m);
+  const float ar = 0.22f, ag = 0.24f, ab = 0.28f;
+  for (int side = 0; side < 2; side++) {
+    float x = side ? 0.15f : -0.15f;
+    cw_node hip = cw_node_new("Node3D", "Hip");
+    cw_node3d_set_position(hip, v3(x, 0.92f, 0));
+    cw_node_add_child(b, hip);
+    part(hip, "BOX", v3(0.2f, 0.5f, 0.22f), v3(0, -0.25f, 0), ar, ag, ab, 0.5f, 0.55f, 0);
+    part(hip, "BOX", v3(0.18f, 0.4f, 0.2f), v3(0, -0.68f, 0), ar * 0.8f, ag * 0.8f, ab * 0.8f, 0.5f, 0.55f, 0);
+    part(hip, "BOX", v3(0.22f, 0.12f, 0.34f), v3(0, -0.9f, -0.04f), 0.08f, 0.08f, 0.09f, 0.2f, 0.8f, 0);
+    leg_out[side] = hip;
   }
+  part(b, "BOX", v3(0.5f, 0.22f, 0.3f), v3(0, 0.98f, 0), ar, ag, ab, 0.5f, 0.55f, 0);
+  part(b, "BOX", v3(0.56f, 0.56f, 0.34f), v3(0, 1.38f, 0), 0.3f, 0.32f, 0.36f, 0.6f, 0.4f, 0);
+  part(b, "BOX", v3(0.36f, 0.1f, 0.02f), v3(0, 1.46f, -0.18f), c[0], c[1], c[2], 0, 0.4f, 1.6f);
+  part(b, "BOX", v3(0.2f, 0.18f, 0.3f), v3(-0.38f, 1.58f, 0), 0.3f, 0.32f, 0.36f, 0.6f, 0.4f, 0);
+  part(b, "BOX", v3(0.2f, 0.18f, 0.3f), v3(0.38f, 1.58f, 0), 0.3f, 0.32f, 0.36f, 0.6f, 0.4f, 0);
+  part(b, "BOX", v3(0.14f, 0.5f, 0.16f), v3(-0.38f, 1.28f, -0.12f), ar, ag, ab, 0.4f, 0.5f, 0);
+  part(b, "BOX", v3(0.14f, 0.46f, 0.16f), v3(0.3f, 1.3f, -0.26f), ar, ag, ab, 0.4f, 0.5f, 0);
+  part(b, "BOX", v3(0.09f, 0.12f, 0.78f), v3(0.24f, 1.26f, -0.5f), 0.08f, 0.08f, 0.09f, 0.9f, 0.3f, 0);
+  part(b, "SPHERE", v3(0.3f, 0, 0), v3(0, 1.8f, 0), 0.34f, 0.36f, 0.4f, 0.7f, 0.3f, 0);
+  part(b, "BOX", v3(0.26f, 0.08f, 0.04f), v3(0, 1.8f, -0.14f), c[0], c[1], c[2], 0, 0.2f, 3.0f);
+  part(b, "BOX", v3(0.1f, 0.2f, 0.08f), v3(0, 1.38f, 0.2f), c[0], c[1], c[2], 0, 0.3f, 1.2f);
   cw_node_add_child(G.world, b);
   return b;
 }
@@ -796,7 +817,7 @@ static void build_world(int arena_id) {
   G.world = cw_node_new("Node3D", "World");
   cw_node_add_child(G.root, G.world);
   arena_build(arena_id, G.world);
-  arena_mood(arena_id, G.env, G.sun);
+  arena_mood(arena_id, G.env, G.sun, G.sky, G.fog);
   fx_init(G.world);
   for (int i = 0; i < MAXP; i++) {
     proj *p = &G.pr[i];
@@ -838,7 +859,7 @@ static void setup_fighters(void) {
     cw_mover3d_init(&f->mv, A.world, &md, v3(0, 0, 0));
     f->target = -1;
     f->goal = v3(0, -1000, 0);
-    f->body = make_body(G.mode == MODE_DM ? i : f->team);
+    f->body = make_body(G.mode == MODE_DM ? i : f->team, f->leg);
     f->light = cw_node_new("OmniLight3D", "Muzzle");
     cw_node_set(f->light, "color", cw_val_color(1, 0.75f, 0.4f, 1));
     cw_node_set(f->light, "energy", cw_val_float(0));
@@ -869,7 +890,7 @@ static void spawn_wave(void) {
     md.step_height = 0.45f;
     cw_mover3d_init(&f->mv, A.world, &md, v3(0, 0, 0));
     f->goal = v3(0, -1000, 0);
-    f->body = make_body(1);
+    f->body = make_body(1, f->leg);
     f->light = cw_node_new("OmniLight3D", "Muzzle");
     cw_node_set(f->light, "color", cw_val_color(1, 0.75f, 0.4f, 1));
     cw_node_set(f->light, "energy", cw_val_float(0));
@@ -961,6 +982,9 @@ static void sync_nodes(void) {
     if (cw_node_valid(f->body)) {
       cw_node3d_set_position(f->body, f->mv.position);
       cw_node3d_set_rotation(f->body, v3(0, f->yaw, 0));
+      float spd = v3len(v3(f->mv.velocity.x, 0, f->mv.velocity.z)), sw = f->mv.on_floor ? cw_sin(f->bob * 2.4f) * 0.7f * CW_MIN(1, spd / 6) : 0.5f;
+      if (cw_node_valid(f->leg[0])) cw_node3d_set_rotation(f->leg[0], v3(sw, 0, 0));
+      if (cw_node_valid(f->leg[1])) cw_node3d_set_rotation(f->leg[1], v3(-sw, 0, 0));
     }
     if (f->flash > 0) f->flash--;
     else if (cw_node_valid(f->light)) cw_node_set(f->light, "energy", cw_val_float(0));
@@ -1077,6 +1101,11 @@ static void fixed_update(void *user, double dt) {
   fx_tick();
   for (int i = 0; i < MAX_FEED; i++) if (G.feed[i].ticks > 0) G.feed[i].ticks--;
   sync_nodes();
+  for (int i = 0; i < MAXF; i++) {
+    const fighter *f = F(i);
+    G.d_score[i] = f->score, G.d_hp[i] = f->hp, G.d_deaths[i] = f->deaths, G.d_weapon[i] = f->weapon, G.d_alive[i] = f->active && f->alive;
+    G.d_pos[i * 2] = f->mv.position.x, G.d_pos[i * 2 + 1] = f->mv.position.z;
+  }
   /* the state hash */
   for (int i = 0; i < G.nf; i++) {
     const fighter *f = F(i);
@@ -1338,16 +1367,20 @@ static void init(void *user) {
   /* the persistent scene: environment, sun, post, lights, four cameras */
   G.env = cw_node_new("WorldEnvironment", "Env");
   cw_node_add_child(G.root, G.env);
-  cw_node_set(G.env, "use_background", cw_val_bool(true));
-  cw_node_set(G.env, "hemi_energy", cw_val_float(1.2));
-  cw_node_set(G.env, "ambient_color", cw_val_color(1, 1, 1, 1));
-  cw_node_set(G.env, "fog_mode", cw_val_enum("EXP2"));
-  cw_node_set(G.env, "fog_density", cw_val_float(0.006));
+  cw_node_set(G.env, "use_background", cw_val_bool(false));
+  cw_node_set(G.env, "hemi_energy", cw_val_float(0));
   G.sun = cw_node_new("DirectionalLight3D", "Sun");
   cw_node_add_child(G.root, G.sun);
   cw_node_set(G.sun, "shadow", cw_val_bool(true));
   cw_node_set(G.sun, "shadow_size", cw_val_int(2048));
   cw_node_set(G.sun, "shadow_extent", cw_val_float(46));
+  G.sky = cw_node_new("ProceduralSky", "Sky");
+  cw_node_add_child(G.root, G.sky);
+  cw_node_set(G.sky, "sun", cw_val_string("../Sun"));
+  G.fog = cw_node_new("HeightFog", "Fog");
+  cw_node_add_child(G.root, G.fog);
+  cw_node_set(G.fog, "height_falloff", cw_val_float(0.05));
+  cw_node_set(G.fog, "use_sky_color", cw_val_bool(true));
   G.post = cw_node_new("PostProcess", "Post");
   cw_node_add_child(G.root, G.post);
   cw_node_set(G.post, "hdr", cw_val_bool(true));
@@ -1391,6 +1424,12 @@ static void init(void *user) {
   cw_debug_i32("nav.requests", &G.path_requests);
   cw_debug_i32("nav.done", &G.path_done);
   cw_debug_i32("views", &G.views);
+  cw_debug_field("fighters.score", G.d_score, CW_DBG_I32, MAXF);
+  cw_debug_field("fighters.hp", G.d_hp, CW_DBG_I32, MAXF);
+  cw_debug_field("fighters.deaths", G.d_deaths, CW_DBG_I32, MAXF);
+  cw_debug_field("fighters.weapon", G.d_weapon, CW_DBG_I32, MAXF);
+  cw_debug_field("fighters.alive", G.d_alive, CW_DBG_I32, MAXF);
+  cw_debug_field("fighters.pos", G.d_pos, CW_DBG_F32, MAXF * 2);
   cw_debug_command("match", "match [arena] [mode] [bots]: start a match now", cmd_match);
 #ifdef ARENA_AUTOPILOT
   /* the autopilot: ARENA_ID, ARENA_MODE, ARENA_BOTS, ARENA_PLAYERS choose the match (tests, benches) */

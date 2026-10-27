@@ -160,5 +160,60 @@
       "maxGt16": 0.25,
       "vsGl": 0.25
     }
+  },
+  {
+    "name": "arenafps-match",
+    "app": "arenafps_auto",
+    "frames": 1200,
+    "maxGt16": 0.08,
+    "fields": [
+      "game.state",
+      "game.mode",
+      "game.arena",
+      "game.players",
+      "game.ticks",
+      "game.hash",
+      "match.nf",
+      "fighters.score",
+      "fighters.deaths",
+      "fighters.weapon",
+      "fighters.alive",
+      "fighters.pos",
+      "views"
+    ],
+    "expect": {
+      "game.state": 1,
+      "game.mode": 0,
+      "game.arena": 0,
+      "game.players": 4,
+      "views": 4
+    },
+    "controlFrames": 1199,
+    "webgpu": {
+      "vsGl": 0.3,
+      "maxGt16": 0.08,
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ]
+    },
+    "note": "arenafps_auto: four seats and five bots play Foundry deathmatch by themselves for 20 seconds. The simulation (movers, navmesh paths, shots, rockets, pickups) must give the same state on every host, so fighters.pos, scores and the state hash are compared exactly; pixels within the usual tolerance (particles, decals). Control: one frame short."
+  },
+  {
+    "name": "arenafps-screenshot",
+    "app": "arenafps_auto",
+    "frames": 420,
+    "minColors": 400,
+    "fields": [
+      "game.state",
+      "views"
+    ],
+    "expect": {
+      "game.state": 1,
+      "views": 4
+    },
+    "controlFrames": 3,
+    "note": "A four-way split frame is a real picture (the arenas' colours, HUD, effects), not one flat colour."
   }
 ]

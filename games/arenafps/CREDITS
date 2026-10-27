@@ -1,0 +1,18 @@
+arenafps (working title) credits
+
+Everything in this game is made by its own code:
+  - textures (concrete, gravel, grass, paint, steel, wood): procedural PBR sets (albedo, normal, roughness,
+    occlusion) generated at load by src/gfx.c, the same generators as the cartwheel demolition derby example
+    (MIT, this repository),
+  - sounds: synthesised at start from sine and noise in src/fx.c,
+  - models (levels, weapons, fighters): boxes, cylinders and spheres built in code,
+  - HUD and menus: the engine's shell and its built-in UI font.
+
+Fonts: the engine's built-in UI font; its licence is in the cartwheel-engine NOTICE (open font licence).
+
+Engine libraries: see the cartwheel-engine NOTICE (three.c, Box3D, Recast and Detour (zlib), RVO2 (Apache-2.0),
+miniaudio and the rest).
+
+Design references (read for ideas and numbers only; no code, models, textures or sounds were copied):
+OpenArena / ioquake3 game code (GPL-2.0, read locally): movement friction and acceleration constants, weapon roles
+and spreads, knockback scaling. See internal notes in the engine repository's findings.

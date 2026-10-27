@@ -118,7 +118,7 @@ extern arena A;
 
 void arena_build(int id, cw_node world_root);
 void arena_free(void);
-void arena_mood(int id, cw_node env, cw_node sun);
+void arena_mood(int id, cw_node env, cw_node sun, cw_node sky, cw_node fog);
 
 /* a ray through the level (not fighters): true on a hit */
 bool arena_ray(t3_vec3 from, t3_vec3 to, t3_vec3 *point, t3_vec3 *normal);
@@ -143,6 +143,7 @@ typedef struct fighter {
   float bob;
   cw_node body;          /* the third-person body */
   cw_node light;         /* muzzle flash */
+  cw_node leg[2];        /* hip pivots, swung while walking */
   int flash;
   /* bot brain */
   float skill;           /* 0..1 */
