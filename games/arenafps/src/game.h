@@ -165,8 +165,12 @@ typedef struct fighter {
   t3_vec3 last_pos;
   float aim_err_yaw, aim_err_pitch;
   int wander_wait;
+  int saw_t;             /* alive_t when it last saw an enemy */
+  t3_vec3 hunt;          /* where the enemy it hunts was */
   /* playtest measurements (not part of the simulation) */
   int since_spawn, first_dmg_tick, seen_cool, last_enc_tick;
+  uint32_t spawn_seen_by; /* enemies that could see the spawn point, or stood within 15 m of it, at the moment of spawning */
+  int alive_t, last_sight_t, last_eng_t; /* alive time (ticks) and when an enemy was last in sight / an encounter last began */
 } fighter;
 
 #endif

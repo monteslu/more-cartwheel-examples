@@ -88,9 +88,20 @@ static struct game {
   int32_t d_score[MAXF], d_hp[MAXF], d_deaths[MAXF], d_weapon[MAXF], d_alive[MAXF];
   float d_pos[MAXF * 2];
   int32_t kills_total, rockets_fired;
-  /* measurements read by the playtest scripts: encounters (first sight of an enemy, at most one every 5 s per fighter), spawn kills
-   * (a death within 6 s of respawning), time from first damage to death, kills by weapon, the longest stretch without a kill */
-  struct { int32_t enc, enc_gap_max, kills, spawn_kills, ttk_sum, ttk_n, gap_max, last_kill, by_weapon[NWEAP], fighter_ticks; } st;
+  int32_t steps;
+  int spawn_used[MAX_SPAWNS]; /* tick each spawn point was last used */
+  /* measurements read by the playtest scripts (tools/pacing.mjs), never part of the simulation:
+   * - sightings (enc): an enemy in sight, at most one every 5 s per fighter (the first pass's measure, kept for comparison)
+   * - encounters (eng): an enemy comes into sight (45 m, clear line) after 3 s alive with none in sight, or first after a spawn;
+   *   eng_gap_max is the longest alive time between two encounter starts of one fighter; contact_ticks the alive ticks with an
+   *   enemy in sight (sampled every 10 ticks), so a fight that never stops reads as contact, not as one long quiet encounter
+   * - spawns / unsafe_spawns: spawns where a living enemy could see the spawn point or stood within 15 m of it
+   * - spawn_kills: a death within 5 s of spawning (2 s protection + 3 s) to an enemy that could see the spawn point or stood
+   *   within 15 m of it when the victim spawned (killed because of where it spawned)
+   * - quick_deaths: any death to an enemy within 6 s of spawning (the first pass's "spawn kill" counter)
+   * - time from first damage to death, kills by weapon, the longest stretch without a kill */
+  struct { int32_t enc, enc_gap_max, kills, spawn_kills, quick_deaths, ttk_sum, ttk_n, gap_max, last_kill, by_weapon[NWEAP], fighter_ticks;
+           int32_t eng, eng_gap_max, contact_ticks, spawns, unsafe_spawns; } st;
   cw_font font;
 } G;
 
@@ -139,30 +150,34 @@ static float ray_fighter(const fighter *f, t3_vec3 o, t3_vec3 d, float maxt, boo
 
 /* ── damage, death, spawning ───────────────────────────────────────── */
 
+/* a spawn point is safe when no living enemy can see it (eye to eye, 60 m) and none stands within 15 m of it. Of the safe
+ * points the one farthest from the nearest enemy wins (a little jitter so two equal points share the load); a point someone
+ * stands on, or that another fighter used in the last 3 s, is avoided. With no safe point, the least bad one is taken. */
 static int pick_spawn(const fighter *self) {
   int best = 0;
-  float best_score = -1;
+  float best_score = -1e9f;
   for (int s = 0; s < A.nspawns; s++) {
-    float md = 1e9f;
+    t3_vec3 sp = A.spawns[s], eye = v3add(sp, v3(0, EYE_H, 0));
+    float md = 60;
+    bool seen = false, occupied = false;
     for (int i = 0; i < G.nf; i++) {
       const fighter *o = F(i);
       if (!o->active || !o->alive || o == self) continue;
-      t3_vec3 d = v3sub(o->mv.position, A.spawns[s]);
+      t3_vec3 d = v3sub(o->mv.position, sp);
       float dist = sqrtf(d.x * d.x + d.z * d.z);
+      if (dist < 1.5f) occupied = true;
+      if (!enemies(self, o)) continue;
       if (dist < md) md = dist;
+      if (!seen && dist < 60 && !arena_ray(eye_pos(o), eye, NULL, NULL)) seen = true;
     }
-    /* never in sight of a living enemy (a spawn kill), and under 15 m from one is penalised hard */
-    t3_vec3 eye = v3add(A.spawns[s], v3(0, EYE_H, 0));
-    bool seen = false;
-    for (int i = 0; i < G.nf && !seen; i++) {
-      const fighter *o = F(i);
-      if (!o->active || !o->alive || o == self || !enemies(self, o)) continue;
-      if (!arena_ray(eye, chest_pos(o), NULL, NULL)) seen = true;
-    }
-    float jitter = cw_rng_float(&G.rng) * 4;
-    float sc = md + jitter - (seen ? 40.0f : 0) - (md < 15 ? 15.0f : 0);
+    float sc = md + cw_rng_float(&G.rng) * 3;
+    if (seen) sc -= 100;
+    if (md < 15) sc -= 50;
+    if (occupied) sc -= 200;
+    if (G.ticks - G.spawn_used[s] < 180) sc -= 20;
     if (sc > best_score) best_score = sc, best = s;
   }
+  G.spawn_used[best] = G.ticks;
   return best;
 }
 
@@ -193,6 +208,21 @@ static void spawn_fighter(fighter *f) {
   f->first_dmg_tick = -1;
   f->seen_cool = 0;
   f->last_enc_tick = G.ticks;
+  f->last_sight_t = -1000000;
+  f->last_eng_t = f->alive_t;
+  { /* measurement: who could see this spawn point, or stood within 15 m of it */
+    f->spawn_seen_by = 0;
+    t3_vec3 eye = v3add(p, v3(0, EYE_H, 0));
+    for (int i = 0; i < G.nf; i++) {
+      const fighter *o = F(i);
+      if (o == f || !o->active || !o->alive || !enemies(f, o)) continue;
+      t3_vec3 d = v3sub(o->mv.position, p);
+      float dist = v3len(d);
+      if (dist < 15 || (dist < 45 && !arena_ray(eye_pos(o), eye, NULL, NULL))) f->spawn_seen_by |= 1u << i;
+    }
+    G.st.spawns++;
+    if (f->spawn_seen_by) G.st.unsafe_spawns++;
+  }
   f->target = -1;
   f->npath = 0;
   f->ticket = 0;
@@ -211,7 +241,8 @@ static void kill_fighter(fighter *v, fighter *k, int weapon) {
   if (k && k != v) {
     G.st.kills++;
     if (weapon >= 0 && weapon < NWEAP) G.st.by_weapon[weapon]++;
-    if (v->since_spawn < 360) G.st.spawn_kills++;
+    if (v->since_spawn < 360) G.st.quick_deaths++;
+    if (v->since_spawn < 300 && (v->spawn_seen_by >> (k - G.f) & 1u)) G.st.spawn_kills++;
     if (v->first_dmg_tick >= 0) G.st.ttk_sum += G.ticks - v->first_dmg_tick, G.st.ttk_n++;
     if (G.ticks - G.st.last_kill > G.st.gap_max) G.st.gap_max = G.ticks - G.st.last_kill;
     G.st.last_kill = G.ticks;
@@ -407,6 +438,7 @@ static void do_fire(fighter *f, int idx) {
   }
   f->ammo[f->weapon]--;
   f->cooldown = w->cooldown;
+  f->spawn_guard = 0; /* firing ends spawn protection */
   f->flash = 3;
   f->kick += w->kind == 0 && w->pellets == 1 ? 0.012f : w->kind == 2 ? 0.06f : 0.05f;
   t3_vec3 e = eye_pos(f);
@@ -505,7 +537,7 @@ static void bot_think(fighter *f, int idx) {
   t3_vec3 e = eye_pos(f);
   for (int i = 0; i < G.nf; i++) {
     fighter *o = F(i);
-    if (!o->active || !o->alive || !enemies(f, o)) continue;
+    if (!o->active || !o->alive || !enemies(f, o) || o->spawn_guard > 0) continue; /* a fighter under spawn protection is left alone */
     t3_vec3 d = v3sub(o->mv.position, f->mv.position);
     float dist = v3len(d);
     if (dist > 45 || dist > bd) continue;
@@ -515,9 +547,10 @@ static void bot_think(fighter *f, int idx) {
   if (best >= 0) {
     if (f->target != best) f->react = 8 + (int)((1 - f->skill) * 24);
     f->target = best;
+    f->saw_t = f->alive_t;
     f->last_pos = F(best)->mv.position;
     f->wander_wait = 0;
-  } else if (f->target >= 0 && (!F(f->target)->alive)) {
+  } else if (f->target >= 0 && (!F(f->target)->alive || F(f->target)->spawn_guard > 0)) {
     f->target = -1;
   }
   /* goal: fight, or fetch something */
@@ -545,13 +578,37 @@ static void bot_think(fighter *f, int idx) {
     if (f->last_pos.x != 0 || f->last_pos.z != 0) {
       if (f->target < 0 && f->wander_wait++ < 240 && bi < 0) bi = -2;
     }
+    /* hunt: co-op bots (both sides) go after the nearest enemy, and any bot that has seen no enemy for 12 s goes looking
+     * (the longest stretch without an encounter stays short); only a pressing need (health, a power weapon) comes first */
+    if ((G.mode == MODE_COOP || f->alive_t - f->saw_t > 12 * 60) && (bi < 0 || bs < 0.12f)) {
+      float hd = 1e9f;
+      int hi = -1;
+      for (int i = 0; i < G.nf; i++) {
+        const fighter *o = F(i);
+        if (!o->active || !o->alive || !enemies(f, o) || o->spawn_guard > 0) continue;
+        float d = v3len(v3sub(o->mv.position, f->mv.position));
+        if (d < hd) hd = d, hi = i;
+      }
+      if (hi >= 0) bi = -3, f->hunt = F(hi)->mv.position;
+    }
     t3_vec3 g = f->goal;
-    if (bi >= 0) g = A.items[bi].pos;
+    if (bi == -3) g = f->hunt;
+    else if (bi >= 0) g = A.items[bi].pos;
     else if (bi == -2) g = f->last_pos;
     else if (v3len(v3sub(f->goal, f->mv.position)) < 2.5f || f->goal.y < -100) {
       t3_vec3 rp;
       cw_rng *r = &G.rng;
-      if (cw_nav_random_point(A.nav, NULL, r, &rp)) g = rp;
+      /* roam to a random point, but not into a spawn area: bots that wander onto spawn points spawn-kill */
+      for (int tries = 0; tries < 6; tries++) {
+        if (!cw_nav_random_point(A.nav, NULL, r, &rp)) break;
+        g = rp;
+        bool near_spawn = false;
+        for (int s = 0; s < A.nspawns && !near_spawn; s++) {
+          t3_vec3 d = v3sub(rp, A.spawns[s]);
+          near_spawn = d.x * d.x + d.z * d.z < 9 * 9;
+        }
+        if (!near_spawn) break;
+      }
     }
     if (v3len(v3sub(g, f->goal)) > 0.5f) bot_set_goal(f, g);
   } else {
@@ -607,7 +664,7 @@ static void bot_tick(fighter *f, int idx) {
     f->ticket = cw_nav_request_path(A.nav, f->mv.position, f->goal, NULL);
     G.path_requests++;
   }
-  fighter *t = f->target >= 0 && F(f->target)->alive ? F(f->target) : NULL;
+  fighter *t = f->target >= 0 && F(f->target)->alive && F(f->target)->spawn_guard <= 0 ? F(f->target) : NULL;
   bool see = false;
   float dist = 0;
   t3_vec3 aim_at = v3(0, 0, 0);
@@ -932,11 +989,19 @@ static float bot_skill(float s) {
   return s;
 }
 
+/* the bot count the AUTO setting fills in: the arenas play best with five or six fighters (an encounter every 8 to 20 s, see
+ * tools/pacing.mjs), so one or two people get three bots, three or four people get two (team deathmatch rounds up to even teams) */
+static int auto_bots(void) {
+  int b = G.players <= 2 ? 3 : 2;
+  if (G.mode == MODE_TDM && ((G.players + b) & 1)) b++;
+  return b;
+}
+
 static void setup_fighters(void) {
   G.nf = 0;
   int bots;
   if (G.mode == MODE_COOP) bots = 0;
-  else bots = CW_MAX(0, G.bots_setting + (4 - G.players) * 0);
+  else bots = G.bots_setting < 0 ? auto_bots() : G.bots_setting;
   int total_bots = G.mode == MODE_COOP ? 0 : CW_MIN(bots, MAXF - G.players);
   for (int i = 0; i < G.players + total_bots; i++) {
     fighter *f = F(i);
@@ -1019,6 +1084,7 @@ static void begin_match(void) {
   G.hash = 0;
   G.winner = -1;
   G.st.last_kill = 0;
+  for (int s = 0; s < MAX_SPAWNS; s++) G.spawn_used[s] = -100000;
   G.team_score[0] = G.team_score[1] = 0;
   G.wave = 0;
   G.wave_state = 0;
@@ -1175,9 +1241,23 @@ static void view_hook(int view, void *u) {
   }
 }
 
+static void game_step(void);
 static void fixed_update(void *user, double dt) {
   (void)user, (void)dt;
   if (!cw_shell_update()) return;
+#ifdef ARENA_AUTOPILOT
+  /* ARENA_SIM_BATCH=n: n game ticks per engine tick, for pacing and soak runs that measure the simulation only (every seat is a
+   * bot, so no input is lost); the game time per drawn frame grows n times */
+  static int batch = -1;
+  if (batch < 0) batch = getenv("ARENA_SIM_BATCH") ? CW_CLAMP(atoi(getenv("ARENA_SIM_BATCH")), 1, 1000) : 1;
+  for (int b = 0; b < batch; b++) game_step();
+#else
+  game_step();
+#endif
+}
+
+static void game_step(void) {
+  G.steps++; /* every game tick since the start, across matches (soaks) */
   if (G.state == ST_SETUP) {
     int h = 0;
     if (cw_action_just_pressed(h, G.mv_f)) G.setup_row = (G.setup_row + 5) % 6, fx_play_ui(SND_CLICK, 0.4f);
@@ -1187,7 +1267,7 @@ static void fixed_update(void *user, double dt) {
       fx_play_ui(SND_TICK, 0.5f);
       if (G.setup_row == 0) { G.arena_id = (G.arena_id + ARENAS + dir) % ARENAS; build_world(G.arena_id); }
       else if (G.setup_row == 1) G.mode = (G.mode + MODE_COUNT + dir) % MODE_COUNT;
-      else if (G.setup_row == 2) G.bots_setting = CW_CLAMP(G.bots_setting + dir, 0, MAXF - 4);
+      else if (G.setup_row == 2) G.bots_setting = CW_CLAMP(G.bots_setting + dir, -1, MAXF - 4);
       else if (G.setup_row == 3) G.bot_level = (G.bot_level + 3 + dir) % 3;
       else if (G.setup_row == 4) G.aim_assist = !G.aim_assist;
     }
@@ -1209,8 +1289,10 @@ static void fixed_update(void *user, double dt) {
       G.state = ST_SETUP;
       G.ticks = 0;
       if (AUTO) { /* the autopilot plays the next arena and mode: a soak test sees them all */
-        G.arena_id = (G.arena_id + 1) % ARENAS;
-        G.mode = (G.mode + 1) % MODE_COUNT;
+        if (!getenv("ARENA_REPEAT")) { /* ARENA_REPEAT: play the same arena and mode again (pacing runs) */
+          G.arena_id = (G.arena_id + 1) % ARENAS;
+          G.mode = (G.mode + 1) % MODE_COUNT;
+        }
         begin_match();
         set_views();
       }
@@ -1237,7 +1319,26 @@ static void fixed_update(void *user, double dt) {
       continue;
     }
     f->since_spawn++;
+    f->alive_t++;
     G.st.fighter_ticks++;
+    if ((G.ticks + i) % 10 == 0) { /* measurement: encounters and contact time */
+      t3_vec3 e = eye_pos(f);
+      bool sees = false;
+      for (int j = 0; j < G.nf && !sees; j++) {
+        const fighter *o = F(j);
+        if (j == i || !o->active || !o->alive || !enemies(f, o)) continue;
+        if (v3len(v3sub(o->mv.position, f->mv.position)) <= 45 && !arena_ray(e, chest_pos(o), NULL, NULL)) sees = true;
+      }
+      if (sees) {
+        G.st.contact_ticks += 10;
+        if (f->alive_t - f->last_sight_t > 180) {
+          G.st.eng++;
+          if (f->alive_t - f->last_eng_t > G.st.eng_gap_max) G.st.eng_gap_max = f->alive_t - f->last_eng_t;
+          f->last_eng_t = f->alive_t;
+        }
+        f->last_sight_t = f->alive_t;
+      }
+    }
     if (f->seen_cool > 0) f->seen_cool--;
     else if ((G.ticks + i) % 10 == 0) {
       t3_vec3 e = eye_pos(f);
@@ -1418,7 +1519,9 @@ static void hud_setup(void) {
   char r0[64], r1[64], r2[64], r3[64], r4[64];
   snprintf(r0, sizeof r0, "<  %s  >", ARENA_INFO[G.arena_id].name);
   snprintf(r1, sizeof r1, "<  %s  >", MODE_NAME[G.mode]);
-  snprintf(r2, sizeof r2, G.mode == MODE_COOP ? "waves of bots" : "<  %d bots  >", G.bots_setting);
+  if (G.mode == MODE_COOP) snprintf(r2, sizeof r2, "waves of bots");
+  else if (G.bots_setting < 0) snprintf(r2, sizeof r2, "<  AUTO: %d bots  >", auto_bots());
+  else snprintf(r2, sizeof r2, "<  %d bots  >", G.bots_setting);
   static const char *LEVEL[3] = { "EASY", "NORMAL", "HARD" };
   snprintf(r3, sizeof r3, "<  bots: %s  >", LEVEL[G.bot_level]);
   rows[0] = r0, rows[1] = r1, rows[2] = r2, snprintf(r4, sizeof r4, "<  aim assist: %s  >", G.aim_assist ? "ON" : "OFF");
@@ -1540,7 +1643,7 @@ static void start(int players, void *user) {
 static void cmd_match(int argc, const char **argv, cw_reply *r) {
   if (argc > 0) G.arena_id = CW_CLAMP(atoi(argv[0]), 0, ARENAS - 1);
   if (argc > 1) G.mode = CW_CLAMP(atoi(argv[1]), 0, MODE_COUNT - 1);
-  if (argc > 2) G.bots_setting = CW_CLAMP(atoi(argv[2]), 0, MAXF - 4);
+  if (argc > 2) G.bots_setting = CW_CLAMP(atoi(argv[2]), -1, MAXF - 4);
   if (argc > 3) G.players = CW_CLAMP(atoi(argv[3]), 1, MAXH);
   if (G.players < 1) G.players = 1;
   begin_match();
@@ -1567,7 +1670,7 @@ static void init(void *user) {
   G.font = cw_ui_font_sans();
   G.arena_id = 0;
   G.mode = MODE_DM;
-  G.bots_setting = 5;
+  G.bots_setting = -1; /* AUTO */
   G.bot_level = 1;
   G.aim_assist = 1;
   cw_shell_init(&(cw_shell_desc){ .title = "ARENA", .subtitle = "split screen shooter", .max_players = MAXH, .start = start });
@@ -1625,6 +1728,7 @@ static void init(void *user) {
   cw_debug_i32("game.arena", &G.arena_id);
   cw_debug_i32("game.players", &G.players);
   cw_debug_i32("game.ticks", &G.ticks);
+  cw_debug_i32("game.steps", &G.steps);
   cw_debug_u32("game.hash", &G.hash);
   cw_debug_i32("match.wave", &G.wave);
   cw_debug_i32("match.lives", &G.lives);
@@ -1641,6 +1745,12 @@ static void init(void *user) {
   cw_debug_i32("stats.ttk_n", &G.st.ttk_n);
   cw_debug_i32("stats.gap_max", &G.st.gap_max);
   cw_debug_i32("stats.fighter_ticks", &G.st.fighter_ticks);
+  cw_debug_i32("stats.quick_deaths", &G.st.quick_deaths);
+  cw_debug_i32("stats.eng", &G.st.eng);
+  cw_debug_i32("stats.eng_gap_max", &G.st.eng_gap_max);
+  cw_debug_i32("stats.contact_ticks", &G.st.contact_ticks);
+  cw_debug_i32("stats.spawns", &G.st.spawns);
+  cw_debug_i32("stats.unsafe_spawns", &G.st.unsafe_spawns);
   cw_debug_field("stats.by_weapon", G.st.by_weapon, CW_DBG_I32, NWEAP);
   cw_debug_field("fighters.score", G.d_score, CW_DBG_I32, MAXF);
   cw_debug_field("fighters.hp", G.d_hp, CW_DBG_I32, MAXF);
@@ -1654,7 +1764,7 @@ static void init(void *user) {
   const char *e;
   if ((e = getenv("ARENA_ID"))) G.arena_id = CW_CLAMP(atoi(e), 0, ARENAS - 1);
   if ((e = getenv("ARENA_MODE"))) G.mode = CW_CLAMP(atoi(e), 0, MODE_COUNT - 1);
-  if ((e = getenv("ARENA_BOTS"))) G.bots_setting = CW_CLAMP(atoi(e), 0, MAXF - 4);
+  if ((e = getenv("ARENA_BOTS"))) G.bots_setting = CW_CLAMP(atoi(e), -1, MAXF - 4);
   if ((e = getenv("ARENA_LEVEL"))) G.bot_level = CW_CLAMP(atoi(e), 0, 2);
   cw_shell_start((e = getenv("ARENA_PLAYERS")) ? CW_CLAMP(atoi(e), 1, MAXH) : 4);
 #endif
@@ -1670,6 +1780,8 @@ cw_app_desc cw_main(int argc, char **argv) {
     const char *r = getenv("ARENA_RES");
     int w, h;
     if (r && sscanf(r, "%dx%d", &w, &h) == 2) app.width = w, app.height = h;
+    /* ARENA_SUBSTEPS=n: ticks one frame may run (pacing and soak runs at a low CW_FRAME_HZ; the default 5 drops the rest) */
+    if ((r = getenv("ARENA_SUBSTEPS"))) app.max_substeps = CW_MAX(1, atoi(r));
   }
 #endif
   app.save = cw_shell_save_region();

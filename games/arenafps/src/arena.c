@@ -266,6 +266,27 @@ static void barrels(float x, float z, float y0) {
   solid_prop("barrel", x + 0.3f, y0, z - 0.6f, 2.2f, 1, 1, 1, 0.6f, 0.9f, 0.6f);
 }
 
+/* ── flow: gameplay geometry (spawn nooks) ──
+ * A spawn nook closes a d x d corner of an arena of half side `half` with two walls `h` high; its 3 m door opens along the
+ * outer wall, so the hall cannot see in, and its two spawn points sit away from the door. Spawning in the open let a fighter be
+ * seen (and shot) the moment it appeared: tools/pacing.mjs measured 70 to 98 percent of spawns in sight of an enemy. door_x
+ * picks which outer wall the door runs along. */
+static void spawn_nook(float sx, float sz, float half, float d, float y0, float h, bool door_x) {
+  const float T = 0.6f, DOOR = 3.0f;
+  float in = half - d, len = d - DOOR;
+  if (door_x) {
+    block(sx * (half - d / 2), y0, sz * in, d + T, h, T, K_WALL);
+    block(sx * in, y0, sz * (in + len / 2), T, h, len, K_WALL);
+    spawn_at(sx * (half - 2), y0 + 0.05f, sz * (in + 2));
+    spawn_at(sx * (half - 5), y0 + 0.05f, sz * (in + 1.8f));
+  } else {
+    block(sx * in, y0, sz * (half - d / 2), T, h, d + T, K_WALL);
+    block(sx * (in + len / 2), y0, sz * in, len, h, T, K_WALL);
+    spawn_at(sx * (in + 2), y0 + 0.05f, sz * (half - 2));
+    spawn_at(sx * (in + 1.8f), y0 + 0.05f, sz * (half - 5));
+  }
+}
+
 static void level_foundry(const palette *p) {
   const float H = 28;
   shell_walls(H, 9, K_WALL, K_FLOOR, p->trim);
@@ -313,9 +334,7 @@ static void level_foundry(const palette *p) {
   accent_light(0, 6.5f, 0, 0.5f, 0.75f, 1.0f, 70, 22);
   solid_prop("console", 0, 3.0f, -5.5f, 0, 1, 1, 1, 0.9f, 1.1f, 0.5f);
   solid_prop("console", 0, 3.0f, 5.5f, 3.14159265f, 1, 1, 1, 0.9f, 1.1f, 0.5f);
-  static const float sp[8][2] = { { -24, -24 }, { 24, -24 }, { -24, 24 }, { 24, 24 }, { 0, -24 }, { 0, 24 }, { -24, 0 }, { 24, 0 } };
-  for (int i = 0; i < 8; i++) spawn_at(sp[i][0], 0.05f, sp[i][1]);
-  spawn_at(0, 3.05f, 0);
+  for (int i = 0; i < 4; i++) spawn_nook((i & 1) ? 1 : -1, (i & 2) ? 1 : -1, H, 8, 0, 4.5f, i == 0 || i == 3);
   item_at(ITEM_ROCKET, 0, 3.4f, 0);
   item_at(ITEM_RAIL, 0, 0.5f, -22);
   item_at(ITEM_SCATTER, 0, 0.5f, 22);
@@ -376,8 +395,13 @@ static void level_courtyard(const palette *p) {
   floodlight(-H + 0.2f, 6.4f, 0, -1.5708f, p->accent, 90);
   floodlight(H - 0.2f, 6.4f, 0, 1.5708f, p->accent, 90);
   accent_light(0, 3.5f, 0, 1.0f, 0.7f, 0.35f, 55, 16);
-  static const float sp[8][2] = { { -27, -27 }, { 27, -27 }, { -27, 27 }, { 27, 27 }, { 0, -27 }, { 0, 27 }, { -27, 0 }, { 27, 0 } };
-  for (int i = 0; i < 8; i++) spawn_at(sp[i][0], 0.05f, sp[i][1]);
+  /* spawns inside the four buildings (their doors face the middle), far from the doorways */
+  for (int i = 0; i < 4; i++) {
+    float sx = (i & 1) ? 1 : -1, sz = (i & 2) ? 1 : -1;
+    spawn_at(sx * 18, 0.05f, sz * 18);
+    if (i == 0 || i == 3) spawn_at(sx * 18, 0.05f, sz * 10.5f);
+    else spawn_at(sx * 10.5f, 0.05f, sz * 18);
+  }
   item_at(ITEM_ROCKET, 0, 2.2f, 0);
   item_at(ITEM_RAIL, -14, 4.9f, -14);
   item_at(ITEM_SCATTER, 14, 4.9f, 14);
@@ -438,7 +462,7 @@ static void level_terraces(const palette *p) {
     float sx = (i & 1) ? 1 : -1, sz = (i & 2) ? 1 : -1;
     crate_stack(sx * 11, sz * 24, 0.3f, t2);
     barrels(sx * 24, sz * 12, t2);
-    solid_prop("planter", sx * 20, t2, sz * 24, 0, 1, 1, 1, 2.2f, 1.6f, 1.0f);
+    solid_prop("planter", sx * 14.2f, t2, sz * 24, 0, 1, 1, 1, 2.2f, 1.6f, 1.0f); /* clear of the spawn nook's door */
     solid_prop("jersey", sx * 6, t1, sz * 15.5f + sz * 0.0f, 0, 1, 1, 1, 2.0f, 0.8f, 0.6f);
   }
   floodlight(0, 8.2f, -H + 0.2f, 3.14159265f, p->accent, 130);
@@ -446,8 +470,7 @@ static void level_terraces(const palette *p) {
   floodlight(-H + 0.2f, 8.2f, 0, -1.5708f, p->accent, 130);
   floodlight(H - 0.2f, 8.2f, 0, 1.5708f, p->accent, 130);
   accent_light(0, 2.4f, 0, 0.2f, 0.85f, 0.8f, 60, 18);
-  static const float sp[8][2] = { { -23, -23 }, { 23, -23 }, { -23, 23 }, { 23, 23 }, { 0, -22 }, { 0, 22 }, { -22, 0 }, { 22, 0 } };
-  for (int i = 0; i < 8; i++) spawn_at(sp[i][0], t2 + 0.05f, sp[i][1]);
+  for (int i = 0; i < 4; i++) spawn_nook((i & 1) ? 1 : -1, (i & 2) ? 1 : -1, H, 7, t2, 3.6f, true);
   item_at(ITEM_ROCKET, 0, 2.3f, 0);
   item_at(ITEM_RAIL, 0, 3.0f, -22);
   item_at(ITEM_SCATTER, 9, 1.5f, 9);
