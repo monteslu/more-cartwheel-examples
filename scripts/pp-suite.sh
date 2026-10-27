@@ -23,16 +23,18 @@ parts=("$@"); [ ${#parts[@]} -eq 0 ] && parts=(expect gates wgpu hosts balance)
 GF=partypack-gates.json
 names() { node -e "for (const g of JSON.parse(require('fs').readFileSync('$ROOT/tests/$GF','utf8'))) if (!process.argv[1] || !g.expect) console.log(g.name)" "${1:-}"; }
 CROSS="partypack-tournament-short partypack-menu partypack-join partypack-drop partypack-join-press"
+# a few gates per lock hold (each hold stays well under the fair share)
+chunks() { local n=$1; shift; local line=() ; for x in "$@"; do line+=("$x"); if [ ${#line[@]} -ge $n ]; then echo "${line[*]}"; line=(); fi; done; [ ${#line[@]} -gt 0 ] && echo "${line[*]}"; return 0; }
 # one short hold of the GPU lock
-locked() { local tag="$1"; shift; (cd "$E" && timeout 900 node tools/with-gpu-suite.mjs "pp-$tag" "$@"); }
+locked() { local tag="$1"; shift; (cd "$E" && node tools/with-gpu-suite.mjs "pp-$tag" timeout 600 "$@"); } # the timeout bounds the hold, not the wait in the queue
 # software GL off the lock: llvmpipe, no display, no GPU device touched
 soft() { env -u DISPLAY -u WAYLAND_DISPLAY -u XAUTHORITY LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy "$@"; }
 for p in "${parts[@]}"; do
   case "$p" in
-    expect) for n in $(names new); do locked "exp-$n" node "$ROOT/games/partypack/tools/pp-expect.mjs" "$n" >> "$O/expect.log" 2>&1; echo "expect $n exit $?"; done ;;
-    gates) for n in $(names); do locked "gl-$n" node "$E/tests/gate.mjs" --gates-file $GF "$n" --hosts native >> "$O/gates.log" 2>&1; echo "gate $n exit $?"; done ;;
-    wgpu) for n in $(names); do locked "wg-$n" node "$E/tests/gate.mjs" --gates-file $GF "$n" --hosts native --gpu webgpu >> "$O/wgpu.log" 2>&1; echo "wgpu $n exit $?"; done ;;
-    hosts) for n in $CROSS; do locked "dual-$n" node "$E/tests/gate.mjs" --gates-file $GF "$n" --hosts native,romdev,chromium --gpu webgpu >> "$O/hosts.log" 2>&1; echo "hosts $n exit $?"; done ;;
+    expect) chunks 4 $(names new) | while read -r c; do locked exp node "$ROOT/games/partypack/tools/pp-expect.mjs" $c >> "$O/expect.log" 2>&1; echo "expect [$c] exit $?"; done ;;
+    gates) chunks 3 $(names) | while read -r c; do locked gl node "$E/tests/gate.mjs" --gates-file $GF $c --hosts native >> "$O/gates.log" 2>&1; echo "gates [$c] exit $?"; done ;;
+    wgpu) chunks 3 $(names) | while read -r c; do locked wg node "$E/tests/gate.mjs" --gates-file $GF $c --hosts native --gpu webgpu >> "$O/wgpu.log" 2>&1; echo "wgpu [$c] exit $?"; done ;;
+    hosts) chunks 2 $CROSS | while read -r c; do locked dual node "$E/tests/gate.mjs" --gates-file $GF $c --hosts native,romdev,chromium --gpu webgpu >> "$O/hosts.log" 2>&1; echo "hosts [$c] exit $?"; done ;;
     balance) soft timeout 3000 bash "$ROOT/games/partypack/tools/balance.sh" "${PP_N:-100}" > "$O/balance.log" 2>&1; echo "balance exit $?" ;;
     soak) # ten minutes of game time per mini-game. The 2D games run sim-only (PP_BATCH: four whole tournaments of that
           # one game inside the simulation, about 10 to 12 minutes of play, no rendering); the 3D games need their scene,
