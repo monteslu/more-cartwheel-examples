@@ -242,20 +242,26 @@ void stage_end(void) {
   cw_r2d_set_transform(&m);
 }
 
+static cw_font pp_font(void) {
+  static cw_font f;
+  static bool tried;
+  if (!tried) { tried = true; f = cw_font_load("fonts/LilitaOne-Regular.ttf", NULL); }
+  return f.id ? f : cw_ui_font_sans();
+}
 float ui_text_w(const char *s, float size) {
-  return cw_font_measure(cw_ui_font_sans(), s, &(cw_text_style){ .size = size }).width;
+  return cw_font_measure(pp_font(), s, &(cw_text_style){ .size = size }).width;
 }
 void ui_text(const char *s, cw_vec2 p, float size, cw_color c, cw_text_align al) {
   float w = ui_text_w(s, size);
   if (al == CW_ALIGN_CENTER) p.x -= w * 0.5f;
   else if (al == CW_ALIGN_RIGHT) p.x -= w;
-  cw_r2d_text(cw_ui_font_sans(), s, p, &(cw_text_style){ .size = size, .color = c, .outline_width = size * 0.07f, .outline_color = cw_rgba(0.05f, 0.04f, 0.1f, c.a) });
+  cw_r2d_text(pp_font(), s, p, &(cw_text_style){ .size = size, .color = c, .outline_width = size * 0.07f, .outline_color = cw_rgba(0.05f, 0.04f, 0.1f, c.a) });
 }
 void ui_text_wrap(const char *s, cw_rect r, float size, cw_color c, cw_text_align al) {
   float x = r.x;
   if (al == CW_ALIGN_CENTER) x = r.x + r.w * 0.5f;
   else if (al == CW_ALIGN_RIGHT) x = r.x + r.w;
-  cw_r2d_text(cw_ui_font_sans(), s, cw_v2(r.x, r.y), &(cw_text_style){ .size = size, .color = c, .wrap_width = r.w, .align = al, .outline_width = size * 0.05f, .outline_color = cw_rgba(0.05f, 0.04f, 0.1f, c.a) });
+  cw_r2d_text(pp_font(), s, cw_v2(r.x, r.y), &(cw_text_style){ .size = size, .color = c, .wrap_width = r.w, .align = al, .outline_width = size * 0.05f, .outline_color = cw_rgba(0.05f, 0.04f, 0.1f, c.a) });
   (void)x;
 }
 void ui_panel(cw_rect r, cw_color fill, cw_color edge) {
@@ -276,50 +282,111 @@ void ui_button_glyph(cw_vec2 p, float r, char which) {
   char s[2] = { which, 0 };
   ui_text(s, cw_v2(p.x, p.y - r * 0.7f), r * 1.3f, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
 }
-void ui_backdrop(float t, cw_color top, cw_color bottom) {
-  const int bands = 18;
-  for (int i = 0; i < bands; i++) {
-    float f = (float)i / (bands - 1);
-    cw_r2d_rect(cw_rect_make(0, STAGE_H * i / bands - 1, STAGE_W, STAGE_H / bands + 2), col_mix(top, bottom, f));
+/* a quad with a vertical colour gradient (smooth, unlike stacked bands) */
+void ui_grad(cw_rect r, cw_color top, cw_color bot) {
+  cw_vertex2d v[4] = { { cw_v2(r.x, r.y), cw_v2(0, 0), top }, { cw_v2(r.x + r.w, r.y), cw_v2(1, 0), top }, { cw_v2(r.x + r.w, r.y + r.h), cw_v2(1, 1), bot }, { cw_v2(r.x, r.y + r.h), cw_v2(0, 1), bot } };
+  static const uint32_t idx[6] = { 0, 1, 2, 0, 2, 3 };
+  cw_r2d_triangles((cw_texture){ 0 }, v, 4, idx, 6);
+}
+void ui_grad_h(cw_rect r, cw_color left, cw_color right) {
+  cw_vertex2d v[4] = { { cw_v2(r.x, r.y), cw_v2(0, 0), left }, { cw_v2(r.x + r.w, r.y), cw_v2(1, 0), right }, { cw_v2(r.x + r.w, r.y + r.h), cw_v2(1, 1), right }, { cw_v2(r.x, r.y + r.h), cw_v2(0, 1), left } };
+  static const uint32_t idx[6] = { 0, 1, 2, 0, 2, 3 };
+  cw_r2d_triangles((cw_texture){ 0 }, v, 4, idx, 6);
+}
+/* dark corners: four soft edge strips over the whole stage */
+void ui_vignette(float k) {
+  cw_color d = cw_rgba(0, 0, 0, 0.5f * k), z = cw_rgba(0, 0, 0, 0);
+  ui_grad(cw_rect_make(0, 0, STAGE_W, 150), d, z);
+  ui_grad(cw_rect_make(0, STAGE_H - 170, STAGE_W, 170), z, d);
+  ui_grad_h(cw_rect_make(0, 0, 220, STAGE_H), d, z);
+  ui_grad_h(cw_rect_make(STAGE_W - 220, 0, 220, STAGE_H), z, d);
+}
+/* a scrolling tiled ridge line: far layers scroll slower. y is the bottom edge */
+void bg_ridge(const char *name, float scroll, float y_bottom, float h, cw_color tint) {
+  float w = h * 4;                       /* the baked strip is 1024 x 256 */
+  float x0 = -fmodf(scroll, w);
+  if (x0 > 0) x0 -= w;
+  for (float x = x0; x < STAGE_W; x += w) art_draw_ex(name, cw_v2(x, y_bottom), cw_v2(w + 1, h), cw_v2(0, 1), 0, tint, false, false);
+}
+void bg_clouds(float t, float y, float scale, float alpha) {
+  for (int i = 0; i < 5; i++) {
+    float x = fmodf((float)i * 330.0f + t * (6 + (float)(i % 3) * 3), STAGE_W + 500) - 250;
+    art_draw_ex("cloud", cw_v2(x, y + (float)((i * 53) % 90)), cw_v2(300 * scale, 94 * scale), cw_v2(0.5f, 0.5f), 0, cw_rgba(1, 1, 1, alpha), (i & 1) != 0, false);
   }
-  for (int i = 0; i < 9; i++) { /* slow drifting discs */
-    float x = fmodf(i * 211.0f + t * (8 + i * 3), STAGE_W + 200) - 100;
-    float y = 80 + (i * 97) % 600;
-    cw_r2d_circle(cw_v2(x, y), 30 + (i % 4) * 26, 24, cw_rgba(1, 1, 1, 0.05f));
+}
+void ui_backdrop(float t, cw_color top, cw_color bottom) {
+  ui_grad(cw_rect_make(0, 0, STAGE_W, STAGE_H), top, bottom);
+  for (int i = 0; i < 7; i++) { /* slow drifting light pools */
+    float x = fmodf((float)i * 233.0f + t * (6 + (float)i * 2), STAGE_W + 400) - 200;
+    float y = 80 + (float)((i * 131) % 560);
+    art_glow("glow", cw_v2(x, y), 260 + (float)(i % 3) * 120, cw_rgba(top.r + 0.25f, top.g + 0.2f, top.b + 0.35f, 0.12f));
+  }
+  for (int i = 0; i < 26; i++) { /* twinkling sparkles */
+    float x = fmodf((float)i * 97.0f + 40, STAGE_W), y = fmodf((float)i * 61.0f + 17, STAGE_H);
+    float k = 0.5f + 0.5f * sinf(t * (1.2f + (float)(i % 5) * 0.4f) + (float)i);
+    art_glow("sparkle", cw_v2(x, y), 10 + 16 * k, cw_rgba(1, 1, 1, 0.12f + 0.4f * k * k));
   }
 }
 
+/* a chunky logo: candy-coloured letters that bob, with a stack of darker copies under them for depth */
+void ui_title(const char *s, cw_vec2 p, float size, float t) {
+  float w = ui_text_w(s, size), x = p.x - w * 0.5f;
+  char one[2] = { 0, 0 };
+  int n = (int)strlen(s);
+  for (int pass = 0; pass < 2; pass++) {
+    for (int i = 0; i < n; i++) {
+      one[0] = s[i];
+      char pre[64];
+      memcpy(pre, s, (size_t)i);
+      pre[i] = 0;
+      float lx = x + ui_text_w(pre, size);
+      float bob = sinf(t * 3.0f + (float)i * 0.6f) * size * 0.04f;
+      cw_color c = PCOL[i % 4];
+      cw_color top = col_mix(c, cw_rgba(1, 1, 1, 1), 0.35f);
+      if (pass == 0) {
+        for (int d = 9; d >= 1; d--) cw_r2d_text(pp_font(), one, cw_v2(lx, p.y + bob + (float)d * size * 0.012f), &(cw_text_style){ .size = size, .color = col_mix(c, cw_rgba(0.05f, 0.02f, 0.12f, 1), 0.55f + (float)d * 0.04f), .outline_width = size * 0.07f, .outline_color = cw_rgba(0.05f, 0.02f, 0.12f, 1) });
+      } else {
+        cw_r2d_text(pp_font(), one, cw_v2(lx, p.y + bob), &(cw_text_style){ .size = size, .color = top, .outline_width = size * 0.05f, .outline_color = cw_rgba(1, 1, 1, 0.9f) });
+      }
+    }
+  }
+}
 void ui_blob(cw_vec2 p, float r, int player, float lx, float ly, float squash, int mood, bool cpu) {
-  cw_color c = PCOL[player & 3];
+  static const char *BODY[4] = { "blob_ruby", "blob_sky", "blob_mint", "blob_sun" };
+  static const char *FOOT[4] = { "foot_ruby", "foot_sky", "foot_mint", "foot_sun" };
+  static const char *HAND[4] = { "hand_ruby", "hand_sky", "hand_mint", "hand_sun" };
+  int pl = player & 3;
   float sx = 1 / sqrtf(squash), sy = squash;
-  cw_r2d_circle(cw_v2(p.x, p.y + r * 0.95f), r * 0.9f * sx, 16, cw_rgba(0, 0, 0, 0.25f));
-  /* body: an ellipse from a polygon */
-  cw_vec2 pts[24];
-  for (int i = 0; i < 24; i++) {
-    float a = TAU * i / 24;
-    pts[i] = cw_v2(p.x + cosf(a) * r * sx, p.y + sinf(a) * r * sy);
-  }
-  cw_r2d_polygon(pts, 24, col_mix(c, cw_rgba(0, 0, 0, 1), 0.35f));
-  for (int i = 0; i < 24; i++) {
-    float a = TAU * i / 24;
-    pts[i] = cw_v2(p.x + cosf(a) * r * 0.92f * sx, p.y - r * 0.04f + sinf(a) * r * 0.92f * sy);
-  }
-  cw_r2d_polygon(pts, 24, c);
-  cw_r2d_circle(cw_v2(p.x - r * 0.35f * sx, p.y - r * 0.5f * sy), r * 0.22f, 12, cw_rgba(1, 1, 1, 0.35f));
-  float ex = r * 0.34f * sx, ey = p.y - r * 0.1f * sy;
+  float S = r * 2.36f / 256.0f;           /* sprite pixels to stage units */
+  cw_vec2 o = cw_v2(p.x - 128 * S * sx, p.y - 128 * S * sy); /* the sprite's centre sits on p */
+#define AT(px, py) cw_v2(o.x + (px) * S * sx, o.y + (py) * S * sy)
+  if (!art_is_lit()) art_draw("shadow", cw_v2(p.x, p.y + r * 1.05f), cw_v2(r * 2.1f * sx, r * 0.7f), 0, cw_rgba(1, 1, 1, 0.55f));
+  art_draw(FOOT[pl], AT(84, 226), cw_v2(84 * S * sx, 50 * S), 0, (cw_color){ 0 });
+  art_draw(FOOT[pl], AT(172, 226), cw_v2(84 * S * sx, 50 * S), 0, (cw_color){ 0 });
+  float wave = mood == 1 ? sinf((float)cw_time() * 9 + (float)pl) * 10 : 0;
+  art_draw(HAND[pl], AT(8, 150 + wave), cw_v2(46 * S * sx, 46 * S * sy), 0, (cw_color){ 0 });
+  art_draw(HAND[pl], AT(248, 150 - wave), cw_v2(46 * S * sx, 46 * S * sy), 0, (cw_color){ 0 });
+  art_draw(BODY[pl], p, cw_v2(256 * S * sx, 256 * S * sy), 0, (cw_color){ 0 });
   for (int s = -1; s <= 1; s += 2) {
-    cw_vec2 e = cw_v2(p.x + s * ex, ey);
-    cw_r2d_circle(e, r * 0.24f, 14, cw_rgba(1, 1, 1, 1));
-    cw_r2d_circle(cw_v2(e.x + lx * r * 0.08f, e.y + ly * r * 0.08f), r * (mood == 2 ? 0.07f : 0.12f), 10, cw_rgba(0.1f, 0.1f, 0.15f, 1));
+    cw_vec2 e = AT(128 + s * 36, 112);
+    float er = mood == 2 ? 1.12f : 1.0f;
+    art_draw("eye", e, cw_v2(50 * S * sx * er, 58 * S * sy * er), 0, (cw_color){ 0 });
+    float pr = (mood == 2 ? 20 : 30) * S;
+    art_draw("pupil", cw_v2(e.x + lx * 8 * S, e.y + ly * 8 * S), cw_v2(pr * sx, pr * sy), 0, (cw_color){ 0 });
+    art_draw("cheek", AT(128 + s * 66, 156), cw_v2(36 * S * sx, 22 * S * sy), 0, cw_rgba(1, 1, 1, 0.55f));
   }
   /* mouth: 0 neutral, 1 happy, 2 shocked, 3 sad */
-  float my = p.y + r * 0.35f * sy;
-  if (mood == 1) cw_r2d_arc(cw_v2(p.x, my - r * 0.12f), r * 0.1f, r * 0.2f, 0.2f, 2.94f, 10, cw_rgba(0.1f, 0.05f, 0.1f, 1));
-  else if (mood == 2) cw_r2d_circle(cw_v2(p.x, my), r * 0.11f, 10, cw_rgba(0.1f, 0.05f, 0.1f, 1));
-  else if (mood == 3) cw_r2d_arc(cw_v2(p.x, my + r * 0.2f), r * 0.1f, r * 0.2f, 3.34f, 6.08f, 10, cw_rgba(0.1f, 0.05f, 0.1f, 1));
-  else cw_r2d_line(cw_v2(p.x - r * 0.15f, my), cw_v2(p.x + r * 0.15f, my), r * 0.06f, cw_rgba(0.1f, 0.05f, 0.1f, 1));
-  if (cpu) { /* a small antenna marks a CPU player */
-    cw_r2d_line(cw_v2(p.x, p.y - r * 0.9f * sy), cw_v2(p.x, p.y - r * 1.25f * sy), r * 0.06f, cw_rgba(0.85f, 0.85f, 0.9f, 1));
-    cw_r2d_circle(cw_v2(p.x, p.y - r * 1.3f * sy), r * 0.12f, 10, cw_rgba(0.9f, 0.9f, 0.95f, 1));
+  cw_vec2 m = AT(128, 160);
+  float mr = 14 * S;
+  cw_color mc = cw_rgba(0.16f, 0.05f, 0.1f, 1);
+  if (mood == 1) { cw_r2d_arc(cw_v2(m.x, m.y - mr * 0.4f), mr * 0.8f, mr * 1.45f, 0.25f, 2.89f, 10, mc); }
+  else if (mood == 2) cw_r2d_circle(m, mr * 0.8f, 12, mc);
+  else if (mood == 3) cw_r2d_arc(cw_v2(m.x, m.y + mr * 1.6f), mr * 0.8f, mr * 1.45f, 3.39f, 6.03f, 10, mc);
+  else cw_r2d_line(cw_v2(m.x - mr, m.y), cw_v2(m.x + mr, m.y), mr * 0.45f, mc);
+  if (cpu) { /* a stalk and a lit bead mark a CPU player */
+    cw_vec2 b = AT(128, 14);
+    cw_r2d_line(b, cw_v2(b.x, b.y - 30 * S), 7 * S, cw_rgba(0.75f, 0.77f, 0.85f, 1));
+    art_draw("antenna", cw_v2(b.x, b.y - 42 * S), cw_v2(38 * S, 38 * S), 0, (cw_color){ 0 });
   }
+#undef AT
 }

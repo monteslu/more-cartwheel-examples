@@ -5,25 +5,32 @@
 [node name="Post" parent="." type="PostProcess"]
 msaa = 4
 tonemap = ACES_FILMIC
-exposure = 1.1
+exposure = 1.15
 bloom = true
-bloom_intensity = 0.09
-bloom_threshold = 1.2
+bloom_intensity = 0.16
+bloom_threshold = 0.9
+bloom_radius = 0.9
 ssao = true
-ssao_radius = 0.8
+ssao_radius = 0.9
 ssao_intensity = 1
+ssr = true
+ssr_intensity = 0.55
+ssr_max_distance = 22
+grade = true
+lut = "luts/blast.cube"
 vignette = true
-vignette_intensity = 0.4
+vignette_intensity = 0.45
 aa = SMAA
 
 [node name="Sky" parent="." type="ProceduralSky"]
 sun = "../Sun"
-time_of_day = 15.2
+time_of_day = 19.0
 latitude = 35
 declination = 12
 north = 30
-sun_energy = 3
-sky_energy = 0.8
+sun_energy = 2.2
+sky_energy = 0.7
+rayleigh = 1.4
 environment = true
 
 [node name="Sun" parent="." type="DirectionalLight3D"]
@@ -45,76 +52,53 @@ friction = 0.6
 shape = BOX
 size = vec3(13, 1, 13)
 
-[node name="Top" parent="Arena" type="MeshInstance3D"]
-size = vec3(13, 1, 13)
-color = color(0.2, 0.22, 0.27, 1)
-metalness = 0.6
-roughness = 0.38
-clearcoat = 0.3
-cast_shadow = true
-receive_shadow = true
-
-[node name="Lava" parent="." type="MeshInstance3D"]
-primitive = PLANE
-position = vec3(0, -9, 0)
-size = vec3(90, 1, 90)
-color = color(0.12, 0.02, 0.0, 1)
-emissive = color(0.2, 0.045, 0.006, 1)
-roughness = 0.9
-
 [node name="LavaGlow" parent="." type="OmniLight3D"]
-position = vec3(0, -6, 0)
+position = vec3(0, -5, 0)
 color = color(1, 0.4, 0.1, 1)
-energy = 30
-range = 26
+energy = 60
+range = 30
+
+[node name="UnderGlow" parent="." type="OmniLight3D"]
+position = vec3(0, -1.6, 0)
+color = color(1, 0.35, 0.08, 1)
+energy = 22
+range = 12
 
 [node name="RimA" parent="." type="OmniLight3D"]
-position = vec3(-9, 3, -8)
+position = vec3(-9, 4, -8)
 color = color(0.2, 0.7, 1, 1)
-energy = 22
-range = 22
+energy = 34
+range = 24
 
 [node name="RimB" parent="." type="OmniLight3D"]
-position = vec3(9, 3, 8)
+position = vec3(9, 4, 8)
 color = color(1, 0.35, 0.7, 1)
-energy = 22
-range = 22
+energy = 34
+range = 24
 
-[node name="PillarA" parent="." type="MeshInstance3D"]
-primitive = CYLINDER
-position = vec3(-8.5, 1, -8.5)
-size = vec3(1.4, 9, 1.4)
-color = color(0.2, 0.2, 0.25, 1)
-metalness = 0.7
-roughness = 0.4
-cast_shadow = true
+[node name="PillarLightA" parent="." type="OmniLight3D"]
+position = vec3(-8.5, 5, -8.5)
+color = color(0.3, 0.9, 1, 1)
+energy = 16
+range = 10
 
-[node name="PillarB" parent="." type="MeshInstance3D"]
-primitive = CYLINDER
-position = vec3(8.5, 1, -8.5)
-size = vec3(1.4, 9, 1.4)
-color = color(0.2, 0.2, 0.25, 1)
-metalness = 0.7
-roughness = 0.4
-cast_shadow = true
+[node name="PillarLightB" parent="." type="OmniLight3D"]
+position = vec3(8.5, 5, -8.5)
+color = color(0.3, 0.9, 1, 1)
+energy = 16
+range = 10
 
-[node name="PillarC" parent="." type="MeshInstance3D"]
-primitive = CYLINDER
-position = vec3(-8.5, 1, 8.5)
-size = vec3(1.4, 9, 1.4)
-color = color(0.2, 0.2, 0.25, 1)
-metalness = 0.7
-roughness = 0.4
-cast_shadow = true
+[node name="PillarLightC" parent="." type="OmniLight3D"]
+position = vec3(-8.5, 5, 8.5)
+color = color(1, 0.4, 0.8, 1)
+energy = 16
+range = 10
 
-[node name="PillarD" parent="." type="MeshInstance3D"]
-primitive = CYLINDER
-position = vec3(8.5, 1, 8.5)
-size = vec3(1.4, 9, 1.4)
-color = color(0.2, 0.2, 0.25, 1)
-metalness = 0.7
-roughness = 0.4
-cast_shadow = true
+[node name="PillarLightD" parent="." type="OmniLight3D"]
+position = vec3(8.5, 5, 8.5)
+color = color(1, 0.4, 0.8, 1)
+energy = 16
+range = 10
 
 [node name="Embers" parent="." type="GPUParticles3D"]
 position = vec3(0, -7, 0)

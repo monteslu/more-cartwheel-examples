@@ -1,6 +1,8 @@
 /* Helpers for the 3D mini-games: build scene nodes in code, drive the
  * camera, and project a world point onto the 2D stage for labels. */
 #include "mg.h"
+#include "cartwheel/resource.h"
+#include "three.h"
 
 static float CAM_P[3], CAM_T[3], CAM_FOV = 55;
 
@@ -30,6 +32,7 @@ void n3_camera(float px, float py, float pz, float tx, float ty, float tz) {
   CAM_T[0] = tx; CAM_T[1] = ty; CAM_T[2] = tz;
   cw_node cam = n3_find("Camera");
   if (!cw_node_valid(cam)) return;
+  { cw_value fv; if (cw_node_get_prop(cam, "fov", &fv)) CAM_FOV = (float)fv.f; }
   cw_node3d_set_position(cam, (t3_vec3){ px, py, pz });
   cw_node3d_look_at(cam, (t3_vec3){ tx, ty, tz }, (t3_vec3){ 0, 1, 0 });
 }
@@ -150,4 +153,35 @@ void n3_shockwave(t3_vec3 pos, float radius, float seconds, float strength) {
   cw_node3d_set_position(n, pos);
   fxn *f = fx_slot();
   f->n = n; f->ttl = f->max = (int)(seconds * 60) + 6; f->light = false;
+}
+
+/* ── models and decals ──────────────────────────────────────────────── */
+
+static void shadows_on(t3_object *o, bool cast) {
+  if (o->type == T3_SKINNED_MESH || o->type == T3_MESH) { o->cast_shadow = cast; o->receive_shadow = true; }
+  for (int i = 0; i < o->child_count; i++) shadows_on(o->children[i], cast);
+}
+/* a glb from the pack as a Node3D under parent (the engine's resource system shares its geometry and textures) */
+cw_node n3_glb(cw_node parent, const char *name, const char *path, bool cast) {
+  cw_node n = cw_node_new("Node3D", name);
+  cw_node_add_child(parent, n);
+  cw_res r = cw_res_load(path, CW_RES_GLTF);
+  t3_object *o = cw_gltf_instantiate(r);
+  if (!o) { cw_error("partypack: %s did not load", path); return n; }
+  shadows_on(o, cast);
+  cw_node3d_set_object(n, o);
+  t3_release(o);
+  return n;
+}
+/* a decal projected straight down at a point (the engine's Decal3D), freed with the scene */
+cw_node n3_decal(const char *texture, t3_vec3 pos, float size, cw_color c, const char *blend) {
+  cw_node d = cw_node_new("Decal3D", "Decal");
+  cw_node_set(d, "texture", cw_val_string(texture));
+  cw_node_set(d, "size", cw_val_vec3(size, size, 1.2f));
+  cw_node_set(d, "color", cw_val_color(c.r, c.g, c.b, c.a));
+  cw_node_set(d, "blend", cw_val_enum(blend));
+  cw_node_add_child(n3_level(), d);
+  cw_node3d_set_position(d, pos);
+  cw_node3d_set_rotation(d, (t3_vec3){ -1.5707963f, 0, 0 });
+  return d;
 }

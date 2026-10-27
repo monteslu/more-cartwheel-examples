@@ -166,51 +166,52 @@ static void think(mg_ctx *c, int p, mg_in *out) {
   }
 }
 
-static void poly(cw_xform2 x, float w, float h, cw_color c, cw_color edge) {
-  cw_vec2 pts[4];
-  float hw = w * 0.5f, hh = h * 0.5f;
-  cw_vec2 loc[4] = { cw_v2(-hw, -hh), cw_v2(hw, -hh), cw_v2(hw, hh), cw_v2(-hw, hh) };
-  for (int i = 0; i < 4; i++) {
-    float rx = loc[i].x * x.q.c - loc[i].y * x.q.s + x.p.x;
-    float ry = loc[i].x * x.q.s + loc[i].y * x.q.c + x.p.y;
-    pts[i] = cw_v2(to_px_x(rx), to_px_y(ry));
-  }
-  cw_r2d_polygon(pts, 4, c);
-  cw_r2d_polygon_lines(pts, 4, 3, edge);
+static const char *BLK[4] = { "block_0", "block_1", "block_2", "block_3" };
+static void block(cw_xform2 x, float w, float h, int p, cw_color tint) {
+  cw_vec2 ctr = cw_v2(to_px_x(x.p.x), to_px_y(x.p.y));
+  art_draw(BLK[p], ctr, cw_v2(w * PPM, h * PPM), -atan2f(x.q.s, x.q.c), tint);
 }
 
 static void draw(mg_ctx *c, float alpha, float t) {
   (void)alpha;
-  ui_backdrop(t, cw_rgba(0.45f, 0.75f, 0.95f, 1), cw_rgba(0.9f, 0.95f, 1, 1));
-  cw_r2d_rect(cw_rect_make(0, GROUND_Y, STAGE_W, STAGE_H - GROUND_Y), cw_rgba(0.25f, 0.45f, 0.25f, 1));
+  art_ambient = cw_rgba(0.62f, 0.64f, 0.74f, 1);
+  ui_grad(cw_rect_make(0, 0, STAGE_W, STAGE_H), cw_rgba(0.34f, 0.62f, 0.95f, 1), cw_rgba(0.9f, 0.94f, 1, 1));
+  bg_clouds(t, 40, 1.2f, 0.95f);
+  bg_ridge("ridge_far", t * 6, GROUND_Y, 230, cw_rgba(1, 1, 1, 1));
+  bg_ridge("ridge_mid", t * 12, GROUND_Y, 170, cw_rgba(1, 1, 1, 1));
+  bg_ridge("ridge_near", t * 22, GROUND_Y + 10, 110, cw_rgba(1, 1, 1, 1));
+  art_light(cw_v2(380, -200), 2400, cw_rgba(1, 0.94f, 0.82f, 1), 0.85f, false);
+  /* a lawn: lit rubber-track texture tinted green on dark earth */
+  ui_grad(cw_rect_make(0, GROUND_Y + 14, STAGE_W, STAGE_H - GROUND_Y - 14), cw_rgba(0.25f, 0.18f, 0.12f, 1), cw_rgba(0.1f, 0.08f, 0.07f, 1));
+  for (float x = 0; x < STAGE_W; x += 144) art_draw_ex("track", cw_v2(x, GROUND_Y - 10), cw_v2(145, 34), cw_v2(0, 0), 0, cw_rgba(0.45f, 0.95f, 0.5f, 1), false, false);
   for (int p = 0; p < NP; p++) {
     float px = to_px_x(col_x(p));
-    cw_r2d_rect(cw_rect_make(px - 160, 120, 320, GROUND_Y - 120), cw_rgba(PCOL[p].r, PCOL[p].g, PCOL[p].b, 0.07f));
-    cw_r2d_rect(cw_rect_make(px - 108, GROUND_Y - 4, 216, 24), col_mix(PCOL[p], cw_rgba(0, 0, 0, 1), 0.3f));
+    ui_grad(cw_rect_make(px - 160, 120, 320, GROUND_Y - 120), col_a(PCOL[p], 0.0f), col_a(PCOL[p], 0.14f));
+    art_light(cw_v2(px, 150), 420, col_mix(PCOL[p], cw_rgba(1, 1, 1, 1), 0.4f), 0.6f, false);
+    art_draw("shadow", cw_v2(px, GROUND_Y + 20), cw_v2(250, 36), 0, cw_rgba(1, 1, 1, 0.8f));
+    art_nine("tile", cw_rect_make(px - 112, GROUND_Y - 6, 224, 30), 24, 0.5f, col_mix(PCOL[p], cw_rgba(0.3f, 0.3f, 0.35f, 1), 0.4f));
     /* height ruler */
     for (int m = 1; m <= 6; m++) cw_r2d_line(cw_v2(px - 150, to_px_y((float)m)), cw_v2(px - 130, to_px_y((float)m)), 2, cw_rgba(0, 0, 0, 0.25f));
     /* the crane rail and claw */
-    cw_r2d_rect(cw_rect_make(px - 140, 128, 280, 8), cw_rgba(0.2f, 0.2f, 0.28f, 1));
+    art_draw("post", cw_v2(px, 132), cw_v2(10, 300), 1.5708f, (cw_color){ 0 });
     float cxp = px + to_px_x(T.cx[p]);
-    cw_r2d_line(cw_v2(cxp, 132), cw_v2(cxp, 150), 5, cw_rgba(0.2f, 0.2f, 0.28f, 1));
+    art_draw_ex("post", cw_v2(cxp, 134), cw_v2(6, 18), cw_v2(0.5f, 0), 0, (cw_color){ 0 }, false, false);
     if (T.dropped[p] < MAXB) {
       int s = T.next_shape[p][T.dropped[p]];
       float w = SHAPES[s].w, h = SHAPES[s].h;
       if (T.turned[p]) { float tt = w; w = h; h = tt; }
-      cw_color col = T.cooldown[p] > 0 ? col_a(PCOL[p], 0.35f) : PCOL[p];
-      cw_rect r = cw_rect_make(cxp - w * PPM * 0.5f, 150, w * PPM, h * PPM);
-      cw_r2d_round_rect(r, 6, 6, col);
-      cw_r2d_round_rect_lines(r, 6, 3, 6, cw_rgba(1, 1, 1, 0.6f));
+      cw_color col = T.cooldown[p] > 0 ? cw_rgba(1, 1, 1, 0.35f) : (cw_color){ 0 };
+      art_draw(BLK[p], cw_v2(cxp, 150 + h * PPM * 0.5f), cw_v2(w * PPM, h * PPM), 0, col);
       /* a drop guide */
-      cw_r2d_line(cw_v2(cxp, 150 + h * PPM), cw_v2(cxp, GROUND_Y - 4), 2, cw_rgba(1, 1, 1, 0.12f));
+      cw_r2d_line(cw_v2(cxp, 150 + h * PPM), cw_v2(cxp, GROUND_Y - 4), 2, cw_rgba(1, 1, 1, 0.14f));
     }
     for (int i = 0; i < T.dropped[p]; i++) {
       if (!T.blk[p][i].alive) continue;
       shape_t s = SHAPES[T.blk[p][i].shape];
       if (T.blk[p][i].rot) { float tt = s.w; s.w = s.h; s.h = tt; }
       cw_xform2 x = cw_body2d_interpolated(T.blk[p][i].body, alpha);
-      cw_color base = col_mix(PCOL[p], cw_rgba(1, 1, 1, 1), 0.12f * (float)(i % 3));
-      poly(x, s.w, s.h, base, cw_rgba(0.1f, 0.08f, 0.14f, 1));
+      float k = 0.9f + 0.05f * (float)(i % 3);
+      block(x, s.w, s.h, p, cw_rgba(k, k, k, 1));
     }
     if (T.height_cm[p] > 0) {
       float y = to_px_y((float)T.height_cm[p] / 100.0f);

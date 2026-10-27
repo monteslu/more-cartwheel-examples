@@ -129,6 +129,23 @@ cw_rect stage_rect(void);   /* the 16:9 stage inside the canvas */
 void stage_begin(void);     /* set the transform: draw in 1280x720 */
 void stage_end(void);
 void ui_backdrop(float t, cw_color top, cw_color bottom);
+void ui_grad(cw_rect r, cw_color top, cw_color bot);
+void ui_grad_h(cw_rect r, cw_color left, cw_color right);
+void ui_vignette(float k);
+void ui_title(const char *s, cw_vec2 p, float size, float t);
+void bg_ridge(const char *name, float scroll, float y_bottom, float h, cw_color tint);
+void bg_clouds(float t, float y, float scale, float alpha);
+
+/* baked lit sprites (art.c): lit 2D layer for the world, flat for the HUD */
+extern cw_color art_ambient;
+void art_world(bool lit);            /* true: draw into the lit world layer; false: the unlit HUD layer */
+bool art_is_lit(void);
+void art_draw(const char *name, cw_vec2 center, cw_vec2 size, float rot, cw_color tint); /* tint {0} = white */
+void art_draw_ex(const char *name, cw_vec2 pos, cw_vec2 size, cw_vec2 pivot, float rot, cw_color tint, bool fx, bool fy);
+void art_glow(const char *name, cw_vec2 center, float size, cw_color tint);
+void art_nine(const char *name, cw_rect dst, float margin, float scale, cw_color tint);
+void art_light(cw_vec2 p, float radius, cw_color c, float energy, bool shadows);
+void art_preload(const char **names, int n);
 
 /* the framework asks and the games use */
 int mg_cpu_count(const mg_ctx *c);
@@ -157,5 +174,18 @@ void n3_fx(const char *kind, t3_vec3 pos, float scale); /* "fire" "smoke" "spark
 void n3_flash(t3_vec3 pos, cw_color c, float energy, float range);
 void n3_fx_tick(void);
 void n3_shockwave(t3_vec3 pos, float radius, float seconds, float strength);
+cw_node n3_glb(cw_node parent, const char *name, const char *path, bool cast); /* a model from models/ as a node */
+cw_node n3_decal(const char *texture, t3_vec3 pos, float size, cw_color c, const char *blend); /* projected down, blend MIX MULTIPLY ADD */
+
+/* ── the 3D hub (hub.c): table, board tiles, tokens, trophy, podium ── */
+void hub_build(int humans);               /* after the hub scene is loaded */
+void hub_cells(int n);                    /* board length */
+void hub_mode(int mode);                  /* 0 stage, 1 board, 2 podium */
+void hub_cell(int i, int kind);           /* a board cell: 0 plain, 1 star, 2 the end */
+void hub_token(int p, float cell, float hop);
+void hub_podium_slot(int p, int rank, float lift);
+cw_vec2 hub_cell_screen(int i);
+cw_vec2 hub_podium_screen(int rank);
+void hub_update(float dt);
 
 #endif

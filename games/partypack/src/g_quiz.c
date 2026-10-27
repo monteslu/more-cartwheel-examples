@@ -134,13 +134,25 @@ static void think(mg_ctx *c, int p, mg_in *out) {
 
 static void draw(mg_ctx *c, float alpha, float t) {
   (void)alpha;
+  art_world(false);
   ui_backdrop(t, cw_rgba(0.1f, 0.3f, 0.5f, 1), cw_rgba(0.25f, 0.1f, 0.4f, 1));
+  for (int i = 0; i < 4; i++) { /* game-show spotlights */
+    float sw = sinf(t * 0.5f + (float)i * 1.7f);
+    cw_vec2 top = cw_v2(150 + (float)i * 330, -10), foot = cw_v2(top.x + sw * 180, 520);
+    cw_color bc = cw_rgba(0.8f, 0.9f, 1, 0.07f);
+    cw_vertex2d v[4] = { { cw_v2(top.x - 10, top.y), cw_v2(0, 0), bc }, { cw_v2(top.x + 10, top.y), cw_v2(1, 0), bc }, { cw_v2(foot.x + 100, foot.y), cw_v2(1, 1), col_a(bc, 0) }, { cw_v2(foot.x - 100, foot.y), cw_v2(0, 1), col_a(bc, 0) } };
+    static const uint32_t idx[6] = { 0, 1, 2, 0, 2, 3 };
+    cw_r2d_set_blend(CW_BLEND_ADD);
+    cw_r2d_triangles((cw_texture){ 0 }, v, 4, idx, 6);
+    cw_r2d_set_blend(CW_BLEND_ALPHA);
+  }
   if (Q.q >= ROUNDS) return;
   const qa *q = &BANK[Q.pick[Q.q]];
   char s[64];
   snprintf(s, sizeof s, "Question %d of %d", Q.q + 1, ROUNDS);
   ui_text(s, cw_v2(STAGE_W / 2, 100), 26, cw_rgba(1, 1, 1, 0.7f), CW_ALIGN_CENTER);
-  ui_panel(cw_rect_make(140, 135, 1000, 110), cw_rgba(0.05f, 0.05f, 0.18f, 0.9f), cw_rgba(1, 1, 1, 0.3f));
+  art_nine("panel", cw_rect_make(140, 135, 1000, 110), 26, 1.0f, cw_rgba(0.85f, 0.9f, 1.0f, 0.95f));
+  cw_r2d_round_rect_lines(cw_rect_make(143, 138, 994, 104), 16, 3, 8, cw_rgba(1, 1, 1, 0.35f));
   ui_text_wrap(q->q, cw_rect_make(170, 160, 940, 90), 40, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
   float f = Q.phase == 0 ? 1.0f - (float)Q.t / QTICKS : 0;
   ui_bar(cw_rect_make(240, 262, 800, 16), f, f < 0.25f ? cw_rgba(1, 0.4f, 0.3f, 1) : cw_rgba(0.4f, 0.9f, 1, 1));
@@ -148,10 +160,11 @@ static void draw(mg_ctx *c, float alpha, float t) {
   for (int sl = 0; sl < 4; sl++) {
     float x = 140 + (sl % 2) * 510, y = 300 + (sl / 2) * 95;
     bool rev = Q.phase == 1, right = sl == Q.right_slot;
-    cw_color fill = !rev ? cw_rgba(0.1f, 0.12f, 0.3f, 0.92f) : right ? cw_rgba(0.15f, 0.5f, 0.25f, 0.95f) : cw_rgba(0.1f, 0.1f, 0.2f, 0.6f);
-    ui_panel(cw_rect_make(x, y, 490, 80), fill, cw_rgba(1, 1, 1, right && rev ? 0.9f : 0.2f));
+    cw_color fill = !rev ? cw_rgba(0.45f, 0.55f, 0.95f, 0.95f) : right ? cw_rgba(0.4f, 0.95f, 0.5f, 1) : cw_rgba(0.3f, 0.3f, 0.45f, 0.65f);
+    art_nine("tile", cw_rect_make(x, y, 490, 80), 24, 0.9f, fill);
+    if (right && rev) art_glow("glow", cw_v2(x + 245, y + 40), 560, cw_rgba(0.4f, 1, 0.5f, 0.3f));
     ui_button_glyph(cw_v2(x + 44, y + 40), 26, LBL[sl]);
-    ui_text(q->a[Q.perm[Q.q][sl]], cw_v2(x + 90, y + 20), 34, cw_rgba(1, 1, 1, rev && !right ? 0.5f : 1), CW_ALIGN_LEFT);
+    ui_text(q->a[Q.perm[Q.q][sl]], cw_v2(x + 90, y + 20), 34, cw_rgba(1, 1, 1, rev && !right ? 0.55f : 1), CW_ALIGN_LEFT);
     for (int p = 0; p < NP; p++) /* who picked it: shown after the reveal */
       if (Q.ans[p] == sl && (rev || c->human[p] == false)) {
         if (rev) ui_blob(cw_v2(x + 330 + p * 38, y + 40), 16, p, 0, 0, 1, right ? 1 : 3, p >= c->humans);

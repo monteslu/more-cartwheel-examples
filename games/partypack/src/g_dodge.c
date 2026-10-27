@@ -113,46 +113,44 @@ static void think(mg_ctx *c, int p, mg_in *out) {
   else if (dx < lead && dx > lead - D.speed * 0.08f && D.p[p].y <= 0) out->a = true;
 }
 
-static void draw_lane(int i, float t) {
+static void draw_lane(int i) {
   float gy = GROUND0 + i * LANE_H;
   cw_color c = PCOL[i];
-  cw_r2d_rect(cw_rect_make(0, gy - 118, STAGE_W, 118 + 24), col_mix(cw_rgba(0.08f, 0.12f, 0.3f, 1), c, 0.12f));
-  cw_r2d_rect(cw_rect_make(0, gy, STAGE_W, 24), col_mix(cw_rgba(0.15f, 0.12f, 0.2f, 1), c, 0.35f));
-  cw_r2d_rect(cw_rect_make(0, gy, STAGE_W, 5), col_a(c, 0.9f));
-  for (int s = 0; s < 14; s++) { /* scrolling ground ticks */
-    float x = fmodf(s * 100.0f - D.dist, 1400) ;
-    if (x < 0) x += 1400;
-    cw_r2d_rect(cw_rect_make(x - 30, gy + 12, 36, 4), cw_rgba(1, 1, 1, 0.12f));
-  }
-  (void)t;
+  /* sky for this lane, tinted by the runner's colour, with three ridge layers scrolling at different speeds */
+  ui_grad(cw_rect_make(0, gy - 118, STAGE_W, 118 + 10), col_mix(cw_rgba(0.38f, 0.62f, 0.95f, 1), c, 0.18f), col_mix(cw_rgba(0.86f, 0.9f, 1, 1), c, 0.1f));
+  bg_ridge("ridge_far", D.dist * 0.08f, gy, 96, cw_rgba(1, 1, 1, 1));
+  bg_ridge("ridge_mid", D.dist * 0.2f, gy, 76, cw_rgba(1, 1, 1, 1));
+  bg_ridge("ridge_near", D.dist * 0.45f, gy, 52, cw_rgba(1, 1, 1, 1));
+  /* the running track: worn rubber, lit, with a lane stripe in the runner's colour */
+  float tw = 144, x0 = -fmodf(D.dist * 0.9f, tw);
+  for (float x = x0; x < STAGE_W; x += tw) art_draw_ex("track", cw_v2(x, gy - 6), cw_v2(tw + 1, 30), cw_v2(0, 0), 0, (cw_color){ 0 }, false, false);
+  cw_r2d_rect(cw_rect_make(0, gy - 6, STAGE_W, 4), col_a(c, 0.95f));
+  art_light(cw_v2(PX + 40, gy - 70), 300, col_mix(c, cw_rgba(1, 1, 1, 1), 0.35f), 0.75f, false);
 }
 
 static void draw(mg_ctx *c, float alpha, float t) {
   (void)alpha;
-  ui_backdrop(t, cw_rgba(0.35f, 0.7f, 0.95f, 1), cw_rgba(0.85f, 0.9f, 1, 1));
-  /* far hills, parallax */
-  for (int h = 0; h < 8; h++) {
-    float x = fmodf(h * 240.0f - D.dist * 0.15f, 1920) - 300;
-    if (x < -300) x += 1920;
-    cw_r2d_circle(cw_v2(x, 160), 150, 24, cw_rgba(0.5f, 0.75f, 0.9f, 0.7f));
-  }
+  art_ambient = cw_rgba(0.62f, 0.64f, 0.74f, 1);
+  cw_r2d_rect(cw_rect_make(0, 0, STAGE_W, STAGE_H), cw_rgba(0.1f, 0.14f, 0.3f, 1));
+  ui_grad(cw_rect_make(0, 0, STAGE_W, 150), cw_rgba(0.3f, 0.55f, 0.92f, 1), cw_rgba(0.6f, 0.78f, 0.98f, 1));
+  bg_clouds(t, 20, 1.0f, 0.9f);
+  art_light(cw_v2(STAGE_W * 0.35f, -140), 2000, cw_rgba(1, 0.93f, 0.8f, 1), 0.9f, false);
   for (int i = 0; i < LANES; i++) {
-    draw_lane(i, t);
+    draw_lane(i);
     float gy = GROUND0 + i * LANE_H;
     for (int k = 0; k < D.n_obs; k++) {
       float sx = PX + D.o[k].x - D.dist;
       if (sx < -80 || sx > STAGE_W + 80) continue;
+      cw_vec2 sh = cw_v2(sx + 6, gy + 6);
       if (D.o[k].kind == 0) {
-        cw_vec2 tri[3] = { cw_v2(sx - 26, gy), cw_v2(sx, gy - ROCK_H), cw_v2(sx + 26, gy) };
-        cw_r2d_polygon(tri, 3, cw_rgba(0.55f, 0.5f, 0.6f, 1));
-        cw_r2d_polygon_lines(tri, 3, 3, cw_rgba(0.15f, 0.1f, 0.2f, 1));
+        art_draw_ex("rock", cw_v2(sx, gy + 6), cw_v2(64, 60), cw_v2(0.5f, 1), 0, (cw_color){ 0 }, false, false);
       } else if (D.o[k].kind == 2) {
-        cw_rect r = cw_rect_make(sx - 24, gy - 90, 48, 90);
-        ui_panel(r, cw_rgba(0.8f, 0.45f, 0.3f, 1), cw_rgba(0.2f, 0.1f, 0.1f, 1));
+        art_draw_ex("rock_tall", cw_v2(sx, gy + 6), cw_v2(56, 96), cw_v2(0.5f, 1), 0, (cw_color){ 0 }, false, false);
       } else {
-        cw_r2d_rect(cw_rect_make(sx - 4, gy - 118, 8, 62), cw_rgba(0.3f, 0.3f, 0.4f, 1));
-        ui_panel(cw_rect_make(sx - 34, gy - 62, 68, 22), cw_rgba(0.95f, 0.75f, 0.2f, 1), cw_rgba(0.2f, 0.1f, 0.1f, 1));
+        art_draw_ex("post", cw_v2(sx, gy - 118), cw_v2(12, 66), cw_v2(0.5f, 0), 0, (cw_color){ 0 }, false, false);
+        art_draw("bar", cw_v2(sx, gy - 51), cw_v2(76, 27), 0, (cw_color){ 0 });
       }
+      (void)sh;
     }
     __typeof__(D.p[0]) *p = &D.p[i];
     if (p->alive || (c->tick % 20 < 10)) {
@@ -161,12 +159,15 @@ static void draw(mg_ctx *c, float alpha, float t) {
         float sq = p->duck ? 0.55f : p->y > 4 ? 1.18f : 1 + 0.06f * sinf(p->run * 0.05f);
         float r = 26;
         float bodyy = gy - r * (p->duck ? 0.6f : 1.0f) - p->y;
+        /* a soft contact shadow that shrinks as the runner jumps */
+        float sk = 1 - fminf(p->y / 220.0f, 0.6f);
+        art_draw("shadow", cw_v2(PX, gy + 12), cw_v2(70 * sk, 18 * sk), 0, cw_rgba(1, 1, 1, 0.7f * sk));
         if (p->alive) ui_blob(cw_v2(PX, bodyy), r, i, 0.8f, 0, sq, p->inv > 0 ? 2 : 0, i >= c->humans);
         else ui_blob(cw_v2(PX - (D.dist - p->out_at), gy - r), r, i, 0, 0, 0.8f, 3, i >= c->humans);
       }
     }
-    for (int l = 0; l < 3; l++) /* lives as hearts */
-      cw_r2d_circle(cw_v2(40 + l * 26, gy - 100), 9, 12, l < p->lives ? cw_rgba(1, 0.3f, 0.4f, 1) : cw_rgba(0, 0, 0, 0.3f));
+    for (int l = 0; l < 3; l++) /* lives */
+      art_draw("star", cw_v2(46 + l * 34, gy - 98), cw_v2(30, 30), 0, l < p->lives ? cw_rgba(1, 0.45f, 0.55f, 1) : cw_rgba(0.1f, 0.1f, 0.14f, 0.55f));
   }
 }
 

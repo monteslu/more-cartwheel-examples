@@ -7,12 +7,14 @@ msaa = 4
 tonemap = ACES_FILMIC
 exposure = 1.0
 bloom = true
-bloom_intensity = 0.06
-bloom_threshold = 1.3
+bloom_intensity = 0.12
+bloom_threshold = 1.0
+grade = true
+lut = "luts/raft.cube"
 ssao = true
 ssao_radius = 0.9
 vignette = true
-vignette_intensity = 0.3
+vignette_intensity = 0.4
 aa = SMAA
 
 [node name="Sky" parent="." type="ProceduralSky"]
@@ -53,11 +55,6 @@ position = vec3(0, -3.5, 0)
 shape = BOX
 size = vec3(90, 1, 90)
 
-[node name="Sand" parent="Seabed" type="MeshInstance3D"]
-size = vec3(90, 1, 90)
-color = color(0.62, 0.55, 0.36, 1)
-roughness = 0.95
-receive_shadow = true
 
 [node name="CliffW" parent="." type="StaticBody3D"]
 position = vec3(-22.5, 2, 0)
@@ -66,12 +63,6 @@ position = vec3(-22.5, 2, 0)
 shape = BOX
 size = vec3(4, 8, 36)
 
-[node name="Rock" parent="CliffW" type="MeshInstance3D"]
-size = vec3(4, 8, 36)
-color = color(0.34, 0.3, 0.27, 1)
-roughness = 0.9
-cast_shadow = true
-receive_shadow = true
 
 [node name="CliffE" parent="." type="StaticBody3D"]
 position = vec3(22.5, 2, 0)
@@ -80,12 +71,6 @@ position = vec3(22.5, 2, 0)
 shape = BOX
 size = vec3(4, 8, 36)
 
-[node name="Rock" parent="CliffE" type="MeshInstance3D"]
-size = vec3(4, 8, 36)
-color = color(0.34, 0.3, 0.27, 1)
-roughness = 0.9
-cast_shadow = true
-receive_shadow = true
 
 [node name="CliffN" parent="." type="StaticBody3D"]
 position = vec3(0, 2, -16.5)
@@ -94,12 +79,6 @@ position = vec3(0, 2, -16.5)
 shape = BOX
 size = vec3(48, 8, 4)
 
-[node name="Rock" parent="CliffN" type="MeshInstance3D"]
-size = vec3(48, 8, 4)
-color = color(0.38, 0.33, 0.29, 1)
-roughness = 0.9
-cast_shadow = true
-receive_shadow = true
 
 [node name="CliffS" parent="." type="StaticBody3D"]
 position = vec3(0, 2, 16.5)
@@ -108,9 +87,3 @@ position = vec3(0, 2, 16.5)
 shape = BOX
 size = vec3(48, 8, 4)
 
-[node name="Rock" parent="CliffS" type="MeshInstance3D"]
-size = vec3(48, 8, 4)
-color = color(0.38, 0.33, 0.29, 1)
-roughness = 0.9
-cast_shadow = true
-receive_shadow = true

@@ -15,6 +15,8 @@ static struct {
   int next_bomb;
   float shake;
   int elim_order;
+  cw_node scorch[12], ember[6];
+  int nscorch, ember_t[6], nember;
   uint32_t seed;
 } K;
 
@@ -37,22 +39,12 @@ static void make_ball(int i, float x, float z, bool cpu) {
   cw_node_set(sh, "radius", cw_val_float(0.5));
   cw_node_add_child(b, sh);
   cw_color c = PCOL[i];
-  cw_node m = n3_prim(b, "Body", "SPHERE", (t3_vec3){ 0, 0, 0 }, (t3_vec3){ 1, 1, 1 }, (cw_color){ c.r * c.r, c.g * c.g, c.b * c.b, 1 });
-  cw_node_set(m, "roughness", cw_val_float(0.35));
-  cw_node_set(m, "clearcoat", cw_val_float(0.7));
-  cw_node_set(m, "emissive", cw_val_color(c.r * c.r * 0.08f, c.g * c.g * 0.08f, c.b * c.b * 0.08f, 1));
-  cw_node face = cw_node_new("Node3D", "Face");
-  cw_node_add_child(b, face);
-  for (int s = -1; s <= 1; s += 2) {
-    n3_prim(face, "Eye", "SPHERE", (t3_vec3){ 0.18f * s, 0.14f, 0.38f }, (t3_vec3){ 0.26f, 0.3f, 0.2f }, (cw_color){ 1, 1, 1, 1 });
-    cw_node pu = n3_prim(face, "Pupil", "SPHERE", (t3_vec3){ 0.18f * s, 0.13f, 0.47f }, (t3_vec3){ 0.12f, 0.14f, 0.08f }, (cw_color){ 0.02f, 0.02f, 0.04f, 1 });
-    cw_node_set(pu, "cast_shadow", cw_val_bool(false));
-  }
-  if (cpu) {
-    n3_prim(b, "Stalk", "CYLINDER", (t3_vec3){ 0, 0.58f, 0 }, (t3_vec3){ 0.05f, 0.3f, 0.05f }, (cw_color){ 0.7f, 0.7f, 0.75f, 1 });
-    cw_node tip = n3_prim(b, "Tip", "SPHERE", (t3_vec3){ 0, 0.78f, 0 }, (t3_vec3){ 0.14f, 0.14f, 0.14f }, (cw_color){ 0.9f, 0.9f, 0.95f, 1 });
-    n3_emissive(tip, (cw_color){ 0.3f, 0.9f, 0.4f, 1 });
-  }
+  char mp[40];
+  snprintf(mp, sizeof mp, "models/blob_%d.glb", i);
+  n3_glb(b, "Body", mp, true);
+  cw_node face = n3_glb(b, "Face", "models/face.glb", false);
+  if (cpu) n3_glb(b, "Stalk", "models/stalk.glb", true);
+  (void)c;
   cw_node_add_child(n3_level(), b);
   cw_node3d_set_position(b, (t3_vec3){ x, 0.6f, z });
   K.ball[i] = b;
@@ -65,7 +57,14 @@ static void start(mg_ctx *c) {
   n3_fx_reset();
   K.size = 13;
   K.arena_shape = cw_node_get(n3_find("Arena"), "Shape");
-  K.arena_top = cw_node_get(n3_find("Arena"), "Top");
+  K.arena_top = n3_glb(n3_find("Arena"), "Top", "models/arena.glb", true);
+  n3_pos(K.arena_top, 0, 0.5f, 0);
+  for (int pi = 0; pi < 4; pi++) {
+    cw_node pl = n3_glb(n3_level(), "Pillar", "models/pillar.glb", true);
+    n3_pos(pl, (pi % 2 ? 8.5f : -8.5f), 1.0f, (pi < 2 ? -8.5f : 8.5f));
+  }
+  cw_node lv = n3_glb(n3_level(), "LavaPlane", "models/lava.glb", false);
+  n3_pos(lv, 0, -9, 0);
   static const float sx[4] = { -3.5f, 3.5f, -3.5f, 3.5f }, sz[4] = { -3.5f, -3.5f, 3.5f, 3.5f };
   for (int i = 0; i < NP; i++) { make_ball(i, sx[i], sz[i], i >= c->humans); K.alive[i] = true; }
   for (int e = 0; e < 4; e++) {
@@ -87,7 +86,7 @@ static void start(mg_ctx *c) {
 static void set_size(float s) {
   K.size = s;
   cw_node_set(K.arena_shape, "size", cw_val_vec3(s, 1, s));
-  cw_node_set(K.arena_top, "size", cw_val_vec3(s, 1, s));
+  n3_scale(K.arena_top, s / 13.0f, 1, s / 13.0f);
   for (int e = 0; e < 4; e++) {
     bool xs = e < 2;
     float o = (e % 2 ? 1 : -1) * s * 0.5f;
@@ -114,6 +113,17 @@ static void explode(int b) {
   n3_flash((t3_vec3){ bx, 1.6f, bz }, (cw_color){ 1, 0.55f, 0.22f, 1 }, 70, 12);
   sfx(SFX_BOOM, 0.9f, 0.9f + 0.2f * (float)(b % 3) / 3);
   K.shake = 0.5f;
+  { /* a scorch mark that stays, and an ember glow that cools */
+    int si = K.nscorch++ % 12;
+    if (cw_node_valid(K.scorch[si])) cw_node_free(K.scorch[si]);
+    K.scorch[si] = n3_decal("art/decal_scorch.png", (t3_vec3){ bx, 0.3f, bz }, RAD * 1.5f, (cw_color){ 1, 1, 1, 0.92f }, "MULTIPLY");
+    cw_node_set(K.scorch[si], "size", cw_val_vec3(RAD * 1.5f, RAD * 1.5f, 0.8f));
+    int ei = K.nember++ % 6;
+    if (cw_node_valid(K.ember[ei])) cw_node_free(K.ember[ei]);
+    K.ember[ei] = n3_decal("art/decal_ember.png", (t3_vec3){ bx, 0.3f, bz }, RAD * 1.1f, (cw_color){ 1, 0.6f, 0.2f, 1 }, "ADD");
+    cw_node_set(K.ember[ei], "size", cw_val_vec3(RAD * 1.1f, RAD * 1.1f, 0.8f));
+    K.ember_t[ei] = 150;
+  }
   for (int i = 0; i < NP; i++) {
     if (!K.alive[i]) continue;
     cw_vec2 p = ball_xz(i);
@@ -164,6 +174,7 @@ static void spawn_bomb(mg_ctx *c) {
 static void tick(mg_ctx *c) {
   const float dt = 1.0f / 60.0f;
   n3_fx_tick();
+  for (int e = 0; e < 6; e++) if (K.ember_t[e] > 0 && cw_node_valid(K.ember[e])) { K.ember_t[e]--; cw_node_set(K.ember[e], "energy", cw_val_float(1.6f * (float)K.ember_t[e] / 150.0f)); if (!K.ember_t[e]) { cw_node_free(K.ember[e]); K.ember[e] = (cw_node){ 0 }; } }
   /* the ring shrinks in three steps, with a warning first */
   static const int step_at[3] = { 1100, 1800, 2500 };
   static const float step_size[3] = { 11, 9.5f, 8 };

@@ -113,20 +113,39 @@ static void think(mg_ctx *c, int p, mg_in *out) {
   }
 }
 
+static const char *GEM[3] = { "gem_mint", "gem_ruby", "gem_sky" };
+static const char *KPAD[3] = { "pad_mint", "pad_ruby", "pad_sky" };
+static const char *KPAD_ON[3] = { "pad_mint_on", "pad_ruby_on", "pad_sky_on" };
+
 static void draw(mg_ctx *c, float alpha, float t) {
   (void)alpha;
   float pulse = fabsf(sinf((float)c->tick * 3.14159f / BPM_TICKS));
+  art_ambient = cw_rgba(0.4f + 0.12f * pulse, 0.36f, 0.55f, 1);
   ui_backdrop(t, cw_rgba(0.2f + 0.08f * pulse, 0.06f, 0.35f, 1), cw_rgba(0.05f, 0.05f, 0.2f, 1));
+  /* stage lights sweeping over the crowd */
+  for (int i = 0; i < 3; i++) {
+    float sw = sinf(t * 0.7f + (float)i * 2.1f);
+    cw_vec2 top = cw_v2(STAGE_W * (0.2f + 0.3f * (float)i), -20);
+    cw_vec2 foot = cw_v2(top.x + sw * 360, 420);
+    cw_color bc = i == 0 ? cw_rgba(0.5f, 1, 0.6f, 0.07f + 0.06f * pulse) : i == 1 ? cw_rgba(1, 0.5f, 0.6f, 0.07f + 0.06f * pulse) : cw_rgba(0.5f, 0.7f, 1, 0.07f + 0.06f * pulse);
+    cw_vertex2d v[4] = { { cw_v2(top.x - 12, top.y), cw_v2(0, 0), bc }, { cw_v2(top.x + 12, top.y), cw_v2(1, 0), bc }, { cw_v2(foot.x + 110, foot.y), cw_v2(1, 1), col_a(bc, 0) }, { cw_v2(foot.x - 110, foot.y), cw_v2(0, 1), col_a(bc, 0) } };
+    static const uint32_t idx[6] = { 0, 1, 2, 0, 2, 3 };
+    cw_r2d_set_blend(CW_BLEND_ADD);
+    cw_r2d_triangles((cw_texture){ 0 }, v, 4, idx, 6);
+    cw_r2d_set_blend(CW_BLEND_ALPHA);
+  }
   for (int p = 0; p < NP; p++) {
     float lx = 40 + p * 310, w = 270;
-    ui_panel(cw_rect_make(lx, 130, w, 540), cw_rgba(0.03f, 0.03f, 0.1f, 0.65f), col_a(PCOL[p], 0.8f));
+    art_nine("panel", cw_rect_make(lx, 130, w, 540), 26, 1.0f, cw_rgba(0.9f, 0.9f, 1.0f, 0.78f));
+    cw_r2d_rect_lines(cw_rect_make(lx + 3, 133, w - 6, 534), 3, col_a(PCOL[p], 0.85f));
     for (int k = 0; k < 3; k++) {
       float x = lx + w / 2 + (k - 1) * 70;
-      cw_r2d_rect(cw_rect_make(x - 28, 130, 56, 540), cw_rgba(1, 1, 1, 0.04f));
-      cw_r2d_circle(cw_v2(x, 560), 30, 20, col_a(KCOL[k], B.flash[p][k] > 0 ? 0.9f : 0.25f));
-      cw_r2d_circle_lines(cw_v2(x, 560), 30, 4, 20, cw_rgba(1, 1, 1, 0.8f));
-      char b[2] = { KLBL[k], 0 };
-      ui_text(b, cw_v2(x, 545), 28, cw_rgba(1, 1, 1, 0.6f), CW_ALIGN_CENTER);
+      cw_r2d_rect(cw_rect_make(x - 28, 140, 56, 520), cw_rgba(1, 1, 1, 0.05f));
+      bool on = B.flash[p][k] > 0;
+      art_draw(on ? KPAD_ON[k] : KPAD[k], cw_v2(x, 560), cw_v2(64, 64), 0, (cw_color){ 0 });
+      if (on) art_light(cw_v2(x, 560), 220, KCOL[k], 1.3f, false);
+      char bl[2] = { KLBL[k], 0 };
+      ui_text(bl, cw_v2(x, 545), 28, cw_rgba(1, 1, 1, on ? 1 : 0.6f), CW_ALIGN_CENTER);
     }
     for (int i = 0; i < B.count; i++) {
       if (B.hit[p][i] == 1) continue;
@@ -135,11 +154,9 @@ static void draw(mg_ctx *c, float alpha, float t) {
       if (dt < -24) continue;
       float y = 560 - dt * (430.0f / TRAVEL);
       float x = lx + w / 2 + (B.n[i].kind - 1) * 70;
-      cw_color col = KCOL[B.n[i].kind];
-      if (B.hit[p][i] == 2) col = col_mix(col, cw_rgba(0.3f, 0.3f, 0.3f, 1), 0.7f);
-      cw_r2d_circle(cw_v2(x, y), 24, 20, col);
-      cw_r2d_circle_lines(cw_v2(x, y), 24, 3, 20, cw_rgba(1, 1, 1, 0.8f));
-      cw_r2d_circle(cw_v2(x - 7, y - 8), 7, 10, cw_rgba(1, 1, 1, 0.5f));
+      cw_color tint = B.hit[p][i] == 2 ? cw_rgba(0.35f, 0.35f, 0.35f, 0.8f) : (cw_color){ 0 };
+      art_draw(GEM[B.n[i].kind], cw_v2(x, y), cw_v2(54, 54), t * 0.3f, tint);
+      if (B.hit[p][i] != 2) art_glow("glow", cw_v2(x, y), 90, col_a(KCOL[B.n[i].kind], 0.35f));
     }
     ui_blob(cw_v2(lx + w / 2, 640 - pulse * 10), 26, p, 0, 0, 1 + 0.12f * pulse, B.combo[p] > 5 ? 1 : 0, p >= c->humans);
     if (B.judge_t[p] > 0) {

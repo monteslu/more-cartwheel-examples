@@ -116,23 +116,28 @@ static void think(mg_ctx *c, int p, mg_in *out) {
   M.cpu_wait[p] = cw_rng_int(&c->rng, 14 - c->skill * 3, 26 - c->skill * 5);
 }
 
+static const char *PAD[4] = { "pad_mint", "pad_ruby", "pad_sky", "pad_sun" };
+static const char *PAD_ON[4] = { "pad_mint_on", "pad_ruby_on", "pad_sky_on", "pad_sun_on" };
 static void draw_pad(cw_vec2 ctr, int s, bool lit, float r) {
   cw_color col = PAD_COL[s];
-  cw_color base = col_mix(col, cw_rgba(0.05f, 0.05f, 0.1f, 1), lit ? 0.0f : 0.62f);
-  cw_r2d_circle(cw_v2(ctr.x, ctr.y + 8), r, 28, cw_rgba(0, 0, 0, 0.3f));
-  cw_r2d_circle(ctr, r, 28, base);
-  if (lit) cw_r2d_circle(ctr, r * 1.25f, 28, col_a(col, 0.25f));
-  cw_r2d_circle_lines(ctr, r, 5, 28, cw_rgba(1, 1, 1, lit ? 0.9f : 0.25f));
+  art_draw("shadow", cw_v2(ctr.x, ctr.y + r * 1.0f), cw_v2(r * 2.3f, r * 0.55f), 0, cw_rgba(1, 1, 1, 0.6f));
+  art_draw(lit ? PAD_ON[s] : PAD[s], ctr, cw_v2(r * 2.2f * (lit ? 1.05f : 1), r * 2.2f * (lit ? 1.05f : 1)), 0, (cw_color){ 0 });
+  if (lit) {
+    art_light(ctr, 520, col, 1.8f, false);
+    art_glow("glow", ctr, r * 5, col_a(col, 0.45f));
+  }
   char b[2] = { PAD_LBL[s], 0 };
-  ui_text(b, cw_v2(ctr.x, ctr.y - r * 0.4f), r * 0.8f, cw_rgba(1, 1, 1, lit ? 1 : 0.5f), CW_ALIGN_CENTER);
+  ui_text(b, cw_v2(ctr.x, ctr.y - r * 0.4f), r * 0.8f, cw_rgba(1, 1, 1, lit ? 1 : 0.55f), CW_ALIGN_CENTER);
 }
 
 static void draw(mg_ctx *c, float alpha, float t) {
   (void)alpha;
+  art_ambient = cw_rgba(0.34f, 0.32f, 0.5f, 1);
   ui_backdrop(t, cw_rgba(0.12f, 0.12f, 0.3f, 1), cw_rgba(0.3f, 0.12f, 0.4f, 1));
   cw_vec2 mid = cw_v2(STAGE_W / 2, 300);
   float d = 96;
   cw_vec2 pos[4] = { cw_v2(mid.x, mid.y + d), cw_v2(mid.x + d * 1.2f, mid.y), cw_v2(mid.x - d * 1.2f, mid.y), cw_v2(mid.x, mid.y - d) };
+  art_light(cw_v2(mid.x, mid.y - 200), 900, cw_rgba(0.8f, 0.8f, 1, 1), 0.6f, false);
   for (int s = 0; s < 4; s++) draw_pad(pos[s], s, M.lit == s, 70);
   const char *msg = M.ph == PH_SHOW ? "Watch!" : M.ph == PH_INPUT ? "Your turn!" : "Get ready";
   ui_text(msg, cw_v2(STAGE_W / 2, 130), 44, cw_rgba(1, 1, 1, 0.9f), CW_ALIGN_CENTER);
@@ -141,15 +146,17 @@ static void draw(mg_ctx *c, float alpha, float t) {
   ui_text(s, cw_v2(STAGE_W / 2, 180), 28, cw_rgba(1, 1, 1, 0.7f), CW_ALIGN_CENTER);
   for (int p = 0; p < NP; p++) { /* each player's progress */
     float x = 90 + p * 280, y = 520;
-    ui_panel(cw_rect_make(x, y, 260, 140), cw_rgba(0.05f, 0.05f, 0.15f, 0.7f), col_a(PCOL[p], M.alive[p] ? 0.9f : 0.2f));
+    art_nine("panel", cw_rect_make(x, y, 260, 140), 26, 1.0f, cw_rgba(0.9f, 0.9f, 1.0f, M.alive[p] ? 0.8f : 0.45f));
+    cw_r2d_round_rect_lines(cw_rect_make(x + 2, y + 2, 256, 136), 16, 3, 8, col_a(PCOL[p], M.alive[p] ? 0.9f : 0.2f));
     ui_blob(cw_v2(x + 40, y + 50), 26, p, 0, 0, M.flash[p] > 0 ? 1.15f : 1, M.alive[p] ? (M.flash[p] > 0 ? 2 : 0) : 3, p >= c->humans);
     int shown = M.len < 14 ? M.len : 14;
+    static const char *GEMS[4] = { "gem_mint", "gem_ruby", "gem_sky", "gem_sun" };
     for (int i = 0; i < shown; i++) {
-      bool got = M.alive[p] ? i < M.prog[p] : i < M.prog[p];
+      bool got = i < M.prog[p];
       cw_vec2 q = cw_v2(x + 90 + (i % 7) * 23, y + 24 + (i / 7) * 26);
-      cw_r2d_circle(q, 8, 10, got ? (M.ph == PH_INPUT ? col_a(PAD_COL[M.seq[i]], 1) : cw_rgba(1, 1, 1, 0.8f)) : cw_rgba(1, 1, 1, 0.15f));
+      art_draw(M.ph == PH_INPUT && got ? GEMS[M.seq[i]] : "gem_sun", q, cw_v2(20, 20), 0, got ? (M.ph == PH_INPUT ? (cw_color){ 0 } : cw_rgba(1, 1, 1, 0.9f)) : cw_rgba(0.25f, 0.25f, 0.3f, 0.5f));
     }
-    if (M.flash[p] > 0) cw_r2d_circle(cw_v2(x + 40, y + 100), 14, 14, PAD_COL[M.last_sym[p]]);
+    if (M.flash[p] > 0) art_draw(GEMS[M.last_sym[p]], cw_v2(x + 40, y + 100), cw_v2(30, 30), 0, (cw_color){ 0 });
     snprintf(s, sizeof s, "%d", M.rounds[p]);
     ui_text(s, cw_v2(x + 240, y + 90), 36, cw_rgba(1, 1, 1, M.alive[p] ? 1 : 0.4f), CW_ALIGN_RIGHT);
   }

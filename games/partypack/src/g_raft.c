@@ -28,29 +28,18 @@ static void make_raft(int i, float x, float z, bool cpu) {
   cw_node_add_child(b, sh);
   cw_color c = PCOL[i];
   cw_color lin = { c.r * c.r, c.g * c.g, c.b * c.b, 1 };
-  cw_node deck = n3_box(b, "Deck", (t3_vec3){ 0, 0, 0 }, (t3_vec3){ 2, 0.4f, 2 }, (cw_color){ 0.5f, 0.32f, 0.16f, 1 });
-  cw_node_set(deck, "roughness", cw_val_float(0.8));
-  for (int p = -1; p <= 1; p++) /* plank edges */
-    n3_box(b, "Plank", (t3_vec3){ p * 0.66f, 0.205f, 0 }, (t3_vec3){ 0.6f, 0.03f, 1.9f }, (cw_color){ 0.62f, 0.42f, 0.22f, 1 });
-  n3_prim(b, "Mast", "CYLINDER", (t3_vec3){ -0.7f, 0.9f, -0.7f }, (t3_vec3){ 0.08f, 1.5f, 0.08f }, (cw_color){ 0.35f, 0.25f, 0.15f, 1 });
+  n3_glb(b, "Deck", "models/raft.glb", true);
   cw_node flag = n3_box(b, "Flag", (t3_vec3){ -0.7f, 1.45f, -0.3f }, (t3_vec3){ 0.04f, 0.4f, 0.75f }, lin);
   n3_emissive(flag, (cw_color){ lin.r * 0.3f, lin.g * 0.3f, lin.b * 0.3f, 1 });
-  cw_node rider = n3_prim(b, "Rider", "SPHERE", (t3_vec3){ 0.1f, 0.62f, 0.1f }, (t3_vec3){ 0.9f, 0.9f, 0.9f }, lin);
-  cw_node_set(rider, "roughness", cw_val_float(0.35));
-  cw_node_set(rider, "clearcoat", cw_val_float(0.6));
-  cw_node face = cw_node_new("Node3D", "Face");
-  cw_node_add_child(b, face);
-  cw_node3d_set_position(face, (t3_vec3){ 0.1f, 0.66f, 0.1f });
-  for (int s = -1; s <= 1; s += 2) {
-    n3_prim(face, "Eye", "SPHERE", (t3_vec3){ 0.16f * s, 0.1f, 0.36f }, (t3_vec3){ 0.24f, 0.28f, 0.18f }, (cw_color){ 1, 1, 1, 1 });
-    cw_node pu = n3_prim(face, "Pupil", "SPHERE", (t3_vec3){ 0.16f * s, 0.09f, 0.45f }, (t3_vec3){ 0.11f, 0.13f, 0.07f }, (cw_color){ 0.02f, 0.02f, 0.04f, 1 });
-    cw_node_set(pu, "cast_shadow", cw_val_bool(false));
-  }
-  if (cpu) {
-    n3_prim(face, "Stalk", "CYLINDER", (t3_vec3){ 0, 0.55f, 0 }, (t3_vec3){ 0.05f, 0.3f, 0.05f }, (cw_color){ 0.7f, 0.7f, 0.75f, 1 });
-    cw_node tip = n3_prim(face, "Tip", "SPHERE", (t3_vec3){ 0, 0.74f, 0 }, (t3_vec3){ 0.14f, 0.14f, 0.14f }, (cw_color){ 0.9f, 0.9f, 0.95f, 1 });
-    n3_emissive(tip, (cw_color){ 0.3f, 0.9f, 0.4f, 1 });
-  }
+  char mp[40];
+  snprintf(mp, sizeof mp, "models/blob_%d.glb", i);
+  cw_node rider = n3_glb(b, "Rider", mp, true);
+  n3_pos(rider, 0.1f, 0.7f, 0.1f);
+  n3_scale(rider, 0.9f, 0.9f, 0.9f);
+  cw_node face = n3_glb(b, "Face", "models/face.glb", false);
+  n3_pos(face, 0.1f, 0.7f, 0.1f);
+  n3_scale(face, 0.9f, 0.9f, 0.9f);
+  if (cpu) { cw_node st = n3_glb(b, "Stalk", "models/stalk.glb", true); n3_pos(st, 0.1f, 0.7f, 0.1f); n3_scale(st, 0.9f, 0.9f, 0.9f); }
   cw_node fl = cw_node_new("Buoyancy3D", "Float");
   cw_node_add_child(b, fl);
   cw_node_add_child(n3_level(), b);
@@ -70,17 +59,19 @@ static void place_buoy(mg_ctx *c, int k) {
   }
   int gold = cw_rng_int(&c->rng, 0, 99) < 16;
   R.buoy[k].on = true; R.buoy[k].x = x; R.buoy[k].z = z; R.buoy[k].value = gold ? 3 : 1;
-  cw_color col = gold ? (cw_color){ 0.9f, 0.65f, 0.05f, 1 } : (cw_color){ 0.9f, 0.18f, 0.12f, 1 };
-  R.buoy[k].node = n3_prim(n3_level(), "Buoy", "SPHERE", (t3_vec3){ x, 0.2f, z }, (t3_vec3){ gold ? 0.95f : 0.75f, gold ? 0.95f : 0.75f, gold ? 0.95f : 0.75f }, col);
-  cw_node_set(R.buoy[k].node, "roughness", cw_val_float(0.3));
-  cw_node_set(R.buoy[k].node, "clearcoat", cw_val_float(0.8));
-  n3_emissive(R.buoy[k].node, gold ? (cw_color){ 0.9f, 0.55f, 0.02f, 1 } : (cw_color){ 0.35f, 0.03f, 0.02f, 1 });
+  R.buoy[k].node = n3_glb(n3_level(), "Buoy", gold ? "models/buoy_gold.glb" : "models/buoy_red.glb", true);
+  { float bs = gold ? 0.95f : 0.75f; n3_scale(R.buoy[k].node, bs, bs, bs); n3_pos(R.buoy[k].node, x, 0.2f, z); }
 }
 
 static void start(mg_ctx *c) {
   memset(&R, 0, sizeof R);
   n3_fx_reset();
   R.water = cw_water_find(cw_scene_app_tree());
+  n3_glb(n3_find("CliffW"), "Rock", "models/cliff_ew.glb", true);
+  n3_glb(n3_find("CliffE"), "Rock", "models/cliff_ew.glb", true);
+  n3_glb(n3_find("CliffN"), "Rock", "models/cliff_ns.glb", true);
+  n3_glb(n3_find("CliffS"), "Rock", "models/cliff_ns.glb", true);
+  { cw_node sd = n3_glb(n3_find("Seabed"), "Sand", "models/seabed.glb", false); n3_pos(sd, 0, 0.5f, 0); }
   static const float sx[4] = { -9, 9, -9, 9 }, sz[4] = { -5, -5, 5, 5 };
   for (int i = 0; i < NP; i++) make_raft(i, sx[i], sz[i], i >= c->humans);
   for (int k = 0; k < NBUOY; k++) place_buoy(c, k);

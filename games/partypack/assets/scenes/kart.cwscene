@@ -35,12 +35,6 @@ rotation = vec3(-1.05, 0, 0)
 fov = 50
 far = 300
 
-[node name="Grass" parent="." type="MeshInstance3D"]
-position = vec3(0, -0.15, 0)
-size = vec3(120, 0.2, 90)
-color = color(0.16, 0.34, 0.14, 1)
-roughness = 0.95
-receive_shadow = true
 
 [node name="LightA" parent="." type="OmniLight3D"]
 position = vec3(-16, 8, 0)

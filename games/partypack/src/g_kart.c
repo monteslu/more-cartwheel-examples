@@ -52,39 +52,8 @@ static void world_pos(float s, float d, float *x, float *z, float *hx, float *hz
 }
 
 static void build_track(void) {
-  cw_node root = n3_level();
-  float seg = LTOT / NSEG;
-  for (int i = 0; i < NSEG; i++) {
-    float s = (float)i * seg + seg * 0.5f, x, z, hx, hz, nx, nz;
-    bool arc;
-    track_at(s, &x, &z, &hx, &hz, &nx, &nz, &arc);
-    cw_node t = n3_box(root, "Road", (t3_vec3){ x, 0, z }, (t3_vec3){ arc ? seg * (RAD_ + TW * 0.55f) / RAD_ + 0.3f : seg + 0.35f, 0.12f, TW }, (cw_color){ 0.07f, 0.07f, 0.08f, 1 });
-    cw_node_set(t, "roughness", cw_val_float(0.75));
-    cw_node_set(t, "cast_shadow", cw_val_bool(false));
-    n3_rot(t, 0, cw_atan2(-hz, hx), 0);
-    /* centre dashes on every other piece */
-    if (i % 2 == 0 && i % 4 != 2 && !arc) {
-      cw_node dsh = n3_box(root, "Dash", (t3_vec3){ x, 0.07f, z }, (t3_vec3){ seg * 0.5f, 0.02f, 0.18f }, (cw_color){ 0.8f, 0.8f, 0.75f, 1 });
-      cw_node_set(dsh, "cast_shadow", cw_val_bool(false));
-      n3_rot(dsh, 0, cw_atan2(-hz, hx), 0);
-    }
-    for (int side = -1; side <= 1; side += 2) { /* kerbs in red and white */
-      float ox = x + nx * side * (TW * 0.5f + 0.35f), oz = z + nz * side * (TW * 0.5f + 0.35f);
-      bool red = ((i / 2) % 2) == 0;
-      cw_node k = n3_box(root, "Kerb", (t3_vec3){ ox, 0.14f, oz }, (t3_vec3){ arc ? seg * (RAD_ + side * TW * 0.55f) / RAD_ + 0.12f : seg + 0.1f, 0.3f, 0.7f }, red ? (cw_color){ 0.8f, 0.1f, 0.08f, 1 } : (cw_color){ 0.9f, 0.9f, 0.88f, 1 });
-      n3_rot(k, 0, cw_atan2(-hz, hx), 0);
-    }
-    if (i == 0) { /* start line */
-      cw_node sl = n3_box(root, "Start", (t3_vec3){ x - seg * 0.5f, 0.075f, z }, (t3_vec3){ 0.7f, 0.02f, TW }, (cw_color){ 0.95f, 0.95f, 0.95f, 1 });
-      n3_emissive(sl, (cw_color){ 0.2f, 0.2f, 0.2f, 1 });
-      cw_node_set(sl, "cast_shadow", cw_val_bool(false));
-    }
-  }
-  /* grandstand blocks outside the far side */
-  for (int i = 0; i < 9; i++) {
-    float x = -20 + i * 5.0f;
-    n3_box(root, "Stand", (t3_vec3){ x, 1.4f, -RAD_ - TW * 0.5f - 4.5f }, (t3_vec3){ 4.2f, 2.8f + (float)(i % 3) * 0.6f, 3 }, (cw_color){ 0.24f + 0.04f * (float)(i % 3), 0.22f, 0.3f, 1 });
-  }
+  /* the road, kerbs, tyre walls, grass, grandstands and lamp towers: one model (tools/make-models.mjs) */
+  n3_glb(n3_level(), "Track", "models/track.glb", true);
 }
 
 static void make_kart(int i, bool cpu) {
@@ -94,35 +63,21 @@ static void make_kart(int i, bool cpu) {
   cw_node_add_child(n3_level(), k);
   cw_color c = PCOL[i];
   cw_color lin = { c.r * c.r, c.g * c.g, c.b * c.b, 1 };
-  cw_node body = n3_box(k, "Body", (t3_vec3){ 0, 0.32f, 0 }, (t3_vec3){ 1.1f, 0.34f, 1.9f }, lin);
-  cw_node_set(body, "roughness", cw_val_float(0.3));
-  cw_node_set(body, "clearcoat", cw_val_float(0.9));
-  cw_node_set(body, "metalness", cw_val_float(0.2));
-  n3_box(k, "Nose", (t3_vec3){ 0, 0.28f, 1.05f }, (t3_vec3){ 0.8f, 0.22f, 0.5f }, lin);
-  n3_box(k, "Wing", (t3_vec3){ 0, 0.72f, -0.95f }, (t3_vec3){ 1.3f, 0.07f, 0.3f }, (cw_color){ 0.05f, 0.05f, 0.06f, 1 });
-  cw_node tail = n3_box(k, "Tail", (t3_vec3){ 0, 0.4f, -0.97f }, (t3_vec3){ 0.7f, 0.12f, 0.06f }, (cw_color){ 0.3f, 0.02f, 0.02f, 1 });
-  n3_emissive(tail, (cw_color){ 1.5f, 0.1f, 0.05f, 1 });
+  char mp[40];
+  snprintf(mp, sizeof mp, "models/kart_%d.glb", i);
+  cw_node body = n3_glb(k, "Body", mp, true);
   for (int w = 0; w < 4; w++) {
-    cw_node wh = n3_prim(k, "Wheel", "CYLINDER", (t3_vec3){ (w % 2 ? 0.62f : -0.62f), 0.26f, (w < 2 ? 0.7f : -0.65f) }, (t3_vec3){ 0.52f, 0.28f, 0.52f }, (cw_color){ 0.04f, 0.04f, 0.045f, 1 });
-    n3_rot(wh, 0, 0, 1.5708f);
+    cw_node wh = n3_glb(k, "Wheel", "models/wheel.glb", true);
+    n3_pos(wh, (w % 2 ? 0.62f : -0.62f), 0.26f, (w < 2 ? 0.7f : -0.65f));
     Rc.wheel[i][w] = wh;
   }
-  cw_node dr = n3_prim(k, "Driver", "SPHERE", (t3_vec3){ 0, 0.82f, -0.1f }, (t3_vec3){ 0.7f, 0.7f, 0.7f }, lin);
-  cw_node_set(dr, "roughness", cw_val_float(0.35));
-  cw_node_set(dr, "clearcoat", cw_val_float(0.6));
-  cw_node face = cw_node_new("Node3D", "Face");
-  cw_node_add_child(k, face);
-  cw_node3d_set_position(face, (t3_vec3){ 0, 0.85f, -0.1f });
-  for (int s = -1; s <= 1; s += 2) {
-    n3_prim(face, "Eye", "SPHERE", (t3_vec3){ 0.13f * s, 0.1f, 0.27f }, (t3_vec3){ 0.19f, 0.22f, 0.14f }, (cw_color){ 1, 1, 1, 1 });
-    cw_node pu = n3_prim(face, "Pupil", "SPHERE", (t3_vec3){ 0.13f * s, 0.09f, 0.34f }, (t3_vec3){ 0.09f, 0.1f, 0.05f }, (cw_color){ 0.02f, 0.02f, 0.04f, 1 });
-    cw_node_set(pu, "cast_shadow", cw_val_bool(false));
-  }
-  n3_prim(k, "Helmet", "SPHERE", (t3_vec3){ 0, 0.98f, -0.1f }, (t3_vec3){ 0.55f, 0.28f, 0.55f }, (cw_color){ 0.95f, 0.95f, 0.95f, 1 });
-  if (cpu) {
-    cw_node tip = n3_prim(k, "Tip", "SPHERE", (t3_vec3){ 0, 1.35f, -0.1f }, (t3_vec3){ 0.14f, 0.14f, 0.14f }, (cw_color){ 0.9f, 0.9f, 0.95f, 1 });
-    n3_emissive(tip, (cw_color){ 0.3f, 0.9f, 0.4f, 1 });
-  }
+  snprintf(mp, sizeof mp, "models/blob_%d.glb", i);
+  cw_node dr = n3_glb(k, "Driver", mp, true);
+  n3_pos(dr, 0, 0.98f, -0.12f); n3_scale(dr, 0.62f, 0.62f, 0.62f);
+  cw_node face = n3_glb(k, "Face", "models/face.glb", false);
+  n3_pos(face, 0, 0.98f, -0.12f); n3_scale(face, 0.62f, 0.62f, 0.62f);
+  if (cpu) { cw_node st = n3_glb(k, "Stalk", "models/stalk.glb", true); n3_pos(st, 0, 0.98f, -0.12f); n3_scale(st, 0.62f, 0.62f, 0.62f); }
+  (void)lin;
   Rc.kart[i] = k; Rc.body[i] = body; Rc.face[i] = face;
 }
 
@@ -145,7 +100,7 @@ static void start(mg_ctx *c) {
     world_pos(Rc.haz[k].s, Rc.haz[k].d, &x, &z, &hx, &hz);
     cw_node n;
     if (Rc.haz[k].kind == 0) { n = n3_prim(n3_level(), "Oil", "CYLINDER", (t3_vec3){ x, 0.08f, z }, (t3_vec3){ 2.0f, 0.02f, 2.0f }, col); cw_node_set(n, "roughness", cw_val_float(0.05)); cw_node_set(n, "cast_shadow", cw_val_bool(false)); }
-    else if (Rc.haz[k].kind == 1) { n = n3_prim(n3_level(), "Barrel", "CYLINDER", (t3_vec3){ x, 0.45f, z }, (t3_vec3){ 0.8f, 0.9f, 0.8f }, col); cw_node_set(n, "metalness", cw_val_float(0.4)); }
+    else if (Rc.haz[k].kind == 1) { n = n3_glb(n3_level(), "Barrel", "models/barrel.glb", true); n3_pos(n, x, 0.5f, z); n3_scale(n, 0.8f, 0.9f, 0.8f); }
     else { n = n3_box(n3_level(), "Pad", (t3_vec3){ x, 0.08f, z }, (t3_vec3){ 1.6f, 0.03f, 2.4f }, col); n3_emissive(n, (cw_color){ 0.2f, 0.9f, 2.0f, 1 }); n3_rot(n, 0, cw_atan2(-hz, hx), 0); cw_node_set(n, "cast_shadow", cw_val_bool(false)); }
     Rc.haz[k].node = n;
   }

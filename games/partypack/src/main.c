@@ -105,9 +105,13 @@ static bool menu_back(void) { return any_human_pressed(u_back) || any_human_pres
 
 /* ── 3D scene switching ─────────────────────────────────────────────── */
 
+static bool G_hub_live; /* the hub scene is the one loaded */
+static int board_cells(void);
 static void load_scene(const char *path) {
+  G_hub_live = path == NULL;
   if (!path) path = "scenes/hub.cwscene";
   cw_scene_app_change_scene(path, false);
+  if (G_hub_live) hub_build(G.humans);
 }
 
 /* ── mini-game lifecycle ────────────────────────────────────────────── */
@@ -307,12 +311,11 @@ static void on_sound(cw_shell_sound s, void *user) {
 }
 static void on_background(cw_shell_screen s, cw_vec2 canvas, void *user) {
   (void)user, (void)canvas;
+  art_world(false);
   stage_begin();
-  ui_backdrop(G.clock, cw_rgba(0.12f, 0.1f, 0.35f, 1), cw_rgba(0.45f, 0.18f, 0.5f, 1));
-  if (s != CW_SHELL_PAUSE) for (int p = 0; p < NP; p++) {
-    float bob = sinf(G.clock * 3 + (float)p) * 10;
-    ui_blob(cw_v2(STAGE_W / 2 - 330 + (float)p * 220, 560 + bob), 70, p, sinf(G.clock + (float)p), 0, 1 + 0.05f * sinf(G.clock * 6 + (float)p), 1, false);
-  }
+  if (!G_hub_live) ui_backdrop(G.clock, cw_rgba(0.12f, 0.1f, 0.35f, 1), cw_rgba(0.45f, 0.18f, 0.5f, 1));
+  else ui_vignette(1.4f);
+  if (s == CW_SHELL_TITLE) ui_title("PARTY PACK", cw_v2(STAGE_W / 2, 110), 120, G.clock);
   stage_end();
 }
 static void on_screen(cw_shell_screen from, cw_shell_screen to, void *user) {
@@ -465,32 +468,28 @@ static void draw_strip(void) {
 }
 
 static void draw_menu(void) {
-  ui_backdrop(G.clock, cw_rgba(0.12f, 0.1f, 0.35f, 1), cw_rgba(0.45f, 0.18f, 0.5f, 1));
-  ui_text("PARTY PACK", cw_v2(STAGE_W / 2, 40), 92, cw_rgba(1, 0.92f, 0.5f, 1), CW_ALIGN_CENTER);
-  for (int p = 0; p < NP; p++) {
-    float bob = sinf(G.clock * 3 + p) * 8;
-    ui_blob(cw_v2(STAGE_W / 2 - 165 + p * 110, 190 + bob), 38, p, sinf(G.clock + p), 0, 1 + 0.04f * sinf(G.clock * 6 + p), p < G.humans ? 1 : 0, p >= G.humans);
-  }
+  ui_vignette(1.6f);
+  ui_title("PARTY PACK", cw_v2(STAGE_W / 2, 24), 96, G.clock);
   static const char *labels[5] = { "Party Tournament", "Free Play", "Trophy Room", "Rounds", "CPU Skill" };
   static const char *skills[3] = { "Easy", "Medium", "Hard" };
   for (int i = 0; i < 5; i++) {
     bool sel = i == G.menu_item;
-    cw_rect r = cw_rect_make(STAGE_W / 2 - 250, 270 + i * 70, 500, 58);
+    cw_rect r = cw_rect_make(STAGE_W / 2 - 250, 330 + i * 64, 500, 54);
     ui_panel(r, sel ? cw_rgba(1, 0.85f, 0.3f, 0.95f) : cw_rgba(0.08f, 0.07f, 0.2f, 0.8f), sel ? cw_rgba(1, 1, 1, 0.9f) : cw_rgba(1, 1, 1, 0.15f));
     cw_color tc = sel ? cw_rgba(0.15f, 0.1f, 0.25f, 1) : cw_rgba(1, 1, 1, 1);
-    ui_text(labels[i], cw_v2(r.x + 28, r.y + 9), 36, tc, CW_ALIGN_LEFT);
+    ui_text(labels[i], cw_v2(r.x + 28, r.y + 6), 34, tc, CW_ALIGN_LEFT);
     char v[24] = "";
     if (i == 3) snprintf(v, sizeof v, "< %d >", 4 + 2 * (SV->rounds_opt % 3));
     if (i == 4) snprintf(v, sizeof v, "< %s >", skills[SV->skill % 3]);
-    if (v[0]) ui_text(v, cw_v2(r.x + r.w - 28, r.y + 9), 36, tc, CW_ALIGN_RIGHT);
+    if (v[0]) ui_text(v, cw_v2(r.x + r.w - 28, r.y + 6), 34, tc, CW_ALIGN_RIGHT);
   }
   char s[96];
   snprintf(s, sizeof s, "%d player%s + %d CPU", G.humans, G.humans == 1 ? "" : "s", NP - G.humans);
-  ui_text(s, cw_v2(STAGE_W / 2, 650), 28, cw_rgba(1, 1, 1, 0.8f), CW_ALIGN_CENTER);
+  ui_text(s, cw_v2(STAGE_W / 2, 668), 26, cw_rgba(1, 1, 1, 0.85f), CW_ALIGN_CENTER);
 }
 
 static void draw_pick(void) {
-  ui_backdrop(G.clock, cw_rgba(0.1f, 0.25f, 0.4f, 1), cw_rgba(0.1f, 0.12f, 0.3f, 1));
+  ui_grad(cw_rect_make(0, 0, STAGE_W, STAGE_H), cw_rgba(0.04f, 0.05f, 0.16f, 0.82f), cw_rgba(0.08f, 0.04f, 0.18f, 0.9f));
   ui_text("FREE PLAY", cw_v2(STAGE_W / 2, 24), 64, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
   for (int i = 0; i < MG_N; i++) {
     int cx = i % 3, cy = i / 3;
@@ -511,7 +510,7 @@ static void draw_pick(void) {
 }
 
 static void draw_trophy(void) {
-  ui_backdrop(G.clock, cw_rgba(0.3f, 0.2f, 0.1f, 1), cw_rgba(0.15f, 0.1f, 0.3f, 1));
+  ui_vignette(1.5f);
   ui_text("TROPHY ROOM", cw_v2(STAGE_W / 2, 24), 64, cw_rgba(1, 0.9f, 0.4f, 1), CW_ALIGN_CENTER);
   char s[200];
   snprintf(s, sizeof s, "party points %d   tournaments %d", SV->points_total, SV->tournaments);
@@ -530,34 +529,18 @@ static void draw_trophy(void) {
 }
 
 static void draw_board(void) {
-  ui_backdrop(G.clock, cw_rgba(0.1f, 0.3f, 0.3f, 1), cw_rgba(0.1f, 0.1f, 0.3f, 1));
+  ui_vignette(1.2f);
   int N = board_cells();
-  int rows = (N + 1 + BOARD_PER_ROW - 1) / BOARD_PER_ROW;
   char s[96];
   if (G.round >= G.rounds) snprintf(s, sizeof s, "FINAL STANDINGS");
   else snprintf(s, sizeof s, "ROUND %d OF %d", G.round + 1, G.rounds);
   ui_text(s, cw_v2(STAGE_W / 2, 18), 58, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
-  for (int i = 0; i < N; i++) { /* the path */
-    cw_vec2 a = board_cell_pos(i, rows), b = board_cell_pos(i + 1, rows);
-    cw_r2d_line(a, b, 14, cw_rgba(0, 0, 0, 0.3f));
-  }
-  for (int i = 0; i <= N; i++) {
-    cw_vec2 p = board_cell_pos(i, rows);
+  for (int i = 0; i <= N; i++) { /* labels on the special tiles */
     bool star = is_star(i) && !((G.star_taken >> i) & 1);
-    cw_color c = i == N ? cw_rgba(1, 0.85f, 0.2f, 1) : star ? cw_rgba(0.95f, 0.5f, 0.9f, 1) : cw_rgba(0.85f, 0.9f, 1, 0.9f);
-    cw_r2d_circle(p, i == N ? 30 : 22, 20, c);
-    cw_r2d_circle_lines(p, i == N ? 30 : 22, 3, 20, cw_rgba(0, 0, 0, 0.5f));
-    if (i == N) ui_text("END", cw_v2(p.x, p.y - 12), 24, cw_rgba(0.2f, 0.1f, 0.2f, 1), CW_ALIGN_CENTER);
-    else if (star) ui_text("+2", cw_v2(p.x, p.y - 12), 22, cw_rgba(0.2f, 0.05f, 0.2f, 1), CW_ALIGN_CENTER);
-  }
-  float t = ease_out((float)G.st_ticks / 100.0f);
-  for (int p = 0; p < NP; p++) {
-    float cell = flerp((float)G.from[p], (float)G.pos[p], G.tournament && G.round > 0 ? t : 1);
-    int c0 = (int)cell;
-    float f = cell - (float)c0;
-    cw_vec2 a = board_cell_pos(c0, rows), b = board_cell_pos(c0 + 1 > N ? N : c0 + 1, rows);
-    cw_vec2 pos = cw_v2(flerp(a.x, b.x, f) + (p - 1.5f) * 12, flerp(a.y, b.y, f) - 16 - fabsf(sinf(cell * 3.14159f)) * 14);
-    ui_blob(pos, 22, p, 0, 0, 1, 1, p >= G.humans);
+    if (i != N && !star) continue;
+    cw_vec2 p = hub_cell_screen(i);
+    if (i == N) ui_text("END", cw_v2(p.x, p.y - 30), 26, cw_rgba(1, 0.95f, 0.5f, 1), CW_ALIGN_CENTER);
+    else ui_text("+2", cw_v2(p.x, p.y - 30), 24, cw_rgba(1, 0.7f, 0.95f, 1), CW_ALIGN_CENTER);
   }
   for (int p = 0; p < NP; p++) {
     snprintf(s, sizeof s, "%d", G.points[p]);
@@ -566,9 +549,9 @@ static void draw_board(void) {
   if (G.round < G.rounds) {
     snprintf(s, sizeof s, "Next: %s", MG_LIST[G.order[G.round]]->name);
     ui_text(s, cw_v2(STAGE_W / 2, 96), 40, cw_rgba(1, 0.92f, 0.5f, 1), CW_ALIGN_CENTER);
-    if (G.st_ticks > 150) ui_text("press A", cw_v2(STAGE_W / 2, 560), 28, cw_rgba(1, 1, 1, 0.5f + 0.5f * sinf(G.clock * 6)), CW_ALIGN_CENTER);
+    if (G.st_ticks > 150) ui_text("press A", cw_v2(STAGE_W / 2, 580), 28, cw_rgba(1, 1, 1, 0.5f + 0.5f * sinf(G.clock * 6)), CW_ALIGN_CENTER);
   } else {
-    ui_text("press A", cw_v2(STAGE_W / 2, 560), 28, cw_rgba(1, 1, 1, 0.5f + 0.5f * sinf(G.clock * 6)), CW_ALIGN_CENTER);
+    ui_text("press A", cw_v2(STAGE_W / 2, 580), 28, cw_rgba(1, 1, 1, 0.5f + 0.5f * sinf(G.clock * 6)), CW_ALIGN_CENTER);
   }
 }
 
@@ -628,29 +611,22 @@ static void draw_results(void) {
 }
 
 static void draw_final(void) {
-  ui_backdrop(G.clock, cw_rgba(0.35f, 0.2f, 0.45f, 1), cw_rgba(0.1f, 0.1f, 0.3f, 1));
-  ui_text("TOURNAMENT OVER", cw_v2(STAGE_W / 2, 30), 70, cw_rgba(1, 0.92f, 0.5f, 1), CW_ALIGN_CENTER);
+  ui_vignette(1.3f);
+  ui_title("TOURNAMENT OVER", cw_v2(STAGE_W / 2, 20), 64, G.clock);
   int order[NP] = { 0, 1, 2, 3 };
   for (int i = 1; i < NP; i++)
     for (int j = i; j > 0; j--) {
       int a = order[j - 1], b = order[j];
       if (G.pos[b] > G.pos[a] || (G.pos[b] == G.pos[a] && G.points[b] > G.points[a])) { order[j] = a; order[j - 1] = b; } else break;
     }
-  static const float hts[4] = { 230, 170, 130, 90 };
-  static const int slot[4] = { 1, 0, 2, 3 }; /* podium positions: 2nd left, 1st centre */
-  (void)slot;
   for (int i = 0; i < NP; i++) {
     int p = order[i];
-    float x = 250 + (i == 0 ? 1 : i == 1 ? 0 : i == 2 ? 2 : 3) * 260;
-    float h = hts[i] * ease_out((float)G.st_ticks / 50.0f);
-    cw_rect r = cw_rect_make(x - 100, 620 - h, 200, h);
-    cw_r2d_rect(r, col_mix(PCOL[p], cw_rgba(0, 0, 0, 1), 0.3f));
-    cw_r2d_rect(cw_rect_make(r.x, r.y, r.w, 10), PCOL[p]);
-    float hop = i == 0 ? fabsf(sinf(G.clock * 5)) * 18 : 0;
-    ui_blob(cw_v2(x, 620 - h - 44 - hop), 40, p, 0, 0, 1, i == 0 ? 1 : i == 3 ? 3 : 0, p >= G.humans);
+    cw_vec2 sp = hub_podium_screen(i);
     char s[48];
     snprintf(s, sizeof s, "%d pts", G.points[p]);
-    ui_text(s, cw_v2(x, 640 - h * 0.5f - 18), 30, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
+    float k = ease_out(((float)G.st_ticks - 30) / 30.0f);
+    ui_text(p >= G.humans ? "CPU" : PNAME[p], cw_v2(sp.x, sp.y - 62 * k), 28, col_a(PCOL[p], k), CW_ALIGN_CENTER);
+    ui_text(s, cw_v2(sp.x, sp.y - 32 * k), 32, cw_rgba(1, 1, 1, k), CW_ALIGN_CENTER);
   }
   if (G.winner >= 0) {
     char s[64];
@@ -660,19 +636,49 @@ static void draw_final(void) {
   ui_text("press A", cw_v2(STAGE_W / 2, 672), 26, cw_rgba(1, 1, 1, 0.5f + 0.5f * sinf(G.clock * 6)), CW_ALIGN_CENTER);
 }
 
+/* the 3D hub follows the game's state: stage, board or podium */
+static void hub_sync(float dt) {
+  static int last_mode = -1, last_cells = -1;
+  static bool last_live;
+  if (!G_hub_live) { last_live = false; return; }
+  if (!last_live) { last_mode = -1; last_cells = -1; last_live = true; }
+  int mode = G.state == S_BOARD ? 1 : G.state == S_FINAL ? 2 : 0;
+  int N = board_cells();
+  if (N != last_cells) { hub_cells(N); last_cells = N; last_mode = -1; }
+  if (mode != last_mode) { hub_mode(mode); last_mode = mode; }
+  if (mode == 1) {
+    for (int i = 0; i <= N; i++) hub_cell(i, i == N ? 2 : (is_star(i) && !((G.star_taken >> i) & 1)) ? 1 : 0);
+    float t = ease_out((float)G.st_ticks / 100.0f);
+    for (int p = 0; p < NP; p++) hub_token(p, flerp((float)G.from[p], (float)G.pos[p], G.tournament && G.round > 0 ? t : 1), 0);
+  } else if (mode == 2) {
+    int order[NP] = { 0, 1, 2, 3 };
+    for (int i = 1; i < NP; i++)
+      for (int j = i; j > 0; j--) {
+        int a = order[j - 1], b = order[j];
+        if (G.pos[b] > G.pos[a] || (G.pos[b] == G.pos[a] && G.points[b] > G.points[a])) { order[j] = a; order[j - 1] = b; } else break;
+      }
+    for (int i = 0; i < NP; i++) hub_podium_slot(order[i], i, ease_out(((float)G.st_ticks - 8.0f * (float)(3 - i)) / 40.0f));
+  }
+  hub_update(dt);
+}
+
 static void render(void *user, double alpha) {
   (void)user;
   static double last_t; double now_t = cw_time(); float dt_ = last_t > 0 ? fminf((float)(now_t - last_t), 0.1f) : 0.016f; last_t = now_t; G.clock += dt_;
   cw_shell_screen sc = cw_shell_screen_now();
+  hub_sync(sc == CW_SHELL_PAUSE ? 0 : dt_);
   if (sc == CW_SHELL_PLAY || sc == CW_SHELL_PAUSE) {
     bool in_game = G.state >= S_INTRO && G.state <= S_RESULT;
     bool over3d = in_game && G.scene3d;
-    cw_r2d_begin(&(cw_r2d_pass_desc){ .clear = !over3d, .clear_color = cw_rgba(0.05f, 0.05f, 0.1f, 1) });
+    cw_r2d_begin(&(cw_r2d_pass_desc){ .clear = !(over3d || G_hub_live), .clear_color = cw_rgba(0.05f, 0.05f, 0.1f, 1), .ambient = art_ambient });
+    art_world(false);
     if (G.state == S_RESULT || G.state == S_FINISH || G.state == S_PLAY || G.state == S_COUNT || G.state == S_INTRO) fx_update(sc == CW_SHELL_PLAY ? dt_ : 0);
     stage_begin();
     if (in_game) {
       const mg_def *d = cur_def();
+      if (!G.scene3d) art_world(true);   /* the 2D world is lit: sprites with normal maps, real 2D lights */
       d->draw(&G.c, (float)alpha, G.clock);
+      art_world(false);                  /* the HUD, particles and banners are not */
       fx_draw();
       draw_strip();
       if (G.state == S_INTRO) draw_intro();
@@ -700,6 +706,7 @@ static void render(void *user, double alpha) {
 static void init(void *user) {
   (void)user;
   cw_project_load_input();
+  cw_r2d_layer_set(0, &(cw_r2d_layer_desc){ .lit = true });
   a_left = cw_action_find("move_left"); a_right = cw_action_find("move_right");
   a_up = cw_action_find("move_up"); a_down = cw_action_find("move_down");
   a_a = cw_action_find("btn_a"); a_b = cw_action_find("btn_b"); a_x = cw_action_find("btn_x"); a_y = cw_action_find("btn_y");

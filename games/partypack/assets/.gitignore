@@ -1,0 +1,2 @@
+# intermediate PBR sets: tools/make-textures.mjs writes them, tools/make-models.mjs embeds them in the glb files
+textures/
