@@ -8,7 +8,7 @@
 #   wgpu     every gate on native WebGPU (one lock call per gate)
 #   hosts    the ONE shipped cart, the dual GL+WebGPU .wasc of build/cart-wgpu, on every host (one lock call per
 #            gate): native WebGPU is the reference, romdev and chromium on WebGPU are "dual cart on WebGPU host",
-#            romdev told to render the same cart with GL (run-cart --dual-gl = loadMedia wgpu:false) against native
+#            romdev told to render the same cart with GL (run-cart --dual-gl = loadMedia wgpu:false, always with gpuPower:low-power) against native
 #            GL is "dual cart on GL host". The GL-only build/cart tree does not ship and is not tested.
 #   balance  the balance harness, software GL, no lock
 #   soak     ten minutes (36000 frames) of each mini-game, software GL, no lock, one process at a time

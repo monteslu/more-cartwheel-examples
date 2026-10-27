@@ -5,7 +5,7 @@ import { writeFileSync } from 'node:fs';
 const [cart, tag, host = 'gl'] = process.argv.slice(2);
 const ROOT = new URL('..', import.meta.url).pathname;
 const call = async (tool, body) => (await fetch(`http://127.0.0.1:7331/tool/${tool}`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-romdev-session': 'partypack-live' }, body: JSON.stringify(body) })).json();
-const L = await call('loadMedia', { platform: 'wasmcart', path: cart, ...(host === 'gl' ? { wgpu: false } : { gpuPower: 'low-power' }) });
+const L = await call('loadMedia', { platform: 'wasmcart', path: cart, gpuPower: 'low-power', ...(host === 'gl' ? { wgpu: false } : {}) }); // gpuPower always: without it romdev takes the display GPU
 console.log('loaded', L.gpu, L.gpuAdapter?.device ?? '');
 const NAMES = ['hurdle', 'echo', 'beatbox', 'quiz', 'blast', 'raft', 'stack', 'loop'];
 const field = async (n) => { const d = await call('wasm', { op: 'debugState' }); return d.fields?.find((f) => f.name === n)?.value ?? d.fields?.find((f) => f.name === n)?.values?.[0]; };
