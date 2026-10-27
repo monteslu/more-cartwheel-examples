@@ -1,0 +1,5 @@
+# r186 program states gemdash draws (cmake/programs.cmake, tools/programs.mjs)
+standard+l1001
+standard+shadow+l1001
+standard+instbig+l1001
+standard+instbig+shadow+l1001
