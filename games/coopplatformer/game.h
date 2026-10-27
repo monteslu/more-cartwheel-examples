@@ -32,6 +32,7 @@ enum { LAYER_WORLD = 0, LAYER_ONEWAY = 5, LAYER_PLAYER = 1 };
 typedef struct pickup { int x, y, ability; bool taken; } pickup;
 typedef struct coin { float x, y; bool taken; bool secret; } coin;
 typedef struct checkpoint { int x, y; } checkpoint;
+typedef struct gate { int x0, x1, need, flag; } gate; /* an ability gate: columns x0..x1 cannot be crossed without `need`; flag = the last flag before it */
 typedef struct mplat { float x0, y0, x1, y1, w; float t, speed; cw_body2d body; } mplat;
 typedef struct enemy {
   int kind;            /* 0 walker, 1 flyer, 2 boss */
@@ -45,7 +46,8 @@ typedef struct level {
   uint8_t t[WORLD_H][WORLD_W];   /* [y][x], y up */
   uint8_t biome[WORLD_W];
   int ground[WORLD_W];           /* surface height of the main path per column (bot and camera hints) */
-  int ncoins, npickups, nchecks, nenemies, nplat;
+  int ncoins, npickups, nchecks, nenemies, nplat, ngates;
+  gate gates[8];
   coin coins[MAX_COINS];
   pickup pickups[MAX_PICKUPS];
   checkpoint checks[16];
@@ -61,14 +63,14 @@ typedef struct player {
   cw_platformer2d pf;
   int hp, coins, invuln, bubble, color;
   float bubble_x, bubble_y;
-  int rescue_timer, off_screen;
+  int rescue_timer, off_screen, retry_t;
   float draw_x, draw_y;          /* interpolated feet, set at render */
   int anim;                      /* 0 idle 1 run 2 rise 3 fall 4 wall 5 swim 6 dash */
   float run_phase, squash;
   int land_fx, jump_fx, hurt_fx; /* one-frame event flags for the renderer */
 } player;
 
-typedef struct input_state { float x, y; bool jump_pressed, jump_held, dash_pressed, down; } input_state;
+typedef struct input_state { float x, y; bool jump_pressed, jump_held, dash_pressed, down, retry; } input_state;
 
 typedef struct camera_rig {
   float x, y, z;       /* world focus and distance */
@@ -89,7 +91,10 @@ typedef struct game {
   uint8_t seen[WORLD_H / 4][WORLD_W / 4]; /* map exploration */
   uint32_t hash;
   int events;          /* bitmask of this tick's sound events */
-  int checkpoint;
+  int checkpoint;      /* the flag respawns go to (the last one touched) */
+  uint32_t reached;    /* bit k: flag k has been touched (the map can warp to it) */
+  int hitstop;         /* ticks the whole world stands still after a hit (stomp, hurt, boss down) */
+  int hit_flash;       /* ticks of screen flash the renderer shows after a hit */
   int paused_map;
 } game;
 
@@ -112,5 +117,7 @@ void sim_reset(game *g, int players);
 void sim_step(game *g, const input_state in[MAX_PLAYERS], float dt);
 void sim_bot_input(const game *g, int p, input_state *in);
 void sim_respawn_player(game *g, int p);
+bool sim_warp(game *g, int flag);
+void sim_return(game *g);          /* everyone back to the last flag (or the start): the way out of anything */   /* the living players go to a reached flag; false if it is not reached */
 uint32_t sim_hash(const game *g);
 #endif

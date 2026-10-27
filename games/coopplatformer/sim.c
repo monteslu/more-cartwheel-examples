@@ -60,6 +60,8 @@ void sim_reset(game *g, int players) {
   g->won = 0;
   g->win_tick = 0;
   g->checkpoint = -1;
+  g->reached = 0;
+  g->hitstop = g->hit_flash = 0;
   g->events = 0;
   g->boss_hp = 9;
   g->hash = 2166136261u;
@@ -94,6 +96,8 @@ static void hurt_player(game *g, int i, float kx, int dmg) {
   p->hp -= dmg;
   p->invuln = 100;
   p->hurt_fx = 1;
+  g->hitstop = 5;
+  g->hit_flash = 8;
   g->events |= EV_HURT;
   p->pf.body.velocity.x = kx * 7.0f;
   p->pf.body.velocity.y = 9.0f;
@@ -207,6 +211,16 @@ void sim_step(game *g, const input_state in[MAX_PLAYERS], float dt) {
   level *L = &g->L;
   g->events = 0;
   g->tick++;
+  if (g->hit_flash > 0) g->hit_flash--;
+  if (g->hitstop > 0) { /* hit-stop: the world stands still for a few ticks so a hit lands with weight */
+    g->hitstop--;
+    for (int i = 0; i < g->nplayers; i++) {
+      g->p[i].pf.body.prev_position = g->p[i].pf.body.position;
+      if (in[i].jump_pressed) g->p[i].pf.buffer = g->p[i].pf.def.jump_buffer; /* a press during the freeze still counts */
+    }
+    g->hash = sim_hash(g);
+    return;
+  }
   /* moving platforms: a triangle wave between two points */
   for (int i = 0; i < L->nplat; i++) {
     mplat *m = &L->plats[i];
@@ -244,6 +258,12 @@ void sim_step(game *g, const input_state in[MAX_PLAYERS], float dt) {
       continue;
     }
     cw_platformer2d *pf = &p->pf;
+    p->retry_t = in[i].retry ? p->retry_t + 1 : 0;
+    if (p->retry_t >= 60) {
+      p->retry_t = 0;
+      sim_return(g);
+      return;
+    }
     float cx = pos_x(p), cy = pos_y(p) + 0.7f;
     int tc = tile_at(L, cx, cy);
     bool in_water = tc == T_WATER;
@@ -284,12 +304,15 @@ void sim_step(game *g, const input_state in[MAX_PLAYERS], float dt) {
     if (tf == T_SPIKE || tb == T_SPIKE) hurt_player(g, i, pf->body.velocity.x >= 0 ? -1.0f : 1.0f, 1);
     if (tile_at(L, fx, fy + 0.2f) == T_LAVA || tile_at(L, fx, fy) == T_LAVA) kill_player(g, i);
     if (fy < 2.2f) kill_player(g, i);
-    /* checkpoints */
-    for (int k = 0; k < L->nchecks; k++)
-      if (k > g->checkpoint && fx > (float)L->checks[k].x) {
+    /* checkpoints: touching a flag (its column, from the ground to a jump above it) makes it the respawn point */
+    for (int k = 0; k < L->nchecks; k++) {
+      float dx = fx - ((float)L->checks[k].x + 0.5f), dy = fy - (float)L->checks[k].y;
+      if (dx > -1.6f && dx < 1.6f && dy > -1.0f && dy < 7.0f && k != g->checkpoint) {
+        if (!(g->reached & (1u << k))) g->events |= EV_CHECK;
+        g->reached |= 1u << k;
         g->checkpoint = k;
-        g->events |= EV_CHECK;
       }
+    }
     /* pickups and coins */
     for (int k = 0; k < L->npickups; k++) {
       pickup *pk = &L->pickups[k];
@@ -341,6 +364,8 @@ void sim_step(game *g, const input_state in[MAX_PLAYERS], float dt) {
         p->pf.body.velocity.y = 12.0f;
         p->pf.air_jumps_left = p->pf.max_air_jumps;
         g->events |= EV_STOMP;
+        g->hitstop = e->hp <= 0 ? 6 : 4;
+        g->hit_flash = 5;
         if (e->kind == 2) g->boss_hp = e->hp, g->cam.shake = 0.5f;
         if (e->hp <= 0) {
           e->alive = false;
@@ -405,6 +430,35 @@ void sim_step(game *g, const input_state in[MAX_PLAYERS], float dt) {
   g->hash = sim_hash(g);
 }
 
+/* holding Retry for one second sends the whole group back to the last flag it touched (the start before any): there
+ * is always a way out of a pit, a wedge or a bad fall */
+void sim_return(game *g) {
+  if (g->checkpoint >= 0 && sim_warp(g, g->checkpoint)) return;
+  for (int i = 0; i < g->nplayers; i++)
+    if (g->p[i].joined) sim_respawn_player(g, i);
+}
+
+bool sim_warp(game *g, int flag) {
+  const level *L = &g->L;
+  if (flag < 0 || flag >= L->nchecks || !(g->reached & (1u << flag))) return false;
+  g->checkpoint = flag;
+  int n = 0;
+  for (int i = 0; i < g->nplayers; i++) {
+    player *p = &g->p[i];
+    if (!p->joined) continue;
+    place_player(g, i, (float)L->checks[flag].x + 0.6f * (float)n, (float)L->checks[flag].y);
+    p->pf.body.velocity = (cw_vec2){ 0, 0 };
+    p->invuln = 60;
+    p->bubble = 0;
+    p->off_screen = 0;
+    n++;
+  }
+  g->cam.x = g->cam.tx = (float)L->checks[flag].x;
+  g->cam.y = g->cam.ty = (float)L->checks[flag].y + 3;
+  g->events |= EV_CHECK;
+  return true;
+}
+
 uint32_t sim_hash(const game *g) {
   uint32_t h = g->hash;
   for (int i = 0; i < g->nplayers; i++) {
@@ -433,7 +487,8 @@ void sim_bot_input(const game *g, int i, input_state *in) {
   float minx = x;
   for (int k = 0; k < g->nplayers; k++)
     if (g->p[k].joined && g->p[k].alive && !g->p[k].bubble && pos_x(&g->p[k]) < minx) minx = pos_x(&g->p[k]);
-  in->x = (x - minx > 22.0f) ? 0.0f : 1.0f; /* only a long lead waits: the bubble rescue does the rest */
+  (void)minx;
+  in->x = 1.0f; /* nobody waits: a straggler is carried to the group in a bubble (that is the co-op rule being tested) */
   bool wet = pf->submerged > 0.5f;
   if (wet) {
     /* swim: stroke up when below the surface line or blocked, cross to the right */
@@ -448,36 +503,45 @@ void sim_bot_input(const game *g, int i, input_state *in) {
     return;
   }
   /* inside a shaft (a wall within 5 tiles on both sides): cross to the far wall and wall jump up */
+  bool in_shaft = false;
   if (!pf->body.on_floor && (g->abilities & AB_CLAWS)) {
     bool lw = false, rw = false;
     for (int k = 1; k <= 5; k++) {
-      if (world_solid(L, (int)floorf(x) - k, (int)floorf(y) + 5)) lw = true;
-      if (world_solid(L, (int)floorf(x) + k, (int)floorf(y) + 5)) rw = true;
+      for (int dy = -1; dy <= 2; dy++) {
+        if (world_solid(L, (int)floorf(x) - k, (int)floorf(y) + dy)) lw = true;
+        if (world_solid(L, (int)floorf(x) + k, (int)floorf(y) + dy)) rw = true;
+      }
     }
-    if (lw && rw && !pf->body.on_wall) {
+    in_shaft = lw && rw;
+    if (in_shaft && !pf->body.on_wall) {
       in->x = (float)pf->facing;
       in->jump_held = true;
       return;
     }
   }
-  if (pf->body.on_wall && !pf->body.on_floor && (g->abilities & AB_CLAWS)) {
+  /* wall jumps are for shafts: on the face of an ordinary wall the bot lets go and slides down to try again */
+  if (pf->body.on_wall && !pf->body.on_floor && (g->abilities & AB_CLAWS) && in_shaft) {
     in->jump_pressed = true, in->jump_held = true;
     in->x = (float)pf->facing;
     return;
   }
-  /* a ledge just above the wall in front: hop (the air jump) onto it */
-  if (!pf->body.on_floor && pf->air_jumps_left > 0 && vy < 2.0f) {
+  /* a wall in front in mid-air: find the first free row above it; when the air jump can lift the feet that high, use
+   * it now (while rising slowly or falling), else keep going and let the wall jump or the next hop deal with it */
+  if (!pf->body.on_floor && pf->air_jumps_left > 0 && vy < 5.0f) {
     int ex = (int)floorf(x + 0.9f), ey = (int)floorf(y + 0.3f);
-    if (world_solid(L, ex, ey) && !world_solid(L, ex, ey + 2) && !world_solid(L, ex, ey + 3)) {
-      in->x = 1.0f, in->jump_pressed = true, in->jump_held = true;
-      return;
+    if (world_solid(L, ex, ey) || world_solid(L, ex, ey + 1)) {
+      int r = ey;
+      while (r < ey + 8 && (world_solid(L, ex, r) || world_solid(L, ex, r + 1))) r++;
+      if ((float)r - y < 3.0f) {
+        in->x = 1.0f, in->jump_pressed = true, in->jump_held = true;
+        return;
+      }
     }
   }
   if (!pf->body.on_floor && pf->wall_lock > 0) in->x = (float)pf->facing;
   float ax1 = x + 1.0f, ax2 = x + 2.2f;
   int fy = (int)floorf(y + 0.05f);
   bool wall_ahead = world_solid(L, (int)floorf(ax1), fy) || world_solid(L, (int)floorf(ax1), fy + 1);
-  bool crack = tile_at(L, x + 1.6f, y + 0.6f) == T_CRACK;
   bool ground2 = false, haz2 = false;
   for (int dy = 0; dy <= 3; dy++) {
     if (world_solid(L, (int)floorf(ax2), fy - dy) || L->t[(fy - dy) < 0 ? 0 : fy - dy][(int)ax2 < WORLD_W ? (int)ax2 : WORLD_W - 1] == T_ONEWAY) {
@@ -491,18 +555,32 @@ void sim_bot_input(const game *g, int i, input_state *in) {
   bool pit = !ground2 || (ft == T_AIR && !world_solid(L, (int)floorf(ax1), fy - 1) && !world_solid(L, (int)floorf(ax1), fy - 2));
   /* a ledge or ceiling ahead high up: just keep going */
   if (pf->body.on_floor) {
-    if (crack && (g->abilities & AB_DASH)) in->dash_pressed = true;
+    /* cracked blocks guard side rooms, never the way on: the bots leave them alone (a bot that dashes into a pocket
+     * only walks into its far wall) */
+    /* a tall wall of cracked rock across the way (a dash gate): dash through it. Short cracks guard side rooms: leave them */
+    bool tall_crack = tile_at(L, x + 1.6f, y + 0.6f) == T_CRACK && tile_at(L, x + 1.6f, y + 6.5f) == T_CRACK && tile_at(L, x + 1.6f, y + 12.5f) == T_CRACK;
+    if (tall_crack && (g->abilities & AB_DASH) && pf->dash_cd <= 0) in->dash_pressed = true;
     else if (wall_ahead || haz2 || pit) in->jump_pressed = true, in->jump_held = true;
     /* a high ledge at the cave shaft or a stack of steps: try again if blocked for long */
     if (!in->jump_pressed && x - minx < 0.01f && g->tick % 120 == 0 && wall_ahead) in->jump_pressed = true;
   } else {
     in->jump_held = vy > 0 ? true : false;
     if (vy > 0 && pf->coyote <= 0) in->jump_held = true;
+    /* a chasm (not a mere drop): nothing solid for 12 tiles below the feet */
     bool nothing_below = true;
-    for (int dy = 0; dy <= 5; dy++)
+    for (int dy = 0; dy <= 12; dy++)
       if (world_solid(L, (int)floorf(x), (int)floorf(y) - dy)) nothing_below = false;
     if (nothing_below && vy < 1.0f && pf->air_jumps_left > 0 && (g->tick & 3) == 0) in->jump_pressed = true, in->jump_held = true;
-    if (nothing_below && vy < -2.0f && (g->abilities & AB_DASH) && pf->dash_cd <= 0 && pf->dash_ready) in->dash_pressed = true;
+    /* dash across what is left of a gap: only when the far side's top is within 4 m below the feet and 5 columns on,
+     * so the 2.7 m of the dash is spent where it reaches the ledge (dashing at the top of the arc falls short) */
+    if (nothing_below && vy < 0.0f && (g->abilities & AB_DASH) && pf->dash_cd <= 0 && pf->dash_ready) {
+      int cx = (int)floorf(x);
+      for (int dx = 1; dx <= 5 && !in->dash_pressed; dx++) {
+        int top = (int)floorf(y) + 3;
+        while (top >= 0 && !world_solid(L, cx + dx, top)) top--;
+        if (top >= 0 && (float)(top + 1) > y - 4.0f) in->dash_pressed = true;
+      }
+    }
     if (nothing_below && pf->air_jumps_left > 0 && vy < 4.0f) in->jump_held = true;
   }
   /* stuck against a wall: hop */

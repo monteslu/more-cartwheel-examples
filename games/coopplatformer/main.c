@@ -30,6 +30,7 @@ typedef struct save_t {
   uint32_t abilities;
   int32_t coins, best_ticks;
   uint8_t seen[WORLD_H / 4][WORLD_W / 4];
+  uint32_t reached; /* flags touched (the map warps between them) */
 } save_t;
 
 #define NTORCH 4
@@ -65,9 +66,10 @@ static struct {
 } A;
 enum { SFX_JUMP, SFX_LAND, SFX_COIN, SFX_HURT, SFX_SPLASH, SFX_DASH, SFX_POWER, SFX_STOMP, SFX_BREAK, SFX_BUBBLE, SFX_POP, SFX_DIE, SFX_WIN, SFX_CHECK, SFX_WALL, SFX_COUNT };
 
-static cw_action a_left, a_right, a_up, a_down, a_jump, a_dash, a_map;
+static cw_action a_left, a_right, a_up, a_down, a_jump, a_dash, a_map, a_retry;
 static input_state INPUT[MAX_PLAYERS];
 static bool g_map_open;
+static int g_map_sel = -1; /* the flag the map's cursor is on */
 static cw_font g_font;
 static int g_state_dbg, g_players_dbg, g_bubbles_dbg, g_hp_dbg;
 static float g_pos_dbg[2], g_cam_dbg[3];
@@ -530,6 +532,7 @@ static void read_input(void) {
     s->jump_held = cw_action_pressed(i, a_jump);
     s->dash_pressed = cw_action_just_pressed(i, a_dash);
     s->down = cw_action_pressed(i, a_down);
+    s->retry = cw_action_pressed(i, a_retry);
   }
 }
 
@@ -540,6 +543,7 @@ static void start_match(int players, void *user) {
   G.abilities = 0;
   sim_reset(&G, players);
   if (sv->abilities && !getenv("COOP_FRESH")) G.abilities = sv->abilities;
+  G.reached |= sv->reached;
   if (getenv("COOP_ABILITIES")) G.abilities = (uint32_t)atoi(getenv("COOP_ABILITIES"));
   if (getenv("COOP_START_X")) { /* a test or a screenshot starts anywhere */
     int sx = atoi(getenv("COOP_START_X"));
@@ -574,17 +578,244 @@ static void sound_hook(cw_shell_sound s, void *user) {
 }
 
 #ifdef COOP_AUTOPILOT
-/* COOP_SOAK=<ticks>: run the bots through the whole game with no rendering and report (soft-lock and crash check). */
-static void soak(int ticks, int players) {
+static uint32_t fz = 12345;
+static uint32_t frand(void) {
+  fz = fz * 1664525u + 1013904223u;
+  return fz >> 8;
+}
+
+/* a fresh run: no abilities unless COOP_ABILITIES says the player resumed a save with them */
+static void soak_reset(int players) {
+  G.abilities = 0;
   sim_reset(&G, players);
+  if (getenv("COOP_ABILITIES")) G.abilities = (uint32_t)atoi(getenv("COOP_ABILITIES"));
+}
+
+/* COOP_SECRETS=1: scripted routes to the secret coins. A group behind a cracked block: stand 3 tiles left of the
+ * block with every ability, dash into it and walk on. A group in water: dive from the surface above it, swim to it
+ * and stroke back up. Each must collect every coin of its group (and come back out of the water). */
+static void secret_routes(int players) {
+  soak_reset(players);
+  int groups = 0, ok = 0;
+  for (int c0 = 0; c0 < G.L.ncoins; c0++) {
+    if (!G.L.coins[c0].secret || (c0 > 0 && G.L.coins[c0 - 1].secret && G.L.coins[c0].x - G.L.coins[c0 - 1].x < 3.5f && G.L.coins[c0].y > G.L.coins[c0 - 1].y - 0.1f && G.L.coins[c0].y < G.L.coins[c0 - 1].y + 0.1f)) continue;
+    int c1 = c0;
+    while (c1 + 1 < G.L.ncoins && G.L.coins[c1 + 1].secret && G.L.coins[c1 + 1].x - G.L.coins[c1].x < 3.5f) c1++;
+    float cx = G.L.coins[c0].x, cy = G.L.coins[c0].y;
+    int ix = (int)cx, iy = (int)cy, crack_x = -1;
+    for (int x = ix; x >= ix - 8 && x >= 0 && crack_x < 0; x--)
+      for (int y = iy - 1; y <= iy + 1; y++)
+        if (G.L.t[y][x] == T_CRACK) crack_x = x;
+    bool wet = G.L.t[iy][ix] == T_WATER;
+    if (crack_x < 0 && !wet) {
+      /* a platforming route: the wooden ledges under the coins are waypoints (lowest first, then up to the
+       * coins); a small controller walks, jumps and air-jumps from one to the next with every ability */
+      float wx[4], wy[4];
+      int nw = 0;
+      for (int y = iy - 1; y >= iy - 10 && y >= 0 && nw < 3; y--)
+        for (int x = ix - 12; x <= ix + 3 && nw < 3; x++)
+          if (G.L.t[y][x] == T_ONEWAY && (x == 0 || G.L.t[y][x - 1] != T_ONEWAY)) {
+            int x1 = x;
+            while (G.L.t[y][x1] == T_ONEWAY) x1++;
+            wx[nw] = (float)(x + x1) * 0.5f, wy[nw] = (float)y + 1.0f;
+            nw++;
+            break; /* one ledge per row */
+          }
+      for (int i = 0; i < nw / 2; i++) { /* the scan found the highest first: lowest first */
+        float tx = wx[i], ty = wy[i];
+        wx[i] = wx[nw - 1 - i], wy[i] = wy[nw - 1 - i], wx[nw - 1 - i] = tx, wy[nw - 1 - i] = ty;
+      }
+      wx[nw] = cx, wy[nw] = cy - 0.7f, nw++;
+      soak_reset(players);
+      G.abilities = AB_DOUBLE | AB_CLAWS | AB_DASH;
+      for (int i = 1; i < G.nplayers; i++) G.p[i].joined = false;
+      int sxi = (int)cx - 9;
+      while (sxi > 2 && (G.L.ground[sxi] < 8 || G.L.ground[sxi - 1] != G.L.ground[sxi] || G.L.ground[sxi + 1] != G.L.ground[sxi])) sxi--; /* flat ground, not a gap */
+      cw_platformer2d_teleport(&G.p[0].pf, (cw_pos2){ (double)sxi, (double)G.L.ground[sxi] + 0.05 });
+      int before = G.secrets, group = c1 - c0 + 1, reached = 0;
+      for (int w = 0; w < nw && G.p[0].alive; w++) {
+        for (int t = 0; t < 600; t++) {
+          const cw_platformer2d *pf = &G.p[0].pf;
+          float x = (float)pf->body.position.x, y = (float)pf->body.position.y, vy = pf->body.velocity.y;
+          memset(INPUT, 0, sizeof INPUT);
+          float dx = wx[w] - x;
+          INPUT[0].x = dx > 0.25f ? 1.0f : dx < -0.25f ? -1.0f : 0.0f;
+          if (pf->body.on_floor && y < wy[w] - 0.5f) INPUT[0].jump_pressed = true;
+          if (!pf->body.on_floor && vy < 0.5f && y < wy[w] - 0.2f && pf->air_jumps_left > 0 && (t % 5) == 0) INPUT[0].jump_pressed = true;
+          INPUT[0].jump_held = vy > 0 || INPUT[0].jump_pressed;
+          sim_step(&G, INPUT, 1.0f / 60.0f);
+          if (!G.p[0].alive) break;
+          if (pf->body.on_floor && dx < 0.6f && dx > -0.6f && y > wy[w] - 0.6f) {
+            if (getenv("COOP_TRACE")) printf("  waypoint %d (%.1f,%.1f) reached at t=%d\n", w, wx[w], wy[w], t);
+            reached++;
+            break;
+          }
+          if (G.secrets - before >= group) break;
+        }
+      }
+      if (getenv("COOP_TRACE")) printf("  waypoints %d of %d, end %.2f,%.2f\n", reached, nw, G.p[0].pf.body.position.x, G.p[0].pf.body.position.y);
+      groups++;
+      bool good = G.secrets - before >= group;
+      printf("secret group at %.0f,%.0f (platforming, %d ledges): %d of %d coins\n", cx, cy, nw - 1, G.secrets - before, group);
+      if (good) ok++;
+      continue;
+    }
+    groups++;
+    soak_reset(players);
+    G.abilities = AB_DOUBLE | AB_CLAWS | AB_DASH;
+    int before = G.secrets;
+    for (int i = 1; i < G.nplayers; i++) G.p[i].joined = false;
+    player *p = &G.p[0];
+    float sx = wet ? cx : (float)crack_x - 3.0f, sy = wet ? G.L.ground[ix] + 12.0f : (float)G.L.ground[crack_x - 3 < 0 ? 0 : crack_x - 3] + 0.05f;
+    if (wet) {
+      int top = iy;
+      while (top < WORLD_H - 1 && G.L.t[top + 1][ix] == T_WATER) top++;
+      sy = (float)top + 2.5f; /* drop in from above the surface */
+    }
+    cw_platformer2d_teleport(&p->pf, (cw_pos2){ (double)sx, (double)sy });
+    int end_t = 0;
+    for (int t = 0; t < 900; t++) {
+      memset(INPUT, 0, sizeof INPUT);
+      if (!wet) {
+        INPUT[0].x = 1;
+        if (t == 20) INPUT[0].dash_pressed = true;
+        if (t > 60) INPUT[0].x = t < 150 ? 1.0f : 0.0f;
+      } else {
+        /* dive to the nearest coin still there, then up to the surface */
+        int tgt = -1;
+        float bestd = 1e9f;
+        for (int k = c0; k <= c1; k++) {
+          if (G.L.coins[k].taken) continue;
+          float ddx = G.L.coins[k].x - (float)p->pf.body.position.x, ddy = G.L.coins[k].y - ((float)p->pf.body.position.y + 0.7f);
+          if (ddx * ddx + ddy * ddy < bestd) bestd = ddx * ddx + ddy * ddy, tgt = k;
+        }
+        if (tgt >= 0) {
+          float ddx = G.L.coins[tgt].x - (float)p->pf.body.position.x, ddy = G.L.coins[tgt].y - ((float)p->pf.body.position.y + 0.7f);
+          INPUT[0].x = ddx > 0.2f ? 1.0f : ddx < -0.2f ? -1.0f : 0.0f;
+          INPUT[0].y = ddy > 0.25f ? 1.0f : ddy < -0.25f ? -1.0f : 0.0f;
+          INPUT[0].jump_pressed = ddy > 0.25f && (t % 10) == 0;
+        } else {
+          INPUT[0].y = 1.0f;
+          INPUT[0].jump_pressed = (t % 12) == 0;
+        }
+      }
+      sim_step(&G, INPUT, 1.0f / 60.0f);
+      end_t = t;
+      if (getenv("COOP_TRACE") && t >= 15 && t < 30) printf("  t=%d x=%.2f y=%.2f vx=%.1f dash_t=%.2f ev=%x gev=%x tile=%d can=%d ab=%u\n", t, p->pf.body.position.x, p->pf.body.position.y, p->pf.body.velocity.x, p->pf.dash_t, p->pf.events, G.events, G.L.t[22][68], p->pf.can_dash, G.abilities);
+      if (!p->alive) break;
+    }
+    int got = G.secrets - before, want = c1 - c0 + 1;
+    int stop = iy;
+    while (stop < WORLD_H - 1 && G.L.t[stop + 1][ix] == T_WATER) stop++;
+    bool out = !wet || p->pf.body.position.y > (float)stop - 0.6f; /* back at the surface */
+    printf("  start %.1f,%.1f end %.2f,%.2f crack_x=%d\n", sx, sy, p->pf.body.position.x, p->pf.body.position.y, crack_x);
+    printf("secret group at %.0f,%.0f (%s): %d of %d coins%s, ended t=%d%s\n", cx, cy, wet ? "swim" : "dash through the crack", got, want, wet ? (out ? ", back out" : ", NOT back out") : "", end_t, p->alive ? "" : " (died)");
+    if (got == want && out && p->alive) ok++;
+  }
+  printf("secret routes: %d of %d scripted groups pass\n", ok, groups);
+  fflush(stdout);
+  exit(ok == groups ? 0 : 1);
+}
+
+/* COOP_FUZZ=<runs>: sequence-break check. For each ability gate the player starts at the flag before it with ONLY the
+ * abilities found before it and plays random input for 30 seconds: crossing the gate alive is a break. */
+static void fuzz(int runs, int players) {
+  soak_reset(players);
+  for (int gi = 0; gi < G.L.ngates; gi++) {
+    const gate gt = G.L.gates[gi];
+    uint32_t have = 0;
+    for (int k = 0; k < G.L.npickups; k++)
+      if (G.L.pickups[k].x < gt.x0 && G.L.pickups[k].ability != gt.need) have |= (uint32_t)G.L.pickups[k].ability; /* all but the one the gate asks for */
+    for (int pass = 0; pass < 2; pass++) {
+    int broke = 0;
+    float far = 0;
+    for (int r = 0; r < runs; r++) {
+      soak_reset(players);
+      G.abilities = pass ? (have | (uint32_t)gt.need) : have; /* pass 1 is the control: with the ability the gate must be crossable */
+      for (int k = 0; k < G.L.npickups; k++) G.L.pickups[k].taken = true; /* no pedestal may hand out the ability on the way */
+      G.reached |= 1u << gt.flag;
+      sim_warp(&G, gt.flag);
+      int hold = 0, mx = 1, jh = 0;
+      bool crossed = false;
+      static float px[1800], py[1800];
+      for (int t = 0; t < 1800 && !crossed; t++) {
+        memset(INPUT, 0, sizeof INPUT);
+        if (hold-- <= 0) hold = 20 + (int)(frand() % 40), mx = (frand() % 100) < 70 ? 1 : (frand() % 2 ? 0 : -1);
+        INPUT[0].x = (float)mx;
+        if (frand() % 100 < 5) INPUT[0].jump_pressed = true, jh = 10 + (int)(frand() % 30);
+        INPUT[0].jump_held = jh-- > 0;
+        if (frand() % 100 < 2) INPUT[0].dash_pressed = true;
+        INPUT[0].down = frand() % 100 < 4;
+        sim_step(&G, INPUT, 1.0f / 60.0f);
+        float x = (float)G.p[0].pf.body.position.x;
+        px[t] = x, py[t] = (float)G.p[0].pf.body.position.y;
+        if (G.p[0].alive && x > far) far = x;
+        if (getenv("COOP_TRACE") && gi == atoi(getenv("COOP_TRACE")) && r == (getenv("COOP_FUZZ_R") ? atoi(getenv("COOP_FUZZ_R")) : 0) && pass == 0 && (t % 4) == 0) printf("  r0 t=%d x=%.1f y=%.1f vy=%.1f fl=%d alive=%d bub=%d ab=%u\n", t, x, (double)G.p[0].pf.body.position.y, G.p[0].pf.body.velocity.y, G.p[0].pf.body.on_floor, G.p[0].alive, G.p[0].bubble, G.abilities);
+        if (G.p[0].alive && !G.p[0].bubble && x > (float)gt.x1 + 2.0f) {
+          crossed = true;
+          if (getenv("COOP_TRACE") && pass == 0 && broke < 1 && gi == atoi(getenv("COOP_TRACE")))
+            for (int q = (t > 300 ? t - 300 : 0); q <= t; q += 8) printf("    path t=%d %.1f,%.1f\n", q, px[q], py[q]);
+          if (getenv("COOP_TRACE") && pass == 0 && broke < 3) printf("  crossing run %d t=%d at %.1f,%.1f on_floor=%d bubble_rescues=%d deaths=%d\n", r, t, x, (double)G.p[0].pf.body.position.y, G.p[0].pf.body.on_floor, G.rescues, G.deaths);
+        }
+      }
+      broke += crossed;
+    }
+    printf("fuzz gate %d (x %d..%d, needs %u) %s: %d of %d runs crossed alive, furthest %.1f\n", gi, gt.x0, gt.x1, (unsigned)gt.need, pass ? "WITH it" : "without it", broke, runs, far);
+    }
+  }
+  fflush(stdout);
+  exit(0);
+}
+
+/* COOP_MAP=<x0>: print the level 48 columns from x0 (and its flags and gates) and exit */
+static void print_map(int x0) {
+  sim_reset(&G, 1);
+  for (int y = WORLD_H - 1; y >= 0; y--) {
+    printf("%2d ", y);
+    for (int x = x0; x < x0 + 48 && x < WORLD_W; x++) {
+      int c = G.L.t[y][x];
+      putchar(c == T_AIR ? '.' : c == T_ROCK ? '#' : c == T_GRASS ? 'g' : c == T_ONEWAY ? '-' : c == T_SPIKE ? '^' : c == T_LAVA ? 'L' : c == T_WATER ? '~' : c == T_CRACK ? 'x' : c == T_BRICK ? 'b' : '?');
+    }
+    putchar('\n');
+  }
+  for (int k = 0; k < G.L.nchecks; k++) printf("flag %d at %d,%d\n", k, G.L.checks[k].x, G.L.checks[k].y);
+  for (int k = 0; k < G.L.ngates; k++) printf("gate %d x %d..%d needs %d flag %d\n", k, G.L.gates[k].x0, G.L.gates[k].x1, G.L.gates[k].need, G.L.gates[k].flag);
+  for (int k = 0; k < G.L.npickups; k++) printf("pickup %d at %d,%d ability %d\n", k, G.L.pickups[k].x, G.L.pickups[k].y, G.L.pickups[k].ability);
+  fflush(stdout);
+  exit(0);
+}
+
+/* COOP_SOAK=<ticks>: run the bots through the whole game with no rendering and report (soft-lock and crash check):
+ * wins, the longest stretch with no progress, deaths per 16-column screen, the fastest win and a state hash. */
+static void soak(int ticks, int players) {
+  soak_reset(players);
   float best = 0;
-  int last_progress = 0, longest_stall = 0, wins = 0, resets = 0;
+  int last_progress = 0, longest_stall = 0, wins = 0, resets = 0, win_best = 0, run_start = 0;
+  bool dumped = false;
+  int boss_seen = 9;
+  int death_map[WORLD_W / 16 + 1];
+  memset(death_map, 0, sizeof death_map);
+  bool was_alive[MAX_PLAYERS];
+  for (int i = 0; i < MAX_PLAYERS; i++) was_alive[i] = true;
   for (int t = 0; t < ticks; t++) {
     for (int i = 0; i < MAX_PLAYERS; i++) sim_bot_input(&G, i, &INPUT[i]);
     sim_step(&G, INPUT, 1.0f / 60.0f);
+    for (int i = 0; i < G.nplayers; i++) {
+      float x = (float)G.p[i].pf.body.position.x, y = (float)G.p[i].pf.body.position.y;
+      if (x != x || y != y || x < -5 || x > WORLD_W + 5) {
+        printf("soak BAD POSITION t=%d p%d (%f,%f)\n", t, i, x, y);
+        exit(2);
+      }
+      if (was_alive[i] && !G.p[i].alive) {
+        death_map[(int)(x < 0 ? 0 : x) / 16]++;
+        if (getenv("COOP_DEATHS")) printf("death t=%d p%d at %.1f,%.1f vel %.1f,%.1f tile=%d\n", t, i, x, y, G.p[i].pf.body.velocity.x, G.p[i].pf.body.velocity.y, G.L.t[(int)y][(int)x]);
+      }
+      was_alive[i] = G.p[i].alive;
+    }
     if (getenv("COOP_TRACE") && t >= atoi(getenv("COOP_TRACE")) && t < atoi(getenv("COOP_TRACE")) + 90) {
-      const player *q = &G.p[getenv("COOP_TRACE_P") ? atoi(getenv("COOP_TRACE_P")) : 0];
-      printf("tr t=%d pos=%.2f,%.2f vel=%.2f,%.2f fl=%d wl=%d ws=%d wc=%.2f fac=%d in=(%.0f,j%d%d) ev=%x\n", t, q->pf.body.position.x, q->pf.body.position.y, q->pf.body.velocity.x, q->pf.body.velocity.y, q->pf.body.on_floor, q->pf.body.on_wall, q->pf.wall_side, q->pf.wall_coyote, q->pf.facing, INPUT[getenv("COOP_TRACE_P") ? atoi(getenv("COOP_TRACE_P")) : 0].x, INPUT[getenv("COOP_TRACE_P") ? atoi(getenv("COOP_TRACE_P")) : 0].jump_pressed, INPUT[getenv("COOP_TRACE_P") ? atoi(getenv("COOP_TRACE_P")) : 0].jump_held, q->pf.events);
+      int tp = getenv("COOP_TRACE_P") ? atoi(getenv("COOP_TRACE_P")) : 0;
+      const player *q = &G.p[tp];
+      printf("tr t=%d pos=%.2f,%.2f vel=%.2f,%.2f fl=%d wl=%d wet=%.1f in=(%.0f,%.0f,j%d%d,d%d) dr=%d dcd=%.2f al=%d ev=%x alive=%d bub=%d\n", t, q->pf.body.position.x, q->pf.body.position.y, q->pf.body.velocity.x, q->pf.body.velocity.y, q->pf.body.on_floor, q->pf.body.on_wall, q->pf.submerged, INPUT[tp].x, INPUT[tp].y, INPUT[tp].jump_pressed, INPUT[tp].jump_held, INPUT[tp].dash_pressed, q->pf.dash_ready, q->pf.dash_cd, q->pf.air_jumps_left, q->pf.events, q->alive, q->bubble);
     }
     float lead = -1;
     for (int i = 0; i < G.nplayers; i++) {
@@ -592,35 +823,58 @@ static void soak(int ticks, int players) {
       if (x > lead) lead = x;
     }
     if (lead > best + 0.5f) best = lead, last_progress = t;
+    if (G.boss_hp != boss_seen) boss_seen = G.boss_hp, last_progress = t; /* a boss fight is progress */
     if (t - last_progress > longest_stall) longest_stall = t - last_progress;
     if (t % 3600 == 0) printf("soak t=%d lead=%.1f best=%.1f coins=%d deaths=%d rescues=%d abil=%u ck=%d boss=%d won=%d\n", t, lead, best, G.coins_total, G.deaths, G.rescues, G.abilities, G.checkpoint, G.boss_hp, G.won);
     if (G.won && G.tick - G.win_tick > 300) {
       wins++;
-      printf("soak WIN at t=%d (run %d)\n", t, wins);
-      sim_reset(&G, players);
-      best = 0, last_progress = t, resets++;
+      int took = t - run_start;
+      if (!win_best || took < win_best) win_best = took;
+      printf("soak WIN at t=%d (run %d took %d ticks = %.1f min)\n", t, wins, took, (double)took / 3600.0);
+      soak_reset(players);
+      for (int i = 0; i < MAX_PLAYERS; i++) was_alive[i] = true;
+      best = 0, last_progress = t, run_start = t, resets++, boss_seen = 9;
     }
-    if (t - last_progress > 3600) {
-      printf("soak STALL at t=%d x=%.1f: respawning the group\n", t, best);
-      if (getenv("COOP_DUMP") && resets == 0) {
-        int x0 = (int)best - 12;
-        for (int y = 34; y >= 14; y--) {
-          for (int x = x0; x < x0 + 40; x++) {
+    if (t - last_progress > 1800) { /* 30 s of nothing: a player holds Retry */
+      printf("soak STALL at t=%d x=%.1f: returning the group to the flag (the Retry rule)\n", t, best);
+      for (int i = 0; i < G.nplayers; i++) printf("  p%d pos=%.2f,%.2f vel=%.2f,%.2f floor=%d wall=%d wet=%.1f alive=%d bubble=%d\n", i, G.p[i].pf.body.position.x, G.p[i].pf.body.position.y, G.p[i].pf.body.velocity.x, G.p[i].pf.body.velocity.y, G.p[i].pf.body.on_floor, G.p[i].pf.body.on_wall, G.p[i].pf.submerged, G.p[i].alive, G.p[i].bubble);
+      if (getenv("COOP_DUMP") && resets == 0 && !dumped) {
+        dumped = true;
+        int x0 = (int)best - 20, yc = G.L.ground[(int)best < WORLD_W ? (int)best : WORLD_W - 1];
+        for (int y = yc + 14; y >= yc - 12 && y >= 0; y--) {
+          printf("%2d ", y);
+          for (int x = x0 < 0 ? 0 : x0; x < x0 + 50 && x < WORLD_W; x++) {
             int c = G.L.t[y][x];
-            bool pl = false;
-            for (int i = 0; i < G.nplayers; i++) pl |= (int)G.p[i].pf.body.position.x == x && (int)G.p[i].pf.body.position.y == y;
-            putchar(pl ? 0x40 : c == T_AIR ? 0x2e : c == T_ROCK ? 0x23 : c == T_GRASS ? 0x67 : c == T_ONEWAY ? 0x2d : c == T_SPIKE ? 0x5e : c == T_WATER ? 0x7e : c == T_BRICK ? 0x62 : c == T_CRACK ? 0x78 : 0x3f);
+            char ch = c == T_AIR ? '.' : c == T_ROCK ? '#' : c == T_GRASS ? 'g' : c == T_ONEWAY ? '-' : c == T_SPIKE ? '^' : c == T_LAVA ? 'L' : c == T_WATER ? '~' : c == T_CRACK ? 'x' : c == T_BRICK ? 'b' : '?';
+            for (int i = 0; i < G.nplayers; i++)
+              if ((int)G.p[i].pf.body.position.x == x && (int)G.p[i].pf.body.position.y == y) ch = (char)('0' + i);
+            putchar(ch);
           }
-          putchar(0x0a);
+          putchar('\n');
         }
-        for (int i = 0; i < G.nplayers; i++) printf("p%d pos=%.2f,%.2f vel=%.2f,%.2f floor=%d wall=%d wallside=%d fac=%d lock=%.2f\n", i, G.p[i].pf.body.position.x, G.p[i].pf.body.position.y, G.p[i].pf.body.velocity.x, G.p[i].pf.body.velocity.y, G.p[i].pf.body.on_floor, G.p[i].pf.body.on_wall, G.p[i].pf.wall_side, G.p[i].pf.facing, G.p[i].pf.wall_lock);
         printf("x0=%d\n", x0);
       }
-      for (int i = 0; i < G.nplayers; i++) sim_respawn_player(&G, i);
+      sim_return(&G); /* what a player does: hold Retry (the rule is tested in sim.c) */
       last_progress = t;
     }
   }
-  printf("soak done ticks=%d wins=%d resets=%d best=%.1f longest_stall=%d deaths=%d rescues=%d hash=%u\n", ticks, wins, resets, best, longest_stall, G.deaths, G.rescues, G.hash);
+  int tot = 0, mx = 0, nz[WORLD_W / 16 + 1], nn = 0;
+  for (int k = 0; k <= WORLD_W / 16; k++) {
+    tot += death_map[k];
+    if (death_map[k] > mx) mx = death_map[k];
+    nz[nn++] = death_map[k];
+  }
+  for (int a = 0; a < nn; a++) /* sort for the median */
+    for (int b = a + 1; b < nn; b++)
+      if (nz[b] < nz[a]) {
+        int tmp = nz[a];
+        nz[a] = nz[b];
+        nz[b] = tmp;
+      }
+  printf("deaths per 16-column screen:");
+  for (int k = 0; k <= WORLD_W / 16; k++) printf(" %d", death_map[k]);
+  printf("\n  total %d, median %d, max %d\n", tot, nz[nn / 2], mx);
+  printf("soak done ticks=%d wins=%d resets=%d best=%.1f longest_stall=%d fastest_win=%d deaths=%d rescues=%d secrets=%d hash=%u\n", ticks, wins, resets, best, longest_stall, win_best, G.deaths, G.rescues, G.secrets, G.hash);
   fflush(stdout);
   exit(0);
 }
@@ -631,9 +885,9 @@ static void init(void *user) {
   if (!cw_input_load_bindings_asset("input.cfg")) cw_warn("coopplatformer: input.cfg had errors");
   cw_input_commit_defaults();
   a_left = cw_action_find("left"), a_right = cw_action_find("right"), a_up = cw_action_find("up"), a_down = cw_action_find("down");
-  a_jump = cw_action_find("jump"), a_dash = cw_action_find("dash"), a_map = cw_action_find("map");
+  a_jump = cw_action_find("jump"), a_dash = cw_action_find("dash"), a_map = cw_action_find("map"), a_retry = cw_action_find("retry");
   cw_shell_init(&(cw_shell_desc){ .title = "Co-op Platformer", .subtitle = "one to four players", .max_players = 4,
-                                  .game_save_size = sizeof(save_t), .game_save_version = 1, .start = start_match,
+                                  .game_save_size = sizeof(save_t), .game_save_version = 2, .start = start_match,
                                   .quit = quit_match, .sound = sound_hook });
   g_font = cw_ui_font_sans();
   audio_init();
@@ -656,6 +910,9 @@ static void init(void *user) {
   cw_debug_i32("g.bubbles", &g_bubbles_dbg);
   cur_mood = MOODS[0];
 #ifdef COOP_AUTOPILOT
+  if (getenv("COOP_MAP")) print_map(atoi(getenv("COOP_MAP")));
+  if (getenv("COOP_SECRETS")) secret_routes(1);
+  if (getenv("COOP_FUZZ")) fuzz(atoi(getenv("COOP_FUZZ")), getenv("COOP_PLAYERS") ? atoi(getenv("COOP_PLAYERS")) : 1);
   if (getenv("COOP_SOAK")) soak(atoi(getenv("COOP_SOAK")), getenv("COOP_PLAYERS") ? atoi(getenv("COOP_PLAYERS")) : 2);
   int n = getenv("COOP_PLAYERS") ? atoi(getenv("COOP_PLAYERS")) : 2;
   cw_shell_start(n < 1 ? 1 : n > 4 ? 4 : n);
@@ -665,6 +922,7 @@ static void init(void *user) {
 static void save_progress(void) {
   save_t *sv = cw_shell_game_save();
   sv->abilities |= G.abilities;
+  sv->reached |= G.reached;
   if (G.coins_total > sv->coins) sv->coins = G.coins_total;
   for (int y = 0; y < WORLD_H / 4; y++)
     for (int x = 0; x < WORLD_W / 4; x++) sv->seen[y][x] |= G.seen[y][x];
@@ -691,6 +949,30 @@ static void play_events(void) {
   }
 }
 
+/* the map is also the shortcut: left and right pick a flag already touched, Jump travels there (everyone goes) */
+static void map_cursor(void) {
+  int n = G.L.nchecks, dir = 0;
+  if (cw_action_just_pressed(0, a_left)) dir = -1;
+  if (cw_action_just_pressed(0, a_right)) dir = 1;
+  if (dir && n) {
+    int k = g_map_sel < 0 ? (dir > 0 ? -1 : n) : g_map_sel;
+    for (int tries = 0; tries < n; tries++) {
+      k = (k + dir + n) % n;
+      if (G.reached & (1u << k)) {
+        g_map_sel = k;
+        break;
+      }
+    }
+    sfx(SFX_CHECK, 0.3f);
+  }
+  bool jump = cw_action_just_pressed(0, a_jump);
+  memset(&INPUT[0], 0, sizeof INPUT[0]); /* the cursor is not a step */
+  if (jump && g_map_sel >= 0 && sim_warp(&G, g_map_sel)) {
+    g_map_open = false;
+    sfx(SFX_POP, 0.6f);
+  }
+}
+
 static void fixed_update(void *user, double dt) {
   (void)user;
   if (!cw_shell_update()) return;
@@ -700,7 +982,11 @@ static void fixed_update(void *user, double dt) {
   for (int i = 0; i < MAX_PLAYERS; i++) sim_bot_input(&G, i, &INPUT[i]);
 #else
   read_input();
-  if (cw_action_just_pressed(0, a_map)) g_map_open = !g_map_open;
+  if (cw_action_just_pressed(0, a_map)) {
+    g_map_open = !g_map_open;
+    g_map_sel = G.checkpoint;
+  }
+  if (g_map_open) map_cursor();
 #endif
   sim_step(&G, INPUT, (float)dt);
   play_events();
@@ -738,6 +1024,56 @@ static cw_color tile_color(int t, int biome) {
   }
 }
 
+/* each player has a colour AND a shape and number, so four of them stay apart for anyone: 1 triangle, 2 diamond,
+ * 3 square, 4 circle */
+static void glyph(int i, float cx, float cy, float r, cw_color c) {
+  switch (i) {
+    case 0: {
+      cw_vec2 t[3] = { { cx - r, cy - r * 0.8f }, { cx + r, cy - r * 0.8f }, { cx, cy + r } };
+      cw_r2d_polygon(t, 3, c);
+      break;
+    }
+    case 1: {
+      cw_vec2 d[4] = { { cx, cy - r }, { cx + r, cy }, { cx, cy + r }, { cx - r, cy } };
+      cw_r2d_polygon(d, 4, c);
+      break;
+    }
+    case 2: cw_r2d_rect(cw_rect_make(cx - r * 0.85f, cy - r * 0.85f, r * 1.7f, r * 1.7f), c); break;
+    default: cw_r2d_circle((cw_vec2){ cx, cy }, r, 16, c); break;
+  }
+}
+
+/* the world point as a pixel of the HUD canvas, through the game camera (vertical fov 40, pitched down 0.06) */
+static bool project(float wx, float wy, float wz, float W, float H, float *sx, float *sy) {
+  const float pitch = 0.06f, tf = 0.36397f; /* tan(20 degrees) */
+  float dx = wx - G.cam.x, dy = wy - G.cam.y, dz = wz - G.cam.z;
+  float yv = dy * cosf(pitch) - dz * sinf(pitch), zv = dy * sinf(pitch) + dz * cosf(pitch);
+  if (zv > -0.5f) return false;
+  *sx = (0.5f + 0.5f * (dx / -zv) / (tf * W / H)) * W;
+  *sy = (0.5f - 0.5f * (yv / -zv) / tf) * H;
+  return true;
+}
+
+static void draw_markers(float W, float H, float s) {
+  for (int i = 0; i < G.nplayers; i++) {
+    const player *p = &G.p[i];
+    if (!p->joined || (!p->alive && !p->bubble)) continue;
+    float wx = p->bubble ? p->bubble_x : (float)p->pf.body.position.x, wy = (p->bubble ? p->bubble_y + 0.9f : (float)p->pf.body.position.y) + 2.15f;
+    float sx, sy;
+    if (!project(wx, wy, 0, W, H, &sx, &sy)) continue;
+    float r = 11 * s;
+    if (sx < r) sx = r;
+    if (sx > W - r) sx = W - r;
+    if (sy < r + 60 * s) sy = r + 60 * s;
+    cw_color c = cw_rgba(PLAYER_RGB[i][0], PLAYER_RGB[i][1], PLAYER_RGB[i][2], 1);
+    glyph(i, sx, sy, r + 2 * s, cw_rgba(0, 0, 0, 0.75f)); /* a dark outline so it reads on any background */
+    glyph(i, sx, sy, r, c);
+    char b[4];
+    snprintf(b, sizeof b, "%d", i + 1);
+    text(b, sx - r, sy - r * 0.62f, 15 * s, cw_rgba(0.05f, 0.05f, 0.08f, 1), CW_ALIGN_CENTER, 2 * r);
+  }
+}
+
 static void draw_map(float W, float H) {
   cw_r2d_rect(cw_rect_make(0, 0, W, H), cw_rgba(0.02f, 0.03f, 0.06f, 0.88f));
   float mw = W * 0.92f, cell = mw / (WORLD_W / 4);
@@ -765,6 +1101,16 @@ static void draw_map(float W, float H) {
     float px = ox + (float)pk->x / 4 * cell, py = oy + ((float)WORLD_H / 4 - (float)pk->y / 4) * cell;
     if (G.seen[pk->y / 4][pk->x / 4]) cw_r2d_circle((cw_vec2){ px, py }, cell * 0.6f, 8, pk->taken ? cw_rgba(0.5f, 0.5f, 0.5f, 1) : cw_rgba(0.4f, 0.9f, 1, 1));
   }
+  for (int k = 0; k < G.L.nchecks; k++) {
+    if (!(G.reached & (1u << k))) continue;
+    float px = ox + (float)G.L.checks[k].x / 4 * cell, py = oy + ((float)WORLD_H / 4 - (float)G.L.checks[k].y / 4) * cell;
+    bool sel = k == g_map_sel;
+    cw_r2d_line((cw_vec2){ px, py }, (cw_vec2){ px, py - cell * 2.6f }, 1.5f, cw_rgba(1, 1, 1, 1));
+    cw_vec2 fl[3] = { { px, py - cell * 2.6f }, { px + cell * 1.8f, py - cell * 2.0f }, { px, py - cell * 1.4f } };
+    cw_r2d_polygon(fl, 3, sel ? cw_rgba(1, 0.85f, 0.2f, 1) : cw_rgba(0.9f, 0.9f, 0.95f, 1));
+    if (sel) cw_r2d_circle_lines((cw_vec2){ px, py - cell }, cell * 2.6f, 2, 20, cw_rgba(1, 0.85f, 0.2f, 1));
+  }
+  text("left and right pick a flag, Jump travels there", 0, H * 0.92f, 20 * H / 540, cw_rgba(1, 0.9f, 0.5f, 1), CW_ALIGN_CENTER, W);
   text("MAP   (M or Back to close)", 0, H * 0.04f, 26 * H / 540, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER, W);
 }
 
@@ -781,7 +1127,7 @@ static void render(void *user, double alpha) {
       const player *p = &G.p[i];
       float x0 = 20 * s + (float)i * 170 * s, y0 = 18 * s;
       cw_r2d_round_rect(cw_rect_make(x0 - 6 * s, y0 - 6 * s, 160 * s, 50 * s), 10 * s, 6, cw_rgba(0, 0, 0, 0.35f));
-      cw_r2d_circle((cw_vec2){ x0 + 10 * s, y0 + 12 * s }, 9 * s, 14, cw_rgba(PLAYER_RGB[i][0], PLAYER_RGB[i][1], PLAYER_RGB[i][2], 1));
+      glyph(i, x0 + 10 * s, y0 + 12 * s, 10 * s, cw_rgba(PLAYER_RGB[i][0], PLAYER_RGB[i][1], PLAYER_RGB[i][2], 1));
       for (int h = 0; h < 3; h++) {
         cw_color hc = h < p->hp ? cw_rgba(1, 0.3f, 0.35f, 1) : cw_rgba(0.3f, 0.3f, 0.35f, 0.7f);
         cw_r2d_circle((cw_vec2){ x0 + (34 + 22 * (float)h) * s, y0 + 12 * s }, 8 * s, 12, hc);
@@ -801,6 +1147,8 @@ static void render(void *user, double alpha) {
         cw_r2d_round_rect(cw_rect_make(bx, by, bw, 16 * s), 6 * s, 6, cw_rgba(0, 0, 0, 0.6f));
         cw_r2d_round_rect(cw_rect_make(bx, by, bw * (float)G.L.enemies[i].hp / 9.0f, 16 * s), 6 * s, 6, cw_rgba(0.9f, 0.2f, 0.15f, 1));
       }
+    draw_markers(W, H, s);
+    text("hold R or Y: back to the last flag", 20 * s, H - 30 * s, 14 * s, cw_rgba(1, 1, 1, 0.45f), CW_ALIGN_LEFT, 0);
     /* arrows to players carried in bubbles */
     for (int i = 0; i < G.nplayers; i++)
       if (G.p[i].bubble && G.p[i].joined) {

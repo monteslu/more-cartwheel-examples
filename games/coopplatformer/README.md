@@ -15,7 +15,8 @@ hides a treasure nook, a ledge high in the meadow hides coins, and the map scree
 | Dash | Shift / X | X |
 | Drop through a wooden ledge | Down + Jump | Down + A |
 | Swim | stick, Jump to stroke | same |
-| Map | M / Tab | Back |
+| Map (left and right pick a flag you have touched, Jump travels there) | M / Tab | Back |
+| Back to the last flag (hold one second; the way out of any pit or wedge) | R | Y |
 
 Stomp enemies from above. Spikes hurt, lava and pits do not forgive. Walk through a flag to set a checkpoint.
 

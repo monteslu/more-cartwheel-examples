@@ -57,6 +57,30 @@ static void gap(gen *G, int n, int biome, int hazard) {
     if (hazard == T_SPIKE) set(G->L, x, 1, T_SPIKE);
   }
 }
+/* a mound three tiles high with a sealed pocket in its foot (3 tiles tall inside, the same on the way in), a cracked
+ * wall in front of it and 'air' columns of room: 4 or 3 secret coins inside */
+static void pocket(gen *G, int air, int tail, int biome) {
+  level *L = G->L;
+  int mx = G->x, mg = G->g, n = 1 + air + tail;
+  for (int i = 0; i < n; i++) {
+    int x = G->x++;
+    column(G, x, mg, biome);
+    for (int y = mg - 1; y <= mg + 1; y++) set(L, x, y, i == 0 ? T_CRACK : (i <= air ? T_AIR : T_ROCK));
+    set(L, x, mg + 2, T_ROCK);
+    L->ground[x] = mg + 3;
+  }
+  G->g = mg + 3;
+  coin_row(G, mx + 1, air, mg);
+  for (int i = 0; i < air; i++) L->coins[L->ncoins - 1 - i].secret = true;
+}
+static void gate_begin(gen *G, int need, int *x0) {
+  *x0 = G->x - 1;
+  (void)need;
+}
+static void gate_end(gen *G, int need, int x0) {
+  level *L = G->L;
+  if (L->ngates < 8) L->gates[L->ngates++] = (gate){ x0, G->x, need, L->nchecks - 1 };
+}
 static void spikes(gen *G, int n, int biome) {
   for (int i = 0; i < n; i++) {
     int x = G->x;
@@ -80,6 +104,10 @@ static void check(gen *G) {
 static void pedestal(gen *G, int ability) {
   level *L = G->L;
   if (L->npickups < MAX_PICKUPS) L->pickups[L->npickups++] = (pickup){ G->x - 2, G->g, ability, false };
+  /* an arch over the pedestal, low enough that nobody can jump over it: the way on goes under it, so every player of the
+   * group (and every bot) touches it, and an ability is never missed */
+  for (int x = G->x - 5; x < G->x - 1; x++)
+    for (int y = G->g + 3; y < G->g + 5; y++) set(L, x, y, T_ROCK);
 }
 /* a solid block of rock from (x, y0) to (x + w, y1) */
 static void block(level *L, int x, int y0, int w, int y1, int t) {
@@ -119,7 +147,10 @@ void world_generate(level *L, uint32_t seed) {
   pedestal(G, AB_DOUBLE);
   coin_row(G, G->x - 5, 3, G->g + 2);
   flat(G, 3, BIOME_MEADOW);
+  int gx0;
+  gate_begin(G, AB_DOUBLE, &gx0);
   gap(G, 8, BIOME_MEADOW, T_SPIKE);               /* the air jump gate: too wide for one jump */
+  gate_end(G, AB_DOUBLE, gx0);
   rise(G, 1, 6, BIOME_MEADOW);
   walker(G, G->x - 3, G->g, 3, 0);
   flat(G, 4, BIOME_MEADOW);
@@ -129,6 +160,10 @@ void world_generate(level *L, uint32_t seed) {
   coin_row(G, G->x - 4, 3, G->g + 8);
   for (int i = 0; i < 3 && L->ncoins; i++) L->coins[L->ncoins - 1 - i].secret = true;
   rise(G, 2, 4, BIOME_MEADOW);
+  /* a sealed vault in the hillside: only a dash breaks its cracked wall, and the dash is found much later, so
+   * this is somewhere to come back to (the map's flag warp makes the trip short) */
+  pocket(G, 4, 3, BIOME_MEADOW);
+  rise(G, -3, 3, BIOME_MEADOW);
   /* ── caves: dark, torchlit; claws; a shaft; a cracked wall ── */
   int cave0 = G->x;
   rise(G, 0, 6, BIOME_CAVES);
@@ -144,16 +179,19 @@ void world_generate(level *L, uint32_t seed) {
     /* the shaft: two walls 3 apart, 6 and 9 tall; wall jump up the inside to the ledge on top */
     int sx = G->x;
     int base = G->g;
+    int sgx0;
+    gate_begin(G, AB_CLAWS, &sgx0);
     flat(G, 1, BIOME_CAVES);                       /* left wall base */
     block(L, sx, base, 1, base + 10, T_ROCK);
     L->ground[sx] = base + 10;
     for (int i = 0; i < 3; i++) column(G, G->x++, base - 2, BIOME_CAVES); /* the well floor, 2 lower */
     int rx = G->x;
     column(G, G->x++, base, BIOME_CAVES);
-    block(L, rx, base, 1, base + 6, T_ROCK);
-    L->ground[rx] = base + 6;
-    G->g = base + 6;
-    for (int i = 0; i < 4; i++) column(G, G->x++, base + 6, BIOME_CAVES);
+    block(L, rx, base, 1, base + 8, T_ROCK);
+    L->ground[rx] = base + 8;
+    G->g = base + 8;
+    for (int i = 0; i < 4; i++) column(G, G->x++, base + 8, BIOME_CAVES);
+    gate_end(G, AB_CLAWS, sgx0);
     /* open the way in from the left under the left wall: a low door so the shaft can be entered */
     for (int y = base; y < base + 3; y++) set(L, sx, y, T_AIR);
     for (int y = base + 3; y < base + 10; y++) set(L, sx, y, T_ROCK);
@@ -162,19 +200,8 @@ void world_generate(level *L, uint32_t seed) {
   walker(G, G->x - 3, G->g, 3, 0);
   flat(G, 6, BIOME_CAVES);
   check(G);
-  /* a low mound with a sealed pocket in its foot: a dash into the cracked block opens it (the path goes over the top) */
-  {
-    int mx = G->x, mg = G->g;
-    for (int i = 0; i < 7; i++) {
-      column(G, G->x++, mg, BIOME_CAVES);
-      set(L, mx + i, mg, i == 0 ? T_CRACK : (i <= 3 ? T_AIR : T_ROCK));
-      set(L, mx + i, mg + 1, T_ROCK);
-      L->ground[mx + i] = mg + 2;
-    }
-    G->g = mg + 2;
-    coin_row(G, mx + 1, 3, mg);
-    for (int i = 0; i < 3; i++) L->coins[L->ncoins - 1 - i].secret = true;
-  }
+  /* a mound with a sealed pocket in its foot: a dash into the cracked wall opens it (the path goes over the top) */
+  pocket(G, 3, 3, BIOME_CAVES);
   rise(G, -4, 3, BIOME_CAVES);
   rise(G, -3, 6, BIOME_CAVES);
   walker(G, G->x - 3, G->g, 3, 0);
@@ -199,6 +226,12 @@ void world_generate(level *L, uint32_t seed) {
     /* ledges in the pool and a sunken coin trail */
     coin_row(G, G->x - len + 3, 12, surf - depth + 3);
     oneway(G, G->x - 9, surf - 2, 3);
+    /* a hidden well under the pool floor: swim down into it for a secret handful of coins */
+    int wx = G->x - len + 4; /* clear of the ledge (x - 9) and the current (columns 7 to 11) */
+    for (int i = 0; i < 3; i++)
+      for (int y = L->ground[wx + i] - 3; y < L->ground[wx + i]; y++) set(L, wx + i, y, T_WATER);
+    coin_row(G, wx, 3, L->ground[wx] - 2);
+    for (int i = 0; i < 3; i++) L->coins[L->ncoins - 1 - i].secret = true;
   }
   flat(G, 4, BIOME_RUINS);
   walker(G, G->x - 2, G->g, 2, 0);
@@ -216,10 +249,22 @@ void world_generate(level *L, uint32_t seed) {
   rise(G, -3, 6, BIOME_VOLCANO);
   check(G);
   walker(G, G->x - 3, G->g, 3, 0);
-  gap(G, 9, BIOME_VOLCANO, T_LAVA);                /* the dash gate */
+  gap(G, 9, BIOME_VOLCANO, T_LAVA);                /* a lava span: jump and air jump */
   flat(G, 5, BIOME_VOLCANO);
   spikes(G, 3, BIOME_VOLCANO);
   flat(G, 3, BIOME_VOLCANO);
+  check(G);
+  {
+    /* the dash gate: a wall of cracked rock from the floor to the top of the world, across the way; only a dash breaks it */
+    int dgx0;
+    gate_begin(G, AB_DASH, &dgx0);
+    flat(G, 3, BIOME_VOLCANO);
+    int wx = G->x;
+    flat(G, 1, BIOME_VOLCANO);
+    for (int y = G->g; y < WORLD_H; y++) set(L, wx, y, T_CRACK); /* to the top of the world: wall jumps cannot climb it */
+    flat(G, 3, BIOME_VOLCANO);
+    gate_end(G, AB_DASH, dgx0);
+  }
   rise(G, 2, 3, BIOME_VOLCANO);
   rise(G, 2, 3, BIOME_VOLCANO);
   check(G);
