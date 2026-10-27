@@ -18,9 +18,30 @@ beat a mini boss and a boss at the end of every stage.
 Grab a body in front of you, then Attack to knee it. Three knees throw it, or hold the stick away from it and
 press Grab or Kick to throw it over your shoulder. Thrown bodies knock down whoever they hit.
 
+Walk over food, coins and weapons to pick them up; you can reach them from a step to either side.
+
+## Who you fight
+
+- Thugs and punks swing and kick; runners charge from a distance; knifers stab.
+- Throwers keep their distance and throw bottles along your lane: step up or down the street, or jump, to dodge.
+- Guards hold a riot shield: punches from the front bounce off (three of them break the guard). Kick, jump kick,
+  throw, use a weapon or the spin move, or hit them from behind.
+- Bruisers are heavy and do not flinch.
+- Each stage ends with a boss with three phases. At two thirds and one third of its health it stops, roars, calls
+  help and comes back with a new move. Heavy blows (slams, spins, charges) show a red ring on the street while they
+  wind up: get out of it.
+
+Enemies never hit you from outside the picture or before they have walked in.
+
 ## Run
 
-`brawler_auto` is the same game with bots playing, for tests and screenshots.
+`brawler_auto` is the same game with bots playing, for tests and screenshots. Its debug commands: `stage N`,
+`wave N` (4 is the boss), `players N`, `spawn <kind> [dx dz]`, `item <kind> [dx dz]`, `cam`, `freeze`.
+Environment for native runs: BRAWLER_STAGE, BRAWLER_PLAYERS, BRAWLER_CROWD, BRAWLER_TURBO (ticks per frame),
+BRAWLER_SOAK (a lost stage is retried), BRAWLER_LOG (status lines), BRAWLER_BOTDMG (bot damage factor, 3 by default).
+
+`node games/brawler/tools/soak.mjs --exe <brawler_auto> --pak <brawler_auto.cwpak> --players 4 --minutes 30 --all-stages`
+runs a soak on software GL and checks it (crash, NaN, token leak, unfair hits, stalls, memory, every boss).
 
 ## What it is for
 

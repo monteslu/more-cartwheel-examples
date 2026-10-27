@@ -59,22 +59,28 @@ typedef struct wave_def { float lock; int n; int8_t def[10]; } wave_def;
 #define R D_RUNNER
 #define K D_KNIFER
 #define B D_BRUISER
+#define H D_THROWER
+#define G D_GUARD
+/* every stage has a rusher (runner), a ranged thrower, a shield guard and a heavy (bruiser) before its boss; the first
+   stage brings each new one on its own wave so a player meets it alone */
 static const wave_def STAGE1[] = {
-  { 0, 3, { T, T, T } }, { 14, 4, { T, T, P, T } }, { 28, 5, { T, P, R, T, P } },
-  { 42, 4, { B, T, T, P } }, { 56, 1, { D_FOREMAN } },
+  { 0, 3, { T, T, T } }, { 14, 4, { T, T, P, T } }, { 28, 5, { T, P, R, H, T } },
+  { 42, 5, { B, G, T, P, H } }, { 56, 1, { D_FOREMAN } },
 };
 static const wave_def STAGE2[] = {
-  { 0, 4, { T, P, R, T } }, { 14, 5, { K, T, P, R, T } }, { 28, 5, { R, R, K, P, T } },
-  { 42, 4, { B, K, T, P } }, { 56, 1, { D_MATRON } },
+  { 0, 4, { T, P, R, H } }, { 14, 5, { K, T, G, R, T } }, { 28, 5, { R, H, K, P, G } },
+  { 42, 4, { B, K, H, P } }, { 56, 1, { D_MATRON } },
 };
 static const wave_def STAGE3[] = {
-  { 0, 5, { K, R, P, T, K } }, { 14, 6, { K, K, R, P, T, R } }, { 28, 4, { B, K, R, P } },
-  { 42, 6, { K, R, K, P, R, T } }, { 56, 1, { D_RINGMASTER } },
+  { 0, 5, { K, R, P, H, K } }, { 14, 6, { K, G, R, P, H, R } }, { 28, 4, { B, K, R, G } },
+  { 42, 6, { K, R, H, P, G, T } }, { 56, 1, { D_RINGMASTER } },
 };
 static const wave_def STAGE4[] = {
-  { 0, 6, { K, R, P, T, K, R } }, { 14, 3, { B, K, R } }, { 28, 7, { K, K, R, R, P, P, T } },
-  { 42, 4, { B, B, K, R } }, { 56, 1, { D_COLOSSUS } },
+  { 0, 6, { K, R, G, T, H, R } }, { 14, 4, { B, K, H, G } }, { 28, 7, { K, G, R, H, P, P, T } },
+  { 42, 4, { B, B, H, G } }, { 56, 1, { D_COLOSSUS } },
 };
+#undef H
+#undef G
 #undef T
 #undef P
 #undef R
@@ -132,7 +138,10 @@ static void shadows_on(t3_object *o, bool cast) {
   if (o->type == T3_SKINNED_MESH || o->type == T3_MESH) o->cast_shadow = cast, o->receive_shadow = true;
   for (int i = 0; i < o->child_count; i++) shadows_on(o->children[i], cast);
 }
-/* a glb from the pack as a node (the glTF is returned so the caller can keep it alive) */
+/* every glTF a stage parsed: released with the stage (each stage used to leak its scenery and props) */
+static t3_gltf *kept[MAXPROP + 8];
+static int nkept;
+/* a glb from the pack as a node (the glTF stays alive until level_free) */
 static cw_node spawn_glb(cw_node parent, const char *path, t3_gltf **keep, bool cast) {
   char nm[24];
   snprintf(nm, sizeof nm, "g%d", ncount++);
@@ -147,6 +156,7 @@ static cw_node spawn_glb(cw_node parent, const char *path, t3_gltf **keep, bool 
   shadows_on(g->scene, cast);
   cw_node3d_set_object(n, g->scene);
   if (keep) *keep = g;
+  if (nkept < (int)(sizeof kept / sizeof *kept)) kept[nkept++] = g;
   return n;
 }
 
@@ -171,6 +181,8 @@ static void aim(cw_node n, const float *d) {
 void level_free(void) {
   if (stage_node.id && cw_node_valid(stage_node)) cw_node_free(stage_node);
   stage_node = (cw_node){ 0 };
+  for (int i = 0; i < nkept; i++) t3_release(kept[i]);
+  nkept = 0, stage_gltf = NULL;
   for (int i = 0; i < MAXPROP; i++) W.prop[i].node = (cw_node){ 0 };
   for (int i = 0; i < MAXITEM; i++) W.item[i].node = (cw_node){ 0 };
 }

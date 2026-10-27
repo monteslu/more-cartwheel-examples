@@ -1,12 +1,214 @@
 [
   {
     "name": "brawler-brawl",
-    "note": "brawler_auto: three bots fight stage 1 for 1200 ticks. Fields are state the bots must have caused: fighters moved, enemies came on and were hit, the camera held its lock.",
+    "note": "brawler_auto: three bots fight stage 1 for 1200 ticks. The named state (positions, hit points, the hash of every body every tick) must match exactly on every host; the expects pin this run. The control is one frame short.",
     "app": "brawler_auto",
     "frames": 1200,
-    "expect": { "game.players": 3, "game.stage": 0, "game.phase": 0 },
-    "atLeast": { "game.score": 100, "game.ticks": 1000 },
-    "screenshot": { "min_colors": 400 },
-    "control": { "frames": 5 }
+    "fields": [
+      "game.ticks",
+      "game.players",
+      "game.stage",
+      "game.phase",
+      "game.wave",
+      "game.kills",
+      "game.score",
+      "game.enemies",
+      "game.tokens",
+      "game.token_leak",
+      "game.hp",
+      "game.px",
+      "game.state",
+      "game.enemy",
+      "game.cam",
+      "game.hash",
+      "game.unfair",
+      "game.hits",
+      "game.first_hit",
+      "game.deaths",
+      "game.pickups",
+      "game.nan",
+      "game.proj",
+      "game.rigs"
+    ],
+    "expect": {},
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "note": "the same dual cart on romdev and Chromium against native WebGPU (state exact). vsGl 5 percent: GL and WebGPU differ by up to 4 percent of pixels on the brick and cracked-asphalt detail (texture edges; the characters and the game state are identical), see findings/brawler.md",
+      "vsGl": 0.05
+    }
+  },
+  {
+    "name": "brawler-solo",
+    "note": "One bot (players 1) on stage 1: the crowd, the thrower and the token cap against a single fighter.",
+    "app": "brawler_auto",
+    "frames": 1500,
+    "startCmds": [
+      "players 1"
+    ],
+    "fields": [
+      "game.ticks",
+      "game.players",
+      "game.stage",
+      "game.phase",
+      "game.wave",
+      "game.kills",
+      "game.score",
+      "game.enemies",
+      "game.tokens",
+      "game.token_leak",
+      "game.hp",
+      "game.px",
+      "game.state",
+      "game.enemy",
+      "game.cam",
+      "game.hash",
+      "game.unfair",
+      "game.hits",
+      "game.first_hit",
+      "game.deaths",
+      "game.pickups",
+      "game.nan",
+      "game.proj",
+      "game.rigs"
+    ],
+    "expect": {},
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "vsGl": 0.05,
+      "note": "the same dual cart on romdev and Chromium against native WebGPU (state exact). vsGl 5 percent: GL and WebGPU differ by up to 4 percent of pixels on the brick and cracked-asphalt detail (texture edges; the characters and the game state are identical), see findings/brawler.md"
+    }
+  },
+  {
+    "name": "brawler-four",
+    "note": "Four bots (players 4) on stage 2 (docks: guards and throwers from the first waves).",
+    "app": "brawler_auto",
+    "frames": 1500,
+    "startCmds": [
+      "stage 1",
+      "players 4"
+    ],
+    "fields": [
+      "game.ticks",
+      "game.players",
+      "game.stage",
+      "game.phase",
+      "game.wave",
+      "game.kills",
+      "game.score",
+      "game.enemies",
+      "game.tokens",
+      "game.token_leak",
+      "game.hp",
+      "game.px",
+      "game.state",
+      "game.enemy",
+      "game.cam",
+      "game.hash",
+      "game.unfair",
+      "game.hits",
+      "game.first_hit",
+      "game.deaths",
+      "game.pickups",
+      "game.blocks",
+      "game.nan",
+      "game.proj",
+      "game.rigs"
+    ],
+    "expect": {},
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "vsGl": 0.05,
+      "note": "the same dual cart on romdev and Chromium against native WebGPU (state exact). vsGl 5 percent: GL and WebGPU differ by up to 4 percent of pixels on the brick and cracked-asphalt detail (texture edges; the characters and the game state are identical), see findings/brawler.md"
+    }
+  },
+  {
+    "name": "brawler-boss",
+    "note": "Stage 4's boss wave with three bots: the boss goes through its phases (game.boss_phase), the danger rings show on the street.",
+    "app": "brawler_auto",
+    "frames": 2400,
+    "startCmds": [
+      "stage 3",
+      "wave 4"
+    ],
+    "fields": [
+      "game.ticks",
+      "game.stage",
+      "game.phase",
+      "game.wave",
+      "game.kills",
+      "game.score",
+      "game.enemies",
+      "game.tokens",
+      "game.token_leak",
+      "game.boss_hp",
+      "game.boss_phase",
+      "game.hp",
+      "game.px",
+      "game.state",
+      "game.enemy",
+      "game.cam",
+      "game.hash",
+      "game.unfair",
+      "game.deaths",
+      "game.nan",
+      "game.proj",
+      "game.rigs"
+    ],
+    "expect": {},
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "vsGl": 0.05,
+      "note": "the same dual cart on romdev and Chromium against native WebGPU (state exact). vsGl 5 percent: GL and WebGPU differ by up to 4 percent of pixels on the brick and cracked-asphalt detail (texture edges; the characters and the game state are identical), see findings/brawler.md"
+    }
+  },
+  {
+    "name": "brawler-pickup",
+    "note": "A bat dropped 0.95 m across the street from a frozen player 1 is picked up (a lane away); the control drops it 1.15 m away, out of reach, so player 1 has no weapon.",
+    "app": "brawler_auto",
+    "frames": 40,
+    "startCmds": [
+      "freeze 1",
+      "item 1 0 0.95"
+    ],
+    "controlStartCmds": [
+      "freeze 1",
+      "item 1 0 1.15"
+    ],
+    "controlFrames": 40,
+    "fields": [
+      "game.weapon",
+      "game.pickups",
+      "game.ticks",
+      "game.hash"
+    ],
+    "expect": {
+      "game.weapon": 1,
+      "game.pickups": 1
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "vsGl": 0.05,
+      "note": "the same dual cart on romdev and Chromium against native WebGPU (state exact). vsGl 5 percent: GL and WebGPU differ by up to 4 percent of pixels on the brick and cracked-asphalt detail (texture edges; the characters and the game state are identical), see findings/brawler.md"
+    }
   }
 ]

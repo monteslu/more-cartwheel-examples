@@ -36,6 +36,8 @@ static float d_hp[MAXP], d_px[MAXP], d_cam;
 static uint32_t d_hash;
 static float d_ex[8][4];
 static int32_t d_states[MAXP];
+static int32_t d_unfair, d_still, d_frozen, d_blocks, d_pickups, d_bphase, d_deaths, d_first, d_hits, d_nan, d_stall, d_proj, d_weapon, d_rigs;
+static int64_t run_ticks; /* fixed updates since the program started (status lines) */
 
 static void play_music(int stage) {
   if (music_stage == stage && cw_voice_is_playing(music)) return;
@@ -59,7 +61,7 @@ static void shell_screen(cw_shell_screen from, cw_shell_screen to, void *user) {
 static void start(int players, void *user) {
   (void)user;
   cw_scene_app_change_scene("main.cwscene", false);
-  memset(&W, 0, sizeof W);
+  chars_reset(); /* the old scene's rigs went with it (a second game from the title) */
   fx_init();
   int stage0 = 0;
 #ifdef BRAWLER_AUTOPILOT
@@ -78,6 +80,34 @@ static void cmd_stage(int argc, const char **argv, cw_reply *r) {
   play_music(st);
   cw_reply_printf(r, "{\"stage\":%d}", st);
 }
+/* players N: start over with N bots (1 to 4) on the current stage */
+static void cmd_players(int argc, const char **argv, cw_reply *r) {
+  int n = argc > 1 ? atoi(argv[1]) : 0;
+  if (n < 1 || n > MAXP) { cw_reply_error(r, "usage: players <1-4>"); return; }
+  int st = W.stage;
+  W.players = 0; /* not a stage continue: fresh fighters */
+  sim_reset(n, st);
+  cw_reply_printf(r, "{\"players\":%d}", n);
+}
+/* wave N: jump to wave N of this stage (4 is the boss) */
+static void cmd_wave(int argc, const char **argv, cw_reply *r) {
+  int n = argc > 1 ? atoi(argv[1]) : -1;
+  if (n < 0 || n >= stage_wave_count(W.stage)) { cw_reply_error(r, "usage: wave <0-4>"); return; }
+  sim_goto_wave(n);
+  cw_reply_printf(r, "{\"wave\":%d}", n);
+}
+/* item <kind 0-4> [dx dz]: drop an item near player 1 (0 food, 1 bat, 2 pipe, 3 knife, 4 coin) */
+static void cmd_item(int argc, const char **argv, cw_reply *r) {
+  int k = argc > 1 ? atoi(argv[1]) : -1;
+  if (k < 0 || k > 4) { cw_reply_error(r, "usage: item <0-4> [dx dz]"); return; }
+  for (int i = 0; i < MAXITEM; i++)
+    if (!W.item[i].used) {
+      W.item[i] = (item_t){ .used = true, .kind = k, .x = W.p[0].x + (argc > 2 ? (float)atof(argv[2]) : 0), .z = W.p[0].z + (argc > 3 ? (float)atof(argv[3]) : 0), .y = 0.05f };
+      cw_reply_printf(r, "{\"item\":%d}", i);
+      return;
+    }
+  cw_reply_error(r, "no free item");
+}
 /* cam <zoom> [dx dz]: zoom the camera toward the street (1 is the game view) */
 static void cmd_cam(int argc, const char **argv, cw_reply *r) {
   g_cam[0] = argc > 1 ? (float)atof(argv[1]) : 1, g_cam[1] = argc > 2 ? (float)atof(argv[2]) : 0, g_cam[2] = argc > 3 ? (float)atof(argv[3]) : 0;
@@ -85,9 +115,9 @@ static void cmd_cam(int argc, const char **argv, cw_reply *r) {
 }
 /* spawn <kind 3-11> [dx dz]: an enemy near the camera */
 static void cmd_spawn(int argc, const char **argv, cw_reply *r) {
-  if (argc < 2) { cw_reply_error(r, "usage: spawn <3-11> [dx dz]"); return; }
+  if (argc < 2) { cw_reply_error(r, "usage: spawn <3-13> [dx dz]"); return; }
   int d = atoi(argv[1]);
-  if (d < 3 || d >= D_COUNT) { cw_reply_error(r, "kind 3-11"); return; }
+  if (d < D_THUG || d >= D_COUNT) { cw_reply_error(r, "kind 3-13"); return; }
   int i = ent_spawn_enemy(d, W.cam_x + (argc > 2 ? (float)atof(argv[2]) : 0), argc > 3 ? (float)atof(argv[3]) : 0);
   cw_reply_printf(r, "{\"index\":%d}", i);
 }
@@ -98,16 +128,19 @@ static void cmd_freeze(int argc, const char **argv, cw_reply *r) {
 }
 /* bots: walk to the nearest enemy and fight; grab, kick and jump now and then */
 static int bot_pick[MAXP] = { -1, -1, -1, -1 };
+/* BRAWLER_INJECT (controls for tools/soak.mjs, which must then fail): "stall" the bots stand still, "leak" one attack
+   token is lost a few seconds in */
+static const char *inject(void) { static const char *v; static bool got; if (!got) { v = getenv("BRAWLER_INJECT"); got = true; } return v ? v : ""; }
 static void bot(int i, inputs *in) {
   const ent *e = &W.p[i];
   memset(in, 0, sizeof *in);
-  if (g_freeze) return;
+  if (g_freeze || !strcmp(inject(), "stall")) return;
   int best = -1;
   float bd = 1e9f;
   for (int k = 0; k < MAXE; k++) {
     const ent *v = &W.e[k];
     if (!v->used || v->st == S_DEAD || v->st == S_DOWN) continue;
-    if (v->x < W.cam_x - level_cam_halfw() + 0.8f || v->x > W.cam_x + level_cam_halfw() - 0.8f) continue; /* still coming on */
+    if (!on_screen(v->x, v->z, 0.8f)) continue; /* still coming on */
     float d = (v->x - e->x) * (v->x - e->x) + (v->z - e->z) * (v->z - e->z) * 3;
     for (int j = 0; j < i; j++) if (bot_pick[j] == k) d += 9; /* spread out: another bot already has this one */
     if (d < bd) bd = d, best = k;
@@ -133,6 +166,7 @@ static void bot(int i, inputs *in) {
     bool near = fx > -0.2f && fx < 1.2f && (v->z - e->z) * (v->z - e->z) < 0.3f;
     if (near && (W.tick + i * 7) % 12 == 0) {
       int r = (int)(W.hash ^ (uint32_t)(W.tick * 7 + i)) % 11;
+      if (v->def == D_GUARD && (v->x - e->x) * (float)v->face < 0) r = r < 5 ? 1 : r < 7 ? 0 : 3; /* a shield in the way: kick or grab */
       if (r == 0) in->grab = true;
       else if (r == 1) in->kick = true;
       else if (r == 2 && e->hp > e->maxhp * 0.5f) in->special = true;
@@ -183,6 +217,20 @@ static void init(void *user) {
   cw_debug_i32("game.tokens", &d_tokens);
   cw_debug_i32("game.token_leak", &d_leak);
   cw_debug_i32("game.boss_hp", &d_boss_hp);
+  cw_debug_i32("game.unfair", &d_unfair);       /* hits on a fighter from off camera or from an enemy still walking in: 0 */
+  cw_debug_i32("game.still_max", &d_still);     /* longest a waiting enemy stood frozen this stage (ticks) */
+  cw_debug_i32("game.frozen", &d_frozen);       /* waiting enemies that stood frozen a full second */
+  cw_debug_i32("game.blocks", &d_blocks);       /* blows a guard's shield stopped */
+  cw_debug_i32("game.pickups", &d_pickups);
+  cw_debug_i32("game.boss_phase", &d_bphase);   /* highest boss phase reached this stage (0 to 2) */
+  cw_debug_i32("game.deaths", &d_deaths);
+  cw_debug_i32("game.first_hit", &d_first);     /* ticks from the stage start to the first blow that landed, -1 none */
+  cw_debug_i32("game.hits", &d_hits);
+  cw_debug_i32("game.nan", &d_nan);
+  cw_debug_i32("game.stall_max", &d_stall);
+  cw_debug_i32("game.proj", &d_proj);
+  cw_debug_i32("game.weapon", &d_weapon);       /* player 1's weapon (0 none, 1 bat, 2 pipe, 3 knife) */
+  cw_debug_i32("game.rigs", &d_rigs);           /* live characters with a valid rig node (a new game from the title must keep them) */
   cw_debug_field("game.hp", d_hp, CW_DBG_F32, MAXP);
   cw_debug_field("game.px", d_px, CW_DBG_F32, MAXP);
   cw_debug_field("game.state", d_states, CW_DBG_I32, MAXP);
@@ -193,6 +241,12 @@ static void init(void *user) {
 #ifdef BRAWLER_AUTOPILOT
   cw_debug_command("stage", "stage <0-3>: jump to a stage", cmd_stage);
   cw_debug_command("cam", "cam <zoom> [dx dz]: camera zoom toward the street", cmd_cam);
+  cw_debug_command("players", "players <1-4>: start over with N bots", cmd_players);
+  cw_debug_command("wave", "wave <0-4>: jump to a wave of this stage (4 is the boss)", cmd_wave);
+  cw_debug_command("item", "item <0-4> [dx dz]: drop an item near player 1", cmd_item);
+  { const char *v = getenv("BRAWLER_LOG"); extern bool g_log_frozen; g_log_frozen = v && atoi(v); }
+  { const char *v = getenv("BRAWLER_NO_SCREEN_RULE"); extern bool g_no_screen_rule; g_no_screen_rule = v && atoi(v); }
+  { const char *v = getenv("BRAWLER_BOTDMG"); extern float g_bot_dmg; if (v) g_bot_dmg = (float)atof(v); }
   cw_debug_command("spawn", "spawn <3-11> [dx dz]: an enemy near the camera", cmd_spawn);
   cw_debug_command("freeze", "freeze <0|1>: enemies and bots hold still", cmd_freeze);
   { const char *np = getenv("BRAWLER_PLAYERS"); cw_shell_start(np ? atoi(np) : 3); } /* BRAWLER_PLAYERS: 1 to 4 bots (native perf runs) */
@@ -205,15 +259,34 @@ static void publish(void) {
   int n = 0;
   for (int i = 0; i < MAXE; i++) if (W.e[i].used && W.e[i].st != S_DEAD) n++;
   d_enemies = n;
-  { int held = 0; for (int i = 0; i < MAXE; i++) if (W.e[i].used && W.e[i].token) held++; d_leak = W.tokens_out - held; } /* the leak audit: zero always */
+  d_leak = token_leak(); /* the leak audit: zero always */
+  d_unfair = W.st.unfair, d_still = W.st.still_max, d_frozen = W.st.frozen, d_blocks = W.st.blocks, d_pickups = W.st.pickups, d_bphase = W.st.boss_phase;
+  d_deaths = W.st.deaths, d_first = W.st.first_hit, d_hits = W.st.hits, d_nan = W.st.nan, d_stall = W.st.stall_max, d_weapon = W.p[0].weapon;
+  d_proj = 0;
+  for (int i = 0; i < 8; i++) d_proj += W.proj[i].used;
+  d_rigs = 0;
+  for (int i = 0; i < MAXP + MAXE; i++) { const ent *e = i < MAXP ? &W.p[i] : &W.e[i - MAXP]; if (e->used && e->root.id && cw_node_valid(e->root)) d_rigs++; }
   { int k = 0; for (int i = 0; i < MAXE && k < 8; i++) if (W.e[i].used) { d_ex[k][0] = W.e[i].x; d_ex[k][1] = W.e[i].z; d_ex[k][2] = (float)W.e[i].st; d_ex[k][3] = (float)W.e[i].token * 100 + (float)W.e[i].cd; k++; } for (; k < 8; k++) memset(d_ex[k], 0, sizeof d_ex[k]); }
   d_boss_hp = (W.boss_active && W.boss_idx >= 0 && W.e[W.boss_idx].used) ? (int)W.e[W.boss_idx].hp : 0;
   for (int i = 0; i < MAXP; i++) d_hp[i] = W.p[i].used ? W.p[i].hp : 0, d_px[i] = W.p[i].x, d_states[i] = W.p[i].used ? (int)W.p[i].st : -1;
 }
 
+static void sim_step(void);
 static void fixed_update(void *user, double dt) {
   (void)user, (void)dt;
   if (!cw_shell_update()) return;
+  int turbo = 1;
+#ifdef BRAWLER_AUTOPILOT
+  { static int tb = -1; if (tb < 0) { const char *v = getenv("BRAWLER_TURBO"); tb = v && atoi(v) > 0 ? atoi(v) : 1; } turbo = tb; } /* soaks: N ticks per frame */
+#endif
+  for (int k = 0; k < turbo; k++) sim_step();
+  publish();
+}
+static void sim_step(void) {
+  run_ticks++;
+#ifdef BRAWLER_AUTOPILOT
+  if (run_ticks == 600 && !strcmp(inject(), "leak")) W.tokens_out++;
+#endif
   inputs in[MAXP];
   memset(in, 0, sizeof in);
   for (int i = 0; i < W.players && i < MAXP; i++) {
@@ -232,7 +305,7 @@ static void fixed_update(void *user, double dt) {
     if (crowd_n < 0) { const char *c = getenv("BRAWLER_CROWD"); crowd_n = c ? atoi(c) : 0; }
     int alive = 0;
     for (int k = 0; k < MAXE; k++) if (W.e[k].used && W.e[k].st != S_DEAD) alive++;
-    if (crowd_n && W.phase == PH_PLAY && alive < crowd_n && W.tick % 20 == 0) ent_spawn_enemy(D_THUG + (W.tick / 20) % 5, W.cam_x + ((W.tick / 20) & 1 ? 7.5f : -7.5f), (float)((W.tick / 20) % 5) - 2.0f);
+    if (crowd_n && W.phase == PH_PLAY && alive < crowd_n && W.tick % 20 == 0) ent_spawn_enemy(D_THUG + (W.tick / 20) % 7, W.cam_x + ((W.tick / 20) & 1 ? 7.5f : -7.5f), (float)((W.tick / 20) % 5) - 2.0f);
   }
 #endif
   sim_tick(in);
@@ -244,12 +317,27 @@ static void fixed_update(void *user, double dt) {
   }
   if ((W.phase == PH_OVER || W.phase == PH_WIN) && W.phase_t > 420) {
 #ifdef BRAWLER_AUTOPILOT
-    sim_reset(W.players, 0);
+    static int soak = -1;
+    if (soak < 0) { const char *v = getenv("BRAWLER_SOAK"); soak = v && atoi(v); }
+    if (soak && W.phase == PH_OVER) { /* a continue: the same stage with fresh lives */
+      sim_reset(W.players, W.stage);
+      for (int i = 0; i < W.players; i++) { W.p[i].lives = 3; W.p[i].hp = W.p[i].maxhp; }
+    } else sim_reset(W.players, 0);
+    play_music(W.stage);
 #else
     cw_shell_to_title();
 #endif
   }
-  publish();
+#ifdef BRAWLER_AUTOPILOT
+  { static int lg = -1; if (lg < 0) { const char *v = getenv("BRAWLER_LOG"); lg = v && atoi(v); }
+    if (lg && run_ticks % 3600 == 0) {
+      int alive = 0, en = 0;
+      for (int i = 0; i < W.players; i++) alive += W.p[i].used && W.p[i].st != S_DEAD;
+      for (int i = 0; i < MAXE; i++) en += W.e[i].used && W.e[i].st != S_DEAD;
+      cw_info("brawler-status run=%lld stage=%d wave=%d phase=%d enemies=%d alive=%d tokens=%d leak=%d nan=%d stall=%d boss_hp=%d boss_phase=%d unfair=%d still_max=%d",
+              (long long)run_ticks, W.stage, W.wave, W.phase, en, alive, W.tokens_out, token_leak(), W.st.nan, W.st.stall, d_boss_hp, W.st.boss_phase, W.st.unfair, W.st.still_max);
+    } }
+#endif
 }
 
 static void render(void *user, double alpha) {
@@ -257,6 +345,7 @@ static void render(void *user, double alpha) {
   if (cw_shell_screen_now() == CW_SHELL_PLAY || cw_shell_screen_now() == CW_SHELL_PAUSE) {
     for (int i = 0; i < MAXP; i++) if (W.p[i].used) char_sync(&W.p[i]);
     for (int i = 0; i < MAXE; i++) if (W.e[i].used) char_sync(&W.e[i]);
+    sim_sync_extras();
     ui_draw();
   }
   cw_shell_draw();

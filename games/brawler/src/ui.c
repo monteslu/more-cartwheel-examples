@@ -40,6 +40,19 @@ void ui_draw(void) {
     float w = sz.x * 0.5f;
     text(DEFS[bo->def].name, sz.x * 0.5f, sz.y - u * 3.6f, u * 1.1f, cw_rgba(1, 0.85f, 0.4f, 1), true);
     bar(cw_rect_make(sz.x * 0.25f, sz.y - u * 2.2f, w, u * 1.0f), bo->hp / bo->maxhp, cw_rgba(0.85f, 0.15f, 0.55f, 1), cw_rgba(0.1f, 0.05f, 0.1f, 0.85f));
+    /* the three phases: notches where the boss changes, the phases it has reached lit */
+    for (int k = 1; k <= 2; k++) {
+      float f = k == 1 ? 0.67f : 0.34f;
+      cw_r2d_round_rect(cw_rect_make(sz.x * 0.25f + w * f - u * 0.12f, sz.y - u * 2.45f, u * 0.24f, u * 1.5f), u * 0.1f, 4, cw_rgba(1, 1, 1, 0.9f));
+    }
+    for (int k = 0; k < 3; k++)
+      cw_r2d_round_rect(cw_rect_make(sz.x * 0.75f + u * 0.6f + (float)k * u * 1.0f, sz.y - u * 2.1f, u * 0.75f, u * 0.75f), u * 0.37f, 8,
+                        k <= bo->phase ? cw_rgba(1, 0.35f, 0.25f, 1) : cw_rgba(0.25f, 0.2f, 0.25f, 0.8f));
+    if (W.phase_banner > 0 && (W.phase_banner / 10) % 3 != 0) {
+      char b[32];
+      snprintf(b, sizeof b, bo->phase >= 2 ? "FINAL PHASE" : "PHASE %d", bo->phase + 1);
+      text(b, sz.x * 0.5f, sz.y * 0.36f, u * 2.6f, cw_rgba(1, 0.4f, 0.25f, 1), true);
+    }
   }
   if (W.combo_n >= 3) {
     char b[32];

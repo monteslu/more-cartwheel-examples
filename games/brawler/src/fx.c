@@ -145,6 +145,34 @@ void fx_init(void) {
   }
 }
 
+/* danger rings: a red ring added to the street under a heavy attack (k is its brightness, 0 hides it) */
+enum { NWARN = 8 };
+static cw_node warn[NWARN];
+static float warn_k[NWARN];
+void fx_warn(int slot, float x, float z, float sx, float sz, float k) {
+  if (slot < 0 || slot >= NWARN) return;
+  cw_node d = warn[slot];
+  if (!d.id || !cw_node_valid(d)) {
+    if (k <= 0) return;
+    char nm[16];
+    snprintf(nm, sizeof nm, "warn%d", slot);
+    d = warn[slot] = cw_node_new("Decal3D", nm);
+    cw_node_add_child(cw_node_get(tree_root(), "Fx"), d);
+    cw_node_set(d, "texture", cw_val_string("decals/ring.png"));
+    cw_node_set(d, "blend", cw_val_enum("ADD"));
+    cw_node3d_set_rotation(d, (t3_vec3){ -1.5708f, 0, 0 });
+    warn_k[slot] = -1;
+  }
+  if (k <= 0) {
+    if (warn_k[slot] != 0) { cw_node_set(d, "size", cw_val_vec3(0.01f, 0.01f, 0.01f)); cw_node3d_set_position(d, (t3_vec3){ 0, -20, 0 }); warn_k[slot] = 0; }
+    return;
+  }
+  cw_node3d_set_position(d, (t3_vec3){ x, 0.2f, z });
+  cw_node_set(d, "size", cw_val_vec3(sx * 2, sz * 2, 0.5f));
+  cw_node_set(d, "color", cw_val_color(1, 0.22f, 0.08f, k));
+  warn_k[slot] = k;
+}
+
 /* a mark on the street where something heavy landed */
 static void fx_mark(float x, float z, float size) {
   cw_node d = decal[ndc++ % NDECAL];

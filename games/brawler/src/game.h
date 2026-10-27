@@ -20,7 +20,7 @@ typedef enum {
 } bstate;
 
 /* attack kinds: what the S_ATK state is doing */
-typedef enum { A_NONE, A_PUNCH1, A_PUNCH2, A_FINISH, A_KICK, A_JKICK, A_SPIN, A_SWING, A_STAB, A_KNEE, A_SLAM, A_CHARGE, A_BSPIN } akind;
+typedef enum { A_NONE, A_PUNCH1, A_PUNCH2, A_FINISH, A_KICK, A_JKICK, A_SPIN, A_SWING, A_STAB, A_KNEE, A_SLAM, A_CHARGE, A_BSPIN, A_THROW, A_BASH, A_RUSH, A_COUNT } akind;
 
 typedef struct atk_data {
   const char *clip;
@@ -53,6 +53,11 @@ typedef struct ent {
   int token, thinkt, slot;
   int cd; /* enemy attack cooldown */
   int phase, ptimer;
+  int mood, mood_t, side_pref; /* waiting enemies: what they do while they wait for a token (circle, feint, taunt, switch sides) */
+  float orbit, lx, lz;
+  int still; /* ticks without moving or acting (the stillness audit) */
+  int guard_hits; /* the guard: blows its shield has stopped since its guard last broke */
+  int ranged; /* the thrower holds a ranged token, not a melee one */
   int knees;
   cw_node root, model, anim, wnode;
   const char *clipname;
@@ -74,7 +79,7 @@ typedef struct stage_t {
 
 extern const char_def DEFS[];
 extern const atk_data ATK[];
-enum { D_ROOK, D_MIKA, D_JET, D_THUG, D_PUNK, D_RUNNER, D_KNIFER, D_BRUISER, D_FOREMAN, D_MATRON, D_RINGMASTER, D_COLOSSUS, D_COUNT };
+enum { D_ROOK, D_MIKA, D_JET, D_THUG, D_PUNK, D_RUNNER, D_KNIFER, D_BRUISER, D_THROWER, D_GUARD, D_FOREMAN, D_MATRON, D_RINGMASTER, D_COLOSSUS, D_COUNT };
 
 /* the match */
 typedef enum { PH_PLAY, PH_CLEAR, PH_OVER, PH_WIN, PH_INTRO } phase_t;
@@ -100,6 +105,14 @@ typedef struct world_t {
   int lives_pool;
   int total_score;
   int slow;
+  int phase_banner; /* ticks left on a boss phase banner */
+  struct proj { bool used; float x, y, z, vx; int owner, t; cw_node node; } proj[8]; /* thrown bottles */
+  struct stats { /* what the rubric measures, per stage (reset by sim_reset) */
+    int t0, first_hit, deaths, hits, blocks, pickups, unfair, still_max, frozen, nan, stall, stall_max;
+    int boss_t0, boss_t1, boss_phase, chain_starts, finishers, waves_done, wave_t0, wave_max, wave_sum, dmg_taken;
+    int atk_hits[A_COUNT];
+  } st;
+  int run_deaths; /* lives lost in the whole run */
 } world_t;
 extern world_t W;
 /* debug views (set by the autopilot build's commands): camera zoom and offset, enemies and bots frozen */
@@ -121,6 +134,15 @@ void stage_wave_load(int stage, int wave);
 const char *stage_name(int stage);
 void prop_hit(prop_t *p);
 float level_cam_halfw(void);
+/* the camera sees this far either side of cam_x at depth z and height y (the game camera, zoom 1) */
+float view_halfw(float z, float y);
+bool on_screen(float x, float z, float margin);
+void fx_warn(int slot, float x, float z, float sx, float sz, float k);
+void sim_sync_extras(void);
+void stats_log(const char *why);
+int token_leak(void);
+void chars_reset(void);
+void sim_goto_wave(int wave);
 /* fx.c */
 void fx_init(void);
 void fx_hit(float x, float y, float z, int kind, int face);

@@ -434,6 +434,9 @@ const burst = (u, v, o) => {
   o.r = 0.05; o.g = 0.05; o.b = 0.05; o.a = Math.min(1, k * 0.9) * smooth(1.0, 0.8, d);
 };
 
+// a danger ring for heavy attacks: a bright rim and a faint fill (white, tinted by the decal colour, added to the street)
+const ring = (u, v, o) => { const d = Math.hypot(u - 0.5, v - 0.5) * 2; o.r = o.g = o.b = 1; o.a = Math.max(smooth(0.74, 0.84, d) * smooth(1.0, 0.9, d), smooth(0.86, 0.2, d) * 0.28); };
+
 // ── the set ─────────────────────────────────────────────────────────────
 const jobs = {
   // street grounds, one per stage
@@ -476,6 +479,6 @@ for (const [name, f] of Object.entries(jobs)) {
 }
 if (want('decals')) {
   decalTex('decal_scuff1', 256, scuff(1)); decalTex('decal_scuff2', 256, scuff(2)); decalTex('decal_crack', 256, crack(3));
-  decalTex('decal_blob', 128, blob); decalTex('decal_burst', 256, burst);
+  decalTex('decal_blob', 128, blob); decalTex('decal_burst', 256, burst); decalTex('decal_ring', 256, ring);
   console.log('decals');
 }
