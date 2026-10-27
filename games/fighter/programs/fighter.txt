@@ -1,0 +1,14 @@
+# r186 program states for fighter (cmake/programs.cmake; tools/programs.mjs adds what runs lack)
+depth+skin+xcsm
+physical+map+vcol+rep+nmap+ao+rmap+skin+senv+sheen+l0601+xcsm
+physical+senv+l0601+xcsm
+physical+vcol+skin+senv+sheen+l0601+xcsm
+standard+senv+l0601+xcsm
+standard+l0801+xcsm
+physical+l0801+xcsm
+physical+map+vcol+rep+nmap+ao+rmap+skin+sheen+l0801+xcsm
+physical+vcol+skin+sheen+l0801+xcsm
+physical+senv+cc+l0501+xcsm
+basic+trans
+standard+map+rep+nmap+ao+rmap+senv+l0601+xcsm
+standard+map+rep+nmap+ao+rmap+l0801+xcsm

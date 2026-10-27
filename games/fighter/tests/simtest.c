@@ -239,6 +239,7 @@ static void test_rounds_ko(void) {
 }
 
 /* a long computer-vs-computer soak: every pairing, every tick the state is sane; no soft-lock */
+static int round_len[4096], n_rounds, n_timeouts, wins_by_def[8], games_by_def[8];
 static void test_soak(int matches) {
   int locked = 0, ends = 0;
   uint32_t fold = 2166136261u;
@@ -250,8 +251,12 @@ static void test_soak(int matches) {
     G.rng = (uint32_t)(m * 7919 + 1);
     int guard = 0;
     uint32_t last_hash = 0; int same = 0;
+    int fight_ticks = 0, prev_phase = -1;
     while (G.phase != P_MATCH_END && guard++ < 60 * 60 * 15) {
       tick(NONE, NONE);
+      if (G.phase == P_FIGHT) fight_ticks++;
+      if (prev_phase == P_FIGHT && G.phase != P_FIGHT && n_rounds < 4096) { round_len[n_rounds++] = fight_ticks; if (G.timer == 0) n_timeouts++; fight_ticks = 0; }
+      prev_phase = G.phase;
       for (int i = 0; i < 2; i++) {
         const ft_fighter *f = &G.f[i];
         if (f->x < -FT_WALL - 1 || f->x > FT_WALL + 1 || f->y < 0 || f->hp < 0 || f->hp > R.d[f->def].hp || f->meter < 0 || f->meter > FT_METER_MAX) {
@@ -262,11 +267,16 @@ static void test_soak(int matches) {
       if (G.hitstop == 0 && h == last_hash) same++; else same = 0;
       last_hash = h;
     }
+    for (int i = 0; i < 2; i++) games_by_def[G.f[i].def]++;
+    if (G.match_winner >= 0) wins_by_def[G.f[G.match_winner].def]++;
     if (G.phase == P_MATCH_END) ends++; else { locked++; printf("  soak match %d never ended (phase %d round %d)\n", m, G.phase, G.round_no); }
     fold = (fold ^ ft_hash(&G)) * 16777619u;
   }
   CHECK(locked == 0);
   printf("  soak: %d matches, %d ended, fold %08x\n", matches, ends, fold);
+  for (int i = 1; i < n_rounds; i++) for (int j = i; j > 0 && round_len[j] < round_len[j - 1]; j--) { int t = round_len[j]; round_len[j] = round_len[j - 1]; round_len[j - 1] = t; }
+  printf("  rounds %d, median %.1f s, timed out %d (%.0f%%)\n", n_rounds, n_rounds ? round_len[n_rounds / 2] / 60.0 : 0.0, n_timeouts, n_rounds ? 100.0 * n_timeouts / n_rounds : 0.0);
+  for (int d = 0; d < R.n; d++) printf("  %s wins %d of %d (%.0f%%)\n", R.d[d].id, wins_by_def[d], games_by_def[d], games_by_def[d] ? 100.0 * wins_by_def[d] / games_by_def[d] : 0.0);
 }
 
 static void test_determinism(void) {

@@ -1,10 +1,32 @@
 [
   {
-    "name": "fighter-auto-120",
+    "name": "fighter-auto",
     "app": "fighter_auto",
-    "frames": 120,
-    "maxGt16": 0.05,
-    "fields": ["game.state", "game.phase", "sim.hp", "sim.pos", "sim.hash", "ticks"],
-    "note": "scratch gate for screenshots"
+    "frames": 900,
+    "maxGt16": 0.06,
+    "fields": ["game.state", "game.phase", "game.round", "sim.hp", "sim.meter", "sim.wins", "sim.pos", "sim.fstate", "sim.def", "sim.hash", "sim.combo", "ticks", "fx.hits", "fx.blocks", "tex.hash"],
+    "expect": { "game.state": 1 },
+    "webgpu": { "vsGl": 0.25, "maxGt16": 0.06, "hosts": ["native", "romdev", "chromium"], "note": "the same dual cart on romdev and Chromium against native WebGPU" },
+    "note": "Fighter: two CPU fighters (Bolt and Vex, rooftop) play from the intro. The rules are integer only (sim.c), so the named state must match exactly on every host; pixels within the usual tolerance (particles, dust)."
+  },
+  {
+    "name": "fighter-p1-moves",
+    "app": "fighter_test",
+    "frames": 200,
+    "input": "fighter-p1-moves.json",
+    "controlInput": "fighter-p1-moves-ctl.json",
+    "maxGt16": 0.06,
+    "fields": ["game.state", "game.phase", "sim.hp", "sim.meter", "sim.pos", "sim.fstate", "sim.hash", "sim.combo", "ticks", "fx.hits", "fx.blocks"],
+    "note": "Player 1 types a quarter circle + light on a pad stick: a fireball leaves and crosses the stage (the control leaves the motion out and no fireball flies)."
+  },
+  {
+    "name": "fighter-training",
+    "app": "fighter_train",
+    "frames": 330,
+    "input": "fighter-p1-moves.json",
+    "controlInput": "fighter-p1-moves-ctl.json",
+        "maxGt16": 0.06,
+    "fields": ["game.state", "game.phase", "sim.hp", "sim.pos", "sim.hash", "sim.adv", "ticks", "view.boxes"],
+    "note": "Training mode with hitboxes shown (view.boxes counts the boxes drawn): the dummy stands, player 1 plays the same script."
   }
 ]

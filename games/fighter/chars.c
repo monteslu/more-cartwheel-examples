@@ -289,7 +289,7 @@ static void attach_hardware(fighter_model *m) {
     break;
   }
   case 1: { /* grit: pauldrons, bald head, big gauntlets and boots, belly plate */
-    t3_material *plate = phys(col(s->trim), 0.35f, 0.85f);
+    t3_material *plate = phys(col(s->trim), 0.4f, 0.35f);
     for (int side = 0; side < 2; side++) {
       float x = side ? -1 : 1;
       t3_mesh *p = part(chest, t3_sphere_geometry_new(0.115f * bk, 14, 10), t3_retain(plate), OFF(CHEST, 0.27f * sh * x, 1.46f, 0));
@@ -302,7 +302,7 @@ static void attach_hardware(fighter_model *m) {
     break;
   }
   case 2: { /* vex: a helmet with a glowing visor, neon stripes, shin guards */
-    t3_material *helm = phys(lin(0.07f, 0.08f, 0.1f), 0.25f, 0.6f);
+    t3_material *helm = phys(lin(0.07f, 0.08f, 0.1f), 0.3f, 0.3f);
     t3_mesh *hm = part(head, t3_sphere_geometry_new(0.112f, 16, 12), helm, OFF(HEAD, 0, 1.655f, -0.005f));
     hm->base.scale = (t3_vec3){ 1, 1.05f, 1.1f };
     t3_material *vis = emis(s->accent, 3.0f);

@@ -30,10 +30,10 @@ move * SP3 su=12 ac=10 rc=14 dmg=50 lv=m hs=18 bs=10 hstop=4 hits=2 rehit=5 kd=1
 move * SUPER su=20 ac=1 rc=36 dmg=260 lv=m hs=40 bs=24 hstop=14 inv=22 kd=1 flags=super,proj proj=130,60,420
 
 # Bolt: the all-rounder. Fireball, rising strike, spinning kick, a beam.
-fighter bolt name=Bolt hp=1000 walk=38 back=30 jump=160 jumpfx=45 grav=8 dash=110 dashback=90 sp1=236 sp2=623 sp3=214 super=236236
+fighter bolt name=Bolt hp=920 walk=38 back=30 jump=160 jumpfx=45 grav=8 dash=110 dashback=90 sp1=236 sp2=623 sp3=214 super=236236
 
 # Grit: slow and huge. A command grab, a shoulder charge, a headbutt, a crushing grab super.
-fighter grit name=Grit hp=1200 walk=30 back=24 jump=150 jumpfx=36 grav=8 dash=90 dashback=70 sp1=41236 sp2=236 sp3=623 super=236236
+fighter grit name=Grit hp=1100 walk=30 back=24 jump=150 jumpfx=36 grav=8 dash=90 dashback=70 sp1=41236 sp2=236 sp3=623 super=236236
 move grit 5L su=5 ac=2 rc=9 dmg=35 hs=13 bs=9 hit=250,1000,1050,1500
 move grit 5M su=8 ac=3 rc=16 dmg=75 hs=18 bs=13 hit=250,900,1250,1550
 move grit 5H su=14 ac=5 rc=24 dmg=130 hs=24 bs=18 kd=1 hit=200,800,1400,1650
@@ -43,7 +43,7 @@ move grit SP3 su=5 ac=9 rc=26 dmg=100 hs=0 inv=5 kd=1 launch=130 mv=0 hits=1 hit
 move grit SUPER su=5 ac=2 rc=50 dmg=380 hs=40 bs=0 hstop=0 inv=7 kd=1 flags=super,throw hit=0,0,1100,1500 proj=0,0,0
 
 # Vex: fast and fragile. A low slide, a rising strike, an overhead leap, a flurry super.
-fighter vex name=Vex hp=900 walk=46 back=36 jump=170 jumpfx=55 grav=8 dash=150 dashback=110 sp1=236 sp2=623 sp3=214 super=236236
+fighter vex name=Vex hp=1100 walk=46 back=36 jump=170 jumpfx=55 grav=8 dash=150 dashback=110 sp1=236 sp2=623 sp3=214 super=236236
 move vex 5L su=3 ac=2 rc=6 dmg=25 hs=12 bs=9 hit=250,1000,900,1450
 move vex 5M su=6 ac=3 rc=12 dmg=50 hs=16 bs=12 hit=250,900,1100,1500
 move vex 5H su=9 ac=4 rc=19 dmg=85 hs=20 bs=15 hit=200,800,1250,1550
@@ -53,7 +53,7 @@ move vex SP3 su=24 ac=4 rc=18 dmg=80 lv=h hs=25 bs=16 hits=1 kd=0 mv=40 mvfrom=1
 move vex SUPER su=7 ac=24 rc=30 dmg=45 hs=30 bs=14 hstop=3 hits=5 rehit=4 inv=7 kd=1 mv=40 mvfrom=7 mvto=30 hit=0,500,1100,1600 ext=0,500,1050,1600 proj=0,0,0 flags=super
 
 # Mara: the zoner. A held-back sonic blade, a held-down flip kick, a slow orb, a wide beam.
-fighter mara name=Mara hp=950 walk=40 back=34 jump=165 jumpfx=50 grav=8 dash=120 dashback=100 sp1=[4]6 sp2=[2]8 sp3=236 super=236236
+fighter mara name=Mara hp=1100 walk=40 back=34 jump=165 jumpfx=50 grav=8 dash=120 dashback=100 sp1=[4]6 sp2=[2]8 sp3=236 super=236236
 move mara SP1 su=12 ac=1 rc=22 dmg=55 proj=140,80,200
 move mara SP2 su=6 ac=10 rc=24 dmg=100 inv=5 kd=1 launch=150 mv=0 hit=100,600,800,2000 ext=100,600,750,2000
 move mara SP3 su=18 ac=1 rc=30 dmg=40 hs=22 bs=16 hits=1 kd=0 mv=0 flags=special,proj proj=40,200,300 hit=0,0,0,0

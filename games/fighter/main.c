@@ -99,11 +99,13 @@ static void apply_textures(cw_node n) {
   t3_object *o = cw_node3d_object(n);
   G.d_tex_nodes++;
   if (o) G.d_tex_objs++;
-  if (o && o->type == T3_MESH) G.d_tex_meshes++;
-  if (o && o->type == T3_MESH && name) {
+  t3_object *mo = NULL;
+  if (o) for (int ci = 0; ci < o->child_count && !mo; ci++) if (o->children[ci]->type == T3_MESH) mo = o->children[ci];
+  if (mo) G.d_tex_meshes++;
+  if (mo && name) {
     for (size_t i = 0; i < sizeof MAP / sizeof MAP[0]; i++)
       if (!strncmp(name, MAP[i].prefix, strlen(MAP[i].prefix))) {
-        t3_mesh *m = (t3_mesh *)o;
+        t3_mesh *m = (t3_mesh *)mo;
         if (m->material_count > 0 || m->materials) {
           t3_material *mat = m->materials[0];
           tex_apply(mat, MAP[i].kind, MAP[i].ru, MAP[i].rv, 0.8f, 0.9f);
@@ -248,6 +250,10 @@ static void fixed(void *u, double dt) {
     G.players = 2;
     G.training = getenv("FIGHTER_TRAINING") != NULL;
     G.show_boxes = getenv("FIGHTER_BOXES") != NULL;
+#ifdef FIGHTER_TRAIN
+    G.training = 1;
+    G.show_boxes = 1;
+#endif
     begin_match();
   }
 #endif
