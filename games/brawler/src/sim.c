@@ -22,9 +22,9 @@ static cw_crowd crowd;
 static cw_navmesh navm;
 
 const char_def DEFS[D_COUNT] = {
-  [D_ROOK] = { "Rook", "rook", 3.0f, 150, 1.25f, false, false, 0 },
+  [D_ROOK] = { "Rook", "rook", 3.5f, 150, 1.25f, false, false, 0 },
   [D_MIKA] = { "Mika", "mika", 3.9f, 105, 1.0f, false, false, 0 },
-  [D_JET] = { "Jet", "jet", 3.4f, 120, 1.1f, false, false, 0 },
+  [D_JET] = { "Jet", "jet", 3.6f, 120, 1.1f, false, false, 0 },
   [D_THUG] = { "Thug", "thug", 2.0f, 42, 1.0f, false, false, 100 },
   [D_PUNK] = { "Punk", "punk", 2.4f, 36, 1.0f, false, false, 120 },
   [D_RUNNER] = { "Runner", "runner", 2.6f, 30, 1.0f, false, false, 150 },
@@ -375,7 +375,7 @@ void ent_hurt(ent *v, ent *a, float dmg, int knock, float fx) {
   v->hp -= dmg;
   v->hurtflash = 1;
   int dir = a ? (a->x <= v->x ? 1 : -1) : -v->face;
-  W.hitstop = knock >= 2 ? 7 : 4;
+  W.hitstop = knock >= 2 ? 8 : 4; /* frozen frames: 4 on a light blow, 8 on a heavy one */
   W.shake = knock >= 2 ? 10 : 4;
   W.shake_amp = knock >= 2 ? 0.12f : 0.05f;
   fx_hit(v->x, v->y + 1.1f, v->z, knock, dir);
