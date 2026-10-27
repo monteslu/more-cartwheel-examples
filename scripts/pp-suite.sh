@@ -28,7 +28,8 @@ chunks() { local n=$1; shift; local line=() ; for x in "$@"; do line+=("$x"); if
 # one short hold of the GPU lock
 locked() { local tag="$1"; shift; (cd "$E" && node tools/with-gpu-suite.mjs "pp-$tag" timeout 600 "$@"); } # the timeout bounds the hold, not the wait in the queue
 # software GL off the lock: llvmpipe, no display, no GPU device touched
-soft() { env -u DISPLAY -u WAYLAND_DISPLAY -u XAUTHORITY LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy "$@"; }
+# shared machine: two llvmpipe threads, a job pool of two, nice 10 (a soak at full width took 700% CPU)
+soft() { env -u DISPLAY -u WAYLAND_DISPLAY -u XAUTHORITY LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe LP_NUM_THREADS=2 CW_WORKERS=2 SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy nice -n 10 "$@"; }
 for p in "${parts[@]}"; do
   case "$p" in
     expect) chunks 4 $(names new) | while read -r c; do locked exp node "$ROOT/games/partypack/tools/pp-expect.mjs" $c >> "$O/expect.log" 2>&1; echo "expect [$c] exit $?"; done ;;
@@ -39,11 +40,11 @@ for p in "${parts[@]}"; do
     soak) # ten minutes of game time per mini-game. The 2D games run sim-only (PP_BATCH: four whole tournaments of that
           # one game inside the simulation, about 10 to 12 minutes of play, no rendering); the 3D games need their scene,
           # so they render 36000 frames on software GL. One process at a time, no lock.
-      for g in hurdle echo beatbox quiz stack sumo coins tiles; do
+      [ "${PP_SOAK_3D_ONLY:-}" = 1 ] || for g in hurdle echo beatbox quiz stack sumo coins tiles; do
         PP_GAME=$g PP_BATCH=4 soft timeout 1800 node "$E/tools/run-cart.mjs" --host native --app partypack_auto --frames 4 --allow-skipped \
           --state "$O/soak-$g.json" --log "$O/soak-$g.log" > "$O/soak-$g.out" 2>&1; echo "soak $g exit $? $(grep -c '^GAME ' "$O/soak-$g.log") games $(grep -o 'BATCH DONE [0-9]*' "$O/soak-$g.log")"; done
       for g in blast raft loop; do
-        PP_GAME=$g CW_RUN_TIMEOUT_MS=14400000 soft timeout 14500 node "$E/tools/run-cart.mjs" --host native --app partypack_auto --frames 36000 --allow-skipped \
+        PP_GAME=$g CW_RENDER_SCALE=0.5 CW_RUN_TIMEOUT_MS=14400000 soft timeout 14500 node "$E/tools/run-cart.mjs" --host native --app partypack_auto --frames 36000 --allow-skipped \
           --state "$O/soak-$g.json" --log "$O/soak-$g.log" > "$O/soak-$g.out" 2>&1; echo "soak $g exit $?"; done ;;
   esac
 done
