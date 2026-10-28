@@ -16,6 +16,7 @@ import { faceSkin, bake } from './make-textures.mjs';
 import { buildHead, faceBones, FACE_BONES, eyePixel, faceLayout, faceSkinFrame, headSection, faceTargets, FACE_TARGETS, lipMasks } from './facemesh.mjs';
 import { writeSet } from './texlib.mjs';
 
+const CARD_INWARD = process.env.FIGHTER_CARD_WINDING === 'inward';
 const OUT = join(dirname(fileURLToPath(import.meta.url)), '..', 'assets', 'models');
 mkdirSync(OUT, { recursive: true });
 
@@ -303,6 +304,8 @@ function build(sp) {
   const scalpPt = (t, a, out = 0) => { const r = headRing(t); const cs = Math.cos(a), sn = Math.sin(a); const p = [r.ru * Math.sign(cs) * Math.pow(Math.abs(cs), 2 / r.e), r.c[1], r.c[2] + r.rv * Math.sign(sn) * Math.pow(Math.abs(sn), 2 / r.e)]; const n = norm(sub(p, hcC)); return [add(p, mul(n, out)), n]; };
   /** grow a curve: from p along dir, steps of len/seg, bending by bend(i, p, d) -> new dir; keep it off the skull by off */
   const grow = (p, dir, len, seg, bend, off = 0) => { const pts = [p]; let d = norm(dir); for (let i = 0; i < seg; i++) { d = norm(bend(i, pts[pts.length - 1], d)); let q = add(pts[pts.length - 1], mul(d, len / seg)); if (off > 0) { const e = ell(q); if (e < 1 + off) { const n = norm(sub(q, hcC)); q = add(q, mul(n, (1 + off - e) * R)); } } pts.push(q); } return pts; };
+  // the cards' facing: per triangle, the sign of (face normal . its vertices' normal), summed over every card (checked below)
+  const facing = { out: 0, in: 0 };
   /** one card along pts: width w0 at the root to w1 at the tip; twist: 0 flat to the scalp, PI/2 standing; u0 the texture strip */
   const card = (pts, w0, w1, twist, weights, u0 = rnd() * 0.6, uw = 0.4) => {
     const verts = [], tris = [], K = pts.length;
@@ -313,7 +316,18 @@ function build(sp) {
       const n = norm(add(out, mul(tg, -0.15)));
       const tn = norm(sub(side, mul(n, dot(side, n)))); // the tangent (u across the card) for the anisotropic highlight: no derivative frame
       for (const k of [-1, 1]) verts.push({ p: add(pts[i], mul(side, k * w)), n, t: [...tn, 1], uv: [u0 + (k > 0 ? uw : 0), s], w: weights(s, pts[i]), tag: 'hair' });
-      if (i) { const a = (i - 1) * 2, b = i * 2; tris.push([a, b, b + 1], [a, b + 1, a + 1]); }
+      if (i) { const a = (i - 1) * 2, b = i * 2; tris.push([a, b + 1, b], [a, a + 1, b + 1]); }
+    }
+    // wound so the front face looks the way the normals point (out of the hair mass). A card wound the other way is a back
+    // face from outside: double-sided shading turns its normal inward and the rim light lit the hair pale lilac. Which
+    // winding that is depends on the card's twist (a lying card and a standing one face different ways), so it is chosen
+    // per card from the sum over its triangles. FIGHTER_CARD_WINDING=inward keeps the opposite choice: the facing check
+    // below must stop it (its control).
+    const facingOf = (t) => t.reduce((q, [a, b, c]) => q + dot(cross(sub(verts[b].p, verts[a].p), sub(verts[c].p, verts[a].p)), add(add(verts[a].n, verts[b].n), verts[c].n)), 0);
+    if ((facingOf(tris) < 0) !== CARD_INWARD) for (const t of tris) [t[1], t[2]] = [t[2], t[1]];
+    for (const [a, b, c] of tris) {
+      const d = dot(cross(sub(verts[b].p, verts[a].p), sub(verts[c].p, verts[a].p)), add(add(verts[a].n, verts[b].n), verts[c].n));
+      if (d > 0) facing.out++; else if (d < 0) facing.in++;
     }
     m.raw('hairCard', verts, tris);
   };
@@ -383,6 +397,11 @@ function build(sp) {
       const pts = grow(p, [sx * 0.25, -1, 0.35], (0.1 + 0.03 * i) * HS, 6, (k, q, d) => add(d, [sx * 0.02, -0.05, -0.02]), 0.04);
       card(pts, 0.012 * HS, 0.003 * HS, 0.3 * sx, onHead);
     }
+  }
+  if (cardStyle) {
+    // most card triangles must face the way their normals point (standing cards sit edge on to the normal, so not all)
+    console.log(`${sp.name}: hair cards face out ${facing.out}, in ${facing.in}`);
+    if (facing.out <= 4 * facing.in) throw new Error(`${sp.name}: hair cards wound inward (${facing.out} triangles face out, ${facing.in} in): double-sided shading would light them from inside`);
   }
   if (!cardStyle && (hairCut === 'crop' || hairCut === 'long' || hairCut === 'ponytail' || hairCut === 'spiky')) { scalp(1.05, 0.004, sp.name.length); clumps(hairCut === 'crop' ? 4 : 3, 0.085 * HS, 0.03 * HS, hairCut === 'ponytail' ? 0.9 : 0.6, sp.name.length); }
   if (!cardStyle && hairCut === 'spiky') {
