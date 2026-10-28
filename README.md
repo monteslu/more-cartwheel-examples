@@ -271,9 +271,11 @@ must exit cleanly and leave a picture that is not blank. The gates, which
 compare the carts with native runs on every host, run locally on a GPU
 (`tests/gate.mjs`).
 
-Pushing a `v*` tag links the carts as releases ship and publishes a GitHub
-release with the eight `<game>.wasc`, its notes taken from
-[CHANGELOG.md](CHANGELOG.md): `git tag v0.1.0 && git push origin v0.1.0`.
+Pushes to `main` link the carts as releases ship. Pushing a `v*` tag does not
+build anything: it takes the eight `<game>.wasc` from that commit's green run
+on `main` and publishes them as a GitHub release, its notes taken from
+[CHANGELOG.md](CHANGELOG.md). Push to `main`, wait for the run to go green,
+then `git tag v0.3.0 && git push origin v0.3.0`.
 
 ## Layout
 

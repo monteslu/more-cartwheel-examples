@@ -23,6 +23,8 @@ env:
 jobs:
   carts:
     name: Carts
+    # a v* tag does not rebuild: the release job takes the carts main already built
+    if: github.ref_type != 'tag'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -41,10 +43,11 @@ jobs:
           key: deps-sdk-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/deps.lock', 'scripts/fetch-deps.sh') }}
       - name: Fetch the SDKs
         run: scripts/fetch-deps.sh
-      # tags link the carts as releases ship (ThinLTO, wasm-opt); pushes link dev carts, the same simulation
+      # pushes to main link the carts as releases ship (ThinLTO, wasm-opt), so a
+      # v* tag publishes these very carts; pull requests link dev carts, the same simulation
       - name: Build the carts (each game, and its self-playing <game>_auto where it has one)
         run: |
-          [ "${GITHUB_REF_TYPE}" = tag ] && export RELEASE=1
+          [ "${GITHUB_EVENT_NAME}" = pull_request ] || export RELEASE=1
           TARGETS=cart-wgpu scripts/build.sh $GAMES $(for g in $AUTO_GAMES; do echo ${g}_auto; done)
       - name: Smoke test (each game's cart in wasmcart's Node host on lavapipe, WebGPU)
         run: VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json node tests/cart-smoke.mjs --frames 60 $GAMES
@@ -68,17 +71,22 @@ jobs:
 
   release:
     name: Release
-    needs: [carts]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     permissions:
       contents: write # a v* tag publishes the carts as a GitHub release
+      actions: read # the carts artifact of the tagged commit's run on main
     steps:
       - uses: actions/checkout@v7 # CHANGELOG.md: the release notes
-      - uses: actions/download-artifact@v8
-        with:
-          name: release-carts
-          path: files
+      # tag only commits whose push to main has a green run: its release-carts are the release
+      - name: The carts from the tagged commit's run on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          id=$(gh run list -R "$GITHUB_REPOSITORY" --workflow ci.yml --branch main --event push \
+            --commit "$GITHUB_SHA" --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          [ -n "$id" ] || { echo "no green CI run on main for $GITHUB_SHA: push it to main and wait for green before tagging" >&2; exit 1; }
+          gh run download "$id" -R "$GITHUB_REPOSITORY" -n release-carts -D files
       - name: Release (v* tags)
         env:
           GH_TOKEN: ${{ github.token }}
