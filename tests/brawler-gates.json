@@ -58,8 +58,8 @@
         "romdev",
         "chromium"
       ],
-      "note": "the same dual cart on romdev and Chromium against native WebGPU (state exact). vsGl 5 percent: GL and WebGPU differ by up to 4 percent of pixels on the brick and cracked-asphalt detail (texture edges; the characters and the game state are identical), see findings/brawler.md",
-      "vsGl": 0.05
+      "note": "the same dual cart on romdev and Chromium against native WebGPU (state exact). vsGl 0.5 percent: GL and WebGPU draw the same picture (0.01 percent apart); the brick, asphalt and corrugated detail that differed by 4 to 10.6 percent was the engine lighting normal maps from the wrong side on WebGPU, fixed (findings/gl-webgpu-parity.md)",
+      "vsGl": 0.005
     }
   },
   {
@@ -115,8 +115,8 @@
         "romdev",
         "chromium"
       ],
-      "vsGl": 0.05,
-      "note": "the same dual cart on romdev and Chromium against native WebGPU (state exact). vsGl 5 percent: GL and WebGPU differ by up to 4 percent of pixels on the brick and cracked-asphalt detail (texture edges; the characters and the game state are identical), see findings/brawler.md"
+      "vsGl": 0.005,
+      "note": "the same dual cart on romdev and Chromium against native WebGPU (state exact). vsGl 0.5 percent: GL and WebGPU draw the same picture (0.01 percent apart); the brick, asphalt and corrugated detail that differed by 4 to 10.6 percent was the engine lighting normal maps from the wrong side on WebGPU, fixed (findings/gl-webgpu-parity.md)"
     }
   },
   {
@@ -181,8 +181,8 @@
         "romdev",
         "chromium"
       ],
-      "vsGl": 0.12,
-      "note": "state exact on every host. vsGl 12 percent: on the docks the corrugated walls (32 fine ribs per tile under a grazing rim light) differ on 10.6 percent of pixels between GL and WebGPU, the same texture-sampling difference as the brick in the other gates (findings/brawler.md, engine note 1); characters and state are identical"
+      "vsGl": 0.005,
+      "note": "state exact on every host. vsGl 0.5 percent: the docks' corrugated walls drew 10.6 percent apart on GL and WebGPU until the engine fixed WebGPU normal maps on its flipped targets (findings/gl-webgpu-parity.md); now 0.002 percent"
     }
   },
   {
@@ -242,8 +242,8 @@
         "romdev",
         "chromium"
       ],
-      "vsGl": 0.05,
-      "note": "the same dual cart on romdev and Chromium against native WebGPU (state exact). vsGl 5 percent: GL and WebGPU differ by up to 4 percent of pixels on the brick and cracked-asphalt detail (texture edges; the characters and the game state are identical), see findings/brawler.md"
+      "vsGl": 0.005,
+      "note": "the same dual cart on romdev and Chromium against native WebGPU (state exact). vsGl 0.5 percent: GL and WebGPU draw the same picture (0.01 percent apart); the brick, asphalt and corrugated detail that differed by 4 to 10.6 percent was the engine lighting normal maps from the wrong side on WebGPU, fixed (findings/gl-webgpu-parity.md)"
     }
   },
   {
@@ -276,8 +276,8 @@
         "romdev",
         "chromium"
       ],
-      "vsGl": 0.05,
-      "note": "the same dual cart on romdev and Chromium against native WebGPU (state exact). vsGl 5 percent: GL and WebGPU differ by up to 4 percent of pixels on the brick and cracked-asphalt detail (texture edges; the characters and the game state are identical), see findings/brawler.md"
+      "vsGl": 0.005,
+      "note": "the same dual cart on romdev and Chromium against native WebGPU (state exact). vsGl 0.5 percent: GL and WebGPU draw the same picture (0.01 percent apart); the brick, asphalt and corrugated detail that differed by 4 to 10.6 percent was the engine lighting normal maps from the wrong side on WebGPU, fixed (findings/gl-webgpu-parity.md)"
     }
   }
 ]

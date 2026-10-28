@@ -3,9 +3,9 @@
     "name": "coopplatformer-2p",
     "app": "coopplatformer_auto",
     "webgpu": {
-      "vsGl": 0.08,
+      "vsGl": 0.015,
       "maxArea": 0.005,
-      "note": "GL and WebGPU filter the generated grass and rock textures differently (mip and anisotropic choice): 5.8 to 6.2% of pixels differ by more than 16, all in textured interiors, state exact on every host; maxArea still catches a surface one backend misses"
+      "note": "GL vs WebGPU 1.5 percent: the texture difference (5.8 to 6.2 percent before) was the engine (WebGPU normal maps lit from the wrong side on the pipeline's flipped targets, anisotropy dropped on WebGPU), fixed; what is left is the cliff decals (Decal3D), which GL and WebGPU still draw differently (0.8 percent at frame 400, findings/gl-webgpu-parity.md). State exact on every host; maxArea catches a surface one backend misses"
     },
     "frames": 400,
     "fields": [
@@ -50,9 +50,9 @@
     "name": "coopplatformer-4p",
     "app": "coopplatformer_auto4",
     "webgpu": {
-      "vsGl": 0.08,
+      "vsGl": 0.015,
       "maxArea": 0.005,
-      "note": "GL and WebGPU filter the generated grass and rock textures differently (mip and anisotropic choice): 5.8 to 6.2% of pixels differ by more than 16, all in textured interiors, state exact on every host; maxArea still catches a surface one backend misses"
+      "note": "GL vs WebGPU 1.5 percent: the texture difference (5.8 to 6.2 percent before) was the engine (WebGPU normal maps lit from the wrong side on the pipeline's flipped targets, anisotropy dropped on WebGPU), fixed; what is left is the cliff decals (Decal3D), which GL and WebGPU still draw differently (0.8 percent at frame 400, findings/gl-webgpu-parity.md). State exact on every host; maxArea catches a surface one backend misses"
     },
     "frames": 400,
     "fields": [
@@ -97,9 +97,9 @@
     "name": "coopplatformer-boss",
     "app": "coopplatformer_auto_boss",
     "webgpu": {
-      "vsGl": 0.08,
+      "vsGl": 0.015,
       "maxArea": 0.005,
-      "note": "GL and WebGPU filter the generated grass and rock textures differently (mip and anisotropic choice): 5.8 to 6.2% of pixels differ by more than 16, all in textured interiors, state exact on every host; maxArea still catches a surface one backend misses"
+      "note": "GL vs WebGPU 1.5 percent: the texture difference (5.8 to 6.2 percent before) was the engine (WebGPU normal maps lit from the wrong side on the pipeline's flipped targets, anisotropy dropped on WebGPU), fixed; what is left is the cliff decals (Decal3D), which GL and WebGPU still draw differently (0.8 percent at frame 400, findings/gl-webgpu-parity.md). State exact on every host; maxArea catches a surface one backend misses"
     },
     "frames": 1500,
     "fields": [
