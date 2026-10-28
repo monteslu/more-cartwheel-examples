@@ -369,7 +369,7 @@
       "game.points",
       "game.hash"
     ],
-    "note": "one mini-game on repeat by the autopilot (all four seats CPU); the control runs the next game, so game.mg and the hash must differ",
+    "note": "one mini-game on repeat by the autopilot (all four seats CPU); the control runs the next game, so game.mg and the hash must differ. WebGPU vs GL: 8.4% of pixels differ on thin edges (grid lines, rivets: the WebGPU host renders this scene single-sampled where GL has MSAA, engine c5bcc32), so the per-pixel bound is 10% and maxArea (solid 7x7 blocks) catches a missing surface",
     "expect": {
       "game.state": 6,
       "game.round": 1,
@@ -386,7 +386,8 @@
       "hosts": [
         "native"
       ],
-      "vsGl": 0.05
+      "vsGl": 0.1,
+      "maxArea": 0.005
     }
   },
   {
