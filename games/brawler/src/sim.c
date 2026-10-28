@@ -62,7 +62,7 @@ const atk_data ATK[] = {
 static bool heavy_atk(int k) { return k == A_SLAM || k == A_SWING || k == A_BSPIN || k == A_RUSH || k == A_FLICK; }
 
 /* ── character rigs: a pool per model, so a spawn never parses a glb twice ── */
-typedef struct rig { int def; bool busy; cw_node root, model, anim, wnode, blob, shield; const t3_gltf *gltf; spring_rig sr; } rig;
+typedef struct rig { int def; bool busy; cw_node root, model, anim, wnode, wmodel, blob, shield; const t3_gltf *gltf; spring_rig sr; int wkind; } rig;
 /* one glTF resource per model: every rig is an instance (cw_gltf_instantiate) sharing its geometry, textures and
    clips, so a crowd of one kind costs a skeleton each, not a parsed glb each */
 static cw_res RES[D_COUNT], BLOB;
@@ -72,6 +72,20 @@ static rig RIGS[96];
 static int rig_n;
 static cw_node world_node(void) { return cw_node_get(cw_node_get(cw_tree_root(cw_scene_app_tree()), "Level"), "World"); }
 static int rig_of[MAXP + MAXE];
+
+/* the pickups and weapons as models (tools/make-world.mjs: apple, bat, pipe, knife, coin, bottle), one glTF each,
+   instanced; they used to be plain boxes (a gold box glowing in mid air read as a broken white square) */
+static cw_res ITEM_RES[6];
+t3_object *item_model(int kind) {
+  static const char *path[6] = { "models/apple.glb", "models/bat.glb", "models/pipe.glb", "models/knife.glb", "models/coin.glb", "models/bottle.glb" };
+  if (kind < 0 || kind > 5) return NULL;
+  if (!ITEM_RES[kind].id) ITEM_RES[kind] = cw_res_load(path[kind], CW_RES_GLTF);
+  t3_object *o = cw_gltf_instantiate(ITEM_RES[kind]);
+  if (!o) { cw_error("brawler: %s did not load", path[kind]); return NULL; }
+  for (int i = 0; i < o->child_count; i++) o->children[i]->cast_shadow = true, o->children[i]->receive_shadow = true;
+  o->cast_shadow = true, o->receive_shadow = true;
+  return o;
+}
 
 static void set_shadows(t3_object *o) {
   if (o->type == T3_SKINNED_MESH || o->type == T3_MESH) o->cast_shadow = true, o->receive_shadow = true;
@@ -102,6 +116,7 @@ static rig *rig_get(int def) {
   r->model = cw_node_new("Node3D", "Model");
   r->anim = cw_node_new("AnimationPlayer", "Anim");
   r->wnode = cw_node_new("MeshInstance3D", "Weapon");
+  r->wmodel = cw_node_new("Node3D", "WeaponModel");
   r->blob = cw_node_new("Node3D", "Blob");
   cw_node_add_child(world_node(), r->blob);
   { t3_object *bi = cw_gltf_instantiate(BLOB); if (bi) { cw_node3d_set_object(r->blob, bi); t3_release(bi); } }
@@ -109,6 +124,8 @@ static rig *rig_get(int def) {
   cw_node_add_child(r->root, r->model);
   cw_node_add_child(r->root, r->anim);
   cw_node_add_child(r->root, r->wnode);
+  cw_node_add_child(r->root, r->wmodel);
+  cw_node_set(r->wmodel, "visible", cw_val_bool(false));
   cw_node3d_set_object(r->model, inst);
   set_shadows(inst);
   sb_bind(&r->sr, inst);
@@ -170,6 +187,7 @@ void char_attach(ent *e) {
   rig_of[ent_index(e)] = (int)(r - RIGS);
   e->root = r->root, e->model = r->model, e->anim = r->anim, e->wnode = r->wnode;
   cw_node_set(r->blob, "visible", cw_val_bool(true));
+  cw_node_set(r->wmodel, "visible", cw_val_bool(false));
   e->clipname = NULL;
   cw_node_set(e->root, "visible", cw_val_bool(true));
   cw_node_set(e->anim, "speed_scale", cw_val_float(1));
@@ -207,6 +225,7 @@ void char_free(ent *e) {
   if (!e->root.id) return;
   if (rag_take_corpse(rig_of[ent_index(e)], e)) { e->root = (cw_node){ 0 }; return; } /* it lies a while and sinks (rag.c) */
   cw_node_set(e->wnode, "visible", cw_val_bool(false));
+  cw_node_set(RIGS[rig_of[ent_index(e)]].wmodel, "visible", cw_val_bool(false));
   cw_node_set(e->root, "visible", cw_val_bool(false));
   cw_node_set(RIGS[rig_of[ent_index(e)]].blob, "visible", cw_val_bool(false));
   cw_node3d_set_position(e->root, (t3_vec3){ 0, -50, 0 });
@@ -225,18 +244,17 @@ static void char_restart(ent *e, const char *clip, float blend) {
   char_play(e, clip, blend);
 }
 
-/* weapon colours and placement are set when the weapon is held */
-static const float WLEN[4] = { 0, 0.85f, 1.0f, 0.34f };
+/* the held weapon: its model goes on when it is picked up (the grip sits in the right hand, see char_sync) */
+static const float WGRIP[4] = { 0, -0.3f, -0.38f, -0.11f };
 static void weapon_show(ent *e) {
-  if (!e->wnode.id) return;
-  bool vis = e->weapon > 0;
-  cw_node_set(e->wnode, "visible", cw_val_bool(vis));
-  if (!vis) return;
-  static const float col[4][3] = { { 0, 0, 0 }, { 0.45f, 0.28f, 0.12f }, { 0.35f, 0.38f, 0.42f }, { 0.75f, 0.78f, 0.85f } };
-  cw_node_set(e->wnode, "size", cw_val_vec3(e->weapon == 3 ? 0.04f : 0.07f, WLEN[e->weapon], e->weapon == 3 ? 0.02f : 0.07f));
-  cw_node_set(e->wnode, "color", cw_val_color(col[e->weapon][0], col[e->weapon][1], col[e->weapon][2], 1));
-  cw_node_set(e->wnode, "metalness", cw_val_float(e->weapon >= 2 ? 0.8f : 0.0f));
-  cw_node_set(e->wnode, "roughness", cw_val_float(0.45f));
+  if (!e->root.id) return;
+  rig *r = &RIGS[rig_of[ent_index(e)]];
+  bool vis = e->weapon > 0 && e->weapon < 4;
+  cw_node_set(r->wmodel, "visible", cw_val_bool(vis));
+  if (vis && r->wkind != e->weapon) {
+    t3_object *o = item_model(e->weapon);
+    if (o) { cw_node3d_set_object(r->wmodel, o); t3_release(o); r->wkind = e->weapon; }
+  }
 }
 
 /* ── small helpers ──────────────────────────────────────────────────── */
@@ -1206,6 +1224,84 @@ void sim_goto_wave(int wave) {
   W.st.t0 = W.tick, W.st.wave_t0 = W.tick;
 }
 
+/* Bodies on their feet never stand inside each other, the crowd's walkers included: every pair closer than an ellipse
+   0.8 m along the street and 0.56 m across it (larger for bosses) is pushed out to its edge, the lighter body moving
+   more, a few passes a tick. A held body moves with its holder as one (the push goes to the holder and the held body
+   follows), so a grab never lets a third fighter stand inside either of them. Bodies lying on the street keep apart
+   from each other the same way in a longer ellipse (1.1 m by 0.64 m: a body lies along the street), so two knocked
+   down thugs never lie in a heap inside each other; a fighter may still step over someone lying down, and bodies in
+   the air are left alone. It used to be a gentle 4 cm nudge that skipped grabs and the fallen, and the crowd moved its
+   walkers straight back: three fighters and a held thug drew as one blob. */
+static float body_size(const ent *e) { return DEFS[e->def].boss ? 1.4f : DEFS[e->def].mini ? 1.2f : 1.0f; }
+static ent *body_at(int idx) { return idx < MAXP ? &W.p[idx] : &W.e[idx - MAXP]; }
+static void follow_holder(ent *v) { /* a held body sits in front of its holder (the S_GRABBED rule) */
+  if (v->st != S_GRABBED || v->holder < 0) return;
+  ent *h = body_at(v->holder);
+  if (h->used && h->victim == ent_index(v)) v->x = h->x + (float)h->face * 0.75f, v->z = h->z;
+}
+int g_sep_overlaps; /* debug: pairs still inside each other after the last tick's separation */
+static bool sep_pair(const ent *a, const ent *c, bool la, bool lc, float *ax, float *az) {
+  if (la != lc) return false; /* standing next to someone lying down is fine */
+  float s = body_size(a) + body_size(c);
+  *ax = (la ? 0.55f : 0.4f) * s, *az = (la ? 0.32f : 0.28f) * s;
+  return true;
+}
+static void separate_bodies(void) {
+  ent *b[MAXP + MAXE], *root[MAXP + MAXE];
+  bool lie[MAXP + MAXE];
+  int n = 0;
+  for (int i = 0; i < MAXP + MAXE; i++) {
+    ent *e = body_at(i);
+    if (!e->used || e->st == S_DEAD || e->st == S_THROWN || e->y > 0.3f) continue;
+    lie[n] = e->st == S_DOWN || e->st == S_FALL;
+    b[n] = root[n] = e;
+    if (e->st == S_GRABBED && e->holder >= 0) {
+      ent *h = body_at(e->holder);
+      if (h->used && h->victim == i) root[n] = h;
+    }
+    n++;
+  }
+  for (int pass = 0; pass < 4; pass++) {
+    bool moved = false;
+    for (int i = 0; i < n; i++) for (int j = i + 1; j < n; j++) {
+      float ax, az;
+      if (root[i] == root[j] || !sep_pair(b[i], b[j], lie[i], lie[j], &ax, &az)) continue; /* a holder and the body it holds */
+      float dx = b[j]->x - b[i]->x, dz = b[j]->z - b[i]->z, q = dx * dx / (ax * ax) + dz * dz / (az * az);
+      if (q >= 0.999f) continue;
+      if (q < 1e-6f) { dx = 0, dz = ((i + j) & 1) ? 0.01f : -0.01f; q = dz * dz / (az * az); } /* one on top of the other: split across the street */
+      float k = 1.0f / sqrtf(q) - 1.0f, cx = dx * k, cz = dz * k;
+      float mi = body_size(root[i]), mj = body_size(root[j]), fi = mj / (mi + mj);
+      root[i]->x -= cx * fi, root[i]->z -= cz * fi;
+      root[j]->x += cx * (1 - fi), root[j]->z += cz * (1 - fi);
+      arena_clamp(root[i]), arena_clamp(root[j]);
+      { /* held at the edge of the picture (the clamp undid the push along the street): step apart across it instead */
+        float ex = b[j]->x - b[i]->x, ez = b[j]->z - b[i]->z;
+        if (ex * ex / (ax * ax) + ez * ez / (az * az) < 0.98f && ex * ex < ax * ax) {
+          float want = az * sqrtf(1.0f - ex * ex / (ax * ax)), sgn = ez > 0 ? 1.0f : ez < 0 ? -1.0f : (((i + j) & 1) ? 1.0f : -1.0f);
+          float dzz = sgn * want - ez;
+          root[i]->z -= dzz * fi, root[j]->z += dzz * (1 - fi);
+          arena_clamp(root[i]), arena_clamp(root[j]);
+        }
+      }
+      for (int k2 = 0; k2 < n; k2++) if (root[k2] != b[k2]) follow_holder(b[k2]);
+      moved = true;
+    }
+    if (!moved) break;
+  }
+  /* the crowd steers from where the body now stands */
+  if (crowd.id)
+    for (int i = 0; i < n; i++)
+      if (!b[i]->player && b[i]->agent) cw_crowd_set_position(crowd, AG(b[i]->agent), (t3_vec3){ b[i]->x, 0, b[i]->z });
+  g_sep_overlaps = 0;
+  for (int i = 0; i < n; i++) for (int j = i + 1; j < n; j++) {
+    float ax, az;
+    if (root[i] == root[j] || !sep_pair(b[i], b[j], lie[i], lie[j], &ax, &az)) continue;
+    ax *= 0.9f, az *= 0.9f; /* 10% slack: the clamp at the screen edge may win */
+    float dx = b[j]->x - b[i]->x, dz = b[j]->z - b[i]->z;
+    if (dx * dx / (ax * ax) + dz * dz / (az * az) < 1) g_sep_overlaps++;
+  }
+}
+
 static void spawn_from_queue(void) {
   for (int i = 0; i < W.spawn_q_n; i++) {
     if (W.spawn_q[i].def < 0) continue;
@@ -1266,25 +1362,7 @@ void sim_tick(const inputs *in) {
   for (int i = 0; i < MAXE; i++) if (W.e[i].used && W.e[i].fade) ent_remove(&W.e[i]);
   proj_update();
   juke_tick();
-  /* bodies the crowd does not steer (fighters, enemies mid attack or hit) never stand inside each other: a soft push
-     apart inside an ellipse 0.75 m along the street and 0.5 m across it, so a fight reads as separate people */
-  {
-    ent *b[MAXP + MAXE];
-    int n = 0;
-    for (int i = 0; i < MAXP + MAXE; i++) {
-      ent *e = i < MAXP ? &W.p[i] : &W.e[i - MAXP];
-      if (!e->used || e->st == S_DEAD || e->st == S_DOWN || e->st == S_FALL || e->st == S_GRAB || e->st == S_GRABBED || e->st == S_THROW || e->st == S_THROWN || e->y > 0.3f) continue;
-      b[n++] = e;
-    }
-    for (int i = 0; i < n; i++) for (int j = i + 1; j < n; j++) {
-      float dx = b[j]->x - b[i]->x, dz = b[j]->z - b[i]->z, q = dx * dx / 0.5625f + dz * dz / 0.25f;
-      if (q >= 1) continue;
-      float d = sqrtf(dx * dx + dz * dz);
-      float ux = d > 1e-4f ? dx / d : 0, uz = d > 1e-4f ? dz / d : (i & 1 ? 1.0f : -1.0f), k = 0.04f * (1 - q);
-      b[i]->x -= ux * k, b[i]->z -= uz * k, b[j]->x += ux * k, b[j]->z += uz * k;
-    }
-    for (int i = 0; i < n; i++) arena_clamp(b[i]);
-  }
+  separate_bodies();
   items_update();
 
   /* waves */
@@ -1409,7 +1487,7 @@ void char_sync(ent *e) {
   if (e->weapon && e->wnode.id) {
     t3_vec3 h = cw_skeleton_bone_world(e->model, "HandR");
     (void)HAND_OFF;
-    cw_node3d_set_position(e->wnode, (t3_vec3){ h.x, h.y + 0.1f, h.z });
+    cw_node3d_set_position(RIGS[rig_of[ent_index(e)]].wmodel, (t3_vec3){ h.x, h.y - WGRIP[e->weapon & 3], h.z });
   }
   (void)ent_index;
 }
@@ -1424,14 +1502,10 @@ void sim_sync_extras(void) {
       if (!p->used) continue;
       char nm[16];
       snprintf(nm, sizeof nm, "Bottle%d", i);
-      PROJN[i] = cw_node_new("MeshInstance3D", nm);
+      PROJN[i] = cw_node_new("Node3D", nm);
       cw_node_add_child(world_node(), PROJN[i]);
-      cw_node_set(PROJN[i], "primitive", cw_val_enum("BOX"));
-      cw_node_set(PROJN[i], "size", cw_val_vec3(0.08f, 0.28f, 0.08f));
-      cw_node_set(PROJN[i], "color", cw_val_color(0.22f, 0.5f, 0.26f, 1));
-      cw_node_set(PROJN[i], "metalness", cw_val_float(0));
-      cw_node_set(PROJN[i], "roughness", cw_val_float(0.25f));
-      cw_node_set(PROJN[i], "cast_shadow", cw_val_bool(true));
+      t3_object *o = item_model(5); /* a green glass bottle */
+      if (o) { cw_node3d_set_object(PROJN[i], o); t3_release(o); }
     }
     cw_node_set(PROJN[i], "visible", cw_val_bool(p->used));
     if (!p->used) continue;
@@ -1461,6 +1535,7 @@ cw_node rig_root(int rid) { return RIGS[rid].root; }
 void rig_release(int rid) { /* a corpse rag.c kept on the street is done: hide it and give the rig back */
   rig *r = &RIGS[rid];
   cw_node_set(r->wnode, "visible", cw_val_bool(false));
+  cw_node_set(r->wmodel, "visible", cw_val_bool(false));
   cw_node_set(r->root, "visible", cw_val_bool(false));
   cw_node_set(r->blob, "visible", cw_val_bool(false));
   cw_node3d_set_position(r->root, (t3_vec3){ 0, -50, 0 });

@@ -36,7 +36,7 @@ static float d_hp[MAXP], d_px[MAXP], d_cam;
 static uint32_t d_hash;
 static float d_ex[8][4];
 static int32_t d_states[MAXP];
-static int32_t d_unfair, d_still, d_frozen, d_blocks, d_pickups, d_bphase, d_deaths, d_first, d_hits, d_nan, d_stall, d_proj, d_weapon, d_rigs;
+static int32_t d_unfair, d_still, d_frozen, d_blocks, d_pickups, d_bphase, d_deaths, d_first, d_hits, d_nan, d_stall, d_proj, d_weapon, d_rigs, d_overlaps;
 static int32_t d_juke[6]; /* the jukebox: uses, fighters knocked down by its shockwave, fighters who jumped it, playing, radius in cm, Arthur on his way to it */
 static float d_face[8]; /* the boss's expression weights (blink snarl shout wince ko grin effort grimace) */
 static int64_t run_ticks; /* fixed updates since the program started (status lines) */
@@ -254,6 +254,7 @@ static void init(void *user) {
   cw_debug_i32("game.frozen", &d_frozen);       /* waiting enemies that stood frozen a full second */
   cw_debug_i32("game.blocks", &d_blocks);       /* blows a guard's shield stopped */
   cw_debug_i32("game.pickups", &d_pickups);
+  cw_debug_i32("game.overlaps", &d_overlaps);   /* most pairs of standing bodies inside each other on any tick (separate_bodies): 0 */
   cw_debug_i32("game.boss_phase", &d_bphase);   /* highest boss phase reached this stage (0 to 2) */
   cw_debug_i32("game.deaths", &d_deaths);
   cw_debug_i32("game.first_hit", &d_first);     /* ticks from the stage start to the first blow that landed, -1 none */
@@ -295,6 +296,7 @@ static void publish(void) {
   for (int i = 0; i < MAXE; i++) if (W.e[i].used && W.e[i].st != S_DEAD) n++;
   d_enemies = n;
   d_leak = token_leak(); /* the leak audit: zero always */
+  { extern int g_sep_overlaps; if (g_sep_overlaps > d_overlaps) d_overlaps = g_sep_overlaps; }
   d_unfair = W.st.unfair, d_still = W.st.still_max, d_frozen = W.st.frozen, d_blocks = W.st.blocks, d_pickups = W.st.pickups, d_bphase = W.st.boss_phase;
   d_deaths = W.st.deaths, d_first = W.st.first_hit, d_hits = W.st.hits, d_nan = W.st.nan, d_stall = W.st.stall_max, d_weapon = W.p[0].weapon;
   d_proj = 0;

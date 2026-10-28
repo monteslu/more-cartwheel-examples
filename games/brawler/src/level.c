@@ -120,21 +120,6 @@ static int ncount;
 
 static float hf(int i, int salt) { uint32_t h = (uint32_t)(i * 2654435761u) ^ (uint32_t)(salt * 40503u); h ^= h >> 13; h *= 0x5bd1e995u; h ^= h >> 15; return (float)(h & 0xffff) / 65535.0f; }
 
-static cw_node mesh(cw_node parent, const char *prim, t3_vec3 pos, t3_vec3 size, const float *c, float rough, float metal) {
-  char nm[24];
-  snprintf(nm, sizeof nm, "m%d", ncount++);
-  cw_node n = cw_node_new("MeshInstance3D", nm);
-  cw_node_add_child(parent, n);
-  cw_node_set(n, "primitive", cw_val_enum(prim));
-  cw_node_set(n, "size", cw_val_vec3(size.x, size.y, size.z));
-  cw_node_set(n, "color", cw_val_color(c[0], c[1], c[2], 1));
-  cw_node_set(n, "roughness", cw_val_float(rough));
-  cw_node_set(n, "metalness", cw_val_float(metal));
-  cw_node3d_set_position(n, pos);
-  return n;
-}
-static void glow(cw_node n, const float *c, float e) { cw_node_set(n, "emissive", cw_val_color(c[0] * e, c[1] * e, c[2] * e, 1)); }
-
 static void shadows_on(t3_object *o, bool cast) {
   if (o->type == T3_SKINNED_MESH || o->type == T3_MESH) o->cast_shadow = cast, o->receive_shadow = true;
   for (int i = 0; i < o->child_count; i++) shadows_on(o->children[i], cast);
@@ -380,19 +365,23 @@ void level_update(void) {
   }
   for (int i = 0; i < MAXITEM; i++) {
     item_t *it = &W.item[i];
-    if (it->used && !it->node.id) {
-      static const char *prim[5] = { "SPHERE", "BOX", "BOX", "BOX", "BOX" };
-      static const float col[5][3] = { { 0.85f, 0.12f, 0.1f }, { 0.45f, 0.28f, 0.12f }, { 0.4f, 0.42f, 0.46f }, { 0.8f, 0.82f, 0.9f }, { 1.0f, 0.78f, 0.15f } };
-      static const t3_vec3 sz[5] = { { 0.32f, 0, 0 }, { 0.85f, 0.09f, 0.09f }, { 1.0f, 0.09f, 0.09f }, { 0.34f, 0.04f, 0.06f }, { 0.2f, 0.2f, 0.06f } };
-      it->node = mesh(stage_node, prim[it->kind], (t3_vec3){ it->x, it->y, it->z }, sz[it->kind], col[it->kind], 0.35f, it->kind >= 2 ? 0.8f : 0.1f);
-      if (it->kind == 4) glow(it->node, col[4], 3);
+    if (it->used && !it->node.id) { /* the item's model (sim.c item_model): an apple, a bat, a pipe, a knife, a coin */
+      char nm[16];
+      snprintf(nm, sizeof nm, "item%d", ncount++);
+      it->node = cw_node_new("Node3D", nm);
+      cw_node_add_child(stage_node, it->node);
+      t3_object *o = item_model(it->kind);
+      if (o) { cw_node3d_set_object(it->node, o); t3_release(o); }
     }
     if (!it->used && it->node.id) { cw_node_free(it->node); it->node = (cw_node){ 0 }; }
     if (it->used && it->node.id) {
       float s, c;
       cw_sincos((float)(it->t + i * 9) * 0.07f, &s, &c);
-      cw_node3d_set_position(it->node, (t3_vec3){ it->x, it->y + 0.18f + 0.06f * s + (it->kind == 4 ? 0.3f : 0), it->z });
-      cw_node3d_set_rotation(it->node, (t3_vec3){ 0, (float)it->t * (it->kind == 4 ? 0.08f : 0.02f), 0 });
+      /* weapons lie on the street turning slowly; the apple and the coin bob just above it (the coin spins) */
+      bool lying = it->kind >= 1 && it->kind <= 3;
+      float y = lying ? 0.05f : it->kind == 4 ? 0.2f + 0.04f * s : 0.15f + 0.03f * s;
+      cw_node3d_set_position(it->node, (t3_vec3){ it->x, it->y + y, it->z });
+      cw_node3d_set_rotation(it->node, (t3_vec3){ 0, (float)it->t * (it->kind == 4 ? 0.06f : 0.012f), lying ? 1.5708f : 0 });
     }
   }
 }

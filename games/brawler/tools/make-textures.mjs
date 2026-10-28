@@ -522,8 +522,8 @@ function puddleShape(k, u, v) { // u, v in -1..1 inside the cell; returns covera
       }
     }
   }
-  const edge = Math.min(Math.abs(u), Math.abs(v)) > 0.92 ? 0 : 1; // nothing touches the cell border
-  return d * edge;
+  // nothing reaches the cell border: the shape sinks smoothly towards it (a hard cut there drew straight puddle edges)
+  return d - 1.6 * smooth(0.6, 0.9, Math.max(Math.abs(u), Math.abs(v)));
 }
 if (want('puddles')) {
   const W = 1024, H = 512, C = 256, bytes = new Uint8Array(W * H * 4);
@@ -531,11 +531,15 @@ if (want('puddles')) {
     const k = Math.floor(x / C) + 4 * Math.floor(y / C);
     const u = ((x % C) + 0.5) / C * 2 - 1, v = ((y % C) + 0.5) / C * 2 - 1;
     const d = puddleShape(k, u, v);
-    const body = smooth(0.0, 0.08, d), rim = smooth(0.0, 0.03, d) * (1 - smooth(0.03, 0.09, d));
-    const a = clamp(body * 0.8 + rim * 0.3);
-    // the water reads as a mirror of the dim sky (blue-grey), not as a shadow; a thin pale lip where it meets the street
-    const i = (y * W + x) * 4, c = 0.1 + rim * 0.25;
-    bytes[i] = Math.round(c * 255); bytes[i + 1] = Math.round((c + 0.02) * 255); bytes[i + 2] = Math.round((c + 0.05) * 255); bytes[i + 3] = Math.round(a * 255);
+    // three bands: a damp halo where the asphalt is only wet (slightly darker, fades out), the shallow edge and the
+    // deeper middle. Water is never opaque: the street's cracks and grain stay visible through it, the low roughness
+    // adds the reflections. (It used to be 80% near-black: a dark stain, not water.)
+    const halo = smooth(-0.16, 0.0, d), body = smooth(0.0, 0.07, d), deep = smooth(0.07, 0.45, d);
+    const rim = smooth(0.0, 0.025, d) * (1 - smooth(0.025, 0.07, d));
+    const a = clamp(halo * 0.18 + body * (0.48 + 0.2 * deep) + rim * 0.12);
+    // the water reads as a mirror of the dim sky (blue-grey), not as a shadow; a faint pale lip where it meets the street
+    const i = (y * W + x) * 4, c = 0.06 + rim * 0.22;
+    bytes[i] = Math.round(c * 255); bytes[i + 1] = Math.round((c + 0.012) * 255); bytes[i + 2] = Math.round((c + 0.03) * 255); bytes[i + 3] = Math.round(a * 255);
   }
   save(`${OUT}/puddles.png`, W, H, 4, bytes);
   console.log('puddles');

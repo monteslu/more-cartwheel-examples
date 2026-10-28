@@ -40,6 +40,13 @@ const DEFS = {
   neon_violet: { set: null, emissive: [1.8, 0.6, 4] },
   glow_orange: { set: null, emissive: [3.5, 1.2, 0.3] },
   screen: { set: null, emissive: [0.6, 1.6, 2.4] },
+  // pickups and weapons (small: plain PBR factors, no texture sets)
+  gold: { set: null, tint: [1.0, 0.71, 0.29], rough: 0.3, metal: 1, emissive: [0.16, 0.1, 0.02] },
+  gold_dark: { set: null, tint: [0.72, 0.48, 0.16], rough: 0.45, metal: 1 },
+  apple: { set: null, tint: [0.55, 0.05, 0.04], rough: 0.38 }, leaf: { set: null, tint: [0.12, 0.3, 0.06], rough: 0.7 },
+  glass_green: { set: null, tint: [0.05, 0.2, 0.08], rough: 0.06 }, label: { set: null, tint: [0.75, 0.68, 0.5], rough: 0.85 },
+  blade: { set: 'paint_metal', tint: [0.9, 0.91, 0.94], rough: 0.2, metal: 1 }, tape: { set: null, tint: [0.06, 0.06, 0.07], rough: 0.85 },
+  pipe: { set: 'paint_metal', tint: [0.42, 0.44, 0.46], rough: 0.5, metal: 1 },
 };
 
 const THEMES = [
@@ -262,6 +269,49 @@ function bin(m) {
   for (const sx of [-1, 1]) m.cyl('steel_dark', [sx * 0.34, -0.5, -0.26], 0.07, 0.08, { axis: 'x', n: 10, uv: 0.5 });
   m.box('steel_dark', [0, -0.46, 0], [0.82, 0.06, 0.72], { uv: 1 });
 }
+/** a turned shape along y: profile [[y, r], ...] bottom to top, closed with caps where r > 0 at the ends */
+function lathe(m, mat, prof, o = {}) {
+  const n = o.n ?? 16;
+  for (let i = 0; i + 1 < prof.length; i++) {
+    const [y0, r0] = prof[i], [y1, r1] = prof[i + 1];
+    m.cyl(mat, [0, (y0 + y1) / 2, 0], r0, y1 - y0, { r1, n, uv: o.uv ?? 0.3, caps: false });
+  }
+  const [yb, rb] = prof[0], [yt, rt] = prof[prof.length - 1];
+  if (rb > 0) m.cyl(mat, [0, yb - 0.0005, 0], rb, 0.001, { n, uv: o.uv ?? 0.3 });
+  if (rt > 0) m.cyl(mat, [0, yt + 0.0005, 0], rt, 0.001, { n, uv: o.uv ?? 0.3 });
+}
+// pickups and held weapons, modelled along +y and centred on the origin (the game holds them in a hand, upright, and
+// lays them on the street turned onto their side); they replace plain boxes
+function bat(m) { // 0.85 m: knob, taped handle, tapering to a round barrel
+  lathe(m, 'wood', [[-0.425, 0.0], [-0.42, 0.028], [-0.405, 0.03], [-0.395, 0.017], [-0.1, 0.019], [0.1, 0.03], [0.38, 0.036], [0.415, 0.03], [0.425, 0.0]], { n: 18, uv: 0.4 });
+  lathe(m, 'tape', [[-0.39, 0.019], [-0.2, 0.0205]], { n: 18 });
+}
+function pipe(m) { // 1 m of steel pipe with a threaded coupling on each end
+  m.cyl('pipe', [0, 0, 0], 0.024, 0.94, { n: 16, uv: 0.5 });
+  for (const y of [-0.47, 0.47]) m.cyl('steel_dark', [0, y, 0], 0.031, 0.06, { n: 16, uv: 0.5 });
+}
+function knife(m) { // 0.34 m: a handle, a guard and a blade narrowing to the point
+  lathe(m, 'tape', [[-0.17, 0.0], [-0.168, 0.014], [-0.06, 0.016], [-0.05, 0.0]], { n: 12 });
+  m.box('steel_dark', [0, -0.045, 0], [0.06, 0.012, 0.018], { uv: 0.2 });
+  m.box('blade', [0, 0.02, 0], [0.034, 0.12, 0.004], { uv: 0.2 });
+  m.cyl('blade', [0, 0.125, 0], 0.017, 0.09, { r1: 0.001, n: 4, uv: 0.2 }); // the point: a thin four-sided taper
+}
+function coin(m) { // a fat coin standing up, its face to the street: rim, face and a raised centre
+  m.cyl('gold', [0, 0, 0], 0.1, 0.018, { axis: 'z', n: 28, uv: 0.3 });
+  m.cyl('gold_dark', [0, 0, 0], 0.104, 0.012, { axis: 'z', n: 28, uv: 0.3, caps: false });
+  m.cyl('gold', [0, 0, 0], 0.055, 0.024, { axis: 'z', n: 20, uv: 0.3 });
+}
+function apple(m) { // a round apple with a dimple, a stem and a leaf
+  const prof = [];
+  for (let i = 0; i <= 12; i++) { const a = -Math.PI / 2 + Math.PI * i / 12; prof.push([Math.sin(a) * 0.12 - (i === 12 ? 0.015 : 0), Math.max(0.0, Math.cos(a) * 0.13 * (1 - 0.08 * Math.sin(a)))]); }
+  lathe(m, 'apple', prof, { n: 20 });
+  m.cyl('wood_dark', [0, 0.13, 0], 0.007, 0.06, { r1: 0.005, n: 6, uv: 0.2 });
+  m.box('leaf', [0.03, 0.14, 0], [0.05, 0.004, 0.025], { uv: 0.2 });
+}
+function bottle(m) { // 0.28 m green glass bottle with a paper label
+  lathe(m, 'glass_green', [[-0.14, 0.0], [-0.138, 0.034], [-0.13, 0.036], [0.03, 0.036], [0.07, 0.022], [0.09, 0.014], [0.13, 0.013], [0.14, 0.0]], { n: 16 });
+  lathe(m, 'label', [[-0.08, 0.0372], [0.0, 0.0372]], { n: 16 });
+}
 /** a soft round shadow under every actor (multiplied onto the ground) */
 function blobMesh() {
   const glb = new Glb();
@@ -278,14 +328,37 @@ function blobMesh() {
 
 /** puddles: one glb per wet stage, every puddle a quad cut from the 8-shape atlas (make-textures puddles), turned,
  * stretched and flipped from a seeded random stream (the same every build), placed where water collects: strips along the
- * kerb by the drain grates, splashes and a strip under every drain pipe, pools in low spots of the road, some overlapping
- * into larger irregular pools, and clusters of small splashes. Alpha blended over the street, near-black and glossy. */
+ * kerb by the drain grates, a splash under every drain pipe, pools in low spots of the road (more of them towards the
+ * gutters, where the road's camber sends the water) and clusters of small splashes. No two puddles overlap: every
+ * candidate is an oriented box (the shape's footprint plus a gap) tested against the ones already placed, and one
+ * that touches another is dropped (stacked alpha drew dark blotches). Alpha blended over the street, glossy. */
 function puddles(stage, count) {
   let st = (0x9e3779b9 ^ (stage * 7919 + 13)) >>> 0;
   const rnd = () => { st = (st + 0x6d2b79f5) >>> 0; let t = st; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
   const r = (a, b) => a + (b - a) * rnd();
   const P = []; // [x, y, z, halfX, halfZ, rot, kind, flip]
-  const add = (x, y, z, hx, hz, rot, kind) => P.push([x, y, z, hx, hz, rot, kind, rnd() < 0.5]);
+  const GAP = 0.35; // metres of dry street between two puddles at least
+  // separating axis test of two oriented rectangles in the street plane (each grown by half the gap)
+  const overlaps = (A, B) => {
+    const ax = [[Math.cos(A[5]), Math.sin(A[5])], [-Math.sin(A[5]), Math.cos(A[5])]];
+    const bx = [[Math.cos(B[5]), Math.sin(B[5])], [-Math.sin(B[5]), Math.cos(B[5])]];
+    const ah = [A[3] + GAP / 2, A[4] + GAP / 2], bh = [B[3] + GAP / 2, B[4] + GAP / 2];
+    const d = [B[0] - A[0], B[2] - A[2]];
+    for (const n of [...ax, ...bx]) {
+      const pa = ah[0] * Math.abs(n[0] * ax[0][0] + n[1] * ax[0][1]) + ah[1] * Math.abs(n[0] * ax[1][0] + n[1] * ax[1][1]);
+      const pb = bh[0] * Math.abs(n[0] * bx[0][0] + n[1] * bx[0][1]) + bh[1] * Math.abs(n[0] * bx[1][0] + n[1] * bx[1][1]);
+      if (Math.abs(d[0] * n[0] + d[1] * n[1]) > pa + pb) return false;
+    }
+    return true;
+  };
+  const add = (x, y, z, hx, hz, rot, kind) => {
+    const c = [x, y, z, hx, hz, rot, kind, rnd() < 0.5];
+    // the texture's shapes stay inside 90% of their cell: test that footprint
+    const f = [x, y, z, hx * 0.9, hz * 0.9, rot];
+    if (P.some((q) => q[1] === y && overlaps([q[0], q[1], q[2], q[3] * 0.9, q[4] * 0.9, q[5]], f))) return false;
+    P.push(c);
+    return true;
+  };
   const LO = -10, HI = 80; // the part of the street a stage plays on
   // the kerb: drain grates (same spacing as street()) and drain pipes (the same building walk)
   for (let x = X0 + 2; x < X1; x += 9 + hf(x, 3) * 5) if (x > LO && x < HI && rnd() < 0.7) add(x + r(-1.2, 1.2), 0, r(-3.12, -2.95), r(0.9, 1.8), r(0.18, 0.32), r(-0.06, 0.06), rnd() < 0.6 ? 3 : 4);
@@ -298,13 +371,17 @@ function puddles(stage, count) {
       }
     }
   }
-  // low spots in the road; some spill into a neighbour and make one larger pool
+  // low spots in the road: the water runs to the gutters (the near one, at the front of the picture, and the kerb), a
+  // few pools sit in dips mid road; small splash clusters near a pool. Up to 6 tries each to find dry street.
+  const kinds = [0, 1, 2, 5];
   for (let i = 0; i < count; i++) {
-    const x = r(LO, HI), z = r(-2.5, 3.6), s = r(0.6, 1.8), asp = r(0.55, 1.4), rot = r(0, 6.28);
-    const kinds = [0, 1, 2, 5];
-    add(x, 0, z, s * asp, s / asp, rot, kinds[Math.floor(rnd() * 4)]);
-    if (rnd() < 0.35) { const a = r(0, 6.28), d = s * r(0.6, 1.1); add(x + Math.cos(a) * d, 0, z + Math.sin(a) * d * 0.7, s * r(0.5, 0.9), s * r(0.4, 0.8), r(0, 6.28), kinds[Math.floor(rnd() * 4)]); }
-    if (rnd() < 0.3) add(x + r(-1.5, 1.5), 0, z + r(-0.8, 0.8), r(0.3, 0.6), r(0.3, 0.6), r(0, 6.28), 6 + (rnd() < 0.5 ? 1 : 0));
+    for (let tries = 0; tries < 6; tries++) {
+      const g = rnd(), z = g < 0.4 ? r(2.4, 3.6) : g < 0.7 ? r(-2.6, -1.6) : r(-1.4, 2.2);
+      const x = r(LO, HI), s = r(0.45, 1.5) * (g < 0.7 ? 1 : 0.75), asp = r(0.5, 1.5), rot = r(0, 6.28);
+      if (!add(x, 0, z, s * asp, s / asp, rot, kinds[Math.floor(rnd() * 4)])) continue;
+      if (rnd() < 0.3) add(x + r(-1.8, 1.8), 0, z + r(-0.9, 0.9), r(0.25, 0.55), r(0.25, 0.55), r(0, 6.28), 6 + (rnd() < 0.5 ? 1 : 0));
+      break;
+    }
   }
   const pos = [], nrm = [], uv = [], idx = [];
   P.forEach(([x, y, z, hx, hz, rot, k, flip], n) => {
@@ -323,7 +400,7 @@ function puddles(stage, count) {
   const mat = glb.pbr('puddle', TEX, null, { alphaMode: 'BLEND' });
   const pm = glb.materials[mat].pbrMetallicRoughness;
   pm.baseColorTexture = { index: glb.tex(join(TEX, 'puddles.png')) };
-  pm.baseColorFactor = [1, 1, 1, 1]; pm.metallicFactor = 0; pm.roughnessFactor = 0.12;
+  pm.baseColorFactor = [1, 1, 1, 1]; pm.metallicFactor = 0; pm.roughnessFactor = 0.06;
   glb.materials[mat].extensions = undefined;
   glb.sceneNodes.push(glb.node({ name: 'Puddles', mesh: glb.mesh('puddles', { pos, nrm, uv, idx }, mat) }));
   glb.write(join(OUT, `puddles${stage}.glb`));
@@ -333,6 +410,7 @@ function puddles(stage, count) {
 for (let i = 0; i < 4; i++) writeStage(i);
 puddles(0, 22); puddles(1, 55); puddles(3, 10);
 writeProp('crate', crate); writeProp('barrel', barrel); writeProp('bin', bin);
+for (const [n, fn] of [['bat', bat], ['pipe', pipe], ['knife', knife], ['coin', coin], ['apple', apple], ['bottle', bottle]]) writeProp(n, fn);
 blobMesh();
 
 // ── the jukebox in the docks boss arena (Arthur thumps it): base on the floor at the origin, facing +Z. Its glow tubes,

@@ -82,7 +82,8 @@ void fx_init(void) {
     snprintf(nm, sizeof nm, "deb%d", i);
     cw_node n = deb[i] = psys(nm);
     cw_node_set(n, "amount", cw_val_int(22));
-    cw_node_set(n, "lifetime", cw_val_float(1.6));
+    cw_node_set(n, "lifetime", cw_val_float(1.0));
+    cw_node_set(n, "lifetime_random", cw_val_float(0.4));
     cw_node_set(n, "one_shot", cw_val_bool(true));
     cw_node_set(n, "emitting", cw_val_bool(false));
     cw_node_set(n, "explosiveness", cw_val_float(1));
@@ -96,8 +97,9 @@ void fx_init(void) {
     cw_node_set(n, "draw_mode", cw_val_enum("MESH"));
     cw_node_set(n, "mesh_primitive", cw_val_enum("BOX"));
     cw_node_set(n, "blend", cw_val_enum("OPAQUE"));
-    cw_node_set(n, "size", cw_val_float(0.12));
-    cw_node_set(n, "size_random", cw_val_float(0.7));
+    cw_node_set(n, "size", cw_val_float(0.07));
+    cw_node_set(n, "size_random", cw_val_float(0.6));
+    cw_node_set(n, "size_curve", cw_val_string("0 1, 0.6 0.85, 1 0")); /* chips shrink away, never pop out */
     cw_node_set(n, "spin", cw_val_float(9));
     cw_node_set(n, "seed", cw_val_int(500 + i));
   }
@@ -209,7 +211,10 @@ void fx_dust(float x, float z, float scale) {
 void fx_debris(float x, float y, float z, uint32_t color) {
   cw_node n = deb[nb++ % NDEB];
   cw_node3d_set_position(n, (t3_vec3){ x, y, z });
-  cw_node_set(n, "color", cw_val_color((float)((color >> 16) & 255) / 255.0f, (float)((color >> 8) & 255) / 255.0f, (float)(color & 255) / 255.0f, 1));
+  /* particles are unlit: a chip in the prop's full colour glowed against the dim street like a lamp, so it is shaded
+     down to roughly what the street's light makes of that colour */
+  const float k = 0.3f / 255.0f;
+  cw_node_set(n, "color", cw_val_color((float)((color >> 16) & 255) * k, (float)((color >> 8) & 255) * k, (float)(color & 255) * k, 1));
   cw_particles_restart(n);
 }
 void fx_flash(float x, float y, float z, float r, float g, float b, float e) {
