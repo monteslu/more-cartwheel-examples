@@ -75,7 +75,9 @@ typedef struct input_state { float x, y; bool jump_pressed, jump_held, dash_pres
 typedef struct camera_rig {
   float x, y, z;       /* world focus and distance */
   float tx, ty, tz;
-  float shake;
+  float px, py, pz;    /* x, y, z at the start of this tick: the renderer draws between them (alpha) */
+  float shake;         /* trauma 0..1 from real events the camera sees (sim_shake); the offset is trauma squared, it
+                        * fades out in about 0.4 s and nothing raises it every tick */
 } camera_rig;
 
 typedef struct game {
@@ -97,6 +99,7 @@ typedef struct game {
   int hitstop;         /* ticks the whole world stands still after a hit (stomp, hurt, boss down) */
   int hit_flash;       /* ticks of screen flash the renderer shows after a hit */
   int paused_map;
+  bool shake_bug;      /* test only (COOP_SHAKE_BUG, native): the old boss landing that shook the screen forever */
 } game;
 
 extern game G;
@@ -138,4 +141,7 @@ void sim_respawn_player(game *g, int p);
 bool sim_warp(game *g, int flag);
 void sim_return(game *g);          /* everyone back to the last flag (or the start): the way out of anything */   /* the living players go to a reached flag; false if it is not reached */
 uint32_t sim_hash(const game *g);
+/* Screen shake for an event at a world point (a boss landing, a boss hit, a blast): amount 0..1 of trauma, scaled
+ * down to nothing for an event the camera does not see, so a far-off event never shakes the players' view. */
+void sim_shake(game *g, float x, float y, float amount);
 #endif

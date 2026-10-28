@@ -86,6 +86,47 @@ static cw_font g_font;
 static void title_background(cw_shell_screen scr, cw_vec2 cv, void *user);
 static int g_state_dbg, g_players_dbg, g_bubbles_dbg, g_hp_dbg;
 static float g_pos_dbg[2], g_cam_dbg[3], g_ppos_dbg[MAX_PLAYERS * 2];
+/* the camera as drawn, measured every frame (the camera stability gate): g.view is x, y, z and the shake it carried;
+ * g.camgate counts frames at rest (every player still for 2.5 s), at-rest frames where the view moved more than
+ * 1 mm, frames in motion, and frames in motion where the view jumped (over 0.6 m) or jerked (its step changed by
+ * over 8 cm); g.camjit keeps the largest at-rest step, step in motion and step change seen (metres) */
+static float g_view_dbg[4], g_camjit_dbg[3];
+static int g_camgate_dbg[4];
+static struct { float last[3], step[3], ppos[MAX_PLAYERS * 2]; int still, frames; } CS;
+static void camgate_reset(void) {
+  memset(&CS, 0, sizeof CS);
+  memset(g_camgate_dbg, 0, sizeof g_camgate_dbg);
+  memset(g_camjit_dbg, 0, sizeof g_camjit_dbg);
+}
+static void camgate_frame(const float view[3], const float *pp, int np, bool snapped) {
+  bool still = CS.frames > 0;
+  for (int i = 0; i < np * 2; i++) {
+    if (fabsf(pp[i] - CS.ppos[i]) > 1e-5f) still = false;
+    CS.ppos[i] = pp[i];
+  }
+  CS.still = still ? CS.still + 1 : 0;
+  float st[3], d2 = 0, j2 = 0;
+  for (int k = 0; k < 3; k++) {
+    st[k] = view[k] - CS.last[k];
+    d2 += st[k] * st[k];
+    j2 += (st[k] - CS.step[k]) * (st[k] - CS.step[k]);
+  }
+  float d = sqrtf(d2), jerk = sqrtf(j2);
+  if (CS.frames > 1 && !snapped) {
+    if (CS.still >= 150) {
+      g_camgate_dbg[0]++;
+      if (d > 0.001f) g_camgate_dbg[1]++;
+      g_camjit_dbg[0] = fmaxf(g_camjit_dbg[0], d);
+    } else {
+      g_camgate_dbg[2]++;
+      if (d > 0.6f || jerk > 0.08f) g_camgate_dbg[3]++;
+      g_camjit_dbg[1] = fmaxf(g_camjit_dbg[1], d);
+      g_camjit_dbg[2] = fmaxf(g_camjit_dbg[2], jerk);
+    }
+  }
+  for (int k = 0; k < 3; k++) CS.step[k] = snapped ? 0 : st[k], CS.last[k] = view[k];
+  CS.frames++;
+}
 static int g_run_ticks;
 
 /* ── generated audio ───────────────────────────────────────────────── */
@@ -729,28 +770,50 @@ static void update_spans(float camx) {
   }
 }
 
+/* the player's screen shake setting (the shell's Settings > Screen shake): 1 full, less reduced, 0 off */
+static float shake_setting(void) { return cw_shell_screen_shake(); }
+
 /* ── frame: sync the scene to the sim ─────────────────────────────── */
 static void sync_scene(float alpha, float dt) {
   game *g = &G;
   const level *L = &g->L;
   S.time += dt;
   camera_rig *c = &g->cam;
-  float sh = c->shake;
-  float ox = sh * sinf(S.time * 61.0f) * 0.5f, oy = sh * cosf(S.time * 53.0f) * 0.5f;
-  cw_node3d_set_position(S.cam, (t3_vec3){ c->x + ox, c->y + oy, c->z });
+  /* the camera moves in the fixed tick like the players: draw it between its last two ticks with the same alpha the
+   * players use, or it steps while they glide (a judder on any host whose frame rate is not the tick rate) */
+  float a = alpha < 0 ? 0 : alpha > 1 ? 1 : alpha;
+  bool snapped = fabsf(c->x - c->px) > 4 || fabsf(c->y - c->py) > 4; /* a warp or a respawn: no glide */
+  float vx = snapped ? c->x : c->px + (c->x - c->px) * a, vy = snapped ? c->y : c->py + (c->y - c->py) * a;
+  float vz = snapped ? c->z : c->pz + (c->z - c->pz) * a;
+  /* shake: trauma squared, smooth (two slow sines per axis, not a per-frame random jump), scaled by the player's
+   * screen shake setting (Settings: Full, Reduced, Off) */
+  float sh = c->shake * shake_setting();
+  float amp = sh * sh * 0.45f;
+  float ox = amp * (0.6f * sinf(S.time * 47.0f) + 0.4f * sinf(S.time * 29.0f + 1.3f));
+  float oy = amp * (0.6f * cosf(S.time * 41.0f) + 0.4f * sinf(S.time * 23.0f + 0.7f));
+  cw_node3d_set_position(S.cam, (t3_vec3){ vx + ox, vy + oy, vz });
+  g_view_dbg[0] = vx + ox, g_view_dbg[1] = vy + oy, g_view_dbg[2] = vz, g_view_dbg[3] = sh;
+  if (!g_attract) {
+    float pp[MAX_PLAYERS * 2];
+    for (int i = 0; i < g->nplayers; i++) {
+      cw_pos2 ip = cw_mover2d_interpolated(&g->p[i].pf.body, alpha);
+      pp[2 * i] = (float)ip.x, pp[2 * i + 1] = (float)ip.y;
+    }
+    camgate_frame(g_view_dbg, pp, g->nplayers, snapped);
+  }
   cw_node3d_set_rotation(S.cam, (t3_vec3){ -0.06f, 0, 0 });
-  cw_node3d_set_position(S.sun, (t3_vec3){ c->x + 8, c->y + 18, 14 });
-  apply_mood(c->x);
+  cw_node3d_set_position(S.sun, (t3_vec3){ vx + 8, vy + 18, 14 });
+  apply_mood(vx);
   world_update_water_mesh(S.time);
   world_update_backdrop(S.time);
-  update_spans(c->x);
+  update_spans(vx);
   /* the motes follow the camera and take the region's character */
   {
     int b = g->L.biome[(int)c->x < 0 ? 0 : (int)c->x >= WORLD_W ? WORLD_W - 1 : (int)c->x];
     static const float MC[BIOMES][4] = { { 1.0f, 0.95f, 0.5f, 3.0f }, { 0.4f, 0.8f, 1.0f, 2.0f }, { 1.0f, 1.0f, 0.8f, 1.2f }, { 1.0f, 0.4f, 0.1f, 4.0f } };
     static const float MG[BIOMES] = { 0.0f, 0.0f, -0.05f, 0.9f };
     static int last_b = -1;
-    cw_node3d_set_position(S.fx_motes, (t3_vec3){ c->x, c->y, 0 });
+    cw_node3d_set_position(S.fx_motes, (t3_vec3){ vx, vy, 0 });
     if (b != last_b) {
       last_b = b;
       cw_node_set(S.fx_motes, "color", cw_val_color(MC[b][0], MC[b][1], MC[b][2], 1));
@@ -863,8 +926,7 @@ static void sync_scene(float alpha, float dt) {
       cw_node_set(S.fx_wave, "max_radius", cw_val_float(4.5f * bs));
       cw_node3d_set_position(S.fx_wave, (t3_vec3){ e->x, by, 1.0f });
       cw_shockwave_fire(S.fx_wave);
-      burst(S.fx_debris, e->x, by, 0.5f);
-      g->cam.shake = fmaxf(g->cam.shake, 0.25f * bs);
+      burst(S.fx_debris, e->x, by, 0.5f); /* its screen shake comes from the sim (sim_shake), where it died */
     }
     S.prev_alive[i] = e->alive;
     if (!e->alive || !S.erig[i]) continue;
@@ -943,6 +1005,7 @@ static void start_match(int players, void *user) {
   save_t *sv = cw_shell_game_save();
   G.abilities = 0;
   sim_reset(&G, players);
+  G.shake_bug = getenv("COOP_SHAKE_BUG") != NULL; /* the camera gate's must-fail control (native only) */
   if (sv->abilities && !getenv("COOP_FRESH")) G.abilities = sv->abilities;
   G.reached |= sv->reached;
   if (cfg_int("COOP_ABILITIES", COOP_DEF_ABILITIES) >= 0) G.abilities = (uint32_t)cfg_int("COOP_ABILITIES", COOP_DEF_ABILITIES);
@@ -954,12 +1017,13 @@ static void start_match(int players, void *user) {
       cw_platformer2d_teleport(&G.p[i].pf, (cw_pos2){ (double)sx + 0.7 * i, (double)G.L.ground[sx] + 0.05 });
       G.p[i].invuln = 120;
     }
-    G.cam.x = G.cam.tx = (float)sx, G.cam.y = G.cam.ty = (float)G.L.ground[sx] + 3;
+    G.cam.x = G.cam.tx = G.cam.px = (float)sx, G.cam.y = G.cam.ty = G.cam.py = (float)G.L.ground[sx] + 3;
     G.checkpoint = -1;
     for (int k = 0; k < G.L.nchecks; k++)
       if (G.L.checks[k].x < sx) G.checkpoint = k, G.reached |= 1u << k;
   }
   build_scene();
+  camgate_reset();
   cw_info("coopplatformer: pools %d, lava spans %d", S.nwspan, S.nlspan);
   for (int i = 0; i < S.nwspan; i++) cw_info("  pool x %.0f..%.0f y %.0f..%.0f", S.wspan[i][0], S.wspan[i][1], S.wspan[i][2], S.wspan[i][3]);
   g_run_ticks = 0;
@@ -1312,6 +1376,9 @@ static void init(void *user) {
   cw_debug_f32_array("g.pos", g_pos_dbg, 2);
   cw_debug_f32_array("g.ppos", g_ppos_dbg, MAX_PLAYERS * 2); /* every player, x y (0 0 when not joined) */
   cw_debug_f32_array("g.cam", g_cam_dbg, 3);
+  cw_debug_f32_array("g.view", g_view_dbg, 4);
+  cw_debug_field("g.camgate", g_camgate_dbg, CW_DBG_I32, 4);
+  cw_debug_f32_array("g.camjit", g_camjit_dbg, 3);
   cw_debug_i32("g.hp", &g_hp_dbg);
   cw_debug_i32("g.bubbles", &g_bubbles_dbg);
   cur_mood = MOODS[0];
@@ -1514,10 +1581,10 @@ static void glyph(int i, float cx, float cy, float r, cw_color c) {
   }
 }
 
-/* the world point as a pixel of the HUD canvas, through the game camera (vertical fov 40, pitched down 0.06) */
+/* the world point as a pixel of the HUD canvas, through the drawn camera (vertical fov 40, pitched down 0.06) */
 static bool project(float wx, float wy, float wz, float W, float H, float *sx, float *sy) {
   const float pitch = 0.06f, tf = 0.36397f; /* tan(20 degrees) */
-  float dx = wx - G.cam.x, dy = wy - G.cam.y, dz = wz - G.cam.z;
+  float dx = wx - g_view_dbg[0], dy = wy - g_view_dbg[1], dz = wz - g_view_dbg[2]; /* the camera as drawn this frame */
   float yv = dy * cosf(pitch) - dz * sinf(pitch), zv = dy * sinf(pitch) + dz * cosf(pitch);
   if (zv > -0.5f) return false;
   *sx = (0.5f + 0.5f * (dx / -zv) / (tf * W / H)) * W;

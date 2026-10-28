@@ -74,9 +74,9 @@ void sim_reset(game *g, int players) {
     g->p[i].pf.body.velocity = (cw_vec2){ 0, 0 };
   }
   g->cam = (camera_rig){ 0 };
-  g->cam.x = g->cam.tx = (float)g->L.start_x;
-  g->cam.y = g->cam.ty = (float)g->L.start_y + 3;
-  g->cam.z = g->cam.tz = 20;
+  g->cam.x = g->cam.tx = g->cam.px = (float)g->L.start_x;
+  g->cam.y = g->cam.ty = g->cam.py = (float)g->L.start_y + 3;
+  g->cam.z = g->cam.tz = g->cam.pz = 20;
 }
 
 void sim_respawn_player(game *g, int i) {
@@ -152,8 +152,9 @@ static void enemy_step(game *g, enemy *e, float dt) {
       if (d * d < best) best = d * d, tx = d;
     }
     if (best < 1e8f) e->dir = tx > 0 ? 1 : -1;
-    if (best > 28 * 28) sp = 0;
-    if ((g->tick % 150) == 0 && e->vy == 0) e->vy = 11.0f;
+    bool awake = best <= 28 * 28 || g->shake_bug; /* asleep until a player comes near: it neither walks nor leaps */
+    if (!awake) sp = 0;
+    if (awake && (g->tick % 150) == 0 && e->vy == 0) e->vy = 11.0f;
   }
   float nx = e->x + (float)e->dir * sp * dt;
   bool wall = world_solid(L, (int)floorf(nx + (float)e->dir * half), (int)floorf(e->y + 0.3f)) ||
@@ -168,12 +169,32 @@ static void enemy_step(game *g, enemy *e, float dt) {
   e->vy -= 30.0f * dt;
   float ny = e->y + e->vy * dt;
   if (e->vy <= 0 && world_solid(L, (int)floorf(e->x), (int)floorf(ny - 0.01f))) {
-    ny = floorf(ny) + 1.0f;
-    if (e->vy < -2 && e->kind == 2) g->cam.shake = 0.6f;
+    /* stand on top of the tile that was hit. (floorf(ny) + 1 put a body whose feet reached the top within 0.01 m
+     * one whole tile ABOVE it: it fell a metre, landed hard and was lifted again, every 20 ticks forever, and each
+     * landing shook the screen wherever the players were.) */
+    if (g->shake_bug) { /* the camera gate's control: the old snap and a shake wherever the camera is */
+      ny = floorf(ny) + 1.0f;
+      if (e->vy < -2 && e->kind == 2) g->cam.shake = 0.6f;
+    } else {
+      ny = floorf(ny - 0.01f) + 1.0f;
+      if (e->vy < -6 && e->kind == 2) sim_shake(g, e->x, e->y, 0.45f); /* a real leap landing, not a step */
+    }
     e->vy = 0;
   }
   e->y = ny;
   (void)h;
+}
+
+void sim_shake(game *g, float x, float y, float amount) {
+  const camera_rig *c = &g->cam;
+  /* the view is about 1.29 z wide and 0.73 z tall (fov 40, 16:9): full shake inside it, fading to none half a view
+   * beyond its edge */
+  float hx = 0.65f * c->z, hy = 0.37f * c->z;
+  float ox = fabsf(x - c->x) - hx, oy = fabsf(y - c->y) - hy;
+  float out = fmaxf(ox / hx, oy / hy); /* <= 0 inside the view */
+  float k = out <= 0 ? 1.0f : out >= 0.5f ? 0.0f : 1.0f - out * 2.0f;
+  float s = fminf(1.0f, g->cam.shake + amount * k);
+  if (s > g->cam.shake) g->cam.shake = s;
 }
 
 static void camera_step(game *g, float dt) {
@@ -192,8 +213,10 @@ static void camera_step(game *g, float dt) {
         break;
       }
   }
-  if (n == 0) return;
   camera_rig *c = &g->cam;
+  c->px = c->x, c->py = c->y, c->pz = c->z;
+  if (c->shake > 0) c->shake = c->shake > dt * 2.5f ? c->shake - dt * 2.5f : 0;
+  if (n == 0) return;
   float spanx = maxx - minx, spany = maxy - miny;
   c->tx = (minx + maxx) * 0.5f;
   c->ty = (miny + maxy) * 0.5f + 2.2f;
@@ -205,7 +228,6 @@ static void camera_step(game *g, float dt) {
   c->x += (c->tx - c->x) * k;
   c->y += (c->ty - c->y) * k * 0.8f;
   c->z += (c->tz - c->z) * k * 0.7f;
-  if (c->shake > 0) c->shake = c->shake > dt * 2 ? c->shake - dt * 2 : 0;
 }
 
 void sim_step(game *g, const input_state in[MAX_PLAYERS], float dt) {
@@ -215,6 +237,7 @@ void sim_step(game *g, const input_state in[MAX_PLAYERS], float dt) {
   if (g->hit_flash > 0) g->hit_flash--;
   if (g->hitstop > 0) { /* hit-stop: the world stands still for a few ticks so a hit lands with weight */
     g->hitstop--;
+    g->cam.px = g->cam.x, g->cam.py = g->cam.y, g->cam.pz = g->cam.z; /* the view holds still with the world */
     for (int i = 0; i < g->nplayers; i++) {
       g->p[i].pf.body.prev_position = g->p[i].pf.body.position;
       if (in[i].jump_pressed) g->p[i].pf.buffer = g->p[i].pf.def.jump_buffer; /* a press during the freeze still counts */
@@ -370,7 +393,8 @@ void sim_step(game *g, const input_state in[MAX_PLAYERS], float dt) {
         g->hitstop = e->hp <= 0 ? 6 : 4;
         g->hitstops++;
         g->hit_flash = 5;
-        if (e->kind == 2) g->boss_hp = e->hp, g->cam.shake = 0.5f;
+        if (e->kind == 2) g->boss_hp = e->hp, sim_shake(g, e->x, e->y + 1.0f, e->hp <= 0 ? 0.8f : 0.5f);
+        else if (e->hp <= 0) sim_shake(g, e->x, e->y + 0.5f, 0.25f); /* the blast of a small enemy */
         if (e->hp <= 0) {
           e->alive = false;
           g->kills++;
@@ -457,8 +481,8 @@ bool sim_warp(game *g, int flag) {
     p->off_screen = 0;
     n++;
   }
-  g->cam.x = g->cam.tx = (float)L->checks[flag].x;
-  g->cam.y = g->cam.ty = (float)L->checks[flag].y + 3;
+  g->cam.x = g->cam.tx = g->cam.px = (float)L->checks[flag].x;
+  g->cam.y = g->cam.ty = g->cam.py = (float)L->checks[flag].y + 3;
   g->events |= EV_CHECK;
   return true;
 }
