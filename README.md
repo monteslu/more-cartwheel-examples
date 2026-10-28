@@ -38,7 +38,7 @@ controls).
 
 ### brawler
 
-![brawler: a four-player brawl on the docks](docs/screenshots/brawler.jpg)
+![brawler: three players in an eleven-hit combo in the alley](docs/screenshots/brawler.jpg)
 
 A side-scrolling street brawler for one to four players on one shared
 screen. Four stages (an alley, the docks, an arcade and a roof), a crowd that
@@ -50,7 +50,7 @@ has the full controls).
 
 ### coopplatformer
 
-![coopplatformer: two players crossing the meadow](docs/screenshots/coopplatformer.jpg)
+![coopplatformer: two players jumping through the meadow](docs/screenshots/coopplatformer.jpg)
 
 A co-op side-scrolling platformer for one to four players on one shared
 screen. The camera pulls back to keep everyone in view, and anyone left behind
@@ -63,7 +63,7 @@ full controls).
 
 ### fighter
 
-![fighter: two fighters trading blows on a stage](docs/screenshots/fighter.jpg)
+![fighter: Vex lands a kick on Bolt on the rooftop stage](docs/screenshots/fighter.jpg)
 
 A one-on-one fighting game: 2D rules, 3D look. Two players, or one against
 the computer. Four fighters, three stages, special moves on stick motions,
@@ -87,7 +87,7 @@ controls and the power-up list).
 
 ### partypack
 
-![partypack: four players in a mini-game](docs/screenshots/partypack.jpg)
+![partypack: four CPUs racing Hurdle Dash](docs/screenshots/partypack.jpg)
 
 A party game for one to four players on one shared screen; CPU players fill
 the empty seats. A board tournament of four, six or eight rounds over eleven

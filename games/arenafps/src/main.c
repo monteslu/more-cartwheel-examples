@@ -1343,7 +1343,7 @@ static void view_hook(int view, void *u);
 #define SOAK_N 48
 static int32_t soak_heap_kb[SOAK_N], soak_matches;
 static void soak_note(void) {
-#if defined(ARENA_AUTOPILOT) && defined(__GLIBC__)
+#if defined(ARENA_AUTOPILOT) && defined(__GLIBC__) && (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 33)) /* mallinfo2: glibc 2.33; the release sysroot is older */
   struct mallinfo2 mi = mallinfo2();
   if (soak_matches < SOAK_N) soak_heap_kb[soak_matches] = (int32_t)((mi.uordblks + mi.hblkhd) / 1024);
 #endif
