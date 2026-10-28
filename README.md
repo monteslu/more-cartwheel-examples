@@ -74,7 +74,7 @@ full controls and the move notation).
 
 ### hordeshooter
 
-![hordeshooter: two players holding the yard as the first wave closes in](docs/screenshots/hordeshooter.jpg)
+![hordeshooter: the second wave pours across the yard as a blast goes off between the players](docs/screenshots/hordeshooter.jpg)
 
 One to four players hold a walled yard against a horde that never stops
 coming, on one shared camera that zooms out to keep everyone in view. Gems
