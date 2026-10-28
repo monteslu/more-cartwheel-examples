@@ -94,6 +94,7 @@ static float g_pos_dbg[2], g_cam_dbg[3], g_ppos_dbg[MAX_PLAYERS * 2];
  * shake (sim_shake) count in g.shake_frames instead of as motion: they are meant to move */
 static float g_view_dbg[4], g_camjit_dbg[4];
 static int g_camgate_dbg[4], g_shake_frames_dbg;
+static int g_scenery_dbg[2]; /* the scenery check on the built world: props seated, props off their ground (world_scenery_check) */
 static struct { float last[3], step[3], ppos[MAX_PLAYERS * 2]; int still, frames; } CS;
 static void camgate_reset(void) {
   memset(&CS, 0, sizeof CS);
@@ -331,6 +332,11 @@ static void build_scene(void) {
   S.nlight_src = 0;
   world_scene_build(g, S.world);
   world_backdrop(g);
+  {
+    float worst_mm;
+    g_scenery_dbg[1] = world_scenery_check(&g->L, &g_scenery_dbg[0], &worst_mm);
+    if (getenv("COOP_SCENERY")) printf("scenery: %d props seated, %d off the ground, worst %.1f mm\n", g_scenery_dbg[0], g_scenery_dbg[1], (double)worst_mm);
+  }
   place_decals(&g->L);
   cw_node wobj = S.world;
   const level *L = &g->L;
@@ -1369,6 +1375,7 @@ static void init(void *user) {
   g_font = cw_ui_font_sans();
   audio_init();
   cw_debug_i32("g.state", &g_state_dbg);
+  cw_debug_field("g.scenery", g_scenery_dbg, CW_DBG_I32, 2);
   cw_debug_i32("g.players", &g_players_dbg);
   cw_debug_i32("g.tick", &G.tick);
   cw_debug_u32("g.abilities", &G.abilities);

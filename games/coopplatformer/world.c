@@ -1,6 +1,7 @@
 /* The level's body and picture: Box2D colliders from the tile grid, and the three.c scene (chunk meshes with
  * generated PBR textures, water, lava, spikes, backdrops). */
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -623,7 +624,9 @@ static void vine(mb *p, float x, float y, float z, int seed, float len) {
     mb_ellip(p, x + (k & 1 ? 0.1f : -0.1f), ly, z, 0.09f, 0.04f, 0.06f, lo, hi, 6, 4);
   }
 }
-static void column_prop(mb *p, float x, float y, float z, float h, int seed, bool broken) {
+/* a column on its plinth; a broken one has a broken top and, when rubble_y is a number (the ground where the rubble lies,
+ * seated on its own), a pile of rubble beside it */
+static void column_prop(mb *p, float x, float y, float z, float h, int seed, bool broken, float rubble_y) {
   float lo[3], hi[3], cap[3];
   rgb(lo, 0.6f, 0.52f, 0.4f), rgb(hi, 0.85f, 0.76f, 0.6f), rgb(cap, 0.9f, 0.82f, 0.66f);
   mb_box(p, x, y + 0.1f, z, 0.55f, 0.3f, 0.55f, lo, cap);
@@ -631,7 +634,7 @@ static void column_prop(mb *p, float x, float y, float z, float h, int seed, boo
   if (!broken) mb_box(p, x, y + 0.4f + h + 0.15f, z, 0.55f, 0.15f, 0.55f, hi, cap);
   else {
     mb_cone(p, x, y + 0.4f + h, z, 0.34f, 0.12f, 0.3f, 0.1f, 0, 7, hi, lo);
-    rock_pile(p, x + 0.8f, y, z + 0.3f, seed, lo, 0.8f);
+    if (!isnan(rubble_y)) rock_pile(p, x + 0.8f, rubble_y, z + 0.3f, seed, lo, 0.8f);
   }
 }
 static void lava_spire(mb *p, mb *g, float x, float y, float z, int seed, float s) {
@@ -738,24 +741,32 @@ static void scatter(const level *L, int x0, int x1, mb *prop, mb *glow) {
       int seed = x * 131 + y * 17;
       float r = hh(x, y, 100);
       if (floor_ && t != T_CRACK) {
+        /* each prop is seated by its contact footprint (fg_seat): half extents along x and z, scaled with the prop */
+        float px, pz, s;
+#define SEAT(X, Z, RX, RZ) (px = (X), pz = (Z), fg_seat(L, &px, fy, &pz, (RX), (RZ), fx))
         if (bi == BIOME_MEADOW) {
-          if (r < 0.55f) grass_tuft(prop, fx + hh(x, y, 101), fy, (r < 0.3f ? 1.0f : -1.0f) * (0.45f + 0.9f * hh(x, y, 102)), seed, 1.0f);
-          if (r < 0.2f) grass_tuft(prop, fx + hh(x, y, 103), fy, 0.7f + 0.6f * hh(x, y, 104), seed + 1, 0.8f);
-          if (r > 0.82f && r < 0.93f) flower(prop, glow, fx + hh(x, y, 105), fy, (hh(x, y, 106) > 0.5f ? 1.0f : -1.0f) * (0.6f + 0.7f * hh(x, y, 107)), seed);
-          if (r > 0.93f && r < 0.965f) rock_pile(prop, fx + 0.5f, fy, -0.9f - 0.3f * hh(x, y, 108), seed, STONE[0], 1.0f);
-          if (r > 0.965f && x % 3 == 0) bush(prop, fx + 0.5f, fy, -1.1f, seed, 0.8f + 0.5f * hh(x, y, 109));
+          if (r < 0.55f && SEAT(fx + hh(x, y, 101), (r < 0.3f ? 1.0f : -1.0f) * (0.45f + 0.9f * hh(x, y, 102)), 0.11f, 0.11f)) grass_tuft(prop, px, fy, pz, seed, 1.0f);
+          if (r < 0.2f && SEAT(fx + hh(x, y, 103), 0.7f + 0.6f * hh(x, y, 104), 0.09f, 0.09f)) grass_tuft(prop, px, fy, pz, seed + 1, 0.8f);
+          if (r > 0.82f && r < 0.93f && SEAT(fx + hh(x, y, 105), (hh(x, y, 106) > 0.5f ? 1.0f : -1.0f) * (0.6f + 0.7f * hh(x, y, 107)), 0.13f, 0.13f)) flower(prop, glow, px, fy, pz, seed);
+          if (r > 0.93f && r < 0.965f && SEAT(fx + 0.5f, -0.9f - 0.3f * hh(x, y, 108), 0.62f, 0.5f)) rock_pile(prop, px, fy, pz, seed, STONE[0], 1.0f);
+          s = 0.8f + 0.5f * hh(x, y, 109);
+          if (r > 0.965f && x % 3 == 0 && SEAT(fx + 0.5f, -1.1f, 0.91f * s, 0.15f + 0.34f * s)) bush(prop, px, fy, pz, seed, s);
         } else if (bi == BIOME_CAVES) {
-          if (r < 0.1f) mushroom(prop, glow, fx + hh(x, y, 110), fy, (hh(x, y, 111) > 0.5f ? 1.0f : -1.0f) * (0.7f + 0.6f * hh(x, y, 112)), seed, 0.7f + 0.8f * hh(x, y, 113));
-          if (r > 0.1f && r < 0.2f) crystal_cluster(glow, prop, fx + 0.5f, fy, -0.9f - 0.4f * hh(x, y, 114), seed, 0.6f + 0.8f * hh(x, y, 115), x / 40, false);
-          if (r > 0.2f && r < 0.35f) grass_tuft(prop, fx + hh(x, y, 116), fy, -0.9f - 0.4f * hh(x, y, 117), seed, 0.6f);
+          s = 0.7f + 0.8f * hh(x, y, 113);
+          if (r < 0.1f && SEAT(fx + hh(x, y, 110), (hh(x, y, 111) > 0.5f ? 1.0f : -1.0f) * (0.7f + 0.6f * hh(x, y, 112)), 0.1f * s, 0.1f * s)) mushroom(prop, glow, px, fy, pz, seed, s);
+          s = 0.6f + 0.8f * hh(x, y, 115);
+          if (r > 0.1f && r < 0.2f && SEAT(fx + 0.5f, -0.9f - 0.4f * hh(x, y, 114), 0.5f * s, 0.25f + 0.2f * s)) crystal_cluster(glow, prop, px, fy, pz, seed, s, x / 40, false);
+          if (r > 0.2f && r < 0.35f && SEAT(fx + hh(x, y, 116), -0.9f - 0.4f * hh(x, y, 117), 0.07f, 0.07f)) grass_tuft(prop, px, fy, pz, seed, 0.6f);
         } else if (bi == BIOME_RUINS) {
-          if (r < 0.1f && x % 2 == 0) rock_pile(prop, fx + 0.5f, fy, (hh(x, y, 118) > 0.5f ? 1 : -1) * 0.9f, seed, STONE[2], 0.8f);
-          if (r > 0.1f && r < 0.3f) grass_tuft(prop, fx + hh(x, y, 119), fy, (hh(x, y, 120) > 0.5f ? 1.0f : -1.0f) * (0.5f + 0.9f * hh(x, y, 121)), seed, 0.9f);
-          if (r > 0.3f && r < 0.36f) flower(prop, glow, fx + hh(x, y, 122), fy, -0.8f, seed);
+          if (r < 0.1f && x % 2 == 0 && SEAT(fx + 0.5f, (hh(x, y, 118) > 0.5f ? 1 : -1) * 0.9f, 0.5f, 0.44f)) rock_pile(prop, px, fy, pz, seed, STONE[2], 0.8f);
+          if (r > 0.1f && r < 0.3f && SEAT(fx + hh(x, y, 119), (hh(x, y, 120) > 0.5f ? 1.0f : -1.0f) * (0.5f + 0.9f * hh(x, y, 121)), 0.1f, 0.1f)) grass_tuft(prop, px, fy, pz, seed, 0.9f);
+          if (r > 0.3f && r < 0.36f && SEAT(fx + hh(x, y, 122), -0.8f, 0.13f, 0.13f)) flower(prop, glow, px, fy, pz, seed);
         } else {
-          if (r < 0.07f) lava_spire(prop, glow, fx + 0.5f, fy, -0.9f - 0.5f * hh(x, y, 123), seed, 0.8f + 0.9f * hh(x, y, 124));
-          if (r > 0.07f && r < 0.2f) rock_pile(prop, fx + hh(x, y, 125), fy, (hh(x, y, 126) > 0.5f ? 1 : -1) * (0.7f + 0.6f * hh(x, y, 127)), seed, STONE[3], 0.9f);
+          s = 0.8f + 0.9f * hh(x, y, 124);
+          if (r < 0.07f && SEAT(fx + 0.5f, -0.9f - 0.5f * hh(x, y, 123), 0.34f * s, 0.34f * s + 0.05f)) lava_spire(prop, glow, px, fy, pz, seed, s);
+          if (r > 0.07f && r < 0.2f && SEAT(fx + hh(x, y, 125), (hh(x, y, 126) > 0.5f ? 1 : -1) * (0.7f + 0.6f * hh(x, y, 127)), 0.56f, 0.47f)) rock_pile(prop, px, fy, pz, seed, STONE[3], 0.9f);
         }
+#undef SEAT
       }
       if (ceil_ && !floor_) {
         float cy = (float)y; /* the underside of the tile */
@@ -828,6 +839,7 @@ void world_scene_build(game *g, cw_node root) {
   g_root = root;
   g_nsurf = 0;
   g_nwaters = g_nlavas = 0;
+  g_nplaced = 0;
   g_mat[MT_ROCK] = pbr(gen_rock, 3.0f, 1.0f, false, 0);
   g_mat[MT_GRASS] = pbr(gen_grass, 2.0f, 1.0f, false, 0);
   g_mat[MT_CAVE] = pbr(gen_cave, 3.0f, 1.0f, true, 0.7f);
@@ -1202,6 +1214,75 @@ static t3_mesh *strip(float z, float step, const float *topc, const float *botc,
  * toward the horizon by distance (aerial perspective; the far layers are not washed out, only cooler and lighter), plus
  * snow on the high meadow peaks and darker gullies. */
 static const float LAYER_DEPTH[4] = { 44, 30, 16, 9 };
+/* each region's layer grid as drawn (vertex heights; x = x0 + i * step, z = zc + (-1 + 2 j / (nz - 1)) * dz / 2), kept
+ * so scenery is seated on the very surface the camera sees */
+typedef struct rgrid { float x0, step, zc, dz; int nx, nz; float *y; } rgrid;
+static rgrid g_rg[BIOMES][4];
+static float rg_vy(const rgrid *g, int i, int j) { return g->y[j * g->nx + i]; }
+/* the height of one region's layer at (x, z), on the two triangles of its cell as the index buffer splits it */
+static bool rg_height(const rgrid *g, float x, float z, float *out) {
+  if (!g->y) return false;
+  float fi = (x - g->x0) / g->step, fj = ((z - g->zc) / (g->dz * 0.5f) + 1.0f) * 0.5f * (float)(g->nz - 1);
+  if (fi < 0 || fj < 0 || fi > (float)(g->nx - 1) || fj > (float)(g->nz - 1)) return false;
+  int i = (int)fi, j = (int)fj;
+  if (i > g->nx - 2) i = g->nx - 2;
+  if (j > g->nz - 2) j = g->nz - 2;
+  float u = fi - (float)i, v = fj - (float)j;
+  float a = rg_vy(g, i, j), b = rg_vy(g, i + 1, j), c = rg_vy(g, i, j + 1), d = rg_vy(g, i + 1, j + 1);
+  *out = u + v <= 1.0f ? a + u * (b - a) + v * (c - a) : d + (1.0f - u) * (c - d) + (1.0f - v) * (b - d);
+  return true;
+}
+/* the visible ground of backdrop layer l at (x, z): the highest of the regions' surfaces there (they overlap where
+ * one region's ground sinks and the next one's rises) */
+static bool layer_ground(int l, float x, float z, float *out) {
+  bool any = false;
+  float best = -1e9f;
+  for (int b = 0; b < BIOMES; b++) {
+    float h;
+    if (rg_height(&g_rg[b][l], x, z, &h) && h > best) best = h, any = true;
+  }
+  *out = best;
+  return any;
+}
+/* seat a backdrop prop of half extents (rx, rz) on layer l: the ground under its footprint (centre and a ring of
+ * points) must exist everywhere and slope no more than max_slope; the prop stands at the lowest point so no side
+ * of its base hangs in the air (the uphill side sinks in) */
+enum { SEAT_RING = 64 };
+static bool bd_seat(int l, float x, float z, float rx, float rz, float max_slope, float *y) {
+  float lo, hi, h;
+  if (!layer_ground(l, x, z, &h)) return false;
+  lo = hi = h;
+  float ring[SEAT_RING];
+  for (int r = 0; r < 3; r++) /* the base's rim and rings at 2/3 and 1/3 of it */
+    for (int k = 0; k < SEAT_RING; k++) {
+      float a = 6.2831853f * (float)k / SEAT_RING, f = 1.0f - (float)r / 3.0f;
+      if (!layer_ground(l, x + cosf(a) * rx * f, z + sinf(a) * rz * f, &h)) return false;
+      if (!r) ring[k] = h;
+      lo = fminf(lo, h), hi = fmaxf(hi, h);
+    }
+  /* gentle under every diameter, and no step or seam anywhere under the base */
+  for (int k = 0; k < SEAT_RING / 2; k++) {
+    float a = 6.2831853f * (float)k / SEAT_RING, span = 2.0f * sqrtf(cosf(a) * cosf(a) * rx * rx + sinf(a) * sinf(a) * rz * rz);
+    if (fabsf(ring[k] - ring[k + SEAT_RING / 2]) > max_slope * span) return false;
+  }
+  if (hi - lo > max_slope * 2.0f * fmaxf(rx, rz)) return false;
+  *y = lo;
+  place_rec(l, x, lo, z, rx, rz);
+  return true;
+}
+/* the first spot in the stretch [x, x + room) and across four depths around z0 (spread zs) where bd_seat succeeds */
+static bool bd_find(float x, float room, float z0, float zs, float rx, float rz, float max_slope, float *ox, float *oy, float *oz) {
+  static const float ZT[4] = { 0.0f, 0.35f, 0.7f, -0.35f };
+  for (float dx = 0; dx < room; dx += 0.5f)
+    for (int k = 0; k < 4; k++) {
+      float z = z0 + ZT[k] * zs;
+      if (bd_seat(3, x + dx, z, rx, rz, max_slope, oy)) {
+        *ox = x + dx, *oz = z;
+        return true;
+      }
+    }
+  return false;
+}
 static const float RICH[BIOMES][4][3] = {
   { { 0.36f, 0.45f, 0.62f }, { 0.22f, 0.4f, 0.33f }, { 0.13f, 0.34f, 0.15f }, { 0.2f, 0.42f, 0.13f } },
   { { 0.1f, 0.12f, 0.22f }, { 0.08f, 0.1f, 0.18f }, { 0.07f, 0.08f, 0.15f }, { 0.08f, 0.09f, 0.14f } },
@@ -1280,6 +1361,12 @@ static void ridge3d(int b, int l) {
   t3_geometry_set_attribute(g, T3_ATTR_UV, at), t3_release(at);
   at = t3_attribute_new(T3_UINT32, idx, k, 1);
   t3_geometry_set_index(g, at), t3_release(at);
+  {
+    rgrid *rg = &g_rg[b][l];
+    free(rg->y);
+    *rg = (rgrid){ x0, step, zc, dz, nx, nz, malloc(sizeof(float) * (size_t)(nx * nz)) };
+    for (int v = 0; v < nx * nz; v++) rg->y[v] = pos[v * 3 + 1];
+  }
   free(pos), free(nor), free(col), free(uv), free(idx);
   /* the near layers wear the terrain textures (grass in the meadow, stone elsewhere); the far ones a plain matte */
   t3_material *m = l >= 2 ? (b == BIOME_MEADOW && l == 3 ? g_mat[MT_GRASS] : b == BIOME_CAVES ? g_mat[MT_CAVE] : g_mat[MT_ROCK]) : g_ridge_m;
@@ -1454,25 +1541,39 @@ void world_backdrop(game *g) {
     free(pos), free(nor), free(col), free(idx);
     add_mesh(gg, basic_vcol(true, false, 1), 0, 0, 0, false), t3_release(gg);
   }
-  /* the near scenery that is lit and shadowed: trees behind the meadow, colonnades behind the ruins */
+  /* the near scenery that is lit and shadowed: trees behind the meadow, colonnades behind the ruins, spires before the
+   * volcano, crystals in the caves. Each is seated on layer 3's ground (bd_seat) somewhere in its stretch [x, x + room):
+   * the first spot, along x and then across a few depths, whose ground is there under the whole base and gentle
+   * enough; a stretch with none (a cliff, a step, the edge of the layer) stays empty. */
   {
     mb back = { 0 }, backglow = { 0 };
+    bool float_bug = getenv("COOP_FLOAT_BUG") != NULL; /* the scenery check's must-fail control (native only) */
+    float px, py, pz;
+#define FIND(X, ROOM, Z0, ZS, RX, RZ, SLOPE) bd_find((float)(X), (float)(ROOM), (Z0), (ZS), (RX), (RZ), (SLOPE), &px, &py, &pz)
     for (int x = 4; x < (int)g_bx1[0] + 10 && x < WORLD_W; x += 4 + (int)(hh(x, 1, 170) * 4)) {
-      float top = profile(BIOME_MEADOW, 3, (float)x);
       if (bmask(0, (float)x) < 0.5f) continue;
-      tree(&back, (float)x, top - 0.6f, -8.0f - 3.0f * hh(x, 2, 170), x, 0.9f + 0.6f * hh(x, 3, 170));
+      float s = 0.9f + 0.6f * hh(x, 3, 170);
+      if (!FIND(x, 4, -8.0f - 3.0f * hh(x, 2, 170), 3.0f, 0.34f * s, 0.34f * s, 0.6f)) continue;
+      if (float_bug) py += 0.5f, g_placed[g_nplaced - 1].y = py, float_bug = false;
+      tree(&back, px, py, pz, x, s);
     }
     for (int x = (int)g_bx0[2]; x < (int)g_bx1[2]; x += 7 + (int)(hh(x, 1, 171) * 5)) {
-      float top = smoothg((float)x);
-      column_prop(&back, (float)x, top - 0.8f, -5.5f - 2.5f * hh(x, 2, 171), 3.5f + 4.0f * hh(x, 3, 171), x, hh(x, 4, 171) > 0.45f);
+      bool broken = hh(x, 4, 171) > 0.45f;
+      if (!FIND(x, 7, -8.0f - 2.0f * hh(x, 2, 171), 2.5f, 0.6f, 0.6f, 0.35f)) continue;
+      float ry = NAN, cy = py;
+      if (broken && bd_seat(3, px + 0.8f, pz + 0.3f, 0.5f, 0.45f, 0.6f, &ry) && fabsf(ry - cy) > 0.6f) ry = NAN, g_nplaced--; /* rubble only beside its own column */
+      column_prop(&back, px, cy, pz, 3.5f + 4.0f * hh(x, 3, 171), x, broken, ry);
     }
     for (int x = (int)g_bx0[3]; x < (int)g_bx1[3] - 20; x += 6 + (int)(hh(x, 1, 172) * 4)) {
-      float top = profile(BIOME_VOLCANO, 3, (float)x);
-      lava_spire(&back, &backglow, (float)x, top - 0.5f, -6.0f - 3.0f * hh(x, 2, 172), x, 1.6f + hh(x, 3, 172));
+      float s = 1.6f + hh(x, 3, 172);
+      /* a spire of rock juts from the scree: steeper ground is fine, its uphill side sinks in */
+      if (FIND(x, 6, -7.5f - 2.5f * hh(x, 2, 172), 2.5f, 0.34f * s, 0.34f * s + 0.05f, 0.8f)) lava_spire(&back, &backglow, px, py, pz, x, s);
     }
     for (int x = (int)g_bx0[1]; x < (int)g_bx1[1]; x += 5 + (int)(hh(x, 1, 173) * 4)) {
-      crystal_cluster(&backglow, &back, (float)x, smoothg((float)x) + 0.5f, -4.0f - 2.0f * hh(x, 2, 173), x, 1.4f + hh(x, 3, 173), x / 25, false);
+      float s = 1.4f + hh(x, 3, 173);
+      if (FIND(x, 5, -8.0f - 2.0f * hh(x, 2, 173), 2.5f, 0.5f * s, 0.25f + 0.2f * s, 0.6f)) crystal_cluster(&backglow, &back, px, py, pz, x, s, x / 25, false);
     }
+#undef FIND
     t3_geometry *gb = mb_done(&back);
     if (gb) add_mesh(gb, g_mat[MT_PROP], 0, 0, 0, true), t3_release(gb);
     gb = mb_done(&backglow);
@@ -1499,4 +1600,80 @@ void world_update_backdrop(float time) {
   for (int i = 0; i < g_ncloud; i++)
     if (g_clouds[i]) g_clouds[i]->base.position.x = g_cloud_x[i] + 3.0f * time * (0.4f + 0.1f * (float)(i % 4));
   if (g_sun) g_sun->base.scale = (t3_vec3){ 1.0f + 0.02f * sinf(time * 0.7f), 1.0f + 0.02f * sinf(time * 0.7f), 1 };
+}
+
+/* ── the scenery check: every seated prop measured against the ground as drawn. Backdrop layers: a ray straight down
+ * through the triangles of every region's layer mesh (highest hit wins); tiles: the first open tile top at or under
+ * the base. A footprint point with no ground under it, or a base more than SCENERY_TOL above or below the lowest
+ * ground under the footprint, counts as one bad prop. ── */
+#define SCENERY_TOL 0.03f
+static bool ray_layer(int l, float x, float z, float *out) {
+  bool any = false;
+  float best = -1e9f;
+  for (int b = 0; b < BIOMES; b++) {
+    const rgrid *g = &g_rg[b][l];
+    if (!g->y) continue;
+    int ic = (int)floorf((x - g->x0) / g->step);
+    for (int i = ic - 1; i <= ic + 1; i++) {
+      if (i < 0 || i + 1 >= g->nx) continue;
+      for (int j = 0; j + 1 < g->nz; j++) {
+        float X[4], Z[4], Y[4]; /* a, b (i + 1), c (j + 1), d */
+        for (int q = 0; q < 4; q++) {
+          int ii = i + (q & 1), jj = j + (q >> 1);
+          X[q] = g->x0 + (float)ii * g->step;
+          Z[q] = g->zc + (-1.0f + 2.0f * (float)jj / (float)(g->nz - 1)) * g->dz * 0.5f;
+          Y[q] = g->y[jj * g->nx + ii];
+        }
+        static const int TRI[2][3] = { { 0, 2, 1 }, { 1, 2, 3 } };
+        for (int t = 0; t < 2; t++) {
+          int p0 = TRI[t][0], p1 = TRI[t][1], p2 = TRI[t][2];
+          float d = (Z[p1] - Z[p2]) * (X[p0] - X[p2]) + (X[p2] - X[p1]) * (Z[p0] - Z[p2]);
+          if (fabsf(d) < 1e-9f) continue;
+          float w0 = ((Z[p1] - Z[p2]) * (x - X[p2]) + (X[p2] - X[p1]) * (z - Z[p2])) / d;
+          float w1 = ((Z[p2] - Z[p0]) * (x - X[p2]) + (X[p0] - X[p2]) * (z - Z[p2])) / d;
+          float w2 = 1.0f - w0 - w1;
+          if (w0 < -1e-5f || w1 < -1e-5f || w2 < -1e-5f) continue;
+          float h = w0 * Y[p0] + w1 * Y[p1] + w2 * Y[p2];
+          if (h > best) best = h, any = true;
+        }
+      }
+    }
+  }
+  *out = best;
+  return any;
+}
+static bool ray_tiles(const level *L, float x, float z, float y, float *out) {
+  if (fabsf(z) > DEPTH_FRONT) return false;
+  int c = (int)floorf(x);
+  if (c < 0 || c >= WORLD_W) return false;
+  for (int ty = (int)floorf(y + 0.5f) - 1; ty >= 0 && ty >= (int)y - 3; ty--)
+    if (world_solid(L, c, ty) && !world_solid(L, c, ty + 1)) {
+      *out = (float)(ty + 1);
+      return true;
+    }
+  return false;
+}
+int world_scenery_check(const level *L, int *checked, float *worst_mm) {
+  int bad = 0;
+  float worst = 0;
+  for (int n = 0; n < g_nplaced; n++) {
+    const placed *p = &g_placed[n];
+    float lo = 1e9f;
+    bool miss = false;
+    for (int k = -1; k < 64 * 3 && !miss; k++) { /* the centre, then 64 points on the rim and on rings at 2/3 and 1/3 of it */
+      float a = 6.2831853f * (float)(k % 64) / 64.0f, f = 1.0f - (float)(k / 64) / 3.0f, px = k < 0 ? p->x : p->x + cosf(a) * p->rx * f, pz = k < 0 ? p->z : p->z + sinf(a) * p->rz * f, h;
+      bool hit = p->layer < 0 ? ray_tiles(L, px, pz, p->y, &h) : ray_layer(p->layer, px, pz, &h);
+      if (!hit) miss = true;
+      else lo = fminf(lo, h);
+    }
+    float off = miss ? 1e3f : fabsf(p->y - lo);
+    if (off > worst) worst = off;
+    if (off > SCENERY_TOL) {
+      bad++;
+      if (getenv("COOP_SCENERY")) printf("scenery: off the ground layer %d at %.2f,%.2f,%.2f by %.3f%s\n", p->layer, p->x, p->y, p->z, miss ? 0.0 : (double)(p->y - lo), miss ? " (no ground under the footprint)" : "");
+    }
+  }
+  *checked = g_nplaced;
+  *worst_mm = worst * 1000.0f;
+  return bad;
 }

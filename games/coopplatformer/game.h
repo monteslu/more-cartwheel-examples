@@ -130,6 +130,7 @@ void world_update_backdrop(float time);
 int world_water_spans(float out[][4], int cap); /* x0, x1, bottom, surface */
 int world_lava_spans(float out[][4], int cap);
 void world_backdrop(game *g);
+int world_scenery_check(const level *L, int *checked, float *worst_mm); /* seated props off their ground (0 = none) */
 bool world_solid(const level *L, int x, int y);
 bool world_break_crack(game *g, int x, int y);
 void world_hide_crack(int x, int y);

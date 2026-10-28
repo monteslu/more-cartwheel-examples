@@ -24,7 +24,8 @@
       "g.players",
       "g.ppos",
       "g.camgate",
-      "g.shake_frames"
+      "g.shake_frames",
+      "g.scenery"
     ],
     "expect": {
       "g.tick": 400,
@@ -42,7 +43,11 @@
         398,
         0
       ],
-      "g.shake_frames": 0
+      "g.shake_frames": 0,
+      "g.scenery": [
+        129,
+        0
+      ]
     },
     "note": "two bots on the real game flow (title skipped): the air jump picked up under its arch, 8 coins, two stomps (hit-stops), cross-host state and picture"
   },
@@ -71,7 +76,8 @@
       "g.players",
       "g.ppos",
       "g.camgate",
-      "g.shake_frames"
+      "g.shake_frames",
+      "g.scenery"
     ],
     "expect": {
       "g.tick": 400,
@@ -89,9 +95,38 @@
         398,
         0
       ],
-      "g.shake_frames": 0
+      "g.shake_frames": 0,
+      "g.scenery": [
+        129,
+        0
+      ]
     },
     "note": "four players on one camera: cross-host state"
+  },
+  {
+    "name": "coopplatformer-scenery",
+    "app": "coopplatformer_auto",
+    "webgpu": {
+      "vsGl": 0.005,
+      "maxArea": 0.005,
+      "note": "the picture at frame 60 at the start of the meadow, GL vs WebGPU within the same bounds as the 2p gate"
+    },
+    "frames": 60,
+    "fields": [
+      "g.tick",
+      "g.scenery"
+    ],
+    "expect": {
+      "g.tick": 60,
+      "g.scenery": [
+        129,
+        0
+      ]
+    },
+    "controlEnv": {
+      "COOP_FLOAT_BUG": "1"
+    },
+    "note": "no floating scenery: every prop that stands on the ground (grass, flowers, rocks, bushes, mushrooms, crystals and spires on the tiles; trees, columns and their rubble, spires and crystals on the lit 3D backdrop ground) is measured against the ground as drawn (a ray down through the backdrop mesh triangles, the tile tops) at its centre and 192 points of its base: g.scenery is [props seated, props whose base is more than 3 cm above or below the lowest ground under it or that overhang a ledge or the edge of the backdrop]. The control lifts the first meadow tree 0.5 m (COOP_FLOAT_BUG, native): its g.scenery must differ."
   },
   {
     "name": "coopplatformer-boss",
