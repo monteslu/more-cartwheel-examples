@@ -1,0 +1,149 @@
+[scene format=1]
+
+[node name="Coast" type="Node3D"]
+
+[node name="Environment" parent="." type="WorldEnvironment"]
+ambient_energy = 0.10
+hemi_energy = 0.30
+sky_color = color(0.45, 0.62, 0.9, 1)
+ground_color = color(0.30, 0.23, 0.15, 1)
+
+[node name="Post" parent="." type="PostProcess"]
+hdr = true
+tonemap = AGX
+exposure = 1.15
+bloom = true
+bloom_intensity = 0.045
+bloom_threshold = 1.2
+ssao = false
+ssao_radius = 2.5
+ssao_intensity = 0.7
+taa = true
+taa_feedback = 0.82
+taa_samples = 8
+aa = SMAA
+vignette = true
+vignette_intensity = 0.14
+
+[node name="Sky" parent="." type="ProceduralSky"]
+sun = "../Sun"
+time_of_day = 13.2
+latitude = 33
+declination = 12
+north = 110
+sun_energy = 4
+resolution = 128
+mie = 0.65
+
+[node name="Sun" parent="." type="DirectionalLight3D"]
+fog_energy = 0.6
+shadow = true
+shadow_size = 1024
+shadow_cascades = 3
+shadow_distance = 1100
+shadow_far = 2500
+shadow_bias = -0.0008
+shadow_normal_bias = 0.8
+
+[node name="Haze" parent="." type="HeightFog"]
+density = 0.00008
+height_falloff = 0.0018
+base_height = 0
+sky_distance = 0
+sun_scatter = 0.35
+sun_g = 0.35
+volumetric = true
+volumetric_distance = 6500
+volumetric_detail_spread = 2.3
+volumetric_temporal = 0
+volumetric_ambient = 0.6
+
+[node name="Camera" parent="." type="Camera3D"]
+position = vec3(-50, 132, 535)
+fov = 64
+near = 8
+far = 1000000
+
+[node name="Land" parent="." type="Terrain3D"]
+position = vec3(0, 0, 0)
+size_x = 1024
+size_z = 1024
+vertex_spacing = 8
+min_height = -100
+max_height = 1800
+grid_quads = 32
+far_distance = 6500
+visible_range = 9000
+physics = false
+cast_shadow = false
+
+[node name="Ocean" parent="." type="Water3D"]
+position = vec3(1000, 0, 0)
+size = vec2(24000, 24000)
+subdivisions = 400
+horizon_distance = 1200000
+wave_count = 3
+wave0 = vec4(25, 650, 1.2, 0.25)
+wave1 = vec4(75, 380, 0.55, 0.2)
+wave2 = vec4(-30, 240, 0.22, 0.15)
+normal_scale = 0.04
+detail = 0.3
+color = color(0.48, 0.76, 0.8, 1)
+deep_color = color(0.012, 0.055, 0.08, 1)
+roughness = 0.22
+reflection = true
+refraction = false
+resolution_scale = 0.35
+
+[node name="Aircraft" parent="." type="Node3D"]
+
+[node name="ExhaustL" parent="Aircraft" type="GPUParticles3D"]
+position = vec3(-0.58, -0.5, 6.8)
+amount = 192
+lifetime = 0.055
+local_coords = true
+direction = vec3(0, 0, 1)
+spread = 1
+speed_min = 20
+speed_max = 28
+gravity = vec3(0, 0, 0)
+emission_shape = SPHERE
+emission_radius = 0.12
+size = 0.55
+size_random = 0.03
+size_curve = "0 0.9, 0.15 1, 0.7 0.5, 1 0"
+color = color(0.48, 0.19, 0.85, 0.25)
+energy = 4
+blend = ADD
+
+[node name="ExhaustR" parent="Aircraft" type="GPUParticles3D"]
+position = vec3(0.58, -0.5, 6.8)
+amount = 192
+lifetime = 0.055
+local_coords = true
+direction = vec3(0, 0, 1)
+spread = 1
+speed_min = 20
+speed_max = 28
+gravity = vec3(0, 0, 0)
+emission_shape = SPHERE
+emission_radius = 0.12
+size = 0.55
+size_random = 0.03
+size_curve = "0 0.9, 0.15 1, 0.7 0.5, 1 0"
+color = color(0.48, 0.19, 0.85, 0.25)
+energy = 4
+blend = ADD
+
+[node name="Rocks" parent="Land" type="TerrainScatter3D"]
+shape = ROCK
+layers = 2
+density = 0.00008
+scale_min = 2
+scale_max = 9
+visible_range = 950
+fade = 200
+lod_distance = 180
+sink = 1
+cast_shadow = true
+seed = 41

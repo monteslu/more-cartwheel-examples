@@ -1,0 +1,35 @@
+[
+  {
+    "name": "tuxracer-bunny-run",
+    "app": "tuxracer",
+    "frames": 430,
+    "input": "tuxracer-bunny-run.json",
+    "controlInput": "tuxracer-bunny-control.json",
+    "maxGt16": 0.05,
+    "fields": [
+      "game.state",
+      "tux.pos",
+      "tux.vel",
+      "tux.speed",
+      "surface.friction",
+      "race.time",
+      "race.herring",
+      "race.finished",
+      "phys.hash",
+      "ticks"
+    ],
+    "expect": {
+      "ticks": 430,
+      "race.finished": 0,
+      "game.state": 6
+    },
+    "hosts": [
+      "native",
+      "romdev"
+    ],
+    "note": "Bunny Hill from the race debug command; the paddle press at frame 10 skips the intro once both hosts are in it: paddle, turns, a jump and a braking turn; the Box3D slide must match on every host.",
+    "startCmds": [
+      "race bunny_hill"
+    ]
+  }
+]

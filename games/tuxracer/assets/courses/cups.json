@@ -1,0 +1,88 @@
+[
+ {
+  "name": "Canadian Cup",
+  "races": [
+   {
+    "dir": "bunny_hill",
+    "name": "Bunny Hill",
+    "description": "Use clever turning to conquer the Bunny Hill.",
+    "herring": [
+     23,
+     23,
+     23,
+     23
+    ],
+    "time": [
+     37,
+     35,
+     32,
+     30
+    ],
+    "score": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "mirrored": false,
+    "conditions": "sunny",
+    "windy": false,
+    "snowing": false
+   },
+   {
+    "dir": "twisty_slope",
+    "name": "Twisty Slope",
+    "description": "Tight twists make grabbing herring difficult.  Hard turns will lead you to victory.",
+    "herring": [
+     24,
+     24,
+     24,
+     24
+    ],
+    "time": [
+     43,
+     40,
+     34,
+     31.5
+    ],
+    "score": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "mirrored": false,
+    "conditions": "sunny",
+    "windy": false,
+    "snowing": false
+   },
+   {
+    "dir": "bumpy_ride",
+    "name": "Bumpy Ride",
+    "description": "This hill has a series of ramps tackle.  Make sure to line yourself up before getting airborne.",
+    "herring": [
+     18,
+     18,
+     18,
+     18
+    ],
+    "time": [
+     35,
+     30,
+     28,
+     27
+    ],
+    "score": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "mirrored": false,
+    "conditions": "sunny",
+    "windy": false,
+    "snowing": false
+   }
+  ]
+ }
+]

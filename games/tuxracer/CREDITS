@@ -1,0 +1,37 @@
+tuxracer: credits and licences
+
+This game is a work-in-progress reimplementation of Tux Racer 0.61 on cartwheel-engine. It is free
+software under the GNU General Public License, version 2 or (at your option) any later version
+(LICENSE in this directory). The rest of this repository is MIT; this game is the exception.
+
+The original game
+  Tux Racer 0.61, Copyright (C) 1999, 2000, 2001 Jasmin F. Patry and Sunspire Studios, GPL v2.
+  https://tuxracer.sourceforge.net/  https://sourceforge.net/projects/tuxracer/
+  Core development team: Patrick "Pog" Gilhuly, Eric "Monster" Hall, Rick Knowles, Vincent Ma,
+  Jasmin Patry, Mark Riddell. Music: Joseph Toscano. Tux Racer is a trademark of Jasmin F. Patry.
+  (assets/credits.txt is the original credits screen, shown in the game.)
+
+What comes from the original (GPL v2), converted by tools/convert.mjs from tuxracer-0.61.tar.gz and
+tuxracer-data_0.61.orig.tar.gz (scripts/fetch-tuxracer.sh fetches them, sha256-pinned):
+  assets/courses/*         the 13 courses: the height, terrain and object rasters, names, par times
+                           (the contributed courses name their authors in each course's course.tcl)
+  assets/model/tux.json    the Tux model (tux.tcl) and the walk-in keyframes (tux_walk.tcl)
+  assets/music/*.it        the Impulse Tracker music by Joseph Toscano
+  assets/sounds/*.wav      the sound effects
+  assets/original/*        the original textures (terrain tiles, sky cubes, items, HUD art)
+The physics constants, the camera and the rules are ported from the original source (phys_sim.c,
+view.c, game_logic_util.c).
+
+Made for this reimplementation (GPL-2.0-or-later with the game):
+  src/*, shaders/*.mjs     the game, its Box3D sliding and its shader parts
+  tools/make-sky.mjs       the mountain ring (from the original sky cubes and a photograph of Mount
+                           Rainier taken from a plane by Luis Montes), the cloud deck, the snow detail texture
+  tools/make-sprig.mjs, tools/make-luts.mjs   the branch sprig texture and the colour grades
+  src/tree_mesh.c, src/item_mesh.c, src/tux_skin.c   the generated conifers, herring, gates and the skinned Tux
+  assets/textures/needles*, bark*, assets/model/trees.bin   needle and bark textures and the birch mesh from
+                           Sky Fighter (games/skyfighter in this repository, tools/extract-trees.mjs)
+
+Fonts (SIL Open Font License 1.1, licence files beside them in assets/fonts).
+
+Engine: cartwheel-engine (MIT), three.c (MIT), Box2D and Box3D (MIT), as shipped with this
+repository's build. The GPL permits linking them.

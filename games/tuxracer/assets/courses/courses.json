@@ -1,0 +1,145 @@
+[
+ {
+  "dir": "frozen_river",
+  "title": "Frozen River",
+  "author": "Unknown",
+  "description": "Keep your speed down to collect herring!",
+  "par_time": 80,
+  "length": 800,
+  "width": 100,
+  "objects": 498,
+  "contrib": false
+ },
+ {
+  "dir": "path_of_daggers",
+  "title": "Path of Daggers",
+  "author": "Jasmin Patry <jfpatry@cgl.uwaterloo.ca>",
+  "description": "Big spikes may prove to be the least of your worries on this course.  Muliple paths allow you to take low or high roads, each with their own challenges.",
+  "par_time": 70,
+  "length": 800,
+  "width": 54,
+  "objects": 452,
+  "contrib": false
+ },
+ {
+  "dir": "bunny_hill",
+  "title": "Bunny Hill",
+  "author": "Unknown",
+  "description": "Use clever turning to conquer the Bunny Hill.",
+  "par_time": 40,
+  "length": 480,
+  "width": 90,
+  "objects": 893,
+  "contrib": false
+ },
+ {
+  "dir": "twisty_slope",
+  "title": "Twisty Slope",
+  "author": "Unknown",
+  "description": "Tight twists make grabbing herring difficult.  Hard turns will lead you to victory.",
+  "par_time": 40,
+  "length": 480,
+  "width": 90,
+  "objects": 705,
+  "contrib": false
+ },
+ {
+  "dir": "bumpy_ride",
+  "title": "Bumpy Ride",
+  "author": "Unknown",
+  "description": "This hill has a series of ramps tackle.  Make sure to line yourself up before getting airborne.",
+  "par_time": 40,
+  "length": 560,
+  "width": 60,
+  "objects": 421,
+  "contrib": false
+ },
+ {
+  "dir": "contrib/downhill_fear",
+  "title": "The Downhill Fear",
+  "author": "Julien Canet <jools@free.fr>",
+  "description": "",
+  "par_time": 120,
+  "length": 1800,
+  "width": 60,
+  "objects": 684,
+  "contrib": true
+ },
+ {
+  "dir": "contrib/ice_canyon",
+  "title": "Ice Canyon",
+  "author": "Ingo Ruhnke <grumbel@gmx.de>",
+  "description": "",
+  "par_time": 120,
+  "length": 400,
+  "width": 200,
+  "objects": 0,
+  "contrib": true
+ },
+ {
+  "dir": "contrib/ingos_speedway",
+  "title": "Ingo's Speedway",
+  "author": "Ingo Ruhnke <grumbel@gmx.de>",
+  "description": "",
+  "par_time": 120,
+  "length": 800,
+  "width": 54,
+  "objects": 421,
+  "contrib": true
+ },
+ {
+  "dir": "contrib/jools_big_mountain",
+  "title": "Jool's Big Mountain",
+  "author": "Julien Canet <jools@free.fr>",
+  "description": "",
+  "par_time": 120,
+  "length": 1200,
+  "width": 60,
+  "objects": 279,
+  "contrib": true
+ },
+ {
+  "dir": "contrib/nebula",
+  "title": "Nebula",
+  "author": "Ingo Ruhnke <grumbel@gmx.de>",
+  "description": "",
+  "par_time": 120,
+  "length": 400,
+  "width": 100,
+  "objects": 52,
+  "contrib": true
+ },
+ {
+  "dir": "contrib/penguins_cant_fly",
+  "title": "Who Says Penguins Can't Fly?",
+  "author": "Bill Scherer <bscherer@bestweb.net>",
+  "description": "",
+  "par_time": 120,
+  "length": 2500,
+  "width": 60,
+  "objects": 135,
+  "contrib": true
+ },
+ {
+  "dir": "contrib/sentinel_towers",
+  "title": "Sentinel Towers",
+  "author": "Steve, Mathieu, Jerome (Flat 6.3, Leeds 2000)",
+  "description": "",
+  "par_time": 120,
+  "length": 900,
+  "width": 80,
+  "objects": 594,
+  "contrib": true
+ },
+ {
+  "dir": "contrib/twin_paths",
+  "title": "Twin Paths",
+  "author": "David Fries dfries@mail.win.org",
+  "description": "",
+  "par_time": 120,
+  "length": 1100,
+  "width": 100,
+  "objects": 251,
+  "contrib": true
+ }
+]

@@ -1,0 +1,16 @@
+width 100
+length 800
+play_width 60
+play_length 785
+start 50 3.5
+angle 28
+samples 129 801
+spacing 1
+min_height -433
+max_height 6
+par_time 80
+objects 498
+friction 0.22 0.9 0.35
+title Frozen River
+author Unknown
+description Keep your speed down to collect herring!

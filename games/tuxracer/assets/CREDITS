@@ -1,0 +1,5 @@
+Courses, the Tux model, music and sounds: Tux Racer 0.61 by Jasmin Patry and
+Sunspire Studios, GPL v2 (deps/tuxracer, converted by tools/convert.mjs).
+Contributed courses keep their authors (courses/<dir>/course.txt).
+Music by Joseph Toscano (music/*.it).
+Fonts: Fredoka (SIL OFL 1.1, Fredoka-OFL.txt), Titan One (SIL OFL 1.1, TitanOne-OFL.txt).

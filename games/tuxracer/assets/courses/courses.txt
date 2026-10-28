@@ -1,0 +1,13 @@
+course frozen_river 80 0 800 | Frozen River | Keep your speed down to collect herring!
+course path_of_daggers 70 0 800 | Path of Daggers | Big spikes may prove to be the least of your worries on this course.  Muliple paths allow you to take low or high roads, each with their own challenges.
+course bunny_hill 40 0 480 | Bunny Hill | Use clever turning to conquer the Bunny Hill.
+course twisty_slope 40 0 480 | Twisty Slope | Tight twists make grabbing herring difficult.  Hard turns will lead you to victory.
+course bumpy_ride 40 0 560 | Bumpy Ride | This hill has a series of ramps tackle.  Make sure to line yourself up before getting airborne.
+course contrib/downhill_fear 120 1 1800 | The Downhill Fear | 
+course contrib/ice_canyon 120 1 400 | Ice Canyon | 
+course contrib/ingos_speedway 120 1 800 | Ingo's Speedway | 
+course contrib/jools_big_mountain 120 1 1200 | Jool's Big Mountain | 
+course contrib/nebula 120 1 400 | Nebula | 
+course contrib/penguins_cant_fly 120 1 2500 | Who Says Penguins Can't Fly? | 
+course contrib/sentinel_towers 120 1 900 | Sentinel Towers | 
+course contrib/twin_paths 120 1 1100 | Twin Paths | 

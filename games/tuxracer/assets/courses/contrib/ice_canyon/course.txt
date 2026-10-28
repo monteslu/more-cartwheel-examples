@@ -1,0 +1,16 @@
+width 200
+length 400
+play_width 180
+play_length 397
+start 100 2
+angle 23
+samples 225 417
+spacing 1
+min_height -171
+max_height 20
+par_time 120
+objects 0
+friction 0.22 0.9 0.35
+title Ice Canyon
+author Ingo Ruhnke <grumbel@gmx.de>
+description 

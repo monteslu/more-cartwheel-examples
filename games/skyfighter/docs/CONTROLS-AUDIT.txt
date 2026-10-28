@@ -1,0 +1,73 @@
+SKY FIGHTER — CONTROLS AND AUDIO AUDIT
+
+Scope: keyboard and positional gamepad input in the real wasmcart runtime,
+weapon readiness, simultaneous actions, menu/state transitions and audio.
+Single player only: controller port 0; no co-pilot or weapon-selection mode.
+
+FIXES
+- Guided missile taps are buffered for 1.25 seconds through lock acquisition
+  or reload. Holding West/X or M waits for readiness and repeats at the
+  existing 65-tick reload interval. Releasing stops repetition. Pausing,
+  retrying or leaving play cancels pending fire. No unguided ammo is spent.
+- The HUD distinguishes acquisition/queued, guided-ready, reload and empty
+  ammo; queued, expired and successful launches have explicit feedback.
+- RT guns and LT flares now actually trigger at the declared 0.35 threshold;
+  their action deadzone previously raised the effective threshold to 0.50.
+- An exhausted burner remains off until the button is released and fuel
+  reaches 5%. This eliminates the prior near-empty relight/cut oscillation.
+  Airbrake takes priority when brake and afterburner are held together.
+- Burner audio uses the continuous recording with smooth, rate-correct
+  attack/release; the extra synthetic pulse tone was removed.
+- The engine's cart audio ring was only 4096 frames, although one render can
+  publish up to 8192. A real 100 ms host step generated 4800 frames, overwriting
+  704 of its own unread frames. The canonical cartwheel-engine source now
+  provides a 16384-frame ring with maximum-burst and power-of-two assertions.
+  Sky now builds directly from this canonical workspace engine source; the
+  numbered patch exports retain the history of the promoted fixes.
+- The Controls page now includes target cycling (North/Y or I).
+
+BINDINGS AND SEMANTICS
+Flight: Left stick (0.06 deadzone), D-pad, arrows or WASD. Pitch inversion
+        and Expert controls are saved settings. Opposing directions cancel.
+Guns: South/A, RT >=0.35, Space or Return. Hold for continuous fire.
+Missile: West/X or M. Tap to queue; hold to acquire/fire/repeat. Guided only.
+Target: North/Y or I during play. One cycle per press, not per held frame.
+Burner: East/B or either Shift. Hold; release/recharge after exhaustion.
+Brake: Left shoulder or left Ctrl. Hold; takes priority over burner.
+Flares: right-stick click/R3, LT >=0.35 or F. One salvo per press; seven-second
+        recharge. Holding the button does not consume another salvo on refill.
+Stunts: Right shoulder + stick, or R + arrows/WASD. Q/E directly roll.
+Look: Right stick (0.08 deadzone). Release to restore the chase view.
+Pause: Start, P or Escape. Press again to resume; East/B also resumes.
+Menus: D-pad/stick or arrows/WASD to move focus; South/A, Space or Return
+       to select. West/X or M opens Controls on the mission grid.
+Settings: North/Y or I on title/pause/results; East/B or Escape returns.
+Mouse: Existing visible mission/settings/pause buttons remain clickable.
+Throttle: Cruise/afterburner/airbrake are discrete speed modes; there is no
+          separate analog throttle or weapon-mode switching binding.
+
+ACTUAL VALIDATION
+- scripts/playtest-controls-audit.mjs: real pad/trigger injection in romdev,
+  guided tap before lock, released tap during reload, held repeat, release,
+  pending-fire cancellation on pause, target-cycle tap/hold, partial RT/LT,
+  simultaneous gun/burner/steering/brake and exhaustion/release/rearm.
+- scripts/playtest-keyboard-audit.mjs: installed Chrome, actual CartHostWeb
+  and Metal, raw keyDown/up through the ABI: Return, WASD/arrows, Space,
+  both Shifts, Ctrl, Q/E, R+arrows, M, F, I, P, Escape and menu/back paths.
+  The harness completes spread warmup before testing. An initial premature
+  Return during warmup was a test error, not a keyboard regression; no
+  keyboard bridge or engine keyboard change was retained.
+- scripts/playtest-audio-continuity.mjs: direct ABI-ring extraction captures
+  528000 stereo frames at 48000 Hz: exactly 11 seconds, including the loop
+  wrap. No silent 50 ms windows; RMS 0.07276–0.08572; music underflows zero.
+  audioDebug.record returned only one 17 ms frame despite a longer request,
+  so that result was discarded as evidence of long-run continuity.
+- cartwheel-engine/tests/cart-audio-ring.mjs: real 17/86/100/170/250 ms host
+  steps check burst size, allocation/nonoverlap, power-of-two wrapping,
+  maximum burst and ABI conformance; the old-ring control must fail.
+- Existing menu/SRAM, combat and flight tests remain regression checks.
+
+Receipts and recorded WAV: build/review/controls-audit/.
+Hardware limit: these are actual local runtime tests, not a physical
+cabinet controller calibration or a listening test on Batocera's speakers.
+Local continuity does not establish that a host/device has no underruns.

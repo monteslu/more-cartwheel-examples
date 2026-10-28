@@ -7,4 +7,7 @@
 __pycache__/
 *.pyc
 .claude
+# generated at configure from games/tuxracer/project.cwproj; a game's saved data
+games/tuxracer/assets/project.cwproj
+*.sav
 

@@ -1,0 +1,16 @@
+width 100
+length 1100
+play_width 90
+play_length 1098
+start 50 3.5
+angle 25
+samples 129 1121
+spacing 1
+min_height -515
+max_height 1
+par_time 120
+objects 251
+friction 0.22 0.9 0.35
+title Twin Paths
+author David Fries dfries@mail.win.org
+description 

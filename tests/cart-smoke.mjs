@@ -22,7 +22,7 @@ const FRAMES = +opt('--frames', 60);
 const CARTS = resolve(opt('--carts', join(ROOT, 'build/cart-wgpu/carts')));
 const OUT = resolve(opt('--out', join(ROOT, 'out/cart-smoke')));
 const PLAYER = (process.env.WASMCART || 'npx --yes wasmcart@0.36.2').split(' ');
-const ALL = ['arenafps', 'brawler', 'coopplatformer', 'fighter', 'hordeshooter', 'partypack'];
+const ALL = ['arenafps', 'brawler', 'coopplatformer', 'fighter', 'hordeshooter', 'partypack', 'skyfighter', 'tuxracer'];
 const games = argv.filter((a, i) => !a.startsWith('--') && !VALUED.has(argv[i - 1]));
 
 /** the distinct colours of an RGB PNG as wasmcart writes it (8 bit, filter none on every row) */
@@ -50,7 +50,9 @@ function colours(file) {
 mkdirSync(OUT, { recursive: true });
 let failed = 0;
 for (const game of games.length ? games : ALL) {
-  const cart = join(CARTS, `${game}_auto.wasc`), shot = join(OUT, `${game}.png`);
+  // the self-playing cart where the game has one, else its own cart
+  const auto = join(CARTS, `${game}_auto.wasc`);
+  const cart = existsSync(auto) ? auto : join(CARTS, `${game}.wasc`), shot = join(OUT, `${game}.png`);
   if (!existsSync(cart)) { console.error(`${game}: no ${cart}`); failed++; continue; }
   const t0 = Date.now();
   const r = spawnSync(PLAYER[0], [...PLAYER.slice(1), 'play', cart, '--frames', String(FRAMES), '--shot', shot],

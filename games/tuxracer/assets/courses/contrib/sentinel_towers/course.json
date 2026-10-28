@@ -1,0 +1,35 @@
+{
+ "dir": "contrib/sentinel_towers",
+ "title": "Sentinel Towers",
+ "author": "Steve, Mathieu, Jerome (Flat 6.3, Leeds 2000)",
+ "description": "",
+ "par_time": 120,
+ "width": 80,
+ "length": 900,
+ "play_width": 80,
+ "play_length": 900,
+ "start": [
+  44,
+  4
+ ],
+ "angle": 22.5,
+ "elev_scale": 15,
+ "base_height": 0,
+ "spacing": 1,
+ "samples": [
+  97,
+  929
+ ],
+ "min_height": -374,
+ "max_height": 11,
+ "source": [
+  80,
+  900
+ ],
+ "objects": 594,
+ "friction": {
+  "ice": 0.22,
+  "rock": 0.9,
+  "snow": 0.35
+ }
+}

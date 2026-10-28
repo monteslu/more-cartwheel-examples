@@ -13,7 +13,9 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }} # a push to main never wipes out the run before it
 
 env:
-  GAMES: arenafps brawler coopplatformer fighter hordeshooter partypack
+  GAMES: arenafps brawler coopplatformer fighter hordeshooter partypack skyfighter tuxracer
+  # games with a self-playing <game>_auto cart (the others smoke-test their own cart)
+  AUTO_GAMES: arenafps brawler coopplatformer fighter hordeshooter partypack
 
 # The games ship as dual GL + WebGPU carts (.wasc), built against the prebuilt
 # cart SDK pinned in scripts/deps.lock (cartwheel-engine's release asset):
@@ -40,12 +42,12 @@ jobs:
       - name: Fetch the SDKs
         run: scripts/fetch-deps.sh
       # tags link the carts as releases ship (ThinLTO, wasm-opt); pushes link dev carts, the same simulation
-      - name: Build the carts (each game and its self-playing <game>_auto)
+      - name: Build the carts (each game, and its self-playing <game>_auto where it has one)
         run: |
           [ "${GITHUB_REF_TYPE}" = tag ] && export RELEASE=1
-          TARGETS=cart-wgpu scripts/build.sh $GAMES $(for g in $GAMES; do echo ${g}_auto; done)
-      - name: Smoke test (each _auto cart in wasmcart's Node host on lavapipe, WebGPU)
-        run: VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json node tests/cart-smoke.mjs --frames 60
+          TARGETS=cart-wgpu scripts/build.sh $GAMES $(for g in $AUTO_GAMES; do echo ${g}_auto; done)
+      - name: Smoke test (each game's cart in wasmcart's Node host on lavapipe, WebGPU)
+        run: VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json node tests/cart-smoke.mjs --frames 60 $GAMES
       - uses: actions/upload-artifact@v7
         if: always()
         with:

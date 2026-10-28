@@ -1,0 +1,35 @@
+{
+ "dir": "frozen_river",
+ "title": "Frozen River",
+ "author": "Unknown",
+ "description": "Keep your speed down to collect herring!",
+ "par_time": 80,
+ "width": 100,
+ "length": 800,
+ "play_width": 60,
+ "play_length": 785,
+ "start": [
+  50,
+  3.5
+ ],
+ "angle": 28,
+ "elev_scale": 22,
+ "base_height": 127,
+ "spacing": 1,
+ "samples": [
+  129,
+  801
+ ],
+ "min_height": -433,
+ "max_height": 6,
+ "source": [
+  100,
+  800
+ ],
+ "objects": 498,
+ "friction": {
+  "ice": 0.22,
+  "rock": 0.9,
+  "snow": 0.35
+ }
+}

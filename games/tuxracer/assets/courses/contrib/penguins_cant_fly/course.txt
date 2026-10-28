@@ -1,0 +1,16 @@
+width 60
+length 2500
+play_width 60
+play_length 2500
+start 30 3.5
+angle 30
+samples 65 2529
+spacing 1
+min_height -1446
+max_height 1
+par_time 120
+objects 135
+friction 0.22 0.9 0.35
+title Who Says Penguins Can't Fly?
+author Bill Scherer <bscherer@bestweb.net>
+description 

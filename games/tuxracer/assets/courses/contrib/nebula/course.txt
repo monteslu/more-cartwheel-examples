@@ -1,0 +1,16 @@
+width 100
+length 400
+play_width 100
+play_length 400
+start 50 3
+angle 24
+samples 129 417
+spacing 1
+min_height -179
+max_height 9
+par_time 120
+objects 52
+friction 0.22 0.9 0.35
+title Nebula
+author Ingo Ruhnke <grumbel@gmx.de>
+description 

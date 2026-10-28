@@ -1,0 +1,10 @@
+import{resolve}from'node:path';import{mkdirSync,writeFileSync}from'node:fs';import{execFileSync}from'node:child_process';import assert from'node:assert/strict';
+const root=resolve(import.meta.dirname,'../..'),out=resolve(root,'../../out/skyfighter-review/cloud-stability');mkdirSync(out,{recursive:true});const headers={'content-type':'application/json','x-romdev-session':'sky-fighter-cloud-stability'};
+async function t(n,a){const r=await(await fetch('http://127.0.0.1:7331/tool/'+n,{method:'POST',headers,body:JSON.stringify(a)})).json();if(r.error)throw Error(JSON.stringify(r));return r;}
+for(const [name,path]of [['before','../../out/skyfighter-review/sky-before-cloud-fix.wasc'],['after','../../build/cart-wgpu/carts/skyfighter.wasc']]){
+ await t('loadMedia',{platform:'wasmcart',path:resolve(root,path),deterministicSeed:17107,deterministicStepMs:1000/60});await t('frame',{op:'step',frames:25});
+ for(const[field,value]of Object.entries({'jet.x':-65,'jet.altitude':650,'jet.z':-100,'jet.heading':0,'jet.pitch':0,'jet.roll':0}))await t('wasm',{op:'write',name:field,value});await t('frame',{op:'step',frames:60});
+ for(let i=0;i<12;i++){await t('frame',{op:'step',frames:1});await t('frame',{op:'screenshot',scale:.5,outputPath:resolve(out,`${name}-${String(i).padStart(2,'0')}.png`)});}
+}
+const code=`from PIL import Image,ImageChops,ImageStat\nfrom pathlib import Path\nimport json\np=Path(${JSON.stringify(out)})\nr={}\nfor label in ['before','after']:\n ims=[Image.open(f).convert('RGB').crop((350,170,650,280)) for f in sorted(p.glob(label+'-*.png'))]\n diffs=[sum(ImageStat.Stat(ImageChops.difference(a,b)).mean)/3 for a,b in zip(ims,ims[1:])]\n r[label]=sum(diffs)/len(diffs)\nprint(json.dumps(r))`;
+const report=JSON.parse(execFileSync('python3',['-c',code],{encoding:'utf8'}));assert(report.after<report.before*.4,'fixed camera cloud shimmer must be substantially reduced');assert(report.after<.5,'cloud should remain stable across frames');writeFileSync(resolve(out,'report.json'),JSON.stringify(report,null,2));console.log('PASS: cloud motion is stable with stationary camera (mean pixel change)',report);

@@ -1,0 +1,95 @@
+#!/usr/bin/env python3
+"""Generate solid branching tree meshes. No billboard or leaf-card geometry."""
+import math, random
+from pathlib import Path
+ROOT=Path(__file__).resolve().parents[1]
+class Mesh:
+ def __init__(self,lod=False):self.p=[];self.n=[];self.uv=[];self.ix=[];self.lod=lod
+ def vertex(self,p,n,uv):
+  k=len(self.p)//3;self.p.extend(p);self.n.extend(n);self.uv.extend(uv);return k
+ def tube(self,a,b,r0,r1,sides=7):
+  if self.lod and sides<8:return
+  if self.lod:sides=min(sides,4)
+  axis=[b[i]-a[i] for i in range(3)];length=math.sqrt(sum(v*v for v in axis));axis=[v/length for v in axis]
+  u=[axis[2],0,-axis[0]];d=math.sqrt(sum(v*v for v in u));u=[1,0,0] if d<.01 else [v/d for v in u]
+  v=[axis[1]*u[2]-axis[2]*u[1],axis[2]*u[0]-axis[0]*u[2],axis[0]*u[1]-axis[1]*u[0]]
+  base=len(self.p)//3
+  for end,(p,r) in enumerate([(a,r0),(b,r1)]):
+   for i in range(sides+1):
+    angle=i*math.tau/sides;n=[math.cos(angle)*u[j]+math.sin(angle)*v[j] for j in range(3)]
+    self.vertex([p[j]+r*n[j] for j in range(3)],n,(i/sides,end*length*12))
+  for i in range(sides):
+   x=base+i;y=x+sides+1;self.ix.extend([x,x+1,y,x+1,y+1,y])
+ def crown(self,center,radii,rng,conifer=False):
+  # Closed crown volumes have irregular silhouettes, not planar texture cards.
+  rows,cols=(2,5) if self.lod else (4,7) if conifer else (5,9);base=len(self.p)//3;phase=rng.random()*6
+  for j in range(rows+1):
+   lat=j/rows*math.pi
+   for i in range(cols+1):
+    lon=i/cols*math.tau;d=[math.sin(lat)*math.cos(lon),math.cos(lat),math.sin(lat)*math.sin(lon)]
+    rough=1+.12*math.sin(lon*3+phase)*math.sin(lat)+.09*math.sin(lat*7+lon*2+phase)
+    normal=[d[k]/radii[k] for k in range(3)];nl=math.sqrt(sum(v*v for v in normal));normal=[v/nl for v in normal]
+    self.vertex([center[k]+d[k]*radii[k]*rough for k in range(3)],normal,(i/cols*(2 if conifer else 3),j/rows*2))
+  for j in range(rows):
+   for i in range(cols):
+    a=base+j*(cols+1)+i;b=a+cols+1
+    if j:self.ix.extend([a,a+1,b])
+    if j<rows-1:self.ix.extend([a+1,b+1,b])
+ def leaf(self,c,r,rng):
+  if self.lod:return
+  # Tiny closed bent leaves at crown edges break the smooth lobe silhouette.
+  ax=rng.random()*math.tau;u=[math.cos(ax)*r,0,math.sin(ax)*r];v=[-math.sin(ax)*r*.45,r*.3,math.cos(ax)*r*.45]
+  points=[[c[k]+u[k] for k in range(3)],[c[k]+v[k] for k in range(3)],[c[k]-u[k] for k in range(3)],[c[k]-v[k] for k in range(3)],[c[0],c[1]+r*.25,c[2]],[c[0],c[1]-r*.15,c[2]]]
+  for pole in [4,5]:
+   for edge in range(4):
+    ids=[edge,(edge+1)%4,pole] if pole==4 else [(edge+1)%4,edge,pole];a,b,c0=[points[i] for i in ids];ab=[b[i]-a[i] for i in range(3)];ac=[c0[i]-a[i] for i in range(3)];n=[ab[1]*ac[2]-ab[2]*ac[1],ab[2]*ac[0]-ab[0]*ac[2],ab[0]*ac[1]-ab[1]*ac[0]];nl=math.sqrt(sum(q*q for q in n));n=[q/nl for q in n];base=len(self.p)//3
+    for i,p in enumerate([a,b,c0]):self.vertex(p,n,[(0,0),(1,0),(.5,1)][i])
+    self.ix.extend([base,base+1,base+2])
+def tree(species,variant,lod=False):
+ rng=random.Random(8717+species*1151+variant*73);bark=Mesh(lod);leaf=Mesh(lod);lean=(rng.random()-.5)*.09
+ trunk=.025 if species==0 else .013 if species==1 else .018
+ for i in range(5):
+  a=(lean*(i/5)**2,i*.18,0);b=(lean*((i+1)/5)**2,(i+1)*.18,.012*math.sin(i))
+  bark.tube(a,b,trunk*(1-i*.17),trunk*(1-(i+1)*.17),8)
+ centers=[]
+ if species<2:
+  branches=9 if species==0 else 12
+  for i in range(branches):
+   angle=i*2.39996+rng.uniform(-.2,.2);y=.32+i/(branches-1)*.48;reach=(.23 if species==0 else .125)*(1-.35*i/branches)*rng.uniform(.8,1.2)
+   a=(lean*y*y,y,0);b=(math.cos(angle)*reach,y+rng.uniform(.10,.20),math.sin(angle)*reach)
+   bark.tube(a,b,trunk*.48*(1-i/branches*.7),.0035,6)
+   for j in range(2):
+    turn=angle+(.6 if j else -.6);c=(b[0]+math.cos(turn)*.07,b[1]+rng.uniform(.02,.08),b[2]+math.sin(turn)*.07)
+    bark.tube(b,c,.0035,.0015,5);centers.append(c)
+  centers.append((lean,.93,0))
+  for c in centers:
+   radius=rng.uniform(.135,.18) if species==0 else rng.uniform(.085,.12)
+   radii=(radius,radius*rng.uniform(.75,1.15),radius*rng.uniform(.85,1.2));leaf.crown(c,radii,rng)
+   for j in range(3):
+    angle=rng.random()*math.tau;leaf.leaf((c[0]+math.cos(angle)*radius,c[1]+rng.uniform(-.4,.7)*radius,c[2]+math.sin(angle)*radius),rng.uniform(.006,.011),rng)
+ else:
+  levels=7 if species==2 else 5
+  for level in range(levels):
+   y=.22+level*(.66/levels) if species==2 else .55+level*.065
+   reach=(.29*(1-(y-.16)) if species==2 else .25*(1-(y-.5)*.8))*rng.uniform(.85,1.15)
+   for j in range(3 if lod else 5):
+    angle=j*math.tau/(3 if lod else 5)+level*1.57+rng.uniform(-.25,.25);a=(lean*y*y,y,0);b=(math.cos(angle)*reach,y+(.015 if species==2 else .06),math.sin(angle)*reach)
+    bark.tube(a,b,.007*(1-y*.8),.001,5)
+    for t in ([.82] if lod else [.60,1.0]):
+     c=(b[0]*t,b[1]-.025*(1-t),b[2]*t);r=reach*((.55 if species==2 else .60) if lod else (.37 if species==2 else .42))
+     leaf.crown(c,(r,r*.45,r),rng,True)
+  leaf.crown((lean,.91,0),(.042,.10,.044),rng,True)
+ return bark,leaf
+out=['/* Generated by tools/build-tree-models.py: four species, two branching variants. */\n']
+meta=[]
+for lod in range(2):
+ for species in range(4):
+  for variant in range(2):
+   for part,m in enumerate(tree(species,variant,bool(lod))):
+    name=f'tree_{lod}_{species}_{variant}_{part}'
+    for suffix,data,typ in [('p',m.p,'float'),('n',m.n,'float'),('uv',m.uv,'float'),('ix',m.ix,'uint32_t')]:
+     values=','.join(str(v) if typ=='uint32_t' else f'{v:.6f}f' for v in data);out.append(f'static const {typ} {name}_{suffix}[]={{'+values+'};\n')
+    meta.append(f'{{{name}_p,{name}_n,{name}_uv,{name}_ix,{len(m.p)//3},{len(m.ix)}}}')
+out.append('static const struct tree_mesh_data {const float *p,*n,*uv;const uint32_t *ix;int vertices,indices;} tree_data[]={\n'+',\n'.join(meta)+'\n};\n')
+(ROOT/'src/tree-meshes.h').write_text(''.join(out))
+for lod in [False,True]:print('Tree triangles', 'far' if lod else 'near', [(len(tree(s,0,lod)[0].ix)//3,len(tree(s,0,lod)[1].ix)//3) for s in range(4)])

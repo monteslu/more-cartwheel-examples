@@ -1,0 +1,35 @@
+{
+ "dir": "contrib/ice_canyon",
+ "title": "Ice Canyon",
+ "author": "Ingo Ruhnke <grumbel@gmx.de>",
+ "description": "",
+ "par_time": 120,
+ "width": 200,
+ "length": 400,
+ "play_width": 180,
+ "play_length": 397,
+ "start": [
+  100,
+  2
+ ],
+ "angle": 23,
+ "elev_scale": 25,
+ "base_height": 67,
+ "spacing": 1,
+ "samples": [
+  225,
+  417
+ ],
+ "min_height": -171,
+ "max_height": 20,
+ "source": [
+  200,
+  400
+ ],
+ "objects": 0,
+ "friction": {
+  "ice": 0.22,
+  "rock": 0.9,
+  "snow": 0.35
+ }
+}

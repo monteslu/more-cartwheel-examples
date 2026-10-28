@@ -1,0 +1,35 @@
+{
+ "dir": "contrib/downhill_fear",
+ "title": "The Downhill Fear",
+ "author": "Julien Canet <jools@free.fr>",
+ "description": "",
+ "par_time": 120,
+ "width": 60,
+ "length": 1800,
+ "play_width": 60,
+ "play_length": 1800,
+ "start": [
+  30,
+  3.5
+ ],
+ "angle": 23,
+ "elev_scale": 7,
+ "base_height": 202,
+ "spacing": 1,
+ "samples": [
+  65,
+  1825
+ ],
+ "min_height": -765,
+ "max_height": 2,
+ "source": [
+  60,
+  1800
+ ],
+ "objects": 684,
+ "friction": {
+  "ice": 0.22,
+  "rock": 0.9,
+  "snow": 0.35
+ }
+}

@@ -1,0 +1,35 @@
+{
+ "dir": "contrib/ingos_speedway",
+ "title": "Ingo's Speedway",
+ "author": "Ingo Ruhnke <grumbel@gmx.de>",
+ "description": "",
+ "par_time": 120,
+ "width": 54,
+ "length": 800,
+ "play_width": 54,
+ "play_length": 800,
+ "start": [
+  20,
+  5
+ ],
+ "angle": 23,
+ "elev_scale": 12,
+ "base_height": 127,
+ "spacing": 1,
+ "samples": [
+  65,
+  801
+ ],
+ "min_height": -341,
+ "max_height": 8,
+ "source": [
+  40,
+  600
+ ],
+ "objects": 421,
+ "friction": {
+  "ice": 0.22,
+  "rock": 0.9,
+  "snow": 0.35
+ }
+}

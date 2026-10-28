@@ -1,0 +1,35 @@
+{
+ "dir": "bumpy_ride",
+ "title": "Bumpy Ride",
+ "author": "Unknown",
+ "description": "This hill has a series of ramps tackle.  Make sure to line yourself up before getting airborne.",
+ "par_time": 40,
+ "width": 60,
+ "length": 560,
+ "play_width": 30,
+ "play_length": 550,
+ "start": [
+  30,
+  2.5
+ ],
+ "angle": 30,
+ "elev_scale": 8,
+ "base_height": 127,
+ "spacing": 1,
+ "samples": [
+  65,
+  577
+ ],
+ "min_height": -326,
+ "max_height": 4,
+ "source": [
+  60,
+  280
+ ],
+ "objects": 421,
+ "friction": {
+  "ice": 0.22,
+  "rock": 0.9,
+  "snow": 0.35
+ }
+}

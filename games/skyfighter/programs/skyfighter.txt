@@ -1,0 +1,63 @@
+# Sky Fighter's imported aircraft, terrain, ocean and cascaded sun materials.
+standard+instbig+senv+l0001+xterrainlow_csm
+standard+map+rep+nmap+rmap+mmap+senv+ds+l0001+xcsm
+standard+trans+senv+ds+l0001+xcsm
+standard+map+rep+nmap+rmap+mmap+shadow+senv+ds+l1001
+standard+shadow+senv+ds+l1001
+standard+shadow+senv+l1001+xwater
+standard+trans+shadow+senv+ds+l1001
+standard+senv+ds+l0001+xcsm
+standard+map+rep+shadow+senv+l1001
+standard+map+rep+senv+l0001+xcsm
+depth+instbig+xterrainlow_csm
+standard+instbig+senv+l0001+xterrain_csm
+standard+instbig+senv+l0001+xterrainfar_csm
+
+basic+trans
+basic+trans+ds
+
+# Unshadowed directional variants, including switching back from diagnostic shadows.
+standard+instbig+senv+l1001+xterrainlow
+standard+instbig+senv+l1001+xterrain
+standard+instbig+senv+l1001+xterrainfar
+standard+map+rep+nmap+rmap+mmap+senv+ds+l1001
+standard+senv+ds+l1001
+standard+trans+senv+ds+l1001
+standard+senv+l1001+xwater
+
+# Dense settlements and trees use GPU instancing.
+standard+instbig+map+rep+senv+l0001+xcsm
+standard+instbig+senv+l0001+xcsm
+standard+instbig+map+rep+shadow+senv+l1001
+standard+instbig+shadow+senv+l1001
+standard+instbig+map+rep+senv+l1001
+standard+instbig+senv+l1001
+
+basic+ds
+standard+instbig+icol+map+rep+senv+l0001+xcsm
+standard+instbig+icol+map+rep+shadow+senv+l1001
+standard+instbig+icol+map+rep+senv+l1001
+standard+instbig+icol+senv+l0001+xcsm
+standard+instbig+icol+shadow+senv+l1001
+standard+instbig+icol+senv+l1001
+# Full 3D foliage: GPU crown sway/flutter in visible and shadow passes.
+standard+instbig+icol+map+rep+senv+l0001+xcsm_foliage
+standard+instbig+icol+map+rep+shadow+senv+l1001+xfoliage
+standard+instbig+icol+map+rep+senv+l1001+xfoliage
+standard+map+rep+senv+l0001+xcsm_foliage
+standard+map+rep+shadow+senv+l1001+xfoliage
+standard+map+rep+senv+l1001+xfoliage
+depth+instbig+xfoliage
+depth+xfoliage
+depth+instbig+xcsm_foliage
+depth+xcsm_foliage
+standard+instbig+map+rep+senv+l0001+xcsm_foliage
+standard+instbig+map+rep+shadow+senv+l1001+xfoliage
+standard+instbig+map+rep+senv+l1001+xfoliage
+
+# Lit mesh impact marks under the scene sun and cascaded shadows.
+standard+map+trans+senv+l0001+xcsm_meshdecal
+standard+map+trans+shadow+senv+l1001+xmeshdecal
+standard+map+trans+senv+l1001+xmeshdecal
+standard+senv+ds+l0001+xwater
+standard+shadow+senv+ds+l1001+xwater

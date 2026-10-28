@@ -1,0 +1,16 @@
+width 80
+length 900
+play_width 80
+play_length 900
+start 44 4
+angle 22.5
+samples 97 929
+spacing 1
+min_height -374
+max_height 11
+par_time 120
+objects 594
+friction 0.22 0.9 0.35
+title Sentinel Towers
+author Steve, Mathieu, Jerome (Flat 6.3, Leeds 2000)
+description 

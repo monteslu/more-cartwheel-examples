@@ -1,0 +1,16 @@
+width 60
+length 560
+play_width 30
+play_length 550
+start 30 2.5
+angle 30
+samples 65 577
+spacing 1
+min_height -326
+max_height 4
+par_time 40
+objects 421
+friction 0.22 0.9 0.35
+title Bumpy Ride
+author Unknown
+description This hill has a series of ramps tackle.  Make sure to line yourself up before getting airborne.

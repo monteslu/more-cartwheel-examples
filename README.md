@@ -2,23 +2,27 @@
 
 [![CI](https://github.com/monteslu/more-cartwheel-examples/actions/workflows/ci.yml/badge.svg)](https://github.com/monteslu/more-cartwheel-examples/actions/workflows/ci.yml)
 
-Six more games built with
+Eight more games built with
 [cartwheel-engine](https://github.com/monteslu/cartwheel-engine), a 2D and 3D
 game engine in C, after the ones in
 [cartwheel-examples](https://github.com/monteslu/cartwheel-examples). Each
 game is written to push the engine: to find what it lacks (split screen for
 four, crowds of thousands, skinned fighters, ragdolls, a party game's many
-small scenes) so the generic fixes go back into the engine. Every game is for
-one to four players on one machine, one pad each.
+small scenes) so the generic fixes go back into the engine. Six of the games
+are for one to four players on one machine, one pad each; Sky Fighter and Tux
+Racer are for one player.
 
 The games ship as [wasmcart](https://github.com/wasmcart/wasmcart) carts
 (`.wasc`): one file per game that runs in a browser, in Node, in a native
 player and in RetroArch, with GL and WebGPU in the same cart.
 
-Everything in the games is made by code in this repository (models,
+In six of the games everything is made by code in this repository (models,
 textures, levels, sound and music) except a few fonts, which ship with their
-licence (SIL Open Font License). Each game's `CREDITS` file says what is
-what.
+licence (SIL Open Font License). Sky Fighter also builds on CC0 and
+public-domain sources (Poly Haven surface scans, an F-15 model, open
+elevation data, a U.S. Air Force engine recording), and Tux Racer is a
+reimplementation of the GPL original with its data, so that one game is
+GPL-2.0-or-later. Each game's `CREDITS` file says what is what.
 
 ## The games
 
@@ -97,13 +101,44 @@ Coin Rush, Tile Drop), free play and a trophy room. Each mini-game's card
 names the buttons it uses. `games/partypack/` (its
 [README](games/partypack/README.md) has more).
 
+### skyfighter
+
+![skyfighter: the F-15 over the balloons of Country Fair](docs/screenshots/skyfighter.jpg)
+
+Sky Fighter, an arcade jet combat game for one player. Eight missions, each
+over its own terrain with its own targets: hot-air balloons over farmland,
+prop fighters and dirigibles in an alpine valley, fuel depots in a desert
+canyon, interceptors over an island, a mothership over a city, a snowbound
+fortress, the North Pole, and oil rigs at dusk. Guns, guided missiles,
+flares, an afterburner and an airbrake; a crash breaks the jet into Box3D
+pieces. Bank and pitch with the left stick, guns on the right trigger,
+missiles with (X), afterburner with (B), flares with the left trigger.
+`games/skyfighter/` (its [README](games/skyfighter/README.md) has the mission
+table and the full controls).
+
+### tuxracer
+
+![tuxracer: Tux sliding down Bunny Hill toward the start gate](docs/screenshots/tuxracer.jpg)
+
+Tux Racer, a work-in-progress reimplementation of the classic
+[Tux Racer](https://tuxracer.sourceforge.net/) 0.61 (Jasmin Patry and
+Sunspire Studios, 1999 to 2001, GPL) on cartwheel-engine. Tux belly-slides
+down the original courses, with the original penguin, music and sounds
+converted from the GPL data, the sliding rebuilt on Box3D, and the look on
+the engine's PBR terrain, sky, cascaded shadows, particles and post effects.
+Practice on any of the 13 courses in sunny, cloudy or night conditions, or
+race the Canadian Cup. Steer with the stick, paddle with (A), brake with (B),
+jump with (X). One player. GPL-2.0-or-later, see its LICENSE and CREDITS.
+`games/tuxracer/` (its [README](games/tuxracer/README.md) has the controls
+and the credits).
+
 ## Play
 
 Tagged versions are on the
 [Releases](https://github.com/monteslu/more-cartwheel-examples/releases)
 page: one cart per game, `<game>.wasc` (`arenafps.wasc`, `brawler.wasc`,
 `coopplatformer.wasc`, `fighter.wasc`, `hordeshooter.wasc`,
-`partypack.wasc`). Each cart holds GL and WebGPU: a host that has WebGPU
+`partypack.wasc`, `skyfighter.wasc`, `tuxracer.wasc`). Each cart holds GL and WebGPU: a host that has WebGPU
 runs it on WebGPU, any other on GL. Every push to `main` also builds them:
 the repository's
 [Actions](https://github.com/monteslu/more-cartwheel-examples/actions) tab,
@@ -152,7 +187,7 @@ ninja: `scripts/build.sh -j4 fighter` builds only fighter in each tree.
 
 ### Building native yourself
 
-Releases ship the six carts only, but every game also builds as a native
+Releases ship the carts only, but every game also builds as a native
 program for Linux x64 and arm64, Windows x64, macOS arm64 and Android arm64.
 Fetch the target's SDK and toolchain, build its tree, and package it with the
 engine's cwexport and the game's `project.cwproj` presets:
@@ -228,15 +263,16 @@ costs, and `scripts/partypack-suite.sh` runs partypack's checks in pieces.
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push to
 `main`, on pull requests and by hand (workflow_dispatch), against the pinned
-cart SDK. It builds the six carts and each game's self-playing `<game>_auto`
-cart, and runs `tests/cart-smoke.mjs`: every `_auto` cart plays 60 frames in
+cart SDK. It builds the eight carts and the self-playing `<game>_auto` carts
+of the six games that have one, and runs `tests/cart-smoke.mjs`: each game's
+`_auto` cart (or its own cart where it has none) plays 60 frames in
 wasmcart's Node host on Mesa's software Vulkan (lavapipe, the WebGPU path),
 must exit cleanly and leave a picture that is not blank. The gates, which
 compare the carts with native runs on every host, run locally on a GPU
 (`tests/gate.mjs`).
 
 Pushing a `v*` tag links the carts as releases ship and publishes a GitHub
-release with the six `<game>.wasc`, its notes taken from
+release with the eight `<game>.wasc`, its notes taken from
 [CHANGELOG.md](CHANGELOG.md): `git tag v0.1.0 && git push origin v0.1.0`.
 
 ## Layout
@@ -274,5 +310,8 @@ release with the six `<game>.wasc`, its notes taken from
 
 ## License
 
-MIT, see [LICENSE](LICENSE). The fonts keep their own licence (SIL Open Font
+MIT, see [LICENSE](LICENSE), except `games/tuxracer`, which is
+GPL-2.0-or-later (its [LICENSE](games/tuxracer/LICENSE) and
+[CREDITS](games/tuxracer/CREDITS): the original Tux Racer's courses, model,
+music and sounds are GPL v2). The fonts keep their own licence (SIL Open Font
 License 1.1), shipped beside each font.

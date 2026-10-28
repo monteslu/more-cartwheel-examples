@@ -1,0 +1,35 @@
+{
+ "dir": "contrib/penguins_cant_fly",
+ "title": "Who Says Penguins Can't Fly?",
+ "author": "Bill Scherer <bscherer@bestweb.net>",
+ "description": "",
+ "par_time": 120,
+ "width": 60,
+ "length": 2500,
+ "play_width": 60,
+ "play_length": 2500,
+ "start": [
+  30,
+  3.5
+ ],
+ "angle": 30,
+ "elev_scale": 10,
+ "base_height": 255,
+ "spacing": 1,
+ "samples": [
+  65,
+  2529
+ ],
+ "min_height": -1446,
+ "max_height": 1,
+ "source": [
+  60,
+  1800
+ ],
+ "objects": 135,
+ "friction": {
+  "ice": 0.22,
+  "rock": 0.9,
+  "snow": 0.35
+ }
+}

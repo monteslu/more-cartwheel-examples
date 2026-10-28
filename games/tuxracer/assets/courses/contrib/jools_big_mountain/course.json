@@ -1,0 +1,35 @@
+{
+ "dir": "contrib/jools_big_mountain",
+ "title": "Jool's Big Mountain",
+ "author": "Julien Canet <jools@free.fr>",
+ "description": "",
+ "par_time": 120,
+ "width": 60,
+ "length": 1200,
+ "play_width": 60,
+ "play_length": 1200,
+ "start": [
+  30,
+  3.5
+ ],
+ "angle": 24,
+ "elev_scale": 7,
+ "base_height": 0,
+ "spacing": 1,
+ "samples": [
+  65,
+  1217
+ ],
+ "min_height": -535,
+ "max_height": 8,
+ "source": [
+  60,
+  1200
+ ],
+ "objects": 279,
+ "friction": {
+  "ice": 0.22,
+  "rock": 0.9,
+  "snow": 0.35
+ }
+}

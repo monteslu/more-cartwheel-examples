@@ -1,0 +1,14 @@
+import{resolve}from'node:path';import{writeFileSync}from'node:fs';import assert from'node:assert/strict';
+const root=resolve(import.meta.dirname,'../..'),headers={'content-type':'application/json','x-romdev-session':'sky-fighter-faster-afterburner'};
+async function t(n,a){const r=await(await fetch('http://127.0.0.1:7331/tool/'+n,{method:'POST',headers,body:JSON.stringify(a)})).json();if(r.error)throw Error(JSON.stringify(r));return r;}
+const step=frames=>t('frame',{op:'step',frames}),input=p=>t('input',{op:'set',ports:[p]}),read=async name=>(await t('wasm',{op:'read',name})).value;
+async function place(values){await input({});for(const[name,value]of Object.entries({'jet.x':0,'jet.z':1500,'jet.altitude':3500,'jet.heading':0,'jet.pitch':0,'jet.roll':0,'jet.yaw_rate':0,'mission.spawn':10000,...values}))await t('wasm',{op:'write',name,value});for(let i=0;i<7;i++)await t('wasm',{op:'write',name:`enemy.${i}.active`,value:0});}
+const pos=async()=>[await read('jet.x'),await read('jet.z')];
+function radius([a,b,c]){const d=(p,q)=>Math.hypot(p[0]-q[0],p[1]-q[1]);return d(a,b)*d(b,c)*d(c,a)/(2*Math.abs((b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0])));}
+const report={};for(const[label,path]of [['before','../../out/skyfighter-review/sky-before-faster-afterburner.wasc'],['after','../../build/cart-wgpu/carts/skyfighter.wasc']]){
+ await t('loadMedia',{platform:'wasmcart',path:resolve(root,path),deterministicSeed:17107,deterministicStepMs:1000/60});await step(25);await input({south:true});await step(2);await place({'jet.speed_mps':205});await input({east:true});await step(120);const speedAtTwoSeconds=await read('jet.speed_mps');await step(180);const topSpeed=await read('jet.speed_mps');
+ await place({'jet.speed_mps':label==='before'?420:600});await input({east:true,axes:{lx:1}});await step(90);const points=[await pos()];await step(30);points.push(await pos());await step(30);points.push(await pos());const turnRadius=radius(points);assert.equal(await read('mission.state'),1);assert.equal(await read('cw.gpu.errors'),0);assert.equal(await read('render.skipped'),0);
+ await place({'jet.speed_mps':topSpeed});await input({l:true});await step(180);const brakedSpeed=await read('jet.speed_mps');assert(brakedSpeed<145,'airbrake must still slow the faster jet');
+ report[label]={speedAtTwoSeconds,topSpeed,turnRadius,brakedSpeed};console.log(label,report[label]);
+}
+assert(report.after.topSpeed>595);assert(report.after.speedAtTwoSeconds>540);assert(report.after.topSpeed>report.before.topSpeed*1.4);assert(Math.abs(report.after.turnRadius/report.before.turnRadius-1)<.05,'faster boost must preserve the tight turn radius');writeFileSync(resolve(root,'../../out/skyfighter-review/afterburner-speed-report.json'),JSON.stringify(report,null,2));console.log('PASS: faster top speed and surge, preserved boost turn radius, working airbrake');

@@ -1,0 +1,35 @@
+{
+ "dir": "twisty_slope",
+ "title": "Twisty Slope",
+ "author": "Unknown",
+ "description": "Tight twists make grabbing herring difficult.  Hard turns will lead you to victory.",
+ "par_time": 40,
+ "width": 90,
+ "length": 480,
+ "play_width": 55,
+ "play_length": 470,
+ "start": [
+  45,
+  3.5
+ ],
+ "angle": 25,
+ "elev_scale": 7,
+ "base_height": 127,
+ "spacing": 1,
+ "samples": [
+  97,
+  481
+ ],
+ "min_height": -227,
+ "max_height": 3,
+ "source": [
+  90,
+  240
+ ],
+ "objects": 705,
+ "friction": {
+  "ice": 0.22,
+  "rock": 0.9,
+  "snow": 0.35
+ }
+}

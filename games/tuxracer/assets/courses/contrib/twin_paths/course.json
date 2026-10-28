@@ -1,0 +1,35 @@
+{
+ "dir": "contrib/twin_paths",
+ "title": "Twin Paths",
+ "author": "David Fries dfries@mail.win.org",
+ "description": "",
+ "par_time": 120,
+ "width": 100,
+ "length": 1100,
+ "play_width": 90,
+ "play_length": 1098,
+ "start": [
+  50,
+  3.5
+ ],
+ "angle": 25,
+ "elev_scale": 10,
+ "base_height": 127,
+ "spacing": 1,
+ "samples": [
+  129,
+  1121
+ ],
+ "min_height": -515,
+ "max_height": 1,
+ "source": [
+  50,
+  200
+ ],
+ "objects": 251,
+ "friction": {
+  "ice": 0.22,
+  "rock": 0.9,
+  "snow": 0.35
+ }
+}

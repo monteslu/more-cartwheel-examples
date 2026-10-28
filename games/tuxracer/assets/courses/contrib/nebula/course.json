@@ -1,0 +1,35 @@
+{
+ "dir": "contrib/nebula",
+ "title": "Nebula",
+ "author": "Ingo Ruhnke <grumbel@gmx.de>",
+ "description": "",
+ "par_time": 120,
+ "width": 100,
+ "length": 400,
+ "play_width": 100,
+ "play_length": 400,
+ "start": [
+  50,
+  3
+ ],
+ "angle": 24,
+ "elev_scale": 12,
+ "base_height": 0,
+ "spacing": 1,
+ "samples": [
+  129,
+  417
+ ],
+ "min_height": -179,
+ "max_height": 9,
+ "source": [
+  100,
+  400
+ ],
+ "objects": 52,
+ "friction": {
+  "ice": 0.22,
+  "rock": 0.9,
+  "snow": 0.35
+ }
+}

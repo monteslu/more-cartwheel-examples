@@ -1,0 +1,26 @@
+[
+  {
+    "name": "skyfighter-sortie",
+    "app": "skyfighter",
+    "frames": 360,
+    "input": "skyfighter-sortie.json",
+    "controlInput": "skyfighter-sortie-control.json",
+    "maxGt16": 0.06,
+    "fields": [
+      "jet.x",
+      "jet.z",
+      "jet.altitude",
+      "jet.heading",
+      "jet.pitch",
+      "jet.roll",
+      "jet.speed_mps",
+      "mission.elapsed",
+      "boost.active",
+      "defense.incoming"
+    ],
+    "hosts": [
+      "native"
+    ],
+    "note": "The selected mission launched from the title (South at frame 25), a bank left, a pull up and a burst of afterburner; the control turns the other way. Native only for now: the flight model drifts from the native run in the sixth digit on the cart hosts after 360 frames (jet.x, jet.heading), so the cross-host leg is open."
+  }
+]

@@ -1,0 +1,120 @@
+{
+ "trees": [
+  {
+   "name": "tree3",
+   "kind": "tree",
+   "diam": 1.4,
+   "height": 1,
+   "vary": 0.5,
+   "color": [
+    0,
+    255,
+    48
+   ],
+   "texture": "shrub"
+  },
+  {
+   "name": "tree1",
+   "kind": "tree",
+   "diam": 1.4,
+   "height": 2.5,
+   "vary": 0.5,
+   "color": [
+    255,
+    255,
+    255
+   ],
+   "texture": "tree"
+  },
+  {
+   "name": "tree2",
+   "kind": "tree",
+   "diam": 1.4,
+   "height": 2.5,
+   "vary": 0.5,
+   "color": [
+    255,
+    96,
+    0
+   ],
+   "texture": "tree_barren"
+  }
+ ],
+ "items": [
+  {
+   "name": "herring",
+   "kind": "item",
+   "diam": 1,
+   "height": 1,
+   "color": [
+    28,
+    185,
+    204
+   ],
+   "above_ground": 0.2,
+   "texture": "fish"
+  },
+  {
+   "name": "flag",
+   "kind": "item",
+   "diam": 1,
+   "height": 1,
+   "color": [
+    194,
+    40,
+    40
+   ],
+   "nocollision": true,
+   "texture": "flag1"
+  },
+  {
+   "name": "finish",
+   "kind": "item",
+   "diam": 9,
+   "height": 6,
+   "color": [
+    255,
+    255,
+    0
+   ],
+   "nocollision": true,
+   "normal": [
+    0,
+    0,
+    1
+   ],
+   "texture": "finish"
+  },
+  {
+   "name": "start",
+   "kind": "item",
+   "diam": 9,
+   "height": 6,
+   "color": [
+    128,
+    128,
+    0
+   ],
+   "nocollision": true,
+   "normal": [
+    0,
+    0,
+    1
+   ],
+   "texture": "start"
+  },
+  {
+   "name": "float",
+   "kind": "item",
+   "diam": 2,
+   "height": 1,
+   "color": [
+    255,
+    128,
+    255
+   ],
+   "nocollision": true,
+   "reset_point": true
+  }
+ ]
+}
