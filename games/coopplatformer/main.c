@@ -771,8 +771,13 @@ static void update_spans(float camx) {
   }
 }
 
-/* the player's screen shake setting (the shell's Settings > Screen shake): 1 full, less reduced, 0 off */
+/* the player's screen shake setting (the shell's Settings > Screen shake): 1 full, less reduced, 0 off. The setting
+ * is in the engine after v0.17.0; built against the v0.17.0 SDKs (scripts/deps.lock) the game shakes at full. */
+#ifdef CW_SHELL_SHAKE_REDUCED_SCALE
 static float shake_setting(void) { return cw_shell_screen_shake(); }
+#else
+static float shake_setting(void) { return 1.0f; }
+#endif
 
 /* ── frame: sync the scene to the sim ─────────────────────────────── */
 static void sync_scene(float alpha, float dt) {
