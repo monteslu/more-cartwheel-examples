@@ -150,6 +150,24 @@ by default (no ThinLTO, no wasm-opt: seconds instead of a minute, the same
 simulation); `RELEASE=1` links them as releases ship. Any arguments go to
 ninja: `scripts/build.sh -j4 fighter` builds only fighter in each tree.
 
+### Building native yourself
+
+Releases ship the six carts only, but every game also builds as a native
+program for Linux x64 and arm64, Windows x64, macOS arm64 and Android arm64.
+Fetch the target's SDK and toolchain, build its tree, and package it with the
+engine's cwexport and the game's `project.cwproj` presets:
+
+```sh
+CW_SDK_TARGETS=linux-x64 CW_TOOLCHAINS=1 scripts/fetch-deps.sh
+TARGETS=linux-x64 scripts/build.sh
+node deps/cartwheel-sdk/linux-x64/tools/cwexport.mjs --project games/fighter --preset linux-x64 --build build/linux-x64
+```
+
+The trees are `linux-x64`, `linux-arm64`, `windows-x64` (cross-compiled on
+Linux), `android-arm64` and `macos-arm64` (on a Mac); the preset has the
+same name. A native build renders with WebGPU (Dawn) and falls back to OpenGL
+ES 3.0; `CW_GPU=gl` or `CW_GPU=webgpu` picks one.
+
 To build the engine from source instead (to work on it, or on a machine no
 SDK runs on), fetch with `CARTWHEEL_ENGINE_SOURCE=1 scripts/fetch-deps.sh`
 (the engine at the pinned commit and its own dependencies) or
@@ -225,7 +243,7 @@ release with the six `<game>.wasc`, its notes taken from
 
 | Path | Contents |
 |---|---|
-| `games/<game>/` | one game: its C sources, `CMakeLists.txt`, `CREDITS`, `README.md`, its assets and `tools/` |
+| `games/<game>/` | one game: its C sources, `CMakeLists.txt`, `CREDITS`, `README.md`, `project.cwproj` (native export presets), its assets and `tools/` |
 | `games/<game>/tools/` | the scripts that generate the game's assets (models, textures, levels, colour grades, sound), committed next to their output |
 | `games/<game>/programs/` | the game's three.c program table: `<game>.txt` and the C generated from it |
 | `tests/` | the gates, their input scripts, the gate and replay runners, the cart smoke test, benchmarks |
