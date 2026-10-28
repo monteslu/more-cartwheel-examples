@@ -30,14 +30,20 @@ Walk over food, coins and weapons to pick them up; you can reach them from a ste
 - Each stage ends with a boss with three phases. At two thirds and one third of its health it stops, roars, calls
   help and comes back with a new move. Heavy blows (slams, spins, charges) show a red ring on the street while they
   wind up: get out of it.
+- The bosses, stage by stage: the Foreman (the alley), Arthur (the docks: a greaser who jabs from a boxer's guard,
+  snaps his jacket open into a backhand, charges shoulder first and stops to comb his hair), the Matron (the arcade,
+  where the Ringmaster also runs the floor as a mini boss halfway through) and the Colossus (the roof).
+
+Anyone knocked down falls loose: the body tumbles, hits the street, the kerb and the crates, and gets up from where it
+lies (face up or face down). The fall is only for show: how long a body stays down is the same every time.
 
 Enemies never hit you from outside the picture or before they have walked in.
 
 ## Run
 
 `brawler_auto` is the same game with bots playing, for tests and screenshots. Its debug commands: `stage N`,
-`wave N` (4 is the boss), `players N`, `spawn <kind> [dx dz]`, `item <kind> [dx dz]`, `cam`, `freeze`.
-Environment for native runs: BRAWLER_STAGE, BRAWLER_PLAYERS, BRAWLER_CROWD, BRAWLER_TURBO (ticks per frame),
+`wave N` (4 is the boss), `players N`, `spawn <kind> [dx dz]`, `item <kind> [dx dz]`, `cam`, `freeze`, `knockdown`.
+Environment for native runs: BRAWLER_STAGE, BRAWLER_PLAYERS, BRAWLER_CROWD, BRAWLER_TURBO (ticks per frame), BRAWLER_KNOCKALL (everyone down every N ticks),
 BRAWLER_SOAK (a lost stage is retried), BRAWLER_LOG (status lines), BRAWLER_BOTDMG (bot damage factor, 3 by default).
 
 `node games/brawler/tools/soak.mjs --exe <brawler_auto> --pak <brawler_auto.cwpak> --players 4 --minutes 30 --all-stages`

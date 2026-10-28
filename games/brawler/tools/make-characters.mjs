@@ -389,8 +389,8 @@ clip('idle_boxer', 0.9, true, (t) => {
 });
 const COMB_HIP = { UpperArmL: { r: [0.15, 0, 0.55] }, LowerArmL: { r: [-1.5, 0, 0] }, HandL: { r: [0, 0, -0.3] } };
 const COMB_A = merge(REST, COMB_HIP, { Hips: { p: [0, -0.02, 0], r: [0, -0.15, 0.04] }, Spine: { r: [-0.04, 0, 0] }, Head: { r: [-0.12, -0.25, 0.12] },
-  UpperArmR: { r: [-2.35, 0.35, -0.55] }, LowerArmR: { r: [-2.0, 0, 0] }, HandR: { r: [-0.3, 0, 0] } });
-const COMB_B = merge(COMB_A, { Head: { r: [0.05, -0.25, 0.12] }, UpperArmR: { r: [-2.95, -0.2, -0.75] }, LowerArmR: { r: [-1.35, 0, 0] }, HandR: { r: [0.3, 0, 0] } });
+  UpperArmR: { r: [-2.4, 0.3, 0.75] }, LowerArmR: { r: [-1.6, 0, 0] }, HandR: { r: [-0.4, 0, 0.3] } });
+const COMB_B = merge(COMB_A, { Head: { r: [0.08, -0.25, 0.12] }, UpperArmR: { r: [-2.85, 0.2, 0.55] }, LowerArmR: { r: [-1.15, 0, 0] }, HandR: { r: [0.2, 0, 0.3] } });
 clip('comb', 1.6, false, keyed([
   [0, BOXER], [0.25, COMB_A, 'io'], [0.55, COMB_B, 'io'], [0.7, COMB_A, 'io'], [1.0, COMB_B, 'io'],
   [1.2, merge(COMB_B, { UpperArmR: { r: [-2.2, 0.2, -0.9] }, LowerArmR: { r: [-0.9, 0, 0] }, Head: { r: [-0.1, -0.1, 0] } }), 'io'], [1.6, BOXER, 'io']]));
