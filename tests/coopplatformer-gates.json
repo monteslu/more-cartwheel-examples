@@ -143,9 +143,9 @@
     "name": "coopplatformer-camera-1p",
     "app": "coopplatformer",
     "webgpu": {
-      "vsGl": 0.08,
+      "vsGl": 0.22,
       "maxArea": 0.005,
-      "note": "GL and WebGPU filter the generated grass and rock textures differently (mip and anisotropic choice): 5.8 to 6.2% of pixels differ by more than 16, all in textured interiors, state exact on every host; maxArea still catches a surface one backend misses"
+      "note": "the last frame is filled by the generated rock cliff and grass hill: GL and WebGPU filter those textures differently (19.1 to 19.8% of pixels differ by more than 16, every one inside a textured face, measured 2026-10-27; edges, sky, characters and HUD match), state exact on every host; maxArea still catches a surface one backend misses"
     },
     "frames": 1600,
     "input": "coopplatformer-camera-1p.json",
@@ -180,9 +180,9 @@
     "name": "coopplatformer-camera-4p",
     "app": "coopplatformer",
     "webgpu": {
-      "vsGl": 0.08,
+      "vsGl": 0.22,
       "maxArea": 0.005,
-      "note": "GL and WebGPU filter the generated grass and rock textures differently (mip and anisotropic choice): 5.8 to 6.2% of pixels differ by more than 16, all in textured interiors, state exact on every host; maxArea still catches a surface one backend misses"
+      "note": "the last frame is filled by the generated rock cliff and grass hill: GL and WebGPU filter those textures differently (19.1 to 19.8% of pixels differ by more than 16, every one inside a textured face, measured 2026-10-27; edges, sky, characters and HUD match), state exact on every host; maxArea still catches a surface one backend misses"
     },
     "frames": 1600,
     "input": "coopplatformer-camera-4p.json",
