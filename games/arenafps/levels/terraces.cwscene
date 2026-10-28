@@ -1,0 +1,367 @@
+[scene format=1]
+
+[node name="Level" type="Node3D"]
+
+[node name="Walls" parent="." type="CSGCombiner3D"]
+bake_file = "terraces_walls.cwcsg"
+
+[node name="Mass0" parent="Walls" type="CSGBox3D"]
+position = vec3(0, 1.8, 0)
+size = vec3(52, 3.6, 52)
+
+[node name="Room0" parent="Walls" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(0, 1.725, -23.8)
+size = vec3(52, 3.85, 4.4)
+
+[node name="Room1" parent="Walls" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(0, 1.725, 23.8)
+size = vec3(52, 3.85, 4.4)
+
+[node name="Room2" parent="Walls" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-23.8, 1.725, 0)
+size = vec3(4.4, 3.85, 43.2)
+
+[node name="Room3" parent="Walls" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(23.8, 1.725, 0)
+size = vec3(4.4, 3.85, 43.2)
+
+[node name="Room4" parent="Walls" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-16.8, 1.725, -16.8)
+size = vec3(8.4, 3.85, 8.4)
+
+[node name="Room5" parent="Walls" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(16.8, 1.725, -16.8)
+size = vec3(8.4, 3.85, 8.4)
+
+[node name="Room6" parent="Walls" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-16.8, 1.725, 16.8)
+size = vec3(8.4, 3.85, 8.4)
+
+[node name="Room7" parent="Walls" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(16.8, 1.725, 16.8)
+size = vec3(8.4, 3.85, 8.4)
+
+[node name="Room8" parent="Walls" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(0, 1.725, -16.8)
+size = vec3(6, 3.85, 8.4)
+
+[node name="Room9" parent="Walls" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(0, 1.725, 16.8)
+size = vec3(6, 3.85, 8.4)
+
+[node name="Room10" parent="Walls" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-16.8, 1.725, 0)
+size = vec3(8.4, 3.85, 6)
+
+[node name="Room11" parent="Walls" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(16.8, 1.725, 0)
+size = vec3(8.4, 3.85, 6)
+
+[node name="Open0" parent="Walls" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(0, 1.725, 0)
+size = vec3(24, 3.85, 24)
+
+[node name="Door0" parent="Walls" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-21.3, 1.25, -16.8)
+size = vec3(1.4, 2.9, 2.4)
+
+[node name="Door1" parent="Walls" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-15, 1.25, -21.3)
+size = vec3(2.4, 2.9, 1.4)
+
+[node name="Door2" parent="Walls" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(21.3, 1.25, -16.8)
+size = vec3(1.4, 2.9, 2.4)
+
+[node name="Door3" parent="Walls" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(15, 1.25, -21.3)
+size = vec3(2.4, 2.9, 1.4)
+
+[node name="Door4" parent="Walls" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-21.3, 1.25, 16.8)
+size = vec3(1.4, 2.9, 2.4)
+
+[node name="Door5" parent="Walls" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-15, 1.25, 21.3)
+size = vec3(2.4, 2.9, 1.4)
+
+[node name="Door6" parent="Walls" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(21.3, 1.25, 16.8)
+size = vec3(1.4, 2.9, 2.4)
+
+[node name="Door7" parent="Walls" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(15, 1.25, 21.3)
+size = vec3(2.4, 2.9, 1.4)
+
+[node name="Door8" parent="Walls" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(0, 1.25, -21.3)
+size = vec3(3, 2.9, 1.4)
+
+[node name="Door9" parent="Walls" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-21.3, 1.25, 0)
+size = vec3(1.4, 2.9, 3)
+
+[node name="Door10" parent="Walls" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(0, 1.25, -12.3)
+size = vec3(3.4, 2.9, 1.4)
+
+[node name="Door11" parent="Walls" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-12.3, 1.25, 0)
+size = vec3(1.4, 2.9, 3.4)
+
+[node name="Door12" parent="Walls" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(0, 1.25, 21.3)
+size = vec3(3, 2.9, 1.4)
+
+[node name="Door13" parent="Walls" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(21.3, 1.25, 0)
+size = vec3(1.4, 2.9, 3)
+
+[node name="Door14" parent="Walls" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(0, 1.25, 12.3)
+size = vec3(3.4, 2.9, 1.4)
+
+[node name="Door15" parent="Walls" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(12.3, 1.25, 0)
+size = vec3(1.4, 2.9, 3.4)
+
+[node name="Roof" parent="." type="CSGCombiner3D"]
+bake_file = "terraces_roof.cwcsg"
+
+[node name="Slab0" parent="Roof" type="CSGBox3D"]
+position = vec3(0, 3.85, 0)
+size = vec3(52, 0.5, 52)
+
+[node name="Open0" parent="Roof" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(0, 3.85, 0)
+size = vec3(24, 0.7, 24)
+
+[node name="Hole0" parent="Roof" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-20, 3.85, -18.6)
+size = vec3(2, 0.7, 4.8)
+
+[node name="Hole1" parent="Roof" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(20, 3.85, -18.6)
+size = vec3(2, 0.7, 4.8)
+
+[node name="Hole2" parent="Roof" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-20, 3.85, 18.6)
+size = vec3(2, 0.7, 4.8)
+
+[node name="Hole3" parent="Roof" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(20, 3.85, 18.6)
+size = vec3(2, 0.7, 4.8)
+
+[node name="Parapet" parent="." type="CSGCombiner3D"]
+bake_file = "terraces_parapet.cwcsg"
+
+[node name="P0" parent="Parapet" type="CSGBox3D"]
+position = vec3(0.05, 4.6, -12.2)
+size = vec3(17.1, 1, 0.4)
+
+[node name="P1" parent="Parapet" type="CSGBox3D"]
+position = vec3(0.05, 4.6, 12.2)
+size = vec3(17.1, 1, 0.4)
+
+[node name="P2" parent="Parapet" type="CSGBox3D"]
+position = vec3(-12.2, 4.6, -7.95)
+size = vec3(0.4, 1, 4.5)
+
+[node name="P3" parent="Parapet" type="CSGBox3D"]
+position = vec3(-12.2, 4.6, 0.05)
+size = vec3(0.4, 1, 5.3)
+
+[node name="P4" parent="Parapet" type="CSGBox3D"]
+position = vec3(-12.2, 4.6, 8.05)
+size = vec3(0.4, 1, 4.5)
+
+[node name="P5" parent="Parapet" type="CSGBox3D"]
+position = vec3(12.2, 4.6, -7.95)
+size = vec3(0.4, 1, 4.5)
+
+[node name="P6" parent="Parapet" type="CSGBox3D"]
+position = vec3(12.2, 4.6, 0.05)
+size = vec3(0.4, 1, 5.3)
+
+[node name="P7" parent="Parapet" type="CSGBox3D"]
+position = vec3(12.2, 4.6, 8.05)
+size = vec3(0.4, 1, 4.5)
+
+[node name="X_accent" parent="." type="CSGCombiner3D"]
+bake_file = "terraces_x_accent.cwcsg"
+
+[node name="ledge0" parent="X_accent" type="CSGBox3D"]
+position = vec3(-7, 0.6, -10.8)
+size = vec3(10, 1.2, 2.4)
+
+[node name="ledge1" parent="X_accent" type="CSGBox3D"]
+position = vec3(-10.8, 0.6, -7)
+size = vec3(2.4, 1.2, 10)
+
+[node name="ledge2" parent="X_accent" type="CSGBox3D"]
+position = vec3(7, 0.6, -10.8)
+size = vec3(10, 1.2, 2.4)
+
+[node name="ledge3" parent="X_accent" type="CSGBox3D"]
+position = vec3(-10.8, 0.6, 7)
+size = vec3(2.4, 1.2, 10)
+
+[node name="ledge4" parent="X_accent" type="CSGBox3D"]
+position = vec3(-7, 0.6, 10.8)
+size = vec3(10, 1.2, 2.4)
+
+[node name="ledge5" parent="X_accent" type="CSGBox3D"]
+position = vec3(10.8, 0.6, -7)
+size = vec3(2.4, 1.2, 10)
+
+[node name="ledge6" parent="X_accent" type="CSGBox3D"]
+position = vec3(7, 0.6, 10.8)
+size = vec3(10, 1.2, 2.4)
+
+[node name="ledge7" parent="X_accent" type="CSGBox3D"]
+position = vec3(10.8, 0.6, 7)
+size = vec3(2.4, 1.2, 10)
+
+[node name="bridge8" parent="X_accent" type="CSGBox3D"]
+position = vec3(0, 0.2, -7.75)
+size = vec3(3.2, 0.4, 8.5)
+
+[node name="bridge9" parent="X_accent" type="CSGBox3D"]
+position = vec3(0, 0.2, 7.75)
+size = vec3(3.2, 0.4, 8.5)
+
+[node name="bridge10" parent="X_accent" type="CSGBox3D"]
+position = vec3(-7.75, 0.2, 0)
+size = vec3(8.5, 0.4, 3.2)
+
+[node name="bridge11" parent="X_accent" type="CSGBox3D"]
+position = vec3(7.75, 0.2, 0)
+size = vec3(8.5, 0.4, 3.2)
+
+[node name="X_wall" parent="." type="CSGCombiner3D"]
+bake_file = "terraces_x_wall.cwcsg"
+
+[node name="landing0" parent="X_wall" type="CSGBox3D"]
+position = vec3(-10.3, 2.05, -10.8)
+size = vec3(3.4, 4.1, 2.4)
+
+[node name="landing1" parent="X_wall" type="CSGBox3D"]
+position = vec3(10.3, 2.05, -10.8)
+size = vec3(3.4, 4.1, 2.4)
+
+[node name="landing2" parent="X_wall" type="CSGBox3D"]
+position = vec3(-10.3, 2.05, 10.8)
+size = vec3(3.4, 4.1, 2.4)
+
+[node name="landing3" parent="X_wall" type="CSGBox3D"]
+position = vec3(10.3, 2.05, 10.8)
+size = vec3(3.4, 4.1, 2.4)
+
+[node name="block4" parent="X_wall" type="CSGBox3D"]
+position = vec3(-6.75, 1.1, -6.75)
+size = vec3(2.5, 2.2, 2.5)
+
+[node name="block5" parent="X_wall" type="CSGBox3D"]
+position = vec3(6.75, 1.1, -6.75)
+size = vec3(2.5, 2.2, 2.5)
+
+[node name="block6" parent="X_wall" type="CSGBox3D"]
+position = vec3(-6.75, 1.1, 6.75)
+size = vec3(2.5, 2.2, 2.5)
+
+[node name="block7" parent="X_wall" type="CSGBox3D"]
+position = vec3(6.75, 1.1, 6.75)
+size = vec3(2.5, 2.2, 2.5)
+
+[node name="cover8" parent="X_wall" type="CSGBox3D"]
+position = vec3(-7, 4.7, -17.3)
+size = vec3(4, 1.2, 0.6)
+
+[node name="cover9" parent="X_wall" type="CSGBox3D"]
+position = vec3(-17.3, 4.7, -7)
+size = vec3(0.6, 1.2, 4)
+
+[node name="cover10" parent="X_wall" type="CSGBox3D"]
+position = vec3(7, 4.7, -17.3)
+size = vec3(4, 1.2, 0.6)
+
+[node name="cover11" parent="X_wall" type="CSGBox3D"]
+position = vec3(17.3, 4.7, -7)
+size = vec3(0.6, 1.2, 4)
+
+[node name="cover12" parent="X_wall" type="CSGBox3D"]
+position = vec3(-7, 4.7, 17.3)
+size = vec3(4, 1.2, 0.6)
+
+[node name="cover13" parent="X_wall" type="CSGBox3D"]
+position = vec3(-17.3, 4.7, 7)
+size = vec3(0.6, 1.2, 4)
+
+[node name="cover14" parent="X_wall" type="CSGBox3D"]
+position = vec3(7, 4.7, 17.3)
+size = vec3(4, 1.2, 0.6)
+
+[node name="cover15" parent="X_wall" type="CSGBox3D"]
+position = vec3(17.3, 4.7, 7)
+size = vec3(0.6, 1.2, 4)
+
+[node name="X_pillar" parent="." type="CSGCombiner3D"]
+bake_file = "terraces_x_pillar.cwcsg"
+
+[node name="island0" parent="X_pillar" type="CSGBox3D"]
+position = vec3(0, 0.6, 0)
+size = vec3(7, 1.2, 7)
+
+[node name="X_clad" parent="." type="CSGCombiner3D"]
+bake_file = "terraces_x_clad.cwcsg"
+
+[node name="kiosk0" parent="X_clad" type="CSGBox3D"]
+position = vec3(-24, 5.4, -24)
+size = vec3(3.2, 2.6, 3.2)
+
+[node name="kiosk1" parent="X_clad" type="CSGBox3D"]
+position = vec3(24, 5.4, -24)
+size = vec3(3.2, 2.6, 3.2)
+
+[node name="kiosk2" parent="X_clad" type="CSGBox3D"]
+position = vec3(-24, 5.4, 24)
+size = vec3(3.2, 2.6, 3.2)
+
+[node name="kiosk3" parent="X_clad" type="CSGBox3D"]
+position = vec3(24, 5.4, 24)
+size = vec3(3.2, 2.6, 3.2)
+

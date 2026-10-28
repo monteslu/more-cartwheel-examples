@@ -1,0 +1,107 @@
+# terraces: written by tools/make-levels.mjs, do not edit
+half 26
+top 4.1
+storey 3.6
+csg terraces_walls.cwcsg wall
+csg terraces_roof.cwcsg floor
+csg terraces_parapet.cwcsg wall
+csg terraces_x_accent.cwcsg accent
+csg terraces_x_wall.cwcsg wall
+csg terraces_x_pillar.cwcsg pillar
+csg terraces_x_clad.cwcsg clad
+spawn -15 0.05 -17.5
+spawn -16.5 0.05 -14
+spawn 15 0.05 -17.5
+spawn 16.5 0.05 -14
+spawn -15 0.05 17.5
+spawn -16.5 0.05 14
+spawn 15 0.05 17.5
+spawn 16.5 0.05 14
+item rocket 0 1.2 0
+item rail 0 4.1 -19
+item rail 0 4.1 19
+item armor -19 4.1 0
+item armor 19 4.1 0
+item scatter -16.8 0 0
+item scatter 16.8 0 0
+item scatter 0 0 -16.8
+item scatter 0 0 16.8
+item health -6 1.2 -10.8
+item ammo -23.8 0 -8
+item health 6 1.2 -10.8
+item ammo 23.8 0 -8
+item health -6 1.2 10.8
+item ammo -23.8 0 8
+item health 6 1.2 10.8
+item ammo 23.8 0 8
+ramp -20 0 -13.4 7.2 4.1 1.8 3
+ramp 20 0 -13.4 7.2 4.1 1.8 3
+ramp -20 0 13.4 7.2 4.1 1.8 2
+ramp 20 0 13.4 7.2 4.1 1.8 2
+ramp -2 1.2 -10.8 6.6 2.9 2.4 1
+ramp 2 1.2 -10.8 6.6 2.9 2.4 0
+ramp -2 1.2 10.8 6.6 2.9 2.4 1
+ramp 2 1.2 10.8 6.6 2.9 2.4 0
+ramp 0 0.4 -6.5 3 0.8 3.2 2
+ramp 0 0.4 6.5 3 0.8 3.2 3
+ramp -6.5 0.4 0 3 0.8 3.2 0
+ramp 6.5 0.4 0 3 0.8 3.2 1
+pad -7.2 0 -4.2 -14.2 4.1 -4.2
+pad 7.2 0 -4.2 14.2 4.1 -4.2
+pad -7.2 0 4.2 -14.2 4.1 4.2
+pad 7.2 0 4.2 14.2 4.1 4.2
+lamp -20.8 3.6 -23.8 0
+lamp -10.4 3.6 -23.8 0
+lamp 0 3.6 -23.8 0
+lamp 10.4 3.6 -23.8 0
+lamp 20.8 3.6 -23.8 0
+lamp -20.8 3.6 23.8 0
+lamp -10.4 3.6 23.8 0
+lamp 0 3.6 23.8 0
+lamp 10.4 3.6 23.8 0
+lamp 20.8 3.6 23.8 0
+lamp -23.8 3.6 -16.2 0
+lamp -23.8 3.6 -5.4 0
+lamp -23.8 3.6 5.4 0
+lamp -23.8 3.6 16.2 0
+lamp 23.8 3.6 -16.2 0
+lamp 23.8 3.6 -5.4 0
+lamp 23.8 3.6 5.4 0
+lamp 23.8 3.6 16.2 0
+lamp -16.8 3.6 -16.8 1
+lamp 16.8 3.6 -16.8 1
+lamp -16.8 3.6 16.8 1
+lamp 16.8 3.6 16.8 1
+lamp 0 3.6 -16.8 0
+lamp 0 3.6 16.8 0
+lamp -16.8 3.6 0 0
+lamp 16.8 3.6 0 0
+doorframe -21.3 -16.8 2.4 2.7 x
+doorframe -15 -21.3 2.4 2.7 z
+doorframe 21.3 -16.8 2.4 2.7 x
+doorframe 15 -21.3 2.4 2.7 z
+doorframe -21.3 16.8 2.4 2.7 x
+doorframe -15 21.3 2.4 2.7 z
+doorframe 21.3 16.8 2.4 2.7 x
+doorframe 15 21.3 2.4 2.7 z
+doorframe 0 -21.3 3 2.7 z
+doorframe -21.3 0 3 2.7 x
+doorframe 0 -12.3 3.4 2.7 z
+doorframe -12.3 0 3.4 2.7 x
+doorframe 0 21.3 3 2.7 z
+doorframe 21.3 0 3 2.7 x
+doorframe 0 12.3 3.4 2.7 z
+doorframe 12.3 0 3.4 2.7 x
+water 0 0.3 0 24 24
+crates -23.8 -14 0.3 0
+barrels -12 -23.4 0
+prop planter -14 4.1 -24.6 0 1 2.2 1.6 1.0
+crates 23.8 -14 0.3 0
+barrels 12 -23.4 0
+prop planter 14 4.1 -24.6 0 1 2.2 1.6 1.0
+crates -23.8 14 0.3 0
+barrels -12 23.4 0
+prop planter -14 4.1 24.6 0 1 2.2 1.6 1.0
+crates 23.8 14 0.3 0
+barrels 12 23.4 0
+prop planter 14 4.1 24.6 0 1 2.2 1.6 1.0

@@ -2,7 +2,7 @@
 #define ARENA_FX_H
 #include "game.h"
 
-enum { SND_RIFLE, SND_SCATTER, SND_ROCKET, SND_BOOM, SND_RAIL, SND_HIT, SND_HURT, SND_PICKUP, SND_DIE, SND_CLICK, SND_SPAWN, SND_STEP, SND_SHELL, SND_TICK, SND_COUNT };
+enum { SND_RIFLE, SND_SCATTER, SND_ROCKET, SND_BOOM, SND_RAIL, SND_HIT, SND_HURT, SND_PICKUP, SND_DIE, SND_CLICK, SND_SPAWN, SND_STEP, SND_SHELL, SND_TICK, SND_PAD, SND_LAND, SND_COUNT };
 
 void fx_init(cw_node root); /* makes the pools under root (after the level is built) */
 void fx_reset(void);        /* forget the pools (their nodes went with the level) */

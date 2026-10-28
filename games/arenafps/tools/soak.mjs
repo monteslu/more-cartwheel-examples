@@ -37,6 +37,7 @@ const timer = setInterval(() => {
 const code = await new Promise((r) => child.on('exit', (c) => r(c)));
 clearInterval(timer);
 writeFileSync(OUT + '.log', log);
+writeFileSync(OUT + '.rss.json', JSON.stringify(rss)); /* VmRSS kB every 5 s */
 let j = {};
 try { j = JSON.parse(readFileSync(OUT + '.json', 'utf8')); } catch {}
 const n = Math.min(j['soak.matches'] || 0, 48), heap = (j['soak.heap_kb'] || []).slice(0, n);

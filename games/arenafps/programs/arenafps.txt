@@ -30,3 +30,6 @@ standard+map+trans+senv+l1001+xcluster_meshdecal
 physical+map+vcol+rep+nmap+ao+emap+rmap+shadow+senv+l1001+xcluster_gi
 basic+map+vcol+trans+rep+ds
 physical+map+vcol+rep+nmap+ao+emap+rmap+shadow+senv+l1001+xgibuf
+depth+skin+xcluster_rim_gi
+standard+shadow+skin+senv+ds+l1001+xcluster_rim_gi
+standard+shadow+senv+ds+l1001+xwater

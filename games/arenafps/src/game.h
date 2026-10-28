@@ -81,6 +81,9 @@ void mb_tri(mesh_build *b, int a, int c, int d);
 void mb_quad(mesh_build *b, int a, int c, int d, int e);
 t3_geometry *mb_finish(mesh_build *b);
 void mb_add_geo(mesh_build *b, const t3_geometry *g, t3_vec3 pos, float yaw, t3_vec3 scale, const float rgb[3], float uv_scale);
+/* a baked CSG mesh (uvs in metres, one repeat per uv_m), tinted, its big faces split so the macro tint varies over them */
+struct cw_csg_mesh;
+void mb_csg(mesh_build *b, const struct cw_csg_mesh *m, float uv_m, const float rgb[3]);
 /* a box (centre, rotation, full size) with metre-projected uvs (one repeat per uv_m metres), tinted */
 void mb_box(mesh_build *b, t3_vec3 centre, t3_quat q, t3_vec3 size, float uv_m, const float rgb[3]);
 /* the tint variation mb_box lays over big faces (0 = none): breaks up the tiling over tens of metres */
@@ -90,7 +93,8 @@ t3_texture *tex_clouds(float coverage, uint32_t seed);
 /* ── the arena (arena.c) ───────────────────────────────────────────── */
 
 #define MAX_SPAWNS 16
-#define MAX_ITEMS 24
+#define MAX_ITEMS 32
+#define MAX_PADS 8
 enum { ITEM_HEALTH, ITEM_ARMOR, ITEM_SCATTER, ITEM_ROCKET, ITEM_RAIL, ITEM_AMMO, ITEM_KINDS };
 
 typedef struct item {
@@ -99,6 +103,12 @@ typedef struct item {
   int respawn; /* ticks until it is back (0 = here) */
   cw_node node, light;
 } item;
+
+/* a jump pad: standing on it launches a fighter with vel (reaching target) */
+typedef struct pad {
+  t3_vec3 pos, vel, target;
+  cw_node node;
+} pad;
 
 typedef struct arena_info {
   const char *name, *blurb;
@@ -120,6 +130,11 @@ typedef struct arena {
   cw_node water;          /* Water3D of the Terraces pit (null elsewhere) */
   float nav_build_ms;
   int nav_polys;
+  float top;              /* the upper level: the roofs' walking height */
+  pad pads[MAX_PADS];
+  int npads;
+  cw_mesh3d meshes[16];   /* the baked CSG collision meshes */
+  int nmeshes;
 } arena;
 extern arena A;
 
@@ -140,6 +155,19 @@ typedef struct fighter {
   cw_mover3d mv;
   float yaw, pitch;
   float kick;            /* view kick, radians, decays */
+  int launched;          /* ticks since a jump pad threw it (the ground is ignored meanwhile) */
+  int recoil_n, recoil_t;  /* rifle: shots in this burst, ticks since the last one */
+  float recoil_p, recoil_y; /* the view climb the burst has put on (recovers after the burst) */
+  bool sprint;             /* running flat out (forward, not firing) */
+  bool sprint_want;        /* bots: wants to sprint (set by its brain) */
+  float air_vy;            /* vertical speed while airborne (the landing dip reads it) */
+  int personality;         /* bots: 0 balanced, 1 rusher, 2 holder (keeps high ground and power items) */
+  int hit_t;               /* ticks since it was last hit */
+  /* presentation only (never read by the simulation) */
+  float flinch;            /* a hit throws the body back for a moment */
+  float roll;              /* camera roll into a strafe */
+  int dip_t;               /* landing dip, ticks since landing (0 = none) */
+  float dip_a;             /* its depth, metres */
   int hp, armor;
   int weapon;
   int ammo[NWEAP];

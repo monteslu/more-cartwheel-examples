@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "cartwheel/csg.h"
 #include "cartwheel/math.h"
 #include "game.h"
 
@@ -840,4 +841,51 @@ t3_texture *tex_clouds(float coverage, uint32_t seed) {
   t->anisotropy = 8;
   t->color_space = T3_SRGB_COLOR_SPACE;
   return t;
+}
+
+/* ── baked CSG meshes (cartwheel/csg.h, levels/*.cwcsg from tools/make-levels.mjs) ── */
+
+/* one triangle, split at its longest edge until no edge is over 2 m, so the macro tint varies across the big faces of a
+ * baked wall as it does across mb_box faces */
+static void csg_tri(mesh_build *b, const t3_vec3 p[3], t3_vec3 n, const float uv[3][2], float uv_m, const float rgb[3], int depth) {
+  float l[3];
+  int k = 0;
+  for (int i = 0; i < 3; i++) {
+    t3_vec3 d = { p[(i + 1) % 3].x - p[i].x, p[(i + 1) % 3].y - p[i].y, p[(i + 1) % 3].z - p[i].z };
+    l[i] = sqrtf(d.x * d.x + d.y * d.y + d.z * d.z);
+    if (l[i] > l[k]) k = i;
+  }
+  if (l[k] > 2.0f && depth < 14) {
+    int a = k, c = (k + 1) % 3, o = (k + 2) % 3;
+    t3_vec3 m = { (p[a].x + p[c].x) * 0.5f, (p[a].y + p[c].y) * 0.5f, (p[a].z + p[c].z) * 0.5f };
+    float mu[2] = { (uv[a][0] + uv[c][0]) * 0.5f, (uv[a][1] + uv[c][1]) * 0.5f };
+    t3_vec3 p1[3] = { p[a], m, p[o] }, p2[3] = { m, p[c], p[o] };
+    float u1[3][2] = { { uv[a][0], uv[a][1] }, { mu[0], mu[1] }, { uv[o][0], uv[o][1] } };
+    float u2[3][2] = { { mu[0], mu[1] }, { uv[c][0], uv[c][1] }, { uv[o][0], uv[o][1] } };
+    csg_tri(b, p1, n, u1, uv_m, rgb, depth + 1);
+    csg_tri(b, p2, n, u2, uv_m, rgb, depth + 1);
+    return;
+  }
+  int v[3];
+  for (int i = 0; i < 3; i++) {
+    v[i] = mb_vert(b, p[i], n, uv[i][0] / uv_m, uv[i][1] / uv_m);
+    float q = macro_at(p[i]);
+    mb_color(b, v[i], rgb[0] * q, rgb[1] * q, rgb[2] * q);
+  }
+  mb_tri(b, v[0], v[1], v[2]);
+}
+
+void mb_csg(mesh_build *b, const cw_csg_mesh *m, float uv_m, const float rgb[3]) {
+  for (uint32_t t = 0; t + 2 < m->index_count; t += 3) {
+    t3_vec3 p[3];
+    float uv[3][2];
+    for (int i = 0; i < 3; i++) {
+      uint32_t j = m->indices[t + (uint32_t)i];
+      p[i] = (t3_vec3){ m->positions[j * 3], m->positions[j * 3 + 1], m->positions[j * 3 + 2] };
+      uv[i][0] = m->uvs[j * 2], uv[i][1] = m->uvs[j * 2 + 1];
+    }
+    uint32_t j0 = m->indices[t];
+    t3_vec3 n = { m->normals[j0 * 3], m->normals[j0 * 3 + 1], m->normals[j0 * 3 + 2] };
+    csg_tri(b, p, n, uv, uv_m, rgb, 0);
+  }
 }

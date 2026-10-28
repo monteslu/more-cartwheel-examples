@@ -327,5 +327,45 @@
       ]
     },
     "note": "Team deathmatch in the Terraces (water), four players and four bots, 30 s. Control: three players."
+  },
+  {
+    "name": "arenafps-camera",
+    "app": "arenafps",
+    "frames": 1600,
+    "input": "arenafps-camera.json",
+    "webgpu": {
+      "vsGl": 0.4,
+      "maxGt16": 0.08,
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ]
+    },
+    "maxGt16": 0.08,
+    "fields": [
+      "game.state",
+      "match.nf",
+      "game.players",
+      "cam.gate",
+      "cam.events",
+      "fighters.pos"
+    ],
+    "expect": {
+      "game.state": 1,
+      "match.nf": 1,
+      "cam.gate": [
+        528,
+        0,
+        600,
+        0
+      ],
+      "cam.events": 0
+    },
+    "controlInput": "arenafps-camera.json",
+    "controlEnv": {
+      "ARENA_CAM_BUG": "1"
+    },
+    "note": "camera stability, the way a person plays: one pad through title, join and the setup (no bots: up three rows, right, down three, fire), then stand, walk, stop, strafe, jump and stand on Foundry while player 1's camera as drawn is measured every tick (cam.gate: ticks at rest, at-rest ticks that moved over 1 mm, ticks in motion, ticks in motion on the ground where the eye jumped over 0.6 m or its step changed by over 15 cm). At rest it must not move at all (no bob, roll, dip or sway); stairs and kerbs ease the eye up instead of snapping it. Measured 2026-10-27: [528, 0, 600, 0] on native GL and WebGPU. The control (ARENA_CAM_BUG, native) puts a 1 cm idle sway on the camera: [528, 448, 600, 0], it must differ."
   }
 ]

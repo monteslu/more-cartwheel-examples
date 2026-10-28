@@ -64,7 +64,7 @@ for (const r of runs) {
     kills, spawns: g('stats.spawns'), unsafe: +(100 * g('stats.unsafe_spawns') / Math.max(1, g('stats.spawns'))).toFixed(0),
     spawnK: +(100 * g('stats.spawn_kills') / Math.max(1, kills)).toFixed(1), quick: +(100 * g('stats.quick_deaths') / Math.max(1, kills)).toFixed(0),
     no_kill_s: +(g('stats.gap_max') / 60).toFixed(1), ttk_s: g('stats.ttk_n') ? +(g('stats.ttk_sum') / g('stats.ttk_n') / 60).toFixed(2) : null,
-    skipped: g('render.skipped'), wall_s: Math.round((Date.now() - t0) / 1000),
+    by_weapon: g('stats.by_weapon'), skipped: g('render.skipped'), wall_s: Math.round((Date.now() - t0) / 1000),
   };
   if (row.ticks < secs * 60 * 0.98) { console.error(`${tag}: only ${row.ticks} ticks of ${secs * 60}: the run did not cover the game time`); process.exit(1); }
   rows.push(row);

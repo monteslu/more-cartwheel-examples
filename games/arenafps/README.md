@@ -6,8 +6,10 @@ bots that find their way over a navigation mesh.
 ## Play
 
 - Title -> join (each pad presses South to join) -> pick the arena, the mode, the number of bots, how good the bots are (easy, normal, hard) and aim assist on or off -> fire to start.
-- Move: left stick (keyboard: W A S D). Look: right stick (keyboard: arrow keys). Fire: right trigger or right
-  shoulder (keyboard: J). Jump: South (keyboard: Space). Next / previous weapon: North / West (keyboard: E / Q).
+- Move: left stick (keyboard: W A S D). Sprint: click the left stick (keyboard: left Shift), forward only, and firing
+  ends it. Look: right stick (keyboard: arrow keys). Fire: right trigger or right shoulder (keyboard: J). Jump: South
+  (keyboard: Space): high enough for a 1.2 m ledge. Next / previous weapon: North / West (keyboard: E / Q).
+- Jump pads (glowing discs with rising sparks) throw you up onto the roofs.
 - Pause with Start.
 
 Modes
@@ -15,16 +17,29 @@ Modes
 - Team deathmatch: red against blue, first team to 30.
 - Co-op waves: the players hold the arena against six waves of bots, with a shared pool of lives. A wave is bigger and tougher each time and bigger again for every extra player; between waves everyone heals a little and the rifle is topped up, and the next wave is counted down on screen.
 
-Feedback: a red cross flashes on a hit, a gold cross and the victim's name on a frag, a red bar on a ring around the crosshair points at whoever hit you, the edges pulse red when health is low, and a downed player sees a respawn countdown (about 2.5 s; two seconds of protection after you spawn).
+Feedback: a hit throws the target back a moment, a red cross flashes on a hit, a gold cross and the victim's name on a frag, a red bar on a ring around the crosshair points at whoever hit you, the edges pulse red when health is low, and a downed player sees a respawn countdown (about 2.5 s; two seconds of protection after you spawn).
 
-Weapons (found on the map; you always have the rifle). Time to kill from full health with perfect aim (no armour): rifle 1.1 s (0.7 s with head shots), scatter gun 0.77 s at point blank, rocket 0.73 s (two hits), rail 0.77 s (two hits, one head shot).
+Weapons (found on the map and kept until you die; you always have the rifle). Scatter guns come back 10 s after they
+are taken, rockets, rails and armour on a timer you can read over the empty spot (20 to 30 s). The rifle climbs in a fixed
+pattern over a long burst and settles back after it: short bursts stay on target. Time to kill from full health with perfect aim (no armour): rifle 1.1 s (0.7 s with head shots), scatter gun 0.77 s at point blank, rocket 0.73 s (two hits), rail 0.77 s (two hits, one head shot).
 - Pulse rifle: fast hitscan, low damage, a head shot does half again.
 - Scatter gun: eleven pellets, deadly close up.
 - Rocket: slow shot, big blast and knockback (you can launch yourself; your own blast hurts half as much).
 - Rail: pierces every fighter on the line; two body hits or one head shot.
 
-Arenas: Foundry (a raised deck and pillars), Courtyard (buildings with doorways and roofs), Terraces (stepped
-levels and a pit).
+Arenas (each two heights: rooms and halls below, roofs above, joined by stairs, jump pads and drops; every room has two
+or more ways out):
+- Foundry: an open core hall with a raised deck, open courts east and west, side halls north and south, spawn rooms on
+  the diagonals and a corridor all round the outside; the roofs over all of it are the upper level.
+- Courtyard: four houses of four rooms each round a plaza, streets between them and round the outside, bridges from roof
+  to roof over the streets.
+- Terraces: a flooded pit with an island, ledges 1.2 m up its walls, tunnels under the terrace to a gallery and spawn
+  rooms whose stairs come up through the terrace floor.
+The layouts are data: tools/make-levels.mjs writes levels/*.cwscene (CSG shapes), bakes them with the engine's cwcsg
+tool into levels/*.cwcsg and checks their flow (loops, dead ends, how far spawns are from the power items).
+
+The HUD shows the time left and the frag leader, and enemies carry a rim of their side's colour that you can read at
+30 m (deathmatch: everyone is red); a fighter under spawn protection shimmers pale blue.
 
 ## How it is made (the look)
 

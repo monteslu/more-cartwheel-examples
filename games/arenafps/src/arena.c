@@ -1,14 +1,17 @@
-/* The arenas: static geometry as Box3D boxes (collision, shots and the
- * navmesh all read the same bodies) with a MeshInstance3D per box for
- * drawing, spawn points and pickups. Three layouts, each its own palette. */
+/* The arenas. The layout (rooms, corridors, open halls, doors, roofs, stairs, jump pads, spawns, items) is data: tools/make-levels.mjs
+ * writes levels/<name>.cwscene, bakes its CSG shapes with the engine's cwcsg tool into levels/<name>_<root>.cwcsg, and writes
+ * levels/<name>.lvl for what the game places itself. Here the baked meshes become the level's drawn meshes (one per surface
+ * kind, with the dressing of that kind) and Box3D mesh shapes (collision, shots and the navmesh read the same triangles); the
+ * outer shell and what hangs on it stay boxes. Each arena has its own palette, materials and mood. */
+#include "cartwheel/csg.h"
 #include "game.h"
 
 arena A;
 
 const arena_info ARENA_INFO[ARENAS] = {
-  { "FOUNDRY", "a raised deck, four pillars, hard cover" },
-  { "COURTYARD", "walls and doorways: corners decide it" },
-  { "TERRACES", "stepped levels and a wet pit" },
+  { "FOUNDRY", "a core hall, side halls, a ring corridor and the roofs over it all" },
+  { "COURTYARD", "four houses, streets, a plaza, bridges from roof to roof" },
+  { "TERRACES", "a flooded pit, ledges, tunnels and the terrace above" },
 };
 
 typedef struct palette {
@@ -435,323 +438,254 @@ static void barrels(float x, float z, float y0) {
   solid_prop("barrel", x + 0.3f, y0, z - 0.6f, 2.2f, 1, 1, 1, 0.6f, 0.9f, 0.6f);
 }
 
-/* ── flow: gameplay geometry (spawn nooks) ──
- * A spawn nook closes a d x d corner of an arena of half side `half` with two walls `h` high; its 3 m door opens along the
- * outer wall, so the hall cannot see in, and its two spawn points sit away from the door. Spawning in the open let a fighter be
- * seen (and shot) the moment it appeared: tools/pacing.mjs measured 70 to 98 percent of spawns in sight of an enemy. door_x
- * picks which outer wall the door runs along. */
-static void spawn_nook(float sx, float sz, float half, float d, float y0, float h, bool door_x) {
-  const float T = 0.6f, DOOR = 3.0f;
-  float in = half - d, len = d - DOOR;
-  if (door_x) {
-    block(sx * (half - d / 2), y0, sz * in, d + T, h, T, K_WALL);
-    block(sx * in, y0, sz * (in + len / 2), T, h, len, K_WALL);
-    spawn_at(sx * (half - 2), y0 + 0.05f, sz * (in + 2));
-    spawn_at(sx * (half - 5), y0 + 0.05f, sz * (in + 1.8f));
+/* ── the layout: levels/<name>.lvl and the baked CSG meshes (tools/make-levels.mjs writes both) ── */
+
+static int kind_named(const char *s) {
+  static const char *N[K_KINDS] = { "floor", "wall", "accent", "metal", "crate", "leaf", "clad", "trim", "grate", "window", "girder", "pillar", "paint", "lamp" };
+  for (int k = 0; k < K_KINDS; k++)
+    if (!strcmp(N[k], s)) return k;
+  return K_WALL;
+}
+static int item_named(const char *s) {
+  static const char *N[ITEM_KINDS] = { "health", "armor", "scatter", "rocket", "rail", "ammo" };
+  for (int k = 0; k < ITEM_KINDS; k++)
+    if (!strcmp(N[k], s)) return k;
+  return ITEM_AMMO;
+}
+
+/* a baked CSG mesh: drawn in its kind's material (merged with that kind's other pieces) and a static Box3D mesh shape, so
+ * shots, movement and the navmesh see exactly the drawn walls */
+static void csg_piece(const char *file, int kind) {
+  char path[96];
+  snprintf(path, sizeof path, "levels/%s", file);
+  size_t len = 0;
+  void *bytes = cw_asset_load(path, &len);
+  cw_csg_mesh m;
+  if (!bytes || !cw_csg_mesh_decode(bytes, len, &m)) {
+    cw_error("arenafps: %s missing or bad", path);
+    free(bytes);
+    return;
+  }
+  mb_csg(&MB[kind], &m, KM[kind].uvm, TINT[kind]);
+  if (A.nmeshes < (int)(sizeof A.meshes / sizeof *A.meshes) && m.index_count >= 3) {
+    t3_vec3 *v = malloc(sizeof(t3_vec3) * m.vertex_count);
+    for (uint32_t i = 0; i < m.vertex_count; i++) v[i] = v3(m.positions[i * 3], m.positions[i * 3 + 1], m.positions[i * 3 + 2]);
+    cw_mesh3d cm = cw_mesh3d_create(v, (int)m.vertex_count, (const int32_t *)m.indices, (int)(m.index_count / 3));
+    free(v);
+    A.meshes[A.nmeshes++] = cm;
+    cw_body3d_def bd = cw_body3d_default_def();
+    bd.type = CW_BODY_STATIC;
+    cw_body3d b = cw_body3d_create(A.world, &bd);
+    cw_shape3d_def sd = cw_shape3d_default_def();
+    cw_shape3d_mesh(b, &sd, cm, v3(1, 1, 1));
+    grow(v3(m.bounds[0], m.bounds[1], m.bounds[2]), v3(m.bounds[3], m.bounds[4], m.bounds[5]));
+  }
+  free(bytes);
+}
+
+/* a ceiling lamp: a steel housing, a glowing panel and a short light (a warmer, dimmer one in the spawn rooms) */
+static void ceiling_lamp(float x, float y, float z, bool spawn) {
+  const float *c = LAMP_RGB[A.id];
+  trim(x, y - 0.12f, z, 1.3f, 0.12f, 0.5f, K_METAL, 0);
+  trim(x, y - 0.15f, z, 1.1f, 0.03f, 0.34f, K_LAMP, 0);
+  accent_light(x, y - 0.6f, z, c[0], c[1], c[2], spawn ? 14 : 20, spawn ? 8 : 10);
+}
+
+/* a doorway's frame on both faces: two jambs and a lintel (axis 'x': the wall runs along z) */
+static void door_frame(float x, float z, float w, float h, char axis) {
+  const float T = 0.14f, D = 0.86f; /* trim width, depth across the wall (a 0.6 m wall plus a lip each side) */
+  if (axis == 'x') {
+    trim(x, 0, z - w / 2 - T / 2, D, h, T, K_TRIM, 0);
+    trim(x, 0, z + w / 2 + T / 2, D, h, T, K_TRIM, 0);
+    trim(x, h, z, D, T, w + 2 * T, K_TRIM, 0);
   } else {
-    block(sx * in, y0, sz * (half - d / 2), T, h, d + T, K_WALL);
-    block(sx * (in + len / 2), y0, sz * in, len, h, T, K_WALL);
-    spawn_at(sx * (in + 2), y0 + 0.05f, sz * (half - 2));
-    spawn_at(sx * (in + 1.8f), y0 + 0.05f, sz * (half - 5));
+    trim(x - w / 2 - T / 2, 0, z, T, h, D, K_TRIM, 0);
+    trim(x + w / 2 + T / 2, 0, z, T, h, D, K_TRIM, 0);
+    trim(x, h, z, w + 2 * T, T, D, K_TRIM, 0);
   }
 }
 
-/* lane walls: each arena's long straight lanes (round the walls, across the middle) were open end to end, so every fighter saw
- * most others most of the time (tools/pacing.mjs: an enemy in sight 60 to 90 percent of the time, an encounter every 4 to 6 s).
- * A wall across the middle of each outer lane, with a gap on the inner side, splits a lane into two. */
-static void lane_walls(float half, float from, float y0, float h) {
-  float len = half - from, c = from + len / 2;
-  block(0, y0, -c, 0.6f, h, len, K_WALL);
-  block(0, y0, c, 0.6f, h, len, K_WALL);
-  block(-c, y0, 0, len, h, 0.6f, K_WALL);
-  block(c, y0, 0, len, h, 0.6f, K_WALL);
+/* a jump pad: a steel ring, a glowing disc, a light and a column of rising sparks; the launch velocity reaches the target
+ * with an apex 1.4 m over the higher end (the same sum the fighters' gravity uses) */
+static void pad_at(t3_vec3 p, t3_vec3 to) {
+  if (A.npads >= MAX_PADS) return;
+  pad *pd = &A.pads[A.npads++];
+  pd->pos = p;
+  const float G = 24.0f;
+  float apex = CW_MAX(p.y, to.y) + 1.4f;
+  float vy = sqrtf(2 * G * (apex - p.y));
+  float t = vy / G + sqrtf(2 * (apex - to.y) / G);
+  pd->vel = v3((to.x - p.x) / t, vy, (to.z - p.z) / t);
+  pd->target = to;
+  trim(p.x, p.y, p.z, 2.0f, 0.12f, 2.0f, K_METAL, 0.785f);
+  const float *c = LAMP_RGB[A.id];
+  cw_node disc = mesh_box(v3(p.x, p.y + 0.13f, p.z), v3(1.5f, 0.02f, 1.5f), (cw_color){ 0.3f, 0.8f, 1, 1 }, QI, 0.3f, false);
+  cw_node_set(disc, "emissive", cw_val_color(1.2f, 3.6f, 4.8f, 1));
+  accent_light(p.x, p.y + 0.8f, p.z, 0.4f, 0.8f, 1.0f, 18, 6);
+  (void)c;
+  cw_node ps = cw_node_new("GPUParticles3D", "PadLift");
+  cw_node_set(ps, "amount", cw_val_int(24));
+  cw_node_set(ps, "lifetime", cw_val_float(1.0));
+  cw_node_set(ps, "emitting", cw_val_bool(true));
+  cw_node_set(ps, "direction", cw_val_vec3(0, 1, 0));
+  cw_node_set(ps, "spread", cw_val_float(6));
+  cw_node_set(ps, "speed_min", cw_val_float(1.5));
+  cw_node_set(ps, "speed_max", cw_val_float(3.0));
+  cw_node_set(ps, "gravity", cw_val_vec3(0, 0, 0));
+  cw_node_set(ps, "size", cw_val_float(0.05));
+  cw_node_set(ps, "emission_shape", cw_val_enum("BOX"));
+  cw_node_set(ps, "emission_box", cw_val_vec3(0.6f, 0.02f, 0.6f));
+  cw_node_set(ps, "color_ramp", cw_val_string("0 0.5 0.9 1 0, 0.2 0.5 0.9 1 1, 1 0.3 0.6 1 0"));
+  cw_node_set(ps, "energy", cw_val_float(4));
+  cw_node_set(ps, "draw_mode", cw_val_enum("BILLBOARD"));
+  cw_node_set(ps, "blend", cw_val_enum("ADD"));
+  cw_node3d_set_position(ps, v3(p.x, p.y + 0.15f, p.z));
+  cw_node_add_child(A.root, ps);
+  pd->node = disc;
 }
 
-static void level_foundry(const palette *p) {
+/* a solid box of a kind (roof plant, kerbs): drawn and collided */
+static void solid_box(int kind, float x, float y0, float z, float sx, float sy, float sz) { block(x, y0, z, sx, sy, sz, kind); }
+
+/* railings along a bridge's two long sides (rect x0 z0 x1 z1, deck top y): posts, a top rail and a collision bar */
+static void bridge_rails(float x0, float z0, float x1, float z1, float y) {
+  bool along_x = (x1 - x0) > (z1 - z0);
+  for (int s = 0; s < 2; s++) {
+    float ex = along_x ? 0 : (s ? x1 - 0.06f : x0 + 0.06f), ez = along_x ? (s ? z1 - 0.06f : z0 + 0.06f) : 0;
+    float len = along_x ? x1 - x0 : z1 - z0, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+    float px = along_x ? cx : ex, pz = along_x ? ez : cz;
+    trim(px, y + 1.0f, pz, along_x ? len : 0.07f, 0.07f, along_x ? 0.07f : len, K_METAL, 0);
+    trim(px, y + 0.5f, pz, along_x ? len : 0.04f, 0.04f, along_x ? 0.04f : len, K_METAL, 0);
+    for (float t = 0; t <= len + 0.01f; t += 2.0f) {
+      float qx = along_x ? x0 + t : ex, qz = along_x ? ez : z0 + t;
+      trim(qx, y, qz, 0.06f, 1.0f, 0.06f, K_METAL, 0);
+    }
+    body_box(v3(px, y + 0.5f, pz), v3(along_x ? len : 0.1f, 1.0f, along_x ? 0.1f : len), QI);
+  }
+}
+
+static bool load_layout(int id) {
+  static const char *FILE[ARENAS] = { "foundry", "courtyard", "terraces" };
+  char path[64];
+  snprintf(path, sizeof path, "levels/%s.lvl", FILE[id]);
+  size_t len = 0;
+  char *text = cw_asset_load(path, &len);
+  if (!text) { cw_error("arenafps: %s missing", path); return false; }
+  char *buf = malloc(len + 1);
+  memcpy(buf, text, len);
+  buf[len] = 0;
+  free(text);
+  for (char *line = strtok(buf, "\n"); line; line = strtok(NULL, "\n")) {
+    char a[48], b[48];
+    float v[9];
+    int n;
+    if (line[0] == '#') continue;
+    if (sscanf(line, "top %f", &v[0]) == 1) A.top = v[0];
+    else if (sscanf(line, "csg %47s %47s", a, b) == 2) csg_piece(a, kind_named(b));
+    else if (sscanf(line, "spawn %f %f %f", &v[0], &v[1], &v[2]) == 3) spawn_at(v[0], v[1], v[2]);
+    else if (sscanf(line, "item %47s %f %f %f", a, &v[0], &v[1], &v[2]) == 4) item_at(item_named(a), v[0], v[1] + 0.5f, v[2]);
+    else if (sscanf(line, "ramp %f %f %f %f %f %f %d", &v[0], &v[1], &v[2], &v[3], &v[4], &v[5], &n) == 7)
+      ramp(v[0], v[1], v[2], v[3], v[4], v[5], n, K_FLOOR);
+    else if (sscanf(line, "pad %f %f %f %f %f %f", &v[0], &v[1], &v[2], &v[3], &v[4], &v[5]) == 6) pad_at(v3(v[0], v[1], v[2]), v3(v[3], v[4], v[5]));
+    else if (sscanf(line, "lamp %f %f %f %d", &v[0], &v[1], &v[2], &n) == 4) ceiling_lamp(v[0], v[1], v[2], n != 0);
+    else if (sscanf(line, "column %f %f %f %f", &v[0], &v[1], &v[2], &v[3]) == 4) block(v[0], v[1], v[2], 0.9f, v[3], 0.9f, K_PILLAR);
+    else if (sscanf(line, "doorframe %f %f %f %f %47s", &v[0], &v[1], &v[2], &v[3], a) == 5) door_frame(v[0], v[1], v[2], v[3], a[0]);
+    else if (sscanf(line, "rail %f %f %f %f %f", &v[0], &v[1], &v[2], &v[3], &v[4]) == 5) bridge_rails(v[0], v[1], v[2], v[3], v[4]);
+    else if (sscanf(line, "crates %f %f %f %f", &v[0], &v[1], &v[2], &v[3]) == 4) crate_stack(v[0], v[1], v[2], v[3]);
+    else if (sscanf(line, "barrels %f %f %f", &v[0], &v[1], &v[2]) == 3) barrels(v[0], v[1], v[2]);
+    else if (sscanf(line, "block %47s %f %f %f %f %f %f", a, &v[0], &v[1], &v[2], &v[3], &v[4], &v[5]) == 7)
+      solid_box(kind_named(a), v[0], v[1], v[2], v[3], v[4], v[5]);
+    else if (sscanf(line, "prop %47s %f %f %f %f %d %f %f %f", a, &v[0], &v[1], &v[2], &v[3], &n, &v[4], &v[5], &v[6]) == 9) {
+      if (n) solid_prop(a, v[0], v[1], v[2], v[3], 1, 1, 1, v[4], v[5], v[6]);
+      else prop(a, v[0], v[1], v[2], v[3], 1, 1, 1);
+    } else if (sscanf(line, "water %f %f %f %f %f", &v[0], &v[1], &v[2], &v[3], &v[4]) == 5) {
+      A.water = cw_node_new("Water3D", "Pit");
+      cw_node_set(A.water, "size", cw_val_vec2(v[3], v[4]));
+      cw_node_set(A.water, "subdivisions", cw_val_int(64));
+      cw_node_set(A.water, "color", cw_val_color(0.12f, 0.35f, 0.4f, 1));
+      cw_node_set(A.water, "deep_color", cw_val_color(0.03f, 0.12f, 0.16f, 1));
+      cw_node_set(A.water, "murk", cw_val_float(0.55));
+      cw_node3d_set_position(A.water, v3(v[0], v[1], v[2]));
+      cw_node_add_child(A.root, A.water);
+    }
+  }
+  free(buf);
+  return true;
+}
+
+/* ── each arena's shell (the outer walls and what hangs on them, above the playing space) ── */
+
+static void dress_foundry(const palette *p) {
   const float H = 28;
   shell_walls(H, 9, K_WALL, K_FLOOR, p->trim);
-  /* the deck, its four ramps, glowing edge */
-  block(0, 0, 0, 14, 3, 14, K_ACCENT);
-  strip(0, 3.02f, 7.02f, 14, 0.06f, 0.06f, p->trim, 3);
-  strip(0, 3.02f, -7.02f, 14, 0.06f, 0.06f, p->trim, 3);
-  ramp(7, 0, 0, 7, 3, 5, 0, K_FLOOR);
-  ramp(-7, 0, 0, 7, 3, 5, 1, K_FLOOR);
-  ramp(0, 0, 7, 7, 3, 5, 2, K_FLOOR);
-  ramp(0, 0, -7, 7, 3, 5, 3, K_FLOOR);
-  /* pillars */
-  for (int i = 0; i < 4; i++) {
-    float sx = (i & 1) ? 1 : -1, sz = (i & 2) ? 1 : -1;
-    block(sx * 18, 0, sz * 18, 2.4f, 9, 2.4f, K_WALL);
-    strip(sx * 18 - 0.75f, 4.7f, sz * 18 + sz * 1.22f, 0.12f, 6.0f, 0.04f, p->trim, 3.0f);
-    strip(sx * 18 + 0.75f, 4.7f, sz * 18 + sz * 1.22f, 0.12f, 6.0f, 0.04f, p->trim, 3.0f);
-    block(sx * 18, 0, sz * 8.5f, 3, 1.2f, 3, K_WALL);
-  }
-  /* cover along the lanes */
-  for (int i = 0; i < 4; i++) {
-    float s = (i & 1) ? 1 : -1;
-    if (i < 2) block(s * 20, 0, 0, 2, 1.3f, 5, K_ACCENT);
-    else block(0, 0, s * 20, 5, 1.3f, 2, K_ACCENT);
-  }
-  block(-12, 0, 12, 4, 0.9f, 2, K_WALL);
-  block(12, 0, -12, 4, 0.9f, 2, K_WALL);
-  block(12, 0, 12, 2, 1.1f, 4, K_WALL);
-  block(-12, 0, -12, 2, 1.1f, 4, K_WALL);
-  {
-    wall_style st = { .y0 = 0, .skirt = K_TRIM, .clad_hi = 3.4f, .pilaster_every = 7, .win_lo = 4.1f, .win_hi = 5.9f, .cornice = K_METAL };
-    wall_dress(H, 9, &st);
-  }
+  wall_style st = { .y0 = 0, .skirt = K_TRIM, .clad_hi = 3.4f, .pilaster_every = 7, .win_lo = 5.0f, .win_hi = 6.9f, .cornice = K_METAL };
+  wall_dress(H, 9, &st);
   pipe_runs(H, 7.9f, 0xF);
   vents(H, 1.4f, 14);
-  catwalk(H, 2, 6.4f, 1.5f, -H + 1, H - 1);
-  catwalk(H, 3, 6.4f, 1.5f, -H + 1, H - 1);
   roof_girders(H, 9.0f, 8);
-  wall_lamps(H, 3.6f, 7, 3.5f, 22, 9, 0xF);
-  /* pillars: hazard wrapped feet, steel capitals under the trusses */
-  for (int i = 0; i < 4; i++) {
-    float sx = (i & 1) ? 1 : -1, sz = (i & 2) ? 1 : -1;
-    trim(sx * 18, 0, sz * 18, 2.5f, 1.2f, 2.5f, K_TRIM, 0);
-    trim(sx * 18, 8.3f, sz * 18, 2.9f, 0.7f, 2.9f, K_METAL, 0);
-    trim(sx * 18, 0, sz * 8.5f, 3.08f, 0.12f, 3.08f, K_METAL, 0);
-    trim(sx * 18, 1.14f, sz * 8.5f, 3.08f, 0.1f, 3.08f, K_METAL, 0);
-  }
-  /* the deck: hazard edges on top, a steel lip */
-  floor_frame(0, 0, 6.85f, 6.85f, 3.0f, 0.3f);
-  floor_frame(0, 0, 15.5f, 15.5f, 0, 0.35f);
-  trim(0, 2.75f, 0, 14.12f, 0.25f, 14.12f, K_METAL, 0);
-  for (int i = 0; i < 4; i++) {
-    float sx = (i & 1) ? 1 : -1, sz = (i & 2) ? 1 : -1;
-    crate_stack(sx * 10, sz * 24.5f, 0.2f * sx, 0);
-    crate_stack(sx * 24.5f, sz * 10, 1.4f, 0);
-    barrels(sx * 26, sz * 5.5f, 0);
-    solid_prop("jersey", sx * 9, 0, sz * 15.5f, 0, 1, 1, 1, 2.0f, 0.8f, 0.6f);
-    solid_prop("jersey", sx * 15.5f, 0, sz * 9, 1.5708f, 1, 1, 1, 0.6f, 0.8f, 2.0f);
-  }
+  wall_lamps(H, 2.6f, 7, 3.5f, 18, 8, 0xF);
   floodlight(0, 7.6f, -H + 0.2f, 3.14159265f, p->accent, 120);
   floodlight(0, 7.6f, H - 0.2f, 0, p->accent, 120);
   floodlight(-H + 0.2f, 7.6f, 0, -1.5708f, p->accent, 120);
   floodlight(H - 0.2f, 7.6f, 0, 1.5708f, p->accent, 120);
   accent_light(0, 6.5f, 0, 0.5f, 0.75f, 1.0f, 70, 22);
-  solid_prop("console", 0, 3.0f, -5.5f, 0, 1, 1, 1, 0.9f, 1.1f, 0.5f);
-  solid_prop("console", 0, 3.0f, 5.5f, 3.14159265f, 1, 1, 1, 0.9f, 1.1f, 0.5f);
-  for (int i = 0; i < 4; i++) spawn_nook((i & 1) ? 1 : -1, (i & 2) ? 1 : -1, H, 8, 0, 4.5f, i == 0 || i == 3);
-  lane_walls(H, 24, 0, 4.5f);
-  /* screens round the deck (each side two, the ramp between them): the deck no longer sees the outer ring */
-  for (int s = -1; s <= 1; s += 2) {
-    block(-8, 0, s * 14.0f, 10, 4, 0.6f, K_WALL);
-    block(8, 0, s * 14.0f, 10, 4, 0.6f, K_WALL);
-    block(s * 14.0f, 0, -8, 0.6f, 4, 10, K_WALL);
-    block(s * 14.0f, 0, 8, 0.6f, 4, 10, K_WALL);
+  /* the deck: hazard edges on top, a steel lip; hazard feet on the core's pillars */
+  floor_frame(0, 0, 3.85f, 3.85f, 2.0f, 0.3f);
+  trim(0, 1.75f, 0, 8.12f, 0.25f, 8.12f, K_METAL, 0);
+  for (int i = 0; i < 4; i++) {
+    float sx = (i & 1) ? 1 : -1, sz = (i & 2) ? 1 : -1;
+    trim(sx * 7, 0, sz * 7, 2.1f, 1.2f, 2.1f, K_TRIM, 0);
+    trim(sx * 7, 8.3f, sz * 7, 2.5f, 0.7f, 2.5f, K_METAL, 0);
+    strip(sx * 7 - 0.6f, 4.7f, sz * 7 + sz * 1.02f, 0.12f, 6.0f, 0.04f, p->trim, 3.0f);
   }
-  item_at(ITEM_ROCKET, 0, 3.4f, 0);
-  item_at(ITEM_RAIL, 0, 0.5f, -22);
-  item_at(ITEM_SCATTER, 0, 0.5f, 22);
-  item_at(ITEM_ARMOR, -22, 0.5f, 0);
-  item_at(ITEM_ARMOR, 22, 0.5f, 0);
-  item_at(ITEM_HEALTH, -12, 0.5f, 0);
-  item_at(ITEM_HEALTH, 12, 0.5f, 0);
-  item_at(ITEM_HEALTH, 0, 0.5f, 12);
-  item_at(ITEM_HEALTH, 0, 0.5f, -12);
-  item_at(ITEM_AMMO, -17, 1.8f, -8);
-  item_at(ITEM_AMMO, 17, 1.8f, 8);
+  floor_frame(0, 0, 11.6f, 11.6f, 0, 0.35f);
 }
 
-static void level_courtyard(const palette *p) {
+static void dress_courtyard(const palette *p) {
   const float H = 30;
   shell_walls(H, 8, K_WALL, K_FLOOR, p->trim);
-  /* four quadrant buildings with doorways, flat roofs reached by ramps */
-  for (int i = 0; i < 4; i++) {
-    float sx = (i & 1) ? 1 : -1, sz = (i & 2) ? 1 : -1;
-    float cx = sx * 14, cz = sz * 14;
-    /* walls of a 12 x 12 building, 4 high, doors on the sides facing the middle */
-    /* four walls, a doorway in the two that face the middle */
-    float dz = cz - sz * 6, oz = cz + sz * 6, dx = cx - sx * 6, ox = cx + sx * 6;
-    block(cx - 3.75f, 0, dz, 4.5f, 4, 0.6f, K_CLAD);
-    block(cx + 3.75f, 0, dz, 4.5f, 4, 0.6f, K_CLAD);
-    block(cx, 3, dz, 3, 1, 0.6f, K_CLAD);
-    block(cx, 0, oz, 12.6f, 4, 0.6f, K_CLAD);
-    block(dx, 0, cz - 3.75f, 0.6f, 4, 4.5f, K_CLAD);
-    block(dx, 0, cz + 3.75f, 0.6f, 4, 4.5f, K_CLAD);
-    block(dx, 3, cz, 0.6f, 1, 3, K_CLAD);
-    block(ox, 0, cz, 0.6f, 4, 12.6f, K_CLAD);
-    /* dressing (visual only): timber door frames, a stone plinth, a cornice under the roof, lit windows on the blind walls, lanterns */
-    trim(cx, 2.86f, dz, 3.3f, 0.22f, 0.76f, K_TRIM, 0);
-    trim(cx - 1.58f, 0, dz, 0.16f, 3.0f, 0.72f, K_TRIM, 0);
-    trim(cx + 1.58f, 0, dz, 0.16f, 3.0f, 0.72f, K_TRIM, 0);
-    trim(dx, 2.86f, cz, 0.76f, 0.22f, 3.3f, K_TRIM, 0);
-    trim(dx, 0, cz - 1.58f, 0.72f, 3.0f, 0.16f, K_TRIM, 0);
-    trim(dx, 0, cz + 1.58f, 0.72f, 3.0f, 0.16f, K_TRIM, 0);
-    trim(cx, 3.62f, cz, 13.0f, 0.38f, 13.0f, K_PILLAR, 0);
-    trim(cx, 3.5f, cz, 12.86f, 0.12f, 12.86f, K_TRIM, 0);
-    for (int k = -1; k <= 1; k += 2) {
-      float wpos = (float)k * 3.0f;
-      trim(cx + wpos, 1.1f, oz + sz * 0.31f, 1.5f, 1.5f, 0.06f, K_TRIM, 0);
-      trim(cx + wpos, 1.2f, oz + sz * 0.34f, 1.2f, 1.3f, 0.04f, K_WINDOW, 0);
-      trim(cx + wpos, 1.0f, oz + sz * 0.36f, 1.7f, 0.1f, 0.14f, K_PILLAR, 0);
-      trim(ox + sx * 0.31f, 1.1f, cz + wpos, 0.06f, 1.5f, 1.5f, K_TRIM, 0);
-      trim(ox + sx * 0.34f, 1.2f, cz + wpos, 0.04f, 1.3f, 1.2f, K_WINDOW, 0);
-      trim(ox + sx * 0.36f, 1.0f, cz + wpos, 0.14f, 0.1f, 1.7f, K_PILLAR, 0);
-    }
-    {
-      const float *lc = LAMP_RGB[A.id];
-      float lz = dz - sz * 0.45f, lx = dx - sx * 0.45f;
-      trim(cx + 2.2f, 2.5f, lz, 0.22f, 0.36f, 0.22f, K_LAMP, 0);
-      trim(cx + 2.2f, 2.86f, lz, 0.3f, 0.06f, 0.3f, K_METAL, 0);
-      accent_light(cx + 2.2f, 2.4f, lz - sz * 0.4f, lc[0], lc[1], lc[2], 18, 8);
-      trim(lx, 2.5f, cz - 2.2f, 0.22f, 0.36f, 0.22f, K_LAMP, 0);
-      trim(lx, 2.86f, cz - 2.2f, 0.3f, 0.06f, 0.3f, K_METAL, 0);
-      accent_light(lx - sx * 0.4f, 2.4f, cz - 2.2f, lc[0], lc[1], lc[2], 18, 8);
-    }
-    /* carve doors by laying the cut walls out of pieces instead: a roof with a hole */
-    block(cx, 4, cz, 12.6f, 0.4f, 12.6f, K_ACCENT);
-    strip(cx, 4.45f, cz - 6.3f, 12.6f, 0.06f, 0.06f, p->trim, 3);
-    ramp(ox + sx * 9.3f, 0, cz - sz * 2, 9, 4.4f, 3, sx > 0 ? 1 : 0, K_FLOOR);
-  }
-  /* the middle: a low plinth and four hedges of cover */
-  block(0, 0, 0, 6, 0.8f, 6, K_ACCENT);
-  block(0, 0.8f, 0, 2, 1.2f, 2, K_WALL);
-  for (int i = 0; i < 4; i++) {
-    float a = i * 1.5708f + 0.785f, s, c;
-    cw_sincos(a, &s, &c);
-    block(s * 8, 0, c * 8, 2.5f, 1.2f, 2.5f, K_WALL);
-  }
-  {
-    wall_style st = { .y0 = 0, .skirt = K_PILLAR, .clad_hi = 0, .pilaster_every = 6, .win_lo = 0, .win_hi = 0, .cornice = K_PILLAR };
-    wall_dress(H, 8, &st);
-  }
+  wall_style st = { .y0 = 0, .skirt = K_PILLAR, .clad_hi = 0, .pilaster_every = 6, .win_lo = 0, .win_hi = 0, .cornice = K_PILLAR };
+  wall_dress(H, 8, &st);
   vents(H, 3.2f, 12);
   wall_lamps(H, 3.4f, 12, 9, 24, 9, 0xF);
-  for (int i = 0; i < 4; i++) {
-    float sx = (i & 1) ? 1 : -1, sz = (i & 2) ? 1 : -1;
-    solid_prop("column", sx * 2.3f, 0.8f, sz * 2.3f, 0, 1, 1, 1, 0.9f, 3.3f, 0.9f);
-    solid_prop("planter", sx * 8, 0, sz * 28.4f, 0, 1, 1, 1, 2.2f, 1.6f, 1.0f);
-    solid_prop("planter", sx * 21, 0, sz * 28.4f, 0, 1, 1, 1, 2.2f, 1.6f, 1.0f);
-    crate_stack(sx * 27, sz * 8, 1.6f, 0);
-    barrels(sx * 22, sz * 22, 0);
-    solid_prop("jersey", sx * 6.5f, 0, sz * 20, 0, 1, 1, 1, 2.0f, 0.8f, 0.6f);
-  }
   floodlight(0, 6.4f, -H + 0.2f, 3.14159265f, p->accent, 90);
   floodlight(0, 6.4f, H - 0.2f, 0, p->accent, 90);
   floodlight(-H + 0.2f, 6.4f, 0, -1.5708f, p->accent, 90);
   floodlight(H - 0.2f, 6.4f, 0, 1.5708f, p->accent, 90);
   accent_light(0, 3.5f, 0, 1.0f, 0.7f, 0.35f, 55, 16);
-  /* spawns inside the four buildings (their doors face the middle), far from the doorways */
+  /* the houses: a cornice and a timber band round each roof, lit windows on the street faces between the doors */
   for (int i = 0; i < 4; i++) {
     float sx = (i & 1) ? 1 : -1, sz = (i & 2) ? 1 : -1;
-    spawn_at(sx * 18, 0.05f, sz * 18);
-    if (i == 0 || i == 3) spawn_at(sx * 18, 0.05f, sz * 10.5f);
-    else spawn_at(sx * 10.5f, 0.05f, sz * 18);
+    float cx = sx * 15, cz = sz * 15;
+    trim(cx, 3.42f, cz, 18.2f, 0.18f, 18.2f, K_TRIM, 0);
+    static const float WX[2] = { 14.85f, 22.4f }, WZ[2] = { 13.4f, 20.6f };
+    for (int k = 0; k < 2; k++) { /* between the doors: the outer faces and the faces on the cross streets */
+      trim(sx * 24.04f, 1.2f, sz * WX[k], 0.06f, 1.3f, 1.2f, K_WINDOW, 0);
+      trim(sx * WZ[k], 1.2f, sz * 24.04f, 1.2f, 1.3f, 0.06f, K_WINDOW, 0);
+      trim(sx * 5.96f, 1.2f, sz * WX[k], 0.06f, 1.3f, 1.2f, K_WINDOW, 0);
+      trim(sx * WX[k], 1.2f, sz * 5.96f, 1.2f, 1.3f, 0.06f, K_WINDOW, 0);
+    }
+    (void)cx, (void)cz;
   }
-  item_at(ITEM_ROCKET, 0, 2.2f, 0);
-  item_at(ITEM_RAIL, -14, 4.9f, -14);
-  item_at(ITEM_SCATTER, 14, 4.9f, 14);
-  item_at(ITEM_SCATTER, -14, 0.5f, 14);
-  item_at(ITEM_ARMOR, 14, 0.5f, -14);
-  item_at(ITEM_HEALTH, 0, 0.5f, -8);
-  item_at(ITEM_HEALTH, 0, 0.5f, 8);
-  item_at(ITEM_HEALTH, -8, 0.5f, 0);
-  item_at(ITEM_HEALTH, 8, 0.5f, 0);
-  item_at(ITEM_AMMO, 22, 0.5f, 0);
-  item_at(ITEM_AMMO, -22, 0.5f, 0);
-  lane_walls(H, 24, 0, 4);
-  /* the cross of lanes between the buildings ran 60 m end to end: staggered baffles at abs 20 (past the building corners),
-   * each closing two thirds of the lane, the gaps on opposite sides */
-  block(-2.5f, 0, -21, 11, 4, 0.6f, K_WALL);
-  block(2.5f, 0, 21, 11, 4, 0.6f, K_WALL);
-  block(21, 0, -2.5f, 0.6f, 4, 11, K_WALL);
-  block(-21, 0, 2.5f, 0.6f, 4, 11, K_WALL);
 }
 
-static void level_terraces(const palette *p) {
+static void dress_terraces(const palette *p) {
   const float H = 26;
-  /* water over the pit floor: it ripples and reflects, shallow enough to wade (visual only) */
-  A.water = cw_node_new("Water3D", "Pit");
-  cw_node_set(A.water, "size", cw_val_vec2(48, 48));
-  cw_node_set(A.water, "subdivisions", cw_val_int(64));
-  cw_node_set(A.water, "color", cw_val_color(0.12f, 0.35f, 0.4f, 1));
-  cw_node_set(A.water, "deep_color", cw_val_color(0.03f, 0.12f, 0.16f, 1));
-  cw_node_set(A.water, "murk", cw_val_float(0.55));
-  cw_node3d_set_position(A.water, v3(0, 0.3f, 0));
-  cw_node_add_child(A.root, A.water);
   shell_walls(H, 10, K_WALL, K_FLOOR, p->trim);
-  /* a stepped bowl: the middle is a pit (water in the picture), levels climb to the rim */
-  block(0, 0, 0, 52, 0.01f, 52, K_FLOOR);
-  /* ring terraces at 1.2 and 2.4 m */
-  float t1 = 1.2f, t2 = 2.4f;
-  block(0, 0, -21, 52, t2, 10, K_WALL);
-  block(0, 0, 21, 52, t2, 10, K_WALL);
-  block(-21, 0, 0, 10, t2, 32, K_WALL);
-  block(21, 0, 0, 10, t2, 32, K_WALL);
-  block(0, 0, -15.5f, 42, t1, 1.0f, K_ACCENT);
-  block(0, 0, 15.5f, 42, t1, 1.0f, K_ACCENT);
-  block(-15.5f, 0, 0, 1.0f, t1, 30, K_ACCENT);
-  block(15.5f, 0, 0, 1.0f, t1, 30, K_ACCENT);
-  /* ramps down into the pit from the middle of each side */
-  ramp(0, 0, -16, 7, 0, 4, 2, K_FLOOR);
-  /* a bridge across the pit and four islands */
-  block(0, 0.2f, 0, 4, 0.8f, 40, K_ACCENT);
-  block(0, 0.2f, 0, 40, 0.8f, 4, K_ACCENT);
-  block(0, 0, 0, 7, 1.8f, 7, K_WALL);
-  strip(0, 1.82f, 3.52f, 7, 0.06f, 0.06f, p->trim, 3);
-  for (int i = 0; i < 4; i++) {
-    float sx = (i & 1) ? 1 : -1, sz = (i & 2) ? 1 : -1;
-    block(sx * 9, 0, sz * 9, 4, 1.0f, 4, K_WALL);
-  }
-  /* stairs up to the terraces: ramps from the pit floor */
-  ramp(-12, 0, -10, 7, t2, 4, 0, K_FLOOR);
-  ramp(12, 0, 10, 7, t2, 4, 1, K_FLOOR);
-  ramp(10, 0, -12, 7, t2, 4, 2, K_FLOOR);
-  ramp(-10, 0, 12, 7, t2, 4, 3, K_FLOOR);
-  {
-    wall_style st = { .y0 = t2, .skirt = K_TRIM, .clad_hi = 5.4f, .pilaster_every = 8, .win_lo = 6.4f, .win_hi = 8.3f, .cornice = K_METAL };
-    wall_dress(H, 10, &st);
-  }
+  wall_style st = { .y0 = A.top, .skirt = K_TRIM, .clad_hi = 5.9f, .pilaster_every = 8, .win_lo = 6.6f, .win_hi = 8.4f, .cornice = K_METAL };
+  wall_dress(H, 10, &st);
   pipe_runs(H, 9.0f, 0xF);
-  vents(H, 3.6f, 13);
-  wall_lamps(H, 5.7f, 8, 4, 26, 10, 0xF);
-  /* hazard lips along the terrace edges */
-  trim(0, t2, -16.15f, 52, 0.014f, 0.3f, K_TRIM, 0);
-  trim(0, t2, 16.15f, 52, 0.014f, 0.3f, K_TRIM, 0);
-  trim(-16.15f, t2, 0, 0.3f, 0.014f, 32, K_TRIM, 0);
-  trim(16.15f, t2, 0, 0.3f, 0.014f, 32, K_TRIM, 0);
-  for (int i = 0; i < 4; i++) {
-    float sx = (i & 1) ? 1 : -1, sz = (i & 2) ? 1 : -1;
-    crate_stack(sx * 11, sz * 24, 0.3f, t2);
-    barrels(sx * 24, sz * 12, t2);
-    solid_prop("planter", sx * 14.2f, t2, sz * 24, 0, 1, 1, 1, 2.2f, 1.6f, 1.0f); /* clear of the spawn nook's door */
-    solid_prop("jersey", sx * 6, t1, sz * 15.5f + sz * 0.0f, 0, 1, 1, 1, 2.0f, 0.8f, 0.6f);
-  }
-  floodlight(0, 8.2f, -H + 0.2f, 3.14159265f, p->accent, 130);
-  floodlight(0, 8.2f, H - 0.2f, 0, p->accent, 130);
-  floodlight(-H + 0.2f, 8.2f, 0, -1.5708f, p->accent, 130);
-  floodlight(H - 0.2f, 8.2f, 0, 1.5708f, p->accent, 130);
+  wall_lamps(H, 6.0f, 8, 4, 26, 10, 0xF);
+  floodlight(0, 8.4f, -H + 0.2f, 3.14159265f, p->accent, 130);
+  floodlight(0, 8.4f, H - 0.2f, 0, p->accent, 130);
+  floodlight(-H + 0.2f, 8.4f, 0, -1.5708f, p->accent, 130);
+  floodlight(H - 0.2f, 8.4f, 0, 1.5708f, p->accent, 130);
   accent_light(0, 2.4f, 0, 0.2f, 0.85f, 0.8f, 60, 18);
-  for (int i = 0; i < 4; i++) spawn_nook((i & 1) ? 1 : -1, (i & 2) ? 1 : -1, H, 7, t2, 3.6f, true);
-  lane_walls(H, 20.5f, t2, 3.6f);
-  /* a parapet 1 m high along the rim's inner edge (a 5 m gap in the middle of each side to drop into the pit): the rim and the
-   * pit no longer see each other end to end, only near the edge */
-  for (int s = -1; s <= 1; s += 2)
-    for (int k = -1; k <= 1; k += 2) {
-      block(k * 9.0f, t2, s * 16.3f, 13, 1.0f, 0.4f, K_WALL);
-      block(s * 16.3f, t2, k * 9.0f, 0.4f, 1.0f, 13, K_WALL);
-    }
-  /* in the pit, each island gets two 3.5 m walls on the sides facing the bridges: the pit splits into four rooms that see each
-   * other only along the bridges */
-  for (int i = 0; i < 4; i++) {
-    float sx = (i & 1) ? 1 : -1, sz = (i & 2) ? 1 : -1;
-    block(sx * 9, 0, sz * 4.6f, 4, 3.5f, 0.6f, K_WALL);
-    block(sx * 4.6f, 0, sz * 9, 0.6f, 3.5f, 4, K_WALL);
+  /* hazard lips along the pit's rim and the ledges */
+  for (int s = -1; s <= 1; s += 2) {
+    trim(0, A.top, s * 12.15f, 24.6f, 0.014f, 0.3f, K_TRIM, 0);
+    trim(s * 12.15f, A.top, 0, 0.3f, 0.014f, 24.6f, K_TRIM, 0);
   }
-  item_at(ITEM_ROCKET, 0, 2.3f, 0);
-  item_at(ITEM_RAIL, 0, 3.0f, -18.5f); /* in front of the lane wall */
-  item_at(ITEM_SCATTER, 9, 1.5f, 9);
-  item_at(ITEM_SCATTER, -9, 1.5f, -9);
-  item_at(ITEM_ARMOR, 0, 3.0f, 18.5f);
-  item_at(ITEM_HEALTH, 9, 1.5f, -9);
-  item_at(ITEM_HEALTH, -9, 1.5f, 9);
-  item_at(ITEM_HEALTH, -18.5f, 3.0f, 0);
-  item_at(ITEM_HEALTH, 18.5f, 3.0f, 0);
-  item_at(ITEM_AMMO, 0, 1.2f, 10);
-  item_at(ITEM_AMMO, 0, 1.2f, -10);
 }
 
 static cw_color ITEM_COLOR[ITEM_KINDS] = {
@@ -788,10 +722,12 @@ void arena_build(int id, cw_node world_root) {
     TINT[k][0] = l.r, TINT[k][1] = l.g, TINT[k][2] = l.b;
   }
   mb_macro = 0.14f;
+  A.top = 4.1f;
+  load_layout(id);
   switch (id) {
-    case 0: level_foundry(p); break;
-    case 1: level_courtyard(p); break;
-    default: level_terraces(p); break;
+    case 0: dress_foundry(p); break;
+    case 1: dress_courtyard(p); break;
+    default: dress_terraces(p); break;
   }
   {
     for (int k = 0; k < K_KINDS; k++) {
@@ -924,7 +860,8 @@ void arena_build(int id, cw_node world_root) {
 
 void arena_free(void) {
   if (cw_navmesh_valid(A.nav)) cw_navmesh_free(A.nav);
-  if (cw_world3d_valid(A.world)) cw_world3d_destroy(A.world);
+  if (cw_world3d_valid(A.world)) cw_world3d_destroy(A.world); /* its shapes first, then the meshes they used */
+  for (int i = 0; i < A.nmeshes; i++) cw_mesh3d_destroy(A.meshes[i]);
   memset(&A, 0, sizeof A);
 }
 
