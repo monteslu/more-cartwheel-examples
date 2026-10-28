@@ -90,16 +90,18 @@ static float g_pos_dbg[2], g_cam_dbg[3], g_ppos_dbg[MAX_PLAYERS * 2];
  * g.camgate counts frames at rest (every player still for 2.5 s), at-rest frames where the view moved more than
  * 1 mm, frames in motion, and frames in motion where the view jumped (over 0.6 m) or jerked (its step changed by
  * over 8 cm); g.camjit keeps the largest at-rest step, step in motion and step change seen (metres) and the frame of
- * the first frame in motion that broke the bound (frames since the match started) */
+ * the first frame in motion that broke the bound (frames since the match started). Frames that carry a real event's
+ * shake (sim_shake) count in g.shake_frames instead of as motion: they are meant to move */
 static float g_view_dbg[4], g_camjit_dbg[4];
-static int g_camgate_dbg[4];
+static int g_camgate_dbg[4], g_shake_frames_dbg;
 static struct { float last[3], step[3], ppos[MAX_PLAYERS * 2]; int still, frames; } CS;
 static void camgate_reset(void) {
   memset(&CS, 0, sizeof CS);
   memset(g_camgate_dbg, 0, sizeof g_camgate_dbg);
   memset(g_camjit_dbg, 0, sizeof g_camjit_dbg);
+  g_shake_frames_dbg = 0;
 }
-static void camgate_frame(const float view[3], const float *pp, int np, bool snapped) {
+static void camgate_frame(const float view[3], const float *pp, int np, bool snapped, bool shaking) {
   bool still = CS.frames > 0;
   for (int i = 0; i < np * 2; i++) {
     if (fabsf(pp[i] - CS.ppos[i]) > 1e-5f) still = false;
@@ -118,6 +120,8 @@ static void camgate_frame(const float view[3], const float *pp, int np, bool sna
       g_camgate_dbg[0]++;
       if (d > 0.001f) g_camgate_dbg[1]++;
       g_camjit_dbg[0] = fmaxf(g_camjit_dbg[0], d);
+    } else if (shaking) {
+      g_shake_frames_dbg++; /* a real event's shake (sim_shake): short and fading, not a camera fault */
     } else {
       g_camgate_dbg[2]++;
       if ((d > 0.6f || jerk > 0.08f) && !g_camgate_dbg[3]++) g_camjit_dbg[3] = (float)CS.frames; /* the first one */
@@ -805,7 +809,7 @@ static void sync_scene(float alpha, float dt) {
       cw_pos2 ip = cw_mover2d_interpolated(&g->p[i].pf.body, alpha);
       pp[2 * i] = (float)ip.x, pp[2 * i + 1] = (float)ip.y;
     }
-    camgate_frame(g_view_dbg, pp, g->nplayers, snapped);
+    camgate_frame(g_view_dbg, pp, g->nplayers, snapped, sh > 0);
   }
   cw_node3d_set_rotation(S.cam, (t3_vec3){ -0.06f, 0, 0 });
   cw_node3d_set_position(S.sun, (t3_vec3){ vx + 8, vy + 18, 14 });
@@ -1384,6 +1388,7 @@ static void init(void *user) {
   cw_debug_f32_array("g.cam", g_cam_dbg, 3);
   cw_debug_f32_array("g.view", g_view_dbg, 4);
   cw_debug_field("g.camgate", g_camgate_dbg, CW_DBG_I32, 4);
+  cw_debug_i32("g.shake_frames", &g_shake_frames_dbg); /* frames drawn with a real event's shake */
   cw_debug_f32_array("g.camjit", g_camjit_dbg, 4);
   cw_debug_i32("g.hp", &g_hp_dbg);
   cw_debug_i32("g.bubbles", &g_bubbles_dbg);

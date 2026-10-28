@@ -22,7 +22,9 @@
       "g.reached",
       "g.hitstops",
       "g.players",
-      "g.ppos"
+      "g.ppos",
+      "g.camgate",
+      "g.shake_frames"
     ],
     "expect": {
       "g.tick": 400,
@@ -33,7 +35,14 @@
       "g.checkpoint": 0,
       "g.deaths": 0,
       "g.hitstops": 2,
-      "g.reached": 1
+      "g.reached": 1,
+      "g.camgate": [
+        0,
+        0,
+        398,
+        0
+      ],
+      "g.shake_frames": 0
     },
     "note": "two bots on the real game flow (title skipped): the air jump picked up under its arch, 8 coins, two stomps (hit-stops), cross-host state and picture"
   },
@@ -60,7 +69,9 @@
       "g.reached",
       "g.hitstops",
       "g.players",
-      "g.ppos"
+      "g.ppos",
+      "g.camgate",
+      "g.shake_frames"
     ],
     "expect": {
       "g.tick": 400,
@@ -71,7 +82,14 @@
       "g.checkpoint": 0,
       "g.deaths": 0,
       "g.hitstops": 4,
-      "g.reached": 1
+      "g.reached": 1,
+      "g.camgate": [
+        0,
+        0,
+        398,
+        0
+      ],
+      "g.shake_frames": 0
     },
     "note": "four players on one camera: cross-host state"
   },
@@ -97,7 +115,9 @@
       "g.reached",
       "g.hitstops",
       "g.players",
-      "g.ppos"
+      "g.ppos",
+      "g.camgate",
+      "g.shake_frames"
     ],
     "expect": {
       "g.tick": 1500,
@@ -107,10 +127,17 @@
       "g.kills": 1,
       "g.won": 1,
       "g.boss_hp": 0,
-      "g.hitstops": 12,
-      "g.reached": 511
+      "g.hitstops": 14,
+      "g.reached": 511,
+      "g.camgate": [
+        0,
+        0,
+        1338,
+        0
+      ],
+      "g.shake_frames": 160
     },
-    "note": "two bots from the arena flag with every ability: boss fight, hit-stops and the win, cross-host state"
+    "note": "two bots from the arena flag with every ability: boss fight, hit-stops and the win, cross-host state; the drawn camera stays smooth through the fight (no frame in motion over the bounds) and shakes on 160 frames for the boss leaps, hits and its death (the boss now sleeps until a player is near and lands on the ground it hits, so the fight has 14 hit-stops, was 12)"
   },
   {
     "name": "coopplatformer-camera-1p",
@@ -130,7 +157,8 @@
       "g.ppos",
       "g.cam",
       "g.view",
-      "g.camgate"
+      "g.camgate",
+      "g.shake_frames"
     ],
     "expect": {
       "g.players": 1,
@@ -139,7 +167,8 @@
         0,
         745,
         0
-      ]
+      ],
+      "g.shake_frames": 0
     },
     "controlInput": "coopplatformer-camera-1p.json",
     "controlEnv": {
@@ -165,7 +194,8 @@
       "g.ppos",
       "g.cam",
       "g.view",
-      "g.camgate"
+      "g.camgate",
+      "g.shake_frames"
     ],
     "expect": {
       "g.players": 4,
@@ -174,7 +204,8 @@
         0,
         745,
         0
-      ]
+      ],
+      "g.shake_frames": 0
     },
     "controlInput": "coopplatformer-camera-4p.json",
     "controlEnv": {

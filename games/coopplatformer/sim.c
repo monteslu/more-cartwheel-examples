@@ -260,7 +260,7 @@ void sim_step(game *g, const input_state in[MAX_PLAYERS], float dt) {
   if (g->hit_flash > 0) g->hit_flash--;
   if (g->hitstop > 0) { /* hit-stop: the world stands still for a few ticks so a hit lands with weight */
     g->hitstop--;
-    g->cam.px = g->cam.x, g->cam.py = g->cam.y, g->cam.pz = g->cam.z; /* the view holds still with the world */
+    camera_step(g, dt); /* the world stands still; the view eases to the frozen players instead of stopping dead */
     for (int i = 0; i < g->nplayers; i++) {
       g->p[i].pf.body.prev_position = g->p[i].pf.body.position;
       if (in[i].jump_pressed) g->p[i].pf.buffer = g->p[i].pf.def.jump_buffer; /* a press during the freeze still counts */
