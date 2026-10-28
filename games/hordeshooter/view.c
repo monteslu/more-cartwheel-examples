@@ -577,7 +577,12 @@ static void view_power_init(void) {
   }
   V.grenade = imesh("Grenades", t3_sphere_geometry_new(0.14f, 10, 8), glow(0.5f, 1, 0.35f, 2), 64, false);
   V.rail = imesh("RailShots", t3_box_geometry_new(0.06f, 0.06f, 3.0f, 1, 1, 1), glow(0.4f, 0.8f, 1, 14), 128, false);
-  V.flame = imesh("FlameShots", t3_icosahedron_geometry_new(0.22f, 0), glow(1, 0.45f, 0.08f, 6), 512, false);
+  { /* flamer shots: soft additive balls of fire, deep orange */
+    t3_material *fm = t3_mesh_basic_material_new(0xffffff);
+    fm->color = lin(1.0f, 0.38f, 0.06f);
+    fm->blending = T3_ADDITIVE_BLENDING, fm->transparent = true, fm->depth_write = false;
+    V.flame = imesh("FlameShots", t3_icosahedron_geometry_new(0.16f, 1), fm, 512, false);
+  }
   {
     t3_material *sm = mat(0.85f, 0.88f, 0.95f, 0.25f, 0.9f, false);
     sm->emissive = lin(0.9f, 0.9f, 1.0f), sm->emissive_intensity = 0.6f;

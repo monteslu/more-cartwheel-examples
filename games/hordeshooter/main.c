@@ -123,6 +123,8 @@ static void start(int players, void *u) {
   G.in_match = true;
   G.ticks = 0;
   G.banner_t = 180, G.banner_kind = 0;
+  if (getenv("HORDE_POWER_SHOW")) /* development (screenshots): one of each power-up in a ring round the team */
+    for (int t = 0; t < PU_KINDS; t++) sim_power_drop(&G.S, cw_cos((float)t * 0.5236f) * 7.0f, cw_sin((float)t * 0.5236f) * 5.0f, t);
   if (getenv("HORDE_POWER")) /* development (screenshots, surveys): every player starts holding power-up n, refreshed as it runs out */
     for (int i = 0; i < players; i++) sim_power_give(&G.S, i, atoi(getenv("HORDE_POWER")) % PU_KINDS);
   memset(G.level_flash, 0, sizeof G.level_flash);

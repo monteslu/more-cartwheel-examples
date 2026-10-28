@@ -71,7 +71,8 @@ n, `HORDE_PLAYERS=n` sets the auto build's player count, `HORDE_QUALITY=0..3`
 picks a graphics preset, `HORDE_BENCH=1` prints timings every 120 frames,
 `HORDE_REPORT=1` prints the first kill, every level-up and every hit,
 `HORDE_VFOG=0|1` turns the volumetric fog off or on, `HORDE_POWER=n` hands every
-player power-up n (0 to 11, the table order) and keeps it held. A run started at a later
+player power-up n (0 to 11, the table order) and keeps it held, `HORDE_POWER_SHOW=1`
+lays one of each round the start. A run started at a later
 wave begins with about the levels a played run has there.
 `hordeshooter_soak [minutes] [players] [wave]` plays the rules with the bots and
 no window and no GPU (30 game minutes take a few seconds) and checks every tick

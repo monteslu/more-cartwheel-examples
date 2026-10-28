@@ -830,6 +830,9 @@ static void enemies_step(sim *s) {
       }
 }
 
+/* a power-up lying at (x, y) (development: HORDE_POWER_SHOW) */
+void sim_power_drop(sim *s, float x, float y, int t) { drop_value(s, PK_POWER, x, y, t % PU_KINDS); }
+
 /* what a power-up gives */
 void sim_power_give(sim *s, int pi, int t) {
   player *p = &s->p[pi];

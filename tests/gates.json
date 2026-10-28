@@ -102,8 +102,8 @@
     "expect": {
       "game.ticks": 900,
       "game.wave": 1,
-      "game.enemies": 25,
-      "game.kills": 65,
+      "game.enemies": 26,
+      "game.kills": 83,
       "game.alive_players": 2,
       "player.hp": [
         100,
@@ -113,35 +113,35 @@
       ],
       "player.level": [
         2,
-        1,
+        2,
         0,
         0
       ],
       "player.score": [
-        390,
-        288,
+        458,
+        436,
         0,
         0
       ],
       "player.kills": [
-        37,
-        28,
+        42,
+        39,
         0,
         0
       ],
       "player.x": [
-        276,
-        -1107,
+        257,
+        -458,
         0,
         0
       ],
       "player.y": [
-        552,
-        -586,
+        -1152,
+        547,
         0,
         0
       ],
-      "game.hash": 2862193817,
+      "game.hash": 857047955,
       "game.state": 0,
       "game.boss": 0
     },
@@ -184,7 +184,7 @@
       "game.ticks": 2400,
       "game.wave": 2,
       "game.enemies": 84,
-      "game.kills": 200,
+      "game.kills": 268,
       "game.alive_players": 2,
       "player.hp": [
         100,
@@ -193,36 +193,36 @@
         0
       ],
       "player.level": [
-        2,
-        2,
+        3,
+        3,
         0,
         0
       ],
       "player.score": [
-        1204,
-        858,
+        1748,
+        1208,
         0,
         0
       ],
       "player.kills": [
-        118,
-        82,
+        158,
+        107,
         0,
         0
       ],
       "player.x": [
-        79,
-        -662,
+        -393,
+        -39,
         0,
         0
       ],
       "player.y": [
-        693,
-        645,
+        -15,
+        1392,
         0,
         0
       ],
-      "game.hash": 1441199322,
+      "game.hash": 3741245691,
       "game.state": 0,
       "game.boss": 0
     },

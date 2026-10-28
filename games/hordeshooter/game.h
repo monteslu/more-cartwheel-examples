@@ -116,7 +116,8 @@ int sim_alive_players(const sim *s);
 void horde_bot(const sim *s, int i, input *in); /* bot.c */
 const char *sim_upgrade_name(int u);
 /* team centre and the spread of the living players, for the camera */
-void sim_power_give(sim *s, int pi, int t); /* hand a power-up to a player (pickups; development) */
+void sim_power_give(sim *s, int pi, int t);
+void sim_power_drop(sim *s, float x, float y, int t); /* hand a power-up to a player (pickups; development) */
 void sim_team_box(const sim *s, float *cx, float *cy, float *hw, float *hh);
 
 #endif
