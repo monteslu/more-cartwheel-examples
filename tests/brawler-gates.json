@@ -1,7 +1,7 @@
 [
   {
     "name": "brawler-brawl",
-    "note": "brawler_auto: three bots fight stage 1 for 1200 ticks. The named state (positions, hit points, the hash of every body every tick) must match exactly on every host; the expects pin this run. The control is one frame short.",
+    "note": "brawler_auto: three bots fight stage 1 for 1200 ticks. The named state (positions, hit points, the hash of every body every tick) must match exactly on every host; the expects pin this run (repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth: game.overlaps, pairs of bodies still inside each other on any frame, stays 0). The control is one frame short.",
     "app": "brawler_auto",
     "frames": 1200,
     "fields": [
@@ -34,23 +34,25 @@
       "rag.live_max",
       "rag.getup_up",
       "rag.getup_prone",
-      "rag.hash"
+      "rag.hash",
+      "game.overlaps"
     ],
     "expect": {
-      "game.ticks": 1124,
-      "game.kills": 5,
-      "game.score": 6150,
-      "game.hash": 236753779,
-      "rag.made": 6,
+      "game.ticks": 1108,
+      "game.kills": 6,
+      "game.score": 7570,
+      "game.hash": 3101311473,
+      "rag.made": 7,
       "rag.missed": 0,
-      "rag.hash": 2676897474,
+      "rag.hash": 4234778464,
       "game.wave": 1,
-      "game.hits": 17,
-      "game.first_hit": 309,
+      "game.hits": 21,
+      "game.first_hit": 297,
       "game.deaths": 0,
       "game.unfair": 0,
       "game.token_leak": 0,
-      "game.nan": 0
+      "game.nan": 0,
+      "game.overlaps": 0
     },
     "webgpu": {
       "hosts": [
@@ -64,7 +66,7 @@
   },
   {
     "name": "brawler-solo",
-    "note": "One bot (players 1) on stage 1: the crowd, the thrower and the token cap against a single fighter.",
+    "note": "One bot (players 1) on stage 1: the crowd, the thrower and the token cap against a single fighter. Expects repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth (game.overlaps stays 0).",
     "app": "brawler_auto",
     "frames": 1500,
     "startCmds": [
@@ -94,20 +96,22 @@
       "game.pickups",
       "game.nan",
       "game.proj",
-      "game.rigs"
+      "game.rigs",
+      "game.overlaps"
     ],
     "expect": {
-      "game.ticks": 1443,
-      "game.kills": 3,
-      "game.score": 3080,
-      "game.hash": 921368584,
-      "game.wave": 1,
-      "game.hits": 8,
+      "game.ticks": 1435,
+      "game.kills": 7,
+      "game.score": 5770,
+      "game.hash": 3658984432,
+      "game.wave": 2,
+      "game.hits": 15,
       "game.first_hit": 261,
       "game.deaths": 0,
       "game.unfair": 0,
       "game.token_leak": 0,
-      "game.nan": 0
+      "game.nan": 0,
+      "game.overlaps": 0
     },
     "webgpu": {
       "hosts": [
@@ -121,7 +125,7 @@
   },
   {
     "name": "brawler-four",
-    "note": "Four bots (players 4) on stage 2 (docks: guards and throwers from the first waves).",
+    "note": "Four bots (players 4) on stage 2 (docks: guards and throwers from the first waves). Expects repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth (game.overlaps stays 0).",
     "app": "brawler_auto",
     "frames": 1500,
     "startCmds": [
@@ -159,21 +163,23 @@
       "rag.live_max",
       "rag.getup_up",
       "rag.getup_prone",
-      "rag.hash"
+      "rag.hash",
+      "game.overlaps"
     ],
     "expect": {
-      "game.ticks": 1382,
+      "game.ticks": 1378,
       "game.kills": 6,
-      "game.score": 6430,
-      "game.hash": 350711934,
+      "game.score": 7480,
+      "game.hash": 3972657629,
       "game.wave": 1,
-      "game.hits": 18,
-      "game.first_hit": 295,
+      "game.hits": 22,
+      "game.first_hit": 285,
       "game.deaths": 0,
       "game.unfair": 0,
       "game.token_leak": 0,
       "game.nan": 0,
-      "game.blocks": 0
+      "game.blocks": 0,
+      "game.overlaps": 0
     },
     "webgpu": {
       "hosts": [
@@ -187,7 +193,7 @@
   },
   {
     "name": "brawler-boss",
-    "note": "Stage 1 boss wave with three bots: the boss goes through its three phases (game.boss_phase 2 reached) and the danger rings show on the street.",
+    "note": "Stage 1 boss wave with three bots: the boss goes through its three phases (game.boss_phase 2 reached) and the danger rings show on the street. Expects repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth (game.overlaps stays 0).",
     "app": "brawler_auto",
     "frames": 2400,
     "startCmds": [
@@ -222,19 +228,21 @@
       "rag.live_max",
       "rag.getup_up",
       "rag.getup_prone",
-      "rag.hash"
+      "rag.hash",
+      "game.overlaps"
     ],
     "expect": {
-      "game.ticks": 2175,
-      "game.kills": 3,
-      "game.score": 11910,
-      "game.hash": 4200580302,
+      "game.ticks": 2232,
+      "game.kills": 2,
+      "game.score": 11300,
+      "game.hash": 3262253263,
       "game.wave": 4,
       "game.deaths": 0,
       "game.unfair": 0,
       "game.token_leak": 0,
       "game.nan": 0,
-      "game.boss_phase": 2
+      "game.boss_phase": 2,
+      "game.overlaps": 0
     },
     "webgpu": {
       "hosts": [
@@ -282,7 +290,7 @@
   },
   {
     "name": "brawler-arthur",
-    "note": "Stage 2 (the docks) boss wave with three bots: Arthur reaches his second phase, walks to the jukebox, thumps it (his theme, a shockwave along the floor that knocks down whoever is on the ground and that the bots jump), then the thumbs up. game.juke is [uses, fighters knocked down, fighters who jumped it, playing, ring radius in cm, ticks on his way]. The control freezes everyone, so the jukebox is never thumped.",
+    "note": "Stage 2 (the docks) boss wave with three bots: Arthur reaches his second phase, walks to the jukebox, thumps it (his theme, a shockwave along the floor that knocks down whoever is on the ground and that the bots jump), then the thumbs up. game.juke is [uses, fighters knocked down, fighters who jumped it, playing, ring radius in cm, ticks on his way]. The control freezes everyone, so the jukebox is never thumped. Expects repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth (game.overlaps stays 0).",
     "app": "brawler_auto",
     "frames": 2400,
     "startCmds": [
@@ -318,13 +326,14 @@
       "rag.getup_up",
       "rag.getup_prone",
       "rag.hash",
-      "game.juke"
+      "game.juke",
+      "game.overlaps"
     ],
     "expect": {
-      "game.ticks": 2104,
+      "game.ticks": 2172,
       "game.kills": 4,
-      "game.score": 18190,
-      "game.hash": 1149490979,
+      "game.score": 14280,
+      "game.hash": 538796201,
       "game.wave": 4,
       "game.deaths": 0,
       "game.unfair": 0,
@@ -339,8 +348,9 @@
         0,
         0
       ],
-      "rag.made": 19,
-      "rag.hash": 1165915749
+      "rag.made": 13,
+      "rag.hash": 4115012762,
+      "game.overlaps": 0
     },
     "webgpu": {
       "hosts": [
