@@ -489,6 +489,45 @@ static void tile_faces(const level *L, int x, int y, mb *bs) {
   }
 }
 
+/* ── where scenery stands: every prop that rests on the ground is seated on the surface under its whole footprint
+ * (the tile tops in front, the backdrop's 3D ground behind) and recorded, so world_scenery_check can measure each one
+ * against the drawn ground. A prop whose footprint runs off a ledge, onto a step, a breakable block or a slope too
+ * steep is not placed. ── */
+
+typedef struct placed { float x, y, z, rx, rz; int layer; } placed; /* layer -1: the tiles; 0..3: a backdrop layer */
+enum { MAX_PLACED = 8192 };
+static placed g_placed[MAX_PLACED];
+static int g_nplaced;
+static void place_rec(int layer, float x, float y, float z, float rx, float rz) {
+  if (g_nplaced < MAX_PLACED) g_placed[g_nplaced++] = (placed){ x, y, z, rx, rz, layer };
+}
+/* the column's floor at height `top` can carry a prop: solid, not breakable, open above, no hazard on it */
+static bool fg_floor(const level *L, int c, float top) {
+  int ty = (int)floorf(top + 0.5f) - 1;
+  if (c < 0 || c >= WORLD_W || ty < 0 || ty + 1 >= WORLD_H) return false;
+  int t = L->t[ty][c], up = L->t[ty + 1][c];
+  if (!(t == T_ROCK || t == T_GRASS || t == T_BRICK) || world_solid(L, c, ty + 1)) return false;
+  return up != T_SPIKE && up != T_WATER && up != T_LAVA;
+}
+/* seat a prop of half extent (rx, rz) on the tile tops at `top`; small props slide inside their own tile when the
+ * wanted spot overhangs an edge, bigger ones are dropped there */
+static bool fg_seat(const level *L, float *x, float top, float *z, float rx, float rz, float tile_x) {
+  float lim = DEPTH_FRONT - 0.04f - rz;
+  if (lim < 0) return false;
+  *z = fmaxf(-lim, fminf(lim, *z));
+  for (int pass = 0; pass < 2; pass++) {
+    bool ok = true;
+    for (int c = (int)floorf(*x - rx); c <= (int)floorf(*x + rx) && ok; c++) ok = fg_floor(L, c, top);
+    if (ok) {
+      place_rec(-1, *x, top, *z, rx, rz);
+      return true;
+    }
+    if (pass || rx >= 0.45f) return false;
+    *x = fmaxf(tile_x + rx + 0.01f, fminf(tile_x + 1.0f - rx - 0.01f, *x));
+  }
+  return false;
+}
+
 /* ── props: grass and flowers, mushrooms and crystals, vines and rubble, spires and ash rock ──
  * Everything goes into two meshes per chunk: lit solids (vertex colours) and glowing parts (an HDR colour that blooms). */
 
@@ -587,7 +626,7 @@ static void vine(mb *p, float x, float y, float z, int seed, float len) {
 static void column_prop(mb *p, float x, float y, float z, float h, int seed, bool broken) {
   float lo[3], hi[3], cap[3];
   rgb(lo, 0.6f, 0.52f, 0.4f), rgb(hi, 0.85f, 0.76f, 0.6f), rgb(cap, 0.9f, 0.82f, 0.66f);
-  mb_box(p, x, y + 0.2f, z, 0.55f, 0.2f, 0.55f, lo, cap);
+  mb_box(p, x, y + 0.1f, z, 0.55f, 0.3f, 0.55f, lo, cap);
   mb_cone(p, x, y + 0.4f, z, 0.38f, 0.34f, h, 0, 0, 12, lo, hi);
   if (!broken) mb_box(p, x, y + 0.4f + h + 0.15f, z, 0.55f, 0.15f, 0.55f, hi, cap);
   else {
@@ -599,7 +638,7 @@ static void lava_spire(mb *p, mb *g, float x, float y, float z, int seed, float 
   float c0[3], c1[3];
   rgb(c0, 0.2f, 0.12f, 0.12f), rgb(c1, 0.07f, 0.05f, 0.05f);
   float h = (1.2f + 1.8f * hh(seed, 1, 70)) * s;
-  mb_cone(p, x, y - 0.1f, z, 0.34f * s, 0.03f, h, (hh(seed, 2, 70) - 0.5f) * 0.7f, 0, 6, c0, c1);
+  mb_cone(p, x, y - 0.25f, z, 0.34f * s, 0.03f, h, (hh(seed, 2, 70) - 0.5f) * 0.7f, 0, 6, c0, c1);
   float gl0[3] = { 1.2f, 0.3f, 0.04f }, gl1[3] = { 3.0f, 1.0f, 0.2f };
   mb_cone(g, x, y + 0.03f, z + 0.16f * s, 0.045f * s, 0.01f, h * 0.55f, 0, 0, 4, gl0, gl1);
 }
