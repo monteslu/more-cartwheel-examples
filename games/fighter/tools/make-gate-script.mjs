@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url';
 
 const OUT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'tests');
 mkdirSync(OUT, { recursive: true });
-const B = { L: 'west', M: 'north', H: 'east', T: 'south' };
+// pad buttons: X punch, A kick, B block (Y is punch + kick, the throw)
+const B = { P: 'west', K: 'south', G: 'east', T: 'north' };
 // a numpad direction facing right to the stick
 const stick = (d) => ({ lx: [1, 4, 7].includes(d) ? -1 : [3, 6, 9].includes(d) ? 1 : 0, ly: [7, 8, 9].includes(d) ? -1 : [1, 2, 3].includes(d) ? 1 : 0 });
 class Script {
@@ -32,8 +33,37 @@ const write = (name, s) => writeFileSync(join(OUT, name + '.json'), JSON.stringi
 
 // the match opens with an intro; fighting starts at frame ~110 (the shell is skipped by the autopilot build)
 const intro = 130;
-// a fireball, a jump, a chain: player 1 plays, player 2 stands
-write('fighter-p1-moves', new Script().wait(intro).motion('236', 'L').wait(60).hold(6, 30).hold(5, 5).motion('623', 'H').wait(80).hold(5, 3, [B.L]).wait(8).hold(5, 3, [B.M]).wait(40));
-// the control: the same script without the fireball motion
-write('fighter-p1-moves-ctl', new Script().wait(intro).wait(60).hold(6, 30).hold(5, 5).wait(80).hold(5, 3, [B.L]).wait(8).hold(5, 3, [B.M]).wait(40));
+// player 1 plays the new controls against a standing player 2: a fireball (236 + punch), walk in, a high punch
+// (up + punch), a low sweep (down + kick), a punch into kick chain, a throw (punch + kick), then player 2 holds a
+// low guard (down + block) against a high kick that passes over it and a low punch it blocks
+const moves = (s) => s.wait(intro).motion('236', 'P').wait(60).hold(6, 34).hold(5, 4)
+  .hold(8, 3, [B.P]).wait(30).hold(2, 3, [B.K]).wait(70).hold(6, 20).hold(5, 3, [B.P]).wait(6).hold(5, 3, [B.K]).wait(50)
+  .hold(6, 12).hold(5, 3, [B.P, B.K]).wait(80);
+write('fighter-p1-moves', moves(new Script()));
+// the control: the same script without the fireball motion (no projectile, the fight goes differently)
+write('fighter-p1-moves-ctl', new Script().wait(intro).wait(66).hold(6, 34).hold(5, 4)
+  .hold(8, 3, [B.P]).wait(30).hold(2, 3, [B.K]).wait(70).hold(6, 20).hold(5, 3, [B.P]).wait(6).hold(5, 3, [B.K]).wait(50)
+  .hold(6, 12).hold(5, 3, [B.P, B.K]).wait(80));
+// guard: player 2 holds a low guard (down + block) while player 1 throws a high kick (it passes over), a low punch
+// (blocked low) and a mid kick (blocked); then player 2 lets go and the same mid kick lands
+{
+  const s = new Script().wait(intro).hold(6, 40).hold(5, 4);
+  s.p.push({ f: s.f, who: 1, d: 2, b: [B.G] });
+  s.hold(8, 3, [B.K]).wait(50).hold(2, 3, [B.P]).wait(40).hold(5, 3, [B.K]).wait(50);
+  s.p.push({ f: s.f, who: 1, d: 5, b: [] });
+  s.hold(6, 10).hold(5, 3, [B.K]).wait(60);
+  write('fighter-guard', s);
+  // the control: player 2 never guards
+  const c = new Script().wait(intro).hold(6, 40).hold(5, 4).hold(8, 3, [B.K]).wait(50).hold(2, 3, [B.P]).wait(40).hold(5, 3, [B.K]).wait(50)
+    .hold(6, 10).hold(5, 3, [B.K]).wait(60);
+  write('fighter-guard-ctl', c);
+}
 console.log('scripts written to', OUT);
+
+// the select screen, scrolled fast: player 1 taps right then left (one tap every 10 frames, 8 each way, three times),
+// player 2 the other way; the frame-time trace of this run is the select-screen stutter check (tools/frame-trace.mjs)
+{
+  const s = new Script().wait(90);
+  for (let k = 0; k < 3; k++) for (const d of [6, 4]) for (let i = 0; i < 8; i++) s.hold(d, 2, [], 0).hold(5, 8);
+  write('fighter-select-scroll', s);
+}

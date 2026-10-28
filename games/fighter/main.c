@@ -18,8 +18,7 @@ static const char *const SFX_FILE[SFX_N] = { "audio/hit_l.wav", "audio/hit_m.wav
 static const char *const STAGE_NAME[STAGES] = { "Rooftop Dusk", "Neon Alley", "Dojo Courtyard" };
 static const char *const MUSIC[STAGES] = { "audio/music_dusk.ogg", "audio/music_neon.ogg", "audio/music_dojo.ogg" };
 static const char *const DIFF_NAME[3] = { "Easy", "Normal", "Hard" };
-static const char *const BLURB[4] = { "All-rounder. Fireball, rising strike, spin kick.", "Heavy grappler. Command grab, charge, headbutt.",
-  "Fast and fragile. Slide, rising strike, overhead leap.", "Zoner. Charge a sonic blade, flip kick, slow orb." };
+static const char *const ROLE[4] = { "All-rounder", "Heavy grappler", "Fast, light hands", "Zoner, long legs" };
 static const float FCOL[4][3] = { { 0.9f, 0.25f, 0.2f }, { 0.95f, 0.55f, 0.1f }, { 0.15f, 0.85f, 0.95f }, { 0.4f, 0.9f, 0.4f } };
 
 typedef struct save_t { uint32_t magic; int32_t wins[4], matches; } save_t;
@@ -44,14 +43,14 @@ static struct {
   float shown_hp[2];
   float lag_hp[2];
   uint32_t ev_seen;
-  cw_action a_left, a_right, a_up, a_down, a_l, a_m, a_h, a_t, k_left, k_right, k_up, k_down, k_l, k_m, k_h, k_t, tr_mode, tr_reset, tr_dummy, tr_boxes;
+  cw_action a_left, a_right, a_up, a_down, a_p, a_k, a_g, a_pk, k_left, k_right, k_up, k_down, k_p, k_k, k_g, k_pk, tr_mode, tr_reset, tr_dummy, tr_boxes;
   t3_object *dbg_root;
   t3_mesh *dbg_box[10];
   int ndbg;
   float cam_t;
   /* debug fields */
   int32_t d_state, d_phase, d_hp[2], d_meter[2], d_wins[2], d_round, d_tick, d_combo, d_adv, d_boxes;
-  int32_t d_pos[4], d_fstate[2], d_hitcount, d_blockcount, d_def[2];
+  int32_t d_pos[4], d_fstate[2], d_hitcount, d_blockcount, d_def[2], d_guard[2], d_stats[6];
   uint32_t d_hash;
   float d_cam[3], d_spring;
 } G;
@@ -73,27 +72,61 @@ static ft_input read_pad(int p) {
   in.right = cw_action_pressed(p, G.a_right);
   in.up = cw_action_pressed(p, G.a_up);
   in.down = cw_action_pressed(p, G.a_down);
-  if (cw_action_pressed(p, G.a_l)) in.btn |= B_L;
-  if (cw_action_pressed(p, G.a_m)) in.btn |= B_M;
-  if (cw_action_pressed(p, G.a_h)) in.btn |= B_H;
-  if (cw_action_pressed(p, G.a_t)) in.btn |= B_T;
+  if (cw_action_pressed(p, G.a_p)) in.btn |= B_P;
+  if (cw_action_pressed(p, G.a_k)) in.btn |= B_K;
+  if (cw_action_pressed(p, G.a_g)) in.btn |= B_G;
+  if (cw_action_pressed(p, G.a_pk)) in.btn |= B_P | B_K; /* the throw button is punch + kick */
   if (p == 1) { /* the shared keyboard belongs to player 0's devices: player 2's keys are their own actions */
     in.left |= cw_action_pressed(0, G.k_left);
     in.right |= cw_action_pressed(0, G.k_right);
     in.up |= cw_action_pressed(0, G.k_up);
     in.down |= cw_action_pressed(0, G.k_down);
-    if (cw_action_pressed(0, G.k_l)) in.btn |= B_L;
-    if (cw_action_pressed(0, G.k_m)) in.btn |= B_M;
-    if (cw_action_pressed(0, G.k_h)) in.btn |= B_H;
-    if (cw_action_pressed(0, G.k_t)) in.btn |= B_T;
+    if (cw_action_pressed(0, G.k_p)) in.btn |= B_P;
+    if (cw_action_pressed(0, G.k_k)) in.btn |= B_K;
+    if (cw_action_pressed(0, G.k_g)) in.btn |= B_G;
+    if (cw_action_pressed(0, G.k_pk)) in.btn |= B_P | B_K;
   }
   return in;
 }
 
 /* ── stage and models ───────────────────────────────────────────────── */
 
-static void unload_match(void) {
-  for (int i = 0; i < 2; i++) { model_free(G.mdl[i]); G.mdl[i] = NULL; }
+/* Fighters stay resident: every fighter has one model per side, made at start-up from the preloaded glTF resources
+ * (chars.c), under a node of their own that outlives stage changes. Picking a fighter only shows another model and
+ * hides the last (monteslu's report: switching fighters on the select screen stuttered, because every switch reloaded
+ * the stage, its crowd and both fighters' glb files). The stage reloads only when the stage itself changes. */
+static fighter_model *pool[2][4];
+static cw_node cast_node;
+static int loaded_stage = -1;
+static int pool_warm; /* frames left with every pooled model drawn under the floor (start-up) */
+static void make_pool(void) {
+  if (cw_node_valid(cast_node)) return;
+  models_preload();
+  cast_node = cw_node_new("Node3D", "Cast");
+  cw_node_add_child(cw_tree_root(cw_scene_app_tree()), cast_node);
+  for (int side = 0; side < 2; side++)
+    for (int d = 0; d < 4 && d < G.roster.n; d++) { pool[side][d] = model_new(d, cast_node); model_park(pool[side][d]); }
+  pool_warm = 3;
+}
+/* after the warm-up frames only the two fighters in play stay visible */
+static void pool_frame(void) {
+  if (!pool_warm || --pool_warm) return;
+  for (int side = 0; side < 2; side++)
+    for (int d = 0; d < 4; d++) if (pool[side][d] && pool[side][d] != G.mdl[0] && pool[side][d] != G.mdl[1]) model_set_visible(pool[side][d], false);
+}
+static void show_fighters(void) {
+  make_pool();
+  for (int side = 0; side < 2; side++) {
+    fighter_model *m = pool[side][G.sim.f[side].def & 3];
+    if (G.mdl[side] != m) { if (!pool_warm) model_set_visible(G.mdl[side], false); model_reset(m); }
+    model_set_showcase(m, 0);
+    model_set_visible(m, true);
+    G.mdl[side] = m;
+  }
+}
+
+static void unload_stage(void) {
+  loaded_stage = -1;
   stage_free();
   if (cw_node_valid(G.stage_node)) cw_node_free(G.stage_node);
   G.stage_node = (cw_node){ 0 };
@@ -120,8 +153,10 @@ static void make_debug_boxes(void) {
   G.dbg_root = root;
 }
 
-static void load_match(void) {
-  unload_match();
+static void load_stage(void) {
+  if (loaded_stage == G.sel_stage && cw_node_valid(G.stage_node)) return;
+  unload_stage();
+  loaded_stage = G.sel_stage;
   char path[64];
   snprintf(path, sizeof path, "scenes/stage%d.cwscene", G.sel_stage + 1);
   G.stage_node = cw_scene_instance_path(path);
@@ -131,13 +166,26 @@ static void load_match(void) {
   stage_load(G.sel_stage, G.stage_node);
   fx_init(G.stage_node);
   fx_bind_lights(G.stage_node);
-  fx_reset();
-  for (int i = 0; i < 2; i++) G.mdl[i] = model_new(G.sim.f[i].def, G.stage_node);
   make_debug_boxes();
+  if (!CW_HANDLE_IS_NULL(G.music[G.sel_stage])) G.music_voice = cw_audio_play(G.music[G.sel_stage], &(cw_play_desc){ .bus = G.music_bus, .loop = true, .volume = 0.55f });
+}
+
+/* the stage (kept when it is the same one) and the two fighters of G.sim */
+static void load_match(void) {
+  load_stage();
+  fx_reset();
+  show_fighters();
   memset(&G.fs, 0, sizeof G.fs);
   G.ev_seen = G.sim.ev_seq;
   G.shown_hp[0] = G.shown_hp[1] = G.lag_hp[0] = G.lag_hp[1] = 1.0f;
-  if (!CW_HANDLE_IS_NULL(G.music[G.sel_stage])) G.music_voice = cw_audio_play(G.music[G.sel_stage], &(cw_play_desc){ .bus = G.music_bus, .loop = true, .volume = 0.55f });
+}
+/* everything (shutdown) */
+static void unload_match(void) {
+  unload_stage();
+  for (int side = 0; side < 2; side++) for (int d = 0; d < 4; d++) { model_free(pool[side][d]); pool[side][d] = NULL; }
+  G.mdl[0] = G.mdl[1] = NULL;
+  if (cw_node_valid(cast_node)) cw_node_free(cast_node);
+  cast_node = (cw_node){ 0 };
 }
 
 static int shown_sel[3] = { -1, -1, -1 }; /* the fighters the select screen shows now */
@@ -155,6 +203,7 @@ static void begin_match(void) {
   if (G.training) G.sim.dummy = T_STAND;
 #endif
   ft_game_start(&G.sim, &G.roster, d0, d1);
+  memset(&ft_stat, 0, sizeof ft_stat);
   G.sim.rng = 12345u + (uint32_t)(d0 * 31 + d1 * 7 + G.sel_stage);
   load_match();
   G.state = GS_MATCH;
@@ -199,22 +248,24 @@ static int menu_pick(int p, int *v, int n) {
   if (cw_action_just_pressed(p, G.a_right) || (p == 1 && cw_action_just_pressed(0, G.k_right))) { *v = (*v + 1) % n; sfx(SFX_LAND, 0.4f, 1.6f); return 1; }
   return 0;
 }
-static bool confirm(int p) { return cw_action_just_pressed(p, G.a_t) || (p == 1 && cw_action_just_pressed(0, G.k_t)) || (p == 0 && cw_action_just_pressed(0, G.a_m)); }
+/* menus: A (kick) confirms, B (block) backs out, X (punch) switches the mode */
+static bool confirm(int p) { return cw_action_just_pressed(p, G.a_k) || (p == 1 && cw_action_just_pressed(0, G.k_k)); }
+static bool back_out(int p) { return cw_action_just_pressed(p, G.a_g) || (p == 1 && cw_action_just_pressed(0, G.k_g)); }
 
 static void update_select(void) {
   for (int p = 0; p < G.players && p < 2; p++) {
     if (G.ready[p]) {
-      if (cw_action_just_pressed(p, G.a_h) || (p == 1 && cw_action_just_pressed(0, G.k_h))) G.ready[p] = 0;
+      if (back_out(p)) G.ready[p] = 0;
       continue;
     }
     menu_pick(p, &G.sel[p], G.roster.n);
     if (p == 0) {
       if (cw_action_just_pressed(0, G.a_up)) { G.sel_stage = (G.sel_stage + STAGES - 1) % STAGES; sfx(SFX_LAND, 0.4f, 1.3f); }
       if (cw_action_just_pressed(0, G.a_down)) { G.sel_stage = (G.sel_stage + 1) % STAGES; sfx(SFX_LAND, 0.4f, 1.3f); }
-      if (cw_action_just_pressed(0, G.a_l)) { G.training = (G.training + 1) % 2; sfx(SFX_BELL, 0.3f, 1.2f); }
-      if (cw_action_just_pressed(0, G.a_h) && G.players < 2) { G.difficulty = (G.difficulty + 1) % 3; sfx(SFX_BELL, 0.3f, 1.0f); }
+      if (cw_action_just_pressed(0, G.a_p)) { G.training = (G.training + 1) % 2; sfx(SFX_BELL, 0.3f, 1.2f); }
+      if (back_out(0) && G.players < 2) { G.difficulty = (G.difficulty + 1) % 3; sfx(SFX_BELL, 0.3f, 1.0f); }
     }
-    if (p == 0 ? cw_action_just_pressed(0, G.a_t) : confirm(p)) { G.ready[p] = 1; sfx(SFX_ROUND, 0.6f, 1.0f); }
+    if (confirm(p)) { G.ready[p] = 1; sfx(SFX_ROUND, 0.6f, 1.0f); }
   }
   select_scene();
   bool all = G.ready[0] && (G.players < 2 || G.ready[1]);
@@ -253,7 +304,7 @@ static void fixed(void *u, double dt) {
   if (G.state == GS_RESULT) {
     G.result_t++;
     if (G.result_t > 40 && confirm(0)) begin_match();
-    else if (G.result_t > 40 && cw_action_just_pressed(0, G.a_h)) { unload_match(); G.state = GS_SELECT; G.ready[0] = G.ready[1] = 0; }
+    else if (G.result_t > 40 && back_out(0)) { G.state = GS_SELECT; G.ready[0] = G.ready[1] = 0; shown_sel[0] = -1; }
 #if defined(FIGHTER_AUTOPILOT)
     if (G.result_t > 200) { G.sel_stage = (G.sel_stage + 1) % STAGES; G.sel[0] = (G.sel[0] + 1) % 4; G.sel[1] = (G.sel[1] + 1) % 4; begin_match(); }
 #endif
@@ -261,16 +312,17 @@ static void fixed(void *u, double dt) {
   }
   /* training controls */
   if (G.training) {
-    if (cw_action_just_pressed(0, G.tr_dummy)) { G.sim.dummy = (uint8_t)((G.sim.dummy + 1) % 6); sfx(SFX_BELL, 0.3f, 1.4f); }
+    if (cw_action_just_pressed(0, G.tr_dummy)) { G.sim.dummy = (uint8_t)((G.sim.dummy + 1) % T_COUNT); sfx(SFX_BELL, 0.3f, 1.4f); }
     if (cw_action_just_pressed(0, G.tr_boxes)) G.show_boxes = !G.show_boxes;
     if (cw_action_just_pressed(0, G.tr_reset)) { ft_round_start(&G.sim); }
-    if (cw_action_just_pressed(0, G.tr_mode)) { unload_match(); G.state = GS_SELECT; G.ready[0] = G.ready[1] = 0; return; }
+    if (cw_action_just_pressed(0, G.tr_mode)) { G.state = GS_SELECT; G.ready[0] = G.ready[1] = 0; shown_sel[0] = -1; return; }
   }
   ft_input in[2] = { read_pad(0), G.players > 1 ? read_pad(1) : (ft_input){ 0 } };
   ft_step(&G.sim, in);
   if (G.sim.phase == P_MATCH_END) {
     G.state = GS_RESULT;
     if (G.sim.match_winner >= 0) model_set_showcase(G.mdl[G.sim.match_winner], 0.9f);
+    else for (int i = 0; i < 2; i++) model_set_showcase(G.mdl[i], 0.9f);
     G.result_t = 0;
     if (SAVE && G.sim.match_winner >= 0) { SAVE->wins[G.sim.f[G.sim.match_winner].def & 3]++; SAVE->matches++; cw_shell_save_commit(); }
   }
@@ -279,9 +331,13 @@ static void fixed(void *u, double dt) {
   G.d_state = G.state; G.d_phase = g->phase; G.d_round = g->round_no; G.d_hash = ft_hash(g); G.d_combo = g->f[1].combo_hits > g->f[0].combo_hits ? g->f[1].combo_hits : g->f[0].combo_hits;
   G.d_adv = g->adv_valid ? g->adv : 0;
   for (int i = 0; i < 2; i++) {
+    G.d_guard[i] = g->f[i].guard;
     G.d_hp[i] = g->f[i].hp; G.d_meter[i] = g->f[i].meter; G.d_wins[i] = g->f[i].wins; G.d_pos[i * 2] = g->f[i].x; G.d_pos[i * 2 + 1] = g->f[i].y; G.d_fstate[i] = g->f[i].state; G.d_def[i] = g->f[i].def;
   }
   G.d_hitcount = fx_count_hit; G.d_blockcount = fx_count_block;
+  /* this match: hits, blocks, parries, guard breaks, highs ducked, throws */
+  G.d_stats[0] = (int32_t)ft_stat.hits; G.d_stats[1] = (int32_t)ft_stat.blocks; G.d_stats[2] = (int32_t)ft_stat.parries;
+  G.d_stats[3] = (int32_t)ft_stat.guard_breaks; G.d_stats[4] = (int32_t)ft_stat.whiffs_high; G.d_stats[5] = (int32_t)ft_stat.throws;
 }
 
 /* ── render-rate: poses, camera, effects, sound ─────────────────────── */
@@ -305,13 +361,16 @@ static void sound_events(void) {
     case EV_WALL: sfx(SFX_LAND, 0.7f, 0.7f); break;
     case EV_ROUND: sfx(SFX_BELL, 0.7f, 1.0f); break;
     case EV_CLASH: case EV_TECH: sfx(SFX_BLOCK, 0.8f, 1.3f); break;
+    case EV_PARRY: sfx(SFX_BLOCK, 1.0f, 1.6f); sfx(SFX_BELL, 0.5f, 1.8f); break;
+    case EV_GUARDBREAK: sfx(SFX_HIT_H, 1.0f, 0.7f); sfx(SFX_BLOCK, 0.9f, 0.6f); break;
+    case EV_WHIFF: sfx(SFX_WHOOSH_H, 0.5f, 0.8f); break;
     default: break;
     }
   }
   /* a whoosh when a strike starts */
   for (int i = 0; i < 2; i++) {
     const ft_fighter *f = &g->f[i];
-    if (f->state == S_ATTACK && f->t == 1) sfx(f->mv >= M_2H || f->mv == M_5H || f->mv == M_JH ? SFX_WHOOSH_H : SFX_WHOOSH_L, 0.5f, 1.0f);
+    if (f->state == S_ATTACK && f->t == 1) sfx(FT_IS_KICK(f->mv) || f->mv >= M_JK || f->mv == M_6P ? SFX_WHOOSH_H : SFX_WHOOSH_L, 0.5f, 1.0f);
   }
 }
 
@@ -394,6 +453,7 @@ static void update(void *u, double dtd) {
   if (!G.mdl[0]) return;
   cw_shell_screen sc = cw_shell_screen_now();
   if (sc != CW_SHELL_PLAY && sc != CW_SHELL_TITLE && sc != CW_SHELL_JOIN) return;
+  pool_frame();
   for (int i = 0; i < 2; i++) model_pose(G.mdl[i], &G.sim, i, dt);
   G.d_spring = model_spring_speed(G.mdl[0]) + model_spring_speed(G.mdl[1]);
   stage_frame(&G.sim, dt);
@@ -425,25 +485,57 @@ static void bar(float x, float y, float w, float h, float fill, float lag, cw_co
   cw_r2d_rect(cw_rect_make(right_to_left ? x + w - fw : x, y, fw, h * 0.4f), rgba(1, 1, 1, 0.22f));
 }
 
-static const char *btn_name(int b) { return b == 0 ? "L" : b == 1 ? "M" : b == 2 ? "H" : "T"; }
+static const char *btn_name(int b) { return b == 0 ? "P" : b == 1 ? "K" : "G"; }
+
+/* the move list of a fighter: every normal by its direction and button, the throw, the specials and the super */
+static void draw_move_list(const ft_def *d, float x, float y, float w, float s) {
+  static const int ORDER[] = { M_8P, M_5P, M_2P, M_6P, M_8K, M_5K, M_2K, M_6K, M_JP, M_JK, M_THROW };
+  static const char *const INPUT[] = { "up + P", "P", "down + P", "fwd + P", "up + K", "K", "down + K", "fwd + K", "hop, P", "hop, K", "P + K" };
+  int n = (int)(sizeof ORDER / sizeof ORDER[0]);
+  float lh = 15 * s, h = (float)(n + 6) * lh + 34 * s;
+  cw_r2d_round_rect(cw_rect_make(x, y, w, h), 10 * s, 6, rgba(0.02f, 0.03f, 0.05f, 0.72f));
+  char b[64];
+  snprintf(b, sizeof b, "%s: moves", d->name);
+  text(G.font_bold, b, x + 10 * s, y + 6 * s, 16 * s, rgba(1, 0.9f, 0.6f, 1), CW_ALIGN_LEFT);
+  float ly = y + 30 * s;
+  for (int i = 0; i < n; i++, ly += lh) {
+    const ft_move *m = &d->mv[ORDER[i]];
+    text(G.font_ui, INPUT[i], x + 10 * s, ly, 13 * s, rgba(0.75f, 0.85f, 1, 1), CW_ALIGN_LEFT);
+    text(G.font_ui, m->name, x + 82 * s, ly, 13 * s, rgba(1, 1, 1, 1), CW_ALIGN_LEFT);
+    if (ORDER[i] != M_THROW) {
+      cw_color c = m->lv == LV_HIGH ? rgba(1, 0.75f, 0.4f, 1) : m->lv == LV_LOW ? rgba(0.5f, 0.85f, 1, 1) : rgba(0.75f, 0.95f, 0.6f, 1);
+      text(G.font_ui, ft_level_name(m->lv), x + w - 10 * s, ly, 13 * s, c, CW_ALIGN_RIGHT);
+    }
+  }
+  ly += 4 * s;
+  for (int k = 0; k < 4; k++, ly += lh) {
+    char in[24];
+    ft_special_text(d, k, in, sizeof in);
+    text(G.font_ui, in, x + 10 * s, ly, 13 * s, rgba(1, 0.85f, 0.45f, 1), CW_ALIGN_LEFT);
+    text(G.font_ui, d->mv[M_SP1 + k].name, x + 92 * s, ly, 13 * s, rgba(1, 1, 1, 1), CW_ALIGN_LEFT);
+  }
+  text(G.font_ui, "Block: G   low: down + G", x + 10 * s, ly + 2 * s, 13 * s, rgba(0.7f, 0.8f, 0.9f, 1), CW_ALIGN_LEFT);
+}
 
 static void draw_training(float W, float H, float s) {
   const ft_game *g = &G.sim;
-  float x = W * 0.5f - 230 * s, y = H * 0.72f;
-  cw_r2d_round_rect(cw_rect_make(x, y, 460 * s, 112 * s), 10 * s, 6, rgba(0.02f, 0.03f, 0.05f, 0.75f));
-  char b[160];
+  float x = W * 0.5f - 250 * s, y = H * 0.70f;
+  cw_r2d_round_rect(cw_rect_make(x, y, 500 * s, 124 * s), 10 * s, 6, rgba(0.02f, 0.03f, 0.05f, 0.75f));
+  char b[200];
   const ft_def *d = &g->roster->d[g->f[g->last_who].def];
-  snprintf(b, sizeof b, "Last move: %s %s", d->name, FT_MOVE_ID[g->last_move]);
+  const ft_move *lm = &d->mv[g->last_move];
+  static const char *const RESULT[6] = { "", "hit", "blocked", "parried", "ducked under", "guard break" };
+  snprintf(b, sizeof b, "%s %s: %s (%s)  %s", d->name, FT_MOVE_ID[g->last_move], lm->name, ft_level_name(lm->lv), RESULT[g->last_result < 6 ? g->last_result : 0]);
   text(G.font_ui, b, x + 14 * s, y + 8 * s, 17 * s, rgba(1, 0.95f, 0.7f, 1), CW_ALIGN_LEFT);
   snprintf(b, sizeof b, "Startup %d   Active %d   Recovery %d   Total %d", g->last_su, g->last_ac, g->last_rc, g->last_su + g->last_ac + g->last_rc);
   text(G.font_ui, b, x + 14 * s, y + 32 * s, 16 * s, rgba(0.85f, 0.9f, 1, 1), CW_ALIGN_LEFT);
   if (g->adv_valid) snprintf(b, sizeof b, "Frame advantage %+d   Damage %d   Combo %d", g->adv, g->last_dmg, g->last_combo);
   else snprintf(b, sizeof b, "Frame advantage --   Damage %d   Combo %d", g->last_dmg, g->last_combo);
   text(G.font_ui, b, x + 14 * s, y + 56 * s, 16 * s, g->adv_valid && g->adv > 0 ? rgba(0.5f, 1, 0.6f, 1) : rgba(1, 0.65f, 0.55f, 1), CW_ALIGN_LEFT);
-  static const char *const DUMMY[6] = { "Off", "Stand", "Crouch", "Jump", "Block all", "CPU" };
-  snprintf(b, sizeof b, "Dummy: %s   Hitboxes: %s", DUMMY[g->dummy], G.show_boxes ? "on" : "off");
-  text(G.font_ui, b, x + 14 * s, y + 80 * s, 15 * s, rgba(0.7f, 0.8f, 0.9f, 1), CW_ALIGN_LEFT);
-  /* the input history of player 1: the last frames as direction digits and buttons, newest first */
+  static const char *const DUMMY[T_COUNT] = { "Off", "Stand", "Block", "Block low", "Hop", "Block all", "CPU" };
+  snprintf(b, sizeof b, "Dummy: %s (F / left stick)   Hitboxes: %s (B / right stick)", DUMMY[g->dummy < T_COUNT ? g->dummy : 0], G.show_boxes ? "on" : "off");
+  text(G.font_ui, b, x + 14 * s, y + 80 * s, 14 * s, rgba(0.7f, 0.8f, 0.9f, 1), CW_ALIGN_LEFT);
+  /* the input history of player 1: direction digits and buttons (P punch, K kick, G block), newest first */
   char h[200];
   int n = 0;
   uint8_t last = 0;
@@ -457,13 +549,14 @@ static void draw_training(float W, float H, float s) {
     if (f->dir != last || f->buttons != lastb || a == 0) {
       char tmp[24];
       int len = snprintf(tmp, sizeof tmp, "%d", f->dir);
-      for (int bb = 0; bb < 4; bb++) if (f->buttons & (1 << bb)) { tmp[len++] = btn_name(bb)[0]; }
+      for (int bb = 0; bb < 3; bb++) if (f->buttons & (1 << bb)) { tmp[len++] = btn_name(bb)[0]; }
       tmp[len] = 0;
       if (f->dir != 5 || f->buttons) { strncat(h, tmp, sizeof h - strlen(h) - 2); strncat(h, " ", sizeof h - strlen(h) - 1); n++; }
       last = f->dir; lastb = f->buttons;
     }
   }
-  text(G.font_ui, h, x + 14 * s, y + 98 * s - 4 * s, 14 * s, rgba(0.6f, 0.75f, 0.6f, 1), CW_ALIGN_LEFT);
+  text(G.font_ui, h, x + 14 * s, y + 102 * s, 14 * s, rgba(0.6f, 0.75f, 0.6f, 1), CW_ALIGN_LEFT);
+  draw_move_list(&g->roster->d[g->f[0].def], W - 262 * s, 96 * s, 248 * s, s);
 }
 
 static void draw_hud(float W, float H, float s) {
@@ -479,7 +572,13 @@ static void draw_hud(float W, float H, float s) {
     float x = i == 0 ? W * 0.5f - gap - bw : W * 0.5f + gap;
     const float *fc = FCOL[f->def & 3];
     bar(x, by, bw, bh, G.shown_hp[i], G.lag_hp[i], rgba(fc[0] * 0.85f + 0.15f, fc[1] * 0.85f + 0.15f, fc[2] * 0.85f + 0.15f, 1), i == 0);
-    text(G.font_bold, d->name, i == 0 ? x : x + bw, by + bh + 6 * s, 20 * s, rgba(1, 1, 1, 1), i == 0 ? CW_ALIGN_LEFT : CW_ALIGN_RIGHT);
+    /* the guard gauge: a thin bar under the life bar, filled by blocked hits (full: the guard breaks) */
+    if (f->guard > 0) {
+      float gf = (float)f->guard / (float)FT_GUARD_MAX, gw = bw * 0.5f, gx = i == 0 ? x + bw - gw : x;
+      cw_r2d_rect(cw_rect_make(gx, by + bh + 4 * s, gw, 5 * s), rgba(0.05f, 0.05f, 0.06f, 0.8f));
+      cw_r2d_rect(cw_rect_make(i == 0 ? gx + gw * (1 - gf) : gx, by + bh + 4 * s, gw * gf, 5 * s), gf > 0.75f ? rgba(1, 0.3f, 0.2f, 1) : rgba(0.85f, 0.88f, 0.95f, 1));
+    }
+    text(G.font_bold, d->name, i == 0 ? x : x + bw, by + bh + 10 * s, 20 * s, rgba(1, 1, 1, 1), i == 0 ? CW_ALIGN_LEFT : CW_ALIGN_RIGHT);
     /* round pips */
     for (int w = 0; w < 2; w++) {
       float px = i == 0 ? W * 0.5f - gap - 10 * s - (float)w * 22 * s : W * 0.5f + gap + 10 * s + (float)w * 22 * s;
@@ -525,6 +624,24 @@ static void draw_hud(float W, float H, float s) {
     if (g->round_winner >= 0) { snprintf(b, sizeof b, "%s WINS", g->roster->d[g->f[g->round_winner].def].name); text(G.font_score, b, W * 0.5f, H * 0.3f, 54 * s, rgba(1, 0.9f, 0.4f, 1), CW_ALIGN_CENTER); }
     else text(G.font_score, "DRAW", W * 0.5f, H * 0.3f, 54 * s, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
   }
+  /* callouts: a parry, a guard break, a high ducked */
+  {
+    static uint32_t seen;
+    static float age = 99;
+    static int kind, side;
+    if (seen > g->ev_seq) seen = g->ev_seq; /* a new match restarts the event count */
+    if (g->ev_seq - seen > 64) seen = g->ev_seq - 64;
+    for (; seen != g->ev_seq; seen++) {
+      const ft_event *e = &g->ev[seen & 63];
+      if (e->type == EV_PARRY || e->type == EV_GUARDBREAK || e->type == EV_WHIFF) { kind = e->type; side = e->who; age = 0; }
+    }
+    age += 1.0f / 60.0f;
+    if (age < 0.9f) {
+      const char *w = kind == EV_PARRY ? "PARRY" : kind == EV_GUARDBREAK ? "GUARD BREAK" : "DUCKED";
+      float a = cw_clampf(1.4f - age * 1.5f, 0, 1);
+      text(G.font_score, w, side == 0 ? W * 0.25f : W * 0.75f, H * 0.2f, 30 * s, kind == EV_GUARDBREAK ? rgba(1, 0.35f, 0.25f, a) : rgba(0.6f, 0.9f, 1, a), CW_ALIGN_CENTER);
+    }
+  }
   if (g->training) draw_training(W, H, s);
   /* super flash */
   float fl = fx_flash();
@@ -557,14 +674,20 @@ static void draw_select(float W, float H, float s) {
     text(G.font_bold, d->name, cx, y0 + 16 * s, 24 * s, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
     snprintf(b, sizeof b, "Life %d", d->hp);
     text(G.font_ui, b, cx, y0 + 46 * s, 13 * s, rgba(0.8f, 0.85f, 0.95f, 1), CW_ALIGN_CENTER);
-    cw_text_style st = { .size = 13 * s, .color = rgba(0.75f, 0.8f, 0.9f, 1), .align = CW_ALIGN_CENTER, .wrap_width = cw_ - 20 * s };
-    cw_r2d_text(G.font_ui, BLURB[i & 3], (cw_vec2){ cx - (cw_ - 20 * s) * 0.5f, y0 + 66 * s }, &st);
+    text(G.font_ui, ROLE[i & 3], cx, y0 + 62 * s, 13 * s, rgba(0.75f, 0.8f, 0.9f, 1), CW_ALIGN_CENTER);
+    for (int k = 0; k < 3; k++) { /* the specials: motion, button, name */
+      char in[24];
+      ft_special_text(d, k, in, sizeof in);
+      snprintf(b, sizeof b, "%s %s", in, d->mv[M_SP1 + k].name);
+      text(G.font_ui, b, cx, y0 + (80 + 15 * (float)k) * s, 13 * s, rgba(1, 0.85f, 0.5f, 1), CW_ALIGN_CENTER);
+    }
     if (p1) cw_r2d_round_rect_lines(cw_rect_make(x - 4 * s, y0 - 4 * s, cw_ + 8 * s, ch + 8 * s), 14 * s, 4 * s, 8, G.ready[0] ? rgba(1, 0.85f, 0.2f, 1) : rgba(1, 0.4f, 0.3f, 1));
     if (p2) cw_r2d_round_rect_lines(cw_rect_make(x - 8 * s, y0 - 8 * s, cw_ + 16 * s, ch + 16 * s), 16 * s, 3 * s, 8, G.ready[1] ? rgba(1, 0.85f, 0.2f, 1) : rgba(0.3f, 0.6f, 1, 1));
     if (p1) text(G.font_bold, "P1", x + 10 * s, y0 - 24 * s, 18 * s, rgba(1, 0.5f, 0.4f, 1), CW_ALIGN_LEFT);
     if (p2) text(G.font_bold, "P2", x + cw_ - 10 * s, y0 - 24 * s, 18 * s, rgba(0.4f, 0.7f, 1, 1), CW_ALIGN_RIGHT);
   }
-  text(G.font_ui, "Left / right: fighter     A: lock in     B: back out (two players) or computer level", W * 0.5f, H - 30 * s, 14 * s, rgba(0.7f, 0.75f, 0.85f, 1), CW_ALIGN_CENTER);
+  text(G.font_ui, "Punch X (J)   Kick A (K)   Block B (L)   Up / down + button: high / low   Punch + kick: throw", W * 0.5f, H - 38 * s, 13 * s, rgba(1, 0.95f, 0.8f, 1), CW_ALIGN_CENTER);
+  text(G.font_ui, "Left / right: fighter     A: lock in     B: back out (two players) or computer level", W * 0.5f, H - 20 * s, 13 * s, rgba(0.7f, 0.75f, 0.85f, 1), CW_ALIGN_CENTER);
 }
 
 static void draw_result(float W, float H, float s) {
@@ -573,7 +696,8 @@ static void draw_result(float W, float H, float s) {
   cw_r2d_rect(cw_rect_make(0, 0, W, 120 * s), rgba(0.02f, 0.02f, 0.04f, 0.6f));
   cw_r2d_rect(cw_rect_make(0, H - 70 * s, W, 70 * s), rgba(0.02f, 0.02f, 0.04f, 0.6f));
   char b[80];
-  snprintf(b, sizeof b, "%s WINS", g->roster->d[g->f[g->match_winner].def].name);
+  if (g->match_winner >= 0) snprintf(b, sizeof b, "%s WINS", g->roster->d[g->f[g->match_winner].def].name);
+  else snprintf(b, sizeof b, "DRAW");
   text(G.font_score, b, W * 0.5f, 14 * s, 60 * s, rgba(1, 0.9f, 0.4f, 1), CW_ALIGN_CENTER);
   snprintf(b, sizeof b, "%d - %d", g->f[0].wins, g->f[1].wins);
   text(G.font_bold, b, W * 0.5f, 78 * s, 30 * s, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
@@ -599,7 +723,7 @@ static void render(void *u, double alpha) {
 
 static void screen_changed(cw_shell_screen from, cw_shell_screen to, void *u) {
   (void)from; (void)u;
-  if (to == CW_SHELL_TITLE) { unload_match(); G.state = GS_SELECT; backdrop(); }
+  if (to == CW_SHELL_TITLE) { G.state = GS_SELECT; backdrop(); }
 }
 static void shell_sound(cw_shell_sound s, void *u) {
   (void)u;
@@ -634,9 +758,9 @@ static void init(void *u) {
   cw_input_load_bindings_asset("input.cfg");
   cw_input_commit_defaults();
   G.a_left = cw_action_find("mv_left"); G.a_right = cw_action_find("mv_right"); G.a_up = cw_action_find("mv_up"); G.a_down = cw_action_find("mv_down");
-  G.a_l = cw_action_find("atk_l"); G.a_m = cw_action_find("atk_m"); G.a_h = cw_action_find("atk_h"); G.a_t = cw_action_find("atk_t");
+  G.a_p = cw_action_find("atk_p"); G.a_k = cw_action_find("atk_k"); G.a_g = cw_action_find("atk_g"); G.a_pk = cw_action_find("atk_pk");
   G.k_left = cw_action_find("k2_left"); G.k_right = cw_action_find("k2_right"); G.k_up = cw_action_find("k2_up"); G.k_down = cw_action_find("k2_down");
-  G.k_l = cw_action_find("k2_l"); G.k_m = cw_action_find("k2_m"); G.k_h = cw_action_find("k2_h"); G.k_t = cw_action_find("k2_t");
+  G.k_p = cw_action_find("k2_p"); G.k_k = cw_action_find("k2_k"); G.k_g = cw_action_find("k2_g"); G.k_pk = cw_action_find("k2_pk");
   G.tr_mode = cw_action_find("tr_mode"); G.tr_reset = cw_action_find("tr_reset"); G.tr_dummy = cw_action_find("tr_dummy"); G.tr_boxes = cw_action_find("tr_boxes");
   const cw_font_desc fd = { .mode = CW_FONT_SDF, .sdf_padding = 10 };
   G.font_ui = cw_font_load("fonts/Fredoka-SemiBold.ttf", &fd);
@@ -667,6 +791,7 @@ static void init(void *u) {
   cw_debug_i32("game.state", &G.d_state); cw_debug_i32("game.phase", &G.d_phase); cw_debug_i32("game.round", &G.d_round);
   cw_debug_field("sim.hp", G.d_hp, CW_DBG_I32, 2); cw_debug_field("sim.meter", G.d_meter, CW_DBG_I32, 2); cw_debug_field("sim.wins", G.d_wins, CW_DBG_I32, 2);
   cw_debug_field("sim.pos", G.d_pos, CW_DBG_I32, 4); cw_debug_field("sim.fstate", G.d_fstate, CW_DBG_I32, 2); cw_debug_field("sim.def", G.d_def, CW_DBG_I32, 2);
+  cw_debug_field("sim.guard", G.d_guard, CW_DBG_I32, 2); cw_debug_field("sim.stats", G.d_stats, CW_DBG_I32, 6);
   cw_debug_u32("sim.hash", &G.d_hash); cw_debug_i32("sim.combo", &G.d_combo); cw_debug_i32("sim.adv", &G.d_adv); cw_debug_i32("ticks", &G.d_tick);
   cw_debug_i32("fx.hits", &G.d_hitcount); cw_debug_i32("fx.blocks", &G.d_blockcount); cw_debug_i32("view.boxes", &G.d_boxes);
   cw_debug_i32("tex.nodes", &G.d_tex_nodes); cw_debug_i32("tex.objs", &G.d_tex_objs); cw_debug_i32("tex.meshes", &G.d_tex_meshes); cw_debug_i32("tex.applied", &G.tex_done);

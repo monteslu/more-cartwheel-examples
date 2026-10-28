@@ -5,32 +5,62 @@ Four fighters, three stages, a training mode that shows hitboxes and frame data.
 
 ## Playing
 
-Run `fighter` (or `scripts/build.sh` then `build/native/.../fighter`). Pick Play, join with a pad (south) or the keyboard (enter), choose a fighter and a stage.
+Run `fighter` (or `scripts/build.sh` then `build/native/.../fighter`). Pick Play, join with a pad (A) or the keyboard (enter), choose a fighter (left / right) and a stage (up / down), lock in with A (kick).
+
+Three buttons: punch, kick and block. The stick (or d-pad) picks where a punch or kick goes.
 
 | Action | Pad | Keyboard, player 1 | Keyboard, player 2 |
 |---|---|---|---|
-| Move, jump, crouch | left stick or d-pad | W A S D | arrow keys |
-| Light, medium, heavy | X, Y, B | J, K, L | comma, period, slash |
-| Throw | A or a shoulder | I | semicolon |
+| Walk, dash (tap twice) | left stick or d-pad, left / right | A, D | left, right arrows |
+| Punch | X | J | comma |
+| Kick | A | K | period |
+| Block | B or right shoulder | L | slash |
+| Throw (punch + kick together) | Y or left shoulder, or X + A | I, or J + K | semicolon |
 
-Hold back to block: stand to block mid and overhead hits, crouch to block mid and low hits. Throws cannot be blocked: press throw as you are grabbed to break it. Tap forward twice to dash, back twice to step away. Jump with up.
+Attack height: hold up with a button for a high attack, nothing for a mid one, down for a low one, forward for a
+stepping one (it moves in). Every fighter has its own eight: for example Bolt has a straight (punch), a rising elbow
+(up + punch), a low jab (down + punch), a lunge punch (forward + punch), a side kick (kick), a roundhouse (up + kick),
+a sweep (down + kick) and a step kick (forward + kick).
 
-Special moves are a stick motion plus an attack button (the stronger the button, the stronger the move). Motions are written as numpad directions with 6 forward: `236` is down, down-forward, forward. `[4]6` means hold back for half a second, then forward. The super is `236236` and needs a full meter. Every fighter's moves are listed by `node tools/framedata.mjs`.
+Blocking is a button, not holding back:
+- Block alone guards high and mid attacks. Down + block is a low guard: it stops low and mid attacks, and high
+  attacks pass over it (a crouch).
+- So: a high is blocked standing (or ducked), a low must be blocked low, a mid is blocked either way.
+- A low attack crouches the attacker too, so a high attack whiffs over it.
+- Blocking costs nothing except chip damage from specials (an eighth of the damage, never a knockout). Blocked hits fill a
+  guard gauge under the life bar; when it fills, the guard breaks and you are open for a moment. It drains when you
+  stop blocking.
+- A parry: press block (fresh, not held) in the last few frames before a hit lands, at the right height, and you are
+  free at once while the attacker is still recovering. Pressing block again within half a second of the last press
+  opens no parry window, so mashing does not work.
+- Throws beat blocking; press punch + kick as you are grabbed to break the throw.
 
-A chain works on hit or block: a light cancels into a medium or heavy, any normal cancels into a special, a special into the super. Hits scale their damage in a combo.
+Jumping and crouching: there is no jump button and up or down held alone does nothing, so they never get in the way of
+picking a height. Tap up twice for a short hop (up-forward or up-back to hop that way): hop attacks are punch and
+kick in the air, and a hop clears low attacks. You crouch by holding down + block (the low guard) or by doing a
+low attack. Tap forward twice to dash in, back twice to step away.
+
+Special moves are a stick motion plus their button, shown on the select screen and in the training move list.
+Motions are written as numpad directions with 6 forward: `236` is down, down-forward, forward; `236 P` is that motion
+then punch. `[4]6` means hold back for half a second, then forward. The super is `236236` with punch or kick and
+needs a full meter. Every fighter's moves are listed by `node tools/framedata.mjs`.
+
+A chain works on hit or block: a punch cancels into a kick (or the lunge), any normal into a special, a special into
+the super. Hits scale their damage in a combo.
 
 ## Training mode
 
-Press X on the select screen to switch Versus to Training. It shows the last move's startup, active and recovery frames, the frame advantage of the last hit or block, the damage and combo, and your recent inputs. Keys: F or left-stick click cycles what the dummy does (stand, crouch, jump, block everything, play like the computer), B or right-stick click shows hitboxes (blue: hurtboxes, red: hitboxes), R resets, Tab returns to the select screen.
+Press X (punch) on the select screen to switch Versus to Training. It shows the last move's name and height, whether it hit, was blocked, parried or ducked, its startup, active and recovery frames, the frame advantage, the damage and combo, and your recent inputs (direction digits with P, K and G for punch, kick and block). A move list for your fighter sits on the right. Keys: F or left-stick click cycles what the dummy does (nothing, stand, block, block low, hop, block everything at the right height, play like the computer), B or right-stick click shows hitboxes (blue: hurtboxes, red: hitboxes), R resets, Tab returns to the select screen.
 
 ## Tools
 
 - `tools/framedata.mjs`: the frame data table from `assets/data/moves.txt` (`--json`, `--csv`, `--fighter id`), and a checker. The file is the one the game reads: edit a move, run the tool, play it.
-- `tests/run-simtest.sh`: plain-C rules tests (frame data matches the table, blocking, motions, combos, throws, rounds, a computer-vs-computer soak, determinism).
+- `tests/run-simtest.sh`: plain-C rules tests (every direction + button gives its move, move lengths and frame advantage equal the table, the high / mid / low guard triangle, parries, guard breaks, hops, motions, combos, throws, rounds, determinism) and a computer-vs-computer soak that prints win rates per fighter and per pairing, round length, comebacks, and how often parries, guard breaks and ducked highs happen.
+- `tools/frame-trace.mjs`: frame times from a profiler trace (the select-screen stutter check).
 - `tools/make-textures.mjs`, then `tools/make-characters.mjs` (the fighters; `crowd` for the spectators) and `tools/make-world.mjs` (the stage backgrounds): regenerate the models in assets/models.
 - `tools/make-stages.mjs`, `tools/make-grade.mjs`, `tools/make-audio.mjs`, `tools/make-gate-script.mjs`: regenerate the stage lighting, colour grades, sound and the gate scripts.
 - `tools/blender/pose.py`, `tools/blender/lineup.py`: check renders of the fighters in Blender (CPU).
 
 ## How it is built
 
-`sim.c` is the rules: integer, 60 ticks a second, no renderer. Every move has startup, active and recovery frames, a hitbox, a hurtbox extension and stun values, all in `assets/data/moves.txt`. Inputs go through the engine's command buffer and motion matcher (`cartwheel/motion.h`), the camera through its framing helper (`cartwheel/framing.h`). `chars.c` loads each fighter's skinned model and poses its bones from the simulation (including the fingers: fists, open hands for grabs and palm strikes), so animation timing is the frame data; the joint positions are the ones the hitboxes were drawn against. `secondary.c` swings hair, headband tails, coat skirts and bellies on springs and gives skin, cloth, hair and leather their shading. `stage.c` loads the stage background and runs its ambient life (rain, steam, petals, flickering neon, swaying lanterns, turning fans) and the rim lights; `crowd.c` the spectators. `fx.c` has the hit effects, including shockwaves that bend the picture on heavy hits, supers and knockouts.
+`sim.c` is the rules: integer, 60 ticks a second, no renderer. Every move has startup, active and recovery frames, a hitbox, a hurtbox extension and stun values, all in `assets/data/moves.txt`. Inputs go through the engine's command buffer and motion matcher (`cartwheel/motion.h`), the camera through its framing helper (`cartwheel/framing.h`). `chars.c` loads each fighter's skinned model once at start-up (a glTF resource; every fighter on screen is an instance of it, so picking fighters on the select screen loads nothing) and poses its bones from the simulation (including the fingers: fists, open hands for grabs and palm strikes), so animation timing is the frame data; the joint positions are the ones the hitboxes were drawn against. `secondary.c` swings hair, headband tails, coat skirts and bellies on springs and gives skin, cloth, hair and leather their shading. `stage.c` loads the stage background and runs its ambient life (rain, steam, petals, flickering neon, swaying lanterns, turning fans) and the rim lights; `crowd.c` the spectators. `fx.c` has the hit effects, including shockwaves that bend the picture on heavy hits, supers and knockouts.

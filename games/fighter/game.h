@@ -39,7 +39,10 @@ void char_shade(t3_object *scene);
 
 /* chars.c: skinned fighters (assets/models, made by tools/make-characters.mjs), posed from the simulation */
 typedef struct fighter_model fighter_model;
-fighter_model *model_new(int def, cw_node parent);
+bool models_preload(void); /* parse and upload the four fighters once (start-up) */
+fighter_model *model_new(int def, cw_node parent);  /* an instance of the preloaded model: no parse, no upload */
+void model_reset(fighter_model *m);
+void model_park(fighter_model *m); /* visible, out of sight under the floor (warming its draw state) */
 void model_free(fighter_model *m);
 /* pose from the sim state: alpha is the render interpolation across the tick */
 void model_pose(fighter_model *m, const ft_game *g, int who, float dt);

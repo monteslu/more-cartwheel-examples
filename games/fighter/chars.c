@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "cartwheel/resource.h"
 #include "game.h"
 
 enum { HIPS, SPINE, CHEST, NECK, HEAD, UAR_L, FAR_L, HAND_L, UAR_R, FAR_R, HAND_R, THI_L, SHI_L, FOO_L, THI_R, SHI_R, FOO_R, JN };
@@ -37,7 +38,6 @@ struct fighter_model {
   int def;
   const spec *sp;
   cw_node node;
-  t3_gltf *gltf;
   t3_object *root, *bones[JN], *fing[2][3], *face[5];
   t3_vec3 face_rest[5];
   float jaw, lid, brow, pinch, showcase; /* expression now: jaw open, lids closed, brows lowered, brows pinched */
@@ -55,22 +55,30 @@ static void shadows_on(t3_object *o) {
   for (int i = 0; i < o->child_count; i++) shadows_on(o->children[i]);
 }
 
+/* one glTF resource per fighter, parsed and uploaded once (models_preload, at start-up); every model is an instance
+ * (cw_gltf_instantiate) sharing its geometry and textures, so picking a fighter never parses or uploads anything */
+static cw_res RES[4];
+bool models_preload(void) {
+  for (int d = 0; d < 4; d++) {
+    if (cw_res_is_ready(RES[d])) continue;
+    char path[64];
+    snprintf(path, sizeof path, "models/%s.glb", SPECS[d].name);
+    RES[d] = cw_res_load(path, CW_RES_GLTF);
+    if (!cw_res_gltf(RES[d])) { cw_error("fighter: %s did not load", path); return false; }
+  }
+  return true;
+}
+
 fighter_model *model_new(int def, cw_node parent) {
+  if (!models_preload()) return NULL;
   fighter_model *m = calloc(1, sizeof *m);
   m->def = def;
   m->sp = &SPECS[def % 4];
-  char path[64];
-  snprintf(path, sizeof path, "models/%s.glb", m->sp->name);
-  size_t len = 0;
-  void *glb = cw_asset_load(path, &len);
-  if (!glb) { cw_error("fighter: %s missing from the assets", path); free(m); return NULL; }
-  m->gltf = t3_gltf_parse(glb, len, NULL, NULL);
-  free(glb);
-  if (!m->gltf) { cw_error("fighter: %s did not parse", path); free(m); return NULL; }
-  m->root = m->gltf->scene;
+  m->root = cw_gltf_instantiate(RES[def % 4]);
+  if (!m->root) { cw_error("fighter: no instance of %s", m->sp->name); free(m); return NULL; }
   for (int j = 0; j < JN; j++) {
     m->bones[j] = t3_object_get_by_name(m->root, BONE[j]);
-    if (!m->bones[j]) { cw_error("fighter: %s has no bone %s", path, BONE[j]); t3_release(m->gltf); free(m); return NULL; }
+    if (!m->bones[j]) { cw_error("fighter: %s has no bone %s", m->sp->name, BONE[j]); t3_release(m->root); free(m); return NULL; }
   }
   for (int h = 0; h < 2; h++) for (int k = 0; k < 3; k++) m->fing[h][k] = t3_object_get_by_name(m->root, FING[h][k]);
   m->hips_rest = m->bones[HIPS]->position;
@@ -79,9 +87,13 @@ fighter_model *model_new(int def, cw_node parent) {
   shadows_on(m->root);
   char_shade(m->root);
   sb_bind(&m->springs, m->root);
-  m->node = cw_node_new("Node3D", def % 2 ? "Fighter1" : "Fighter0");
+  char nm[24];
+  static int serial;
+  snprintf(nm, sizeof nm, "Fighter_%s_%d", m->sp->name, serial++);
+  m->node = cw_node_new("Node3D", nm);
   cw_node_add_child(parent, m->node);
   cw_node3d_set_object(m->node, m->root);
+  t3_release(m->root); /* the node holds it */
   cw_node_set(m->node, "interpolate", cw_val_bool(false));
   return m;
 }
@@ -89,10 +101,20 @@ fighter_model *model_new(int def, cw_node parent) {
 void model_free(fighter_model *m) {
   if (!m) return;
   if (cw_node_valid(m->node)) cw_node_free(m->node);
-  if (m->gltf) t3_release(m->gltf);
   free(m);
 }
-void model_set_visible(fighter_model *m, bool v) { if (m) m->root->visible = v; }
+/* back to a first pose: the next model_pose snaps instead of easing from wherever the model last stood */
+void model_reset(fighter_model *m) {
+  if (!m) return;
+  m->inited = false;
+  m->showcase = 0;
+  m->last_state = 0; m->last_stun = 0;
+  sb_reset(&m->springs);
+}
+/* the node's visible flag (the scene tree writes it to the object every frame: setting the object alone does nothing) */
+void model_set_visible(fighter_model *m, bool v) { if (m) { cw_node_set(m->node, "visible", cw_val_bool(v)); m->root->visible = v; } }
+/* drawn far under the floor for a few frames at start-up, so its first real appearance creates nothing on the GPU */
+void model_park(fighter_model *m) { if (m) { cw_node3d_set_position(m->node, (t3_vec3){ 0, -80, 0 }); model_set_visible(m, true); } }
 void model_set_showcase(fighter_model *m, float turn) { if (m) m->showcase = turn; }
 t3_vec3 model_joint(fighter_model *m, int j) {
   static const int MAP[] = { [J_HEAD] = HEAD, [J_HAND_F] = HAND_R, [J_HAND_B] = HAND_L, [J_FOOT_F] = FOO_R, [J_CHEST] = CHEST, [J_HIPS] = HIPS };
@@ -152,20 +174,25 @@ static void blend(pose *o, const pose *a, const pose *b, float k) {
 static void strike(pose *p, const spec *s, int nr, int slot, int strength) {
   (void)strength;
   switch (slot) {
-  case M_5L: arm(p, 1, nr, 1.5f, 0.1f, 0.15f, 0); p->r[SPINE][1] = 0.0f; p->r[CHEST][1] = -0.2f; p->off[2] = 0.05f; break;
-  case M_5M: arm(p, 0, nr, 1.5f, 0.1f, 0.1f, 0); p->r[SPINE][1] = -0.55f; p->r[CHEST][1] = -0.35f; p->off[2] = 0.12f;
-             leg(p, 1, nr, 0.5f, s->stance, 0.8f); break;
-  case M_5H: arm(p, 0, nr, 1.2f, 0.9f, 0.3f, 0.3f); arm(p, 1, nr, 0.6f, 0.3f, 1.2f, 0); p->r[SPINE][1] = -0.9f; p->r[SPINE][0] = 0.3f; p->r[CHEST][1] = -0.4f;
-             p->off[2] = 0.22f; p->off[1] -= 0.05f; leg(p, 1, nr, 0.75f, s->stance + 0.1f, 1.0f); break;
-  case M_2L: arm(p, 1, nr, 1.4f, 0.1f, 0.2f, 0); p->off[1] = -0.35f; leg(p, 1, nr, 1.1f, 0.1f, 1.1f); leg(p, 0, nr, 0.7f, 0.2f, 1.9f); p->r[SPINE][0] = 0.25f; break;
-  case M_2M: p->off[1] = -0.38f; leg(p, 1, nr, 1.35f, 0.1f, 0.15f); leg(p, 0, nr, 0.8f, 0.25f, 1.9f); p->r[SPINE][0] = 0.15f; p->r[SPINE][2] = 0.1f;
-             arm(p, 1, nr, 0.5f, 0.5f, 1.0f, 0); arm(p, 0, nr, 0.5f, 0.5f, 1.0f, 0); break;
-  case M_2H: p->off[1] = -0.5f; p->off[2] = 0.25f; leg(p, 1, nr, 1.45f, 0.05f, 0.05f); leg(p, 0, nr, 0.5f, 0.5f, 2.2f); p->r[SPINE][0] = 0.5f; p->r[CHEST][0] = 0.4f;
+  /* punches: mid straight, high (a rising elbow or hook), low jab, the forward lunge */
+  case M_5P: arm(p, 1, nr, 1.4f, 0.1f, 0.15f, 0); p->r[SPINE][0] = 0.12f; p->r[SPINE][1] = 0.0f; p->r[CHEST][1] = -0.2f; p->off[2] = 0.06f; break;
+  case M_8P: arm(p, 0, nr, 2.25f, 0.2f, 0.7f, 0); arm(p, 1, nr, 1.1f, 0.3f, 1.6f, 0); p->r[SPINE][0] = -0.12f; p->r[SPINE][1] = -0.5f; p->r[CHEST][1] = -0.3f;
+             p->off[1] += 0.04f; p->off[2] = 0.1f; leg(p, 0, nr, -0.1f, s->stance, 0.2f); break;
+  case M_2P: arm(p, 1, nr, 1.4f, 0.1f, 0.2f, 0); p->off[1] = -0.35f; leg(p, 1, nr, 1.1f, 0.1f, 1.1f); leg(p, 0, nr, 0.7f, 0.2f, 1.9f); p->r[SPINE][0] = 0.25f; break;
+  case M_6P: arm(p, 0, nr, 1.5f, 0.1f, 0.1f, 0); p->r[SPINE][0] = 0.25f; p->r[SPINE][1] = -0.6f; p->r[CHEST][1] = -0.35f; p->off[2] = 0.3f; p->off[1] -= 0.08f;
+             leg(p, 1, nr, 0.95f, s->stance, 1.1f); leg(p, 0, nr, -0.55f, s->stance, 0.15f); break;
+  /* kicks: mid front kick, high roundhouse, low sweep, the stepping kick */
+  case M_5K: leg(p, 1, nr, 1.4f, 0.05f, 0.15f); leg(p, 0, nr, 0.0f, s->stance, 0.25f); p->r[SPINE][0] = -0.22f; p->off[1] = -0.02f;
+             arm(p, 1, nr, 1.1f, 0.3f, 1.6f, 0); arm(p, 0, nr, 0.7f, 0.4f, 1.4f, 0); break;
+  case M_8K: leg(p, 1, nr, 2.05f, 0.45f, 0.1f); leg(p, 0, nr, -0.05f, s->stance, 0.2f); p->r[SPINE][0] = -0.38f; p->r[SPINE][1] = -0.45f; p->r[SPINE][2] = 0.2f;
+             arm(p, 1, nr, 0.9f, 0.6f, 1.3f, 0); arm(p, 0, nr, 0.3f, 0.9f, 0.6f, 0); break;
+  case M_2K: p->off[1] = -0.5f; p->off[2] = 0.25f; leg(p, 1, nr, 1.45f, 0.05f, 0.05f); leg(p, 0, nr, 0.5f, 0.5f, 2.2f); p->r[SPINE][0] = 0.5f; p->r[CHEST][0] = 0.4f;
              arm(p, 1, nr, 0.3f, 0.7f, 0.6f, 0); arm(p, 0, nr, -0.5f, 0.9f, 0.3f, 0); break;
-  case M_JL: arm(p, 1, nr, 1.55f, 0.1f, 0.1f, 0); p->r[SPINE][0] = 0.3f; leg(p, 1, nr, 1.1f, 0.1f, 1.5f); leg(p, 0, nr, 0.5f, 0.1f, 1.8f); break;
-  case M_JM: leg(p, 1, nr, 1.4f, 0.05f, 0.3f); leg(p, 0, nr, 0.4f, 0.1f, 2.0f); p->r[SPINE][0] = 0.4f; arm(p, 1, nr, 0.8f, 0.4f, 1.2f, 0); arm(p, 0, nr, 0.8f, 0.4f, 1.2f, 0); break;
-  case M_JH: leg(p, 1, nr, 1.2f, 0.15f, 0.9f); leg(p, 0, nr, 0.3f, 0.2f, 1.5f); p->r[SPINE][0] = 0.6f; p->r[CHEST][0] = 0.4f;
-             arm(p, 1, nr, 2.4f, 0.1f, 0.1f, 0); arm(p, 0, nr, 2.4f, 0.1f, 0.1f, 0); break;
+  case M_6K: leg(p, 1, nr, 1.55f, 0.12f, 0.2f); leg(p, 0, nr, -0.35f, s->stance, 0.35f); p->r[SPINE][0] = -0.15f; p->r[SPINE][1] = -0.3f; p->off[2] = 0.28f;
+             arm(p, 1, nr, 1.0f, 0.35f, 1.5f, 0); arm(p, 0, nr, 0.5f, 0.6f, 1.0f, 0); break;
+  /* in a hop */
+  case M_JP: arm(p, 1, nr, 1.55f, 0.1f, 0.1f, 0); p->r[SPINE][0] = 0.3f; leg(p, 1, nr, 1.1f, 0.1f, 1.5f); leg(p, 0, nr, 0.5f, 0.1f, 1.8f); break;
+  case M_JK: leg(p, 1, nr, 1.4f, 0.05f, 0.3f); leg(p, 0, nr, 0.4f, 0.1f, 2.0f); p->r[SPINE][0] = 0.4f; arm(p, 1, nr, 0.8f, 0.4f, 1.2f, 0); arm(p, 0, nr, 0.8f, 0.4f, 1.2f, 0); break;
   case M_THROW: case M_SP1: case M_SUPER:
     if (slot == M_THROW || (s->kind == 1 && slot == M_SP1) || (s->kind == 1 && slot == M_SUPER)) {
       arm(p, 1, nr, 1.55f, 0.35f, 0.1f, 0.5f); arm(p, 0, nr, 1.55f, 0.35f, 0.1f, 0.5f); p->r[SPINE][0] = 0.45f; p->off[1] = -0.2f;
@@ -332,7 +359,7 @@ static void pose_face(fighter_model *m, const ft_game *g, int who, float dt) {
   case S_BLOCK: jaw = 0.06f; lid = 0.45f; brow = 0.9f; pinch = 0.8f; break;
   case S_ATTACK: {
     const ft_move *mv = &g->roster->d[f->def].mv[f->mv];
-    bool big = (mv->flags & (FM_SUPER | FM_SPECIAL)) || f->mv == M_5H || f->mv == M_2H || f->mv == M_JH;
+    bool big = (mv->flags & (FM_SUPER | FM_SPECIAL)) || f->mv == M_8K || f->mv == M_2K || f->mv == M_6P || f->mv == M_6K || f->mv == M_JK;
     if (big) { jaw = f->t > mv->su ? 0.3f : 0.1f; lid = 0.35f; brow = 1.0f; pinch = 1.0f; } /* a shout on the strike, teeth gritted before it */
     else { jaw = 0.08f; lid = 0.3f; brow = 0.8f; pinch = 0.7f; }
     break;

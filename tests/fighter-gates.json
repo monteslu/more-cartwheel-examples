@@ -1,0 +1,218 @@
+[
+  {
+    "name": "fighter-auto",
+    "app": "fighter_auto",
+    "frames": 900,
+    "maxGt16": 0.06,
+    "fields": [
+      "game.state",
+      "game.phase",
+      "game.round",
+      "sim.hp",
+      "sim.meter",
+      "sim.wins",
+      "sim.pos",
+      "sim.fstate",
+      "sim.def",
+      "sim.hash",
+      "sim.combo",
+      "sim.guard",
+      "sim.stats",
+      "ticks",
+      "fx.hits",
+      "fx.blocks",
+      "tex.hash"
+    ],
+    "expect": {
+      "game.phase": 1,
+      "game.round": 1,
+      "sim.hp": [
+        598,
+        823
+      ],
+      "sim.wins": [
+        0,
+        0
+      ],
+      "sim.stats": [
+        11,
+        3,
+        3,
+        0,
+        0,
+        1
+      ],
+      "fx.hits": 11,
+      "fx.blocks": 3,
+      "sim.hash": 2746861317
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "maxGt16": 0.06,
+      "vsGl": 0.25,
+      "note": "the same dual cart on romdev and Chromium against native WebGPU; GL vs WebGPU within 25 percent of pixels (particles, dust, shockwave)"
+    },
+    "note": "Fighter: two computer fighters (Bolt and Vex, rooftop) play from the intro with the punch / kick / block controls (the computer blocks with the block button, guards low against lows, parries now and then). The rules are integer only (sim.c), so the named state must match exactly on every host; the expects pin this run. The control is one frame short."
+  },
+  {
+    "name": "fighter-p1-moves",
+    "app": "fighter_test",
+    "frames": 540,
+    "input": "fighter-p1-moves.json",
+    "controlInput": "fighter-p1-moves-ctl.json",
+    "maxGt16": 0.06,
+    "fields": [
+      "game.state",
+      "game.phase",
+      "game.round",
+      "sim.hp",
+      "sim.meter",
+      "sim.wins",
+      "sim.pos",
+      "sim.fstate",
+      "sim.def",
+      "sim.hash",
+      "sim.combo",
+      "sim.guard",
+      "sim.stats",
+      "ticks",
+      "fx.hits",
+      "fx.blocks"
+    ],
+    "expect": {
+      "game.phase": 1,
+      "sim.hp": [
+        920,
+        860
+      ],
+      "sim.stats": [
+        4,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "fx.hits": 4,
+      "fx.blocks": 0,
+      "sim.hash": 2201356621
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "maxGt16": 0.06,
+      "vsGl": 0.25,
+      "note": "dual cart on romdev and Chromium against native WebGPU, and on romdev GL against native GL"
+    },
+    "note": "Player 1 on a pad plays the new controls against a standing player 2: down, down-forward, forward + punch (a fireball), walk in, up + punch (a high punch), down + kick (a sweep), punch into kick (a chain), punch + kick (a throw). The control leaves the fireball motion out. Expects: 4 hits and 1 throw (sim.stats), 270 damage, the same state hash on every host."
+  },
+  {
+    "name": "fighter-guard",
+    "app": "fighter_test",
+    "frames": 420,
+    "input": "fighter-guard.json",
+    "controlInput": "fighter-guard-ctl.json",
+    "maxGt16": 0.06,
+    "fields": [
+      "game.state",
+      "game.phase",
+      "game.round",
+      "sim.hp",
+      "sim.meter",
+      "sim.wins",
+      "sim.pos",
+      "sim.fstate",
+      "sim.def",
+      "sim.hash",
+      "sim.combo",
+      "sim.guard",
+      "sim.stats",
+      "ticks",
+      "fx.hits",
+      "fx.blocks"
+    ],
+    "expect": {
+      "game.phase": 1,
+      "sim.hp": [
+        920,
+        1070
+      ],
+      "sim.stats": [
+        1,
+        1,
+        0,
+        0,
+        1,
+        0
+      ],
+      "fx.hits": 1,
+      "fx.blocks": 1,
+      "sim.hash": 3400917657
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "maxGt16": 0.06,
+      "vsGl": 0.25,
+      "note": "dual cart on romdev and Chromium against native WebGPU, and on romdev GL against native GL"
+    },
+    "note": "The guard triangle with pads: player 2 holds down + block (a low guard) while player 1 does up + kick (a high: it passes over, sim.stats[4] counts it ducked), down + punch and kick (one is blocked low, sim.stats[1]); then player 2 lets go and the kick lands (one hit, 60 damage). Expects: stats [hits 1, blocks 1, parries 0, guard breaks 0, ducked 1, throws 0]. The control: player 2 never guards (2 hits, nothing blocked or ducked)."
+  },
+  {
+    "name": "fighter-training",
+    "app": "fighter_train",
+    "frames": 540,
+    "input": "fighter-p1-moves.json",
+    "controlInput": "fighter-p1-moves-ctl.json",
+    "maxGt16": 0.06,
+    "fields": [
+      "game.state",
+      "game.phase",
+      "sim.hp",
+      "sim.pos",
+      "sim.hash",
+      "sim.adv",
+      "sim.stats",
+      "ticks",
+      "view.boxes"
+    ],
+    "expect": {
+      "game.phase": 1,
+      "sim.hp": [
+        920,
+        1130
+      ],
+      "sim.stats": [
+        4,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "sim.hash": 2988248480,
+      "view.boxes": 2
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "maxGt16": 0.06,
+      "vsGl": 0.25,
+      "note": "dual cart on romdev and Chromium against native WebGPU, and on romdev GL against native GL"
+    },
+    "note": "Training mode with hitboxes, the move list and the frame data readout (view.boxes counts the boxes drawn): the dummy stands, player 1 plays the same script."
+  }
+]

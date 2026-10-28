@@ -4,7 +4,24 @@
 #include <stdlib.h>
 #include <string.h>
 
-const char *const FT_MOVE_ID[FT_NMOVES] = { "5L", "5M", "5H", "2L", "2M", "2H", "JL", "JM", "JH", "THROW", "SP1", "SP2", "SP3", "SUPER" };
+const char *const FT_MOVE_ID[FT_NMOVES] = { "5P", "8P", "2P", "6P", "5K", "8K", "2K", "6K", "JP", "JK", "THROW", "SP1", "SP2", "SP3", "SUPER" };
+/* the name a move has unless the data file gives it one */
+static const char *const DEFAULT_NAME[FT_NMOVES] = { "Body punch", "High punch", "Low jab", "Lunge punch", "Mid kick", "High kick",
+  "Low sweep", "Step kick", "Hop punch", "Hop kick", "Throw", "Special 1", "Special 2", "Special 3", "Super" };
+ft_stats ft_stat;
+const char *ft_level_name(int lv) { return lv == LV_HIGH ? "high" : lv == LV_LOW ? "low" : "mid"; }
+int ft_slot_for(int dir, uint16_t button) {
+  int base = button == B_P ? M_5P : button == B_K ? M_5K : -1;
+  if (base < 0) return -1;
+  if (dir >= 7) return base + 1;     /* up: high */
+  if (dir <= 3) return base + 2;     /* down: low */
+  if (dir == 6) return base + 3;     /* forward: the stepping variant */
+  return base;                       /* neutral (or back): mid */
+}
+void ft_special_text(const ft_def *d, int k, char *out, int n) {
+  uint16_t b = d->mbtn[k];
+  snprintf(out, (size_t)n, "%s %s", d->motion[k], b == B_P ? "P" : b == B_K ? "K" : "P or K");
+}
 const char *const FT_STATE_NAME[S_COUNT] = { "intro", "idle", "walk_f", "walk_b", "crouch", "prejump", "air", "attack", "block", "hit", "air_hit",
                                              "down", "getup", "thrown", "dash_f", "dash_b", "ko", "win", "land" };
 
@@ -29,6 +46,12 @@ static bool set_move_key(ft_move *m, const char *k, const char *v) {
   U8("su", su) U8("ac", ac) U8("rc", rc) U8("hs", hs) U8("bs", bs) U8("hstop", hstop) U8("kd", kd) U8("hits", hits) U8("rehit", rehit)
   U8("inv", inv) U8("mvfrom", mvfrom) U8("mvto", mvto)
   I16("dmg", dmg) I16("pushh", pushh) I16("pushb", pushb) I16("launch", launch) I16("mv", mv) I16("mg", mg)
+  I16("gdmg", gdmg)
+  if (!strcmp(k, "name")) { /* underscores are spaces: name=Rising_knee */
+    snprintf(m->name, sizeof m->name, "%s", v);
+    for (char *c = m->name; *c; c++) if (*c == '_') *c = ' ';
+    return true;
+  }
   if (!strcmp(k, "lv")) { m->lv = v[0] == 'h' ? LV_HIGH : v[0] == 'l' ? LV_LOW : LV_MID; return true; }
   if (!strcmp(k, "hit")) return parse_box(v, &m->hit);
   if (!strcmp(k, "ext")) return parse_box(v, &m->ext);
@@ -67,10 +90,18 @@ static bool set_def_key(ft_def *d, const char *k, const char *v) {
   if (!strcmp(k, "grav")) { d->grav = (int16_t)n; return true; }
   if (!strcmp(k, "dash")) { d->dash = (int16_t)n; return true; }
   if (!strcmp(k, "dashback")) { d->dash_back = (int16_t)n; return true; }
-  if (!strcmp(k, "sp1")) { snprintf(d->motion[0], 12, "%s", v); return true; }
-  if (!strcmp(k, "sp2")) { snprintf(d->motion[1], 12, "%s", v); return true; }
-  if (!strcmp(k, "sp3")) { snprintf(d->motion[2], 12, "%s", v); return true; }
-  if (!strcmp(k, "super")) { snprintf(d->motion[3], 12, "%s", v); return true; }
+  /* specials: the motion then the button letter, sp1=236P (P punch, K kick, X either) */
+  static const char *const SPK[4] = { "sp1", "sp2", "sp3", "super" };
+  for (int i = 0; i < 4; i++)
+    if (!strcmp(k, SPK[i])) {
+      size_t l = strlen(v);
+      if (!l || l > 11) return false;
+      char b = v[l - 1];
+      d->mbtn[i] = b == 'P' ? B_P : b == 'K' ? B_K : b == 'X' ? B_ATTACKS : 0;
+      if (!d->mbtn[i]) return false;
+      snprintf(d->motion[i], 12, "%.*s", (int)(l - 1), v);
+      return true;
+    }
   return false;
 }
 
@@ -129,6 +160,7 @@ int ft_roster_load(ft_roster *r, const char *text, const char **err) {
   for (int i = 0; i < r->n; i++) {
     ft_def *d = &r->d[i];
     for (int k = 0; k < 4; k++) {
+      if (!d->mbtn[k]) FAIL("fighter %s: special %d has no button (sp1=236P)", d->id, k + 1);
       if (!cw_motion_parse(d->motion[k], &d->mo[k])) FAIL("fighter %s: bad motion '%s'", d->id, d->motion[k]);
       if (d->mo[k].charge) d->mo[k].charge_frames = 30;
     }
@@ -137,6 +169,7 @@ int ft_roster_load(ft_roster *r, const char *text, const char **err) {
       if (!m->su || (!m->ac) ) FAIL("fighter %s move %s: needs su and ac", d->id, FT_MOVE_ID[s]);
       if (!m->hits) m->hits = 1;
       if (m->mv && !m->mvto) FAIL("fighter %s move %s: mv without mvto", d->id, FT_MOVE_ID[s]);
+      if (!m->name[0]) snprintf(m->name, sizeof m->name, "%s", DEFAULT_NAME[s]);
     }
   }
   if (!r->n) FAIL("moves: no fighters");
@@ -157,7 +190,15 @@ const ft_move *ft_cur_move(const ft_game *g, int who) {
 }
 bool ft_airborne(const ft_fighter *f) { return f->state == S_AIR || f->state == S_AIRHIT || (f->state == S_ATTACK && f->y > 0); }
 bool ft_actionable(const ft_fighter *f) {
-  return f->state == S_IDLE || f->state == S_WALKF || f->state == S_WALKB || f->state == S_CROUCH;
+  return f->state == S_IDLE || f->state == S_WALKF || f->state == S_WALKB || f->state == S_CROUCH || (f->state == S_BLOCK && !f->stun);
+}
+/* crouched: high attacks pass over (a low guard, a crouching attack) */
+static bool low_profile(const ft_game *g, int who) {
+  const ft_fighter *f = &g->f[who];
+  if (f->state == S_CROUCH) return true;
+  if (f->state == S_BLOCK) return f->crouch_block;
+  if (f->state == S_ATTACK) return (g->roster->d[f->def].mv[f->mv].flags & FM_CROUCH) != 0;
+  return false;
 }
 static bool grounded_free(const ft_fighter *f) { return ft_actionable(f) || f->state == S_BLOCK; }
 
@@ -286,17 +327,20 @@ static void start_move(ft_game *g, int i, int slot, int strength) {
   cw_cmd_consume(&f->cb);
 }
 
-/* the strength a special was cast with: the attack button that went down last */
-static int cast_strength(const ft_fighter *f) {
-  int best = -1, age = 99;
-  for (int b = 0; b < 3; b++) {
-    int a = cw_cmd_pressed_ago(&f->cb, (uint16_t)(1 << b), 6);
-    if (a >= 0 && a < age) { age = a; best = b; }
+/* punch + kick together (both held, one of them just pressed): the throw, and in the defender's hands the throw break */
+static bool pk_pressed(const ft_fighter *f) {
+  return (cw_cmd_held_now(&f->cb) & B_ATTACKS) == B_ATTACKS && (cw_cmd_pressed_ago(&f->cb, B_P, 2) >= 0 || cw_cmd_pressed_ago(&f->cb, B_K, 2) >= 0);
+}
+/* chain order: a normal that connects cancels into a higher rank (punch, then a kick or the lunge, then the step kick) */
+static int chain_rank(int slot) {
+  switch (slot) {
+  case M_5P: case M_8P: case M_2P: case M_JP: return 0;
+  case M_6P: case M_5K: case M_8K: case M_2K: case M_JK: return 1;
+  default: return 2;
   }
-  return best < 0 ? 0 : best;
 }
 
-/* choose what the input asks for. cancel_level: -1 free, else only moves that cancel from `cur` */
+/* choose what the input asks for. cur: -1 free, else only moves that cancel from `cur` */
 static bool choose_move(ft_game *g, int i, int cur, bool *is_special, int *slot, int *strength) {
   ft_fighter *f = &g->f[i];
   const ft_def *d = DEF(g, i);
@@ -305,41 +349,29 @@ static bool choose_move(ft_game *g, int i, int cur, bool *is_special, int *slot,
   bool cur_special = cancel && (d->mv[cur].flags & (FM_SPECIAL | FM_SUPER));
   bool cur_super = cancel && (d->mv[cur].flags & FM_SUPER);
   *is_special = false;
+  *strength = 0;
   if (!air && !cur_super) {
-    /* the super, then the specials, each the motion plus an attack button */
-    if (f->meter >= FT_METER_MAX && cw_special_match(&f->cb, &d->mo[3], B_ATTACKS, d->mo[3].charge ? 50 : 18, 5) >= 0) {
-      *slot = M_SUPER; *strength = cast_strength(f); *is_special = true; return true;
+    /* the super, then the specials: each its motion plus its button */
+    if (f->meter >= FT_METER_MAX && cw_special_match(&f->cb, &d->mo[3], d->mbtn[3], d->mo[3].charge ? 50 : 18, 5) >= 0) {
+      *slot = M_SUPER; *is_special = true; return true;
     }
     if (!cur_special) {
       for (int s = 0; s < 3; s++)
-        if (cw_special_match(&f->cb, &d->mo[s], B_ATTACKS, d->mo[s].charge ? 50 : 16, 5) >= 0) {
-          *slot = M_SP1 + s; *strength = cast_strength(f); *is_special = true; return true;
+        if (cw_special_match(&f->cb, &d->mo[s], d->mbtn[s], d->mo[s].charge ? 50 : 16, 5) >= 0) {
+          *slot = M_SP1 + s; *is_special = true; return true;
         }
     }
   }
   if (cur_special) return false;
-  /* throw: the throw button, or L and M together */
-  if (!air && (cancel == false)) {
-    int tp = cw_cmd_pressed_ago(&f->cb, B_T, 3);
-    int a1 = cw_cmd_pressed_ago(&f->cb, B_L, 2), a2 = cw_cmd_pressed_ago(&f->cb, B_M, 2);
-    bool both = a1 >= 0 && a2 >= 0 && (cw_cmd_held_now(&f->cb) & (B_L | B_M)) == (B_L | B_M);
-    if (tp >= 0 || both) { *slot = M_THROW; *strength = 0; return true; }
-  }
-  int btn = -1;
-  for (int b = 2; b >= 0; b--) if (cw_cmd_pressed_ago(&f->cb, (uint16_t)(1 << b), 4) >= 0) { btn = b; break; }
-  if (btn < 0) return false;
-  int s;
-  int dir = dir_of(f);
-  bool crouch = dir == 1 || dir == 2 || dir == 3 || f->state == S_CROUCH;
-  if (air) s = M_JL + btn;
-  else if (crouch) s = M_2L + btn;
-  else s = M_5L + btn;
-  if (cancel) {
-    /* chains: a normal cancels into a stronger one */
-    int curbtn = cur % 3;
-    if (!(cur <= M_JH) || btn <= curbtn) return false;
-  }
-  *slot = s; *strength = 0;
+  /* the throw: punch and kick together */
+  if (!air && !cancel && pk_pressed(f)) { *slot = M_THROW; return true; }
+  int pp = cw_cmd_pressed_ago(&f->cb, B_P, 4), pk = cw_cmd_pressed_ago(&f->cb, B_K, 4);
+  if (pp < 0 && pk < 0) return false;
+  /* the button that went down last; a kick when both went down together */
+  uint16_t btn = pk >= 0 && (pp < 0 || pk <= pp) ? B_K : B_P;
+  int s = air ? (btn == B_P ? M_JP : M_JK) : ft_slot_for(dir_of(f), btn);
+  if (cancel && (!(cur <= M_JK) || chain_rank(s) <= chain_rank(cur))) return false;
+  *slot = s;
   return true;
 }
 
@@ -351,26 +383,47 @@ static void land(ft_game *g, int i) {
   emit(g, EV_DUST, i, 1, f->x, 0);
 }
 
+/* the guard: BLOCK held, low when down is held too */
+static void guard(ft_fighter *f, bool down) {
+  if (f->state != S_BLOCK) set_state(f, S_BLOCK);
+  f->stun = 0;
+  f->crouch_block = down;
+  f->vx = 0;
+}
+
 static void control(ft_game *g, int i) {
   ft_fighter *f = &g->f[i];
   const ft_def *d = DEF(g, i);
   int fw = f->facing;
   int dir = dir_of(f);
   bool fwd = dir == 6 || dir == 9 || dir == 3, back = dir == 4 || dir == 7 || dir == 1;
-  bool up = dir >= 7, down = dir <= 3;
+  bool down = dir <= 3;
+  uint16_t held = cw_cmd_held_now(&f->cb);
+  bool hold_g = held & B_G;
   f->t++;
   if (f->invuln) f->invuln--;
   if (f->rehit_t) f->rehit_t--;
-  if (cw_cmd_pressed_ago(&f->cb, B_T, 0) >= 0) f->tech_age = 0; else if (f->tech_age < 200) f->tech_age++;
+  if (pk_pressed(f) && (cw_cmd_pressed_ago(&f->cb, B_ATTACKS, 0) >= 0)) f->tech_age = 0; else if (f->tech_age < 200) f->tech_age++;
+  /* the parry window opens on a fresh block press, unless the last press was too recent (mashing opens nothing) */
+  if (f->parry_win) f->parry_win--;
+  if (cw_cmd_pressed_ago(&f->cb, B_G, 0) == 0) {
+    if (!f->parry_lock) f->parry_win = FT_PARRY_WINDOW + 1;
+    f->parry_lock = FT_PARRY_LOCK;
+  } else if (f->parry_lock) f->parry_lock--;
+  /* the guard gauge drains while not blocking, slowly while holding a guard */
+  if (f->guard > 0 && !(f->state == S_BLOCK && f->stun)) { f->guard -= f->state == S_BLOCK ? 2 : 5; if (f->guard < 0) f->guard = 0; }
   switch (f->state) {
   case S_IDLE: case S_WALKF: case S_WALKB: case S_CROUCH: {
     int slot, str;
     bool sp;
     if (choose_move(g, i, -1, &sp, &slot, &str)) { start_move(g, i, slot, str); break; }
-    if (up) {
+    if (hold_g) { guard(f, down); break; }
+    /* a hop: up tapped twice (up held once does nothing: up with a button is a high attack) */
+    if (cw_motion_match(&f->cb, &(cw_motion){ { 8, 8 }, 2, 0, 0, 30 }, 14) == 0) {
       set_state(f, S_PREJUMP);
       f->jump_dir = (uint8_t)(fwd ? 2 : back ? 0 : 1);
       f->vx = 0;
+      cw_cmd_consume(&f->cb);
       break;
     }
     if (cw_motion_match(&f->cb, &(cw_motion){ { 6, 6 }, 2, 0, 3, 30 }, 12) == 0) {
@@ -380,10 +433,11 @@ static void control(ft_game *g, int i) {
     if (cw_motion_match(&f->cb, &(cw_motion){ { 4, 4 }, 2, 0, 3, 30 }, 12) == 0) {
       set_state(f, S_DASHB); f->invuln = 5; cw_cmd_consume(&f->cb); emit(g, EV_DUST, i, 2, f->x, 0); break;
     }
-    if (down) { if (f->state != S_CROUCH) set_state(f, S_CROUCH); f->vx = 0; break; }
-    if (fwd) { if (f->state != S_WALKF) set_state(f, S_WALKF); f->vx = fw * d->walk; }
-    else if (back) { if (f->state != S_WALKB) set_state(f, S_WALKB); f->vx = -fw * d->back; }
-    else { if (f->state != S_IDLE) set_state(f, S_IDLE); f->vx = 0; }
+    /* up or down alone: stand (they only choose the height of an attack or a guard) */
+    if (dir == 6 || dir == 4) {
+      if (fwd) { if (f->state != S_WALKF) set_state(f, S_WALKF); f->vx = fw * d->walk; }
+      else { if (f->state != S_WALKB) set_state(f, S_WALKB); f->vx = -fw * d->back; }
+    } else { if (f->state != S_IDLE) set_state(f, S_IDLE); f->vx = 0; }
     break;
   }
   case S_PREJUMP:
@@ -397,16 +451,19 @@ static void control(ft_game *g, int i) {
   case S_AIR: {
     int slot, str;
     bool sp;
-    if (!f->air_used && choose_move(g, i, -1, &sp, &slot, &str) && slot >= M_JL && slot <= M_JH) start_move(g, i, slot, 0);
+    if (!f->air_used && choose_move(g, i, -1, &sp, &slot, &str) && (slot == M_JP || slot == M_JK)) start_move(g, i, slot, 0);
     break;
   }
   case S_ATTACK: {
     const ft_move *m = &d->mv[f->mv];
     if (f->t >= ft_move_total(m)) {
       if (m->flags & FM_AIR) { set_state(f, S_AIR); f->air_used = 1; }
-      else set_state(f, down ? S_CROUCH : S_IDLE);
+      else if (hold_g) guard(f, down);
+      else set_state(f, S_IDLE);
       break;
     }
+    /* punch then kick a frame or two apart is still a throw: the first frames of a ground normal give way to it */
+    if (f->t <= 3 && FT_IS_GROUND_NORMAL(f->mv) && pk_pressed(f)) { start_move(g, i, M_THROW, 0); break; }
     if (m->flags & FM_PROJ && f->t == m->su + 1) {
       spawn_proj(g, i, m, f->mv);
       emit(g, EV_FIRE, i, f->mv == M_SUPER ? 2 : 0, f->x + fw * 700, 1050);
@@ -423,9 +480,23 @@ static void control(ft_game *g, int i) {
     }
     break;
   }
-  case S_BLOCK: case S_HIT:
+  case S_BLOCK: {
+    if (f->stun) {
+      f->stun--;
+      if (hold_g) f->crouch_block = down; /* the guard can change height during block stun */
+      if (f->stun) break;
+      f->combo_hits = 0; f->combo_dmg = 0;
+    }
+    /* a free guard: attack out of it, keep it while BLOCK is held, else stand */
+    int slot, str;
+    bool sp;
+    if (choose_move(g, i, -1, &sp, &slot, &str)) { start_move(g, i, slot, str); break; }
+    if (hold_g) guard(f, down); else set_state(f, S_IDLE);
+    break;
+  }
+  case S_HIT:
     if (f->stun) f->stun--;
-    if (!f->stun) { f->combo_hits = 0; f->combo_dmg = 0; set_state(f, down ? S_CROUCH : S_IDLE); }
+    if (!f->stun) { f->combo_hits = 0; f->combo_dmg = 0; if (hold_g) guard(f, down); else set_state(f, S_IDLE); }
     break;
   case S_AIRHIT: break; /* until it lands */
   case S_KD:
@@ -502,21 +573,37 @@ static void finish_ko(ft_game *g, int victim) {
 /* returns true when the hit connected (hit or blocked) */
 static void resolve(ft_game *g, int a, int dfn, const ft_move *m, bool proj, int strength, int hx, int hy) {
   ft_fighter *A = &g->f[a], *D = &g->f[dfn];
-  int power = strength;
-  /* special strengths scale damage */
+  (void)strength;
   int dmg = m->dmg;
-  if (m->flags & (FM_SPECIAL)) dmg = dmg * (4 + strength) / 4;
+  int power = dmg >= 80 ? 2 : dmg >= 45 ? 1 : 0;
   bool unblockable = m->flags & FM_THROW;
-  bool block = false;
-  if (!unblockable && grounded_free(D) && g->phase != P_KO) {
-    int dir = dir_of(D);
-    if (m->lv == LV_LOW) block = dir == 1;
-    else if (m->lv == LV_HIGH) block = dir == 4;
-    else block = dir == 4 || dir == 1;
+  /* the guard: BLOCK held (a free guard, block stun, or any free state). Standing blocks high and mid, low (down +
+   * BLOCK) blocks low and mid; a high never reaches a low guard (detect_hits lets it pass over) */
+  bool block = false, low = dir_of(D) <= 3, parry = false;
+  bool can_guard = !unblockable && grounded_free(D) && g->phase != P_KO;
+  bool forced = g->training && g->dummy == T_BLOCK && dfn == 1;
+  if (forced) low = m->lv == LV_LOW;
+  if (can_guard && ((cw_cmd_held_now(&D->cb) & B_G) || forced || D->parry_win)) {
+    block = m->lv == LV_LOW ? low : m->lv == LV_HIGH ? !low : true;
+    /* a timed block: pressed fresh just before the hit, at the right height. Supers cannot be parried */
+    if (block && D->parry_win && !(m->flags & FM_SUPER)) parry = true;
+    else if (!(cw_cmd_held_now(&D->cb) & B_G) && !forced) block = false; /* a tap that missed its window guards nothing */
   }
-  if (g->training && g->dummy == T_BLOCK && grounded_free(D) && !unblockable) block = true;
+  if (parry) {
+    D->parry_win = 0;
+    D->crouch_block = low;
+    set_state(D, S_BLOCK);
+    D->stun = 0; /* free at once: the attacker is still in its move */
+    D->meter += 60; if (D->meter > FT_METER_MAX) D->meter = FT_METER_MAX;
+    g->hitstop = 12;
+    emit(g, EV_PARRY, dfn, power, hx, hy);
+    ft_stat.parries++;
+    g->adv_valid = 0; g->last_result = 3; g->last_dmg = 0;
+    g->watch_adv = !proj; g->atk_free_tick = -1; g->def_free_tick = -1;
+    return;
+  }
   if (block) {
-    D->crouch_block = (dir_of(D) == 1) || (g->training && g->dummy == T_BLOCK && D->state == S_CROUCH);
+    D->crouch_block = low;
     set_state(D, S_BLOCK);
     D->stun = m->bs + (strength > 0 ? 0 : 0);
     int chip = (m->flags & (FM_SPECIAL | FM_SUPER)) ? dmg / 8 : 0;
@@ -528,13 +615,28 @@ static void resolve(ft_game *g, int a, int dfn, const ft_move *m, bool proj, int
     if (D->x <= -FT_WALL + 50 || D->x >= FT_WALL - 50) { if (!proj) A->pvx = -A->facing * m->pushb; }
     else D->pvx = A->facing * m->pushb;
     if (proj) D->pvx = A->facing * m->pushb;
-    emit(g, EV_BLOCK, dfn, power, hx, hy);
+    ft_stat.blocks++;
     if (!proj) A->connected = 1;
-    g->adv_valid = 0;
+    g->adv_valid = 0; g->last_result = 2;
     g->watch_adv = !proj; g->atk_free_tick = -1; g->def_free_tick = -1; g->last_dmg = (int16_t)chip;
+    /* guard pressure: blocked hits fill the gauge; full, the guard breaks into a long stun */
+    D->guard += m->gdmg ? m->gdmg : dmg * 2;
+    if (D->guard >= FT_GUARD_MAX) {
+      D->guard = 0;
+      set_state(D, S_HIT);
+      D->stun = 34;
+      D->crouch_block = 0;
+      g->hitstop = 16;
+      g->last_result = 5;
+      ft_stat.guard_breaks++;
+      emit(g, EV_GUARDBREAK, dfn, 2, hx, hy);
+      return;
+    }
+    emit(g, EV_BLOCK, dfn, power, hx, hy);
     return;
   }
   if (m->flags & FM_THROW) {
+    ft_stat.throws++;
     set_state(D, S_THROWN);
     D->stun = 14;
     D->x = A->x + A->facing * 520;
@@ -547,7 +649,8 @@ static void resolve(ft_game *g, int a, int dfn, const ft_move *m, bool proj, int
   if (dd < 1) dd = 1;
   D->hp -= dd;
   D->combo_dmg += dd;
-  g->last_dmg = (int16_t)dd; g->last_combo = D->combo_hits;
+  g->last_dmg = (int16_t)dd; g->last_combo = D->combo_hits; g->last_result = 1;
+  ft_stat.hits++;
   A->meter += m->mg; if (A->meter > FT_METER_MAX) A->meter = FT_METER_MAX;
   D->meter += m->mg / 2; if (D->meter > FT_METER_MAX) D->meter = FT_METER_MAX;
   g->hitstop = m->hstop;
@@ -603,6 +706,11 @@ static void detect_hits(ft_game *g) {
     }
     ft_box hurts[2];
     int nh = ft_hurtboxes(g, d, hurts);
+    /* a high attack passes over a crouched defender (a low guard, a crouching attack) */
+    if (m->lv == LV_HIGH && low_profile(g, d)) {
+      if (!A->hit_count && A->t == m->su + 1) { ft_stat.whiffs_high++; g->last_result = 4; emit(g, EV_WHIFF, d, 0, A->x, 1400); }
+      continue;
+    }
     for (int k = 0; k < nh; k++)
       if (overlap(hb, hurts[k])) {
         hits[a].yes = true;
@@ -611,7 +719,7 @@ static void detect_hits(ft_game *g) {
         break;
       }
   }
-  /* throw tech: both throw at once, or the defender pressed throw within 7 frames */
+  /* throw break: both throw at once, or the defender pressed punch + kick within 7 frames */
   for (int a = 0; a < 2; a++) {
     if (!hits[a].yes) continue;
     const ft_move *m = &DEF(g, a)->mv[g->f[a].mv];
@@ -660,6 +768,7 @@ static void detect_hits(ft_game *g) {
       }
     }
     if (!P->live || !can_be_hit(g, d)) continue;
+    if (g->roster->d[g->f[a].def].mv[P->mv].lv == LV_HIGH && low_profile(g, d)) continue; /* a high shot flies over a crouch */
     ft_box hurts[2];
     int nh = ft_hurtboxes(g, d, hurts);
     for (int k = 0; k < nh; k++)
@@ -688,11 +797,20 @@ static void update_proj(ft_game *g) {
 static ft_input dummy_input(ft_game *g) {
   ft_input in = { 0 };
   const ft_fighter *f = &g->f[1];
-  int away = f->facing > 0 ? 0 : 1; /* raw: facing right -> back is left */
   switch (g->dummy) {
-  case T_CROUCH: in.down = 1; break;
-  case T_JUMP: if ((g->tick / 90) % 2 == 0 && f->state != S_AIR) in.up = (g->tick % 90) < 3; break;
-  case T_BLOCK: if (away == 0) in.left = 1; else in.right = 1; break;
+  case T_GUARD: in.btn = B_G; break;
+  case T_GUARD_LOW: in.btn = B_G; in.down = 1; break;
+  case T_JUMP: { /* a hop every second and a half: up, neutral, up */
+    int k = (int)(g->tick % 90);
+    if (f->state != S_AIR) in.up = k < 2 || (k >= 4 && k < 6);
+    break;
+  }
+  case T_BLOCK: { /* the right height for whatever comes */
+    in.btn = B_G;
+    const ft_fighter *o = &g->f[0];
+    if (o->state == S_ATTACK && g->roster->d[o->def].mv[o->mv].lv == LV_LOW) in.down = 1;
+    break;
+  }
   default: break;
   }
   return in;
@@ -784,9 +902,12 @@ void ft_step(ft_game *g, const ft_input in_[2]) {
   if (g->phase == P_KO || g->phase == P_ROUND_END) {
     if (g->phase == P_KO && g->phase_t > 90) { g->phase = P_ROUND_END; g->phase_t = 0; }
     else if (g->phase == P_ROUND_END && g->phase_t > 110) {
+      /* a drawn round (time out, equal life) gives both a round, so a match always ends: two each is a drawn match */
       if (g->round_winner >= 0) g->f[g->round_winner].wins++;
-      if (g->round_winner >= 0 && g->f[g->round_winner].wins >= 2) { g->phase = P_MATCH_END; g->match_winner = g->round_winner; g->phase_t = 0; }
-      else { if (g->round_winner >= 0) g->round_no++; else g->round_no = g->round_no; ft_round_start(g); }
+      else for (int i = 0; i < 2; i++) g->f[i].wins++;
+      bool w0 = g->f[0].wins >= 2, w1 = g->f[1].wins >= 2;
+      if (w0 || w1) { g->phase = P_MATCH_END; g->match_winner = (int8_t)(w0 && w1 ? -1 : w0 ? 0 : 1); g->phase_t = 0; }
+      else { g->round_no++; ft_round_start(g); }
     }
   }
   if (g->training) {
@@ -805,7 +926,7 @@ uint32_t ft_hash(const ft_game *g) {
   for (int i = 0; i < 2; i++) {
     const ft_fighter *f = &g->f[i];
     MIX(f->x); MIX(f->y); MIX(f->vx); MIX(f->vy); MIX(f->pvx); MIX(f->hp); MIX(f->meter); MIX(f->state); MIX(f->t); MIX(f->mv);
-    MIX(f->stun); MIX(f->facing); MIX(f->combo_hits); MIX(f->wins); MIX(f->hit_count);
+    MIX(f->stun); MIX(f->facing); MIX(f->combo_hits); MIX(f->wins); MIX(f->hit_count); MIX(f->guard); MIX(f->crouch_block);
   }
   for (int p = 0; p < 8; p++) if (g->proj[p].live) { MIX(g->proj[p].x); MIX(g->proj[p].life); }
   MIX(g->phase); MIX(g->timer); MIX(g->tick); MIX(g->hitstop); MIX(g->rng);
