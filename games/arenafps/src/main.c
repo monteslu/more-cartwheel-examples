@@ -21,6 +21,9 @@
 #include "game.h"
 
 #ifdef ARENA_AUTOPILOT
+#if defined(__GLIBC__)
+#include <malloc.h>
+#endif
 #define AUTO 1
 #else
 #define AUTO 0
@@ -1158,8 +1161,21 @@ static void set_views(void) {
 
 static void view_hook(int view, void *u);
 
+/* soak measurements (autopilot only): the C heap in use at the start of each match, after its arena is built (glibc hosts;
+ * 0 elsewhere). tools/soak.mjs compares the same arena and mode a few cycles apart */
+#define SOAK_N 48
+static int32_t soak_heap_kb[SOAK_N], soak_matches;
+static void soak_note(void) {
+#if defined(ARENA_AUTOPILOT) && defined(__GLIBC__)
+  struct mallinfo2 mi = mallinfo2();
+  if (soak_matches < SOAK_N) soak_heap_kb[soak_matches] = (int32_t)((mi.uordblks + mi.hblkhd) / 1024);
+#endif
+  soak_matches++;
+}
+
 static void begin_match(void) {
   build_world(G.arena_id);
+  soak_note();
   cw_rng_seed(&G.rng, 0xA2E4A + (uint32_t)G.arena_id * 977u + (uint32_t)G.mode);
   G.ticks = 0;
   G.match_ticks = 0;
@@ -1838,6 +1854,8 @@ static void init(void *user) {
   cw_debug_i32("nav.requests", &G.path_requests);
   cw_debug_i32("nav.done", &G.path_done);
   cw_debug_i32("views", &G.views);
+  cw_debug_i32("soak.matches", &soak_matches);
+  cw_debug_field("soak.heap_kb", soak_heap_kb, CW_DBG_I32, SOAK_N);
   cw_debug_i32("stats.enc", &G.st.enc);
   cw_debug_i32("stats.enc_gap_max", &G.st.enc_gap_max);
   cw_debug_i32("stats.kills", &G.st.kills);

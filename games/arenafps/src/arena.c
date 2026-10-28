@@ -758,6 +758,18 @@ static cw_color ITEM_COLOR[ITEM_KINDS] = {
   { 0.2f, 1, 0.3f, 1 }, { 0.3f, 0.6f, 1, 1 }, { 1, 0.7f, 0.2f, 1 }, { 1, 0.3f, 0.2f, 1 }, { 0.8f, 0.4f, 1, 1 }, { 1, 1, 0.4f, 1 },
 };
 
+/* the node keeps its own reference (cw_mesh3d_set_procedural retains the mesh): drop ours, or every match keeps the last
+ * one's level meshes, their GPU buffers and the cloud texture alive (+20 to 40 MB a match in the 30 minute soak). The
+ * autopilot's ARENA_LEAK=1 keeps them, as the soak gate's control */
+static void arena_release_mesh(t3_mesh *mesh) {
+#ifdef ARENA_AUTOPILOT
+  static int leak = -1;
+  if (leak < 0) leak = getenv("ARENA_LEAK") && atoi(getenv("ARENA_LEAK"));
+  if (leak) return;
+#endif
+  t3_release(mesh);
+}
+
 void arena_build(int id, cw_node world_root) {
   memset(&A, 0, sizeof A);
   A.id = id;
@@ -809,6 +821,7 @@ void arena_build(int id, cw_node world_root) {
       cw_mesh3d_set_procedural(n, mesh);
       t3_release(geo);
       t3_release(m);
+      arena_release_mesh(mesh);
     }
   }
   /* a reflection probe over the whole arena: shiny surfaces reflect the walls instead of open sky, and (ambient) the fill light
@@ -868,6 +881,7 @@ void arena_build(int id, cw_node world_root) {
     cw_mesh3d_set_procedural(n, mesh);
     t3_release(geo);
     t3_release(m);
+    arena_release_mesh(mesh);
   }
   /* pickups: a spinning gem and a small coloured light each */
   for (int i = 0; i < A.nitems; i++) {
