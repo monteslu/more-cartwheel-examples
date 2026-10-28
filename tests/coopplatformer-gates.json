@@ -3,9 +3,9 @@
     "name": "coopplatformer-2p",
     "app": "coopplatformer_auto",
     "webgpu": {
-      "vsGl": 0.015,
+      "vsGl": 0.012,
       "maxArea": 0.005,
-      "note": "GL vs WebGPU 1.5 percent: the texture difference (5.8 to 6.2 percent before) was the engine (WebGPU normal maps lit from the wrong side on the pipeline's flipped targets, anisotropy dropped on WebGPU), fixed; what is left is the cliff decals (Decal3D), which GL and WebGPU still draw differently (0.8 percent at frame 400, findings/gl-webgpu-parity.md). State exact on every host; maxArea catches a surface one backend misses"
+      "note": "GL vs WebGPU 0.86 percent at frame 400 on the 890M (bound 1.2); what is left is GL 4x MSAA against WebGPU drawing single-sampled (compatibility mode cannot multisample an rgba16float scene or read a multisampled depth, so an HDR scene with depth-reading passes renders without MSAA on WebGPU): grass blades and silhouettes only. The cliff decals were measured and add nothing (decal pass skipped on both: the same share; findings/gl-webgpu-parity.md). maxArea catches a surface one backend misses. State exact on every host"
     },
     "frames": 400,
     "fields": [
@@ -50,9 +50,9 @@
     "name": "coopplatformer-4p",
     "app": "coopplatformer_auto4",
     "webgpu": {
-      "vsGl": 0.015,
+      "vsGl": 0.012,
       "maxArea": 0.005,
-      "note": "GL vs WebGPU 1.5 percent: the texture difference (5.8 to 6.2 percent before) was the engine (WebGPU normal maps lit from the wrong side on the pipeline's flipped targets, anisotropy dropped on WebGPU), fixed; what is left is the cliff decals (Decal3D), which GL and WebGPU still draw differently (0.8 percent at frame 400, findings/gl-webgpu-parity.md). State exact on every host; maxArea catches a surface one backend misses"
+      "note": "GL vs WebGPU 0.83 percent at frame 400 on the 890M (bound 1.2); what is left is GL 4x MSAA against WebGPU drawing single-sampled (compatibility mode cannot multisample an rgba16float scene or read a multisampled depth, so an HDR scene with depth-reading passes renders without MSAA on WebGPU): grass blades and silhouettes only. The cliff decals were measured and add nothing (decal pass skipped on both: the same share; findings/gl-webgpu-parity.md). maxArea catches a surface one backend misses. State exact on every host"
     },
     "frames": 400,
     "fields": [
@@ -97,9 +97,9 @@
     "name": "coopplatformer-boss",
     "app": "coopplatformer_auto_boss",
     "webgpu": {
-      "vsGl": 0.015,
+      "vsGl": 0.008,
       "maxArea": 0.005,
-      "note": "GL vs WebGPU 1.5 percent: the texture difference (5.8 to 6.2 percent before) was the engine (WebGPU normal maps lit from the wrong side on the pipeline's flipped targets, anisotropy dropped on WebGPU), fixed; what is left is the cliff decals (Decal3D), which GL and WebGPU still draw differently (0.8 percent at frame 400, findings/gl-webgpu-parity.md). State exact on every host; maxArea catches a surface one backend misses"
+      "note": "GL vs WebGPU 0.49 percent at frame 1500 on the 890M (bound 0.8); what is left is GL 4x MSAA against WebGPU drawing single-sampled (compatibility mode cannot multisample an rgba16float scene or read a multisampled depth, so an HDR scene with depth-reading passes renders without MSAA on WebGPU): grass blades and silhouettes only. The cliff decals were measured and add nothing (decal pass skipped on both: the same share; findings/gl-webgpu-parity.md). maxArea catches a surface one backend misses. State exact on every host"
     },
     "frames": 1500,
     "fields": [
@@ -143,9 +143,9 @@
     "name": "coopplatformer-camera-1p",
     "app": "coopplatformer",
     "webgpu": {
-      "vsGl": 0.22,
+      "vsGl": 0.013,
       "maxArea": 0.005,
-      "note": "the last frame is filled by the generated rock cliff and grass hill: GL and WebGPU filter those textures differently (19.1 to 19.8% of pixels differ by more than 16, every one inside a textured face, measured 2026-10-27; edges, sky, characters and HUD match), state exact on every host; maxArea still catches a surface one backend misses"
+      "note": "GL vs WebGPU 0.97 percent on the last frame on the 890M (bound 1.3; the 19 to 20 percent texture difference was the engine, fixed in v0.18.0); what is left is GL 4x MSAA against WebGPU drawing single-sampled (compatibility mode cannot multisample an rgba16float scene or read a multisampled depth, so an HDR scene with depth-reading passes renders without MSAA on WebGPU): grass blades and silhouettes only. The cliff decals were measured and add nothing (decal pass skipped on both: the same share; findings/gl-webgpu-parity.md). maxArea catches a surface one backend misses. State exact on every host"
     },
     "frames": 1600,
     "input": "coopplatformer-camera-1p.json",
@@ -180,9 +180,9 @@
     "name": "coopplatformer-camera-4p",
     "app": "coopplatformer",
     "webgpu": {
-      "vsGl": 0.22,
+      "vsGl": 0.013,
       "maxArea": 0.005,
-      "note": "the last frame is filled by the generated rock cliff and grass hill: GL and WebGPU filter those textures differently (19.1 to 19.8% of pixels differ by more than 16, every one inside a textured face, measured 2026-10-27; edges, sky, characters and HUD match), state exact on every host; maxArea still catches a surface one backend misses"
+      "note": "GL vs WebGPU 0.94 percent on the last frame on the 890M (bound 1.3; the 19 to 20 percent texture difference was the engine, fixed in v0.18.0); what is left is GL 4x MSAA against WebGPU drawing single-sampled (compatibility mode cannot multisample an rgba16float scene or read a multisampled depth, so an HDR scene with depth-reading passes renders without MSAA on WebGPU): grass blades and silhouettes only. The cliff decals were measured and add nothing (decal pass skipped on both: the same share; findings/gl-webgpu-parity.md). maxArea catches a surface one backend misses. State exact on every host"
     },
     "frames": 1600,
     "input": "coopplatformer-camera-4p.json",
