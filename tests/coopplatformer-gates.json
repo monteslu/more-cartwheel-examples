@@ -3,9 +3,9 @@
     "name": "coopplatformer-2p",
     "app": "coopplatformer_auto",
     "webgpu": {
-      "vsGl": 0.012,
+      "vsGl": 0.005,
       "maxArea": 0.005,
-      "note": "GL vs WebGPU 0.86 percent at frame 400 on the 890M (bound 1.2); what is left is GL 4x MSAA against WebGPU drawing single-sampled (compatibility mode cannot multisample an rgba16float scene or read a multisampled depth, so an HDR scene with depth-reading passes renders without MSAA on WebGPU): grass blades and silhouettes only. The cliff decals were measured and add nothing (decal pass skipped on both: the same share; findings/gl-webgpu-parity.md). maxArea catches a surface one backend misses. State exact on every host"
+      "note": "GL vs WebGPU 0.017 percent at frame 400 on the 890M (bound 0.5), every host the same; was 0.5 to 1 percent while WebGPU drew this HDR scene single-sampled: WebGPU now asks for a core device and multisamples it 4x as GL does, resolving the depth for the passes after it (engine: WebGPU core MSAA), and the ambient occlusion no longer darkens the bottom rows on GL alone (engine: the edge normal fix). maxArea catches a surface one backend misses. State exact on every host"
     },
     "frames": 400,
     "fields": [
@@ -50,9 +50,9 @@
     "name": "coopplatformer-4p",
     "app": "coopplatformer_auto4",
     "webgpu": {
-      "vsGl": 0.012,
+      "vsGl": 0.005,
       "maxArea": 0.005,
-      "note": "GL vs WebGPU 0.83 percent at frame 400 on the 890M (bound 1.2); what is left is GL 4x MSAA against WebGPU drawing single-sampled (compatibility mode cannot multisample an rgba16float scene or read a multisampled depth, so an HDR scene with depth-reading passes renders without MSAA on WebGPU): grass blades and silhouettes only. The cliff decals were measured and add nothing (decal pass skipped on both: the same share; findings/gl-webgpu-parity.md). maxArea catches a surface one backend misses. State exact on every host"
+      "note": "GL vs WebGPU 0.015 percent at frame 400 on the 890M (bound 0.5), every host the same; was 0.5 to 1 percent while WebGPU drew this HDR scene single-sampled: WebGPU now asks for a core device and multisamples it 4x as GL does, resolving the depth for the passes after it (engine: WebGPU core MSAA), and the ambient occlusion no longer darkens the bottom rows on GL alone (engine: the edge normal fix). maxArea catches a surface one backend misses. State exact on every host"
     },
     "frames": 400,
     "fields": [
@@ -97,9 +97,9 @@
     "name": "coopplatformer-boss",
     "app": "coopplatformer_auto_boss",
     "webgpu": {
-      "vsGl": 0.008,
+      "vsGl": 0.005,
       "maxArea": 0.005,
-      "note": "GL vs WebGPU 0.49 percent at frame 1500 on the 890M (bound 0.8); what is left is GL 4x MSAA against WebGPU drawing single-sampled (compatibility mode cannot multisample an rgba16float scene or read a multisampled depth, so an HDR scene with depth-reading passes renders without MSAA on WebGPU): grass blades and silhouettes only. The cliff decals were measured and add nothing (decal pass skipped on both: the same share; findings/gl-webgpu-parity.md). maxArea catches a surface one backend misses. State exact on every host"
+      "note": "GL vs WebGPU 0.004 percent at frame 1500 on the 890M (bound 0.5), every host the same; was 0.5 to 1 percent while WebGPU drew this HDR scene single-sampled: WebGPU now asks for a core device and multisamples it 4x as GL does, resolving the depth for the passes after it (engine: WebGPU core MSAA), and the ambient occlusion no longer darkens the bottom rows on GL alone (engine: the edge normal fix). maxArea catches a surface one backend misses. State exact on every host"
     },
     "frames": 1500,
     "fields": [
@@ -143,9 +143,9 @@
     "name": "coopplatformer-camera-1p",
     "app": "coopplatformer",
     "webgpu": {
-      "vsGl": 0.013,
+      "vsGl": 0.005,
       "maxArea": 0.005,
-      "note": "GL vs WebGPU 0.97 percent on the last frame on the 890M (bound 1.3; the 19 to 20 percent texture difference was the engine, fixed in v0.18.0); what is left is GL 4x MSAA against WebGPU drawing single-sampled (compatibility mode cannot multisample an rgba16float scene or read a multisampled depth, so an HDR scene with depth-reading passes renders without MSAA on WebGPU): grass blades and silhouettes only. The cliff decals were measured and add nothing (decal pass skipped on both: the same share; findings/gl-webgpu-parity.md). maxArea catches a surface one backend misses. State exact on every host"
+      "note": "GL vs WebGPU 0.051 percent on the last frame on the 890M (bound 0.5), every host the same; was 0.5 to 1 percent while WebGPU drew this HDR scene single-sampled: WebGPU now asks for a core device and multisamples it 4x as GL does, resolving the depth for the passes after it (engine: WebGPU core MSAA), and the ambient occlusion no longer darkens the bottom rows on GL alone (engine: the edge normal fix). maxArea catches a surface one backend misses. State exact on every host"
     },
     "frames": 1600,
     "input": "coopplatformer-camera-1p.json",
@@ -180,9 +180,9 @@
     "name": "coopplatformer-camera-4p",
     "app": "coopplatformer",
     "webgpu": {
-      "vsGl": 0.013,
+      "vsGl": 0.005,
       "maxArea": 0.005,
-      "note": "GL vs WebGPU 0.94 percent on the last frame on the 890M (bound 1.3; the 19 to 20 percent texture difference was the engine, fixed in v0.18.0); what is left is GL 4x MSAA against WebGPU drawing single-sampled (compatibility mode cannot multisample an rgba16float scene or read a multisampled depth, so an HDR scene with depth-reading passes renders without MSAA on WebGPU): grass blades and silhouettes only. The cliff decals were measured and add nothing (decal pass skipped on both: the same share; findings/gl-webgpu-parity.md). maxArea catches a surface one backend misses. State exact on every host"
+      "note": "GL vs WebGPU 0.038 percent on the last frame on the 890M (bound 0.5), every host the same; was 0.5 to 1 percent while WebGPU drew this HDR scene single-sampled: WebGPU now asks for a core device and multisamples it 4x as GL does, resolving the depth for the passes after it (engine: WebGPU core MSAA), and the ambient occlusion no longer darkens the bottom rows on GL alone (engine: the edge normal fix). maxArea catches a surface one backend misses. State exact on every host"
     },
     "frames": 1600,
     "input": "coopplatformer-camera-4p.json",
