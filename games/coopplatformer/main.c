@@ -89,8 +89,9 @@ static float g_pos_dbg[2], g_cam_dbg[3], g_ppos_dbg[MAX_PLAYERS * 2];
 /* the camera as drawn, measured every frame (the camera stability gate): g.view is x, y, z and the shake it carried;
  * g.camgate counts frames at rest (every player still for 2.5 s), at-rest frames where the view moved more than
  * 1 mm, frames in motion, and frames in motion where the view jumped (over 0.6 m) or jerked (its step changed by
- * over 8 cm); g.camjit keeps the largest at-rest step, step in motion and step change seen (metres) */
-static float g_view_dbg[4], g_camjit_dbg[3];
+ * over 8 cm); g.camjit keeps the largest at-rest step, step in motion and step change seen (metres) and the frame of
+ * the first frame in motion that broke the bound (frames since the match started) */
+static float g_view_dbg[4], g_camjit_dbg[4];
 static int g_camgate_dbg[4];
 static struct { float last[3], step[3], ppos[MAX_PLAYERS * 2]; int still, frames; } CS;
 static void camgate_reset(void) {
@@ -119,7 +120,7 @@ static void camgate_frame(const float view[3], const float *pp, int np, bool sna
       g_camjit_dbg[0] = fmaxf(g_camjit_dbg[0], d);
     } else {
       g_camgate_dbg[2]++;
-      if (d > 0.6f || jerk > 0.08f) g_camgate_dbg[3]++;
+      if ((d > 0.6f || jerk > 0.08f) && !g_camgate_dbg[3]++) g_camjit_dbg[3] = (float)CS.frames; /* the first one */
       g_camjit_dbg[1] = fmaxf(g_camjit_dbg[1], d);
       g_camjit_dbg[2] = fmaxf(g_camjit_dbg[2], jerk);
     }
@@ -1378,7 +1379,7 @@ static void init(void *user) {
   cw_debug_f32_array("g.cam", g_cam_dbg, 3);
   cw_debug_f32_array("g.view", g_view_dbg, 4);
   cw_debug_field("g.camgate", g_camgate_dbg, CW_DBG_I32, 4);
-  cw_debug_f32_array("g.camjit", g_camjit_dbg, 3);
+  cw_debug_f32_array("g.camjit", g_camjit_dbg, 4);
   cw_debug_i32("g.hp", &g_hp_dbg);
   cw_debug_i32("g.bubbles", &g_bubbles_dbg);
   cur_mood = MOODS[0];

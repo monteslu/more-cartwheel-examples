@@ -216,7 +216,16 @@ static void camera_step(game *g, float dt) {
   camera_rig *c = &g->cam;
   c->px = c->x, c->py = c->y, c->pz = c->z;
   if (c->shake > 0) c->shake = c->shake > dt * 2.5f ? c->shake - dt * 2.5f : 0;
-  if (n == 0) return;
+  const float W[3] = { 7.0f, 6.0f, 4.0f }, AMAX = 90.0f, VMAX = 30.0f;
+  float *pos[3] = { &c->x, &c->y, &c->z }, *vel[3] = { &c->vx, &c->vy, &c->vz };
+  if (n == 0) { /* nobody to follow (everyone down): glide to a stop, never a dead stop from a fall's speed */
+    for (int a = 0; a < 3; a++) {
+      float v = *vel[a], dv = AMAX * dt;
+      *vel[a] = v > dv ? v - dv : v < -dv ? v + dv : 0;
+      *pos[a] += *vel[a] * dt;
+    }
+    return;
+  }
   float spanx = maxx - minx, spany = maxy - miny;
   c->tx = (minx + maxx) * 0.5f;
   c->ty = (miny + maxy) * 0.5f + 2.2f;
@@ -224,10 +233,24 @@ static void camera_step(game *g, float dt) {
   float need = fmaxf(spanx / 1.0f + 12.0f, (spany + 6.0f) * 1.8f);
   float z = need * 0.78f;
   c->tz = z < 17 ? 17 : z > 34 ? 34 : z;
-  float k = 1.0f - 1.0f / (1.0f + 5.0f * dt);
-  c->x += (c->tx - c->x) * k;
-  c->y += (c->ty - c->y) * k * 0.8f;
-  c->z += (c->tz - c->z) * k * 0.7f;
+  /* a target that jumped (a respawn, a warp, the group's centre moving to a rescued player) is a cut, not a whip
+   * across the level */
+  if (fabsf(c->tx - c->x) > 9.0f || fabsf(c->ty - c->y) > 9.0f) {
+    c->x = c->tx, c->y = c->ty, c->z = c->tz;
+    c->vx = c->vy = c->vz = 0;
+    return;
+  }
+  /* follow: a critically damped spring per axis (no overshoot, no oscillation) whose acceleration and speed are
+   * bounded, so the view never jolts: velocity changes by at most 2.5 cm per tick */
+  const float tgt[3] = { c->tx, c->ty, c->tz };
+  for (int a = 0; a < 3; a++) {
+    float acc = W[a] * W[a] * (tgt[a] - *pos[a]) - 2.0f * W[a] * *vel[a];
+    acc = acc > AMAX ? AMAX : acc < -AMAX ? -AMAX : acc;
+    float v = *vel[a] + acc * dt;
+    v = v > VMAX ? VMAX : v < -VMAX ? -VMAX : v;
+    *vel[a] = v;
+    *pos[a] += v * dt;
+  }
 }
 
 void sim_step(game *g, const input_state in[MAX_PLAYERS], float dt) {

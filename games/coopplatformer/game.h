@@ -76,6 +76,7 @@ typedef struct camera_rig {
   float x, y, z;       /* world focus and distance */
   float tx, ty, tz;
   float px, py, pz;    /* x, y, z at the start of this tick: the renderer draws between them (alpha) */
+  float vx, vy, vz;    /* follow velocity (a critically damped spring with bounded acceleration) */
   float shake;         /* trauma 0..1 from real events the camera sees (sim_shake); the offset is trauma squared, it
                         * fades out in about 0.4 s and nothing raises it every tick */
 } camera_rig;
