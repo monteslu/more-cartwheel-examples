@@ -28,7 +28,7 @@
 #include "game.h"
 
 static cw_action a_left, a_right, a_up, a_down, a_atk, a_kick, a_jump, a_grab, a_special;
-static cw_sound snd_move, snd_select, snd_back, snd_music[4];
+static cw_sound snd_move, snd_select, snd_back, snd_music[5]; /* the four stages, and Arthur's theme (index 4, from the jukebox) */
 static cw_voice music;
 static int music_stage = -1;
 static int32_t d_leak, d_ticks, d_players, d_stage, d_phase, d_enemies, d_kills, d_wave, d_score, d_tokens, d_boss_hp;
@@ -37,13 +37,16 @@ static uint32_t d_hash;
 static float d_ex[8][4];
 static int32_t d_states[MAXP];
 static int32_t d_unfair, d_still, d_frozen, d_blocks, d_pickups, d_bphase, d_deaths, d_first, d_hits, d_nan, d_stall, d_proj, d_weapon, d_rigs;
+static int32_t d_juke[6]; /* the jukebox: uses, fighters knocked down by its shockwave, fighters who jumped it, playing, radius in cm, Arthur on his way to it */
+static float d_face[8]; /* the boss's expression weights (blink snarl shout wince ko grin effort grimace) */
 static int64_t run_ticks; /* fixed updates since the program started (status lines) */
 
 static void play_music(int stage) {
   if (music_stage == stage && cw_voice_is_playing(music)) return;
   if (cw_voice_is_playing(music)) cw_voice_stop(music, 0.3f);
-  if (!snd_music[stage & 3].id) snd_music[stage & 3] = music_make(stage & 3);
-  music = cw_audio_play(snd_music[stage & 3], &(cw_play_desc){ .bus = cw_shell_music_bus(), .loop = true, .volume = 0.55f });
+  int k = stage == 4 ? 4 : stage & 3;
+  if (!snd_music[k].id) snd_music[k] = music_make(k);
+  music = cw_audio_play(snd_music[k], &(cw_play_desc){ .bus = cw_shell_music_bus(), .loop = true, .volume = 0.55f });
   music_stage = stage;
 }
 
@@ -199,6 +202,10 @@ static void bot(int i, inputs *in) {
     if (e->st == S_GRAB) { in->atk = (W.tick % 14) == 0; in->mx = 0; }
     if (e->st == S_IDLE && (W.tick + i * 31) % 233 == 0) in->jump = true;
   }
+  if (W.juke.t > 0 && !(W.juke.mask & (1u << i))) { /* the jukebox ring is coming: jump it when it is close */
+    float jx = e->x - JUKE_X, jz = e->z - JUKE_Z, d = sqrtf(jx * jx + jz * jz);
+    if (d - W.juke.r < 0.9f && d - W.juke.r > 0.2f && !strcmp(inject(), "")) in->jump = true, in->atk = in->kick = in->grab = in->special = false;
+  }
 }
 #endif
 
@@ -262,6 +269,8 @@ static void init(void *user) {
   cw_debug_field("game.enemy", d_ex, CW_DBG_F32, 32);
   cw_debug_f32("game.cam", &d_cam);
   cw_debug_u32("game.hash", &d_hash);
+  cw_debug_field("game.juke", d_juke, CW_DBG_I32, 6);
+  cw_debug_field("face.boss", d_face, CW_DBG_F32, 8);
   { extern float g_spring_motion; cw_debug_f32("game.spring", &g_spring_motion); }
 #ifdef BRAWLER_AUTOPILOT
   cw_debug_command("stage", "stage <0-3>: jump to a stage", cmd_stage);
@@ -293,6 +302,9 @@ static void publish(void) {
   d_rigs = 0;
   for (int i = 0; i < MAXP + MAXE; i++) { const ent *e = i < MAXP ? &W.p[i] : &W.e[i - MAXP]; if (e->used && e->root.id && cw_node_valid(e->root)) d_rigs++; }
   { int k = 0; for (int i = 0; i < MAXE && k < 8; i++) if (W.e[i].used) { d_ex[k][0] = W.e[i].x; d_ex[k][1] = W.e[i].z; d_ex[k][2] = (float)W.e[i].st; d_ex[k][3] = (float)W.e[i].token * 100 + (float)W.e[i].cd; k++; } for (; k < 8; k++) memset(d_ex[k], 0, sizeof d_ex[k]); }
+  d_juke[0] = W.juke.uses, d_juke[1] = W.juke.hits, d_juke[2] = W.juke.dodges, d_juke[3] = W.juke.on, d_juke[4] = W.juke.t > 0 ? (int)(W.juke.r * 100) : 0;
+  d_juke[5] = W.boss_active && W.boss_idx >= 0 && W.e[W.boss_idx].used ? W.e[W.boss_idx].juke : 0;
+  { extern float face_weight_of_enemy(int i, int t); for (int t = 0; t < 8; t++) d_face[t] = W.boss_active && W.boss_idx >= 0 && W.e[W.boss_idx].used ? face_weight_of_enemy(W.boss_idx, t) : 0; }
   d_boss_hp = (W.boss_active && W.boss_idx >= 0 && W.e[W.boss_idx].used) ? (int)W.e[W.boss_idx].hp : 0;
   for (int i = 0; i < MAXP; i++) d_hp[i] = W.p[i].used ? W.p[i].hp : 0, d_px[i] = W.p[i].x, d_states[i] = W.p[i].used ? (int)W.p[i].st : -1;
 }
@@ -339,6 +351,7 @@ static void sim_step(void) {
     if (ka > 0 && run_ticks % ka == 0 && W.phase == PH_PLAY) knock_all(); }
 #endif
   sim_tick(in);
+  if (W.juke.on && music_stage != 4 && W.phase == PH_PLAY) play_music(4); /* the jukebox plays Arthur's theme */
   rag_tick(); /* after the rules, before the springs: the ragdolls show what the simulation decided */
   chars_secondary();
   /* the stage is done: the next one, or the end */

@@ -28,6 +28,7 @@ models/crate.glb
 models/barrel.glb
 models/bin.glb
 models/blob.glb
+models/jukebox.glb
 decals/scuff1.png = textures/decal_scuff1.png
 decals/scuff2.png = textures/decal_scuff2.png
 decals/crack.png = textures/decal_crack.png

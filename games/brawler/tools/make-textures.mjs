@@ -329,6 +329,24 @@ function hairTex({ seed = 15 }) {
     o.h = s * 1.0; o.ro = 0.45 + 0.3 * s; o.ao = 0.7 + 0.3 * s;
   };
 }
+/** hair cards: strands along v (roots at v 0, tips at 1) with gaps, so the alpha-tested card breaks into strands; the
+ * alpha thins toward the tips (the same idea as the fighter game's cards, written for this generator) */
+function hairCard(seed = 31) {
+  const N = 512, t = bake(N, (u, v, o) => {
+    const s = fbm(u * 1, v * 0.06, 90, 3, seed), s2 = hash2(Math.floor(u * 180), 0, seed);
+    setc(o, [1, 1, 1], 0.55 + 0.45 * s + 0.25 * (s2 - 0.5));
+    mulc(o, 0.75 + 0.25 * smooth(0, 0.25, v));
+    o.h = s; o.ro = 0.72 + 0.15 * (1 - s); o.ao = 0.6 + 0.4 * smooth(0, 0.3, v);
+  });
+  t.alpha = new Float32Array(N * N);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const u = x / N, v = y / N, col = Math.floor(u * 110), w = hash2(col, 1, seed), len = 0.55 + 0.45 * hash2(col, 2, seed);
+    const f = u * 110 - col, strand = smooth(0.5, 0.15, Math.abs(f - 0.5)) * (0.5 + 0.5 * w);
+    const clump = 0.6 + 0.4 * fbm(u, 0.5, 14, 2, seed + 3), tip = smooth(len, len - 0.25, v);
+    t.alpha[y * N + x] = clamp((strand * 1.7 * clump + 0.35 + 0.3 * smooth(0.3, 0, v)) * tip * smooth(1, 0.94, v));
+  }
+  return t;
+}
 function metalTex({ seed = 16, rust = 0.1 }) {
   return (u, v, o) => {
     const g = fbm(u, v, 6, 5, seed), scr = smooth(0.7, 0.95, fbm(u * 50, v * 2, 50, 3, seed + 3)), rm = smooth(1 - rust, 1 - rust + 0.2, fbm(u, v, 4, 5, seed + 5));
@@ -470,6 +488,7 @@ const jobs = {
   fab_leather: () => [bake(256, leather({ seed: 14 })), 1.4],
   fab_skin: () => [bake(256, skinTex({ seed: 15 })), 0.5],
   fab_hair: () => [bake(256, hairTex({ seed: 16 })), 1.6],
+  hair_card: () => [hairCard(31), 1.2],
 };
 for (const [name, f] of Object.entries(jobs)) {
   if (!want(name)) continue;

@@ -1,4 +1,4 @@
-/* brawler: secondary motion and character shading.
+/* brawler: secondary motion (spring bones) and faces (expression morph targets).
  *
  * Spring bones: hair, coat tails and bellies hang on bones no clip keys (HairA, HairB, CoatL, CoatR, Belly). Each fixed
  * tick, after the animation wrote the pose, a bone's tip is a point mass in world space pulled toward where the animated
@@ -7,12 +7,12 @@
  * Written generically (bones by name, any model under a Node3D) so the engine can take it as a skeleton modifier later.
  * Only + - * / and sqrt: the same on every host.
  *
- * Shading: the characters' glb splits its meshes by material class (BodySkin, BodyCloth, BodyLeather, BodyHair). Skin,
- * cloth and hair become physical materials with sheen (a soft scattering rim on skin, the fuzz of fabric, the sheen of
- * hair) and a lower specular so skin stops reading as plastic; leather gets a thin clear coat. */
+ * Shading comes from the glb itself (glTF material extensions and skin shading in extras, read by the engine's glTF
+ * loading): nothing is converted here. */
 #include <math.h>
 #include <string.h>
 
+#include "cartwheel/morph.h"
 #include "cartwheel/scene.h"
 #include "game.h"
 #include "three.h"
@@ -68,14 +68,21 @@ static const spring_def SDEF[SB_MAX] = {
   { "Belly", { 0, 0, 0.12f }, 260, 9, 0, 0, true },
 };
 
-/* ── blinks: the clips key the eyelid bones (expressions); every tick a blink is layered over the clip's lids ──
- * Each rig blinks every 2 to 5.5 seconds (a fixed sequence per rig, so every host shows the same frames) and blinks at
- * once when it is hit. The lid bones turn about their x axis; the upper lid closes by +x, the lower one rises by -x. */
-enum { FACE_MAX = 64 };
+/* ── faces: expression morph targets on the head mesh, driven by name every tick ──
+ * The clip a rig plays picks its expression and how strong it is through the clip (a snarl into a punch, a wince on a hit,
+ * a slack face when knocked down, a grin on a taunt); the weights ease toward it so a cut between clips never pops.
+ * A blink is layered on top every 2 to 5.5 seconds (a fixed sequence per rig) and at once on a hit; it never adds to an
+ * expression that already closes the lids. The Jaw bone (keyed in the clips) still opens the mouth.
+ * Presentation only: nothing here feeds the simulation. */
+enum { FACE_MAX = 96, NT = 8 };
+static const char *TG[NT] = { "blink", "snarl", "shout", "wince", "ko", "grin", "effort", "grimace" };
+enum { T_BLINK, T_SNARL, T_SHOUT, T_WINCE, T_KO, T_GRIN, T_EFFORT, T_GRIMACE };
+/* how far each target closes the upper lids, as a share of a full blink (tools/face.mjs LID_CLOSE) */
+static const float LID_CLOSE[NT] = { 1.0f, 0.303f, 0.333f, 0.879f, 0.576f, 0.167f, 0.212f, 0.485f };
 typedef struct face_rig {
   const spring_rig *key;
-  t3_object *lid[4]; /* upper L, upper R, lower L, lower R */
-  float clip[4], wrote[4]; /* the clip's angle, and what this code wrote last tick (to tell whether the clip wrote since) */
+  t3_object *root;
+  float w[NT], wrote[NT];
   int t, next; /* ticks since the last blink started; when the next one starts */
   uint32_t rng;
 } face_rig;
@@ -86,18 +93,14 @@ static face_rig *face_of(const spring_rig *s) {
   return NULL;
 }
 static uint32_t fr_rand(face_rig *f) { f->rng = f->rng * 1664525u + 1013904223u; return f->rng >> 8; }
-/* angle of a turn about x from its quaternion, and back, by short series (lid angles stay under 1.4 rad): no libm, so
-   every host computes the same pose */
-static float qangle_x(t3_quat q) { float x = q.w < 0 ? -q.x : q.x, x2 = x * x; return 2.0f * x * (1 + x2 / 6 + 3 * x2 * x2 / 40 + 5 * x2 * x2 * x2 / 112); }
-static t3_quat qturn_x(float a) { float h = a * 0.5f, h2 = h * h; return (t3_quat){ h * (1 - h2 / 6 + h2 * h2 / 120), 0, 0, 1 - h2 / 2 + h2 * h2 / 24 - h2 * h2 * h2 / 720 }; }
 static void face_bind(const spring_rig *s, t3_object *scene) {
-  static const char *LIDS[4] = { "LidUL", "LidUR", "LidLL", "LidLR" };
   face_rig *f = face_of(s);
   if (!f) { if (fr_n >= FACE_MAX) return; f = &FR[fr_n++]; }
   memset(f, 0, sizeof *f);
   f->key = s;
+  f->root = cw_morph_names(scene, NULL, 0) > 0 ? scene : NULL;
   f->rng = 0x9e3779b9u ^ (uint32_t)(f - FR) * 2654435761u;
-  for (int i = 0; i < 4; i++) f->lid[i] = t3_object_get_by_name(scene, LIDS[i]);
+  for (int i = 0; i < NT; i++) f->wrote[i] = -1;
   f->t = 1000;
   f->next = 60 + (int)(fr_rand(f) % 200);
 }
@@ -108,23 +111,66 @@ static float blink_at(int t) {
   if (t < 13) return 1.0f - (float)(t - 5) / 7.0f;
   return 0.0f;
 }
-static void face_step(face_rig *f) {
-  if (!f->lid[0]) return;
+static float sst(float a, float b, float x) { float t = (x - a) / (b - a); t = t < 0 ? 0 : t > 1 ? 1 : t; return t * t * (3 - 2 * t); }
+static float strike(float peak, float u) { return sst(0, peak, u) * (1 - 0.55f * sst(0.72f, 1, u)); }
+static float hit_env(float u) { return sst(0, 0.12f, u) * (1 - 0.6f * sst(0.45f, 1, u)); }
+static float bump(float u) { return sinf(u * 3.14159265f); }
+/* the expression a clip asks for at u (0..1 through it) */
+static void clip_face(const char *c, float u, float *o) {
+  memset(o, 0, sizeof(float) * NT);
+  if (!c) return;
+#define IS(n) (!strcmp(c, n))
+  if (IS("run")) o[T_EFFORT] = 0.4f;
+  else if (IS("jump")) o[T_EFFORT] = 0.6f * bump(u);
+  else if (IS("punch1")) o[T_SNARL] = strike(0.35f, u);
+  else if (IS("punch2")) o[T_SNARL] = strike(0.38f, u);
+  else if (IS("kick")) o[T_SNARL] = strike(0.38f, u);
+  else if (IS("stab")) o[T_SNARL] = strike(0.4f, u);
+  else if (IS("knee")) o[T_SNARL] = strike(0.32f, u);
+  else if (IS("flick")) o[T_SNARL] = strike(0.6f, u);
+  else if (IS("finisher") || IS("swing")) o[T_SHOUT] = strike(0.45f, u);
+  else if (IS("jumpkick")) o[T_SHOUT] = strike(0.25f, u);
+  else if (IS("spin")) o[T_SHOUT] = strike(0.2f, u);
+  else if (IS("slam")) { o[T_EFFORT] = sst(0, 0.4f, u) * (1 - sst(0.45f, 0.6f, u)); o[T_SHOUT] = sst(0.45f, 0.62f, u) * (1 - 0.6f * sst(0.8f, 1, u)); }
+  else if (IS("throw")) { o[T_EFFORT] = sst(0, 0.3f, u) * (1 - sst(0.35f, 0.5f, u)); o[T_SHOUT] = sst(0.35f, 0.55f, u) * (1 - 0.6f * sst(0.8f, 1, u)); }
+  else if (IS("thump")) { o[T_EFFORT] = sst(0, 0.3f, u) * (1 - sst(0.55f, 0.62f, u)); o[T_SHOUT] = sst(0.55f, 0.62f, u) * (1 - sst(0.7f, 0.95f, u)); }
+  else if (IS("grab")) o[T_EFFORT] = 0.7f;
+  else if (IS("shoulder")) o[T_EFFORT] = 0.85f;
+  else if (IS("pickup")) o[T_EFFORT] = 0.5f * bump(u);
+  else if (IS("getup") || IS("getup_prone")) o[T_EFFORT] = 0.8f * bump(u * 0.9f);
+  else if (IS("hit")) o[T_WINCE] = hit_env(u);
+  else if (IS("hit_gut")) { o[T_WINCE] = hit_env(u); o[T_GRIMACE] = 0.4f * hit_env(u); }
+  else if (IS("hit_hard")) { o[T_WINCE] = hit_env(u); o[T_GRIMACE] = 0.3f * hit_env(u); }
+  else if (IS("knockdown")) { o[T_WINCE] = sst(0, 0.1f, u) * (1 - sst(0.4f, 0.7f, u)); o[T_KO] = sst(0.45f, 0.85f, u); }
+  else if (IS("down")) o[T_KO] = 1;
+  else if (IS("dead")) { o[T_BLINK] = 1; o[T_KO] = 0.5f; }
+  else if (IS("grabbed")) o[T_GRIMACE] = 0.85f;
+  else if (IS("thrown")) { o[T_WINCE] = 0.7f; o[T_GRIMACE] = 0.4f; }
+  else if (IS("comb")) o[T_GRIN] = sst(0.05f, 0.2f, u) * (1 - sst(0.88f, 1, u));
+  else if (IS("thumbsup")) o[T_GRIN] = sst(0.04f, 0.18f, u) * (1 - sst(0.86f, 1, u));
+  else if (IS("taunt")) o[T_GRIN] = sst(0.05f, 0.25f, u) * (1 - sst(0.85f, 1, u));
+  else if (IS("block")) { o[T_WINCE] = 0.35f; o[T_EFFORT] = 0.3f; }
+#undef IS
+}
+void face_express(spring_rig *s, const char *clip, float u) {
+  face_rig *f = face_of(s);
+  if (!f || !f->root) return;
   if (--f->next <= 0) { f->t = 0; f->next = 120 + (int)(fr_rand(f) % 210); }
-  float b = blink_at(f->t++);
-  for (int i = 0; i < 4; i++) {
-    t3_object *o = f->lid[i];
-    if (!o) continue;
-    float a = qangle_x(o->quaternion);
-    if (a != f->wrote[i]) f->clip[i] = a; /* the animation wrote this tick */
-    float shut = i < 2 ? 0.66f : -0.08f; /* where a closed lid sits */
-    float n = f->clip[i] + (shut - f->clip[i]) * (i < 2 ? b : b * 0.5f);
-    if (i < 2 && n < f->clip[i]) n = f->clip[i]; /* never open a lid the clip has closed further */
-    o->quaternion = qturn_x(n);
-    f->wrote[i] = qangle_x(o->quaternion);
+  float b = blink_at(f->t++), want[NT];
+  clip_face(clip, u, want);
+  for (int i = 0; i < NT; i++) f->w[i] += (want[i] - f->w[i]) * 0.35f;
+  float closed = 0;
+  for (int i = 1; i < NT; i++) closed += f->w[i] * LID_CLOSE[i];
+  float out[NT];
+  for (int i = 0; i < NT; i++) out[i] = f->w[i];
+  float bl = b - closed;
+  if (bl > out[T_BLINK]) out[T_BLINK] = bl;
+  for (int i = 0; i < NT; i++) {
+    float d = out[i] - f->wrote[i];
+    if (d > 0.002f || d < -0.002f || (out[i] == 0 && f->wrote[i] != 0)) { cw_morph_set(f->root, TG[i], out[i]); f->wrote[i] = out[i]; }
   }
 }
-
+float face_weight(const spring_rig *s, int target) { const face_rig *f = face_of(s); return f && target >= 0 && target < NT ? f->wrote[target] : -1; }
 void sb_bind(spring_rig *s, t3_object *scene) {
   memset(s, 0, sizeof *s);
   face_bind(s, scene);
@@ -151,8 +197,6 @@ void sb_jolt(spring_rig *s, float x, float y, float z) {
 
 void sb_step(spring_rig *s, t3_vec3 pos, float yaw, float dt) {
   if (!s->scene) return;
-  face_rig *fr = face_of(s);
-  if (fr) face_step(fr);
   /* the model's world transform: position, a turn about y */
   float h = yaw * 0.5f, ch, sh;
   { /* cos and sin of the half angle by a short series (yaw is +-pi/2 here, so |h| <= pi/4) */
@@ -194,62 +238,3 @@ void sb_step(spring_rig *s, t3_vec3 pos, float yaw, float dt) {
   }
 }
 
-/* ── shading ─────────────────────────────────────────────────────────── */
-typedef enum { SH_SKIN, SH_CLOTH, SH_HAIR, SH_LEATHER, SH_EYE, SH_POMADE } shade_class;
-static void shade_material(t3_mesh *m, int i, shade_class k) {
-  t3_material *old = m->materials[i];
-  if (old->type == T3_MESH_PHYSICAL_MATERIAL) return;
-  t3_material *p = t3_material_clone(old);
-  p->type = T3_MESH_PHYSICAL_MATERIAL;
-  t3_color c = old->color;
-  switch (k) {
-  case SH_SKIN: /* light scattered under the skin shows as a warm soft rim; little mirror-like specular (never glossy) */
-    p->sheen = 0.45f, p->sheen_roughness = 0.6f;
-    p->sheen_color = (t3_color){ 0.1f + 0.35f * c.r, 0.03f + 0.15f * c.g, 0.02f + 0.1f * c.b };
-    p->specular_intensity = 0.45f, p->ior = 1.4f;
-    break;
-  case SH_CLOTH: /* ordinary cloth is not shiny: rough (0.85 to 0.95 with the fabric map), little specular, no clear
-                    coat, only a soft fuzz at grazing angles */
-    p->roughness = 1.0f;
-    p->sheen = 0.3f, p->sheen_roughness = 0.85f;
-    p->sheen_color = (t3_color){ 0.02f + 0.3f * c.r, 0.02f + 0.3f * c.g, 0.02f + 0.3f * c.b };
-    p->specular_intensity = 0.12f;
-    p->clearcoat = 0;
-    break;
-  case SH_HAIR:
-    p->sheen = 0.6f, p->sheen_roughness = 0.35f;
-    p->sheen_color = (t3_color){ 0.06f + 0.5f * c.r, 0.05f + 0.5f * c.g, 0.04f + 0.5f * c.b };
-    p->specular_intensity = 0.6f;
-    break;
-  case SH_LEATHER:
-    p->clearcoat = 0.35f, p->clearcoat_roughness = 0.38f;
-    break;
-  case SH_POMADE: /* hair set with pomade: a wet-looking gloss over the strands */
-    p->sheen = 0.5f, p->sheen_roughness = 0.3f;
-    p->sheen_color = (t3_color){ 0.06f + 0.5f * c.r, 0.05f + 0.5f * c.g, 0.04f + 0.5f * c.b };
-    p->specular_intensity = 0.8f;
-    p->clearcoat = 0.75f, p->clearcoat_roughness = 0.22f;
-    break;
-  case SH_EYE: /* a wet cornea over a matte iris: a sharp clear coat highlight (the catch light) */
-    p->clearcoat = 1.0f, p->clearcoat_roughness = 0.06f;
-    break;
-  }
-  m->materials[i] = p;
-  t3_release(old);
-}
-static void shade_tree(t3_object *o, shade_class k) {
-  if (o->type == T3_MESH || o->type == T3_SKINNED_MESH) {
-    t3_mesh *m = (t3_mesh *)o;
-    for (int i = 0; i < m->material_count; i++) shade_material(m, i, k);
-  }
-  for (int i = 0; i < o->child_count; i++) shade_tree(o->children[i], k);
-}
-void char_shade(t3_object *scene) {
-  static const struct { const char *node; shade_class k; } C[] = {
-    { "BodySkin", SH_SKIN }, { "BodyCloth", SH_CLOTH }, { "BodyHair", SH_HAIR }, { "BodyLeather", SH_LEATHER }, { "BodyEye", SH_EYE }, { "BodyPomade", SH_POMADE },
-  };
-  for (size_t i = 0; i < sizeof C / sizeof *C; i++) {
-    t3_object *o = t3_object_get_by_name(scene, C[i].node);
-    if (o) shade_tree(o, C[i].k);
-  }
-}

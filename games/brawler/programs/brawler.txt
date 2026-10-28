@@ -47,3 +47,16 @@ physical+map+rep+nmap+ao+rmap+mmap+skin+cc+sheen+l2001+xcluster_csm
 physical+map+rep+nmap+ao+rmap+mmap+shadow+skin+cc+sheen+l3001+s100+xcluster
 physical+map+rep+nmap+ao+rmap+mmap+skin+ds+cc+sheen+l2001+xcluster_csm
 physical+map+rep+nmap+ao+rmap+mmap+shadow+skin+ds+cc+sheen+l3001+s100+xcluster
+depth+skin+xskinshade
+physical+map+rep+nmap+ao+rmap+mmap+skin+sheen+l2001+xcluster_csm_skinshade
+physical+map+rep+nmap+ao+rmap+mmap+skin+l2001+xcluster_csm
+physical+map+rep+nmap+ao+rmap+mmap+skin+atest+tan+ds+sheen+aniso+l2001+xcluster_csm
+physical+map+rep+nmap+ao+rmap+mmap+skin+morph+morphn+sheen+l2001+xcluster_csm_skinshade
+physical+map+rep+nmap+ao+rmap+mmap+skin+morph+morphn+sheen+l2001+xcluster_csm
+depth+skin+xcluster_csm_skinshade
+physical+map+rep+nmap+ao+rmap+mmap+shadow+skin+sheen+l3001+s100+xcluster_skinshade
+physical+map+rep+nmap+ao+rmap+mmap+shadow+skin+l3001+s100+xcluster
+depth+skin+xcluster_skinshade
+physical+map+rep+nmap+ao+rmap+mmap+shadow+skin+atest+tan+ds+sheen+aniso+l3001+s100+xcluster
+physical+map+rep+nmap+ao+rmap+mmap+shadow+skin+morph+morphn+sheen+l3001+s100+xcluster_skinshade
+physical+map+rep+nmap+ao+rmap+mmap+shadow+skin+morph+morphn+sheen+l3001+s100+xcluster

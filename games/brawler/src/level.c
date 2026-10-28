@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "cartwheel/explosions.h"
 #include "cartwheel/render3d.h"
 #include "cartwheel/scene_file.h"
 #include "game.h"
@@ -183,9 +184,88 @@ static void aim(cw_node n, const float *d) {
   cw_node3d_set_rotation(n, (t3_vec3){ atan2f(d[1], h), atan2f(-d[0], -d[2]), 0 });
 }
 
+/* ── the jukebox (stage 2): the model, its light, the ring at its foot and the shockwave on screen ── */
+static cw_node juke_node, juke_light, juke_ring, juke_wave;
+static t3_gltf *juke_gltf;
+static t3_material *juke_mat[3]; /* glow tubes, window, buttons */
+static t3_color juke_e0[3];
+static int juke_fired_seen;
+static void juke_find(t3_object *o) {
+  static const char *N[3] = { "juke_glow", "juke_window", "juke_button" };
+  if (o->type == T3_MESH) {
+    t3_mesh *m = (t3_mesh *)o;
+    for (int i = 0; i < m->material_count; i++)
+      for (int k = 0; k < 3; k++)
+        if (m->materials[i] && m->materials[i]->name && !strcmp(m->materials[i]->name, N[k])) { juke_mat[k] = m->materials[i]; juke_e0[k] = m->materials[i]->emissive; }
+  }
+  for (int i = 0; i < o->child_count; i++) juke_find(o->children[i]);
+}
+static void juke_build(cw_node s) {
+  memset(juke_mat, 0, sizeof juke_mat);
+  juke_fired_seen = 0;
+  juke_node = spawn_glb(s, "models/jukebox.glb", &juke_gltf, true);
+  cw_node3d_set_position(juke_node, (t3_vec3){ JUKE_X, 0, JUKE_Z });
+  if (juke_gltf) juke_find(juke_gltf->scene);
+  const float warm[3] = { 1.0f, 0.55f, 0.25f };
+  juke_light = light(s, "J", (t3_vec3){ JUKE_X, 1.1f, JUKE_Z + 0.8f }, warm, 4.0f, 6.0f);
+  juke_ring = cw_node_new("Decal3D", "JukeRing");
+  cw_node_add_child(s, juke_ring);
+  cw_node_set(juke_ring, "texture", cw_val_string("decals/ring.png"));
+  cw_node_set(juke_ring, "blend", cw_val_enum("ADD"));
+  cw_node3d_set_rotation(juke_ring, (t3_vec3){ -1.5708f, 0, 0 });
+  cw_node3d_set_position(juke_ring, (t3_vec3){ JUKE_X, -20, JUKE_Z });
+  juke_wave = cw_node_new("Shockwave3D", "JukeWave");
+  cw_node_add_child(s, juke_wave);
+  cw_node_set(juke_wave, "ground", cw_val_bool(true));
+  cw_node_set(juke_wave, "max_radius", cw_val_float(JUKE_RMAX));
+  cw_node_set(juke_wave, "duration", cw_val_float((float)JUKE_TICKS / TPS));
+  cw_node_set(juke_wave, "thickness", cw_val_float(0.7f));
+  cw_node_set(juke_wave, "strength", cw_val_float(0.12f));
+  cw_node3d_set_position(juke_wave, (t3_vec3){ JUKE_X, 0.05f, JUKE_Z });
+}
+/* what the jukebox shows: dim and warm until Arthur wakes it; flickering while his fist is up (the tell); then lit and
+   cycling colours to the beat of his theme; a bright ring running out along the floor with the shockwave */
+static void juke_show(void) {
+  if (!juke_node.id || !cw_node_valid(juke_node)) return;
+  const ent *a = W.juke.owner >= 0 && W.e[W.juke.owner].used ? &W.e[W.juke.owner] : NULL;
+  if (!a) for (int i = 0; i < MAXE; i++) if (W.e[i].used && W.e[i].def == D_ARTHUR) a = &W.e[i];
+  bool tele = a && a->st == S_ATK && a->atk == A_JUKE && a->t < 0;
+  float tk = tele ? (float)(a->t + 36) / 36.0f : 0;
+  float lvl, r, g, b;
+  if (W.juke.on) { /* his theme: the tubes cycle red, amber, pink, blue on the beat (152 a minute) */
+    float ph = (float)W.tick / (60.0f * 60.0f / 152.0f), f = ph - floorf(ph);
+    int k = (int)floorf(ph) & 3;
+    static const float C[4][3] = { { 1, 0.25f, 0.15f }, { 1, 0.6f, 0.15f }, { 1, 0.3f, 0.6f }, { 0.35f, 0.55f, 1 } };
+    lvl = 3.2f + 2.0f * expf(-f * 5);
+    r = C[k][0], g = C[k][1], b = C[k][2];
+  } else { lvl = tele ? 1.0f + 3.0f * tk * (((W.tick / 3) & 1) ? 1.0f : 0.25f) : 0.8f; r = 1, g = 0.55f, b = 0.25f; }
+  if (W.juke.t > 0 && W.juke.t < 8) lvl += 6.0f * (1 - (float)W.juke.t / 8); /* the thump */
+  for (int k = 0; k < 3; k++) if (juke_mat[k]) {
+    float m = k == 0 ? lvl : k == 1 ? 0.6f + 0.3f * lvl : 0.5f + 0.4f * lvl;
+    t3_color e0 = juke_e0[k];
+    juke_mat[k]->emissive = k == 0 ? (t3_color){ 0.7f * r * m, 0.7f * g * m, 0.7f * b * m } : (t3_color){ e0.r * m, e0.g * m, e0.b * m };
+  }
+  cw_node_set(juke_light, "color", cw_val_color(r, g, b, 1));
+  cw_node_set(juke_light, "energy", cw_val_float(2.5f * lvl));
+  if (W.juke.fired != juke_fired_seen) { juke_fired_seen = W.juke.fired; cw_shockwave_fire(juke_wave); }
+  if (W.juke.t > 0) { /* the ring on the floor, where the rule says it is */
+    float k = 1 - (float)W.juke.t / JUKE_TICKS;
+    cw_node3d_set_position(juke_ring, (t3_vec3){ JUKE_X, 0.2f, JUKE_Z });
+    cw_node_set(juke_ring, "size", cw_val_vec3(W.juke.r * 2, W.juke.r * 2, 0.6f));
+    cw_node_set(juke_ring, "color", cw_val_color(1, 0.6f, 0.25f, 0.9f * k + 0.1f));
+  } else if (tele) { /* the tell at its foot: a ring that brightens until the fist comes down */
+    cw_node3d_set_position(juke_ring, (t3_vec3){ JUKE_X, 0.2f, JUKE_Z });
+    cw_node_set(juke_ring, "size", cw_val_vec3(1.6f + 0.6f * tk, 1.6f + 0.6f * tk, 0.6f));
+    cw_node_set(juke_ring, "color", cw_val_color(1, 0.22f, 0.08f, 0.3f + 0.7f * tk));
+  } else cw_node3d_set_position(juke_ring, (t3_vec3){ JUKE_X, -20, JUKE_Z });
+}
+
 void level_free(void) {
   if (stage_node.id && cw_node_valid(stage_node)) cw_node_free(stage_node);
   stage_node = (cw_node){ 0 };
+  juke_node = juke_light = juke_ring = juke_wave = (cw_node){ 0 };
+  juke_gltf = NULL;
+  memset(juke_mat, 0, sizeof juke_mat);
   for (int i = 0; i < nkept; i++) t3_release(kept[i]);
   nkept = 0, stage_gltf = NULL;
   for (int i = 0; i < MAXPROP; i++) W.prop[i].node = (cw_node){ 0 };
@@ -243,6 +323,7 @@ void level_build(int stage) {
   for (float x = 2; x < len + 6; x += 11.0f)
     light(s, "L", (t3_vec3){ x, 3.9f, -2.9f }, th->lamp, th->lamp_e * 38, 11);
   for (int i = 0; i < 3; i++) acc_node[i] = light(s, "A", (t3_vec3){ th->acc[i].dx, th->acc[i].y, th->acc[i].z }, th->acc[i].c, th->acc[i].e * (i == 2 ? 2.5f : 1.0f), th->acc[i].range);
+  if ((stage & 3) == 1) juke_build(s); /* Arthur's jukebox */
   /* breakable props */
   cw_rng r;
   cw_rng_seed(&r, 99 + (uint64_t)stage);
@@ -285,6 +366,7 @@ void prop_hit(prop_t *p) {
 
 /* items and props each frame */
 void level_update(void) {
+  juke_show();
   if (!W.wave_spawned && W.cam_x >= W.lock_x - 0.4f) W.wave_spawned = 1;
   for (int i = 0; i < MAXPROP; i++) {
     prop_t *p = &W.prop[i];

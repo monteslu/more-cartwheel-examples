@@ -250,6 +250,33 @@ static cw_sound make(float secs, float f0, float f1, float noise_mix, float gain
   return cw_sound_from_pcm(pcm, n, 1, RATE, NULL);
 }
 
+/* a voiced "ayyy" with a swagger: a buzzy glottal source gliding up and settling, through two vowel resonances that move
+   from an open "a" to an "ee" (a two-pole filter each), with a little vibrato at the end; a finger snap first */
+static cw_sound make_swagger(void) {
+  enum { RATE = 48000 };
+  static float pcm[RATE];
+  int n = (int)(0.85f * RATE);
+  double ph = 0;
+  float y1[2][2] = { { 0, 0 }, { 0, 0 } };
+  for (int i = 0; i < n; i++) {
+    float t = (float)i / RATE, u = t / 0.85f;
+    float f0 = 118 + 70 * (u < 0.35f ? u / 0.35f : 1 - 0.35f * (u - 0.35f) / 0.65f) + (u > 0.55f ? 5 * sinf(6.2831853f * 5.5f * t) : 0);
+    ph += f0 / RATE;
+    float src = (float)(ph - floor(ph)) * 2 - 1; /* a buzz */
+    src = src * 0.7f + noise() * 0.04f;
+    float F[2] = { 720 - 360 * u, 1250 + 1050 * u }, BW[2] = { 90, 130 }, out = 0;
+    for (int k = 0; k < 2; k++) {
+      float r = expf(-3.14159265f * BW[k] / RATE), c = 2 * r * cosf(6.2831853f * F[k] / RATE);
+      float y = (1 - r) * src + c * y1[k][0] - r * r * y1[k][1];
+      y1[k][1] = y1[k][0], y1[k][0] = y;
+      out += y * (k ? 0.6f : 1.0f);
+    }
+    float env = (t < 0.04f ? t / 0.04f : 1) * (u > 0.7f ? 1 - (u - 0.7f) / 0.3f : 1);
+    pcm[i] = out * 0.9f * env;
+    if (t < 0.012f) pcm[i] += noise() * 0.6f * (1 - t / 0.012f); /* the snap */
+  }
+  return cw_sound_from_pcm(pcm, n, 1, RATE, NULL);
+}
 void audio_init(void) {
   SND[SFX_HIT1] = make(0.12f, 180, 70, 0.6f, 0.7f, 7);
   SND[SFX_HIT2] = make(0.12f, 220, 90, 0.5f, 0.7f, 7);
@@ -262,6 +289,8 @@ void audio_init(void) {
   SND[SFX_SLAM] = make(0.6f, 70, 30, 0.35f, 1.0f, 4);
   SND[SFX_GO] = make(0.4f, 500, 900, 0.0f, 0.4f, 3);
   SND[SFX_HEAL] = make(0.3f, 520, 1040, 0.0f, 0.4f, 3);
+  SND[SFX_THUMP] = make(0.5f, 95, 42, 0.45f, 1.0f, 5); /* a fist on the jukebox cabinet */
+  SND[SFX_SWAGGER] = make_swagger();
 }
 void sfx(int id) {
   if (!SND[id].id) return;
@@ -269,7 +298,9 @@ void sfx(int id) {
 }
 
 /* a looping street beat per stage: kick, snare, bass line, all computed */
+cw_sound music_theme(void);
 cw_sound music_make(int stage) {
+  if (stage == 4) return music_theme();
   enum { RATE = 32000 };
   static const float bass[4][8] = { { 55, 55, 65.4f, 55, 73.4f, 55, 65.4f, 49 }, { 49, 49, 58.3f, 49, 65.4f, 49, 58.3f, 43.7f }, { 65.4f, 65.4f, 77.8f, 73.4f, 87.3f, 65.4f, 77.8f, 58.3f }, { 58.3f, 58.3f, 69.3f, 58.3f, 77.8f, 69.3f, 87.3f, 51.9f } };
   float bpm = 112.0f + (float)stage * 6;
@@ -289,6 +320,59 @@ cw_sound music_make(int stage) {
     if (s % 8 == 4) for (int i = 0; i < (int)(0.16f * RATE) && at + i < n; i++) { float t = (float)i / RATE; pcm[at + i] += noise() * 0.25f * expf(-t * 22); }
     if (s % 2 == 1) for (int i = 0; i < (int)(0.04f * RATE) && at + i < n; i++) { float t = (float)i / RATE; pcm[at + i] += noise() * 0.08f * expf(-t * 80); }
   }
+  cw_sound s = cw_sound_from_pcm(pcm, n, 1, RATE, NULL);
+  cw_free(pcm);
+  return s;
+}
+
+/* Arthur's theme (the jukebox): a 1950s rock and roll shuffle, all computed. A twelve bar blues in A at 152 beats a
+   minute with swung eighths: a boogie bass line, kick on one and three, a snapping backbeat, a swung hi-hat, piano stabs
+   after the backbeat and a reedy lead riff answering itself every four bars. */
+static void tone(float *pcm, int n, int at, float f, float secs, float amp, float decay, int kind, int rate) {
+  double ph = 0;
+  float lp = 0;
+  for (int i = 0; i < (int)(secs * (float)rate) && at + i < n; i++) {
+    if (at + i < 0) continue;
+    float t = (float)i / (float)rate, env = expf(-t * decay) * (t < 0.006f ? t / 0.006f : 1), v;
+    ph += f * (1 + (kind == 2 ? 0.006f * sinf(6.2831853f * 5.2f * t) * (t > 0.12f ? 1 : 0) : 0)) / rate;
+    float x = (float)(ph - floor(ph));
+    if (kind == 0) v = 4 * fabsf(x - 0.5f) - 1;                                  /* bass: triangle */
+    else if (kind == 1) v = sinf(6.2831853f * x) + 0.4f * sinf(12.566371f * x) + 0.15f * sinf(18.849556f * x); /* piano-ish */
+    else { lp += ((x * 2 - 1) - lp) * 0.18f; v = lp; }                          /* the lead: a soft saw, a reed */
+    pcm[at + i] += v * amp * env;
+  }
+}
+cw_sound music_theme(void) {
+  enum { RATE = 32000 };
+  const float bpm = 152, beat = 60.0f / bpm;
+  const int bars = 12, n = (int)(beat * 4 * bars * RATE);
+  float *pcm = cw_alloc((size_t)n * sizeof(float), CW_MEM_GAME);
+  memset(pcm, 0, (size_t)n * sizeof(float));
+  static const int PROG[12] = { 0, 0, 0, 0, 5, 5, 0, 0, 7, 5, 0, 7 }; /* I I I I IV IV I I V IV I V, in semitones over A */
+  static const int BOOGIE[8] = { 0, 4, 7, 9, 10, 9, 7, 4 };
+  static const int RIFF[6] = { 12, 15, 16, 19, 16, 12 }; /* a blue third bent up to the major, the fifth, back home */
+  const float A1 = 55.0f;
+#define AT(beat_i, swing) ((int)(((float)(beat_i) + ((swing) ? 0.6667f : 0.0f)) * beat * RATE))
+  for (int b = 0; b < bars; b++) {
+    float root = A1 * powf(2.0f, (float)PROG[b] / 12.0f);
+    for (int q = 0; q < 4; q++) {
+      int bi = b * 4 + q;
+      for (int e = 0; e < 2; e++) { /* the boogie bass, the hat */
+        tone(pcm, n, AT(bi, e), root * powf(2.0f, (float)BOOGIE[q * 2 + e] / 12.0f), beat * 0.6f, 0.34f, 5.5f, 0, RATE);
+        for (int i = 0; i < (int)(0.035f * RATE); i++) { int k = AT(bi, e) + i; if (k < n) pcm[k] += noise() * (e ? 0.05f : 0.08f) * expf(-(float)i / RATE * 90); }
+      }
+      if (q == 0 || q == 2) for (int i = 0; i < (int)(0.2f * RATE); i++) { int k = AT(bi, 0) + i; float t = (float)i / RATE; if (k < n) pcm[k] += sinf(6.2831853f * (95.0f * expf(-t * 20) + 45) * t) * 0.55f * expf(-t * 12); }
+      if (q == 1 || q == 3) {
+        for (int i = 0; i < (int)(0.18f * RATE); i++) { int k = AT(bi, 0) + i; float t = (float)i / RATE; if (k < n) pcm[k] += (noise() * 0.32f + sinf(6.2831853f * 190 * t) * 0.15f) * expf(-t * 20); }
+        static const int CH[4] = { 0, 4, 7, 9 }; /* the stab after the backbeat: a sixth chord */
+        for (int c = 0; c < 4; c++) tone(pcm, n, AT(bi, 1), root * 8 * powf(2.0f, (float)CH[c] / 12.0f), beat * 0.4f, 0.05f, 9, 1, RATE);
+      }
+    }
+    if (b % 4 == 0 || b == 9) for (int r = 0; r < 6; r++) /* the lead riff over the first bar of each line */
+      tone(pcm, n, AT(b * 4 + r / 2, r & 1), root * 4 * powf(2.0f, (float)RIFF[r] / 12.0f), beat * (r == 5 ? 1.4f : 0.55f), 0.11f, r == 5 ? 2.2f : 4.0f, 2, RATE);
+  }
+#undef AT
+  for (int i = 0; i < n; i++) pcm[i] = tanhf(pcm[i] * 1.1f) * 0.85f; /* a little tape warmth, no clipping */
   cw_sound s = cw_sound_from_pcm(pcm, n, 1, RATE, NULL);
   cw_free(pcm);
   return s;

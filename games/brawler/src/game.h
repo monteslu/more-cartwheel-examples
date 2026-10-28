@@ -14,13 +14,18 @@
 #define MAXITEM 16
 #define TPS 60
 #define LANE_Z 2.6f
+/* the jukebox on the docks pavement in the boss arena (world metres; its front faces the street) */
+#define JUKE_X 53.8f
+#define JUKE_Z -3.05f
+#define JUKE_RMAX 9.5f /* the shockwave's last radius */
+#define JUKE_TICKS 96 /* and how long it takes to get there (it slows as it grows, as Shockwave3D does) */
 
 typedef enum {
   S_IDLE, S_WALK, S_ATK, S_JUMP, S_GRAB, S_GRABBED, S_THROW, S_HIT, S_FALL, S_DOWN, S_GETUP, S_DEAD, S_PICK, S_TAUNT, S_THROWN
 } bstate;
 
 /* attack kinds: what the S_ATK state is doing */
-typedef enum { A_NONE, A_PUNCH1, A_PUNCH2, A_FINISH, A_KICK, A_JKICK, A_SPIN, A_SWING, A_STAB, A_KNEE, A_SLAM, A_CHARGE, A_BSPIN, A_THROW, A_BASH, A_RUSH, A_FLICK, A_COUNT } akind;
+typedef enum { A_NONE, A_PUNCH1, A_PUNCH2, A_FINISH, A_KICK, A_JKICK, A_SPIN, A_SWING, A_STAB, A_KNEE, A_SLAM, A_CHARGE, A_BSPIN, A_THROW, A_BASH, A_RUSH, A_FLICK, A_JUKE, A_COUNT } akind;
 
 typedef struct atk_data {
   const char *clip;
@@ -59,6 +64,8 @@ typedef struct ent {
   int guard_hits; /* the guard: blows its shield has stopped since its guard last broke */
   int ranged; /* the thrower holds a ranged token, not a melee one */
   int knees;
+  int juke; /* Arthur: walking to the jukebox to thump it (ticks on the way) */
+  int buff; /* Arthur: ticks left on his theme (quicker to attack) */
   cw_node root, model, anim, wnode;
   const char *clipname;
   uint64_t agent;
@@ -113,6 +120,9 @@ typedef struct world_t {
     int atk_hits[A_COUNT];
   } st;
   int run_deaths; /* lives lost in the whole run */
+  /* the docks jukebox (stage 2, Arthur's arena): he thumps it, it plays his theme and a shockwave runs out along the
+     floor (decided here, on the fixed tick; the lights, music and ring on screen only show it) */
+  struct juke { bool here, on; int cd, t, owner, fired, uses, hits, dodges; float r, r0; uint32_t mask; } juke;
 } world_t;
 extern world_t W;
 /* debug views (set by the autopilot build's commands): camera zoom and offset, enemies and bots frozen */
@@ -152,7 +162,7 @@ void fx_debris(float x, float y, float z, uint32_t color);
 void fx_flash(float x, float y, float z, float r, float g, float b, float e);
 void fx_tick(void);
 void sfx(int id);
-enum { SFX_HIT1, SFX_HIT2, SFX_HIT3, SFX_WHIFF, SFX_BREAK, SFX_PICK, SFX_KO, SFX_THROW, SFX_SLAM, SFX_GO, SFX_HEAL, SFX_COUNT };
+enum { SFX_HIT1, SFX_HIT2, SFX_HIT3, SFX_WHIFF, SFX_BREAK, SFX_PICK, SFX_KO, SFX_THROW, SFX_SLAM, SFX_GO, SFX_HEAL, SFX_THUMP, SFX_SWAGGER, SFX_COUNT };
 /* ui.c */
 void ui_draw(void);
 /* characters (sim.c) */
@@ -172,7 +182,8 @@ void sb_bind(spring_rig *s, t3_object *scene);
 void sb_reset(spring_rig *s);
 void sb_jolt(spring_rig *s, float x, float y, float z);
 void sb_step(spring_rig *s, t3_vec3 pos, float yaw, float dt);
-void char_shade(t3_object *scene);
+void face_express(spring_rig *s, const char *clip, float u);
+float face_weight(const spring_rig *s, int target);
 void chars_secondary(void);
 void char_jolt(ent *e, float dir, float k);
 /* rag.c: ragdolls for falls, throws and deaths (presentation only: never read by the simulation) */

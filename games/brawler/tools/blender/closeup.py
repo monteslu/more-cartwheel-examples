@@ -24,6 +24,12 @@ except Exception:
     pass
 f0, f1 = arm.animation_data.action.frame_range
 sc.frame_set(int(f0 + (f1 - f0) * frac))
+# SHAPES="grin:1,blink:0.5" sets the face's morph targets (the game drives them by name; the clips only key the jaw)
+for kv in filter(None, os.environ.get('SHAPES', '').split(',')):
+    k, v = kv.split(':')
+    for o in bpy.data.objects:
+        if o.type == 'MESH' and o.data.shape_keys and k in o.data.shape_keys.key_blocks:
+            o.data.shape_keys.key_blocks[k].value = float(v)
 if len(argv) > 8 and argv[8] == 'clay':  # every material grey: shows the geometry alone
     clay = bpy.data.materials.new('clay')
     for o in bpy.data.objects:

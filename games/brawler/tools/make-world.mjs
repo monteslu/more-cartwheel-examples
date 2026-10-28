@@ -334,3 +334,42 @@ for (let i = 0; i < 4; i++) writeStage(i);
 puddles(0, 22); puddles(1, 55); puddles(3, 10);
 writeProp('crate', crate); writeProp('barrel', barrel); writeProp('bin', bin);
 blobMesh();
+
+// ── the jukebox in the docks boss arena (Arthur thumps it): base on the floor at the origin, facing +Z. Its glow tubes,
+// window and buttons are their own materials (juke_glow, juke_window, juke_button) so the game can light them.
+DEFS.chrome = { set: 'paint_metal', tint: [0.86, 0.86, 0.88], rough: 0.28, metal: 1 };
+DEFS.juke_wood = { set: 'wood', tint: [0.42, 0.2, 0.12] };
+DEFS.juke_red = { set: 'paint_metal', tint: [0.55, 0.06, 0.05], rough: 0.45 };
+DEFS.juke_glow = { set: null, tint: [0.9, 0.5, 0.25], rough: 0.3, emissive: [0.6, 0.25, 0.08] };
+DEFS.juke_window = { set: null, tint: [0.12, 0.1, 0.08], rough: 0.15, emissive: [0.25, 0.18, 0.1] };
+DEFS.juke_button = { set: null, tint: [0.9, 0.85, 0.7], rough: 0.4, emissive: [0.3, 0.25, 0.15] };
+function jukebox(m) {
+  const W = 0.92, D = 0.56, Hb = 0.98, R = W / 2;
+  m.box({ all: 'juke_wood', front: 'juke_red' }, [0, Hb / 2 + 0.06, 0], [W, Hb, D], { uv: 1 });
+  m.cyl('juke_wood', [0, Hb + 0.06, 0], R, D, { axis: 'z', n: 32, uv: 1 }); // the arched top
+  m.cyl('chrome', [0, Hb + 0.06, 0.005], R + 0.025, D - 0.06, { axis: 'z', n: 32, uv: 1, caps: false }); // a chrome band round the arch
+  // glow tubes: up both front corners and round the arch, a little proud of the face
+  for (const sx of [-1, 1]) m.cyl('juke_glow', [sx * (R - 0.05), 0.55, D / 2 + 0.02], 0.035, 0.9, { n: 12, uv: 1 });
+  for (let i = 0; i < 20; i++) {
+    const a0 = (i / 20) * Math.PI, a1 = ((i + 1) / 20) * Math.PI, rr = R - 0.05, cy = Hb + 0.06;
+    const p0 = [Math.cos(a0) * rr, cy + Math.sin(a0) * rr], p1 = [Math.cos(a1) * rr, cy + Math.sin(a1) * rr];
+    m.box('juke_glow', [(p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2, D / 2 + 0.02], [Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) + 0.01, 0.06, 0.06], { uv: 1 });
+  }
+  // the window over the record and the selector, chrome framed; a row of buttons; the speaker grille with slats
+  m.box('juke_window', [0, 1.02, D / 2 + 0.01], [0.6, 0.42, 0.02], { uv: 1 });
+  m.box('chrome', [0, 1.245, D / 2 + 0.012], [0.66, 0.03, 0.03], { uv: 1 }); m.box('chrome', [0, 0.795, D / 2 + 0.012], [0.66, 0.03, 0.03], { uv: 1 });
+  for (const sx of [-1, 1]) m.box('chrome', [sx * 0.315, 1.02, D / 2 + 0.012], [0.03, 0.48, 0.03], { uv: 1 });
+  for (let i = 0; i < 8; i++) m.box('juke_button', [-0.245 + i * 0.07, 0.72, D / 2 + 0.02], [0.05, 0.035, 0.03], { uv: 1 });
+  m.box('steel_dark', [0, 0.38, D / 2 + 0.008], [0.62, 0.5, 0.02], { uv: 1 });
+  for (let i = 0; i < 9; i++) m.box('chrome', [0, 0.17 + i * 0.052, D / 2 + 0.02], [0.6, 0.012, 0.012], { uv: 1 });
+  m.box('chrome', [0, 0.03, 0], [W + 0.04, 0.06, D + 0.04], { uv: 1 }); // the plinth
+}
+{
+  const glb = new Glb(), M = new Mats(glb), m = new Mesher();
+  jukebox(m);
+  const mi = {};
+  for (const k of m.groups.keys()) mi[k] = M.get(k);
+  glb.sceneNodes.push(glb.node({ name: 'jukebox', mesh: glb.mesh('jukebox', m.prims(mi)) }));
+  glb.write(join(OUT, 'jukebox.glb'));
+  console.log('jukebox');
+}

@@ -31,7 +31,10 @@ Walk over food, coins and weapons to pick them up; you can reach them from a ste
   help and comes back with a new move. Heavy blows (slams, spins, charges) show a red ring on the street while they
   wind up: get out of it.
 - The bosses, stage by stage: the Foreman (the alley), Arthur (the docks: a greaser who jabs from a boxer's guard,
-  snaps his jacket open into a backhand, charges shoulder first and stops to comb his hair), the Matron (the arcade,
+  snaps his jacket open into a backhand, charges shoulder first, stops to comb his hair or give you a thumbs up, and
+  from his second phase walks over to the jukebox on the pavement: when he raises his fist and its lights flicker, get
+  ready to jump. He thumps it, his song starts, he gets quicker for a few seconds, and a shockwave runs out along the
+  street from it: anyone on the ground when the ring reaches them is knocked down. Jump over it), the Matron (the arcade,
   where the Ringmaster also runs the floor as a mini boss halfway through) and the Colossus (the roof).
 
 Anyone knocked down falls loose: the body tumbles, hits the street, the kerb and the crates, and gets up from where it

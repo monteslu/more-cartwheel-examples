@@ -279,5 +279,83 @@
       "vsGl": 0.005,
       "note": "the same dual cart on romdev and Chromium against native WebGPU (state exact). vsGl 0.5 percent: GL and WebGPU draw the same picture (0.01 percent apart); the brick, asphalt and corrugated detail that differed by 4 to 10.6 percent was the engine lighting normal maps from the wrong side on WebGPU, fixed (findings/gl-webgpu-parity.md)"
     }
+  },
+  {
+    "name": "brawler-arthur",
+    "note": "Stage 2 (the docks) boss wave with three bots: Arthur reaches his second phase, walks to the jukebox, thumps it (his theme, a shockwave along the floor that knocks down whoever is on the ground and that the bots jump), then the thumbs up. game.juke is [uses, fighters knocked down, fighters who jumped it, playing, ring radius in cm, ticks on his way]. The control freezes everyone, so the jukebox is never thumped.",
+    "app": "brawler_auto",
+    "frames": 2400,
+    "startCmds": [
+      "stage 1",
+      "wave 4"
+    ],
+    "fields": [
+      "game.ticks",
+      "game.stage",
+      "game.phase",
+      "game.wave",
+      "game.kills",
+      "game.score",
+      "game.enemies",
+      "game.tokens",
+      "game.token_leak",
+      "game.boss_hp",
+      "game.boss_phase",
+      "game.hp",
+      "game.px",
+      "game.state",
+      "game.enemy",
+      "game.cam",
+      "game.hash",
+      "game.unfair",
+      "game.deaths",
+      "game.nan",
+      "game.proj",
+      "game.rigs",
+      "rag.made",
+      "rag.missed",
+      "rag.live_max",
+      "rag.getup_up",
+      "rag.getup_prone",
+      "rag.hash",
+      "game.juke"
+    ],
+    "expect": {
+      "game.ticks": 2104,
+      "game.kills": 4,
+      "game.score": 18190,
+      "game.hash": 1149490979,
+      "game.wave": 4,
+      "game.deaths": 0,
+      "game.unfair": 0,
+      "game.token_leak": 0,
+      "game.nan": 0,
+      "game.boss_phase": 2,
+      "game.juke": [
+        1,
+        2,
+        1,
+        1,
+        0,
+        0
+      ],
+      "rag.made": 19,
+      "rag.hash": 1165915749
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "vsGl": 0.005,
+      "note": "the same dual cart on romdev and Chromium against native WebGPU (state exact). vsGl 0.5 percent: GL and WebGPU draw the same picture (0.01 percent apart); the brick, asphalt and corrugated detail that differed by 4 to 10.6 percent was the engine lighting normal maps from the wrong side on WebGPU, fixed (findings/gl-webgpu-parity.md)"
+    },
+    "controlStartCmds": [
+      "stage 1",
+      "wave 4",
+      "freeze 1"
+    ],
+    "controlFrames": 2400
   }
 ]

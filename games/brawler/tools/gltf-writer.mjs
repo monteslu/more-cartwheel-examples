@@ -7,7 +7,7 @@ export class Glb {
   constructor() {
     this.nodes = []; this.meshes = []; this.skins = []; this.anims = []; this.materials = [];
     this.accessors = []; this.views = []; this.chunks = []; this.size = 0; this.sceneNodes = [];
-    this.images = []; this.textures = []; this.samplers = [{ magFilter: 9729, minFilter: 9987, wrapS: 10497, wrapT: 10497 }, { magFilter: 9729, minFilter: 9987, wrapS: 33071, wrapT: 33071 }]; this.texCache = new Map();
+    this.images = []; this.textures = []; this.samplers = [{ magFilter: 9729, minFilter: 9987, wrapS: 10497, wrapT: 10497 }, { magFilter: 9729, minFilter: 9987, wrapS: 33071, wrapT: 33071 }]; this.texCache = new Map(); this.extUsed = new Set();
   }
   /** append a typed array as a buffer view + accessor; returns the accessor index */
   acc(arr, type, ctype, target, minmax) {
@@ -54,7 +54,10 @@ export class Glb {
       if (o.emissive) { m.emissiveFactor = o.emissive; if (existsSync(p('e'))) m.emissiveTexture = { index: this.tex(p('e'), o.clamp) }; }
     } else if (o.emissive) m.emissiveFactor = o.emissive;
     if (o.alphaMode) m.alphaMode = o.alphaMode;
+    if (o.alphaCutoff != null) m.alphaCutoff = o.alphaCutoff;
     if (o.doubleSided) m.doubleSided = true;
+    if (o.ext && Object.keys(o.ext).length) { m.extensions = o.ext; for (const k of Object.keys(o.ext)) this.extUsed.add(k); }
+    if (o.extras) m.extras = o.extras;
     this.materials.push(m);
     return this.materials.length - 1;
   }
@@ -67,21 +70,28 @@ export class Glb {
   /** geometry: {pos, nrm, col (rgba float), idx, joints?, weights?}; returns the mesh index */
   /** one primitive's attributes; returns the primitive record */
   prim(g, material) {
+    const prim = {};
     const attrs = { POSITION: this.acc(new Float32Array(g.pos), 'VEC3', 5126, 34962, true), NORMAL: this.acc(new Float32Array(g.nrm), 'VEC3', 5126, 34962) };
     if (g.uv && g.uv.length) attrs.TEXCOORD_0 = this.acc(new Float32Array(g.uv), 'VEC2', 5126, 34962);
+    if (g.tan && g.tan.length) attrs.TANGENT = this.acc(new Float32Array(g.tan), 'VEC4', 5126, 34962);
     if (g.col) attrs.COLOR_0 = this.acc(new Float32Array(g.col.filter((_, i) => i % 4 !== 3)), 'VEC3', 5126, 34962);
     if (g.joints) {
       attrs.JOINTS_0 = this.acc(new Uint8Array(g.joints), 'VEC4', 5121, 34962);
       attrs.WEIGHTS_0 = this.acc(new Float32Array(g.weights), 'VEC4', 5126, 34962);
     }
+    prim.attributes = attrs;
     const big = g.pos.length / 3 > 65535;
+    if (g.targets) prim.targets = g.targets.map((t) => ({ POSITION: this.acc(new Float32Array(t.pos), "VEC3", 5126, 34962, true), NORMAL: this.acc(new Float32Array(t.nrm), "VEC3", 5126, 34962) }));
     const idx = this.acc(big ? new Uint32Array(g.idx) : new Uint16Array(g.idx), 'SCALAR', big ? 5125 : 5123, 34963);
-    return { attributes: attrs, indices: idx, material };
+    prim.indices = idx; prim.material = material;
+    return prim;
   }
   /** mesh(name, g, material) for one primitive, or mesh(name, [[g, material], ...]) */
-  mesh(name, g, material) {
+  mesh(name, g, material, targetNames) {
     const prims = Array.isArray(g) ? g.map(([gg, mm]) => this.prim(gg, mm)) : [this.prim(g, material)];
-    this.meshes.push({ name, primitives: prims });
+    const me = { name, primitives: prims };
+    if (targetNames && targetNames.length) { me.weights = targetNames.map(() => 0); me.extras = { targetNames }; }
+    this.meshes.push(me);
     return this.meshes.length - 1;
   }
   node(n) { this.nodes.push(n); return this.nodes.length - 1; }
@@ -104,6 +114,7 @@ export class Glb {
       materials: this.materials, accessors: this.accessors, bufferViews: this.views,
       buffers: [{ byteLength: total }],
     };
+    if (this.extUsed.size) json.extensionsUsed = [...this.extUsed];
     if (this.images.length) { json.images = this.images; json.textures = this.textures; json.samplers = this.samplers; }
     if (this.skins.length) json.skins = this.skins;
     if (this.anims.length) json.animations = this.anims;

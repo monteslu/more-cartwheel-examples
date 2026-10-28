@@ -56,6 +56,7 @@ const atk_data ATK[] = {
   [A_BASH] = { "punch2", 30, 10, 16, 9, 1.2f, 0.75f, 1, 0.6f }, /* the guard's shield shove */
   [A_RUSH] = { "run", 60, 4, 46, 16, 1.25f, 0.85f, 2, 0.0f }, /* a boss charges along its lane */
   [A_FLICK] = { "flick", 36, 22, 29, 12, 1.4f, 0.8f, 1, 0.35f }, /* Arthur snaps his jacket open, then a backhand */
+  [A_JUKE] = { "thump", 26, 0, 0, 0, 0, 0, 0, 0.0f }, /* Arthur thumps the jukebox on tick 0: the blow is the shockwave (juke_tick) */
 };
 /* attacks that need the long (heavy) telegraph and a danger ring on the street */
 static bool heavy_atk(int k) { return k == A_SLAM || k == A_SWING || k == A_BSPIN || k == A_RUSH || k == A_FLICK; }
@@ -90,7 +91,6 @@ static rig *rig_get(int def) {
     RES[def] = cw_res_load(path, CW_RES_GLTF);
     const cw_gltf *g = cw_res_gltf(RES[def]);
     if (!g) { cw_error("brawler: %s did not load", path); rig_n--; return NULL; }
-    char_shade(g->gltf->scene); /* the shared materials, once */
   }
   if (!BLOB.id) BLOB = cw_res_load("models/blob.glb", CW_RES_GLTF);
   r->gltf = cw_res_gltf(RES[def])->gltf;
@@ -185,6 +185,16 @@ void chars_secondary(void) {
     if (!e->used || !e->root.id) continue;
     spring_rig *sr = &RIGS[rig_of[i]].sr;
     sb_step(sr, (t3_vec3){ e->x, e->y, e->z }, ent_yaw(e), 1.0f / TPS);
+    { /* the face: the expression the clip asks for at this point of it (morph targets by name) */
+      float u = 0;
+      if (e->anim.id && e->clipname) {
+        cw_anim a = cw_anim_player_get(e->anim, e->clipname);
+        float L = a.id ? cw_anim_length(a) : 0;
+        u = L > 0 ? (float)(cw_anim_player_position(e->anim) / L) : 0;
+        if (u > 1) u = 1;
+      }
+      face_express(sr, e->clipname, u);
+    }
     for (int k = 0; k < SB_MAX; k++) if (sr->b[k].bone) g_spring_motion += fabsf(sr->b[k].V.x) + fabsf(sr->b[k].V.y) + fabsf(sr->b[k].V.z);
   }
 }
@@ -450,8 +460,8 @@ static void start_attack(ent *e, akind k) {
   e->st = S_ATK, e->atk = k, e->t = 0, e->hitmask = 0, e->chain_ok = 0;
   const atk_data *a = &ATK[k];
   if (!e->player) { /* a readable telegraph: guard pose and a flash before the swing (12+ frames, 24+ for heavies) */
-    e->t = k == A_RUSH ? -40 : heavy_atk(k) ? -26 : k == A_THROW ? -18 : -14;
-    char_restart(e, "block", 0.06f);
+    e->t = k == A_JUKE ? -36 : k == A_RUSH ? -40 : heavy_atk(k) ? -26 : k == A_THROW ? -18 : -14;
+    char_restart(e, k == A_JUKE ? "thump" : "block", k == A_JUKE ? 0.1f : 0.06f); /* the jukebox thump: the raised fist is the tell */
     e->hurtflash = 1.4f;
   } else char_restart(e, atk_clip(e, k), 0.04f);
   if (k == A_SLAM || k == A_SPIN || k == A_BSPIN) sfx(SFX_WHIFF);
@@ -804,6 +814,48 @@ static void player_update(int pi, const inputs *in) {
   arena_clamp(e);
 }
 
+/* ── the jukebox (the docks, Arthur's arena) ─────────────────────────────
+ * From his second phase Arthur may walk to the jukebox on the pavement, raise his fist (36 ticks: the tell, while its
+ * lights flicker and a ring glows at its foot), and thump it: his theme starts, he gets quicker for six seconds and a
+ * shockwave runs out along the floor from it. A fighter on the ground when the ring passes is knocked down; one in the
+ * air (a jump) is not. The ring grows the way Shockwave3D does (quick, then slowing), so the bent picture and the rule
+ * agree. Then he turns to the fighters with a thumbs up: an opening. */
+static bool juke_ready(const ent *e) {
+  return W.juke.here && W.juke.cd == 0 && W.juke.t == 0 && e->phase >= 1 && on_screen(JUKE_X + 0.72f, JUKE_Z + 0.62f, 0.5f) && on_screen(JUKE_X, JUKE_Z + 0.3f, 0.3f);
+}
+static void juke_fire(ent *e) {
+  W.juke.on = true, W.juke.t = 1, W.juke.r = W.juke.r0 = 0.3f, W.juke.mask = 0;
+  W.juke.owner = e->idx, W.juke.fired++, W.juke.uses++, W.juke.cd = 900;
+  e->buff = 360;
+  W.shake = 12, W.shake_amp = 0.1f;
+  sfx(SFX_THUMP);
+  fx_dust(JUKE_X, JUKE_Z + 0.5f, 2.2f);
+  fx_flash(JUKE_X, 1.2f, JUKE_Z + 0.4f, 1, 0.55f, 0.25f, 10);
+}
+static void juke_tick(void) {
+  if (W.juke.cd > 0) W.juke.cd--;
+  if (W.juke.t <= 0) return;
+  float u = (float)W.juke.t / JUKE_TICKS;
+  W.juke.r0 = W.juke.r;
+  W.juke.r = JUKE_RMAX * (1 - (1 - u) * (1 - u));
+  ent *a = W.juke.owner >= 0 && W.e[W.juke.owner].used ? &W.e[W.juke.owner] : NULL;
+  for (int i = 0; i < MAXP; i++) {
+    ent *p = &W.p[i];
+    if (!alive(p) || (W.juke.mask & (1u << i))) continue;
+    float dx = p->x - JUKE_X, dz = p->z - JUKE_Z;
+    if (dx * dx + dz * dz > (W.juke.r + 0.35f) * (W.juke.r + 0.35f)) continue; /* not reached yet */
+    W.juke.mask |= 1u << i;
+    bool ground = p->y < 0.3f && p->invuln == 0 && !(p->st == S_FALL || p->st == S_DOWN || p->st == S_GETUP || p->st == S_THROWN || p->st == S_GRABBED || p->st == S_DEAD);
+    if (!ground) { W.juke.dodges++; continue; } /* jumped it (or was down or blinking already) */
+    float src[2] = { p->x, p->z }; /* the ring is where the fighter stands, on screen */
+    g_src = src;
+    ent_hurt(p, a, 9.0f * 0.8f * DEFS[D_ARTHUR].dmg, 2, 0);
+    g_src = NULL;
+    W.juke.hits++;
+  }
+  if (++W.juke.t > JUKE_TICKS) W.juke.t = 0;
+}
+
 /* ── enemies ────────────────────────────────────────────────────────── */
 static int nearest_player(const ent *e) {
   int best = -1;
@@ -837,6 +889,7 @@ static void enemy_pick_attack(ent *e) {
         { { A_SWING, A_SLAM, A_SWING }, { A_BSPIN, A_SLAM, A_SWING }, { A_RUSH, A_BSPIN, A_SLAM } },    /* colossus */
         { { A_PUNCH2, A_FLICK, A_PUNCH1 }, { A_FLICK, A_RUSH, A_PUNCH2 }, { A_RUSH, A_FLICK, A_PUNCH2 } }, /* arthur: jabs, the jacket flick, a shoulder charge */
       };
+      if (e->def == D_ARTHUR && juke_ready(e) && (W.juke.uses == 0 || ri(0, 2) == 0)) { e->juke = 1; return; } /* off to thump the jukebox (the first time he can, always) */
       int ph = d->boss ? (e->phase > 2 ? 2 : e->phase) : (e->hp < e->maxhp * 0.5f ? 1 : 0); /* the mini boss: two of its rows by health */
       akind k = MOVES[e->def - D_FOREMAN][ph][ri(0, 2)];
       if (k == A_STAB) { e->weapon = 3; weapon_show(e); }
@@ -857,7 +910,8 @@ static void boss_phase(ent *e) {
   if (want <= e->phase) return;
   e->phase++;
   e->st = S_TAUNT; e->t = 0; e->invuln = 90; e->atk = A_NONE; e->y = 0;
-  char_restart(e, taunt_clip(e), 0.05f);
+  char_restart(e, e->def == D_ARTHUR && e->phase == 2 ? "thumbsup" : taunt_clip(e), 0.05f);
+  if (e->def == D_ARTHUR && e->phase == 2) sfx(SFX_SWAGGER);
   if (e->token) { e->token = 0; W.tokens_out--; }
   W.phase_banner = 150, W.shake = 24, W.shake_amp = 0.1f;
   sfx(SFX_SLAM);
@@ -876,6 +930,7 @@ static void enemy_update(int ei) {
   apply_invuln(e);
   if (e->hold > 0) { e->hold--; return; }
   if (e->cd > 0) e->cd--;
+  if (e->buff > 0) e->buff--;
   boss_phase(e);
   if (common_state(e)) {
     if (e->st == S_DEAD && e->t > 70) {
@@ -892,7 +947,8 @@ static void enemy_update(int ei) {
   case S_ATK: {
     const atk_data *ad = &ATK[e->atk];
     e->t++;
-    if (e->t == 0) char_restart(e, atk_clip(e, e->atk), 0.05f);
+    if (e->t == 0 && e->atk != A_JUKE) char_restart(e, atk_clip(e, e->atk), 0.05f);
+    if (e->t == 0 && e->atk == A_JUKE) juke_fire(e);
     if (e->t < 0) { e->hurtflash = 0.6f; break; }
     if (e->atk == A_CHARGE || e->atk == A_RUSH) {
       e->x += e->vx / TPS;
@@ -900,17 +956,48 @@ static void enemy_update(int ei) {
     } else if (e->t < ad->a1 && ad->lunge > 0) e->x += (float)e->face * ad->lunge * 4.0f / TPS;
     if (e->atk == A_THROW && e->t == ad->a0) proj_throw(e);
     do_hits(e);
+    if (e->t >= ad->total && e->atk == A_JUKE) { /* the swagger: a thumbs up while his theme plays (an opening for the fighters) */
+      e->st = S_TAUNT, e->t = 0, e->atk = A_NONE;
+      if (e->token) { e->token = 0; W.tokens_out--; }
+      char_restart(e, "thumbsup", 0.12f);
+      sfx(SFX_SWAGGER);
+      break;
+    }
     if (e->t >= ad->total) {
       e->st = S_IDLE, e->t = 0, e->atk = A_NONE;
       if (e->token) { e->token = 0; W.tokens_out--; }
       e->ranged = 0;
       e->cd = boss ? (e->phase >= 2 ? 25 + ri(0, 30) : 40 + ri(0, 40)) : e->def == D_THROWER ? 110 + ri(0, 90) : 70 + ri(0, 90);
+      if (e->buff > 0) e->cd /= 2; /* his theme is playing: he comes back at you quicker */
       if (e->def == D_THUG && ri(0, 3) == 0) { e->cd = 20; } /* a quick second swing now and then */
       if (e->def == D_KNIFER || (boss && e->weapon == 3)) { e->weapon = e->def == D_KNIFER ? 3 : 0; weapon_show(e); }
     }
     break;
   }
   default: {
+    if (e->juke) { /* on the way to the jukebox: stand at its right front corner, facing it, then the thump */
+      const float sx = JUKE_X + 0.72f, sz = JUKE_Z + 0.62f;
+      if (++e->juke > 240 || !juke_ready(e)) { e->juke = 0; e->cd = 40; }
+      else {
+        float jx = sx - e->x, jz = sz - e->z, jd = sqrtf(jx * jx + jz * jz);
+        if (jd > 0.05f) { /* straight there, with purpose (not through the crowd's avoidance, which wandered) */
+          float step = 4.0f / TPS < jd ? 4.0f / TPS : jd;
+          e->x += jx / jd * step, e->z += jz / jd * step;
+          if (crowd.id && e->agent) { cw_crowd_clear_target(crowd, AG(e->agent)); cw_crowd_set_position(crowd, AG(e->agent), (t3_vec3){ e->x, 0, e->z }); cw_crowd_set_velocity(crowd, AG(e->agent), (t3_vec3){ 0, 0, 0 }); }
+        }
+        jx = sx - e->x, jz = sz - e->z;
+        if (jx * jx + jz * jz < 0.05f) {
+          if (crowd.id && e->agent) cw_crowd_clear_target(crowd, AG(e->agent));
+          e->face = -1, e->juke = 0;
+          start_attack(e, A_JUKE);
+          break;
+        }
+        e->face = jx >= 0 ? 1 : -1;
+        e->st = S_WALK;
+        char_play(e, "run", 0.15f);
+        break;
+      }
+    }
     int ti = nearest_player(e);
     if (ti < 0) { e->st = S_IDLE; e->ranged = 0; char_play(e, idle_clip(e), 0.2f); if (e->agent && crowd.id) cw_crowd_set_velocity(crowd, AG(e->agent), (t3_vec3){ 0, 0, 0 }); break; }
     ent *p = &W.p[ti];
@@ -989,7 +1076,7 @@ static void enemy_update(int ei) {
           else if (t < 34) { r0 = 1.5f; clip = "block"; }
           break;
         }
-        case 3: clip = taunt_clip(e); break; /* beckon (Arthur combs his hair) */
+        case 3: clip = e->def == D_ARTHUR && ((W.tick / 600) & 1) ? "thumbsup" : taunt_clip(e); break; /* beckon (Arthur combs his hair or gives a thumbs up) */
         default: /* sway: a step forward and back and across */
           e->orbit += 0.04f;
           cw_sincos(e->orbit, &sn, &cs);
@@ -1090,6 +1177,8 @@ void sim_reset(int players, int stage) {
   W.total_score = keep ? total : 0;
   W.phase = PH_INTRO, W.phase_t = 0;
   W.cam_x = 0, W.slow = 0;
+  memset(&W.juke, 0, sizeof W.juke);
+  W.juke.here = (stage & 3) == 1, W.juke.owner = -1; /* the docks have the jukebox */
   level_build(stage);
   crowd_setup();
   static const int PD[MAXP] = { D_ROOK, D_MIKA, D_JET, D_ROOK };
@@ -1176,6 +1265,7 @@ void sim_tick(const inputs *in) {
   }
   for (int i = 0; i < MAXE; i++) if (W.e[i].used && W.e[i].fade) ent_remove(&W.e[i]);
   proj_update();
+  juke_tick();
   /* bodies the crowd does not steer (fighters, enemies mid attack or hit) never stand inside each other: a soft push
      apart inside an ellipse 0.75 m along the street and 0.5 m across it, so a fight reads as separate people */
   {
@@ -1267,11 +1357,11 @@ void stats_log(const char *why) {
   const int *h = W.st.atk_hits;
   cw_info("brawler-stats %s stage=%d players=%d ticks=%d first_hit=%d deaths=%d hits=%d p1=%d p2=%d fin=%d kick=%d jkick=%d spin=%d weapon=%d "
           "blocks=%d pickups=%d unfair=%d still_max=%d frozen=%d nan=%d stall_max=%d boss_ticks=%d boss_phase=%d waves=%d wave_avg=%d wave_max=%d "
-          "dmg_taken=%d run_deaths=%d leak=%d",
+          "dmg_taken=%d run_deaths=%d leak=%d juke=%d juke_hits=%d juke_dodges=%d",
           why, W.stage, W.players, W.tick - W.st.t0, W.st.first_hit, W.st.deaths, W.st.hits, h[A_PUNCH1], h[A_PUNCH2], h[A_FINISH], h[A_KICK],
           h[A_JKICK], h[A_SPIN], h[A_SWING] + h[A_STAB], W.st.blocks, W.st.pickups, W.st.unfair, W.st.still_max, W.st.frozen, W.st.nan, W.st.stall_max,
           W.st.boss_t0 >= 0 && W.st.boss_t1 >= 0 ? W.st.boss_t1 - W.st.boss_t0 : -1, W.st.boss_phase, W.st.waves_done,
-          W.st.waves_done ? W.st.wave_sum / W.st.waves_done : 0, W.st.wave_max, W.st.dmg_taken, W.run_deaths, token_leak());
+          W.st.waves_done ? W.st.wave_sum / W.st.waves_done : 0, W.st.wave_max, W.st.dmg_taken, W.run_deaths, token_leak(), W.juke.uses, W.juke.hits, W.juke.dodges);
 }
 
 /* ── node sync (render side) ────────────────────────────────────────── */
@@ -1297,6 +1387,11 @@ void char_sync(ent *e) {
     }
   }
   float yaw = ent_yaw(e);
+  if (e->clipname && !strcmp(e->clipname, "thumbsup") && e->anim.id && !g_freeze) { /* the thumbs up is for the audience: he turns three quarters to the camera, then back */
+    float p = (float)cw_anim_player_position(e->anim), k = cw_clampf(p / 0.25f, 0, 1) * (1 - cw_clampf((p - 1.2f) / 0.3f, 0, 1));
+    k = k * k * (3 - 2 * k);
+    yaw += ((float)e->face * 0.5f - yaw) * k;
+  }
   t3_vec3 roff;
   if (rag_render(e, &yaw, &roff)) cw_node3d_set_position(e->root, (t3_vec3){ e->x + roff.x, e->y, e->z + roff.z }); /* a ragdoll or a get-up turned to lie the way the body fell */
   cw_node3d_set_rotation(e->root, (t3_vec3){ 0, yaw, 0 });
@@ -1373,3 +1468,5 @@ void rig_release(int rid) { /* a corpse rag.c kept on the street is done: hide i
 }
 float ent_render_yaw_sim(const ent *e) { return ent_yaw(e); }
 void char_play_force(ent *e, const char *clip, float blend) { char_restart(e, clip, blend); }
+/* debug: an enemy's face weight for target t (the boss's expression in the gates and screenshots) */
+float face_weight_of_enemy(int i, int t) { return i >= 0 && i < MAXE && W.e[i].used && W.e[i].root.id ? face_weight(&RIGS[rig_of[MAXP + i]].sr, t) : 0; }
