@@ -397,7 +397,7 @@ if (MAIN) {
     blob: () => { for (let p = 0; p < 4; p++) blob(p); face(); stalk(); },
     arena, pillar, lava: lavaPlane, raft, seabed,
     buoy: () => { buoy('buoy_red', false); buoy('buoy_gold', true); },
-    cliff: () => { cliff('cliff_ns', 48, 8, 4, 3); cliff('cliff_ew', 4, 8, 36, 7); },
+    cliff: () => { cliff('cliff_ns', 56, 8, 4, 3); cliff('cliff_ew', 4, 8, 44, 7); }, // each wall runs past the other's outer face: the corners overlap, no seam
     track, kart: () => { for (let p = 0; p < 4; p++) kart(p); }, wheel, barrel,
     table, tiles: () => { boardtile('tile_plain', [0.85, 0.9, 1].map(lin), null); boardtile('tile_star', [0.95, 0.5, 0.9].map(lin), [1, 0.45, 0.95].map(lin)); boardtile('tile_end', [1, 0.8, 0.2].map(lin), [1, 0.7, 0.1].map(lin)); },
     star, trophy, podium,

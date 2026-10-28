@@ -38,8 +38,9 @@ fov = 50
 far = 300
 
 [node name="Water" parent="." type="Water3D"]
-size = vec2(90, 90)
-subdivisions = 220
+; the pool and a margin under the walls (inner faces at x +-20.5, z +-14.5): no water beyond the canyon
+size = vec2(44, 32)
+subdivisions = 110
 wave_count = 3
 wave0 = vec4(25, 11, 0.26, 0.5)
 wave1 = vec4(80, 6, 0.14, 0.5)
