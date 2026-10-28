@@ -14,4 +14,5 @@ Fonts (SIL Open Font License 1.1, licence files shipped beside them in assets/fo
 
 Engine: cartwheel-engine (MIT) and three.c (MIT), as shipped with this repository's build.
 
-fx/scorch.png: the scorch mark from cartwheel-engine's samples/fx_explosion (MIT, made by the engine's tools/fx/bake-flipbooks.mjs).
+fx/smoke.png, fx/smoke_mv.png: the smoke flipbook (8 by 8 frames) and its motion-vector sheet from cartwheel-engine's samples/fx_explosion
+  (MIT, made by the engine's tools/fx/bake-flipbooks.mjs from noise; no source images).

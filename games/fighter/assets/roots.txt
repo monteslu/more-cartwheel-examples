@@ -30,7 +30,8 @@ fonts/Bungee-Regular.ttf
 fonts/Fredoka-Bold.ttf
 fonts/Fredoka-OFL.txt
 fonts/Fredoka-SemiBold.ttf
-fx/scorch.png
+fx/smoke.png
+fx/smoke_mv.png
 audio/block.wav
 audio/bell.wav
 audio/fire.wav

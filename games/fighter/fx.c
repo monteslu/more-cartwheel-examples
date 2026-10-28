@@ -2,16 +2,16 @@
  * feeds the rules. GPU particles simulate on the tree's fixed step from hashed
  * seeds, so every host draws the same effects.
  *
- *   hit      a flash light, a burst of hot sparks (more and bigger with power),
- *            an expanding shockwave ring, a puff of dust, camera shake
- *   block    cool white-blue sparks and a small ring, a lighter shake
- *   knockdown, landing and dashes  dust rings and chips off the floor
+ *   hit      a flash light, one short soft flash, a burst of hot streaking sparks and impact lines (more with power),
+ *            camera shake. Round additive dots are kept small and dim: bright ones clip into flat discs.
+ *   block    cool white-blue sparks and short impact lines, a lighter shake
+ *   knockdown, landing and dashes  low smoke-flipbook dust along the floor (soft against it) and chips
  *   fireball a glowing core with an ember trail, a muzzle flash; each fighter
  *            has its own colour
- *   super    a white screen flash, a huge ring and streaking lines, a shockwave that bends the picture
+ *   super    a white screen flash, a burst of impact lines and streaks, a shockwave that bends the picture
  *   KO       a big flash and shake, a shockwave in the air and one along the floor
  *   heavy hits fire a small Explosion3D at the contact (a hot burst, a fast shockwave that bends the picture, a flash);
- *            supers and knockouts a big one on the floor (rings in the air and along the ground, a flash, a scorch mark) */
+ *            supers and knockouts a big one on the floor (rings in the air and along the ground, a flash) */
 #include <stdio.h>
 #include <string.h>
 
@@ -53,33 +53,39 @@ static cw_node pnode(const char *name, const char *const *kv, int seed) {
 
 static const char *const SPARKS[] = { "amount", "48", "lifetime", "0.45", "lifetime_random", "0.4", "explosiveness", "1", "one_shot", "true", "emission_shape", "SPHERE",
   "emission_radius", "0.08", "spread", "180", "direction", "vec3(1, 0.3, 0)", "speed_min", "3", "speed_max", "10", "gravity", "vec3(0, -9, 0)", "damping", "0.8",
-  "draw_mode", "STRETCHED", "stretch", "0.05", "size", "0.05", "size_random", "0.4", "color_ramp", "\"0 1 0.95 0.7 1, 0.3 1 0.55 0.12 1, 1 0.6 0.1 0.03 0\"", "energy", "7",
+  "draw_mode", "STRETCHED", "stretch", "0.08", "size", "0.028", "size_random", "0.4", "size_curve", "\"0 1, 0.6 0.8, 1 0.25\"", "color_ramp", "\"0 1 0.95 0.7 1, 0.3 1 0.55 0.12 1, 1 0.6 0.1 0.03 0\"", "energy", "7",
   "blend", "ADD", NULL };
-static const char *const FLASHP[] = { "amount", "3", "lifetime", "0.12", "explosiveness", "1", "one_shot", "true", "emission_shape", "POINT", "speed_min", "0", "speed_max", "0",
-  "size", "1.1", "size_curve", "\"0 0.4, 0.3 1, 1 0.2\"", "color_ramp", "\"0 1 1 0.9 1, 0.5 1 0.7 0.3 0.8, 1 1 0.4 0.1 0\"", "energy", "9", "blend", "ADD", NULL };
-static const char *const RING[] = { "amount", "36", "lifetime", "0.4", "explosiveness", "1", "one_shot", "true", "emission_shape", "RING", "emission_radius", "0.15",
-  "direction", "vec3(1, 0, 0)", "spread", "180", "speed_min", "5", "speed_max", "6", "damping", "5", "size", "0.2", "size_curve", "\"0 0.6, 0.5 1, 1 0.3\"",
-  "color_ramp", "\"0 1 0.9 0.7 1, 0.4 1 0.55 0.2 0.8, 1 0.8 0.3 0.1 0\"", "energy", "3", "blend", "ADD", NULL };
-static const char *const DUST[] = { "amount", "26", "lifetime", "0.8", "lifetime_random", "0.4", "explosiveness", "0.95", "one_shot", "true", "emission_shape", "BOX",
-  "emission_extents", "vec3(0.3, 0.02, 0.2)", "direction", "vec3(0, 0.4, 0)", "spread", "70", "speed_min", "0.6", "speed_max", "2.2", "gravity", "vec3(0, 0.5, 0)", "damping", "2.4",
-  "size", "0.5", "size_random", "0.4", "size_curve", "\"0 0.4, 0.4 1, 1 1.5\"", "color_ramp", "\"0 0.55 0.5 0.45 0, 0.12 0.6 0.55 0.5 0.55, 1 0.6 0.55 0.5 0\"", "blend", "ALPHA",
-  "soft_distance", "0.3", "turbulence", "0.8", "turbulence_scale", "0.5", NULL };
+/* one soft flash at the contact, short and dim enough that its glow keeps its falloff (bright additive dots clip into flat discs) */
+static const char *const FLASHP[] = { "amount", "1", "lifetime", "0.09", "explosiveness", "1", "one_shot", "true", "emission_shape", "POINT", "speed_min", "0", "speed_max", "0",
+  "size", "0.9", "size_curve", "\"0 0.5, 0.35 1, 1 0.6\"", "color_ramp", "\"0 1 0.95 0.85 0.9, 0.5 1 0.7 0.35 0.5, 1 1 0.45 0.15 0\"", "energy", "2.2", "blend", "ADD", NULL };
+/* impact lines: short fast streaks thrown out round the contact (they were round dots, which read as a ring of discs) */
+static const char *const RING[] = { "amount", "14", "lifetime", "0.16", "lifetime_random", "0.3", "explosiveness", "1", "one_shot", "true", "emission_shape", "RING", "emission_radius", "0.12",
+  "direction", "vec3(1, 0, 0)", "spread", "180", "speed_min", "9", "speed_max", "13", "damping", "7", "draw_mode", "STRETCHED", "stretch", "0.06", "size", "0.035",
+  "color_ramp", "\"0 1 0.95 0.8 1, 0.5 1 0.6 0.25 0.8, 1 0.9 0.3 0.1 0\"", "energy", "4", "blend", "ADD", NULL };
+/* dust kicked up along the floor: a few puffs of the engine's smoke flipbook (motion-blended frames), each turned and sized
+ * at random, rolling out low and fading against the floor (soft), never a cloud of round blobs */
+static const char *const DUST[] = { "amount", "8", "lifetime", "0.9", "lifetime_random", "0.35", "explosiveness", "0.9", "one_shot", "true", "emission_shape", "BOX",
+  "emission_extents", "vec3(0.35, 0.02, 0.15)", "direction", "vec3(0, 0.2, 0)", "spread", "85", "speed_min", "0.5", "speed_max", "1.7", "gravity", "vec3(0, 0.15, 0)", "damping", "3",
+  "size", "0.75", "size_random", "0.45", "size_curve", "\"0 0.45, 0.4 1, 1 1.35\"", "color_ramp", "\"0 0.62 0.57 0.52 0, 0.12 0.6 0.56 0.52 0.42, 1 0.55 0.52 0.5 0\"",
+  "blend", "ALPHA", "sort", "true", "soft_distance", "0.35", "spin", "0.7", "texture", "\"fx/smoke.png\"", "motion_texture", "\"fx/smoke_mv.png\"", "hframes", "8", "vframes", "8",
+  "turbulence", "0.5", "turbulence_scale", "0.5", NULL };
 static const char *const BSPARKS[] = { "amount", "24", "lifetime", "0.35", "explosiveness", "1", "one_shot", "true", "emission_shape", "SPHERE", "emission_radius", "0.06",
-  "spread", "180", "direction", "vec3(1, 0.2, 0)", "speed_min", "2", "speed_max", "6", "gravity", "vec3(0, -6, 0)", "draw_mode", "STRETCHED", "stretch", "0.04", "size", "0.04",
+  "spread", "180", "direction", "vec3(1, 0.2, 0)", "speed_min", "2", "speed_max", "6", "gravity", "vec3(0, -6, 0)", "draw_mode", "STRETCHED", "stretch", "0.07", "size", "0.025", "size_curve", "\"0 1, 1 0.3\"",
   "color_ramp", "\"0 0.9 0.97 1 1, 0.4 0.5 0.75 1 1, 1 0.3 0.4 0.9 0\"", "energy", "6", "blend", "ADD", NULL };
-static const char *const BRING[] = { "amount", "24", "lifetime", "0.3", "explosiveness", "1", "one_shot", "true", "emission_shape", "RING", "emission_radius", "0.1",
-  "direction", "vec3(1, 0, 0)", "spread", "180", "speed_min", "3", "speed_max", "3.5", "damping", "5", "size", "0.15", "size_curve", "\"0 0.6, 0.5 1, 1 0.3\"",
-  "color_ramp", "\"0 0.8 0.95 1 1, 1 0.3 0.5 1 0\"", "energy", "3", "blend", "ADD", NULL };
+static const char *const BRING[] = { "amount", "10", "lifetime", "0.14", "lifetime_random", "0.3", "explosiveness", "1", "one_shot", "true", "emission_shape", "RING", "emission_radius", "0.08",
+  "direction", "vec3(1, 0, 0)", "spread", "180", "speed_min", "7", "speed_max", "9", "damping", "7", "draw_mode", "STRETCHED", "stretch", "0.05", "size", "0.03",
+  "color_ramp", "\"0 0.8 0.95 1 1, 1 0.3 0.5 1 0\"", "energy", "3.5", "blend", "ADD", NULL };
 static const char *const CHIPS[] = { "amount", "22", "lifetime", "0.8", "explosiveness", "1", "one_shot", "true", "emission_shape", "BOX", "emission_extents", "vec3(0.4, 0.02, 0.1)",
   "direction", "vec3(0, 1, 0)", "spread", "50", "speed_min", "2", "speed_max", "5", "gravity", "vec3(0, -12, 0)", "draw_mode", "MESH", "mesh_primitive", "BOX", "size", "0.05",
   "size_random", "0.6", "spin", "10", "blend", "OPAQUE", "color_ramp", "\"0 0.4 0.38 0.35 1, 1 0.35 0.33 0.3 1\"", "bounce", "0.3", "collision_radius", "0.03", NULL };
-static const char *const STREAKS[] = { "amount", "70", "lifetime", "0.5", "explosiveness", "1", "one_shot", "true", "emission_shape", "RING", "emission_radius", "0.6",
-  "direction", "vec3(1, 0, 0)", "spread", "180", "speed_min", "14", "speed_max", "22", "damping", "2.5", "draw_mode", "STRETCHED", "stretch", "0.08", "size", "0.07",
+/* super and knockout streaks: thin lines that shrink to nothing as they slow (slow fat streaks read as floating white ovals) */
+static const char *const STREAKS[] = { "amount", "48", "lifetime", "0.32", "lifetime_random", "0.3", "explosiveness", "1", "one_shot", "true", "emission_shape", "RING", "emission_radius", "0.6",
+  "direction", "vec3(1, 0, 0)", "spread", "180", "speed_min", "16", "speed_max", "24", "damping", "1.5", "draw_mode", "STRETCHED", "stretch", "0.09", "size", "0.045", "size_curve", "\"0 1, 0.5 0.6, 1 0\"",
   "color_ramp", "\"0 1 1 1 1, 0.4 0.7 0.9 1 0.8, 1 0.3 0.4 1 0\"", "energy", "8", "blend", "ADD", NULL };
 static const char *const CORE[] = { "amount", "14", "lifetime", "0.18", "emission_shape", "POINT", "speed_min", "0", "speed_max", "0.5", "size", "0.7", "size_curve", "\"0 1, 1 0.3\"",
   "color_ramp", "\"0 1 0.95 0.8 1, 0.5 1 0.5 0.15 0.9, 1 1 0.3 0.05 0\"", "energy", "2.2", "blend", "ADD", "local_coords", "false", NULL };
 static const char *const EMBER[] = { "amount", "40", "lifetime", "0.4", "lifetime_random", "0.4", "emission_shape", "SPHERE", "emission_radius", "0.1", "spread", "180",
-  "speed_min", "0.2", "speed_max", "1.2", "gravity", "vec3(0, 0.6, 0)", "size", "0.18", "size_curve", "\"0 1, 1 0\"",
+  "speed_min", "0.2", "speed_max", "1.2", "gravity", "vec3(0, 0.6, 0)", "size", "0.08", "size_curve", "\"0 1, 1 0\"",
   "color_ramp", "\"0 1 0.8 0.3 1, 0.5 1 0.35 0.05 0.7, 1 0.5 0.1 0.02 0\"", "energy", "4", "blend", "ADD", "local_coords", "false", NULL };
 
 void fx_init(cw_node root) {
@@ -105,7 +111,8 @@ void fx_init(cw_node root) {
   }
   /* the explosion kit: a heavy hit is a small Explosion3D (a hot burst, a fast shockwave, a flash light); a super or a
    * knockout a big one standing on the floor (a burst at body height, a ring in the air and one along the ground, a
-   * strong flash, a scorch mark that glows and cools) */
+   * strong flash). No scorch mark: on these tiled floors a super and then a knockout in one spot left two olive blots
+   * that read as overlapping puddles */
   for (int i = 0; i < 3; i++) {
     snprintf(nm, sizeof nm, "HeavyBoom%d", i);
     cw_node b = FX.hboom[i] = cw_node_new("Explosion3D", nm);
@@ -119,16 +126,16 @@ void fx_init(cw_node root) {
     cw_node_add_child(b, w);
     cw_node burst = cw_node_new("GPUParticles3D", "Burst");
     cw_node_add_child(b, burst);
-    static const char *const BURST[] = { "amount", "18", "lifetime", "0.22", "explosiveness", "1", "one_shot", "true", "emission_shape", "SPHERE", "emission_radius", "0.05",
-      "spread", "180", "speed_min", "0.5", "speed_max", "2", "damping", "4", "size", "0.35", "size_curve", "\"0 0.5, 0.3 1, 1 0\"",
-      "color_ramp", "\"0 1 0.95 0.8 1, 0.5 1 0.6 0.2 0.8, 1 0.9 0.3 0.05 0\"", "energy", "5", "blend", "ADD", NULL };
+    static const char *const BURST[] = { "amount", "16", "lifetime", "0.2", "lifetime_random", "0.4", "explosiveness", "1", "one_shot", "true", "emission_shape", "SPHERE",
+      "emission_radius", "0.05", "spread", "180", "speed_min", "6", "speed_max", "12", "damping", "4", "draw_mode", "STRETCHED", "stretch", "0.05", "size", "0.04",
+      "color_ramp", "\"0 1 0.95 0.8 1, 0.5 1 0.6 0.2 0.9, 1 0.9 0.3 0.05 0\"", "energy", "6", "blend", "ADD", NULL };
     for (int k = 0; BURST[k]; k += 2) { const cw_prop *pp = cw_node_find_prop(burst, BURST[k], NULL); cw_value v; if (pp && pp->type == CW_T_ENUM) { cw_node_set(burst, BURST[k], cw_val_enum(BURST[k + 1])); continue; } if (pp && cw_value_parse(BURST[k + 1], pp->type, &v)) cw_node_set(burst, BURST[k], v); }
     cw_node_set(burst, "emitting", cw_val_bool(false)); cw_node_set(burst, "seed", cw_val_int(200 + i));
   }
   {
     cw_node b = FX.sboom = cw_node_new("Explosion3D", "SuperBoom");
     static const char *const KV[] = { "autostart", "false", "duration", "1.2", "flash_energy", "140", "flash_range", "12", "flash_duration", "0.35", "flash_color", "color(0.8, 0.85, 1, 1)",
-      "scorch_texture", "\"fx/scorch.png\"", "scorch_size", "2.0", "scorch_time", "1.6", "scorch_life", "10", "scorch_glow", "0.6", "shake_amount", "0", NULL };
+      "scorch_size", "0", "shake_amount", "0", NULL };
     for (int k = 0; KV[k]; k += 2) { const cw_prop *pp = cw_node_find_prop(b, KV[k], NULL); cw_value v; if (pp && cw_value_parse(KV[k + 1], pp->type, &v)) cw_node_set(b, KV[k], v); else cw_warn("fighter: Explosion3D %s", KV[k]); }
     cw_node_add_child(FX.root, b);
     cw_node w = cw_node_new("Shockwave3D", "AirWave");
@@ -183,11 +190,10 @@ void fx_event(const ft_game *g, const ft_event *e) {
     at(FX.sparks[i], p);
     at(FX.flash_p[FX.fi++ % 4], p);
     int r = FX.ri++ % 4;
-    cw_node_set(FX.ring[r], "size", cw_val_float(big ? 0.34 : 0.22));
+    cw_node_set(FX.ring[r], "amount", cw_val_int(big ? 18 : 10));
     at(FX.ring[r], p);
     light(p, big ? 90 : 50, 1, 0.75f, 0.4f);
     FX.shake = fmaxf(FX.shake, big ? 0.55f : 0.18f + 0.06f * k);
-    if (big) at(FX.dust[FX.di++ % 4], (t3_vec3){ p.x, 0.05f, 0.1f });
     if (big) heavy_boom(p);
     break;
   }
@@ -213,7 +219,7 @@ void fx_event(const ft_game *g, const ft_event *e) {
     FX.shake = fmaxf(FX.shake, 0.4f);
     at(FX.streaks[FX.sti++ % 2], (t3_vec3){ p.x, 1.0f, 0.2f });
     int r = FX.ri++ % 4;
-    cw_node_set(FX.ring[r], "size", cw_val_float(0.6));
+    cw_node_set(FX.ring[r], "amount", cw_val_int(24));
     at(FX.ring[r], (t3_vec3){ p.x, 1.0f, 0.2f });
     light((t3_vec3){ p.x, 1.2f, 1.0f }, 120, 0.7f, 0.8f, 1);
     super_boom(p.x);
