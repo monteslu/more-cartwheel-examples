@@ -38,7 +38,8 @@
       "vsGl": 0.05
     },
     "controlFrames": 1800,
-    "note": "the autopilot tournament at frame 2400 (the board after round 2); control: frame 1800, an earlier point of the same run, whose state and picture must differ (one frame short sits on the same still board under the WebGPU bound)"
+    "note": "the autopilot tournament at frame 2400 (the board after round 2); control: frame 1800, an earlier point of the same run, whose state and picture must differ (one frame short sits on the same still board under the WebGPU bound)",
+    "maxGt16": 0.005
   },
   {
     "name": "partypack-menu",
@@ -68,13 +69,14 @@
       ],
       "maxGt16": 0.01,
       "vsGl": 0.05
-    }
+    },
+    "maxGt16": 0.005
   },
   {
     "name": "partypack-join",
     "app": "partypack",
     "assets": "games/partypack/assets",
-    "frames": 180,
+    "frames": 260,
     "input": "partypack-join.json",
     "controlInput": "partypack-join-control.json",
     "minColors": 50,
@@ -92,7 +94,7 @@
       "game.state": 3,
       "game.humans": 2
     },
-    "note": "a second pad takes a seat on the board (Y opens the join screen, A joins, Start confirms): two people play; control: the pad never presses A, one person",
+    "note": "a second pad takes a seat on the board (Y opens the join screen, A joins, Start confirms): two people play; control: the pad never presses A, one person. The presses come 80 frames after the board appears: on a cart host the hub scene is still loading for a moment after the menu choice and a press then is not seen",
     "webgpu": {
       "hosts": [
         "native",
@@ -101,7 +103,8 @@
       ],
       "maxGt16": 0.01,
       "vsGl": 0.05
-    }
+    },
+    "maxGt16": 0.005
   },
   {
     "name": "partypack-drop",
@@ -125,22 +128,22 @@
       "game.state": 3,
       "game.humans": 1
     },
-    "note": "a pad leaves with B, another joins, then it is unplugged and its seat frees by itself: one person is left; control: that pad stays plugged in, two people",
+    "note": "a pad leaves with B, another joins, then it is unplugged and its seat frees by itself: one person is left; control: that pad stays plugged in, two people. Not on romdev: its input ports are all connected, so a pad cannot be unplugged there",
     "webgpu": {
       "hosts": [
         "native",
-        "romdev",
         "chromium"
       ],
       "maxGt16": 0.01,
       "vsGl": 0.05
-    }
+    },
+    "maxGt16": 0.005
   },
   {
     "name": "partypack-join-press",
     "app": "partypack",
     "assets": "games/partypack/assets",
-    "frames": 140,
+    "frames": 220,
     "input": "partypack-join-press.json",
     "controlInput": "partypack-join-press-control.json",
     "minColors": 50,
@@ -167,7 +170,8 @@
       ],
       "maxGt16": 0.01,
       "vsGl": 0.05
-    }
+    },
+    "maxGt16": 0.005
   },
   {
     "name": "partypack-game-hurdle",
