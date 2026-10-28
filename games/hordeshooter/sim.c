@@ -19,6 +19,10 @@
 static const char *const UP_NAME[] = { "Rapid fire", "Extra barrel", "Heavy rounds", "Piercing", "Rockets", "Boots", "Magnet", "Bigger blasts", "Armor" };
 static const uint8_t LADDER[] = { 0, 1, 2, 3, 4, 0, 5, 1, 6, 7, 2, 8, 0, 3, 7, 4, 1, 5 };
 const char *sim_upgrade_name(int u) { return UP_NAME[u % 9]; }
+static const char *const PU_NAME[PU_KINDS] = { "SHOTGUN", "MINIGUN", "ROCKETS", "RAIL GUN", "FLAMER", "EXPLOSIVE ROUNDS", "RAPID FIRE",
+                                               "GRENADES", "MINES", "BUZZSAWS", "SHIELD", "MAGNET" };
+const char *sim_power_name(int t) { return PU_NAME[(unsigned)t % PU_KINDS]; }
+int sim_power_category(int t) { return t <= PU_FLAME ? 0 : t <= PU_RAPID ? 1 : t <= PU_MINES ? 2 : t == PU_SAWS ? 3 : t == PU_SHIELD ? 4 : 5; }
 
 static float rf(sim *s) { return cw_rng_float(&s->rng); }
 static void ev(sim *s, int kind, float x, float y, float z, float w, int a, int b) {
@@ -31,8 +35,8 @@ static void ev(sim *s, int kind, float x, float y, float z, float w, int a, int 
 typedef struct ekind { float radius, speed_lo, speed_hi; int hp_base; float hp_wave; int dmg, xp; } ekind;
 static const ekind EK[EK_KINDS] = {
   { 0.34f, 3.0f, 4.4f, 2, 0.34f, 7, 1 },
-  { 0.72f, 1.8f, 2.4f, 28, 4.0f, 18, 6 },
-  { 0.55f, 1.4f, 2.0f, 8, 0.8f, 6, 3 },
+  { 0.72f, 1.8f, 2.4f, 16, 4.0f, 18, 6 },
+  { 0.55f, 1.4f, 2.0f, 5, 0.8f, 6, 3 },
   { 1.7f, 1.5f, 1.9f, 700, 260.0f, 30, 90 },
 };
 
@@ -56,11 +60,11 @@ static int spawn_enemy(sim *s, int kind, float x, float y) {
   enemy *e = &s->e[slot];
   *e = (enemy){ .alive = true, .kind = (uint8_t)kind, .x = x, .y = y, .agent = a, .speed = sp };
   {
-    float w = (float)s->wave, f = 1.0f + 0.1f * w + 0.008f * w * w; /* the horde toughens with the wave: x1.1 at 1, x2.8 at 10, x6.2 at 20 */
+    float w = (float)s->wave, f = 1.0f + 0.07f * w + 0.005f * w * w; /* the horde toughens with the wave (x1.08 at 1, x2.2 at 10, x4.4 at 20) slower than the guns grow: the pressure is numbers */
     e->hp = kind == EK_BOSS ? EK[kind].hp_base + (int)(EK[kind].hp_wave * w) : CW_MAX(1, (int)((float)EK[kind].hp_base * f + 0.5f));
   }
-  /* more players, tougher enemies: 25% per extra player, a boss 60% */
-  e->hp = (int)((float)e->hp * (1.0f + (kind == EK_BOSS ? 0.6f : 0.25f) * (float)(s->players > 1 ? s->players - 1 : 0)));
+  /* more players, tougher enemies: 20% per extra player (more of them too), a boss 60% */
+  e->hp = (int)((float)e->hp * (1.0f + (kind == EK_BOSS ? 0.6f : 0.2f) * (float)(s->players > 1 ? s->players - 1 : 0)) + 0.5f);
   if (kind == EK_BOSS) s->boss_maxhp = e->hp;
   e->face = rf(s) * 6.28f;
   e->atk = 0;
@@ -96,7 +100,7 @@ static void drop_value(sim *s, int kind, float x, float y, int value) {
   for (int i = 0; i < MAXG; i++)
     if (!s->g[i].alive) {
       float a = rf(s) * 6.28f, v = 1.5f + rf(s) * 2.5f;
-      s->g[i] = (pickup){ true, (uint8_t)kind, x, y, cw_cos(a) * v, cw_sin(a) * v, 60 * 40, value, 0 };
+      s->g[i] = (pickup){ true, (uint8_t)kind, x, y, kind == PK_POWER ? 0 : cw_cos(a) * v, kind == PK_POWER ? 0 : cw_sin(a) * v, 60 * (kind == PK_POWER ? 30 : 40), value, 0 };
       return;
     }
 }
@@ -141,7 +145,7 @@ static void level_up(sim *s, player *p, int pi) {
   (void)pi;
   p->level++;
   p->xp -= p->xp_next;
-  p->xp_next = 6 + p->level * 5 + p->level * p->level * 3 / 2; /* a choice every 25 to 60 s early, still about a minute late */
+  p->xp_next = 10 + p->level * 8 + p->level * p->level * 4; /* a choice every 25 to 60 s early, still about a minute late */
   if (p->offer_ticks > 0) p->pending++;
   else roll_offer(s, p);
 }
@@ -154,7 +158,15 @@ static void kill_enemy(sim *s, int i, int owner, float dx, float dy) {
   s->nenemies--;
   s->kills++;
   s->killed_total++;
+  if (owner >= 0 && owner < MAXP && e->hits > 0) {
+    int w = CW_CLAMP(s->wave, 0, 20);
+    s->ttk_n[w][e->kind]++, s->ttk_hits[w][e->kind] += e->hits, s->ttk_ticks[w][e->kind] += s->tick - e->first_hit;
+  }
   if (owner >= 0 && owner < MAXP) {
+    const player *kp = &s->p[owner];
+    int held = kp->pu_weapon_t > 0 ? kp->pu_weapon : kp->pu_ammo_t > 0 ? kp->pu_ammo : kp->saw_t > 0 ? PU_SAWS : -1;
+    if (held >= 0) s->pu_kills[held]++;
+    else s->plain_kills++;
     s->p[owner].kills++;
     s->p[owner].score += 10 * (1 + e->kind * 4);
   }
@@ -172,6 +184,9 @@ static void kill_enemy(sim *s, int i, int owner, float dx, float dy) {
   }
   float r = rf(s);
   if (e->kind != EK_RUNNER ? r < 0.35f : r < 0.012f) drop(s, 1, e->x, e->y);
+  if (e->kind == EK_BRUTE && rf(s) < 0.03f && !s->no_power) drop_value(s, PK_POWER, e->x, e->y, (int)(cw_rng_u32(&s->rng) % PU_KINDS)); /* an elite now and then */
+  if (e->kind == EK_BOSS && !s->no_power)
+    for (int k = 0; k < 2; k++) drop_value(s, PK_POWER, e->x + (float)k * 2.0f - 1.0f, e->y, (int)(cw_rng_u32(&s->rng) % PU_KINDS));
   if (e->kind == EK_BLOATER) queue_boom(s, e->x, e->y, 3.4f, 14, 4, owner, false);
   if (e->kind == EK_BOSS) {
     for (int k = 0; k < 14; k++) {
@@ -329,6 +344,19 @@ void sim_init(sim *s, int players, uint32_t seed, int start_wave) {
   cw_crowd_set_plan_budget(s->crowd, 8, 0);
   layout(s);
   cw_nav_update(s->nav);
+  { /* power-up spots: four corners, the four gaps in the cinder ring, the lane ends, behind four crates */
+    float c = HALF - 4.0f;
+    float sp[][2] = { { -c, -c }, { c, -c }, { -c, c }, { c, c }, { 0, -21 }, { 21, 0 }, { 0, 21 }, { -21, 0 }, { -c, 10 }, { c, 10 } };
+    int n = 0;
+    for (int k = 0; k < (int)(sizeof sp / sizeof sp[0]); k++) s->spot_x[n] = sp[k][0], s->spot_y[n] = sp[k][1], n++;
+    for (int i = 0; i < MAXO && n < 14; i++)
+      if (s->o[i].alive && s->o[i].kind == OK_CRATE && (s->o[i].x * s->o[i].x + s->o[i].y * s->o[i].y) > 150) {
+        float l = cw_v2_length(cw_v2(s->o[i].x, s->o[i].y)); /* on the far side of the crate from the middle */
+        s->spot_x[n] = s->o[i].x + s->o[i].x / l * 1.6f, s->spot_y[n] = s->o[i].y + s->o[i].y / l * 1.6f, n++;
+        i += 11;
+      }
+    s->pu_spots = n;
+  }
   for (int i = 0; i < players; i++) {
     player *p = &s->p[i];
     float a = (float)i * 6.2832f / (float)players;
@@ -339,7 +367,7 @@ void sim_init(sim *s, int players, uint32_t seed, int start_wave) {
     player *p = &s->p[i];
     for (int k = 1; k < s->wave; k++) {
       p->level++;
-      p->xp_next = 6 + p->level * 5 + p->level * p->level * 3 / 2;
+      p->xp_next = 10 + p->level * 8 + p->level * p->level * 4;
       int u = LADDER[(p->level - 2) % (int)sizeof LADDER];
       int *lv = up_slot(p, u);
       if (*lv < UP_MAX[u]) ++*lv;
@@ -394,19 +422,22 @@ static void bullet_hit(sim *s, int i, void *u) {
   enemy *e = &s->e[i];
   if (!e->alive) return;
   float d = b->dmg;
-  e->hp -= (int)d;
+  if (!e->hits++) e->first_hit = s->tick;
+  e->hp -= (int)(d + 0.5f);
   e->flash = 4;
   float k = 0.9f / (1.0f + (float)(e->kind) * 1.5f);
   e->kx += b->vx * 0.012f * k;
   e->ky += b->vy * 0.012f * k;
   ev(s, EV_HIT, b->x, b->y, b->vx, b->vy, e->kind, 0);
   if (e->hp <= 0) kill_enemy(s, i, b->owner, b->vx, b->vy);
-  if (b->kind == 1) { /* a rocket bursts on the first thing it touches */
-    queue_boom(s, b->x, b->y, 2.4f + (float)s->p[b->owner].radius * 0.5f, 3.0f + b->dmg * 2.0f, 0, b->owner, false);
+  if (b->kind == 1 || b->kind == 2) { /* a rocket or a grenade bursts on the first thing it touches */
+    if (b->kind == 2) queue_boom(s, b->x, b->y, 5.0f + (float)s->p[b->owner].radius * 0.5f, 30, 0, b->owner, true);
+    else queue_boom(s, b->x, b->y, 2.4f + (float)s->p[b->owner].radius * 0.5f, 3.0f + b->dmg * 2.0f, 0, b->owner, false);
     b->alive = false;
     c->stop = true;
     return;
   }
+  if (b->fx == 1) queue_boom(s, b->x, b->y, 1.6f, 2.0f + b->dmg * 0.5f, 0, b->owner, false); /* explosive rounds */
   if (b->pierce-- <= 0) {
     b->alive = false;
     c->stop = true;
@@ -449,6 +480,19 @@ static void do_boom(sim *s, const boom *bm) {
       ev(s, EV_HURT, p->x, p->y, 0, 0, i, 0);
     }
   }
+}
+
+typedef struct saw_ctx { int owner; float x, y; } saw_ctx;
+static void saw_hit(sim *s, int i, void *u) {
+  const saw_ctx *c = u;
+  enemy *e = &s->e[i];
+  if (!e->hits++) e->first_hit = s->tick;
+  e->hp -= 3 + s->p[c->owner].dmg;
+  e->flash = 4;
+  float dx = e->x - c->x, dy = e->y - c->y, l = cw_v2_length(cw_v2(dx, dy));
+  if (l > 0.01f) e->kx += dx / l * 0.12f, e->ky += dy / l * 0.12f;
+  ev(s, EV_HIT, c->x, c->y, dx, dy, e->kind, 0);
+  if (e->hp <= 0) kill_enemy(s, i, c->owner, dx * 8, dy * 8);
 }
 
 static void player_step(sim *s, int i, const input *in) {
@@ -519,11 +563,20 @@ static void player_step(sim *s, int i, const input *in) {
   if (p->inv > 0) p->inv--;
   bool fire = in->fire || al > 0.3f;
   if (fire && p->cd == 0) {
-    int period = CW_MAX(3, 11 - p->rate);
+    static const int PERIOD[8] = { 10, 8, 7, 6, 5, 4, 4, 3 }; /* ticks a shot: 6 a second, each rapid-fire level clearly faster */
+    int period = PERIOD[CW_CLAMP(p->rate, 0, 7)];
+    int w = p->pu_weapon_t > 0 ? p->pu_weapon : -1;
+    if (w == PU_MINIGUN) period = CW_MAX(2, period / 2);
+    else if (w == PU_SHOTGUN) period = period * 2;
+    else if (w == PU_RAIL) period = period * 3;
+    else if (w == PU_FLAME) period = 2;
+    if (p->pu_ammo_t > 0 && p->pu_ammo == PU_RAPID) period = CW_MAX(2, period / 2);
     p->cd = period;
     int n = 1 + p->shots;
-    float spread = 0.07f * (float)(n - 1) + 0.02f;
-    bool rocket = p->rocket > 0 && ((s->tick / period) % 4 == 0);
+    if (w == PU_SHOTGUN) n += 4;
+    if (w == PU_FLAME) n = 3;
+    float spread = w == PU_SHOTGUN ? 0.36f : w == PU_FLAME ? 0.3f : w == PU_MINIGUN ? 0.07f * (float)(n - 1) + 0.06f : 0.07f * (float)(n - 1) + 0.02f;
+    bool rocket = (p->rocket > 0 && ((s->tick / period) % 4 == 0)) || w == PU_ROCKETS;
     for (int k = 0; k < n; k++) {
       int slot = -1;
       for (int j = 0; j < MAXB; j++)
@@ -531,19 +584,56 @@ static void player_step(sim *s, int i, const input *in) {
       if (slot < 0) break;
       float off = n > 1 ? ((float)k / (float)(n - 1) - 0.5f) * 2 * spread : 0;
       float jit = (rf(s) - 0.5f) * 0.03f;
-      float a = p->aim + off + jit, v = rocket && k == n / 2 ? 22.0f : 32.0f;
       bool rk = rocket && k == n / 2;
-      s->b[slot] = (bullet){ true, (uint8_t)i, (uint8_t)rk, p->x + cw_cos(p->aim) * 0.6f, p->y + cw_sin(p->aim) * 0.6f,
-                             cw_cos(a) * v, cw_sin(a) * v, 1.0f + (float)p->dmg * 0.8f + (rk ? 2.0f : 0.0f), rk ? 80 : 50, p->pierce };
+      float a = p->aim + off + jit + (w == PU_FLAME ? (rf(s) - 0.5f) * 0.25f : 0), v = rk ? 22.0f : w == PU_RAIL ? 70.0f : w == PU_FLAME ? 13.0f + rf(s) * 4 : 32.0f;
+      uint8_t kind = rk ? 1 : w == PU_RAIL ? 3 : w == PU_FLAME ? 4 : 0;
+      float dmg = 2.0f + (float)p->dmg + (rk ? 3.0f : 0.0f); /* 2 damage and through one body from the start; +1 a heavy-rounds level */
+      int life = rk ? 80 : 50, pierce = p->pierce + 1;
+      if (kind == 3) dmg = 5.0f + 1.5f * (float)p->dmg, pierce = 12, life = 40; /* the rail goes through a line of them */
+      if (kind == 4) dmg = 1.4f + 0.5f * (float)p->dmg, pierce = 4, life = 22;   /* a short hot cone */
+      s->b[slot] = (bullet){ true, (uint8_t)i, kind, (uint8_t)(p->pu_ammo_t > 0 && p->pu_ammo == PU_EXPLOSIVE && kind == 0 ? 1 : 0),
+                             p->x + cw_cos(p->aim) * 0.6f, p->y + cw_sin(p->aim) * 0.6f, cw_cos(a) * v, cw_sin(a) * v, dmg, life, pierce };
       ev(s, rk ? EV_ROCKET : EV_SHOT, s->b[slot].x, s->b[slot].y, s->b[slot].vx, s->b[slot].vy, i, 0);
     }
   }
-  if (in->bomb && p->bomb_cd == 0) {
+  if (in->bomb && p->bomb_cd == 0 && p->grenades > 0) { /* a grenade in an arc toward the aim */
+    p->grenades--;
+    p->bomb_cd = 25;
+    for (int j = 0; j < MAXB; j++)
+      if (!s->b[j].alive) {
+        s->b[j] = (bullet){ true, (uint8_t)i, 2, 0, p->x, p->y, cw_cos(p->aim) * 15.0f, cw_sin(p->aim) * 15.0f, 0, 36, 0 };
+        break;
+      }
+  } else if (in->bomb && p->bomb_cd == 0 && p->mines > 0) { /* a mine at the feet, armed after half a second */
+    p->mines--;
+    p->bomb_cd = 25;
+    for (int j = 0; j < MAXM; j++)
+      if (!s->m[j].alive) { s->m[j] = (mine){ true, (uint8_t)i, p->x, p->y, 30 }; break; }
+  } else if (in->bomb && p->bomb_cd == 0) {
     p->bomb_cd = 60 * 7;
     float bx = p->x + cw_cos(p->aim) * 6.0f, by = p->y + cw_sin(p->aim) * 6.0f;
     queue_boom(s, bx, by, 6.0f + (float)p->radius * 0.6f, 60, 8, i, true);
     queue_boom(s, bx + 1.8f, by - 1.2f, 4, 40, 18, i, false);
     queue_boom(s, bx - 1.8f, by + 1.2f, 4, 40, 26, i, false);
+  }
+  if (p->pu_weapon_t > 0) p->pu_weapon_t--;
+  if (p->pu_ammo_t > 0) p->pu_ammo_t--;
+  if (p->shield_t > 0) p->shield_t--;
+  if (p->magnet_t > 0) p->magnet_t--;
+  if (p->saw_t > 0) { /* two saws orbit the player and shred what they touch */
+    p->saw_t--;
+    p->saw_a += 0.11f;
+    if (s->tick % 4 == 0)
+      for (int k = 0; k < 2; k++) {
+        float a = p->saw_a + (float)k * 3.14159265f;
+        saw_ctx c = { i, p->x + cw_cos(a) * 2.4f, p->y + cw_sin(a) * 2.4f };
+        each_enemy(s, c.x, c.y, 0.55f, saw_hit, &c);
+      }
+  }
+  { /* stats: which power-up was held this tick */
+    int held = p->pu_weapon_t > 0 ? p->pu_weapon : p->pu_ammo_t > 0 ? p->pu_ammo : p->saw_t > 0 ? PU_SAWS : -1;
+    if (held >= 0) s->pu_ticks[held]++;
+    else s->plain_ticks++;
   }
 }
 
@@ -555,6 +645,7 @@ static void bullets_step(sim *s) {
     b->y += b->vy / TICK;
     if (--b->life <= 0 || b->x < -HALF || b->x > HALF || b->y < -HALF || b->y > HALF) {
       if (b->kind == 1 && b->alive) queue_boom(s, b->x, b->y, 2.4f, 8, 0, b->owner, false);
+      if (b->kind == 2 && b->alive) queue_boom(s, b->x, b->y, 5.0f + (float)s->p[b->owner].radius * 0.5f, 30, 0, b->owner, true); /* the grenade lands */
       b->alive = false;
       continue;
     }
@@ -562,6 +653,7 @@ static void bullets_step(sim *s) {
       obstacle *o = &s->o[k];
       if (!o->alive || !in_box(o, b->x, b->y, 0.05f)) continue;
       if (b->kind == 1) queue_boom(s, b->x, b->y, 2.4f + (float)s->p[b->owner].radius * 0.5f, 3.0f + b->dmg * 2.0f, 0, b->owner, false);
+      else if (b->kind == 2) queue_boom(s, b->x - b->vx / TICK, b->y - b->vy / TICK, 5.0f, 30, 0, b->owner, true);
       else hurt_obstacle(s, k, (int)b->dmg);
       b->alive = false;
       break;
@@ -704,6 +796,11 @@ static void enemies_step(sim *s) {
       float dx = e->x - p->x, dy = e->y - p->y, rr = EK[e->kind].radius + 0.45f;
       if (dx * dx + dy * dy > rr * rr) continue;
       e->atk = 30;
+      if (p->shield_t > 0) { /* the bubble shoves them off */
+        float l = cw_v2_length(cw_v2(dx, dy));
+        if (l > 0.01f) e->kx += dx / l * 0.35f, e->ky += dy / l * 0.35f;
+        continue;
+      }
       if (p->inv > 0) continue;
       float dmg = (float)EK[e->kind].dmg * (1.0f - 0.08f * (float)CW_MIN(p->armor, 6));
       p->hp -= dmg;
@@ -733,6 +830,92 @@ static void enemies_step(sim *s) {
       }
 }
 
+/* what a power-up gives */
+void sim_power_give(sim *s, int pi, int t) {
+  player *p = &s->p[pi];
+  switch (sim_power_category(t)) {
+  case 0: p->pu_weapon = t, p->pu_weapon_t = PU_WEAPON_TICKS; break;
+  case 1: p->pu_ammo = t, p->pu_ammo_t = PU_WEAPON_TICKS; break;
+  case 2:
+    if (t == PU_GRENADES) p->grenades = CW_MIN(p->grenades + 4, 8);
+    else p->mines = CW_MIN(p->mines + 3, 6);
+    break;
+  case 3: p->saw_t = 60 * 12; break;
+  case 4: p->shield_t = 60 * 8; break;
+  default: p->magnet_t = 60 * 10; break;
+  }
+  s->pu_taken[t]++;
+}
+/* how much a player holds already: of several players at a power-up, the one holding least takes it, and
+ * nobody takes a second of a timed kind they still hold for more than 5 s (no hogging in co-op) */
+static int power_load(const player *p, int t) {
+  int c = sim_power_category(t);
+  if ((c == 0 && p->pu_weapon_t > 300) || (c == 1 && p->pu_ammo_t > 300) || (c == 3 && p->saw_t > 300) || (c == 4 && p->shield_t > 120) ||
+      (c == 5 && p->magnet_t > 120) || (t == PU_GRENADES && p->grenades >= 8) || (t == PU_MINES && p->mines >= 6))
+    return -1;
+  return (p->pu_weapon_t > 0) + (p->pu_ammo_t > 0) + (p->saw_t > 0) + (p->shield_t > 0) + (p->magnet_t > 0) + (p->grenades > 0) + (p->mines > 0);
+}
+static void power_pickup(sim *s, int gi) {
+  pickup *g = &s->g[gi];
+  int best = -1, bl = 1 << 20;
+  for (int n = 0; n < MAXP; n++) {
+    int k = (n + s->tick) % MAXP; /* ties go round the players */
+    const player *p = &s->p[k];
+    if (!p->active || p->down) continue;
+    float dx = p->x - g->x, dy = p->y - g->y;
+    if (dx * dx + dy * dy > 1.0f) continue;
+    int l = power_load(p, g->value);
+    if (l >= 0 && l < bl) bl = l, best = k;
+  }
+  if (best < 0) return;
+  g->alive = false;
+  sim_power_give(s, best, g->value);
+  ev(s, EV_POWER, g->x, g->y, 0, 0, best, g->value);
+}
+
+/* power-ups placed in the yard: the risky corners, the gaps in the cinder ring the horde pours through, the
+ * ends of the painted lane and behind the crates; one every 30 s at the next free spot (a seeded order),
+ * at most three lying at once */
+static void power_director(sim *s) {
+  if (s->no_power || s->state != ST_PLAY || s->tick < 60 * 20 || s->tick % (60 * 30) != 0 || !s->pu_spots) return;
+  int lying = 0;
+  for (int i = 0; i < MAXG; i++) lying += s->g[i].alive && s->g[i].kind == PK_POWER;
+  if (lying >= 3) return;
+  for (int tries = 0; tries < s->pu_spots; tries++) {
+    int k = (s->pu_next++ * 7) % s->pu_spots;
+    float x = s->spot_x[k], y = s->spot_y[k];
+    bool taken = false;
+    for (int i = 0; i < MAXG; i++)
+      if (s->g[i].alive && s->g[i].kind == PK_POWER && (s->g[i].x - x) * (s->g[i].x - x) + (s->g[i].y - y) * (s->g[i].y - y) < 4) taken = true;
+    if (taken) continue;
+    int t = (int)(cw_rng_u32(&s->rng) % PU_KINDS);
+    drop_value(s, PK_POWER, x, y, t);
+    ev(s, EV_POWER_SPAWN, x, y, 0, 0, 0, t);
+    return;
+  }
+}
+
+static void mines_step(sim *s) {
+  for (int j = 0; j < MAXM; j++) {
+    mine *m = &s->m[j];
+    if (!m->alive) continue;
+    if (m->arm > 0) { m->arm--; continue; }
+    bool near = false;
+    int x0 = CW_CLAMP((int)((m->x - 1.4f + HALF) * 0.5f), 0, 40), x1 = CW_CLAMP((int)((m->x + 1.4f + HALF) * 0.5f), 0, 40);
+    int y0 = CW_CLAMP((int)((m->y - 1.4f + HALF) * 0.5f), 0, 40), y1 = CW_CLAMP((int)((m->y + 1.4f + HALF) * 0.5f), 0, 40);
+    for (int cy = y0; cy <= y1 && !near; cy++)
+      for (int cx = x0; cx <= x1 && !near; cx++)
+        for (int k = s->cell_start[cy * 41 + cx]; k < s->cell_start[cy * 41 + cx + 1]; k++) {
+          const enemy *e = &s->e[s->cell_idx[k]];
+          if (e->alive && (e->x - m->x) * (e->x - m->x) + (e->y - m->y) * (e->y - m->y) < 1.4f * 1.4f) { near = true; break; }
+        }
+    if (near) {
+      m->alive = false;
+      queue_boom(s, m->x, m->y, 4.5f, 35, 0, m->owner, true);
+    }
+  }
+}
+
 static void pickups_step(sim *s) {
   for (int i = 0; i < MAXG; i++) {
     pickup *g = &s->g[i];
@@ -758,10 +941,11 @@ static void pickups_step(sim *s) {
     g->vy *= 0.93f;
     g->x = cw_clampf(g->x, -HALF + 0.5f, HALF - 0.5f);
     g->y = cw_clampf(g->y, -HALF + 0.5f, HALF - 0.5f);
+    if (g->kind == PK_POWER) { power_pickup(s, i); continue; }
     for (int k = 0; k < MAXP; k++) {
       player *p = &s->p[k];
       if (!p->active || p->down) continue;
-      float dx = p->x - g->x, dy = p->y - g->y, d2 = dx * dx + dy * dy, mr = 3.0f + (float)p->magnet * 1.6f;
+      float dx = p->x - g->x, dy = p->y - g->y, d2 = dx * dx + dy * dy, mr = p->magnet_t > 0 ? 30.0f : 3.0f + (float)p->magnet * 1.6f;
       if (d2 < mr * mr && d2 > 0.0001f) {
         float d = cw_v2_length(cw_v2(dx, dy)), pull = 0.22f;
         g->vx += dx / d * pull * TICK * 0.12f;
@@ -825,6 +1009,7 @@ void sim_step(sim *s, const input in[MAXP]) {
       s->wave_tick = 0;
       for (int i = 0; i < MAXE; i++)
         if (s->e[i].alive) kill_enemy(s, i, -1, 0, 0);
+      memset(s->m, 0, sizeof s->m);
     }
   }
   for (int i = 0; i < MAXP; i++) player_step(s, i, &in[i]);
@@ -884,6 +1069,8 @@ void sim_step(sim *s, const input in[MAXP]) {
     do_boom(s, &copy);
   }
   pickups_step(s);
+  mines_step(s);
+  if (s->state == ST_PLAY) power_director(s);
   if (s->nav_dirty) {
     cw_nav_update(s->nav);
     s->nav_dirty = false;

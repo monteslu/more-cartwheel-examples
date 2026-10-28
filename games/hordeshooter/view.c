@@ -147,6 +147,8 @@ static struct {
   t3_instanced_mesh *eb[EK_KINDS][CH_MAXF];
   t3_mesh *pm[MAXP][CH_MAXC * CH_MAXF][CH_MAXG];
   t3_instanced_mesh *bullet, *rocket, *gem[3], *health, *crate, *barrel, *wall, *pillar, *shadowblob;
+  t3_instanced_mesh *power[PU_KINDS], *power_glow, *grenade, *rail, *flame, *saw, *mine;
+  t3_mesh *shield[MAXP];
   t3_object *pl[MAXP];
   cw_node pn[MAXP];
   int pl_frame[MAXP];
@@ -482,6 +484,119 @@ static void view_dress(void) {
   }
 }
 
+/* ── power-ups: one modelled, glowing pickup per type, each its own silhouette and colour ─────────── */
+static const float PUC[PU_KINDS][3] = {
+  { 1.0f, 0.62f, 0.15f }, { 1.0f, 0.95f, 0.3f }, { 1.0f, 0.3f, 0.15f }, { 0.35f, 0.75f, 1.0f }, { 1.0f, 0.45f, 0.05f }, /* weapons */
+  { 1.0f, 0.25f, 0.55f }, { 0.95f, 1.0f, 0.4f },                                                                       /* ammo */
+  { 0.45f, 1.0f, 0.35f }, { 0.9f, 0.9f, 0.25f },                                                                       /* charges */
+  { 0.85f, 0.88f, 0.95f }, { 0.3f, 0.6f, 1.0f }, { 0.75f, 0.35f, 1.0f },                                              /* helpers */
+};
+static t3_mat4 MRY(float x, float y, float z, float sx, float sy, float sz, float rz) {
+  t3_mat4 m;
+  t3_quat q = { 0, 0, cw_sin(rz * 0.5f), cw_cos(rz * 0.5f) };
+  t3_mat4_compose(&m, (t3_vec3){ x, y, z }, q, (t3_vec3){ sx, sy, sz });
+  return m;
+}
+static t3_geometry *power_model(int t) {
+  part p[12];
+  int n = 0;
+  const t3_color hi = { 1, 1, 1 }, mid = { 0.55f, 0.55f, 0.6f }, dk = { 0.18f, 0.18f, 0.2f };
+#define P(g, m, c) p[n++] = (part){ g, m, c }
+  switch (t) {
+  case PU_SHOTGUN: /* a fan of three short barrels on a stock */
+    for (int k = -1; k <= 1; k++) P(t3_cylinder_geometry_new(0.05f, 0.05f, 0.55f, 8, 1, false), MR(0.1f * (float)k, 0, 0.1f, 1, 1, 1, 1.5708f), mid);
+    P(t3_box_geometry_new(0.3f, 0.12f, 0.3f, 1, 1, 1), M(0, 0, -0.25f, 1, 1, 1), dk);
+    break;
+  case PU_MINIGUN: /* a ring of six barrels */
+    for (int k = 0; k < 6; k++) P(t3_cylinder_geometry_new(0.035f, 0.035f, 0.6f, 6, 1, false), MR(0.09f * cw_cos((float)k * 1.047f), 0.09f * cw_sin((float)k * 1.047f), 0, 1, 1, 1, 1.5708f), mid);
+    P(t3_cylinder_geometry_new(0.16f, 0.16f, 0.16f, 12, 1, false), MR(0, 0, -0.25f, 1, 1, 1, 1.5708f), dk);
+    break;
+  case PU_ROCKETS: /* a rocket: body, nose, fins */
+    P(t3_cylinder_geometry_new(0.09f, 0.09f, 0.5f, 10, 1, false), M(0, 0, 0, 1, 1, 1), mid);
+    P(t3_cone_geometry_new(0.09f, 0.2f, 10, 1, false), M(0, 0.35f, 0, 1, 1, 1), hi);
+    for (int k = 0; k < 3; k++) P(t3_box_geometry_new(0.02f, 0.16f, 0.14f, 1, 1, 1), MR(0.1f * cw_cos((float)k * 2.09f), -0.2f, 0.1f * cw_sin((float)k * 2.09f), 1, 1, 1, 0), dk);
+    break;
+  case PU_RAIL: /* a long barrel with coils */
+    P(t3_box_geometry_new(0.07f, 0.07f, 0.8f, 1, 1, 1), M(0, 0, 0, 1, 1, 1), mid);
+    for (int k = 0; k < 4; k++) P(t3_torus_geometry_new(0.1f, 0.025f, 6, 12, 6.2832f), M(0, 0, -0.25f + 0.17f * (float)k, 1, 1, 1), hi);
+    break;
+  case PU_FLAME: /* a tank and a nozzle */
+    P(t3_cylinder_geometry_new(0.13f, 0.13f, 0.4f, 12, 1, false), M(0, 0, 0, 1, 1, 1), mid);
+    P(t3_cone_geometry_new(0.08f, 0.25f, 8, 1, false), MR(0, 0.05f, 0.3f, 1, 1, 1, 1.5708f), hi);
+    break;
+  case PU_EXPLOSIVE: /* a shell with a band */
+    P(t3_cylinder_geometry_new(0.08f, 0.08f, 0.3f, 10, 1, false), M(0, 0, 0, 1, 1, 1), hi);
+    P(t3_cone_geometry_new(0.08f, 0.16f, 10, 1, false), M(0, 0.23f, 0, 1, 1, 1), hi);
+    P(t3_torus_geometry_new(0.085f, 0.025f, 6, 14, 6.2832f), MR(0, -0.05f, 0, 1, 1, 1, 1.5708f), dk);
+    break;
+  case PU_RAPID: /* two chevrons */
+    for (int k = 0; k < 2; k++) {
+      P(t3_box_geometry_new(0.3f, 0.07f, 0.07f, 1, 1, 1), MRY(-0.08f, 0.12f - 0.2f * (float)k, 0, 1, 1, 1, 0.6f), hi);
+      P(t3_box_geometry_new(0.3f, 0.07f, 0.07f, 1, 1, 1), MRY(0.08f, 0.12f - 0.2f * (float)k, 0, 1, 1, 1, -0.6f), hi);
+    }
+    break;
+  case PU_GRENADES: /* a pineapple grenade: body, lever, ring */
+    P(t3_sphere_geometry_new(0.16f, 12, 8), M(0, 0, 0, 1, 1.15f, 1), mid);
+    P(t3_box_geometry_new(0.05f, 0.18f, 0.04f, 1, 1, 1), M(0.1f, 0.12f, 0, 1, 1, 1), dk);
+    P(t3_torus_geometry_new(0.06f, 0.015f, 6, 12, 6.2832f), M(-0.06f, 0.22f, 0, 1, 1, 1), hi);
+    break;
+  case PU_MINES: /* a flat disc with a dome */
+    P(t3_cylinder_geometry_new(0.24f, 0.26f, 0.08f, 16, 1, false), M(0, 0, 0, 1, 1, 1), mid);
+    P(t3_sphere_geometry_new_ex(0.08f, 10, 6, 0, 6.2832f, 0, 1.5708f), M(0, 0.04f, 0, 1, 1, 1), hi);
+    break;
+  case PU_SAWS: /* a toothed blade */
+    P(t3_cylinder_geometry_new(0.26f, 0.26f, 0.03f, 20, 1, false), M(0, 0, 0, 1, 1, 1), hi);
+    for (int k = 0; k < 8; k++) P(t3_box_geometry_new(0.08f, 0.03f, 0.08f, 1, 1, 1), MR(0.28f * cw_cos((float)k * 0.785f), 0, 0.28f * cw_sin((float)k * 0.785f), 1, 1, 1, 0), mid);
+    break;
+  case PU_SHIELD: /* a kite shield */
+    P(t3_box_geometry_new(0.34f, 0.4f, 0.06f, 1, 1, 1), M(0, 0.05f, 0, 1, 1, 1), hi);
+    P(t3_cone_geometry_new(0.24f, 0.22f, 4, 1, false), MR(0, -0.25f, 0, 1, 0.25f, 1, 3.1416f), hi);
+    break;
+  default: /* a horseshoe magnet */
+    P(t3_torus_geometry_new(0.18f, 0.06f, 8, 16, 3.1416f), M(0, 0.05f, 0, 1, 1, 1), hi);
+    P(t3_box_geometry_new(0.12f, 0.16f, 0.12f, 1, 1, 1), M(-0.18f, -0.08f, 0, 1, 1, 1), mid);
+    P(t3_box_geometry_new(0.12f, 0.16f, 0.12f, 1, 1, 1), M(0.18f, -0.08f, 0, 1, 1, 1), mid);
+    break;
+  }
+#undef P
+  return merge(p, n);
+}
+static void view_power_init(void) {
+  for (int t = 0; t < PU_KINDS; t++) {
+    t3_material *m = mat(PUC[t][0], PUC[t][1], PUC[t][2], 0.3f, 0.5f, true);
+    m->emissive = lin(PUC[t][0], PUC[t][1], PUC[t][2]);
+    m->emissive_intensity = 1.2f;
+    V.power[t] = imesh(sim_power_name(t), power_model(t), m, 8, true);
+  }
+  { /* the glow ring under each lying power-up */
+    t3_material *rm = t3_mesh_basic_material_new(0xffffff);
+    rm->blending = T3_ADDITIVE_BLENDING, rm->transparent = true, rm->depth_write = false, rm->side = T3_DOUBLE_SIDE;
+    t3_geometry *g = t3_ring_geometry_new(0.55f, 0.85f, 32, 1);
+    t3_geometry_apply_matrix4(g, &(t3_mat4){ { 1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1 } });
+    V.power_glow = imesh("PowerGlow", g, rm, 64, false);
+  }
+  V.grenade = imesh("Grenades", t3_sphere_geometry_new(0.14f, 10, 8), glow(0.5f, 1, 0.35f, 2), 64, false);
+  V.rail = imesh("RailShots", t3_box_geometry_new(0.06f, 0.06f, 3.0f, 1, 1, 1), glow(0.4f, 0.8f, 1, 14), 128, false);
+  V.flame = imesh("FlameShots", t3_icosahedron_geometry_new(0.22f, 0), glow(1, 0.45f, 0.08f, 6), 512, false);
+  {
+    t3_material *sm = mat(0.85f, 0.88f, 0.95f, 0.25f, 0.9f, false);
+    sm->emissive = lin(0.9f, 0.9f, 1.0f), sm->emissive_intensity = 0.6f;
+    V.saw = imesh("Saws", power_model(PU_SAWS), sm, 2 * MAXP, true);
+  }
+  V.mine = imesh("Mines", power_model(PU_MINES), mat(0.6f, 0.6f, 0.2f, 0.4f, 0.6f, true), MAXM, true);
+  for (int i = 0; i < MAXP; i++) { /* a bubble round a shielded player */
+    t3_material *bm = t3_mesh_basic_material_new(0xffffff);
+    bm->color = lin(0.25f, 0.5f, 1.0f);
+    bm->blending = T3_ADDITIVE_BLENDING, bm->transparent = true, bm->depth_write = false, bm->opacity = 0.35f;
+    t3_mesh *m = t3_mesh_new(t3_icosahedron_geometry_new(1.1f, 2), bm);
+    m->base.visible = false;
+    m->base.position = (t3_vec3){ 0, 0.9f, 0 };
+    t3_object_add(V.pl[i], m);
+    V.shield[i] = m;
+    t3_release(m), t3_release(bm);
+  }
+}
+
 void view_init(cw_node root) {
   memset(&V, 0, sizeof V);
   V.root = cw_node_new("Node3D", "View");
@@ -535,7 +650,7 @@ void view_init(cw_node root) {
       }
     }
   }
-  V.bullet = imesh("Bullets", t3_box_geometry_new(0.07f, 0.07f, 0.7f, 1, 1, 1), glow(1, 0.85f, 0.35f, 6), MAXB, false);
+  V.bullet = imesh("Bullets", t3_box_geometry_new(0.09f, 0.09f, 1.2f, 1, 1, 1), glow(1, 0.82f, 0.35f, 9), MAXB, false); /* a long hot tracer */
   V.rocket = imesh("Rockets", t3_cylinder_geometry_new(0.1f, 0.1f, 0.7f, 8, 1, false), glow(1, 0.45f, 0.12f, 5), 64, false);
   { /* xp gems: a faceted shard (a stretched octahedron: each face keeps its own normal), glassy with a glowing core; a richer gem is
      * bigger and changes colour: cool cyan, green, then gold */
@@ -631,6 +746,7 @@ void view_init(cw_node root) {
     t3_release(mr), t3_release(ring), t3_release(bm), t3_release(tm), t3_release(rm);
     t3_release(g);
   }
+  view_power_init(); /* after the players: the shield bubble hangs on each */
 }
 
 void view_free(void) {
@@ -689,14 +805,28 @@ void view_sync(const sim *s, float time) {
       V.st.enemies_drawn += cnt[k][f];
     }
   /* bullets */
-  int nb = 0, nr = 0;
+  int nb = 0, nr = 0, ngr = 0, nrl = 0, nfl = 0;
   for (int i = 0; i < MAXB; i++) {
     const bullet *b = &s->b[i];
     if (!b->alive) continue;
+    float yaw = cw_atan2(-b->vx, -b->vy);
+    if (b->kind == 2) { /* a grenade in its arc */
+      float t = 1.0f - (float)b->life / 36.0f;
+      if (ngr < V.grenade->instance_matrix->count) put(V.grenade, ngr++, b->x, 0.9f + 5.0f * t * (1 - t) * 1.6f, b->y, (float)b->life * 0.4f, 1, 1, 1);
+      continue;
+    }
+    if (b->kind == 3) {
+      if (nrl < V.rail->instance_matrix->count) put(V.rail, nrl++, b->x, 0.9f, b->y, yaw, 1, 1, 1);
+      continue;
+    }
+    if (b->kind == 4) { /* a ball of flame that grows as it slows */
+      float k = 0.6f + 1.6f * (1.0f - (float)b->life / 22.0f);
+      if (nfl < V.flame->instance_matrix->count) put(V.flame, nfl++, b->x, 0.8f + 0.3f * (1.0f - (float)b->life / 22.0f), b->y, (float)(i * 7 + b->life), k, k, k);
+      continue;
+    }
     t3_instanced_mesh *im = b->kind ? V.rocket : V.bullet;
     int *c = b->kind ? &nr : &nb;
     if (*c >= im->instance_matrix->count) continue;
-    float yaw = cw_atan2(-b->vx, -b->vy);
     if (b->kind) {
       t3_mat4 m;
       t3_quat qy = { 0, cw_sin(yaw * 0.5f), 0, cw_cos(yaw * 0.5f) }, qx = { 0.70710678f, 0, 0, 0.70710678f };
@@ -706,11 +836,31 @@ void view_sync(const sim *s, float time) {
     } else put(im, *c, b->x, 0.9f, b->y, yaw, 1, 1, 1 + (b->dmg > 2 ? 0.4f : 0));
     (*c)++;
   }
-  V.bullet->count = nb, V.rocket->count = nr;
-  touch(V.bullet, false), touch(V.rocket, false);
-  V.st.bullets = nb + nr;
+  V.bullet->count = nb, V.rocket->count = nr, V.grenade->count = ngr, V.rail->count = nrl, V.flame->count = nfl;
+  touch(V.bullet, false), touch(V.rocket, false), touch(V.grenade, false), touch(V.rail, false), touch(V.flame, false);
+  V.st.bullets = nb + nr + ngr + nrl + nfl;
+  { /* mines */
+    int nm = 0;
+    for (int j = 0; j < MAXM; j++)
+      if (s->m[j].alive) put(V.mine, nm++, s->m[j].x, 0.05f, s->m[j].y, 0, 1, s->m[j].arm > 0 ? 0.6f : 1.0f, 1);
+    V.mine->count = nm;
+    touch(V.mine, false);
+  }
+  { /* saws round their players */
+    int nsw = 0;
+    for (int k = 0; k < MAXP; k++) {
+      const player *p = &s->p[k];
+      if (!p->active || p->down || p->saw_t <= 0) continue;
+      for (int j = 0; j < 2; j++) {
+        float a = p->saw_a + (float)j * 3.14159265f;
+        put(V.saw, nsw++, p->x + cw_cos(a) * 2.4f, 0.7f, p->y + cw_sin(a) * 2.4f, time * 25.0f, 1.3f, 1.3f, 1.3f);
+      }
+    }
+    V.saw->count = nsw;
+    touch(V.saw, false);
+  }
   /* pickups */
-  int ng[3] = { 0, 0, 0 }, nh = 0;
+  int ng[3] = { 0, 0, 0 }, nh = 0, np_[PU_KINDS] = { 0 }, npg = 0;
   for (int i = 0; i < MAXG; i++) {
     const pickup *g = &s->g[i];
     if (!g->alive) continue;
@@ -720,8 +870,18 @@ void view_sync(const sim *s, float time) {
       if (ng[t] >= V.gem[t]->instance_matrix->count) continue;
       float sc = blink * (t == 2 ? 1.9f : t == 1 ? 1.4f : 1.0f);
       put(V.gem[t], ng[t]++, g->x, 0.45f + 0.12f * cw_sin(time * 3.2f + (float)i * 0.7f), g->y, time * 1.6f + (float)i, sc, sc, sc);
+    } else if (g->kind == PK_POWER) {
+      int t = g->value % PU_KINDS;
+      if (np_[t] >= V.power[t]->instance_matrix->count || npg >= V.power_glow->instance_matrix->count) continue;
+      float pulse = 1.0f + 0.12f * cw_sin(time * 5.0f + (float)i);
+      put(V.power[t], np_[t]++, g->x, 0.85f + 0.15f * cw_sin(time * 2.5f + (float)i), g->y, time * 1.4f + (float)i, 1.7f * blink, 1.7f * blink, 1.7f * blink);
+      put(V.power_glow, npg, g->x, 0.04f, g->y, 0, pulse * blink, 1, pulse * blink);
+      t3_instanced_mesh_set_color_at(V.power_glow, npg++, lin(PUC[t][0], PUC[t][1], PUC[t][2]));
     } else if (nh < 64) put(V.health, nh++, g->x, 0.55f + 0.1f * cw_sin(time * 3 + (float)i), g->y, time + (float)i, blink, blink, blink);
   }
+  for (int t = 0; t < PU_KINDS; t++) V.power[t]->count = np_[t], touch(V.power[t], false);
+  V.power_glow->count = npg;
+  touch(V.power_glow, true);
   for (int t = 0; t < 3; t++) V.gem[t]->count = ng[t], touch(V.gem[t], false);
   V.health->count = nh;
   touch(V.health, false);
@@ -763,6 +923,7 @@ void view_sync(const sim *s, float time) {
     }
     cw_node3d_set_position(V.pl_light[i], (t3_vec3){ p->x, 2.4f, p->y });
     cw_node_set(V.pl_light[i], "energy", cw_val_float(p->down ? 8.0f : 22.0f));
+    if (V.shield[i]) V.shield[i]->base.visible = p->shield_t > 0 && !p->down && (p->shield_t > 90 || (p->shield_t / 6) & 1);
     cw_node3d_set_position(V.pn[i], (t3_vec3){ p->x, p->down ? -0.6f : 0, p->y });
     cw_node3d_set_rotation(V.pn[i], (t3_vec3){ p->down ? 1.4f : 0, -p->aim + 1.5708f, 0 }); /* the model faces +Z */
     if (V.soldier.nclip < 2) continue;

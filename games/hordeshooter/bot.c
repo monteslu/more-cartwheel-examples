@@ -17,17 +17,22 @@ void horde_bot(const sim *s, int i, input *in) {
     if (d < best) best = d, bx = dx, by = dy;
     if (d < 36) near_x -= dx / (d + 1), near_y -= dy / (d + 1);
   }
-  float gd = 1e9f, gx = 0, gy = 0;
+  float gd = 1e9f, gx = 0, gy = 0, pd = 1e9f, px = 0, py = 0;
   for (int k = 0; k < MAXG; k++) {
     const pickup *g = &s->g[k];
     if (!g->alive) continue;
     float dx = g->x - p->x, dy = g->y - p->y, d = dx * dx + dy * dy;
+    if (g->kind == PK_POWER) { if (d < pd) pd = d, px = dx, py = dy; continue; }
     if (d < gd) gd = d, gx = dx, gy = dy;
   }
   float mx = near_x * 6, my = near_y * 6;
   if (gd < 400 && gd > 0.01f) {
     float l = sqrtf(gd);
     mx += gx / l * 0.7f, my += gy / l * 0.7f;
+  }
+  if (pd < 18 * 18 && pd > 0.01f) { /* a power-up within reach: go for it, braver than for a gem */
+    float l = sqrtf(pd);
+    mx += px / l * 1.6f, my += py / l * 1.6f;
   }
   /* keep off the walls and crates, apart from the other bots, and in the yard */
   for (int k = 0; k < MAXO; k++) {
@@ -51,6 +56,6 @@ void horde_bot(const sim *s, int i, input *in) {
     in->ax = bx / l, in->ay = by / l;
   } else in->ax = cw_cos(p->aim), in->ay = cw_sin(p->aim);
   in->fire = best < 400;
-  in->bomb = crowd > 28;
+  in->bomb = crowd > ((p->grenades > 0 || p->mines > 0) ? 10 : 28);
   if (p->offer_ticks > 0 && p->offer_ticks < 60 * 8 - 45) in->pick = 1 + (p->level + i) % 3; /* a bot takes a while, then picks */
 }

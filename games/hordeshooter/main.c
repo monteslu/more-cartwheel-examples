@@ -66,7 +66,7 @@ static struct {
 static cw_font font;
 static double T_sim, T_view, T_fx, T_frame, T_last; /* ms, averaged over the bench window */
 static int T_n;
-static cw_sound snd_boom, snd_shot, snd_kill, snd_gem, snd_move, snd_select, snd_back, snd_music;
+static cw_sound snd_boom, snd_shot, snd_kill, snd_gem, snd_move, snd_select, snd_back, snd_music, snd_power;
 static cw_voice music;
 
 /* ── sounds: a few synthesised waves so the repository needs no audio files ── */
@@ -123,6 +123,8 @@ static void start(int players, void *u) {
   G.in_match = true;
   G.ticks = 0;
   G.banner_t = 180, G.banner_kind = 0;
+  if (getenv("HORDE_POWER")) /* development (screenshots, surveys): every player starts holding power-up n, refreshed as it runs out */
+    for (int i = 0; i < players; i++) sim_power_give(&G.S, i, atoi(getenv("HORDE_POWER")) % PU_KINDS);
   memset(G.level_flash, 0, sizeof G.level_flash);
 }
 
@@ -140,9 +142,10 @@ static void init(void *u) {
   font = cw_ui_font_sans();
   if (getenv("HORDE_QUALITY")) cw_quality_set((cw_quality)CW_CLAMP(atoi(getenv("HORDE_QUALITY")), 0, 3), true);
   snd_boom = synth(1.1f, 70, 28, 0.75f, 1.0f, 3.5f);
-  snd_shot = synth(0.08f, 900, 200, 0.5f, 0.35f, 6);
+  snd_shot = synth(0.14f, 260, 55, 0.62f, 0.5f, 9); /* a low thump with a crack of noise */
   snd_kill = synth(0.12f, 200, 90, 0.7f, 0.4f, 5);
   snd_gem = synth(0.1f, 1200, 1800, 0, 0.25f, 4);
+  snd_power = synth(0.45f, 440, 1320, 0.05f, 0.45f, 2.5f); /* a rising chime: a power-up taken */
   snd_move = synth(0.05f, 660, 660, 0, 0.25f, 2);
   snd_select = synth(0.12f, 520, 1040, 0, 0.3f, 3);
   snd_back = synth(0.12f, 520, 260, 0, 0.3f, 3);
@@ -207,7 +210,12 @@ static void fixed_update(void *u, double dt) {
   for (int i = 0; i < MAXP; i++) before_level[i] = G.S.p[i].level;
   int booms = G.S.nboom_total, kills = G.S.killed_total;
   double t0 = cw_wall();
+  if (getenv("HORDE_POWER") && G.S.tick % 600 == 0) /* keep the development power-up held */
+    for (int i = 0; i < G.S.players; i++) sim_power_give(&G.S, i, atoi(getenv("HORDE_POWER")) % PU_KINDS);
+  int ev0 = G.S.ev_n;
   sim_step(&G.S, in);
+  for (int k = ev0 <= G.S.ev_n ? ev0 : 0; k < G.S.ev_n; k++) /* the events this tick added */
+    if (G.S.ev[k].kind == EV_POWER) play(snd_power, cw_shell_sfx_bus(), 0.7f);
   T_sim += (cw_wall() - t0) * 1000;
   G.ticks = G.S.tick;
   G.wave = G.S.wave;
@@ -299,6 +307,23 @@ static void hud(void) {
       cw_r2d_rect(cw_rect_make(x, oy + 58 * u, w * (float)p->offer_ticks / 480.0f, 2 * u), rgba(0.3f, 1, 0.8f, 1));
     }
     if (p->down) text("DOWN: a friend can pull you up", x + 12 * u, y + h + 2 * u, 12 * u, rgba(1, 0.6f, 0.5f, 1), CW_ALIGN_LEFT);
+    else { /* power-ups held: name and seconds left, or charges */
+      char pw[96];
+      int n = 0;
+      pw[0] = 0;
+      if (p->pu_weapon_t > 0) n += snprintf(pw + n, sizeof pw - (size_t)n, "%s %d  ", sim_power_name(p->pu_weapon), (p->pu_weapon_t + 59) / 60);
+      if (p->pu_ammo_t > 0) n += snprintf(pw + n, sizeof pw - (size_t)n, "%s %d  ", sim_power_name(p->pu_ammo), (p->pu_ammo_t + 59) / 60);
+      if (p->saw_t > 0) n += snprintf(pw + n, sizeof pw - (size_t)n, "SAWS %d  ", (p->saw_t + 59) / 60);
+      if (p->shield_t > 0) n += snprintf(pw + n, sizeof pw - (size_t)n, "SHIELD %d  ", (p->shield_t + 59) / 60);
+      if (p->magnet_t > 0) n += snprintf(pw + n, sizeof pw - (size_t)n, "MAGNET %d  ", (p->magnet_t + 59) / 60);
+      if (p->grenades > 0) n += snprintf(pw + n, sizeof pw - (size_t)n, "GRENADES x%d  ", p->grenades);
+      if (p->mines > 0 && n < (int)sizeof pw - 16) n += snprintf(pw + n, sizeof pw - (size_t)n, "MINES x%d", p->mines);
+      if (n) {
+        float py = (i & 2) ? y - 18 * u : y + h + 2 * u;
+        if (p->offer_ticks > 0) py = (i & 2) ? py - 66 * u : py + 62 * u;
+        text(pw, x + 4 * u, py, 13 * u, rgba(1, 0.9f, 0.45f, 1), CW_ALIGN_LEFT);
+      }
+    }
     if (G.level_flash[i] > 0) {
       snprintf(b, sizeof b, "P%d: %s", i + 1, sim_upgrade_name(G.level_up[i]));
       text(b, cs.x * 0.5f, cs.y * 0.62f + (float)i * 22 * u, 20 * u, rgba(PC[i][0], PC[i][1], PC[i][2], cw_clampf(G.level_flash[i] / 40.0f, 0, 1)), CW_ALIGN_CENTER);

@@ -22,7 +22,19 @@
 
 enum { EK_RUNNER, EK_BRUTE, EK_BLOATER, EK_BOSS, EK_KINDS };
 enum { OK_CRATE, OK_BARREL, OK_WALL, OK_PILLAR, OK_KINDS };
-enum { EV_SHOT, EV_HIT, EV_KILL, EV_BOOM, EV_CRATE, EV_BARREL, EV_WALL, EV_GEM, EV_HURT, EV_LEVEL, EV_WAVE, EV_BOSS, EV_DOWN, EV_ROCKET };
+enum { EV_SHOT, EV_HIT, EV_KILL, EV_BOOM, EV_CRATE, EV_BARREL, EV_WALL, EV_GEM, EV_HURT, EV_LEVEL, EV_WAVE, EV_BOSS, EV_DOWN, EV_ROCKET, EV_POWER, EV_POWER_SPAWN };
+
+/* power-ups (pickup kind PK_POWER + type): temporary weapons, ammo, throwables and helpers */
+enum { PU_SHOTGUN, PU_MINIGUN, PU_ROCKETS, PU_RAIL, PU_FLAME, /* weapons, 12 s */
+       PU_EXPLOSIVE, PU_RAPID,                                /* ammo, 12 s */
+       PU_GRENADES, PU_MINES,                                 /* charges */
+       PU_SAWS, PU_SHIELD, PU_MAGNET,                         /* helpers */
+       PU_KINDS };
+#define PK_POWER 2
+#define MAXM 32 /* mines on the ground */
+#define PU_WEAPON_TICKS (60 * 12)
+const char *sim_power_name(int t);
+int sim_power_category(int t); /* 0 weapon, 1 ammo, 2 charges, 3 saws, 4 shield, 5 magnet */
 
 typedef struct input { float mx, my, ax, ay; bool fire, bomb; int pick; /* 1..3 takes that upgrade offer, 0 none */ } input;
 
@@ -33,18 +45,22 @@ typedef struct player {
   /* upgrades */
   int rate, shots, dmg, pierce, rocket, speed, magnet, radius, armor;
   int last_up;
+  /* power-ups held: a weapon and an ammo with their ticks left, grenades and mines, saws, shield, magnet */
+  int pu_weapon, pu_weapon_t, pu_ammo, pu_ammo_t, grenades, mines, saw_t, shield_t, magnet_t;
+  float saw_a;
   int offer[3], offer_ticks, pending; /* an upgrade choice on screen: offer_ticks > 0 */
 } player;
 
 typedef struct enemy {
   bool alive;
   uint8_t kind;
-  int hp, flash, atk, spawn_age, ph;
+  int hp, flash, atk, spawn_age, ph, hits, first_hit; /* hits taken and the tick of the first (stats only) */
   float x, y, kx, ky, face, speed;
   cw_crowd_agent agent;
 } enemy;
 
-typedef struct bullet { bool alive; uint8_t owner, kind; float x, y, vx, vy, dmg; int life, pierce; } bullet;
+typedef struct bullet { bool alive; uint8_t owner, kind, fx; float x, y, vx, vy, dmg; int life, pierce; } bullet; /* kind: 0 round, 1 rocket, 2 grenade, 3 rail, 4 flame; fx 1: explosive */
+typedef struct mine { bool alive; uint8_t owner; float x, y; int arm; } mine;
 typedef struct obstacle { bool alive; uint8_t kind; float x, y, hx, hy; int hp, maxhp; uint32_t nav; } obstacle;
 typedef struct pickup { bool alive; uint8_t kind; float x, y, vx, vy; int life, value, age; } pickup; /* value: the xp a gem gives (gems close together merge) */
 typedef struct boom { float x, y, r, dmg; int delay; uint8_t owner; bool big; } boom;
@@ -60,6 +76,12 @@ typedef struct sim {
   obstacle o[MAXO];
   pickup g[MAXG];
   boom x[MAXX];
+  mine m[MAXM];
+  int pu_next, pu_spots;
+  bool no_power; /* development: no power-ups at all (the A/B of the bot runs) */
+  float spot_x[16], spot_y[16];
+  /* power-up stats (not state): pickups per type, kills and player-ticks while a type was held */
+  int pu_taken[PU_KINDS], pu_kills[PU_KINDS], pu_ticks[PU_KINDS], plain_kills, plain_ticks;
   int nenemies, nbullets, nboom_total;
   uint32_t hash;
   /* nav and flow */
@@ -78,6 +100,8 @@ typedef struct sim {
   float cam_x, cam_y; /* centroid, for the spawner */
   /* stats (not state) */
   float crowd_ms;
+  /* time to kill, per wave (0..FINAL_WAVE) and kind, for the kills a player made: kills, hits taken, ticks from the first hit (stats only) */
+  int ttk_n[21][EK_KINDS], ttk_hits[21][EK_KINDS], ttk_ticks[21][EK_KINDS];
 } sim;
 
 enum { ST_PLAY, ST_OVER, ST_WON };
@@ -92,6 +116,7 @@ int sim_alive_players(const sim *s);
 void horde_bot(const sim *s, int i, input *in); /* bot.c */
 const char *sim_upgrade_name(int u);
 /* team centre and the spread of the living players, for the camera */
+void sim_power_give(sim *s, int pi, int t); /* hand a power-up to a player (pickups; development) */
 void sim_team_box(const sim *s, float *cx, float *cy, float *hw, float *hh);
 
 #endif
