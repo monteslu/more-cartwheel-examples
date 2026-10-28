@@ -16,6 +16,7 @@ models/foreman.glb
 models/matron.glb
 models/ringmaster.glb
 models/colossus.glb
+models/arthur.glb
 models/stage0.glb
 models/stage1.glb
 models/stage2.glb

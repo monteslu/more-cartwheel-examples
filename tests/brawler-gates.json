@@ -28,7 +28,13 @@
       "game.pickups",
       "game.nan",
       "game.proj",
-      "game.rigs"
+      "game.rigs",
+      "rag.made",
+      "rag.missed",
+      "rag.live_max",
+      "rag.getup_up",
+      "rag.getup_prone",
+      "rag.hash"
     ],
     "expect": {
       "game.ticks": 1124,
@@ -144,7 +150,13 @@
       "game.blocks",
       "game.nan",
       "game.proj",
-      "game.rigs"
+      "game.rigs",
+      "rag.made",
+      "rag.missed",
+      "rag.live_max",
+      "rag.getup_up",
+      "rag.getup_prone",
+      "rag.hash"
     ],
     "expect": {
       "game.ticks": 1382,
@@ -201,7 +213,13 @@
       "game.deaths",
       "game.nan",
       "game.proj",
-      "game.rigs"
+      "game.rigs",
+      "rag.made",
+      "rag.missed",
+      "rag.live_max",
+      "rag.getup_up",
+      "rag.getup_prone",
+      "rag.hash"
     ],
     "expect": {
       "game.ticks": 2175,

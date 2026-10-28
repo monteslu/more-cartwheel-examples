@@ -69,11 +69,11 @@ static const wave_def STAGE1[] = {
 };
 static const wave_def STAGE2[] = {
   { 0, 4, { T, P, R, H } }, { 14, 5, { K, T, G, R, T } }, { 28, 5, { R, H, K, P, G } },
-  { 42, 4, { B, K, H, P } }, { 56, 1, { D_MATRON } },
+  { 42, 4, { B, K, H, P } }, { 56, 1, { D_ARTHUR } },
 };
-static const wave_def STAGE3[] = {
-  { 0, 5, { K, R, P, H, K } }, { 14, 6, { K, G, R, P, H, R } }, { 28, 4, { B, K, R, G } },
-  { 42, 6, { K, R, H, P, G, T } }, { 56, 1, { D_RINGMASTER } },
+static const wave_def STAGE3[] = { /* the ringmaster runs the arcade floor as a mid-stage mini boss; the Matron owns the stage */
+  { 0, 5, { K, R, P, H, K } }, { 14, 6, { K, G, R, P, H, R } }, { 28, 5, { B, K, R, G, D_RINGMASTER } },
+  { 42, 6, { K, R, H, P, G, T } }, { 56, 1, { D_MATRON } },
 };
 static const wave_def STAGE4[] = {
   { 0, 6, { K, R, G, T, H, R } }, { 14, 4, { B, K, H, G } }, { 28, 7, { K, G, R, H, P, P, T } },
@@ -105,9 +105,9 @@ void stage_wave_load(int stage, int wave) {
   }
   /* more fighters on screen: more to fight */
   if (W.players >= 3) for (int i = 0; i < w->n && n < 22; i++)
-    if (w->def[i] != D_BRUISER && !DEFS[w->def[i]].boss && (i % 2) == 0) { W.spawn_q[n].def = w->def[i], W.spawn_q[n].side = (i & 1) ? -1 : 1, W.spawn_q[n].delay = 60 + i * 40; n++; }
+    if (!DEFS[w->def[i]].mini && !DEFS[w->def[i]].boss && (i % 2) == 0) { W.spawn_q[n].def = w->def[i], W.spawn_q[n].side = (i & 1) ? -1 : 1, W.spawn_q[n].delay = 60 + i * 40; n++; }
   if (W.players == 2) for (int i = 0; i < w->n && n < 22; i += 3)
-    if (w->def[i] != D_BRUISER && !DEFS[w->def[i]].boss) { W.spawn_q[n].def = w->def[i], W.spawn_q[n].side = 1, W.spawn_q[n].delay = 80 + i * 40; n++; }
+    if (!DEFS[w->def[i]].mini && !DEFS[w->def[i]].boss) { W.spawn_q[n].def = w->def[i], W.spawn_q[n].side = 1, W.spawn_q[n].delay = 80 + i * 40; n++; }
   W.spawn_q_n = n;
 }
 
@@ -194,6 +194,7 @@ void level_free(void) {
 
 void level_build(int stage) {
   level_free();
+  rag_level_build();
   const theme *th = &THEMES[stage & 3];
   float len = level_length();
   stage_node = cw_node_new("Node3D", "Stage");

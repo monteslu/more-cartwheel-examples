@@ -195,7 +195,7 @@ void sb_step(spring_rig *s, t3_vec3 pos, float yaw, float dt) {
 }
 
 /* ── shading ─────────────────────────────────────────────────────────── */
-typedef enum { SH_SKIN, SH_CLOTH, SH_HAIR, SH_LEATHER, SH_EYE } shade_class;
+typedef enum { SH_SKIN, SH_CLOTH, SH_HAIR, SH_LEATHER, SH_EYE, SH_POMADE } shade_class;
 static void shade_material(t3_mesh *m, int i, shade_class k) {
   t3_material *old = m->materials[i];
   if (old->type == T3_MESH_PHYSICAL_MATERIAL) return;
@@ -224,6 +224,12 @@ static void shade_material(t3_mesh *m, int i, shade_class k) {
   case SH_LEATHER:
     p->clearcoat = 0.35f, p->clearcoat_roughness = 0.38f;
     break;
+  case SH_POMADE: /* hair set with pomade: a wet-looking gloss over the strands */
+    p->sheen = 0.5f, p->sheen_roughness = 0.3f;
+    p->sheen_color = (t3_color){ 0.06f + 0.5f * c.r, 0.05f + 0.5f * c.g, 0.04f + 0.5f * c.b };
+    p->specular_intensity = 0.8f;
+    p->clearcoat = 0.75f, p->clearcoat_roughness = 0.22f;
+    break;
   case SH_EYE: /* a wet cornea over a matte iris: a sharp clear coat highlight (the catch light) */
     p->clearcoat = 1.0f, p->clearcoat_roughness = 0.06f;
     break;
@@ -240,7 +246,7 @@ static void shade_tree(t3_object *o, shade_class k) {
 }
 void char_shade(t3_object *scene) {
   static const struct { const char *node; shade_class k; } C[] = {
-    { "BodySkin", SH_SKIN }, { "BodyCloth", SH_CLOTH }, { "BodyHair", SH_HAIR }, { "BodyLeather", SH_LEATHER }, { "BodyEye", SH_EYE },
+    { "BodySkin", SH_SKIN }, { "BodyCloth", SH_CLOTH }, { "BodyHair", SH_HAIR }, { "BodyLeather", SH_LEATHER }, { "BodyEye", SH_EYE }, { "BodyPomade", SH_POMADE },
   };
   for (size_t i = 0; i < sizeof C / sizeof *C; i++) {
     t3_object *o = t3_object_get_by_name(scene, C[i].node);

@@ -18,7 +18,7 @@ for (let i = 0; i < args.length; i++) {
   else if (args[i] === '-v') VERBOSE = true;
   else names.push(args[i]);
 }
-const ALL = ['rook', 'mika', 'jet', 'thug', 'punk', 'runner', 'knifer', 'bruiser', 'thrower', 'guard', 'foreman', 'matron', 'ringmaster', 'colossus'];
+const ALL = ['rook', 'mika', 'jet', 'thug', 'punk', 'runner', 'knifer', 'bruiser', 'thrower', 'guard', 'foreman', 'matron', 'ringmaster', 'colossus', 'arthur'];
 
 function readGlb(path) {
   const b = readFileSync(path);

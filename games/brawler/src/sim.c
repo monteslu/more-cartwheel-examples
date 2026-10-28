@@ -34,8 +34,9 @@ const char_def DEFS[D_COUNT] = {
   [D_GUARD] = { "Guard", "guard", 1.8f, 60, 1.0f, false, false, 250 },
   [D_FOREMAN] = { "The Foreman", "foreman", 1.9f, 700, 1.1f, true, false, 2000 },
   [D_MATRON] = { "The Matron", "matron", 2.5f, 800, 1.0f, true, false, 3000 },
-  [D_RINGMASTER] = { "Ringmaster", "ringmaster", 2.6f, 900, 1.1f, true, false, 4000 },
+  [D_RINGMASTER] = { "Ringmaster", "ringmaster", 2.6f, 450, 1.1f, false, true, 1500 }, /* a mid-stage mini boss in the arcade */
   [D_COLOSSUS] = { "Colossus", "colossus", 2.2f, 1500, 1.3f, true, false, 8000 },
+  [D_ARTHUR] = { "Arthur", "arthur", 2.7f, 850, 1.15f, true, false, 3000 },
 };
 
 const atk_data ATK[] = {
@@ -54,9 +55,10 @@ const atk_data ATK[] = {
   [A_THROW] = { "throw", 40, 16, 16, 0, 0, 0, 0, 0.0f }, /* the bottle leaves the hand on tick 16 */
   [A_BASH] = { "punch2", 30, 10, 16, 9, 1.2f, 0.75f, 1, 0.6f }, /* the guard's shield shove */
   [A_RUSH] = { "run", 60, 4, 46, 16, 1.25f, 0.85f, 2, 0.0f }, /* a boss charges along its lane */
+  [A_FLICK] = { "flick", 36, 22, 29, 12, 1.4f, 0.8f, 1, 0.35f }, /* Arthur snaps his jacket open, then a backhand */
 };
 /* attacks that need the long (heavy) telegraph and a danger ring on the street */
-static bool heavy_atk(int k) { return k == A_SLAM || k == A_SWING || k == A_BSPIN || k == A_RUSH; }
+static bool heavy_atk(int k) { return k == A_SLAM || k == A_SWING || k == A_BSPIN || k == A_RUSH || k == A_FLICK; }
 
 /* ── character rigs: a pool per model, so a spawn never parses a glb twice ── */
 typedef struct rig { int def; bool busy; cw_node root, model, anim, wnode, blob, shield; const t3_gltf *gltf; spring_rig sr; } rig;
@@ -64,7 +66,7 @@ typedef struct rig { int def; bool busy; cw_node root, model, anim, wnode, blob,
    clips, so a crowd of one kind costs a skeleton each, not a parsed glb each */
 static cw_res RES[D_COUNT], BLOB;
 static bool clip_checked[D_COUNT];
-static const float BODY_SCALE[D_COUNT] = { 1.08f, 0.98f, 1.0f, 1.0f, 0.96f, 0.94f, 1.0f, 1.28f, 1.0f, 1.08f, 1.4f, 1.22f, 1.15f, 1.7f };
+static const float BODY_SCALE[D_COUNT] = { 1.08f, 0.98f, 1.0f, 1.0f, 0.96f, 0.94f, 1.0f, 1.28f, 1.0f, 1.08f, 1.4f, 1.22f, 1.15f, 1.7f, 1.15f };
 static rig RIGS[96];
 static int rig_n;
 static cw_node world_node(void) { return cw_node_get(cw_node_get(cw_tree_root(cw_scene_app_tree()), "Level"), "World"); }
@@ -144,8 +146,12 @@ static rig *rig_get(int def) {
 /* idle variety: a neck roll now and then, light fighters bounce on their toes (clip names only, not simulation) */
 static const char *idle_clip(const ent *e) {
   if ((W.tick + e->idx * 97 + e->def * 31) % 720 < 120) return "idle2";
+  if (e->def == D_ARTHUR) return "idle_boxer"; /* fists up, a bounce on his toes */
   return (e->def == D_JET || e->def == D_MIKA || e->def == D_PUNK || e->def == D_RUNNER) ? "idle3" : "idle";
 }
+/* per character clips: Arthur's charge leads with his shoulder, his taunt runs a comb back through the pompadour */
+static const char *atk_clip(const ent *e, int k) { return e->def == D_ARTHUR && k == A_RUSH ? "shoulder" : ATK[k].clip; }
+static const char *taunt_clip(const ent *e) { return e->def == D_ARTHUR ? "comb" : "taunt"; }
 /* the model faces +x or -x; frozen for a screenshot it turns three quarters to the camera */
 static float ent_yaw(const ent *e) { return g_freeze ? (float)e->face * 0.45f : (float)e->face * 1.5708f; }
 static int ent_index(const ent *e) { return e->player ? (int)(e - W.p) : MAXP + (int)(e - W.e); }
@@ -153,6 +159,7 @@ static int ent_index(const ent *e) { return e->player ? (int)(e - W.p) : MAXP + 
 /* a new scene (a game started again from the title) freed every rig's nodes: start the pool over */
 int rig_count(void) { return rig_n; }
 void chars_reset(void) { /* (the glTF resources stay loaded: the next game instances them again) */
+  rag_reset();
   memset(RIGS, 0, sizeof RIGS);
   rig_n = 0;
   memset(&W, 0, sizeof W); /* every entity's node handles went with the scene */
@@ -188,6 +195,7 @@ void char_jolt(ent *e, float dir, float k) {
 }
 void char_free(ent *e) {
   if (!e->root.id) return;
+  if (rag_take_corpse(rig_of[ent_index(e)], e)) { e->root = (cw_node){ 0 }; return; } /* it lies a while and sinks (rag.c) */
   cw_node_set(e->wnode, "visible", cw_val_bool(false));
   cw_node_set(e->root, "visible", cw_val_bool(false));
   cw_node_set(RIGS[rig_of[ent_index(e)]].blob, "visible", cw_val_bool(false));
@@ -445,7 +453,7 @@ static void start_attack(ent *e, akind k) {
     e->t = k == A_RUSH ? -40 : heavy_atk(k) ? -26 : k == A_THROW ? -18 : -14;
     char_restart(e, "block", 0.06f);
     e->hurtflash = 1.4f;
-  } else char_restart(e, a->clip, 0.04f);
+  } else char_restart(e, atk_clip(e, k), 0.04f);
   if (k == A_SLAM || k == A_SPIN || k == A_BSPIN) sfx(SFX_WHIFF);
 }
 
@@ -821,14 +829,16 @@ static void enemy_pick_attack(ent *e) {
   case D_THROWER: start_attack(e, A_THROW); break;
   case D_GUARD: start_attack(e, A_BASH); break;
   default:
-    if (d->boss) { /* three phases: each adds a move and a bigger tell; the last one charges along the lane */
-      static const akind MOVES[4][3][3] = {
+    if (d->boss || e->def == D_RINGMASTER) { /* three phases: each adds a move and a bigger tell; the last one charges along the lane */
+      static const akind MOVES[5][3][3] = {
         { { A_SWING, A_PUNCH2, A_PUNCH2 }, { A_SWING, A_SLAM, A_PUNCH2 }, { A_SLAM, A_RUSH, A_SWING } }, /* foreman */
         { { A_KICK, A_STAB, A_KICK }, { A_BSPIN, A_STAB, A_KICK }, { A_BSPIN, A_RUSH, A_STAB } },        /* matron */
         { { A_SWING, A_PUNCH2, A_SWING }, { A_SLAM, A_SWING, A_PUNCH2 }, { A_RUSH, A_SLAM, A_BSPIN } },  /* ringmaster */
         { { A_SWING, A_SLAM, A_SWING }, { A_BSPIN, A_SLAM, A_SWING }, { A_RUSH, A_BSPIN, A_SLAM } },    /* colossus */
+        { { A_PUNCH2, A_FLICK, A_PUNCH1 }, { A_FLICK, A_RUSH, A_PUNCH2 }, { A_RUSH, A_FLICK, A_PUNCH2 } }, /* arthur: jabs, the jacket flick, a shoulder charge */
       };
-      akind k = MOVES[(e->def - D_FOREMAN) & 3][e->phase > 2 ? 2 : e->phase][ri(0, 2)];
+      int ph = d->boss ? (e->phase > 2 ? 2 : e->phase) : (e->hp < e->maxhp * 0.5f ? 1 : 0); /* the mini boss: two of its rows by health */
+      akind k = MOVES[e->def - D_FOREMAN][ph][ri(0, 2)];
       if (k == A_STAB) { e->weapon = 3; weapon_show(e); }
       start_attack(e, k);
       if (k == A_RUSH) e->vx = (float)e->face * (7.5f + (float)W.stage * 0.5f);
@@ -847,16 +857,17 @@ static void boss_phase(ent *e) {
   if (want <= e->phase) return;
   e->phase++;
   e->st = S_TAUNT; e->t = 0; e->invuln = 90; e->atk = A_NONE; e->y = 0;
-  char_restart(e, "taunt", 0.05f);
+  char_restart(e, taunt_clip(e), 0.05f);
   if (e->token) { e->token = 0; W.tokens_out--; }
   W.phase_banner = 150, W.shake = 24, W.shake_amp = 0.1f;
   sfx(SFX_SLAM);
   fx_flash(e->x, 1.5f, e->z, 1, 0.3f, 0.2f, 18);
   fx_dust(e->x, e->z, 2.5f);
   if (e->phase > W.st.boss_phase) W.st.boss_phase = e->phase;
-  static const int ADDS[4][2][2] = { { { D_THUG, D_THUG }, { D_THROWER, D_GUARD } }, { { D_KNIFER, D_PUNK }, { D_THROWER, D_RUNNER } },
-                                     { { D_PUNK, D_RUNNER }, { D_GUARD, D_THROWER } }, { { D_GUARD, D_KNIFER }, { D_THROWER, D_RUNNER } } };
-  for (int k = 0; k < 2; k++) ent_spawn_enemy(ADDS[(e->def - D_FOREMAN) & 3][e->phase - 1][k], W.cam_x + (k ? 9.0f : -9.0f), rf(-2, 2));
+  static const int ADDS[5][2][2] = { { { D_THUG, D_THUG }, { D_THROWER, D_GUARD } }, { { D_KNIFER, D_PUNK }, { D_THROWER, D_RUNNER } },
+                                     { { D_PUNK, D_RUNNER }, { D_GUARD, D_THROWER } }, { { D_GUARD, D_KNIFER }, { D_THROWER, D_RUNNER } },
+                                     { { D_PUNK, D_RUNNER }, { D_THUG, D_KNIFER } } };
+  for (int k = 0; k < 2; k++) ent_spawn_enemy(ADDS[e->def - D_FOREMAN][e->phase - 1][k], W.cam_x + (k ? 9.0f : -9.0f), rf(-2, 2));
 }
 
 static void enemy_update(int ei) {
@@ -881,7 +892,7 @@ static void enemy_update(int ei) {
   case S_ATK: {
     const atk_data *ad = &ATK[e->atk];
     e->t++;
-    if (e->t == 0) char_restart(e, ad->clip, 0.05f);
+    if (e->t == 0) char_restart(e, atk_clip(e, e->atk), 0.05f);
     if (e->t < 0) { e->hurtflash = 0.6f; break; }
     if (e->atk == A_CHARGE || e->atk == A_RUSH) {
       e->x += e->vx / TPS;
@@ -978,7 +989,7 @@ static void enemy_update(int ei) {
           else if (t < 34) { r0 = 1.5f; clip = "block"; }
           break;
         }
-        case 3: clip = "taunt"; break; /* beckon */
+        case 3: clip = taunt_clip(e); break; /* beckon (Arthur combs his hair) */
         default: /* sway: a step forward and back and across */
           e->orbit += 0.04f;
           cw_sincos(e->orbit, &sn, &cs);
@@ -1286,8 +1297,20 @@ void char_sync(ent *e) {
     }
   }
   float yaw = ent_yaw(e);
-  /* lean a little toward the lane when walking */
+  t3_vec3 roff;
+  if (rag_render(e, &yaw, &roff)) cw_node3d_set_position(e->root, (t3_vec3){ e->x + roff.x, e->y, e->z + roff.z }); /* a ragdoll or a get-up turned to lie the way the body fell */
   cw_node3d_set_rotation(e->root, (t3_vec3){ 0, yaw, 0 });
+  if (e->def == D_ARTHUR && e->wnode.id && !e->weapon) { /* his comb comes out for the taunt */
+    bool comb = e->clipname && !strcmp(e->clipname, "comb");
+    cw_node_set(e->wnode, "visible", cw_val_bool(comb));
+    if (comb) {
+      t3_vec3 h = cw_skeleton_bone_world(e->model, "HandR");
+      cw_node_set(e->wnode, "size", cw_val_vec3(0.018f, 0.15f, 0.035f));
+      cw_node_set(e->wnode, "color", cw_val_color(0.02f, 0.02f, 0.025f, 1));
+      cw_node_set(e->wnode, "roughness", cw_val_float(0.3f));
+      cw_node3d_set_position(e->wnode, (t3_vec3){ h.x, h.y + 0.06f, h.z });
+    }
+  }
   if (e->weapon && e->wnode.id) {
     t3_vec3 h = cw_skeleton_bone_world(e->model, "HandR");
     (void)HAND_OFF;
@@ -1330,8 +1353,23 @@ void sim_sync_extras(void) {
     float glow = e->t < 0 ? 0.25f + 0.75f * (1.0f - (float)-e->t / (float)tele) : 1.0f;
     float f = (float)e->face;
     if (e->atk == A_SLAM || e->atk == A_BSPIN) fx_warn(k++, e->x, e->z, ad->reach, ad->reach, glow);
-    else if (e->atk == A_SWING) fx_warn(k++, e->x + f * ad->reach * 0.5f, e->z, ad->reach * 0.6f, 0.7f, glow);
+    else if (e->atk == A_SWING || e->atk == A_FLICK) fx_warn(k++, e->x + f * ad->reach * 0.5f, e->z, ad->reach * 0.6f, 0.7f, glow);
     else { float len = e->t < 0 ? 3.2f : 1.6f; fx_warn(k++, e->x + f * len, e->z, len, 0.75f, glow); }
   }
   for (; k < 8; k++) fx_warn(k, 0, 0, 0, 0, 0);
 }
+
+/* ── rig access for the ragdolls (rag.c: presentation only) ───────────── */
+int rig_id_of(const ent *e) { return e->root.id ? rig_of[ent_index(e)] : -1; }
+cw_node rig_model(int rid) { return RIGS[rid].model; }
+cw_node rig_root(int rid) { return RIGS[rid].root; }
+void rig_release(int rid) { /* a corpse rag.c kept on the street is done: hide it and give the rig back */
+  rig *r = &RIGS[rid];
+  cw_node_set(r->wnode, "visible", cw_val_bool(false));
+  cw_node_set(r->root, "visible", cw_val_bool(false));
+  cw_node_set(r->blob, "visible", cw_val_bool(false));
+  cw_node3d_set_position(r->root, (t3_vec3){ 0, -50, 0 });
+  r->busy = false;
+}
+float ent_render_yaw_sim(const ent *e) { return ent_yaw(e); }
+void char_play_force(ent *e, const char *clip, float blend) { char_restart(e, clip, blend); }

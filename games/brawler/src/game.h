@@ -20,7 +20,7 @@ typedef enum {
 } bstate;
 
 /* attack kinds: what the S_ATK state is doing */
-typedef enum { A_NONE, A_PUNCH1, A_PUNCH2, A_FINISH, A_KICK, A_JKICK, A_SPIN, A_SWING, A_STAB, A_KNEE, A_SLAM, A_CHARGE, A_BSPIN, A_THROW, A_BASH, A_RUSH, A_COUNT } akind;
+typedef enum { A_NONE, A_PUNCH1, A_PUNCH2, A_FINISH, A_KICK, A_JKICK, A_SPIN, A_SWING, A_STAB, A_KNEE, A_SLAM, A_CHARGE, A_BSPIN, A_THROW, A_BASH, A_RUSH, A_FLICK, A_COUNT } akind;
 
 typedef struct atk_data {
   const char *clip;
@@ -79,7 +79,7 @@ typedef struct stage_t {
 
 extern const char_def DEFS[];
 extern const atk_data ATK[];
-enum { D_ROOK, D_MIKA, D_JET, D_THUG, D_PUNK, D_RUNNER, D_KNIFER, D_BRUISER, D_THROWER, D_GUARD, D_FOREMAN, D_MATRON, D_RINGMASTER, D_COLOSSUS, D_COUNT };
+enum { D_ROOK, D_MIKA, D_JET, D_THUG, D_PUNK, D_RUNNER, D_KNIFER, D_BRUISER, D_THROWER, D_GUARD, D_FOREMAN, D_MATRON, D_RINGMASTER, D_COLOSSUS, D_ARTHUR, D_COUNT };
 
 /* the match */
 typedef enum { PH_PLAY, PH_CLEAR, PH_OVER, PH_WIN, PH_INTRO } phase_t;
@@ -175,3 +175,12 @@ void sb_step(spring_rig *s, t3_vec3 pos, float yaw, float dt);
 void char_shade(t3_object *scene);
 void chars_secondary(void);
 void char_jolt(ent *e, float dir, float k);
+/* rag.c: ragdolls for falls, throws and deaths (presentation only: never read by the simulation) */
+void rag_level_build(void);
+void rag_reset(void);
+void rag_tick(void);
+void rag_debug_fields(void);
+bool rag_take_corpse(int rid, const ent *e);
+bool rag_render(const ent *e, float *yaw, t3_vec3 *off);
+float rag_mean_us(void);
+const char *rag_status(void);

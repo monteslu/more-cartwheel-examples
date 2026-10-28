@@ -115,11 +115,28 @@ static void cmd_cam(int argc, const char **argv, cw_reply *r) {
 }
 /* spawn <kind 3-11> [dx dz]: an enemy near the camera */
 static void cmd_spawn(int argc, const char **argv, cw_reply *r) {
-  if (argc < 2) { cw_reply_error(r, "usage: spawn <3-13> [dx dz]"); return; }
+  if (argc < 2) { cw_reply_error(r, "usage: spawn <3-14> [dx dz]"); return; }
   int d = atoi(argv[1]);
-  if (d < D_THUG || d >= D_COUNT) { cw_reply_error(r, "kind 3-13"); return; }
+  if (d < D_THUG || d >= D_COUNT) { cw_reply_error(r, "kind 3-14"); return; }
   int i = ent_spawn_enemy(d, W.cam_x + (argc > 2 ? (float)atof(argv[2]) : 0), argc > 3 ? (float)atof(argv[3]) : 0);
   cw_reply_printf(r, "{\"index\":%d}", i);
+}
+/* knockdown: every fighter and enemy on its feet is knocked down at once (ragdoll close-ups and the ragdoll cost) */
+static void knock_all(void) {
+  int n = 0;
+  for (int i = 0; i < MAXP + MAXE; i++) {
+    ent *e = i < MAXP ? &W.p[i] : &W.e[i - MAXP];
+    if (!e->used || e->st == S_DEAD || e->st == S_FALL || e->st == S_DOWN || e->st == S_THROWN || e->hp <= 0) continue;
+    e->invuln = 0;
+    ent_hurt(e, NULL, 0, 2, 0);
+    n++;
+  }
+  (void)n;
+}
+static void cmd_knockdown(int argc, const char **argv, cw_reply *r) {
+  (void)argc, (void)argv;
+  knock_all();
+  cw_reply_printf(r, "{\"ok\":1}");
 }
 /* freeze <0|1>: enemies hold their place and bots stop (for screenshots of the characters) */
 static void cmd_freeze(int argc, const char **argv, cw_reply *r) {
@@ -214,6 +231,7 @@ static void init(void *user) {
     }
   }
   cw_debug_i32("game.ticks", &d_ticks);
+  rag_debug_fields();
   cw_debug_i32("game.players", &d_players);
   cw_debug_i32("game.stage", &d_stage);
   cw_debug_i32("game.phase", &d_phase);
@@ -254,8 +272,9 @@ static void init(void *user) {
   { const char *v = getenv("BRAWLER_LOG"); extern bool g_log_frozen; g_log_frozen = v && atoi(v); }
   { const char *v = getenv("BRAWLER_NO_SCREEN_RULE"); extern bool g_no_screen_rule; g_no_screen_rule = v && atoi(v); }
   { const char *v = getenv("BRAWLER_BOTDMG"); extern float g_bot_dmg; if (v) g_bot_dmg = (float)atof(v); }
-  cw_debug_command("spawn", "spawn <3-11> [dx dz]: an enemy near the camera", cmd_spawn);
+  cw_debug_command("spawn", "spawn <3-14> [dx dz]: an enemy near the camera (14: Arthur)", cmd_spawn);
   cw_debug_command("freeze", "freeze <0|1>: enemies and bots hold still", cmd_freeze);
+  cw_debug_command("knockdown", "knockdown: knock every fighter and enemy down at once (ragdolls)", cmd_knockdown);
   { const char *np = getenv("BRAWLER_PLAYERS"); cw_shell_start(np ? atoi(np) : 3); } /* BRAWLER_PLAYERS: 1 to 4 bots (native perf runs) */
 #endif
 }
@@ -315,7 +334,12 @@ static void sim_step(void) {
     if (crowd_n && W.phase == PH_PLAY && alive < crowd_n && W.tick % 20 == 0) ent_spawn_enemy(D_THUG + (W.tick / 20) % 7, W.cam_x + ((W.tick / 20) & 1 ? 7.5f : -7.5f), (float)((W.tick / 20) % 5) - 2.0f);
   }
 #endif
+#ifdef BRAWLER_AUTOPILOT
+  { static int ka = -1; if (ka < 0) { const char *v = getenv("BRAWLER_KNOCKALL"); ka = v ? atoi(v) : 0; } /* BRAWLER_KNOCKALL=N: everyone down every N ticks (the ragdoll cost) */
+    if (ka > 0 && run_ticks % ka == 0 && W.phase == PH_PLAY) knock_all(); }
+#endif
   sim_tick(in);
+  rag_tick(); /* after the rules, before the springs: the ragdolls show what the simulation decided */
   chars_secondary();
   /* the stage is done: the next one, or the end */
   if (W.phase == PH_CLEAR && W.phase_t > 240) {
@@ -341,8 +365,8 @@ static void sim_step(void) {
       int alive = 0, en = 0;
       for (int i = 0; i < W.players; i++) alive += W.p[i].used && W.p[i].st != S_DEAD;
       for (int i = 0; i < MAXE; i++) en += W.e[i].used && W.e[i].st != S_DEAD;
-      cw_info("brawler-status run=%lld stage=%d wave=%d phase=%d enemies=%d alive=%d tokens=%d leak=%d nan=%d stall=%d boss_hp=%d boss_phase=%d unfair=%d still_max=%d rigs=%d",
-              (long long)run_ticks, W.stage, W.wave, W.phase, en, alive, W.tokens_out, token_leak(), W.st.nan, W.st.stall, d_boss_hp, W.st.boss_phase, W.st.unfair, W.st.still_max, rig_count());
+      cw_info("brawler-status run=%lld stage=%d wave=%d phase=%d enemies=%d alive=%d tokens=%d leak=%d nan=%d stall=%d boss_hp=%d boss_phase=%d unfair=%d still_max=%d rigs=%d %s",
+              (long long)run_ticks, W.stage, W.wave, W.phase, en, alive, W.tokens_out, token_leak(), W.st.nan, W.st.stall, d_boss_hp, W.st.boss_phase, W.st.unfair, W.st.still_max, rig_count(), rag_status());
     } }
 #endif
 }
