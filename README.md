@@ -11,9 +11,9 @@ four, crowds of thousands, skinned fighters, ragdolls, a party game's many
 small scenes) so the generic fixes go back into the engine. Every game is for
 one to four players on one machine, one pad each.
 
-Each game builds as a native executable and as a
-[wasmcart](https://github.com/wasmcart/wasmcart) cart (`.wasc`) that runs in
-a browser, in Node, in a native player and in RetroArch.
+The games ship as [wasmcart](https://github.com/wasmcart/wasmcart) carts
+(`.wasc`): one file per game that runs in a browser, in Node, in a native
+player and in RetroArch, with GL and WebGPU in the same cart.
 
 Everything in the games is made by code in this repository (models,
 textures, levels, sound and music) except a few fonts, which ship with their
@@ -101,38 +101,29 @@ names the buttons it uses. `games/partypack/` (its
 
 Tagged versions are on the
 [Releases](https://github.com/monteslu/more-cartwheel-examples/releases)
-page: the six carts and each game's native builds.
-
-| File | Platform | Notes |
-|---|---|---|
-| `<game>.wasc` | any wasmcart host | GL and WebGPU in one cart: WebGPU where the host has it, GL otherwise |
-| `<game>-<v>-linux-x64.tar.gz`, `.AppImage` | Linux x64 | needs glibc 2.34 or newer |
-| `<game>-<v>-linux-arm64.tar.gz`, `.AppImage` | Linux arm64 | the same |
-| `<game>-<v>-windows-x64.zip` | Windows 10 or later, x64 | unzip and run `<game>.exe` |
-| `<game>-<v>-macos-arm64.zip` | macOS 11 or later, Apple silicon | signed ad hoc, not notarized: the first time, right-click the app and choose Open |
-| `<game>-<v>-android-arm64-debug.apk` | Android 7 or later, arm64 | signed with a debug key, for sideloading |
-
-The native builds render with WebGPU (Dawn) and fall back to OpenGL ES 3.0
-when WebGPU does not start; `CW_GPU=gl` or `CW_GPU=webgpu` in the environment
-picks one. Every push also builds everything: the repository's
+page: one cart per game, `<game>.wasc` (`arenafps.wasc`, `brawler.wasc`,
+`coopplatformer.wasc`, `fighter.wasc`, `hordeshooter.wasc`,
+`partypack.wasc`). Each cart holds GL and WebGPU: a host that has WebGPU
+runs it on WebGPU, any other on GL. Every push to `main` also builds them:
+the repository's
 [Actions](https://github.com/monteslu/more-cartwheel-examples/actions) tab,
-the latest green run on `main`, then **Artifacts** (`release-carts`,
-`release-<platform>`).
+the latest green run, then **Artifacts** (`release-carts`).
 
 Hosts that run the carts:
 
-- [wasmcart](https://github.com/wasmcart/wasmcart), the web and Node player:
-  `npx wasmcart partypack.wasc`
-- [wasmcart-native](https://github.com/wasmcart/wasmcart-native), a native
-  player
-- [wasmcart-libretro](https://github.com/wasmcart/wasmcart-libretro), a
-  libretro core for RetroArch (it runs a cart's GL path)
+| Host | How |
+|---|---|
+| [wasmcart](https://github.com/wasmcart/wasmcart), the web and Node player | `npx wasmcart partypack.wasc`, or open the cart in its web player |
+| [wasmcart-native](https://github.com/wasmcart/wasmcart-native), a native player | `wasmcart-run partypack.wasc` |
+| [wasmcart-libretro](https://github.com/wasmcart/wasmcart-libretro), a libretro core | load the cart in RetroArch (it runs a cart's GL path) |
+
+Plug in one pad per player; player 1 can also use the keyboard.
 
 ## Build
 
 The games build against cartwheel-engine's prebuilt SDKs: the engine,
-three.c, Box2D, Box3D, SDL2, Dawn and the rest come compiled (one SDK per
-target, attached to the engine's release; see the engine's
+three.c, Box2D, Box3D and the rest come compiled (one SDK per target,
+attached to the engine's release; see the engine's
 [docs/sdk.md](https://github.com/monteslu/cartwheel-engine/blob/main/docs/sdk.md)),
 so a build compiles only the games. You need cmake, ninja, a C17 compiler,
 Node.js, git and curl; on Linux also the EGL and GLESv2 runtime (Mesa). On
@@ -145,28 +136,19 @@ sudo apt-get install cmake ninja-build clang nodejs npm curl libegl1 libgles2
 Then:
 
 ```sh
-scripts/fetch-deps.sh   # the SDKs for this machine and for carts, pinned with sha256 in scripts/deps.lock
-scripts/build.sh        # build/native and build/cart-wgpu
+scripts/fetch-deps.sh   # the cart SDK and this machine's SDK, pinned with sha256 in scripts/deps.lock
+scripts/build.sh        # build/cart-wgpu (the carts) and build/native (the same games as native programs, for the tests)
 ```
-
-`scripts/build.sh` builds these trees:
 
 | Tree | What | Where |
 |---|---|---|
-| `build/native` | native executables, this machine's compiler | `build/native/games/<game>/<app>` |
-| `build/cart-wgpu` | dual GL + WebGPU carts (the only cart: GL is tested by running it on a GL host) | `build/cart-wgpu/carts/<app>.wasc` |
-| `build/<target>` | a platform's release build, with the target's SDK and toolchain: `linux-x64`, `linux-arm64`, `windows-x64` (cross-compiled), `android-arm64`, `macos-arm64` (on a Mac) | `build/<target>/games/<game>/<app>` |
+| `build/cart-wgpu` | the dual GL + WebGPU carts, the ones that ship | `build/cart-wgpu/carts/<app>.wasc` |
+| `build/native` | native executables, this machine's compiler: what the gates compare the carts with | `build/native/games/<game>/<app>` |
 
-`TARGETS="native"` (or any of the trees) builds some trees. Carts link as dev
-carts by default (no ThinLTO, no wasm-opt: seconds instead of a minute, the
-same simulation); `RELEASE=1` links them as releases ship.
-`BUILD_TYPE=Debug` makes a debug build, and any arguments go to ninja:
-`scripts/build.sh -j4 fighter` builds only fighter in each tree. A platform
-tree needs its SDK and toolchain:
-`CW_SDK_TARGETS=windows-x64 CW_TOOLCHAINS=1 scripts/fetch-deps.sh`. Each
-game's `project.cwproj` holds its export presets;
-`node deps/cartwheel-sdk/<host>/tools/cwexport.mjs --project games/<game> --preset <target> --build build/<target>`
-packages a built tree as the releases do.
+`TARGETS=cart-wgpu` (or `native`) builds one tree. Carts link as dev carts
+by default (no ThinLTO, no wasm-opt: seconds instead of a minute, the same
+simulation); `RELEASE=1` links them as releases ship. Any arguments go to
+ninja: `scripts/build.sh -j4 fighter` builds only fighter in each tree.
 
 To build the engine from source instead (to work on it, or on a machine no
 SDK runs on), fetch with `CARTWHEEL_ENGINE_SOURCE=1 scripts/fetch-deps.sh`
@@ -216,47 +198,37 @@ settings it expects in `~/.config/cartwheel/`, and the gate format. Without
 GPU hardware, `CW_TEST_GPU=software` runs on Mesa's software renderers
 (llvmpipe for GL, lavapipe for WebGPU), as CI does.
 
-`tests/native-replay.mjs` runs each game's replay gate (a self-playing
-`<game>_auto` session) on any platform's build without the gate runner, and
-`tests/compare-replays.mjs` holds every platform's state to Linux x64 GL's.
+`tests/cart-smoke.mjs` plays each `_auto` cart for a few frames in wasmcart's
+Node host (what CI runs). `tests/native-replay.mjs` runs each game's replay
+gate (a self-playing `<game>_auto` session) on a native build without the
+gate runner, and `tests/compare-replays.mjs` compares two such runs (GL and
+WebGPU, say) field for field.
 `tests/arenafps-split-bench.mjs` measures what each extra split-screen view
 costs, and `scripts/partypack-suite.sh` runs partypack's checks in pieces.
 
 ## CI
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push to
-`main`, on pull requests and by hand (workflow_dispatch). Every job builds
-against the pinned SDKs.
+`main`, on pull requests and by hand (workflow_dispatch), against the pinned
+cart SDK. It builds the six carts and each game's self-playing `<game>_auto`
+cart, and runs `tests/cart-smoke.mjs`: every `_auto` cart plays 60 frames in
+wasmcart's Node host on Mesa's software Vulkan (lavapipe, the WebGPU path),
+must exit cleanly and leave a picture that is not blank. The gates, which
+compare the carts with native runs on every host, run locally on a GPU
+(`tests/gate.mjs`).
 
-- **Carts**: the six dual carts.
-- **Gates** (nightly, and by hand): each game's replay gate in full, natively
-  on GL and then on WebGPU, with Mesa's software renderers at the games' own
-  resolution (`CW_RENDER_SCALE=1`). The full gate set runs locally with
-  `tests/gate.mjs`.
-- **Native** (one job per platform): the games built with the target's SDK
-  and toolchain and packaged with cwexport. Where the runner can run them
-  (Linux x64 and arm64 on Mesa's software renderers, macOS on the runner's
-  Metal device), the first 200 frames of each game's replay run on GL and on
-  WebGPU (macOS runners draw GL at seconds a frame, so there GL is
-  launch-checked on one game). Windows builds cross-compile on Linux and run
-  on a Windows runner (ANGLE on Direct3D 11, Dawn on Direct3D 12; one game's
-  slice), which also adds Microsoft's Visual C++ runtime, which Dawn links,
-  beside each game. The Android APKs are launched on an emulator.
-- **Replays across platforms**: every platform's and API's state after those
-  frames must equal Linux x64 GL's, field for field.
-
-Pushing a `v*` tag runs the same jobs and publishes a GitHub release with the
-six carts and each game's native builds, its notes taken from
+Pushing a `v*` tag links the carts as releases ship and publishes a GitHub
+release with the six `<game>.wasc`, its notes taken from
 [CHANGELOG.md](CHANGELOG.md): `git tag v0.1.0 && git push origin v0.1.0`.
 
 ## Layout
 
 | Path | Contents |
 |---|---|
-| `games/<game>/` | one game: its C sources, `CMakeLists.txt`, `CREDITS`, `README.md`, `project.cwproj` (export presets), its assets and `tools/` |
+| `games/<game>/` | one game: its C sources, `CMakeLists.txt`, `CREDITS`, `README.md`, its assets and `tools/` |
 | `games/<game>/tools/` | the scripts that generate the game's assets (models, textures, levels, colour grades, sound), committed next to their output |
 | `games/<game>/programs/` | the game's three.c program table: `<game>.txt` and the C generated from it |
-| `tests/` | the gates, their input scripts, the gate and replay runners, benchmarks |
+| `tests/` | the gates, their input scripts, the gate and replay runners, the cart smoke test, benchmarks |
 | `scripts/deps.lock` | the pinned cartwheel-engine commit and its SDKs (sha256) |
 | `scripts/fetch-deps.sh`, `scripts/build.sh` | fetch the SDKs (or the engine) and build |
 | `CMakeLists.txt` | the top of the build against an SDK (`find_package(cartwheel)`), adding each game; with the engine from source, the engine's project |

@@ -7,33 +7,22 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
-  schedule:
-    - cron: '17 7 * * *' # nightly: the full gates (hours on software rendering)
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }} # a push to main never wipes out the run before it
 
 env:
-  CW_TEST_GPU: software # Mesa llvmpipe (GL) and lavapipe (WebGPU)
-  CW_RENDER_SCALE: 1 # the games' own 960x540 instead of 1080p: software rendering is slow
-  CW_RUN_TIMEOUT_MS: 3600000 # one native run
   GAMES: arenafps brawler coopplatformer fighter hordeshooter partypack
-  # every gate file the engine's gate runner reads (tests/<file>)
-  GATE_FILES: gates.json,brawler-gates.json,coopplatformer-gates.json,fighter-gates.json,partypack-gates.json
-  # each game's replay gate: a self-playing <game>_auto run (tests/native-replay.mjs runs the same ones)
-  REPLAY_GATES: arenafps-match brawler-brawl coopplatformer-2p fighter-auto hordeshooter-match partypack-tournament-short
-  # pushes replay each game's first SLICE frames on every platform and API and
-  # hold them to Linux x64 GL's state, bit for bit; the full replays run nightly
-  SLICE: 200
 
-# Every job builds against the prebuilt engine SDKs pinned in scripts/deps.lock
-# (cartwheel-engine's release assets): only the games compile.
+# The games ship as dual GL + WebGPU carts (.wasc), built against the prebuilt
+# cart SDK pinned in scripts/deps.lock (cartwheel-engine's release asset):
+# only the games compile.
 jobs:
   carts:
     name: Carts
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -42,7 +31,7 @@ jobs:
       - name: System packages
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends cmake ninja-build
+          sudo apt-get install -y --no-install-recommends cmake ninja-build mesa-vulkan-drivers libvulkan1
       - name: Cache dependencies
         uses: actions/cache@v6
         with:
@@ -50,8 +39,19 @@ jobs:
           key: deps-sdk-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/deps.lock', 'scripts/fetch-deps.sh') }}
       - name: Fetch the SDKs
         run: scripts/fetch-deps.sh
-      - name: Build the carts (GL and WebGPU in one cart each)
-        run: RELEASE=1 TARGETS=cart-wgpu scripts/build.sh $GAMES
+      # tags link the carts as releases ship (ThinLTO, wasm-opt); pushes link dev carts, the same simulation
+      - name: Build the carts (each game and its self-playing <game>_auto)
+        run: |
+          [ "${GITHUB_REF_TYPE}" = tag ] && export RELEASE=1
+          TARGETS=cart-wgpu scripts/build.sh $GAMES $(for g in $GAMES; do echo ${g}_auto; done)
+      - name: Smoke test (each _auto cart in wasmcart's Node host on lavapipe, WebGPU)
+        run: VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json node tests/cart-smoke.mjs --frames 60
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: cart-smoke
+          path: out/cart-smoke/
+          retention-days: 7
       - name: Collect carts
         run: |
           mkdir -p carts
@@ -64,262 +64,25 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-  # The games' replay gates in full, on GL and WebGPU: hours on Mesa's software
-  # renderers, so nightly (and by hand); pushes run the short slices below.
-  gates:
-    name: Gates (full, nightly)
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 360
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-      - name: System packages
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends cmake ninja-build \
-            libegl-dev libgles-dev libegl-mesa0 libgl1-mesa-dri mesa-vulkan-drivers libvulkan1
-      - name: Cache dependencies
-        uses: actions/cache@v6
-        with:
-          path: deps
-          key: deps-sdk-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/deps.lock', 'scripts/fetch-deps.sh') }}
-      - name: Fetch the SDKs
-        run: scripts/fetch-deps.sh
-      - name: Build native
-        run: TARGETS=native scripts/build.sh
-      # Each game's replay gate: a self-playing session, checked on GL and on WebGPU.
-      # The full gate set runs locally with tests/gate.mjs.
-      - name: Gates on GL (native, software rendering)
-        run: node tests/gate.mjs $REPLAY_GATES --gates-file $GATE_FILES --hosts native
-      - name: Gates on WebGPU (native, software rendering)
-        run: node tests/gate.mjs $REPLAY_GATES --gates-file $GATE_FILES --hosts native --gpu webgpu
-
-  # The games as native programs for each platform: built with the target's
-  # SDK and toolchain, packaged with cwexport, and (where the runner can) the
-  # _auto replays run on the packaged build's GL and WebGPU paths.
-  native:
-    name: Native ${{ matrix.target }}
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 150
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { target: linux-x64, os: ubuntu-24.04, run: true }
-          - { target: linux-arm64, os: ubuntu-24.04-arm, run: true }
-          - { target: windows-x64, os: ubuntu-24.04, run: false } # runs on the Windows job below
-          - { target: android-arm64, os: ubuntu-24.04, run: false } # launch-smoked on the emulator below
-          # macOS runners draw GL (ANGLE) at seconds a frame: the replays run on
-          # WebGPU (Metal) there, GL is launch-checked on one game (--smoke)
-          - { target: macos-arm64, os: macos-15, run: true, gl_smoke: true }
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-      - name: System packages (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends cmake ninja-build squashfs-tools zip \
-            libegl1 libegl-mesa0 libgles2 libgl1-mesa-dri mesa-vulkan-drivers libvulkan1
-      - name: System packages (macOS)
-        if: runner.os == 'macOS'
-        run: brew install ninja
-      - name: Android SDK and NDK
-        if: matrix.target == 'android-arm64'
-        run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.2.12479018" "platforms;android-36" "build-tools;36.0.0" >/dev/null
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
-      - name: Cache dependencies
-        uses: actions/cache@v6
-        with:
-          path: deps
-          key: deps-sdk-${{ matrix.target }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/deps.lock', 'scripts/fetch-deps.sh') }}
-      - name: Fetch the SDKs and the toolchain
-        run: CW_SDK_TARGETS=${{ matrix.target }} CW_TOOLCHAINS=1 scripts/fetch-deps.sh
-      - name: Build
-        run: TARGETS=${{ matrix.target }} scripts/build.sh
-      - name: Package
-        run: |
-          if [ "${GITHUB_REF_TYPE}" = tag ]; then v="${GITHUB_REF_NAME#v}"; else v="0.0.0-${GITHUB_SHA::7}"; fi
-          case "$(uname -s)-$(uname -m)" in Linux-x86_64) host=linux-x64 ;; Linux-aarch64) host=linux-arm64 ;; Darwin-arm64) host=macos-arm64 ;; esac
-          preset=${{ matrix.target }}
-          for g in $GAMES; do
-            node deps/cartwheel-sdk/$host/tools/cwexport.mjs --project games/$g --preset $preset \
-              --build build/${{ matrix.target }} --version "$v" --out out/export | grep -E '^@result|rror'
-          done
-          mkdir -p out/release
-          find out/export -maxdepth 2 -type f \( -name '*.tar.gz' -o -name '*.AppImage' -o -name '*.zip' -o -name '*.apk' \) -exec cp {} out/release/ \;
-          ls -l out/release
-          # every game in GAMES must have packaged (a game without a project.cwproj exported nothing and nothing failed)
-          for g in $GAMES; do ls out/release/$g-* >/dev/null 2>&1 || { echo "$g: no package for $preset" >&2; exit 1; }; done
-      - uses: actions/upload-artifact@v7
-        with:
-          name: release-${{ matrix.target }}
-          path: out/release/*
-          retention-days: 30
-          if-no-files-found: error
-      - name: Test bundle (the _auto builds, for the Windows job)
-        if: matrix.target == 'windows-x64'
-        run: |
-          mkdir -p out/test-bundle
-          for g in $GAMES; do
-            cp build/windows-x64/games/$g/${g}_auto.exe build/windows-x64/games/$g/${g}_auto.cwpak out/test-bundle/
-          done
-          cp build/windows-x64/games/coopplatformer/*.dll out/test-bundle/
-      - uses: actions/upload-artifact@v7
-        if: matrix.target == 'windows-x64'
-        with:
-          name: test-bundle-windows-x64
-          path: out/test-bundle/*
-          retention-days: 7
-      - name: Replays on GL
-        if: matrix.run && !matrix.gl_smoke
-        run: node tests/native-replay.mjs --bin build/${{ matrix.target }} --out out/replay/${{ matrix.target }}-gl --gpu gl --frames ${{ env.SLICE }}
-      - name: GL launch check (coopplatformer, 10 frames)
-        if: matrix.gl_smoke
-        run: node tests/native-replay.mjs --bin build/${{ matrix.target }} --out out/smoke --gpu gl --smoke 10 coopplatformer
-      - name: Replays on WebGPU
-        if: matrix.run
-        run: node tests/native-replay.mjs --bin build/${{ matrix.target }} --out out/replay/${{ matrix.target }}-webgpu --gpu webgpu --frames ${{ env.SLICE }}
-      - uses: actions/upload-artifact@v7
-        if: matrix.run && always()
-        with:
-          name: replay-${{ matrix.target }}
-          path: out/replay/
-          retention-days: 30
-
-  windows:
-    name: Native windows-x64 (run)
-    needs: native
-    runs-on: windows-2022
-    timeout-minutes: 120
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-      - uses: actions/download-artifact@v8
-        with:
-          name: test-bundle-windows-x64
-          path: bundle
-      - uses: actions/download-artifact@v8
-        with:
-          name: release-windows-x64
-          path: packages
-      - name: The Visual C++ runtime Dawn links
-        shell: pwsh
-        run: |
-          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
-          $crt = Get-ChildItem "$vs\VC\Redist\MSVC\*\x64\Microsoft.VC143.CRT" -Directory | Sort-Object FullName | Select-Object -Last 1
-          "CRT=$($crt.FullName)" >> $env:GITHUB_ENV
-          Get-ChildItem $crt.FullName
-      - name: Add it to the packages and the test bundle
-        shell: pwsh
-        run: |
-          $dlls = 'msvcp140.dll','msvcp140_atomic_wait.dll','vcruntime140.dll','vcruntime140_1.dll'
-          foreach ($d in $dlls) { Copy-Item "$env:CRT\$d" bundle\ }
-          foreach ($z in Get-ChildItem packages\*.zip) {
-            $top = $z.BaseName
-            New-Item -ItemType Directory -Force "stage\$top" | Out-Null
-            foreach ($d in $dlls) { Copy-Item "$env:CRT\$d" "stage\$top\" }
-            Push-Location stage
-            7z a -tzip $z.FullName "$top\*.dll" | Out-Null
-            Pop-Location
-          }
-          Get-ChildItem packages
-      # the runner draws with WARP (Direct3D on the CPU): one game's slice
-      - name: Replays on GL (ANGLE, Direct3D 11)
-        run: node tests/native-replay.mjs --bin bundle --out out/replay/windows-x64-gl --gpu gl --frames ${{ env.SLICE }} coopplatformer
-      - name: Replays on WebGPU (Dawn, Direct3D 12)
-        run: node tests/native-replay.mjs --bin bundle --out out/replay/windows-x64-webgpu --gpu webgpu --frames ${{ env.SLICE }} coopplatformer
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: replay-windows-x64
-          path: out/replay/
-          retention-days: 30
-      - name: Launch smoke (the packaged game, as a player starts it)
-        shell: pwsh
-        run: |
-          Expand-Archive packages\coopplatformer-*-windows-x64.zip -DestinationPath smoke
-          $exe = Get-ChildItem smoke\*\coopplatformer.exe | Select-Object -First 1
-          $env:CW_FRAMES = '300'; $env:SDL_AUDIODRIVER = 'dummy'; $env:CW_DEBUG_DUMP = "$PWD\smoke.json"
-          $p = Start-Process $exe.FullName -WorkingDirectory $exe.DirectoryName -PassThru -Wait -RedirectStandardError smoke.log
-          Get-Content smoke.log | Select-String 'WebGPU adapter|GL:|error' | Select-Object -First 10
-          if ($p.ExitCode -ne 0) { throw "coopplatformer.exe exited $($p.ExitCode)" }
-          if (-not (Test-Path smoke.json)) { throw 'no state dump' }
-      - uses: actions/upload-artifact@v7
-        with:
-          name: release-windows-x64-final
-          path: packages/*.zip
-          retention-days: 30
-
-  android:
-    name: Native android-arm64 (launch smoke)
-    needs: native
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    steps:
-      - uses: actions/download-artifact@v8
-        with:
-          name: release-android-arm64
-          path: apk
-      - name: KVM
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-      - name: Launch each game on an emulator (x86_64 image with arm64 translation)
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 34
-          arch: x86_64
-          target: google_apis
-          emulator-options: -no-window -no-snapshot -no-audio -no-boot-anim -gpu swiftshader_indirect
-          script: |
-            set -e; for f in apk/*.apk; do id=$(basename "$f" | cut -d- -f1); adb install -r "$f" >/dev/null; adb logcat -c; adb shell monkey -p org.cartwheel.$id -c android.intent.category.LAUNCHER 1 >/dev/null; sleep 25; pid=$(adb shell pidof org.cartwheel.$id || true); adb logcat -d -s cartwheel:* SDL:* | grep -E 'WebGPU|GL:|rror' | head -8 || true; [ -n "$pid" ] || { echo "$id: not running after 25 s"; adb logcat -d | tail -40; exit 1; }; echo "$id: running (pid $pid)"; adb shell am force-stop org.cartwheel.$id; done
-
-  replays:
-    name: Replays across platforms
-    needs: [native, windows]
-    if: always()
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
-        with:
-          pattern: replay-*
-          path: replays
-          merge-multiple: true
-      - name: Every platform's state equals Linux x64 GL's
-        run: node tests/compare-replays.mjs replays/linux-x64-gl $(ls -d replays/*/ | grep -v '/linux-x64-gl/')
-
   release:
     name: Release
-    needs: [carts, native, windows, android, replays]
+    needs: [carts]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     permissions:
-      contents: write # a v* tag publishes the carts and the native builds as a GitHub release
+      contents: write # a v* tag publishes the carts as a GitHub release
     steps:
       - uses: actions/checkout@v7 # CHANGELOG.md: the release notes
       - uses: actions/download-artifact@v8
         with:
-          pattern: release-*
-          path: release
+          name: release-carts
+          path: files
       - name: Release (v* tags)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          mkdir -p files
-          cp release/release-carts/* release/release-linux-x64/* release/release-linux-arm64/* \
-             release/release-android-arm64/* release/release-macos-arm64/* release/release-windows-x64-final/* files/
           ls -l files
+          for g in $GAMES; do [ -f files/$g.wasc ] || { echo "no $g.wasc" >&2; exit 1; }; done
           # the notes are the version's CHANGELOG.md section
           v="${GITHUB_REF_NAME#v}"
           awk -v v="$v" '$1 == "##" { if (on) exit; on = ($2 == v) ; next } on' CHANGELOG.md > notes.md
@@ -330,4 +93,4 @@ jobs:
           else
             gh release create "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --notes-file notes.md
           fi
-          gh release upload "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --clobber files/*
+          gh release upload "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --clobber files/*.wasc

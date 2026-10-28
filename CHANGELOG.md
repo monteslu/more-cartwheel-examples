@@ -2,9 +2,9 @@
 
 ## 0.1.0
 
-The first release: six games built on cartwheel-engine v0.19.1, each as a
-dual GL + WebGPU cart (`.wasc`) and as native builds for Linux x64, Linux
-arm64, Windows x64, macOS arm64 and Android arm64.
+The first release: six games built on cartwheel-engine v0.19.1, each as one
+dual GL + WebGPU cart (`<game>.wasc`) that runs in any wasmcart host (the web
+and Node player, wasmcart-native, RetroArch through wasmcart-libretro).
 
 - arenafps: a first-person arena shooter for one to four players in split
   screen, with bots on a navigation mesh, three arenas and deathmatch, team
