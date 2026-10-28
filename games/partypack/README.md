@@ -37,6 +37,9 @@ Every mini-game opens with a card (how to play, press A to be ready), a
 | Loop Racers | 3D racing | three laps, hazards on the short lane | 16 points |
 | Quick Quiz | 2D trivia | four answers on A B X Y | 20 points |
 | Raft Rush | 3D water | paddle a raft for floating buoys | open |
+| Sumo Push | 2D | shove everyone off the shrinking plate | open |
+| Coin Rush | 2D | grab the most coins, gold ones count three | open |
+| Tile Drop | 2D | the floor crumbles, be the last one standing | open |
 
 Party points are the lifetime total of the points people (not CPUs) earn.
 Everything is saved by the shell.
@@ -49,8 +52,8 @@ keyboard. Each mini-game's card names the buttons it uses.
 
 ## Building
 
-    CARTWHEEL_ENGINE=<engine checkout> scripts/fetch-deps.sh
-    scripts/build.sh                 # native, cart, cart-wgpu
+    scripts/fetch-deps.sh
+    scripts/build.sh                 # native and cart-wgpu (the dual GL + WebGPU cart)
     scripts/shot.sh partypack_auto 900 out/shot.png   # a screenshot of four CPUs playing
 
 `partypack_auto` plays a whole tournament with four CPU players and no input

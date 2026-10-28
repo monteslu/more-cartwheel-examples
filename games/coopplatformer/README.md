@@ -22,7 +22,7 @@ Stomp enemies from above. Spikes hurt, lava and pits do not forgive. Walk throug
 
 ## Building
 
-    CARTWHEEL_ENGINE=<engine checkout> scripts/fetch-deps.sh
+    scripts/fetch-deps.sh
     scripts/build.sh
     build/native/project/games/coopplatformer/coopplatformer
 

@@ -21,5 +21,5 @@ Made by tools/blender/characters.py (Blender 5.2, run headless, our own script, 
 
 Fonts: the engine's built-in UI font (Fira Sans, SIL Open Font License 1.1, shipped with the engine).
 
-Design reading (ideas only, no code or assets copied): the Celeste "feel" essay by Maddy Thorson
+Design reading (ideas only, no code or assets copied): public notes on platformer feel
 (coyote time, jump buffering, apex gravity, short wall-jump grace), and the MetSys map-room notes (MIT).

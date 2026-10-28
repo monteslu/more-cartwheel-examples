@@ -56,6 +56,4 @@ runs a soak on software GL and checks it (crash, NaN, token leak, unfair hits, s
 
 It exists to test the engine: skinned characters with a shared clip library, the navigation crowd (enemies steer
 and avoid each other; an attack-token pool decides who may hit), GPU particles for hits, dust and debris, a clustered
-light pool for flashes, and the game shell. Findings are in internal-cartwheel/findings/brawler.md.
-
-State of the game: see that file for what is finished and what is not.
+light pool for flashes, and the game shell. What the game found missing went back into the engine as generic features.

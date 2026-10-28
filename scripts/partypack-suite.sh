@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The partypack checks, in pieces that respect the GPU lock fair share (each with-gpu-suite call holds the lock
 # for about 10 minutes at most; long runs never take it):
-#   bash scripts/pp-suite.sh [part ...]       (run from anywhere; it takes the lock itself, one call per piece)
+#   bash scripts/partypack-suite.sh [part ...]       (run from anywhere; it takes the lock itself, one call per piece)
 # parts:
 #   expect   record exact `expect` values for gates that have none (one lock call per gate)
 #   gates    every gate on native GL (one lock call per gate)

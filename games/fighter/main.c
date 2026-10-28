@@ -94,7 +94,7 @@ static ft_input read_pad(int p) {
 
 /* Fighters stay resident: every fighter has one model per side, made at start-up from the preloaded glTF resources
  * (chars.c), under a node of their own that outlives stage changes. Picking a fighter only shows another model and
- * hides the last (monteslu's report: switching fighters on the select screen stuttered, because every switch reloaded
+ * hides the last (a playtest found that switching fighters on the select screen stuttered, because every switch reloaded
  * the stage, its crowd and both fighters' glb files). The stage reloads only when the stage itself changes. */
 static fighter_model *pool[2][4];
 static cw_node cast_node;

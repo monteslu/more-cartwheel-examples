@@ -204,3 +204,4 @@ luts/hub.cube
 luts/kart.cube
 luts/raft.cube
 fonts/LilitaOne-Regular.ttf
+fonts/OFL-LilitaOne.txt

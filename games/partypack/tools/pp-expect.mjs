@@ -1,6 +1,6 @@
 // Records the exact `expect` values of the gates in tests/partypack-gates.json that have none yet: runs each once
 // on the native host (the gate's own env and input) and stores the state fields the gate compares. Run it inside the
-// GPU suite (scripts/pp-suite.sh expect), then read the diff before committing: a recorded value is only as good
+// GPU suite (scripts/partypack-suite.sh expect), then read the diff before committing: a recorded value is only as good
 // as the run, so the cross-host legs and the controls of the gate are what prove it.
 //   node games/partypack/tools/pp-expect.mjs [gate ...]
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';

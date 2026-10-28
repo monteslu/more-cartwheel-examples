@@ -2,8 +2,8 @@ arenafps (working title) credits
 
 Everything in this game is made by its own code:
   - textures (concrete, gravel, grass, paint, steel, wood): procedural PBR sets (albedo, normal, roughness,
-    occlusion) generated at load by src/gfx.c, the same generators as the cartwheel demolition derby example
-    (MIT, this repository),
+    occlusion) generated at load by src/gfx.c, the same generators as cartwheel-examples' demolition derby
+    game (MIT, https://github.com/monteslu/cartwheel-examples),
   - sounds: synthesised at start from sine and noise in src/fx.c,
   - models: the fighters (skinned, 15 bones, clips idle / run / die), the four first person weapons with gloved
     hands and the arena props (crates, barrels, barriers, columns, planters, pipes, vents, floodlights, consoles)
@@ -24,5 +24,5 @@ Engine libraries: see the cartwheel-engine NOTICE (three.c, Box3D, Recast and De
 miniaudio and the rest).
 
 Design references (read for ideas and numbers only; no code, models, textures or sounds were copied):
-OpenArena / ioquake3 game code (GPL-2.0, read locally): movement friction and acceleration constants, weapon roles
-and spreads, knockback scaling. See internal notes in the engine repository's findings.
+OpenArena game code (GPL-2.0, read locally): movement friction and acceleration constants, weapon roles
+and spreads, knockback scaling.

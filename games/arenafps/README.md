@@ -57,7 +57,7 @@ The HUD shows the time left and the frag leader, and enemies carry a rim of thei
 
 ## Build
 
-See the repository README: `CARTWHEEL_ENGINE=<engine checkout> scripts/fetch-deps.sh`, then `scripts/build.sh`.
+See the repository README: `scripts/fetch-deps.sh`, then `scripts/build.sh`.
 `arenafps_auto` is the same game with the bots playing every seat (ARENA_ID, ARENA_MODE, ARENA_BOTS,
 ARENA_PLAYERS choose the match): the tests and benchmarks run it.
 `tests/arenafps-split-bench.mjs` measures the cost of one to four views.

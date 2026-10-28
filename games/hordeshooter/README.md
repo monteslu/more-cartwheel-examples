@@ -64,7 +64,7 @@ Players 2 to 4 use pads 2 to 4. Join on the title screen.
 
 ## Building
 
-`CARTWHEEL_ENGINE=<engine checkout> scripts/fetch-deps.sh`, then
+`scripts/fetch-deps.sh`, then
 `scripts/build.sh`. `hordeshooter_auto` is the same game played by bots for
 the tests. Development switches (environment): `HORDE_WAVE=n` starts at wave
 n, `HORDE_PLAYERS=n` sets the auto build's player count, `HORDE_QUALITY=0..3`
