@@ -708,7 +708,7 @@ static void wall_detail(const level *L, int x0, int x1, mb *prop, mb *glow) {
         }
         continue;
       }
-      if (bi != BIOME_CAVES && interior(L, x, y) && r < (bi == BIOME_RUINS ? 0.03f : 0.05f)) { /* not in the caves: lit blue they read as spots */
+      if (bi != BIOME_CAVES && interior(L, x, y) && (y + phase) % 5 != 0 && (y + phase + 1) % 5 != 0 && (y + phase + 4) % 5 != 0 && r < (bi == BIOME_RUINS ? 0.03f : 0.05f)) { /* not in the caves (lit blue they read as spots), never on or beside a strata seam (a row of them along a seam read as wheels on a rail) */
         /* a boulder set into the face */
         float rx = 0.35f + 0.5f * hh(x, y, 412), ry = rx * (0.55f + 0.35f * hh(x, y, 413));
         float lo[3], hi[3];
@@ -778,6 +778,55 @@ static void scatter(const level *L, int x0, int x1, mb *prop, mb *glow) {
       }
     }
   }
+}
+
+/* rock that hangs in the air (a lintel over a pedestal, any block the generator leaves with nothing under it) gets
+ * stone pillars at its two lower corners, set at the back of the slab so nobody walks into them: every solid tile
+ * not joined to the floor of the world or its side walls is part of such a block, and each pillar stands on the first
+ * open floor under its corner (no floor within reach: no pillar) */
+static void hanging_supports(const level *L, mb *p) {
+  static uint8_t seen[WORLD_H][WORLD_W];
+  static int stack[WORLD_W * WORLD_H];
+  memset(seen, 0, sizeof seen);
+  int sp = 0;
+  for (int x = 0; x < WORLD_W; x++)
+    if (world_solid(L, x, 0)) seen[0][x] = 1, stack[sp++] = x;
+  for (int y = 0; y < WORLD_H; y++) {
+    if (world_solid(L, 0, y) && !seen[y][0]) seen[y][0] = 1, stack[sp++] = y * WORLD_W;
+    if (world_solid(L, WORLD_W - 1, y) && !seen[y][WORLD_W - 1]) seen[y][WORLD_W - 1] = 1, stack[sp++] = y * WORLD_W + WORLD_W - 1;
+  }
+  while (sp) {
+    int c = stack[--sp], x = c % WORLD_W, y = c / WORLD_W;
+    static const int D[4][2] = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } };
+    for (int k = 0; k < 4; k++) {
+      int nx = x + D[k][0], ny = y + D[k][1];
+      if (nx < 0 || nx >= WORLD_W || ny < 0 || ny >= WORLD_H || seen[ny][nx] || !world_solid(L, nx, ny)) continue;
+      seen[ny][nx] = 1, stack[sp++] = ny * WORLD_W + nx;
+    }
+  }
+  /* each run of hanging tiles along a bottom row: a pillar under each end */
+  for (int y = 1; y < WORLD_H; y++)
+    for (int x = 0; x < WORLD_W;) {
+      bool hang = world_solid(L, x, y) && !seen[y][x] && !world_solid(L, x, y - 1);
+      if (!hang) { x++; continue; }
+      int x1 = x;
+      while (x1 + 1 < WORLD_W && world_solid(L, x1 + 1, y) && !seen[y][x1 + 1] && !world_solid(L, x1 + 1, y - 1)) x1++;
+      float ends[2] = { (float)x + 0.45f, (float)x1 + 0.55f };
+      for (int e = 0; e < (x1 > x ? 2 : 1); e++) {
+        int c = (int)floorf(ends[e]), fy = y - 1;
+        while (fy >= 0 && !world_solid(L, c, fy)) fy--;
+        if (fy < 0 || y - (fy + 1) > 12) continue;
+        float top = (float)(fy + 1), px = ends[e], pz = -1.0f;
+        if (!fg_seat(L, &px, top, &pz, 0.4f, 0.4f, (float)c)) continue;
+        float lo[3], hi[3], cap[3];
+        rgb(lo, 0.5f, 0.42f, 0.32f), rgb(hi, 0.72f, 0.62f, 0.48f), rgb(cap, 0.8f, 0.7f, 0.55f);
+        float h = (float)y - top;
+        mb_box(p, px, top + 0.1f, pz, 0.4f, 0.3f, 0.4f, lo, cap);                 /* a plinth, sunk a little */
+        mb_cone(p, px, top + 0.3f, pz, 0.3f, 0.27f, h - 0.55f, 0, 0, 12, lo, hi); /* the shaft */
+        mb_box(p, px, (float)y - 0.13f, pz, 0.4f, 0.14f, 0.4f, hi, cap);        /* a capital under the rock */
+      }
+      x = x1 + 1;
+    }
 }
 
 /* ── scene objects ──────────────────────────────────────────────── */
@@ -863,6 +912,12 @@ void world_scene_build(game *g, cw_node root) {
       t3_geometry *gm = mb_done(&bs[m]);
       if (gm) add_mesh(gm, g_mat[m], 0, 0, 0, m != MT_GLOW), t3_release(gm);
     }
+  }
+  {
+    mb sup = { 0 };
+    hanging_supports(L, &sup);
+    t3_geometry *gs = mb_done(&sup);
+    if (gs) add_mesh(gs, g_mat[MT_PROP], 0, 0, 0, true), t3_release(gs);
   }
   /* cracked blocks, one mesh each (removed when broken) */
   g_crack_m = t3_mesh_physical_material_new(0xb89a7a);

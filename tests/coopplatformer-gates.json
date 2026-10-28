@@ -45,7 +45,7 @@
       ],
       "g.shake_frames": 0,
       "g.scenery": [
-        129,
+        148,
         0
       ]
     },
@@ -97,7 +97,7 @@
       ],
       "g.shake_frames": 0,
       "g.scenery": [
-        129,
+        148,
         0
       ]
     },
@@ -119,7 +119,7 @@
     "expect": {
       "g.tick": 60,
       "g.scenery": [
-        129,
+        148,
         0
       ]
     },
