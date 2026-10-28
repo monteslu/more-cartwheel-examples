@@ -8,7 +8,7 @@
 #    for its test tools (tests/gate.mjs runs the engine's gate runner). Its own
 #    dependencies are not fetched unless the engine builds from source.
 #
-#   scripts/fetch-deps.sh                       this machine's SDK and the cart SDKs
+#   scripts/fetch-deps.sh                       this machine's SDK and the cart SDK
 #   CW_SDK_TARGETS="windows-x64 android-arm64" scripts/fetch-deps.sh   (plus these)
 #   CW_TOOLCHAINS=1 scripts/fetch-deps.sh       also each native target's toolchain
 #                                               (llvm-mingw, sysroots) into the host SDK
@@ -58,8 +58,8 @@ case "$(uname -s)-$(uname -m)" in
   *) echo "no prebuilt SDK runs on $(uname -s) $(uname -m): CARTWHEEL_ENGINE_SOURCE=1 builds the engine" >&2; exit 1 ;;
 esac
 TARGETS="$HOST"
-# the cart SDKs need wasi-sdk, whose pinned build runs on Linux x64
-[ "$HOST" = linux-x64 ] && TARGETS="$TARGETS cart cart-wgpu"
+# the cart SDK (the dual GL + WebGPU cart) needs wasi-sdk, whose pinned build runs on Linux x64
+[ "$HOST" = linux-x64 ] && TARGETS="$TARGETS cart-wgpu"
 for t in ${CW_SDK_TARGETS:-}; do [[ " $TARGETS " == *" $t "* ]] || TARGETS="$TARGETS $t"; done
 
 sha_check() { if command -v sha256sum >/dev/null; then sha256sum -c --quiet -; else shasum -a 256 -c --quiet -; fi; }
@@ -78,7 +78,7 @@ fetch_sdk() { # target
   fi
   echo "$sha  $tgz" | sha_check || { echo "cartwheel-sdk $t: sha256 mismatch ($tgz)" >&2; rm -f "$tgz"; exit 1; }
   rm -rf "$dst" && mkdir -p "$dst"
-  tar -xzf "$tgz" -C "$dst" --strip-components=1
+  tar -xzf "$tgz" -C "$dst" --strip-components=1 -m # files dated now: a build sees every header of a new SDK as changed
   echo "$ver $sha" > "$dst/.version"
   echo "cartwheel-sdk $t: $ver"
 }
@@ -87,7 +87,7 @@ for t in $TARGETS; do fetch_sdk "$t"; done
 # the toolchains the SDKs pin: wasi-sdk and binaryen inside each cart SDK
 # (its cmake/cart.cmake looks there); with CW_TOOLCHAINS, each native
 # target's toolchain inside the host SDK (the CW_EXPORT_DEPS of its builds)
-# (fetched once; the other cart SDK links the same)
+# (one cart SDK: the dual cart)
 first=""
 for t in $TARGETS; do
   case "$t" in
