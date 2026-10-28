@@ -587,6 +587,15 @@ static bool load_layout(int id) {
     else if (sscanf(line, "ramp %f %f %f %f %f %f %d", &v[0], &v[1], &v[2], &v[3], &v[4], &v[5], &n) == 7)
       ramp(v[0], v[1], v[2], v[3], v[4], v[5], n, K_FLOOR);
     else if (sscanf(line, "pad %f %f %f %f %f %f", &v[0], &v[1], &v[2], &v[3], &v[4], &v[5]) == 6) pad_at(v3(v[0], v[1], v[2]), v3(v[3], v[4], v[5]));
+    else if (sscanf(line, "link %f %f %f %f %f %f %47s %d", &v[0], &v[1], &v[2], &v[3], &v[4], &v[5], a, &n) == 8) {
+      if (A.nlinks < MAX_LINKS) {
+        A.links[A.nlinks].s = v3(v[0], v[1], v[2]);
+        A.links[A.nlinks].e = v3(v[3], v[4], v[5]);
+        A.links[A.nlinks].tag = !strcmp(a, "jump") ? LINK_JUMP : !strcmp(a, "drop") ? LINK_DROP : LINK_PAD;
+        A.links[A.nlinks].two = n != 0;
+        A.nlinks++;
+      }
+    }
     else if (sscanf(line, "lamp %f %f %f %d", &v[0], &v[1], &v[2], &n) == 4) ceiling_lamp(v[0], v[1], v[2], n != 0);
     else if (sscanf(line, "column %f %f %f %f", &v[0], &v[1], &v[2], &v[3]) == 4) block(v[0], v[1], v[2], 0.9f, v[3], 0.9f, K_PILLAR);
     else if (sscanf(line, "doorframe %f %f %f %f %47s", &v[0], &v[1], &v[2], &v[3], a) == 5) door_frame(v[0], v[1], v[2], v[3], a[0]);
@@ -841,6 +850,23 @@ void arena_build(int id, cw_node world_root) {
   /* the navmesh over every static shape */
   cw_nav_geom g = { 0 };
   cw_nav_geom_add_world3d(&g, A.world, NULL, CW_NAV_AREA_WALK);
+#ifdef CW_NAV_LINKS
+  /* links: every pad (one way, to where it throws you), then the level's jumps and drops; each end snapped to the floor
+   * under it. A drop that lands no lower than 1 m is no drop (a stair top beside a landing): left out */
+  for (int i = 0; i < A.npads; i++)
+    cw_nav_geom_add_link(&g, &(cw_nav_link){ .start = A.pads[i].pos, .end = A.pads[i].target, .tag = LINK_PAD,
+                                             .radius = 1.0f, .duration = 1.0f, .arc = 2.0f });
+  for (int i = 0; i < A.nlinks; i++) {
+    /* each end: the first floor below the link's higher end (a drop over a landing finds the landing) */
+    t3_vec3 s = A.links[i].s, e = A.links[i].e, hit;
+    float top = CW_MAX(s.y, e.y) + 0.6f;
+    if (arena_ray(v3(s.x, top, s.z), v3(s.x, s.y - 6, s.z), &hit, NULL)) s = hit;
+    if (arena_ray(v3(e.x, top, e.z), v3(e.x, e.y - 6, e.z), &hit, NULL)) e = hit;
+    if (A.links[i].tag == LINK_DROP && s.y - e.y < 1.0f) continue;
+    cw_nav_geom_add_link(&g, &(cw_nav_link){ .start = s, .end = e, .tag = (uint32_t)A.links[i].tag,
+                                             .bidirectional = A.links[i].two, .arc = A.links[i].tag == LINK_JUMP ? 0.6f : 0.3f });
+  }
+#endif
   cw_nav_config nc = cw_nav_config_default();
   nc.cell_size = 0.25f;
   nc.cell_height = 0.15f;
@@ -854,8 +880,13 @@ void arena_build(int id, cw_node world_root) {
   cw_navmesh_stats st = cw_navmesh_get_stats(A.nav);
   A.nav_build_ms = st.build_ms;
   A.nav_polys = st.polys;
+#ifdef CW_NAV_LINKS
+  A.nav_links = st.links;
+  A.nav_links_connected = st.links_connected;
+#endif
   cw_navmesh_set_query_extents(A.nav, v3(2, 4, 2));
-  cw_info("arena %s: %d triangles-polys, navmesh %.1f ms", ARENA_INFO[id].name, st.polys, st.build_ms);
+  cw_info("arena %s: %d triangles-polys, navmesh %.1f ms, %d of %d links connected", ARENA_INFO[id].name, st.polys,
+          st.build_ms, A.nav_links_connected, A.nav_links);
 }
 
 void arena_free(void) {

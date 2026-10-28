@@ -93,6 +93,9 @@ static struct game {
   cw_action mv_l, mv_r, mv_f, mv_b, lk_l, lk_r, lk_u, lk_d, fire, jump, w_next, w_prev, sprint;
   /* nav cost */
   int path_requests, path_done;
+  int path_links, link_jumps;  /* link waypoints in the paths bots took; jumps bots made up ledges */
+  int32_t link_cross[4];       /* links bots crossed (reached the far end), by tag: -, jump, drop, pad */
+  int32_t link_start[4];       /* link legs bots set out on (reached the near end), by tag */
   float nav_tick_ms;
   int views;
   int32_t d_score[MAXF], d_hp[MAXF], d_deaths[MAXF], d_weapon[MAXF], d_alive[MAXF];
@@ -529,6 +532,13 @@ static void move_fighter(fighter *f, float fwd, float strafe, bool jump, bool sp
       if (dx * dx + dz * dz > 0.9f * 0.9f || dy < -0.3f || dy > 0.6f) continue;
       *vel = pd->vel;
       f->launched = 12;
+      /* a bot whose path crosses this pad: on to the landing */
+      if (f->npath > 0 && f->pidx + 1 < f->npath && f->plink[f->pidx]) {
+        f->pidx++;
+        G.link_start[LINK_PAD]++;
+        G.link_cross[LINK_PAD]++;
+        f->counted_leg = f->pidx + 1000 * f->npath;
+      }
       f->mv.on_floor = false;
       fx_play(SND_PAD, pd->pos, 0.8f, 1);
       ground = false;
@@ -579,12 +589,50 @@ static void bot_set_goal(fighter *f, t3_vec3 g) {
   f->repath = 0;
 }
 
+/* The link the bot is crossing toward waypoint pidx (its tag; 0 when that leg is walking). */
+static int bot_leg_link(const fighter *f) {
+#ifdef CW_NAV_LINKS
+  if (f->pidx <= 0 || f->pidx >= f->npath || !f->plink[f->pidx - 1]) return 0;
+  cw_nav_link l;
+  return cw_nav_link_get(A.nav, f->plink[f->pidx - 1], &l) ? (int)l.tag : 0;
+#else
+  (void)f;
+  return 0;
+#endif
+}
+
 static void bot_follow(fighter *f, float *fwd, float *strafe, float speed) {
   t3_vec3 p = f->mv.position;
   if (f->npath > 0 && f->pidx < f->npath) {
     t3_vec3 w = f->path[f->pidx];
     float dx = w.x - p.x, dz = w.z - p.z, d = sqrtf(dx * dx + dz * dz);
-    if (d < 0.9f && f->pidx + 1 < f->npath) { f->pidx++; return bot_follow(f, fwd, strafe, speed); }
+    int link = bot_leg_link(f);
+    /* a link's far end counts as reached only at its height (below a ledge is not on it); a pad is stepped on at its middle */
+    bool pad_next = false;
+    if (f->pidx + 1 < f->npath && f->plink[f->pidx]) {
+      f->pidx++;
+      pad_next = bot_leg_link(f) == LINK_PAD;
+      f->pidx--;
+    }
+    /* (a landing is not precise: a link's far end is reached within 2 m once at its height) */
+    bool there = link ? d < 2.0f && fabsf(w.y - p.y) < 0.8f : d < (pad_next ? 0.4f : 0.9f);
+    /* a crossing counts once it is at the far end's height near it */
+    if (link > 0 && link < 4 && f->counted_leg != f->pidx + 1000 * f->npath && fabsf(w.y - p.y) < 0.8f && d < 2.5f) {
+      G.link_cross[link]++;
+      f->counted_leg = f->pidx + 1000 * f->npath;
+    }
+    if (there && f->pidx + 1 < f->npath) {
+      f->pidx++;
+      int next = bot_leg_link(f);
+      if (next > 0 && next < 4) G.link_start[next]++;
+      return bot_follow(f, fwd, strafe, speed);
+    }
+    if (link == LINK_JUMP && w.y > p.y + 0.5f && f->mv.on_floor) {
+      /* up a ledge: jump from the foot of it, running at the top */
+      t3_vec3 s = f->path[f->pidx - 1];
+      float sx = s.x - p.x, sz = s.z - p.z;
+      if (sx * sx + sz * sz < 1.3f * 1.3f) f->link_jump = true;
+    }
     if (d > 0.01f) {
       /* move toward the waypoint in world space; convert to the body frame */
       float sy, cy;
@@ -760,24 +808,35 @@ static void bot_tick(fighter *f, int idx) {
     f->think = 10 + (idx & 3);
     bot_think(f, idx);
   }
+  /* no new path in the air or halfway across a link (a path planned from mid-air starts wherever the air is over, and
+   * one planned from the near end walks back to it); the un-sticking below still forces one */
+  bool crossing = !f->mv.on_floor || (bot_leg_link(f) && f->stuck == 0);
   /* path requests: one outstanding per bot; the tick budget answers them */
   if (f->ticket) {
     t3_vec3 pts[24];
     int cnt = 0;
+    uint32_t links[24] = { 0 };
+#ifdef CW_NAV_LINKS
+    cw_nav_path_status st = cw_nav_take_path_links(A.nav, f->ticket, pts, links, 24, &cnt);
+#else
     cw_nav_path_status st = cw_nav_take_path(A.nav, f->ticket, pts, 24, &cnt);
+#endif
     if (st == CW_NAV_PATH_DONE || st == CW_NAV_PATH_PARTIAL || st == CW_NAV_PATH_FAILED) {
       f->ticket = 0;
       G.path_done++;
+      if (crossing) cnt = -1; /* asked for before the crossing began: the crossing's path stands */
       if (cnt > 1) {
         memcpy(f->path, pts, sizeof(t3_vec3) * (size_t)cnt);
+        memcpy(f->plink, links, sizeof(uint32_t) * (size_t)cnt);
+        for (int k = 0; k < cnt; k++) G.path_links += links[k] != 0;
         f->npath = cnt;
         f->pidx = 1;
-      } else {
+      } else if (cnt >= 0) {
         f->npath = 0;
       }
     }
   }
-  if (!f->ticket && --f->repath <= 0) {
+  if (!f->ticket && --f->repath <= 0 && !crossing) {
     f->repath = 50 + (idx * 7) % 20;
     f->ticket = cw_nav_request_path(A.nav, f->mv.position, f->goal, NULL);
     G.path_requests++;
@@ -879,6 +938,8 @@ static void bot_tick(fighter *f, int idx) {
     f->last_pos = f->mv.position;
     if (f->stuck > 3) { f->stuck = 0; f->goal = v3(0, -1000, 0); f->think = 0; }
   }
+  if (f->link_jump) jump = true, G.link_jumps++;
+  f->link_jump = false;
   move_fighter(f, cw_clampf(fwd, -1, 1), cw_clampf(strafe, -1, 1), jump, f->sprint_want);
 }
 
@@ -2130,6 +2191,12 @@ static void init(void *user) {
   cw_debug_i32("match.nf", &G.nf);
   cw_debug_i32("nav.requests", &G.path_requests);
   cw_debug_i32("nav.done", &G.path_done);
+  cw_debug_i32("nav.links", &A.nav_links);
+  cw_debug_i32("nav.links_connected", &A.nav_links_connected);
+  cw_debug_i32("nav.link_paths", &G.path_links);
+  cw_debug_i32("nav.link_jumps", &G.link_jumps);
+  cw_debug_field("nav.link_cross", G.link_cross, CW_DBG_I32, 4);
+  cw_debug_field("nav.link_start", G.link_start, CW_DBG_I32, 4);
   cw_debug_i32("views", &G.views);
   cw_debug_i32("soak.matches", &soak_matches);
   cw_debug_field("cam.gate", cam_gate, CW_DBG_I32, 4);

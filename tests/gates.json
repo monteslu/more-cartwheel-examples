@@ -252,11 +252,11 @@
       "game.arena": 1,
       "game.players": 3,
       "game.ticks": 1799,
-      "game.hash": 4193026882,
-      "match.nf": 9,
-      "match.wave": 1,
-      "match.lives": 6,
-      "stats.kills": 13,
+      "game.hash": 2550355658,
+      "match.nf": 13,
+      "match.wave": 2,
+      "match.lives": 8,
+      "stats.kills": 14,
       "views": 3
     },
     "controlStartCmds": [
@@ -308,10 +308,10 @@
       "game.arena": 2,
       "game.players": 4,
       "game.ticks": 1799,
-      "game.hash": 926946349,
+      "game.hash": 2090117205,
       "match.nf": 8,
       "match.wave": 0,
-      "stats.kills": 12,
+      "stats.kills": 18,
       "views": 4
     },
     "controlStartCmds": [

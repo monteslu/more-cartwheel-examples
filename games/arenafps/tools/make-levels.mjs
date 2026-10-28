@@ -221,6 +221,13 @@ function terraces() {
     for (const [a, b] of [[-12, -2], [2, 12]]) {
       extra(L, 'accent', [a, s < 0 ? -12 : 9.6, b, s < 0 ? -9.6 : 12], 0, LEDGE, 'ledge');
       extra(L, 'accent', [s < 0 ? -12 : 9.6, a, s < 0 ? -9.6 : 12, b], 0, LEDGE, 'ledge');
+      // navigation links: jumps up the ledges (and back down), from the pit floor 1 m out from the face to 1 m in on the
+      // top. The east and west ledges are flat: two jumps each, clear of the corner blocks and landings. The north and
+      // south ledges carry the stairs to the terrace: one jump onto the foot of the stairs, beside the tunnel mouth
+      const face = s * 9.6;
+      for (const t of a < 0 ? [-7, -3.5] : [3.5, 7]) L.links.push({ s: [face - s * 1.0, 0, t], e: [face + s * 1.0, LEDGE, t], kind: 'jump', two: 1 });
+      const foot = a < 0 ? -2.6 : 2.6;
+      L.links.push({ s: [foot, 0, face - s * 1.0], e: [foot, LEDGE, face + s * 1.0], kind: 'jump', two: 1 });
     }
   for (const [sx, sz] of QUADS) {
     extra(L, 'wall', mir([8.6, 9.6, 12, 12], sx, sz), 0, TOP, 'landing');
@@ -271,7 +278,7 @@ function terraces() {
 // ── building blocks ──────────────────────────────────────────────────────────────────────────────────────────────────
 
 function base(name, half) {
-  return { name, half, mass: [], rooms: [], open: [], doors: [], holes: [], extras: [], ramps: [], pads: [], gaps: [], spawns: [], items: [], decor: [], bridges: [], roofKind: 'accent' };
+  return { name, half, mass: [], rooms: [], open: [], doors: [], holes: [], extras: [], ramps: [], pads: [], gaps: [], links: [], spawns: [], items: [], decor: [], bridges: [], roofKind: 'accent' };
 }
 function room(L, name, r, o = {}) { L.rooms.push({ name, r, ...o }); }
 function open(L, name, r) { L.open.push({ name, r }); }
@@ -280,6 +287,20 @@ function door(L, x, z, axis, w = DOOR_W, h = DOOR_H) { L.doors.push({ x, z, axis
 function extra(L, kind, r, y0, h, tag) { L.extras.push({ kind, r, y0, h, tag }); }
 function item(L, kind, x, y, z) { L.items.push({ kind, x, y, z }); }
 function spawn(L, x, z, y = 0) { L.spawns.push({ x, y, z }); }
+
+// navigation links for the bots: a drop through every parapet gap that opens onto an open zone, from 1.2 m back on the
+// roof to 1.8 m out over the floor below (the game snaps each end to the floor under it)
+function dropLinks(L) {
+  const zones = [...L.rooms.map((r) => ({ name: r.name, r: r.r })), ...L.open.map((o) => ({ name: o.name, r: o.r }))];
+  const at = (x, z) => { const hit = zones.find((zz) => inside(zz.r, x, z)); return hit ? hit.name : null; };
+  for (const [gx, gz] of L.gaps)
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const z = at(gx + dx, gz + dz);
+      if (!z || !L.open.some((o) => o.name === z) || isMass(L, gx + dx, gz + dz)) continue;
+      L.links.push({ s: [gx - dx * 1.2, TOP, gz - dz * 1.2], e: [gx + dx * 1.8, 0, gz + dz * 1.8], kind: 'drop', two: 0 });
+      break;
+    }
+}
 
 // ── the CSG scene ────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -379,6 +400,7 @@ function lvl(L) {
   for (const i of L.items) o.push(`item ${i.kind} ${f(i.x)} ${f(i.y)} ${f(i.z)}`);
   for (const r of L.ramps) o.push(`ramp ${f(r.x)} ${f(r.y0)} ${f(r.z)} ${f(r.len)} ${f(r.rise)} ${f(r.w)} ${r.dir}`);
   for (const p of L.pads) o.push(`pad ${f(p.x)} ${f(p.y)} ${f(p.z)} ${f(p.tx)} ${f(p.ty)} ${f(p.tz)}`);
+  for (const k of L.links) o.push(`link ${k.s.map(f).join(' ')} ${k.e.map(f).join(' ')} ${k.kind} ${k.two}`);
   // a ceiling lamp per room (two in long ones), door frames on every doorway
   for (const r of L.rooms) {
     const w = r.r[2] - r.r[0], d = r.r[3] - r.r[1];
@@ -465,6 +487,7 @@ mkdirSync(OUT, { recursive: true });
 let ok = true;
 for (const L of [foundry(), courtyard(), terraces()]) {
   L.parapets = parapets(L);
+  dropLinks(L);
   const sc = scene(L);
   writeFileSync(join(OUT, L.name + '.cwscene'), sc + '\n');
   writeFileSync(join(OUT, L.name + '.lvl'), lvl(L));

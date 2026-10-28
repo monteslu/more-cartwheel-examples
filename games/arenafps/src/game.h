@@ -95,6 +95,8 @@ t3_texture *tex_clouds(float coverage, uint32_t seed);
 #define MAX_SPAWNS 16
 #define MAX_ITEMS 32
 #define MAX_PADS 8
+#define MAX_LINKS 48
+enum { LINK_JUMP = 1, LINK_DROP = 2, LINK_PAD = 3 }; /* the engine's CW_NAV_LINK_JUMP / DROP / PAD values */
 enum { ITEM_HEALTH, ITEM_ARMOR, ITEM_SCATTER, ITEM_ROCKET, ITEM_RAIL, ITEM_AMMO, ITEM_KINDS };
 
 typedef struct item {
@@ -135,6 +137,10 @@ typedef struct arena {
   int npads;
   cw_mesh3d meshes[16];   /* the baked CSG collision meshes */
   int nmeshes;
+  /* navigation links for the bots (jumps up ledges, drops through parapet gaps; the pads add their own), from the .lvl */
+  struct { t3_vec3 s, e; int tag; bool two; } links[MAX_LINKS];
+  int nlinks;
+  int nav_links, nav_links_connected; /* in the navmesh (0 on an engine without links) */
 } arena;
 extern arena A;
 
@@ -190,7 +196,10 @@ typedef struct fighter {
   int strafe_t, strafe_dir;
   t3_vec3 goal;
   t3_vec3 path[24];
+  uint32_t plink[24];    /* the navmesh link each waypoint starts (0: walk on) */
   int npath, pidx;
+  bool link_jump;        /* bot_follow asks for a jump this tick (a ledge link) */
+  int counted_leg;       /* the link leg last counted in the crossing stats */
   uint32_t ticket;
   int repath;
   int stuck;

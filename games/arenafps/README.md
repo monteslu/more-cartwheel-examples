@@ -1,7 +1,8 @@
 # arenafps (working title)
 
 A first-person arena shooter for one to four players on one screen (split screen, one pad per player), with
-bots that find their way over a navigation mesh.
+bots that find their way over a navigation mesh, jump pads, ledge jumps and drops from the roofs included
+(the level tool writes the jumps and drops as navigation links; the pads add their own).
 
 ## Play
 
