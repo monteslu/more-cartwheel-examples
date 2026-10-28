@@ -512,7 +512,7 @@ static void draw_move_list(const ft_def *d, float x, float y, float w, float s) 
     char in[24];
     ft_special_text(d, k, in, sizeof in);
     text(G.font_ui, in, x + 10 * s, ly, 13 * s, rgba(1, 0.85f, 0.45f, 1), CW_ALIGN_LEFT);
-    text(G.font_ui, d->mv[M_SP1 + k].name, x + 92 * s, ly, 13 * s, rgba(1, 1, 1, 1), CW_ALIGN_LEFT);
+    text(G.font_ui, d->mv[M_SP1 + k].name, x + 110 * s, ly, 13 * s, rgba(1, 1, 1, 1), CW_ALIGN_LEFT);
   }
   text(G.font_ui, "Block: G   low: down + G", x + 10 * s, ly + 2 * s, 13 * s, rgba(0.7f, 0.8f, 0.9f, 1), CW_ALIGN_LEFT);
 }
@@ -525,7 +525,7 @@ static void draw_training(float W, float H, float s) {
   const ft_def *d = &g->roster->d[g->f[g->last_who].def];
   const ft_move *lm = &d->mv[g->last_move];
   static const char *const RESULT[6] = { "", "hit", "blocked", "parried", "ducked under", "guard break" };
-  snprintf(b, sizeof b, "%s %s: %s (%s)  %s", d->name, FT_MOVE_ID[g->last_move], lm->name, ft_level_name(lm->lv), RESULT[g->last_result < 6 ? g->last_result : 0]);
+  snprintf(b, sizeof b, "%s %s: %s (%s)  %s", d->name, FT_MOVE_ID[g->last_move], lm->name, lm->flags & FM_THROW ? "throw" : ft_level_name(lm->lv), RESULT[g->last_result < 6 ? g->last_result : 0]);
   text(G.font_ui, b, x + 14 * s, y + 8 * s, 17 * s, rgba(1, 0.95f, 0.7f, 1), CW_ALIGN_LEFT);
   snprintf(b, sizeof b, "Startup %d   Active %d   Recovery %d   Total %d", g->last_su, g->last_ac, g->last_rc, g->last_su + g->last_ac + g->last_rc);
   text(G.font_ui, b, x + 14 * s, y + 32 * s, 16 * s, rgba(0.85f, 0.9f, 1, 1), CW_ALIGN_LEFT);

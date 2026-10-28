@@ -20,7 +20,7 @@ int ft_slot_for(int dir, uint16_t button) {
 }
 void ft_special_text(const ft_def *d, int k, char *out, int n) {
   uint16_t b = d->mbtn[k];
-  snprintf(out, (size_t)n, "%s %s", d->motion[k], b == B_P ? "P" : b == B_K ? "K" : "P or K");
+  snprintf(out, (size_t)n, "%s %s", d->motion[k], b == B_P ? "P" : b == B_K ? "K" : "P/K");
 }
 const char *const FT_STATE_NAME[S_COUNT] = { "intro", "idle", "walk_f", "walk_b", "crouch", "prejump", "air", "attack", "block", "hit", "air_hit",
                                              "down", "getup", "thrown", "dash_f", "dash_b", "ko", "win", "land" };
