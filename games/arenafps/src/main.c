@@ -108,6 +108,21 @@ static struct game {
 static fighter *F(int i) { return &G.f[i]; }
 static bool is_bot(const fighter *f) { return AUTO || f->human < 0; }
 
+/* bot difficulty (setup row "bots"): skill scale, reaction before the first shot at a newly seen enemy (ticks, plus up to
+ * react_span more for the least skilled), turn rate (rad/s = turn + turn_skill * skill) and the damage a bot's hit does to a
+ * person. NORMAL is the default and is meant for a new pad player (playtest A-PT1: "too hard by default"); HARD is the old
+ * NORMAL's skill with quicker reactions. */
+typedef struct bot_level_def { float skill_mul, skill_add, react, react_span, turn, turn_skill, dmg_to_people, err; bool legacy; } bot_level_def;
+static const bot_level_def LEVELS[4] = {
+  { 0.45f, 0.0f, 24, 8, 1.4f, 1.4f, 0.55f, 1.6f },  /* EASY: 400 to 530 ms, slow turns, wide misses */
+  { 0.70f, 0.0f, 15, 9, 1.8f, 2.4f, 0.70f, 1.25f }, /* NORMAL: 250 to 400 ms */
+  { 0.40f, 0.6f, 10, 6, 2.5f, 5.5f, 1.00f, 1.0f },  /* HARD: 170 to 270 ms, the first pass's aim */
+  { 1.00f, 0.0f, 8, 24, 2.5f, 5.5f, 1.00f, 1.0f, true }, /* autopilot ARENA_LEVEL=3 only: the first pass's NORMAL, for before/after */
+};
+/* the seats' stand-in in an autopilot build (tests, pacing): a pad player of middling skill, as if aim assist and the stick
+ * curve were in play: 300 ms reactions, the stick's 3.6 rad/s turn, aim error 0.7 of a 0.5 skill bot's with assist on */
+static bool proxy(const fighter *f) { return AUTO && f->human >= 0; }
+
 /* ── helpers ───────────────────────────────────────────────────────── */
 
 static t3_vec3 eye_pos(const fighter *f) { return v3add(f->mv.position, v3(0, EYE_H, 0)); }
@@ -270,6 +285,7 @@ static void damage(fighter *v, fighter *k, int dmg, t3_vec3 dir, float knock, in
   if (v->first_dmg_tick < 0) v->first_dmg_tick = G.ticks;
   if (k && !enemies(k, v) && k != v) return; /* no friendly fire */
   if (head) dmg = dmg * 3 / 2;
+  if (k && k != v && k->human < 0 && v->human >= 0) dmg = CW_MAX(1, (int)((float)dmg * LEVELS[G.bot_level].dmg_to_people + 0.5f)); /* bots hit people softer below HARD */
   int absorbed = CW_MIN(v->armor, dmg / 2);
   v->armor -= absorbed;
   v->hp -= dmg - absorbed;
@@ -547,7 +563,11 @@ static void bot_think(fighter *f, int idx) {
     bd = dist, best = i;
   }
   if (best >= 0) {
-    if (f->target != best) f->react = 8 + (int)((1 - f->skill) * 24);
+    if (f->target != best || (!LEVELS[G.bot_level].legacy && f->alive_t - f->saw_t > 30)) { /* a new enemy, or one back in sight after half a second hidden */
+      const bot_level_def *L = &LEVELS[G.bot_level];
+      f->react = proxy(f) ? 18 : (int)(L->react + (1 - f->skill) * L->react_span);
+      if (F(best)->since_spawn < 180 && !LEVELS[G.bot_level].legacy) f->react += 12; /* a fighter that has just respawned gets a moment */
+    }
     f->target = best;
     f->saw_t = f->alive_t;
     f->last_pos = F(best)->mv.position;
@@ -729,11 +749,15 @@ static void bot_tick(fighter *f, int idx) {
     t3_vec3 d = v3sub(aim_at, eye_pos(f));
     float hd = sqrtf(d.x * d.x + d.z * d.z);
     if (G.ticks % 24 == idx % 24) {
-      f->aim_err_yaw = cw_rng_range(&G.rng, -1, 1) * (1 - f->skill * 0.8f) * 0.06f;
-      f->aim_err_pitch = cw_rng_range(&G.rng, -1, 1) * (1 - f->skill * 0.8f) * 0.04f;
+      /* the error grows with distance and with the target's and the bot's own speed (a person misses movers more) */
+      float tsp = v3len(v3(t->mv.velocity.x, 0, t->mv.velocity.z)), osp = v3len(v3(f->mv.velocity.x, 0, f->mv.velocity.z));
+      float e = (1 - f->skill * 0.8f) * (proxy(f) ? (G.aim_assist ? 0.7f : 1.0f) : LEVELS[G.bot_level].err);
+      if (!LEVELS[G.bot_level].legacy || proxy(f)) e *= 1 + dist * 0.02f + tsp * 0.08f + osp * 0.05f;
+      f->aim_err_yaw = cw_rng_range(&G.rng, -1, 1) * e * 0.06f;
+      f->aim_err_pitch = cw_rng_range(&G.rng, -1, 1) * e * 0.04f;
     }
     float ty = cw_atan2(-d.x, -d.z) + f->aim_err_yaw, tp = cw_atan2(d.y, hd) + f->aim_err_pitch;
-    float rate = (2.5f + f->skill * 5.5f) * TICK_DT;
+    float rate = (proxy(f) ? 3.6f : LEVELS[G.bot_level].turn + f->skill * LEVELS[G.bot_level].turn_skill) * TICK_DT;
     float dy = cw_wrap_angle(ty - f->yaw), dp = tp - f->pitch;
     f->yaw += cw_clampf(dy, -rate, rate);
     f->pitch += cw_clampf(dp, -rate, rate);
@@ -801,6 +825,29 @@ static void human_tick(fighter *f, int idx) {
   cw_vec2 turn = cw_aim_step(&G.aim[h], &curve, lk, TICK_DT, on);
   f->yaw -= turn.x;
   f->pitch = cw_clampf(f->pitch - turn.y, -1.45f, 1.45f);
+  if (G.aim_assist && (fabsf(lk.x) + fabsf(lk.y) > 0.05f || fabsf(mv.x) + fabsf(mv.y) > 0.1f)) {
+    /* gentle magnetism: while the player aims or moves, the view drifts toward an enemy in the open within about 5 degrees
+     * of the crosshair (at most 0.5 rad/s, so it helps and never snaps); never one behind a wall */
+    float best = 0.09f, by = 0, bp = 0;
+    bool got = false;
+    for (int i = 0; i < G.nf; i++) {
+      fighter *o = F(i);
+      if (i == idx || !o->active || !o->alive || !enemies(f, o)) continue;
+      t3_vec3 to = v3sub(chest_pos(o), eye_pos(f));
+      float dist = v3len(to);
+      if (dist > 40 || dist < 0.5f) continue;
+      float hd = sqrtf(to.x * to.x + to.z * to.z);
+      float dyaw = cw_wrap_angle(cw_atan2(-to.x, -to.z) - f->yaw), dpitch = cw_atan2(to.y, hd) - f->pitch;
+      float a = fabsf(dyaw) + fabsf(dpitch);
+      if (a >= best || arena_ray(eye_pos(f), chest_pos(o), NULL, NULL)) continue;
+      best = a, by = dyaw, bp = dpitch, got = true;
+    }
+    if (got) {
+      float m = 0.5f * TICK_DT;
+      f->yaw += cw_clampf(by * 0.15f, -m, m);
+      f->pitch += cw_clampf(bp * 0.15f, -m, m);
+    }
+  }
   if (cw_action_just_pressed(h, G.w_next)) {
     for (int k = 1; k <= NWEAP; k++) { int n = (f->weapon + k) % NWEAP; if ((f->have >> n & 1)) { f->weapon = n; break; } }
     fx_play_ui(SND_CLICK, 0.4f);
@@ -1018,15 +1065,19 @@ static void build_world(int arena_id) {
 
 /* the setup's bot level scales every bot's skill: easy 0.65x, normal as drawn, hard pulled up toward 0.95 */
 static float bot_skill(float s) {
-  if (G.bot_level == 0) return s * 0.65f;
-  if (G.bot_level == 2) return CW_MIN(0.95f, 0.6f + s * 0.4f);
-  return s;
+  const bot_level_def *L = &LEVELS[G.bot_level];
+  return CW_MIN(0.95f, L->skill_add + s * L->skill_mul);
 }
+
 
 /* the bot count the AUTO setting fills in: four fighters in all (bots fill the empty seats, none with four people). Measured with
  * tools/pacing.mjs: with six to nine fighters every fighter had an enemy in sight most of the time and met one every 4 to 7 s;
  * four keep the arenas' lanes quiet between fights (and the teams even in team deathmatch) */
-static int auto_bots(void) { return CW_MAX(0, 4 - G.players); }
+static int auto_bots(void) { /* one player: two bots, a gentler start; team deathmatch rounds up to even teams */
+  int b = G.players == 1 ? 2 : CW_MAX(0, 4 - G.players);
+  if (G.mode == MODE_TDM && ((G.players + b) & 1)) b++;
+  return b;
+}
 
 static void setup_fighters(void) {
   G.nf = 0;
@@ -1041,7 +1092,7 @@ static void setup_fighters(void) {
     f->human = i < G.players ? i : -1;
     f->team = G.mode == MODE_DM ? i : (G.mode == MODE_COOP ? (i < G.players ? 0 : 1) : i % 2);
     if (G.mode == MODE_TDM) f->team = i % 2;
-    f->skill = bot_skill(0.35f + 0.5f * (float)((i * 37) % 10) / 10.0f);
+    f->skill = i < G.players ? 0.5f : bot_skill(0.35f + 0.5f * (float)((i * 37) % 10) / 10.0f); /* seats: a person (or the autopilot's stand-in) */
     if (f->human >= 0) snprintf(f->name, sizeof f->name, "P%d", i + 1);
     else snprintf(f->name, sizeof f->name, "%s", BOT_NAMES[i % 16]);
     cw_mover3d_def md = cw_mover3d_default_def();
@@ -1815,7 +1866,7 @@ static void init(void *user) {
   if ((e = getenv("ARENA_ID"))) G.arena_id = CW_CLAMP(atoi(e), 0, ARENAS - 1);
   if ((e = getenv("ARENA_MODE"))) G.mode = CW_CLAMP(atoi(e), 0, MODE_COUNT - 1);
   if ((e = getenv("ARENA_BOTS"))) G.bots_setting = CW_CLAMP(atoi(e), -1, MAXF - 4);
-  if ((e = getenv("ARENA_LEVEL"))) G.bot_level = CW_CLAMP(atoi(e), 0, 2);
+  if ((e = getenv("ARENA_LEVEL"))) G.bot_level = CW_CLAMP(atoi(e), 0, 3);
   cw_shell_start((e = getenv("ARENA_PLAYERS")) ? CW_CLAMP(atoi(e), 1, MAXH) : 4);
 #endif
 }

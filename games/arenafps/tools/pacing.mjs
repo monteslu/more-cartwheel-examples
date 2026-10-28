@@ -4,7 +4,9 @@
 //   node games/arenafps/tools/pacing.mjs [--secs 180] [--build build/native] [--runs a:m:p[:bots],...] [--out file.json]
 //
 // a = arena (0 Foundry, 1 Courtyard, 2 Terraces), m = mode (0 deathmatch, 1 team deathmatch, 2 co-op), p = seats,
-// bots = bot count (omit for the game's default for that many seats). Default runs: every arena and mode at 4 seats,
+// bots = bot count (omit, or -1, for the game's AUTO count), l = bot level (0 easy, 1 normal = default, 2 hard, 3 the first
+// pass's normal). The seats are played by the autopilot's stand-in for a pad player (src/main.c proxy()); p1 = seat 1's
+// kills/deaths. Default runs: every arena and mode at 4 seats,
 // plus deathmatch at 2 seats and 1 seat. Only the simulation is measured, so one frame is drawn per 150 game ticks
 // (ARENA_SIM_BATCH=150); the simulation is the same tick for tick as a normal run.
 //
@@ -30,19 +32,19 @@ const outDir = join(ROOT, 'out/pacing');
 mkdirSync(outDir, { recursive: true });
 if (!existsSync(exe)) { console.error(`no ${exe}: build arenafps_auto first`); process.exit(2); }
 const runs = (arg('--runs', '') || ['0:0:4', '1:0:4', '2:0:4', '0:1:4', '1:1:4', '2:1:4', '0:2:4', '1:2:4', '2:2:4', '0:0:2', '1:0:2', '2:0:2', '0:0:1'].join(','))
-  .split(',').filter(Boolean).map((s) => { const [a, m, p, b] = s.split(':').map(Number); return { a, m, p, b }; });
+  .split(',').filter(Boolean).map((s) => { const [a, m, p, b, l] = s.split(':').map(Number); return { a, m, p, b, l: Number.isFinite(l) ? l : 1 }; });
 
-const ARENA = ['Foundry', 'Courtyard', 'Terraces'], MODE = ['DM', 'TDM', 'co-op'];
+const ARENA = ['Foundry', 'Courtyard', 'Terraces'], MODE = ['DM', 'TDM', 'co-op'], LEVEL = ['easy', 'normal', 'hard', 'first-pass'];
 const env0 = { ...process.env };
 for (const k of ['DISPLAY', 'WAYLAND_DISPLAY', 'XAUTHORITY']) delete env0[k];
 const rows = [];
 for (const r of runs) {
-  const tag = `a${r.a}m${r.m}p${r.p}${Number.isFinite(r.b) ? 'b' + r.b : ''}`;
+  const tag = `a${r.a}m${r.m}p${r.p}${Number.isFinite(r.b) ? 'b' + r.b : ''}l${r.l}`;
   const dump = join(outDir, `${tag}.json`);
   const env = {
     ...env0, SDL_VIDEODRIVER: 'offscreen', LIBGL_ALWAYS_SOFTWARE: '1', GALLIUM_DRIVER: 'llvmpipe', CW_GPU: 'gl', SDL_AUDIODRIVER: 'dummy', LP_NUM_THREADS: '2', CW_WORKERS: '2',
     ARENA_SIM_BATCH: '150', CW_FRAMES: String(Math.ceil(secs * 60 / 150) + 2), CW_WARMUP_SPREAD: '0', CW_QUALITY: 'low', ARENA_RES: '320x180',
-    ARENA_ID: String(r.a), ARENA_MODE: String(r.m), ARENA_PLAYERS: String(r.p), ARENA_LEVEL: '1', ARENA_FRAGS: '999', ARENA_SECS: '900', ARENA_REPEAT: '1',
+    ARENA_ID: String(r.a), ARENA_MODE: String(r.m), ARENA_PLAYERS: String(r.p), ARENA_LEVEL: String(r.l), ARENA_FRAGS: '999', ARENA_SECS: '900', ARENA_REPEAT: '1',
     CW_DEBUG_DUMP: dump,
   };
   if (Number.isFinite(r.b)) env.ARENA_BOTS = String(r.b); else delete env.ARENA_BOTS;
@@ -54,7 +56,8 @@ for (const r of runs) {
   const ft = g('stats.fighter_ticks'), kills = g('stats.kills');
   const fighters = g('match.nf');
   const row = {
-    run: `${ARENA[r.a]} ${MODE[r.m]} ${r.p}p`, fighters, ticks: g('game.steps') ?? g('game.ticks'),
+    run: `${ARENA[r.a]} ${MODE[r.m]} ${r.p}p ${LEVEL[r.l]}`, fighters,
+    p1_kd: `${g('fighters.score')[0]}/${g('fighters.deaths')[0]}`, p1_ratio: +(g('fighters.score')[0] / Math.max(1, g('fighters.deaths')[0])).toFixed(2), ticks: g('game.steps') ?? g('game.ticks'),
     enc_s: +(ft / 60 / Math.max(1, g('stats.eng'))).toFixed(1), gap_s: +(g('stats.eng_gap_max') / 60).toFixed(1),
     contact: +(100 * g('stats.contact_ticks') / Math.max(1, ft)).toFixed(0),
     sight_s: +(ft / 60 / Math.max(1, g('stats.enc'))).toFixed(1),
@@ -67,7 +70,7 @@ for (const r of runs) {
   rows.push(row);
   console.log(JSON.stringify(row));
 }
-const cols = ['run', 'fighters', 'enc_s', 'gap_s', 'contact', 'sight_s', 'kills', 'unsafe', 'spawnK', 'quick', 'no_kill_s', 'ttk_s'];
+const cols = ['run', 'fighters', 'p1_kd', 'p1_ratio', 'enc_s', 'gap_s', 'contact', 'sight_s', 'kills', 'unsafe', 'spawnK', 'quick', 'no_kill_s', 'ttk_s'];
 console.log('\n| ' + cols.join(' | ') + ' |\n|' + cols.map(() => '---').join('|') + '|');
 for (const r of rows) console.log('| ' + cols.map((c) => r[c] + (['contact', 'unsafe', 'spawnK', 'quick'].includes(c) ? '%' : '')).join(' | ') + ' |');
 const out = arg('--out', '');
