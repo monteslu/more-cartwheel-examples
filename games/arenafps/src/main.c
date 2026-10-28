@@ -114,8 +114,8 @@ static bool is_bot(const fighter *f) { return AUTO || f->human < 0; }
  * NORMAL's skill with quicker reactions. */
 typedef struct bot_level_def { float skill_mul, skill_add, react, react_span, turn, turn_skill, dmg_to_people, err; bool legacy; } bot_level_def;
 static const bot_level_def LEVELS[4] = {
-  { 0.45f, 0.0f, 24, 8, 1.4f, 1.4f, 0.55f, 1.6f },  /* EASY: 400 to 530 ms, slow turns, wide misses */
-  { 0.70f, 0.0f, 15, 9, 1.8f, 2.4f, 0.70f, 1.25f }, /* NORMAL: 250 to 400 ms */
+  { 0.60f, 0.0f, 20, 8, 1.6f, 2.0f, 0.65f, 1.35f }, /* EASY: 330 to 470 ms, slow turns, wide misses */
+  { 0.95f, 0.0f, 15, 9, 2.2f, 4.0f, 0.90f, 1.00f }, /* NORMAL: 250 to 400 ms */
   { 0.40f, 0.6f, 10, 6, 2.5f, 5.5f, 1.00f, 1.0f },  /* HARD: 170 to 270 ms, the first pass's aim */
   { 1.00f, 0.0f, 8, 24, 2.5f, 5.5f, 1.00f, 1.0f, true }, /* autopilot ARENA_LEVEL=3 only: the first pass's NORMAL, for before/after */
 };
@@ -1073,8 +1073,9 @@ static float bot_skill(float s) {
 /* the bot count the AUTO setting fills in: four fighters in all (bots fill the empty seats, none with four people). Measured with
  * tools/pacing.mjs: with six to nine fighters every fighter had an enemy in sight most of the time and met one every 4 to 7 s;
  * four keep the arenas' lanes quiet between fights (and the teams even in team deathmatch) */
-static int auto_bots(void) { /* one player: two bots, a gentler start; team deathmatch rounds up to even teams */
-  int b = G.players == 1 ? 2 : CW_MAX(0, 4 - G.players);
+static int auto_bots(void) { /* four fighters (one player: three bots, the first pass gave five); team deathmatch rounds up
+                                * to even teams. Two bots for one player left 45 to 50 s with nobody met (tools/pacing.mjs) */
+  int b = CW_MAX(0, 4 - G.players);
   if (G.mode == MODE_TDM && ((G.players + b) & 1)) b++;
   return b;
 }
