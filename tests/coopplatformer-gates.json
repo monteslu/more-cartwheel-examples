@@ -111,5 +111,75 @@
       "g.reached": 511
     },
     "note": "two bots from the arena flag with every ability: boss fight, hit-stops and the win, cross-host state"
+  },
+  {
+    "name": "coopplatformer-camera-1p",
+    "app": "coopplatformer",
+    "webgpu": {
+      "vsGl": 0.08,
+      "maxArea": 0.005,
+      "note": "GL and WebGPU filter the generated grass and rock textures differently (mip and anisotropic choice): 5.8 to 6.2% of pixels differ by more than 16, all in textured interiors, state exact on every host; maxArea still catches a surface one backend misses"
+    },
+    "frames": 1600,
+    "input": "coopplatformer-camera-1p.json",
+    "fields": [
+      "g.tick",
+      "g.players",
+      "g.state",
+      "g.pos",
+      "g.ppos",
+      "g.cam",
+      "g.view",
+      "g.camgate"
+    ],
+    "expect": {
+      "g.players": 1,
+      "g.camgate": [
+        614,
+        0,
+        745,
+        0
+      ]
+    },
+    "controlInput": "coopplatformer-camera-1p.json",
+    "controlEnv": {
+      "COOP_SHAKE_BUG": "1"
+    },
+    "note": "camera stability, the way a person plays: one pad through title, join and start, then stand, walk, stop, jump and stand while the drawn camera is measured every frame (g.camgate: frames at rest, at-rest frames that moved over 1 mm, frames in motion, frames in motion with a jump over 0.6 m or a jerk over 8 cm). At rest it must not move at all; in motion it must stay smooth. The control brings back the boss landing that shook the screen from anywhere in the world (COOP_SHAKE_BUG, native): its g.camgate must differ."
+  },
+  {
+    "name": "coopplatformer-camera-4p",
+    "app": "coopplatformer",
+    "webgpu": {
+      "vsGl": 0.08,
+      "maxArea": 0.005,
+      "note": "GL and WebGPU filter the generated grass and rock textures differently (mip and anisotropic choice): 5.8 to 6.2% of pixels differ by more than 16, all in textured interiors, state exact on every host; maxArea still catches a surface one backend misses"
+    },
+    "frames": 1600,
+    "input": "coopplatformer-camera-4p.json",
+    "fields": [
+      "g.tick",
+      "g.players",
+      "g.state",
+      "g.pos",
+      "g.ppos",
+      "g.cam",
+      "g.view",
+      "g.camgate"
+    ],
+    "expect": {
+      "g.players": 4,
+      "g.camgate": [
+        614,
+        0,
+        745,
+        0
+      ]
+    },
+    "controlInput": "coopplatformer-camera-4p.json",
+    "controlEnv": {
+      "COOP_SHAKE_BUG": "1"
+    },
+    "note": "camera stability, the way a person plays: four pads through title, join and start, then stand, walk, stop, jump and stand while the drawn camera is measured every frame (g.camgate: frames at rest, at-rest frames that moved over 1 mm, frames in motion, frames in motion with a jump over 0.6 m or a jerk over 8 cm). At rest it must not move at all; in motion it must stay smooth. The control brings back the boss landing that shook the screen from anywhere in the world (COOP_SHAKE_BUG, native): its g.camgate must differ."
   }
 ]

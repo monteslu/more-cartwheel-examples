@@ -1,0 +1,13 @@
+[{"frame":1,"buttons":[]},
+{"frame":120,"buttons":["south"]},
+{"frame":126,"buttons":[]},
+{"frame":180,"buttons":["south"]},
+{"frame":186,"buttons":[]},
+{"frame":240,"buttons":["start"]},
+{"frame":246,"buttons":[]},
+{"frame":600,"buttons":["right"]},
+{"frame":720,"buttons":[]},
+{"frame":1000,"buttons":["south"]},
+{"frame":1010,"buttons":[]},
+{"frame":1300,"buttons":["left"]},
+{"frame":1340,"buttons":[]}]
