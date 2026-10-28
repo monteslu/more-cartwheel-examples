@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #include "cartwheel/audio.h"
 #include "cartwheel/quality.h"
@@ -280,11 +281,24 @@ static void update_select(void) {
 
 /* ── the tick ───────────────────────────────────────────────────────── */
 
+static bool g_hold; /* test builds: "screen" holds the select or result screen for screenshots */
+#if defined(FIGHTER_AUTOPILOT) || defined(FIGHTER_SCRIPTED)
+static void cmd_screen(int argc, const char **argv, cw_reply *r);
+#endif
 static void fixed(void *u, double dt) {
   (void)u; (void)dt;
   if (!cw_shell_update()) return;
 #if defined(FIGHTER_AUTOPILOT) || defined(FIGHTER_SCRIPTED)
-  if (G.state == GS_SELECT && !getenv("FIGHTER_SELECT")) {
+  static bool screen_env_done;
+  if (!screen_env_done && getenv("FIGHTER_SCREEN")) { /* FIGHTER_SCREEN="select 1 3 0" or "result 0": the screen command at start */
+    screen_env_done = true;
+    static char buf[64]; const char *av[8]; int ac = 0;
+    snprintf(buf, sizeof buf, "screen %s", getenv("FIGHTER_SCREEN"));
+    for (char *t = strtok(buf, " _"); t && ac < 8; t = strtok(NULL, " _")) av[ac++] = t;
+    if (ac > 1 && !strcmp(av[1], "result")) { G.sel[0] = 0; G.sel[1] = 1; begin_match(); }
+    cmd_screen(ac, av, NULL);
+  }
+  if (G.state == GS_SELECT && !getenv("FIGHTER_SELECT") && !g_hold) {
     const char *e;
     G.sel[0] = (e = getenv("FIGHTER_P1")) ? atoi(e) & 3 : 0;
     G.sel[1] = (e = getenv("FIGHTER_P2")) ? atoi(e) & 3 : 2;
@@ -306,7 +320,7 @@ static void fixed(void *u, double dt) {
     if (G.result_t > 40 && confirm(0)) begin_match();
     else if (G.result_t > 40 && back_out(0)) { G.state = GS_SELECT; G.ready[0] = G.ready[1] = 0; shown_sel[0] = -1; }
 #if defined(FIGHTER_AUTOPILOT)
-    if (G.result_t > 200) { G.sel_stage = (G.sel_stage + 1) % STAGES; G.sel[0] = (G.sel[0] + 1) % 4; G.sel[1] = (G.sel[1] + 1) % 4; begin_match(); }
+    if (G.result_t > 200 && !g_hold) { G.sel_stage = (G.sel_stage + 1) % STAGES; G.sel[0] = (G.sel[0] + 1) % 4; G.sel[1] = (G.sel[1] + 1) % 4; begin_match(); }
 #endif
     return;
   }
@@ -384,6 +398,35 @@ static void update_camera(float dt, float aspect) {
   for (int i = 0; i < 2; i++) pts[i] = (cw_frame_point){ (float)g->f[i].x / 1000.0f, 0.95f + (float)g->f[i].y / 1000.0f, 0, 0.8f };
   cw_frame_params p = { .yaw = 0, .pitch = -0.04f, .fov_y = 34.0f * 0.0174533f, .aspect = aspect, .margin = 0.12f, .min_dist = 5.4f, .max_dist = 15.0f };
   int npts = 2;
+  if ((G.state == GS_SELECT || G.state == GS_RESULT) && g_cam[0] <= 0) {
+    /* portraits: a longer lens from further back (no wide-angle swelling of heads and fists), the fighters at three
+     * quarter body. The select screen frames both from the knees up with the heads in the band between the title and the
+     * cards; the result screen frames the winner alone a little closer, from a little to the side of the way they face.
+     * The camera sits at chest height and looks slightly up at the faces. */
+    stage_set_showcase(true);
+    int w = G.state == GS_RESULT ? g->match_winner : -1;
+    float fov = w >= 0 ? 24.0f : 25.0f, half = w >= 0 ? 0.78f : 1.12f; /* half the frame's height in metres */
+    float cx = w >= 0 ? (float)g->f[w].x / 1000.0f : ((float)g->f[0].x + (float)g->f[1].x) * 0.0005f;
+    float cy = w >= 0 ? 1.5f : 1.4f, yaw = w >= 0 ? (g->f[w].facing > 0 ? 0.32f : -0.32f) : 0.0f;
+    float dist = half / tanf(fov * 0.5f * 0.0174533f);
+    t3_vec3 tgt = { cx, cy, 0 }, pos = { cx + sinf(yaw) * dist, 1.3f, cosf(yaw) * dist };
+    cw_node_set(G.camera, "fov", cw_val_float(fov));
+    /* a shallow depth of field: the fighters sharp, the crowd and the stage behind them soft */
+    cw_node post = cw_node_get(G.stage_node, "Post");
+    if (cw_node_valid(post)) {
+      cw_node_set(post, "dof", cw_val_bool(true));
+      cw_node_set(post, "dof_focus_distance", cw_val_float(dist));
+      cw_node_set(post, "dof_focus_range", cw_val_float(1.3f));
+      cw_node_set(post, "dof_blur", cw_val_float(7.0f));
+    }
+    cw_node3d_set_position(G.camera, pos);
+    cw_node3d_look_at(G.camera, tgt, (t3_vec3){ 0, 1, 0 });
+    G.d_cam[0] = pos.x; G.d_cam[1] = pos.y; G.d_cam[2] = pos.z;
+    memset(&G.fs, 0, sizeof G.fs);
+    return;
+  }
+  cw_node_set(G.camera, "fov", cw_val_float(34.0f));
+  { cw_node post = cw_node_get(G.stage_node, "Post"); if (cw_node_valid(post)) cw_node_set(post, "dof", cw_val_bool(false)); }
   if (G.state == GS_SELECT || G.state == GS_RESULT) { /* faces: both fighters' heads on the select screen, the winner's on the result screen */
     int w = G.state == GS_RESULT ? g->match_winner : -1;
     if (w >= 0) { pts[0] = (cw_frame_point){ (float)g->f[w].x / 1000.0f, 1.62f, 0, 0.55f }; npts = 1; }
@@ -461,6 +504,13 @@ static void update(void *u, double dtd) {
   sound_events();
   cw_vec2 cs = cw_r2d_canvas_size();
   update_camera(dt, cs.x / cs.y);
+  /* the eyes: at the camera on the select and result screens, at each other in a fight */
+  for (int i = 0; i < 2; i++) {
+    t3_vec3 at;
+    if (G.state != GS_MATCH) at = (t3_vec3){ G.d_cam[0], G.d_cam[1], G.d_cam[2] };
+    else at = model_joint(G.mdl[1 - i], J_HEAD);
+    model_look_at(G.mdl[i], at);
+  }
   update_debug_boxes();
 }
 
@@ -736,15 +786,35 @@ static void shell_sound(cw_shell_sound s, void *u) {
 static void cmd_cam(int argc, const char **argv, cw_reply *r) {
   g_cam[0] = argc > 1 ? (float)atof(argv[1]) : 0; g_cam[1] = argc > 2 ? (float)atof(argv[2]) : 2; g_cam[2] = argc > 3 ? (float)atof(argv[3]) : 0;
   memset(&G.fs, 0, sizeof G.fs);
-  cw_reply_printf(r, "{\"zoom\":%g}", (double)g_cam[0]);
+  if (r) cw_reply_printf(r, "{\"zoom\":%g}", (double)g_cam[0]);
+}
+/* "screen select <p1> <p2> <stage>" or "screen result <winner 0|1>" holds that screen; "screen off" lets the autopilot go on */
+static void cmd_screen(int argc, const char **argv, cw_reply *r) {
+  if (argc < 2) { if (r) cw_reply_error(r, "usage: screen select|result|off ..."); return; }
+  if (!strcmp(argv[1], "off")) { g_hold = false; if (r) cw_reply_printf(r, "{\"hold\":false}"); return; }
+  g_hold = true;
+  if (!strcmp(argv[1], "select")) {
+    if (argc > 2) G.sel[0] = atoi(argv[2]) & 3;
+    int b = argc > 3 ? atoi(argv[3]) & 3 : (G.sel[0] + 1) & 3;
+    if (argc > 4) G.sel_stage = atoi(argv[4]) % STAGES;
+    G.players = 2; G.sel[1] = b; G.ready[0] = G.ready[1] = 0;
+    shown_sel[0] = -1; G.state = GS_SELECT; select_scene();
+  } else {
+    int w = argc > 2 ? atoi(argv[2]) & 1 : 0;
+    G.sim.phase = P_MATCH_END; G.sim.match_winner = w; G.sim.f[w].state = S_WIN; G.sim.f[w].t = 0; G.sim.f[1 - w].state = S_KO; G.sim.f[1 - w].t = 0; /* as a match ends: the loser down */
+    G.state = GS_RESULT; G.result_t = 0;
+    model_set_showcase(G.mdl[w], 0.9f);
+  }
+  if (r) cw_reply_printf(r, "{\"state\":%d}", G.state);
 }
 static void cmd_match(int argc, const char **argv, cw_reply *r) {
   if (argc < 2) { cw_reply_error(r, "usage: match <stage 0-2> [p1 0-3] [p2 0-3]"); return; }
   G.sel_stage = atoi(argv[1]) % STAGES;
   if (argc > 2) G.sel[0] = atoi(argv[2]) & 3;
   if (argc > 3) G.sel[1] = atoi(argv[3]) & 3;
+  g_hold = false;
   begin_match();
-  cw_reply_printf(r, "{\"stage\":%d}", G.sel_stage);
+  if (r) cw_reply_printf(r, "{\"stage\":%d}", G.sel_stage);
 }
 #endif
 
@@ -753,6 +823,7 @@ static void init(void *u) {
 #if defined(FIGHTER_AUTOPILOT) || defined(FIGHTER_SCRIPTED)
   cw_debug_command("cam", "cam <zoom> [who 0|1|2] [yaw]: close-up camera (zoom 0: normal)", cmd_cam);
   cw_debug_command("match", "match <stage 0-2> [p1] [p2]: start a match on a stage", cmd_match);
+  cw_debug_command("screen", "screen select <p1> <p2> <stage> | result <winner> | off: hold a menu screen", cmd_screen);
   { const char *e = getenv("FIGHTER_CAM"); if (e) sscanf(e, "%f %f %f", &g_cam[0], &g_cam[1], &g_cam[2]); }
 #endif
   cw_input_load_bindings_asset("input.cfg");

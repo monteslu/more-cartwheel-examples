@@ -107,6 +107,33 @@ range = 7
 decay = 2
 fog_energy = 0
 
+[node name="Key0" parent="." type="OmniLight3D"]
+position = vec3(0, -40, 0)
+color = color(1, 0.89, 0.7874, 1)
+energy = 0
+range = 6
+decay = 2
+fog_energy = 0
+
+[node name="Key1" parent="." type="OmniLight3D"]
+position = vec3(0, -40, 0)
+color = color(1, 0.89, 0.7874, 1)
+energy = 0
+range = 6
+decay = 2
+fog_energy = 0
+
+[node name="Fill0" parent="." type="OmniLight3D"]
+position = vec3(0, -40, 0)
+color = color(0.448, 0.6038, 1, 1)
+energy = 0
+range = 9
+decay = 2
+fog_energy = 0
+
+[node name="Lighting" parent="." type="LightingSettings"]
+mode = CLUSTERED
+
 [node name="Flash0" parent="." type="OmniLight3D"]
 position = vec3(0, -50, 0)
 color = color(1, 0.6921, 0.3185, 1)

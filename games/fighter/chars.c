@@ -10,6 +10,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
+
+#include "cartwheel/morph.h"
 
 #include "cartwheel/resource.h"
 #include "game.h"
@@ -17,8 +20,15 @@
 enum { HIPS, SPINE, CHEST, NECK, HEAD, UAR_L, FAR_L, HAND_L, UAR_R, FAR_R, HAND_R, THI_L, SHI_L, FOO_L, THI_R, SHI_R, FOO_R, JN };
 static const char *const BONE[JN] = { "Hips", "Spine", "Chest", "Neck", "Head", "UpperArmL", "LowerArmL", "HandL", "UpperArmR", "LowerArmR", "HandR",
   "UpperLegL", "LowerLegL", "FootL", "UpperLegR", "LowerLegR", "FootR" };
-/* the finger bones per hand (model left, model right): knuckles, middle joints, thumb */
-static const char *const FING[2][3] = { { "FingersL", "Fingers2L", "ThumbL" }, { "FingersR", "Fingers2R", "ThumbR" } };
+/* the finger bones per hand (model left, model right): the knuckle and middle joint of the index, middle, ring and
+ * little fingers, then the two of the thumb */
+enum { NFING = 10 };
+static const char *const FING[2][NFING] = {
+  { "Index1L", "Index2L", "Middle1L", "Middle2L", "Ring1L", "Ring2L", "Pinky1L", "Pinky2L", "ThumbL", "Thumb2L" },
+  { "Index1R", "Index2R", "Middle1R", "Middle2R", "Ring1R", "Ring2R", "Pinky1R", "Pinky2R", "ThumbR", "Thumb2R" } };
+/* the face: morph targets on the Face mesh (tools/facemesh.mjs); the Jaw bone opens the mouth */
+enum { X_BLINK, X_BROWUP, X_BROWDOWN, X_BROWPINCH, X_SQUINT, X_SMILE, X_SNARL, X_SHOUT, X_WINCE, X_KO, X_JAWOPEN, XN };
+static const char *const XNAME[XN] = { "blink", "browUp", "browDown", "browPinch", "squint", "smile", "snarl", "shout", "wince", "ko", "jawOpen" };
 
 typedef struct spec {
   const char *name;
@@ -38,11 +48,13 @@ struct fighter_model {
   int def;
   const spec *sp;
   cw_node node;
-  t3_object *root, *bones[JN], *fing[2][3], *face[5];
-  t3_vec3 face_rest[5];
-  float jaw, lid, brow, pinch, showcase; /* expression now: jaw open, lids closed, brows lowered, brows pinched */
+  t3_object *root, *bones[JN], *fing[2][NFING], *jaw_bone, *eye[2], *face_mesh;
+  float jaw, xw[XN], showcase; /* expression now: jaw open, morph weights */
+  t3_vec3 look;
+  bool look_valid;
+  float eye_yaw, eye_pitch;
   t3_vec3 hips_rest;
-  float cur[JN][3], root_off[3], yaw, tilt, fist[2];
+  float cur[JN][3], root_off[3], yaw, tilt, fist[2], claw[2];
   spring_rig springs;
   int last_state, last_stun;
   bool inited;
@@ -80,10 +92,12 @@ fighter_model *model_new(int def, cw_node parent) {
     m->bones[j] = t3_object_get_by_name(m->root, BONE[j]);
     if (!m->bones[j]) { cw_error("fighter: %s has no bone %s", m->sp->name, BONE[j]); t3_release(m->root); free(m); return NULL; }
   }
-  for (int h = 0; h < 2; h++) for (int k = 0; k < 3; k++) m->fing[h][k] = t3_object_get_by_name(m->root, FING[h][k]);
+  for (int h = 0; h < 2; h++) for (int k = 0; k < NFING; k++) m->fing[h][k] = t3_object_get_by_name(m->root, FING[h][k]);
   m->hips_rest = m->bones[HIPS]->position;
-  static const char *const FACE[5] = { "Jaw", "LidL", "LidR", "BrowL", "BrowR" };
-  for (int k = 0; k < 5; k++) { m->face[k] = t3_object_get_by_name(m->root, FACE[k]); if (m->face[k]) m->face_rest[k] = m->face[k]->position; }
+  m->jaw_bone = t3_object_get_by_name(m->root, "Jaw");
+  m->eye[0] = t3_object_get_by_name(m->root, "EyeL");
+  m->eye[1] = t3_object_get_by_name(m->root, "EyeR");
+  m->face_mesh = t3_object_get_by_name(m->root, "Face");
   shadows_on(m->root);
   char_shade(m->root);
   sb_bind(&m->springs, m->root);
@@ -116,6 +130,7 @@ void model_set_visible(fighter_model *m, bool v) { if (m) { cw_node_set(m->node,
 /* drawn far under the floor for a few frames at start-up, so its first real appearance creates nothing on the GPU */
 void model_park(fighter_model *m) { if (m) { cw_node3d_set_position(m->node, (t3_vec3){ 0, -80, 0 }); model_set_visible(m, true); } }
 void model_set_showcase(fighter_model *m, float turn) { if (m) m->showcase = turn; }
+void model_look_at(fighter_model *m, t3_vec3 p) { if (m) { m->look = p; m->look_valid = true; } }
 t3_vec3 model_joint(fighter_model *m, int j) {
   static const int MAP[] = { [J_HEAD] = HEAD, [J_HAND_F] = HAND_R, [J_HAND_B] = HAND_L, [J_FOOT_F] = FOO_R, [J_CHEST] = CHEST, [J_HIPS] = HIPS };
   const t3_mat4 *w = &m->bones[MAP[j]]->matrix_world;
@@ -125,7 +140,7 @@ float model_spring_speed(const fighter_model *m) { return m ? sb_speed(&m->sprin
 
 /* ── poses ───────────────────────────────────────────────────────────── */
 
-typedef struct pose { float r[JN][3]; float off[3]; float yaw, tilt, fist[2]; } pose; /* fist: 0 an open hand, 1 a closed fist (model left, right) */
+typedef struct pose { float r[JN][3]; float off[3]; float yaw, tilt, fist[2], claw[2]; } pose; /* fist: 0 an open hand, 1 a closed fist; claw: fingers hooked (model left, right) */
 
 /* arm in lead / rear terms: forward raise, out to the side, elbow bend */
 static void arm(pose *p, int lead, int near_is_right, float fwd, float out, float elbow, float twist) {
@@ -138,6 +153,7 @@ static void arm(pose *p, int lead, int near_is_right, float fwd, float out, floa
 /* how closed the lead or rear hand is (0 open, 1 a fist) */
 static void hand(pose *p, int lead, int near_is_right, float v) { int right = lead ? near_is_right : !near_is_right; p->fist[right] = v; }
 static void hands(pose *p, float v) { p->fist[0] = p->fist[1] = v; }
+static void claws(pose *p, float v) { p->claw[0] = p->claw[1] = v; }
 static void leg(pose *p, int lead, int near_is_right, float fwd, float out, float knee) {
   int right = lead ? near_is_right : !near_is_right;
   int th = right ? THI_R : THI_L, sn = right ? SHI_R : SHI_L, ft = right ? FOO_R : FOO_L;
@@ -167,7 +183,7 @@ static void blend(pose *o, const pose *a, const pose *b, float k) {
   for (int c = 0; c < 3; c++) o->off[c] = a->off[c] + (b->off[c] - a->off[c]) * k;
   o->yaw = a->yaw + (b->yaw - a->yaw) * k;
   o->tilt = a->tilt + (b->tilt - a->tilt) * k;
-  for (int h = 0; h < 2; h++) o->fist[h] = a->fist[h] + (b->fist[h] - a->fist[h]) * k;
+  for (int h = 0; h < 2; h++) { o->fist[h] = a->fist[h] + (b->fist[h] - a->fist[h]) * k; o->claw[h] = a->claw[h] + (b->claw[h] - a->claw[h]) * k; }
 }
 
 /* the extended pose of each move slot, in the same terms as the stance */
@@ -196,7 +212,7 @@ static void strike(pose *p, const spec *s, int nr, int slot, int strength) {
   case M_THROW: case M_SP1: case M_SUPER:
     if (slot == M_THROW || (s->kind == 1 && slot == M_SP1) || (s->kind == 1 && slot == M_SUPER)) {
       arm(p, 1, nr, 1.55f, 0.35f, 0.1f, 0.5f); arm(p, 0, nr, 1.55f, 0.35f, 0.1f, 0.5f); p->r[SPINE][0] = 0.45f; p->off[1] = -0.2f;
-      hands(p, 0.0f); /* reaching open (the grab closes them once it connects) */
+      hands(p, 0.0f); claws(p, 1.0f); /* reaching, fingers hooked (the grab closes them once it connects) */
     } else if (s->kind == 2 && slot == M_SP1) { /* slide */
       p->off[1] = -0.55f; p->off[2] = 0.3f; leg(p, 1, nr, 1.5f, 0.05f, 0.05f); leg(p, 0, nr, 0.3f, 0.4f, 2.0f); p->r[SPINE][0] = -0.5f; p->r[CHEST][0] = -0.3f;
     } else { /* a thrust of both hands */
@@ -330,57 +346,80 @@ static void quat_euler(const float r[3], t3_quat *q) {
   *q = t3_quat_multiply(t3_quat_multiply(qy, qx), qz);
 }
 
-/* fingers: knuckles and middle joints curl toward the palm (about the hand's front axis), the thumb folds across */
-static void pose_hand(fighter_model *m, int h, float fist) {
+/* fingers: each finger curls at its knuckle and middle joint toward the palm (about the hand's front axis) and fans out
+ * about the side axis; the thumb folds across. fist 1: a closed fist; 0: an open hand, relaxed and a little spread;
+ * claw 1 (with an open hand): knuckles nearly straight, middle joints hooked hard, fingers spread (grabs) */
+static void pose_hand(fighter_model *m, int h, float fist, float claw) {
   float sgn = h == 0 ? -1.0f : 1.0f; /* the left hand's palm faces -x */
-  float k1 = 0.25f + 1.3f * fist, k2 = 0.3f + 1.45f * fist;
-  float r1[3] = { 0.05f * fist, 0, sgn * k1 }, r2[3] = { 0, 0, sgn * k2 }, rt[3] = { 0.55f * fist, sgn * 0.2f * fist, sgn * (0.15f + 1.05f * fist) };
-  const float *r[3] = { r1, r2, rt };
-  for (int k = 0; k < 3; k++) {
-    if (!m->fing[h][k]) continue;
-    t3_quat q;
-    quat_euler(r[k], &q);
-    m->fing[h][k]->quaternion = q;
+  static const float FAN[4] = { 0.2f, 0.07f, -0.07f, -0.22f }, LAG[4] = { 0.0f, 0.04f, 0.08f, 0.14f };
+  float open = 1.0f - fist, spread = open * (0.45f + 0.55f * claw);
+  t3_quat q;
+  for (int f = 0; f < 4; f++) {
+    float k1 = 0.18f + LAG[f] + 1.35f * fist + 0.25f * claw * open, k2 = 0.22f + LAG[f] * 1.5f + 1.5f * fist + 1.2f * claw * open;
+    float r1[3] = { -FAN[f] * spread + 0.04f * fist, 0, sgn * k1 }, r2[3] = { 0, 0, sgn * k2 };
+    if (m->fing[h][f * 2]) { quat_euler(r1, &q); m->fing[h][f * 2]->quaternion = q; }
+    if (m->fing[h][f * 2 + 1]) { quat_euler(r2, &q); m->fing[h][f * 2 + 1]->quaternion = q; }
   }
+  /* the thumb: in a fist it swings down across the front of the curled fingers (mostly about the side axis), open it
+   * stands away from the palm */
+  float rt[3] = { 1.0f * fist - 0.15f * open, sgn * (0.15f * fist - 0.25f * open), sgn * (0.1f + 0.35f * fist + 0.2f * claw * open) };
+  float rt2[3] = { 0.3f * fist, 0, sgn * (0.15f + 0.5f * fist + 0.4f * claw * open) };
+  if (m->fing[h][8]) { quat_euler(rt, &q); m->fing[h][8]->quaternion = q; }
+  if (m->fing[h][9]) { quat_euler(rt2, &q); m->fing[h][9]->quaternion = q; }
 }
 
-/* the face: blinks, a focused frown in the guard, gritted teeth on heavy strikes and supers, a wince when hit (eyes
- * squeezed, brows down and pinched, the mouth pulled open), eyes shut and the jaw slack when down, a shout when winning */
+/* the face, from the fight: blinks; a focused squint in the guard; a snarl winding up a heavy strike and a shout as it
+ * lands; gritted teeth behind a block; a wince when hit; eyes shut and the jaw slack when down; a grin when winning;
+ * a confident half smile on the select and result screens. Each expression is a morph target (tools/facemesh.mjs)
+ * eased toward its goal; the Jaw bone opens the mouth. The eyes follow model_look_at (the opponent, or the camera). */
 static void pose_face(fighter_model *m, const ft_game *g, int who, float dt) {
   const ft_fighter *f = &g->f[who];
-  float jaw = 0.02f, lid = 0.12f, brow = 0.4f, pinch = 0.3f;
+  float w[XN] = { 0 }, jaw = 0.02f;
+  w[X_BROWDOWN] = 0.2f; w[X_SQUINT] = 0.15f;
   uint32_t ph = (g->tick + (uint32_t)who * 97u + (uint32_t)m->def * 31u) % 211u;
-  if (ph < 6) lid = 1.0f; /* a blink */
+  float blink = ph < 7 ? (float)cw_sin((float)ph / 7.0f * 3.14159265f) : 0;
   switch (f->state) {
-  case S_HIT: case S_AIRHIT: case S_THROWN: jaw = 0.32f; lid = 0.8f; brow = 1.0f; pinch = 1.0f; break;
-  case S_KD: case S_KO: jaw = 0.38f; lid = 1.0f; brow = 0.2f; pinch = 0; break;
-  case S_GETUP: jaw = 0.1f; lid = 0.5f; brow = 0.8f; pinch = 0.8f; break;
-  case S_WIN: jaw = 0.42f; lid = 0.0f; brow = -0.8f; pinch = 0; break;
-  case S_BLOCK: jaw = 0.06f; lid = 0.45f; brow = 0.9f; pinch = 0.8f; break;
+  case S_HIT: case S_AIRHIT: case S_THROWN: w[X_WINCE] = 1; w[X_BROWDOWN] = 0; w[X_SQUINT] = 0; jaw = 0.22f; break;
+  case S_KD: case S_KO: w[X_KO] = 1; w[X_BROWDOWN] = 0; w[X_SQUINT] = 0; jaw = 0.3f; blink = 0; break;
+  case S_GETUP: w[X_WINCE] = 0.45f; w[X_BROWDOWN] = 0.5f; jaw = 0.06f; break;
+  case S_WIN: w[X_SMILE] = 1; w[X_BROWUP] = 0.45f; w[X_BROWDOWN] = 0; w[X_SQUINT] = 0.35f; w[X_JAWOPEN] = 0.4f; jaw = 0.14f; break;
+  case S_BLOCK: w[X_BROWDOWN] = 0.75f; w[X_BROWPINCH] = 0.6f; w[X_SQUINT] = 0.45f; w[X_SNARL] = 0.35f; jaw = 0.02f; break;
+  case S_INTRO: w[X_SMILE] = 0.45f; w[X_BROWDOWN] = 0.1f; w[X_SQUINT] = 0.3f; break;
   case S_ATTACK: {
     const ft_move *mv = &g->roster->d[f->def].mv[f->mv];
     bool big = (mv->flags & (FM_SUPER | FM_SPECIAL)) || f->mv == M_8K || f->mv == M_2K || f->mv == M_6P || f->mv == M_6K || f->mv == M_JK;
-    if (big) { jaw = f->t > mv->su ? 0.3f : 0.1f; lid = 0.35f; brow = 1.0f; pinch = 1.0f; } /* a shout on the strike, teeth gritted before it */
-    else { jaw = 0.08f; lid = 0.3f; brow = 0.8f; pinch = 0.7f; }
+    bool hit = f->t > mv->su;
+    if (big && hit) { w[X_SHOUT] = 1; w[X_JAWOPEN] = 0.6f; w[X_BROWDOWN] = 0.4f; jaw = 0.34f; }
+    else if (big) { w[X_SNARL] = 0.85f; w[X_BROWDOWN] = 0.8f; w[X_BROWPINCH] = 0.7f; w[X_SQUINT] = 0.4f; jaw = 0.03f; }
+    else { w[X_SNARL] = 0.3f; w[X_BROWDOWN] = 0.65f; w[X_BROWPINCH] = 0.4f; w[X_SQUINT] = 0.35f; jaw = hit ? 0.06f : 0.02f; }
     break;
   }
   default: break;
   }
-  float k = 1.0f - cw_exp(-dt * 30.0f);
-  m->jaw += (jaw - m->jaw) * k; m->lid += (lid - m->lid) * (lid > m->lid ? 1.0f - cw_exp(-dt * 60.0f) : k);
-  m->brow += (brow - m->brow) * k; m->pinch += (pinch - m->pinch) * k;
-  float hs = m->sp->scale;
-  if (m->face[0]) { t3_quat q; float r[3] = { m->jaw * 0.45f, 0, 0 }; quat_euler(r, &q); m->face[0]->quaternion = q; }
-  for (int s = 0; s < 2; s++) {
-    float sg = s == 0 ? 1.0f : -1.0f;
-    if (m->face[1 + s]) { t3_quat q; float r[3] = { m->lid * 0.95f, 0, 0 }; quat_euler(r, &q); m->face[1 + s]->quaternion = q; }
-    if (m->face[3 + s]) {
-      t3_vec3 p = m->face_rest[3 + s];
-      p.y -= 0.0045f * hs * m->brow; p.x -= sg * 0.0025f * hs * m->pinch;
-      m->face[3 + s]->position = p;
-      t3_quat q; float r[3] = { 0, 0, sg * 0.22f * m->pinch }; quat_euler(r, &q); m->face[3 + s]->quaternion = q; /* the inner ends drop */
-    }
+  if (m->showcase > 0 && f->state != S_WIN) { w[X_SMILE] = 0.32f; w[X_BROWDOWN] = 0.05f; w[X_SQUINT] = 0.08f; w[X_BROWUP] = 0.1f; }
+  if (blink > w[X_BLINK]) w[X_BLINK] = blink;
+  float k = 1.0f - cw_exp(-dt * 24.0f);
+  for (int i = 0; i < XN; i++) {
+    m->xw[i] += (w[i] - m->xw[i]) * (i == X_BLINK ? 1.0f : k); /* blinks are quick */
+    if (m->face_mesh) cw_morph_set(m->face_mesh, XNAME[i], m->xw[i]);
   }
+  m->jaw += (jaw - m->jaw) * k;
+  if (m->jaw_bone) { t3_quat q; float r[3] = { m->jaw * 0.45f, 0, 0 }; quat_euler(r, &q); m->jaw_bone->quaternion = q; }
+  /* the eyes: toward the look point in the head's frame (last frame's matrices), within what eyes can turn */
+  float ey = 0, ep = 0;
+  if (m->look_valid && m->eye[0]) {
+    const t3_mat4 *hw = &m->bones[HEAD]->matrix_world, *ew = &m->eye[0]->matrix_world;
+    t3_vec3 d = { m->look.x - ew->e[12], m->look.y - ew->e[13], m->look.z - ew->e[14] };
+    float l3[3];
+    for (int c = 0; c < 3; c++) { /* the transpose of the head's rotation (its columns are its axes; normalised for scale) */
+      float ax = hw->e[c * 4], ay = hw->e[c * 4 + 1], az = hw->e[c * 4 + 2], l = sqrtf(ax * ax + ay * ay + az * az);
+      l3[c] = l > 1e-6f ? (d.x * ax + d.y * ay + d.z * az) / l : 0;
+    }
+    if (l3[2] > 0.01f) { ey = cw_clampf(atan2f(l3[0], l3[2]), -0.55f, 0.55f); ep = cw_clampf(-atan2f(l3[1], sqrtf(l3[0] * l3[0] + l3[2] * l3[2])), -0.3f, 0.3f); }
+  }
+  float ke = 1.0f - cw_exp(-dt * 18.0f);
+  m->eye_yaw += (ey - m->eye_yaw) * ke; m->eye_pitch += (ep - m->eye_pitch) * ke;
+  for (int s = 0; s < 2; s++) if (m->eye[s]) { t3_quat q; float r[3] = { m->eye_pitch, m->eye_yaw, 0 }; quat_euler(r, &q); m->eye[s]->quaternion = q; }
 }
 
 void model_pose(fighter_model *m, const ft_game *g, int who, float dt) {
@@ -388,13 +427,17 @@ void model_pose(fighter_model *m, const ft_game *g, int who, float dt) {
   const ft_fighter *f = &g->f[who];
   pose p;
   pose_for(m, g, who, &p);
+  if (m->showcase > 0 && (f->state == S_IDLE || f->state == S_INTRO)) { /* portraits: fists at chest height, the face clear of them */
+    int nr = f->facing > 0;
+    arm(&p, 1, nr, 0.8f, 0.38f, 1.75f, 0); arm(&p, 0, nr, 0.62f, 0.5f, 1.95f, 0);
+  }
   /* joints ease toward the target (about 3 ticks), so state changes read as motion, not snaps */
   float k = m->inited ? 1.0f - cw_exp(-dt * 28.0f) : 1.0f;
   if (f->state == S_ATTACK) k = 1.0f - cw_exp(-dt * 60.0f);
   if (f->state == S_ATTACK && f->t > g->roster->d[f->def].mv[f->mv].su) k = 1.0f; /* active frames: the limb is where the hitbox is, no easing lag */
   for (int j = 0; j < JN; j++) for (int c = 0; c < 3; c++) m->cur[j][c] += (p.r[j][c] - m->cur[j][c]) * k;
   for (int c = 0; c < 3; c++) m->root_off[c] += (p.off[c] - m->root_off[c]) * k;
-  for (int h = 0; h < 2; h++) m->fist[h] += (p.fist[h] - m->fist[h]) * (m->inited ? 1.0f - cw_exp(-dt * 30.0f) : 1.0f);
+  for (int h = 0; h < 2; h++) { float kf = m->inited ? 1.0f - cw_exp(-dt * 30.0f) : 1.0f; m->fist[h] += (p.fist[h] - m->fist[h]) * kf; m->claw[h] += (p.claw[h] - m->claw[h]) * kf; }
   m->yaw = p.yaw;
   m->tilt += (p.tilt - m->tilt) * k;
   bool first = !m->inited;
@@ -404,7 +447,7 @@ void model_pose(fighter_model *m, const ft_game *g, int who, float dt) {
     quat_euler(m->cur[j], &q);
     m->bones[j]->quaternion = q;
   }
-  for (int h = 0; h < 2; h++) pose_hand(m, h, m->fist[h]);
+  for (int h = 0; h < 2; h++) pose_hand(m, h, m->fist[h], m->claw[h]);
   pose_face(m, g, who, dt);
   /* hips carry the body's offset and lean (the knockdown pitch) */
   float sc = m->sp->scale;

@@ -37,7 +37,16 @@ class Scene {
 }
 
 // Rim0 and Rim1 are moved by the game to stand behind each fighter (a back light that outlines them against the stage).
-const rims = (s, c, e) => { for (let i = 0; i < 2; i++) s.omni(`Rim${i}`, [0, 2.4, -2.6], c, e, 7, { fog_energy: '0' }); };
+// Key0, Key1 and Fill0 are the portrait lights of the select and result screens (off in a fight: the game sets their
+// energy): a warm key high in front and to the side of each face, a soft cool fill from the other side.
+const rims = (s, c, e) => {
+  for (let i = 0; i < 2; i++) s.omni(`Rim${i}`, [0, 2.4, -2.6], c, e, 7, { fog_energy: '0' });
+  for (let i = 0; i < 2; i++) s.omni(`Key${i}`, [0, -40, 0], [1, 0.95, 0.9], 0, 6, { fog_energy: '0' });
+  s.omni('Fill0', [0, -40, 0], [0.7, 0.8, 1], 0, 9, { fog_energy: '0' });
+  // clustered lighting: every omni light (stage lamps, neon, rims, portrait lights, hit flashes) lights the scene; the
+  // forward path keeps only 8 of a kind and silently dropped the rest
+  s.node('Lighting', 'LightingSettings', { mode: 'CLUSTERED' });
+};
 
 // ── stage 1: rooftop at dusk ───────────────────────────────────────────
 {

@@ -9,7 +9,9 @@
 #include "game.h"
 
 enum { C_HIPS, C_SPINE, C_CHEST, C_HEAD, C_UAL, C_LAL, C_UAR, C_LAR, C_FL, C_FR, CB };
-static const char *const CBONE[CB] = { "Hips", "Spine", "Chest", "Head", "UpperArmL", "LowerArmL", "UpperArmR", "LowerArmR", "FingersL", "FingersR" };
+static const char *const CBONE[CB] = { "Hips", "Spine", "Chest", "Head", "UpperArmL", "LowerArmL", "UpperArmR", "LowerArmR", "Middle1L", "Middle1R" };
+/* the other knuckles curl with the middle finger */
+static const char *const CFING[2][3] = { { "Index1L", "Ring1L", "Pinky1L" }, { "Index1R", "Ring1R", "Pinky1R" } };
 
 /* where people stand per stage: x, z, floor height, model */
 typedef struct spot { float x, z, y; int model; } spot;
@@ -43,6 +45,7 @@ void crowd_load(crowd *c, int stage, cw_node parent) {
     if (!m->g) continue;
     bool ok = true;
     for (int b = 0; b < CB && ok; b++) ok = (m->b[b] = t3_object_get_by_name(m->g->scene, CBONE[b])) != NULL;
+    for (int h = 0; h < 2; h++) for (int k = 0; k < 3; k++) m->fing[h][k] = t3_object_get_by_name(m->g->scene, CFING[h][k]);
     if (!ok) { t3_release(m->g); m->g = NULL; continue; }
     m->hips = m->b[C_HIPS]->position;
     char nm[16];
@@ -108,7 +111,8 @@ void crowd_frame(crowd *c, const ft_game *g, float dt) {
     r[C_CHEST][0] -= 0.12f * ch; r[C_HEAD][0] -= 0.15f * ch;
     fl += 0.3f * ch; fr += 0.3f * ch;
     for (int b = 1; b < C_FL; b++) { t3_quat q; euler(r[b], &q); m->b[b]->quaternion = q; }
-    { t3_quat q; float a[3] = { 0, 0, -1.4f * fl }; euler(a, &q); m->b[C_FL]->quaternion = q; float b2[3] = { 0, 0, 1.4f * fr }; euler(b2, &q); m->b[C_FR]->quaternion = q; }
+    { t3_quat q; float a[3] = { 0, 0, -1.4f * fl }; euler(a, &q); m->b[C_FL]->quaternion = q; for (int k = 0; k < 3; k++) if (m->fing[0][k]) m->fing[0][k]->quaternion = q;
+      float b2[3] = { 0, 0, 1.4f * fr }; euler(b2, &q); m->b[C_FR]->quaternion = q; for (int k = 0; k < 3; k++) if (m->fing[1][k]) m->fing[1][k]->quaternion = q; }
     float bounce = 0.05f * ch * (0.5f + 0.5f * (float)cw_sin(t * 9.0f + ph * 5));
     m->b[C_HIPS]->position = (t3_vec3){ m->hips.x + 0.02f * sway, m->hips.y + bounce, m->hips.z };
     /* turn toward the fight (the model faces +z) */

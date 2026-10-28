@@ -49,13 +49,14 @@ void model_pose(fighter_model *m, const ft_game *g, int who, float dt);
 void model_set_visible(fighter_model *m, bool v);
 /* the select and result screens turn a fighter toward the camera by this many radians (0 in a fight) */
 void model_set_showcase(fighter_model *m, float turn);
+void model_look_at(fighter_model *m, t3_vec3 p); /* where the eyes look (world) */
 t3_vec3 model_joint(fighter_model *m, int joint); /* world position of a joint, for effects */
 float model_spring_speed(const fighter_model *m); /* summed spring tip speed (a probe for the secondary motion) */
 enum { J_HEAD, J_HAND_F, J_HAND_B, J_FOOT_F, J_CHEST, J_HIPS };
 
 /* crowd.c: spectators around the stage, cheering from the sim's events */
 enum { CROWD_MAX = 10 };
-typedef struct crowd_member { t3_gltf *g; cw_node node; t3_object *b[10]; t3_vec3 hips; float x, z, phase, thr, cheer, clap; } crowd_member;
+typedef struct crowd_member { t3_gltf *g; cw_node node; t3_object *b[10], *fing[2][3]; t3_vec3 hips; float x, z, phase, thr, cheer, clap; } crowd_member;
 typedef struct crowd { int n; crowd_member m[CROWD_MAX]; float excite; uint32_t seen; } crowd;
 void crowd_load(crowd *c, int stage, cw_node parent);
 void crowd_free(crowd *c);

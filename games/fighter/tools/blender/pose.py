@@ -21,7 +21,9 @@ def guard(stance, g):
     f = 1.0
     k1, k2 = 0.25 + 1.3 * f, 0.3 + 1.45 * f
     for sd, sg in (('L', -1), ('R', 1)):
-        r['Fingers' + sd] = (0.05 * f, 0, sg * k1); r['Fingers2' + sd] = (0, 0, sg * k2); r['Thumb' + sd] = (0.55 * f, sg * 0.2 * f, sg * (0.15 + 1.05 * f))
+        for fn in ('Index', 'Middle', 'Ring', 'Pinky'):
+            r[fn + '1' + sd] = (0.04 * f, 0, sg * k1); r[fn + '2' + sd] = (0, 0, sg * k2)
+        r['Thumb' + sd] = (1.0 * f, sg * 0.15 * f, sg * (0.1 + 0.35 * f)); r['Thumb2' + sd] = (0.3 * f, 0, sg * (0.15 + 0.5 * f))
     return r
 
 def q_game(e):

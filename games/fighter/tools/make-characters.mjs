@@ -11,23 +11,29 @@ import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Glb } from './gltf-writer.mjs';
-import { SkinMesh, add, sub, mul, norm } from './charmesh.mjs';
+import { SkinMesh, add, sub, mul, norm, cross, dot } from './charmesh.mjs';
 import { faceSkin, bake } from './make-textures.mjs';
-import { buildHead, faceBones, FACE_BONES, eyePixel } from './facemesh.mjs';
+import { buildHead, faceBones, FACE_BONES, eyePixel, faceLayout, faceSkinFrame, headSection, faceTargets, FACE_TARGETS, lipMasks } from './facemesh.mjs';
 import { writeSet } from './texlib.mjs';
 
 const OUT = join(dirname(fileURLToPath(import.meta.url)), '..', 'assets', 'models');
 mkdirSync(OUT, { recursive: true });
 
 // ── the skeleton ──
+// each hand: four fingers in two bones (the knuckle, and the middle joint carrying the end) and a thumb in two
+const FINGERS = ['Index', 'Middle', 'Ring', 'Pinky'];
+// [across the palm (z), knuckle below the wrist, first length, second length, radius]
+const FING = [[0.027, -0.090, 0.040, 0.046, 0.0098], [0.009, -0.094, 0.045, 0.050, 0.0102], [-0.009, -0.092, 0.042, 0.047, 0.0096], [-0.026, -0.086, 0.033, 0.037, 0.0086]];
+const FINGER_BONES = [], FINGER_PARENT = {};
+for (const sd of ['L', 'R']) { for (const f of FINGERS) { FINGER_BONES.push(f + '1' + sd, f + '2' + sd); FINGER_PARENT[f + '1' + sd] = 'Hand' + sd; FINGER_PARENT[f + '2' + sd] = f + '1' + sd; } FINGER_BONES.push('Thumb' + sd, 'Thumb2' + sd); FINGER_PARENT['Thumb' + sd] = 'Hand' + sd; FINGER_PARENT['Thumb2' + sd] = 'Thumb' + sd; }
 const BONE_NAMES = ['Hips', 'Spine', 'Chest', 'Neck', 'Head', 'UpperArmL', 'LowerArmL', 'HandL', 'UpperArmR', 'LowerArmR', 'HandR',
   'UpperLegL', 'LowerLegL', 'FootL', 'UpperLegR', 'LowerLegR', 'FootR', 'Belly', 'HairA', 'HairB', 'CoatL', 'CoatR',
-  'FingersL', 'Fingers2L', 'ThumbL', 'FingersR', 'Fingers2R', 'ThumbR', ...FACE_BONES];
+  ...FINGER_BONES, ...FACE_BONES];
 const PARENT = { Hips: -1, Spine: 'Hips', Chest: 'Spine', Neck: 'Chest', Head: 'Neck', UpperArmL: 'Chest', LowerArmL: 'UpperArmL', HandL: 'LowerArmL',
   UpperArmR: 'Chest', LowerArmR: 'UpperArmR', HandR: 'LowerArmR', UpperLegL: 'Hips', LowerLegL: 'UpperLegL', FootL: 'LowerLegL',
   UpperLegR: 'Hips', LowerLegR: 'UpperLegR', FootR: 'LowerLegR', Belly: 'Spine', HairA: 'Head', HairB: 'HairA', CoatL: 'Hips', CoatR: 'Hips',
-  FingersL: 'HandL', Fingers2L: 'FingersL', ThumbL: 'HandL', FingersR: 'HandR', Fingers2R: 'FingersR', ThumbR: 'HandR',
-  Jaw: 'Head', LidL: 'Head', LidR: 'Head', BrowL: 'Head', BrowR: 'Head' };
+  ...FINGER_PARENT,
+  Jaw: 'Head', LidL: 'Head', LidR: 'Head', BrowL: 'Head', BrowR: 'Head', EyeL: 'Head', EyeR: 'Head' };
 const BI = Object.fromEntries(BONE_NAMES.map((n, i) => [n, i]));
 
 // joint heights (metres, before the fighter's height scale): the table the hitboxes were drawn against
@@ -51,9 +57,9 @@ function skeleton(sp) {
   world.CoatR = add(world.Hips, [-0.11, -0.04, -0.1]);
   for (const sd of ['L', 'R']) { // knuckles 9.5 cm below the wrist, the middle finger joint 4.5 cm further; the thumb root on the palm's front
     const sx = sd === 'L' ? 1 : -1, w = world['Hand' + sd];
-    world['Fingers' + sd] = add(w, [-sx * 0.004 * hand, -0.092 * hand, 0.004 * hand]);
-    world['Fingers2' + sd] = add(world['Fingers' + sd], [0, -0.045 * hand, 0]);
-    world['Thumb' + sd] = add(w, [-sx * 0.014 * hand, -0.026 * hand, 0.026 * hand]);
+    FINGERS.forEach((f, i) => { const [fz, ky, l1] = FING[i]; world[f + '1' + sd] = add(w, [-sx * 0.005 * hand, ky * hand, fz * hand]); world[f + '2' + sd] = add(world[f + '1' + sd], [0, -l1 * hand, 0.001 * hand]); });
+    world['Thumb' + sd] = add(w, [-sx * 0.012 * hand, -0.028 * hand, 0.03 * hand]);
+    world['Thumb2' + sd] = add(world['Thumb' + sd], [-sx * 0.012 * hand, -0.03 * hand, 0.022 * hand]);
   }
   faceBones(world, sp);
   const T = {};
@@ -70,6 +76,7 @@ const hex = (h) => hexRaw(h).map((c) => Math.pow(c, 2.2));
 const TEX = join(dirname(fileURLToPath(import.meta.url)), '..', 'assets', 'textures');
 const ss = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const gauss = (x, w) => Math.exp(-(x * x) / (w * w));
+const G = gauss;
 const wrapA = (a) => { a = ((a + PI) % (PI * 2) + PI * 2) % (PI * 2) - PI; return a; }; // -PI..PI
 const FRONT = PI / 2, BACK = -PI / 2; // loft angles: +Z is the front
 /** a soft fold pattern: narrow ridges at the given heights, stronger on one side (angle) */
@@ -242,18 +249,20 @@ function build(sp) {
   }
 
   // ── neck ──
-  const nr = 0.058 * (0.85 + 0.15 * W) * (sp.neck ?? 1);
-  m.loft('skin', ys(yN - 0.02, yHd + 0.06, 0.02).map((y) => ({ c: [0, y, -0.008 + 0.012 * ss(yN, yHd + 0.06, y)], U: X, V: Z, ru: nr * (1 + 0.25 * ss(yN + 0.03, yN - 0.02, y)), rv: nr * 0.95, e: 2.2, mod: (a) => 1 + 0.06 * gauss(wrapA(a - FRONT), 0.4) * gauss(y - (yN + 0.06), 0.03) })), { n: 18, weights: (k, P) => (P[1] < yN + 0.02 ? torsoW(P, 0) : headW(P)), tile: 0.3 });
+  const nr = 0.064 * (0.85 + 0.15 * W) * (sp.neck ?? 1);
+  // up into the head, kept inside the jaw and the back of the skull (a thick neck must not swallow the face)
+  const LH = faceLayout(world.Head, sp), yNT = LH.yE - 0.075 * LH.HS * LH.Fl;
+  const neckR = (y) => { const S = headSection(LH, y), k = ss(LH.yE - 0.135 * LH.HS, LH.yE - 0.1 * LH.HS, y); return [Math.min(nr * (1 + 0.25 * ss(yN + 0.03, yN - 0.02, y)), lerp(1, 0.9 * S.w / nr, k) * nr), Math.min(nr * 0.95, lerp(nr * 0.95, 0.72 * S.d, k)), lerp(-0.008, S.cz - 0.2 * S.d, k)]; };
+  m.loft('skin', ys(yN - 0.02, yNT, 0.015).map((y) => ({ c: [0, y, neckR(y)[2]], U: X, V: Z, ru: neckR(y)[0], rv: neckR(y)[1], e: 2.2, mod: (a) => 1 + 0.06 * gauss(wrapA(a - FRONT), 0.4) * gauss(y - (yN + 0.06), 0.03) })), { n: 18, weights: (k, P) => (P[1] < yN + 0.02 ? torsoW(P, 0) : headW(P)), tile: 0.3 });
 
   // ── head: a modelled face (facemesh.mjs): sockets, eyeballs, lids, brows, nose, lips, teeth, ears; the jaw, lids and brows move ──
-  const faceUV = (p, c, hs) => (p[2] < c[2] - 0.02 ? [0.03, 0.03] : [0.5 + p[0] / (0.27 * hs), 0.5 - (p[1] - c[1]) / (0.31 * hs)]);
-  const head = buildHead({ m, BI, world, sp, faceUV });
+  const head = buildHead({ m, BI, world, sp });
   const { hc, R, RZ, HY } = head.layout, jawW = head.layout.jawW;
   const headRing = (t, k = 1, add = 0) => { const r = head.ring(t, k, add); const mod0 = r.mod; r.mod = (a) => 1 + (mod0(a) - 1) * 0.35; return r; }; // hair and hats follow the skull, not the face detail
-  if (sp.shades) { const up = sp.shadesUp ? 0.105 * HS : 0.012 * HS, zk = sp.shadesUp ? 0.86 : 0.92; m.ellipsoid(sp.colors.glow ? 'glow' : 'shades', [0, hc[1] + up, hc[2] + RZ * zk], 0.104 * HS, 0.022 * HS, 0.02 * HS, { bone: BI.Head, steps: 6, n: 16, e: 3 }); } // pushed up on the forehead, the eyes show
+  if (sp.shades) { const L2 = head.layout, yS0 = L2.yE + (sp.shadesUp ? 0.068 : 0.002) * L2.HS, S = headSection(L2, yS0); m.ellipsoid(sp.colors.glow ? 'glow' : 'shades', [0, yS0, S.cz + S.d * 0.84], S.w * 1.12, 0.017 * L2.HS, 0.016 * L2.HS, { bone: BI.Head, steps: 6, n: 16, e: 3 }); } // pushed up on the forehead, the eyes show
   if (sp.moustache) for (const sd of [1, -1]) m.capsule('hair', [sd * 0.008, hc[1] - 0.058 * HS, hc[2] + RZ * 0.98], [sd * 0.06 * HS, hc[1] - 0.07 * HS, hc[2] + RZ * 0.8], 0.012 * HS, 0.005 * HS, { bone: BI.Head, n: 8, caps: 2 });
   if (sp.beard) { const r = []; for (let i = 0; i <= 6; i++) { const t = -1.06 + 0.5 * (i / 6); const hr = headRing(t, 1.07, 0.006); hr.mod = (a) => 1 + 0.05 * noise1(a * 6 + i, 3); r.push(hr); } m.loft('hair', r, { n: 24, arc: [FRONT - 1.7, FRONT + 1.7], bone: BI.Head, tile: 0.2 }); }
-  if (sp.goatee) m.cone('hair', [0, hc[1] - 0.115 * HS, hc[2] + RZ * 0.7], [0, hc[1] - 0.17 * HS, hc[2] + RZ * 0.66], 0.026 * HS, { bone: BI.Jaw, n: 10, ratio: 0.7 });
+  if (sp.goatee) { const L2 = head.layout, gb = head.surf(0, L2.yE - 0.1 * L2.HS, -0.004); m.cone('hair', gb, add(gb, [0, -0.032 * L2.HS, 0.006]), 0.022 * L2.HS, { bone: BI.Jaw, n: 10, ratio: 0.7 }); }
   if (sp.mask) { const r = []; for (let i = 0; i <= 6; i++) { const t = -1.05 + 0.95 * (i / 6); r.push(headRing(t, 1.06, 0.004)); } r.forEach((x, i) => { x.mod = (a) => 1 + 0.02 * Math.sin(a * 9 + i); }); m.loft('mask', r, { n: 28, bone: BI.Head, tile: 0.2 }); }
 
   // hair and hats
@@ -282,15 +291,108 @@ function build(sp) {
       m.cone('hair', base, add(base, mul(tdir, len * (0.75 + 0.5 * noise1(i + r * 7, seed + 1)))), rad, { ratio: 0.42, U: side, V: nrm, bone: BI.Head, n: 7, rings: 4, bend: mul(nrm, -0.02) });
     }
   };
-  if (hairCut === 'crop' || hairCut === 'long' || hairCut === 'ponytail' || hairCut === 'spiky') { scalp(1.05, 0.004, sp.name.length); clumps(hairCut === 'crop' ? 4 : 3, 0.085 * HS, 0.03 * HS, hairCut === 'ponytail' ? 0.9 : 0.6, sp.name.length); }
-  if (hairCut === 'spiky') {
+  // ── hair cards (full detail fighters): ribbons of the alpha-tested strand texture along curves that grow from the
+  // scalp, lit with the outward normal of the hair volume (so the cards shade like a mass of hair, not flat planes);
+  // crossed pairs for standing tufts. The anisotropic highlight runs along each card's v (KHR_materials_anisotropy).
+  const cardStyle = !sp.lod && (hairCut === 'spiky' || hairCut === 'mohawk' || hairCut === 'ponytail');
+  let rs = sp.name.length * 977 + 13;
+  const rnd = () => { rs = (Math.imul(rs, 1664525) + 1013904223) >>> 0; return rs / 4294967296; };
+  const hcC = [0, hc[1] - 0.02 * HS, hc[2]];
+  const ell = (p) => Math.hypot(p[0] / R, (p[1] - hc[1]) / HY, (p[2] - hc[2]) / RZ); // 1 on the skull ellipsoid
+  /** a point on the scalp at ring height t and loft angle a (PI/2 the front), and its outward direction */
+  const scalpPt = (t, a, out = 0) => { const r = headRing(t); const cs = Math.cos(a), sn = Math.sin(a); const p = [r.ru * Math.sign(cs) * Math.pow(Math.abs(cs), 2 / r.e), r.c[1], r.c[2] + r.rv * Math.sign(sn) * Math.pow(Math.abs(sn), 2 / r.e)]; const n = norm(sub(p, hcC)); return [add(p, mul(n, out)), n]; };
+  /** grow a curve: from p along dir, steps of len/seg, bending by bend(i, p, d) -> new dir; keep it off the skull by off */
+  const grow = (p, dir, len, seg, bend, off = 0) => { const pts = [p]; let d = norm(dir); for (let i = 0; i < seg; i++) { d = norm(bend(i, pts[pts.length - 1], d)); let q = add(pts[pts.length - 1], mul(d, len / seg)); if (off > 0) { const e = ell(q); if (e < 1 + off) { const n = norm(sub(q, hcC)); q = add(q, mul(n, (1 + off - e) * R)); } } pts.push(q); } return pts; };
+  /** one card along pts: width w0 at the root to w1 at the tip; twist: 0 flat to the scalp, PI/2 standing; u0 the texture strip */
+  const card = (pts, w0, w1, twist, weights, u0 = rnd() * 0.6, uw = 0.4) => {
+    const verts = [], tris = [], K = pts.length;
+    for (let i = 0; i < K; i++) {
+      const s = i / (K - 1), tg = norm(sub(pts[Math.min(K - 1, i + 1)], pts[Math.max(0, i - 1)])), out = norm(sub(pts[i], hcC));
+      const side0 = norm(cross(tg, out)), up0 = norm(cross(side0, tg));
+      const side = add(mul(side0, Math.cos(twist)), mul(up0, Math.sin(twist))), w = lerp(w0, w1, Math.pow(s, 0.8)) * 0.5;
+      const n = norm(add(out, mul(tg, -0.15)));
+      const tn = norm(sub(side, mul(n, dot(side, n)))); // the tangent (u across the card) for the anisotropic highlight: no derivative frame
+      for (const k of [-1, 1]) verts.push({ p: add(pts[i], mul(side, k * w)), n, t: [...tn, 1], uv: [u0 + (k > 0 ? uw : 0), s], w: weights(s, pts[i]), tag: 'hair' });
+      if (i) { const a = (i - 1) * 2, b = i * 2; tris.push([a, b, b + 1], [a, b + 1, a + 1]); }
+    }
+    m.raw('hairCard', verts, tris);
+  };
+  const onHead = () => [[BI.Head, 1]];
+  if (cardStyle) {
+    const shellAt = (t0, t1, steps, arc) => { const rr = []; for (let i = 0; i <= steps; i++) { const t = t0 + (t1 - t0) * (i / steps), e = ss(0, 0.25, i / steps); rr.push(headRing(Math.min(t, 0.999), 1 + 0.006 * e, 0.0006 + 0.0012 * e)); } m.loft(hairCut === 'mohawk' ? 'stubble' : 'hair', rr, { n: 32, bone: BI.Head, tile: 0.25, ...(arc ? { arc } : {}) }); };
+    if (hairCut === 'mohawk') { /* the shaved sides are painted (face texture) */ }
+    else { shellAt(0.56, 1, 9); shellAt(-0.42, 0.58, 8, [BACK - 1.75, BACK + 1.75]); }
+  }
+  if (cardStyle && hairCut === 'spiky') { // short spiky tufts standing up and back, a fringe swept up off the forehead
+    for (let i = 0; i < 150; i++) {
+      const t = lerp(0.55, 0.97, Math.sqrt(rnd())), a = PI / 2 + (rnd() * 2 - 1) * PI * (t > 0.9 ? 1 : 0.92);
+      const [p, n] = scalpPt(t, a, -0.002);
+      const back = Math.cos(a - PI / 2) < 0 ? 1 : 0.4, len = (0.055 + 0.05 * rnd()) * HS * (1 - 0.25 * back * (1 - t));
+      const dir = add(mul(n, 1.0), [0, 0.55, -0.45 * back - 0.1]);
+      const pts = grow(p, dir, len, 4, (k, q, d) => add(d, [0, -0.04 * k, -0.06 * k]), 0.04);
+      const tw = rnd() * PI;
+      card(pts, 0.026 * HS, 0.003 * HS, tw, onHead); card(pts, 0.022 * HS, 0.003 * HS, tw + PI / 2, onHead);
+    }
+    for (let i = 0; i < 0; i++) { // (short cards lying down the sides caught the low sun as pale blocks: the shell and the painted scalp carry the sides)
+      const t = lerp(-0.25, 0.62, rnd()), a = BACK + (rnd() * 2 - 1) * 1.75;
+      const [p, n] = scalpPt(t, a, 0.001);
+      const pts = grow(p, add(mul(n, 0.15), [0, -1, -0.2]), (0.035 + 0.025 * rnd()) * HS, 4, (k, q, d) => d, 0.012 + 0.01 * rnd());
+      card(pts, 0.024 * HS, 0.006 * HS, 0, onHead);
+    }
+  }
+  if (cardStyle && hairCut === 'mohawk') { // a crest of tall stiff tufts along the midline, splayed a little, tips raked back, over a solid core
+    for (let i = 0; i < 7; i++) {
+      const u = i / 6, ang = lerp(0.55, -1.75, u), dir = norm([0, Math.cos(ang) * 0.9 + 0.1, Math.sin(ang) + 0.15]);
+      const base = add(hc, [0, Math.cos(ang) * HY * 0.9, Math.sin(ang) * RZ * 0.9]);
+      const h = (0.1 + 0.05 * Math.sin(u * PI)) * HS * (sp.mohawk ?? 1);
+      m.cone('hair', base, add(base, mul(dir, h)), 0.026 * HS, { ratio: 0.4, U: [0, -dir[2], dir[1]], V: X, weights: () => (u > 0.6 ? [[BI.Head, 0.6], [BI.HairA, 0.4]] : [[BI.Head, 1]]), n: 8, bend: [0, -0.01, -0.035] });
+    }
+    for (let i = 0; i < 70; i++) {
+      const u = i / 69, ang = lerp(0.62, -1.7, u), base = add(hc, [(rnd() - 0.5) * 0.022 * HS, Math.cos(ang) * HY * 0.97, Math.sin(ang) * RZ * 0.97]);
+      const h = (0.11 + 0.07 * Math.sin(u * PI) + 0.03 * rnd()) * HS * (sp.mohawk ?? 1), n = norm(sub(base, hcC));
+      const dir = add(n, [(rnd() - 0.5) * 0.25, 0.25, -0.15]);
+      const pts = grow(base, dir, h, 5, (k, q, d) => add(d, [0, -0.02 * k, -0.07 * k]));
+      const w = (u > 0.55 ? [[BI.Head, 0.6], [BI.HairA, 0.4]] : [[BI.Head, 1]]), tw = rnd() * PI;
+      card(pts, 0.03 * HS, 0.004 * HS, PI / 2 + (rnd() - 0.5) * 0.4, () => w); card(pts, 0.022 * HS, 0.004 * HS, tw, () => w);
+    }
+  }
+  if (cardStyle && hairCut === 'ponytail') { // hair swept back over the scalp to a tie at the crown, the tail on its spring bones
+    const tie = add(hc, [0, HY * 0.5, -RZ * 0.9]);
+    m.capsule('band', add(tie, [0, 0.008, 0.012]), add(tie, [0, -0.006, -0.01]), 0.02 * HS, 0.02 * HS, { bone: BI.Head, n: 12, caps: 2 });
+    for (let i = 0; i < 190; i++) { // lying cards from the hairline toward the tie, layered
+      const t = lerp(0.5, 0.98, Math.pow(rnd(), 0.7)), a = PI / 2 + (rnd() * 2 - 1) * PI * 0.97;
+      const [p] = scalpPt(t, a, 0.0012 + 0.003 * rnd());
+      const to = sub(tie, p), L0 = Math.hypot(...to);
+      if (L0 < 0.03) continue;
+      const pts = grow(p, to, L0 * 0.98, 6, (k, q, d) => add(d, mul(norm(sub(tie, q)), 0.35)), 0.012 + 0.012 * rnd());
+      card(pts, 0.034 * HS, 0.03 * HS, 0, onHead);
+    }
+    // the tail: a solid core (reads at fight distance) wrapped in a bundle of long cards, swinging on HairA and HairB
+    { const a = add(tie, [0, -0.004, -0.012]), b = add(a, [0, -0.12, -0.07]), c = add(b, [0, -0.15, -0.01]);
+      m.capsule('hair', a, b, 0.022 * HS, 0.03 * HS, { weights: (t) => [[BI.Head, 1 - t], [BI.HairA, t]], n: 12, caps: 3, ratio: 0.8, mod: (an) => 1 + 0.08 * Math.sin(an * 6) });
+      m.capsule('hair', b, c, 0.03 * HS, 0.008 * HS, { weights: (t) => [[BI.HairA, 1 - t], [BI.HairB, t]], n: 12, caps: 3, ratio: 0.8, mod: (an) => 1 + 0.08 * Math.sin(an * 6) }); }
+    const tw = (s) => (s < 0.4 ? [[BI.Head, 1 - s / 0.4], [BI.HairA, s / 0.4]] : [[BI.HairA, 1 - (s - 0.4) / 0.6], [BI.HairB, (s - 0.4) / 0.6]]);
+    for (let i = 0; i < 46; i++) {
+      const ang = rnd() * PI * 2, rr = 0.012 * Math.sqrt(rnd()), p = add(tie, [Math.cos(ang) * rr, Math.sin(ang) * rr * 0.6, -0.008]);
+      const len = (0.27 + 0.08 * rnd()) * HS, spread = [Math.cos(ang) * 0.35, 0.1, Math.sin(ang) * 0.15 - 0.6];
+      const pts = grow(p, add([0, 0.25, -1], spread), len, 9, (k, q, d) => add(d, [Math.cos(ang) * 0.04 * (k < 4 ? 1 : -1.2), -0.32, 0.02]));
+      card(pts, 0.04 * HS, 0.008 * HS, ang, (s) => tw(s));
+    }
+    for (const sx of [] ) for (let i = 0; i < 4; i++) { // (no loose strands: they read as streaks on the cheeks)
+      const [p] = scalpPt(0.52, PI / 2 + sx * (1.0 + 0.1 * i), 0.004);
+      const pts = grow(p, [sx * 0.25, -1, 0.35], (0.1 + 0.03 * i) * HS, 6, (k, q, d) => add(d, [sx * 0.02, -0.05, -0.02]), 0.04);
+      card(pts, 0.012 * HS, 0.003 * HS, 0.3 * sx, onHead);
+    }
+  }
+  if (!cardStyle && (hairCut === 'crop' || hairCut === 'long' || hairCut === 'ponytail' || hairCut === 'spiky')) { scalp(1.05, 0.004, sp.name.length); clumps(hairCut === 'crop' ? 4 : 3, 0.085 * HS, 0.03 * HS, hairCut === 'ponytail' ? 0.9 : 0.6, sp.name.length); }
+  if (!cardStyle && hairCut === 'spiky') {
     for (let i = 0; i < 13; i++) {
       const th = (i / 13) * PI * 2, ph = 0.35 + 0.45 * ((i * 7) % 5) / 5, dir = norm([Math.cos(th) * Math.sin(ph), Math.cos(ph) + 0.25, Math.sin(th) * Math.sin(ph) - 0.35]);
       const base = add(hc, [dir[0] * R * 0.85, dir[1] * HY * 0.8, dir[2] * RZ * 0.85]);
       m.cone('hair', base, add(base, mul(dir, 0.085 * HS)), 0.035 * HS, { weights: () => [[BI.Head, 1]], n: 7, bend: [0, -0.01, -0.02] });
     }
   }
-  if (hairCut === 'mohawk') {
+  if (!cardStyle && hairCut === 'mohawk') {
     m.loft('stubble', shell(0.3, 1.0, 1.015, 0.002, 7), { n: 28, bone: BI.Head, tile: 0.25 }); m.loft('stubble', shell(-0.5, 0.32, 1.015, 0.002, 6), { n: 18, arc: [BACK - 2.05, BACK + 2.05], bone: BI.Head, tile: 0.25 });
     for (let i = 0; i < 7; i++) {
       const u = i / 6, ang = lerp(0.55, -1.75, u), dir = norm([0, Math.cos(ang) * 0.9 + 0.1, Math.sin(ang) + 0.15]);
@@ -308,7 +410,7 @@ function build(sp) {
     });
     m.loft('hair', rr, { n: 26, arc: [BACK - 1.55, BACK + 1.55], weights: (k, P) => hairW(P), tile: 0.3 });
   }
-  if (hairCut === 'ponytail') {
+  if (!cardStyle && hairCut === 'ponytail') {
     const a = add(hc, [0, HY * 0.55, -RZ * 0.85]), b = add(a, [0, -0.13, -0.06]), c = add(b, [0, -0.16, 0.0]);
     m.capsule('band', add(a, [0, 0, 0.01]), add(a, [0, -0.012, -0.012]), 0.026 * HS, 0.026 * HS, { bone: BI.Head, n: 12, caps: 2 });
     m.capsule('hair', a, b, 0.034 * HS, 0.042 * HS, { weights: (t) => [[BI.Head, 1 - t], [BI.HairA, t]], n: 12, caps: 3, ratio: 0.8, mod: (an) => 1 + 0.08 * Math.sin(an * 6) });
@@ -384,7 +486,7 @@ function build(sp) {
     if (sp.wristband) m.loft('band', [ringA(yWr + 0.05, 1.12, 0.008), ringA(yWr + 0.015, 1.12, 0.008)], { n: 16, weights: (k, P) => armW(P), tile: 0.3 });
     // the hand: a palm, four two-part fingers on the Fingers and Fingers2 bones and a thumb on its own bone, modelled open
     // (the game curls them into a fist); gloves cover the palm and the first finger joints, wraps tape the palm and knuckles
-    const sd = sx > 0 ? 'L' : 'R', s = HN, hy = yWr, H = BI['Hand' + sd], F1 = BI['Fingers' + sd], F2 = BI['Fingers2' + sd], TH = BI['Thumb' + sd];
+    const sd = sx > 0 ? 'L' : 'R', s = HN, hy = yWr, H = BI['Hand' + sd], F1 = BI['Middle1' + sd], TH = BI['Thumb' + sd], TH2 = BI['Thumb2' + sd];
     const hx = ax - sx * 0.002 * s, palmMat = sp.gloves ? 'glove' : sp.wraps ? 'wrap' : 'skin', tipMat = sp.gloves && !sp.fingerless ? 'glove' : 'skin';
     const yK = hy - 0.092 * s;
     const palm = ys(yK + 0.004 * s, hy + 0.012, 0.01).reverse().map((y) => { const t = ss(hy, yK, y); return { c: [hx, y, 0.003 * s], U: X, V: Z, ru: (0.017 + 0.003 * gauss(t - 0.55, 0.3)) * s, rv: (0.036 + 0.008 * t) * s, e: 3.0, mod: (an) => 1 + 0.12 * gauss(t - 0.35, 0.25) * gauss(wrapA(an - (sx > 0 ? PI : 0)), 0.6) }; });
@@ -393,17 +495,20 @@ function build(sp) {
     if (sp.wraps) m.loft('wrap', ys(hy - 0.01, hy + 0.06, 0.012).reverse().map((y) => { const r = ringA(Math.min(y, hy + 0.05), 1.05, 0.006); r.c = [ax, y, 0.004]; return r; }), { n: 16, weights: (k, P) => armW(P), tile: 0.15 });
     // thenar pad under the thumb
     m.ellipsoid(palmMat, [hx - sx * 0.008 * s, hy - 0.035 * s, 0.024 * s], 0.011 * s, 0.028 * s, 0.014 * s, { bone: H, steps: 5, n: 10 });
-    const FING = [[0.027, -0.090, 0.040, 0.046, 0.0098], [0.009, -0.094, 0.045, 0.050, 0.0102], [-0.009, -0.092, 0.042, 0.047, 0.0096], [-0.026, -0.086, 0.033, 0.037, 0.0086]];
-    for (const [fz, ky, l1, l2, r] of FING) {
+    FING.forEach(([fz, ky, l1, l2, r], fi) => { // each finger on its own two bones; knuckles stand proud on the back of the hand
+      const B1 = BI[FINGERS[fi] + 1 + sd], B2 = BI[FINGERS[fi] + 2 + sd];
       const k0 = [hx - sx * 0.003 * s, hy + ky * s, fz * s], tip = add(k0, [0, -(l1 + l2) * s, 0.002 * s]), tj = l1 / (l1 + l2);
-      const wf = (t) => { const w2 = ss(tj - 0.07, tj + 0.07, t), wh = 0.6 * ss(0.12, 0.0, t); return [[H, wh], [F1, (1 - w2) * (1 - wh)], [F2, w2 * (1 - wh)]]; };
+      const wf = (t) => { const w2 = ss(tj - 0.06, tj + 0.06, t), wh = 0.6 * ss(0.12, 0.0, t); return [[H, wh], [B1, (1 - w2) * (1 - wh)], [B2, w2 * (1 - wh)]]; };
       const mid = add(k0, [0, -l1 * s, 0.001 * s]);
-      m.capsule(palmMat === 'skin' ? 'skin' : palmMat, k0, mid, r * s * 1.12, r * s, { weights: (t) => wf(t * tj), n: 9, caps: 3, rings: 3, ratio: 0.9 });
-      m.capsule(tipMat, mid, tip, r * s, r * s * 0.82, { weights: (t) => wf(tj + t * (1 - tj)), n: 9, caps: 3, rings: 3, ratio: 0.88 });
-    }
+      const joint = (t) => (an) => 1 + 0.1 * G(t - 0.0, 0.08) * Math.max(0, Math.cos(an) * -sx) + 0.07 * G(t - 1, 0.12); // a knuckle bump on the back
+      m.capsule(palmMat === 'skin' ? 'skin' : palmMat, k0, mid, r * s * 1.12, r * s, { weights: (t) => wf(t * tj), n: 10, caps: 3, rings: 4, ratio: 0.88, mod: joint(0) });
+      m.capsule(tipMat, mid, tip, r * s * 1.02, r * s * 0.8, { weights: (t) => wf(tj + t * (1 - tj)), n: 10, caps: 3, rings: 4, ratio: 0.85 });
+      m.ellipsoid(palmMat === 'skin' ? 'skin' : palmMat, add(k0, [sx * 0.006 * s, 0.004 * s, 0]), 0.0075 * s, 0.009 * s, 0.0085 * s, { weights: () => [[H, 0.5], [B1, 0.5]], steps: 5, n: 10 });
+      if (tipMat === 'skin') m.ellipsoid('nail', add(tip, [sx * 0.0062 * s, 0.009 * s, 0]), 0.0018 * s, 0.0085 * s, r * s * 0.62, { bone: B2, steps: 4, n: 8 });
+    });
     const t0 = [hx - sx * 0.012 * s, hy - 0.028 * s, 0.03 * s], t1 = add(t0, [-sx * 0.012 * s, -0.03 * s, 0.022 * s]), t2 = add(t1, [-sx * 0.006 * s, -0.026 * s, 0.012 * s]);
-    m.capsule(palmMat, t0, t1, 0.0125 * s, 0.0105 * s, { weights: (t) => [[H, 0.5 * (1 - t)], [TH, 1 - 0.5 * (1 - t)]], n: 9, caps: 3, rings: 3 }); // thumb
-    m.capsule(tipMat, t1, t2, 0.0105 * s, 0.0085 * s, { bone: TH, n: 9, caps: 3, rings: 3 });
+    m.capsule(palmMat, t0, t1, 0.0125 * s, 0.0105 * s, { weights: (t) => [[H, 0.5 * (1 - t)], [TH, 1 - 0.5 * (1 - t)]], n: 10, caps: 3, rings: 3 }); // thumb
+    m.capsule(tipMat, t1, t2, 0.0105 * s, 0.0085 * s, { weights: (t) => [[TH, 1 - ss(0, 0.3, t)], [TH2, ss(0, 0.3, t)]], n: 10, caps: 3, rings: 3 });
   }
 
   // ── legs: thigh, knee, calf, ankle; trousers are a layer over them ──
@@ -437,20 +542,24 @@ function build(sp) {
     m.loft('sole', [[-0.104, 0.05], [-0.06, 0.06], [0.12, 0.064], [0.2, 0.046], [0.232, 0.02]].map(([z, w]) => ({ c: [f[0], 0.014, f[2] + z * fs], U: X, V: Y, ru: w * wsh * 1.06, rv: 0.016 * fs, e: 3.2 })), { n: 14, bone: F, tile: 0.3 });
     if (sp.boots) m.loft('shoe', ys(yAn - 0.01, yAn + 0.22, 0.03).reverse().map((y) => ringL(y, 1.1, 0.016 + loose * 0.3)).concat([{ ...ringL(yAn - 0.02, 1.15, 0.02), c: [lx, yAn - 0.02, 0.01] }]), { n: 18, weights: (k, P) => legW(P), tile: 0.3 });
   }
-  return { m, world };
+  return { m, world, L: head.layout };
 }
 
-/** the face texture each character wears, and the materials a character is made of */
+/** the face texture each character wears (painted in the head's own mapping, facemesh faceSkinFrame) and its eyes */
 function writeFace(sp) {
-  const skin = hexRaw(sp.colors.skin);
-  writeSet(TEX, 'face_' + sp.name, faceSkin({ size: sp.lod ? 128 : 512, skin, stubble: sp.stubble, scar: sp.scar, war: sp.war ? hexRaw(sp.war) : null, seed: sp.name.length, age: sp.face?.age ?? 0,
-    makeup: sp.face?.makeup ? { shadow: hexRaw(sp.face.makeup.shadow), blush: hexRaw(sp.face.makeup.blush) } : null }), 1.6);
-  writeSet(TEX, 'eye_' + sp.name, bake(sp.lod ? 32 : 128, eyePixel(sp.eyes ? hexRaw(sp.eyes) : [0.3, 0.18, 0.08], sp.name.length)), 0.5);
+  const skin = hexRaw(sp.colors.skin), L = faceLayout(skeleton(sp).world.Head, sp);
+  const hairCol = sp.hair && sp.hair !== 'none' ? hexRaw(sp.colors.roots ?? sp.colors.hair) : null;
+  writeSet(TEX, 'face_' + sp.name, faceSkin({ w: sp.lod ? 256 : 2048, h: sp.lod ? 128 : 1024, skin, L, frame: faceSkinFrame(L), lipMasks, stubble: sp.stubble, scar: sp.scar,
+    war: sp.war ? hexRaw(sp.war) : null, seed: sp.name.length, age: sp.face?.age ?? 0, lip: sp.lip ? hexRaw(sp.lip) : null, hair: hairCol, hairline: sp.hairline ?? (sp.hair === 'mohawk' ? 'mohawk' : sp.hair === 'none' ? null : 'full'),
+    brow: hexRaw(sp.colors.brow ?? sp.colors.roots ?? sp.colors.hair), browArch: sp.face?.browArch ?? 1, browThick: sp.face?.browThick ?? 1,
+    makeup: sp.face?.makeup ? { shadow: hexRaw(sp.face.makeup.shadow), blush: hexRaw(sp.face.makeup.blush) } : null }), 3.0);
+  writeSet(TEX, 'eye_' + sp.name, bake(sp.lod ? 32 : 256, eyePixel(sp.eyes ? hexRaw(sp.eyes) : [0.3, 0.18, 0.08], sp.name.length)), 0.5);
 }
-// material names start with a class the game reads (skin_, cloth_, hair_, ...) to give them sheen and softer specular
-// The material table: every garment slot names its fabric, and each fabric has one explicit class (the game's shading,
-// secondary.c), texture set and roughness. Ordinary cloth (cotton, canvas, denim, knit, wool) is matte; only leather,
-// vinyl, rubber, metal and plastic trims are allowed a gloss; skin sits at a moderate roughness.
+// The material table: every garment slot names its fabric, and each fabric has one class, texture set, roughness and its
+// glTF material extensions (KHR_materials_sheen / specular / clearcoat / ior / anisotropy), so the file carries the
+// shading and the game needs no per-class conversion. Ordinary cloth (cotton, canvas, denim, knit, wool) is matte with a
+// soft grazing sheen and little specular; only leather, vinyl, rubber, metal and plastic trims get gloss; skin sits at a
+// moderate roughness with skin shading (extras.skin_shading, read by the engine's glTF loading) and a faint sheen.
 // rough is the glTF roughness factor: it multiplies the texture's own roughness (cloth sets about 0.88, leather about
 // 0.5, skin about 0.58), so the effective values are: cloth 0.85-0.95, leather 0.45-0.6, vinyl about 0.3, skin about 0.55.
 export const FABRICS = {
@@ -465,14 +574,34 @@ export const FABRICS = {
   metal: { cls: 'metal', set: 'paint_metal', rough: 0.4, metal: 1 },
   plastic: { cls: 'gloss', set: 'fab_leather', rough: 0.3, metal: 0 },
   skin: { cls: 'skin', set: 'fab_skin', rough: 0.95, normal: 0.7 },
-  eye: { cls: 'gloss', set: null, rough: 0.06, metal: 0 },
-  lip: { cls: 'skin', set: 'fab_skin', rough: 0.75, normal: 0.4 },
+  eye: { cls: 'eye', set: null, rough: 1, metal: 0 },
   cavity: { cls: 'rubber', set: null, rough: 1, metal: 0 },
-  enamel: { cls: 'gloss', set: null, rough: 0.35, metal: 0 },
+  enamel: { cls: 'enamel', set: null, rough: 0.3, metal: 0 },
   hair: { cls: 'hair', set: 'fab_hair', rough: 1, normal: 1.2 },
+  brows: { cls: 'fur', set: 'fab_hair', rough: 1, normal: 0.6 },
+  hairCard: { cls: 'hair', set: 'hair_card', rough: 1, normal: 0.4 },
 };
-// old spec words to fabrics
 const FAB_OF = { cloth: 'cotton', gi: 'canvas', denim: 'denim', knit: 'knit', leather: 'leather', vinyl: 'vinyl', wool: 'wool' };
+/** the glTF extensions (and extras) for a material class and its base colour */
+function shading(cls, tint, sp) {
+  const t = tint ?? [1, 1, 1], ext = {};
+  if (cls === 'cloth') { ext.KHR_materials_sheen = { sheenColorFactor: t.map((c) => 0.01 + 0.25 * c), sheenRoughnessFactor: 0.9 }; ext.KHR_materials_specular = { specularFactor: 0.12 }; }
+  if (cls === 'skin') {
+    const sk = hexRaw(sp.colors.skin), dark = 1 - (sk[0] + sk[1] + sk[2]) / 3;
+    ext.KHR_materials_sheen = { sheenColorFactor: [0.05 + 0.18 * t[0], 0.02 + 0.08 * t[1], 0.015 + 0.05 * t[2]], sheenRoughnessFactor: 0.65 };
+    ext.KHR_materials_specular = { specularFactor: 0.5 }; ext.KHR_materials_ior = { ior: 1.4 };
+    return { ext, extras: { skin_shading: { scatter: [lerp(1, 0.9, dark), lerp(0.36, 0.3, dark), lerp(0.24, 0.2, dark)], wrap: 0.5, translucency: lerp(0.38, 0.22, dark) } } };
+  }
+  if (cls === 'hair') { ext.KHR_materials_sheen = { sheenColorFactor: t.map((c) => 0.02 + 0.15 * c), sheenRoughnessFactor: 0.6 }; ext.KHR_materials_specular = { specularFactor: 0.15 }; ext.KHR_materials_anisotropy = { anisotropyStrength: 0.3, anisotropyRotation: PI / 2 }; } // a strong anisotropic lobe on many crossed cards blows out against a low sun
+  // brows and lashes: no anisotropy (their strips have no clean texture direction: a derivative tangent frame there goes
+  // degenerate, and one bad value blooms over the whole face)
+  if (cls === 'fur') { ext.KHR_materials_sheen = { sheenColorFactor: t.map((c) => 0.02 + 0.15 * c), sheenRoughnessFactor: 0.6 }; ext.KHR_materials_specular = { specularFactor: 0.15 }; }
+  if (cls === 'leather') ext.KHR_materials_clearcoat = { clearcoatFactor: 0.35, clearcoatRoughnessFactor: 0.38 };
+  if (cls === 'eye') { ext.KHR_materials_clearcoat = { clearcoatFactor: 0.7, clearcoatRoughnessFactor: 0.09 }; /* a mirror coat put the sun into one blinding point that bloomed over the face */ ext.KHR_materials_ior = { ior: 1.376 }; }
+  if (cls === 'enamel') ext.KHR_materials_specular = { specularFactor: 0.6 };
+  if (cls === 'rubber') ext.KHR_materials_specular = { specularFactor: 0.3 };
+  return { ext };
+}
 function materials(glb, sp) {
   const c = Object.fromEntries(Object.entries(sp.colors).map(([k, v]) => [k, Array.isArray(v) ? v : hex(v)]));
   // garment slot -> fabric, explicit per slot (a spec may override with shirtFab, pantsFab, outerFab, hatFab)
@@ -481,18 +610,20 @@ function materials(glb, sp) {
     band: 'cotton', wrap: 'cotton', mask: 'cotton', shoe: 'leather', sole: 'rubber', belt: sp.obi ? 'canvas' : 'leather', glove: 'leather', pad: 'vinyl', harness: 'leather',
     buckle: 'metal', metal: 'metal', helmet: sp.hair === 'hardhat' ? 'plastic' : 'metal', shades: 'plastic',
   };
-  const P = (n, fab, o = {}) => { const F = FABRICS[fab]; return [n, glb.pbr(F.cls + '_' + n, TEX, o.set === undefined ? F.set : o.set, { rough: F.rough, normal: F.normal, metal: F.metal ?? 0, ...o })]; };
+  const P = (n, fab, o = {}) => { const F = FABRICS[fab], sh = shading(F.cls, o.tint, sp); return [n, glb.pbr(F.cls + '_' + n, TEX, o.set === undefined ? F.set : o.set, { rough: F.rough, normal: F.normal, metal: F.metal ?? 0, ext: sh.ext, extras: sh.extras, ...o })]; };
   const G = (n, tint, o = {}) => P(n, slot[n], { tint, ...o });
   return Object.fromEntries([
     P('skin', 'skin', { tint: c.skin }),
-    P('face', 'skin', { set: 'face_' + sp.name, clamp: true, normal: 1.2 }),
-    P('eye_' + sp.name, 'eye', { set: 'eye_' + sp.name, clamp: true, normal: 0.2 }),
-    P('lip', 'lip', { tint: c.lip ?? c.skin.map((x, i) => x * [0.86, 0.62, 0.6][i]) }), P('cavity', 'cavity', { tint: [0.03, 0.012, 0.012] }),
-    P('teeth', 'enamel', { tint: [0.82, 0.78, 0.68] }), P('lash', 'hair', { tint: c.hair.map((x) => x * 0.4) }), P('brow', 'hair', { tint: (c.brow ?? c.roots ?? c.hair).map((x) => x * 0.7) }),
+    P('face', 'skin', { set: 'face_' + sp.name, clamp: true, normal: 1.0 }),
+    P('eye_' + sp.name, 'eye', { set: 'eye_' + sp.name, clamp: true, normal: 0.15 }),
+    P('nail', 'plastic', { set: null, tint: c.skin.map((x) => x * 0.92 + 0.05), rough: 0.35 }),
+    P('cavity', 'cavity', { tint: [0.045, 0.012, 0.014] }),
+    P('teeth', 'enamel', { tint: [0.8, 0.76, 0.66] }), P('lash', 'brows', { tint: c.hair.map((x) => x * 0.25), doubleSided: true }), P('brow', 'brows', { tint: (c.brow ?? c.roots ?? c.hair).map((x) => x * 0.75) }),
     G('shirt', c.shirt), G('pants', c.pants), G('outer', c.outer ?? c.accent, { doubleSided: true }),
     G('shoe', c.shoes), G('sole', [0.035, 0.035, 0.035]), G('belt', c.belt || [0.03, 0.025, 0.02]), G('buckle', [0.85, 0.75, 0.45]),
     G('glove', c.glove ?? c.accent),
     P('hair', 'hair', { tint: c.hair, doubleSided: true }), P('stubble', 'hair', { tint: (c.roots ?? c.hair).map((x, i) => x * 0.35 + c.skin[i] * 0.45) }),
+    P('hairCard', 'hairCard', { tint: c.hair, doubleSided: true, alphaMode: 'MASK', alphaCutoff: 0.32 }),
     G('hat', c.hat ?? c.accent), G('band', c.band ?? c.accent), G('wrap', c.wrap ?? [0.9, 0.88, 0.84], { normal: 0.8 }),
     G('harness', c.harness ?? [0.08, 0.06, 0.05]), G('mask', c.mask ?? c.accent), G('pad', c.pad ?? c.accent),
     G('helmet', c.helmet ?? c.hair), G('metal', c.metal ?? [0.5, 0.52, 0.55]), G('shades', [0.015, 0.015, 0.02]),
@@ -502,26 +633,34 @@ function materials(glb, sp) {
   ]);
 }
 
+const HEAD_GROUPS = ['face', 'brow', 'lash'];
 function emit(sp) {
   const glb = new Glb();
   writeFace(sp);
   const mats = materials(glb, sp);
-  const { m: g, world } = build(sp);
+  const { m: g, world, L } = build(sp);
   const { T } = skeleton(sp);
-  // one skinned mesh node per material class (Skin, Cloth, Leather, Hair, Metal, Gloss): the game finds them by name and gives
-  // each class its shading (sheen on skin, cloth and hair; softer specular on skin; a clear coat on leather)
-  const byClass = new Map();
-  for (const [gg, mi] of g.prims(mats)) { const cls = glb.materials[mi].name.split('_')[0]; if (!byClass.has(cls)) byClass.set(cls, []); byClass.get(cls).push([gg, mi]); }
+  // two skinned mesh nodes: Head (the face, brows and lashes, with the expression morph targets) and Body (the rest);
+  // a morphed mesh draws on its own and reads every target per vertex, so only the head carries them
+  const targets = sp.lod ? null : faceTargets(g, L, HEAD_GROUPS);
+  const names = targets ? FACE_TARGETS.filter((n) => HEAD_GROUPS.some((h) => targets[n][h]?.any)) : [];
+  const head = [], body = [];
+  for (const [gg, mi] of g.prims(mats)) {
+    const gname = [...g.groups].find(([, x]) => x === gg)[0];
+    if (targets && HEAD_GROUPS.includes(gname)) { gg.targets = names.map((n) => targets[n][gname]); head.push([gg, mi]); } else body.push([gg, mi]);
+  }
   const jointNodes = BONE_NAMES.map((n) => glb.node({ name: n, translation: T[n] }));
   BONE_NAMES.forEach((n, i) => { if (PARENT[n] !== -1) (glb.nodes[jointNodes[BI[PARENT[n]]]].children ||= []).push(jointNodes[i]); });
   const ibm = new Float32Array(BONE_NAMES.length * 16);
   BONE_NAMES.forEach((n, i) => { const w = world[n]; ibm.set([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -w[0], -w[1], -w[2], 1], i * 16); });
   glb.skins.push({ name: 'Armature', inverseBindMatrices: glb.acc(ibm, 'MAT4', 5126, 0), joints: jointNodes, skeleton: jointNodes[0] });
-  const meshNodes = [...byClass].map(([cls, prims]) => glb.node({ name: 'Body' + cls[0].toUpperCase() + cls.slice(1), mesh: glb.mesh(sp.name + '_' + cls, prims), skin: 0 }));
+  const meshNodes = [glb.node({ name: 'Body', mesh: glb.mesh(sp.name + '_body', body), skin: 0 })];
+  if (head.length) meshNodes.push(glb.node({ name: 'Face', mesh: glb.mesh(sp.name + '_head', head, null, names), skin: 0 }));
   glb.sceneNodes.push(...meshNodes, jointNodes[0]);
   glb.write(join(OUT, sp.name + '.glb'));
-  console.log(sp.name, 'tris', g.tris());
+  console.log(sp.name, 'tris', g.tris(), 'targets', names.join(','));
 }
+
 
 // The four fighters. scale, bulk and shoulder are the numbers the hitboxes were tuned with (height, hip width, shoulder
 // width); everything else is the look. Silhouette first: a gi with a headband and spiky hair, a huge bearded grappler
@@ -531,7 +670,7 @@ export const SPECS = [
     hair: 'spiky', headband: true, wraps: true, stubble: true, top: 'none', outer: true, outerKind: 'gi', outerFab: 'gi', openFront: 0.2, sleeves: 'three',
     bottom: 'gi', pantsFab: 'gi', obi: true, shoes: 'slipper',
     colors: { skin: 0xc68c62, outer: 0xe8e2d2, pants: 0xe2dccc, shoes: 0x2a1a14, hair: 0x1c1410, accent: 0xb3201a, band: 0xc0221a, belt: 0x141214, wrap: 0xe8e4da } },
-  { name: 'grit', face: { brow: 1.6, cheek: 1.2, width: 1.06, browThick: 1.3, browArch: 0.7, age: 0.8, lips: 0.9, chin: 1.25, eyeSize: 0.92, mouthW: 1.1 }, eyes: 0x4a5a6a, scale: 1.06, bulk: 1.38, shoulder: 1.25, width: 1.6, chest: 1.2, belly: 0.75, arm: 1.55, leg: 1.3, head: 0.92, hand: 1.3, jaw: 1.45, neck: 1.5, abs: 0.4,
+  { name: 'grit', face: { brow: 1.6, cheek: 1.2, width: 1.06, browThick: 1.3, browArch: 0.7, age: 0.8, lips: 0.9, chin: 1.25, eyeSize: 0.92, mouthW: 1.1 }, eyes: 0x4a5a6a, scale: 1.06, bulk: 1.38, shoulder: 1.25, width: 1.6, chest: 1.2, belly: 0.75, arm: 1.55, leg: 1.3, head: 1.0, hand: 1.3, jaw: 1.45, neck: 1.5, abs: 0.4,
     hair: 'none', goatee: true, stubble: true, scar: true, frown: true, top: 'none', harness: true, belt: true, champ: true, bottom: 'shorts', pantsFab: 'leather', kneepads: true, boots: true,
     bracers: true, wristband: true, gloves: true, fingerless: true,
     colors: { skin: 0xa8714c, pants: 0x2a2c34, shoes: 0x1a1612, hair: 0x2a1a10, accent: 0xe08a10, belt: 0x1e1814, metal: 0xc8a050, glove: 0x302822, pad: 0xd07a10, band: 0xe08a10, harness: 0x2a1e16 } },

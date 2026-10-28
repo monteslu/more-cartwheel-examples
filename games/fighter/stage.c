@@ -14,7 +14,8 @@ enum { PK_FAN, PK_BLINK, PK_LAMP, PK_SIGN };
 
 static struct {
   int stage;
-  cw_node node, rim[2], neon[4];
+  cw_node node, rim[2], neon[4], key[2], fill;
+  float rim_e[2];
   float neon_e[4];
   t3_gltf *gltf;
   anim_part part[MAXPART];
@@ -88,7 +89,14 @@ void stage_load(int stage, cw_node parent) {
     p->phase = (float)(S.nparts * 37 % 100) * 0.0628f;
     if (kind == PK_BLINK || kind == PK_SIGN) shadows(o, false);
   }
-  for (int i = 0; i < 2; i++) { char nm[8]; snprintf(nm, sizeof nm, "Rim%d", i); S.rim[i] = cw_node_get(parent, nm); }
+  for (int i = 0; i < 2; i++) {
+    char nm[8];
+    snprintf(nm, sizeof nm, "Rim%d", i); S.rim[i] = cw_node_get(parent, nm);
+    cw_value v = { 0 };
+    S.rim_e[i] = cw_node_valid(S.rim[i]) && cw_node_get_prop(S.rim[i], "energy", &v) ? (float)v.f : 0;
+    snprintf(nm, sizeof nm, "Key%d", i); S.key[i] = cw_node_get(parent, nm);
+  }
+  S.fill = cw_node_get(parent, "Fill0");
   for (int i = 0; i < 4; i++) {
     char nm[12]; snprintf(nm, sizeof nm, "NeonL%d", i);
     S.neon[i] = cw_node_get(parent, nm);
@@ -152,8 +160,21 @@ void stage_frame(const ft_game *g, float dt) {
   for (int i = 0; i < 2; i++) {
     if (!cw_node_valid(S.rim[i])) continue;
     const ft_fighter *f = &g->f[i];
-    if (showcase) cw_node3d_set_position(S.rim[i], (t3_vec3){ (float)f->x / 1000.0f + (float)f->facing * 0.6f, 1.9f, 1.3f }); /* a key light in front of the face */
-    else cw_node3d_set_position(S.rim[i], (t3_vec3){ (float)f->x / 1000.0f - (float)f->facing * 0.35f, 2.3f + (float)f->y / 1000.0f, -1.7f });
+    float fx = (float)f->x / 1000.0f, fc = (float)f->facing;
+    if (showcase) { /* a portrait: the rim behind and above the far shoulder, the key high in front on the side the face turns to */
+      cw_node3d_set_position(S.rim[i], (t3_vec3){ fx - fc * 0.55f, 2.4f, -1.4f });
+      cw_node_set(S.rim[i], "energy", cw_val_float(S.rim_e[i] * 1.3f));
+      if (cw_node_valid(S.key[i])) { cw_node3d_set_position(S.key[i], (t3_vec3){ fx + fc * 1.5f, 2.55f, 1.1f }); cw_node_set(S.key[i], "energy", cw_val_float(9.0f)); }
+    } else {
+      cw_node3d_set_position(S.rim[i], (t3_vec3){ fx - fc * 0.35f, 2.3f + (float)f->y / 1000.0f, -1.7f });
+      cw_node_set(S.rim[i], "energy", cw_val_float(S.rim_e[i]));
+      if (cw_node_valid(S.key[i])) cw_node_set(S.key[i], "energy", cw_val_float(0));
+    }
+  }
+  if (cw_node_valid(S.fill)) { /* the fill: low and soft from in front, between the camera and the fighters */
+    float cx = ((float)g->f[0].x + (float)g->f[1].x) * 0.0005f;
+    cw_node3d_set_position(S.fill, (t3_vec3){ cx, 1.3f, 3.2f });
+    cw_node_set(S.fill, "energy", cw_val_float(showcase ? 1.2f : 0));
   }
   crowd_frame(&S.crowd, g, dt);
 }

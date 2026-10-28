@@ -7,13 +7,12 @@
  * Written generically (bones by name, any model under a Node3D) so the engine can take it as a skeleton modifier later.
  * Only + - * / and sqrt: the same on every host.
  *
- * Shading: the characters' glb splits its meshes by material class (BodySkin, BodyCloth, BodyLeather, BodyHair). Skin,
- * cloth and hair become physical materials with sheen (a soft scattering rim on skin, a low velvet-like lift on matte cloth, the sheen of
- * hair) and a lower specular so skin stops reading as plastic; leather gets a thin clear coat. */
+ * Shading: skin shading on the skin materials (the rest of the shading comes from the glb). */
 #include <math.h>
 #include <string.h>
 
 #include "cartwheel/scene.h"
+#include "cartwheel/skin_shading.h"
 #include "game.h"
 #include "three.h"
 
@@ -134,52 +133,16 @@ void sb_step(spring_rig *s, t3_vec3 pos, float yaw, float dt) {
   }
 }
 
-/* ── shading ─────────────────────────────────────────────────────────── */
-typedef enum { SH_SKIN, SH_CLOTH, SH_HAIR, SH_LEATHER } shade_class;
-static void shade_material(t3_mesh *m, int i, shade_class k) {
-  t3_material *old = m->materials[i];
-  if (old->type == T3_MESH_PHYSICAL_MATERIAL) return;
-  t3_material *p = t3_material_clone(old);
-  p->type = T3_MESH_PHYSICAL_MATERIAL;
-  t3_color c = old->color;
-  switch (k) {
-  case SH_SKIN: /* light scattered under the skin shows as a warm soft rim; little mirror-like specular */
-    p->sheen = 0.35f, p->sheen_roughness = 0.6f;
-    p->sheen_color = (t3_color){ 0.08f + 0.3f * c.r, 0.03f + 0.12f * c.g, 0.02f + 0.08f * c.b };
-    p->specular_intensity = 0.4f, p->ior = 1.4f; /* roughness stays the table's moderate value (about 0.55 with the map) */
-    break;
-  case SH_CLOTH: /* matte: no sharp highlight, only a soft velvet-like lift at grazing angles; never a clear coat */
-    p->roughness = fmaxf(p->roughness, 0.95f);
-    p->sheen = 0.25f, p->sheen_roughness = 0.9f;
-    p->sheen_color = (t3_color){ 0.01f + 0.25f * c.r, 0.01f + 0.25f * c.g, 0.01f + 0.25f * c.b };
-    p->specular_intensity = 0.12f;
-    p->clearcoat = 0;
-    break;
-  case SH_HAIR:
-    p->sheen = 0.35f, p->sheen_roughness = 0.5f;
-    p->sheen_color = (t3_color){ 0.04f + 0.35f * c.r, 0.03f + 0.35f * c.g, 0.03f + 0.35f * c.b };
-    p->specular_intensity = 0.35f;
-    break;
-  case SH_LEATHER:
-    p->clearcoat = 0.35f, p->clearcoat_roughness = 0.38f;
-    break;
-  }
-  m->materials[i] = p;
-  t3_release(old);
-}
-static void shade_tree(t3_object *o, shade_class k) {
-  if (o->type == T3_MESH || o->type == T3_SKINNED_MESH) {
-    t3_mesh *m = (t3_mesh *)o;
-    for (int i = 0; i < m->material_count; i++) shade_material(m, i, k);
-  }
-  for (int i = 0; i < o->child_count; i++) shade_tree(o->children[i], k);
-}
+/* ── shading ───────────────────────────────────────────────────────────
+ * The glb carries its materials' shading (KHR_materials_sheen, specular, clearcoat, ior, anisotropy, written by
+ * tools/make-characters.mjs). Skin shading (cartwheel/skin_shading.h: a soft warm terminator, light through ears and
+ * thin parts) is asked for in the file's extras, which the engine reads when a glb loads through the resource system;
+ * these models load with t3_gltf_parse, so it is applied here by material name with the same values. */
 void char_shade(t3_object *scene) {
-  static const struct { const char *node; shade_class k; } C[] = {
-    { "BodySkin", SH_SKIN }, { "BodyCloth", SH_CLOTH }, { "BodyHair", SH_HAIR }, { "BodyLeather", SH_LEATHER },
-  };
-  for (size_t i = 0; i < sizeof C / sizeof *C; i++) {
-    t3_object *o = t3_object_get_by_name(scene, C[i].node);
-    if (o) shade_tree(o, C[i].k);
-  }
+  cw_skin_shading_desc d = cw_skin_shading_default();
+  d.scatter = (t3_color){ 0.95f, 0.33f, 0.21f };
+  d.wrap = 0.5f;
+  d.translucency = 0.3f;
+  cw_skin_shading_apply_named(scene, "skin_face", &d);
+  cw_skin_shading_apply_named(scene, "skin_skin", &d);
 }

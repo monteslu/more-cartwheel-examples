@@ -21,8 +21,21 @@ export function frame(dir) {
 export class SkinMesh {
   constructor() { this.groups = new Map(); }
   group(mat) {
-    if (!this.groups.has(mat)) this.groups.set(mat, { pos: [], nrm: [], uv: [], idx: [], joints: [], weights: [] });
+    if (!this.groups.has(mat)) this.groups.set(mat, { pos: [], nrm: [], uv: [], idx: [], joints: [], weights: [], tag: [] });
     return this.groups.get(mat);
+  }
+  /** vertices with explicit normals, uvs, weights and tags plus triangles (local indices): verts [{p, n, uv, w, tag}] */
+  raw(mat, verts, tris) {
+    const g = this.group(mat), base = g.pos.length / 3;
+    for (const v of verts) {
+      g.pos.push(...v.p); g.nrm.push(...v.n); g.uv.push(...v.uv); g.tag.push(v.tag ?? null);
+      if (v.t) (g.tan ||= []).push(...v.t);
+      const acc = new Map();
+      for (const [b, x] of v.w) if (x > 1e-4) acc.set(b, (acc.get(b) || 0) + x);
+      const w = [...acc].sort((x, y) => y[1] - x[1]).slice(0, 4), sum = w.reduce((q, x) => q + x[1], 0) || 1;
+      for (let i = 0; i < 4; i++) { g.joints.push(w[i] ? w[i][0] : 0); g.weights.push(w[i] ? w[i][1] / sum : 0); }
+    }
+    for (const [a, b, c] of tris) g.idx.push(base + a, base + b, base + c);
   }
   tris() { let n = 0; for (const g of this.groups.values()) n += g.idx.length / 3; return n; }
   /**
@@ -84,7 +97,7 @@ export class SkinMesh {
       let nn = norm(N[v]); if (flip) nn = mul(nn, -1);
       const k = Math.floor(v / (n + 1));
       if (len(N[v]) < 1e-12) nn = norm(sub(P[v], rings[k].c));
-      g.pos.push(...P[v]); g.nrm.push(...nn); g.uv.push(...UV[v]);
+      g.pos.push(...P[v]); g.nrm.push(...nn); g.uv.push(...UV[v]); g.tag.push(o.tag ?? null);
       let w = o.weights ? o.weights(keep[k], P[v], A[v]) : [[o.bone, 1]];
       const acc = new Map();
       for (const [b, x] of w) if (x > 1e-4) acc.set(b, (acc.get(b) || 0) + x);
