@@ -1225,7 +1225,7 @@ void sim_goto_wave(int wave) {
 }
 
 /* Bodies on their feet never stand inside each other, the crowd's walkers included: every pair closer than an ellipse
-   0.8 m along the street and 0.56 m across it (larger for bosses) is pushed out to its edge, the lighter body moving
+   1.0 m along the street and 0.62 m across it (larger for bosses) is pushed out to its edge, the lighter body moving
    more, a few passes a tick. A held body moves with its holder as one (the push goes to the holder and the held body
    follows), so a grab never lets a third fighter stand inside either of them. Bodies lying on the street keep apart
    from each other the same way in a longer ellipse (1.1 m by 0.64 m: a body lies along the street), so two knocked
@@ -1243,7 +1243,7 @@ int g_sep_overlaps; /* debug: pairs still inside each other after the last tick'
 static bool sep_pair(const ent *a, const ent *c, bool la, bool lc, float *ax, float *az) {
   if (la != lc) return false; /* standing next to someone lying down is fine */
   float s = body_size(a) + body_size(c);
-  *ax = (la ? 0.55f : 0.4f) * s, *az = (la ? 0.32f : 0.28f) * s;
+  *ax = (la ? 0.55f : 0.5f) * s, *az = (la ? 0.32f : 0.31f) * s;
   return true;
 }
 static void separate_bodies(void) {

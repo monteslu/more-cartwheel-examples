@@ -371,15 +371,14 @@ function puddles(stage, count) {
       }
     }
   }
-  // low spots in the road: the water runs to the gutters (the near one, at the front of the picture, and the kerb), a
-  // few pools sit in dips mid road; small splash clusters near a pool. Up to 6 tries each to find dry street.
+  // low spots in the road: the water runs to the kerb gutter, pools sit in dips mid road; small splash clusters near a pool. Up to 6 tries each to find dry street.
   const kinds = [0, 1, 2, 5];
   for (let i = 0; i < count; i++) {
     for (let tries = 0; tries < 6; tries++) {
-      const g = rnd(), z = g < 0.4 ? r(2.4, 3.6) : g < 0.7 ? r(-2.6, -1.6) : r(-1.4, 2.2);
-      const x = r(LO, HI), s = r(0.45, 1.5) * (g < 0.7 ? 1 : 0.75), asp = r(0.5, 1.5), rot = r(0, 6.28);
+      const g = rnd(), z = g < 0.5 ? r(-2.6, -1.6) : r(-1.4, 1.9); // the kerb gutter, or dips in the road (the near gutter lies under the bottom of the picture, where the street lamps mirror: a cut-off dark shape with a hot spot)
+      const x = r(LO, HI), s = r(0.45, 1.4) * (g < 0.5 ? 1 : 0.8), asp = r(0.5, 1.5), rot = r(0, 6.28);
       if (!add(x, 0, z, s * asp, s / asp, rot, kinds[Math.floor(rnd() * 4)])) continue;
-      if (rnd() < 0.3) add(x + r(-1.8, 1.8), 0, z + r(-0.9, 0.9), r(0.25, 0.55), r(0.25, 0.55), r(0, 6.28), 6 + (rnd() < 0.5 ? 1 : 0));
+      if (rnd() < 0.3) add(x + r(-1.8, 1.8), 0, Math.min(z + r(-0.9, 0.9), 2.0), r(0.25, 0.55), r(0.25, 0.55), r(0, 6.28), 6 + (rnd() < 0.5 ? 1 : 0));
       break;
     }
   }
@@ -400,7 +399,7 @@ function puddles(stage, count) {
   const mat = glb.pbr('puddle', TEX, null, { alphaMode: 'BLEND' });
   const pm = glb.materials[mat].pbrMetallicRoughness;
   pm.baseColorTexture = { index: glb.tex(join(TEX, 'puddles.png')) };
-  pm.baseColorFactor = [1, 1, 1, 1]; pm.metallicFactor = 0; pm.roughnessFactor = 0.06;
+  pm.baseColorFactor = [1, 1, 1, 1]; pm.metallicFactor = 0; pm.roughnessFactor = 0.12;
   glb.materials[mat].extensions = undefined;
   glb.sceneNodes.push(glb.node({ name: 'Puddles', mesh: glb.mesh('puddles', { pos, nrm, uv, idx }, mat) }));
   glb.write(join(OUT, `puddles${stage}.glb`));

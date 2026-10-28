@@ -182,7 +182,7 @@ static void bot(int i, inputs *in) {
   } else {
     const ent *v = &W.e[best];
     tx = v->x - (e->x < v->x ? 0.9f : -0.9f);
-    tz = v->z;
+    tz = v->z + ((i & 1) ? 0.3f : -0.3f); /* fighters on one enemy flank it a step apart in depth, not in single file */
   }
   float dx = tx - e->x, dz = tz - e->z;
   in->mx = dx > 0.15f ? 1 : dx < -0.15f ? -1 : 0;
