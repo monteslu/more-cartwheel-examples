@@ -14,6 +14,7 @@ import { writeSet } from './texlib.mjs';
 import { faceParams, headModel, buildHead, shellGrid, paintFace, paintEye, FACE_BONES, EXPRESSIONS, FACE_TARGETS, faceTargets } from './face.mjs';
 const HEAD_GROUPS = ['face', 'lash'];
 
+const CARD_INWARD = process.env.BRAWLER_CARD_WINDING === 'inward';
 const OUT = join(dirname(fileURLToPath(import.meta.url)), '..', 'assets', 'models');
 mkdirSync(OUT, { recursive: true });
 
@@ -655,6 +656,8 @@ function build(sp) {
   const growS = (p, dir, len, seg, bend, o) => { const pts = [p]; let d = norm(dir); for (let i = 0; i < seg; i++) { d = norm(bend(i, pts[pts.length - 1], d)); const q = onScalp(add(pts[pts.length - 1], mul(d, len / seg)), o); d = norm(sub(q, pts[pts.length - 1])); pts.push(q); } return pts; };
   const crossv = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
   const dotv = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  // the cards' facing: per triangle, the sign of (face normal . its vertices' normals), summed over every card (checked below)
+  const facing = { out: 0, in: 0 };
   /** one card along pts: width w0 at the root to w1 at the tip; twist 0 lies flat on the mass, PI/2 stands; o.outAt(i, p) is
       the outward direction of the mass there (the skull's by default), o.mat the material */
   const card = (pts, w0, w1, twist, weights, o = {}) => {
@@ -666,10 +669,16 @@ function build(sp) {
       const n = norm(add(out, mul(tg, -0.15)));
       const tn = norm(sub(side, mul(n, dotv(side, n))));
       for (const k of [-1, 1]) verts.push({ p: add(pts[i], mul(side, k * w)), n, t: [...tn, 1], uv: [u0 + (k > 0 ? uw : 0), sv], w: weights(sv, pts[i]), tag: 'hair' });
-      // wound so the front face looks out of the hair mass, the way the normals point (the other winding made every card a
-      // back face from outside: double-sided shading then turned its normal inward and the rim light lit it pale)
       if (i) { const a = (i - 1) * 2, b = i * 2; tris.push([a, b + 1, b], [a, a + 1, b + 1]); }
     }
+    // wound so the front face looks the way the normals point (out of the hair mass). A card wound the other way is a back
+    // face from outside: double-sided shading turns its normal inward and the rim and key lights light the hair pale. Which
+    // winding that is depends on the card's twist (a lying card and a standing tuft face different ways), so it is chosen
+    // per card from the sum over its triangles. BRAWLER_CARD_WINDING=inward keeps the opposite choice: the facing check
+    // below must stop it (its control).
+    const fd = ([a, b, c]) => dotv(crossv(sub(verts[b].p, verts[a].p), sub(verts[c].p, verts[a].p)), add(add(verts[a].n, verts[b].n), verts[c].n));
+    if ((tris.reduce((q, t) => q + fd(t), 0) < 0) !== CARD_INWARD) for (const t of tris) [t[1], t[2]] = [t[2], t[1]];
+    for (const t of tris) { const d = fd(t); if (d > 0) facing.out++; else if (d < 0) facing.in++; }
     m.raw(mat, verts, tris);
   };
   const onHead = () => [[BI.Head, 1]];
@@ -793,6 +802,11 @@ function build(sp) {
       const pts = []; for (let k = 0; k <= steps; k++) pts.push(swoop(lerp(u0, u1, k / steps), s, 0.009));
       card(pts, 0.045 * HS, 0.025 * HS, 0, onHead, { ...pc, outAt: (k) => swoopOut(lerp(u0, u1, k / steps), s) });
     }
+  }
+  if (facing.out + facing.in > 0) {
+    // most card triangles must face the way their normals point (standing cards sit edge on to the normal, so not all)
+    console.log(`${sp.name}: hair cards face out ${facing.out}, in ${facing.in}`);
+    if (facing.out <= 4 * facing.in) throw new Error(`${sp.name}: hair cards wound inward (${facing.out} triangles face out, ${facing.in} in): double-sided shading would light them from inside`);
   }
   if (hairCut === 'beanie') {
     m.loft('hat', shell(0.22, 1.0, 1.1, 0.012, 10, { mod: (t) => (a) => 1 + 0.012 * Math.sin(a * 24) }), { n: 32, bone: BI.Head, tile: 0.25 });
