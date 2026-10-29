@@ -77,6 +77,94 @@ def walk_pose(f, n, A_leg=0.7, K=0.9, arm=0.5, bounce=0.05, spine_lean=0.0, twis
     p["uarmR"] = (arm * sL - arm_fwd, 0.0, 0); p["farmR"] = (arm_bend + 0.2 * max(0, sL) * arm - arm_fwd * 0.3, 0, 0)
     return p
 
+# ───────────────────────── attacks ────────────────────────────────────
+# Each enemy's attack is a second clip of three key poses the game holds in turn: the wind-up (the
+# telegraph, held while the strike is coming), the strike (the hit frame) and the recovery. Three frames
+# keep the crowd's draw count flat: the walk cycles went from 8 to 6 frames (the boss 12 to 10), so a
+# kind draws one bucket more than before.
+ATTACK_FRAMES = 3
+
+def stance(hip_z, crouch=0.0, spread=0.0):
+    """feet planted, knees bent by crouch (radians), legs apart by spread"""
+    p = {}
+    for side, s in (("L", 1), ("R", -1)):
+        p["thigh" + side] = (-crouch, 0, s * spread)
+        p["shin" + side] = (crouch * 1.8, 0, 0)
+        p["foot" + side] = (-crouch * 0.8, 0, 0)
+    p["hips"] = (0, 0, 0, 0, 0, 0)
+    return p
+
+def runner_attack():
+    # a claw swipe that turns into a lunge: the right claw cocked high and back, then raked across and down
+    # in front with the body thrown forward, then gathered back
+    out = []
+    for k, (lean, armR, farmR, armL, twist, crouch, drop) in enumerate((
+            (-0.15, (-2.7, 0, -0.6), (0.9, 0, 0), (-0.6, 0, 0.3), 0.55, 0.35, -0.04),   # wind-up
+            (0.85, (-1.2, 0, 0.55), (-0.15, 0, 0), (-0.9, 0, 0), -0.6, 0.55, -0.1),      # strike
+            (0.45, (-0.8, 0, 0.2), (0.4, 0, 0), (-0.5, 0, 0), -0.2, 0.4, -0.06))):        # recovery
+        p = stance(0.62, crouch, 0.12)
+        p["thighL"] = (-crouch - 0.35 * max(0, lean), 0, 0.12)                          # the lunge's front foot
+        p["hips"] = (lean * 0.4, 0, twist * 0.4, 0, drop, 0)
+        p["spine"] = (lean * 0.45 + 0.2, 0, twist * 0.8)
+        p["chest"] = (lean * 0.3 + 0.1, 0, twist * 0.6)
+        p["head"] = (-lean * 0.7 - 0.15, 0, -twist * 0.5)
+        p["uarmR"] = armR; p["farmR"] = farmR; p["uarmL"] = armL; p["farmL"] = (0.4, 0, 0)
+        out.append(p)
+    return out
+
+def brute_attack():
+    # an overhead smash: both fists high over the head, leaning back; then slammed down in front with the
+    # whole body folded over bent knees; then the fists hauled back up
+    out = []
+    for lean, arm, farm, crouch, drop in (
+            (-0.16, -2.95, -0.5, 0.15, 0.03),  # wind-up
+            (0.75, -0.75, -0.1, 0.65, -0.16),  # strike
+            (0.35, -1.3, -0.4, 0.35, -0.07)):  # recovery
+        p = stance(0.95, crouch, 0.18)
+        p["hips"] = (lean * 0.35, 0, 0, 0, drop, 0)
+        p["spine"] = (lean * 0.45, 0, 0)
+        p["chest"] = (lean * 0.35, 0, 0)
+        p["head"] = (-lean * 0.6, 0, 0)
+        for side, s in (("L", 1), ("R", -1)):
+            p["uarm" + side] = (arm, 0, -s * 0.25); p["farm" + side] = (farm, 0, 0)
+        out.append(p)
+    return out
+
+def bloater_attack():
+    # a belly slam: rocked back with the arms flung out, then thrown forward onto the belly, then rocked up
+    out = []
+    for lean, arm, out_z, crouch, drop in (
+            (-0.3, -0.3, 0.9, 0.1, 0.05),     # wind-up
+            (0.5, -1.4, 0.2, 0.45, -0.1),     # strike
+            (0.3, -0.7, 0.5, 0.3, -0.04)):    # recovery
+        p = stance(0.34, crouch, 0.1)
+        p["hips"] = (lean * 0.5, 0, 0, 0, drop, 0)
+        p["spine"] = (lean * 0.5, 0, 0)
+        p["chest"] = (lean * 0.25, 0, 0)
+        p["head"] = (-lean * 0.5, 0, 0)
+        for side, s in (("L", 1), ("R", -1)):
+            p["uarm" + side] = (arm, 0, s * out_z); p["farm" + side] = (-0.2, 0, 0)
+        out.append(p)
+    return out
+
+def boss_attack():
+    # a big sweep: the torso wound round with the right arm swung far back and up, then swept across the
+    # front (the left arm braced), then the torso unwinding
+    out = []
+    for twist, armR, farmR, lean, crouch in (
+            (0.9, (-2.2, 0, -1.0), (-0.3, 0, 0), -0.12, 0.2),    # wind-up
+            (-0.85, (-1.5, 0, 0.9), (-0.1, 0, 0), 0.4, 0.4),     # strike
+            (-0.35, (-0.9, 0, 0.4), (-0.4, 0, 0), 0.2, 0.3)):    # recovery
+        p = stance(1.55, crouch, 0.2)
+        p["hips"] = (lean * 0.3, 0, twist * 0.3, 0, -0.05 * crouch, 0)
+        p["spine"] = (lean * 0.4, 0, twist * 0.6)
+        p["chest"] = (lean * 0.3, 0, twist * 0.5)
+        p["head"] = (-lean * 0.5, 0, -twist * 0.4)
+        p["uarmR"] = armR; p["farmR"] = farmR
+        p["uarmL"] = (-0.9, 0, 0.5); p["farmL"] = (-0.5, 0, 0)
+        out.append(p)
+    return out
+
 # ───────────────────────── characters ─────────────────────────────────
 
 def make_soldier():
@@ -168,12 +256,12 @@ def make_runner():
     return M
 
 def runner_poses():
-    N = 8
+    N = 6
     out = []
     for f in range(N):
         p = walk_pose(f, N, A_leg=0.95, K=1.3, arm=0.9, bounce=0.07, spine_lean=0.55, twist=0.2, arm_bend=0.5, arm_fwd=0.2, hip_z=0.62)
         out.append(p)
-    return [out]
+    return [out, runner_attack()]
 
 def make_brute():
     M = Model()
@@ -205,14 +293,14 @@ def make_brute():
     return M
 
 def brute_poses():
-    N = 8
+    N = 6
     out = []
     for f in range(N):
         p = walk_pose(f, N, A_leg=0.5, K=0.7, arm=0.35, bounce=0.07, spine_lean=0.18, twist=0.3, arm_bend=0.4, hip_z=0.95)
         ph = 2 * math.pi * f / N
         p["hips"] = (p["hips"][0], 0, p["hips"][2], 0, p["hips"][4] + 0.0, 0)
         out.append(p)
-    return [out]
+    return [out, brute_attack()]
 
 def make_bloater():
     M = Model()
@@ -235,7 +323,7 @@ def make_bloater():
     return M
 
 def bloater_poses():
-    N = 8
+    N = 6
     out = []
     for f in range(N):
         p = walk_pose(f, N, A_leg=0.5, K=0.5, arm=0.5, bounce=0.05, spine_lean=0.0, twist=0.35, arm_bend=0.3, hip_z=0.34)
@@ -243,7 +331,7 @@ def bloater_poses():
         s = 0.06 * math.sin(2 * ph)
         p["spine"] = (p["spine"][0], 0, p["spine"][2], 0, 0, 0)
         out.append(p)
-    return [out]
+    return [out, bloater_attack()]
 
 def make_boss():
     M = Model()
@@ -278,12 +366,12 @@ def make_boss():
     return M
 
 def boss_poses():
-    N = 12
+    N = 10
     out = []
     for f in range(N):
         p = walk_pose(f, N, A_leg=0.4, K=0.5, arm=0.3, bounce=0.1, spine_lean=0.1, twist=0.2, arm_bend=0.5, hip_z=1.55)
         out.append(p)
-    return [out]
+    return [out, boss_attack()]
 
 CHARS = {
     "soldier": (make_soldier, soldier_poses),
@@ -313,15 +401,16 @@ def sheet(name, ob, ao, poses):
     ob.data.materials.append(mat)
     bb = [ob.matrix_world @ Vector(c) for c in ob.bound_box]
     H = max(v.z for v in bb)
-    n = len(poses[0])
-    for fi in range(0, n, max(1, n // 4)):
-        pose_frame(ao, poses[0][fi])
+    frames = [(0, fi) for fi in range(0, len(poses[0]), max(1, len(poses[0]) // 4))]
+    frames += [(c, fi) for c in range(1, len(poses)) for fi in range(len(poses[c]))]   # every frame of the other clips (the attacks)
+    for ci, fi in frames:
+        pose_frame(ao, poses[ci][fi])
         for ang, tag in ((0.8, "q"), (math.pi * 0.5, "s")):
             cam.location = (math.sin(ang) * -H * 2.3, math.cos(ang) * -H * 2.3, H * 0.7)
             d = Vector((0, 0, H * 0.45)) - cam.location
             cam.rotation_euler = d.to_track_quat('-Z', 'Y').to_euler()
             cam.data.lens = 50
-            sc.render.filepath = os.path.join(SHEET, "%s_%02d%s.png" % (name, fi, tag))
+            sc.render.filepath = os.path.join(SHEET, "%s_c%d_%02d%s.png" % (name, ci, fi, tag))
             bpy.ops.render.render(write_still=True)
 
 for name in (kinds or list(CHARS)):
