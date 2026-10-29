@@ -22,5 +22,43 @@
       "native"
     ],
     "note": "The selected mission launched from the title (South at frame 25), a bank left, a pull up and a burst of afterburner; the control turns the other way. Native only for now: the flight model drifts from the native run in the sixth digit on the cart hosts after 360 frames (jet.x, jet.heading), so the cross-host leg is open."
+  },
+  {
+    "name": "skyfighter-crash",
+    "app": "skyfighter",
+    "frames": 600,
+    "input": "skyfighter-crash.json",
+    "controlInput": "skyfighter-sortie-control.json",
+    "maxGt16": 0.06,
+    "fields": [
+      "crash.age",
+      "cam.offset",
+      "rumble.sent",
+      "cw.rumble"
+    ],
+    "expect": {
+      "cam.offset": [
+        330,
+        0,
+        0
+      ],
+      "rumble.sent": [
+        1,
+        0,
+        1,
+        0
+      ],
+      "cw.rumble": [
+        2,
+        0,
+        1000,
+        700,
+        300
+      ]
+    },
+    "hosts": [
+      "native"
+    ],
+    "note": "No shake: the mission launched, the stick held down into the ground, and the crash camera orbits the wreck for its 5.5 s. cam.offset holds the camera as drawn against that orbit on every crash frame: none off by over 0.1 mm (the build before shook it up to 2.9 m: 270 of 330 frames off). The crash and the fuel going up are felt in the pad: rumble.sent counts blasts near the jet, hits taken, crashes and missile launches; cw.rumble is the engine's last. Native only, as skyfighter-sortie (the flight model drifts in the sixth digit on the cart hosts). Control: the sortie control script, which does not crash."
   }
 ]
