@@ -244,6 +244,49 @@ bool ft_hitbox_active(const ft_game *g, int who, ft_box *out) {
 }
 
 static int dir_of(const ft_fighter *f) { return cw_cmd_dir_now(&f->cb); }
+/* the direction pushed `age` frames ago (0 when not remembered or consumed by a move) */
+static int dir_ago(const cw_cmd_buf *b, int age) {
+  if (age < 0 || age >= CW_CMD_HISTORY || (uint32_t)age >= b->count) return 0;
+  uint32_t idx = b->count - 1 - (uint32_t)age;
+  if (idx < b->consumed) return 0;
+  return b->f[idx & (CW_CMD_HISTORY - 1)].dir;
+}
+static bool has_fwd(int d) { return d == 3 || d == 6 || d == 9; }
+static bool has_back(int d) { return d == 1 || d == 4 || d == 7; }
+static bool has_up(int d) { return d >= 7; }
+/* up went down (from a frame without up) within FT_BUFFER frames: a jump asked for during recovery */
+static bool up_pressed_recently(const ft_fighter *f) {
+  for (int a = 0; a <= FT_BUFFER; a++) {
+    int d = dir_ago(&f->cb, a), p = dir_ago(&f->cb, a + 1);
+    if (!d) return false;
+    if (has_up(d) && p && !has_up(p)) return true;
+  }
+  return false;
+}
+/* a dash: the side tapped twice. A tap is that side alone or with up (6 or 9 for forward), the gap between the taps
+ * has no part of either side, and the first tap began inside the window. So a held walk rolled onto a diagonal
+ * and back is not a dash (the old exact-step match read 6 9 6 as one), and 236236 or 623 never dash (down-forward
+ * is neither a tap nor a gap). */
+static bool double_tap(const ft_fighter *f, bool forward, int window) {
+  bool (*side)(int) = forward ? has_fwd : has_back;
+  int tap1 = forward ? 6 : 4, tap2 = forward ? 9 : 7;
+  int d0 = dir_ago(&f->cb, 0), d1 = dir_ago(&f->cb, 1);
+  bool (*other)(int) = forward ? has_back : has_fwd;
+  if ((d0 != tap1 && d0 != tap2) || !d1 || side(d1) || other(d1)) return false;
+  int a = 1;
+  /* the gap: neither side (5, 2 or 8), so walking forward and back quickly is not a dash */
+  while (a < window) { int d = dir_ago(&f->cb, a); if (!d || other(d)) return false; if (side(d)) break; a++; }
+  if (a >= window) return false;
+  /* the first tap: a run of tap frames ending at age a, starting inside the window */
+  while (a < window) {
+    int d = dir_ago(&f->cb, a);
+    if (d != tap1 && d != tap2) return false;
+    int p = dir_ago(&f->cb, a + 1);
+    if (!p || !side(p)) return true; /* the run began here (or the buffer starts here) */
+    a++;
+  }
+  return false;
+}
 
 static void set_state(ft_fighter *f, int s) { f->state = (uint8_t)s; f->t = 0; }
 
@@ -344,7 +387,7 @@ static int chain_rank(int slot) {
 static bool choose_move(ft_game *g, int i, int cur, bool *is_special, int *slot, int *strength) {
   ft_fighter *f = &g->f[i];
   const ft_def *d = DEF(g, i);
-  bool air = ft_airborne(f) || f->state == S_PREJUMP;
+  bool air = ft_airborne(f); /* the prejump is still the ground: a button in it is a ground move */
   bool cancel = cur >= 0;
   bool cur_special = cancel && (d->mv[cur].flags & (FM_SPECIAL | FM_SUPER));
   bool cur_super = cancel && (d->mv[cur].flags & FM_SUPER);
@@ -365,7 +408,7 @@ static bool choose_move(ft_game *g, int i, int cur, bool *is_special, int *slot,
   if (cur_special) return false;
   /* the throw: punch and kick together */
   if (!air && !cancel && pk_pressed(f)) { *slot = M_THROW; return true; }
-  int pp = cw_cmd_pressed_ago(&f->cb, B_P, 4), pk = cw_cmd_pressed_ago(&f->cb, B_K, 4);
+  int pp = cw_cmd_pressed_ago(&f->cb, B_P, FT_BUFFER), pk = cw_cmd_pressed_ago(&f->cb, B_K, FT_BUFFER);
   if (pp < 0 && pk < 0) return false;
   /* the button that went down last; a kick when both went down together */
   uint16_t btn = pk >= 0 && (pp < 0 || pk <= pp) ? B_K : B_P;
@@ -412,42 +455,68 @@ static void control(ft_game *g, int i) {
   } else if (f->parry_lock) f->parry_lock--;
   /* the guard gauge drains while not blocking, slowly while holding a guard */
   if (f->guard > 0 && !(f->state == S_BLOCK && f->stun)) { f->guard -= f->state == S_BLOCK ? 2 : 5; if (f->guard < 0) f->guard = 0; }
+  if (f->state == S_IDLE || f->state == S_WALKF || f->state == S_WALKB || f->state == S_CROUCH) { if (f->free_t < 250) f->free_t++; }
+  else f->free_t = 0;
   switch (f->state) {
   case S_IDLE: case S_WALKF: case S_WALKB: case S_CROUCH: {
     int slot, str;
     bool sp;
     if (choose_move(g, i, -1, &sp, &slot, &str)) { start_move(g, i, slot, str); break; }
     if (hold_g) { guard(f, down); break; }
-    /* a hop: up tapped twice (up held once does nothing: up with a button is a high attack) */
-    if (cw_motion_match(&f->cb, &(cw_motion){ { 8, 8 }, 2, 0, 0, 30 }, 14) == 0) {
+    /* movement (F-PT3). Walking: forward or back held, diagonals included. A walk rolled onto its own side's diagonal
+     * (a d-pad thumb drifting onto up or down) keeps walking until the diagonal has been held FT_DRIFT_JUMP (up) or
+     * FT_DRIFT_CROUCH (down) frames, then it is that jump or a crouch. Up otherwise jumps at once (one press; held, it
+     * jumps again on landing), down crouches. */
+    int side = fwd ? 1 : back ? -1 : 0;
+    bool walking = f->state == S_WALKF || f->state == S_WALKB;
+    bool drift = walking && dir != 6 && dir != 4 && side == (f->state == S_WALKF ? 1 : -1);
+    f->drift_t = drift ? (uint8_t)(f->drift_t < 250 ? f->drift_t + 1 : 250) : 0;
+    if (drift && down && f->drift_t >= FT_DRIFT_CROUCH) drift = false; /* held down-forward long enough: a crouch */
+    if (double_tap(f, true, 14)) { set_state(f, S_DASHF); cw_cmd_consume(&f->cb); emit(g, EV_DUST, i, 2, f->x, 0); break; }
+    if (double_tap(f, false, 14)) { set_state(f, S_DASHB); f->invuln = 5; cw_cmd_consume(&f->cb); emit(g, EV_DUST, i, 2, f->x, 0); break; }
+    bool up = dir >= 7;
+    if (drift && up && f->drift_t >= FT_DRIFT_JUMP) {
+      /* held up long enough on the diagonal: the walk's side jump, taking off now (the drift frames were its prejump) */
+      f->drift_t = 0;
+      f->jump_dir = (uint8_t)(side + 1);
       set_state(f, S_PREJUMP);
-      f->jump_dir = (uint8_t)(fwd ? 2 : back ? 0 : 1);
+      f->t = FT_PREJUMP - 1;
       f->vx = 0;
-      cw_cmd_consume(&f->cb);
       break;
     }
-    if (cw_motion_match(&f->cb, &(cw_motion){ { 6, 6 }, 2, 0, 3, 30 }, 12) == 0) {
-      /* the double tap must be the forward direction relative to facing: the buffer stores it so */
-      set_state(f, S_DASHF); cw_cmd_consume(&f->cb); emit(g, EV_DUST, i, 2, f->x, 0); break;
+    /* the buffered up press counts only on the first free frame (later presses are read live: a walk's drift onto
+     * up-forward and back is not a jump) */
+    if (!drift && (up || (f->free_t == 1 && up_pressed_recently(f)))) {
+      set_state(f, S_PREJUMP);
+      f->jump_dir = (uint8_t)(side + 1);
+      f->vx = 0;
+      break;
     }
-    if (cw_motion_match(&f->cb, &(cw_motion){ { 4, 4 }, 2, 0, 3, 30 }, 12) == 0) {
-      set_state(f, S_DASHB); f->invuln = 5; cw_cmd_consume(&f->cb); emit(g, EV_DUST, i, 2, f->x, 0); break;
-    }
-    /* up or down alone: stand (they only choose the height of an attack or a guard) */
-    if (dir == 6 || dir == 4) {
-      if (fwd) { if (f->state != S_WALKF) set_state(f, S_WALKF); f->vx = fw * d->walk; }
+    if (drift || dir == 6 || dir == 4) {
+      if (side > 0) { if (f->state != S_WALKF) set_state(f, S_WALKF); f->vx = fw * d->walk; }
       else { if (f->state != S_WALKB) set_state(f, S_WALKB); f->vx = -fw * d->back; }
-    } else { if (f->state != S_IDLE) set_state(f, S_IDLE); f->vx = 0; }
+    } else if (down) { if (f->state != S_CROUCH) set_state(f, S_CROUCH); f->vx = 0; }
+    else { if (f->state != S_IDLE) set_state(f, S_IDLE); f->vx = 0; }
     break;
   }
-  case S_PREJUMP:
-    if (f->t >= 4) {
+  case S_PREJUMP: {
+    /* FT_PREJUMP frames on the ground: a punch or kick here is the ground move (up + button = the high one; a special
+     * whose motion ends on up, such as charge down then up, comes out), block cancels into a guard. The jump goes
+     * the way the stick last pointed sideways during the prejump. */
+    int slot, str;
+    bool sp;
+    if (choose_move(g, i, -1, &sp, &slot, &str)) { start_move(g, i, slot, str); break; }
+    if (hold_g) { guard(f, down); break; }
+    if (fwd) f->jump_dir = 2; else if (back) f->jump_dir = 0;
+    if (f->t >= FT_PREJUMP) {
       set_state(f, S_AIR);
       f->vy = d->jump_v;
       f->vx = fw * (f->jump_dir - 1) * d->jump_fx;
+      cw_cmd_consume(&f->cb); /* the up press is spent: only up still held jumps again */
       emit(g, EV_DUST, i, 1, f->x, 0);
     }
     break;
+  }
   case S_AIR: {
     int slot, str;
     bool sp;
@@ -459,11 +528,23 @@ static void control(ft_game *g, int i) {
     if (f->t >= ft_move_total(m)) {
       if (m->flags & FM_AIR) { set_state(f, S_AIR); f->air_used = 1; }
       else if (hold_g) guard(f, down);
-      else set_state(f, S_IDLE);
+      else {
+        /* a button buffered during recovery comes out on this frame, the first one free */
+        set_state(f, S_IDLE);
+        int slot, str;
+        bool sp;
+        if (choose_move(g, i, -1, &sp, &slot, &str)) start_move(g, i, slot, str);
+      }
       break;
     }
     /* punch then kick a frame or two apart is still a throw: the first frames of a ground normal give way to it */
     if (f->t <= 3 && FT_IS_GROUND_NORMAL(f->mv) && pk_pressed(f)) { start_move(g, i, M_THROW, 0); break; }
+    /* up or down a frame or three after the button still picks the height: a mid punch or kick just started becomes
+     * the high or low one (pressing the button a hair before the direction is the usual miss) */
+    if (f->t <= 3 && f->t < m->su && (f->mv == M_5P || f->mv == M_5K) && (dir >= 7 || dir <= 3)) {
+      start_move(g, i, ft_slot_for(dir, f->mv == M_5P ? B_P : B_K), 0);
+      break;
+    }
     if (m->flags & FM_PROJ && f->t == m->su + 1) {
       spawn_proj(g, i, m, f->mv);
       emit(g, EV_FIRE, i, f->mv == M_SUPER ? 2 : 0, f->x + fw * 700, 1050);
@@ -796,13 +877,12 @@ static void update_proj(ft_game *g) {
 
 static ft_input dummy_input(ft_game *g) {
   ft_input in = { 0 };
-  const ft_fighter *f = &g->f[1];
   switch (g->dummy) {
   case T_GUARD: in.btn = B_G; break;
   case T_GUARD_LOW: in.btn = B_G; in.down = 1; break;
-  case T_JUMP: { /* a hop every second and a half: up, neutral, up */
+  case T_JUMP: { /* a jump every second and a half: one up tap */
     int k = (int)(g->tick % 90);
-    if (f->state != S_AIR) in.up = k < 2 || (k >= 4 && k < 6);
+    in.up = k < 3;
     break;
   }
   case T_BLOCK: { /* the right height for whatever comes */

@@ -67,6 +67,14 @@ static inline int ft_move_total(const ft_move *m) { return m->su + m->ac + m->rc
 #define FT_PARRY_WINDOW 5   /* a fresh block press this many frames or fewer before the hit parries it */
 #define FT_PARRY_LOCK 30    /* a press within this many frames of the last one opens no parry window (no mashing) */
 int ft_advantage(const ft_move *m, bool blocked);
+/* movement (F-PT3): up jumps on one press after FT_PREJUMP frames; a punch or kick inside them is the ground move
+ * instead (up + button = the high attack). Up or down reached by rolling a held walk onto its diagonal keeps the walk
+ * until held FT_DRIFT_JUMP (up: then that jump) or FT_DRIFT_CROUCH (down: then a crouch) frames. Presses are
+ * buffered FT_BUFFER frames, so one made during recovery comes out on the first free frame. */
+#define FT_PREJUMP 4
+#define FT_DRIFT_JUMP 5
+#define FT_DRIFT_CROUCH 6
+#define FT_BUFFER 6
 
 enum { S_INTRO, S_IDLE, S_WALKF, S_WALKB, S_CROUCH, S_PREJUMP, S_AIR, S_ATTACK, S_BLOCK, S_HIT, S_AIRHIT, S_KD, S_GETUP,
        S_THROWN, S_DASHF, S_DASHB, S_KO, S_WIN, S_LAND, S_COUNT };
@@ -79,6 +87,7 @@ typedef struct ft_fighter {
   uint16_t t, stun, rehit_t;
   int16_t hp, meter, strength, combo_hits, combo_dmg, lastdmg, guard;
   uint8_t jump_dir, invuln, wins, thrown_by_air;
+  uint8_t drift_t, free_t;  /* frames a walk has been held on its own side's diagonal (a d-pad roll keeps walking); frames free in a row */
   cw_cmd_buf cb;
   ft_input in;
 } ft_fighter;

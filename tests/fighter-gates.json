@@ -27,24 +27,24 @@
       "game.phase": 1,
       "game.round": 1,
       "sim.hp": [
-        598,
-        823
+        541,
+        590
       ],
       "sim.wins": [
         0,
         0
       ],
       "sim.stats": [
-        11,
-        3,
-        3,
+        19,
         0,
         0,
-        1
+        0,
+        3,
+        0
       ],
-      "fx.hits": 11,
-      "fx.blocks": 3,
-      "sim.hash": 2746861317
+      "fx.hits": 19,
+      "fx.blocks": 0,
+      "sim.hash": 2010081049
     },
     "webgpu": {
       "hosts": [
@@ -56,7 +56,7 @@
       "vsGl": 0.25,
       "note": "the same dual cart on romdev and Chromium against native WebGPU; GL vs WebGPU within 25 percent of pixels (particles, dust, shockwave)"
     },
-    "note": "Fighter: two computer fighters (Bolt and Vex, rooftop) play from the intro with the punch / kick / block controls (the computer blocks with the block button, guards low against lows, parries now and then). The rules are integer only (sim.c), so the named state must match exactly on every host; the expects pin this run. The control is one frame short."
+    "note": "Fighter: two computer fighters (Bolt and Vex, rooftop) play from the intro with the punch / kick / block controls (the computer blocks with the block button, guards low against lows, parries now and then). The rules are integer only (sim.c), so the named state must match exactly on every host; the expects pin this run. The control is one frame short. Repinned for F-PT3 (2026-10-29): the computer plays through the same input rules as a pad, and the new movement changes its fight: its down presses now crouch, its jump-in is one up-forward press (it was two up taps), held directions it sends walk or jump where they stood still. Before [598,823] hp, stats [11,3,3,0,0,1]; after [541,590], [19,0,0,0,3,0] in these 900 frames. The 24-match soak is close to before (blocks 221 to 205, parries 81 to 66, throws 23 to 17, median round 28.1 to 25.6 s)."
   },
   {
     "name": "fighter-p1-moves",
@@ -214,5 +214,191 @@
       "note": "dual cart on romdev and Chromium against native WebGPU, and on romdev GL against native GL"
     },
     "note": "Training mode with hitboxes, the move list and the frame data readout (view.boxes counts the boxes drawn): the dummy stands, player 1 plays the same script."
+  },
+  {
+    "name": "fighter-dpad-walk",
+    "app": "fighter_test",
+    "frames": 400,
+    "input": "fighter-dpad-walk.json",
+    "controlInput": "fighter-dpad-walk-ctl.json",
+    "maxGt16": 0.06,
+    "fields": [
+      "game.state",
+      "game.phase",
+      "sim.hp",
+      "sim.pos",
+      "sim.fstate",
+      "sim.hash",
+      "sim.stats",
+      "ctl.p1",
+      "ticks"
+    ],
+    "expect": {
+      "game.phase": 1,
+      "ctl.p1": [
+        180,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "sim.hash": 366493582
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "maxGt16": 0.06,
+      "vsGl": 0.25,
+      "note": "dual cart on romdev and Chromium against native WebGPU, and on romdev GL against native GL"
+    },
+    "note": "F-PT3 \"holding a direction does nothing\": the d-pad held right 2 s and left 1 s, rolling onto up-right / down-right (up-left / down-left) for 2 to 4 frames now and then. Expect: walking on all 180 held frames, no jump, crouch or dash. On the old build (main 8612ca7) the same script walks 48 of 180 frames and dashes 4 times (a roll 6 9 6 read as a double tap). Control: the rolls held 9 frames (3 jumps, the walk breaks). ctl.p1 is player 1: [walk frames, takeoffs, forward takeoffs, back takeoffs, high normals, low normals, crouch frames, dashes, highest jump mm, jump attacks]."
+  },
+  {
+    "name": "fighter-dpad-jumps",
+    "app": "fighter_test",
+    "frames": 1160,
+    "input": "fighter-dpad-jumps.json",
+    "controlInput": "fighter-dpad-jumps-ctl.json",
+    "maxGt16": 0.06,
+    "fields": [
+      "game.state",
+      "game.phase",
+      "sim.hp",
+      "sim.pos",
+      "sim.fstate",
+      "sim.hash",
+      "sim.stats",
+      "ctl.p1",
+      "ticks"
+    ],
+    "expect": {
+      "game.phase": 1,
+      "ctl.p1": [
+        65,
+        10,
+        2,
+        2,
+        4,
+        1,
+        40,
+        0,
+        1207,
+        0
+      ],
+      "sim.hash": 3536485209
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "maxGt16": 0.06,
+      "vsGl": 0.25,
+      "note": "dual cart on romdev and Chromium against native WebGPU, and on romdev GL against native GL"
+    },
+    "note": "F-PT3 \"jumping inconsistent\": single up taps of 2, 3, 4, 5, 6 and 8 frames on the d-pad (6 jumps, every one 1207 mm high), up-forward and up-back pressed directly and rolled into from up or from a walk back (a 4-frame roll from a walk stays a walk, the drift rule; 9 frames jumps), up + punch on the same frame, punch 2 frames after up and 2 frames before up, up + kick (4 high normals, no jump), a held down (40 crouch frames), down + kick (the sweep), fast forward / back alternation (no dash). Expect 10 takeoffs (2 forward, 2 back). Old build: 0 takeoffs, 3 accidental dashes, 3 highs, 0 crouch frames. Control: the 4-frame tap left out (9 takeoffs). ctl.p1 is player 1: [walk frames, takeoffs, forward takeoffs, back takeoffs, high normals, low normals, crouch frames, dashes, highest jump mm, jump attacks]."
+  },
+  {
+    "name": "fighter-stick",
+    "app": "fighter_test",
+    "frames": 500,
+    "input": "fighter-stick.json",
+    "controlInput": "fighter-stick-ctl.json",
+    "maxGt16": 0.06,
+    "fields": [
+      "game.state",
+      "game.phase",
+      "sim.hp",
+      "sim.pos",
+      "sim.fstate",
+      "sim.hash",
+      "sim.stats",
+      "ctl.p1",
+      "ticks"
+    ],
+    "expect": {
+      "game.phase": 1,
+      "ctl.p1": [
+        90,
+        2,
+        1,
+        0,
+        0,
+        0,
+        30,
+        0,
+        1207,
+        0
+      ],
+      "sim.hash": 1376404399
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "maxGt16": 0.06,
+      "vsGl": 0.25,
+      "note": "dual cart on romdev and Chromium against native WebGPU, and on romdev GL against native GL"
+    },
+    "note": "F-PT3 on the analog stick: forward pushed 20 degrees high walks (50 frames), up pushed 14 degrees to the side jumps straight, the stick at 45 degrees jumps forward, a stick at 0.25 (inside the dead zone) does nothing, a held stick down crouches (30 frames), back pushed 17 degrees low walks back (40). Old build: walks 90 but 0 jumps and 0 crouch frames. Control: forward pushed 35 degrees high (a diagonal held: it becomes a forward jump). ctl.p1 is player 1: [walk frames, takeoffs, forward takeoffs, back takeoffs, high normals, low normals, crouch frames, dashes, highest jump mm, jump attacks]."
+  },
+  {
+    "name": "fighter-keys",
+    "app": "fighter_test",
+    "frames": 400,
+    "input": "fighter-keys.json",
+    "controlInput": "fighter-keys-ctl.json",
+    "maxGt16": 0.06,
+    "fields": [
+      "game.state",
+      "game.phase",
+      "sim.hp",
+      "sim.pos",
+      "sim.fstate",
+      "sim.hash",
+      "sim.stats",
+      "ctl.p1",
+      "ticks"
+    ],
+    "expect": {
+      "game.phase": 1,
+      "ctl.p1": [
+        63,
+        1,
+        0,
+        0,
+        1,
+        0,
+        30,
+        0,
+        1207,
+        0
+      ],
+      "sim.hash": 3104977004
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "chromium"
+      ],
+      "maxGt16": 0.06,
+      "vsGl": 0.25,
+      "note": "keyboard: romdev has no wasmcart key op, so native and Chromium only"
+    },
+    "note": "F-PT3 on the keyboard (W A S D, J): D held with W rolled in for 3 frames walks all 63 frames, a W tap jumps, W + J is the high punch, S held crouches. Old build: walks 41 of 63, 1 accidental dash, 0 jumps, 0 crouch frames. Control: W held 8 frames during the walk (a forward jump). Keyboard input cannot reach romdev, so native and Chromium only. ctl.p1 is player 1: [walk frames, takeoffs, forward takeoffs, back takeoffs, high normals, low normals, crouch frames, dashes, highest jump mm, jump attacks].",
+    "skip": [
+      "romdev"
+    ]
   }
 ]

@@ -68,15 +68,15 @@ static void test_walk_and_facing(void) {
   fresh(0, 1, -4300, 4300);
   for (int i = 0; i < 100; i++) tick(dirbtn(1, 0, 0, 0, 0), NONE);
   CHECK(G.f[0].x >= -4400);
-  /* up or down held alone does nothing: no jump, no crouch (they only pick the height of an attack or a guard) */
+  /* holding down crouches (highs pass over a crouch); up held alone jumps */
   fresh(0, 1, -1500, 1500);
-  for (int i = 0; i < 30; i++) tick(dpad(8, 0), NONE);
-  CHECK(G.f[0].y == 0 && G.f[0].state == S_IDLE);
   for (int i = 0; i < 30; i++) tick(dpad(2, 0), NONE);
+  CHECK(G.f[0].state == S_CROUCH && G.f[0].y == 0);
+  tick(NONE, NONE);
   CHECK(G.f[0].state == S_IDLE);
-  /* up tapped twice: a hop */
+  /* one up tap: a jump. It lands */
   fresh(0, 1, -1500, 1500);
-  tick(dpad(8, 0), NONE); tick(dpad(8, 0), NONE); tick(NONE, NONE); tick(NONE, NONE); tick(dpad(8, 0), NONE);
+  tick(dpad(8, 0), NONE);
   int top = 0;
   for (int i = 0; i < 60; i++) { tick(NONE, NONE); if (G.f[0].y > top) top = G.f[0].y; }
   CHECK(top > 600);
@@ -89,6 +89,140 @@ static void test_walk_and_facing(void) {
   CHECK(G.f[0].state == S_BLOCK && G.f[0].crouch_block);
   tick(NONE, NONE);
   CHECK(G.f[0].state == S_IDLE);
+}
+
+/* F-PT3: held directions walk (diagonals included), one up press always jumps the same jump, up + button is the high
+ * attack in either order, a held down crouches, a d-pad roll does not stall or dash, presses during recovery buffer */
+static int jump_top(int *land_tick) {
+  int top = 0, t0 = (int)G.tick;
+  *land_tick = -1;
+  for (int i = 0; i < 90; i++) {
+    tick(NONE, NONE);
+    if (G.f[0].y > top) top = G.f[0].y;
+    if (top > 0 && G.f[0].y == 0 && *land_tick < 0) *land_tick = (int)G.tick - t0;
+  }
+  return top;
+}
+static void test_movement(void) {
+  /* a held walk rolled onto up-forward and down-forward (3 frames on each every 20, a thumb on a d-pad) keeps walking */
+  fresh(0, 1, -3000, 3000);
+  int stalls = 0;
+  for (int i = 0; i < 120; i++) {
+    int k = i % 20, dir = k >= 8 && k < 11 ? 9 : k >= 15 && k < 18 ? 3 : 6;
+    tick(dpad(dir, 0), NONE);
+    if (i > 2 && G.f[0].state != S_WALKF) stalls++;
+  }
+  CHECK(stalls == 0);
+  CHECK(G.f[0].x >= -3000 + 115 * R.d[0].walk && G.f[0].y == 0);
+  /* held on the diagonal long enough, it is that action: up-forward jumps forward, down-forward crouches */
+  fresh(0, 1, -3000, 3000);
+  for (int i = 0; i < 10; i++) tick(dpad(6, 0), NONE);
+  for (int i = 0; i < 12; i++) tick(dpad(9, 0), NONE);
+  CHECK(G.f[0].y > 0 && G.f[0].vx > 0);
+  fresh(0, 1, -3000, 3000);
+  for (int i = 0; i < 10; i++) tick(dpad(6, 0), NONE);
+  for (int i = 0; i < 10; i++) tick(dpad(3, 0), NONE);
+  CHECK(G.f[0].state == S_CROUCH);
+  /* walking back on diagonals too */
+  fresh(0, 1, 0, 3000);
+  for (int i = 0; i < 40; i++) tick(dpad(i % 10 >= 7 ? 7 : 4, 0), NONE);
+  CHECK(G.f[0].state == S_WALKB && G.f[0].x < -30 * R.d[0].back);
+  /* every up tap jumps, whatever its length, and it is the same jump (height and landing frame) */
+  int ref_top = -1, ref_land = -1;
+  for (int len = 1; len <= 10; len++) {
+    fresh(0, 1, -1500, 1500);
+    for (int i = 0; i < len; i++) tick(dpad(8, 0), NONE);
+    int land, top = jump_top(&land);
+    land += len;
+    if (ref_top < 0) { ref_top = top; ref_land = land; }
+    if (top != ref_top || land != ref_land) printf("  jump: a %d-frame tap gave top %d land %d (want %d %d)\n", len, top, land, ref_top, ref_land);
+    CHECK(top == ref_top && land == ref_land && G.f[0].x == -1500);
+  }
+  CHECK(ref_top > 900);
+  /* takeoff FT_PREJUMP frames after the press */
+  fresh(0, 1, -1500, 1500);
+  tick(dpad(8, 0), NONE);
+  for (int i = 1; i < FT_PREJUMP; i++) { CHECK(G.f[0].state == S_PREJUMP); tick(NONE, NONE); }
+  tick(NONE, NONE);
+  CHECK(G.f[0].state == S_AIR);
+  /* up-forward and up-back: forward and back jumps of the same height; a tap of up then forward inside the prejump
+   * is the forward jump too */
+  fresh(0, 1, -1500, 1500);
+  tick(dpad(9, 0), NONE);
+  { int land, top = jump_top(&land); CHECK(top == ref_top && G.f[0].x > -1500 + 1000); }
+  fresh(0, 1, -1500, 1500);
+  tick(dpad(7, 0), NONE);
+  { int land, top = jump_top(&land); CHECK(top == ref_top && G.f[0].x < -1500 - 1000); }
+  fresh(0, 1, -1500, 1500);
+  tick(dpad(8, 0), NONE); tick(dpad(9, 0), NONE);
+  { int land; jump_top(&land); CHECK(G.f[0].x > -1500 + 1000); }
+  /* held up jumps again on landing */
+  fresh(0, 1, -1500, 1500);
+  int jumps = 0;
+  for (int i = 0; i < 200; i++) { int was = G.f[0].state; tick(dpad(8, 0), NONE); if (was != S_AIR && G.f[0].state == S_AIR) jumps++; }
+  CHECK(jumps >= 4);
+  /* up + punch: the high punch and no jump, with the button on the same frame, up to FT_PREJUMP - 1 frames after up,
+   * or up to 3 frames before it */
+  for (int off = -3; off < FT_PREJUMP; off++) {
+    fresh(0, 1, -450, 3500);
+    for (int t = -3; t < 8; t++) {
+      bool upn = t >= 0, pn = t == off;
+      tick(dpad(upn ? 8 : 5, pn ? B_P : 0), NONE);
+    }
+    bool ok = G.f[0].state == S_ATTACK && G.f[0].mv == M_8P && G.f[0].y == 0;
+    if (!ok) printf("  up + punch at %+d: state %d move %d y %d\n", off, G.f[0].state, G.f[0].mv, G.f[0].y);
+    CHECK(ok);
+  }
+  /* a punch after takeoff is the jump punch */
+  fresh(0, 1, -1500, 1500);
+  for (int i = 0; i < FT_PREJUMP + 2; i++) tick(dpad(8, 0), NONE);
+  tick(dpad(8, B_P), NONE);
+  CHECK(G.f[0].state == S_ATTACK && G.f[0].mv == M_JP);
+  /* down + kick from a crouch: the sweep; a mid punch stays mid when no direction follows */
+  fresh(0, 1, -450, 3500);
+  for (int i = 0; i < 10; i++) tick(dpad(2, 0), NONE);
+  tick(dpad(2, B_K), NONE);
+  CHECK(G.f[0].state == S_ATTACK && G.f[0].mv == M_2K);
+  fresh(0, 1, -450, 3500);
+  tick(btn(B_P), NONE);
+  for (int i = 0; i < 6; i++) tick(NONE, NONE);
+  CHECK(G.f[0].state == S_ATTACK && G.f[0].mv == M_5P);
+  /* a d-pad roll 6 9 6 or 6 3 6 is not a dash; 6 5 6 is */
+  fresh(0, 1, -3000, 3000);
+  for (int i = 0; i < 6; i++) tick(dpad(6, 0), NONE);
+  for (int i = 0; i < 2; i++) tick(dpad(9, 0), NONE);
+  for (int i = 0; i < 2; i++) tick(dpad(6, 0), NONE);
+  for (int i = 0; i < 2; i++) tick(dpad(3, 0), NONE);
+  for (int i = 0; i < 4; i++) tick(dpad(6, 0), NONE);
+  CHECK(G.f[0].state == S_WALKF);
+  fresh(0, 1, -3000, 3000);
+  tick(dpad(6, 0), NONE); tick(dpad(6, 0), NONE); tick(NONE, NONE); tick(NONE, NONE); tick(dpad(6, 0), NONE);
+  CHECK(G.f[0].state == S_DASHF);
+  fresh(0, 1, 0, 3000);
+  tick(dpad(4, 0), NONE); tick(dpad(4, 0), NONE); tick(NONE, NONE); tick(dpad(4, 0), NONE);
+  CHECK(G.f[0].state == S_DASHB);
+  /* fast forward / back alternation walks each way and never dashes */
+  fresh(0, 1, -1500, 3000);
+  int dashes = 0, walks_f = 0, walks_b = 0;
+  for (int i = 0; i < 80; i++) {
+    tick(dpad((i / 4) % 2 ? 4 : 6, 0), NONE);
+    if (G.f[0].state == S_DASHF || G.f[0].state == S_DASHB) dashes++;
+    walks_f += G.f[0].state == S_WALKF; walks_b += G.f[0].state == S_WALKB;
+  }
+  CHECK(dashes == 0 && walks_f >= 35 && walks_b >= 35);
+  /* a punch pressed during a kick's recovery comes out on its first free frame */
+  for (int early = 1; early <= FT_BUFFER; early++) {
+    fresh(0, 1, -450, 3500);
+    tick(btn(B_K), NONE);
+    int total = ft_move_total(&R.d[0].mv[M_5K]);
+    for (int t = 1; t < total - early; t++) tick(NONE, NONE);
+    tick(btn(B_P), NONE);
+    int waited = 0;
+    while (G.f[0].state == S_ATTACK && G.f[0].mv == M_5K && waited < 20) { tick(btn(B_P), NONE); waited++; }
+    bool ok = G.f[0].state == S_ATTACK && G.f[0].mv == M_5P && G.f[0].t <= 1;
+    if (!ok) printf("  buffer %d: state %d move %d t %d\n", early, G.f[0].state, G.f[0].mv, G.f[0].t);
+    CHECK(ok);
+  }
 }
 
 static void test_slots(void) {
@@ -476,7 +610,7 @@ int main(int argc, char **argv) {
   char *txt = slurp(path);
   if (ft_roster_load(&R, txt, &err) < 0) { printf("moves: %s\n", err); return 2; }
   free(txt);
-  test_parse(); test_walk_and_facing(); test_slots(); test_frame_data(); test_advantage(); test_block_triangle(); test_parry_and_guard_break(); test_specials();
+  test_parse(); test_walk_and_facing(); test_movement(); test_slots(); test_frame_data(); test_advantage(); test_block_triangle(); test_parry_and_guard_break(); test_specials();
   test_combo_and_scaling(); test_throw(); test_meter_super(); test_rounds_ko(); test_determinism();
   memset(&ft_stat, 0, sizeof ft_stat);
   test_soak(soak);

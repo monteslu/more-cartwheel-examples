@@ -44,7 +44,7 @@ static struct {
   float shown_hp[2];
   float lag_hp[2];
   uint32_t ev_seen;
-  cw_action a_left, a_right, a_up, a_down, a_p, a_k, a_g, a_pk, k_left, k_right, k_up, k_down, k_p, k_k, k_g, k_pk, tr_mode, tr_reset, tr_dummy, tr_boxes;
+  cw_action a_left, a_right, a_up, a_down, fs_left, fs_right, fs_up, fs_down, dp_left, dp_right, dp_up, dp_down, a_p, a_k, a_g, a_pk, k_left, k_right, k_up, k_down, k_p, k_k, k_g, k_pk, tr_mode, tr_reset, tr_dummy, tr_boxes;
   t3_object *dbg_root;
   t3_mesh *dbg_box[10];
   int ndbg;
@@ -52,6 +52,9 @@ static struct {
   /* debug fields */
   int32_t d_state, d_phase, d_hp[2], d_meter[2], d_wins[2], d_round, d_tick, d_combo, d_adv, d_boxes;
   int32_t d_pos[4], d_fstate[2], d_hitcount, d_blockcount, d_def[2], d_guard[2], d_stats[6];
+  /* player 1 movement counters for the F-PT3 gates: walk frames, takeoffs, forward takeoffs, back takeoffs, high
+   * normals started, low normals started, crouch frames, dashes, the highest jump (mm), jump attacks */
+  int32_t d_ctl[10];
   uint32_t d_hash;
   float d_cam[3], d_spring;
 } G;
@@ -67,12 +70,28 @@ static void sfx(int id, float vol, float pitch) {
 
 /* ── input ──────────────────────────────────────────────────────────── */
 
+/* The stick in a fight: a radial dead zone (a resting stick that drifts a little does nothing), then an 8-way gate
+ * whose up, down, forward and back sectors are 50 degrees wide and diagonals 40, so pushing forward a little high
+ * still walks and up a little to the side still jumps straight. Opposites on the d-pad or keys: left + right is
+ * neutral, up + down is up (cw_cmd_dir; the 2XKO and Evo-style rule). */
+#define STICK_DEAD 0.35f
+#define STICK_CARDINAL 0.466f /* tan(25 degrees): within 25 degrees of an axis is that axis alone */
+static void stick8(int p, ft_input *in) {
+  float x = cw_action_raw_strength(p, G.fs_right) - cw_action_raw_strength(p, G.fs_left);
+  float y = cw_action_raw_strength(p, G.fs_up) - cw_action_raw_strength(p, G.fs_down);
+  float ax = x < 0 ? -x : x, ay = y < 0 ? -y : y;
+  if (ax * ax + ay * ay < STICK_DEAD * STICK_DEAD) return;
+  bool horiz = ax > 0 && ay <= ax * STICK_CARDINAL, vert = ay > 0 && ax <= ay * STICK_CARDINAL;
+  if (!vert) { in->left |= x < 0; in->right |= x > 0; }
+  if (!horiz) { in->up |= y > 0; in->down |= y < 0; }
+}
 static ft_input read_pad(int p) {
   ft_input in = { 0 };
-  in.left = cw_action_pressed(p, G.a_left);
-  in.right = cw_action_pressed(p, G.a_right);
-  in.up = cw_action_pressed(p, G.a_up);
-  in.down = cw_action_pressed(p, G.a_down);
+  in.left = cw_action_pressed(p, G.dp_left);
+  in.right = cw_action_pressed(p, G.dp_right);
+  in.up = cw_action_pressed(p, G.dp_up);
+  in.down = cw_action_pressed(p, G.dp_down);
+  stick8(p, &in);
   if (cw_action_pressed(p, G.a_p)) in.btn |= B_P;
   if (cw_action_pressed(p, G.a_k)) in.btn |= B_K;
   if (cw_action_pressed(p, G.a_g)) in.btn |= B_G;
@@ -191,6 +210,7 @@ static void unload_match(void) {
 
 static int shown_sel[3] = { -1, -1, -1 }; /* the fighters the select screen shows now */
 static void begin_match(void) {
+  memset(G.d_ctl, 0, sizeof G.d_ctl);
   shown_sel[0] = -1;
   G.sim.training = G.training;
   G.sim.dummy = T_STAND;
@@ -332,7 +352,21 @@ static void fixed(void *u, double dt) {
     if (cw_action_just_pressed(0, G.tr_mode)) { G.state = GS_SELECT; G.ready[0] = G.ready[1] = 0; shown_sel[0] = -1; return; }
   }
   ft_input in[2] = { read_pad(0), G.players > 1 ? read_pad(1) : (ft_input){ 0 } };
+  uint8_t was = G.sim.f[0].state, was_mv = G.sim.f[0].mv;
   ft_step(&G.sim, in);
+  {
+    const ft_fighter *f = &G.sim.f[0];
+    int32_t *c = G.d_ctl;
+    c[0] += f->state == S_WALKF || f->state == S_WALKB;
+    if (was != S_AIR && f->state == S_AIR && f->vy > 0) { c[1]++; if (f->jump_dir == 2) c[2]++; if (f->jump_dir == 0) c[3]++; }
+    bool fresh_mv = f->state == S_ATTACK && (was != S_ATTACK || was_mv != f->mv);
+    if (fresh_mv && (f->mv == M_8P || f->mv == M_8K)) c[4]++;
+    if (fresh_mv && (f->mv == M_2P || f->mv == M_2K)) c[5]++;
+    c[6] += f->state == S_CROUCH;
+    if (f->state == S_DASHF && was != S_DASHF) c[7]++;
+    if (f->y > c[8]) c[8] = f->y;
+    if (fresh_mv && (f->mv == M_JP || f->mv == M_JK)) c[9]++;
+  }
   if (G.sim.phase == P_MATCH_END) {
     G.state = GS_RESULT;
     if (G.sim.match_winner >= 0) model_set_showcase(G.mdl[G.sim.match_winner], 0.9f);
@@ -540,7 +574,7 @@ static const char *btn_name(int b) { return b == 0 ? "P" : b == 1 ? "K" : "G"; }
 /* the move list of a fighter: every normal by its direction and button, the throw, the specials and the super */
 static void draw_move_list(const ft_def *d, float x, float y, float w, float s) {
   static const int ORDER[] = { M_8P, M_5P, M_2P, M_6P, M_8K, M_5K, M_2K, M_6K, M_JP, M_JK, M_THROW };
-  static const char *const INPUT[] = { "up + P", "P", "down + P", "fwd + P", "up + K", "K", "down + K", "fwd + K", "hop, P", "hop, K", "P + K" };
+  static const char *const INPUT[] = { "up + P", "P", "down + P", "fwd + P", "up + K", "K", "down + K", "fwd + K", "jump, P", "jump, K", "P + K" };
   int n = (int)(sizeof ORDER / sizeof ORDER[0]);
   float lh = 15 * s, h = (float)(n + 6) * lh + 34 * s;
   cw_r2d_round_rect(cw_rect_make(x, y, w, h), 10 * s, 6, rgba(0.02f, 0.03f, 0.05f, 0.72f));
@@ -582,7 +616,7 @@ static void draw_training(float W, float H, float s) {
   if (g->adv_valid) snprintf(b, sizeof b, "Frame advantage %+d   Damage %d   Combo %d", g->adv, g->last_dmg, g->last_combo);
   else snprintf(b, sizeof b, "Frame advantage --   Damage %d   Combo %d", g->last_dmg, g->last_combo);
   text(G.font_ui, b, x + 14 * s, y + 56 * s, 16 * s, g->adv_valid && g->adv > 0 ? rgba(0.5f, 1, 0.6f, 1) : rgba(1, 0.65f, 0.55f, 1), CW_ALIGN_LEFT);
-  static const char *const DUMMY[T_COUNT] = { "Off", "Stand", "Block", "Block low", "Hop", "Block all", "CPU" };
+  static const char *const DUMMY[T_COUNT] = { "Off", "Stand", "Block", "Block low", "Jump", "Block all", "CPU" };
   snprintf(b, sizeof b, "Dummy: %s (F / left stick)   Hitboxes: %s (B / right stick)", DUMMY[g->dummy < T_COUNT ? g->dummy : 0], G.show_boxes ? "on" : "off");
   text(G.font_ui, b, x + 14 * s, y + 80 * s, 14 * s, rgba(0.7f, 0.8f, 0.9f, 1), CW_ALIGN_LEFT);
   /* the input history of player 1: direction digits and buttons (P punch, K kick, G block), newest first */
@@ -712,6 +746,7 @@ static void draw_select(float W, float H, float s) {
   snprintf(b, sizeof b, "Mode: %s   (X)", G.training ? "Training" : G.players > 1 ? "Versus" : "Versus the computer");
   if (G.players < 2) { size_t l = strlen(b); snprintf(b + l, sizeof b - l, "      Computer: %s   (B)", DIFF_NAME[G.difficulty]); }
   text(G.font_ui, b, W * 0.5f, 84 * s, 17 * s, rgba(1, 0.9f, 0.6f, 1), CW_ALIGN_CENTER);
+  text(G.font_ui, "Hold left / right: walk     Up: jump (up-forward, up-back)     Hold down: crouch     Tap twice: dash", W * 0.5f, 108 * s, 14 * s, rgba(0.85f, 0.92f, 1, 1), CW_ALIGN_CENTER);
   int n = G.roster.n;
   float cw_ = 190 * s, ch = 132 * s, gap = 16 * s, total = (float)n * cw_ + (float)(n - 1) * gap, x0 = (W - total) * 0.5f, y0 = H - 176 * s;
   for (int i = 0; i < n; i++) {
@@ -736,7 +771,7 @@ static void draw_select(float W, float H, float s) {
     if (p1) text(G.font_bold, "P1", x + 10 * s, y0 - 24 * s, 18 * s, rgba(1, 0.5f, 0.4f, 1), CW_ALIGN_LEFT);
     if (p2) text(G.font_bold, "P2", x + cw_ - 10 * s, y0 - 24 * s, 18 * s, rgba(0.4f, 0.7f, 1, 1), CW_ALIGN_RIGHT);
   }
-  text(G.font_ui, "Punch X (J)   Kick A (K)   Block B (L)   Up / down + button: high / low   Punch + kick: throw", W * 0.5f, H - 38 * s, 13 * s, rgba(1, 0.95f, 0.8f, 1), CW_ALIGN_CENTER);
+  text(G.font_ui, "Punch X (J)   Kick A (K)   Block B (L)   Up + button (together): high   Down + button: low   Punch + kick: throw", W * 0.5f, H - 38 * s, 13 * s, rgba(1, 0.95f, 0.8f, 1), CW_ALIGN_CENTER);
   text(G.font_ui, "Left / right: fighter     A: lock in     B: back out (two players) or computer level", W * 0.5f, H - 20 * s, 13 * s, rgba(0.7f, 0.75f, 0.85f, 1), CW_ALIGN_CENTER);
 }
 
@@ -829,6 +864,8 @@ static void init(void *u) {
   cw_input_load_bindings_asset("input.cfg");
   cw_input_commit_defaults();
   G.a_left = cw_action_find("mv_left"); G.a_right = cw_action_find("mv_right"); G.a_up = cw_action_find("mv_up"); G.a_down = cw_action_find("mv_down");
+  G.fs_left = cw_action_find("fs_left"); G.fs_right = cw_action_find("fs_right"); G.fs_up = cw_action_find("fs_up"); G.fs_down = cw_action_find("fs_down");
+  G.dp_left = cw_action_find("dp_left"); G.dp_right = cw_action_find("dp_right"); G.dp_up = cw_action_find("dp_up"); G.dp_down = cw_action_find("dp_down");
   G.a_p = cw_action_find("atk_p"); G.a_k = cw_action_find("atk_k"); G.a_g = cw_action_find("atk_g"); G.a_pk = cw_action_find("atk_pk");
   G.k_left = cw_action_find("k2_left"); G.k_right = cw_action_find("k2_right"); G.k_up = cw_action_find("k2_up"); G.k_down = cw_action_find("k2_down");
   G.k_p = cw_action_find("k2_p"); G.k_k = cw_action_find("k2_k"); G.k_g = cw_action_find("k2_g"); G.k_pk = cw_action_find("k2_pk");
@@ -863,6 +900,7 @@ static void init(void *u) {
   cw_debug_field("sim.hp", G.d_hp, CW_DBG_I32, 2); cw_debug_field("sim.meter", G.d_meter, CW_DBG_I32, 2); cw_debug_field("sim.wins", G.d_wins, CW_DBG_I32, 2);
   cw_debug_field("sim.pos", G.d_pos, CW_DBG_I32, 4); cw_debug_field("sim.fstate", G.d_fstate, CW_DBG_I32, 2); cw_debug_field("sim.def", G.d_def, CW_DBG_I32, 2);
   cw_debug_field("sim.guard", G.d_guard, CW_DBG_I32, 2); cw_debug_field("sim.stats", G.d_stats, CW_DBG_I32, 6);
+  cw_debug_field("ctl.p1", G.d_ctl, CW_DBG_I32, 10);
   cw_debug_u32("sim.hash", &G.d_hash); cw_debug_i32("sim.combo", &G.d_combo); cw_debug_i32("sim.adv", &G.d_adv); cw_debug_i32("ticks", &G.d_tick);
   cw_debug_i32("fx.hits", &G.d_hitcount); cw_debug_i32("fx.blocks", &G.d_blockcount); cw_debug_i32("view.boxes", &G.d_boxes);
   cw_debug_i32("tex.nodes", &G.d_tex_nodes); cw_debug_i32("tex.objs", &G.d_tex_objs); cw_debug_i32("tex.meshes", &G.d_tex_meshes); cw_debug_i32("tex.applied", &G.tex_done);

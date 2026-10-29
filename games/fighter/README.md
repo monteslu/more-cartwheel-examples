@@ -11,13 +11,15 @@ Three buttons: punch, kick and block. The stick (or d-pad) picks where a punch o
 
 | Action | Pad | Keyboard, player 1 | Keyboard, player 2 |
 |---|---|---|---|
-| Walk, dash (tap twice) | left stick or d-pad, left / right | A, D | left, right arrows |
+| Walk (hold), dash (tap twice) | left stick or d-pad, left / right | A, D | left, right arrows |
+| Jump (up-forward, up-back: that way) | up | W | up arrow |
+| Crouch (hold) | down | S | down arrow |
 | Punch | X | J | comma |
 | Kick | A | K | period |
 | Block | B or right shoulder | L | slash |
 | Throw (punch + kick together) | Y or left shoulder, or X + A | I, or J + K | semicolon |
 
-Attack height: hold up with a button for a high attack, nothing for a mid one, down for a low one, forward for a
+Attack height: up with a button for a high attack (press them together), nothing for a mid one, down for a low one, forward for a
 stepping one (it moves in). Every fighter has its own eight: for example Bolt has a straight (punch), a rising elbow
 (up + punch), a low jab (down + punch), a lunge punch (forward + punch), a side kick (kick), a roundhouse (up + kick),
 a sweep (down + kick) and a step kick (forward + kick).
@@ -35,10 +37,20 @@ Blocking is a button, not holding back:
   opens no parry window, so mashing does not work.
 - Throws beat blocking; press punch + kick as you are grabbed to break the throw.
 
-Jumping and crouching: there is no jump button and up or down held alone does nothing, so they never get in the way of
-picking a height. Tap up twice for a short hop (up-forward or up-back to hop that way): hop attacks are punch and
-kick in the air, and a hop clears low attacks. You crouch by holding down + block (the low guard) or by doing a
-low attack. Tap forward twice to dash in, back twice to step away.
+Moving, jumping and crouching:
+- Hold forward or back to walk, diagonals included. A walk rolled onto up-forward or down-forward (a thumb drifting on
+  the d-pad) keeps walking: the diagonal becomes a forward jump only after 5 frames held, a crouch after 6.
+- Up jumps on one press, every time the same jump, after a 4-frame takeoff; up-forward and up-back jump that way.
+  Held, up jumps again on landing. Punch or kick in the air is a jump attack; a jump clears low attacks.
+- Up and a button together is the high attack, not a jump: a button pressed up to 3 frames after up (inside the
+  takeoff) or up to 3 frames before it gives the high punch or kick. Down and a button is the low one.
+- Hold down to crouch: high attacks pass over a crouch, mids and lows hit it. Down + block is the low guard.
+- Tap forward twice to dash in, back twice to step away (the taps need a moment of neutral between them, so rolling
+  across the d-pad never dashes).
+- A button or up pressed during a move's recovery is kept for 6 frames and comes out on the first free frame.
+- The stick has a dead zone (35 percent) and an 8-way gate whose up, down, forward and back sectors are 50 degrees
+  wide, so forward pushed a little high still walks. On the d-pad and keys, left + right together is neutral and up +
+  down is up.
 
 Special moves are a stick motion plus their button, shown on the select screen and in the training move list.
 Motions are written as numpad directions with 6 forward: `236` is down, down-forward, forward; `236 P` is that motion
@@ -50,12 +62,12 @@ the super. Hits scale their damage in a combo.
 
 ## Training mode
 
-Press X (punch) on the select screen to switch Versus to Training. It shows the last move's name and height, whether it hit, was blocked, parried or ducked, its startup, active and recovery frames, the frame advantage, the damage and combo, and your recent inputs (direction digits with P, K and G for punch, kick and block). A move list for your fighter sits on the right. Keys: F or left-stick click cycles what the dummy does (nothing, stand, block, block low, hop, block everything at the right height, play like the computer), B or right-stick click shows hitboxes (blue: hurtboxes, red: hitboxes), R resets, Tab returns to the select screen.
+Press X (punch) on the select screen to switch Versus to Training. It shows the last move's name and height, whether it hit, was blocked, parried or ducked, its startup, active and recovery frames, the frame advantage, the damage and combo, and your recent inputs (direction digits with P, K and G for punch, kick and block). A move list for your fighter sits on the right. Keys: F or left-stick click cycles what the dummy does (nothing, stand, block, block low, jump, block everything at the right height, play like the computer), B or right-stick click shows hitboxes (blue: hurtboxes, red: hitboxes), R resets, Tab returns to the select screen.
 
 ## Tools
 
 - `tools/framedata.mjs`: the frame data table from `assets/data/moves.txt` (`--json`, `--csv`, `--fighter id`), and a checker. The file is the one the game reads: edit a move, run the tool, play it.
-- `tests/run-simtest.sh`: plain-C rules tests (every direction + button gives its move, move lengths and frame advantage equal the table, the high / mid / low guard triangle, parries, guard breaks, hops, motions, combos, throws, rounds, determinism) and a computer-vs-computer soak that prints win rates per fighter and per pairing, round length, comebacks, and how often parries, guard breaks and ducked highs happen.
+- `tests/run-simtest.sh`: plain-C rules tests (every direction + button gives its move, move lengths and frame advantage equal the table, the high / mid / low guard triangle, parries, guard breaks, held walks through d-pad drift, one-press jumps, up + button highs, buffering, motions, combos, throws, rounds, determinism) and a computer-vs-computer soak that prints win rates per fighter and per pairing, round length, comebacks, and how often parries, guard breaks and ducked highs happen.
 - `tools/frame-trace.mjs`: frame times from a profiler trace (the select-screen stutter check).
 - `tools/make-textures.mjs`, then `tools/make-characters.mjs` (the fighters; `crowd` for the spectators) and `tools/make-world.mjs` (the stage backgrounds): regenerate the models in assets/models.
 - `tools/make-stages.mjs`, `tools/make-grade.mjs`, `tools/make-audio.mjs`, `tools/make-gate-script.mjs`: regenerate the stage lighting, colour grades, sound and the gate scripts.

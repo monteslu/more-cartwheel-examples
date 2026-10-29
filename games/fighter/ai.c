@@ -116,7 +116,7 @@ ft_input ft_ai(ft_game *g, int who) {
     if (r < 30) { normal(g, who, 6, B_P); return none; }               /* the lunge closes the gap */
     if (r < 40) { normal(g, who, 6, B_K); return none; }               /* the step kick */
     if (r < 47 && dist < 2000) { normal(g, who, 2, B_K); return none; } /* the sweep at its range */
-    if (r < 53 && lvl >= 1) { push(g, who, 9, 2, 0); push(g, who, 5, 2, 0); push(g, who, 9, 10, 0); push(g, who, 9, 1, B_K); return none; } /* a hop in */
+    if (r < 53 && lvl >= 1) { push(g, who, 9, 14, 0); push(g, who, 5, 1, B_K); return none; } /* a jump in: up-forward, then kick in the air */
     if (r < 58 && d->mv[M_SP1].flags & FM_PROJ) { special(g, who, d, 0); return none; }
     return raw_dir(6, me->facing, 0);
   }
