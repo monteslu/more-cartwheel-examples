@@ -29,6 +29,7 @@
 #include "cartwheel/math.h"
 #include "cartwheel/particles.h"
 #include "cartwheel/pipeline.h"
+#include "cartwheel/profile.h"
 #include "cartwheel/project.h"
 #include "cartwheel/quality.h"
 #include "cartwheel/render2d.h"
@@ -392,18 +393,18 @@ static void render(void *u, double alpha) {
       lm_frames = -1;
     }
     double t0 = cw_wall();
-    view_sync(&G.S, t);
+    { CW_PROFILE_SCOPE("horde.view_sync"); view_sync(&G.S, t); }
     T_view += (cw_wall() - t0) * 1000;
     t0 = cw_wall();
-    fx_events(&G.S);
-    if (sc == CW_SHELL_PLAY) fx_tick(&G.S);
+    { CW_PROFILE_SCOPE("horde.fx"); fx_events(&G.S);
+    if (sc == CW_SHELL_PLAY) fx_tick(&G.S); }
     T_fx += (cw_wall() - t0) * 1000;
     if (cw_node_valid(G.sun)) { /* the sky sets the sun's direction: the blob shadows fall that way */
       const t3_mat4 *m = cw_node3d_global_transform(G.sun);
       if (m) view_set_sun((t3_vec3){ -m->e[8], -m->e[9], -m->e[10] });
     }
   }
-  if (G.in_match && (sc == CW_SHELL_PLAY || sc == CW_SHELL_PAUSE)) hud();
+  if (G.in_match && (sc == CW_SHELL_PLAY || sc == CW_SHELL_PAUSE)) { CW_PROFILE_SCOPE("horde.hud"); hud(); }
   cw_quality_auto_measure(sc == CW_SHELL_PLAY);
   double now = cw_wall();
   if (T_last > 0) T_frame += (now - T_last) * 1000;
@@ -437,7 +438,7 @@ static void render(void *u, double alpha) {
       T_n = 0;
     }
   }
-  cw_shell_draw();
+  { CW_PROFILE_SCOPE("horde.shell_draw"); cw_shell_draw(); }
 }
 
 cw_app_desc cw_main(int argc, char **argv) {

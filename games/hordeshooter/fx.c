@@ -90,6 +90,17 @@ static cw_node pnode(cw_node parent, const char *name, const char *const *kv, in
   cw_node3d_set_position(n, cw_node_is(parent, "Explosion3D") ? (t3_vec3){ 0, 0.5f, 0 } : (t3_vec3){ 0, -60, 0 });
   return n;
 }
+/* a pool of one-shot effects as one system of burst slots (cartwheel/particles.h bursts): each slot fires a
+ * one-shot of the settings at its own place, one simulation and one draw for the whole pool */
+static cw_node bnode(cw_node parent, const char *name, const char *const *kv, int seed, int slots) {
+  cw_node n = pnode(parent, name, kv, seed);
+  cw_value v;
+  int per = cw_node_get_prop(n, "amount", &v) ? (int)v.i : 1;
+  cw_node_set(n, "bursts", cw_val_int(slots));
+  cw_node_set(n, "amount", cw_val_int(per * slots));
+  cw_node3d_set_position(n, (t3_vec3){ 0, 0, 0 });
+  return n;
+}
 static void burst_at(cw_node n, t3_vec3 at) {
   cw_node3d_set_position(n, at);
   cw_node3d_global_transform(n);
@@ -265,10 +276,10 @@ void fx_init(cw_node root) {
   cw_node_add_child(root, FX.root);
   for (int i = 0; i < BIGS; i++) FX.big[i] = boom_node("BigBlast", true, 100 + i * 10);
   for (int i = 0; i < SMALLB; i++) FX.small[i] = boom_node("SmallBlast", false, 200 + i * 10);
-  for (int i = 0; i < LEVELS; i++) FX.level[i] = pnode(FX.root, "LevelUp", LEVELUP, 600 + i);
-  for (int i = 0; i < HITS; i++) FX.hit[i] = pnode(FX.root, "Hit", HIT, 700 + i);
-  for (int i = 0; i < MUZZLES; i++) FX.muzzle[i] = pnode(FX.root, "Muzzle", MUZZLE, 750 + i);
-  for (int i = 0; i < SPLATS; i++) FX.splat[i] = pnode(FX.root, "Splat", SPLAT, 800 + i);
+  FX.level[0] = bnode(FX.root, "LevelUp", LEVELUP, 600, LEVELS);
+  FX.hit[0] = bnode(FX.root, "Hit", HIT, 700, HITS);
+  FX.muzzle[0] = bnode(FX.root, "Muzzle", MUZZLE, 750, MUZZLES);
+  FX.splat[0] = bnode(FX.root, "Splat", SPLAT, 800, SPLATS);
   for (int i = 0; i < FIRES; i++) {
     FX.fire[i] = pnode(FX.root, "Fire", FIREP, 900 + i);
     FX.fire_haze[i] = pnode(FX.root, "FireHaze", FIREHAZE, 950 + i);
@@ -381,16 +392,14 @@ void fx_events(sim *s) {
     switch (e->kind) {
     case EV_BOOM: blast(at, e->z, e->w > 0.5f); break;
     case EV_HIT:
-      if (FX.frame_hits++ < (lvl >= 2 ? 10 : lvl >= 1 ? 6 : 3)) burst_at(FX.hit[FX.nh++ % HITS], (t3_vec3){ at.x, 0.9f, at.z });
+      if (FX.frame_hits++ < (lvl >= 2 ? 10 : lvl >= 1 ? 6 : 3)) cw_particles_burst(FX.hit[0], (t3_vec3){ at.x, 0.9f, at.z }, (t3_vec3){ 0, 0, 0 });
       break;
     case EV_ROCKET:
     case EV_SHOT:
       if (!(shot_seen & (1u << (e->a & 7)))) { /* each player's first shot this frame: a flash of light and a cone of fire at the barrel */
         shot_seen |= 1u << (e->a & 7);
         if (lvl >= 1) flash_light((t3_vec3){ at.x + e->z * 0.02f, 0, at.z + e->w * 0.02f }, 16, 1, 0.75f, 0.35f);
-        cw_node m = FX.muzzle[FX.nm++ % MUZZLES];
-        cw_node_set(m, "direction", cw_val_vec3(e->z, 0.05f, e->w));
-        burst_at(m, (t3_vec3){ at.x, 0.95f, at.z });
+        cw_particles_burst(FX.muzzle[0], (t3_vec3){ at.x, 0.95f, at.z }, (t3_vec3){ e->z, 0.05f, e->w });
       }
       break;
     case EV_KILL: {
@@ -410,7 +419,7 @@ void fx_events(sim *s) {
         float sz = e->a == EK_RUNNER ? 1.3f : e->a == EK_BOSS ? 6.0f : 2.4f;
         set_decal(FX.stain[st], at, sz * (0.8f + 0.5f * rnd()), rnd() * 6.28f);
         FX.stain_a[st] = 0.85f;
-        if (e->a != EK_RUNNER || lvl >= 1) burst_at(FX.splat[FX.nsp++ % SPLATS], (t3_vec3){ at.x, 0.4f, at.z });
+        if (e->a != EK_RUNNER || lvl >= 1) cw_particles_burst(FX.splat[0], (t3_vec3){ at.x, 0.4f, at.z }, (t3_vec3){ 0, 0, 0 });
       }
       break;
     }
@@ -426,13 +435,13 @@ void fx_events(sim *s) {
     case EV_CRATE: spawn_gibs(at, lvl ? 14 : 7, (t3_color){ 0.5f, 0.32f, 0.15f }, 4.0f, 0, 0); break;
     case EV_WALL: spawn_gibs(at, 26, (t3_color){ 0.5f, 0.5f, 0.48f }, 5.0f, 0, 0); FX.shake = CW_MIN(FX.shake + 0.4f, 2.2f); break;
     case EV_HURT: FX.shake = CW_MIN(FX.shake + 0.3f, 2.2f); break;
-    case EV_LEVEL: burst_at(FX.level[FX.nlv++ % LEVELS], (t3_vec3){ at.x, 0.3f, at.z }); break;
+    case EV_LEVEL: cw_particles_burst(FX.level[0], (t3_vec3){ at.x, 0.3f, at.z }, (t3_vec3){ 0, 0, 0 }); break;
     case EV_POWER: /* taken: a ring of sparks and a flash in the power-up colour */
-      burst_at(FX.level[FX.nlv++ % LEVELS], (t3_vec3){ at.x, 0.3f, at.z });
+      cw_particles_burst(FX.level[0], (t3_vec3){ at.x, 0.3f, at.z }, (t3_vec3){ 0, 0, 0 });
       flash_light(at, 30, 1, 0.9f, 0.6f);
       FX.shake = CW_MIN(FX.shake + 0.15f, 2.2f);
       break;
-    case EV_POWER_SPAWN: burst_at(FX.level[FX.nlv++ % LEVELS], (t3_vec3){ at.x, 0.3f, at.z }); break;
+    case EV_POWER_SPAWN: cw_particles_burst(FX.level[0], (t3_vec3){ at.x, 0.3f, at.z }, (t3_vec3){ 0, 0, 0 }); break;
     default: break;
     }
   }
