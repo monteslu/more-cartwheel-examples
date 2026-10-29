@@ -10,6 +10,9 @@
 #include "cartwheel/render3d.h"
 #include "cartwheel/vfs.h"
 #include "cartwheel/core.h"
+#include "cartwheel/lightmap.h"
+#include "cartwheel/splats.h"
+#include <stdio.h>
 #include "game.h"
 
 t3_color lin(float r, float g, float b) {
@@ -124,6 +127,11 @@ static bool chr_load(chr *c, const char *path) {
       t3_geometry_set_attribute(geo, T3_ATTR_UV, t3_attribute_new(T3_FLOAT32, uv, nv, 2));
       t3_geometry_set_attribute(geo, T3_ATTR_COLOR, t3_attribute_new(T3_FLOAT32, cl, nv, 3));
       t3_geometry_set_index(geo, t3_attribute_new(T3_UINT16, idx, nt * 3, 1));
+      { /* the exported triangle order shades each vertex about twice: reorder for the vertex cache (the same triangles) */
+        float before, after;
+        if (cw_geometry_optimize_vertex_cache(geo, &before, &after) && f == 0 && getenv("HORDE_BENCH"))
+          fprintf(stderr, "horde: %s group %d: %d triangles, vertex cache ACMR %.2f -> %.2f\n", path, g, nt, before, after);
+      }
       c->geo[g][f] = geo;
     }
     free(cl);
@@ -154,8 +162,11 @@ static struct {
   cw_node pn[MAXP];
   int pl_frame[MAXP];
   t3_mesh *pl_ring[MAXP];
+  t3_material *pl_mat[MAXP]; /* the soldier's body: tinted each frame by the floor's light under it */
   cw_node pl_light[MAXP];
   view_stats st;
+  cw_splats *shadows, *pools; /* blob shadows under everything that moves, light pools under the moving lights */
+  float sun_x, sun_z, sun_len; /* where shadows fall on the ground (unit) and how long they are for a 1 m caster */
   float cx, cy, cd;
   bool cam_init;
   t3_vec3 eye, at; /* the camera last frame, for view_screen */
@@ -341,7 +352,16 @@ static const pbr *pbr_get(int kind) {
       n8[i + 1] = (uint8_t)CW_CLAMP((dy / l * 0.5f + 0.5f) * 255.0f, 0, 255);
       n8[i + 2] = (uint8_t)CW_CLAMP((1.0f / l * 0.5f + 0.5f) * 255.0f, 0, 255);
       n8[i + 3] = 255;
-      for (int k = 0; k < 3; k++) a8[i + k] = (uint8_t)(CW_CLAMP(alb[(y * N + x) * 3 + k], 0, 1) * 255.0f);
+      float lit = 1.0f;
+      if (kind == TX_GROUND) { /* the floor draws baked and unlit (no normal map): its relief is painted into the colour, lit by the
+                                * low sun the yard is baked with (its light travels 0.89, -0.21, -0.41): grooves and crack edges
+                                * catch it on one side and fall dark on the other. Texture v runs along world -z. */
+        const float LX = -0.889f, LY = 0.212f, LZ = 0.405f;
+        float nx = -dx / l, ny = 1.0f / l, nz = -dy / l;
+        float sh = (nx * LX + ny * LY + nz * LZ) / LY;
+        lit = 1.0f + (CW_CLAMP(sh, 0.3f, 2.2f) - 1.0f) * 0.45f;
+      }
+      for (int k = 0; k < 3; k++) a8[i + k] = (uint8_t)(CW_CLAMP(alb[(y * N + x) * 3 + k] * lit, 0, 1) * 255.0f);
       a8[i + 3] = 255;
       r8[i] = r8[i + 1] = r8[i + 2] = (uint8_t)(CW_CLAMP(ro[y * N + x], 0, 1) * 255.0f);
       r8[i + 3] = 255;
@@ -391,6 +411,8 @@ static void pbr_apply(t3_material *m, int kind, float repeat, float normal_scale
 
 static void put(t3_instanced_mesh *im, int i, float x, float y, float z, float yaw, float sx, float sy, float sz);
 static void touch(t3_instanced_mesh *im, bool color);
+static void view_shafts(void);
+static void shafts_face(t3_vec3 eye);
 /* ── the yard's set dressing: Blender-made props (tools/blender/hordeprops.py)
  * placed once, deterministically, as instanced meshes. A concrete wall round
  * the yard, floodlight masts with real lights, and the industrial ground
@@ -398,12 +420,37 @@ static void touch(t3_instanced_mesh *im, bool color);
  * sees over the wall. */
 typedef struct place { float x, y, z, yaw; } place;
 enum { LAMPS = 6 };
-static t3_vec3 lamp_head[LAMPS];
+static t3_vec3 lamp_head[LAMPS], lamp_aim[LAMPS]; /* each floodlight and where its pool falls (pools apart, dark between) */
+
+/* scenery that never moves: an instanced mesh under a STATIC MeshInstance3D, so the lightmap bake sees it (it
+ * occludes the floodlights and the sun and bounces their light onto the yard; cartwheel/lightmap.h) */
+static t3_instanced_mesh *imesh_static(const char *name, t3_geometry *g, t3_material *m, int n) {
+  t3_instanced_mesh *im = t3_instanced_mesh_new(g, m, n);
+  im->mesh.base.cast_shadow = false;
+  im->mesh.base.receive_shadow = false;
+  for (int i = 0; i < n; i++) {
+    t3_instanced_mesh_set_matrix_at(im, i, &ZERO);
+    t3_instanced_mesh_set_color_at(im, i, (t3_color){ 1, 1, 1 });
+  }
+  cw_node node = cw_node_new("MeshInstance3D", name);
+  cw_node_add_child(V.root, node);
+  cw_node_set(node, "gi_mode", cw_val_enum("STATIC"));
+  cw_mesh3d_set_procedural(node, &im->mesh);
+  t3_release(g);
+  t3_release(m);
+  im->count = 0;
+  t3_release(im); /* the node holds it */
+  return im;
+}
+
+static struct { t3_instanced_mesh *im; const struct place *pl; int n; } PROPS[16]; /* for relighting from the floor */
+static int nprops;
 
 static void dress_mesh(const char *name, const char *file, int tx, float rep, float rough, float metal, const place *pl, int n, bool shadow, bool lamp) {
   chr c;
   if (!chr_load(&c, file)) return;
   t3_instanced_mesh *ims[2] = { 0, 0 };
+  (void)shadow;
   for (int g = 0; g < c.ngroup; g++) {
     t3_material *m;
     if (g == 0) {
@@ -412,7 +459,9 @@ static void dress_mesh(const char *name, const char *file, int tx, float rep, fl
     } else
       m = glow(1.0f, 0.88f, 0.62f, 6);
     t3_retain(c.geo[g][0]);
-    ims[g] = imesh(name, c.geo[g][0], m, n, shadow && g == 0);
+    char nm[48];
+    snprintf(nm, sizeof nm, "%s%d", name, g);
+    ims[g] = imesh_static(nm, c.geo[g][0], m, n);
   }
   chr_free(&c);
   for (int g = 0; g < 2; g++) {
@@ -422,6 +471,7 @@ static void dress_mesh(const char *name, const char *file, int tx, float rep, fl
     touch(ims[g], true);
     t3_sphere sph = { { 0, 0, 0 }, HALF * 2.5f };
     t3_instanced_mesh_set_bounding_sphere(ims[g], &sph);
+    if (g == 0 && nprops < 16) PROPS[nprops].im = ims[g], PROPS[nprops].pl = pl, PROPS[nprops].n = n, nprops++;
   }
   (void)lamp;
 }
@@ -449,6 +499,10 @@ static void view_dress(void) {
     lamp[nl++] = (place){ x, 0, z, yaw };
     float s = cw_sin(yaw), c = cw_cos(yaw);
     lamp_head[i] = (t3_vec3){ x + 1.66f * s, 7.0f, z + 1.66f * c };
+    { static const float AIM[LAMPS][2] = { { 0.42f, 0.2f }, { 0.55f, -0.25f }, { 0.5f, 0.3f }, { 0.4f, -0.15f }, { 0.62f, 0.12f }, { 0.48f, -0.3f } };
+      float ax = lamp_head[i].x * AIM[i][0], az = lamp_head[i].z * AIM[i][0];
+      /* off the line to the centre, each its own way */
+      lamp_aim[i] = (t3_vec3){ ax + az * AIM[i][1], 0, az - ax * AIM[i][1] }; }
   }
   for (int side = 0; side < 4; side++) {
     float yaw = side == 0 ? 0 : side == 1 ? PI : side == 2 ? PI * 0.5f : -PI * 0.5f;
@@ -487,12 +541,14 @@ static void view_dress(void) {
     cw_node_add_child(V.root, l);
     cw_node3d_set_position(l, lamp_head[i]);
     cw_node_set(l, "color", cw_val_color(0.72f, 0.86f, 1.0f, 1));
-    cw_node_set(l, "energy", cw_val_float(700));
+    cw_node_set(l, "energy", cw_val_float(1100));
     cw_node_set(l, "range", cw_val_float(46));
     cw_node_set(l, "decay", cw_val_float(2));
-    cw_node_set(l, "angle", cw_val_float(0.75f));
-    cw_node_set(l, "penumbra", cw_val_float(0.7f));
-    cw_node3d_look_at(l, (t3_vec3){ lamp_head[i].x * 0.35f, 0, lamp_head[i].z * 0.35f }, (t3_vec3){ 0, 1, 0 });
+    cw_node_set(l, "angle", cw_val_float(0.66f));
+    cw_node_set(l, "penumbra", cw_val_float(0.65f));
+    cw_node_set(l, "bake_direct", cw_val_bool(true)); /* the yard's pool is in the lightmap */
+    cw_node_set(l, "realtime", cw_val_bool(false)); /* and only there: what moves takes it from the floor (view_ground_light) */
+    cw_node3d_look_at(l, lamp_aim[i], (t3_vec3){ 0, 1, 0 });
   }
 }
 
@@ -636,17 +692,18 @@ void view_init(cw_node root) {
     t3_geometry_set_attribute(pg, T3_ATTR_COLOR, t3_attribute_new(T3_FLOAT32, col, pa->count, 3));
     free(col);
   }
+  /* the yard floor is baked: every light that stands still (the sun, the rim, the floodlights) and the shadows
+   * of the scenery are in its lightmap, and it draws unlit from it (view_lightmap) */
   t3_material *gm = t3_mesh_standard_material_new(0xffffff);
   gm->vertex_colors = true;
   pbr_apply(gm, TX_GROUND, GS / 19.0f, 1.2f);
   t3_mesh *gmesh = t3_mesh_new(pg, gm);
-  gmesh->base.receive_shadow = true;
-  cw_node gn = cw_node_new("Node3D", "Ground");
+  cw_node gn = cw_node_new("MeshInstance3D", "Ground");
   cw_node_add_child(V.root, gn);
-  t3_object *w = t3_group_new();
-  t3_object_add(w, gmesh);
-  cw_node3d_set_object(gn, w);
-  t3_release(w), t3_release(gmesh), t3_release(pg), t3_release(gm);
+  cw_node_set(gn, "gi_mode", cw_val_enum("STATIC"));
+  cw_node_set(gn, "lightmap_uv", cw_val_enum("UV0")); /* the plane's own uv0 is a clean [0, 1] layout: the lightmap lines up on it */
+  cw_mesh3d_set_procedural(gn, gmesh);
+  t3_release(gmesh), t3_release(pg), t3_release(gm);
   /* the yard's wall: a low rim of blocks round the edge, one instanced mesh */
   {
     static const char *files[EK_KINDS] = { "models/runner.cwchar", "models/brute.cwchar", "models/bloater.cwchar", "models/boss.cwchar" };
@@ -677,11 +734,16 @@ void view_init(cw_node root) {
         V.br[k] = sqrtf(r2) * 1.1f + 0.05f;
       }
       int bc = k == EK_BOSS ? 4 : cap[k] / V.bn[k] * 3 / 2 + 48;
-      t3_material *m = mat(1, 1, 1, rough[k], 0.0f, true); /* one material for every frame of a kind */
-      pbr_apply(m, TX_HIDE, rep_[k], 0.8f);
+      /* the crowd is small on screen and thousands strong: Lambert (diffuse only, no normal or roughness map),
+       * its look in its baked vertex colours; the players keep the full PBR model */
+      t3_material *m = t3_mesh_lambert_material_new(0xffffff);
+      m->vertex_colors = true;
+      (void)rough, (void)rep_;
       for (int f = 0; f < V.bn[k]; f++) {
         t3_retain(V.ch[k].geo[0][f]);
-        V.eb[k][f] = imesh(nm[k], V.ch[k].geo[0][f], t3_retain(m), bc, shadow[k]); /* imesh takes both references */
+        V.eb[k][f] = imesh(nm[k], V.ch[k].geo[0][f], t3_retain(m), bc, false); /* imesh takes both references */
+        V.eb[k][f]->mesh.base.receive_shadow = false;
+        (void)shadow;
       }
       t3_release(m);
     }
@@ -746,6 +808,7 @@ void view_init(cw_node root) {
     pbr_apply(bm, TX_ARMOR, 2.0f, 0.9f);
     bm->emissive = lin(PC[i][0] * 0.5f + 0.1f, PC[i][1] * 0.5f + 0.1f, PC[i][2] * 0.5f + 0.1f); /* a faint team glow: the soldier never sinks into the dusk */
     bm->emissive_intensity = 0.35f;
+    V.pl_mat[i] = bm;
     t3_material *tm = glow(PC[i][0], PC[i][1], PC[i][2], 7);
     if (have)
       for (int f = 0; f < V.soldier.nf[0] + V.soldier.nf[1]; f++) {
@@ -773,7 +836,7 @@ void view_init(cw_node root) {
       cw_node_add_child(V.root, l);
       cw_node_set(l, "color", cw_val_color(0.55f + 0.45f * PC[i][0], 0.55f + 0.45f * PC[i][1], 0.55f + 0.45f * PC[i][2], 1));
       cw_node_set(l, "energy", cw_val_float(0));
-      cw_node_set(l, "range", cw_val_float(6));
+      cw_node_set(l, "range", cw_val_float(3.5f));
       cw_node_set(l, "decay", cw_val_float(2));
       cw_node_set(l, "fog_energy", cw_val_float(0));
       cw_node3d_set_position(l, (t3_vec3){ 0, -60, 0 });
@@ -783,9 +846,269 @@ void view_init(cw_node root) {
     t3_release(g);
   }
   view_power_init(); /* after the players: the shield bubble hangs on each */
+  view_shafts();
+  V.shadows = cw_splats_new(V.root, "Shadows", CW_SPLATS_SHADOW, MAXE + MAXP + MAXO);
+  V.pools = cw_splats_new(V.root, "LightPools", CW_SPLATS_LIGHT, 96);
+  V.sun_x = 0.6f, V.sun_z = 0.8f, V.sun_len = 1.5f;
 }
 
-void view_free(void) {
+void view_set_sun(t3_vec3 d) { /* d: where the sunlight travels */
+  float h = sqrtf(d.x * d.x + d.z * d.z);
+  if (h < 1e-4f) return;
+  V.sun_x = d.x / h, V.sun_z = d.z / h;
+  V.sun_len = CW_CLAMP(h / CW_MAX(-d.y, 0.05f), 0.2f, 3.0f); /* shadow length of a 1 m caster */
+}
+
+/* a blob shadow for a caster at (x, z) of radius r and height ht: it starts under its feet and runs away from
+ * the sun as far as a low sun throws it, fading along */
+static void shadow_at(float x, float z, float r, float ht, float strength) {
+  float len = 2 * r + ht * V.sun_len * 0.35f;
+  float yaw = cw_atan2(V.sun_x, V.sun_z);
+  cw_splats_add(V.shadows, (t3_vec3){ x, 0, z }, len, 2.0f * r, yaw, (len - 2 * r) / len, (t3_color){ 1, 1, 1 }, strength);
+}
+
+/* ── baked lighting ─────────────────────────────────────────────────────
+ * The yard floor's light is baked (cartwheel/lightmap.h): the sun, the rim and the six floodlights, their shadows
+ * from the walls, masts and containers, the dusk sky, one bounce. The floor then draws unlit from its lightmap
+ * (LightmapGI shading BAKED): a few texture reads a pixel however many lights there are. The lights stay real
+ * time for everything that moves. The bake ships as lightmaps/yard.cwlm; HORDE_BAKE=<file> (native,
+ * development) bakes it again from the yard as built and writes it there. */
+static cw_lightmap_data *LM;
+
+/* ── light from the floor ──────────────────────────────────────────────
+ * The floodlights are in the bake only (no real-time cost). Everything that moves still walks through their
+ * pools and the walls' shadows: each takes the baked floor's light under it (cw_lightmap_irradiance_below) as a
+ * colour multiplier over what the real-time sun, rim and sky give it, measured against open ground far from
+ * any floodlight. The floor's light is read once into a half-metre grid; a lookup a frame per enemy is a bilinear
+ * read of it. */
+enum { GLN = 200 };
+static const float GL_LO = -50.0f, GL_STEP = 0.5f;
+static t3_color GLG[GLN][GLN];
+static bool gl_ready;
+static t3_color ground_light(float x, float z) {
+  if (!gl_ready) return (t3_color){ 1, 1, 1 };
+  float gx = (x - GL_LO) / GL_STEP, gz = (z - GL_LO) / GL_STEP;
+  int x0 = CW_CLAMP((int)floorf(gx), 0, GLN - 2), z0 = CW_CLAMP((int)floorf(gz), 0, GLN - 2);
+  float fx = CW_CLAMP(gx - (float)x0, 0.0f, 1.0f), fz = CW_CLAMP(gz - (float)z0, 0.0f, 1.0f);
+  const t3_color a = GLG[z0][x0], b = GLG[z0][x0 + 1], c = GLG[z0 + 1][x0], d = GLG[z0 + 1][x0 + 1];
+  t3_color o;
+  o.r = (a.r * (1 - fx) + b.r * fx) * (1 - fz) + (c.r * (1 - fx) + d.r * fx) * fz;
+  o.g = (a.g * (1 - fx) + b.g * fx) * (1 - fz) + (c.g * (1 - fx) + d.g * fx) * fz;
+  o.b = (a.b * (1 - fx) + b.b * fx) * (1 - fz) + (c.b * (1 - fx) + d.b * fx) * fz;
+  return o;
+}
+static void ground_light_build(void) {
+  t3_color open;
+  if (!cw_lightmap_irradiance_below(LM, (t3_vec3){ 66, 1, -66 }, &open)) return; /* open ground, 90 m from any floodlight */
+  float on = CW_MAX((open.r + open.g + open.b) / 3.0f, 1e-4f);
+  for (int z = 0; z < GLN; z++)
+    for (int x = 0; x < GLN; x++) {
+      t3_color e;
+      cw_lightmap_irradiance_below(LM, (t3_vec3){ GL_LO + (float)x * GL_STEP, 1, GL_LO + (float)z * GL_STEP }, &e);
+      /* against the open ground's brightness (its warm dusk colour is what the real-time sun already gives) */
+      /* half its hue: the floodlights' cool white and the sun's warmth show on the crowd without turning it blue */
+      float l = (e.r + e.g + e.b) / 3.0f;
+      GLG[z][x] = (t3_color){ CW_CLAMP((l + 0.5f * (e.r - l)) / on, 0.3f, 3.5f), CW_CLAMP((l + 0.5f * (e.g - l)) / on, 0.3f, 3.5f),
+                              CW_CLAMP((l + 0.5f * (e.b - l)) / on, 0.3f, 3.5f) };
+    }
+  gl_ready = true;
+  /* the scenery stands still: its light from the floor is set once (a little toward the yard, off its own
+   * footprint, which the bake leaves dark) */
+  for (int k = 0; k < nprops; k++) {
+    for (int i = 0; i < PROPS[k].n; i++) {
+      float x = PROPS[k].pl[i].x, z = PROPS[k].pl[i].z, l = sqrtf(x * x + z * z);
+      if (l > 1) x -= x / l * 1.6f, z -= z / l * 1.6f;
+      t3_instanced_mesh_set_color_at(PROPS[k].im, i, ground_light(x, z));
+    }
+    PROPS[k].im->instance_color->version++;
+  }
+}
+const cw_lightmap_data *view_lightmap_data(void) { return LM; }
+
+/* ── puddles ───────────────────────────────────────────────────────────
+ * The yard is wet in patches, not all over: dark water lying in the low spots, each reflecting the baked
+ * reflection cube (the dusk sky, the walls and the floodlight heads round the yard) for one texture read, where
+ * screen-space reflections cost a G-buffer and a trace every frame. Six shapes (noise-bent blobs) in one
+ * atlas, each puddle a shape turned, flipped and stretched by its own seed. */
+enum { PUD_SHAPES = 6, PUD_TEX = 512, PUDDLES = 54 };
+static t3_instanced_mesh *PUD[PUD_SHAPES];
+static struct { float x, z, rx, rz, yaw; } PUDL[PUDDLES]; /* where each lies, for the floodlights' glints */
+static t3_texture *puddle_atlas(void) {
+  static uint8_t px[PUD_TEX * PUD_TEX * 4];
+  const int CW_ = PUD_TEX / 3, CH_ = PUD_TEX / 2;
+  for (int y = 0; y < PUD_TEX; y++)
+    for (int x = 0; x < PUD_TEX; x++) {
+      int cx = x / CW_, cy = y / CH_, k = cy * 3 + cx;
+      float u = ((float)(x % CW_) + 0.5f) / (float)CW_ * 2 - 1, v = ((float)(y % CH_) + 0.5f) / (float)CH_ * 2 - 1;
+      uint32_t sd = 7000u + (uint32_t)k * 131u;
+      /* a blob whose edge the noise pushes in and out, a second lobe on some */
+      float n = fbm(u * 0.5f + 0.5f, v * 0.5f + 0.5f, 3, 4, sd);
+      float r = sqrtf(u * u + v * v) * (0.8f + 0.55f * n);
+      if (k & 1) { float u2 = u - 0.45f, v2 = v + 0.3f; r = CW_MIN(r, sqrtf(u2 * u2 + v2 * v2) * 1.5f * (0.8f + 0.5f * n)); }
+      float a = 1.0f - CW_CLAMP((r - 0.62f) / 0.1f, 0.0f, 1.0f); /* water has a crisp edge */
+      a = a * a * (3 - 2 * a);
+      if (x % CW_ < 2 || y % CH_ < 2 || x % CW_ >= CW_ - 2 || y % CH_ >= CH_ - 2) a = 0; /* no bleed across cells */
+      uint8_t *p = px + (y * PUD_TEX + x) * 4;
+      p[0] = p[1] = p[2] = 255;
+      p[3] = (uint8_t)(a * 255.0f + 0.5f);
+    }
+  t3_texture *t = t3_texture_new(PUD_TEX, PUD_TEX, px);
+  t->wrap_s = t->wrap_t = T3_CLAMP_TO_EDGE;
+  t->flip_y = false;
+  t->generate_mipmaps = true;
+  t->min_filter = T3_LINEAR_MIPMAP_LINEAR;
+  t->mag_filter = T3_LINEAR;
+  t->color_space = T3_SRGB_COLOR_SPACE;
+  return t;
+}
+static void view_puddles(void) {
+  t3_texture *atlas = puddle_atlas();
+  int placed[PUD_SHAPES] = { 0 };
+  for (int k = 0; k < PUD_SHAPES; k++) {
+    t3_geometry *g = t3_plane_geometry_new(1, 1, 1, 1);
+    t3_geometry_apply_matrix4(g, &(t3_mat4){ { 1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1 } });
+    { /* this shape's cell of the atlas */
+      t3_attribute *ua = g->attributes[T3_ATTR_UV];
+      float *uv = (float *)ua->array;
+      for (int i = 0; i < ua->count; i++) {
+        uv[i * 2] = ((float)(k % 3) + 0.02f + 0.96f * uv[i * 2]) / 3.0f;
+        uv[i * 2 + 1] = ((float)(k / 3) + 0.02f + 0.96f * uv[i * 2 + 1]) / 2.0f;
+      }
+      ua->version++;
+    }
+    t3_material *m = t3_mesh_basic_material_new(0xffffff);
+    m->color = lin(0.05f, 0.05f, 0.055f); /* standing water: the asphalt under it darker, the sky faint in it */
+    m->opacity = 0.5f;
+    m->transparent = true;
+    m->depth_write = false;
+    t3_material_set_texture(m, T3_MAP, atlas);
+    cw_lightmap_use_reflection(LM, m, 0.7f);
+    PUD[k] = imesh("Puddles", g, m, PUDDLES, false);
+    PUD[k]->mesh.base.receive_shadow = false;
+    PUD[k]->mesh.base.render_order = -3; /* under the blob shadows and the light pools */
+  }
+  t3_release(atlas);
+  for (int i = 0; i < PUDDLES; i++) {
+    uint32_t h = hash2((uint32_t)i, 9191u);
+    float x = (h01((uint32_t)i, 9192u) * 2 - 1) * (HALF - 3), z = (h01((uint32_t)i, 9193u) * 2 - 1) * (HALF - 3);
+    int k = (int)(h % PUD_SHAPES);
+    float sx = 1.3f + 2.6f * h01((uint32_t)i, 9194u), sz = sx * (0.55f + 0.7f * h01((uint32_t)i, 9195u));
+    if (h & 0x100) sx = -sx; /* flipped */
+    float yaw = h01((uint32_t)i, 9196u) * 6.2832f;
+    put(PUD[k], placed[k]++, x, 0.012f, z, yaw, sx, 1, sz);
+    PUDL[i].x = x, PUDL[i].z = z, PUDL[i].rx = fabsf(sx) * 0.38f, PUDL[i].rz = sz * 0.38f, PUDL[i].yaw = yaw;
+  }
+  for (int k = 0; k < PUD_SHAPES; k++) PUD[k]->count = placed[k], touch(PUD[k], false);
+}
+
+/* ── light shafts ──────────────────────────────────────────────────────
+ * The haze under each floodlight as a soft card along the beam, turned about the beam's axis to face the camera
+ * each frame (the volumetric fog's beams for the price of six additive quads): bright at the lamp, fading
+ * down the beam and across it. */
+enum { SHAFT_TEX = 128 };
+static t3_mesh *SHAFT[LAMPS];
+static t3_vec3 shaft_dir[LAMPS];
+static t3_texture *shaft_texture(void) {
+  static uint8_t px[SHAFT_TEX * SHAFT_TEX * 4];
+  for (int y = 0; y < SHAFT_TEX; y++)
+    for (int x = 0; x < SHAFT_TEX; x++) {
+      float u = ((float)x + 0.5f) / SHAFT_TEX * 2 - 1, t = ((float)y + 0.5f) / SHAFT_TEX; /* across, along (0 at the lamp) */
+      float w = 0.12f + 0.88f * t; /* the beam widens away from the lamp */
+      float across = CW_CLAMP(1.0f - fabsf(u) / w, 0.0f, 1.0f);
+      across = across * across * (3 - 2 * across);
+      float along = cw_pow(1.0f - t, 1.6f) * CW_CLAMP(t * 12.0f, 0.0f, 1.0f);
+      float n = 0.8f + 0.4f * fbm((float)x / SHAFT_TEX, t * 0.4f, 6, 2, 4321u); /* dust in the beam */
+      uint8_t c = (uint8_t)CW_CLAMP((int)(across * along * n * 255.0f), 0, 255);
+      uint8_t *p = px + (y * SHAFT_TEX + x) * 4;
+      p[0] = p[1] = p[2] = c;
+      p[3] = 255;
+    }
+  t3_texture *tx = t3_texture_new(SHAFT_TEX, SHAFT_TEX, px);
+  tx->wrap_s = tx->wrap_t = T3_CLAMP_TO_EDGE;
+  tx->flip_y = false;
+  tx->generate_mipmaps = true;
+  tx->min_filter = T3_LINEAR_MIPMAP_LINEAR;
+  tx->mag_filter = T3_LINEAR;
+  tx->color_space = T3_NO_COLOR_SPACE;
+  return tx;
+}
+static void view_shafts(void) {
+  t3_texture *tx = shaft_texture();
+  for (int i = 0; i < LAMPS; i++) {
+    t3_geometry *g = t3_plane_geometry_new(1, 1, 1, 1); /* x across, y along (top = the lamp) */
+    t3_material *m = t3_mesh_basic_material_new(0xffffff);
+    m->color = (t3_color){ 0.72f * 0.22f, 0.86f * 0.22f, 1.0f * 0.22f }; /* the floodlight's cool white, faint */
+    m->blending = T3_ADDITIVE_BLENDING;
+    m->transparent = true;
+    m->depth_write = false;
+    m->side = T3_DOUBLE_SIDE;
+    m->fog = false;
+    t3_material_set_texture(m, T3_MAP, tx);
+    t3_mesh *ms = t3_mesh_new(g, m);
+    ms->base.cast_shadow = ms->base.receive_shadow = false;
+    cw_node n = cw_node_new("Node3D", "Shaft");
+    cw_node_add_child(V.root, n);
+    t3_object *w = t3_group_new();
+    t3_object_add(w, ms);
+    cw_node3d_set_object(n, w);
+    t3_release(w), t3_release(g), t3_release(m);
+    SHAFT[i] = ms;
+    t3_release(ms);
+    t3_vec3 tg = lamp_aim[i];
+    shaft_dir[i] = t3_vec3_normalize((t3_vec3){ tg.x - lamp_head[i].x, tg.y - lamp_head[i].y, tg.z - lamp_head[i].z });
+  }
+  t3_release(tx);
+}
+/* each card along its beam, turned about the beam to face the camera */
+static void shafts_face(t3_vec3 eye) {
+  const float LEN = 13.0f, WIDE = 5.5f;
+  for (int i = 0; i < LAMPS; i++) {
+    if (!SHAFT[i]) continue;
+    t3_vec3 a = shaft_dir[i], c = { lamp_head[i].x + a.x * LEN * 0.5f, lamp_head[i].y + a.y * LEN * 0.5f, lamp_head[i].z + a.z * LEN * 0.5f };
+    t3_vec3 v = t3_vec3_normalize((t3_vec3){ eye.x - c.x, eye.y - c.y, eye.z - c.z });
+    t3_vec3 x = t3_vec3_normalize(t3_vec3_cross(a, v)), y = (t3_vec3){ -a.x, -a.y, -a.z }, z = t3_vec3_cross(x, y);
+    t3_mat4 *m = &SHAFT[i]->base.matrix;
+    *m = (t3_mat4){ { x.x * WIDE, x.y * WIDE, x.z * WIDE, 0, y.x * LEN, y.y * LEN, y.z * LEN, 0, z.x, z.y, z.z, 0, c.x, c.y, c.z, 1 } };
+    SHAFT[i]->base.matrix_auto_update = false;
+    SHAFT[i]->base.matrix_world_needs_update = true;
+  }
+}
+
+bool view_lightmap(cw_tree *t) {
+  if (LM) return true;
+  cw_node root = cw_tree_root(t);
+  const char *out = getenv("HORDE_BAKE");
+  if (out && *out) {
+    cw_lightmap_settings s = cw_lightmap_settings_default();
+    s.texel_density = 7;
+    s.max_size = 1024;
+    s.samples = 48;
+    s.bounces = 1;
+    s.probe_spacing = 0;
+    s.denoise = 2;
+    s.direct_samples = 12;
+    s.shadow_softness = 0.025f;
+    s.reflection_size = 32;
+    s.reflection_origin[0] = 0, s.reflection_origin[1] = 1.2f, s.reflection_origin[2] = 0;
+    LM = cw_lightmap_bake(t, root, &s);
+    if (!LM) return false;
+    if (!cw_lightmap_save(LM, out)) cw_error("horde: could not write the bake to %s", out);
+    cw_lightmap_info info;
+    cw_lightmap_get_info(LM, &info);
+    fprintf(stderr, "horde: baked %s: %d meshes, %d texels, %lld rays, hash %016llx\n", out, info.meshes, info.texels, info.rays,
+            (unsigned long long)info.hash);
+  } else LM = cw_lightmap_load("lightmaps/yard.cwlm");
+  if (!LM) {
+    cw_error("horde: no yard lightmap (lightmaps/yard.cwlm): the floor draws unlit and dark");
+    return false;
+  }
+  cw_lightmap_apply_shaded(t, root, LM, 1, CW_LIGHTMAP_BAKED);
+  ground_light_build();
+  view_puddles();
+  return true;
+}
+
+void view_free(void) { /* LM stays: the floor's lightmap textures read its texels */
   for (int k = 0; k < EK_KINDS; k++) chr_free(&V.ch[k]);
   chr_free(&V.soldier);
   for (int i = 0; i < TX_KINDS; i++) {
@@ -851,13 +1174,14 @@ void view_sync(const sim *s, float time) {
   if (!V.root.id) return;
   int cnt[EK_KINDS][CH_MAXF];
   memset(cnt, 0, sizeof cnt);
+  cw_splats_begin(V.shadows);
   static const float rate[EK_KINDS] = { 1.9f, 0.9f, 1.1f, 0.6f }; /* cycles per second */
   /* The horde outside the view is not drawn. The instanced meshes have one bounding sphere for the whole
    * yard, so three.c draws every instance; at a late wave about half of them are off screen and still cost
    * the vertex work of the colour pass and of the SSR G-buffer pass. Only the kinds that cast no shadow are
    * culled (a brute or the boss off screen can throw its shadow into the view); nothing else reads them
    * (SSR is screen space, the fog reads the shadow map). HORDE_CULL=0 (development) draws them all. */
-  static const bool cull_kind[EK_KINDS] = { true, false, true, false }; /* runners and bloaters cast no shadow (view_init) */
+  static const bool cull_kind[EK_KINDS] = { true, true, true, true }; /* nothing in the crowd casts a real-time shadow now (blob shadows) */
   static int cull_on = -1;
   if (cull_on < 0) cull_on = !getenv("HORDE_CULL") || atoi(getenv("HORDE_CULL")) != 0;
   view_frustum fr_ = view_frustum_now();
@@ -876,8 +1200,14 @@ void view_sync(const sim *s, float time) {
     float sq = 1.0f + (e->flash > 0 ? 0.1f : 0);
     float yaw = -e->face + 1.5708f; /* the model faces +Z; face is atan2(z, x) */
     put(im, n, e->x, 0.0f, e->y, yaw, sq, sq, sq);
+    static const float SR[EK_KINDS] = { 0.42f, 0.75f, 0.62f, 1.5f }, SH[EK_KINDS] = { 1.6f, 2.2f, 1.5f, 4.0f };
+    shadow_at(e->x, e->y, SR[k] * sq, SH[k], 0.62f);
     float tint = 0.5f + 0.2f * h01((uint32_t)i, 5);
     t3_color c = e->flash > 0 ? (t3_color){ 4, 2.8f, 2.2f } : (t3_color){ tint * 0.82f, tint * (0.8f + 0.1f * h01((uint32_t)i, 9)), tint * 0.9f };
+    {
+      t3_color gl = ground_light(e->x, e->y);
+      c.r *= gl.r, c.g *= gl.g, c.b *= gl.b;
+    }
     t3_instanced_mesh_set_color_at(im, n, c);
   }
   V.st.enemies_drawn = 0;
@@ -979,19 +1309,25 @@ void view_sync(const sim *s, float time) {
     switch (o->kind) {
     case OK_CRATE:
       put(V.crate, nc, o->x, 0.65f, o->y, (float)(i * 37 % 100) * 0.03f, 1, 1, 1);
-      t3_instanced_mesh_set_color_at(V.crate, nc++, (t3_color){ sh, sh, sh });
+      { t3_color gl = ground_light(o->x, o->y); t3_instanced_mesh_set_color_at(V.crate, nc++, (t3_color){ sh * gl.r, sh * gl.g, sh * gl.b }); }
       break;
     case OK_BARREL:
       put(V.barrel, nba, o->x, 0, o->y, 0, 1, 1, 1);
-      t3_instanced_mesh_set_color_at(V.barrel, nba++, (t3_color){ 1, 1, 1 });
+      t3_instanced_mesh_set_color_at(V.barrel, nba++, ground_light(o->x, o->y));
       break;
     case OK_WALL:
       put(V.wall, nw, o->x, 1.1f, o->y, 0, 1, 1, 1);
-      t3_instanced_mesh_set_color_at(V.wall, nw++, (t3_color){ sh, sh * 0.95f, sh * 0.9f });
+      { t3_color gl = ground_light(o->x, o->y); t3_instanced_mesh_set_color_at(V.wall, nw++, (t3_color){ sh * gl.r, sh * 0.95f * gl.g, sh * 0.9f * gl.b }); }
       break;
     default:
       if (np < 16) put(V.pillar, np++, o->x, 2.25f, o->y, 0, 1, 1, 1);
     }
+  }
+  for (int i = 0; i < MAXO; i++) { /* the yard's pieces: their soft contact shadows */
+    const obstacle *o = &s->o[i];
+    if (!o->alive) continue;
+    static const float OR[OK_KINDS] = { 0.8f, 0.55f, 1.2f, 1.35f }, OH[OK_KINDS] = { 1.3f, 1.1f, 2.2f, 4.5f };
+    shadow_at(o->x, o->y, OR[o->kind], OH[o->kind], 0.7f);
   }
   V.crate->count = nc, V.barrel->count = nba, V.wall->count = nw, V.pillar->count = np;
   touch(V.crate, true), touch(V.barrel, true), touch(V.wall, true), touch(V.pillar, false);
@@ -1005,6 +1341,8 @@ void view_sync(const sim *s, float time) {
       continue;
     }
     cw_node3d_set_position(V.pl_light[i], (t3_vec3){ p->x, 2.4f, p->y });
+    if (V.pl_mat[i]) V.pl_mat[i]->color = ground_light(p->x, p->y);
+    shadow_at(p->x, p->y, 0.42f, 1.8f, 0.7f);
     cw_node_set(V.pl_light[i], "energy", cw_val_float(p->down ? 8.0f : 22.0f));
     if (V.shield[i]) V.shield[i]->base.visible = p->shield_t > 0 && !p->down && (p->shield_t > 90 || (p->shield_t / 6) & 1);
     cw_node3d_set_position(V.pn[i], (t3_vec3){ p->x, p->down ? -0.6f : 0, p->y });
@@ -1024,6 +1362,56 @@ void view_sync(const sim *s, float time) {
       V.pl_frame[i] = fr;
     }
   }
+  cw_splats_end(V.shadows);
+  { /* development (A/B timing): HORDE_HIDE bits hide 1 the crowd, 2 the blob shadows, 4 the light pools */
+    static int hide = -1;
+    if (hide < 0) hide = getenv("HORDE_HIDE") ? atoi(getenv("HORDE_HIDE")) : 0;
+    if (hide & 1) for (int k = 0; k < EK_KINDS; k++) for (int f = 0; f < V.bn[k]; f++) V.eb[k][f]->count = 0;
+    if (hide & 2) cw_splats_mesh(V.shadows)->count = 0;
+    if (hide & 4) cw_splats_mesh(V.pools)->mesh.base.visible = false;
+  }
+  /* the floor is baked and takes no real-time light: each moving light (a player's lamp, a muzzle flash, a
+   * blast, a burning barrel) shows on it as a pool of added light (the floor's albedo is about 0.16 where the lights fall) */
+  cw_splats_begin(V.pools);
+  cw_splats_add_lights(V.pools, cw_node_parent(V.root), 0, 0.1f / 3.14159265f);
+  /* the wet asphalt's sheen: each floodlight's blurred mirror image on the ground, where the eye sees it reflected,
+   * a long soft streak toward the camera that slides as the camera moves (what the floodlights' specular on a wet
+   * floor showed, for six additive discs) */
+  for (int l = 0; l < LAMPS; l++) {
+    t3_vec3 m = { lamp_head[l].x, -lamp_head[l].y, lamp_head[l].z };
+    float t = V.eye.y / (V.eye.y - m.y);
+    float px = V.eye.x + (m.x - V.eye.x) * t, pz = V.eye.z + (m.z - V.eye.z) * t;
+    float yaw = cw_atan2(V.eye.x - px, V.eye.z - pz);
+    cw_splats_add(V.pools, (t3_vec3){ px, 0, pz }, 13.0f, 4.5f, yaw, -0.25f, (t3_color){ 0.72f, 0.86f, 1.0f }, 0.07f);
+  }
+  /* each floodlight's mirror image in the water: where the line from the eye to the lamp's reflection below the
+   * ground crosses it, a bright glint stretched toward the camera, if a puddle lies there */
+  if (LM)
+    for (int l = 0; l < LAMPS + MAXP; l++) { /* the floodlights, then the lamps the players carry */
+      bool pl_ = l >= LAMPS;
+      if (pl_ && (!s->p[l - LAMPS].active || s->p[l - LAMPS].down)) continue;
+      t3_vec3 m = pl_ ? (t3_vec3){ s->p[l - LAMPS].x, -2.4f, s->p[l - LAMPS].y } : (t3_vec3){ lamp_head[l].x, -lamp_head[l].y, lamp_head[l].z };
+      float t = V.eye.y / (V.eye.y - m.y);
+      float px = V.eye.x + (m.x - V.eye.x) * t, pz = V.eye.z + (m.z - V.eye.z) * t;
+      if (pl_) { /* the damp asphalt round a player catches its lamp too: a soft streak toward the camera, everywhere */
+        static const float PCS[MAXP][3] = { { 0.2f, 0.7f, 1 }, { 1, 0.55f, 0.1f }, { 0.4f, 0.95f, 0.35f }, { 0.95f, 0.3f, 0.75f } };
+        const float *c3 = PCS[l - LAMPS];
+        cw_splats_add(V.pools, (t3_vec3){ px, 0, pz }, 2.6f, 1.1f, cw_atan2(V.eye.x - px, V.eye.z - pz), 0,
+                      (t3_color){ 0.55f + 0.45f * c3[0], 0.55f + 0.45f * c3[1], 0.55f + 0.45f * c3[2] }, 0.3f);
+      }
+      for (int i = 0; i < PUDDLES; i++) {
+        float dx = px - PUDL[i].x, dz = pz - PUDL[i].z, c = cw_cos(PUDL[i].yaw), sn = cw_sin(PUDL[i].yaw);
+        float lx = (dx * c - dz * sn) / PUDL[i].rx, lz = (dx * sn + dz * c) / PUDL[i].rz, e = lx * lx + lz * lz;
+        if (e >= 1) continue;
+        float k = (1 - e) * (1 - e);
+        float yaw = cw_atan2(V.eye.x - px, V.eye.z - pz);
+        static const float PC_[MAXP][3] = { { 0.2f, 0.7f, 1 }, { 1, 0.55f, 0.1f }, { 0.4f, 0.95f, 0.35f }, { 0.95f, 0.3f, 0.75f } };
+        t3_color gc = pl_ ? (t3_color){ 0.55f + 0.45f * PC_[l - LAMPS][0], 0.55f + 0.45f * PC_[l - LAMPS][1], 0.55f + 0.45f * PC_[l - LAMPS][2] } : (t3_color){ 0.72f, 0.86f, 1.0f };
+        cw_splats_add(V.pools, (t3_vec3){ px, 0, pz }, pl_ ? 1.0f : 1.6f, pl_ ? 0.5f : 0.45f, yaw, 0, gc, (pl_ ? 3.0f : 2.2f) * k);
+        break;
+      }
+    }
+  cw_splats_end(V.pools);
 }
 
 void view_camera(const sim *s, cw_node camera, float aspect, float shake_x, float shake_y) {
@@ -1042,6 +1430,7 @@ void view_camera(const sim *s, cw_node camera, float aspect, float shake_x, floa
   cw_node3d_set_position(camera, eye);
   cw_node3d_look_at(camera, at, (t3_vec3){ 0, 1, 0 });
   V.eye = eye, V.at = at, V.aspect = aspect;
+  shafts_face(eye);
 }
 
 /* where a world point lands on screen (0..1, y down), from the camera view_camera placed; false behind it */

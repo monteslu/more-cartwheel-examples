@@ -12,7 +12,9 @@
  *   hordeshooter_auto plays itself (for hosts that send no input).
  * Environment (development): HORDE_WAVE=n starts at wave n; HORDE_PLAYERS=n
  * sets the player count of the auto build; HORDE_BENCH=1 prints ms per
- * frame every 120 frames; HORDE_VFOG=0|1 turns the volumetric fog off or on. */
+ * frame every 120 frames; HORDE_BAKE=<file> bakes the yard's lighting again and
+ * writes it there (lightmaps/yard.cwlm ships); HORDE_HIDE=bits hides the crowd (1),
+ * the blob shadows (2) or the light pools (4) for A/B timing. */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -110,7 +112,6 @@ static void build_world(void) {
   fx_init(root);
   G.camera = cw_node_get(root, "Arena/Camera");
   G.sun = cw_node_get(root, "Arena/Sun");
-  if (getenv("HORDE_VFOG")) cw_node_set(cw_node_get(root, "Arena/Fog"), "volumetric", cw_val_bool(atoi(getenv("HORDE_VFOG")) != 0)); /* development: the volumetric fog on (1) or off (0) */
   G.built = true;
 }
 
@@ -145,6 +146,7 @@ static void init(void *u) {
                                   .game_save_size = sizeof(save_data), .game_save_version = 1, .start = start,
                                   .sound = shell_sound, .screen_changed = shell_screen });
   font = cw_ui_font_sans();
+  cw_quality_full_resolution(true); /* no preset and no Auto step draws the yard below the output size: no upscaling */
   if (getenv("HORDE_QUALITY")) cw_quality_set((cw_quality)CW_CLAMP(atoi(getenv("HORDE_QUALITY")), 0, 3), true);
   snd_boom = synth(1.1f, 70, 28, 0.75f, 1.0f, 3.5f);
   snd_shot = synth(0.14f, 260, 55, 0.62f, 0.5f, 9); /* a low thump with a crack of noise */
@@ -384,6 +386,11 @@ static void render(void *u, double alpha) {
     int w, h;
     cw_window_size(&w, &h);
     view_camera(&G.S, G.camera, (float)w / (float)h, sx, sy); /* first: the horde is culled against this frame's view */
+    static int lm_frames;
+    if (lm_frames >= 0 && ++lm_frames > 1) { /* after a frame: the sky has placed the sun, every node its transform */
+      view_lightmap(cw_scene_app_tree());
+      lm_frames = -1;
+    }
     double t0 = cw_wall();
     view_sync(&G.S, t);
     T_view += (cw_wall() - t0) * 1000;
@@ -391,10 +398,9 @@ static void render(void *u, double alpha) {
     fx_events(&G.S);
     if (sc == CW_SHELL_PLAY) fx_tick(&G.S);
     T_fx += (cw_wall() - t0) * 1000;
-    if (cw_node_valid(G.sun)) {
-      float cx, cy, hw, hh;
-      sim_team_box(&G.S, &cx, &cy, &hw, &hh);
-      cw_node3d_set_position(G.sun, (t3_vec3){ cx - 8, 30, cy - 12 });
+    if (cw_node_valid(G.sun)) { /* the sky sets the sun's direction: the blob shadows fall that way */
+      const t3_mat4 *m = cw_node3d_global_transform(G.sun);
+      if (m) view_set_sun((t3_vec3){ -m->e[8], -m->e[9], -m->e[10] });
     }
   }
   if (G.in_match && (sc == CW_SHELL_PLAY || sc == CW_SHELL_PAUSE)) hud();
@@ -422,9 +428,10 @@ static void render(void *u, double alpha) {
         int np = cw_pipeline_pass_stats(cw_pipeline_of(cw_scene_app_tree()), &ps);
         fprintf(stderr, "bench_passes gpu_total=%.2f", cw_pipeline_gpu_ms(cw_pipeline_of(cw_scene_app_tree())));
         for (int k = 0; k < np; k++)
-          if (ps[k].ran && (ps[k].gpu_ms_avg > 0.3f || ps[k].cpu_ms_avg > 0.3f)) fprintf(stderr, " %s=%.2f/%.2f", ps[k].name, ps[k].gpu_ms_avg, ps[k].cpu_ms_avg);
+          if (ps[k].ran && (ps[k].gpu_ms_avg > 0.02f || ps[k].cpu_ms_avg > 0.3f)) fprintf(stderr, " %s=%.2f/%.2f", ps[k].name, ps[k].gpu_ms_avg, ps[k].cpu_ms_avg);
         fprintf(stderr, "\n");
       }
+      { cw_crowd_stats cs = cw_crowd_get_stats(G.S.crowd); fprintf(stderr, "bench_crowd paths=%.3f neighbours=%.3f steer=%.3f move=%.3f step=%.3f\n", cs.phase_ms[0], cs.phase_ms[1], cs.phase_ms[2], cs.phase_ms[3], cs.step_ms); }
       fflush(stderr);
       T_sim = T_view = T_fx = T_frame = 0;
       T_n = 0;

@@ -14,6 +14,7 @@
 #include <string.h>
 
 #include "cartwheel/math.h"
+#include "cartwheel/profile.h"
 #include "game.h"
 
 static const char *const UP_NAME[] = { "Rapid fire", "Extra barrel", "Heavy rounds", "Piercing", "Rockets", "Boots", "Magnet", "Bigger blasts", "Armor" };
@@ -717,7 +718,7 @@ static void spawn_director(sim *s) {
 }
 
 static void enemies_step(sim *s) {
-  if (s->flow_age++ >= 6) build_flow(s);
+  if (s->flow_age++ >= 6) { CW_PROFILE_SCOPE("sim.flow"); build_flow(s); }
   int living = 0;
   for (int i = 0; i < MAXP; i++) living += s->p[i].active && !s->p[i].down;
   for (int i = 0; i < MAXE; i++) {
@@ -775,7 +776,7 @@ static void enemies_step(sim *s) {
     if (e->atk > 0) e->atk--;
   }
   (void)living;
-  cw_crowd_step(s->crowd, 1.0f / TICK);
+  { CW_PROFILE_SCOPE("sim.crowd"); cw_crowd_step(s->crowd, 1.0f / TICK); }
   s->crowd_ms = cw_crowd_get_stats(s->crowd).step_ms;
   for (int i = 0; i < MAXE; i++) {
     enemy *e = &s->e[i];
@@ -785,7 +786,8 @@ static void enemies_step(sim *s) {
     if (dx * dx + dy * dy > 0.0004f) e->face = cw_atan2(dy, dx);
     e->x = p.x, e->y = p.z;
   }
-  build_grid(s);
+  { CW_PROFILE_SCOPE("sim.grid"); build_grid(s); }
+  CW_PROFILE_BEGIN("sim.contact");
   /* contact damage */
   for (int k = 0; k < MAXP; k++) {
     player *p = &s->p[k];
@@ -813,6 +815,7 @@ static void enemies_step(sim *s) {
       }
     }
   }
+  CW_PROFILE_END();
   /* the boss calls runners */
   s->boss_hp = 0, s->boss_phase = 0;
   for (int i = 0; i < MAXE; i++)
@@ -1015,7 +1018,7 @@ void sim_step(sim *s, const input in[MAXP]) {
       memset(s->m, 0, sizeof s->m);
     }
   }
-  for (int i = 0; i < MAXP; i++) player_step(s, i, &in[i]);
+  { CW_PROFILE_SCOPE("sim.players"); for (int i = 0; i < MAXP; i++) player_step(s, i, &in[i]); }
   /* a downed player gets up when a teammate stands near for 2 s, or at each wave */
   for (int i = 0; i < MAXP; i++) {
     player *p = &s->p[i];
@@ -1060,8 +1063,8 @@ void sim_step(sim *s, const input in[MAXP]) {
     s->state_ticks = 0;
   }
   if (s->state == ST_PLAY) spawn_director(s);
-  enemies_step(s);
-  bullets_step(s);
+  { CW_PROFILE_SCOPE("sim.enemies"); enemies_step(s); }
+  { CW_PROFILE_SCOPE("sim.bullets"); bullets_step(s); }
   for (int i = 0; i < MAXX; i++) { /* explosions chain: each can start another this very tick */
     boom *b = &s->x[i];
     if (b->r == 0) continue;
@@ -1071,7 +1074,7 @@ void sim_step(sim *s, const input in[MAXP]) {
     s->nboom_total++;
     do_boom(s, &copy);
   }
-  pickups_step(s);
+  { CW_PROFILE_SCOPE("sim.pickups"); pickups_step(s); }
   mines_step(s);
   if (s->state == ST_PLAY) power_director(s);
   if (s->nav_dirty) {

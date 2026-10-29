@@ -20,8 +20,8 @@ env_update_angle = 2
 [node name="Sun" parent="." type="DirectionalLight3D"]
 position = vec3(-26, 17, -10)
 color = color(1, 0.72, 0.5, 1)
-shadow = true
-shadow_cascades = 3
+shadow = false
+shadow_cascades = 0
 shadow_distance = 78
 shadow_size = 2048
 shadow_extent = 30
@@ -29,6 +29,7 @@ shadow_far = 110
 shadow_bias = -0.0004
 shadow_normal_bias = 0.03
 fog_energy = 1.5
+bake_direct = true
 
 ; the rim: a cool light from the opposite side and low, edging every character
 [node name="Rim" parent="." type="DirectionalLight3D"]
@@ -36,6 +37,7 @@ position = vec3(24, 9, 18)
 color = color(0.42, 0.58, 1, 1)
 energy = 1.4
 fog_energy = 0
+bake_direct = true
 
 [node name="Env" parent="." type="WorldEnvironment"]
 background = color(0.05, 0.06, 0.1, 1)
@@ -44,39 +46,29 @@ ambient_energy = 0.3
 sky_color = color(0.45, 0.5, 0.75, 1)
 ground_color = color(0.07, 0.06, 0.06, 1)
 hemi_energy = 0.4
-
-; haze that the floodlights and the sun draw into beams
-[node name="Fog" parent="." type="HeightFog"]
-density = 0.007
-height_falloff = 0.12
-base_height = 0
-use_sky_color = true
-sun_scatter = 0.7
-sun_g = 0.74
-max_opacity = 0.75
-start_distance = 18
-sky_distance = 260
-volumetric = true
-volumetric_distance = 70
-volumetric_ambient = 0.5
-volumetric_albedo = color(1, 0.84, 0.7, 1)
+; a warm dusk haze over the yard, in every material (no full-frame fog pass)
+fog_mode = EXP2
+fog_color = color(0.2, 0.12, 0.06, 1)
+fog_density = 0.009
 
 [node name="Post" parent="." type="PostProcess"]
 ; depth first: the yard is not shaded under the horde (GL; the same picture)
-depth_prepass = true
+depth_prepass = false
+; heat haze and shockwaves bend the frame inside the tone curve pass: no full-frame pass of their own
+fuse_distortion = true
 tonemap = AGX
-exposure = 0.95
+exposure = 1.15
 bloom = true
 bloom_intensity = 0.14
 bloom_threshold = 1.0
 bloom_knee = 0.6
-ssao = true
+ssao = false
 ssao_radius = 0.8
-ssao_intensity = 1.3
-ssr = true
+ssao_intensity = 1.0
+ssr = false
 ssr_intensity = 0.85
 ssr_max_distance = 30
-aa = SMAA
+aa = FXAA
 grade = true
 grade_intensity = 0.9
 lut = "grade/dusk.cube"

@@ -1,12 +1,11 @@
 // hordeshooter late-wave perf gate: hordeshooter_bench (the bots at wave 14 with three players, about 2000
 // enemies) at 1920x1080, High, natively on the test GPU (the 890M), GL and WebGPU, with the pipeline's GPU
 // pass timers. Bounds the frame's GPU time (the mean of the bench's last three 120-frame windows):
-//   GL      12.9 ms  (the GL path is what a Batocera box without the WebGPU folder runs; 12.2 here
-//                     with the depth prepass and the horde culled, 13.3 to 13.8 without them)
-//   WebGPU  12.5 ms  (10.9 here)
+//   GL      4.1 ms   (a third of the 12.2 before the baked yard; about 3.8 here)
+//   WebGPU  4.1 ms   (11.1 before; about 3.8 here)
 // Every run must draw everything (no "not in any program table" line) and keep about 2000 enemies.
-// Controls, which must fail: GL with the optimisations off (no depth prepass, no culling) over the GL
-// bound, and WebGPU against an impossible 1 ms bound.
+// Controls, which must fail: GL at 2560x1440 (1.8 times the pixels: the bound is tight enough to see it), and
+// WebGPU against an impossible 1 ms bound.
 // Holds the GPU suite lock (the engine's tools/with-gpu-suite.mjs). Run: node tests/hordeshooter-perf.mjs
 import { spawnSync } from 'node:child_process';
 import { join, resolve, dirname } from 'node:path';
@@ -47,8 +46,8 @@ const check = (name, r, bound, mustFail = false) => {
     if (within) { console.log(`CONTROL PASSED (a failure): ${line}`); bad++; } else console.log(`ok   control fails as it must: ${line}`);
   } else if (!within) { console.log(`FAIL ${line}`); bad++; } else console.log(`ok   ${line}`);
 };
-check('GL', run('gl'), 12.9);
-check('WebGPU', run('webgpu'), 12.5);
-check('GL without the depth prepass and culling', run('gl', { HORDE_CULL: '0', CW_START_CMDS: 'set Arena/Post depth_prepass false' }), 12.9, true);
+check('GL', run('gl'), 4.1);
+check('WebGPU', run('webgpu'), 4.1);
+check('GL at 2560x1440 (1.8 times the pixels)', run('gl', { CW_RENDER_SCALE: '2' }), 4.1, true);
 check('WebGPU against 1 ms', run('webgpu'), 1, true);
 process.exit(bad ? 1 : 0);
