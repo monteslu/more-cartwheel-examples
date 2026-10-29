@@ -2,24 +2,48 @@
  * feeds the rules. GPU particles simulate on the tree's fixed step from hashed
  * seeds, so every host draws the same effects.
  *
- *   hit      a flash light, one short soft flash, a burst of hot streaking sparks and impact lines (more with power),
- *            camera shake. Round additive dots are kept small and dim: bright ones clip into flat discs.
- *   block    cool white-blue sparks and short impact lines, a lighter shake
+ *   hit      a flash light, one short soft flash, a burst of hot streaking sparks and impact lines (more with power).
+ *            Round additive dots are kept small and dim: bright ones clip into flat discs.
+ *   block    cool white-blue sparks and short impact lines
  *   knockdown, landing and dashes  low smoke-flipbook dust along the floor (soft against it) and chips
  *   fireball a glowing core with an ember trail, a muzzle flash; each fighter
  *            has its own colour
  *   super    a white screen flash, a burst of impact lines and streaks, a shockwave that bends the picture
- *   KO       a big flash and shake, a shockwave in the air and one along the floor
+ *   KO       a big flash, a shockwave in the air and one along the floor
  *   heavy hits fire a small Explosion3D at the contact (a hot burst, a fast shockwave that bends the picture, a flash);
- *            supers and knockouts a big one on the floor (rings in the air and along the ground, a flash) */
+ *            supers and knockouts a big one on the floor (rings in the air and along the ground, a flash)
+ *
+ * The camera never shakes: a hit, a throw, a wall splat, a knockdown and a KO are felt in the pads instead (rumble,
+ * cartwheel/input.h), each fighter's in their own player's pad, never a computer fighter's. Presentation only. */
 #include <stdio.h>
 #include <string.h>
 
 #include "cartwheel/explosions.h"
+#include "cartwheel/input.h"
 #include "game.h"
 
 int fx_count_hit, fx_count_block;
-int fx_count_impact; /* hits, blocks, throws, wall splats, supers and KOs: the events that shook the camera (the shake check) */
+int fx_count_impact; /* hits, blocks, throws, wall splats, supers and KOs: the impacts of the shake check (cam.offset) */
+int32_t fx_rumble_sent[2]; /* debug rumble.sent: requests sent to each player's pad */
+
+/* rumble: a request on top of one still running keeps the stronger of each motor and the longer time (a block's tick
+ * never cuts a KO short); the motors stop on their own after ms */
+static struct { const ft_game *g; double now, until[2]; float low[2], high[2]; } RB;
+static void rumble(int who, float low, float high, int ms) {
+  if (who < 0 || who > 1 || !RB.g || RB.g->cpu[who] || ms <= 0) return;
+  double left = (RB.until[who] - RB.now) * 1000.0;
+  if (left > 0) {
+    if (low <= RB.low[who] && high <= RB.high[who] && ms <= left) return;
+    low = fmaxf(low, RB.low[who]), high = fmaxf(high, RB.high[who]), ms = ms > (int)left ? ms : (int)left;
+  }
+  low = low > 1 ? 1 : low, high = high > 1 ? 1 : high;
+  RB.low[who] = low, RB.high[who] = high, RB.until[who] = RB.now + ms / 1000.0;
+  fx_rumble_sent[who]++;
+  cw_input_rumble(who, low, high, ms);
+}
+void fx_rumble_stop(void) {
+  for (int i = 0; i < 2; i++) if (RB.until[i] > RB.now) cw_input_rumble_stop(i), RB.until[i] = 0;
+}
 
 static struct {
   bool ready;
@@ -33,7 +57,7 @@ static struct {
   cw_node hboom[3], sboom;
   int hbi;
   cw_node ember[8];
-  float shake, flash;
+  float flash;
   uint32_t seen;
 } FX;
 
@@ -164,8 +188,7 @@ void fx_bind_lights(cw_node stage) {
   }
 }
 
-void fx_reset(void) { FX.shake = FX.flash = 0; FX.seen = 0; for (int i = 0; i < 3; i++) FX.light_age[i] = 0; }
-float fx_shake(void) { return FX.shake; }
+void fx_reset(void) { fx_rumble_stop(); FX.flash = 0; FX.seen = 0; for (int i = 0; i < 3; i++) FX.light_age[i] = 0; }
 float fx_flash(void) { return FX.flash; }
 
 static void at(cw_node n, t3_vec3 p) { cw_node3d_set_position(n, p); cw_particles_restart(n); }
@@ -183,6 +206,7 @@ void fx_event(const ft_game *g, const ft_event *e) {
   if (e->type == EV_HIT || e->type == EV_BLOCK || e->type == EV_THROW || e->type == EV_WALL || e->type == EV_SUPER || e->type == EV_KO) fx_count_impact++;
   t3_vec3 p = { (float)e->x / 1000.0f, (float)e->y / 1000.0f, 0.15f };
   float k = (float)e->power;
+  int who = e->who, other = 1 - e->who;
   switch (e->type) {
   case EV_HIT: {
     fx_count_hit++;
@@ -195,7 +219,9 @@ void fx_event(const ft_game *g, const ft_event *e) {
     cw_node_set(FX.ring[r], "amount", cw_val_int(big ? 18 : 10));
     at(FX.ring[r], p);
     light(p, big ? 90 : 50, 1, 0.75f, 0.4f);
-    FX.shake = fmaxf(FX.shake, big ? 0.55f : 0.18f + 0.06f * k);
+    /* the one hit: short and sharp on the light motor, a heavy hit (a launcher, a knockdown) with some weight under it */
+    rumble(who, big ? 0.35f : 0.05f + 0.03f * k, big ? 0.85f : 0.35f + 0.1f * k, big ? 140 : 70 + 15 * (int)k);
+    rumble(other, big ? 0.15f : 0, big ? 0.5f : 0.2f + 0.06f * k, big ? 80 : 50);
     if (big) heavy_boom(p);
     break;
   }
@@ -204,21 +230,22 @@ void fx_event(const ft_game *g, const ft_event *e) {
     at(FX.bsparks[FX.bi++ % 3], p);
     at(FX.bring[FX.bri++ % 3], p);
     light(p, 22, 0.5f, 0.7f, 1);
-    FX.shake = fmaxf(FX.shake, 0.08f);
+    rumble(who, 0, 0.18f, 40); /* a guarded hit: a tick */
     break;
   }
-  case EV_THROW: at(FX.dust[FX.di++ % 4], (t3_vec3){ p.x, 0.05f, 0.1f }); at(FX.chips[FX.ci++ % 3], (t3_vec3){ p.x, 0.02f, 0.1f }); FX.shake = fmaxf(FX.shake, 0.35f); light(p, 40, 1, 0.8f, 0.5f); break;
+  case EV_THROW: at(FX.dust[FX.di++ % 4], (t3_vec3){ p.x, 0.05f, 0.1f }); at(FX.chips[FX.ci++ % 3], (t3_vec3){ p.x, 0.02f, 0.1f }); rumble(who, 0.5f, 0.3f, 120); rumble(other, 0.3f, 0.1f, 80); light(p, 40, 1, 0.8f, 0.5f); break;
   case EV_DUST: {
     cw_node d = FX.dust[FX.di++ % 4];
     at(d, (t3_vec3){ p.x, 0.04f, 0.1f });
     if (e->power >= 2) at(FX.chips[FX.ci++ % 3], (t3_vec3){ p.x, 0.02f, 0.1f });
+    if (e->power >= 2) rumble(who, 0.3f, 0, 90); /* a knockdown hits the floor: a light thud */
     break;
   }
-  case EV_WALL: at(FX.dust[FX.di++ % 4], (t3_vec3){ p.x, 0.04f, 0.1f }); at(FX.chips[FX.ci++ % 3], (t3_vec3){ p.x, 0.02f, 0.1f }); FX.shake = fmaxf(FX.shake, 0.3f); break;
+  case EV_WALL: at(FX.dust[FX.di++ % 4], (t3_vec3){ p.x, 0.04f, 0.1f }); at(FX.chips[FX.ci++ % 3], (t3_vec3){ p.x, 0.02f, 0.1f }); rumble(who, 0.45f, 0.2f, 110); break; /* a wall splat */
   case EV_FIRE: light((t3_vec3){ p.x, 1.05f, 0.5f }, 30, 1, 0.6f, 0.3f); at(FX.flash_p[FX.fi++ % 4], (t3_vec3){ p.x, 1.05f, 0.2f }); break;
   case EV_SUPER: {
     FX.flash = 1;
-    FX.shake = fmaxf(FX.shake, 0.4f);
+    rumble(who, 0.3f, 0.3f, 120); /* the super starts */
     at(FX.streaks[FX.sti++ % 2], (t3_vec3){ p.x, 1.0f, 0.2f });
     int r = FX.ri++ % 4;
     cw_node_set(FX.ring[r], "amount", cw_val_int(24));
@@ -231,7 +258,8 @@ void fx_event(const ft_game *g, const ft_event *e) {
   case EV_TECH: at(FX.bring[FX.bri++ % 3], p); at(FX.bsparks[FX.bi++ % 3], p); light(p, 30, 0.7f, 0.9f, 1); break;
   case EV_KO: {
     FX.flash = 0.8f;
-    FX.shake = 1.0f;
+    rumble(who, 0.9f, 0.6f, 300); /* knocked out: the biggest one */
+    rumble(other, 0.5f, 0.3f, 180);
     for (int i = 0; i < 3; i++) at(FX.sparks[FX.si++ % 4], (t3_vec3){ p.x, 1.1f, 0.2f });
     at(FX.streaks[FX.sti++ % 2], (t3_vec3){ p.x, 1.1f, 0.2f });
     light((t3_vec3){ p.x, 1.2f, 1.0f }, 140, 1, 0.9f, 0.7f);
@@ -248,6 +276,7 @@ static const float PROJ_COL[4][3] = { { 1, 0.45f, 0.1f }, { 0.9f, 0.7f, 0.3f }, 
 void fx_update(float dt) { (void)dt; }
 void fx_frame(const ft_game *g, float dt) {
   if (!FX.ready) return;
+  RB.g = g, RB.now += dt;
   /* events since last call */
   uint32_t n = g->ev_seq;
   if (n - FX.seen > 64) FX.seen = n - 64;
@@ -280,7 +309,5 @@ void fx_frame(const ft_game *g, float dt) {
     }
     cw_node_set(FX.light[i], "energy", cw_val_float(e));
   }
-  FX.shake *= cw_exp(-dt * 9.0f);
   FX.flash *= cw_exp(-dt * 6.0f);
-  if (FX.shake < 0.002f) FX.shake = 0;
 }

@@ -48,7 +48,6 @@ static struct {
   t3_object *dbg_root;
   t3_mesh *dbg_box[10];
   int ndbg;
-  float cam_t;
   /* debug fields */
   int32_t d_state, d_phase, d_hp[2], d_meter[2], d_wins[2], d_round, d_tick, d_combo, d_adv, d_boxes;
   int32_t d_pos[4], d_fstate[2], d_hitcount, d_blockcount, d_def[2], d_guard[2], d_stats[6];
@@ -428,7 +427,7 @@ static float g_cam[3];
 /* the shake check (cam.offset): the camera as drawn (the camera node's global transform) against the framing (cw_frame_follow
  * and the settled look-at above the fighters) on the frames within half a second of an impact (a hit, block, throw, wall
  * splat, super or KO). cam.offset: those frames, the ones whose drawn camera was off the framing by over 0.1 mm or 0.1
- * milliradian, and the largest offset (micrometres of eye plus microradians of look). Nothing moves the camera on an
+ * milliradian, and the largest offset (in 0.1 mm and 0.1 milliradian units, eye plus look). Nothing moves the camera on an
  * impact: [n, 0, 0]. */
 static int32_t cam_offset[3];
 static void offsetgate(t3_vec3 pos, t3_vec3 tgt) {
@@ -447,7 +446,7 @@ static void offsetgate(t3_vec3 pos, t3_vec3 tgt) {
   float off = sqrtf(ex * ex + ey * ey + ez * ez) + sqrtf(fx * fx + fy * fy + fz * fz);
   cam_offset[0]++;
   if (off > 1e-4f) cam_offset[1]++;
-  if ((int32_t)(off * 1e6f) > cam_offset[2]) cam_offset[2] = (int32_t)(off * 1e6f);
+  if ((int32_t)(off * 1e4f) > cam_offset[2]) cam_offset[2] = (int32_t)(off * 1e4f);
 }
 static void update_camera(float dt, float aspect) {
   if (!cw_node_valid(G.camera)) return;
@@ -500,13 +499,11 @@ static void update_camera(float dt, float aspect) {
   cw_frame_result fit, cam;
   if (!cw_frame_fit(&p, pts, npts, &fit)) return;
   cw_frame_follow(&G.fs, &p, &fit, dt, 7.0f, &cam);
-  /* a settled look-at a little above the fighters so the stage reads under them */
-  float sh = fx_shake();
-  G.cam_t += dt;
-  float sx = (hash01((uint32_t)(G.cam_t * 90.0f) * 3 + 1) - 0.5f) * sh * 0.5f, sy = (hash01((uint32_t)(G.cam_t * 90.0f) * 5 + 2) - 0.5f) * sh * 0.4f;
+  /* a settled look-at a little above the fighters so the stage reads under them. The framing is the whole camera: it
+   * never shakes (an impact is felt in the pads, fx.c) */
   float lift = g_cam[0] > 0 ? 0.45f / g_cam[0] : 0.45f;
-  t3_vec3 pos = { cam.pos[0] + sx, cam.pos[1] + lift + sy, cam.pos[2] };
-  t3_vec3 tgt = { cam.target[0] + sx * 0.4f, cam.target[1] + 0.15f, cam.target[2] };
+  t3_vec3 pos = { cam.pos[0], cam.pos[1] + lift, cam.pos[2] };
+  t3_vec3 tgt = { cam.target[0], cam.target[1] + 0.15f, cam.target[2] };
   cw_node3d_set_position(G.camera, pos);
   cw_node3d_look_at(G.camera, tgt, (t3_vec3){ 0, 1, 0 });
   G.d_cam[0] = pos.x; G.d_cam[1] = pos.y; G.d_cam[2] = pos.z;
@@ -554,6 +551,7 @@ static void update(void *u, double dtd) {
   float dt = (float)dtd;
   if (!G.mdl[0]) return;
   cw_shell_screen sc = cw_shell_screen_now();
+  if (sc != CW_SHELL_PLAY) fx_rumble_stop(); /* the menus and pause: the motors stop */
   if (sc != CW_SHELL_PLAY && sc != CW_SHELL_TITLE && sc != CW_SHELL_JOIN) return;
   pool_frame();
   for (int i = 0; i < 2; i++) model_pose(G.mdl[i], &G.sim, i, dt);
@@ -931,6 +929,7 @@ static void init(void *u) {
   cw_debug_i32("tex.nodes", &G.d_tex_nodes); cw_debug_i32("tex.objs", &G.d_tex_objs); cw_debug_i32("tex.meshes", &G.d_tex_meshes); cw_debug_i32("tex.applied", &G.tex_done);
   cw_debug_u32("tex.hash", &tex_hash); cw_debug_f32_array("cam.pos", G.d_cam, 3); cw_debug_f32("fighter.spring", &G.d_spring);
   cw_debug_field("cam.offset", cam_offset, CW_DBG_I32, 3);
+  cw_debug_field("rumble.sent", fx_rumble_sent, CW_DBG_I32, 2);
 #if defined(FIGHTER_AUTOPILOT) || defined(FIGHTER_SCRIPTED)
   cw_shell_start(2);
 #endif

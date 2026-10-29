@@ -21,7 +21,8 @@
       "ticks",
       "fx.hits",
       "fx.blocks",
-      "tex.hash"
+      "tex.hash",
+      "cam.offset"
     ],
     "expect": {
       "game.phase": 1,
@@ -44,7 +45,12 @@
       ],
       "fx.hits": 19,
       "fx.blocks": 0,
-      "sim.hash": 2010081049
+      "sim.hash": 2010081049,
+      "cam.offset": [
+        490,
+        0,
+        0
+      ]
     },
     "webgpu": {
       "hosts": [
@@ -400,5 +406,55 @@
     "skip": [
       "romdev"
     ]
+  },
+  {
+    "name": "fighter-rumble",
+    "app": "fighter_test",
+    "frames": 540,
+    "input": "fighter-p1-moves.json",
+    "controlInput": "fighter-p1-moves-ctl.json",
+    "maxGt16": 0.06,
+    "fields": [
+      "game.state",
+      "game.phase",
+      "sim.hp",
+      "sim.hash",
+      "sim.stats",
+      "fx.hits",
+      "cam.offset",
+      "rumble.sent",
+      "cw.rumble"
+    ],
+    "expect": {
+      "sim.hash": 2201356621,
+      "fx.hits": 4,
+      "cam.offset": [
+        137,
+        0,
+        0
+      ],
+      "rumble.sent": [
+        5,
+        7
+      ],
+      "cw.rumble": [
+        12,
+        1,
+        450,
+        200,
+        110
+      ]
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "maxGt16": 0.06,
+      "vsGl": 0.25,
+      "note": "dual cart on romdev and Chromium against native WebGPU, and on romdev GL against native GL"
+    },
+    "note": "No shake: player 1 lands 4 hits and a throw on player 2 (the fighter-p1-moves script) while the camera as drawn is held against the framing on every frame within half a second of an impact (cam.offset: 137 frames, none off by over 0.1 mm or 0.1 milliradian; the build before: all 137 off, up to 13 cm and radians summed). The hits are felt in the pads instead: rumble.sent counts the requests to player 1 (dealt) and player 2 (taken), cw.rumble is the engine's last (pad 1). The sim hash is the one fighter-p1-moves pins: the shake was never in the rules. Control: the script without the fireball."
   }
 ]
