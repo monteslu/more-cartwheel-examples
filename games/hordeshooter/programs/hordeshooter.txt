@@ -64,3 +64,4 @@ standard+senv+fog2+l2001+xcluster
 basic+map+vcol+rep+lmap+fog2
 basic+map+trans+ds
 basic+map+trans+instbig+fog2+cenv+add+icol
+basic+map+trans+instbig+cenv+add+icol

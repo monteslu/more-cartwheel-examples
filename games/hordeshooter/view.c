@@ -541,11 +541,11 @@ static void view_dress(void) {
     cw_node_add_child(V.root, l);
     cw_node3d_set_position(l, lamp_head[i]);
     cw_node_set(l, "color", cw_val_color(0.72f, 0.86f, 1.0f, 1));
-    cw_node_set(l, "energy", cw_val_float(getenv("HORDE_FLOOD") ? (float)atof(getenv("HORDE_FLOOD")) : 1100));
+    cw_node_set(l, "energy", cw_val_float(1100));
     cw_node_set(l, "range", cw_val_float(46));
     cw_node_set(l, "decay", cw_val_float(2));
-    cw_node_set(l, "angle", cw_val_float(0.5f));
-    cw_node_set(l, "penumbra", cw_val_float(0.55f));
+    cw_node_set(l, "angle", cw_val_float(0.66f));
+    cw_node_set(l, "penumbra", cw_val_float(0.65f));
     cw_node_set(l, "bake_direct", cw_val_bool(true)); /* the yard's pool is in the lightmap */
     cw_node_set(l, "realtime", cw_val_bool(false)); /* and only there: what moves takes it from the floor (view_ground_light) */
     cw_node3d_look_at(l, lamp_aim[i], (t3_vec3){ 0, 1, 0 });
@@ -701,6 +701,7 @@ void view_init(cw_node root) {
   cw_node gn = cw_node_new("MeshInstance3D", "Ground");
   cw_node_add_child(V.root, gn);
   cw_node_set(gn, "gi_mode", cw_val_enum("STATIC"));
+  cw_node_set(gn, "lightmap_uv", cw_val_enum("UV0")); /* the plane's own uv0 is a clean [0, 1] layout: the lightmap lines up on it */
   cw_mesh3d_set_procedural(gn, gmesh);
   t3_release(gmesh), t3_release(pg), t3_release(gm);
   /* the yard's wall: a low rim of blocks round the edge, one instanced mesh */
@@ -835,7 +836,7 @@ void view_init(cw_node root) {
       cw_node_add_child(V.root, l);
       cw_node_set(l, "color", cw_val_color(0.55f + 0.45f * PC[i][0], 0.55f + 0.45f * PC[i][1], 0.55f + 0.45f * PC[i][2], 1));
       cw_node_set(l, "energy", cw_val_float(0));
-      cw_node_set(l, "range", cw_val_float(4.5f));
+      cw_node_set(l, "range", cw_val_float(3.5f));
       cw_node_set(l, "decay", cw_val_float(2));
       cw_node_set(l, "fog_energy", cw_val_float(0));
       cw_node3d_set_position(l, (t3_vec3){ 0, -60, 0 });
@@ -855,7 +856,6 @@ void view_set_sun(t3_vec3 d) { /* d: where the sunlight travels */
   float h = sqrtf(d.x * d.x + d.z * d.z);
   if (h < 1e-4f) return;
   V.sun_x = d.x / h, V.sun_z = d.z / h;
-  { static int once; if (!once++ && getenv("HORDE_BENCH")) fprintf(stderr, "horde: sun travels %.3f %.3f %.3f\n", d.x, d.y, d.z); }
   V.sun_len = CW_CLAMP(h / CW_MAX(-d.y, 0.05f), 0.2f, 3.0f); /* shadow length of a 1 m caster */
 }
 
@@ -906,7 +906,10 @@ static void ground_light_build(void) {
       t3_color e;
       cw_lightmap_irradiance_below(LM, (t3_vec3){ GL_LO + (float)x * GL_STEP, 1, GL_LO + (float)z * GL_STEP }, &e);
       /* against the open ground's brightness (its warm dusk colour is what the real-time sun already gives) */
-      GLG[z][x] = (t3_color){ CW_CLAMP(e.r / on * 0.92f, 0.3f, 3.5f), CW_CLAMP(e.g / on, 0.3f, 3.5f), CW_CLAMP(e.b / on * 1.1f, 0.3f, 3.5f) };
+      /* half its hue: the floodlights' cool white and the sun's warmth show on the crowd without turning it blue */
+      float l = (e.r + e.g + e.b) / 3.0f;
+      GLG[z][x] = (t3_color){ CW_CLAMP((l + 0.5f * (e.r - l)) / on, 0.3f, 3.5f), CW_CLAMP((l + 0.5f * (e.g - l)) / on, 0.3f, 3.5f),
+                              CW_CLAMP((l + 0.5f * (e.b - l)) / on, 0.3f, 3.5f) };
     }
   gl_ready = true;
   /* the scenery stands still: its light from the floor is set once (a little toward the yard, off its own
@@ -942,7 +945,7 @@ static t3_texture *puddle_atlas(void) {
       float n = fbm(u * 0.5f + 0.5f, v * 0.5f + 0.5f, 3, 4, sd);
       float r = sqrtf(u * u + v * v) * (0.8f + 0.55f * n);
       if (k & 1) { float u2 = u - 0.45f, v2 = v + 0.3f; r = CW_MIN(r, sqrtf(u2 * u2 + v2 * v2) * 1.5f * (0.8f + 0.5f * n)); }
-      float a = 1.0f - CW_CLAMP((r - 0.55f) / 0.25f, 0.0f, 1.0f);
+      float a = 1.0f - CW_CLAMP((r - 0.62f) / 0.1f, 0.0f, 1.0f); /* water has a crisp edge */
       a = a * a * (3 - 2 * a);
       if (x % CW_ < 2 || y % CH_ < 2 || x % CW_ >= CW_ - 2 || y % CH_ >= CH_ - 2) a = 0; /* no bleed across cells */
       uint8_t *p = px + (y * PUD_TEX + x) * 4;
@@ -974,12 +977,12 @@ static void view_puddles(void) {
       ua->version++;
     }
     t3_material *m = t3_mesh_basic_material_new(0xffffff);
-    m->color = lin(0.075f, 0.08f, 0.09f); /* dark standing water */
-    m->opacity = 0.82f;
+    m->color = lin(0.05f, 0.05f, 0.055f); /* standing water: the asphalt under it darker, the sky faint in it */
+    m->opacity = 0.5f;
     m->transparent = true;
     m->depth_write = false;
     t3_material_set_texture(m, T3_MAP, atlas);
-    cw_lightmap_use_reflection(LM, m, 1.0f);
+    cw_lightmap_use_reflection(LM, m, 0.7f);
     PUD[k] = imesh("Puddles", g, m, PUDDLES, false);
     PUD[k]->mesh.base.receive_shadow = false;
     PUD[k]->mesh.base.render_order = -3; /* under the blob shadows and the light pools */
@@ -1370,21 +1373,41 @@ void view_sync(const sim *s, float time) {
   /* the floor is baked and takes no real-time light: each moving light (a player's lamp, a muzzle flash, a
    * blast, a burning barrel) shows on it as a pool of added light (the floor's albedo is about 0.16 where the lights fall) */
   cw_splats_begin(V.pools);
-  cw_splats_add_lights(V.pools, cw_node_parent(V.root), 0, 0.16f / 3.14159265f);
+  cw_splats_add_lights(V.pools, cw_node_parent(V.root), 0, 0.1f / 3.14159265f);
+  /* the wet asphalt's sheen: each floodlight's blurred mirror image on the ground, where the eye sees it reflected,
+   * a long soft streak toward the camera that slides as the camera moves (what the floodlights' specular on a wet
+   * floor showed, for six additive discs) */
+  for (int l = 0; l < LAMPS; l++) {
+    t3_vec3 m = { lamp_head[l].x, -lamp_head[l].y, lamp_head[l].z };
+    float t = V.eye.y / (V.eye.y - m.y);
+    float px = V.eye.x + (m.x - V.eye.x) * t, pz = V.eye.z + (m.z - V.eye.z) * t;
+    float yaw = cw_atan2(V.eye.x - px, V.eye.z - pz);
+    cw_splats_add(V.pools, (t3_vec3){ px, 0, pz }, 13.0f, 4.5f, yaw, -0.25f, (t3_color){ 0.72f, 0.86f, 1.0f }, 0.07f);
+  }
   /* each floodlight's mirror image in the water: where the line from the eye to the lamp's reflection below the
    * ground crosses it, a bright glint stretched toward the camera, if a puddle lies there */
   if (LM)
-    for (int l = 0; l < LAMPS; l++) {
-      t3_vec3 m = { lamp_head[l].x, -lamp_head[l].y, lamp_head[l].z };
+    for (int l = 0; l < LAMPS + MAXP; l++) { /* the floodlights, then the lamps the players carry */
+      bool pl_ = l >= LAMPS;
+      if (pl_ && (!s->p[l - LAMPS].active || s->p[l - LAMPS].down)) continue;
+      t3_vec3 m = pl_ ? (t3_vec3){ s->p[l - LAMPS].x, -2.4f, s->p[l - LAMPS].y } : (t3_vec3){ lamp_head[l].x, -lamp_head[l].y, lamp_head[l].z };
       float t = V.eye.y / (V.eye.y - m.y);
       float px = V.eye.x + (m.x - V.eye.x) * t, pz = V.eye.z + (m.z - V.eye.z) * t;
+      if (pl_) { /* the damp asphalt round a player catches its lamp too: a soft streak toward the camera, everywhere */
+        static const float PCS[MAXP][3] = { { 0.2f, 0.7f, 1 }, { 1, 0.55f, 0.1f }, { 0.4f, 0.95f, 0.35f }, { 0.95f, 0.3f, 0.75f } };
+        const float *c3 = PCS[l - LAMPS];
+        cw_splats_add(V.pools, (t3_vec3){ px, 0, pz }, 2.6f, 1.1f, cw_atan2(V.eye.x - px, V.eye.z - pz), 0,
+                      (t3_color){ 0.55f + 0.45f * c3[0], 0.55f + 0.45f * c3[1], 0.55f + 0.45f * c3[2] }, 0.3f);
+      }
       for (int i = 0; i < PUDDLES; i++) {
         float dx = px - PUDL[i].x, dz = pz - PUDL[i].z, c = cw_cos(PUDL[i].yaw), sn = cw_sin(PUDL[i].yaw);
         float lx = (dx * c - dz * sn) / PUDL[i].rx, lz = (dx * sn + dz * c) / PUDL[i].rz, e = lx * lx + lz * lz;
         if (e >= 1) continue;
         float k = (1 - e) * (1 - e);
         float yaw = cw_atan2(V.eye.x - px, V.eye.z - pz);
-        cw_splats_add(V.pools, (t3_vec3){ px, 0, pz }, 1.6f, 0.45f, yaw, 0, (t3_color){ 0.72f, 0.86f, 1.0f }, 2.2f * k);
+        static const float PC_[MAXP][3] = { { 0.2f, 0.7f, 1 }, { 1, 0.55f, 0.1f }, { 0.4f, 0.95f, 0.35f }, { 0.95f, 0.3f, 0.75f } };
+        t3_color gc = pl_ ? (t3_color){ 0.55f + 0.45f * PC_[l - LAMPS][0], 0.55f + 0.45f * PC_[l - LAMPS][1], 0.55f + 0.45f * PC_[l - LAMPS][2] } : (t3_color){ 0.72f, 0.86f, 1.0f };
+        cw_splats_add(V.pools, (t3_vec3){ px, 0, pz }, pl_ ? 1.0f : 1.6f, pl_ ? 0.5f : 0.45f, yaw, 0, gc, (pl_ ? 3.0f : 2.2f) * k);
         break;
       }
     }

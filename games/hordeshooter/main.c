@@ -12,7 +12,9 @@
  *   hordeshooter_auto plays itself (for hosts that send no input).
  * Environment (development): HORDE_WAVE=n starts at wave n; HORDE_PLAYERS=n
  * sets the player count of the auto build; HORDE_BENCH=1 prints ms per
- * frame every 120 frames; HORDE_VFOG=0|1 turns the volumetric fog off or on. */
+ * frame every 120 frames; HORDE_BAKE=<file> bakes the yard's lighting again and
+ * writes it there (lightmaps/yard.cwlm ships); HORDE_HIDE=bits hides the crowd (1),
+ * the blob shadows (2) or the light pools (4) for A/B timing. */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -110,7 +112,6 @@ static void build_world(void) {
   fx_init(root);
   G.camera = cw_node_get(root, "Arena/Camera");
   G.sun = cw_node_get(root, "Arena/Sun");
-  if (getenv("HORDE_VFOG")) cw_node_set(cw_node_get(root, "Arena/Fog"), "volumetric", cw_val_bool(atoi(getenv("HORDE_VFOG")) != 0)); /* development: the volumetric fog on (1) or off (0) */
   G.built = true;
 }
 
@@ -427,7 +428,7 @@ static void render(void *u, double alpha) {
         int np = cw_pipeline_pass_stats(cw_pipeline_of(cw_scene_app_tree()), &ps);
         fprintf(stderr, "bench_passes gpu_total=%.2f", cw_pipeline_gpu_ms(cw_pipeline_of(cw_scene_app_tree())));
         for (int k = 0; k < np; k++)
-          if (ps[k].ran && (ps[k].gpu_ms_avg > 0.3f || ps[k].cpu_ms_avg > 0.3f)) fprintf(stderr, " %s=%.2f/%.2f", ps[k].name, ps[k].gpu_ms_avg, ps[k].cpu_ms_avg);
+          if (ps[k].ran && (ps[k].gpu_ms_avg > 0.02f || ps[k].cpu_ms_avg > 0.3f)) fprintf(stderr, " %s=%.2f/%.2f", ps[k].name, ps[k].gpu_ms_avg, ps[k].cpu_ms_avg);
         fprintf(stderr, "\n");
       }
       { cw_crowd_stats cs = cw_crowd_get_stats(G.S.crowd); fprintf(stderr, "bench_crowd paths=%.3f neighbours=%.3f steer=%.3f move=%.3f step=%.3f\n", cs.phase_ms[0], cs.phase_ms[1], cs.phase_ms[2], cs.phase_ms[3], cs.step_ms); }

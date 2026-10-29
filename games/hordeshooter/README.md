@@ -70,7 +70,8 @@ the tests. Development switches (environment): `HORDE_WAVE=n` starts at wave
 n, `HORDE_PLAYERS=n` sets the auto build's player count, `HORDE_QUALITY=0..3`
 picks a graphics preset, `HORDE_BENCH=1` prints timings every 120 frames,
 `HORDE_REPORT=1` prints the first kill, every level-up and every hit,
-`HORDE_VFOG=0|1` turns the volumetric fog off or on, `HORDE_POWER=n` hands every
+`HORDE_BAKE=<file>` bakes the yard's lighting again and writes it there, `HORDE_HIDE=1|2|4` hides the crowd,
+the blob shadows or the light pools (timing A/B), `HORDE_POWER=n` hands every
 player power-up n (0 to 11, the table order) and keeps it held, `HORDE_POWER_SHOW=1`
 lays one of each round the start. A run started at a later
 wave begins with about the levels a played run has there.
@@ -100,11 +101,20 @@ code; see CREDITS.
   Rebuild them with
   `flatpak run org.blender.Blender --background --factory-startup --python <abs path>/tools/blender/hordechars.py -- <abs path>/assets/models`
   (and `hordeprops.py` the same way).
-- Light: a low warm sun with three cascaded shadow maps, a cool rim light from
-  the other side, six floodlights, fire and blast lights through clustered
-  lighting, haze that the sun and the floodlights draw into beams, ambient
-  occlusion, reflections on the wet floor, bloom and a dusk colour grade
-  (`tools/gen-lut.mjs`).
+- Light, built to run on weak GPUs: the yard's floor is baked
+  (`assets/lightmaps/yard.cwlm`, made by the game itself with `HORDE_BAKE`): a low warm
+  sun, a cool rim light and six floodlights, with soft shadows from the walls, masts and
+  containers and the dusk sky, drawn unlit from its lightmap. The floodlights live in
+  the bake only; the sun and the rim stay real time for everything that moves. The
+  crowd, the soldiers and the yard's pieces take the light of the floor under them
+  (a floodlight's pool, a wall's shadow), cast soft blob shadows that run away from
+  the low sun, and the soldiers' lamps, muzzle flashes, blasts and fires show on the
+  floor as pools of light. Puddles reflect a baked reflection cube and glint where a
+  floodlight or a soldier's lamp would reflect in them; the damp asphalt catches each
+  lamp as a soft streak. Light shaft cards under the floodlights, a warm haze in every
+  material, bloom and a dusk colour grade (`tools/gen-lut.mjs`). The crowd is
+  Lambert-shaded (it is small on screen and thousands strong); the soldiers keep the
+  full PBR model. The yard always draws at the full output size.
 - Players stand out: a team-coloured ring, a light that rides over each
   soldier, a faint team glow on the plate and a P1 to P4 tag over each head;
   the horde is darker and cooler than the floor.
