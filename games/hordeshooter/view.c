@@ -940,8 +940,8 @@ static void ground_light_build(void) {
       /* against the open ground's brightness (its warm dusk colour is what the real-time sun already gives) */
       /* half its hue: the floodlights' cool white and the sun's warmth show on the crowd without turning it blue */
       float l = (e.r + e.g + e.b) / 3.0f;
-      GLG[z][x] = (t3_color){ CW_CLAMP((l + 0.35f * (e.r - l)) / on, 0.3f, 3.5f), CW_CLAMP((l + 0.35f * (e.g - l)) / on, 0.3f, 3.5f),
-                              CW_CLAMP((l + 0.35f * (e.b - l)) / on, 0.3f, 3.5f) };
+      GLG[z][x] = (t3_color){ CW_CLAMP((l + 0.35f * (e.r - l)) / on, 0.3f, 2.2f), CW_CLAMP((l + 0.35f * (e.g - l)) / on, 0.3f, 2.2f),
+                              CW_CLAMP((l + 0.35f * (e.b - l)) / on, 0.3f, 2.2f) };
     }
   gl_ready = true;
   /* the scenery stands still: its light from the floor is set once (a little toward the yard, off its own
@@ -1244,10 +1244,10 @@ void view_sync(const sim *s, float time) {
       { { 1, 1, 1 }, { 1, 1, 1 }, { 1, 1, 1 }, { 1, 1, 1 }, { 1, 1, 1 }, { 1, 1, 1 } },
     };
     const float *hide = HIDE[k][hash2((uint32_t)i, 77u) % 6];
-    float tint = 0.5f + 0.22f * h01((uint32_t)i, 5);
+    float tint = 0.42f + 0.2f * h01((uint32_t)i, 5);
     /* the hides pulled toward a cool grey: the creatures' baked reds stay muted, the variety stays */
     t3_color c = e->flash > 0 ? (t3_color){ 4, 2.8f, 2.2f }
-                              : (t3_color){ tint * (0.45f * hide[0] + 0.55f * 0.7f), tint * (0.45f * hide[1] + 0.55f * 0.76f), tint * (0.45f * hide[2] + 0.55f * 0.84f) };
+                              : (t3_color){ tint * (0.3f * hide[0] + 0.7f * 0.64f), tint * (0.3f * hide[1] + 0.7f * 0.72f), tint * (0.3f * hide[2] + 0.7f * 0.84f) };
     {
       t3_color gl = ground_light(e->x, e->y);
       c.r *= gl.r, c.g *= gl.g, c.b *= gl.b;
