@@ -733,6 +733,21 @@ void view_init(cw_node root) {
         }
         V.br[k] = sqrtf(r2) * 1.1f + 0.05f;
       }
+      { /* the crowd's baked colours desaturated toward a cool grey of the same luminance (each vertex: no hue is
+         * swung, so a red hide greys instead of turning magenta); the green kind keeps most of its green to stay readable */
+        static const float DESAT[EK_KINDS] = { 0.78f, 0.7f, 0.2f, 0.7f }, COOL[3] = { 0.88f, 1.0f, 1.14f };
+        for (int f = 0; f < V.bn[k]; f++) {
+          t3_attribute *ca = V.ch[k].geo[0][f]->attributes[T3_ATTR_COLOR];
+          float *cv = t3_attribute_f32(ca);
+          for (int v = 0; v < ca->count; v++) {
+            float *p = cv + v * 3;
+            if (p[0] > 1.5f || p[1] > 1.5f || p[2] > 1.5f) continue; /* glowing eyes and the like */
+            float l = 0.2126f * p[0] + 0.7152f * p[1] + 0.0722f * p[2];
+            for (int c = 0; c < 3; c++) p[c] += DESAT[k] * (l * COOL[c] - p[c]);
+          }
+          ca->version++;
+        }
+      }
       int bc = k == EK_BOSS ? 4 : cap[k] / V.bn[k] * 3 / 2 + 48;
       /* the crowd is small on screen and thousands strong: Lambert (diffuse only, no normal or roughness map),
        * its look in its baked vertex colours; the players keep the full PBR model */
@@ -1244,10 +1259,10 @@ void view_sync(const sim *s, float time) {
       { { 1, 1, 1 }, { 1, 1, 1 }, { 1, 1, 1 }, { 1, 1, 1 }, { 1, 1, 1 }, { 1, 1, 1 } },
     };
     const float *hide = HIDE[k][hash2((uint32_t)i, 77u) % 6];
-    float tint = 0.42f + 0.2f * h01((uint32_t)i, 5);
-    /* the hides pulled toward a cool grey: the creatures' baked reds stay muted, the variety stays */
+    float tint = 0.39f + 0.2f * h01((uint32_t)i, 5);
+    /* the hides over the greyed baked colours: the variety stays */
     t3_color c = e->flash > 0 ? (t3_color){ 4, 2.8f, 2.2f }
-                              : (t3_color){ tint * (0.3f * hide[0] + 0.7f * 0.64f), tint * (0.3f * hide[1] + 0.7f * 0.72f), tint * (0.3f * hide[2] + 0.7f * 0.84f) };
+                              : (t3_color){ tint * (0.35f * hide[0] + 0.65f * 0.8f), tint * (0.35f * hide[1] + 0.65f * 0.8f), tint * (0.35f * hide[2] + 0.65f * 0.86f) };
     {
       t3_color gl = ground_light(e->x, e->y);
       c.r *= gl.r, c.g *= gl.g, c.b *= gl.b;
@@ -1460,7 +1475,7 @@ void view_sync(const sim *s, float time) {
   cw_splats_end(V.sheen);
 }
 
-void view_camera(const sim *s, cw_node camera, float aspect, float shake_x, float shake_y) {
+void view_camera(const sim *s, cw_node camera, float aspect, float control_x, float control_y) {
   float cx, cy, hw, hh;
   sim_team_box(s, &cx, &cy, &hw, &hh);
   const float fov = 38.0f * 3.14159f / 180.0f, tilt = 62.0f * 3.14159f / 180.0f;
@@ -1471,7 +1486,7 @@ void view_camera(const sim *s, cw_node camera, float aspect, float shake_x, floa
   V.cx += (cx - V.cx) * 0.08f;
   V.cy += (cy - V.cy) * 0.08f;
   V.cd += (d - V.cd) * 0.04f;
-  t3_vec3 at = { V.cx + shake_x, 0, V.cy + shake_y };
+  t3_vec3 at = { V.cx + control_x, 0, V.cy + control_y }; /* no shake: the offsets are the camera gate's control only */
   t3_vec3 eye = { at.x, cw_sin(tilt) * V.cd, at.z + cw_cos(tilt) * V.cd };
   cw_node3d_set_position(camera, eye);
   cw_node3d_look_at(camera, at, (t3_vec3){ 0, 1, 0 });

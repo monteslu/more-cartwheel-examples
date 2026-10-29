@@ -64,6 +64,11 @@ static struct {
   int won_ticks;
   cw_node camera, sun;
   int level_flash[MAXP], level_up[MAXP];
+  /* the camera gate: frames the camera jerked (its position's second difference over 2 cm: a shake, never the
+   * smooth follow) and the blasts seen, for tests */
+  int32_t cam_jerks, booms;
+  t3_vec3 cam_p[2];
+  int cam_n;
 } G;
 
 static cw_font font;
@@ -173,6 +178,8 @@ static void init(void *u) {
   cw_debug_field("player.x", G.px, CW_DBG_I32, MAXP);
   cw_debug_field("player.y", G.py, CW_DBG_I32, MAXP);
   cw_debug_u32("game.hash", &G.hash);
+  cw_debug_i32("view.cam_jerks", &G.cam_jerks);
+  cw_debug_i32("fx.booms", &G.booms);
 #ifdef HORDE_AUTOPILOT
 #ifndef HORDE_AUTO_PLAYERS
 #define HORDE_AUTO_PLAYERS 2
@@ -383,10 +390,19 @@ static void render(void *u, double alpha) {
     static float t;
     t += 1.0f / 60.0f;
     float sx, sy;
-    fx_shake(&sx, &sy);
+    fx_control_shake(&sx, &sy);
     int w, h;
     cw_window_size(&w, &h);
     view_camera(&G.S, G.camera, (float)w / (float)h, sx, sy); /* first: the horde is culled against this frame's view */
+    {
+      t3_vec3 p = cw_node3d_position(G.camera);
+      if (G.cam_n >= 2) {
+        float jx = p.x - 2 * G.cam_p[0].x + G.cam_p[1].x, jy = p.y - 2 * G.cam_p[0].y + G.cam_p[1].y, jz = p.z - 2 * G.cam_p[0].z + G.cam_p[1].z;
+        if (jx * jx + jy * jy + jz * jz > 0.02f * 0.02f) G.cam_jerks++;
+      }
+      G.cam_p[1] = G.cam_p[0], G.cam_p[0] = p, G.cam_n++;
+      G.booms = fx_get_stats().booms;
+    }
     static int lm_frames;
     if (lm_frames >= 0 && ++lm_frames > 1) { /* after a frame: the sky has placed the sun, every node its transform */
       view_lightmap(cw_scene_app_tree());
