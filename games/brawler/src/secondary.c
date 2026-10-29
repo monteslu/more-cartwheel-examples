@@ -74,16 +74,18 @@ static const spring_def SDEF[SB_MAX] = {
  * A blink is layered on top every 2 to 5.5 seconds (a fixed sequence per rig) and at once on a hit; it never adds to an
  * expression that already closes the lids. The Jaw bone (keyed in the clips) still opens the mouth.
  * Presentation only: nothing here feeds the simulation. */
-enum { FACE_MAX = 96, NT = 8 };
-static const char *TG[NT] = { "blink", "snarl", "shout", "wince", "ko", "grin", "effort", "grimace" };
-enum { T_BLINK, T_SNARL, T_SHOUT, T_WINCE, T_KO, T_GRIN, T_EFFORT, T_GRIMACE };
-/* how far each target closes the upper lids, as a share of a full blink (tools/face.mjs LID_CLOSE) */
-static const float LID_CLOSE[NT] = { 1.0f, 0.303f, 0.333f, 0.879f, 0.576f, 0.167f, 0.212f, 0.485f };
+enum { FACE_MAX = 96, NT = 11 };
+static const char *TG[NT] = { "blink", "snarl", "shout", "wince", "ko", "grin", "effort", "grimace", "fear", "anger", "bliss" };
+enum { T_BLINK, T_SNARL, T_SHOUT, T_WINCE, T_KO, T_GRIN, T_EFFORT, T_GRIMACE, T_FEAR, T_ANGER, T_BLISS };
+/* how far each target closes the upper lids, as a share of a full blink (tools/face.mjs LID_CLOSE; fear opens them) */
+static const float LID_CLOSE[NT] = { 1.0f, 0.303f, 0.333f, 0.879f, 0.576f, 0.167f, 0.212f, 0.485f, -0.364f, 0.485f, 0.667f };
 typedef struct face_rig {
   const spring_rig *key;
   t3_object *root;
   float w[NT], wrote[NT];
   int t, next; /* ticks since the last blink started; when the next one starts */
+  float react; int react_t; /* the last blow (char_jolt strength over 1.6) and ticks since it: the temper's face (any blow, flinch or not) */
+  int temper; /* how the face takes a hit: FACE_PLAIN, FACE_FEAR, FACE_ANGER, FACE_BLISS (face_temper) */
   uint32_t rng;
 } face_rig;
 static face_rig FR[FACE_MAX];
@@ -116,7 +118,7 @@ static float strike(float peak, float u) { return sst(0, peak, u) * (1 - 0.55f *
 static float hit_env(float u) { return sst(0, 0.12f, u) * (1 - 0.6f * sst(0.45f, 1, u)); }
 static float bump(float u) { return sinf(u * 3.14159265f); }
 /* the expression a clip asks for at u (0..1 through it) */
-static void clip_face(const char *c, float u, float *o) {
+static void clip_face(const char *c, float u, float *o, int temper) {
   memset(o, 0, sizeof(float) * NT);
   if (!c) return;
 #define IS(n) (!strcmp(c, n))
@@ -150,17 +152,43 @@ static void clip_face(const char *c, float u, float *o) {
   else if (IS("thumbsup")) o[T_GRIN] = sst(0.04f, 0.18f, u) * (1 - sst(0.86f, 1, u));
   else if (IS("taunt")) o[T_GRIN] = sst(0.05f, 0.25f, u) * (1 - sst(0.85f, 1, u));
   else if (IS("block")) { o[T_WINCE] = 0.35f; o[T_EFFORT] = 0.3f; }
+  /* the hit reactions by temper, cartoon-sized (they have to read from the street camera): the big men are frightened by a
+     blow and horrified when it floors them, the little ones furious, and the creep loves every one of them */
+  if (temper != FACE_PLAIN) {
+    bool hit = IS("hit") || IS("hit_gut") || IS("hit_hard"), kd = IS("knockdown"), dn = IS("down") || IS("getup") || IS("getup_prone");
+    float k = IS("hit_hard") ? 1.0f : IS("hit_gut") ? 0.9f : 0.8f;
+    if (hit || kd || dn) {
+      float e = hit ? sst(0, 0.1f, u) * (1 - 0.45f * sst(0.55f, 1, u)) * k : kd ? sst(0, 0.12f, u) : 1.0f;
+      if (temper == FACE_FEAR) { o[T_WINCE] *= 0.2f, o[T_GRIMACE] *= 0.2f; o[T_FEAR] = e; if (kd) o[T_KO] *= 0.4f, o[T_SHOUT] = 0.6f * e; if (dn) o[T_KO] *= 0.5f, o[T_FEAR] = 0.6f; }
+      else if (temper == FACE_ANGER) { o[T_WINCE] *= 0.25f, o[T_GRIMACE] *= 0.25f; o[T_ANGER] = e; if (kd) o[T_KO] *= 0.3f; if (dn) o[T_KO] *= 0.4f, o[T_ANGER] = 0.8f; }
+      else { o[T_WINCE] = 0, o[T_GRIMACE] = 0, o[T_KO] = 0; o[T_BLISS] = hit ? e : kd ? 1.0f : 0.9f; }
+    }
+  }
 #undef IS
 }
+void face_temper(spring_rig *s, int temper) { face_rig *f = face_of(s); if (f) f->temper = temper; }
 void face_express(spring_rig *s, const char *clip, float u) {
   face_rig *f = face_of(s);
   if (!f || !f->root) return;
   if (--f->next <= 0) { f->t = 0; f->next = 120 + (int)(fr_rand(f) % 210); }
   float b = blink_at(f->t++), want[NT];
-  clip_face(clip, u, want);
+  clip_face(clip, u, want, f->temper);
+  if (f->temper != FACE_PLAIN && f->react > 0) { /* the temper's face on every blow: in at once, held half a second, eased back */
+    int t = f->react_t++;
+    float env = t < 4 ? (float)(t + 1) / 4.0f : t < 34 ? 1.0f : 1.0f - (float)(t - 34) / 24.0f;
+    if (env <= 0) f->react = 0;
+    else {
+      int tg = f->temper == FACE_FEAR ? T_FEAR : f->temper == FACE_ANGER ? T_ANGER : T_BLISS;
+      float k = env * (0.75f + 0.45f * f->react); /* the harder the blow, the bigger the face */
+      if (k > want[tg]) want[tg] = k;
+      want[T_WINCE] *= 1 - env, want[T_GRIMACE] *= 1 - env;
+      if (tg == T_BLISS) want[T_KO] *= 1 - env;
+    }
+  }
   for (int i = 0; i < NT; i++) f->w[i] += (want[i] - f->w[i]) * 0.35f;
   float closed = 0;
   for (int i = 1; i < NT; i++) closed += f->w[i] * LID_CLOSE[i];
+  if (closed < 0) closed = 0;
   float out[NT];
   for (int i = 0; i < NT; i++) out[i] = f->w[i];
   float bl = b - closed;
@@ -191,7 +219,8 @@ void sb_reset(spring_rig *s) { for (int i = 0; i < SB_MAX; i++) s->b[i].live = f
 
 void sb_jolt(spring_rig *s, float x, float y, float z) {
   face_rig *f = face_of(s);
-  if (f && f->t > 8) f->t = 0; /* a hit makes the eyes blink */
+  if (f && f->t > 8 && f->temper != FACE_FEAR) f->t = 0; /* a hit makes the eyes blink (not a frightened face: its eyes stay wide) */
+  if (f) { float k = (x < 0 ? -x : x) / (2.2f * 1.6f); if (k > 1) k = 1; if (f->react <= 0 || k >= f->react * 0.8f) f->react = k, f->react_t = 0; }
   for (int i = 0; i < SB_MAX; i++) if (s->b[i].bone) s->b[i].V = vadd(s->b[i].V, v3(x, y, z));
 }
 

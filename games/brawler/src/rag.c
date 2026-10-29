@@ -77,7 +77,7 @@ static bstate last_st[MAXP + MAXE];
 
 static ent *ent_at(int i) { return i < MAXP ? &W.p[i] : &W.e[i - MAXP]; }
 static float body_scale(int def) {
-  static const float S[D_COUNT] = { 1.06f, 0.97f, 1.0f, 1.02f, 0.97f, 0.95f, 1.0f, 1.24f, 1.0f, 1.08f, 1.34f, 1.2f, 1.14f, 1.62f, 1.12f, 1.05f };
+  static const float S[D_COUNT] = { 1.06f, 0.97f, 1.0f, 1.02f, 0.97f, 0.95f, 1.0f, 1.24f, 1.0f, 1.08f, 1.34f, 1.2f, 1.14f, 1.62f, 1.12f, 1.05f, 1.0f };
   return S[def];
 }
 

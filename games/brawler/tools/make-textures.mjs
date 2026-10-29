@@ -509,8 +509,7 @@ function dirtyTee({ seed = 71 }) {
   };
 }
 // The cap's crown, all the way round (u runs once round the head, the front at u 0.5; v from the top of the crown, 0,
-// to the brim, 1): red cotton twill with "Dumb" in raised white satin stitch across the front panel and smaller on each
-// side (the street camera sees an enemy side on), sweat darkening along the band and grime. The letters are strokes
+// to the brim, 1): red cotton twill with "Dumb" in raised white satin stitch across the front panel, once, sweat darkening along the band and grime. The letters are strokes
 // (rounded capsules), drawn by distance, so they stay crisp at any size.
 const GLYPH = { // in letter units: cap height 1, baseline 0
   D: { w: 0.66, s: [[[0, 0], [0, 1]], [[0, 1], [0.3, 1], [0.54, 0.9], [0.66, 0.68], [0.66, 0.32], [0.54, 0.1], [0.3, 0], [0, 0]]] },
@@ -534,8 +533,8 @@ function wordDist(word, x, y, gap = 0.2) {
 }
 function capLogo({ seed = 73 }) {
   const W = 1024, H = 256, word = 'Dumb', [, , wlen] = wordDist(word, 0, 0);
-  // three placements: [centre u, letter cap height in v, centre v]; the front larger, the sides (u 0.25 and 0.75) smaller
-  const at = [[0.5, 0.27, 0.55], [0.22, 0.2, 0.6], [0.78, 0.2, 0.6]];
+  // placement: [centre u, letter cap height in v, centre v]
+  const at = [[0.5, 0.27, 0.55]]; // once, on the front panel
   const red = [0.66, 0.08, 0.07], white = [0.93, 0.92, 0.88], stroke = 0.1;
   return (u, v, o) => {
     const x = u * W, y = v * H;

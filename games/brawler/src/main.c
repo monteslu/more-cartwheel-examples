@@ -38,7 +38,7 @@ static float d_ex[8][4];
 static int32_t d_states[MAXP];
 static int32_t d_unfair, d_still, d_frozen, d_blocks, d_pickups, d_bphase, d_deaths, d_first, d_hits, d_nan, d_stall, d_proj, d_weapon, d_rigs, d_overlaps;
 static int32_t d_juke[6];
-static int32_t d_red[6], d_clones, d_blood[4]; /* the jukebox: uses, fighters knocked down by its shockwave, fighters who jumped it, playing, radius in cm, Arthur on his way to it */
+static int32_t d_red[6], d_creep[6], d_clones, d_blood[4]; /* the jukebox: uses, fighters knocked down by its shockwave, fighters who jumped it, playing, radius in cm, Arthur on his way to it */
 static float d_face[8]; /* the boss's expression weights (blink snarl shout wince ko grin effort grimace) */
 static int64_t run_ticks; /* fixed updates since the program started (status lines) */
 
@@ -119,9 +119,9 @@ static void cmd_cam(int argc, const char **argv, cw_reply *r) {
 }
 /* spawn <kind 3-11> [dx dz]: an enemy near the camera */
 static void cmd_spawn(int argc, const char **argv, cw_reply *r) {
-  if (argc < 2) { cw_reply_error(r, "usage: spawn <3-15> [dx dz]"); return; }
+  if (argc < 2) { cw_reply_error(r, "usage: spawn <3-16> [dx dz]"); return; }
   int d = atoi(argv[1]);
-  if (d < D_THUG || d >= D_COUNT) { cw_reply_error(r, "kind 3-15"); return; }
+  if (d < D_THUG || d >= D_COUNT) { cw_reply_error(r, "kind 3-16"); return; }
   int i = ent_spawn_enemy(d, W.cam_x + (argc > 2 ? (float)atof(argv[2]) : 0), argc > 3 ? (float)atof(argv[3]) : 0);
   cw_reply_printf(r, "{\"index\":%d}", i);
 }
@@ -132,6 +132,16 @@ static void cmd_botdmg(int argc, const char **argv, cw_reply *r) {
   if (argc > 1) g_bot_dmg = (float)atof(argv[1]);
   cw_reply_printf(r, "{\"botdmg\":%g}", g_bot_dmg);
 }
+/* hurtat <tick> <enemy> [knock 0-2]: at that fixed tick of the run, enemy slot N takes a blow (10 damage) from the left
+   (screenshots of the faces a hit brings out) */
+static int64_t hurt_tick = -1; static int hurt_idx, hurt_knock;
+static void cmd_hurtat(int argc, const char **argv, cw_reply *r) {
+  if (argc < 3) { cw_reply_error(r, "usage: hurtat <tick> <enemy> [knock]"); return; }
+  hurt_tick = atoll(argv[1]), hurt_idx = atoi(argv[2]) % MAXE, hurt_knock = argc > 3 ? atoi(argv[3]) : 1;
+  cw_reply_printf(r, "{\"ok\":1}");
+}
+/* legacyshake <0|1>: the old camera shake back (the camera gate's control only) */
+static void cmd_legacyshake(int argc, const char **argv, cw_reply *r) { g_legacy_shake = argc > 1 && atoi(argv[1]); cw_reply_printf(r, "{\"legacyshake\":%d}", g_legacy_shake); }
 /* blood <dx> <dz> <kind 0-2> [size]: a stain on the street near the camera (screenshots of the shapes) */
 static void cmd_blood(int argc, const char **argv, cw_reply *r) {
   if (argc < 4) { cw_reply_error(r, "usage: blood <dx> <dz> <kind 0-2> [size]"); return; }
@@ -291,6 +301,8 @@ static void init(void *user) {
   cw_debug_u32("game.hash", &d_hash);
   cw_debug_field("game.juke", d_juke, CW_DBG_I32, 6);
   cw_debug_field("game.redneck", d_red, CW_DBG_I32, 6); /* rednecks spawned, haymakers, haymakers that landed, barges, barges that landed, killed */
+  cw_debug_field("game.creep", d_creep, CW_DBG_I32, 6); /* creeps spawned, coat flashes, flashes that landed, light blows he leaned into, health they gave him, killed */
+  { extern int g_camjit; cw_debug_i32("game.camjit", &g_camjit); } /* the largest camera shake offset on any frame, mm: 0 */
   cw_debug_i32("game.clones", &d_clones); /* most pairs of one kind of enemy on the street looking the same on any frame: 0 */
   cw_debug_field("fx.blood", d_blood, CW_DBG_I32, 4); /* stains placed, droplet bursts, stains showing, same-shape stains on top of each other (0) */
   cw_debug_field("face.boss", d_face, CW_DBG_F32, 8);
@@ -305,9 +317,11 @@ static void init(void *user) {
   { const char *v = getenv("BRAWLER_NO_SCREEN_RULE"); extern bool g_no_screen_rule; g_no_screen_rule = v && atoi(v); }
   { const char *v = getenv("BRAWLER_BOTDMG"); extern float g_bot_dmg; if (v) g_bot_dmg = (float)atof(v); }
   { const char *v = getenv("BRAWLER_SEED"); extern uint64_t g_seed_salt; if (v) g_seed_salt = (uint64_t)strtoull(v, NULL, 10); }
-  cw_debug_command("spawn", "spawn <3-15> [dx dz]: an enemy near the camera (14: Arthur, 15: the redneck)", cmd_spawn);
+  cw_debug_command("spawn", "spawn <3-15> [dx dz]: an enemy near the camera (14: Arthur, 15: the redneck, 16: the creep)", cmd_spawn);
   cw_debug_command("freeze", "freeze <0|1>: enemies and bots hold still", cmd_freeze);
   cw_debug_command("botdmg", "botdmg <k>: the bots' damage factor (3 default, 1 real)", cmd_botdmg);
+  cw_debug_command("hurtat", "hurtat <tick> <enemy> [knock]: a blow on an enemy at that tick", cmd_hurtat);
+  cw_debug_command("legacyshake", "legacyshake <0|1>: the old camera shake (gate control only)", cmd_legacyshake);
   cw_debug_command("blood", "blood <dx> <dz> <kind 0-2> [size]: a blood stain near the camera", cmd_blood);
   cw_debug_command("knockdown", "knockdown: knock every fighter and enemy down at once (ragdolls)", cmd_knockdown);
   { const char *np = getenv("BRAWLER_PLAYERS"); cw_shell_start(np ? atoi(np) : 3); } /* BRAWLER_PLAYERS: 1 to 4 bots (native perf runs) */
@@ -330,6 +344,7 @@ static void publish(void) {
   for (int i = 0; i < MAXP + MAXE; i++) { const ent *e = i < MAXP ? &W.p[i] : &W.e[i - MAXP]; if (e->used && e->root.id && cw_node_valid(e->root)) d_rigs++; }
   { int k = 0; for (int i = 0; i < MAXE && k < 8; i++) if (W.e[i].used) { d_ex[k][0] = W.e[i].x; d_ex[k][1] = W.e[i].z; d_ex[k][2] = (float)W.e[i].st; d_ex[k][3] = (float)W.e[i].token * 100 + (float)W.e[i].cd; k++; } for (; k < 8; k++) memset(d_ex[k], 0, sizeof d_ex[k]); }
   d_red[0] = W.red.spawned, d_red[1] = W.red.hay, d_red[2] = W.red.hay_hits, d_red[3] = W.red.barge, d_red[4] = W.red.barge_hits, d_red[5] = W.red.kills;
+  d_creep[0] = W.creep.spawned, d_creep[1] = W.creep.flash, d_creep[2] = W.creep.flash_hits, d_creep[3] = W.creep.shrugged, d_creep[4] = W.creep.healed, d_creep[5] = W.creep.kills;
   { int c = looks_clones(); if (c > d_clones) d_clones = c; }
   fx_blood_stats(d_blood);
   d_juke[0] = W.juke.uses, d_juke[1] = W.juke.hits, d_juke[2] = W.juke.dodges, d_juke[3] = W.juke.on, d_juke[4] = W.juke.t > 0 ? (int)(W.juke.r * 100) : 0;
@@ -354,6 +369,7 @@ static void sim_step(void) {
   run_ticks++;
 #ifdef BRAWLER_AUTOPILOT
   if (run_ticks == 600 && !strcmp(inject(), "leak")) W.tokens_out++;
+  if (run_ticks == hurt_tick && W.e[hurt_idx].used) { W.e[hurt_idx].invuln = 0; ent_hurt(&W.e[hurt_idx], NULL, 10, hurt_knock, 0); }
 #endif
   inputs in[MAXP];
   memset(in, 0, sizeof in);

@@ -375,7 +375,7 @@
   },
   {
     "name": "brawler-redneck",
-    "note": "Stage 1, wave 2 (thugs, a punk and the redneck) with two bots: the redneck winds up his haymaker (its wind-up shrugs off light blows) and lands it, barges along the lane, and is beaten. game.redneck is [rednecks spawned, haymakers, haymakers that landed, barges, barges that landed, rednecks killed]. Also the looks and the blood: game.clones (most pairs of one kind of enemy on the street that look the same on any frame) stays 0, fx.blood is [stains placed, droplet bursts, stains showing, same-shape stains on top of each other] and its last entry stays 0. The control freezes everyone, so nobody swings. rag.hash is left out of this gate: with the redneck knocked down out of his haymaker clip, the ragdoll started from that pose hashes 3232650868 natively and 3315670625 on every cart host (romdev, Chromium, romdev on GL alike), while the game state is equal on all of them: the presentation pose sampled natively and in the cart differs for that clip (findings/brawler.md, engine note 5). The other gates still compare rag.hash on every host.",
+    "note": "Stage 1, wave 2 (thugs, a punk and the redneck) with two bots: the redneck winds up his haymaker (its wind-up shrugs off light blows) and lands it, barges along the lane, and is beaten. game.redneck is [rednecks spawned, haymakers, haymakers that landed, barges, barges that landed, rednecks killed]. Also the looks and the blood: game.clones (most pairs of one kind of enemy on the street that look the same on any frame) stays 0, fx.blood is [stains placed, droplet bursts, stains showing, same-shape stains on top of each other] and its last entry stays 0. The control freezes everyone, so nobody swings. rag.hash is left out of this gate: with the redneck knocked down out of his haymaker clip, the ragdoll started from that pose hashes 3232650868 natively and 3315670625 on every cart host (romdev, Chromium, romdev on GL alike), while the game state is equal on all of them: the presentation pose sampled natively and in the cart differs for that clip (findings/brawler.md, engine note 5). The other gates still compare rag.hash on every host. Repinned when the creep joined the wave after it (the run reaches it).",
     "app": "brawler_auto",
     "frames": 2400,
     "startCmds": [
@@ -415,10 +415,10 @@
       "game.nan": 0,
       "game.clones": 0,
       "game.overlaps": 0,
-      "game.ticks": 2114,
+      "game.ticks": 2110,
       "game.kills": 7,
-      "game.score": 6920,
-      "game.hash": 1620341337,
+      "game.score": 6610,
+      "game.hash": 1038119854,
       "game.wave": 2,
       "game.deaths": 0,
       "game.redneck": [
@@ -430,12 +430,12 @@
         1
       ],
       "fx.blood": [
-        39,
-        61,
-        28,
+        105,
+        65,
+        48,
         0
       ],
-      "rag.made": 21,
+      "rag.made": 19,
       "rag.missed": 0
     },
     "webgpu": {
@@ -454,5 +454,136 @@
       "freeze 1"
     ],
     "controlFrames": 2400
+  },
+  {
+    "name": "brawler-creep",
+    "note": "Stage 1, wave 3 (where the creep first walks on) with two bots at real damage: the creep leans into light blows (no flinch, 2 health back each, never past full), throws his coat open and lunges, and is beaten. game.creep is [creeps spawned, coat flashes, flashes that landed, light blows he leaned into, health they gave him, killed]. game.clones stays 0. The control freezes everyone.",
+    "app": "brawler_auto",
+    "frames": 2400,
+    "startCmds": [
+      "botdmg 1",
+      "players 2",
+      "wave 2"
+    ],
+    "fields": [
+      "game.ticks",
+      "game.players",
+      "game.wave",
+      "game.kills",
+      "game.score",
+      "game.enemies",
+      "game.tokens",
+      "game.token_leak",
+      "game.hp",
+      "game.px",
+      "game.state",
+      "game.enemy",
+      "game.cam",
+      "game.hash",
+      "game.unfair",
+      "game.deaths",
+      "game.nan",
+      "game.rigs",
+      "rag.made",
+      "rag.missed",
+      "game.clones",
+      "fx.blood",
+      "game.overlaps",
+      "game.creep"
+    ],
+    "expect": {
+      "game.unfair": 0,
+      "game.token_leak": 0,
+      "game.nan": 0,
+      "game.clones": 0,
+      "game.overlaps": 0,
+      "game.ticks": 2126,
+      "game.kills": 7,
+      "game.score": 7110,
+      "game.hash": 3697970234,
+      "game.wave": 3,
+      "game.deaths": 0,
+      "game.creep": [
+        1,
+        1,
+        0,
+        5,
+        8,
+        1
+      ],
+      "fx.blood": [
+        105,
+        58,
+        48,
+        0
+      ],
+      "rag.made": 18,
+      "rag.missed": 0
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "vsGl": 0.005,
+      "note": "the same dual cart on romdev and Chromium against native WebGPU (state exact). vsGl 0.5 percent: GL and WebGPU draw the same picture (0.01 percent apart); the brick, asphalt and corrugated detail that differed by 4 to 10.6 percent was the engine lighting normal maps from the wrong side on WebGPU, fixed (findings/gl-webgpu-parity.md)"
+    },
+    "controlStartCmds": [
+      "botdmg 1",
+      "players 2",
+      "wave 2",
+      "freeze 1"
+    ],
+    "controlFrames": 2400
+  },
+  {
+    "name": "brawler-camera",
+    "note": "monteslu: no screen shake. The Foreman's fight at real damage for 900 frames (big hits, knockdowns, his slam): game.camjit, the largest camera offset from its path on any frame in mm, stays 0, and the pads rumble instead (cw.rumble: request count, pad, low and high in thousandths, ms of the last request). The control turns the old camera shake back on (legacyshake 1): camjit 206 mm, so it fails. The simulation is the same either way (game.hash).",
+    "app": "brawler_auto",
+    "frames": 900,
+    "startCmds": [
+      "botdmg 1",
+      "stage 0",
+      "wave 4"
+    ],
+    "fields": [
+      "game.ticks",
+      "game.hash",
+      "game.camjit",
+      "cw.rumble",
+      "game.cam",
+      "game.unfair",
+      "game.nan"
+    ],
+    "expect": {
+      "game.camjit": 0,
+      "cw.rumble": [
+        4,
+        2,
+        120,
+        450,
+        70
+      ],
+      "game.hash": 1896799126,
+      "game.unfair": 0,
+      "game.nan": 0
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "vsGl": 0.005,
+      "note": "the same dual cart on romdev and Chromium against native WebGPU (state exact). vsGl 0.5 percent: GL and WebGPU draw the same picture (0.01 percent apart); the brick, asphalt and corrugated detail that differed by 4 to 10.6 percent was the engine lighting normal maps from the wrong side on WebGPU, fixed (findings/gl-webgpu-parity.md)"
+    },
+    "controlStartCmds": [
+      "botdmg 1",
+      "stage 0",
+      "wave 4",
+      "legacyshake 1"
+    ],
+    "controlFrames": 900
   }
 ]
