@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.4.0
+
+All eight games on cartwheel-engine v0.23.1.
+
+- hordeshooter: about three times faster on the GPU at full 1080p (late wave,
+  2000 enemies: 12.2 to about 3.7 ms on GL and 11.1 to about 3.7 ms on
+  WebGPU on a Radeon 890M), redrawn the way weak-GPU games do it: the yard and
+  its floodlights baked into a lightmap with soft shadows, light probes for
+  the crowd, blob shadows and light pools, puddles on a baked reflection,
+  light-shaft cards instead of volumetric fog, one particle system per pool
+  of one-shot effects. Never a lower render resolution. No more camera
+  shake: explosions, hits and heavy weapons rumble each player's own pad.
+  The crowd is a neutral grey instead of mauve.
+- brawler: boss fights about a minute solo (they took two to three, and some
+  never ended), every enemy his own skin tone and clothes, two new enemies
+  (the redneck in his red "Dumb" cap, the creep in the trench coat who enjoys
+  being hit), blood and gore, faces that show fear, anger or delight when
+  hit, Arthur's pompadour rebuilt. No camera shake: big hits rumble the pad.
+- fighter: held directions walk (diagonals too), one press of up jumps, up
+  with an attack gives the high attack, down crouches; d-pad, stick and
+  keyboard each tested.
+
 ## 0.3.0
 
 All eight games on cartwheel-engine v0.21.1.
