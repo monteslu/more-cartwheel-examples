@@ -20,6 +20,8 @@ hides a treasure nook, a ledge high in the meadow hides coins, and the map scree
 
 Stomp enemies from above. Spikes hurt, lava and pits do not forgive. Walk through a flag to set a checkpoint.
 
+The camera never shakes. A hit you take, a stomp you land, a long fall, the boss landing near you, its hits and its end are felt in your own pad instead (rumble; the boss and the blasts by how close you are).
+
 ## Building
 
     scripts/fetch-deps.sh

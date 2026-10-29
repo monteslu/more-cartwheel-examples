@@ -100,6 +100,7 @@ static void hurt_player(game *g, int i, float kx, int dmg) {
   g->hitstops++;
   g->impacts++;
   g->hit_flash = 8;
+  sim_rumble(g, i, 0.2f, p->hp <= 0 ? 0.9f : 0.65f, p->hp <= 0 ? 200 : 130); /* hurt: short and sharp */
   g->events |= EV_HURT;
   p->pf.body.velocity.x = kx * 7.0f;
   p->pf.body.velocity.y = 9.0f;
@@ -153,7 +154,7 @@ static void enemy_step(game *g, enemy *e, float dt) {
       if (d * d < best) best = d * d, tx = d;
     }
     if (best < 1e8f) e->dir = tx > 0 ? 1 : -1;
-    bool awake = best <= 28 * 28 || g->shake_bug; /* asleep until a player comes near: it neither walks nor leaps */
+    bool awake = best <= 28 * 28; /* asleep until a player comes near: it neither walks nor leaps */
     if (!awake) sp = 0;
     if (awake && (g->tick % 150) == 0 && e->vy == 0) e->vy = 11.0f;
   }
@@ -171,32 +172,33 @@ static void enemy_step(game *g, enemy *e, float dt) {
   float ny = e->y + e->vy * dt;
   if (e->vy <= 0 && world_solid(L, (int)floorf(e->x), (int)floorf(ny - 0.01f))) {
     /* stand on top of the tile that was hit. (floorf(ny) + 1 put a body whose feet reached the top within 0.01 m
-     * one whole tile ABOVE it: it fell a metre, landed hard and was lifted again, every 20 ticks forever, and each
-     * landing shook the screen wherever the players were.) */
-    if (g->shake_bug) { /* the camera gate's control: the old snap and a shake wherever the camera is */
-      ny = floorf(ny) + 1.0f;
-      if (e->vy < -2 && e->kind == 2) g->cam.shake = 0.6f;
-    } else {
-      ny = floorf(ny - 0.01f) + 1.0f;
-      if (e->vy < -6 && e->kind == 2) sim_shake(g, e->x, e->y, 0.45f); /* a real leap landing, not a step */
-    }
+     * one whole tile ABOVE it: it fell a metre, landed hard and was lifted again, every 20 ticks forever.) */
+    ny = floorf(ny - 0.01f) + 1.0f;
+    if (e->vy < -6 && e->kind == 2) sim_rumble_at(g, e->x, e->y, 0.5f); /* a real leap landing, not a step: the ground thuds */
     e->vy = 0;
   }
   e->y = ny;
   (void)h;
 }
 
-void sim_shake(game *g, float x, float y, float amount) {
+void sim_rumble(game *g, int p, float low, float high, int ms) {
+  if (p < 0 || p >= g->nplayers || !g->p[p].joined) return;
+  if (low > g->rumble[p].low) g->rumble[p].low = low;
+  if (high > g->rumble[p].high) g->rumble[p].high = high;
+  if (ms > g->rumble[p].ms) g->rumble[p].ms = ms;
+}
+
+void sim_rumble_at(game *g, float x, float y, float amount) {
   g->impacts++;
-  const camera_rig *c = &g->cam;
-  /* the view is about 1.29 z wide and 0.73 z tall (fov 40, 16:9): full shake inside it, fading to none half a view
-   * beyond its edge */
-  float hx = 0.65f * c->z, hy = 0.37f * c->z;
-  float ox = fabsf(x - c->x) - hx, oy = fabsf(y - c->y) - hy;
-  float out = fmaxf(ox / hx, oy / hy); /* <= 0 inside the view */
-  float k = out <= 0 ? 1.0f : out >= 0.5f ? 0.0f : 1.0f - out * 2.0f;
-  float s = fminf(1.0f, g->cam.shake + amount * k);
-  if (s > g->cam.shake) g->cam.shake = s;
+  for (int i = 0; i < g->nplayers; i++) {
+    const player *p = &g->p[i];
+    if (!p->joined || !p->alive || p->bubble) continue;
+    float dx = (float)p->pf.body.position.x - x, dy = (float)p->pf.body.position.y - y, d = sqrtf(dx * dx + dy * dy);
+    float k = d <= 4 ? 1.0f : d >= 24 ? 0.0f : 1.0f - (d - 4) / 20.0f;
+    if (k <= 0) continue;
+    k *= k * amount;
+    sim_rumble(g, i, 0.2f + 0.8f * k, 0.25f * k, 110 + (int)(300 * k));
+  }
 }
 
 static void camera_step(game *g, float dt) {
@@ -217,7 +219,6 @@ static void camera_step(game *g, float dt) {
   }
   camera_rig *c = &g->cam;
   c->px = c->x, c->py = c->y, c->pz = c->z;
-  if (c->shake > 0) c->shake = c->shake > dt * 2.5f ? c->shake - dt * 2.5f : 0;
   const float W[3] = { 7.0f, 6.0f, 4.0f }, AMAX = 90.0f, VMAX = 30.0f;
   float *pos[3] = { &c->x, &c->y, &c->z }, *vel[3] = { &c->vx, &c->vy, &c->vz };
   if (n == 0) { /* nobody to follow (everyone down): glide to a stop, never a dead stop from a fall's speed */
@@ -324,8 +325,10 @@ void sim_step(game *g, const input_state in[MAX_PLAYERS], float dt) {
     const input_state *is = &in[i];
     cw_platformer2d_input pin = { .move_x = is->x, .move_y = is->y, .jump_pressed = is->jump_pressed, .jump_held = is->jump_held,
                                   .dash_pressed = is->dash_pressed, .down_held = is->down };
+    float vy0 = (float)pf->body.velocity.y;
     cw_platformer2d_step(pf, &pin, dt);
     uint32_t e = pf->events;
+    if ((e & CW_PF_LAND) && vy0 < -14.0f) sim_rumble(g, i, fminf(0.35f, 0.08f + (-vy0 - 14.0f) * 0.02f), 0, 60); /* a long fall lands: a light bump */
     if (e & (CW_PF_JUMP | CW_PF_AIR_JUMP)) g->events |= EV_JUMP, p->jump_fx = 1;
     if (e & CW_PF_WALL_JUMP) g->events |= EV_WALL, p->jump_fx = 2;
     if (e & CW_PF_LAND) g->events |= EV_LAND, p->land_fx = 1;
@@ -418,8 +421,10 @@ void sim_step(game *g, const input_state in[MAX_PLAYERS], float dt) {
         g->hitstop = e->hp <= 0 ? 6 : 4;
         g->hitstops++;
         g->hit_flash = 5;
-        if (e->kind == 2) g->boss_hp = e->hp, sim_shake(g, e->x, e->y + 1.0f, e->hp <= 0 ? 0.8f : 0.5f);
-        else if (e->hp <= 0) sim_shake(g, e->x, e->y + 0.5f, 0.25f); /* the blast of a small enemy */
+        /* the stomper feels the hit (sharp); a boss hit, the boss going down and a small enemy's blast thud for everyone near */
+        sim_rumble(g, i, e->kind == 2 ? 0.3f : 0.1f, e->kind == 2 ? 0.7f : 0.4f, e->kind == 2 ? 120 : 70);
+        if (e->kind == 2) g->boss_hp = e->hp, sim_rumble_at(g, e->x, e->y + 1.0f, e->hp <= 0 ? 1.0f : 0.6f);
+        else if (e->hp <= 0) sim_rumble_at(g, e->x, e->y + 0.5f, 0.3f); /* the blast of a small enemy */
         if (e->hp <= 0) {
           e->alive = false;
           g->kills++;

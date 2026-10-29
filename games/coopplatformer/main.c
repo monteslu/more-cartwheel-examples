@@ -86,23 +86,22 @@ static cw_font g_font;
 static void title_background(cw_shell_screen scr, cw_vec2 cv, void *user);
 static int g_state_dbg, g_players_dbg, g_bubbles_dbg, g_hp_dbg;
 static float g_pos_dbg[2], g_cam_dbg[3], g_ppos_dbg[MAX_PLAYERS * 2];
-/* the camera as drawn, measured every frame (the camera stability gate): g.view is x, y, z and the shake it carried;
+/* the camera as drawn, measured every frame (the camera stability gate): g.view is x, y, z (and 0: nothing shakes it);
  * g.camgate counts frames at rest (every player still for 2.5 s), at-rest frames where the view moved more than
  * 1 mm, frames in motion, and frames in motion where the view jumped (over 0.6 m) or jerked (its step changed by
  * over 8 cm); g.camjit keeps the largest at-rest step, step in motion and step change seen (metres) and the frame of
- * the first frame in motion that broke the bound (frames since the match started). Frames that carry a real event's
- * shake (sim_shake) count in g.shake_frames instead of as motion: they are meant to move */
+ * the first frame in motion that broke the bound (frames since the match started) */
 static float g_view_dbg[4], g_camjit_dbg[4];
-static int g_camgate_dbg[4], g_shake_frames_dbg;
+static int g_camgate_dbg[4];
+static bool g_cam_bug; /* COOP_CAM_BUG: the camera gates' control */
 static int g_scenery_dbg[2]; /* the scenery check on the built world: props seated, props off their ground (world_scenery_check) */
 static struct { float last[3], step[3], ppos[MAX_PLAYERS * 2]; int still, frames; } CS;
 static void camgate_reset(void) {
   memset(&CS, 0, sizeof CS);
   memset(g_camgate_dbg, 0, sizeof g_camgate_dbg);
   memset(g_camjit_dbg, 0, sizeof g_camjit_dbg);
-  g_shake_frames_dbg = 0;
 }
-static void camgate_frame(const float view[3], const float *pp, int np, bool snapped, bool shaking) {
+static void camgate_frame(const float view[3], const float *pp, int np, bool snapped) {
   bool still = CS.frames > 0;
   for (int i = 0; i < np * 2; i++) {
     if (fabsf(pp[i] - CS.ppos[i]) > 1e-5f) still = false;
@@ -121,8 +120,6 @@ static void camgate_frame(const float view[3], const float *pp, int np, bool sna
       g_camgate_dbg[0]++;
       if (d > 0.001f) g_camgate_dbg[1]++;
       g_camjit_dbg[0] = fmaxf(g_camjit_dbg[0], d);
-    } else if (shaking) {
-      g_shake_frames_dbg++; /* a real event's shake (sim_shake): short and fading, not a camera fault */
     } else {
       g_camgate_dbg[2]++;
       if ((d > 0.6f || jerk > 0.08f) && !g_camgate_dbg[3]++) g_camjit_dbg[3] = (float)CS.frames; /* the first one */
@@ -781,19 +778,12 @@ static void update_spans(float camx) {
   }
 }
 
-/* the player's screen shake setting (the shell's Settings > Screen shake): 1 full, less reduced, 0 off. The setting
- * is in the engine after v0.17.0; built against the v0.17.0 SDKs (scripts/deps.lock) the game shakes at full. */
-#ifdef CW_SHELL_SHAKE_REDUCED_SCALE
-static float shake_setting(void) { return cw_shell_screen_shake(); }
-#else
-static float shake_setting(void) { return 1.0f; }
-#endif
-
 /* the shake check (g.camoffset): the camera as drawn (the camera node's global transform) against the follow camera
  * drawn between its last two ticks, on the frames within half a second of an impact (g.impacts: a boss landing, hit or
  * blast, a small enemy's blast, a player hurt). g.camoffset: those frames, the ones whose drawn camera was off the follow
- * camera by over 0.1 mm, and the largest offset (micrometres). Nothing moves the camera on an impact: [n, 0, 0]. */
+ * camera by over 0.1 mm, and the largest offset (in 0.1 mm units). Nothing moves the camera on an impact: [n, 0, 0]. */
 static int g_camoffset_dbg[3];
+static int32_t g_rumble_sent_dbg[MAX_PLAYERS]; /* debug rumble.sent: requests sent to each player's pad */
 static void offsetgate(cw_node cam, float vx, float vy, float vz) {
   static int seen, until;
   if (G.impacts != seen) seen = G.impacts, until = G.tick + 30;
@@ -803,7 +793,7 @@ static void offsetgate(cw_node cam, float vx, float vy, float vz) {
   float dx = m->e[12] - vx, dy = m->e[13] - vy, dz = m->e[14] - vz, off = sqrtf(dx * dx + dy * dy + dz * dz);
   g_camoffset_dbg[0]++;
   if (off > 1e-4f) g_camoffset_dbg[1]++;
-  if ((int)(off * 1e6f) > g_camoffset_dbg[2]) g_camoffset_dbg[2] = (int)(off * 1e6f);
+  if ((int)(off * 1e4f) > g_camoffset_dbg[2]) g_camoffset_dbg[2] = (int)(off * 1e4f);
 }
 
 /* ── frame: sync the scene to the sim ─────────────────────────────── */
@@ -818,21 +808,18 @@ static void sync_scene(float alpha, float dt) {
   bool snapped = fabsf(c->x - c->px) > 4 || fabsf(c->y - c->py) > 4; /* a warp or a respawn: no glide */
   float vx = snapped ? c->x : c->px + (c->x - c->px) * a, vy = snapped ? c->y : c->py + (c->y - c->py) * a;
   float vz = snapped ? c->z : c->pz + (c->z - c->pz) * a;
-  /* shake: trauma squared, smooth (two slow sines per axis, not a per-frame random jump), scaled by the player's
-   * screen shake setting (Settings: Full, Reduced, Off) */
-  float sh = c->shake * shake_setting();
-  float amp = sh * sh * 0.45f;
-  float ox = amp * (0.6f * sinf(S.time * 47.0f) + 0.4f * sinf(S.time * 29.0f + 1.3f));
-  float oy = amp * (0.6f * cosf(S.time * 41.0f) + 0.4f * sinf(S.time * 23.0f + 0.7f));
-  cw_node3d_set_position(S.cam, (t3_vec3){ vx + ox, vy + oy, vz });
-  g_view_dbg[0] = vx + ox, g_view_dbg[1] = vy + oy, g_view_dbg[2] = vz, g_view_dbg[3] = sh;
+  /* the follow camera is the whole camera: it never shakes (a boss landing, a hit or a blast is felt in the pads) */
+  float ox = 0;
+  if (g_cam_bug) ox = 0.01f * sinf((float)G.tick * 0.3f); /* the camera gate's control (COOP_CAM_BUG, native): a 1 cm sway */
+  cw_node3d_set_position(S.cam, (t3_vec3){ vx + ox, vy, vz });
+  g_view_dbg[0] = vx + ox, g_view_dbg[1] = vy, g_view_dbg[2] = vz, g_view_dbg[3] = 0;
   if (!g_attract) {
     float pp[MAX_PLAYERS * 2];
     for (int i = 0; i < g->nplayers; i++) {
       cw_pos2 ip = cw_mover2d_interpolated(&g->p[i].pf.body, alpha);
       pp[2 * i] = (float)ip.x, pp[2 * i + 1] = (float)ip.y;
     }
-    camgate_frame(g_view_dbg, pp, g->nplayers, snapped, sh > 0);
+    camgate_frame(g_view_dbg, pp, g->nplayers, snapped);
   }
   cw_node3d_set_rotation(S.cam, (t3_vec3){ -0.06f, 0, 0 });
   if (!g_attract) offsetgate(S.cam, vx, vy, vz);
@@ -960,7 +947,7 @@ static void sync_scene(float alpha, float dt) {
       cw_node_set(S.fx_wave, "max_radius", cw_val_float(4.5f * bs));
       cw_node3d_set_position(S.fx_wave, (t3_vec3){ e->x, by, 1.0f });
       cw_shockwave_fire(S.fx_wave);
-      burst(S.fx_debris, e->x, by, 0.5f); /* its screen shake comes from the sim (sim_shake), where it died */
+      burst(S.fx_debris, e->x, by, 0.5f); /* its rumble comes from the sim (sim_rumble_at), where it died */
     }
     S.prev_alive[i] = e->alive;
     if (!e->alive || !S.erig[i]) continue;
@@ -1039,7 +1026,8 @@ static void start_match(int players, void *user) {
   save_t *sv = cw_shell_game_save();
   G.abilities = 0;
   sim_reset(&G, players);
-  G.shake_bug = getenv("COOP_SHAKE_BUG") != NULL; /* the camera gate's must-fail control (native only) */
+  memset(G.rumble, 0, sizeof G.rumble); /* nothing the attract mode asked for carries into the match */
+  g_cam_bug = getenv("COOP_CAM_BUG") != NULL; /* the camera gate's must-fail control (native only) */
   if (sv->abilities && !getenv("COOP_FRESH")) G.abilities = sv->abilities;
   G.reached |= sv->reached;
   if (cfg_int("COOP_ABILITIES", COOP_DEF_ABILITIES) >= 0) G.abilities = (uint32_t)cfg_int("COOP_ABILITIES", COOP_DEF_ABILITIES);
@@ -1413,10 +1401,10 @@ static void init(void *user) {
   cw_debug_f32_array("g.cam", g_cam_dbg, 3);
   cw_debug_f32_array("g.view", g_view_dbg, 4);
   cw_debug_field("g.camgate", g_camgate_dbg, CW_DBG_I32, 4);
-  cw_debug_i32("g.shake_frames", &g_shake_frames_dbg); /* frames drawn with a real event's shake */
   cw_debug_f32_array("g.camjit", g_camjit_dbg, 4);
   cw_debug_field("g.camoffset", g_camoffset_dbg, CW_DBG_I32, 3);
   cw_debug_i32("g.impacts", &G.impacts);
+  cw_debug_field("rumble.sent", g_rumble_sent_dbg, CW_DBG_I32, MAX_PLAYERS);
   cw_debug_i32("g.hp", &g_hp_dbg);
   cw_debug_i32("g.bubbles", &g_bubbles_dbg);
   cur_mood = MOODS[0];
@@ -1484,11 +1472,35 @@ static void map_cursor(void) {
   }
 }
 
+/* this tick's rumble to each player's pad (the sim asks, sim_rumble; nothing reads it back). A request on top of one still
+ * running keeps the stronger of each motor and the longer time; the motors stop on their own after ms */
+static struct { int until[MAX_PLAYERS]; float low[MAX_PLAYERS], high[MAX_PLAYERS]; int clock; } RB;
+static void send_rumble(void) {
+  RB.clock++;
+  for (int i = 0; i < MAX_PLAYERS; i++) {
+    float low = G.rumble[i].low, high = G.rumble[i].high;
+    int ms = G.rumble[i].ms, left = (RB.until[i] - RB.clock) * 1000 / 60;
+    G.rumble[i].low = G.rumble[i].high = 0, G.rumble[i].ms = 0;
+    if (ms <= 0 || i >= G.nplayers) continue;
+    if (left > 0) {
+      if (low <= RB.low[i] && high <= RB.high[i] && ms <= left) continue;
+      low = fmaxf(low, RB.low[i]), high = fmaxf(high, RB.high[i]), ms = ms > left ? ms : left;
+    }
+    low = fminf(low, 1), high = fminf(high, 1);
+    RB.low[i] = low, RB.high[i] = high, RB.until[i] = RB.clock + (ms * 60 + 999) / 1000;
+    g_rumble_sent_dbg[i]++;
+    cw_input_rumble(i, low, high, ms);
+  }
+}
+static void rumble_stop_all(void) {
+  for (int i = 0; i < MAX_PLAYERS; i++) if (RB.until[i] > RB.clock) cw_input_rumble_stop(i), RB.until[i] = 0;
+}
+
 static void fixed_update(void *user, double dt) {
   (void)user;
   bool run = cw_shell_update();
   g_state_dbg = (int)cw_shell_screen_now(); /* even when the shell owns the tick */
-  if (!run) return;
+  if (!run) { rumble_stop_all(); return; } /* the menus and pause: the motors stop */
   if (g_attract) return; /* the match has not started yet */
   if (G.nplayers == 0 || !G.world.id) return;
   g_run_ticks++;
@@ -1504,6 +1516,7 @@ static void fixed_update(void *user, double dt) {
 #endif
   sim_step(&G, INPUT, (float)dt);
   play_events();
+  send_rumble();
   g_state_dbg = (int)cw_shell_screen_now();
   g_players_dbg = G.nplayers;
   g_pos_dbg[0] = (float)G.p[0].pf.body.position.x, g_pos_dbg[1] = (float)G.p[0].pf.body.position.y;
