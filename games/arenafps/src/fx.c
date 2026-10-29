@@ -78,7 +78,7 @@ static cw_node make_decal(const char *name, const char *tex, t3_vec3 size, cw_co
 }
 /* a rocket blast: the engine's explosion kit (cartwheel/explosions.h). An Explosion3D whose parts are authored below (a hot
  * flash, a flipbook fireball, flames, rolling smoke, sparks, stone chunks trailing smoke, heat haze, a ground ring and an air
- * ring); firing it restarts them all and borrows a flash light, a ground scorch mark and a shake slot from the kit's pools */
+ * ring); firing it restarts them all and borrows a flash light and a ground scorch mark from the kit's pools */
 static cw_node part(cw_node boom, const char *name, int amount, float life, float explode, const char *shape, float radius, t3_vec3 dir,
                     float spread, float smin, float smax, float gravity, float size, const char *curve, const char *ramp, float energy,
                     const char *blend, uint32_t seed) {
@@ -114,9 +114,7 @@ static cw_node mk_boom(int i) {
   cw_node_set(b, "flash_duration", cw_val_float(0.4));
   cw_node_set(b, "scorch_size", cw_val_float(3.6));
   cw_node_set(b, "scorch_texture", cw_val_string("textures/fx/scorch.png"));
-  cw_node_set(b, "shake_amount", cw_val_float(1.0));
-  cw_node_set(b, "shake_radius", cw_val_float(14));
-  cw_node_set(b, "shake_time", cw_val_float(0.45));
+  cw_node_set(b, "shake_amount", cw_val_float(0)); /* the kit records no camera shake: a blast is felt in the pads (main.c, rumble) */
   cw_node3d_set_position(b, v3(0, -500, 0));
   cw_node_add_child(ROOT, b);
   uint32_t s = 100u + (uint32_t)i * 16u;

@@ -179,14 +179,36 @@
       "fighters.weapon",
       "fighters.alive",
       "fighters.pos",
-      "views"
+      "views",
+      "cam.offset",
+      "rumble.sent",
+      "cw.rumble"
     ],
     "expect": {
       "game.state": 1,
       "game.mode": 0,
       "game.arena": 0,
       "game.players": 4,
-      "views": 4
+      "views": 4,
+      "cam.offset": [
+        581,
+        0,
+        0
+      ],
+      "rumble.sent": [
+        7,
+        2,
+        3,
+        16,
+        5
+      ],
+      "cw.rumble": [
+        33,
+        3,
+        194,
+        0,
+        82
+      ]
     },
     "controlFrames": 1199,
     "webgpu": {
@@ -198,7 +220,7 @@
         "chromium"
       ]
     },
-    "note": "arenafps_auto: four seats (the AUTO bot count adds none) play Foundry deathmatch by themselves for 20 seconds. The simulation (movers, navmesh paths, shots, rockets, pickups) must give the same state on every host, so fighters.pos, scores and the state hash are compared exactly; pixels within the usual tolerance (particles, decals). Control: one frame short. WebGPU vs GL within 40 percent: at frame 1200 two of the four views face a wall at arm's length, and close-up texture detail (normal and roughness maps at that distance) differs between the backends (33 percent of pixels over 16 levels, 42 to 50 percent in those two views, 19 to 21 in the others, mean brightness equal: an engine finding in internal-cartwheel/findings/arenafps.md)."
+    "note": "arenafps_auto: four seats (the AUTO bot count adds none) play Foundry deathmatch by themselves for 20 seconds. The simulation (movers, navmesh paths, shots, rockets, pickups) must give the same state on every host, so fighters.pos, scores and the state hash are compared exactly; pixels within the usual tolerance (particles, decals). Control: one frame short. WebGPU vs GL within 40 percent: at frame 1200 two of the four views face a wall at arm's length, and close-up texture detail (normal and roughness maps at that distance) differs between the backends (33 percent of pixels over 16 levels, 42 to 50 percent in those two views, 19 to 21 in the others, mean brightness equal: an engine finding in internal-cartwheel/findings/arenafps.md). No shake (2026-10-29): cam.offset is every view's camera as drawn against the eye and aim on the 581 ticks within half a second of a hit taken or a blast within 14 m; none is off by over 0.1 mm or 0.1 milliradian (the build before measured 575 of 581 off, up to 14 cm and radians summed). rumble.sent: blasts, hits taken, hits dealt and kills, landings, rocket and rail shots sent to the players' pads; cw.rumble the engine's last request (a landing on pad 3)."
   },
   {
     "name": "arenafps-screenshot",

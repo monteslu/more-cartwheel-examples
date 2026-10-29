@@ -6,7 +6,7 @@ bots that find their way over a navigation mesh, jump pads, ledge jumps and drop
 
 ## Play
 
-- Title -> join (each pad presses South to join) -> pick the arena, the mode, the number of bots, how good the bots are (easy, normal, hard) and aim assist on or off -> fire to start.
+- Title -> join (each pad presses South to join) -> pick the arena, the mode, the number of bots, how good the bots are (easy, normal, hard), aim assist on or off and rumble on or off -> fire to start.
 - Move: left stick (keyboard: W A S D). Sprint: click the left stick (keyboard: left Shift), forward only, and firing
   ends it. Look: right stick (keyboard: arrow keys). Fire: right trigger or right shoulder (keyboard: J). Jump: South
   (keyboard: Space): high enough for a 1.2 m ledge. Next / previous weapon: North / West (keyboard: E / Q).
@@ -18,7 +18,7 @@ Modes
 - Team deathmatch: red against blue, first team to 30.
 - Co-op waves: the players hold the arena against six waves of bots, with a shared pool of lives. A wave is bigger and tougher each time and bigger again for every extra player; between waves everyone heals a little and the rifle is topped up, and the next wave is counted down on screen.
 
-Feedback: a hit throws the target back a moment, a red cross flashes on a hit, a gold cross and the victim's name on a frag, a red bar on a ring around the crosshair points at whoever hit you, the edges pulse red when health is low, and a downed player sees a respawn countdown (about 2.5 s; two seconds of protection after you spawn).
+Feedback: the view never shakes, bobs or kicks; blasts (by how close), hits taken, big hits and frags dealt, hard landings and each rocket or rail shot are felt in your own pad instead (rumble, Rumble on the setup screen; nothing without motors). A hit throws the target back a moment, a red cross flashes on a hit, a gold cross and the victim's name on a frag, a red bar on a ring around the crosshair points at whoever hit you, the edges pulse red when health is low, and a downed player sees a respawn countdown (about 2.5 s; two seconds of protection after you spawn).
 
 Weapons (found on the map and kept until you die; you always have the rifle). Scatter guns come back 10 s after they
 are taken, rockets, rails and armour on a timer you can read over the empty spot (20 to 30 s). The rifle climbs in a fixed

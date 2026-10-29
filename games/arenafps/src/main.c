@@ -86,7 +86,10 @@ static struct game {
   feed_line feed[MAX_FEED];
   int winner; /* fighter index or team, -1 none */
   /* per human view feedback */
-  float hit_marker[MAXH], dmg_flash[MAXH], dmg_dir[MAXH], shake[MAXH], kill_flash[MAXH];
+  float hit_marker[MAXH], dmg_flash[MAXH], dmg_dir[MAXH], kill_flash[MAXH];
+  int dmg_taken[MAXH], dmg_dealt[MAXH], kills_now[MAXH]; /* this tick's damage per person, for the rumble */
+  int rumble_off;          /* Rumble OFF on the setup screen (for the session, like aim assist: a game save added now
+                            * would reset the shell's saved settings once) */
   char kill_name[MAXH][16];
   cw_aim_state aim[MAXH];
   /* actions */
@@ -293,6 +296,27 @@ static void kill_fighter(fighter *v, fighter *k, int weapon) {
   }
 }
 
+/* ── rumble (cartwheel/input.h) ────────────────────────────────────────
+ * The feel of a hit or a blast goes to the pad of the person it concerns, never into the camera. Presentation only:
+ * nothing here feeds back into the game. A request on top of one still running keeps the stronger of each motor and
+ * the longer of the two (a light tick never cuts a blast short); the motors always stop on their own after ms. */
+static struct { int until[MAXH]; float low[MAXH], high[MAXH]; int clock; } RB;
+static int32_t rumble_sent[5]; /* debug rumble.sent: requests for blasts, hits taken, hits dealt and kills, landings, heavy shots */
+static void rumble(int h, float low, float high, int ms) {
+  if (h < 0 || h >= MAXH || h >= G.players || G.rumble_off || ms <= 0) return;
+  int now = RB.clock, left = (RB.until[h] - now) * 1000 / 60;
+  if (left > 0) {
+    if (low <= RB.low[h] && high <= RB.high[h] && ms <= left) return;
+    low = CW_MAX(low, RB.low[h]), high = CW_MAX(high, RB.high[h]), ms = CW_MAX(ms, left);
+  }
+  low = cw_clampf(low, 0, 1), high = cw_clampf(high, 0, 1);
+  RB.low[h] = low, RB.high[h] = high, RB.until[h] = now + (ms * 60 + 999) / 1000;
+  cw_input_rumble(h, low, high, ms);
+}
+static void rumble_stop_all(void) {
+  for (int h = 0; h < MAXH; h++) if (RB.until[h] > RB.clock) cw_input_rumble_stop(h), RB.until[h] = 0;
+}
+
 /* events that used to shake a view (the shake check below, cam.offset) */
 static int32_t cam_offset[3];
 static int ev_until[MAXH];
@@ -320,12 +344,14 @@ static void damage(fighter *v, fighter *k, int dmg, t3_vec3 dir, float knock, in
       t3_vec3 d = v3sub(k->mv.position, v->mv.position);
       G.dmg_dir[v->human] = cw_atan2(-d.x, -d.z) - v->yaw;
     }
-    G.shake[v->human] = CW_MAX(G.shake[v->human], 0.4f + (float)dmg * 0.01f);
+    G.dmg_taken[v->human] += dmg - absorbed / 2;
     mark_event(v->human);
     fx_play_ui(SND_HURT, 0.5f);
   }
   if (k && k->human >= 0 && k != v) {
     G.hit_marker[k->human] = 1;
+    G.dmg_dealt[k->human] += dmg;
+    if (v->hp <= 0) G.kills_now[k->human]++;
     fx_play_ui(SND_TICK, 0.5f);
   }
   if (v->hp <= 0) kill_fighter(v, k, weapon);
@@ -438,7 +464,14 @@ static void explode(proj *p, t3_vec3 at, t3_vec3 n) {
   cw_node3d_set_position(p->node, v3(0, -500, 0));
   cw_node3d_set_position(p->light, v3(0, -500, 0));
   fx_explosion(at, n);
-  for (int h = 0; h < G.players; h++) if (v3len(v3sub(eye_pos(F(h)), at)) < 14.0f) mark_event(h);
+  for (int h = 0; h < G.players; h++) {
+    float d = v3len(v3sub(eye_pos(F(h)), at));
+    if (d >= 14.0f) continue;
+    mark_event(h);
+    /* a blast: the heavy motor, strong up close and fading to nothing 14 m out */
+    float k = (1 - d / 14.0f) * (1 - d / 14.0f);
+    if (F(h)->alive) rumble_sent[0]++, rumble(h, 0.25f + 0.75f * k, 0.25f * k, 120 + (int)(260 * k));
+  }
   fighter *owner = F(p->owner);
   const float RADIUS = 5.0f;
   for (int i = 0; i < G.nf; i++) {
@@ -496,6 +529,9 @@ static void do_fire(fighter *f, int idx) {
   t3_vec3 d0 = look_dir(f->yaw, f->pitch);
   t3_vec3 right = v3norm(v3cross(d0, v3(0, 1, 0)));
   t3_vec3 muzzle = v3add(e, v3add(v3scale(d0, 0.5f), v3scale(right, 0.12f)));
+  if (f->human >= 0 && w->kind >= 1) rumble_sent[4]++;
+  if (f->human >= 0 && w->kind == 1) rumble(f->human, 0.3f, 0.15f, 70);      /* a rocket leaves: a light thump */
+  if (f->human >= 0 && w->kind == 2) rumble(f->human, 0.12f, 0.4f, 55);      /* the rail: a sharp tick */
   if (w->kind == 1) {
     fire_rocket(f, idx);
     fx_play(SND_ROCKET, e, 0.9f, 1);
@@ -575,9 +611,8 @@ static void move_fighter(fighter *f, float fwd, float strafe, bool jump, bool sp
   bool was_air = !f->mv.on_floor;
   float vy0 = f->mv.velocity.y;
   cw_mover3d_move(&f->mv, TICK_DT);
-  if (was_air && f->mv.on_floor && vy0 < -4.0f) { /* a landing: the view dips (deeper for a longer fall) and a thud */
-    f->dip_t = 1;
-    f->dip_a = CW_MIN(0.16f, (-vy0 - 4.0f) * 0.012f + 0.04f);
+  if (was_air && f->mv.on_floor && vy0 < -4.0f) { /* a landing: a thud, and a light bump in the pad (harder for a longer fall) */
+    if (f->human >= 0) rumble_sent[3]++, rumble(f->human, CW_MIN(0.45f, 0.1f + (-vy0 - 4.0f) * 0.025f), 0, 60 + (int)CW_MIN(60.0f, (-vy0 - 4.0f) * 6.0f));
     if (f->human >= 0) fx_play_ui(SND_LAND, CW_MIN(0.7f, 0.25f - vy0 * 0.02f));
     else fx_play(SND_LAND, f->mv.position, CW_MIN(0.8f, 0.3f - vy0 * 0.02f), 1);
   }
@@ -1397,6 +1432,7 @@ static void begin_match(void) {
 }
 
 static void end_match(int winner) {
+  rumble_stop_all();
   G.state = ST_OVER;
   G.winner = winner;
   G.over_ticks = 0;
@@ -1443,7 +1479,7 @@ static void check_rules(void) {
  * ticks at rest (alive, the fighter's position, yaw and pitch unchanged for a second), at-rest ticks where the camera moved
  * over 1 mm (position plus the point 1 m ahead plus the up vector), ticks in motion, and ticks in motion where it jumped over
  * 0.6 m or its step changed by over 8 cm; cam.jit the largest at-rest step, step in motion and step change (metres);
- * cam.events the ticks that carried a real event's shake (a hit taken, a blast near), which are meant to move.
+ * cam.events the ticks the camera was let move for an event: none, nothing shakes it (a hit or a blast is felt in the pad).
  * ARENA_CAM_BUG=1 (native, the check's control) puts a 2 mm idle sway on the camera at rest. */
 static int32_t cam_gate[4], cam_events, cam_jerk_at[4];
 static float cam_jit[3];
@@ -1491,7 +1527,7 @@ static void camgate(const fighter *f, t3_vec3 at, t3_vec3 d, t3_vec3 up, bool ev
  * view (the eye, eased over steps, looking along the fighter's yaw and pitch, level), on the ticks within half a second
  * of an event that used to shake it (a hit taken, a blast within 14 m of the eye). cam.offset: those event ticks, the
  * ones whose drawn camera was off the gameplay view by over 0.1 mm or 0.1 milliradian, and the largest offset seen
- * (micrometres of eye plus microradians of look and roll). Nothing moves the camera on an event: [n, 0, 0]. */
+ * (in 0.1 mm and 0.1 milliradian units, eye plus look and roll). Nothing moves the camera on an event: [n, 0, 0]. */
 static void offsetgate(int h, const fighter *f, t3_vec3 e, t3_vec3 d) {
   if (!f->alive || G.state != ST_PLAY || G.ticks > ev_until[h]) return;
   const t3_mat4 *m = cw_node3d_global_transform(G.cam[h]);
@@ -1501,7 +1537,7 @@ static void offsetgate(int h, const fighter *f, t3_vec3 e, t3_vec3 d) {
   float off = v3len(v3sub(pos, e)) + v3len(v3sub(fwd, d)) + v3len(v3sub(mup, up));
   cam_offset[0]++;
   if (off > 1e-4f) cam_offset[1]++;
-  int32_t um = (int32_t)(off * 1e6f);
+  int32_t um = (int32_t)(off * 1e4f);
   if (um > cam_offset[2]) cam_offset[2] = um;
 }
 
@@ -1540,11 +1576,6 @@ static void sync_nodes(void) {
   }
   for (int h = 0; h < G.players; h++) {
     fighter *f = F(h);
-    float sy = 0, bob = 0;
-    if (f->alive) {
-      bob = cw_sin(f->bob * 2.0f) * 0.035f * CW_MIN(1, v3len(v3(f->mv.velocity.x, 0, f->mv.velocity.z)) / 7.0f);
-      sy = bob;
-    }
     t3_vec3 e = eye_pos(f);
     { /* the eye follows step-ups and step-downs over a few ticks instead of snapping (stairs, kerbs, the mover's step) */
       static float ey[MAXH];
@@ -1556,38 +1587,16 @@ static void sync_nodes(void) {
       ground[h] = f->alive && f->mv.on_floor;
     }
     t3_vec3 e0 = e; /* the gameplay eye, for the shake check */
-    /* shake only on events (a hit taken, a blast nearby: the explosion kit's shake at the eye), short and fading, scaled by
-     * Settings > Screen shake; a hashed offset per tick, so it never draws on the simulation's random stream */
-    float sk = (G.shake[h] + cw_explosion_shake(G.tree, e)) * cw_shell_screen_shake();
-    t3_vec3 so = sk > 0.01f ? cw_shake_offset(sk, (uint32_t)G.ticks * 4u + (uint32_t)h, 0.025f) : v3(0, 0, 0);
-    float jx = so.x, jy = so.y;
-    G.shake[h] *= 0.88f;
-    if (G.shake[h] < 0.01f) G.shake[h] = 0;
-    float pitch = f->pitch + f->kick + jy;
-    float yaw = f->yaw + jx;
+    /* the camera is the eye and the aim, nothing more: no shake, no view kick, no bob, dip or roll (the feel of a hit,
+     * a blast, a landing or a heavy shot is in the pad: rumble); the gun's kick is the viewmodel's, below */
+    float pitch = f->pitch, yaw = f->yaw;
     if (!f->alive) { /* a dead player's view drops and tilts */
       e.y = f->mv.position.y + 0.5f;
       pitch = -0.5f;
     }
     t3_vec3 d = look_dir(yaw, pitch);
-    /* roll into a strafe (at most 1.4 degrees, eased; exactly level when not strafing), a dip on landing, a wider view at a
-     * sprint: all scaled by Settings > Screen shake, and none of it moves the camera at rest */
-    float ys, yc;
-    cw_sincos(f->yaw, &ys, &yc);
-    float side = f->alive && f->mv.on_floor ? (yc * f->mv.velocity.x - ys * f->mv.velocity.z) / 7.2f : 0;
-    float want = cw_clampf(side, -1, 1) * 0.024f * cw_shell_screen_shake();
-    f->roll += (want - f->roll) * 0.12f;
-    if (fabsf(f->roll) < 1e-4f && want == 0) f->roll = 0;
-    float dip = 0;
-    if (f->dip_t > 0) {
-      dip = f->dip_a * cw_sin(3.14159265f * (float)f->dip_t / 14.0f) * cw_shell_screen_shake();
-      if (++f->dip_t > 14) f->dip_t = 0;
-    }
-    t3_vec3 right = v3norm(v3cross(d, v3(0, 1, 0))), up0 = v3cross(right, d);
-    float sr, cr;
-    cw_sincos(f->roll, &sr, &cr);
-    t3_vec3 up = v3add(v3scale(up0, cr), v3scale(right, sr));
-    t3_vec3 at = v3add(e, v3(0, sy - dip, 0));
+    t3_vec3 right = v3norm(v3cross(d, v3(0, 1, 0))), up = v3cross(right, d);
+    t3_vec3 at = e;
     {
       static int bug = -1;
       if (bug < 0) bug = getenv("ARENA_CAM_BUG") && atoi(getenv("ARENA_CAM_BUG"));
@@ -1595,7 +1604,7 @@ static void sync_nodes(void) {
     }
     cw_node3d_set_position(G.cam[h], at);
     cw_node3d_look_at(G.cam[h], v3add(at, d), up);
-    if (h == 0 && G.state == ST_PLAY) camgate(f, at, d, up, sk > 0.01f);
+    if (h == 0 && G.state == ST_PLAY) camgate(f, at, d, up, false);
     offsetgate(h, f, e0, look_dir(f->yaw, f->pitch));
     {
       static float fov[MAXH] = { 78, 78, 78, 78 };
@@ -1666,7 +1675,7 @@ static void view_hook(int view, void *u) {
 static void game_step(void);
 static void fixed_update(void *user, double dt) {
   (void)user, (void)dt;
-  if (!cw_shell_update()) return;
+  if (!cw_shell_update()) { rumble_stop_all(); return; } /* menus and pause: the motors stop */
 #ifdef ARENA_AUTOPILOT
   /* ARENA_SIM_BATCH=n: n game ticks per engine tick, for pacing and soak runs that measure the simulation only (every seat is a
    * bot, so no input is lost); the game time per drawn frame grows n times */
@@ -1679,11 +1688,12 @@ static void fixed_update(void *user, double dt) {
 }
 
 static void game_step(void) {
+  RB.clock++; /* the rumble's clock: every game tick */
   G.steps++; /* every game tick since the start, across matches (soaks) */
   if (G.state == ST_SETUP) {
     int h = 0;
-    if (cw_action_just_pressed(h, G.mv_f)) G.setup_row = (G.setup_row + 5) % 6, fx_play_ui(SND_CLICK, 0.4f);
-    if (cw_action_just_pressed(h, G.mv_b)) G.setup_row = (G.setup_row + 1) % 6, fx_play_ui(SND_CLICK, 0.4f);
+    if (cw_action_just_pressed(h, G.mv_f)) G.setup_row = (G.setup_row + 6) % 7, fx_play_ui(SND_CLICK, 0.4f);
+    if (cw_action_just_pressed(h, G.mv_b)) G.setup_row = (G.setup_row + 1) % 7, fx_play_ui(SND_CLICK, 0.4f);
     int dir = cw_action_just_pressed(h, G.mv_r) - cw_action_just_pressed(h, G.mv_l);
     if (dir) {
       fx_play_ui(SND_TICK, 0.5f);
@@ -1692,6 +1702,11 @@ static void game_step(void) {
       else if (G.setup_row == 2) G.bots_setting = CW_CLAMP(G.bots_setting + dir, -1, MAXF - 4);
       else if (G.setup_row == 3) G.bot_level = (G.bot_level + 3 + dir) % 3;
       else if (G.setup_row == 4) G.aim_assist = !G.aim_assist;
+      else if (G.setup_row == 5) { /* rumble on or off */
+        G.rumble_off = !G.rumble_off;
+        if (G.rumble_off) rumble_stop_all();
+        else rumble(h, 0.3f, 0.3f, 120); /* a taste of it */
+      }
     }
     if (cw_action_just_pressed(h, G.jump) || cw_action_just_pressed(h, G.fire)) {
       { begin_match(); set_views(); }
@@ -1797,6 +1812,13 @@ static void game_step(void) {
   proj_tick();
   item_tick();
   check_rules();
+  for (int h = 0; h < G.players; h++) { /* this tick's hits in the pad: taken (sharp, by how much), dealt (a big one or a kill) */
+    if (G.dmg_taken[h] >= 15) rumble_sent[1]++, rumble(h, CW_MIN(0.4f, (float)G.dmg_taken[h] * 0.004f), CW_MIN(1, 0.35f + (float)G.dmg_taken[h] * 0.006f), CW_MIN(160, 70 + G.dmg_taken[h]));
+    if (G.kills_now[h] || G.dmg_dealt[h] >= 40) rumble_sent[2]++;
+    if (G.kills_now[h]) rumble(h, 0.15f, 0.6f, 90);
+    else if (G.dmg_dealt[h] >= 40) rumble(h, 0, CW_MIN(0.55f, 0.25f + (float)G.dmg_dealt[h] * 0.003f), 60);
+    G.dmg_taken[h] = G.dmg_dealt[h] = G.kills_now[h] = 0;
+  }
   fx_tick();
   for (int i = 0; i < MAX_FEED; i++) if (G.feed[i].ticks > 0) G.feed[i].ticks--;
   sync_nodes();
@@ -1985,8 +2007,8 @@ static void hud_setup(void) {
   text("ARENA", 0, u * 1.2f, u * 2.4f, cw_rgba(1, 0.85f, 0.4f, 1), CW_ALIGN_CENTER, cs.x);
   text("choose the match, then press fire", 0, u * 3.6f, u * 0.9f, cw_rgba(1, 1, 1, 0.8f), CW_ALIGN_CENTER, cs.x);
   char s[96];
-  const char *rows[6];
-  char r0[64], r1[64], r2[64], r3[64], r4[64];
+  const char *rows[7];
+  char r0[64], r1[64], r2[64], r3[64], r4[64], r5[64];
   snprintf(r0, sizeof r0, "<  %s  >", ARENA_INFO[G.arena_id].name);
   snprintf(r1, sizeof r1, "<  %s  >", MODE_NAME[G.mode]);
   if (G.mode == MODE_COOP) snprintf(r2, sizeof r2, "waves of bots");
@@ -1995,10 +2017,11 @@ static void hud_setup(void) {
   static const char *LEVEL[3] = { "EASY", "NORMAL", "HARD" };
   snprintf(r3, sizeof r3, "<  bots: %s  >", LEVEL[G.bot_level]);
   rows[0] = r0, rows[1] = r1, rows[2] = r2, snprintf(r4, sizeof r4, "<  aim assist: %s  >", G.aim_assist ? "ON" : "OFF");
-  rows[3] = r3, rows[4] = r4, rows[5] = "START";
-  for (int i = 0; i < 6; i++) {
+  snprintf(r5, sizeof r5, "<  rumble: %s  >", G.rumble_off ? "OFF" : "ON");
+  rows[3] = r3, rows[4] = r4, rows[5] = r5, rows[6] = "START";
+  for (int i = 0; i < 7; i++) {
     bool sel = i == G.setup_row;
-    text(rows[i], 0, u * (5.2f + 1.5f * (float)i), u * 1.3f, sel ? cw_rgba(1, 0.9f, 0.3f, 1) : cw_rgba(1, 1, 1, 0.75f), CW_ALIGN_CENTER, cs.x);
+    text(rows[i], 0, u * (5.2f + 1.35f * (float)i), u * 1.3f, sel ? cw_rgba(1, 0.9f, 0.3f, 1) : cw_rgba(1, 1, 1, 0.75f), CW_ALIGN_CENTER, cs.x);
   }
   snprintf(s, sizeof s, "%s", ARENA_INFO[G.arena_id].blurb);
   text(s, 0, u * 14.7f, u * 0.9f, cw_rgba(1, 1, 1, 0.7f), CW_ALIGN_CENTER, cs.x);
@@ -2100,7 +2123,7 @@ static void start(int players, void *user) {
   (void)user;
   G.players = players;
   G.state = ST_SETUP;
-  G.setup_row = 5;
+  G.setup_row = 6;
   for (int i = 0; i < MAXH; i++) cw_node_set(G.cam[i], "current", cw_val_bool(i == 0));
   build_world(G.arena_id);
   set_views();
@@ -2230,6 +2253,7 @@ static void init(void *user) {
   cw_debug_field("cam.jit", cam_jit, CW_DBG_F32, 3);
   cw_debug_i32("cam.events", &cam_events);
   cw_debug_field("cam.offset", cam_offset, CW_DBG_I32, 3);
+  cw_debug_field("rumble.sent", rumble_sent, CW_DBG_I32, 5);
   cw_debug_field("cam.jerk_at", cam_jerk_at, CW_DBG_I32, 4);
   cw_debug_field("soak.heap_kb", soak_heap_kb, CW_DBG_I32, SOAK_N);
   cw_debug_i32("stats.enc", &G.st.enc);
