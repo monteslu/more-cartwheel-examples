@@ -27,6 +27,11 @@ Walk over food, coins and weapons to pick them up; you can reach them from a ste
 - Guards hold a riot shield: punches from the front bounce off (three of them break the guard). Kick, jump kick,
   throw, use a weapon or the spin move, or hit them from behind.
 - Bruisers are heavy and do not flinch.
+- Rednecks (a red cap that says "Dumb", a grimy tee) wind up a huge haymaker: when he turns his whole body away
+  and a red ring shows at his feet, step out of his lane. It knocks you down if it lands, and he stumbles after it, so
+  punish the miss. Now and then he lowers a shoulder and barges along the lane from a few steps away.
+- No two of a kind look alike: every thug, punk, runner, knifer, bruiser, thrower and redneck walks on with his own skin
+  tone, hair and clothes (the riot guards keep their uniform).
 - Each stage ends with a boss with three phases. At two thirds and one third of its health it stops, roars, calls
   help and comes back with a new move. Heavy blows (slams, spins, charges) show a red ring on the street while they
   wind up: get out of it.
@@ -37,6 +42,8 @@ Walk over food, coins and weapons to pick them up; you can reach them from a ste
   street from it: anyone on the ground when the ring reaches them is knocked down. Jump over it), the Matron (the arcade,
   where the Ringmaster also runs the floor as a mini boss halfway through) and the Colossus (the roof).
 
+Hard blows draw a little blood, and bodies that hit the street leave a stain (they fade after a while).
+
 Anyone knocked down falls loose: the body tumbles, hits the street, the kerb and the crates, and gets up from where it
 lies (face up or face down). The fall is only for show: how long a body stays down is the same every time.
 
@@ -45,12 +52,15 @@ Enemies never hit you from outside the picture or before they have walked in.
 ## Run
 
 `brawler_auto` is the same game with bots playing, for tests and screenshots. Its debug commands: `stage N`,
-`wave N` (4 is the boss), `players N`, `spawn <kind> [dx dz]`, `item <kind> [dx dz]`, `cam`, `freeze`, `knockdown`.
+`wave N` (4 is the boss), `players N`, `spawn <kind> [dx dz]` (15 is the redneck), `item <kind> [dx dz]`, `cam`,
+`freeze <0|1> [turn]` (turn: how far a frozen body turns from the camera, 1.57 side on), `knockdown`, `blood <dx> <dz> <kind>`.
 Environment for native runs: BRAWLER_STAGE, BRAWLER_PLAYERS, BRAWLER_CROWD, BRAWLER_TURBO (ticks per frame), BRAWLER_KNOCKALL (everyone down every N ticks),
-BRAWLER_SOAK (a lost stage is retried), BRAWLER_LOG (status lines), BRAWLER_BOTDMG (bot damage factor, 3 by default).
+BRAWLER_SOAK (a lost stage is retried), BRAWLER_SEED (another match from the same rules), BRAWLER_LOG (status lines), BRAWLER_BOTDMG (bot damage factor, 3 by default).
 
 `node games/brawler/tools/soak.mjs --exe <brawler_auto> --pak <brawler_auto.cwpak> --players 4 --minutes 30 --all-stages`
 runs a soak on software GL and checks it (crash, NaN, token leak, unfair hits, stalls, memory, every boss).
+`node games/brawler/tools/boss-ttk.mjs --exe <brawler_auto> --pak <brawler_auto.cwpak> --players 1,2,4 --seeds 6` times
+every boss fight (seconds shown and blows landed) with the bots at a fighter's real damage.
 
 ## What it is for
 

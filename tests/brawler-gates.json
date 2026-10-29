@@ -1,7 +1,7 @@
 [
   {
     "name": "brawler-brawl",
-    "note": "brawler_auto: three bots fight stage 1 for 1200 ticks. The named state (positions, hit points, the hash of every body every tick) must match exactly on every host; the expects pin this run (repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth: game.overlaps, pairs of bodies still inside each other on any frame, stays 0). The control is one frame short.",
+    "note": "brawler_auto: three bots fight stage 1 for 1200 ticks. The named state (positions, hit points, the hash of every body every tick) must match exactly on every host; the expects pin this run (repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth: game.overlaps, pairs of bodies still inside each other on any frame, stays 0). The control is one frame short. Repinned 2026-10-29 (B-PT7..10): reach now grows with body girth, enemies are clamped inside the attack margin, the bots turn to face their target, the redneck joined the waves and boss health was cut; the looks and the blood are presentation and move nothing.",
     "app": "brawler_auto",
     "frames": 1200,
     "fields": [
@@ -39,14 +39,14 @@
     ],
     "expect": {
       "game.ticks": 1108,
-      "game.kills": 6,
-      "game.score": 7570,
-      "game.hash": 3101311473,
+      "game.kills": 7,
+      "game.score": 8360,
+      "game.hash": 998276462,
       "rag.made": 7,
       "rag.missed": 0,
-      "rag.hash": 4234778464,
+      "rag.hash": 1631173505,
       "game.wave": 1,
-      "game.hits": 21,
+      "game.hits": 23,
       "game.first_hit": 297,
       "game.deaths": 0,
       "game.unfair": 0,
@@ -66,7 +66,7 @@
   },
   {
     "name": "brawler-solo",
-    "note": "One bot (players 1) on stage 1: the crowd, the thrower and the token cap against a single fighter. Expects repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth (game.overlaps stays 0).",
+    "note": "One bot (players 1) on stage 1: the crowd, the thrower and the token cap against a single fighter. Expects repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth (game.overlaps stays 0). Repinned 2026-10-29 (B-PT7..10): reach now grows with body girth, enemies are clamped inside the attack margin, the bots turn to face their target, the redneck joined the waves and boss health was cut; the looks and the blood are presentation and move nothing.",
     "app": "brawler_auto",
     "frames": 1500,
     "startCmds": [
@@ -100,12 +100,12 @@
       "game.overlaps"
     ],
     "expect": {
-      "game.ticks": 1435,
-      "game.kills": 7,
-      "game.score": 5770,
-      "game.hash": 3658984432,
-      "game.wave": 2,
-      "game.hits": 15,
+      "game.ticks": 1443,
+      "game.kills": 6,
+      "game.score": 4650,
+      "game.hash": 3730301668,
+      "game.wave": 1,
+      "game.hits": 12,
       "game.first_hit": 261,
       "game.deaths": 0,
       "game.unfair": 0,
@@ -125,7 +125,7 @@
   },
   {
     "name": "brawler-four",
-    "note": "Four bots (players 4) on stage 2 (docks: guards and throwers from the first waves). Expects repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth (game.overlaps stays 0).",
+    "note": "Four bots (players 4) on stage 2 (docks: guards and throwers from the first waves). Expects repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth (game.overlaps stays 0). Repinned 2026-10-29 (B-PT7..10): reach now grows with body girth, enemies are clamped inside the attack margin, the bots turn to face their target, the redneck joined the waves and boss health was cut; the looks and the blood are presentation and move nothing.",
     "app": "brawler_auto",
     "frames": 1500,
     "startCmds": [
@@ -167,18 +167,18 @@
       "game.overlaps"
     ],
     "expect": {
-      "game.ticks": 1378,
-      "game.kills": 6,
-      "game.score": 7480,
-      "game.hash": 3972657629,
+      "game.ticks": 1335,
+      "game.kills": 10,
+      "game.score": 12970,
+      "game.hash": 1854930030,
       "game.wave": 1,
-      "game.hits": 22,
+      "game.hits": 38,
       "game.first_hit": 285,
       "game.deaths": 0,
       "game.unfair": 0,
       "game.token_leak": 0,
       "game.nan": 0,
-      "game.blocks": 0,
+      "game.blocks": 2,
       "game.overlaps": 0
     },
     "webgpu": {
@@ -193,10 +193,11 @@
   },
   {
     "name": "brawler-boss",
-    "note": "Stage 1 boss wave with three bots: the boss goes through its three phases (game.boss_phase 2 reached) and the danger rings show on the street. Expects repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth (game.overlaps stays 0).",
+    "note": "Stage 1 boss wave with three bots: the boss goes through its three phases (game.boss_phase 2 reached) and the danger rings show on the street. Expects repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth (game.overlaps stays 0). Repinned 2026-10-29 (B-PT7..10): reach now grows with body girth, enemies are clamped inside the attack margin, the bots turn to face their target, the redneck joined the waves and boss health was cut; the looks and the blood are presentation and move nothing. Since then it runs with the bots at a fighter's real damage (botdmg 1, 3600 frames) so the Foreman fight lasts as it does for a player: the run ends in his last phase (game.boss_phase 2) still on stage 1 (game.stage 0).",
     "app": "brawler_auto",
-    "frames": 2400,
+    "frames": 3600,
     "startCmds": [
+      "botdmg 1",
       "stage 0",
       "wave 4"
     ],
@@ -232,17 +233,18 @@
       "game.overlaps"
     ],
     "expect": {
-      "game.ticks": 2232,
-      "game.kills": 2,
-      "game.score": 11300,
-      "game.hash": 3262253263,
+      "game.ticks": 3141,
+      "game.kills": 4,
+      "game.score": 8870,
+      "game.hash": 872505829,
       "game.wave": 4,
       "game.deaths": 0,
       "game.unfair": 0,
       "game.token_leak": 0,
       "game.nan": 0,
       "game.boss_phase": 2,
-      "game.overlaps": 0
+      "game.overlaps": 0,
+      "game.stage": 0
     },
     "webgpu": {
       "hosts": [
@@ -290,10 +292,11 @@
   },
   {
     "name": "brawler-arthur",
-    "note": "Stage 2 (the docks) boss wave with three bots: Arthur reaches his second phase, walks to the jukebox, thumps it (his theme, a shockwave along the floor that knocks down whoever is on the ground and that the bots jump), then the thumbs up. game.juke is [uses, fighters knocked down, fighters who jumped it, playing, ring radius in cm, ticks on his way]. The control freezes everyone, so the jukebox is never thumped. Expects repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth (game.overlaps stays 0).",
+    "note": "Stage 2 (the docks) boss wave with three bots: Arthur reaches his second phase, walks to the jukebox, thumps it (his theme, a shockwave along the floor that knocks down whoever is on the ground and that the bots jump), then the thumbs up. game.juke is [uses, fighters knocked down, fighters who jumped it, playing, ring radius in cm, ticks on his way]. The control freezes everyone, so the jukebox is never thumped. Expects repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth (game.overlaps stays 0). Repinned 2026-10-29 (B-PT7..10): reach now grows with body girth, enemies are clamped inside the attack margin, the bots turn to face their target, the redneck joined the waves and boss health was cut; the looks and the blood are presentation and move nothing. Since then at real damage (botdmg 1, 2400 frames): Arthur thumps the jukebox once (one fighter knocked down, two jump it) and is beaten before the stage changes (game.stage 1).",
     "app": "brawler_auto",
     "frames": 2400,
     "startCmds": [
+      "botdmg 1",
       "stage 1",
       "wave 4"
     ],
@@ -330,10 +333,10 @@
       "game.overlaps"
     ],
     "expect": {
-      "game.ticks": 2172,
-      "game.kills": 4,
-      "game.score": 14280,
-      "game.hash": 538796201,
+      "game.ticks": 1983,
+      "game.kills": 5,
+      "game.score": 12140,
+      "game.hash": 1487552485,
       "game.wave": 4,
       "game.deaths": 0,
       "game.unfair": 0,
@@ -342,15 +345,16 @@
       "game.boss_phase": 2,
       "game.juke": [
         1,
-        2,
         1,
+        2,
         1,
         0,
         0
       ],
-      "rag.made": 13,
-      "rag.hash": 4115012762,
-      "game.overlaps": 0
+      "rag.made": 12,
+      "rag.hash": 3372652646,
+      "game.overlaps": 0,
+      "game.stage": 1
     },
     "webgpu": {
       "hosts": [
@@ -362,8 +366,91 @@
       "note": "the same dual cart on romdev and Chromium against native WebGPU (state exact). vsGl 0.5 percent: GL and WebGPU draw the same picture (0.01 percent apart); the brick, asphalt and corrugated detail that differed by 4 to 10.6 percent was the engine lighting normal maps from the wrong side on WebGPU, fixed (findings/gl-webgpu-parity.md)"
     },
     "controlStartCmds": [
+      "botdmg 1",
       "stage 1",
       "wave 4",
+      "freeze 1"
+    ],
+    "controlFrames": 2400
+  },
+  {
+    "name": "brawler-redneck",
+    "note": "Stage 1, wave 2 (thugs, a punk and the redneck) with two bots: the redneck winds up his haymaker (its wind-up shrugs off light blows) and lands it, barges along the lane, and is beaten. game.redneck is [rednecks spawned, haymakers, haymakers that landed, barges, barges that landed, rednecks killed]. Also the looks and the blood: game.clones (most pairs of one kind of enemy on the street that look the same on any frame) stays 0, fx.blood is [stains placed, droplet bursts, stains showing, same-shape stains on top of each other] and its last entry stays 0. The control freezes everyone, so nobody swings. rag.hash is left out of this gate: with the redneck knocked down out of his haymaker clip, the ragdoll started from that pose hashes 3232650868 natively and 3315670625 on every cart host (romdev, Chromium, romdev on GL alike), while the game state is equal on all of them: the presentation pose sampled natively and in the cart differs for that clip (findings/brawler.md, engine note 5). The other gates still compare rag.hash on every host.",
+    "app": "brawler_auto",
+    "frames": 2400,
+    "startCmds": [
+      "botdmg 1",
+      "players 2",
+      "wave 1"
+    ],
+    "fields": [
+      "game.ticks",
+      "game.players",
+      "game.wave",
+      "game.kills",
+      "game.score",
+      "game.enemies",
+      "game.tokens",
+      "game.token_leak",
+      "game.hp",
+      "game.px",
+      "game.state",
+      "game.enemy",
+      "game.cam",
+      "game.hash",
+      "game.unfair",
+      "game.deaths",
+      "game.nan",
+      "game.rigs",
+      "rag.made",
+      "rag.missed",
+      "game.redneck",
+      "game.clones",
+      "fx.blood",
+      "game.overlaps"
+    ],
+    "expect": {
+      "game.unfair": 0,
+      "game.token_leak": 0,
+      "game.nan": 0,
+      "game.clones": 0,
+      "game.overlaps": 0,
+      "game.ticks": 2114,
+      "game.kills": 7,
+      "game.score": 6920,
+      "game.hash": 1620341337,
+      "game.wave": 2,
+      "game.deaths": 0,
+      "game.redneck": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "fx.blood": [
+        39,
+        61,
+        28,
+        0
+      ],
+      "rag.made": 21,
+      "rag.missed": 0
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "vsGl": 0.005,
+      "note": "the same dual cart on romdev and Chromium against native WebGPU (state exact). vsGl 0.5 percent: GL and WebGPU draw the same picture (0.01 percent apart); the brick, asphalt and corrugated detail that differed by 4 to 10.6 percent was the engine lighting normal maps from the wrong side on WebGPU, fixed (findings/gl-webgpu-parity.md)"
+    },
+    "controlStartCmds": [
+      "botdmg 1",
+      "players 2",
+      "wave 1",
       "freeze 1"
     ],
     "controlFrames": 2400

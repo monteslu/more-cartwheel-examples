@@ -62,24 +62,27 @@ typedef struct wave_def { float lock; int n; int8_t def[10]; } wave_def;
 #define B D_BRUISER
 #define H D_THROWER
 #define G D_GUARD
+#define Y D_REDNECK
 /* every stage has a rusher (runner), a ranged thrower, a shield guard and a heavy (bruiser) before its boss; the first
-   stage brings each new one on its own wave so a player meets it alone */
+   stage brings each new one on its own wave so a player meets it alone. The redneck (haymaker, shoulder barge) is in
+   every stage: first on the alley's second wave with thugs and a punk, then one or two a stage */
 static const wave_def STAGE1[] = {
-  { 0, 3, { T, T, T } }, { 14, 4, { T, T, P, T } }, { 28, 5, { T, P, R, H, T } },
+  { 0, 3, { T, T, T } }, { 14, 4, { T, Y, P, T } }, { 28, 5, { T, P, R, H, T } },
   { 42, 5, { B, G, T, P, H } }, { 56, 1, { D_FOREMAN } },
 };
 static const wave_def STAGE2[] = {
-  { 0, 4, { T, P, R, H } }, { 14, 5, { K, T, G, R, T } }, { 28, 5, { R, H, K, P, G } },
-  { 42, 4, { B, K, H, P } }, { 56, 1, { D_ARTHUR } },
+  { 0, 4, { T, P, R, H } }, { 14, 5, { K, Y, G, R, T } }, { 28, 5, { R, H, K, P, G } },
+  { 42, 5, { B, K, H, Y, P } }, { 56, 1, { D_ARTHUR } },
 };
 static const wave_def STAGE3[] = { /* the ringmaster runs the arcade floor as a mid-stage mini boss; the Matron owns the stage */
   { 0, 5, { K, R, P, H, K } }, { 14, 6, { K, G, R, P, H, R } }, { 28, 5, { B, K, R, G, D_RINGMASTER } },
-  { 42, 6, { K, R, H, P, G, T } }, { 56, 1, { D_MATRON } },
+  { 42, 6, { K, R, H, P, G, Y } }, { 56, 1, { D_MATRON } },
 };
 static const wave_def STAGE4[] = {
-  { 0, 6, { K, R, G, T, H, R } }, { 14, 4, { B, K, H, G } }, { 28, 7, { K, G, R, H, P, P, T } },
+  { 0, 6, { K, R, G, T, H, R } }, { 14, 4, { B, K, H, G } }, { 28, 7, { K, G, R, H, Y, P, T } },
   { 42, 4, { B, B, H, G } }, { 56, 1, { D_COLOSSUS } },
 };
+#undef Y
 #undef H
 #undef G
 #undef T

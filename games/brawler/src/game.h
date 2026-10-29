@@ -25,7 +25,7 @@ typedef enum {
 } bstate;
 
 /* attack kinds: what the S_ATK state is doing */
-typedef enum { A_NONE, A_PUNCH1, A_PUNCH2, A_FINISH, A_KICK, A_JKICK, A_SPIN, A_SWING, A_STAB, A_KNEE, A_SLAM, A_CHARGE, A_BSPIN, A_THROW, A_BASH, A_RUSH, A_FLICK, A_JUKE, A_COUNT } akind;
+typedef enum { A_NONE, A_PUNCH1, A_PUNCH2, A_FINISH, A_KICK, A_JKICK, A_SPIN, A_SWING, A_STAB, A_KNEE, A_SLAM, A_CHARGE, A_BSPIN, A_THROW, A_BASH, A_RUSH, A_FLICK, A_JUKE, A_HAYMAKER, A_BARGE, A_COUNT } akind;
 
 typedef struct atk_data {
   const char *clip;
@@ -72,6 +72,7 @@ typedef struct ent {
   int fade;
   float hurtflash;
   bool hitflag;
+  uint32_t look; /* a regular enemy's skin, hair and clothes (looks.c look_pick; 0: the model's own); never hashed */
 } ent;
 
 typedef struct prop_t { bool used; int kind, hp; float x, z; int drop; cw_node node; int shake; } prop_t;
@@ -86,7 +87,7 @@ typedef struct stage_t {
 
 extern const char_def DEFS[];
 extern const atk_data ATK[];
-enum { D_ROOK, D_MIKA, D_JET, D_THUG, D_PUNK, D_RUNNER, D_KNIFER, D_BRUISER, D_THROWER, D_GUARD, D_FOREMAN, D_MATRON, D_RINGMASTER, D_COLOSSUS, D_ARTHUR, D_COUNT };
+enum { D_ROOK, D_MIKA, D_JET, D_THUG, D_PUNK, D_RUNNER, D_KNIFER, D_BRUISER, D_THROWER, D_GUARD, D_FOREMAN, D_MATRON, D_RINGMASTER, D_COLOSSUS, D_ARTHUR, D_REDNECK, D_COUNT };
 
 /* the match */
 typedef enum { PH_PLAY, PH_CLEAR, PH_OVER, PH_WIN, PH_INTRO } phase_t;
@@ -117,9 +118,13 @@ typedef struct world_t {
   struct stats { /* what the rubric measures, per stage (reset by sim_reset) */
     int t0, first_hit, deaths, hits, blocks, pickups, unfair, still_max, frozen, nan, stall, stall_max;
     int boss_t0, boss_t1, boss_phase, chain_starts, finishers, waves_done, wave_t0, wave_max, wave_sum, dmg_taken;
+    int boss_f0, boss_f1, boss_hits; /* boss_hits: blows the fighters landed on the boss; the boss fight in frames shown (ticks plus hit-stop and slow motion: what a player waits) */
     int atk_hits[A_COUNT];
   } st;
   int run_deaths; /* lives lost in the whole run */
+  struct red { int spawned, hay, hay_hits, barge, barge_hits, kills; } red; /* the redneck's moves (the gates read them) */
+  int spawns; /* enemies spawned this match (looks.c: each spawn's look) */
+  int frames; /* sim_tick calls, hit-stop and slow-motion frames included (the stats' wall clock; never hashed) */
   /* the docks jukebox (stage 2, Arthur's arena): he thumps it, it plays his theme and a shockwave runs out along the
      floor (decided here, on the fixed tick; the lights, music and ring on screen only show it) */
   struct juke { bool here, on; int cd, t, owner, fired, uses, hits, dodges; float r, r0; uint32_t mask; } juke;
@@ -158,6 +163,9 @@ void sim_goto_wave(int wave);
 void fx_init(void);
 void fx_hit(float x, float y, float z, int kind, int face);
 void fx_dust(float x, float z, float scale);
+void fx_blood(float x, float y, float z, int dir, int knock); /* droplets from a blow and a spatter under a hard one */
+void fx_stain(float x, float z, float size, int kind); /* a stain on the street: 0 drops, 1 a splat, 2 a pool */
+void fx_blood_stats(int out[4]); /* stains placed, droplet bursts, stains showing now, same-shape stains overlapping now (0) */
 void fx_debris(float x, float y, float z, uint32_t color);
 void fx_flash(float x, float y, float z, float r, float g, float b, float e);
 void fx_tick(void);
@@ -175,6 +183,12 @@ void audio_init(void);
 cw_sound music_make(int stage);
 /* secondary.c: spring bones (hair, coat tails, belly) and character shading */
 #include "three.h"
+/* looks.c: per-spawn skin tones and clothes for the regular enemies */
+uint32_t look_pick(int def, int self);
+void looks_bind(int rig, int def, t3_object *inst);
+void looks_apply(int rig, uint32_t look);
+void looks_reset(void);
+int looks_clones(void); /* pairs of enemies of one kind on the street that look the same (0 always) */
 enum { SB_MAX = 5 };
 typedef struct spring_bone { t3_object *bone; t3_vec3 rest, tip, T, V; bool live; } spring_bone;
 typedef struct spring_rig { t3_object *scene; spring_bone b[SB_MAX]; } spring_rig;

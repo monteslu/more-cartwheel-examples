@@ -37,7 +37,8 @@ static uint32_t d_hash;
 static float d_ex[8][4];
 static int32_t d_states[MAXP];
 static int32_t d_unfair, d_still, d_frozen, d_blocks, d_pickups, d_bphase, d_deaths, d_first, d_hits, d_nan, d_stall, d_proj, d_weapon, d_rigs, d_overlaps;
-static int32_t d_juke[6]; /* the jukebox: uses, fighters knocked down by its shockwave, fighters who jumped it, playing, radius in cm, Arthur on his way to it */
+static int32_t d_juke[6];
+static int32_t d_red[6], d_clones, d_blood[4]; /* the jukebox: uses, fighters knocked down by its shockwave, fighters who jumped it, playing, radius in cm, Arthur on his way to it */
 static float d_face[8]; /* the boss's expression weights (blink snarl shout wince ko grin effort grimace) */
 static int64_t run_ticks; /* fixed updates since the program started (status lines) */
 
@@ -118,11 +119,24 @@ static void cmd_cam(int argc, const char **argv, cw_reply *r) {
 }
 /* spawn <kind 3-11> [dx dz]: an enemy near the camera */
 static void cmd_spawn(int argc, const char **argv, cw_reply *r) {
-  if (argc < 2) { cw_reply_error(r, "usage: spawn <3-14> [dx dz]"); return; }
+  if (argc < 2) { cw_reply_error(r, "usage: spawn <3-15> [dx dz]"); return; }
   int d = atoi(argv[1]);
-  if (d < D_THUG || d >= D_COUNT) { cw_reply_error(r, "kind 3-14"); return; }
+  if (d < D_THUG || d >= D_COUNT) { cw_reply_error(r, "kind 3-15"); return; }
   int i = ent_spawn_enemy(d, W.cam_x + (argc > 2 ? (float)atof(argv[2]) : 0), argc > 3 ? (float)atof(argv[3]) : 0);
   cw_reply_printf(r, "{\"index\":%d}", i);
+}
+/* botdmg <k>: the bots' damage factor (3 by default: they are poor fighters; 1 is a fighter's real damage, what the boss
+   gates use so a boss fight lasts as long as it does for a player) */
+static void cmd_botdmg(int argc, const char **argv, cw_reply *r) {
+  extern float g_bot_dmg;
+  if (argc > 1) g_bot_dmg = (float)atof(argv[1]);
+  cw_reply_printf(r, "{\"botdmg\":%g}", g_bot_dmg);
+}
+/* blood <dx> <dz> <kind 0-2> [size]: a stain on the street near the camera (screenshots of the shapes) */
+static void cmd_blood(int argc, const char **argv, cw_reply *r) {
+  if (argc < 4) { cw_reply_error(r, "usage: blood <dx> <dz> <kind 0-2> [size]"); return; }
+  fx_stain(W.cam_x + (float)atof(argv[1]), (float)atof(argv[2]), argc > 4 ? (float)atof(argv[4]) : 0.8f, atoi(argv[3]) % 3);
+  cw_reply_printf(r, "{\"ok\":1}");
 }
 /* knockdown: every fighter and enemy on its feet is knocked down at once (ragdoll close-ups and the ragdoll cost) */
 static void knock_all(void) {
@@ -144,6 +158,7 @@ static void cmd_knockdown(int argc, const char **argv, cw_reply *r) {
 /* freeze <0|1>: enemies hold their place and bots stop (for screenshots of the characters) */
 static void cmd_freeze(int argc, const char **argv, cw_reply *r) {
   g_freeze = argc > 1 && atoi(argv[1]) != 0;
+  { extern float g_freeze_yaw; g_freeze_yaw = argc > 2 ? (float)atof(argv[2]) : 0.45f; }
   cw_reply_printf(r, "{\"freeze\":%d}", g_freeze);
 }
 /* bots: walk to the nearest enemy and fight; grab, kick and jump now and then */
@@ -181,7 +196,8 @@ static void bot(int i, inputs *in) {
     tz = -1.2f + (float)i * 1.2f;
   } else {
     const ent *v = &W.e[best];
-    tx = v->x - (e->x < v->x ? 0.9f : -0.9f);
+    float off = DEFS[v->def].boss ? 1.15f : DEFS[v->def].mini ? 1.0f : 0.9f; /* big bodies are held further off (separate_bodies) */
+    tx = v->x - (e->x < v->x ? off : -off);
     tz = v->z + ((i & 1) ? 0.3f : -0.3f); /* fighters on one enemy flank it a step apart in depth, not in single file */
   }
   float dx = tx - e->x, dz = tz - e->z;
@@ -189,8 +205,11 @@ static void bot(int i, inputs *in) {
   in->mz = dz > 0.12f ? 1 : dz < -0.12f ? -1 : 0;
   if (best >= 0) {
     const ent *v = &W.e[best];
+    /* standing in place next to it but turned away (no step to turn on): a nudge toward it turns the bot round (four bots
+       round a boss at the screen edge stood there back to back for minutes) */
+    if (in->mx == 0 && (v->x - e->x) * (float)e->face < -0.1f && fabsf(v->x - e->x) < 2.0f) in->mx = v->x > e->x ? 0.3f : -0.3f;
     float fx = (v->x - e->x) * (float)e->face;
-    bool near = fx > -0.2f && fx < 1.2f && (v->z - e->z) * (v->z - e->z) < 0.3f;
+    bool near = fx > -0.2f && fx < (DEFS[v->def].boss ? 1.45f : DEFS[v->def].mini ? 1.32f : 1.2f) && (v->z - e->z) * (v->z - e->z) < 0.3f;
     if (near && (W.tick + i * 7) % 12 == 0) {
       int r = (int)(W.hash ^ (uint32_t)(W.tick * 7 + i)) % 11;
       if (v->def == D_GUARD && (v->x - e->x) * (float)v->face < 0) r = r < 5 ? 1 : r < 7 ? 0 : 3; /* a shield in the way: kick or grab */
@@ -271,6 +290,9 @@ static void init(void *user) {
   cw_debug_f32("game.cam", &d_cam);
   cw_debug_u32("game.hash", &d_hash);
   cw_debug_field("game.juke", d_juke, CW_DBG_I32, 6);
+  cw_debug_field("game.redneck", d_red, CW_DBG_I32, 6); /* rednecks spawned, haymakers, haymakers that landed, barges, barges that landed, killed */
+  cw_debug_i32("game.clones", &d_clones); /* most pairs of one kind of enemy on the street looking the same on any frame: 0 */
+  cw_debug_field("fx.blood", d_blood, CW_DBG_I32, 4); /* stains placed, droplet bursts, stains showing, same-shape stains on top of each other (0) */
   cw_debug_field("face.boss", d_face, CW_DBG_F32, 8);
   { extern float g_spring_motion; cw_debug_f32("game.spring", &g_spring_motion); }
 #ifdef BRAWLER_AUTOPILOT
@@ -282,8 +304,11 @@ static void init(void *user) {
   { const char *v = getenv("BRAWLER_LOG"); extern bool g_log_frozen; g_log_frozen = v && atoi(v); }
   { const char *v = getenv("BRAWLER_NO_SCREEN_RULE"); extern bool g_no_screen_rule; g_no_screen_rule = v && atoi(v); }
   { const char *v = getenv("BRAWLER_BOTDMG"); extern float g_bot_dmg; if (v) g_bot_dmg = (float)atof(v); }
-  cw_debug_command("spawn", "spawn <3-14> [dx dz]: an enemy near the camera (14: Arthur)", cmd_spawn);
+  { const char *v = getenv("BRAWLER_SEED"); extern uint64_t g_seed_salt; if (v) g_seed_salt = (uint64_t)strtoull(v, NULL, 10); }
+  cw_debug_command("spawn", "spawn <3-15> [dx dz]: an enemy near the camera (14: Arthur, 15: the redneck)", cmd_spawn);
   cw_debug_command("freeze", "freeze <0|1>: enemies and bots hold still", cmd_freeze);
+  cw_debug_command("botdmg", "botdmg <k>: the bots' damage factor (3 default, 1 real)", cmd_botdmg);
+  cw_debug_command("blood", "blood <dx> <dz> <kind 0-2> [size]: a blood stain near the camera", cmd_blood);
   cw_debug_command("knockdown", "knockdown: knock every fighter and enemy down at once (ragdolls)", cmd_knockdown);
   { const char *np = getenv("BRAWLER_PLAYERS"); cw_shell_start(np ? atoi(np) : 3); } /* BRAWLER_PLAYERS: 1 to 4 bots (native perf runs) */
 #endif
@@ -304,6 +329,9 @@ static void publish(void) {
   d_rigs = 0;
   for (int i = 0; i < MAXP + MAXE; i++) { const ent *e = i < MAXP ? &W.p[i] : &W.e[i - MAXP]; if (e->used && e->root.id && cw_node_valid(e->root)) d_rigs++; }
   { int k = 0; for (int i = 0; i < MAXE && k < 8; i++) if (W.e[i].used) { d_ex[k][0] = W.e[i].x; d_ex[k][1] = W.e[i].z; d_ex[k][2] = (float)W.e[i].st; d_ex[k][3] = (float)W.e[i].token * 100 + (float)W.e[i].cd; k++; } for (; k < 8; k++) memset(d_ex[k], 0, sizeof d_ex[k]); }
+  d_red[0] = W.red.spawned, d_red[1] = W.red.hay, d_red[2] = W.red.hay_hits, d_red[3] = W.red.barge, d_red[4] = W.red.barge_hits, d_red[5] = W.red.kills;
+  { int c = looks_clones(); if (c > d_clones) d_clones = c; }
+  fx_blood_stats(d_blood);
   d_juke[0] = W.juke.uses, d_juke[1] = W.juke.hits, d_juke[2] = W.juke.dodges, d_juke[3] = W.juke.on, d_juke[4] = W.juke.t > 0 ? (int)(W.juke.r * 100) : 0;
   d_juke[5] = W.boss_active && W.boss_idx >= 0 && W.e[W.boss_idx].used ? W.e[W.boss_idx].juke : 0;
   { extern float face_weight_of_enemy(int i, int t); for (int t = 0; t < 8; t++) d_face[t] = W.boss_active && W.boss_idx >= 0 && W.e[W.boss_idx].used ? face_weight_of_enemy(W.boss_idx, t) : 0; }
@@ -345,7 +373,7 @@ static void sim_step(void) {
     if (crowd_n < 0) { const char *c = getenv("BRAWLER_CROWD"); crowd_n = c ? atoi(c) : 0; }
     int alive = 0;
     for (int k = 0; k < MAXE; k++) if (W.e[k].used && W.e[k].st != S_DEAD) alive++;
-    if (crowd_n && W.phase == PH_PLAY && alive < crowd_n && W.tick % 20 == 0) ent_spawn_enemy(D_THUG + (W.tick / 20) % 7, W.cam_x + ((W.tick / 20) & 1 ? 7.5f : -7.5f), (float)((W.tick / 20) % 5) - 2.0f);
+    if (crowd_n && W.phase == PH_PLAY && alive < crowd_n && W.tick % 20 == 0) ent_spawn_enemy((W.tick / 20) % 8 == 7 ? D_REDNECK : D_THUG + (W.tick / 20) % 8, W.cam_x + ((W.tick / 20) & 1 ? 7.5f : -7.5f), (float)((W.tick / 20) % 5) - 2.0f);
   }
 #endif
 #ifdef BRAWLER_AUTOPILOT

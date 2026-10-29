@@ -32,11 +32,12 @@ const char_def DEFS[D_COUNT] = {
   [D_BRUISER] = { "Bruiser", "bruiser", 1.9f, 240, 1.2f, false, true, 600 },
   [D_THROWER] = { "Thrower", "thrower", 2.3f, 34, 1.0f, false, false, 180 },
   [D_GUARD] = { "Guard", "guard", 1.8f, 60, 1.0f, false, false, 250 },
-  [D_FOREMAN] = { "The Foreman", "foreman", 1.9f, 700, 1.1f, true, false, 2000 },
-  [D_MATRON] = { "The Matron", "matron", 2.5f, 800, 1.0f, true, false, 3000 },
-  [D_RINGMASTER] = { "Ringmaster", "ringmaster", 2.6f, 450, 1.1f, false, true, 1500 }, /* a mid-stage mini boss in the arcade */
-  [D_COLOSSUS] = { "Colossus", "colossus", 2.2f, 1500, 1.3f, true, false, 8000 },
-  [D_ARTHUR] = { "Arthur", "arthur", 2.7f, 850, 1.15f, true, false, 3000 },
+  [D_FOREMAN] = { "The Foreman", "foreman", 1.9f, 360, 1.1f, true, false, 2000 },
+  [D_MATRON] = { "The Matron", "matron", 2.5f, 380, 1.0f, true, false, 3000 },
+  [D_RINGMASTER] = { "Ringmaster", "ringmaster", 2.6f, 300, 1.1f, false, true, 1500 }, /* a mid-stage mini boss in the arcade */
+  [D_COLOSSUS] = { "Colossus", "colossus", 2.2f, 380, 1.3f, true, false, 8000 },
+  [D_ARTHUR] = { "Arthur", "arthur", 2.7f, 380, 1.15f, true, false, 3000 },
+  [D_REDNECK] = { "Redneck", "redneck", 2.1f, 56, 1.1f, false, false, 160 }, /* a regular enemy: the haymaker and the shoulder barge */
 };
 
 const atk_data ATK[] = {
@@ -57,9 +58,11 @@ const atk_data ATK[] = {
   [A_RUSH] = { "run", 60, 4, 46, 16, 1.25f, 0.85f, 2, 0.0f }, /* a boss charges along its lane */
   [A_FLICK] = { "flick", 36, 22, 29, 12, 1.4f, 0.8f, 1, 0.35f }, /* Arthur snaps his jacket open, then a backhand */
   [A_JUKE] = { "thump", 26, 0, 0, 0, 0, 0, 0, 0.0f }, /* Arthur thumps the jukebox on tick 0: the blow is the shockwave (juke_tick) */
+  [A_HAYMAKER] = { "haymaker", 42, 2, 9, 14, 1.4f, 0.8f, 2, 0.45f }, /* the redneck's looping right: the wind-up is the tell, the stumble after it the opening */
+  [A_BARGE] = { "shoulder", 50, 6, 34, 11, 1.3f, 0.85f, 2, 0.0f }, /* the redneck lowers a shoulder and runs along the lane */
 };
 /* attacks that need the long (heavy) telegraph and a danger ring on the street */
-static bool heavy_atk(int k) { return k == A_SLAM || k == A_SWING || k == A_BSPIN || k == A_RUSH || k == A_FLICK; }
+static bool heavy_atk(int k) { return k == A_SLAM || k == A_SWING || k == A_BSPIN || k == A_RUSH || k == A_FLICK || k == A_HAYMAKER || k == A_BARGE; }
 
 /* ── character rigs: a pool per model, so a spawn never parses a glb twice ── */
 typedef struct rig { int def; bool busy; cw_node root, model, anim, wnode, wmodel, blob, shield; const t3_gltf *gltf; spring_rig sr; int wkind; } rig;
@@ -67,7 +70,7 @@ typedef struct rig { int def; bool busy; cw_node root, model, anim, wnode, wmode
    clips, so a crowd of one kind costs a skeleton each, not a parsed glb each */
 static cw_res RES[D_COUNT], BLOB;
 static bool clip_checked[D_COUNT];
-static const float BODY_SCALE[D_COUNT] = { 1.08f, 0.98f, 1.0f, 1.0f, 0.96f, 0.94f, 1.0f, 1.28f, 1.0f, 1.08f, 1.4f, 1.22f, 1.15f, 1.7f, 1.15f };
+static const float BODY_SCALE[D_COUNT] = { 1.08f, 0.98f, 1.0f, 1.0f, 0.96f, 0.94f, 1.0f, 1.28f, 1.0f, 1.08f, 1.4f, 1.22f, 1.15f, 1.7f, 1.15f, 1.06f };
 static rig RIGS[96];
 static int rig_n;
 static cw_node world_node(void) { return cw_node_get(cw_node_get(cw_tree_root(cw_scene_app_tree()), "Level"), "World"); }
@@ -127,6 +130,7 @@ static rig *rig_get(int def) {
   cw_node_add_child(r->root, r->wmodel);
   cw_node_set(r->wmodel, "visible", cw_val_bool(false));
   cw_node3d_set_object(r->model, inst);
+  looks_bind((int)(r - RIGS), def, inst); /* its own copies of the materials a spawn recolours (looks.c) */
   set_shadows(inst);
   sb_bind(&r->sr, inst);
   t3_release(inst); /* the node holds it */
@@ -136,7 +140,7 @@ static rig *rig_get(int def) {
     /* the hit windows live in ATK (fixed ticks, so the simulation never waits on the render-side animation clock);
        a clip shorter than its window would swing at the air: say so once per model */
     for (int k = 1; k < A_COUNT && !clip_checked[def]; k++)
-      if (k != A_JKICK && k != A_RUSH && ATK[k].clip /* those two hold or loop their clip for the whole window */ && !strcmp(ATK[k].clip, r->gltf->animations[i]->name) && cw_anim_length(a) + 0.02f < (float)ATK[k].a1 / TPS)
+      if (k != A_JKICK && k != A_RUSH && k != A_BARGE && ATK[k].clip /* those two hold or loop their clip for the whole window */ && !strcmp(ATK[k].clip, r->gltf->animations[i]->name) && cw_anim_length(a) + 0.02f < (float)ATK[k].a1 / TPS)
         cw_warn("brawler: clip %s of %s is %.2f s, shorter than attack %d's hit window (%d ticks)", ATK[k].clip, DEFS[def].model, cw_anim_length(a), k, ATK[k].a1);
     cw_anim_player_add(r->anim, r->gltf->animations[i]->name, a);
     cw_anim_release(a);
@@ -170,13 +174,15 @@ static const char *idle_clip(const ent *e) {
 static const char *atk_clip(const ent *e, int k) { return e->def == D_ARTHUR && k == A_RUSH ? "shoulder" : ATK[k].clip; }
 static const char *taunt_clip(const ent *e) { return e->def == D_ARTHUR ? "comb" : "taunt"; }
 /* the model faces +x or -x; frozen for a screenshot it turns three quarters to the camera */
-static float ent_yaw(const ent *e) { return g_freeze ? (float)e->face * 0.45f : (float)e->face * 1.5708f; }
+float g_freeze_yaw = 0.45f; /* debug "freeze 1 <yaw>": how far a frozen body turns from the camera (1.57: side on) */
+static float ent_yaw(const ent *e) { return g_freeze ? (float)e->face * g_freeze_yaw : (float)e->face * 1.5708f; }
 static int ent_index(const ent *e) { return e->player ? (int)(e - W.p) : MAXP + (int)(e - W.e); }
 
 /* a new scene (a game started again from the title) freed every rig's nodes: start the pool over */
 int rig_count(void) { return rig_n; }
 void chars_reset(void) { /* (the glTF resources stay loaded: the next game instances them again) */
   rag_reset();
+  looks_reset();
   memset(RIGS, 0, sizeof RIGS);
   rig_n = 0;
   memset(&W, 0, sizeof W); /* every entity's node handles went with the scene */
@@ -312,7 +318,10 @@ static void ent_init(ent *e, int def, bool player, float x, float z) {
   memset(e, 0, sizeof *e);
   e->used = true, e->player = player, e->def = def, e->x = x, e->z = z;
   e->face = player ? 1 : -1;
-  e->hp = e->maxhp = DEFS[def].hp * (player ? 1.0f : (W.players > 1 ? 1.0f + 0.35f * (float)(W.players - 1) : 1.0f));
+  /* more fighters: tougher enemies (35 percent of a fighter each); a boss 22 percent (each fighter also brings more of
+     the crowd and the helpers to deal with, so the fight still ends a little sooner with four than alone) */
+  float per = DEFS[def].boss ? 0.22f : 0.35f;
+  e->hp = e->maxhp = DEFS[def].hp * (player ? 1.0f : 1.0f + per * (float)(W.players > 1 ? W.players - 1 : 0));
   e->st = S_IDLE, e->target = -1, e->victim = -1, e->holder = -1;
   e->cd = 40 + ri(0, 60);
   e->slot = ri(0, 9);
@@ -326,6 +335,9 @@ int ent_spawn_enemy(int def, float x, float z) {
     if (!W.e[i].used) {
       ent_init(&W.e[i], def, false, x, z);
       W.e[i].idx = i;
+      if (def == D_REDNECK) W.red.spawned++;
+      W.e[i].look = look_pick(def, i); /* its own skin tone and clothes, never another's on the street (looks.c) */
+      if (W.e[i].root.id) looks_apply(rig_of[MAXP + i], W.e[i].look);
       if (DEFS[def].boss) { W.boss_idx = i; W.boss_active = true; }
       return i;
     }
@@ -397,6 +409,9 @@ void ent_hurt(ent *v, ent *a, float dmg, int knock, float fx) {
   if (!alive(v) || v->invuln > 0) return;
   if (guard_blocks(v, a, knock)) return;
   bool boss = DEFS[v->def].boss || DEFS[v->def].mini;
+  /* the redneck's haymaker wind-up shrugs off a light blow (only a heavy one stops it): with every jab interrupting it,
+     not one in the self-play runs ever landed. The tell is long, so the answer is to step out of the lane */
+  bool armour = boss || (v->def == D_REDNECK && v->st == S_ATK && v->atk == A_HAYMAKER);
   if (v->player && dmg > 0 && a != v) { /* audit: a fighter hurt by something the camera does not show, or by an enemy still walking in */
     float sx = g_src ? g_src[0] : a ? a->x : v->x, sz = g_src ? g_src[1] : a ? a->z : v->z;
     if (!on_screen(sx, sz, 0) || (a && !a->player && !g_src && a->ptimer < 20)) W.st.unfair++;
@@ -405,6 +420,7 @@ void ent_hurt(ent *v, ent *a, float dmg, int knock, float fx) {
   if (!v->player && a && a->player && dmg > 0) {
     if (W.st.first_hit < 0) W.st.first_hit = W.tick - W.st.t0;
     W.st.hits++;
+    if (DEFS[v->def].boss) W.st.boss_hits++;
     if (a->atk > 0 && a->atk < A_COUNT) W.st.atk_hits[a->atk]++;
   }
   if (v->player && v->st == S_JUMP && knock < 2) knock = 1;
@@ -419,6 +435,7 @@ void ent_hurt(ent *v, ent *a, float dmg, int knock, float fx) {
   W.shake = knock >= 2 ? 10 : 4;
   W.shake_amp = knock >= 2 ? 0.12f : 0.05f;
   fx_hit(v->x, v->y + 1.1f, v->z, knock, dir);
+  if (dmg > 0) fx_blood(v->x + (float)dir * 0.12f, v->y + 1.45f, v->z, dir, knock); /* blood from the face and the body */
   char_jolt(v, (float)dir, knock >= 2 ? 1.6f : 1.0f);
   sfx(knock >= 2 ? SFX_HIT3 : ((int)v->hp & 1) ? SFX_HIT1 : SFX_HIT2);
   if (a && a->player) {
@@ -449,10 +466,11 @@ void ent_hurt(ent *v, ent *a, float dmg, int knock, float fx) {
     if (die) {
       if (!v->player) {
         W.kills++;
+        if (v->def == D_REDNECK) W.red.kills++;
         if (a && a->player) a->score += DEFS[v->def].score;
         W.total_score += DEFS[v->def].score;
         drop_weapon(v);
-        if (DEFS[v->def].boss) { W.shake = 40; W.shake_amp = 0.2f; W.slow = 90; W.st.boss_t1 = W.tick; }
+        if (DEFS[v->def].boss) { W.shake = 40; W.shake_amp = 0.2f; W.slow = 90; W.st.boss_t1 = W.tick, W.st.boss_f1 = W.frames; }
         /* a coin or two */
         for (int k = 0; k < (DEFS[v->def].boss ? 6 : 1); k++)
           for (int i = 0; i < MAXITEM; i++)
@@ -460,9 +478,9 @@ void ent_hurt(ent *v, ent *a, float dmg, int knock, float fx) {
       }
       sfx(SFX_KO);
     }
-  } else if (!boss || v->st != S_ATK) {
-    /* bosses and the mini boss do not flinch out of an attack */
-    if (!(boss && v->st == S_ATK)) {
+  } else if (!armour || v->st != S_ATK) {
+    /* bosses and the mini boss do not flinch out of an attack (nor the redneck out of his haymaker) */
+    if (!(armour && v->st == S_ATK)) {
       v->st = S_HIT, v->t = 0;
       v->stun = knock >= 1 ? 22 : 15;
       v->x += (float)dir * 0.18f;
@@ -478,14 +496,23 @@ static void start_attack(ent *e, akind k) {
   e->st = S_ATK, e->atk = k, e->t = 0, e->hitmask = 0, e->chain_ok = 0;
   const atk_data *a = &ATK[k];
   if (!e->player) { /* a readable telegraph: guard pose and a flash before the swing (12+ frames, 24+ for heavies) */
-    e->t = k == A_JUKE ? -36 : k == A_RUSH ? -40 : heavy_atk(k) ? -26 : k == A_THROW ? -18 : -14;
-    char_restart(e, k == A_JUKE ? "thump" : "block", k == A_JUKE ? 0.1f : 0.06f); /* the jukebox thump: the raised fist is the tell */
+    e->t = k == A_JUKE ? -36 : k == A_RUSH || k == A_BARGE ? -40 : heavy_atk(k) ? -26 : k == A_THROW ? -18 : -14;
+    /* the jukebox thump: the raised fist is the tell; the haymaker: its own wind-up (the first 0.43 s of the clip, 26 ticks) */
+    char_restart(e, k == A_JUKE ? "thump" : k == A_HAYMAKER ? "haymaker" : "block", k == A_JUKE ? 0.1f : 0.06f);
     e->hurtflash = 1.4f;
   } else char_restart(e, atk_clip(e, k), 0.04f);
   if (k == A_SLAM || k == A_SPIN || k == A_BSPIN) sfx(SFX_WHIFF);
+  if (k == A_HAYMAKER) W.red.hay++;
+  if (k == A_BARGE) W.red.barge++;
 }
 
+static float body_size(const ent *e);
 static bool in_box(const ent *a, const ent *v, float reach, float width) {
+  /* reach is centre to centre: a big body (a boss, the mini boss) is reached and reaches further by its girth. Bodies
+     are kept 1.2 m apart along the street from a boss (separate_bodies), and a 1.15 m punch never touched one face on:
+     only from a diagonal, where the bots and the boss both stood waiting for the other to line up (the boss time to kill
+     runs: up to 12 minute stalls, and slow fights) */
+  reach += 0.6f * (body_size(a) + body_size(v) - 2.0f);
   float dx = (v->x - a->x) * (float)a->face;
   return dx > -0.25f && dx < reach && absf(v->z - a->z) < (width > 1.2f ? width : 0.62f) && absf(v->y - a->y) < 1.3f;
 }
@@ -496,6 +523,9 @@ static bool in_round(const ent *a, const ent *v, float r) {
 
 #ifdef BRAWLER_AUTOPILOT
 float g_bot_dmg = 3.0f;
+uint64_t g_seed_salt; /* BRAWLER_SEED: another match from the same rules (measurement runs; 0 in every gate) */
+#else
+static const uint64_t g_seed_salt = 0;
 #endif
 static void do_hits(ent *a) {
   const atk_data *ad = &ATK[a->atk];
@@ -520,6 +550,8 @@ static void do_hits(ent *a) {
     a->hitmask |= 1u << (i & 31);
     int knock = (int)ad->knock;
     if (a->atk == A_FINISH && a->combo != 2) knock = 1;
+    if (a->atk == A_HAYMAKER) W.red.hay_hits++;
+    if (a->atk == A_BARGE) W.red.barge_hits++;
     ent_hurt(v, a, dmg, knock, 0);
     hit_any = true;
   }
@@ -586,7 +618,10 @@ static void arena_clamp(ent *e) {
   e->z = clampf(e->z, -LANE_Z, LANE_Z);
   /* enemies walk in from off camera; once they have been in the picture they stay in it (one standing just outside,
      behind fighters held at the edge, could neither be reached nor reach anyone: a soft lock the soak found) */
-  float hw = e->player ? view_halfw(e->z, 1.0f) - 0.6f : e->ptimer >= 20 ? view_halfw(e->z, 1.0f) - 0.3f : level_cam_halfw() + 3.0f;
+  /* the clamp sits inside the 0.3 m margin an enemy needs to be allowed to attack ('ready'): held exactly on that edge
+     by fighters pressing on it, a boss was never ready, never attacked and was never reached (the boss time to kill
+     runs found 12 minute stalls with two fighters against the Foreman at the left edge) */
+  float hw = e->player ? view_halfw(e->z, 1.0f) - 0.6f : e->ptimer >= 20 ? view_halfw(e->z, 1.0f) - 0.45f : level_cam_halfw() + 3.0f;
   e->x = clampf(e->x, W.cam_x - hw, W.cam_x + hw);
 }
 
@@ -605,6 +640,8 @@ static bool common_state(ent *e) {
       e->y = 0;
       e->st = S_DOWN, e->t = 0;
       fx_dust(e->x, e->z, 1.2f);
+      if (e->hp <= 0) fx_stain(e->x - (float)e->face * 0.55f, e->z, 0.9f, 2); /* under the head (it fell away from the blow) */
+      else fx_stain(e->x - (float)e->face * 0.5f, e->z, e->hp < e->maxhp * 0.6f ? 0.6f : 0.42f, 1); /* a body that hits the street leaves a splat, bigger when it is hurt */
       W.shake = 6, W.shake_amp = 0.06f;
       char_play(e, e->hp <= 0 ? "dead" : "down", 0.02f);
       if (e->hp <= 0) { e->st = S_DEAD; if (e->player) W.st.deaths++, W.run_deaths++; }
@@ -898,6 +935,7 @@ static void enemy_pick_attack(ent *e) {
   case D_BRUISER: start_attack(e, ri(0, 2) ? A_SWING : A_SLAM); break;
   case D_THROWER: start_attack(e, A_THROW); break;
   case D_GUARD: start_attack(e, A_BASH); break;
+  case D_REDNECK: start_attack(e, ri(0, 4) < 3 ? A_HAYMAKER : ri(0, 1) ? A_PUNCH1 : A_KICK); break;
   default:
     if (d->boss || e->def == D_RINGMASTER) { /* three phases: each adds a move and a bigger tell; the last one charges along the lane */
       static const akind MOVES[5][3][3] = {
@@ -965,10 +1003,10 @@ static void enemy_update(int ei) {
   case S_ATK: {
     const atk_data *ad = &ATK[e->atk];
     e->t++;
-    if (e->t == 0 && e->atk != A_JUKE) char_restart(e, atk_clip(e, e->atk), 0.05f);
+    if (e->t == 0 && e->atk != A_JUKE && e->atk != A_HAYMAKER) char_restart(e, atk_clip(e, e->atk), 0.05f);
     if (e->t == 0 && e->atk == A_JUKE) juke_fire(e);
     if (e->t < 0) { e->hurtflash = 0.6f; break; }
-    if (e->atk == A_CHARGE || e->atk == A_RUSH) {
+    if (e->atk == A_CHARGE || e->atk == A_RUSH || e->atk == A_BARGE) {
       e->x += e->vx / TPS;
       if (e->t > ad->a1) e->vx *= 0.8f;
     } else if (e->t < ad->a1 && ad->lunge > 0) e->x += (float)e->face * ad->lunge * 4.0f / TPS;
@@ -1129,6 +1167,10 @@ static void enemy_update(int ei) {
       enemy_pick_attack(e);
     } else if (e->token && e->def == D_RUNNER && absf(dz) < 0.35f && absf(dx) > 3.0f && absf(dx) < 5.5f && ready) {
       enemy_pick_attack(e); /* the runner charges from a distance */
+    } else if (e->token && e->def == D_REDNECK && e->cd == 0 && absf(dz) < 0.35f && absf(dx) > 2.6f && absf(dx) < 5.0f && ready && ri(0, 59) == 0) {
+      if (e->agent && crowd.id) cw_crowd_clear_target(crowd, AG(e->agent)); /* now and then he lowers a shoulder and barges along the lane */
+      start_attack(e, A_BARGE);
+      e->vx = (float)e->face * 6.0f;
     } else if (e->token && e->t++ > 600) { /* a token held too long is returned */
       e->token = 0; W.tokens_out--; e->cd = 60; e->t = 0;
     }
@@ -1184,7 +1226,7 @@ void sim_reset(int players, int stage) {
   int total = W.total_score;
   if (crowd.id) { cw_crowd_free(crowd); crowd = (cw_crowd){ 0 }; }
   free_all();
-  if (!keep) { memset(&W, 0, sizeof W); cw_rng_seed(&W.rng, 20260101); }
+  if (!keep) { memset(&W, 0, sizeof W); cw_rng_seed(&W.rng, 20260101 + g_seed_salt); }
   else { memset(W.e, 0, sizeof W.e); memset(W.item, 0, sizeof W.item); memset(W.prop, 0, sizeof W.prop); W.wave = 0; W.kills = 0; W.boss_active = false; W.combo_n = 0; W.tokens_out = 0; }
   for (int i = 0; i < 8; i++) W.proj[i].used = false;
   memset(&W.st, 0, sizeof W.st);
@@ -1316,6 +1358,7 @@ static void spawn_from_queue(void) {
 }
 
 void sim_tick(const inputs *in) {
+  W.frames++;
   if (W.phase == PH_INTRO) { if (++W.phase_t > 150) { W.phase = PH_PLAY; W.phase_t = 0; } }
   else if (W.phase == PH_CLEAR || W.phase == PH_OVER || W.phase == PH_WIN) W.phase_t++;
   if (W.slow > 0) { W.slow--; if (W.slow & 1) return; } /* a boss falls in slow motion */
@@ -1421,7 +1464,7 @@ void sim_tick(const inputs *in) {
       for (int i = 0; i < MAXE; i++) if (W.e[i].used) cw_info("  E%d %s x=%.2f z=%.2f st=%d hp=%.0f tok=%d rng=%d cd=%d pt=%d mood=%d on=%d", i, DEFS[W.e[i].def].name, W.e[i].x, W.e[i].z, W.e[i].st, W.e[i].hp, W.e[i].token, W.e[i].ranged, W.e[i].cd, W.e[i].ptimer, W.e[i].mood, on_screen(W.e[i].x, W.e[i].z, 0.8f));
       for (int i = 0; i < W.spawn_q_n; i++) if (W.spawn_q[i].def >= 0) cw_info("  Q%d %s delay=%d", i, DEFS[W.spawn_q[i].def].name, W.spawn_q[i].delay);
     }
-    if (W.boss_active && W.st.boss_t0 < 0) W.st.boss_t0 = W.tick;
+    if (W.boss_active && W.st.boss_t0 < 0) W.st.boss_t0 = W.tick, W.st.boss_f0 = W.frames;
   }
   /* the hash the gates compare */
   uint32_t h = W.hash;
@@ -1435,11 +1478,12 @@ void stats_log(const char *why) {
   const int *h = W.st.atk_hits;
   cw_info("brawler-stats %s stage=%d players=%d ticks=%d first_hit=%d deaths=%d hits=%d p1=%d p2=%d fin=%d kick=%d jkick=%d spin=%d weapon=%d "
           "blocks=%d pickups=%d unfair=%d still_max=%d frozen=%d nan=%d stall_max=%d boss_ticks=%d boss_phase=%d waves=%d wave_avg=%d wave_max=%d "
-          "dmg_taken=%d run_deaths=%d leak=%d juke=%d juke_hits=%d juke_dodges=%d",
+          "dmg_taken=%d run_deaths=%d leak=%d juke=%d juke_hits=%d juke_dodges=%d boss_frames=%d boss_hits=%d",
           why, W.stage, W.players, W.tick - W.st.t0, W.st.first_hit, W.st.deaths, W.st.hits, h[A_PUNCH1], h[A_PUNCH2], h[A_FINISH], h[A_KICK],
           h[A_JKICK], h[A_SPIN], h[A_SWING] + h[A_STAB], W.st.blocks, W.st.pickups, W.st.unfair, W.st.still_max, W.st.frozen, W.st.nan, W.st.stall_max,
           W.st.boss_t0 >= 0 && W.st.boss_t1 >= 0 ? W.st.boss_t1 - W.st.boss_t0 : -1, W.st.boss_phase, W.st.waves_done,
-          W.st.waves_done ? W.st.wave_sum / W.st.waves_done : 0, W.st.wave_max, W.st.dmg_taken, W.run_deaths, token_leak(), W.juke.uses, W.juke.hits, W.juke.dodges);
+          W.st.waves_done ? W.st.wave_sum / W.st.waves_done : 0, W.st.wave_max, W.st.dmg_taken, W.run_deaths, token_leak(), W.juke.uses, W.juke.hits, W.juke.dodges,
+          W.st.boss_f0 > 0 && W.st.boss_f1 > 0 ? W.st.boss_f1 - W.st.boss_f0 : -1, W.st.boss_hits);
 }
 
 /* ── node sync (render side) ────────────────────────────────────────── */

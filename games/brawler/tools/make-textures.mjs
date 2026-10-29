@@ -455,6 +455,149 @@ const burst = (u, v, o) => {
 // a danger ring for heavy attacks: a bright rim and a faint fill (white, tinted by the decal colour, added to the street)
 const ring = (u, v, o) => { const d = Math.hypot(u - 0.5, v - 0.5) * 2; o.r = o.g = o.b = 1; o.a = Math.max(smooth(0.74, 0.84, d) * smooth(1.0, 0.9, d), smooth(0.86, 0.2, d) * 0.28); };
 
+// ── the redneck's clothes ────────────────────────────────────────────────
+// A worn cotton tee gone dingy: the weave, a grey cast that gathers low (dirt wiped on it), and stains of every kind,
+// none repeated: coffee and gravy blotches with a darker tide line where they dried, yellowed sweat under the arms and
+// at the collar, black grease smears (wiped hands), a dusting of dirt specks. Laid out for a 1 m tile (the whole torso
+// once round, tools/make-characters.mjs shirtTile), so no stain shows twice. Matte everywhere (grease a little less).
+function dirtyTee({ seed = 71 }) {
+  const stains = [];
+  for (let k = 0; k < 11; k++) stains.push({ x: hash2(k, 1, seed), y: 0.25 + 0.7 * hash2(k, 2, seed), r: 0.035 + 0.09 * Math.pow(hash2(k, 3, seed), 1.5), kind: k % 3, s: seed + k * 13, e: 0.6 + 0.8 * hash2(k, 4, seed), a: hash2(k, 5, seed) * Math.PI });
+  const smears = [];
+  for (let k = 0; k < 5; k++) smears.push({ x: hash2(k, 7, seed), y: 0.45 + 0.5 * hash2(k, 8, seed), len: 0.08 + 0.1 * hash2(k, 9, seed), a: -0.6 + 1.2 * hash2(k, 10, seed), s: seed + 90 + k });
+  const wrapd = (d) => d - Math.round(d); // u wraps round the torso
+  return (u, v, o) => {
+    const N = 224, x = u * N, y = v * N;
+    const over = ((Math.floor(x) + Math.floor(y)) & 1) ? Math.sin(x * Math.PI * 2) : Math.sin(y * Math.PI * 2);
+    const g = fbm(u, v, 12, 3, seed), fz = hash2(Math.floor(u * 1024), Math.floor(v * 1024), seed), wr = wrinkles(u, v, seed);
+    let c = [0.84, 0.82, 0.76];
+    // dinge: a grey-brown cast, heavier toward the hem (v near 0 is the hem: the loft runs up from it)
+    const dinge = 0.25 + 0.45 * smooth(0.6, 0.0, v) + 0.35 * (fbm(u, v, 5, 4, seed + 3) - 0.5);
+    c = c.map((q, i) => lerp(q, [0.6, 0.55, 0.46][i], clamp(dinge) * 0.32));
+    let ro = 0.9;
+    for (const st of stains) {
+      const dx = wrapd(u - st.x), dy = v - st.y, ca = Math.cos(st.a), sa = Math.sin(st.a);
+      const px = (dx * ca + dy * sa) / st.r, py = (-dx * sa + dy * ca) / (st.r * st.e);
+      const d = Math.hypot(px, py) - 1 + 1.3 * (fbm(u, v, 6, 4, st.s) - 0.5) + 0.5 * (fbm(u, v, 17, 3, st.s + 1) - 0.5);
+      if (d > 0.3) continue;
+      const fill = smooth(0.05, -0.25, d), tide = smooth(0.08, 0.0, d) * smooth(-0.14, -0.02, d);
+      const col = st.kind === 0 ? [0.42, 0.3, 0.18] : st.kind === 1 ? [0.62, 0.52, 0.28] : [0.36, 0.33, 0.28];
+      const k = clamp((fill * (st.kind === 1 ? 0.5 : 0.62) + tide * 0.4) * (0.65 + 0.6 * fbm(u, v, 11, 3, st.s + 2)));
+      c = c.map((q, i) => lerp(q, col[i] * (0.8 + 0.4 * g), k));
+      if (st.kind === 0) ro -= 0.05 * fill;
+    }
+    // sweat yellowing under the arms (the torso's sides) and round the collar
+    const side = Math.max(Math.exp(-Math.pow(wrapd(u - 0.0) / 0.07, 2)), Math.exp(-Math.pow(wrapd(u - 0.5) / 0.07, 2)));
+    const pit = side * smooth(0.7, 0.85, v) * (0.6 + 0.6 * fbm(u, v, 7, 3, seed + 5));
+    const collar = smooth(0.9, 0.99, v) * 0.6;
+    c = c.map((q, i) => lerp(q, [0.7, 0.6, 0.32][i], clamp(pit + collar) * 0.5));
+    for (const sm of smears) { // grease: dark streaks of wiped hands
+      const dx = wrapd(u - sm.x), dy = v - sm.y, ca = Math.cos(sm.a), sa = Math.sin(sm.a);
+      const along = dx * ca + dy * sa, across = -dx * sa + dy * ca;
+      const streak = smooth(sm.len, sm.len * 0.2, Math.abs(along)) * smooth(0.035, 0.0, Math.abs(across) - 0.02 * (fbm(u, v, 9, 3, sm.s) - 0.5));
+      const fingers = smooth(0.2, 0.8, 0.5 + 0.5 * Math.sin(across * 170 + 3 * fbm(u, v, 7, 2, sm.s + 4)));
+      const k = streak * (0.4 + 0.4 * fingers) * smooth(0.25, 0.65, fbm(u, v, 14, 3, sm.s + 2));
+      c = c.map((q, i) => lerp(q, [0.1, 0.09, 0.08][i], clamp(k)));
+      ro -= 0.12 * clamp(k);
+    }
+    const speck = smooth(0.93, 0.99, hash2(Math.floor(u * 700), Math.floor(v * 700), seed + 9)) * 0.5;
+    c = c.map((q) => q * (1 - speck * 0.6));
+    const sh = 0.93 + 0.03 * over + 0.07 * (g - 0.5) + 0.03 * (fz - 0.5) + 0.05 * wr;
+    setc(o, c, sh);
+    o.h = 0.12 * over + 1.0 * wr + 0.05 * (fz - 0.5);
+    o.ro = clamp(ro + 0.04 * (fz - 0.5) - 0.05 * wr, 0.6, 1); o.ao = 0.93 + 0.05 * over + 0.07 * (wr - 0.3);
+  };
+}
+// The cap's crown, all the way round (u runs once round the head, the front at u 0.5; v from the top of the crown, 0,
+// to the brim, 1): red cotton twill with "Dumb" in raised white satin stitch across the front panel and smaller on each
+// side (the street camera sees an enemy side on), sweat darkening along the band and grime. The letters are strokes
+// (rounded capsules), drawn by distance, so they stay crisp at any size.
+const GLYPH = { // in letter units: cap height 1, baseline 0
+  D: { w: 0.66, s: [[[0, 0], [0, 1]], [[0, 1], [0.3, 1], [0.54, 0.9], [0.66, 0.68], [0.66, 0.32], [0.54, 0.1], [0.3, 0], [0, 0]]] },
+  u: { w: 0.56, s: [[[0, 0.7], [0, 0.22], [0.08, 0.05], [0.24, 0], [0.4, 0.03], [0.56, 0.18]], [[0.56, 0.7], [0.56, 0]]] },
+  m: { w: 0.8, s: [[[0, 0], [0, 0.7]], [[0, 0.5], [0.08, 0.66], [0.2, 0.7], [0.34, 0.66], [0.4, 0.52], [0.4, 0]], [[0.4, 0.5], [0.48, 0.66], [0.6, 0.7], [0.74, 0.66], [0.8, 0.52], [0.8, 0]]] },
+  b: { w: 0.58, s: [[[0, 1.02], [0, 0]], [[0, 0.46], [0.12, 0.64], [0.3, 0.7], [0.48, 0.62], [0.58, 0.4], [0.56, 0.18], [0.44, 0.04], [0.26, 0], [0.1, 0.04], [0, 0.16]]] },
+};
+const segD = (px, py, ax, ay, bx, by) => { const vx = bx - ax, vy = by - ay, t = clamp(((px - ax) * vx + (py - ay) * vy) / (vx * vx + vy * vy || 1)); return Math.hypot(px - ax - vx * t, py - ay - vy * t); };
+/** distance (letter units) from (x, y) to the strokes of `word` laid out from x 0, and the stroke direction there */
+function wordDist(word, x, y, gap = 0.2) {
+  let ox = 0, best = 1e9, dir = 0;
+  for (const ch of word) {
+    const gl = GLYPH[ch];
+    for (const s of gl.s) for (let i = 1; i < s.length; i++) {
+      const d = segD(x, y, ox + s[i - 1][0], s[i - 1][1], ox + s[i][0], s[i][1]);
+      if (d < best) { best = d; dir = Math.atan2(s[i][1] - s[i - 1][1], s[i][0] - s[i - 1][0]); }
+    }
+    ox += gl.w + gap;
+  }
+  return [best, dir, ox - gap];
+}
+function capLogo({ seed = 73 }) {
+  const W = 1024, H = 256, word = 'Dumb', [, , wlen] = wordDist(word, 0, 0);
+  // three placements: [centre u, letter cap height in v, centre v]; the front larger, the sides (u 0.25 and 0.75) smaller
+  const at = [[0.5, 0.27, 0.55], [0.22, 0.2, 0.6], [0.78, 0.2, 0.6]];
+  const red = [0.66, 0.08, 0.07], white = [0.93, 0.92, 0.88], stroke = 0.1;
+  return (u, v, o) => {
+    const x = u * W, y = v * H;
+    const N = 160, tw = Math.sin((u * N * 4 + v * N) * Math.PI * 2); // twill: diagonal ribs
+    const g = fbm(u, v, 8, 4, seed), fz = hash2(Math.floor(u * 1024), Math.floor(v * 256), seed);
+    let c = red.map((q) => q * (0.9 + 0.12 * (g - 0.5) + 0.04 * tw));
+    let h = 0.08 * tw, ro = 0.88;
+    for (const [cu, ch, cv] of at) {
+      const hpx = ch * H, lx = (x - (cu * W - (wlen * hpx) / 2)) / hpx, ly = (cv * H + hpx / 2 - y) / hpx; // letter units, y up
+      if (lx < -0.3 || lx > wlen + 0.3 || ly < -0.3 || ly > 1.3) continue;
+      const [d, dir] = wordDist(word, lx, ly);
+      const aa = 1.2 / hpx, cov = smooth(stroke + aa, stroke - aa, d);
+      if (cov <= 0) continue;
+      // satin stitch: fine threads across the stroke, a rounded raised profile
+      const across = Math.cos(dir + Math.PI / 2) * lx + Math.sin(dir + Math.PI / 2) * ly;
+      const thread = 0.5 + 0.5 * Math.sin((lx * Math.cos(dir) + ly * Math.sin(dir)) * 140 + across * 8);
+      const prof = Math.sqrt(clamp(1 - Math.pow(d / stroke, 2)));
+      c = c.map((q, i) => lerp(q, white[i] * (0.9 + 0.1 * thread), cov));
+      h = lerp(h, 0.55 * prof + 0.05 * thread, cov); ro = lerp(ro, 0.7, cov);
+    }
+    // sweat along the band (the bottom of the crown) and dirt from the fingers on the front of the bill line
+    const band = smooth(0.8, 0.97, v) * (0.5 + 0.6 * fbm(u, v, 6, 3, seed + 2));
+    c = c.map((q, i) => lerp(q, [0.3, 0.12, 0.08][i], clamp(band) * 0.45));
+    const grime = smooth(0.55, 0.8, fbm(u, v, 5, 4, seed + 4)) * 0.3;
+    c = c.map((q, i) => lerp(q, [0.32, 0.24, 0.18][i], grime));
+    setc(o, c, 1 + 0.03 * (fz - 0.5));
+    o.h = h; o.ro = ro; o.ao = 0.94 + 0.05 * tw;
+  };
+}
+
+// ── blood: a sheet of splats for the street (8 cells of 256 in a 1024 x 512 image, Decal3D `region` picks one) ──
+// Gritty, not gory: dark, browning red, never a bright pool. Each cell is a different shape: a splat with satellite
+// drops, a spatter thrown one way, a drip trail, a smear, scattered drops, a small pool, a fine spray, a two-lobed one.
+// RGB is the stain colour (the decal multiplies the street by it), alpha its strength.
+function bloodShape(k, u, v) { // u, v in -1..1; returns [coverage 0..1, darkness 0..1 (thicker blood)]
+  const warp = (a, f, sd) => (fbm((u + 1) * 0.5, (v + 1) * 0.5, f, 4, sd) - 0.5) * a;
+  const blob = (cx, cy, rx, ry, sd, rough) => 1 - Math.hypot((u - cx) / rx, (v - cy) / ry) + warp(rough, 5, sd) + warp(rough * 0.5, 13, sd + 7);
+  const drops = (n, sd, spread, rmin, rmax, dirx = 0, diry = 0) => {
+    let d = -1;
+    for (let i = 0; i < n; i++) {
+      const r = rmin + (rmax - rmin) * Math.pow(hash2(i, k, sd + 3), 2);
+      const t = hash2(i, k, sd + 1), a = hash2(i, k, sd + 2) * Math.PI * 2;
+      const cx = Math.cos(a) * spread * Math.sqrt(t) + dirx * t, cy = Math.sin(a) * spread * Math.sqrt(t) + diry * t;
+      d = Math.max(d, blob(cx, cy, r * (1 + Math.abs(dirx) * 0.8), r, sd + i, 0.15));
+    }
+    return d;
+  };
+  let d, thick = 0;
+  switch (k) {
+    case 0: d = Math.max(blob(0, 0, 0.42, 0.38, 201, 0.6), drops(14, 210, 0.75, 0.03, 0.09)); thick = blob(0, 0, 0.25, 0.22, 202, 0.4); break;
+    case 1: d = Math.max(blob(-0.35, 0.02, 0.32, 0.2, 203, 0.5), drops(18, 220, 0.25, 0.025, 0.08, 1.0, 0.05)); thick = blob(-0.4, 0, 0.18, 0.12, 204, 0.3); break;
+    case 2: { d = -1; for (let i = 0; i < 11; i++) { const t = i / 10 + 0.04 * (hash2(i, 2, 231) - 0.5), r = (0.03 + 0.06 * (1 - t)) * (0.6 + 0.8 * hash2(i, 3, 232)); d = Math.max(d, blob(-0.7 + 1.4 * t, 0.12 * Math.sin(t * 3 + 1) + 0.12 * (hash2(i, 4, 233) - 0.5), r * 1.3, r, 230 + i, 0.35)); } break; }
+    case 3: { const sx = (u + 0.8) / 1.6; d = 1 - Math.abs(v - 0.1 * Math.sin(u * 2)) / (0.22 * (1 - 0.6 * sx)) + warp(0.5, 7, 240) - 1.4 * smooth(0.75, 1.0, Math.abs(u)); thick = d - 0.6; break; } // a smear dragged along
+    case 4: d = drops(22, 250, 0.8, 0.02, 0.07); break;
+    case 5: d = blob(0.05, 0, 0.5, 0.42, 260, 0.45); thick = blob(0.05, 0, 0.32, 0.27, 261, 0.35); break;
+    case 6: d = Math.max(drops(60, 270, 0.85, 0.008, 0.03), blob(0, 0, 0.14, 0.12, 271, 0.4)); break; // fine spray
+    default: d = Math.max(blob(-0.25, -0.05, 0.3, 0.28, 280, 0.5), blob(0.3, 0.1, 0.24, 0.2, 281, 0.5), drops(8, 282, 0.7, 0.03, 0.06)); thick = blob(-0.25, -0.05, 0.16, 0.15, 283, 0.3);
+  }
+  d -= 1.6 * smooth(0.7, 0.95, Math.max(Math.abs(u), Math.abs(v))); // nothing reaches the cell border
+  return [smooth(0.0, 0.06, d), clamp(smooth(0.0, 0.3, thick))];
+}
+
 // ── the set ─────────────────────────────────────────────────────────────
 const jobs = {
   // street grounds, one per stage
@@ -489,6 +632,8 @@ const jobs = {
   fab_skin: () => [bake(256, skinTex({ seed: 15 })), 0.5],
   fab_hair: () => [bake(256, hairTex({ seed: 16 })), 1.6],
   hair_card: () => [hairCard(31), 1.2],
+  fab_dirty: () => [bake(512, dirtyTee({ seed: 71 })), 1.6],
+  cap_logo: () => [bake(1024, capLogo({ seed: 73 }), 256), 2.0],
 };
 for (const [name, f] of Object.entries(jobs)) {
   if (!want(name)) continue;
@@ -543,6 +688,24 @@ if (want('puddles')) {
   }
   save(`${OUT}/puddles.png`, W, H, 4, bytes);
   console.log('puddles');
+}
+if (want('blood')) {
+  const W = 1024, H = 512, C = 256, bytes = new Uint8Array(W * H * 4);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const k = Math.floor(x / C) + 4 * Math.floor(y / C);
+    const u = ((x % C) + 0.5) / C * 2 - 1, v = ((y % C) + 0.5) / C * 2 - 1;
+    const [a, thick] = bloodShape(k, u, v);
+    // dried at the rim, darker where it is thick; a little grain so it soaks into the asphalt rather than sitting on it
+    const grain = 0.85 + 0.3 * hash2(x, y, 290);
+    // the decal multiplies: red kept near full and green and blue taken out reads as a dark red stain on any street (a dark
+    // red multiplied onto dark asphalt went near black and did not read as blood at all)
+    const c = [lerp(0.93, 0.78, thick), lerp(0.36, 0.2, thick), lerp(0.32, 0.18, thick)];
+    const i = (y * W + x) * 4;
+    bytes[i] = Math.round(clamp(c[0]) * 255); bytes[i + 1] = Math.round(clamp(c[1]) * 255); bytes[i + 2] = Math.round(clamp(c[2]) * 255);
+    bytes[i + 3] = Math.round(clamp(a * (0.8 + 0.2 * thick) * grain) * 255);
+  }
+  save(`${OUT}/decal_blood.png`, W, H, 4, bytes);
+  console.log('blood');
 }
 if (want('decals')) {
   decalTex('decal_scuff1', 256, scuff(1)); decalTex('decal_scuff2', 256, scuff(2)); decalTex('decal_crack', 256, crack(3));
