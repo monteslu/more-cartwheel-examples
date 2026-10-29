@@ -1228,8 +1228,9 @@ export const SPECS = [
   // fighters
   { name: 'rook', face: { noseW: 1.05, hook: 0.6, brow: 1.2, browThick: 0.075, jawAng: 1.3, chin: 1.2, cleft: 0.5 }, paint: { age: 0.2, hairline: true, iris: 0x5a3418, scars: [[0.17, 0.27, 0.28, 0.13, 0.01, false]] },
     stubble: true, scale: 1.06, width: 1.3, chest: 1.08, sw: 0.23, arm: 1.3, leg: 1.12, head: 1.12, hand: 1.3, jaw: 1.25, hair: 'crop', gloves: true, belt: true, boots: true,
-    top: 'tee', outer: true, outerKind: 'jacket', outerFab: 'leather', openFront: 0.45, sleeves: 'short', bottom: 'jeans',
-    colors: { skin: 0xc98e60, shirt: 0xd8d2c0, pants: 0x2c4a80, shoes: 0x3b2618, hair: 0x2a1d14, accent: 0xb02a2a, outer: 0x4a2a1c, glove: 0xb8231f, belt: 0x201a14 } },
+    // a plain black cotton tee (B-PT16: the leather jacket made him look like Arthur), short sleeves, his jeans and boots
+    top: 'tee', sleeves: 'short', bottom: 'jeans',
+    colors: { skin: 0xc98e60, shirt: 0x1a1a1c, pants: 0x2c4a80, shoes: 0x3b2618, hair: 0x2a1d14, accent: 0xb02a2a, outer: 0x4a2a1c, glove: 0xb8231f, belt: 0x201a14 } },
   { name: 'mika', face: { eyeR: 0.185, noseLen: 0.85, noseW: 0.82, noseProj: 0.85, tipUp: 1, lipU: 1.2, lipL: 1.25, mw: 0.23, cheek: 1.25, jawAng: 0.6, chin: 0.8, chinW: 0.8, brow: 0.6, browThick: 0.04, browArch: 0.06, tilt: 0.08, socket: 0.9, naso: 0.4 }, paint: { freckles: 1, liner: 0.6, eyeShadow: [0.55, 0.36, 0.36], eyeShadowAmt: 0.3, iris: [0.25, 0.42, 0.22], hairline: true },
     scale: 0.97, width: 0.9, chest: 0.95, sw: 0.185, hw: 0.095, arm: 0.95, leg: 1.0, head: 1.14, hand: 1.25, jaw: 0.75, nose: 0.8, hair: 'ponytail', hairRoot: [0, 0.203, -0.1], hairB: [0, -0.13, -0.06], headband: true, wristband: true,
     top: 'tank', bottom: 'tight', pantsFab: 'cloth', lip: 0xb04a50,
