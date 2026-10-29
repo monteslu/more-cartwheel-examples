@@ -293,6 +293,11 @@ static void kill_fighter(fighter *v, fighter *k, int weapon) {
   }
 }
 
+/* events that used to shake a view (the shake check below, cam.offset) */
+static int32_t cam_offset[3];
+static int ev_until[MAXH];
+static void mark_event(int h) { if (h >= 0 && h < MAXH) ev_until[h] = G.ticks + 30; }
+
 static void damage(fighter *v, fighter *k, int dmg, t3_vec3 dir, float knock, int weapon, bool head) {
   if (!v->alive || v->spawn_guard > 0) return;
   if (v->first_dmg_tick < 0) v->first_dmg_tick = G.ticks;
@@ -316,6 +321,7 @@ static void damage(fighter *v, fighter *k, int dmg, t3_vec3 dir, float knock, in
       G.dmg_dir[v->human] = cw_atan2(-d.x, -d.z) - v->yaw;
     }
     G.shake[v->human] = CW_MAX(G.shake[v->human], 0.4f + (float)dmg * 0.01f);
+    mark_event(v->human);
     fx_play_ui(SND_HURT, 0.5f);
   }
   if (k && k->human >= 0 && k != v) {
@@ -432,6 +438,7 @@ static void explode(proj *p, t3_vec3 at, t3_vec3 n) {
   cw_node3d_set_position(p->node, v3(0, -500, 0));
   cw_node3d_set_position(p->light, v3(0, -500, 0));
   fx_explosion(at, n);
+  for (int h = 0; h < G.players; h++) if (v3len(v3sub(eye_pos(F(h)), at)) < 14.0f) mark_event(h);
   fighter *owner = F(p->owner);
   const float RADIUS = 5.0f;
   for (int i = 0; i < G.nf; i++) {
@@ -1480,6 +1487,24 @@ static void camgate(const fighter *f, t3_vec3 at, t3_vec3 d, t3_vec3 up, bool ev
   CAMS.n++;
 }
 
+/* the shake check (cam.offset): every view's camera as drawn (the camera node's global transform) against the gameplay
+ * view (the eye, eased over steps, looking along the fighter's yaw and pitch, level), on the ticks within half a second
+ * of an event that used to shake it (a hit taken, a blast within 14 m of the eye). cam.offset: those event ticks, the
+ * ones whose drawn camera was off the gameplay view by over 0.1 mm or 0.1 milliradian, and the largest offset seen
+ * (micrometres of eye plus microradians of look and roll). Nothing moves the camera on an event: [n, 0, 0]. */
+static void offsetgate(int h, const fighter *f, t3_vec3 e, t3_vec3 d) {
+  if (!f->alive || G.state != ST_PLAY || G.ticks > ev_until[h]) return;
+  const t3_mat4 *m = cw_node3d_global_transform(G.cam[h]);
+  if (!m) return;
+  t3_vec3 right = v3norm(v3cross(d, v3(0, 1, 0))), up = v3cross(right, d);
+  t3_vec3 pos = v3(m->e[12], m->e[13], m->e[14]), fwd = v3norm(v3(-m->e[8], -m->e[9], -m->e[10])), mup = v3norm(v3(m->e[4], m->e[5], m->e[6]));
+  float off = v3len(v3sub(pos, e)) + v3len(v3sub(fwd, d)) + v3len(v3sub(mup, up));
+  cam_offset[0]++;
+  if (off > 1e-4f) cam_offset[1]++;
+  int32_t um = (int32_t)(off * 1e6f);
+  if (um > cam_offset[2]) cam_offset[2] = um;
+}
+
 /* cameras and bodies follow the fighters: drawn from the tick's state */
 static void sync_nodes(void) {
   for (int i = 0; i < G.nf; i++) {
@@ -1530,6 +1555,7 @@ static void sync_nodes(void) {
       if (fabsf(e.y - (f->mv.position.y + EYE_H)) < 1e-4f) ey[h] = e.y = f->mv.position.y + EYE_H;
       ground[h] = f->alive && f->mv.on_floor;
     }
+    t3_vec3 e0 = e; /* the gameplay eye, for the shake check */
     /* shake only on events (a hit taken, a blast nearby: the explosion kit's shake at the eye), short and fading, scaled by
      * Settings > Screen shake; a hashed offset per tick, so it never draws on the simulation's random stream */
     float sk = (G.shake[h] + cw_explosion_shake(G.tree, e)) * cw_shell_screen_shake();
@@ -1570,6 +1596,7 @@ static void sync_nodes(void) {
     cw_node3d_set_position(G.cam[h], at);
     cw_node3d_look_at(G.cam[h], v3add(at, d), up);
     if (h == 0 && G.state == ST_PLAY) camgate(f, at, d, up, sk > 0.01f);
+    offsetgate(h, f, e0, look_dir(f->yaw, f->pitch));
     {
       static float fov[MAXH] = { 78, 78, 78, 78 };
       float fw = f->alive && f->sprint ? 84.0f : 78.0f;
@@ -2202,6 +2229,7 @@ static void init(void *user) {
   cw_debug_field("cam.gate", cam_gate, CW_DBG_I32, 4);
   cw_debug_field("cam.jit", cam_jit, CW_DBG_F32, 3);
   cw_debug_i32("cam.events", &cam_events);
+  cw_debug_field("cam.offset", cam_offset, CW_DBG_I32, 3);
   cw_debug_field("cam.jerk_at", cam_jerk_at, CW_DBG_I32, 4);
   cw_debug_field("soak.heap_kb", soak_heap_kb, CW_DBG_I32, SOAK_N);
   cw_debug_i32("stats.enc", &G.st.enc);

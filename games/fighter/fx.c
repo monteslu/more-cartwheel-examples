@@ -19,6 +19,7 @@
 #include "game.h"
 
 int fx_count_hit, fx_count_block;
+int fx_count_impact; /* hits, blocks, throws, wall splats, supers and KOs: the events that shook the camera (the shake check) */
 
 static struct {
   bool ready;
@@ -179,6 +180,7 @@ static void light(t3_vec3 p, float e, float cr, float cg, float cb) {
 }
 
 void fx_event(const ft_game *g, const ft_event *e) {
+  if (e->type == EV_HIT || e->type == EV_BLOCK || e->type == EV_THROW || e->type == EV_WALL || e->type == EV_SUPER || e->type == EV_KO) fx_count_impact++;
   t3_vec3 p = { (float)e->x / 1000.0f, (float)e->y / 1000.0f, 0.15f };
   float k = (float)e->power;
   switch (e->type) {

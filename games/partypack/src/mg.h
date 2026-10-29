@@ -116,6 +116,9 @@ void fx_confetti(cw_rect area, int n);
  * the clock holds either way. It is part of the simulation (counted in ticks), so a replay agrees. The longest
  * request of a tick wins, at most 10 ticks. */
 void fx_hitstop(int ticks);
+void fx_impact(void); /* an impact for the shake check (cam.offset); every fx_hitstop is one */
+extern int32_t cam_offset_dbg[3];
+void cam_offset_3d(cw_node cam, float px, float py, float pz); /* the shake check on a 3D camera: as drawn against where the game frames it */
 int fx_hitstop_take(void); /* the framework, after each play tick: the freeze asked for (0 none), and clears it */
 void fx_update(float dt);
 void fx_draw(void);

@@ -76,6 +76,6 @@ void fx_frame(const ft_game *g, float dt);
 void fx_bind_lights(cw_node stage);
 float fx_shake(void); /* camera shake amount now */
 float fx_flash(void); /* a white screen flash 0..1 (super) */
-extern int fx_count_hit, fx_count_block;
+extern int fx_count_hit, fx_count_block, fx_count_impact;
 
 #endif

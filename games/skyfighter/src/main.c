@@ -1056,6 +1056,16 @@ static void update_effects(float dt) {
     G.shockwave->visible=G.impact_age<1.8f;}
 
 }
+/* the shake check (cam.offset): the crash camera as drawn (the camera node's global transform) against its orbit around
+ * the wreck, on every crash frame. cam.offset: those frames, the ones whose drawn camera was off the orbit by over 0.1 mm,
+ * and the largest offset (micrometres). Nothing moves the camera in a crash: [n, 0, 0]. */
+static int32_t cam_offset[3];
+static void offsetgate(t3_vec3 at) {
+  const t3_mat4 *m=cw_node3d_global_transform(G.camera_node);if(!m)return;
+  float dx=m->e[12]-at.x,dy=m->e[13]-at.y,dz=m->e[14]-at.z,off=sqrtf(dx*dx+dy*dy+dz*dz);
+  cam_offset[0]++;if(off>1e-4f)cam_offset[1]++;
+  if((int32_t)(off*1e6f)>cam_offset[2])cam_offset[2]=(int32_t)(off*1e6f);
+}
 static void crash_camera(float dt) {
   float old=G.crash_age;G.crash_age+=dt;float t=G.crash_age;
   if(old<0.55f&&t>=0.55f)start_burst(G.crash_fx[5],G.px,G.py+8,G.pz);
@@ -1067,6 +1077,7 @@ static void crash_camera(float dt) {
   cw_node3d_set_position(G.camera_node,(t3_vec3){cx+sinf(t*93)*shake,
     fmaxf(G.py+25+t*9,terrain_height(cx,cz)+15)+cosf(t*71)*shake,cz});
   cw_node3d_look_at(G.camera_node,(t3_vec3){G.px,G.py+12+t*4,G.pz},(t3_vec3){0,1,0});
+  offsetgate((t3_vec3){cx,fmaxf(G.py+25+t*9,terrain_height(cx,cz)+15),cz});
   cw_node_set(G.camera_node,"fov",cw_val_float(68));
   float r=6+t*90;t3_object_set_scale(G.shockwave,r,r,r);
   G.shock_mat->opacity=fmaxf(0,0.14f-t*0.18f);G.shockwave->visible=t<1.8f;
@@ -1236,6 +1247,7 @@ static void init(void *user) {
   cw_debug_f32("audio.rms",&G.audio_rms);cw_debug_f32("audio.peak",&G.audio_peak);
   cw_debug_i32("mission.buildings",&G.buildings_destroyed);cw_debug_i32("crash.structure",&G.impact_structure);
   cw_debug_f32("crash.age",&G.crash_age);
+  cw_debug_field("cam.offset",cam_offset,CW_DBG_I32,3);
   cw_debug_i32("crash.pieces",&G.wreck_count);
   cw_debug_i32("jet.intact_visible",&G.intact_visible);
   cw_debug_i32("cloud.volumes",&G.cloud_volumes);cw_debug_i32("cloud.active",&G.cloud_active);

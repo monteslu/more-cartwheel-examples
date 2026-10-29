@@ -98,6 +98,7 @@ static void hurt_player(game *g, int i, float kx, int dmg) {
   p->hurt_fx = 1;
   g->hitstop = 5;
   g->hitstops++;
+  g->impacts++;
   g->hit_flash = 8;
   g->events |= EV_HURT;
   p->pf.body.velocity.x = kx * 7.0f;
@@ -186,6 +187,7 @@ static void enemy_step(game *g, enemy *e, float dt) {
 }
 
 void sim_shake(game *g, float x, float y, float amount) {
+  g->impacts++;
   const camera_rig *c = &g->cam;
   /* the view is about 1.29 z wide and 0.73 z tall (fov 40, 16:9): full shake inside it, fading to none half a view
    * beyond its edge */

@@ -192,6 +192,7 @@ static void tick(mg_ctx *c) {
       set_size(step_size[K.shrink_stage++]);
       sfx(SFX_HIT, 1, 0.6f);
       K.shake = 0.35f;
+      fx_impact();
       for (int e = 0; e < 8; e++) n3_fx("dust", (t3_vec3){ (e % 2 ? 1 : -1) * K.size * 0.5f * (e < 4 ? 1.0f : 0.0f), 0.2f, (e % 2 ? 1 : -1) * K.size * 0.5f * (e >= 4 ? 1.0f : 0.0f) }, 1.4f);
     }
   }
@@ -277,6 +278,7 @@ static void tick(mg_ctx *c) {
   K.shake *= 0.9f;
   float sh = K.shake;
   n3_camera(sinf((float)c->tick * 2.1f) * sh, 11 + cosf((float)c->tick * 2.7f) * sh, 9.5f, 0, 0, 0.6f);
+  cam_offset_3d(n3_find("Camera"), 0, 11, 9.5f);
 }
 
 static void think(mg_ctx *c, int p, mg_in *out) {

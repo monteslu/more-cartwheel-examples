@@ -1005,6 +1005,7 @@ static void init(void *user) {
   cw_debug_i32("game.events", &G.nev);
   cw_debug_field("game.wins", G.round_wins, CW_DBG_I32, NP);
   cw_debug_i32("game.hitstops", &G.hitstop_shown);
+  cw_debug_field("cam.offset", cam_offset_dbg, CW_DBG_I32, 3);
   cw_debug_field("probe.load_ms", &G.load_ms, CW_DBG_F32, 1);
   cw_debug_field("probe.start_ms", &G.start_ms, CW_DBG_F32, 1);
 #ifdef PP_AUTOPILOT

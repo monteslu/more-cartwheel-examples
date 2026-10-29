@@ -789,6 +789,23 @@ static float shake_setting(void) { return cw_shell_screen_shake(); }
 static float shake_setting(void) { return 1.0f; }
 #endif
 
+/* the shake check (g.camoffset): the camera as drawn (the camera node's global transform) against the follow camera
+ * drawn between its last two ticks, on the frames within half a second of an impact (g.impacts: a boss landing, hit or
+ * blast, a small enemy's blast, a player hurt). g.camoffset: those frames, the ones whose drawn camera was off the follow
+ * camera by over 0.1 mm, and the largest offset (micrometres). Nothing moves the camera on an impact: [n, 0, 0]. */
+static int g_camoffset_dbg[3];
+static void offsetgate(cw_node cam, float vx, float vy, float vz) {
+  static int seen, until;
+  if (G.impacts != seen) seen = G.impacts, until = G.tick + 30;
+  if (G.tick > until) return;
+  const t3_mat4 *m = cw_node3d_global_transform(cam);
+  if (!m) return;
+  float dx = m->e[12] - vx, dy = m->e[13] - vy, dz = m->e[14] - vz, off = sqrtf(dx * dx + dy * dy + dz * dz);
+  g_camoffset_dbg[0]++;
+  if (off > 1e-4f) g_camoffset_dbg[1]++;
+  if ((int)(off * 1e6f) > g_camoffset_dbg[2]) g_camoffset_dbg[2] = (int)(off * 1e6f);
+}
+
 /* ── frame: sync the scene to the sim ─────────────────────────────── */
 static void sync_scene(float alpha, float dt) {
   game *g = &G;
@@ -818,6 +835,7 @@ static void sync_scene(float alpha, float dt) {
     camgate_frame(g_view_dbg, pp, g->nplayers, snapped, sh > 0);
   }
   cw_node3d_set_rotation(S.cam, (t3_vec3){ -0.06f, 0, 0 });
+  if (!g_attract) offsetgate(S.cam, vx, vy, vz);
   cw_node3d_set_position(S.sun, (t3_vec3){ vx + 8, vy + 18, 14 });
   apply_mood(vx);
   world_update_water_mesh(S.time);
@@ -1397,6 +1415,8 @@ static void init(void *user) {
   cw_debug_field("g.camgate", g_camgate_dbg, CW_DBG_I32, 4);
   cw_debug_i32("g.shake_frames", &g_shake_frames_dbg); /* frames drawn with a real event's shake */
   cw_debug_f32_array("g.camjit", g_camjit_dbg, 4);
+  cw_debug_field("g.camoffset", g_camoffset_dbg, CW_DBG_I32, 3);
+  cw_debug_i32("g.impacts", &G.impacts);
   cw_debug_i32("g.hp", &g_hp_dbg);
   cw_debug_i32("g.bubbles", &g_bubbles_dbg);
   cur_mood = MOODS[0];
