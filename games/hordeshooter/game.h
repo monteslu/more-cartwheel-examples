@@ -131,7 +131,7 @@ t3_color lin(float r, float g, float b); /* screen colour -> linear */
 void view_init(cw_node root);
 void view_free(void);
 void view_sync(const sim *s, float time);
-void view_camera(const sim *s, cw_node camera, float aspect, float shake_x, float shake_y);
+void view_camera(const sim *s, cw_node camera, float aspect, float control_x, float control_y);
 bool view_screen(t3_vec3 p, float *u, float *v); /* a world point on screen (0..1, y down) */
 typedef struct view_stats { int enemies_drawn, bullets, pickups; } view_stats;
 view_stats view_get_stats(void);
@@ -142,7 +142,7 @@ void fx_init(cw_node root);
 void fx_free(void);
 void fx_events(sim *s); /* consumes the events */
 void fx_tick(const sim *s);
-void fx_shake(float *x, float *y);
+void fx_control_shake(float *x, float *y); /* zero, except under the camera gate's control (HORDE_SHAKE_CONTROL) */
 typedef struct fx_stats { int systems_live, decals_live, lights_live, gibs_live, booms; } fx_stats;
 fx_stats fx_get_stats(void);
 extern int g_fx_level; /* 0..3 effects detail the fx module asked for (render only) */

@@ -6,7 +6,7 @@
  *               that bounce off the scene, debris chunks trailing smoke (a
  *               sub-emitter), embers, heat haze, a ground shockwave; the node
  *               borrows a pooled flash light, stamps a scorch mark that cools
- *               and records the camera shake
+ *               (no camera shake: the players' pads rumble instead)
  *   small blast a smaller Explosion3D: a fire puff, sparks, smoke, a ring
  *   kills       a spray of gibs (instanced chunks, CPU physics, bounce on
  *               the floor), a stain decal under the body
@@ -17,10 +17,12 @@
  *               from the kit's pool. Clustered lighting: idle lights cost nothing
  * The graphics setting "effects detail" thins every one of these. */
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "cartwheel/decals.h"
 #include "cartwheel/explosions.h"
+#include "cartwheel/input.h"
 #include "cartwheel/math.h"
 #include "cartwheel/particles.h"
 #include "cartwheel/quality.h"
@@ -52,8 +54,14 @@ static struct {
   t3_instanced_mesh *gibs;
   gib g[GIBS];
   int next_g, live_g;
-  float shake, shake_t;
-  t3_vec3 focus; /* where the camera looks: the kit's shake is read there */
+  /* each player's pad: the strength of the rumble running and the tick it ends (a weaker request never cuts a
+   * stronger one short), and this frame's strongest request */
+  float rum_k[MAXP];
+  uint32_t rum_end[MAXP];
+  float want_low[MAXP], want_high[MAXP];
+  int want_ms[MAXP];
+  bool shake_control; /* HORDE_SHAKE_CONTROL: the old explosion-kit camera shake, the camera gate's control only */
+  t3_vec3 focus;
   uint32_t tick;
   int frame_hits, frame_blood, frame_gibs, frame_booms;
   uint32_t rng;
@@ -88,6 +96,17 @@ static cw_node pnode(cw_node parent, const char *name, const char *const *kv, in
   cw_node_set(n, "emitting", cw_val_bool(false));
   cw_node_set(n, "seed", cw_val_int(seed));
   cw_node3d_set_position(n, cw_node_is(parent, "Explosion3D") ? (t3_vec3){ 0, 0.5f, 0 } : (t3_vec3){ 0, -60, 0 });
+  return n;
+}
+/* a pool of one-shot effects as one system of burst slots (cartwheel/particles.h bursts): each slot fires a
+ * one-shot of the settings at its own place, one simulation and one draw for the whole pool */
+static cw_node bnode(cw_node parent, const char *name, const char *const *kv, int seed, int slots) {
+  cw_node n = pnode(parent, name, kv, seed);
+  cw_value v;
+  int per = cw_node_get_prop(n, "amount", &v) ? (int)v.i : 1;
+  cw_node_set(n, "bursts", cw_val_int(slots));
+  cw_node_set(n, "amount", cw_val_int(per * slots));
+  cw_node3d_set_position(n, (t3_vec3){ 0, 0, 0 });
   return n;
 }
 static void burst_at(cw_node n, t3_vec3 at) {
@@ -196,7 +215,8 @@ static cw_node boom_node(const char *name, bool big, int seed) {
   cw_node_set(e, "scorch_time", cw_val_float(big ? 7.0f : 3.0f));
   cw_node_set(e, "scorch_life", cw_val_float(big ? 40.0f : 18.0f));
   cw_node_set(e, "scorch_glow", cw_val_float(big ? 3.0f : 1.5f));
-  cw_node_set(e, "shake_amount", cw_val_float(big ? 0.8f : 0.25f));
+  /* no camera shake (the pads rumble instead); the old one only for the camera gate's control */
+  cw_node_set(e, "shake_amount", cw_val_float(FX.shake_control ? (big ? 0.8f : 0.25f) : 0.0f));
   cw_node_set(e, "shake_radius", cw_val_float(30));
   cw_node_set(e, "shake_time", cw_val_float(big ? 0.8f : 0.4f));
   cw_node3d_set_position(e, (t3_vec3){ 0, -60, 0 });
@@ -261,14 +281,15 @@ static cw_node decal(const char *name, float r, float g, float b, float a) {
 void fx_init(cw_node root) {
   fx_free();
   FX.rng = 12345;
+  FX.shake_control = getenv("HORDE_SHAKE_CONTROL") != NULL;
   FX.root = cw_node_new("Node3D", "FX");
   cw_node_add_child(root, FX.root);
   for (int i = 0; i < BIGS; i++) FX.big[i] = boom_node("BigBlast", true, 100 + i * 10);
   for (int i = 0; i < SMALLB; i++) FX.small[i] = boom_node("SmallBlast", false, 200 + i * 10);
-  for (int i = 0; i < LEVELS; i++) FX.level[i] = pnode(FX.root, "LevelUp", LEVELUP, 600 + i);
-  for (int i = 0; i < HITS; i++) FX.hit[i] = pnode(FX.root, "Hit", HIT, 700 + i);
-  for (int i = 0; i < MUZZLES; i++) FX.muzzle[i] = pnode(FX.root, "Muzzle", MUZZLE, 750 + i);
-  for (int i = 0; i < SPLATS; i++) FX.splat[i] = pnode(FX.root, "Splat", SPLAT, 800 + i);
+  FX.level[0] = bnode(FX.root, "LevelUp", LEVELUP, 600, LEVELS);
+  FX.hit[0] = bnode(FX.root, "Hit", HIT, 700, HITS);
+  FX.muzzle[0] = bnode(FX.root, "Muzzle", MUZZLE, 750, MUZZLES);
+  FX.splat[0] = bnode(FX.root, "Splat", SPLAT, 800, SPLATS);
   for (int i = 0; i < FIRES; i++) {
     FX.fire[i] = pnode(FX.root, "Fire", FIREP, 900 + i);
     FX.fire_haze[i] = pnode(FX.root, "FireHaze", FIREHAZE, 950 + i);
@@ -302,13 +323,40 @@ void fx_init(cw_node root) {
   FX.ready = true;
 }
 
-void fx_shake(float *x, float *y) {
-  *x = FX.shake * 0.35f * cw_sin(FX.shake_t * 53.0f);
-  *y = FX.shake * 0.35f * cw_cos(FX.shake_t * 47.0f);
-  if (!FX.ready) return;
-  float k = cw_explosion_shake(cw_node_tree(FX.root), FX.focus) * (g_fx_level == 0 ? 0.4f : 1.0f);
-  t3_vec3 o = cw_shake_offset(k, FX.tick, 0.45f);
-  *x += o.x, *y += o.z;
+/* the camera gate's control only (HORDE_SHAKE_CONTROL): the old explosion-kit shake, to show the gate sees it */
+void fx_control_shake(float *x, float *y) {
+  *x = *y = 0;
+  if (!FX.ready || !FX.shake_control) return;
+  t3_vec3 o = cw_shake_offset(cw_explosion_shake(cw_node_tree(FX.root), FX.focus), FX.tick, 0.45f);
+  *x = o.x, *y = o.z;
+}
+
+/* a rumble for one player's pad this frame: the strongest request of the frame is sent */
+static void rumble(int p, float low, float high, int ms) {
+  if (p < 0 || p >= MAXP || low + high <= FX.want_low[p] + FX.want_high[p]) return;
+  FX.want_low[p] = low, FX.want_high[p] = high, FX.want_ms[p] = ms;
+}
+/* every player within reach of a blast: the heavy motor, falling off with distance */
+static void rumble_blast(const sim *s, float x, float y, bool big) {
+  float reach = big ? 30.0f : 20.0f;
+  for (int i = 0; i < MAXP; i++) {
+    const player *p = &s->p[i];
+    if (!p->active) continue;
+    float d = sqrtf((p->x - x) * (p->x - x) + (p->y - y) * (p->y - y)), k = 1.0f - d / reach;
+    if (k <= 0.05f) continue;
+    k *= k;
+    rumble(i, (big ? 1.0f : 0.7f) * k, (big ? 0.3f : 0.2f) * k, big ? 280 : 170);
+  }
+}
+static void rumble_send(void) {
+  for (int i = 0; i < MAXP; i++) {
+    float k = FX.want_low[i] + FX.want_high[i];
+    if (k > 0 && (FX.tick >= FX.rum_end[i] || k >= FX.rum_k[i])) {
+      cw_input_rumble(i, FX.want_low[i], FX.want_high[i], FX.want_ms[i]);
+      FX.rum_k[i] = k, FX.rum_end[i] = FX.tick + (uint32_t)(FX.want_ms[i] * 60 / 1000);
+    }
+    FX.want_low[i] = FX.want_high[i] = 0, FX.want_ms[i] = 0;
+  }
 }
 fx_stats fx_get_stats(void) {
   fx_stats s = { 0 };
@@ -379,24 +427,29 @@ void fx_events(sim *s) {
     const event *e = &s->ev[i];
     t3_vec3 at = { e->x, 0.7f, e->y };
     switch (e->kind) {
-    case EV_BOOM: blast(at, e->z, e->w > 0.5f); break;
+    case EV_BOOM: blast(at, e->z, e->w > 0.5f), rumble_blast(s, e->x, e->y, e->w > 0.5f); break;
     case EV_HIT:
-      if (FX.frame_hits++ < (lvl >= 2 ? 10 : lvl >= 1 ? 6 : 3)) burst_at(FX.hit[FX.nh++ % HITS], (t3_vec3){ at.x, 0.9f, at.z });
+      if (FX.frame_hits++ < (lvl >= 2 ? 10 : lvl >= 1 ? 6 : 3)) cw_particles_burst(FX.hit[0], (t3_vec3){ at.x, 0.9f, at.z }, (t3_vec3){ 0, 0, 0 });
       break;
     case EV_ROCKET:
     case EV_SHOT:
       if (!(shot_seen & (1u << (e->a & 7)))) { /* each player's first shot this frame: a flash of light and a cone of fire at the barrel */
         shot_seen |= 1u << (e->a & 7);
         if (lvl >= 1) flash_light((t3_vec3){ at.x + e->z * 0.02f, 0, at.z + e->w * 0.02f }, 16, 1, 0.75f, 0.35f);
-        cw_node m = FX.muzzle[FX.nm++ % MUZZLES];
-        cw_node_set(m, "direction", cw_val_vec3(e->z, 0.05f, e->w));
-        burst_at(m, (t3_vec3){ at.x, 0.95f, at.z });
+        cw_particles_burst(FX.muzzle[0], (t3_vec3){ at.x, 0.95f, at.z }, (t3_vec3){ e->z, 0.05f, e->w });
+        /* a heavy weapon's shot: a light tick (rockets, the rail gun, the shotgun; not every bullet) */
+        const player *p = e->a < MAXP ? &s->p[e->a] : NULL;
+        int w = p && p->pu_weapon_t > 0 ? p->pu_weapon : -1;
+        if (e->kind == EV_ROCKET) rumble(e->a, 0.25f, 0.3f, 70);
+        else if (w == PU_RAIL) rumble(e->a, 0.15f, 0.45f, 60);
+        else if (w == PU_SHOTGUN) rumble(e->a, 0.3f, 0.25f, 60);
       }
       break;
     case EV_KILL: {
-      if (e->a == EK_BRUTE || e->a == EK_BOSS) { /* a big kill reads: a pop of the explosion kit and a kick of the camera */
+      if (e->a == EK_BRUTE || e->a == EK_BOSS) { /* a big kill reads: a burst of the explosion kit and a short rumble */
         blast(at, e->a == EK_BOSS ? 4.0f : 1.6f, e->a == EK_BOSS);
-        FX.shake = CW_MIN(FX.shake + (e->a == EK_BOSS ? 1.6f : 0.5f), 2.2f);
+        if (e->a == EK_BOSS) rumble_blast(s, e->x, e->y, true);
+        else rumble(e->b, 0.35f, 0.2f, 90);
       }
       static const t3_color BC[EK_KINDS] = { { 0.16f, 0.05f, 0.04f }, { 0.14f, 0.05f, 0.04f }, { 0.14f, 0.17f, 0.05f }, { 0.15f, 0.03f, 0.05f } };
       int n = e->a == EK_RUNNER ? 3 : e->a == EK_BOSS ? 90 : 14;
@@ -410,7 +463,7 @@ void fx_events(sim *s) {
         float sz = e->a == EK_RUNNER ? 1.3f : e->a == EK_BOSS ? 6.0f : 2.4f;
         set_decal(FX.stain[st], at, sz * (0.8f + 0.5f * rnd()), rnd() * 6.28f);
         FX.stain_a[st] = 0.85f;
-        if (e->a != EK_RUNNER || lvl >= 1) burst_at(FX.splat[FX.nsp++ % SPLATS], (t3_vec3){ at.x, 0.4f, at.z });
+        if (e->a != EK_RUNNER || lvl >= 1) cw_particles_burst(FX.splat[0], (t3_vec3){ at.x, 0.4f, at.z }, (t3_vec3){ 0, 0, 0 });
       }
       break;
     }
@@ -424,19 +477,19 @@ void fx_events(sim *s) {
       break;
     }
     case EV_CRATE: spawn_gibs(at, lvl ? 14 : 7, (t3_color){ 0.5f, 0.32f, 0.15f }, 4.0f, 0, 0); break;
-    case EV_WALL: spawn_gibs(at, 26, (t3_color){ 0.5f, 0.5f, 0.48f }, 5.0f, 0, 0); FX.shake = CW_MIN(FX.shake + 0.4f, 2.2f); break;
-    case EV_HURT: FX.shake = CW_MIN(FX.shake + 0.3f, 2.2f); break;
-    case EV_LEVEL: burst_at(FX.level[FX.nlv++ % LEVELS], (t3_vec3){ at.x, 0.3f, at.z }); break;
+    case EV_WALL: spawn_gibs(at, 26, (t3_color){ 0.5f, 0.5f, 0.48f }, 5.0f, 0, 0); break;
+    case EV_HURT: rumble(e->a, 0.3f, 0.85f, 90); break; /* getting hit: short and sharp */
+    case EV_LEVEL: cw_particles_burst(FX.level[0], (t3_vec3){ at.x, 0.3f, at.z }, (t3_vec3){ 0, 0, 0 }); break;
     case EV_POWER: /* taken: a ring of sparks and a flash in the power-up colour */
-      burst_at(FX.level[FX.nlv++ % LEVELS], (t3_vec3){ at.x, 0.3f, at.z });
+      cw_particles_burst(FX.level[0], (t3_vec3){ at.x, 0.3f, at.z }, (t3_vec3){ 0, 0, 0 });
       flash_light(at, 30, 1, 0.9f, 0.6f);
-      FX.shake = CW_MIN(FX.shake + 0.15f, 2.2f);
       break;
-    case EV_POWER_SPAWN: burst_at(FX.level[FX.nlv++ % LEVELS], (t3_vec3){ at.x, 0.3f, at.z }); break;
+    case EV_POWER_SPAWN: cw_particles_burst(FX.level[0], (t3_vec3){ at.x, 0.3f, at.z }, (t3_vec3){ 0, 0, 0 }); break;
     default: break;
     }
   }
   s->ev_n = 0;
+  rumble_send();
 }
 
 void fx_tick(const sim *s) {
@@ -448,8 +501,6 @@ void fx_tick(const sim *s) {
     sim_team_box(s, &cx, &cy, &hw, &hh);
     FX.focus = (t3_vec3){ cx, 0, cy };
   }
-  FX.shake_t += dt;
-  FX.shake *= 0.9f;
   /* gibs */
   int n = 0;
   bool recolour = false;

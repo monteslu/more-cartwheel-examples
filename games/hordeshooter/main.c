@@ -29,6 +29,7 @@
 #include "cartwheel/math.h"
 #include "cartwheel/particles.h"
 #include "cartwheel/pipeline.h"
+#include "cartwheel/profile.h"
 #include "cartwheel/project.h"
 #include "cartwheel/quality.h"
 #include "cartwheel/render2d.h"
@@ -63,6 +64,11 @@ static struct {
   int won_ticks;
   cw_node camera, sun;
   int level_flash[MAXP], level_up[MAXP];
+  /* the camera gate: frames the camera jerked (its position's second difference over 2 cm: a shake, never the
+   * smooth follow) and the blasts seen, for tests */
+  int32_t cam_jerks, booms;
+  t3_vec3 cam_p[2];
+  int cam_n;
 } G;
 
 static cw_font font;
@@ -172,6 +178,8 @@ static void init(void *u) {
   cw_debug_field("player.x", G.px, CW_DBG_I32, MAXP);
   cw_debug_field("player.y", G.py, CW_DBG_I32, MAXP);
   cw_debug_u32("game.hash", &G.hash);
+  cw_debug_i32("view.cam_jerks", &G.cam_jerks);
+  cw_debug_i32("fx.booms", &G.booms);
 #ifdef HORDE_AUTOPILOT
 #ifndef HORDE_AUTO_PLAYERS
 #define HORDE_AUTO_PLAYERS 2
@@ -382,28 +390,37 @@ static void render(void *u, double alpha) {
     static float t;
     t += 1.0f / 60.0f;
     float sx, sy;
-    fx_shake(&sx, &sy);
+    fx_control_shake(&sx, &sy);
     int w, h;
     cw_window_size(&w, &h);
     view_camera(&G.S, G.camera, (float)w / (float)h, sx, sy); /* first: the horde is culled against this frame's view */
+    {
+      t3_vec3 p = cw_node3d_position(G.camera);
+      if (G.cam_n >= 2) {
+        float jx = p.x - 2 * G.cam_p[0].x + G.cam_p[1].x, jy = p.y - 2 * G.cam_p[0].y + G.cam_p[1].y, jz = p.z - 2 * G.cam_p[0].z + G.cam_p[1].z;
+        if (jx * jx + jy * jy + jz * jz > 0.02f * 0.02f) G.cam_jerks++;
+      }
+      G.cam_p[1] = G.cam_p[0], G.cam_p[0] = p, G.cam_n++;
+      G.booms = fx_get_stats().booms;
+    }
     static int lm_frames;
     if (lm_frames >= 0 && ++lm_frames > 1) { /* after a frame: the sky has placed the sun, every node its transform */
       view_lightmap(cw_scene_app_tree());
       lm_frames = -1;
     }
     double t0 = cw_wall();
-    view_sync(&G.S, t);
+    { CW_PROFILE_SCOPE("horde.view_sync"); view_sync(&G.S, t); }
     T_view += (cw_wall() - t0) * 1000;
     t0 = cw_wall();
-    fx_events(&G.S);
-    if (sc == CW_SHELL_PLAY) fx_tick(&G.S);
+    { CW_PROFILE_SCOPE("horde.fx"); fx_events(&G.S);
+    if (sc == CW_SHELL_PLAY) fx_tick(&G.S); }
     T_fx += (cw_wall() - t0) * 1000;
     if (cw_node_valid(G.sun)) { /* the sky sets the sun's direction: the blob shadows fall that way */
       const t3_mat4 *m = cw_node3d_global_transform(G.sun);
       if (m) view_set_sun((t3_vec3){ -m->e[8], -m->e[9], -m->e[10] });
     }
   }
-  if (G.in_match && (sc == CW_SHELL_PLAY || sc == CW_SHELL_PAUSE)) hud();
+  if (G.in_match && (sc == CW_SHELL_PLAY || sc == CW_SHELL_PAUSE)) { CW_PROFILE_SCOPE("horde.hud"); hud(); }
   cw_quality_auto_measure(sc == CW_SHELL_PLAY);
   double now = cw_wall();
   if (T_last > 0) T_frame += (now - T_last) * 1000;
@@ -437,7 +454,7 @@ static void render(void *u, double alpha) {
       T_n = 0;
     }
   }
-  cw_shell_draw();
+  { CW_PROFILE_SCOPE("horde.shell_draw"); cw_shell_draw(); }
 }
 
 cw_app_desc cw_main(int argc, char **argv) {

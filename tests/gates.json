@@ -367,5 +367,50 @@
       "ARENA_CAM_BUG": "1"
     },
     "note": "camera stability, the way a person plays: one pad through title, join and the setup (no bots: up three rows, right, down three, fire), then stand, walk, stop, strafe, jump and stand on Foundry while player 1's camera as drawn is measured every tick (cam.gate: ticks at rest, at-rest ticks that moved over 1 mm, ticks in motion, ticks in motion on the ground where the eye jumped over 0.6 m or its step changed by over 15 cm). At rest it must not move at all (no bob, roll, dip or sway); stairs and kerbs ease the eye up instead of snapping it. Measured 2026-10-27: [528, 0, 600, 0] on native GL and WebGPU. The control (ARENA_CAM_BUG, native) puts a 1 cm idle sway on the camera: [528, 448, 600, 0], it must differ."
+  },
+  {
+    "name": "hordeshooter-calm-camera",
+    "app": "hordeshooter_auto",
+    "frames": 900,
+    "maxGt16": 0.12,
+    "env": {
+      "HORDE_WAVE": "8",
+      "HORDE_PLAYERS": "3"
+    },
+    "fields": [
+      "game.ticks",
+      "game.hash",
+      "fx.booms",
+      "view.cam_jerks",
+      "cw.rumble"
+    ],
+    "expect": {
+      "game.ticks": 900,
+      "game.wave": 8,
+      "fx.booms": 178,
+      "view.cam_jerks": 0,
+      "cw.rumble": [
+        194,
+        1,
+        180,
+        52,
+        170
+      ]
+    },
+    "controlEnv": {
+      "HORDE_SHAKE_CONTROL": "1"
+    },
+    "hosts": [
+      "native"
+    ],
+    "note": "no camera shake: three bots in wave 8 for 900 ticks (178 blasts: rockets, grenades, bloaters, mines). view.cam_jerks counts frames whose camera position has a second difference over 2 cm (a shake; the smooth follow never does): 0. cw.rumble (requests, pad, low and high in thousandths, ms) shows the pads rumble instead: 194 requests, the last a blast. Measured 2026-10-29 on native GL. The control (HORDE_SHAKE_CONTROL, the same 900 ticks) puts the old explosion-kit camera shake back: 731 jerking frames and the same game.hash (the shake was never in the simulation), so it must differ.",
+    "controlFrames": 900,
+    "webgpu": {
+      "hosts": [
+        "native"
+      ],
+      "maxGt16": 0.25,
+      "vsGl": 0.25
+    }
   }
 ]

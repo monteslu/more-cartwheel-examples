@@ -121,5 +121,9 @@ code; see CREDITS.
 - Blasts use the engine's explosion kit (Explosion3D): fire and smoke
   flipbooks blended along baked motion vectors, sparks that bounce, debris
   chunks trailing smoke, embers, heat haze and a ground shockwave that bend the
-  picture, a pooled flash light, a scorch mark that glows and cools, and camera
-  shake. Barrel fires keep burning for a few seconds with their own haze.
+  picture, a pooled flash light and a scorch mark that glows and cools. Barrel
+  fires keep burning for a few seconds with their own haze.
+- The camera never shakes. The pads rumble instead (cw_input_rumble), each
+  player's own and briefly: blasts on the heavy motor, fading with that
+  player's distance; a short sharp buzz when hit; a light tick on a rocket,
+  rail gun or shotgun shot (not on every bullet); a short one on a big kill.

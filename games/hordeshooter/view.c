@@ -165,8 +165,8 @@ static struct {
   t3_material *pl_mat[MAXP]; /* the soldier's body: tinted each frame by the floor's light under it */
   cw_node pl_light[MAXP];
   view_stats st;
-  cw_splats *shadows, *pools; /* blob shadows under everything that moves, light pools under the moving lights */
-  float sun_x, sun_z, sun_len; /* where shadows fall on the ground (unit) and how long they are for a 1 m caster */
+  cw_splats *shadows, *pools, *sheen; /* blob shadows under everything that moves, light pools under the moving lights */
+  float sun_x, sun_z, sun_len, sun_yaw; /* where shadows fall on the ground (unit) and how long they are for a 1 m caster */
   float cx, cy, cd;
   bool cam_init;
   t3_vec3 eye, at; /* the camera last frame, for view_screen */
@@ -733,6 +733,21 @@ void view_init(cw_node root) {
         }
         V.br[k] = sqrtf(r2) * 1.1f + 0.05f;
       }
+      { /* the crowd's baked colours desaturated toward a cool grey of the same luminance (each vertex: no hue is
+         * swung, so a red hide greys instead of turning magenta); the green kind keeps most of its green to stay readable */
+        static const float DESAT[EK_KINDS] = { 0.78f, 0.7f, 0.2f, 0.7f }, COOL[3] = { 0.88f, 1.0f, 1.14f };
+        for (int f = 0; f < V.bn[k]; f++) {
+          t3_attribute *ca = V.ch[k].geo[0][f]->attributes[T3_ATTR_COLOR];
+          float *cv = t3_attribute_f32(ca);
+          for (int v = 0; v < ca->count; v++) {
+            float *p = cv + v * 3;
+            if (p[0] > 1.5f || p[1] > 1.5f || p[2] > 1.5f) continue; /* glowing eyes and the like */
+            float l = 0.2126f * p[0] + 0.7152f * p[1] + 0.0722f * p[2];
+            for (int c = 0; c < 3; c++) p[c] += DESAT[k] * (l * COOL[c] - p[c]);
+          }
+          ca->version++;
+        }
+      }
       int bc = k == EK_BOSS ? 4 : cap[k] / V.bn[k] * 3 / 2 + 48;
       /* the crowd is small on screen and thousands strong: Lambert (diffuse only, no normal or roughness map),
        * its look in its baked vertex colours; the players keep the full PBR model */
@@ -849,13 +864,38 @@ void view_init(cw_node root) {
   view_shafts();
   V.shadows = cw_splats_new(V.root, "Shadows", CW_SPLATS_SHADOW, MAXE + MAXP + MAXO);
   V.pools = cw_splats_new(V.root, "LightPools", CW_SPLATS_LIGHT, 96);
-  V.sun_x = 0.6f, V.sun_z = 0.8f, V.sun_len = 1.5f;
+  { /* the damp asphalt's sheen: streaks of light whose texture breaks up into wet patches and dry gaps */
+    V.sheen = cw_splats_new(V.root, "Sheen", CW_SPLATS_LIGHT, 16);
+    enum { SN = 128 };
+    static uint8_t px[SN * SN * 4];
+    for (int y = 0; y < SN; y++)
+      for (int x = 0; x < SN; x++) {
+        float u = ((float)x + 0.5f) / SN * 2 - 1, v = ((float)y + 0.5f) / SN * 2 - 1, r = sqrtf(u * u + v * v);
+        float fall = r >= 1 ? 0 : (1 - r * r) * (1 - r * r);
+        float wet = fbm((float)x / SN, (float)y / SN, 4, 4, 6161u);
+        wet = CW_CLAMP((wet - 0.38f) * 3.2f, 0.0f, 1.0f);
+        uint8_t c = (uint8_t)CW_CLAMP((int)(fall * (0.15f + 0.85f * wet) * 255.0f), 0, 255);
+        uint8_t *p = px + (y * SN + x) * 4;
+        p[0] = p[1] = p[2] = c, p[3] = 255;
+      }
+    t3_texture *t = t3_texture_new(SN, SN, px);
+    t->wrap_s = t->wrap_t = T3_CLAMP_TO_EDGE;
+    t->flip_y = false;
+    t->generate_mipmaps = true;
+    t->min_filter = T3_LINEAR_MIPMAP_LINEAR;
+    t->mag_filter = T3_LINEAR;
+    t->color_space = T3_NO_COLOR_SPACE;
+    cw_splats_set_texture(V.sheen, t);
+    t3_release(t);
+  }
+  V.sun_x = 0.6f, V.sun_z = 0.8f, V.sun_len = 1.5f, V.sun_yaw = cw_atan2(0.6f, 0.8f);
 }
 
 void view_set_sun(t3_vec3 d) { /* d: where the sunlight travels */
   float h = sqrtf(d.x * d.x + d.z * d.z);
   if (h < 1e-4f) return;
   V.sun_x = d.x / h, V.sun_z = d.z / h;
+  V.sun_yaw = cw_atan2(V.sun_x, V.sun_z);
   V.sun_len = CW_CLAMP(h / CW_MAX(-d.y, 0.05f), 0.2f, 3.0f); /* shadow length of a 1 m caster */
 }
 
@@ -863,7 +903,7 @@ void view_set_sun(t3_vec3 d) { /* d: where the sunlight travels */
  * the sun as far as a low sun throws it, fading along */
 static void shadow_at(float x, float z, float r, float ht, float strength) {
   float len = 2 * r + ht * V.sun_len * 0.35f;
-  float yaw = cw_atan2(V.sun_x, V.sun_z);
+  float yaw = V.sun_yaw;
   cw_splats_add(V.shadows, (t3_vec3){ x, 0, z }, len, 2.0f * r, yaw, (len - 2 * r) / len, (t3_color){ 1, 1, 1 }, strength);
 }
 
@@ -900,16 +940,23 @@ static t3_color ground_light(float x, float z) {
 static void ground_light_build(void) {
   t3_color open;
   if (!cw_lightmap_irradiance_below(LM, (t3_vec3){ 66, 1, -66 }, &open)) return; /* open ground, 90 m from any floodlight */
-  float on = CW_MAX((open.r + open.g + open.b) / 3.0f, 1e-4f);
+  float on = CW_MAX((open.r + open.g + open.b) / 3.0f, 1e-4f), po = 0;
+  { t3_color pop; if (cw_lightmap_probe_irradiance(LM, (t3_vec3){ 66, 1, -66 }, (t3_vec3){ 0, 0.88f, 0.47f }, &pop)) po = CW_MAX((pop.r + pop.g + pop.b) / 3.0f, 1e-4f); }
   for (int z = 0; z < GLN; z++)
     for (int x = 0; x < GLN; x++) {
       t3_color e;
-      cw_lightmap_irradiance_below(LM, (t3_vec3){ GL_LO + (float)x * GL_STEP, 1, GL_LO + (float)z * GL_STEP }, &e);
+      t3_vec3 at = { GL_LO + (float)x * GL_STEP, 1, GL_LO + (float)z * GL_STEP };
+      cw_lightmap_irradiance_below(LM, at, &e);
+      /* and the probe grid at chest height, on the side the camera sees (it looks down 62 degrees from the south): a
+       * floodlight's light on the crowd from where the lamp stands, half of the tint */
+      t3_color pe;
+      if (cw_lightmap_probe_irradiance(LM, at, (t3_vec3){ 0, 0.88f, 0.47f }, &pe) && po > 0)
+        e = (t3_color){ 0.5f * e.r + 0.5f * pe.r * on / po, 0.5f * e.g + 0.5f * pe.g * on / po, 0.5f * e.b + 0.5f * pe.b * on / po };
       /* against the open ground's brightness (its warm dusk colour is what the real-time sun already gives) */
       /* half its hue: the floodlights' cool white and the sun's warmth show on the crowd without turning it blue */
       float l = (e.r + e.g + e.b) / 3.0f;
-      GLG[z][x] = (t3_color){ CW_CLAMP((l + 0.5f * (e.r - l)) / on, 0.3f, 3.5f), CW_CLAMP((l + 0.5f * (e.g - l)) / on, 0.3f, 3.5f),
-                              CW_CLAMP((l + 0.5f * (e.b - l)) / on, 0.3f, 3.5f) };
+      GLG[z][x] = (t3_color){ CW_CLAMP((l + 0.35f * (e.r - l)) / on, 0.3f, 2.2f), CW_CLAMP((l + 0.35f * (e.g - l)) / on, 0.3f, 2.2f),
+                              CW_CLAMP((l + 0.35f * (e.b - l)) / on, 0.3f, 2.2f) };
     }
   gl_ready = true;
   /* the scenery stands still: its light from the floor is set once (a little toward the yard, off its own
@@ -1084,7 +1131,8 @@ bool view_lightmap(cw_tree *t) {
     s.max_size = 1024;
     s.samples = 48;
     s.bounces = 1;
-    s.probe_spacing = 0;
+    s.probe_spacing = 2.5f; /* the SH probe grid: the floodlights at body height, for the crowd (ground_light_build) */
+    s.probe_samples = 64;
     s.denoise = 2;
     s.direct_samples = 12;
     s.shadow_softness = 0.025f;
@@ -1202,8 +1250,19 @@ void view_sync(const sim *s, float time) {
     put(im, n, e->x, 0.0f, e->y, yaw, sq, sq, sq);
     static const float SR[EK_KINDS] = { 0.42f, 0.75f, 0.62f, 1.5f }, SH[EK_KINDS] = { 1.6f, 2.2f, 1.5f, 4.0f };
     shadow_at(e->x, e->y, SR[k] * sq, SH[k], 0.62f);
-    float tint = 0.5f + 0.2f * h01((uint32_t)i, 5);
-    t3_color c = e->flash > 0 ? (t3_color){ 4, 2.8f, 2.2f } : (t3_color){ tint * 0.82f, tint * (0.8f + 0.1f * h01((uint32_t)i, 9)), tint * 0.9f };
+    /* each enemy its own hide from its kind's palette (sallow, ashen, olive, rust, bruised, ochre), its brightness
+     * varied too: a crowd of many, each kind still read by its shape and its baked colours */
+    static const float HIDE[EK_KINDS][6][3] = {
+      { { 0.95f, 0.86f, 0.74f }, { 0.78f, 0.8f, 0.84f }, { 0.78f, 0.86f, 0.7f }, { 0.98f, 0.74f, 0.62f }, { 0.84f, 0.74f, 0.86f }, { 0.96f, 0.84f, 0.6f } },
+      { { 0.82f, 0.78f, 0.74f }, { 0.7f, 0.72f, 0.78f }, { 0.86f, 0.72f, 0.62f }, { 0.74f, 0.78f, 0.68f }, { 0.9f, 0.82f, 0.72f }, { 0.78f, 0.72f, 0.8f } },
+      { { 0.9f, 0.95f, 0.78f }, { 1.0f, 0.92f, 0.7f }, { 0.82f, 0.92f, 0.8f }, { 0.95f, 0.86f, 0.74f }, { 0.86f, 0.9f, 0.7f }, { 1.0f, 0.95f, 0.82f } },
+      { { 1, 1, 1 }, { 1, 1, 1 }, { 1, 1, 1 }, { 1, 1, 1 }, { 1, 1, 1 }, { 1, 1, 1 } },
+    };
+    const float *hide = HIDE[k][hash2((uint32_t)i, 77u) % 6];
+    float tint = 0.39f + 0.2f * h01((uint32_t)i, 5);
+    /* the hides over the greyed baked colours: the variety stays */
+    t3_color c = e->flash > 0 ? (t3_color){ 4, 2.8f, 2.2f }
+                              : (t3_color){ tint * (0.35f * hide[0] + 0.65f * 0.8f), tint * (0.35f * hide[1] + 0.65f * 0.8f), tint * (0.35f * hide[2] + 0.65f * 0.86f) };
     {
       t3_color gl = ground_light(e->x, e->y);
       c.r *= gl.r, c.g *= gl.g, c.b *= gl.b;
@@ -1373,6 +1432,7 @@ void view_sync(const sim *s, float time) {
   /* the floor is baked and takes no real-time light: each moving light (a player's lamp, a muzzle flash, a
    * blast, a burning barrel) shows on it as a pool of added light (the floor's albedo is about 0.16 where the lights fall) */
   cw_splats_begin(V.pools);
+  cw_splats_begin(V.sheen);
   cw_splats_add_lights(V.pools, cw_node_parent(V.root), 0, 0.1f / 3.14159265f);
   /* the wet asphalt's sheen: each floodlight's blurred mirror image on the ground, where the eye sees it reflected,
    * a long soft streak toward the camera that slides as the camera moves (what the floodlights' specular on a wet
@@ -1382,7 +1442,7 @@ void view_sync(const sim *s, float time) {
     float t = V.eye.y / (V.eye.y - m.y);
     float px = V.eye.x + (m.x - V.eye.x) * t, pz = V.eye.z + (m.z - V.eye.z) * t;
     float yaw = cw_atan2(V.eye.x - px, V.eye.z - pz);
-    cw_splats_add(V.pools, (t3_vec3){ px, 0, pz }, 13.0f, 4.5f, yaw, -0.25f, (t3_color){ 0.72f, 0.86f, 1.0f }, 0.07f);
+    cw_splats_add(V.sheen, (t3_vec3){ px, 0, pz }, 16.0f, 6.0f, yaw, -0.25f, (t3_color){ 0.72f, 0.86f, 1.0f }, 0.22f);
   }
   /* each floodlight's mirror image in the water: where the line from the eye to the lamp's reflection below the
    * ground crosses it, a bright glint stretched toward the camera, if a puddle lies there */
@@ -1396,8 +1456,8 @@ void view_sync(const sim *s, float time) {
       if (pl_) { /* the damp asphalt round a player catches its lamp too: a soft streak toward the camera, everywhere */
         static const float PCS[MAXP][3] = { { 0.2f, 0.7f, 1 }, { 1, 0.55f, 0.1f }, { 0.4f, 0.95f, 0.35f }, { 0.95f, 0.3f, 0.75f } };
         const float *c3 = PCS[l - LAMPS];
-        cw_splats_add(V.pools, (t3_vec3){ px, 0, pz }, 2.6f, 1.1f, cw_atan2(V.eye.x - px, V.eye.z - pz), 0,
-                      (t3_color){ 0.55f + 0.45f * c3[0], 0.55f + 0.45f * c3[1], 0.55f + 0.45f * c3[2] }, 0.3f);
+        cw_splats_add(V.sheen, (t3_vec3){ px, 0, pz }, 3.2f, 1.4f, cw_atan2(V.eye.x - px, V.eye.z - pz), 0,
+                      (t3_color){ 0.55f + 0.45f * c3[0], 0.55f + 0.45f * c3[1], 0.55f + 0.45f * c3[2] }, 0.5f);
       }
       for (int i = 0; i < PUDDLES; i++) {
         float dx = px - PUDL[i].x, dz = pz - PUDL[i].z, c = cw_cos(PUDL[i].yaw), sn = cw_sin(PUDL[i].yaw);
@@ -1412,9 +1472,10 @@ void view_sync(const sim *s, float time) {
       }
     }
   cw_splats_end(V.pools);
+  cw_splats_end(V.sheen);
 }
 
-void view_camera(const sim *s, cw_node camera, float aspect, float shake_x, float shake_y) {
+void view_camera(const sim *s, cw_node camera, float aspect, float control_x, float control_y) {
   float cx, cy, hw, hh;
   sim_team_box(s, &cx, &cy, &hw, &hh);
   const float fov = 38.0f * 3.14159f / 180.0f, tilt = 62.0f * 3.14159f / 180.0f;
@@ -1425,7 +1486,7 @@ void view_camera(const sim *s, cw_node camera, float aspect, float shake_x, floa
   V.cx += (cx - V.cx) * 0.08f;
   V.cy += (cy - V.cy) * 0.08f;
   V.cd += (d - V.cd) * 0.04f;
-  t3_vec3 at = { V.cx + shake_x, 0, V.cy + shake_y };
+  t3_vec3 at = { V.cx + control_x, 0, V.cy + control_y }; /* no shake: the offsets are the camera gate's control only */
   t3_vec3 eye = { at.x, cw_sin(tilt) * V.cd, at.z + cw_cos(tilt) * V.cd };
   cw_node3d_set_position(camera, eye);
   cw_node3d_look_at(camera, at, (t3_vec3){ 0, 1, 0 });
