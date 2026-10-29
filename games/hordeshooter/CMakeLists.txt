@@ -13,3 +13,8 @@ if(NOT CW_CART)
   add_executable(hordeshooter_soak soak.c sim.c bot.c)
   target_link_libraries(hordeshooter_soak PRIVATE cartwheel)
 endif()
+# hordeshooter_bench: the bots at wave 14 with three players from the first frame, the
+# late-wave scene the perf gate times (carts read no environment, so it is built in)
+cw_add_app(hordeshooter_bench SOURCES ${SRC} PACK ${CMAKE_CURRENT_SOURCE_DIR}/assets/roots.txt)
+target_compile_definitions(hordeshooter_bench PRIVATE HORDE_AUTOPILOT=1 HORDE_START_WAVE=14 HORDE_AUTO_PLAYERS=3)
+add_dependencies(hordeshooter_bench_pack hordeshooter_pack)

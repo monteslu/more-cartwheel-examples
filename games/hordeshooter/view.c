@@ -144,6 +144,7 @@ static struct {
   cw_node root;
   chr ch[EK_KINDS], soldier;
   int bn[EK_KINDS]; /* frames per cycle */
+  float bc_y[EK_KINDS], br[EK_KINDS]; /* a sphere round every frame of a kind (its centre height, its radius): culling */
   t3_instanced_mesh *eb[EK_KINDS][CH_MAXF];
   t3_mesh *pm[MAXP][CH_MAXC * CH_MAXF][CH_MAXG];
   t3_instanced_mesh *bullet, *rocket, *gem[3], *health, *crate, *barrel, *wall, *pillar, *shadowblob;
@@ -646,6 +647,24 @@ void view_init(cw_node root) {
     for (int k = 0; k < EK_KINDS; k++) {
       if (!chr_load(&V.ch[k], files[k])) continue;
       V.bn[k] = V.ch[k].nf[0];
+      { /* the bounding sphere of every frame, scaled by the 10% swell of a hit flash */
+        float lo = 1e9f, hi = -1e9f, r2 = 0;
+        for (int f = 0; f < V.bn[k]; f++) {
+          const t3_attribute *pa = V.ch[k].geo[0][f]->attributes[T3_ATTR_POSITION];
+          const float *p = t3_attribute_f32((t3_attribute *)pa);
+          for (int v = 0; v < pa->count; v++) lo = CW_MIN(lo, p[v * 3 + 1]), hi = CW_MAX(hi, p[v * 3 + 1]);
+        }
+        V.bc_y[k] = 0.5f * (lo + hi) * 1.1f;
+        for (int f = 0; f < V.bn[k]; f++) {
+          const t3_attribute *pa = V.ch[k].geo[0][f]->attributes[T3_ATTR_POSITION];
+          const float *p = t3_attribute_f32((t3_attribute *)pa);
+          for (int v = 0; v < pa->count; v++) {
+            float dx = p[v * 3], dy = p[v * 3 + 1] * 1.1f - V.bc_y[k], dz = p[v * 3 + 2];
+            r2 = CW_MAX(r2, dx * dx + dy * dy + dz * dz);
+          }
+        }
+        V.br[k] = sqrtf(r2) * 1.1f + 0.05f;
+      }
       int bc = k == EK_BOSS ? 4 : cap[k] / V.bn[k] * 3 / 2 + 48;
       for (int f = 0; f < V.bn[k]; f++) {
         t3_material *m = mat(1, 1, 1, rough[k], 0.0f, true);
@@ -779,14 +798,56 @@ static void touch(t3_instanced_mesh *im, bool color) {
 
 view_stats view_get_stats(void) { return V.st; }
 
+/* the camera view_camera placed this frame, as its four side planes (the near and far planes cut
+ * nothing in the yard) */
+typedef struct view_frustum { bool ok; float n[4][3], d[4]; } view_frustum;
+static view_frustum view_frustum_now(void) {
+  view_frustum v = { 0 };
+  t3_vec3 f = { V.at.x - V.eye.x, V.at.y - V.eye.y, V.at.z - V.eye.z };
+  float fl = sqrtf(f.x * f.x + f.y * f.y + f.z * f.z);
+  if (fl < 1e-4f || V.aspect <= 0) return v;
+  f.x /= fl, f.y /= fl, f.z /= fl;
+  t3_vec3 r = { -f.z, 0, f.x };
+  float rl = sqrtf(r.x * r.x + r.z * r.z);
+  r.x /= rl, r.z /= rl;
+  t3_vec3 u = { r.y * f.z - r.z * f.y, r.z * f.x - r.x * f.z, r.x * f.y - r.y * f.x };
+  float ty = tanf(38.0f * 3.14159265f / 360.0f), tx = ty * V.aspect;
+  /* inward normals: f * t +- side (normalised) */
+  const t3_vec3 side[4] = { r, { -r.x, -r.y, -r.z }, u, { -u.x, -u.y, -u.z } };
+  const float t[4] = { tx, tx, ty, ty };
+  for (int k = 0; k < 4; k++) {
+    float nx = f.x * t[k] - side[k].x, ny = f.y * t[k] - side[k].y, nz = f.z * t[k] - side[k].z;
+    float nl = sqrtf(nx * nx + ny * ny + nz * nz);
+    v.n[k][0] = nx / nl, v.n[k][1] = ny / nl, v.n[k][2] = nz / nl;
+    v.d[k] = -(v.n[k][0] * V.eye.x + v.n[k][1] * V.eye.y + v.n[k][2] * V.eye.z);
+  }
+  v.ok = true;
+  return v;
+}
+static bool view_frustum_sphere(const view_frustum *v, float x, float y, float z, float r) {
+  for (int k = 0; k < 4; k++)
+    if (v->n[k][0] * x + v->n[k][1] * y + v->n[k][2] * z + v->d[k] < -r) return false;
+  return true;
+}
+
 void view_sync(const sim *s, float time) {
   if (!V.root.id) return;
   int cnt[EK_KINDS][CH_MAXF];
   memset(cnt, 0, sizeof cnt);
   static const float rate[EK_KINDS] = { 1.9f, 0.9f, 1.1f, 0.6f }; /* cycles per second */
+  /* The horde outside the view is not drawn. The instanced meshes have one bounding sphere for the whole
+   * yard, so three.c draws every instance; at a late wave about half of them are off screen and still cost
+   * the vertex work of the colour pass and of the SSR G-buffer pass. Only the kinds that cast no shadow are
+   * culled (a brute or the boss off screen can throw its shadow into the view); nothing else reads them
+   * (SSR is screen space, the fog reads the shadow map). HORDE_CULL=0 (development) draws them all. */
+  static const bool cull_kind[EK_KINDS] = { true, false, true, false }; /* runners and bloaters cast no shadow (view_init) */
+  static int cull_on = -1;
+  if (cull_on < 0) cull_on = !getenv("HORDE_CULL") || atoi(getenv("HORDE_CULL")) != 0;
+  view_frustum fr_ = view_frustum_now();
   for (int i = 0; i < MAXE; i++) {
     const enemy *e = &s->e[i];
     if (!e->alive) continue;
+    if (cull_on && fr_.ok && cull_kind[e->kind] && !view_frustum_sphere(&fr_, e->x, V.bc_y[e->kind], e->y, V.br[e->kind])) continue;
     int k = e->kind, nf = V.bn[k];
     if (nf <= 0) continue;
     float ph = time * rate[k] * (0.85f + 0.3f * h01((uint32_t)i, 3)) + h01((uint32_t)i, 4) * 8.0f;

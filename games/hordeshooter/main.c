@@ -117,7 +117,10 @@ static void build_world(void) {
 static void start(int players, void *u) {
   (void)u;
   build_world();
-  int wave = getenv("HORDE_WAVE") ? atoi(getenv("HORDE_WAVE")) : 1;
+#ifndef HORDE_START_WAVE
+#define HORDE_START_WAVE 1
+#endif
+  int wave = getenv("HORDE_WAVE") ? atoi(getenv("HORDE_WAVE")) : HORDE_START_WAVE; /* hordeshooter_bench: a late wave from the start (carts read no environment) */
   sim_init(&G.S, players, 4242, wave);
   G.players = players;
   G.in_match = true;
@@ -168,7 +171,10 @@ static void init(void *u) {
   cw_debug_field("player.y", G.py, CW_DBG_I32, MAXP);
   cw_debug_u32("game.hash", &G.hash);
 #ifdef HORDE_AUTOPILOT
-  cw_shell_start(getenv("HORDE_PLAYERS") ? CW_CLAMP(atoi(getenv("HORDE_PLAYERS")), 1, 4) : 2);
+#ifndef HORDE_AUTO_PLAYERS
+#define HORDE_AUTO_PLAYERS 2
+#endif
+  cw_shell_start(getenv("HORDE_PLAYERS") ? CW_CLAMP(atoi(getenv("HORDE_PLAYERS")), 1, 4) : HORDE_AUTO_PLAYERS);
 #endif
 }
 
@@ -377,10 +383,10 @@ static void render(void *u, double alpha) {
     fx_shake(&sx, &sy);
     int w, h;
     cw_window_size(&w, &h);
+    view_camera(&G.S, G.camera, (float)w / (float)h, sx, sy); /* first: the horde is culled against this frame's view */
     double t0 = cw_wall();
     view_sync(&G.S, t);
     T_view += (cw_wall() - t0) * 1000;
-    view_camera(&G.S, G.camera, (float)w / (float)h, sx, sy);
     t0 = cw_wall();
     fx_events(&G.S);
     if (sc == CW_SHELL_PLAY) fx_tick(&G.S);
