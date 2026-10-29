@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.0
+
+All eight games on cartwheel-engine v0.21.1.
+
+- Touch controls: a game's on-screen stick keeps a fixed home in the bottom
+  left and steers from there instead of jumping to wherever the thumb lands,
+  and it sizes with the screen (engine v0.21.0). No game needed a change.
+- coopplatformer: its pools of water draw on every WebGPU device, including
+  ones in WebGPU's compatibility mode (engine v0.21.1: a Water3D built while
+  the camera was under its surface skipped its draws there).
+- partypack: Raft Rush's canyon corners are closed; water no longer shows
+  through the back walls.
+- CI: a `v*` tag publishes the carts that the tagged commit's run on `main`
+  already built, instead of building them again.
+
 ## 0.2.0
 
 Two more games, from their own repositories, each one dual GL + WebGPU cart
