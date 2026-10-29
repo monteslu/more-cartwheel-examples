@@ -63,26 +63,28 @@ typedef struct wave_def { float lock; int n; int8_t def[10]; } wave_def;
 #define H D_THROWER
 #define G D_GUARD
 #define Y D_REDNECK
+#define C D_CREEP
 /* every stage has a rusher (runner), a ranged thrower, a shield guard and a heavy (bruiser) before its boss; the first
    stage brings each new one on its own wave so a player meets it alone. The redneck (haymaker, shoulder barge) is in
    every stage: first on the alley's second wave with thugs and a punk, then one or two a stage */
 static const wave_def STAGE1[] = {
-  { 0, 3, { T, T, T } }, { 14, 4, { T, Y, P, T } }, { 28, 5, { T, P, R, H, T } },
+  { 0, 3, { T, T, T } }, { 14, 4, { T, Y, P, T } }, { 28, 5, { T, P, R, H, C } },
   { 42, 5, { B, G, T, P, H } }, { 56, 1, { D_FOREMAN } },
 };
 static const wave_def STAGE2[] = {
-  { 0, 4, { T, P, R, H } }, { 14, 5, { K, Y, G, R, T } }, { 28, 5, { R, H, K, P, G } },
+  { 0, 4, { T, P, R, H } }, { 14, 5, { K, Y, G, R, T } }, { 28, 5, { R, H, K, C, G } },
   { 42, 5, { B, K, H, Y, P } }, { 56, 1, { D_ARTHUR } },
 };
 static const wave_def STAGE3[] = { /* the ringmaster runs the arcade floor as a mid-stage mini boss; the Matron owns the stage */
-  { 0, 5, { K, R, P, H, K } }, { 14, 6, { K, G, R, P, H, R } }, { 28, 5, { B, K, R, G, D_RINGMASTER } },
+  { 0, 5, { K, R, P, H, K } }, { 14, 6, { K, G, R, C, H, R } }, { 28, 5, { B, K, R, G, D_RINGMASTER } },
   { 42, 6, { K, R, H, P, G, Y } }, { 56, 1, { D_MATRON } },
 };
 static const wave_def STAGE4[] = {
   { 0, 6, { K, R, G, T, H, R } }, { 14, 4, { B, K, H, G } }, { 28, 7, { K, G, R, H, Y, P, T } },
-  { 42, 4, { B, B, H, G } }, { 56, 1, { D_COLOSSUS } },
+  { 42, 5, { B, B, H, G, C } }, { 56, 1, { D_COLOSSUS } },
 };
 #undef Y
+#undef C
 #undef H
 #undef G
 #undef T
@@ -340,6 +342,7 @@ void prop_hit(prop_t *p) {
   p->used = false;
   if (p->node.id) cw_node_set(p->node, "visible", cw_val_bool(false));
   fx_debris(p->x, 0.7f, p->z, p->kind == 0 ? 0x6b4526 : p->kind == 1 ? 0x335580 : 0x386644);
+  rumble(-1, p->kind == 1 ? 0.7f : 0.5f, 0.2f, p->kind == 1 ? 260 : 180); /* a crate or barrel bursts: heavy, low */
   fx_dust(p->x, p->z, 1.5f);
   sfx(SFX_BREAK);
   int kind = -1;
@@ -389,6 +392,8 @@ void level_update(void) {
   }
 }
 
+bool g_legacy_shake;
+int g_camjit; /* debug game.camjit: the largest camera offset from its path on any frame, in mm (0: the camera never shakes) */
 /* ── camera: follows the fighters' centre, never backward, held at the wave's lock ── */
 void level_camera(float dt) {
   (void)dt;
@@ -409,10 +414,11 @@ void level_camera(float dt) {
 
   cw_node cam = cw_node_get(tree_root(), "Camera");
   float shx = 0, shy = 0;
-  if (W.shake > 0) {
+  if (W.shake > 0 && g_legacy_shake) { /* the camera never shakes now (pads rumble); the old shake only for the gate's control */
     float a = W.shake_amp * (float)W.shake / 10.0f;
     shx = (hf(W.tick, 1) - 0.5f) * a * 2, shy = (hf(W.tick, 2) - 0.5f) * a * 2;
   }
+  { int j = (int)((fabsf(shx) + fabsf(shy)) * 1000 + 0.5f); if (j > g_camjit) g_camjit = j; }
   /* g_cam (debug "cam" command in the autopilot build): zoom toward a point on the street for close-ups */
   cw_node3d_set_position(cam, (t3_vec3){ W.cam_x + g_cam[1] + shx, 1.0f + 2.9f * g_cam[0] + shy, -1.66f + g_cam[2] + 9.36f * g_cam[0] });
   cw_node3d_set_rotation(cam, (t3_vec3){ -0.3f, 0, 0 });

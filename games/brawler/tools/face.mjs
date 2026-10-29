@@ -527,6 +527,8 @@ export const EXPRESSIONS = {
   // sustained effort (holding, lifting, getting up)
   effort: sym({ BrowL: { p: [-0.015, -0.03, 0], r: [0, 0, 0.1] }, BrowR: { p: [0.015, -0.03, 0], r: [0, 0, -0.1] }, LidUL: { r: [0.14, 0, 0] }, LidUR: { r: [0.14, 0, 0] },
     LidLL: { r: [-0.08, 0, 0] }, LidLR: { r: [-0.08, 0, 0] }, LipU: { p: [0, 0.025, 0] }, Jaw: { r: [0.05, 0, 0] }, MouthL: { p: [0.03, -0.01, -0.02] }, MouthR: { p: [-0.03, -0.01, -0.02] } }),
+  // the hit reactions (morph targets; only the jaw comes from here): fear drops the jaw, anger clenches it, bliss parts it
+  fear: { Jaw: { r: [0.4, 0, 0] } }, anger: { Jaw: { r: [0.04, 0, 0] } }, bliss: { Jaw: { r: [0.1, 0, 0] } },
   // held or thrown: a pained open mouth
   grimace: sym({ BrowL: { p: [-0.02, 0.0, 0], r: [0, 0, -0.25] }, BrowR: { p: [0.02, 0.0, 0], r: [0, 0, 0.25] }, LidUL: { r: [0.3, 0, 0] }, LidUR: { r: [0.34, 0, 0] },
     LidLL: { r: [-0.12, 0, 0] }, LidLR: { r: [-0.12, 0, 0] }, LipU: { p: [0, 0.05, 0] }, Jaw: { r: [0.26, 0, 0] }, MouthL: { p: [0.05, -0.03, -0.03] }, MouthR: { p: [-0.05, -0.03, -0.03] } }),
@@ -536,10 +538,12 @@ export const EXPRESSIONS = {
 // Each target is a displacement field over the head grid (in head units: the offsets the expression bones used to make)
 // plus, for the lids, a turn about the eye's side to side axis. Lid angles: [upper L, upper R, lower L, lower R]
 // (+ closes an upper lid, - raises a lower one).
-export const FACE_TARGETS = ['blink', 'snarl', 'shout', 'wince', 'ko', 'grin', 'effort', 'grimace'];
+export const FACE_TARGETS = ['blink', 'snarl', 'shout', 'wince', 'ko', 'grin', 'effort', 'grimace', 'fear', 'anger', 'bliss'];
 const LIDS = {
   blink: [0.66, 0.66, -0.08, -0.08], snarl: [0.2, 0.2, -0.14, -0.14], shout: [0.22, 0.22, -0.16, -0.16], wince: [0.58, 0.58, -0.22, -0.22],
   ko: [0.4, 0.36, -0.04, -0.04], grin: [0.06, 0.16, -0.1, -0.16], effort: [0.14, 0.14, -0.08, -0.08], grimace: [0.3, 0.34, -0.12, -0.12],
+  // cartoon-sized so they read at the street camera: fear opens the lids wide, anger narrows them hard, bliss half closes them
+  fear: [-0.3, -0.3, 0.14, 0.14], anger: [0.32, 0.32, -0.24, -0.24], bliss: [0.46, 0.46, -0.1, -0.1],
 };
 /** how far each target closes the upper lids (the game keeps a blink from adding to an expression that already closes them) */
 export const LID_CLOSE = Object.fromEntries(Object.entries(LIDS).map(([k, v]) => [k, (v[0] + v[1]) / 2 / 0.66]));
@@ -580,6 +584,12 @@ function faceTarget(name, p, tag, M) {
       else { add3(brow, [0.02, -0.03, 0.01]); add3(mc, [0.03, 0.03, -0.015]); add3(ck, [0, 0.012, 0.006]); }
       add3(lu, [0.01 * sgn, 0.03, 0.005]); break;
     case 'effort': add3(brow, [-0.015, -0.03 - 0.012 * inner, 0]); add3(lu, [0, 0.025, 0]); add3(mc, [0.03, -0.01, -0.02]); add3(ck, [0, 0.01, 0.006]); break;
+    // fear and horror: brows shot up (the inner ends highest), the upper eye opened, the lower lip dropped, the corners pulled back
+    case 'fear': add3(brow, [0, 0.13 + 0.05 * inner, 0.012]); add3(ue, [0, 0.034, 0.006]); add3(lu, [0, 0.045, 0.006]); add3(ll, [0, -0.08, 0.012]); add3(mc, [0.09, -0.05, -0.045]); add3(ck, [0, -0.012, 0]); break;
+    // anger: brows slammed down and in, the nose wrinkled, the upper lip off the teeth, the corners turned down
+    case 'anger': add3(brow, [-0.05, -0.1 - 0.06 * inner, 0.016]); add3(lu, [0, 0.09, 0.018]); add3(mc, [0.035, -0.05, -0.025]); add3(nw, [0, 0.04, 0.01]); add3(ck, [0, 0.03, 0.016]); add3(ue, [0, 0.02, 0.005]); break;
+    // bliss: brows lifted in delight, a wide symmetric grin pushing the cheeks up under half closed eyes
+    case 'bliss': add3(brow, [0.01, 0.1, 0]); add3(mc, [0.09, 0.1, -0.03]); add3(ck, [0, 0.055, 0.024]); add3(lu, [0, 0.03, 0.008]); add3(ue, [0, 0.026, 0.008]); break;
     case 'grimace': add3(brow, [-0.02, 0.035 * inner, 0]); add3(lu, [0, 0.05, 0]); add3(mc, [0.05, -0.03, -0.03]); add3(ll, [0, -0.014, 0]); add3(ck, [0, 0.012, 0.006]); break;
   }
   return mul(d, R);

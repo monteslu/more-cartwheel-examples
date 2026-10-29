@@ -25,7 +25,7 @@ typedef enum {
 } bstate;
 
 /* attack kinds: what the S_ATK state is doing */
-typedef enum { A_NONE, A_PUNCH1, A_PUNCH2, A_FINISH, A_KICK, A_JKICK, A_SPIN, A_SWING, A_STAB, A_KNEE, A_SLAM, A_CHARGE, A_BSPIN, A_THROW, A_BASH, A_RUSH, A_FLICK, A_JUKE, A_HAYMAKER, A_BARGE, A_COUNT } akind;
+typedef enum { A_NONE, A_PUNCH1, A_PUNCH2, A_FINISH, A_KICK, A_JKICK, A_SPIN, A_SWING, A_STAB, A_KNEE, A_SLAM, A_CHARGE, A_BSPIN, A_THROW, A_BASH, A_RUSH, A_FLICK, A_JUKE, A_HAYMAKER, A_BARGE, A_FLASH, A_COUNT } akind;
 
 typedef struct atk_data {
   const char *clip;
@@ -87,7 +87,7 @@ typedef struct stage_t {
 
 extern const char_def DEFS[];
 extern const atk_data ATK[];
-enum { D_ROOK, D_MIKA, D_JET, D_THUG, D_PUNK, D_RUNNER, D_KNIFER, D_BRUISER, D_THROWER, D_GUARD, D_FOREMAN, D_MATRON, D_RINGMASTER, D_COLOSSUS, D_ARTHUR, D_REDNECK, D_COUNT };
+enum { D_ROOK, D_MIKA, D_JET, D_THUG, D_PUNK, D_RUNNER, D_KNIFER, D_BRUISER, D_THROWER, D_GUARD, D_FOREMAN, D_MATRON, D_RINGMASTER, D_COLOSSUS, D_ARTHUR, D_REDNECK, D_CREEP, D_COUNT };
 
 /* the match */
 typedef enum { PH_PLAY, PH_CLEAR, PH_OVER, PH_WIN, PH_INTRO } phase_t;
@@ -122,7 +122,8 @@ typedef struct world_t {
     int atk_hits[A_COUNT];
   } st;
   int run_deaths; /* lives lost in the whole run */
-  struct red { int spawned, hay, hay_hits, barge, barge_hits, kills; } red; /* the redneck's moves (the gates read them) */
+  struct red { int spawned, hay, hay_hits, barge, barge_hits, kills; } red;
+  struct creep { int spawned, flash, flash_hits, shrugged, healed, kills; } creep; /* the creep's (the gates read them) */ /* the redneck's moves (the gates read them) */
   int spawns; /* enemies spawned this match (looks.c: each spawn's look) */
   int frames; /* sim_tick calls, hit-stop and slow-motion frames included (the stats' wall clock; never hashed) */
   /* the docks jukebox (stage 2, Arthur's arena): he thumps it, it plays his theme and a shockwave runs out along the
@@ -139,6 +140,9 @@ void sim_reset(int players, int stage);
 void sim_tick(const inputs *in);
 int ent_spawn_enemy(int def, float x, float z);
 void ent_hurt(ent *v, ent *a, float dmg, int knock, float fx);
+/* pad rumble instead of screen shake (monteslu: no shaking screen): one player (-1: every fighter's pad) */
+void rumble(int player, float low, float high, int ms);
+extern bool g_legacy_shake; /* autopilot debug only: the old camera shake, for the camera gate's control */
 /* level.c */
 void level_build(int stage);
 void level_free(void);
@@ -198,6 +202,8 @@ void sb_reset(spring_rig *s);
 void sb_jolt(spring_rig *s, float x, float y, float z);
 void sb_step(spring_rig *s, t3_vec3 pos, float yaw, float dt);
 void face_express(spring_rig *s, const char *clip, float u);
+enum { FACE_PLAIN, FACE_FEAR, FACE_ANGER, FACE_BLISS };
+void face_temper(spring_rig *s, int temper); /* how a face takes a hit (secondary.c clip_face) */
 float face_weight(const spring_rig *s, int target);
 void chars_secondary(void);
 void char_jolt(ent *e, float dir, float k);

@@ -17,13 +17,15 @@
 #define NBURST 6
 #define NDECAL 18
 #define NDROP 8   /* blood droplet bursts */
-#define NBLOOD 28 /* blood stains on the street, recycled oldest first */
+#define NBLOOD 48 /* blood stains on the street, walls and props, recycled oldest first (the budget) */
+#define NSPURT 6 /* the big spurts of a heavy blow */
 static cw_node spark[NSPARK], dust[NDUST], deb[NDEB], flash[NFLASH], burst[NBURST], decal[NDECAL];
 static int ns, nd, nb, nf, nbu, ndc;
 static float flash_e[NFLASH];
-static cw_node drop[NDROP], blood[NBLOOD];
+static cw_node drop[NDROP], blood[NBLOOD], spurt[NSPURT];
+static int nsp;
 static int ndr, nbl;
-static struct bstain { float x, z, r; int cell, born; float a; } bst[NBLOOD]; /* what each stain shows (fx_tick fades the old ones) */
+static struct bstain { float x, z, r; int cell, born; float a, sx, sy, grow; } bst[NBLOOD]; /* what each stain shows (fx_tick fades the old ones) */
 static int fx_frames;
 static cw_node tree_root(void) { return cw_node_get(cw_tree_root(cw_scene_app_tree()), "Level"); }
 
@@ -173,6 +175,33 @@ void fx_init(void) {
     cw_node_set(n, "size_curve", cw_val_string("0 1, 1 0.6"));
     cw_node_set(n, "seed", cw_val_int(900 + i));
   }
+  for (int i = 0; i < NSPURT; i++) { /* a heavy blow throws a fat arc of blood that falls back to the street */
+    snprintf(nm, sizeof nm, "spurt%d", i);
+    cw_node n = spurt[i] = psys(nm);
+    cw_node_set(n, "amount", cw_val_int(40));
+    cw_node_set(n, "lifetime", cw_val_float(0.9));
+    cw_node_set(n, "lifetime_random", cw_val_float(0.3));
+    cw_node_set(n, "one_shot", cw_val_bool(true));
+    cw_node_set(n, "emitting", cw_val_bool(false));
+    cw_node_set(n, "explosiveness", cw_val_float(0.85f));
+    cw_node_set(n, "emission_shape", cw_val_enum("SPHERE"));
+    cw_node_set(n, "emission_radius", cw_val_float(0.06));
+    cw_node_set(n, "direction", cw_val_vec3(1, 0.9f, 0));
+    cw_node_set(n, "spread", cw_val_float(28));
+    cw_node_set(n, "speed_min", cw_val_float(2.5));
+    cw_node_set(n, "speed_max", cw_val_float(5.5));
+    cw_node_set(n, "gravity", cw_val_vec3(0, -12, 0));
+    cw_node_set(n, "damping", cw_val_float(0.2f));
+    cw_node_set(n, "draw_mode", cw_val_enum("STRETCHED"));
+    cw_node_set(n, "stretch", cw_val_float(0.04));
+    cw_node_set(n, "blend", cw_val_enum("ALPHA"));
+    cw_node_set(n, "size", cw_val_float(0.06));
+    cw_node_set(n, "size_random", cw_val_float(0.7));
+    cw_node_set(n, "color", cw_val_color(0.2f, 0.014f, 0.01f, 1));
+    cw_node_set(n, "color_ramp", cw_val_string("0 0.24 0.016 0.012 1, 0.8 0.16 0.01 0.008 1, 1 0.12 0.008 0.006 0"));
+    cw_node_set(n, "size_curve", cw_val_string("0 0.8, 0.3 1, 1 0.7"));
+    cw_node_set(n, "seed", cw_val_int(950 + i));
+  }
   for (int i = 0; i < NBLOOD; i++) {
     snprintf(nm, sizeof nm, "blood%d", i);
     cw_node d = blood[i] = cw_node_new("Decal3D", nm);
@@ -263,7 +292,7 @@ void fx_stain(float x, float z, float size, int kind) {
   /* kind 0: drops (a light or heavy blow), 1: a splat (a body landing), 2: a pool (the dead) */
   static const int CELLS[3][4] = { { 4, 6, 1, 2 }, { 0, 7, 3, 1 }, { 5, 0, 7, 5 } };
   uint32_t s = (uint32_t)++nstain;
-  float r = 1.6f * size * (0.85f + 0.3f * fxu(s, 2)); /* the box: each shape fills about the middle half of its cell */
+  float r = 2.0f * size * (0.85f + 0.3f * fxu(s, 2)); /* over the top (B-PT12): big stains */ /* the box: each shape fills about the middle half of its cell */
   /* the spot is taken: nearly on top of any stain, move along (drops: leave it); then the first of the kind's shapes no
      stain of the same shape overlaps (none free: nothing) */
   for (int i = 0; i < NBLOOD; i++) {
@@ -292,32 +321,68 @@ void fx_stain(float x, float z, float size, int kind) {
   z = cw_clampf(z, -LANE_Z, LANE_Z + 0.2f);
   int k = nbl++ % NBLOOD;
   cw_node d = blood[k];
-  bst[k] = (struct bstain){ x, z, r, cell, fx_frames, kind == 0 ? 0.7f + 0.2f * fxu(s, 3) : 0.8f + 0.15f * fxu(s, 3) };
+  bst[k] = (struct bstain){ x, z, r, cell, fx_frames, kind == 0 ? 0.85f + 0.15f * fxu(s, 3) : 0.95f, 0, 0, kind == 2 ? 0.25f : 1.0f };
   cw_value reg = { CW_T_VEC4 };
   reg.v[0] = (float)(cell & 3) * 256, reg.v[1] = (float)(cell >> 2) * 256, reg.v[2] = 256, reg.v[3] = 256;
   cw_node_set(d, "region", reg);
   float sx = r * (0.8f + 0.4f * fxu(s, 4)), sy = r * (0.8f + 0.4f * fxu(s, 6));
   cw_node3d_set_position(d, (t3_vec3){ x, 0.03f, z }); /* centred on the street: the box ends fade (edge_fade), so the street must sit mid box */
   cw_node3d_set_rotation(d, (t3_vec3){ -1.5708f, 0, fxu(s, 7) * 6.28318f });
-  cw_node_set(d, "size", cw_val_vec3(sx, sy, 0.26f));
+  bst[k].sx = sx, bst[k].sy = sy;
+  cw_node_set(d, "size", cw_val_vec3(sx * bst[k].grow, sy * bst[k].grow, 0.26f)); /* a pool spreads out (fx_tick) */
+  cw_node3d_set_rotation(d, (t3_vec3){ -1.5708f, 0, fxu(s, 7) * 6.28318f });
   cw_node_set(d, "color", cw_val_color(1, 1, 1, bst[k].a));
 }
 static int nblow;
+/* a splash on something upright: the back walls (a box past the far lane, where nobody walks) or a prop's face */
+static int nsplash;
+static void fx_wall_splat(float x, float y, float z, float depth, float size) {
+  uint32_t s = (uint32_t)++nsplash * 7919u;
+  int k = nbl++ % NBLOOD, cell = (int)(fxh(s, 21) & 1) ? 1 : 6;
+  cw_node d = blood[k];
+  bst[k] = (struct bstain){ x, 99, size, cell, fx_frames, 0.75f, 0, 0, 1 }; /* z 99: never counted against the street's stains */
+  cw_value reg = { CW_T_VEC4 };
+  reg.v[0] = (float)(cell & 3) * 256, reg.v[1] = (float)(cell >> 2) * 256, reg.v[2] = 256, reg.v[3] = 256;
+  cw_node_set(d, "region", reg);
+  cw_node3d_set_position(d, (t3_vec3){ x, y, z });
+  cw_node3d_set_rotation(d, (t3_vec3){ 0, 0, fxu(s, 22) * 6.28318f }); /* projects along -z: away from the camera, onto what stands behind */
+  cw_node_set(d, "size", cw_val_vec3(size * (0.8f + 0.4f * fxu(s, 23)), size * (0.8f + 0.4f * fxu(s, 24)), depth));
+  cw_node_set(d, "color", cw_val_color(1, 1, 1, 0.8f));
+}
 void fx_blood(float x, float y, float z, int dir, int knock) {
   uint32_t s = (uint32_t)++nblow;
-  if (knock == 0 && fxh(s, 11) % 3) return; /* most jabs draw nothing */
+  if (knock == 0 && fxh(s, 11) % 2) { fx_stain(x + (float)dir * 0.5f, z, 0.22f, 0); return; } /* a jab: a few drops on the street */
   cw_node n = drop[ndr++ % NDROP];
   cw_node3d_set_position(n, (t3_vec3){ x, y, z });
-  cw_node_set(n, "amount", cw_val_int(knock >= 2 ? 16 : knock ? 10 : 6));
+  cw_node_set(n, "amount", cw_val_int(knock >= 2 ? 26 : knock ? 16 : 8));
   cw_node_set(n, "direction", cw_val_vec3((float)dir, 0.55f, 0.15f * (fxu(s, 12) - 0.5f)));
   cw_particles_restart(n);
-  if (knock >= 1) fx_stain(x + (float)dir * (0.45f + 0.4f * fxu(s, 13)), z + 0.3f * (fxu(s, 14) - 0.5f), knock >= 2 ? 0.7f : 0.45f, 0);
+  if (knock >= 1) { /* a spurt arcs out and comes down: drops land along the arc */
+    cw_node p = spurt[nsp++ % NSPURT];
+    cw_node3d_set_position(p, (t3_vec3){ x, y, z });
+    cw_node_set(p, "amount", cw_val_int(knock >= 2 ? 48 : 24));
+    cw_node_set(p, "direction", cw_val_vec3((float)dir, 0.9f, 0.2f * (fxu(s, 15) - 0.5f)));
+    cw_particles_restart(p);
+    fx_stain(x + (float)dir * (0.45f + 0.4f * fxu(s, 13)), z + 0.3f * (fxu(s, 14) - 0.5f), knock >= 2 ? 0.75f : 0.5f, 0);
+    int land = knock >= 2 ? 3 : 1;
+    for (int i = 0; i < land; i++) fx_stain(x + (float)dir * (1.0f + 0.7f * (float)i + 0.5f * fxu(s, 30 + (uint32_t)i)), z + 0.5f * (fxu(s, 40 + (uint32_t)i) - 0.5f), 0.32f + 0.15f * fxu(s, 50 + (uint32_t)i), 0);
+  }
+  if (knock >= 2) {
+    if (z < -1.5f) fx_wall_splat(x + (float)dir * 0.4f, y - 0.2f, -2.75f - 1.4f, 2.8f, 0.9f); /* the wall behind the far lane */
+    for (int i = 0; i < MAXPROP; i++) { /* a crate, barrel or bin next to the blow */
+      const prop_t *pp = &W.prop[i];
+      if (!pp->used || fabsf(pp->x - x) > 1.3f || fabsf(pp->z - z) > 1.0f) continue;
+      fx_wall_splat(pp->x, 0.55f, pp->z + 0.15f, 1.2f, 0.6f);
+      break;
+    }
+  }
 }
 void fx_blood_stats(int out[4]) {
   int live = 0, same = 0;
   for (int i = 0; i < NBLOOD; i++) {
     if (bst[i].cell < 0 || bst[i].a <= 0.02f) continue;
     live++;
+    if (bst[i].z > 50) continue; /* a splash on a wall or a prop */
     for (int j = i + 1; j < NBLOOD; j++) {
       if (bst[j].cell != bst[i].cell || bst[j].a <= 0.02f) continue;
       float dx = bst[i].x - bst[j].x, dz = bst[i].z - bst[j].z;
@@ -355,6 +420,7 @@ void fx_tick(void) {
   for (int i = 0; i < NBLOOD; i++) { /* stains soak in and fade after 40 s (2 s fade): the street never fills up */
     struct bstain *b = &bst[i];
     if (b->cell < 0 || b->a <= 0) continue;
+    if (b->grow < 1 && b->sx > 0) { b->grow += (1.0f - b->grow) * 0.03f + 0.002f; if (b->grow > 1) b->grow = 1; cw_node_set(blood[i], "size", cw_val_vec3(b->sx * b->grow, b->sy * b->grow, 0.26f)); } /* the pool under a body spreads over a couple of seconds */
     int age = fx_frames - b->born;
     if (age > 40 * 60) {
       b->a -= 0.006f;

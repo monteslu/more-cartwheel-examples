@@ -30,6 +30,9 @@ Walk over food, coins and weapons to pick them up; you can reach them from a ste
 - Rednecks (a red cap that says "Dumb", a grimy tee) wind up a huge haymaker: when he turns his whole body away
   and a red ring shows at his feet, step out of his lane. It knocks you down if it lands, and he stumbles after it, so
   punish the miss. Now and then he lowers a shoulder and barges along the lane from a few steps away.
+- Creeps, pale men in long trench coats and fedoras, enjoy being hit: a light blow does not stop them (it even does them
+  a little good) and they grin with pleasure. Kick them, throw them or use a weapon. They lurch up, beckon you in and
+  throw the coat open in a lunge that staggers.
 - No two of a kind look alike: every thug, punk, runner, knifer, bruiser, thrower and redneck walks on with his own skin
   tone, hair and clothes (the riot guards keep their uniform).
 - Each stage ends with a boss with three phases. At two thirds and one third of its health it stops, roars, calls
@@ -42,7 +45,9 @@ Walk over food, coins and weapons to pick them up; you can reach them from a ste
   street from it: anyone on the ground when the ring reaches them is knocked down. Jump over it), the Matron (the arcade,
   where the Ringmaster also runs the floor as a mini boss halfway through) and the Colossus (the roof).
 
-Hard blows draw a little blood, and bodies that hit the street leave a stain (they fade after a while).
+Blows draw blood: spurts that land on the street, splashes on the walls and crates, bloodied faces, fists and weapons, and
+pools under the fallen (stains fade after a while). Faces show it too: the big men look scared when they are hit, the
+little ones furious.
 
 Anyone knocked down falls loose: the body tumbles, hits the street, the kerb and the crates, and gets up from where it
 lies (face up or face down). The fall is only for show: how long a body stays down is the same every time.
@@ -52,7 +57,7 @@ Enemies never hit you from outside the picture or before they have walked in.
 ## Run
 
 `brawler_auto` is the same game with bots playing, for tests and screenshots. Its debug commands: `stage N`,
-`wave N` (4 is the boss), `players N`, `spawn <kind> [dx dz]` (15 is the redneck), `item <kind> [dx dz]`, `cam`,
+`wave N` (4 is the boss), `players N`, `spawn <kind> [dx dz]` (15 is the redneck, 16 the creep), `hurtat <tick> <enemy> [knock]`, `botdmg <k>`, `item <kind> [dx dz]`, `cam`,
 `freeze <0|1> [turn]` (turn: how far a frozen body turns from the camera, 1.57 side on), `knockdown`, `blood <dx> <dz> <kind>`.
 Environment for native runs: BRAWLER_STAGE, BRAWLER_PLAYERS, BRAWLER_CROWD, BRAWLER_TURBO (ticks per frame), BRAWLER_KNOCKALL (everyone down every N ticks),
 BRAWLER_SOAK (a lost stage is retried), BRAWLER_SEED (another match from the same rules), BRAWLER_LOG (status lines), BRAWLER_BOTDMG (bot damage factor, 3 by default).

@@ -7,6 +7,7 @@
 
 #include "cartwheel/anim.h"
 #include "cartwheel/ik.h"
+#include "cartwheel/input.h"
 #include "cartwheel/nav.h"
 #include "cartwheel/render3d.h"
 #include "cartwheel/scene_file.h"
@@ -38,6 +39,7 @@ const char_def DEFS[D_COUNT] = {
   [D_COLOSSUS] = { "Colossus", "colossus", 2.2f, 380, 1.3f, true, false, 8000 },
   [D_ARTHUR] = { "Arthur", "arthur", 2.7f, 380, 1.15f, true, false, 3000 },
   [D_REDNECK] = { "Redneck", "redneck", 2.1f, 56, 1.1f, false, false, 160 }, /* a regular enemy: the haymaker and the shoulder barge */
+  [D_CREEP] = { "Creep", "creep", 1.7f, 50, 0.9f, false, false, 180 }, /* a regular enemy who enjoys being hit: the coat flash, a lurch */
 };
 
 const atk_data ATK[] = {
@@ -60,17 +62,18 @@ const atk_data ATK[] = {
   [A_JUKE] = { "thump", 26, 0, 0, 0, 0, 0, 0, 0.0f }, /* Arthur thumps the jukebox on tick 0: the blow is the shockwave (juke_tick) */
   [A_HAYMAKER] = { "haymaker", 42, 2, 9, 14, 1.4f, 0.8f, 2, 0.45f }, /* the redneck's looping right: the wind-up is the tell, the stumble after it the opening */
   [A_BARGE] = { "shoulder", 50, 6, 34, 11, 1.3f, 0.85f, 2, 0.0f }, /* the redneck lowers a shoulder and runs along the lane */
+  [A_FLASH] = { "flash", 40, 2, 12, 8, 1.35f, 0.9f, 1, 0.5f }, /* the creep throws his coat open wide and lunges: a stagger (his own clip; the tell is its first 0.43 s) */
 };
 /* attacks that need the long (heavy) telegraph and a danger ring on the street */
-static bool heavy_atk(int k) { return k == A_SLAM || k == A_SWING || k == A_BSPIN || k == A_RUSH || k == A_FLICK || k == A_HAYMAKER || k == A_BARGE; }
+static bool heavy_atk(int k) { return k == A_SLAM || k == A_SWING || k == A_BSPIN || k == A_RUSH || k == A_FLICK || k == A_HAYMAKER || k == A_BARGE || k == A_FLASH; }
 
 /* ── character rigs: a pool per model, so a spawn never parses a glb twice ── */
-typedef struct rig { int def; bool busy; cw_node root, model, anim, wnode, wmodel, blob, shield; const t3_gltf *gltf; spring_rig sr; int wkind; } rig;
+typedef struct rig { int def; bool busy; cw_node root, model, anim, wnode, wmodel, blob, shield; const t3_gltf *gltf; spring_rig sr; int wkind; cw_node gore[3]; } rig;
 /* one glTF resource per model: every rig is an instance (cw_gltf_instantiate) sharing its geometry, textures and
    clips, so a crowd of one kind costs a skeleton each, not a parsed glb each */
 static cw_res RES[D_COUNT], BLOB;
 static bool clip_checked[D_COUNT];
-static const float BODY_SCALE[D_COUNT] = { 1.08f, 0.98f, 1.0f, 1.0f, 0.96f, 0.94f, 1.0f, 1.28f, 1.0f, 1.08f, 1.4f, 1.22f, 1.15f, 1.7f, 1.15f, 1.06f };
+static const float BODY_SCALE[D_COUNT] = { 1.08f, 0.98f, 1.0f, 1.0f, 0.96f, 0.94f, 1.0f, 1.28f, 1.0f, 1.08f, 1.4f, 1.22f, 1.15f, 1.7f, 1.15f, 1.06f, 1.0f };
 static rig RIGS[96];
 static int rig_n;
 static cw_node world_node(void) { return cw_node_get(cw_node_get(cw_tree_root(cw_scene_app_tree()), "Level"), "World"); }
@@ -133,6 +136,12 @@ static rig *rig_get(int def) {
   looks_bind((int)(r - RIGS), def, inst); /* its own copies of the materials a spawn recolours (looks.c) */
   set_shadows(inst);
   sb_bind(&r->sr, inst);
+  { /* how the face takes a hit: the big men get scared, the little ones angry, the creep delighted */
+    static const int TEMPER[D_COUNT] = { [D_ROOK] = FACE_FEAR, [D_MIKA] = FACE_ANGER, [D_JET] = FACE_ANGER, [D_THUG] = FACE_ANGER, [D_PUNK] = FACE_ANGER, [D_RUNNER] = FACE_ANGER,
+      [D_KNIFER] = FACE_ANGER, [D_BRUISER] = FACE_FEAR, [D_THROWER] = FACE_ANGER, [D_GUARD] = FACE_ANGER, [D_FOREMAN] = FACE_FEAR, [D_MATRON] = FACE_FEAR,
+      [D_RINGMASTER] = FACE_FEAR, [D_COLOSSUS] = FACE_FEAR, [D_ARTHUR] = FACE_FEAR, [D_REDNECK] = FACE_FEAR, [D_CREEP] = FACE_BLISS };
+    face_temper(&r->sr, TEMPER[def]);
+  }
   t3_release(inst); /* the node holds it */
   for (int i = 0; i < r->gltf->animation_count; i++) {
     cw_anim a = cw_anim_from_t3_clip(r->gltf->animations[i], "Model");
@@ -198,7 +207,52 @@ void char_attach(ent *e) {
   cw_node_set(e->root, "visible", cw_val_bool(true));
   cw_node_set(e->anim, "speed_scale", cw_val_float(1));
   sb_reset(&r->sr);
+  for (int k = 0; k < 3; k++) { if (r->gore[k].id && cw_node_valid(r->gore[k])) cw_node_free(r->gore[k]); r->gore[k] = (cw_node){ 0 }; } /* a fresh face for the next one */
   char_play(e, "idle", 0);
+}
+
+/* gore on the characters (B-PT12): blood stamped on a bloodied face, on a fist that landed a big blow and on a weapon that
+   drew blood, as mesh decals (cartwheel/decals.h MESH mode: clipped from the posed skinned mesh once and re-skinned to its
+   skeleton, so it moves with the head or the hand). One of each per character life; they join a pool of 24 recycled decals
+   (max_mesh_decals) and go with the rig when it is reused. Presentation only. */
+enum { GORE_FACE, GORE_FIST, GORE_WEAPON };
+static uint32_t gore_n;
+static void gore_stamp(ent *e, int what) {
+  if (!e->root.id || !e->model.id) return;
+  rig *r = &RIGS[rig_of[ent_index(e)]];
+  if (r->gore[what].id && cw_node_valid(r->gore[what])) return;
+  if (what == GORE_WEAPON && !(e->weapon > 0 && e->weapon < 4)) return;
+  t3_vec3 w = cw_skeleton_bone_world(e->model, what == GORE_FACE ? "Head" : "HandR");
+  if (what == GORE_FACE) w.y += 0.1f * BODY_SCALE[e->def];
+  if (what == GORE_WEAPON) w.y -= 0.25f;
+  /* into the root's frame (the root turns the model by its yaw) */
+  float yaw = ent_yaw(e), c = cw_cos(yaw), s = cw_sin(yaw), dx = w.x - e->x, dy = w.y - e->y, dz = w.z - e->z;
+  t3_vec3 l = { c * dx - s * dz, dy, s * dx + c * dz };
+  char nm[16];
+  snprintf(nm, sizeof nm, "Gore%d", what);
+  cw_node d = cw_node_new("Decal3D", nm);
+  cw_node_add_child(r->root, d);
+  uint32_t h = ++gore_n * 2654435761u;
+  cw_node_set(d, "mode", cw_val_enum("MESH"));
+  cw_node_set(d, "target", cw_val_string(what == GORE_WEAPON ? "../WeaponModel" : "../Model"));
+  cw_node_set(d, "texture", cw_val_string("decals/blood.png"));
+  cw_value reg = { CW_T_VEC4 };
+  int cell = what == GORE_FACE ? ((h >> 8) & 1 ? 6 : 0) : ((h >> 8) & 1 ? 4 : 1);
+  reg.v[0] = (float)(cell & 3) * 256, reg.v[1] = (float)(cell >> 2) * 256, reg.v[2] = 256, reg.v[3] = 256;
+  cw_node_set(d, "region", reg);
+  cw_node_set(d, "blend", cw_val_enum("MULTIPLY"));
+  cw_node_set(d, "color", cw_val_color(1, 1, 1, 0.95f));
+  cw_node_set(d, "max_mesh_decals", cw_val_int(24));
+  float sz = what == GORE_FACE ? 0.26f * BODY_SCALE[e->def] : 0.2f;
+  cw_node_set(d, "size", cw_val_vec3(sz, sz, what == GORE_FACE ? 0.5f : 0.3f));
+  if (what == GORE_FACE) { /* in front of the face, pointing back into it (the model faces +z in its root) */
+    cw_node3d_set_position(d, (t3_vec3){ l.x, l.y, l.z + 0.2f });
+    cw_node3d_set_rotation(d, (t3_vec3){ 0.25f, 0, (float)(h & 0xff) / 255.0f * 6.28f });
+  } else { /* from above, down over the knuckles or the head of the weapon */
+    cw_node3d_set_position(d, (t3_vec3){ l.x, l.y + 0.12f, l.z });
+    cw_node3d_set_rotation(d, (t3_vec3){ -1.5708f, 0, (float)(h & 0xff) / 255.0f * 6.28f });
+  }
+  r->gore[what] = d;
 }
 /* secondary motion: every live character's springs, once per fixed tick after the animation */
 float g_spring_motion; /* debug: summed speed of every spring tip, so a probe can see the springs move */
@@ -257,11 +311,19 @@ static void weapon_show(ent *e) {
   rig *r = &RIGS[rig_of[ent_index(e)]];
   bool vis = e->weapon > 0 && e->weapon < 4;
   cw_node_set(r->wmodel, "visible", cw_val_bool(vis));
+  if (r->gore[2].id && cw_node_valid(r->gore[2]) && (!vis || r->wkind != e->weapon)) { cw_node_free(r->gore[2]); r->gore[2] = (cw_node){ 0 }; } /* a clean weapon */
   if (vis && r->wkind != e->weapon) {
     t3_object *o = item_model(e->weapon);
     if (o) { cw_node3d_set_object(r->wmodel, o); t3_release(o); r->wkind = e->weapon; }
   }
 }
+
+/* ── rumble: the feel the camera shake used to give, on the pads (short, scaled, never left on: every call has a
+   duration and the engine stops the motors after it) ── */
+void rumble(int player, float low, float high, int ms) {
+  for (int i = 0; i < W.players; i++) if (player < 0 || player == i) cw_input_rumble(i, low, high, ms);
+}
+static void rumble_ent(const ent *e, float low, float high, int ms) { if (e && e->player) rumble((int)(e - W.p), low, high, ms); }
 
 /* ── small helpers ──────────────────────────────────────────────────── */
 static float rf(float a, float b) { return cw_rng_range(&W.rng, a, b); }
@@ -336,6 +398,7 @@ int ent_spawn_enemy(int def, float x, float z) {
       ent_init(&W.e[i], def, false, x, z);
       W.e[i].idx = i;
       if (def == D_REDNECK) W.red.spawned++;
+      if (def == D_CREEP) W.creep.spawned++;
       W.e[i].look = look_pick(def, i); /* its own skin tone and clothes, never another's on the street (looks.c) */
       if (W.e[i].root.id) looks_apply(rig_of[MAXP + i], W.e[i].look);
       if (DEFS[def].boss) { W.boss_idx = i; W.boss_active = true; }
@@ -412,6 +475,9 @@ void ent_hurt(ent *v, ent *a, float dmg, int knock, float fx) {
   /* the redneck's haymaker wind-up shrugs off a light blow (only a heavy one stops it): with every jab interrupting it,
      not one in the self-play runs ever landed. The tell is long, so the answer is to step out of the lane */
   bool armour = boss || (v->def == D_REDNECK && v->st == S_ATK && v->atk == A_HAYMAKER);
+  /* the creep leans into a light blow (no flinch) and it does him a little good: 2 of its damage back, never past his
+     health; a kick, a throw or anything heavy still floors him */
+  if (v->def == D_CREEP && knock == 0 && dmg > 0 && v->hp > dmg) { armour = true; W.creep.shrugged++; float h0 = v->hp; v->hp += 2; if (v->hp > v->maxhp) v->hp = v->maxhp; W.creep.healed += (int)(v->hp - h0 + 0.5f); }
   if (v->player && dmg > 0 && a != v) { /* audit: a fighter hurt by something the camera does not show, or by an enemy still walking in */
     float sx = g_src ? g_src[0] : a ? a->x : v->x, sz = g_src ? g_src[1] : a ? a->z : v->z;
     if (!on_screen(sx, sz, 0) || (a && !a->player && !g_src && a->ptimer < 20)) W.st.unfair++;
@@ -434,8 +500,14 @@ void ent_hurt(ent *v, ent *a, float dmg, int knock, float fx) {
   W.hitstop = knock >= 2 ? 8 : 4; /* frozen frames: 4 on a light blow, 8 on a heavy one */
   W.shake = knock >= 2 ? 10 : 4;
   W.shake_amp = knock >= 2 ? 0.12f : 0.05f;
+  if (dmg > 0 && knock >= 2) { rumble_ent(v, 0.35f, 0.9f, 140); rumble_ent(a, 0.25f, 0.75f, 110); } /* a big hit: short and sharp, to both ends of it */
+  else if (dmg > 0 && knock >= 1) { rumble_ent(v, 0.2f, 0.6f, 90); rumble_ent(a, 0.12f, 0.45f, 70); }
+  else if (dmg > 0 && v->player) rumble_ent(v, 0.0f, 0.35f, 60);
   fx_hit(v->x, v->y + 1.1f, v->z, knock, dir);
   if (dmg > 0) fx_blood(v->x + (float)dir * 0.12f, v->y + 1.45f, v->z, dir, knock); /* blood from the face and the body */
+  if (dmg > 0 && knock >= 1 && v->hp - dmg < v->maxhp * 0.55f) gore_stamp(v, GORE_FACE); /* a bloodied face after the big ones */
+  if (dmg > 0 && a && a->player && knock >= 2 && !a->weapon) gore_stamp(a, GORE_FIST);
+  if (dmg > 0 && a && a->player && a->weapon && (a->atk == A_SWING || a->atk == A_STAB)) gore_stamp(a, GORE_WEAPON);
   char_jolt(v, (float)dir, knock >= 2 ? 1.6f : 1.0f);
   sfx(knock >= 2 ? SFX_HIT3 : ((int)v->hp & 1) ? SFX_HIT1 : SFX_HIT2);
   if (a && a->player) {
@@ -467,10 +539,11 @@ void ent_hurt(ent *v, ent *a, float dmg, int knock, float fx) {
       if (!v->player) {
         W.kills++;
         if (v->def == D_REDNECK) W.red.kills++;
+        if (v->def == D_CREEP) W.creep.kills++;
         if (a && a->player) a->score += DEFS[v->def].score;
         W.total_score += DEFS[v->def].score;
         drop_weapon(v);
-        if (DEFS[v->def].boss) { W.shake = 40; W.shake_amp = 0.2f; W.slow = 90; W.st.boss_t1 = W.tick, W.st.boss_f1 = W.frames; }
+        if (DEFS[v->def].boss) { W.shake = 40; W.shake_amp = 0.2f; rumble(-1, 0.8f, 0.6f, 600); W.slow = 90; W.st.boss_t1 = W.tick, W.st.boss_f1 = W.frames; }
         /* a coin or two */
         for (int k = 0; k < (DEFS[v->def].boss ? 6 : 1); k++)
           for (int i = 0; i < MAXITEM; i++)
@@ -498,12 +571,13 @@ static void start_attack(ent *e, akind k) {
   if (!e->player) { /* a readable telegraph: guard pose and a flash before the swing (12+ frames, 24+ for heavies) */
     e->t = k == A_JUKE ? -36 : k == A_RUSH || k == A_BARGE ? -40 : heavy_atk(k) ? -26 : k == A_THROW ? -18 : -14;
     /* the jukebox thump: the raised fist is the tell; the haymaker: its own wind-up (the first 0.43 s of the clip, 26 ticks) */
-    char_restart(e, k == A_JUKE ? "thump" : k == A_HAYMAKER ? "haymaker" : "block", k == A_JUKE ? 0.1f : 0.06f);
+    char_restart(e, k == A_JUKE ? "thump" : k == A_HAYMAKER ? "haymaker" : k == A_FLASH ? "flash" : "block", k == A_JUKE ? 0.1f : 0.06f);
     e->hurtflash = 1.4f;
   } else char_restart(e, atk_clip(e, k), 0.04f);
   if (k == A_SLAM || k == A_SPIN || k == A_BSPIN) sfx(SFX_WHIFF);
   if (k == A_HAYMAKER) W.red.hay++;
   if (k == A_BARGE) W.red.barge++;
+  if (k == A_FLASH) W.creep.flash++;
 }
 
 static float body_size(const ent *e);
@@ -552,6 +626,7 @@ static void do_hits(ent *a) {
     if (a->atk == A_FINISH && a->combo != 2) knock = 1;
     if (a->atk == A_HAYMAKER) W.red.hay_hits++;
     if (a->atk == A_BARGE) W.red.barge_hits++;
+    if (a->atk == A_FLASH) W.creep.flash_hits++;
     ent_hurt(v, a, dmg, knock, 0);
     hit_any = true;
   }
@@ -573,7 +648,7 @@ static void do_hits(ent *a) {
     a->weapon = 0;
     weapon_show(a);
   }
-  if (a->atk == A_SLAM && a->t == ad->a0) { fx_dust(a->x + (float)a->face * 1.6f, a->z, 3.0f); W.shake = 14; W.shake_amp = 0.14f; sfx(SFX_SLAM); }
+  if (a->atk == A_SLAM && a->t == ad->a0) { fx_dust(a->x + (float)a->face * 1.6f, a->z, 3.0f); W.shake = 14; W.shake_amp = 0.14f; rumble(-1, 0.75f, 0.2f, 260); sfx(SFX_SLAM); }
 }
 
 /* ── thrown bottles ─────────────────────────────────────────────────── */
@@ -640,9 +715,10 @@ static bool common_state(ent *e) {
       e->y = 0;
       e->st = S_DOWN, e->t = 0;
       fx_dust(e->x, e->z, 1.2f);
-      if (e->hp <= 0) fx_stain(e->x - (float)e->face * 0.55f, e->z, 0.9f, 2); /* under the head (it fell away from the blow) */
+      if (e->hp <= 0) fx_stain(e->x - (float)e->face * 0.55f, e->z, 1.4f, 2); /* a pool spreading under the head (it fell away from the blow) */
       else fx_stain(e->x - (float)e->face * 0.5f, e->z, e->hp < e->maxhp * 0.6f ? 0.6f : 0.42f, 1); /* a body that hits the street leaves a splat, bigger when it is hurt */
       W.shake = 6, W.shake_amp = 0.06f;
+      rumble_ent(e, 0.25f, 0.1f, 90); /* a knockdown: light */
       char_play(e, e->hp <= 0 ? "dead" : "down", 0.02f);
       if (e->hp <= 0) { e->st = S_DEAD; if (e->player) W.st.deaths++, W.run_deaths++; }
     }
@@ -660,6 +736,7 @@ static bool common_state(ent *e) {
     if (e->y <= 0 && e->vy < 0) {
       e->y = 0;
       fx_dust(e->x, e->z, 1.6f);
+      rumble(-1, 0.55f, 0.15f, 180); /* a thrown body slams into the street: heavy */
       e->vx *= 0.3f;
       e->st = S_FALL, e->t = 0, e->vy = 2.0f;
       char_restart(e, "knockdown", 0.02f);
@@ -883,6 +960,7 @@ static void juke_fire(ent *e) {
   W.juke.owner = e->idx, W.juke.fired++, W.juke.uses++, W.juke.cd = 900;
   e->buff = 360;
   W.shake = 12, W.shake_amp = 0.1f;
+  rumble(-1, 0.9f, 0.3f, 350); /* the jukebox blast: heavy and low */
   sfx(SFX_THUMP);
   fx_dust(JUKE_X, JUKE_Z + 0.5f, 2.2f);
   fx_flash(JUKE_X, 1.2f, JUKE_Z + 0.4f, 1, 0.55f, 0.25f, 10);
@@ -936,6 +1014,7 @@ static void enemy_pick_attack(ent *e) {
   case D_THROWER: start_attack(e, A_THROW); break;
   case D_GUARD: start_attack(e, A_BASH); break;
   case D_REDNECK: start_attack(e, ri(0, 4) < 3 ? A_HAYMAKER : ri(0, 1) ? A_PUNCH1 : A_KICK); break;
+  case D_CREEP: start_attack(e, ri(0, 2) ? A_FLASH : A_PUNCH1); break;
   default:
     if (d->boss || e->def == D_RINGMASTER) { /* three phases: each adds a move and a bigger tell; the last one charges along the lane */
       static const akind MOVES[5][3][3] = {
@@ -970,6 +1049,7 @@ static void boss_phase(ent *e) {
   if (e->def == D_ARTHUR && e->phase == 2) sfx(SFX_SWAGGER);
   if (e->token) { e->token = 0; W.tokens_out--; }
   W.phase_banner = 150, W.shake = 24, W.shake_amp = 0.1f;
+  rumble(-1, 0.6f, 0.2f, 300);
   sfx(SFX_SLAM);
   fx_flash(e->x, 1.5f, e->z, 1, 0.3f, 0.2f, 18);
   fx_dust(e->x, e->z, 2.5f);
@@ -1003,7 +1083,7 @@ static void enemy_update(int ei) {
   case S_ATK: {
     const atk_data *ad = &ATK[e->atk];
     e->t++;
-    if (e->t == 0 && e->atk != A_JUKE && e->atk != A_HAYMAKER) char_restart(e, atk_clip(e, e->atk), 0.05f);
+    if (e->t == 0 && e->atk != A_JUKE && e->atk != A_HAYMAKER && e->atk != A_FLASH) char_restart(e, atk_clip(e, e->atk), 0.05f);
     if (e->t == 0 && e->atk == A_JUKE) juke_fire(e);
     if (e->t < 0) { e->hurtflash = 0.6f; break; }
     if (e->atk == A_CHARGE || e->atk == A_RUSH || e->atk == A_BARGE) {
@@ -1105,6 +1185,7 @@ static void enemy_update(int ei) {
         if (--e->mood_t <= 0) {
           int r = ri(0, 9);
           e->mood = r < 4 ? 1 : r < 6 ? 2 : r < 7 ? 3 : r < 8 ? 4 : 0;
+          if (e->def == D_CREEP && r >= 4) e->mood = 3; /* the creep beckons: come on, hit me */
           e->mood_t = e->mood == 1 ? ri(120, 200) : e->mood == 2 ? 56 : e->mood == 3 ? 72 : e->mood == 4 ? 150 : ri(90, 150);
           e->side_pref = e->mood == 4 ? (int)-side : 0;
           if (e->mood == 1 && ri(0, 1)) e->orbit += 3.14159f;
@@ -1160,7 +1241,7 @@ static void enemy_update(int ei) {
     bool arrived = to_x * to_x + to_z * to_z < 0.05f;
     e->face = dx >= 0 ? 1 : -1;
     e->st = arrived ? S_IDLE : S_WALK;
-    char_play(e, clip && arrived ? clip : clip && !strcmp(clip, "block") ? clip : arrived ? idle_clip(e) : (d->speed > 2.4f ? "run" : "walk"), 0.15f);
+    char_play(e, clip && arrived ? clip : clip && !strcmp(clip, "block") ? clip : arrived ? idle_clip(e) : e->def == D_CREEP ? "lurch" : (d->speed > 2.4f ? "run" : "walk"), 0.15f);
     if (e->token && absf(dx) < reach + 0.15f && absf(dz) < 0.45f && e->cd == 0 && ready) {
       if (e->agent && crowd.id) cw_crowd_clear_target(crowd, AG(e->agent));
       e->cd = 0;
