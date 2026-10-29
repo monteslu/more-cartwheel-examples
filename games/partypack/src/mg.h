@@ -105,8 +105,16 @@ void sfx(int id, float vol, float pitch);
 void sfx_music(int which); /* 0 off, 1 hub, 2 game */
 void sfx_music_stop(void);
 
-/* particles, popups and shake in stage units */
-extern float fx_shake;
+/* rumble (cartwheel/input.h): the feel of a hit or a blast in the pad of the player it concerns, a person's only (never a
+ * CPU seat's); the view never shakes. Presentation only: nothing reads it back, so a replay is unchanged. A request on
+ * top of one still running keeps the stronger of each motor and the longer time; the motors stop on their own. */
+void pp_rumble(const mg_ctx *c, int p, float low, float high, int ms);
+void pp_rumble_tick(void);     /* the framework, every tick: the rumble's clock */
+void pp_rumble_stop(void);     /* every pad's motors off now (out of play, Rumble turned off) */
+extern bool pp_rumble_off;     /* the menu's Rumble setting (saved) */
+extern int32_t pp_rumble_sent[NP]; /* debug rumble.sent: requests sent to each seat's pad */
+
+/* particles and popups in stage units */
 void fx_reset(void);
 void fx_burst(cw_vec2 p, int n, cw_color c, float speed, float life, float size);
 void fx_ring(cw_vec2 p, float r0, float r1, float life, cw_color c);
@@ -116,6 +124,9 @@ void fx_confetti(cw_rect area, int n);
  * the clock holds either way. It is part of the simulation (counted in ticks), so a replay agrees. The longest
  * request of a tick wins, at most 10 ticks. */
 void fx_hitstop(int ticks);
+void fx_impact(void); /* an impact for the shake check (cam.offset); every fx_hitstop is one */
+extern int32_t cam_offset_dbg[3];
+void cam_offset_3d(cw_node cam, float px, float py, float pz); /* the shake check on a 3D camera: as drawn against where the game frames it */
 int fx_hitstop_take(void); /* the framework, after each play tick: the freeze asked for (0 none), and clears it */
 void fx_update(float dt);
 void fx_draw(void);

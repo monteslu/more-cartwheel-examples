@@ -7,6 +7,8 @@ Four fighters, three stages, a training mode that shows hitboxes and frame data.
 
 Run `fighter` (or `scripts/build.sh` then `build/native/.../fighter`). Pick Play, join with a pad (A) or the keyboard (enter), choose a fighter (left / right) and a stage (up / down), lock in with A (kick).
 
+The camera never shakes: hits, throws, wall splats, knockdowns, supers and the KO are felt in each player's own pad (rumble; the computer's fighter has none).
+
 Three buttons: punch, kick and block. The stick (or d-pad) picks where a punch or kick goes.
 
 | Action | Pad | Keyboard, player 1 | Keyboard, player 2 |

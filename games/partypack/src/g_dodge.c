@@ -84,7 +84,7 @@ static void tick(mg_ctx *c) {
         p->lives--;
         p->inv = 100;
         fx_burst(cw_v2(PX, GROUND0 + i * LANE_H - 30), 14, PCOL[i], 260, 0.7f, 8);
-        fx_shake = fmaxf(fx_shake, 6);
+        pp_rumble(c, i, p->lives <= 0 ? 0.45f : 0.2f, p->lives <= 0 ? 0.9f : 0.65f, p->lives <= 0 ? 220 : 120); /* a hit taken: sharp */
         fx_hitstop(p->lives <= 0 ? 8 : 4);
         sfx(SFX_HIT, 0.8f, 1);
         if (p->lives <= 0) {
@@ -105,7 +105,7 @@ static void tick(mg_ctx *c) {
         p->inv = 100;
         D.peb[i][k].x = -1;
         fx_burst(cw_v2(PX, GROUND0 + i * LANE_H - 30), 14, PCOL[D.peb[i][k].by], 260, 0.7f, 8);
-        fx_shake = fmaxf(fx_shake, 6);
+        pp_rumble(c, i, p->lives <= 0 ? 0.45f : 0.2f, p->lives <= 0 ? 0.9f : 0.65f, p->lives <= 0 ? 220 : 120);
         fx_hitstop(p->lives <= 0 ? 8 : 4);
         sfx(SFX_HIT, 0.8f, 1);
         if (p->lives <= 0) {

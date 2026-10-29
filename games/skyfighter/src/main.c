@@ -51,7 +51,9 @@
 #define SAVE_MAGIC_V2 0x534d5332u
 #define SAVE_MAGIC_V1 0x534d5331u
 
-typedef struct { uint32_t magic; uint8_t invert_pitch, expert_controls, music_volume, sfx_volume; uint32_t graphics, progress; } preferences;
+/* invert_pitch was a whole byte holding 0 or 1: Rumble OFF takes its next bit, so an older save reads Rumble on and keeps its size */
+typedef struct { uint32_t magic; uint8_t invert_pitch : 1, rumble_off : 1, : 6; uint8_t expert_controls, music_volume, sfx_volume; uint32_t graphics, progress; } preferences;
+_Static_assert(sizeof(preferences) == 16, "the save keeps its size");
 static preferences prefs;
 
 typedef struct { t3_object *node, *modern, *vintage, *sleigh, *propeller; float x, y, z, vx, vy, vz, heading, phase, maneuver_time, fire_cool, seeker; int active, hp, maneuver, role, burst, passed; } enemy;
@@ -104,7 +106,7 @@ static struct {
   int32_t flares, incoming, decoyed, evasions, patrols, fuel_depots;
   float vapor_width, flare_cool, enemy_missile_cool, flare_timer, threat_range, threat_bearing, threat_eta, alert_cool, notice_timer;
   char notice[96];
-  float lock_timer, airspeed, warning, camera_shake;
+  float lock_timer, airspeed, warning;
   float visual_forward[3], visual_up[3], attitude_error;
   flight_state flight; t3_vec3 camera_up,camera_forward;
   int camera_follow_ready;
@@ -964,6 +966,33 @@ static void update_lock(float dt) {
   if(best>=0)G.lock_timer=fminf(1,G.lock_timer+dt*1.5f);
   if(old<=.6f&&G.lock_timer>.6f){G.audio_alert=.08f;G.audio_tone_hz=650;}
 }
+/* rumble (cartwheel/input.h): the feel of a hit, a blast or a crash in the pad, never in the camera. Presentation only.
+ * A request on top of one still running keeps the stronger of each motor and the longer time (a gun hit never cuts a
+ * missile's blast short); the motors stop on their own after ms, and when play stops (rumble_stop). */
+static struct { int until; float low, high; int clock; int32_t sent[4]; } RB; /* sent: blasts, hits taken, crashes, missiles */
+static void rumble(float low, float high, int ms) {
+  if (prefs.rumble_off || ms <= 0) return;
+  int left = (RB.until - RB.clock) * 1000 / 60;
+  if (left > 0) {
+    if (low <= RB.low && high <= RB.high && ms <= left) return;
+    low = fmaxf(low, RB.low), high = fmaxf(high, RB.high), ms = ms > left ? ms : left;
+  }
+  low = clampf(low, 0, 1), high = clampf(high, 0, 1);
+  RB.low = low, RB.high = high, RB.until = RB.clock + (ms * 60 + 999) / 1000;
+  cw_input_rumble(0, low, high, ms);
+}
+static void rumble_stop(void) { if (RB.until > RB.clock) cw_input_rumble_stop(0), RB.until = 0; }
+/* a kill, a destroyed building or target, a missile into the ground: the heavy motor by the blast's size and its
+ * distance from the jet (nothing past 900 m) */
+static void blast_rumble(float x, float y, float z, float power) {
+  if (G.state != PLAY && G.state != CRASH) return;
+  float dx = x - G.px, dy = y - G.py, dz = z - G.pz, k = 1 - sqrtf(dx * dx + dy * dy + dz * dz) / 900;
+  if (k <= 0) return;
+  k = k * k * power;
+  if (k < 0.03f) return;
+  RB.sent[0]++;
+  rumble(0.2f + 0.8f * k, 0.2f * k, 120 + (int)(280 * k));
+}
 static void explode(float x, float y, float z) {
   G.audio_boom = 1;
   for (int i = 0; i < FX; ++i) if (!G.blasts[i].active) {
@@ -1000,6 +1029,7 @@ static void impact_stamp(t3_vec3 p,t3_vec3 direction,float size,int building,boo
   cw_node3d_look_at(n,t3_vec3_add(p,direction),(t3_vec3){0,1,0});
 }
 static void ground_explosion(float x,float y,float z,bool cloud) {
+  blast_rumble(x,y,z,1);
   G.audio_boom=1.5f;G.impact_age=0.001f;G.impact_x=x;G.impact_y=y;G.impact_z=z;
   for(int j=0;j<7;j++)cw_node_set(G.crash_fx[j],"visible",cw_val_bool(true));
   for(int j=0;j<5;j++)start_burst(G.crash_fx[j],x,y+2,z);
@@ -1023,6 +1053,7 @@ static void crash_aircraft(void) {
   if(G.state==CRASH)return;
   G.py=fmaxf(G.py,fmaxf(0,terrain_height(G.px,G.pz))+5);
   G.state=CRASH;G.health=0;G.crash_age=0;
+  RB.sent[2]++;rumble(1,.7f,500); /* the crash: the biggest one, and it fades with the crash camera */
   t3_quat attitude=G.flight.attitude;
   G.wreck_age=0;G.wreck_count=6;G.wreck_contacts=0;
   for(int i=0;i<6;i++) {
@@ -1056,17 +1087,27 @@ static void update_effects(float dt) {
     G.shockwave->visible=G.impact_age<1.8f;}
 
 }
+/* the shake check (cam.offset): the crash camera as drawn (the camera node's global transform) against its orbit around
+ * the wreck, on every crash frame. cam.offset: those frames, the ones whose drawn camera was off the orbit by over 0.1 mm,
+ * and the largest offset (in 0.1 mm units). Nothing moves the camera in a crash: [n, 0, 0]. */
+static int32_t cam_offset[3];
+static void offsetgate(t3_vec3 at) {
+  const t3_mat4 *m=cw_node3d_global_transform(G.camera_node);if(!m)return;
+  float dx=m->e[12]-at.x,dy=m->e[13]-at.y,dz=m->e[14]-at.z,off=sqrtf(dx*dx+dy*dy+dz*dz);
+  cam_offset[0]++;if(off>1e-4f)cam_offset[1]++;
+  if((int32_t)(off*1e4f)>cam_offset[2])cam_offset[2]=(int32_t)(off*1e4f);
+}
 static void crash_camera(float dt) {
   float old=G.crash_age;G.crash_age+=dt;float t=G.crash_age;
   if(old<0.55f&&t>=0.55f)start_burst(G.crash_fx[5],G.px,G.py+8,G.pz);
   if(old<1.1f&&t>=1.1f)start_burst(G.crash_fx[6],G.px,G.py+38,G.pz);
-  if(old<0.3f&&t>=0.3f){explode(G.px+8,G.py+6,G.pz-5);G.audio_boom=1;}
+  if(old<0.3f&&t>=0.3f){explode(G.px+8,G.py+6,G.pz-5);G.audio_boom=1;rumble(.8f,.3f,300);} /* the fuel goes up */
   float radius=65+fminf(t,5)*15,ang=G.heading+0.3f+t*0.12f;
   float cx=G.px-sinf(ang)*radius,cz=G.pz+cosf(ang)*radius;
-  float shake=expf(-t*2.2f)*2.4f;
-  cw_node3d_set_position(G.camera_node,(t3_vec3){cx+sinf(t*93)*shake,
-    fmaxf(G.py+25+t*9,terrain_height(cx,cz)+15)+cosf(t*71)*shake,cz});
+  /* the crash camera orbits the wreck and never shakes: the crash is in the pad (crash_aircraft, explode) */
+  cw_node3d_set_position(G.camera_node,(t3_vec3){cx,fmaxf(G.py+25+t*9,terrain_height(cx,cz)+15),cz});
   cw_node3d_look_at(G.camera_node,(t3_vec3){G.px,G.py+12+t*4,G.pz},(t3_vec3){0,1,0});
+  offsetgate((t3_vec3){cx,fmaxf(G.py+25+t*9,terrain_height(cx,cz)+15),cz});
   cw_node_set(G.camera_node,"fov",cw_val_float(68));
   float r=6+t*90;t3_object_set_scale(G.shockwave,r,r,r);
   G.shock_mat->opacity=fmaxf(0,0.14f-t*0.18f);G.shockwave->visible=t<1.8f;
@@ -1085,7 +1126,7 @@ static void fire_shot(int missile) {
     s->vx=G.visual_forward[0]*velocity;s->vy=G.visual_forward[1]*velocity;
     s->vz=G.visual_forward[2]*velocity;
     if(missile) {
-      t3_object_set_scale(s->node,2.2f,2.2f,1.7f);G.missiles--;G.missile_cool=65;
+      t3_object_set_scale(s->node,2.2f,2.2f,1.7f);G.missiles--;G.missile_cool=65;RB.sent[3]++;rumble(.3f,.2f,80); /* a missile leaves the rail */
       G.missile_request=0;G.missile_launches++;G.missile_last_target=s->target;notify("MISSILE AWAY",1.2f);
       if(CW_HANDLE_IS_NULL(s->trail)) {
         char name[32];snprintf(name,sizeof name,"MissileTrail%d",i);
@@ -1236,6 +1277,8 @@ static void init(void *user) {
   cw_debug_f32("audio.rms",&G.audio_rms);cw_debug_f32("audio.peak",&G.audio_peak);
   cw_debug_i32("mission.buildings",&G.buildings_destroyed);cw_debug_i32("crash.structure",&G.impact_structure);
   cw_debug_f32("crash.age",&G.crash_age);
+  cw_debug_field("cam.offset",cam_offset,CW_DBG_I32,3);
+  cw_debug_field("rumble.sent",RB.sent,CW_DBG_I32,4);
   cw_debug_i32("crash.pieces",&G.wreck_count);
   cw_debug_i32("jet.intact_visible",&G.intact_visible);
   cw_debug_i32("cloud.volumes",&G.cloud_volumes);cw_debug_i32("cloud.active",&G.cloud_active);
@@ -1325,6 +1368,7 @@ static void init(void *user) {
 static void fixed_update(void *user, double dt) {
   (void)user;
   float step = (float)dt;
+  RB.clock++;if(G.state!=PLAY&&G.state!=CRASH)rumble_stop(); /* menus, pause and the end screens: the motors stop */
   music_pump();menu_read_pointer();forest_frame(step);
   cw_decals_get_stats(G.tree,&impact_stats);cw_visibility_get_stats(G.tree,&scenery_stats);
   cw_decal_mesh_info scorch;cw_decal_get_mesh_info(last_scorch,&scorch);impact_scorch_triangles=scorch.triangles;
@@ -1335,16 +1379,17 @@ static void fixed_update(void *user, double dt) {
     int pointer_direction=0;
     if(menu_ui.clicked){
       if(menu_ui.pointer.x>=240&&menu_ui.pointer.x<=360&&menu_ui.pointer.y>=450&&menu_ui.pointer.y<=480){G.state=G.return_state;return;}
-      for(int i=0;i<5;i++)if(menu_ui.pointer.x>=230&&menu_ui.pointer.x<=730&&menu_ui.pointer.y>=169+i*47&&menu_ui.pointer.y<207+i*47){G.settings_row=i;pointer_direction=menu_ui.pointer.x<590?-1:1;}
+      for(int i=0;i<6;i++)if(menu_ui.pointer.x>=230&&menu_ui.pointer.x<=730&&menu_ui.pointer.y>=169+i*42&&menu_ui.pointer.y<207+i*42){G.settings_row=i;pointer_direction=menu_ui.pointer.x<590?-1:1;}
     }
-    if(cw_action_just_pressed(0,G.up))G.settings_row=(G.settings_row+4)%5;
-    if(cw_action_just_pressed(0,G.down))G.settings_row=(G.settings_row+1)%5;
+    if(cw_action_just_pressed(0,G.up))G.settings_row=(G.settings_row+5)%6;
+    if(cw_action_just_pressed(0,G.down))G.settings_row=(G.settings_row+1)%6;
     if(cw_action_just_pressed(0,G.gun)||cw_action_just_pressed(0,G.left)||cw_action_just_pressed(0,G.right)||pointer_direction) {
       int direction=pointer_direction?pointer_direction:cw_action_just_pressed(0,G.left)?-1:1;
       if(G.settings_row==0)prefs.invert_pitch=!prefs.invert_pitch;
       else if(G.settings_row==1) { cw_quality q=cw_quality_get();cw_quality_set((cw_quality)((q+3+direction)%3),true);prefs.graphics=cw_quality_saved(); }
       if(G.settings_row==2){prefs.expert_controls=!prefs.expert_controls;G.flight.bank=G.flight.pitch_idle=G.flight.roll_rate=0;}
-      if(G.settings_row>=3) {
+      if(G.settings_row==5){prefs.rumble_off=!prefs.rumble_off;if(!prefs.rumble_off)cw_input_rumble(0,.3f,.3f,120);} /* turned on: a taste of it */
+      if(G.settings_row==3||G.settings_row==4) {
         uint8_t *volume=G.settings_row==3?&prefs.music_volume:&prefs.sfx_volume;
         int value=*volume+direction*5;
         if(cw_action_just_pressed(0,G.gun)&&value>100)value=0;
@@ -1510,6 +1555,7 @@ static void fixed_update(void *user, double dt) {
     if(pass_range<90*90&&!e->passed){e->passed=1;G.near_misses++;G.audio_pass=.8f;}
     if (pass_range < 90.0f) {
       G.health -= 26; G.damage_flash = 1;
+      RB.sent[1]++;rumble(.8f,.8f,300); /* a mid-air collision */
       explode(G.px, G.py, G.pz);
       e->active = e->node->visible = false;
       if (G.health <= 0){crash_aircraft();return;}
@@ -1551,6 +1597,7 @@ static void fixed_update(void *user, double dt) {
     float clearance=segment_distance2(ox-previous_position.x,oy-previous_position.y,oz-previous_position.z,s->x-G.px,s->y-G.py,s->z-G.pz,0,0,0);
     if(clearance<(s->missile?64:25)) {
       s->active=s->node->visible=false;G.health-=s->missile?35:9;G.damage_flash=.8f;
+      RB.sent[1]++;if(s->missile)rumble(.7f,.8f,260);else rumble(.1f,.45f,70); /* hit: a missile hard, a round sharp */
       if(G.health<=0){crash_aircraft();return;}
       continue;
     }
@@ -1596,7 +1643,7 @@ static void fixed_update(void *user, double dt) {
           e->active = e->node->visible = false;
           G.kills++; G.score += 100 + G.wave * 20; G.kill_flash = 54;
           if (G.kills % 2 == 0 && G.missiles < MISSILE_CAPACITY) G.missiles++;
-          explode(e->x, e->y, e->z);
+          explode(e->x, e->y, e->z);blast_rumble(e->x,e->y,e->z,.7f);
           if(G.kills%12==0){G.patrols++;G.spawn=1500;notify("CONTROL: AIRSPACE SECURED. PATROL CONTINUES.",7);}
         }
         break;
@@ -1806,18 +1853,19 @@ static void render(void *user, double alpha) {
     cw_r2d_rect((cw_rect){210,65,540,420},cw_hex(0x071522f2));
     text(G.title_font,"SETTINGS",240,88,30,amber,470,CW_ALIGN_LEFT);
     text(G.ui_font,"FLIGHT / GRAPHICS / AUDIO",241,131,14,muted,470,CW_ALIGN_LEFT);
-    const char *labels[]={"PITCH","GRAPHICS","FLIGHT CONTROLS","MUSIC","SOUND EFFECTS"};
+    const char *labels[]={"PITCH","GRAPHICS","FLIGHT CONTROLS","MUSIC","SOUND EFFECTS","RUMBLE"};
     char value[96];
-    for(int i=0;i<5;i++) {
-      float y=174+i*47;
+    for(int i=0;i<6;i++) {
+      float y=174+i*42;
       if(i==G.settings_row)cw_r2d_rect((cw_rect){230,y-5,500,38},cw_hex(0x29414edb));
       text(G.ui_font,labels[i],243,y,17,i==G.settings_row?amber:white,220,CW_ALIGN_LEFT);
       if(i==0)snprintf(value,sizeof value,"%s",prefs.invert_pitch?"INVERTED":"NORMAL");
       else if(i==1)snprintf(value,sizeof value,"%s",cw_quality_name(cw_quality_get()));
       else if(i==2)snprintf(value,sizeof value,"%s",prefs.expert_controls?"EXPERT":"STANDARD");
+      else if(i==5)snprintf(value,sizeof value,"%s",prefs.rumble_off?"OFF":"ON");
       else snprintf(value,sizeof value,"%d%%",i==3?prefs.music_volume:prefs.sfx_volume);
       text(G.ui_font,value,480,y,17,white,225,CW_ALIGN_RIGHT);
-      if(i>=3) {
+      if(i==3||i==4) {
         float volume=(i==3?prefs.music_volume:prefs.sfx_volume)*.01f;
         cw_r2d_rect((cw_rect){480,y+26,225,3},cw_hex(0x43545bff));
         cw_r2d_rect((cw_rect){480,y+26,225*volume,3},amber);

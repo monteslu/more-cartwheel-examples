@@ -160,20 +160,16 @@ typedef struct fighter {
   char name[12];
   cw_mover3d mv;
   float yaw, pitch;
-  float kick;            /* view kick, radians, decays */
+  float kick;            /* the crosshair's bloom after a shot (HUD only, never the camera), decays */
   int launched;          /* ticks since a jump pad threw it (the ground is ignored meanwhile) */
   int recoil_n, recoil_t;  /* rifle: shots in this burst, ticks since the last one */
   float recoil_p, recoil_y; /* the view climb the burst has put on (recovers after the burst) */
   bool sprint;             /* running flat out (forward, not firing) */
   bool sprint_want;        /* bots: wants to sprint (set by its brain) */
-  float air_vy;            /* vertical speed while airborne (the landing dip reads it) */
   int personality;         /* bots: 0 balanced, 1 rusher, 2 holder (keeps high ground and power items) */
   int hit_t;               /* ticks since it was last hit */
   /* presentation only (never read by the simulation) */
   float flinch;            /* a hit throws the body back for a moment */
-  float roll;              /* camera roll into a strafe */
-  int dip_t;               /* landing dip, ticks since landing (0 = none) */
-  float dip_a;             /* its depth, metres */
   int hp, armor;
   int weapon;
   int ammo[NWEAP];

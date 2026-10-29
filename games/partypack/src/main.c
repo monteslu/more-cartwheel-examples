@@ -38,11 +38,14 @@ typedef struct save_data {
   int32_t tournaments;     /* tournaments finished */
   int32_t wins[NP];        /* tournaments won by seat */
   int32_t plays[MG_MAX];
-  float best[MG_MAX];      /* best score per mini-game */
+  float best[MG_MAX - 1];  /* best score per mini-game */
+  int32_t rumble_off;      /* the Rumble setting, 1 off: the slot of best[MG_MAX - 1], which no game used (fewer than
+                            * MG_MAX games), so an older save reads 0, on, and keeps its size and everything in it */
   uint32_t unlocked;       /* bit per mini-game */
   int32_t rounds_opt;      /* 0..2 -> 4, 6, 8 rounds */
   int32_t skill;           /* CPU skill 0..2 */
 } save_data;
+_Static_assert(sizeof(save_data) == 4 * (2 + NP + MG_MAX + MG_MAX + 3), "the save keeps its size: a new layout would reset it");
 static save_data *SV;
 
 /* ── state ──────────────────────────────────────────────────────────── */
@@ -567,7 +570,9 @@ int pp_batch_active(void) { return batch_total != 0; }
 
 static void fixed_update(void *user, double dt) {
   (void)user, (void)dt;
-  if (!cw_shell_update()) return;
+  if (!cw_shell_update()) { pp_rumble_stop(); return; } /* the menus and pause: the motors stop */
+  pp_rumble_tick();
+  if (G.state != S_PLAY && G.state != S_FINISH) pp_rumble_stop(); /* only play (and its finish) rumbles */
   /* join and leave in the middle of a session: a pad without a seat presses A and takes the CPU's seat at once (one
    * press; players_changed hands the seat over); Start on such a pad, or Y from a seated player between rounds (the
    * board, the menu, the picker), opens the shell's join screen over the game, which is also how a player leaves */
@@ -584,22 +589,34 @@ static void fixed_update(void *user, double dt) {
 #endif
 }
 
+/* the menu's Rumble item: on or off, saved; turned on, the pads that can rumble give a short taste of it */
+static void toggle_rumble(void) {
+  SV->rumble_off = !SV->rumble_off;
+  pp_rumble_off = SV->rumble_off != 0;
+  cw_shell_save_commit();
+  sfx(SFX_BLIP, 1, 1);
+  for (int p = 0; p < NP; p++)
+    if (G.human[p]) { if (pp_rumble_off) cw_input_rumble_stop(p); else cw_input_rumble(p, 0.3f, 0.3f, 120); }
+}
+
 static void sim_step(void) {
   G.st_ticks++;
   switch (G.state) {
   case S_MENU: {
     int n = menu_nav();
-    const int items = 5;
+    const int items = 6;
     if (n == -2 || n == 2) { G.menu_item = (G.menu_item + (n > 0 ? 1 : items - 1)) % items; sfx(SFX_BLIP, 1, 1); }
     if ((n == -1 || n == 1) && G.menu_item == 3) { SV->rounds_opt = (SV->rounds_opt + (n > 0 ? 1 : 2)) % 3; sfx(SFX_BLIP, 1, 1); cw_shell_save_commit(); }
     if ((n == -1 || n == 1) && G.menu_item == 4) { SV->skill = (SV->skill + (n > 0 ? 1 : 2)) % 3; sfx(SFX_BLIP, 1, 1); cw_shell_save_commit(); }
+    if ((n == -1 || n == 1) && G.menu_item == 5) toggle_rumble();
     if (menu_ok()) {
       sfx(SFX_SELECT, 1, 1);
       if (G.menu_item == 0) start_tournament();
       else if (G.menu_item == 1) set_state(S_PICK);
       else if (G.menu_item == 2) set_state(S_TROPHY);
       else if (G.menu_item == 3) { SV->rounds_opt = (SV->rounds_opt + 1) % 3; cw_shell_save_commit(); }
-      else { SV->skill = (SV->skill + 1) % 3; cw_shell_save_commit(); }
+      else if (G.menu_item == 4) { SV->skill = (SV->skill + 1) % 3; cw_shell_save_commit(); }
+      else toggle_rumble();
     }
     break;
   }
@@ -692,17 +709,18 @@ static void draw_strip(void) {
 static void draw_menu(void) {
   ui_vignette(1.6f);
   ui_title("PARTY PACK", cw_v2(STAGE_W / 2, 24), 96, G.clock);
-  static const char *labels[5] = { "Party Tournament", "Free Play", "Trophy Room", "Rounds", "CPU Skill" };
+  static const char *labels[6] = { "Party Tournament", "Free Play", "Trophy Room", "Rounds", "CPU Skill", "Rumble" };
   static const char *skills[3] = { "Easy", "Medium", "Hard" };
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < 6; i++) {
     bool sel = i == G.menu_item;
-    cw_rect r = cw_rect_make(STAGE_W / 2 - 250, 330 + i * 64, 500, 54);
+    cw_rect r = cw_rect_make(STAGE_W / 2 - 250, 300 + i * 60, 500, 54);
     ui_panel(r, sel ? cw_rgba(1, 0.85f, 0.3f, 0.95f) : cw_rgba(0.08f, 0.07f, 0.2f, 0.8f), sel ? cw_rgba(1, 1, 1, 0.9f) : cw_rgba(1, 1, 1, 0.15f));
     cw_color tc = sel ? cw_rgba(0.15f, 0.1f, 0.25f, 1) : cw_rgba(1, 1, 1, 1);
     ui_text(labels[i], cw_v2(r.x + 28, r.y + 6), 34, tc, CW_ALIGN_LEFT);
     char v[24] = "";
     if (i == 3) snprintf(v, sizeof v, "< %d >", 4 + 2 * (SV->rounds_opt % 3));
     if (i == 4) snprintf(v, sizeof v, "< %s >", skills[SV->skill % 3]);
+    if (i == 5) snprintf(v, sizeof v, "< %s >", SV->rumble_off ? "Off" : "On");
     if (v[0]) ui_text(v, cw_v2(r.x + r.w - 28, r.y + 6), 34, tc, CW_ALIGN_RIGHT);
   }
   char s[96];
@@ -988,6 +1006,7 @@ static void init(void *user) {
   bus_sfx = cw_shell_sfx_bus();
   register_games();
   SV = cw_shell_game_save();
+  pp_rumble_off = SV->rumble_off != 0;
   for (int i = 0; i < MG_N; i++) if (MG_LIST[i]->unlock_points == 0) SV->unlocked |= 1u << i;
   sfx_init();
   load_scene(NULL); /* the 3D hub behind the title and join screens */
@@ -1005,6 +1024,8 @@ static void init(void *user) {
   cw_debug_i32("game.events", &G.nev);
   cw_debug_field("game.wins", G.round_wins, CW_DBG_I32, NP);
   cw_debug_i32("game.hitstops", &G.hitstop_shown);
+  cw_debug_field("cam.offset", cam_offset_dbg, CW_DBG_I32, 3);
+  cw_debug_field("rumble.sent", pp_rumble_sent, CW_DBG_I32, NP);
   cw_debug_field("probe.load_ms", &G.load_ms, CW_DBG_F32, 1);
   cw_debug_field("probe.start_ms", &G.start_ms, CW_DBG_F32, 1);
 #ifdef PP_AUTOPILOT

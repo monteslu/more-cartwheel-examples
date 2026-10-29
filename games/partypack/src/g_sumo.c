@@ -95,7 +95,10 @@ static void tick(mg_ctx *c) {
       b->vx += nx * pb_; b->vy += ny * pb_;
       if (ja + jb > 0 || -rel > 200) {
         fx_burst(cw_v2((a->x + b->x) * 0.5f, (a->y + b->y) * 0.5f), 10, cw_rgba(1, 1, 0.8f, 1), 220, 0.4f, 6);
-        fx_shake = fmaxf(fx_shake, 5);
+        /* a bump: both feel it, the one who was rammed the harder */
+        float hard = ja + jb > 0 ? 1.0f : 0.5f;
+        pp_rumble(c, i, 0.15f * hard, (jb > 0 ? 0.75f : 0.35f) * hard, 90);
+        pp_rumble(c, j, 0.15f * hard, (ja > 0 ? 0.75f : 0.35f) * hard, 90);
         fx_hitstop(ja + jb > 0 ? 4 : 2);
         sfx(SFX_HIT, 0.6f, 1.1f);
       }
@@ -116,6 +119,7 @@ static void tick(mg_ctx *c) {
       fx_burst(cw_v2(b->x, b->y), 16, PCOL[i], 260, 0.7f, 8);
       fx_text(cw_v2(CX + dx * 0.9f, CY + dy * 0.9f), "OUT", PCOL[i], 36);
       fx_hitstop(5);
+      pp_rumble(c, i, 0.5f, 0.5f, 200); /* out of the ring */
     }
   }
   /* the survivors' score ticks up while they are in, so the strip reads right; the last one standing gets a bonus */

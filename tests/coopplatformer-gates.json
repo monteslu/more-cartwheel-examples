@@ -24,7 +24,6 @@
       "g.players",
       "g.ppos",
       "g.camgate",
-      "g.shake_frames",
       "g.scenery"
     ],
     "expect": {
@@ -43,7 +42,6 @@
         398,
         0
       ],
-      "g.shake_frames": 0,
       "g.scenery": [
         148,
         0
@@ -76,7 +74,6 @@
       "g.players",
       "g.ppos",
       "g.camgate",
-      "g.shake_frames",
       "g.scenery"
     ],
     "expect": {
@@ -95,7 +92,6 @@
         398,
         0
       ],
-      "g.shake_frames": 0,
       "g.scenery": [
         148,
         0
@@ -152,7 +148,10 @@
       "g.players",
       "g.ppos",
       "g.camgate",
-      "g.shake_frames"
+      "g.camoffset",
+      "g.impacts",
+      "rumble.sent",
+      "cw.rumble"
     ],
     "expect": {
       "g.tick": 1500,
@@ -167,12 +166,30 @@
       "g.camgate": [
         0,
         0,
-        1338,
+        1498,
         0
       ],
-      "g.shake_frames": 160
+      "g.camoffset": [
+        440,
+        0,
+        0
+      ],
+      "g.impacts": 19,
+      "rumble.sent": [
+        17,
+        16,
+        0,
+        0
+      ],
+      "cw.rumble": [
+        33,
+        1,
+        1000,
+        700,
+        410
+      ]
     },
-    "note": "two bots from the arena flag with every ability: boss fight, hit-stops and the win, cross-host state; the drawn camera stays smooth through the fight (no frame in motion over the bounds) and shakes on 160 frames for the boss leaps, hits and its death (the boss now sleeps until a player is near and lands on the ground it hits, so the fight has 14 hit-stops, was 12)"
+    "note": "two bots from the arena flag with every ability: boss fight, hit-stops and the win, cross-host state. No shake (2026-10-29): the drawn camera stays smooth through the whole fight, the boss leaps, hits and its death included (g.camgate: 1498 frames in motion, none over the bounds; before, 160 of them shook and were let off), and g.camoffset holds the drawn camera against the follow camera on the 440 frames within half a second of the 19 impacts (none off by over 0.1 mm; the build before, the same 440 frames: 152 off, up to 23 cm). The impacts are felt in the pads: rumble.sent counts the requests to each player, cw.rumble is the engine's last (the boss going down, pad 1)."
   },
   {
     "name": "coopplatformer-camera-1p",
@@ -192,8 +209,7 @@
       "g.ppos",
       "g.cam",
       "g.view",
-      "g.camgate",
-      "g.shake_frames"
+      "g.camgate"
     ],
     "expect": {
       "g.players": 1,
@@ -202,14 +218,13 @@
         0,
         745,
         0
-      ],
-      "g.shake_frames": 0
+      ]
     },
     "controlInput": "coopplatformer-camera-1p.json",
     "controlEnv": {
-      "COOP_SHAKE_BUG": "1"
+      "COOP_CAM_BUG": "1"
     },
-    "note": "camera stability, the way a person plays: one pad through title, join and start, then stand, walk, stop, jump and stand while the drawn camera is measured every frame (g.camgate: frames at rest, at-rest frames that moved over 1 mm, frames in motion, frames in motion with a jump over 0.6 m or a jerk over 8 cm). At rest it must not move at all; in motion it must stay smooth. The control brings back the boss landing that shook the screen from anywhere in the world (COOP_SHAKE_BUG, native): its g.camgate must differ."
+    "note": "camera stability, the way a person plays: one pad through title, join and start, then stand, walk, stop, jump and stand while the drawn camera is measured every frame (g.camgate: frames at rest, at-rest frames that moved over 1 mm, frames in motion, frames in motion with a jump over 0.6 m or a jerk over 8 cm). At rest it must not move at all; in motion it must stay smooth. The control puts a 1 cm sway on the drawn camera (COOP_CAM_BUG, native): its g.camgate must differ."
   },
   {
     "name": "coopplatformer-camera-4p",
@@ -229,8 +244,7 @@
       "g.ppos",
       "g.cam",
       "g.view",
-      "g.camgate",
-      "g.shake_frames"
+      "g.camgate"
     ],
     "expect": {
       "g.players": 4,
@@ -239,13 +253,12 @@
         0,
         745,
         0
-      ],
-      "g.shake_frames": 0
+      ]
     },
     "controlInput": "coopplatformer-camera-4p.json",
     "controlEnv": {
-      "COOP_SHAKE_BUG": "1"
+      "COOP_CAM_BUG": "1"
     },
-    "note": "camera stability, the way a person plays: four pads through title, join and start, then stand, walk, stop, jump and stand while the drawn camera is measured every frame (g.camgate: frames at rest, at-rest frames that moved over 1 mm, frames in motion, frames in motion with a jump over 0.6 m or a jerk over 8 cm). At rest it must not move at all; in motion it must stay smooth. The control brings back the boss landing that shook the screen from anywhere in the world (COOP_SHAKE_BUG, native): its g.camgate must differ."
+    "note": "camera stability, the way a person plays: four pads through title, join and start, then stand, walk, stop, jump and stand while the drawn camera is measured every frame (g.camgate: frames at rest, at-rest frames that moved over 1 mm, frames in motion, frames in motion with a jump over 0.6 m or a jerk over 8 cm). At rest it must not move at all; in motion it must stay smooth. The control puts a 1 cm sway on the drawn camera (COOP_CAM_BUG, native): its g.camgate must differ."
   }
 ]

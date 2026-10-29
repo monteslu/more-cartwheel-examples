@@ -77,8 +77,6 @@ typedef struct camera_rig {
   float tx, ty, tz;
   float px, py, pz;    /* x, y, z at the start of this tick: the renderer draws between them (alpha) */
   float vx, vy, vz;    /* follow velocity (a critically damped spring with bounded acceleration) */
-  float shake;         /* trauma 0..1 from real events the camera sees (sim_shake); the offset is trauma squared, it
-                        * fades out in about 0.4 s and nothing raises it every tick */
 } camera_rig;
 
 typedef struct game {
@@ -96,11 +94,13 @@ typedef struct game {
   int events;          /* bitmask of this tick's sound events */
   int checkpoint;      /* the flag respawns go to (the last one touched) */
   uint32_t reached;    /* bit k: flag k has been touched (the map can warp to it) */
+  int impacts;        /* boss landings, hits and blasts, a player hurt: the impacts of the shake check (g.camoffset) */
+  struct { float low, high; int ms; } rumble[MAX_PLAYERS]; /* this tick's rumble for each player's pad (sim_rumble):
+                       * the renderer sends it and clears it; presentation only, never read by the rules or the hash */
   int hitstops;        /* how many hit-stops have happened (a counter for tests) */
   int hitstop;         /* ticks the whole world stands still after a hit (stomp, hurt, boss down) */
   int hit_flash;       /* ticks of screen flash the renderer shows after a hit */
   int paused_map;
-  bool shake_bug;      /* test only (COOP_SHAKE_BUG, native): the old boss landing that shook the screen forever */
 } game;
 
 extern game G;
@@ -143,7 +143,9 @@ void sim_respawn_player(game *g, int p);
 bool sim_warp(game *g, int flag);
 void sim_return(game *g);          /* everyone back to the last flag (or the start): the way out of anything */   /* the living players go to a reached flag; false if it is not reached */
 uint32_t sim_hash(const game *g);
-/* Screen shake for an event at a world point (a boss landing, a boss hit, a blast): amount 0..1 of trauma, scaled
- * down to nothing for an event the camera does not see, so a far-off event never shakes the players' view. */
-void sim_shake(game *g, float x, float y, float amount);
+/* Rumble (the camera never shakes): sim_rumble asks one player's pad for low (heavy) and high (light) motor 0..1 for ms;
+ * sim_rumble_at a heavy impact at a world point (a boss landing, a boss hit, a blast), amount 0..1, felt by each player
+ * by their distance from it (full within 4 m, nothing past 24 m). The strongest request of a tick wins. */
+void sim_rumble(game *g, int p, float low, float high, int ms);
+void sim_rumble_at(game *g, float x, float y, float amount);
 #endif

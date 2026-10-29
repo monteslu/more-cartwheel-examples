@@ -351,6 +351,7 @@ static void air_target_damage(int id,bool missile) {
   if(a->state||(a->kind==3&&G.shields_left)||(a->kind==4&&santa_protected()))return;
   int32_t *hp=basket?&a->basket_hp:&a->hull_hp;*hp-=missile?3:1;
   explode(a->x,basket?a->by:a->y,a->z);if(*hp>0)return;*hp=0;
+  blast_rumble(a->x,basket?a->by:a->y,a->z,a->kind>=3?1:.8f); /* a target goes down */
   if(a->kind==2){a->state=3;a->root->visible=false;G.shields_left--;G.score+=400;notify(G.shields_left?"SHIELD GENERATOR DESTROYED":"SHIELD COLLAPSED / CORE EXPOSED",4);return;}
   if(!a->credited){a->credited=1;if(a->kind==0)G.balloon_kills++;if(a->kind==1)G.blimp_kills++;G.score+=basket?350:200;}
   a->ropes->visible=false;a->age=0;

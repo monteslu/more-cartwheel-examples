@@ -661,5 +661,57 @@
       ],
       "vsGl": 0.05
     }
+  },
+  {
+    "name": "partypack-rumble",
+    "app": "partypack",
+    "assets": "games/partypack/assets",
+    "frames": 1200,
+    "input": "partypack-rumble.json",
+    "controlInput": "partypack-rumble-control.json",
+    "minColors": 50,
+    "fields": [
+      "shell.screen",
+      "game.state",
+      "game.mg",
+      "game.humans",
+      "cam.offset",
+      "rumble.sent",
+      "cw.rumble"
+    ],
+    "expect": {
+      "game.state": 6,
+      "game.mg": 0,
+      "game.humans": 1,
+      "cam.offset": [
+        150,
+        0,
+        0
+      ],
+      "rumble.sent": [
+        3,
+        0,
+        0,
+        0
+      ],
+      "cw.rumble": [
+        3,
+        0,
+        450,
+        900,
+        220
+      ]
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "maxGt16": 0.01,
+      "vsGl": 0.05
+    },
+    "maxGt16": 0.005,
+    "note": "No shake: one pad goes to Free Play, picks Hurdle Dash, readies up and never jumps, so the rocks hit it three times (the third knocks it out). cam.offset holds the stage as drawn against the centred stage on the frames within half a second of each hit (none off; the build before: 55 of 150 frames off, the whole stage shaken up to 6.6 stage pixels). The hits are felt in that pad: rumble.sent per seat, cw.rumble the engine's last (the knock-out, pad 0). Control: the pad stops in the picker, so nothing rumbles."
   }
 ]

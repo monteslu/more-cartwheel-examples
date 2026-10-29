@@ -31,5 +31,35 @@
     "startCmds": [
       "race bunny_hill"
     ]
+  },
+  {
+    "name": "tuxracer-tree",
+    "app": "tuxracer",
+    "frames": 572,
+    "input": "tuxracer-tree.json",
+    "controlInput": "tuxracer-tree-control.json",
+    "maxGt16": 0.05,
+    "fields": [
+      "game.state",
+      "tux.pos",
+      "phys.hash",
+      "ticks",
+      "race.tree_hits",
+      "cam.offset",
+      "rumble.sent",
+      "cw.rumble"
+    ],
+    "expect": {
+      "ticks": 572,
+      "game.state": 6
+    },
+    "hosts": [
+      "native",
+      "romdev"
+    ],
+    "startCmds": [
+      "race bunny_hill"
+    ],
+    "note": "A tree hit, felt in the pad and not in the camera: Bunny Hill, paddling and holding right until Tux runs into the trees at tick 569 (race.tree_hits). cam.offset holds the camera as drawn against the view on the frames within half a second of a tree hit or a touchdown: none off. cw.rumble is the engine's last request, the tree hit (heavy 0.9, light 0.5). Tux Racer never shook; this pins that it still does not. Control: holding left from frame 60 instead, no tree."
   }
 ]

@@ -50,6 +50,9 @@ Stick or d-pad or arrows / WASD move. A (Space, Enter) is the main button,
 B (Shift) the second, X (Z) and Y (X) the others. Player 1 can also use the
 keyboard. Each mini-game's card names the buttons it uses.
 
+The picture never shakes: hits, bumps, drops and the bombs of Blast Ring (by how close they go off) are felt in each
+person's own pad (rumble; Rumble on or off in the menu, saved).
+
 ## Building
 
     scripts/fetch-deps.sh
