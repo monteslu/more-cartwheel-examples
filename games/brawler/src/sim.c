@@ -38,7 +38,7 @@ const char_def DEFS[D_COUNT] = {
   [D_RINGMASTER] = { "Ringmaster", "ringmaster", 2.6f, 300, 1.1f, false, true, 1500 }, /* a mid-stage mini boss in the arcade */
   [D_COLOSSUS] = { "Colossus", "colossus", 2.2f, 380, 1.3f, true, false, 8000 },
   [D_ARTHUR] = { "Arthur", "arthur", 2.7f, 380, 1.15f, true, false, 3000 },
-  [D_REDNECK] = { "Redneck", "redneck", 2.1f, 56, 1.1f, false, false, 160 }, /* a regular enemy: the haymaker and the shoulder barge */
+  [D_TRUCKER] = { "Trucker", "trucker", 2.1f, 56, 1.1f, false, false, 160 }, /* a regular enemy: the haymaker and the shoulder barge */
   [D_CREEP] = { "Creep", "creep", 1.7f, 50, 0.9f, false, false, 180 }, /* a regular enemy who enjoys being hit: the coat flash, a lurch */
 };
 
@@ -60,8 +60,8 @@ const atk_data ATK[] = {
   [A_RUSH] = { "run", 60, 4, 46, 16, 1.25f, 0.85f, 2, 0.0f }, /* a boss charges along its lane */
   [A_FLICK] = { "flick", 36, 22, 29, 12, 1.4f, 0.8f, 1, 0.35f }, /* Arthur snaps his jacket open, then a backhand */
   [A_JUKE] = { "thump", 26, 0, 0, 0, 0, 0, 0, 0.0f }, /* Arthur thumps the jukebox on tick 0: the blow is the shockwave (juke_tick) */
-  [A_HAYMAKER] = { "haymaker", 42, 2, 9, 14, 1.4f, 0.8f, 2, 0.45f }, /* the redneck's looping right: the wind-up is the tell, the stumble after it the opening */
-  [A_BARGE] = { "shoulder", 50, 6, 34, 11, 1.3f, 0.85f, 2, 0.0f }, /* the redneck lowers a shoulder and runs along the lane */
+  [A_HAYMAKER] = { "haymaker", 42, 2, 9, 14, 1.4f, 0.8f, 2, 0.45f }, /* the trucker's looping right: the wind-up is the tell, the stumble after it the opening */
+  [A_BARGE] = { "shoulder", 50, 6, 34, 11, 1.3f, 0.85f, 2, 0.0f }, /* the trucker lowers a shoulder and runs along the lane */
   [A_FLASH] = { "flash", 40, 2, 12, 8, 1.35f, 0.9f, 1, 0.5f }, /* the creep throws his coat open wide and lunges: a stagger (his own clip; the tell is its first 0.43 s) */
 };
 /* attacks that need the long (heavy) telegraph and a danger ring on the street */
@@ -139,7 +139,7 @@ static rig *rig_get(int def) {
   { /* how the face takes a hit: the big men get scared, the little ones angry, the creep delighted */
     static const int TEMPER[D_COUNT] = { [D_ROOK] = FACE_FEAR, [D_MIKA] = FACE_ANGER, [D_JET] = FACE_ANGER, [D_THUG] = FACE_ANGER, [D_PUNK] = FACE_ANGER, [D_RUNNER] = FACE_ANGER,
       [D_KNIFER] = FACE_ANGER, [D_BRUISER] = FACE_FEAR, [D_THROWER] = FACE_ANGER, [D_GUARD] = FACE_ANGER, [D_FOREMAN] = FACE_FEAR, [D_MATRON] = FACE_FEAR,
-      [D_RINGMASTER] = FACE_FEAR, [D_COLOSSUS] = FACE_FEAR, [D_ARTHUR] = FACE_FEAR, [D_REDNECK] = FACE_FEAR, [D_CREEP] = FACE_BLISS };
+      [D_RINGMASTER] = FACE_FEAR, [D_COLOSSUS] = FACE_FEAR, [D_ARTHUR] = FACE_FEAR, [D_TRUCKER] = FACE_FEAR, [D_CREEP] = FACE_BLISS };
     face_temper(&r->sr, TEMPER[def]);
   }
   t3_release(inst); /* the node holds it */
@@ -397,7 +397,7 @@ int ent_spawn_enemy(int def, float x, float z) {
     if (!W.e[i].used) {
       ent_init(&W.e[i], def, false, x, z);
       W.e[i].idx = i;
-      if (def == D_REDNECK) W.red.spawned++;
+      if (def == D_TRUCKER) W.trucker.spawned++;
       if (def == D_CREEP) W.creep.spawned++;
       W.e[i].look = look_pick(def, i); /* its own skin tone and clothes, never another's on the street (looks.c) */
       if (W.e[i].root.id) looks_apply(rig_of[MAXP + i], W.e[i].look);
@@ -472,9 +472,9 @@ void ent_hurt(ent *v, ent *a, float dmg, int knock, float fx) {
   if (!alive(v) || v->invuln > 0) return;
   if (guard_blocks(v, a, knock)) return;
   bool boss = DEFS[v->def].boss || DEFS[v->def].mini;
-  /* the redneck's haymaker wind-up shrugs off a light blow (only a heavy one stops it): with every jab interrupting it,
+  /* the trucker's haymaker wind-up shrugs off a light blow (only a heavy one stops it): with every jab interrupting it,
      not one in the self-play runs ever landed. The tell is long, so the answer is to step out of the lane */
-  bool armour = boss || (v->def == D_REDNECK && v->st == S_ATK && v->atk == A_HAYMAKER);
+  bool armour = boss || (v->def == D_TRUCKER && v->st == S_ATK && v->atk == A_HAYMAKER);
   /* the creep leans into a light blow (no flinch) and it does him a little good: 2 of its damage back, never past his
      health; a kick, a throw or anything heavy still floors him */
   if (v->def == D_CREEP && knock == 0 && dmg > 0 && v->hp > dmg) { armour = true; W.creep.shrugged++; float h0 = v->hp; v->hp += 2; if (v->hp > v->maxhp) v->hp = v->maxhp; W.creep.healed += (int)(v->hp - h0 + 0.5f); }
@@ -538,7 +538,7 @@ void ent_hurt(ent *v, ent *a, float dmg, int knock, float fx) {
     if (die) {
       if (!v->player) {
         W.kills++;
-        if (v->def == D_REDNECK) W.red.kills++;
+        if (v->def == D_TRUCKER) W.trucker.kills++;
         if (v->def == D_CREEP) W.creep.kills++;
         if (a && a->player) a->score += DEFS[v->def].score;
         W.total_score += DEFS[v->def].score;
@@ -552,7 +552,7 @@ void ent_hurt(ent *v, ent *a, float dmg, int knock, float fx) {
       sfx(SFX_KO);
     }
   } else if (!armour || v->st != S_ATK) {
-    /* bosses and the mini boss do not flinch out of an attack (nor the redneck out of his haymaker) */
+    /* bosses and the mini boss do not flinch out of an attack (nor the trucker out of his haymaker) */
     if (!(armour && v->st == S_ATK)) {
       v->st = S_HIT, v->t = 0;
       v->stun = knock >= 1 ? 22 : 15;
@@ -575,8 +575,8 @@ static void start_attack(ent *e, akind k) {
     e->hurtflash = 1.4f;
   } else char_restart(e, atk_clip(e, k), 0.04f);
   if (k == A_SLAM || k == A_SPIN || k == A_BSPIN) sfx(SFX_WHIFF);
-  if (k == A_HAYMAKER) W.red.hay++;
-  if (k == A_BARGE) W.red.barge++;
+  if (k == A_HAYMAKER) W.trucker.hay++;
+  if (k == A_BARGE) W.trucker.barge++;
   if (k == A_FLASH) W.creep.flash++;
 }
 
@@ -624,8 +624,8 @@ static void do_hits(ent *a) {
     a->hitmask |= 1u << (i & 31);
     int knock = (int)ad->knock;
     if (a->atk == A_FINISH && a->combo != 2) knock = 1;
-    if (a->atk == A_HAYMAKER) W.red.hay_hits++;
-    if (a->atk == A_BARGE) W.red.barge_hits++;
+    if (a->atk == A_HAYMAKER) W.trucker.hay_hits++;
+    if (a->atk == A_BARGE) W.trucker.barge_hits++;
     if (a->atk == A_FLASH) W.creep.flash_hits++;
     ent_hurt(v, a, dmg, knock, 0);
     hit_any = true;
@@ -1013,7 +1013,7 @@ static void enemy_pick_attack(ent *e) {
   case D_BRUISER: start_attack(e, ri(0, 2) ? A_SWING : A_SLAM); break;
   case D_THROWER: start_attack(e, A_THROW); break;
   case D_GUARD: start_attack(e, A_BASH); break;
-  case D_REDNECK: start_attack(e, ri(0, 4) < 3 ? A_HAYMAKER : ri(0, 1) ? A_PUNCH1 : A_KICK); break;
+  case D_TRUCKER: start_attack(e, ri(0, 4) < 3 ? A_HAYMAKER : ri(0, 1) ? A_PUNCH1 : A_KICK); break;
   case D_CREEP: start_attack(e, ri(0, 2) ? A_FLASH : A_PUNCH1); break;
   default:
     if (d->boss || e->def == D_RINGMASTER) { /* three phases: each adds a move and a bigger tell; the last one charges along the lane */
@@ -1248,7 +1248,7 @@ static void enemy_update(int ei) {
       enemy_pick_attack(e);
     } else if (e->token && e->def == D_RUNNER && absf(dz) < 0.35f && absf(dx) > 3.0f && absf(dx) < 5.5f && ready) {
       enemy_pick_attack(e); /* the runner charges from a distance */
-    } else if (e->token && e->def == D_REDNECK && e->cd == 0 && absf(dz) < 0.35f && absf(dx) > 2.6f && absf(dx) < 5.0f && ready && ri(0, 59) == 0) {
+    } else if (e->token && e->def == D_TRUCKER && e->cd == 0 && absf(dz) < 0.35f && absf(dx) > 2.6f && absf(dx) < 5.0f && ready && ri(0, 59) == 0) {
       if (e->agent && crowd.id) cw_crowd_clear_target(crowd, AG(e->agent)); /* now and then he lowers a shoulder and barges along the lane */
       start_attack(e, A_BARGE);
       e->vx = (float)e->face * 6.0f;

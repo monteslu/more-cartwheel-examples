@@ -17,7 +17,7 @@ models/matron.glb
 models/ringmaster.glb
 models/colossus.glb
 models/arthur.glb
-models/redneck.glb
+models/trucker.glb
 models/creep.glb
 models/stage0.glb
 models/stage1.glb

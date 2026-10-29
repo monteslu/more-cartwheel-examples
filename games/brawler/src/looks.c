@@ -29,7 +29,7 @@ static uint32_t slots_of(int def) {
   case D_BRUISER: return SKIN | 1u << SL_SHIRT | 1u << SL_PANTS;
   case D_THROWER: return SKIN | HAIR | 1u << SL_SHIRT | 1u << SL_PANTS | 1u << SL_OUTER | 1u << SL_HAT;
   case D_GUARD: return SKIN; /* the uniform stays */
-  case D_REDNECK: return SKIN | HAIR | 1u << SL_SHIRT | 1u << SL_PANTS; /* the red cap stays */
+  case D_TRUCKER: return SKIN | HAIR | 1u << SL_SHIRT | 1u << SL_PANTS; /* the red cap stays */
   case D_CREEP: return 1u << SL_SHIRT | 1u << SL_PANTS | 1u << SL_OUTER | 1u << SL_HAT; /* always pale: his coat and hat vary */
   default: return 0;
   }
@@ -58,7 +58,7 @@ static const uint32_t HAT[] = { 0x282828, 0x5a1a1a, 0x1c2a44, 0x2e4a2e, 0xa04020
 static const uint32_t SHOE[] = { 0xd04030, 0xe2e2e2, 0x2a4aa0, 0x141414, 0xd8b830, 0x2a8a50 };
 static const uint32_t COAT[] = { 0x8a7652, 0x6a6a5c, 0x5a4a34, 0x4a4a3e, 0x7a6a4a, 0x3a3a34 }; /* the creep's trench coats: tan, grey, brown, olive, worn camel, charcoal */
 static const uint32_t MASK[] = { 0x6a1a1a, 0x18181a, 0x4a4a4e, 0x1c2a44, 0x3e4a2c };
-/* the redneck's tee is the dirt in its texture over a light dye: white, grey, a faded yellow, a pale blue, off white, sand */
+/* the trucker's tee is the dirt in its texture over a light dye: white, grey, a faded yellow, a pale blue, off white, sand */
 static const uint32_t TEE[] = { 0xf4f0e6, 0xd0d0cc, 0xece0b0, 0xc4d2e0, 0xe6e2d4, 0xd8d0b8 };
 #define N(a) (int)(sizeof a / sizeof *a)
 
@@ -80,7 +80,7 @@ static uint32_t look_make(int def, uint32_t seed) {
   for (int k = 0; k < 8; k++) {
     int n = sizes[k];
     if (k == LK_HAIR && def == D_PUNK) n = N(DYED);
-    if (k == LK_SHIRT && def == D_REDNECK) n = N(TEE);
+    if (k == LK_SHIRT && def == D_TRUCKER) n = N(TEE);
     if (k == LK_OUTER && (def == D_RUNNER || def == D_THROWER)) n = N(CLOTH);
     if (k == LK_OUTER && def == D_CREEP) n = N(COAT);
     if (n > 16) n = 16;
@@ -197,7 +197,7 @@ void looks_apply(int rig, uint32_t look) {
         break;
       case SL_HAIR: if (hair.r >= 0) c = hair; break;
       case SL_LASH: if (hair.r >= 0) c = (t3_color){ hair.r * 0.35f + 0.004f, hair.g * 0.35f + 0.004f, hair.b * 0.35f + 0.004f }; break;
-      case SL_SHIRT: c = rgb(def == D_REDNECK ? TEE[lk(look, LK_SHIRT) % N(TEE)] : CLOTH[lk(look, LK_SHIRT) % N(CLOTH)]); break;
+      case SL_SHIRT: c = rgb(def == D_TRUCKER ? TEE[lk(look, LK_SHIRT) % N(TEE)] : CLOTH[lk(look, LK_SHIRT) % N(CLOTH)]); break;
       case SL_PANTS: c = rgb(PANTS[lk(look, LK_PANTS) % N(PANTS)]); break;
       case SL_OUTER: c = rgb(def == D_CREEP ? COAT[lk(look, LK_OUTER) % N(COAT)] : def == D_RUNNER || def == D_THROWER ? CLOTH[lk(look, LK_OUTER) % N(CLOTH)] : LEATHER[lk(look, LK_OUTER) % N(LEATHER)]); break;
       case SL_HAT: c = rgb(def == D_CREEP ? COAT[(lk(look, LK_HAT) + 2) % N(COAT)] : HAT[lk(look, LK_HAT) % N(HAT)]); break; /* the creep's fedora: browns and greys */

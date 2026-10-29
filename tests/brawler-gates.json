@@ -1,7 +1,7 @@
 [
   {
     "name": "brawler-brawl",
-    "note": "brawler_auto: three bots fight stage 1 for 1200 ticks. The named state (positions, hit points, the hash of every body every tick) must match exactly on every host; the expects pin this run (repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth: game.overlaps, pairs of bodies still inside each other on any frame, stays 0). The control is one frame short. Repinned 2026-10-29 (B-PT7..10): reach now grows with body girth, enemies are clamped inside the attack margin, the bots turn to face their target, the redneck joined the waves and boss health was cut; the looks and the blood are presentation and move nothing.",
+    "note": "brawler_auto: three bots fight stage 1 for 1200 ticks. The named state (positions, hit points, the hash of every body every tick) must match exactly on every host; the expects pin this run (repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth: game.overlaps, pairs of bodies still inside each other on any frame, stays 0). The control is one frame short. Repinned 2026-10-29 (B-PT7..10): reach now grows with body girth, enemies are clamped inside the attack margin, the bots turn to face their target, the trucker joined the waves and boss health was cut; the looks and the blood are presentation and move nothing.",
     "app": "brawler_auto",
     "frames": 1200,
     "fields": [
@@ -66,7 +66,7 @@
   },
   {
     "name": "brawler-solo",
-    "note": "One bot (players 1) on stage 1: the crowd, the thrower and the token cap against a single fighter. Expects repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth (game.overlaps stays 0). Repinned 2026-10-29 (B-PT7..10): reach now grows with body girth, enemies are clamped inside the attack margin, the bots turn to face their target, the redneck joined the waves and boss health was cut; the looks and the blood are presentation and move nothing.",
+    "note": "One bot (players 1) on stage 1: the crowd, the thrower and the token cap against a single fighter. Expects repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth (game.overlaps stays 0). Repinned 2026-10-29 (B-PT7..10): reach now grows with body girth, enemies are clamped inside the attack margin, the bots turn to face their target, the trucker joined the waves and boss health was cut; the looks and the blood are presentation and move nothing.",
     "app": "brawler_auto",
     "frames": 1500,
     "startCmds": [
@@ -125,7 +125,7 @@
   },
   {
     "name": "brawler-four",
-    "note": "Four bots (players 4) on stage 2 (docks: guards and throwers from the first waves). Expects repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth (game.overlaps stays 0). Repinned 2026-10-29 (B-PT7..10): reach now grows with body girth, enemies are clamped inside the attack margin, the bots turn to face their target, the redneck joined the waves and boss health was cut; the looks and the blood are presentation and move nothing.",
+    "note": "Four bots (players 4) on stage 2 (docks: guards and throwers from the first waves). Expects repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth (game.overlaps stays 0). Repinned 2026-10-29 (B-PT7..10): reach now grows with body girth, enemies are clamped inside the attack margin, the bots turn to face their target, the trucker joined the waves and boss health was cut; the looks and the blood are presentation and move nothing.",
     "app": "brawler_auto",
     "frames": 1500,
     "startCmds": [
@@ -193,7 +193,7 @@
   },
   {
     "name": "brawler-boss",
-    "note": "Stage 1 boss wave with three bots: the boss goes through its three phases (game.boss_phase 2 reached) and the danger rings show on the street. Expects repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth (game.overlaps stays 0). Repinned 2026-10-29 (B-PT7..10): reach now grows with body girth, enemies are clamped inside the attack margin, the bots turn to face their target, the redneck joined the waves and boss health was cut; the looks and the blood are presentation and move nothing. Since then it runs with the bots at a fighter's real damage (botdmg 1, 3600 frames) so the Foreman fight lasts as it does for a player: the run ends in his last phase (game.boss_phase 2) still on stage 1 (game.stage 0).",
+    "note": "Stage 1 boss wave with three bots: the boss goes through its three phases (game.boss_phase 2 reached) and the danger rings show on the street. Expects repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth (game.overlaps stays 0). Repinned 2026-10-29 (B-PT7..10): reach now grows with body girth, enemies are clamped inside the attack margin, the bots turn to face their target, the trucker joined the waves and boss health was cut; the looks and the blood are presentation and move nothing. Since then it runs with the bots at a fighter's real damage (botdmg 1, 3600 frames) so the Foreman fight lasts as it does for a player: the run ends in his last phase (game.boss_phase 2) still on stage 1 (game.stage 0).",
     "app": "brawler_auto",
     "frames": 3600,
     "startCmds": [
@@ -292,7 +292,7 @@
   },
   {
     "name": "brawler-arthur",
-    "note": "Stage 2 (the docks) boss wave with three bots: Arthur reaches his second phase, walks to the jukebox, thumps it (his theme, a shockwave along the floor that knocks down whoever is on the ground and that the bots jump), then the thumbs up. game.juke is [uses, fighters knocked down, fighters who jumped it, playing, ring radius in cm, ticks on his way]. The control freezes everyone, so the jukebox is never thumped. Expects repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth (game.overlaps stays 0). Repinned 2026-10-29 (B-PT7..10): reach now grows with body girth, enemies are clamped inside the attack margin, the bots turn to face their target, the redneck joined the waves and boss health was cut; the looks and the blood are presentation and move nothing. Since then at real damage (botdmg 1, 2400 frames): Arthur thumps the jukebox once (one fighter knocked down, two jump it) and is beaten before the stage changes (game.stage 1).",
+    "note": "Stage 2 (the docks) boss wave with three bots: Arthur reaches his second phase, walks to the jukebox, thumps it (his theme, a shockwave along the floor that knocks down whoever is on the ground and that the bots jump), then the thumbs up. game.juke is [uses, fighters knocked down, fighters who jumped it, playing, ring radius in cm, ticks on his way]. The control freezes everyone, so the jukebox is never thumped. Expects repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth (game.overlaps stays 0). Repinned 2026-10-29 (B-PT7..10): reach now grows with body girth, enemies are clamped inside the attack margin, the bots turn to face their target, the trucker joined the waves and boss health was cut; the looks and the blood are presentation and move nothing. Since then at real damage (botdmg 1, 2400 frames): Arthur thumps the jukebox once (one fighter knocked down, two jump it) and is beaten before the stage changes (game.stage 1).",
     "app": "brawler_auto",
     "frames": 2400,
     "startCmds": [
@@ -374,8 +374,8 @@
     "controlFrames": 2400
   },
   {
-    "name": "brawler-redneck",
-    "note": "Stage 1, wave 2 (thugs, a punk and the redneck) with two bots: the redneck winds up his haymaker (its wind-up shrugs off light blows) and lands it, barges along the lane, and is beaten. game.redneck is [rednecks spawned, haymakers, haymakers that landed, barges, barges that landed, rednecks killed]. Also the looks and the blood: game.clones (most pairs of one kind of enemy on the street that look the same on any frame) stays 0, fx.blood is [stains placed, droplet bursts, stains showing, same-shape stains on top of each other] and its last entry stays 0. The control freezes everyone, so nobody swings. rag.hash is left out of this gate: with the redneck knocked down out of his haymaker clip, the ragdoll started from that pose hashes 3232650868 natively and 3315670625 on every cart host (romdev, Chromium, romdev on GL alike), while the game state is equal on all of them: the presentation pose sampled natively and in the cart differs for that clip (findings/brawler.md, engine note 5). The other gates still compare rag.hash on every host. Repinned when the creep joined the wave after it (the run reaches it).",
+    "name": "brawler-trucker",
+    "note": "Stage 1, wave 2 (thugs, a punk and the trucker) with two bots: the trucker winds up his haymaker (its wind-up shrugs off light blows) and lands it, barges along the lane, and is beaten. game.trucker is [truckers spawned, haymakers, haymakers that landed, barges, barges that landed, truckers killed]. Also the looks and the blood: game.clones (most pairs of one kind of enemy on the street that look the same on any frame) stays 0, fx.blood is [stains placed, droplet bursts, stains showing, same-shape stains on top of each other] and its last entry stays 0. The control freezes everyone, so nobody swings. rag.hash is left out of this gate: with the trucker knocked down out of his haymaker clip, the ragdoll started from that pose hashes 3232650868 natively and 3315670625 on every cart host (romdev, Chromium, romdev on GL alike), while the game state is equal on all of them: the presentation pose sampled natively and in the cart differs for that clip (findings/brawler.md, engine note 5). The other gates still compare rag.hash on every host. Repinned when the creep joined the wave after it (the run reaches it).",
     "app": "brawler_auto",
     "frames": 2400,
     "startCmds": [
@@ -404,7 +404,7 @@
       "game.rigs",
       "rag.made",
       "rag.missed",
-      "game.redneck",
+      "game.trucker",
       "game.clones",
       "fx.blood",
       "game.overlaps"
@@ -421,7 +421,7 @@
       "game.hash": 1038119854,
       "game.wave": 2,
       "game.deaths": 0,
-      "game.redneck": [
+      "game.trucker": [
         1,
         1,
         1,

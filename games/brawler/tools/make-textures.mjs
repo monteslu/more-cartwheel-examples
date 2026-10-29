@@ -455,7 +455,7 @@ const burst = (u, v, o) => {
 // a danger ring for heavy attacks: a bright rim and a faint fill (white, tinted by the decal colour, added to the street)
 const ring = (u, v, o) => { const d = Math.hypot(u - 0.5, v - 0.5) * 2; o.r = o.g = o.b = 1; o.a = Math.max(smooth(0.74, 0.84, d) * smooth(1.0, 0.9, d), smooth(0.86, 0.2, d) * 0.28); };
 
-// ── the redneck's clothes ────────────────────────────────────────────────
+// ── the trucker's clothes ────────────────────────────────────────────────
 // A worn cotton tee gone dingy: the weave, a grey cast that gathers low (dirt wiped on it), and stains of every kind,
 // none repeated: coffee and gravy blotches with a darker tide line where they dried, yellowed sweat under the arms and
 // at the collar, black grease smears (wiped hands), a dusting of dirt specks. Laid out for a 1 m tile (the whole torso

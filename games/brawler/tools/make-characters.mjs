@@ -435,7 +435,7 @@ clip('thump', 1.0, false, keyed([
   [0.6, THUMP_HIT, 'in'], [0.68, merge(THUMP_HIT, { UpperArmR: { r: [-1.25, 0.15, -0.3] }, Spine: { r: [0.26, -0.05, 0.05] } }), 'out'], [0.76, THUMP_HIT, 'io'], [1.0, BOXER, 'io']]));
 
 // ── pose to rotation tracks ─────────────────────────────────────────────
-// the redneck's haymaker: a big looping right, wound up from the hip with the whole body turned away (the tell), thrown
+// the trucker's haymaker: a big looping right, wound up from the hip with the whole body turned away (the tell), thrown
 // round in an arc, then the follow-through carries him off balance and he has to catch himself (an opening)
 const HAY_BACK = G({ Hips: { p: [0, -0.1, -0.06], r: [0, 0.45, 0] }, Spine: { r: [0.05, -0.4, 0] }, Chest: { r: [-0.08, -0.6, 0] }, Head: { r: [-0.05, 0.4, 0] },
   UpperArmR: { r: [0.15, 0.35, -1.25] }, LowerArmR: { r: [-1.35, 0, 0] }, HandR: { r: [0.2, 0, 0] }, UpperArmL: { r: [-0.95, -0.2, 0.35] }, LowerArmL: { r: [-1.5, 0, 0] },
@@ -451,7 +451,7 @@ clip('haymaker', 1.15, false, keyed([
   [0.5, HAY_HIT, 'out'],
   [0.6, HAY_OVER, 'io'],
   [0.85, merge(HAY_OVER, { UpperArmL: { r: [-0.5, 0, 1.1] }, Head: { r: [0.15, -0.4, 0.05] } }), 'io'],
-  [1.15, GUARD, 'io']]), ['redneck']);
+  [1.15, GUARD, 'io']]), ['trucker']);
 // the creep: a hunched lurching walk (one leg dragged), and the flash: he spreads his coat wide with both hands and lunges
 clip('lurch', 1.3, true, (t) => {
   const p = walkPose(t, 1.3, false), w = (t / 1.3) * PI * 2;
@@ -1269,9 +1269,9 @@ export const SPECS = [
     frown: true, scale: 1.08, width: 1.35, chest: 1.1, sw: 0.235, hw: 0.11, arm: 1.25, leg: 1.15, head: 1.0, hand: 1.35, jaw: 1.25, neck: 1.2, hair: 'helmet', pads: true, padMat: 'metal', armor: true, gloves: true, boots: true, belt: true, kneepads: true,
     top: 'longsleeve', shirtFab: 'cloth', bottom: 'cargo', pantsFab: 'cloth',
     colors: { skin: 0xb88a64, shirt: 0x1c2638, pants: 0x232a36, shoes: 0x111111, hair: 0x202020, accent: 0xd0d8e0, metal: 0x3a4a64, helmet: 0x26324a, glove: 0x161616, belt: 0x0e0e0e, pad: 0x3a4a64 }, eyes: 0xa0c0ff },
-  // the redneck: a big soft-bellied man in a red trucker cap that says "Dumb", a grimy stained tee, faded jeans and
+  // the trucker: a big soft-bellied man in a red trucker cap that says "Dumb", a grimy stained tee, faded jeans and
   // work boots, a mullet and a scruffy moustache (a regular enemy: a wild haymaker and a shoulder charge)
-  { name: 'redneck', face: { noseW: 1.2, noseLen: 1.05, hook: 0.15, crook: 0.3, brow: 1.2, browThick: 0.06, eyeR: 0.155, socket: 1.1, jawAng: 1.1, chin: 1.0, jowl: 0.7, cheek: 0.95, naso: 1.1, lipU: 0.85, mw: 0.25 },
+  { name: 'trucker', face: { noseW: 1.2, noseLen: 1.05, hook: 0.15, crook: 0.3, brow: 1.2, browThick: 0.06, eyeR: 0.155, socket: 1.1, jawAng: 1.1, chin: 1.0, jowl: 0.7, cheek: 0.95, naso: 1.1, lipU: 0.85, mw: 0.25 },
     paint: { age: 0.35, ruddy: 0.8, stubble: 0.85, shadow: 0.3, iris: [0.3, 0.38, 0.45], hairline: true, browColor: [0.3, 0.2, 0.12], beardColor: [0.34, 0.23, 0.13] },
     stubble: true, frown: true, moustache: 'thick', scale: 1.06, width: 1.4, belly: 1.15, chest: 1.0, sw: 0.225, hw: 0.11, arm: 1.25, leg: 1.12, head: 1.08, hand: 1.4, jaw: 1.2, neck: 1.25,
     hair: 'trucker', boots: true, belt: true, top: 'tee', sleeves: 'short', shirtFab: 'dirty', shirtTile: 1.0, bottom: 'jeans', pantsFab: 'denim',
