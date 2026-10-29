@@ -354,13 +354,22 @@ static const pbr *pbr_get(int kind) {
   free(h), free(alb), free(ro);
   return r;
 }
+enum { RC = 24 };
+static struct { int kind; float repeat; t3_texture *t[3]; } rc[RC]; /* the repeated copies made (view_free drops them) */
+static int nrc;
 static void pbr_apply(t3_material *m, int kind, float repeat, float normal_scale) {
   const pbr *p = pbr_get(kind);
   t3_texture *ts[3] = { p->map, p->normal, p->rough };
   t3_map_slot slots[3] = { T3_MAP, T3_NORMAL_MAP, T3_ROUGHNESS_MAP };
+  /* one copy per (set, repeat): the horde's 32 meshes of a kind share their three textures, so the GPU
+   * holds them once and a frame binds them once, not three per draw */
+  int hit = -1;
+  for (int k = 0; k < nrc; k++)
+    if (rc[k].kind == kind && rc[k].repeat == repeat && rc[k].t[0]) hit = k;
   for (int i = 0; i < 3; i++) {
     t3_texture *c = ts[i];
-    if (repeat != 1) { /* the repeat lives on the texture in three.js: a copy that shares the pixels */
+    if (repeat != 1 && hit >= 0) c = t3_retain(rc[hit].t[i]);
+    else if (repeat != 1) { /* the repeat lives on the texture in three.js: a copy that shares the pixels */
       c = t3_texture_new(p->n, p->n, p->px[i]);
       c->wrap_s = c->wrap_t = T3_REPEAT;
       c->flip_y = false;
@@ -372,8 +381,10 @@ static void pbr_apply(t3_material *m, int kind, float repeat, float normal_scale
       c->repeat = (t3_vec2){ repeat, repeat };
     }
     t3_material_set_texture(m, slots[i], c);
+    if (repeat != 1 && hit < 0 && nrc < RC) rc[nrc].t[i] = t3_retain(c);
     if (c != ts[i]) t3_release(c);
   }
+  if (repeat != 1 && hit < 0 && nrc < RC) rc[nrc].kind = kind, rc[nrc].repeat = repeat, nrc++;
   m->normal_scale = (t3_vec2){ normal_scale, normal_scale };
   m->roughness = 1.0f;
 }
@@ -666,12 +677,13 @@ void view_init(cw_node root) {
         V.br[k] = sqrtf(r2) * 1.1f + 0.05f;
       }
       int bc = k == EK_BOSS ? 4 : cap[k] / V.bn[k] * 3 / 2 + 48;
+      t3_material *m = mat(1, 1, 1, rough[k], 0.0f, true); /* one material for every frame of a kind */
+      pbr_apply(m, TX_HIDE, rep_[k], 0.8f);
       for (int f = 0; f < V.bn[k]; f++) {
-        t3_material *m = mat(1, 1, 1, rough[k], 0.0f, true);
-        pbr_apply(m, TX_HIDE, rep_[k], 0.8f);
         t3_retain(V.ch[k].geo[0][f]);
-        V.eb[k][f] = imesh(nm[k], V.ch[k].geo[0][f], m, bc, shadow[k]);
+        V.eb[k][f] = imesh(nm[k], V.ch[k].geo[0][f], t3_retain(m), bc, shadow[k]); /* imesh takes both references */
       }
+      t3_release(m);
     }
   }
   V.bullet = imesh("Bullets", t3_box_geometry_new(0.09f, 0.09f, 1.2f, 1, 1, 1), glow(1, 0.82f, 0.35f, 9), MAXB, false); /* a long hot tracer */
@@ -782,6 +794,11 @@ void view_free(void) {
     free(PB[i].px[0]), free(PB[i].px[1]), free(PB[i].px[2]);
   }
   memset(PB, 0, sizeof PB);
+  for (int k = 0; k < nrc; k++)
+    for (int i = 0; i < 3; i++)
+      if (rc[k].t[i]) t3_release(rc[k].t[i]);
+  memset(rc, 0, sizeof rc);
+  nrc = 0;
   memset(&V, 0, sizeof V);
 }
 

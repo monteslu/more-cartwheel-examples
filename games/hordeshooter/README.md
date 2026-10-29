@@ -74,6 +74,10 @@ picks a graphics preset, `HORDE_BENCH=1` prints timings every 120 frames,
 player power-up n (0 to 11, the table order) and keeps it held, `HORDE_POWER_SHOW=1`
 lays one of each round the start. A run started at a later
 wave begins with about the levels a played run has there.
+`HORDE_CULL=0` draws the horde outside the view too (the A/B of the culling).
+`hordeshooter_bench` is the auto build at wave 14 with three players from the first frame (about 2000
+enemies), the late-wave scene `tests/hordeshooter-perf.mjs` times on GL and WebGPU at 1080p (a cart reads
+no environment, so its start is built in).
 `hordeshooter_soak [minutes] [players] [wave]` plays the rules with the bots and
 no window and no GPU (30 game minutes take a few seconds) and checks every tick
 for stray positions, counts that disagree and a team stretched past one view

@@ -62,6 +62,8 @@ volumetric_ambient = 0.5
 volumetric_albedo = color(1, 0.84, 0.7, 1)
 
 [node name="Post" parent="." type="PostProcess"]
+; depth first: the yard is not shaded under the horde (GL; the same picture)
+depth_prepass = true
 tonemap = AGX
 exposure = 0.95
 bloom = true
