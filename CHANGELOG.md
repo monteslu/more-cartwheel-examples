@@ -15,7 +15,7 @@ All eight games on cartwheel-engine v0.23.1.
   The crowd is a neutral grey instead of mauve.
 - brawler: boss fights about a minute solo (they took two to three, and some
   never ended), every enemy his own skin tone and clothes, two new enemies
-  (the trucker in his red "Dumb" cap, the creep in the trench coat who enjoys
+  (the wanker in his red "Dumb" cap, the creep in the trench coat who enjoys
   being hit), blood and gore, faces that show fear, anger or delight when
   hit, Arthur's pompadour rebuilt. No camera shake: big hits rumble the pad.
 - fighter: held directions walk (diagonals too), one press of up jumps, up
