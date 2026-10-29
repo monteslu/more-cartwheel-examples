@@ -21,6 +21,9 @@ All eight games on cartwheel-engine v0.23.1.
 - fighter: held directions walk (diagonals too), one press of up jumps, up
   with an attack gives the high attack, down crouches; d-pad, stick and
   keyboard each tested.
+- No camera shake in any game: arenafps, coopplatformer, fighter, partypack,
+  skyfighter and tuxracer rumble the player's pad on explosions, big hits and
+  landings instead, with a Rumble On/Off setting where a game has settings.
 
 ## 0.3.0
 
