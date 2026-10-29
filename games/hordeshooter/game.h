@@ -135,6 +135,8 @@ void view_camera(const sim *s, cw_node camera, float aspect, float shake_x, floa
 bool view_screen(t3_vec3 p, float *u, float *v); /* a world point on screen (0..1, y down) */
 typedef struct view_stats { int enemies_drawn, bullets, pickups; } view_stats;
 view_stats view_get_stats(void);
+void view_set_sun(t3_vec3 dir); /* where the sunlight travels (world): the blob shadows' direction and length */
+bool view_lightmap(cw_tree *t); /* bake (HORDE_BAKE) or load the yard's lightmap and apply it; once */
 /* fx.c */
 void fx_init(cw_node root);
 void fx_free(void);
