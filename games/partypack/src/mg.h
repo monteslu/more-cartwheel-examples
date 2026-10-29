@@ -105,8 +105,16 @@ void sfx(int id, float vol, float pitch);
 void sfx_music(int which); /* 0 off, 1 hub, 2 game */
 void sfx_music_stop(void);
 
-/* particles, popups and shake in stage units */
-extern float fx_shake;
+/* rumble (cartwheel/input.h): the feel of a hit or a blast in the pad of the player it concerns, a person's only (never a
+ * CPU seat's); the view never shakes. Presentation only: nothing reads it back, so a replay is unchanged. A request on
+ * top of one still running keeps the stronger of each motor and the longer time; the motors stop on their own. */
+void pp_rumble(const mg_ctx *c, int p, float low, float high, int ms);
+void pp_rumble_tick(void);     /* the framework, every tick: the rumble's clock */
+void pp_rumble_stop(void);     /* every pad's motors off now (out of play, Rumble turned off) */
+extern bool pp_rumble_off;     /* the menu's Rumble setting (saved) */
+extern int32_t pp_rumble_sent[NP]; /* debug rumble.sent: requests sent to each seat's pad */
+
+/* particles and popups in stage units */
 void fx_reset(void);
 void fx_burst(cw_vec2 p, int n, cw_color c, float speed, float life, float size);
 void fx_ring(cw_vec2 p, float r0, float r1, float life, cw_color c);

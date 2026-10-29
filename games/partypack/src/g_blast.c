@@ -17,7 +17,6 @@ static struct {
   int shrink_stage, warn;
   struct { bool on; float x, z; int fuse, drop; cw_node mesh, ring; } bomb[NBOMB];
   int next_bomb;
-  float shake;
   int elim_order;
   cw_node scorch[12], ember[6];
   int nscorch, ember_t[6], nember;
@@ -107,6 +106,7 @@ static void set_size(float s) {
   }
 }
 
+static mg_ctx *KC; /* the tick's context, for the rumble */
 static void explode(int b) {
   float bx = K.bomb[b].x, bz = K.bomb[b].z;
   t3_vec3 at = { bx, 0.4f, bz };
@@ -117,7 +117,6 @@ static void explode(int b) {
   n3_flash((t3_vec3){ bx, 1.6f, bz }, (cw_color){ 1, 0.55f, 0.22f, 1 }, 70, 12);
   sfx(SFX_BOOM, 0.9f, 0.9f + 0.2f * (float)(b % 3) / 3);
   fx_hitstop(3);
-  K.shake = 0.5f;
   { /* a scorch mark that stays, and an ember glow that cools */
     int si = K.nscorch++ % 12;
     if (cw_node_valid(K.scorch[si])) cw_node_free(K.scorch[si]);
@@ -133,6 +132,8 @@ static void explode(int b) {
     if (!K.alive[i]) continue;
     cw_vec2 p = ball_xz(i);
     float dx = p.x - bx, dz = p.y - bz, d = sqrtf(dx * dx + dz * dz);
+    /* the blast in the pad: the heavy motor, strong at the bomb and fading to nothing three blast radii out */
+    if (d < RAD * 3) { float r = 1 - d / (RAD * 3); r *= r; pp_rumble(KC, i, 0.25f + 0.75f * r, 0.25f * r, 120 + (int)(260 * r)); }
     if (d > RAD) continue;
     float k = 1 - d / RAD;
     if (d < 0.05f) { dx = 1; dz = 0; d = 1; }
@@ -178,6 +179,7 @@ static bool spawn_bomb_at(float x, float z) {
 }
 
 static void tick(mg_ctx *c) {
+  KC = c;
   const float dt = 1.0f / 60.0f;
   n3_fx_tick();
   for (int e = 0; e < 6; e++) if (K.ember_t[e] > 0 && cw_node_valid(K.ember[e])) { K.ember_t[e]--; cw_node_set(K.ember[e], "energy", cw_val_float(1.6f * (float)K.ember_t[e] / 150.0f)); if (!K.ember_t[e]) { cw_node_free(K.ember[e]); K.ember[e] = (cw_node){ 0 }; } }
@@ -191,8 +193,8 @@ static void tick(mg_ctx *c) {
     if (c->tick >= at) {
       set_size(step_size[K.shrink_stage++]);
       sfx(SFX_HIT, 1, 0.6f);
-      K.shake = 0.35f;
       fx_impact();
+      for (int i = 0; i < NP; i++) if (K.alive[i]) pp_rumble(c, i, 0.35f, 0, 150); /* the arena steps in: a thud */
       for (int e = 0; e < 8; e++) n3_fx("dust", (t3_vec3){ (e % 2 ? 1 : -1) * K.size * 0.5f * (e < 4 ? 1.0f : 0.0f), 0.2f, (e % 2 ? 1 : -1) * K.size * 0.5f * (e >= 4 ? 1.0f : 0.0f) }, 1.4f);
     }
   }
@@ -264,6 +266,7 @@ static void tick(mg_ctx *c) {
       n3_flash((t3_vec3){ p.x, -5, p.z }, (cw_color){ 1, 0.4f, 0.1f, 1 }, 120, 12);
       sfx(SFX_SPLASH, 0.8f, 0.7f);
       fx_hitstop(7); /* a knock-out: everything holds for a beat */
+      pp_rumble(c, i, 0.6f, 0.6f, 250);
       cw_node_free(K.ball[i]);
       K.ball[i] = (cw_node){ 0 };
       continue;
@@ -275,9 +278,7 @@ static void tick(mg_ctx *c) {
     for (int i = 0; i < NP; i++) if (K.alive[i]) c->score[i] = 20000.0f;
     if (c->tick > 60) c->done = true;
   }
-  K.shake *= 0.9f;
-  float sh = K.shake;
-  n3_camera(sinf((float)c->tick * 2.1f) * sh, 11 + cosf((float)c->tick * 2.7f) * sh, 9.5f, 0, 0, 0.6f);
+  n3_camera(0, 11, 9.5f, 0, 0, 0.6f); /* the camera stands still: a blast is felt in the pad */
   cam_offset_3d(n3_find("Camera"), 0, 11, 9.5f);
 }
 

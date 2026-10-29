@@ -93,6 +93,8 @@ static void tick(mg_ctx *c) {
         }
         fx_burst(cw_v2(C.p[j].x, C.p[j].y), 8, cw_rgba(1, 0.9f, 0.4f, 1), 200, 0.4f, 6);
         fx_hitstop(3);
+        pp_rumble(c, j, 0.15f, 0.6f, 90); /* bumped: sharp */
+        pp_rumble(c, i, 0, 0.3f, 50);     /* the bump landed */
         sfx(SFX_HIT, 0.5f, 1.2f);
       }
     }

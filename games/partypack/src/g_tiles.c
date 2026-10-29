@@ -88,6 +88,7 @@ static void tick(mg_ctx *c) {
         sfx(SFX_SPLASH, 0.6f, 0.7f);
         fx_text(cw_v2(fclampf(p->x, 120, 1160), 330), "DROP", PCOL[i], 34);
         fx_hitstop(4);
+        pp_rumble(c, i, 0.45f, 0.3f, 180); /* dropped through */
       }
       continue;
     }
@@ -188,10 +189,11 @@ static void draw(mg_ctx *c, float alpha, float t) {
       int st = T.tile[r][k].st;
       if (st == 2) { cw_r2d_rect(cw_rect_make(x + 3, y + 3, TW - 6, TH - 6), cw_rgba(0.02f, 0.01f, 0.05f, 1)); continue; }
       float wear = fminf((float)T.tile[r][k].wear / (float)WEAR, 1);
-      float shake = st == 1 ? sinf((float)c->tick * 1.6f + (float)(r * 7 + k)) * 2.5f : 0;
       cw_color top = col_mix(cw_rgba(0.35f, 0.7f, 0.95f, 1), cw_rgba(0.95f, 0.45f, 0.3f, 1), st == 1 ? 1.0f : wear * 0.8f);
-      cw_r2d_rect(cw_rect_make(x + 3 + shake, y + 9, TW - 6, TH - 6), col_mix(top, cw_rgba(0, 0, 0, 1), 0.5f));
-      cw_r2d_rect(cw_rect_make(x + 3 + shake, y + 3, TW - 6, TH - 6), top);
+      /* a tile about to drop pulses brighter and darker (it used to jiggle sideways: nothing on screen shakes now) */
+      if (st == 1) top = col_mix(top, cw_rgba(1, 0.9f, 0.6f, 1), 0.35f + 0.35f * sinf((float)c->tick * 0.25f + (float)(r * 7 + k)));
+      cw_r2d_rect(cw_rect_make(x + 3, y + 9, TW - 6, TH - 6), col_mix(top, cw_rgba(0, 0, 0, 1), 0.5f));
+      cw_r2d_rect(cw_rect_make(x + 3, y + 3, TW - 6, TH - 6), top);
       if (wear > 0.4f || st == 1) { /* cracks */
         cw_r2d_line(cw_v2(x + 20, y + 14), cw_v2(x + 50, y + 40), 3, cw_rgba(0.1f, 0.05f, 0.1f, 0.8f));
         cw_r2d_line(cw_v2(x + 50, y + 40), cw_v2(x + 78, y + 30), 3, cw_rgba(0.1f, 0.05f, 0.1f, 0.8f));

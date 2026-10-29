@@ -154,8 +154,8 @@ static void tick(mg_ctx *c) {
         if (Rc.haz[h].kind == 2) { if (Rc.boost[i] < 40) { Rc.boost[i] = 40; sfx(SFX_COIN, 0.35f, 1.5f); } }
         else if (Rc.slow[i] == 0 && Rc.spin[i] == 0) {
           Rc.slow[i] = 50;
-          if (Rc.haz[h].kind == 0) { Rc.spin[i] = 40; sfx(SFX_BOUNCE, 0.5f, 0.6f); fx_hitstop(3); n3_fx("dust", (t3_vec3){ x, 0.2f, z }, 1.0f); }
-          else { sfx(SFX_HIT, 0.6f, 1); fx_hitstop(5); n3_fx("sparks", (t3_vec3){ x, 0.5f, z }, 0.6f); n3_fx("dust", (t3_vec3){ x, 0.3f, z }, 1); Rc.spin[i] = 20; }
+          if (Rc.haz[h].kind == 0) { Rc.spin[i] = 40; sfx(SFX_BOUNCE, 0.5f, 0.6f); fx_hitstop(3); pp_rumble(c, i, 0.3f, 0.2f, 120); n3_fx("dust", (t3_vec3){ x, 0.2f, z }, 1.0f); }
+          else { sfx(SFX_HIT, 0.6f, 1); fx_hitstop(5); pp_rumble(c, i, 0.25f, 0.7f, 130); n3_fx("sparks", (t3_vec3){ x, 0.5f, z }, 0.6f); n3_fx("dust", (t3_vec3){ x, 0.3f, z }, 1); Rc.spin[i] = 20; }
         }
       }
     }
