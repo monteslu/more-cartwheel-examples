@@ -43,10 +43,17 @@ typedef struct save_data {
   best_entry best[MAX_COURSES];
   int32_t cup_race;          /* the next race of the Canadian Cup */
   int32_t cup_lives;
-  uint8_t cup_won;
+  uint8_t cup_won : 1;       /* was a whole byte holding 0 or 1: Rumble OFF takes the next bit, so an older save keeps */
+  uint8_t rumble_off : 1;    /* its size and reads Rumble on */
   uint8_t gfx[3];            /* the graphics settings (cw_quality_saved, 24 bits little-endian); 0 = never chosen */
 } save_data;
 static save_data SAVE;
+_Static_assert(sizeof(save_data) == 12 + 16 * MAX_COURSES + 12, "the save keeps its size");
+static void rumble(float low, float high, int ms);
+static int32_t cam_offset[3]; /* the shake check (pre_render_hook) */
+static int impacts, impact_frames; /* tree hits and touchdowns, for the shake check */
+static int32_t tree_hits[2]; /* debug race.tree_hits: tree hits, and the tick of the last */
+static void rumble_stop(void);
 typedef struct cup_race { char dir[64]; int herring[4]; float time[4]; int score[4]; bool mirrored, windy, snowing; int conditions; } cup_race;
 typedef struct cup_def { char name[64]; cup_race races[MAX_RACES]; int count; } cup_def;
 static const char *const COND_NAME[COND_COUNT] = { "Sunny", "Cloudy", "Night" };
@@ -505,6 +512,7 @@ static void apply_dof(void) {
 }
 
 static void race_over(bool aborted) {
+  rumble_stop();
   G.phys.enabled = false;
   G.aborted = aborted;
   float par = G.mode == MODE_CUP ? G.cups[G.cup_idx].races[G.race_idx].time[0] : G.info->par; /* game_logic_util.c: the easy time is par */
@@ -559,7 +567,8 @@ static void racing_tick(float dt) {
   /* landing squash (render only): a spring kicked by the vertical speed lost on touchdown */
   if (G.was_airborne && !p->airborne) {
     G.squash_v += fminf(0.35f, fabsf(p->vel.y) * 0.03f + 0.06f);
-    cw_input_rumble(0, fminf(1, fabsf(p->vel.y) * 0.12f + 0.2f), 0.2f, 140); /* the touchdown in the pad (v0.16 rumble; a no-op without motors) */
+    impacts++;
+    rumble(fminf(1, fabsf(p->vel.y) * 0.12f + 0.2f), 0.2f, 140); /* the touchdown in the pad (a no-op without motors) */
   }
   G.was_airborne = p->airborne;
   G.squash_v += (-G.squash * 160 - G.squash_v * 14) * dt;
@@ -568,12 +577,12 @@ static void racing_tick(float dt) {
   /* the camera widens with speed: 60 degrees at rest, up to 74 */
   cw_node_set(G.cam, "fov", cw_val_float(60 + fminf(14, p->speed * 0.45f)));
   int got = course_collect(&G.course, p->pos);
-  if (got) { G.herring += got; audio_sfx(SFX_PICKUP); fx_pickup((t3_vec3){ p->pos.x, p->pos.y + 0.5f, p->pos.z }); cw_input_rumble(0, 0, 0.45f, 70); }
-  if (p->tree_hit_now) { audio_sfx(SFX_TREE); fx_tree_hit(p->pos, p->vel); cw_input_rumble(0, 0.9f, 0.5f, 260); }
+  if (got) { G.herring += got; audio_sfx(SFX_PICKUP); fx_pickup((t3_vec3){ p->pos.x, p->pos.y + 0.5f, p->pos.z }); rumble(0, 0.45f, 70); }
+  if (p->tree_hit_now) { audio_sfx(SFX_TREE); fx_tree_hit(p->pos, p->vel); impacts++; tree_hits[0]++, tree_hits[1] = G.ticks; rumble(0.9f, 0.5f, 260); }
   audio_slide(p->surf_w, p->speed, p->airborne, p->enabled);
-  /* rock under the belly: a low buzz that grows with the share of rock (renewed every 6 ticks, each call replaces the last) */
+  /* rock under the belly: a low buzz that grows with the share of rock (renewed every 6 ticks; a stronger one still running is kept) */
   if (p->enabled && !p->airborne && p->surf_w[SURF_ROCK] > 0.3f && p->speed > 4 && (G.ticks % 6) == 0)
-    cw_input_rumble(0, 0.12f * p->surf_w[SURF_ROCK], 0.28f * p->surf_w[SURF_ROCK], 120);
+    rumble(0.12f * p->surf_w[SURF_ROCK], 0.28f * p->surf_w[SURF_ROCK], 120);
   if (course_finished(&G.course, p->pos)) { G.finished = true; race_over(false); return; }
   if (cw_action_just_pressed(0, G.a_quit)) { race_over(true); return; }
   if (cw_action_just_pressed(0, G.a_pause)) { G.state = ST_PAUSED; G.pause_cursor = 0; audio_slide(p->surf_w, 0, false, false); }
@@ -634,6 +643,28 @@ static void backdrop_tick(float dt) {
 
 /* ── menus ───────────────────────────────────────────────────────────── */
 
+/* rumble (cartwheel/input.h): touchdowns, herring, trees and rock in the pad; the camera never shakes. A request on top
+ * of one still running keeps the stronger of each motor and the longer time (the rock buzz never cuts a tree hit short);
+ * the motors stop on their own after ms, and at once on pause or when the race ends (rumble_stop) */
+static struct { int until; float low, high; int32_t sent; } RB;
+static void rumble(float low, float high, int ms) {
+  if (SAVE.rumble_off || ms <= 0) return;
+  int left = (RB.until - (int)G.ticks) * 1000 / 60;
+  if (left > 0) {
+    if (low <= RB.low && high <= RB.high && ms <= left) return;
+    low = fmaxf(low, RB.low), high = fmaxf(high, RB.high), ms = ms > left ? ms : left;
+  }
+  RB.low = low, RB.high = high, RB.until = (int)G.ticks + (ms * 60 + 999) / 1000, RB.sent++;
+  cw_input_rumble(0, low, high, ms);
+}
+static void rumble_stop(void) { if (RB.until > (int)G.ticks) cw_input_rumble_stop(0); RB.until = 0; }
+static void rumble_toggle(void) {
+  SAVE.rumble_off = !SAVE.rumble_off;
+  save_write();
+  if (SAVE.rumble_off) cw_input_rumble_stop(0);
+  else cw_input_rumble(0, 0.3f, 0.3f, 120); /* a taste of it */
+}
+
 static bool menu_nav(int *cursor, int count) {
   if (cw_action_just_pressed(0, G.m_down)) *cursor = (*cursor + 1) % count;
   if (cw_action_just_pressed(0, G.m_up)) *cursor = (*cursor + count - 1) % count;
@@ -643,7 +674,7 @@ static bool menu_nav(int *cursor, int count) {
 static void title_tick(void) {
   audio_music(MUS_START);
   if (cw_quality_menu_is_open()) return; /* the graphics page has this frame's presses */
-  if (menu_nav(&G.cursor, 5)) {
+  if (menu_nav(&G.cursor, 6)) {
     switch (G.cursor) {
       case 0:
         G.mode = MODE_CUP, G.cup_idx = 0, G.state = ST_CUP;
@@ -652,8 +683,9 @@ static void title_tick(void) {
         break;
       case 1: G.mode = MODE_PRACTICE; G.state = ST_PRACTICE; G.cursor = 0; break;
       case 2: cw_quality_menu_open(); break;
-      case 3: G.state = ST_CREDITS; audio_music(MUS_OPTIONS); break;
-      case 4: cw_quit(); break;
+      case 3: rumble_toggle(); break;
+      case 4: G.state = ST_CREDITS; audio_music(MUS_OPTIONS); break;
+      case 5: cw_quit(); break;
     }
   }
 }
@@ -685,9 +717,11 @@ static void cup_tick(void) {
 
 static void paused_tick(void) {
   if (cw_quality_menu_is_open()) return;
-  if (menu_nav(&G.pause_cursor, 3)) {
+  rumble_stop();
+  if (menu_nav(&G.pause_cursor, 4)) {
     if (G.pause_cursor == 0) G.state = ST_RACING;
     else if (G.pause_cursor == 1) cw_quality_menu_open();
+    else if (G.pause_cursor == 2) rumble_toggle();
     else race_over(true);
   }
   if (cw_action_just_pressed(0, G.m_back) || cw_action_just_pressed(0, G.a_pause)) G.state = ST_RACING;
@@ -876,6 +910,9 @@ static void init(void *user) {
   cw_debug_u32("phys.hash", &G.phys_hash);
   cw_debug_i32("phys.airborne", &G.dbg_airborne);
   cw_debug_i32("phys.tree", &G.dbg_tree);
+  cw_debug_field("cam.offset", cam_offset, CW_DBG_I32, 3);
+  cw_debug_i32("rumble.sent", &RB.sent);
+  cw_debug_field("race.tree_hits", tree_hits, CW_DBG_I32, 2);
   cw_debug_i32("phys.contacts", &G.dbg_contacts);
   cw_debug_i32("ticks", &G.ticks);
   cw_debug_f32("dbg.alpha", &G.dbg_alpha);             /* render-time: the interpolation alpha */
@@ -1013,6 +1050,25 @@ static void draw_menu(const char *title, const char *const *items, int count, in
  * camera written in the fixed tick sits at tick positions while Tux is
  * interpolated, so at any frame rate but exactly 60 the two drift against
  * each other every frame: measured as a 6-pixel vibration at 120 Hz. */
+/* the shake check (cam.offset): the camera as drawn (the camera node's global transform) against the view (view.c) drawn
+ * between its last two ticks, on the frames within half a second of a tree hit or a touchdown. cam.offset: those frames,
+ * the ones off by over 0.1 mm or 0.1 milliradian, and the largest offset (in 0.1 mm and 0.1 milliradian units). Nothing
+ * moves the camera on an impact: [n, 0, 0]. */
+static void offsetgate(t3_vec3 pos, t3_vec3 dir) {
+  static int seen;
+  if (impacts != seen) seen = impacts, impact_frames = 30;
+  if (impact_frames <= 0) return;
+  impact_frames--;
+  const t3_mat4 *m = cw_node3d_global_transform(G.cam);
+  if (!m) return;
+  float fl = sqrtf(m->e[8] * m->e[8] + m->e[9] * m->e[9] + m->e[10] * m->e[10]);
+  t3_vec3 d = { m->e[12] - pos.x, m->e[13] - pos.y, m->e[14] - pos.z }, f = { -m->e[8] / fl - dir.x, -m->e[9] / fl - dir.y, -m->e[10] / fl - dir.z };
+  float off = t3_vec3_length(d) + t3_vec3_length(f);
+  cam_offset[0]++;
+  if (off > 1e-4f) cam_offset[1]++;
+  if ((int32_t)(off * 1e4f) > cam_offset[2]) cam_offset[2] = (int32_t)(off * 1e4f);
+}
+
 static void pre_render_hook(cw_tree *t, double alpha, void *u) {
   (void)t, (void)u;
   if (!G.course_loaded) return;
@@ -1029,6 +1085,7 @@ static void pre_render_hook(cw_tree *t, double alpha, void *u) {
   t3_vec3 up = t3_vec3_normalize(t3_vec3_lerp(G.view_prev.up, G.view.up, a));
   cw_node3d_set_position(G.cam, pos);
   cw_node3d_look_at(G.cam, t3_vec3_add(pos, dir), up);
+  offsetgate(pos, dir);
   G.dbg_cam_r[0] = pos.x, G.dbg_cam_r[1] = pos.y, G.dbg_cam_r[2] = pos.z;
   G.dbg_cam_r[3] = dir.x, G.dbg_cam_r[4] = dir.y, G.dbg_cam_r[5] = dir.z;
 }
@@ -1039,11 +1096,11 @@ static void render(void *user, double alpha) {
   char buf[160];
   switch (G.state) {
     case ST_TITLE: {
-      static const char *const ITEMS[] = { "Cup", "Practice", "Settings", "Credits", "Quit" };
+      const char *const ITEMS[] = { "Cup", "Practice", "Settings", SAVE.rumble_off ? "Rumble: Off" : "Rumble: On", "Credits", "Quit" };
       hud_begin();
       size = cw_r2d_canvas_size();
       menu_backdrop();
-      draw_menu("Tux Racer", ITEMS, 5, G.cursor, 236);
+      draw_menu("Tux Racer", ITEMS, 6, G.cursor, 236);
       hud_text("Tux Racer 0.61 by Sunspire Studios, on the cartwheel engine", size.x / 2, size.y - 30, 14, (cw_color){ 1, 1, 1, 0.55f }, 1);
       hud_end();
       break;
@@ -1145,12 +1202,12 @@ static void render(void *user, double alpha) {
       hud_draw(&G.phys, G.race_time, G.herring, G.mode == MODE_CUP ? G.lives : 0);
       break;
     case ST_PAUSED: {
-      static const char *const ITEMS[] = { "Resume", "Settings", "Quit race" };
+      const char *const ITEMS[] = { "Resume", "Settings", SAVE.rumble_off ? "Rumble: Off" : "Rumble: On", "Quit race" };
       hud_draw(&G.phys, G.race_time, G.herring, G.mode == MODE_CUP ? G.lives : 0);
       hud_begin();
       size = cw_r2d_canvas_size();
       hud_box(0, 0, size.x, size.y, (cw_color){ 0, 0, 0, 0.45f });
-      draw_menu("Paused", ITEMS, 3, G.pause_cursor, 220);
+      draw_menu("Paused", ITEMS, 4, G.pause_cursor, 220);
       hud_end();
       break;
     }

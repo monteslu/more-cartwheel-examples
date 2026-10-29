@@ -23,7 +23,8 @@ section.
 
 Run `tuxracer` (from the repository root: `scripts/build.sh tuxracer`, then
 `build/native/games/tuxracer/tuxracer`, or the cart `build/cart-wgpu/carts/tuxracer.wasc` with
-`npx wasmcart`). Title: Practice (pick a course, the conditions, wind, mirror), Cup, Credits.
+`npx wasmcart`). Title: Practice (pick a course, the conditions, wind, mirror), Cup, Settings, Rumble on or off
+(also on the pause menu, saved), Credits.
 
 | Action | Pad | Keyboard |
 |---|---|---|
