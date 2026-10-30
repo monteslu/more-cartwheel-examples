@@ -60,3 +60,7 @@ depth+skin+xcluster_skinshade
 physical+map+rep+nmap+ao+rmap+mmap+shadow+skin+atest+tan+ds+sheen+aniso+l3001+s100+xcluster
 physical+map+rep+nmap+ao+rmap+mmap+shadow+skin+morph+morphn+sheen+l3001+s100+xcluster_skinshade
 physical+map+rep+nmap+ao+rmap+mmap+shadow+skin+morph+morphn+sheen+l3001+s100+xcluster
+standard+map+trans+skin+l2001+xcluster_csm_meshdecal
+standard+map+trans+skin+l3001+xcluster_meshdecal
+standard+map+trans+l2001+xcluster_csm_meshdecal
+standard+map+trans+l3001+xcluster_meshdecal

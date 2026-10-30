@@ -696,12 +696,13 @@ if (want('blood')) {
     const [a, thick] = bloodShape(k, u, v);
     // dried at the rim, darker where it is thick; a little grain so it soaks into the asphalt rather than sitting on it
     const grain = 0.85 + 0.3 * hash2(x, y, 290);
-    // the decal multiplies: red kept near full and green and blue taken out reads as a dark red stain on any street (a dark
-    // red multiplied onto dark asphalt went near black and did not read as blood at all)
-    const c = [lerp(0.93, 0.78, thick), lerp(0.36, 0.2, thick), lerp(0.32, 0.18, thick)];
+    // drawn over the street (MIX): a saturated red, darker where it is thick, with a wet glint here and there (a red
+    // multiplied onto dark asphalt went near black and did not read as blood)
+    const glint = 0.6 * smooth(0.7, 0.95, fbm((x % 256) / 256, (y % 256) / 256, 9, 3, 291 + k)) * smooth(0.3, 0.7, thick); // soft wet sheen, not specks
+    const c = [lerp(0.62, 0.36, thick) + 0.3 * glint, lerp(0.04, 0.012, thick) + 0.22 * glint, lerp(0.035, 0.012, thick) + 0.2 * glint];
     const i = (y * W + x) * 4;
     bytes[i] = Math.round(clamp(c[0]) * 255); bytes[i + 1] = Math.round(clamp(c[1]) * 255); bytes[i + 2] = Math.round(clamp(c[2]) * 255);
-    bytes[i + 3] = Math.round(clamp(a * (0.8 + 0.2 * thick) * grain) * 255);
+    bytes[i + 3] = Math.round(clamp(a * (0.88 + 0.12 * thick) * (0.92 + 0.08 * grain)) * 255);
   }
   save(`${OUT}/decal_blood.png`, W, H, 4, bytes);
   console.log('blood');

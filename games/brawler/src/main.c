@@ -135,10 +135,10 @@ static void cmd_botdmg(int argc, const char **argv, cw_reply *r) {
 }
 /* hurtat <tick> <enemy> [knock 0-2]: at that fixed tick of the run, enemy slot N takes a blow (10 damage) from the left
    (screenshots of the faces a hit brings out) */
-static int64_t hurt_tick = -1; static int hurt_idx, hurt_knock;
+static struct { int64_t tick; int idx, knock; } hurts[8]; static int nhurts;
 static void cmd_hurtat(int argc, const char **argv, cw_reply *r) {
   if (argc < 3) { cw_reply_error(r, "usage: hurtat <tick> <enemy> [knock]"); return; }
-  hurt_tick = atoll(argv[1]), hurt_idx = atoi(argv[2]) % MAXE, hurt_knock = argc > 3 ? atoi(argv[3]) : 1;
+  if (nhurts < 8) hurts[nhurts].tick = atoll(argv[1]), hurts[nhurts].idx = atoi(argv[2]) % MAXE, hurts[nhurts].knock = argc > 3 ? atoi(argv[3]) : 1, nhurts++;
   cw_reply_printf(r, "{\"ok\":1}");
 }
 /* legacyshake <0|1>: the old camera shake back (the camera gate's control only) */
@@ -383,7 +383,7 @@ static void sim_step(void) {
   run_ticks++;
 #ifdef BRAWLER_AUTOPILOT
   if (run_ticks == 600 && !strcmp(inject(), "leak")) W.tokens_out++;
-  if (run_ticks == hurt_tick && W.e[hurt_idx].used) { W.e[hurt_idx].invuln = 0; ent_hurt(&W.e[hurt_idx], NULL, 10, hurt_knock, 0); }
+  for (int h = 0; h < nhurts; h++) if (run_ticks == hurts[h].tick && W.e[hurts[h].idx].used) { ent *v = &W.e[hurts[h].idx]; v->invuln = 0; ent_hurt(v, NULL, 10, hurts[h].knock, 0); }
 #endif
   inputs in[MAXP];
   memset(in, 0, sizeof in);

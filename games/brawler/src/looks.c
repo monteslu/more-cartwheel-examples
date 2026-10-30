@@ -80,6 +80,7 @@ static uint32_t look_make(int def, uint32_t seed) {
   for (int k = 0; k < 8; k++) {
     int n = sizes[k];
     if (k == LK_HAIR && def == D_PUNK) n = N(DYED);
+    if (k == LK_SKIN && def == D_WANKER) n = 5; /* the wanker: the lighter half of the palette only (monteslu, B-PT15) */
     if (k == LK_SHIRT && def == D_WANKER) n = N(TEE);
     if (k == LK_OUTER && (def == D_RUNNER || def == D_THROWER)) n = N(CLOTH);
     if (k == LK_OUTER && def == D_CREEP) n = N(COAT);
@@ -98,6 +99,9 @@ static int iabs(int x) { return x < 0 ? -x : x; }
 static bool look_same(int def, uint32_t a, uint32_t b) {
   uint32_t s = slots_of(def);
   if (def == D_PUNK && lk(a, LK_HAIR) == lk(b, LK_HAIR)) return true;
+  /* the wanker has only five tones: two close in skin must differ in everything else they wear (hair, tee, jeans) */
+  if (def == D_WANKER && iabs(lk(a, LK_SKIN) - lk(b, LK_SKIN)) < 2)
+    return lk(a, LK_HAIR) == lk(b, LK_HAIR) || lk(a, LK_SHIRT) == lk(b, LK_SHIRT) || lk(a, LK_PANTS) == lk(b, LK_PANTS);
   if ((s & 1u << SL_SKIN) && iabs(lk(a, LK_SKIN) - lk(b, LK_SKIN)) < 2) return true;
   if (def == D_GUARD) return false; /* the uniform: skin only */
   if ((s & 1u << SL_PANTS) && lk(a, LK_PANTS) == lk(b, LK_PANTS)) return true; /* the trousers always differ, */
@@ -114,7 +118,7 @@ static bool look_same(int def, uint32_t a, uint32_t b) {
 uint32_t look_pick(int def, int self) {
   if (!slots_of(def)) return 0;
   uint32_t serial = (uint32_t)++W.spawns;
-  for (int tries = 0; tries < 48; tries++) {
+  for (int tries = 0; tries < 400; tries++) {
     uint32_t c = look_make(def, serial * 31u + (uint32_t)tries * 7919u), clash = 0;
     for (int i = 0; i < MAXE; i++) {
       const ent *o = &W.e[i];

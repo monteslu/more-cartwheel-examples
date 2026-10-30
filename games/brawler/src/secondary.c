@@ -175,7 +175,7 @@ void face_express(spring_rig *s, const char *clip, float u) {
   clip_face(clip, u, want, f->temper);
   if (f->temper != FACE_PLAIN && f->react > 0) { /* the temper's face on every blow: in at once, held half a second, eased back */
     int t = f->react_t++;
-    float env = t < 4 ? (float)(t + 1) / 4.0f : t < 34 ? 1.0f : 1.0f - (float)(t - 34) / 24.0f;
+    float env = t < 4 ? (float)(t + 1) / 4.0f : t < 46 ? 1.0f : 1.0f - (float)(t - 46) / 20.0f; /* held most of a second: it has to read */
     if (env <= 0) f->react = 0;
     else {
       int tg = f->temper == FACE_FEAR ? T_FEAR : f->temper == FACE_ANGER ? T_ANGER : T_BLISS;

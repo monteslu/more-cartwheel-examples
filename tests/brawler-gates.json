@@ -1,7 +1,7 @@
 [
   {
     "name": "brawler-brawl",
-    "note": "brawler_auto: three bots fight stage 1 for 1200 ticks. The named state (positions, hit points, the hash of every body every tick) must match exactly on every host; the expects pin this run (repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth: game.overlaps, pairs of bodies still inside each other on any frame, stays 0). The control is one frame short. Repinned 2026-10-29 (B-PT7..10): reach now grows with body girth, enemies are clamped inside the attack margin, the bots turn to face their target, the wanker joined the waves and boss health was cut; the looks and the blood are presentation and move nothing.",
+    "note": "brawler_auto: three bots fight stage 1 for 1200 ticks. The named state (positions, hit points, the hash of every body every tick) must match exactly on every host; the expects pin this run (repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth: game.overlaps, pairs of bodies still inside each other on any frame, stays 0). The control is one frame short. Repinned 2026-10-29 (B-PT7..10): reach now grows with body girth, enemies are clamped inside the attack margin, the bots turn to face their target, the wanker joined the waves and boss health was cut; the looks and the blood are presentation and move nothing. Repinned for B-PT18: the wanker is lighter (50 hp, speed 2.0) and a stagger blow floors him.",
     "app": "brawler_auto",
     "frames": 1200,
     "fields": [
@@ -41,10 +41,10 @@
       "game.ticks": 1108,
       "game.kills": 7,
       "game.score": 8360,
-      "game.hash": 998276462,
+      "game.hash": 436229703,
       "rag.made": 7,
       "rag.missed": 0,
-      "rag.hash": 1631173505,
+      "rag.hash": 944326982,
       "game.wave": 1,
       "game.hits": 23,
       "game.first_hit": 297,
@@ -66,7 +66,7 @@
   },
   {
     "name": "brawler-solo",
-    "note": "One bot (players 1) on stage 1: the crowd, the thrower and the token cap against a single fighter. Expects repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth (game.overlaps stays 0). Repinned 2026-10-29 (B-PT7..10): reach now grows with body girth, enemies are clamped inside the attack margin, the bots turn to face their target, the wanker joined the waves and boss health was cut; the looks and the blood are presentation and move nothing.",
+    "note": "One bot (players 1) on stage 1: the crowd, the thrower and the token cap against a single fighter. Expects repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth (game.overlaps stays 0). Repinned 2026-10-29 (B-PT7..10): reach now grows with body girth, enemies are clamped inside the attack margin, the bots turn to face their target, the wanker joined the waves and boss health was cut; the looks and the blood are presentation and move nothing. Repinned for B-PT18: the wanker is lighter (50 hp, speed 2.0) and a stagger blow floors him.",
     "app": "brawler_auto",
     "frames": 1500,
     "startCmds": [
@@ -100,10 +100,10 @@
       "game.overlaps"
     ],
     "expect": {
-      "game.ticks": 1443,
+      "game.ticks": 1439,
       "game.kills": 6,
       "game.score": 4650,
-      "game.hash": 3730301668,
+      "game.hash": 1929435789,
       "game.wave": 1,
       "game.hits": 12,
       "game.first_hit": 261,
@@ -125,7 +125,7 @@
   },
   {
     "name": "brawler-four",
-    "note": "Four bots (players 4) on stage 2 (docks: guards and throwers from the first waves). Expects repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth (game.overlaps stays 0). Repinned 2026-10-29 (B-PT7..10): reach now grows with body girth, enemies are clamped inside the attack margin, the bots turn to face their target, the wanker joined the waves and boss health was cut; the looks and the blood are presentation and move nothing. Repinned for B-PT17: a fighter hit in mid jump now falls while staggered instead of hanging in the air.",
+    "note": "Four bots (players 4) on stage 2 (docks: guards and throwers from the first waves). Expects repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth (game.overlaps stays 0). Repinned 2026-10-29 (B-PT7..10): reach now grows with body girth, enemies are clamped inside the attack margin, the bots turn to face their target, the wanker joined the waves and boss health was cut; the looks and the blood are presentation and move nothing. Repinned for B-PT17: a fighter hit in mid jump now falls while staggered instead of hanging in the air. Repinned for B-PT18: the wanker is lighter (50 hp, speed 2.0) and a stagger blow floors him.",
     "app": "brawler_auto",
     "frames": 1500,
     "startCmds": [
@@ -167,12 +167,12 @@
       "game.overlaps"
     ],
     "expect": {
-      "game.ticks": 1378,
+      "game.ticks": 1370,
       "game.kills": 8,
-      "game.score": 9870,
-      "game.hash": 1869209153,
+      "game.score": 9360,
+      "game.hash": 4192696282,
       "game.wave": 1,
-      "game.hits": 29,
+      "game.hits": 27,
       "game.first_hit": 285,
       "game.deaths": 0,
       "game.unfair": 0,
@@ -292,7 +292,7 @@
   },
   {
     "name": "brawler-arthur",
-    "note": "Stage 2 (the docks) boss wave with three bots: Arthur reaches his second phase, walks to the jukebox, thumps it (his theme, a shockwave along the floor that knocks down whoever is on the ground and that the bots jump), then the thumbs up. game.juke is [uses, fighters knocked down, fighters who jumped it, playing, ring radius in cm, ticks on his way]. The control freezes everyone, so the jukebox is never thumped. Expects repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth (game.overlaps stays 0). Repinned 2026-10-29 (B-PT7..10): reach now grows with body girth, enemies are clamped inside the attack margin, the bots turn to face their target, the wanker joined the waves and boss health was cut; the looks and the blood are presentation and move nothing. Since then at real damage (botdmg 1, 2400 frames): Arthur thumps the jukebox once (one fighter knocked down, two jump it) and is beaten before the stage changes (game.stage 1).",
+    "note": "Stage 2 (the docks) boss wave with three bots: Arthur reaches his second phase, walks to the jukebox, thumps it (his theme, a shockwave along the floor that knocks down whoever is on the ground and that the bots jump), then the thumbs up. game.juke is [uses, fighters knocked down, fighters who jumped it, playing, ring radius in cm, ticks on his way]. The control freezes everyone, so the jukebox is never thumped. Expects repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth (game.overlaps stays 0). Repinned 2026-10-29 (B-PT7..10): reach now grows with body girth, enemies are clamped inside the attack margin, the bots turn to face their target, the wanker joined the waves and boss health was cut; the looks and the blood are presentation and move nothing. Since then at real damage (botdmg 1, 2400 frames): Arthur thumps the jukebox once (one fighter knocked down, two jump it) and is beaten before the stage changes (game.stage 1). Repinned for B-PT13 round 2: rag.hash only (the ragdolls start from the new hit-reaction poses; the rules did not move).",
     "app": "brawler_auto",
     "frames": 2400,
     "startCmds": [
@@ -352,7 +352,7 @@
         0
       ],
       "rag.made": 12,
-      "rag.hash": 3372652646,
+      "rag.hash": 1672081716,
       "game.overlaps": 0,
       "game.stage": 1
     },
@@ -375,7 +375,7 @@
   },
   {
     "name": "brawler-wanker",
-    "note": "Stage 1, wave 2 (thugs, a punk and the wanker) with two bots: the wanker winds up his haymaker (its wind-up shrugs off light blows) and lands it, barges along the lane, and is beaten. game.wanker is [wankers spawned, haymakers, haymakers that landed, barges, barges that landed, wankers killed]. Also the looks and the blood: game.clones (most pairs of one kind of enemy on the street that look the same on any frame) stays 0, fx.blood is [stains placed, droplet bursts, stains showing, same-shape stains on top of each other] and its last entry stays 0. The control freezes everyone, so nobody swings. rag.hash is left out of this gate: with the wanker knocked down out of his haymaker clip, the ragdoll started from that pose hashes 3232650868 natively and 3315670625 on every cart host (romdev, Chromium, romdev on GL alike), while the game state is equal on all of them: the presentation pose sampled natively and in the cart differs for that clip (findings/brawler.md, engine note 5). The other gates still compare rag.hash on every host. Repinned when the creep joined the wave after it (the run reaches it).",
+    "note": "Stage 1, wave 2 (thugs, a punk and the wanker) with two bots: the wanker winds up his haymaker (its wind-up shrugs off light blows) and lands it, barges along the lane, and is beaten. game.wanker is [wankers spawned, haymakers, haymakers that landed, barges, barges that landed, wankers killed]. Also the looks and the blood: game.clones (most pairs of one kind of enemy on the street that look the same on any frame) stays 0, fx.blood is [stains placed, droplet bursts, stains showing, same-shape stains on top of each other] and its last entry stays 0. The control freezes everyone, so nobody swings. rag.hash is left out of this gate: with the wanker knocked down out of his haymaker clip, the ragdoll started from that pose hashes 3232650868 natively and 3315670625 on every cart host (romdev, Chromium, romdev on GL alike), while the game state is equal on all of them: the presentation pose sampled natively and in the cart differs for that clip (findings/brawler.md, engine note 5). The other gates still compare rag.hash on every host. Repinned when the creep joined the wave after it (the run reaches it). Repinned for B-PT18: the wanker is lighter (50 hp, speed 2.0) and a stagger blow floors him.",
     "app": "brawler_auto",
     "frames": 2400,
     "startCmds": [
@@ -415,24 +415,24 @@
       "game.nan": 0,
       "game.clones": 0,
       "game.overlaps": 0,
-      "game.ticks": 2110,
-      "game.kills": 7,
-      "game.score": 6610,
-      "game.hash": 1038119854,
+      "game.ticks": 2142,
+      "game.kills": 8,
+      "game.score": 6790,
+      "game.hash": 3457104725,
       "game.wave": 2,
       "game.deaths": 0,
       "game.wanker": [
         1,
+        2,
+        3,
         1,
-        1,
-        1,
-        1,
+        0,
         1
       ],
       "fx.blood": [
-        105,
-        65,
-        48,
+        97,
+        63,
+        47,
         0
       ],
       "rag.made": 19,

@@ -39,7 +39,7 @@ const char_def DEFS[D_COUNT] = {
   [D_RINGMASTER] = { "Ringmaster", "ringmaster", 2.6f, 300, 1.1f, false, true, 1500 }, /* a mid-stage mini boss in the arcade */
   [D_COLOSSUS] = { "Colossus", "colossus", 2.2f, 380, 1.3f, true, false, 8000 },
   [D_ARTHUR] = { "Arthur", "arthur", 2.7f, 380, 1.15f, true, false, 3000 },
-  [D_WANKER] = { "Wanker", "wanker", 2.1f, 56, 1.1f, false, false, 160 }, /* a regular enemy: the haymaker and the shoulder barge */
+  [D_WANKER] = { "Wanker", "wanker", 2.0f, 50, 1.1f, false, false, 160 }, /* a regular enemy: the haymaker and the shoulder barge */
   [D_CREEP] = { "Creep", "creep", 1.7f, 50, 0.9f, false, false, 180 }, /* a regular enemy who enjoys being hit: the coat flash, a lurch */
 };
 
@@ -99,6 +99,13 @@ static void set_shadows(t3_object *o) {
   for (int i = 0; i < o->child_count; i++) set_shadows(o->children[i]);
 }
 
+/* how a character takes a hit: the big men get scared, the little ones angry, the creep delighted (faces, reactions, emotes) */
+int temper_of(int def) {
+  static const int TEMPER[D_COUNT] = { [D_ROOK] = FACE_FEAR, [D_MIKA] = FACE_ANGER, [D_JET] = FACE_ANGER, [D_THUG] = FACE_ANGER, [D_PUNK] = FACE_ANGER, [D_RUNNER] = FACE_ANGER,
+      [D_KNIFER] = FACE_ANGER, [D_BRUISER] = FACE_FEAR, [D_THROWER] = FACE_ANGER, [D_GUARD] = FACE_ANGER, [D_FOREMAN] = FACE_FEAR, [D_MATRON] = FACE_FEAR,
+      [D_RINGMASTER] = FACE_FEAR, [D_COLOSSUS] = FACE_FEAR, [D_ARTHUR] = FACE_FEAR, [D_WANKER] = FACE_FEAR, [D_CREEP] = FACE_BLISS };
+  return def >= 0 && def < D_COUNT ? TEMPER[def] : FACE_PLAIN;
+}
 static rig *rig_get(int def) {
   for (int i = 0; i < rig_n; i++)
     if (!RIGS[i].busy && RIGS[i].def == def) { RIGS[i].busy = true; return &RIGS[i]; }
@@ -138,10 +145,7 @@ static rig *rig_get(int def) {
   set_shadows(inst);
   sb_bind(&r->sr, inst);
   { /* how the face takes a hit: the big men get scared, the little ones angry, the creep delighted */
-    static const int TEMPER[D_COUNT] = { [D_ROOK] = FACE_FEAR, [D_MIKA] = FACE_ANGER, [D_JET] = FACE_ANGER, [D_THUG] = FACE_ANGER, [D_PUNK] = FACE_ANGER, [D_RUNNER] = FACE_ANGER,
-      [D_KNIFER] = FACE_ANGER, [D_BRUISER] = FACE_FEAR, [D_THROWER] = FACE_ANGER, [D_GUARD] = FACE_ANGER, [D_FOREMAN] = FACE_FEAR, [D_MATRON] = FACE_FEAR,
-      [D_RINGMASTER] = FACE_FEAR, [D_COLOSSUS] = FACE_FEAR, [D_ARTHUR] = FACE_FEAR, [D_WANKER] = FACE_FEAR, [D_CREEP] = FACE_BLISS };
-    face_temper(&r->sr, TEMPER[def]);
+    face_temper(&r->sr, temper_of(def));
   }
   t3_release(inst); /* the node holds it */
   for (int i = 0; i < r->gltf->animation_count; i++) {
@@ -241,10 +245,10 @@ static void gore_stamp(ent *e, int what) {
   int cell = what == GORE_FACE ? ((h >> 8) & 1 ? 6 : 0) : ((h >> 8) & 1 ? 4 : 1);
   reg.v[0] = (float)(cell & 3) * 256, reg.v[1] = (float)(cell >> 2) * 256, reg.v[2] = 256, reg.v[3] = 256;
   cw_node_set(d, "region", reg);
-  cw_node_set(d, "blend", cw_val_enum("MULTIPLY"));
-  cw_node_set(d, "color", cw_val_color(1, 1, 1, 0.95f));
+  cw_node_set(d, "blend", cw_val_enum("MIX")); /* lit like the skin it is on */
+  cw_node_set(d, "color", cw_val_color(1, 1, 1, 1));
   cw_node_set(d, "max_mesh_decals", cw_val_int(24));
-  float sz = what == GORE_FACE ? 0.26f * BODY_SCALE[e->def] : 0.2f;
+  float sz = what == GORE_FACE ? 0.32f * BODY_SCALE[e->def] : 0.26f;
   cw_node_set(d, "size", cw_val_vec3(sz, sz, what == GORE_FACE ? 0.5f : 0.3f));
   if (what == GORE_FACE) { /* in front of the face, pointing back into it (the model faces +z in its root) */
     cw_node3d_set_position(d, (t3_vec3){ l.x, l.y, l.z + 0.2f });
@@ -491,6 +495,7 @@ void ent_hurt(ent *v, ent *a, float dmg, int knock, float fx) {
     if (a->atk > 0 && a->atk < A_COUNT) W.st.atk_hits[a->atk]++;
   }
   if (v->player && v->st == S_JUMP && knock < 2) knock = 1;
+  if (v->def == D_WANKER && knock == 1) knock = 2; /* out of shape (B-PT18): a stagger blow puts him on the floor */
   v->hp -= dmg;
   if (DEFS[v->def].boss && v->phase < 2) { /* no phase is skipped: it cannot fall below the next one until that one began */
     float floor_hp = v->phase == 0 ? v->maxhp * 0.335f : 1.0f;
@@ -505,6 +510,7 @@ void ent_hurt(ent *v, ent *a, float dmg, int knock, float fx) {
   else if (dmg > 0 && knock >= 1) { rumble_ent(v, 0.2f, 0.6f, 90); rumble_ent(a, 0.12f, 0.45f, 70); }
   else if (dmg > 0 && v->player) rumble_ent(v, 0.0f, 0.35f, 60);
   fx_hit(v->x, v->y + 1.1f, v->z, knock, dir);
+  if (!v->player && dmg > 0 && temper_of(v->def) != FACE_PLAIN) v->react = 48; /* the reaction and the emote */
   if (dmg > 0) fx_blood(v->x + (float)dir * 0.12f, v->y + 1.45f, v->z, dir, knock); /* blood from the face and the body */
   if (dmg > 0 && knock >= 1 && v->hp - dmg < v->maxhp * 0.55f) gore_stamp(v, GORE_FACE); /* a bloodied face after the big ones */
   if (dmg > 0 && a && a->player && knock >= 2 && !a->weapon) gore_stamp(a, GORE_FIST);
@@ -559,7 +565,8 @@ void ent_hurt(ent *v, ent *a, float dmg, int knock, float fx) {
       v->stun = knock >= 1 ? 22 : 15;
       v->x += (float)dir * 0.18f;
       bool body = a && (a->atk == A_KICK || a->atk == A_KNEE || a->atk == A_CHARGE || a->atk == A_SWING);
-      char_restart(v, knock >= 1 ? "hit_hard" : body ? "hit_gut" : "hit", 0.02f);
+      int tp = v->player ? FACE_PLAIN : temper_of(v->def);
+      char_restart(v, tp == FACE_FEAR ? "react_fear" : tp == FACE_ANGER ? "react_rage" : tp == FACE_BLISS ? "react_bliss" : knock >= 1 ? "hit_hard" : body ? "hit_gut" : "hit", 0.02f);
     }
   }
   if (boss && v->st != S_FALL && v->st != S_HIT) v->hurtflash = 1;
@@ -722,7 +729,7 @@ static bool common_state(ent *e) {
       e->y = 0;
       e->st = S_DOWN, e->t = 0;
       fx_dust(e->x, e->z, 1.2f);
-      if (e->hp <= 0) fx_stain(e->x - (float)e->face * 0.55f, e->z, 1.4f, 2); /* a pool spreading under the head (it fell away from the blow) */
+      if (e->hp <= 0) fx_stain(e->x - (float)e->face * 0.55f, e->z, 2.0f, 2); /* a pool spreading under the head (it fell away from the blow) */
       else fx_stain(e->x - (float)e->face * 0.5f, e->z, e->hp < e->maxhp * 0.6f ? 0.6f : 0.42f, 1); /* a body that hits the street leaves a splat, bigger when it is hurt */
       W.shake = 6, W.shake_amp = 0.06f;
       rumble_ent(e, 0.25f, 0.1f, 90); /* a knockdown: light */
@@ -1078,6 +1085,7 @@ static void enemy_update(int ei) {
   if (e->hold > 0) { e->hold--; return; }
   if (e->cd > 0) e->cd--;
   if (e->buff > 0) e->buff--;
+  if (e->react > 0) e->react--;
   boss_phase(e);
   if (common_state(e)) {
     if (e->st == S_DEAD && e->t > 70) {
@@ -1088,7 +1096,7 @@ static void enemy_update(int ei) {
   }
   const char_def *d = &DEFS[e->def];
   bool boss = d->boss;
-  if (g_freeze && (e->st == S_IDLE || e->st == S_WALK)) { e->face = -1; e->st = S_IDLE; char_play(e, idle_clip(e), 0.2f); if (e->agent && crowd.id) cw_crowd_set_target(crowd, AG(e->agent), (t3_vec3){ e->x, 0, e->z }); arena_clamp(e); return; }
+  if (g_freeze && (e->st == S_IDLE || e->st == S_WALK)) { e->face = -1; e->st = S_IDLE; char_play(e, e->react > 6 && temper_of(e->def) != FACE_PLAIN ? (temper_of(e->def) == FACE_FEAR ? "react_fear" : temper_of(e->def) == FACE_ANGER ? "react_rage" : "react_bliss") : idle_clip(e), 0.2f); if (e->agent && crowd.id) cw_crowd_set_target(crowd, AG(e->agent), (t3_vec3){ e->x, 0, e->z }); arena_clamp(e); return; }
   if (on_screen(e->x, e->z, 0.3f) && e->ptimer < 1000) e->ptimer++; /* ticks inside the picture: no attack before 20 */
   switch (e->st) {
   case S_ATK: {
@@ -1252,6 +1260,10 @@ static void enemy_update(int ei) {
     bool arrived = to_x * to_x + to_z * to_z < 0.05f;
     e->face = dx >= 0 ? 1 : -1;
     e->st = arrived ? S_IDLE : S_WALK;
+    if (e->react > 6) { /* the reaction plays on past the flinch (render only: the crowd still moves the body) */
+      int tp = temper_of(e->def);
+      if (tp != FACE_PLAIN) clip = tp == FACE_FEAR ? "react_fear" : tp == FACE_ANGER ? "react_rage" : "react_bliss", arrived = true;
+    }
     char_play(e, clip && arrived ? clip : clip && !strcmp(clip, "block") ? clip : arrived ? idle_clip(e) : e->def == D_CREEP ? "lurch" : (d->speed > 2.4f ? "run" : "walk"), 0.15f);
     if (e->token && absf(dx) < reach + 0.15f && absf(dz) < 0.45f && e->cd == 0 && ready) {
       if (e->agent && crowd.id) cw_crowd_clear_target(crowd, AG(e->agent));

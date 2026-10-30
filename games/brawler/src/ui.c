@@ -1,4 +1,5 @@
 /* brawler HUD: one card per fighter, the boss bar, the GO arrow, banners. */
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -55,6 +56,51 @@ void ui_draw(void) {
     text(b, s.x, s.y - u * 1.05f, u * 0.95f, PC[i], true);
     cw_vec2 tri[3] = { cw_v2(s.x - u * 0.3f, s.y - u * 0.15f), cw_v2(s.x + u * 0.3f, s.y - u * 0.15f), cw_v2(s.x, s.y + u * 0.25f) };
     cw_r2d_polygon(tri, 3, PC[i]);
+  }
+  /* a comic pop over an enemy's head when a blow lands (B-PT13): sweat drops and "!!" for the frightened big men, an anger
+     mark for the furious little ones, hearts for the creep; it pops in, bobs and fades with the reaction */
+  for (int i = 0; i < MAXE; i++) {
+    const ent *e = &W.e[i];
+    int tp = e->used ? temper_of(e->def) : FACE_PLAIN;
+    if (!e->used || e->react <= 0 || tp == FACE_PLAIN || e->st == S_DEAD || e->st == S_FALL || e->st == S_DOWN || e->st == S_THROWN) continue;
+    cw_vec2 s;
+    if (!to_screen(e->x, e->y + 2.1f * (DEFS[e->def].boss ? 1.3f : 1.0f), e->z, sz, &s)) continue;
+    float age = (float)(48 - e->react), pop = age < 5 ? age / 5.0f * 1.25f : age < 9 ? 1.25f - (age - 5) * 0.0625f : 1.0f;
+    float fade = e->react < 10 ? (float)e->react / 10.0f : 1.0f, k = u * 0.95f * pop, bob = sinf(age * 0.35f) * u * 0.12f;
+    float sx = s.x + (float)e->face * -u * 0.9f, sy = s.y - u * 0.4f + bob;
+    if (tp == FACE_FEAR) {
+      cw_color drop = cw_rgba(0.55f, 0.8f, 1.0f, 0.95f * fade), ink = cw_rgba(0.05f, 0.08f, 0.15f, 0.9f * fade);
+      for (int d = 0; d < 2; d++) {
+        float dx = sx + (d ? 1.3f : -0.2f) * k, dy = sy + (d ? 0.4f : -0.3f) * k + age * 0.05f * u * 0.1f;
+        cw_r2d_circle(cw_v2(dx, dy), k * 0.42f, 14, ink);
+        cw_vec2 t[3] = { cw_v2(dx - k * 0.42f, dy), cw_v2(dx + k * 0.42f, dy), cw_v2(dx, dy - k * 1.1f) };
+        cw_r2d_polygon(t, 3, ink);
+        cw_r2d_circle(cw_v2(dx, dy), k * 0.32f, 14, drop);
+        cw_vec2 t2[3] = { cw_v2(dx - k * 0.32f, dy), cw_v2(dx + k * 0.32f, dy), cw_v2(dx, dy - k * 0.95f) };
+        cw_r2d_polygon(t2, 3, drop);
+      }
+      text("!!", sx - k * 1.6f, sy - k * 1.6f, k * 2.4f, cw_rgba(1, 1, 1, fade), true);
+    } else if (tp == FACE_ANGER) { /* the cross-shaped vein: four bulging arcs */
+      cw_color red = cw_rgba(0.95f, 0.12f, 0.1f, fade), ink = cw_rgba(0.15f, 0.0f, 0.0f, 0.9f * fade);
+      for (int q = 0; q < 4; q++) {
+        float ang = 0.785f + (float)q * 1.5708f, cx = sx + cosf(ang) * k * 0.95f, cy = sy + sinf(ang) * k * 0.95f;
+        cw_r2d_arc(cw_v2(cx, cy), k * 0.38f, k * 0.72f, ang + 3.14159f - 1.0f, ang + 3.14159f + 1.0f, 12, ink);
+        cw_r2d_arc(cw_v2(cx, cy), k * 0.45f, k * 0.65f, ang + 3.14159f - 0.9f, ang + 3.14159f + 0.9f, 12, red);
+      }
+    } else { /* hearts rising */
+      for (int h = 0; h < 3; h++) {
+        float hx = sx + ((float)h - 1) * k * 1.3f, hy = sy - (age * 0.03f + (float)(h & 1) * 0.5f) * k, r = k * (h == 1 ? 0.42f : 0.32f);
+        cw_color pink = cw_rgba(1.0f, 0.35f, 0.55f, fade), ink = cw_rgba(0.25f, 0.02f, 0.08f, 0.9f * fade);
+        for (int pass = 0; pass < 2; pass++) {
+          float rr = r * (pass ? 1.0f : 1.25f);
+          cw_color c = pass ? pink : ink;
+          cw_r2d_circle(cw_v2(hx - rr * 0.55f, hy), rr * 0.62f, 12, c);
+          cw_r2d_circle(cw_v2(hx + rr * 0.55f, hy), rr * 0.62f, 12, c);
+          cw_vec2 t[3] = { cw_v2(hx - rr * 1.15f, hy + rr * 0.15f), cw_v2(hx + rr * 1.15f, hy + rr * 0.15f), cw_v2(hx, hy + rr * 1.35f) };
+          cw_r2d_polygon(t, 3, c);
+        }
+      }
+    }
   }
   /* the boss bar */
   if (W.boss_active && W.boss_idx >= 0 && W.e[W.boss_idx].used) {

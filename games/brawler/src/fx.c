@@ -56,7 +56,7 @@ void fx_init(void) {
     cw_node_set(n, "stretch", cw_val_float(0.05));
     cw_node_set(n, "size", cw_val_float(0.07));
     cw_node_set(n, "blend", cw_val_enum("ADD"));
-    cw_node_set(n, "energy", cw_val_float(6));
+    cw_node_set(n, "energy", cw_val_float(2.5f));
     cw_node_set(n, "color", cw_val_color(1, 0.7f, 0.3f, 1));
     cw_node_set(n, "color_ramp", cw_val_string("0 1 0.95 0.7 1, 0.3 1 0.55 0.2 1, 1 0.6 0.15 0.05 0"));
     cw_node_set(n, "size_curve", cw_val_string("0 1, 1 0.1"));
@@ -126,7 +126,7 @@ void fx_init(void) {
     cw_node_set(n, "texture", cw_val_string("decals/burst.png"));
     cw_node_set(n, "blend", cw_val_enum("ADD"));
     cw_node_set(n, "size", cw_val_float(0.9f));
-    cw_node_set(n, "energy", cw_val_float(5));
+    cw_node_set(n, "energy", cw_val_float(1.1f)); /* a small star at the contact: at 5 it blew the struck body out to white under bloom */
     cw_node_set(n, "color", cw_val_color(1, 0.85f, 0.55f, 1));
     cw_node_set(n, "color_ramp", cw_val_string("0 1 0.95 0.8 1, 0.5 1 0.7 0.35 0.8, 1 1 0.4 0.1 0"));
     cw_node_set(n, "size_curve", cw_val_string("0 0.5, 0.3 1, 1 1.3"));
@@ -168,17 +168,17 @@ void fx_init(void) {
     cw_node_set(n, "draw_mode", cw_val_enum("STRETCHED"));
     cw_node_set(n, "stretch", cw_val_float(0.03));
     cw_node_set(n, "blend", cw_val_enum("ALPHA"));
-    cw_node_set(n, "size", cw_val_float(0.035));
+    cw_node_set(n, "size", cw_val_float(0.05));
     cw_node_set(n, "size_random", cw_val_float(0.6));
-    cw_node_set(n, "color", cw_val_color(0.16f, 0.012f, 0.01f, 1));
-    cw_node_set(n, "color_ramp", cw_val_string("0 0.2 0.015 0.012 1, 0.7 0.14 0.01 0.008 1, 1 0.1 0.008 0.006 0"));
+    cw_node_set(n, "color", cw_val_color(0.45f, 0.02f, 0.015f, 1));
+    cw_node_set(n, "color_ramp", cw_val_string("0 0.55 0.025 0.02 1, 0.7 0.4 0.015 0.01 1, 1 0.3 0.01 0.008 0"));
     cw_node_set(n, "size_curve", cw_val_string("0 1, 1 0.6"));
     cw_node_set(n, "seed", cw_val_int(900 + i));
   }
   for (int i = 0; i < NSPURT; i++) { /* a heavy blow throws a fat arc of blood that falls back to the street */
     snprintf(nm, sizeof nm, "spurt%d", i);
     cw_node n = spurt[i] = psys(nm);
-    cw_node_set(n, "amount", cw_val_int(40));
+    cw_node_set(n, "amount", cw_val_int(80));
     cw_node_set(n, "lifetime", cw_val_float(0.9));
     cw_node_set(n, "lifetime_random", cw_val_float(0.3));
     cw_node_set(n, "one_shot", cw_val_bool(true));
@@ -195,10 +195,10 @@ void fx_init(void) {
     cw_node_set(n, "draw_mode", cw_val_enum("STRETCHED"));
     cw_node_set(n, "stretch", cw_val_float(0.04));
     cw_node_set(n, "blend", cw_val_enum("ALPHA"));
-    cw_node_set(n, "size", cw_val_float(0.06));
+    cw_node_set(n, "size", cw_val_float(0.15));
     cw_node_set(n, "size_random", cw_val_float(0.7));
-    cw_node_set(n, "color", cw_val_color(0.2f, 0.014f, 0.01f, 1));
-    cw_node_set(n, "color_ramp", cw_val_string("0 0.24 0.016 0.012 1, 0.8 0.16 0.01 0.008 1, 1 0.12 0.008 0.006 0"));
+    cw_node_set(n, "color", cw_val_color(0.75f, 0.03f, 0.02f, 1));
+    cw_node_set(n, "color_ramp", cw_val_string("0 0.85 0.04 0.03 1, 0.8 0.6 0.02 0.015 1, 1 0.45 0.015 0.01 0"));
     cw_node_set(n, "size_curve", cw_val_string("0 0.8, 0.3 1, 1 0.7"));
     cw_node_set(n, "seed", cw_val_int(950 + i));
   }
@@ -207,7 +207,7 @@ void fx_init(void) {
     cw_node d = blood[i] = cw_node_new("Decal3D", nm);
     cw_node_add_child(cw_node_get(tree_root(), "Fx"), d);
     cw_node_set(d, "texture", cw_val_string("decals/blood.png"));
-    cw_node_set(d, "blend", cw_val_enum("MULTIPLY"));
+    cw_node_set(d, "blend", cw_val_enum("MIX")); /* red over the street (multiplied it went black) */
     cw_node_set(d, "normal_fade", cw_val_float(0.5f)); /* the street and the kerb top, not the kerb's face */
     cw_node_set(d, "edge_fade", cw_val_float(0.2f));
     cw_node_set(d, "priority", cw_val_int(2)); /* over the scuffs */
@@ -265,11 +265,11 @@ static void fx_mark(float x, float z, float size) {
   cw_node_set(d, "color", cw_val_color(1, 1, 1, 0.5f));
 }
 void fx_hit(float x, float y, float z, int kind, int face) {
-  { cw_node b = burst[nbu++ % NBURST]; cw_node3d_set_position(b, (t3_vec3){ x, y, z + 0.3f }); cw_node_set(b, "size", cw_val_float(kind >= 2 ? 1.5f : 0.9f)); cw_particles_restart(b); }
+  { cw_node b = burst[nbu++ % NBURST]; cw_node3d_set_position(b, (t3_vec3){ x, y, z + 0.3f }); cw_node_set(b, "size", cw_val_float(kind >= 2 ? 0.7f : 0.45f)); cw_particles_restart(b); }
   if (kind >= 2) fx_mark(x, z, 0.75f);
   cw_node n = spark[ns++ % NSPARK];
   cw_node3d_set_position(n, (t3_vec3){ x, y, z });
-  cw_node_set(n, "amount", cw_val_int(kind >= 2 ? 64 : 28));
+  cw_node_set(n, "amount", cw_val_int(kind >= 2 ? 24 : 16)); /* fewer sparks: the blood carries a heavy blow now */
   cw_node_set(n, "direction", cw_val_vec3((float)face * 0.8f, 0.3f, 0.2f));
   cw_node_set(n, "spread", cw_val_float(kind >= 2 ? 110 : 70));
   cw_particles_restart(n);
@@ -317,6 +317,15 @@ void fx_stain(float x, float z, float size, int kind) {
     }
     if (!clash) cell = c;
   }
+  if (cell < 0 && kind == 2) { /* a pool under the dead always goes down: the same-shape stains it would sit on are wiped first */
+    cell = CELLS[2][fxh(s, 1) & 3];
+    for (int i = 0; i < NBLOOD; i++) {
+      struct bstain *b = &bst[i];
+      if (b->cell != cell || b->a <= 0.02f) continue;
+      float dx = x - b->x, dz = z - b->z;
+      if (dx * dx + dz * dz < 0.25f * (r + b->r) * (r + b->r)) { b->a = 0; cw_node3d_set_position(blood[i], (t3_vec3){ 0, -20, 0 }); }
+    }
+  }
   if (cell < 0) return;
   z = cw_clampf(z, -LANE_Z, LANE_Z + 0.2f);
   int k = nbl++ % NBLOOD;
@@ -331,7 +340,7 @@ void fx_stain(float x, float z, float size, int kind) {
   bst[k].sx = sx, bst[k].sy = sy;
   cw_node_set(d, "size", cw_val_vec3(sx * bst[k].grow, sy * bst[k].grow, 0.26f)); /* a pool spreads out (fx_tick) */
   cw_node3d_set_rotation(d, (t3_vec3){ -1.5708f, 0, fxu(s, 7) * 6.28318f });
-  cw_node_set(d, "color", cw_val_color(1, 1, 1, bst[k].a));
+  cw_node_set(d, "color", cw_val_color(0.78f, 0.74f, 0.74f, bst[k].a)); /* MIX is unlit: a little under full so it sits in the night street */
 }
 static int nblow;
 /* a splash on something upright: the back walls (a box past the far lane, where nobody walks) or a prop's face */
@@ -347,7 +356,7 @@ static void fx_wall_splat(float x, float y, float z, float depth, float size) {
   cw_node3d_set_position(d, (t3_vec3){ x, y, z });
   cw_node3d_set_rotation(d, (t3_vec3){ 0, 0, fxu(s, 22) * 6.28318f }); /* projects along -z: away from the camera, onto what stands behind */
   cw_node_set(d, "size", cw_val_vec3(size * (0.8f + 0.4f * fxu(s, 23)), size * (0.8f + 0.4f * fxu(s, 24)), depth));
-  cw_node_set(d, "color", cw_val_color(1, 1, 1, 0.8f));
+  cw_node_set(d, "color", cw_val_color(0.78f, 0.74f, 0.74f, 0.85f));
 }
 void fx_blood(float x, float y, float z, int dir, int knock) {
   uint32_t s = (uint32_t)++nblow;
@@ -360,7 +369,7 @@ void fx_blood(float x, float y, float z, int dir, int knock) {
   if (knock >= 1) { /* a spurt arcs out and comes down: drops land along the arc */
     cw_node p = spurt[nsp++ % NSPURT];
     cw_node3d_set_position(p, (t3_vec3){ x, y, z });
-    cw_node_set(p, "amount", cw_val_int(knock >= 2 ? 48 : 24));
+    cw_node_set(p, "amount", cw_val_int(knock >= 2 ? 80 : 36));
     cw_node_set(p, "direction", cw_val_vec3((float)dir, 0.9f, 0.2f * (fxu(s, 15) - 0.5f)));
     cw_particles_restart(p);
     fx_stain(x + (float)dir * (0.45f + 0.4f * fxu(s, 13)), z + 0.3f * (fxu(s, 14) - 0.5f), knock >= 2 ? 0.75f : 0.5f, 0);
@@ -412,7 +421,7 @@ void fx_flash(float x, float y, float z, float r, float g, float b, float e) {
   int i = nf++ % NFLASH;
   cw_node3d_set_position(flash[i], (t3_vec3){ x, y + 0.3f, z + 0.8f });
   cw_node_set(flash[i], "color", cw_val_color(r, g, b, 1));
-  flash_e[i] = e * 4; /* bright enough to light the faces near a hit, not to burn them white */
+  flash_e[i] = e * 0.9f; /* a brief warm pulse on the struck body, not a light that burns it (and its face) white */
   cw_node_set(flash[i], "energy", cw_val_float(flash_e[i]));
 }
 void fx_tick(void) {
@@ -425,7 +434,7 @@ void fx_tick(void) {
     if (age > 40 * 60) {
       b->a -= 0.006f;
       if (b->a <= 0) { b->a = 0; cw_node3d_set_position(blood[i], (t3_vec3){ 0, -20, 0 }); }
-      cw_node_set(blood[i], "color", cw_val_color(1, 1, 1, b->a > 0 ? b->a : 0));
+      cw_node_set(blood[i], "color", cw_val_color(0.78f, 0.74f, 0.74f, b->a > 0 ? b->a : 0));
     }
   }
   for (int i = 0; i < NFLASH; i++)

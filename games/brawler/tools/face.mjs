@@ -469,6 +469,16 @@ export function paintFace(M, P, N = 512) {
       }
       if (P.mole) { const mm = G2(xn - P.mole[0], yn - P.mole[1], 0.014, 0.014); mix(c, [0.16, 0.08, 0.06], mm); h += 0.4 * mm; }
       // a shaved scalp: a grey-blue shadow of hair above the hairline (bald heads stop reading as a mannequin's dome)
+      // a painted fade under a slicked hairline (P.hairEdge(a): the ring height where the hair shell meets the skin at loft
+      // angle a): fine dark strands thinning out over a band below it, so hair never meets skin at a hard edge
+      if (P.hairEdge) {
+        const d = P.hairEdge(b.a) - tt, k = ss(0.14, -0.01, d) * ss(-0.08, 0.0, d);
+        if (k > 0) {
+          const st = hash2(Math.floor(mu * 2600), Math.floor(mv * 260), seed + 23), st2 = hash2(Math.floor(mu * 900), 7, seed + 29);
+          mix(c, P.hair, Math.min(1, k * (0.45 + 0.75 * st * (0.5 + 0.5 * st2))));
+          h += 0.15 * k;
+        }
+      }
       if (P.hairline) { const hy = 0.44 + 0.07 * G1(ax - 0.42, 0.16), hd = fm * ss(hy - 0.06, hy + 0.01, yn); const hz = hash2(Math.floor(mu * 1500), Math.floor(mv * 1500), seed + 19); if (hz < hd * 1.1) { mix(c, P.hair, 0.8); h += 0.2; } mix(c, [skin[0] * 0.7, skin[1] * 0.68, skin[2] * 0.7], hd * 0.4); }
       if (P.scalp) { const sc = ss(0.38, 0.5, yn - 0.06 * Math.cos(aRel)) * (1 - fm * ss(0.5, 0.4, yn)) + ss(-0.3, 0.1, -front) * ss(-0.35, -0.2, yn) * ss(-1, 0.4, front); const sz = hash2(Math.floor(mu * 1500), Math.floor(mv * 1500), seed + 17); mix(c, [skin[0] * 0.6, skin[1] * 0.6, skin[2] * 0.66], clamp(sc) * P.scalp * 0.5); if (sz > 1 - 0.4 * clamp(sc) * P.scalp) mix(c, P.hair, 0.5); }
       const ii = i;

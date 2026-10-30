@@ -443,14 +443,16 @@ const HAY_BACK = G({ Hips: { p: [0, -0.1, -0.06], r: [0, 0.45, 0] }, Spine: { r:
 const HAY_HIT = G({ Hips: { p: [0, -0.12, 0.14], r: [0, -0.45, 0] }, Spine: { r: [0.25, 0.5, 0] }, Chest: { r: [0.15, 0.78, 0] }, Head: { r: [0.05, -0.45, 0] },
   UpperArmR: { r: [-1.5, -0.3, -0.6] }, LowerArmR: { r: [-0.55, 0, 0] }, UpperArmL: { r: [-0.3, 0, 0.65] }, LowerArmL: { r: [-1.0, 0, 0] },
   UpperLegL: { r: [-0.75, -0.1, 0.12] }, LowerLegL: { r: [0.7, 0, 0] }, UpperLegR: { r: [0.45, -0.25, -0.12] }, LowerLegR: { r: [0.25, 0, 0] }, FootR: { r: [0.4, 0.3, 0] } });
-const HAY_OVER = merge(HAY_HIT, { Hips: { p: [0, -0.16, 0.2], r: [0, -0.6, 0.06] }, Spine: { r: [0.45, 0.62, 0] }, Chest: { r: [0.35, 0.95, 0.05] }, Head: { r: [0.25, -0.55, 0.12] },
-  UpperArmR: { r: [-1.15, -0.65, 0.1] }, LowerArmR: { r: [-0.7, 0, 0] }, UpperArmL: { r: [-0.2, 0, 0.9] }, LowerArmL: { r: [-0.6, 0, 0] } });
+// (the wanker's: B-PT18 a wild flail, not a strong man's punch: the arm nearly straight, the other arm windmilling for balance,
+// and the follow-through spins him round off balance)
+const HAY_OVER = merge(HAY_HIT, { Hips: { p: [0, -0.18, 0.22], r: [0.1, -0.95, 0.12] }, Spine: { r: [0.55, 0.8, 0.1] }, Chest: { r: [0.42, 1.2, 0.08] }, Head: { r: [0.35, -0.7, 0.2] },
+  UpperArmR: { r: [-0.9, -0.95, 0.35] }, LowerArmR: { r: [-0.25, 0, 0] }, UpperArmL: { r: [-1.6, 0, 1.4] }, LowerArmL: { r: [-0.3, 0, 0] } });
 clip('haymaker', 1.15, false, keyed([
   [0, GUARD],
   [0.43, HAY_BACK, 'io'],
   [0.5, HAY_HIT, 'out'],
   [0.6, HAY_OVER, 'io'],
-  [0.85, merge(HAY_OVER, { UpperArmL: { r: [-0.5, 0, 1.1] }, Head: { r: [0.15, -0.4, 0.05] } }), 'io'],
+  [0.85, merge(HAY_OVER, { UpperArmL: { r: [-2.4, 0, 1.0] }, UpperArmR: { r: [0.3, 0, -1.2] }, Head: { r: [0.15, -0.4, 0.25] }, Hips: { p: [0.05, -0.14, 0.18], r: [0.05, -1.2, 0.15] } }), 'io'],
   [1.15, GUARD, 'io']]), ['wanker']);
 // the creep: a hunched lurching walk (one leg dragged), and the flash: he spreads his coat wide with both hands and lunges
 clip('lurch', 1.3, true, (t) => {
@@ -468,6 +470,29 @@ clip('flash', 1.1, false, keyed([
   [0.52, FLASH_OPEN, 'out'],
   [0.8, merge(FLASH_OPEN, { Spine: { r: [-0.25, 0, 0] }, Head: { r: [-0.3, 0.2, 0] } }), 'io'],
   [1.1, REST, 'io']]), ['creep']);
+// hit reactions that sell the face from the street camera (B-PT13): the big men recoil, the small ones rage, the creep
+// swoons. Each snaps in, holds and settles back to the guard; the game plays them instead of the plain flinch.
+const RECOIL = merge(REST, { Hips: { p: [0, -0.1, -0.12], r: [0.12, 0, 0] }, Spine: { r: [-0.28, 0, 0] }, Chest: { r: [-0.22, 0, 0] }, Neck: { r: [0.25, 0, 0] }, Head: { r: [-0.1, 0, 0] },
+  UpperArmL: { r: [-0.4, -0.9, 1.25] }, LowerArmL: { r: [-1.6, 0, 0] }, HandL: { r: [-0.6, 0, 0] }, UpperArmR: { r: [-0.4, 0.9, -1.25] }, LowerArmR: { r: [-1.6, 0, 0] }, HandR: { r: [-0.6, 0, 0] },
+  UpperLegL: { r: [-0.35, 0, 0.12] }, LowerLegL: { r: [0.7, 0, 0] }, UpperLegR: { r: [-0.1, 0, -0.14] }, LowerLegR: { r: [0.5, 0, 0] }, FootL: { r: [-0.3, 0, 0] } });
+clip('react_fear', 0.75, false, (t) => {
+  const u = t / 0.75, k = ss(0, 0.12, u) * (1 - ss(0.72, 1, u)), sh = Math.sin(t * 70) * 0.04 * k; // a quick cower and a tremble
+  return lerpPose(GUARD, merge(RECOIL, { Chest: { r: [-0.22, sh * 2, 0] }, Head: { r: [-0.1, sh * 3, 0] }, Hips: { p: [sh * 0.2, -0.1, -0.12] } }), k);
+});
+const RAGE = G({ Hips: { p: [0, -0.12, 0.1] }, Spine: { r: [0.38, 0, 0] }, Chest: { r: [0.2, 0, 0] }, Neck: { r: [-0.15, 0, 0] }, Head: { r: [-0.25, 0, 0] },
+  UpperArmL: { r: [0.35, 0, 0.55] }, LowerArmL: { r: [-1.25, 0, 0] }, UpperArmR: { r: [0.35, 0, -0.55] }, LowerArmR: { r: [-1.25, 0, 0] },
+  UpperLegL: { r: [-0.55, 0, 0.12] }, LowerLegL: { r: [0.8, 0, 0] }, UpperLegR: { r: [0.3, 0, -0.12] }, LowerLegR: { r: [0.5, 0, 0] } });
+clip('react_rage', 0.75, false, (t) => {
+  const u = t / 0.75, k = ss(0, 0.12, u) * (1 - ss(0.75, 1, u)), shake = Math.sin(t * 40) * 0.45 * k * ss(0.1, 0.2, u); // fists down and shaking, head shaking no
+  return lerpPose(GUARD, merge(RAGE, { Head: { r: [-0.25, shake, 0] }, Neck: { r: [-0.15, shake * 0.4, 0] }, LowerArmL: { r: [-1.25 + Math.abs(shake) * 0.3, 0, 0] }, LowerArmR: { r: [-1.25 + Math.abs(shake) * 0.3, 0, 0] } }), k);
+});
+const SWOON = merge(REST, { Hips: { p: [0, -0.06, 0.1] }, Spine: { r: [-0.4, 0, 0] }, Chest: { r: [-0.35, 0, 0] }, Neck: { r: [-0.3, 0, 0] }, Head: { r: [-0.45, 0, 0] },
+  UpperArmL: { r: [0.25, 0, 0.75] }, LowerArmL: { r: [-0.3, 0, 0] }, HandL: { r: [0.4, 0, 0] }, UpperArmR: { r: [0.25, 0, -0.75] }, LowerArmR: { r: [-0.3, 0, 0] }, HandR: { r: [0.4, 0, 0] },
+  UpperLegL: { r: [-0.15, 0, 0.1] }, LowerLegL: { r: [0.35, 0, 0] }, UpperLegR: { r: [-0.15, 0, -0.1] }, LowerLegR: { r: [0.35, 0, 0] } });
+clip('react_bliss', 0.85, false, (t) => {
+  const u = t / 0.85, k = ss(0, 0.15, u) * (1 - ss(0.75, 1, u)), sway = Math.sin(t * 9) * 0.12 * k; // head back, chest arched, arms open, a happy sway
+  return lerpPose(GUARD, merge(SWOON, { Hips: { p: [sway * 0.2, -0.06, 0.1], r: [0, sway, sway * 0.5] }, Head: { r: [-0.45, -sway, 0] } }), k);
+});
 function quat(r) { // rest-relative euler, q = qz * qy * qx
   const [x, y, z] = r;
   const qx = [Math.sin(x / 2), 0, 0, Math.cos(x / 2)], qy = [0, Math.sin(y / 2), 0, Math.cos(y / 2)], qz = [0, 0, Math.sin(z / 2), Math.cos(z / 2)];
@@ -797,8 +822,24 @@ function build(sp) {
     const pompLine = (t, a) => 1 - 0.13 * Math.pow(Math.max(0, Math.sin(a)), 6) * ss(0.56, 0.36, t);
     const groove = (t) => (a) => (1 + 0.016 * Math.sin(a * 34 + t * 3) + 0.006 * Math.sin(a * 91)) * pompLine(t, a);
     m.loft('pomade', shell(0.28, 1.0, 1.035, 0.002, 72, { mod: groove }), { n: 112, bone: BI.Head, tile: 0.25 }); // fine rings: where the shell sinks under the forehead skin the edge is a smooth curve, not a staircase
-    m.loft('pomade', shell(-0.45, 0.32, 1.035, 0.002, 14, { mod: (t) => (a) => 1 + 0.012 * Math.sin(a * 30 + t * 2) }), { n: 40, arc: [BACK - 1.3, BACK + 1.3], bone: BI.Head, tile: 0.25 });
-    m.loft('pomade', shell(0.06, 0.32, 1.035, 0.002, 10), { n: 52, arc: [BACK - 2.35, BACK + 2.35], bone: BI.Head, tile: 0.25 }); // its ends run in under the roll, not at the temple (a square step there)
+    // the back of the head down to the nape: its lower edge and its ends also sink smoothly under the skin
+    m.loft('pomade', shell(-0.5, 0.32, 1.035, 0.002, 30, { mod: (t) => (a) => (1 + 0.012 * Math.sin(a * 30 + t * 2)) * (1 - 0.09 * Math.max(ss(-0.36, -0.48, t), ss(1.05, 1.28, Math.abs(wrapA(a - BACK))) * ss(0.1, -0.1, t))) }), { n: 80, arc: [BACK - 1.3, BACK + 1.3], bone: BI.Head, tile: 0.25 });
+    // the slicked sides: one shell whose lower edge is a smooth curve (the hairline) rising from behind the ear to the temple;
+    // below that curve the shell sinks under the skin by a smooth ramp, so there is no polygon edge or step on the face
+    const sideEdge = pompEdge;
+    const sideSink = (t) => (a) => 1 - 0.09 * ss(sideEdge(a) + 0.015, sideEdge(a) - 0.05, t);
+    m.loft('pomade', shell(-0.02, 0.36, 1.035, 0.002, 38, { mod: sideSink }), { n: 96, arc: [BACK - 2.4, BACK + 2.4], bone: BI.Head, tile: 0.25 });
+    // (the soft hairline itself is painted: writeFace's hairEdge band of strands fading under this edge)
+    // a fringe of fine short cards rooted just under that edge, combed back over it: the hairline ends in strands, soft
+    for (let i = 0; i < 520; i++) {
+      // rooted a little below the shell's edge, on the skin, and combed up and back over it: strands break the edge up
+      const a = BACK + (rnd() * 2 - 1) * 2.35, te = sideEdge(a) - 0.03 - 0.05 * rnd();
+      const [p, nn] = scalpPt(te, a, 0.002);
+      const sd = Math.cos(a) >= 0 ? 1 : -1, back = [0, 0.7, -1];
+      const dir = sub(back, mul(nn, dotv(back, nn)));
+      const pts = growS(p, dir, (0.035 + 0.03 * rnd()) * HS, 4, (k, q, d) => add(d, [-sd * 0.02, 0, 0]), 0.003 + 0.002 * (1 - rnd()));
+      card(pts, 0.006 * HS, 0.02 * HS, 0, onHead, { mat: 'pomadeCard' });
+    }
     // The quiff (B-PT11, after the 1950s references in findings/brawler.md): the top hair is long (8 cm and more), backcombed
     // at the roots and combed up and over that padding, so it is one solid mass from the scalp up: it rises steeply off the
     // forehead hairline, stands about 9 cm over the skull at the front, leans some 5 cm out past the brow (the roll
@@ -815,7 +856,7 @@ function build(sp) {
     for (let k = 0; k <= K; k++) { const u = k / K, q = qf(u), cap = Math.sin(Math.min(1, k / 3) * PI / 2) * Math.sin(Math.min(1, (K - k) / 2) * PI / 2); rr.push({ c: q.c, U: X, V: q.Vv, ru: Math.max(0.003, q.ru * 0.92 * Math.sqrt(cap)), rv: Math.max(0.003, q.rv * 0.9 * Math.sqrt(cap)), e: 2.1, mod: (a) => 1 + 0.03 * Math.sin(a * 13 + u * 6) }); }
     m.loft('pomade', rr, { n: 34, bone: BI.Head, tile: 0.2 });
     /** a point on the swoop's surface: u along it, s across (-1 .. 1), lift metres off the core */
-    const swoop = (u, s, lift) => { const q = qf(u), cs = Math.sqrt(Math.max(0, 1 - s * s)); return add(q.c, add(mul(X, q.ru * s * 0.98), mul(q.Vv, q.rv * cs * 0.95 + lift))); };
+    const swoop = (u, s, lift) => { const q = qf(u), cs = Math.sqrt(Math.max(0, 1 - s * s)); return add(q.c, add(mul(X, q.ru * s * 0.9), mul(q.Vv, q.rv * cs * 0.88 + lift))); }; // on the roll's surface (it is lofted at 0.92 / 0.9 of the section): cards standing 4 mm off it read as slivers
     const swoopOut = (u, s) => { const q = qf(u), cs = Math.sqrt(Math.max(0, 1 - s * s)); return norm(add(mul(X, s / Math.max(0.05, q.ru)), mul(q.Vv, cs / Math.max(0.05, q.rv)))); };
     const pc = { mat: 'pomadeCard' };
     // the sides: from the temples and over the ears straight back, a little up, layered three deep
@@ -844,12 +885,12 @@ function build(sp) {
     }
     // the swoop: strands from the hairline rise up the front of the roll, curl over it and lie back along its top
     for (let i = 0; i < 150; i++) {
-      const s = (rnd() * 2 - 1) * 0.92, lift = 0.002 + 0.006 * rnd(), u1 = lerp(0.55, 1.0, rnd());
+      const s = (rnd() * 2 - 1) * 0.92, lift = 0.001 + 0.002 * rnd(), u1 = lerp(0.45, 0.68, rnd()); // they end on the roll, not past its back edge (thin slivers stood off it there)
       // from the front of the roll back over it (the roll is solid down to the hairline now: strands hanging under the
       // overhang only showed their ragged ends)
       const pts = [], steps = 9;
       for (let k = 0; k <= steps; k++) pts.push(swoop(lerp(0.04, u1, k / steps), s * lerp(0.75, 1, k / steps), lift));
-      card(pts, 0.05 * HS, 0.03 * HS, 0, onHead, { ...pc, outAt: (k) => swoopOut(lerp(0.04, u1, k / steps), s) });
+      card(pts, 0.05 * HS, 0.012 * HS, 0, onHead, { ...pc, outAt: (k) => swoopOut(lerp(0.04, u1, k / steps), s) }); // tapering to a fine tip
     }
     // the top layer: shorter strands lying back along the crest, so the comb lines show
     for (let i = 0; i < 0; i++) { // (none: seen from the front, flat lying cards on the crest caught the sky as white patches)
@@ -1031,6 +1072,9 @@ function build(sp) {
 }
 
 /** skin tones lose a little saturation so they read as skin, not orange plastic, under a warm key */
+// where the pompadour's slicked sides meet the skin (ring height by loft angle): the shell sinks under the skin below it, and
+// the face texture paints a fading band of strands under it
+const pompEdge = (a) => { const df = Math.abs(wrapA(a - FRONT)); return 0.04 + 0.3 * ss(1.35, 0.8, df); };
 const desat = (c, k) => { const l = 0.3 * c[0] + 0.55 * c[1] + 0.15 * c[2]; return c.map((x) => lerp(x, l, k)); };
 /** the face and eye textures each character wears */
 function writeFace(sp) {
@@ -1042,6 +1086,7 @@ function writeFace(sp) {
     frown: sp.frown, age: p.age ?? 0, freckles: p.freckles, ruddy: p.ruddy, lipstick: col(sp.lip), shadowCol: col(p.eyeShadow), shadowAmt: p.eyeShadowAmt,
     liner: p.liner, rouge: col(p.rouge), war: col(sp.war), scars: p.scars ?? (sp.scar ? [[0.3, 0.32, 0.5, -0.12, 0.012, true]] : []), tattoos: p.tattoos,
     mole: p.mole, scalp: p.scalp, hairline: p.hairline, browSparse: p.browSparse, browSlit: p.browSlit,
+    hairEdge: sp.hair === 'pompadour' ? pompEdge : undefined,
   }, 512);
   writeSet(TEX, 'face_' + sp.name, t, 2.2);
   writeSet(TEX, 'eye_' + sp.name, paintEye(sp.eyes ? hexRaw(sp.eyes) : col(p.iris) ?? [0.3, 0.19, 0.1], 128, sp.name.length), 1.0);
@@ -1125,6 +1170,7 @@ const CLIP_FACE = {
   hit: (u) => [['wince', hitEnv(u)]], hit_gut: (u) => [['wince', hitEnv(u)], ['grimace', 0.4 * hitEnv(u)]], hit_hard: (u) => [['wince', hitEnv(u)], ['grimace', 0.3 * hitEnv(u)]],
   knockdown: (u) => [['wince', ss(0, 0.1, u) * (1 - ss(0.4, 0.7, u))], ['ko', ss(0.45, 0.85, u)]],
   down: () => [['ko', 1]], dead: () => [['dead', 1]], grabbed: () => [['grimace', 0.85]], thrown: () => [['wince', 0.7], ['grimace', 0.4]],
+  react_fear: (u) => [['fear', ss(0, 0.08, u) * (1 - 0.3 * ss(0.75, 1, u))]], react_rage: (u) => [['anger', ss(0, 0.08, u) * (1 - 0.3 * ss(0.75, 1, u))]], react_bliss: (u) => [['bliss', ss(0, 0.1, u) * (1 - 0.3 * ss(0.8, 1, u))]],
   flash: (u) => [['bliss', ss(0.3, 0.5, u) * (1 - ss(0.85, 1, u))]], lurch: () => [['grin', 0.35]],
   comb: (u) => [['grin', ss(0.05, 0.2, u) * (1 - ss(0.88, 1, u))]], shoulder: () => [['effort', 0.85]], flick: (u) => [['snarl', strike(0.6)(u)]],
   thumbsup: (u) => [['grin', ss(0.04, 0.18, u) * (1 - ss(0.86, 1, u))]], thump: (u) => [['effort', ss(0, 0.3, u) * (1 - ss(0.55, 0.62, u))], ['shout', ss(0.55, 0.62, u) * (1 - ss(0.7, 0.95, u))]],
@@ -1141,6 +1187,7 @@ const CLIP_HANDS = {
   taunt: (u) => { const t = u * 1.4, b = t > 0.6 && t < 1.15 ? 0.5 + 0.5 * Math.cos(((t - 0.66) / 0.14) * PI) : 0; return { L: OPEN, R: t < 0.55 ? OPEN : [lerp(0.1, 1.3, b), lerp(0.1, 1.5, b), 0.2] }; },
   hit: both(LOOSE), hit_gut: both(LOOSE),
   comb: () => ({ L: LOOSE, R: GRIP }), flick: (u) => ({ L: u < 0.55 ? GRIP : FIST, R: u < 0.55 ? GRIP : FIST }),
+  react_fear: both(OPEN), react_rage: both(FIST), react_bliss: both(LOOSE),
   thumbsup: (u) => ({ L: FIST, R: u > 0.1 && u < 0.85 ? THUMB_UP : FIST }), thump: both(FIST),
 };
 /** the face and hand bones of one sampled pose: rotations (radians) and offsets in head units (scaled by R in emit) */
@@ -1274,7 +1321,8 @@ export const SPECS = [
   // work boots, a mullet and a scruffy moustache (a regular enemy: a wild haymaker and a shoulder charge)
   { name: 'wanker', face: { noseW: 1.2, noseLen: 1.05, hook: 0.15, crook: 0.3, brow: 1.2, browThick: 0.06, eyeR: 0.155, socket: 1.1, jawAng: 1.1, chin: 1.0, jowl: 0.7, cheek: 0.95, naso: 1.1, lipU: 0.85, mw: 0.25 },
     paint: { age: 0.35, ruddy: 0.8, stubble: 0.85, shadow: 0.3, iris: [0.3, 0.38, 0.45], hairline: true, browColor: [0.3, 0.2, 0.12], beardColor: [0.34, 0.23, 0.13] },
-    stubble: true, frown: true, moustache: 'thick', scale: 1.06, width: 1.4, belly: 1.15, chest: 1.0, sw: 0.225, hw: 0.11, arm: 1.25, leg: 1.12, head: 1.08, hand: 1.4, jaw: 1.2, neck: 1.25,
+    // B-PT18: out of shape, not a brawler: skinny untoned arms, narrow sloping shoulders, a soft chest and a big round beer belly
+    stubble: true, frown: true, moustache: 'thick', scale: 1.04, width: 1.3, belly: 3.4, chest: 0.86, sw: 0.188, hw: 0.105, arm: 0.78, leg: 1.0, head: 1.08, hand: 1.15, jaw: 1.15, neck: 1.1,
     hair: 'foamcap', boots: true, belt: true, top: 'tee', sleeves: 'short', shirtFab: 'dirty', shirtTile: 1.0, bottom: 'jeans', pantsFab: 'denim',
     colors: { skin: 0xd49a78, shirt: 0xf4f0e6, pants: 0x46607e, shoes: 0x4a3220, hair: 0x5a3c22, accent: 0x8a2a1a, belt: 0x3a2614 } },
   // the creep: a pale, sweaty man in a long worn trench coat (collar up, belted loose), a fedora over a bald pate, a pencil

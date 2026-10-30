@@ -72,6 +72,7 @@ typedef struct ent {
   int fade;
   float hurtflash;
   bool hitflag;
+  int react; /* ticks left on a hit reaction (the temper's clip and the emote over the head; presentation, never hashed) */
   uint32_t look; /* a regular enemy's skin, hair and clothes (looks.c look_pick; 0: the model's own); never hashed */
 } ent;
 
@@ -203,7 +204,8 @@ void sb_jolt(spring_rig *s, float x, float y, float z);
 void sb_step(spring_rig *s, t3_vec3 pos, float yaw, float dt);
 void face_express(spring_rig *s, const char *clip, float u);
 enum { FACE_PLAIN, FACE_FEAR, FACE_ANGER, FACE_BLISS };
-void face_temper(spring_rig *s, int temper); /* how a face takes a hit (secondary.c clip_face) */
+void face_temper(spring_rig *s, int temper);
+int temper_of(int def); /* sim.c: FACE_FEAR, FACE_ANGER, FACE_BLISS or FACE_PLAIN by character */ /* how a face takes a hit (secondary.c clip_face) */
 float face_weight(const spring_rig *s, int target);
 void chars_secondary(void);
 void char_jolt(ent *e, float dir, float k);
