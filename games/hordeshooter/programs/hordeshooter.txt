@@ -66,3 +66,12 @@ basic+map+trans+ds
 basic+map+trans+instbig+fog2+cenv+add+icol
 basic+map+trans+instbig+cenv+add+icol
 basic+trans+fog2
+standard+fog2+l2001+xcluster
+standard+map+vcol+rep+nmap+rmap+fog2+l2001+xcluster
+standard+vcol+fog2+l2001+xcluster
+basic+vcol+fog2
+standard+instbig+fog2+icol+l2001+xcluster
+standard+map+rep+instbig+nmap+rmap+fog2+icol+l2001+xcluster
+standard+vcol+instbig+fog2+icol+l2001+xcluster
+standard+map+vcol+rep+fog2+l2001+xcluster
+basic+vcol+instbig+fog2+icol

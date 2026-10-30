@@ -20,7 +20,9 @@
 #define FW 80         /* flow field grid (1 m cells) */
 #define TICK 60.0f
 
-enum { EK_RUNNER, EK_BRUTE, EK_BLOATER, EK_BOSS, EK_KINDS };
+enum { EK_RUNNER, EK_BRUTE, EK_BLOATER, EK_BOSS, EK_SKITTER, EK_BONEWALKER, EK_KINDS }; /* skitter: the sluice's; bonewalker: the ossuary's */
+const char *sim_kind_name(int kind); /* the .cwlevel's name of a kind ("runner" ...) */
+int sim_kind_by_name(const char *name); /* -1 when not a kind */
 enum { OK_CRATE, OK_BARREL, OK_WALL, OK_PILLAR, OK_KINDS };
 enum { EV_SHOT, EV_HIT, EV_KILL, EV_BOOM, EV_CRATE, EV_BARREL, EV_WALL, EV_GEM, EV_HURT, EV_LEVEL, EV_WAVE, EV_BOSS, EV_DOWN, EV_ROCKET, EV_POWER, EV_POWER_SPAWN, EV_SWIPE,
        EV_MELT, EV_CLEAR, EV_HATCH, EV_DESCEND, EV_FLOOR }; /* EV_MELT: one of the horde melting after its boss fell (a its kind); EV_CLEAR: the floor is clear;
@@ -68,7 +70,22 @@ typedef struct obstacle { bool alive; uint8_t kind; float x, y, hx, hy; int hp, 
 typedef struct pickup { bool alive; uint8_t kind; float x, y, vx, vy; int life, value, age; } pickup; /* value: the xp a gem gives (gems close together merge) */
 typedef struct boom { float x, y, r, dmg; int delay; uint8_t owner; bool big; } boom;
 #define FINAL_WAVE 44 /* the run's waves: the last floor's boss wave */
+#define NLEVELS_MAX 8
 typedef struct event { uint8_t kind, a, b; float x, y, z, w; } event;
+
+/* a floor's gameplay layout and waves (from its .cwlevel, read by the game; the yard's is built in code) */
+enum { HZ_WATER, HZ_KINDS };
+typedef struct floor_obstacle { uint8_t kind; float x, y, hx, hy; } floor_obstacle;
+typedef struct floor_hazard { uint8_t kind; float x, y, hx, hy; } floor_hazard;
+typedef struct floor_def {
+  bool set;
+  int nob, nspawn, npick, nhaz, nwave;
+  floor_obstacle ob[MAXO];
+  float spawn[16][3]; /* a gap the horde comes in through: x, y, half width */
+  float pick[16][2];  /* power-up spots */
+  floor_hazard haz[32];
+  float share[8][EK_KINDS]; /* each wave's kinds, shares summing to 1 */
+} floor_def;
 
 typedef struct sim {
   int tick, wave, wave_tick, players, state, state_ticks;
@@ -86,6 +103,7 @@ typedef struct sim {
   bool no_power; /* development: no power-ups at all (the A/B of the bot runs) */
   bool no_spawn; /* tests: the director spawns nothing (sim_spawn places the enemies) */
   float spot_x[16], spot_y[16];
+  floor_def fl[NLEVELS_MAX]; /* each floor's layout, set by the game before it starts (none: the yard's, built in code) */
   /* power-up stats (not state): pickups per type, kills and player-ticks while a type was held */
   int pu_taken[PU_KINDS], pu_kills[PU_KINDS], pu_ticks[PU_KINDS], plain_kills, plain_ticks;
   int nenemies, nbullets, nboom_total;
@@ -133,6 +151,10 @@ const char *sim_upgrade_name(int u);
 /* team centre and the spread of the living players, for the camera */
 /* an enemy's melee attack as the view draws it: -1 none, 0 the wind-up, 1 the strike, 2 the recovery; *tell 0..1
  * how far into the wind-up (the telegraph) */
+extern const char *const FLOOR_ID[NLEVELS]; /* the floors' ids (LEVELS.md): yard sluice ossuary ... */
+struct lb_level;
+int horde_floors_load(sim *s, struct lb_level *levels); /* each floor's .cwlevel that exists into s->fl (levels: also the parsed files, NLEVELS); then lays out the current floor; how many were read */
+void sim_floor_apply(sim *s); /* after setting s->fl: lay out the current floor (its obstacles, spots) */
 int sim_spawn(sim *s, int kind, float x, float y); /* tests: one enemy there; its slot or -1 */
 void sim_dev_kill_boss(sim *s); /* development: the floor's boss falls now (player 1 gets it) */
 int sim_melee_windup(int kind); /* the ticks of that kind's wind-up */
@@ -153,6 +175,8 @@ void view_init(cw_node root);
 void view_free(void);
 void view_sync(const sim *s, float time);
 extern float g_cam_dist; /* development: a fixed camera distance (0: the game frames the team) */
+void view_floor(int level, const struct lb_level *lv); /* build that floor's look (0: the yard) */
+int view_floor_now(void);
 void view_hatch(const sim *s); /* the hatch's beam and ring of light, by the floor's state */
 int view_attack_drawn(void); /* enemies drawn in an attack pose this frame */
 void view_camera(const sim *s, cw_node camera, float aspect, float control_x, float control_y);

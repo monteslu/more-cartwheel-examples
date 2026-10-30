@@ -39,7 +39,16 @@ static const ekind EK[EK_KINDS] = {
   { 0.72f, 1.8f, 2.4f, 16, 4.0f, 18, 6 },
   { 0.55f, 1.4f, 2.0f, 5, 0.8f, 6, 3 },
   { 1.7f, 1.5f, 1.9f, 700, 260.0f, 30, 90 },
+  { 0.38f, 3.9f, 5.7f, 1, 0.2f, 6, 1 },   /* skitter: 1.3x a runner's speed, 60% of its health, in packs */
+  { 0.42f, 2.4f, 3.5f, 4, 0.9f, 9, 2 },   /* bonewalker: 0.8x a runner's speed, a slow stiff lurch */
 };
+static const char *const KIND_NAME[EK_KINDS] = { "runner", "brute", "bloater", "boss", "skitter", "bonewalker" };
+const char *sim_kind_name(int kind) { return kind >= 0 && kind < EK_KINDS ? KIND_NAME[kind] : "?"; }
+int sim_kind_by_name(const char *name) {
+  for (int k = 0; k < EK_KINDS; k++)
+    if (!strcmp(name, KIND_NAME[k])) return k;
+  return -1;
+}
 
 /* melee: a wind-up the player can read (the attack clip's first pose, held), the strike on one tick, a
  * recovery; the damage lands only on a player still in reach and in front at the strike, so stepping away
@@ -56,6 +65,8 @@ static const melee MEL[EK_KINDS] = {
   { 34, 26, 12, 0.5f, 1.1f, 0.2f },    /* brute: an overhead smash */
   { 24, 22, 10, 0.3f, 0.8f, -0.2f },   /* bloater: a belly slam, wide */
   { 40, 30, 20, 1.0f, 2.2f, -0.3f },   /* boss: a big sweep, wider still */
+  { 24, 18, 12, 2.6f, 2.8f, 0.5f },    /* skitter: crouches 0.4 s (forelegs up), springs about 3 m and bites */
+  { 30, 22, 10, 0.3f, 0.9f, 0.2f },    /* bonewalker: a backhand slash, the blade arm swung far back for 0.5 s */
 };
 #define STRIKE_HOLD 6 /* ticks the strike pose shows after the hit */
 
@@ -246,6 +257,40 @@ static void add_obstacle(sim *s, int kind, float x, float y, float hx, float hy)
       s->nav_dirty = true;
       return;
     }
+}
+
+static bool in_hazard(const sim *s, int kind, float x, float y) {
+  const floor_def *fd = &s->fl[s->level];
+  if (!fd->set) return false;
+  for (int i = 0; i < fd->nhaz; i++) {
+    const floor_hazard *h = &fd->haz[i];
+    if (h->kind == kind && fabsf(x - h->x) < h->hx && fabsf(y - h->y) < h->hy) return true;
+  }
+  return false;
+}
+
+static void remove_obstacle(sim *s, int i);
+static void layout(sim *s);
+static void build_flow(sim *s);
+/* the floor's obstacles and power-up spots: its .cwlevel's when the game set one, else the yard's (built in code) */
+static void floor_layout(sim *s) {
+  for (int i = 0; i < MAXO; i++)
+    if (s->o[i].alive) remove_obstacle(s, i);
+  const floor_def *fd = &s->fl[s->level];
+  if (!fd->set) {
+    layout(s);
+    return;
+  }
+  for (int i = 0; i < fd->nob; i++) add_obstacle(s, fd->ob[i].kind, fd->ob[i].x, fd->ob[i].y, fd->ob[i].hx, fd->ob[i].hy);
+  s->pu_spots = 0;
+  for (int i = 0; i < fd->npick && i < 16; i++) s->spot_x[i] = fd->pick[i][0], s->spot_y[i] = fd->pick[i][1], s->pu_spots++;
+}
+void sim_floor_apply(sim *s) { /* after the game set the floors' layouts: the current floor's (the yard keeps the one sim_init made) */
+  if (!s->fl[s->level].set) return;
+  floor_layout(s);
+  cw_nav_update(s->nav);
+  s->nav_dirty = false;
+  build_flow(s);
 }
 
 static void remove_obstacle(sim *s, int i) {
@@ -541,6 +586,7 @@ static void player_step(sim *s, int i, const input *in) {
     return;
   }
   float sp = 6.0f + (float)p->speed * 0.6f;
+  if (in_hazard(s, HZ_WATER, p->x, p->y)) sp *= 0.7f; /* wading */
   float mx = in->mx, my = in->my, ml = cw_v2_length(cw_v2(mx, my));
   if (ml > 1) mx /= ml, my /= ml;
   p->vx += (mx * sp - p->vx) * 0.35f;
@@ -759,7 +805,16 @@ static void spawn_director(sim *s) {
     float r = rf(s);
     int kind = EK_RUNNER;
     int dw = dwave(s);
-    if (dw >= 2 && r < CW_MIN(0.02f + 0.004f * (float)dw, 0.07f)) kind = EK_BRUTE;
+    const floor_def *fd = &s->fl[s->level];
+    if (fd->set && fd->nwave > 0) { /* the floor's own mix (LEVELS.md): this wave's shares */
+      const float *sh = fd->share[CW_CLAMP(s->level_wave - 1, 0, fd->nwave - 1)];
+      float acc = 0;
+      for (int k = 0; k < EK_KINDS; k++) {
+        acc += sh[k];
+        if (r < acc) { kind = k; break; }
+      }
+      if (kind == EK_BOSS) kind = EK_RUNNER;
+    } else if (dw >= 2 && r < CW_MIN(0.02f + 0.004f * (float)dw, 0.07f)) kind = EK_BRUTE;
     else if (dw >= 3 && r < CW_MIN(0.06f + 0.006f * (float)dw, 0.14f)) kind = EK_BLOATER;
     if (spawn_enemy(s, kind, x, y) < 0) break;
   }
@@ -815,6 +870,7 @@ static void enemies_step(sim *s) {
       else if (e->ph >= 290) sp *= 3.0f;
     }
     if (e->atk > 0) sp = 0; /* planted through the wind-up, the strike and the recovery */
+    if (e->kind != EK_SKITTER && in_hazard(s, HZ_WATER, e->x, e->y)) sp *= 0.7f; /* wading */
     e->spawn_age++;
     vx = vx * sp + e->kx * 60.0f;
     vy = vy * sp + e->ky * 60.0f;
@@ -866,6 +922,7 @@ static void enemies_step(sim *s) {
     }
     if (e->atk == m->windup + 1) { /* the strike: every player in reach and in front */
       float fx = cw_cos(e->face), fy = cw_sin(e->face), reach = touch + m->reach;
+      if (e->kind == EK_SKITTER) e->kx += fx * 0.12f, e->ky += fy * 0.12f; /* the spring: it lands where it bit */
       bool hit = false;
       for (int k = 0; k < MAXP; k++) {
         player *p = &s->p[k];
@@ -1095,6 +1152,8 @@ static void floor_next(sim *s) {
   memset(s->g, 0, sizeof s->g);
   memset(s->x, 0, sizeof s->x);
   memset(s->m, 0, sizeof s->m);
+  floor_layout(s);
+  s->flow_age = 1000;
   for (int i = 0; i < MAXP; i++) {
     player *p = &s->p[i];
     if (!p->active) continue;

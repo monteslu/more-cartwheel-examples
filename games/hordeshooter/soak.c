@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include "cartwheel/jobs.h"
+#include "cartwheel/vfs.h"
 #include "game.h"
 
 static long rss_kb(void) {
@@ -50,7 +51,11 @@ int main(int argc, char **argv) {
   int minutes = argc > 1 ? atoi(argv[1]) : 30, players = argc > 2 ? atoi(argv[2]) : 4, wave0 = argc > 3 ? atoi(argv[3]) : 1;
   cw_jobs_init(3);
   static sim S;
+#ifdef HORDE_ASSETS_DIR
+  cw_vfs_set_root(HORDE_ASSETS_DIR); /* the floors' .cwlevel files */
+#endif
   sim_init(&S, players, 4242, wave0);
+  horde_floors_load(&S, NULL);
   S.no_power = getenv("HORDE_SOAK_NOPOWER") != NULL;
   long total = (long)minutes * 3600, rss0 = 0;
   int first_kill = 0, restarts = 0, wins = 0, overs = 0, worst_enemies = 0, lost_min = 0, last_hp[MAXP];
@@ -91,6 +96,7 @@ int main(int argc, char **argv) {
       memcpy(keep.pu_taken, S.pu_taken, sizeof S.pu_taken), memcpy(keep.pu_kills, S.pu_kills, sizeof S.pu_kills), memcpy(keep.pu_ticks, S.pu_ticks, sizeof S.pu_ticks);
       keep.plain_kills = S.plain_kills, keep.plain_ticks = S.plain_ticks;
       sim_init(&S, players, 4242 + (uint32_t)restarts, wave0);
+      horde_floors_load(&S, NULL);
       S.no_power = getenv("HORDE_SOAK_NOPOWER") != NULL;
       memcpy(S.ttk_n, keep.ttk_n, sizeof S.ttk_n), memcpy(S.ttk_hits, keep.ttk_hits, sizeof S.ttk_hits), memcpy(S.ttk_ticks, keep.ttk_ticks, sizeof S.ttk_ticks);
       memcpy(S.pu_taken, keep.pu_taken, sizeof S.pu_taken), memcpy(S.pu_kills, keep.pu_kills, sizeof S.pu_kills), memcpy(S.pu_ticks, keep.pu_ticks, sizeof S.pu_ticks);
@@ -116,7 +122,7 @@ int main(int argc, char **argv) {
   if (getenv("HORDE_SOAK_TTK")) /* hits and seconds from the first hit to the kill, per kind, at each wave */
     for (int w = 1; w <= FINAL_WAVE; w++) {
       printf("ttk wave %2d", w);
-      static const char *KN[EK_KINDS] = { "runner", "brute", "bloater", "boss" };
+      static const char *KN[EK_KINDS] = { "runner", "brute", "bloater", "boss", "skitter", "bonewalker" };
       for (int e = 0; e < EK_KINDS; e++)
         if (S.ttk_n[w][e]) printf("  %s %.2f hits %.2f s (%d)", KN[e], (double)S.ttk_hits[w][e] / S.ttk_n[w][e], (double)S.ttk_ticks[w][e] / S.ttk_n[w][e] / 60.0, S.ttk_n[w][e]);
       printf("\n");

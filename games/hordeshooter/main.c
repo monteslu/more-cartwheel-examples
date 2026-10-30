@@ -39,6 +39,7 @@
 #include "cartwheel/ui.h"
 #include <time.h>
 #include "game.h"
+#include "levelbuild.h"
 
 /* wall clock for the bench (cw_time is the fixed test clock there) */
 static double cw_wall(void) {
@@ -49,6 +50,7 @@ static double cw_wall(void) {
 
 typedef struct save_data { int32_t best_wave, best_score; } save_data;
 
+static lb_level LEVELS[NLEVELS]; /* each made floor's .cwlevel, parsed once a run */
 static struct {
   sim S;
   bool in_match, built;
@@ -141,6 +143,7 @@ static void start(int players, void *u) {
 #endif
   int wave = getenv("HORDE_WAVE") ? atoi(getenv("HORDE_WAVE")) : HORDE_START_WAVE; /* hordeshooter_bench: a late wave from the start (carts read no environment) */
   sim_init(&G.S, players, 4242, wave);
+  horde_floors_load(&G.S, LEVELS); /* each made floor's layout (the rest are played in the yard) */
   G.floor_stay = getenv("HORDE_FLOOR_STAY") && atoi(getenv("HORDE_FLOOR_STAY"));
   G.floor_level = G.S.level, G.floor_boss_tick = G.floor_clear_tick = G.floor_hatch_tick = G.floor_descend_tick = G.floor_next_tick = 0, G.floor_left_at_hatch = -1;
   G.m_test = getenv("HORDE_MELEE_TEST") ? (getenv("HORDE_MELEE_DODGE") && atoi(getenv("HORDE_MELEE_DODGE")) ? 2 : 1) : 0;
@@ -519,6 +522,10 @@ static void render(void *u, double alpha) {
       if (view_attack_drawn() > 0) G.m_attack_frames++;
     }
     static int lm_frames;
+    { /* the floor on screen: the sim's, or the yard for a floor not made yet */
+      int want = G.S.fl[G.S.level].set ? G.S.level : 0;
+      if (want != view_floor_now()) view_floor(want, want ? &LEVELS[want] : NULL), lm_frames = 0; /* its bake a frame later */
+    }
     if (lm_frames >= 0 && ++lm_frames > 1) { /* after a frame: the sky has placed the sun, every node its transform */
       view_lightmap(cw_scene_app_tree());
       lm_frames = -1;

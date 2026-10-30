@@ -457,7 +457,7 @@ void fx_events(sim *s) {
         if (e->a == EK_BOSS) rumble_blast(s, e->x, e->y, true);
         else rumble(e->b, 0.35f, 0.2f, 90);
       }
-      static const t3_color BC[EK_KINDS] = { { 0.16f, 0.05f, 0.04f }, { 0.14f, 0.05f, 0.04f }, { 0.14f, 0.17f, 0.05f }, { 0.15f, 0.03f, 0.05f } };
+      static const t3_color BC[EK_KINDS] = { { 0.16f, 0.05f, 0.04f }, { 0.14f, 0.05f, 0.04f }, { 0.14f, 0.17f, 0.05f }, { 0.15f, 0.03f, 0.05f }, { 0.1f, 0.13f, 0.1f }, { 0.55f, 0.5f, 0.4f } }; /* the skitter's drain-green, the bonewalker's bone */
       int n = e->a == EK_RUNNER ? 3 : e->a == EK_BOSS ? 90 : 14;
       if (lvl == 0) n = n / 2 + 1;
       if (FX.frame_gibs < 40 || e->a != EK_RUNNER) {
@@ -485,8 +485,8 @@ void fx_events(sim *s) {
     case EV_CRATE: spawn_gibs(at, lvl ? 14 : 7, (t3_color){ 0.5f, 0.32f, 0.15f }, 4.0f, 0, 0); break;
     case EV_WALL: spawn_gibs(at, 26, (t3_color){ 0.5f, 0.5f, 0.48f }, 5.0f, 0, 0); break;
     case EV_HURT: { /* getting hit: short and sharp, heavier for a heavier hitter; a melee hit bleeds */
-      static const float RL[EK_KINDS] = { 0.3f, 0.85f, 0.5f, 1.0f }, RH[EK_KINDS] = { 0.85f, 0.6f, 0.5f, 0.7f };
-      static const int RMS[EK_KINDS] = { 90, 160, 120, 220 };
+      static const float RL[EK_KINDS] = { 0.3f, 0.85f, 0.5f, 1.0f, 0.25f, 0.4f }, RH[EK_KINDS] = { 0.85f, 0.6f, 0.5f, 0.7f, 0.9f, 0.8f };
+      static const int RMS[EK_KINDS] = { 90, 160, 120, 220, 80, 110 };
       int k = e->b < EK_KINDS ? e->b : 0;
       rumble(e->a, RL[k], RH[k], RMS[k]);
       if (e->b < EK_KINDS) {

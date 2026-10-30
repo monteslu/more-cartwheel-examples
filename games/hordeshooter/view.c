@@ -14,6 +14,7 @@
 #include "cartwheel/splats.h"
 #include <stdio.h>
 #include "game.h"
+#include "levelbuild.h"
 
 t3_color lin(float r, float g, float b) {
   float c[3] = { r, g, b };
@@ -85,7 +86,7 @@ static t3_mat4 MR(float x, float y, float z, float sx, float sy, float sz, float
  * shared topology (assets/models/*.cwchar). Each frame becomes a geometry;
  * the horde draws one instanced mesh per frame of the cycle, so an animated
  * crowd of thousands is a handful of draws and costs no skinning on the GPU. */
-enum { CH_MAXF = 24, CH_MAXG = 2, CH_MAXC = 2 };
+enum { CH_MAXF = 24, CH_MAXG = 2, CH_MAXC = 4 }; /* a boss has four clips (LEVELS.md section 5) */
 typedef struct chr {
   int nclip, ngroup, nf[CH_MAXC], first[CH_MAXC];
   t3_geometry *geo[CH_MAXG][CH_MAXF];
@@ -156,6 +157,7 @@ static struct {
   int32_t attack_drawn; /* enemies drawn in an attack pose this frame (the melee gate) */
   float bc_y[EK_KINDS], br[EK_KINDS]; /* a sphere round every frame of a kind (its centre height, its radius): culling */
   t3_instanced_mesh *eb[EK_KINDS][CH_MAXF];
+  cw_node eb_node[EK_KINDS][CH_MAXF];
   t3_mesh *pm[MAXP][CH_MAXC * CH_MAXF][CH_MAXG];
   t3_instanced_mesh *bullet, *rocket, *gem[3], *health, *crate, *barrel, *wall, *pillar, *shadowblob;
   t3_instanced_mesh *power[PU_KINDS], *power_glow, *grenade, *rail, *flame, *saw, *mine;
@@ -183,6 +185,14 @@ static uint32_t hash2(uint32_t a, uint32_t b) {
 }
 static float h01(uint32_t a, uint32_t b) { return (float)(hash2(a, b) & 0xffffff) / 16777216.0f; }
 
+/* the yard's own scenery (its ground, props, floodlights, shafts, puddles): detached while a deeper floor's is up */
+static cw_node YARD[96];
+static int NYARD;
+static cw_node LAST_NODE; /* the node imesh made last */
+static void yard_node(cw_node n) {
+  if (NYARD < (int)(sizeof YARD / sizeof YARD[0])) YARD[NYARD++] = n;
+}
+
 static t3_instanced_mesh *imesh(const char *name, t3_geometry *g, t3_material *m, int n, bool shadow) {
   t3_instanced_mesh *im = t3_instanced_mesh_new(g, m, n);
   im->mesh.base.cast_shadow = shadow;
@@ -197,6 +207,7 @@ static t3_instanced_mesh *imesh(const char *name, t3_geometry *g, t3_material *m
   t3_instanced_mesh_set_bounding_sphere(im, &sph);
   cw_node node = cw_node_new("Node3D", name);
   cw_node_add_child(V.root, node);
+  LAST_NODE = node;
   t3_object *wrap = t3_group_new();
   t3_object_add(wrap, &im->mesh.base);
   cw_node3d_set_object(node, wrap);
@@ -436,6 +447,7 @@ static t3_instanced_mesh *imesh_static(const char *name, t3_geometry *g, t3_mate
   }
   cw_node node = cw_node_new("MeshInstance3D", name);
   cw_node_add_child(V.root, node);
+  yard_node(node);
   cw_node_set(node, "gi_mode", cw_val_enum("STATIC"));
   cw_mesh3d_set_procedural(node, &im->mesh);
   t3_release(g);
@@ -541,6 +553,7 @@ static void view_dress(void) {
   for (int i = 0; i < LAMPS; i++) {
     cw_node l = cw_node_new("SpotLight3D", "Flood");
     cw_node_add_child(V.root, l);
+    yard_node(l);
     cw_node3d_set_position(l, lamp_head[i]);
     cw_node_set(l, "color", cw_val_color(0.72f, 0.86f, 1.0f, 1));
     cw_node_set(l, "energy", cw_val_float(1100));
@@ -672,6 +685,75 @@ static void view_power_init(void) {
   }
 }
 
+/* a crowd kind's model: its walk and attack frames as instanced meshes (one a frame bucket). Again for a floor's
+ * boss: the old one's meshes go first. */
+static const char *files[EK_KINDS] = { "models/runner.cwchar", "models/brute.cwchar", "models/bloater.cwchar", "models/boss.cwchar",
+                                       "models/sluice_skitter.cwchar", "models/ossuary_bonewalker.cwchar" };
+static const int cap[EK_KINDS] = { MAXE, 400, 600, 4, 1600, 1600 };
+static const float rough[EK_KINDS] = { 0.7f, 0.62f, 0.5f, 0.55f, 0.6f, 0.7f };
+static const float rep_[EK_KINDS] = { 1.6f, 1.2f, 1.4f, 0.9f, 1.4f, 1.4f };
+static const char *nm[EK_KINDS] = { "Runners", "Brutes", "Bloaters", "Bosses", "Skitters", "Bonewalkers" };
+static const bool shadow[EK_KINDS] = { false, true, false, true, false, false };
+static void crowd_kind_load(int k, const char *file) {
+  for (int f = 0; f < V.bt[k]; f++)
+    if (V.eb_node[k][f].id) cw_node_free(V.eb_node[k][f]), V.eb_node[k][f] = (cw_node){ 0 }, V.eb[k][f] = NULL;
+  if (V.bt[k]) chr_free(&V.ch[k]);
+  V.bn[k] = V.bt[k] = 0;
+  if (!chr_load(&V.ch[k], file)) return;
+
+    V.bn[k] = V.ch[k].nf[0];
+    V.bt[k] = V.ch[k].nf[0] + (V.ch[k].nclip > 1 ? V.ch[k].nf[1] : 0); /* the attack clip follows the walk in the file */
+    { /* the bounding sphere of every frame, scaled by the 10% swell of a hit flash */
+      float lo = 1e9f, hi = -1e9f, r2 = 0;
+      for (int f = 0; f < V.bt[k]; f++) {
+        const t3_attribute *pa = V.ch[k].geo[0][f]->attributes[T3_ATTR_POSITION];
+        const float *p = t3_attribute_f32((t3_attribute *)pa);
+        for (int v = 0; v < pa->count; v++) lo = CW_MIN(lo, p[v * 3 + 1]), hi = CW_MAX(hi, p[v * 3 + 1]);
+      }
+      V.bc_y[k] = 0.5f * (lo + hi) * 1.1f;
+      for (int f = 0; f < V.bt[k]; f++) {
+        const t3_attribute *pa = V.ch[k].geo[0][f]->attributes[T3_ATTR_POSITION];
+        const float *p = t3_attribute_f32((t3_attribute *)pa);
+        for (int v = 0; v < pa->count; v++) {
+          float dx = p[v * 3], dy = p[v * 3 + 1] * 1.1f - V.bc_y[k], dz = p[v * 3 + 2];
+          r2 = CW_MAX(r2, dx * dx + dy * dy + dz * dz);
+        }
+      }
+      V.br[k] = sqrtf(r2) * 1.1f + 0.05f;
+    }
+    { /* the crowd's baked colours desaturated toward a cool grey of the same luminance (each vertex: no hue is
+       * swung, so a red hide greys instead of turning magenta); the green kind keeps most of its green to stay readable */
+      static const float DESAT[EK_KINDS] = { 0.78f, 0.7f, 0.2f, 0.7f, 0.0f, 0.0f }, COOL[3] = { 0.88f, 1.0f, 1.14f };
+      for (int f = 0; f < V.bt[k]; f++) {
+        t3_attribute *ca = V.ch[k].geo[0][f]->attributes[T3_ATTR_COLOR];
+        float *cv = t3_attribute_f32(ca);
+        for (int v = 0; v < ca->count; v++) {
+          float *p = cv + v * 3;
+          if (p[0] > 1.5f || p[1] > 1.5f || p[2] > 1.5f) continue; /* glowing eyes and the like */
+          float l = 0.2126f * p[0] + 0.7152f * p[1] + 0.0722f * p[2];
+          for (int c = 0; c < 3; c++) p[c] += DESAT[k] * (l * COOL[c] - p[c]);
+        }
+        ca->version++;
+      }
+    }
+    int bc = k == EK_BOSS ? 4 : cap[k] / V.bn[k] * 3 / 2 + 48;
+    /* the crowd is small on screen and thousands strong: Lambert (diffuse only, no normal or roughness map),
+     * its look in its baked vertex colours; the players keep the full PBR model */
+    t3_material *m = t3_mesh_lambert_material_new(0xffffff);
+    m->vertex_colors = true;
+    (void)rough, (void)rep_;
+    for (int f = 0; f < V.bt[k]; f++) {
+      t3_retain(V.ch[k].geo[0][f]);
+      /* an attack pose can hold many at once (the front rank of a crowd round a player) */
+      int fc = f < V.bn[k] ? bc : k == EK_BOSS ? 4 : cap[k] / 3 + 48;
+      V.eb[k][f] = imesh(nm[k], V.ch[k].geo[0][f], t3_retain(m), fc, false); /* imesh takes both references */
+      V.eb_node[k][f] = LAST_NODE;
+      V.eb[k][f]->mesh.base.receive_shadow = false;
+      (void)shadow;
+    }
+    t3_release(m);
+}
+
 void view_init(cw_node root) {
   memset(&V, 0, sizeof V);
   V.root = cw_node_new("Node3D", "View");
@@ -702,71 +784,14 @@ void view_init(cw_node root) {
   t3_mesh *gmesh = t3_mesh_new(pg, gm);
   cw_node gn = cw_node_new("MeshInstance3D", "Ground");
   cw_node_add_child(V.root, gn);
+  yard_node(gn);
   cw_node_set(gn, "gi_mode", cw_val_enum("STATIC"));
   cw_node_set(gn, "lightmap_uv", cw_val_enum("UV0")); /* the plane's own uv0 is a clean [0, 1] layout: the lightmap lines up on it */
   cw_mesh3d_set_procedural(gn, gmesh);
   t3_release(gmesh), t3_release(pg), t3_release(gm);
   /* the yard's wall: a low rim of blocks round the edge, one instanced mesh */
   {
-    static const char *files[EK_KINDS] = { "models/runner.cwchar", "models/brute.cwchar", "models/bloater.cwchar", "models/boss.cwchar" };
-    static const int cap[EK_KINDS] = { MAXE, 400, 600, 4 };
-    static const float rough[EK_KINDS] = { 0.7f, 0.62f, 0.5f, 0.55f };
-    static const float rep_[EK_KINDS] = { 1.6f, 1.2f, 1.4f, 0.9f };
-    static const char *nm[EK_KINDS] = { "Runners", "Brutes", "Bloaters", "Bosses" };
-    static const bool shadow[EK_KINDS] = { false, true, false, true };
-    for (int k = 0; k < EK_KINDS; k++) {
-      if (!chr_load(&V.ch[k], files[k])) continue;
-      V.bn[k] = V.ch[k].nf[0];
-      V.bt[k] = V.ch[k].nf[0] + (V.ch[k].nclip > 1 ? V.ch[k].nf[1] : 0); /* the attack clip follows the walk in the file */
-      { /* the bounding sphere of every frame, scaled by the 10% swell of a hit flash */
-        float lo = 1e9f, hi = -1e9f, r2 = 0;
-        for (int f = 0; f < V.bt[k]; f++) {
-          const t3_attribute *pa = V.ch[k].geo[0][f]->attributes[T3_ATTR_POSITION];
-          const float *p = t3_attribute_f32((t3_attribute *)pa);
-          for (int v = 0; v < pa->count; v++) lo = CW_MIN(lo, p[v * 3 + 1]), hi = CW_MAX(hi, p[v * 3 + 1]);
-        }
-        V.bc_y[k] = 0.5f * (lo + hi) * 1.1f;
-        for (int f = 0; f < V.bt[k]; f++) {
-          const t3_attribute *pa = V.ch[k].geo[0][f]->attributes[T3_ATTR_POSITION];
-          const float *p = t3_attribute_f32((t3_attribute *)pa);
-          for (int v = 0; v < pa->count; v++) {
-            float dx = p[v * 3], dy = p[v * 3 + 1] * 1.1f - V.bc_y[k], dz = p[v * 3 + 2];
-            r2 = CW_MAX(r2, dx * dx + dy * dy + dz * dz);
-          }
-        }
-        V.br[k] = sqrtf(r2) * 1.1f + 0.05f;
-      }
-      { /* the crowd's baked colours desaturated toward a cool grey of the same luminance (each vertex: no hue is
-         * swung, so a red hide greys instead of turning magenta); the green kind keeps most of its green to stay readable */
-        static const float DESAT[EK_KINDS] = { 0.78f, 0.7f, 0.2f, 0.7f }, COOL[3] = { 0.88f, 1.0f, 1.14f };
-        for (int f = 0; f < V.bt[k]; f++) {
-          t3_attribute *ca = V.ch[k].geo[0][f]->attributes[T3_ATTR_COLOR];
-          float *cv = t3_attribute_f32(ca);
-          for (int v = 0; v < ca->count; v++) {
-            float *p = cv + v * 3;
-            if (p[0] > 1.5f || p[1] > 1.5f || p[2] > 1.5f) continue; /* glowing eyes and the like */
-            float l = 0.2126f * p[0] + 0.7152f * p[1] + 0.0722f * p[2];
-            for (int c = 0; c < 3; c++) p[c] += DESAT[k] * (l * COOL[c] - p[c]);
-          }
-          ca->version++;
-        }
-      }
-      int bc = k == EK_BOSS ? 4 : cap[k] / V.bn[k] * 3 / 2 + 48;
-      /* the crowd is small on screen and thousands strong: Lambert (diffuse only, no normal or roughness map),
-       * its look in its baked vertex colours; the players keep the full PBR model */
-      t3_material *m = t3_mesh_lambert_material_new(0xffffff);
-      m->vertex_colors = true;
-      (void)rough, (void)rep_;
-      for (int f = 0; f < V.bt[k]; f++) {
-        t3_retain(V.ch[k].geo[0][f]);
-        /* an attack pose can hold many at once (the front rank of a crowd round a player) */
-        int fc = f < V.bn[k] ? bc : k == EK_BOSS ? 4 : cap[k] / 3 + 48;
-        V.eb[k][f] = imesh(nm[k], V.ch[k].geo[0][f], t3_retain(m), fc, false); /* imesh takes both references */
-        V.eb[k][f]->mesh.base.receive_shadow = false;
-        (void)shadow;
-      }
-      t3_release(m);
-    }
+    for (int k = 0; k < EK_KINDS; k++) crowd_kind_load(k, files[k]);
   }
   V.bullet = imesh("Bullets", t3_box_geometry_new(0.09f, 0.09f, 1.2f, 1, 1, 1), glow(1, 0.82f, 0.35f, 9), MAXB, false); /* a long hot tracer */
   V.rocket = imesh("Rockets", t3_cylinder_geometry_new(0.1f, 0.1f, 0.7f, 8, 1, false), glow(1, 0.45f, 0.12f, 5), 64, false);
@@ -1036,6 +1061,7 @@ static void view_puddles(void) {
     t3_material_set_texture(m, T3_MAP, atlas);
     cw_lightmap_use_reflection(LM, m, 0.7f);
     PUD[k] = imesh("Puddles", g, m, PUDDLES, false);
+    yard_node(LAST_NODE);
     PUD[k]->mesh.base.receive_shadow = false;
     PUD[k]->mesh.base.render_order = -3; /* under the blob shadows and the light pools */
   }
@@ -1059,6 +1085,9 @@ static void view_puddles(void) {
  * down the beam and across it. */
 enum { SHAFT_TEX = 128 };
 static t3_mesh *SHAFT[LAMPS], *HATCH_BEAM, *HATCH_RING;
+static int V_floor; /* the floor drawn (0 the yard) */
+static lb_built V_lb; /* a deeper floor's build */
+static bool V_lb_up, V_lb_lit;
 static float hatch_open; /* 0 shut .. 1 open: the beam's height and the ring's size */
 static t3_vec3 shaft_dir[LAMPS];
 static t3_texture *shaft_texture(void) {
@@ -1101,6 +1130,7 @@ static void view_shafts(void) {
     ms->base.cast_shadow = ms->base.receive_shadow = false;
     cw_node n = cw_node_new("Node3D", "Shaft");
     cw_node_add_child(V.root, n);
+    yard_node(n);
     t3_object *w = t3_group_new();
     t3_object_add(w, ms);
     cw_node3d_set_object(n, w);
@@ -1173,6 +1203,7 @@ static void shafts_face(t3_vec3 eye) {
 void view_hatch(const sim *s) {
   float o = s->state == ST_HATCH ? cw_clampf((float)s->state_ticks / (float)HATCH_OPEN_TICKS, 0, 1) : s->state == ST_DESCEND ? 1.0f : 0.0f;
   hatch_open = o * o * (3 - 2 * o);
+  if (V_lb_up) levelbuild_hatch(&V_lb, hatch_open); /* a deeper floor's own hatch opens (its frames) */
   if (HATCH_BEAM) HATCH_BEAM->base.visible = hatch_open > 0.01f;
   if (HATCH_RING) {
     float k = 1.75f * hatch_open * (1.0f + 0.06f * cw_sin((float)s->tick * 0.15f));
@@ -1181,7 +1212,102 @@ void view_hatch(const sim *s) {
   }
 }
 
+/* ── the floors ──────────────────────────────────────────────────────
+ * The yard is built here and lit by its bake; a deeper floor is built by the level builder the levelview cart
+ * shares (tools/levelview/levelbuild.c), so its bake applies to it by construction. Switching detaches the
+ * yard's scenery and the arena scene's lights (sky, sun, rim, environment, post) and attaches the floor's
+ * (its "Light" scene has the same node names), and the crowd's ground light is read from the floor's bake. */
+static const char *const ARENA_LIGHTS[] = { "Sky", "Sun", "Rim", "Env", "Post" };
+static cw_node ARENA_NODE[5];
+static void yard_attach(bool on) {
+  cw_node arena = cw_node_parent(V.root).id ? cw_node_get(cw_node_parent(V.root), "Arena") : (cw_node){ 0 };
+  for (int i = 0; i < 5; i++) {
+    if (!on && cw_node_valid(arena)) {
+      cw_node n = cw_node_get(arena, ARENA_LIGHTS[i]);
+      if (cw_node_valid(n)) ARENA_NODE[i] = n, cw_node_remove_child(arena, n);
+    } else if (on && ARENA_NODE[i].id && cw_node_valid(arena)) cw_node_add_child(arena, ARENA_NODE[i]), ARENA_NODE[i] = (cw_node){ 0 };
+  }
+  for (int i = 0; i < NYARD; i++) {
+    if (on) cw_node_add_child(V.root, YARD[i]);
+    else cw_node_remove_child(V.root, YARD[i]);
+  }
+  if (V.pools) cw_splats_mesh(V.pools)->mesh.base.visible = on; /* the floodlights' pools are the yard's */
+}
+static cw_lightmap_data *YARD_LM;
+static void floor_obstacles_map(const lb_level *lv);
+static void ground_light_build(void);
+void view_floor(int level, const struct lb_level *lv) {
+  if (level == V_floor) return;
+  if (V_lb_up) levelbuild_free(&V_lb), V_lb_up = false, V_lb_lit = false;
+  if (V_floor == 0 && level != 0) yard_attach(false), YARD_LM = LM;
+  V_floor = level;
+  crowd_kind_load(EK_BOSS, level && lv && lv->boss[0] ? lv->boss : files[EK_BOSS]); /* the floor's own boss */
+  if (level == 0) {
+    yard_attach(true);
+    LM = YARD_LM;
+    if (LM) ground_light_build();
+    return;
+  }
+  if (lv && levelbuild_build(V.root, lv, NULL, NULL, &V_lb)) V_lb_up = true, floor_obstacles_map(lv);
+  else cw_error("horde: floor %d has no level to build: it is drawn empty", level + 1);
+}
+int view_floor_now(void) { return V_floor; }
+
+/* a floor's destructibles are the level builder's props: each sim obstacle (its .cwlevel order, floors.c) is an
+ * instance of a prop's surface and glow meshes, hidden when the sim destroys it */
+static t3_instanced_mesh *FOB_IM[MAXO][2];
+static int FOB_K[MAXO], FOB_N;
+static bool FOB_GONE[MAXO];
+static t3_instanced_mesh *node_im(cw_node n) {
+  t3_object *g = cw_node_valid(n) ? cw_node3d_object(n) : NULL;
+  for (int i = 0; g && i < g->child_count; i++)
+    if (g->children[i]->type == T3_INSTANCED_MESH) return (t3_instanced_mesh *)g->children[i];
+  return NULL;
+}
+static void floor_obstacles_map(const lb_level *lv) {
+  FOB_N = 0;
+  memset(FOB_GONE, 0, sizeof FOB_GONE);
+  int seen[LB_MAXPROP] = { 0 };
+  for (int i = 0; i < lv->nat; i++) {
+    const lb_at *a = &lv->at[i];
+    int k = seen[a->prop]++;
+    if (lv->prop[a->prop].solid == LB_SCENERY || a->y > 0.05f || FOB_N >= MAXO) continue; /* as floors.c */
+    for (int g = 0; g < 2; g++) {
+      char nm[40];
+      snprintf(nm, sizeof nm, "%s%d", lv->prop[a->prop].name, g);
+      FOB_IM[FOB_N][g] = node_im(cw_node_get(V_lb.node, nm));
+    }
+    FOB_K[FOB_N++] = k;
+  }
+}
+static void floor_obstacles_sync(const sim *s) {
+  for (int i = 0; i < FOB_N; i++) {
+    if (s->o[i].alive || FOB_GONE[i]) continue;
+    FOB_GONE[i] = true;
+    for (int g = 0; g < 2; g++) {
+      t3_instanced_mesh *im = FOB_IM[i][g];
+      if (!im || FOB_K[i] >= im->count) continue;
+      t3_instanced_mesh_set_matrix_at(im, FOB_K[i], &ZERO);
+      im->instance_matrix->version++;
+    }
+  }
+}
+/* a floor's bake, a frame after it was built (its light scene has placed the sun) */
+static void view_floor_lightmap(cw_tree *t) {
+  if (!V_lb_up || V_lb_lit) return;
+  V_lb_lit = true;
+  const char *bake = getenv("HORDE_BAKE");
+  if (levelbuild_lightmap(t, &V_lb, bake && *bake ? bake : NULL) && V_lb.lm) {
+    LM = V_lb.lm;
+    ground_light_build();
+  } else cw_error("horde: floor %d: no lightmap (%s): it draws unbaked", V_floor + 1, V_lb.lv ? V_lb.lv->lightmap : "?");
+}
+
 bool view_lightmap(cw_tree *t) {
+  if (V_floor > 0) {
+    view_floor_lightmap(t);
+    return true;
+  }
   if (LM) return true;
   cw_node root = cw_tree_root(t);
   const char *out = getenv("HORDE_BAKE");
@@ -1288,13 +1414,13 @@ void view_sync(const sim *s, float time) {
   memset(cnt, 0, sizeof cnt);
   V.attack_drawn = 0;
   cw_splats_begin(V.shadows);
-  static const float rate[EK_KINDS] = { 1.9f, 0.9f, 1.1f, 0.6f }; /* cycles per second */
+  static const float rate[EK_KINDS] = { 1.9f, 0.9f, 1.1f, 0.6f, 2.6f, 0.8f }; /* cycles per second */
   /* The horde outside the view is not drawn. The instanced meshes have one bounding sphere for the whole
    * yard, so three.c draws every instance; at a late wave about half of them are off screen and still cost
    * the vertex work of the colour pass and of the SSR G-buffer pass. Only the kinds that cast no shadow are
    * culled (a brute or the boss off screen can throw its shadow into the view); nothing else reads them
    * (SSR is screen space, the fog reads the shadow map). HORDE_CULL=0 (development) draws them all. */
-  static const bool cull_kind[EK_KINDS] = { true, true, true, true }; /* nothing in the crowd casts a real-time shadow now (blob shadows) */
+  static const bool cull_kind[EK_KINDS] = { true, true, true, true, true, true }; /* nothing in the crowd casts a real-time shadow now (blob shadows) */
   static int cull_on = -1;
   if (cull_on < 0) cull_on = !getenv("HORDE_CULL") || atoi(getenv("HORDE_CULL")) != 0;
   view_frustum fr_ = view_frustum_now();
@@ -1316,7 +1442,7 @@ void view_sync(const sim *s, float time) {
     float sq = 1.0f + (e->flash > 0 ? 0.1f : 0);
     float yaw = -e->face + 1.5708f; /* the model faces +Z; face is atan2(z, x) */
     put(im, n, e->x, 0.0f, e->y, yaw, sq, sq, sq);
-    static const float SR[EK_KINDS] = { 0.42f, 0.75f, 0.62f, 1.5f }, SH[EK_KINDS] = { 1.6f, 2.2f, 1.5f, 4.0f };
+    static const float SR[EK_KINDS] = { 0.42f, 0.75f, 0.62f, 1.5f, 0.5f, 0.45f }, SH[EK_KINDS] = { 1.6f, 2.2f, 1.5f, 4.0f, 0.8f, 2.0f };
     shadow_at(e->x, e->y, SR[k] * sq, SH[k], 0.62f);
     /* each enemy its own hide from its kind's palette (sallow, ashen, olive, rust, bruised, ochre), its brightness
      * varied too: a crowd of many, each kind still read by its shape and its baked colours */
@@ -1325,9 +1451,11 @@ void view_sync(const sim *s, float time) {
       { { 0.82f, 0.78f, 0.74f }, { 0.7f, 0.72f, 0.78f }, { 0.86f, 0.72f, 0.62f }, { 0.74f, 0.78f, 0.68f }, { 0.9f, 0.82f, 0.72f }, { 0.78f, 0.72f, 0.8f } },
       { { 0.9f, 0.95f, 0.78f }, { 1.0f, 0.92f, 0.7f }, { 0.82f, 0.92f, 0.8f }, { 0.95f, 0.86f, 0.74f }, { 0.86f, 0.9f, 0.7f }, { 1.0f, 0.95f, 0.82f } },
       { { 1, 1, 1 }, { 1, 1, 1 }, { 1, 1, 1 }, { 1, 1, 1 }, { 1, 1, 1 }, { 1, 1, 1 } },
+      { { 1, 1, 1 }, { 0.9f, 0.95f, 1 }, { 1, 0.95f, 0.9f }, { 0.92f, 1, 0.95f }, { 1, 1, 1 }, { 0.95f, 0.95f, 0.95f } }, /* skitter: its own colours */
+      { { 1, 1, 1 }, { 1, 0.96f, 0.9f }, { 0.94f, 0.94f, 0.9f }, { 1, 0.98f, 0.94f }, { 0.96f, 0.92f, 0.86f }, { 1, 1, 1 } }, /* bonewalker: bone */
     };
     const float *hide = HIDE[k][hash2((uint32_t)i, 77u) % 6];
-    float tint = 0.39f + 0.2f * h01((uint32_t)i, 5);
+    float tint = k >= EK_SKITTER ? 0.8f + 0.2f * h01((uint32_t)i, 5) : 0.39f + 0.2f * h01((uint32_t)i, 5); /* the floors' own creatures keep their authored colours */
     /* the hides over the greyed baked colours: the variety stays */
     t3_color c = e->flash > 0 ? (t3_color){ 4, 2.8f, 2.2f }
                               : (t3_color){ tint * (0.35f * hide[0] + 0.65f * 0.8f), tint * (0.35f * hide[1] + 0.65f * 0.8f), tint * (0.35f * hide[2] + 0.65f * 0.86f) };
@@ -1430,9 +1558,10 @@ void view_sync(const sim *s, float time) {
   V.health->count = nh;
   touch(V.health, false);
   V.st.pickups = ng[0] + ng[1] + ng[2] + nh;
-  /* the world's pieces */
+  /* the world's pieces: the yard's drawn here; a deeper floor's are its level's props */
   int nc = 0, nba = 0, nw = 0, np = 0;
-  for (int i = 0; i < MAXO; i++) {
+  if (V_floor > 0) floor_obstacles_sync(s);
+  for (int i = 0; i < MAXO && V_floor == 0; i++) {
     const obstacle *o = &s->o[i];
     if (!o->alive) continue;
     float hurt = o->kind == OK_PILLAR ? 1 : (float)o->hp / (float)o->maxhp;
@@ -1454,7 +1583,7 @@ void view_sync(const sim *s, float time) {
       if (np < 16) put(V.pillar, np++, o->x, 2.25f, o->y, 0, 1, 1, 1);
     }
   }
-  for (int i = 0; i < MAXO; i++) { /* the yard's pieces: their soft contact shadows */
+  for (int i = 0; i < MAXO && V_floor == 0; i++) { /* the yard's pieces: their soft contact shadows */
     const obstacle *o = &s->o[i];
     if (!o->alive) continue;
     static const float OR[OK_KINDS] = { 0.8f, 0.55f, 1.2f, 1.35f }, OH[OK_KINDS] = { 1.3f, 1.1f, 2.2f, 4.5f };
