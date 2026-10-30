@@ -4,7 +4,7 @@
 //   GL      4.1 ms   (a third of the 12.2 before the baked yard; about 2.4 in the grotto)
 //   WebGPU  4.1 ms   (11.1 before; about 2.1 in the grotto)
 // The same bound on every made floor's late wave (its own level, bake and creatures; the yard, the sluice, the ossuary,
-// the foundry, the grotto), with at least 100 on the floor. Every run must draw everything (no "not in any program table" line) and keep about 2000 enemies.
+// the foundry, the grotto, the cathedral, the rift, the core), with at least 100 on the floor. Every run must draw everything (no "not in any program table" line) and keep about 2000 enemies.
 // Controls, which must fail: GL at 3840x2160 (4 times the pixels: the deeper floors are cheaper than the bound by about a third), and
 // WebGPU against an impossible 1 ms bound.
 // Holds the GPU suite lock (the engine's tools/with-gpu-suite.mjs). Run: node tests/hordeshooter-perf.mjs
@@ -50,7 +50,7 @@ const check = (name, r, bound, mustFail = false, crowd = 1500) => {
 check('GL', run('gl'), 4.1);
 check('WebGPU', run('webgpu'), 4.1);
 /* every made floor's late wave (its last before the boss), its own level and bake: the same bound */
-for (const [floor, wave] of [['the yard', 4], ['the sluice', 9], ['the ossuary', 14], ['the foundry', 19], ['the grotto', 25]])
+for (const [floor, wave] of [['the yard', 4], ['the sluice', 9], ['the ossuary', 14], ['the foundry', 19], ['the grotto', 25], ['the cathedral', 31], ['the rift', 37], ['the core', 43]])
   for (const gpu of ['gl', 'webgpu']) check(`${floor} wave ${wave} ${gpu === 'gl' ? 'GL' : 'WebGPU'}`, run(gpu, { HORDE_WAVE: String(wave) }), 4.1, false, 100);
 check('GL at 3840x2160 (4 times the pixels)', run('gl', { CW_RENDER_SCALE: '3' }), 4.1, true);
 check('WebGPU against 1 ms', run('webgpu'), 1, true);

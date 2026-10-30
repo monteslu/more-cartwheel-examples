@@ -121,3 +121,7 @@ models/core_door.cwchar
 models/core_hellhound.cwchar
 models/core_boss.cwchar
 models/loot_cache.cwchar
+textures/lava_floor.png
+lightmaps/cathedral.cwlm
+lightmaps/rift.cwlm
+lightmaps/core.cwlm

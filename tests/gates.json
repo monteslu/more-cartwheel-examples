@@ -474,6 +474,9 @@
         0,
         0,
         0,
+        0,
+        0,
+        0,
         0
       ]
     },
@@ -568,17 +571,17 @@
       "floor.boss_tick": 5584,
       "floor.clear_tick": 5674,
       "floor.hatch_tick": 5674,
-      "floor.descend_tick": 5745,
-      "floor.next_tick": 5805,
+      "floor.descend_tick": 6534,
+      "floor.next_tick": 6594,
       "floor.left_at_hatch": 0,
-      "game.enemies": 182,
+      "game.enemies": 183,
       "player.hp": [
         100,
         100,
         100,
         0
       ],
-      "game.hash": 991404152
+      "game.hash": 3714187193
     },
     "controlEnv": {
       "HORDE_WAVE": "5",
@@ -589,7 +592,7 @@
     "hosts": [
       "native"
     ],
-    "note": "a floor ends and the next begins: three bots from the yard's boss wave (HORDE_WAVE=5, floor 1 wave 5). The boss falls at tick 5584, the horde burns to ash over 90 ticks (floor.clear_tick 5674, no enemy left when the hatch opens: floor.left_at_hatch 0), the hatch opens over 60 ticks, a bot finds its way to it round the walls and steps in at 5745, and the second floor, the sluice with its own layout, starts at 5805 (floor.level 1, its first wave under way: 182 enemies at tick 6000). Measured 2026-10-29 on native GL. The control (HORDE_FLOOR_STAY=1: nobody steps in) stays on the first floor with the hatch open and must differ.",
+    "note": "a floor ends and the next begins: three bots from the yard's boss wave (HORDE_WAVE=5, floor 1 wave 5). The boss falls at tick 5584, the horde burns to ash over 90 ticks (floor.clear_tick 5674, no enemy left when the hatch opens: floor.left_at_hatch 0), the hatch opens over 60 ticks, the boss's loot caches fall and the bots gather them, then one finds its way to the hatch round the walls and steps in at 6534, and the second floor, the sluice with its own layout, starts at 6594 (floor.level 1, its first wave under way: 183 enemies at tick 7800). Measured 2026-10-29 on native GL. The control (HORDE_FLOOR_STAY=1: nobody steps in) stays on the first floor with the hatch open and must differ.",
     "webgpu": {
       "hosts": [
         "native"
