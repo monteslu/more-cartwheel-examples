@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.4.2
+
+- brawler: a fighter hit in mid jump no longer floats: a staggered body in
+  the air keeps falling, and anyone left above the ground falls. The player's
+  controls are as they were in 0.3.0; a new gate drives walking, jumps, jump
+  kicks, combos and grabs with human-like input.
+- brawler: faces that read from the game camera (a big man flinches with a
+  sweat drop, a small one snarls, the creep beams with hearts), bright red
+  gore on the street and the fighters, a softer hit flash, the wanker out of
+  shape (thin arms, a belly over his belt, the red cap always), lighter skin
+  tones for him.
+- hordeshooter: the descent begins. The run is eight floors of five or six
+  waves, each ending in a boss; when the boss falls the rest of the horde
+  burns to ash and a hatch opens in the centre, and a player stepping in
+  takes the team down to the next floor with their levels and score. The
+  deeper floors' own maps, monsters and bosses follow in the next release.
+
 ## 0.4.1
 
 - hordeshooter: the creatures attack. An enemy next to a player winds up,
