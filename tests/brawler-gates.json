@@ -867,7 +867,7 @@
   },
   {
     "name": "brawler-fill",
-    "note": "The front fill light stands high and back: where it mirrors on the wet street (game.mirrorz, z in mm of the mirror point between the light and the camera) falls below the picture, and all four fighters show their rings (game.rings). Control legacyfill 1 (the old light low in front of the near lane) must fail: it mirrored at the bottom of the picture.",
+    "note": "The front fill light stands no longer in front of the near lane: it blew those bodies out and mirrored on the wet street at the bottom of the picture (game.mirrorz, z in mm of its mirror point, past the picture's lower edge; the light itself is gone since B-PT19, its work done by the Fill sun) and all four fighters show their rings (game.rings). Control legacyfill 1 (the old light) must fail.",
     "app": "brawler_auto",
     "frames": 260,
     "startCmds": [

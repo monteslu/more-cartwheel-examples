@@ -22,6 +22,8 @@
 #include "cartwheel/input.h"
 #include "cartwheel/platform.h"
 #include "cartwheel/project.h"
+#include "cartwheel/pipeline.h"
+#include "cartwheel/render3d.h"
 #include "cartwheel/render2d.h"
 #include "cartwheel/scene_file.h"
 #include "cartwheel/shell.h"
@@ -426,6 +428,25 @@ static void fixed_update(void *user, double dt) {
   for (int k = 0; k < turbo; k++) sim_step();
   publish();
 }
+#ifdef BRAWLER_AUTOPILOT
+/* BRAWLER_BENCH=1: every 120 frames one line of what the frame cost (tests/brawler-perf.mjs reads it): the draws and triangles,
+   the pipeline's passes (GPU ms / CPU ms; GPU timers need CW_GPU_TIMERS=1) */
+static void bench_line(void) {
+  static int on = -1, n;
+  if (on < 0) { const char *v = getenv("BRAWLER_BENCH"); on = v && atoi(v); }
+  if (!on || ++n % 120) return;
+  cw_render3d_stats rs;
+  cw_render3d_get_stats(cw_scene_app_tree(), &rs);
+  int alive = 0;
+  for (int i = 0; i < MAXE; i++) if (W.e[i].used && W.e[i].st != S_DEAD) alive++;
+  const cw_pass_stat *ps;
+  int np = cw_pipeline_pass_stats(cw_pipeline_of(cw_scene_app_tree()), &ps);
+  fprintf(stderr, "bench draws=%d tris=%d cpu3d_ms=%.2f enemies=%d stage=%d gpu_total=%.2f", rs.draw_calls, rs.triangles, rs.cpu_ms, alive, W.stage, cw_pipeline_gpu_ms(cw_pipeline_of(cw_scene_app_tree())));
+  for (int k = 0; k < np; k++)
+    if (ps[k].ran && (ps[k].gpu_ms_avg > 0.02f || ps[k].cpu_ms_avg > 0.1f)) fprintf(stderr, " %s=%.2f/%.2f", ps[k].name, ps[k].gpu_ms_avg, ps[k].cpu_ms_avg);
+  fprintf(stderr, "\n");
+}
+#endif
 static void sim_step(void) {
   run_ticks++;
 #ifdef BRAWLER_AUTOPILOT
@@ -504,6 +525,9 @@ static void render(void *user, double alpha) {
     for (int i = 0; i < MAXE; i++) if (W.e[i].used) char_sync(&W.e[i]);
     sim_sync_extras();
     ui_draw();
+#ifdef BRAWLER_AUTOPILOT
+    bench_line();
+#endif
   }
   cw_shell_draw();
 }

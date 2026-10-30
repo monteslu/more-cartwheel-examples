@@ -103,8 +103,9 @@ t3_object *item_model(int kind) {
   return o;
 }
 
+bool g_hair_shadow; /* measurement: the hair casts as it used to */
 static void set_shadows(t3_object *o) {
-  if (o->type == T3_SKINNED_MESH || o->type == T3_MESH) o->cast_shadow = true, o->receive_shadow = true;
+  if (o->type == T3_SKINNED_MESH || o->type == T3_MESH) o->cast_shadow = !(o->name && !strncmp(o->name, "Hair", 4)) || g_hair_shadow, o->receive_shadow = true; /* the alpha-tested hair cards are the dearest thing in the shadow map and read as nothing in a street shadow */
   for (int i = 0; i < o->child_count; i++) set_shadows(o->children[i]);
 }
 

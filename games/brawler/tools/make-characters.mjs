@@ -14,6 +14,7 @@ import { writeSet } from './texlib.mjs';
 import { pompDir, pompTA, pompEdge, pompHeight } from './pompadour.mjs';
 import { faceParams, headModel, buildHead, shellGrid, paintFace, paintEye, FACE_BONES, EXPRESSIONS, FACE_TARGETS, faceTargets } from './face.mjs';
 const HEAD_GROUPS = ['face', 'lash'];
+const HAIR_GROUPS = ['hairCard', 'pomadeCard', 'pomadeShell'];
 
 const CARD_INWARD = process.env.BRAWLER_CARD_WINDING === 'inward';
 const OUT = join(dirname(fileURLToPath(import.meta.url)), '..', 'assets', 'models');
@@ -545,7 +546,7 @@ const folds = (y, a, list) => { let m = 0; for (const [fy, amp, w, side, sw] of 
 const noise1 = (x, s) => { const i = Math.floor(x), f = x - i, h = (n) => { let v = Math.imul(n ^ s, 0x27d4eb2d); v ^= v >>> 15; v = Math.imul(v, 0x85ebca6b); v ^= v >>> 13; return (v >>> 0) / 4294967296; }; const u = f * f * (3 - 2 * f); return lerp(h(i), h(i + 1), u); };
 
 function build(sp) {
-  const m = new SkinMesh();
+  const m = new SkinMesh(); m.lod = 0.6; // the fixed street camera: a body is at most about 400 pixels tall (B-PT19)
   const { world } = skeleton(sp);
   const B = (n) => world[n];
   const X = [1, 0, 0], Y = [0, 1, 0], Z = [0, 0, 1];
@@ -692,7 +693,7 @@ function build(sp) {
 
   // ── head: a sculpted face (sockets, eyes and lids, nose, lips and a mouth that opens, teeth, ears) on the head envelope ──
   const M = headOf(sp, world), { hc, R, RZ, HY } = M.H, headRing = M.H.ring, F = M.F;
-  buildHead(m, M, BI, { glowEyes: !!sp.glowEyes, piercings: sp.piercings, lipRing: sp.lipRing });
+  buildHead(m, M, BI, { glowEyes: !!sp.glowEyes, piercings: sp.piercings, lipRing: sp.lipRing, cols: 48, rows: 38 });
   if (sp.shades) { // pushed up on the forehead
     const P = M.surf(0, 0.4);
     m.ellipsoid('shades', add(P, [0, 0.004, 0.008 * HS]), 0.1 * HS, 0.02 * HS, 0.016 * HS, { bone: BI.Head, steps: 6, n: 16, e: 3, axis: norm([0, 1, -0.35]), U: X, V: norm([0, 0.35, 1]) });
@@ -884,7 +885,7 @@ function build(sp) {
     // and cards: a roll standing off the forehead and leaning past the brow, lying back over the crown, the sides slick and
     // flat, the hairline ending in strands (alpha). The furrows and strands run along its comb lines, and the tangent runs
     // across them, so the pomade's highlight lies across the comb lines as on real slicked hair.
-    const NU = 110, NV = 84, HK = HS * 1.0, P = [], out = (s, u, lift = 0) => {
+    const NU = 56, NV = 44, HK = HS * 1.0, P = [], out = (s, u, lift = 0) => {
       const d = pompDir(s, u), [t, a] = pompTA(d), [q, nn] = scalpPt(Math.max(-0.95, Math.min(0.995, t)), a, 0);
       const e = pompEdge(a), rise = ss(e, e + 0.1, t); // sinks under the skin past the hairline
       return add(q, mul(nn, (0.0025 + pompHeight(s, u) * HK) * rise - 0.012 * ss(e, e - 0.1, t) + lift));
@@ -1233,10 +1234,10 @@ function emit(sp) {
   // Body (the rest). A morphed mesh draws on its own and reads every target per vertex, so only the head carries them.
   const targets = faceTargets(g, M, HEAD_GROUPS);
   const names = FACE_TARGETS.filter((n) => HEAD_GROUPS.some((h) => targets[n][h]?.any));
-  const head = [], body = [];
+  const head = [], body = [], hairCards = [];
   for (const [gg, mi] of g.prims(mats)) {
     const gname = [...g.groups].find(([, x]) => x === gg)[0];
-    if (HEAD_GROUPS.includes(gname)) { gg.targets = names.map((n) => targets[n][gname]); head.push([gg, mi]); } else body.push([gg, mi]);
+    if (HEAD_GROUPS.includes(gname)) { gg.targets = names.map((n) => targets[n][gname]); head.push([gg, mi]); } else if (HAIR_GROUPS.includes(gname)) hairCards.push([gg, mi]); else body.push([gg, mi]);
   }
   const jointNodes = BONE_NAMES.map((n) => glb.node({ name: n, translation: T[n] }));
   BONE_NAMES.forEach((n, i) => { if (PARENT[n] !== -1) (glb.nodes[jointNodes[BI[PARENT[n]]]].children ||= []).push(jointNodes[i]); });
@@ -1244,6 +1245,7 @@ function emit(sp) {
   BONE_NAMES.forEach((n, i) => { const w = world[n]; ibm.set([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -w[0], -w[1], -w[2], 1], i * 16); });
   glb.skins.push({ name: 'Armature', inverseBindMatrices: glb.acc(ibm, 'MAT4', 5126, 0), joints: jointNodes, skeleton: jointNodes[0] });
   const meshNodes = [glb.node({ name: 'Body', mesh: glb.mesh(sp.name + '_body', body), skin: 0 }), glb.node({ name: 'Face', mesh: glb.mesh(sp.name + '_head', head, null, names), skin: 0 })];
+  if (hairCards.length) meshNodes.push(glb.node({ name: 'Hair', mesh: glb.mesh(sp.name + '_hair', hairCards), skin: 0 })); // its own mesh: alpha-tested cards cast no shadow (the game turns that off by this name)
   const s = sp.scale ?? 1; // the root hip node scales the whole body
   glb.nodes[jointNodes[0]].translation = [0, T.Hips[1] * s, 0];
   glb.nodes[jointNodes[0]].scale = [s, s, s];

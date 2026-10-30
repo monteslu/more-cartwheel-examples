@@ -301,6 +301,22 @@ void level_build(int stage) {
   cw_node_set(rim, "color", cw_val_color(th->rim[0], th->rim[1], th->rim[2], 1));
   cw_node_set(rim, "energy", cw_val_float(th->rim_e * 1.6f));
   { float d[3] = { -0.3f, -0.45f, 0.85f }; aim(rim, d); }
+  /* what a frame's GPU time buys (B-PT19, findings/brawler.md: measured on the 890M at 1080p, four fighters and 14 enemies): plain
+     height fog in place of the lit fog grid, thinned to look the same from this camera (1.3 ms); two shadow cascades over the
+     24 m the street camera sees (1 ms, shadows and shading together); ambient occlusion with half the rays (0.3 ms) */
+  bool oldfx = false;
+#ifdef BRAWLER_AUTOPILOT
+  { const char *x = getenv("BRAWLER_EXP"); oldfx = x && strstr(x, "oldfx"); } /* the earlier settings: the perf gate's control */
+#endif
+  if (!oldfx) {
+    cw_node_set(fog, "volumetric", cw_val_bool(false));
+    cw_node_set(fog, "density", cw_val_float(th->fog_density * 0.3f));
+    cw_node_set(post, "ssao_slices", cw_val_int(1));
+    cw_node_set(post, "ssao_steps", cw_val_int(3));
+    cw_node_set(sun, "shadow_cascades", cw_val_int(2));
+    cw_node_set(sun, "shadow_distance", cw_val_float(24));
+    cw_node_set(sun, "shadow_size", cw_val_int(1536));
+  }
   /* the scenery: street, kerb, pavement, buildings with lit windows, lamp posts (one glb per stage) */
   char path[40];
   snprintf(path, sizeof path, "models/stage%d.glb", stage & 3);
@@ -322,7 +338,11 @@ void level_build(int stage) {
      below the picture (game.mirrorz, z of the mirror point; the picture's lower edge meets the street near z 5.5) */
   for (int i = 0; i < 3; i++) {
     float e = th->acc[i].e * (i == 2 ? 2.5f : 1.0f), y = th->acc[i].y, zz = th->acc[i].z, rg = th->acc[i].range;
-    if (i == 2 && !g_legacy_fill) e *= 1.9f, y = FILL_Y, zz = FILL_Z, rg = 15;
+    if (i == 2 && !g_legacy_fill) { /* a whole-screen light in every pixel's loop (0.5 ms): its work goes to the Fill sun, which costs one more term */
+      acc_y[i] = FILL_Y, acc_z[i] = FILL_Z, acc_node[i] = (cw_node){ 0 };
+      cw_node_set(fill, "energy", cw_val_float(th->fill_e * 2.2f * 1.3f));
+      continue;
+    }
     acc_y[i] = y, acc_z[i] = zz;
     acc_node[i] = light(s, "A", (t3_vec3){ th->acc[i].dx, y, zz }, th->acc[i].c, e, rg);
   }
