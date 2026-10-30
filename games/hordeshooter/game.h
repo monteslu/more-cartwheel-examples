@@ -25,7 +25,10 @@ const char *sim_kind_name(int kind); /* the .cwlevel's name of a kind ("runner" 
 int sim_kind_by_name(const char *name); /* -1 when not a kind */
 enum { OK_CRATE, OK_BARREL, OK_WALL, OK_PILLAR, OK_KINDS };
 enum { EV_SHOT, EV_HIT, EV_KILL, EV_BOOM, EV_CRATE, EV_BARREL, EV_WALL, EV_GEM, EV_HURT, EV_LEVEL, EV_WAVE, EV_BOSS, EV_DOWN, EV_ROCKET, EV_POWER, EV_POWER_SPAWN, EV_SWIPE,
-       EV_MELT, EV_CLEAR, EV_HATCH, EV_DESCEND, EV_FLOOR }; /* EV_MELT: one of the horde melting after its boss fell (a its kind); EV_CLEAR: the floor is clear;
+       EV_MELT, EV_CLEAR, EV_HATCH, EV_DESCEND, EV_FLOOR,
+       EV_BOSS_TELL, EV_ACID, EV_LANCE, EV_SPIKES, EV_RISE, EV_BROOD }; /* EV_BOSS_TELL: a boss begins an arena attack (a 1) or a summon (a 2);
+       EV_ACID: a puddle of acid lands; EV_LANCE: a bone lance flies (z w its velocity); EV_SPIKES: a ring of spikes (z its radius);
+       EV_RISE: a pile of bones stands up; EV_BROOD: a skitter dropped by the mother */ /* EV_MELT: one of the horde melting after its boss fell (a its kind); EV_CLEAR: the floor is clear;
        EV_HATCH: the hatch opens; EV_DESCEND: a player stepped in; EV_FLOOR: a new floor starts (a its index) */ /* EV_SWIPE: an enemy's strike (a kind, b 1 when it hit; z, w its facing) */
 
 /* power-ups (pickup kind PK_POWER + type): temporary weapons, ammo, throwables and helpers */
@@ -60,6 +63,8 @@ typedef struct enemy {
   uint8_t kind;
   int hp, flash, spawn_age, ph, hits, first_hit; /* hits taken and the tick of the first (stats only) */
   int atk, atk_cd, tgt; /* the melee attack: ticks into it (0: none), ticks before the next may start, the player it is aimed at */
+  int act, act_t, act_next, act_n; /* a floor boss's arena attack (1) or summon (2): ticks into it; ticks to the next; how many it has made
+                                      (a bonewalker: risen once already when act_n is 1) */
   float x, y, kx, ky, face, speed;
   cw_crowd_agent agent;
 } enemy;
@@ -87,6 +92,17 @@ typedef struct floor_def {
   float share[8][EK_KINDS]; /* each wave's kinds, shares summing to 1 */
 } floor_def;
 
+/* acid on the floor (Vhessa's jet): a circle that burns a player standing in it */
+typedef struct zone { bool alive; uint8_t kind; float x, y, r; int life; } zone;
+/* an enemy's missile (Ossivar's bone lances): slow enough to dodge */
+typedef struct eshot { bool alive; float x, y, vx, vy; int life; float dmg; } eshot;
+/* where a bonewalker fell: a pile of bones that may stand up again (one in five, after 4 s, unless shot; all of
+ * them when the abbot raises the dead) */
+typedef struct pile { bool alive; float x, y; int rise; } pile;
+#define MAXZ 32
+#define MAXES 64
+#define MAXPILE 256
+
 typedef struct sim {
   int tick, wave, wave_tick, players, state, state_ticks;
   int level, level_wave; /* the floor (0..NLEVELS-1) and its wave (1..sim_level_waves); wave counts the run's waves */
@@ -103,6 +119,9 @@ typedef struct sim {
   bool no_power; /* development: no power-ups at all (the A/B of the bot runs) */
   bool no_spawn; /* tests: the director spawns nothing (sim_spawn places the enemies) */
   float spot_x[16], spot_y[16];
+  zone z[MAXZ];
+  eshot es[MAXES];
+  pile pl[MAXPILE];
   floor_def fl[NLEVELS_MAX]; /* each floor's layout, set by the game before it starts (none: the yard's, built in code) */
   /* power-up stats (not state): pickups per type, kills and player-ticks while a type was held */
   int pu_taken[PU_KINDS], pu_kills[PU_KINDS], pu_ticks[PU_KINDS], plain_kills, plain_ticks;
@@ -159,6 +178,9 @@ int sim_spawn(sim *s, int kind, float x, float y); /* tests: one enemy there; it
 void sim_dev_kill_boss(sim *s); /* development: the floor's boss falls now (player 1 gets it) */
 int sim_melee_windup(int kind); /* the ticks of that kind's wind-up */
 int sim_attack_frame(const enemy *e, float *tell);
+/* a floor boss's pose from its arena attack or summon: false when it is doing neither (walking or in melee);
+ * clip 2 or 3 and the frame (0 the held tell, 1 the release, 2 the recovery), *tell 0..1 into the tell */
+bool sim_boss_pose(const sim *s, const enemy *e, int *clip, int *frame, float *tell);
 void sim_power_give(sim *s, int pi, int t);
 void sim_power_drop(sim *s, float x, float y, int t); /* hand a power-up to a player (pickups; development) */
 void sim_team_box(const sim *s, float *cx, float *cy, float *hw, float *hh);

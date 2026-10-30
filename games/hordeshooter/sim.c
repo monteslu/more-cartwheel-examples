@@ -70,6 +70,150 @@ static const melee MEL[EK_KINDS] = {
 };
 #define STRIKE_HOLD 6 /* ticks the strike pose shows after the hit */
 
+/* the floors' bosses (LEVELS.md): their arena attack and summon. Ticks at 60 a second.
+ *   Vhessa (the sluice): the acid jet (her belly glows 1.2 s, then a 40-degree cone of acid that burns 6 s), the
+ *   brood (she squats 1 s and drops 8 skitters behind her); her pincer sweep is her melee (140 degrees). Above 50%
+ *   she sweeps and jets in turn; below, she broods every 12 s and moves faster; below 20% the jets come in pairs.
+ *   Ossivar (the ossuary): the bone lances (his chest flares 1 s, then 5 slow spears in a fan; two fans below 25%),
+ *   raise the dead (he kneels 1.5 s and every bone pile stands up, from 60% every 15 s); his crozier slam is his
+ *   melee (a ring of spikes at 3 m all round him). */
+enum { BOSS_YARD, BOSS_VHESSA, BOSS_OSSIVAR };
+static int spawn_enemy(sim *s, int kind, float x, float y);
+static bool in_box(const obstacle *o, float x, float y, float pad);
+static int boss_of(const sim *s) { return s->fl[s->level].set ? (s->level == 1 ? BOSS_VHESSA : s->level == 2 ? BOSS_OSSIVAR : BOSS_YARD) : BOSS_YARD; }
+static const struct { int tell[3], release, recover; } BACT[3] = {
+  { { 0, 0, 0 }, 0, 0 },
+  { { 0, 72, 60 }, 12, 30 },  /* Vhessa: jet tell 1.2 s, brood squat 1 s */
+  { { 0, 60, 90 }, 12, 30 },  /* Ossivar: chest flare 1 s, the kneel 1.5 s */
+};
+static float boss_frac(const sim *s, const enemy *e) { return s->boss_maxhp > 0 ? (float)e->hp / (float)s->boss_maxhp : 1; }
+static void boss_release(sim *s, enemy *e, int b) {
+  const player *tp = e->tgt >= 0 && e->tgt < MAXP ? &s->p[e->tgt] : NULL;
+  float fx = cw_cos(e->face), fy = cw_sin(e->face), frac = boss_frac(s, e);
+  if (b == BOSS_VHESSA && e->act == 1) { /* the acid jet: puddles along a 40-degree cone */
+    for (int k = 0; k < 7; k++) {
+      float a = e->face + (rf(s) - 0.5f) * 0.7f, d = 3.0f + rf(s) * 8.0f;
+      for (int z = 0; z < MAXZ; z++)
+        if (!s->z[z].alive) {
+          s->z[z] = (zone){ true, 0, e->x + cw_cos(a) * d, e->y + cw_sin(a) * d, 1.3f + rf(s) * 0.5f, 360 };
+          ev(s, EV_ACID, s->z[z].x, s->z[z].y, s->z[z].r, 0, 0, 0);
+          break;
+        }
+    }
+  } else if (b == BOSS_VHESSA && e->act == 2) { /* the brood: eight skitters behind her */
+    for (int k = 0; k < 8; k++) {
+      float a = e->face + 3.1416f + (rf(s) - 0.5f) * 1.6f, d = 2.5f + rf(s) * 2.0f;
+      float x = cw_clampf(e->x + cw_cos(a) * d, -HALF + 1, HALF - 1), y = cw_clampf(e->y + cw_sin(a) * d, -HALF + 1, HALF - 1);
+      if (spawn_enemy(s, EK_SKITTER, x, y) >= 0) ev(s, EV_BROOD, x, y, 0, 0, 0, 0);
+    }
+  } else if (b == BOSS_OSSIVAR && e->act == 1) { /* the bone lances: a fan of five (two fans when nearly dead) */
+    int fans = frac < 0.25f ? 2 : 1;
+    for (int f = 0; f < fans; f++)
+      for (int k = 0; k < 5; k++) {
+        float a = e->face + ((float)k - 2.0f) * 0.22f + (float)f * 0.11f, v = 9.0f - (float)f * 1.5f;
+        for (int j = 0; j < MAXES; j++)
+          if (!s->es[j].alive) {
+            s->es[j] = (eshot){ true, e->x + cw_cos(a) * 1.8f, e->y + cw_sin(a) * 1.8f, cw_cos(a) * v, cw_sin(a) * v, 150, 12 };
+            ev(s, EV_LANCE, s->es[j].x, s->es[j].y, s->es[j].vx, s->es[j].vy, 0, 0);
+            break;
+          }
+      }
+  } else if (b == BOSS_OSSIVAR && e->act == 2) { /* raise the dead: every pile of bones stands up */
+    for (int k = 0; k < MAXPILE; k++) s->pl[k].rise = s->pl[k].alive ? 1 : s->pl[k].rise;
+  }
+  (void)tp, (void)fx, (void)fy;
+}
+/* a floor boss's turn: count down to its next arena attack or summon, tell it, release it, recover */
+static void boss_step(sim *s, enemy *e) {
+  int b = boss_of(s);
+  if (b == BOSS_YARD) return;
+  float frac = boss_frac(s, e);
+  if (e->act) {
+    e->act_t++;
+    const int tell = BACT[b].tell[e->act];
+    if (e->tgt >= 0 && e->act_t < tell - 6) { /* it turns to its target through the tell, then commits */
+      const player *p = &s->p[e->tgt];
+      float dx = p->x - e->x, dy = p->y - e->y;
+      if (dx * dx + dy * dy > 1e-4f) e->face = cw_atan2(dy, dx);
+    }
+    if (e->act_t == tell) boss_release(s, e, b);
+    if (e->act_t >= tell + BACT[b].release + BACT[b].recover) e->act = 0, e->act_t = 0;
+    return;
+  }
+  if (e->atk > 0) return; /* in melee */
+  if (--e->act_next > 0) return;
+  /* what next: the summon when its phase has come and it is due, else the arena attack */
+  bool summon = b == BOSS_VHESSA ? frac < 0.5f && (e->act_n % 2 == 1) : frac < 0.6f && (e->act_n % 3 == 2);
+  e->act = summon ? 2 : 1;
+  e->act_t = 0;
+  e->act_n++;
+  int best = -1;
+  float bd = 1e9f;
+  for (int k = 0; k < MAXP; k++) {
+    const player *p = &s->p[k];
+    float dx = p->x - e->x, dy = p->y - e->y;
+    if (p->active && !p->down && dx * dx + dy * dy < bd) bd = dx * dx + dy * dy, best = k;
+  }
+  e->tgt = best;
+  e->act_next = b == BOSS_VHESSA ? (frac < 0.2f ? 180 : frac < 0.5f ? 360 : 360) : (frac < 0.6f ? 300 : 360);
+  ev(s, EV_BOSS_TELL, e->x, e->y, 0, 0, e->act, b);
+}
+bool sim_boss_pose(const sim *s, const enemy *e, int *clip, int *frame, float *tell) {
+  int b = boss_of(s);
+  if (b == BOSS_YARD || !e->act) return false;
+  int t = BACT[b].tell[e->act];
+  *clip = e->act == 1 ? 2 : 3;
+  *frame = e->act_t < t ? 0 : e->act_t < t + BACT[b].release ? 1 : 2;
+  if (*clip == 3 && *frame > 1) *frame = 1; /* the summon has two frames: gather, release */
+  if (tell) *tell = e->act_t < t ? (float)e->act_t / (float)t : 0;
+  return true;
+}
+
+/* acid burns, lances fly, bones stand up */
+static void boss_world_step(sim *s) {
+  for (int i = 0; i < MAXZ; i++) {
+    zone *z = &s->z[i];
+    if (!z->alive) continue;
+    if (--z->life <= 0) { z->alive = false; continue; }
+    if (s->tick % 20) continue;
+    for (int k = 0; k < MAXP; k++) {
+      player *p = &s->p[k];
+      float dx = p->x - z->x, dy = p->y - z->y;
+      if (!p->active || p->down || p->inv > 0 || p->shield_t > 0 || dx * dx + dy * dy > z->r * z->r) continue;
+      p->hp -= 4, p->inv = 6;
+      ev(s, EV_HURT, p->x, p->y, 0, 0, k, 255);
+      if (p->hp <= 0) p->down = true, p->down_ticks = 0, ev(s, EV_DOWN, p->x, p->y, 0, 0, k, 0);
+    }
+  }
+  for (int i = 0; i < MAXES; i++) {
+    eshot *e = &s->es[i];
+    if (!e->alive) continue;
+    e->x += e->vx / TICK, e->y += e->vy / TICK;
+    if (--e->life <= 0 || fabsf(e->x) > HALF || fabsf(e->y) > HALF) { e->alive = false; continue; }
+    for (int k = 0; k < MAXO; k++)
+      if (s->o[k].alive && in_box(&s->o[k], e->x, e->y, 0.05f)) { e->alive = false; break; }
+    if (!e->alive) continue;
+    for (int k = 0; k < MAXP; k++) {
+      player *p = &s->p[k];
+      float dx = p->x - e->x, dy = p->y - e->y;
+      if (!p->active || p->down || dx * dx + dy * dy > 0.7f * 0.7f) continue;
+      e->alive = false;
+      if (p->inv > 0 || p->shield_t > 0) break;
+      p->hp -= e->dmg, p->inv = 12;
+      ev(s, EV_HURT, p->x, p->y, e->vx, e->vy, k, EK_BOSS);
+      if (p->hp <= 0) p->down = true, p->down_ticks = 0, ev(s, EV_DOWN, p->x, p->y, 0, 0, k, 0);
+      break;
+    }
+  }
+  for (int i = 0; i < MAXPILE; i++) {
+    pile *pl = &s->pl[i];
+    if (!pl->alive || pl->rise <= 0 || --pl->rise > 0) continue;
+    pl->alive = false;
+    int k = spawn_enemy(s, EK_BONEWALKER, pl->x, pl->y);
+    if (k >= 0) s->e[k].act_n = 1, s->e[k].spawn_age = 40, ev(s, EV_RISE, pl->x, pl->y, 0, 0, 0, 0); /* risen once: it stays down next time */
+  }
+}
+
 int sim_melee_windup(int kind) { return MEL[CW_CLAMP(kind, 0, EK_KINDS - 1)].windup; }
 
 int sim_attack_frame(const enemy *e, float *tell) {
@@ -219,6 +363,12 @@ static void kill_enemy(sim *s, int i, int owner, float dx, float dy) {
   }
   ev(s, EV_KILL, e->x, e->y, dx, dy, e->kind, owner);
   if (e->kind == EK_BOSS) s->boss_alive--;
+  if (e->kind == EK_BONEWALKER && s->state == ST_PLAY) /* it falls apart: a pile of bones, one in five to stand up once in 4 s */
+    for (int k = 0; k < MAXPILE; k++)
+      if (!s->pl[k].alive) {
+        s->pl[k] = (pile){ true, e->x, e->y, e->act_n == 0 && rf(s) < 0.2f ? 240 : 0 };
+        break;
+      }
   if (owner < 0) return; /* the yard clearing itself (a reset, the win) drops nothing */
   /* the kind's xp in gems. A runner leaves its gem less often as the waves thicken: a thick horde
    * is many more kills a minute, so the xp a minute still grows on the curve the level costs follow */
@@ -743,6 +893,10 @@ static void bullets_step(sim *s) {
       break;
     }
     if (!b->alive) continue;
+    for (int k = 0; k < MAXPILE; k++) { /* a shot pile of bones stays down */
+      pile *pl = &s->pl[k];
+      if (pl->alive && fabsf(pl->x - b->x) < 0.6f && fabsf(pl->y - b->y) < 0.6f) pl->alive = false;
+    }
     bullet_ctx c = { j, false };
     each_enemy(s, b->x, b->y, 0.12f, bullet_hit, &c);
   }
@@ -784,7 +938,8 @@ static void spawn_director(sim *s) {
     s->boss_wave = s->wave;
     float a = rf(s) * 6.28f;
     float bx = cw_clampf(cx + cw_cos(a) * 24, -HALF + 3, HALF - 3), by = cw_clampf(cy + cw_sin(a) * 24, -HALF + 3, HALF - 3);
-    if (spawn_enemy(s, EK_BOSS, bx, by) >= 0) ev(s, EV_BOSS, bx, by, 0, 0, 0, 0);
+    int bi = spawn_enemy(s, EK_BOSS, bx, by);
+    if (bi >= 0) s->e[bi].act_next = 240, ev(s, EV_BOSS, bx, by, 0, 0, 0, 0);
   }
   int budget = 14;
   while (s->nenemies < s->spawn_cap && budget-- > 0) {
@@ -864,10 +1019,14 @@ static void enemies_step(sim *s) {
       }
     }
     float sp = e->speed * (e->spawn_age < 40 ? 0.5f : 1.0f);
-    if (e->kind == EK_BOSS) { /* walk, stand still and glow (the telegraph), then charge straight ahead */
+    if (e->kind == EK_BOSS && boss_of(s) == BOSS_YARD) { /* walk, stand still and glow (the telegraph), then charge straight ahead */
       e->ph = (e->ph + 1) % 330;
       if (e->ph >= 230 && e->ph < 290) sp = 0;
       else if (e->ph >= 290) sp *= 3.0f;
+    } else if (e->kind == EK_BOSS) { /* a floor's boss: its arena attacks and summons, planted while it does them */
+      boss_step(s, e);
+      if (e->act) sp = 0;
+      else if (boss_of(s) == BOSS_VHESSA && boss_frac(s, e) < 0.5f) sp *= 1.25f;
     }
     if (e->atk > 0) sp = 0; /* planted through the wind-up, the strike and the recovery */
     if (e->kind != EK_SKITTER && in_hazard(s, HZ_WATER, e->x, e->y)) sp *= 0.7f; /* wading */
@@ -898,9 +1057,12 @@ static void enemies_step(sim *s) {
     enemy *e = &s->e[i];
     if (!e->alive) continue;
     const melee *m = &MEL[e->kind];
+    static const melee VHESSA = { 48, 30, 30, 1.0f, 2.4f, -0.34f }, OSSIVAR = { 42, 30, 30, 1.6f, 1.8f, -1.0f };
+    if (e->kind == EK_BOSS && boss_of(s) == BOSS_VHESSA) m = &VHESSA;
+    if (e->kind == EK_BOSS && boss_of(s) == BOSS_OSSIVAR) m = &OSSIVAR;
     float touch = EK[e->kind].radius + 0.45f;
     if (e->atk == 0) {
-      if (e->atk_cd > 0 || (e->kind == EK_BOSS && e->ph >= 230)) continue; /* the boss's charge is its own attack */
+      if (e->atk_cd > 0 || (e->kind == EK_BOSS && (boss_of(s) == BOSS_YARD ? e->ph >= 230 : e->act != 0))) continue; /* a boss's charge or arena attack is its own */
       int best = -1;
       float bd = (touch + m->trigger) * (touch + m->trigger);
       for (int k = 0; k < MAXP; k++) {
@@ -948,6 +1110,7 @@ static void enemies_step(sim *s) {
         }
       }
       ev(s, EV_SWIPE, e->x + fx * touch, e->y + fy * touch, fx, fy, e->kind, hit ? 1 : 0);
+      if (e->kind == EK_BOSS && boss_of(s) == BOSS_OSSIVAR) ev(s, EV_SPIKES, e->x, e->y, touch + m->reach, 0, 0, 0); /* the crozier's ring of spikes */
     }
     if (e->atk > m->windup + m->recover) e->atk = 0, e->atk_cd = m->cooldown, e->tgt = -1;
   }
@@ -1152,6 +1315,7 @@ static void floor_next(sim *s) {
   memset(s->g, 0, sizeof s->g);
   memset(s->x, 0, sizeof s->x);
   memset(s->m, 0, sizeof s->m);
+  memset(s->z, 0, sizeof s->z), memset(s->es, 0, sizeof s->es), memset(s->pl, 0, sizeof s->pl);
   floor_layout(s);
   s->flow_age = 1000;
   for (int i = 0; i < MAXP; i++) {
@@ -1283,6 +1447,7 @@ void sim_step(sim *s, const input in[MAXP]) {
   if (s->state == ST_PLAY && !s->no_spawn) spawn_director(s);
   { CW_PROFILE_SCOPE("sim.enemies"); enemies_step(s); }
   { CW_PROFILE_SCOPE("sim.bullets"); bullets_step(s); }
+  boss_world_step(s);
   for (int i = 0; i < MAXX; i++) { /* explosions chain: each can start another this very tick */
     boom *b = &s->x[i];
     if (b->r == 0) continue;
