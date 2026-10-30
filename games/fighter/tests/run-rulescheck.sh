@@ -2,7 +2,7 @@
 # Builds and runs the rubric checks in rulescheck.c (plain C, the simulation only: no window, no GPU), then the controls:
 # each control breaks the move table or a copy of the rules on purpose and the check named must fail.
 # CARTWHEEL_ENGINE points at an engine checkout (default: deps/cartwheel-engine).
-# run-rulescheck.sh            everything, about 20 minutes (the FI9 search takes most of it)
+# run-rulescheck.sh            everything, about an hour on 4 free cores (the FI9 search takes most of it)
 # run-rulescheck.sh controls   the controls only
 # run-rulescheck.sh checks     the checks only
 set -uo pipefail

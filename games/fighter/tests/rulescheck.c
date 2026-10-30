@@ -5,7 +5,7 @@
  *   FI11  no dominant option: bots restricted to one move class, against the field
  *   FI13  comebacks: lead reversals and how often the fighter behind wins, from computer matches
  *   FI16  facing: cross-ups, scripted, plus a facing invariant over computer matches
- * Usage: rulescheck <moves.txt> [--only FI9] [--patch "move bolt 5P bs=30"]... [--matches N] [--attacker bolt] [--budget N]
+ * Usage: rulescheck <moves.txt> [--only FI9] [--patch "move bolt 5P bs=30"]... [--matches N] [--attacker bolt] [--side 0|1] [--budget N]
  * Exit 0 = every check run passed. tests/run-rulescheck.sh runs them and the controls that must fail. */
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,7 +17,7 @@ static ft_roster R;
 static ft_game G;
 static const ft_input NONE;
 static int failures;
-static int opt_matches = 20000, opt_budget = 6000000;
+static int opt_matches = 20000, opt_budget = 7900000, opt_side = -1;
 static const char *opt_only, *opt_attacker;
 
 static char *slurp(const char *path) {
@@ -473,6 +473,7 @@ static void check_fi9(void) {
       for (int o = 0; o < d; o++) same = same || (R.d[o].w_half == R.d[d].w_half && R.d[o].h_stand == R.d[d].h_stand && R.d[o].h_crouch == R.d[d].h_crouch && R.d[o].grav == R.d[d].grav);
       if (same) continue;
       for (int side = 0; side < 2; side++) { /* attacker on the left, then on the right */
+        if (opt_side >= 0 && side != opt_side) continue;
         int holds = charge_dir(&R.d[a], M_SP1) || charge_dir(&R.d[a], M_SP2) || charge_dir(&R.d[a], M_SP3) ? 3 : 1;
         for (int hold = 0; hold < holds; hold++) {
           static const int HOLD[3] = { 5, 4, 2 };
@@ -1008,6 +1009,7 @@ int main(int argc, char **argv) {
     else if (!strcmp(argv[i], "--matches") && i + 1 < argc) opt_matches = atoi(argv[++i]);
     else if (!strcmp(argv[i], "--budget") && i + 1 < argc) opt_budget = atoi(argv[++i]);
     else if (!strcmp(argv[i], "--attacker") && i + 1 < argc) opt_attacker = argv[++i];
+    else if (!strcmp(argv[i], "--side") && i + 1 < argc) opt_side = atoi(argv[++i]);
     else path = argv[i];
   }
   if (!path) { printf("usage: rulescheck <moves.txt> [--only FI9] [--patch line]... [--matches N] [--attacker id] [--budget N]\n"); return 2; }
