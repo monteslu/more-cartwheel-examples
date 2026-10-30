@@ -1,0 +1,78 @@
+[scene format=1]
+
+[node name="Root" type="Node3D"]
+
+[node name="Post" parent="." type="PostProcess"]
+hdr = true
+msaa = 4
+tonemap = "ACES_FILMIC"
+exposure = 1.0
+bloom = true
+bloom_intensity = 0.09
+bloom_threshold = 1.0
+vignette = true
+vignette_intensity = 0.25
+ssao = false
+depth_prepass = false
+
+[node name="Sky" parent="." type="ProceduralSky"]
+sun = "../Sun"
+time_of_day = 17.15
+latitude = 12
+declination = 10
+north = 200
+background = false
+sun_energy = 3.0
+sky_energy = 1.5
+
+[node name="Sun" parent="." type="DirectionalLight3D"]
+shadow = true
+shadow_extent = 45
+
+[node name="Camera" parent="." type="Camera3D"]
+position = vec3(0, 8, 0)
+fov = 62
+near = 0.4
+far = 6500
+
+[node name="Water" parent="." type="Water3D"]
+size = vec2(1792, 1792)
+grid = VIEW
+subdivisions = 256
+grid_min_cell = 0.3
+horizon_distance = 5000
+wave_count = 4
+wave0 = vec4(200, 46, 1.1, 0.7)
+wave1 = vec4(216, 37, 0.8, 0.7)
+wave2 = vec4(150, 14, 0.2, 0.65)
+wave3 = vec4(252, 7, 0.06, 0.5)
+wave_shelter = vec4(1, 1, 0.75, 0.3)
+floor_map_size = 256
+floor_range = 48
+clarity = 9
+murk = 0.5
+shallow_color = color(0.05, 0.62, 0.58, 1)
+deep_color = color(0.004, 0.05, 0.11, 1)
+color = color(0.93, 0.99, 0.98, 1)
+detail = 0.5
+normal_scale = 0.16
+distortion = 0.025
+swell_reflect = 0.35
+flow_speed = 0.035
+shore_foam = 1.6
+crest_foam = 0.45
+foam_scale = 7
+scatter = 1.1
+glint = 1.2
+ripple_cells = 288
+ripple_size = vec2(158, 158)
+ripple_speed = 3.2
+ripple_damping = 0.75
+ripple_strength = 1.3
+foam_fade = 0.36
+foam_spread = 0.55
+caustic_size = 7
+caustics = 0.7
+resolution_scale = 0.5
+
+[node name="Fx" parent="." type="Node3D"]
