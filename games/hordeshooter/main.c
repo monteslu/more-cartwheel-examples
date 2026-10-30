@@ -67,6 +67,11 @@ static struct {
   /* the camera gate: frames the camera jerked (its position's second difference over 2 cm: a shake, never the
    * smooth follow) and the blasts seen, for tests */
   int32_t cam_jerks, booms;
+  /* the melee gate (HORDE_MELEE_TEST): frames that drew an enemy in an attack pose, strikes, strikes that hit,
+   * and per kind the ticks from an attack's start to its damage */
+  int32_t m_attack_frames, m_strikes, m_hits, m_delay[EK_KINDS];
+  int m_test, m_start[MAXE];
+  int32_t dev_hold; /* development (romdev, screenshots): 1 the bots stand where they are, 2 and hold their fire, so the horde reaches them */
   t3_vec3 cam_p[2];
   int cam_n;
 } G;
@@ -129,6 +134,13 @@ static void start(int players, void *u) {
 #endif
   int wave = getenv("HORDE_WAVE") ? atoi(getenv("HORDE_WAVE")) : HORDE_START_WAVE; /* hordeshooter_bench: a late wave from the start (carts read no environment) */
   sim_init(&G.S, players, 4242, wave);
+  G.m_test = getenv("HORDE_MELEE_TEST") ? (getenv("HORDE_MELEE_DODGE") && atoi(getenv("HORDE_MELEE_DODGE")) ? 2 : 1) : 0;
+  if (G.m_test) { /* the melee gate: one player standing still (or stepping away from each wind-up), a runner and a brute walking in */
+    G.S.no_spawn = true, G.S.no_power = true;
+    const player *p = &G.S.p[0];
+    sim_spawn(&G.S, EK_RUNNER, p->x + 6.0f, p->y);
+    sim_spawn(&G.S, EK_BRUTE, p->x - 7.0f, p->y + 1.0f);
+  }
   G.players = players;
   G.in_match = true;
   G.ticks = 0;
@@ -180,6 +192,12 @@ static void init(void *u) {
   cw_debug_u32("game.hash", &G.hash);
   cw_debug_i32("view.cam_jerks", &G.cam_jerks);
   cw_debug_i32("fx.booms", &G.booms);
+  cw_debug_i32("dev.hold", &G.dev_hold);
+  cw_debug_f32("dev.cam_dist", &g_cam_dist);
+  cw_debug_i32("melee.attack_frames", &G.m_attack_frames);
+  cw_debug_i32("melee.strikes", &G.m_strikes);
+  cw_debug_i32("melee.hits", &G.m_hits);
+  cw_debug_field("melee.hit_delay", G.m_delay, CW_DBG_I32, EK_KINDS);
 #ifdef HORDE_AUTOPILOT
 #ifndef HORDE_AUTO_PLAYERS
 #define HORDE_AUTO_PLAYERS 2
@@ -202,9 +220,25 @@ static cw_vec2 aim_stick(cw_vec2 raw) {
 
 static void read_input(input in[MAXP]) {
   memset(in, 0, sizeof(input) * MAXP);
+  if (G.m_test) { /* stand still; the dodge control steps straight away from an enemy winding up at player 0 */
+    const player *p = &G.S.p[0];
+    float ax = 0, ay = 0; /* away from every enemy winding up at player 0 at once */
+    for (int i = 0; i < MAXE && G.m_test == 2; i++) {
+      const enemy *e = &G.S.e[i];
+      if (!e->alive || e->tgt != 0 || e->atk <= 0 || e->atk > sim_melee_windup(e->kind)) continue;
+      float dx = p->x - e->x, dy = p->y - e->y, l = sqrtf(dx * dx + dy * dy);
+      if (l > 0.01f) ax += dx / l, ay += dy / l;
+    }
+    float l = sqrtf(ax * ax + ay * ay);
+    if (l > 0.01f) in[0].mx = ax / l, in[0].my = ay / l;
+    else if (G.m_test == 2 && (ax != 0 || ay != 0)) in[0].mx = -ay, in[0].my = ax; /* pincered from both sides: step out sideways */
+    return;
+  }
   for (int i = 0; i < G.S.players; i++) {
 #ifdef HORDE_AUTOPILOT
     horde_bot(&G.S, i, &in[i]);
+    if (G.dev_hold) in[i].mx = in[i].my = 0;
+    if (G.dev_hold >= 2) in[i].ax = in[i].ay = 0, in[i].fire = in[i].bomb = false; /* 2: and hold fire */
 #else
     cw_vec2 m = cw_input_vector(i, G.move[0], G.move[1], G.move[2], G.move[3], CW_DEADZONE_SCALED_RADIAL, 0.2f);
     cw_vec2 a = aim_stick(cw_input_vector(i, G.aim[0], G.aim[1], G.aim[2], G.aim[3], CW_DEADZONE_RADIAL, 0));
@@ -232,6 +266,21 @@ static void fixed_update(void *u, double dt) {
     for (int i = 0; i < G.S.players; i++) sim_power_give(&G.S, i, atoi(getenv("HORDE_POWER")) % PU_KINDS);
   int ev0 = G.S.ev_n;
   sim_step(&G.S, in);
+  for (int i = 0; i < MAXE; i++) { /* the melee gate's bookkeeping: when each attack started */
+    const enemy *e = &G.S.e[i];
+    if (e->alive && e->atk == 1) G.m_start[i] = G.S.tick;
+  }
+  for (int k = ev0 <= G.S.ev_n ? ev0 : 0; k < G.S.ev_n; k++) {
+    const event *v = &G.S.ev[k];
+    if (v->kind != EV_SWIPE) continue;
+    G.m_strikes++;
+    if (getenv("HORDE_MELEE_LOG")) fprintf(stderr, "strike tick=%d kind=%d hit=%d at %.2f %.2f player %.2f %.2f hp %.0f\n", G.S.tick, v->a, (int)v->b, v->x, v->y, G.S.p[0].x, G.S.p[0].y, G.S.p[0].hp);
+    if (v->b) G.m_hits++;
+    for (int i = 0; i < MAXE; i++) { /* the striker: in its strike tick (one past its wind-up) */
+      const enemy *e = &G.S.e[i];
+      if (e->alive && e->kind == v->a && e->atk == sim_melee_windup(e->kind) + 1 && v->b && !G.m_delay[e->kind]) G.m_delay[e->kind] = G.S.tick - G.m_start[i];
+    }
+  }
   for (int k = ev0 <= G.S.ev_n ? ev0 : 0; k < G.S.ev_n; k++) /* the events this tick added */
     if (G.S.ev[k].kind == EV_POWER) play(snd_power, cw_shell_sfx_bus(), 0.7f);
   T_sim += (cw_wall() - t0) * 1000;
@@ -402,6 +451,7 @@ static void render(void *u, double alpha) {
       }
       G.cam_p[1] = G.cam_p[0], G.cam_p[0] = p, G.cam_n++;
       G.booms = fx_get_stats().booms;
+      if (view_attack_drawn() > 0) G.m_attack_frames++;
     }
     static int lm_frames;
     if (lm_frames >= 0 && ++lm_frames > 1) { /* after a frame: the sky has placed the sun, every node its transform */

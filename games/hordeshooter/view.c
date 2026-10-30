@@ -151,7 +151,9 @@ static void chr_free(chr *c) {
 static struct {
   cw_node root;
   chr ch[EK_KINDS], soldier;
-  int bn[EK_KINDS]; /* frames per cycle */
+  int bn[EK_KINDS]; /* frames of the walk cycle */
+  int bt[EK_KINDS]; /* every frame bucket: the walk's, then the attack's three (wind-up, strike, recovery) */
+  int32_t attack_drawn; /* enemies drawn in an attack pose this frame (the melee gate) */
   float bc_y[EK_KINDS], br[EK_KINDS]; /* a sphere round every frame of a kind (its centre height, its radius): culling */
   t3_instanced_mesh *eb[EK_KINDS][CH_MAXF];
   t3_mesh *pm[MAXP][CH_MAXC * CH_MAXF][CH_MAXG];
@@ -715,15 +717,16 @@ void view_init(cw_node root) {
     for (int k = 0; k < EK_KINDS; k++) {
       if (!chr_load(&V.ch[k], files[k])) continue;
       V.bn[k] = V.ch[k].nf[0];
+      V.bt[k] = V.ch[k].nf[0] + (V.ch[k].nclip > 1 ? V.ch[k].nf[1] : 0); /* the attack clip follows the walk in the file */
       { /* the bounding sphere of every frame, scaled by the 10% swell of a hit flash */
         float lo = 1e9f, hi = -1e9f, r2 = 0;
-        for (int f = 0; f < V.bn[k]; f++) {
+        for (int f = 0; f < V.bt[k]; f++) {
           const t3_attribute *pa = V.ch[k].geo[0][f]->attributes[T3_ATTR_POSITION];
           const float *p = t3_attribute_f32((t3_attribute *)pa);
           for (int v = 0; v < pa->count; v++) lo = CW_MIN(lo, p[v * 3 + 1]), hi = CW_MAX(hi, p[v * 3 + 1]);
         }
         V.bc_y[k] = 0.5f * (lo + hi) * 1.1f;
-        for (int f = 0; f < V.bn[k]; f++) {
+        for (int f = 0; f < V.bt[k]; f++) {
           const t3_attribute *pa = V.ch[k].geo[0][f]->attributes[T3_ATTR_POSITION];
           const float *p = t3_attribute_f32((t3_attribute *)pa);
           for (int v = 0; v < pa->count; v++) {
@@ -736,7 +739,7 @@ void view_init(cw_node root) {
       { /* the crowd's baked colours desaturated toward a cool grey of the same luminance (each vertex: no hue is
          * swung, so a red hide greys instead of turning magenta); the green kind keeps most of its green to stay readable */
         static const float DESAT[EK_KINDS] = { 0.78f, 0.7f, 0.2f, 0.7f }, COOL[3] = { 0.88f, 1.0f, 1.14f };
-        for (int f = 0; f < V.bn[k]; f++) {
+        for (int f = 0; f < V.bt[k]; f++) {
           t3_attribute *ca = V.ch[k].geo[0][f]->attributes[T3_ATTR_COLOR];
           float *cv = t3_attribute_f32(ca);
           for (int v = 0; v < ca->count; v++) {
@@ -754,9 +757,11 @@ void view_init(cw_node root) {
       t3_material *m = t3_mesh_lambert_material_new(0xffffff);
       m->vertex_colors = true;
       (void)rough, (void)rep_;
-      for (int f = 0; f < V.bn[k]; f++) {
+      for (int f = 0; f < V.bt[k]; f++) {
         t3_retain(V.ch[k].geo[0][f]);
-        V.eb[k][f] = imesh(nm[k], V.ch[k].geo[0][f], t3_retain(m), bc, false); /* imesh takes both references */
+        /* an attack pose can hold many at once (the front rank of a crowd round a player) */
+        int fc = f < V.bn[k] ? bc : k == EK_BOSS ? 4 : cap[k] / 3 + 48;
+        V.eb[k][f] = imesh(nm[k], V.ch[k].geo[0][f], t3_retain(m), fc, false); /* imesh takes both references */
         V.eb[k][f]->mesh.base.receive_shadow = false;
         (void)shadow;
       }
@@ -1218,10 +1223,14 @@ static bool view_frustum_sphere(const view_frustum *v, float x, float y, float z
   return true;
 }
 
+float g_cam_dist;
+int view_attack_drawn(void) { return V.attack_drawn; }
+
 void view_sync(const sim *s, float time) {
   if (!V.root.id) return;
   int cnt[EK_KINDS][CH_MAXF];
   memset(cnt, 0, sizeof cnt);
+  V.attack_drawn = 0;
   cw_splats_begin(V.shadows);
   static const float rate[EK_KINDS] = { 1.9f, 0.9f, 1.1f, 0.6f }; /* cycles per second */
   /* The horde outside the view is not drawn. The instanced meshes have one bounding sphere for the whole
@@ -1241,6 +1250,9 @@ void view_sync(const sim *s, float time) {
     if (nf <= 0) continue;
     float ph = time * rate[k] * (0.85f + 0.3f * h01((uint32_t)i, 3)) + h01((uint32_t)i, 4) * 8.0f;
     int fr = (int)((ph - floorf(ph)) * (float)nf);
+    float tell = 0;
+    int af = sim_attack_frame(e, &tell); /* attacking: the attack clip's pose instead of the walk */
+    if (af >= 0 && V.bt[k] > nf) fr = nf + CW_MIN(af, V.bt[k] - nf - 1), V.attack_drawn++;
     t3_instanced_mesh *im = V.eb[k][fr];
     int n = cnt[k][fr];
     if (n >= im->instance_matrix->count) continue;
@@ -1267,11 +1279,15 @@ void view_sync(const sim *s, float time) {
       t3_color gl = ground_light(e->x, e->y);
       c.r *= gl.r, c.g *= gl.g, c.b *= gl.b;
     }
+    if (af == 0 && e->flash <= 0) { /* the telegraph: the wind-up warms toward the strike, besides the raised pose */
+      float t = tell * tell;
+      c.r *= 1.0f + 0.9f * t, c.g *= 1.0f + 0.35f * t, c.b *= 1.0f + 0.1f * t;
+    }
     t3_instanced_mesh_set_color_at(im, n, c);
   }
   V.st.enemies_drawn = 0;
   for (int k = 0; k < EK_KINDS; k++)
-    for (int f = 0; f < V.bn[k]; f++) {
+    for (int f = 0; f < V.bt[k]; f++) {
       V.eb[k][f]->count = cnt[k][f];
       touch(V.eb[k][f], true);
       V.st.enemies_drawn += cnt[k][f];
@@ -1425,7 +1441,7 @@ void view_sync(const sim *s, float time) {
   { /* development (A/B timing): HORDE_HIDE bits hide 1 the crowd, 2 the blob shadows, 4 the light pools */
     static int hide = -1;
     if (hide < 0) hide = getenv("HORDE_HIDE") ? atoi(getenv("HORDE_HIDE")) : 0;
-    if (hide & 1) for (int k = 0; k < EK_KINDS; k++) for (int f = 0; f < V.bn[k]; f++) V.eb[k][f]->count = 0;
+    if (hide & 1) for (int k = 0; k < EK_KINDS; k++) for (int f = 0; f < V.bt[k]; f++) V.eb[k][f]->count = 0;
     if (hide & 2) cw_splats_mesh(V.shadows)->count = 0;
     if (hide & 4) cw_splats_mesh(V.pools)->mesh.base.visible = false;
   }
@@ -1482,6 +1498,7 @@ void view_camera(const sim *s, cw_node camera, float aspect, float control_x, fl
   /* distance so the spread of the players plus a margin fits the view */
   float half_h = CW_MAX(hh + 8.0f, (hw + 10.0f) / aspect);
   float d = CW_CLAMP(half_h / cw_sin(fov * 0.5f) * cw_cos(fov * 0.5f) * 0.92f, 30.0f, 45.0f); /* a 1.5x zoom range */
+  if (g_cam_dist > 0) d = g_cam_dist; /* development (close-up screenshots): the debug field dev.cam_dist */
   if (!V.cam_init) V.cx = cx, V.cy = cy, V.cd = d, V.cam_init = true;
   V.cx += (cx - V.cx) * 0.08f;
   V.cy += (cy - V.cy) * 0.08f;

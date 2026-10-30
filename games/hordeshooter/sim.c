@@ -41,6 +41,37 @@ static const ekind EK[EK_KINDS] = {
   { 1.7f, 1.5f, 1.9f, 700, 260.0f, 30, 90 },
 };
 
+/* melee: a wind-up the player can read (the attack clip's first pose, held), the strike on one tick, a
+ * recovery; the damage lands only on a player still in reach and in front at the strike, so stepping away
+ * during the wind-up dodges it. Ticks at 60 a second. Tuned after twin-stick horde games (Dead Nation's
+ * shamblers and runners, Alienation, Helldivers 2's melee bugs): fast fodder winds up for about a quarter
+ * second and lunges a little past contact, heavies a little over half a second with a long reach, so a
+ * dense late wave still lands hits on a player who stands in it while one who keeps moving can slip a
+ * single attacker.
+ *   trigger: how far past touching an attack starts; reach: how far past touching the strike still lands;
+ *   arc: the cosine of the half angle in front that the strike covers */
+typedef struct melee { int windup, recover, cooldown; float trigger, reach, arc; } melee;
+static const melee MEL[EK_KINDS] = {
+  { 15, 14, 8, 0.25f, 0.7f, 0.3f },    /* runner: a claw swipe that turns into a lunge */
+  { 34, 26, 12, 0.5f, 1.1f, 0.2f },    /* brute: an overhead smash */
+  { 24, 22, 10, 0.3f, 0.8f, -0.2f },   /* bloater: a belly slam, wide */
+  { 40, 30, 20, 1.0f, 2.2f, -0.3f },   /* boss: a big sweep, wider still */
+};
+#define STRIKE_HOLD 6 /* ticks the strike pose shows after the hit */
+
+int sim_melee_windup(int kind) { return MEL[CW_CLAMP(kind, 0, EK_KINDS - 1)].windup; }
+
+int sim_attack_frame(const enemy *e, float *tell) {
+  if (tell) *tell = 0;
+  if (!e->alive || e->atk <= 0) return -1;
+  const melee *m = &MEL[e->kind];
+  if (e->atk <= m->windup) {
+    if (tell) *tell = (float)e->atk / (float)m->windup;
+    return 0;
+  }
+  return e->atk <= m->windup + STRIKE_HOLD ? 1 : 2;
+}
+
 static int spawn_enemy(sim *s, int kind, float x, float y) {
   int slot = -1;
   for (int i = 0; i < MAXE; i++)
@@ -68,7 +99,7 @@ static int spawn_enemy(sim *s, int kind, float x, float y) {
   e->hp = (int)((float)e->hp * (1.0f + (kind == EK_BOSS ? 0.6f : 0.2f) * (float)(s->players > 1 ? s->players - 1 : 0)) + 0.5f);
   if (kind == EK_BOSS) s->boss_maxhp = e->hp;
   e->face = rf(s) * 6.28f;
-  e->atk = 0;
+  e->atk = 0, e->atk_cd = 0, e->tgt = -1;
   s->nenemies++;
   if (kind == EK_BOSS) s->boss_alive++;
   return slot;
@@ -478,7 +509,7 @@ static void do_boom(sim *s, const boom *bm) {
     if (dx * dx + dy * dy < bm->r * bm->r * 0.6f && (bm->owner >= MAXP || bm->owner == i ? true : false)) {
       p->hp -= bm->owner == i ? 6.0f : 14.0f;
       p->inv = 30;
-      ev(s, EV_HURT, p->x, p->y, 0, 0, i, 0);
+      ev(s, EV_HURT, p->x, p->y, 0, 0, i, 255); /* b 255: a blast, not a melee strike */
     }
   }
 }
@@ -766,6 +797,7 @@ static void enemies_step(sim *s) {
       if (e->ph >= 230 && e->ph < 290) sp = 0;
       else if (e->ph >= 290) sp *= 3.0f;
     }
+    if (e->atk > 0) sp = 0; /* planted through the wind-up, the strike and the recovery */
     e->spawn_age++;
     vx = vx * sp + e->kx * 60.0f;
     vy = vy * sp + e->ky * 60.0f;
@@ -773,7 +805,7 @@ static void enemies_step(sim *s) {
     e->ky *= 0.86f;
     cw_crowd_set_velocity(s->crowd, e->agent, (t3_vec3){ vx, 0, vy });
     if (e->flash > 0) e->flash--;
-    if (e->atk > 0) e->atk--;
+    if (e->atk_cd > 0) e->atk_cd--;
   }
   (void)living;
   { CW_PROFILE_SCOPE("sim.crowd"); cw_crowd_step(s->crowd, 1.0f / TICK); }
@@ -788,32 +820,62 @@ static void enemies_step(sim *s) {
   }
   { CW_PROFILE_SCOPE("sim.grid"); build_grid(s); }
   CW_PROFILE_BEGIN("sim.contact");
-  /* contact damage */
-  for (int k = 0; k < MAXP; k++) {
-    player *p = &s->p[k];
-    if (!p->active || p->down) continue;
-    for (int i = 0; i < MAXE; i++) {
-      enemy *e = &s->e[i];
-      if (!e->alive || e->atk > 0) continue;
-      float dx = e->x - p->x, dy = e->y - p->y, rr = EK[e->kind].radius + 0.45f;
-      if (dx * dx + dy * dy > rr * rr) continue;
-      e->atk = 30;
-      if (p->shield_t > 0) { /* the bubble shoves them off */
-        float l = cw_v2_length(cw_v2(dx, dy));
-        if (l > 0.01f) e->kx += dx / l * 0.35f, e->ky += dy / l * 0.35f;
-        continue;
+  /* melee: an enemy next to a player winds up, strikes on one tick and recovers (MEL) */
+  for (int i = 0; i < MAXE; i++) {
+    enemy *e = &s->e[i];
+    if (!e->alive) continue;
+    const melee *m = &MEL[e->kind];
+    float touch = EK[e->kind].radius + 0.45f;
+    if (e->atk == 0) {
+      if (e->atk_cd > 0 || (e->kind == EK_BOSS && e->ph >= 230)) continue; /* the boss's charge is its own attack */
+      int best = -1;
+      float bd = (touch + m->trigger) * (touch + m->trigger);
+      for (int k = 0; k < MAXP; k++) {
+        const player *p = &s->p[k];
+        if (!p->active || p->down) continue;
+        float dx = p->x - e->x, dy = p->y - e->y, d = dx * dx + dy * dy;
+        if (d <= bd) bd = d, best = k;
       }
-      if (p->inv > 0) continue;
-      float dmg = (float)EK[e->kind].dmg * (1.0f - 0.08f * (float)CW_MIN(p->armor, 6));
-      p->hp -= dmg;
-      p->inv = 12;
-      ev(s, EV_HURT, p->x, p->y, 0, 0, k, 0);
-      if (p->hp <= 0) {
-        p->down = true;
-        p->down_ticks = 0;
-        ev(s, EV_DOWN, p->x, p->y, 0, 0, k, 0);
-      }
+      if (best < 0) continue;
+      e->atk = 1, e->tgt = best;
+    } else {
+      e->atk++;
     }
+    const player *tp = e->tgt >= 0 ? &s->p[e->tgt] : NULL;
+    /* it turns to its target through the wind-up, and commits for its last few ticks (a late dodge sideways works) */
+    if (tp && e->atk <= m->windup - 4) {
+      float dx = tp->x - e->x, dy = tp->y - e->y;
+      if (dx * dx + dy * dy > 1e-4f) e->face = cw_atan2(dy, dx);
+    }
+    if (e->atk == m->windup + 1) { /* the strike: every player in reach and in front */
+      float fx = cw_cos(e->face), fy = cw_sin(e->face), reach = touch + m->reach;
+      bool hit = false;
+      for (int k = 0; k < MAXP; k++) {
+        player *p = &s->p[k];
+        if (!p->active || p->down) continue;
+        float dx = p->x - e->x, dy = p->y - e->y, d2 = dx * dx + dy * dy;
+        if (d2 > reach * reach) continue;
+        float d = sqrtf(d2);
+        if (d > 0.3f && (dx * fx + dy * fy) / d < m->arc) continue;
+        if (p->shield_t > 0) { /* the bubble shoves them off */
+          if (d > 0.01f) e->kx -= dx / d * 0.35f, e->ky -= dy / d * 0.35f;
+          continue;
+        }
+        if (p->inv > 0) continue;
+        float dmg = (float)EK[e->kind].dmg * (1.0f - 0.08f * (float)CW_MIN(p->armor, 6));
+        p->hp -= dmg;
+        p->inv = 12;
+        hit = true;
+        ev(s, EV_HURT, p->x, p->y, dx, dy, k, e->kind);
+        if (p->hp <= 0) {
+          p->down = true;
+          p->down_ticks = 0;
+          ev(s, EV_DOWN, p->x, p->y, 0, 0, k, 0);
+        }
+      }
+      ev(s, EV_SWIPE, e->x + fx * touch, e->y + fy * touch, fx, fy, e->kind, hit ? 1 : 0);
+    }
+    if (e->atk > m->windup + m->recover) e->atk = 0, e->atk_cd = m->cooldown, e->tgt = -1;
   }
   CW_PROFILE_END();
   /* the boss calls runners */
@@ -834,6 +896,7 @@ static void enemies_step(sim *s) {
 }
 
 /* a power-up lying at (x, y) (development: HORDE_POWER_SHOW) */
+int sim_spawn(sim *s, int kind, float x, float y) { return spawn_enemy(s, kind, x, y); }
 void sim_power_drop(sim *s, float x, float y, int t) { drop_value(s, PK_POWER, x, y, t % PU_KINDS); }
 
 /* what a power-up gives */
@@ -1062,7 +1125,7 @@ void sim_step(sim *s, const input in[MAXP]) {
     s->state = ST_OVER;
     s->state_ticks = 0;
   }
-  if (s->state == ST_PLAY) spawn_director(s);
+  if (s->state == ST_PLAY && !s->no_spawn) spawn_director(s);
   { CW_PROFILE_SCOPE("sim.enemies"); enemies_step(s); }
   { CW_PROFILE_SCOPE("sim.bullets"); bullets_step(s); }
   for (int i = 0; i < MAXX; i++) { /* explosions chain: each can start another this very tick */

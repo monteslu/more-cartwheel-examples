@@ -434,5 +434,103 @@
       "maxGt16": 0.25,
       "vsGl": 0.25
     }
+  },
+  {
+    "name": "hordeshooter-melee",
+    "app": "hordeshooter_auto",
+    "frames": 480,
+    "maxGt16": 0.12,
+    "env": {
+      "HORDE_MELEE_TEST": "1",
+      "HORDE_PLAYERS": "1"
+    },
+    "fields": [
+      "game.ticks",
+      "game.hash",
+      "player.hp",
+      "melee.attack_frames",
+      "melee.strikes",
+      "melee.hits",
+      "melee.hit_delay",
+      "cw.rumble"
+    ],
+    "expect": {
+      "game.ticks": 480,
+      "player.hp": [
+        -3,
+        0,
+        0,
+        0
+      ],
+      "melee.attack_frames": 352,
+      "melee.strikes": 14,
+      "melee.hits": 10,
+      "melee.hit_delay": [
+        15,
+        34,
+        0,
+        0
+      ]
+    },
+    "controlEnv": {
+      "HORDE_MELEE_TEST": "1",
+      "HORDE_PLAYERS": "1",
+      "HORDE_MELEE_DODGE": "1"
+    },
+    "controlFrames": 480,
+    "hosts": [
+      "native"
+    ],
+    "webgpu": {
+      "hosts": [
+        "native"
+      ],
+      "maxGt16": 0.25,
+      "vsGl": 0.25
+    },
+    "note": "enemy melee: one player standing still while a runner and a brute walk in (HORDE_MELEE_TEST, no spawning). Each attack plays its clip (melee.attack_frames: frames that drew an enemy in a wind-up, strike or recovery pose: 352) and its damage lands on the strike tick, the wind-up after it began (melee.hit_delay per kind: the runner 15 ticks, the brute 34), not on touch: 14 strikes, 10 hits, the player downed (-3 hp). Measured 2026-10-29 on native GL. The control (HORDE_MELEE_DODGE=1: the player steps away from every wind-up) must differ."
+  },
+  {
+    "name": "hordeshooter-melee-dodge",
+    "app": "hordeshooter_auto",
+    "frames": 480,
+    "maxGt16": 0.12,
+    "env": {
+      "HORDE_MELEE_TEST": "1",
+      "HORDE_PLAYERS": "1",
+      "HORDE_MELEE_DODGE": "1"
+    },
+    "fields": [
+      "game.ticks",
+      "game.hash",
+      "player.hp",
+      "melee.attack_frames",
+      "melee.strikes",
+      "melee.hits",
+      "melee.hit_delay",
+      "cw.rumble"
+    ],
+    "expect": {
+      "game.ticks": 480,
+      "player.hp": [
+        100,
+        0,
+        0,
+        0
+      ],
+      "melee.hits": 0,
+      "melee.strikes": 9,
+      "melee.attack_frames": 263
+    },
+    "controlEnv": {
+      "HORDE_MELEE_TEST": "1",
+      "HORDE_PLAYERS": "1",
+      "HORDE_MELEE_DODGE": "0"
+    },
+    "controlFrames": 480,
+    "hosts": [
+      "native"
+    ],
+    "note": "dodging works: the same scene with the player stepping straight away from every enemy winding up at it (HORDE_MELEE_DODGE=1): 9 strikes, 0 hits, full health (the damage needs the player still in reach and in front on the strike tick). Measured 2026-10-29 on native GL. The control (HORDE_MELEE_DODGE=0: standing still) takes hits and must differ."
   }
 ]

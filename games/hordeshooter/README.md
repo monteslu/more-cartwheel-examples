@@ -56,6 +56,15 @@ Players 2 to 4 use pads 2 to 4. Join on the title screen.
   die; brutes are slow and tough. A boss walks, stands still and glows for a
   second (a warning, and a bar at the top shows its health), then charges
   straight ahead; it calls a few runners now and then.
+- Up close the creatures attack: each winds up (its pose raised and its hide
+  warming, the telegraph), strikes on one moment, then recovers, planted and
+  facing you the whole time. The strike only hurts if you are still in reach
+  and in front of it, so stepping away during the wind-up dodges it; standing
+  in a crowd does not. A runner rakes its claw and lunges (a quarter second's
+  wind-up), a brute raises both fists and smashes (about half a second, a
+  long reach), a bloater rocks back and slams its belly (wide), and the boss
+  winds round for a sweep that covers most of its front. A hit bleeds, and
+  rumbles your pad, harder for a heavier hitter.
 - A downed player gets up at the next wave, or when a friend stands close for
   two seconds, or is carried to the nearest friend after eight. If everyone is
   down the yard resets a wave back. The team stays within one view: nobody can
@@ -76,6 +85,11 @@ player power-up n (0 to 11, the table order) and keeps it held, `HORDE_POWER_SHO
 lays one of each round the start. A run started at a later
 wave begins with about the levels a played run has there.
 `HORDE_CULL=0` draws the horde outside the view too (the A/B of the culling).
+`HORDE_MELEE_TEST=1` is the melee gate's scene (one player, a runner and a brute, no spawning;
+`HORDE_MELEE_DODGE=1` steps the player away from every wind-up, `HORDE_MELEE_LOG=1` prints each strike).
+Live switches for romdev (a cart reads no environment; write them with `wasm({op:'write'})` once the game has
+started): `dev.hold` 1 makes the bots stand where they are, 2 also holds their fire, so the horde reaches
+them; `dev.cam_dist` fixes the camera's distance (16 is a close-up, 0 the game's framing).
 `hordeshooter_bench` is the auto build at wave 14 with three players from the first frame (about 2000
 enemies), the late-wave scene `tests/hordeshooter-perf.mjs` times on GL and WebGPU at 1080p (a cart reads
 no environment, so its start is built in).
@@ -97,7 +111,11 @@ code; see CREDITS.
   in Blender by the scripts in `tools/blender/`. Each character's walk or run
   cycle is baked frame by frame into `assets/models/*.cwchar`; the horde draws
   one instanced mesh per frame of the cycle, so thousands of animated creatures
-  cost a handful of draws and nothing for skinning.
+  cost a handful of draws and nothing for skinning. Each creature also has an
+  attack clip of three key poses (wind-up, strike, recovery) baked the same
+  way; an attacking creature is drawn from those, chosen per instance. The walk
+  cycles have six frames (the boss ten), so a kind costs one draw more than
+  with eight-frame walks and no attacks.
   Rebuild them with
   `flatpak run org.blender.Blender --background --factory-startup --python <abs path>/tools/blender/hordechars.py -- <abs path>/assets/models`
   (and `hordeprops.py` the same way).

@@ -34,6 +34,7 @@
 #define HITS 20
 #define MUZZLES 12
 #define SPLATS 20
+#define SLASHES 16
 #define FIRES 6
 #define STAIN 140
 #define LIGHTS 8
@@ -43,7 +44,7 @@ typedef struct gib { t3_vec3 p, v, rot, spin; float size; int life; t3_color col
 static struct {
   bool ready;
   cw_node root;
-  cw_node big[BIGS], small[SMALLB], level[LEVELS], hit[HITS], muzzle[MUZZLES], splat[SPLATS], fire[FIRES], fire_light[FIRES];
+  cw_node big[BIGS], small[SMALLB], level[LEVELS], hit[HITS], muzzle[MUZZLES], splat[SPLATS], slash, fire[FIRES], fire_light[FIRES];
   int fire_age[FIRES];
   int nb, ns, nlv, nh, nsp, nf, nst, nl, nm;
   cw_node stain[STAIN], light[LIGHTS], fire_haze[FIRES];
@@ -190,6 +191,10 @@ static const char *const HIT[] = { "amount", "14", "lifetime", "0.35", "explosiv
   "emission_shape", "SPHERE", "emission_radius", "0.05", "spread", "180", "speed_min", "2", "speed_max", "6",
   "gravity", "vec3(0, -8, 0)", "draw_mode", "STRETCHED", "stretch", "0.04", "size", "0.05",
   "color_ramp", "\"0 1 0.9 0.5 1, 1 1 0.4 0.1 0\"", "energy", "5", "blend", "ADD", NULL };
+/* an enemy's strike: a fan of pale streaks raked across in front of it (a claw, a fist, a sweep) */
+static const char *const SLASH[] = { "amount", "16", "lifetime", "0.16", "explosiveness", "1", "one_shot", "true",
+  "emission_shape", "POINT", "spread", "55", "speed_min", "7", "speed_max", "13", "draw_mode", "STRETCHED", "stretch", "0.05",
+  "size", "0.06", "color_ramp", "\"0 0.95 0.92 1 1, 1 1 0.75 0.6 0\"", "energy", "4", "blend", "ADD", NULL };
 static const char *const SPLAT[] = { "amount", "26", "lifetime", "0.7", "explosiveness", "1", "one_shot", "true",
   "emission_shape", "SPHERE", "emission_radius", "0.1", "spread", "70", "direction", "vec3(0, 1, 0)", "speed_min", "1.5", "speed_max", "5",
   "gravity", "vec3(0, -12, 0)", "size", "0.12", "size_random", "0.5", "size_curve", "\"0 1, 1 0.4\"",
@@ -290,6 +295,7 @@ void fx_init(cw_node root) {
   FX.hit[0] = bnode(FX.root, "Hit", HIT, 700, HITS);
   FX.muzzle[0] = bnode(FX.root, "Muzzle", MUZZLE, 750, MUZZLES);
   FX.splat[0] = bnode(FX.root, "Splat", SPLAT, 800, SPLATS);
+  FX.slash = bnode(FX.root, "Slash", SLASH, 850, SLASHES);
   for (int i = 0; i < FIRES; i++) {
     FX.fire[i] = pnode(FX.root, "Fire", FIREP, 900 + i);
     FX.fire_haze[i] = pnode(FX.root, "FireHaze", FIREHAZE, 950 + i);
@@ -478,7 +484,22 @@ void fx_events(sim *s) {
     }
     case EV_CRATE: spawn_gibs(at, lvl ? 14 : 7, (t3_color){ 0.5f, 0.32f, 0.15f }, 4.0f, 0, 0); break;
     case EV_WALL: spawn_gibs(at, 26, (t3_color){ 0.5f, 0.5f, 0.48f }, 5.0f, 0, 0); break;
-    case EV_HURT: rumble(e->a, 0.3f, 0.85f, 90); break; /* getting hit: short and sharp */
+    case EV_HURT: { /* getting hit: short and sharp, heavier for a heavier hitter; a melee hit bleeds */
+      static const float RL[EK_KINDS] = { 0.3f, 0.85f, 0.5f, 1.0f }, RH[EK_KINDS] = { 0.85f, 0.6f, 0.5f, 0.7f };
+      static const int RMS[EK_KINDS] = { 90, 160, 120, 220 };
+      int k = e->b < EK_KINDS ? e->b : 0;
+      rumble(e->a, RL[k], RH[k], RMS[k]);
+      if (e->b < EK_KINDS) {
+        cw_particles_burst(FX.splat[0], (t3_vec3){ at.x, 0.9f, at.z }, (t3_vec3){ 0, 0, 0 });
+        int st = FX.nst++ % STAIN;
+        set_decal(FX.stain[st], at, 0.9f + 0.4f * rnd(), rnd() * 6.28f);
+        FX.stain_a[st] = 0.7f;
+      }
+      break;
+    }
+    case EV_SWIPE: /* the strike's streak, raked across the front */
+      cw_particles_burst(FX.slash, (t3_vec3){ at.x, e->a == EK_BOSS ? 2.2f : e->a == EK_BRUTE ? 1.2f : 0.8f, at.z }, (t3_vec3){ e->z, -0.15f, e->w });
+      break;
     case EV_LEVEL: cw_particles_burst(FX.level[0], (t3_vec3){ at.x, 0.3f, at.z }, (t3_vec3){ 0, 0, 0 }); break;
     case EV_POWER: /* taken: a ring of sparks and a flash in the power-up colour */
       cw_particles_burst(FX.level[0], (t3_vec3){ at.x, 0.3f, at.z }, (t3_vec3){ 0, 0, 0 });

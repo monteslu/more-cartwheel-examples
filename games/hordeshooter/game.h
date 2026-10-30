@@ -22,7 +22,7 @@
 
 enum { EK_RUNNER, EK_BRUTE, EK_BLOATER, EK_BOSS, EK_KINDS };
 enum { OK_CRATE, OK_BARREL, OK_WALL, OK_PILLAR, OK_KINDS };
-enum { EV_SHOT, EV_HIT, EV_KILL, EV_BOOM, EV_CRATE, EV_BARREL, EV_WALL, EV_GEM, EV_HURT, EV_LEVEL, EV_WAVE, EV_BOSS, EV_DOWN, EV_ROCKET, EV_POWER, EV_POWER_SPAWN };
+enum { EV_SHOT, EV_HIT, EV_KILL, EV_BOOM, EV_CRATE, EV_BARREL, EV_WALL, EV_GEM, EV_HURT, EV_LEVEL, EV_WAVE, EV_BOSS, EV_DOWN, EV_ROCKET, EV_POWER, EV_POWER_SPAWN, EV_SWIPE }; /* EV_SWIPE: an enemy's strike (a kind, b 1 when it hit; z, w its facing) */
 
 /* power-ups (pickup kind PK_POWER + type): temporary weapons, ammo, throwables and helpers */
 enum { PU_SHOTGUN, PU_MINIGUN, PU_ROCKETS, PU_RAIL, PU_FLAME, /* weapons, 12 s */
@@ -54,7 +54,8 @@ typedef struct player {
 typedef struct enemy {
   bool alive;
   uint8_t kind;
-  int hp, flash, atk, spawn_age, ph, hits, first_hit; /* hits taken and the tick of the first (stats only) */
+  int hp, flash, spawn_age, ph, hits, first_hit; /* hits taken and the tick of the first (stats only) */
+  int atk, atk_cd, tgt; /* the melee attack: ticks into it (0: none), ticks before the next may start, the player it is aimed at */
   float x, y, kx, ky, face, speed;
   cw_crowd_agent agent;
 } enemy;
@@ -79,6 +80,7 @@ typedef struct sim {
   mine m[MAXM];
   int pu_next, pu_spots;
   bool no_power; /* development: no power-ups at all (the A/B of the bot runs) */
+  bool no_spawn; /* tests: the director spawns nothing (sim_spawn places the enemies) */
   float spot_x[16], spot_y[16];
   /* power-up stats (not state): pickups per type, kills and player-ticks while a type was held */
   int pu_taken[PU_KINDS], pu_kills[PU_KINDS], pu_ticks[PU_KINDS], plain_kills, plain_ticks;
@@ -116,6 +118,11 @@ int sim_alive_players(const sim *s);
 void horde_bot(const sim *s, int i, input *in); /* bot.c */
 const char *sim_upgrade_name(int u);
 /* team centre and the spread of the living players, for the camera */
+/* an enemy's melee attack as the view draws it: -1 none, 0 the wind-up, 1 the strike, 2 the recovery; *tell 0..1
+ * how far into the wind-up (the telegraph) */
+int sim_spawn(sim *s, int kind, float x, float y); /* tests: one enemy there; its slot or -1 */
+int sim_melee_windup(int kind); /* the ticks of that kind's wind-up */
+int sim_attack_frame(const enemy *e, float *tell);
 void sim_power_give(sim *s, int pi, int t);
 void sim_power_drop(sim *s, float x, float y, int t); /* hand a power-up to a player (pickups; development) */
 void sim_team_box(const sim *s, float *cx, float *cy, float *hw, float *hh);
@@ -131,6 +138,8 @@ t3_color lin(float r, float g, float b); /* screen colour -> linear */
 void view_init(cw_node root);
 void view_free(void);
 void view_sync(const sim *s, float time);
+extern float g_cam_dist; /* development: a fixed camera distance (0: the game frames the team) */
+int view_attack_drawn(void); /* enemies drawn in an attack pose this frame */
 void view_camera(const sim *s, cw_node camera, float aspect, float control_x, float control_y);
 bool view_screen(t3_vec3 p, float *u, float *v); /* a world point on screen (0..1, y down) */
 typedef struct view_stats { int enemies_drawn, bullets, pickups; } view_stats;
