@@ -395,7 +395,7 @@ def make_ossuary_outer():  # the outer vault wall, 4 m: deep alcoves of stacked 
 # ───────────────────────── level 4: the foundry ─────────────────────
 
 SLAG = (0.09, 0.08, 0.08); IRON4 = (0.19, 0.18, 0.18); RUST4 = (0.33, 0.17, 0.09); SOOT4 = (0.06, 0.055, 0.05)
-MOLTEN = (6.0, 2.2, 0.35); EMBER4 = (4.0, 1.1, 0.2); BRICK4 = (0.3, 0.16, 0.11)
+MOLTEN = (3.2, 1.0, 0.14); EMBER4 = (2.6, 0.65, 0.1); BRICK4 = (0.3, 0.16, 0.11)
 
 def make_foundry_door():  # a crucible gate: four iron blast doors slide out under a riveted collar
     M = Model()

@@ -58,7 +58,9 @@ class Level {
     }
   }
   light(type, [x, y, z], [tx, ty, tz], [r, g, b], energy, range, angle = 0.6, penumbra = 0.6, bakeOnly = 1) {
-    this.lights.push({ type, x, y, z, tx, ty, tz, r, g, b, energy, range, angle, penumbra, bakeOnly });
+    // every pool 1.8x the first pass and 1.25x its reach: the first bakes read as murk against the yard
+    // (floor luma p50 7 to 24 where the yard has 51)
+    this.lights.push({ type, x, y, z, tx, ty, tz, r, g, b, energy: energy * 1.8, range: range * 1.25, angle, penumbra, bakeOnly });
   }
   text() {
     const L = [];
@@ -71,6 +73,7 @@ class Level {
     L.push(`boss ${this.boss} ${this.bossName}`);
     L.push(`scene scenes/${this.id}.cwscene`);
     L.push(`lightmap lightmaps/${this.id}.cwlm`);
+    L.push(`gain ${f(this.gain ?? 1)}`);
     if (this.voidAt) L.push(`void ${f(this.voidAt)}`);
     L.push(`floor ${this.floor.tex} ${f(this.floor.tile)} ${f(this.floor.rough)} ${this.floor.tint.map(f).join(' ')}`);
     for (const p of this.props) L.push(`prop ${p.name} ${p.file} ${p.tx} ${f(p.rep)} ${f(p.rough)} ${f(p.metal)} ${p.solid}`);
@@ -114,10 +117,10 @@ bake_direct = true
 [node name="Env" parent="." type="WorldEnvironment"]
 background = color(${s.bg.map(f).join(', ')}, 1)
 ambient_color = color(${s.ambient.map(f).join(', ')}, 1)
-ambient_energy = ${f(s.ambientEnergy)}
+ambient_energy = ${f(Math.min(1, s.ambientEnergy * 2.5))}
 sky_color = color(${s.sky.map(f).join(', ')}, 1)
 ground_color = color(${s.ground.map(f).join(', ')}, 1)
-hemi_energy = ${f(s.hemi)}
+hemi_energy = ${f(Math.min(1, s.hemi * 2))}
 fog_mode = EXP2
 fog_color = color(${s.fog.map(f).join(', ')}, 1)
 fog_density = ${f(s.fogDensity)}
@@ -148,6 +151,7 @@ grain_intensity = 0.035
 // ── level 2: the Drowned Sluice ─────────────────────────────────────
 function sluice() {
   const L = new Level('sluice', 'The Drowned Sluice');
+  L.gain = 1.6; // the baked light's strength as applied: measured against the yard (floor luma p50 about 50)
   const r = rng(202);
   L.roster = ['runner', 'brute', 'bloater', 'skitter'];
   L.waves = ['runner:70 skitter:30', 'runner:50 skitter:50', 'runner:40 brute:20 skitter:40', 'runner:30 bloater:20 skitter:50', 'boss skitter:60 runner:40'];
@@ -223,7 +227,7 @@ function sluice() {
     sun: { dir: [22, 30, -18], color: [0.62, 0.78, 0.92], energy: 1.6, fog: 1.2 },
     rim: { dir: [-24, 8, 20], color: [0.35, 0.75, 0.62], energy: 1.1 },
     bg: [0.01, 0.018, 0.018], ambient: [0.3, 0.42, 0.4], ambientEnergy: 0.22, sky: [0.32, 0.45, 0.45], ground: [0.05, 0.06, 0.05], hemi: 0.3,
-    fog: [0.06, 0.09, 0.08], fogDensity: 0.014, exposure: 1.2, bloom: 0.16, vignette: 0.45,
+    fog: [0.06, 0.09, 0.08], fogDensity: 0.009, exposure: 1.2, bloom: 0.16, vignette: 0.45,
   };
   return L;
 }
@@ -231,6 +235,7 @@ function sluice() {
 // ── level 3: the Ossuary ────────────────────────────────────────────
 function ossuary() {
   const L = new Level('ossuary', 'The Ossuary');
+  L.gain = 1.0; // the baked light's strength as applied: measured against the yard (floor luma p50 about 50)
   const r = rng(303);
   L.roster = ['runner', 'brute', 'bloater', 'skitter', 'bonewalker'];
   L.waves = ['runner:60 bonewalker:40', 'runner:40 brute:30 bonewalker:30', 'skitter:30 bonewalker:70', 'runner:20 bloater:20 skitter:20 bonewalker:40', 'boss bonewalker:50 runner:30 brute:20'];
@@ -277,15 +282,15 @@ function ossuary() {
     if (np < 20) { L.put(pile, x, z, r() * 2 * PI); np++; } else { L.put(urn, x, z, r() * 2 * PI); nu++; }
   }
   // the light: every brazier a warm pool, the candles small ones, a dim blue fill from above (the scene's key)
-  for (const a of L.at.filter((q) => q.name === brazier)) L.light('omni', [a.x, 1.6, a.z], [0, 0, 0], [1.0, 0.55, 0.22], 420, 16, 0, 0, 1);
-  for (const a of L.at.filter((q) => q.name === candles)) L.light('omni', [a.x, 1.3, a.z], [0, 0, 0], [1.0, 0.7, 0.38], 90, 8, 0, 0, 1);
+  for (const a of L.at.filter((q) => q.name === brazier)) L.light('omni', [a.x, 2.6, a.z], [0, 0, 0], [1.0, 0.52, 0.2], 170, 13, 0, 0, 1);
+  for (const a of L.at.filter((q) => q.name === candles)) L.light('omni', [a.x, 1.6, a.z], [0, 0, 0], [1.0, 0.68, 0.36], 40, 7, 0, 0, 1);
   L.pickups = [[-34, -34], [34, -34], [-34, 34], [34, 34], [0, -20], [0, 20], [-30, 0], [30, 0], [-22, -16], [22, 16]];
   L.scene = {
     title: 'The Ossuary', keyNote: 'a dim cold fill from high above; the braziers and candles (baked) are the real light',
     sun: { dir: [-8, 30, 14], color: [0.45, 0.55, 0.85], energy: 0.55, fog: 0.6 },
     rim: { dir: [20, 6, -24], color: [1.0, 0.62, 0.3], energy: 0.9 },
     bg: [0.008, 0.008, 0.012], ambient: [0.3, 0.33, 0.45], ambientEnergy: 0.16, sky: [0.25, 0.28, 0.4], ground: [0.06, 0.05, 0.04], hemi: 0.25,
-    fog: [0.07, 0.05, 0.035], fogDensity: 0.012, exposure: 1.3, bloom: 0.2, vignette: 0.5,
+    fog: [0.07, 0.05, 0.035], fogDensity: 0.008, exposure: 1.1, bloom: 0.2, vignette: 0.5,
   };
   return L;
 }
@@ -293,6 +298,7 @@ function ossuary() {
 // ── level 4: the Foundry ────────────────────────────────────────────
 function foundry() {
   const L = new Level('foundry', 'The Foundry');
+  L.gain = 1.6; // the baked light's strength as applied: measured against the yard (floor luma p50 about 50)
   const r = rng(404);
   L.roster = ['runner', 'brute', 'bloater', 'skitter', 'bonewalker', 'slagborn'];
   L.waves = ['runner:60 slagborn:40', 'brute:40 slagborn:60', 'bonewalker:30 skitter:30 slagborn:40', 'bloater:20 runner:30 slagborn:50', 'boss slagborn:50 brute:30 bonewalker:20'];
@@ -339,14 +345,14 @@ function foundry() {
       L.light('omni', [h.x + (h.hx > h.hz ? t * h.hx : 0), 0.9, h.z + (h.hz > h.hx ? t * h.hz : 0)], [0, 0, 0], [1.0, 0.42, 0.1], 260, 11, 0, 0, 1);
     }
   }
-  for (const a of L.at.filter((q) => q.name === crucible)) L.light('omni', [a.x, 3.0, a.z], [0, 0, 0], [1.0, 0.5, 0.15], 320, 12, 0, 0, 1);
+  for (const a of L.at.filter((q) => q.name === crucible)) L.light('omni', [a.x, 4.2, a.z], [0, 0, 0], [1.0, 0.5, 0.15], 320, 13, 0, 0, 1);
   L.pickups = [[-34, -34], [34, -34], [-34, 34], [34, 34], [0, -22], [0, 22], [-30, 0], [30, 0], [-16, -30], [16, 30]];
   L.scene = {
     title: 'The Foundry', keyNote: 'a smoky blue light from vents high up; the molten channels (baked) are the real light',
-    sun: { dir: [10, 30, 18], color: [0.5, 0.6, 0.8], energy: 0.6, fog: 0.8 },
+    sun: { dir: [10, 30, 18], color: [0.5, 0.6, 0.8], energy: 1.2, fog: 0.8 },
     rim: { dir: [-20, 5, -22], color: [1.0, 0.5, 0.18], energy: 1.3 },
-    bg: [0.012, 0.008, 0.006], ambient: [0.35, 0.3, 0.32], ambientEnergy: 0.15, sky: [0.3, 0.3, 0.38], ground: [0.12, 0.05, 0.02], hemi: 0.3,
-    fog: [0.09, 0.05, 0.03], fogDensity: 0.012, exposure: 1.25, bloom: 0.22, vignette: 0.48,
+    bg: [0.012, 0.008, 0.006], ambient: [0.4, 0.33, 0.33], ambientEnergy: 0.28, sky: [0.3, 0.3, 0.38], ground: [0.12, 0.05, 0.02], hemi: 0.3,
+    fog: [0.09, 0.05, 0.03], fogDensity: 0.008, exposure: 1.25, bloom: 0.22, vignette: 0.48,
   };
   return L;
 }
@@ -354,6 +360,7 @@ function foundry() {
 // ── level 5: the Mycel Grotto ───────────────────────────────────────
 function grotto() {
   const L = new Level('grotto', 'The Mycel Grotto');
+  L.gain = 2.2; // the baked light's strength as applied: measured against the yard (floor luma p50 about 50)
   const r = rng(505);
   L.roster = ['runner', 'brute', 'bloater', 'skitter', 'bonewalker', 'slagborn', 'sporeling'];
   L.waves = ['skitter:60 sporeling:40', 'runner:40 sporeling:60', 'brute:30 slagborn:30 sporeling:40', 'skitter:40 bloater:20 sporeling:40', 'bonewalker:30 runner:30 sporeling:40', 'boss sporeling:50 skitter:30 brute:20'];
@@ -402,7 +409,7 @@ function grotto() {
     sun: { dir: [-12, 30, -10], color: [0.55, 0.42, 0.85], energy: 0.35, fog: 0.8 },
     rim: { dir: [20, 6, 20], color: [0.3, 1.0, 0.85], energy: 1.2 },
     bg: [0.01, 0.006, 0.014], ambient: [0.35, 0.28, 0.5], ambientEnergy: 0.14, sky: [0.3, 0.22, 0.45], ground: [0.03, 0.06, 0.05], hemi: 0.25,
-    fog: [0.06, 0.04, 0.09], fogDensity: 0.018, exposure: 1.3, bloom: 0.26, vignette: 0.5,
+    fog: [0.06, 0.04, 0.09], fogDensity: 0.012, exposure: 1.3, bloom: 0.26, vignette: 0.5,
   };
   return L;
 }
@@ -410,6 +417,7 @@ function grotto() {
 // ── level 6: the Sunken Cathedral ───────────────────────────────────
 function cathedral() {
   const L = new Level('cathedral', 'The Sunken Cathedral');
+  L.gain = 3.0; // the baked light's strength as applied: measured against the yard (floor luma p50 about 50)
   const r = rng(606);
   L.roster = ['runner', 'brute', 'bloater', 'skitter', 'bonewalker', 'slagborn', 'sporeling', 'penitent'];
   L.waves = ['bonewalker:60 penitent:40', 'runner:40 penitent:60', 'slagborn:30 sporeling:30 penitent:40', 'brute:30 skitter:30 penitent:40', 'bloater:20 bonewalker:30 penitent:50', 'boss penitent:50 bonewalker:30 brute:20'];
@@ -461,7 +469,7 @@ function cathedral() {
     sun: { dir: [-30, 14, 6], color: [0.9, 0.2, 0.18], energy: 0.7, fog: 1.5 },
     rim: { dir: [26, 8, -14], color: [0.55, 0.3, 1.0], energy: 1.1 },
     bg: [0.012, 0.005, 0.008], ambient: [0.45, 0.25, 0.35], ambientEnergy: 0.12, sky: [0.4, 0.2, 0.3], ground: [0.06, 0.03, 0.03], hemi: 0.25,
-    fog: [0.08, 0.02, 0.03], fogDensity: 0.016, exposure: 1.3, bloom: 0.24, vignette: 0.52,
+    fog: [0.08, 0.02, 0.03], fogDensity: 0.011, exposure: 1.3, bloom: 0.24, vignette: 0.52,
   };
   return L;
 }
@@ -469,13 +477,14 @@ function cathedral() {
 // ── level 7: the Obsidian Rift ──────────────────────────────────────
 function rift() {
   const L = new Level('rift', 'The Obsidian Rift');
+  L.gain = 5.5; // the baked light's strength as applied: measured against the yard (floor luma p50 about 50)
   const r = rng(707);
   L.roster = ['runner', 'brute', 'bloater', 'skitter', 'bonewalker', 'slagborn', 'sporeling', 'penitent', 'gargoyle'];
   L.waves = ['penitent:60 gargoyle:40', 'skitter:40 gargoyle:60', 'slagborn:30 bonewalker:30 gargoyle:40', 'sporeling:30 brute:30 gargoyle:40', 'runner:40 bloater:20 gargoyle:40', 'boss gargoyle:50 penitent:30 slagborn:20'];
   L.monster = 'models/rift_gargoyle.cwchar';
   L.boss = 'models/rift_boss.cwchar'; L.bossName = 'Khar-Vaal, the Shattered Warden';
   L.door = 'models/rift_door.cwchar';
-  L.floor = { tex: 'textures/rift_floor.png', tile: 12, rough: 0.12, tint: [0.95, 0.95, 1.05] };
+  L.floor = { tex: 'textures/rift_floor.png', tile: 12, rough: 0.12, tint: [1.0, 1.0, 1.1] };
   L.voidAt = 37; // the plateau: an octagon, its far half-width 37 m; the floor beyond it falls into the void
   const rim = L.prop('rim', 'models/rift_rim.cwchar', 'pillar', 1, 0.7, 0, 0);
   const pillar = L.prop('pillar', 'models/rift_pillar.cwchar', 'pillar', 1, 0.6, 0, 1);
@@ -512,15 +521,16 @@ function rift() {
     if (nc < 16) { L.put(shards, x, z, r() * 2 * PI); nc++; } else { L.put(urn, x, z, r() * 2 * PI); nb++; }
   }
   // cold blue fire in the braziers, the void's violet glow from below the rim, a hard cold key
-  for (const a of L.at.filter((q) => q.name === brazier)) L.light('omni', [a.x, 1.8, a.z], [0, 0, 0], [0.45, 0.75, 1.0], 380, 15, 0, 0, 1);
-  for (let k = 0; k < 8; k++) { const [x, z] = oct[k]; L.light('omni', [x * 1.05, -1.5, z * 1.05], [0, 0, 0], [0.55, 0.25, 1.0], 900, 22, 0, 0, 1); }
+  for (const a of L.at.filter((q) => q.name === brazier)) L.light('omni', [a.x, 2.4, a.z], [0, 0, 0], [0.45, 0.75, 1.0], 380, 15, 0, 0, 1);
+  for (let k = 0; k < 8; k++) { const [x, z] = oct[k]; L.light('omni', [x * 1.08, 0.6, z * 1.08], [0, 0, 0], [0.55, 0.25, 1.0], 700, 20, 0, 0, 1); }
+  for (const [x, z] of [[-12, -10], [14, 6], [-4, 18]]) L.light('spot', [x + 6, 26, z - 8], [x, 0, z], [0.75, 0.85, 1.0], 2400, 40, 0.3, 0.8, 1); // cold shafts from far above
   L.pickups = [[-26, -16], [26, -16], [-26, 16], [26, 16], [0, -28], [0, 28], [-12, -26], [12, 26], [-34, 0], [34, 0]];
   L.scene = {
     title: 'The Obsidian Rift', keyNote: 'a hard, cold white-blue light from high above the void',
-    sun: { dir: [16, 32, -12], color: [0.7, 0.8, 1.0], energy: 1.1, fog: 0.8 },
+    sun: { dir: [16, 32, -12], color: [0.7, 0.8, 1.0], energy: 1.8, fog: 0.8 },
     rim: { dir: [-18, -6, 22], color: [0.6, 0.3, 1.0], energy: 1.6 },
-    bg: [0.004, 0.003, 0.012], ambient: [0.3, 0.3, 0.5], ambientEnergy: 0.12, sky: [0.3, 0.3, 0.5], ground: [0.12, 0.04, 0.2], hemi: 0.3,
-    fog: [0.04, 0.03, 0.08], fogDensity: 0.014, exposure: 1.25, bloom: 0.22, vignette: 0.55,
+    bg: [0.004, 0.003, 0.012], ambient: [0.35, 0.35, 0.6], ambientEnergy: 0.3, sky: [0.3, 0.3, 0.5], ground: [0.12, 0.04, 0.2], hemi: 0.3,
+    fog: [0.04, 0.03, 0.08], fogDensity: 0.009, exposure: 1.25, bloom: 0.22, vignette: 0.55,
   };
   return L;
 }
@@ -528,6 +538,7 @@ function rift() {
 // ── level 8: the Core ───────────────────────────────────────────────
 function core() {
   const L = new Level('core', 'The Core');
+  L.gain = 7.0; // the baked light's strength as applied: measured against the yard (floor luma p50 about 50)
   const r = rng(808);
   L.roster = ['runner', 'brute', 'bloater', 'skitter', 'bonewalker', 'slagborn', 'sporeling', 'penitent', 'gargoyle', 'hellhound'];
   L.waves = ['runner:60 hellhound:40', 'gargoyle:30 penitent:30 hellhound:40', 'slagborn:30 skitter:30 hellhound:40', 'bonewalker:30 sporeling:30 hellhound:40', 'brute:20 bloater:20 hellhound:60', 'boss hellhound:30 gargoyle:15 penitent:15 slagborn:10 bonewalker:10 skitter:10 brute:10'];
@@ -550,10 +561,7 @@ function core() {
   // lava: broken channels and a ring round the hatch (4 to 6 m) that four bridges cross
   for (const [x, z, hx, hz] of [[-18, -28, 3, 1.2], [18, -28, 3, 1.2], [-18, 28, 3, 1.2], [18, 28, 3, 1.2], [-32, -18, 3, 1.2], [32, -18, 3, 1.2], [-32, 18, 3, 1.2], [32, 18, 3, 1.2], [-20, -24, 1.2, 3], [20, 24, 1.2, 3]])
     L.hazards.push({ kind: 'lava', x, z, hx, hz });
-  for (const s of [-1, 1]) {
-    L.hazards.push({ kind: 'lava', x: s * 3.6, z: -5, hx: 2.1, hz: 1 }, { kind: 'lava', x: s * 3.6, z: 5, hx: 2.1, hz: 1 });
-    L.hazards.push({ kind: 'lava', x: -5, z: s * 3.6, hx: 1, hz: 2.1 }, { kind: 'lava', x: 5, z: s * 3.6, hx: 1, hz: 2.1 });
-  }
+  for (const [x, z] of [[-8, -8], [8, -8], [-8, 8], [8, 8]]) L.hazards.push({ kind: 'lava', x, z, hx: 1.6, hz: 1.6 }); // four pools round the hatch
   for (const [x, z] of [[-28, -28], [28, -28], [-28, 28], [28, 28], [-14, -16], [14, -16], [-14, 16], [14, 16]]) L.put(vent, x, z, r() * PI);
   for (const [x, z] of [[-30, 0], [30, 0], [-20, -8], [20, -8], [-20, 8], [20, 8], [0, -22], [0, 22]]) L.put(cairn, x, z, r() * PI);
   L.hazards.push(...L.at.filter((a) => a.name === vent).map((a) => ({ kind: 'vent', x: a.x, z: a.z, hx: 1.6, hz: 1.6 })));
@@ -575,7 +583,7 @@ function core() {
     sun: { dir: [-10, 30, -16], color: [1.0, 0.3, 0.12], energy: 0.7, fog: 1.4 },
     rim: { dir: [18, 6, 22], color: [1.0, 0.6, 0.2], energy: 1.2 },
     bg: [0.03, 0.006, 0.002], ambient: [0.5, 0.22, 0.12], ambientEnergy: 0.14, sky: [0.5, 0.15, 0.05], ground: [0.15, 0.04, 0.01], hemi: 0.3,
-    fog: [0.12, 0.03, 0.01], fogDensity: 0.016, exposure: 1.2, bloom: 0.26, vignette: 0.55,
+    fog: [0.12, 0.03, 0.01], fogDensity: 0.011, exposure: 1.2, bloom: 0.26, vignette: 0.55,
   };
   return L;
 }
@@ -586,7 +594,7 @@ mkdirSync(A('levels'), { recursive: true });
 // the levelview cart's pack: every level's files (levelview-roots.txt)
 const roots = ['# hordeshooter_levelview: what its cart packs (the descent\'s levels, their models, textures, grades and',
   '# bakes). Written by tools/gen-levels.mjs; everything is generated by this game\'s tools (LEVELS.md, section 6).',
-  'project.cwproj', 'scenes/levelview.cwscene'];
+  'project.cwproj', 'scenes/levelview.cwscene', 'textures/lava_floor.png'];
 for (const [id, make] of Object.entries(LEVELS)) {
   const L = make();
   const files = [`levels/${id}.cwlevel`, `scenes/${id}.cwscene`, `grade/${id}.cube`, L.floor.tex, ...new Set(L.props.map((p) => p.file)), L.door, L.monster, L.boss];

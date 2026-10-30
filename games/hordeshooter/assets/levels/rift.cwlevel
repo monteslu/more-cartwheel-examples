@@ -12,8 +12,9 @@ monster models/rift_gargoyle.cwchar
 boss models/rift_boss.cwchar Khar-Vaal, the Shattered Warden
 scene scenes/rift.cwscene
 lightmap lightmaps/rift.cwlm
+gain 5.5
 void 37
-floor textures/rift_floor.png 12 0.12 0.95 0.95 1.05
+floor textures/rift_floor.png 12 0.12 1 1 1.1
 prop rim models/rift_rim.cwchar pillar 1 0.7 0 0
 prop pillar models/rift_pillar.cwchar pillar 1 0.6 0 1
 prop shards models/rift_shards.cwchar armor 1 0.15 0.2 3
@@ -147,17 +148,20 @@ hazard crumble -14 0 3 3
 hazard crumble 14 0 3 3
 hazard crumble 0 -22 3 3
 hazard crumble 0 22 3 3
-light omni -20 1.8 -30 0 0 0 0.45 0.75 1 380 15 0 0 1
-light omni 20 1.8 -30 0 0 0 0.45 0.75 1 380 15 0 0 1
-light omni -20 1.8 30 0 0 0 0.45 0.75 1 380 15 0 0 1
-light omni 20 1.8 30 0 0 0 0.45 0.75 1 380 15 0 0 1
-light omni -30 1.8 0 0 0 0 0.45 0.75 1 380 15 0 0 1
-light omni 30 1.8 0 0 0 0 0.45 0.75 1 380 15 0 0 1
-light omni 16.0922 -1.5 -38.85 0 0 0 0.55 0.25 1 900 22 0 0 1
-light omni 38.85 -1.5 -16.0922 0 0 0 0.55 0.25 1 900 22 0 0 1
-light omni 38.85 -1.5 16.0922 0 0 0 0.55 0.25 1 900 22 0 0 1
-light omni 16.0922 -1.5 38.85 0 0 0 0.55 0.25 1 900 22 0 0 1
-light omni -16.0922 -1.5 38.85 0 0 0 0.55 0.25 1 900 22 0 0 1
-light omni -38.85 -1.5 16.0922 0 0 0 0.55 0.25 1 900 22 0 0 1
-light omni -38.85 -1.5 -16.0922 0 0 0 0.55 0.25 1 900 22 0 0 1
-light omni -16.0922 -1.5 -38.85 0 0 0 0.55 0.25 1 900 22 0 0 1
+light omni -20 2.4 -30 0 0 0 0.45 0.75 1 684 18.75 0 0 1
+light omni 20 2.4 -30 0 0 0 0.45 0.75 1 684 18.75 0 0 1
+light omni -20 2.4 30 0 0 0 0.45 0.75 1 684 18.75 0 0 1
+light omni 20 2.4 30 0 0 0 0.45 0.75 1 684 18.75 0 0 1
+light omni -30 2.4 0 0 0 0 0.45 0.75 1 684 18.75 0 0 1
+light omni 30 2.4 0 0 0 0 0.45 0.75 1 684 18.75 0 0 1
+light omni 16.552 0.6 -39.96 0 0 0 0.55 0.25 1 1260 25 0 0 1
+light omni 39.96 0.6 -16.552 0 0 0 0.55 0.25 1 1260 25 0 0 1
+light omni 39.96 0.6 16.552 0 0 0 0.55 0.25 1 1260 25 0 0 1
+light omni 16.552 0.6 39.96 0 0 0 0.55 0.25 1 1260 25 0 0 1
+light omni -16.552 0.6 39.96 0 0 0 0.55 0.25 1 1260 25 0 0 1
+light omni -39.96 0.6 16.552 0 0 0 0.55 0.25 1 1260 25 0 0 1
+light omni -39.96 0.6 -16.552 0 0 0 0.55 0.25 1 1260 25 0 0 1
+light omni -16.552 0.6 -39.96 0 0 0 0.55 0.25 1 1260 25 0 0 1
+light spot -6 26 -18 -12 0 -10 0.75 0.85 1 4320 50 0.3 0.8 1
+light spot 20 26 -2 14 0 6 0.75 0.85 1 4320 50 0.3 0.8 1
+light spot 2 26 10 -4 0 18 0.75 0.85 1 4320 50 0.3 0.8 1

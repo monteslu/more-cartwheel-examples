@@ -558,7 +558,7 @@ def make_sporeling():
     M = Model()
     hz = 0.42
     humanoid_rig(M, hz, 0.2, 0.2, 0.55, 0.3, 0.28, 0.3, 0.26, 0.13)
-    stalk = (0.62, 0.58, 0.5); cap = (0.3, 0.14, 0.32); spot = (0.75, 0.7, 0.6); gill = (0.5, 2.8, 3.0); root = (0.36, 0.3, 0.24)
+    stalk = (0.62, 0.58, 0.5); cap = (0.34, 0.07, 0.05); spot = (0.75, 0.7, 0.6); gill = (0.5, 2.8, 3.0); root = (0.36, 0.3, 0.24)
     tw = torso_weights(hz, 0.05, 0.25, 0.3, 0.5)
     M.limb("spine", (0, 0, hz - 0.05), (0, 0, hz + 0.6), 0.3, 0.2, stalk, w=tw, seg=9, noise_amt=0.25)       # the fat stalk body
     M.ell("hips", (0, 0, hz), (0.3, 0.28, 0.2), stalk, seg=(9, 5), noise_amt=0.25)
@@ -813,7 +813,7 @@ def make_gargoyle():
     humanoid_rig(M, hz, 0.28, 0.32, 0.45, 0.2, 0.3, 0.36, 0.2, 0.12)
     for s, side in ((1, "L"), (-1, "R")):
         M.bone("wing" + side, "chest", (s * 0.12, 0.15, hz + 0.4), (s * 0.7, 0.3, hz + 0.8))
-    stone = (0.24, 0.24, 0.27); stone2 = (0.16, 0.16, 0.19); crack = (1.4, 1.6, 4.5); horn = (0.35, 0.33, 0.32)
+    stone = (0.1, 0.1, 0.11); stone2 = (0.06, 0.06, 0.07); crack = (1.8, 2.2, 5.5); horn = (0.35, 0.33, 0.32)  # near-black stone: it stands out on the grey glass
     tw = torso_weights(hz, 0.02, 0.2, 0.22, 0.38)
     M.ell("spine", (0, 0.02, hz + 0.2), (0.17, 0.14, 0.24), stone, w=tw, seg=(8, 6), noise_amt=0.35)
     M.ell("chest", (0, -0.02, hz + 0.36), (0.23, 0.17, 0.16), stone, seg=(8, 5), noise_amt=0.35)

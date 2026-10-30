@@ -23,13 +23,13 @@ bake_direct = true
 [node name="Env" parent="." type="WorldEnvironment"]
 background = color(0.012, 0.005, 0.008, 1)
 ambient_color = color(0.45, 0.25, 0.35, 1)
-ambient_energy = 0.12
+ambient_energy = 0.3
 sky_color = color(0.4, 0.2, 0.3, 1)
 ground_color = color(0.06, 0.03, 0.03, 1)
-hemi_energy = 0.25
+hemi_energy = 0.5
 fog_mode = EXP2
 fog_color = color(0.08, 0.02, 0.03, 1)
-fog_density = 0.016
+fog_density = 0.011
 
 [node name="Post" parent="." type="PostProcess"]
 depth_prepass = false

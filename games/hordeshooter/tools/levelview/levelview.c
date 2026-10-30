@@ -28,7 +28,7 @@ enum { NLEVELS = (int)(sizeof LEVELS / sizeof LEVELS[0]), CROWD = 14 };
 typedef struct chr { int nclip, nf[4], first[4], total; t3_geometry *geo[24]; } chr;
 
 static struct {
-  int level, view, show, frames;
+  int level, view, show, frames, anim;
   bool hatch_open, built, baking, lm_done;
   float hatch_t;
   lb_level lv;
@@ -149,6 +149,7 @@ static void init(void *u) {
   (void)u;
   V.root = cw_tree_root(cw_scene_app_tree());
   V.camera = cw_node_get(V.root, "View/Camera");
+  cw_project_load_input(); /* the game's actions (project.cwproj) */
   V.left = cw_action_find("move_left"), V.right = cw_action_find("move_right");
   V.up = cw_action_find("move_up"), V.down = cw_action_find("move_down");
   V.fire = cw_action_find("fire"), V.bomb = cw_action_find("bomb");
@@ -214,7 +215,8 @@ static void update(void *u, double dt) {
   place_camera();
   /* the crowd walks in a ring round the hatch at 7 m, attacking in turn; the boss stands north of it and
    * goes through its clips */
-  float t = (float)V.frames / 60.0f;
+  if (V.show == 1) V.anim++; /* the crowd holds still while hidden: a shot with and without it lines up */
+  float t = (float)V.anim / 60.0f;
   for (int i = 0; i < CROWD; i++) {
     t3_mesh *m = V.mons[i];
     if (!m) continue;
@@ -234,6 +236,7 @@ static void update(void *u, double dt) {
     m->base.matrix_world_needs_update = true;
   }
   if (V.bossm) {
+    t = (float)V.frames / 60.0f;
     V.bossm->base.visible = V.show == 2;
     int clip = ((int)(t / 3.0f)) % CW_MAX(V.boss.nclip, 1);
     int nf = CW_MAX(V.boss.nf[clip], 1);

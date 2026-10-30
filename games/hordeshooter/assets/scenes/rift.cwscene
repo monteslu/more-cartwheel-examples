@@ -7,7 +7,7 @@
 [node name="Sun" parent="." type="DirectionalLight3D"]
 position = vec3(16, 32, -12)
 color = color(0.7, 0.8, 1, 1)
-energy = 1.1
+energy = 1.8
 shadow = false
 fog_energy = 0.8
 bake_direct = true
@@ -22,14 +22,14 @@ bake_direct = true
 
 [node name="Env" parent="." type="WorldEnvironment"]
 background = color(0.004, 0.003, 0.012, 1)
-ambient_color = color(0.3, 0.3, 0.5, 1)
-ambient_energy = 0.12
+ambient_color = color(0.35, 0.35, 0.6, 1)
+ambient_energy = 0.75
 sky_color = color(0.3, 0.3, 0.5, 1)
 ground_color = color(0.12, 0.04, 0.2, 1)
-hemi_energy = 0.3
+hemi_energy = 0.6
 fog_mode = EXP2
 fog_color = color(0.04, 0.03, 0.08, 1)
-fog_density = 0.014
+fog_density = 0.009
 
 [node name="Post" parent="." type="PostProcess"]
 depth_prepass = false

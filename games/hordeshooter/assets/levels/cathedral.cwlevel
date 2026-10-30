@@ -12,6 +12,7 @@ monster models/cathedral_penitent.cwchar
 boss models/cathedral_boss.cwchar Seraphel, the Choir Bishop
 scene scenes/cathedral.cwscene
 lightmap lightmaps/cathedral.cwlm
+gain 3
 floor textures/cathedral_floor.png 8 0.35 1 0.95 0.95
 prop wall models/cathedral_wall.cwchar pillar 1 0.8 0 0
 prop column models/cathedral_column.cwchar pillar 1 0.75 0 1
@@ -191,23 +192,23 @@ pickup -16 -34
 pickup 16 34
 shrine 0 -26
 shrine 0 26
-light spot -46 14 -26 -14 0 -23 1 0.18 0.12 5200 70 0.18 0.5 1
-light spot -46 14 -10 -14 0 -7 1 0.18 0.12 5200 70 0.18 0.5 1
-light spot -46 14 6 -14 0 9 1 0.18 0.12 5200 70 0.18 0.5 1
-light spot -46 14 22 -14 0 25 0.55 0.2 1 5200 70 0.18 0.5 1
-light spot 46 14 -26 14 0 -23 1 0.18 0.12 5200 70 0.18 0.5 1
-light spot 46 14 -10 14 0 -7 1 0.18 0.12 5200 70 0.18 0.5 1
-light spot 46 14 6 14 0 9 0.55 0.2 1 5200 70 0.18 0.5 1
-light spot 46 14 22 14 0 25 1 0.18 0.12 5200 70 0.18 0.5 1
-light omni -9.5 2.3 -24 0 0 0 1 0.78 0.45 110 9 0 0 1
-light omni -9.5 2.3 -12 0 0 0 1 0.78 0.45 110 9 0 0 1
-light omni -9.5 2.3 0 0 0 0 1 0.78 0.45 110 9 0 0 1
-light omni -9.5 2.3 12 0 0 0 1 0.78 0.45 110 9 0 0 1
-light omni -9.5 2.3 24 0 0 0 1 0.78 0.45 110 9 0 0 1
-light omni 9.5 2.3 -24 0 0 0 1 0.78 0.45 110 9 0 0 1
-light omni 9.5 2.3 -12 0 0 0 1 0.78 0.45 110 9 0 0 1
-light omni 9.5 2.3 0 0 0 0 1 0.78 0.45 110 9 0 0 1
-light omni 9.5 2.3 12 0 0 0 1 0.78 0.45 110 9 0 0 1
-light omni 9.5 2.3 24 0 0 0 1 0.78 0.45 110 9 0 0 1
-light omni 0 1.6 -26 0 0 0 1 0.75 0.4 200 10 0 0 1
-light omni 0 1.6 26 0 0 0 1 0.75 0.4 200 10 0 0 1
+light spot -46 14 -26 -14 0 -23 1 0.18 0.12 9360 87.5 0.18 0.5 1
+light spot -46 14 -10 -14 0 -7 1 0.18 0.12 9360 87.5 0.18 0.5 1
+light spot -46 14 6 -14 0 9 1 0.18 0.12 9360 87.5 0.18 0.5 1
+light spot -46 14 22 -14 0 25 0.55 0.2 1 9360 87.5 0.18 0.5 1
+light spot 46 14 -26 14 0 -23 1 0.18 0.12 9360 87.5 0.18 0.5 1
+light spot 46 14 -10 14 0 -7 1 0.18 0.12 9360 87.5 0.18 0.5 1
+light spot 46 14 6 14 0 9 0.55 0.2 1 9360 87.5 0.18 0.5 1
+light spot 46 14 22 14 0 25 1 0.18 0.12 9360 87.5 0.18 0.5 1
+light omni -9.5 2.3 -24 0 0 0 1 0.78 0.45 198 11.25 0 0 1
+light omni -9.5 2.3 -12 0 0 0 1 0.78 0.45 198 11.25 0 0 1
+light omni -9.5 2.3 0 0 0 0 1 0.78 0.45 198 11.25 0 0 1
+light omni -9.5 2.3 12 0 0 0 1 0.78 0.45 198 11.25 0 0 1
+light omni -9.5 2.3 24 0 0 0 1 0.78 0.45 198 11.25 0 0 1
+light omni 9.5 2.3 -24 0 0 0 1 0.78 0.45 198 11.25 0 0 1
+light omni 9.5 2.3 -12 0 0 0 1 0.78 0.45 198 11.25 0 0 1
+light omni 9.5 2.3 0 0 0 0 1 0.78 0.45 198 11.25 0 0 1
+light omni 9.5 2.3 12 0 0 0 1 0.78 0.45 198 11.25 0 0 1
+light omni 9.5 2.3 24 0 0 0 1 0.78 0.45 198 11.25 0 0 1
+light omni 0 1.6 -26 0 0 0 1 0.75 0.4 360 12.5 0 0 1
+light omni 0 1.6 26 0 0 0 1 0.75 0.4 360 12.5 0 0 1
