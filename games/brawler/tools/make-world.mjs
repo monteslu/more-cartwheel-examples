@@ -53,7 +53,7 @@ const DEFS = {
   shield_glass: { set: null, tint: [0.03, 0.045, 0.06], rough: 0.06, metal: 0.2 },
   shield_band: { set: null, tint: [0.62, 0.62, 0.58], rough: 0.45 },
   baton: { set: null, tint: [0.025, 0.025, 0.028], rough: 0.55 }, baton_grip: { set: null, tint: [0.04, 0.04, 0.045], rough: 0.9 },
-  comb: { set: null, tint: [0.018, 0.016, 0.02], rough: 0.22 }, // a greaser's black pocket comb: glossy plastic
+  comb: { set: null, tint: [0.72, 0.42, 0.12], rough: 0.25 }, // a pocket comb in amber plastic (black did not show against his hair)
 };
 
 const THEMES = [

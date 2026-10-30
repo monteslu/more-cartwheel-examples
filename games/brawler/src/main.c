@@ -200,6 +200,12 @@ static void cmd_legacyfill(int argc, const char **argv, cw_reply *r) { extern bo
 static void cmd_legacymarker(int argc, const char **argv, cw_reply *r) { extern bool g_legacy_marker; g_legacy_marker = argc > 1 && atoi(argv[1]); cw_reply_printf(r, "{\"legacymarker\":%d}", g_legacy_marker); }
 static int knock_tick = -1;
 static void cmd_knockat(int argc, const char **argv, cw_reply *r) { knock_tick = argc > 1 ? atoi(argv[1]) : -1; cw_reply_printf(r, "{\"knockat\":%d}", knock_tick); }
+static void cmd_hero(int argc, const char **argv, cw_reply *r) { /* hero <seat 0-3> <def>: who a seat plays from the next start (0 Rook, 1 Mika, 2 Jet, 17 Dolly) */
+  extern int g_heroes[MAXP];
+  if (argc < 3) { cw_reply_error(r, "usage: hero <seat> <def>"); return; }
+  g_heroes[atoi(argv[1]) & 3] = atoi(argv[2]);
+  cw_reply_printf(r, "{\"seat\":%d,\"def\":%d}", atoi(argv[1]) & 3, atoi(argv[2]));
+}
 static void cmd_legacyair(int argc, const char **argv, cw_reply *r) { extern bool g_legacy_air; g_legacy_air = argc > 1 && atoi(argv[1]); cw_reply_printf(r, "{\"legacyair\":%d}", g_legacy_air); }
 /* bots: walk to the nearest enemy and fight; grab, kick and jump now and then */
 static int bot_pick[MAXP] = { -1, -1, -1, -1 };
@@ -317,6 +323,7 @@ static void init(void *user) {
   { extern int g_held[3]; cw_debug_field("game.held", g_held, CW_DBG_I32, 3); } /* frames a fighter held a prop, worst grip-to-fist mm, degrees its axis turned */
   { extern int g_mirror_z, g_rings; cw_debug_i32("game.mirrorz", &g_mirror_z); cw_debug_i32("game.rings", &g_rings); } /* where the front fill light mirrors on the street (mm, z: out of the picture past 5500); fighters' rings showing */
   { extern int g_markgap; cw_debug_i32("game.markgap", &g_markgap); } /* farthest a player marker was from its loose body's hips, mm */
+  { extern int g_comb[2]; cw_debug_field("game.comb", g_comb, CW_DBG_I32, 2); } /* frames mid stroke of Arthur's comb, farthest the wrist was from its place on the hair, mm */
   cw_debug_i32("game.bowled", &d_bowled);
   { extern int g_shield[5]; cw_debug_field("game.shield", g_shield, CW_DBG_I32, 5); } /* shields dropped, taken up, lowest and highest mm a lying one sat over the street, frames on a prop */       /* enemies knocked over by a thrown body this stage */
   cw_debug_i32("game.overlaps", &d_overlaps);   /* most pairs of standing bodies inside each other on any tick (separate_bodies): 0 */
@@ -368,6 +375,7 @@ static void init(void *user) {
   cw_debug_command("legacyfill", "legacyfill <0|1>: the front fill light low in front of the near lane (gate control only)", cmd_legacyfill);
   cw_debug_command("legacymarker", "legacymarker <0|1>: the marker over the simulated spot (gate control only)", cmd_legacymarker);
   cw_debug_command("knockat", "knockat <tick>: everyone knocked down at that tick of the run", cmd_knockat);
+  cw_debug_command("hero", "hero <seat> <def>: who a seat plays from the next start", cmd_hero);
   cw_debug_command("legacyair", "legacyair <0|1>: the old airborne stagger (gate control only)", cmd_legacyair);
   cw_debug_command("botdmg", "botdmg <k>: the bots' damage factor (3 default, 1 real)", cmd_botdmg);
   cw_debug_command("hurtat", "hurtat <tick> <enemy> [knock]: a blow on an enemy at that tick", cmd_hurtat);

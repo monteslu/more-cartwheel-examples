@@ -899,5 +899,96 @@
       "vsGl": 0.005,
       "note": "the same dual cart on romdev and Chromium against native WebGPU (state exact). vsGl 0.5 percent: GL and WebGPU draw the same picture (0.01 percent apart); the brick, asphalt and corrugated detail that differed by 4 to 10.6 percent was the engine lighting normal maps from the wrong side on WebGPU, fixed (findings/gl-webgpu-parity.md)"
     }
+  },
+  {
+    "name": "brawler-comb",
+    "note": "Arthur combs: his wrist rides along the side of the pompadour (game.comb: frames mid stroke, the farthest the wrist was from its place on the hair, mm). Before, the clip's arm moved near the head and the comb combed the air. Control legacyhold 1 (no arm solve, props upright as they were) must fail.",
+    "app": "brawler_auto",
+    "frames": 420,
+    "startCmds": [
+      "players 1",
+      "stage 1",
+      "freeze 1 1.5708",
+      "spawn 14 0.5 0.5",
+      "pose 4 comb"
+    ],
+    "controlStartCmds": [
+      "players 1",
+      "stage 1",
+      "freeze 1 1.5708",
+      "spawn 14 0.5 0.5",
+      "pose 4 comb",
+      "legacyhold 1"
+    ],
+    "controlFrames": 420,
+    "fields": [
+      "game.comb",
+      "game.nan"
+    ],
+    "expect": {
+      "game.comb": 0,
+      "game.nan": 0
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "vsGl": 0.005,
+      "note": "the same dual cart on romdev and Chromium against native WebGPU (state exact). vsGl 0.5 percent: GL and WebGPU draw the same picture (0.01 percent apart); the brick, asphalt and corrugated detail that differed by 4 to 10.6 percent was the engine lighting normal maps from the wrong side on WebGPU, fixed (findings/gl-webgpu-parity.md)"
+    }
+  },
+  {
+    "name": "brawler-dolly",
+    "note": "The fourth fighter on the pad: Dolly (hero 0 17) grabs a thug standing 1.3 m off, too far for the others (a Rook in the control does not reach him), knees him three times and throws him into two enemies; the thrown body flies further than the others throw. game.bowled, the score and the hash pin it.",
+    "app": "brawler_auto",
+    "frames": 420,
+    "input": "brawler-throw.json",
+    "startCmds": [
+      "hero 0 17",
+      "players 1",
+      "human 1",
+      "freeze 1 1.5708",
+      "spawn 3 -1.7 -1.2",
+      "spawn 3 0.6 -1.2",
+      "spawn 4 1.8 -1.0"
+    ],
+    "controlStartCmds": [
+      "hero 0 0",
+      "players 1",
+      "human 1",
+      "freeze 1 1.5708",
+      "spawn 3 -1.7 -1.2",
+      "spawn 3 0.6 -1.2",
+      "spawn 4 1.8 -1.0"
+    ],
+    "controlFrames": 420,
+    "fields": [
+      "game.ticks",
+      "game.kills",
+      "game.score",
+      "game.bowled",
+      "game.hash",
+      "game.nan",
+      "game.unfair"
+    ],
+    "expect": {
+      "game.bowled": 0,
+      "game.nan": 0,
+      "game.unfair": 0,
+      "game.kills": 0,
+      "game.score": 0,
+      "game.hash": 0
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "vsGl": 0.005,
+      "note": "the same dual cart on romdev and Chromium against native WebGPU (state exact). vsGl 0.5 percent: GL and WebGPU draw the same picture (0.01 percent apart); the brick, asphalt and corrugated detail that differed by 4 to 10.6 percent was the engine lighting normal maps from the wrong side on WebGPU, fixed (findings/gl-webgpu-parity.md)"
+    }
   }
 ]

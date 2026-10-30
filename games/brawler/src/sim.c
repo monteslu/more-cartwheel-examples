@@ -17,6 +17,7 @@
 
 world_t W;
 bool g_legacy_air; /* autopilot debug "legacyair 1": the v0.4.0 airborne stagger without gravity (the controls gate's control) */
+int g_heroes[MAXP] = { D_ROOK, D_MIKA, D_JET, D_DOLLY }; /* who each seat plays (autopilot debug "hero <seat> <def>": close-ups and human-input runs) */
 bool g_legacy_grab; /* autopilot debug "legacygrab 1": the grab as it was (the arms as the clip left them, 0.75 m apart, no hoist): the grab gate's control */
 bool g_legacy_throw; /* autopilot debug "legacythrow 1": the old thrown-body test (it hit the fighters, never the enemies): the throw gate's control */
 bool g_log_frozen; /* autopilot BRAWLER_LOG: name every enemy that stood frozen a second */
@@ -1414,9 +1415,8 @@ void sim_reset(int players, int stage) {
   W.juke.here = (stage & 3) == 1, W.juke.owner = -1; /* the docks have the jukebox */
   level_build(stage);
   crowd_setup();
-  static const int PD[MAXP] = { D_ROOK, D_MIKA, D_JET, D_DOLLY };
   for (int i = 0; i < players; i++) {
-    int def = PD[i];
+    int def = g_heroes[i];
     ent_init(&W.p[i], def, true, -3.0f + (float)i * 0.9f, -1.2f + (float)i * 0.8f);
     W.p[i].lives = keep ? old[i].lives : 3;
     W.p[i].score = keep ? old[i].score : 0;
@@ -1676,10 +1676,12 @@ static t3_vec3 ent_bone_world(const ent *e, const char *bone) {
 int g_grabm[3] = { 0, 0, 1000000 };
 /* Arthur's taunt: the wrist rides along the side of the pompadour, front to back, twice (the clip's arm moved near the head
    but never reached it, so the comb combed the air) */
-static void comb_hand(ent *e) {
+extern bool g_legacy_hold;
+int g_comb[2]; /* debug game.comb: frames mid stroke, the farthest the wrist was from its place on the hair (mm) */
+static void comb_hand(ent *e, float yaw) {
   rig *r = &RIGS[rig_of[ent_index(e)]];
   if (!r->ik[1].id) return;
-  bool comb = e->clipname && !strcmp(e->clipname, "comb") && e->anim.id;
+  bool comb = e->clipname && !strcmp(e->clipname, "comb") && e->anim.id && !g_legacy_hold;
   cw_node_set(r->ik[1], "active", cw_val_bool(comb));
   if (!comb) return;
   float p = (float)cw_anim_player_position(e->anim), env = cw_clampf(p / 0.25f, 0, 1) * (1 - cw_clampf((p - 1.2f) / 0.3f, 0, 1));
@@ -1687,14 +1689,19 @@ static void comb_hand(ent *e) {
   float st = p < 0.55f ? (p - 0.25f) / 0.3f : p < 0.7f ? 1 - (p - 0.55f) / 0.15f : (p - 0.7f) / 0.3f;
   st = cw_clampf(st, 0, 1), st = st * st * (3 - 2 * st);
   t3_vec3 l = rig_bone_point(&r->sr, "Head", (t3_vec3){ -0.165f, 0.27f - 0.02f * st, 0.11f - 0.27f * st });
-  float yaw = ent_yaw(e), c = cw_cos(yaw), sn = cw_sin(yaw);
+  float c = cw_cos(yaw), sn = cw_sin(yaw);
   t3_vec3 t = { e->x + c * l.x + sn * l.z, e->y + l.y, e->z - sn * l.x + c * l.z };
   cw_node_set(r->ik[1], "target_position", cw_val_vec3(t.x, t.y, t.z));
   cw_node_set(r->ik[1], "pole_position", cw_val_vec3(e->x - c * 0.9f, e->y + 1.6f, e->z + sn * 0.9f));
   cw_node_set(r->ik[1], "influence", cw_val_float(env));
+  if (p > 0.3f && p < 1.15f) {
+    t3_vec3 w = rig_bone_point(&r->sr, "HandR", (t3_vec3){ 0, 0, 0 }), wt = { e->x + c * w.x + sn * w.z, e->y + w.y, e->z - sn * w.x + c * w.z };
+    float dx = wt.x - t.x, dy = wt.y - t.y, dz = wt.z - t.z; int mm = (int)(sqrtf(dx * dx + dy * dy + dz * dz) * 1000.0f + 0.5f);
+    g_comb[0]++; if (mm > g_comb[1]) g_comb[1] = mm;
+  }
 }
-static void grab_hands(ent *e) {
-  if (e->def == D_ARTHUR && e->root.id) { comb_hand(e); return; }
+static void grab_hands(ent *e, float ryaw) {
+  if (e->def == D_ARTHUR && e->root.id) { comb_hand(e, ryaw); return; }
   if (!e->player || !e->root.id) return;
   rig *r = &RIGS[rig_of[ent_index(e)]];
   if (!r->ik[0].id) return;
@@ -1836,7 +1843,7 @@ static void hold_in_hand(ent *e, rig *r, int kind) {
   const float h = 0.70710678f;
   t3_quat q = qmul4(hq, (t3_quat){ h, 0, 0, h }); /* the prop's +y onto the hand's +z */
   if (kind == 6) q = qmul4(q, (t3_quat){ 0, h, 0, h }); /* the comb's teeth face out of the fist, its flat to the hair */
-  t3_vec3 off = qrot4(q, (t3_vec3){ 0, WGRIP7[kind], 0 });
+  t3_vec3 off = qrot4(q, (t3_vec3){ 0, WGRIP7[kind] * (kind == 6 ? 1.6f : 1.0f), 0 });
   t3_vec3 pos = { grip.x - off.x, grip.y - off.y, grip.z - off.z };
   if (g_legacy_hold) { /* the old placement (the hold gate's control): upright, at the hand */
     t3_vec3 w = cw_skeleton_bone_world(e->model, "HandR");
@@ -1844,6 +1851,7 @@ static void hold_in_hand(ent *e, rig *r, int kind) {
   }
   cw_node3d_set_position(r->wmodel, pos);
   cw_node3d_set_quaternion(r->wmodel, q);
+  { float sc = kind == 6 ? 1.6f : 1.0f; cw_node3d_set_scale(r->wmodel, (t3_vec3){ sc, sc, sc }); } /* the comb is drawn big enough to read from the street camera */
   if (e->player) { /* game.held: frames, how far from the fist its grip was at worst (mm), how many degrees the prop's axis turned over the run */
     t3_vec3 gw = qrot4(q, (t3_vec3){ 0, WGRIP7[kind], 0 }), ax = qrot4(q, (t3_vec3){ 0, 1, 0 });
     float dx = pos.x + gw.x - grip.x, dy = pos.y + gw.y - grip.y, dz = pos.z + gw.z - grip.z;
@@ -1871,7 +1879,7 @@ void char_sync(ent *e) {
     if (r->shield.id) shield_sync(e, r);
   }
   float yaw = ent_yaw(e);
-  if (e->clipname && !strcmp(e->clipname, "thumbsup") && e->anim.id && !g_freeze) { /* the thumbs up is for the audience: he turns three quarters to the camera, then back */
+  if (e->clipname && (!strcmp(e->clipname, "thumbsup") || !strcmp(e->clipname, "comb")) && e->anim.id && !g_freeze) { /* the thumbs up and the comb are for the audience: he turns three quarters to the camera, then back (side on, facing left, the comb was behind his head) */
     float p = (float)cw_anim_player_position(e->anim), k = cw_clampf(p / 0.25f, 0, 1) * (1 - cw_clampf((p - 1.2f) / 0.3f, 0, 1));
     k = k * k * (3 - 2 * k);
     yaw += ((float)e->face * 0.5f - yaw) * k;
@@ -1882,7 +1890,7 @@ void char_sync(ent *e) {
     t3_quat qy = { 0, cw_sin(yaw * 0.5f), 0, cw_cos(yaw * 0.5f) }, qp = { cw_sin(e->pitch * 0.5f), 0, 0, cw_cos(e->pitch * 0.5f) };
     cw_node3d_set_quaternion(e->root, qmul4(qy, qp));
   } else cw_node3d_set_rotation(e->root, (t3_vec3){ 0, yaw, 0 });
-  grab_hands(e);
+  grab_hands(e, yaw);
   rig *wr = &RIGS[rig_of[ent_index(e)]];
   if (e->def == D_ARTHUR && !e->weapon) { /* his comb comes out for the taunt (a pocket comb in his right hand) */
     bool comb = e->clipname && !strcmp(e->clipname, "comb");
