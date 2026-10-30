@@ -361,6 +361,7 @@ static void start_move(ft_game *g, int i, int slot, int strength) {
   f->connected = 0;
   f->hit_count = 0;
   f->rehit_t = 0;
+  f->spent_shown = 0;
   f->strength = (int16_t)strength;
   f->invuln = m->inv;
   if (m->flags & FM_SUPER) {
@@ -789,6 +790,11 @@ static void detect_hits(ft_game *g) {
     const ft_move *m = &DEF(g, a)->mv[A->mv];
     if (m->flags & FM_PROJ) continue; /* projectile moves hit through the projectile */
     if (A->hit_count >= m->hits || A->rehit_t) continue;
+    if (g->f[d].state == S_AIRHIT && g->f[d].juggle >= FT_JUGGLE_MAX && !A->spent_shown && g->phase == P_FIGHT) {
+      ft_box hs[2];
+      for (int k = ft_hurtboxes(g, d, hs) - 1; k >= 0; k--)
+        if (overlap(hb, hs[k])) { A->spent_shown = 1; emit(g, EV_JUGGLE_SPENT, d, 0, (hb.x0 + hb.x1) / 2, (hb.y0 + hb.y1) / 2); break; }
+    }
     if (!can_be_hit(g, d)) continue;
     if (m->flags & FM_THROW) {
       const ft_fighter *D = &g->f[d];

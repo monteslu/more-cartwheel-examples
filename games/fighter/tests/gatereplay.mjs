@@ -45,9 +45,10 @@ for (const g of gates) {
       writeFileSync(events, script.map((e) => `${e.frame} ${pad(e)} ${pad(e.pad2)}`).join('\n') + '\n');
     }
   } catch (err) { console.log(`  ${g.name}: not replayed (${err.message})`); skipped++; continue; }
-  const hash = Number(execFileSync(bin, [moves, events, String(g.frames), g.app === 'fighter_auto' ? '1' : '0', g.app === 'fighter_train' ? '1' : '0']).toString());
+  const out = execFileSync(bin, [moves, events, String(g.frames), g.app === 'fighter_auto' ? '1' : '0', g.app === 'fighter_train' ? '1' : '0']).toString().trim();
+  const hash = Number(out.split(' ')[0]);
   if (hash === pin) same++; else moved++;
-  console.log(`  ${g.name}: pin ${pin}, replay ${hash} ${hash === pin ? 'same' : 'MOVED'}`);
+  console.log(`  ${g.name}: pin ${pin}, replay ${out} ${hash === pin ? 'same' : 'MOVED'}`);
 }
 console.log(`gatereplay: ${same} same, ${moved} moved, ${skipped} not replayed`);
 if (flag === '--expect-mismatch') process.exit(moved > 0 ? 0 : 1);

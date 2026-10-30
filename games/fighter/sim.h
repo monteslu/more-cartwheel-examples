@@ -95,18 +95,31 @@ typedef struct ft_fighter {
   uint8_t jump_dir, invuln, wins, thrown_by_air;
   uint8_t drift_t, free_t;  /* frames a walk has been held on its own side's diagonal (a d-pad roll keeps walking); frames free in a row */
   uint8_t juggle;           /* hits taken in the air in this combo */
+  uint8_t spent_shown;      /* this move has already reported EV_JUGGLE_SPENT */
   cw_cmd_buf cb;
   ft_input in;
 } ft_fighter;
 
 typedef struct ft_proj { bool live; int8_t owner; int32_t x, y, vx; int16_t life, size; uint8_t mv, hit; ft_box dummy; } ft_proj;
 
-enum { EV_HIT, EV_BLOCK, EV_THROW, EV_KO, EV_FIRE, EV_DUST, EV_SUPER, EV_CLASH, EV_WALL, EV_TECH, EV_ROUND, EV_PARRY, EV_GUARDBREAK, EV_WHIFF, EV_COUNT_ };
+enum { EV_HIT, EV_BLOCK, EV_THROW, EV_KO, EV_FIRE, EV_DUST, EV_SUPER, EV_CLASH, EV_WALL, EV_TECH, EV_ROUND, EV_PARRY, EV_GUARDBREAK, EV_WHIFF, EV_JUGGLE_SPENT, EV_COUNT_ };
+/* EV_JUGGLE_SPENT: a strike met a fighter who has taken FT_JUGGLE_MAX air hits and is falling, so it passes through. No rule
+ * reads it and nothing draws it yet: it is there for an effect to say why the hit did not land (at the box's middle, once a move) */
 typedef struct ft_event { uint8_t type, who, power; int16_t pad_; int32_t x, y; uint32_t tick; } ft_event;
 
 enum { P_INTRO, P_FIGHT, P_KO, P_ROUND_END, P_MATCH_END };
 /* training dummy: nothing, stand, hold block (standing), hold block low (down + block), hop, block everything, the computer */
 enum { T_OFF, T_STAND, T_GUARD, T_GUARD_LOW, T_JUMP, T_BLOCK, T_CPU, T_COUNT };
+
+/* what the computer has watched the other fighter do this match: only what is on screen, never the pad */
+typedef struct ft_ai_mem {
+  int16_t score[FT_NMOVES]; /* moves it has started, the recent ones counting most (one move only: tends to 256) */
+  int16_t guard_seen;       /* how much of the time it stands guarding (0 to 256) */
+  uint16_t quiet;           /* frames since it last started a move */
+  uint8_t lapse;            /* frames left of not paying attention: no reading, no punishing, slower to guard */
+  uint8_t was_state, was_mv, was_t;
+  bool soft;                /* the queued inputs are only movement or a guard: they give way to what happens next */
+} ft_ai_mem;
 
 typedef struct ft_game {
   const ft_roster *roster;
@@ -136,6 +149,7 @@ typedef struct ft_game {
   /* ai macro per fighter */
   struct { ft_input in; int16_t frames; } macro[2][12];
   int8_t macro_n[2];
+  ft_ai_mem ai[2];
 } ft_game;
 
 void ft_game_start(ft_game *g, const ft_roster *r, int def0, int def1);

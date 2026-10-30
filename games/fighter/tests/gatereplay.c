@@ -41,6 +41,6 @@ int main(int argc, char **argv) {
     }
     ft_step(&G, in);
   }
-  printf("%u\n", ft_hash(&G));
+  printf("%u hp=%d,%d wins=%d,%d stats=%u,%u,%u,%u,%u,%u\n", ft_hash(&G), G.f[0].hp, G.f[1].hp, G.f[0].wins, G.f[1].wins, ft_stat.hits, ft_stat.blocks, ft_stat.parries, ft_stat.guard_breaks, ft_stat.whiffs_high, ft_stat.throws);
   return 0;
 }

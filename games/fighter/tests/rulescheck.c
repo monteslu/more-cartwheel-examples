@@ -5,6 +5,7 @@
  *   FI11  no dominant option: bots restricted to one move class, against the field
  *   FI13  comebacks: lead reversals and how often the fighter behind wins, from computer matches
  *   FI16  facing: cross-ups, scripted, plus a facing invariant over computer matches
+ *   AI    the computer: hard must not lose to any one-move bot, and must stay beatable by a varied one
  * Usage: rulescheck <moves.txt> [--only FI9] [--patch "move bolt 5P bs=30"]... [--matches N] [--attacker bolt] [--side 0|1] [--budget N]
  * Exit 0 = every check run passed. tests/run-rulescheck.sh runs them and the controls that must fail. */
 #include <stdio.h>
@@ -433,8 +434,9 @@ static int check_hits_per_use(void) {
 
 /* the plainest loop there is: a fighter in the air in the corner and one normal pressed as soon as it can be. Returns the
  * most hits any normal of any fighter lands before the target gets to the floor */
-static int juggle_probe(void) {
+static int juggle_probe(int *spent_events) {
   int worst = 0;
+  *spent_events = 0;
   for (int f = 0; f < R.n; f++)
     for (int s = 0; s <= M_6K; s++) {
       ft_game *g = &G;
@@ -445,7 +447,11 @@ static int juggle_probe(void) {
       slot_frames(&R.d[f], s, fr);
       uint32_t h0 = ft_stat.hits;
       for (int t = 0; t < 2000 && g->f[1].state == S_AIRHIT && ft_stat.hits - h0 < 200; t++)
+      {
+        uint32_t ev0 = g->ev_seq;
         step2(g, ft_actionable(&g->f[0]) ? rel(g->f[0].facing, fr[0].dir, fr[0].btn) : NONE, NONE);
+        for (uint32_t e = ev0; e != g->ev_seq; e++) if (g->ev[e & 63].type == EV_JUGGLE_SPENT) (*spent_events)++;
+      }
       int hits = (int)(ft_stat.hits - h0);
       if (hits > worst) worst = hits;
     }
@@ -456,8 +462,8 @@ static void check_fi9(void) {
   printf("\nFI9 no infinite (exhaustive combo search, node budget %d per pairing)\n", opt_budget);
   int over_hits = check_hits_per_use();
   printf("  moves that hit more often than their table says: %d\n", over_hits);
-  int probe = juggle_probe();
-  printf("  one normal mashed on a target in the air in the corner: at most %d hits%s\n", probe, probe > 25 ? " JUGGLE LOOP" : "");
+  int spent, probe = juggle_probe(&spent);
+  printf("  one normal mashed on a target in the air in the corner: at most %d hits%s; strikes that passed through and said so: %d\n", probe, probe > 25 ? " JUGGLE LOOP" : "", spent);
   T = calloc(1ull << TABLE_BITS, sizeof *T);
   static const struct { const char *name; int ax, dx; } START[] = {
     { "mid", 0, 0 }, { "defender in corner", 0, 1 }, { "attacker in corner", 1, 0 },
@@ -516,7 +522,7 @@ static void check_fi9(void) {
   }
   free(T);
   printf("  searched %d attacker/defender/side/charge cases, %d states, %d stopped at the node budget, %d with a verified loop, longest combo %d hits\n", pairs, total_nodes, trunc, inf, worst);
-  verdict("FI9", pairs > 0 && !inf && !trunc && worst <= 25 && !over_hits && probe <= 25);
+  verdict("FI9", pairs > 0 && !inf && !trunc && worst <= 25 && !over_hits && probe <= 25 && spent > 0);
 }
 
 /* ── FI10: no inescapable setup after a knockdown ────────────────────── */
@@ -633,7 +639,7 @@ static void check_fi10(void) {
 /* ── FI11: no dominant option ────────────────────────────────────────── */
 
 enum { C_5P, C_8P, C_2P, C_6P, C_5K, C_8K, C_2K, C_6K, C_JUMP, C_THROW, C_SP1, C_SP2, C_SP3, C_PUNCHES, C_KICKS, C_LOWS, C_HIGHS, C_CHAIN, C_SPECIALS, C_TURTLE, C_RUN, C_PUNISH,
-       C_AI0, C_AI1, C_AI2, C_COUNT };
+       C_AI0, C_AI1, C_AI2, C_COUNT, C_HUMAN_LOW = C_COUNT, C_HUMAN_MID, C_HUMAN_HIGH };
 static const char *const C_NAME[C_COUNT] = { "5P only", "8P only", "2P only", "6P only", "5K only", "8K only", "2K only", "6K only", "hops", "throws", "SP1 only", "SP2 only", "SP3 only",
   "punches", "kicks", "lows", "highs", "punch-kick-special", "specials and super", "guard and throw", "run away", "guard and punish", "computer easy", "computer normal", "computer hard" };
 
@@ -735,10 +741,76 @@ static ft_input bot_input(ft_game *g, int who, int cls, bot *b) {
   return rel(me->facing, q.dir, q.btn);
 }
 
+/* A varied player, three skills, for "is hard a wall". It reacts as a person does (a skill's frames late, and it misses some),
+ * picks its height from what it saw, mixes every move it has rather than repeating one, walks in and back, jumps now and
+ * then, throws a guard, punishes a recovery only when it notices it, spends its super. It knows only what is on screen. */
+static ft_input human_input(ft_game *g, int who, int skill, bot *b) {
+  static const struct { int react, guard, punish, idle, reach_err, block, chain; } H[3] = {
+    { 22, 45, 15, 40, 300, 10, 15 }, /* new to the game */
+    { 16, 65, 40, 25, 150, 25, 50 }, /* plays a lot */
+    { 12, 80, 70, 8, 60, 50, 90 },  /* good */
+  };
+  const ft_fighter *me = &g->f[who], *op = &g->f[1 - who];
+  const ft_def *d = &R.d[me->def], *od = &R.d[op->def];
+  ft_input none = NONE;
+  if (g->phase != P_FIGHT) { b->qn = b->qi = 0; return none; }
+  if (b->qi < b->qn) { frame_in q = b->q[b->qi++]; return rel(me->facing, q.dir, q.btn); }
+  int dist = abs(op->x - me->x), lv = H[skill].react;
+  bool free_ = ft_actionable(me);
+  /* guard: decided once per attack it notices */
+  if ((free_ || me->state == S_BLOCK) && op->state == S_ATTACK && dist < 2000) {
+    const ft_move *om = &od->mv[op->mv];
+    if (b->last_opmv != op->mv || op->t <= 1) { b->guard_roll = (int)(brnd(b) % 100) < H[skill].guard; b->last_opmv = (int8_t)op->mv; }
+    if (!(om->flags & FM_THROW) && op->t <= om->su + om->ac && op->t >= lv && b->guard_roll) return rel(me->facing, om->lv == LV_LOW ? 2 : 5, B_G);
+  }
+  if (me->state == S_BLOCK && me->stun) return rel(me->facing, op->state == S_ATTACK && od->mv[op->mv].lv == LV_LOW ? 2 : 5, B_G);
+  if (me->state == S_AIR) {
+    if (!me->air_used && dist < 1500 && me->vy < 30 && brnd(b) % 4 == 0) return rel(me->facing, 5, brnd(b) % 2 ? B_K : B_P);
+    return none;
+  }
+  /* a hit it saw land: on into the next link of the chain */
+  if (me->state == S_ATTACK && me->connected && op->state != S_BLOCK && me->t > d->mv[me->mv].su && FT_IS_GROUND_NORMAL(me->mv) && !FT_IS_KICK(me->mv) && (int)(brnd(b) % 100) < H[skill].chain) return rel(me->facing, 5, B_K);
+  if (!free_) return none;
+  for (int p = 0; p < 8; p++)
+    if (g->proj[p].live && g->proj[p].owner != who && abs(g->proj[p].x - me->x) < 1300 && (int)(brnd(b) % 100) < H[skill].guard) return rel(me->facing, 5, B_G);
+  /* a recovery it noticed */
+  if (op->state == S_ATTACK && op->t > od->mv[op->mv].su + od->mv[op->mv].ac + lv && !op->y && (int)(brnd(b) % 100) < H[skill].punish) {
+    int left = ft_move_total(&od->mv[op->mv]) - op->t, best = -1;
+    for (int s = 0; s <= M_6K; s++) if (d->mv[s].su + 1 < left && dist <= slot_reach(d, s) && (best < 0 || d->mv[s].dmg > d->mv[best].dmg)) best = s;
+    if (best >= 0) { queue_slot(b, d, best); frame_in q = b->q[b->qi++]; return rel(me->facing, q.dir, q.btn); }
+  }
+  if (b->cool > 0) { b->cool--; return b->guard_on ? rel(me->facing, 6, 0) : none; }
+  uint32_t r = brnd(b) % 100;
+  if ((int)r < H[skill].idle) { b->cool = (int16_t)(4 + brnd(b) % 16); b->guard_on = brnd(b) % 3 == 0; return none; }
+  r = brnd(b) % 100;
+  if ((int)r < 8 - skill * 2) { for (int i = 0; i < 6; i++) b->q[i] = (frame_in){ 4, 0 }; b->qn = 6; b->qi = 0; return none; }
+  if (r < 13 && dist < 2600) { b->q[0] = (frame_in){ 9, 0 }; b->qn = 1; b->qi = 0; return none; }
+  if (r < 20 && dist < 1000) { b->cool = 10; return rel(me->facing, 5, B_ATTACKS); }
+  if (dist < 1700 && (int)(brnd(b) % 100) < H[skill].block) { int gd = brnd(b) % 3 ? 5 : 2; for (int i = 0; i < 10; i++) b->q[i] = (frame_in){ (uint8_t)gd, B_G }; b->qn = 10; b->qi = 0; return none; }
+  /* a move: normals most, specials some, the super when it has it. In range, give or take its misjudging */
+  /* the better it is, the more it sticks to the moves that are fast and safe, and the less it throws out the rest */
+  int err = (int)(brnd(b) % (uint32_t)(2 * H[skill].reach_err + 1)) - H[skill].reach_err, pick[FT_NMOVES * 8], np = 0;
+  for (int s = 0; s <= M_6K; s++) {
+    if (dist + err > slot_reach(d, s)) continue;
+    int weight = 1 + (d->mv[s].su <= 5 ? skill * 2 : 0) + (ft_advantage(&d->mv[s], true) >= -4 ? skill : 0);
+    for (int w = 0; w < weight; w++) pick[np++] = s;
+  }
+  if (!np) return rel(me->facing, 6, 0);
+  int slot = pick[brnd(b) % (uint32_t)np];
+  if (brnd(b) % (5 + (uint32_t)skill * 5) == 0) slot = M_SP1 + (int)(brnd(b) % 3);
+  if (me->meter >= FT_METER_MAX && brnd(b) % 3 == 0) slot = M_SUPER;
+  queue_slot(b, d, slot);
+  b->cool = (int16_t)(brnd(b) % (uint32_t)(16 - skill * 6));
+  b->guard_on = false;
+  frame_in q = b->q[b->qi++];
+  return rel(me->facing, q.dir, q.btn);
+}
+
 static int run_match(ft_game *g, int d0, int d1, int c0, int c1, uint32_t seed) {
   memset(g, 0, sizeof *g);
-  g->cpu[0] = c0 >= C_AI0; g->cpu[1] = c1 >= C_AI0;
-  g->cpu_level[0] = (uint8_t)(c0 >= C_AI0 ? c0 - C_AI0 : 0); g->cpu_level[1] = (uint8_t)(c1 >= C_AI0 ? c1 - C_AI0 : 0);
+  bool ai0 = c0 >= C_AI0 && c0 < C_COUNT, ai1 = c1 >= C_AI0 && c1 < C_COUNT;
+  g->cpu[0] = ai0; g->cpu[1] = ai1;
+  g->cpu_level[0] = (uint8_t)(ai0 ? c0 - C_AI0 : 0); g->cpu_level[1] = (uint8_t)(ai1 ? c1 - C_AI0 : 0);
   ft_game_start(g, &R, d0, d1);
   g->rng = seed * 2654435761u + 7;
   bot b[2];
@@ -748,8 +820,8 @@ static int run_match(ft_game *g, int d0, int d1, int c0, int c1, uint32_t seed) 
   int guard = 0;
   while (g->phase != P_MATCH_END && guard++ < 60 * 60 * 15) {
     ft_input in[2] = { NONE, NONE };
-    if (c0 < C_AI0) in[0] = bot_input(g, 0, c0, &b[0]);
-    if (c1 < C_AI0) in[1] = bot_input(g, 1, c1, &b[1]);
+    if (!ai0) in[0] = c0 >= C_HUMAN_LOW ? human_input(g, 0, c0 - C_HUMAN_LOW, &b[0]) : bot_input(g, 0, c0, &b[0]);
+    if (!ai1) in[1] = c1 >= C_HUMAN_LOW ? human_input(g, 1, c1 - C_HUMAN_LOW, &b[1]) : bot_input(g, 1, c1, &b[1]);
     ft_step(g, in);
   }
   return g->phase == P_MATCH_END ? g->match_winner : -1;
@@ -828,6 +900,111 @@ static void check_fi11(void) {
   printf("  classes over 65 percent against the entrants that can win: %d; classes nothing beats: %d\n", over_viable, no_counter);
   /* the gate is the counter question; the bars above are printed, and in the findings, as what they are: not met */
   verdict("FI11", !no_counter && minn >= 1000 && !never);
+}
+
+/* ── the computer against one-move bots ──────────────────────────────── */
+
+/* Every class bot against normal and hard, every fighter against every fighter, the bot on each side, several seeds.
+ * Hard must not lose to any class, nor to any class played by any one fighter. Normal may lose to a minority.
+ * The varied bots are the other side of it: hard has to stay beatable. */
+static void check_ai(void) {
+  int seeds = opt_matches / 1250;
+  if (seeds < 1) seeds = 1;
+  int per_cell = R.n * 2 * seeds;
+  printf("\nAI the computer against one-move bots: %d matches per class and level (%d fighter pairings x 2 sides x %d seeds), %d per bot fighter\n", R.n * per_cell, R.n * R.n, seeds, per_cell);
+  printf("  %-20s %9s %9s %7s   %s\n", "bot", "easy", "normal", "hard", "hard's worst bot fighter (of its n)");
+  int hard_lost = 0, cell_lost = 0, normal_lost = 0, classes = 0;
+  double worst_cell = 2; int wc = 0, wf = 0;
+  static ft_game g;
+  for (int c = 0; c < C_AI0; c++) {
+    double rate[3] = { 0 }, cell[FT_MAX_ROSTER];
+    for (int f = 0; f < R.n; f++) cell[f] = 0;
+    for (int lvl = 0; lvl < 3; lvl++)
+      for (int fb = 0; fb < R.n; fb++)
+        for (int fa = 0; fa < R.n; fa++)
+          for (int side = 0; side < 2; side++)
+            for (int k = 0; k < seeds; k++) {
+              uint32_t seed = (uint32_t)(c * 1009 + lvl * 101 + fb * 37 + fa * 11 + side * 3) * 7919u + (uint32_t)k + 1;
+              int w = side ? run_match(&g, fa, fb, C_AI0 + lvl, c, seed) : run_match(&g, fb, fa, c, C_AI0 + lvl, seed);
+              int ai_side = side ? 0 : 1;
+              double s = w < 0 ? 0.5 : w == ai_side ? 1 : 0;
+              rate[lvl] += s;
+              if (lvl == 2) cell[fb] += s;
+            }
+    int bf = 0;
+    for (int f = 0; f < R.n; f++) if (cell[f] < cell[bf]) bf = f;
+    int n = R.n * per_cell;
+    printf("  %-20s %8.1f%% %8.1f%% %6.1f%%   %s %.1f%%\n", C_NAME[c], 100 * rate[0] / n, 100 * rate[1] / n, 100 * rate[2] / n, R.d[bf].id, 100 * cell[bf] / per_cell);
+    classes++;
+    if (rate[2] / n < 0.5) hard_lost++;
+    if (rate[1] / n < 0.5) normal_lost++;
+    for (int f = 0; f < R.n; f++) {
+      if (cell[f] / per_cell < 0.5) cell_lost++;
+      if (cell[f] / per_cell < worst_cell) { worst_cell = cell[f] / per_cell; wc = c; wf = f; }
+    }
+  }
+  printf("  classes hard loses to: %d of %d; class + bot fighter cells hard loses (of %d, n=%d each): %d, worst %s %s %.1f%%\n", hard_lost, classes, classes * R.n, per_cell, cell_lost, R.d[wf].id, C_NAME[wc], 100 * worst_cell);
+  printf("  classes normal loses to: %d of %d\n", normal_lost, classes);
+  /* stays beatable: the computer's win rate against a varied player of three skills; and the levels in order */
+  static const char *const HN[3] = { "varied, new", "varied, regular", "varied, good" };
+  printf("  %-20s %9s %9s %7s   (the computer's wins, %d matches each)\n", "against", "easy", "normal", "hard", 4 * R.n * per_cell);
+  double hard_vs_good = 0;
+  for (int h = 0; h < 3; h++) {
+    double rate[3] = { 0 };
+    for (int lvl = 0; lvl < 3; lvl++)
+      for (int fb = 0; fb < R.n; fb++)
+        for (int fa = 0; fa < R.n; fa++)
+          for (int side = 0; side < 2; side++)
+            for (int k = 0; k < seeds * 4; k++) {
+              uint32_t seed = (uint32_t)(h * 2003 + lvl * 101 + fb * 37 + fa * 11 + side * 3) * 104729u + (uint32_t)k + 1;
+              int w = side ? run_match(&g, fa, fb, C_AI0 + lvl, C_HUMAN_LOW + h, seed) : run_match(&g, fb, fa, C_HUMAN_LOW + h, C_AI0 + lvl, seed);
+              rate[lvl] += w < 0 ? 0.5 : w == (side ? 0 : 1) ? 1 : 0;
+            }
+    int n = 4 * R.n * per_cell;
+    printf("  %-20s %8.1f%% %8.1f%% %6.1f%%\n", HN[h], 100 * rate[0] / n, 100 * rate[1] / n, 100 * rate[2] / n);
+    if (h == 2) hard_vs_good = rate[2] / n;
+  }
+  /* the levels against each other */
+  for (int hi = 1; hi < 3; hi++) {
+    double s = 0; int n = 0;
+    for (int fb = 0; fb < R.n; fb++)
+      for (int fa = 0; fa < R.n; fa++)
+        for (int side = 0; side < 2; side++)
+          for (int k = 0; k < seeds; k++) {
+            uint32_t seed = (uint32_t)(hi * 77 + fb * 37 + fa * 11 + side * 3) * 15485863u + (uint32_t)k + 1;
+            int w = side ? run_match(&g, fa, fb, C_AI0 + hi, C_AI0 + hi - 1, seed) : run_match(&g, fb, fa, C_AI0 + hi - 1, C_AI0 + hi, seed);
+            s += w < 0 ? 0.5 : w == (side ? 0 : 1) ? 1 : 0;
+            n++;
+          }
+    printf("  %s beats %s %.1f%% (%d matches)\n", C_NAME[C_AI0 + hi], C_NAME[C_AI0 + hi - 1], 100 * s / n, n);
+  }
+  /* how soon a strike can change what it does: the same computer, the same seed, one run with a high kick thrown at it from just outside its reach and one
+   * without. Up to the first frame its inputs differ it cannot have reacted; a chance guard is in both runs. Stops
+   * comparing once the kick has landed or frozen the game. */
+  int earliest[3] = { 999, 999, 999 }, tries = 4000;
+  for (int lvl = 0; lvl < 3; lvl++)
+    for (int k = 0; k < tries; k++) {
+      static ft_game a, c;
+      for (int run = 0; run < 2; run++) {
+        ft_game *p = run ? &c : &a;
+        memset(p, 0, sizeof *p);
+        p->cpu[1] = true; p->cpu_level[1] = (uint8_t)lvl;
+        ft_game_start(p, &R, 0, k % R.n);
+        p->phase = P_FIGHT; p->timer = 30000;
+        p->f[0].state = p->f[1].state = S_IDLE; p->f[0].x = -875; p->f[1].x = 875;
+        p->rng = (uint32_t)k * 2654435761u + 5;
+        step2(p, run ? rel(1, 8, B_K) : NONE, NONE);
+      }
+      for (int t = 0; t < 35; t++) {
+        if (c.hitstop || a.hitstop || hit_state(c.f[1].state) || hit_state(a.f[1].state)) break;
+        if (memcmp(&a.f[1].in, &c.f[1].in, sizeof a.f[1].in)) { if (t < earliest[lvl]) earliest[lvl] = t; break; }
+        step2(&a, NONE, NONE); step2(&c, NONE, NONE);
+      }
+    }
+  printf("  earliest frame of a kick that changed any input, %d tries: easy %d, normal %d, hard %d\n", tries, earliest[0], earliest[1], earliest[2]);
+  bool early_normal = earliest[1] < 12;
+  printf("  hard against the good varied bot: %.1f%%, must stay at or under 90\n", 100 * hard_vs_good);
+  verdict("AI", !hard_lost && !cell_lost && normal_lost * 2 < classes && hard_vs_good <= 0.90 && !early_normal);
 }
 
 /* ── FI13: comebacks ─────────────────────────────────────────────────── */
@@ -1025,6 +1202,7 @@ int main(int argc, char **argv) {
   if (run_check("FI9")) check_fi9();
   if (run_check("FI10")) check_fi10();
   if (run_check("FI11")) check_fi11();
+  if (run_check("AI")) check_ai();
   if (run_check("FI13")) check_fi13();
   if (run_check("FI16")) check_fi16();
   printf("\nrulescheck: %d failed\n", failures);

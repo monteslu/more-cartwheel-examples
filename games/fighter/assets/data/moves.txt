@@ -66,7 +66,7 @@ move grit SP3 name=Headbutt su=5 ac=9 rc=26 dmg=110 hs=0 inv=5 kd=1 launch=130 m
 move grit SUPER name=Crushing_slam su=5 ac=2 rc=50 dmg=400 hs=40 bs=0 hstop=0 inv=7 kd=1 flags=super,throw hit=0,0,1100,1500 proj=0,0,0
 
 # Vex: fast and fragile. A low slide, a rising knee, a leap, a flurry super. Quicker hands and feet.
-fighter vex name=Vex hp=1130 walk=46 back=36 jump=140 jumpfx=55 grav=8 dash=150 dashback=110 sp1=236K sp2=623K sp3=214P super=236236X
+fighter vex name=Vex hp=950 walk=46 back=36 jump=140 jumpfx=55 grav=8 dash=150 dashback=110 sp1=236K sp2=623K sp3=214P super=236236X
 move vex 5P name=Snap_jab su=3 ac=2 rc=7 dmg=25 hs=12 bs=8
 move vex 8P name=Hook su=5 ac=3 rc=11 dmg=48 hs=16 bs=11
 move vex 2P name=Shin_tap su=4 ac=2 rc=8 dmg=20 hs=12 bs=9
