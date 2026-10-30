@@ -1,13 +1,14 @@
 // hordeshooter soak gate: 30 game minutes with the bots at 1, 2, 3 and 4 players, no window and no GPU
-// (build/native/project/games/hordeshooter/hordeshooter_soak). Each run must exit 0 and end with "soak ok";
+// (hordeshooter_soak in build/native). Each run must exit 0 and end with "soak ok";
 // resident memory must stay within 5% of the first minute; the control injects a NaN position and the
 // checks must catch it (exit 1). Run: node tests/soak-gate.mjs
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const exe = join(ROOT, 'build/native/project/games/hordeshooter/hordeshooter_soak');
+const exe = join(dirname(JSON.parse(readFileSync(join(ROOT, 'build/native/apps/hordeshooter_bench.json'), 'utf8')).binary), 'hordeshooter_soak'); // beside the game, SDK or engine source
 const run = (players, env = {}) => spawnSync(exe, ['30', String(players)], { encoding: 'utf8', timeout: 300000, env: { ...process.env, ...env } });
 let bad = 0;
 for (const p of [1, 2, 3, 4]) {

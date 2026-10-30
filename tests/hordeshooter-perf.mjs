@@ -9,6 +9,7 @@
 // WebGPU against an impossible 1 ms bound.
 // Holds the GPU suite lock (the engine's tools/with-gpu-suite.mjs). Run: node tests/hordeshooter-perf.mjs
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -20,7 +21,7 @@ if (!process.env.CW_GPU_SUITE_INNER) { // take the suite lock and the GPU sandbo
   process.exit(r.status ?? 1);
 }
 const { wgpuPin, glPin, scrubDisplay } = await import(join(ENGINE, 'tools/lib/wgpu-pin.mjs'));
-const exe = join(ROOT, 'build/native/project/games/hordeshooter/hordeshooter_bench');
+const exe = JSON.parse(readFileSync(join(ROOT, 'build/native/apps/hordeshooter_bench.json'), 'utf8')).binary; // the app's path in this tree, SDK or engine source
 
 function run(gpu, extra = {}) {
   const env = { ...process.env, CW_FRAMES: '600', SDL_AUDIODRIVER: 'dummy', CW_WGPU_VALIDATION: '0', HORDE_BENCH: '1',

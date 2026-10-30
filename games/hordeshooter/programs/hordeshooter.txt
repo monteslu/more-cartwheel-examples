@@ -43,7 +43,7 @@ depth+xgibuf
 depth+xcluster_gi
 standard+instbig+senv+icol+l2001+xgibuf
 standard+instbig+senv+icol+l2001+xcluster_gi
-basic+map+vcol+rep+lmap
+basic+map+vcol+rep+lmap+c1lmap
 standard+map+vcol+rep+nmap+rmap+senv+l2001+xcluster
 lambert+vcol+instbig+icol+l2001+xcluster
 standard+instbig+senv+icol+l2001+xcluster
@@ -61,7 +61,7 @@ standard+map+vcol+rep+instbig+nmap+rmap+senv+fog2+icol+l2001+xcluster
 basic+trans+instbig+fog2+ds+icol
 basic+trans+instbig+fog2+icol
 standard+senv+fog2+l2001+xcluster
-basic+map+vcol+rep+lmap+fog2
+basic+map+vcol+rep+lmap+fog2+c1lmap
 basic+map+trans+ds
 basic+map+trans+instbig+fog2+cenv+add+icol
 basic+map+trans+instbig+cenv+add+icol
@@ -75,7 +75,7 @@ standard+map+rep+instbig+nmap+rmap+fog2+icol+l2001+xcluster
 standard+vcol+instbig+fog2+icol+l2001+xcluster
 standard+map+vcol+rep+fog2+l2001+xcluster
 basic+vcol+instbig+fog2+icol
-basic+lmap+fog2
+basic+lmap+fog2+c1lmap
 basic+fog2
 standard+trans+fog2+l2001+xcluster
 standard+trans+env+fog2+l2001+xcluster
