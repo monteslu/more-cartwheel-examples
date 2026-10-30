@@ -72,5 +72,5 @@ if [ "$MODE" != checks ]; then
   sed 's/fighter vex name=Vex hp=1130/fighter vex name=Vex hp=1000/' "$MOVES" > "$OUT/moves-ctl.txt"
   if node "$HERE/tests/gatereplay.mjs" "$OUT/gatereplay" "$OUT/moves-ctl.txt" "$OUT" --expect-mismatch | tail -1 | grep -q ' moved' && ! cmp -s "$MOVES" "$OUT/moves-ctl.txt"; then echo "control gatereplay: moved the pins as it must"; else echo "control gatereplay: did NOT move"; status=1; fi
 fi
-if [ "$status" -eq 0 ]; then echo "run-rulescheck: every check passed and every control failed"; else echo "run-rulescheck: PROBLEMS, see above"; fi
+if [ "$status" -eq 0 ]; then echo "run-rulescheck: every gate held, every control failed (FI11: the rubric bar is printed, not gated)"; else echo "run-rulescheck: PROBLEMS, see above"; fi
 exit "$status"
