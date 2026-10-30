@@ -445,7 +445,10 @@ static void hud(void) {
     }
     if (G.level_flash[i] > 0) {
       snprintf(b, sizeof b, "P%d: %s", i + 1, sim_upgrade_name(G.level_up[i]));
-      text(b, cs.x * 0.5f, cs.y * 0.62f + (float)i * 22 * u, 20 * u, rgba(PC[i][0], PC[i][1], PC[i][2], cw_clampf(G.level_flash[i] / 40.0f, 0, 1)), CW_ALIGN_CENTER);
+      /* by the player's own panel, not over the action */
+      float ly = (i & 2) ? y - 40 * u : y + h + 20 * u;
+      if (p->offer_ticks > 0) ly = (i & 2) ? ly - 66 * u : ly + 62 * u;
+      text(b, x + 4 * u, ly, 16 * u, rgba(PC[i][0], PC[i][1], PC[i][2], cw_clampf(G.level_flash[i] / 40.0f, 0, 1)), CW_ALIGN_LEFT);
     }
   }
   for (int i = 0; i < G.S.players; i++) { /* P1..P4 over each soldier: who is who without the colours */

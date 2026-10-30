@@ -160,6 +160,7 @@ static struct {
   cw_splats *zones;          /* acid, fire and spores on the floor: glowing pools */
   t3_instanced_mesh *lances, *piles; /* the abbot's bone lances; bonewalkers' bone piles */
   cw_node eb_node[EK_KINDS][CH_MAXF];
+  t3_material *crowd_lit[EK_KINDS], *crowd_unlit[EK_KINDS]; /* the yard lights its crowd in real time; a deeper floor's lights are in its bake, so its crowd is unlit, coloured by the bake (ground_light) */
   t3_mesh *pm[MAXP][CH_MAXC * CH_MAXF][CH_MAXG];
   t3_instanced_mesh *bullet, *rocket, *gem[3], *health, *crate, *barrel, *wall, *pillar, *shadowblob;
   t3_instanced_mesh *power[PU_KINDS], *power_glow, *grenade, *rail, *flame, *saw, *mine;
@@ -707,6 +708,20 @@ static const float rough[EK_KINDS] = { 0.7f, 0.62f, 0.5f, 0.55f, 0.6f, 0.7f, 0.6
 static const float rep_[EK_KINDS] = { 1.6f, 1.2f, 1.4f, 0.9f, 1.4f, 1.4f, 1.2f, 1.4f };
 static const char *nm[EK_KINDS] = { "Runners", "Brutes", "Bloaters", "Bosses", "Skitters", "Bonewalkers", "Slagborn", "Sporelings" };
 static const bool shadow[EK_KINDS] = { false, true, false, true, false, false, false, false };
+static int V_floor; /* the floor drawn (0 the yard) */
+static lb_built V_lb; /* a deeper floor's build */
+static bool V_lb_up, V_lb_lit;
+static void crowd_materials(int k, bool unlit) {
+  t3_material *m = unlit ? V.crowd_unlit[k] : V.crowd_lit[k];
+  if (!m) return;
+  for (int f = 0; f < V.bt[k]; f++) {
+    t3_mesh *me = V.eb[k][f] ? &V.eb[k][f]->mesh : NULL;
+    if (!me || !me->material_count || me->materials[0] == m) continue;
+    t3_retain(m);
+    t3_release(me->materials[0]);
+    me->materials[0] = m;
+  }
+}
 static void crowd_kind_load(int k, const char *file) {
   for (int f = 0; f < V.bt[k]; f++)
     if (V.eb_node[k][f].id) cw_node_free(V.eb_node[k][f]), V.eb_node[k][f] = (cw_node){ 0 }, V.eb[k][f] = NULL;
@@ -766,7 +781,12 @@ static void crowd_kind_load(int k, const char *file) {
       V.eb[k][f]->mesh.base.receive_shadow = false;
       (void)shadow;
     }
-    t3_release(m);
+    if (V.crowd_lit[k]) t3_release(V.crowd_lit[k]);
+    if (V.crowd_unlit[k]) t3_release(V.crowd_unlit[k]);
+    V.crowd_lit[k] = m; /* keeps the reference */
+    V.crowd_unlit[k] = t3_mesh_basic_material_new(0xffffff);
+    V.crowd_unlit[k]->vertex_colors = true;
+    crowd_materials(k, V_floor > 0);
 }
 
 void view_init(cw_node root) {
@@ -948,6 +968,7 @@ void view_set_sun(t3_vec3 d) { /* d: where the sunlight travels */
 /* a blob shadow for a caster at (x, z) of radius r and height ht: it starts under its feet and runs away from
  * the sun as far as a low sun throws it, fading along */
 static void shadow_at(float x, float z, float r, float ht, float strength) {
+  if (V_floor > 0) strength *= 0.5f, ht *= 0.4f; /* the deeper floors are dark already: softer, shorter blob shadows (no low sun there) */
   float len = 2 * r + ht * V.sun_len * 0.35f;
   float yaw = V.sun_yaw;
   cw_splats_add(V.shadows, (t3_vec3){ x, 0, z }, len, 2.0f * r, yaw, (len - 2 * r) / len, (t3_color){ 1, 1, 1 }, strength);
@@ -972,6 +993,13 @@ static const float GL_LO = -50.0f, GL_STEP = 0.5f;
 static t3_color GLG[GLN][GLN];
 static bool gl_ready;
 static t3_color ground_light(float x, float z) {
+  if (V_floor > 0 && V_lb_up) { /* a deeper floor: its own bake, but never so dark that a creature or a player is lost in it */
+    t3_color c = levelbuild_light_at(&V_lb, x, z);
+    float m = CW_MAX(c.r, CW_MAX(c.g, c.b));
+    const float LO = 0.62f; /* the floor's minimum: the brightest channel at least this */
+    if (m < LO) c = m > 1e-3f ? (t3_color){ c.r * LO / m, c.g * LO / m, c.b * LO / m } : (t3_color){ LO, LO, LO };
+    return (t3_color){ CW_MIN(c.r, 2.2f), CW_MIN(c.g, 2.2f), CW_MIN(c.b, 2.2f) };
+  }
   if (!gl_ready) return (t3_color){ 1, 1, 1 };
   float gx = (x - GL_LO) / GL_STEP, gz = (z - GL_LO) / GL_STEP;
   int x0 = CW_CLAMP((int)floorf(gx), 0, GLN - 2), z0 = CW_CLAMP((int)floorf(gz), 0, GLN - 2);
@@ -1101,9 +1129,6 @@ static void view_puddles(void) {
  * down the beam and across it. */
 enum { SHAFT_TEX = 128 };
 static t3_mesh *SHAFT[LAMPS], *HATCH_BEAM, *HATCH_RING;
-static int V_floor; /* the floor drawn (0 the yard) */
-static lb_built V_lb; /* a deeper floor's build */
-static bool V_lb_up, V_lb_lit;
 static float hatch_open; /* 0 shut .. 1 open: the beam's height and the ring's size */
 static t3_vec3 shaft_dir[LAMPS];
 static t3_texture *shaft_texture(void) {
@@ -1257,6 +1282,7 @@ void view_floor(int level, const struct lb_level *lv) {
   if (V_lb_up) levelbuild_free(&V_lb), V_lb_up = false, V_lb_lit = false;
   if (V_floor == 0 && level != 0) yard_attach(false), YARD_LM = LM;
   V_floor = level;
+  for (int k = 0; k < EK_KINDS; k++) crowd_materials(k, level > 0);
   crowd_kind_load(EK_BOSS, level && lv && lv->boss[0] ? lv->boss : files[EK_BOSS]); /* the floor's own boss */
   if (level == 0) {
     yard_attach(true);
@@ -1480,7 +1506,7 @@ void view_sync(const sim *s, float time) {
       { { 1, 1, 1 }, { 0.92f, 1, 1 }, { 1, 0.95f, 1 }, { 0.95f, 1, 0.92f }, { 1, 1, 0.95f }, { 1, 1, 1 } },       /* sporeling */
     };
     const float *hide = HIDE[k][hash2((uint32_t)i, 77u) % 6];
-    float tint = k >= EK_SKITTER || (k == EK_BOSS && V_floor > 0) ? 0.8f + 0.2f * h01((uint32_t)i, 5) : 0.39f + 0.2f * h01((uint32_t)i, 5); /* the floors' own creatures keep their authored colours */
+    float tint = V_floor > 0 ? 0.85f + 0.2f * h01((uint32_t)i, 5) : k >= EK_SKITTER ? 1.25f + 0.2f * h01((uint32_t)i, 5) : 0.39f + 0.2f * h01((uint32_t)i, 5); /* the floors' own creatures keep their authored colours */
     /* the hides over the greyed baked colours: the variety stays */
     t3_color c = e->flash > 0 ? (t3_color){ 4, 2.8f, 2.2f }
                               : (t3_color){ tint * (0.35f * hide[0] + 0.65f * 0.8f), tint * (0.35f * hide[1] + 0.65f * 0.8f), tint * (0.35f * hide[2] + 0.65f * 0.86f) };
@@ -1489,7 +1515,7 @@ void view_sync(const sim *s, float time) {
       c.r *= gl.r, c.g *= gl.g, c.b *= gl.b;
     }
     if (af == 0 && e->flash <= 0) { /* the telegraph: the wind-up warms toward the strike, besides the raised pose */
-      float t = tell * tell;
+      float t = tell * tell * (k == EK_BOSS ? 2.2f : 1.0f); /* a boss's tell glows hot */
       c.r *= 1.0f + 0.9f * t, c.g *= 1.0f + 0.35f * t, c.b *= 1.0f + 0.1f * t;
     }
     t3_instanced_mesh_set_color_at(im, n, c);
@@ -1659,7 +1685,7 @@ void view_sync(const sim *s, float time) {
     cw_node3d_set_position(V.pl_light[i], (t3_vec3){ p->x, 2.4f, p->y });
     if (V.pl_mat[i]) V.pl_mat[i]->color = ground_light(p->x, p->y);
     shadow_at(p->x, p->y, 0.42f, 1.8f, 0.7f);
-    cw_node_set(V.pl_light[i], "energy", cw_val_float(p->down ? 8.0f : 22.0f));
+    cw_node_set(V.pl_light[i], "energy", cw_val_float(p->down ? 8.0f : V_floor > 0 ? 40.0f : 22.0f)); /* brighter on the darker floors: the soldier always reads */
     if (V.shield[i]) V.shield[i]->base.visible = p->shield_t > 0 && !p->down && (p->shield_t > 90 || (p->shield_t / 6) & 1);
     cw_node3d_set_position(V.pn[i], (t3_vec3){ p->x, p->down ? -0.6f : 0, p->y });
     cw_node3d_set_rotation(V.pn[i], (t3_vec3){ p->down ? 1.4f : 0, -p->aim + 1.5708f, 0 }); /* the model faces +Z */
