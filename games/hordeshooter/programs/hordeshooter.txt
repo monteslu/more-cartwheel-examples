@@ -75,3 +75,5 @@ standard+map+rep+instbig+nmap+rmap+fog2+icol+l2001+xcluster
 standard+vcol+instbig+fog2+icol+l2001+xcluster
 standard+map+vcol+rep+fog2+l2001+xcluster
 basic+vcol+instbig+fog2+icol
+basic+lmap+fog2
+basic+fog2

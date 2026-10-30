@@ -1,10 +1,11 @@
-// hordeshooter late-wave perf gate: hordeshooter_bench (the bots at the run's wave 24, floor 5 wave 4, with three players, about 2000
+// hordeshooter late-wave perf gate: hordeshooter_bench (the bots at the run's wave 24, the grotto's wave 4, with three players, about 2000
 // enemies) at 1920x1080, High, natively on the test GPU (the 890M), GL and WebGPU, with the pipeline's GPU
 // pass timers. Bounds the frame's GPU time (the mean of the bench's last three 120-frame windows):
-//   GL      4.1 ms   (a third of the 12.2 before the baked yard; about 3.8 here)
-//   WebGPU  4.1 ms   (11.1 before; about 3.8 here)
-// Every run must draw everything (no "not in any program table" line) and keep about 2000 enemies.
-// Controls, which must fail: GL at 2560x1440 (1.8 times the pixels: the bound is tight enough to see it), and
+//   GL      4.1 ms   (a third of the 12.2 before the baked yard; about 2.4 in the grotto)
+//   WebGPU  4.1 ms   (11.1 before; about 2.1 in the grotto)
+// The same bound on every made floor's late wave (its own level, bake and creatures; the yard, the sluice, the ossuary,
+// the foundry, the grotto), with at least 100 on the floor. Every run must draw everything (no "not in any program table" line) and keep about 2000 enemies.
+// Controls, which must fail: GL at 3840x2160 (4 times the pixels: the deeper floors are cheaper than the bound by about a third), and
 // WebGPU against an impossible 1 ms bound.
 // Holds the GPU suite lock (the engine's tools/with-gpu-suite.mjs). Run: node tests/hordeshooter-perf.mjs
 import { spawnSync } from 'node:child_process';
@@ -39,8 +40,8 @@ function run(gpu, extra = {}) {
 }
 
 let bad = 0;
-const check = (name, r, bound, mustFail = false) => {
-  const within = r.status === 0 && !r.skipped && r.enemies > 1500 && r.gpu > 0 && r.gpu <= bound;
+const check = (name, r, bound, mustFail = false, crowd = 1500) => {
+  const within = r.status === 0 && !r.skipped && r.enemies > crowd && r.gpu > 0 && r.gpu <= bound;
   const line = `${name}: GPU ${r.gpu.toFixed(2)} ms (bound ${bound}), ${r.enemies} enemies, status ${r.status}${r.skipped ? ', SKIPPED DRAWS' : ''}`;
   if (mustFail) {
     if (within) { console.log(`CONTROL PASSED (a failure): ${line}`); bad++; } else console.log(`ok   control fails as it must: ${line}`);
@@ -48,6 +49,9 @@ const check = (name, r, bound, mustFail = false) => {
 };
 check('GL', run('gl'), 4.1);
 check('WebGPU', run('webgpu'), 4.1);
-check('GL at 2560x1440 (1.8 times the pixels)', run('gl', { CW_RENDER_SCALE: '2' }), 4.1, true);
+/* every made floor's late wave (its last before the boss), its own level and bake: the same bound */
+for (const [floor, wave] of [['the yard', 4], ['the sluice', 9], ['the ossuary', 14], ['the foundry', 19], ['the grotto', 25]])
+  for (const gpu of ['gl', 'webgpu']) check(`${floor} wave ${wave} ${gpu === 'gl' ? 'GL' : 'WebGPU'}`, run(gpu, { HORDE_WAVE: String(wave) }), 4.1, false, 100);
+check('GL at 3840x2160 (4 times the pixels)', run('gl', { CW_RENDER_SCALE: '3' }), 4.1, true);
 check('WebGPU against 1 ms', run('webgpu'), 1, true);
 process.exit(bad ? 1 : 0);

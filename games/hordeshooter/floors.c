@@ -23,7 +23,11 @@ static bool floor_def_from(const lb_level *lv, floor_def *fd) {
     fd->ob[fd->nob++] = (floor_obstacle){ (uint8_t)kind, a->x, a->z, hx, hz };
   }
   for (int i = 0; i < lv->nhaz && fd->nhaz < 32; i++)
-    if (!strcmp(lv->haz[i].kind, "water")) fd->haz[fd->nhaz++] = (floor_hazard){ HZ_WATER, lv->haz[i].x, lv->haz[i].z, lv->haz[i].hx, lv->haz[i].hz };
+  {
+    const char *k = lv->haz[i].kind;
+    int kind = !strcmp(k, "water") ? HZ_WATER : !strcmp(k, "molten") || !strcmp(k, "lava") ? HZ_MOLTEN : !strcmp(k, "spore") ? HZ_SPORE : -1;
+    if (kind >= 0) fd->haz[fd->nhaz++] = (floor_hazard){ (uint8_t)kind, lv->haz[i].x, lv->haz[i].z, lv->haz[i].hx, lv->haz[i].hz };
+  }
   for (int i = 0; i < lv->npick && fd->npick < 16; i++) fd->pick[fd->npick][0] = lv->pick[i][0], fd->pick[fd->npick][1] = lv->pick[i][1], fd->npick++;
   for (int i = 0; i < lv->nspawn && fd->nspawn < 16; i++)
     fd->spawn[fd->nspawn][0] = lv->spawn[i][0], fd->spawn[fd->nspawn][1] = lv->spawn[i][1], fd->spawn[fd->nspawn][2] = lv->spawn[i][2], fd->nspawn++;
@@ -53,7 +57,9 @@ int horde_floors_load(sim *s, lb_level *levels) {
     if (!cw_vfs_exists(path)) continue; /* not made yet: the floor is played in the yard */
     static lb_level tmp;
     lb_level *lv = levels ? &levels[f] : &tmp;
-    if (!levelbuild_parse(path, lv) || !floor_def_from(lv, &s->fl[f])) continue;
+    if (!levelbuild_parse(path, lv)) continue;
+    if (!lv->lightmap[0] || !cw_vfs_exists(lv->lightmap)) continue; /* not baked yet: still played in the yard */
+    if (!floor_def_from(lv, &s->fl[f])) continue;
     n++;
   }
   sim_floor_apply(s);

@@ -409,13 +409,13 @@
     "expect": {
       "game.ticks": 900,
       "game.wave": 13,
-      "fx.booms": 178,
+      "fx.booms": 113,
       "view.cam_jerks": 0,
       "cw.rumble": [
-        194,
-        1,
-        180,
-        52,
+        171,
+        2,
+        195,
+        56,
         170
       ]
     },
@@ -426,7 +426,7 @@
     "hosts": [
       "native"
     ],
-    "note": "no camera shake: three bots at the run's wave 13 (floor 3, wave 3: the difficulty the old wave 8 had; the same game, the same hash) for 900 ticks (178 blasts: rockets, grenades, bloaters, mines). view.cam_jerks counts frames whose camera position has a second difference over 2 cm (a shake; the smooth follow never does): 0. cw.rumble (requests, pad, low and high in thousandths, ms) shows the pads rumble instead: 194 requests, the last a blast. Measured 2026-10-29 on native GL. The control (HORDE_SHAKE_CONTROL, the same 900 ticks) puts the old explosion-kit camera shake back: 731 jerking frames and the same game.hash (the shake was never in the simulation), so it must differ.",
+    "note": "no camera shake: three bots at the run's wave 13 (the ossuary's wave 3, its own level) for 900 ticks (113 blasts: rockets, grenades, bloaters, mines). view.cam_jerks counts frames whose camera position has a second difference over 2 cm (a shake; the smooth follow never does): 0. cw.rumble (requests, pad, low and high in thousandths, ms) shows the pads rumble instead: 171 requests, the last a blast. Re-measured 2026-10-29 on native GL when the ossuary came in (was 178 blasts in the yard). The control (HORDE_SHAKE_CONTROL, the same 900 ticks) puts the old explosion-kit camera shake back: 731 jerking frames and the same game.hash (the shake was never in the simulation), so it must differ.",
     "controlFrames": 900,
     "webgpu": {
       "hosts": [
@@ -469,6 +469,10 @@
       "melee.hit_delay": [
         15,
         34,
+        0,
+        0,
+        0,
+        0,
         0,
         0
       ]
@@ -564,17 +568,17 @@
       "floor.boss_tick": 5584,
       "floor.clear_tick": 5674,
       "floor.hatch_tick": 5674,
-      "floor.descend_tick": 5741,
-      "floor.next_tick": 5801,
+      "floor.descend_tick": 5745,
+      "floor.next_tick": 5805,
       "floor.left_at_hatch": 0,
-      "game.enemies": 183,
+      "game.enemies": 182,
       "player.hp": [
         100,
         100,
         100,
         0
       ],
-      "game.hash": 3496093756
+      "game.hash": 991404152
     },
     "controlEnv": {
       "HORDE_WAVE": "5",
@@ -585,7 +589,7 @@
     "hosts": [
       "native"
     ],
-    "note": "a floor ends and the next begins: three bots from the yard's boss wave (HORDE_WAVE=5, floor 1 wave 5). The boss falls at tick 5584, the horde burns to ash over 90 ticks (floor.clear_tick 5674, no enemy left when the hatch opens: floor.left_at_hatch 0), the hatch opens over 60 ticks, a bot steps in at 5741 and the second floor starts at 5801 (floor.level 1, its first wave under way: 183 enemies at tick 6000). Measured 2026-10-29 on native GL. The control (HORDE_FLOOR_STAY=1: nobody steps in) stays on the first floor with the hatch open and must differ.",
+    "note": "a floor ends and the next begins: three bots from the yard's boss wave (HORDE_WAVE=5, floor 1 wave 5). The boss falls at tick 5584, the horde burns to ash over 90 ticks (floor.clear_tick 5674, no enemy left when the hatch opens: floor.left_at_hatch 0), the hatch opens over 60 ticks, a bot finds its way to it round the walls and steps in at 5745, and the second floor, the sluice with its own layout, starts at 5805 (floor.level 1, its first wave under way: 182 enemies at tick 6000). Measured 2026-10-29 on native GL. The control (HORDE_FLOOR_STAY=1: nobody steps in) stays on the first floor with the hatch open and must differ.",
     "webgpu": {
       "hosts": [
         "native"

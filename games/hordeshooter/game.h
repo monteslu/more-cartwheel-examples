@@ -20,7 +20,8 @@
 #define FW 80         /* flow field grid (1 m cells) */
 #define TICK 60.0f
 
-enum { EK_RUNNER, EK_BRUTE, EK_BLOATER, EK_BOSS, EK_SKITTER, EK_BONEWALKER, EK_KINDS }; /* skitter: the sluice's; bonewalker: the ossuary's */
+enum { EK_RUNNER, EK_BRUTE, EK_BLOATER, EK_BOSS, EK_SKITTER, EK_BONEWALKER, EK_SLAGBORN, EK_SPORELING, EK_KINDS };
+/* the floors' own: skitter the sluice's, bonewalker the ossuary's, slagborn the foundry's, sporeling the grotto's */
 const char *sim_kind_name(int kind); /* the .cwlevel's name of a kind ("runner" ...) */
 int sim_kind_by_name(const char *name); /* -1 when not a kind */
 enum { OK_CRATE, OK_BARREL, OK_WALL, OK_PILLAR, OK_KINDS };
@@ -79,7 +80,7 @@ typedef struct boom { float x, y, r, dmg; int delay; uint8_t owner; bool big; } 
 typedef struct event { uint8_t kind, a, b; float x, y, z, w; } event;
 
 /* a floor's gameplay layout and waves (from its .cwlevel, read by the game; the yard's is built in code) */
-enum { HZ_WATER, HZ_KINDS };
+enum { HZ_WATER, HZ_MOLTEN, HZ_SPORE, HZ_KINDS }; /* water slows walkers, molten burns, spores slow */
 typedef struct floor_obstacle { uint8_t kind; float x, y, hx, hy; } floor_obstacle;
 typedef struct floor_hazard { uint8_t kind; float x, y, hx, hy; } floor_hazard;
 typedef struct floor_def {
@@ -93,7 +94,7 @@ typedef struct floor_def {
 } floor_def;
 
 /* acid on the floor (Vhessa's jet): a circle that burns a player standing in it */
-typedef struct zone { bool alive; uint8_t kind; float x, y, r; int life; } zone;
+typedef struct zone { bool alive; uint8_t kind; float x, y, r; int life; } zone; /* kind 0 acid, 1 fire, 2 spores (slow, no harm) */
 /* an enemy's missile (Ossivar's bone lances): slow enough to dodge */
 typedef struct eshot { bool alive; float x, y, vx, vy; int life; float dmg; } eshot;
 /* where a bonewalker fell: a pile of bones that may stand up again (one in five, after 4 s, unless shot; all of
@@ -131,6 +132,7 @@ typedef struct sim {
   cw_navmesh nav;
   cw_crowd crowd;
   uint16_t flow[FW * FW];
+  uint16_t hflow[FW * FW]; /* the way to the open hatch round the walls (built when it opens): steps from each cell */
   uint8_t blocked[FW * FW];
   int flow_age;
   bool nav_dirty;
@@ -174,6 +176,8 @@ extern const char *const FLOOR_ID[NLEVELS]; /* the floors' ids (LEVELS.md): yard
 struct lb_level;
 int horde_floors_load(sim *s, struct lb_level *levels); /* each floor's .cwlevel that exists into s->fl (levels: also the parsed files, NLEVELS); then lays out the current floor; how many were read */
 void sim_floor_apply(sim *s); /* after setting s->fl: lay out the current floor (its obstacles, spots) */
+/* the way to the open hatch from (x, y): a unit step round the walls (false when there is none) */
+bool sim_hatch_way(const sim *s, float x, float y, float *dx, float *dy);
 int sim_spawn(sim *s, int kind, float x, float y); /* tests: one enemy there; its slot or -1 */
 void sim_dev_kill_boss(sim *s); /* development: the floor's boss falls now (player 1 gets it) */
 int sim_melee_windup(int kind); /* the ticks of that kind's wind-up */
@@ -196,7 +200,8 @@ t3_color lin(float r, float g, float b); /* screen colour -> linear */
 void view_init(cw_node root);
 void view_free(void);
 void view_sync(const sim *s, float time);
-extern float g_cam_dist; /* development: a fixed camera distance (0: the game frames the team) */
+extern float g_cam_dist;
+extern int32_t g_cam_boss; /* development: the camera on the boss */ /* development: a fixed camera distance (0: the game frames the team) */
 void view_floor(int level, const struct lb_level *lv); /* build that floor's look (0: the yard) */
 int view_floor_now(void);
 void view_hatch(const sim *s); /* the hatch's beam and ring of light, by the floor's state */

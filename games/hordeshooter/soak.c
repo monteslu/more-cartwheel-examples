@@ -122,7 +122,7 @@ int main(int argc, char **argv) {
   if (getenv("HORDE_SOAK_TTK")) /* hits and seconds from the first hit to the kill, per kind, at each wave */
     for (int w = 1; w <= FINAL_WAVE; w++) {
       printf("ttk wave %2d", w);
-      static const char *KN[EK_KINDS] = { "runner", "brute", "bloater", "boss", "skitter", "bonewalker" };
+      static const char *KN[EK_KINDS] = { "runner", "brute", "bloater", "boss", "skitter", "bonewalker", "slagborn", "sporeling" };
       for (int e = 0; e < EK_KINDS; e++)
         if (S.ttk_n[w][e]) printf("  %s %.2f hits %.2f s (%d)", KN[e], (double)S.ttk_hits[w][e] / S.ttk_n[w][e], (double)S.ttk_ticks[w][e] / S.ttk_n[w][e] / 60.0, S.ttk_n[w][e]);
       printf("\n");

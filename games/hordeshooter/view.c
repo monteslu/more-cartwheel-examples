@@ -157,6 +157,8 @@ static struct {
   int32_t attack_drawn; /* enemies drawn in an attack pose this frame (the melee gate) */
   float bc_y[EK_KINDS], br[EK_KINDS]; /* a sphere round every frame of a kind (its centre height, its radius): culling */
   t3_instanced_mesh *eb[EK_KINDS][CH_MAXF];
+  cw_splats *zones;          /* acid, fire and spores on the floor: glowing pools */
+  t3_instanced_mesh *lances, *piles; /* the abbot's bone lances; bonewalkers' bone piles */
   cw_node eb_node[EK_KINDS][CH_MAXF];
   t3_mesh *pm[MAXP][CH_MAXC * CH_MAXF][CH_MAXG];
   t3_instanced_mesh *bullet, *rocket, *gem[3], *health, *crate, *barrel, *wall, *pillar, *shadowblob;
@@ -659,6 +661,16 @@ static void view_power_init(void) {
     V.power_glow = imesh("PowerGlow", g, rm, 64, false);
   }
   V.grenade = imesh("Grenades", t3_sphere_geometry_new(0.14f, 10, 8), glow(0.5f, 1, 0.35f, 2), 64, false);
+  V.lances = imesh("BoneLances", t3_box_geometry_new(0.1f, 0.1f, 2.2f, 1, 1, 1), glow(1.0f, 0.82f, 0.45f, 10), MAXES, false);
+  {
+    chr pc;
+    if (chr_load(&pc, "models/ossuary_bonepile.cwchar")) {
+      t3_material *pm = t3_mesh_lambert_material_new(0xffffff); /* the crowd's material: its bones in their baked colours */
+      pm->vertex_colors = true;
+      V.piles = imesh("BonePiles", t3_retain(pc.geo[0][0]), pm, MAXPILE, false);
+      chr_free(&pc);
+    }
+  }
   V.rail = imesh("RailShots", t3_box_geometry_new(0.06f, 0.06f, 3.0f, 1, 1, 1), glow(0.4f, 0.8f, 1, 14), 128, false);
   { /* flamer shots: soft additive balls of fire, deep orange */
     t3_material *fm = t3_mesh_basic_material_new(0xffffff);
@@ -688,12 +700,13 @@ static void view_power_init(void) {
 /* a crowd kind's model: its walk and attack frames as instanced meshes (one a frame bucket). Again for a floor's
  * boss: the old one's meshes go first. */
 static const char *files[EK_KINDS] = { "models/runner.cwchar", "models/brute.cwchar", "models/bloater.cwchar", "models/boss.cwchar",
-                                       "models/sluice_skitter.cwchar", "models/ossuary_bonewalker.cwchar" };
-static const int cap[EK_KINDS] = { MAXE, 400, 600, 4, 1600, 1600 };
-static const float rough[EK_KINDS] = { 0.7f, 0.62f, 0.5f, 0.55f, 0.6f, 0.7f };
-static const float rep_[EK_KINDS] = { 1.6f, 1.2f, 1.4f, 0.9f, 1.4f, 1.4f };
-static const char *nm[EK_KINDS] = { "Runners", "Brutes", "Bloaters", "Bosses", "Skitters", "Bonewalkers" };
-static const bool shadow[EK_KINDS] = { false, true, false, true, false, false };
+                                       "models/sluice_skitter.cwchar", "models/ossuary_bonewalker.cwchar", "models/foundry_slagborn.cwchar",
+                                       "models/grotto_sporeling.cwchar" };
+static const int cap[EK_KINDS] = { MAXE, 400, 600, 4, 1600, 1600, 800, 1600 };
+static const float rough[EK_KINDS] = { 0.7f, 0.62f, 0.5f, 0.55f, 0.6f, 0.7f, 0.6f, 0.6f };
+static const float rep_[EK_KINDS] = { 1.6f, 1.2f, 1.4f, 0.9f, 1.4f, 1.4f, 1.2f, 1.4f };
+static const char *nm[EK_KINDS] = { "Runners", "Brutes", "Bloaters", "Bosses", "Skitters", "Bonewalkers", "Slagborn", "Sporelings" };
+static const bool shadow[EK_KINDS] = { false, true, false, true, false, false, false, false };
 static void crowd_kind_load(int k, const char *file) {
   for (int f = 0; f < V.bt[k]; f++)
     if (V.eb_node[k][f].id) cw_node_free(V.eb_node[k][f]), V.eb_node[k][f] = (cw_node){ 0 }, V.eb[k][f] = NULL;
@@ -702,7 +715,8 @@ static void crowd_kind_load(int k, const char *file) {
   if (!chr_load(&V.ch[k], file)) return;
 
     V.bn[k] = V.ch[k].nf[0];
-    V.bt[k] = V.ch[k].nf[0] + (V.ch[k].nclip > 1 ? V.ch[k].nf[1] : 0); /* the attack clip follows the walk in the file */
+    V.bt[k] = 0; /* every clip's frames: walk, attack, and a boss's special and summon (LEVELS.md section 5) */
+    for (int c = 0; c < V.ch[k].nclip && c < CH_MAXC; c++) V.bt[k] += V.ch[k].nf[c];
     { /* the bounding sphere of every frame, scaled by the 10% swell of a hit flash */
       float lo = 1e9f, hi = -1e9f, r2 = 0;
       for (int f = 0; f < V.bt[k]; f++) {
@@ -723,7 +737,8 @@ static void crowd_kind_load(int k, const char *file) {
     }
     { /* the crowd's baked colours desaturated toward a cool grey of the same luminance (each vertex: no hue is
        * swung, so a red hide greys instead of turning magenta); the green kind keeps most of its green to stay readable */
-      static const float DESAT[EK_KINDS] = { 0.78f, 0.7f, 0.2f, 0.7f, 0.0f, 0.0f }, COOL[3] = { 0.88f, 1.0f, 1.14f };
+      static const float DESAT[EK_KINDS] = { 0.78f, 0.7f, 0.2f, 0.7f, 0.0f, 0.0f, 0.0f, 0.0f }, COOL[3] = { 0.88f, 1.0f, 1.14f };
+      float desat = k == EK_BOSS && strcmp(file, files[EK_BOSS]) ? 0.0f : DESAT[k]; /* a floor's boss keeps its authored colours */
       for (int f = 0; f < V.bt[k]; f++) {
         t3_attribute *ca = V.ch[k].geo[0][f]->attributes[T3_ATTR_COLOR];
         float *cv = t3_attribute_f32(ca);
@@ -731,7 +746,7 @@ static void crowd_kind_load(int k, const char *file) {
           float *p = cv + v * 3;
           if (p[0] > 1.5f || p[1] > 1.5f || p[2] > 1.5f) continue; /* glowing eyes and the like */
           float l = 0.2126f * p[0] + 0.7152f * p[1] + 0.0722f * p[2];
-          for (int c = 0; c < 3; c++) p[c] += DESAT[k] * (l * COOL[c] - p[c]);
+          for (int c = 0; c < 3; c++) p[c] += desat * (l * COOL[c] - p[c]);
         }
         ca->version++;
       }
@@ -894,6 +909,7 @@ void view_init(cw_node root) {
   view_shafts();
   V.shadows = cw_splats_new(V.root, "Shadows", CW_SPLATS_SHADOW, MAXE + MAXP + MAXO);
   V.pools = cw_splats_new(V.root, "LightPools", CW_SPLATS_LIGHT, 96);
+  V.zones = cw_splats_new(V.root, "Zones", CW_SPLATS_LIGHT, MAXZ);
   { /* the damp asphalt's sheen: streaks of light whose texture breaks up into wet patches and dry gaps */
     V.sheen = cw_splats_new(V.root, "Sheen", CW_SPLATS_LIGHT, 16);
     enum { SN = 128 };
@@ -1405,6 +1421,7 @@ static bool view_frustum_sphere(const view_frustum *v, float x, float y, float z
 }
 
 float g_cam_dist;
+int32_t g_cam_boss;
 int view_attack_drawn(void) { return V.attack_drawn; }
 
 void view_sync(const sim *s, float time) {
@@ -1414,13 +1431,13 @@ void view_sync(const sim *s, float time) {
   memset(cnt, 0, sizeof cnt);
   V.attack_drawn = 0;
   cw_splats_begin(V.shadows);
-  static const float rate[EK_KINDS] = { 1.9f, 0.9f, 1.1f, 0.6f, 2.6f, 0.8f }; /* cycles per second */
+  static const float rate[EK_KINDS] = { 1.9f, 0.9f, 1.1f, 0.6f, 2.6f, 0.8f, 0.7f, 1.2f }; /* cycles per second */
   /* The horde outside the view is not drawn. The instanced meshes have one bounding sphere for the whole
    * yard, so three.c draws every instance; at a late wave about half of them are off screen and still cost
    * the vertex work of the colour pass and of the SSR G-buffer pass. Only the kinds that cast no shadow are
    * culled (a brute or the boss off screen can throw its shadow into the view); nothing else reads them
    * (SSR is screen space, the fog reads the shadow map). HORDE_CULL=0 (development) draws them all. */
-  static const bool cull_kind[EK_KINDS] = { true, true, true, true, true, true }; /* nothing in the crowd casts a real-time shadow now (blob shadows) */
+  static const bool cull_kind[EK_KINDS] = { true, true, true, true, true, true, true, true }; /* nothing in the crowd casts a real-time shadow now (blob shadows) */
   static int cull_on = -1;
   if (cull_on < 0) cull_on = !getenv("HORDE_CULL") || atoi(getenv("HORDE_CULL")) != 0;
   view_frustum fr_ = view_frustum_now();
@@ -1435,6 +1452,12 @@ void view_sync(const sim *s, float time) {
     float tell = 0;
     int af = sim_attack_frame(e, &tell); /* attacking: the attack clip's pose instead of the walk */
     if (af >= 0 && V.bt[k] > nf) fr = nf + CW_MIN(af, V.bt[k] - nf - 1), V.attack_drawn++;
+    { /* a floor boss's arena attack or summon: its special or summon clip (the held tell, then the release) */
+      int bc_, bf_;
+      float bt_;
+      if (k == EK_BOSS && sim_boss_pose(s, e, &bc_, &bf_, &bt_) && bc_ < V.ch[k].nclip && V.ch[k].nf[bc_] > 0)
+        fr = V.ch[k].first[bc_] + CW_MIN(bf_, V.ch[k].nf[bc_] - 1), tell = bt_, af = bf_ == 0 ? 0 : 1, V.attack_drawn++;
+    }
     t3_instanced_mesh *im = V.eb[k][fr];
     int n = cnt[k][fr];
     if (n >= im->instance_matrix->count) continue;
@@ -1442,7 +1465,7 @@ void view_sync(const sim *s, float time) {
     float sq = 1.0f + (e->flash > 0 ? 0.1f : 0);
     float yaw = -e->face + 1.5708f; /* the model faces +Z; face is atan2(z, x) */
     put(im, n, e->x, 0.0f, e->y, yaw, sq, sq, sq);
-    static const float SR[EK_KINDS] = { 0.42f, 0.75f, 0.62f, 1.5f, 0.5f, 0.45f }, SH[EK_KINDS] = { 1.6f, 2.2f, 1.5f, 4.0f, 0.8f, 2.0f };
+    static const float SR[EK_KINDS] = { 0.42f, 0.75f, 0.62f, 1.5f, 0.5f, 0.45f, 0.7f, 0.5f }, SH[EK_KINDS] = { 1.6f, 2.2f, 1.5f, 4.0f, 0.8f, 2.0f, 2.2f, 1.2f };
     shadow_at(e->x, e->y, SR[k] * sq, SH[k], 0.62f);
     /* each enemy its own hide from its kind's palette (sallow, ashen, olive, rust, bruised, ochre), its brightness
      * varied too: a crowd of many, each kind still read by its shape and its baked colours */
@@ -1453,9 +1476,11 @@ void view_sync(const sim *s, float time) {
       { { 1, 1, 1 }, { 1, 1, 1 }, { 1, 1, 1 }, { 1, 1, 1 }, { 1, 1, 1 }, { 1, 1, 1 } },
       { { 1, 1, 1 }, { 0.9f, 0.95f, 1 }, { 1, 0.95f, 0.9f }, { 0.92f, 1, 0.95f }, { 1, 1, 1 }, { 0.95f, 0.95f, 0.95f } }, /* skitter: its own colours */
       { { 1, 1, 1 }, { 1, 0.96f, 0.9f }, { 0.94f, 0.94f, 0.9f }, { 1, 0.98f, 0.94f }, { 0.96f, 0.92f, 0.86f }, { 1, 1, 1 } }, /* bonewalker: bone */
+      { { 1, 1, 1 }, { 1, 0.95f, 0.92f }, { 0.95f, 0.95f, 1 }, { 1, 1, 0.94f }, { 0.92f, 0.92f, 0.92f }, { 1, 1, 1 } }, /* slagborn */
+      { { 1, 1, 1 }, { 0.92f, 1, 1 }, { 1, 0.95f, 1 }, { 0.95f, 1, 0.92f }, { 1, 1, 0.95f }, { 1, 1, 1 } },       /* sporeling */
     };
     const float *hide = HIDE[k][hash2((uint32_t)i, 77u) % 6];
-    float tint = k >= EK_SKITTER ? 0.8f + 0.2f * h01((uint32_t)i, 5) : 0.39f + 0.2f * h01((uint32_t)i, 5); /* the floors' own creatures keep their authored colours */
+    float tint = k >= EK_SKITTER || (k == EK_BOSS && V_floor > 0) ? 0.8f + 0.2f * h01((uint32_t)i, 5) : 0.39f + 0.2f * h01((uint32_t)i, 5); /* the floors' own creatures keep their authored colours */
     /* the hides over the greyed baked colours: the variety stays */
     t3_color c = e->flash > 0 ? (t3_color){ 4, 2.8f, 2.2f }
                               : (t3_color){ tint * (0.35f * hide[0] + 0.65f * 0.8f), tint * (0.35f * hide[1] + 0.65f * 0.8f), tint * (0.35f * hide[2] + 0.65f * 0.86f) };
@@ -1590,6 +1615,37 @@ void view_sync(const sim *s, float time) {
     shadow_at(o->x, o->y, OR[o->kind], OH[o->kind], 0.7f);
   }
   V.crate->count = nc, V.barrel->count = nba, V.wall->count = nw, V.pillar->count = np;
+  { /* the floor bosses' leavings: acid (green), fire (orange) and spores (cyan) glowing on the floor, lances in flight, bone piles */
+    static const t3_color ZC[3] = { { 0.35f, 1.0f, 0.2f }, { 1.0f, 0.42f, 0.08f }, { 0.25f, 0.85f, 1.0f } };
+    cw_splats_begin(V.zones);
+    for (int i = 0; i < MAXZ; i++) {
+      const zone *z = &s->z[i];
+      if (!z->alive) continue;
+      float fade = cw_clampf((float)z->life / 40.0f, 0, 1), d = z->r * 2.2f;
+      cw_splats_add(V.zones, (t3_vec3){ z->x, 0, z->y }, d, d, (float)i, 0, ZC[CW_MIN(z->kind, 2)], 2.4f * fade * (0.85f + 0.15f * cw_sin((float)s->tick * 0.2f + (float)i)));
+    }
+    cw_splats_end(V.zones);
+    int nl = 0;
+    for (int i = 0; i < MAXES; i++) {
+      const eshot *e = &s->es[i];
+      if (!e->alive) continue;
+      put(V.lances, nl++, e->x, 1.2f, e->y, -cw_atan2(e->vy, e->vx) + 1.5708f, 1, 1, 1);
+    }
+    V.lances->count = nl;
+    touch(V.lances, false);
+    if (V.piles) {
+      int np_ = 0;
+      for (int i = 0; i < MAXPILE; i++) {
+        const pile *p = &s->pl[i];
+        if (!p->alive) continue;
+        float shake = p->rise > 0 && p->rise < 60 ? 0.06f * cw_sin((float)s->tick * 1.3f) : 0; /* about to stand up: it stirs */
+        put(V.piles, np_, p->x + shake, 0, p->y, (float)(i * 53 % 100) * 0.06f, 1, 1, 1);
+        t3_instanced_mesh_set_color_at(V.piles, np_++, ground_light(p->x, p->y));
+      }
+      V.piles->count = np_;
+      touch(V.piles, true);
+    }
+  }
   touch(V.crate, true), touch(V.barrel, true), touch(V.wall, true), touch(V.pillar, false);
   /* players */
   for (int i = 0; i < MAXP; i++) {
@@ -1679,6 +1735,9 @@ void view_sync(const sim *s, float time) {
 void view_camera(const sim *s, cw_node camera, float aspect, float control_x, float control_y) {
   float cx, cy, hw, hh;
   sim_team_box(s, &cx, &cy, &hw, &hh);
+  if (g_cam_boss) /* development (romdev): watch the boss */
+    for (int i = 0; i < MAXE; i++)
+      if (s->e[i].alive && s->e[i].kind == EK_BOSS) { cx = s->e[i].x, cy = s->e[i].y, hw = hh = 6; break; }
   const float fov = 38.0f * 3.14159f / 180.0f, tilt = 62.0f * 3.14159f / 180.0f;
   /* distance so the spread of the players plus a margin fits the view */
   float half_h = CW_MAX(hh + 8.0f, (hw + 10.0f) / aspect);

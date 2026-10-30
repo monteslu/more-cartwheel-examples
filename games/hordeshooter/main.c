@@ -216,6 +216,7 @@ static void init(void *u) {
   cw_debug_i32("dev.hold", &G.dev_hold);
   cw_debug_i32("dev.boss", &G.dev_boss);
   cw_debug_f32("dev.cam_dist", &g_cam_dist);
+  cw_debug_i32("dev.cam_boss", &g_cam_boss);
   cw_debug_i32("melee.attack_frames", &G.m_attack_frames);
   cw_debug_i32("melee.strikes", &G.m_strikes);
   cw_debug_i32("melee.hits", &G.m_hits);
@@ -291,8 +292,9 @@ static void fixed_update(void *u, double dt) {
     int n = sim_level_waves(G.S.level);
     if (G.S.level_wave < n) G.S.level_wave = n, G.S.wave = sim_level_first_wave(G.S.level) + n - 1, G.S.wave_tick = 0;
     for (int i = 0; i < MAXE; i++)
-      if (G.S.e[i].alive && G.S.e[i].kind == EK_BOSS) G.S.e[i].hp = CW_MIN(G.S.e[i].hp, 60);
-    if (G.dev_boss >= 2 && G.S.boss_alive) sim_dev_kill_boss(&G.S), G.dev_boss = 0;
+      if (G.dev_boss <= 2 && G.S.e[i].alive && G.S.e[i].kind == EK_BOSS) G.S.e[i].hp = CW_MIN(G.S.e[i].hp, 60);
+    if (G.dev_boss == 2 && G.S.boss_alive) sim_dev_kill_boss(&G.S), G.dev_boss = 0;
+    if (G.dev_boss == 3 && G.S.boss_alive) G.dev_boss = 0; /* 3: only skip to the boss, at full strength (its patterns) */
   }
   int ev0 = G.S.ev_n;
   sim_step(&G.S, in);

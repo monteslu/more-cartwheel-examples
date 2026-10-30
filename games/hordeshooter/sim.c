@@ -41,8 +41,10 @@ static const ekind EK[EK_KINDS] = {
   { 1.7f, 1.5f, 1.9f, 700, 260.0f, 30, 90 },
   { 0.38f, 3.9f, 5.7f, 1, 0.2f, 6, 1 },   /* skitter: 1.3x a runner's speed, 60% of its health, in packs */
   { 0.42f, 2.4f, 3.5f, 4, 0.9f, 9, 2 },   /* bonewalker: 0.8x a runner's speed, a slow stiff lurch */
+  { 0.6f, 2.1f, 3.1f, 7, 1.4f, 10, 3 },   /* slagborn: 0.7x, heavy; lobs slag from range, punches up close */
+  { 0.45f, 2.7f, 4.0f, 3, 0.7f, 7, 2 },   /* sporeling: 0.9x, a swaying waddle; bursts into a spore cloud */
 };
-static const char *const KIND_NAME[EK_KINDS] = { "runner", "brute", "bloater", "boss", "skitter", "bonewalker" };
+static const char *const KIND_NAME[EK_KINDS] = { "runner", "brute", "bloater", "boss", "skitter", "bonewalker", "slagborn", "sporeling" };
 const char *sim_kind_name(int kind) { return kind >= 0 && kind < EK_KINDS ? KIND_NAME[kind] : "?"; }
 int sim_kind_by_name(const char *name) {
   for (int k = 0; k < EK_KINDS; k++)
@@ -67,6 +69,8 @@ static const melee MEL[EK_KINDS] = {
   { 40, 30, 20, 1.0f, 2.2f, -0.3f },   /* boss: a big sweep, wider still */
   { 24, 18, 12, 2.6f, 2.8f, 0.5f },    /* skitter: crouches 0.4 s (forelegs up), springs about 3 m and bites */
   { 30, 22, 10, 0.3f, 0.9f, 0.2f },    /* bonewalker: a backhand slash, the blade arm swung far back for 0.5 s */
+  { 26, 22, 14, 0.3f, 0.9f, 0.3f },    /* slagborn: a punch (its lob is its ranged attack) */
+  { 24, 18, 12, 0.3f, 0.8f, 0.4f },    /* sporeling: a headbutt, the cap tilted back for 0.4 s */
 };
 #define STRIKE_HOLD 6 /* ticks the strike pose shows after the hit */
 
@@ -77,15 +81,34 @@ static const melee MEL[EK_KINDS] = {
  *   Ossivar (the ossuary): the bone lances (his chest flares 1 s, then 5 slow spears in a fan; two fans below 25%),
  *   raise the dead (he kneels 1.5 s and every bone pile stands up, from 60% every 15 s); his crozier slam is his
  *   melee (a ring of spikes at 3 m all round him). */
-enum { BOSS_YARD, BOSS_VHESSA, BOSS_OSSIVAR };
+enum { BOSS_YARD, BOSS_VHESSA, BOSS_OSSIVAR, BOSS_ANVILGRAVE, BOSS_MYCEL };
 static int spawn_enemy(sim *s, int kind, float x, float y);
 static bool in_box(const obstacle *o, float x, float y, float pad);
-static int boss_of(const sim *s) { return s->fl[s->level].set ? (s->level == 1 ? BOSS_VHESSA : s->level == 2 ? BOSS_OSSIVAR : BOSS_YARD) : BOSS_YARD; }
-static const struct { int tell[3], release, recover; } BACT[3] = {
+static bool in_hazard(const sim *s, int kind, float x, float y);
+static int boss_of(const sim *s) {
+  static const int B[NLEVELS] = { BOSS_YARD, BOSS_VHESSA, BOSS_OSSIVAR, BOSS_ANVILGRAVE, BOSS_MYCEL, BOSS_YARD, BOSS_YARD, BOSS_YARD };
+  return s->fl[s->level].set ? B[s->level] : BOSS_YARD;
+}
+/*   Anvilgrave (the foundry): the pour (he tips a crucible 1.2 s: a molten river 12 m ahead that burns 8 s), the
+ *   bellows (a roar: 6 slagborn rise); his hammer fall is his melee (a shockwave ring out to about 8 m).
+ *   Mother Mycel (the grotto): the spore mortar (her crown swells 1.2 s, then 6 spore balls land where the players
+ *   stand, marked a second before), the root eruption (she sinks 1 s: roots burst up in a line toward the farthest
+ *   player); her root lash is her melee. */
+static const struct { int tell[3], release, recover; } BACT[5] = {
   { { 0, 0, 0 }, 0, 0 },
   { { 0, 72, 60 }, 12, 30 },  /* Vhessa: jet tell 1.2 s, brood squat 1 s */
   { { 0, 60, 90 }, 12, 30 },  /* Ossivar: chest flare 1 s, the kneel 1.5 s */
+  { { 0, 72, 60 }, 12, 36 },  /* Anvilgrave: the tip 1.2 s, the roar 1 s */
+  { { 0, 72, 60 }, 12, 30 },  /* Mycel: the swelling 1.2 s, the sinking 1 s */
 };
+static void add_zone(sim *s, int kind, float x, float y, float r, int life) {
+  for (int z = 0; z < MAXZ; z++)
+    if (!s->z[z].alive) {
+      s->z[z] = (zone){ true, (uint8_t)kind, cw_clampf(x, -HALF + 1, HALF - 1), cw_clampf(y, -HALF + 1, HALF - 1), r, life };
+      ev(s, EV_ACID, s->z[z].x, s->z[z].y, r, 0, kind, 0);
+      return;
+    }
+}
 static float boss_frac(const sim *s, const enemy *e) { return s->boss_maxhp > 0 ? (float)e->hp / (float)s->boss_maxhp : 1; }
 static void boss_release(sim *s, enemy *e, int b) {
   const player *tp = e->tgt >= 0 && e->tgt < MAXP ? &s->p[e->tgt] : NULL;
@@ -120,6 +143,29 @@ static void boss_release(sim *s, enemy *e, int b) {
       }
   } else if (b == BOSS_OSSIVAR && e->act == 2) { /* raise the dead: every pile of bones stands up */
     for (int k = 0; k < MAXPILE; k++) s->pl[k].rise = s->pl[k].alive ? 1 : s->pl[k].rise;
+  } else if (b == BOSS_ANVILGRAVE && e->act == 1) { /* the pour: a molten river 12 m along his facing */
+    for (int k = 0; k < 7; k++) add_zone(s, 1, e->x + fx * (2.5f + (float)k * 1.6f), e->y + fy * (2.5f + (float)k * 1.6f), 1.2f, 480);
+  } else if (b == BOSS_ANVILGRAVE && e->act == 2) { /* the bellows: six slagborn rise round him */
+    for (int k = 0; k < 6; k++) {
+      float a = (float)k * 1.047f + rf(s) * 0.5f;
+      if (spawn_enemy(s, EK_SLAGBORN, cw_clampf(e->x + cw_cos(a) * 5, -HALF + 1, HALF - 1), cw_clampf(e->y + cw_sin(a) * 5, -HALF + 1, HALF - 1)) >= 0)
+        ev(s, EV_RISE, e->x + cw_cos(a) * 5, e->y + cw_sin(a) * 5, 0, 0, 0, 0);
+    }
+  } else if (b == BOSS_MYCEL && e->act == 1) { /* the spore mortar: where the players stand (they were marked during the tell) */
+    for (int k = 0, n = 0; k < MAXP && n < 6; k++)
+      if (s->p[k].active && !s->p[k].down)
+        for (int j = 0; j < (frac < 0.6f ? 2 : 1) + 1 && n < 6; j++, n++) add_zone(s, 0, s->p[k].x + (rf(s) - 0.5f) * 3, s->p[k].y + (rf(s) - 0.5f) * 3, 1.6f, 150);
+  } else if (b == BOSS_MYCEL && e->act == 2) { /* the root eruption: a line of roots toward the farthest player */
+    int far = -1;
+    float fd = -1;
+    for (int k = 0; k < MAXP; k++) {
+      float dx = s->p[k].x - e->x, dy = s->p[k].y - e->y;
+      if (s->p[k].active && !s->p[k].down && dx * dx + dy * dy > fd) fd = dx * dx + dy * dy, far = k;
+    }
+    if (far >= 0) {
+      float l = sqrtf(fd), dx = (s->p[far].x - e->x) / l, dy = (s->p[far].y - e->y) / l;
+      for (int k = 0; k < 8; k++) add_zone(s, 1, e->x + dx * (3.0f + (float)k * 2.0f), e->y + dy * (3.0f + (float)k * 2.0f), 1.1f, 70);
+    }
   }
   (void)tp, (void)fx, (void)fy;
 }
@@ -143,7 +189,7 @@ static void boss_step(sim *s, enemy *e) {
   if (e->atk > 0) return; /* in melee */
   if (--e->act_next > 0) return;
   /* what next: the summon when its phase has come and it is due, else the arena attack */
-  bool summon = b == BOSS_VHESSA ? frac < 0.5f && (e->act_n % 2 == 1) : frac < 0.6f && (e->act_n % 3 == 2);
+  bool summon = b == BOSS_VHESSA || b == BOSS_ANVILGRAVE ? frac < 0.5f && (e->act_n % 2 == 1) : frac < 0.6f && (e->act_n % 3 == 2);
   e->act = summon ? 2 : 1;
   e->act_t = 0;
   e->act_n++;
@@ -155,7 +201,7 @@ static void boss_step(sim *s, enemy *e) {
     if (p->active && !p->down && dx * dx + dy * dy < bd) bd = dx * dx + dy * dy, best = k;
   }
   e->tgt = best;
-  e->act_next = b == BOSS_VHESSA ? (frac < 0.2f ? 180 : frac < 0.5f ? 360 : 360) : (frac < 0.6f ? 300 : 360);
+  e->act_next = b == BOSS_VHESSA || b == BOSS_ANVILGRAVE ? (frac < 0.2f ? 180 : 360) : (frac < 0.6f ? 300 : 360);
   ev(s, EV_BOSS_TELL, e->x, e->y, 0, 0, e->act, b);
 }
 bool sim_boss_pose(const sim *s, const enemy *e, int *clip, int *frame, float *tell) {
@@ -175,7 +221,7 @@ static void boss_world_step(sim *s) {
     zone *z = &s->z[i];
     if (!z->alive) continue;
     if (--z->life <= 0) { z->alive = false; continue; }
-    if (s->tick % 20) continue;
+    if (s->tick % 20 || z->kind == 2) continue; /* spores slow (the movement reads them), they do not burn */
     for (int k = 0; k < MAXP; k++) {
       player *p = &s->p[k];
       float dx = p->x - z->x, dy = p->y - z->y;
@@ -205,6 +251,14 @@ static void boss_world_step(sim *s) {
       break;
     }
   }
+  if (s->tick % 20 == 0) /* a floor's molten strips burn whoever stands in them */
+    for (int k = 0; k < MAXP; k++) {
+      player *p = &s->p[k];
+      if (!p->active || p->down || p->inv > 0 || p->shield_t > 0 || !in_hazard(s, HZ_MOLTEN, p->x, p->y)) continue;
+      p->hp -= 3, p->inv = 6;
+      ev(s, EV_HURT, p->x, p->y, 0, 0, k, 255);
+      if (p->hp <= 0) p->down = true, p->down_ticks = 0, ev(s, EV_DOWN, p->x, p->y, 0, 0, k, 0);
+    }
   for (int i = 0; i < MAXPILE; i++) {
     pile *pl = &s->pl[i];
     if (!pl->alive || pl->rise <= 0 || --pl->rise > 0) continue;
@@ -363,6 +417,7 @@ static void kill_enemy(sim *s, int i, int owner, float dx, float dy) {
   }
   ev(s, EV_KILL, e->x, e->y, dx, dy, e->kind, owner);
   if (e->kind == EK_BOSS) s->boss_alive--;
+  if (e->kind == EK_SPORELING) add_zone(s, 2, e->x, e->y, 1.8f, 180); /* a spore cloud: slows for 3 s */
   if (e->kind == EK_BONEWALKER && s->state == ST_PLAY) /* it falls apart: a pile of bones, one in five to stand up once in 4 s */
     for (int k = 0; k < MAXPILE; k++)
       if (!s->pl[k].alive) {
@@ -409,6 +464,13 @@ static void add_obstacle(sim *s, int kind, float x, float y, float hx, float hy)
     }
 }
 
+static bool in_zone(const sim *s, int kind, float x, float y) {
+  for (int i = 0; i < MAXZ; i++) {
+    const zone *z = &s->z[i];
+    if (z->alive && z->kind == kind && (x - z->x) * (x - z->x) + (y - z->y) * (y - z->y) < z->r * z->r) return true;
+  }
+  return false;
+}
 static bool in_hazard(const sim *s, int kind, float x, float y) {
   const floor_def *fd = &s->fl[s->level];
   if (!fd->set) return false;
@@ -736,7 +798,7 @@ static void player_step(sim *s, int i, const input *in) {
     return;
   }
   float sp = 6.0f + (float)p->speed * 0.6f;
-  if (in_hazard(s, HZ_WATER, p->x, p->y)) sp *= 0.7f; /* wading */
+  if (in_hazard(s, HZ_WATER, p->x, p->y) || in_hazard(s, HZ_SPORE, p->x, p->y) || in_zone(s, 2, p->x, p->y)) sp *= 0.7f; /* wading, spores */
   float mx = in->mx, my = in->my, ml = cw_v2_length(cw_v2(mx, my));
   if (ml > 1) mx /= ml, my /= ml;
   p->vx += (mx * sp - p->vx) * 0.35f;
@@ -1023,6 +1085,12 @@ static void enemies_step(sim *s) {
       e->ph = (e->ph + 1) % 330;
       if (e->ph >= 230 && e->ph < 290) sp = 0;
       else if (e->ph >= 290) sp *= 3.0f;
+    } else if (e->kind == EK_SLAGBORN && best >= 0) { /* the slagborn's lob: it stops and cups its hands 0.7 s, then a slag blob arcs to where the player stood */
+      const player *p = &s->p[best];
+      if (e->act) {
+        sp = 0;
+        if (++e->act_t == 42) add_zone(s, 1, p->x, p->y, 1.1f, 180), e->act = 0, e->act_t = 0, e->act_next = 240 + (int)(rf(s) * 120);
+      } else if (--e->act_next <= 0 && bd > 5 * 5 && bd < 13 * 13 && e->atk == 0) e->act = 1, e->act_t = 0;
     } else if (e->kind == EK_BOSS) { /* a floor's boss: its arena attacks and summons, planted while it does them */
       boss_step(s, e);
       if (e->act) sp = 0;
@@ -1060,6 +1128,9 @@ static void enemies_step(sim *s) {
     static const melee VHESSA = { 48, 30, 30, 1.0f, 2.4f, -0.34f }, OSSIVAR = { 42, 30, 30, 1.6f, 1.8f, -1.0f };
     if (e->kind == EK_BOSS && boss_of(s) == BOSS_VHESSA) m = &VHESSA;
     if (e->kind == EK_BOSS && boss_of(s) == BOSS_OSSIVAR) m = &OSSIVAR;
+    static const melee ANVIL = { 60, 36, 40, 1.4f, 6.0f, -1.0f }, MYCEL = { 48, 30, 30, 1.2f, 2.6f, 0.0f }; /* the hammer fall's shockwave ring; the root lash */
+    if (e->kind == EK_BOSS && boss_of(s) == BOSS_ANVILGRAVE) m = &ANVIL;
+    if (e->kind == EK_BOSS && boss_of(s) == BOSS_MYCEL) m = &MYCEL;
     float touch = EK[e->kind].radius + 0.45f;
     if (e->atk == 0) {
       if (e->atk_cd > 0 || (e->kind == EK_BOSS && (boss_of(s) == BOSS_YARD ? e->ph >= 230 : e->act != 0))) continue; /* a boss's charge or arena attack is its own */
@@ -1110,7 +1181,7 @@ static void enemies_step(sim *s) {
         }
       }
       ev(s, EV_SWIPE, e->x + fx * touch, e->y + fy * touch, fx, fy, e->kind, hit ? 1 : 0);
-      if (e->kind == EK_BOSS && boss_of(s) == BOSS_OSSIVAR) ev(s, EV_SPIKES, e->x, e->y, touch + m->reach, 0, 0, 0); /* the crozier's ring of spikes */
+      if (e->kind == EK_BOSS && (boss_of(s) == BOSS_OSSIVAR || boss_of(s) == BOSS_ANVILGRAVE)) ev(s, EV_SPIKES, e->x, e->y, touch + m->reach, 0, 0, 0); /* the crozier's ring of spikes */
     }
     if (e->atk > m->windup + m->recover) e->atk = 0, e->atk_cd = m->cooldown, e->tgt = -1;
   }
@@ -1297,6 +1368,49 @@ void sim_team_box(const sim *s, float *cx, float *cy, float *hw, float *hh) {
   *cx = (x0 + x1) * 0.5f, *cy = (y0 + y1) * 0.5f, *hw = (x1 - x0) * 0.5f, *hh = (y1 - y0) * 0.5f;
 }
 
+/* a breadth-first walk out from the hatch's middle over the cells the walls leave open */
+static void build_hatch_flow(sim *s) {
+  static int16_t queue[FW * FW];
+  build_flow_blocked(s);
+  for (int i = 0; i < FW * FW; i++) s->hflow[i] = 0xffff;
+  int c0 = (int)HALF * FW + (int)HALF, qh = 0, qt = 0;
+  s->hflow[c0] = 0, queue[qt++] = (int16_t)c0;
+  static const int DX[8] = { 1, -1, 0, 0, 1, 1, -1, -1 }, DY[8] = { 0, 0, 1, -1, 1, -1, 1, -1 };
+  while (qh < qt) {
+    int c = queue[qh++], cx = c % FW, cy = c / FW;
+    for (int k = 0; k < 8; k++) {
+      int nx = cx + DX[k], ny = cy + DY[k];
+      if (nx < 0 || ny < 0 || nx >= FW || ny >= FW) continue;
+      int n = ny * FW + nx;
+      if (s->blocked[n] || s->hflow[n] != 0xffff) continue;
+      if (k >= 4 && (s->blocked[cy * FW + nx] || s->blocked[ny * FW + cx])) continue;
+      s->hflow[n] = (uint16_t)(s->hflow[c] + (k < 4 ? 2 : 3));
+      queue[qt++] = (int16_t)n;
+    }
+  }
+}
+bool sim_hatch_way(const sim *s, float x, float y, float *dx, float *dy) {
+  int cx = CW_CLAMP((int)(x + HALF), 0, FW - 1), cy = CW_CLAMP((int)(y + HALF), 0, FW - 1);
+  if (s->hflow[cy * FW + cx] <= 4) { /* at the hatch: straight in */
+    float l = sqrtf(x * x + y * y);
+    if (l < 0.05f) return false;
+    *dx = -x / l, *dy = -y / l;
+    return true;
+  }
+  uint16_t best = s->hflow[cy * FW + cx];
+  int bx = cx, by = cy;
+  for (int oy = -1; oy <= 1; oy++)
+    for (int ox = -1; ox <= 1; ox++) {
+      int nx = cx + ox, ny = cy + oy;
+      if (nx < 0 || ny < 0 || nx >= FW || ny >= FW) continue;
+      if (s->hflow[ny * FW + nx] < best) best = s->hflow[ny * FW + nx], bx = nx, by = ny;
+    }
+  if (bx == cx && by == cy) return false;
+  float tx = (float)bx + 0.5f - HALF - x, ty = (float)by + 0.5f - HALF - y, l = sqrtf(tx * tx + ty * ty);
+  *dx = tx / l, *dy = ty / l;
+  return true;
+}
+
 /* the next floor: the team stands up on its closed hatch with its levels and score, power-ups end */
 static void floor_next(sim *s) {
   if (s->level >= NLEVELS - 1) { /* the last floor: the run is won */
@@ -1354,6 +1468,7 @@ static void floor_step(sim *s) {
       memset(s->x, 0, sizeof s->x); /* no bloater's burst outlives the floor */
       ev(s, EV_CLEAR, 0, 0, 0, 0, s->level, 0);
       ev(s, EV_HATCH, 0, 0, 0, 0, s->level, 0);
+      build_hatch_flow(s);
       s->state = ST_HATCH;
       s->state_ticks = 0;
     }
