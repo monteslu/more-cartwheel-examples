@@ -548,6 +548,7 @@ static void kill_enemy(sim *s, int i, int owner, float dx, float dy) {
   ev(s, EV_KILL, e->x, e->y, dx, dy, e->kind, owner);
   if (e->kind == EK_BOSS) s->boss_alive--;
   if (e->kind == EK_SPORELING) add_zone(s, 2, e->x, e->y, 1.8f, 180); /* a spore cloud: slows for 3 s */
+  if (e->frozen > 0) ev(s, EV_SHATTER, e->x, e->y, 0, 0, e->kind, 0);
   if (e->frozen > 0 && owner >= 0) /* a frozen one shatters into its neighbours */
     for (int k = 0; k < MAXE; k++) {
       enemy *n = &s->e[k];
@@ -863,7 +864,7 @@ static void bullet_hit(sim *s, int i, void *u) {
   float k = e->kind == EK_BOSS ? 0.01f : 0.9f / (1.0f + (float)(CW_MIN(e->kind, EK_BOSS)) * 1.5f); /* a boss barely flinches (a team firing at it pushed it out of reach) */
   e->kx += b->vx * 0.012f * k;
   e->ky += b->vy * 0.012f * k;
-  ev(s, EV_HIT, b->x, b->y, b->vx, b->vy, e->kind, 0);
+  ev(s, EV_HIT, b->x, b->y, b->vx, b->vy, e->kind, b->kind); /* b: what hit it (the frost lance's hits are cold) */
   if (e->hp <= 0) kill_enemy(s, i, b->owner, b->vx, b->vy);
   if (b->kind == 1 || b->kind == 2) { /* a rocket or a grenade bursts on the first thing it touches */
     if (b->kind == 2) queue_boom(s, b->x, b->y, 5.0f + (float)s->p[b->owner].radius * 0.5f, 30, 0, b->owner, true);
@@ -1175,6 +1176,7 @@ static void bullets_step(sim *s) {
       if (fabsf(b->x) > HALF - 0.5f) b->vx = -b->vx;
       if (fabsf(b->y) > HALF - 0.5f) b->vy = -b->vy;
       b->fx--;
+      ev(s, EV_BOUNCE, b->x, b->y, 0, 0, 0, 0);
     }
     if (--b->life <= 0 || b->x < -HALF || b->x > HALF || b->y < -HALF || b->y > HALF) {
       if (b->kind == 7 && b->alive) queue_boom(s, b->x, b->y, 3.0f, b->dmg, 0, b->owner, true), add_zone(s, 3, b->x, b->y, 1.6f, 180); /* the shell lands */
@@ -1192,6 +1194,7 @@ static void bullets_step(sim *s) {
         if (fabsf(px) / o->hx > fabsf(py) / o->hy) b->vx = -b->vx; else b->vy = -b->vy;
         b->x += b->vx / TICK * 2, b->y += b->vy / TICK * 2;
         b->fx--;
+        ev(s, EV_BOUNCE, b->x, b->y, 0, 0, 0, 0);
         break;
       }
       if (b->kind == 9) break;

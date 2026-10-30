@@ -158,7 +158,8 @@ static struct {
   float bc_y[EK_KINDS], br[EK_KINDS]; /* a sphere round every frame of a kind (its centre height, its radius): culling */
   t3_instanced_mesh *eb[EK_KINDS][CH_MAXF];
   cw_splats *zones;          /* acid, fire and spores on the floor: glowing pools */
-  t3_instanced_mesh *lances, *piles, *caches, *cache_trim; /* a boss's loot caches: the coffer and its glowing trim (tinted by rarity) */ /* the abbot's bone lances; bonewalkers' bone piles */
+  t3_instanced_mesh *lances, *piles, *caches, *cache_trim;
+  t3_instanced_mesh *wheel, *frost; /* the saint's wheel (a glowing ring), the frost lance's beam */ /* a boss's loot caches: the coffer and its glowing trim (tinted by rarity) */ /* the abbot's bone lances; bonewalkers' bone piles */
   cw_node eb_node[EK_KINDS][CH_MAXF];
   t3_material *crowd_lit[EK_KINDS], *crowd_unlit[EK_KINDS]; /* the yard lights its crowd in real time; a deeper floor's lights are in its bake, so its crowd is unlit, coloured by the bake (ground_light) */
   t3_mesh *pm[MAXP][CH_MAXC * CH_MAXF][CH_MAXG];
@@ -692,6 +693,12 @@ static void view_power_init(void) {
       chr_free(&cc);
     }
   }
+  V.wheel = imesh("Wheels", t3_torus_geometry_new(0.55f, 0.09f, 6, 18, 6.2832f), glow(1.0f, 0.82f, 0.4f, 16), 64, false);
+  {
+    t3_geometry *wg = V.wheel->mesh.geometry; /* flat: the ring lies in the ground plane */
+    t3_geometry_apply_matrix4(wg, &(t3_mat4){ { 1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1 } });
+  }
+  V.frost = imesh("FrostLances", t3_box_geometry_new(0.12f, 0.12f, 4.5f, 1, 1, 1), glow(0.75f, 0.9f, 1.0f, 20), 64, false);
   V.rail = imesh("RailShots", t3_box_geometry_new(0.06f, 0.06f, 3.0f, 1, 1, 1), glow(0.4f, 0.8f, 1, 14), 128, false);
   { /* flamer shots: soft additive balls of fire, deep orange */
     t3_material *fm = t3_mesh_basic_material_new(0xffffff);
@@ -1539,6 +1546,8 @@ void view_sync(const sim *s, float time) {
       c.r *= gl.r, c.g *= gl.g, c.b *= gl.b;
     }
     if (e->elite) c.r *= 1.5f, c.g *= 1.25f, c.b *= 0.8f; /* an elite's gold */
+    if (e->frozen > 0) c = (t3_color){ 1.3f, 1.7f, 2.3f };                   /* a crust of ice */
+    else if (e->slow > 0) c.r *= 0.55f, c.g *= 0.8f, c.b *= 1.5f;           /* chilled blue */
     if (af == 0 && e->flash <= 0) { /* the telegraph: the wind-up warms toward the strike, besides the raised pose */
       float t = tell * tell * (k == EK_BOSS ? 2.2f : 1.0f); /* a boss's tell glows hot */
       c.r *= 1.0f + 0.9f * t, c.g *= 1.0f + 0.35f * t, c.b *= 1.0f + 0.1f * t;
@@ -1553,7 +1562,7 @@ void view_sync(const sim *s, float time) {
       V.st.enemies_drawn += cnt[k][f];
     }
   /* bullets */
-  int nb = 0, nr = 0, ngr = 0, nrl = 0, nfl = 0, nwh = 0; /* nwh: wheels in flight, drawn with the saws */
+  int nb = 0, nr = 0, ngr = 0, nrl = 0, nfl = 0, nwh = 0, nfr = 0; /* nwh: the wheels' rings in flight */
   for (int i = 0; i < MAXB; i++) {
     const bullet *b = &s->b[i];
     if (!b->alive) continue;
@@ -1563,7 +1572,11 @@ void view_sync(const sim *s, float time) {
       if (ngr < V.grenade->instance_matrix->count) put(V.grenade, ngr++, b->x, 0.9f + 5.0f * t * (1 - t) * 1.6f, b->y, (float)b->life * 0.4f, 1, 1, 1);
       continue;
     }
-    if (b->kind == 3 || b->kind == 10 || b->kind == 6) { /* the rail's lance; frost's (the same cold streak); a stake, short */
+    if (b->kind == 10) { /* the frost lance: a long cold beam */
+      if (nfr < V.frost->instance_matrix->count) put(V.frost, nfr++, b->x, 0.9f, b->y, yaw, 1, 1, 1);
+      continue;
+    }
+    if (b->kind == 3 || b->kind == 6) { /* the rail's lance; a stake, short */
       float k = b->kind == 6 ? 0.35f : 1.0f;
       if (nrl < V.rail->instance_matrix->count) put(V.rail, nrl++, b->x, 0.9f, b->y, yaw, b->kind == 6 ? 1.6f : 1, b->kind == 6 ? 1.6f : 1, k);
       continue;
@@ -1573,8 +1586,13 @@ void view_sync(const sim *s, float time) {
       if (ngr < V.grenade->instance_matrix->count) put(V.grenade, ngr++, b->x, 0.9f + 7.0f * t * (1 - t) * 1.6f, b->y, (float)b->life * 0.4f, 1.4f, 1.4f, 1.4f);
       continue;
     }
-    if (b->kind == 9) { /* the saint's wheel, spinning */
-      if (nwh < V.saw->instance_matrix->count) put(V.saw, nwh++, b->x, 0.9f, b->y, (float)s->tick * 0.6f, 1.3f, 1.3f, 1.3f);
+    if (b->kind == 9) { /* the saint's wheel: a glowing ring spinning flat, a trail of fading rings behind it */
+      float vl = sqrtf(b->vx * b->vx + b->vy * b->vy);
+      for (int t = 0; t < 4 && vl > 0.1f; t++) {
+        float back = (float)t * 0.45f, k = 1.0f - 0.2f * (float)t;
+        if (nwh < V.wheel->instance_matrix->count)
+          put(V.wheel, nwh++, b->x - b->vx / vl * back, 0.9f, b->y - b->vy / vl * back, (float)s->tick * 0.8f, k, k, k);
+      }
       continue;
     }
     if (b->kind == 11) { /* the hellfire lance: a beam of flame */
@@ -1599,6 +1617,7 @@ void view_sync(const sim *s, float time) {
     (*c)++;
   }
   V.bullet->count = nb, V.rocket->count = nr, V.grenade->count = ngr, V.rail->count = nrl, V.flame->count = nfl;
+  V.frost->count = nfr, touch(V.frost, false);
   touch(V.bullet, false), touch(V.rocket, false), touch(V.grenade, false), touch(V.rail, false), touch(V.flame, false);
   V.st.bullets = nb + nr + ngr + nrl + nfl;
   { /* mines */
@@ -1608,8 +1627,9 @@ void view_sync(const sim *s, float time) {
     V.mine->count = nm;
     touch(V.mine, false);
   }
-  { /* saws round their players (after the wheels in flight) */
-    int nsw = nwh;
+  V.wheel->count = nwh, touch(V.wheel, false);
+  { /* saws round their players */
+    int nsw = 0;
     for (int k = 0; k < MAXP; k++) {
       const player *p = &s->p[k];
       if (!p->active || p->down || p->saw_t <= 0) continue;

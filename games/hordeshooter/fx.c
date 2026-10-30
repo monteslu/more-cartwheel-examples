@@ -35,6 +35,7 @@
 #define MUZZLES 12
 #define SPLATS 20
 #define SLASHES 16
+#define BOLTS 48 /* lightning jumps drawn at once */
 #define FIRES 6
 #define STAIN 140
 #define LIGHTS 8
@@ -44,7 +45,7 @@ typedef struct gib { t3_vec3 p, v, rot, spin; float size; int life; t3_color col
 static struct {
   bool ready;
   cw_node root;
-  cw_node big[BIGS], small[SMALLB], level[LEVELS], hit[HITS], muzzle[MUZZLES], splat[SPLATS], slash, fire[FIRES], fire_light[FIRES];
+  cw_node big[BIGS], small[SMALLB], level[LEVELS], hit[HITS], muzzle[MUZZLES], splat[SPLATS], slash, frost, fire[FIRES], fire_light[FIRES];
   int fire_age[FIRES];
   int nb, ns, nlv, nh, nsp, nf, nst, nl, nm;
   cw_node stain[STAIN], light[LIGHTS], fire_haze[FIRES];
@@ -53,6 +54,9 @@ static struct {
   float light_e[LIGHTS], light_c[LIGHTS][3];
   float stain_a[STAIN];
   t3_instanced_mesh *gibs;
+  t3_instanced_mesh *bolts;
+  struct { float x0, y0, x1, y1; int life; } bolt[BOLTS];
+  int nbolt;
   gib g[GIBS];
   int next_g, live_g;
   /* each player's pad: the strength of the rumble running and the tick it ends (a weaker request never cuts a
@@ -195,6 +199,11 @@ static const char *const HIT[] = { "amount", "14", "lifetime", "0.35", "explosiv
 static const char *const SLASH[] = { "amount", "16", "lifetime", "0.16", "explosiveness", "1", "one_shot", "true",
   "emission_shape", "POINT", "spread", "55", "speed_min", "7", "speed_max", "13", "draw_mode", "STRETCHED", "stretch", "0.05",
   "size", "0.06", "color_ramp", "\"0 0.95 0.92 1 1, 1 1 0.75 0.6 0\"", "energy", "4", "blend", "ADD", NULL };
+/* cold: pale blue-white shards (a frost lance's hit, a frozen one shattering) */
+static const char *const FROST[] = { "amount", "16", "lifetime", "0.5", "explosiveness", "1", "one_shot", "true",
+  "emission_shape", "SPHERE", "emission_radius", "0.15", "spread", "180", "speed_min", "2", "speed_max", "7",
+  "gravity", "vec3(0, -9, 0)", "draw_mode", "STRETCHED", "stretch", "0.05", "size", "0.07",
+  "color_ramp", "\"0 0.85 0.95 1 1, 1 0.4 0.7 1 0\"", "energy", "4", "blend", "ADD", NULL };
 static const char *const SPLAT[] = { "amount", "26", "lifetime", "0.7", "explosiveness", "1", "one_shot", "true",
   "emission_shape", "SPHERE", "emission_radius", "0.1", "spread", "70", "direction", "vec3(0, 1, 0)", "speed_min", "1.5", "speed_max", "5",
   "gravity", "vec3(0, -12, 0)", "size", "0.12", "size_random", "0.5", "size_curve", "\"0 1, 1 0.4\"",
@@ -296,6 +305,14 @@ void fx_init(cw_node root) {
   FX.muzzle[0] = bnode(FX.root, "Muzzle", MUZZLE, 750, MUZZLES);
   FX.splat[0] = bnode(FX.root, "Splat", SPLAT, 800, SPLATS);
   FX.slash = bnode(FX.root, "Slash", SLASH, 850, SLASHES);
+  FX.frost = bnode(FX.root, "Frost", FROST, 870, 24);
+  { /* lightning: bright jagged bolts, a few segments a jump, re-jagged every frame while they last */
+    t3_material *bm = t3_mesh_standard_material_new(0xffffff);
+    bm->color = (t3_color){ 0.1f, 0.12f, 0.15f };
+    bm->emissive = (t3_color){ 0.65f, 0.85f, 1.0f };
+    bm->emissive_intensity = 22;
+    FX.bolts = imesh("Bolts", t3_box_geometry_new(1, 1, 1, 1, 1, 1), bm, BOLTS * 5, false);
+  }
   for (int i = 0; i < FIRES; i++) {
     FX.fire[i] = pnode(FX.root, "Fire", FIREP, 900 + i);
     FX.fire_haze[i] = pnode(FX.root, "FireHaze", FIREHAZE, 950 + i);
@@ -435,7 +452,7 @@ void fx_events(sim *s) {
     switch (e->kind) {
     case EV_BOOM: blast(at, e->z, e->w > 0.5f), rumble_blast(s, e->x, e->y, e->w > 0.5f); break;
     case EV_HIT:
-      if (FX.frame_hits++ < (lvl >= 2 ? 10 : lvl >= 1 ? 6 : 3)) cw_particles_burst(FX.hit[0], (t3_vec3){ at.x, 0.9f, at.z }, (t3_vec3){ 0, 0, 0 });
+      if (FX.frame_hits++ < (lvl >= 2 ? 10 : lvl >= 1 ? 6 : 3)) cw_particles_burst(e->b == 10 ? FX.frost : FX.hit[0], (t3_vec3){ at.x, 0.9f, at.z }, (t3_vec3){ 0, 0, 0 });
       break;
     case EV_ROCKET:
     case EV_SHOT:
@@ -511,12 +528,20 @@ void fx_events(sim *s) {
     case EV_ACID: case EV_RISE: case EV_BROOD: /* a splash where acid, fire or spores land; bones or a brood stirring */
       if (FX.frame_hits++ < 10) cw_particles_burst(FX.hit[0], (t3_vec3){ at.x, 0.4f, at.z }, (t3_vec3){ 0, 1, 0 });
       break;
-    case EV_ARC: /* lightning: sparks along the jump and a cold flash where it lands */
-      for (int k = 1; k <= 3 && FX.frame_hits < 24; k++, FX.frame_hits++) {
-        float t = (float)k / 3.0f;
-        cw_particles_burst(FX.hit[0], (t3_vec3){ e->x + (e->z - e->x) * t, 1.0f, e->y + (e->w - e->y) * t }, (t3_vec3){ 0, 0, 0 });
-      }
-      if (FX.frame_hits < 26) flash_light((t3_vec3){ e->z, 0.7f, e->w }, 14, 0.55f, 0.8f, 1.0f);
+    case EV_ARC: { /* lightning: a jagged bolt from jump to jump, a flash at each, the water lit where it carries */
+      int k = FX.nbolt++ % BOLTS;
+      FX.bolt[k].x0 = e->x, FX.bolt[k].y0 = e->y, FX.bolt[k].x1 = e->z, FX.bolt[k].y1 = e->w, FX.bolt[k].life = 8;
+      if (FX.frame_hits++ < 24) cw_particles_burst(FX.frost, (t3_vec3){ e->z, 1.0f, e->w }, (t3_vec3){ 0, 0, 0 });
+      flash_light((t3_vec3){ e->z, 0.8f, e->w }, e->b ? 30 : 18, 0.55f, 0.8f, 1.0f);
+      break;
+    }
+    case EV_BOUNCE: /* the wheel glances off: a spray of sparks */
+      cw_particles_burst(FX.hit[0], (t3_vec3){ at.x, 0.9f, at.z }, (t3_vec3){ 0, 0, 0 });
+      flash_light(at, 10, 1, 0.85f, 0.5f);
+      break;
+    case EV_SHATTER: /* a frozen one breaks into shards */
+      cw_particles_burst(FX.frost, (t3_vec3){ at.x, 0.8f, at.z }, (t3_vec3){ 0, 0, 0 });
+      flash_light(at, 10, 0.6f, 0.85f, 1.0f);
       break;
     case EV_LANCE: /* a bone lance thrown */
       cw_particles_burst(FX.muzzle[0], (t3_vec3){ at.x, 1.2f, at.z }, (t3_vec3){ e->z, 0, e->w });
@@ -553,6 +578,29 @@ void fx_tick(const sim *s) {
     float cx, cy, hw, hh;
     sim_team_box(s, &cx, &cy, &hw, &hh);
     FX.focus = (t3_vec3){ cx, 0, cy };
+  }
+  { /* the lightning's bolts: four segments a jump, jagged afresh every frame */
+    int nb = 0;
+    for (int k = 0; k < BOLTS; k++) {
+      if (FX.bolt[k].life <= 0) continue;
+      FX.bolt[k].life--;
+      float x0 = FX.bolt[k].x0, y0 = FX.bolt[k].y0, dx = FX.bolt[k].x1 - x0, dy = FX.bolt[k].y1 - y0, l = sqrtf(dx * dx + dy * dy);
+      if (l < 0.05f) continue;
+      float px = -dy / l, py = dx / l, ax = x0, ay = y0, ah = 1.0f;
+      for (int j = 1; j <= 4; j++) {
+        float t = (float)j / 4.0f, jit = j < 4 ? (rnd() - 0.5f) * 0.9f : 0;
+        float bx = x0 + dx * t + px * jit, by = y0 + dy * t + py * jit, bh = j < 4 ? 0.8f + rnd() * 0.6f : 1.0f;
+        float sx = bx - ax, sy = by - ay, sl = sqrtf(sx * sx + sy * sy + (bh - ah) * (bh - ah));
+        t3_mat4 m;
+        t3_quat q = t3_quat_multiply(t3_quat_from_axis_angle((t3_vec3){ 0, 1, 0 }, cw_atan2(sx, sy)), t3_quat_from_axis_angle((t3_vec3){ 1, 0, 0 }, -asinf((bh - ah) / sl)));
+        float w = 0.06f + 0.05f * (float)FX.bolt[k].life / 8.0f;
+        t3_mat4_compose(&m, (t3_vec3){ (ax + bx) * 0.5f, (ah + bh) * 0.5f, (ay + by) * 0.5f }, q, (t3_vec3){ w, w, sl });
+        t3_instanced_mesh_set_matrix_at(FX.bolts, nb++, &m);
+        ax = bx, ay = by, ah = bh;
+      }
+    }
+    FX.bolts->count = nb;
+    FX.bolts->instance_matrix->version++;
   }
   /* gibs */
   int n = 0;

@@ -27,7 +27,7 @@ int sim_kind_by_name(const char *name); /* -1 when not a kind */
 enum { OK_CRATE, OK_BARREL, OK_WALL, OK_PILLAR, OK_KINDS };
 enum { EV_SHOT, EV_HIT, EV_KILL, EV_BOOM, EV_CRATE, EV_BARREL, EV_WALL, EV_GEM, EV_HURT, EV_LEVEL, EV_WAVE, EV_BOSS, EV_DOWN, EV_ROCKET, EV_POWER, EV_POWER_SPAWN, EV_SWIPE,
        EV_MELT, EV_CLEAR, EV_HATCH, EV_DESCEND, EV_FLOOR,
-       EV_CACHE, EV_ARC, EV_BOSS_TELL, EV_ACID, EV_LANCE, EV_SPIKES, EV_RISE, EV_BROOD }; /* EV_BOSS_TELL: a boss begins an arena attack (a 1) or a summon (a 2);
+       EV_CACHE, EV_ARC, EV_BOUNCE, EV_SHATTER, EV_BOSS_TELL, /* EV_ARC: a lightning jump (x y to z w; b 1 through water); EV_BOUNCE: a wheel glances; EV_SHATTER: a frozen one breaks */ EV_ACID, EV_LANCE, EV_SPIKES, EV_RISE, EV_BROOD }; /* EV_BOSS_TELL: a boss begins an arena attack (a 1) or a summon (a 2);
        EV_ACID: a puddle of acid lands; EV_LANCE: a bone lance flies (z w its velocity); EV_SPIKES: a ring of spikes (z its radius);
        EV_RISE: a pile of bones stands up; EV_BROOD: a skitter dropped by the mother */ /* EV_MELT: one of the horde melting after its boss fell (a its kind); EV_CLEAR: the floor is clear;
        EV_HATCH: the hatch opens; EV_DESCEND: a player stepped in; EV_FLOOR: a new floor starts (a its index) */ /* EV_SWIPE: an enemy's strike (a kind, b 1 when it hit; z, w its facing) */
