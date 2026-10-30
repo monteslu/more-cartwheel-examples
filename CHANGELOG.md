@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.1
+
+- hordeshooter: each floor brings its own gun, found on its power-up spots
+  and in boss caches from that floor down: the arc caster (lightning that
+  jumps between enemies and through water), the stake repeater (pierces
+  three and pins the last), the slag mortar (over cover, leaves burning
+  pools), the seeker swarm (eight homing rockets), the saint's wheel
+  (bounces and returns), the frost lance (slows, freezes, shatters) and the
+  hellfire lance (a ramping beam that sets enemies alight).
+- hordeshooter: the cathedral boss's choir beam stops at columns and pews,
+  and the last boss's legion brings golden elites that drop caches. Bosses
+  no longer get knocked out of reach or stuck behind furniture, and a crash
+  on the deepest floors (the cache gun pool) is fixed.
+
 ## 0.5.0
 
 hordeshooter is an eight-floor descent.
