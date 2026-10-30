@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.1
+
+- hordeshooter: the creatures attack. An enemy next to a player winds up,
+  strikes and recovers (an attack animation per kind: runner claws and
+  lunges, brute smash, bloater slam, boss sweep), facing its target; damage
+  lands on the strike frame and only if the player is still in reach, so a
+  step away dodges it. Slash streaks, blood and pad rumble on a hit. No
+  measurable GPU cost.
+- brawler: Rook in a plain black tee instead of the leather jacket, so he no
+  longer reads like Arthur. The trucker is now the wanker.
+
 ## 0.4.0
 
 All eight games on cartwheel-engine v0.23.1.
