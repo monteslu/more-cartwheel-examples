@@ -1688,7 +1688,7 @@ static void comb_hand(ent *e, float yaw) {
   /* the strokes: 0.25..0.55 and 0.7..1.0 go back; between them the hand returns to the front */
   float st = p < 0.55f ? (p - 0.25f) / 0.3f : p < 0.7f ? 1 - (p - 0.55f) / 0.15f : (p - 0.7f) / 0.3f;
   st = cw_clampf(st, 0, 1), st = st * st * (3 - 2 * st);
-  t3_vec3 l = rig_bone_point(&r->sr, "Head", (t3_vec3){ -0.165f, 0.27f - 0.02f * st, 0.11f - 0.27f * st });
+  t3_vec3 l = rig_bone_point(&r->sr, "Head", (t3_vec3){ -0.2f, 0.24f - 0.02f * st, 0.12f - 0.24f * st });
   float c = cw_cos(yaw), sn = cw_sin(yaw);
   t3_vec3 t = { e->x + c * l.x + sn * l.z, e->y + l.y, e->z - sn * l.x + c * l.z };
   cw_node_set(r->ik[1], "target_position", cw_val_vec3(t.x, t.y, t.z));
@@ -1842,7 +1842,7 @@ static void hold_in_hand(ent *e, rig *r, int kind) {
   t3_vec3 grip = { hp.x + (k1.x - hp.x) * 0.82f + palm.x, hp.y + (k1.y - hp.y) * 0.82f + palm.y, hp.z + (k1.z - hp.z) * 0.82f + palm.z };
   const float h = 0.70710678f;
   t3_quat q = qmul4(hq, (t3_quat){ h, 0, 0, h }); /* the prop's +y onto the hand's +z */
-  if (kind == 6) q = qmul4(q, (t3_quat){ 0, h, 0, h }); /* the comb's teeth face out of the fist, its flat to the hair */
+  if (kind == 6) q = (t3_quat){ 0, 0, 0.3146f, 0.9492f }; /* the comb stands up and out of the fist past the side of his hair, where the street camera sees it (along the hand's own axis it sat inside the hair) */
   t3_vec3 off = qrot4(q, (t3_vec3){ 0, WGRIP7[kind] * (kind == 6 ? 1.6f : 1.0f), 0 });
   t3_vec3 pos = { grip.x - off.x, grip.y - off.y, grip.z - off.z };
   if (g_legacy_hold) { /* the old placement (the hold gate's control): upright, at the hand */

@@ -928,7 +928,7 @@
     "expect": {
       "game.comb": [
         213,
-        41
+        36
       ],
       "game.nan": 0
     },
