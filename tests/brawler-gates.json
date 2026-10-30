@@ -926,7 +926,10 @@
       "game.nan"
     ],
     "expect": {
-      "game.comb": 0,
+      "game.comb": [
+        213,
+        41
+      ],
       "game.nan": 0
     },
     "webgpu": {
@@ -941,7 +944,7 @@
   },
   {
     "name": "brawler-dolly",
-    "note": "The fourth fighter on the pad: Dolly (hero 0 17) grabs a thug standing 1.3 m off, too far for the others (a Rook in the control does not reach him), knees him three times and throws him into two enemies; the thrown body flies further than the others throw. game.bowled, the score and the hash pin it.",
+    "note": "The fourth fighter on the pad: Dolly (hero 0 17) grabs a thug standing 1.3 m off, too far for the others (a Rook in the control does not reach him), knees him three times and throws him into two enemies; the thrown body flies further than the others throw. game.bowled, the score and the hash pin it. Repinned for the polish pass.",
     "app": "brawler_auto",
     "frames": 420,
     "input": "brawler-throw.json",
@@ -974,12 +977,12 @@
       "game.unfair"
     ],
     "expect": {
-      "game.bowled": 0,
+      "game.bowled": 1,
       "game.nan": 0,
       "game.unfair": 0,
-      "game.kills": 0,
-      "game.score": 0,
-      "game.hash": 0
+      "game.kills": 1,
+      "game.score": 670,
+      "game.hash": 3011400347
     },
     "webgpu": {
       "hosts": [
