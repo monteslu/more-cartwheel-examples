@@ -16,6 +16,7 @@
 #include "game.h"
 
 world_t W;
+bool g_legacy_air; /* autopilot debug "legacyair 1": the v0.4.0 airborne stagger without gravity (the controls gate's control) */
 bool g_log_frozen; /* autopilot BRAWLER_LOG: name every enemy that stood frozen a second */
 float g_cam[3] = { 1, 0, 0 };
 bool g_freeze;
@@ -704,6 +705,12 @@ static void arena_clamp(ent *e) {
 static bool common_state(ent *e) {
   switch (e->st) {
   case S_HIT:
+    /* a body hit in the air keeps falling while it reels (B-PT17: a fighter hit by a light blow in mid jump hung in the air
+       for the whole stagger, then walked on at that height: 254 frames off the ground in a test, a normal jump is 46) */
+    if (e->y > 0 && !g_legacy_air) {
+      e->y += e->vy / TPS, e->vy -= 18.0f / TPS;
+      if (e->y <= 0) e->y = 0, e->vy = 0;
+    }
     if (++e->t >= e->stun) { e->st = S_IDLE; e->t = 0; }
     return true;
   case S_FALL:
@@ -820,6 +827,10 @@ static void player_update(int pi, const inputs *in) {
     }
     arena_clamp(e);
     return;
+  }
+  if ((e->st == S_IDLE || e->st == S_WALK) && e->y > 0 && !g_legacy_air) { /* off the ground and not jumping (whatever left it there): fall */
+    e->st = S_JUMP, e->t = 0, e->atk = A_NONE, e->vx = 0;
+    if (e->vy > 0) e->vy = 0;
   }
   switch (e->st) {
   case S_IDLE:

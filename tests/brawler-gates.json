@@ -125,7 +125,7 @@
   },
   {
     "name": "brawler-four",
-    "note": "Four bots (players 4) on stage 2 (docks: guards and throwers from the first waves). Expects repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth (game.overlaps stays 0). Repinned 2026-10-29 (B-PT7..10): reach now grows with body girth, enemies are clamped inside the attack margin, the bots turn to face their target, the wanker joined the waves and boss health was cut; the looks and the blood are presentation and move nothing.",
+    "note": "Four bots (players 4) on stage 2 (docks: guards and throwers from the first waves). Expects repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth (game.overlaps stays 0). Repinned 2026-10-29 (B-PT7..10): reach now grows with body girth, enemies are clamped inside the attack margin, the bots turn to face their target, the wanker joined the waves and boss health was cut; the looks and the blood are presentation and move nothing. Repinned for B-PT17: a fighter hit in mid jump now falls while staggered instead of hanging in the air.",
     "app": "brawler_auto",
     "frames": 1500,
     "startCmds": [
@@ -167,18 +167,18 @@
       "game.overlaps"
     ],
     "expect": {
-      "game.ticks": 1335,
-      "game.kills": 10,
-      "game.score": 12970,
-      "game.hash": 1854930030,
+      "game.ticks": 1378,
+      "game.kills": 8,
+      "game.score": 9870,
+      "game.hash": 1869209153,
       "game.wave": 1,
-      "game.hits": 38,
+      "game.hits": 29,
       "game.first_hit": 285,
       "game.deaths": 0,
       "game.unfair": 0,
       "game.token_leak": 0,
       "game.nan": 0,
-      "game.blocks": 2,
+      "game.blocks": 0,
       "game.overlaps": 0
     },
     "webgpu": {
@@ -585,5 +585,61 @@
       "legacyshake 1"
     ],
     "controlFrames": 900
+  },
+  {
+    "name": "brawler-controls",
+    "note": "B-PT17 (monteslu: \"if he jumps and gets in the air he floats\"). Player 1 is driven by an input script like a person (human 1): steps right, jumps, jump-kicks every other jump, lands, punches a three-hit combo, grabs and knees, forty times over (mostly jumps, a jump kick every fourth, a combo every sixth, a grab every ninth), with two thugs and a punk on him. game.air_max (player 1's longest time off the ground in frames, hit-stop included) stays near a jump's 46 frames and game.jumps counts the jumps. The control (legacyair 1) is v0.4.0's stagger, which had no gravity: a fighter jab-hit in mid jump hung in the air and walked on there (air_max 155 with this script; 78 now), so it fails.",
+    "app": "brawler_auto",
+    "frames": 2300,
+    "input": "brawler-controls.json",
+    "startCmds": [
+      "players 1",
+      "human 1",
+      "spawn 3 1.5 0",
+      "spawn 3 -1.5 0",
+      "spawn 4 2 0.4"
+    ],
+    "fields": [
+      "game.ticks",
+      "game.air_max",
+      "game.jumps",
+      "game.py",
+      "game.state",
+      "game.hp",
+      "game.px",
+      "game.hits",
+      "game.kills",
+      "game.hash",
+      "game.unfair",
+      "game.nan"
+    ],
+    "expect": {
+      "game.unfair": 0,
+      "game.nan": 0,
+      "game.ticks": 2223,
+      "game.air_max": 78,
+      "game.jumps": 21,
+      "game.hits": 9,
+      "game.kills": 5,
+      "game.hash": 820702351
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "vsGl": 0.005,
+      "note": "the same dual cart on romdev and Chromium against native WebGPU (state exact). vsGl 0.5 percent: GL and WebGPU draw the same picture (0.01 percent apart); the brick, asphalt and corrugated detail that differed by 4 to 10.6 percent was the engine lighting normal maps from the wrong side on WebGPU, fixed (findings/gl-webgpu-parity.md)"
+    },
+    "controlStartCmds": [
+      "players 1",
+      "human 1",
+      "spawn 3 1.5 0",
+      "spawn 3 -1.5 0",
+      "spawn 4 2 0.4",
+      "legacyair 1"
+    ],
+    "controlFrames": 2300
   }
 ]

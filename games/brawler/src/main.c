@@ -33,6 +33,7 @@ static cw_voice music;
 static int music_stage = -1;
 static int32_t d_leak, d_ticks, d_players, d_stage, d_phase, d_enemies, d_kills, d_wave, d_score, d_tokens, d_boss_hp;
 static float d_hp[MAXP], d_px[MAXP], d_cam;
+static int32_t d_py[MAXP], d_air_max, d_jumps; /* fighters' height (mm); player 1's longest time off the ground (frames); its jumps */
 static uint32_t d_hash;
 static float d_ex[8][4];
 static int32_t d_states[MAXP];
@@ -171,6 +172,11 @@ static void cmd_freeze(int argc, const char **argv, cw_reply *r) {
   { extern float g_freeze_yaw; g_freeze_yaw = argc > 2 ? (float)atof(argv[2]) : 0.45f; }
   cw_reply_printf(r, "{\"freeze\":%d}", g_freeze);
 }
+/* human 1: player 1 reads its pad as in the real game (the controls gate drives it with an input script); the other seats
+   stay bots. legacyair 1: the old airborne stagger (the control that must fail) */
+static bool g_human;
+static void cmd_human(int argc, const char **argv, cw_reply *r) { g_human = argc > 1 && atoi(argv[1]); cw_reply_printf(r, "{\"human\":%d}", g_human); }
+static void cmd_legacyair(int argc, const char **argv, cw_reply *r) { extern bool g_legacy_air; g_legacy_air = argc > 1 && atoi(argv[1]); cw_reply_printf(r, "{\"legacyair\":%d}", g_legacy_air); }
 /* bots: walk to the nearest enemy and fight; grab, kick and jump now and then */
 static int bot_pick[MAXP] = { -1, -1, -1, -1 };
 /* BRAWLER_INJECT (controls for tools/soak.mjs, which must then fail): "stall" the bots stand still, "leak" one attack
@@ -295,6 +301,9 @@ static void init(void *user) {
   cw_debug_i32("game.rigs", &d_rigs);           /* live characters with a valid rig node (a new game from the title must keep them) */
   cw_debug_field("game.hp", d_hp, CW_DBG_F32, MAXP);
   cw_debug_field("game.px", d_px, CW_DBG_F32, MAXP);
+  cw_debug_field("game.py", d_py, CW_DBG_I32, MAXP);
+  cw_debug_i32("game.air_max", &d_air_max);
+  cw_debug_i32("game.jumps", &d_jumps);
   cw_debug_field("game.state", d_states, CW_DBG_I32, MAXP);
   cw_debug_field("game.enemy", d_ex, CW_DBG_F32, 32);
   cw_debug_f32("game.cam", &d_cam);
@@ -319,6 +328,8 @@ static void init(void *user) {
   { const char *v = getenv("BRAWLER_SEED"); extern uint64_t g_seed_salt; if (v) g_seed_salt = (uint64_t)strtoull(v, NULL, 10); }
   cw_debug_command("spawn", "spawn <3-15> [dx dz]: an enemy near the camera (14: Arthur, 15: the wanker, 16: the creep)", cmd_spawn);
   cw_debug_command("freeze", "freeze <0|1>: enemies and bots hold still", cmd_freeze);
+  cw_debug_command("human", "human <0|1>: player 1 takes the pad (the controls gate)", cmd_human);
+  cw_debug_command("legacyair", "legacyair <0|1>: the old airborne stagger (gate control only)", cmd_legacyair);
   cw_debug_command("botdmg", "botdmg <k>: the bots' damage factor (3 default, 1 real)", cmd_botdmg);
   cw_debug_command("hurtat", "hurtat <tick> <enemy> [knock]: a blow on an enemy at that tick", cmd_hurtat);
   cw_debug_command("legacyshake", "legacyshake <0|1>: the old camera shake (gate control only)", cmd_legacyshake);
@@ -351,6 +362,9 @@ static void publish(void) {
   d_juke[5] = W.boss_active && W.boss_idx >= 0 && W.e[W.boss_idx].used ? W.e[W.boss_idx].juke : 0;
   { extern float face_weight_of_enemy(int i, int t); for (int t = 0; t < 8; t++) d_face[t] = W.boss_active && W.boss_idx >= 0 && W.e[W.boss_idx].used ? face_weight_of_enemy(W.boss_idx, t) : 0; }
   d_boss_hp = (W.boss_active && W.boss_idx >= 0 && W.e[W.boss_idx].used) ? (int)W.e[W.boss_idx].hp : 0;
+  { static int air; for (int i = 0; i < MAXP; i++) d_py[i] = W.p[i].used ? (int)(W.p[i].y * 1000) : 0;
+    if (W.p[0].used && W.p[0].y > 0.001f) { if (air == 0) d_jumps++; air++; } else air = 0;
+    if (air > d_air_max) d_air_max = air; }
   for (int i = 0; i < MAXP; i++) d_hp[i] = W.p[i].used ? W.p[i].hp : 0, d_px[i] = W.p[i].x, d_states[i] = W.p[i].used ? (int)W.p[i].st : -1;
 }
 
@@ -375,7 +389,12 @@ static void sim_step(void) {
   memset(in, 0, sizeof in);
   for (int i = 0; i < W.players && i < MAXP; i++) {
 #ifdef BRAWLER_AUTOPILOT
-    bot(i, &in[i]);
+    if (i == 0 && g_human) {
+      in[i].mx = cw_input_axis(i, a_left, a_right);
+      in[i].mz = cw_input_axis(i, a_up, a_down);
+      in[i].atk = cw_action_just_pressed(i, a_atk), in[i].kick = cw_action_just_pressed(i, a_kick), in[i].jump = cw_action_just_pressed(i, a_jump);
+      in[i].grab = cw_action_just_pressed(i, a_grab), in[i].special = cw_action_just_pressed(i, a_special);
+    } else bot(i, &in[i]);
 #else
     in[i].mx = cw_input_axis(i, a_left, a_right);
     in[i].mz = cw_input_axis(i, a_up, a_down);
