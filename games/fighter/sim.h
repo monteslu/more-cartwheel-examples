@@ -75,6 +75,12 @@ int ft_advantage(const ft_move *m, bool blocked);
 #define FT_DRIFT_JUMP 5
 #define FT_DRIFT_CROUCH 6
 #define FT_BUFFER 6
+/* a fighter knocked into the air takes this many more hits, then falls through the rest: any air hit used to throw it up
+ * again, which let a long enough chain carry on for ever (tests/rulescheck.c, FI9) */
+#define FT_JUGGLE_MAX 3
+/* a long combo runs out of hitstun: from this many hits on, each further hit stuns one frame less than the one before.
+ * Links and chains stop fitting, so no ground loop of moves can go on for ever whatever the table says (FI9) */
+#define FT_STUN_DECAY_FROM 6
 
 enum { S_INTRO, S_IDLE, S_WALKF, S_WALKB, S_CROUCH, S_PREJUMP, S_AIR, S_ATTACK, S_BLOCK, S_HIT, S_AIRHIT, S_KD, S_GETUP,
        S_THROWN, S_DASHF, S_DASHB, S_KO, S_WIN, S_LAND, S_COUNT };
@@ -88,6 +94,7 @@ typedef struct ft_fighter {
   int16_t hp, meter, strength, combo_hits, combo_dmg, lastdmg, guard;
   uint8_t jump_dir, invuln, wins, thrown_by_air;
   uint8_t drift_t, free_t;  /* frames a walk has been held on its own side's diagonal (a d-pad roll keeps walking); frames free in a row */
+  uint8_t juggle;           /* hits taken in the air in this combo */
   cw_cmd_buf cb;
   ft_input in;
 } ft_fighter;

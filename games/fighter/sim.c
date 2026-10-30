@@ -289,6 +289,12 @@ static bool double_tap(const ft_fighter *f, bool forward, int window) {
 }
 
 static void set_state(ft_fighter *f, int s) { f->state = (uint8_t)s; f->t = 0; }
+/* turn to the other fighter (when they stand on the same spot, keep the facing) */
+static void face_other(ft_game *g, int i) {
+  ft_fighter *f = &g->f[i];
+  int dx = g->f[1 - i].x - f->x;
+  if (dx > 0) f->facing = 1; else if (dx < 0) f->facing = -1;
+}
 
 /* ── starting things ─────────────────────────────────────────────────── */
 
@@ -529,8 +535,10 @@ static void control(ft_game *g, int i) {
       if (m->flags & FM_AIR) { set_state(f, S_AIR); f->air_used = 1; }
       else if (hold_g) guard(f, down);
       else {
-        /* a button buffered during recovery comes out on this frame, the first one free */
+        /* a button buffered during recovery comes out on this frame, the first one free, and faces whoever crossed over
+         * during the recovery */
         set_state(f, S_IDLE);
+        face_other(g, i);
         int slot, str;
         bool sp;
         if (choose_move(g, i, -1, &sp, &slot, &str)) start_move(g, i, slot, str);
@@ -566,7 +574,7 @@ static void control(ft_game *g, int i) {
       f->stun--;
       if (hold_g) f->crouch_block = down; /* the guard can change height during block stun */
       if (f->stun) break;
-      f->combo_hits = 0; f->combo_dmg = 0;
+      f->combo_hits = 0; f->combo_dmg = 0; f->juggle = 0;
     }
     /* a free guard: attack out of it, keep it while BLOCK is held, else stand */
     int slot, str;
@@ -577,11 +585,11 @@ static void control(ft_game *g, int i) {
   }
   case S_HIT:
     if (f->stun) f->stun--;
-    if (!f->stun) { f->combo_hits = 0; f->combo_dmg = 0; if (hold_g) guard(f, down); else set_state(f, S_IDLE); }
+    if (!f->stun) { f->combo_hits = 0; f->combo_dmg = 0; f->juggle = 0; if (hold_g) guard(f, down); else set_state(f, S_IDLE); }
     break;
   case S_AIRHIT: break; /* until it lands */
   case S_KD:
-    if (f->t >= 40 && f->hp > 0) { set_state(f, S_GETUP); f->invuln = 24; f->combo_hits = 0; f->combo_dmg = 0; }
+    if (f->t >= 40 && f->hp > 0) { set_state(f, S_GETUP); f->invuln = 24; f->combo_hits = 0; f->combo_dmg = 0; f->juggle = 0; }
     break;
   case S_GETUP:
     if (f->t >= 20) set_state(f, S_IDLE);
@@ -739,13 +747,15 @@ static void resolve(ft_game *g, int a, int dfn, const ft_move *m, bool proj, int
   if (!(m->flags & FM_THROW)) {
     if (m->launch || m->kd || was_air) {
       bool juggle = was_air;
+      if (juggle) D->juggle++;
       set_state(D, S_AIRHIT);
       D->vy = m->launch ? m->launch : (juggle ? 70 : 60);
       D->vx = A->facing * (m->launch ? 14 : 26);
       D->y = D->y < 1 ? 1 : D->y;
     } else {
       set_state(D, S_HIT);
-      D->stun = m->hs;
+      int cut = D->combo_hits > FT_STUN_DECAY_FROM ? D->combo_hits - FT_STUN_DECAY_FROM : 0;
+      D->stun = m->hs > cut ? (uint16_t)(m->hs - cut) : 1;
       D->crouch_block = 0;
       if (D->x <= -FT_WALL + 50 || D->x >= FT_WALL - 50) { if (!proj) A->pvx = -A->facing * m->pushh; }
       else D->pvx = A->facing * m->pushh;
@@ -763,6 +773,7 @@ static bool can_be_hit(const ft_game *g, int d) {
   const ft_fighter *D = &g->f[d];
   if (D->invuln || D->state == S_KD || D->state == S_GETUP || D->state == S_KO || D->state == S_INTRO || D->state == S_WIN) return false;
   if (D->state == S_THROWN) return false;
+  if (D->state == S_AIRHIT && D->juggle >= FT_JUGGLE_MAX) return false; /* it falls: the combo is over */
   if (g->phase == P_KO || g->phase == P_ROUND_END) return false;
   return true;
 }
@@ -849,6 +860,7 @@ static void detect_hits(ft_game *g) {
       }
     }
     if (!P->live || !can_be_hit(g, d)) continue;
+    if (P->hit >= DEF(g, a)->mv[P->mv].hits) continue; /* a super shot flies on through, its hits spent: it used to hit every frame it overlapped */
     if (g->roster->d[g->f[a].def].mv[P->mv].lv == LV_HIGH && low_profile(g, d)) continue; /* a high shot flies over a crouch */
     ft_box hurts[2];
     int nh = ft_hurtboxes(g, d, hurts);

@@ -48,7 +48,7 @@ move bolt 6K name=Step_kick
 move bolt SP1 name=Fireball dmg=60
 move bolt SP2 name=Rising_strike
 move bolt SP3 name=Spin_kick
-move bolt SUPER name=Beam
+move bolt SUPER name=Beam dmg=400
 
 # Grit: slow and huge. A command grab, a shoulder charge, a headbutt, a crushing grab super. Heavier hands.
 fighter grit name=Grit hp=1100 walk=33 back=24 jump=125 jumpfx=36 grav=8 dash=90 dashback=70 sp1=41236P sp2=236K sp3=623P super=236236P
@@ -67,7 +67,7 @@ move grit SUPER name=Crushing_slam su=5 ac=2 rc=50 dmg=400 hs=40 bs=0 hstop=0 in
 
 # Vex: fast and fragile. A low slide, a rising knee, a leap, a flurry super. Quicker hands and feet.
 fighter vex name=Vex hp=1130 walk=46 back=36 jump=140 jumpfx=55 grav=8 dash=150 dashback=110 sp1=236K sp2=623K sp3=214P super=236236X
-move vex 5P name=Snap_jab su=3 ac=2 rc=7 dmg=25 hs=12 bs=9
+move vex 5P name=Snap_jab su=3 ac=2 rc=7 dmg=25 hs=12 bs=8
 move vex 8P name=Hook su=5 ac=3 rc=11 dmg=48 hs=16 bs=11
 move vex 2P name=Shin_tap su=4 ac=2 rc=8 dmg=20 hs=12 bs=9
 move vex 6P name=Dash_elbow su=11 ac=3 rc=16 dmg=62 mv=60 mvto=10
@@ -93,4 +93,4 @@ move mara 6K name=Hop_kick
 move mara SP1 name=Sonic_blade su=12 ac=1 rc=22 dmg=50 proj=150,80,200
 move mara SP2 name=Flip_kick su=6 ac=10 rc=24 dmg=110 inv=5 kd=1 launch=150 mv=0 hit=100,600,800,2000 ext=100,600,750,2000
 move mara SP3 name=Orb su=18 ac=1 rc=30 dmg=45 hs=22 bs=16 hits=1 kd=0 mv=0 flags=special,proj proj=40,200,300 hit=0,0,0,0
-move mara SUPER name=Wide_beam su=14 ac=1 rc=40 dmg=260 inv=14 proj=110,80,500
+move mara SUPER name=Wide_beam su=14 ac=1 rc=40 dmg=400 inv=14 proj=110,80,500
