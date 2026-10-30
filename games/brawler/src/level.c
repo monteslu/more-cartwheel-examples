@@ -240,7 +240,7 @@ static void juke_show(void) {
     juke_mat[k]->emissive = k == 0 ? (t3_color){ 0.7f * r * m, 0.7f * g * m, 0.7f * b * m } : (t3_color){ e0.r * m, e0.g * m, e0.b * m };
   }
   cw_node_set(juke_light, "color", cw_val_color(r, g, b, 1));
-  cw_node_set(juke_light, "energy", cw_val_float(2.5f * lvl));
+  cw_node_set(juke_light, "energy", cw_val_float(1.1f * lvl)); /* (2.5: his theme washed the whole street out, stains and all) */
   if (W.juke.fired != juke_fired_seen) { juke_fired_seen = W.juke.fired; cw_shockwave_fire(juke_wave); }
   if (W.juke.t > 0) { /* the ring on the floor, where the rule says it is */
     float k = 1 - (float)W.juke.t / JUKE_TICKS;

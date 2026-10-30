@@ -609,12 +609,15 @@ function bloodShape(k, u, v) { // u, v in -1..1; returns [coverage 0..1, darknes
     case 2: { d = -1; for (let i = 0; i < 11; i++) { const t = i / 10 + 0.04 * (hash2(i, 2, 231) - 0.5), r = (0.03 + 0.06 * (1 - t)) * (0.6 + 0.8 * hash2(i, 3, 232)); d = Math.max(d, blob(-0.7 + 1.4 * t, 0.12 * Math.sin(t * 3 + 1) + 0.12 * (hash2(i, 4, 233) - 0.5), r * 1.3, r, 230 + i, 0.35)); } break; }
     case 3: { const sx = (u + 0.8) / 1.6; d = 1 - Math.abs(v - 0.1 * Math.sin(u * 2)) / (0.22 * (1 - 0.6 * sx)) + warp(0.5, 7, 240) - 1.4 * smooth(0.75, 1.0, Math.abs(u)); thick = d - 0.6; break; } // a smear dragged along
     case 4: d = drops(22, 250, 0.8, 0.02, 0.07); break;
-    case 5: d = blob(0.05, 0, 0.5, 0.42, 260, 0.45); thick = blob(0.05, 0, 0.32, 0.27, 261, 0.35); break;
+    case 5: d = Math.max(blob(0.03, 0.02, 0.44, 0.34, 260, 0.75), blob(-0.3, 0.26, 0.2, 0.17, 262, 0.6), blob(0.38, -0.2, 0.17, 0.14, 263, 0.6)); thick = blob(0.03, 0.02, 0.34, 0.26, 261, 0.5); break;
     case 6: d = Math.max(drops(60, 270, 0.85, 0.008, 0.03), blob(0, 0, 0.14, 0.12, 271, 0.4)); break; // fine spray
     default: d = Math.max(blob(-0.25, -0.05, 0.3, 0.28, 280, 0.5), blob(0.3, 0.1, 0.24, 0.2, 281, 0.5), drops(8, 282, 0.7, 0.03, 0.06)); thick = blob(-0.25, -0.05, 0.16, 0.15, 283, 0.3);
   }
   d -= 1.6 * smooth(0.7, 0.95, Math.max(Math.abs(u), Math.abs(v))); // nothing reaches the cell border
-  return [smooth(0.0, 0.06, d), clamp(smooth(0.0, 0.3, thick))];
+  // thickness pools unevenly: a wide soft gradient broken by noise (one hard dark disc in the middle read as a stamped donut,
+  // the same on every pool on the street)
+  const tn = fbm((u + 1) * 0.5, (v + 1) * 0.5, 6, 4, 295 + k) * 2 - 1;
+  return [smooth(0.0, 0.06, d), thick === 0 ? 0 : clamp(smooth(-0.25, 0.8, thick + tn * 0.5)) * 0.8];
 }
 
 // ── the set ─────────────────────────────────────────────────────────────
