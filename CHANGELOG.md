@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.3
+
+- coopplatformer: no more fire floating in the air: each flame sits in its
+  own brazier, and the torches are standing braziers (iron cressets in the
+  caves, bronze bowls on pedestals in the ruins).
+- coopplatformer: the moving platform is a carved stone slab, floating wooden
+  ledges are decks on posts (basalt piers over lava), and the grey seam lines
+  across the rock are gone. Cracked blocks use the region's stone, and wall
+  textures no longer repeat every 4 m.
+- coopplatformer: the camera no longer looks under the world from a pit,
+  rescue tags and player markers no longer overlap each other or the panels,
+  and the respawn blink can't hide the whole group.
+
 ## 0.5.2
 
 - hordeshooter: the floor guns you can now see. The arc caster draws jagged
