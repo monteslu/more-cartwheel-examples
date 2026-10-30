@@ -1,0 +1,10 @@
+[scene format=1]
+
+; hordeshooter_levelview's main scene: only the camera; each level brings its own lighting scene
+[node name="View" type="Node3D"]
+
+[node name="Camera" parent="." type="Camera3D"]
+position = vec3(0, 27, 16)
+fov = 38
+near = 0.5
+far = 400

@@ -1,0 +1,127 @@
+// The descent's floor textures (LEVELS.md): one tiling 1024 x 1024 albedo per level, its relief (joints,
+// cracks, ridges) painted into the colour as the yard's floor is, because the floor draws baked and unlit.
+// All generated here from integer hashes (periodic, so the sheet tiles seamlessly).
+//   node tools/gen-level-textures.mjs [out dir (default assets/textures)] [level ...]
+import { writeFileSync, mkdirSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { deflateSync } from 'node:zlib';
+
+const N = 1024;
+const args = process.argv.slice(2);
+const out = resolve(args[0] && !/^[a-z]+$/.test(args[0]) ? args.shift() : 'assets/textures');
+const only = args;
+
+// ── periodic noise ──────────────────────────────────────────────────
+function hash(x, y, s) {
+  let h = (Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263) + Math.imul(s | 0, 2246822519)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+const mod = (a, p) => ((a % p) + p) % p;
+function vnoise(x, y, p, s) { // period p cells
+  const ix = Math.floor(x), iy = Math.floor(y);
+  let fx = x - ix, fy = y - iy;
+  fx = fx * fx * (3 - 2 * fx); fy = fy * fy * (3 - 2 * fy);
+  const h = (a, b) => hash(mod(a, p), mod(b, p), s);
+  const a = h(ix, iy), b = h(ix + 1, iy), c = h(ix, iy + 1), d = h(ix + 1, iy + 1);
+  return (a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + d * fx) * fy;
+}
+function fbm(u, v, base, oct, s) { // u, v in 0..1 over the tile
+  let t = 0, a = 0.5, f = base, n = 0;
+  for (let o = 0; o < oct; o++) { t += a * vnoise(u * f, v * f, f, s + o * 31); n += a; a *= 0.5; f *= 2; }
+  return t / n;
+}
+// periodic Voronoi: distance to the nearest and second nearest seed, the nearest seed's id
+function voronoi(u, v, cells, s, jitter = 0.85) {
+  const x = u * cells, y = v * cells, ix = Math.floor(x), iy = Math.floor(y);
+  let d1 = 9, d2 = 9, id = 0;
+  for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) {
+    const cx = ix + i, cy = iy + j;
+    const px = cx + 0.5 + (hash(mod(cx, cells), mod(cy, cells), s) - 0.5) * jitter;
+    const py = cy + 0.5 + (hash(mod(cx, cells), mod(cy, cells), s + 7) - 0.5) * jitter;
+    const d = Math.hypot(x - px, y - py);
+    if (d < d1) { d2 = d1; d1 = d; id = mod(cx, cells) * 977 + mod(cy, cells); } else if (d < d2) d2 = d;
+  }
+  return { d1, d2, edge: d2 - d1, id };
+}
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const mix = (a, b, t) => a + (b - a) * t;
+const mix3 = (a, b, t) => [mix(a[0], b[0], t), mix(a[1], b[1], t), mix(a[2], b[2], t)];
+const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+
+// ── the floors (each returns sRGB 0..1 for u, v in the tile) ─────────
+const FLOORS = {
+  // concrete pavers in a drain junction: 1 m slabs with silted joints, wet dark patches, algae, rust stains
+  sluice(u, v) {
+    const tiles = 8; // the tile is 8 m: 1 m slabs
+    const x = u * tiles, y = v * tiles;
+    const row = Math.floor(y), off = row % 2 ? 0.5 : 0;
+    const sx = Math.floor(x + off), fx = x + off - sx, fy = y - row;
+    const sid = hash(mod(sx, tiles), row, 3);
+    const joint = Math.min(fx, 1 - fx, fy, 1 - fy);
+    const groove = 1 - smooth(0.0, 0.03, joint);
+    const base = 0.42 + 0.08 * (sid - 0.5) + 0.12 * (fbm(u, v, 16, 4, 11) - 0.5);
+    let c = [base * 0.93, base * 0.96, base * 0.92];
+    const wet = smooth(0.5, 0.68, fbm(u, v, 4, 4, 21));
+    c = mix3(c, [c[0] * 0.45, c[1] * 0.5, c[2] * 0.5], wet);
+    const algae = smooth(0.58, 0.75, fbm(u, v, 6, 5, 33)) * (0.5 + groove * 0.5);
+    c = mix3(c, [0.16, 0.22, 0.12], algae * 0.75);
+    const rust = smooth(0.7, 0.85, fbm(u, v, 10, 3, 41));
+    c = mix3(c, [0.3, 0.21, 0.15], rust * 0.3);
+    // the relief, lit from the north-west (the grating's light): joints dark, slab edges catching
+    const lit = fx < 0.04 || fy < 0.04 ? 1.12 : fx > 0.96 || fy > 0.96 ? 0.8 : 1;
+    c = c.map((k) => k * (1 - 0.65 * groove) * lit);
+    const crack = smooth(0.012, 0.0, voronoi(u, v, 18, 51, 1).edge) * smooth(0.55, 0.7, fbm(u, v, 8, 3, 55));
+    return c.map((k) => k * (1 - 0.55 * crack));
+  },
+  // irregular flagstones under bone dust: warm grey and ochre stones, dark mortar, cracks, scattered bone
+  // chips, soot near nothing in particular
+  ossuary(u, v) {
+    const vo = voronoi(u, v, 9, 61, 0.9);
+    const sid = (vo.id * 2654435761 >>> 0) / 4294967296;
+    const mortar = 1 - smooth(0.0, 0.06, vo.edge);
+    const tone = 0.36 + 0.1 * (sid - 0.5) + 0.14 * (fbm(u, v, 12, 5, 71) - 0.5);
+    let c = mix3([tone * 1.02, tone * 0.95, tone * 0.84], [tone * 1.1, tone * 0.92, tone * 0.66], hash(vo.id, 1, 73) * 0.6);
+    const worn = smooth(0.35, 0.05, vo.d1) * 0.12; // stone centres worn pale by feet
+    c = c.map((k) => k * (1 + worn));
+    const dust = smooth(0.55, 0.72, fbm(u, v, 5, 5, 81));
+    c = mix3(c, [0.62, 0.57, 0.46], dust * 0.55);
+    const chips = hash(Math.floor(u * 700), Math.floor(v * 700), 85) > 0.985 && dust > 0.2 ? 1 : 0;
+    c = mix3(c, [0.8, 0.75, 0.62], chips * 0.7);
+    const soot = smooth(0.62, 0.8, fbm(u, v, 3, 4, 91));
+    c = mix3(c, [0.08, 0.07, 0.06], soot * 0.5);
+    const crack = smooth(0.01, 0.0, voronoi(u, v, 30, 95, 1).edge) * smooth(0.5, 0.65, fbm(u, v, 7, 3, 97));
+    // the relief: mortar sunk and dark, each stone's north-west edge lit by the candles' general direction
+    c = c.map((k) => k * (1 - 0.7 * mortar) * (1 - 0.5 * crack));
+    return c;
+  },
+};
+
+// ── PNG (RGB, 8 bit) ────────────────────────────────────────────────
+const CRC = new Uint32Array(256).map((_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+function crc32(buf) { let c = 0xffffffff; for (const b of buf) c = CRC[(c ^ b) & 255] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; }
+function chunk(type, data) {
+  const len = Buffer.alloc(4); len.writeUInt32BE(data.length);
+  const td = Buffer.concat([Buffer.from(type, 'latin1'), data]);
+  const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(td));
+  return Buffer.concat([len, td, crc]);
+}
+function png(w, h, rgb) {
+  const raw = Buffer.alloc((w * 3 + 1) * h);
+  for (let y = 0; y < h; y++) { raw[y * (w * 3 + 1)] = 0; rgb.copy(raw, y * (w * 3 + 1) + 1, y * w * 3, (y + 1) * w * 3); }
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 2;
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw, { level: 9 })), chunk('IEND', Buffer.alloc(0))]);
+}
+
+mkdirSync(out, { recursive: true });
+for (const [name, fn] of Object.entries(FLOORS)) {
+  if (only.length && !only.includes(name)) continue;
+  const px = Buffer.alloc(N * N * 3);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const c = fn((x + 0.5) / N, (y + 0.5) / N);
+    for (let k = 0; k < 3; k++) px[(y * N + x) * 3 + k] = Math.round(clamp(c[k]) * 255);
+  }
+  const file = resolve(out, `${name}_floor.png`);
+  writeFileSync(file, png(N, N, px));
+  console.log('wrote', file);
+}
