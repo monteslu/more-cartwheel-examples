@@ -71,6 +71,7 @@ class Level {
     L.push(`boss ${this.boss} ${this.bossName}`);
     L.push(`scene scenes/${this.id}.cwscene`);
     L.push(`lightmap lightmaps/${this.id}.cwlm`);
+    if (this.voidAt) L.push(`void ${f(this.voidAt)}`);
     L.push(`floor ${this.floor.tex} ${f(this.floor.tile)} ${f(this.floor.rough)} ${this.floor.tint.map(f).join(' ')}`);
     for (const p of this.props) L.push(`prop ${p.name} ${p.file} ${p.tx} ${f(p.rep)} ${f(p.rough)} ${f(p.metal)} ${p.solid}`);
     for (const o of this.obstacles) L.push(`obstacle ${o.kind} ${o.file}`);
@@ -289,13 +290,311 @@ function ossuary() {
   return L;
 }
 
-const LEVELS = { sluice, ossuary };
+// ── level 4: the Foundry ────────────────────────────────────────────
+function foundry() {
+  const L = new Level('foundry', 'The Foundry');
+  const r = rng(404);
+  L.roster = ['runner', 'brute', 'bloater', 'skitter', 'bonewalker', 'slagborn'];
+  L.waves = ['runner:60 slagborn:40', 'brute:40 slagborn:60', 'bonewalker:30 skitter:30 slagborn:40', 'bloater:20 runner:30 slagborn:50', 'boss slagborn:50 brute:30 bonewalker:20'];
+  L.monster = 'models/foundry_slagborn.cwchar';
+  L.boss = 'models/foundry_boss.cwchar'; L.bossName = 'Anvilgrave, the Foundry Lord';
+  L.door = 'models/foundry_door.cwchar';
+  L.floor = { tex: 'textures/foundry_floor.png', tile: 8, rough: 0.6, tint: [1.0, 0.96, 0.93] };
+  const wall = L.prop('wall', 'models/foundry_wall.cwchar', 'armor', 1, 0.7, 0.4, 0);
+  const crucible = L.prop('crucible', 'models/foundry_crucible.cwchar', 'armor', 1, 0.6, 0.6, 1);
+  const cart = L.prop('cart', 'models/foundry_cart.cwchar', 'armor', 1, 0.6, 0.6, 4);
+  const ingots = L.prop('ingots', 'models/foundry_ingots.cwchar', 'armor', 1, 0.55, 0.7, 3);
+  const vent = L.prop('vent', 'models/foundry_vent.cwchar', 'armor', 1, 0.6, 0.6, 0);
+  const lamp = L.prop('lamp', 'models/foundry_lamp.cwchar', 'armor', 1, 0.6, 0.6, 0);
+  L.obstacles = [{ kind: 'crate', file: 'models/foundry_ingots.cwchar' }, { kind: 'barrel', file: 'models/foundry_cart.cwchar' }, { kind: 'pillar', file: 'models/foundry_crucible.cwchar' }];
+  const gapAt = (side, a) => (side < 2 ? Math.abs(a) < 2.5 : Math.abs(Math.abs(a) - 8) < 2.5);
+  L.ring(wall, gapAt);
+  L.spawns = [[0, -38, 2], [0, 38, 2], [-38, -8, 2], [-38, 8, 2], [38, -8, 2], [38, 8, 2]];
+  // molten channels: north to south at x = +-20 (z -18..18), short ones across the north and south (x -10..10)
+  L.hazards.push({ kind: 'molten', x: -20, z: 0, hx: 1.2, hz: 18 }, { kind: 'molten', x: 20, z: 0, hx: 1.2, hz: 18 },
+    { kind: 'molten', x: 0, z: -28, hx: 10, hz: 1.2 }, { kind: 'molten', x: 0, z: 28, hx: 10, hz: 1.2 });
+  // crucible blocks in the four corners, iron pillars (the crucible on its own) by the hatch's approaches
+  for (const [x, z] of [[-28, -28], [28, -28], [-28, 28], [28, 28], [-6, -18], [6, -18], [-6, 18], [6, 18], [-12, 0], [12, 0]]) L.put(crucible, x, z, 0);
+  // vents beside the channels (scenery), their glow drawn
+  for (const z of [-14, -4, 6, 16]) { L.put(vent, -23, z, 0); L.put(vent, 23, z + 2, 0); }
+  const wet = (x, z) => L.hazards.some((h) => Math.abs(x - h.x) < h.hx + 1.5 && Math.abs(z - h.z) < h.hz + 1.5);
+  const busy = (x, z, rad) => L.at.some((a) => a.solid && Math.abs(x - a.x) < a.hx + rad && Math.abs(z - a.z) < a.hz + rad);
+  let nc = 0, nb = 0, tries = 0;
+  while ((nc < 18 || nb < 12) && tries++ < 5000) {
+    const x = (r() - 0.5) * 2 * (HALF - 3), z = (r() - 0.5) * 2 * (HALF - 3);
+    if (Math.hypot(x, z) < 7 || wet(x, z) || busy(x, z, 1.8) || (Math.abs(x) < 4 && Math.abs(z) > 30) || (Math.abs(z - 8) < 4 && Math.abs(x) > 30) || (Math.abs(z + 8) < 4 && Math.abs(x) > 30)) continue;
+    if (nc < 18) { L.put(ingots, x, z, r() * PI); nc++; } else { L.put(cart, x, z, r() * PI); nb++; }
+  }
+  // work lamps on gantry posts along the walls (bake-only pools, smoky blue-white high up)
+  for (const [x, z, yaw] of [[-24, -W + 0.6, 0], [24, -W + 0.6, 0], [-24, W - 0.6, PI], [24, W - 0.6, PI], [-W + 0.6, -22, PI / 2], [-W + 0.6, 22, PI / 2], [W - 0.6, -22, -PI / 2], [W - 0.6, 22, -PI / 2]]) {
+    L.put(lamp, x, z, yaw);
+    const fx = Math.sin(yaw), fz = Math.cos(yaw);
+    L.light('spot', [x + fx * 1.35, 3.9, z + fz * 1.35], [x + fx * 8, 0, z + fz * 8], [1.0, 0.82, 0.6], 380, 22, 0.8, 0.7, 1);
+  }
+  // the molten channels light the forge: a row of orange omnis along each, low; the crucibles' lips
+  for (const h of L.hazards) {
+    const n = Math.max(2, Math.round(Math.max(h.hx, h.hz) / 4));
+    for (let k = 0; k < n; k++) {
+      const t = (k + 0.5) / n * 2 - 1;
+      L.light('omni', [h.x + (h.hx > h.hz ? t * h.hx : 0), 0.9, h.z + (h.hz > h.hx ? t * h.hz : 0)], [0, 0, 0], [1.0, 0.42, 0.1], 260, 11, 0, 0, 1);
+    }
+  }
+  for (const a of L.at.filter((q) => q.name === crucible)) L.light('omni', [a.x, 3.0, a.z], [0, 0, 0], [1.0, 0.5, 0.15], 320, 12, 0, 0, 1);
+  L.pickups = [[-34, -34], [34, -34], [-34, 34], [34, 34], [0, -22], [0, 22], [-30, 0], [30, 0], [-16, -30], [16, 30]];
+  L.scene = {
+    title: 'The Foundry', keyNote: 'a smoky blue light from vents high up; the molten channels (baked) are the real light',
+    sun: { dir: [10, 30, 18], color: [0.5, 0.6, 0.8], energy: 0.6, fog: 0.8 },
+    rim: { dir: [-20, 5, -22], color: [1.0, 0.5, 0.18], energy: 1.3 },
+    bg: [0.012, 0.008, 0.006], ambient: [0.35, 0.3, 0.32], ambientEnergy: 0.15, sky: [0.3, 0.3, 0.38], ground: [0.12, 0.05, 0.02], hemi: 0.3,
+    fog: [0.09, 0.05, 0.03], fogDensity: 0.012, exposure: 1.25, bloom: 0.22, vignette: 0.48,
+  };
+  return L;
+}
+
+// ── level 5: the Mycel Grotto ───────────────────────────────────────
+function grotto() {
+  const L = new Level('grotto', 'The Mycel Grotto');
+  const r = rng(505);
+  L.roster = ['runner', 'brute', 'bloater', 'skitter', 'bonewalker', 'slagborn', 'sporeling'];
+  L.waves = ['skitter:60 sporeling:40', 'runner:40 sporeling:60', 'brute:30 slagborn:30 sporeling:40', 'skitter:40 bloater:20 sporeling:40', 'bonewalker:30 runner:30 sporeling:40', 'boss sporeling:50 skitter:30 brute:20'];
+  L.monster = 'models/grotto_sporeling.cwchar';
+  L.boss = 'models/grotto_boss.cwchar'; L.bossName = 'Mother Mycel';
+  L.door = 'models/grotto_door.cwchar';
+  L.floor = { tex: 'textures/grotto_floor.png', tile: 10, rough: 0.9, tint: [0.95, 0.95, 1.0] };
+  const rock = L.prop('rock', 'models/grotto_rock.cwchar', 'pillar', 1, 0.9, 0, 0);
+  const crag = L.prop('crag', 'models/grotto_rock.cwchar', 'pillar', 1, 0.9, 0, 1);
+  const trunk = L.prop('trunk', 'models/grotto_trunk.cwchar', 'hide', 1, 0.8, 0, 1);
+  const cluster = L.prop('cluster', 'models/grotto_cluster.cwchar', 'hide', 1, 0.7, 0, 3);
+  const pod = L.prop('pod', 'models/grotto_pod.cwchar', 'hide', 1, 0.6, 0, 4);
+  const roots = L.prop('roots', 'models/grotto_roots.cwchar', 'hide', 1, 0.85, 0, 0);
+  L.obstacles = [{ kind: 'crate', file: 'models/grotto_cluster.cwchar' }, { kind: 'barrel', file: 'models/grotto_pod.cwchar' }, { kind: 'pillar', file: 'models/grotto_trunk.cwchar' }];
+  // the cave edge: rock round the rim (gaps north and south at x 0, east and west at z +-12), root curtains in
+  // front of some of it
+  const gapAt = (side, a) => (side < 2 ? Math.abs(a) < 2.5 : Math.abs(Math.abs(a) - 12) < 2.5);
+  L.ring(rock, gapAt);
+  L.spawns = [[0, -38, 2], [0, 38, 2], [-38, -12, 2], [-38, 12, 2], [38, -12, 2], [38, 12, 2]];
+  // the rock bulging into the arena (solid crags), turned each its own way
+  for (const [x, z, yaw] of [[-34, -20, PI / 2], [-34, 20, PI / 2 + 0.2], [34, -20, -PI / 2], [34, 22, -PI / 2 - 0.15], [-14, -34, 0.1], [14, -34, -0.12], [-14, 34, PI], [14, 34, PI + 0.1], [-34, -2, PI / 2 - 0.1], [34, 2, -PI / 2 + 0.1]])
+    L.put(crag, x, z, yaw);
+  for (const [x, z] of [[-28, -28], [28, -28], [-28, 28], [28, 28]]) L.put(trunk, x, z, r() * PI);
+  for (const [x, z] of [[-10, -14], [10, 14], [-18, 6], [18, -6]]) L.put(trunk, x, z, r() * PI);
+  for (const [x, z, yaw] of [[-24, -W + 1.3, 0], [24, -W + 1.3, 0], [-24, W - 1.3, PI], [24, W - 1.3, PI], [-W + 1.3, 28, PI / 2], [W - 1.3, -28, -PI / 2]]) L.put(roots, x, z, yaw);
+  // spore pools (they slow), healing caps at the shrines
+  L.hazards.push({ kind: 'spore', x: -22, z: -12, hx: 3, hz: 4 }, { kind: 'spore', x: 22, z: 12, hx: 3, hz: 4 }, { kind: 'spore', x: -8, z: 26, hx: 4, hz: 2.5 },
+    { kind: 'spore', x: 8, z: -26, hx: 4, hz: 2.5 }, { kind: 'spore', x: -26, z: 16, hx: 2.5, hz: 3 }, { kind: 'spore', x: 26, z: -16, hx: 2.5, hz: 3 });
+  L.shrines = [[0, -14], [0, 14]];
+  const wet = (x, z) => L.hazards.some((h) => Math.abs(x - h.x) < h.hx + 1.5 && Math.abs(z - h.z) < h.hz + 1.5);
+  const busy = (x, z, rad) => L.at.some((a) => a.solid && Math.abs(x - a.x) < a.hx + rad && Math.abs(z - a.z) < a.hz + rad);
+  let nc = 0, nb = 0, tries = 0;
+  while ((nc < 22 || nb < 12) && tries++ < 5000) {
+    const x = (r() - 0.5) * 2 * (HALF - 4), z = (r() - 0.5) * 2 * (HALF - 4);
+    if (Math.hypot(x, z) < 7 || wet(x, z) || busy(x, z, 1.8) || L.shrines.some(([sx, sz]) => Math.hypot(x - sx, z - sz) < 3)) continue;
+    if (nc < 22) { L.put(cluster, x, z, r() * 2 * PI); nc++; } else { L.put(pod, x, z, r() * 2 * PI); nb++; }
+  }
+  // bioluminescence: cyan under every trunk's cap, green over the pools, violet fill
+  for (const a of L.at.filter((q) => q.name === trunk)) L.light('omni', [a.x, 4.6, a.z], [0, 0, 0], [0.3, 1.0, 0.9], 420, 16, 0, 0, 1);
+  for (const h of L.hazards) L.light('omni', [h.x, 1.2, h.z], [0, 0, 0], [0.45, 1.0, 0.35], 160, 9, 0, 0, 1);
+  for (const [x, z] of L.shrines) L.light('omni', [x, 1.0, z], [0, 0, 0], [0.4, 1.0, 0.6], 120, 7, 0, 0, 1);
+  L.light('omni', [0, 9, 0], [0, 0, 0], [0.6, 0.35, 0.9], 300, 30, 0, 0, 1);
+  L.pickups = [[-30, -30], [30, -30], [-30, 30], [30, 30], [0, -24], [0, 24], [-24, 0], [24, 0], [-14, 24], [14, -24]];
+  L.scene = {
+    title: 'The Mycel Grotto', keyNote: 'barely any: a faint violet from the cave roof; the fungus (baked) lights the cave',
+    sun: { dir: [-12, 30, -10], color: [0.55, 0.42, 0.85], energy: 0.35, fog: 0.8 },
+    rim: { dir: [20, 6, 20], color: [0.3, 1.0, 0.85], energy: 1.2 },
+    bg: [0.01, 0.006, 0.014], ambient: [0.35, 0.28, 0.5], ambientEnergy: 0.14, sky: [0.3, 0.22, 0.45], ground: [0.03, 0.06, 0.05], hemi: 0.25,
+    fog: [0.06, 0.04, 0.09], fogDensity: 0.018, exposure: 1.3, bloom: 0.26, vignette: 0.5,
+  };
+  return L;
+}
+
+// ── level 6: the Sunken Cathedral ───────────────────────────────────
+function cathedral() {
+  const L = new Level('cathedral', 'The Sunken Cathedral');
+  const r = rng(606);
+  L.roster = ['runner', 'brute', 'bloater', 'skitter', 'bonewalker', 'slagborn', 'sporeling', 'penitent'];
+  L.waves = ['bonewalker:60 penitent:40', 'runner:40 penitent:60', 'slagborn:30 sporeling:30 penitent:40', 'brute:30 skitter:30 penitent:40', 'bloater:20 bonewalker:30 penitent:50', 'boss penitent:50 bonewalker:30 brute:20'];
+  L.monster = 'models/cathedral_penitent.cwchar';
+  L.boss = 'models/cathedral_boss.cwchar'; L.bossName = 'Seraphel, the Choir Bishop';
+  L.door = 'models/cathedral_door.cwchar';
+  L.floor = { tex: 'textures/cathedral_floor.png', tile: 8, rough: 0.35, tint: [1.0, 0.95, 0.95] };
+  const wall = L.prop('wall', 'models/cathedral_wall.cwchar', 'pillar', 1, 0.8, 0, 0);
+  const column = L.prop('column', 'models/cathedral_column.cwchar', 'pillar', 1, 0.75, 0, 1);
+  const pews = L.prop('pews', 'models/cathedral_pews.cwchar', 'hide', 1, 0.8, 0, 2);
+  const shrine = L.prop('shrine', 'models/cathedral_shrine.cwchar', 'pillar', 1, 0.6, 0.3, 1);
+  const cand = L.prop('candelabra', 'models/cathedral_candelabra.cwchar', 'armor', 1, 0.6, 0.6, 0);
+  const reliq = L.prop('reliquary', 'models/cathedral_reliquary.cwchar', 'hide', 1, 0.6, 0.3, 3);
+  const censer = L.prop('censer', 'models/cathedral_censer.cwchar', 'armor', 1, 0.5, 0.6, 4);
+  L.obstacles = [{ kind: 'crate', file: 'models/cathedral_reliquary.cwchar' }, { kind: 'barrel', file: 'models/cathedral_censer.cwchar' }, { kind: 'wall', file: 'models/cathedral_pews.cwchar' }, { kind: 'pillar', file: 'models/cathedral_column.cwchar' }];
+  // the nave's walls with their windows; side doors east and west at z +-12, three south doors
+  const gapAt = (side, a) => (side === 0 ? false : side === 1 ? [-16, 0, 16].some((g) => Math.abs(a - g) < 2.5) : Math.abs(Math.abs(a) - 12) < 2.5);
+  L.ring(wall, gapAt);
+  L.spawns = [[-38, -12, 2], [-38, 12, 2], [38, -12, 2], [38, 12, 2], [-16, 38, 2], [0, 38, 2], [16, 38, 2]];
+  // two rows of clustered columns each side of the nave (12 m and 30 m out), pews heaped between them
+  for (const s of [-1, 1]) {
+    for (const z of [-30, -18, -6, 6, 18, 30]) L.put(column, s * 12, z, 0);
+    for (const z of [-24, -8, 8, 24]) L.put(column, s * 30, z, 0);
+    for (const z of [-26, -16, 16, 26]) { L.put(pews, s * 19, z, r() * 0.06 - 0.03); L.put(pews, s * 23, z + 0.4, r() * 0.06 - 0.03); }
+    for (const z of [-6, 6]) L.put(pews, s * 21, z, PI + r() * 0.06);
+  }
+  // the shrines at the nave's ends and candelabra by the inner columns
+  L.put(shrine, 0, -28, 0); L.put(shrine, 0, 28, PI);
+  L.shrines = [[0, -26], [0, 26]];
+  for (const s of [-1, 1]) for (const z of [-24, -12, 0, 12, 24]) L.put(cand, s * 9.5, z, 0);
+  const busy = (x, z, rad) => L.at.some((a) => a.solid && Math.abs(x - a.x) < a.hx + rad && Math.abs(z - a.z) < a.hz + rad);
+  let nc = 0, nb = 0, tries = 0;
+  while ((nc < 16 || nb < 10) && tries++ < 5000) {
+    const x = (r() - 0.5) * 2 * (HALF - 3), z = (r() - 0.5) * 2 * (HALF - 3);
+    if (Math.hypot(x, z) < 7 || busy(x, z, 1.8) || Math.abs(x) < 4 && Math.abs(z) > 22 || L.at.some((a) => a.name === cand && Math.hypot(x - a.x, z - a.z) < 1.5)) continue;
+    if (nc < 16) { L.put(reliq, x, z, r() * PI); nc++; } else { L.put(censer, x, z, r() * PI); nb++; }
+  }
+  // the light: red and violet shafts through the windows (bake-only spots from outside, falling across the
+  // nave), candelabra pools of pale gold, the shrines' glow
+  for (const s of [-1, 1]) for (const z of [-26, -10, 6, 22]) {
+    const red = (z / 16 + (s > 0 ? 1 : 0)) % 2 < 1;
+    L.light('spot', [s * 46, 14, z], [s * 14, 0, z + 3], red ? [1.0, 0.18, 0.12] : [0.55, 0.2, 1.0], 5200, 70, 0.18, 0.5, 1);
+  }
+  for (const a of L.at.filter((q) => q.name === cand)) L.light('omni', [a.x, 2.3, a.z], [0, 0, 0], [1.0, 0.78, 0.45], 110, 9, 0, 0, 1);
+  for (const [x, z] of L.shrines) L.light('omni', [x, 1.6, z], [0, 0, 0], [1.0, 0.75, 0.4], 200, 10, 0, 0, 1);
+  L.pickups = [[-34, -34], [34, -34], [-34, 34], [34, 34], [-6, -20], [6, 20], [-26, 0], [26, 0], [-16, -34], [16, 34]];
+  L.scene = {
+    title: 'The Sunken Cathedral', keyNote: 'a deep red light from beyond the windows, low from the west',
+    sun: { dir: [-30, 14, 6], color: [0.9, 0.2, 0.18], energy: 0.7, fog: 1.5 },
+    rim: { dir: [26, 8, -14], color: [0.55, 0.3, 1.0], energy: 1.1 },
+    bg: [0.012, 0.005, 0.008], ambient: [0.45, 0.25, 0.35], ambientEnergy: 0.12, sky: [0.4, 0.2, 0.3], ground: [0.06, 0.03, 0.03], hemi: 0.25,
+    fog: [0.08, 0.02, 0.03], fogDensity: 0.016, exposure: 1.3, bloom: 0.24, vignette: 0.52,
+  };
+  return L;
+}
+
+// ── level 7: the Obsidian Rift ──────────────────────────────────────
+function rift() {
+  const L = new Level('rift', 'The Obsidian Rift');
+  const r = rng(707);
+  L.roster = ['runner', 'brute', 'bloater', 'skitter', 'bonewalker', 'slagborn', 'sporeling', 'penitent', 'gargoyle'];
+  L.waves = ['penitent:60 gargoyle:40', 'skitter:40 gargoyle:60', 'slagborn:30 bonewalker:30 gargoyle:40', 'sporeling:30 brute:30 gargoyle:40', 'runner:40 bloater:20 gargoyle:40', 'boss gargoyle:50 penitent:30 slagborn:20'];
+  L.monster = 'models/rift_gargoyle.cwchar';
+  L.boss = 'models/rift_boss.cwchar'; L.bossName = 'Khar-Vaal, the Shattered Warden';
+  L.door = 'models/rift_door.cwchar';
+  L.floor = { tex: 'textures/rift_floor.png', tile: 12, rough: 0.12, tint: [0.95, 0.95, 1.05] };
+  L.voidAt = 37; // the plateau: an octagon, its far half-width 37 m; the floor beyond it falls into the void
+  const rim = L.prop('rim', 'models/rift_rim.cwchar', 'pillar', 1, 0.7, 0, 0);
+  const pillar = L.prop('pillar', 'models/rift_pillar.cwchar', 'pillar', 1, 0.6, 0, 1);
+  const shards = L.prop('shards', 'models/rift_shards.cwchar', 'armor', 1, 0.15, 0.2, 3);
+  const urn = L.prop('urn', 'models/rift_urn.cwchar', 'armor', 1, 0.15, 0.2, 4);
+  const brazier = L.prop('brazier', 'models/rift_brazier.cwchar', 'hide', 1, 0.7, 0, 1);
+  L.obstacles = [{ kind: 'crate', file: 'models/rift_shards.cwchar' }, { kind: 'barrel', file: 'models/rift_urn.cwchar' }, { kind: 'pillar', file: 'models/rift_pillar.cwchar' }];
+  // the rim: an octagon of broken basalt, its faces 37 m out, gaps at the middle of the north and south faces
+  // and the east and west faces' ends, the rubble facing in
+  const R = 37, oct = [];
+  for (let k = 0; k < 8; k++) { const a = k * PI / 4 + PI / 8; oct.push([R / Math.cos(PI / 8) * Math.sin(a), -R / Math.cos(PI / 8) * Math.cos(a)]); }
+  for (let k = 0; k < 8; k++) {
+    const [x0, z0] = oct[k], [x1, z1] = oct[(k + 1) % 8];
+    const len = Math.hypot(x1 - x0, z1 - z0), n = Math.round(len / 4);
+    const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2, yaw = Math.atan2(-mx, -mz); // facing the middle
+    for (let j = 0; j < n; j++) {
+      const t = (j + 0.5) / n, x = x0 + (x1 - x0) * t, z = z0 + (z1 - z0) * t;
+      if ((Math.abs(x) < 3 && Math.abs(z) > 30) || (Math.abs(Math.abs(z) - 10) < 3 && Math.abs(x) > 30)) continue; // the gaps
+      L.put(rim, x, z, yaw);
+    }
+  }
+  L.spawns = [[0, -36, 2], [0, 36, 2], [-36, -10, 2], [-36, 10, 2], [36, -10, 2], [36, 10, 2]];
+  for (const [x, z] of [[-24, -24], [24, -24], [-24, 24], [24, 24], [-28, -6], [28, -6], [-28, 6], [28, 6], [-6, -14], [6, -14], [-6, 14], [6, 14]]) L.put(pillar, x, z, r() * PI);
+  for (const [x, z] of [[-20, -30], [20, -30], [-20, 30], [20, 30], [-30, 0], [30, 0]]) L.put(brazier, x, z, 0);
+  // crumbling tiles (the sim breaks them from wave 3): a ring of patches
+  for (const [x, z] of [[-18, -18], [18, -18], [-18, 18], [18, 18], [-14, 0], [14, 0], [0, -22], [0, 22]]) L.hazards.push({ kind: 'crumble', x, z, hx: 3, hz: 3 });
+  const busy = (x, z, rad) => L.at.some((a) => a.solid && Math.abs(x - a.x) < a.hx + rad && Math.abs(z - a.z) < a.hz + rad);
+  const onPlateau = (x, z) => Math.max(Math.abs(x), Math.abs(z), (Math.abs(x) + Math.abs(z)) / Math.SQRT2) < R - 4;
+  const crumbly = (x, z) => L.hazards.some((h) => Math.abs(x - h.x) < h.hx + 1 && Math.abs(z - h.z) < h.hz + 1);
+  let nc = 0, nb = 0, tries = 0;
+  while ((nc < 16 || nb < 10) && tries++ < 5000) {
+    const x = (r() - 0.5) * 2 * (HALF - 4), z = (r() - 0.5) * 2 * (HALF - 4);
+    if (Math.hypot(x, z) < 7 || !onPlateau(x, z) || busy(x, z, 1.8) || crumbly(x, z)) continue;
+    if (nc < 16) { L.put(shards, x, z, r() * 2 * PI); nc++; } else { L.put(urn, x, z, r() * 2 * PI); nb++; }
+  }
+  // cold blue fire in the braziers, the void's violet glow from below the rim, a hard cold key
+  for (const a of L.at.filter((q) => q.name === brazier)) L.light('omni', [a.x, 1.8, a.z], [0, 0, 0], [0.45, 0.75, 1.0], 380, 15, 0, 0, 1);
+  for (let k = 0; k < 8; k++) { const [x, z] = oct[k]; L.light('omni', [x * 1.05, -1.5, z * 1.05], [0, 0, 0], [0.55, 0.25, 1.0], 900, 22, 0, 0, 1); }
+  L.pickups = [[-26, -16], [26, -16], [-26, 16], [26, 16], [0, -28], [0, 28], [-12, -26], [12, 26], [-34, 0], [34, 0]];
+  L.scene = {
+    title: 'The Obsidian Rift', keyNote: 'a hard, cold white-blue light from high above the void',
+    sun: { dir: [16, 32, -12], color: [0.7, 0.8, 1.0], energy: 1.1, fog: 0.8 },
+    rim: { dir: [-18, -6, 22], color: [0.6, 0.3, 1.0], energy: 1.6 },
+    bg: [0.004, 0.003, 0.012], ambient: [0.3, 0.3, 0.5], ambientEnergy: 0.12, sky: [0.3, 0.3, 0.5], ground: [0.12, 0.04, 0.2], hemi: 0.3,
+    fog: [0.04, 0.03, 0.08], fogDensity: 0.014, exposure: 1.25, bloom: 0.22, vignette: 0.55,
+  };
+  return L;
+}
+
+// ── level 8: the Core ───────────────────────────────────────────────
+function core() {
+  const L = new Level('core', 'The Core');
+  const r = rng(808);
+  L.roster = ['runner', 'brute', 'bloater', 'skitter', 'bonewalker', 'slagborn', 'sporeling', 'penitent', 'gargoyle', 'hellhound'];
+  L.waves = ['runner:60 hellhound:40', 'gargoyle:30 penitent:30 hellhound:40', 'slagborn:30 skitter:30 hellhound:40', 'bonewalker:30 sporeling:30 hellhound:40', 'brute:20 bloater:20 hellhound:60', 'boss hellhound:30 gargoyle:15 penitent:15 slagborn:10 bonewalker:10 skitter:10 brute:10'];
+  L.monster = 'models/core_hellhound.cwchar';
+  L.boss = 'models/core_boss.cwchar'; L.bossName = 'the Unmaker';
+  L.door = 'models/core_door.cwchar';
+  L.floor = { tex: 'textures/core_floor.png', tile: 10, rough: 0.8, tint: [1.0, 0.92, 0.88] };
+  const wall = L.prop('wall', 'models/core_wall.cwchar', 'pillar', 1, 0.9, 0, 0);
+  const throne = L.prop('throne', 'models/core_throne.cwchar', 'pillar', 1, 0.8, 0.2, 0);
+  const vent = L.prop('vent', 'models/core_vent.cwchar', 'pillar', 1, 0.9, 0, 1);
+  const cairn = L.prop('cairn', 'models/core_cairn.cwchar', 'pillar', 1, 0.85, 0, 1);
+  const cage = L.prop('cage', 'models/core_cage.cwchar', 'armor', 1, 0.6, 0.6, 3);
+  const pot = L.prop('pot', 'models/core_pot.cwchar', 'hide', 1, 0.7, 0, 4);
+  L.obstacles = [{ kind: 'crate', file: 'models/core_cage.cwchar' }, { kind: 'barrel', file: 'models/core_pot.cwchar' }, { kind: 'pillar', file: 'models/core_cairn.cwchar' }];
+  // the cavern wall; the throne fills the north wall's middle; gaps east and west at z -12 and 12, south at x -4 and 4
+  const gapAt = (side, a) => (side === 0 ? Math.abs(a) < 8 : side === 1 ? Math.abs(Math.abs(a) - 4) < 1.5 : Math.abs(Math.abs(a) - 12) < 2.5);
+  L.ring(wall, gapAt);
+  L.put(throne, 0, -W + 0.5, 0);
+  L.spawns = [[-38, -12, 2], [-38, 12, 2], [38, -12, 2], [38, 12, 2], [-4, 38, 2], [4, 38, 2]];
+  // lava: broken channels and a ring round the hatch (4 to 6 m) that four bridges cross
+  for (const [x, z, hx, hz] of [[-18, -28, 3, 1.2], [18, -28, 3, 1.2], [-18, 28, 3, 1.2], [18, 28, 3, 1.2], [-32, -18, 3, 1.2], [32, -18, 3, 1.2], [-32, 18, 3, 1.2], [32, 18, 3, 1.2], [-20, -24, 1.2, 3], [20, 24, 1.2, 3]])
+    L.hazards.push({ kind: 'lava', x, z, hx, hz });
+  for (const s of [-1, 1]) {
+    L.hazards.push({ kind: 'lava', x: s * 3.6, z: -5, hx: 2.1, hz: 1 }, { kind: 'lava', x: s * 3.6, z: 5, hx: 2.1, hz: 1 });
+    L.hazards.push({ kind: 'lava', x: -5, z: s * 3.6, hx: 1, hz: 2.1 }, { kind: 'lava', x: 5, z: s * 3.6, hx: 1, hz: 2.1 });
+  }
+  for (const [x, z] of [[-28, -28], [28, -28], [-28, 28], [28, 28], [-14, -16], [14, -16], [-14, 16], [14, 16]]) L.put(vent, x, z, r() * PI);
+  for (const [x, z] of [[-30, 0], [30, 0], [-20, -8], [20, -8], [-20, 8], [20, 8], [0, -22], [0, 22]]) L.put(cairn, x, z, r() * PI);
+  L.hazards.push(...L.at.filter((a) => a.name === vent).map((a) => ({ kind: 'vent', x: a.x, z: a.z, hx: 1.6, hz: 1.6 })));
+  const wet = (x, z) => L.hazards.some((h) => h.kind === 'lava' && Math.abs(x - h.x) < h.hx + 1.5 && Math.abs(z - h.z) < h.hz + 1.5);
+  const busy = (x, z, rad) => L.at.some((a) => a.solid && Math.abs(x - a.x) < a.hx + rad && Math.abs(z - a.z) < a.hz + rad);
+  let nc = 0, nb = 0, tries = 0;
+  while ((nc < 14 || nb < 12) && tries++ < 5000) {
+    const x = (r() - 0.5) * 2 * (HALF - 3), z = (r() - 0.5) * 2 * (HALF - 3);
+    if (Math.hypot(x, z) < 8 || wet(x, z) || busy(x, z, 1.8) || z < -30) continue;
+    if (nc < 14) { L.put(cage, x, z, r() * PI); nc++; } else { L.put(pot, x, z, r() * PI); nb++; }
+  }
+  // the lava lights the cavern; the throne glows from within; the vents' throats
+  for (const h of L.hazards.filter((q) => q.kind === 'lava')) L.light('omni', [h.x, 0.8, h.z], [0, 0, 0], [1.0, 0.35, 0.06], 240, 10, 0, 0, 1);
+  L.light('spot', [0, 12, -24], [0, 4, -36], [1.0, 0.4, 0.1], 3000, 30, 0.6, 0.6, 1);
+  for (const a of L.at.filter((q) => q.name === vent)) L.light('omni', [a.x, 1.5, a.z], [0, 0, 0], [1.0, 0.55, 0.12], 160, 8, 0, 0, 1);
+  L.pickups = [[-34, -34], [34, -34], [-34, 34], [34, 34], [0, -14], [0, 14], [-12, 0], [12, 0], [-24, 30], [24, -30]];
+  L.scene = {
+    title: 'The Core', keyNote: 'a sullen red glow from the smoke above; the lava (baked) is the real light',
+    sun: { dir: [-10, 30, -16], color: [1.0, 0.3, 0.12], energy: 0.7, fog: 1.4 },
+    rim: { dir: [18, 6, 22], color: [1.0, 0.6, 0.2], energy: 1.2 },
+    bg: [0.03, 0.006, 0.002], ambient: [0.5, 0.22, 0.12], ambientEnergy: 0.14, sky: [0.5, 0.15, 0.05], ground: [0.15, 0.04, 0.01], hemi: 0.3,
+    fog: [0.12, 0.03, 0.01], fogDensity: 0.016, exposure: 1.2, bloom: 0.26, vignette: 0.55,
+  };
+  return L;
+}
+
+const LEVELS = { sluice, ossuary, foundry, grotto, cathedral, rift, core };
 const want = process.argv.slice(2);
 mkdirSync(A('levels'), { recursive: true });
+// the levelview cart's pack: every level's files (levelview-roots.txt)
+const roots = ['# hordeshooter_levelview: what its cart packs (the descent\'s levels, their models, textures, grades and',
+  '# bakes). Written by tools/gen-levels.mjs; everything is generated by this game\'s tools (LEVELS.md, section 6).',
+  'project.cwproj', 'scenes/levelview.cwscene'];
 for (const [id, make] of Object.entries(LEVELS)) {
-  if (want.length && !want.includes(id)) continue;
   const L = make();
+  const files = [`levels/${id}.cwlevel`, `scenes/${id}.cwscene`, `grade/${id}.cube`, L.floor.tex, ...new Set(L.props.map((p) => p.file)), L.door, L.monster, L.boss];
+  if (existsSync(A(`lightmaps/${id}.cwlm`))) files.push(`lightmaps/${id}.cwlm`);
+  roots.push(...files);
+  if (want.length && !want.includes(id)) continue;
   writeFileSync(A(`levels/${id}.cwlevel`), L.text());
   writeFileSync(A(`scenes/${id}.cwscene`), scene(id, L.scene));
   console.log(`${id}: ${L.props.length} props, ${L.at.length} placements (${L.at.filter((a) => a.solid).length} solid), ${L.lights.length} lights, ${L.hazards.length} hazards`);
 }
+writeFileSync(A('levelview-roots.txt'), [...new Set(roots)].join('\n') + '\n');

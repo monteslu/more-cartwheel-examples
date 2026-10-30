@@ -6,8 +6,8 @@
  * view, a wide view, a low view); fire cycles what stands on the floor (nothing, the level's crowd,
  * its boss going through its clips); bomb opens and shuts the hatch.
  *
- * Native, development: LEVEL=<id> starts on that level; LEVEL_BAKE=<dir> bakes every level (or only
- * LEVEL's) into <dir>/<id>.cwlm and exits. */
+ * Native, development: --level <id> (or LEVEL=<id>) starts on that level; --bake <dir> (or LEVEL_BAKE=<dir>)
+ * bakes every level (or only that one) into <dir>/<id>.cwlm and exits. */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -37,7 +37,7 @@ static struct {
   cw_action left, right, up, down, fire, bomb;
   chr mon, boss;
   t3_mesh *mons[CROWD], *bossm;
-  const char *bake_dir;
+  const char *bake_dir, *want;
 } V;
 
 static uint32_t rd32(const uint8_t *p) { uint32_t v; memcpy(&v, p, 4); return v; }
@@ -153,12 +153,13 @@ static void init(void *u) {
   V.up = cw_action_find("move_up"), V.down = cw_action_find("move_down");
   V.fire = cw_action_find("fire"), V.bomb = cw_action_find("bomb");
   int start = 0;
-#ifndef CW_CART
-  const char *want = getenv("LEVEL");
-  for (int i = 0; want && i < NLEVELS; i++)
-    if (!strcmp(want, LEVELS[i])) start = i;
-  V.bake_dir = getenv("LEVEL_BAKE");
+#if !CW_CART
+  if (!V.want) V.want = getenv("LEVEL");
+  for (int i = 0; V.want && i < NLEVELS; i++)
+    if (!strcmp(V.want, LEVELS[i])) start = i;
+  if (!V.bake_dir) V.bake_dir = getenv("LEVEL_BAKE");
   V.baking = V.bake_dir && *V.bake_dir;
+  if (V.baking) cw_info("levelview: baking into %s", V.bake_dir);
 #endif
   V.show = 1;
   load(start);
@@ -175,17 +176,28 @@ static void place_camera(void) {
 
 static void update(void *u, double dt) {
   (void)u;
-  if (!V.built) return;
+#if !CW_CART
+  if (!V.built && V.baking) { /* a level that is not there yet: on to the next (or done) */
+    cw_warn("levelview: %s did not load, not baked", LEVELS[V.level]);
+    if (V.want || V.level == NLEVELS - 1) exit(V.want ? 1 : 0);
+    load(V.level + 1);
+    return;
+  }
+#endif
+  if (!V.built) { /* a level that is not there: still let the viewer move on */
+    if (cw_action_just_pressed(0, V.right)) load(V.level + 1);
+    else if (cw_action_just_pressed(0, V.left)) load(V.level - 1);
+    return;
+  }
   V.frames++;
   if (!V.lm_done && V.frames > 1) { /* after a frame: the sky has placed the sun */
     char out[256] = { 0 };
     if (V.baking) snprintf(out, sizeof out, "%s/%s.cwlm", V.bake_dir, LEVELS[V.level]);
     levelbuild_lightmap(cw_scene_app_tree(), &V.b, V.baking ? out : NULL);
     V.lm_done = true;
-#ifndef CW_CART
+#if !CW_CART
     if (V.baking) {
-      const char *only = getenv("LEVEL");
-      if (only || V.level == NLEVELS - 1) exit(0);
+      if (V.want || V.level == NLEVELS - 1) exit(0);
       load(V.level + 1);
       return;
     }
@@ -212,6 +224,11 @@ static void update(void *u, double dt) {
     int f = V.mon.first[clip] + ((int)(t * (clip ? 3 : 10)) + i) % CW_MAX(V.mon.nf[clip], 1);
     set_frame(m, V.mon.geo[f]);
     m->base.position = (t3_vec3){ cw_cos(a) * r, 0, cw_sin(a) * r };
+    { /* lit by the bake as the game lights its crowd: a colour multiplier from the probes */
+      t3_color c = levelbuild_light_at(&V.b, m->base.position.x, m->base.position.z);
+      t3_material *mm = m->materials[0];
+      if (mm) mm->color = c;
+    }
     /* walkers face along the ring, attackers face the middle */
     t3_object_set_rotation(&m->base, 0, clip ? atan2f(-cw_cos(a), -cw_sin(a)) : -a, 0);
     m->base.matrix_world_needs_update = true;
@@ -223,6 +240,7 @@ static void update(void *u, double dt) {
     int f = V.boss.first[clip] + (clip ? CW_MIN((int)(fmodf(t, 3.0f) * 1.5f), nf - 1) : (int)(t * 8) % nf);
     set_frame(V.bossm, V.boss.geo[f]);
     V.bossm->base.position = (t3_vec3){ 0, 0, -9 };
+    if (V.bossm->materials[0]) V.bossm->materials[0]->color = levelbuild_light_at(&V.b, 0, -9);
     V.bossm->base.matrix_world_needs_update = true;
   }
 }
@@ -230,7 +248,10 @@ static void update(void *u, double dt) {
 static void render(void *u, double alpha) { (void)u, (void)alpha; }
 
 cw_app_desc cw_main(int argc, char **argv) {
-  (void)argc, (void)argv;
+  for (int i = 1; i + 1 < argc; i++) {
+    if (!strcmp(argv[i], "--bake")) V.bake_dir = argv[++i];
+    else if (!strcmp(argv[i], "--level")) V.want = argv[++i];
+  }
   cw_scene_register_builtin_types();
   static cw_app_desc app = { .title = "Horde levels", .width = 1280, .height = 720, .debug = true, .init = init, .update = update, .render = render };
   cw_project_apply_app(&app);

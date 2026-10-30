@@ -256,8 +256,8 @@ metal running in channels across the floor.
 - **New weapon: the slag mortar.** A squat iron mortar that lobs shells over cover. Each shell bursts
   in a 3 m blast and leaves a molten puddle for 3 s. Legendary perk: three shells in a cluster.
   The flamer joins the pool.
-- **Hatch: crucible gate.** A ring of iron blast doors on a slag-crusted plinth. The doors fold up and
-  out like petals, and a stair goes down past a glowing pour.
+- **Hatch: crucible gate.** Four iron blast doors on a slag-crusted plinth under a riveted collar. They
+  slide out under the collar, and a stair goes down past a glowing pour.
 
 ### Level 5. The Mycel Grotto (bioluminescent rot)
 
@@ -362,7 +362,7 @@ barricades, and huge stained-glass windows lit red by something burning beyond t
   6: the boss, 50 penitent, 30 bonewalker, 20 B.
 - **New monster: the penitent.** A hooded wraith in a long ragged robe of matte black wool. Inside
   the hood there is only a pale mask and two cold points of light. It has no legs: the robe trails
-  into tatters and it glides 0.3 m above the floor, swaying (1.1x runner speed). Two long grey
+  into tatters and it glides just above the floor, swaying (1.1x runner speed). Two long grey
   hands come out of the sleeves. Its attack is a lunge: it draws back and rises for 0.5 s, then
   rushes 4 m with its hands out. Shots pass through it while it is mid-lunge, so the dodge is the
   answer. At the boss's death every penitent unravels into ash.

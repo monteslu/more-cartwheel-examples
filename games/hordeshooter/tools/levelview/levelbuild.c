@@ -259,7 +259,7 @@ static void build_floor(cw_node parent, const lb_level *lv) {
 }
 
 static const t3_mat4 ZERO;
-static void build_props(cw_node parent, const lb_level *lv, lb_material_fn matf, void *user) {
+static void build_props(lb_built *b, cw_node parent, const lb_level *lv, lb_material_fn matf, void *user) {
   for (int pi = 0; pi < lv->nprop; pi++) {
     const lb_prop *pr = &lv->prop[pi];
     int n = 0;
@@ -290,6 +290,7 @@ static void build_props(cw_node parent, const lb_level *lv, lb_material_fn matf,
       char nm[40];
       snprintf(nm, sizeof nm, "%s%d", pr->name, g);
       mesh_node(parent, nm, &im->mesh, g == 0);
+      if (g == 0) b->prop_mesh[pi] = im;
       t3_release(im), t3_release(m);
     }
     chr_free(&c);
@@ -322,9 +323,16 @@ static void build_hazards(cw_node parent, const lb_level *lv) {
   }
 }
 
-static void build_lights(cw_node parent, const lb_level *lv) {
+/* the level's lights: the real-time ones (bake_only 0) always, the bake-only ones (the lamps' pools, the
+ * candles) only while baking, under a node of their own that the bake frees after (three.c lights at most 8 of
+ * a kind, and a light that is in the lightmap costs nothing a frame when it is not in the tree at all) */
+static cw_node build_lights(cw_node parent, const lb_level *lv, bool bake_only) {
+  cw_node group = cw_node_new("Node3D", bake_only ? "BakeLights" : "Lights");
+  cw_node_add_child(parent, group);
+  parent = group;
   for (int i = 0; i < lv->nlight; i++) {
     const lb_light *l = &lv->light[i];
+    if (l->bake_only != bake_only) continue;
     cw_node n = cw_node_new(l->spot ? "SpotLight3D" : "OmniLight3D", l->spot ? "Spot" : "Omni");
     cw_node_add_child(parent, n);
     cw_node3d_set_position(n, (t3_vec3){ l->x, l->y, l->z });
@@ -340,6 +348,7 @@ static void build_lights(cw_node parent, const lb_level *lv) {
     cw_node_set(n, "bake_direct", cw_val_bool(true));
     cw_node_set(n, "realtime", cw_val_bool(!l->bake_only));
   }
+  return group;
 }
 
 bool levelbuild_build(cw_node parent, const lb_level *lv, lb_material_fn matf, void *user, lb_built *b) {
@@ -357,9 +366,9 @@ bool levelbuild_build(cw_node parent, const lb_level *lv, lb_material_fn matf, v
       cw_error("levelbuild: the scene %s did not load", lv->scene);
   }
   build_floor(b->node, lv);
-  build_props(b->node, lv, matf, user);
+  build_props(b, b->node, lv, matf, user);
   build_hazards(b->node, lv);
-  build_lights(b->node, lv);
+  build_lights(b->node, lv, false);
   if (lv->door[0]) {
     lb_chr c;
     if (chr_load(&c, lv->door)) {
@@ -413,7 +422,10 @@ bool levelbuild_lightmap(cw_tree *t, lb_built *b, const char *bake_path) {
     s.reflection_size = 32;
     s.reflection_origin[0] = 0, s.reflection_origin[1] = 1.2f, s.reflection_origin[2] = 0;
     double t0 = cw_time();
+    cw_node lights = build_lights(b->node, b->lv, true);
+    cw_tree_pre_render(t, 0); /* the new lights' transforms */
     b->lm = cw_lightmap_bake(t, b->node, &s);
+    cw_node_free(lights);
     if (!b->lm) return false;
     if (!cw_lightmap_save(b->lm, bake_path)) cw_error("levelbuild: could not write the bake to %s", bake_path);
     cw_lightmap_info info;
@@ -427,7 +439,34 @@ bool levelbuild_lightmap(cw_tree *t, lb_built *b, const char *bake_path) {
     return false;
   }
   cw_lightmap_apply_shaded(t, b->node, b->lm, 1, CW_LIGHTMAP_BAKED);
+  /* the props stand still: their light from the bake is set once, per instance */
+  for (int pi = 0; pi < b->lv->nprop; pi++) {
+    t3_instanced_mesh *im = b->prop_mesh[pi];
+    if (!im) continue;
+    int k = 0;
+    for (int i = 0; i < b->lv->nat; i++) {
+      const lb_at *a = &b->lv->at[i];
+      if (a->prop != pi) continue;
+      float x = a->x, z = a->z, l = sqrtf(x * x + z * z);
+      if (l > 1) x -= x / l * 1.6f, z -= z / l * 1.6f; /* a little toward the middle, off its own footprint */
+      t3_instanced_mesh_set_color_at(im, k++, levelbuild_light_at(b, x, z));
+    }
+    im->instance_color->version++;
+  }
   return true;
+}
+
+t3_color levelbuild_light_at(const lb_built *b, float x, float z) {
+  if (!b->lm) return (t3_color){ 1, 1, 1 };
+  t3_color e = { 0, 0, 0 }, f = { 0, 0, 0 };
+  bool hp = cw_lightmap_probe_irradiance(b->lm, (t3_vec3){ x, 1.2f, z }, (t3_vec3){ 0, 0.88f, 0.47f }, &e);
+  bool hf = cw_lightmap_irradiance_below(b->lm, (t3_vec3){ x, 1.0f, z }, &f);
+  if (!hp && !hf) return (t3_color){ 1, 1, 1 };
+  /* the real-time key and rim light them a little already: the bake adds to a dim base */
+  const float base = 0.35f, gain = 0.5f;
+  t3_color c = { base + gain * 0.5f * (e.r + f.r), base + gain * 0.5f * (e.g + f.g), base + gain * 0.5f * (e.b + f.b) };
+  c.r = CW_MIN(c.r, 3.0f), c.g = CW_MIN(c.g, 3.0f), c.b = CW_MIN(c.b, 3.0f);
+  return c;
 }
 
 void levelbuild_free(lb_built *b) {
@@ -435,7 +474,7 @@ void levelbuild_free(lb_built *b) {
   for (int g = 0; g < 2; g++)
     for (int f = 0; f < 8; f++)
       if (b->hatch_geo[g][f]) t3_release(b->hatch_geo[g][f]);
-  /* the lightmap's textures stay referenced by materials until the node is gone */
-  cw_lightmap_free(b->lm);
+  /* the lightmap stays: its textures are the materials' light maps until the freed node is gone (a level swap
+   * keeps one lightmap per level visited, about 10 MB each) */
   memset(b, 0, sizeof *b);
 }

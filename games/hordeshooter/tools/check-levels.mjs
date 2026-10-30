@@ -78,7 +78,7 @@ for (const id of ids) {
     const where = `${q.a.name} at (${q.a.x}, ${q.a.z})`;
     if (Math.hypot(q.a.x, q.a.z) < 4.5) fail(id, `${where}: inside the hatch's clear circle`);
     if (Math.abs(q.a.x) + q.a.hx > HALF + 0.01 || Math.abs(q.a.z) + q.a.hz > HALF + 0.01) fail(id, `${where}: outside the arena`);
-    for (const h of lv.haz)
+    for (const h of lv.haz.filter((q) => q.kind !== 'vent')) // a vent's hazard is the vent itself
       if (Math.abs(q.a.x - h.x) < h.hx + q.a.hx - 0.05 && Math.abs(q.a.z - h.z) < h.hz + q.a.hz - 0.05) fail(id, `${where}: on the ${h.kind} at (${h.x}, ${h.z})`);
   }
   for (let i = 0; i < solids.length; i++) for (let j = i + 1; j < solids.length; j++) {

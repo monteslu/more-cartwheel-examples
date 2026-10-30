@@ -75,6 +75,7 @@ typedef struct lb_built {
   t3_geometry *hatch_geo[2][8];
   int hatch_frames, hatch_groups;
   t3_mesh *hatch_glow;
+  t3_instanced_mesh *prop_mesh[LB_MAXPROP]; /* each prop's surface (group 0), its instances in placement order */
   cw_lightmap_data *lm;
 } lb_built;
 
@@ -86,7 +87,11 @@ void levelbuild_hatch(lb_built *b, float t);
 /* Bake the level (its node's subtree) and write the .cwlm to bake_path when it is not NULL, else load
  * lv->lightmap; then apply it (the floor and the props draw BAKED). false when neither worked. */
 bool levelbuild_lightmap(cw_tree *t, lb_built *b, const char *bake_path);
-/* Free the level's node and its lightmap. */
+/* The baked light a thing standing at (x, z) takes, as a colour multiplier for its real-time material: the probe
+ * grid at chest height seen from the camera's side, over the floor's light under it (what the bake-only lights
+ * give a moving or instanced object; the game lights its crowd the same way). 1 where nothing was baked. */
+t3_color levelbuild_light_at(const lb_built *b, float x, float z);
+/* Free the level's node (its lightmap stays: the materials read its textures). */
 void levelbuild_free(lb_built *b);
 
 #endif
