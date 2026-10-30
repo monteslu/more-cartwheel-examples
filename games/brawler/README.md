@@ -27,13 +27,13 @@ Walk over food, coins and weapons to pick them up; you can reach them from a ste
 - Guards hold a riot shield: punches from the front bounce off (three of them break the guard). Kick, jump kick,
   throw, use a weapon or the spin move, or hit them from behind.
 - Bruisers are heavy and do not flinch.
-- Truckers (a red cap that says "Dumb", a grimy tee) wind up a huge haymaker: when he turns his whole body away
+- Wankers (a red cap that says "Dumb", a grimy tee) wind up a huge haymaker: when he turns his whole body away
   and a red ring shows at his feet, step out of his lane. It knocks you down if it lands, and he stumbles after it, so
   punish the miss. Now and then he lowers a shoulder and barges along the lane from a few steps away.
 - Creeps, pale men in long trench coats and fedoras, enjoy being hit: a light blow does not stop them (it even does them
   a little good) and they grin with pleasure. Kick them, throw them or use a weapon. They lurch up, beckon you in and
   throw the coat open in a lunge that staggers.
-- No two of a kind look alike: every thug, punk, runner, knifer, bruiser, thrower and trucker walks on with his own skin
+- No two of a kind look alike: every thug, punk, runner, knifer, bruiser, thrower and wanker walks on with his own skin
   tone, hair and clothes (the riot guards keep their uniform).
 - Each stage ends with a boss with three phases. At two thirds and one third of its health it stops, roars, calls
   help and comes back with a new move. Heavy blows (slams, spins, charges) show a red ring on the street while they
@@ -57,7 +57,7 @@ Enemies never hit you from outside the picture or before they have walked in.
 ## Run
 
 `brawler_auto` is the same game with bots playing, for tests and screenshots. Its debug commands: `stage N`,
-`wave N` (4 is the boss), `players N`, `spawn <kind> [dx dz]` (15 is the trucker, 16 the creep), `hurtat <tick> <enemy> [knock]`, `botdmg <k>`, `item <kind> [dx dz]`, `cam`,
+`wave N` (4 is the boss), `players N`, `spawn <kind> [dx dz]` (15 is the wanker, 16 the creep), `hurtat <tick> <enemy> [knock]`, `botdmg <k>`, `item <kind> [dx dz]`, `cam`,
 `freeze <0|1> [turn]` (turn: how far a frozen body turns from the camera, 1.57 side on), `knockdown`, `blood <dx> <dz> <kind>`.
 Environment for native runs: BRAWLER_STAGE, BRAWLER_PLAYERS, BRAWLER_CROWD, BRAWLER_TURBO (ticks per frame), BRAWLER_KNOCKALL (everyone down every N ticks),
 BRAWLER_SOAK (a lost stage is retried), BRAWLER_SEED (another match from the same rules), BRAWLER_LOG (status lines), BRAWLER_BOTDMG (bot damage factor, 3 by default).

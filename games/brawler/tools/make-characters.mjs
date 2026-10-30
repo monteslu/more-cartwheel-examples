@@ -435,7 +435,7 @@ clip('thump', 1.0, false, keyed([
   [0.6, THUMP_HIT, 'in'], [0.68, merge(THUMP_HIT, { UpperArmR: { r: [-1.25, 0.15, -0.3] }, Spine: { r: [0.26, -0.05, 0.05] } }), 'out'], [0.76, THUMP_HIT, 'io'], [1.0, BOXER, 'io']]));
 
 // ── pose to rotation tracks ─────────────────────────────────────────────
-// the trucker's haymaker: a big looping right, wound up from the hip with the whole body turned away (the tell), thrown
+// the wanker's haymaker: a big looping right, wound up from the hip with the whole body turned away (the tell), thrown
 // round in an arc, then the follow-through carries him off balance and he has to catch himself (an opening)
 const HAY_BACK = G({ Hips: { p: [0, -0.1, -0.06], r: [0, 0.45, 0] }, Spine: { r: [0.05, -0.4, 0] }, Chest: { r: [-0.08, -0.6, 0] }, Head: { r: [-0.05, 0.4, 0] },
   UpperArmR: { r: [0.15, 0.35, -1.25] }, LowerArmR: { r: [-1.35, 0, 0] }, HandR: { r: [0.2, 0, 0] }, UpperArmL: { r: [-0.95, -0.2, 0.35] }, LowerArmL: { r: [-1.5, 0, 0] },
@@ -451,7 +451,7 @@ clip('haymaker', 1.15, false, keyed([
   [0.5, HAY_HIT, 'out'],
   [0.6, HAY_OVER, 'io'],
   [0.85, merge(HAY_OVER, { UpperArmL: { r: [-0.5, 0, 1.1] }, Head: { r: [0.15, -0.4, 0.05] } }), 'io'],
-  [1.15, GUARD, 'io']]), ['trucker']);
+  [1.15, GUARD, 'io']]), ['wanker']);
 // the creep: a hunched lurching walk (one leg dragged), and the flash: he spreads his coat wide with both hands and lunges
 clip('lurch', 1.3, true, (t) => {
   const p = walkPose(t, 1.3, false), w = (t / 1.3) * PI * 2;
@@ -880,7 +880,7 @@ function build(sp) {
     const fwd = hairCut === 'cap' ? 1 : -1, y = hc[1] + HY * 0.3;
     m.ellipsoid('hat', [0, y, hc[2] + fwd * RZ * 1.18], 0.09 * HS, 0.008, 0.075 * HS, { bone: BI.Head, steps: 4, n: 18, e: 2.4 });
   }
-  if (hairCut === 'trucker') { // a trucker cap pushed back on a mullet: the foam front stands tall with the letters on it
+  if (hairCut === 'foamcap') { // a foam-front cap pushed back on a mullet: the foam front stands tall with the letters on it
     scalp(1.05, 0.004, 5);
     const t0 = 0.2, steps = 12, front = { mod: (t) => (a) => 1 + 0.07 * gauss(wrapA(a - FRONT), 0.55) * ss(0.2, 0.65, t) };
     // u once round the head (the front at 0.5, decreasing with the loft angle so the words read left to right from
@@ -1100,9 +1100,9 @@ function materials(glb, sp) {
     P('cuff', 'cloth', 'fab_denim', { tint: c.cuff ?? c.pants, rough: 1, normal: 0.6 }), P('stubble', 'fur', 'fab_hair', { tint: c.hair.map((x, i) => x * 0.6 + c.skin[i] * 0.4), rough: 1 }),
     P('hat', sp.hatFab === 'knit' ? 'cloth' : 'cloth', fab(sp.hatFab ?? 'cloth'), { tint: c.hat ?? c.accent, rough: 1 }),
     P('band', 'cloth', 'fab_cloth', { tint: c.band ?? c.accent, rough: 1 }),
-    // the trucker cap: red twill with "Dumb" stitched on it, all in its own texture (tools/make-textures.mjs cap_logo)
+    // the wanker cap: red twill with "Dumb" stitched on it, all in its own texture (tools/make-textures.mjs cap_logo)
     // (only in the files that wear it: every listed material and its textures go into each glb)
-    ...(sp.hair === 'trucker' ? [P('capLogo', 'cloth', 'cap_logo', { tint: [1, 1, 1], rough: 1, normal: 0.8 })] : []),
+    ...(sp.hair === 'foamcap' ? [P('capLogo', 'cloth', 'cap_logo', { tint: [1, 1, 1], rough: 1, normal: 0.8 })] : []),
     P('mask', 'cloth', 'fab_cloth', { tint: c.mask ?? c.accent, rough: 1 }), P('pad', 'leather', 'fab_leather', { tint: c.pad ?? c.accent, rough: 0.7 }),
     P('helmet', sp.hair === 'hardhat' ? 'gloss' : 'metal', 'paint_metal', { tint: c.helmet ?? c.hair, rough: sp.hair === 'hardhat' ? 0.35 : 0.5, metal: sp.hair === 'hardhat' ? 0 : 1 }), P('metal', 'metal', 'paint_metal', { tint: c.metal ?? [0.5, 0.52, 0.55], rough: 0.4 }),
     P('shades', 'gloss', 'fab_leather', { tint: [0.015, 0.015, 0.02], rough: 0.15, metal: 0 }),
@@ -1270,12 +1270,12 @@ export const SPECS = [
     frown: true, scale: 1.08, width: 1.35, chest: 1.1, sw: 0.235, hw: 0.11, arm: 1.25, leg: 1.15, head: 1.0, hand: 1.35, jaw: 1.25, neck: 1.2, hair: 'helmet', pads: true, padMat: 'metal', armor: true, gloves: true, boots: true, belt: true, kneepads: true,
     top: 'longsleeve', shirtFab: 'cloth', bottom: 'cargo', pantsFab: 'cloth',
     colors: { skin: 0xb88a64, shirt: 0x1c2638, pants: 0x232a36, shoes: 0x111111, hair: 0x202020, accent: 0xd0d8e0, metal: 0x3a4a64, helmet: 0x26324a, glove: 0x161616, belt: 0x0e0e0e, pad: 0x3a4a64 }, eyes: 0xa0c0ff },
-  // the trucker: a big soft-bellied man in a red trucker cap that says "Dumb", a grimy stained tee, faded jeans and
+  // the wanker: a big soft-bellied man in a red foam-front cap that says "Dumb", a grimy stained tee, faded jeans and
   // work boots, a mullet and a scruffy moustache (a regular enemy: a wild haymaker and a shoulder charge)
-  { name: 'trucker', face: { noseW: 1.2, noseLen: 1.05, hook: 0.15, crook: 0.3, brow: 1.2, browThick: 0.06, eyeR: 0.155, socket: 1.1, jawAng: 1.1, chin: 1.0, jowl: 0.7, cheek: 0.95, naso: 1.1, lipU: 0.85, mw: 0.25 },
+  { name: 'wanker', face: { noseW: 1.2, noseLen: 1.05, hook: 0.15, crook: 0.3, brow: 1.2, browThick: 0.06, eyeR: 0.155, socket: 1.1, jawAng: 1.1, chin: 1.0, jowl: 0.7, cheek: 0.95, naso: 1.1, lipU: 0.85, mw: 0.25 },
     paint: { age: 0.35, ruddy: 0.8, stubble: 0.85, shadow: 0.3, iris: [0.3, 0.38, 0.45], hairline: true, browColor: [0.3, 0.2, 0.12], beardColor: [0.34, 0.23, 0.13] },
     stubble: true, frown: true, moustache: 'thick', scale: 1.06, width: 1.4, belly: 1.15, chest: 1.0, sw: 0.225, hw: 0.11, arm: 1.25, leg: 1.12, head: 1.08, hand: 1.4, jaw: 1.2, neck: 1.25,
-    hair: 'trucker', boots: true, belt: true, top: 'tee', sleeves: 'short', shirtFab: 'dirty', shirtTile: 1.0, bottom: 'jeans', pantsFab: 'denim',
+    hair: 'foamcap', boots: true, belt: true, top: 'tee', sleeves: 'short', shirtFab: 'dirty', shirtTile: 1.0, bottom: 'jeans', pantsFab: 'denim',
     colors: { skin: 0xd49a78, shirt: 0xf4f0e6, pants: 0x46607e, shoes: 0x4a3220, hair: 0x5a3c22, accent: 0x8a2a1a, belt: 0x3a2614 } },
   // the creep: a pale, sweaty man in a long worn trench coat (collar up, belted loose), a fedora over a bald pate, a pencil
   // moustache and dark rings under the eyes; he enjoys being hit (a regular enemy)

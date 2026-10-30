@@ -38,7 +38,7 @@ static float d_ex[8][4];
 static int32_t d_states[MAXP];
 static int32_t d_unfair, d_still, d_frozen, d_blocks, d_pickups, d_bphase, d_deaths, d_first, d_hits, d_nan, d_stall, d_proj, d_weapon, d_rigs, d_overlaps;
 static int32_t d_juke[6];
-static int32_t d_trucker[6], d_creep[6], d_clones, d_blood[4]; /* the jukebox: uses, fighters knocked down by its shockwave, fighters who jumped it, playing, radius in cm, Arthur on his way to it */
+static int32_t d_wanker[6], d_creep[6], d_clones, d_blood[4]; /* the jukebox: uses, fighters knocked down by its shockwave, fighters who jumped it, playing, radius in cm, Arthur on his way to it */
 static float d_face[8]; /* the boss's expression weights (blink snarl shout wince ko grin effort grimace) */
 static int64_t run_ticks; /* fixed updates since the program started (status lines) */
 
@@ -300,7 +300,7 @@ static void init(void *user) {
   cw_debug_f32("game.cam", &d_cam);
   cw_debug_u32("game.hash", &d_hash);
   cw_debug_field("game.juke", d_juke, CW_DBG_I32, 6);
-  cw_debug_field("game.trucker", d_trucker, CW_DBG_I32, 6); /* truckers spawned, haymakers, haymakers that landed, barges, barges that landed, killed */
+  cw_debug_field("game.wanker", d_wanker, CW_DBG_I32, 6); /* wankers spawned, haymakers, haymakers that landed, barges, barges that landed, killed */
   cw_debug_field("game.creep", d_creep, CW_DBG_I32, 6); /* creeps spawned, coat flashes, flashes that landed, light blows he leaned into, health they gave him, killed */
   { extern int g_camjit; cw_debug_i32("game.camjit", &g_camjit); } /* the largest camera shake offset on any frame, mm: 0 */
   cw_debug_i32("game.clones", &d_clones); /* most pairs of one kind of enemy on the street looking the same on any frame: 0 */
@@ -317,7 +317,7 @@ static void init(void *user) {
   { const char *v = getenv("BRAWLER_NO_SCREEN_RULE"); extern bool g_no_screen_rule; g_no_screen_rule = v && atoi(v); }
   { const char *v = getenv("BRAWLER_BOTDMG"); extern float g_bot_dmg; if (v) g_bot_dmg = (float)atof(v); }
   { const char *v = getenv("BRAWLER_SEED"); extern uint64_t g_seed_salt; if (v) g_seed_salt = (uint64_t)strtoull(v, NULL, 10); }
-  cw_debug_command("spawn", "spawn <3-15> [dx dz]: an enemy near the camera (14: Arthur, 15: the trucker, 16: the creep)", cmd_spawn);
+  cw_debug_command("spawn", "spawn <3-15> [dx dz]: an enemy near the camera (14: Arthur, 15: the wanker, 16: the creep)", cmd_spawn);
   cw_debug_command("freeze", "freeze <0|1>: enemies and bots hold still", cmd_freeze);
   cw_debug_command("botdmg", "botdmg <k>: the bots' damage factor (3 default, 1 real)", cmd_botdmg);
   cw_debug_command("hurtat", "hurtat <tick> <enemy> [knock]: a blow on an enemy at that tick", cmd_hurtat);
@@ -343,7 +343,7 @@ static void publish(void) {
   d_rigs = 0;
   for (int i = 0; i < MAXP + MAXE; i++) { const ent *e = i < MAXP ? &W.p[i] : &W.e[i - MAXP]; if (e->used && e->root.id && cw_node_valid(e->root)) d_rigs++; }
   { int k = 0; for (int i = 0; i < MAXE && k < 8; i++) if (W.e[i].used) { d_ex[k][0] = W.e[i].x; d_ex[k][1] = W.e[i].z; d_ex[k][2] = (float)W.e[i].st; d_ex[k][3] = (float)W.e[i].token * 100 + (float)W.e[i].cd; k++; } for (; k < 8; k++) memset(d_ex[k], 0, sizeof d_ex[k]); }
-  d_trucker[0] = W.trucker.spawned, d_trucker[1] = W.trucker.hay, d_trucker[2] = W.trucker.hay_hits, d_trucker[3] = W.trucker.barge, d_trucker[4] = W.trucker.barge_hits, d_trucker[5] = W.trucker.kills;
+  d_wanker[0] = W.wanker.spawned, d_wanker[1] = W.wanker.hay, d_wanker[2] = W.wanker.hay_hits, d_wanker[3] = W.wanker.barge, d_wanker[4] = W.wanker.barge_hits, d_wanker[5] = W.wanker.kills;
   d_creep[0] = W.creep.spawned, d_creep[1] = W.creep.flash, d_creep[2] = W.creep.flash_hits, d_creep[3] = W.creep.shrugged, d_creep[4] = W.creep.healed, d_creep[5] = W.creep.kills;
   { int c = looks_clones(); if (c > d_clones) d_clones = c; }
   fx_blood_stats(d_blood);
@@ -389,7 +389,7 @@ static void sim_step(void) {
     if (crowd_n < 0) { const char *c = getenv("BRAWLER_CROWD"); crowd_n = c ? atoi(c) : 0; }
     int alive = 0;
     for (int k = 0; k < MAXE; k++) if (W.e[k].used && W.e[k].st != S_DEAD) alive++;
-    if (crowd_n && W.phase == PH_PLAY && alive < crowd_n && W.tick % 20 == 0) ent_spawn_enemy((W.tick / 20) % 8 == 7 ? D_TRUCKER : D_THUG + (W.tick / 20) % 8, W.cam_x + ((W.tick / 20) & 1 ? 7.5f : -7.5f), (float)((W.tick / 20) % 5) - 2.0f);
+    if (crowd_n && W.phase == PH_PLAY && alive < crowd_n && W.tick % 20 == 0) ent_spawn_enemy((W.tick / 20) % 8 == 7 ? D_WANKER : D_THUG + (W.tick / 20) % 8, W.cam_x + ((W.tick / 20) & 1 ? 7.5f : -7.5f), (float)((W.tick / 20) % 5) - 2.0f);
   }
 #endif
 #ifdef BRAWLER_AUTOPILOT

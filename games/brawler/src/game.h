@@ -87,7 +87,7 @@ typedef struct stage_t {
 
 extern const char_def DEFS[];
 extern const atk_data ATK[];
-enum { D_ROOK, D_MIKA, D_JET, D_THUG, D_PUNK, D_RUNNER, D_KNIFER, D_BRUISER, D_THROWER, D_GUARD, D_FOREMAN, D_MATRON, D_RINGMASTER, D_COLOSSUS, D_ARTHUR, D_TRUCKER, D_CREEP, D_COUNT };
+enum { D_ROOK, D_MIKA, D_JET, D_THUG, D_PUNK, D_RUNNER, D_KNIFER, D_BRUISER, D_THROWER, D_GUARD, D_FOREMAN, D_MATRON, D_RINGMASTER, D_COLOSSUS, D_ARTHUR, D_WANKER, D_CREEP, D_COUNT };
 
 /* the match */
 typedef enum { PH_PLAY, PH_CLEAR, PH_OVER, PH_WIN, PH_INTRO } phase_t;
@@ -122,8 +122,8 @@ typedef struct world_t {
     int atk_hits[A_COUNT];
   } st;
   int run_deaths; /* lives lost in the whole run */
-  struct trucker { int spawned, hay, hay_hits, barge, barge_hits, kills; } trucker;
-  struct creep { int spawned, flash, flash_hits, shrugged, healed, kills; } creep; /* the creep's (the gates read them) */ /* the trucker's moves (the gates read them) */
+  struct wanker { int spawned, hay, hay_hits, barge, barge_hits, kills; } wanker;
+  struct creep { int spawned, flash, flash_hits, shrugged, healed, kills; } creep; /* the creep's (the gates read them) */ /* the wanker's moves (the gates read them) */
   int spawns; /* enemies spawned this match (looks.c: each spawn's look) */
   int frames; /* sim_tick calls, hit-stop and slow-motion frames included (the stats' wall clock; never hashed) */
   /* the docks jukebox (stage 2, Arthur's arena): he thumps it, it plays his theme and a shockwave runs out along the
