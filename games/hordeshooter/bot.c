@@ -57,11 +57,18 @@ void horde_bot(const sim *s, int i, input *in) {
     float dx, dy; /* round the walls, by the way the sim keeps to the hatch */
     if (sim_hatch_way(s, p->x, p->y, &dx, &dy)) in->mx = dx, in->my = dy;
   }
+  for (int k = 0; k < MAXE; k++) { /* a boss in range is the target (the floor's way down) */
+    const enemy *e = &s->e[k];
+    if (!e->alive || e->kind != EK_BOSS) continue;
+    float dx = e->x - p->x, dy = e->y - p->y, d = dx * dx + dy * dy;
+    if (d < 26 * 26 && (best > 6 * 6 || d < best)) best = d, bx = dx, by = dy;
+    break;
+  }
   if (best < 1e8f) {
     float l = sqrtf(best);
     in->ax = bx / l, in->ay = by / l;
   } else in->ax = cw_cos(p->aim), in->ay = cw_sin(p->aim);
-  in->fire = best < 400;
+  in->fire = best < 26 * 26;
   in->bomb = crowd > ((p->grenades > 0 || p->mines > 0) ? 10 : 28);
   if (p->offer_ticks > 0 && p->offer_ticks < 60 * 8 - 45) in->pick = 1 + (p->level + i) % 3; /* a bot takes a while, then picks */
 }

@@ -72,7 +72,10 @@ typedef struct enemy {
   bool alive;
   uint8_t kind;
   int hp, flash, spawn_age, ph, hits, first_hit; /* hits taken and the tick of the first (stats only) */
-  int pin, slow, frozen, burn, burn_owner; /* the floors' guns: pinned by a stake, slowed and frozen by frost, burning */
+  int pin, slow, frozen, burn, burn_owner;
+  int elite;
+  int stuck; /* a boss: ticks it has stood far from every player without closing in */
+  float near_d; /* the Unmaker's legion: an earlier floor's creature grown into an elite (bigger, eight times the health, a cache when it falls) */ /* the floors' guns: pinned by a stake, slowed and frozen by frost, burning */
   int atk, atk_cd, tgt; /* the melee attack: ticks into it (0: none), ticks before the next may start, the player it is aimed at */
   int act, act_t, act_next, act_n; /* a floor boss's arena attack (1) or summon (2): ticks into it; ticks to the next; how many it has made
                                       (a bonewalker: risen once already when act_n is 1) */

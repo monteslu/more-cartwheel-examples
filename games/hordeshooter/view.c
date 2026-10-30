@@ -1509,7 +1509,7 @@ void view_sync(const sim *s, float time) {
     int n = cnt[k][fr];
     if (n >= im->instance_matrix->count) continue;
     cnt[k][fr]++;
-    float sq = 1.0f + (e->flash > 0 ? 0.1f : 0);
+    float sq = (e->elite ? 1.6f : 1.0f) * (1.0f + (e->flash > 0 ? 0.1f : 0)); /* an elite stands taller */
     float yaw = -e->face + 1.5708f; /* the model faces +Z; face is atan2(z, x) */
     put(im, n, e->x, 0.0f, e->y, yaw, sq, sq, sq);
     static const float SR[EK_KINDS] = { 0.42f, 0.75f, 0.62f, 1.5f, 0.5f, 0.45f, 0.7f, 0.5f, 0.45f, 0.5f, 0.5f }, SH[EK_KINDS] = { 1.6f, 2.2f, 1.5f, 4.0f, 0.8f, 2.0f, 2.2f, 1.2f, 2.0f, 1.2f, 1.2f };
@@ -1538,6 +1538,7 @@ void view_sync(const sim *s, float time) {
       t3_color gl = ground_light(e->x, e->y);
       c.r *= gl.r, c.g *= gl.g, c.b *= gl.b;
     }
+    if (e->elite) c.r *= 1.5f, c.g *= 1.25f, c.b *= 0.8f; /* an elite's gold */
     if (af == 0 && e->flash <= 0) { /* the telegraph: the wind-up warms toward the strike, besides the raised pose */
       float t = tell * tell * (k == EK_BOSS ? 2.2f : 1.0f); /* a boss's tell glows hot */
       c.r *= 1.0f + 0.9f * t, c.g *= 1.0f + 0.35f * t, c.b *= 1.0f + 0.1f * t;

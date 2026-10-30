@@ -173,7 +173,16 @@ static void boss_release(sim *s, enemy *e, int b) {
   } else if (b == BOSS_SERAPHEL && e->act == 1) { /* the choir beam: fire swept across 90 degrees in front */
     for (int k = 0; k < 9; k++) {
       float a = e->face + ((float)k - 4.0f) * 0.196f;
-      for (int d = 0; d < 3; d++) add_zone(s, 1, e->x + cw_cos(a) * (4.0f + 3.0f * (float)d), e->y + cw_sin(a) * (4.0f + 3.0f * (float)d), 1.0f, 50);
+      for (int d = 0; d < 3; d++) {
+        float px = e->x + cw_cos(a) * (4.0f + 3.0f * (float)d), py = e->y + cw_sin(a) * (4.0f + 3.0f * (float)d);
+        bool blocked = false; /* columns and pews block the beam: nothing past cover */
+        for (int o = 0; o < MAXO && !blocked; o++)
+          if (s->o[o].alive)
+            for (float t = 0.2f; t <= 1.0f && !blocked; t += 0.2f)
+              blocked = in_box(&s->o[o], e->x + (px - e->x) * t, e->y + (py - e->y) * t, 0.1f);
+        if (blocked) break;
+        add_zone(s, 1, px, py, 1.0f, 50);
+      }
     }
   } else if (b == BOSS_SERAPHEL && e->act == 2) { /* the shroud step: behind the farthest player, penitents rising where it was */
     int far = -1;
@@ -214,6 +223,12 @@ static void boss_release(sim *s, enemy *e, int b) {
       float a = rf(s) * 6.28f, d = 14 + rf(s) * 8;
       spawn_enemy(s, LEG[k % 6], cw_clampf(e->x + cw_cos(a) * d, -HALF + 1, HALF - 1), cw_clampf(e->y + cw_sin(a) * d, -HALF + 1, HALF - 1));
     }
+    if (frac < 0.3f) /* the last phase: three of the earlier floors' creatures come as elites */
+      for (int k = 0; k < 3; k++) {
+        float a = rf(s) * 6.28f;
+        int n = spawn_enemy(s, LEG[(e->act_n + k) % 6], cw_clampf(e->x + cw_cos(a) * 8, -HALF + 1, HALF - 1), cw_clampf(e->y + cw_sin(a) * 8, -HALF + 1, HALF - 1));
+        if (n >= 0) s->e[n].elite = 1, s->e[n].hp *= 8, ev(s, EV_RISE, s->e[n].x, s->e[n].y, 0, 0, 0, 0);
+      }
   } else if (b == BOSS_MYCEL && e->act == 1) { /* the spore mortar: where the players stand (they were marked during the tell) */
     for (int k = 0, n = 0; k < MAXP && n < 6; k++)
       if (s->p[k].active && !s->p[k].down)
@@ -390,7 +405,7 @@ static int roll_rarity(sim *s) {
 }
 static void drop_value(sim *s, int kind, float x, float y, int value);
 static void loot_shower(sim *s, float x, float y) {
-  int pool[8], n = weapon_pool(s, pool), caches = CW_MIN(3 + (s->players > 2) + (s->level >= 4), 5);
+  int pool[16], n = weapon_pool(s, pool), caches = CW_MIN(3 + (s->players > 2) + (s->level >= 4), 5);
   for (int k = 0; k < caches; k++) {
     float a = (float)k * 6.2832f / (float)caches + rf(s) * 0.5f, d = 2.5f + rf(s) * 1.5f;
     int w = pool[(int)(cw_rng_u32(&s->rng) % (uint32_t)n)], r = roll_rarity(s);
@@ -561,6 +576,10 @@ static void kill_enemy(sim *s, int i, int owner, float dx, float dy) {
   if (e->kind == EK_BRUTE && rf(s) < 0.03f && !s->no_power) drop_value(s, PK_POWER, e->x, e->y, (int)(cw_rng_u32(&s->rng) % PU_BASE_KINDS)); /* an elite now and then */
   if (e->kind == EK_BOSS && !s->no_power) loot_shower(s, e->x, e->y); /* the boss's loot: caches by rarity */
   if (e->kind == EK_BLOATER) queue_boom(s, e->x, e->y, 3.4f, 14, 4, owner, false);
+  if (e->elite && !s->no_power) { /* an elite's cache: common or uncommon */
+    int pool[16], n = weapon_pool(s, pool);
+    drop_value(s, PK_CACHE, e->x, e->y, pool[(int)(cw_rng_u32(&s->rng) % (uint32_t)n)] | (rf(s) < 0.5f ? RARE_UNCOMMON : RARE_COMMON) << 8);
+  }
   if (e->kind == EK_BOSS) {
     for (int k = 0; k < 14; k++) {
       float a = rf(s) * 6.28f, d = rf(s) * 2.2f;
@@ -841,7 +860,7 @@ static void bullet_hit(sim *s, int i, void *u) {
   if (!e->hits++) e->first_hit = s->tick;
   e->hp -= (int)(d + 0.5f);
   e->flash = 4;
-  float k = 0.9f / (1.0f + (float)(e->kind) * 1.5f);
+  float k = e->kind == EK_BOSS ? 0.01f : 0.9f / (1.0f + (float)(CW_MIN(e->kind, EK_BOSS)) * 1.5f); /* a boss barely flinches (a team firing at it pushed it out of reach) */
   e->kx += b->vx * 0.012f * k;
   e->ky += b->vy * 0.012f * k;
   ev(s, EV_HIT, b->x, b->y, b->vx, b->vy, e->kind, 0);
@@ -1232,7 +1251,11 @@ static void spawn_director(sim *s) {
       float a = rf(s) * 6.28f, d = t < 12 ? 24.0f : 14.0f;
       bx = cw_clampf(cx + cw_cos(a) * d, -HALF + 3, HALF - 3), by = cw_clampf(cy + cw_sin(a) * d, -HALF + 3, HALF - 3);
       int c = CW_CLAMP((int)(by + HALF), 0, FW - 1) * FW + CW_CLAMP((int)(bx + HALF), 0, FW - 1);
-      if (!s->blocked[c] && s->flow[c] != 0xffff) break;
+      bool open = !s->blocked[c] && s->flow[c] != 0xffff;
+      for (float t = 0.05f; t < 1.0f && open; t += 0.05f) /* in sight of the team: a boss is too big for the doorways */
+        for (int o = 0; o < MAXO && open; o++)
+          if (s->o[o].alive && in_box(&s->o[o], bx + (cx - bx) * t, by + (cy - by) * t, 1.2f)) open = false;
+      if (open) break;
     }
     int bi = spawn_enemy(s, EK_BOSS, bx, by);
     if (bi >= 0) s->e[bi].act_next = 240, ev(s, EV_BOSS, bx, by, 0, 0, 0, 0);
@@ -1290,7 +1313,7 @@ static void enemies_step(sim *s) {
     float vx = 0, vy = 0;
     if (best >= 0) {
       const player *p = &s->p[best];
-      if (bd < 7.0f * 7.0f) {
+      if (bd < 7.0f * 7.0f || e->kind == EK_BOSS) { /* (a boss walks straight at its player: the crowd steers it round what is in the way) */
         float l = cw_v2_length(cw_v2(p->x - e->x, p->y - e->y));
         if (l > 0.01f) vx = (p->x - e->x) / l, vy = (p->y - e->y) / l;
       } else {
@@ -1325,7 +1348,29 @@ static void enemies_step(sim *s) {
         sp = 0;
         if (++e->act_t == 42) add_zone(s, 1, p->x, p->y, 1.1f, 180), e->act = 0, e->act_t = 0, e->act_next = 240 + (int)(rf(s) * 120);
       } else if (--e->act_next <= 0 && bd > 5 * 5 && bd < 13 * 13 && e->atk == 0) e->act = 1, e->act_t = 0;
-    } else if (e->kind == EK_BOSS) { /* a floor's boss: its arena attacks and summons, planted while it does them */
+    }
+    if (e->kind == EK_BOSS && best >= 0) { /* a boss held off by the furniture (it is too big for the doorways and the
+                                             pews) for 6 s steps through to 10 m from its player, in the open */
+      float d = sqrtf(bd);
+      if (d > 14 && d > e->near_d - 1.0f) e->stuck++;
+      else e->stuck = 0, e->near_d = d;
+      if (e->stuck > 360) {
+        const player *p = &s->p[best];
+        for (int t = 0; t < 16; t++) {
+          float a = rf(s) * 6.28f, nx = cw_clampf(p->x + cw_cos(a) * 10, -HALF + 3, HALF - 3), ny = cw_clampf(p->y + cw_sin(a) * 10, -HALF + 3, HALF - 3);
+          bool open = true;
+          for (int o = 0; o < MAXO && open; o++)
+            if (s->o[o].alive && in_box(&s->o[o], nx, ny, 2.2f)) open = false;
+          if (!open) continue;
+          cw_crowd_teleport(s->crowd, e->agent, (t3_vec3){ nx, 0, ny });
+          e->x = nx, e->y = ny;
+          ev(s, EV_RISE, nx, ny, 0, 0, 0, 0);
+          break;
+        }
+        e->stuck = 0, e->near_d = 1e9f;
+      }
+    }
+    if (e->kind == EK_BOSS && boss_of(s) != BOSS_YARD) { /* a floor's boss: its arena attacks and summons, planted while it does them */
       boss_step(s, e);
       if (e->act) sp = 0;
       else if (boss_of(s) == BOSS_VHESSA && boss_frac(s, e) < 0.5f) sp *= 1.25f;

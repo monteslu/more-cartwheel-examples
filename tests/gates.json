@@ -409,13 +409,13 @@
     "expect": {
       "game.ticks": 900,
       "game.wave": 13,
-      "fx.booms": 113,
+      "fx.booms": 112,
       "view.cam_jerks": 0,
       "cw.rumble": [
-        171,
-        2,
-        195,
-        56,
+        175,
+        1,
+        318,
+        91,
         170
       ]
     },
@@ -426,7 +426,7 @@
     "hosts": [
       "native"
     ],
-    "note": "no camera shake: three bots at the run's wave 13 (the ossuary's wave 3, its own level) for 900 ticks (113 blasts: rockets, grenades, bloaters, mines). view.cam_jerks counts frames whose camera position has a second difference over 2 cm (a shake; the smooth follow never does): 0. cw.rumble (requests, pad, low and high in thousandths, ms) shows the pads rumble instead: 171 requests, the last a blast. Re-measured 2026-10-29 on native GL when the ossuary came in (was 178 blasts in the yard). The control (HORDE_SHAKE_CONTROL, the same 900 ticks) puts the old explosion-kit camera shake back: 731 jerking frames and the same game.hash (the shake was never in the simulation), so it must differ.",
+    "note": "no camera shake: three bots at the run's wave 13 (the ossuary's wave 3, its own level) for 900 ticks (112 blasts: rockets, grenades, bloaters, mines). view.cam_jerks counts frames whose camera position has a second difference over 2 cm (a shake; the smooth follow never does): 0. cw.rumble (requests, pad, low and high in thousandths, ms) shows the pads rumble instead: 175 requests, the last a blast. Re-measured 2026-10-29 on native GL when the ossuary came in (was 178 blasts in the yard). The control (HORDE_SHAKE_CONTROL, the same 900 ticks) puts the old explosion-kit camera shake back: 731 jerking frames and the same game.hash (the shake was never in the simulation), so it must differ.",
     "controlFrames": 900,
     "webgpu": {
       "hosts": [
@@ -568,20 +568,20 @@
       "game.ticks": 7800,
       "game.state": 0,
       "floor.level": 1,
-      "floor.boss_tick": 5584,
-      "floor.clear_tick": 5674,
-      "floor.hatch_tick": 5674,
-      "floor.descend_tick": 6534,
-      "floor.next_tick": 6594,
+      "floor.boss_tick": 2573,
+      "floor.clear_tick": 2663,
+      "floor.hatch_tick": 2663,
+      "floor.descend_tick": 2912,
+      "floor.next_tick": 2972,
       "floor.left_at_hatch": 0,
-      "game.enemies": 183,
+      "game.enemies": 523,
       "player.hp": [
         100,
         100,
         100,
         0
       ],
-      "game.hash": 3714187193
+      "game.hash": 840220152
     },
     "controlEnv": {
       "HORDE_WAVE": "5",
@@ -592,7 +592,7 @@
     "hosts": [
       "native"
     ],
-    "note": "a floor ends and the next begins: three bots from the yard's boss wave (HORDE_WAVE=5, floor 1 wave 5). The boss falls at tick 5584, the horde burns to ash over 90 ticks (floor.clear_tick 5674, no enemy left when the hatch opens: floor.left_at_hatch 0), the hatch opens over 60 ticks, the boss's loot caches fall and the bots gather them, then one finds its way to the hatch round the walls and steps in at 6534, and the second floor, the sluice with its own layout, starts at 6594 (floor.level 1, its first wave under way: 183 enemies at tick 7800). Measured 2026-10-29 on native GL. The control (HORDE_FLOOR_STAY=1: nobody steps in) stays on the first floor with the hatch open and must differ.",
+    "note": "a floor ends and the next begins: three bots from the yard's boss wave (HORDE_WAVE=5, floor 1 wave 5). The boss falls at tick 2573 (the bots make it their target when it is in range), the horde burns to ash over 90 ticks (floor.clear_tick 2663, no enemy left when the hatch opens: floor.left_at_hatch 0), the hatch opens over 60 ticks, the boss's loot caches fall and the bots gather them, then one finds its way to the hatch round the walls and steps in at 2912, and the second floor, the sluice with its own layout, starts at 2972 (floor.level 1, its waves under way: 523 enemies at tick 7800). Measured 2026-10-29 on native GL. The control (HORDE_FLOOR_STAY=1: nobody steps in) stays on the first floor with the hatch open and must differ.",
     "webgpu": {
       "hosts": [
         "native"
@@ -624,7 +624,16 @@
       "game.hash"
     ],
     "expect": {
-      "game.ticks": 3600
+      "game.ticks": 3600,
+      "game.state": 0,
+      "floor.level": 1,
+      "floor.boss_tick": 91,
+      "floor.clear_tick": 181,
+      "floor.hatch_tick": 181,
+      "floor.descend_tick": 302,
+      "floor.next_tick": 362,
+      "floor.left_at_hatch": 0,
+      "game.hash": 2449745043
     },
     "controlEnv": {
       "HORDE_WAVE": "5",
@@ -636,7 +645,7 @@
     "hosts": [
       "native"
     ],
-    "note": "placeholder"
+    "note": "a floor ends and the next begins: three bots at the yard's boss wave (HORDE_WAVE=5) with its boss weak (HORDE_BOSS_WEAK: 60 health, its first phase). The boss falls at tick 91, the horde burns to ash (no enemy left when the hatch opens), the bots gather the loot and one steps into the hatch at 302; the sluice starts at 362 (floor.level 1). Measured 2026-10-30 on native GL. The control (HORDE_FLOOR_STAY=1: nobody steps in) stays and must differ."
   },
   {
     "name": "hordeshooter-floor-sluice",
@@ -661,7 +670,16 @@
       "game.hash"
     ],
     "expect": {
-      "game.ticks": 3600
+      "game.ticks": 3600,
+      "game.state": 0,
+      "floor.level": 2,
+      "floor.boss_tick": 112,
+      "floor.clear_tick": 202,
+      "floor.hatch_tick": 202,
+      "floor.descend_tick": 1080,
+      "floor.next_tick": 1140,
+      "floor.left_at_hatch": 0,
+      "game.hash": 3750209669
     },
     "controlEnv": {
       "HORDE_WAVE": "10",
@@ -673,7 +691,7 @@
     "hosts": [
       "native"
     ],
-    "note": "placeholder"
+    "note": "a floor ends and the next begins: three bots at the sluice's boss wave (HORDE_WAVE=10) with its boss weak (HORDE_BOSS_WEAK: 60 health, its first phase). The boss falls at tick 112, the horde burns to ash (no enemy left when the hatch opens), the bots gather the loot and one steps into the hatch at 1080; the ossuary starts at 1140 (floor.level 2). Measured 2026-10-30 on native GL. The control (HORDE_FLOOR_STAY=1: nobody steps in) stays and must differ."
   },
   {
     "name": "hordeshooter-floor-ossuary",
@@ -698,7 +716,16 @@
       "game.hash"
     ],
     "expect": {
-      "game.ticks": 3600
+      "game.ticks": 3600,
+      "game.state": 0,
+      "floor.level": 3,
+      "floor.boss_tick": 402,
+      "floor.clear_tick": 492,
+      "floor.hatch_tick": 492,
+      "floor.descend_tick": 1237,
+      "floor.next_tick": 1297,
+      "floor.left_at_hatch": 0,
+      "game.hash": 2781999747
     },
     "controlEnv": {
       "HORDE_WAVE": "15",
@@ -710,7 +737,7 @@
     "hosts": [
       "native"
     ],
-    "note": "placeholder"
+    "note": "a floor ends and the next begins: three bots at the ossuary's boss wave (HORDE_WAVE=15) with its boss weak (HORDE_BOSS_WEAK: 60 health, its first phase). The boss falls at tick 402, the horde burns to ash (no enemy left when the hatch opens), the bots gather the loot and one steps into the hatch at 1237; the foundry starts at 1297 (floor.level 3). Measured 2026-10-30 on native GL. The control (HORDE_FLOOR_STAY=1: nobody steps in) stays and must differ."
   },
   {
     "name": "hordeshooter-floor-foundry",
@@ -735,7 +762,16 @@
       "game.hash"
     ],
     "expect": {
-      "game.ticks": 3600
+      "game.ticks": 3600,
+      "game.state": 0,
+      "floor.level": 4,
+      "floor.boss_tick": 105,
+      "floor.clear_tick": 195,
+      "floor.hatch_tick": 195,
+      "floor.descend_tick": 1035,
+      "floor.next_tick": 1095,
+      "floor.left_at_hatch": 0,
+      "game.hash": 1121370986
     },
     "controlEnv": {
       "HORDE_WAVE": "20",
@@ -747,7 +783,7 @@
     "hosts": [
       "native"
     ],
-    "note": "placeholder"
+    "note": "a floor ends and the next begins: three bots at the foundry's boss wave (HORDE_WAVE=20) with its boss weak (HORDE_BOSS_WEAK: 60 health, its first phase). The boss falls at tick 105, the horde burns to ash (no enemy left when the hatch opens), the bots gather the loot and one steps into the hatch at 1035; the grotto starts at 1095 (floor.level 4). Measured 2026-10-30 on native GL. The control (HORDE_FLOOR_STAY=1: nobody steps in) stays and must differ."
   },
   {
     "name": "hordeshooter-floor-grotto",
@@ -772,7 +808,16 @@
       "game.hash"
     ],
     "expect": {
-      "game.ticks": 3600
+      "game.ticks": 3600,
+      "game.state": 0,
+      "floor.level": 5,
+      "floor.boss_tick": 118,
+      "floor.clear_tick": 208,
+      "floor.hatch_tick": 208,
+      "floor.descend_tick": 1125,
+      "floor.next_tick": 1185,
+      "floor.left_at_hatch": 0,
+      "game.hash": 1651720857
     },
     "controlEnv": {
       "HORDE_WAVE": "26",
@@ -784,7 +829,7 @@
     "hosts": [
       "native"
     ],
-    "note": "placeholder"
+    "note": "a floor ends and the next begins: three bots at the grotto's boss wave (HORDE_WAVE=26) with its boss weak (HORDE_BOSS_WEAK: 60 health, its first phase). The boss falls at tick 118, the horde burns to ash (no enemy left when the hatch opens), the bots gather the loot and one steps into the hatch at 1125; the cathedral starts at 1185 (floor.level 5). Measured 2026-10-30 on native GL. The control (HORDE_FLOOR_STAY=1: nobody steps in) stays and must differ."
   },
   {
     "name": "hordeshooter-floor-cathedral",
@@ -809,7 +854,16 @@
       "game.hash"
     ],
     "expect": {
-      "game.ticks": 3600
+      "game.ticks": 3600,
+      "game.state": 0,
+      "floor.level": 6,
+      "floor.boss_tick": 399,
+      "floor.clear_tick": 489,
+      "floor.hatch_tick": 489,
+      "floor.descend_tick": 653,
+      "floor.next_tick": 713,
+      "floor.left_at_hatch": 0,
+      "game.hash": 1394804146
     },
     "controlEnv": {
       "HORDE_WAVE": "32",
@@ -821,7 +875,7 @@
     "hosts": [
       "native"
     ],
-    "note": "placeholder"
+    "note": "a floor ends and the next begins: three bots at the cathedral's boss wave (HORDE_WAVE=32) with its boss weak (HORDE_BOSS_WEAK: 60 health, its first phase). The boss falls at tick 399, the horde burns to ash (no enemy left when the hatch opens), the bots gather the loot and one steps into the hatch at 653; the rift starts at 713 (floor.level 6). Measured 2026-10-30 on native GL. The control (HORDE_FLOOR_STAY=1: nobody steps in) stays and must differ."
   },
   {
     "name": "hordeshooter-floor-rift",
@@ -846,7 +900,16 @@
       "game.hash"
     ],
     "expect": {
-      "game.ticks": 3600
+      "game.ticks": 3600,
+      "game.state": 0,
+      "floor.level": 7,
+      "floor.boss_tick": 410,
+      "floor.clear_tick": 500,
+      "floor.hatch_tick": 500,
+      "floor.descend_tick": 1290,
+      "floor.next_tick": 1350,
+      "floor.left_at_hatch": 0,
+      "game.hash": 2168996705
     },
     "controlEnv": {
       "HORDE_WAVE": "38",
@@ -858,12 +921,12 @@
     "hosts": [
       "native"
     ],
-    "note": "placeholder"
+    "note": "a floor ends and the next begins: three bots at the rift's boss wave (HORDE_WAVE=38) with its boss weak (HORDE_BOSS_WEAK: 60 health, its first phase). The boss falls at tick 410, the horde burns to ash (no enemy left when the hatch opens), the bots gather the loot and one steps into the hatch at 1290; the core starts at 1350 (floor.level 7). Measured 2026-10-30 on native GL. The control (HORDE_FLOOR_STAY=1: nobody steps in) stays and must differ."
   },
   {
     "name": "hordeshooter-floor-core",
     "app": "hordeshooter_auto",
-    "frames": 1200,
+    "frames": 1900,
     "maxGt16": 0.12,
     "env": {
       "HORDE_WAVE": "44",
@@ -883,7 +946,16 @@
       "game.hash"
     ],
     "expect": {
-      "game.ticks": 1200
+      "game.ticks": 1900,
+      "game.state": 2,
+      "floor.level": 7,
+      "floor.boss_tick": 440,
+      "floor.clear_tick": 530,
+      "floor.hatch_tick": 530,
+      "floor.descend_tick": 1337,
+      "floor.next_tick": 0,
+      "floor.left_at_hatch": 0,
+      "game.hash": 3779425763
     },
     "controlEnv": {
       "HORDE_WAVE": "44",
@@ -891,10 +963,10 @@
       "HORDE_BOSS_WEAK": "1",
       "HORDE_FLOOR_STAY": "1"
     },
-    "controlFrames": 1200,
+    "controlFrames": 1900,
     "hosts": [
       "native"
     ],
-    "note": "placeholder"
+    "note": "the descent ends: three bots at the core's boss wave (HORDE_WAVE=44) with the Unmaker weak (HORDE_BOSS_WEAK). It falls at tick 440, the horde burns away, the bots gather the loot and one steps into the last hatch at 1337: the run is won (game.state 2). Measured 2026-10-30 on native GL. The control (HORDE_FLOOR_STAY=1) stays at the open hatch and must differ."
   }
 ]

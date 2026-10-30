@@ -297,13 +297,16 @@ static void fixed_update(void *u, double dt) {
     int n = sim_level_waves(G.S.level);
     if (G.S.level_wave < n) G.S.level_wave = n, G.S.wave = sim_level_first_wave(G.S.level) + n - 1, G.S.wave_tick = 0;
     for (int i = 0; i < MAXE; i++)
-      if (G.dev_boss <= 2 && G.S.e[i].alive && G.S.e[i].kind == EK_BOSS) G.S.e[i].hp = CW_MIN(G.S.e[i].hp, 60);
+      if (G.dev_boss <= 2 && G.S.e[i].alive && G.S.e[i].kind == EK_BOSS) G.S.e[i].hp = CW_MIN(G.S.e[i].hp, 60), G.S.boss_maxhp = 60; /* weak, but in its first phase */
     if (G.dev_boss == 2 && G.S.boss_alive) sim_dev_kill_boss(&G.S), G.dev_boss = 0;
     if (G.dev_boss == 3 && G.S.boss_alive) G.dev_boss = 0; /* 3: only skip to the boss, at full strength (its patterns) */
   }
   if (G.dev_gun > 0 && G.dev_gun <= PU_KINDS)
     for (int i = 0; i < G.S.players; i++)
       if (G.S.p[i].pu_weapon_t < 60 || G.S.p[i].pu_weapon != G.dev_gun - 1) sim_power_give(&G.S, i, G.dev_gun - 1), G.S.p[i].pu_rarity = CW_CLAMP(G.dev_rarity, 0, 4);
+  if (getenv("HORDE_BOSS_LOG") && G.S.tick % 60 == 0) /* development: where the boss is */
+    for (int i = 0; i < MAXE; i++)
+      if (G.S.e[i].alive && G.S.e[i].kind == EK_BOSS) fprintf(stderr, "boss tick=%d at %.1f %.1f hp %d act %d atk %d; p0 %.1f %.1f\n", G.S.tick, G.S.e[i].x, G.S.e[i].y, G.S.e[i].hp, G.S.e[i].act, G.S.e[i].atk, G.S.p[0].x, G.S.p[0].y);
   int ev0 = G.S.ev_n;
   sim_step(&G.S, in);
   for (int i = 0; i < MAXE; i++) { /* the melee gate's bookkeeping: when each attack started */
