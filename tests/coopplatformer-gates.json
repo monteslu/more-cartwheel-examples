@@ -43,7 +43,7 @@
         0
       ],
       "g.scenery": [
-        148,
+        160,
         0
       ]
     },
@@ -93,7 +93,7 @@
         0
       ],
       "g.scenery": [
-        148,
+        160,
         0
       ]
     },
@@ -115,14 +115,144 @@
     "expect": {
       "g.tick": 60,
       "g.scenery": [
-        148,
+        160,
         0
       ]
     },
     "controlEnv": {
       "COOP_FLOAT_BUG": "1"
     },
-    "note": "no floating scenery: every prop that stands on the ground (grass, flowers, rocks, bushes, mushrooms, crystals and spires on the tiles; trees, columns and their rubble, spires and crystals on the lit 3D backdrop ground) is measured against the ground as drawn (a ray down through the backdrop mesh triangles, the tile tops) at its centre and 192 points of its base: g.scenery is [props seated, props whose base is more than 3 cm above or below the lowest ground under it or that overhang a ledge or the edge of the backdrop]. The control lifts the first meadow tree 0.5 m (COOP_FLOAT_BUG, native): its g.scenery must differ."
+    "note": "no floating scenery: every prop that stands on the ground (grass, flowers, rocks, bushes, mushrooms, crystals and spires on the tiles; trees, columns and their rubble, spires and crystals on the lit 3D backdrop ground) is measured against the ground as drawn (a ray down through the backdrop mesh triangles, the tile tops) at its centre and 192 points of its base: g.scenery is [props seated, props whose base is more than 3 cm above or below the lowest ground under it or that overhang a ledge or the edge of the backdrop]. The control lifts the first meadow tree 0.5 m (COOP_FLOAT_BUG, native): its g.scenery must differ. Re-pinned 148 to 160: nine braziers and the posts under the wooden ledges joined the seated props, a few grass tufts left the footing of the braziers."
+  },
+  {
+    "name": "coopplatformer-fire",
+    "app": "coopplatformer_auto",
+    "webgpu": {
+      "vsGl": 0.005,
+      "maxArea": 0.005,
+      "note": "the picture at frame 60 at the start of the meadow, GL vs WebGPU within the same bounds as the scenery gate"
+    },
+    "frames": 60,
+    "fields": [
+      "g.tick",
+      "g.flames"
+    ],
+    "expect": {
+      "g.tick": 60,
+      "g.flames": [
+        9,
+        0
+      ]
+    },
+    "controlEnv": {
+      "COOP_FLOAT_FIRE": "1"
+    },
+    "note": "no floating fire: every flame (one emitter per brazier in the caves and ruins) is checked each frame against the basket of a brazier that the scenery check seated on the floor (within 6 cm). g.flames is [flames, flames not in a seated brazier]. Lava lights and ability crystals carry no flame. The control (COOP_FLOAT_FIRE, native) puts each flame where the old torch flames burned, 1.5 m in front of the playfield at the light: its g.flames must differ."
+  },
+  {
+    "name": "coopplatformer-surfaces",
+    "app": "coopplatformer_auto",
+    "hosts": [
+      "native"
+    ],
+    "frames": 30,
+    "fields": [
+      "g.tick",
+      "g.surface",
+      "g.uvrep"
+    ],
+    "expect": {
+      "g.tick": 30,
+      "g.surface": [
+        45,
+        0,
+        0
+      ],
+      "g.uvrep": 0
+    },
+    "controlEnv": {
+      "COOP_PLAIN_BUG": "1"
+    },
+    "note": "no plain surfaces and no seam rails: g.surface is [moving platforms, wooden ledges and cracked blocks built with a real PBR material, the same built with a plain colour, seam strips drawn across rock faces]. The control (COOP_PLAIN_BUG, native) brings back the olive platform and the grey seams: its g.surface must differ. Native only: carts have no environment. g.uvrep: percent of sampled wall corners whose texture phase comes back one 4 m repeat on (100 before the uvs wandered; the same control)."
+  },
+  {
+    "name": "coopplatformer-pit-camera",
+    "app": "coopplatformer_auto",
+    "hosts": [
+      "native"
+    ],
+    "env": {
+      "COOP_START_X": "170"
+    },
+    "frames": 240,
+    "fields": [
+      "g.tick",
+      "g.underview",
+      "g.viewbot"
+    ],
+    "expect": {
+      "g.tick": 240,
+      "g.underview": [
+        240,
+        0
+      ]
+    },
+    "controlEnv": {
+      "COOP_PIT_CAM_BUG": "1"
+    },
+    "note": "the camera never looks under the world: two bots start in the ruins spike pit (floor at y 1, the deepest place in the level) and fight their way out. g.underview is [frames drawn, frames whose view reached below the world floor row]; the camera target is held so the bottom edge of the view stays above y 0 (a player at the pit floor stays inside the bottom of the frame). The control (COOP_PIT_CAM_BUG, native) lets the camera follow down: its g.underview must differ. Native only: carts have no environment."
+  },
+  {
+    "name": "coopplatformer-rescue-tags",
+    "app": "coopplatformer_auto4",
+    "hosts": [
+      "native"
+    ],
+    "env": {
+      "COOP_TEST_BUBBLES": "1"
+    },
+    "frames": 240,
+    "fields": [
+      "g.tick",
+      "g.tags",
+      "g.bubbles",
+      "g.marker_over"
+    ],
+    "expect": {
+      "g.tick": 240,
+      "g.tags": [
+        240,
+        0
+      ],
+      "g.marker_over": 0
+    },
+    "controlEnv": {
+      "COOP_HUD_BUG": "1"
+    },
+    "note": "the RESCUE tags of players carried in bubbles never run into each other: three of four players are held in bubbles (COOP_TEST_BUBBLES, native). g.tags is [frames with two or more tags, frames where a tag starts before the word of the tag beside it ends (measured with the font)]. The control (COOP_HUD_BUG, native) brings back the old fixed 90 px step: its g.tags must differ. Native only: carts have no environment. g.marker_over counts markers drawn over the player panels: one bubble is held off the top of the view; the same control brings back the old clamp."
+  },
+  {
+    "name": "coopplatformer-blink",
+    "app": "coopplatformer_auto",
+    "hosts": [
+      "native"
+    ],
+    "env": {
+      "COOP_START_X": "20"
+    },
+    "frames": 100,
+    "fields": [
+      "g.tick",
+      "g.vanish"
+    ],
+    "expect": {
+      "g.tick": 100,
+      "g.vanish": 0
+    },
+    "controlEnv": {
+      "COOP_BLINK_BUG": "1"
+    },
+    "note": "the blink after a respawn never hides the whole group: two bots start invulnerable and g.vanish counts frames in which every player on the field was blinked out (only markers left on screen). The control (COOP_BLINK_BUG, native) brings back the 2-tick phase offset: its g.vanish must differ. Native only: carts have no environment."
   },
   {
     "name": "coopplatformer-boss",

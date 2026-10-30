@@ -38,3 +38,5 @@ runs the replay gates in `tests/coopplatformer-gates.json` (`--cpu` for the stat
 `COOP_SOAK=<ticks> COOP_PLAYERS=<n>` on `coopplatformer_auto` runs the bots through the whole game with no
 rendering and reports wins, stalls and deaths; `COOP_FUZZ=<runs>` checks that each ability gate needs its ability;
 `COOP_SECRETS=1` runs the scripted secret routes.
+
+The debug field `dev.warp` puts every player at a column with every ability (romdev: `wasm({op:'write', name:'dev.warp', value:178})`), so a sweep can reach any region. `COOP_MAP=<x0>` prints the level with its region row.

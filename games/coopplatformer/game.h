@@ -129,6 +129,13 @@ void world_update_water_mesh(float time);
 void world_update_backdrop(float time);
 int world_water_spans(float out[][4], int cap); /* x0, x1, bottom, surface */
 int world_lava_spans(float out[][4], int cap);
+#define MAX_TORCHES 24
+extern bool g_cam_nofloor; /* sim.c: the camera may look under the world (a gate control only) */
+int world_torches(float out[][4], int cap); /* braziers in the caves and ruins: x, flame y, z, region */
+void world_surface_audit(int out[3]); /* surfaces with a PBR material, with a plain colour, seam strips drawn */
+int world_uv_repeat(void); /* percent of wall corners whose texture phase repeats every 4 m */
+bool world_flame_seated(float x, float y, float z); /* the flame burns in a seated brazier's basket */
+int world_platform(int biome, float w, int seed, t3_mesh **out); /* a moving platform's meshes, built around its centre */
 void world_backdrop(game *g);
 int world_scenery_check(const level *L, int *checked, float *worst_mm); /* seated props off their ground (0 = none) */
 bool world_solid(const level *L, int x, int y);

@@ -201,6 +201,10 @@ void sim_rumble_at(game *g, float x, float y, float amount) {
   }
 }
 
+/* the lowest the camera may look: the bottom of the view stays on the world's floor row (y 0), so a pit never shows
+ * the underside of the world and the backdrop behind it. The view is 2 tan(20 deg) z tall (fov 40). */
+bool g_cam_nofloor; /* the pit camera gate's control (COOP_PIT_CAM_BUG, set by main.c): no floor */
+static float cam_floor(float z) { return g_cam_nofloor ? -1e9f : 0.364f * z + 0.6f; }
 static void camera_step(game *g, float dt) {
   float minx = 1e9f, maxx = -1e9f, miny = 1e9f, maxy = -1e9f;
   int n = 0;
@@ -227,6 +231,7 @@ static void camera_step(game *g, float dt) {
       *vel[a] = v > dv ? v - dv : v < -dv ? v + dv : 0;
       *pos[a] += *vel[a] * dt;
     }
+    if (c->y < cam_floor(c->z)) c->y = cam_floor(c->z), c->vy = c->vy < 0 ? 0 : c->vy;
     return;
   }
   float spanx = maxx - minx, spany = maxy - miny;
@@ -236,6 +241,7 @@ static void camera_step(game *g, float dt) {
   float need = fmaxf(spanx / 1.0f + 12.0f, (spany + 6.0f) * 1.8f);
   float z = need * 0.78f;
   c->tz = z < 17 ? 17 : z > 34 ? 34 : z;
+  if (c->ty < cam_floor(c->tz)) c->ty = cam_floor(c->tz); /* a player low in a pit stays inside the bottom of the view */
   /* a target that jumped (a respawn, a warp, the group's centre moving to a rescued player) is a cut, not a whip
    * across the level */
   if (fabsf(c->tx - c->x) > 9.0f || fabsf(c->ty - c->y) > 9.0f) {

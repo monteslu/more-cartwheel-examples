@@ -54,16 +54,21 @@ static struct {
   cw_node coin_node[MAX_COINS];
   t3_mesh *coin_mesh[MAX_COINS];
   cw_node pick_node[MAX_PICKUPS];
-  t3_mesh *plat_mesh[MAX_PLATFORMS];
+  t3_mesh *plat_mesh[MAX_PLATFORMS][2];
+  int nplat_mesh[MAX_PLATFORMS];
   cw_node fx_dust[MAX_PLAYERS], fx_spark, fx_splash, fx_burst, fx_ember[4], fx_hit;
-  cw_node fog, rim, fvol[8], water3d[16], torchfire[4];
+  cw_node fog, rim, fvol[8], water3d[16];
+  cw_node flame[MAX_TORCHES]; /* one flame per brazier, in its basket (children of the world) */
+  float flame_at[MAX_TORCHES][4];
+  bool flame_on[MAX_TORCHES];
+  int nflame;
   cw_node fx_boom, fx_boomsmoke, fx_boomspark, fx_wave, fx_motes, fx_haze[4], fx_bubbles, fx_foam, fx_lavapop[4], fx_debris;
   bool prev_alive[MAX_ENEMIES];
   int nwspan, nlspan;
   float wspan[16][4], lspan[16][4];
   int nember;
   float time;
-  float light_x[64], light_y[64], light_r[64], light_g[64], light_b[64], light_e[64], light_range[64];
+  float light_x[64], light_y[64], light_z[64], light_r[64], light_g[64], light_b[64], light_e[64], light_range[64];
   int nlight_src;
   bool built;
 } S;
@@ -94,9 +99,25 @@ static float g_pos_dbg[2], g_cam_dbg[3], g_ppos_dbg[MAX_PLAYERS * 2];
 static float g_view_dbg[4], g_camjit_dbg[4];
 static int g_camgate_dbg[4];
 static bool g_cam_bug; /* COOP_CAM_BUG: the camera gates' control */
+static int g_dev_warp = -1; /* dev.warp: write a column and every player is put there (romdev sweeps reach any region) */
 static int g_scenery_dbg[2]; /* the scenery check on the built world: props seated, props off their ground (world_scenery_check) */
+static int g_marker_over_dbg; /* markers drawn over the player panels (the rescue-tag gate) */
+static int g_tags_dbg[2]; /* HUD rescue tags: frames with two or more, frames where two of them overlapped */
+static bool g_hud_bug; /* COOP_HUD_BUG: the rescue-tag gate's control */
+static int g_vanish_dbg; /* frames every player on the field was hidden by the invulnerable blink */
+static int g_blink_live, g_blink_hid;
+static bool g_blink_bug; /* COOP_BLINK_BUG: the blink gate's control */
+static int g_uvrep_dbg;
+static int g_surface_dbg[3]; /* world_surface_audit */
+static int g_flames_dbg[2]; /* the fire check: flames burning, flames not in a seated brazier (floating fire) */
+static float g_viewbot_dbg = 1e9f; /* the lowest the bottom edge of the drawn view went this match (world y; below 0 shows the underside of the world) */
+static int g_underview_dbg[2]; /* frames drawn in the match, of them frames whose view reached under the world floor */
 static struct { float last[3], step[3], ppos[MAX_PLAYERS * 2]; int still, frames; } CS;
 static void camgate_reset(void) {
+  g_viewbot_dbg = 1e9f;
+  g_underview_dbg[0] = g_underview_dbg[1] = 0;
+  g_tags_dbg[0] = g_tags_dbg[1] = 0;
+  g_marker_over_dbg = 0;
   memset(&CS, 0, sizeof CS);
   memset(g_camgate_dbg, 0, sizeof g_camgate_dbg);
   memset(g_camjit_dbg, 0, sizeof g_camjit_dbg);
@@ -198,7 +219,7 @@ static const mood MOODS[BIOMES] = {
   { { 0.22f, 0.42f, 0.46f }, { 0.4f, 0.62f, 0.6f }, { 1.0f, 0.95f, 0.78f }, 3.6f, 0.4f, 0.9f, 1.05f, 0.12f, 45, 360, 0.5f,
     -1.0f, -0.45f, { 0.7f, 1.0f, 0.85f }, 1.0f, 0.0012f, 0.7f, 0.4f, { 0.8f, 1.0f, 0.9f }, 0.014f, 0.0f },
   /* volcano: a low red sun behind the cone, lava orange rim, ash haze */
-  { { 0.25f, 0.06f, 0.04f }, { 0.4f, 0.12f, 0.06f }, { 1.0f, 0.5f, 0.3f }, 1.8f, 0.28f, 0.6f, 1.25f, 0.24f, 34, 300, 0.8f,
+  { { 0.25f, 0.06f, 0.04f }, { 0.4f, 0.12f, 0.06f }, { 1.0f, 0.5f, 0.3f }, 1.8f, 0.42f, 0.95f, 1.25f, 0.24f, 34, 300, 0.8f,
     -0.35f, 0.9f, { 1.0f, 0.38f, 0.1f }, 2.4f, 0.0015f, 0.4f, 0.3f, { 1.0f, 0.5f, 0.3f }, 0.016f, 0.0015f },
 };
 static mood cur_mood;
@@ -402,31 +423,38 @@ static void build_scene(void) {
     }
     S.built = true;
   }
-  /* light sources: torches along the caves and ruins, fire over the lava */
-  for (int x = 6; x < WORLD_W; x += 11) {
-    int b = L->biome[x];
-    if (b == BIOME_CAVES || b == BIOME_RUINS) {
-      if (L->ground[x] > 2 && S.nlight_src < 60) {
-        int k = S.nlight_src++;
-        S.light_x[k] = (float)x + 0.5f, S.light_y[k] = (float)L->ground[x] + 3.2f;
-        S.light_r[k] = 1.0f, S.light_g[k] = b == BIOME_CAVES ? 0.62f : 0.8f, S.light_b[k] = b == BIOME_CAVES ? 0.3f : 0.55f;
-        S.light_e[k] = 14.0f, S.light_range[k] = 14;
-        /* a torch on the wall: a small emissive flame and a bracket */
-        t3_material *fm = phys(0x1a0800, 0.5f, 0);
-        fm->emissive = (t3_color){ 1.0f, 0.45f, 0.1f }, fm->emissive_intensity = 4.0f;
-        t3_geometry *fg = t3_sphere_geometry_new(0.16f, 10, 8);
-        part(wobj, fg, fm, S.light_x[k], S.light_y[k], -1.4f, 1, 1.5f, 1);
-        t3_release(fg);
-        t3_geometry *bg = t3_cylinder_geometry_new(0.05f, 0.07f, 0.7f, 6, 1, false);
-        part(wobj, bg, phys(0x3a2a1a, 0.6f, 0.2f), S.light_x[k], S.light_y[k] - 0.4f, -1.4f, 1, 1, 1);
-        t3_release(bg);
-      }
+  /* light sources: the braziers in the caves and ruins (world.c seats them on the floor), fire over the lava. Each
+   * brazier's flame is its own emitter sitting in its basket; only lights are shared between nearby sources. */
+  {
+    float tor[MAX_TORCHES][4];
+    S.nflame = world_torches(tor, MAX_TORCHES);
+    for (int i = 0; i < S.nflame && S.nlight_src < 60; i++) {
+      int k = S.nlight_src++, b = (int)tor[i][3];
+      S.light_x[k] = tor[i][0], S.light_y[k] = tor[i][1] + 0.35f, S.light_z[k] = tor[i][2] + 0.6f; /* just above the coals */
+      S.light_r[k] = 1.0f, S.light_g[k] = b == BIOME_CAVES ? 0.62f : 0.8f, S.light_b[k] = b == BIOME_CAVES ? 0.3f : 0.55f;
+      S.light_e[k] = 14.0f, S.light_range[k] = 14;
+      memcpy(S.flame_at[i], tor[i], sizeof tor[i]);
+      cw_node f = make_node("GPUParticles3D", wobj, "Flame");
+      pfx(f, 80, 0.5f, 0.5f, 1.1f, 0.2f, cw_rgba(1, 0.5f, 0.12f, 1), 2.4f, 1, "0 1 0.62 0.18 0, 0.08 1 0.5 0.1 1, 0.55 0.9 0.22 0.03 0.8, 1 0.3 0.04 0.01 0", "0 0.9, 0.25 1, 1 0.1", 3.0f);
+      cw_node_set(f, "one_shot", cw_val_bool(false));
+      cw_node_set(f, "explosiveness", cw_val_float(0));
+      cw_node_set(f, "emitting", cw_val_bool(false));
+      cw_node_set(f, "emission_shape", cw_val_enum("SPHERE"));
+      cw_node_set(f, "emission_radius", cw_val_float(b == BIOME_RUINS ? 0.2f : 0.14f));
+      cw_node_set(f, "spread", cw_val_float(12));
+      cw_node_set(f, "direction", cw_val_vec3(0, 1, 0));
+      cw_node_set(f, "local_coords", cw_val_bool(false));
+      cw_node3d_set_position(f, (t3_vec3){ tor[i][0], tor[i][1], tor[i][2] });
+      if (getenv("COOP_FLOAT_FIRE")) cw_node3d_set_position(f, (t3_vec3){ tor[i][0], tor[i][1] + 0.6f, 1.5f }); /* the fire gate's control (native): the old flame, in front of the playfield */
+      cw_node_set(f, "preprocess", cw_val_float(0.6f)); /* lit already when it comes into view */
+      S.flame[i] = f;
+      S.flame_on[i] = false;
     }
   }
   for (int x = 0; x < WORLD_W; x += 6) {
     if (L->t[2][x] == T_LAVA && S.nlight_src < 62) {
       int k = S.nlight_src++;
-      S.light_x[k] = (float)x + 0.5f, S.light_y[k] = 3.6f;
+      S.light_x[k] = (float)x + 0.5f, S.light_y[k] = 3.6f, S.light_z[k] = 1.5f;
       S.light_r[k] = 1.0f, S.light_g[k] = 0.32f, S.light_b[k] = 0.06f;
       S.light_e[k] = 20.0f, S.light_range[k] = 16;
     }
@@ -445,7 +473,7 @@ static void build_scene(void) {
     t3_release(cg);
     if (S.nlight_src < 64) {
       int k = S.nlight_src++;
-      S.light_x[k] = (float)pk->x + 0.5f, S.light_y[k] = (float)pk->y + 1.2f;
+      S.light_x[k] = (float)pk->x + 0.5f, S.light_y[k] = (float)pk->y + 1.2f, S.light_z[k] = 1.5f;
       S.light_r[k] = 0.4f, S.light_g[k] = 0.7f, S.light_b[k] = 1.0f, S.light_e[k] = 10.0f, S.light_range[k] = 9;
     }
   }
@@ -474,9 +502,8 @@ static void build_scene(void) {
   }
   /* moving platforms */
   for (int i = 0; i < L->nplat; i++) {
-    t3_geometry *pg = t3_box_geometry_new(L->plats[i].w, 0.4f, 2.4f, 1, 1, 1);
-    S.plat_mesh[i] = part(wobj, pg, phys(0x8a7a5a, 0.5f, 0.5f), 0, 0, 0, 1, 1, 1);
-    t3_release(pg);
+    int px = (int)L->plats[i].x0 < 0 ? 0 : (int)L->plats[i].x0 >= WORLD_W ? WORLD_W - 1 : (int)L->plats[i].x0;
+    S.nplat_mesh[i] = world_platform(L->biome[px], L->plats[i].w, i * 13 + 3, S.plat_mesh[i]);
   }
   /* characters: skinned heroes, one headgear each (a marker that is not a colour) */
   t3_geometry *bub = t3_sphere_geometry_new(1.0f, 32, 20);
@@ -623,19 +650,6 @@ static void build_scene(void) {
       S.fx_ember[i] = n;
     }
     S.nember = 4;
-    /* a real flame at the nearest torches */
-    for (int i = 0; i < NTORCH; i++) {
-      S.torchfire[i] = make_node("GPUParticles3D", S.torch[i], "Flame");
-      pfx(S.torchfire[i], 40, 0.55f, 0.3f, 0.9f, 0.2f, cw_rgba(1, 0.6f, 0.2f, 1), 2.2f, 1, "0 1 0.95 0.6 0, 0.15 1 0.7 0.25 1, 0.7 1 0.35 0.08 0.6, 1 0.4 0.1 0.03 0", "0 0.6, 0.3 1, 1 0.2", 4.5f);
-      cw_node_set(S.torchfire[i], "one_shot", cw_val_bool(false));
-      cw_node_set(S.torchfire[i], "explosiveness", cw_val_float(0));
-      cw_node_set(S.torchfire[i], "emitting", cw_val_bool(true));
-      cw_node_set(S.torchfire[i], "emission_shape", cw_val_enum("SPHERE"));
-      cw_node_set(S.torchfire[i], "emission_radius", cw_val_float(0.1f));
-      cw_node_set(S.torchfire[i], "spread", cw_val_float(14));
-      cw_node_set(S.torchfire[i], "direction", cw_val_vec3(0, 1, 0));
-      cw_node_set(S.torchfire[i], "local_coords", cw_val_bool(false));
-    }
   }
   /* enemies seen alive: a death is a blast */
   for (int i = 0; i < L->nenemies; i++) S.prev_alive[i] = L->enemies[i].alive;
@@ -813,6 +827,12 @@ static void sync_scene(float alpha, float dt) {
   if (g_cam_bug) ox = 0.01f * sinf((float)G.tick * 0.3f); /* the camera gate's control (COOP_CAM_BUG, native): a 1 cm sway */
   cw_node3d_set_position(S.cam, (t3_vec3){ vx + ox, vy, vz });
   g_view_dbg[0] = vx + ox, g_view_dbg[1] = vy, g_view_dbg[2] = vz, g_view_dbg[3] = 0;
+  if (!g_attract) { /* fov 40: half the view is tan(20 deg) z tall */
+    float bot = vy - 0.364f * vz;
+    g_viewbot_dbg = fminf(g_viewbot_dbg, bot);
+    g_underview_dbg[0]++;
+    if (bot < 0) g_underview_dbg[1]++;
+  }
   if (!g_attract) {
     float pp[MAX_PLAYERS * 2];
     for (int i = 0; i < g->nplayers; i++) {
@@ -912,7 +932,9 @@ static void sync_scene(float alpha, float dt) {
       rig_pose_hero(S.prig[i], p->anim, S.runph[i], S.time + (float)i, st, wd, vy);
       /* the blink while invulnerable: each player on its own phase, so a group that respawns together never vanishes
        * all at once (the screen showed four markers and no one under them) */
-      bool inv = p->invuln > 0 && (((p->invuln + 2 * i) / 4) & 1);
+      /* phases spread evenly over the 8-tick cycle: with two players a 2-tick offset left both hidden a quarter of the time */
+      bool inv = p->invuln > 0 && (((p->invuln + (g_blink_bug ? 2 * i : 8 * i / (G.nplayers > 0 ? G.nplayers : 1))) / 4) & 1);
+      if (p->joined && p->alive && !p->bubble) { g_blink_live++; if (inv) g_blink_hid++; }
       cw_node_set(S.pmodel[i], "visible", cw_val_bool(!inv));
     }
     cw_node3d_set_position(S.plight[i], (t3_vec3){ x, y + 1.2f, 2.0f });
@@ -936,7 +958,7 @@ static void sync_scene(float alpha, float dt) {
   }
   for (int i = 0; i < L->nplat; i++) {
     cw_pos2 pp = cw_body2d_position(L->plats[i].body);
-    S.plat_mesh[i]->base.position = (t3_vec3){ (float)pp.x, (float)pp.y, 0 };
+    for (int k = 0; k < S.nplat_mesh[i]; k++) S.plat_mesh[i][k]->base.position = (t3_vec3){ (float)pp.x, (float)pp.y, 0 };
   }
   for (int i = 0; i < L->nenemies; i++) {
     const enemy *e = &L->enemies[i];
@@ -979,11 +1001,24 @@ static void sync_scene(float alpha, float dt) {
     if (i < np) {
       int k = pick[i];
       float flick = 1.0f + 0.12f * sinf(S.time * 11.0f + (float)k * 2.3f) + 0.06f * sinf(S.time * 23.0f + (float)k);
-      cw_node3d_set_position(S.torch[i], (t3_vec3){ S.light_x[k], S.light_y[k], 1.5f });
+      cw_node3d_set_position(S.torch[i], (t3_vec3){ S.light_x[k], S.light_y[k], S.light_z[k] });
       cw_node_set(S.torch[i], "color", cw_val_color(S.light_r[k], S.light_g[k], S.light_b[k], 1));
       cw_node_set(S.torch[i], "energy", cw_val_float(S.light_e[k] * flick));
       cw_node_set(S.torch[i], "range", cw_val_float(S.light_range[k]));
     } else cw_node_set(S.torch[i], "energy", cw_val_float(0));
+  }
+  /* the flames burn where the camera can see them (a flame far off screen does not spend its particles) */
+  world_surface_audit(g_surface_dbg);
+  g_uvrep_dbg = world_uv_repeat();
+  if (g_blink_live > 0 && g_blink_hid == g_blink_live) g_vanish_dbg++;
+  g_blink_live = g_blink_hid = 0;
+  g_flames_dbg[0] = g_flames_dbg[1] = 0;
+  for (int i = 0; i < S.nflame; i++) {
+    bool on = fabsf(S.flame_at[i][0] - c->x) < 45.0f;
+    if (on != S.flame_on[i]) cw_node_set(S.flame[i], "emitting", cw_val_bool(on)), S.flame_on[i] = on;
+    t3_vec3 fp = cw_node3d_position(S.flame[i]); /* where the emitter really is (its parent, the world, sits at 0) */
+    g_flames_dbg[0]++;
+    if (!world_flame_seated(fp.x, fp.y, fp.z)) g_flames_dbg[1]++;
   }
   g_bubbles_dbg = bubbles;
 }
@@ -1028,6 +1063,10 @@ static void start_match(int players, void *user) {
   sim_reset(&G, players);
   memset(G.rumble, 0, sizeof G.rumble); /* nothing the attract mode asked for carries into the match */
   g_cam_bug = getenv("COOP_CAM_BUG") != NULL; /* the camera gate's must-fail control (native only) */
+  g_blink_bug = getenv("COOP_BLINK_BUG") != NULL; /* the blink gate's control (native only) */
+  g_vanish_dbg = 0;
+  g_hud_bug = getenv("COOP_HUD_BUG") != NULL; /* the rescue-tag gate's control (native only) */
+  g_cam_nofloor = getenv("COOP_PIT_CAM_BUG") != NULL; /* the pit camera gate's control (native only) */
   if (sv->abilities && !getenv("COOP_FRESH")) G.abilities = sv->abilities;
   G.reached |= sv->reached;
   if (cfg_int("COOP_ABILITIES", COOP_DEF_ABILITIES) >= 0) G.abilities = (uint32_t)cfg_int("COOP_ABILITIES", COOP_DEF_ABILITIES);
@@ -1267,6 +1306,9 @@ static void print_map(int x0) {
     }
     putchar('\n');
   }
+  printf("   ");
+  for (int x = x0; x < x0 + 48 && x < WORLD_W; x++) putchar('0' + G.L.biome[x]); /* the region of each column */
+  putchar('\n');
   for (int k = 0; k < G.L.nchecks; k++) printf("flag %d at %d,%d\n", k, G.L.checks[k].x, G.L.checks[k].y);
   for (int k = 0; k < G.L.ngates; k++) printf("gate %d x %d..%d needs %d flag %d\n", k, G.L.gates[k].x0, G.L.gates[k].x1, G.L.gates[k].need, G.L.gates[k].flag);
   for (int k = 0; k < G.L.npickups; k++) printf("pickup %d at %d,%d ability %d\n", k, G.L.pickups[k].x, G.L.pickups[k].y, G.L.pickups[k].ability);
@@ -1407,6 +1449,15 @@ static void init(void *user) {
   cw_debug_field("rumble.sent", g_rumble_sent_dbg, CW_DBG_I32, MAX_PLAYERS);
   cw_debug_i32("g.hp", &g_hp_dbg);
   cw_debug_i32("g.bubbles", &g_bubbles_dbg);
+  cw_debug_i32("dev.warp", &g_dev_warp);
+  cw_debug_field("g.flames", g_flames_dbg, CW_DBG_I32, 2);
+  cw_debug_f32("g.viewbot", &g_viewbot_dbg);
+  cw_debug_field("g.underview", g_underview_dbg, CW_DBG_I32, 2);
+  cw_debug_field("g.tags", g_tags_dbg, CW_DBG_I32, 2);
+  cw_debug_field("g.surface", g_surface_dbg, CW_DBG_I32, 3);
+  cw_debug_i32("g.vanish", &g_vanish_dbg);
+  cw_debug_i32("g.uvrep", &g_uvrep_dbg);
+  cw_debug_i32("g.marker_over", &g_marker_over_dbg);
   cur_mood = MOODS[0];
 #ifdef COOP_AUTOPILOT
   if (getenv("COOP_MAP")) print_map(atoi(getenv("COOP_MAP")));
@@ -1504,6 +1555,18 @@ static void fixed_update(void *user, double dt) {
   if (g_attract) return; /* the match has not started yet */
   if (G.nplayers == 0 || !G.world.id) return;
   g_run_ticks++;
+  if (g_dev_warp >= 0) {
+    int sx = g_dev_warp < 2 ? 2 : g_dev_warp > WORLD_W - 3 ? WORLD_W - 3 : g_dev_warp;
+    g_dev_warp = -1;
+    G.abilities = 7;
+    for (int i = 0; i < G.nplayers; i++) {
+      cw_platformer2d_teleport(&G.p[i].pf, (cw_pos2){ (double)sx + 0.7 * i, (double)G.L.ground[sx] + 0.05 });
+      G.p[i].invuln = 120;
+    }
+    G.cam.x = G.cam.tx = G.cam.px = (float)sx, G.cam.y = G.cam.ty = G.cam.py = (float)G.L.ground[sx] + 3;
+    for (int k = 0; k < G.L.nchecks; k++) /* a fall comes back here, not to the start */
+      if (G.L.checks[k].x < sx) G.checkpoint = k, G.reached |= 1u << k;
+  }
 #ifdef COOP_AUTOPILOT
   for (int i = 0; i < MAX_PLAYERS; i++) sim_bot_input(&G, i, &INPUT[i]);
 #else
@@ -1515,6 +1578,10 @@ static void fixed_update(void *user, double dt) {
   if (g_map_open) map_cursor();
 #endif
   sim_step(&G, INPUT, (float)dt);
+#ifdef COOP_AUTOPILOT
+  if (getenv("COOP_TEST_BUBBLES")) /* the rescue-tag gate: everyone but the first player is carried in a bubble */
+    for (int i = 1; i < G.nplayers; i++) G.p[i].bubble = 1, G.p[i].bubble_x = (float)G.p[0].pf.body.position.x + 6.0f * (float)i, G.p[i].bubble_y = (float)G.p[0].pf.body.position.y + (i == 1 ? 40.0f : 4.0f); /* one off the top of the view */
+#endif
   play_events();
   send_rumble();
   g_state_dbg = (int)cw_shell_screen_now();
@@ -1655,7 +1722,10 @@ static void draw_markers(float W, float H, float s) {
     float wx = p->bubble ? p->bubble_x : (float)p->pf.body.position.x + S.spread_x[i], wy = (p->bubble ? p->bubble_y + 0.9f : (float)p->pf.body.position.y) + 2.15f;
     float sx, sy;
     if (!project(wx, wy, 0, W, H, &sx, &sy)) continue;
-    if (sy < r + 60 * s) sy = r + 60 * s;
+    /* held under the player panels: a marker clamped to the top of the view sat on the panels (their bottom is 75 * s) */
+    float sy_min = g_hud_bug ? r + 60 * s : 75 * s + 1.5f * r;
+    if (sy < sy_min) sy = sy_min;
+    if (sy - r < 75 * s) g_marker_over_dbg++;
     px[n] = sx, py[n] = sy, id[n] = i, n++;
   }
   for (int a = 0; a < n; a++) /* by screen x, so the spreading keeps the order the players stand in */
@@ -1902,13 +1972,29 @@ static void render(void *user, double alpha) {
       }
     draw_markers(W, H, s);
     text("hold R or Y: back to the last flag", 20 * s, H - 30 * s, 14 * s, cw_rgba(1, 1, 1, 0.45f), CW_ALIGN_LEFT, 0);
-    /* players carried in bubbles */
-    for (int i = 0; i < G.nplayers; i++)
-      if (G.p[i].bubble && G.p[i].joined) {
-        float x = W * 0.5f + (float)(i - G.nplayers / 2) * 90 * s;
-        portrait((cw_vec2){ x - 54 * s, H - 100 * s }, 15 * s, i, false);
-        text("RESCUE", x - 34 * s, H - 110 * s, 18 * s, rgba3(PLAYER_RGB[i], 1), CW_ALIGN_LEFT, 0);
+    /* players carried in bubbles: a tag each (face and RESCUE), laid out side by side from the measured text and
+     * centred, so four tags never run into each other (a fixed 90 px step by player number overlapped them) */
+    {
+      int who[MAX_PLAYERS], n = 0;
+      for (int i = 0; i < G.nplayers; i++)
+        if (G.p[i].bubble && G.p[i].joined) who[n++] = i;
+      float tw = cw_font_measure(g_font, "RESCUE", &(cw_text_style){ .size = 18 * s }).width;
+      float tag = 15 * s * 2 + 6 * s + tw, gap = 24 * s; /* face, a little space, the word */
+      if (g_hud_bug) tag = 90 * s, gap = 0; /* the HUD gate's control (native): the old fixed step */
+      float x0 = W * 0.5f - ((float)n * tag + (float)(n - 1) * gap) * 0.5f;
+      float prev_end = -1e9f;
+      if (n > 1) g_tags_dbg[0]++;
+      bool ov = false;
+      for (int k = 0; k < n; k++) {
+        int i = who[k];
+        float x = x0 + (float)k * (tag + gap); /* the tag's left edge */
+        portrait((cw_vec2){ x + 15 * s, H - 100 * s }, 15 * s, i, false);
+        text("RESCUE", x + 36 * s, H - 110 * s, 18 * s, rgba3(PLAYER_RGB[i], 1), CW_ALIGN_LEFT, 0);
+        if (x < prev_end) ov = true;
+        prev_end = x + 36 * s + tw; /* where the drawn word really ends */
       }
+      if (ov) g_tags_dbg[1]++;
+    }
     if (G.won) {
       float k = fminf(1.0f, (float)(G.tick - G.win_tick) / 40.0f);
       panel(0, H * 0.28f, W, H * 0.34f * k, 0, cw_rgba(0.1f, 0.08f, 0.02f, 0.88f), cw_rgba(0.02f, 0.02f, 0.03f, 0.88f), cw_rgba(1, 0.8f, 0.3f, 0.7f));
