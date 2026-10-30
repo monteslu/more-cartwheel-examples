@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.2
+
+- hordeshooter: the floor guns you can now see. The arc caster draws jagged
+  blue-white bolts between the enemies it chains through, with a wider flash
+  across water; the frost lance is a long blue-white beam that tints chilled
+  enemies, crusts frozen ones in ice and bursts them into shards; the saint's
+  wheel is a spinning golden ring with a trail, sparking on each bounce on
+  its way back to the thrower.
+
 ## 0.5.1
 
 - hordeshooter: each floor brings its own gun, found on its power-up spots
