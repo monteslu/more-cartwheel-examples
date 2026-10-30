@@ -430,7 +430,7 @@ static void hud(void) {
       char pw[96];
       int n = 0;
       pw[0] = 0;
-      if (p->pu_weapon_t > 0) n += snprintf(pw + n, sizeof pw - (size_t)n, "%s %d  ", sim_power_name(p->pu_weapon), (p->pu_weapon_t + 59) / 60);
+      if (p->pu_weapon_t > 0) n += snprintf(pw + n, sizeof pw - (size_t)n, "%s%s%s %d  ", p->pu_rarity > 0 ? sim_rarity_name(p->pu_rarity) : "", p->pu_rarity > 0 ? " " : "", sim_power_name(p->pu_weapon), (p->pu_weapon_t + 59) / 60);
       if (p->pu_ammo_t > 0) n += snprintf(pw + n, sizeof pw - (size_t)n, "%s %d  ", sim_power_name(p->pu_ammo), (p->pu_ammo_t + 59) / 60);
       if (p->saw_t > 0) n += snprintf(pw + n, sizeof pw - (size_t)n, "SAWS %d  ", (p->saw_t + 59) / 60);
       if (p->shield_t > 0) n += snprintf(pw + n, sizeof pw - (size_t)n, "SHIELD %d  ", (p->shield_t + 59) / 60);

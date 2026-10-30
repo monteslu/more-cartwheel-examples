@@ -120,3 +120,4 @@ models/core_pot.cwchar
 models/core_door.cwchar
 models/core_hellhound.cwchar
 models/core_boss.cwchar
+models/loot_cache.cwchar

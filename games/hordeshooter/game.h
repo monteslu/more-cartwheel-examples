@@ -27,7 +27,7 @@ int sim_kind_by_name(const char *name); /* -1 when not a kind */
 enum { OK_CRATE, OK_BARREL, OK_WALL, OK_PILLAR, OK_KINDS };
 enum { EV_SHOT, EV_HIT, EV_KILL, EV_BOOM, EV_CRATE, EV_BARREL, EV_WALL, EV_GEM, EV_HURT, EV_LEVEL, EV_WAVE, EV_BOSS, EV_DOWN, EV_ROCKET, EV_POWER, EV_POWER_SPAWN, EV_SWIPE,
        EV_MELT, EV_CLEAR, EV_HATCH, EV_DESCEND, EV_FLOOR,
-       EV_BOSS_TELL, EV_ACID, EV_LANCE, EV_SPIKES, EV_RISE, EV_BROOD }; /* EV_BOSS_TELL: a boss begins an arena attack (a 1) or a summon (a 2);
+       EV_CACHE, EV_BOSS_TELL, EV_ACID, EV_LANCE, EV_SPIKES, EV_RISE, EV_BROOD }; /* EV_BOSS_TELL: a boss begins an arena attack (a 1) or a summon (a 2);
        EV_ACID: a puddle of acid lands; EV_LANCE: a bone lance flies (z w its velocity); EV_SPIKES: a ring of spikes (z its radius);
        EV_RISE: a pile of bones stands up; EV_BROOD: a skitter dropped by the mother */ /* EV_MELT: one of the horde melting after its boss fell (a its kind); EV_CLEAR: the floor is clear;
        EV_HATCH: the hatch opens; EV_DESCEND: a player stepped in; EV_FLOOR: a new floor starts (a its index) */ /* EV_SWIPE: an enemy's strike (a kind, b 1 when it hit; z, w its facing) */
@@ -39,6 +39,10 @@ enum { PU_SHOTGUN, PU_MINIGUN, PU_ROCKETS, PU_RAIL, PU_FLAME, /* weapons, 12 s *
        PU_SAWS, PU_SHIELD, PU_MAGNET,                         /* helpers */
        PU_KINDS };
 #define PK_POWER 2
+#define PK_CACHE 3 /* a boss's loot cache: value = weapon | rarity << 8 (LEVELS.md section 2) */
+enum { RARE_COMMON, RARE_UNCOMMON, RARE_RARE, RARE_EPIC, RARE_LEGENDARY, RARE_KINDS };
+const char *sim_rarity_name(int r);
+extern const float RARITY_RGB[RARE_KINDS][3]; /* the five-step loot colours (sRGB) */
 #define MAXM 32 /* mines on the ground */
 #define PU_WEAPON_TICKS (60 * 12)
 const char *sim_power_name(int t);
@@ -55,6 +59,7 @@ typedef struct player {
   int last_up;
   /* power-ups held: a weapon and an ammo with their ticks left, grenades and mines, saws, shield, magnet */
   int pu_weapon, pu_weapon_t, pu_ammo, pu_ammo_t, grenades, mines, saw_t, shield_t, magnet_t;
+  int pu_rarity; /* the held weapon's rarity: its damage, an extra projectile, more pierce (a cache's) */
   float saw_a;
   int offer[3], offer_ticks, pending; /* an upgrade choice on screen: offer_ticks > 0 */
 } player;

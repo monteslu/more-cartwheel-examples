@@ -17,12 +17,14 @@ void horde_bot(const sim *s, int i, input *in) {
     if (d < best) best = d, bx = dx, by = dy;
     if (d < 36) near_x -= dx / (d + 1), near_y -= dy / (d + 1);
   }
+  bool loot = false; /* a boss's caches still lying: those first */
+  for (int k = 0; k < MAXG && !loot; k++) loot = s->g[k].alive && s->g[k].kind == PK_CACHE;
   float gd = 1e9f, gx = 0, gy = 0, pd = 1e9f, px = 0, py = 0;
   for (int k = 0; k < MAXG; k++) {
     const pickup *g = &s->g[k];
     if (!g->alive) continue;
     float dx = g->x - p->x, dy = g->y - p->y, d = dx * dx + dy * dy;
-    if (g->kind == PK_POWER) { if (d < pd) pd = d, px = dx, py = dy; continue; }
+    if (g->kind == PK_POWER || g->kind == PK_CACHE) { if (d < pd) pd = d, px = dx, py = dy; continue; }
     if (d < gd) gd = d, gx = dx, gy = dy;
   }
   float mx = near_x * 6, my = near_y * 6;
@@ -30,7 +32,7 @@ void horde_bot(const sim *s, int i, input *in) {
     float l = sqrtf(gd);
     mx += gx / l * 0.7f, my += gy / l * 0.7f;
   }
-  if (pd < 18 * 18 && pd > 0.01f) { /* a power-up within reach: go for it, braver than for a gem */
+  if ((pd < 18 * 18 || (loot && s->state != ST_PLAY)) && pd > 0.01f) { /* a power-up within reach: go for it, braver than for a gem */
     float l = sqrtf(pd);
     mx += px / l * 1.6f, my += py / l * 1.6f;
   }
@@ -51,7 +53,7 @@ void horde_bot(const sim *s, int i, input *in) {
   float t = (float)s->tick * 0.01f + (float)i * 2.0f;
   mx += cw_sin(t) * 0.25f, my += cw_cos(t * 1.3f) * 0.25f;
   in->mx = mx, in->my = my;
-  if (s->state == ST_HATCH && s->state_ticks >= HATCH_OPEN_TICKS - 20) { /* the hatch is open: down it goes (after a look round for loot) */
+  if (s->state == ST_HATCH && s->state_ticks >= HATCH_OPEN_TICKS - 20 && (!loot || s->state_ticks > 60 * 12)) { /* the hatch is open: down it goes (after a look round for loot) */
     float dx, dy; /* round the walls, by the way the sim keeps to the hatch */
     if (sim_hatch_way(s, p->x, p->y, &dx, &dy)) in->mx = dx, in->my = dy;
   }

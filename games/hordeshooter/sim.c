@@ -285,6 +285,42 @@ int sim_attack_frame(const enemy *e, float *tell) {
  * breather, LEVELS.md), so the eighth floor's last wave plays about like the old run's twentieth */
 static int dwave(const sim *s) { return 1 + (5 * s->level) / 2 + s->level_wave - 1; }
 
+/* loot (LEVELS.md section 2): a boss bursts into gems and 3 to 5 caches, each a weapon of the floor's pool at a
+ * rarity, the odds a step better every two floors */
+const float RARITY_RGB[RARE_KINDS][3] = { { 0.85f, 0.85f, 0.85f }, { 0.36f, 0.94f, 0.36f }, { 0.3f, 0.55f, 1.0f }, { 0.71f, 0.36f, 1.0f }, { 1.0f, 0.6f, 0.15f } };
+static const char *const RARITY_NAME[RARE_KINDS] = { "COMMON", "UNCOMMON", "RARE", "EPIC", "LEGENDARY" };
+const char *sim_rarity_name(int r) { return RARITY_NAME[CW_CLAMP(r, 0, RARE_KINDS - 1)]; }
+static const int RARITY_TICKS[RARE_KINDS] = { 60 * 12, 60 * 15, 60 * 18, 60 * 24, 60 * 30 };
+static const float RARITY_DMG[RARE_KINDS] = { 1.0f, 1.15f, 1.3f, 1.5f, 1.8f };
+/* the weapons each floor has unlocked: the yard's shotgun, minigun and rockets, the rail gun from the sluice, the
+ * flamer from the ossuary (a gun a floor; the floors' own new guns come with their content) */
+static int weapon_pool(const sim *s, int *out) {
+  int n = 0;
+  out[n++] = PU_SHOTGUN, out[n++] = PU_MINIGUN, out[n++] = PU_ROCKETS;
+  if (s->level >= 1) out[n++] = PU_RAIL;
+  if (s->level >= 2) out[n++] = PU_FLAME;
+  return n;
+}
+static int roll_rarity(sim *s) {
+  static const float ODDS[RARE_KINDS] = { 0.30f, 0.30f, 0.22f, 0.13f, 0.05f };
+  float r = rf(s), acc = 0;
+  int k = RARE_KINDS - 1;
+  for (int i = 0; i < RARE_KINDS; i++)
+    if (r < (acc += ODDS[i])) { k = i; break; }
+  return CW_MIN(k + s->level / 2 * (rf(s) < 0.5f ? 1 : 0), RARE_KINDS - 1); /* a step up every two floors, about half the time */
+}
+static void drop_value(sim *s, int kind, float x, float y, int value);
+static void loot_shower(sim *s, float x, float y) {
+  int pool[8], n = weapon_pool(s, pool), caches = CW_MIN(3 + (s->players > 2) + (s->level >= 4), 5);
+  for (int k = 0; k < caches; k++) {
+    float a = (float)k * 6.2832f / (float)caches + rf(s) * 0.5f, d = 2.5f + rf(s) * 1.5f;
+    int w = pool[(int)(cw_rng_u32(&s->rng) % (uint32_t)n)], r = roll_rarity(s);
+    float cx = cw_clampf(x + cw_cos(a) * d, -HALF + 1.5f, HALF - 1.5f), cy = cw_clampf(y + cw_sin(a) * d, -HALF + 1.5f, HALF - 1.5f);
+    drop_value(s, PK_CACHE, cx, cy, w | r << 8);
+    ev(s, EV_CACHE, cx, cy, 0, 0, r, w);
+  }
+}
+
 static int spawn_enemy(sim *s, int kind, float x, float y) {
   int slot = -1;
   for (int i = 0; i < MAXE; i++)
@@ -437,8 +473,7 @@ static void kill_enemy(sim *s, int i, int owner, float dx, float dy) {
   float r = rf(s);
   if (e->kind != EK_RUNNER ? r < 0.35f : r < 0.012f) drop(s, 1, e->x, e->y);
   if (e->kind == EK_BRUTE && rf(s) < 0.03f && !s->no_power) drop_value(s, PK_POWER, e->x, e->y, (int)(cw_rng_u32(&s->rng) % PU_KINDS)); /* an elite now and then */
-  if (e->kind == EK_BOSS && !s->no_power)
-    for (int k = 0; k < 2; k++) drop_value(s, PK_POWER, e->x + (float)k * 2.0f - 1.0f, e->y, (int)(cw_rng_u32(&s->rng) % PU_KINDS));
+  if (e->kind == EK_BOSS && !s->no_power) loot_shower(s, e->x, e->y); /* the boss's loot: caches by rarity */
   if (e->kind == EK_BLOATER) queue_boom(s, e->x, e->y, 3.4f, 14, 4, owner, false);
   if (e->kind == EK_BOSS) {
     for (int k = 0; k < 14; k++) {
@@ -868,7 +903,7 @@ static void player_step(sim *s, int i, const input *in) {
     else if (w == PU_FLAME) period = 2;
     if (p->pu_ammo_t > 0 && p->pu_ammo == PU_RAPID) period = CW_MAX(2, period / 2);
     p->cd = period;
-    int n = 1 + p->shots;
+    int n = 1 + p->shots + (w >= 0 && p->pu_rarity >= RARE_RARE ? 1 : 0); /* a rare gun or better: one more */
     if (w == PU_SHOTGUN) n += 4;
     if (w == PU_FLAME) n = 3;
     float spread = w == PU_SHOTGUN ? 0.36f : w == PU_FLAME ? 0.3f : w == PU_MINIGUN ? 0.07f * (float)(n - 1) + 0.06f : 0.07f * (float)(n - 1) + 0.02f;
@@ -883,8 +918,8 @@ static void player_step(sim *s, int i, const input *in) {
       bool rk = rocket && k == n / 2;
       float a = p->aim + off + jit + (w == PU_FLAME ? (rf(s) - 0.5f) * 0.25f : 0), v = rk ? 22.0f : w == PU_RAIL ? 70.0f : w == PU_FLAME ? 13.0f + rf(s) * 4 : 32.0f;
       uint8_t kind = rk ? 1 : w == PU_RAIL ? 3 : w == PU_FLAME ? 4 : 0;
-      float dmg = 2.0f + (float)p->dmg + (rk ? 3.0f : 0.0f); /* 2 damage and through one body from the start; +1 a heavy-rounds level */
-      int life = rk ? 80 : 50, pierce = p->pierce + 1;
+      float dmg = (2.0f + (float)p->dmg + (rk ? 3.0f : 0.0f)) * (w >= 0 ? RARITY_DMG[CW_CLAMP(p->pu_rarity, 0, RARE_KINDS - 1)] : 1.0f); /* 2 damage and through one body from the start; +1 a heavy-rounds level; a cache's gun by its rarity */
+      int life = rk ? 80 : 50, pierce = p->pierce + 1 + (w >= 0 && p->pu_rarity >= RARE_EPIC ? 1 : 0);
       if (kind == 3) dmg = 5.0f + 1.5f * (float)p->dmg, pierce = 12, life = 40; /* the rail goes through a line of them */
       if (kind == 4) dmg = 1.4f + 0.5f * (float)p->dmg, pierce = 4, life = 22;   /* a short hot cone */
       s->b[slot] = (bullet){ true, (uint8_t)i, kind, (uint8_t)(p->pu_ammo_t > 0 && p->pu_ammo == PU_EXPLOSIVE && kind == 0 ? 1 : 0),
@@ -1215,7 +1250,7 @@ void sim_power_drop(sim *s, float x, float y, int t) { drop_value(s, PK_POWER, x
 void sim_power_give(sim *s, int pi, int t) {
   player *p = &s->p[pi];
   switch (sim_power_category(t)) {
-  case 0: p->pu_weapon = t, p->pu_weapon_t = PU_WEAPON_TICKS; break;
+  case 0: p->pu_weapon = t, p->pu_weapon_t = PU_WEAPON_TICKS, p->pu_rarity = RARE_COMMON; break;
   case 1: p->pu_ammo = t, p->pu_ammo_t = PU_WEAPON_TICKS; break;
   case 2:
     if (t == PU_GRENADES) p->grenades = CW_MIN(p->grenades + 4, 8);
@@ -1235,6 +1270,23 @@ static int power_load(const player *p, int t) {
       (c == 5 && p->magnet_t > 120) || (t == PU_GRENADES && p->grenades >= 8) || (t == PU_MINES && p->mines >= 6))
     return -1;
   return (p->pu_weapon_t > 0) + (p->pu_ammo_t > 0) + (p->saw_t > 0) + (p->shield_t > 0) + (p->magnet_t > 0) + (p->grenades > 0) + (p->mines > 0);
+}
+static void cache_pickup(sim *s, int gi) {
+  pickup *g = &s->g[gi];
+  for (int n = 0; n < MAXP; n++) {
+    int k = (n + s->tick) % MAXP;
+    player *p = &s->p[k];
+    if (!p->active || p->down) continue;
+    float dx = p->x - g->x, dy = p->y - g->y;
+    if (dx * dx + dy * dy > 1.0f) continue;
+    int w = g->value & 0xff, r = CW_CLAMP(g->value >> 8, 0, RARE_KINDS - 1);
+    if (p->pu_weapon_t > 0 && p->pu_rarity > r) continue; /* a better gun in hand: leave it for a friend */
+    g->alive = false;
+    p->pu_weapon = w, p->pu_weapon_t = RARITY_TICKS[r], p->pu_rarity = r;
+    s->pu_taken[w]++;
+    ev(s, EV_POWER, g->x, g->y, 0, 0, k, w);
+    return;
+  }
 }
 static void power_pickup(sim *s, int gi) {
   pickup *g = &s->g[gi];
@@ -1323,6 +1375,7 @@ static void pickups_step(sim *s) {
     g->x = cw_clampf(g->x, -HALF + 0.5f, HALF - 0.5f);
     g->y = cw_clampf(g->y, -HALF + 0.5f, HALF - 0.5f);
     if (g->kind == PK_POWER) { power_pickup(s, i); continue; }
+    if (g->kind == PK_CACHE) { cache_pickup(s, i); continue; }
     for (int k = 0; k < MAXP; k++) {
       player *p = &s->p[k];
       if (!p->active || p->down) continue;

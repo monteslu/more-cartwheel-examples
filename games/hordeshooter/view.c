@@ -158,7 +158,7 @@ static struct {
   float bc_y[EK_KINDS], br[EK_KINDS]; /* a sphere round every frame of a kind (its centre height, its radius): culling */
   t3_instanced_mesh *eb[EK_KINDS][CH_MAXF];
   cw_splats *zones;          /* acid, fire and spores on the floor: glowing pools */
-  t3_instanced_mesh *lances, *piles; /* the abbot's bone lances; bonewalkers' bone piles */
+  t3_instanced_mesh *lances, *piles, *caches, *cache_trim; /* a boss's loot caches: the coffer and its glowing trim (tinted by rarity) */ /* the abbot's bone lances; bonewalkers' bone piles */
   cw_node eb_node[EK_KINDS][CH_MAXF];
   t3_material *crowd_lit[EK_KINDS], *crowd_unlit[EK_KINDS]; /* the yard lights its crowd in real time; a deeper floor's lights are in its bake, so its crowd is unlit, coloured by the bake (ground_light) */
   t3_mesh *pm[MAXP][CH_MAXC * CH_MAXF][CH_MAXG];
@@ -670,6 +670,16 @@ static void view_power_init(void) {
       pm->vertex_colors = true;
       V.piles = imesh("BonePiles", t3_retain(pc.geo[0][0]), pm, MAXPILE, false);
       chr_free(&pc);
+    }
+  }
+  {
+    chr cc;
+    if (chr_load(&cc, "models/loot_cache.cwchar")) {
+      t3_material *cm = t3_mesh_basic_material_new(0xffffff); /* unlit, its baked colours (the crowd's material on the deeper floors) */
+      cm->vertex_colors = true;
+      V.caches = imesh("LootCaches", t3_retain(cc.geo[0][0]), cm, 32, false);
+      if (cc.ngroup > 1) V.cache_trim = imesh("LootTrim", t3_retain(cc.geo[1][0]), glow(1, 1, 1, 8), 32, false);
+      chr_free(&cc);
     }
   }
   V.rail = imesh("RailShots", t3_box_geometry_new(0.06f, 0.06f, 3.0f, 1, 1, 1), glow(0.4f, 0.8f, 1, 14), 128, false);
@@ -1650,7 +1660,6 @@ void view_sync(const sim *s, float time) {
       float fade = cw_clampf((float)z->life / 40.0f, 0, 1), d = z->r * 2.2f;
       cw_splats_add(V.zones, (t3_vec3){ z->x, 0, z->y }, d, d, (float)i, 0, ZC[CW_MIN(z->kind, 2)], 2.4f * fade * (0.85f + 0.15f * cw_sin((float)s->tick * 0.2f + (float)i)));
     }
-    cw_splats_end(V.zones);
     int nl = 0;
     for (int i = 0; i < MAXES; i++) {
       const eshot *e = &s->es[i];
@@ -1658,6 +1667,24 @@ void view_sync(const sim *s, float time) {
       put(V.lances, nl++, e->x, 1.2f, e->y, -cw_atan2(e->vy, e->vx) + 1.5708f, 1, 1, 1);
     }
     V.lances->count = nl;
+    if (V.caches) { /* the loot: a coffer with its rarity's glow on its trim and on the floor round it */
+      int nk = 0;
+      for (int i = 0; i < MAXG && nk < 32; i++) {
+        const pickup *g = &s->g[i];
+        if (!g->alive || g->kind != PK_CACHE) continue;
+        int r = CW_CLAMP(g->value >> 8, 0, RARE_KINDS - 1);
+        t3_color rc = lin(RARITY_RGB[r][0], RARITY_RGB[r][1], RARITY_RGB[r][2]);
+        float yaw = (float)(i * 37 % 100) * 0.06f, pulse = 0.8f + 0.2f * cw_sin((float)s->tick * 0.1f + (float)i);
+        put(V.caches, nk, g->x, 0, g->y, yaw, 1.4f, 1.4f, 1.4f);
+        t3_instanced_mesh_set_color_at(V.caches, nk, ground_light(g->x, g->y));
+        if (V.cache_trim) put(V.cache_trim, nk, g->x, 0, g->y, yaw, 1.4f, 1.4f, 1.4f), t3_instanced_mesh_set_color_at(V.cache_trim, nk, rc);
+        nk++;
+        cw_splats_add(V.zones, (t3_vec3){ g->x, 0, g->y }, 3.2f, 3.2f, yaw, 0, rc, (1.6f + 0.8f * (float)r) * pulse);
+      }
+      V.caches->count = nk, touch(V.caches, false);
+      if (V.cache_trim) V.cache_trim->count = nk, touch(V.cache_trim, false);
+    }
+    cw_splats_end(V.zones);
     touch(V.lances, false);
     if (V.piles) {
       int np_ = 0;
