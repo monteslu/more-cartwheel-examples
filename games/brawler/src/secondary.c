@@ -267,3 +267,20 @@ void sb_step(spring_rig *s, t3_vec3 pos, float yaw, float dt) {
   }
 }
 
+
+/* a bone's transform in the model's space (the rig root's frame: the model node sits unmoved under it), for props held in
+   a hand: the weapon follows the hand's turn as well as its place. false when the model has no such bone */
+bool rig_bone_xf(const spring_rig *s, const char *bone, t3_vec3 *p, t3_quat *q) {
+  if (!s->scene) return false;
+  t3_object *b = t3_object_get_by_name(s->scene, bone);
+  if (!b) return false;
+  xf x = model_xf(b, s->scene);
+  *p = x.p, *q = x.q;
+  return true;
+}
+/* a point in a bone's space, carried into the model's space (the bone's scale included) */
+t3_vec3 rig_bone_point(const spring_rig *s, const char *bone, t3_vec3 local) {
+  t3_object *b = s->scene ? t3_object_get_by_name(s->scene, bone) : NULL;
+  if (!b) return local;
+  return xpoint(model_xf(b, s->scene), local);
+}

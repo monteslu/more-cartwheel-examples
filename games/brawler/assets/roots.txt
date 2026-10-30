@@ -37,6 +37,9 @@ models/pipe.glb
 models/knife.glb
 models/coin.glb
 models/bottle.glb
+models/comb.glb
+models/shield.glb
+models/baton.glb
 decals/scuff1.png = textures/decal_scuff1.png
 decals/scuff2.png = textures/decal_scuff2.png
 decals/crack.png = textures/decal_crack.png

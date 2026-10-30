@@ -125,7 +125,7 @@
   },
   {
     "name": "brawler-four",
-    "note": "Four bots (players 4) on stage 2 (docks: guards and throwers from the first waves). Expects repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth (game.overlaps stays 0). Repinned 2026-10-29 (B-PT7..10): reach now grows with body girth, enemies are clamped inside the attack margin, the bots turn to face their target, the wanker joined the waves and boss health was cut; the looks and the blood are presentation and move nothing. Repinned for B-PT17: a fighter hit in mid jump now falls while staggered instead of hanging in the air. Repinned for B-PT18: the wanker is lighter (50 hp, speed 2.0) and a stagger blow floors him.",
+    "note": "Four bots (players 4) on stage 2 (docks: guards and throwers from the first waves). Expects repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth (game.overlaps stays 0). Repinned 2026-10-29 (B-PT7..10): reach now grows with body girth, enemies are clamped inside the attack margin, the bots turn to face their target, the wanker joined the waves and boss health was cut; the looks and the blood are presentation and move nothing. Repinned for B-PT17: a fighter hit in mid jump now falls while staggered instead of hanging in the air. Repinned for B-PT18: the wanker is lighter (50 hp, speed 2.0) and a stagger blow floors him. Repinned for the polish pass: three knees now really throw (a knee no longer ended only the first grab; the bots throw too), a thrown body bowls over enemies, a held body stands by the two bodies' size.",
     "app": "brawler_auto",
     "frames": 1500,
     "startCmds": [
@@ -167,12 +167,12 @@
       "game.overlaps"
     ],
     "expect": {
-      "game.ticks": 1370,
-      "game.kills": 8,
-      "game.score": 9360,
-      "game.hash": 4192696282,
+      "game.ticks": 1386,
+      "game.kills": 6,
+      "game.score": 6600,
+      "game.hash": 2042493394,
       "game.wave": 1,
-      "game.hits": 27,
+      "game.hits": 25,
       "game.first_hit": 285,
       "game.deaths": 0,
       "game.unfair": 0,
@@ -193,7 +193,7 @@
   },
   {
     "name": "brawler-boss",
-    "note": "Stage 1 boss wave with three bots: the boss goes through its three phases (game.boss_phase 2 reached) and the danger rings show on the street. Expects repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth (game.overlaps stays 0). Repinned 2026-10-29 (B-PT7..10): reach now grows with body girth, enemies are clamped inside the attack margin, the bots turn to face their target, the wanker joined the waves and boss health was cut; the looks and the blood are presentation and move nothing. Since then it runs with the bots at a fighter's real damage (botdmg 1, 3600 frames) so the Foreman fight lasts as it does for a player: the run ends in his last phase (game.boss_phase 2) still on stage 1 (game.stage 0).",
+    "note": "Stage 1 boss wave with three bots: the boss goes through its three phases (game.boss_phase 2 reached) and the danger rings show on the street. Expects repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth (game.overlaps stays 0). Repinned 2026-10-29 (B-PT7..10): reach now grows with body girth, enemies are clamped inside the attack margin, the bots turn to face their target, the wanker joined the waves and boss health was cut; the looks and the blood are presentation and move nothing. Since then it runs with the bots at a fighter's real damage (botdmg 1, 3600 frames) so the Foreman fight lasts as it does for a player: the run ends in his last phase (game.boss_phase 2) still on stage 1 (game.stage 0). Repinned for the polish pass: three knees now really throw (a knee no longer ended only the first grab; the bots throw too), a thrown body bowls over enemies, a held body stands by the two bodies' size.",
     "app": "brawler_auto",
     "frames": 3600,
     "startCmds": [
@@ -233,10 +233,10 @@
       "game.overlaps"
     ],
     "expect": {
-      "game.ticks": 3141,
+      "game.ticks": 3099,
       "game.kills": 4,
-      "game.score": 8870,
-      "game.hash": 872505829,
+      "game.score": 10940,
+      "game.hash": 2328941857,
       "game.wave": 4,
       "game.deaths": 0,
       "game.unfair": 0,
@@ -375,7 +375,7 @@
   },
   {
     "name": "brawler-wanker",
-    "note": "Stage 1, wave 2 (thugs, a punk and the wanker) with two bots: the wanker winds up his haymaker (its wind-up shrugs off light blows) and lands it, barges along the lane, and is beaten. game.wanker is [wankers spawned, haymakers, haymakers that landed, barges, barges that landed, wankers killed]. Also the looks and the blood: game.clones (most pairs of one kind of enemy on the street that look the same on any frame) stays 0, fx.blood is [stains placed, droplet bursts, stains showing, same-shape stains on top of each other] and its last entry stays 0. The control freezes everyone, so nobody swings. rag.hash is left out of this gate: with the wanker knocked down out of his haymaker clip, the ragdoll started from that pose hashes 3232650868 natively and 3315670625 on every cart host (romdev, Chromium, romdev on GL alike), while the game state is equal on all of them: the presentation pose sampled natively and in the cart differs for that clip (findings/brawler.md, engine note 5). The other gates still compare rag.hash on every host. Repinned when the creep joined the wave after it (the run reaches it). Repinned for B-PT18: the wanker is lighter (50 hp, speed 2.0) and a stagger blow floors him.",
+    "note": "Stage 1, wave 2 (thugs, a punk and the wanker) with two bots: the wanker winds up his haymaker (its wind-up shrugs off light blows) and lands it, barges along the lane, and is beaten. game.wanker is [wankers spawned, haymakers, haymakers that landed, barges, barges that landed, wankers killed]. Also the looks and the blood: game.clones (most pairs of one kind of enemy on the street that look the same on any frame) stays 0, fx.blood is [stains placed, droplet bursts, stains showing, same-shape stains on top of each other] and its last entry stays 0. The control freezes everyone, so nobody swings. rag.hash is left out of this gate: with the wanker knocked down out of his haymaker clip, the ragdoll started from that pose hashes 3232650868 natively and 3315670625 on every cart host (romdev, Chromium, romdev on GL alike), while the game state is equal on all of them: the presentation pose sampled natively and in the cart differs for that clip (findings/brawler.md, engine note 5). The other gates still compare rag.hash on every host. Repinned when the creep joined the wave after it (the run reaches it). Repinned for B-PT18: the wanker is lighter (50 hp, speed 2.0) and a stagger blow floors him. Repinned for the polish pass: three knees now really throw (a knee no longer ended only the first grab; the bots throw too), a thrown body bowls over enemies, a held body stands by the two bodies' size.",
     "app": "brawler_auto",
     "frames": 2400,
     "startCmds": [
@@ -415,10 +415,10 @@
       "game.nan": 0,
       "game.clones": 0,
       "game.overlaps": 0,
-      "game.ticks": 2142,
-      "game.kills": 8,
-      "game.score": 6790,
-      "game.hash": 3457104725,
+      "game.ticks": 2130,
+      "game.kills": 7,
+      "game.score": 7030,
+      "game.hash": 2956137256,
       "game.wave": 2,
       "game.deaths": 0,
       "game.wanker": [
@@ -430,12 +430,12 @@
         1
       ],
       "fx.blood": [
-        97,
-        63,
-        47,
+        93,
+        69,
+        48,
         0
       ],
-      "rag.made": 19,
+      "rag.made": 17,
       "rag.missed": 0
     },
     "webgpu": {
@@ -457,11 +457,11 @@
   },
   {
     "name": "brawler-creep",
-    "note": "Stage 1, wave 3 (where the creep first walks on) with two bots at real damage: the creep leans into light blows (no flinch, 2 health back each, never past full), throws his coat open and lunges, and is beaten. game.creep is [creeps spawned, coat flashes, flashes that landed, light blows he leaned into, health they gave him, killed]. game.clones stays 0. The control freezes everyone.",
+    "note": "Stage 1, wave 3 (where the creep first walks on) with two bots at real damage: the creep leans into light blows (no flinch, 2 health back each, never past full), throws his coat open and lunges, and is beaten. game.creep is [creeps spawned, coat flashes, flashes that landed, light blows he leaned into, health they gave him, killed]. game.clones stays 0. The control freezes everyone. Repinned for the polish pass: three knees now really throw (a knee no longer ended only the first grab; the bots throw too), a thrown body bowls over enemies, a held body stands by the two bodies' size. Bots at half damage since the bots can throw: at full damage they threw and killed the creep before his coat flash.",
     "app": "brawler_auto",
     "frames": 2400,
     "startCmds": [
-      "botdmg 1",
+      "botdmg 0.5",
       "players 2",
       "wave 2"
     ],
@@ -497,27 +497,27 @@
       "game.nan": 0,
       "game.clones": 0,
       "game.overlaps": 0,
-      "game.ticks": 2126,
+      "game.ticks": 2082,
       "game.kills": 7,
-      "game.score": 7110,
-      "game.hash": 3697970234,
+      "game.score": 5220,
+      "game.hash": 2332310192,
       "game.wave": 3,
       "game.deaths": 0,
       "game.creep": [
         1,
-        1,
-        0,
-        5,
-        8,
+        2,
+        3,
+        15,
+        28,
         1
       ],
       "fx.blood": [
-        105,
-        58,
+        65,
+        81,
         48,
         0
       ],
-      "rag.made": 18,
+      "rag.made": 7,
       "rag.missed": 0
     },
     "webgpu": {
@@ -530,7 +530,7 @@
       "note": "the same dual cart on romdev and Chromium against native WebGPU (state exact). vsGl 0.5 percent: GL and WebGPU draw the same picture (0.01 percent apart); the brick, asphalt and corrugated detail that differed by 4 to 10.6 percent was the engine lighting normal maps from the wrong side on WebGPU, fixed (findings/gl-webgpu-parity.md)"
     },
     "controlStartCmds": [
-      "botdmg 1",
+      "botdmg 0.5",
       "players 2",
       "wave 2",
       "freeze 1"
@@ -641,5 +641,193 @@
       "legacyair 1"
     ],
     "controlFrames": 2300
+  },
+  {
+    "name": "brawler-throw",
+    "note": "Player 1 on the pad grabs a thug, knees him three times and throws him along the lane into a thug and a punk (enemies frozen in place). The thrown body knocks both down (game.bowled 2), the fighter is untouched. Before: the first knee ended the grab (ent_hurt released the pair), a lethal throw fell at his feet, and the thrown body was tested against the fighters, never the enemies. Control legacythrow 1 (the old rules) must fail: bowled 0.",
+    "app": "brawler_auto",
+    "frames": 420,
+    "startCmds": [
+      "players 1",
+      "human 1",
+      "freeze 1 1.5708",
+      "spawn 3 -2.1 -1.2",
+      "spawn 3 0.2 -1.2",
+      "spawn 4 1.4 -1.0"
+    ],
+    "fields": [
+      "game.ticks",
+      "game.kills",
+      "game.score",
+      "game.hp",
+      "game.bowled",
+      "game.hash",
+      "game.nan",
+      "game.unfair"
+    ],
+    "expect": {
+      "game.ticks": 395,
+      "game.kills": 1,
+      "game.score": 710,
+      "game.hash": 4185956048,
+      "game.bowled": 2,
+      "game.nan": 0,
+      "game.unfair": 0
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "vsGl": 0.005,
+      "note": "the same dual cart on romdev and Chromium against native WebGPU (state exact). vsGl 0.5 percent: GL and WebGPU draw the same picture (0.01 percent apart); the brick, asphalt and corrugated detail that differed by 4 to 10.6 percent was the engine lighting normal maps from the wrong side on WebGPU, fixed (findings/gl-webgpu-parity.md)"
+    },
+    "controlStartCmds": [
+      "players 1",
+      "legacythrow 1",
+      "human 1",
+      "freeze 1 1.5708",
+      "spawn 3 -2.1 -1.2",
+      "spawn 3 0.2 -1.2",
+      "spawn 4 1.4 -1.0"
+    ],
+    "controlFrames": 420,
+    "input": "brawler-throw.json"
+  },
+  {
+    "name": "brawler-grab",
+    "note": "The same grab: both wrists stay on their grips over the held body (hands on the collar, game.grab[1] mm from the grip, by the arm solver) and neither comes inside the body (game.grab[2] mm from its spine line). Control legacygrab 1 (the clip arms 0.75 m apart, no solver, no hoist) must fail: nothing measured.",
+    "app": "brawler_auto",
+    "frames": 420,
+    "startCmds": [
+      "players 1",
+      "human 1",
+      "freeze 1 1.5708",
+      "spawn 3 -2.1 -1.2",
+      "spawn 3 0.2 -1.2",
+      "spawn 4 1.4 -1.0"
+    ],
+    "fields": [
+      "game.grab",
+      "game.bowled",
+      "game.nan"
+    ],
+    "expect": {
+      "game.grab": [
+        40,
+        4,
+        238
+      ],
+      "game.bowled": 2,
+      "game.nan": 0
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "vsGl": 0.005,
+      "note": "the same dual cart on romdev and Chromium against native WebGPU (state exact). vsGl 0.5 percent: GL and WebGPU draw the same picture (0.01 percent apart); the brick, asphalt and corrugated detail that differed by 4 to 10.6 percent was the engine lighting normal maps from the wrong side on WebGPU, fixed (findings/gl-webgpu-parity.md)"
+    },
+    "controlStartCmds": [
+      "players 1",
+      "legacygrab 1",
+      "human 1",
+      "freeze 1 1.5708",
+      "spawn 3 -2.1 -1.2",
+      "spawn 3 0.2 -1.2",
+      "spawn 4 1.4 -1.0"
+    ],
+    "controlFrames": 420,
+    "input": "brawler-throw.json"
+  },
+  {
+    "name": "brawler-shield",
+    "note": "A riot guard knocked down (hurtat, knockdown): his shield drops flat on the street 2 mm over it (game.shield[2,3], lowest and highest mm any lying shield sat over the street), on no prop (game.shield[4]), and he takes it up again when he stands (game.shield[1]). Control legacyshield 1 drops it where the old box went, half a metre up: must fail.",
+    "app": "brawler_auto",
+    "frames": 520,
+    "startCmds": [
+      "players 1",
+      "freeze 1",
+      "spawn 9 0.5 0",
+      "hurtat 260 0 2"
+    ],
+    "fields": [
+      "game.shield",
+      "game.nan"
+    ],
+    "expect": {
+      "game.shield": [
+        1,
+        1,
+        2,
+        2,
+        0
+      ],
+      "game.nan": 0
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "vsGl": 0.005,
+      "note": "the same dual cart on romdev and Chromium against native WebGPU (state exact). vsGl 0.5 percent: GL and WebGPU draw the same picture (0.01 percent apart); the brick, asphalt and corrugated detail that differed by 4 to 10.6 percent was the engine lighting normal maps from the wrong side on WebGPU, fixed (findings/gl-webgpu-parity.md)"
+    },
+    "controlStartCmds": [
+      "players 1",
+      "legacyshield 1",
+      "freeze 1",
+      "spawn 9 0.5 0",
+      "hurtat 260 0 2"
+    ],
+    "controlFrames": 520
+  },
+  {
+    "name": "brawler-hold",
+    "note": "A bat picked up and swung: the grip stays in the fist (game.held[1] mm) and the bat turns with the hand (game.held[2] degrees over the swings). Control legacyhold 1 (upright by the hand, as it was): must fail: 0 degrees.",
+    "app": "brawler_auto",
+    "frames": 460,
+    "startCmds": [
+      "players 1",
+      "human 1",
+      "freeze 1",
+      "item 1 0 0"
+    ],
+    "fields": [
+      "game.held",
+      "game.weapon",
+      "game.nan"
+    ],
+    "expect": {
+      "game.held": [
+        456,
+        0,
+        132
+      ],
+      "game.weapon": 1,
+      "game.nan": 0
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "vsGl": 0.005,
+      "note": "the same dual cart on romdev and Chromium against native WebGPU (state exact). vsGl 0.5 percent: GL and WebGPU draw the same picture (0.01 percent apart); the brick, asphalt and corrugated detail that differed by 4 to 10.6 percent was the engine lighting normal maps from the wrong side on WebGPU, fixed (findings/gl-webgpu-parity.md)"
+    },
+    "controlStartCmds": [
+      "players 1",
+      "legacyhold 1",
+      "human 1",
+      "freeze 1",
+      "item 1 0 0"
+    ],
+    "controlFrames": 460,
+    "input": "brawler-hold.json"
   }
 ]

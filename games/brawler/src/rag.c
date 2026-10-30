@@ -160,6 +160,13 @@ static void start(int i, ent *e, int rid) {
   cw_pose_capture(&s->pose);
   float yaw = s->mode == M_GETUP ? s->yaw : ent_render_yaw_sim(e); /* hit again while getting up: from the pose shown */
   t3_mat4 m = model_to_world(vadd3(sim_pos(e), s->off), yaw);
+  if (e->pitch > 0) { /* thrown from the hoist: the body starts tipped flat, as it was drawn */
+    t3_quat qy = { 0, sinf(yaw * 0.5f), 0, cosf(yaw * 0.5f) }, qp = { sinf(e->pitch * 0.5f), 0, 0, cosf(e->pitch * 0.5f) };
+    t3_quat q = { qy.w * qp.x + qy.x * qp.w + qy.y * qp.z - qy.z * qp.y, qy.w * qp.y - qy.x * qp.z + qy.y * qp.w + qy.z * qp.x,
+                  qy.w * qp.z + qy.x * qp.y - qy.y * qp.x + qy.z * qp.w, qy.w * qp.w - qy.x * qp.x - qy.y * qp.y - qy.z * qp.z };
+    t3_mat4_compose(&m, vadd3(sim_pos(e), s->off), q, (t3_vec3){ 1, 1, 1 });
+    e->pitch = 0;
+  }
   cw_ragdoll_part parts[NPARTS];
   float k = body_scale(e->def);
   for (int p = 0; p < NPARTS; p++) { parts[p] = PARTS[p]; parts[p].radius *= k; }

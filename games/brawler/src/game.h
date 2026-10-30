@@ -64,6 +64,10 @@ typedef struct ent {
   int guard_hits; /* the guard: blows its shield has stopped since its guard last broke */
   int ranged; /* the thrower holds a ranged token, not a melee one */
   int knees;
+  int throwfwd; /* the thrower: the throw goes forward (three knees), else back over the head */
+  float pitch; /* a body hoisted overhead: how far it is tipped (radians; presentation) */
+  int thrower; /* a thrown body: the fighter who threw it (-1 none) */
+  uint64_t bowled; /* a thrown body: the enemies it has already knocked over */
   int juke; /* Arthur: walking to the jukebox to thump it (ticks on the way) */
   int buff; /* Arthur: ticks left on his theme (quicker to attack) */
   cw_node root, model, anim, wnode;
@@ -119,6 +123,7 @@ typedef struct world_t {
   struct stats { /* what the rubric measures, per stage (reset by sim_reset) */
     int t0, first_hit, deaths, hits, blocks, pickups, unfair, still_max, frozen, nan, stall, stall_max;
     int boss_t0, boss_t1, boss_phase, chain_starts, finishers, waves_done, wave_t0, wave_max, wave_sum, dmg_taken;
+    int bowled; /* enemies a thrown body knocked over (the throw gate) */
     int boss_f0, boss_f1, boss_hits; /* boss_hits: blows the fighters landed on the boss; the boss fight in frames shown (ticks plus hit-stop and slow motion: what a player waits) */
     int atk_hits[A_COUNT];
   } st;
@@ -200,6 +205,8 @@ typedef struct spring_rig { t3_object *scene; spring_bone b[SB_MAX]; } spring_ri
 void sb_bind(spring_rig *s, t3_object *scene);
 t3_object *item_model(int kind); /* a pickup or weapon model (0 apple 1 bat 2 pipe 3 knife 4 coin 5 bottle), retained for the caller */
 void sb_reset(spring_rig *s);
+bool rig_bone_xf(const spring_rig *s, const char *bone, t3_vec3 *p, t3_quat *q); /* a bone in the model's space */
+t3_vec3 rig_bone_point(const spring_rig *s, const char *bone, t3_vec3 local);
 void sb_jolt(spring_rig *s, float x, float y, float z);
 void sb_step(spring_rig *s, t3_vec3 pos, float yaw, float dt);
 void face_express(spring_rig *s, const char *clip, float u);

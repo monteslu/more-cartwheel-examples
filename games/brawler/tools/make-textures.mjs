@@ -3,6 +3,7 @@
 //   node tools/make-textures.mjs [name ...]
 // Material functions fill an `o` record per pixel: r g b (sRGB albedo), h (height), ro (roughness), me (metal), ao,
 // and er eg eb (emissive, sRGB). bake() turns one into a Tex and writeSet() saves it.
+import { pompDir, pompTA, pompEdge } from './pompadour.mjs';
 import { Tex, writeSet, fbm, cells, hash2, smooth, clamp, lerp, hex, save } from './texlib.mjs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -347,6 +348,25 @@ function hairCard(seed = 31) {
   }
   return t;
 }
+/** the strands of Arthur's pompadour (pompadour.mjs: u across, s ear to ear; v along the comb lines): fine dark and pale strands
+ * in clumps, furrows in the normal map, a slick pomade roughness; alpha cuts the hairline, each strand ending on its own */
+function pompShell(seed = 41) {
+  const N = 1024, COLS = 260;
+  const t = bake(N, (u, v, o) => {
+    const col = Math.floor(u * COLS), st = hash2(col, 3, seed), wob = fbm(u * 3, v, 8, 3, seed + 1) - 0.5;
+    const cl = Math.sin((u + wob * 0.03) * 6.2831853 * 18), fine = fbm(u + wob * 0.012, v * 0.04, 150, 3, seed + 2);
+    setc(o, [1, 1, 1], 0.5 + 0.28 * fine + 0.22 * st + 0.12 * cl);
+    o.h = 0.5 + 0.28 * cl + 0.22 * fine;
+    o.ro = clamp(0.52 + 0.3 * (1 - fine) - 0.1 * (cl * 0.5 + 0.5)); o.ao = 0.72 + 0.28 * (cl * 0.5 + 0.5);
+  });
+  t.alpha = new Float32Array(N * N);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const u = x / N, v = y / N, d = pompDir(u * 2 - 1, v), [tt, a] = pompTA(d), col = Math.floor(u * COLS), j = hash2(col, 7, seed);
+    // each strand reaches past the line by its own length: the edge is hair, not a cut
+    t.alpha[y * N + x] = smooth(-0.002, 0.012, tt - pompEdge(a) + 0.055 * j * j + 0.012 * fbm(u, v, 40, 2, seed + 4));
+  }
+  return t;
+}
 function metalTex({ seed = 16, rust = 0.1 }) {
   return (u, v, o) => {
     const g = fbm(u, v, 6, 5, seed), scr = smooth(0.7, 0.95, fbm(u * 50, v * 2, 50, 3, seed + 3)), rm = smooth(1 - rust, 1 - rust + 0.2, fbm(u, v, 4, 5, seed + 5));
@@ -631,6 +651,7 @@ const jobs = {
   fab_skin: () => [bake(256, skinTex({ seed: 15 })), 0.5],
   fab_hair: () => [bake(256, hairTex({ seed: 16 })), 1.6],
   hair_card: () => [hairCard(31), 1.2],
+  pomp_shell: () => [pompShell(41), 1.6],
   fab_dirty: () => [bake(512, dirtyTee({ seed: 71 })), 1.6],
   cap_logo: () => [bake(1024, capLogo({ seed: 73 }), 256), 2.0],
 };

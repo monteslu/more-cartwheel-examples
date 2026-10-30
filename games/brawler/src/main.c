@@ -37,7 +37,7 @@ static int32_t d_py[MAXP], d_air_max, d_jumps; /* fighters' height (mm); player 
 static uint32_t d_hash;
 static float d_ex[8][4];
 static int32_t d_states[MAXP];
-static int32_t d_unfair, d_still, d_frozen, d_blocks, d_pickups, d_bphase, d_deaths, d_first, d_hits, d_nan, d_stall, d_proj, d_weapon, d_rigs, d_overlaps;
+static int32_t d_unfair, d_still, d_frozen, d_blocks, d_pickups, d_bphase, d_deaths, d_first, d_hits, d_nan, d_stall, d_proj, d_weapon, d_rigs, d_overlaps, d_bowled;
 static int32_t d_juke[6];
 static int32_t d_wanker[6], d_creep[6], d_clones, d_blood[4]; /* the jukebox: uses, fighters knocked down by its shockwave, fighters who jumped it, playing, radius in cm, Arthur on his way to it */
 static float d_face[8]; /* the boss's expression weights (blink snarl shout wince ko grin effort grimace) */
@@ -176,6 +176,26 @@ static void cmd_freeze(int argc, const char **argv, cw_reply *r) {
    stay bots. legacyair 1: the old airborne stagger (the control that must fail) */
 static bool g_human;
 static void cmd_human(int argc, const char **argv, cw_reply *r) { g_human = argc > 1 && atoi(argv[1]); cw_reply_printf(r, "{\"human\":%d}", g_human); }
+static void cmd_legacythrow(int argc, const char **argv, cw_reply *r) { extern bool g_legacy_throw; g_legacy_throw = argc > 1 && atoi(argv[1]); cw_reply_printf(r, "{\"legacythrow\":%d}", g_legacy_throw); }
+static void cmd_legacyshield(int argc, const char **argv, cw_reply *r) { extern bool g_legacy_shield; g_legacy_shield = argc > 1 && atoi(argv[1]); cw_reply_printf(r, "{\"legacyshield\":%d}", g_legacy_shield); }
+static void cmd_bone(int argc, const char **argv, cw_reply *r) {
+  extern bool debug_bone(int ei, const char *name, float out[12]);
+  float v[12];
+  if (argc < 3 || !debug_bone(atoi(argv[1]), argv[2], v)) { cw_reply_error(r, "usage: bone <ent> <name>"); return; }
+  cw_reply_printf(r, "{\"p\":[%.3f,%.3f,%.3f],\"x\":[%.2f,%.2f,%.2f],\"y\":[%.2f,%.2f,%.2f],\"z\":[%.2f,%.2f,%.2f]}", v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8], v[9], v[10], v[11]);
+}
+static void cmd_legacygrab(int argc, const char **argv, cw_reply *r) { extern bool g_legacy_grab; g_legacy_grab = argc > 1 && atoi(argv[1]); cw_reply_printf(r, "{\"legacygrab\":%d}", g_legacy_grab); }
+static void cmd_pose(int argc, const char **argv, cw_reply *r) { /* pose <ent 0-3 fighters, 4+ enemies> <clip> [seconds into it]: holds a clip for close-ups */
+  extern ent *g_pose_e; extern const char *g_pose_clip; static char clipn[32];
+  if (argc < 3) { g_pose_e = NULL; g_pose_clip = NULL; cw_reply_printf(r, "{\"pose\":0}"); return; }
+  int i = atoi(argv[1]);
+  snprintf(clipn, sizeof clipn, "%s", argv[2]);
+  g_pose_e = i < MAXP ? &W.p[i] : &W.e[(i - MAXP) % MAXE]; g_pose_clip = clipn;
+  g_pose_e->clipname = NULL; char_play(g_pose_e, clipn, 0.05f);
+  if (argc > 3) { cw_anim_player_seek(g_pose_e->anim, atof(argv[3]), true); cw_node_set(g_pose_e->anim, "speed_scale", cw_val_float(0)); }
+  cw_reply_printf(r, "{\"pose\":1}");
+}
+static void cmd_legacyhold(int argc, const char **argv, cw_reply *r) { extern bool g_legacy_hold; g_legacy_hold = argc > 1 && atoi(argv[1]); cw_reply_printf(r, "{\"legacyhold\":%d}", g_legacy_hold); }
 static void cmd_legacyair(int argc, const char **argv, cw_reply *r) { extern bool g_legacy_air; g_legacy_air = argc > 1 && atoi(argv[1]); cw_reply_printf(r, "{\"legacyair\":%d}", g_legacy_air); }
 /* bots: walk to the nearest enemy and fight; grab, kick and jump now and then */
 static int bot_pick[MAXP] = { -1, -1, -1, -1 };
@@ -289,6 +309,10 @@ static void init(void *user) {
   cw_debug_i32("game.frozen", &d_frozen);       /* waiting enemies that stood frozen a full second */
   cw_debug_i32("game.blocks", &d_blocks);       /* blows a guard's shield stopped */
   cw_debug_i32("game.pickups", &d_pickups);
+  { extern int g_grabm[3]; cw_debug_field("game.grab", g_grabm, CW_DBG_I32, 3); } /* frames, farthest wrist from its grip mm, closest wrist to the held spine mm */
+  { extern int g_held[3]; cw_debug_field("game.held", g_held, CW_DBG_I32, 3); } /* frames a fighter held a prop, worst grip-to-fist mm, degrees its axis turned */
+  cw_debug_i32("game.bowled", &d_bowled);
+  { extern int g_shield[5]; cw_debug_field("game.shield", g_shield, CW_DBG_I32, 5); } /* shields dropped, taken up, lowest and highest mm a lying one sat over the street, frames on a prop */       /* enemies knocked over by a thrown body this stage */
   cw_debug_i32("game.overlaps", &d_overlaps);   /* most pairs of standing bodies inside each other on any tick (separate_bodies): 0 */
   cw_debug_i32("game.boss_phase", &d_bphase);   /* highest boss phase reached this stage (0 to 2) */
   cw_debug_i32("game.deaths", &d_deaths);
@@ -329,6 +353,12 @@ static void init(void *user) {
   cw_debug_command("spawn", "spawn <3-15> [dx dz]: an enemy near the camera (14: Arthur, 15: the wanker, 16: the creep)", cmd_spawn);
   cw_debug_command("freeze", "freeze <0|1>: enemies and bots hold still", cmd_freeze);
   cw_debug_command("human", "human <0|1>: player 1 takes the pad (the controls gate)", cmd_human);
+  cw_debug_command("legacythrow", "legacythrow <0|1>: the old thrown-body test (gate control only)", cmd_legacythrow);
+  cw_debug_command("legacyshield", "legacyshield <0|1>: a dropped shield goes where the old box went (gate control only)", cmd_legacyshield);
+  cw_debug_command("bone", "bone <ent> <name>: a bone in its model space (0-3 fighters, 4+ enemies)", cmd_bone);
+  cw_debug_command("legacygrab", "legacygrab <0|1>: the grab as it was (gate control only)", cmd_legacygrab);
+  cw_debug_command("pose", "pose <ent> <clip> [t]: hold a clip (no args: release)", cmd_pose);
+  cw_debug_command("legacyhold", "legacyhold <0|1>: props upright by the hand as they were (gate control only)", cmd_legacyhold);
   cw_debug_command("legacyair", "legacyair <0|1>: the old airborne stagger (gate control only)", cmd_legacyair);
   cw_debug_command("botdmg", "botdmg <k>: the bots' damage factor (3 default, 1 real)", cmd_botdmg);
   cw_debug_command("hurtat", "hurtat <tick> <enemy> [knock]: a blow on an enemy at that tick", cmd_hurtat);
@@ -347,7 +377,7 @@ static void publish(void) {
   d_enemies = n;
   d_leak = token_leak(); /* the leak audit: zero always */
   { extern int g_sep_overlaps; if (g_sep_overlaps > d_overlaps) d_overlaps = g_sep_overlaps; }
-  d_unfair = W.st.unfair, d_still = W.st.still_max, d_frozen = W.st.frozen, d_blocks = W.st.blocks, d_pickups = W.st.pickups, d_bphase = W.st.boss_phase;
+  d_unfair = W.st.unfair, d_still = W.st.still_max, d_frozen = W.st.frozen, d_blocks = W.st.blocks, d_pickups = W.st.pickups, d_bowled = W.st.bowled, d_bphase = W.st.boss_phase;
   d_deaths = W.st.deaths, d_first = W.st.first_hit, d_hits = W.st.hits, d_nan = W.st.nan, d_stall = W.st.stall_max, d_weapon = W.p[0].weapon;
   d_proj = 0;
   for (int i = 0; i < 8; i++) d_proj += W.proj[i].used;

@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { Glb } from './gltf-writer.mjs';
 import { SkinMesh, add, sub, mul, norm } from './charmesh.mjs';
 import { writeSet } from './texlib.mjs';
+import { pompDir, pompTA, pompEdge, pompHeight } from './pompadour.mjs';
 import { faceParams, headModel, buildHead, shellGrid, paintFace, paintEye, FACE_BONES, EXPRESSIONS, FACE_TARGETS, faceTargets } from './face.mjs';
 const HEAD_GROUPS = ['face', 'lash'];
 
@@ -133,6 +134,24 @@ const GUARD = {
 };
 const G = (o) => merge(GUARD, o);
 
+/** the riot guard carries his shield on the left forearm (the game hangs the shield model on LowerArmL): in every clip
+ * but the falls the forearm stands upright in front of the chest, the elbow forward and in, so the shield (its face out
+ * of the back of the forearm) covers the body with the viewport at the eyes. His shove (punch2, the bash) drives the
+ * forearm forward still upright instead of the cross's straight arm, which laid the shield flat. */
+const SHIELD_FREE = ['knockdown', 'down', 'dead', 'thrown', 'getup', 'getup_prone', 'grabbed'];
+const SHIELD_CARRY = { UpperArmL: { r: [-0.8, -0.55, -0.1] }, LowerArmL: { r: [-2.1, 0, 0] }, HandL: { r: [0, 0, 0] } };
+const SHIELD_SHOVE = { UpperArmL: { r: [-1.25, -0.55, -0.1] }, LowerArmL: { r: [-1.65, 0, 0] }, HandL: { r: [0, 0, 0] } };
+// the baton hand: low at his right side, the forearm forward and down, so the baton (game side, in the right fist) points
+// up and forward past the shield's edge instead of the fist punching through the shield from behind
+const BATON_ARM = { UpperArmR: { r: [0.15, 0.1, -0.12] }, LowerArmR: { r: [-0.95, 0, 0] }, HandR: { r: [0.1, 0, 0] } };
+function shieldArm(sp, name, t, pose) {
+  if (!sp.shield || SHIELD_FREE.includes(name)) return pose;
+  pose = { ...pose, ...BATON_ARM };
+  let k = 0;
+  if (name === 'punch2') k = t < 0.1 ? -0.4 * (t / 0.1) : t < 0.17 ? lerp(-0.4, 1, EASE.out((t - 0.1) / 0.07)) : t < 0.32 ? 1 : lerp(1, 0, EASE.io(Math.min(1, (t - 0.32) / 0.13)));
+  const arm = lerpPose(SHIELD_CARRY, SHIELD_SHOVE, k);
+  return { ...pose, ...arm };
+}
 /** clip definitions: name, length, loop, pose(t seconds) */
 const CLIPS = [];
 const clip = (name, len, loop, pose, only) => CLIPS.push({ name, len, loop, pose, only }); // only: the characters that carry it (default every one)
@@ -275,8 +294,9 @@ clip('throw', 0.7, false, keyed([
   [0.7, GUARD, 'io']]));
 clip('grabbed', 0.8, true, (t) => {
   const s = S((t / 0.8) * PI * 2), c = C((t / 0.8) * PI * 4);
-  return merge(REST, { Hips: { p: [0, -0.12, 0] }, Spine: { r: [0.4, s * 0.1, 0] }, Chest: { r: [0.1, -s * 0.12, 0] }, Head: { r: [0.35 + c * 0.1, s * 0.2, 0] },
-    UpperArmL: { r: [-0.6 + s * 0.5, 0, 0.5] }, UpperArmR: { r: [-0.6 - s * 0.5, 0, -0.5] }, LowerArmL: { r: [-0.9, 0, 0] }, LowerArmR: { r: [-0.9, 0, 0] },
+  return merge(REST, { Hips: { p: [0, -0.1, 0], r: [-0.12, 0, 0] }, Spine: { r: [0.1, s * 0.1, 0] }, Chest: { r: [0.02, -s * 0.12, 0] }, Head: { r: [-0.05 + c * 0.1, s * 0.25, 0] }, // held off at arm's length, head back: clear of the holder's
+   
+    UpperArmL: { r: [-0.15 + s * 0.3, 0, 0.75] }, UpperArmR: { r: [-0.15 - s * 0.3, 0, -0.75] }, LowerArmL: { r: [-0.9, 0, 0] }, LowerArmR: { r: [-0.9, 0, 0] }, // flailing out at the sides, clear of the arms that hold him
     UpperLegL: { r: [-0.4 + s * 0.35, 0, 0.1] }, UpperLegR: { r: [-0.4 - s * 0.35, 0, -0.1] }, LowerLegL: { r: [0.7, 0, 0] }, LowerLegR: { r: [0.7, 0, 0] } });
 });
 clip('thrown', 0.7, true, (t) => {
@@ -606,6 +626,19 @@ function build(sp) {
       m.loft(shirtMat, [ringAt(yN - 0.005, 1.0, 1.0, 0.012), ringAt(yN + 0.025, 1.0, 1.0, 0.016), ringAt(yN + 0.04, 0.96, 0.96, 0.012)], { n: 24, weights: (k, P, a) => torsoW(P, a), tile: 0.3 });
     }
   }
+  if (sp.tiedSleeves) { // the coverall's top half peeled down: its sleeves round the waist, knotted in front, the ends hanging
+    const yw = waist - 0.015, rg = ringAt(yw, 1.04, 1.05, 0.012), rx = rg.ru, rz = rg.rv, cz = rg.c[2];
+    const onW = [[BI.Hips, 1]], E = (a) => [rx * Math.cos(a), yw + 0.012 * Math.sin(a * 2), cz + rz * Math.sin(a)];
+    for (const sd of [1, -1]) {
+      for (let i = 0; i < 9; i++) {
+        const a0 = PI / 2 + sd * (1 - i / 9) * 2.7, a1 = PI / 2 + sd * (1 - (i + 1) / 9) * 2.7;
+        m.capsule('pants', E(a0), E(a1), 0.03, 0.03, { weights: () => onW, n: 10, caps: 2, rings: 1, ratio: 0.75 });
+      }
+      const k = E(PI / 2), tip = add(k, [sd * 0.06, -0.25, 0.025]);
+      m.capsule('pants', add(k, [sd * 0.012, -0.012, 0.012]), tip, 0.028, 0.04, { weights: (t) => [[BI.Hips, 1 - t * 0.5], [BI[sd > 0 ? 'UpperLegL' : 'UpperLegR'], t * 0.5]], n: 10, caps: 2, rings: 4, ratio: 0.55 });
+    }
+    m.ellipsoid('pants', add(E(PI / 2), [0, -0.005, 0.016]), 0.036, 0.03, 0.028, { weights: () => onW, steps: 6, n: 12 });
+  }
   if (sp.belt) {
     m.loft('belt', [ringAt(waist - 0.035, 1.07, 1.08, 0.016), ringAt(waist - 0.03, 1.09, 1.1, 0.02), ringAt(waist + 0.005, 1.09, 1.1, 0.02), ringAt(waist + 0.01, 1.07, 1.08, 0.016)], { n: 32, weights: (k, P, a) => torsoW(P, a), tile: 0.3 });
     const p = prof(waist - 0.012);
@@ -812,98 +845,66 @@ function build(sp) {
       card(pts, 0.04 * HS, 0.008 * HS, ang, (sv) => tw(sv));
     }
   }
+  if (hairCut === 'bun') { // pulled tight up the head to a bun on the crown, wisps left at the nape
+    thinShell('hair', 0.3, 1, 9); thinShell('hair', -0.42, 0.34, 8, [BACK - 1.75, BACK + 1.75]);
+    const bun = add(hc, [0, HY * 1.02, -RZ * 0.42]);
+    m.ellipsoid('hair', bun, 0.058 * HS, 0.05 * HS, 0.058 * HS, { bone: BI.Head, steps: 7, n: 18, e: 2.1, tile: 0.2, mod: (a) => 1 + 0.05 * Math.sin(a * 5) });
+    for (let i = 0; i < 170; i++) { // strands drawn up over the scalp to the bun
+      const t = lerp(0.3, 0.98, Math.pow(rnd(), 0.7)), a = PI / 2 + (rnd() * 2 - 1) * PI * 0.97, [p] = scalpPt(t, a, 0.0012 + 0.003 * rnd());
+      const to = sub(bun, p), L0 = Math.hypot(...to);
+      if (L0 < 0.05) continue;
+      const pts = growS(p, to, (L0 - 0.03) * 0.98, 6, (k, q, d) => add(d, mul(norm(sub(bun, q)), 0.35)), 0.002 + 0.003 * rnd());
+      card(pts, 0.03 * HS, 0.024 * HS, 0, onHead);
+    }
+    for (let i = 0; i < 60; i++) { // wound round the bun
+      const a0 = rnd() * PI * 2, y0 = (rnd() - 0.5) * 0.06 * HS, rr2 = Math.sqrt(Math.max(0.05, 1 - (y0 / (0.05 * HS)) ** 2)) * 0.06 * HS, pts = [];
+      for (let k = 0; k <= 7; k++) { const an = a0 + k * 0.38; pts.push(add(bun, [Math.cos(an) * rr2, y0 + k * 0.0015, Math.sin(an) * rr2])); }
+      card(pts, 0.022 * HS, 0.012 * HS, 0, onHead, { outAt: (k, q) => norm(sub(q, bun)) });
+    }
+    for (let i = 0; i < 26; i++) { // wisps at the nape
+      const a = BACK + (rnd() * 2 - 1) * 1.0, [p, nn] = scalpPt(lerp(-0.42, -0.25, rnd()), a, 0.004);
+      const pts = growS(p, sub([0, -1, -0.1], mul(nn, dotv([0, -1, -0.1], nn))), (0.03 + 0.03 * rnd()) * HS, 3, (k, q, d) => d, 0.004);
+      card(pts, 0.012 * HS, 0.004 * HS, 0, onHead);
+    }
+  }
   if (hairCut === 'pompadour') {
-    // a 1950s pompadour as hair: a dark core (combed grooves, a soft pomade sheen) under layered cards: the sides combed
-    // straight back from the temples to a duck tail where they meet at the back, and the tall front swoop rising off the
-    // forehead, rolling forward and over, then lying back across the crown. The cards catch an anisotropic highlight
-    // along the comb lines (the pomade), not a plastic clear coat.
-    // the sides are combed back over the temples (no bare temple under the roll): the shell sinks under the skin only across
-    // the middle of the forehead, where the roll rises from the hairline
-    const pompLine = (t, a) => 1 - 0.13 * Math.pow(Math.max(0, Math.sin(a)), 6) * ss(0.56, 0.36, t);
-    const groove = (t) => (a) => (1 + 0.016 * Math.sin(a * 34 + t * 3) + 0.006 * Math.sin(a * 91)) * pompLine(t, a);
-    m.loft('pomade', shell(0.28, 1.0, 1.035, 0.002, 72, { mod: groove }), { n: 112, bone: BI.Head, tile: 0.25 }); // fine rings: where the shell sinks under the forehead skin the edge is a smooth curve, not a staircase
-    // the back of the head down to the nape: its lower edge and its ends also sink smoothly under the skin
-    m.loft('pomade', shell(-0.5, 0.32, 1.035, 0.002, 30, { mod: (t) => (a) => (1 + 0.012 * Math.sin(a * 30 + t * 2)) * (1 - 0.09 * Math.max(ss(-0.36, -0.48, t), ss(1.05, 1.28, Math.abs(wrapA(a - BACK))) * ss(0.1, -0.1, t))) }), { n: 80, arc: [BACK - 1.3, BACK + 1.3], bone: BI.Head, tile: 0.25 });
-    // the slicked sides: one shell whose lower edge is a smooth curve (the hairline) rising from behind the ear to the temple;
-    // below that curve the shell sinks under the skin by a smooth ramp, so there is no polygon edge or step on the face
-    const sideEdge = pompEdge;
-    const sideSink = (t) => (a) => 1 - 0.09 * ss(sideEdge(a) + 0.015, sideEdge(a) - 0.05, t);
-    m.loft('pomade', shell(-0.02, 0.36, 1.035, 0.002, 38, { mod: sideSink }), { n: 96, arc: [BACK - 2.4, BACK + 2.4], bone: BI.Head, tile: 0.25 });
-    // (the soft hairline itself is painted: writeFace's hairEdge band of strands fading under this edge)
-    // a fringe of fine short cards rooted just under that edge, combed back over it: the hairline ends in strands, soft
-    for (let i = 0; i < 520; i++) {
-      // rooted a little below the shell's edge, on the skin, and combed up and back over it: strands break the edge up
-      const a = BACK + (rnd() * 2 - 1) * 2.35, te = sideEdge(a) - 0.03 - 0.05 * rnd();
-      const [p, nn] = scalpPt(te, a, 0.002);
-      const sd = Math.cos(a) >= 0 ? 1 : -1, back = [0, 0.7, -1];
-      const dir = sub(back, mul(nn, dotv(back, nn)));
-      const pts = growS(p, dir, (0.035 + 0.03 * rnd()) * HS, 4, (k, q, d) => add(d, [-sd * 0.02, 0, 0]), 0.003 + 0.002 * (1 - rnd()));
-      card(pts, 0.006 * HS, 0.02 * HS, 0, onHead, { mat: 'pomadeCard' });
+    // a 1950s pompadour (research in findings/brawler.md B-PT11) as one combed surface (pompadour.mjs), not a stack of lofts
+    // and cards: a roll standing off the forehead and leaning past the brow, lying back over the crown, the sides slick and
+    // flat, the hairline ending in strands (alpha). The furrows and strands run along its comb lines, and the tangent runs
+    // across them, so the pomade's highlight lies across the comb lines as on real slicked hair.
+    const NU = 110, NV = 84, HK = HS * 1.0, P = [], out = (s, u, lift = 0) => {
+      const d = pompDir(s, u), [t, a] = pompTA(d), [q, nn] = scalpPt(Math.max(-0.95, Math.min(0.995, t)), a, 0);
+      const e = pompEdge(a), rise = ss(e, e + 0.1, t); // sinks under the skin past the hairline
+      return add(q, mul(nn, (0.0025 + pompHeight(s, u) * HK) * rise - 0.012 * ss(e, e - 0.1, t) + lift));
+    };
+    for (let i = 0; i <= NU; i++) for (let j = 0; j <= NV; j++) P.push(out(j / NV * 2 - 1, i / NU));
+    const at = (i, j) => P[Math.min(NU, Math.max(0, i)) * (NV + 1) + Math.min(NV, Math.max(0, j))];
+    const verts = [], tris = [];
+    for (let i = 0; i <= NU; i++) for (let j = 0; j <= NV; j++) {
+      const du = sub(at(i + 1, j), at(i - 1, j)), ds = sub(at(i, j + 1), at(i, j - 1));
+      let n = norm(crossv(ds, du)); if (dotv(n, sub(at(i, j), hcC)) < 0) n = mul(n, -1);
+      const tn = norm(sub(ds, mul(n, dotv(ds, n))));
+      verts.push({ p: at(i, j), n, t: [...tn, 1], uv: [j / NV, i / NU], w: [[BI.Head, 1]], tag: 'hair' });
     }
-    // The quiff (B-PT11, after the 1950s references in findings/brawler.md): the top hair is long (8 cm and more), backcombed
-    // at the roots and combed up and over that padding, so it is one solid mass from the scalp up: it rises steeply off the
-    // forehead hairline, stands about 9 cm over the skull at the front, leans some 5 cm out past the brow (the roll
-    // overhangs the forehead), then lies back over the crown, narrowing and sinking toward the back of the head. Its side
-    // section front to back, in head units (z over RZ from the head centre; the top and the underside over HY; the half
-    // width over R): the underside sits just inside the skull (no daylight under the roll), lifting off it at the overhang.
-    const PZ = [[1.25, 1.32, 0.8, 0.55], [1.18, 1.56, 0.56, 0.86], [1.06, 1.65, 0.42, 0.98], [0.9, 1.61, 0.42, 1.02], [0.66, 1.48, 0.5, 1.0], [0.35, 1.31, 0.72, 0.95],
-      [0.0, 1.17, 0.88, 0.88], [-0.4, 1.04, 0.8, 0.8], [-0.7, 0.88, 0.6, 0.66], [-0.88, 0.7, 0.42, 0.45]];
-    const pz = (u) => { const f = Math.max(0, Math.min(0.9999, u)) * (PZ.length - 1), i = Math.floor(f), t = EASE.io(f - i); return PZ[i].map((v, k) => lerp(v, PZ[i + 1][k], t)); };
-    const K = 30;
-    // qf(u): u 0 at the front of the roll, 1 at the back of the crown: the section's centre, its up direction and radii
-    const qf = (u) => { const [z, top, bot, w] = pz(u); return { c: add(hc, [0, HY * (top + bot) / 2, RZ * z]), tg: [0, 0, -1], Vv: Y, ru: R * w, rv: HY * (top - bot) / 2 }; };
-    const rr = [];
-    for (let k = 0; k <= K; k++) { const u = k / K, q = qf(u), cap = Math.sin(Math.min(1, k / 3) * PI / 2) * Math.sin(Math.min(1, (K - k) / 2) * PI / 2); rr.push({ c: q.c, U: X, V: q.Vv, ru: Math.max(0.003, q.ru * 0.92 * Math.sqrt(cap)), rv: Math.max(0.003, q.rv * 0.9 * Math.sqrt(cap)), e: 2.1, mod: (a) => 1 + 0.03 * Math.sin(a * 13 + u * 6) }); }
-    m.loft('pomade', rr, { n: 34, bone: BI.Head, tile: 0.2 });
-    /** a point on the swoop's surface: u along it, s across (-1 .. 1), lift metres off the core */
-    const swoop = (u, s, lift) => { const q = qf(u), cs = Math.sqrt(Math.max(0, 1 - s * s)); return add(q.c, add(mul(X, q.ru * s * 0.9), mul(q.Vv, q.rv * cs * 0.88 + lift))); }; // on the roll's surface (it is lofted at 0.92 / 0.9 of the section): cards standing 4 mm off it read as slivers
-    const swoopOut = (u, s) => { const q = qf(u), cs = Math.sqrt(Math.max(0, 1 - s * s)); return norm(add(mul(X, s / Math.max(0.05, q.ru)), mul(q.Vv, cs / Math.max(0.05, q.rv)))); };
+    for (let i = 0; i < NU; i++) for (let j = 0; j < NV; j++) {
+      const a = i * (NV + 1) + j, b = a + 1, c = a + NV + 1, d = c + 1, fn = crossv(sub(P[b], P[a]), sub(P[c], P[a]));
+      if (dotv(fn, verts[a].n) > 0) tris.push([a, b, c], [b, d, c]); else tris.push([a, c, b], [b, c, d]);
+    }
+    m.raw('pomadeShell', verts, tris);
     const pc = { mat: 'pomadeCard' };
-    // the sides: from the temples and over the ears straight back, a little up, layered three deep
-    for (let i = 0; i < 180; i++) {
-      const sd = rnd() < 0.5 ? 1 : -1, t = lerp(0.12, 0.6, rnd()), a = sd > 0 ? lerp(0.15, -1.1, rnd()) : PI - lerp(0.15, -1.1, rnd());
-      const [p, nn] = scalpPt(t, a, 0.006 + 0.004 * rnd());
-      const dir = sub([0, 0.18, -1], mul(nn, dotv([0, 0.18, -1], nn)));
-      const pts = growS(p, dir, (0.1 + 0.06 * rnd()) * HS, 6, (k, q, d) => add(d, [-sd * 0.06 * (k > 2 ? 1 : 0), 0, 0]), 0.006 + 0.006 * rnd());
-      card(pts, 0.008 * HS, 0.036 * HS, 0, onHead, pc); // fine at the root: the square ends of wide cards made a stair-step along the hairline
-    }
-    // the hairline from the temples down past the ears: short tapered cards combed back along the edge of the slicked sides,
-    // so the hair ends in strands instead of the hard edge of the shell
-    for (let i = 0; i < 90; i++) {
-      const sd = rnd() < 0.5 ? 1 : -1, t = lerp(0.06, 0.34, rnd()), a = sd > 0 ? lerp(0.35, -0.9, rnd()) : PI - lerp(0.35, -0.9, rnd());
-      const [p, nn] = scalpPt(t, a, 0.004);
-      const dir = sub([0, -0.05, -1], mul(nn, dotv([0, -0.05, -1], nn)));
-      const pts = growS(p, dir, (0.035 + 0.025 * rnd()) * HS, 4, (k, q, d) => d, 0.004 + 0.002 * rnd());
-      card(pts, 0.005 * HS, 0.022 * HS, 0, onHead, pc);
-    }
-    // the duck tail: the two sides meet down the back of the head, tips pointing down and in
-    for (let i = 0; i < 110; i++) { // the sides meet in a seam down the back of the head, like the tail of a duck
-      const sd = i & 1 ? 1 : -1, t = lerp(-0.45, 0.4, rnd()), [p, nn] = scalpPt(t, BACK + sd * lerp(0.25, 1.0, rnd()), 0.008);
+    // the duck tail: the two sides meet in a seam down the back of the head, tips pointing down and in
+    for (let i = 0; i < 110; i++) {
+      const sd = i & 1 ? 1 : -1, t = lerp(-0.42, 0.3, rnd()), [p, nn] = scalpPt(t, BACK + sd * lerp(0.15, 0.95, rnd()), 0.012);
       const dir = sub([-sd * 0.85, -0.45, -0.25], mul(nn, dotv([-sd * 0.85, -0.45, -0.25], nn)));
-      const pts = growS(p, dir, (0.08 + 0.04 * rnd()) * HS, 5, (k, q, d) => d, 0.009 + 0.003 * rnd());
-      card(pts, 0.04 * HS, 0.015 * HS, 0, onHead, pc);
-    }
-    // the swoop: strands from the hairline rise up the front of the roll, curl over it and lie back along its top
-    for (let i = 0; i < 150; i++) {
-      const s = (rnd() * 2 - 1) * 0.92, lift = 0.001 + 0.002 * rnd(), u1 = lerp(0.45, 0.68, rnd()); // they end on the roll, not past its back edge (thin slivers stood off it there)
-      // from the front of the roll back over it (the roll is solid down to the hairline now: strands hanging under the
-      // overhang only showed their ragged ends)
-      const pts = [], steps = 9;
-      for (let k = 0; k <= steps; k++) pts.push(swoop(lerp(0.04, u1, k / steps), s * lerp(0.75, 1, k / steps), lift));
-      card(pts, 0.05 * HS, 0.012 * HS, 0, onHead, { ...pc, outAt: (k) => swoopOut(lerp(0.04, u1, k / steps), s) }); // tapering to a fine tip
-    }
-    // the top layer: shorter strands lying back along the crest, so the comb lines show
-    for (let i = 0; i < 0; i++) { // (none: seen from the front, flat lying cards on the crest caught the sky as white patches)
-      const s = (rnd() * 2 - 1) * 0.8, u0 = lerp(0.03, 0.4, rnd()), u1 = Math.min(1, u0 + lerp(0.3, 0.55, rnd())), steps = 6;
-      const pts = []; for (let k = 0; k <= steps; k++) pts.push(swoop(lerp(u0, u1, k / steps), s, 0.009));
-      card(pts, 0.045 * HS, 0.025 * HS, 0, onHead, { ...pc, outAt: (k) => swoopOut(lerp(u0, u1, k / steps), s) });
+      const pts = growS(p, dir, (0.07 + 0.04 * rnd()) * HS, 5, (k, q, d) => d, 0.013 + 0.003 * rnd());
+      card(pts, 0.035 * HS, 0.012 * HS, 0, onHead, pc);
     }
     // the front curl: a few strands slipping off the front of the roll and curling down over the forehead
-    for (let i = 0; i < 8; i++) {
-      const s = 0.1 + (rnd() - 0.5) * 0.35, u0 = lerp(0.1, 0.18, rnd()), steps = 7, rad = (0.02 + 0.008 * rnd()) * HS;
-      const p0 = swoop(u0, s, 0.006), o0 = swoopOut(u0, s);
-      const pts = []; for (let k = 0; k <= steps; k++) { const a = (k / steps) * PI * 1.15; pts.push(add(p0, [0.004 * k * (s > 0.1 ? 1 : -1), rad * (Math.cos(a) - 1) * 1.2, rad * Math.sin(a) * 1.1 + 0.006 * k])); }
-      card(pts, 0.03 * HS, 0.012 * HS, 0, onHead, { ...pc, outAt: (k) => norm(add(o0, [0, -0.3 * k / steps, 0.6 * k / steps])) });
+    for (let i = 0; i < 6; i++) {
+      const s = 0.1 + (rnd() - 0.5) * 0.1, u0 = lerp(0.03, 0.05, rnd()), steps = 7, rad = (0.008 + 0.004 * rnd()) * HS;
+      const p0 = out(s, u0, -0.002), o0 = norm(sub(p0, hcC));
+      const pts = []; for (let k = 0; k <= steps; k++) { const a = (k / steps) * PI * 1.15; pts.push(add(p0, [0.004 * k * (s > 0.08 ? 1 : -1), rad * (Math.cos(a) - 1) * 1.3, rad * Math.sin(a) * 0.9 + 0.003])); }
+      card(pts, 0.022 * HS, 0.007 * HS, 0, onHead, { ...pc, outAt: (k) => norm(add(o0, [0, -0.3 * k / steps, 0.6 * k / steps])) });
     }
   }
   if (facing.out + facing.in > 0) {
@@ -1074,7 +1075,6 @@ function build(sp) {
 /** skin tones lose a little saturation so they read as skin, not orange plastic, under a warm key */
 // where the pompadour's slicked sides meet the skin (ring height by loft angle): the shell sinks under the skin below it, and
 // the face texture paints a fading band of strands under it
-const pompEdge = (a) => { const df = Math.abs(wrapA(a - FRONT)); return 0.04 + 0.3 * ss(1.35, 0.8, df); };
 const desat = (c, k) => { const l = 0.3 * c[0] + 0.55 * c[1] + 0.15 * c[2]; return c.map((x) => lerp(x, l, k)); };
 /** the face and eye textures each character wears */
 function writeFace(sp) {
@@ -1142,6 +1142,7 @@ function materials(glb, sp) {
     P('pomade', 'hair', 'fab_hair', { tint: c.hair.map((x) => x * 0.85), rough: 0.55, normal: 1.6, doubleSided: true }),
     P('hairCard', 'card', 'hair_card', { tint: c.hair, rough: 1, normal: 0.4, doubleSided: true, alphaMode: 'MASK', alphaCutoff: 0.32 }),
     P('pomadeCard', 'pomade', 'hair_card', { tint: c.hair, rough: 0.85, normal: 0.5, doubleSided: true, alphaMode: 'MASK', alphaCutoff: 0.32 }),
+    ...(sp.hair === 'pompadour' ? [P('pomadeShell', 'pomade', 'pomp_shell', { tint: c.hair, rough: 0.8, normal: 1.1, doubleSided: true, alphaMode: 'MASK', alphaCutoff: 0.32 })] : []),
     P('cuff', 'cloth', 'fab_denim', { tint: c.cuff ?? c.pants, rough: 1, normal: 0.6 }), P('stubble', 'fur', 'fab_hair', { tint: c.hair.map((x, i) => x * 0.6 + c.skin[i] * 0.4), rough: 1 }),
     P('hat', sp.hatFab === 'knit' ? 'cloth' : 'cloth', fab(sp.hatFab ?? 'cloth'), { tint: c.hat ?? c.accent, rough: 1 }),
     P('band', 'cloth', 'fab_cloth', { tint: c.band ?? c.accent, rough: 1 }),
@@ -1239,7 +1240,7 @@ function emit(sp) {
     if (c.only && !c.only.includes(sp.name)) continue;
     const n = Math.max(2, Math.round(c.len * 30) + 1);
     const times = Array.from({ length: n }, (_, i) => (i / (n - 1)) * c.len);
-    const poses = times.map((t) => ({ ...c.pose(t), ...faceHands(c.name, t / c.len) })), chans = [];
+    const poses = times.map((t) => shieldArm(sp, c.name, t, { ...c.pose(t), ...faceHands(c.name, t / c.len) })), chans = [];
     for (const name of BONE_NAMES) {
       const rot = [], pos = [];
       let prev = null;
@@ -1278,6 +1279,13 @@ export const SPECS = [
     // a plain black cotton tee (B-PT16: the leather jacket made him look like Arthur), short sleeves, his jeans and boots
     top: 'tee', sleeves: 'short', bottom: 'jeans',
     colors: { skin: 0xc98e60, shirt: 0x1a1a1c, pants: 0x2c4a80, shoes: 0x3b2618, hair: 0x2a1d14, accent: 0xb02a2a, outer: 0x4a2a1c, glove: 0xb8231f, belt: 0x201a14 } },
+  // Dolly, the fourth fighter: a big docks mechanic, the grappler (research: a roster reads when each fighter's main thing shows
+  // in the look): broad shoulders, thick arms and leather work gloves, iron-grey hair in a bun under a bandana, coveralls
+  // with the top half peeled down and the sleeves knotted at her waist over a plain ribbed tank
+  { name: 'dolly', face: { jawAng: 1.15, chin: 1.05, brow: 1.1, browThick: 0.052, noseW: 1.15, cheek: 1.2, lipU: 0.95, lipL: 1.05, mw: 0.25, tilt: 0.02, lidUp: 0.22, naso: 0.8 }, paint: { age: 0.45, iris: [0.2, 0.28, 0.32], hairline: true, freckles: 0.5, ruddy: 0.3, scars: [[-0.3, 0.3, -0.16, 0.2, 0.01, false]] },
+    scale: 1.13, width: 1.5, chest: 1.2, belly: 0.5, sw: 0.255, hw: 0.125, arm: 1.42, leg: 1.1, head: 1.03, hand: 1.42, jaw: 1.05, neck: 1.2, hair: 'bun', headband: true, boots: true, gloves: true, tiedSleeves: true,
+    top: 'tank', shirtFab: 'cloth', bottom: 'cargo', pantsFab: 'cloth', temper: 'anger',
+    colors: { skin: 0xa8734a, shirt: 0xb6b1a2, pants: 0x3f5a4c, shoes: 0x2a1c12, hair: 0x8f897e, accent: 0xc8601e, band: 0xc8601e, glove: 0x7a5a30, belt: 0x1a1510 } },
   { name: 'mika', face: { eyeR: 0.185, noseLen: 0.85, noseW: 0.82, noseProj: 0.85, tipUp: 1, lipU: 1.2, lipL: 1.25, mw: 0.23, cheek: 1.25, jawAng: 0.6, chin: 0.8, chinW: 0.8, brow: 0.6, browThick: 0.04, browArch: 0.06, tilt: 0.08, socket: 0.9, naso: 0.4 }, paint: { freckles: 1, liner: 0.6, eyeShadow: [0.55, 0.36, 0.36], eyeShadowAmt: 0.3, iris: [0.25, 0.42, 0.22], hairline: true },
     scale: 0.97, width: 0.9, chest: 0.95, sw: 0.185, hw: 0.095, arm: 0.95, leg: 1.0, head: 1.14, hand: 1.25, jaw: 0.75, nose: 0.8, hair: 'ponytail', hairRoot: [0, 0.203, -0.1], hairB: [0, -0.13, -0.06], headband: true, wristband: true,
     top: 'tank', bottom: 'tight', pantsFab: 'cloth', lip: 0xb04a50,
@@ -1313,7 +1321,7 @@ export const SPECS = [
     top: 'tee', outer: true, outerKind: 'vest', outerFab: 'cloth', openFront: 0.4, sleeves: 'short', bottom: 'shorts', pantsFab: 'cloth',
     colors: { skin: 0xd09a70, shirt: 0xe0c040, pants: 0x3a4a2a, shoes: 0x6a6a6a, hair: 0x302010, accent: 0x50a030, outer: 0x2a3a20, hat: 0x50a030, band: 0xe0c040 } },
   // the guard: broad, riot helmet with a visor, armour plates and pads (the shield is a separate prop in the game)
-  { name: 'guard', face: { eyeR: 0.16, brow: 1.3, jawAng: 1.5, chin: 1.3, cleft: 1, noseW: 1.1, noseLen: 1.05, cheek: 0.9, lidUp: 0.26, mw: 0.24, lipU: 0.8, lipL: 0.9 }, paint: { shadow: 0.4, age: 0.25 },
+  { name: 'guard', shield: true, face: { eyeR: 0.16, brow: 1.3, jawAng: 1.5, chin: 1.3, cleft: 1, noseW: 1.1, noseLen: 1.05, cheek: 0.9, lidUp: 0.26, mw: 0.24, lipU: 0.8, lipL: 0.9 }, paint: { shadow: 0.4, age: 0.25 },
     frown: true, scale: 1.08, width: 1.35, chest: 1.1, sw: 0.235, hw: 0.11, arm: 1.25, leg: 1.15, head: 1.0, hand: 1.35, jaw: 1.25, neck: 1.2, hair: 'helmet', pads: true, padMat: 'metal', armor: true, gloves: true, boots: true, belt: true, kneepads: true,
     top: 'longsleeve', shirtFab: 'cloth', bottom: 'cargo', pantsFab: 'cloth',
     colors: { skin: 0xb88a64, shirt: 0x1c2638, pants: 0x232a36, shoes: 0x111111, hair: 0x202020, accent: 0xd0d8e0, metal: 0x3a4a64, helmet: 0x26324a, glove: 0x161616, belt: 0x0e0e0e, pad: 0x3a4a64 }, eyes: 0xa0c0ff },

@@ -17,6 +17,8 @@
 
 world_t W;
 bool g_legacy_air; /* autopilot debug "legacyair 1": the v0.4.0 airborne stagger without gravity (the controls gate's control) */
+bool g_legacy_grab; /* autopilot debug "legacygrab 1": the grab as it was (the arms as the clip left them, 0.75 m apart, no hoist): the grab gate's control */
+bool g_legacy_throw; /* autopilot debug "legacythrow 1": the old thrown-body test (it hit the fighters, never the enemies): the throw gate's control */
 bool g_log_frozen; /* autopilot BRAWLER_LOG: name every enemy that stood frozen a second */
 float g_cam[3] = { 1, 0, 0 };
 bool g_freeze;
@@ -69,7 +71,11 @@ const atk_data ATK[] = {
 static bool heavy_atk(int k) { return k == A_SLAM || k == A_SWING || k == A_BSPIN || k == A_RUSH || k == A_FLICK || k == A_HAYMAKER || k == A_BARGE || k == A_FLASH; }
 
 /* ── character rigs: a pool per model, so a spawn never parses a glb twice ── */
-typedef struct rig { int def; bool busy; cw_node root, model, anim, wnode, wmodel, blob, shield; const t3_gltf *gltf; spring_rig sr; int wkind; cw_node gore[3]; } rig;
+typedef struct rig { int def; bool busy; cw_node root, model, anim, wnode, wmodel, blob, shield; const t3_gltf *gltf; spring_rig sr; int wkind; cw_node gore[3];
+  /* the guard's shield (presentation): on his left forearm, or loose (dropped when he is floored or grabbed: it falls flat
+     on the street and he takes it up again when he is back on his feet). blend: frames into the fall or the pick-up */
+  cw_node ik[2]; /* a fighter's arms: hands on the collar of the body he holds (TwoBoneIK3D, only while he holds one) */
+  bool sloose, spick; int sblend; t3_vec3 sp0, sp1; t3_quat sq0, sq1; } rig;
 /* one glTF resource per model: every rig is an instance (cw_gltf_instantiate) sharing its geometry, textures and
    clips, so a crowd of one kind costs a skeleton each, not a parsed glb each */
 static cw_res RES[D_COUNT], BLOB;
@@ -82,10 +88,11 @@ static int rig_of[MAXP + MAXE];
 
 /* the pickups and weapons as models (tools/make-world.mjs: apple, bat, pipe, knife, coin, bottle), one glTF each,
    instanced; they used to be plain boxes (a gold box glowing in mid air read as a broken white square) */
-static cw_res ITEM_RES[6];
+static cw_res ITEM_RES[8];
+static cw_res SHIELD_RES;
 t3_object *item_model(int kind) {
-  static const char *path[6] = { "models/apple.glb", "models/bat.glb", "models/pipe.glb", "models/knife.glb", "models/coin.glb", "models/bottle.glb" };
-  if (kind < 0 || kind > 5) return NULL;
+  static const char *path[8] = { "models/apple.glb", "models/bat.glb", "models/pipe.glb", "models/knife.glb", "models/coin.glb", "models/bottle.glb", "models/comb.glb", "models/baton.glb" };
+  if (kind < 0 || kind > 7) return NULL;
   if (!ITEM_RES[kind].id) ITEM_RES[kind] = cw_res_load(path[kind], CW_RES_GLTF);
   t3_object *o = cw_gltf_instantiate(ITEM_RES[kind]);
   if (!o) { cw_error("brawler: %s did not load", path[kind]); return NULL; }
@@ -164,15 +171,23 @@ static rig *rig_get(int def) {
   cw_node_set(r->wnode, "size", cw_val_vec3(0.07f, 0.8f, 0.07f));
   cw_node_set(r->wnode, "visible", cw_val_bool(false));
   cw_node_set(r->wnode, "cast_shadow", cw_val_bool(true));
-  if (def == D_GUARD) { /* a riot shield held in front of the body (model space: +z is the way it faces) */
-    r->shield = cw_node_new("MeshInstance3D", "Shield");
-    cw_node_add_child(r->root, r->shield);
-    cw_node_set(r->shield, "primitive", cw_val_enum("BOX"));
-    cw_node_set(r->shield, "size", cw_val_vec3(0.62f, 0.95f, 0.06f));
-    cw_node_set(r->shield, "color", cw_val_color(0.2f, 0.26f, 0.36f, 1));
-    cw_node_set(r->shield, "metalness", cw_val_float(0.6f));
-    cw_node_set(r->shield, "roughness", cw_val_float(0.35f));
-    cw_node_set(r->shield, "cast_shadow", cw_val_bool(true));
+  if (def <= D_JET || def == D_ARTHUR) { /* the fighters grab, Arthur combs: an arm solver per side, off until wanted */
+    for (int k = 0; k < 2; k++) {
+      r->ik[k] = cw_node_new("TwoBoneIK3D", k ? "IkR" : "IkL");
+      cw_node_add_child(r->model, r->ik[k]);
+      cw_node_set(r->ik[k], "root_bone", cw_val_string(k ? "UpperArmR" : "UpperArmL"));
+      cw_node_set(r->ik[k], "middle_bone", cw_val_string(k ? "LowerArmR" : "LowerArmL"));
+      cw_node_set(r->ik[k], "end_bone", cw_val_string(k ? "HandR" : "HandL"));
+      cw_node_set(r->ik[k], "use_pole", cw_val_bool(true));
+      cw_node_set(r->ik[k], "active", cw_val_bool(false));
+    }
+  }
+  if (def == D_GUARD) { /* the riot shield (models/shield.glb, make-world.mjs): world space, so it can lie where it fell */
+    r->shield = cw_node_new("Node3D", "Shield");
+    cw_node_add_child(world_node(), r->shield);
+    if (!SHIELD_RES.id) SHIELD_RES = cw_res_load("models/shield.glb", CW_RES_GLTF);
+    t3_object *o = cw_gltf_instantiate(SHIELD_RES);
+    if (o) { set_shadows(o); cw_node3d_set_object(r->shield, o); t3_release(o); }
   }
   r->busy = true;
   return r;
@@ -213,6 +228,7 @@ void char_attach(ent *e) {
   cw_node_set(e->anim, "speed_scale", cw_val_float(1));
   sb_reset(&r->sr);
   for (int k = 0; k < 3; k++) { if (r->gore[k].id && cw_node_valid(r->gore[k])) cw_node_free(r->gore[k]); r->gore[k] = (cw_node){ 0 }; } /* a fresh face for the next one */
+  r->sloose = false, r->spick = false, r->sblend = 10; /* the shield back on his arm */
   char_play(e, "idle", 0);
 }
 
@@ -293,12 +309,15 @@ void char_free(ent *e) {
   cw_node_set(RIGS[rig_of[ent_index(e)]].wmodel, "visible", cw_val_bool(false));
   cw_node_set(e->root, "visible", cw_val_bool(false));
   cw_node_set(RIGS[rig_of[ent_index(e)]].blob, "visible", cw_val_bool(false));
+  if (RIGS[rig_of[ent_index(e)]].shield.id) cw_node_set(RIGS[rig_of[ent_index(e)]].shield, "visible", cw_val_bool(false));
   cw_node3d_set_position(e->root, (t3_vec3){ 0, -50, 0 });
   RIGS[rig_of[ent_index(e)]].busy = false;
   e->root = (cw_node){ 0 };
 }
+ent *g_pose_e; const char *g_pose_clip; /* debug "pose <ent> <clip>": that body holds that clip (close-ups) */
 void char_play(ent *e, const char *clip, float blend) {
   if (!e->anim.id) return;
+  if (e == g_pose_e && g_pose_clip) clip = g_pose_clip;
   if (e->clipname == clip) return;
   e->clipname = clip;
   cw_anim_player_play(e->anim, clip, blend);
@@ -310,7 +329,6 @@ static void char_restart(ent *e, const char *clip, float blend) {
 }
 
 /* the held weapon: its model goes on when it is picked up (the grip sits in the right hand, see char_sync) */
-static const float WGRIP[4] = { 0, -0.3f, -0.38f, -0.11f };
 static void weapon_show(ent *e) {
   if (!e->root.id) return;
   rig *r = &RIGS[rig_of[ent_index(e)]];
@@ -526,7 +544,7 @@ void ent_hurt(ent *v, ent *a, float dmg, int knock, float fx) {
   if (v->victim >= 0) { /* a grabber that is hit lets go */
     ent *u = v->victim < MAXP ? &W.p[v->victim] : &W.e[v->victim - MAXP];
     u->holder = -1;
-    if (u->st == S_GRABBED) u->st = S_IDLE;
+    if (u->st == S_GRABBED) { u->st = u->y > 0 ? S_FALL : S_IDLE; u->vx = u->vy = 0; u->pitch = 0; } /* dropped from the hoist: it falls */
     v->victim = -1;
   }
   if (v->token) { v->token = 0; W.tokens_out--; }
@@ -708,6 +726,8 @@ static void arena_clamp(ent *e) {
   e->x = clampf(e->x, W.cam_x - hw, W.cam_x + hw);
 }
 
+/* how far a held body stands from its holder: their chests just apart, whatever their sizes */
+static float grab_dist(const ent *h, const ent *v) { return g_legacy_grab ? 0.75f : 0.34f * (BODY_SCALE[h->def] + BODY_SCALE[v->def]); }
 /* returns true when the shared state handled this tick */
 static bool common_state(ent *e) {
   switch (e->st) {
@@ -741,21 +761,48 @@ static bool common_state(ent *e) {
     e->t++;
     e->x += e->vx / TPS, e->y += e->vy / TPS;
     e->vy -= 18.0f / TPS;
-    /* a thrown body bowls over whoever it hits */
-    for (int i = 0; i < (e->player ? MAXE : MAXP); i++) {
-      ent *v = e->player ? &W.e[i] : &W.p[i];
-      if (!alive(v) || v == e || v->st == S_DOWN || v->st == S_FALL || v->st == S_THROWN || (e->hitmask & (1u << (i & 31)))) continue;
-      if (in_round(e, v, 0.9f)) { e->hitmask |= 1u << (i & 31); ent_hurt(v, e, 10, 2, 0); }
-    }
+    /* a thrown body bowls over the enemies it flies into (its own side: the fighters threw it). It used to test the other
+       side, so a thrown thug knocked down the fighters it passed and flew through every enemy (the 0.1.1 review) */
+    if (!g_legacy_throw) {
+      ent *thr = e->thrower >= 0 && e->thrower < MAXP ? &W.p[e->thrower] : NULL;
+      for (int i = 0; i < MAXE; i++) {
+        ent *v = &W.e[i];
+        if (!alive(v) || v == e || v->st == S_DOWN || v->st == S_FALL || v->st == S_THROWN || v->st == S_GRABBED || (e->bowled >> i & 1)) continue;
+        float bx = v->x - e->x, bz = v->z - e->z, br = 0.55f + 0.4f * body_size(v);
+        if (bx * bx + bz * bz >= br * br || e->y > 1.7f) continue;
+        e->bowled |= 1ull << i;
+        float hp0 = v->hp;
+        bool armour_boss = DEFS[v->def].boss;
+        ent_hurt(v, e, 10, armour_boss ? 1 : 2, 0); /* a boss takes the blow but keeps his feet */
+        if (v->hp < hp0) {
+          W.st.bowled++;
+          e->vx *= 0.8f; /* each body it hits takes a little of its speed */
+          if (thr) {
+            int pts = (int)(hp0 - v->hp) * 10 + (v->hp <= 0 ? DEFS[v->def].score : 0);
+            thr->score += pts, W.total_score += pts, W.combo_n++, W.combo_t = 100;
+            W.st.hits++;
+          }
+        }
+      }
+      for (int i = 0; i < MAXPROP; i++) { /* and smashes the crates and barrels in its way */
+        prop_t *p = &W.prop[i];
+        if (!p->used || (e->bowled >> (MAXE + (i & 15)) & 1)) continue;
+        float dx = p->x - e->x, dz = p->z - e->z;
+        if (dx * dx + dz * dz < 0.8f * 0.8f && e->y < 1.2f) { e->bowled |= 1ull << (MAXE + (i & 15)); prop_hit(p); }
+      }
+    } else
+      for (int i = 0; i < (e->player ? MAXE : MAXP); i++) { /* legacy: the throw gate's control */
+        ent *v = e->player ? &W.e[i] : &W.p[i];
+        if (!alive(v) || v == e || v->st == S_DOWN || v->st == S_FALL || v->st == S_THROWN || (e->hitmask & (1u << (i & 31)))) continue;
+        if (in_round(e, v, 0.9f)) { e->hitmask |= 1u << (i & 31); ent_hurt(v, e, 10, 2, 0); }
+      }
     if (e->y <= 0 && e->vy < 0) {
       e->y = 0;
       fx_dust(e->x, e->z, 1.6f);
       rumble(-1, 0.55f, 0.15f, 180); /* a thrown body slams into the street: heavy */
       e->vx *= 0.3f;
       e->st = S_FALL, e->t = 0, e->vy = 2.0f;
-      char_restart(e, "knockdown", 0.02f);
-      ent *none = NULL;
-      ent_hurt(e, none, 0, 0, 0); /* dust only: invuln guards re-entry */
+      char_restart(e, "knockdown", 0.02f); /* (a zero blow here used to stand a surviving body up in a flinch) */
     }
     return true;
   }
@@ -774,8 +821,15 @@ static bool common_state(ent *e) {
     return true;
   case S_GRABBED: {
     ent *h = e->holder < 0 ? NULL : (e->holder < MAXP ? &W.p[e->holder] : &W.e[e->holder - MAXP]);
-    if (!h || !alive(h) || h->victim != ent_index(e)) { e->st = S_IDLE; e->holder = -1; return true; }
-    e->x = h->x + (float)h->face * 0.75f, e->z = h->z, e->y = 0;
+    if (!h || !alive(h) || h->victim != ent_index(e)) { e->st = e->y > 0 ? S_FALL : S_IDLE; e->vx = e->vy = 0; e->pitch = 0; e->holder = -1; return true; }
+    float d = grab_dist(h, e); /* chest to chest: scaled to the two bodies */
+    float k = 0;
+    if (h->st == S_THROW && !g_legacy_grab) { /* the hoist: up over his head, tipped flat, before it goes */
+      k = cw_clampf((float)h->t / 15.0f, 0, 1);
+      k = k * k * (3 - 2 * k);
+    }
+    e->x = h->x + (float)h->face * (d + (0.95f - d) * k), e->z = h->z, e->y = 1.85f * k;
+    e->pitch = 1.4f * k;
     e->face = -h->face;
     return true;
   }
@@ -921,7 +975,7 @@ static void player_update(int pi, const inputs *in) {
     }
     float back = -in->mx * (float)e->face;
     if ((in->grab || in->kick) && back > 0.5f) { /* throw behind: it flies over the shoulder */
-      e->st = S_THROW, e->t = 0;
+      e->st = S_THROW, e->t = 0, e->throwfwd = 0;
       char_restart(e, "throw", 0.04f);
       sfx(SFX_THROW);
       break;
@@ -932,10 +986,14 @@ static void player_update(int pi, const inputs *in) {
       e->t = 0;
       e->hitmask = 0;
       char_restart(e, "knee", 0.04f);
+      int vi = e->victim;
       ent_hurt(v, e, 6 * DEFS[e->def].dmg, 0, 0);
-      if (alive(v)) { v->st = S_GRABBED; v->holder = pi; char_restart(v, "grabbed", 0.0f); }
+      /* the knee lands on a body still held: ent_hurt let go of the pair (release_pair, as for any blow on a held body),
+         which ended every grab at the first knee, so three knees never threw anyone (nor did the bots) */
+      if (alive(v) && !g_legacy_throw) { v->st = S_GRABBED; v->holder = pi; e->victim = vi; e->st = S_GRAB; char_restart(v, "grabbed", 0.0f); }
+      else if (alive(v)) { v->st = S_GRABBED; v->holder = pi; char_restart(v, "grabbed", 0.0f); }
       e->hold = 4;
-      if (e->knees >= 3) { e->st = S_THROW, e->t = 0; char_restart(e, "throw", 0.04f); sfx(SFX_THROW); e->face = -e->face; }
+      if (e->knees >= 3) { e->st = S_THROW, e->t = 0, e->throwfwd = 1; char_restart(e, "throw", 0.04f); sfx(SFX_THROW); if (g_legacy_grab) e->face = -e->face; }
     }
     break;
   }
@@ -943,10 +1001,14 @@ static void player_update(int pi, const inputs *in) {
     ent *v = e->victim < 0 ? NULL : &W.e[e->victim - MAXP];
     e->t++;
     if (v && e->t == 15 && v->st == S_GRABBED) {
-      v->st = S_THROWN, v->holder = -1, v->t = 0, v->hitmask = 0;
-      v->vx = -(float)e->face * 9.0f, v->vy = 5.0f, v->y = 0.2f;
-      char_restart(v, "thrown", 0.02f);
+      v->st = S_THROWN, v->holder = -1, v->t = 0, v->hitmask = 0, v->bowled = 0, v->thrower = pi;
       ent_hurt(v, e, 16 * DEFS[e->def].dmg, 0, 0);
+      /* a throw that kills still flies: the body is thrown, lands and lies (it fell where it stood before, so a lethal throw,
+         the usual one after three knees, never bowled anyone over) */
+      if (!g_legacy_throw || v->hp > 0) v->st = S_THROWN, v->t = 0, v->hitmask = 0;
+      if (g_legacy_grab) v->vx = -(float)e->face * 9.0f, v->vy = 5.0f, v->y = 0.2f;
+      else v->vx = (float)e->face * (e->throwfwd ? 9.0f : -9.0f), v->vy = 2.5f; /* from up there */
+      char_restart(v, "thrown", 0.02f);
       v->invuln = 0;
       e->victim = -1;
     }
@@ -1591,6 +1653,201 @@ void stats_log(const char *why) {
 }
 
 /* ── node sync (render side) ────────────────────────────────────────── */
+static t3_quat qmul4(t3_quat a, t3_quat b);
+static t3_vec3 qrot4(t3_quat q, t3_vec3 v);
+/* a bone of a character in the world (the root turns the model by its yaw; a hoisted body's tip is left out of the arms'
+   target on purpose: the hands go to where the hips are, measured below) */
+static t3_vec3 ent_bone_world(const ent *e, const char *bone) {
+  t3_vec3 l = rig_bone_point(&RIGS[rig_of[ent_index(e)]].sr, bone, (t3_vec3){ 0, 0, 0 });
+  float yaw = ent_yaw(e), c = cw_cos(yaw), s = cw_sin(yaw);
+  return (t3_vec3){ e->x + c * l.x + s * l.z, e->y + l.y, e->z - s * l.x + c * l.z };
+}
+/* the grab (the 0.1.1 review: the held body sat inside the holder's arms): both hands take the collar, one on each of the
+   held body's shoulders, the elbows out, by a two-bone solve over the clip. In the hoist they go under the body, either side
+   of its hips. game.grab: frames measured, the farthest either wrist was from its grip (mm, after the first 8 ticks of the
+   hold), the closest a wrist came to the held body's spine line (mm: a hand inside the chest is under about 90) */
+int g_grabm[3] = { 0, 0, 1000000 };
+/* Arthur's taunt: the wrist rides along the side of the pompadour, front to back, twice (the clip's arm moved near the head
+   but never reached it, so the comb combed the air) */
+static void comb_hand(ent *e) {
+  rig *r = &RIGS[rig_of[ent_index(e)]];
+  if (!r->ik[1].id) return;
+  bool comb = e->clipname && !strcmp(e->clipname, "comb") && e->anim.id;
+  cw_node_set(r->ik[1], "active", cw_val_bool(comb));
+  if (!comb) return;
+  float p = (float)cw_anim_player_position(e->anim), env = cw_clampf(p / 0.25f, 0, 1) * (1 - cw_clampf((p - 1.2f) / 0.3f, 0, 1));
+  /* the strokes: 0.25..0.55 and 0.7..1.0 go back; between them the hand returns to the front */
+  float st = p < 0.55f ? (p - 0.25f) / 0.3f : p < 0.7f ? 1 - (p - 0.55f) / 0.15f : (p - 0.7f) / 0.3f;
+  st = cw_clampf(st, 0, 1), st = st * st * (3 - 2 * st);
+  t3_vec3 l = rig_bone_point(&r->sr, "Head", (t3_vec3){ -0.165f, 0.27f - 0.02f * st, 0.11f - 0.27f * st });
+  float yaw = ent_yaw(e), c = cw_cos(yaw), sn = cw_sin(yaw);
+  t3_vec3 t = { e->x + c * l.x + sn * l.z, e->y + l.y, e->z - sn * l.x + c * l.z };
+  cw_node_set(r->ik[1], "target_position", cw_val_vec3(t.x, t.y, t.z));
+  cw_node_set(r->ik[1], "pole_position", cw_val_vec3(e->x - c * 0.9f, e->y + 1.6f, e->z + sn * 0.9f));
+  cw_node_set(r->ik[1], "influence", cw_val_float(env));
+}
+static void grab_hands(ent *e) {
+  if (e->def == D_ARTHUR && e->root.id) { comb_hand(e); return; }
+  if (!e->player || !e->root.id) return;
+  rig *r = &RIGS[rig_of[ent_index(e)]];
+  if (!r->ik[0].id) return;
+  ent *v = e->victim >= MAXP ? &W.e[e->victim - MAXP] : NULL;
+  bool hold = v && v->used && v->root.id && (e->st == S_GRAB || e->st == S_THROW) && v->st == S_GRABBED && !g_legacy_grab;
+  for (int k = 0; k < 2; k++) cw_node_set(r->ik[k], "active", cw_val_bool(hold));
+  if (!hold) return;
+  /* the holder's left hand takes the shoulder across from it: the held body faces him, so its right */
+  float yaw = ent_yaw(e), side = cw_cos(yaw), sidez = -cw_sin(yaw), fx = (float)e->face;
+  for (int k = 0; k < 2; k++) {
+    float sg = k ? -1.0f : 1.0f; /* the holder's left is +x in his frame */
+    t3_vec3 t;
+    if (e->st == S_GRAB) {
+      t = ent_bone_world(v, k ? "UpperArmL" : "UpperArmR");
+      t.y += 0.09f, t.x -= fx * 0.1f; /* the wrist above and this side of the shoulder: the hand lies over it */
+    } else {
+      t = (t3_vec3){ e->x + fx * 0.05f + side * sg * 0.14f, e->y + 2.0f * BODY_SCALE[e->def] * 0.95f, e->z + sidez * sg * 0.14f };
+    }
+    cw_node_set(r->ik[k], "target_position", cw_val_vec3(t.x, t.y, t.z));
+    cw_node_set(r->ik[k], "pole_position", cw_val_vec3(e->x + side * sg * 0.9f - fx * 0.2f, e->y + 0.7f, e->z + sidez * sg * 0.9f));
+    if (e->st == S_GRAB && e->t >= 8) {
+      t3_vec3 w = ent_bone_world(e, k ? "HandR" : "HandL");
+      float dx = w.x - t.x, dy = w.y - t.y, dz = w.z - t.z;
+      int mm = (int)(sqrtf(dx * dx + dy * dy + dz * dz) * 1000.0f + 0.5f);
+      if (mm > g_grabm[1]) g_grabm[1] = mm;
+      t3_vec3 c = ent_bone_world(v, "Chest");
+      float cx = w.x - c.x, cz = w.z - c.z;
+      mm = (int)(sqrtf(cx * cx + cz * cz) * 1000.0f + 0.5f);
+      if (mm < g_grabm[2]) g_grabm[2] = mm;
+      g_grabm[0]++;
+    }
+  }
+}
+/* the guard's shield. Carried: hung on the left forearm (LowerArmL, its face out of the back of the forearm: the shield's
+   frame is the bone's turned half round x, see make-world.mjs shield()), so it follows the arm through every clip (it was a
+   box fixed in front of the body). Floored, thrown or grabbed: it drops, falling flat onto the street in front of where
+   he stood in 14 frames, face up, along the street, clear of the crates and barrels and on the road (it went into the
+   street before); back on his feet he takes it up again over 10 frames. Presentation only. */
+static t3_quat qslerp(t3_quat a, t3_quat b, float t) {
+  float d = a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
+  if (d < 0) b = (t3_quat){ -b.x, -b.y, -b.z, -b.w }, d = -d;
+  t3_quat q = { a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t, a.w + (b.w - a.w) * t }; /* nlerp: short arcs */
+  float l = sqrtf(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
+  return (t3_quat){ q.x / l, q.y / l, q.z / l, q.w / l };
+}
+static bool shield_carried(const ent *e) {
+  return e->st == S_IDLE || e->st == S_WALK || e->st == S_ATK || e->st == S_TAUNT || e->st == S_HIT || e->st == S_JUMP || e->st == S_PICK;
+}
+/* debug game.shield: shields dropped, taken up again, the lowest and the highest any lying shield's lowest point sat over
+   the street on any frame (mm: 0 to 15 is lying on it; under 0 is in it, more is floating), frames a lying shield was
+   on a crate, barrel or bin. legacyshield 1 (the gate's control) drops it where the old box went: 0.5 m up, tilted */
+int g_shield[5] = { 0, 0, 1000000, -1000000, 0 };
+bool g_legacy_shield;
+static const float SHIELD_PTS[][3] = { /* its lowest points (models/shield.glb): the rubber edge's corners, the handle, the brace */
+  { -0.373f, -0.294f, 0.054f }, { 0.173f, -0.294f, 0.054f }, { -0.373f, 0.634f, 0.054f }, { 0.173f, 0.634f, 0.054f },
+  { 0, 0.105f, 0.004f }, { 0, 0.275f, 0.004f }, { -0.05f, -0.05f, 0.04f }, { 0.05f, 0.01f, 0.04f }, { -0.1f, 0.17f, 0.124f } };
+static void shield_sync(ent *e, rig *r) {
+  /* where it would be on the arm, in world space */
+  t3_vec3 fp, hp; t3_quat fq;
+  bool arm = rig_bone_xf(&r->sr, "LowerArmL", &fp, &fq);
+  hp = rig_bone_point(&r->sr, "HandL", (t3_vec3){ 0, 0, 0 });
+  float yaw = ent_yaw(e), cy = cw_cos(yaw * 0.5f), sy = cw_sin(yaw * 0.5f);
+  t3_quat qy = { 0, sy, 0, cy };
+  t3_vec3 mid = { (fp.x + hp.x) * 0.5f, (fp.y + hp.y) * 0.5f, (fp.z + hp.z) * 0.5f };
+  t3_vec3 wm = qrot4(qy, mid);
+  t3_vec3 apos = { e->x + wm.x, e->y + wm.y, e->z + wm.z };
+  t3_quat aq = qmul4(qy, qmul4(fq, (t3_quat){ 1, 0, 0, 0 }));
+  bool carried = arm && shield_carried(e);
+  if (!carried && !r->sloose) { /* it drops: flat on the road in front of him, along the street */
+    r->sloose = true, r->sblend = 0, r->sp0 = apos, r->sq0 = aq;
+    float x = e->x + (float)e->face * 0.45f, z = cw_clampf(e->z + 0.1f, -LANE_Z + 0.3f, LANE_Z - 0.1f);
+    for (int k = 0; k < 3; k++) /* clear of the crates, barrels and bins */
+      for (int i = 0; i < MAXPROP; i++) {
+        const prop_t *p = &W.prop[i];
+        if (p->used && fabsf(p->x - x) < 0.95f && fabsf(p->z - z) < 0.75f) x += (x >= p->x ? 1.0f : -1.0f) * (0.95f - fabsf(p->x - x) + 0.05f);
+      }
+    /* face up: the shield's +z onto world +y (half a turn down about x), its length along the street (a quarter turn about y) */
+    const float h = 0.70710678f;
+    r->sq1 = qmul4((t3_quat){ 0, h, 0, h }, (t3_quat){ -h, 0, 0, h });
+    r->sp1 = (t3_vec3){ x, -0.002f, z }; /* the handle behind it is its lowest point, 4 mm over the frame origin: it rests 2 mm up */
+    if (g_legacy_shield) { /* the old placement: 0.5 m up in front of the root, tilted 1.2 rad */
+      t3_vec3 o = qrot4(qy, (t3_vec3){ 0.1f, 0.5f, 0.25f });
+      r->sp1 = (t3_vec3){ e->x + o.x, e->y + o.y, e->z + o.z };
+      r->sq1 = qmul4(qy, (t3_quat){ cw_sin(0.6f), 0, 0, cw_cos(0.6f) });
+    }
+    g_shield[0]++;
+  } else if (carried && r->sloose && r->sblend >= 14) r->sloose = false, r->spick = true, r->sblend = 0, r->sp0 = r->sp1, r->sq0 = r->sq1, g_shield[1]++; /* taken up again */
+  t3_vec3 pos; t3_quat q;
+  if (r->sloose) {
+    float u = cw_clampf((float)r->sblend / 14.0f, 0, 1);
+    if (r->sblend < 14) r->sblend++;
+    float uf = u * u; /* it falls */
+    pos = (t3_vec3){ r->sp0.x + (r->sp1.x - r->sp0.x) * u, r->sp0.y + (r->sp1.y - r->sp0.y) * uf, r->sp0.z + (r->sp1.z - r->sp0.z) * u };
+    if (pos.y < r->sp1.y) pos.y = r->sp1.y;
+    q = qslerp(r->sq0, r->sq1, u);
+    if (u >= 1) { /* lying: its lowest point over the street, and never on a prop */
+      float low = 1e9f;
+      for (size_t k = 0; k < sizeof SHIELD_PTS / sizeof *SHIELD_PTS; k++) {
+        t3_vec3 w = qrot4(q, (t3_vec3){ SHIELD_PTS[k][0], SHIELD_PTS[k][1], SHIELD_PTS[k][2] });
+        if (pos.y + w.y < low) low = pos.y + w.y;
+      }
+      int mm = (int)floorf(low * 1000.0f + 0.5f);
+      if (mm < g_shield[2]) g_shield[2] = mm;
+      if (mm > g_shield[3]) g_shield[3] = mm;
+      for (int i = 0; i < MAXPROP; i++) if (W.prop[i].used && fabsf(W.prop[i].x - pos.x) < 0.75f && fabsf(W.prop[i].z - pos.z) < 0.6f) { g_shield[4]++; break; }
+    }
+  } else if (r->spick) { /* the pick-up: from the street to the arm */
+    float u = (float)(++r->sblend) / 10.0f, k = u * u * (3 - 2 * u);
+    if (r->sblend >= 10) r->spick = false;
+    pos = (t3_vec3){ r->sp0.x + (apos.x - r->sp0.x) * k, r->sp0.y + (apos.y - r->sp0.y) * k, r->sp0.z + (apos.z - r->sp0.z) * k };
+    q = qslerp(r->sq0, aq, k);
+  } else pos = apos, q = aq;
+  cw_node_set(r->shield, "visible", cw_val_bool(arm || r->sloose));
+  cw_node3d_set_position(r->shield, pos);
+  cw_node3d_set_quaternion(r->shield, q);
+}
+/* a held prop gripped in the right fist: it follows the hand's turn as well as its place (it stood upright beside the
+   hand whatever the arm did, the 0.1.1 review). The props are modelled along +y (make-world.mjs); a fist closes round an
+   axis across the palm, from the little finger to the thumb, which is the hand bone's +z, so the prop's +y goes there, and
+   the grip (WGRIP, along the prop) sits in the fist: inside the knuckle line, a little toward the palm */
+static t3_quat qmul4(t3_quat a, t3_quat b) {
+  return (t3_quat){ a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y, a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+                    a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w, a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z };
+}
+static t3_vec3 qrot4(t3_quat q, t3_vec3 v) {
+  t3_vec3 u = { q.x, q.y, q.z };
+  t3_vec3 t = { 2 * (u.y * v.z - u.z * v.y), 2 * (u.z * v.x - u.x * v.z), 2 * (u.x * v.y - u.y * v.x) };
+  return (t3_vec3){ v.x + q.w * t.x + (u.y * t.z - u.z * t.y), v.y + q.w * t.y + (u.z * t.x - u.x * t.z), v.z + q.w * t.z + (u.x * t.y - u.y * t.x) };
+}
+static const float WGRIP7[8] = { 0, -0.3f, -0.38f, -0.11f, 0, 0, -0.05f, -0.21f }; /* along the prop: the middle of its grip (6: the comb's spine end, 7: the guard's baton) */
+int g_held[3]; bool g_legacy_hold; static int held_lo, held_hi = -1;
+static void hold_in_hand(ent *e, rig *r, int kind) {
+  t3_vec3 hp; t3_quat hq;
+  if (!rig_bone_xf(&r->sr, "HandR", &hp, &hq)) return;
+  t3_vec3 k1 = rig_bone_point(&r->sr, "FingR1", (t3_vec3){ 0, 0, 0 });
+  /* the fist's centre: most of the way from the wrist to the knuckles, toward the palm (+x for the right hand) */
+  t3_vec3 palm = qrot4(hq, (t3_vec3){ 0.022f, 0, 0.004f });
+  t3_vec3 grip = { hp.x + (k1.x - hp.x) * 0.82f + palm.x, hp.y + (k1.y - hp.y) * 0.82f + palm.y, hp.z + (k1.z - hp.z) * 0.82f + palm.z };
+  const float h = 0.70710678f;
+  t3_quat q = qmul4(hq, (t3_quat){ h, 0, 0, h }); /* the prop's +y onto the hand's +z */
+  if (kind == 6) q = qmul4(q, (t3_quat){ 0, h, 0, h }); /* the comb's teeth face out of the fist, its flat to the hair */
+  t3_vec3 off = qrot4(q, (t3_vec3){ 0, WGRIP7[kind], 0 });
+  t3_vec3 pos = { grip.x - off.x, grip.y - off.y, grip.z - off.z };
+  if (g_legacy_hold) { /* the old placement (the hold gate's control): upright, at the hand */
+    t3_vec3 w = cw_skeleton_bone_world(e->model, "HandR");
+    pos = (t3_vec3){ w.x, w.y - WGRIP7[kind], w.z }, q = (t3_quat){ 0, 0, 0, 1 };
+  }
+  cw_node3d_set_position(r->wmodel, pos);
+  cw_node3d_set_quaternion(r->wmodel, q);
+  if (e->player) { /* game.held: frames, how far from the fist its grip was at worst (mm), how many degrees the prop's axis turned over the run */
+    t3_vec3 gw = qrot4(q, (t3_vec3){ 0, WGRIP7[kind], 0 }), ax = qrot4(q, (t3_vec3){ 0, 1, 0 });
+    float dx = pos.x + gw.x - grip.x, dy = pos.y + gw.y - grip.y, dz = pos.z + gw.z - grip.z;
+    int mm = (int)(sqrtf(dx * dx + dy * dy + dz * dz) * 1000.0f + 0.5f);
+    if (mm > g_held[1]) g_held[1] = mm;
+    int deg = (int)(cw_acos(cw_clampf(ax.y, -1, 1)) * 57.2958f + 0.5f);
+    if (g_held[0]++ == 0 || deg < held_lo) held_lo = deg;
+    if (deg > held_hi) held_hi = deg;
+    g_held[2] = held_hi - held_lo;
+  }
+}
 static const float HAND_OFF[3] = { 0, -0.05f, 0.05f };
 void char_sync(ent *e) {
   if (!e->root.id) return;
@@ -1604,13 +1861,7 @@ void char_sync(ent *e) {
   }
   {
     rig *r = &RIGS[rig_of[ent_index(e)]];
-    if (r->shield.id) { /* the guard's shield: up in front, shoved forward in a bash, dropped while it reels or lies */
-      bool down = !(e->st == S_IDLE || e->st == S_WALK || e->st == S_ATK || e->st == S_TAUNT);
-      bool shove = e->st == S_ATK && e->atk == A_BASH && e->t >= 6 && e->t < 18;
-      cw_node_set(r->shield, "visible", cw_val_bool(e->st != S_DEAD));
-      cw_node3d_set_position(r->shield, (t3_vec3){ 0.1f, down ? 0.5f : 1.05f, down ? 0.25f : shove ? 0.68f : 0.44f });
-      cw_node3d_set_rotation(r->shield, (t3_vec3){ down ? 1.2f : 0, 0, 0 });
-    }
+    if (r->shield.id) shield_sync(e, r);
   }
   float yaw = ent_yaw(e);
   if (e->clipname && !strcmp(e->clipname, "thumbsup") && e->anim.id && !g_freeze) { /* the thumbs up is for the audience: he turns three quarters to the camera, then back */
@@ -1620,24 +1871,25 @@ void char_sync(ent *e) {
   }
   t3_vec3 roff;
   if (rag_render(e, &yaw, &roff)) cw_node3d_set_position(e->root, (t3_vec3){ e->x + roff.x, e->y, e->z + roff.z }); /* a ragdoll or a get-up turned to lie the way the body fell */
-  cw_node3d_set_rotation(e->root, (t3_vec3){ 0, yaw, 0 });
-  if (e->def == D_ARTHUR && e->wnode.id && !e->weapon) { /* his comb comes out for the taunt */
+  if (e->st == S_GRABBED && e->pitch > 0) { /* hoisted: tipped forward on his feet, flat over the holder's head */
+    t3_quat qy = { 0, cw_sin(yaw * 0.5f), 0, cw_cos(yaw * 0.5f) }, qp = { cw_sin(e->pitch * 0.5f), 0, 0, cw_cos(e->pitch * 0.5f) };
+    cw_node3d_set_quaternion(e->root, qmul4(qy, qp));
+  } else cw_node3d_set_rotation(e->root, (t3_vec3){ 0, yaw, 0 });
+  grab_hands(e);
+  rig *wr = &RIGS[rig_of[ent_index(e)]];
+  if (e->def == D_ARTHUR && !e->weapon) { /* his comb comes out for the taunt (a pocket comb in his right hand) */
     bool comb = e->clipname && !strcmp(e->clipname, "comb");
-    cw_node_set(e->wnode, "visible", cw_val_bool(comb));
-    if (comb) {
-      t3_vec3 h = cw_skeleton_bone_world(e->model, "HandR");
-      cw_node_set(e->wnode, "size", cw_val_vec3(0.018f, 0.15f, 0.035f));
-      cw_node_set(e->wnode, "color", cw_val_color(0.02f, 0.02f, 0.025f, 1));
-      cw_node_set(e->wnode, "roughness", cw_val_float(0.3f));
-      cw_node3d_set_position(e->wnode, (t3_vec3){ h.x, h.y + 0.06f, h.z });
-    }
+    if (comb && wr->wkind != 6) { t3_object *o = item_model(6); if (o) { cw_node3d_set_object(wr->wmodel, o); t3_release(o); wr->wkind = 6; } }
+    cw_node_set(wr->wmodel, "visible", cw_val_bool(comb));
+    if (comb) hold_in_hand(e, wr, 6);
   }
-  if (e->weapon && e->wnode.id) {
-    t3_vec3 h = cw_skeleton_bone_world(e->model, "HandR");
-    (void)HAND_OFF;
-    cw_node3d_set_position(RIGS[rig_of[ent_index(e)]].wmodel, (t3_vec3){ h.x, h.y - WGRIP[e->weapon & 3], h.z });
+  if (e->weapon) hold_in_hand(e, wr, e->weapon & 3);
+  else if (e->def == D_GUARD) { /* the riot guard's baton in his right fist (presentation: his blows are the shield shove) */
+    if (wr->wkind != 7) { t3_object *o = item_model(7); if (o) { cw_node3d_set_object(wr->wmodel, o); t3_release(o); wr->wkind = 7; } }
+    cw_node_set(wr->wmodel, "visible", cw_val_bool(true));
+    hold_in_hand(e, wr, 7);
   }
-  (void)ent_index;
+  (void)HAND_OFF;
 }
 
 /* render side: the bottles in flight, and a danger ring on the street under every heavy attack while it winds up and
@@ -1686,10 +1938,22 @@ void rig_release(int rid) { /* a corpse rag.c kept on the street is done: hide i
   cw_node_set(r->wmodel, "visible", cw_val_bool(false));
   cw_node_set(r->root, "visible", cw_val_bool(false));
   cw_node_set(r->blob, "visible", cw_val_bool(false));
+  if (r->shield.id) cw_node_set(r->shield, "visible", cw_val_bool(false));
   cw_node3d_set_position(r->root, (t3_vec3){ 0, -50, 0 });
   r->busy = false;
 }
 float ent_render_yaw_sim(const ent *e) { return ent_yaw(e); }
+/* debug "bone <ent> <name>": a bone's place and its axes in the model's space (ent 0-3 fighters, 4+ enemies) */
+bool debug_bone(int ei, const char *name, float out[12]) {
+  ent *e = ei < MAXP ? &W.p[ei] : &W.e[(ei - MAXP) % MAXE];
+  if (!e->used || !e->root.id) return false;
+  t3_vec3 p; t3_quat q;
+  if (!rig_bone_xf(&RIGS[rig_of[ent_index(e)]].sr, name, &p, &q)) return false;
+  t3_vec3 ax = qrot4(q, (t3_vec3){ 1, 0, 0 }), ay = qrot4(q, (t3_vec3){ 0, 1, 0 }), az = qrot4(q, (t3_vec3){ 0, 0, 1 });
+  float v[12] = { p.x, p.y, p.z, ax.x, ax.y, ax.z, ay.x, ay.y, ay.z, az.x, az.y, az.z };
+  memcpy(out, v, sizeof v);
+  return true;
+}
 void char_play_force(ent *e, const char *clip, float blend) { char_restart(e, clip, blend); }
 /* debug: an enemy's face weight for target t (the boss's expression in the gates and screenshots) */
 float face_weight_of_enemy(int i, int t) { return i >= 0 && i < MAXE && W.e[i].used && W.e[i].root.id ? face_weight(&RIGS[rig_of[MAXP + i]].sr, t) : 0; }

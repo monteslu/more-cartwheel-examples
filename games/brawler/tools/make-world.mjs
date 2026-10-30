@@ -47,6 +47,13 @@ const DEFS = {
   glass_green: { set: null, tint: [0.05, 0.2, 0.08], rough: 0.06 }, label: { set: null, tint: [0.75, 0.68, 0.5], rough: 0.85 },
   blade: { set: 'paint_metal', tint: [0.9, 0.91, 0.94], rough: 0.2, metal: 1 }, tape: { set: null, tint: [0.06, 0.06, 0.07], rough: 0.85 },
   pipe: { set: 'paint_metal', tint: [0.42, 0.44, 0.46], rough: 0.5, metal: 1 },
+  // the riot guard's shield: painted steel, a rubber edge, a tinted viewport, a reflective band
+  shield_paint: { set: 'paint_metal', tint: [0.16, 0.19, 0.24], rough: 0.55, metal: 0.6 },
+  shield_rubber: { set: null, tint: [0.035, 0.035, 0.04], rough: 0.8 },
+  shield_glass: { set: null, tint: [0.03, 0.045, 0.06], rough: 0.06, metal: 0.2 },
+  shield_band: { set: null, tint: [0.62, 0.62, 0.58], rough: 0.45 },
+  baton: { set: null, tint: [0.025, 0.025, 0.028], rough: 0.55 }, baton_grip: { set: null, tint: [0.04, 0.04, 0.045], rough: 0.9 },
+  comb: { set: null, tint: [0.018, 0.016, 0.02], rough: 0.22 }, // a greaser's black pocket comb: glossy plastic
 };
 
 const THEMES = [
@@ -296,6 +303,64 @@ function knife(m) { // 0.34 m: a handle, a guard and a blade narrowing to the po
   m.box('blade', [0, 0.02, 0], [0.034, 0.12, 0.004], { uv: 0.2 });
   m.cyl('blade', [0, 0.125, 0], 0.017, 0.09, { r1: 0.001, n: 4, uv: 0.2 }); // the point: a thin four-sided taper
 }
+function comb(m) { // a 15 cm pocket comb along y: a rounded spine and 34 teeth along +x, the far half finer; 4 mm thick
+  const L = 0.15, T = 0.0042;
+  m.box('comb', [0, 0, 0], [0.011, L, T], { uv: 0.2 }); // the spine
+  for (const y of [-L / 2, L / 2]) m.cyl('comb', [0.0005, y, 0], 0.0058, T, { axis: 'z', n: 10, uv: 0.2 }); // rounded ends
+  const n = 34;
+  for (let i = 0; i < n; i++) {
+    const y = -L / 2 + 0.006 + (L - 0.012) * (i + 0.5) / n, fine = i >= n / 2, len = fine ? 0.017 : 0.019;
+    m.box('comb', [0.0055 + len / 2, y, 0], [len, fine ? 0.0016 : 0.0022, T * 0.85], { uv: 0.2 });
+  }
+}
+/** the riot guard's shield, in the frame of the forearm that carries it: +y up the forearm toward the hand, +z out of its
+ * face, x across (-x toward the body's middle for the left arm). A 0.56 x 0.92 m steel shield curved round a 0.75 m
+ * radius, a rubber edge, a tinted viewport high up, a pale band low down; behind, an arm pad and a handle. The forearm's
+ * middle is the origin; the back of the shield sits 11 cm out from it (clear of the gloved fist on the handle). */
+function shield(m) {
+  const W = 0.56, H = 0.92, R = 0.75, T = 0.014, n = 14, cx = -0.1, cy = 0.17, z0 = 0.11;
+  const amax = W / 2 / R;
+  const P = (a, y, d) => [cx + (R + d) * Math.sin(a), cy + y, z0 + (R + d) * Math.cos(a) - R]; // d: out from the back skin
+  const N = (a, k = 1) => [k * Math.sin(a), 0, k * Math.cos(a)];
+  // a strip of the curved surface between heights y0..y1, out at d, facing k (1 out, -1 in), angles a0..a1
+  const strip = (mat, y0, y1, d, k, a0 = -amax, a1 = amax, segs = n) => {
+    for (let i = 0; i < segs; i++) {
+      const u0 = a0 + (a1 - a0) * i / segs, u1 = a0 + (a1 - a0) * (i + 1) / segs;
+      m.quad(mat, P(u0, y0, d), P(u1, y0, d), P(u1, y1, d), P(u0, y1, d), N((u0 + u1) / 2, k),
+        [u0 * R, -y0], [u1 * R, -y0], [u1 * R, -y1], [u0 * R, -y1], [N(u0, k), N(u1, k), N(u1, k), N(u0, k)]);
+    }
+  };
+  strip('shield_paint', -H / 2, H / 2, T, 1); // the face
+  strip('shield_paint', -H / 2, H / 2, 0, -1); // the back
+  // top and bottom edges of the plate
+  for (const [y, ny] of [[H / 2, 1], [-H / 2, -1]]) for (let i = 0; i < n; i++) {
+    const u0 = -amax + 2 * amax * i / n, u1 = -amax + 2 * amax * (i + 1) / n;
+    m.quad('shield_paint', P(u0, y, 0), P(u1, y, 0), P(u1, y, T), P(u0, y, T), [0, ny, 0], [0, 0], [0.02, 0], [0.02, 0.01], [0, 0.01]);
+  }
+  // the rubber edge: a band round the face (proud by 3 mm, 22 mm wide) and a tube up each side
+  const eb = 0.022, ea = eb / R;
+  strip('shield_rubber', H / 2 - eb, H / 2 + 0.004, T + 0.003, 1);
+  strip('shield_rubber', -H / 2 - 0.004, -H / 2 + eb, T + 0.003, 1);
+  for (const sg of [-1, 1]) {
+    strip('shield_rubber', -H / 2 + eb, H / 2 - eb, T + 0.003, 1, sg > 0 ? amax - ea : -amax, sg > 0 ? amax : -amax + ea, 1);
+    const e = P(sg * amax, 0, T / 2);
+    m.cyl('shield_rubber', e, 0.011, H + 0.008, { n: 8, uv: 0.3 });
+  }
+  // the viewport (tinted glass, framed in rubber) and the pale band
+  const va = 0.15 / R;
+  strip('shield_rubber', 0.205, 0.335, T + 0.002, 1, -va - 0.012 / R, va + 0.012 / R, 6);
+  strip('shield_glass', 0.215, 0.325, T + 0.004, 1, -va, va, 6);
+  strip('shield_band', -0.27, -0.2, T + 0.001, 1, -amax + ea, amax - ea);
+  // behind: the padded forearm brace across the back and the handle where the hand closes (toward the top)
+  m.box('shield_rubber', [0, -0.02, 0.0755], [0.1, 0.06, 0.07], { uv: 0.3 });
+  m.box('shield_rubber', [0, 0.11, 0.065], [0.035, 0.03, 0.091], { uv: 0.3 });
+  m.box('shield_rubber', [0, 0.27, 0.065], [0.035, 0.03, 0.091], { uv: 0.3 });
+  m.cyl('shield_rubber', [0, 0.19, 0.02], 0.016, 0.17, { n: 10, uv: 0.3 });
+}
+function baton(m) { // a riot guard's 60 cm straight baton: a ribbed rubber grip with a knob, a smooth tapering shaft
+  lathe(m, 'baton', [[-0.3, 0.0], [-0.297, 0.019], [-0.288, 0.021], [-0.278, 0.016], [-0.12, 0.017], [0.27, 0.0155], [0.293, 0.013], [0.3, 0.0]], { n: 16, uv: 0.3 });
+  for (let i = 0; i < 7; i++) lathe(m, 'baton_grip', [[-0.262 + i * 0.02, 0.0172], [-0.255 + i * 0.02, 0.0185], [-0.248 + i * 0.02, 0.0172]], { n: 16 });
+}
 function coin(m) { // a fat coin standing up, its face to the street: rim, face and a raised centre
   m.cyl('gold', [0, 0, 0], 0.1, 0.018, { axis: 'z', n: 28, uv: 0.3 });
   m.cyl('gold_dark', [0, 0, 0], 0.104, 0.012, { axis: 'z', n: 28, uv: 0.3, caps: false });
@@ -409,7 +474,7 @@ function puddles(stage, count) {
 for (let i = 0; i < 4; i++) writeStage(i);
 puddles(0, 22); puddles(1, 55); puddles(3, 10);
 writeProp('crate', crate); writeProp('barrel', barrel); writeProp('bin', bin);
-for (const [n, fn] of [['bat', bat], ['pipe', pipe], ['knife', knife], ['coin', coin], ['apple', apple], ['bottle', bottle]]) writeProp(n, fn);
+for (const [n, fn] of [['bat', bat], ['pipe', pipe], ['knife', knife], ['coin', coin], ['apple', apple], ['bottle', bottle], ['comb', comb], ['shield', shield], ['baton', baton]]) writeProp(n, fn);
 blobMesh();
 
 // ── the jukebox in the docks boss arena (Arthur thumps it): base on the floor at the origin, facing +Z. Its glow tubes,
