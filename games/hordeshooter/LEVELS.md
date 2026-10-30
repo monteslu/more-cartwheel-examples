@@ -468,11 +468,11 @@ cages, brimstone vents, and a sky of red smoke where the cave roof should be.
   # . . c . . . . . . . . . . . c . . #
   # ~ ~ . . . o . . + . . o . . . ~ ~ #
   g . . . . . . . . . . . . . . . . . g
-  # . c . o . . . ~ ~ ~ . . . o . c . #
-  # . . . . . . . ~ . ~ . . . . . . . #
+  # . c . o . . ~ . . . ~ . . o . c . #
+  # . . . . . . . . . . . . . . . . . #
   # . + . . . . . . H . . . . . . + . #
-  # . . . . . . . ~ . ~ . . . . . . . #
-  # . c . o . . . ~ ~ ~ . . . o . c . #
+  # . . . . . . . . . . . . . . . . . #
+  # . c . o . . ~ . . . ~ . . o . c . #
   g . . . . . . . . . . . . . . . . . g
   # ~ ~ . . . o . . + . . o . . . ~ ~ #
   # . . c . . . . . . . . . . . c . . #
@@ -481,8 +481,7 @@ cages, brimstone vents, and a sky of red smoke where the cave roof should be.
   # . . . . . . . . . . . . . . . . . #
   # # # # # # # # g # g # # # # # # # #
   ```
-  Lava (`~`) runs in short broken channels, with a ring of lava round the hatch at 4 to 6 m that the
-  hatch's four bridges cross. Brimstone vents (`o`) burst on a 6 s cycle: a 1 s glow, then a
+  Lava (`~`) runs in short broken channels, and four lava pools sit on the diagonals round the hatch. Brimstone vents (`o`) burst on a 6 s cycle: a 1 s glow, then a
   column of fire, which is the mechanic. The throne (`T`) fills the north wall. Caged cairns (`c`)
   are cover.
 - **Waves.** Every kind comes back here. 1: 60 R, 40 hellhound. 2: 30 gargoyle, 30 penitent,
@@ -504,8 +503,8 @@ cages, brimstone vents, and a sky of red smoke where the cave roof should be.
   - *Legion*: it roars, and every gap spawns the kinds of earlier levels, with one of each earlier
     boss's elite (a mini version with half the health) in phase 3.
   - Phases. Phase 1 (100 to 66%): it fights from the throne, with the blade line and the hellstorm.
-    Phase 2 (66 to 33%): it rises, walks the arena, and the lava channels flood (the ring round the
-    hatch rises). Phase 3 (under 33%): it calls the legion, its crown burns, and every attack comes
+    Phase 2 (66 to 33%): it rises, walks the arena, and the lava channels flood (the pools round the
+    hatch spread). Phase 3 (under 33%): it calls the legion, its crown burns, and every attack comes
     faster. When it dies, the arena cools to black stone in 3 s and the last hatch opens to a shaft
     of daylight. That ends the run.
   - Clips: walk (a striding stomp, wings dragging), attack (the blade raise and fall), special (four
@@ -515,7 +514,7 @@ cages, brimstone vents, and a sky of red smoke where the cave roof should be.
   perk: the beam forks to a second target. Every gun is in the pool, and boss caches here drop
   Epic or better 40% of the time.
 - **Hatch: the heart seal.** A black stone and iron seal shaped like a clenched heart, on a dais
-  inside the lava ring. Its iron bands burst open, and daylight pours up out of the shaft.
+  between the lava pools. Its iron bands burst open, and daylight pours up out of the shaft.
 
 ## 4. Why this shape (design notes)
 
@@ -592,6 +591,8 @@ boss <file> <name...>                the level's boss and its display name
 scene <file>                         the lighting scene
 lightmap <file>                      the bake
 floor <albedo> <tile_m> <rough> <tint r g b>             the floor material: texture tile size in metres
+void <r>                             the arena is an octagonal plateau r metres out (the rift): the floor
+                                     beyond it falls dark
 prop <name> <file> <tx> <rep> <rough> <metal> <solid>    a prop model: name, file, the view's surface kind
                                      (pillar, armor, hide, ground), texture repeat, roughness, metalness;
                                      solid: what each placement is to the sim. 0 scenery (no obstacle),
@@ -621,5 +622,11 @@ light <type> <x> <y> <z> <tx> <ty> <tz> <r> <g> <b> <energy> <range> <angle> <pe
 - `tools/check-levels.mjs`: the scenery checks. No floating or sunken props (every base on the floor
   or on the prop under it, within 3 cm), no overhang, nothing inside the hatch's clear circle, solids
   that don't overlap. `--control` lifts one prop 0.5 m, and the check must fail on it.
-- `tools/gen-level-textures.mjs`, `tools/gen-level-luts.mjs`: the floor textures and the grades.
-- `tools/blender/render_level.py`: contact sheets of a level, a model or a clip, rendered headless.
+- `tools/gen-level-textures.mjs`, `tools/gen-level-luts.mjs`: the floor textures (and the melt texture the molten
+  and lava strips draw with, `textures/lava_floor.png`) and the grades.
+- `tools/levelview/`: `levelbuild.c`, the level builder the game links, and the `hordeshooter_levelview` cart. It
+  shows each level with its crowd or its boss going through its clips and its hatch opening (left and right
+  change the level, up and down the camera, fire what stands on the floor, the blast button the hatch). Natively,
+  `--bake <dir> [--level <id>]` bakes the lightmaps.
+- Contact sheets: `levelchars.py` and `levelprops.py` take `--sheet <dir>` and render every clip frame (the game's
+  camera angle and a side view) headless, for review before a level is in a cart.

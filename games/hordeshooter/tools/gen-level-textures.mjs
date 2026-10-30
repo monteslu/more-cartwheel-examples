@@ -63,7 +63,7 @@ const FLOORS = {
     const base = 0.42 + 0.08 * (sid - 0.5) + 0.12 * (fbm(u, v, 16, 4, 11) - 0.5);
     let c = [base * 0.93, base * 0.96, base * 0.92];
     const wet = smooth(0.5, 0.68, fbm(u, v, 4, 4, 21));
-    c = mix3(c, [c[0] * 0.45, c[1] * 0.5, c[2] * 0.5], wet);
+    c = mix3(c, [c[0] * 0.72, c[1] * 0.76, c[2] * 0.76], wet);
     const algae = smooth(0.58, 0.75, fbm(u, v, 6, 5, 33)) * (0.5 + groove * 0.5);
     c = mix3(c, [0.16, 0.22, 0.12], algae * 0.75);
     const rust = smooth(0.7, 0.85, fbm(u, v, 10, 3, 41));
@@ -103,28 +103,28 @@ const FLOORS = {
     const px = Math.floor(x), py = Math.floor(y), fx = x - px, fy = y - py;
     const pid = hash(mod(px, tiles), mod(py, tiles), 5);
     const seam = 1 - smooth(0.0, 0.025, Math.min(fx, 1 - fx, fy, 1 - fy));
-    const tone = 0.2 + 0.06 * (pid - 0.5) + 0.08 * (fbm(u, v, 16, 4, 13) - 0.5);
+    const tone = 0.33 + 0.06 * (pid - 0.5) + 0.08 * (fbm(u, v, 16, 4, 13) - 0.5);
     let c = [tone * 1.0, tone * 0.97, tone * 0.95];
     const rust = smooth(0.55, 0.72, fbm(u, v, 6, 5, 17));
     c = mix3(c, [0.3, 0.16, 0.09], rust * 0.6);
     const worn = smooth(0.62, 0.78, fbm(u, v, 3, 4, 19));
     c = mix3(c, [0.38, 0.37, 0.36], worn * 0.5);
     const soot = smooth(0.5, 0.75, fbm(u, v, 5, 4, 23));
-    c = mix3(c, [0.04, 0.035, 0.03], soot * 0.6);
+    c = mix3(c, [0.1, 0.09, 0.08], soot * 0.35);
     // rivets along each plate's edge
     const rx = Math.min(fx, 1 - fx), ry = Math.min(fy, 1 - fy);
     const along = (t) => Math.abs((t * 8) % 1 - 0.5) < 0.12;
     const rivet = (rx > 0.04 && rx < 0.07 && along(fy)) || (ry > 0.04 && ry < 0.07 && along(fx)) ? 1 : 0;
     c = c.map((k) => k * (1 - 0.75 * seam) * (1 + 0.5 * rivet));
     const scorch = smooth(0.6, 0.8, fbm(u + 0.37, v + 0.11, 4, 6, 29)) * (0.6 + 0.4 * fbm(u, v, 24, 3, 31));
-    return c.map((k) => k * (1 - 0.55 * scorch));
+    return c.map((k) => k * (1 - 0.3 * scorch));
   },
   // a cave floor: dark violet-black loam, moss mats, pale root threads, small bright specks of fungus
   grotto(u, v) {
     const n = fbm(u, v, 6, 6, 101);
-    let c = [0.13 + 0.07 * n, 0.1 + 0.05 * n, 0.14 + 0.08 * n];
+    let c = [0.24 + 0.08 * n, 0.2 + 0.06 * n, 0.27 + 0.09 * n];
     const moss = smooth(0.52, 0.68, fbm(u, v, 5, 5, 103));
-    c = mix3(c, [0.1, 0.17, 0.12], moss * 0.8);
+    c = mix3(c, [0.16, 0.26, 0.18], moss * 0.8);
     const stones = voronoi(u, v, 40, 107, 1); // small pebbles, each its own shade, sharp edged
     const stone = (stones.d1 < 0.22 ? 1 : 0) * smooth(0.7, 0.8, hash(stones.id, 5, 109));
     c = mix3(c, [0.2 + 0.08 * hash(stones.id, 6, 110), 0.18, 0.22], stone * 0.85);
@@ -143,8 +143,8 @@ const FLOORS = {
     const dark = mod(px + py, 2) === 0;
     const joint = 1 - smooth(0.0, 0.02, Math.min(fx, 1 - fx, fy, 1 - fy));
     const vein = Math.abs(Math.sin((fbm(u, v, 8, 5, 201) * 12 + u * 9) * 3.1));
-    let c = dark ? [0.09, 0.085, 0.09] : [0.25, 0.24, 0.25];
-    c = mix3(c, dark ? [0.2, 0.19, 0.2] : [0.18, 0.17, 0.18], smooth(0.04, 0.0, vein) * 0.8);
+    let c = dark ? [0.25, 0.235, 0.24] : [0.34, 0.325, 0.33];
+    c = mix3(c, dark ? [0.32, 0.3, 0.31] : [0.26, 0.25, 0.26], smooth(0.04, 0.0, vein) * 0.8);
     c = c.map((k) => k * (0.88 + 0.24 * fbm(u, v, 12, 4, 203)));
     const dust = smooth(0.55, 0.72, fbm(u, v, 4, 5, 205));
     c = mix3(c, [0.28, 0.18, 0.17], dust * 0.4);
@@ -155,8 +155,8 @@ const FLOORS = {
   // into the fractures
   rift(u, v) {
     const vo = voronoi(u, v, 6, 301, 0.95);
-    const depth = 0.04 + 0.03 * fbm(u, v, 6, 5, 303) + 0.02 * hash(vo.id, 1, 305);
-    let c = [depth * 1.0, depth * 0.95, depth * 1.45];
+    const depth = 0.18 + 0.07 * fbm(u, v, 6, 5, 303) + 0.05 * hash(vo.id, 1, 305);
+    let c = [depth * 1.0, depth * 0.97, depth * 1.3];
     const sheen = smooth(0.6, 0.8, fbm(u * 2, v, 3, 3, 307));
     c = mix3(c, [0.16, 0.14, 0.24], sheen * 0.35);
     const frac = 1 - smooth(0.0, 0.03, vo.edge);
@@ -168,13 +168,22 @@ const FLOORS = {
   core(u, v) {
     const vo = voronoi(u, v, 10, 401, 0.9);
     const n = fbm(u, v, 8, 5, 403);
-    let c = [0.07 + 0.05 * n, 0.045 + 0.03 * n, 0.04 + 0.02 * n];
+    let c = [0.16 + 0.06 * n, 0.11 + 0.04 * n, 0.09 + 0.03 * n];
     const crack = 1 - smooth(0.0, 0.035, vo.edge);
     const hot = smooth(0.45, 0.65, fbm(u, v, 3, 4, 405));
     c = mix3(c, [0.95, 0.38, 0.08], crack * (0.25 + 0.75 * hot));
     const sulfur = smooth(0.7, 0.85, fbm(u, v, 7, 4, 407));
     c = mix3(c, [0.42, 0.36, 0.12], sulfur * 0.35);
     return c;
+  },
+  // molten metal and lava (the hazard strips): a hot melt, brightest in its flowing seams, with plates of cooling
+  // crust drifting on it (written as lava_floor.png; the strips multiply it by their colour)
+  lava(u, v) {
+    const vo = voronoi(u + 0.15 * fbm(u, v, 4, 3, 501), v, 7, 503, 0.9);
+    const crust = smooth(0.06, 0.2, vo.edge) * smooth(0.35, 0.6, hash(vo.id, 2, 505) + 0.3 * fbm(u, v, 10, 3, 507));
+    const heat = 0.55 + 0.45 * fbm(u, v, 5, 5, 509);
+    const melt = [1.0 * heat, 0.55 * heat * heat, 0.18 * heat * heat * heat];
+    return mix3(melt, [0.06, 0.03, 0.02], crust * 0.92);
   },
 };
 

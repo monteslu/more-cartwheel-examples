@@ -46,6 +46,8 @@ typedef struct lb_wave { int n; char kind[LB_MAXKIND][16]; float share[LB_MAXKIN
 typedef struct lb_level {
   char id[24], name[64], scene[96], lightmap[96], floor_tex[96], monster[96], boss[96], boss_name[64], door[96];
   float floor_tile, floor_rough, floor_tint[3], door_x, door_z;
+  float gain;   /* the baked light's strength as applied (1 = as baked; `gain` record) */
+  float void_r; /* > 0: the arena is an octagonal plateau this far out; the floor beyond it falls dark (the rift) */
   int waves;
   int nroster;
   char roster[LB_MAXKIND][16];
@@ -75,6 +77,7 @@ typedef struct lb_built {
   t3_geometry *hatch_geo[2][8];
   int hatch_frames, hatch_groups;
   t3_mesh *hatch_glow;
+  t3_material *water[LB_MAXHAZ]; /* standing water: it reflects the bake's cube once the lightmap is in */
   t3_instanced_mesh *prop_mesh[LB_MAXPROP]; /* each prop's surface (group 0), its instances in placement order */
   cw_lightmap_data *lm;
 } lb_built;

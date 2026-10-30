@@ -39,7 +39,7 @@ bool levelbuild_parse(const char *asset_path, lb_level *lv) {
     return false;
   }
   memset(lv, 0, sizeof *lv);
-  lv->floor_tile = 8, lv->floor_rough = 0.9f, lv->floor_tint[0] = lv->floor_tint[1] = lv->floor_tint[2] = 1;
+  lv->floor_tile = 8, lv->floor_rough = 0.9f, lv->gain = 1, lv->floor_tint[0] = lv->floor_tint[1] = lv->floor_tint[2] = 1;
   char *save = NULL;
   int lineno = 0;
   bool ok = true;
@@ -77,6 +77,8 @@ bool levelbuild_parse(const char *asset_path, lb_level *lv) {
     } else if (!strcmp(key, "monster")) n = sscanf(a, " %95s", lv->monster);
     else if (!strcmp(key, "boss")) n = sscanf(a, " %95s %63[^\n]", lv->boss, lv->boss_name) >= 1;
     else if (!strcmp(key, "scene")) n = sscanf(a, " %95s", lv->scene);
+    else if (!strcmp(key, "void")) n = sscanf(a, "%f", &lv->void_r);
+    else if (!strcmp(key, "gain")) n = sscanf(a, "%f", &lv->gain);
     else if (!strcmp(key, "lightmap")) n = sscanf(a, " %95s", lv->lightmap);
     else if (!strcmp(key, "floor"))
       n = sscanf(a, " %95s %f %f %f %f %f", lv->floor_tex, &lv->floor_tile, &lv->floor_rough, &lv->floor_tint[0], &lv->floor_tint[1], &lv->floor_tint[2]) == 6;
@@ -225,7 +227,11 @@ static void build_floor(cw_node parent, const lb_level *lv) {
     float x = pp[i * 3], z = pp[i * 3 + 2];
     float m = 0.75f + 0.45f * (vnoise(x / 9, z / 9, 11) - 0.5f) + 0.25f * (vnoise(x / 3.1f, z / 3.1f, 12) - 0.5f);
     float rim = CW_CLAMP((CW_MAX(fabsf(x), fabsf(z)) - (LB_HALF - 4.0f)) / 8.0f, 0.0f, 1.0f);
-    m *= 1.0f - 0.45f * rim;
+    if (lv->void_r > 0) { /* the plateau's octagon, then the void: the floor goes to black within 3 m */
+      float d = CW_MAX(CW_MAX(fabsf(x), fabsf(z)), (fabsf(x) + fabsf(z)) * 0.70710678f);
+      m *= 1.0f - 0.97f * CW_CLAMP((d - lv->void_r) / 3.0f, 0.0f, 1.0f);
+    } else
+      m *= 1.0f - 0.45f * rim;
     for (int k = 0; k < 3; k++) col[i * 3 + k] = m * lv->floor_tint[k];
   }
   t3_geometry_set_attribute(pg, T3_ATTR_COLOR, t3_attribute_new(T3_FLOAT32, col, pa->count, 3));
@@ -297,28 +303,68 @@ static void build_props(lb_built *b, cw_node parent, const lb_level *lv, lb_mate
   }
 }
 
-static void build_hazards(cw_node parent, const lb_level *lv) {
+static t3_texture *load_png(const char *path, float repeat) {
+  size_t len = 0;
+  void *png = cw_vfs_read(path, &len);
+  t3_texture *tx = png ? t3_texture_load_memory(png, len) : NULL;
+  free(png);
+  if (!tx) return NULL;
+  tx->wrap_s = tx->wrap_t = T3_REPEAT;
+  tx->repeat = (t3_vec2){ repeat, repeat };
+  tx->flip_y = false;
+  tx->generate_mipmaps = true;
+  tx->min_filter = T3_LINEAR_MIPMAP_LINEAR;
+  tx->mag_filter = T3_LINEAR;
+  tx->anisotropy = 8;
+  tx->color_space = T3_SRGB_COLOR_SPACE;
+  return tx;
+}
+
+/* the hazard strips: standing water (glossy, reflecting the bake), molten metal and lava (the melt texture at
+ * its own glow), spore pools (round, a dim luminous green). Crumbling floor and vents are drawn by their props and
+ * the game's effects. */
+static void build_hazards(lb_built *b, cw_node parent, const lb_level *lv) {
   for (int i = 0; i < lv->nhaz; i++) {
     const lb_hazard *h = &lv->haz[i];
-    bool glow = !strcmp(h->kind, "molten") || !strcmp(h->kind, "lava") || !strcmp(h->kind, "spore");
-    bool flat = !strcmp(h->kind, "crumble") || !strcmp(h->kind, "vent");
-    if (flat) continue; /* drawn by their props and the sim's effects */
-    t3_geometry *g = t3_plane_geometry_new(h->hx * 2, h->hz * 2, 1, 1);
-    t3_geometry_apply_matrix4(g, &(t3_mat4){ { 1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, h->x, 0.03f, h->z, 1 } });
+    bool hot = !strcmp(h->kind, "molten") || !strcmp(h->kind, "lava"), spore = !strcmp(h->kind, "spore");
+    if (!hot && !spore && strcmp(h->kind, "water")) continue;
+    t3_geometry *g;
+    if (spore) { /* a round pool: the unit circle (in XY) laid flat and stretched to the box */
+      g = t3_circle_geometry_new(1.0f, 28);
+      t3_geometry_apply_matrix4(g, &(t3_mat4){ { h->hx, 0, 0, 0, 0, 0, -h->hz, 0, 0, 1, 0, 0, h->x, 0.03f, h->z, 1 } });
+    } else {
+      g = t3_plane_geometry_new(h->hx * 2, h->hz * 2, 1, 1);
+      t3_geometry_apply_matrix4(g, &(t3_mat4){ { 1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, h->x, 0.03f, h->z, 1 } });
+    }
     t3_material *m;
-    if (glow) {
+    if (hot) {
       m = t3_mesh_basic_material_new(0xffffff);
-      m->color = !strcmp(h->kind, "spore") ? (t3_color){ 0.15f, 1.4f, 1.1f } : (t3_color){ 3.2f, 0.9f, 0.15f };
-    } else { /* standing water: dark and glossy, the bake under it */
+      m->color = !strcmp(h->kind, "lava") ? (t3_color){ 2.4f, 0.9f, 0.35f } : (t3_color){ 2.0f, 1.0f, 0.45f };
+      t3_texture *tx = load_png("textures/lava_floor.png", 1);
+      if (tx) {
+        tx->repeat = (t3_vec2){ h->hx * 2 / 3.0f, h->hz * 2 / 3.0f }; /* the melt about 3 m a tile */
+        t3_material_set_texture(m, T3_MAP, tx);
+        t3_release(tx);
+      }
+    } else if (spore) {
+      m = t3_mesh_basic_material_new(0xffffff);
+      m->color = (t3_color){ 0.05f, 0.42f, 0.3f };
+      m->transparent = true;
+      m->opacity = 0.75f;
+    } else { /* standing water: dark and glossy, lit in real time and reflecting the bake's cube (not baked:
+              * an unlit baked surface cannot shine) */
       m = t3_mesh_standard_material_new(0xffffff);
-      m->color = lb_lin(0.09f, 0.12f, 0.12f);
-      m->roughness = 0.08f;
+      m->color = lb_lin(0.05f, 0.08f, 0.08f);
+      m->roughness = 0.06f;
       m->metalness = 0.0f;
+      m->transparent = true;
+      m->opacity = 0.85f;
+      b->water[i] = m;
     }
     t3_mesh *mesh = t3_mesh_new(g, m);
     char nm[24];
     snprintf(nm, sizeof nm, "Hazard%d", i);
-    mesh_node(parent, nm, mesh, !glow);
+    mesh_node(parent, nm, mesh, false);
     t3_release(mesh), t3_release(g), t3_release(m);
   }
 }
@@ -367,7 +413,7 @@ bool levelbuild_build(cw_node parent, const lb_level *lv, lb_material_fn matf, v
   }
   build_floor(b->node, lv);
   build_props(b, b->node, lv, matf, user);
-  build_hazards(b->node, lv);
+  build_hazards(b, b->node, lv);
   build_lights(b->node, lv, false);
   if (lv->door[0]) {
     lb_chr c;
@@ -410,15 +456,17 @@ bool levelbuild_lightmap(cw_tree *t, lb_built *b, const char *bake_path) {
   if (b->lm) return true;
   if (bake_path && *bake_path) {
     cw_lightmap_settings s = cw_lightmap_settings_default(); /* the yard's settings (view.c) */
-    s.texel_density = 7;
-    s.max_size = 1024;
+    /* the yard's settings (view.c), finer and softer: the props' shadows on the floor are smooth-edged pools,
+     * not stair-stepped discs (10 texels a metre where the yard has 7; soft lights sampled 24 times a texel) */
+    s.texel_density = 10;
+    s.max_size = 1536;
     s.samples = 48;
     s.bounces = 1;
     s.probe_spacing = 2.5f;
     s.probe_samples = 64;
-    s.denoise = 2;
-    s.direct_samples = 12;
-    s.shadow_softness = 0.025f;
+    s.denoise = 3;
+    s.direct_samples = 24;
+    s.shadow_softness = 0.12f;
     s.reflection_size = 32;
     s.reflection_origin[0] = 0, s.reflection_origin[1] = 1.2f, s.reflection_origin[2] = 0;
     double t0 = cw_time();
@@ -438,7 +486,9 @@ bool levelbuild_lightmap(cw_tree *t, lb_built *b, const char *bake_path) {
     cw_error("levelbuild: no lightmap for %s (%s)", b->lv->id, b->lv->lightmap);
     return false;
   }
-  cw_lightmap_apply_shaded(t, b->node, b->lm, 1, CW_LIGHTMAP_BAKED);
+  cw_lightmap_apply_shaded(t, b->node, b->lm, b->lv->gain, CW_LIGHTMAP_BAKED);
+  for (int i = 0; i < b->lv->nhaz; i++)
+    if (b->water[i]) cw_lightmap_use_reflection(b->lm, b->water[i], 0.9f);
   /* the props stand still: their light from the bake is set once, per instance */
   for (int pi = 0; pi < b->lv->nprop; pi++) {
     t3_instanced_mesh *im = b->prop_mesh[pi];
@@ -463,7 +513,7 @@ t3_color levelbuild_light_at(const lb_built *b, float x, float z) {
   bool hf = cw_lightmap_irradiance_below(b->lm, (t3_vec3){ x, 1.0f, z }, &f);
   if (!hp && !hf) return (t3_color){ 1, 1, 1 };
   /* the real-time key and rim light them a little already: the bake adds to a dim base */
-  const float base = 0.35f, gain = 0.5f;
+  const float base = 0.35f, gain = 0.5f * b->lv->gain;
   t3_color c = { base + gain * 0.5f * (e.r + f.r), base + gain * 0.5f * (e.g + f.g), base + gain * 0.5f * (e.b + f.b) };
   c.r = CW_MIN(c.r, 3.0f), c.g = CW_MIN(c.g, 3.0f), c.b = CW_MIN(c.b, 3.0f);
   return c;

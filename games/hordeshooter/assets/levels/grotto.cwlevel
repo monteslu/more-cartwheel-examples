@@ -12,6 +12,7 @@ monster models/grotto_sporeling.cwchar
 boss models/grotto_boss.cwchar Mother Mycel
 scene scenes/grotto.cwscene
 lightmap lightmaps/grotto.cwlm
+gain 2.2
 floor textures/grotto_floor.png 10 0.9 0.95 0.95 1
 prop rock models/grotto_rock.cwchar pillar 1 0.9 0 0
 prop crag models/grotto_rock.cwchar pillar 1 0.9 0 1
@@ -175,20 +176,20 @@ hazard spore -8 26 4 2.5
 hazard spore 8 -26 4 2.5
 hazard spore -26 16 2.5 3
 hazard spore 26 -16 2.5 3
-light omni -28 4.6 -28 0 0 0 0.3 1 0.9 420 16 0 0 1
-light omni 28 4.6 -28 0 0 0 0.3 1 0.9 420 16 0 0 1
-light omni -28 4.6 28 0 0 0 0.3 1 0.9 420 16 0 0 1
-light omni 28 4.6 28 0 0 0 0.3 1 0.9 420 16 0 0 1
-light omni -10 4.6 -14 0 0 0 0.3 1 0.9 420 16 0 0 1
-light omni 10 4.6 14 0 0 0 0.3 1 0.9 420 16 0 0 1
-light omni -18 4.6 6 0 0 0 0.3 1 0.9 420 16 0 0 1
-light omni 18 4.6 -6 0 0 0 0.3 1 0.9 420 16 0 0 1
-light omni -22 1.2 -12 0 0 0 0.45 1 0.35 160 9 0 0 1
-light omni 22 1.2 12 0 0 0 0.45 1 0.35 160 9 0 0 1
-light omni -8 1.2 26 0 0 0 0.45 1 0.35 160 9 0 0 1
-light omni 8 1.2 -26 0 0 0 0.45 1 0.35 160 9 0 0 1
-light omni -26 1.2 16 0 0 0 0.45 1 0.35 160 9 0 0 1
-light omni 26 1.2 -16 0 0 0 0.45 1 0.35 160 9 0 0 1
-light omni 0 1 -14 0 0 0 0.4 1 0.6 120 7 0 0 1
-light omni 0 1 14 0 0 0 0.4 1 0.6 120 7 0 0 1
-light omni 0 9 0 0 0 0 0.6 0.35 0.9 300 30 0 0 1
+light omni -28 4.6 -28 0 0 0 0.3 1 0.9 756 20 0 0 1
+light omni 28 4.6 -28 0 0 0 0.3 1 0.9 756 20 0 0 1
+light omni -28 4.6 28 0 0 0 0.3 1 0.9 756 20 0 0 1
+light omni 28 4.6 28 0 0 0 0.3 1 0.9 756 20 0 0 1
+light omni -10 4.6 -14 0 0 0 0.3 1 0.9 756 20 0 0 1
+light omni 10 4.6 14 0 0 0 0.3 1 0.9 756 20 0 0 1
+light omni -18 4.6 6 0 0 0 0.3 1 0.9 756 20 0 0 1
+light omni 18 4.6 -6 0 0 0 0.3 1 0.9 756 20 0 0 1
+light omni -22 1.2 -12 0 0 0 0.45 1 0.35 288 11.25 0 0 1
+light omni 22 1.2 12 0 0 0 0.45 1 0.35 288 11.25 0 0 1
+light omni -8 1.2 26 0 0 0 0.45 1 0.35 288 11.25 0 0 1
+light omni 8 1.2 -26 0 0 0 0.45 1 0.35 288 11.25 0 0 1
+light omni -26 1.2 16 0 0 0 0.45 1 0.35 288 11.25 0 0 1
+light omni 26 1.2 -16 0 0 0 0.45 1 0.35 288 11.25 0 0 1
+light omni 0 1 -14 0 0 0 0.4 1 0.6 216 8.75 0 0 1
+light omni 0 1 14 0 0 0 0.4 1 0.6 216 8.75 0 0 1
+light omni 0 9 0 0 0 0 0.6 0.35 0.9 540 37.5 0 0 1

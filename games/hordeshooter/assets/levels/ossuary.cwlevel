@@ -11,6 +11,7 @@ monster models/ossuary_bonewalker.cwchar
 boss models/ossuary_boss.cwchar Ossivar, the Hollow Abbot
 scene scenes/ossuary.cwscene
 lightmap lightmaps/ossuary.cwlm
+gain 1
 floor textures/ossuary_floor.png 9 0.9 1 0.97 0.92
 prop outer models/ossuary_outer.cwchar pillar 1 0.9 0 0
 prop bonewall models/ossuary_wall.cwchar pillar 1 0.9 0 1
@@ -222,27 +223,27 @@ pickup -30 0
 pickup 30 0
 pickup -22 -16
 pickup 22 16
-light omni -30 1.6 -22 0 0 0 1 0.55 0.22 420 16 0 0 1
-light omni -30 1.6 22 0 0 0 1 0.55 0.22 420 16 0 0 1
-light omni 30 1.6 -22 0 0 0 1 0.55 0.22 420 16 0 0 1
-light omni 30 1.6 22 0 0 0 1 0.55 0.22 420 16 0 0 1
-light omni -9 1.6 -6 0 0 0 1 0.55 0.22 420 16 0 0 1
-light omni 9 1.6 6 0 0 0 1 0.55 0.22 420 16 0 0 1
-light omni -9 1.6 6 0 0 0 1 0.55 0.22 420 16 0 0 1
-light omni 9 1.6 -6 0 0 0 1 0.55 0.22 420 16 0 0 1
-light omni 0 1.6 -24 0 0 0 1 0.55 0.22 420 16 0 0 1
-light omni 0 1.6 24 0 0 0 1 0.55 0.22 420 16 0 0 1
-light omni -17 1.3 -34.5 0 0 0 1 0.7 0.38 90 8 0 0 1
-light omni -34.5 1.3 -25 0 0 0 1 0.7 0.38 90 8 0 0 1
-light omni -17 1.3 34.5 0 0 0 1 0.7 0.38 90 8 0 0 1
-light omni -34.5 1.3 25 0 0 0 1 0.7 0.38 90 8 0 0 1
-light omni 17 1.3 -34.5 0 0 0 1 0.7 0.38 90 8 0 0 1
-light omni 34.5 1.3 -25 0 0 0 1 0.7 0.38 90 8 0 0 1
-light omni 17 1.3 34.5 0 0 0 1 0.7 0.38 90 8 0 0 1
-light omni 34.5 1.3 25 0 0 0 1 0.7 0.38 90 8 0 0 1
-light omni -20 1.3 -37.8 0 0 0 1 0.7 0.38 90 8 0 0 1
-light omni 20 1.3 -37.8 0 0 0 1 0.7 0.38 90 8 0 0 1
-light omni -20 1.3 37.8 0 0 0 1 0.7 0.38 90 8 0 0 1
-light omni 20 1.3 37.8 0 0 0 1 0.7 0.38 90 8 0 0 1
-light omni -37.8 1.3 0 0 0 0 1 0.7 0.38 90 8 0 0 1
-light omni 37.8 1.3 0 0 0 0 1 0.7 0.38 90 8 0 0 1
+light omni -30 2.6 -22 0 0 0 1 0.52 0.2 306 16.25 0 0 1
+light omni -30 2.6 22 0 0 0 1 0.52 0.2 306 16.25 0 0 1
+light omni 30 2.6 -22 0 0 0 1 0.52 0.2 306 16.25 0 0 1
+light omni 30 2.6 22 0 0 0 1 0.52 0.2 306 16.25 0 0 1
+light omni -9 2.6 -6 0 0 0 1 0.52 0.2 306 16.25 0 0 1
+light omni 9 2.6 6 0 0 0 1 0.52 0.2 306 16.25 0 0 1
+light omni -9 2.6 6 0 0 0 1 0.52 0.2 306 16.25 0 0 1
+light omni 9 2.6 -6 0 0 0 1 0.52 0.2 306 16.25 0 0 1
+light omni 0 2.6 -24 0 0 0 1 0.52 0.2 306 16.25 0 0 1
+light omni 0 2.6 24 0 0 0 1 0.52 0.2 306 16.25 0 0 1
+light omni -17 1.6 -34.5 0 0 0 1 0.68 0.36 72 8.75 0 0 1
+light omni -34.5 1.6 -25 0 0 0 1 0.68 0.36 72 8.75 0 0 1
+light omni -17 1.6 34.5 0 0 0 1 0.68 0.36 72 8.75 0 0 1
+light omni -34.5 1.6 25 0 0 0 1 0.68 0.36 72 8.75 0 0 1
+light omni 17 1.6 -34.5 0 0 0 1 0.68 0.36 72 8.75 0 0 1
+light omni 34.5 1.6 -25 0 0 0 1 0.68 0.36 72 8.75 0 0 1
+light omni 17 1.6 34.5 0 0 0 1 0.68 0.36 72 8.75 0 0 1
+light omni 34.5 1.6 25 0 0 0 1 0.68 0.36 72 8.75 0 0 1
+light omni -20 1.6 -37.8 0 0 0 1 0.68 0.36 72 8.75 0 0 1
+light omni 20 1.6 -37.8 0 0 0 1 0.68 0.36 72 8.75 0 0 1
+light omni -20 1.6 37.8 0 0 0 1 0.68 0.36 72 8.75 0 0 1
+light omni 20 1.6 37.8 0 0 0 1 0.68 0.36 72 8.75 0 0 1
+light omni -37.8 1.6 0 0 0 0 1 0.68 0.36 72 8.75 0 0 1
+light omni 37.8 1.6 0 0 0 0 1 0.68 0.36 72 8.75 0 0 1

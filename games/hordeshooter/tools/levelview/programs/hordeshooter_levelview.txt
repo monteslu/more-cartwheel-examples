@@ -66,3 +66,14 @@ basic+map+trans+ds
 basic+map+trans+instbig+fog2+cenv+add+icol
 basic+map+trans+instbig+cenv+add+icol
 basic+trans+fog2
+standard+fog2+l2001
+standard+vcol+fog2+l2001
+basic+vcol+fog2
+standard+map+vcol+rep+fog2+l2001
+standard+vcol+instbig+fog2+icol+l2001
+basic+vcol+instbig+fog2+icol
+basic+lmap+fog2
+basic+fog2
+standard+trans+fog2+l2001
+standard+trans+env+fog2+l2001
+basic+map+rep+fog2
