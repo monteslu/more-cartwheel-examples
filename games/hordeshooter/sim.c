@@ -43,8 +43,11 @@ static const ekind EK[EK_KINDS] = {
   { 0.42f, 2.4f, 3.5f, 4, 0.9f, 9, 2 },   /* bonewalker: 0.8x a runner's speed, a slow stiff lurch */
   { 0.6f, 2.1f, 3.1f, 7, 1.4f, 10, 3 },   /* slagborn: 0.7x, heavy; lobs slag from range, punches up close */
   { 0.45f, 2.7f, 4.0f, 3, 0.7f, 7, 2 },   /* sporeling: 0.9x, a swaying waddle; bursts into a spore cloud */
+  { 0.4f, 3.3f, 4.8f, 4, 0.8f, 9, 2 },    /* penitent: 1.1x, a gliding wraith; draws back and rushes 4 m */
+  { 0.45f, 3.0f, 4.4f, 5, 0.9f, 9, 2 },   /* gargoyle: hops; its wings flare at the top, then it dives */
+  { 0.42f, 4.5f, 6.6f, 3, 0.7f, 10, 2 },  /* hellhound: 1.5x, the fastest thing in the game; a 4 m pounce */
 };
-static const char *const KIND_NAME[EK_KINDS] = { "runner", "brute", "bloater", "boss", "skitter", "bonewalker", "slagborn", "sporeling" };
+static const char *const KIND_NAME[EK_KINDS] = { "runner", "brute", "bloater", "boss", "skitter", "bonewalker", "slagborn", "sporeling", "penitent", "gargoyle", "hellhound" };
 const char *sim_kind_name(int kind) { return kind >= 0 && kind < EK_KINDS ? KIND_NAME[kind] : "?"; }
 int sim_kind_by_name(const char *name) {
   for (int k = 0; k < EK_KINDS; k++)
@@ -71,6 +74,9 @@ static const melee MEL[EK_KINDS] = {
   { 30, 22, 10, 0.3f, 0.9f, 0.2f },    /* bonewalker: a backhand slash, the blade arm swung far back for 0.5 s */
   { 26, 22, 14, 0.3f, 0.9f, 0.3f },    /* slagborn: a punch (its lob is its ranged attack) */
   { 24, 18, 12, 0.3f, 0.8f, 0.4f },    /* sporeling: a headbutt, the cap tilted back for 0.4 s */
+  { 30, 24, 14, 3.4f, 3.8f, 0.6f },    /* penitent: draws back and rises 0.5 s, then rushes 4 m */
+  { 24, 20, 14, 2.6f, 3.0f, 0.4f },    /* gargoyle: wings flared 0.4 s, then the dive */
+  { 21, 18, 12, 3.4f, 3.8f, 0.6f },    /* hellhound: the throat flares 0.35 s, then a 4 m pounce */
 };
 #define STRIKE_HOLD 6 /* ticks the strike pose shows after the hit */
 
@@ -81,12 +87,12 @@ static const melee MEL[EK_KINDS] = {
  *   Ossivar (the ossuary): the bone lances (his chest flares 1 s, then 5 slow spears in a fan; two fans below 25%),
  *   raise the dead (he kneels 1.5 s and every bone pile stands up, from 60% every 15 s); his crozier slam is his
  *   melee (a ring of spikes at 3 m all round him). */
-enum { BOSS_YARD, BOSS_VHESSA, BOSS_OSSIVAR, BOSS_ANVILGRAVE, BOSS_MYCEL };
+enum { BOSS_YARD, BOSS_VHESSA, BOSS_OSSIVAR, BOSS_ANVILGRAVE, BOSS_MYCEL, BOSS_SERAPHEL, BOSS_KHARVAAL, BOSS_UNMAKER };
 static int spawn_enemy(sim *s, int kind, float x, float y);
 static bool in_box(const obstacle *o, float x, float y, float pad);
 static bool in_hazard(const sim *s, int kind, float x, float y);
 static int boss_of(const sim *s) {
-  static const int B[NLEVELS] = { BOSS_YARD, BOSS_VHESSA, BOSS_OSSIVAR, BOSS_ANVILGRAVE, BOSS_MYCEL, BOSS_YARD, BOSS_YARD, BOSS_YARD };
+  static const int B[NLEVELS] = { BOSS_YARD, BOSS_VHESSA, BOSS_OSSIVAR, BOSS_ANVILGRAVE, BOSS_MYCEL, BOSS_SERAPHEL, BOSS_KHARVAAL, BOSS_UNMAKER };
   return s->fl[s->level].set ? B[s->level] : BOSS_YARD;
 }
 /*   Anvilgrave (the foundry): the pour (he tips a crucible 1.2 s: a molten river 12 m ahead that burns 8 s), the
@@ -94,12 +100,21 @@ static int boss_of(const sim *s) {
  *   Mother Mycel (the grotto): the spore mortar (her crown swells 1.2 s, then 6 spore balls land where the players
  *   stand, marked a second before), the root eruption (she sinks 1 s: roots burst up in a line toward the farthest
  *   player); her root lash is her melee. */
-static const struct { int tell[3], release, recover; } BACT[5] = {
+/*   Seraphel (the cathedral): the choir beam (wings spread 1.5 s, then a sweep of fire across 90 degrees in front),
+ *   the shroud step (wings folded 0.6 s: it reappears behind the farthest player, penitents rising); the censer sweeps
+ *   a full circle at 4 m. Khar-Vaal (the rift): the shard nova (the crown spins 1.2 s, then a ring of 16 shards with
+ *   two gaps), the fracture (a 1.5 s glow, then the floor gives way in a ring round him); the blade cleaves 120
+ *   degrees. The Unmaker (the core): the hellstorm (1.5 s, then fire on circles round every player), the legion (a
+ *   roar: the earlier floors' creatures pour in); the riven blade comes down along a 14 m line. */
+static const struct { int tell[3], release, recover; } BACT[8] = {
   { { 0, 0, 0 }, 0, 0 },
   { { 0, 72, 60 }, 12, 30 },  /* Vhessa: jet tell 1.2 s, brood squat 1 s */
   { { 0, 60, 90 }, 12, 30 },  /* Ossivar: chest flare 1 s, the kneel 1.5 s */
   { { 0, 72, 60 }, 12, 36 },  /* Anvilgrave: the tip 1.2 s, the roar 1 s */
   { { 0, 72, 60 }, 12, 30 },  /* Mycel: the swelling 1.2 s, the sinking 1 s */
+  { { 0, 90, 36 }, 12, 30 },  /* Seraphel: the wings 1.5 s, the fold 0.6 s */
+  { { 0, 72, 90 }, 12, 30 },  /* Khar-Vaal: the crown 1.2 s, the glow 1.5 s */
+  { { 0, 90, 60 }, 12, 36 },  /* the Unmaker: 1.5 s, the roar 1 s */
 };
 static void add_zone(sim *s, int kind, float x, float y, float r, int life) {
   for (int z = 0; z < MAXZ; z++)
@@ -151,6 +166,50 @@ static void boss_release(sim *s, enemy *e, int b) {
       if (spawn_enemy(s, EK_SLAGBORN, cw_clampf(e->x + cw_cos(a) * 5, -HALF + 1, HALF - 1), cw_clampf(e->y + cw_sin(a) * 5, -HALF + 1, HALF - 1)) >= 0)
         ev(s, EV_RISE, e->x + cw_cos(a) * 5, e->y + cw_sin(a) * 5, 0, 0, 0, 0);
     }
+  } else if (b == BOSS_SERAPHEL && e->act == 1) { /* the choir beam: fire swept across 90 degrees in front */
+    for (int k = 0; k < 9; k++) {
+      float a = e->face + ((float)k - 4.0f) * 0.196f;
+      for (int d = 0; d < 3; d++) add_zone(s, 1, e->x + cw_cos(a) * (4.0f + 3.0f * (float)d), e->y + cw_sin(a) * (4.0f + 3.0f * (float)d), 1.0f, 50);
+    }
+  } else if (b == BOSS_SERAPHEL && e->act == 2) { /* the shroud step: behind the farthest player, penitents rising where it was */
+    int far = -1;
+    float fd = -1;
+    for (int k = 0; k < MAXP; k++) {
+      float dx = s->p[k].x - e->x, dy = s->p[k].y - e->y;
+      if (s->p[k].active && !s->p[k].down && dx * dx + dy * dy > fd) fd = dx * dx + dy * dy, far = k;
+    }
+    for (int k = 0; k < 4; k++) spawn_enemy(s, EK_PENITENT, cw_clampf(e->x + (float)(k % 2) * 3 - 1.5f, -HALF + 1, HALF - 1), cw_clampf(e->y + (float)(k / 2) * 3 - 1.5f, -HALF + 1, HALF - 1));
+    if (far >= 0) {
+      const player *p = &s->p[far];
+      float a = p->aim + 3.1416f, nx = cw_clampf(p->x + cw_cos(a) * 4, -HALF + 2, HALF - 2), ny = cw_clampf(p->y + cw_sin(a) * 4, -HALF + 2, HALF - 2);
+      cw_crowd_teleport(s->crowd, e->agent, (t3_vec3){ nx, 0, ny });
+      e->x = nx, e->y = ny;
+      ev(s, EV_RISE, nx, ny, 0, 0, 0, 0);
+    }
+  } else if (b == BOSS_KHARVAAL && e->act == 1) { /* the shard nova: 16 shards in a ring, two gaps */
+    int gap = (int)(rf(s) * 16);
+    for (int k = 0; k < 16; k++) {
+      if (k == gap || k == (gap + 8) % 16) continue;
+      float a = (float)k * 0.3927f;
+      for (int j = 0; j < MAXES; j++)
+        if (!s->es[j].alive) {
+          s->es[j] = (eshot){ true, e->x + cw_cos(a) * 2.2f, e->y + cw_sin(a) * 2.2f, cw_cos(a) * 8.0f, cw_sin(a) * 8.0f, 150, 12 };
+          ev(s, EV_LANCE, s->es[j].x, s->es[j].y, s->es[j].vx, s->es[j].vy, 0, 0);
+          break;
+        }
+    }
+  } else if (b == BOSS_KHARVAAL && e->act == 2) { /* the fracture: the floor falls in a ring round him */
+    for (int k = 0; k < 10; k++) add_zone(s, 1, e->x + cw_cos((float)k * 0.628f) * 6.0f, e->y + cw_sin((float)k * 0.628f) * 6.0f, 1.6f, 120);
+  } else if (b == BOSS_UNMAKER && e->act == 1) { /* the hellstorm: fire on circles round every player */
+    for (int k = 0; k < MAXP; k++)
+      if (s->p[k].active && !s->p[k].down)
+        for (int j = 0; j < 3; j++) add_zone(s, 1, s->p[k].x + (rf(s) - 0.5f) * 6, s->p[k].y + (rf(s) - 0.5f) * 6, 1.5f, 120);
+  } else if (b == BOSS_UNMAKER && e->act == 2) { /* the legion: the earlier floors' creatures */
+    static const int LEG[6] = { EK_SKITTER, EK_BONEWALKER, EK_SLAGBORN, EK_SPORELING, EK_PENITENT, EK_GARGOYLE };
+    for (int k = 0; k < 8; k++) {
+      float a = rf(s) * 6.28f, d = 14 + rf(s) * 8;
+      spawn_enemy(s, LEG[k % 6], cw_clampf(e->x + cw_cos(a) * d, -HALF + 1, HALF - 1), cw_clampf(e->y + cw_sin(a) * d, -HALF + 1, HALF - 1));
+    }
   } else if (b == BOSS_MYCEL && e->act == 1) { /* the spore mortar: where the players stand (they were marked during the tell) */
     for (int k = 0, n = 0; k < MAXP && n < 6; k++)
       if (s->p[k].active && !s->p[k].down)
@@ -189,7 +248,7 @@ static void boss_step(sim *s, enemy *e) {
   if (e->atk > 0) return; /* in melee */
   if (--e->act_next > 0) return;
   /* what next: the summon when its phase has come and it is due, else the arena attack */
-  bool summon = b == BOSS_VHESSA || b == BOSS_ANVILGRAVE ? frac < 0.5f && (e->act_n % 2 == 1) : frac < 0.6f && (e->act_n % 3 == 2);
+  bool summon = b == BOSS_VHESSA || b == BOSS_ANVILGRAVE || b == BOSS_SERAPHEL ? frac < 0.5f && (e->act_n % 2 == 1) : frac < 0.6f && (e->act_n % 3 == 2);
   e->act = summon ? 2 : 1;
   e->act_t = 0;
   e->act_n++;
@@ -1166,6 +1225,10 @@ static void enemies_step(sim *s) {
     static const melee ANVIL = { 60, 36, 40, 1.4f, 6.0f, -1.0f }, MYCEL = { 48, 30, 30, 1.2f, 2.6f, 0.0f }; /* the hammer fall's shockwave ring; the root lash */
     if (e->kind == EK_BOSS && boss_of(s) == BOSS_ANVILGRAVE) m = &ANVIL;
     if (e->kind == EK_BOSS && boss_of(s) == BOSS_MYCEL) m = &MYCEL;
+    static const melee SERA = { 42, 30, 30, 2.0f, 3.0f, -1.0f }, KHAR = { 48, 30, 30, 1.4f, 2.6f, 0.5f }, UNMK = { 60, 36, 40, 2.0f, 6.0f, 0.9f };
+    if (e->kind == EK_BOSS && boss_of(s) == BOSS_SERAPHEL) m = &SERA; /* the censer's circle */
+    if (e->kind == EK_BOSS && boss_of(s) == BOSS_KHARVAAL) m = &KHAR; /* the blade's 120 degrees */
+    if (e->kind == EK_BOSS && boss_of(s) == BOSS_UNMAKER) m = &UNMK;  /* the riven blade's long line */
     float touch = EK[e->kind].radius + 0.45f;
     if (e->atk == 0) {
       if (e->atk_cd > 0 || (e->kind == EK_BOSS && (boss_of(s) == BOSS_YARD ? e->ph >= 230 : e->act != 0))) continue; /* a boss's charge or arena attack is its own */
@@ -1190,7 +1253,8 @@ static void enemies_step(sim *s) {
     }
     if (e->atk == m->windup + 1) { /* the strike: every player in reach and in front */
       float fx = cw_cos(e->face), fy = cw_sin(e->face), reach = touch + m->reach;
-      if (e->kind == EK_SKITTER) e->kx += fx * 0.12f, e->ky += fy * 0.12f; /* the spring: it lands where it bit */
+      if (e->kind == EK_SKITTER || e->kind == EK_GARGOYLE) e->kx += fx * 0.12f, e->ky += fy * 0.12f; /* the spring, the dive: it lands where it bit */
+      if (e->kind == EK_PENITENT || e->kind == EK_HELLHOUND) e->kx += fx * 0.16f, e->ky += fy * 0.16f; /* the rush, the pounce */
       bool hit = false;
       for (int k = 0; k < MAXP; k++) {
         player *p = &s->p[k];

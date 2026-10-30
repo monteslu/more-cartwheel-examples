@@ -59,23 +59,35 @@ Players 2 to 4 use pads 2 to 4. Join on the title screen.
   when one living player steps in, the team goes down to the next floor with
   its levels and score (power-ups end at the hatch). Each floor starts a
   little harder than the one above. Beat the eighth floor's boss and the
-  descent is done (about 27 minutes for the bots). The sluice, the ossuary,
-  the foundry and the grotto are built from their own level files (the level
-  builder in tools/levelview, so their bakes match); a floor without its bake
-  yet is played in the yard.
+  descent is done (about 26 minutes for the bots). The seven floors below
+  the yard (the sluice, the ossuary, the foundry, the grotto, the cathedral,
+  the rift and the core) are built from their own level files (the level
+  builder in tools/levelview, so their bakes match).
 - Each floor brings its own creature and boss (LEVELS.md). Skitters (the
   sluice) are fast and frail, swim the water and spring 3 m to bite;
   bonewalkers (the ossuary) lurch and slash, and leave bone piles, one in five
   standing up again in 4 s unless shot; slagborn (the foundry) lob burning
   slag from range and punch up close; sporelings (the grotto) headbutt and
-  burst into spore clouds that slow. Water slows walkers and players, molten
+  burst into spore clouds that slow; penitents (the cathedral) glide, draw
+  back and rush 4 m; gargoyles (the rift) hop and dive; hellhounds (the core)
+  are the fastest thing in the game and pounce 4 m. Water slows walkers and players, molten
   strips burn, spore beds slow. The bosses tell every move (a held pose and a
   warming glow): Vhessa sweeps her pincers, jets acid in a cone and drops a
   brood of skitters; Ossivar slams a ring of spikes round him, throws fans of
   slow bone lances and raises every bone pile; Anvilgrave's hammer sends a
   shockwave, he pours a molten river and roars up slagborn; Mother Mycel
   lashes her roots, mortars spores where you stand and bursts roots up in a
-  line toward the farthest player. Bloaters burst when they
+  line toward the farthest player; Seraphel sweeps her censer round her, burns
+  a choir beam across her front and steps through shadow behind the farthest
+  player, penitents rising; Khar-Vaal cleaves, fires a ring of shards with two
+  gaps and breaks the floor in a ring round him; the Unmaker brings his blade
+  down along a long line, rains fire round every player and calls a legion of
+  the earlier floors' creatures.
+- A boss bursts into 3 to 5 loot caches, each a gun at a rarity whose colour
+  glows on it and on the floor (common grey, uncommon green, rare blue, epic
+  violet, legendary orange): a better gun lasts longer, hits harder, fires one
+  more (rare) and pierces one more (epic). Each floor adds a gun to the pool
+  (the rail gun from the sluice, the flamer from the ossuary). Bloaters burst when they
   die; brutes are slow and tough. A boss walks, stands still and glows for a
   second (a warning, and a bar at the top shows its health), then charges
   straight ahead; it calls a few runners now and then.

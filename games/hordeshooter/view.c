@@ -712,12 +712,13 @@ static void view_power_init(void) {
  * boss: the old one's meshes go first. */
 static const char *files[EK_KINDS] = { "models/runner.cwchar", "models/brute.cwchar", "models/bloater.cwchar", "models/boss.cwchar",
                                        "models/sluice_skitter.cwchar", "models/ossuary_bonewalker.cwchar", "models/foundry_slagborn.cwchar",
-                                       "models/grotto_sporeling.cwchar" };
-static const int cap[EK_KINDS] = { MAXE, 400, 600, 4, 1600, 1600, 800, 1600 };
-static const float rough[EK_KINDS] = { 0.7f, 0.62f, 0.5f, 0.55f, 0.6f, 0.7f, 0.6f, 0.6f };
-static const float rep_[EK_KINDS] = { 1.6f, 1.2f, 1.4f, 0.9f, 1.4f, 1.4f, 1.2f, 1.4f };
-static const char *nm[EK_KINDS] = { "Runners", "Brutes", "Bloaters", "Bosses", "Skitters", "Bonewalkers", "Slagborn", "Sporelings" };
-static const bool shadow[EK_KINDS] = { false, true, false, true, false, false, false, false };
+                                       "models/grotto_sporeling.cwchar", "models/cathedral_penitent.cwchar", "models/rift_gargoyle.cwchar",
+                                       "models/core_hellhound.cwchar" };
+static const int cap[EK_KINDS] = { MAXE, 400, 600, 4, 1600, 1600, 800, 1600, 1600, 1200, 1600 };
+static const float rough[EK_KINDS] = { 0.7f, 0.62f, 0.5f, 0.55f, 0.6f, 0.7f, 0.6f, 0.6f, 0.9f, 0.8f, 0.6f };
+static const float rep_[EK_KINDS] = { 1.6f, 1.2f, 1.4f, 0.9f, 1.4f, 1.4f, 1.2f, 1.4f, 1.4f, 1.4f, 1.4f };
+static const char *nm[EK_KINDS] = { "Runners", "Brutes", "Bloaters", "Bosses", "Skitters", "Bonewalkers", "Slagborn", "Sporelings", "Penitents", "Gargoyles", "Hellhounds" };
+static const bool shadow[EK_KINDS] = { false, true, false, true, false, false, false, false, false, false, false };
 static int V_floor; /* the floor drawn (0 the yard) */
 static lb_built V_lb; /* a deeper floor's build */
 static bool V_lb_up, V_lb_lit;
@@ -762,7 +763,7 @@ static void crowd_kind_load(int k, const char *file) {
     }
     { /* the crowd's baked colours desaturated toward a cool grey of the same luminance (each vertex: no hue is
        * swung, so a red hide greys instead of turning magenta); the green kind keeps most of its green to stay readable */
-      static const float DESAT[EK_KINDS] = { 0.78f, 0.7f, 0.2f, 0.7f, 0.0f, 0.0f, 0.0f, 0.0f }, COOL[3] = { 0.88f, 1.0f, 1.14f };
+      static const float DESAT[EK_KINDS] = { 0.78f, 0.7f, 0.2f, 0.7f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f }, COOL[3] = { 0.88f, 1.0f, 1.14f };
       float desat = k == EK_BOSS && strcmp(file, files[EK_BOSS]) ? 0.0f : DESAT[k]; /* a floor's boss keeps its authored colours */
       for (int f = 0; f < V.bt[k]; f++) {
         t3_attribute *ca = V.ch[k].geo[0][f]->attributes[T3_ATTR_COLOR];
@@ -1467,13 +1468,13 @@ void view_sync(const sim *s, float time) {
   memset(cnt, 0, sizeof cnt);
   V.attack_drawn = 0;
   cw_splats_begin(V.shadows);
-  static const float rate[EK_KINDS] = { 1.9f, 0.9f, 1.1f, 0.6f, 2.6f, 0.8f, 0.7f, 1.2f }; /* cycles per second */
+  static const float rate[EK_KINDS] = { 1.9f, 0.9f, 1.1f, 0.6f, 2.6f, 0.8f, 0.7f, 1.2f, 1.0f, 1.4f, 2.4f }; /* cycles per second */
   /* The horde outside the view is not drawn. The instanced meshes have one bounding sphere for the whole
    * yard, so three.c draws every instance; at a late wave about half of them are off screen and still cost
    * the vertex work of the colour pass and of the SSR G-buffer pass. Only the kinds that cast no shadow are
    * culled (a brute or the boss off screen can throw its shadow into the view); nothing else reads them
    * (SSR is screen space, the fog reads the shadow map). HORDE_CULL=0 (development) draws them all. */
-  static const bool cull_kind[EK_KINDS] = { true, true, true, true, true, true, true, true }; /* nothing in the crowd casts a real-time shadow now (blob shadows) */
+  static const bool cull_kind[EK_KINDS] = { true, true, true, true, true, true, true, true, true, true, true }; /* nothing in the crowd casts a real-time shadow now (blob shadows) */
   static int cull_on = -1;
   if (cull_on < 0) cull_on = !getenv("HORDE_CULL") || atoi(getenv("HORDE_CULL")) != 0;
   view_frustum fr_ = view_frustum_now();
@@ -1501,7 +1502,7 @@ void view_sync(const sim *s, float time) {
     float sq = 1.0f + (e->flash > 0 ? 0.1f : 0);
     float yaw = -e->face + 1.5708f; /* the model faces +Z; face is atan2(z, x) */
     put(im, n, e->x, 0.0f, e->y, yaw, sq, sq, sq);
-    static const float SR[EK_KINDS] = { 0.42f, 0.75f, 0.62f, 1.5f, 0.5f, 0.45f, 0.7f, 0.5f }, SH[EK_KINDS] = { 1.6f, 2.2f, 1.5f, 4.0f, 0.8f, 2.0f, 2.2f, 1.2f };
+    static const float SR[EK_KINDS] = { 0.42f, 0.75f, 0.62f, 1.5f, 0.5f, 0.45f, 0.7f, 0.5f, 0.45f, 0.5f, 0.5f }, SH[EK_KINDS] = { 1.6f, 2.2f, 1.5f, 4.0f, 0.8f, 2.0f, 2.2f, 1.2f, 2.0f, 1.2f, 1.2f };
     shadow_at(e->x, e->y, SR[k] * sq, SH[k], 0.62f);
     /* each enemy its own hide from its kind's palette (sallow, ashen, olive, rust, bruised, ochre), its brightness
      * varied too: a crowd of many, each kind still read by its shape and its baked colours */
@@ -1514,6 +1515,9 @@ void view_sync(const sim *s, float time) {
       { { 1, 1, 1 }, { 1, 0.96f, 0.9f }, { 0.94f, 0.94f, 0.9f }, { 1, 0.98f, 0.94f }, { 0.96f, 0.92f, 0.86f }, { 1, 1, 1 } }, /* bonewalker: bone */
       { { 1, 1, 1 }, { 1, 0.95f, 0.92f }, { 0.95f, 0.95f, 1 }, { 1, 1, 0.94f }, { 0.92f, 0.92f, 0.92f }, { 1, 1, 1 } }, /* slagborn */
       { { 1, 1, 1 }, { 0.92f, 1, 1 }, { 1, 0.95f, 1 }, { 0.95f, 1, 0.92f }, { 1, 1, 0.95f }, { 1, 1, 1 } },       /* sporeling */
+      { { 1, 1, 1 }, { 0.95f, 0.95f, 1 }, { 1, 1, 1 }, { 0.92f, 0.92f, 0.95f }, { 1, 1, 1 }, { 0.96f, 0.96f, 1 } }, /* penitent */
+      { { 1, 1, 1 }, { 0.95f, 0.95f, 0.92f }, { 0.92f, 0.94f, 1 }, { 1, 0.97f, 0.94f }, { 1, 1, 1 }, { 0.94f, 0.94f, 0.94f } }, /* gargoyle */
+      { { 1, 1, 1 }, { 1, 0.94f, 0.9f }, { 1, 1, 1 }, { 0.95f, 0.92f, 0.9f }, { 1, 0.96f, 0.92f }, { 1, 1, 1 } },   /* hellhound */
     };
     const float *hide = HIDE[k][hash2((uint32_t)i, 77u) % 6];
     float tint = V_floor > 0 ? 0.85f + 0.2f * h01((uint32_t)i, 5) : k >= EK_SKITTER ? 1.25f + 0.2f * h01((uint32_t)i, 5) : 0.39f + 0.2f * h01((uint32_t)i, 5); /* the floors' own creatures keep their authored colours */

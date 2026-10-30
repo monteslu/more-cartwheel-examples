@@ -541,7 +541,7 @@
   {
     "name": "hordeshooter-floor",
     "app": "hordeshooter_auto",
-    "frames": 6000,
+    "frames": 7800,
     "maxGt16": 0.12,
     "env": {
       "HORDE_WAVE": "5",
@@ -562,7 +562,7 @@
       "player.hp"
     ],
     "expect": {
-      "game.ticks": 6000,
+      "game.ticks": 7800,
       "game.state": 0,
       "floor.level": 1,
       "floor.boss_tick": 5584,
@@ -585,7 +585,7 @@
       "HORDE_PLAYERS": "3",
       "HORDE_FLOOR_STAY": "1"
     },
-    "controlFrames": 6000,
+    "controlFrames": 7800,
     "hosts": [
       "native"
     ],

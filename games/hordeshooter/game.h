@@ -20,7 +20,7 @@
 #define FW 80         /* flow field grid (1 m cells) */
 #define TICK 60.0f
 
-enum { EK_RUNNER, EK_BRUTE, EK_BLOATER, EK_BOSS, EK_SKITTER, EK_BONEWALKER, EK_SLAGBORN, EK_SPORELING, EK_KINDS };
+enum { EK_RUNNER, EK_BRUTE, EK_BLOATER, EK_BOSS, EK_SKITTER, EK_BONEWALKER, EK_SLAGBORN, EK_SPORELING, EK_PENITENT, EK_GARGOYLE, EK_HELLHOUND, EK_KINDS };
 /* the floors' own: skitter the sluice's, bonewalker the ossuary's, slagborn the foundry's, sporeling the grotto's */
 const char *sim_kind_name(int kind); /* the .cwlevel's name of a kind ("runner" ...) */
 int sim_kind_by_name(const char *name); /* -1 when not a kind */
