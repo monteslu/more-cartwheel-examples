@@ -22,7 +22,9 @@
 
 enum { EK_RUNNER, EK_BRUTE, EK_BLOATER, EK_BOSS, EK_KINDS };
 enum { OK_CRATE, OK_BARREL, OK_WALL, OK_PILLAR, OK_KINDS };
-enum { EV_SHOT, EV_HIT, EV_KILL, EV_BOOM, EV_CRATE, EV_BARREL, EV_WALL, EV_GEM, EV_HURT, EV_LEVEL, EV_WAVE, EV_BOSS, EV_DOWN, EV_ROCKET, EV_POWER, EV_POWER_SPAWN, EV_SWIPE }; /* EV_SWIPE: an enemy's strike (a kind, b 1 when it hit; z, w its facing) */
+enum { EV_SHOT, EV_HIT, EV_KILL, EV_BOOM, EV_CRATE, EV_BARREL, EV_WALL, EV_GEM, EV_HURT, EV_LEVEL, EV_WAVE, EV_BOSS, EV_DOWN, EV_ROCKET, EV_POWER, EV_POWER_SPAWN, EV_SWIPE,
+       EV_MELT, EV_CLEAR, EV_HATCH, EV_DESCEND, EV_FLOOR }; /* EV_MELT: one of the horde melting after its boss fell (a its kind); EV_CLEAR: the floor is clear;
+       EV_HATCH: the hatch opens; EV_DESCEND: a player stepped in; EV_FLOOR: a new floor starts (a its index) */ /* EV_SWIPE: an enemy's strike (a kind, b 1 when it hit; z, w its facing) */
 
 /* power-ups (pickup kind PK_POWER + type): temporary weapons, ammo, throwables and helpers */
 enum { PU_SHOTGUN, PU_MINIGUN, PU_ROCKETS, PU_RAIL, PU_FLAME, /* weapons, 12 s */
@@ -65,10 +67,12 @@ typedef struct mine { bool alive; uint8_t owner; float x, y; int arm; } mine;
 typedef struct obstacle { bool alive; uint8_t kind; float x, y, hx, hy; int hp, maxhp; uint32_t nav; } obstacle;
 typedef struct pickup { bool alive; uint8_t kind; float x, y, vx, vy; int life, value, age; } pickup; /* value: the xp a gem gives (gems close together merge) */
 typedef struct boom { float x, y, r, dmg; int delay; uint8_t owner; bool big; } boom;
+#define FINAL_WAVE 44 /* the run's waves: the last floor's boss wave */
 typedef struct event { uint8_t kind, a, b; float x, y, z, w; } event;
 
 typedef struct sim {
   int tick, wave, wave_tick, players, state, state_ticks;
+  int level, level_wave; /* the floor (0..NLEVELS-1) and its wave (1..sim_level_waves); wave counts the run's waves */
   int kills, killed_total, spawn_cap, boss_alive, boss_wave, boss_hp, boss_maxhp, boss_phase; /* phase: 0 walking, 1 winding up a charge, 2 charging */
   cw_rng rng;
   player p[MAXP];
@@ -103,13 +107,22 @@ typedef struct sim {
   /* stats (not state) */
   float crowd_ms;
   /* time to kill, per wave (0..FINAL_WAVE) and kind, for the kills a player made: kills, hits taken, ticks from the first hit (stats only) */
-  int ttk_n[21][EK_KINDS], ttk_hits[21][EK_KINDS], ttk_ticks[21][EK_KINDS];
+  int ttk_n[FINAL_WAVE + 1][EK_KINDS], ttk_hits[FINAL_WAVE + 1][EK_KINDS], ttk_ticks[FINAL_WAVE + 1][EK_KINDS];
 } sim;
 
-enum { ST_PLAY, ST_OVER, ST_WON };
+enum { ST_PLAY, ST_OVER, ST_WON, ST_CLEAR, ST_HATCH, ST_DESCEND };
+/* ST_CLEAR: the floor's boss fell and the horde melts; ST_HATCH: the hatch is open, waiting for a player to step in;
+ * ST_DESCEND: the fade to the next floor */
+#define NLEVELS 8          /* the descent: floors, one under the other (LEVELS.md) */
+#define WAVE_TICKS (60 * 25) /* a wave; a boss wave lasts until its boss falls */
+#define HATCH_R 1.7f       /* a living player this close to the hatch's middle steps in */
+#define HATCH_OPEN_TICKS 60
+#define MELT_TICKS 90
+#define DESCEND_TICKS 60
+int sim_level_waves(int level);  /* waves on that floor, the last its boss wave */
+int sim_level_first_wave(int level); /* the run's wave number of that floor's first wave */
 #define TETHER_HW 16.0f /* the living team box is at most 2 * this wide and 2 * TETHER_HH deep: one camera at its farthest (45 m) shows it */
 #define TETHER_HH 8.5f
-#define FINAL_WAVE 20 /* the boss of this wave ends the run */
 
 void sim_init(sim *s, int players, uint32_t seed, int start_wave);
 void sim_free(sim *s);
@@ -121,6 +134,7 @@ const char *sim_upgrade_name(int u);
 /* an enemy's melee attack as the view draws it: -1 none, 0 the wind-up, 1 the strike, 2 the recovery; *tell 0..1
  * how far into the wind-up (the telegraph) */
 int sim_spawn(sim *s, int kind, float x, float y); /* tests: one enemy there; its slot or -1 */
+void sim_dev_kill_boss(sim *s); /* development: the floor's boss falls now (player 1 gets it) */
 int sim_melee_windup(int kind); /* the ticks of that kind's wind-up */
 int sim_attack_frame(const enemy *e, float *tell);
 void sim_power_give(sim *s, int pi, int t);
@@ -139,6 +153,7 @@ void view_init(cw_node root);
 void view_free(void);
 void view_sync(const sim *s, float time);
 extern float g_cam_dist; /* development: a fixed camera distance (0: the game frames the team) */
+void view_hatch(const sim *s); /* the hatch's beam and ring of light, by the floor's state */
 int view_attack_drawn(void); /* enemies drawn in an attack pose this frame */
 void view_camera(const sim *s, cw_node camera, float aspect, float control_x, float control_y);
 bool view_screen(t3_vec3 p, float *u, float *v); /* a world point on screen (0..1, y down) */

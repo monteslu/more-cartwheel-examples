@@ -82,7 +82,7 @@
   },
   {
     "name": "hordeshooter-pace",
-    "note": "hordeshooter_auto: two bots for 40 s: first kill, the first upgrade choices (bots pick), wave 2. Exact state on every host.",
+    "note": "hordeshooter_auto: two bots for 40 s: first kill, the first upgrade choices (bots pick), wave 2. Exact state on every host. Re-pinned 2026-10-29 (H-PT5): a wave is 25 s now (LEVELS.md), so wave 2 starts at tick 1500, not 1800: more of the run is wave 2.",
     "app": "hordeshooter_auto",
     "frames": 2400,
     "maxGt16": 0.12,
@@ -105,8 +105,8 @@
     "expect": {
       "game.ticks": 2400,
       "game.wave": 2,
-      "game.enemies": 84,
-      "game.kills": 268,
+      "game.enemies": 83,
+      "game.kills": 319,
       "game.alive_players": 2,
       "player.hp": [
         100,
@@ -121,30 +121,30 @@
         0
       ],
       "player.score": [
-        1748,
-        1208,
+        1914,
+        1596,
         0,
         0
       ],
       "player.kills": [
-        158,
-        107,
+        169,
+        144,
         0,
         0
       ],
       "player.x": [
-        -393,
-        -39,
+        -906,
+        301,
         0,
         0
       ],
       "player.y": [
-        -15,
-        1392,
+        -327,
+        529,
         0,
         0
       ],
-      "game.hash": 3741245691,
+      "game.hash": 4232965465,
       "game.state": 0,
       "game.boss": 0
     },
@@ -396,7 +396,7 @@
     "frames": 900,
     "maxGt16": 0.12,
     "env": {
-      "HORDE_WAVE": "8",
+      "HORDE_WAVE": "13",
       "HORDE_PLAYERS": "3"
     },
     "fields": [
@@ -408,7 +408,7 @@
     ],
     "expect": {
       "game.ticks": 900,
-      "game.wave": 8,
+      "game.wave": 13,
       "fx.booms": 178,
       "view.cam_jerks": 0,
       "cw.rumble": [
@@ -420,12 +420,13 @@
       ]
     },
     "controlEnv": {
-      "HORDE_SHAKE_CONTROL": "1"
+      "HORDE_SHAKE_CONTROL": "1",
+      "HORDE_WAVE": "13"
     },
     "hosts": [
       "native"
     ],
-    "note": "no camera shake: three bots in wave 8 for 900 ticks (178 blasts: rockets, grenades, bloaters, mines). view.cam_jerks counts frames whose camera position has a second difference over 2 cm (a shake; the smooth follow never does): 0. cw.rumble (requests, pad, low and high in thousandths, ms) shows the pads rumble instead: 194 requests, the last a blast. Measured 2026-10-29 on native GL. The control (HORDE_SHAKE_CONTROL, the same 900 ticks) puts the old explosion-kit camera shake back: 731 jerking frames and the same game.hash (the shake was never in the simulation), so it must differ.",
+    "note": "no camera shake: three bots at the run's wave 13 (floor 3, wave 3: the difficulty the old wave 8 had; the same game, the same hash) for 900 ticks (178 blasts: rockets, grenades, bloaters, mines). view.cam_jerks counts frames whose camera position has a second difference over 2 cm (a shake; the smooth follow never does): 0. cw.rumble (requests, pad, low and high in thousandths, ms) shows the pads rumble instead: 194 requests, the last a blast. Measured 2026-10-29 on native GL. The control (HORDE_SHAKE_CONTROL, the same 900 ticks) puts the old explosion-kit camera shake back: 731 jerking frames and the same game.hash (the shake was never in the simulation), so it must differ.",
     "controlFrames": 900,
     "webgpu": {
       "hosts": [
@@ -532,5 +533,65 @@
       "native"
     ],
     "note": "dodging works: the same scene with the player stepping straight away from every enemy winding up at it (HORDE_MELEE_DODGE=1): 9 strikes, 0 hits, full health (the damage needs the player still in reach and in front on the strike tick). Measured 2026-10-29 on native GL. The control (HORDE_MELEE_DODGE=0: standing still) takes hits and must differ."
+  },
+  {
+    "name": "hordeshooter-floor",
+    "app": "hordeshooter_auto",
+    "frames": 6000,
+    "maxGt16": 0.12,
+    "env": {
+      "HORDE_WAVE": "5",
+      "HORDE_PLAYERS": "3"
+    },
+    "fields": [
+      "game.ticks",
+      "game.hash",
+      "game.state",
+      "floor.level",
+      "floor.boss_tick",
+      "floor.clear_tick",
+      "floor.hatch_tick",
+      "floor.descend_tick",
+      "floor.next_tick",
+      "floor.left_at_hatch",
+      "game.enemies",
+      "player.hp"
+    ],
+    "expect": {
+      "game.ticks": 6000,
+      "game.state": 0,
+      "floor.level": 1,
+      "floor.boss_tick": 5584,
+      "floor.clear_tick": 5674,
+      "floor.hatch_tick": 5674,
+      "floor.descend_tick": 5741,
+      "floor.next_tick": 5801,
+      "floor.left_at_hatch": 0,
+      "game.enemies": 183,
+      "player.hp": [
+        100,
+        100,
+        100,
+        0
+      ],
+      "game.hash": 3496093756
+    },
+    "controlEnv": {
+      "HORDE_WAVE": "5",
+      "HORDE_PLAYERS": "3",
+      "HORDE_FLOOR_STAY": "1"
+    },
+    "controlFrames": 6000,
+    "hosts": [
+      "native"
+    ],
+    "note": "a floor ends and the next begins: three bots from the yard's boss wave (HORDE_WAVE=5, floor 1 wave 5). The boss falls at tick 5584, the horde burns to ash over 90 ticks (floor.clear_tick 5674, no enemy left when the hatch opens: floor.left_at_hatch 0), the hatch opens over 60 ticks, a bot steps in at 5741 and the second floor starts at 5801 (floor.level 1, its first wave under way: 183 enemies at tick 6000). Measured 2026-10-29 on native GL. The control (HORDE_FLOOR_STAY=1: nobody steps in) stays on the first floor with the hatch open and must differ.",
+    "webgpu": {
+      "hosts": [
+        "native"
+      ],
+      "maxGt16": 0.25,
+      "vsGl": 0.25
+    }
   }
 ]

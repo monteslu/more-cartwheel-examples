@@ -25,7 +25,7 @@ const levels = (args, env = {}) => {
   const m = /levels (\d+) to (\d+)/.exec(r.stdout);
   return r.status === 0 && m ? +m[1] : -1;
 };
-for (const [args, want, what] of [[['3', '2', '1'], 4, 'wave 1, 3 minutes, 2 players'], [['2', '3', '14'], 15, 'wave 14 start, 2 minutes, 3 players']]) {
+for (const [args, want, what] of [[['3', '2', '1'], 4, 'wave 1, 3 minutes, 2 players'], [['2', '3', '24'], 15, 'wave 24 start (floor 5, wave 4), 2 minutes, 3 players']]) {
   const lo = levels(args);
   if (lo < want) { console.log(`FAIL levels: ${what}: lowest player level ${lo}, want >= ${want}`); bad++; }
   else console.log(`ok   levels rise: ${what}: lowest player level ${lo} (>= ${want})`);

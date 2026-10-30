@@ -71,6 +71,11 @@ static struct {
    * and per kind the ticks from an attack's start to its damage */
   int32_t m_attack_frames, m_strikes, m_hits, m_delay[EK_KINDS];
   int m_test, m_start[MAXE];
+  /* the floor gate: the floor (0..7), the ticks the boss's floor cleared, the hatch opened, a player stepped in
+   * and the next floor started (0 until it happens), the enemies left when the hatch opened */
+  int32_t floor_level, floor_boss_tick, floor_clear_tick, floor_hatch_tick, floor_descend_tick, floor_next_tick, floor_left_at_hatch;
+  int floor_stay, fade_t;
+  int32_t dev_boss; /* development (romdev): 1 skips to this floor's boss wave and keeps its boss weak, 2 also fells it, to see the floor end */
   int32_t dev_hold; /* development (romdev, screenshots): 1 the bots stand where they are, 2 and hold their fire, so the horde reaches them */
   t3_vec3 cam_p[2];
   int cam_n;
@@ -79,7 +84,9 @@ static struct {
 static cw_font font;
 static double T_sim, T_view, T_fx, T_frame, T_last; /* ms, averaged over the bench window */
 static int T_n;
-static cw_sound snd_boom, snd_shot, snd_kill, snd_gem, snd_move, snd_select, snd_back, snd_music, snd_power;
+static cw_sound snd_boom, snd_shot, snd_kill, snd_gem, snd_move, snd_select, snd_back, snd_music, snd_power, snd_hatch, snd_descend;
+/* the floors' names (LEVELS.md); the code reads only these until a floor's own scene lands */
+static const char *const FLOOR_NAME[NLEVELS] = { "The Yard", "The Drowned Sluice", "The Ossuary", "The Foundry", "The Grotto", "The Cathedral", "The Rift", "The Core" };
 static cw_voice music;
 
 /* ── sounds: a few synthesised waves so the repository needs no audio files ── */
@@ -134,6 +141,8 @@ static void start(int players, void *u) {
 #endif
   int wave = getenv("HORDE_WAVE") ? atoi(getenv("HORDE_WAVE")) : HORDE_START_WAVE; /* hordeshooter_bench: a late wave from the start (carts read no environment) */
   sim_init(&G.S, players, 4242, wave);
+  G.floor_stay = getenv("HORDE_FLOOR_STAY") && atoi(getenv("HORDE_FLOOR_STAY"));
+  G.floor_level = G.S.level, G.floor_boss_tick = G.floor_clear_tick = G.floor_hatch_tick = G.floor_descend_tick = G.floor_next_tick = 0, G.floor_left_at_hatch = -1;
   G.m_test = getenv("HORDE_MELEE_TEST") ? (getenv("HORDE_MELEE_DODGE") && atoi(getenv("HORDE_MELEE_DODGE")) ? 2 : 1) : 0;
   if (G.m_test) { /* the melee gate: one player standing still (or stepping away from each wind-up), a runner and a brute walking in */
     G.S.no_spawn = true, G.S.no_power = true;
@@ -171,6 +180,8 @@ static void init(void *u) {
   snd_kill = synth(0.12f, 200, 90, 0.7f, 0.4f, 5);
   snd_gem = synth(0.1f, 1200, 1800, 0, 0.25f, 4);
   snd_power = synth(0.45f, 440, 1320, 0.05f, 0.45f, 2.5f); /* a rising chime: a power-up taken */
+  snd_hatch = synth(2.2f, 48, 130, 0.35f, 0.9f, 1.2f);  /* the hatch grinding open, rising */
+  snd_descend = synth(1.0f, 220, 55, 0.2f, 0.6f, 2.0f); /* stepping down: a falling sweep */
   snd_move = synth(0.05f, 660, 660, 0, 0.25f, 2);
   snd_select = synth(0.12f, 520, 1040, 0, 0.3f, 3);
   snd_back = synth(0.12f, 520, 260, 0, 0.3f, 3);
@@ -192,7 +203,15 @@ static void init(void *u) {
   cw_debug_u32("game.hash", &G.hash);
   cw_debug_i32("view.cam_jerks", &G.cam_jerks);
   cw_debug_i32("fx.booms", &G.booms);
+  cw_debug_i32("floor.level", &G.floor_level);
+  cw_debug_i32("floor.boss_tick", &G.floor_boss_tick);
+  cw_debug_i32("floor.clear_tick", &G.floor_clear_tick);
+  cw_debug_i32("floor.hatch_tick", &G.floor_hatch_tick);
+  cw_debug_i32("floor.descend_tick", &G.floor_descend_tick);
+  cw_debug_i32("floor.next_tick", &G.floor_next_tick);
+  cw_debug_i32("floor.left_at_hatch", &G.floor_left_at_hatch);
   cw_debug_i32("dev.hold", &G.dev_hold);
+  cw_debug_i32("dev.boss", &G.dev_boss);
   cw_debug_f32("dev.cam_dist", &g_cam_dist);
   cw_debug_i32("melee.attack_frames", &G.m_attack_frames);
   cw_debug_i32("melee.strikes", &G.m_strikes);
@@ -238,6 +257,7 @@ static void read_input(input in[MAXP]) {
 #ifdef HORDE_AUTOPILOT
     horde_bot(&G.S, i, &in[i]);
     if (G.dev_hold) in[i].mx = in[i].my = 0;
+    if (G.floor_stay && G.S.state == ST_HATCH) in[i].mx = in[i].my = 0; /* the floor gate's control: nobody steps in */
     if (G.dev_hold >= 2) in[i].ax = in[i].ay = 0, in[i].fire = in[i].bomb = false; /* 2: and hold fire */
 #else
     cw_vec2 m = cw_input_vector(i, G.move[0], G.move[1], G.move[2], G.move[3], CW_DEADZONE_SCALED_RADIAL, 0.2f);
@@ -264,12 +284,39 @@ static void fixed_update(void *u, double dt) {
   double t0 = cw_wall();
   if (getenv("HORDE_POWER") && G.S.tick % 600 == 0) /* keep the development power-up held */
     for (int i = 0; i < G.S.players; i++) sim_power_give(&G.S, i, atoi(getenv("HORDE_POWER")) % PU_KINDS);
+  if (G.dev_boss && G.S.state == ST_PLAY) {
+    int n = sim_level_waves(G.S.level);
+    if (G.S.level_wave < n) G.S.level_wave = n, G.S.wave = sim_level_first_wave(G.S.level) + n - 1, G.S.wave_tick = 0;
+    for (int i = 0; i < MAXE; i++)
+      if (G.S.e[i].alive && G.S.e[i].kind == EK_BOSS) G.S.e[i].hp = CW_MIN(G.S.e[i].hp, 60);
+    if (G.dev_boss >= 2 && G.S.boss_alive) sim_dev_kill_boss(&G.S), G.dev_boss = 0;
+  }
   int ev0 = G.S.ev_n;
   sim_step(&G.S, in);
   for (int i = 0; i < MAXE; i++) { /* the melee gate's bookkeeping: when each attack started */
     const enemy *e = &G.S.e[i];
     if (e->alive && e->atk == 1) G.m_start[i] = G.S.tick;
   }
+  for (int k = ev0 <= G.S.ev_n ? ev0 : 0; k < G.S.ev_n; k++) { /* the floors: sounds, the fade, the gate's ticks */
+    const event *v = &G.S.ev[k];
+    if (v->kind == EV_CLEAR && !G.floor_clear_tick) G.floor_clear_tick = G.S.tick;
+    if (v->kind == EV_HATCH) {
+      play(snd_hatch, cw_shell_sfx_bus(), 0.9f);
+      if (!G.floor_hatch_tick) G.floor_hatch_tick = G.S.tick, G.floor_left_at_hatch = G.S.nenemies;
+    }
+    if (v->kind == EV_DESCEND) {
+      play(snd_descend, cw_shell_sfx_bus(), 0.8f);
+      G.fade_t = 1;
+      if (!G.floor_descend_tick) G.floor_descend_tick = G.S.tick;
+    }
+    if (v->kind == EV_FLOOR) {
+      if (!G.floor_next_tick) G.floor_next_tick = G.S.tick;
+      G.banner_t = 210, G.banner_kind = 3, G.banner_n = G.S.level;
+    }
+  }
+  G.floor_level = G.S.level;
+  if (G.S.state == ST_CLEAR && !G.floor_boss_tick) G.floor_boss_tick = G.S.tick; /* the boss fell: the melt began */
+  if (G.fade_t > 0 && ++G.fade_t > DESCEND_TICKS + 45) G.fade_t = 0; /* down over the descent, up over the new floor's first moments */
   for (int k = ev0 <= G.S.ev_n ? ev0 : 0; k < G.S.ev_n; k++) {
     const event *v = &G.S.ev[k];
     if (v->kind != EV_SWIPE) continue;
@@ -323,11 +370,11 @@ static void fixed_update(void *u, double dt) {
   if (G.S.state == ST_WON && G.S.state_ticks > 60 * 10) start(G.players, NULL); /* a new run */
   if (G.banner_t > 0) G.banner_t--;
   static int last_wave;
-  if (G.S.wave != last_wave) {
+  if (G.S.wave != last_wave && G.S.level_wave > 1) { /* a floor's first wave has the floor's own banner */
     last_wave = G.S.wave;
     G.banner_t = 150;
-    G.banner_kind = G.S.wave % 5 == 0 ? 2 : 1;
-    G.banner_n = G.S.wave;
+    G.banner_kind = G.S.level_wave >= sim_level_waves(G.S.level) ? 2 : 1;
+    G.banner_n = G.S.level_wave;
   }
 }
 
@@ -405,11 +452,13 @@ static void hud(void) {
     text(t, su * cs.x, sv * cs.y - 16 * u, 13 * u, rgba(0.55f + 0.45f * PC[i][0], 0.55f + 0.45f * PC[i][1], 0.55f + 0.45f * PC[i][2], 1), CW_ALIGN_CENTER);
   }
   char b[96];
-  snprintf(b, sizeof b, "WAVE %d / %d     %d kills     %d on the yard", G.S.wave, FINAL_WAVE, G.S.killed_total, G.S.nenemies);
+  snprintf(b, sizeof b, "FLOOR %d  %s     WAVE %d / %d     %d kills     %d on the floor", G.S.level + 1, FLOOR_NAME[G.S.level], G.S.level_wave,
+           sim_level_waves(G.S.level), G.S.killed_total, G.S.nenemies);
   text(b, cs.x * 0.5f, 10 * u, 16 * u, rgba(1, 0.95f, 0.8f, 1), CW_ALIGN_CENTER);
   if (G.banner_t > 0) {
     float a = cw_clampf(G.banner_t / 40.0f, 0, 1);
-    snprintf(b, sizeof b, G.banner_kind == 2 ? "WAVE %d  -  BOSS INCOMING" : G.banner_kind == 1 ? "WAVE %d" : "HOLD THE YARD", G.banner_n);
+    if (G.banner_kind == 3) snprintf(b, sizeof b, "FLOOR %d  -  %s", G.banner_n + 1, FLOOR_NAME[CW_CLAMP(G.banner_n, 0, NLEVELS - 1)]);
+    else snprintf(b, sizeof b, G.banner_kind == 2 ? "WAVE %d  -  BOSS INCOMING" : G.banner_kind == 1 ? "WAVE %d" : "HOLD THE YARD", G.banner_n);
     text(b, cs.x * 0.5f, cs.y * 0.28f, 38 * u, rgba(1, G.banner_kind == 2 ? 0.35f : 0.85f, 0.3f, a), CW_ALIGN_CENTER);
   }
   if (G.S.boss_alive && G.S.boss_maxhp > 0) {
@@ -418,8 +467,24 @@ static void hud(void) {
     cw_r2d_rect(cw_rect_make(bx, by, bw * cw_clampf((float)G.S.boss_hp / (float)G.S.boss_maxhp, 0, 1), 8 * u), rgba(0.9f, 0.2f, 0.15f, 1));
     if (G.S.boss_phase == 1) text("THE BOSS IS ABOUT TO CHARGE", cs.x * 0.5f, by + 14 * u, 16 * u, rgba(1, 0.4f, 0.2f, 1), CW_ALIGN_CENTER);
   }
+  if (G.S.state == ST_CLEAR || G.S.state == ST_HATCH) { /* the floor is won: the way down */
+    if (G.banner_kind != 3) G.banner_t = 0; /* no wave banner over it */
+    text(G.S.state == ST_CLEAR ? "THE FLOOR FALLS SILENT" : "THE WAY DOWN IS OPEN", cs.x * 0.5f, cs.y * 0.2f, 34 * u, rgba(1, 0.8f, 0.4f, 1), CW_ALIGN_CENTER);
+    float su, sv; /* the marker: an arrow over the hatch, or at the screen's edge pointing to it */
+    if (G.S.state == ST_HATCH && view_screen((t3_vec3){ 0, 3.2f + 0.3f * cw_sin((float)G.S.tick * 0.12f), 0 }, &su, &sv)) {
+      float x = cw_clampf(su, 0.05f, 0.95f) * cs.x, y = cw_clampf(sv, 0.08f, 0.92f) * cs.y;
+      cw_vec2 tri[3] = { cw_v2(x - 16 * u, y - 30 * u), cw_v2(x + 16 * u, y - 30 * u), cw_v2(x, y - 6 * u) }; /* an arrow down at the hatch */
+      cw_r2d_polygon(tri, 3, rgba(1, 0.72f, 0.28f, 1));
+      cw_r2d_polygon_lines(tri, 3, 2 * u, rgba(0, 0, 0, 0.8f));
+      text("STEP IN", x, y - 58 * u, 18 * u, rgba(1, 0.85f, 0.5f, 1), CW_ALIGN_CENTER);
+    }
+  }
+  if (G.fade_t > 0) { /* the descent: black down over the step, back up on the new floor */
+    float t = (float)G.fade_t, a = t < DESCEND_TICKS ? t / (float)DESCEND_TICKS : 1.0f - (t - DESCEND_TICKS) / 45.0f;
+    cw_r2d_rect(cw_rect_make(0, 0, cs.x, cs.y), rgba(0, 0, 0, cw_clampf(a, 0, 1)));
+  }
   if (G.S.state == ST_WON) {
-    text("THE YARD HOLDS", cs.x * 0.5f, cs.y * 0.36f, 56 * u, rgba(1, 0.85f, 0.35f, 1), CW_ALIGN_CENTER);
+    text("THE DESCENT IS DONE", cs.x * 0.5f, cs.y * 0.36f, 56 * u, rgba(1, 0.85f, 0.35f, 1), CW_ALIGN_CENTER);
     snprintf(b, sizeof b, "%d kills in %d minutes  -  a new run in a moment", G.S.killed_total, G.S.tick / 3600);
     text(b, cs.x * 0.5f, cs.y * 0.5f, 18 * u, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
   }

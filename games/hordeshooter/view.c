@@ -1058,7 +1058,8 @@ static void view_puddles(void) {
  * each frame (the volumetric fog's beams for the price of six additive quads): bright at the lamp, fading
  * down the beam and across it. */
 enum { SHAFT_TEX = 128 };
-static t3_mesh *SHAFT[LAMPS];
+static t3_mesh *SHAFT[LAMPS], *HATCH_BEAM, *HATCH_RING;
+static float hatch_open; /* 0 shut .. 1 open: the beam's height and the ring's size */
 static t3_vec3 shaft_dir[LAMPS];
 static t3_texture *shaft_texture(void) {
   static uint8_t px[SHAFT_TEX * SHAFT_TEX * 4];
@@ -1109,6 +1110,39 @@ static void view_shafts(void) {
     t3_vec3 tg = lamp_aim[i];
     shaft_dir[i] = t3_vec3_normalize((t3_vec3){ tg.x - lamp_head[i].x, tg.y - lamp_head[i].y, tg.z - lamp_head[i].z });
   }
+  { /* the open hatch's beam: the same card as a floodlight's shaft (the same program), warm, rising from the floor */
+    t3_geometry *g = t3_plane_geometry_new(1, 1, 1, 1);
+    t3_material *m = t3_mesh_basic_material_new(0xffffff);
+    m->color = (t3_color){ 1.0f * 1.3f, 0.62f * 1.3f, 0.25f * 1.3f };
+    m->blending = T3_ADDITIVE_BLENDING;
+    m->transparent = true;
+    m->depth_write = false;
+    m->side = T3_DOUBLE_SIDE;
+    m->fog = false;
+    t3_material_set_texture(m, T3_MAP, tx);
+    HATCH_BEAM = t3_mesh_new(g, m);
+    HATCH_BEAM->base.cast_shadow = HATCH_BEAM->base.receive_shadow = false;
+    HATCH_BEAM->base.visible = false;
+    cw_node n = cw_node_new("Node3D", "HatchBeam");
+    cw_node_add_child(V.root, n);
+    t3_object *w = t3_group_new();
+    t3_object_add(w, HATCH_BEAM);
+    cw_node3d_set_object(n, w);
+    t3_release(w), t3_release(g), t3_release(m);
+    /* and a ring of light round it on the floor: the players' ring material, amber */
+    t3_material *rm = glow(1.0f, 0.62f, 0.22f, 7);
+    t3_geometry *ring = t3_ring_geometry_new(0.86f, 1.0f, 48, 1);
+    t3_geometry_apply_matrix4(ring, &(t3_mat4){ { 1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1 } });
+    HATCH_RING = t3_mesh_new(ring, rm);
+    HATCH_RING->base.visible = false;
+    HATCH_RING->base.position = (t3_vec3){ 0, 0.04f, 0 };
+    cw_node rn = cw_node_new("Node3D", "HatchRing");
+    cw_node_add_child(V.root, rn);
+    t3_object *rw = t3_group_new();
+    t3_object_add(rw, HATCH_RING);
+    cw_node3d_set_object(rn, rw);
+    t3_release(rw), t3_release(ring), t3_release(rm);
+  }
   t3_release(tx);
 }
 /* each card along its beam, turned about the beam to face the camera */
@@ -1123,6 +1157,27 @@ static void shafts_face(t3_vec3 eye) {
     *m = (t3_mat4){ { x.x * WIDE, x.y * WIDE, x.z * WIDE, 0, y.x * LEN, y.y * LEN, y.z * LEN, 0, z.x, z.y, z.z, 0, c.x, c.y, c.z, 1 } };
     SHAFT[i]->base.matrix_auto_update = false;
     SHAFT[i]->base.matrix_world_needs_update = true;
+  }
+  if (HATCH_BEAM && hatch_open > 0) { /* the hatch's beam: up from the floor (the card's lamp end at the floor), facing the camera */
+    float len = 14.0f * hatch_open, wide = 3.4f;
+    t3_vec3 a = { 0, 1, 0 }, c = { 0, len * 0.5f, 0 };
+    t3_vec3 v = t3_vec3_normalize((t3_vec3){ eye.x - c.x, eye.y - c.y, eye.z - c.z });
+    t3_vec3 x = t3_vec3_normalize(t3_vec3_cross(a, v)), y = (t3_vec3){ -a.x, -a.y, -a.z }, z = t3_vec3_cross(x, y);
+    HATCH_BEAM->base.matrix = (t3_mat4){ { x.x * wide, x.y * wide, x.z * wide, 0, y.x * len, y.y * len, y.z * len, 0, z.x, z.y, z.z, 0, c.x, c.y, c.z, 1 } };
+    HATCH_BEAM->base.matrix_auto_update = false;
+    HATCH_BEAM->base.matrix_world_needs_update = true;
+  }
+}
+
+/* the hatch after a floor's boss: shut through the melt, opening over HATCH_OPEN_TICKS, open until the team steps in */
+void view_hatch(const sim *s) {
+  float o = s->state == ST_HATCH ? cw_clampf((float)s->state_ticks / (float)HATCH_OPEN_TICKS, 0, 1) : s->state == ST_DESCEND ? 1.0f : 0.0f;
+  hatch_open = o * o * (3 - 2 * o);
+  if (HATCH_BEAM) HATCH_BEAM->base.visible = hatch_open > 0.01f;
+  if (HATCH_RING) {
+    float k = 1.75f * hatch_open * (1.0f + 0.06f * cw_sin((float)s->tick * 0.15f));
+    HATCH_RING->base.visible = hatch_open > 0.01f;
+    HATCH_RING->base.scale = (t3_vec3){ k, 1, k };
   }
 }
 
@@ -1228,6 +1283,7 @@ int view_attack_drawn(void) { return V.attack_drawn; }
 
 void view_sync(const sim *s, float time) {
   if (!V.root.id) return;
+  view_hatch(s);
   int cnt[EK_KINDS][CH_MAXF];
   memset(cnt, 0, sizeof cnt);
   V.attack_drawn = 0;

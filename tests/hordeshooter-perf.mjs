@@ -1,4 +1,4 @@
-// hordeshooter late-wave perf gate: hordeshooter_bench (the bots at wave 14 with three players, about 2000
+// hordeshooter late-wave perf gate: hordeshooter_bench (the bots at the run's wave 24, floor 5 wave 4, with three players, about 2000
 // enemies) at 1920x1080, High, natively on the test GPU (the 890M), GL and WebGPU, with the pipeline's GPU
 // pass timers. Bounds the frame's GPU time (the mean of the bench's last three 120-frame windows):
 //   GL      4.1 ms   (a third of the 12.2 before the baked yard; about 3.8 here)

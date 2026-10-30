@@ -114,7 +114,7 @@ int main(int argc, char **argv) {
   for (int i = 0; i < players; i++) lo = S.p[i].level < lo ? S.p[i].level : lo, hi = S.p[i].level > hi ? S.p[i].level : hi;
   printf("levels %d to %d (started at wave %d)\n", lo, hi, wave0);
   if (getenv("HORDE_SOAK_TTK")) /* hits and seconds from the first hit to the kill, per kind, at each wave */
-    for (int w = 1; w <= 20; w++) {
+    for (int w = 1; w <= FINAL_WAVE; w++) {
       printf("ttk wave %2d", w);
       static const char *KN[EK_KINDS] = { "runner", "brute", "bloater", "boss" };
       for (int e = 0; e < EK_KINDS; e++)

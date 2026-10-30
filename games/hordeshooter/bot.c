@@ -51,6 +51,10 @@ void horde_bot(const sim *s, int i, input *in) {
   float t = (float)s->tick * 0.01f + (float)i * 2.0f;
   mx += cw_sin(t) * 0.25f, my += cw_cos(t * 1.3f) * 0.25f;
   in->mx = mx, in->my = my;
+  if (s->state == ST_HATCH && s->state_ticks >= HATCH_OPEN_TICKS - 20) { /* the hatch is open: down it goes (after a look round for loot) */
+    float l = sqrtf(p->x * p->x + p->y * p->y);
+    if (l > 0.3f) in->mx = -p->x / l, in->my = -p->y / l;
+  }
   if (best < 1e8f) {
     float l = sqrtf(best);
     in->ax = bx / l, in->ay = by / l;

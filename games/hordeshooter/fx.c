@@ -497,6 +497,15 @@ void fx_events(sim *s) {
       }
       break;
     }
+    case EV_MELT: /* the boss fell: the horde burns to ash, staggered over a second and a half (sparks rising, a few grey cinders) */
+      if (FX.frame_hits++ < (lvl >= 2 ? 14 : lvl >= 1 ? 8 : 4)) cw_particles_burst(FX.hit[0], (t3_vec3){ at.x, 0.6f, at.z }, (t3_vec3){ 0, 1, 0 });
+      if (FX.frame_blood++ < (lvl >= 1 ? 3 : 1)) cw_particles_burst(FX.level[0], (t3_vec3){ at.x, 0.2f, at.z }, (t3_vec3){ 0, 0, 0 }); /* a ring of embers where it stood */
+      if (FX.frame_gibs < 60) FX.frame_gibs += 2, spawn_gibs(at, 2, (t3_color){ 0.16f, 0.15f, 0.14f }, 2.5f, 0, 0);
+      break;
+    case EV_HATCH: /* the way down opens: a long low rumble on every pad */
+      for (int k = 0; k < MAXP; k++)
+        if (s->p[k].active) rumble(k, 0.45f, 0.15f, 700);
+      break;
     case EV_SWIPE: /* the strike's streak, raked across the front */
       cw_particles_burst(FX.slash, (t3_vec3){ at.x, e->a == EK_BOSS ? 2.2f : e->a == EK_BRUTE ? 1.2f : 0.8f, at.z }, (t3_vec3){ e->z, -0.15f, e->w });
       break;

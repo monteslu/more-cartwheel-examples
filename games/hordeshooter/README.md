@@ -51,8 +51,16 @@ Players 2 to 4 use pads 2 to 4. Join on the title screen.
   With grenades or mines held the blast button uses them first.
 - Red barrels explode and leave a fire. Crates drop gems and health. The grey
   cinder walls only fall to blasts.
-- A wave every 30 seconds, a boss every fifth wave. Beat the boss of wave 20
-  (about ten minutes) and the yard is held. Bloaters burst when they
+- The run is a descent through eight floors (LEVELS.md), the yard the first. A
+  floor has five waves (the deeper four have six), a wave every 25 seconds,
+  and its last wave brings the floor's boss. When the boss falls the rest of
+  the horde burns to ash over a second and a half, and a hatch opens in the
+  middle of the floor with a beam of light over it and an arrow marking it;
+  when one living player steps in, the team goes down to the next floor with
+  its levels and score (power-ups end at the hatch). Each floor starts a
+  little harder than the one above. Beat the eighth floor's boss and the
+  descent is done (about 26 minutes for the bots). Until each floor's own
+  scene lands, the deeper floors are played in the yard. Bloaters burst when they
   die; brutes are slow and tough. A boss walks, stands still and glows for a
   second (a warning, and a bar at the top shows its health), then charges
   straight ahead; it calls a few runners now and then.
@@ -89,8 +97,10 @@ wave begins with about the levels a played run has there.
 `HORDE_MELEE_DODGE=1` steps the player away from every wind-up, `HORDE_MELEE_LOG=1` prints each strike).
 Live switches for romdev (a cart reads no environment; write them with `wasm({op:'write'})` once the game has
 started): `dev.hold` 1 makes the bots stand where they are, 2 also holds their fire, so the horde reaches
-them; `dev.cam_dist` fixes the camera's distance (16 is a close-up, 0 the game's framing).
-`hordeshooter_bench` is the auto build at wave 14 with three players from the first frame (about 2000
+them; `dev.cam_dist` fixes the camera's distance (16 is a close-up, 0 the game's framing); `dev.boss` 1 skips to the
+floor's boss wave and keeps the boss weak, 2 also fells it once it is out, to see the floor end (the melt, the
+hatch, the descent).
+`hordeshooter_bench` is the auto build at the run's wave 24 (floor 5, wave 4) with three players from the first frame (about 2000
 enemies), the late-wave scene `tests/hordeshooter-perf.mjs` times on GL and WebGPU at 1080p (a cart reads
 no environment, so its start is built in).
 `hordeshooter_soak [minutes] [players] [wave]` plays the rules with the bots and

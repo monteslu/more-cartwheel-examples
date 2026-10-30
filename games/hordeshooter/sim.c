@@ -72,6 +72,10 @@ int sim_attack_frame(const enemy *e, float *tell) {
   return e->atk <= m->windup + STRIKE_HOLD ? 1 : 2;
 }
 
+/* the difficulty a wave plays at: each floor starts two and a half waves above the one before it (its first wave a
+ * breather, LEVELS.md), so the eighth floor's last wave plays about like the old run's twentieth */
+static int dwave(const sim *s) { return 1 + (5 * s->level) / 2 + s->level_wave - 1; }
+
 static int spawn_enemy(sim *s, int kind, float x, float y) {
   int slot = -1;
   for (int i = 0; i < MAXE; i++)
@@ -92,7 +96,7 @@ static int spawn_enemy(sim *s, int kind, float x, float y) {
   enemy *e = &s->e[slot];
   *e = (enemy){ .alive = true, .kind = (uint8_t)kind, .x = x, .y = y, .agent = a, .speed = sp };
   {
-    float w = (float)s->wave, f = 1.0f + 0.07f * w + 0.005f * w * w; /* the horde toughens with the wave (x1.08 at 1, x2.2 at 10, x4.4 at 20) slower than the guns grow: the pressure is numbers */
+    float w = (float)dwave(s), f = 1.0f + 0.07f * w + 0.005f * w * w; /* the horde toughens with the wave (x1.08 at 1, x2.2 at 10, x4.4 at 20) slower than the guns grow: the pressure is numbers */
     e->hp = kind == EK_BOSS ? EK[kind].hp_base + (int)(EK[kind].hp_wave * w) : CW_MAX(1, (int)((float)EK[kind].hp_base * f + 0.5f));
   }
   /* more players, tougher enemies: 20% per extra player (more of them too), a boss 60% */
@@ -191,7 +195,7 @@ static void kill_enemy(sim *s, int i, int owner, float dx, float dy) {
   s->kills++;
   s->killed_total++;
   if (owner >= 0 && owner < MAXP && e->hits > 0) {
-    int w = CW_CLAMP(s->wave, 0, 20);
+    int w = CW_CLAMP(s->wave, 0, FINAL_WAVE);
     s->ttk_n[w][e->kind]++, s->ttk_hits[w][e->kind] += e->hits, s->ttk_ticks[w][e->kind] += s->tick - e->first_hit;
   }
   if (owner >= 0 && owner < MAXP) {
@@ -209,7 +213,7 @@ static void kill_enemy(sim *s, int i, int owner, float dx, float dy) {
    * is many more kills a minute, so the xp a minute still grows on the curve the level costs follow */
   int xp = EK[e->kind].xp;
   if (e->kind == EK_RUNNER) {
-    if (rf(s) < 6.0f / (6.0f + (float)s->wave)) drop_value(s, 0, e->x, e->y, xp);
+    if (rf(s) < 6.0f / (6.0f + (float)dwave(s))) drop_value(s, 0, e->x, e->y, xp);
   } else {
     int gems = e->kind == EK_BOSS ? 6 : 1;
     for (int k = 0; k < gems; k++) drop_value(s, 0, e->x + (float)(k % 3) * 0.9f - 0.9f, e->y + (float)(k / 3) * 0.9f, xp / gems);
@@ -394,10 +398,12 @@ void sim_init(sim *s, int players, uint32_t seed, int start_wave) {
     float a = (float)i * 6.2832f / (float)players;
     *p = (player){ .active = true, .hp = 100, .x = cw_cos(a) * 2.0f, .y = cw_sin(a) * 2.0f, .xp_next = 14, .level = 1, .aim = a };
   }
-  s->wave = start_wave > 0 ? start_wave : 1;
+  s->wave = CW_CLAMP(start_wave > 0 ? start_wave : 1, 1, FINAL_WAVE);
+  while (s->level < NLEVELS - 1 && s->wave >= sim_level_first_wave(s->level + 1)) s->level++;
+  s->level_wave = s->wave - sim_level_first_wave(s->level) + 1;
   for (int i = 0; i < players; i++) { /* a run started at a later wave begins with about the levels a played run has there */
     player *p = &s->p[i];
-    for (int k = 1; k < s->wave; k++) {
+    for (int k = 1; k < dwave(s); k++) {
       p->level++;
       p->xp_next = 10 + p->level * 8 + p->level * p->level * 4;
       int u = LADDER[(p->level - 2) % (int)sizeof LADDER];
@@ -405,7 +411,7 @@ void sim_init(sim *s, int players, uint32_t seed, int start_wave) {
       if (*lv < UP_MAX[u]) ++*lv;
     }
   }
-  s->spawn_cap = 40 + s->wave * 90;
+  s->spawn_cap = 40 + dwave(s) * 90;
   build_flow(s);
 }
 
@@ -696,29 +702,39 @@ static void bullets_step(sim *s) {
   }
 }
 
+/* the descent's floors: levels 1 to 4 have 5 waves, 5 to 8 have 6 (LEVELS.md section 1) */
+static const int LEVEL_WAVES[NLEVELS] = { 5, 5, 5, 5, 6, 6, 6, 6 };
+int sim_level_waves(int level) { return LEVEL_WAVES[CW_CLAMP(level, 0, NLEVELS - 1)]; }
+int sim_level_first_wave(int level) {
+  int w = 1;
+  for (int k = 0; k < level && k < NLEVELS; k++) w += LEVEL_WAVES[k];
+  return w;
+}
+
 static void spawn_director(sim *s) {
   s->wave_tick++;
-  if (s->state == ST_PLAY && s->wave == FINAL_WAVE && s->boss_wave == FINAL_WAVE && s->boss_alive == 0 && s->wave_tick > 90) {
-    s->state = ST_WON; /* the last boss is down: the yard is held */
+  bool boss_wave = s->level_wave >= LEVEL_WAVES[s->level];
+  if (boss_wave && s->boss_wave == s->wave && s->boss_alive == 0 && s->wave_tick > 90) { /* the floor's boss is down: the horde melts */
+    s->state = ST_CLEAR;
     s->state_ticks = 0;
     return;
   }
-  if (s->wave_tick >= 60 * 30 && !(s->wave == FINAL_WAVE && s->boss_alive)) { /* the last wave lasts until its boss falls */
+  if (s->wave_tick >= WAVE_TICKS && !boss_wave) { /* a boss wave lasts until its boss falls */
     s->wave_tick = 0;
-    s->wave++;
+    s->wave++, s->level_wave++;
     ev(s, EV_WAVE, 0, 0, 0, 0, s->wave, 0);
   }
   /* a slow start, a horde late: about 25 at wave 1, 330 at 5, 1000 at 10,
    * 2900 by 20, more with more players */
   {
-    int w = s->wave;
+    int w = dwave(s);
     float k = 0.6f + 0.2f * (float)s->players;
     s->spawn_cap = CW_MIN((int)((float)(20 + 40 * (w - 1) + 6 * w * w) * k), 2900);
   }
   float cx, cy, hw, hh;
   sim_team_box(s, &cx, &cy, &hw, &hh);
   s->cam_x = cx, s->cam_y = cy;
-  if (s->wave % 5 == 0 && s->wave_tick == 30 && s->boss_alive == 0) {
+  if (boss_wave && s->wave_tick == 30 && s->boss_alive == 0 && s->boss_wave != s->wave) { /* the floor's last wave: its boss */
     s->boss_wave = s->wave;
     float a = rf(s) * 6.28f;
     float bx = cw_clampf(cx + cw_cos(a) * 24, -HALF + 3, HALF - 3), by = cw_clampf(cy + cw_sin(a) * 24, -HALF + 3, HALF - 3);
@@ -742,8 +758,9 @@ static void spawn_director(sim *s) {
     if (close) continue;
     float r = rf(s);
     int kind = EK_RUNNER;
-    if (s->wave >= 2 && r < CW_MIN(0.02f + 0.004f * (float)s->wave, 0.07f)) kind = EK_BRUTE;
-    else if (s->wave >= 3 && r < CW_MIN(0.06f + 0.006f * (float)s->wave, 0.14f)) kind = EK_BLOATER;
+    int dw = dwave(s);
+    if (dw >= 2 && r < CW_MIN(0.02f + 0.004f * (float)dw, 0.07f)) kind = EK_BRUTE;
+    else if (dw >= 3 && r < CW_MIN(0.06f + 0.006f * (float)dw, 0.14f)) kind = EK_BLOATER;
     if (spawn_enemy(s, kind, x, y) < 0) break;
   }
 }
@@ -897,6 +914,10 @@ static void enemies_step(sim *s) {
 
 /* a power-up lying at (x, y) (development: HORDE_POWER_SHOW) */
 int sim_spawn(sim *s, int kind, float x, float y) { return spawn_enemy(s, kind, x, y); }
+void sim_dev_kill_boss(sim *s) {
+  for (int i = 0; i < MAXE; i++)
+    if (s->e[i].alive && s->e[i].kind == EK_BOSS) kill_enemy(s, i, 0, 0, 0);
+}
 void sim_power_drop(sim *s, float x, float y, int t) { drop_value(s, PK_POWER, x, y, t % PU_KINDS); }
 
 /* what a power-up gives */
@@ -1056,6 +1077,79 @@ void sim_team_box(const sim *s, float *cx, float *cy, float *hw, float *hh) {
   *cx = (x0 + x1) * 0.5f, *cy = (y0 + y1) * 0.5f, *hw = (x1 - x0) * 0.5f, *hh = (y1 - y0) * 0.5f;
 }
 
+/* the next floor: the team stands up on its closed hatch with its levels and score, power-ups end */
+static void floor_next(sim *s) {
+  if (s->level >= NLEVELS - 1) { /* the last floor: the run is won */
+    s->state = ST_WON;
+    s->state_ticks = 0;
+    return;
+  }
+  s->level++;
+  s->level_wave = 1;
+  s->wave = sim_level_first_wave(s->level);
+  s->wave_tick = 0;
+  s->boss_wave = 0;
+  for (int i = 0; i < MAXE; i++)
+    if (s->e[i].alive) kill_enemy(s, i, -1, 0, 0);
+  memset(s->b, 0, sizeof s->b);
+  memset(s->g, 0, sizeof s->g);
+  memset(s->x, 0, sizeof s->x);
+  memset(s->m, 0, sizeof s->m);
+  for (int i = 0; i < MAXP; i++) {
+    player *p = &s->p[i];
+    if (!p->active) continue;
+    float a = (float)i * 6.2832f / (float)s->players;
+    p->x = cw_cos(a) * 2.0f, p->y = cw_sin(a) * 2.0f;
+    p->down = false, p->hp = 100, p->inv = 120;
+    p->pu_weapon_t = p->pu_ammo_t = p->saw_t = p->shield_t = p->magnet_t = 0;
+  }
+  s->state = ST_PLAY;
+  s->state_ticks = 0;
+  ev(s, EV_FLOOR, 0, 0, 0, 0, s->level, 0);
+}
+
+/* after a floor's boss: the horde melts over MELT_TICKS (staggered, nobody hurt), the hatch opens, the first living
+ * player to step in takes the team down after DESCEND_TICKS */
+static void floor_step(sim *s) {
+  s->state_ticks++;
+  for (int i = 0; i < MAXP; i++) s->p[i].inv = CW_MAX(s->p[i].inv, 10);
+  if (s->state == ST_CLEAR) {
+    int left = 0;
+    for (int i = 0; i < MAXE; i++) left += s->e[i].alive;
+    int due = MELT_TICKS - s->state_ticks, n = due > 0 ? (left + due - 1) / due : left;
+    for (int i = 0; i < MAXE && n > 0; i++) {
+      int k = (i * 7919 + s->state_ticks * 31) % MAXE; /* scattered, not in slot order */
+      enemy *e = &s->e[k];
+      if (!e->alive) continue;
+      ev(s, EV_MELT, e->x, e->y, 0, 0, e->kind, 0);
+      kill_enemy(s, k, -1, 0, 0);
+      n--;
+    }
+    if (s->state_ticks >= MELT_TICKS && left <= n) {
+      for (int i = 0; i < MAXE; i++)
+        if (s->e[i].alive) kill_enemy(s, i, -1, 0, 0);
+      memset(s->x, 0, sizeof s->x); /* no bloater's burst outlives the floor */
+      ev(s, EV_CLEAR, 0, 0, 0, 0, s->level, 0);
+      ev(s, EV_HATCH, 0, 0, 0, 0, s->level, 0);
+      s->state = ST_HATCH;
+      s->state_ticks = 0;
+    }
+  } else if (s->state == ST_HATCH) {
+    if (s->state_ticks < HATCH_OPEN_TICKS) return; /* still opening */
+    for (int i = 0; i < MAXP; i++) {
+      const player *p = &s->p[i];
+      if (p->active && !p->down && p->x * p->x + p->y * p->y < HATCH_R * HATCH_R) {
+        ev(s, EV_DESCEND, p->x, p->y, 0, 0, i, 0);
+        s->state = ST_DESCEND;
+        s->state_ticks = 0;
+        return;
+      }
+    }
+  } else if (s->state == ST_DESCEND && s->state_ticks >= DESCEND_TICKS) {
+    floor_next(s);
+  }
+}
+
 void sim_step(sim *s, const input in[MAXP]) {
   s->tick++;
   s->ev_n = s->ev_n > MAXEV - 400 ? 0 : s->ev_n; /* nothing draws these: drop the backlog */
@@ -1066,6 +1160,7 @@ void sim_step(sim *s, const input in[MAXP]) {
     for (int i = 0; i < MAXE && n < 30; i++)
       if (s->e[i].alive && (i + s->tick) % 3 == 0) kill_enemy(s, i, -1, 0, 0), n++;
   }
+  if (s->state == ST_CLEAR || s->state == ST_HATCH || s->state == ST_DESCEND) floor_step(s);
   if (s->state == ST_OVER) {
     if (++s->state_ticks > 60 * 6) {
       for (int i = 0; i < MAXP; i++)
@@ -1074,8 +1169,9 @@ void sim_step(sim *s, const input in[MAXP]) {
           p->down = false, p->hp = 100, p->inv = 120;
         }
       s->state = ST_PLAY;
-      s->wave = CW_MAX(1, s->wave - 1);
+      if (s->level_wave > 1) s->wave--, s->level_wave--; /* a wave back, never above the floor's first */
       s->wave_tick = 0;
+      s->boss_wave = 0;
       for (int i = 0; i < MAXE; i++)
         if (s->e[i].alive) kill_enemy(s, i, -1, 0, 0);
       memset(s->m, 0, sizeof s->m);
