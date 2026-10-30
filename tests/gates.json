@@ -600,5 +600,301 @@
       "maxGt16": 0.25,
       "vsGl": 0.25
     }
+  },
+  {
+    "name": "hordeshooter-floor-yard",
+    "app": "hordeshooter_auto",
+    "frames": 3600,
+    "maxGt16": 0.12,
+    "env": {
+      "HORDE_WAVE": "5",
+      "HORDE_PLAYERS": "3",
+      "HORDE_BOSS_WEAK": "1"
+    },
+    "fields": [
+      "game.ticks",
+      "game.state",
+      "floor.level",
+      "floor.boss_tick",
+      "floor.clear_tick",
+      "floor.hatch_tick",
+      "floor.descend_tick",
+      "floor.next_tick",
+      "floor.left_at_hatch",
+      "game.hash"
+    ],
+    "expect": {
+      "game.ticks": 3600
+    },
+    "controlEnv": {
+      "HORDE_WAVE": "5",
+      "HORDE_PLAYERS": "3",
+      "HORDE_BOSS_WEAK": "1",
+      "HORDE_FLOOR_STAY": "1"
+    },
+    "controlFrames": 3600,
+    "hosts": [
+      "native"
+    ],
+    "note": "placeholder"
+  },
+  {
+    "name": "hordeshooter-floor-sluice",
+    "app": "hordeshooter_auto",
+    "frames": 3600,
+    "maxGt16": 0.12,
+    "env": {
+      "HORDE_WAVE": "10",
+      "HORDE_PLAYERS": "3",
+      "HORDE_BOSS_WEAK": "1"
+    },
+    "fields": [
+      "game.ticks",
+      "game.state",
+      "floor.level",
+      "floor.boss_tick",
+      "floor.clear_tick",
+      "floor.hatch_tick",
+      "floor.descend_tick",
+      "floor.next_tick",
+      "floor.left_at_hatch",
+      "game.hash"
+    ],
+    "expect": {
+      "game.ticks": 3600
+    },
+    "controlEnv": {
+      "HORDE_WAVE": "10",
+      "HORDE_PLAYERS": "3",
+      "HORDE_BOSS_WEAK": "1",
+      "HORDE_FLOOR_STAY": "1"
+    },
+    "controlFrames": 3600,
+    "hosts": [
+      "native"
+    ],
+    "note": "placeholder"
+  },
+  {
+    "name": "hordeshooter-floor-ossuary",
+    "app": "hordeshooter_auto",
+    "frames": 3600,
+    "maxGt16": 0.12,
+    "env": {
+      "HORDE_WAVE": "15",
+      "HORDE_PLAYERS": "3",
+      "HORDE_BOSS_WEAK": "1"
+    },
+    "fields": [
+      "game.ticks",
+      "game.state",
+      "floor.level",
+      "floor.boss_tick",
+      "floor.clear_tick",
+      "floor.hatch_tick",
+      "floor.descend_tick",
+      "floor.next_tick",
+      "floor.left_at_hatch",
+      "game.hash"
+    ],
+    "expect": {
+      "game.ticks": 3600
+    },
+    "controlEnv": {
+      "HORDE_WAVE": "15",
+      "HORDE_PLAYERS": "3",
+      "HORDE_BOSS_WEAK": "1",
+      "HORDE_FLOOR_STAY": "1"
+    },
+    "controlFrames": 3600,
+    "hosts": [
+      "native"
+    ],
+    "note": "placeholder"
+  },
+  {
+    "name": "hordeshooter-floor-foundry",
+    "app": "hordeshooter_auto",
+    "frames": 3600,
+    "maxGt16": 0.12,
+    "env": {
+      "HORDE_WAVE": "20",
+      "HORDE_PLAYERS": "3",
+      "HORDE_BOSS_WEAK": "1"
+    },
+    "fields": [
+      "game.ticks",
+      "game.state",
+      "floor.level",
+      "floor.boss_tick",
+      "floor.clear_tick",
+      "floor.hatch_tick",
+      "floor.descend_tick",
+      "floor.next_tick",
+      "floor.left_at_hatch",
+      "game.hash"
+    ],
+    "expect": {
+      "game.ticks": 3600
+    },
+    "controlEnv": {
+      "HORDE_WAVE": "20",
+      "HORDE_PLAYERS": "3",
+      "HORDE_BOSS_WEAK": "1",
+      "HORDE_FLOOR_STAY": "1"
+    },
+    "controlFrames": 3600,
+    "hosts": [
+      "native"
+    ],
+    "note": "placeholder"
+  },
+  {
+    "name": "hordeshooter-floor-grotto",
+    "app": "hordeshooter_auto",
+    "frames": 3600,
+    "maxGt16": 0.12,
+    "env": {
+      "HORDE_WAVE": "26",
+      "HORDE_PLAYERS": "3",
+      "HORDE_BOSS_WEAK": "1"
+    },
+    "fields": [
+      "game.ticks",
+      "game.state",
+      "floor.level",
+      "floor.boss_tick",
+      "floor.clear_tick",
+      "floor.hatch_tick",
+      "floor.descend_tick",
+      "floor.next_tick",
+      "floor.left_at_hatch",
+      "game.hash"
+    ],
+    "expect": {
+      "game.ticks": 3600
+    },
+    "controlEnv": {
+      "HORDE_WAVE": "26",
+      "HORDE_PLAYERS": "3",
+      "HORDE_BOSS_WEAK": "1",
+      "HORDE_FLOOR_STAY": "1"
+    },
+    "controlFrames": 3600,
+    "hosts": [
+      "native"
+    ],
+    "note": "placeholder"
+  },
+  {
+    "name": "hordeshooter-floor-cathedral",
+    "app": "hordeshooter_auto",
+    "frames": 3600,
+    "maxGt16": 0.12,
+    "env": {
+      "HORDE_WAVE": "32",
+      "HORDE_PLAYERS": "3",
+      "HORDE_BOSS_WEAK": "1"
+    },
+    "fields": [
+      "game.ticks",
+      "game.state",
+      "floor.level",
+      "floor.boss_tick",
+      "floor.clear_tick",
+      "floor.hatch_tick",
+      "floor.descend_tick",
+      "floor.next_tick",
+      "floor.left_at_hatch",
+      "game.hash"
+    ],
+    "expect": {
+      "game.ticks": 3600
+    },
+    "controlEnv": {
+      "HORDE_WAVE": "32",
+      "HORDE_PLAYERS": "3",
+      "HORDE_BOSS_WEAK": "1",
+      "HORDE_FLOOR_STAY": "1"
+    },
+    "controlFrames": 3600,
+    "hosts": [
+      "native"
+    ],
+    "note": "placeholder"
+  },
+  {
+    "name": "hordeshooter-floor-rift",
+    "app": "hordeshooter_auto",
+    "frames": 3600,
+    "maxGt16": 0.12,
+    "env": {
+      "HORDE_WAVE": "38",
+      "HORDE_PLAYERS": "3",
+      "HORDE_BOSS_WEAK": "1"
+    },
+    "fields": [
+      "game.ticks",
+      "game.state",
+      "floor.level",
+      "floor.boss_tick",
+      "floor.clear_tick",
+      "floor.hatch_tick",
+      "floor.descend_tick",
+      "floor.next_tick",
+      "floor.left_at_hatch",
+      "game.hash"
+    ],
+    "expect": {
+      "game.ticks": 3600
+    },
+    "controlEnv": {
+      "HORDE_WAVE": "38",
+      "HORDE_PLAYERS": "3",
+      "HORDE_BOSS_WEAK": "1",
+      "HORDE_FLOOR_STAY": "1"
+    },
+    "controlFrames": 3600,
+    "hosts": [
+      "native"
+    ],
+    "note": "placeholder"
+  },
+  {
+    "name": "hordeshooter-floor-core",
+    "app": "hordeshooter_auto",
+    "frames": 1200,
+    "maxGt16": 0.12,
+    "env": {
+      "HORDE_WAVE": "44",
+      "HORDE_PLAYERS": "3",
+      "HORDE_BOSS_WEAK": "1"
+    },
+    "fields": [
+      "game.ticks",
+      "game.state",
+      "floor.level",
+      "floor.boss_tick",
+      "floor.clear_tick",
+      "floor.hatch_tick",
+      "floor.descend_tick",
+      "floor.next_tick",
+      "floor.left_at_hatch",
+      "game.hash"
+    ],
+    "expect": {
+      "game.ticks": 1200
+    },
+    "controlEnv": {
+      "HORDE_WAVE": "44",
+      "HORDE_PLAYERS": "3",
+      "HORDE_BOSS_WEAK": "1",
+      "HORDE_FLOOR_STAY": "1"
+    },
+    "controlFrames": 1200,
+    "hosts": [
+      "native"
+    ],
+    "note": "placeholder"
   }
 ]

@@ -576,6 +576,8 @@ static const float PUC[PU_KINDS][3] = {
   { 1.0f, 0.25f, 0.55f }, { 0.95f, 1.0f, 0.4f },                                                                       /* ammo */
   { 0.45f, 1.0f, 0.35f }, { 0.9f, 0.9f, 0.25f },                                                                       /* charges */
   { 0.85f, 0.88f, 0.95f }, { 0.3f, 0.6f, 1.0f }, { 0.75f, 0.35f, 1.0f },                                              /* helpers */
+  { 0.5f, 0.85f, 1.0f }, { 0.8f, 0.75f, 0.65f }, { 1.0f, 0.5f, 0.15f }, { 1.0f, 0.4f, 0.3f }, { 1.0f, 0.85f, 0.4f },    /* the floors' guns: arc, stake, mortar, seeker, wheel */
+  { 0.6f, 0.9f, 1.0f }, { 1.0f, 0.3f, 0.1f },                                                                         /* frost, hellfire */
 };
 static t3_mat4 MRY(float x, float y, float z, float sx, float sy, float sz, float rz) {
   t3_mat4 m;
@@ -652,7 +654,15 @@ static void view_power_init(void) {
     t3_material *m = mat(PUC[t][0], PUC[t][1], PUC[t][2], 0.3f, 0.5f, true);
     m->emissive = lin(PUC[t][0], PUC[t][1], PUC[t][2]);
     m->emissive_intensity = 1.2f;
-    V.power[t] = imesh(sim_power_name(t), power_model(t), m, 8, true);
+    t3_geometry *g = NULL;
+    if (t >= PU_ARC) { /* the floors' guns: their own models (tools/blender/levelprops.py) */
+      static const char *const WF[] = { "arc", "stake", "mortar", "seeker", "wheel", "frost", "hellfire" };
+      char path[64];
+      chr wc;
+      snprintf(path, sizeof path, "models/weapon_%s.cwchar", WF[t - PU_ARC]);
+      if (chr_load(&wc, path)) g = t3_retain(wc.geo[0][0]), chr_free(&wc);
+    }
+    V.power[t] = imesh(sim_power_name(t), g ? g : power_model(t), m, 8, true);
   }
   { /* the glow ring under each lying power-up */
     t3_material *rm = t3_mesh_basic_material_new(0xffffff);
@@ -692,7 +702,7 @@ static void view_power_init(void) {
   {
     t3_material *sm = mat(0.85f, 0.88f, 0.95f, 0.25f, 0.9f, false);
     sm->emissive = lin(0.9f, 0.9f, 1.0f), sm->emissive_intensity = 0.6f;
-    V.saw = imesh("Saws", power_model(PU_SAWS), sm, 2 * MAXP, true);
+    V.saw = imesh("Saws", power_model(PU_SAWS), sm, 4 * MAXP, true);
   }
   V.mine = imesh("Mines", power_model(PU_MINES), mat(0.6f, 0.6f, 0.2f, 0.4f, 0.6f, true), MAXM, true);
   for (int i = 0; i < MAXP; i++) { /* a bubble round a shielded player */
@@ -1542,7 +1552,7 @@ void view_sync(const sim *s, float time) {
       V.st.enemies_drawn += cnt[k][f];
     }
   /* bullets */
-  int nb = 0, nr = 0, ngr = 0, nrl = 0, nfl = 0;
+  int nb = 0, nr = 0, ngr = 0, nrl = 0, nfl = 0, nwh = 0; /* nwh: wheels in flight, drawn with the saws */
   for (int i = 0; i < MAXB; i++) {
     const bullet *b = &s->b[i];
     if (!b->alive) continue;
@@ -1552,8 +1562,22 @@ void view_sync(const sim *s, float time) {
       if (ngr < V.grenade->instance_matrix->count) put(V.grenade, ngr++, b->x, 0.9f + 5.0f * t * (1 - t) * 1.6f, b->y, (float)b->life * 0.4f, 1, 1, 1);
       continue;
     }
-    if (b->kind == 3) {
-      if (nrl < V.rail->instance_matrix->count) put(V.rail, nrl++, b->x, 0.9f, b->y, yaw, 1, 1, 1);
+    if (b->kind == 3 || b->kind == 10 || b->kind == 6) { /* the rail's lance; frost's (the same cold streak); a stake, short */
+      float k = b->kind == 6 ? 0.35f : 1.0f;
+      if (nrl < V.rail->instance_matrix->count) put(V.rail, nrl++, b->x, 0.9f, b->y, yaw, b->kind == 6 ? 1.6f : 1, b->kind == 6 ? 1.6f : 1, k);
+      continue;
+    }
+    if (b->kind == 7) { /* a mortar shell lobbed over cover */
+      float t = 1.0f - (float)b->life / 36.0f;
+      if (ngr < V.grenade->instance_matrix->count) put(V.grenade, ngr++, b->x, 0.9f + 7.0f * t * (1 - t) * 1.6f, b->y, (float)b->life * 0.4f, 1.4f, 1.4f, 1.4f);
+      continue;
+    }
+    if (b->kind == 9) { /* the saint's wheel, spinning */
+      if (nwh < V.saw->instance_matrix->count) put(V.saw, nwh++, b->x, 0.9f, b->y, (float)s->tick * 0.6f, 1.3f, 1.3f, 1.3f);
+      continue;
+    }
+    if (b->kind == 11) { /* the hellfire lance: a beam of flame */
+      if (nfl < V.flame->instance_matrix->count) put(V.flame, nfl++, b->x, 0.9f, b->y, (float)(i * 7 + b->life), 0.6f, 0.6f, 0.6f);
       continue;
     }
     if (b->kind == 4) { /* a ball of flame that grows as it slows */
@@ -1583,14 +1607,14 @@ void view_sync(const sim *s, float time) {
     V.mine->count = nm;
     touch(V.mine, false);
   }
-  { /* saws round their players */
-    int nsw = 0;
+  { /* saws round their players (after the wheels in flight) */
+    int nsw = nwh;
     for (int k = 0; k < MAXP; k++) {
       const player *p = &s->p[k];
       if (!p->active || p->down || p->saw_t <= 0) continue;
       for (int j = 0; j < 2; j++) {
         float a = p->saw_a + (float)j * 3.14159265f;
-        put(V.saw, nsw++, p->x + cw_cos(a) * 2.4f, 0.7f, p->y + cw_sin(a) * 2.4f, time * 25.0f, 1.3f, 1.3f, 1.3f);
+        if (nsw < V.saw->instance_matrix->count) put(V.saw, nsw++, p->x + cw_cos(a) * 2.4f, 0.7f, p->y + cw_sin(a) * 2.4f, time * 25.0f, 1.3f, 1.3f, 1.3f);
       }
     }
     V.saw->count = nsw;
@@ -1656,13 +1680,13 @@ void view_sync(const sim *s, float time) {
   }
   V.crate->count = nc, V.barrel->count = nba, V.wall->count = nw, V.pillar->count = np;
   { /* the floor bosses' leavings: acid (green), fire (orange) and spores (cyan) glowing on the floor, lances in flight, bone piles */
-    static const t3_color ZC[3] = { { 0.35f, 1.0f, 0.2f }, { 1.0f, 0.42f, 0.08f }, { 0.25f, 0.85f, 1.0f } };
+    static const t3_color ZC[4] = { { 0.35f, 1.0f, 0.2f }, { 1.0f, 0.42f, 0.08f }, { 0.25f, 0.85f, 1.0f }, { 1.0f, 0.55f, 0.1f } };
     cw_splats_begin(V.zones);
     for (int i = 0; i < MAXZ; i++) {
       const zone *z = &s->z[i];
       if (!z->alive) continue;
       float fade = cw_clampf((float)z->life / 40.0f, 0, 1), d = z->r * 2.2f;
-      cw_splats_add(V.zones, (t3_vec3){ z->x, 0, z->y }, d, d, (float)i, 0, ZC[CW_MIN(z->kind, 2)], 2.4f * fade * (0.85f + 0.15f * cw_sin((float)s->tick * 0.2f + (float)i)));
+      cw_splats_add(V.zones, (t3_vec3){ z->x, 0, z->y }, d, d, (float)i, 0, ZC[CW_MIN(z->kind, 3)], 2.4f * fade * (0.85f + 0.15f * cw_sin((float)s->tick * 0.2f + (float)i)));
     }
     int nl = 0;
     for (int i = 0; i < MAXES; i++) {

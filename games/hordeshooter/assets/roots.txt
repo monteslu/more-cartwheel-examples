@@ -125,3 +125,10 @@ textures/lava_floor.png
 lightmaps/cathedral.cwlm
 lightmaps/rift.cwlm
 lightmaps/core.cwlm
+models/weapon_arc.cwchar
+models/weapon_stake.cwchar
+models/weapon_mortar.cwchar
+models/weapon_seeker.cwchar
+models/weapon_wheel.cwchar
+models/weapon_frost.cwchar
+models/weapon_hellfire.cwchar

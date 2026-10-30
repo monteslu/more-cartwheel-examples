@@ -21,9 +21,11 @@ static const char *const UP_NAME[] = { "Rapid fire", "Extra barrel", "Heavy roun
 static const uint8_t LADDER[] = { 0, 1, 2, 3, 4, 0, 5, 1, 6, 7, 2, 8, 0, 3, 7, 4, 1, 5 };
 const char *sim_upgrade_name(int u) { return UP_NAME[u % 9]; }
 static const char *const PU_NAME[PU_KINDS] = { "SHOTGUN", "MINIGUN", "ROCKETS", "RAIL GUN", "FLAMER", "EXPLOSIVE ROUNDS", "RAPID FIRE",
-                                               "GRENADES", "MINES", "BUZZSAWS", "SHIELD", "MAGNET" };
+                                               "GRENADES", "MINES", "BUZZSAWS", "SHIELD", "MAGNET",
+                                               "ARC CASTER", "STAKE REPEATER", "SLAG MORTAR", "SEEKER SWARM", "SAINT'S WHEEL", "FROST LANCE",
+                                               "HELLFIRE LANCE" };
 const char *sim_power_name(int t) { return PU_NAME[(unsigned)t % PU_KINDS]; }
-int sim_power_category(int t) { return t <= PU_FLAME ? 0 : t <= PU_RAPID ? 1 : t <= PU_MINES ? 2 : t == PU_SAWS ? 3 : t == PU_SHIELD ? 4 : 5; }
+int sim_power_category(int t) { return pu_is_weapon(t) ? 0 : t <= PU_RAPID ? 1 : t <= PU_MINES ? 2 : t == PU_SAWS ? 3 : t == PU_SHIELD ? 4 : 5; }
 
 static float rf(sim *s) { return cw_rng_float(&s->rng); }
 static void ev(sim *s, int kind, float x, float y, float z, float w, int a, int b) {
@@ -91,6 +93,8 @@ enum { BOSS_YARD, BOSS_VHESSA, BOSS_OSSIVAR, BOSS_ANVILGRAVE, BOSS_MYCEL, BOSS_S
 static int spawn_enemy(sim *s, int kind, float x, float y);
 static bool in_box(const obstacle *o, float x, float y, float pad);
 static bool in_hazard(const sim *s, int kind, float x, float y);
+static void kill_enemy(sim *s, int i, int owner, float dx, float dy);
+static void add_zone(sim *s, int kind, float x, float y, float r, int life);
 static int boss_of(const sim *s) {
   static const int B[NLEVELS] = { BOSS_YARD, BOSS_VHESSA, BOSS_OSSIVAR, BOSS_ANVILGRAVE, BOSS_MYCEL, BOSS_SERAPHEL, BOSS_KHARVAAL, BOSS_UNMAKER };
   return s->fl[s->level].set ? B[s->level] : BOSS_YARD;
@@ -281,6 +285,15 @@ static void boss_world_step(sim *s) {
     if (!z->alive) continue;
     if (--z->life <= 0) { z->alive = false; continue; }
     if (s->tick % 20 || z->kind == 2) continue; /* spores slow (the movement reads them), they do not burn */
+    if (z->kind == 3) { /* the mortar's molten puddle burns the horde */
+      for (int k = 0; k < MAXE; k++) {
+        enemy *e = &s->e[k];
+        if (!e->alive || (e->x - z->x) * (e->x - z->x) + (e->y - z->y) * (e->y - z->y) > z->r * z->r) continue;
+        e->hp -= 3, e->flash = 2;
+        if (e->hp <= 0) kill_enemy(s, k, 0, 0, 0);
+      }
+      continue;
+    }
     for (int k = 0; k < MAXP; k++) {
       player *p = &s->p[k];
       float dx = p->x - z->x, dy = p->y - z->y;
@@ -356,8 +369,13 @@ static const float RARITY_DMG[RARE_KINDS] = { 1.0f, 1.15f, 1.3f, 1.5f, 1.8f };
 static int weapon_pool(const sim *s, int *out) {
   int n = 0;
   out[n++] = PU_SHOTGUN, out[n++] = PU_MINIGUN, out[n++] = PU_ROCKETS;
-  if (s->level >= 1) out[n++] = PU_RAIL;
-  if (s->level >= 2) out[n++] = PU_FLAME;
+  if (s->level >= 1) out[n++] = PU_RAIL, out[n++] = PU_ARC;
+  if (s->level >= 2) out[n++] = PU_STAKE;
+  if (s->level >= 3) out[n++] = PU_FLAME, out[n++] = PU_MORTAR;
+  if (s->level >= 4) out[n++] = PU_SEEKER;
+  if (s->level >= 5) out[n++] = PU_WHEEL;
+  if (s->level >= 6) out[n++] = PU_FROST;
+  if (s->level >= 7) out[n++] = PU_HELLFIRE;
   return n;
 }
 static int roll_rarity(sim *s) {
@@ -366,7 +384,9 @@ static int roll_rarity(sim *s) {
   int k = RARE_KINDS - 1;
   for (int i = 0; i < RARE_KINDS; i++)
     if (r < (acc += ODDS[i])) { k = i; break; }
-  return CW_MIN(k + s->level / 2 * (rf(s) < 0.5f ? 1 : 0), RARE_KINDS - 1); /* a step up every two floors, about half the time */
+  k = CW_MIN(k + s->level / 2 * (rf(s) < 0.5f ? 1 : 0), RARE_KINDS - 1); /* a step up every two floors, about half the time */
+  if (s->level == NLEVELS - 1 && rf(s) < 0.4f) k = CW_MAX(k, RARE_EPIC); /* the core's caches: epic or better 40% of the time */
+  return k;
 }
 static void drop_value(sim *s, int kind, float x, float y, int value);
 static void loot_shower(sim *s, float x, float y) {
@@ -513,6 +533,13 @@ static void kill_enemy(sim *s, int i, int owner, float dx, float dy) {
   ev(s, EV_KILL, e->x, e->y, dx, dy, e->kind, owner);
   if (e->kind == EK_BOSS) s->boss_alive--;
   if (e->kind == EK_SPORELING) add_zone(s, 2, e->x, e->y, 1.8f, 180); /* a spore cloud: slows for 3 s */
+  if (e->frozen > 0 && owner >= 0) /* a frozen one shatters into its neighbours */
+    for (int k = 0; k < MAXE; k++) {
+      enemy *n = &s->e[k];
+      if (!n->alive || n == e || (n->x - e->x) * (n->x - e->x) + (n->y - e->y) * (n->y - e->y) > 1.6f * 1.6f) continue;
+      n->hp -= 6, n->flash = 4;
+      if (n->hp <= 0) kill_enemy(s, k, owner, 0, 0);
+    }
   if (e->kind == EK_BONEWALKER && s->state == ST_PLAY) /* it falls apart: a pile of bones, one in five to stand up once in 4 s */
     for (int k = 0; k < MAXPILE; k++)
       if (!s->pl[k].alive) {
@@ -531,7 +558,7 @@ static void kill_enemy(sim *s, int i, int owner, float dx, float dy) {
   }
   float r = rf(s);
   if (e->kind != EK_RUNNER ? r < 0.35f : r < 0.012f) drop(s, 1, e->x, e->y);
-  if (e->kind == EK_BRUTE && rf(s) < 0.03f && !s->no_power) drop_value(s, PK_POWER, e->x, e->y, (int)(cw_rng_u32(&s->rng) % PU_KINDS)); /* an elite now and then */
+  if (e->kind == EK_BRUTE && rf(s) < 0.03f && !s->no_power) drop_value(s, PK_POWER, e->x, e->y, (int)(cw_rng_u32(&s->rng) % PU_BASE_KINDS)); /* an elite now and then */
   if (e->kind == EK_BOSS && !s->no_power) loot_shower(s, e->x, e->y); /* the boss's loot: caches by rarity */
   if (e->kind == EK_BLOATER) queue_boom(s, e->x, e->y, 3.4f, 14, 4, owner, false);
   if (e->kind == EK_BOSS) {
@@ -826,7 +853,17 @@ static void bullet_hit(sim *s, int i, void *u) {
     c->stop = true;
     return;
   }
-  if (b->fx == 1) queue_boom(s, b->x, b->y, 1.6f, 2.0f + b->dmg * 0.5f, 0, b->owner, false); /* explosive rounds */
+  if (b->fx == 1 && b->kind == 0) queue_boom(s, b->x, b->y, 1.6f, 2.0f + b->dmg * 0.5f, 0, b->owner, false); /* explosive rounds */
+  if (b->kind == 8 || b->kind == 7) { /* a seeker or a mortar shell bursts on what it touches */
+    queue_boom(s, b->x, b->y, b->kind == 7 ? 3.0f : 1.8f, b->kind == 7 ? 18 : 6 + b->dmg, 0, b->owner, b->kind == 7);
+    if (b->kind == 7) add_zone(s, 3, b->x, b->y, 1.6f, 180);
+    b->alive = false, c->stop = true;
+    return;
+  }
+  if (b->kind == 10) { if (e->slow > 0) e->frozen = 90; e->slow = 120; } /* frost: slowed, and frozen when already slowed */
+  if (b->kind == 11) e->burn = CW_MAX(e->burn, 120), e->burn_owner = b->owner; /* hellfire sets it alight */
+  if (b->kind == 6 && b->pierce == 0) e->pin = 60; /* the stake's last target is nailed in place */
+  if (b->kind == 9) { b->pierce = 99; return; } /* the wheel cuts through everything */
   if (b->pierce-- <= 0) {
     b->alive = false;
     c->stop = true;
@@ -960,12 +997,64 @@ static void player_step(sim *s, int i, const input *in) {
     else if (w == PU_SHOTGUN) period = period * 2;
     else if (w == PU_RAIL) period = period * 3;
     else if (w == PU_FLAME) period = 2;
+    else if (w == PU_ARC || w == PU_FROST) period = period * 3;
+    else if (w == PU_STAKE) period = period * 3 / 2;
+    else if (w == PU_MORTAR || w == PU_SEEKER) period = period * 4;
+    else if (w == PU_WHEEL) period = period * 2;
+    else if (w == PU_HELLFIRE) period = 2;
     if (p->pu_ammo_t > 0 && p->pu_ammo == PU_RAPID) period = CW_MAX(2, period / 2);
     p->cd = period;
+    float rar = w >= 0 ? RARITY_DMG[CW_CLAMP(p->pu_rarity, 0, RARE_KINDS - 1)] : 1.0f;
+    bool legend = w >= 0 && p->pu_rarity == RARE_LEGENDARY;
+    p->beam = w == PU_HELLFIRE ? p->beam + period : 0;
+    if (w == PU_ARC) { /* lightning: the nearest in front, then jumps to up to 3 more within 5 m (on and on when legendary); one in the water passes it through the water */
+      float x = p->x, y = p->y, dmg = (8.0f + 1.5f * (float)p->dmg) * rar;
+      int hops = legend ? 24 : 4, hit[32], nh = 0;
+      for (int h = 0; h < hops; h++) {
+        int best = -1;
+        float bd = h == 0 ? 14.0f * 14.0f : 5.0f * 5.0f;
+        for (int k = 0; k < MAXE; k++) {
+          const enemy *e = &s->e[k];
+          if (!e->alive) continue;
+          float dx = e->x - x, dy = e->y - y, d = dx * dx + dy * dy;
+          if (d > bd) continue;
+          if (h == 0 && (dx * cw_cos(p->aim) + dy * cw_sin(p->aim)) < 0.85f * sqrtf(d)) continue; /* the first in front */
+          bool seen = false;
+          for (int j = 0; j < nh; j++) seen |= hit[j] == k;
+          if (!seen) bd = d, best = k;
+        }
+        if (best < 0) break;
+        enemy *e = &s->e[best];
+        hit[nh++] = best;
+        ev(s, EV_ARC, x, y, e->x, e->y, i, 0);
+        x = e->x, y = e->y;
+        bool wet = in_hazard(s, HZ_WATER, x, y);
+        e->hp -= (int)(dmg + 0.5f), e->flash = 4;
+        if (e->hp <= 0) kill_enemy(s, best, i, 0, 0);
+        if (wet) /* the water carries it to everything standing in it close by */
+          for (int k = 0; k < MAXE; k++) {
+            enemy *o = &s->e[k];
+            if (!o->alive || k == best || (o->x - x) * (o->x - x) + (o->y - y) * (o->y - y) > 36 || !in_hazard(s, HZ_WATER, o->x, o->y)) continue;
+            ev(s, EV_ARC, x, y, o->x, o->y, i, 1);
+            o->hp -= (int)(dmg * 0.6f + 0.5f), o->flash = 4;
+            if (o->hp <= 0) kill_enemy(s, k, i, 0, 0);
+          }
+      }
+      ev(s, EV_SHOT, p->x, p->y, cw_cos(p->aim), cw_sin(p->aim), i, 0);
+      goto fired;
+    }
+    if (w == PU_WHEEL) { /* the saint's wheel: one in the air at a time (two when legendary) */
+      int out = 0;
+      for (int j = 0; j < MAXB; j++) out += s->b[j].alive && s->b[j].kind == 9 && s->b[j].owner == i;
+      if (out >= (legend ? 2 : 1)) goto fired;
+    }
     int n = 1 + p->shots + (w >= 0 && p->pu_rarity >= RARE_RARE ? 1 : 0); /* a rare gun or better: one more */
     if (w == PU_SHOTGUN) n += 4;
     if (w == PU_FLAME) n = 3;
-    float spread = w == PU_SHOTGUN ? 0.36f : w == PU_FLAME ? 0.3f : w == PU_MINIGUN ? 0.07f * (float)(n - 1) + 0.06f : 0.07f * (float)(n - 1) + 0.02f;
+    if (w == PU_SEEKER) n = 8;                 /* the drum's eight */
+    if (w == PU_MORTAR) n = legend ? 3 : 1;    /* a cluster when legendary */
+    if (w == PU_WHEEL || w == PU_HELLFIRE || w == PU_FROST || w == PU_STAKE) n = CW_MIN(n, w == PU_STAKE ? 2 : 1);
+    float spread = w == PU_SHOTGUN ? 0.36f : w == PU_FLAME ? 0.3f : w == PU_SEEKER ? 0.7f : w == PU_MORTAR ? 0.18f : w == PU_MINIGUN ? 0.07f * (float)(n - 1) + 0.06f : 0.07f * (float)(n - 1) + 0.02f;
     bool rocket = (p->rocket > 0 && ((s->tick / period) % 4 == 0)) || w == PU_ROCKETS;
     for (int k = 0; k < n; k++) {
       int slot = -1;
@@ -976,16 +1065,26 @@ static void player_step(sim *s, int i, const input *in) {
       float jit = (rf(s) - 0.5f) * 0.03f;
       bool rk = rocket && k == n / 2;
       float a = p->aim + off + jit + (w == PU_FLAME ? (rf(s) - 0.5f) * 0.25f : 0), v = rk ? 22.0f : w == PU_RAIL ? 70.0f : w == PU_FLAME ? 13.0f + rf(s) * 4 : 32.0f;
-      uint8_t kind = rk ? 1 : w == PU_RAIL ? 3 : w == PU_FLAME ? 4 : 0;
+      static const uint8_t NK[PU_KINDS] = { [PU_STAKE] = 6, [PU_MORTAR] = 7, [PU_SEEKER] = 8, [PU_WHEEL] = 9, [PU_FROST] = 10, [PU_HELLFIRE] = 11 };
+      static const float NV[PU_KINDS] = { [PU_STAKE] = 45, [PU_MORTAR] = 15, [PU_SEEKER] = 16, [PU_WHEEL] = 18, [PU_FROST] = 70, [PU_HELLFIRE] = 60 };
+      uint8_t kind = rk ? 1 : w == PU_RAIL ? 3 : w == PU_FLAME ? 4 : w >= PU_ARC ? NK[w] : 0;
+      if (kind >= 6) v = NV[w];
       float dmg = (2.0f + (float)p->dmg + (rk ? 3.0f : 0.0f)) * (w >= 0 ? RARITY_DMG[CW_CLAMP(p->pu_rarity, 0, RARE_KINDS - 1)] : 1.0f); /* 2 damage and through one body from the start; +1 a heavy-rounds level; a cache's gun by its rarity */
       int life = rk ? 80 : 50, pierce = p->pierce + 1 + (w >= 0 && p->pu_rarity >= RARE_EPIC ? 1 : 0);
       if (kind == 3) dmg = 5.0f + 1.5f * (float)p->dmg, pierce = 12, life = 40; /* the rail goes through a line of them */
       if (kind == 4) dmg = 1.4f + 0.5f * (float)p->dmg, pierce = 4, life = 22;   /* a short hot cone */
-      s->b[slot] = (bullet){ true, (uint8_t)i, kind, (uint8_t)(p->pu_ammo_t > 0 && p->pu_ammo == PU_EXPLOSIVE && kind == 0 ? 1 : 0),
+      if (kind == 6) dmg = (6.0f + (float)p->dmg) * rar, pierce = 2 + (p->pu_rarity >= RARE_EPIC), life = 50; /* the stake: through three, the last nailed */
+      if (kind == 7) dmg = 18.0f * rar, pierce = 0, life = 36;                    /* the shell lands where the grenade does */
+      if (kind == 8) dmg = (2.0f + (float)p->dmg) * rar, pierce = 0, life = 90;  /* a seeker */
+      if (kind == 9) dmg = (7.0f + (float)p->dmg) * rar, pierce = 99, life = 150; /* the wheel */
+      if (kind == 10) dmg = (6.0f + (float)p->dmg) * rar, pierce = 12, life = 40;
+      if (kind == 11) dmg = (1.0f + (float)CW_MIN(p->beam, 180) / 60.0f + 0.5f * (float)p->dmg) * rar, pierce = 6, life = 9; /* thicker and hotter the longer it burns */
+      s->b[slot] = (bullet){ true, (uint8_t)i, kind, (uint8_t)(kind == 9 ? 5 : p->pu_ammo_t > 0 && p->pu_ammo == PU_EXPLOSIVE && kind == 0 ? 1 : 0),
                              p->x + cw_cos(p->aim) * 0.6f, p->y + cw_sin(p->aim) * 0.6f, cw_cos(a) * v, cw_sin(a) * v, dmg, life, pierce };
-      ev(s, rk ? EV_ROCKET : EV_SHOT, s->b[slot].x, s->b[slot].y, s->b[slot].vx, s->b[slot].vy, i, 0);
+      ev(s, rk || kind == 7 || kind == 8 ? EV_ROCKET : EV_SHOT, s->b[slot].x, s->b[slot].y, s->b[slot].vx, s->b[slot].vy, i, 0);
     }
-  }
+  fired:;
+  } else if (!fire) p->beam = 0;
   if (in->bomb && p->bomb_cd == 0 && p->grenades > 0) { /* a grenade in an arc toward the aim */
     p->grenades--;
     p->bomb_cd = 25;
@@ -1031,17 +1130,52 @@ static void bullets_step(sim *s) {
   for (int j = 0; j < MAXB; j++) {
     bullet *b = &s->b[j];
     if (!b->alive) continue;
+    if (b->kind == 8 && b->life < 84) { /* a seeker turns toward the nearest enemy in a 60-degree cone ahead */
+      float sp = sqrtf(b->vx * b->vx + b->vy * b->vy), fx = b->vx / sp, fy = b->vy / sp, bd = 12 * 12;
+      int best = -1;
+      for (int k = 0; k < MAXE; k += 3) {
+        const enemy *e = &s->e[k];
+        if (!e->alive) continue;
+        float dx = e->x - b->x, dy = e->y - b->y, d = dx * dx + dy * dy;
+        if (d < bd && dx * fx + dy * fy > 0.5f * sqrtf(d)) bd = d, best = k;
+      }
+      if (best >= 0) {
+        float dx = s->e[best].x - b->x, dy = s->e[best].y - b->y, l = sqrtf(dx * dx + dy * dy);
+        b->vx += (dx / l * sp - b->vx) * 0.15f, b->vy += (dy / l * sp - b->vy) * 0.15f;
+      }
+    }
+    if (b->kind == 9 && (b->fx == 0 || b->life < 70)) { /* the wheel comes home */
+      const player *o = &s->p[b->owner];
+      float dx = o->x - b->x, dy = o->y - b->y, l = sqrtf(dx * dx + dy * dy);
+      if (l < 0.9f) { b->alive = false; continue; }
+      b->vx = dx / l * 20.0f, b->vy = dy / l * 20.0f, b->life = CW_MAX(b->life, 2);
+    }
     b->x += b->vx / TICK;
     b->y += b->vy / TICK;
+    if (b->kind == 9 && b->fx > 0 && (fabsf(b->x) > HALF - 0.5f || fabsf(b->y) > HALF - 0.5f)) { /* off the arena's edge */
+      if (fabsf(b->x) > HALF - 0.5f) b->vx = -b->vx;
+      if (fabsf(b->y) > HALF - 0.5f) b->vy = -b->vy;
+      b->fx--;
+    }
     if (--b->life <= 0 || b->x < -HALF || b->x > HALF || b->y < -HALF || b->y > HALF) {
+      if (b->kind == 7 && b->alive) queue_boom(s, b->x, b->y, 3.0f, b->dmg, 0, b->owner, true), add_zone(s, 3, b->x, b->y, 1.6f, 180); /* the shell lands */
+      if (b->kind == 8 && b->alive) queue_boom(s, b->x, b->y, 1.8f, 6, 0, b->owner, false);
       if (b->kind == 1 && b->alive) queue_boom(s, b->x, b->y, 2.4f, 8, 0, b->owner, false);
       if (b->kind == 2 && b->alive) queue_boom(s, b->x, b->y, 5.0f + (float)s->p[b->owner].radius * 0.5f, 30, 0, b->owner, true); /* the grenade lands */
       b->alive = false;
       continue;
     }
-    for (int k = 0; k < MAXO; k++) {
+    for (int k = 0; k < MAXO && b->kind != 7; k++) { /* (the mortar's shells fly over cover) */
       obstacle *o = &s->o[k];
       if (!o->alive || !in_box(o, b->x, b->y, 0.05f)) continue;
+      if (b->kind == 9 && b->fx > 0) { /* the wheel glances off: back the way it came on the axis it struck */
+        float px = b->x - o->x, py = b->y - o->y;
+        if (fabsf(px) / o->hx > fabsf(py) / o->hy) b->vx = -b->vx; else b->vy = -b->vy;
+        b->x += b->vx / TICK * 2, b->y += b->vy / TICK * 2;
+        b->fx--;
+        break;
+      }
+      if (b->kind == 9) break;
       if (b->kind == 1) queue_boom(s, b->x, b->y, 2.4f + (float)s->p[b->owner].radius * 0.5f, 3.0f + b->dmg * 2.0f, 0, b->owner, false);
       else if (b->kind == 2) queue_boom(s, b->x - b->vx / TICK, b->y - b->vy / TICK, 5.0f, 30, 0, b->owner, true);
       else hurt_obstacle(s, k, (int)b->dmg);
@@ -1049,6 +1183,7 @@ static void bullets_step(sim *s) {
       break;
     }
     if (!b->alive) continue;
+    if (b->kind == 7) continue; /* a shell in flight touches nothing until it lands */
     for (int k = 0; k < MAXPILE; k++) { /* a shot pile of bones stays down */
       pile *pl = &s->pl[k];
       if (pl->alive && fabsf(pl->x - b->x) < 0.6f && fabsf(pl->y - b->y) < 0.6f) pl->alive = false;
@@ -1092,8 +1227,13 @@ static void spawn_director(sim *s) {
   s->cam_x = cx, s->cam_y = cy;
   if (boss_wave && s->wave_tick == 30 && s->boss_alive == 0 && s->boss_wave != s->wave) { /* the floor's last wave: its boss */
     s->boss_wave = s->wave;
-    float a = rf(s) * 6.28f;
-    float bx = cw_clampf(cx + cw_cos(a) * 24, -HALF + 3, HALF - 3), by = cw_clampf(cy + cw_sin(a) * 24, -HALF + 3, HALF - 3);
+    float bx = 0, by = 0;
+    for (int t = 0; t < 24; t++) { /* 24 m out, on ground the horde can walk from to the team (not shut in behind a wall) */
+      float a = rf(s) * 6.28f, d = t < 12 ? 24.0f : 14.0f;
+      bx = cw_clampf(cx + cw_cos(a) * d, -HALF + 3, HALF - 3), by = cw_clampf(cy + cw_sin(a) * d, -HALF + 3, HALF - 3);
+      int c = CW_CLAMP((int)(by + HALF), 0, FW - 1) * FW + CW_CLAMP((int)(bx + HALF), 0, FW - 1);
+      if (!s->blocked[c] && s->flow[c] != 0xffff) break;
+    }
     int bi = spawn_enemy(s, EK_BOSS, bx, by);
     if (bi >= 0) s->e[bi].act_next = 240, ev(s, EV_BOSS, bx, by, 0, 0, 0, 0);
   }
@@ -1191,6 +1331,13 @@ static void enemies_step(sim *s) {
       else if (boss_of(s) == BOSS_VHESSA && boss_frac(s, e) < 0.5f) sp *= 1.25f;
     }
     if (e->atk > 0) sp = 0; /* planted through the wind-up, the strike and the recovery */
+    if (e->pin > 0) e->pin--, sp = 0;            /* nailed by a stake */
+    if (e->frozen > 0) e->frozen--, sp = 0;      /* frozen solid */
+    if (e->slow > 0) e->slow--, sp *= 0.5f;      /* chilled */
+    if (e->burn > 0 && --e->burn % 20 == 0) {   /* burning: a point every third of a second */
+      e->hp -= 1, e->flash = 2;
+      if (e->hp <= 0) { kill_enemy(s, i, e->burn_owner, 0, 0); continue; }
+    }
     if (e->kind != EK_SKITTER && in_hazard(s, HZ_WATER, e->x, e->y)) sp *= 0.7f; /* wading */
     e->spawn_age++;
     vx = vx * sp + e->kx * 60.0f;
@@ -1385,7 +1532,9 @@ static void power_director(sim *s) {
     for (int i = 0; i < MAXG; i++)
       if (s->g[i].alive && s->g[i].kind == PK_POWER && (s->g[i].x - x) * (s->g[i].x - x) + (s->g[i].y - y) * (s->g[i].y - y) < 4) taken = true;
     if (taken) continue;
-    int t = (int)(cw_rng_u32(&s->rng) % PU_KINDS);
+    int t = (int)(cw_rng_u32(&s->rng) % PU_BASE_KINDS);
+    static const int NEW_GUN[NLEVELS] = { -1, PU_ARC, PU_STAKE, PU_MORTAR, PU_SEEKER, PU_WHEEL, PU_FROST, PU_HELLFIRE };
+    if (s->level > 0 && NEW_GUN[s->level] >= 0 && t % 3 == 0) t = NEW_GUN[s->level]; /* a floor's own gun, a third of the time */
     drop_value(s, PK_POWER, x, y, t);
     ev(s, EV_POWER_SPAWN, x, y, 0, 0, 0, t);
     return;

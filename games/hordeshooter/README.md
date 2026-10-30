@@ -86,8 +86,18 @@ Players 2 to 4 use pads 2 to 4. Join on the title screen.
 - A boss bursts into 3 to 5 loot caches, each a gun at a rarity whose colour
   glows on it and on the floor (common grey, uncommon green, rare blue, epic
   violet, legendary orange): a better gun lasts longer, hits harder, fires one
-  more (rare) and pierces one more (epic). Each floor adds a gun to the pool
-  (the rail gun from the sluice, the flamer from the ossuary). Bloaters burst when they
+  more (rare) and pierces one more (epic); a legendary one has its perk.
+  Each floor brings its own gun (on its power-up spots now and then, and in
+  every cache pool below it): the arc caster (the sluice: lightning that jumps
+  between up to four, and through water to everything standing in it), the
+  stake repeater (the ossuary: through three, the last nailed in place), the
+  slag mortar (the foundry: shells over cover that leave molten pools), the
+  seeker swarm (the grotto: eight homing rockets), the saint's wheel (the
+  cathedral: a bladed disc that bounces five times and comes home), the frost
+  lance (the rift: slows, then freezes; the frozen shatter into their
+  neighbours) and the hellfire lance (the core: a beam that burns hotter the
+  longer it holds, setting the horde alight). The rail gun joins the pool at
+  the sluice and the flamer at the foundry. Bloaters burst when they
   die; brutes are slow and tough. A boss walks, stands still and glows for a
   second (a warning, and a bar at the top shows its health), then charges
   straight ahead; it calls a few runners now and then.
@@ -124,7 +134,8 @@ wave begins with about the levels a played run has there.
 `HORDE_MELEE_DODGE=1` steps the player away from every wind-up, `HORDE_MELEE_LOG=1` prints each strike).
 Live switches for romdev (a cart reads no environment; write them with `wasm({op:'write'})` once the game has
 started): `dev.hold` 1 makes the bots stand where they are, 2 also holds their fire, so the horde reaches
-them; `dev.cam_dist` fixes the camera's distance (16 is a close-up, 0 the game's framing); `dev.boss` 1 skips to the
+them; `dev.cam_dist` fixes the camera's distance (16 is a close-up, 0 the game's framing); `dev.gun` t + 1 hands every player gun t (the table order: 12 arc caster .. 18 hellfire lance) at
+`dev.rarity`; `dev.boss` 1 skips to the
 floor's boss wave and keeps the boss weak, 2 also fells it once it is out, to see the floor end (the melt, the
 hatch, the descent), 3 only skips to the boss wave (the boss at full strength, to see its patterns).
 `hordeshooter_bench` is the auto build at the run's wave 24 (floor 5, wave 4) with three players from the first frame (about 2000

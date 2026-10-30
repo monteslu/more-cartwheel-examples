@@ -511,6 +511,13 @@ void fx_events(sim *s) {
     case EV_ACID: case EV_RISE: case EV_BROOD: /* a splash where acid, fire or spores land; bones or a brood stirring */
       if (FX.frame_hits++ < 10) cw_particles_burst(FX.hit[0], (t3_vec3){ at.x, 0.4f, at.z }, (t3_vec3){ 0, 1, 0 });
       break;
+    case EV_ARC: /* lightning: sparks along the jump and a cold flash where it lands */
+      for (int k = 1; k <= 3 && FX.frame_hits < 24; k++, FX.frame_hits++) {
+        float t = (float)k / 3.0f;
+        cw_particles_burst(FX.hit[0], (t3_vec3){ e->x + (e->z - e->x) * t, 1.0f, e->y + (e->w - e->y) * t }, (t3_vec3){ 0, 0, 0 });
+      }
+      if (FX.frame_hits < 26) flash_light((t3_vec3){ e->z, 0.7f, e->w }, 14, 0.55f, 0.8f, 1.0f);
+      break;
     case EV_LANCE: /* a bone lance thrown */
       cw_particles_burst(FX.muzzle[0], (t3_vec3){ at.x, 1.2f, at.z }, (t3_vec3){ e->z, 0, e->w });
       break;

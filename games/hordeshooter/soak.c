@@ -70,6 +70,9 @@ int main(int argc, char **argv) {
       for (int i = 0; i < players; i++) S.p[i].rate = S.p[i].shots = S.p[i].dmg = S.p[i].pierce = S.p[i].rocket = S.p[i].radius = 0;
     if (getenv("HORDE_SOAK_NOXP")) /* the levels control: gems give nothing, so the levels gate must fail */
       for (int i = 0; i < players; i++) S.p[i].xp = 0;
+    if (getenv("HORDE_SOAK_GUN")) /* every player holds that gun all run (the guns' kill rates) */
+      for (int i = 0; i < players; i++)
+        if (S.p[i].pu_weapon_t < 60) sim_power_give(&S, i, atoi(getenv("HORDE_SOAK_GUN")) % PU_KINDS);
     int was = S.state;
     sim_step(&S, in);
     if (check(&S)) return 1;

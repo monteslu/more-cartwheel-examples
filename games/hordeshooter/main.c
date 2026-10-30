@@ -78,6 +78,8 @@ static struct {
   int32_t floor_level, floor_boss_tick, floor_clear_tick, floor_hatch_tick, floor_descend_tick, floor_next_tick, floor_left_at_hatch;
   int floor_stay, fade_t;
   int32_t dev_boss; /* development (romdev): 1 skips to this floor's boss wave and keeps its boss weak, 2 also fells it, to see the floor end */
+  int32_t dev_gun; /* development (romdev): t + 1 hands every player gun t (the power-up table order) and keeps it held */
+  int32_t dev_rarity; /* with dev_gun: its rarity (0 common .. 4 legendary) */
   int32_t dev_hold; /* development (romdev, screenshots): 1 the bots stand where they are, 2 and hold their fire, so the horde reaches them */
   t3_vec3 cam_p[2];
   int cam_n;
@@ -145,6 +147,7 @@ static void start(int players, void *u) {
   sim_init(&G.S, players, 4242, wave);
   horde_floors_load(&G.S, LEVELS); /* each made floor's layout (the rest are played in the yard) */
   G.floor_stay = getenv("HORDE_FLOOR_STAY") && atoi(getenv("HORDE_FLOOR_STAY"));
+  if (getenv("HORDE_BOSS_WEAK")) G.dev_boss = 1; /* the floor gates: the floor's boss wave, its boss weak (the bots fell it in seconds) */
   G.floor_level = G.S.level, G.floor_boss_tick = G.floor_clear_tick = G.floor_hatch_tick = G.floor_descend_tick = G.floor_next_tick = 0, G.floor_left_at_hatch = -1;
   G.m_test = getenv("HORDE_MELEE_TEST") ? (getenv("HORDE_MELEE_DODGE") && atoi(getenv("HORDE_MELEE_DODGE")) ? 2 : 1) : 0;
   if (G.m_test) { /* the melee gate: one player standing still (or stepping away from each wind-up), a runner and a brute walking in */
@@ -214,6 +217,8 @@ static void init(void *u) {
   cw_debug_i32("floor.next_tick", &G.floor_next_tick);
   cw_debug_i32("floor.left_at_hatch", &G.floor_left_at_hatch);
   cw_debug_i32("dev.hold", &G.dev_hold);
+  cw_debug_i32("dev.gun", &G.dev_gun);
+  cw_debug_i32("dev.rarity", &G.dev_rarity);
   cw_debug_i32("dev.boss", &G.dev_boss);
   cw_debug_f32("dev.cam_dist", &g_cam_dist);
   cw_debug_i32("dev.cam_boss", &g_cam_boss);
@@ -296,6 +301,9 @@ static void fixed_update(void *u, double dt) {
     if (G.dev_boss == 2 && G.S.boss_alive) sim_dev_kill_boss(&G.S), G.dev_boss = 0;
     if (G.dev_boss == 3 && G.S.boss_alive) G.dev_boss = 0; /* 3: only skip to the boss, at full strength (its patterns) */
   }
+  if (G.dev_gun > 0 && G.dev_gun <= PU_KINDS)
+    for (int i = 0; i < G.S.players; i++)
+      if (G.S.p[i].pu_weapon_t < 60 || G.S.p[i].pu_weapon != G.dev_gun - 1) sim_power_give(&G.S, i, G.dev_gun - 1), G.S.p[i].pu_rarity = CW_CLAMP(G.dev_rarity, 0, 4);
   int ev0 = G.S.ev_n;
   sim_step(&G.S, in);
   for (int i = 0; i < MAXE; i++) { /* the melee gate's bookkeeping: when each attack started */
@@ -315,6 +323,7 @@ static void fixed_update(void *u, double dt) {
       if (!G.floor_descend_tick) G.floor_descend_tick = G.S.tick;
     }
     if (v->kind == EV_FLOOR) {
+      G.dev_boss = 0; /* the skip (and HORDE_BOSS_WEAK) is for the floor it was asked on */
       if (!G.floor_next_tick) G.floor_next_tick = G.S.tick;
       G.banner_t = 210, G.banner_kind = 3, G.banner_n = G.S.level;
     }

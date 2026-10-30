@@ -27,7 +27,7 @@ int sim_kind_by_name(const char *name); /* -1 when not a kind */
 enum { OK_CRATE, OK_BARREL, OK_WALL, OK_PILLAR, OK_KINDS };
 enum { EV_SHOT, EV_HIT, EV_KILL, EV_BOOM, EV_CRATE, EV_BARREL, EV_WALL, EV_GEM, EV_HURT, EV_LEVEL, EV_WAVE, EV_BOSS, EV_DOWN, EV_ROCKET, EV_POWER, EV_POWER_SPAWN, EV_SWIPE,
        EV_MELT, EV_CLEAR, EV_HATCH, EV_DESCEND, EV_FLOOR,
-       EV_CACHE, EV_BOSS_TELL, EV_ACID, EV_LANCE, EV_SPIKES, EV_RISE, EV_BROOD }; /* EV_BOSS_TELL: a boss begins an arena attack (a 1) or a summon (a 2);
+       EV_CACHE, EV_ARC, EV_BOSS_TELL, EV_ACID, EV_LANCE, EV_SPIKES, EV_RISE, EV_BROOD }; /* EV_BOSS_TELL: a boss begins an arena attack (a 1) or a summon (a 2);
        EV_ACID: a puddle of acid lands; EV_LANCE: a bone lance flies (z w its velocity); EV_SPIKES: a ring of spikes (z its radius);
        EV_RISE: a pile of bones stands up; EV_BROOD: a skitter dropped by the mother */ /* EV_MELT: one of the horde melting after its boss fell (a its kind); EV_CLEAR: the floor is clear;
        EV_HATCH: the hatch opens; EV_DESCEND: a player stepped in; EV_FLOOR: a new floor starts (a its index) */ /* EV_SWIPE: an enemy's strike (a kind, b 1 when it hit; z, w its facing) */
@@ -37,7 +37,10 @@ enum { PU_SHOTGUN, PU_MINIGUN, PU_ROCKETS, PU_RAIL, PU_FLAME, /* weapons, 12 s *
        PU_EXPLOSIVE, PU_RAPID,                                /* ammo, 12 s */
        PU_GRENADES, PU_MINES,                                 /* charges */
        PU_SAWS, PU_SHIELD, PU_MAGNET,                         /* helpers */
+       PU_ARC, PU_STAKE, PU_MORTAR, PU_SEEKER, PU_WHEEL, PU_FROST, PU_HELLFIRE, /* the floors' own guns (LEVELS.md), one a floor */
        PU_KINDS };
+#define PU_BASE_KINDS (PU_MAGNET + 1) /* the yard's power-ups: what a random drop draws from */
+static inline bool pu_is_weapon(int t) { return t <= PU_FLAME || t >= PU_ARC; }
 #define PK_POWER 2
 #define PK_CACHE 3 /* a boss's loot cache: value = weapon | rarity << 8 (LEVELS.md section 2) */
 enum { RARE_COMMON, RARE_UNCOMMON, RARE_RARE, RARE_EPIC, RARE_LEGENDARY, RARE_KINDS };
@@ -59,7 +62,8 @@ typedef struct player {
   int last_up;
   /* power-ups held: a weapon and an ammo with their ticks left, grenades and mines, saws, shield, magnet */
   int pu_weapon, pu_weapon_t, pu_ammo, pu_ammo_t, grenades, mines, saw_t, shield_t, magnet_t;
-  int pu_rarity; /* the held weapon's rarity: its damage, an extra projectile, more pierce (a cache's) */
+  int pu_rarity;
+  int beam; /* ticks the hellfire lance has burned without a pause: it ramps up */ /* the held weapon's rarity: its damage, an extra projectile, more pierce (a cache's) */
   float saw_a;
   int offer[3], offer_ticks, pending; /* an upgrade choice on screen: offer_ticks > 0 */
 } player;
@@ -68,6 +72,7 @@ typedef struct enemy {
   bool alive;
   uint8_t kind;
   int hp, flash, spawn_age, ph, hits, first_hit; /* hits taken and the tick of the first (stats only) */
+  int pin, slow, frozen, burn, burn_owner; /* the floors' guns: pinned by a stake, slowed and frozen by frost, burning */
   int atk, atk_cd, tgt; /* the melee attack: ticks into it (0: none), ticks before the next may start, the player it is aimed at */
   int act, act_t, act_next, act_n; /* a floor boss's arena attack (1) or summon (2): ticks into it; ticks to the next; how many it has made
                                       (a bonewalker: risen once already when act_n is 1) */
@@ -75,7 +80,9 @@ typedef struct enemy {
   cw_crowd_agent agent;
 } enemy;
 
-typedef struct bullet { bool alive; uint8_t owner, kind, fx; float x, y, vx, vy, dmg; int life, pierce; } bullet; /* kind: 0 round, 1 rocket, 2 grenade, 3 rail, 4 flame; fx 1: explosive */
+typedef struct bullet { bool alive; uint8_t owner, kind, fx; float x, y, vx, vy, dmg; int life, pierce; } bullet;
+/* kind: 0 round, 1 rocket, 2 grenade, 3 rail, 4 flame, 6 stake, 7 mortar shell, 8 seeker, 9 wheel, 10 frost lance, 11 hellfire;
+ * fx 1: explosive; for a wheel the bounces it has left */
 typedef struct mine { bool alive; uint8_t owner; float x, y; int arm; } mine;
 typedef struct obstacle { bool alive; uint8_t kind; float x, y, hx, hy; int hp, maxhp; uint32_t nav; } obstacle;
 typedef struct pickup { bool alive; uint8_t kind; float x, y, vx, vy; int life, value, age; } pickup; /* value: the xp a gem gives (gems close together merge) */
