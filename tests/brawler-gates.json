@@ -125,7 +125,7 @@
   },
   {
     "name": "brawler-four",
-    "note": "Four bots (players 4) on stage 2 (docks: guards and throwers from the first waves). Expects repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth (game.overlaps stays 0). Repinned 2026-10-29 (B-PT7..10): reach now grows with body girth, enemies are clamped inside the attack margin, the bots turn to face their target, the wanker joined the waves and boss health was cut; the looks and the blood are presentation and move nothing. Repinned for B-PT17: a fighter hit in mid jump now falls while staggered instead of hanging in the air. Repinned for B-PT18: the wanker is lighter (50 hp, speed 2.0) and a stagger blow floors him. Repinned for the polish pass: three knees now really throw (a knee no longer ended only the first grab; the bots throw too), a thrown body bowls over enemies, a held body stands by the two bodies' size.",
+    "note": "Four bots (players 4) on stage 2 (docks: guards and throwers from the first waves). Expects repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth (game.overlaps stays 0). Repinned 2026-10-29 (B-PT7..10): reach now grows with body girth, enemies are clamped inside the attack margin, the bots turn to face their target, the wanker joined the waves and boss health was cut; the looks and the blood are presentation and move nothing. Repinned for B-PT17: a fighter hit in mid jump now falls while staggered instead of hanging in the air. Repinned for B-PT18: the wanker is lighter (50 hp, speed 2.0) and a stagger blow floors him. Repinned for the polish pass: three knees now really throw (a knee no longer ended only the first grab; the bots throw too), a thrown body bowls over enemies, a held body stands by the two bodies' size. Repinned for the polish pass (Dolly as the fourth fighter, a thrown body, the grab).",
     "app": "brawler_auto",
     "frames": 1500,
     "startCmds": [
@@ -167,13 +167,13 @@
       "game.overlaps"
     ],
     "expect": {
-      "game.ticks": 1386,
-      "game.kills": 6,
-      "game.score": 6600,
-      "game.hash": 2042493394,
+      "game.ticks": 1358,
+      "game.kills": 7,
+      "game.score": 8530,
+      "game.hash": 2556228722,
       "game.wave": 1,
-      "game.hits": 25,
-      "game.first_hit": 285,
+      "game.hits": 29,
+      "game.first_hit": 281,
       "game.deaths": 0,
       "game.unfair": 0,
       "game.token_leak": 0,
@@ -375,11 +375,11 @@
   },
   {
     "name": "brawler-wanker",
-    "note": "Stage 1, wave 2 (thugs, a punk and the wanker) with two bots: the wanker winds up his haymaker (its wind-up shrugs off light blows) and lands it, barges along the lane, and is beaten. game.wanker is [wankers spawned, haymakers, haymakers that landed, barges, barges that landed, wankers killed]. Also the looks and the blood: game.clones (most pairs of one kind of enemy on the street that look the same on any frame) stays 0, fx.blood is [stains placed, droplet bursts, stains showing, same-shape stains on top of each other] and its last entry stays 0. The control freezes everyone, so nobody swings. rag.hash is left out of this gate: with the wanker knocked down out of his haymaker clip, the ragdoll started from that pose hashes 3232650868 natively and 3315670625 on every cart host (romdev, Chromium, romdev on GL alike), while the game state is equal on all of them: the presentation pose sampled natively and in the cart differs for that clip (findings/brawler.md, engine note 5). The other gates still compare rag.hash on every host. Repinned when the creep joined the wave after it (the run reaches it). Repinned for B-PT18: the wanker is lighter (50 hp, speed 2.0) and a stagger blow floors him. Repinned for the polish pass: three knees now really throw (a knee no longer ended only the first grab; the bots throw too), a thrown body bowls over enemies, a held body stands by the two bodies' size.",
+    "note": "Stage 1, wave 2 (thugs, a punk and the wanker) with two bots: the wanker winds up his haymaker (its wind-up shrugs off light blows) and lands it, barges along the lane, and is beaten. game.wanker is [wankers spawned, haymakers, haymakers that landed, barges, barges that landed, wankers killed]. Also the looks and the blood: game.clones (most pairs of one kind of enemy on the street that look the same on any frame) stays 0, fx.blood is [stains placed, droplet bursts, stains showing, same-shape stains on top of each other] and its last entry stays 0. The control freezes everyone, so nobody swings. rag.hash is left out of this gate: with the wanker knocked down out of his haymaker clip, the ragdoll started from that pose hashes 3232650868 natively and 3315670625 on every cart host (romdev, Chromium, romdev on GL alike), while the game state is equal on all of them: the presentation pose sampled natively and in the cart differs for that clip (findings/brawler.md, engine note 5). The other gates still compare rag.hash on every host. Repinned when the creep joined the wave after it (the run reaches it). Repinned for B-PT18: the wanker is lighter (50 hp, speed 2.0) and a stagger blow floors him. Repinned for the polish pass: three knees now really throw (a knee no longer ended only the first grab; the bots throw too), a thrown body bowls over enemies, a held body stands by the two bodies' size. Bots at half damage since they throw: at full damage he fell before his haymaker. Repinned for the polish pass (Dolly as the fourth fighter, a thrown body, the grab).",
     "app": "brawler_auto",
     "frames": 2400,
     "startCmds": [
-      "botdmg 1",
+      "botdmg 0.5",
       "players 2",
       "wave 1"
     ],
@@ -416,26 +416,26 @@
       "game.clones": 0,
       "game.overlaps": 0,
       "game.ticks": 2130,
-      "game.kills": 7,
-      "game.score": 7030,
-      "game.hash": 2956137256,
+      "game.kills": 6,
+      "game.score": 4860,
+      "game.hash": 1327901003,
       "game.wave": 2,
       "game.deaths": 0,
       "game.wanker": [
         1,
-        2,
-        3,
         1,
-        0,
+        1,
+        2,
+        1,
         1
       ],
       "fx.blood": [
-        93,
-        69,
-        48,
+        75,
+        67,
+        46,
         0
       ],
-      "rag.made": 17,
+      "rag.made": 13,
       "rag.missed": 0
     },
     "webgpu": {
@@ -448,7 +448,7 @@
       "note": "the same dual cart on romdev and Chromium against native WebGPU (state exact). vsGl 0.5 percent: GL and WebGPU draw the same picture (0.01 percent apart); the brick, asphalt and corrugated detail that differed by 4 to 10.6 percent was the engine lighting normal maps from the wrong side on WebGPU, fixed (findings/gl-webgpu-parity.md)"
     },
     "controlStartCmds": [
-      "botdmg 1",
+      "botdmg 0.5",
       "players 2",
       "wave 1",
       "freeze 1"
@@ -829,5 +829,75 @@
     ],
     "controlFrames": 460,
     "input": "brawler-hold.json"
+  },
+  {
+    "name": "brawler-marker",
+    "note": "Everyone knocked down: a fighter marker stays with the body that fell (game.markgap: the farthest in mm from a loose body hips to its marker over the street, 0), not over the simulated spot, where it hung over nothing. Control legacymarker 1 must fail.",
+    "app": "brawler_auto",
+    "frames": 380,
+    "startCmds": [
+      "players 4",
+      "freeze 1",
+      "knockat 240"
+    ],
+    "controlStartCmds": [
+      "players 4",
+      "freeze 1",
+      "knockat 240",
+      "legacymarker 1"
+    ],
+    "controlFrames": 380,
+    "fields": [
+      "game.markgap",
+      "game.nan"
+    ],
+    "expect": {
+      "game.markgap": 0,
+      "game.nan": 0
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "vsGl": 0.005,
+      "note": "the same dual cart on romdev and Chromium against native WebGPU (state exact). vsGl 0.5 percent: GL and WebGPU draw the same picture (0.01 percent apart); the brick, asphalt and corrugated detail that differed by 4 to 10.6 percent was the engine lighting normal maps from the wrong side on WebGPU, fixed (findings/gl-webgpu-parity.md)"
+    }
+  },
+  {
+    "name": "brawler-fill",
+    "note": "The front fill light stands high and back: where it mirrors on the wet street (game.mirrorz, z in mm of the mirror point between the light and the camera) falls below the picture, and all four fighters show their rings (game.rings). Control legacyfill 1 (the old light low in front of the near lane) must fail: it mirrored at the bottom of the picture.",
+    "app": "brawler_auto",
+    "frames": 260,
+    "startCmds": [
+      "players 4",
+      "stage 2"
+    ],
+    "controlStartCmds": [
+      "players 4",
+      "stage 2",
+      "legacyfill 1"
+    ],
+    "controlFrames": 260,
+    "fields": [
+      "game.mirrorz",
+      "game.rings",
+      "game.nan"
+    ],
+    "expect": {
+      "game.mirrorz": 6736,
+      "game.rings": 4,
+      "game.nan": 0
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "vsGl": 0.005,
+      "note": "the same dual cart on romdev and Chromium against native WebGPU (state exact). vsGl 0.5 percent: GL and WebGPU draw the same picture (0.01 percent apart); the brick, asphalt and corrugated detail that differed by 4 to 10.6 percent was the engine lighting normal maps from the wrong side on WebGPU, fixed (findings/gl-webgpu-parity.md)"
+    }
   }
 ]

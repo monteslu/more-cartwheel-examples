@@ -77,7 +77,7 @@ static bstate last_st[MAXP + MAXE];
 
 static ent *ent_at(int i) { return i < MAXP ? &W.p[i] : &W.e[i - MAXP]; }
 static float body_scale(int def) {
-  static const float S[D_COUNT] = { 1.06f, 0.97f, 1.0f, 1.02f, 0.97f, 0.95f, 1.0f, 1.24f, 1.0f, 1.08f, 1.34f, 1.2f, 1.14f, 1.62f, 1.12f, 1.05f, 1.0f };
+  static const float S[D_COUNT] = { 1.06f, 0.97f, 1.0f, 1.02f, 0.97f, 0.95f, 1.0f, 1.24f, 1.0f, 1.08f, 1.34f, 1.2f, 1.14f, 1.62f, 1.12f, 1.05f, 1.0f, 1.13f };
   return S[def];
 }
 
@@ -352,6 +352,12 @@ bool rag_render(const ent *e, float *yaw, t3_vec3 *off) {
   if (s->mode == M_NONE || s->mode == M_SINK) return false;
   *yaw = s->mode == M_GETUP ? s->yaw : ent_render_yaw_sim(e);
   *off = s->off;
+  return true;
+}
+bool rag_hips(const ent *e, t3_vec3 *p) {
+  int rid = rig_id_of(e);
+  if (rid < 0 || !RS[rid].rd) return false;
+  *p = cw_ragdoll_part_transform(RS[rid].rd, P_HIPS).p;
   return true;
 }
 float rag_mean_us(void) { return us_n ? (float)(us_sum / us_n) : 0; }

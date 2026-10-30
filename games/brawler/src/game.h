@@ -92,7 +92,7 @@ typedef struct stage_t {
 
 extern const char_def DEFS[];
 extern const atk_data ATK[];
-enum { D_ROOK, D_MIKA, D_JET, D_THUG, D_PUNK, D_RUNNER, D_KNIFER, D_BRUISER, D_THROWER, D_GUARD, D_FOREMAN, D_MATRON, D_RINGMASTER, D_COLOSSUS, D_ARTHUR, D_WANKER, D_CREEP, D_COUNT };
+enum { D_ROOK, D_MIKA, D_JET, D_THUG, D_PUNK, D_RUNNER, D_KNIFER, D_BRUISER, D_THROWER, D_GUARD, D_FOREMAN, D_MATRON, D_RINGMASTER, D_COLOSSUS, D_ARTHUR, D_WANKER, D_CREEP, D_DOLLY, D_COUNT };
 
 /* the match */
 typedef enum { PH_PLAY, PH_CLEAR, PH_OVER, PH_WIN, PH_INTRO } phase_t;
@@ -163,6 +163,8 @@ float level_cam_halfw(void);
 float view_halfw(float z, float y);
 bool on_screen(float x, float z, float margin);
 void fx_warn(int slot, float x, float z, float sx, float sz, float k);
+void fx_player_ring(int i, float x, float z, float k); /* a fighter's ring on the street, in the fighter's colour */
+extern const float PLAYER_COL[4][3];
 void sim_sync_extras(void);
 void stats_log(const char *why);
 int token_leak(void);
@@ -223,5 +225,7 @@ void rag_tick(void);
 void rag_debug_fields(void);
 bool rag_take_corpse(int rid, const ent *e);
 bool rag_render(const ent *e, float *yaw, t3_vec3 *off);
+bool rag_hips(const ent *e, t3_vec3 *p); /* where a loose body's hips are in the world */
+float char_scale(int def);
 float rag_mean_us(void);
 const char *rag_status(void);

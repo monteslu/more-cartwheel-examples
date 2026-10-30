@@ -30,6 +30,7 @@ static bool to_screen(float x, float y, float z, cw_vec2 sz, cw_vec2 *out) {
   return true;
 }
 
+int g_markgap; bool g_legacy_marker; /* debug game.markgap and the gate's control */
 void ui_draw(void) {
   cw_vec2 sz = cw_r2d_canvas_size();
   float u = sz.y / 36.0f;
@@ -50,7 +51,17 @@ void ui_draw(void) {
   for (int i = 0; i < W.players; i++) {
     const ent *p = &W.p[i];
     cw_vec2 s;
-    if (!p->used || p->st == S_DEAD || !to_screen(p->x, p->y + 1.95f * (p->def == D_ROOK ? 1.08f : 1.0f), p->z, sz, &s)) continue;
+    if (!p->used || p->st == S_DEAD) continue;
+    /* a loose body lies away from its simulated spot: the marker goes with the hips, just over them (it hung in the air over
+       nothing, the "P4 with no body"; the gate game.markgap measures the worst distance from it to the hips) */
+    t3_vec3 at = { p->x, p->y + 1.95f * char_scale(p->def), p->z }, hips;
+    bool loose = rag_hips(p, &hips);
+    if (loose) {
+      if (!g_legacy_marker) at = (t3_vec3){ hips.x, hips.y + 0.55f, hips.z };
+      float gx = at.x - hips.x, gz = at.z - hips.z; int mm = (int)(sqrtf(gx * gx + gz * gz) * 1000.0f + 0.5f);
+      if (mm > g_markgap) g_markgap = mm;
+    }
+    if (!to_screen(at.x, at.y, at.z, sz, &s)) continue;
     char b[8];
     snprintf(b, sizeof b, "P%d", i + 1);
     text(b, s.x, s.y - u * 1.05f, u * 0.95f, PC[i], true);

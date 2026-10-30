@@ -19,6 +19,7 @@ models/colossus.glb
 models/arthur.glb
 models/wanker.glb
 models/creep.glb
+models/dolly.glb
 models/stage0.glb
 models/stage1.glb
 models/stage2.glb

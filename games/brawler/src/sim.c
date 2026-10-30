@@ -43,6 +43,7 @@ const char_def DEFS[D_COUNT] = {
   [D_ARTHUR] = { "Arthur", "arthur", 2.7f, 380, 1.15f, true, false, 3000 },
   [D_WANKER] = { "Wanker", "wanker", 2.0f, 50, 1.1f, false, false, 160 }, /* a regular enemy: the haymaker and the shoulder barge */
   [D_CREEP] = { "Creep", "creep", 1.7f, 50, 0.9f, false, false, 180 }, /* a regular enemy who enjoys being hit: the coat flash, a lurch */
+  [D_DOLLY] = { "Dolly", "dolly", 3.0f, 175, 1.45f, false, false, 0 }, /* the fourth fighter, the grappler: slowest and hardest to stop, reaches further to grab, holds on through jabs, throws hardest; a double-fist hammer, a headbutt, a running clothesline */
 };
 
 const atk_data ATK[] = {
@@ -80,7 +81,7 @@ typedef struct rig { int def; bool busy; cw_node root, model, anim, wnode, wmode
    clips, so a crowd of one kind costs a skeleton each, not a parsed glb each */
 static cw_res RES[D_COUNT], BLOB;
 static bool clip_checked[D_COUNT];
-static const float BODY_SCALE[D_COUNT] = { 1.08f, 0.98f, 1.0f, 1.0f, 0.96f, 0.94f, 1.0f, 1.28f, 1.0f, 1.08f, 1.4f, 1.22f, 1.15f, 1.7f, 1.15f, 1.06f, 1.0f };
+static const float BODY_SCALE[D_COUNT] = { 1.08f, 0.98f, 1.0f, 1.0f, 0.96f, 0.94f, 1.0f, 1.28f, 1.0f, 1.08f, 1.4f, 1.22f, 1.15f, 1.7f, 1.15f, 1.06f, 1.0f, 1.15f };
 static rig RIGS[96];
 static int rig_n;
 static cw_node world_node(void) { return cw_node_get(cw_node_get(cw_tree_root(cw_scene_app_tree()), "Level"), "World"); }
@@ -110,7 +111,7 @@ static void set_shadows(t3_object *o) {
 int temper_of(int def) {
   static const int TEMPER[D_COUNT] = { [D_ROOK] = FACE_FEAR, [D_MIKA] = FACE_ANGER, [D_JET] = FACE_ANGER, [D_THUG] = FACE_ANGER, [D_PUNK] = FACE_ANGER, [D_RUNNER] = FACE_ANGER,
       [D_KNIFER] = FACE_ANGER, [D_BRUISER] = FACE_FEAR, [D_THROWER] = FACE_ANGER, [D_GUARD] = FACE_ANGER, [D_FOREMAN] = FACE_FEAR, [D_MATRON] = FACE_FEAR,
-      [D_RINGMASTER] = FACE_FEAR, [D_COLOSSUS] = FACE_FEAR, [D_ARTHUR] = FACE_FEAR, [D_WANKER] = FACE_FEAR, [D_CREEP] = FACE_BLISS };
+      [D_RINGMASTER] = FACE_FEAR, [D_COLOSSUS] = FACE_FEAR, [D_ARTHUR] = FACE_FEAR, [D_WANKER] = FACE_FEAR, [D_CREEP] = FACE_BLISS, [D_DOLLY] = FACE_ANGER };
   return def >= 0 && def < D_COUNT ? TEMPER[def] : FACE_PLAIN;
 }
 static rig *rig_get(int def) {
@@ -171,7 +172,7 @@ static rig *rig_get(int def) {
   cw_node_set(r->wnode, "size", cw_val_vec3(0.07f, 0.8f, 0.07f));
   cw_node_set(r->wnode, "visible", cw_val_bool(false));
   cw_node_set(r->wnode, "cast_shadow", cw_val_bool(true));
-  if (def <= D_JET || def == D_ARTHUR) { /* the fighters grab, Arthur combs: an arm solver per side, off until wanted */
+  if (def <= D_JET || def == D_DOLLY || def == D_ARTHUR) { /* the fighters grab, Arthur combs: an arm solver per side, off until wanted */
     for (int k = 0; k < 2; k++) {
       r->ik[k] = cw_node_new("TwoBoneIK3D", k ? "IkR" : "IkL");
       cw_node_add_child(r->model, r->ik[k]);
@@ -200,7 +201,10 @@ static const char *idle_clip(const ent *e) {
   return (e->def == D_JET || e->def == D_MIKA || e->def == D_PUNK || e->def == D_RUNNER) ? "idle3" : "idle";
 }
 /* per character clips: Arthur's charge leads with his shoulder, his taunt runs a comb back through the pompadour */
-static const char *atk_clip(const ent *e, int k) { return e->def == D_ARTHUR && k == A_RUSH ? "shoulder" : ATK[k].clip; }
+static const char *atk_clip(const ent *e, int k) {
+  if (e->def == D_DOLLY) { if (k == A_FINISH) return "hammer"; if (k == A_KICK) return "headbutt"; if (k == A_SPIN) return "lariat"; } /* her own moves, same windows */
+  return e->def == D_ARTHUR && k == A_RUSH ? "shoulder" : ATK[k].clip;
+}
 static const char *taunt_clip(const ent *e) { return e->def == D_ARTHUR ? "comb" : "taunt"; }
 /* the model faces +x or -x; frozen for a screenshot it turns three quarters to the camera */
 float g_freeze_yaw = 0.45f; /* debug "freeze 1 <yaw>": how far a frozen body turns from the camera (1.57: side on) */
@@ -535,6 +539,7 @@ void ent_hurt(ent *v, ent *a, float dmg, int knock, float fx) {
   if (dmg > 0 && a && a->player && a->weapon && (a->atk == A_SWING || a->atk == A_STAB)) gore_stamp(a, GORE_WEAPON);
   char_jolt(v, (float)dir, knock >= 2 ? 1.6f : 1.0f);
   sfx(knock >= 2 ? SFX_HIT3 : ((int)v->hp & 1) ? SFX_HIT1 : SFX_HIT2);
+  if (v->def == D_DOLLY && v->st == S_GRAB && knock == 0 && v->hp > 0) return; /* she holds on through a jab (only a stagger or worse makes her let go) */
   if (a && a->player) {
     a->score += (int)dmg * 10;
     W.combo_n++, W.combo_t = 100;
@@ -910,7 +915,8 @@ static void player_update(int pi, const inputs *in) {
       for (int i = 0; i < MAXE; i++) {
         ent *v = &W.e[i];
         if (!alive(v) || DEFS[v->def].boss || v->st == S_DOWN || v->st == S_FALL || v->st == S_THROWN || v->st == S_GRABBED || v->st == S_DEAD) continue;
-        if (in_box(e, v, 1.05f, 0.7f) && (best < 0 || absf(v->z - e->z) < absf(W.e[best].z - e->z))) best = i;
+        bool reach = e->def == D_DOLLY ? in_box(e, v, 1.4f, 1.25f) && absf(v->z - e->z) < 0.85f : in_box(e, v, 1.05f, 0.7f);
+        if (reach && (best < 0 || absf(v->z - e->z) < absf(W.e[best].z - e->z))) best = i;
       }
       if (best >= 0) {
         ent *v = &W.e[best];
@@ -949,6 +955,7 @@ static void player_update(int pi, const inputs *in) {
     e->t++;
     if (in->atk || in->kick) e->chain_ok = 1;
     if (e->t < ad->a1 && ad->lunge > 0) e->x += (float)e->face * ad->lunge * 5.0f / TPS;
+    if (e->def == D_DOLLY && e->atk == A_SPIN && e->t < ad->a1) e->x += (float)e->face * 3.4f / TPS; /* the clothesline runs */
     do_hits(e);
     if (e->t == ad->a0) sfx(SFX_WHIFF);
     bool chain = e->chain_ok && e->t >= ad->a1 && (e->atk == A_PUNCH1 || e->atk == A_PUNCH2) && !e->weapon;
@@ -1007,7 +1014,7 @@ static void player_update(int pi, const inputs *in) {
          the usual one after three knees, never bowled anyone over) */
       if (!g_legacy_throw || v->hp > 0) v->st = S_THROWN, v->t = 0, v->hitmask = 0;
       if (g_legacy_grab) v->vx = -(float)e->face * 9.0f, v->vy = 5.0f, v->y = 0.2f;
-      else v->vx = (float)e->face * (e->throwfwd ? 9.0f : -9.0f), v->vy = 2.5f; /* from up there */
+      else v->vx = (float)e->face * (e->throwfwd ? 1.0f : -1.0f) * (e->def == D_DOLLY ? 11.5f : 9.0f), v->vy = 2.5f; /* from up there */
       char_restart(v, "thrown", 0.02f);
       v->invuln = 0;
       e->victim = -1;
@@ -1407,7 +1414,7 @@ void sim_reset(int players, int stage) {
   W.juke.here = (stage & 3) == 1, W.juke.owner = -1; /* the docks have the jukebox */
   level_build(stage);
   crowd_setup();
-  static const int PD[MAXP] = { D_ROOK, D_MIKA, D_JET, D_ROOK };
+  static const int PD[MAXP] = { D_ROOK, D_MIKA, D_JET, D_DOLLY };
   for (int i = 0; i < players; i++) {
     int def = PD[i];
     ent_init(&W.p[i], def, true, -3.0f + (float)i * 0.9f, -1.2f + (float)i * 0.8f);
@@ -1896,6 +1903,12 @@ void char_sync(ent *e) {
    swings (the telegraph players read: the ring grows brighter until the blow) */
 static cw_node PROJN[8];
 void sim_sync_extras(void) {
+  { extern int g_rings; g_rings = 0; }
+  for (int i = 0; i < MAXP; i++) { /* the fighters' rings: fainter while they fall or fly, none for the dead */
+    const ent *p = &W.p[i];
+    float k = i < W.players && p->used && p->st != S_DEAD ? 1.0f - cw_clampf(p->y, 0, 1.5f) / 1.5f * 0.7f : 0;
+    fx_player_ring(i, p->x, p->z, k);
+  }
   for (int i = 0; i < 8; i++) {
     const struct proj *p = &W.proj[i];
     if (!PROJN[i].id || !cw_node_valid(PROJN[i])) {
@@ -1943,6 +1956,7 @@ void rig_release(int rid) { /* a corpse rag.c kept on the street is done: hide i
   r->busy = false;
 }
 float ent_render_yaw_sim(const ent *e) { return ent_yaw(e); }
+float char_scale(int def) { return BODY_SCALE[def]; }
 /* debug "bone <ent> <name>": a bone's place and its axes in the model's space (ent 0-3 fighters, 4+ enemies) */
 bool debug_bone(int ei, const char *name, float out[12]) {
   ent *e = ei < MAXP ? &W.p[ei] : &W.e[(ei - MAXP) % MAXE];

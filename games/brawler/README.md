@@ -15,16 +15,23 @@ beat a mini boss and a boss at the end of every stage.
 | Grab | right bumper | L or C |
 | Spin move (costs a little health) | left bumper | I or V |
 
-Grab a body in front of you, then Attack to knee it. Three knees throw it, or hold the stick away from it and
-press Grab or Kick to throw it over your shoulder. Thrown bodies knock down whoever they hit.
+Grab a body in front of you, then Attack to knee it. Three knees hoist it overhead and throw it forward, or hold the stick
+away from it and press Grab or Kick to throw it over your head behind you. A thrown body knocks down every enemy it hits and
+smashes crates and barrels in its way.
 
 Walk over food, coins and weapons to pick them up; you can reach them from a step to either side.
+
+## The fighters
+
+Rook (strong all-rounder), Mika (the quickest), Jet (reach and pace) and Dolly, a big docks mechanic and the grappler: the
+slowest and hardest to stop. She grabs from further off, holds on through a jab, throws hardest; a double-fist hammer ends her
+combo, she kicks with a headbutt, and her special is a running clothesline.
 
 ## Who you fight
 
 - Thugs and punks swing and kick; runners charge from a distance; knifers stab.
 - Throwers keep their distance and throw bottles along your lane: step up or down the street, or jump, to dodge.
-- Guards hold a riot shield: punches from the front bounce off (three of them break the guard). Kick, jump kick,
+- Guards carry a riot shield on the arm and a baton: punches from the front bounce off (three of them break the guard). Kick, jump kick,
   throw, use a weapon or the spin move, or hit them from behind.
 - Bruisers are heavy and do not flinch.
 - Wankers (a red cap that says "Dumb", a grimy tee) wind up a huge haymaker: when he turns his whole body away
@@ -57,7 +64,7 @@ Enemies never hit you from outside the picture or before they have walked in.
 ## Run
 
 `brawler_auto` is the same game with bots playing, for tests and screenshots. Its debug commands: `stage N`,
-`wave N` (4 is the boss), `players N`, `spawn <kind> [dx dz]` (15 is the wanker, 16 the creep), `hurtat <tick> <enemy> [knock]`, `botdmg <k>`, `item <kind> [dx dz]`, `cam`,
+`wave N` (4 is the boss), `players N`, `spawn <kind> [dx dz]` (15 is the wanker, 16 the creep), `pose <ent> <clip> [t]`, `bone <ent> <name>`, `knockat <tick>`, `hurtat <tick> <enemy> [knock]`, `botdmg <k>`, `item <kind> [dx dz]`, `cam`,
 `freeze <0|1> [turn]` (turn: how far a frozen body turns from the camera, 1.57 side on), `knockdown`, `blood <dx> <dz> <kind>`.
 Environment for native runs: BRAWLER_STAGE, BRAWLER_PLAYERS, BRAWLER_CROWD, BRAWLER_TURBO (ticks per frame), BRAWLER_KNOCKALL (everyone down every N ticks),
 BRAWLER_SOAK (a lost stage is retried), BRAWLER_SEED (another match from the same rules), BRAWLER_LOG (status lines), BRAWLER_BOTDMG (bot damage factor, 3 by default).

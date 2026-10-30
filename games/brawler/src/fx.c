@@ -255,6 +255,29 @@ void fx_warn(int slot, float x, float z, float sx, float sz, float k) {
   warn_k[slot] = k;
 }
 
+/* every fighter's ring on the street in the fighter's colour (BR17, depth lanes; from this camera a body a step nearer can hide
+   the one behind: the ring and the marker say where each fighter stands) */
+const float PLAYER_COL[4][3] = { { 0.95f, 0.25f, 0.2f }, { 1.0f, 0.75f, 0.15f }, { 0.25f, 0.9f, 0.5f }, { 0.3f, 0.6f, 1.0f } };
+static cw_node pring[4];
+int g_rings;
+void fx_player_ring(int i, float x, float z, float k) {
+  cw_node d = pring[i];
+  if (!d.id || !cw_node_valid(d)) {
+    char nm[16];
+    snprintf(nm, sizeof nm, "pring%d", i);
+    d = pring[i] = cw_node_new("Decal3D", nm);
+    cw_node_add_child(cw_node_get(tree_root(), "Fx"), d);
+    cw_node_set(d, "texture", cw_val_string("decals/ring.png"));
+    cw_node_set(d, "blend", cw_val_enum("ADD"));
+    cw_node3d_set_rotation(d, (t3_vec3){ -1.5708f, 0, 0 });
+    cw_node_set(d, "size", cw_val_vec3(1.1f, 0.72f, 0.5f));
+  }
+  if (k <= 0) { cw_node3d_set_position(d, (t3_vec3){ 0, -20, 0 }); return; }
+  g_rings++;
+  cw_node3d_set_position(d, (t3_vec3){ x, 0.2f, z });
+  cw_node_set(d, "color", cw_val_color(PLAYER_COL[i][0], PLAYER_COL[i][1], PLAYER_COL[i][2], 0.75f * k));
+}
+
 /* a mark on the street where something heavy landed */
 static void fx_mark(float x, float z, float size) {
   cw_node d = decal[ndc++ % NDECAL];

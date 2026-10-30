@@ -397,6 +397,18 @@ clip('spin', 0.7, false, (t) => {
   if (t < 0.52) { const u = (t - 0.12) / 0.4; return G({ ...SPIN_ARMS, Hips: { p: [0, -0.12 + 0.05 * S(u * PI), 0], r: [0, -0.4 + EASE.out(u) * (PI * 2 + 0.4), 0] }, Head: { r: [0, -0.3, 0] } }); }
   return lerpPose(G({ ...SPIN_ARMS, Hips: { p: [0, -0.12, 0], r: [0, PI * 2, 0] } }), merge(GUARD, { Hips: { p: [0, -0.07, 0], r: [0, PI * 2 + 0.18, 0] } }), EASE.io((t - 0.52) / 0.18));
 });
+// Dolly's own moves (the windows are the shared attacks': hammer = finisher, headbutt = kick, lariat = spin)
+const HAMMER_UP = G({ Hips: { p: [0, 0.0, -0.1] }, Spine: { r: [-0.45, 0, 0] }, Chest: { r: [-0.3, 0, 0] }, Head: { r: [-0.2, 0, 0] }, UpperArmL: { r: [-3.0, -0.2, -0.1] }, UpperArmR: { r: [-3.0, 0.2, 0.1] }, LowerArmL: { r: [-0.5, 0, 0] }, LowerArmR: { r: [-0.5, 0, 0] }, UpperLegL: { r: [-0.25, 0, 0.12] }, LowerLegL: { r: [0.3, 0, 0] }, UpperLegR: { r: [0.15, 0, -0.12] }, LowerLegR: { r: [0.2, 0, 0] } });
+const HAMMER_DN = G({ Hips: { p: [0, -0.26, 0.14] }, Spine: { r: [0.75, 0, 0] }, Chest: { r: [0.35, 0, 0] }, Head: { r: [-0.2, 0, 0] }, UpperArmL: { r: [-1.3, -0.25, -0.1] }, UpperArmR: { r: [-1.3, 0.25, 0.1] }, LowerArmL: { r: [-0.25, 0, 0] }, LowerArmR: { r: [-0.25, 0, 0] }, UpperLegL: { r: [-0.85, 0, 0.14] }, LowerLegL: { r: [1.05, 0, 0] }, UpperLegR: { r: [0.3, 0, -0.14] }, LowerLegR: { r: [0.65, 0, 0] } });
+clip('hammer', 0.72, false, keyed([[0, GUARD], [0.27, HAMMER_UP, 'io'], [0.37, HAMMER_DN, 'in'], [0.5, HAMMER_DN, 'io'], [0.72, GUARD, 'io']]), ['dolly']);
+const BUTT_BACK = G({ Hips: { p: [0, -0.08, -0.08] }, Spine: { r: [-0.35, 0, 0] }, Chest: { r: [-0.2, 0, 0] }, Head: { r: [-0.35, 0, 0] }, UpperArmL: { r: [-1.2, 0, 0.3] }, UpperArmR: { r: [-1.2, 0, -0.3] }, LowerArmL: { r: [-1.6, 0, 0] }, LowerArmR: { r: [-1.6, 0, 0] } });
+const BUTT_IN = G({ Hips: { p: [0, -0.1, 0.16] }, Spine: { r: [0.55, 0, 0] }, Chest: { r: [0.3, 0, 0] }, Head: { r: [0.5, 0, 0] }, UpperArmL: { r: [-1.5, 0, 0.3] }, UpperArmR: { r: [-1.5, 0, -0.3] }, LowerArmL: { r: [-1.1, 0, 0] }, LowerArmR: { r: [-1.1, 0, 0] }, UpperLegL: { r: [-0.6, 0, 0.1] }, LowerLegL: { r: [0.65, 0, 0] }, UpperLegR: { r: [0.3, 0, -0.1] }, LowerLegR: { r: [0.3, 0, 0] } });
+clip('headbutt', 0.56, false, keyed([[0, GUARD], [0.17, BUTT_BACK, 'io'], [0.25, BUTT_IN, 'in'], [0.38, BUTT_IN, 'io'], [0.56, GUARD, 'io']]), ['dolly']);
+clip('lariat', 0.72, false, (t) => { // a running clothesline: one arm straight out from the shoulder, chest leading
+  const run = walkPose(t, 0.36, true), arm = { UpperArmR: { r: [-1.5, 0.55, 0] }, LowerArmR: { r: [-0.1, 0, 0] }, UpperArmL: { r: [-0.5, -0.1, 0.5] }, LowerArmL: { r: [-1.7, 0, 0] }, Hips: { p: [0, -0.1, 0], r: [0, -0.5, 0] }, Spine: { r: [0.2, -0.25, 0] }, Chest: { r: [0.1, -0.3, 0] }, Head: { r: [0, 0.5, 0] } };
+  const hold = merge(run, arm);
+  return t < 0.1 ? lerpPose(GUARD, hold, EASE.io(t / 0.1)) : t < 0.56 ? hold : lerpPose(hold, GUARD, EASE.io((t - 0.56) / 0.16));
+}, ['dolly']);
 clip('block', 0.5, true, (t) => { const b = S((t / 0.5) * PI * 2); return G({ Hips: { p: [0, -0.14, 0] }, Spine: { r: [0.2, 0, 0] }, UpperArmL: { r: [-1.15 + b * 0.04, 0.35, 0.05] }, LowerArmL: { r: [-2.35, 0, 0] }, UpperArmR: { r: [-1.15 - b * 0.04, -0.35, -0.05] }, LowerArmR: { r: [-2.35, 0, 0] }, Head: { r: [0.25, 0, 0] } }); });
 
 // a 1950s tough: fists up high by the chin, a bounce on the toes, the comb run back through the pompadour (a taunt), a
@@ -1285,7 +1297,7 @@ export const SPECS = [
   { name: 'dolly', face: { jawAng: 1.15, chin: 1.05, brow: 1.1, browThick: 0.052, noseW: 1.15, cheek: 1.2, lipU: 0.95, lipL: 1.05, mw: 0.25, tilt: 0.02, lidUp: 0.22, naso: 0.8 }, paint: { age: 0.45, iris: [0.2, 0.28, 0.32], hairline: true, freckles: 0.5, ruddy: 0.3, scars: [[-0.3, 0.3, -0.16, 0.2, 0.01, false]] },
     scale: 1.13, width: 1.5, chest: 1.2, belly: 0.5, sw: 0.255, hw: 0.125, arm: 1.42, leg: 1.1, head: 1.03, hand: 1.42, jaw: 1.05, neck: 1.2, hair: 'bun', headband: true, boots: true, gloves: true, tiedSleeves: true,
     top: 'tank', shirtFab: 'cloth', bottom: 'cargo', pantsFab: 'cloth', temper: 'anger',
-    colors: { skin: 0xa8734a, shirt: 0xb6b1a2, pants: 0x3f5a4c, shoes: 0x2a1c12, hair: 0x8f897e, accent: 0xc8601e, band: 0xc8601e, glove: 0x7a5a30, belt: 0x1a1510 } },
+    colors: { skin: 0x8c5c3c, shirt: 0xb6b1a2, pants: 0x3f5a4c, shoes: 0x2a1c12, hair: 0x8f897e, accent: 0xc8601e, band: 0xc8601e, glove: 0x7a5a30, belt: 0x1a1510 } },
   { name: 'mika', face: { eyeR: 0.185, noseLen: 0.85, noseW: 0.82, noseProj: 0.85, tipUp: 1, lipU: 1.2, lipL: 1.25, mw: 0.23, cheek: 1.25, jawAng: 0.6, chin: 0.8, chinW: 0.8, brow: 0.6, browThick: 0.04, browArch: 0.06, tilt: 0.08, socket: 0.9, naso: 0.4 }, paint: { freckles: 1, liner: 0.6, eyeShadow: [0.55, 0.36, 0.36], eyeShadowAmt: 0.3, iris: [0.25, 0.42, 0.22], hairline: true },
     scale: 0.97, width: 0.9, chest: 0.95, sw: 0.185, hw: 0.095, arm: 0.95, leg: 1.0, head: 1.14, hand: 1.25, jaw: 0.75, nose: 0.8, hair: 'ponytail', hairRoot: [0, 0.203, -0.1], hairB: [0, -0.13, -0.06], headband: true, wristband: true,
     top: 'tank', bottom: 'tight', pantsFab: 'cloth', lip: 0xb04a50,

@@ -11,6 +11,10 @@
 
 /* per stage mood: the key light (a low sun or moon from behind the buildings, so they cast long shadows and
    shafts across the street), a cool fill from the camera side, a rim from behind, fog, grade, coloured accents. */
+bool g_legacy_fill; int g_mirror_z; /* see level_build: the front fill light */
+static float acc_y[3], acc_z[3];
+#define FILL_Y 4.6f
+#define FILL_Z 5.6f
 typedef struct accent { float dx, y, z, c[3], e, range; } accent;
 typedef struct theme {
   const char *name, *lut;
@@ -312,7 +316,17 @@ void level_build(int stage) {
   /* a light under every lamp post, and the stage's coloured accents (they follow the camera) */
   for (float x = 2; x < len + 6; x += 11.0f)
     light(s, "L", (t3_vec3){ x, 3.9f, -2.9f }, th->lamp, th->lamp_e * 38, 11);
-  for (int i = 0; i < 3; i++) acc_node[i] = light(s, "A", (t3_vec3){ th->acc[i].dx, th->acc[i].y, th->acc[i].z }, th->acc[i].c, th->acc[i].e * (i == 2 ? 2.5f : 1.0f), th->acc[i].range);
+  /* the front fill (the third accent) stood low just in front of the near lane: it blew the near bodies out and, mirrored on
+     the wet street, made the hot spot at the bottom of the picture. Up behind the camera's line of sight now, further off and
+     wider: the near lane takes about a third of what it did, the middle what it had, and its mirror image on the street falls
+     below the picture (game.mirrorz, z of the mirror point; the picture's lower edge meets the street near z 5.5) */
+  for (int i = 0; i < 3; i++) {
+    float e = th->acc[i].e * (i == 2 ? 2.5f : 1.0f), y = th->acc[i].y, zz = th->acc[i].z, rg = th->acc[i].range;
+    if (i == 2 && !g_legacy_fill) e *= 1.9f, y = FILL_Y, zz = FILL_Z, rg = 15;
+    acc_y[i] = y, acc_z[i] = zz;
+    acc_node[i] = light(s, "A", (t3_vec3){ th->acc[i].dx, y, zz }, th->acc[i].c, e, rg);
+  }
+  g_mirror_z = (int)((acc_z[2] * 3.9f + 7.7f * acc_y[2]) / (3.9f + acc_y[2]) * 1000.0f + 0.5f);
   if ((stage & 3) == 1) juke_build(s); /* Arthur's jukebox */
   /* breakable props */
   cw_rng r;
@@ -427,6 +441,6 @@ void level_camera(float dt) {
   {
     const theme *th = &THEMES[W.stage & 3];
     for (int i = 0; i < 3; i++)
-      if (acc_node[i].id && cw_node_valid(acc_node[i])) cw_node3d_set_position(acc_node[i], (t3_vec3){ W.cam_x + th->acc[i].dx, th->acc[i].y, th->acc[i].z });
+      if (acc_node[i].id && cw_node_valid(acc_node[i])) cw_node3d_set_position(acc_node[i], (t3_vec3){ W.cam_x + th->acc[i].dx, acc_y[i], acc_z[i] });
   }
 }
