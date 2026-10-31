@@ -22,6 +22,7 @@
 game G;
 #define MAX_SINK 0.32f   /* metres of the hull's centre under the surface */
 int g_ride_top = 1;  /* debug: 0 is the control, a hull held by the spring alone */
+float g_ramp_lift; /* debug: ramp_lift <metres>, the must-fail control for the ramps' gap count */
 float g_tide_hold = -100; /* debug: tide <metres> holds it */
 float g_swell_hold; /* debug: swell <0..1> holds the sea at that size */
 
@@ -125,21 +126,44 @@ static void ramps_place(void) {
     G.ramp_x[r] = x, G.ramp_z[r] = z, G.ramp_yaw[r] = cw_atan2(dx, dz);
   }
 }
+/* heave, pitch and roll to fit the water at its four corners: it rides the waves it covers, not the slope at its middle */
+void ramp_pose(int r, double wt, float *h, float *ta, float *tl) {
+  float sy, cy;
+  cw_sincos(G.ramp_yaw[r], &sy, &cy);
+  float x = G.ramp_x[r], z = G.ramp_z[r], a = RAMP_HALF_LEN, l = RAMP_HALF_W + 0.75f, w[4];
+  for (int k = 0; k < 4; k++) {
+    float fa = k & 1 ? a : -a, fl = k & 2 ? l : -l;
+    w[k] = cw_water_height_at(G.water, x + sy * fa - cy * fl, z + cy * fa + sy * fl, wt);
+  }
+  *h = (w[0] + w[1] + w[2] + w[3]) * 0.25f;
+  *ta = (w[1] + w[3] - w[0] - w[2]) / (4 * a);
+  *tl = (w[2] + w[3] - w[0] - w[1]) / (4 * l);
+}
 static void ramps_tick(void) {
   for (int r = 0; r < RAMPS; r++) {
-    cw_water_sample s;
-    cw_water_sample_at(G.water, G.ramp_x[r], G.ramp_z[r], G.wt, &s);
-    float sy, cy, ny = s.normal.y > 0.2f ? s.normal.y : 0.2f;
+    float sy, cy;
+    G.ramp_now[r] = -9;
     cw_sincos(G.ramp_yaw[r], &sy, &cy);
-    G.ramp_h[r] = s.height;
-    G.ramp_ta[r] = -(s.normal.x * sy + s.normal.z * cy) / ny;
-    G.ramp_tl[r] = -(s.normal.x * -cy + s.normal.z * sy) / ny;
-    /* grounded: the skirt must stay under the water at all four corners */
-    for (int k = 0; k < 4; k++) {
-      float a = k & 1 ? RAMP_HALF_LEN : -RAMP_HALF_LEN, l = k & 2 ? RAMP_HALF_W : -RAMP_HALF_W;
+    ramp_pose(r, G.wt, &G.ramp_h[r], &G.ramp_ta[r], &G.ramp_tl[r]);
+    /* the measure: at each of nine points along each side, how far the skirt's foot (a gap: nothing there at all) and the pontoon's
+     * belly (the skirt on show) stand over the water */
+    bool gap = false;
+    for (int k = 0; k <= 8; k++) for (int side = -1; side <= 1; side += 2) {
+      float t = (float)k / 8.0f, a = -RAMP_HALF_LEN + 2 * RAMP_HALF_LEN * t, l = (float)side * (RAMP_HALF_W + 0.75f);
       float wx = G.ramp_x[r] + sy * a - cy * l, wz = G.ramp_z[r] + cy * a + sy * l;
-      if (G.ramp_h[r] + G.ramp_ta[r] * a + G.ramp_tl[r] * l - 2.2f > cw_water_height_at(G.water, wx, wz, G.wt)) { G.ramp_gap++; break; }
+      float plane = G.ramp_h[r] + G.ramp_ta[r] * a + G.ramp_tl[r] * l + g_ramp_lift;
+      float water = cw_water_height_at(G.water, wx, wz, G.wt);
+      float foot = plane - 2.2f - water, belly = plane - 0.75f - water;
+      G.ramp_points++;
+      if (foot > 0) { G.ramp_gap_points++; gap = true; }
+      if (foot > G.ramp_gap_max) G.ramp_gap_max = foot;
+      if (belly > 0) G.ramp_belly_points++;
+      if (belly > G.ramp_belly_max) G.ramp_belly_max = belly;
+      if (belly > G.ramp_now[r]) G.ramp_now[r] = belly;
     }
+    if (gap) G.ramp_gap++;
+    float tilt = sqrtf(G.ramp_ta[r] * G.ramp_ta[r] + G.ramp_tl[r] * G.ramp_tl[r]);
+    if (tilt > G.ramp_tilt_max) G.ramp_tilt_max = tilt;
   }
 }
 /* on a deck the hull runs up it and leaves its top edge at the slope: no jump code here either. From the side or behind it is
@@ -327,8 +351,9 @@ static void craft_tick(craft *c, int idx, float dt) {
       if (c->trick_kind == 1) c->roll += c->trick_dir * speed * dt;
       else c->pitch += speed * dt;
       if (c->trick_t >= 0.72f) {
-        if (c->trick_kind == 1) c->roll = wrap_pi(c->roll);
-        else c->pitch = wrap_pi(c->pitch);
+        /* round and square again */
+        if (c->trick_kind == 1) c->roll = 0, c->rr = 0;
+        else c->pitch = 0.1f, c->pr = 0;
         c->trick_kind = 0;
         c->tricks++;
         if (c->meter < 5) c->meter++;

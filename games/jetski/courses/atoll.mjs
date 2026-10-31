@@ -86,6 +86,7 @@ return {
       return smooth(3, 8, y) * (1 - smooth(85, 120, y)) * (1 - smooth(0.9, 1.5, slope)) * smooth(0.3, 0.55, fbm(x * 0.04, z * 0.04, 3, 92));
     },
   },
+  lying: ['rocks'],
   // model, density map, density, scale range, visible range, seed, sink, tilt
   scatter: [
     ['palm', 'palms', 0.012, 0.75, 1.45, 900, 77, false, 0.25],

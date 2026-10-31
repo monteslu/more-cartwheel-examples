@@ -264,7 +264,7 @@ class Plain {
 // ── a floating ramp: forward +z, y = 0 is the waterline. The deck climbs from under the water at its lip to its top edge; sides
 // and back run down below the water, so a swell never shows a gap under it. Sizes match src/sim.c (RAMP_*) ──
 {
-  const P = new Plain(), L = 4, W = 2.6, LOW = -0.2, TOP = 1.9, SKIRT = -2.2, N = 8;
+  const P = new Plain(), L = 4, W = 2.6, LOW = -0.75, TOP = 1.9, SKIRT = -2.2, N = 8;
   for (let i = 0; i < N; i++) {
     const z0 = -L + (2 * L * i) / N, z1 = -L + (2 * L * (i + 1)) / N, y = (z) => LOW + ((z + L) / (2 * L)) * (TOP - LOW);
     P.grid(i % 2 ? 'dark' : 'band', [[[-W, y(z0), z0], [W, y(z0), z0]], [[-W, y(z1), z1], [W, y(z1), z1]]]);
@@ -274,9 +274,15 @@ class Plain {
     const a = [[s * W, SKIRT, -L], [s * W, SKIRT, L]], b = [[s * W, top(-L), -L], [s * W, top(L), L]];
     P.grid('dark', s > 0 ? [a, b] : [b, a]);
     // a pontoon along each side, half in the water
-    P.tube('band', [[s * (W + 0.25), 0.05, -L], [s * (W + 0.25), 0.05, L]], 0.42, 12);
+    P.tube('band', [[s * (W + 0.25), -0.25, -L - 0.5], [s * (W + 0.25), -0.25, L]], (t) => 0.5 * Math.pow(Math.sin(Math.min(1, t * 6) * Math.PI / 2), 0.6), 12);
   }
   P.grid('dark', [[[W, SKIRT, L], [-W, SKIRT, L]], [[W, TOP, L], [-W, TOP, L]]]);
+  // skirts all the way round under the waterline: a swell's hollow never shows under the lip or a pontoon
+  P.grid('dark', [[[-W - 0.75, LOW - 0.1, -L], [W + 0.75, LOW - 0.1, -L]], [[-W - 0.75, SKIRT, -L], [W + 0.75, SKIRT, -L]]]); // (its top under the lip: it must not stand up in front of the deck)
+  for (const s of [-1, 1]) {
+    const a = [[s * (W + 0.75), SKIRT, -L], [s * (W + 0.75), SKIRT, L]], b = [[s * (W + 0.75), -0.25, -L], [s * (W + 0.75), -0.25, L]];
+    P.grid('band', s > 0 ? [a, b] : [b, a]); // the pontoon's colour: in a hollow it shows, as the side of the hull
+  }
   const g = new Glb();
   const mi = { band: g.material('band', 0.45), dark: g.material('dark', 0.7) };
   g.materials[mi.band].pbrMetallicRoughness.baseColorFactor = [0.95, 0.62, 0.08, 1];

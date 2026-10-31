@@ -18,7 +18,7 @@
 #define BUOY_MAX 64
 #define RAMP_HALF_LEN 4.0f
 #define RAMP_HALF_W 2.6f
-#define RAMP_LOW (-0.2f)   /* the deck's height over the water at its lip */
+#define RAMP_LOW (-0.75f)  /* the deck's height over the water at its lip */
 #define RAMP_TOP 1.9f      /* and at its top edge */
 static const char *const RIDER_NAMES[6] = { "You", "Marlin", "Kestrel", "Tide", "Juno", "Reef" };
 extern int g_difficulty; /* 0 easy, 1 normal, 2 hard */
@@ -131,7 +131,9 @@ typedef struct game {
   float cam_orbit;  /* the attract loop's cut timer */
   int cam_mode;
   float ramp_x[RAMP_MAX], ramp_z[RAMP_MAX], ramp_yaw[RAMP_MAX], ramp_h[RAMP_MAX], ramp_ta[RAMP_MAX], ramp_tl[RAMP_MAX]; /* place; and this tick: height, tilt along and across */
-  int32_t ramp_gap; /* ticks any ramp's skirt showed above the water at a corner */
+  int32_t ramp_gap; /* ramp-ticks with its skirt's foot over the water anywhere */
+  int32_t ramp_points, ramp_gap_points, ramp_belly_points; /* points measured on the ramps' sides, foot over water, belly over water */
+  float ramp_gap_max, ramp_belly_max, ramp_tilt_max, ramp_now[RAMP_MAX];
   int32_t cam_under; /* ticks the chase camera spent under the surface */
   int32_t attract_under, attract_land, attract_blocked, attract_hidden; /* ticks the attract camera was under water, in land, had land in its view of the craft, or a crest over the hull */
   uint32_t sim_hash;
@@ -139,7 +141,7 @@ typedef struct game {
 extern game G;
 
 /* sim.c */
-extern float g_swell_hold, g_tide_hold;
+extern float g_swell_hold, g_tide_hold, g_ramp_lift;
 void sim_hook_start(float back);
 extern int g_ride_top;
 void sim_reset(int state);
@@ -149,6 +151,7 @@ bool hook_open(void);     /* the course's hook lets a rider through now */
 void sim_tick(float dt);
 float ground_at(float x, float z);
 void track_at(float s, float *x, float *z, float *dx, float *dz);
+void ramp_pose(int r, double wt, float *h, float *ta, float *tl); /* the plane a ramp floats on */
 void sim_ramp_start(int r, float back, float aside); /* the human lined up with a ramp, at speed */
 /* view.c */
 extern int g_attract_clear;
@@ -156,6 +159,8 @@ void view_init(void);
 void view_sync(double alpha);
 void view_course_apply(void);    /* G.level changed: land, sea, sky and marks for that course */
 void view_tick(float dt);
+extern bool g_peek_on;  /* debug: peek holds the camera, for the grounding sweep */
+extern float g_peek[6];
 /* rider.c */
 extern float rider_torso[RACERS];
 void rider_init(void);

@@ -17,6 +17,8 @@
 #include "game.h"
 
 static float perf[7], sun_dbg[3];
+static int32_t ground_total, ground_gaps;
+static float ground_worst;
 static int32_t gpu_programs; /* programs compiled so far: if this grows during play, the warm-up missed them */
 static cw_action a_left, a_right, a_back, a_fwd, a_throttle, a_trick;
 
@@ -163,6 +165,64 @@ static void cmd_arch(int argc, const char **argv, cw_reply *r) {
   sim_hook_start(argc > 1 ? (float)atof(argv[1]) : 40);
   if (r) cw_reply_raw(r, "true");
 }
+/* peek x y z, at x y z, heights from the ground if the y is 0; peek alone lets go: a held camera for the grounding sweep */
+static void cmd_peek(int argc, const char **argv, cw_reply *r) {
+  g_peek_on = argc >= 7;
+  for (int i = 0; i < 6 && i + 1 < argc; i++) g_peek[i] = (float)atof(argv[i + 1]);
+  if (r) cw_reply_printf(r, "{\"ground\":%.2f}", g_peek_on ? ground_at(g_peek[3], g_peek[5]) : 0.0f);
+}
+/* grounding [lift metres]: every scatter instance of this course against the ground around its foot, and each mark against the
+ * sea and the ground under it. lift is the must-fail control. foot[]: how low each model reaches and how wide its foot is */
+static void cmd_grounding(int argc, const char **argv, cw_reply *r) {
+  float lift = argc > 1 ? (float)atof(argv[1]) : 0;
+  const course_def *d = DEF;
+  int cell_m = 32, cells = (int)((float)d->quads * d->spacing) / cell_m + 2;
+  static float buf[5 * 4096];
+  int total = 0, gaps = 0;
+  float worst = -1e9f, worst_at[2] = { 0, 0 };
+  int by_layer[16] = { 0 };
+  for (int l = 0; l < d->scatter_n; l++) {
+    const course_scatter *s = &d->scatter[l];
+    bool tree = !s->sink;
+    float low = tree ? -0.4f : -0.67f, foot = tree ? 0.28f : 0.6f;
+    for (int cz = -cells; cz < cells; cz++) for (int cx = -cells; cx < cells; cx++) {
+      int n = cw_terrain_scatter_cell(G.land, l, cx, cz, buf, 4096);
+      for (int i = 0; i < n; i++) {
+        const float *o = &buf[i * 5];
+        float bottom = o[1] + lift + low * o[3], g = 1e9f;
+        for (int k = 0; k < 8; k++) {
+          float a = (float)k * 0.785398f, gy = ground_at(o[0] + foot * o[3] * cw_cos(a), o[2] + foot * o[3] * cw_sin(a));
+          if (gy < g) g = gy;
+        }
+        /* above the lowest ground around its foot: the foot's edge hangs in the air */
+        float gap = bottom - g;
+        if (gap > worst) worst = gap, worst_at[0] = o[0], worst_at[1] = o[2];
+        if (gap > 0.15f) gaps++, by_layer[l]++;
+        total++;
+      }
+    }
+  }
+  ground_total = total, ground_gaps = gaps, ground_worst = worst;
+  /* marks: floats, so the ground must stay under the lowest the water goes (the tide's low less the swell) */
+  float tl = d->tide[0] < d->tide[1] ? d->tide[0] : d->tide[1], amp = 0;
+  for (int i = 0; i < 4; i++) amp += d->waves[i][2] + d->waves[i][3] * d->swell[1];
+  float shallowest_buoy = -1e9f, shallowest_ramp = -1e9f;
+  for (int b = 0; b < d->buoy_n; b++) { float g = ground_at(d->buoys[b][0], d->buoys[b][1]); if (g > shallowest_buoy) shallowest_buoy = g; }
+  for (int q = 0; q < d->ramp_n; q++) { float g = ground_at(G.ramp_x[q], G.ramp_z[q]); if (g > shallowest_ramp) shallowest_ramp = g; }
+  if (r) cw_reply_printf(r, "{\"course\":\"%s\",\"instances\":%d,\"gaps\":%d,\"worst\":%.3f,\"at\":[%.0f,%.0f],\"by_layer\":[%d,%d,%d,%d,%d],\"tide_low\":%.2f,\"swell_amp\":%.2f,\"shallowest_buoy_ground\":%.2f,\"shallowest_ramp_ground\":%.2f,\"ramp_gap_ticks\":%d}",
+    d->name, total, gaps, worst, worst_at[0], worst_at[1], by_layer[0], by_layer[1], by_layer[2], by_layer[3], by_layer[4], tl, amp, shallowest_buoy, shallowest_ramp, G.ramp_gap);
+}
+static void cmd_ramp_lift(int argc, const char **argv, cw_reply *r) {
+  g_ramp_lift = argc > 1 ? (float)atof(argv[1]) : 0;
+  if (r) cw_reply_raw(r, "true");
+}
+/* ramp_where <index>: where it is and how it floats now */
+static void cmd_ramp_where(int argc, const char **argv, cw_reply *r) {
+  int q = argc > 1 ? atoi(argv[1]) % RAMP_MAX : 0;
+  float sy, cy;
+  cw_sincos(G.ramp_yaw[q], &sy, &cy);
+  if (r) cw_reply_printf(r, "{\"x\":%.2f,\"z\":%.2f,\"h\":%.2f,\"sy\":%.3f,\"cy\":%.3f}", G.ramp_x[q], G.ramp_z[q], G.ramp_h[q], sy, cy);
+}
 /* mode <0 championship, 1 time trial> */
 static void cmd_mode(int argc, const char **argv, cw_reply *r) {
   if (argc > 1) g_mode = atoi(argv[1]) ? MODE_TIME_TRIAL : MODE_CHAMPIONSHIP;
@@ -207,6 +267,9 @@ static void init(void *user) {
 #endif
   cw_debug_i32("race.state", &G.state);
   cw_debug_i32("gpu.programs", &gpu_programs);
+  cw_debug_i32("ground.total", &ground_total);
+  cw_debug_i32("ground.gaps", &ground_gaps);
+  cw_debug_f32("ground.worst", &ground_worst);
   cw_debug_i32("race.level", &G.level);
   cw_debug_i32("p0.shortcuts", &G.c[0].shortcuts);
   cw_debug_i32("p0.shut_hits", &G.c[0].shut_hits);
@@ -251,6 +314,13 @@ static void init(void *user) {
   cw_debug_i32("p0.tricks", &G.c[0].tricks);
   cw_debug_f32("p0.air_max", &G.c[0].air_max);
   cw_debug_i32("ramp.gap", &G.ramp_gap);
+  cw_debug_i32("ramp.points", &G.ramp_points);
+  cw_debug_i32("ramp.gap_points", &G.ramp_gap_points);
+  cw_debug_i32("ramp.belly_points", &G.ramp_belly_points);
+  cw_debug_f32("ramp.gap_max", &G.ramp_gap_max);
+  cw_debug_f32("ramp.belly_max", &G.ramp_belly_max);
+  cw_debug_f32("ramp.tilt_max", &G.ramp_tilt_max);
+  cw_debug_f32_array("ramp.now", G.ramp_now, RAMP_MAX);
   cw_debug_f32("p0.sink_max", &G.c[0].sink_max);
   cw_debug_i32("p0.dq", &G.c[0].dq);
   cw_debug_f32("p0.out_t", &G.c[0].out_t);
@@ -269,6 +339,10 @@ static void init(void *user) {
   cw_debug_command("course", "course <index>: that course now", cmd_course);
   cw_debug_command("tide", "tide <metres>: hold the tide there", cmd_tide);
   cw_debug_command("arch", "arch <back>: lined up with the course's arch", cmd_arch);
+  cw_debug_command("peek", "peek x y z ax ay az: hold the camera there", cmd_peek);
+  cw_debug_command("grounding", "grounding [lift]: every scatter instance against the ground, and the marks against the sea", cmd_grounding);
+  cw_debug_command("ramp_lift", "ramp_lift <metres>: the control for the ramps' gap count", cmd_ramp_lift);
+  cw_debug_command("ramp_where", "ramp_where <index>: where that ramp is now", cmd_ramp_where);
   cw_debug_command("mode", "mode <0 championship, 1 time trial>", cmd_mode);
   cw_debug_command("finish", "finish: the human crosses the line now", cmd_finish);
   cw_debug_command("warp", "warp <metres>: every racer to that place on the course", cmd_warp);

@@ -49,6 +49,7 @@ return {
     pines({ x, z, y, slope }) { return smooth(5, 12, y) * (1 - smooth(55, 95, y)) * (1 - smooth(0.7, 1.05, slope)) * smooth(0.38, 0.55, fbm(x * 0.018, z * 0.018, 3, 221)); },
     boulders({ x, z, y, slope }) { return smooth(-2.5, -0.5, y) * (1 - smooth(3, 7, y)) * smooth(0.42, 0.6, fbm(x * 0.05 + 3, z * 0.05, 3, 222)) * smooth(30, 42, trackDist(x, z)) * smooth(8, 16, segDist(x, z)); },
   },
+  lying: ['boulders'],
   scatter: [
     ['pine', 'pines', 0.03, 0.7, 1.5, 800, 177, false, 0.1],
     ['rock0', 'boulders', 0.05, 0.7, 2.6, 700, 179, true, 0.3],

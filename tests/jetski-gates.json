@@ -108,5 +108,10 @@
       "course 1",
       "race"
     ]
+  },
+  {
+    "name": "jetski-ramps",
+    "script": "tests/jetski-ramps.mjs",
+    "note": "the ramps never float: a race's worth of ticks at the biggest sea of every difficulty on both courses, nine points a side against the water every tick; control: lifted 2.1 m, the check sees gaps"
   }
 ]

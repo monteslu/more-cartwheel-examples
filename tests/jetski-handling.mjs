@@ -55,7 +55,6 @@ check('JT1 a ramp gives big air', onRamp['p0.ramps'] >= 1 && onRamp['p0.air_max'
 check('JT1 control: beside the ramp, no ramp', beside['p0.ramps'] === 0 && beside['p0.air_max'] < onRamp['p0.air_max'] * 0.6, `${beside['p0.ramps']} ramps, ${f2(beside['p0.air_max'])} s`);
 check('JT2 a trick in that air completes', trick['p0.tricks'] >= 1 && trick['p0.spills'] === 0, `${trick['p0.tricks']} tricks, ${trick['p0.spills']} spills`);
 check('JT2 control: no button, no trick', onRamp['p0.tricks'] === 0, `${onRamp['p0.tricks']} tricks`);
-check('JT3 the ramps never show a gap', onRamp['ramp.gap'] === 0, `${onRamp['ramp.gap']} ticks`);
 // Cold Sound's arch: shut while the tide stands high, the short way once it has fallen
 const high = run('course 1;race;tide 2.6;arch 60', [TH], 360), low = run('course 1;race;tide -1.6;arch 60', [TH], 360);
 check('JS6 high tide shuts the arch', high['p0.shut_hits'] >= 1 && high['p0.shortcuts'] === 0, `${high['p0.shut_hits']} hits, ${high['p0.shortcuts']} through`);
@@ -65,5 +64,13 @@ for (const [lv, name] of [[0, 'Crater Atoll'], [1, 'Cold Sound']]) {
   const r0 = run(`course ${lv};race`, [], 120), r1 = run(`course ${lv};race`, [], 7000);
   check(`${name}: the riders go the whole way round`, r1['p1.dist'] > 2500 && r1['p2.dist'] > 2500, `${f2(r1['p1.dist'])} m and ${f2(r1['p2.dist'])} m after 7000 ticks`);
   check(`${name} control: not yet on the grid`, r0['p1.dist'] < 300, `${f2(r0['p1.dist'])} m`);
+}
+// nothing floats: the numbers come back through the game's own check of every scatter instance
+for (const [lv, name] of [[0, 'Crater Atoll'], [1, 'Cold Sound']]) {
+  const exe = process.env.JETSKI_EXE || join(ROOT, 'build/native/games/jetski/jetski');
+  const out = (lift) => { const f = join(OUT, 'ground' + lv + lift + '.json'); const r = spawnSync('node', [TOOL, '--host', 'native', '--gpu', 'gl', '--app', 'jetski', '--frames', '6', '--state', f, '--shot', f + '.png', '--start-cmds', `course ${lv};grounding ${lift}`, '--exe', exe], { cwd: join(ROOT, 'deps/cartwheel-engine'), encoding: 'utf8', maxBuffer: 1 << 26, env: { ...process.env, CW_PROJECT_ROOT: ROOT, LIBGL_ALWAYS_SOFTWARE: '1', LP_NUM_THREADS: '2', CW_TEST_GPU: 'software', JETSKI_SMALL: '1', SDL_AUDIODRIVER: 'dummy' } }); return JSON.parse(readFileSync(f, 'utf8')); };
+  const ok = out(0), lifted = out(0.6);
+  check(`${name}: nothing hangs in the air`, ok['ground.gaps'] === 0 && ok['ground.total'] > 5000, `${ok['ground.total']} instances, ${ok['ground.gaps']} with a gap, worst ${f2(ok['ground.worst'])} m`);
+  check(`${name} control: lifted 0.6 m, the check sees it`, lifted['ground.gaps'] > 500, `${lifted['ground.gaps']} with a gap`);
 }
 process.exit(fail ? 1 : 0);

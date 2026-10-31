@@ -522,6 +522,8 @@ void view_tick(float dt) {
   cw_water_ripple_follow(G.water, c->x + sy * 34.0f, c->z + cy * 34.0f);
 }
 
+bool g_peek_on;
+float g_peek[6];
 void view_sync(double alpha) {
   float a = (float)alpha;
   /* who is on the water, and which buoys count */
@@ -546,12 +548,9 @@ void view_sync(double alpha) {
   double wt = cw_water_time(G.water) + (a - 1.0f) * (1.0f / 60.0f);
   for (int r = 0; r < RAMPS; r++) {
     /* the sim's plane: the height, tilt along and across at the ramp's centre, the same formula as sim.c's deck */
-    cw_water_sample s;
-    cw_water_sample_at(G.water, G.ramp_x[r], G.ramp_z[r], wt, &s);
-    cw_node3d_set_position(ramp_n[r], (t3_vec3){ G.ramp_x[r], s.height, G.ramp_z[r] });
-    float sy, cy, ny = s.normal.y > 0.2f ? s.normal.y : 0.2f;
-    cw_sincos(G.ramp_yaw[r], &sy, &cy);
-    float ta = -(s.normal.x * sy + s.normal.z * cy) / ny, tl = -(s.normal.x * -cy + s.normal.z * sy) / ny;
+    float h, ta, tl;
+    ramp_pose(r, wt, &h, &ta, &tl);
+    cw_node3d_set_position(ramp_n[r], (t3_vec3){ G.ramp_x[r], h, G.ramp_z[r] });
     cw_node3d_set_quaternion(ramp_n[r], t3_quat_from_euler((t3_euler){ -cw_atan2(ta, 1.0f), G.ramp_yaw[r], -cw_atan2(tl, 1.0f), T3_YXZ }));
   }
   for (int b = 0; b < BUOY_N; b++) {
@@ -587,6 +586,7 @@ void view_sync(double alpha) {
       cw_node3d_look_at(G.sun_node, cp, (t3_vec3){ 0, 1, 0 });
     }
   }
+  if (g_peek_on) { cp = (t3_vec3){ g_peek[0], g_peek[1], g_peek[2] }; lp = (t3_vec3){ g_peek[3], g_peek[4], g_peek[5] }; }
   cw_node3d_set_position(G.camera, cp);
   cw_node3d_look_at(G.camera, lp, (t3_vec3){ 0, 1, 0 });
   if (G.cam_fov > 1) cw_node_set(G.camera, "fov", cw_val_float(lerpf(G.cam_fov_prev > 1 ? G.cam_fov_prev : G.cam_fov, G.cam_fov, a)));
