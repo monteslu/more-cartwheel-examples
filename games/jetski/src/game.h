@@ -13,7 +13,7 @@
 #define RACERS 6
 #define LAPS 3
 #define TAU 6.2831853f
-#define LEVELS 2
+#define LEVELS 5
 #define RAMP_MAX 14
 #define BUOY_MAX 64
 #define RAMP_HALF_LEN 20.0f /* a rigid structure on piles: tools/make-models.mjs builds these sizes */
@@ -37,15 +37,16 @@ typedef struct course_def {
   int buoy_n; const float (*buoys)[4];
   int ramp_n; const float (*ramps)[5]; float ramp_top;
   int scatter_n; const course_scatter *scatter;
+  int model_n; const char *const *models; int placed_n; const float (*placed)[8]; /* model, x, z, yaw, scale, solid half length, half width, floats */
   int prop_n; const char *const (*props)[3];
   const char *layer[4]; float layer_uv[4];
   const char *heights, *control, *mask; int mask_n, map_n;
   const char *sky, *landmark; float landmark_at[3];
   float start[4];
   float waves[4][5], swell[2], tide[2];
-  float sun_disc;
+  float sun_disc, rain; /* rain: 0 none, 1 a squall with lightning */
   /* kind 1: an arch over a cut, shut while the tide stands high: see hook_craft */
-  struct { int kind; float x, z, dirx, dirz, half_w, half_len, lintel, s_in, s_out; const char *model; } hook;
+  struct { int kind; float current, x, z, dirx, dirz, half_w, half_len, lintel, s_in, s_out; const char *model; } hook;
 } course_def;
 extern const course_def *const COURSES[LEVELS];
 #define DEF (COURSES[G.level])
@@ -92,6 +93,7 @@ typedef struct craft {
   bool on_ramp;                   /* on a ramp's deck this tick */
   bool hook_passed;               /* through the hook's far side, until it comes round again */
   bool trick_held;                /* the trick button last tick */
+  bool wake_on;                   /* over a tanker's wake */
   bool big_slide;                 /* the slide that threw the rider */
   int wake_hit;                   /* riding over a rival's wake */
   int beached;                    /* ticks on land */
@@ -109,9 +111,11 @@ typedef struct craft {
   int shortcuts;                  /* times through the hook's short way */
   int shut_hits;                  /* times it ran into the hook while it was shut */
   float flash_short;
+  float current;                  /* how fast the water under it runs */
   float sink_max;                 /* deepest the hull's centre has been under the surface (m) */
   int ramps;                      /* ramps taken */
   int wall_hits;                  /* times it ran into a ramp's side */
+  int slow_ticks;
   float air_max;                  /* longest time in the air (s) */
 } craft;
 
@@ -133,6 +137,10 @@ typedef struct game {
   int cam_mode;
   float ramp_x[RAMP_MAX], ramp_z[RAMP_MAX], ramp_yaw[RAMP_MAX], ramp_ta[RAMP_MAX]; /* place; and this tick: height, tilt along and across */
   int32_t miss_at[BUOY_MAX]; /* computer riders' misses, per buoy */
+  float flash;     /* lightning now, 0..1 (the sim's clock picks when: the same on every host) */
+  float tanker[3]; /* x, z, how far along its way */
+  int32_t tanker_hits, wake_rides;
+  int32_t ai_stuck; /* the most ticks in a row any computer rider has spent under 2 m/s */
   int32_t ai_ramps, ai_spills, ai_misses, ai_passes, ai_walls; /* all the computer riders so far */
   int32_t ramp_points, ramp_gap_points;      /* points measured around the ramps; of them, a pile's foot over the water */
   int32_t ramp_dry_entry, ramp_swamped;      /* ticks the deck's low end stood clear of the water; ticks the water reached over the top */
@@ -144,7 +152,7 @@ typedef struct game {
 extern game G;
 
 /* sim.c */
-extern float g_swell_hold, g_tide_hold, g_ramp_lift;
+extern float g_swell_hold, g_tide_hold, g_ramp_lift, g_current;
 extern int g_ai_ramps;    /* debug: ai_ramps 0, no computer rider goes for a ramp: the control for what ramps cost them */
 extern int g_ramp_seesaw; /* debug: ramp_seesaw 1, the jump gate's control: decks that tip with the swell */
 void sim_hook_start(float back);

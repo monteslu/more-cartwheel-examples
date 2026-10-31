@@ -303,6 +303,50 @@ static void ramps_init(cw_node root) {
   ramps_apply();
 }
 
+/* what a course sets by hand: its models instanced over their places, made when the course loads */
+#define PLACED_PARTS 40
+static cw_node placed_n[PLACED_PARTS];
+static int placed_count;
+static void placed_apply(cw_node root) {
+  for (int i = 0; i < placed_count; i++) cw_node_free(placed_n[i]);
+  placed_count = 0;
+  const course_def *d = DEF;
+  for (int mi = 0; mi < d->model_n; mi++) {
+    int n = 0;
+    for (int q = 0; q < d->placed_n; q++) if ((int)d->placed[q][0] == mi) n++;
+    if (!n) continue;
+    t3_object *src = cw_gltf_instantiate(cw_res_load(d->models[mi], CW_RES_GLTF));
+    t3_object *stack[16];
+    int sp = 0;
+    stack[sp++] = src;
+    while (sp > 0) {
+      t3_object *o = stack[--sp];
+      if (o->type == T3_MESH && placed_count < PLACED_PARTS) {
+        t3_mesh *m = (t3_mesh *)o;
+        t3_instanced_mesh *im = t3_instanced_mesh_new(m->geometry, m->materials[0], n);
+        ((t3_object *)im)->cast_shadow = true, ((t3_object *)im)->receive_shadow = true;
+        int k = 0;
+        for (int q = 0; q < d->placed_n; q++) {
+          const float *p = d->placed[q];
+          if ((int)p[0] != mi) continue;
+          t3_mat4 mat;
+          float y = p[7] > 0 ? 0 : ground_at(p[1], p[2]);
+          t3_mat4_compose(&mat, (t3_vec3){ p[1], y, p[2] }, t3_quat_from_euler((t3_euler){ 0, p[3], 0, T3_YXZ }), (t3_vec3){ p[4], p[4], p[4] });
+          t3_instanced_mesh_set_matrix_at(im, k++, &mat);
+        }
+        char name[24];
+        snprintf(name, sizeof name, "Placed%d", placed_count);
+        placed_n[placed_count] = model_node(root, name, (t3_object *)im);
+        cw_water_refraction_hide(G.water, placed_n[placed_count]);
+        placed_count++;
+        t3_release(im);
+      }
+      for (int i = 0; i < o->child_count && sp < 16; i++) stack[sp++] = o->children[i];
+    }
+    t3_release(src);
+  }
+}
+
 /* the marks and the look of the course in G.level */
 static void marks_apply(cw_node root) {
   if (cw_node_valid(landmark_n)) cw_node_free(landmark_n);
@@ -320,8 +364,9 @@ static void marks_apply(cw_node root) {
     t3_object *o = cw_gltf_instantiate(cw_res_load(d->hook.model, CW_RES_GLTF));
     shadows(o);
     hook_n = model_node(root, "Hook", o);
-    cw_node3d_set_position(hook_n, (t3_vec3){ d->hook.x, 0, d->hook.z });
+    cw_node3d_set_position(hook_n, (t3_vec3){ d->hook.x, d->hook.kind == 4 ? ground_at(d->hook.x, d->hook.z) : 0, d->hook.z });
     cw_node3d_set_rotation(hook_n, (t3_vec3){ 0, cw_atan2(d->hook.dirx, d->hook.dirz), 0 }); /* its span across the way through */
+    cw_water_refraction_hide(G.water, hook_n);
     t3_release(o);
   }
 }
@@ -359,6 +404,7 @@ void view_course_apply(void) {
   mask_apply();
   sky_apply();
   marks_apply(root);
+  placed_apply(root);
   props_apply(root);
   ramps_apply();
   g_marks_stale = true;
@@ -448,6 +494,7 @@ void view_init(void) {
   /* the lighthouse stands on the islet's top, the gate floats on the line */
   {
     marks_apply(root);
+    placed_apply(root);
     cw_res gr = cw_res_load("res://models/gate.glb", CW_RES_GLTF);
     t3_object *go = cw_gltf_instantiate(gr);
     shadows(go);
@@ -619,6 +666,24 @@ void view_sync(double alpha) {
     rider_pose(i, c, a);
   }
   double wt = cw_water_time(G.water) + (a - 1.0f) * (1.0f / 60.0f);
+  /* the squall: lightning lights the world and the sky; the beacon's lamp is seen through the rain on its rock */
+  { static float last_fill = -1;
+    cw_node root = cw_node_get(cw_tree_root(cw_scene_app_tree()), "Root");
+    if (DEF->rain > 0) {
+      cw_node fill = cw_node_get(root, "Fill");
+      float f = 1.5f + 14.0f * G.flash;
+      if (f != last_fill) { cw_node_set(fill, "energy", cw_val_float(f)); last_fill = f; }
+      t3_mesh *dome = (t3_mesh *)sky_dome;
+      float k = 1.0f + 5.0f * G.flash;
+      dome->materials[0]->color = (t3_color){ k, k, k * 1.08f };
+    } else if (last_fill >= 0) { last_fill = -1; ((t3_mesh *)sky_dome)->materials[0]->color = (t3_color){ 1, 1, 1 }; }
+  }
+  if (DEF->hook.kind == 3 && cw_node_valid(hook_n)) {
+    /* the tanker, always head on along its way, and the white water it pushes */
+    cw_node3d_set_position(hook_n, (t3_vec3){ G.tanker[0], 0, G.tanker[1] });
+    cw_node3d_set_rotation(hook_n, (t3_vec3){ 0, cw_atan2(DEF->hook.dirx * G.tanker[2], DEF->hook.dirz * G.tanker[2]), 0 });
+    cw_water_wake(G.water, G.tanker[0], G.tanker[1], DEF->hook.dirx * G.tanker[2] * DEF->hook.s_in, DEF->hook.dirz * G.tanker[2] * DEF->hook.s_in, 9.0f, 0.2f, 0.7f);
+  }
   for (int b = 0; b < BUOY_N; b++) {
     cw_water_sample s;
     cw_water_sample_at(G.water, BUOYS[b][0], BUOYS[b][1], wt, &s);

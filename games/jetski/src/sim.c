@@ -23,6 +23,7 @@ game G;
 #define MAX_SINK 0.32f   /* metres of the hull's centre under the surface */
 int g_ride_top = 1;  /* debug: 0 is the control, a hull held by the spring alone */
 float g_ramp_lift; /* debug: ramp_lift <metres>, the must-fail control for the ramps' gap count */
+float g_current = 1; /* debug: current 0, the river's control */
 float g_tide_hold = -100; /* debug: tide <metres> holds it */
 float g_swell_hold; /* debug: swell <0..1> holds the sea at that size */
 
@@ -253,6 +254,43 @@ static void hook_craft(craft *c) {
   if (a < -2.4f) c->hook_passed = false;
 }
 
+/* the course's solid things: out by the nearest side, and it costs */
+static void solid_push(craft *c, float x, float z, float yaw, float hl, float hw) {
+  float dx = c->x - x, dz = c->z - z, sy, cy;
+  if (dx * dx + dz * dz > (hl + hw) * (hl + hw)) return;
+  cw_sincos(yaw, &sy, &cy);
+  float a = dx * sy + dz * cy, l = dx * -cy + dz * sy;
+  if (a < -hl || a > hl || l < -hw || l > hw) return;
+  float push = (l < 0 ? -hw - l : hw - l) * 1.02f;
+  c->x += -cy * push, c->z += sy * push;
+  c->vx *= 0.75f, c->vz *= 0.75f;
+  c->bump = true;
+  c->wall_hits++;
+}
+/* kind 3: a tanker under way, ahead and astern along its dock across the course. Its hull is solid and behind it a V of steep water throws a craft up */
+static void tanker_tick(void) {
+  if (DEF->hook.kind != 3) return;
+  float room = DEF->hook.half_len - 2 * DEF->hook.lintel, period = 2 * room / DEF->hook.s_in, tt = G.clock + 200.0f, run = (tt - floorf(tt / period) * period) * DEF->hook.s_in;
+  float along = DEF->hook.lintel + (run < room ? run : 2 * room - run);
+  G.tanker[0] = DEF->hook.x + DEF->hook.dirx * along, G.tanker[1] = DEF->hook.z + DEF->hook.dirz * along, G.tanker[2] = run < room ? 1.0f : -1.0f;
+}
+static void tanker_craft(craft *c, float dt) {
+  if (DEF->hook.kind != 3) return;
+  float ux = DEF->hook.dirx, uz = DEF->hook.dirz, dir = G.tanker[2];
+  int before = c->wall_hits;
+  solid_push(c, G.tanker[0], G.tanker[1], cw_atan2(ux, uz), DEF->hook.lintel, DEF->hook.half_w);
+  if (c->wall_hits != before && c->human) G.tanker_hits++;
+  float dx = c->x - G.tanker[0], dz = c->z - G.tanker[1], back = -(dx * ux + dz * uz) * dir - DEF->hook.lintel, lat = dx * -uz + dz * ux;
+  if (c->air || back < 2 || back > 150) return;
+  float width = DEF->hook.half_w + back * 0.32f, off = fabsf(fabsf(lat) - width);
+  if (off > 3.5f) return;
+  /* over the crest of its wake */
+  float k = (1.0f - off / 3.5f) * (1.0f - back / 150.0f);
+  c->vy += k * 62.0f * dt;
+  if (c->human && !c->wake_on) G.wake_rides++;
+  c->wake_on = true;
+}
+
 static void craft_tick(craft *c, int idx, float dt) {
   c->px = c->x, c->py = c->y, c->pz = c->z, c->pyaw = c->yaw, c->ppitch = c->pitch, c->proll = c->roll;
   if (c->spill > 0) {
@@ -289,6 +327,14 @@ static void craft_tick(craft *c, int idx, float dt) {
   if (!c->air) ay += (SPRING * clampf(under, -0.1f, 1.1f)) - DAMP * rel_vy * c->wet;
   /* horizontal: thrust along the hull when the pump is under, drag against the water */
   float wvx = s.velocity.x * 0.6f, wvz = s.velocity.z * 0.6f;
+  /* a river: the water itself is moving, fast in midstream, slack at the banks */
+  if (DEF->hook.kind == 2) {
+    float tx = c->x - TRACK[c->track_i][0], tz = c->z - TRACK[c->track_i][1], off = sqrtf(tx * tx + tz * tz);
+    /* along the river's course here: it runs the way the valley does */
+    float cur = DEF->hook.current * g_current * (1.0f - clampf(off / DEF->hook.half_w, 0, 1));
+    c->current = cur;
+    wvx += DEF->hook.dirx * cur, wvz += DEF->hook.dirz * cur;
+  }
   float ux = c->vx - wvx, uz = c->vz - wvz;
   float vf = ux * fx + uz * fz, vl = ux * rx + uz * rz;
   c->top = BASE_TOP + METER_TOP * (float)c->meter + c->boost * 3.5f;
@@ -401,6 +447,9 @@ static void craft_tick(craft *c, int idx, float dt) {
     c->on_ramp = false;
     ramps_craft(c, was_on); }
   hook_craft(c);
+  c->wake_on = false;
+  tanker_craft(c, dt);
+  for (int q = 0; q < DEF->placed_n; q++) { const float *p = DEF->placed[q]; if (p[5] > 0) solid_push(c, p[1], p[2], p[3], p[5], p[6]); }
   c->flash_short = clampf(c->flash_short - dt * 0.5f, 0, 1);
   /* landing */
   c->big_splash = false;
@@ -613,6 +662,13 @@ void sim_tick(float dt) {
   G.wt = cw_water_time(G.water) + G.wt_extra;
   weather();
   ramps_tick();
+  tanker_tick();
+  if (DEF->rain > 0) {
+    /* a stroke every so often, by the clock: two quick flashes dying away */
+    uint32_t slot = (uint32_t)(G.tick / 300u), at = cw_hash32(&slot, sizeof slot, 77u) % 240u, t = G.tick % 300u;
+    float e = t >= at && t < at + 26u ? (t < at + 4u ? 1.0f : t < at + 8u ? 0.35f : t < at + 12u ? 0.85f : 0.8f * (1.0f - (float)(t - at - 12u) / 14.0f)) : 0.0f;
+    G.flash = e;
+  }
   G.clock += dt;
   bool go = G.state != RACE_GRID || G.clock >= 0;
   if (G.state == RACE_GRID && G.clock >= 0) G.state = RACE_ON;
@@ -665,7 +721,7 @@ void sim_tick(float dt) {
   /* the attract loop races on and on, and stays out where the swell is */
   if (G.state == RACE_ATTRACT && G.c[G.order[0]].lap >= 1) for (int i = 0; i < RACERS; i++) G.c[i].lap = -1;
   G.ai_ramps = G.ai_spills = G.ai_misses = G.ai_passes = G.ai_walls = 0;
-  for (int i = 1; i < RACERS; i++) { const craft *c = &G.c[i]; G.ai_ramps += c->ramps, G.ai_spills += c->spills, G.ai_misses += c->misses, G.ai_passes += c->passes, G.ai_walls += c->wall_hits; }
+  for (int i = 1; i < RACERS; i++) { craft *c = &G.c[i]; if (G.state == RACE_ON && c->speed < 2) { c->slow_ticks++; if (c->slow_ticks > G.ai_stuck) G.ai_stuck = c->slow_ticks; } else c->slow_ticks = 0; G.ai_ramps += c->ramps, G.ai_spills += c->spills, G.ai_misses += c->misses, G.ai_passes += c->passes, G.ai_walls += c->wall_hits; }
   uint32_t h = G.tick;
   for (int i = 0; i < RACERS; i++) {
     h = cw_hash32(&G.c[i].x, sizeof(float) * 6, h);

@@ -108,6 +108,24 @@ paintSky('textures/sky.png', {
   HAZE0: [0.9, 0.72, 0.68], HAZE1: [1.0, 0.8, 0.5], CIR0: [1.0, 0.82, 0.8], CIR1: [1.0, 0.66, 0.42],
   SHADE0: [0.3, 0.27, 0.38], SHADE1: [0.42, 0.26, 0.28], LIGHT0: [1.0, 0.78, 0.72], LIGHT1: [1.0, 0.68, 0.34], RIM: [1.0, 0.86, 0.56], cover: 1,
 });
+// Gale Bank's squall: cloud to the top, black overhead, a torn pale line at the horizon
+paintSky('textures/sky-storm.png', {
+  ZEN: [0.035, 0.045, 0.06], MID: [0.08, 0.1, 0.12], HIGHW: [0.26, 0.3, 0.32], LOWW: [0.58, 0.62, 0.58], AWAY: [0.09, 0.11, 0.13], AWAYLOW: [0.2, 0.24, 0.26],
+  HAZE0: [0.3, 0.34, 0.36], HAZE1: [0.6, 0.62, 0.56], CIR0: [0.1, 0.12, 0.14], CIR1: [0.2, 0.22, 0.22],
+  SHADE0: [0.03, 0.04, 0.05], SHADE1: [0.06, 0.07, 0.08], LIGHT0: [0.14, 0.17, 0.2], LIGHT1: [0.34, 0.36, 0.36], RIM: [0.5, 0.52, 0.48], cover: 6,
+});
+// Iron Quay's night: black over the sea, the city's sodium glow on the low cloud
+paintSky('textures/sky-harbour.png', {
+  ZEN: [0.004, 0.006, 0.014], MID: [0.012, 0.016, 0.03], HIGHW: [0.16, 0.08, 0.05], LOWW: [0.32, 0.17, 0.08], AWAY: [0.11, 0.06, 0.05], AWAYLOW: [0.26, 0.14, 0.08],
+  HAZE0: [0.3, 0.17, 0.09], HAZE1: [0.42, 0.24, 0.12], CIR0: [0.05, 0.04, 0.05], CIR1: [0.09, 0.06, 0.05],
+  SHADE0: [0.03, 0.03, 0.04], SHADE1: [0.05, 0.04, 0.04], LIGHT0: [0.16, 0.1, 0.07], LIGHT1: [0.22, 0.13, 0.08], RIM: [0.2, 0.12, 0.08], cover: 3,
+});
+// Red Reach's noon: a hard blue with thin high cloud
+paintSky('textures/sky-canyon.png', {
+  ZEN: [0.05, 0.16, 0.46], MID: [0.2, 0.42, 0.72], HIGHW: [0.72, 0.8, 0.86], LOWW: [0.84, 0.8, 0.72], AWAY: [0.4, 0.56, 0.76], AWAYLOW: [0.72, 0.66, 0.6],
+  HAZE0: [0.82, 0.72, 0.62], HAZE1: [0.92, 0.84, 0.74], CIR0: [0.9, 0.92, 0.95], CIR1: [1, 1, 0.98],
+  SHADE0: [0.62, 0.66, 0.72], SHADE1: [0.72, 0.74, 0.76], LIGHT0: [0.96, 0.96, 0.96], LIGHT1: [1, 1, 0.98], RIM: [1, 1, 1], cover: 0.5,
+});
 // Cold Sound's overcast morning: cloud to the top of the sky, a pale break low on the sun's side
 paintSky('textures/sky-sound.png', {
   ZEN: [0.26, 0.31, 0.38], MID: [0.34, 0.4, 0.47], HIGHW: [0.62, 0.64, 0.64], LOWW: [0.82, 0.8, 0.72], AWAY: [0.36, 0.41, 0.47], AWAYLOW: [0.46, 0.51, 0.56],

@@ -3,4 +3,7 @@
 #include <stddef.h>
 #include "atoll.h"
 #include "sound.h"
-const course_def *const COURSES[LEVELS] = { &atoll_course, &sound_course };
+#include "canyon.h"
+#include "harbour.h"
+#include "storm.h"
+const course_def *const COURSES[LEVELS] = { &atoll_course, &sound_course, &canyon_course, &harbour_course, &storm_course };

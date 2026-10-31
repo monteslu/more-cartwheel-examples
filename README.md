@@ -93,10 +93,11 @@ controls and the power-up list).
 
 ![jetski: lining up a worn steel ramp on the open sea at the end of the day, a sea stack beyond](docs/screenshots/jetski.jpg)
 
-jetski, a wave racing game where the water is the track. Six riders race three laps through a volcanic atoll at sunset and a cold
-granite fjord on a grey morning, whose falling tide opens a shortcut under a drowned arch. Swells throw you into the air and big
+jetski, a wave racing game where the water is the track. Six riders race three laps through five places: a volcanic atoll at sunset, a
+granite fjord whose falling tide opens a shortcut, a river in a red canyon whose current carries you, a port at night with a tanker under way, and an open-sea
+squall whose swell keeps building. Swells throw you into the air and big
 steel ramps throw you further, long enough for a trick, and every buoy you pass on the correct side raises your top speed. A
-championship across both courses or a time trial, one player and computer racers for now. See [its README](games/jetski/README.md).
+championship across them all or a time trial, one player and computer racers for now. See [its README](games/jetski/README.md).
 
 ### partypack
 

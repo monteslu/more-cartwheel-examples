@@ -118,5 +118,116 @@
     "name": "jetski-quality",
     "script": "tests/jetski-quality.mjs",
     "note": "a program for everything drawn at every quality on both courses and backends"
+  },
+  {
+    "name": "jetski-canyon",
+    "app": "jetski_auto",
+    "frames": 600,
+    "maxGt16": 0.5,
+    "fields": [
+      "race.state",
+      "race.tick",
+      "race.hash",
+      "race.swell",
+      "race.tide",
+      "p0.pos",
+      "p0.speed",
+      "p0.meter",
+      "p0.passes",
+      "p0.misses",
+      "p1.dist",
+      "p2.dist",
+      "cam.under_ticks"
+    ],
+    "controlEnv": {
+      "JETSKI_SWELL": "1.0"
+    },
+    "note": "Red Reach from the grid, computer riders: every racer's position bits on every host; control: a bigger sea must change them",
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "maxGt16": 0.5
+    },
+    "startCmds": [
+      "course 2",
+      "race"
+    ]
+  },
+  {
+    "name": "jetski-harbour",
+    "app": "jetski_auto",
+    "frames": 600,
+    "maxGt16": 0.5,
+    "fields": [
+      "race.state",
+      "race.tick",
+      "race.hash",
+      "race.swell",
+      "race.tide",
+      "p0.pos",
+      "p0.speed",
+      "p0.meter",
+      "p0.passes",
+      "p0.misses",
+      "p1.dist",
+      "p2.dist",
+      "cam.under_ticks"
+    ],
+    "controlEnv": {
+      "JETSKI_SWELL": "1.0"
+    },
+    "note": "Iron Quay from the grid, computer riders: every racer's position bits on every host; control: a bigger sea must change them",
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "maxGt16": 0.5
+    },
+    "startCmds": [
+      "course 3",
+      "race"
+    ]
+  },
+  {
+    "name": "jetski-storm",
+    "app": "jetski_auto",
+    "frames": 600,
+    "maxGt16": 0.5,
+    "fields": [
+      "race.state",
+      "race.tick",
+      "race.hash",
+      "race.swell",
+      "race.tide",
+      "p0.pos",
+      "p0.speed",
+      "p0.meter",
+      "p0.passes",
+      "p0.misses",
+      "p1.dist",
+      "p2.dist",
+      "cam.under_ticks"
+    ],
+    "controlEnv": {
+      "JETSKI_SWELL": "1.0"
+    },
+    "note": "Gale Bank from the grid, computer riders: every racer's position bits on every host; control: a bigger sea must change them",
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "maxGt16": 0.5
+    },
+    "startCmds": [
+      "course 4",
+      "race"
+    ]
   }
 ]

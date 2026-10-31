@@ -4,7 +4,7 @@ A wave racing game on one evening's water. Six riders race three laps around a v
 through a gap in the reef, across open sea, past sea stacks and back in over the north pass. The water is the track. It
 moves, its swells throw you into the air, and it builds from lap to lap while the tide comes in.
 
-Status: two courses, one craft, a computer racer field, one player for now. The menu offers a championship (points by place over
+Status: five courses, one craft, a computer racer field, one player for now. The menu offers a championship (points by place over
 every course in turn) and a time trial (you alone on the course you choose, keeping your best time). Difficulty
 makes the sea bigger and adds buoys: every second one on Easy, three in four on Normal, all of them on Hard.
 
@@ -28,6 +28,9 @@ back on the way in saves some. Start or Esc pauses, with restart and quit.
 ## The courses
 
 - Crater Atoll: a warm evening on a volcanic atoll, a pale lagoon, a reef, open swell round the sea stacks.
+- Red Reach: noon on a river in a red sandstone canyon, round a mesa. The current runs one way down the valley: fast with it, a slog against it in midstream, slack at the banks.
+- Iron Quay: a working port at night, cranes, stacked containers and lit windows on black water. A tanker under way crosses the course and its wake throws you.
+- Gale Bank: a squall on the open sea, rain and lightning, a rig and wrecks. The swell starts big and keeps building, so the last lap is the biggest water in the game.
 - Cold Sound: a grey morning in a granite fjord, open to the ocean at its west end. The tide falls through the race: while it stands high a drowned arch shuts the cut through the headland, and once there is room under it, it is the short way home.
 
 A course is a definition in `courses/<id>.mjs`: track, ground, paint, wave mask, scatter, ramps, sea, tide, light and sky, and its hook. `tools/course-lib.mjs` says what each part does. To add one: write the definition, add it to `LEVEL_ORDER` in `tools/make-course.mjs` and raise `LEVELS` in `src/game.h`, then run `tools/make-course.mjs` and rebuild. `tools/course-look.mjs` shows it from the race camera, and `tests/jetski-handling.mjs` checks the computer riders get round it.

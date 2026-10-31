@@ -212,6 +212,10 @@ static void cmd_grounding(int argc, const char **argv, cw_reply *r) {
   if (r) cw_reply_printf(r, "{\"course\":\"%s\",\"instances\":%d,\"gaps\":%d,\"worst\":%.3f,\"at\":[%.0f,%.0f],\"by_layer\":[%d,%d,%d,%d,%d],\"tide_low\":%.2f,\"swell_amp\":%.2f,\"shallowest_buoy_ground\":%.2f,\"shallowest_ramp_ground\":%.2f,\"ramp_gap_points\":%d}",
     d->name, total, gaps, worst, worst_at[0], worst_at[1], by_layer[0], by_layer[1], by_layer[2], by_layer[3], by_layer[4], tl, amp, shallowest_buoy, shallowest_ramp, G.ramp_gap_points);
 }
+static void cmd_current(int argc, const char **argv, cw_reply *r) {
+  g_current = argc > 1 ? (float)atof(argv[1]) : 1;
+  if (r) cw_reply_raw(r, "true");
+}
 static void cmd_ai_ramps(int argc, const char **argv, cw_reply *r) {
   g_ai_ramps = argc > 1 ? atoi(argv[1]) : 1;
   if (r) cw_reply_raw(r, "true");
@@ -322,6 +326,11 @@ static void init(void *user) {
   cw_debug_i32("p0.tricks", &G.c[0].tricks);
   cw_debug_f32("p0.air_max", &G.c[0].air_max);
   cw_debug_field("ai.miss_at", G.miss_at, CW_DBG_I32, BUOY_MAX);
+  cw_debug_f32("p0.current", &G.c[0].current);
+  cw_debug_i32("hook.tanker_hits", &G.tanker_hits);
+  cw_debug_i32("hook.wake_rides", &G.wake_rides);
+  cw_debug_f32_array("hook.tanker", G.tanker, 3);
+  cw_debug_i32("ai.stuck", &G.ai_stuck);
   cw_debug_i32("ai.ramps", &G.ai_ramps);
   cw_debug_i32("ai.spills", &G.ai_spills);
   cw_debug_i32("ai.misses", &G.ai_misses);
@@ -355,6 +364,7 @@ static void init(void *user) {
   cw_debug_command("arch", "arch <back>: lined up with the course's arch", cmd_arch);
   cw_debug_command("peek", "peek x y z ax ay az: hold the camera there", cmd_peek);
   cw_debug_command("grounding", "grounding [lift]: every scatter instance against the ground, and the marks against the sea", cmd_grounding);
+  cw_debug_command("current", "current 0: the river stands still", cmd_current);
   cw_debug_command("ai_ramps", "ai_ramps 0: no computer rider goes for a ramp", cmd_ai_ramps);
   cw_debug_command("ramp_seesaw", "ramp_seesaw 1: decks tip with the swell, the jump gate's control", cmd_ramp_seesaw);
   cw_debug_command("ramp_lift", "ramp_lift <metres>: the control for the ramps' gap count", cmd_ramp_lift);

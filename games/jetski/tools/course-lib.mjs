@@ -6,6 +6,8 @@
 //   paint(p)          [base layer, over layer, blend 0..255] at p = { x, z, y, slope }
 //   mask(p)           how free the swell is here, 0..1, p = { x, z, y, r0 }
 //   maps              name: density 0..1 at p = { x, z, y, slope }, for the scatter
+//   placed({ground, pointAt, LEN})  things set by hand on a grid, not scattered: { model, x, z, yaw, scale, solid: [half length, half width], floats }; placed_models names them for the pack
+//   keep_clear(x, z)  no buoy or ramp here
 //   lying             names of the maps whose things lie on the ground (rocks): kept off any edge steeper than
 //   lying_drop        metres of drop within 4 m each way where they start to thin and where they stop (2.5, 4.5)
 //   scatter           [model, map, density, scale min, scale max, visible range, seed, sink, tilt] per kind of thing
@@ -21,7 +23,8 @@
 //   props             [node, property, value as a scene file writes it]: the light, the weather, the water's colours
 //   sun_disc          how bright the painted sun's disc is (1), for a sky that hides it
 //   hook              what makes this place different (src/sim.c's hook_craft), optional; kind 1: an arch over a cut across the
-//                     course, shut while the tide stands too high under its lintel, that takes a rider from s_in to s_out
+//                     course, shut while the tide stands too high under its lintel, that takes a rider from s_in to s_out; kind 2: a river,
+//                     running along (dirx, dirz) at current m/s in midstream and slack half_w metres out from the line
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -99,10 +102,13 @@ export function makeCourse(def) {
 
   // buoys: pairs of slaloms, alternating sides, spaced so the rhythm reads
   const bd = { first: 70, step: 88, wobble: 14, offset: 8.5, ...(def.buoys || {}) };
+  const groundAt = (x, z) => hAt(Math.round(x / SPACING + QUADS / 2), Math.round(z / SPACING + QUADS / 2));
+  const placedList = def.placed ? def.placed({ ground: groundAt, pointAt, LEN }) : [];
   const buoys = [];
   let side = 1;
   for (let s = bd.first; s < LEN - 60;) {
     const p = pointAt(s);
+    if (def.keep_clear?.(p.x, p.z) || placedList.some((q) => q.solid && Math.hypot(q.x - (p.x - p.dz * side * bd.offset), q.z - (p.z + p.dx * side * bd.offset)) < q.solid[0] + 6)) { s += 30; continue; }
     buoys.push({ x: p.x - p.dz * side * bd.offset, z: p.z + p.dx * side * bd.offset, side, s });
     side = -side;
     s += bd.step + bd.wobble * Math.sin(s * 0.013);
@@ -113,6 +119,8 @@ export function makeCourse(def) {
   const clear = (p, side, off, next) => {
     const cx = p.x + p.dz * side * off, cz = p.z - p.dx * side * off, gnd = (x, z) => hAt(Math.round(x / SPACING + QUADS / 2), Math.round(z / SPACING + QUADS / 2));
     for (let a = -22; a <= 90; a += 6) for (const l of [-12, 0, 12]) if (gnd(cx + p.dx * a - p.dz * l, cz + p.dz * a + p.dx * l) > tideLow - 1.2) return null;
+    if (def.keep_clear?.(cx, cz) || def.keep_clear?.(cx + p.dx * 40, cz + p.dz * 40)) return null;
+    for (const s of placedList.filter((q) => q.solid)) { if (Math.hypot(s.x - cx, s.z - cz) < 66) return null; }
     for (const b of buoys) { const dx = b.x - cx, dz = b.z - cz, al = dx * p.dx + dz * p.dz, la = dx * -p.dz + dz * p.dx; if (Math.abs(al) < 26 && Math.abs(la) < 15) return null; }
     // straight off the lip, a rider must come past the next buoy on its right side, near enough for the game's rule (sim.c's buoys)
     if (next) {
@@ -238,19 +246,23 @@ export function makeCourse(def) {
   c += `static const float ${id}_track[][4] = {\n` + TK.map((p) => `{${p.x.toFixed(2)}f,${p.z.toFixed(2)}f,${p.dx.toFixed(4)}f,${p.dz.toFixed(4)}f}`).join(',\n') + '\n};\n';
   c += `static const float ${id}_buoys[][4] = { /* x, z, side (+1: pass with the buoy on your right), s */\n` + buoys.map((b) => `{${b.x.toFixed(2)}f,${b.z.toFixed(2)}f,${b.side}.0f,${b.s.toFixed(1)}f}`).join(',\n') + '\n};\n';
   c += `static const float ${id}_ramps[][5] = { /* x, z, yaw, s, how far off the racing line */\n` + rp.map((r) => `{${r.x.toFixed(2)}f,${r.z.toFixed(2)}f,${Math.atan2(r.dx, r.dz).toFixed(4)}f,${r.s.toFixed(1)}f,${r.off.toFixed(1)}f}`).join(',\n') + '\n};\n';
-  c += `static const course_scatter ${id}_scatter[] = {\n` + def.scatter.map(([m, map, d, a, b, r, seed, sink, tilt]) => `{ ${q(`res://models/${m}.glb`)}, ${['pine', 'palm'].includes(m) ? q(`res://models/${m}_far.glb`) : 'NULL'}, ${q(`course/${id}/${map}.u8`)}, ${f(d)}, ${f(a)}, ${f(b)}, ${f(r)}, ${seed}, ${sink}, ${f(tilt)} }`).join(',\n') + '\n};\n';
+  const placedModels = [...new Set(placedList.map((q) => q.model))];
+  c += `static const char *const ${id}_models[] = { ${placedModels.length ? placedModels.map((m) => q(`res://models/${m}.glb`)).join(', ') : 'NULL'} };\n`;
+  c += `static const float ${id}_placed[][8] = { /* model, x, z, yaw, scale, solid half length, half width, floats */\n` + (placedList.length ? placedList.map((p) => `{${placedModels.indexOf(p.model)},${p.x.toFixed(2)}f,${p.z.toFixed(2)}f,${p.yaw.toFixed(4)}f,${p.scale.toFixed(3)}f,${p.solid ? p.solid[0] : 0},${p.solid ? p.solid[1] : 0},${p.floats ? 1 : 0}}`).join(',\n') : '{0,0,0,0,0,0,0,0}') + '\n};\n';
+  c += `static const course_scatter ${id}_scatter[] = {\n` + (def.scatter.length ? def.scatter.map(([m, map, d, a, b, r, seed, sink, tilt]) => `{ ${q(`res://models/${m}.glb`)}, ${['pine', 'palm'].includes(m) ? q(`res://models/${m}_far.glb`) : 'NULL'}, ${q(`course/${id}/${map}.u8`)}, ${f(d)}, ${f(a)}, ${f(b)}, ${f(r)}, ${seed}, ${sink}, ${f(tilt)} }`).join(',\n') : '{ NULL }') + '\n};\n';
   c += `static const char *const ${id}_props[][3] = {\n` + (def.props.length ? def.props.map((p) => `{ ${q(p[0])}, ${q(p[1])}, ${q(String(p[2]))} }`).join(',\n') : '{ "", "", "" }') + '\n};\n';
   c += `static const course_def ${id}_course = {\n  .id = ${q(id)}, .name = ${q(def.name)}, .quads = ${QUADS}, .spacing = ${f(SPACING)}, .minh = ${f(MINH)}, .maxh = ${f(MAXH)}, .len = ${LEN.toFixed(2)}f,\n`;
   c += `  .track_n = ${TK.length}, .track = ${id}_track, .buoy_n = ${buoys.length}, .buoys = ${id}_buoys, .ramp_n = ${rp.length}, .ramps = ${id}_ramps, .ramp_top = ${f(def.ramp_top ?? 5)},\n`;
-  c += `  .scatter_n = ${def.scatter.length}, .scatter = ${id}_scatter, .prop_n = ${def.props.length}, .props = ${id}_props,\n`;
+  c += `  .scatter_n = ${def.scatter.length}, .scatter = ${id}_scatter, .model_n = ${placedModels.length}, .models = ${id}_models, .placed_n = ${placedList.length}, .placed = ${id}_placed, .prop_n = ${def.props.length}, .props = ${id}_props,\n`;
   c += `  .layer = { ${def.grades.map((g) => q(`course/${id}/${g[0]}`)).join(', ')} }, .layer_uv = { ${def.grades.map((g) => f(g[3])).join(', ')} },\n`;
   c += `  .heights = ${q(`course/${id}/heights.r16`)}, .control = ${q(`course/${id}/control.u32`)}, .mask = ${q(`course/${id}/wavemask.f32`)}, .mask_n = ${MN}, .map_n = ${DN}, .sky = ${q(def.sky)},\n`;
   c += `  .landmark = ${def.landmark ? q(`res://models/${def.landmark.model}.glb`) : 'NULL'}, .landmark_at = { ${lh[0].toFixed(2)}f, ${(lh[1] - 0.4).toFixed(2)}f, ${lh[2].toFixed(2)}f },\n`;
   c += `  .start = { ${start.x.toFixed(2)}f, ${start.z.toFixed(2)}f, ${start.dx.toFixed(4)}f, ${start.dz.toFixed(4)}f },\n`;
   c += `  .waves = { ${def.waves.map((w) => `{ ${w.map(f).join(', ')} }`).join(', ')} }, .swell = { ${f(def.swell[0])}, ${f(def.swell[1])} }, .tide = { ${f(def.tide[0])}, ${f(def.tide[1])} },\n`;
   const hk = def.hook;
+  c += `  .rain = ${f(def.rain ?? 0)},\n`;
   c += `  .sun_disc = ${f(def.sun_disc ?? 1)},\n`;
-  if (hk) c += `  .hook = { .kind = ${hk.kind}, .x = ${hk.x.toFixed(2)}f, .z = ${hk.z.toFixed(2)}f, .dirx = ${hk.dirx.toFixed(4)}f, .dirz = ${hk.dirz.toFixed(4)}f, .half_w = ${f(hk.half_w)}, .half_len = ${hk.half_len.toFixed(2)}f, .lintel = ${f(hk.lintel)}, .s_in = ${f(hk.s_in)}, .s_out = ${f(hk.s_out)}, .model = ${q(`res://models/${hk.model}.glb`)} },\n`;
+  if (hk) c += `  .hook = { .kind = ${hk.kind}, .current = ${f(hk.current ?? 0)}, .x = ${hk.x.toFixed(2)}f, .z = ${hk.z.toFixed(2)}f, .dirx = ${hk.dirx.toFixed(4)}f, .dirz = ${hk.dirz.toFixed(4)}f, .half_w = ${f(hk.half_w)}, .half_len = ${hk.half_len.toFixed(2)}f, .lintel = ${f(hk.lintel)}, .s_in = ${f(hk.s_in)}, .s_out = ${f(hk.s_out)}, .model = ${hk.model ? q(`res://models/${hk.model}.glb`) : 'NULL'} },\n`;
   c += '};\n';
   mkdirSync(join(GAME, 'src/courses'), { recursive: true });
   writeFileSync(join(GAME, 'src/courses', id + '.h'), c);
@@ -272,7 +284,8 @@ export function writeIndex(defs) {
     { const sky = d.sky.replace('res://', ''); if (!keep.includes(sky)) keep.push(sky); }
     if (d.landmark && !keep.includes(`models/${d.landmark.model}.glb`)) keep.push(`models/${d.landmark.model}.glb`);
     for (const s of d.scatter) { if (!keep.includes(`models/${s[0]}.glb`)) keep.push(`models/${s[0]}.glb`); if (['pine', 'palm'].includes(s[0]) && !keep.includes(`models/${s[0]}_far.glb`)) keep.push(`models/${s[0]}_far.glb`); }
-    if (d.hook && !keep.includes(`models/${d.hook.model}.glb`)) keep.push(`models/${d.hook.model}.glb`);
+    for (const m of d.placed_models ?? []) if (!keep.includes(`models/${m}.glb`)) keep.push(`models/${m}.glb`);
+    if (d.hook?.model && !keep.includes(`models/${d.hook.model}.glb`)) keep.push(`models/${d.hook.model}.glb`);
   }
   writeFileSync(rootsPath, keep.join('\n') + '\n');
 }

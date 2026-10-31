@@ -7,6 +7,7 @@
 #include "game.h"
 #define BUOY_AT(i) (BUOYS[i])
 
+static cw_node rain_n;
 static cw_node tail[RACERS], mist[RACERS], side_spray, bursts, burst_mist, sheet[2], sheet_fine[2];
 
 static cw_node emitter(cw_node parent, const char *name, int amount, float life, float size, const char *ramp, const char *curve, int seed, bool stretched) {
@@ -63,6 +64,13 @@ void fx_init(cw_node parent) {
     cw_node_set(sheet_fine[s], "spread", cw_val_float(18));
     cw_node_set(sheet_fine[s], "camera_fade", cw_val_float(3));
   }
+  rain_n = emitter(parent, "Rain", 3000, 0.62f, 0.02f, "0 0.8 0.86 0.95 0, 0.1 0.82 0.88 0.96 0.75, 1 0.82 0.88 0.96 0.5", NULL, 900, true);
+  cw_node_set(rain_n, "stretch", cw_val_float(0.022f));
+  cw_node_set(rain_n, "gravity", cw_val_vec3(5, -46, -3));
+  cw_node_set(rain_n, "emission_shape", cw_val_enum("SPHERE"));
+  cw_node_set(rain_n, "emission_radius", cw_val_float(24));
+  cw_node_set(rain_n, "energy", cw_val_float(1));
+  cw_node_set(rain_n, "spread", cw_val_float(180));
   side_spray = emitter(parent, "Carve", 1000, 0.7f, 0.012f, "0 1 1 1 0.9, 0.6 0.95 0.97 1 0.6, 1 0.9 0.95 1 0", NULL, 300, true);
   cw_node_set(side_spray, "energy", cw_val_float(1.6f));
   cw_node_set(side_spray, "spread", cw_val_float(24));
@@ -93,7 +101,17 @@ void fx_init(cw_node parent) {
   cw_node_set(burst_mist, "sort", cw_val_bool(true));
 }
 
+/* a squall's rain: a cloud of streaks that stays round the camera */
+static void rain_tick(void) {
+  if (!cw_node_valid(rain_n)) return;
+  static bool was;
+  bool on = DEF->rain > 0;
+  if (on != was) { cw_node_set(rain_n, "emitting", cw_val_bool(on)); was = on; }
+  if (on) cw_node3d_set_position(rain_n, (t3_vec3){ G.look[0] + (G.look[0] - G.cam[0]) * 1.2f - 4, G.cam[1] + 16, G.look[2] + (G.look[2] - G.cam[2]) * 1.2f + 3 });
+}
+
 void fx_tick(float dt) {
+  rain_tick();
   (void)dt;
   for (int i = 0; i < RACERS; i++) {
     craft *c = &G.c[i];

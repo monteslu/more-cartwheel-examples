@@ -404,6 +404,192 @@ class Plain {
   g.write(join(OUT, 'arch.glb'));
 }
 
+// ── Gale Bank's kit: a drilling rig, wrecks, marker towers, the beacon on its rock with its beam ──
+{
+  const box = (P, m, x0, x1, y0, y1, z0, z1) => {
+    const q = (a, b, c, d) => P.grid(m, [[a, b], [d, c]], { flip: false });
+    q([x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]); q([x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0]);
+    q([x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]); q([x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0]); q([x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1]);
+  };
+  const write = (name, node, P, cols) => {
+    const g = new Glb(), mi = {};
+    for (const [k, [rgb, rough, metal, em]] of Object.entries(cols)) { mi[k] = g.material(k, rough, metal ?? 0, em ?? null); g.materials[mi[k]].pbrMetallicRoughness.baseColorFactor = [...rgb, 1]; g.materials[mi[k]].doubleSided = true; }
+    g.sceneNodes.push(g.node({ name: node, mesh: g.mesh(name, P.prims(mi)) }));
+    g.write(join(OUT, name + '.glb'));
+  };
+  { // a rig: four legs in the sea, braced, a two-storey deck high over any wave, a derrick and a flare
+    const P = new Plain(), b = (m, A, B, r) => P.tube(m, [A, B], r, 8);
+    for (const x of [-22, 22]) for (const z of [-22, 22]) { b('leg', [x, -30, z], [x * 0.8, 34, z * 0.8], 2.4); b('band', [x * 0.96, -4, z * 0.96], [x * 0.92, 5, z * 0.92], 2.6); }
+    for (const y of [8, 20]) for (const [a, c] of [[[-20, y, -20], [20, y, -20]], [[-20, y, 20], [20, y, 20]], [[-20, y, -20], [-20, y, 20]], [[20, y, -20], [20, y, 20]]]) b('leg', a, c, 0.7);
+    for (const [a, c] of [[[-20, 8, -20], [20, 20, -20]], [[20, 8, 20], [-20, 20, 20]], [[-20, 8, 20], [-20, 20, -20]], [[20, 8, -20], [20, 20, 20]]]) b('leg', a, c, 0.5);
+    box(P, 'deck', -28, 28, 34, 38, -28, 28); box(P, 'deck', -24, 24, 42, 45, -24, 24);
+    for (const x of [-22, 22]) for (const z of [-22, 22]) b('leg', [x, 38, z], [x, 42, z], 0.8);
+    box(P, 'white', -22, 2, 45, 56, -22, -2); box(P, 'red', 6, 22, 45, 49, 6, 22);
+    for (let k = 0; k < 6; k++) { box(P, 'lit', -21 + k * 3.8, -19 + k * 3.8, 52, 53.4, -2.0, -1.9); box(P, 'lit', -21 + k * 3.8, -19 + k * 3.8, 48, 49.4, -2.0, -1.9); }
+    for (const [x, z] of [[-5, -5], [5, -5], [-5, 5], [5, 5]]) b('derrick', [x + 14, 45, z + 14], [14, 86, 14], 0.45);
+    for (let y = 52; y < 84; y += 7) { const w = 5 * (1 - (y - 45) / 41); for (const [a, c] of [[[-w, -w], [w, -w]], [[w, -w], [w, w]], [[w, w], [-w, w]], [[-w, w], [-w, -w]]]) b('derrick', [14 + a[0], y, 14 + a[1]], [14 + c[0], y, 14 + c[1]], 0.2); }
+    b('leg', [-24, 44, 24], [-54, 66, 54], 0.5);
+    P.tube('flare', [[-54, 66, 54], [-55, 72, 55], [-54, 78, 56], [-55, 83, 54]], (t) => 2.2 * (1 - t) + 0.3, 8);
+    write('rig', 'Rig', P, { leg: [[0.34, 0.26, 0.1], 0.7, 0.3], band: [[0.05, 0.06, 0.04], 0.6], deck: [[0.26, 0.27, 0.28], 0.8, 0.2], white: [[0.6, 0.6, 0.56], 0.7], red: [[0.5, 0.1, 0.06], 0.7], derrick: [[0.6, 0.12, 0.06], 0.6, 0.3], lit: [[0.05, 0.05, 0.05], 0.3, 0, [3.2, 2.2, 1.2]], flare: [[0.3, 0.1, 0.02], 0.5, 0, [28, 11, 2]] });
+  }
+  { // a wreck, down by the stern and listing: y 0 the water
+    const P = new Plain(), rows = [];
+    for (let i = 0; i <= 12; i++) { const t = i / 12, z = -33 + 66 * t, w = 7 * (t > 0.8 ? Math.pow(1 - (t - 0.8) / 0.2, 0.55) : 1) + 0.02, tilt = t * 13 - 5, list = 2.2; rows.push([[-w, tilt + 6 - list, z], [-w * 0.9, tilt - 10, z], [w * 0.9, tilt - 10, z], [w, tilt + 6 + list, z]]); }
+    P.grid('rust', rows, { flip: false });
+    const d = []; for (let i = 0; i <= 12; i++) { const t = i / 12, z = -33 + 66 * t, w = 7 * (t > 0.8 ? Math.pow(1 - (t - 0.8) / 0.2, 0.55) : 1) + 0.02, tilt = t * 13 - 5; d.push([[-w, tilt + 6 - 2.2, z], [w, tilt + 6 + 2.2, z]]); }
+    P.grid('deck', d, { flip: false });
+    box(P, 'rust2', -5, 5, 3, 12, -30, -20);
+    P.tube('rust2', [[0, 4, -8], [1.5, 20, -6]], 0.5, 6); P.tube('rust2', [[1.5, 15, -6], [8, 7, 6]], 0.14, 5);
+    write('wreck', 'Wreck', P, { rust: [[0.22, 0.09, 0.05], 0.9, 0.1], rust2: [[0.15, 0.08, 0.05], 0.9, 0.1], deck: [[0.08, 0.06, 0.05], 0.9] });
+  }
+  { // a marker tower on a concrete foot, with a flashing top
+    const P = new Plain();
+    P.tube('foot', [[0, -8, 0], [0, 4.5, 0]], 3.4, 12);
+    P.tube('mark', [[0, 4.5, 0], [0, 12, 0]], (t) => 1.7 - t * 0.6, 10);
+    P.tube('black', [[0, 12, 0], [0, 19, 0]], (t) => 1.1 - t * 0.5, 10);
+    P.tube('lamp', [[0, 19, 0], [0, 20.4, 0]], 0.55, 8);
+    write('tower', 'Tower', P, { foot: [[0.3, 0.3, 0.28], 0.9], mark: [[0.72, 0.5, 0.05], 0.6], black: [[0.04, 0.04, 0.04], 0.6], lamp: [[0.2, 0.2, 0.1], 0.3, 0, [22, 18, 5]] });
+  }
+  { // the beacon: a tall tower for the bank's biggest rock. Local y 0 the rock's top
+    const P = new Plain();
+    P.tube('white', [[0, -8, 0], [0, 26, 0]], (t) => 5.4 - t * 2.2, 16);
+    P.tube('red', [[0, 26, 0], [0, 40, 0]], (t) => 3.2 - t * 0.7, 16);
+    P.tube('white', [[0, 40, 0], [0, 44, 0]], 3.4, 16);
+    P.tube('lamp', [[0, 44, 0], [0, 49, 0]], 1.8, 12);
+    P.tube('red', [[0, 49, 0], [0, 52, 0]], (t) => 2.4 * (1 - t) + 0.05, 12);
+    write('beacon', 'Beacon', P, { white: [[0.72, 0.72, 0.68], 0.75], red: [[0.5, 0.08, 0.05], 0.7], lamp: [[0.3, 0.3, 0.2], 0.3, 0, [30, 27, 15]] });
+  }
+}
+
+// ── Iron Quay's kit: a tanker, moored coasters, sheds and tall blocks with lit windows, stacks of containers, gantry cranes, quay lamps ──
+{
+  const box = (P, m, x0, x1, y0, y1, z0, z1) => {
+    const q = (a, b, c, d) => P.grid(m, [[a, b], [d, c]], { flip: false });
+    const v = (x, y, z) => [x, y, z];
+    q(v(x0, y1, z0), v(x1, y1, z0), v(x1, y1, z1), v(x0, y1, z1)); // the top
+    q(v(x1, y0, z0), v(x0, y0, z0), v(x0, y1, z0), v(x1, y1, z0)); // back
+    q(v(x0, y0, z1), v(x1, y0, z1), v(x1, y1, z1), v(x0, y1, z1)); // front
+    q(v(x0, y0, z0), v(x0, y0, z1), v(x0, y1, z1), v(x0, y1, z0)); // left
+    q(v(x1, y0, z1), v(x1, y0, z0), v(x1, y1, z0), v(x1, y1, z1)); // right
+  };
+  const write = (name, node, P, cols) => {
+    const g = new Glb(), mi = {};
+    for (const [k, [rgb, rough, metal, em]] of Object.entries(cols)) {
+      mi[k] = g.material(k, rough, metal ?? 0, em ?? null);
+      g.materials[mi[k]].pbrMetallicRoughness.baseColorFactor = [...rgb, 1];
+      g.materials[mi[k]].doubleSided = true;
+    }
+    g.sceneNodes.push(g.node({ name: node, mesh: g.mesh(name, P.prims(mi)) }));
+    g.write(join(OUT, name + '.glb'));
+  };
+  const LIT = { windows: [[0.02, 0.02, 0.02], 0.3, 0, [3.2, 2.1, 0.9]], cold: [[0.02, 0.02, 0.02], 0.3, 0, [1.2, 1.9, 2.6]] };
+  const hullShape = (P, m, L, W, top, bottom) => {
+    const rows = [];
+    for (let i = 0; i <= 14; i++) {
+      const t = i / 14, z = -L + 2 * L * t, w = W * (t > 0.82 ? Math.pow(1 - (t - 0.82) / 0.18, 0.55) : t < 0.05 ? 0.82 + t * 3.6 : 1) + 0.02;
+      rows.push([[-w, top, z], [-w * 0.92, bottom, z], [w * 0.92, bottom, z], [w, top, z]]);
+    }
+    P.grid(m, rows, { flip: false });
+    const d = []; for (let i = 0; i <= 14; i++) { const t = i / 14, z = -L + 2 * L * t, w = W * (t > 0.82 ? Math.pow(1 - (t - 0.82) / 0.18, 0.55) : t < 0.05 ? 0.82 + t * 3.6 : 1) + 0.02; d.push([[-w, top, z], [w, top, z]]); }
+    P.grid('deck', d, { flip: false });
+  };
+  { // the tanker: 124 m long, y 0 the waterline, forward +z
+    const P = new Plain();
+    hullShape(P, 'hull', 62, 11, 7, -9);
+    box(P, 'boot', -11.4, 11.4, -0.8, 0.6, -56, 46);
+    box(P, 'house', -8.5, 8.5, 7, 20, -58, -40);
+    box(P, 'house', -6, 6, 20, 26, -55, -44);
+    box(P, 'funnel', -2.5, 2.5, 20, 32, -58, -52);
+    for (let k = 0; k < 7; k++) box(P, 'windows', -8.6 + k * 2.4, -7.2 + k * 2.4, 17, 18.6, -39.9, -39.8);
+    for (let k = 0; k < 7; k++) box(P, 'windows', -8.6 + k * 2.4, -7.2 + k * 2.4, 13, 14.6, -39.9, -39.8);
+    for (let z = -30; z <= 44; z += 12) { P.tube('pipe', [[-3, 8.6, z], [3, 8.6, z]], 0.5, 6); P.tube('pipe', [[-6, 7, z + 4], [-6, 9.4, z + 4]], 0.3, 6); }
+    P.tube('pipe', [[-4, 8, -38], [-4, 8, 50]], 0.34, 6); P.tube('pipe', [[4, 8, -38], [4, 8, 50]], 0.34, 6);
+    box(P, 'cold', -0.5, 0.5, 10, 11, 58, 59); box(P, 'red', -11.6, -11.2, 8, 9, 0, 1); box(P, 'green', 11.2, 11.6, 8, 9, 0, 1);
+    write('tanker', 'Tanker', P, { hull: [[0.06, 0.07, 0.09], 0.6, 0.2], boot: [[0.32, 0.05, 0.03], 0.7], deck: [[0.2, 0.08, 0.06], 0.8], house: [[0.62, 0.62, 0.58], 0.6], funnel: [[0.12, 0.2, 0.34], 0.6], pipe: [[0.3, 0.26, 0.18], 0.6, 0.4], windows: LIT.windows, cold: [[0.1, 0.1, 0.1], 0.3, 0, [8, 8, 8]], red: [[0.1, 0, 0], 0.3, 0, [9, 0.5, 0.3]], green: [[0, 0.1, 0], 0.3, 0, [0.4, 9, 0.8]] });
+  }
+  { // a moored coaster, 80 m
+    const P = new Plain();
+    hullShape(P, 'hull', 40, 8, 5, -7);
+    box(P, 'house', -6, 6, 5, 15, -38, -27);
+    for (let k = 0; k < 5; k++) box(P, 'windows', -5.5 + k * 2.4, -4.2 + k * 2.4, 12, 13.4, -26.9, -26.8);
+    for (let z = -20; z <= 30; z += 12) box(P, 'cargo', -6, 6, 5, 8.2, z - 5, z + 5);
+    P.tube('mast', [[0, 5, -12], [0, 22, -12]], 0.3, 6); P.tube('mast', [[0, 20, -12], [0, 8, 24]], 0.12, 5);
+    write('ship', 'Ship', P, { hull: [[0.22, 0.05, 0.05], 0.7, 0.1], deck: [[0.14, 0.14, 0.13], 0.8], house: [[0.56, 0.58, 0.56], 0.65], cargo: [[0.12, 0.24, 0.3], 0.7], mast: [[0.2, 0.2, 0.2], 0.6, 0.4], windows: LIT.windows });
+  }
+  { // a shed
+    const P = new Plain();
+    box(P, 'wall', -18, 18, 0, 11, -18, 18);
+    P.grid('roof', [[[-18, 11, -18], [0, 15, -18], [18, 11, -18]], [[-18, 11, 18], [0, 15, 18], [18, 11, 18]]], { flip: false });
+    for (const s of [-1, 1]) { for (let k = -2; k <= 2; k++) box(P, 'windows', k * 6.4 - 1.6, k * 6.4 + 1.6, 7.5, 9.2, s * 18.05 - 0.05, s * 18.05 + 0.05); box(P, 'door', -5, 5, 0, 5.8, s * 18.05 - 0.05, s * 18.05 + 0.05); }
+    write('warehouse', 'Warehouse', P, { wall: [[0.26, 0.28, 0.3], 0.85], roof: [[0.14, 0.15, 0.17], 0.7, 0.3], door: [[0.34, 0.13, 0.05], 0.8], windows: LIT.windows });
+  }
+  { // an office block with some of its lights on
+    const P = new Plain();
+    box(P, 'wall', -14, 14, 0, 44, -14, 14);
+    for (let f = 0; f < 11; f++) for (let k = -3; k <= 3; k++) for (const [s, ax] of [[1, 0], [-1, 0], [1, 1], [-1, 1]]) {
+      const lit = ((f * 7 + k * 13 + s * 5 + ax * 3) % 5 + 5) % 5 < 2, m = lit ? ((f + k) % 3 ? 'windows' : 'cold') : 'glass', y0 = 2 + f * 3.9, y1 = y0 + 2.4, a = k * 3.8 - 1.2, b = k * 3.8 + 1.2;
+      if (ax) box(P, m, s * 14.05 - 0.05, s * 14.05 + 0.05, y0, y1, a, b); else box(P, m, a, b, y0, y1, s * 14.05 - 0.05, s * 14.05 + 0.05);
+    }
+    write('block', 'Block', P, { wall: [[0.2, 0.21, 0.24], 0.8], glass: [[0.03, 0.04, 0.05], 0.2, 0.4], windows: LIT.windows, cold: LIT.cold });
+  }
+  { // stacks of containers
+    const P = new Plain(), cols = ['c0', 'c1', 'c2', 'c3'];
+    for (let row = 0; row < 3; row++) for (let i = 0; i < 4; i++) { const h = 1 + ((row * 3 + i * 5) % 4); for (let k = 0; k < h; k++) box(P, cols[(row * 7 + i * 3 + k * 5) % 4], -13 + row * 9, -13 + row * 9 + 8, k * 2.7, k * 2.7 + 2.6, -18 + i * 9, -18 + i * 9 + 8.6); }
+    write('containers', 'Containers', P, { c0: [[0.46, 0.1, 0.05], 0.7], c1: [[0.06, 0.2, 0.36], 0.7], c2: [[0.5, 0.36, 0.06], 0.7], c3: [[0.06, 0.28, 0.16], 0.7] });
+  }
+  { // a gantry crane reaching out over the water (+z)
+    const P = new Plain();
+    const beam = (m, a, b, r) => P.tube(m, [a, b], r, 6);
+    for (const x of [-9, 9]) for (const z of [-9, 9]) beam('crane', [x, 0, z], [x * 0.75, 36, z * 0.75], 0.8);
+    for (const y of [12, 24]) { beam('crane', [-8, y, -8], [8, y, -8], 0.4); beam('crane', [-8, y, 8], [8, y, 8], 0.4); beam('crane', [-8, y, -8], [-8, y, 8], 0.4); beam('crane', [8, y, -8], [8, y, 8], 0.4); }
+    box(P, 'crane', -5, 5, 34, 40, -34, 58);
+    box(P, 'house', -3, 3, 28, 34, 6, 13);
+    box(P, 'windows', -2.6, 2.6, 30, 32, 13, 13.1);
+    beam('crane', [0, 40, 0], [0, 54, 0], 0.7); beam('crane', [0, 54, 0], [0, 40, 56], 0.2); beam('crane', [0, 54, 0], [0, 40, -32], 0.2);
+    beam('cable', [0, 34, 42], [0, 14, 42], 0.09); box(P, 'crane', -6, 6, 12, 14, 39, 45);
+    box(P, 'cold', -0.6, 0.6, 54, 55, -0.6, 0.6);
+    write('crane', 'Crane', P, { crane: [[0.62, 0.34, 0.06], 0.65, 0.2], house: [[0.5, 0.5, 0.48], 0.7], cable: [[0.05, 0.05, 0.05], 0.6], windows: LIT.windows, cold: [[0.1, 0.1, 0.1], 0.3, 0, [8, 2, 1.4]] });
+  }
+  { // a quay lamp and a bollard
+    const P = new Plain();
+    P.tube('post', [[0, 0, 0], [0, 12, 0], [0, 12.4, 1.2]], 0.14, 6);
+    box(P, 'head', -0.5, 0.5, 12.1, 12.4, 0.8, 2.2);
+    P.tube('post', [[0, 0, 4.5], [0, 1, 4.5]], 0.3, 8);
+    write('lamp', 'Lamp', P, { post: [[0.16, 0.17, 0.18], 0.6, 0.4], head: [[0.1, 0.1, 0.1], 0.3, 0, [14, 8.5, 3.5]] });
+  }
+}
+
+// ── Red Reach's kit: a saguaro with its arms, a hoodoo of stacked sandstone, a bleached drift log ──
+{
+  const P = new Plain(), arm = (s, y, h, r) => { const pts = []; for (let i = 0; i <= 6; i++) { const t = i / 6, out = Math.min(1, t * 2.4); pts.push([s * (0.25 + out * 1.0), y + 1.3 * smooth(0.2, 1, t) * h, 0]); } P.tube('flesh', pts, r, 8); };
+  P.tube('flesh', [[0, -0.5, 0], [0, 2, 0], [0, 4.5, 0], [0, 6.2, 0], [0, 6.7, 0]], (t) => 0.34 * (1 - Math.pow(t, 6) * 0.65), 12);
+  arm(1, 2.7, 1.9, 0.2); arm(-1, 3.4, 1.5, 0.18);
+  const g = new Glb(), mi = { flesh: g.material('flesh', 0.75) };
+  g.materials[mi.flesh].pbrMetallicRoughness.baseColorFactor = [0.1, 0.2, 0.08, 1];
+  g.sceneNodes.push(g.node({ name: 'Cactus', mesh: g.mesh('cactus', P.prims(mi)) }));
+  g.write(join(OUT, 'cactus.glb'));
+}
+{
+  const P = new Plain(), h2 = (a, b) => { let v = Math.imul(a * 374761393 + b * 668265263, 1274126177); v = Math.imul(v ^ (v >>> 13), 1274126177); return ((v ^ (v >>> 16)) >>> 0) / 4294967296; };
+  const rows = [], N = 18, prof = [[1.9, -1.5], [1.75, 0], [1.3, 1.5], [1.45, 2.4], [0.95, 3.6], [0.85, 5], [1.25, 5.8], [1.3, 6.4], [0.8, 6.9], [0.02, 7.1]];
+  for (let j = 0; j < prof.length; j++) { const row = []; for (let i = 0; i <= N; i++) { const a = (i % N) / N * Math.PI * 2, r = prof[j][0] * (0.85 + 0.3 * h2(j, i % N)); row.push([Math.cos(a) * r, prof[j][1], Math.sin(a) * r]); } rows.push(row); }
+  P.grid('stone', rows, { wrap: true, flip: true });
+  const g = new Glb(), mi = { stone: g.material('stone', 0.95) };
+  g.materials[mi.stone].pbrMetallicRoughness.baseColorFactor = [0.55, 0.25, 0.14, 1];
+  g.sceneNodes.push(g.node({ name: 'Hoodoo', mesh: g.mesh('hoodoo', P.prims(mi)) }));
+  g.write(join(OUT, 'hoodoo.glb'));
+}
+{
+  const P = new Plain();
+  P.tube('wood', [[-2.4, 0.1, 0], [-0.6, 0.22, 0.14], [1.2, 0.2, -0.1], [2.6, 0.34, 0.1]], (t) => lerp(0.3, 0.12, t), 8);
+  P.tube('wood', [[1.2, 0.2, -0.1], [1.7, 0.75, -0.45], [2.05, 1.15, -0.62]], (t) => lerp(0.1, 0.03, t), 5);
+  P.tube('wood', [[-1, 0.2, 0.1], [-1.4, 0.7, 0.5]], (t) => lerp(0.1, 0.04, t), 5);
+  const g = new Glb(), mi = { wood: g.material('wood', 0.9) };
+  g.materials[mi.wood].pbrMetallicRoughness.baseColorFactor = [0.42, 0.37, 0.3, 1];
+  g.sceneNodes.push(g.node({ name: 'Driftwood', mesh: g.mesh('driftwood', P.prims(mi)) }));
+  g.write(join(OUT, 'driftwood.glb'));
+}
+
 // ── far versions of the trees, for the scatter past its LOD distance: same outline and the same materials in the same order, a tenth of the triangles ──
 {
   const P = new Plain();

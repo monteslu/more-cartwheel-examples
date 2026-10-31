@@ -2,7 +2,7 @@
 // src/courses/. A new course is a new definition, added to LEVEL_ORDER: tools/course-lib.mjs says what a definition holds.
 //   node games/jetski/tools/make-course.mjs [id ...]
 import { load, makeCourse, writeIndex } from './course-lib.mjs';
-const LEVEL_ORDER = ['atoll', 'sound'];
+const LEVEL_ORDER = ['atoll', 'sound', 'canyon', 'harbour', 'storm'];
 const only = process.argv.slice(2);
 const defs = [];
 for (const id of LEVEL_ORDER) {

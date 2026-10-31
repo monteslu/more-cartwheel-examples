@@ -308,6 +308,10 @@ static const float sound_ramps[][5] = { /* x, z, yaw, s, how far off the racing 
 {-745.56f,-137.29f,-0.4801f,2868.9f,20.0f},
 {-671.73f,113.29f,0.8070f,3156.0f,20.0f}
 };
+static const char *const sound_models[] = { NULL };
+static const float sound_placed[][8] = { /* model, x, z, yaw, scale, solid half length, half width, floats */
+{0,0,0,0,0,0,0,0}
+};
 static const course_scatter sound_scatter[] = {
 { "res://models/pine.glb", "res://models/pine_far.glb", "course/sound/pines.u8", 0.03f, 0.7f, 1.5f, 800.0f, 177, false, 0.1f },
 { "res://models/rock0.glb", NULL, "course/sound/boulders.u8", 0.25f, 0.7f, 2.6f, 700.0f, 179, true, 0.9f },
@@ -333,6 +337,8 @@ static const char *const sound_props[][3] = {
 { "Water", "distortion", "0.16" },
 { "Water", "normal_scale", "0.3" },
 { "Water", "detail", "0.9" },
+{ "Water", "flow_speed", "0.035" },
+{ "Water", "flow_direction", "vec2(1, 0)" },
 { "Water", "crest_foam", "1" },
 { "Water", "crest_light", "0.3" },
 { "Water", "scatter", "0.5" },
@@ -342,12 +348,13 @@ static const char *const sound_props[][3] = {
 static const course_def sound_course = {
   .id = "sound", .name = "Cold Sound", .quads = 896, .spacing = 2.0f, .minh = -48.0f, .maxh = 170.0f, .len = 3268.00f,
   .track_n = 256, .track = sound_track, .buoy_n = 35, .buoys = sound_buoys, .ramp_n = 12, .ramps = sound_ramps, .ramp_top = 6.5f,
-  .scatter_n = 4, .scatter = sound_scatter, .prop_n = 23, .props = sound_props,
+  .scatter_n = 4, .scatter = sound_scatter, .model_n = 0, .models = sound_models, .placed_n = 0, .placed = sound_placed, .prop_n = 25, .props = sound_props,
   .layer = { "course/sound/shingle", "course/sound/tiderock", "course/sound/granite", "course/sound/moss" }, .layer_uv = { 0.2f, 0.1f, 0.06f, 0.09f },
   .heights = "course/sound/heights.r16", .control = "course/sound/control.u32", .mask = "course/sound/wavemask.f32", .mask_n = 256, .map_n = 448, .sky = "res://textures/sky-sound.png",
   .landmark = NULL, .landmark_at = { 0.00f, -100.40f, 0.00f },
   .start = { -621.71f, 182.32f, 0.7765f, 0.6301f },
   .waves = { { 12.0f, 66.0f, 0.0f, 1.9f, 0.72f }, { 340.0f, 43.0f, 0.0f, 1.15f, 0.7f }, { 40.0f, 15.0f, 0.2f, 0.26f, 0.7f }, { 300.0f, 7.0f, 0.07f, 0.07f, 0.5f } }, .swell = { 0.7f, 1.0f }, .tide = { 2.6f, -1.6f },
+  .rain = 0.0f,
   .sun_disc = 0.12f,
-  .hook = { .kind = 1, .x = 195.00f, .z = 14.00f, .dirx = -0.0058f, .dirz = -1.0000f, .half_w = 11.0f, .half_len = 172.00f, .lintel = 3.6f, .s_in = 864.0f, .s_out = 1824.0f, .model = "res://models/arch.glb" },
+  .hook = { .kind = 1, .current = 0.0f, .x = 195.00f, .z = 14.00f, .dirx = -0.0058f, .dirz = -1.0000f, .half_w = 11.0f, .half_len = 172.00f, .lintel = 3.6f, .s_in = 864.0f, .s_out = 1824.0f, .model = "res://models/arch.glb" },
 };
