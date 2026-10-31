@@ -17,6 +17,7 @@ static cw_node craft_n[RACERS], rider_n[RACERS], buoy_n[BUOY_N];
 static t3_object *bars_o[RACERS];
 static t3_material *band_mat[2], *lamp_mat[2];
 static float buoy_phase[BUOY_N];
+static cw_node gate_n;
 
 static const float TEAMS[RACERS][6] = {
   /* deck, vest */
@@ -288,6 +289,20 @@ void view_init(void) {
     t3_release(o);
     buoy_phase[b] = (float)b * 1.7f;
   }
+  /* the lighthouse stands on the islet's top, the gate floats on the line */
+  {
+    cw_res lr = cw_res_load("res://models/lighthouse.glb", CW_RES_GLTF);
+    t3_object *lo = cw_gltf_instantiate(lr);
+    shadows(lo);
+    cw_node ln = model_node(root, "Lighthouse", lo);
+    cw_node3d_set_position(ln, (t3_vec3){ LIGHT_X, LIGHT_Y, LIGHT_Z });
+    t3_release(lo);
+    cw_res gr = cw_res_load("res://models/gate.glb", CW_RES_GLTF);
+    t3_object *go = cw_gltf_instantiate(gr);
+    shadows(go);
+    gate_n = model_node(root, "Gate", go);
+    t3_release(go);
+  }
   fx_init(cw_node_get(root, "Fx"));
   rider_init();
 }
@@ -422,6 +437,14 @@ void view_sync(double alpha) {
     float d = up.x * n.x + up.y * n.y + up.z * n.z;
     t3_vec3 c = { up.y * n.z - up.z * n.y, up.z * n.x - up.x * n.z, up.x * n.y - up.y * n.x };
     cw_node3d_set_quaternion(buoy_n[b], t3_quat_normalize((t3_quat){ c.x, c.y, c.z, 1 + d }));
+  }
+  {
+    float gx, gz, dx, dz;
+    track_at(0, &gx, &gz, &dx, &dz);
+    cw_water_sample s;
+    cw_water_sample_at(G.water, gx, gz, wt, &s);
+    cw_node3d_set_position(gate_n, (t3_vec3){ gx, s.height, gz });
+    cw_node3d_set_rotation(gate_n, (t3_vec3){ 0, cw_atan2(dx, dz), 0 });
   }
   t3_vec3 cp = { lerpf(G.cam_prev[0], G.cam[0], a), lerpf(G.cam_prev[1], G.cam[1], a), lerpf(G.cam_prev[2], G.cam[2], a) };
   t3_vec3 lp = { lerpf(G.look_prev[0], G.look[0], a), lerpf(G.look_prev[1], G.look[1], a), lerpf(G.look_prev[2], G.look[2], a) };

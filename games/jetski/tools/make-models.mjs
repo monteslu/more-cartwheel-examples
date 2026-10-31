@@ -70,7 +70,7 @@ m.ellipsoid('helmet', add(Hd, [0, 0.085, -0.008]), 0.117, 0.125, 0.135, { steps:
 m.capsule('helmet', add(Hd, [-0.06, -0.0, 0.1]), add(Hd, [0.06, -0.0, 0.1]), 0.04, 0.04, { weights: hw });
 m.ellipsoid('visor', add(Hd, [0, 0.095, 0.062]), 0.098, 0.052, 0.075, { steps: 8, n: 18, weights: hw });
 const glb = new Glb();
-const mats = { suit: glb.material('suit', 0.42), vest: glb.material('vest', 0.88), glove: glb.material('glove', 0.5), boot: glb.material('boot', 0.55), helmet: glb.material('helmet', 0.22), visor: glb.material('visor', 0.08, 0.3) };
+const mats = { suit: glb.material('suit', 0.62), vest: glb.material('vest', 0.88), glove: glb.material('glove', 0.5), boot: glb.material('boot', 0.55), helmet: glb.material('helmet', 0.22), visor: glb.material('visor', 0.08, 0.3) };
 const color = { suit: [0.05, 0.055, 0.07, 1], vest: [0.9, 0.3, 0.05, 1], glove: [0.03, 0.03, 0.035, 1], boot: [0.04, 0.04, 0.05, 1], helmet: [0.85, 0.85, 0.82, 1], visor: [0.02, 0.03, 0.04, 1] };
 for (const [k, c] of Object.entries(color)) glb.materials[mats[k]].pbrMetallicRoughness.baseColorFactor = c;
 const jn = BONES.map((n) => glb.node({ name: n, translation: T[n] }));
@@ -155,8 +155,8 @@ class Plain {
   // the seat: a long vinyl saddle
   const seat = [];
   for (let k = 0; k <= 16; k++) {
-    const t = k / 16, z = lerp(-1.32, 0.22, t), wid = 0.2 * Math.pow(Math.sin(Math.PI * clamp(t * 0.96 + 0.02)), 0.35), row = [];
-    const top = 0.5 + 0.1 * Math.sin(t * Math.PI) - 0.1 * (1 - smooth(0, 0.2, t));
+    const t = k / 16, z = lerp(-1.02, 0.22, t), wid = 0.17 * Math.pow(Math.sin(Math.PI * clamp(t * 0.96 + 0.02)), 0.35), row = [];
+    const top = 0.45 + 0.1 * Math.sin(t * Math.PI) - 0.14 * (1 - smooth(0, 0.2, t));
     for (let i = 0; i <= 10; i++) { const a = i / 10 * Math.PI; row.push([Math.cos(a) * wid * 1.05, 0.28 + (top - 0.28) * Math.pow(Math.sin(a), 0.5), z]); }
     seat.push(row);
   }
@@ -229,4 +229,51 @@ class Plain {
   g.sceneNodes.push(g.node({ name: 'Palm', mesh: g.mesh('palm', [...trunk.prims(mi), ...crown.prims(mi)]) }));
   g.write(join(OUT, 'palm.glb'));
   console.log('palm', trunk.tris() + crown.tris(), 'tris');
+}
+
+// ── the lighthouse: white tower, red band, gallery and lamp; y = 0 at its foot ──
+{
+  const P = new Plain();
+  const ring = (r, y) => Array.from({ length: 25 }, (_, i) => { const a = (i % 24) / 24 * Math.PI * 2; return [Math.cos(a) * r, y, Math.sin(a) * r]; });
+  const lathe = (mat, prof) => P.grid(mat, prof.map(([r, y]) => ring(r, y)), { wrap: true });
+  lathe('wall', [[3.2, -2], [3.1, 1], [2.75, 6], [2.5, 10]]);
+  lathe('band', [[2.5, 10], [2.25, 14], [2.15, 16]]);
+  lathe('wall', [[2.15, 16], [1.9, 21]]);
+  lathe('dark', [[1.9, 21], [2.7, 21.3], [2.7, 21.7], [1.5, 21.8]]);
+  lathe('lamp', [[1.35, 21.8], [1.35, 24]]);
+  lathe('dark', [[1.5, 24], [0.3, 25.6], [0.02, 25.8]]);
+  const g = new Glb();
+  const mi = { wall: g.material('wall', 0.85), band: g.material('band', 0.8), dark: g.material('dark', 0.5, 0.5), lamp: g.material('lamp', 0.3, 0, [8, 5, 2]) };
+  g.materials[mi.wall].pbrMetallicRoughness.baseColorFactor = [0.82, 0.8, 0.74, 1];
+  g.materials[mi.band].pbrMetallicRoughness.baseColorFactor = [0.55, 0.1, 0.07, 1];
+  g.materials[mi.dark].pbrMetallicRoughness.baseColorFactor = [0.08, 0.08, 0.09, 1];
+  g.sceneNodes.push(g.node({ name: 'Lighthouse', mesh: g.mesh('lighthouse', P.prims(mi)) }));
+  g.write(join(OUT, 'lighthouse.glb'));
+}
+
+// ── the start gate: two pontoons and an arch across the course, floating; y = 0 at the waterline, centre at the origin ──
+{
+  const P = new Plain(), W = 21;
+  for (const s of [-1, 1]) {
+    P.tube('float', [[s * W, 0.05, -3.4], [s * W, 0.2, -2.6], [s * W, 0.2, 2.6], [s * W, 0.05, 3.4]], (t) => 1.05 * Math.pow(Math.sin(Math.PI * clamp(t * 0.9 + 0.05)), 0.4), 14);
+    P.tube('steel', [[s * W, 0.6, -1.2], [s * W * 0.985, 11.2, 0]], 0.2, 10);
+    P.tube('steel', [[s * W, 0.6, 1.2], [s * W * 0.985, 11.2, 0]], 0.2, 10);
+  }
+  P.tube('steel', Array.from({ length: 25 }, (_, i) => { const t = i / 24 * 2 - 1; return [t * W, 11.2 + 2.6 * (1 - t * t), 0]; }), 0.24, 10);
+  // the banner: checks along the arch, a plain strip with the check painted by vertex-free material per square
+  for (let i = 0; i < 24; i++) {
+    const t0 = i / 24 * 2 - 1, t1 = (i + 1) / 24 * 2 - 1, mat = i % 2 ? 'bannerA' : 'bannerB';
+    const top = (t) => [t * W * 0.92, 11.1 + 2.6 * (1 - t * t) * 0.92, 0.02];
+    const a = top(t0), b = top(t1), d = 1.5;
+    P.grid(mat, [[[a[0], a[1] - d, 0.03], [b[0], b[1] - d, 0.03]], [[a[0], a[1], 0.03], [b[0], b[1], 0.03]]], { flip: true });
+    P.grid(mat, [[[a[0], a[1] - d, -0.03], [b[0], b[1] - d, -0.03]], [[a[0], a[1], -0.03], [b[0], b[1], -0.03]]]);
+  }
+  const g = new Glb();
+  const mi = { float: g.material('float', 0.5), steel: g.material('steel', 0.42, 0.7), bannerA: g.material('bannerA', 0.9), bannerB: g.material('bannerB', 0.9) };
+  g.materials[mi.float].pbrMetallicRoughness.baseColorFactor = [0.72, 0.16, 0.05, 1];
+  g.materials[mi.steel].pbrMetallicRoughness.baseColorFactor = [0.55, 0.56, 0.58, 1];
+  g.materials[mi.bannerA].pbrMetallicRoughness.baseColorFactor = [0.9, 0.88, 0.82, 1];
+  g.materials[mi.bannerB].pbrMetallicRoughness.baseColorFactor = [0.04, 0.05, 0.07, 1];
+  g.sceneNodes.push(g.node({ name: 'Gate', mesh: g.mesh('gate', P.prims(mi)) }));
+  g.write(join(OUT, 'gate.glb'));
 }
