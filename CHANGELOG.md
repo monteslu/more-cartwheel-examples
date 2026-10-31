@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.1
+
+- jetski: a beached craft no longer spins on the sand. Throttle drives it back
+  to the water, in about 3 seconds in the test, and with no throttle it slides
+  back slowly.
+- jetski: the spray from the jet stays behind the rider.
+
 ## 0.7.0
 
 - jetski, a new game: a wave racing game on one evening's water. Six riders
