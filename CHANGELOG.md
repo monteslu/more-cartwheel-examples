@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.0
+
+- jetski: a real menu, with a pause menu in the race. There's one course so far,
+  so the championship is one race for now.
+- jetski: handling that answers the rider. Pull back while steering to carve much
+  tighter, full stick at top speed scrubs speed, and the hardest turns can throw
+  you off, with control back in under 3 seconds. A flat landing keeps its speed
+  and a nose-down one loses a lot of it, unless you lean back.
+- jetski: leaving the course for 5 seconds disqualifies you, and so do 5 missed
+  buoys.
+- jetski: a new attract loop, shot from above the water.
+
 ## 0.7.3
 
 - Street Toughs has a stupider subtitle: "they are tough and this is a street".
