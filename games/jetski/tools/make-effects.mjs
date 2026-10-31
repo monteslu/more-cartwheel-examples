@@ -114,3 +114,51 @@ paintSky('textures/sky-sound.png', {
   HAZE0: [0.56, 0.6, 0.64], HAZE1: [0.8, 0.78, 0.72], CIR0: [0.62, 0.66, 0.7], CIR1: [0.82, 0.8, 0.74],
   SHADE0: [0.2, 0.23, 0.28], SHADE1: [0.28, 0.3, 0.33], LIGHT0: [0.58, 0.61, 0.65], LIGHT1: [0.86, 0.84, 0.78], RIM: [0.95, 0.92, 0.84], cover: 5,
 });
+// a ramp's deck: 18 m wide (u), 40 m long (v, 0 at the low end): worn steel plates, seams and rivets, rust from the seams, tyre-black scuffs
+// up the middle, chevrons and hazard paint at the lip worn through where hulls run
+{
+  const W = 1024, H = 2048, b = new Uint8Array(W * H * 4);
+  const mix = (A, B, t) => [lerp(A[0], B[0], t), lerp(A[1], B[1], t), lerp(A[2], B[2], t)];
+  const PW = 4.5, PL = 5, RIV = 0.35;
+  for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
+    const X = (i + 0.5) / W * 18, Z = (j + 0.5) / H * 40, u = X / 18, c = (X - 9) / 9;
+    const px = X / PW, pz = Z / PL, cx = Math.floor(px), cz = Math.floor(pz), fx = (px - cx) * PW, fz = (pz - cz) * PL;
+    const edge = Math.min(fx, PW - fx, fz, PL - fz);
+    const big = fbm(X * 0.5, Z * 0.5, 4, 301), fine = fbm(X * 3, Z * 3, 4, 302), grit = fbm(X * 14, Z * 14, 2, 303);
+    const shade = 0.82 + 0.3 * hash(cx, cz, 304);
+    let col = mix([0.2, 0.21, 0.2], [0.33, 0.32, 0.29], big).map((v) => v * shade * (0.86 + 0.28 * grit));
+    // chevrons up the middle, faded
+    const zc = ((Z + Math.abs(c) * 7) % 7), chev = Z > 8 && Z < 31 ? smooth(1.0, 1.15, zc) * (1 - smooth(2.1, 2.25, zc)) * (1 - smooth(0.36, 0.4, Math.abs(c))) : 0;
+    // the warning stripes at the lip, diagonal
+    const lip = smooth(33.9, 34, Z), stripe = ((X + Z) % 3) < 1.5;
+    // where hulls run the paint is worn through
+    const wear = smooth(0.3, 0.72, (1 - smooth(0.05, 0.55, Math.abs(c))) * 0.75 + 0.5 * fine + 0.25 * grit - 0.1);
+    const keep = 1 - wear * 0.85;
+    col = mix(col, [0.74, 0.71, 0.6], chev * keep * 0.8);
+    col = mix(col, stripe ? [0.86, 0.36, 0.05] : [0.78, 0.74, 0.62], lip * (0.5 + 0.5 * keep));
+    // scuffs: dark streaks along the run, thick up the middle
+    const streak = fbm(X * 7, Z * 0.25, 3, 305), sc = smooth(0.56, 0.72, streak) * (1 - smooth(0.25, 0.8, Math.abs(c)));
+    col = mix(col, [0.045, 0.045, 0.05], sc * 0.65);
+    // rust: runs from the seams down the slope, and in blooms
+    const bloom = smooth(0.58, 0.74, big * 0.55 + fine * 0.45), run = (1 - smooth(0.02, 0.1 + 1.6 * fine, fz)) * smooth(0.35, 0.6, fbm(X * 4, cz * 3.1, 2, 306));
+    const rust = Math.max(bloom * 0.8, run * 0.85);
+    col = mix(col, mix([0.3, 0.12, 0.05], [0.5, 0.24, 0.09], fine), rust * (1 - lip * 0.5));
+    // seams and weld beads, rivets along them
+    const seam = 1 - smooth(0.02, 0.05, edge);
+    col = mix(col, [0.025, 0.025, 0.03], seam * 0.95);
+    const bead = smooth(0.05, 0.07, edge) * (1 - smooth(0.09, 0.12, edge));
+    col = col.map((v) => v * (1 + 0.35 * bead));
+    const onX = Math.min(fx, PW - fx) < 0.16 || Math.min(fz, PL - fz) < 0.16;
+    if (onX) {
+      const rx = Math.min(fx, PW - fx) < 0.16 ? 0.12 : ((fx + RIV / 2) % RIV) - RIV / 2 + 0, dummy = 0;
+      const ax = Math.min(fx, PW - fx) < 0.16 ? Math.min(fx, PW - fx) - 0.1 : ((fx + RIV / 2) % RIV) - RIV / 2;
+      const az = Math.min(fz, PL - fz) < 0.16 ? Math.min(fz, PL - fz) - 0.1 : ((fz + RIV / 2) % RIV) - RIV / 2;
+      const d = Math.hypot(ax, az), rv = 1 - smooth(0.035, 0.05, d);
+      col = col.map((v) => v * (1 + 0.8 * rv * (az < 0 ? 1 : 0.3)) + 0 * rx * dummy);
+    }
+    const q = (i + j * W) * 4;
+    for (let k = 0; k < 3; k++) b[q + k] = Math.round(clamp(Math.pow(clamp(col[k]), 1 / 2.2)) * 255);
+    b[q + 3] = 255;
+  }
+  save('textures/ramp-deck.png', W, H, b);
+}

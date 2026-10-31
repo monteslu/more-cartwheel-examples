@@ -256,7 +256,8 @@ static void ramps_init(cw_node root) {
       ((t3_object *)im)->cast_shadow = true, ((t3_object *)im)->receive_shadow = true;
       char name[24];
       snprintf(name, sizeof name, "RampPart%d", ramp_part_n);
-      model_node(root, name, (t3_object *)im);
+      /* (not in the refraction: under the water its deck would read as a shoal, with a hard edge of shore foam over it) */
+      cw_water_refraction_hide(G.water, model_node(root, name, (t3_object *)im));
       t3_sphere everywhere = { { 0, 0, 0 }, 4000 };
       t3_instanced_mesh_set_bounding_sphere(im, &everywhere);
       ramp_parts[ramp_part_n++] = im;

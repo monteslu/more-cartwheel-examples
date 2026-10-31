@@ -267,37 +267,27 @@ class Plain {
   const P = new Plain(), HL = 20, HW = 9, SLOPE = 0.36, FOOT = -50;
   const deckY = (z) => (z - HL) * SLOPE;
   const beam = (mat, A, B, r) => P.tube(mat, [A, B], r, 6);
-  // the deck: broad steel plates, weathered in two tones, the last of them painted to read from far off
-  const PL = 2.5, rows = Math.round(2 * HL / PL);
-  for (let i = 0; i < rows; i++) {
-    const z0 = -HL + i * PL, z1 = z0 + PL;
-    const stripe = z1 > HL - 7.6 ? (i % 2 ? 'paint' : 'pale') : (i % 3 === 0 ? 'plate2' : 'plate');
-    for (let k = 0; k < 4; k++) {
-      const x0 = -HW + k * 4.5, x1 = x0 + 4.5, m = (stripe === 'plate' || stripe === 'plate2') && (i + k) % 5 === 0 ? 'rust' : stripe;
-      P.grid(m, [[[x0, deckY(z0), z0], [x1, deckY(z0), z0]], [[x0, deckY(z1), z1], [x1, deckY(z1), z1]]], { flip: false });
+  // the deck: one sheet with its paint (make-effects: textures/ramp-deck.png), v from the low end to the lip
+  P.grid('deck', [[[-HW, deckY(-HL), -HL], [HW, deckY(-HL), -HL]], [[-HW, deckY(HL), HL], [HW, deckY(HL), HL]]], { flip: false });
+  // heavy side girders you can see on the way in: a deep web and a flange standing proud of the deck, stiffeners down the web
+  for (const s of [-1, 1]) {
+    const o = s * (HW + 0.75), rows = (a, b) => [[a, b]];
+    for (const [A, B] of [[[o, -1.6, 0], [o, 1.1, 0]]]) {
+      const P0 = (z, y) => [o, deckY(z) + y, z];
+      P.grid('steel', s > 0 ? [[P0(-HL, -1.6), P0(HL, -1.6)], [P0(-HL, 1.1), P0(HL, 1.1)]] : [[P0(-HL, 1.1), P0(HL, 1.1)], [P0(-HL, -1.6), P0(HL, -1.6)]], { flip: false });
+      const Q0 = (z, x, y) => [x, deckY(z) + y, z];
+      P.grid('paint', s > 0 ? [[Q0(-HL, o, 1.1), Q0(HL, o, 1.1)], [Q0(-HL, s * HW, 1.1), Q0(HL, s * HW, 1.1)]] : [[Q0(-HL, s * HW, 1.1), Q0(HL, s * HW, 1.1)], [Q0(-HL, o, 1.1), Q0(HL, o, 1.1)]], { flip: false });
+      P.grid('steel', s > 0 ? [[Q0(-HL, s * HW, 1.1), Q0(HL, s * HW, 1.1)], [Q0(-HL, s * HW, 0), Q0(HL, s * HW, 0)]] : [[Q0(-HL, s * HW, 0), Q0(HL, s * HW, 0)], [Q0(-HL, s * HW, 1.1), Q0(HL, s * HW, 1.1)]], { flip: false });
+      for (let z = -HL; z <= HL + 0.01; z += 4) P.tube('steel', [[o + s * 0.1, deckY(z) - 1.6, z], [o + s * 0.1, deckY(z) + 1.1, z]], 0.12, 5);
     }
   }
-  // chevrons up the middle of the deck and a seam at every plate edge, so it reads as a road to aim up, and as made of plates
-  for (let z = -6; z < HL - 9; z += 6) for (const sx of [-1, 1]) {
-    const q = (x, zz) => [x, deckY(zz) + 0.04, zz];
-    P.grid('pale', [[q(sx > 0 ? 0 : -3.2, sx > 0 ? z + 2.4 : z), q(sx > 0 ? 3.2 : 0, sx > 0 ? z : z + 2.4)], [q(sx > 0 ? 0 : -3.2, sx > 0 ? z + 3.6 : z + 1.2), q(sx > 0 ? 3.2 : 0, sx > 0 ? z + 1.2 : z + 3.6)]], { flip: false });
-  }
-  for (let z = -HL; z <= HL; z += PL) P.grid('seam', [[[-HW, deckY(z) + 0.02, z - 0.04], [HW, deckY(z) + 0.02, z - 0.04]], [[-HW, deckY(z + 0.08) + 0.02, z + 0.04], [HW, deckY(z + 0.08) + 0.02, z + 0.04]]], { flip: false });
-  for (let k = 1; k < 4; k++) { const x = -HW + k * 4.5; P.grid('seam', [[[x - 0.04, deckY(-HL) + 0.02, -HL], [x + 0.04, deckY(-HL) + 0.02, -HL]], [[x - 0.04, deckY(HL) + 0.02, HL], [x + 0.04, deckY(HL) + 0.02, HL]]], { flip: false }); }
   // the frame under it: long girders, cross beams
   for (const x of [-HW, -4.5, 0, 4.5, HW]) beam('steel', [x, deckY(-HL) - 0.35, -HL], [x, deckY(HL) - 0.35, HL], 0.28);
   for (let z = -HL; z <= HL + 0.01; z += 5) beam('steel', [-HW, deckY(z) - 0.5, z], [HW, deckY(z) - 0.5, z], 0.2);
-  // side walls with an orange top rail, so a rider sees the edges
-  for (const s of [-1, 1]) {
-    const edge = [[s * HW, deckY(-HL), -HL], [s * HW, deckY(HL), HL]];
-    P.grid('steel', s > 0 ? [edge, edge.map(([x, y, z]) => [x, y + 0.8, z])] : [edge.map(([x, y, z]) => [x, y + 0.8, z]), edge], { flip: false });
-    beam('paint', [s * HW, deckY(-HL) + 0.85, -HL], [s * HW, deckY(HL) + 0.85, HL], 0.12);
-    for (let z = -HL; z <= HL + 0.01; z += 8) beam('steel', [s * HW, deckY(z), z], [s * HW, deckY(z) + 0.85, z], 0.07);
-  }
   // a heavy lip bar
   beam('paint', [-HW, 0.05, HL], [HW, 0.05, HL], 0.2);
   // the piles: rows across, down past any sea; a dark wet band where the tide works; braces between them
-  const PZ = [-12, -4, 4, 12, 20], PX = [-HW, 0, HW];
+  const PZ = [-8, 0, 8, 14, 20], PX = [-HW - 0.75, 0, HW + 0.75]; // (only where the deck stands clear of the water does a leg show)
   for (const z of PZ) for (const x of PX) {
     const top = deckY(z) - 0.5;
     // (the wet band: the tide's range on a ramp whose top is 5 to 6.5 m over the rest level. A leg starts under its part of the deck)
@@ -324,9 +314,10 @@ class Plain {
     for (const z of [12, 20]) P.tube('rust', [[s * (HW + 0.5), -1.2, z - 0.6], [s * (HW + 0.5), -3.4, z - 0.6]], 0.4, 8);
   }
   const g = new Glb();
-  const mi = { plate: g.material('plate', 0.82, 0.05), plate2: g.material('plate2', 0.86, 0.05), rust: g.material('rust', 0.92, 0), seam: g.material('seam', 0.9, 0), paint: g.material('paint', 0.62), pale: g.material('pale', 0.68), steel: g.material('steel', 0.62, 0.3), wet: g.material('wet', 0.55, 0.1), rope: g.material('rope', 0.95) };
-  const col = { plate: [0.27, 0.28, 0.27], plate2: [0.21, 0.22, 0.22], rust: [0.27, 0.15, 0.09], seam: [0.1, 0.1, 0.1], paint: [0.92, 0.38, 0.05], pale: [0.85, 0.82, 0.72], steel: [0.3, 0.31, 0.33], wet: [0.05, 0.07, 0.055], rope: [0.5, 0.42, 0.28] };
-  for (const k of Object.keys(mi)) { g.materials[mi[k]].pbrMetallicRoughness.baseColorFactor = [...col[k], 1]; g.materials[mi[k]].doubleSided = true; }
+  const mi = { deck: g.material('deck', 0.85, 0.05), paint: g.material('paint', 0.62), steel: g.material('steel', 0.62, 0.3), wet: g.material('wet', 0.55, 0.1), rope: g.material('rope', 0.95) };
+  const col = { paint: [0.92, 0.38, 0.05], steel: [0.27, 0.27, 0.27], wet: [0.05, 0.07, 0.055], rope: [0.5, 0.42, 0.28] };
+  for (const k of Object.keys(col)) { g.materials[mi[k]].pbrMetallicRoughness.baseColorFactor = [...col[k], 1]; g.materials[mi[k]].doubleSided = true; }
+  g.materials[mi.deck].pbrMetallicRoughness.baseColorTexture = { index: g.tex(join(OUT, '../textures/ramp-deck.png')) };
   g.sceneNodes.push(g.node({ name: 'Ramp', mesh: g.mesh('ramp', P.prims(mi)) }));
   g.write(join(OUT, 'ramp.glb'));
   console.log('ramp', P.tris(), 'tris');
