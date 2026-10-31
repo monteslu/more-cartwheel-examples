@@ -1,7 +1,18 @@
 # Changelog
 
-## 0.6.1
+## 0.7.0
 
+- jetski, a new game: a wave racing game on one evening's water. Six riders
+  race three laps around a volcanic atoll, from a lagoon out across open sea.
+  The swells throw you into the air, the sea builds from lap to lap, and each
+  buoy passed on the correct side raises your top speed. This is a first
+  version: one player, one course, and more polish to come.
+- All games now run on cartwheel-engine v0.26.0, which adds open sea water.
+- brawler: Dolly joins as the fourth fighter. Runs about twice as fast on the
+  GPU: under 5 ms at 1080p on a Radeon 890M on a quiet machine, with baked
+  street lighting. The fog is gone for now, including on the Foggy Docks.
+- brawler: Arthur combs his hair in view, in an amber comb, and markers stay
+  with fallen fighters.
 - fighter: no more infinite combos. A juggle ends after three hits, a fourth
   shows JUGGLE OVER with a whoosh, and hitstun shortens over a long combo.
 - fighter: Beam and Wide beam hit once for 400 damage and then fly on. Blocked,
