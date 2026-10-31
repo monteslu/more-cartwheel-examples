@@ -113,5 +113,10 @@
     "name": "jetski-ramps",
     "script": "tests/jetski-ramps.mjs",
     "note": "the ramps stand: no pile's foot over the water, the low end always under, the top always clear, at the biggest sea of every difficulty on both courses and both ends of Cold Sound's tide (control: lifted 60 m); the same jump at any moment of the sea (control: decks that tip); computer riders take them, land them and lose no more than 5 points of buoys (control: no one goes for a ramp)"
+  },
+  {
+    "name": "jetski-quality",
+    "script": "tests/jetski-quality.mjs",
+    "note": "a program for everything drawn at every quality on both courses and backends"
   }
 ]

@@ -19,3 +19,6 @@ standard+instbig+shadow+senv+l2000+s100
 standard+instbig+shadow+senv+ds+l2000+s100
 standard+shadow+skin+senv+l2000+s100+xrim
 standard+map+rep+instbig+shadow+senv+l2000+s100
+depth+instbig+xterrainlow
+standard+instbig+shadow+senv+l2000+s100+xterrainlow
+standard+map+rep+instbig+senv+l2000
