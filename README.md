@@ -91,7 +91,7 @@ controls and the power-up list).
 
 ### jetski
 
-![jetski: the lagoon at the end of the day, the start gate ahead and the wake behind the rider](docs/screenshots/jetski.jpg)
+![jetski: the lagoon at the end of the day, the wake and the low sun on the water behind the rider](docs/screenshots/jetski.jpg)
 
 jetski, a wave racing game on one evening's water. Six riders race three laps around a volcanic
 atoll, from a pale lagoon through a gap in the reef and out across open sea. The water is the track: its swells throw you
