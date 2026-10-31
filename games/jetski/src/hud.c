@@ -47,7 +47,7 @@ static void hud_body(void) {
   const craft *c = &G.c[0];
   cw_color white = cw_rgba(1, 1, 1, 0.96f), gold = cw_rgba(1.0f, 0.78f, 0.25f, 1), dim = cw_rgba(1, 1, 1, 0.7f);
   char buf[64];
-  if (G.state == RACE_ATTRACT) return;
+  if (G.state == RACE_ATTRACT || G.state == RACE_DONE) return; /* the results page has it all */
   /* speed, bottom right */
   snprintf(buf, sizeof buf, "%d", (int)(c->speed * 3.6f + 0.5f));
   text(big, buf, w - 150 * u, h - 186 * u, 92 * u, white, 1);

@@ -21,6 +21,9 @@
 #define THRUST 11.0f
 
 game G;
+#define MAX_SINK 0.32f   /* metres of the hull's centre under the surface */
+int g_ride_top = 1;  /* debug: 0 is the control, a hull held by the spring alone */
+float g_swell_hold; /* debug: swell <0..1> holds the sea at that size */
 
 static cw_value cw_val_vec4(float x, float y, float z, float w) { cw_value v; memset(&v, 0, sizeof v); v.type = CW_T_VEC4; v.v[0] = x, v.v[1] = y, v.v[2] = z, v.v[3] = w; return v; }
 static float clampf(float x, float a, float b) { return x < a ? a : x > b ? b : x; }
@@ -247,6 +250,13 @@ static void craft_tick(craft *c, int idx, float dt) {
   c->pitch += c->pr * dt;
   c->roll += c->rr * dt;
   c->x += c->vx * dt, c->y += c->vy * dt, c->z += c->vz * dt;
+  /* a hull floats: climbing a big face at speed the spring alone lets it lag under the surface, and it vanishes from under its
+   * rider. It stays on top, rising at the water's rate */
+  if (g_ride_top && hm - c->y > MAX_SINK && !land) {
+    c->y = hm - MAX_SINK;
+    if (c->vy < s.velocity.y) c->vy = s.velocity.y;
+  }
+  if (hm - c->y > c->sink_max) c->sink_max = hm - c->y;
   /* landing */
   c->big_splash = false;
   if (was_air && !c->air) {
@@ -390,6 +400,7 @@ static void weather(void) {
 #endif
   /* difficulty: the sea itself is bigger */
   static const float DIFF_SEA[3] = { 0.8f, 1.0f, 1.18f };
+  if (g_swell_hold > 0) G.swell = g_swell_hold;
   float a = G.swell * DIFF_SEA[g_difficulty];
   cw_node_set(G.water, "wave0", cw_val_vec4(200, 46, 1.5f * a, 0.7f));
   cw_node_set(G.water, "wave1", cw_val_vec4(216, 37, 1.05f * a, 0.7f));

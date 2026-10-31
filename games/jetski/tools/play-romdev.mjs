@@ -65,6 +65,6 @@ while (frame < FRAMES) {
   if (air > maxAir) maxAir = air;
   if (frame - lastLog >= 240) { lastLog = frame; console.log(`f${frame} s${s.toFixed(0)} pos ${p[0].toFixed(0)},${p[2].toFixed(0)} v ${speed.toFixed(1)} meter ${meter} pass ${passes} miss ${misses} maxAir ${maxAir.toFixed(2)} ms/frame ${((Date.now() - wall) / 240).toFixed(1)}`); wall = Date.now(); }
 }
-const end = await Promise.all(['race.state', 'race.clock', 'p0.place', 'p0.lap', 'p0.passes', 'p0.misses', 'p0.meter', 'cam.under_ticks', 'race.swell'].map(async (n) => [n, await rd(n)]));
+const end = await Promise.all(['race.state', 'race.clock', 'p0.place', 'p0.lap', 'p0.passes', 'p0.misses', 'p0.dq', 'menu.page', 'p0.meter', 'cam.under_ticks', 'race.swell'].map(async (n) => [n, await rd(n)]));
 await call('input', { op: 'set', ports: [{}] });
 console.log(JSON.stringify(Object.fromEntries(end)), 'shots', shots);

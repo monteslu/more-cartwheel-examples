@@ -69,6 +69,11 @@ static int page_rows(void) {
   }
 }
 static void open_page(int p) { page = p, row = 0; }
+/* back out of a page: to the row that opened it */
+static void back_up(int row_main, int row_pause) {
+  bool main = G.state == RACE_ATTRACT;
+  page = main ? P_MAIN : P_PAUSE, row = main ? row_main : row_pause;
+}
 
 void menu_off(void) { page = P_NONE; }
 /* the race holds still under every page opened from the pause */
@@ -127,7 +132,7 @@ void menu_tick(float dt) {
   }
   if (page == P_GRAPHICS) {
     cw_quality_menu_update();
-    if (!cw_quality_menu_is_open()) { open_page(G.state == RACE_ATTRACT ? P_MAIN : P_PAUSE); row = G.state == RACE_ATTRACT ? 6 : 0; }
+    if (!cw_quality_menu_is_open()) back_up(6, 0);
     return;
   }
   bool up = cw_action_just_pressed(0, a_up), down = cw_action_just_pressed(0, a_down), left = cw_action_just_pressed(0, a_left), right = cw_action_just_pressed(0, a_right);
@@ -149,12 +154,12 @@ void menu_tick(float dt) {
     }
     break;
   case P_CONTROLS:
-    if (ok || back) open_page(G.state == RACE_ATTRACT ? P_MAIN : P_PAUSE);
+    if (ok || back) back_up(4, 2);
     break;
   case P_AUDIO:
     if (row == 0 && dx) { music = music + dx < 0 ? 0 : music + dx > 10 ? 10 : music + dx; apply_audio(); store(); }
     if (row == 1 && dx) { sfx = sfx + dx < 0 ? 0 : sfx + dx > 10 ? 10 : sfx + dx; apply_audio(); store(); }
-    if ((ok && row == 2) || back) open_page(G.state == RACE_ATTRACT ? P_MAIN : P_PAUSE);
+    if ((ok && row == 2) || back) back_up(5, 3);
     break;
   case P_PAUSE:
     if (back) { page = P_NONE; break; }

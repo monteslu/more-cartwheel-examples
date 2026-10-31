@@ -65,6 +65,7 @@ typedef struct craft {
   float out_t;                    /* seconds out of the course area */
   int dq;                         /* 1 too many misses, 2 left the course */
   int ok_tick;                    /* passed a buoy this tick: which, plus one */
+  float sink_max;                 /* deepest the hull's centre has been under the surface (m) */
 } craft;
 
 typedef struct game {
@@ -90,6 +91,8 @@ typedef struct game {
 extern game G;
 
 /* sim.c */
+extern float g_swell_hold;
+extern int g_ride_top;
 void sim_reset(int state);
 bool buoy_on(int b);      /* difficulty: how many of the course's buoys count */
 bool racer_on(int i);     /* a time trial is the human alone */

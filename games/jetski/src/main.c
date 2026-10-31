@@ -121,6 +121,20 @@ static void cmd_cam_clear(int argc, const char **argv, cw_reply *r) {
   g_attract_clear = argc > 1 ? atoi(argv[1]) : 1;
   if (r) cw_reply_raw(r, "true");
 }
+/* swell <0..1>: hold the sea at that size; difficulty <0..2> */
+static void cmd_swell(int argc, const char **argv, cw_reply *r) {
+  g_swell_hold = argc > 1 ? (float)atof(argv[1]) : 0;
+  if (r) cw_reply_raw(r, "true");
+}
+static void cmd_difficulty(int argc, const char **argv, cw_reply *r) {
+  if (argc > 1) { int d = atoi(argv[1]); g_difficulty = d < 0 ? 0 : d > 2 ? 2 : d; }
+  if (r) cw_reply_raw(r, "true");
+}
+/* ride_top 0: the control for the hull staying on the surface */
+static void cmd_ride_top(int argc, const char **argv, cw_reply *r) {
+  g_ride_top = argc > 1 ? atoi(argv[1]) : 1;
+  if (r) cw_reply_raw(r, "true");
+}
 /* mode <0 championship, 1 time trial> */
 static void cmd_mode(int argc, const char **argv, cw_reply *r) {
   if (argc > 1) g_mode = atoi(argv[1]) ? MODE_TIME_TRIAL : MODE_CHAMPIONSHIP;
@@ -200,6 +214,7 @@ static void init(void *user) {
   cw_debug_f32("p0.slip", &G.c[0].slip);
   cw_debug_f32("p0.spill", &G.c[0].spill);
   cw_debug_i32("p0.spills", &G.c[0].spills);
+  cw_debug_f32("p0.sink_max", &G.c[0].sink_max);
   cw_debug_i32("p0.dq", &G.c[0].dq);
   cw_debug_f32("p0.out_t", &G.c[0].out_t);
   cw_debug_f32("rider.torso", &rider_torso[0]);
@@ -210,6 +225,9 @@ static void init(void *user) {
   cw_debug_command("go", "go <metres>: the race running at speed there", cmd_go);
   cw_debug_command("race", "start a race", cmd_race);
   cw_debug_command("cam_clear", "cam_clear 0: the attract camera ignores the swell", cmd_cam_clear);
+  cw_debug_command("swell", "swell <0..1>: hold the sea at that size (0: let it build)", cmd_swell);
+  cw_debug_command("difficulty", "difficulty <0 easy, 1 normal, 2 hard>", cmd_difficulty);
+  cw_debug_command("ride_top", "ride_top 0: the hull held by its spring alone", cmd_ride_top);
   cw_debug_command("mode", "mode <0 championship, 1 time trial>", cmd_mode);
   cw_debug_command("finish", "finish: the human crosses the line now", cmd_finish);
   cw_debug_command("warp", "warp <metres>: every racer to that place on the course", cmd_warp);
@@ -272,8 +290,23 @@ static void perf_read(void) {
   perf[1] += (cw_pipeline_gpu_ms(cw_pipeline_of(t)) - perf[1]) * 0.05f;
 }
 
+/* JETSKI_FRAMELOG=<file> (native): every slow frame by number and time, what the warm-up leaves for the first seconds of play */
+static void frame_log(void) {
+  static int on = -1, n;
+  static double last;
+  static FILE *out;
+  if (on < 0) { const char *p = getenv("JETSKI_FRAMELOG"); out = p ? fopen(p, "w") : NULL; on = out ? 1 : 0; }
+  if (!on) return;
+  double now = cw_time();
+  if (n > 0 && now - last > 0.022) fprintf(out, "SLOW %d %.1f state %d\n", n, (now - last) * 1000.0, G.state);
+  if (n == 0) fprintf(out, "FIRST %.1f\n", now * 1000.0);
+  last = now, n++;
+  if (n % 60 == 0) { fprintf(out, "AT %d state %d\n", n, G.state); fflush(out); }
+}
+
 static void render(void *user, double alpha) {
   (void)user;
+  frame_log();
   double t1 = cw_time();
   view_sync(alpha);
   perf_read();

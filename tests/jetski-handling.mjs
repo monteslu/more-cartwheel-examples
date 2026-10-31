@@ -23,6 +23,7 @@ function run(cmds, buttons, ticks) {
 let fail = 0;
 const check = (name, ok, detail) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}: ${detail}`); if (!ok) fail++; };
 const f2 = (v) => (+v).toFixed(2);
+const HULL = (extra) => `difficulty 2;swell 1;${extra}go 1500`;
 const TH = 'south';
 const S = 'go 150';
 const straight = run(S, [TH], 360);
@@ -43,4 +44,8 @@ check('JS13 back in control under 3 s', after['p0.spill'] <= 0 && after['p0.spee
 const out = run('go 850 1.57', [TH], 900), inb = run('go 850', [], 900);
 check('JS20 five seconds outside the course ends the race', out['p0.dq'] === 2, `dq ${out['p0.dq']}, ${f2(out['p0.out_t'])} s out, at ${out['p0.pos'].map((v) => v.toFixed(0))}, ${f2(out['p0.speed'])} m/s`);
 check('JS20 control: staying on the course does not', inb['p0.dq'] === 0, `dq ${inb['p0.dq']}`);
+// the hull stays on the water in the biggest sea, across its faces at speed; control: on the spring alone it goes under
+const onTop = run(HULL(''), [TH], 1200), under = run(HULL('ride_top 0;'), [TH], 1200);
+check('the hull rides on top of the biggest sea', onTop['p0.sink_max'] <= 0.33, `deepest ${f2(onTop['p0.sink_max'])} m`);
+check('control: on its spring alone it sinks', under['p0.sink_max'] > 0.5, `deepest ${f2(under['p0.sink_max'])} m`);
 process.exit(fail ? 1 : 0);
