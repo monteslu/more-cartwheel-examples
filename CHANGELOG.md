@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.9.0
+
+- arenafps: a new default difficulty for someone new. The levels are now EASY,
+  NORMAL, VETERAN (the old NORMAL) and HARD. Bots notice you inside a view cone,
+  pad aim assist is stronger, and you spawn facing open space, not a wall. A match
+  is first to 25 frags, or 8 minutes.
+- arenafps: recoil no longer moves the camera: the rifle's burst walks its shots
+  and the gun model kicks. Separate sounds for a hit, a head shot and a frag, a head
+  shot marker, streaks, who downed you, and the controls shown for the first 9 s.
+- arenafps: rebuilt guns with hands in view, a star muzzle flash, pickups as models
+  over a lit spot, round jump pads, fuller fighter limbs, finer sparks and dust.
+  Shadowed walls and guns are no longer black. A three-player split shows the arena
+  and scores in the fourth quadrant.
+
 ## 0.8.2
 
 - All games now run on cartwheel-engine v0.28.1.
