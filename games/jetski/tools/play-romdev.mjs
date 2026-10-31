@@ -12,7 +12,7 @@ const B = [...src.slice(src.indexOf('BUOYS[')).matchAll(/\{(-?[\d.]+)f,(-?[\d.]+
 const T = [...src.slice(src.indexOf('TRACK['), src.indexOf('BUOYS[')).matchAll(/\{(-?[\d.]+)f,(-?[\d.]+)f,(-?[\d.]+)f,(-?[\d.]+)f\}/g)].map((m) => m.slice(1).map(Number));
 let sid = null, id = 1;
 async function rpc(method, params) {
-  const headers = { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', 'x-romdev-session': 'jetski' };
+  const headers = { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', 'x-romdev-session': process.env.JETSKI_SESSION || 'jetski' };
   if (sid) headers['mcp-session-id'] = sid;
   const r = await fetch(URL_, { method: 'POST', headers, body: JSON.stringify({ jsonrpc: '2.0', id: id++, method, params }) });
   if (!sid) sid = r.headers.get('mcp-session-id');
@@ -35,6 +35,8 @@ const state = await rd('race.state');
 console.log('state', JSON.stringify(state));
 if (+state === 0 || state?.[0] === 0) { await call('input', { op: 'press', button: 'south', frames: 3 }); }
 const log = [];
+const CMD = process.argv.find((a) => a.startsWith('--cmd='))?.slice(6);
+if (CMD) console.log('cmd', JSON.stringify(await call('wasm', { op: 'command', text: CMD })));
 let frame = 0, nextShot = 0, shots = 0, maxAir = 0, lastLog = 0, trick = 0, wall = Date.now();
 const STEP = 4;
 const SHOTS = (process.argv.find((a) => a.startsWith('--shots='))?.slice(8) || '900,1800').split(',').map(Number);

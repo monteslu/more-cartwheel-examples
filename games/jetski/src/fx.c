@@ -153,13 +153,13 @@ void fx_tick(float dt) {
         for (int t = 0; t < 3; t++) {
           h = h * 747796405u + 2891336453u;
           float back = 1.2f + (float)(h >> 24) / 255.0f * 5.0f, lat = ((float)((h >> 16) & 255) / 255.0f - 0.5f) * (0.6f + back * 0.24f);
-          cw_water_splash(G.water, c->x - sy * back + cy * lat, c->z - cy * back - sy * lat, 0.42f, 0.05f * k, 0.28f + 0.3f * k);
+          cw_water_splash(G.water, c->x - sy * back + cy * lat, c->z - cy * back - sy * lat, 0.42f, 0.05f * k, 0.1f + 0.14f * k);
         }
       }
       float rx = cy, rz = -sy;
-      cw_water_wake(G.water, c->x - sy * 1.3f, c->z - cy * 1.3f, c->vx, c->vz, 0.42f, 0.045f + 0.03f * k, 0.3f + 0.25f * k);
-      cw_water_wake(G.water, c->x + rx * 0.6f + sy * 0.3f, c->z + rz * 0.6f + cy * 0.3f, c->vx, c->vz, 0.28f, 0.03f * k, 0.4f * k);
-      cw_water_wake(G.water, c->x - rx * 0.6f + sy * 0.3f, c->z - rz * 0.6f + cy * 0.3f, c->vx, c->vz, 0.28f, 0.03f * k, 0.4f * k);
+      cw_water_wake(G.water, c->x - sy * 1.3f, c->z - cy * 1.3f, c->vx, c->vz, 0.5f, 0.045f + 0.03f * k, 0.2f + 0.22f * k);
+      cw_water_wake(G.water, c->x + rx * 0.6f + sy * 0.3f, c->z + rz * 0.6f + cy * 0.3f, c->vx, c->vz, 0.3f, 0.03f * k, 0.26f * k);
+      cw_water_wake(G.water, c->x - rx * 0.6f + sy * 0.3f, c->z - rz * 0.6f + cy * 0.3f, c->vx, c->vz, 0.3f, 0.03f * k, 0.26f * k);
     }
     if (c->big_splash) {
       t3_vec3 at = { c->x, c->surf + 0.1f, c->z };

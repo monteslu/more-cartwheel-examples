@@ -213,7 +213,7 @@ class Plain {
   { const row0 = []; for (let j = 0; j <= 12; j++) { const t = j / 12 * 2 - 1; const p = deckPt(0, t); row0.push(p); } const row1 = row0.map(([x, y, z]) => { const ax = Math.abs(x / s0.beam); return [x, lerp(s0.chine, s0.keel, 1 - ax), z]; }); P.grid('transom', [row1, row0]); }
   for (const sg of [-1, 1]) P.tube('lamp', [[sg * s0.beam * 0.72, s0.gun - 0.02, s0.z - 0.012], [sg * s0.beam * 0.72, s0.gun - 0.02, s0.z - 0.03]], 0.035, 10, { ratio: 0.5 });
   // ride plate, under the jet
-  P.grid('metal', [[[-0.17, -0.19, -1.72], [0.17, -0.19, -1.72]], [[-0.17, -0.2, -1.42], [0.17, -0.2, -1.42]]], { flip: false });
+  P.grid('hull', [[[-0.17, -0.19, -1.72], [0.17, -0.19, -1.72]], [[-0.17, -0.2, -1.42], [0.17, -0.2, -1.42]]], { flip: false });
   P.tube('metal', [[0, -0.04, -1.5], [0, -0.04, -1.56]], 0.135, 18);
   P.tube('nozzle', [[0, -0.045, -1.54], [0, -0.05, -1.7]], (t) => lerp(0.115, 0.088, t), 18, { cap: false });
   P.tube('dark', [[0, -0.05, -1.66], [0, -0.05, -1.701]], 0.07, 16);
@@ -238,8 +238,8 @@ class Plain {
   for (const sg of [-1, 1]) bars.tube('trim', [[sg * 0.23, 0.015, -0.015], [sg * 0.34, 0.025, -0.033]], 0.02, 8);
   bars.tube('dark', [[-0.03, 0.01, -0.03], [0.03, 0.01, -0.03]], 0.03, 8);
   const g = new Glb();
-  const mi = { hull: g.material('hull', 0.34), panel: g.material('panel', 0.3), stripe: g.material('deck2', 0.3), deck: g.material('deck', 0.24), deck2: g.material('deck2', 0.24), mat: g.material('mat', 0.92), transom: g.material('transom', 0.5), lamp: g.material('lamp', 0.3, 0, [9, 0.5, 0.2]), seat: g.material('seat', 0.62), trim: g.material('trim', 0.62), metal: g.material('metal', 0.28, 0.95), nozzle: g.material('nozzle', 0.38, 0.8), dark: g.material('dark', 0.7), strapdark: g.material('dark', 0.7) };
-  const col = { hull: [0.11, 0.13, 0.17, 1], panel: [0.78, 0.78, 0.76, 1], stripe: [0.05, 0.05, 0.06, 1], deck: [0.88, 0.1, 0.06, 1], deck2: [0.05, 0.05, 0.06, 1], mat: [0.14, 0.14, 0.15, 1], transom: [0.09, 0.1, 0.12, 1], lamp: [0.5, 0.03, 0.02, 1], seat: [0.085, 0.09, 0.1, 1], trim: [0.02, 0.02, 0.025, 1], metal: [0.62, 0.64, 0.66, 1], nozzle: [0.28, 0.29, 0.31, 1], dark: [0.015, 0.015, 0.018, 1], strapdark: [0.015, 0.015, 0.018, 1] };
+  const mi = { hull: g.material('hull', 0.9), panel: g.material('panel', 0.3), stripe: g.material('deck2', 0.3), deck: g.material('deck', 0.24), deck2: g.material('deck2', 0.24), mat: g.material('mat', 0.92), transom: g.material('transom', 0.5), lamp: g.material('lamp', 0.3, 0, [9, 0.5, 0.2]), seat: g.material('seat', 0.62), trim: g.material('trim', 0.62), metal: g.material('metal', 0.28, 0.95), nozzle: g.material('nozzle', 0.38, 0.8), dark: g.material('dark', 0.7), strapdark: g.material('dark', 0.7) };
+  const col = { hull: [0.02, 0.022, 0.028, 1], panel: [0.78, 0.78, 0.76, 1], stripe: [0.05, 0.05, 0.06, 1], deck: [0.88, 0.1, 0.06, 1], deck2: [0.05, 0.05, 0.06, 1], mat: [0.14, 0.14, 0.15, 1], transom: [0.09, 0.1, 0.12, 1], lamp: [0.5, 0.03, 0.02, 1], seat: [0.085, 0.09, 0.1, 1], trim: [0.02, 0.02, 0.025, 1], metal: [0.62, 0.64, 0.66, 1], nozzle: [0.28, 0.29, 0.31, 1], dark: [0.015, 0.015, 0.018, 1], strapdark: [0.015, 0.015, 0.018, 1] };
   for (const [k, c] of Object.entries(col)) g.materials[mi[k]].pbrMetallicRoughness.baseColorFactor = c;
   const hullN = g.node({ name: 'Hull', mesh: g.mesh('hull', P.prims(mi)) });
   const barN = g.node({ name: 'Bars', mesh: g.mesh('bars', bars.prims(mi)), translation: [0, 0.86, 0.3] });

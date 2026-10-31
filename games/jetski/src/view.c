@@ -271,6 +271,7 @@ void view_init(void) {
     paint(co, i);
     shadows(co);
     craft_n[i] = model_node(root, name, co);
+    cw_water_refraction_hide(G.water, craft_n[i]);
     bars_o[i] = t3_object_get_by_name(co, "Bars");
     snprintf(name, sizeof name, "Rider%d", i);
     rider_n[i] = cw_node_new("Node3D", name);
