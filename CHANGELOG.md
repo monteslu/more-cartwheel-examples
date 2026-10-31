@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.12.1
+
+- hordeshooter: Start answers on the panels before a match, and the wait after pressing
+  play is gone: the floor builds under the loading screen, with a progress bar.
+
 ## 0.12.0
 
 - jetski: new ramps, and more of them: 9 on the atoll and 10 on Cold Sound. They are
