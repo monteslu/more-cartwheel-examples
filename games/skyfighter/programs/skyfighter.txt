@@ -1,4 +1,5 @@
 # Sky Fighter's imported aircraft, terrain, ocean and cascaded sun materials.
+# extend: ../shaders/foliage.mjs
 standard+instbig+senv+l0001+xterrainlow_csm
 standard+map+rep+nmap+rmap+mmap+senv+ds+l0001+xcsm
 standard+trans+senv+ds+l0001+xcsm
