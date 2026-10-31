@@ -6,6 +6,7 @@
 
 #include "cartwheel/debug.h"
 #include "cartwheel/input.h"
+#include "cartwheel/pipeline.h"
 #include "cartwheel/platform.h"
 #include "cartwheel/project.h"
 #include "cartwheel/render2d.h"
@@ -13,6 +14,7 @@
 #include "cartwheel/shell.h"
 #include "game.h"
 
+static float perf[7];
 static cw_action a_left, a_right, a_back, a_fwd, a_throttle, a_trick, a_start;
 
 static void start(int players, void *user) {
@@ -113,6 +115,7 @@ static void init(void *user) {
   cw_debug_f32("p2.dist", &G.c[2].dist);
   cw_debug_f32_array("cam.pos", G.cam, 3);
   cw_debug_i32("cam.under_ticks", &G.cam_under);
+  cw_debug_f32_array("perf.ms", perf, 7);
   cw_debug_command("race", "start a race", cmd_race);
   cw_debug_command("warp", "warp <metres>: every racer to that place on the course", cmd_warp);
 }
@@ -151,20 +154,38 @@ static void fixed_update(void *user, double dt) {
     if (simx < 0) simx = getenv("JETSKI_SIMX") ? atoi(getenv("JETSKI_SIMX")) : 0;
     for (int i = 0; i < simx; i++) { sim_tick((float)dt); G.wt_extra += dt; trace_line(); } }
 #endif
+  double t0 = cw_time();
   sim_tick((float)dt);
   view_tick((float)dt);
   fx_tick((float)dt);
   audio_tick((float)dt);
+  float ms = (float)((cw_time() - t0) * 1000.0);
+  perf[0] += (ms - perf[0]) * 0.02f; /* the game's own fixed tick, averaged */
   #ifdef JETSKI_AUTOPILOT
   trace_line();
   #endif
 }
 
+/* frame numbers for the perf script: game tick ms; frame GPU ms; the water pass; the scene pass; frame CPU (render callback's sync) */
+static void perf_read(void) {
+  cw_tree *t = cw_scene_app_tree();
+  const cw_pass_stat *st;
+  int n = cw_pipeline_pass_stats(cw_pipeline_of(t), &st);
+  for (int i = 0; i < n; i++) {
+    if (!strcmp(st[i].name, "water")) perf[2] = st[i].gpu_ms_avg, perf[5] = st[i].cpu_ms_avg;
+    if (!strcmp(st[i].name, "scene")) perf[3] = st[i].gpu_ms_avg, perf[6] = st[i].cpu_ms_avg;
+  }
+  perf[1] += (cw_pipeline_gpu_ms(cw_pipeline_of(t)) - perf[1]) * 0.05f;
+}
+
 static void render(void *user, double alpha) {
   (void)user;
+  double t1 = cw_time();
   view_sync(alpha);
+  perf_read();
   if (cw_shell_screen_now() == CW_SHELL_PLAY) hud_draw();
   cw_shell_draw();
+  perf[4] += ((float)((cw_time() - t1) * 1000.0) - perf[4]) * 0.05f;
 }
 
 cw_app_desc cw_main(int argc, char **argv) {

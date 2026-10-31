@@ -146,7 +146,6 @@ static void land_init(cw_node root) {
   cw_node_set(n, "physics", cw_val_bool(true));
   cw_node_set(n, "heightmap", cw_val_string("course/heights.r16"));
   cw_node_add_child(root, n);
-  cw_node3d_set_position(n, (t3_vec3){ -COURSE_QUADS * COURSE_SPACING * 0.5f, 0, -COURSE_QUADS * COURSE_SPACING * 0.5f });
   G.land = cw_terrain_of(n);
   size_t bytes;
   uint32_t *ctl = cw_asset_load("course/control.u32", &bytes);
