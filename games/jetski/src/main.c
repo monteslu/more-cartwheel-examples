@@ -71,10 +71,11 @@ static void init(void *user) {
   a_left = cw_action_find("steer_left"), a_right = cw_action_find("steer_right");
   a_back = cw_action_find("lean_back"), a_fwd = cw_action_find("lean_fwd");
   a_throttle = cw_action_find("throttle"), a_trick = cw_action_find("trick");
-  a_start = cw_action_find("menu_accept");
+  a_start = cw_action_find("go");
   cw_shell_init(&(cw_shell_desc){ .title = "jetski", .max_players = 1, .start = start });
   view_init();
   hud_init();
+  audio_init();
 #ifdef JETSKI_AUTOPILOT
   if (getenv("JETSKI_SMALL")) { /* sim checks: nothing costly on the software rasteriser */
     cw_node_set(G.water, "reflection", cw_val_bool(false));
@@ -111,6 +112,7 @@ static void init(void *user) {
   cw_debug_f32("p1.dist", &G.c[1].dist);
   cw_debug_f32("p2.dist", &G.c[2].dist);
   cw_debug_f32_array("cam.pos", G.cam, 3);
+  cw_debug_i32("cam.under_ticks", &G.cam_under);
   cw_debug_command("race", "start a race", cmd_race);
   cw_debug_command("warp", "warp <metres>: every racer to that place on the course", cmd_warp);
 }
@@ -152,6 +154,7 @@ static void fixed_update(void *user, double dt) {
   sim_tick((float)dt);
   view_tick((float)dt);
   fx_tick((float)dt);
+  audio_tick((float)dt);
   #ifdef JETSKI_AUTOPILOT
   trace_line();
   #endif

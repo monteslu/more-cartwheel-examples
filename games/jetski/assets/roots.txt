@@ -23,3 +23,13 @@ effects/mist.png
 effects/sun.png
 textures/sky.png
 
+audio/engine.wav
+audio/hull.wav
+audio/splash_big.wav
+audio/splash_small.wav
+audio/buoy_ok.wav
+audio/buoy_top.wav
+audio/buoy_miss.wav
+audio/count.wav
+audio/go.wav
+audio/music.wav

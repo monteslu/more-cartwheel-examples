@@ -45,6 +45,7 @@ typedef struct craft {
   craft_input in;
   bool human;
   bool bump;                      /* hit the ground this tick */
+  int wake_hit;                   /* riding over a rival's wake */
 } craft;
 
 typedef struct game {
@@ -62,7 +63,7 @@ typedef struct game {
   float cam[3], cam_prev[3], look[3], look_prev[3], cam_fov, cam_fov_prev;
   float cam_orbit;  /* the attract loop's cut timer */
   int cam_mode;
-  uint32_t rumble_low;
+  int32_t cam_under; /* ticks the chase camera spent under the surface */
   uint32_t sim_hash;
 } game;
 extern game G;
@@ -86,4 +87,7 @@ void fx_tick(float dt);
 /* hud.c */
 void hud_init(void);
 void hud_draw(void);
+/* audio.c */
+void audio_init(void);
+void audio_tick(float dt);
 #endif

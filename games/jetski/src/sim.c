@@ -219,6 +219,27 @@ static void craft_tick(craft *c, int idx, float dt) {
     c->air_time = 0;
     c->air_rise = c->y;
   }
+  /* a rival's wake: crossing the fresh water behind another craft bumps and shoves this one */
+  c->wake_hit = 0;
+  if (!c->air) {
+    for (int j = 0; j < RACERS; j++) {
+      const craft *o = &G.c[j];
+      if (o == c || o->air || o->speed < 8) continue;
+      float osy, ocy;
+      cw_sincos(o->yaw, &osy, &ocy);
+      float dx = c->x - o->x, dz = c->z - o->z, back = -(dx * osy + dz * ocy);
+      if (back < 3 || back > 24) continue;
+      float lat = dx * ocy - dz * osy, width = 1.6f + back * 0.16f, off = fabsf(fabsf(lat) - width);
+      if (off > 0.9f) continue;
+      float k = (1.0f - off / 0.9f) * (1.0f - back / 24.0f) * (o->speed / 28.0f);
+      float sgn = lat > 0 ? 1.0f : -1.0f;
+      /* outward along the rival's left-right, a lift as the hull rides over */
+      c->vx += ocy * sgn * k * 5.0f * dt;
+      c->vz += -osy * sgn * k * 5.0f * dt;
+      c->vy += k * 7.0f * dt;
+      c->wake_hit = 1;
+    }
+  }
   /* the ground: sand drags, a rising bed pushes out */
   float gy = ground_at(c->x, c->z);
   c->bump = false;

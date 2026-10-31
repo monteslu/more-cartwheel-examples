@@ -41,7 +41,7 @@ static bool to_screen(t3_vec3 p, float w, float h, cw_vec2 *out) {
   return true;
 }
 
-void hud_draw(void) {
+static void hud_body(void) {
   cw_vec2 sz = cw_r2d_canvas_size();
   float w = sz.x, h = sz.y, u = h / 1080.0f;
   const craft *c = &G.c[0];
@@ -51,7 +51,7 @@ void hud_draw(void) {
     text(big, "JETSKI", w * 0.5f, h * 0.16f, 118 * u, white, 0.5f);
     text(small, "working title", w * 0.5f, h * 0.285f, 30 * u, dim, 0.5f);
     float pulse = 0.65f + 0.35f * sinf((float)G.tick * 0.08f);
-    text(small, "PRESS START OR ENTER", w * 0.5f, h * 0.86f, 40 * u, cw_rgba(1, 1, 1, pulse), 0.5f);
+    text(small, "PRESS A OR ENTER", w * 0.5f, h * 0.86f, 40 * u, cw_rgba(1, 1, 1, pulse), 0.5f);
     return;
   }
   /* speed, bottom right */
@@ -104,6 +104,12 @@ void hud_draw(void) {
   } else if (G.state == RACE_DONE) {
     snprintf(buf, sizeof buf, "%s", ord[c->place - 1]);
     text(big, buf, w * 0.5f, h * 0.27f, 170 * u, gold, 0.5f);
-    text(small, "PRESS START", w * 0.5f, h * 0.48f, 42 * u, dim, 0.5f);
+    text(small, "PRESS A TO RACE AGAIN", w * 0.5f, h * 0.48f, 42 * u, dim, 0.5f);
   }
+}
+
+void hud_draw(void) {
+  cw_r2d_begin(NULL);
+  hud_body();
+  cw_r2d_end();
 }
