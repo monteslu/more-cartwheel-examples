@@ -11,6 +11,8 @@
   four corners and sit deeper in it, on both courses.
 - jetski: boulders no longer hang in the air off cliffs and sea stacks. The atoll has
   fewer rocks around its shores as a result.
+- coopplatformer: four kinds of draw that were missing their shaders, so they did not
+  draw when the camera reached them, now have them.
 - arenafps: Start begins or continues on the setup and results panels instead of
   opening the pause menu, and the title and join screens now click.
 - fighter: Start locks in on character select and means rematch on the result screen.
