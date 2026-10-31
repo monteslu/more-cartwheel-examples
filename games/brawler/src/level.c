@@ -52,7 +52,7 @@ static const theme THEMES[4] = {
     { 0.7f, 0.4f, 0.9f }, 0.5f, { 0.2f, 0.9f, 1.0f }, 1.4f,
     { 0.12f, 0.06f, 0.2f }, 0.015f, 0.05f,
     { 0.4f, 0.9f, 1.0f }, 1.4f, 0.22f, 0.18f, 1.2f,
-    { { -6, 2.0f, -1.0f, { 1.0f, 0.15f, 0.6f }, 70, 10 }, { 6, 2.0f, -1.0f, { 0.1f, 0.85f, 1.0f }, 70, 10 }, { 0, 1.6f, 4.2f, { 0.7f, 0.3f, 1.0f }, 30, 9 } } },
+    { { -6, 3.2f, -2.6f, { 1.0f, 0.15f, 0.6f }, 85, 11 }, { 6, 3.2f, -2.6f, { 0.1f, 0.85f, 1.0f }, 85, 11 }, /* above the far lane, not in the crowd: walking under them blew bodies out white */ { 0, 1.6f, 4.2f, { 0.7f, 0.3f, 1.0f }, 30, 9 } } },
   { "Factory Roof", "luts/factory.cube",
     { 0.14f, 0.07f, 0.05f }, { 0.7f, 0.42f, 0.3f }, { 0.2f, 0.12f, 0.08f }, 0.55f,
     { 0.55f, -0.42f, 0.3f }, { 1.0f, 0.45f, 0.18f }, 5.0f,
@@ -306,7 +306,7 @@ void level_build(int stage) {
   cw_node_set(rim, "energy", cw_val_float(th->rim_e * 1.6f));
   { float d[3] = { -0.3f, -0.45f, 0.85f }; aim(rim, d); }
   /* what a frame's GPU time buys (B-PT19, findings/brawler.md: measured on the 890M at 1080p, four fighters and 14 enemies): plain
-     height fog in place of the lit fog grid, thinned to look the same from this camera (1.3 ms); two shadow cascades over the
+     no fog grid (1.3 ms); two shadow cascades over the
      24 m the street camera sees (1 ms, shadows and shading together); ambient occlusion with half the rays (0.3 ms) */
   bool oldfx = false;
 #ifdef BRAWLER_AUTOPILOT
@@ -314,7 +314,8 @@ void level_build(int stage) {
 #endif
   if (!oldfx) {
     cw_node_set(fog, "volumetric", cw_val_bool(false));
-    cw_node_set(fog, "density", cw_val_float(th->fog_density * 0.3f));
+    cw_node_set(fog, "density", cw_val_float(0)); /* a full-screen pass (0.37 ms) for a haze the near street hardly shows */
+    cw_node_set(fog, "visible", cw_val_bool(false));
     cw_node_set(post, "ssao", cw_val_bool(false)); /* the bake carries it (lm_apply) */
     cw_node_set(sun, "shadow_cascades", cw_val_int(2));
     cw_node_set(sun, "shadow_distance", cw_val_float(24));
@@ -350,7 +351,10 @@ void level_build(int stage) {
   }
   /* a light under every lamp post, and the stage's coloured accents (they follow the camera) */
   for (float x = 2; x < len + 6; x += 11.0f)
-    light(s, "L", (t3_vec3){ x, 3.9f, -2.9f }, th->lamp, th->lamp_e * 38, 11);
+    { /* the street lamps are in the bake: their pools on the scenery cost nothing a frame (0.25 ms), bodies walk through by the sun, fill and rim */
+      cw_node lamp = light(s, "L", (t3_vec3){ x, 3.9f, -2.9f }, th->lamp, th->lamp_e * 38, 11);
+      if (!oldfx) cw_node_set(lamp, "bake_direct", cw_val_bool(true)), cw_node_set(lamp, "realtime", cw_val_bool(false));
+    }
   /* the front fill (the third accent) stood low just in front of the near lane: it blew the near bodies out and, mirrored on
      the wet street, made the hot spot at the bottom of the picture. Up behind the camera's line of sight now, further off and
      wider: the near lane takes about a third of what it did, the middle what it had, and its mirror image on the street falls
@@ -411,7 +415,7 @@ void prop_hit(prop_t *p) {
 
 /* the scenery's bake (assets/lightmaps/stageN.cwlm; written by the game itself with BRAWLER_BAKE=<file>, brawler_auto natively): indirect
    light only, so the sun and lamps stay real time with their shadows and specular. It replaces the screen-space occlusion on the
-   scenery: corners, doorways and the alleys are dark because the sky does not reach them (ssao off: 0.85 ms) */
+   scenery: corners, doorways and the alleys are dark because the sky does not reach them (ssao off: 0.85 ms); the lamps' direct light is in it too */
 static void lm_apply(void) {
   static cw_lightmap_data *LM[4];
   lm_pending = false;

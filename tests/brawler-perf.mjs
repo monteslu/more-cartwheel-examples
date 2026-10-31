@@ -15,7 +15,7 @@ if (!process.env.CW_GPU_SUITE_INNER) {
 const { wgpuPin, glPin, scrubDisplay } = await import(join(ENGINE, 'tools/lib/wgpu-pin.mjs'));
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : d; };
 const EXTRA = Object.fromEntries((arg('env', '') || '').split(',').filter(Boolean).map((kv) => kv.split('=')));
-const BOUND = +arg('bound', 0);
+const BOUND = +arg('bound', process.argv.length <= 2 ? 5 : 0); // no arguments: the gate: every stage on both backends within 5 ms GPU; the control (the earlier settings) must exceed it
 let bad = 0;
 const exe = join(ROOT, 'build/native/games/brawler/brawler_auto');
 function run(gpu, stage, frames, extra = {}) {
@@ -39,4 +39,8 @@ for (const exp of arg('exp', '').split('/'))
     console.log('  ' + r.last);
     if (BOUND && !(exp === 'oldfx' ? r.gpu > BOUND : r.gpu > 0 && r.gpu <= BOUND)) { console.log(`FAIL ${exp || 'base'} ${gpu} stage ${st}: ${r.gpu.toFixed(2)} ms against ${BOUND}`); bad++; }
   }
+if (process.argv.length <= 2) { // the control that must fail: the earlier settings on the docks
+  const c = run('gl', 1, +arg('frames', 720), { BRAWLER_EXP: 'oldfx' });
+  if (c.gpu > BOUND) console.log(`ok   control fails as it must: oldfx ${c.gpu.toFixed(2)} ms`); else { console.log(`CONTROL PASSED (a failure): oldfx ${c.gpu.toFixed(2)} ms`); bad++; }
+}
 process.exit(bad ? 1 : 0);
