@@ -297,9 +297,9 @@ static const float sound_buoys[][4] = { /* x, z, side (+1: pass with the buoy on
 static const float sound_ramps[] = { 330.0f, 2392.0f, 2864.0f, 1088.0f };
 static const course_scatter sound_scatter[] = {
 { "res://models/pine.glb", "course/sound/pines.u8", 0.03f, 0.7f, 1.5f, 800.0f, 177, false, 0.1f },
-{ "res://models/rock0.glb", "course/sound/boulders.u8", 0.05f, 0.7f, 2.6f, 700.0f, 179, true, 0.3f },
-{ "res://models/rock1.glb", "course/sound/boulders.u8", 0.04f, 0.5f, 2.0f, 700.0f, 180, true, 0.25f },
-{ "res://models/rock2.glb", "course/sound/boulders.u8", 0.03f, 0.8f, 3.4f, 700.0f, 181, true, 0.35f }
+{ "res://models/rock0.glb", "course/sound/boulders.u8", 0.25f, 0.7f, 2.6f, 700.0f, 179, true, 0.9f },
+{ "res://models/rock1.glb", "course/sound/boulders.u8", 0.2f, 0.5f, 2.0f, 700.0f, 180, true, 0.9f },
+{ "res://models/rock2.glb", "course/sound/boulders.u8", 0.15f, 0.8f, 3.4f, 700.0f, 181, true, 0.9f }
 };
 static const char *const sound_props[][3] = {
 { "Sky", "time_of_day", "10.4" },

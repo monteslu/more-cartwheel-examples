@@ -6,7 +6,8 @@
 //   paint(p)          [base layer, over layer, blend 0..255] at p = { x, z, y, slope }
 //   mask(p)           how free the swell is here, 0..1, p = { x, z, y, r0 }
 //   maps              name: density 0..1 at p = { x, z, y, slope }, for the scatter
-//   lying             names of the maps whose things lie on the ground (rocks): kept off any edge
+//   lying             names of the maps whose things lie on the ground (rocks): kept off any edge steeper than
+//   lying_drop        metres of drop within 4 m each way where they start to thin and where they stop (2.5, 4.5)
 //   scatter           [model, map, density, scale min, scale max, visible range, seed, sink, tilt] per kind of thing
 //   grades            [layer, scan, [r, g, b], uv scale]: four CC0 terrain scans graded to this place's palette
 //   ramps             where on the track the ramps stand, metres; buoys { first, step, wobble, offset } optional
@@ -120,8 +121,8 @@ export function makeCourse(def) {
       // nothing that lies on the ground grows where the ground drops away within its foot: it would hang in the air
       // (from highest to lowest in the window: a thing lands anywhere in its density texel, the uphill side of a cliff too)
       let drop = 0;
-      if (def.lying?.includes(name)) { let lo = 1e9, hi = -1e9; for (let b = -4; b <= 4; b++) for (let a = -4; a <= 4; a++) { const v = hAt(ii + a, jj + b); if (v < lo) lo = v; if (v > hi) hi = v; } drop = hi - lo; }
-      D[j * DN + i] = Math.round(fn({ x, z, y, slope }) * (1 - smooth(0.3, 0.8, drop)) * 255);
+      if (def.lying?.includes(name)) { let lo = 1e9, hi = -1e9; for (let b = -2; b <= 2; b++) for (let a = -2; a <= 2; a++) { const v = hAt(ii + a, jj + b); if (v < lo) lo = v; if (v > hi) hi = v; } drop = hi - lo; }
+      D[j * DN + i] = Math.round(fn({ x, z, y, slope }) * (1 - smooth(def.lying_drop?.[0] ?? 2.5, def.lying_drop?.[1] ?? 4.5, drop)) * 255);
     }
     writeFileSync(join(dir, name + '.u8'), Buffer.from(D));
   }

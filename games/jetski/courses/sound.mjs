@@ -21,6 +21,9 @@ function height(x, z) {
     const k = smooth(2, 26, y);
     y += k * ((ridged(x * 0.022, z * 0.022, 5, 205) - 0.55) * 26 + (fbm(x * 0.09, z * 0.09, 3, 206) - 0.5) * 7);
   }
+  // ledges at the waterline: the slope all but stops between the tides, so the falling tide bares rock shelves and boulders have
+  // somewhere to sit
+  if (y > -8 && y < 8) y -= 2.5 * Math.sin(Math.PI * y / 8);
   // to the west the land falls away to the ocean
   y = lerp(y, -40, ocean(x + (fbm(x * 0.006, z * 0.006, 2, 207) - 0.5) * 120));
   // the cut
@@ -36,7 +39,8 @@ return {
   // layers 0 dark shingle, 1 kelp-stained tide rock, 2 granite, 3 moss; snow is granite graded pale up high (blend of 0 and 2 is enough down low)
   paint({ x, z, y, slope }) {
     const n = fbm(x * 0.03, z * 0.03, 3, 211), steep = smooth(0.6, 1.1, slope + (n - 0.5) * 0.5);
-    if (y < 3.6) return [0, 1, 255 * smooth(-3.5, 1, y)];
+    // the tide's stain on the granite: one base layer across the band, or the terrain's grid shows as teeth along the waterline
+    if (y < 6) return [2, 1, 255 * (1 - smooth(1.5, 6, y + (n - 0.5) * 2))];
     const moss = (1 - steep) * smooth(5, 14, y + n * 8) * (1 - smooth(60, 110, y + n * 30));
     return [2, 3, 255 * moss];
   },
@@ -50,11 +54,13 @@ return {
     boulders({ x, z, y, slope }) { return smooth(-2.5, -0.5, y) * (1 - smooth(3, 7, y)) * smooth(0.42, 0.6, fbm(x * 0.05 + 3, z * 0.05, 3, 222)) * smooth(30, 42, trackDist(x, z)) * smooth(8, 16, segDist(x, z)); },
   },
   lying: ['boulders'],
+  // the fjord's shore is steep everywhere: deep-set boulders hold on ground the atoll's could not
+  lying_drop: [8, 12],
   scatter: [
     ['pine', 'pines', 0.03, 0.7, 1.5, 800, 177, false, 0.1],
-    ['rock0', 'boulders', 0.05, 0.7, 2.6, 700, 179, true, 0.3],
-    ['rock1', 'boulders', 0.04, 0.5, 2.0, 700, 180, true, 0.25],
-    ['rock2', 'boulders', 0.03, 0.8, 3.4, 700, 181, true, 0.35],
+    ['rock0', 'boulders', 0.25, 0.7, 2.6, 700, 179, true, 0.9],
+    ['rock1', 'boulders', 0.2, 0.5, 2.0, 700, 180, true, 0.9],
+    ['rock2', 'boulders', 0.15, 0.8, 3.4, 700, 181, true, 0.9],
   ],
   grades: [
     ['shingle', 'coast', [0.42, 0.44, 0.48], 0.2],
