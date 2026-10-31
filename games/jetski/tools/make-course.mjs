@@ -99,14 +99,14 @@ for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
   const y = hAt(i, j), x = toW(i), z = toW(j);
   const nx = (hAt(i + 1, j) - hAt(i - 1, j)) / (2 * SPACING), nz = (hAt(i, j + 1) - hAt(i, j - 1)) / (2 * SPACING), slope = Math.hypot(nx, nz);
   const n1 = fbm(x * 0.03, z * 0.03, 4, 51), n2 = fbm(x * 0.11, z * 0.11, 3, 52);
-  const steep = smooth(0.55, 1.0, slope + (n2 - 0.5) * 0.3);
-  const jungle = smooth(3.5 + n1 * 5, 8 + n1 * 8, y) * (1 - smooth(70 + n1 * 40, 105 + n1 * 40, y));
+  const steep = smooth(0.95, 1.5, slope + (n2 - 0.5) * 0.7);
+  const jungle = smooth(3.5 + n1 * 5, 8 + n1 * 8, y) * (1 - smooth(95 + n1 * 50, 135 + n1 * 50, y));
   let base = 0, over = 1, blend = 0;
   if (y < -1.2) { base = 0; over = 1; blend = smooth(-3, -7, y) * 140 + 100 * smooth(0.52, 0.72, n1); }
   else if (y < 1.0) { base = 0; over = 1; blend = 255 * smooth(0.9, -0.4, y); }
   else { base = 0; over = 3; blend = 255 * jungle; }
   if (y > 2 || y < -10) { const rocky = Math.max(steep, y > 20 ? 0.1 : 0); if (rocky > 0.35) { base = jungle > 0.5 ? 3 : base; over = 2; blend = 255 * smooth(0.35, 0.8, rocky); } }
-  if (y >= 0.4 && slope > 0.75) { base = 2; over = 3; blend = 255 * jungle * (1 - steep); }
+  if (y >= 0.4 && slope > 0.95) { base = 2; over = 3; blend = 255 * jungle * (1 - steep); }
   const h = hash(i >> 2, j >> 2, 61);
   ctl[j * N + i] = word(base, over, Math.round(clamp(blend, 0, 255)), Math.floor(h * 16), Math.floor(hash(i >> 3, j >> 3, 62) * 3));
 }
@@ -164,7 +164,7 @@ console.log(`track ${LEN.toFixed(0)} m, ${buoys.length} buoys, land ${(H.filter(
 
 // grade the CC0 scans into this world's palette (albedo RGB height A; the normals are used as they are)
 const SRC = resolve(GAME, '../skyfighter/assets/terrain');
-const grades = { 'sand': ['sand', [1.28, 1.2, 1.02]], 'coast': ['coast', [0.72, 0.66, 0.56]], 'rock': ['rock', [0.36, 0.33, 0.34]], 'grass': ['grass', [0.34, 0.62, 0.3]] };
+const grades = { 'sand': ['sand', [1.28, 1.2, 1.02]], 'coast': ['coast', [0.72, 0.66, 0.56]], 'rock': ['rock', [0.52, 0.47, 0.45]], 'grass': ['grass', [0.42, 0.74, 0.32]] };
 for (const [name, [src, g]] of Object.entries(grades)) {
   const a = readFileSync(join(SRC, src + '-albedo.rgba')), n = readFileSync(join(SRC, src + '-normal.rgba'));
   for (let k = 0; k < a.length; k += 4) for (let c = 0; c < 3; c++) a[k + c] = Math.min(255, a[k + c] * g[c]);

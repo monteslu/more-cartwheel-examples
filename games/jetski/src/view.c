@@ -147,6 +147,7 @@ static void land_init(cw_node root) {
   cw_node_set(n, "heightmap", cw_val_string("course/heights.r16"));
   cw_node_add_child(root, n);
   G.land = cw_terrain_of(n);
+  { t3_material *lm = cw_terrain_material(G.land); if (lm) lm->color = (t3_color){ 1.55f, 1.5f, 1.45f }; }
   size_t bytes;
   uint32_t *ctl = cw_asset_load("course/control.u32", &bytes);
   if (!ctl || bytes != (size_t)(COURSE_QUADS + 1) * (COURSE_QUADS + 1) * 4) CW_FATAL("course control missing");

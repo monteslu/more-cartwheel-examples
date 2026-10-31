@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "cartwheel/debug.h"
+#include "cartwheel/environment.h"
 #include "cartwheel/input.h"
 #include "cartwheel/pipeline.h"
 #include "cartwheel/platform.h"
@@ -14,7 +15,7 @@
 #include "cartwheel/shell.h"
 #include "game.h"
 
-static float perf[7];
+static float perf[7], sun_dbg[3];
 static cw_action a_left, a_right, a_back, a_fwd, a_throttle, a_trick, a_start;
 
 static void start(int players, void *user) {
@@ -116,6 +117,7 @@ static void init(void *user) {
   cw_debug_f32_array("cam.pos", G.cam, 3);
   cw_debug_i32("cam.under_ticks", &G.cam_under);
   cw_debug_f32_array("perf.ms", perf, 7);
+  cw_debug_f32_array("sun.dir", sun_dbg, 3);
   cw_debug_command("race", "start a race", cmd_race);
   cw_debug_command("warp", "warp <metres>: every racer to that place on the course", cmd_warp);
 }
@@ -168,6 +170,7 @@ static void fixed_update(void *user, double dt) {
 
 /* frame numbers for the perf script: game tick ms; frame GPU ms; the water pass; the scene pass; frame CPU (render callback's sync) */
 static void perf_read(void) {
+  { cw_sky_state sk; cw_sky_get_state(cw_scene_app_tree(), &sk); sun_dbg[0] = sk.sun_direction.x, sun_dbg[1] = sk.sun_direction.y, sun_dbg[2] = sk.sun_direction.z; }
   cw_tree *t = cw_scene_app_tree();
   const cw_pass_stat *st;
   int n = cw_pipeline_pass_stats(cw_pipeline_of(t), &st);

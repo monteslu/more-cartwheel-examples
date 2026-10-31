@@ -17,13 +17,13 @@ depth_prepass = false
 
 [node name="Sky" parent="." type="ProceduralSky"]
 sun = "../Sun"
-time_of_day = 17.15
+time_of_day = 16.9
 latitude = 12
 declination = 10
 north = 200
 background = false
-sun_energy = 3.0
-sky_energy = 1.5
+sun_energy = 3.6
+sky_energy = 1.7
 
 [node name="Sun" parent="." type="DirectionalLight3D"]
 shadow = true
@@ -60,7 +60,7 @@ distortion = 0.025
 swell_reflect = 0.35
 flow_speed = 0.035
 shore_foam = 1.6
-crest_foam = 0.45
+crest_foam = 0.22
 foam_scale = 7
 scatter = 1.1
 glint = 1.2
