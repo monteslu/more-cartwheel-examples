@@ -6,8 +6,8 @@ Everything in this game is made by its own code:
     game (MIT, https://github.com/monteslu/cartwheel-examples),
   - sounds: synthesised at start from sine and noise in src/fx.c,
   - models: the fighters (skinned, 15 bones, clips idle / run / die), the four first person weapons with gloved
-    hands and the arena props (crates, barrels, barriers, columns, planters, pipes, vents, floodlights, consoles)
-    are modelled and rigged by our own Blender scripts in tools/blender/ (soldier.py, weapons.py, props.py,
+    hands, the six pickups and the arena props (crates, barrels, barriers, columns, planters, pipes, vents, floodlights, consoles)
+    are modelled and rigged by our own Blender scripts in tools/blender/ (soldier.py, weapons.py, pickups.py, props.py,
     run with tools/blender/build.sh, headless Blender 5.2) and exported as glTF into models/. Blender itself is
     only the authoring tool (GPL); the exported models are our own work under this game's licence,
   - level geometry: tools/make-levels.mjs lays the rooms, walls, roofs and doors out as CSG shapes in levels/*.cwscene and

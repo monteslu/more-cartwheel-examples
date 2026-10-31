@@ -19,7 +19,6 @@ standard+shadow+skin+senv+ds+l1001+xcluster_gi
 standard+shadow+senv+l1001+xcluster_gi
 standard+senv+l1001+xcluster_gi
 physical+map+vcol+rep+nmap+ao+rmap+shadow+senv+l1001+xcluster_gi
-standard+senv+ds+l1000+xcluster_gi
 standard+map+trans+senv+l1001+xcluster_meshdecal_gi
 standard+map+trans+shadow+senv+l1001+xcluster_meshdecal_gi
 standard+map+trans+shadow+skin+senv+l1001+xcluster_meshdecal_gi
@@ -33,3 +32,8 @@ physical+map+vcol+rep+nmap+ao+emap+rmap+shadow+senv+l1001+xgibuf
 depth+skin+xcluster_rim_gi
 standard+shadow+skin+senv+ds+l1001+xcluster_rim_gi
 standard+shadow+senv+ds+l1001+xwater
+standard+nmap+rmap+senv+ds+l1000+xcluster_gi
+standard+map+rep+nmap+rmap+senv+ds+l1000+xcluster_gi
+basic+map+trans+ds
+standard+senv+ds+l1001+xgibuf
+standard+senv+ds+l1001+xcluster_gi

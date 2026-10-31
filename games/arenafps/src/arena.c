@@ -100,9 +100,9 @@ static const kmat KMAT[ARENAS][K_KINDS] = {
   },
   { /* TERRACES: slate tiles, formed concrete, teal panels, hazard lips */
     [K_FLOOR] = { TEX_TILES_SLATE, 4, 1, 0, 1, { 1, 1, 1 } },
-    [K_WALL] = { TEX_SLAB, 4, 1, 0, 1, { 0.92f, 0.92f, 0.95f } },
+    [K_WALL] = { TEX_SLAB, 2.5f, 1, 0, 1, { 0.92f, 0.92f, 0.95f } }, /* at 4 m a repeat its pits blur into blocks at arm's length */
     [K_ACCENT] = { TEX_PANEL_TEAL, 4, 1, 0.1f, 1, { 1, 1, 1 } },
-    [K_METAL] = { TEX_STEEL, 2, 0.9f, 0.85f, 1, { 0.7f, 0.72f, 0.75f } },
+    [K_METAL] = { TEX_STEEL, 2, 0.9f, 0.85f, 1, { 0.42f, 0.44f, 0.47f } },
     [K_CRATE] = { TEX_WOOD, 4, 1, 0, 1, { 1, 0.9f, 0.75f } },
     [K_LEAF] = { TEX_GRASS, 4, 1, 0, 1, { 0.45f, 0.65f, 0.4f } },
     [K_CLAD] = { TEX_PANEL_TEAL, 4, 1, 0.1f, 1, { 1, 1, 1 } },
@@ -117,6 +117,8 @@ static const kmat KMAT[ARENAS][K_KINDS] = {
 };
 static const kmat *KM; /* this arena's row */
 static const t3_quat QI = { 0, 0, 0, 1 };
+static cw_value val_vec4(float a, float b, float c, float d) { cw_value v = { CW_T_VEC4 }; v.v[0] = a, v.v[1] = b, v.v[2] = c, v.v[3] = d; return v; }
+static void pickup_model(cw_node into, int kind);
 
 static void grow(t3_vec3 lo, t3_vec3 hi) {
   if (lo.x < A.bounds_min.x) A.bounds_min.x = lo.x;
@@ -240,7 +242,33 @@ static void prop(const char *name, float x, float y0, float z, float yaw, float 
   }
 }
 /* the same, with a collision box (hx, hy, hz full size, standing on y0) so shots, movement and the navmesh agree */
+/* the grounding check (tests/arenafps-grounding.mjs): every solid prop stands on something. arena_ground_check runs on the first
+ * tick (the world answers rays once it has stepped): a ray down just off each corner of its footprint must find a surface
+ * within 3 cm of its base; a prop can overhang an edge, so one corner is enough. ARENA_PROP_LIFT=1, the control, lifts the first by 0.5 m */
+static struct { t3_vec3 p; float h; } STAND[256];
+static int nstand;
+void arena_ground_check(void) {
+  A.prop_count = nstand, A.prop_floating = 0;
+  for (int i = 0; i < nstand; i++) {
+    bool stands = false;
+    for (int k = 0; k < 4 && !stands; k++) {
+      float h = STAND[i].h * 0.5f + 0.04f;
+      t3_vec3 from = v3add(STAND[i].p, v3(k & 1 ? h : -h, 0.04f, k & 2 ? h : -h)), hit;
+      stands = arena_ray(from, v3add(from, v3(0, -0.07f, 0)), &hit, NULL);
+    }
+    if (!stands) {
+      A.prop_floating++;
+      cw_error("arenafps: a %.1f m prop floats at %.2f %.2f %.2f", (double)STAND[i].h, (double)STAND[i].p.x, (double)STAND[i].p.y, (double)STAND[i].p.z);
+    }
+  }
+}
 static void solid_prop(const char *name, float x, float y0, float z, float yaw, float sx, float sy, float sz, float hx, float hy, float hz) {
+  {
+    static int lift = -1;
+    if (lift < 0) lift = getenv("ARENA_PROP_LIFT") && atoi(getenv("ARENA_PROP_LIFT"));
+    if (lift && nstand == 0) y0 += 0.5f;
+    if (nstand < 256) STAND[nstand].p = v3(x, y0, z), STAND[nstand].h = hx < hz ? hx : hz, nstand++;
+  }
   prop(name, x, y0, z, yaw, sx, sy, sz);
   float sn, cs;
   cw_sincos(yaw * 0.5f, &sn, &cs);
@@ -519,8 +547,23 @@ static void pad_at(t3_vec3 p, t3_vec3 to) {
   pd->target = to;
   trim(p.x, p.y, p.z, 2.0f, 0.12f, 2.0f, K_METAL, 0.785f);
   const float *c = LAMP_RGB[A.id];
-  cw_node disc = mesh_box(v3(p.x, p.y + 0.13f, p.z), v3(1.5f, 0.02f, 1.5f), (cw_color){ 0.3f, 0.8f, 1, 1 }, QI, 0.3f, false);
-  cw_node_set(disc, "emissive", cw_val_color(1.2f, 3.6f, 4.8f, 1));
+  /* a round emitter set in a dark collar on the steel base: a square at full emissive read as a flat white slab */
+  cw_node collar = cw_node_new("MeshInstance3D", "PadCollar");
+  cw_node_set(collar, "primitive", cw_val_enum("CYLINDER"));
+  cw_node_set(collar, "size", cw_val_vec3(0.82f, 0.03f, 0));
+  cw_node_set(collar, "color", cw_val_color(0.05f, 0.055f, 0.06f, 1));
+  cw_node_set(collar, "roughness", cw_val_float(0.45));
+  cw_node_set(collar, "metalness", cw_val_float(0.6));
+  cw_node3d_set_position(collar, v3(p.x, p.y + 0.135f, p.z));
+  cw_node_add_child(A.root, collar);
+  cw_node disc = cw_node_new("MeshInstance3D", "PadGlow");
+  cw_node_set(disc, "primitive", cw_val_enum("CYLINDER"));
+  cw_node_set(disc, "size", cw_val_vec3(0.62f, 0.036f, 0));
+  cw_node_set(disc, "color", cw_val_color(0.1f, 0.28f, 0.36f, 1));
+  cw_node_set(disc, "emissive", cw_val_color(0.3f, 1.05f, 1.45f, 1));
+  cw_node_set(disc, "cast_shadow", cw_val_bool(false));
+  cw_node3d_set_position(disc, v3(p.x, p.y + 0.14f, p.z));
+  cw_node_add_child(A.root, disc);
   accent_light(p.x, p.y + 0.8f, p.z, 0.4f, 0.8f, 1.0f, 18, 6);
   (void)c;
   cw_node ps = cw_node_new("GPUParticles3D", "PadLift");
@@ -614,12 +657,50 @@ static bool load_layout(int id) {
       cw_node_set(A.water, "color", cw_val_color(0.12f, 0.35f, 0.4f, 1));
       cw_node_set(A.water, "deep_color", cw_val_color(0.03f, 0.12f, 0.16f, 1));
       cw_node_set(A.water, "murk", cw_val_float(0.55));
+      cw_node_set(A.water, "caustics", cw_val_float(0.18)); /* the default drew a white net of veins over the pit floor */
+      cw_node_set(A.water, "caustic_size", cw_val_float(3.2));
+      cw_node_set(A.water, "crest_foam", cw_val_float(0));
+      cw_node_set(A.water, "shore_foam", cw_val_float(0.25));
+      /* a flooded pit, not a sea: the default waves stood as a hill across it */
+      cw_node_set(A.water, "wave0", val_vec4(20, 5, 0.06f, 0.5f));
+      cw_node_set(A.water, "wave1", val_vec4(75, 3, 0.04f, 0.5f));
+      cw_node_set(A.water, "wave2", val_vec4(-40, 1.6f, 0.02f, 0.4f));
+      cw_node_set(A.water, "wave3", val_vec4(140, 0.9f, 0.01f, 0.3f));
       cw_node3d_set_position(A.water, v3(v[0], v[1], v[2]));
       cw_node_add_child(A.root, A.water);
     }
   }
   free(buf);
   return true;
+}
+
+/* the pickups' models (tools/blender/pickups.py), parsed once and shared; each item gets its own meshes over the shared geometry and materials */
+static void pickup_meshes(t3_object *o, cw_node into) {
+  if (o->type == T3_MESH) {
+    t3_mesh *src = (t3_mesh *)o;
+    t3_mesh *me = t3_mesh_new(src->geometry, src->materials[0]);
+    me->base.cast_shadow = true;
+    me->base.receive_shadow = false;
+    cw_node n = cw_node_new("MeshInstance3D", "ItemPart");
+    cw_node_add_child(into, n);
+    cw_mesh3d_set_procedural(n, me);
+    t3_release(me);
+  }
+  for (int i = 0; i < o->child_count; i++) pickup_meshes(o->children[i], into);
+}
+static void pickup_model(cw_node into, int kind) {
+  static t3_gltf *GL[ITEM_KINDS];
+  static const char *FILE_[ITEM_KINDS] = { "health", "armor", "scatter", "rocket", "rail", "ammo" };
+  if (!GL[kind]) {
+    char path[48];
+    snprintf(path, sizeof path, "models/pk_%s.glb", FILE_[kind]);
+    size_t len;
+    void *glb = cw_asset_load(path, &len);
+    GL[kind] = glb ? t3_gltf_parse(glb, len, NULL, NULL) : NULL;
+    free(glb);
+    if (!GL[kind]) { cw_error("arenafps: %s missing", path); return; }
+  }
+  pickup_meshes(GL[kind]->scene, into);
 }
 
 /* ── each arena's shell (the outer walls and what hangs on them, above the playing space) ── */
@@ -714,6 +795,7 @@ static void arena_release_mesh(t3_mesh *mesh) {
 }
 
 void arena_build(int id, cw_node world_root) {
+  nstand = 0;
   memset(&A, 0, sizeof A);
   A.id = id;
   A.root = world_root;
@@ -832,19 +914,35 @@ void arena_build(int id, cw_node world_root) {
   for (int i = 0; i < A.nitems; i++) {
     item *it = &A.items[i];
     cw_color c = ITEM_COLOR[it->kind];
-    it->node = cw_node_new("MeshInstance3D", "Item");
-    cw_node_set(it->node, "primitive", cw_val_enum(it->kind == ITEM_HEALTH || it->kind == ITEM_ARMOR ? "SPHERE" : "BOX"));
-    float s = it->kind >= ITEM_SCATTER && it->kind != ITEM_AMMO ? 0.55f : 0.4f;
-    cw_node_set(it->node, "size", cw_val_vec3(s, s, s));
-    cw_node_set(it->node, "color", cw_val_color(c.r, c.g, c.b, 1));
-    cw_node_set(it->node, "emissive", cw_val_color(c.r * 1.5f, c.g * 1.5f, c.b * 1.5f, 1));
-    cw_node3d_set_position(it->node, v3add(it->pos, v3(0, 0.5f, 0)));
+    it->floor_y = it->pos.y - 0.5f;
+    it->node = cw_node_new("Node3D", "Item");
+    cw_node3d_set_position(it->node, v3(it->pos.x, it->floor_y + 0.58f, it->pos.z));
     cw_node_add_child(A.root, it->node);
+    pickup_model(it->node, it->kind);
+    { /* the spot on the floor it stands over, lit in its colour so the item is grounded and the empty spot is still a place */
+      cw_node disc = cw_node_new("MeshInstance3D", "ItemSpot");
+      cw_node_set(disc, "primitive", cw_val_enum("CYLINDER"));
+      cw_node_set(disc, "size", cw_val_vec3(0.62f, 0.03f, 0));
+      cw_node_set(disc, "color", cw_val_color(0.05f, 0.05f, 0.055f, 1));
+      cw_node_set(disc, "roughness", cw_val_float(0.5));
+      cw_node3d_set_position(disc, v3(it->pos.x, it->floor_y + 0.018f, it->pos.z));
+      cw_node_add_child(A.root, disc);
+      it->spot = disc;
+      cw_node glow = cw_node_new("MeshInstance3D", "ItemSpotGlow");
+      cw_node_set(glow, "primitive", cw_val_enum("CYLINDER"));
+      cw_node_set(glow, "size", cw_val_vec3(0.46f, 0.036f, 0));
+      cw_node_set(glow, "color", cw_val_color(c.r * 0.3f, c.g * 0.3f, c.b * 0.3f, 1));
+      cw_node_set(glow, "emissive", cw_val_color(c.r * 1.1f, c.g * 1.1f, c.b * 1.1f, 1));
+      cw_node_set(glow, "cast_shadow", cw_val_bool(false));
+      cw_node3d_set_position(glow, v3(it->pos.x, it->floor_y + 0.02f, it->pos.z));
+      cw_node_add_child(A.root, glow);
+      it->spot_glow = glow;
+    }
     it->light = cw_node_new("OmniLight3D", "ItemLight");
     cw_node_set(it->light, "color", cw_val_color(c.r, c.g, c.b, 1));
     cw_node_set(it->light, "energy", cw_val_float(14));
     cw_node_set(it->light, "range", cw_val_float(5));
-    cw_node3d_set_position(it->light, v3add(it->pos, v3(0, 1.0f, 0)));
+    cw_node3d_set_position(it->light, v3(it->pos.x, it->floor_y + 1.5f, it->pos.z));
     cw_node_add_child(A.root, it->light);
   }
   /* the navmesh over every static shape */
@@ -920,7 +1018,7 @@ static float tune(const char *name, float def) {
 typedef struct mood {
   float tod, decl, north;           /* sun position */
   float sun, sky, mie, rayleigh;    /* sun and sky energy, haze */
-  float ambient;                    /* flat ambient on top of the sky's */
+  float ambient;                    /* flat ambient on top of the sky's: at 0 shadowed walls and the gun went black, and enemies with them */
   float fog_density, fog_falloff, fog_scatter;
   cw_color fog;
   float ev, bloom, bloom_thresh;
@@ -932,11 +1030,11 @@ typedef struct mood {
 
 static const mood MOODS[ARENAS] = {
   /* FOUNDRY: late afternoon sun raking through the roof trusses, warm key, cool steel shadows, sodium lamps */
-  { 16.0f, 14, 20, 4.4f, 1.0f, 0.8f, 1.0f, 0.0f, 0.0025f, 0.12f, 0.45f, { 0.3f, 0.29f, 0.28f, 1 }, -0.1f, 0.3f, 1.6f, 1, "luts/foundry.cube", 0.12f, 1 },
+  { 16.0f, 14, 20, 4.4f, 1.0f, 0.8f, 1.0f, 0.26f, 0.0025f, 0.12f, 0.45f, { 0.3f, 0.29f, 0.28f, 1 }, -0.1f, 0.3f, 1.6f, 1, "luts/foundry.cube", 0.12f, 1 },
   /* COURTYARD: clear morning, crisp shadows, warm stone against a deep blue sky */
-  { 9.6f, 20, 130, 4.6f, 1.1f, 0.6f, 1.0f, 0.0f, 0.0015f, 0.1f, 0.35f, { 0.45f, 0.5f, 0.58f, 1 }, -0.15f, 0.25f, 1.8f, 0, "luts/courtyard.cube", 0.3f, 0 },
+  { 9.6f, 20, 130, 4.6f, 1.1f, 0.6f, 1.0f, 0.1f, 0.0015f, 0.1f, 0.35f, { 0.45f, 0.5f, 0.58f, 1 }, -0.15f, 0.25f, 1.8f, 0, "luts/courtyard.cube", 0.3f, 0 },
   /* TERRACES: dusk, a low red sun, violet haze, the lamps coming on over wet slate */
-  { 17.5f, 10, 250, 3.6f, 1.0f, 1.2f, 1.1f, 0.0f, 0.004f, 0.1f, 0.6f, { 0.2f, 0.16f, 0.24f, 1 }, 0.1f, 0.4f, 1.4f, 1, "luts/terraces.cube", 0.15f, 1 },
+  { 17.5f, 10, 250, 3.6f, 1.0f, 1.2f, 1.1f, 0.3f, 0.004f, 0.1f, 0.6f, { 0.2f, 0.16f, 0.24f, 1 }, 0.1f, 0.4f, 1.4f, 1, "luts/terraces.cube", 0.15f, 1 },
 };
 
 void arena_mood(int id, cw_node env, cw_node sun, cw_node sky, cw_node fog, cw_node post) {

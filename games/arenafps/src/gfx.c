@@ -484,7 +484,7 @@ static void g_formed(float u, float v, texel *t) {
   float n = fbm(u, v, 8, 5, 1001), fine = fbm(u, v, 64, 2, 1002);
   float plank = fractf(v * 26); /* boards about 15 cm */
   int pid = (int)floorf(v * 26);
-  float board = (h01(pid & 63, 0, 1003) - 0.5f) * 0.1f;
+  float board = (h01(pid & 63, 0, 1003) - 0.5f) * 0.05f; /* faint: at 0.1 the boards read as wood planks, not concrete */
   float grain = fbm(u, v * 8, 8, 3, 1004 + (uint32_t)(pid & 7));
   float line = 1 - clamp01(fminf(plank, 1 - plank) * 40);
   float hu = fractf(u * 6) - 0.5f, hv = fractf(v * 4) - 0.5f;
@@ -817,6 +817,40 @@ void mb_box(mesh_build *b, t3_vec3 c, t3_quat q, t3_vec3 s, float uv_m, const fl
 }
 
 /* a tiling cloud layer for the sky plane: brightness premultiplied by cover (drawn additively), coverage 0..1 */
+t3_texture *tex_flash(void) {
+  const int n = 256;
+  uint8_t *px = malloc((size_t)n * n * 4);
+  /* seven rays of different lengths and widths round a hot core */
+  static const float RAY[7][3] = { { 0.2f, 0.95f, 0.1f }, { 1.05f, 0.55f, 0.16f }, { 1.85f, 0.8f, 0.09f }, { 2.8f, 0.5f, 0.14f }, { 3.7f, 0.98f, 0.09f }, { 4.6f, 0.6f, 0.13f }, { 5.5f, 0.75f, 0.1f } };
+  for (int y = 0; y < n; y++)
+    for (int x = 0; x < n; x++) {
+      float u = (x + 0.5f) / n * 2 - 1, v = (y + 0.5f) / n * 2 - 1, r = sqrtf(u * u + v * v);
+      float a = cw_atan2(v, u), I = cw_exp(-r * r * 26) * 1.2f + cw_exp(-r * 5.5f) * 0.28f;
+      for (int k = 0; k < 7; k++) {
+        float da = a - RAY[k][0];
+        while (da > 3.14159f) da -= 6.28318f;
+        while (da < -3.14159f) da += 6.28318f;
+        float w = RAY[k][2] * (1 - clamp01(r / RAY[k][1])), t = w > 0.0005f ? fabsf(da) / w : 99;
+        if (t < 3) I += cw_exp(-t * t) * (1 - clamp01(r / RAY[k][1])) * 0.9f;
+      }
+      float edge = clamp01((1 - r) * 5);
+      I = clamp01(I * edge);
+      /* hot white core, orange at the tips */
+      float h = clamp01(I * 1.4f);
+      uint8_t *p = &px[(y * n + x) * 4];
+      p[0] = b8(I), p[1] = b8(I * (0.45f + 0.55f * h)), p[2] = b8(I * (0.1f + 0.75f * h * h)), p[3] = b8(I);
+    }
+  t3_texture *t = t3_texture_new(n, n, px);
+  t->wrap_s = t->wrap_t = T3_CLAMP_TO_EDGE;
+  t->flip_y = false;
+  t->generate_mipmaps = true;
+  t->min_filter = T3_LINEAR_MIPMAP_LINEAR;
+  t->mag_filter = T3_LINEAR;
+  t->color_space = T3_SRGB_COLOR_SPACE;
+  free(px);
+  return t;
+}
+
 t3_texture *tex_clouds(float coverage, uint32_t seed) {
   const int n = 512;
   uint8_t *px = malloc((size_t)n * n * 4);

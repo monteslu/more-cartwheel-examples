@@ -164,6 +164,7 @@
   {
     "name": "arenafps-match",
     "app": "arenafps_auto",
+    "startCmds": ["quality high"],
     "frames": 1200,
     "maxGt16": 0.08,
     "fields": [
@@ -190,25 +191,9 @@
       "game.arena": 0,
       "game.players": 4,
       "views": 4,
-      "cam.offset": [
-        581,
-        0,
-        0
-      ],
-      "rumble.sent": [
-        7,
-        2,
-        3,
-        16,
-        5
-      ],
-      "cw.rumble": [
-        33,
-        3,
-        194,
-        0,
-        82
-      ]
+      "cam.offset": [655, 0, 0],
+      "rumble.sent": [13, 6, 5, 14, 5],
+      "cw.rumble": [43, 3, 220, 0, 88]
     },
     "controlFrames": 1199,
     "webgpu": {
@@ -220,7 +205,7 @@
         "chromium"
       ]
     },
-    "note": "arenafps_auto: four seats (the AUTO bot count adds none) play Foundry deathmatch by themselves for 20 seconds. The simulation (movers, navmesh paths, shots, rockets, pickups) must give the same state on every host, so fighters.pos, scores and the state hash are compared exactly; pixels within the usual tolerance (particles, decals). Control: one frame short. WebGPU vs GL within 40 percent: at frame 1200 two of the four views face a wall at arm's length, and close-up texture detail (normal and roughness maps at that distance) differs between the backends (33 percent of pixels over 16 levels, 42 to 50 percent in those two views, 19 to 21 in the others, mean brightness equal: an engine finding in internal-cartwheel/findings/arenafps.md). No shake (2026-10-29): cam.offset is every view's camera as drawn against the eye and aim on the 581 ticks within half a second of a hit taken or a blast within 14 m; none is off by over 0.1 mm or 0.1 milliradian (the build before measured 575 of 581 off, up to 14 cm and radians summed). rumble.sent: blasts, hits taken, hits dealt and kills, landings, rocket and rail shots sent to the players' pads; cw.rumble the engine's last request (a landing on pad 3)."
+    "note": "arenafps_auto: four seats (the AUTO bot count adds none) play Foundry deathmatch by themselves for 20 seconds. The simulation (movers, navmesh paths, shots, rockets, pickups) must give the same state on every host, so fighters.pos, scores and the state hash are compared exactly; pixels within the usual tolerance (particles, decals). Control: one frame short. WebGPU vs GL within 40 percent: at frame 1200 two of the four views face a wall at arm's length, and close-up texture detail (normal and roughness maps at that distance) differs between the backends (33 percent of pixels over 16 levels, 42 to 50 percent in those two views, 19 to 21 in the others, mean brightness equal: an engine finding in internal-cartwheel/findings/arenafps.md). No shake (2026-10-29): cam.offset is every view's camera as drawn against the eye and aim on the 655 ticks within half a second of a hit taken or a blast within 14 m; none is off by over 0.1 mm or 0.1 milliradian (a build with the old shake measured 575 of 581 off, up to 14 cm and radians summed). rumble.sent: blasts, hits taken, hits dealt and kills, landings, rocket and rail shots sent to the players' pads; cw.rumble the engine's last request (a landing on pad 3). The gate pins High with a start command: Chromium is not a deterministic host, so Auto stays on there and since engine v0.27 it steps down on a loaded machine."
   },
   {
     "name": "arenafps-screenshot",
@@ -243,8 +228,7 @@
     "name": "arenafps-coop",
     "app": "arenafps_auto",
     "frames": 1800,
-    "startCmds": [
-      "match 1 2 0 3"
+    "startCmds": ["quality high", "match 1 2 0 3"
     ],
     "maxGt16": 0.08,
     "fields": [
@@ -274,15 +258,14 @@
       "game.arena": 1,
       "game.players": 3,
       "game.ticks": 1799,
-      "game.hash": 2550355658,
+      "game.hash": 256067611,
       "match.nf": 13,
       "match.wave": 2,
-      "match.lives": 8,
+      "match.lives": 10,
       "stats.kills": 14,
       "views": 3
     },
-    "controlStartCmds": [
-      "match 1 2 0 2"
+    "controlStartCmds": ["quality high", "match 1 2 0 2"
     ],
     "webgpu": {
       "vsGl": 0.3,
@@ -299,8 +282,7 @@
     "name": "arenafps-tdm",
     "app": "arenafps_auto",
     "frames": 1800,
-    "startCmds": [
-      "match 2 1 4 4"
+    "startCmds": ["quality high", "match 2 1 4 4"
     ],
     "maxGt16": 0.08,
     "fields": [
@@ -330,14 +312,13 @@
       "game.arena": 2,
       "game.players": 4,
       "game.ticks": 1799,
-      "game.hash": 2090117205,
+      "game.hash": 1841445910,
       "match.nf": 8,
       "match.wave": 0,
-      "stats.kills": 18,
+      "stats.kills": 13,
       "views": 4
     },
-    "controlStartCmds": [
-      "match 2 1 4 3"
+    "controlStartCmds": ["quality high", "match 2 1 4 3"
     ],
     "webgpu": {
       "vsGl": 0.3,
@@ -351,8 +332,23 @@
     "note": "Team deathmatch in the Terraces (water), four players and four bots, 30 s. Control: three players."
   },
   {
+    "name": "arenafps-recoil",
+    "app": "arenafps",
+    "startCmds": ["quality high"],
+    "frames": 1000,
+    "input": "arenafps-recoil.json",
+    "webgpu": { "vsGl": 0.4, "maxGt16": 0.08, "hosts": ["native", "romdev", "chromium"] },
+    "maxGt16": 0.08,
+    "fields": ["game.state", "match.nf", "cam.fire", "p1.stats"],
+    "expect": { "game.state": 1, "match.nf": 1, "cam.fire": [300, 0] },
+    "controlInput": "arenafps-recoil.json",
+    "controlEnv": { "ARENA_RECOIL_BUG": "1" },
+    "note": "recoil belongs to the gun model, never the view (monteslu: no camera shake ever). One pad through the setup with no bots, then hold the trigger with the look stick at rest for 3 and 2 seconds: cam.fire counts the ticks fired and those on which the view moved; the rifle's burst walks its shots and opens the crosshair instead. Control ARENA_RECOIL_BUG=1 (the old climb) moves the view on every shot. The gate pins High with a start command: Chromium is not a deterministic host, so Auto stays on there and since engine v0.27 it steps down on a loaded machine."
+  },
+  {
     "name": "arenafps-camera",
     "app": "arenafps",
+    "startCmds": ["quality high"],
     "frames": 1600,
     "input": "arenafps-camera.json",
     "webgpu": {
@@ -376,19 +372,14 @@
     "expect": {
       "game.state": 1,
       "match.nf": 1,
-      "cam.gate": [
-        528,
-        0,
-        600,
-        0
-      ],
+      "cam.gate": [478, 0, 650, 0],
       "cam.events": 0
     },
     "controlInput": "arenafps-camera.json",
     "controlEnv": {
       "ARENA_CAM_BUG": "1"
     },
-    "note": "camera stability, the way a person plays: one pad through title, join and the setup (no bots: up three rows, right, down three, fire), then stand, walk, stop, strafe, jump and stand on Foundry while player 1's camera as drawn is measured every tick (cam.gate: ticks at rest, at-rest ticks that moved over 1 mm, ticks in motion, ticks in motion on the ground where the eye jumped over 0.6 m or its step changed by over 15 cm). At rest it must not move at all (no bob, roll, dip or sway); stairs and kerbs ease the eye up instead of snapping it. Measured 2026-10-27: [528, 0, 600, 0] on native GL and WebGPU. The control (ARENA_CAM_BUG, native) puts a 1 cm idle sway on the camera: [528, 448, 600, 0], it must differ."
+    "note": "camera stability, the way a person plays: one pad through title, join and the setup (no bots: up three rows, right, down three, fire), then stand, walk, stop, strafe, jump and stand on Foundry while player 1's camera as drawn is measured every tick (cam.gate: ticks at rest, at-rest ticks that moved over 1 mm, ticks in motion, ticks in motion on the ground where the eye jumped over 0.6 m or its step changed by over 15 cm). At rest it must not move at all (no bob, roll, dip or sway); stairs and kerbs ease the eye up instead of snapping it. Measured on engine v0.25.0: [478, 0, 650, 0] on native GL and WebGPU (it was [528, 0, 600, 0] before fighters spawned facing the longest clear way: the split between rest and motion moved, the two zeros did not). The control (ARENA_CAM_BUG, native) puts a 1 cm idle sway on the camera, so the second number leaves zero: it must differ. The gate pins High with a start command: Chromium is not a deterministic host, so Auto stays on there and since engine v0.27 it steps down on a loaded machine."
   },
   {
     "name": "hordeshooter-calm-camera",

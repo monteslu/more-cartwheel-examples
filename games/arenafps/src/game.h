@@ -89,6 +89,7 @@ void mb_box(mesh_build *b, t3_vec3 centre, t3_quat q, t3_vec3 size, float uv_m, 
 /* the tint variation mb_box lays over big faces (0 = none): breaks up the tiling over tens of metres */
 extern float mb_macro;
 t3_texture *tex_clouds(float coverage, uint32_t seed);
+t3_texture *tex_flash(void); /* a muzzle flash star, white hot in the middle and orange out along its rays */
 
 /* ── the arena (arena.c) ───────────────────────────────────────────── */
 
@@ -103,6 +104,9 @@ typedef struct item {
   int kind;
   t3_vec3 pos;
   int respawn; /* ticks until it is back (0 = here) */
+  float floor_y; /* the floor under it (a ray down, on its first tick: the world answers rays after it has stepped): where the drawn item and its lit spot stand */
+  bool grounded;
+  cw_node spot, spot_glow;
   cw_node node, light;
 } item;
 
@@ -141,11 +145,14 @@ typedef struct arena {
   struct { t3_vec3 s, e; int tag; bool two; } links[MAX_LINKS];
   int nlinks;
   int nav_links, nav_links_connected; /* in the navmesh (0 on an engine without links) */
+  int prop_count, prop_floating; /* solid props, and those with nothing under them */
+  int item_gap_mm;        /* the largest gap between an item's nominal height and the floor under it, before the drawn item is grounded */
 } arena;
 extern arena A;
 
 void arena_build(int id, cw_node world_root);
 void arena_free(void);
+void arena_ground_check(void);
 void arena_mood(int id, cw_node env, cw_node sun, cw_node sky, cw_node fog, cw_node post);
 
 /* a ray through the level (not fighters): true on a hit */

@@ -100,7 +100,7 @@ def build(team):
         parts.append(ob)
         return ob
 
-    def arm(s, shoulder, elbow, hand, ra=0.07, rb=0.055):
+    def arm(s, shoulder, elbow, hand, ra=0.09, rb=0.07):
         n = 7
         pts = []; rad = []
         for i in range(n):
@@ -117,10 +117,10 @@ def build(team):
         pts = []; rad = []
         for i in range(8):
             t = i / 7
-            pts.append(Vector(hip).lerp(Vector(knee), t)); rad.append(0.12 - 0.03 * t)
+            pts.append(Vector(hip).lerp(Vector(knee), t)); rad.append(0.14 - 0.03 * t)
         for i in range(1, 8):
             t = i / 7
-            pts.append(Vector(knee).lerp(Vector(ankle), t)); rad.append(0.09 - 0.025 * t)
+            pts.append(Vector(knee).lerp(Vector(ankle), t)); rad.append(0.11 - 0.03 * t)
         tube('leg_' + s, pts, rad, suit, 'thigh_' + s, 'shin_' + s, Vector(knee), 0.12)
     leg('l', BONES['thigh_l'][1], BONES['thigh_l'][2], BONES['shin_l'][2])
     leg('r', BONES['thigh_r'][1], BONES['thigh_r'][2], BONES['shin_r'][2])

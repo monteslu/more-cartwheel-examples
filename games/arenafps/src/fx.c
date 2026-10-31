@@ -47,19 +47,23 @@ static void fill(pool *p, int count, cw_node (*make)(int i)) {
 
 static cw_node mk_spark(int i) {
   (void)i;
-  cw_node n = new_ps("Spark", 16, 0.45f, 3, 9, 65, -9, 0.03f, "0 1 0.9 0.5 1, 0.3 1 0.5 0.15 1, 1 0.4 0.1 0.05 0", "0 1, 1 0.3", 9, "STRETCHED", "ADD");
-  cw_node_set(n, "stretch", cw_val_float(0.022));
+  cw_node n = new_ps("Spark", 14, 0.35f, 2, 5.5f, 50, -9, 0.011f, "0 1 0.9 0.5 1, 0.3 1 0.5 0.15 1, 1 0.4 0.1 0.05 0", "0 1, 1 0.3", 5, "STRETCHED", "ADD"); /* fine: near the eye a big stretched spark is a yellow slab */
+  cw_node_set(n, "stretch", cw_val_float(0.012));
   return n;
 }
 static cw_node mk_hit(int i) {
   (void)i;
-  cw_node n = new_ps("HitSpark", 10, 0.3f, 2, 6, 80, -6, 0.03f, "0 1 0.95 0.8 1, 0.4 1 0.7 0.35 1, 1 0.5 0.2 0.05 0", "0 1, 1 0.2", 5, "STRETCHED", "ADD");
-  cw_node_set(n, "stretch", cw_val_float(0.018));
+  cw_node n = new_ps("HitSpark", 10, 0.3f, 1.5f, 4.5f, 70, -6, 0.014f, "0 1 0.95 0.8 1, 0.4 1 0.7 0.35 1, 1 0.5 0.2 0.05 0", "0 1, 1 0.2", 4, "STRETCHED", "ADD");
+  cw_node_set(n, "stretch", cw_val_float(0.01));
   return n;
 }
 static cw_node mk_dust(int i) {
   (void)i;
-  return new_ps("Dust", 8, 0.9f, 0.4f, 1.6f, 55, 0.25f, 0.45f, "0 0.5 0.45 0.4 0.55, 1 0.45 0.4 0.36 0", "0 0.4, 0.4 1, 1 1.4", 1, "BILLBOARD", "ALPHA");
+  cw_node n = new_ps("Dust", 5, 0.8f, 0.4f, 1.4f, 55, 0.25f, 0.3f, "0 0.5 0.45 0.4 0, 0.12 0.5 0.45 0.4 0.4, 1 0.45 0.4 0.36 0", "0 0.4, 0.4 1, 1 1.4", 1, "BILLBOARD", "ALPHA");
+  cw_node_set(n, "texture", cw_val_string("textures/fx/smoke.png")); /* soft puffs: an untextured billboard is a soft-edged square */
+  cw_node_set(n, "hframes", cw_val_int(8));
+  cw_node_set(n, "vframes", cw_val_int(8));
+  return n;
 }
 /* decals that stick to the surface they hit (mode MESH: the engine clips the triangles under the box and keeps them with the mesh);
  * the engine recycles the oldest past max_mesh_decals, so bullet holes and scorch marks are made as needed and forgotten */
@@ -139,10 +143,10 @@ static cw_node mk_boom(int i) {
   cw_node_set(smoke, "spin", cw_val_float(0.18));
   cw_node_set(smoke, "sort", cw_val_bool(true));
   cw_node_set(smoke, "soft_distance", cw_val_float(0.8));
-  cw_node sparks = part(b, "Sparks", 90, 1.2f, 0.95f, "POINT", 0, UP, 180, 4, 13, -9.8f, 0.045f, "0 1, 1 0.3",
-                        "0 1 0.95 0.7 1, 0.5 1 0.5 0.12 1, 1 0.6 0.1 0.05 0", 8, "ADD", s + 3);
+  cw_node sparks = part(b, "Sparks", 70, 1.0f, 0.95f, "POINT", 0, UP, 180, 4, 13, -9.8f, 0.016f, "0 1, 1 0.25",
+                        "0 1 0.9 0.6 1, 0.5 1 0.45 0.1 1, 1 0.6 0.1 0.05 0", 5, "ADD", s + 3);
   cw_node_set(sparks, "draw_mode", cw_val_enum("STRETCHED"));
-  cw_node_set(sparks, "stretch", cw_val_float(0.04));
+  cw_node_set(sparks, "stretch", cw_val_float(0.022));
   cw_node_set(sparks, "collide_depth", cw_val_bool(true));
   cw_node_set(sparks, "bounce", cw_val_float(0.45));
   cw_node chunks = part(b, "Debris", 14, 1.6f, 1, "SPHERE", 0.3f, UP, 70, 5, 11, -16, 0.12f, "0 1, 1 0.8",
@@ -241,10 +245,10 @@ static cw_sound make_snd(float seconds, void (*fn)(float *, int)) {
   static cw_sound name##_m(void) { return make_snd(secs, name##_f); }
 /* the rifle: a bright crack (fast noise), a low body thump and a short dark tail, so it lands like a shot and not a click */
 SND(rifle, 0.34f, tone_into(p, n, rate, 2600, 900, 0.95f, 0.75f, 46, 0.85f); tone_into(p, n, rate, 160, 48, 0.12f, 1.25f, 16, 1); tone_into(p, n, rate, 420, 110, 0.9f, 0.45f, 7, 0.1f);)
-SND(scatter, 0.4f, tone_into(p, n, rate, 120, 45, 0.85f, 1.2f, 6, 0.3f); tone_into(p, n, rate, 70, 40, 0.2f, 0.8f, 8, 1);)
+SND(scatter, 0.48f, tone_into(p, n, rate, 1900, 500, 0.95f, 0.85f, 28, 0.85f); tone_into(p, n, rate, 130, 42, 0.5f, 1.35f, 7, 0.75f); tone_into(p, n, rate, 72, 38, 0.15f, 0.9f, 8, 1);)
 SND(rocket, 0.5f, tone_into(p, n, rate, 300, 90, 0.8f, 0.8f, 4, 0.2f); tone_into(p, n, rate, 140, 80, 0.1f, 0.5f, 5, 1);)
 SND(boom, 1.6f, tone_into(p, n, rate, 70, 28, 0.8f, 1.6f, 3.2f, 0.06f); tone_into(p, n, rate, 48, 24, 0.0f, 1.2f, 3, 1);)
-SND(rail, 0.7f, tone_into(p, n, rate, 3200, 220, 0.1f, 0.6f, 4, 1); tone_into(p, n, rate, 90, 50, 0.6f, 0.7f, 8, 0.3f);)
+SND(rail, 0.8f, tone_into(p, n, rate, 5200, 1200, 0.9f, 0.7f, 40, 0.9f); tone_into(p, n, rate, 3200, 220, 0.1f, 0.6f, 4, 1); tone_into(p, n, rate, 90, 50, 0.6f, 0.85f, 7, 0.3f);)
 SND(hit, 0.07f, tone_into(p, n, rate, 1500, 900, 0.1f, 0.5f, 8, 1);)
 SND(hurt, 0.25f, tone_into(p, n, rate, 220, 90, 0.4f, 0.8f, 5, 0.4f);)
 SND(pickup, 0.3f, tone_into(p, n, rate, 780, 1180, 0, 0.5f, 3, 1);)
@@ -253,7 +257,10 @@ SND(click, 0.05f, tone_into(p, n, rate, 600, 500, 0.4f, 0.5f, 10, 0.6f);)
 SND(spawn, 0.5f, tone_into(p, n, rate, 300, 900, 0, 0.4f, 2, 1);)
 SND(step, 0.1f, tone_into(p, n, rate, 90, 50, 0.9f, 0.5f, 7, 0.15f);)
 SND(shell, 0.12f, tone_into(p, n, rate, 3400, 2600, 0.05f, 0.4f, 12, 1);)
-SND(tick, 0.06f, tone_into(p, n, rate, 1100, 1100, 0, 0.4f, 6, 1);)
+SND(tick, 0.09f, tone_into(p, n, rate, 1250, 800, 0.25f, 0.55f, 30, 0.8f); tone_into(p, n, rate, 240, 120, 0.3f, 0.5f, 28, 1);)
+SND(head, 0.26f, tone_into(p, n, rate, 2350, 2350, 0, 0.45f, 16, 1); tone_into(p, n, rate, 3525, 3525, 0, 0.28f, 22, 1); tone_into(p, n, rate, 300, 150, 0.3f, 0.4f, 24, 1);)
+SND(kill, 0.62f, tone_into(p, n, rate, 170, 55, 0.35f, 0.95f, 11, 0.8f);
+    for (int k = 0; k < 2; k++) { int off = k * (int)(0.085f * (float)rate); tone_into(p + off, n - off, rate, k ? 1318 : 880, k ? 1318 : 880, 0, k ? 0.5f : 0.42f, 7, 1); tone_into(p + off, n - off, rate, k ? 2636 : 1760, k ? 2636 : 1760, 0, 0.14f, 11, 1); })
 SND(land, 0.18f, tone_into(p, n, rate, 110, 45, 0.7f, 0.9f, 10, 0.2f);)
 SND(pad, 0.45f, tone_into(p, n, rate, 160, 620, 0.25f, 0.8f, 4, 0.5f); tone_into(p, n, rate, 80, 140, 0.0f, 0.6f, 5, 1);)
 
@@ -268,7 +275,7 @@ void fx_init(cw_node root) {
   for (int i = 0; i < NCASE; i++) {
     cw_node n = cw_node_new("MeshInstance3D", "Casing");
     cw_node_set(n, "primitive", cw_val_enum("CYLINDER"));
-    cw_node_set(n, "size", cw_val_vec3(0.025f, 0.07f, 0));
+    cw_node_set(n, "size", cw_val_vec3(0.008f, 0.024f, 0));
     cw_node_set(n, "color", cw_val_color(0.8f, 0.6f, 0.2f, 1));
     cw_node_set(n, "metalness", cw_val_float(1));
     cw_node_set(n, "roughness", cw_val_float(0.3));
@@ -284,6 +291,7 @@ void fx_init(cw_node root) {
     S[SND_RAIL] = rail_m(), S[SND_HIT] = hit_m(), S[SND_HURT] = hurt_m(), S[SND_PICKUP] = pickup_m();
     S[SND_DIE] = die_m(), S[SND_CLICK] = click_m(), S[SND_SPAWN] = spawn_m(), S[SND_STEP] = step_m();
     S[SND_SHELL] = shell_m(), S[SND_TICK] = tick_m(), S[SND_PAD] = pad_m(), S[SND_LAND] = land_m();
+    S[SND_HEAD] = head_m(), S[SND_KILL] = kill_m();
   }
 }
 
@@ -327,7 +335,7 @@ void fx_spark(t3_vec3 p, t3_vec3 n, int kind) {
 }
 
 void fx_hole(t3_vec3 p, t3_vec3 n) {
-  float s = 0.22f + cw_rng_float(&R) * 0.1f;
+  float s = 0.1f + cw_rng_float(&R) * 0.05f;
   cw_node d = make_decal("Hole", "textures/hole.png", v3(s, s, 0.3f), (cw_color){ 1, 1, 1, 1 }, "MIX", 80);
   cw_node3d_set_position(d, v3add(p, v3scale(n, 0.1f)));
   t3_vec3 up = fabsf(n.y) > 0.98f ? v3(1, 0, 0) : v3(0, 1, 0);
@@ -365,8 +373,15 @@ void fx_tracer(t3_vec3 a, t3_vec3 b, int kind) {
   t3_vec3 d = v3sub(b, a);
   float len = v3len(d);
   if (len < 0.1f) return;
+  if (kind == 0 && len < 3) return; /* a wall at arm's length: sparks say enough, a tracer is a stick in the face */
+  if (kind == 0 && len > 5) { /* a bullet is a short streak somewhere along its path, not a beam from the shooter (a whole beam beside the eye is a band across the view) */
+    float at = cw_rng_float(&R) * (len - 5);
+    a = v3add(a, v3scale(d, at / len));
+    d = v3scale(d, 5 / len);
+    len = 5;
+  }
   TR_LEN[i] = len;
-  TR_W[i] = kind == 1 ? 0.07f : 0.025f;
+  TR_W[i] = kind == 1 ? 0.05f : 0.014f;
   TR_LIFE[i] = (life){ kind == 1 ? 18 : 4, kind == 1 ? 18 : 4 };
   cw_node_set(n, "size", cw_val_vec3(TR_W[i], TR_W[i], len));
   if (kind == 1) {

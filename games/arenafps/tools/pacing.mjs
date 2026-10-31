@@ -4,7 +4,7 @@
 //   node games/arenafps/tools/pacing.mjs [--secs 180] [--build build/native] [--runs a:m:p[:bots],...] [--out file.json]
 //
 // a = arena (0 Foundry, 1 Courtyard, 2 Terraces), m = mode (0 deathmatch, 1 team deathmatch, 2 co-op), p = seats,
-// bots = bot count (omit, or -1, for the game's AUTO count), l = bot level (0 easy, 1 normal = default, 2 hard, 3 the first
+// bots = bot count (omit, or -1, for the game's AUTO count), l = bot level (0 easy, 1 normal = default, 2 veteran, 3 hard, 4 the first
 // pass's normal). The seats are played by the autopilot's stand-in for a pad player (src/main.c proxy()); p1 = seat 1's
 // kills/deaths. Default runs: every arena and mode at 4 seats,
 // plus deathmatch at 2 seats and 1 seat. Only the simulation is measured, so one frame is drawn per 150 game ticks
@@ -25,16 +25,16 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
-const secs = +arg('--secs', 180);
+const secs = +arg('--secs', 180), BATCH = +arg('--batch', 900);
 const build = resolve(ROOT, arg('--build', 'build/native'));
-const exe = join(build, 'project/games/arenafps/arenafps_auto');
+const exe = [join(build, 'project/games/arenafps/arenafps_auto'), join(build, 'games/arenafps/arenafps_auto')].find(existsSync) ?? join(build, 'games/arenafps/arenafps_auto'); /* engine-source tree, or the SDK tree */
 const outDir = join(ROOT, 'out/pacing');
 mkdirSync(outDir, { recursive: true });
 if (!existsSync(exe)) { console.error(`no ${exe}: build arenafps_auto first`); process.exit(2); }
 const runs = (arg('--runs', '') || ['0:0:4', '1:0:4', '2:0:4', '0:1:4', '1:1:4', '2:1:4', '0:2:4', '1:2:4', '2:2:4', '0:0:2', '1:0:2', '2:0:2', '0:0:1'].join(','))
   .split(',').filter(Boolean).map((s) => { const [a, m, p, b, l] = s.split(':').map(Number); return { a, m, p, b, l: Number.isFinite(l) ? l : 1 }; });
 
-const ARENA = ['Foundry', 'Courtyard', 'Terraces'], MODE = ['DM', 'TDM', 'co-op'], LEVEL = ['easy', 'normal', 'hard', 'first-pass'];
+const ARENA = ['Foundry', 'Courtyard', 'Terraces'], MODE = ['DM', 'TDM', 'co-op'], LEVEL = ['easy', 'normal', 'veteran', 'hard', 'first-pass'];
 const env0 = { ...process.env };
 for (const k of ['DISPLAY', 'WAYLAND_DISPLAY', 'XAUTHORITY']) delete env0[k];
 const rows = [];
@@ -43,7 +43,7 @@ for (const r of runs) {
   const dump = join(outDir, `${tag}.json`);
   const env = {
     ...env0, SDL_VIDEODRIVER: 'offscreen', LIBGL_ALWAYS_SOFTWARE: '1', GALLIUM_DRIVER: 'llvmpipe', CW_GPU: 'gl', SDL_AUDIODRIVER: 'dummy', LP_NUM_THREADS: '2', CW_WORKERS: '2',
-    ARENA_SIM_BATCH: '150', CW_FRAMES: String(Math.ceil(secs * 60 / 150) + 2), CW_WARMUP_SPREAD: '0', CW_QUALITY: 'low', ARENA_RES: '320x180',
+    ARENA_SIM_BATCH: String(BATCH), CW_FRAMES: String(Math.ceil(secs * 60 / BATCH) + 2), CW_WARMUP_SPREAD: '0', CW_QUALITY: 'low', ARENA_RES: '320x180',
     ARENA_ID: String(r.a), ARENA_MODE: String(r.m), ARENA_PLAYERS: String(r.p), ARENA_LEVEL: String(r.l), ARENA_FRAGS: '999', ARENA_SECS: '900', ARENA_REPEAT: '1',
     CW_DEBUG_DUMP: dump,
   };

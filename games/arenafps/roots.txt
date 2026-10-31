@@ -6,6 +6,12 @@ models/vm_scatter.glb
 models/vm_rocket.glb
 models/vm_rail.glb
 models/props.glb
+models/pk_health.glb
+models/pk_armor.glb
+models/pk_scatter.glb
+models/pk_rocket.glb
+models/pk_rail.glb
+models/pk_ammo.glb
 luts/foundry.cube
 luts/courtyard.cube
 luts/terraces.cube

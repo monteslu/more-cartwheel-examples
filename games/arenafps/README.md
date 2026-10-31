@@ -6,7 +6,7 @@ bots that find their way over a navigation mesh, jump pads, ledge jumps and drop
 
 ## Play
 
-- Title -> join (each pad presses South to join) -> pick the arena, the mode, the number of bots, how good the bots are (easy, normal, hard), aim assist on or off and rumble on or off -> fire to start.
+- Title -> join (each pad presses South to join) -> pick the arena, the mode, the number of bots, how good the bots are (easy, normal, veteran, hard; normal is for someone new to the game), aim assist on or off and rumble on or off -> fire to start.
 - Move: left stick (keyboard: W A S D). Sprint: click the left stick (keyboard: left Shift), forward only, and firing
   ends it. Look: right stick (keyboard: arrow keys). Fire: right trigger or right shoulder (keyboard: J). Jump: South
   (keyboard: Space): high enough for a 1.2 m ledge. Next / previous weapon: North / West (keyboard: E / Q).
@@ -14,15 +14,15 @@ bots that find their way over a navigation mesh, jump pads, ledge jumps and drop
 - Pause with Start.
 
 Modes
-- Deathmatch: everyone for themselves, first to 15 frags or the best score after five minutes.
-- Team deathmatch: red against blue, first team to 30.
+- Deathmatch: everyone for themselves, first to 25 frags or the best score after eight minutes.
+- Team deathmatch: red against blue, first team to 40.
 - Co-op waves: the players hold the arena against six waves of bots, with a shared pool of lives. A wave is bigger and tougher each time and bigger again for every extra player; between waves everyone heals a little and the rifle is topped up, and the next wave is counted down on screen.
 
-Feedback: the view never shakes, bobs or kicks; blasts (by how close), hits taken, big hits and frags dealt, hard landings and each rocket or rail shot are felt in your own pad instead (rumble, Rumble on the setup screen; nothing without motors). A hit throws the target back a moment, a red cross flashes on a hit, a gold cross and the victim's name on a frag, a red bar on a ring around the crosshair points at whoever hit you, the edges pulse red when health is low, and a downed player sees a respawn countdown (about 2.5 s; two seconds of protection after you spawn).
+Feedback: the view never shakes, bobs or kicks; blasts (by how close), hits taken, big hits and frags dealt, hard landings and each rocket or rail shot are felt in your own pad instead (rumble, Rumble on the setup screen; nothing without motors). A hit throws the target back a moment, a red cross and a dry thwack on a hit, a white cross, the word HEAD and a bright ping on a head shot, a gold cross, the victim's name, your streak and a rising chime on a frag, the name of whoever downed you, a red bar on a ring around the crosshair points at whoever hit you, the edges pulse red when health is low, and a downed player sees a respawn countdown (about 2.5 s; two seconds of protection after you spawn).
 
 Weapons (found on the map and kept until you die; you always have the rifle). Scatter guns come back 10 s after they
-are taken, rockets, rails and armour on a timer you can read over the empty spot (20 to 30 s). The rifle climbs in a fixed
-pattern over a long burst and settles back after it: short bursts stay on target. Time to kill from full health with perfect aim (no armour): rifle 1.1 s (0.7 s with head shots), scatter gun 0.77 s at point blank, rocket 0.73 s (two hits), rail 0.77 s (two hits, one head shot).
+are taken, rockets, rails and armour on a timer you can read over the empty spot (20 to 30 s). The rifle's shots walk off the
+crosshair in a fixed pattern over a long burst and settle back after it, and the crosshair opens with them (the view itself never moves): short bursts stay on target. Time to kill from full health with perfect aim (no armour): rifle 1.1 s (0.7 s with head shots), scatter gun 0.77 s at point blank, rocket 0.73 s (two hits), rail 0.77 s (two hits, one head shot).
 - Pulse rifle: fast hitscan, low damage, a head shot does half again.
 - Scatter gun: eleven pellets, deadly close up.
 - Rocket: slow shot, big blast and knockback (you can launch yourself; your own blast hurts half as much).
@@ -42,6 +42,10 @@ tool into levels/*.cwcsg and checks their flow (loops, dead ends, how far spawns
 The HUD shows the time left and the frag leader, and enemies carry a rim of their side's colour that you can read at
 30 m (deathmatch: everyone is red); a fighter under spawn protection shimmers pale blue.
 
+Aim assist (on by default, for pads): the view slows a little over an enemy, drifts gently toward one close to the crosshair while you aim or move, and a shot that only just misses an enemy in clear sight bends onto the edge of the body. Never through a wall, never a snap.
+
+Bots notice a new enemy inside a view cone (all round on hard), or when hit or when a shot goes off within 30 m; they take a moment to react. The levels are tuned against a scripted pad player (`tools/human-matches.mjs`, reaction time and noisy stick aim through the game's own look curve): a casual player wins or nearly wins most matches on normal, a skilled one is pushed on hard.
+
 ## How it is made (the look)
 
 - Fighters are one skinned mesh on a 15 bone rig with idle, run and die clips; the four weapons are first person models with
@@ -60,4 +64,4 @@ The HUD shows the time left and the frag leader, and enemies carry a rim of thei
 See the repository README: `scripts/fetch-deps.sh`, then `scripts/build.sh`.
 `arenafps_auto` is the same game with the bots playing every seat (ARENA_ID, ARENA_MODE, ARENA_BOTS,
 ARENA_PLAYERS choose the match): the tests and benchmarks run it.
-`tests/arenafps-split-bench.mjs` measures the cost of one to four views.
+`tests/arenafps-split-bench.mjs` measures the cost of one to four views. `tools/playtest-human.mjs` plays the scripted human through romdev's pad on the cart.
