@@ -746,7 +746,8 @@ static void draw_hud(float W, float H, float s) {
     if (age < 0.9f) {
       const char *w = kind == EV_PARRY ? "PARRY" : kind == EV_GUARDBREAK ? "GUARD BREAK" : kind == EV_JUGGLE_SPENT ? "JUGGLE OVER" : "DUCKED";
       float a = cw_clampf(1.4f - age * 1.5f, 0, 1);
-      text(G.font_score, w, side == 0 ? W * 0.25f : W * 0.75f, H * 0.2f, 30 * s, kind == EV_GUARDBREAK ? rgba(1, 0.35f, 0.25f, a) : rgba(0.6f, 0.9f, 1, a), CW_ALIGN_CENTER);
+      /* in training the move list covers the right side */
+      text(G.font_score, w, g->training ? W * 0.5f : side == 0 ? W * 0.25f : W * 0.75f, H * 0.2f, 30 * s, kind == EV_GUARDBREAK ? rgba(1, 0.35f, 0.25f, a) : rgba(0.6f, 0.9f, 1, a), CW_ALIGN_CENTER);
     }
   }
   if (g->training) draw_training(W, H, s);
