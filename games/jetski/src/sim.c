@@ -295,7 +295,7 @@ void sim_reset(int state) {
     c->yaw = yaw;
     c->px = c->x, c->pz = c->z, c->py = c->y, c->pyaw = c->yaw;
     c->human = i == 0;
-    static const float skills[RACERS] = { 1.0f, 0.985f, 0.97f, 0.995f, 0.96f, 0.975f };
+    static const float skills[RACERS] = { 1.0f, 0.955f, 0.93f, 0.97f, 0.91f, 0.94f };
     c->skill = skills[i];
     c->track_i = TRACK_N - 3;
     c->dist = -back;
