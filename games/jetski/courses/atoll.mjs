@@ -115,7 +115,7 @@ return {
   props: [
     ['Sky', 'ground_color', 'color(0.3, 0.27, 0.23, 1)'],
     ['Sky', 'time_of_day', '16.9'], ['Sky', 'sun_energy', '3.6'], ['Sky', 'sky_energy', '1.7'], ['Sky', 'north', '200'],
-    ['Fill', 'energy', '0.75'], ['Fill', 'rotation', 'vec3(-0.75, 1.4, 0)'], ['Fill', 'color', 'color(0.55, 0.62, 0.95, 1)'],
+    ['Fill', 'energy', '1.7'], ['Fill', 'rotation', 'vec3(-0.6, -1.6, 0)'], ['Fill', 'color', 'color(0.55, 0.62, 0.95, 1)'],
     ['Post', 'exposure', '1.0'], ['Post', 'bloom_intensity', '0.09'],
     ['Water', 'shallow_color', 'color(0.05, 0.62, 0.58, 1)'], ['Water', 'deep_color', 'color(0.02, 0.14, 0.24, 1)'],
     ['Water', 'color', 'color(0.93, 0.99, 0.98, 1)'], ['Water', 'clarity', '9'], ['Water', 'murk', '1'],

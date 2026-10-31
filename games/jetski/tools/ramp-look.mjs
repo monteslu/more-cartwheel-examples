@@ -31,7 +31,7 @@ await call('frame', { op: 'step', frames: 20 });
 await cmd(`course ${LEVEL}`);
 await cmd(`tide ${opt('tide', '')}`);
 await cmd('race');
-await cmd(`ramp ${RAMP} ${opt('back', '170')}`);
+await cmd(`ramp ${RAMP} ${opt('back', '170')} ${opt('aside', '0')}`);
 await call('input', { op: 'set', ports: [{ south: true }] });
 const log = [], EVERY = +opt('every', 30); await call('frame', { op: 'step', frames: +opt('skip', 1) });
 for (let i = 0; i < +opt('n', 26); i++) {
