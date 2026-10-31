@@ -44,7 +44,7 @@ static struct {
   float shown_hp[2];
   float lag_hp[2];
   uint32_t ev_seen;
-  cw_action a_left, a_right, a_up, a_down, fs_left, fs_right, fs_up, fs_down, dp_left, dp_right, dp_up, dp_down, a_p, a_k, a_g, a_pk, k_left, k_right, k_up, k_down, k_p, k_k, k_g, k_pk, tr_mode, tr_reset, tr_dummy, tr_boxes;
+  cw_action ui_start, ui_quit, a_left, a_right, a_up, a_down, fs_left, fs_right, fs_up, fs_down, dp_left, dp_right, dp_up, dp_down, a_p, a_k, a_g, a_pk, k_left, k_right, k_up, k_down, k_p, k_k, k_g, k_pk, tr_mode, tr_reset, tr_dummy, tr_boxes;
   t3_object *dbg_root;
   t3_mesh *dbg_box[10];
   int ndbg;
@@ -268,8 +268,8 @@ static int menu_pick(int p, int *v, int n) {
   if (cw_action_just_pressed(p, G.a_right) || (p == 1 && cw_action_just_pressed(0, G.k_right))) { *v = (*v + 1) % n; sfx(SFX_LAND, 0.4f, 1.6f); return 1; }
   return 0;
 }
-/* menus: A (kick) confirms, B (block) backs out, X (punch) switches the mode */
-static bool confirm(int p) { return cw_action_just_pressed(p, G.a_k) || (p == 1 && cw_action_just_pressed(0, G.k_k)); }
+/* menus: A (kick) or Start confirms, B (block) backs out, X (punch) switches the mode */
+static bool confirm(int p) { return cw_action_just_pressed(p, G.a_k) || cw_action_just_pressed(p, G.ui_start) || (p == 1 && cw_action_just_pressed(0, G.k_k)); }
 static bool back_out(int p) { return cw_action_just_pressed(p, G.a_g) || (p == 1 && cw_action_just_pressed(0, G.k_g)); }
 
 static void update_select(void) {
@@ -306,7 +306,9 @@ static void cmd_screen(int argc, const char **argv, cw_reply *r);
 #endif
 static void fixed(void *u, double dt) {
   (void)u; (void)dt;
-  if (!cw_shell_update()) return;
+  /* the select and result panels are not play: Start confirms there (confirm), so the shell's Start-pauses never sees them */
+  bool panel = cw_shell_screen_now() == CW_SHELL_PLAY && G.state != GS_MATCH;
+  if (!panel && !cw_shell_update()) return;
 #if defined(FIGHTER_AUTOPILOT) || defined(FIGHTER_SCRIPTED)
   static bool screen_env_done;
   if (!screen_env_done && getenv("FIGHTER_SCREEN")) { /* FIGHTER_SCREEN="select 1 3 0" or "result 0": the screen command at start */
@@ -333,7 +335,14 @@ static void fixed(void *u, double dt) {
   }
 #endif
   G.d_tick++;
-  if (G.state == GS_SELECT) { update_select(); G.sim.tick++; return; } /* the clock runs for blinks and idle motion */
+  if (G.state == GS_SELECT) {
+    if (cw_shell_join_press()) sfx(SFX_BELL, 0.4f, 1.3f); /* a pad with no seat: A takes one (players_changed) */
+    else if (cw_shell_join_requested() && !G.ready[0]) { G.ready[0] = 1; sfx(SFX_ROUND, 0.6f, 1.0f); } /* its Start confirms for the seated player */
+    if (cw_action_just_pressed(0, G.ui_quit)) { sfx(SFX_LAND, 0.4f, 1.0f); cw_shell_to_title(); return; } /* no pause menu on this panel */
+    update_select();
+    G.sim.tick++; /* the clock runs for blinks and idle motion */
+    return;
+  }
   if (G.state == GS_RESULT) {
     G.result_t++;
     if (G.result_t > 40 && confirm(0)) begin_match();
@@ -796,7 +805,7 @@ static void draw_select(float W, float H, float s) {
     if (p2) text(G.font_bold, "P2", x + cw_ - 10 * s, y0 - 24 * s, 18 * s, rgba(0.4f, 0.7f, 1, 1), CW_ALIGN_RIGHT);
   }
   text(G.font_ui, "Punch X (J)   Kick A (K)   Block B (L)   Up + button (together): high   Down + button: low   Punch + kick: throw", W * 0.5f, H - 38 * s, 13 * s, rgba(1, 0.95f, 0.8f, 1), CW_ALIGN_CENTER);
-  text(G.font_ui, "Left / right: fighter     A: lock in     B: back out (two players) or computer level", W * 0.5f, H - 20 * s, 13 * s, rgba(0.7f, 0.75f, 0.85f, 1), CW_ALIGN_CENTER);
+  text(G.font_ui, "Left / right: fighter     A or Start: lock in     B: back out (two players) or computer level     Back: title", W * 0.5f, H - 20 * s, 13 * s, rgba(0.7f, 0.75f, 0.85f, 1), CW_ALIGN_CENTER);
 }
 
 static void draw_result(float W, float H, float s) {
@@ -810,7 +819,7 @@ static void draw_result(float W, float H, float s) {
   text(G.font_score, b, W * 0.5f, 14 * s, 60 * s, rgba(1, 0.9f, 0.4f, 1), CW_ALIGN_CENTER);
   snprintf(b, sizeof b, "%d - %d", g->f[0].wins, g->f[1].wins);
   text(G.font_bold, b, W * 0.5f, 78 * s, 30 * s, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
-  text(G.font_ui, "A: rematch      B: back to fighter select", W * 0.5f, H - 50 * s, 22 * s, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
+  text(G.font_ui, "A or Start: rematch      B: back to fighter select", W * 0.5f, H - 50 * s, 22 * s, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
 }
 
 static void render(void *u, double alpha) {
@@ -833,6 +842,12 @@ static void render(void *u, double alpha) {
 static void screen_changed(cw_shell_screen from, cw_shell_screen to, void *u) {
   (void)from; (void)u;
   if (to == CW_SHELL_TITLE) { G.state = GS_SELECT; backdrop(); }
+}
+/* a pad took a seat on the select panel: the computer's side is theirs now */
+static void players_changed(int players, void *u) {
+  (void)u;
+  G.players = players;
+  G.ready[1] = 0;
 }
 static void shell_sound(cw_shell_sound s, void *u) {
   (void)u;
@@ -890,6 +905,7 @@ static void init(void *u) {
   G.a_left = cw_action_find("mv_left"); G.a_right = cw_action_find("mv_right"); G.a_up = cw_action_find("mv_up"); G.a_down = cw_action_find("mv_down");
   G.fs_left = cw_action_find("fs_left"); G.fs_right = cw_action_find("fs_right"); G.fs_up = cw_action_find("fs_up"); G.fs_down = cw_action_find("fs_down");
   G.dp_left = cw_action_find("dp_left"); G.dp_right = cw_action_find("dp_right"); G.dp_up = cw_action_find("dp_up"); G.dp_down = cw_action_find("dp_down");
+  G.ui_start = cw_action_find("ui_start"); G.ui_quit = cw_action_find("ui_quit");
   G.a_p = cw_action_find("atk_p"); G.a_k = cw_action_find("atk_k"); G.a_g = cw_action_find("atk_g"); G.a_pk = cw_action_find("atk_pk");
   G.k_left = cw_action_find("k2_left"); G.k_right = cw_action_find("k2_right"); G.k_up = cw_action_find("k2_up"); G.k_down = cw_action_find("k2_down");
   G.k_p = cw_action_find("k2_p"); G.k_k = cw_action_find("k2_k"); G.k_g = cw_action_find("k2_g"); G.k_pk = cw_action_find("k2_pk");
@@ -909,7 +925,7 @@ static void init(void *u) {
   if (ft_roster_load(&G.roster, txt, &err) < 0) cw_error("fighter: moves.txt: %s", err);
   free(txt);
   cw_shell_init(&(cw_shell_desc){ .title = "Fighter", .subtitle = "one on one", .max_players = 2, .game_save_size = sizeof(save_t), .game_save_version = 1, .start = start,
-                                  .sound = shell_sound, .screen_changed = screen_changed, .font = G.font_bold, .accent = rgba(1, 0.5f, 0.3f, 1) });
+                                  .sound = shell_sound, .screen_changed = screen_changed, .players_changed = players_changed, .font = G.font_bold, .accent = rgba(1, 0.5f, 0.3f, 1) });
   SAVE = cw_shell_game_save();
 #if !defined(FIGHTER_AUTOPILOT) && !defined(FIGHTER_SCRIPTED)
   backdrop();

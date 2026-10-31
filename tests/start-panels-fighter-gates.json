@@ -1,0 +1,124 @@
+[
+  {
+    "name": "start-panels-fighter-begin",
+    "app": "fighter",
+    "assets": "games/fighter/assets",
+    "frames": 90,
+    "input": "start-panels-fighter-begin.json",
+    "controlInput": "start-panels-fighter-begin-control.json",
+    "hosts": [
+      "native",
+      "romdev"
+    ],
+    "minColors": 50,
+    "maxGt16": 0.08,
+    "fields": [
+      "shell.screen",
+      "shell.players",
+      "game.state",
+      "game.phase"
+    ],
+    "expect": {
+      "shell.screen": 3,
+      "game.state": 1
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ],
+      "maxGt16": 0.08,
+      "vsGl": 0.08
+    },
+    "note": "one player: Start on fighter select locks in and the match begins, no pause; control: no press"
+  },
+  {
+    "name": "start-panels-fighter-play-pauses",
+    "app": "fighter",
+    "assets": "games/fighter/assets",
+    "frames": 120,
+    "input": "start-panels-fighter-play-pauses.json",
+    "controlInput": "start-panels-fighter-play-pauses-control.json",
+    "hosts": [
+      "native",
+      "romdev"
+    ],
+    "minColors": 50,
+    "maxGt16": 0.08,
+    "fields": [
+      "shell.screen",
+      "shell.players",
+      "game.state",
+      "game.phase"
+    ],
+    "expect": {
+      "shell.screen": 4,
+      "game.state": 1
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ],
+      "maxGt16": 0.08,
+      "vsGl": 0.08
+    },
+    "note": "in the match Start still pauses; control: no second press"
+  },
+  {
+    "name": "start-panels-fighter-back",
+    "app": "fighter",
+    "assets": "games/fighter/assets",
+    "frames": 90,
+    "input": "start-panels-fighter-back.json",
+    "controlInput": "start-panels-fighter-back-control.json",
+    "hosts": [
+      "native",
+      "romdev"
+    ],
+    "minColors": 50,
+    "maxGt16": 0.08,
+    "fields": [
+      "shell.screen",
+      "shell.players",
+      "game.state",
+      "game.phase"
+    ],
+    "expect": {
+      "shell.screen": 1
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ],
+      "maxGt16": 0.08,
+      "vsGl": 0.08
+    },
+    "note": "Back on fighter select goes out to the title; control: no press"
+  },
+  {
+    "name": "start-panels-fighter-result",
+    "app": "fighter_test",
+    "hosts": [
+      "native"
+    ],
+    "frames": 140,
+    "env": {
+      "FIGHTER_SCREEN": "result 0"
+    },
+    "input": "start-panels-fighter-result.json",
+    "controlInput": "start-panels-fighter-result-control.json",
+    "minColors": 50,
+    "maxGt16": 0.08,
+    "fields": [
+      "shell.screen",
+      "game.state"
+    ],
+    "expect": {
+      "shell.screen": 3,
+      "game.state": 1
+    },
+    "note": "Start on the result screen is a rematch, no pause; control: no press, still on the result screen"
+  }
+]
