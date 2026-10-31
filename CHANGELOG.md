@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.11.2
+
+- Street Toughs: enemies and heroes no longer flash in the middle of the screen in
+  their bind pose when they appear.
+- Street Toughs: Start answers on the panels before a match, and the wait after
+  pressing play is gone: the stage builds under the loading screen, with a progress bar.
+- partypack: Start confirms on the hub, picker, boards, intro and results, and pauses
+  in play. B on the hub goes to the title.
+- arenafps, fighter, partypack: a pad unplugged on a panel frees its seat.
+
 ## 0.11.1
 
 - All games now run on cartwheel-engine v0.28.5. Water reads its floor map and
