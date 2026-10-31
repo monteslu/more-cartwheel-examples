@@ -85,6 +85,7 @@ enum { SFX_JUMP, SFX_LAND, SFX_COIN, SFX_HURT, SFX_SPLASH, SFX_DASH, SFX_POWER, 
 static cw_action a_left, a_right, a_up, a_down, a_jump, a_dash, a_map, a_retry;
 static input_state INPUT[MAX_PLAYERS];
 static bool g_map_open;
+static int join_seats[4] = { -1, -1, -1, -1 }; /* who holds each seat on the join screen (join_seats_track) */
 static bool g_attract; /* the title and join screens: four bots play the meadow behind the menu */
 static int g_map_sel = -1; /* the flag the map's cursor is on */
 static cw_font g_font;
@@ -1422,6 +1423,7 @@ static void init(void *user) {
                                   .quit = quit_match, .sound = sound_hook, .draw_background = title_background });
   g_font = cw_ui_font_sans();
   audio_init();
+  cw_debug_field("join.seats", join_seats, CW_DBG_I32, 4);
   cw_debug_i32("g.state", &g_state_dbg);
   cw_debug_field("g.scenery", g_scenery_dbg, CW_DBG_I32, 2);
   cw_debug_i32("g.players", &g_players_dbg);
@@ -1814,8 +1816,33 @@ static void draw_map(float W, float H) {
 }
 
 /* the title screen's picture: a painted dusk meadow with three drifting ridges, a sun, fireflies and the four heroes */
+/* Who holds which seat while the join screen is up, so the heroes in the shell's slot cards follow it (the shell reports
+ * the players only once the match starts): the screen's own rule, read frame by frame. South or Start takes the first free
+ * seat, East leaves; the keyboard joins with Enter or Space and leaves with Esc. */
+static void join_seats_track(cw_shell_screen scr) {
+  static bool open;
+  if (scr != CW_SHELL_JOIN) { open = false; return; }
+  if (!open) { open = true; for (int i = 0; i < 4; i++) join_seats[i] = -1; }
+  const cw_raw_input *raw = cw_input_raw();
+  if (!raw) return;
+  for (int pad = 0; pad <= CW_MAX_PADS; pad++) {
+    bool kb = pad == CW_MAX_PADS, on = kb || raw->pads[pad].connected;
+    uint32_t pr = !on || kb ? 0 : raw->pads[pad].pressed;
+    bool in = kb ? raw->keys_pressed[40] || raw->keys_pressed[44] : pr & ((1u << CW_PAD_SOUTH) | (1u << CW_PAD_START));
+    bool out = kb ? raw->keys_pressed[41] : pr & (1u << CW_PAD_EAST);
+    int seat = -1, free_seat = -1;
+    for (int i = 3; i >= 0; i--) {
+      if (join_seats[i] == pad) seat = i;
+      if (join_seats[i] < 0) free_seat = i;
+    }
+    if (seat >= 0 && out) join_seats[seat] = -1;
+    else if (seat < 0 && in && free_seat >= 0) join_seats[free_seat] = pad;
+  }
+}
+
 static void title_background(cw_shell_screen scr, cw_vec2 cv, void *user) {
   (void)user;
+  join_seats_track(scr);
   float W = cv.x, H = cv.y, s = H / 540.0f, t = g_ui_t;
   if (g_attract && G.world.id && S.built) {
     /* the 3D world plays behind the menu: shade the top for the title and the bottom for the hints, nothing else */
@@ -1827,9 +1854,8 @@ static void title_background(cw_shell_screen scr, cw_vec2 cv, void *user) {
       cw_r2d_rect(cw_rect_make(0, b0, W, b1 - b0), cw_rgba(0.02f, 0.03f, 0.06f, 0.55f * (1 - f) * (1 - f)));
     }
     if (scr == CW_SHELL_JOIN) {
-      int joined = cw_shell_players();
       for (int i = 0; i < 4; i++) {
-        bool in = i < joined;
+        bool in = join_seats[i] >= 0;
         float x = W * (0.125f + 0.25f * (float)i), y = H * 0.625f - (in ? 7 * s * fabsf(sinf(t * 3.0f + (float)i * 0.9f)) : 0);
         portrait((cw_vec2){ x, y }, 21 * s, i, !in);
       }
@@ -1873,9 +1899,8 @@ static void title_background(cw_shell_screen scr, cw_vec2 cv, void *user) {
     /* on the join screen each hero stands in its own slot card (the shell draws four cards across, 0.3 to 0.7 of the
      * height, its labels at 0.36 and 0.5), clear of the hint line at the bottom; a joined hero hops, an open slot waits
      * dimmed */
-    int joined = cw_shell_players();
     for (int i = 0; i < 4; i++) {
-      bool in = i < joined;
+      bool in = join_seats[i] >= 0;
       float x = W * (0.125f + 0.25f * (float)i), y = H * 0.625f - (in ? 7 * s * fabsf(sinf(t * 3.0f + (float)i * 0.9f)) : 0);
       cw_r2d_circle((cw_vec2){ x, H * 0.672f }, 22 * s, 16, cw_rgba(0, 0, 0, 0.22f));
       portrait((cw_vec2){ x, y }, 21 * s, i, !in);

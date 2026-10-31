@@ -1,0 +1,69 @@
+[
+  {
+    "name": "start-panels-coop-seats",
+    "app": "coopplatformer",
+    "assets": "games/coopplatformer/assets",
+    "frames": 70,
+    "input": "start-panels-coop-seats.json",
+    "controlInput": "start-panels-coop-seats-control.json",
+    "hosts": [
+      "native",
+      "romdev"
+    ],
+    "minColors": 50,
+    "maxGt16": 0.08,
+    "fields": [
+      "shell.screen",
+      "join.seats"
+    ],
+    "expect": {
+      "shell.screen": 2,
+      "join.seats": [
+        0,
+        1,
+        -1,
+        -1
+      ]
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ],
+      "maxGt16": 0.08,
+      "vsGl": 0.08
+    },
+    "note": "two pads press A on the join screen: the first two heroes are in; control: only one press"
+  },
+  {
+    "name": "start-panels-coop-play-pauses",
+    "app": "coopplatformer",
+    "assets": "games/coopplatformer/assets",
+    "frames": 90,
+    "input": "start-panels-coop-play-pauses.json",
+    "controlInput": "start-panels-coop-play-pauses-control.json",
+    "hosts": [
+      "native",
+      "romdev"
+    ],
+    "minColors": 50,
+    "maxGt16": 0.08,
+    "fields": [
+      "shell.screen",
+      "shell.players"
+    ],
+    "expect": {
+      "shell.screen": 4,
+      "shell.players": 1
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ],
+      "maxGt16": 0.08,
+      "vsGl": 0.08
+    },
+    "note": "no panel after the join screen: the level is play and Start pauses; control: no press"
+  }
+]
