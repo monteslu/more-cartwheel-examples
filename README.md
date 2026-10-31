@@ -91,7 +91,7 @@ controls and the power-up list).
 
 ### jetski
 
-![jetski: lining up a steel ramp on the lagoon at the end of the day, with the lighthouse islet beyond](docs/screenshots/jetski.jpg)
+![jetski: lining up a worn steel ramp on the open sea at the end of the day, a sea stack beyond](docs/screenshots/jetski.jpg)
 
 jetski, a wave racing game where the water is the track. Six riders race three laps through a volcanic atoll at sunset and a cold
 granite fjord on a grey morning, whose falling tide opens a shortcut under a drowned arch. Swells throw you into the air and big
