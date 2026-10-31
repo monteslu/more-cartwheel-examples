@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.0
+
+- jetski: four floating ramps on the racing line that ride the swell, for big air:
+  about 1.8 seconds airborne in the test, against 0.8 beside the ramp.
+- jetski: tricks are one press in the air. Computer racers don't aim for ramps yet,
+  and the ramps are a plain first pass.
+
 ## 0.9.0
 
 - arenafps: a new default difficulty for someone new. The levels are now EASY,
