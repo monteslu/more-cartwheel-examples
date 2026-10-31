@@ -127,6 +127,12 @@ for (const s of ['L', 'R']) {
   m.capsule('boot', add(foot, [0, 0.03, 0]), add(foot, [0, -0.015, -0.02]), 0.05, 0.054, { weights: bw });
   m.capsule('strap', add(foot, [0, -0.085, -0.05]), add(foot, [0, -0.09, 0.17]), 0.046, 0.04, { ratio: 0.32, weights: bw });
 }
+// bare forearms and a ponytail: src/view.c turns them on and colours them rider by rider
+for (const s of ['L', 'R']) limb('skin', ['Fore' + s, 'Hand' + s], [0.0465, 0.033], { muscle: 0.16, n: 12 });
+for (let k = 0; k < 2; k++) {
+  const a = add(W.Head, [0, 0.07 - k * 0.09, -0.125 - k * 0.035]), b = add(W.Head, [0, -0.02 - k * 0.11, -0.16 - k * 0.012]);
+  m.capsule('hair', a, b, 0.036 - k * 0.012, 0.026 - k * 0.012, { n: 10, weights: () => [[BI.Head, 1]] });
+}
 // the helmet: a shell smaller than a cartoon's, a brow, a chin bar, a wrapping visor, a neck roll, vents and a stripe
 const Hd = W.Head, he = BI.Head, hw = () => [[he, 1]];
 m.ellipsoid('helmet', add(Hd, [0, 0.085, -0.012]), 0.103, 0.11, 0.122, { steps: 14, n: 26, weights: hw });
@@ -138,8 +144,8 @@ m.ellipsoid('accent', add(Hd, [0, 0.086, -0.014]), 0.0255, 0.1125, 0.124, { step
 for (const s of [-1, 1]) m.capsule('strap', add(Hd, [s * 0.042, 0.15, -0.06]), add(Hd, [s * 0.046, 0.12, -0.115]), 0.008, 0.008, { caps: 2, rings: 2, n: 6, weights: hw });
 const glb = new Glb();
 const suitMat = glb.material('suit', 0.66), vestMat = glb.material('vest', 0.82);
-const mats = { suit: suitMat, strap: suitMat, glove: suitMat, boot: suitMat, vest: vestMat, accent: vestMat, helmet: glb.material('helmet', 0.26), visor: glb.material('visor', 0.08, 0.35) };
-const color = { suit: [0.03, 0.033, 0.04, 1], vest: [0.9, 0.3, 0.05, 1], helmet: [0.82, 0.82, 0.8, 1], visor: [0.02, 0.03, 0.05, 1] };
+const mats = { suit: suitMat, strap: suitMat, glove: suitMat, boot: suitMat, skin: glb.material('skin', 0.55), hair: glb.material('hair', 0.7), vest: vestMat, accent: vestMat, helmet: glb.material('helmet', 0.26), visor: glb.material('visor', 0.08, 0.35) };
+const color = { skin: [0.7, 0.5, 0.38, 1], hair: [0.05, 0.03, 0.02, 1], suit: [0.03, 0.033, 0.04, 1], vest: [0.9, 0.3, 0.05, 1], helmet: [0.82, 0.82, 0.8, 1], visor: [0.02, 0.03, 0.05, 1] };
 for (const [k, c] of Object.entries(color)) glb.materials[mats[k]].pbrMetallicRoughness.baseColorFactor = c;
 const jn = BONES.map((n) => glb.node({ name: n, translation: T[n] }));
 BONES.forEach((n, i) => { if (PARENT[n]) (glb.nodes[jn[BI[PARENT[n]]]].children ||= []).push(jn[i]); });

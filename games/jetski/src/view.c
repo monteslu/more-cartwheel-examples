@@ -34,6 +34,15 @@ static void shadows(t3_object *o) {
 }
 
 /* this racer's paint: its own copies of the materials named deck and vest */
+/* who they are: the suit, the helmet, skin and hair (0 alpha: helmet only, no ponytail; no skin: long sleeves), and their build */
+static const struct rider_look { float suit[3], helmet[3], skin[3], hair[3]; bool sleeves, ponytail; float tall, broad; } LOOK[RACERS] = {
+  { { 0.03f, 0.033f, 0.04f }, { 0.82f, 0.82f, 0.8f }, { 0.7f, 0.5f, 0.38f }, { 0.08f, 0.05f, 0.03f }, true, false, 1.0f, 1.0f },
+  { { 0.02f, 0.06f, 0.12f }, { 0.05f, 0.12f, 0.3f }, { 0.24f, 0.13f, 0.08f }, { 0.02f, 0.015f, 0.015f }, false, true, 0.94f, 0.9f },
+  { { 0.1f, 0.08f, 0.04f }, { 0.95f, 0.72f, 0.05f }, { 0.78f, 0.56f, 0.44f }, { 0.55f, 0.32f, 0.08f }, false, true, 0.97f, 0.92f },
+  { { 0.02f, 0.05f, 0.03f }, { 0.04f, 0.04f, 0.045f }, { 0.42f, 0.25f, 0.15f }, { 0.03f, 0.02f, 0.02f }, false, false, 1.07f, 1.12f },
+  { { 0.08f, 0.02f, 0.09f }, { 0.86f, 0.3f, 0.55f }, { 0.58f, 0.38f, 0.25f }, { 0.25f, 0.05f, 0.08f }, true, true, 0.91f, 0.88f },
+  { { 0.13f, 0.13f, 0.14f }, { 0.9f, 0.2f, 0.1f }, { 0.13f, 0.08f, 0.055f }, { 0.01f, 0.01f, 0.01f }, false, false, 1.03f, 1.06f },
+};
 static void paint(t3_object *o, int team) {
   if ((o->type == T3_MESH || o->type == T3_SKINNED_MESH)) {
     t3_mesh *m = (t3_mesh *)o;
@@ -41,8 +50,13 @@ static void paint(t3_object *o, int team) {
       t3_material *mat = m->materials[k];
       if (!mat || !mat->name) continue;
       const float *c = NULL;
+      const struct rider_look *lk = &LOOK[team];
       if (!strcmp(mat->name, "deck")) c = TEAMS[team];
       else if (!strcmp(mat->name, "vest") || !strcmp(mat->name, "accent")) c = TEAMS[team] + 3;
+      else if (!strcmp(mat->name, "suit")) c = lk->suit;
+      else if (!strcmp(mat->name, "helmet")) c = lk->helmet;
+      else if (!strcmp(mat->name, "skin")) { c = lk->skin; o->visible = !lk->sleeves; }
+      else if (!strcmp(mat->name, "hair")) { c = lk->hair; o->visible = lk->ponytail; }
       if (!c) continue;
       t3_material *cl = t3_material_clone(mat);
       cl->color = (t3_color){ c[0], c[1], c[2] };
@@ -408,6 +422,7 @@ void view_init(void) {
     snprintf(name, sizeof name, "Rider%d", i);
     rider_n[i] = cw_node_new("Node3D", name);
     cw_node_add_child(craft_n[i], rider_n[i]);
+    cw_node3d_set_scale(rider_n[i], (t3_vec3){ LOOK[i].broad, LOOK[i].tall, LOOK[i].broad });
     t3_object *ro = cw_gltf_instantiate(rider_res);
     paint(ro, i);
     if (i == 0) shadows(ro);
