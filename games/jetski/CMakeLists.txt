@@ -1,7 +1,7 @@
 # jetski: a wave racing game on open water, 1 player and computer racers for now.
 #   jetski       the game
 #   jetski_auto  a computer rider plays it (for hosts that send no input, and the gates)
-set(SRC src/main.c src/sim.c src/view.c src/rider.c src/fx.c src/hud.c src/audio.c)
+set(SRC src/main.c src/sim.c src/view.c src/rider.c src/fx.c src/hud.c src/audio.c src/menu.c)
 set(CW_PROGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/programs/jetski.txt)
 configure_file(project.cwproj ${CMAKE_CURRENT_SOURCE_DIR}/assets/project.cwproj COPYONLY)
 cw_add_app(jetski SOURCES ${SRC} PACK ${CMAKE_CURRENT_SOURCE_DIR}/assets/roots.txt)

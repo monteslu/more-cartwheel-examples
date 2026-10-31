@@ -60,6 +60,14 @@ static void track_update(craft *c) {
   c->dist = (float)c->lap * COURSE_LEN + (float)best / (float)TRACK_N * COURSE_LEN;
 }
 
+/* easy rides every second buoy, normal three in four, hard every one */
+bool buoy_on(int b) { return g_difficulty == 2 || (g_difficulty == 1 ? (b & 3) != 3 : (b & 1) == 0); }
+bool racer_on(int i) { return i == 0 || g_mode != MODE_TIME_TRIAL || G.state == RACE_ATTRACT; }
+static int buoy_next(int b) {
+  do b = (b + 1) % BUOY_N; while (!buoy_on(b));
+  return b;
+}
+
 static void buoys(craft *c) {
   const float *b = BUOYS[c->next_buoy];
   float s_x, s_z, tx, tz;
@@ -74,12 +82,14 @@ static void buoys(craft *c) {
     if (c->meter < 5) c->meter++;
     c->passes++;
     c->flash_ok = 1;
+    c->ok_tick = c->next_buoy + 1;
   } else {
     c->meter = 0;
     c->misses++;
     c->flash_miss = 1;
+    if (c->misses >= 5 && c->human && !c->dq) c->dq = 1;
   }
-  c->next_buoy = (c->next_buoy + 1) % BUOY_N;
+  c->next_buoy = buoy_next(c->next_buoy);
 }
 
 static void computer(craft *c, int idx) {
@@ -106,6 +116,14 @@ static void computer(craft *c, int idx) {
 
 static void craft_tick(craft *c, int idx, float dt) {
   c->px = c->x, c->py = c->y, c->pz = c->z, c->pyaw = c->yaw, c->ppitch = c->pitch, c->proll = c->roll;
+  if (c->spill > 0) {
+    /* thrown off: the hull coasts and rights itself while the rider climbs back on. Under three seconds, and the meter only
+     * loses two arrows, so a big try is worth making */
+    c->spill -= dt;
+    c->in.steer = 0, c->in.lean = 0, c->in.throttle = 0, c->in.trick = false;
+    c->trick_kind = 0;
+    if (c->spill <= 0) { c->roll = 0, c->rr = 0; c->meter = c->meter > 2 ? c->meter - 2 : 0; }
+  }
   c->steer += (c->in.steer - c->steer) * clampf(dt * 9, 0, 1);
   c->lean += (c->in.lean - c->lean) * clampf(dt * 6, 0, 1);
   float sy, cy;
@@ -136,7 +154,8 @@ static void craft_tick(craft *c, int idx, float dt) {
   float vf = ux * fx + uz * fz, vl = ux * rx + uz * rz;
   c->top = BASE_TOP + METER_TOP * (float)c->meter + c->boost * 3.5f;
   float top = c->top;
-  if (!c->human) top *= c->skill * (1.0f + 0.03f * clampf((G.c[0].dist - c->dist) / 120.0f, -1, 1)); /* a small, bounded pull toward the human */
+  static const float DIFF_TOP[3] = { 0.93f, 1.0f, 1.05f };
+  if (!c->human) top *= DIFF_TOP[g_difficulty] * c->skill * (1.0f + 0.03f * clampf((G.c[0].dist - c->dist) / 120.0f, -1, 1)); /* a small, bounded pull toward the human */
   float drag = THRUST / (top * top);
   float af = 0;
   if (!c->air) {
@@ -144,7 +163,13 @@ static void craft_tick(craft *c, int idx, float dt) {
     af -= drag * vf * fabsf(vf) * (0.35f + 0.65f * c->wet) * (1.0f + 0.5f * c->lean * fabsf(c->steer));
     if (c->in.throttle < 0.1f) af -= 0.8f * vf * 0.25f;
     /* lateral grip: the hull carves */
-    float grip = land ? 4.0f : (2.6f + 2.4f * c->wet + 1.8f * c->lean) * c->wet;
+    /* pulled back the stern digs in and the hull holds its line through the turn; let go at full lock it skates */
+    float grip = land ? 4.0f : (2.0f + 2.2f * c->wet + 4.5f * clampf(c->lean, 0, 1)) * c->wet;
+    c->slip = vl;
+    /* the price of too much stick: a slide scrubs speed, and held long at speed it throws the rider */
+    if (fabsf(vl) > 3.5f) af -= (fabsf(vl) - 3.5f) * 1.6f;
+    if (fabsf(vl) > 8.5f && !land) { c->slide_t += dt; if (c->slide_t > 0.9f && c->spill <= 0) { c->spill = 1.9f, c->spills++, c->big_slide = true; c->slide_t = 0; } }
+    else c->slide_t = 0;
     vl -= vl * clampf(grip * dt, 0, 1);
   } else {
     c->air_time += dt;
@@ -167,11 +192,22 @@ static void craft_tick(craft *c, int idx, float dt) {
   /* turning: the hull yaws with the stick; less at speed, more when leaned back */
   float sp = sqrtf(c->vx * c->vx + c->vz * c->vz);
   c->speed = sp;
-  float rate = 1.5f - 0.028f * sp + 0.75f * clampf(c->lean, 0, 1);
+  float rate = 1.45f - 0.03f * sp + 0.85f * clampf(c->lean, 0, 1);
   /* a hull on sand pivots only as it moves: steering turns its path, it does not spin on the spot */
   if (land) rate = 0.25f + clampf(sp * 0.45f, 0, 1.1f);
   if (c->air) rate *= 0.35f;
   c->yaw = wrap_pi(c->yaw - c->steer * rate * dt);
+  /* cutting across a face turns the hull down it, so the line through the waves is a choice */
+  if (!c->air && !land) {
+    float down_side = s.normal.x * rx + s.normal.z * rz; /* + : the face falls away to the right */
+    c->yaw = wrap_pi(c->yaw - down_side * 0.6f * c->wet * dt);
+  }
+  /* the path's turn radius, for the handling gate */
+  {
+    float hd = cw_atan2(c->vx, c->vz), dh = fabsf(wrap_pi(hd - c->heading)) / dt;
+    c->heading = hd;
+    if (dh > 0.02f && sp > 3) { float rr = sp / dh; c->radius += (rr - c->radius) * 0.03f; }
+  }
   /* attitude */
   float pitch_t = cw_atan2(hb - hs, 2.3f) + 0.045f + 0.06f * clampf(c->lean, 0, 1) + 0.004f * sp;
   if (land) {
@@ -185,7 +221,8 @@ static void craft_tick(craft *c, int idx, float dt) {
     c->rr += ((roll_t - c->roll) * 60.0f - c->rr * 11.0f) * dt;
   } else {
     /* in the air: nose falls slowly, the stick trims */
-    c->pr += (-0.5f + c->in.lean * 2.6f) * dt;
+    /* left alone the hull settles level for its landing; the stick trims it */
+    if (!c->trick_kind) c->pr += ((0.1f - c->pitch) * 2.2f - c->pr * 1.8f + c->in.lean * 2.6f) * dt;
     c->rr += (-c->roll * 2.4f + c->steer * 1.5f - c->rr * 1.6f) * dt;
     if (c->trick_kind == 0 && c->in.trick && c->air_time > 0.08f) {
       c->trick_kind = c->in.lean > 0.4f ? 2 : 1;
@@ -218,11 +255,17 @@ static void craft_tick(craft *c, int idx, float dt) {
     if (c->air_time > 0.2f) {
       c->big_splash = true;
       c->kick = clampf(hit * 0.16f, 0, 1);
-      /* a tidy landing keeps the speed, a crooked one costs it; a trick unfinished drops most */
-      float keep = 1.0f - clampf(err * 0.55f, 0, 0.72f);
-      if (c->trick_kind) keep = 0.3f, c->trick_kind = 0, c->meter = 0;
+      /* flat keeps the speed, nose down plunges and loses it; weight back on the way in saves some of it. A trick not finished
+       * or a landing far out of line throws the rider. A clean long one pays into the meter */
+      float nose = wrap_pi(pitch_t - c->pitch); /* + : nose below the water's line */
+      float e2 = err + (nose > 0 ? nose * 0.9f : 0) - 0.35f * clampf(c->in.lean, 0, 1) * (nose > 0 ? 1.0f : 0.0f);
+      e2 = e2 < 0 ? 0 : e2;
+      float keep = e2 < 0.12f ? 1.0f : 1.0f - clampf((e2 - 0.12f) * 0.42f, 0, 0.65f);
+      if (nose > 0.3f) c->vy -= nose * 3.0f, c->y -= nose * 0.25f;
+      if (c->trick_kind || e2 > 2.1f) keep = 0.35f, c->trick_kind = 0, c->spill = 1.9f, c->spills++;
       c->vx *= keep, c->vz *= keep;
-      if (err < 0.25f && c->air_time > 0.6f) c->boost = 1;
+      c->land_keep = keep;
+      if (e2 < 0.25f && c->air_time > 0.6f) { c->boost = 1; if (c->meter < 5) c->meter++; c->flash_ok = 1; }
       c->pitch = wrap_pi(c->pitch), c->roll = wrap_pi(c->roll);
       c->pr *= 0.25f, c->rr *= 0.25f;
     }
@@ -298,6 +341,7 @@ static void craft_tick(craft *c, int idx, float dt) {
 
 void sim_reset(int state) {
   uint32_t tick = G.tick;
+  int level = G.level;
   double wt_extra = G.wt_extra;
   float keep_cam[3] = { G.cam[0], G.cam[1], G.cam[2] };
   cw_node water = G.water, camera = G.camera, sun = G.sun, sky = G.sky, clouds = G.clouds, sun_node = G.sun_node;
@@ -305,6 +349,7 @@ void sim_reset(int state) {
   memset(&G, 0, sizeof G);
   G.tick = tick, G.water = water, G.camera = camera, G.sun = sun, G.sky = sky, G.clouds = clouds, G.sun_node = sun_node, G.land = land;
   G.state = state;
+  G.level = level;
   G.wt_extra = wt_extra;
   memcpy(G.cam, keep_cam, sizeof keep_cam);
   G.clock = state == RACE_GRID ? -3.6f : 0;
@@ -326,13 +371,16 @@ void sim_reset(int state) {
     c->lap = -1; /* behind the line: its first crossing begins lap one */
     c->place = i + 1;
     G.order[i] = i;
+    /* a time trial: the others stay home, out of the world */
+    if (!racer_on(i)) { c->x = c->px = 3000.0f + 40.0f * (float)i, c->z = c->pz = 3000.0f; c->y = c->py = -60.0f; c->dist = -1e6f; }
   }
+  if (state == RACE_ATTRACT && cw_node_valid(G.water)) sim_place(COURSE_LEN * 0.2f);
 }
 
 /* the sea builds lap by lap (the waves are properties: the surface and every height query read them at once) */
 static void weather(void) {
   float lead = 0;
-  for (int i = 0; i < RACERS; i++) if (G.c[i].dist > lead) lead = G.c[i].dist;
+  for (int i = 0; i < RACERS; i++) if (racer_on(i) && G.c[i].dist > lead) lead = G.c[i].dist;
   float t = G.state == RACE_ATTRACT ? 0.75f : clampf(lead / (COURSE_LEN * (float)LAPS), 0, 1);
   float target = 0.62f + 0.38f * t;
   G.swell += (target - G.swell) * 0.004f;
@@ -340,7 +388,9 @@ static void weather(void) {
 #ifdef JETSKI_AUTOPILOT
   { const char *e = getenv("JETSKI_SWELL"); if (e) G.swell = (float)atof(e); }
 #endif
-  float a = G.swell;
+  /* difficulty: the sea itself is bigger */
+  static const float DIFF_SEA[3] = { 0.8f, 1.0f, 1.18f };
+  float a = G.swell * DIFF_SEA[g_difficulty];
   cw_node_set(G.water, "wave0", cw_val_vec4(200, 46, 1.5f * a, 0.7f));
   cw_node_set(G.water, "wave1", cw_val_vec4(216, 37, 1.05f * a, 0.7f));
   cw_node_set(G.water, "wave2", cw_val_vec4(150, 14, 0.14f + 0.22f * a, 0.65f));
@@ -348,6 +398,32 @@ static void weather(void) {
   /* the tide comes in over the race */
   G.tide = 0.5f * t;
   cw_node3d_set_position(G.water, (t3_vec3){ 0, G.tide, 0 });
+}
+
+/* every racer to a place on the course, at speed */
+void sim_place(float s) {
+  for (int i = 0; i < RACERS; i++) {
+    craft *c = &G.c[i];
+    float x, z, dx, dz;
+    track_at(s - (float)(i * 11), &x, &z, &dx, &dz);
+    c->x = c->px = x + dz * (i % 2 ? 3.0f : -3.0f);
+    c->z = c->pz = z - dx * (i % 2 ? 3.0f : -3.0f);
+    c->y = c->py = cw_water_height_at(G.water, c->x, c->z, cw_water_time(G.water));
+    c->yaw = c->pyaw = cw_atan2(dx, dz);
+    c->vx = dx * 22, c->vz = dz * 22, c->vy = 0;
+    c->track_i = (int)(s / COURSE_LEN * (float)TRACK_N) % TRACK_N;
+    if (c->track_i < 0) c->track_i += TRACK_N;
+    for (int b = 0; b < BUOY_N; b++) if (buoy_on(b) && BUOYS[b][3] > s - (float)(i * 11)) { c->next_buoy = b; break; }
+    c->lap = 0;
+  }
+  G.cam[0] = 0, G.look[0] = 0;
+}
+
+/* the course's area: far from the line for five seconds and the race is over, with a warning all the way */
+static void out_of_bounds(craft *c, float dt) {
+  float tx = c->x - TRACK[c->track_i][0], tz = c->z - TRACK[c->track_i][1];
+  if (tx * tx + tz * tz > 110.0f * 110.0f) { c->out_t += dt; if (c->out_t > 5.0f && c->human && !c->dq) c->dq = 2; }
+  else c->out_t = 0;
 }
 
 void sim_tick(float dt) {
@@ -359,6 +435,7 @@ void sim_tick(float dt) {
   if (G.state == RACE_GRID && G.clock >= 0) G.state = RACE_ON;
   for (int i = 0; i < RACERS; i++) {
     craft *c = &G.c[i];
+    if (!racer_on(i)) continue;
     bool ai = !c->human || G.state == RACE_ATTRACT;
 #ifdef JETSKI_AUTOPILOT
     ai = true;
@@ -367,9 +444,11 @@ void sim_tick(float dt) {
     if (ai) computer(c, i);
     if (!go) c->in.throttle = 0;
     craft_tick(c, i, dt);
+    c->ok_tick = 0;
     if (go && G.state != RACE_DONE) {
       track_update(c);
       buoys(c);
+      if (G.state == RACE_ON) out_of_bounds(c, dt);
     }
   }
   /* craft shoulder each other aside, they do not pass through */
@@ -399,8 +478,8 @@ void sim_tick(float dt) {
     G.order[b] = v;
   }
   for (int i = 0; i < RACERS; i++) G.c[G.order[i]].place = i + 1;
-  if (G.state == RACE_ON && G.c[0].finish > 0) G.state = RACE_DONE;
-  /* the attract loop races on and on */
+  if (G.state == RACE_ON && (G.c[0].finish > 0 || G.c[0].dq)) G.state = RACE_DONE;
+  /* the attract loop races on and on, and stays out where the swell is */
   if (G.state == RACE_ATTRACT && G.c[G.order[0]].lap >= 1) for (int i = 0; i < RACERS; i++) G.c[i].lap = -1;
   uint32_t h = G.tick;
   for (int i = 0; i < RACERS; i++) {

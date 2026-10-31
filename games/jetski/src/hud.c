@@ -47,12 +47,7 @@ static void hud_body(void) {
   const craft *c = &G.c[0];
   cw_color white = cw_rgba(1, 1, 1, 0.96f), gold = cw_rgba(1.0f, 0.78f, 0.25f, 1), dim = cw_rgba(1, 1, 1, 0.7f);
   char buf[64];
-  if (G.state == RACE_ATTRACT) {
-    text(big, "JETSKI", w * 0.5f, h * 0.16f, 118 * u, white, 0.5f);
-    float pulse = 0.65f + 0.35f * sinf((float)G.tick * 0.08f);
-    text(small, "PRESS A OR ENTER", w * 0.5f, h * 0.86f, 40 * u, cw_rgba(1, 1, 1, pulse), 0.5f);
-    return;
-  }
+  if (G.state == RACE_ATTRACT) return;
   /* speed, bottom right */
   snprintf(buf, sizeof buf, "%d", (int)(c->speed * 3.6f + 0.5f));
   text(big, buf, w - 150 * u, h - 186 * u, 92 * u, white, 1);
@@ -66,13 +61,19 @@ static void hud_body(void) {
   }
   /* place and lap, top left */
   static const char *const ord[] = { "1st", "2nd", "3rd", "4th", "5th", "6th" };
-  text(big, ord[c->place - 1 < 0 ? 0 : c->place - 1], 60 * u, 42 * u, 84 * u, white, 0);
+  if (g_mode == MODE_TIME_TRIAL) text(big, "TIME TRIAL", 60 * u, 58 * u, 52 * u, white, 0);
+  else text(big, ord[c->place - 1 < 0 ? 0 : c->place - 1], 60 * u, 42 * u, 84 * u, white, 0);
   snprintf(buf, sizeof buf, "LAP %d/%d", c->lap < 0 ? 1 : c->lap + 1 > LAPS ? LAPS : c->lap + 1, LAPS);
   text(small, buf, 62 * u, 138 * u, 40 * u, dim, 0);
   if (G.clock >= 0) {
     float tm = c->finish > 0 ? c->finish : G.clock;
     snprintf(buf, sizeof buf, "%d:%05.2f", (int)(tm / 60), tm - 60.0f * (float)(int)(tm / 60));
     text(small, buf, w - 60 * u, 48 * u, 44 * u, white, 1);
+    float best = menu_best_time();
+    if (g_mode == MODE_TIME_TRIAL && best > 0) {
+      snprintf(buf, sizeof buf, "best %d:%05.2f", (int)(best / 60), best - 60.0f * (float)(int)(best / 60));
+      text(small, buf, w - 60 * u, 100 * u, 34 * u, dim, 1);
+    }
   }
   /* the next buoy: a chevron over it on its passing side */
   const float *b = BUOYS[c->next_buoy];
@@ -88,6 +89,16 @@ static void hud_body(void) {
     float sz2 = 24 * u * k;
     cw_r2d_triangle(cw_v2(p.x + dir * sz2, p.y), cw_v2(p.x - dir * sz2 * 0.3f, p.y - sz2), cw_v2(p.x - dir * sz2 * 0.3f, p.y + sz2), col);
   }
+  /* misses so far: five and the race is over */
+  for (int i = 0; i < 5; i++) {
+    float x = 62 * u + (float)i * 34 * u, y = 196 * u;
+    cw_r2d_round_rect(cw_rect_make(x, y, 24 * u, 24 * u), 12 * u, 8, i < c->misses ? cw_rgba(1, 0.25f, 0.12f, 0.95f) : cw_rgba(1, 1, 1, 0.2f));
+  }
+  if (c->out_t > 0.2f) {
+    snprintf(buf, sizeof buf, "BACK TO THE COURSE  %d", (int)ceilf(5.0f - c->out_t));
+    text(big, buf, w * 0.5f, h * 0.2f, 54 * u, cw_rgba(1, 0.4f, 0.15f, 1), 0.5f);
+  }
+  if (c->spill > 0) text(big, "WIPEOUT", w * 0.5f, h * 0.2f, 76 * u, cw_rgba(1, 1, 1, 0.9f), 0.5f);
   if (c->flash_miss > 0) text(big, "MISS", w * 0.5f, h * 0.2f, 76 * u, cw_rgba(1, 0.3f, 0.15f, c->flash_miss), 0.5f);
   if (c->air && c->air_time > 0.5f) {
     snprintf(buf, sizeof buf, "%.1f s", c->air_time);
@@ -100,15 +111,12 @@ static void hud_body(void) {
     if (G.clock < 0) text(big, buf, w * 0.5f, h * 0.3f, 190 * u, white, 0.5f);
   } else if (G.state == RACE_ON && G.clock < 1.2f) {
     text(big, "GO", w * 0.5f, h * 0.3f, 190 * u, gold, 0.5f);
-  } else if (G.state == RACE_DONE) {
-    snprintf(buf, sizeof buf, "%s", ord[c->place - 1]);
-    text(big, buf, w * 0.5f, h * 0.27f, 170 * u, gold, 0.5f);
-    text(small, "PRESS A TO RACE AGAIN", w * 0.5f, h * 0.48f, 42 * u, dim, 0.5f);
   }
 }
 
 void hud_draw(void) {
   cw_r2d_begin(NULL);
   hud_body();
+  menu_draw();
   cw_r2d_end();
 }

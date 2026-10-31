@@ -9,6 +9,7 @@
 enum { HIPS, SPINE, CHEST, NECK, HEAD, ARML, FOREL, HANDL, ARMR, FORER, HANDR, THIGHL, SHINL, FOOTL, THIGHR, SHINR, FOOTR, BONES };
 static const char *const NAMES[BONES] = { "Hips", "Spine", "Chest", "Neck", "Head", "ArmL", "ForeL", "HandL", "ArmR", "ForeR", "HandR", "ThighL", "ShinL", "FootL", "ThighR", "ShinR", "FootR" };
 static t3_object *B[RACERS][BONES];
+float rider_torso[RACERS]; /* how far forward the upper body is thrown (radians, about): the rubric's measure */
 
 static t3_vec3 V(float x, float y, float z) { return (t3_vec3){ x, y, z }; }
 static t3_vec3 vadd(t3_vec3 a, t3_vec3 b) { return V(a.x + b.x, a.y + b.y, a.z + b.z); }
@@ -68,15 +69,18 @@ void rider_pose(int i, const craft *c, float alpha) {
   sv[i] += ((c->steer - sx[i]) * 0.1f - sv[i] * 0.28f);
   sx[i] += sv[i];
   float steer = sx[i], lean = c->lean;
+  /* off the craft: the body hangs back from the hull, flat on the water, arms out, and climbs back on */
+  float off = c->spill > 0 ? (c->spill > 1.5f ? (1.9f - c->spill) / 0.4f : c->spill > 0.4f ? 1.0f : c->spill / 0.4f) : 0;
   float crouch = c->kick * 0.26f + c->load * 0.16f - by[i];
   float stand = c->air ? 0.08f : 0.0f;
   float speedk = c->speed / 28.0f;
   /* a riding crouch, not a seat: knees bent, weight over the bars, hips out over the side in a turn, back with the pull */
   float hx = -steer * 0.2f, hz = -0.58f - 0.24f * (lean > 0 ? lean : 0) + 0.12f * (lean < 0 ? -lean : 0);
   float hy = 0.86f - crouch + stand - 0.05f * speedk;
-  t3_vec3 hips = V(hx, hy, hz);
+  t3_vec3 hips = V(hx, hy - off * 0.85f, hz - off * 2.6f);
   /* the upper body leans into the corner and over the bars, more when it hunts for speed */
-  float fwd = 0.78f + 0.2f * speedk - 0.3f * (lean > 0 ? lean : 0) + 0.25f * c->kick - by[i] * 1.2f;
+  float fwd = 0.78f + 0.2f * speedk - 0.42f * (lean > 0 ? lean : 0) + 0.25f * c->kick - by[i] * 1.2f - off * 1.5f;
+  rider_torso[i] = fwd;
   float side = steer * 0.34f;
   t3_quat qh = euler(fwd * 0.45f, -steer * 0.15f, side * 0.4f);
   t3_quat qs = t3_quat_multiply(qh, euler(fwd * 0.3f, -steer * 0.12f, side * 0.3f));

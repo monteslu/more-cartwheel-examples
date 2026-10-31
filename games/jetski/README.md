@@ -4,7 +4,9 @@ A wave racing game on one evening's water. Six riders race three laps around a v
 through a gap in the reef, across open sea, past sea stacks and back in over the north pass. The water is the track. It
 moves, its swells throw you into the air, and it builds from lap to lap while the tide comes in.
 
-Status: a vertical slice. One course, one craft, one rider with a computer racer field. One player for now.
+Status: one course so far, one craft, a computer racer field, one player for now. The menu offers a championship (points by
+place over every course, one course until there are more) and a time trial (you alone, keeping your best time). Difficulty
+makes the sea bigger and adds buoys: every second one on Easy, three in four on Normal, all of them on Hard.
 
 ## How to ride
 
@@ -17,7 +19,10 @@ Status: a vertical slice. One course, one craft, one rider with a computer racer
 
 Buoys mark the course. Pass each one on the side its colour and the chevron show: orange-red on your right, yellow on your
 left. Each one passed lights an arrow and raises your top speed, five at most. Miss one and they all go out.
-Landing straight keeps your speed and a long clean landing gives you a shove; landing crooked costs you most of it.
+Five misses end your race, and the dots under the lap count show how many you have. So do five seconds away from the course,
+with a warning counting them down. Too much stick scrubs speed, and a long hard slide throws you off.
+Landing straight keeps your speed and a long clean landing gives you a shove; nose down costs you most of it, and leaning
+back on the way in saves some. Start or Esc pauses, with restart and quit.
 
 ## How it is made
 

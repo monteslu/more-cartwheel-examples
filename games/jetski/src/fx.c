@@ -4,7 +4,9 @@
 
 #include "cartwheel/input.h"
 #include "cartwheel/particles.h"
+#include "course_data.h"
 #include "game.h"
+#define BUOY_AT(i) (BUOYS[i])
 
 static cw_node tail[RACERS], mist[RACERS], side_spray, bursts, burst_mist, sheet[2], sheet_fine[2];
 
@@ -99,7 +101,7 @@ void fx_tick(float dt) {
     float sy, cy;
     cw_sincos(c->yaw, &sy, &cy);
     float v = c->speed;
-    float k = v / 28.0f;
+    float k = v / 28.0f * (1.0f + 0.05f * (float)c->meter); /* the spray grows with the meter */
     bool wet = !c->air && c->wet > 0.15f;
     bool on = wet && v > 3 && c->in.throttle > 0.1f;
     /* the jet's rooster tail: up and back, higher with speed */
@@ -161,11 +163,25 @@ void fx_tick(float dt) {
       cw_water_wake(G.water, c->x + rx * 0.6f + sy * 0.3f, c->z + rz * 0.6f + cy * 0.3f, c->vx, c->vz, 0.34f, 0.035f * k, 0.6f * k);
       cw_water_wake(G.water, c->x - rx * 0.6f + sy * 0.3f, c->z - rz * 0.6f + cy * 0.3f, c->vx, c->vz, 0.34f, 0.035f * k, 0.6f * k);
     }
-    if (c->big_splash) {
+    /* a ring on the water at each buoy passed cleanly: the water keeps the score */
+    if (c->ok_tick > 0 && c->human) {
+      const float *b = BUOY_AT(c->ok_tick - 1);
+      cw_water_splash(G.water, b[0], b[1], 2.4f + 0.3f * (float)c->meter, 0.16f, 0.5f);
+    }
+    if (c->big_slide || (c->spill > 1.85f)) {
       t3_vec3 at = { c->x, c->surf + 0.1f, c->z };
       cw_particles_burst(bursts, at, (t3_vec3){ 0, 1, 0 });
-      cw_particles_burst(burst_mist, at, (t3_vec3){ 0, 1, 0 });
-      cw_water_splash(G.water, c->x, c->z, 2.2f, 0.25f + 0.3f * c->kick, 1.0f);
+      cw_water_splash(G.water, c->x, c->z, 2.0f, 0.3f, 1.0f);
+      if (i == 0) cw_input_rumble(0, 0.8f, 0.6f, 260);
+      c->big_slide = false;
+    }
+    if (c->big_splash) {
+      /* the crown grows with the blow: one burst for a touch, three for a big landing */
+      t3_vec3 at = { c->x, c->surf + 0.1f, c->z };
+      int crowns = c->kick > 0.66f ? 3 : c->kick > 0.3f ? 2 : 1;
+      for (int b = 0; b < crowns; b++) cw_particles_burst(bursts, (t3_vec3){ at.x + (float)b * 0.5f - 0.5f, at.y, at.z }, (t3_vec3){ 0, 1, 0 });
+      if (c->kick > 0.3f) cw_particles_burst(burst_mist, at, (t3_vec3){ 0, 1, 0 });
+      cw_water_splash(G.water, c->x, c->z, 1.6f + 2.4f * c->kick, 0.2f + 0.4f * c->kick, 1.0f);
       if (i == 0) cw_input_rumble(0, 0.35f + 0.6f * c->kick, 0.2f + 0.4f * c->kick, 180 + (int)(240 * c->kick));
     }
     if (c->bump && i == 0) cw_input_rumble(0, 0.8f, 0.5f, 120);

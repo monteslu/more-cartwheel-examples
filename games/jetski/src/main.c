@@ -16,7 +16,7 @@
 #include "game.h"
 
 static float perf[7], sun_dbg[3];
-static cw_action a_left, a_right, a_back, a_fwd, a_throttle, a_trick, a_start;
+static cw_action a_left, a_right, a_back, a_fwd, a_throttle, a_trick;
 
 static void start(int players, void *user) {
   (void)players, (void)user;
@@ -29,28 +29,39 @@ static void start(int players, void *user) {
 
 static void cmd_race(int argc, const char **argv, cw_reply *r) {
   (void)argc, (void)argv;
+  menu_off();
   sim_reset(RACE_GRID);
   cw_reply_raw(r, "true");
 }
+/* drop <pitch> <height> <speed>: the human in the air over the water here, nose at that pitch: the landing gate's start */
+static void cmd_drop(int argc, const char **argv, cw_reply *r) {
+  craft *c = &G.c[0];
+  menu_off();
+  G.state = RACE_ON;
+  if (G.clock < 1) G.clock = 1;
+  float sy, cy;
+  cw_sincos(c->yaw, &sy, &cy);
+  float v = argc > 3 ? (float)atof(argv[3]) : 22;
+  c->pitch = c->ppitch = argc > 1 ? (float)atof(argv[1]) : 0;
+  c->y = c->py = c->surf + (argc > 2 ? (float)atof(argv[2]) : 2);
+  c->vx = sy * v, c->vz = cy * v, c->vy = 0, c->pr = 0, c->rr = 0, c->roll = 0, c->air_time = 0.5f, c->air = true;
+  if (r) cw_reply_raw(r, "true");
+}
+/* set the human going at a speed straight on here */
+static void cmd_go(int argc, const char **argv, cw_reply *r) {
+  float s = argc > 1 ? (float)atof(argv[1]) : 120;
+  menu_off();
+  sim_place(s);
+  G.state = RACE_ON;
+  if (G.clock < 1) G.clock = 1;
+  if (argc > 2) { G.c[0].yaw = G.c[0].pyaw = (float)atof(argv[2]); float a, b; cw_sincos(G.c[0].yaw, &a, &b); G.c[0].vx = a * 22, G.c[0].vz = b * 22; }
+  if (r) cw_reply_raw(r, "true");
+}
+
 static void cmd_warp(int argc, const char **argv, cw_reply *r) {
   /* warp <track metres>: every racer jumps there, for a look along the course */
-  if (argc < 2) { cw_reply_raw(r, "false"); return; }
-  float s = (float)atof(argv[1]);
-  for (int i = 0; i < RACERS; i++) {
-    craft *c = &G.c[i];
-    float x, z, dx, dz;
-    track_at(s - (float)(i * 11), &x, &z, &dx, &dz);
-    c->x = c->px = x + dz * (i % 2 ? 3.0f : -3.0f);
-    c->z = c->pz = z - dx * (i % 2 ? 3.0f : -3.0f);
-    c->y = c->py = cw_water_height_at(G.water, c->x, c->z, cw_water_time(G.water));
-    c->yaw = c->pyaw = cw_atan2(dx, dz);
-    c->vx = dx * 22, c->vz = dz * 22, c->vy = 0;
-    c->track_i = (int)(s / 2587.0f * 256) % 256;
-    if (c->track_i < 0) c->track_i += 256;
-    for (int k = 0; k < 29; k++) c->next_buoy = c->next_buoy; 
-  }
-  G.cam[0] = 0;
-  G.look[0] = 0;
+  if (argc < 2) { if (r) cw_reply_raw(r, "false"); return; }
+  sim_place((float)atof(argv[1]));
   if (r) cw_reply_raw(r, "true");
 }
 
@@ -73,6 +84,7 @@ static void warp_from_env(void) {
 static void cmd_beach(int argc, const char **argv, cw_reply *r) {
   float s = argc > 1 ? (float)atof(argv[1]) : 300;
   float x, z, dx, dz;
+  menu_off();
   track_at(s, &x, &z, &dx, &dz);
   G.state = RACE_ON;
   if (G.clock < 1) G.clock = 1;
@@ -97,32 +109,67 @@ static void cmd_beach(int argc, const char **argv, cw_reply *r) {
   if (r) cw_reply_raw(r, "false");
 }
 
+/* finish: the human crosses the line now, for the results pages' gate */
+static void cmd_finish(int argc, const char **argv, cw_reply *r) {
+  (void)argc, (void)argv;
+  if (G.state == RACE_GRID || G.state == RACE_ON) { G.state = RACE_ON; G.c[0].lap = LAPS, G.c[0].finish = G.clock > 1 ? G.clock : 1; }
+  if (r) cw_reply_raw(r, "true");
+}
+
+/* cam_clear 0: the control for the attract camera's swell check */
+static void cmd_cam_clear(int argc, const char **argv, cw_reply *r) {
+  g_attract_clear = argc > 1 ? atoi(argv[1]) : 1;
+  if (r) cw_reply_raw(r, "true");
+}
+/* mode <0 championship, 1 time trial> */
+static void cmd_mode(int argc, const char **argv, cw_reply *r) {
+  if (argc > 1) g_mode = atoi(argv[1]) ? MODE_TIME_TRIAL : MODE_CHAMPIONSHIP;
+  if (r) cw_reply_raw(r, "true");
+}
+
 static void init(void *user) {
   (void)user;
   if (!cw_input_load_bindings_asset("input.cfg")) cw_warn("jetski: input.cfg had errors");
   a_left = cw_action_find("steer_left"), a_right = cw_action_find("steer_right");
   a_back = cw_action_find("lean_back"), a_fwd = cw_action_find("lean_fwd");
   a_throttle = cw_action_find("throttle"), a_trick = cw_action_find("trick");
-  a_start = cw_action_find("go");
-  cw_shell_init(&(cw_shell_desc){ .title = "jetski", .max_players = 1, .start = start });
+  cw_shell_init(&(cw_shell_desc){ .title = "jetski", .max_players = 1, .start = start, .game_save_size = 64 });
   view_init();
   hud_init();
   audio_init();
+  menu_init();
 #ifdef JETSKI_AUTOPILOT
+  menu_off();
+#endif
   if (getenv("JETSKI_SMALL")) { /* sim checks: nothing costly on the software rasteriser */
     cw_node_set(G.water, "reflection", cw_val_bool(false));
     cw_node_set(G.water, "refraction", cw_val_bool(false));
     cw_node_set(G.sun, "shadow", cw_val_bool(false));
     cw_node_set(G.water, "subdivisions", cw_val_int(16));
     cw_node_set(G.water, "ripple_cells", cw_val_int(64));
+    /* nothing to look at: the sim needs the data, not the drawing */
+    cw_node_set(G.camera, "far", cw_val_float(1.0f));
+    cw_node_set(G.camera, "near", cw_val_float(0.9f));
+    cw_node_set(G.water, "visible", cw_val_bool(false));
+    cw_node_set(cw_node_get(cw_node_get(cw_tree_root(cw_scene_app_tree()), "Root"), "Land"), "visible", cw_val_bool(false));
+    cw_node_set(cw_node_get(cw_node_get(cw_tree_root(cw_scene_app_tree()), "Root"), "Post"), "bloom", cw_val_bool(false));
   }
-#endif
   sim_reset(RACE_ATTRACT);
   cw_shell_start(1);
+#ifndef JETSKI_AUTOPILOT
+  sim_reset(RACE_ATTRACT);
+#endif
 #ifdef JETSKI_AUTOPILOT
   warp_from_env();
 #endif
   cw_debug_i32("race.state", &G.state);
+  cw_debug_i32("race.mode", &g_mode);
+  cw_debug_i32("race.difficulty", &g_difficulty);
+  cw_debug_i32("cam.attract_under", &G.attract_under);
+  cw_debug_i32("cam.attract_land", &G.attract_land);
+  cw_debug_i32("cam.attract_blocked", &G.attract_blocked);
+  cw_debug_i32("cam.attract_hidden", &G.attract_hidden);
+  menu_debug();
   cw_debug_f32("race.clock", &G.clock);
   cw_debug_f32("race.swell", &G.swell);
   cw_debug_f32("race.tide", &G.tide);
@@ -148,14 +195,26 @@ static void init(void *user) {
   cw_debug_i32("cam.under_ticks", &G.cam_under);
   cw_debug_f32_array("perf.ms", perf, 7);
   cw_debug_f32_array("sun.dir", sun_dbg, 3);
+  cw_debug_f32("p0.radius", &G.c[0].radius);
+  cw_debug_f32("p0.land_keep", &G.c[0].land_keep);
+  cw_debug_f32("p0.slip", &G.c[0].slip);
+  cw_debug_f32("p0.spill", &G.c[0].spill);
+  cw_debug_i32("p0.spills", &G.c[0].spills);
+  cw_debug_i32("p0.dq", &G.c[0].dq);
+  cw_debug_f32("p0.out_t", &G.c[0].out_t);
+  cw_debug_f32("rider.torso", &rider_torso[0]);
   cw_debug_i32("p0.beached", &G.c[0].beached);
   cw_debug_i32("p0.escapes", &G.c[0].escapes);
   cw_debug_command("beach", "beach <metres>: the human on the sand beside the course there, nose inland", cmd_beach);
+  cw_debug_command("drop", "drop <pitch> <height> <speed>", cmd_drop);
+  cw_debug_command("go", "go <metres>: the race running at speed there", cmd_go);
   cw_debug_command("race", "start a race", cmd_race);
+  cw_debug_command("cam_clear", "cam_clear 0: the attract camera ignores the swell", cmd_cam_clear);
+  cw_debug_command("mode", "mode <0 championship, 1 time trial>", cmd_mode);
+  cw_debug_command("finish", "finish: the human crosses the line now", cmd_finish);
   cw_debug_command("warp", "warp <metres>: every racer to that place on the course", cmd_warp);
 }
 
-#ifdef JETSKI_AUTOPILOT
 /* a text trace for the sim's CPU tests (tools/sim-check.mjs) */
 static void trace_line(void) {
   static int trace = -1;
@@ -170,7 +229,6 @@ static void trace_line(void) {
   }
   printf(" | %.3f %.3f\n", G.swell, air);
 }
-#endif
 
 static void fixed_update(void *user, double dt) {
   (void)user;
@@ -180,15 +238,17 @@ static void fixed_update(void *user, double dt) {
   c->in.lean = cw_action_strength(0, a_back) - cw_action_strength(0, a_fwd);
   c->in.throttle = cw_action_strength(0, a_throttle);
   c->in.trick = cw_action_pressed(0, a_trick);
-#ifndef JETSKI_AUTOPILOT
-  if ((G.state == RACE_ATTRACT || G.state == RACE_DONE) && cw_action_just_pressed(0, a_start)) sim_reset(RACE_GRID);
-#endif
-#ifdef JETSKI_AUTOPILOT
-  /* a whole race on the CPU in a minute: JETSKI_SIMX=<ticks a frame> with JETSKI_SMALL */
+  menu_tick((float)dt);
+  if (menu_blocks_sim()) {
+    /* paused: the sea holds still with the race */
+    cw_value v;
+    if (cw_node_get_prop(G.water, "time_offset", &v)) cw_node_set(G.water, "time_offset", cw_val_float((float)v.f - (float)dt));
+    return;
+  }
+  /* a whole race on the CPU in a minute: JETSKI_SIMX=<ticks a frame> with JETSKI_SMALL (native checks; a cart has no environment) */
   { static int simx = -1;
     if (simx < 0) simx = getenv("JETSKI_SIMX") ? atoi(getenv("JETSKI_SIMX")) : 0;
     for (int i = 0; i < simx; i++) { sim_tick((float)dt); G.wt_extra += dt; trace_line(); } }
-#endif
   double t0 = cw_time();
   sim_tick((float)dt);
   view_tick((float)dt);
@@ -196,9 +256,7 @@ static void fixed_update(void *user, double dt) {
   audio_tick((float)dt);
   float ms = (float)((cw_time() - t0) * 1000.0);
   perf[0] += (ms - perf[0]) * 0.02f; /* the game's own fixed tick, averaged */
-  #ifdef JETSKI_AUTOPILOT
   trace_line();
-  #endif
 }
 
 /* frame numbers for the perf script: game tick ms; frame GPU ms; the water pass; the scene pass; frame CPU (render callback's sync) */
@@ -229,9 +287,7 @@ cw_app_desc cw_main(int argc, char **argv) {
   cw_scene_register_builtin_types();
   static cw_app_desc app = { .width = 1920, .height = 1080, .debug = true, .reversed_depth = true, .init = init, .fixed_update = fixed_update, .render = render };
   cw_project_apply_app(&app);
-#ifdef JETSKI_AUTOPILOT
   if (getenv("JETSKI_SMALL")) app.width = 192, app.height = 108; /* sim checks on a software GL */
-#endif
   app.save = cw_shell_save_region();
   app.save_size = cw_shell_save_region_size();
   return cw_scene_app("main.cwscene", &app);

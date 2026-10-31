@@ -61,5 +61,15 @@
       "maxGt16": 0.5
     },
     "note": "beached on the sand, nose inland, throttle and stick: the craft drives back to the water in about 3 s (it spun on the spot, 8 s and no metres, before); control: no throttle does not count as driving off"
+  },
+  {
+    "name": "jetski-handling",
+    "script": "tests/jetski-handling.mjs",
+    "note": "the handling, by real input on a software GL: a tighter carve when leaning back, a price for over-steering, the rider working, landings that matter, the course area; each with its own comparison"
+  },
+  {
+    "name": "jetski-menu",
+    "script": "tests/jetski-menu.mjs",
+    "note": "the menus by real input, pad and keyboard: every page and back, pause with restart and quit, championship points, a time trial alone; controls: nothing finished pays nothing, a championship keeps its rivals"
   }
 ]

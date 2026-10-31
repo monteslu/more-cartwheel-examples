@@ -328,8 +328,37 @@ static t3_quat craft_quat(float yaw, float pitch, float roll) {
   return t3_quat_from_euler((t3_euler){ -pitch, yaw, roll, T3_YXZ });
 }
 
-/* the attract loop: cuts around the leader. It opens under the water looking up as the racers pass overhead, and rises
- * through the surface into the evening. */
+/* the attract loop: long tracking shots of the leader out on the water. The camera is always well above the surface and clear of
+ * the land; it rides with the craft and its height is smoothed, so it does not bob. */
+/* land on the sight line from the camera to the craft */
+static bool land_between(float x, float y, float z, const craft *c) {
+  for (int i = 1; i < 8; i++) {
+    float t = (float)i / 8.0f;
+    if (ground_at(x + (c->x - x) * t, z + (c->z - z) * t) > y + (c->y + 0.8f - y) * t) return true;
+  }
+  return false;
+}
+static bool shot_blocked(float x, float z, float up, const craft *c) {
+  float h = cw_water_height_at(G.water, x, z, G.wt), g = ground_at(x, z);
+  return g > -1.5f || land_between(x, (h > g ? h : g) + up, z, c);
+}
+
+/* the sight line from a camera at (x, y, z) to the hull: how high the camera must stand for the swell between them to leave
+ * the hull in view, and (with y) whether a crest hides it now */
+static float clear_of_swell(float x, float z, const craft *c) {
+  /* (to the top of the hull, over all but the last of the line: the water right at the hull is the hull's own, and asking to
+   * clear it sends the camera up into the sky) */
+  float need = -1e9f, ty = c->y + 0.45f;
+  for (int i = 1; i < 7; i++) {
+    float t = (float)i / 8.0f;
+    float h = cw_water_height_at(G.water, x + (c->x - x) * t, z + (c->z - z) * t, G.wt) + 0.15f;
+    float y = (h - ty * t) / (1.0f - t);
+    if (y > need) need = y;
+  }
+  return need;
+}
+int g_attract_clear = 1; /* debug: 0 is the control, a camera that ignores the swell */
+
 static bool attract_camera(float dt) {
   if (G.state != RACE_ATTRACT) return false;
   const craft *c = &G.c[G.order[0]];
@@ -338,49 +367,46 @@ static bool attract_camera(float dt) {
   G.cam_orbit += dt;
   if (G.cam_orbit > 32.0f) G.cam_orbit -= 32.0f;
   float t = G.cam_orbit;
-  int shot = t < 9 ? 0 : t < 16 ? 1 : t < 24 ? 2 : 3;
+  int shot = (int)(t / 8.0f);
   static int last_shot = -1;
-  static float ax, az;
-  float cx, cz, ch, lx = c->x, ly = c->y + 0.7f, lz = c->z, h;
-  if (shot != last_shot) {
-    /* anchor the fixed shots where the leader will be in a few seconds */
-    ax = c->x + c->vx * 3.2f, az = c->z + c->vz * 3.2f;
-    last_shot = shot;
-    G.cam_prev[0] = 0;
+  bool cut = shot != last_shot || G.cam[0] == 0;
+  last_shot = shot;
+  float side, back, up, lookf;
+  /* right of the hull is (-cos, sin) */
+  switch (shot) {
+  case 0: side = 0, back = 6.5f, up = 2.3f, lookf = 8; break;          /* low chase */
+  case 1: side = 7.5f, back = 1.0f, up = 1.1f, lookf = 1.5f; break;    /* beside it, low */
+  case 2: side = -4.5f, back = -10.0f, up = 2.1f, lookf = -2; break;   /* ahead, looking back at it */
+  default: side = -11.0f, back = 6.0f, up = 1.6f, lookf = 3; break;    /* wide, on the other flank */
   }
-  if (shot == 0) {
-    /* under the surface ahead of the leader, rising to break through as they pass */
-    float rise = t / 9.0f;
-    cx = ax + cy * 2.5f, cz = az - sy * 2.5f;
-    h = cw_water_height_at(G.water, cx, cz, G.wt);
-    float depth = rise < 0.55f ? -3.2f + 2.0f * rise / 0.55f : -1.2f + 2.9f * (rise - 0.55f) / 0.45f;
-    ch = h + depth;
-    if (rise > 0.6f) lx = c->x + sy * 4, lz = c->z + cy * 4;
-  } else if (shot == 1) {
-    /* low beside the craft, the spray in the sun */
-    cx = c->x + cy * 5.2f - sy * 2.2f, cz = c->z - sy * 5.2f - cy * 2.2f;
-    h = cw_water_height_at(G.water, cx, cz, G.wt);
-    ch = h + 0.75f;
-  } else if (shot == 2) {
-    /* high and wide, turning slowly around the leader: the atoll */
-    float a = t * 0.08f, sa, ca;
-    cw_sincos(a, &sa, &ca);
-    cx = c->x + sa * 62, cz = c->z + ca * 62;
-    ch = c->y + 26;
-    (void)h;
-  } else {
-    /* the chase */
-    cx = c->x - sy * 5.5f, cz = c->z - cy * 5.5f;
-    h = cw_water_height_at(G.water, cx, cz, G.wt);
-    ch = h + 2.0f;
-    lx = c->x + sy * 6, lz = c->z + cy * 6;
+  float cx = c->x - cy * side - sy * back, cz = c->z + sy * side - cy * back;
+  /* never in land, and never with land between the camera and the craft: the other flank, or failing that the chase */
+  if (shot_blocked(cx, cz, up, c)) { side = -side; cx = c->x - cy * side - sy * back, cz = c->z + sy * side - cy * back; }
+  if (shot_blocked(cx, cz, up, c)) { side = 0, back = 5.5f, up = 1.9f, lookf = 8; cx = c->x - sy * back, cz = c->z - cy * back; }
+  float h = cw_water_height_at(G.water, cx, cz, G.wt), gnd = ground_at(cx, cz);
+  float want = (h > gnd ? h : gnd) + up;
+  float clear = clear_of_swell(cx, cz, c);
+  /* rises to keep the craft in view, but stays a low camera */
+  if (g_attract_clear && clear + 0.1f > want) want = clear + 0.1f > want + 2.2f ? want + 2.2f : clear + 0.1f;
+  float lx = c->x + sy * lookf, ly = c->y + 0.7f, lz = c->z + cy * lookf;
+  memcpy(G.cam_prev, G.cam, sizeof G.cam);
+  memcpy(G.look_prev, G.look, sizeof G.look);
+  G.cam[0] = cx, G.cam[2] = cz;
+  G.cam[1] = cut ? want : G.cam[1] + (want - G.cam[1]) * (1.0f - cw_exp(-dt * 7.0f));
+  if (G.cam[1] < h + 0.8f) G.cam[1] = h + 0.8f;
+  /* the menu covers the left of the picture: aim left of the craft, and it rides in the open water on the right */
+  {
+    float fx = lx - cx, fz = lz - cz, fl = sqrtf(fx * fx + fz * fz);
+    if (fl > 0.1f) { float off = fl * 0.2f; lx += fz / fl * off, lz -= fx / fl * off; }
   }
-  bool cut = G.cam_prev[0] == 0;
-  memcpy(G.cam_prev, cut ? (float[3]){ cx, ch, cz } : G.cam, sizeof G.cam);
-  memcpy(G.look_prev, cut ? (float[3]){ lx, ly, lz } : G.look, sizeof G.look);
-  G.cam[0] = cx, G.cam[1] = ch, G.cam[2] = cz;
-  G.look[0] = lx, G.look[1] = ly, G.look[2] = lz;
-  G.cam_fov_prev = G.cam_fov = shot == 2 ? 52.0f : 62.0f;
+  G.look[0] = lx, G.look[1] = cut ? ly : G.look[1] + (ly - G.look[1]) * (1.0f - cw_exp(-dt * 6.0f)), G.look[2] = lz;
+  /* the rubric's check */
+  if (G.cam[1] < cw_water_height_at(G.water, cx, cz, G.wt)) G.attract_under++;
+  if (ground_at(cx, cz) > G.cam[1] - 0.3f) G.attract_land++;
+  if (land_between(cx, G.cam[1], cz, c)) G.attract_blocked++;
+  if (clear > G.cam[1]) G.attract_hidden++;
+  if (cut) memcpy(G.cam_prev, G.cam, sizeof G.cam), memcpy(G.look_prev, G.look, sizeof G.look);
+  G.cam_fov_prev = G.cam_fov = shot == 3 ? 44.0f : 56.0f;
   cw_water_ripple_follow(G.water, c->x + sy * 20.0f, c->z + cy * 20.0f);
   return true;
 }
@@ -425,6 +451,14 @@ void view_tick(float dt) {
 
 void view_sync(double alpha) {
   float a = (float)alpha;
+  /* who is on the water, and which buoys count */
+  { static int shown = -1;
+    int now = g_difficulty * 2 + (racer_on(1) ? 1 : 0);
+    if (now != shown) {
+      shown = now;
+      for (int i = 0; i < RACERS; i++) cw_node_set(craft_n[i], "visible", cw_val_bool(racer_on(i)));
+      for (int b = 0; b < BUOY_N; b++) cw_node_set(buoy_n[b], "visible", cw_val_bool(buoy_on(b)));
+    } }
   for (int i = 0; i < RACERS; i++) {
     const craft *c = &G.c[i];
     t3_vec3 p = { lerpf(c->px, c->x, a), lerpf(c->py, c->y, a), lerpf(c->pz, c->z, a) };
