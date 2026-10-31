@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.12.5
+
+- Street Toughs: all 18 characters have human heads and human proportions, about 7.5 heads
+  tall with real jaws, chins and short thick necks, in place of round heads on oversized
+  bodies. Bodies came in to match: shoulders, waists, hips, knees and calves, hands and
+  feet. Faces have sunk eyes, hairlines that grow out of the skin and less rubbery skin.
+
 ## 0.12.4
 
 - jetski: the ramps look like steel that has been out there a while: panel seams, rust
