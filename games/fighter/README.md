@@ -60,7 +60,7 @@ then punch. `[4]6` means hold back for half a second, then forward. The super is
 needs a full meter. Every fighter's moves are listed by `node tools/framedata.mjs`.
 
 A chain works on hit or block: a punch cancels into a kick (or the lunge), any normal into a special, a special into
-the super. Hits scale their damage in a combo.
+the super. Hits scale their damage in a combo, and a long combo runs out of hitstun. A fighter knocked into the air takes three more hits at most, then falls through the rest (the HUD says JUGGLE OVER).
 
 ## Training mode
 

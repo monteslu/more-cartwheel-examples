@@ -104,7 +104,7 @@ typedef struct ft_proj { bool live; int8_t owner; int32_t x, y, vx; int16_t life
 
 enum { EV_HIT, EV_BLOCK, EV_THROW, EV_KO, EV_FIRE, EV_DUST, EV_SUPER, EV_CLASH, EV_WALL, EV_TECH, EV_ROUND, EV_PARRY, EV_GUARDBREAK, EV_WHIFF, EV_JUGGLE_SPENT, EV_COUNT_ };
 /* EV_JUGGLE_SPENT: a strike met a fighter who has taken FT_JUGGLE_MAX air hits and is falling, so it passes through. No rule
- * reads it and nothing draws it yet: it is there for an effect to say why the hit did not land (at the box's middle, once a move) */
+ * reads it; the HUD says JUGGLE OVER, so the miss reads as the rule and not a bug (at the box's middle, once a move) */
 typedef struct ft_event { uint8_t type, who, power; int16_t pad_; int32_t x, y; uint32_t tick; } ft_event;
 
 enum { P_INTRO, P_FIGHT, P_KO, P_ROUND_END, P_MATCH_END };

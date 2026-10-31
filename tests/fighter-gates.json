@@ -28,26 +28,26 @@
       "game.phase": 1,
       "game.round": 1,
       "sim.hp": [
-        541,
-        590
+        401,
+        673
       ],
       "sim.wins": [
         0,
         0
       ],
       "sim.stats": [
-        19,
-        0,
+        17,
+        4,
         0,
         0,
         3,
         0
       ],
-      "fx.hits": 19,
-      "fx.blocks": 0,
-      "sim.hash": 2010081049,
+      "fx.hits": 17,
+      "fx.blocks": 4,
+      "sim.hash": 522953156,
       "cam.offset": [
-        490,
+        549,
         0,
         0
       ]
@@ -62,7 +62,7 @@
       "vsGl": 0.25,
       "note": "the same dual cart on romdev and Chromium against native WebGPU; GL vs WebGPU within 25 percent of pixels (particles, dust, shockwave)"
     },
-    "note": "Fighter: two computer fighters (Bolt and Vex, rooftop) play from the intro with the punch / kick / block controls (the computer blocks with the block button, guards low against lows, parries now and then). The rules are integer only (sim.c), so the named state must match exactly on every host; the expects pin this run. The control is one frame short. Repinned for F-PT3 (2026-10-29): the computer plays through the same input rules as a pad, and the new movement changes its fight: its down presses now crouch, its jump-in is one up-forward press (it was two up taps), held directions it sends walk or jump where they stood still. Before [598,823] hp, stats [11,3,3,0,0,1]; after [541,590], [19,0,0,0,3,0] in these 900 frames. The 24-match soak is close to before (blocks 221 to 205, parries 81 to 66, throws 23 to 17, median round 28.1 to 25.6 s)."
+    "note": "Fighter: two computer fighters (Bolt and Vex, rooftop) play from the intro with the punch / kick / block controls (the computer blocks with the block button, guards low against lows, parries now and then). The rules are integer only (sim.c), so the named state must match exactly on every host; the expects pin this run. The control is one frame short. Repinned 2026-10-30 for the computer that reads habits and Vex at 950 life: 900 frames went from hp [541,590], stats [19,0,0,0,3,0] to hp [401,673], stats [17,4,0,0,3,0]. tests/gatereplay.mjs predicted these numbers from the rules alone before this gate ran; with Vex back at 1130 the replay shows the scripted gates' old hashes, so their re-pins are her life and nothing else."
   },
   {
     "name": "fighter-p1-moves",
@@ -93,7 +93,7 @@
       "game.phase": 1,
       "sim.hp": [
         920,
-        860
+        680
       ],
       "sim.stats": [
         4,
@@ -105,7 +105,7 @@
       ],
       "fx.hits": 4,
       "fx.blocks": 0,
-      "sim.hash": 2201356621
+      "sim.hash": 4130191154
     },
     "webgpu": {
       "hosts": [
@@ -148,7 +148,7 @@
       "game.phase": 1,
       "sim.hp": [
         920,
-        1070
+        890
       ],
       "sim.stats": [
         1,
@@ -160,7 +160,7 @@
       ],
       "fx.hits": 1,
       "fx.blocks": 1,
-      "sim.hash": 3400917657
+      "sim.hash": 1386289432
     },
     "webgpu": {
       "hosts": [
@@ -196,7 +196,7 @@
       "game.phase": 1,
       "sim.hp": [
         920,
-        1130
+        950
       ],
       "sim.stats": [
         4,
@@ -206,7 +206,7 @@
         0,
         1
       ],
-      "sim.hash": 2988248480,
+      "sim.hash": 2933357797,
       "view.boxes": 2
     },
     "webgpu": {
@@ -253,7 +253,7 @@
         0,
         0
       ],
-      "sim.hash": 366493582
+      "sim.hash": 3268366799
     },
     "webgpu": {
       "hosts": [
@@ -299,7 +299,7 @@
         1207,
         0
       ],
-      "sim.hash": 3536485209
+      "sim.hash": 2140818012
     },
     "webgpu": {
       "hosts": [
@@ -345,7 +345,7 @@
         1207,
         0
       ],
-      "sim.hash": 1376404399
+      "sim.hash": 1971060310
     },
     "webgpu": {
       "hosts": [
@@ -391,7 +391,7 @@
         1207,
         0
       ],
-      "sim.hash": 3104977004
+      "sim.hash": 3029126113
     },
     "webgpu": {
       "hosts": [
@@ -426,7 +426,7 @@
       "cw.rumble"
     ],
     "expect": {
-      "sim.hash": 2201356621,
+      "sim.hash": 4130191154,
       "fx.hits": 4,
       "cam.offset": [
         137,

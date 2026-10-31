@@ -410,7 +410,7 @@ static void sound_events(void) {
     case EV_CLASH: case EV_TECH: sfx(SFX_BLOCK, 0.8f, 1.3f); break;
     case EV_PARRY: sfx(SFX_BLOCK, 1.0f, 1.6f); sfx(SFX_BELL, 0.5f, 1.8f); break;
     case EV_GUARDBREAK: sfx(SFX_HIT_H, 1.0f, 0.7f); sfx(SFX_BLOCK, 0.9f, 0.6f); break;
-    case EV_WHIFF: sfx(SFX_WHOOSH_H, 0.5f, 0.8f); break;
+    case EV_WHIFF: case EV_JUGGLE_SPENT: sfx(SFX_WHOOSH_H, 0.5f, 0.8f); break;
     default: break;
     }
   }
@@ -740,11 +740,11 @@ static void draw_hud(float W, float H, float s) {
     if (g->ev_seq - seen > 64) seen = g->ev_seq - 64;
     for (; seen != g->ev_seq; seen++) {
       const ft_event *e = &g->ev[seen & 63];
-      if (e->type == EV_PARRY || e->type == EV_GUARDBREAK || e->type == EV_WHIFF) { kind = e->type; side = e->who; age = 0; }
+      if (e->type == EV_PARRY || e->type == EV_GUARDBREAK || e->type == EV_WHIFF || e->type == EV_JUGGLE_SPENT) { kind = e->type; side = e->who; age = 0; }
     }
     age += 1.0f / 60.0f;
     if (age < 0.9f) {
-      const char *w = kind == EV_PARRY ? "PARRY" : kind == EV_GUARDBREAK ? "GUARD BREAK" : "DUCKED";
+      const char *w = kind == EV_PARRY ? "PARRY" : kind == EV_GUARDBREAK ? "GUARD BREAK" : kind == EV_JUGGLE_SPENT ? "JUGGLE OVER" : "DUCKED";
       float a = cw_clampf(1.4f - age * 1.5f, 0, 1);
       text(G.font_score, w, side == 0 ? W * 0.25f : W * 0.75f, H * 0.2f, 30 * s, kind == EV_GUARDBREAK ? rgba(1, 0.35f, 0.25f, a) : rgba(0.6f, 0.9f, 1, a), CW_ALIGN_CENTER);
     }

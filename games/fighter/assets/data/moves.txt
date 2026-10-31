@@ -48,7 +48,7 @@ move bolt 6K name=Step_kick
 move bolt SP1 name=Fireball dmg=60
 move bolt SP2 name=Rising_strike
 move bolt SP3 name=Spin_kick
-move bolt SUPER name=Beam dmg=400
+move bolt SUPER name=Beam dmg=400 gdmg=600
 
 # Grit: slow and huge. A command grab, a shoulder charge, a headbutt, a crushing grab super. Heavier hands.
 fighter grit name=Grit hp=1100 walk=33 back=24 jump=125 jumpfx=36 grav=8 dash=90 dashback=70 sp1=41236P sp2=236K sp3=623P super=236236P
@@ -93,4 +93,4 @@ move mara 6K name=Hop_kick
 move mara SP1 name=Sonic_blade su=12 ac=1 rc=22 dmg=50 proj=150,80,200
 move mara SP2 name=Flip_kick su=6 ac=10 rc=24 dmg=110 inv=5 kd=1 launch=150 mv=0 hit=100,600,800,2000 ext=100,600,750,2000
 move mara SP3 name=Orb su=18 ac=1 rc=30 dmg=45 hs=22 bs=16 hits=1 kd=0 mv=0 flags=special,proj proj=40,200,300 hit=0,0,0,0
-move mara SUPER name=Wide_beam su=14 ac=1 rc=40 dmg=400 inv=14 proj=110,80,500
+move mara SUPER name=Wide_beam su=14 ac=1 rc=40 dmg=400 gdmg=600 inv=14 proj=110,80,500
