@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.2
+
+- jetski: the hard-edged light patches behind the rider are gone: they were the skyline
+  mirrored on the water, and stronger ripples now break it up. The sea looks busier and
+  glitters more on both courses.
+
 ## 0.12.1
 
 - hordeshooter: Start answers on the panels before a match, and the wait after pressing
