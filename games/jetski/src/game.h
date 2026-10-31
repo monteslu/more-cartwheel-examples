@@ -28,7 +28,7 @@ extern int g_mode;
 enum { RACE_ATTRACT, RACE_GRID, RACE_ON, RACE_DONE };
 
 /* a course: what tools/make-course.mjs generates from courses/<id>.mjs (src/courses/) */
-typedef struct course_scatter { const char *model, *map; float density, smin, smax, range; int seed; bool sink; float tilt; } course_scatter;
+typedef struct course_scatter { const char *model, *far_model, *map; float density, smin, smax, range; int seed; bool sink; float tilt; } course_scatter;
 typedef struct course_def {
   const char *id, *name;
   int quads;

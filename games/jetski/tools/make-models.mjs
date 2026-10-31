@@ -398,6 +398,39 @@ class Plain {
   g.write(join(OUT, 'arch.glb'));
 }
 
+// ── far versions of the trees, for the scatter past its LOD distance: same outline and the same materials in the same order, a tenth of the triangles ──
+{
+  const P = new Plain();
+  P.tube('trunk', [[0, -0.4, 0], [0, 6, 0]], (t) => lerp(0.26, 0.1, t), 3, { cap: false });
+  for (let t = 0; t < 3; t++) {
+    const k = t / 2, y0 = 1.6 + k * 7.2, r = lerp(3.0, 1.0, k), top = y0 + lerp(4, 2.4, k), rows = [];
+    for (let q = 0; q <= 1; q++) { const row = []; for (let i = 0; i <= 6; i++) { const a = (i % 6) / 6 * Math.PI * 2 + t * 0.5; row.push([Math.cos(a) * r * q, lerp(top, y0, q), Math.sin(a) * r * q]); } rows.push(row); }
+    P.grid('bough', rows, { flip: true });
+  }
+  const g = new Glb(), mi = { trunk: g.material('trunk', 0.92), bough: g.material('bough', 0.85) };
+  g.materials[mi.trunk].pbrMetallicRoughness.baseColorFactor = [0.13, 0.1, 0.08, 1];
+  g.materials[mi.bough].pbrMetallicRoughness.baseColorFactor = [0.045, 0.1, 0.07, 1];
+  g.materials[mi.bough].doubleSided = true;
+  g.sceneNodes.push(g.node({ name: 'PineFar', mesh: g.mesh('pine', P.prims(mi)) }));
+  g.write(join(OUT, 'pine_far.glb'));
+}
+{
+  const trunk = new Plain(), crown = new Plain(), lean = 0.8, top = [lean * 1.6, 8.7, 0.3];
+  trunk.tube('trunk', [[0, -0.3, 0], [lean * 0.4, 4.2, 0.1], top], (t) => lerp(0.2, 0.1, t), 3, { cap: false });
+  for (let f = 0; f < 6; f++) {
+    const az = f / 6 * Math.PI * 2, L = 3.8, dx = Math.cos(az), dz = Math.sin(az), side = [-dz, 0, dx], rows = [];
+    for (let i = 0; i <= 2; i++) { const t = i / 2, d = t * L, y = 0.7 * Math.sin(t * 2.3) - 2.2 * t * t, w = 0.75 * Math.sin(Math.pow(t, 0.7) * Math.PI) + 0.02, c = add(top, [dx * d, y, dz * d]); rows.push([add(c, add(mul(side, -w), [0, -w * 0.5, 0])), add(c, [0, 0.03, 0]), add(c, add(mul(side, w), [0, -w * 0.5, 0]))]); }
+    crown.grid('frond', rows);
+  }
+  const g = new Glb(), mi = { trunk: g.material('trunk', 0.92), frond: g.material('frond', 0.68) };
+  g.materials[mi.trunk].pbrMetallicRoughness.baseColorFactor = [0.26, 0.2, 0.14, 1];
+  g.materials[mi.frond].pbrMetallicRoughness.baseColorFactor = [0.13, 0.3, 0.06, 1];
+  g.materials[mi.frond].doubleSided = true;
+  g.sceneNodes.push(g.node({ name: 'PalmFar', mesh: g.mesh('palm', [...trunk.prims(mi), ...crown.prims(mi)]) }));
+  g.write(join(OUT, 'palm_far.glb'));
+  console.log('far trees', trunk.tris() + crown.tris());
+}
+
 // ── a palm: a leaning ringed trunk and a crown of arching fronds, height about 9 m (the scatter scales it) ──
 {
   const trunk = new Plain(), crown = new Plain();

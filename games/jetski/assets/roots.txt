@@ -44,6 +44,7 @@ course/atoll/rock-albedo.rgba
 course/atoll/rock-normal.rgba
 course/atoll/grass-albedo.rgba
 course/atoll/grass-normal.rgba
+models/palm_far.glb
 course/sound/heights.r16
 course/sound/control.u32
 course/sound/wavemask.f32
@@ -57,3 +58,4 @@ course/sound/granite-albedo.rgba
 course/sound/granite-normal.rgba
 course/sound/moss-albedo.rgba
 course/sound/moss-normal.rgba
+models/pine_far.glb

@@ -146,7 +146,7 @@ static void clouds_init(void) {
 }
 
 /* a scatter layer from a model and a density map; every instance stands in the ground it is placed on */
-static void scatter_add(const char *model, const char *map, float density, float smin, float smax, float range, uint32_t seed, bool tilt, float sink) {
+static void scatter_add(const char *model, const char *far_model, const char *map, float density, float smin, float smax, float range, uint32_t seed, bool tilt, float sink) {
   cw_res res = cw_res_load(model, CW_RES_GLTF);
   t3_object *po = cw_gltf_instantiate(res);
   if (!po) return;
@@ -166,6 +166,25 @@ static void scatter_add(const char *model, const char *map, float density, float
     }
     for (int i = 0; i < o->child_count && sp < 32; i++) stack[sp++] = o->children[i];
   }
+  /* the far version, part for part in the same order with the near one's materials */
+  t3_object *fo = far_model ? cw_gltf_instantiate(cw_res_load(far_model, CW_RES_GLTF)) : NULL;
+  if (fo) {
+    int fp = 0;
+    sp = 0, stack[sp++] = fo;
+    while (sp > 0 && fp < CW_SCATTER_PARTS) {
+      t3_object *o = stack[--sp];
+      if (o->type == T3_MESH) {
+        t3_mesh *m = (t3_mesh *)o;
+        s.geometry[1][fp] = m->geometry;
+        t3_retain(m->geometry);
+        s.material[1][fp] = s.material[0][fp];
+        if (s.material[1][fp]) t3_retain(s.material[1][fp]);
+        fp++;
+      }
+      for (int i = 0; i < o->child_count && sp < 32; i++) stack[sp++] = o->children[i];
+    }
+    s.lod_distance[0] = 140;
+  }
   size_t db;
   uint8_t *dm = cw_asset_load(map, &db);
   s.density = density;
@@ -183,6 +202,7 @@ static void scatter_add(const char *model, const char *map, float density, float
   cw_scatter_def_release(&s);
   free(dm);
   t3_release(po);
+  if (fo) t3_release(fo);
 }
 
 static cw_node land_n, landmark_n, hook_n;
@@ -223,7 +243,7 @@ static void land_init(cw_node root) {
   }
   for (int i = 0; i < d->scatter_n; i++) {
     const course_scatter *s = &d->scatter[i];
-    scatter_add(s->model, s->map, s->density, s->smin, s->smax, s->range, s->seed, s->sink, s->tilt);
+    scatter_add(s->model, s->far_model, s->map, s->density, s->smin, s->smax, s->range, s->seed, s->sink, s->tilt);
   }
 }
 

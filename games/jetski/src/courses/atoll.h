@@ -303,11 +303,11 @@ static const float atoll_ramps[][5] = { /* x, z, yaw, s, how far off the racing 
 {16.48f,-222.54f,-0.7350f,1924.0f,32.0f}
 };
 static const course_scatter atoll_scatter[] = {
-{ "res://models/palm.glb", "course/atoll/palms.u8", 0.012f, 0.75f, 1.45f, 900.0f, 77, false, 0.25f },
-{ "res://models/shrub.glb", "course/atoll/shrubs.u8", 0.03f, 0.8f, 2.0f, 450.0f, 78, false, 0.35f },
-{ "res://models/rock0.glb", "course/atoll/rocks.u8", 0.05f, 0.6f, 2.4f, 700.0f, 79, true, 0.3f },
-{ "res://models/rock1.glb", "course/atoll/rocks.u8", 0.04f, 0.5f, 1.8f, 700.0f, 80, true, 0.25f },
-{ "res://models/rock2.glb", "course/atoll/rocks.u8", 0.03f, 0.7f, 3.2f, 700.0f, 81, true, 0.35f }
+{ "res://models/palm.glb", "res://models/palm_far.glb", "course/atoll/palms.u8", 0.012f, 0.75f, 1.45f, 900.0f, 77, false, 0.25f },
+{ "res://models/shrub.glb", NULL, "course/atoll/shrubs.u8", 0.03f, 0.8f, 2.0f, 450.0f, 78, false, 0.35f },
+{ "res://models/rock0.glb", NULL, "course/atoll/rocks.u8", 0.05f, 0.6f, 2.4f, 700.0f, 79, true, 0.3f },
+{ "res://models/rock1.glb", NULL, "course/atoll/rocks.u8", 0.04f, 0.5f, 1.8f, 700.0f, 80, true, 0.25f },
+{ "res://models/rock2.glb", NULL, "course/atoll/rocks.u8", 0.03f, 0.7f, 3.2f, 700.0f, 81, true, 0.35f }
 };
 static const char *const atoll_props[][3] = {
 { "Sky", "ground_color", "color(0.3, 0.27, 0.23, 1)" },

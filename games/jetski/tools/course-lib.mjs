@@ -238,7 +238,7 @@ export function makeCourse(def) {
   c += `static const float ${id}_track[][4] = {\n` + TK.map((p) => `{${p.x.toFixed(2)}f,${p.z.toFixed(2)}f,${p.dx.toFixed(4)}f,${p.dz.toFixed(4)}f}`).join(',\n') + '\n};\n';
   c += `static const float ${id}_buoys[][4] = { /* x, z, side (+1: pass with the buoy on your right), s */\n` + buoys.map((b) => `{${b.x.toFixed(2)}f,${b.z.toFixed(2)}f,${b.side}.0f,${b.s.toFixed(1)}f}`).join(',\n') + '\n};\n';
   c += `static const float ${id}_ramps[][5] = { /* x, z, yaw, s, how far off the racing line */\n` + rp.map((r) => `{${r.x.toFixed(2)}f,${r.z.toFixed(2)}f,${Math.atan2(r.dx, r.dz).toFixed(4)}f,${r.s.toFixed(1)}f,${r.off.toFixed(1)}f}`).join(',\n') + '\n};\n';
-  c += `static const course_scatter ${id}_scatter[] = {\n` + def.scatter.map(([m, map, d, a, b, r, seed, sink, tilt]) => `{ ${q(`res://models/${m}.glb`)}, ${q(`course/${id}/${map}.u8`)}, ${f(d)}, ${f(a)}, ${f(b)}, ${f(r)}, ${seed}, ${sink}, ${f(tilt)} }`).join(',\n') + '\n};\n';
+  c += `static const course_scatter ${id}_scatter[] = {\n` + def.scatter.map(([m, map, d, a, b, r, seed, sink, tilt]) => `{ ${q(`res://models/${m}.glb`)}, ${['pine', 'palm'].includes(m) ? q(`res://models/${m}_far.glb`) : 'NULL'}, ${q(`course/${id}/${map}.u8`)}, ${f(d)}, ${f(a)}, ${f(b)}, ${f(r)}, ${seed}, ${sink}, ${f(tilt)} }`).join(',\n') + '\n};\n';
   c += `static const char *const ${id}_props[][3] = {\n` + (def.props.length ? def.props.map((p) => `{ ${q(p[0])}, ${q(p[1])}, ${q(String(p[2]))} }`).join(',\n') : '{ "", "", "" }') + '\n};\n';
   c += `static const course_def ${id}_course = {\n  .id = ${q(id)}, .name = ${q(def.name)}, .quads = ${QUADS}, .spacing = ${f(SPACING)}, .minh = ${f(MINH)}, .maxh = ${f(MAXH)}, .len = ${LEN.toFixed(2)}f,\n`;
   c += `  .track_n = ${TK.length}, .track = ${id}_track, .buoy_n = ${buoys.length}, .buoys = ${id}_buoys, .ramp_n = ${rp.length}, .ramps = ${id}_ramps, .ramp_top = ${f(def.ramp_top ?? 5)},\n`;
@@ -271,7 +271,7 @@ export function writeIndex(defs) {
     for (const n of ['heights.r16', 'control.u32', 'wavemask.f32', ...Object.keys(d.maps).map((m) => m + '.u8'), ...d.grades.flatMap((g) => [g[0] + '-albedo.rgba', g[0] + '-normal.rgba'])]) keep.push(`course/${d.id}/${n}`);
     { const sky = d.sky.replace('res://', ''); if (!keep.includes(sky)) keep.push(sky); }
     if (d.landmark && !keep.includes(`models/${d.landmark.model}.glb`)) keep.push(`models/${d.landmark.model}.glb`);
-    for (const s of d.scatter) if (!keep.includes(`models/${s[0]}.glb`)) keep.push(`models/${s[0]}.glb`);
+    for (const s of d.scatter) { if (!keep.includes(`models/${s[0]}.glb`)) keep.push(`models/${s[0]}.glb`); if (['pine', 'palm'].includes(s[0]) && !keep.includes(`models/${s[0]}_far.glb`)) keep.push(`models/${s[0]}_far.glb`); }
     if (d.hook && !keep.includes(`models/${d.hook.model}.glb`)) keep.push(`models/${d.hook.model}.glb`);
   }
   writeFileSync(rootsPath, keep.join('\n') + '\n');

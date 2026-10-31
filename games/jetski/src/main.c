@@ -433,7 +433,18 @@ static void frame_log(void) {
   if (n > 0 && now - last > 0.022) fprintf(out, "SLOW %d %.1f state %d\n", n, (now - last) * 1000.0, G.state);
   if (n == 0) fprintf(out, "FIRST %.1f\n", now * 1000.0);
   last = now, n++;
-  if (n % 60 == 0) { fprintf(out, "AT %d state %d\n", n, G.state); fflush(out); }
+  if (n % 60 == 0) {
+    fprintf(out, "AT %d state %d\n", n, G.state);
+    /* where the frame goes */
+    cw_tree *t = cw_scene_app_tree();
+    const cw_pass_stat *st;
+    int np = cw_pipeline_pass_stats(cw_pipeline_of(t), &st);
+    for (int i = 0; i < np; i++) if (st[i].ran) fprintf(out, "PASS %s gpu %.2f cpu %.2f\n", st[i].name, st[i].gpu_ms_avg, st[i].cpu_ms_avg);
+    cw_render3d_stats rs;
+    cw_render3d_get_stats(t, &rs);
+    fprintf(out, "DRAW calls %d tris %d frame_gpu %.2f\n", rs.draw_calls, rs.triangles, cw_pipeline_gpu_ms(cw_pipeline_of(t)));
+    fflush(out);
+  }
 }
 
 static void render(void *user, double alpha) {
