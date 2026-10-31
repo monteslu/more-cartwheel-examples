@@ -69,6 +69,11 @@ function height(x, z) {
   if (wall > 0.05) rim += g * wall * 34 * (ridged(x * 0.018, z * 0.018, 5, 31) - 0.5) * 2;
   rim += g * 3 * (fbm(x * 0.05, z * 0.05, 4, 33) - 0.5) * 2;
   y = Math.max(y, rim);
+  // the land's skin: gullies running downhill and broken ground; beaches keep smooth
+  if (y > 1) {
+    const k = smooth(1.5, 12, y);
+    y += k * ((ridged(x * 0.03, z * 0.03, 5, 61) - 0.55) * 13 * (0.35 + 0.65 * smooth(8, 50, y)) + (fbm(x * 0.14, z * 0.14, 3, 62) - 0.5) * 3.2);
+  }
   // sea stacks
   for (const [sx, sz, h, sw] of STACKS) {
     const d = Math.hypot(x - sx, z - sz) * (0.8 + 0.7 * fbm(x * 0.07 + sx, z * 0.07, 3, 41));
@@ -120,7 +125,7 @@ for (let j = 0; j < MN; j++) for (let i = 0; i < MN; i++) {
   const y = hWorld(x, z);
   const open = smooth(250, 400, r0 + (fbm(x * 0.004, z * 0.004, 2, 71) - 0.5) * 60);
   const shoal = smooth(-0.8, -8, y);
-  M[j * MN + i] = Math.max(0.06, open * shoal);
+  M[j * MN + i] = Math.max(0.05, Math.max(open, 0.26) * shoal);
 }
 for (let pass = 0; pass < 6; pass++) {
   const C = M.slice();
@@ -142,6 +147,23 @@ for (let j = 0; j < DN; j++) for (let i = 0; i < DN; i++) {
   D[j * DN + i] = Math.round(v * 255);
 }
 writeFileSync(join(OUT, 'course/palms.u8'), Buffer.from(D));
+
+// rocks at the waterline and at the foot of the cliffs; shrubs that break up the hills
+{
+  const Rk = new Uint8Array(DN * DN), Sh = new Uint8Array(DN * DN);
+  for (let j = 0; j < DN; j++) for (let i = 0; i < DN; i++) {
+    const x = ((i + 0.5) / DN - 0.5) * SIZE, z = ((j + 0.5) / DN - 0.5) * SIZE, y = hWorld(x, z);
+    const ii = Math.round(x / SPACING + QUADS / 2), jj = Math.round(z / SPACING + QUADS / 2);
+    const slope = Math.hypot(hAt(ii + 2, jj) - hAt(ii - 2, jj), hAt(ii, jj + 2) - hAt(ii, jj - 2)) / (4 * SPACING);
+    const band = smooth(-1.6, -0.5, y) * (1 - smooth(1.2, 4.5, y));
+    const clump = smooth(0.4, 0.62, fbm(x * 0.05 + 3, z * 0.05, 3, 91));
+    const away = smooth(24, 40, trackDist(x, z));
+    Rk[j * DN + i] = Math.round(clamp(band * clump * (0.25 + slope) * 2.2) * away * 255);
+    Sh[j * DN + i] = Math.round(smooth(3, 8, y) * (1 - smooth(85, 120, y)) * (1 - smooth(0.9, 1.5, slope)) * smooth(0.3, 0.55, fbm(x * 0.04, z * 0.04, 3, 92)) * 255);
+  }
+  writeFileSync(join(OUT, 'course/rocks.u8'), Buffer.from(Rk));
+  writeFileSync(join(OUT, 'course/shrubs.u8'), Buffer.from(Sh));
+}
 
 // buoys: pairs of slaloms, alternating sides, spaced so the rhythm reads
 const buoys = [];

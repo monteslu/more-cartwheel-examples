@@ -298,7 +298,7 @@ static const float BUOYS[BUOY_N][4] = { /* x, z, side (+1: pass with the buoy on
 {-219.84f,144.28f,1.0f,2507.7f}
 };
 #define LIGHT_X 200.00f
-#define LIGHT_Y 31.58f
+#define LIGHT_Y 32.85f
 #define LIGHT_Z -256.00f
 #define START_X -167.30f
 #define START_Z 143.87f

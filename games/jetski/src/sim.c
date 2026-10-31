@@ -310,16 +310,16 @@ static void weather(void) {
   float lead = 0;
   for (int i = 0; i < RACERS; i++) if (G.c[i].dist > lead) lead = G.c[i].dist;
   float t = G.state == RACE_ATTRACT ? 0.75f : clampf(lead / (COURSE_LEN * (float)LAPS), 0, 1);
-  float target = 0.42f + 0.58f * t;
+  float target = 0.62f + 0.38f * t;
   G.swell += (target - G.swell) * 0.004f;
-  if (G.swell < 0.42f) G.swell = target;
+  if (G.swell < 0.62f) G.swell = target;
 #ifdef JETSKI_AUTOPILOT
   { const char *e = getenv("JETSKI_SWELL"); if (e) G.swell = (float)atof(e); }
 #endif
   float a = G.swell;
   cw_node_set(G.water, "wave0", cw_val_vec4(200, 46, 1.5f * a, 0.7f));
   cw_node_set(G.water, "wave1", cw_val_vec4(216, 37, 1.05f * a, 0.7f));
-  cw_node_set(G.water, "wave2", cw_val_vec4(150, 14, 0.1f + 0.2f * a, 0.65f));
+  cw_node_set(G.water, "wave2", cw_val_vec4(150, 14, 0.14f + 0.22f * a, 0.65f));
   cw_node_set(G.water, "wave3", cw_val_vec4(252, 7, 0.05f + 0.05f * a, 0.5f));
   /* the tide comes in over the race */
   G.tide = 0.5f * t;

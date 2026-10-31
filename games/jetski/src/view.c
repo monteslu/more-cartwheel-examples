@@ -43,7 +43,7 @@ static void paint(t3_object *o, int team) {
       if (!mat || !mat->name) continue;
       const float *c = NULL;
       if (!strcmp(mat->name, "deck")) c = TEAMS[team];
-      else if (!strcmp(mat->name, "vest")) c = TEAMS[team] + 3;
+      else if (!strcmp(mat->name, "vest") || !strcmp(mat->name, "accent")) c = TEAMS[team] + 3;
       if (!c) continue;
       t3_material *cl = t3_material_clone(mat);
       cl->color = (t3_color){ c[0], c[1], c[2] };
@@ -134,6 +134,46 @@ static void clouds_init(void) {
   cw_node3d_set_object(G.sun_node, sun_sprite);
 }
 
+/* a scatter layer from a model and a density map; every instance stands in the ground it is placed on */
+static void scatter_add(const char *model, const char *map, float density, float smin, float smax, float range, uint32_t seed, bool tilt, float sink) {
+  cw_res res = cw_res_load(model, CW_RES_GLTF);
+  t3_object *po = cw_gltf_instantiate(res);
+  if (!po) return;
+  cw_scatter_def s = cw_scatter_default_def();
+  t3_object *stack[32];
+  int sp = 0, parts = 0;
+  stack[sp++] = po;
+  while (sp > 0 && parts < CW_SCATTER_PARTS) {
+    t3_object *o = stack[--sp];
+    if (o->type == T3_MESH) {
+      t3_mesh *m = (t3_mesh *)o;
+      s.geometry[0][parts] = m->geometry;
+      s.material[0][parts] = m->materials[0];
+      t3_retain(m->geometry);
+      t3_retain(s.material[0][parts]);
+      parts++;
+    }
+    for (int i = 0; i < o->child_count && sp < 32; i++) stack[sp++] = o->children[i];
+  }
+  size_t db;
+  uint8_t *dm = cw_asset_load(map, &db);
+  s.density = density;
+  s.density_map = dm;
+  s.dm_w = s.dm_h = PALMS_N;
+  s.scale_min = smin, s.scale_max = smax;
+  s.visible_range = range;
+  s.fade = range * 0.08f;
+  s.cast_shadow = true;
+  s.density_knob = "scatter";
+  s.seed = seed;
+  s.sink = sink;
+  s.align_to_normal = tilt;
+  cw_terrain_scatter_add(G.land, &s);
+  cw_scatter_def_release(&s);
+  free(dm);
+  t3_release(po);
+}
+
 static void land_init(cw_node root) {
 
 
@@ -155,7 +195,7 @@ static void land_init(cw_node root) {
   cw_terrain_set_control(G.land, 0, 0, COURSE_QUADS + 1, COURSE_QUADS + 1, ctl);
   free(ctl);
   static const char *const names[4] = { "sand", "coast", "rock", "grass" };
-  static const float uv[4] = { 0.16f, 0.22f, 0.035f, 0.05f };
+  static const float uv[4] = { 0.16f, 0.22f, 0.075f, 0.09f };
   for (int i = 0; i < 4; i++) {
     char p[64];
     size_t la, ln;
@@ -168,44 +208,11 @@ static void land_init(cw_node root) {
     free(a);
     free(nn);
   }
-  /* palms */
-  cw_res palm = cw_res_load("res://models/palm.glb", CW_RES_GLTF);
-  t3_object *po = cw_gltf_instantiate(palm);
-  if (po) {
-    cw_scatter_def s = cw_scatter_default_def();
-    /* the first mesh of the file, with its two primitives */
-    t3_object *stack[32];
-    int sp = 0, parts = 0;
-    stack[sp++] = po;
-    while (sp > 0 && parts < CW_SCATTER_PARTS) {
-      t3_object *o = stack[--sp];
-      if (o->type == T3_MESH) {
-        t3_mesh *m = (t3_mesh *)o;
-        s.geometry[0][parts] = m->geometry;
-        s.material[0][parts] = m->materials[0];
-        t3_retain(m->geometry);
-        t3_retain(s.material[0][parts]);
-        parts++;
-      }
-      for (int i = 0; i < o->child_count && sp < 32; i++) stack[sp++] = o->children[i];
-    }
-    size_t db;
-    uint8_t *dm = cw_asset_load("course/palms.u8", &db);
-    s.density = 0.012f;
-    s.density_map = dm;
-    s.dm_w = s.dm_h = PALMS_N;
-    s.scale_min = 0.75f, s.scale_max = 1.45f;
-    s.visible_range = 900;
-    s.fade = 60;
-    s.cast_shadow = true;
-    s.density_knob = "scatter";
-    s.seed = 77;
-    s.sink = 0.25f;
-    cw_terrain_scatter_add(G.land, &s);
-    cw_scatter_def_release(&s);
-    free(dm);
-    t3_release(po);
-  }
+  scatter_add("res://models/palm.glb", "course/palms.u8", 0.012f, 0.75f, 1.45f, 900, 77, false, 0.25f);
+  scatter_add("res://models/shrub.glb", "course/shrubs.u8", 0.03f, 0.8f, 2.0f, 650, 78, false, 0.35f);
+  scatter_add("res://models/rock0.glb", "course/rocks.u8", 0.05f, 0.6f, 2.4f, 700, 79, true, 0.3f);
+  scatter_add("res://models/rock1.glb", "course/rocks.u8", 0.04f, 0.5f, 1.8f, 700, 80, true, 0.25f);
+  scatter_add("res://models/rock2.glb", "course/rocks.u8", 0.03f, 0.7f, 3.2f, 700, 81, true, 0.35f);
 }
 
 /* the buoy's band and lamp take its side's colour; one shared material per side */
@@ -273,7 +280,7 @@ void view_init(void) {
     shadows(ro);
     cw_node3d_set_object(rider_n[i], ro);
     rider_bind(i, ro);
-    { cw_rim_light_desc rl = cw_rim_light_default(); rl.color = (t3_color){ 1.0f, 0.82f, 0.62f }; rl.strength = 0.22f; rl.power = 4.0f; cw_rim_light_apply_tree(ro, &rl); }
+    { cw_rim_light_desc rl = cw_rim_light_default(); rl.color = (t3_color){ 1.0f, 0.82f, 0.62f }; rl.strength = 0.1f; rl.power = 5.0f; cw_rim_light_apply_tree(ro, &rl); }
     t3_release(ro);
     t3_release(co);
   }

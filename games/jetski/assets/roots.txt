@@ -19,6 +19,12 @@ models/craft.glb
 models/rider.glb
 models/buoy.glb
 models/palm.glb
+models/rock0.glb
+models/rock1.glb
+models/rock2.glb
+models/shrub.glb
+course/rocks.u8
+course/shrubs.u8
 models/lighthouse.glb
 models/gate.glb
 effects/mist.png

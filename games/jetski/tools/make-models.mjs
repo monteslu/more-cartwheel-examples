@@ -35,12 +35,16 @@ function limb(mat, chain, radii, o = {}) {
   const [U, V] = frame(dir);
   const full = [];
   const r0 = rings[0], rl = rings[rings.length - 1];
-  full.push({ c: sub(r0.c, mul(dir, r0.r * 0.6)), U, V, ru: 0.002, rv: 0.002, i: r0.i, t: 0 });
-  full.push({ c: sub(r0.c, mul(dir, r0.r * 0.3)), U, V, ru: r0.r * 0.8, rv: r0.r * 0.8, i: r0.i, t: 0 });
+  if (!o.flat) {
+    full.push({ c: sub(r0.c, mul(dir, r0.r * 0.6)), U, V, ru: 0.002, rv: 0.002, i: r0.i, t: 0 });
+    full.push({ c: sub(r0.c, mul(dir, r0.r * 0.3)), U, V, ru: r0.r * 0.8, rv: r0.r * 0.8, i: r0.i, t: 0 });
+  }
   for (const q of rings) full.push({ c: q.c, U, V, ru: q.r, rv: q.r * (o.ratio ?? 1), i: q.i, t: q.t });
-  full.push({ c: add(rl.c, mul(dir, rl.r * 0.3)), U, V, ru: rl.r * 0.8, rv: rl.r * 0.8, i: rl.i, t: 1 });
-  full.push({ c: add(rl.c, mul(dir, rl.r * 0.6)), U, V, ru: 0.002, rv: 0.002, i: rl.i, t: 1 });
-  m.loft(mat, full, { n: o.n ?? 12, weights: (k) => {
+  if (!o.flat) {
+    full.push({ c: add(rl.c, mul(dir, rl.r * 0.3)), U, V, ru: rl.r * 0.8, rv: rl.r * 0.8, i: rl.i, t: 1 });
+    full.push({ c: add(rl.c, mul(dir, rl.r * 0.6)), U, V, ru: 0.002, rv: 0.002, i: rl.i, t: 1 });
+  }
+  m.loft(mat, full, { n: o.n ?? 12, arc: o.arc, weights: (k) => {
     const q = full[k], cur = BI[chain[q.i]], nxt = q.i + 1 < n - 1 ? BI[chain[q.i + 1]] : cur;
     const w = smooth(0.78, 1.0, q.t);
     if (q.t < 0.22 && q.i > 0) { const pw = 1 - smooth(0, 0.22, q.t); return [[BI[chain[q.i - 1]], pw * 0.5], [cur, 1 - pw * 0.5]]; }
@@ -54,26 +58,76 @@ function torso(mat, grow, ys) {
 }
 const H = W.Hips[1], S = W.Spine[1], C = W.Chest[1], N = W.Neck[1];
 const hip = BI.Hips, sp = BI.Spine, ch = BI.Chest, ne = BI.Neck;
-torso('suit', 0, [[H - 0.12, 0.002, 0.002, [[hip, 1]]], [H - 0.1, 0.13, 0.11, [[hip, 1]]], [H - 0.04, 0.17, 0.125, [[hip, 1]]], [H + 0.05, 0.165, 0.115, [[hip, 0.8], [sp, 0.2]]], [S + 0.03, 0.145, 0.1, [[hip, 0.25], [sp, 0.75]]], [S + 0.12, 0.15, 0.1, [[sp, 0.7], [ch, 0.3]]], [C + 0.05, 0.175, 0.11, [[ch, 1]]], [C + 0.18, 0.185, 0.115, [[ch, 1]]], [C + 0.25, 0.13, 0.09, [[ch, 1]]], [N, 0.062, 0.062, [[ch, 0.6], [ne, 0.4]]], [N + 0.07, 0.052, 0.054, [[ne, 1]]], [N + 0.1, 0.002, 0.002, [[ne, 1]]]]);
-// the buoyancy vest, matte, over the chest
-torso('vest', 0.022, [[S - 0.04, 0.002, 0.002, [[sp, 1]]], [S - 0.02, 0.15, 0.105, [[hip, 0.3], [sp, 0.7]]], [S + 0.1, 0.152, 0.104, [[sp, 0.7], [ch, 0.3]]], [C + 0.05, 0.176, 0.115, [[ch, 1]]], [C + 0.17, 0.185, 0.118, [[ch, 1]]], [C + 0.235, 0.12, 0.085, [[ch, 1]]], [C + 0.245, 0.002, 0.002, [[ch, 1]]]]);
-for (const s of ['L', 'R']) {
-  limb('suit', ['Arm' + s, 'Fore' + s, 'Hand' + s], [0.062, 0.047, 0.036]);
-  limb('suit', ['Thigh' + s, 'Shin' + s, 'Foot' + s], [0.092, 0.063, 0.046], { n: 14 });
-  const sg = s === 'L' ? 1 : -1, hand = W['Hand' + s], foot = W['Foot' + s];
-  m.capsule('glove', sub(hand, [sg * 0.02, 0, 0]), add(hand, [sg * 0.075, 0, 0]), 0.04, 0.042, { ratio: 0.72, weights: () => [[BI['Hand' + s], 1]] });
-  m.capsule('boot', add(foot, [0, -0.02, -0.03]), add(foot, [0, -0.045, 0.16]), 0.056, 0.05, { ratio: 0.8, weights: () => [[BI['Foot' + s], 1]] });
+// the torso's outline, top to bottom of a real body: y, half width, half depth, how far forward (+z), weights
+const BODY = [[H - 0.13, 0.002, 0.002, -0.01, [[hip, 1]]], [H - 0.115, 0.09, 0.08, -0.012, [[hip, 1]]], [H - 0.07, 0.15, 0.112, -0.022, [[hip, 1]]], [H - 0.01, 0.163, 0.118, -0.018, [[hip, 1]]], [H + 0.07, 0.148, 0.102, -0.002, [[hip, 0.8], [sp, 0.2]]], [S + 0.02, 0.132, 0.092, 0.006, [[hip, 0.25], [sp, 0.75]]], [S + 0.12, 0.138, 0.096, 0.012, [[sp, 0.7], [ch, 0.3]]], [C + 0.03, 0.158, 0.106, 0.016, [[ch, 1]]], [C + 0.14, 0.178, 0.113, 0.02, [[ch, 1]]], [C + 0.215, 0.168, 0.098, 0.006, [[ch, 1]]], [C + 0.26, 0.095, 0.072, -0.004, [[ch, 1]]], [N + 0.002, 0.056, 0.056, 0, [[ch, 0.6], [ne, 0.4]]], [N + 0.08, 0.05, 0.052, 0.006, [[ne, 1]]], [N + 0.11, 0.002, 0.002, 0.006, [[ne, 1]]]];
+const bodyAt = (y) => { let k = 0; while (k < BODY.length - 2 && BODY[k + 1][0] < y) k++; const A = BODY[k], B = BODY[k + 1], t = clamp((y - A[0]) / (B[0] - A[0])), mixW = t < 0.5 ? A[4] : B[4]; return { rx: lerp(A[1], B[1], t), rz: lerp(A[2], B[2], t), zo: lerp(A[3], B[3], t), w: mixW }; };
+{
+  const rings = BODY.map(([y, rx, rz, zo, b]) => ({ c: [0, y, zo], U: XA, V: ZA, ru: rx, rv: rz, e: 2.4, b, mod: (an) => 1 + 0.018 * Math.cos(an * 2) - 0.012 * Math.pow(Math.max(0, -Math.sin(an)), 8) }));
+  m.loft('suit', rings, { n: 28, weights: (k) => rings[k].b });
 }
-// helmet: shell, chin bar, dark visor
+// the buoyancy vest: foam ribs around the body, deeper at the back, a channel down the spine, cut in at the sides, a yoke over
+// the shoulders in a darker cloth, and buckled straps
+{
+  const y0 = S - 0.05, y1 = C + 0.2, n = 36, rings = [];
+  for (let k = 0; k <= n; k++) {
+    const y = lerp(y0, y1, k / n), q = bodyAt(y), ribs = 1 + 0.045 * Math.pow(Math.abs(Math.sin((y - y0) * 25.1)), 0.6);
+    const end = Math.min(1, Math.min(k, n - k) / 1.2);
+    rings.push({ c: [0, y, q.zo], U: XA, V: ZA, ru: (q.rx + 0.024) * lerp(0.97, 1, end), rv: (q.rz + 0.03) * lerp(0.96, 1, end), e: 2.6, b: q.w, mod: (an) => ribs * (1 - 0.1 * Math.pow(Math.abs(Math.cos(an)), 14)) * (1 - 0.13 * Math.pow(Math.max(0, -Math.sin(an)), 40)) });
+  }
+  m.loft('vest', rings, { n: 44, weights: (k) => rings[k].b });
+  const yoke = [];
+  for (let k = 0; k <= 8; k++) {
+    const y = lerp(C + 0.19, C + 0.272, k / 8), q = bodyAt(y);
+    yoke.push({ c: [0, y, q.zo], U: XA, V: ZA, ru: q.rx + 0.03, rv: q.rz + 0.032, e: 2.5, b: q.w });
+  }
+  m.loft('strap', yoke, { n: 28, weights: (k) => yoke[k].b });
+  for (const y of [S + 0.06, C + 0.05]) {
+    const q = bodyAt(y), r = [];
+    for (let k = 0; k <= 2; k++) { const yy = y - 0.016 + 0.016 * k; const qq = bodyAt(yy); r.push({ c: [0, yy, qq.zo], U: XA, V: ZA, ru: qq.rx + 0.039, rv: qq.rz + 0.046, e: 2.6, b: q.w }); }
+    m.loft('strap', r, { n: 32, weights: (k) => r[k].b });
+  }
+  // the collar, a soft roll
+  m.loft('strap', [0, 1, 2, 3, 4].map((k) => { const an = (k / 4) * Math.PI, y = C + 0.27 + 0.03 * Math.sin(an), rr = 0.078 + 0.028 * Math.cos(an) + 0.012; return { c: [0, y, -0.004], U: XA, V: ZA, ru: rr, rv: rr * 0.92, e: 2 }; }), { n: 20, weights: () => [[ch, 1]] });
+}
+for (const s of ['L', 'R']) {
+  const sg = s === 'L' ? 1 : -1, arm = 'Arm' + s, fore = 'Fore' + s, hand = W['Hand' + s], foot = W['Foot' + s];
+  limb('suit', [arm, fore, 'Hand' + s], [0.058, 0.044, 0.031], { muscle: 0.16, n: 14 });
+  // the shoulder's round cap
+  m.ellipsoid('suit', add(W[arm], [sg * 0.008, 0, 0]), 0.074, 0.078, 0.07, { steps: 8, n: 16, weights: () => [[BI[arm], 0.8], [ch, 0.2]] });
+  // a bright panel down the outside of each arm and thigh
+  limb('accent', [arm, fore], [0.0605, 0.047], { muscle: 0.16, n: 10, arc: sg > 0 ? [Math.PI * 0.75, Math.PI * 1.25] : [-Math.PI * 0.25, Math.PI * 0.25], flat: true });
+  limb('suit', ['Thigh' + s, 'Shin' + s, 'Foot' + s], [0.088, 0.056, 0.041], { muscle: 0.14, n: 16 });
+  limb('accent', ['Thigh' + s, 'Shin' + s], [0.0905, 0.0585], { muscle: 0.14, n: 10, arc: sg > 0 ? [Math.PI * 0.75, Math.PI * 1.25] : [-Math.PI * 0.25, Math.PI * 0.25], flat: true });
+  // a knee pad
+  m.ellipsoid('strap', add(W['Shin' + s], [0, 0.005, 0.042]), 0.05, 0.062, 0.03, { steps: 6, n: 12, weights: () => [[BI['Thigh' + s], 0.5], [BI['Shin' + s], 0.5]] });
+  // the glove: a padded palm, four fingers curled round the grip, a thumb, a cuff
+  const hw_ = () => [[BI['Hand' + s], 1]], glove = 'glove';
+  m.capsule(glove, sub(hand, [sg * 0.018, 0, 0]), add(hand, [sg * 0.052, 0.002, -0.004]), 0.03, 0.034, { ratio: 0.62, weights: hw_ });
+  m.capsule('strap', sub(hand, [sg * 0.03, 0, 0]), sub(hand, [sg * 0.012, 0, 0]), 0.034, 0.034, { weights: hw_ });
+  for (let f = 0; f < 4; f++) {
+    const x = sg * (0.06 + 0.0), z = -0.014 + 0.0, off = -0.023 + 0.0155 * f;
+    m.capsule(glove, add(hand, [x + sg * 0.012, 0.008, off + z]), add(hand, [x + sg * 0.04, -0.012, off + z]), 0.0095, 0.0085, { caps: 2, rings: 2, n: 7, weights: hw_ });
+    m.capsule(glove, add(hand, [x + sg * 0.04, -0.012, off + z]), add(hand, [x + sg * 0.036, -0.034, off + z]), 0.0085, 0.0075, { caps: 2, rings: 2, n: 7, weights: hw_ });
+  }
+  m.capsule(glove, add(hand, [sg * 0.03, -0.012, 0.026]), add(hand, [sg * 0.06, -0.028, 0.03]), 0.0105, 0.009, { caps: 2, rings: 2, n: 7, weights: hw_ });
+  // the boot: shaped upper, a thick sole
+  const bw = () => [[BI['Foot' + s], 1]];
+  m.capsule('boot', add(foot, [0, -0.02, -0.03]), add(foot, [0, -0.052, 0.14]), 0.052, 0.042, { ratio: 0.82, weights: bw });
+  m.capsule('boot', add(foot, [0, 0.03, 0]), add(foot, [0, -0.015, -0.02]), 0.05, 0.054, { weights: bw });
+  m.capsule('strap', add(foot, [0, -0.085, -0.05]), add(foot, [0, -0.09, 0.17]), 0.046, 0.04, { ratio: 0.32, weights: bw });
+}
+// the helmet: a shell smaller than a cartoon's, a brow, a chin bar, a wrapping visor, a neck roll, vents and a stripe
 const Hd = W.Head, he = BI.Head, hw = () => [[he, 1]];
-m.ellipsoid('helmet', add(Hd, [0, 0.085, -0.008]), 0.117, 0.125, 0.135, { steps: 12, n: 22, weights: hw });
-m.capsule('helmet', add(Hd, [-0.06, -0.0, 0.1]), add(Hd, [0.06, -0.0, 0.1]), 0.04, 0.04, { weights: hw });
-m.ellipsoid('visor', add(Hd, [0, 0.095, 0.062]), 0.098, 0.052, 0.075, { steps: 8, n: 18, weights: hw });
-m.capsule('helmet', add(Hd, [0, 0.0, -0.06]), add(Hd, [0, -0.07, -0.09]), 0.1, 0.085, { ratio: 0.9, weights: () => [[he, 0.6], [BI.Neck, 0.4]] });
-m.ellipsoid('band', add(Hd, [0, 0.095, -0.012]), 0.122, 0.03, 0.14, { steps: 6, n: 22, weights: hw });
+m.ellipsoid('helmet', add(Hd, [0, 0.085, -0.012]), 0.103, 0.11, 0.122, { steps: 14, n: 26, weights: hw });
+m.capsule('helmet', add(Hd, [-0.065, 0.002, 0.075]), add(Hd, [0.065, 0.002, 0.075]), 0.036, 0.036, { n: 12, weights: hw });
+m.capsule('helmet', add(Hd, [-0.08, 0.135, 0.075]), add(Hd, [0.08, 0.135, 0.075]), 0.013, 0.013, { n: 8, weights: hw });
+m.ellipsoid('visor', add(Hd, [0, 0.08, 0.052]), 0.092, 0.05, 0.066, { steps: 8, n: 20, weights: hw });
+m.capsule('strap', add(Hd, [0, 0.0, -0.05]), add(Hd, [0, -0.055, -0.075]), 0.086, 0.07, { ratio: 0.9, n: 16, weights: () => [[he, 0.6], [ne, 0.4]] });
+m.ellipsoid('accent', add(Hd, [0, 0.086, -0.014]), 0.0255, 0.1125, 0.124, { steps: 10, n: 14, weights: hw });
+for (const s of [-1, 1]) m.capsule('strap', add(Hd, [s * 0.042, 0.15, -0.06]), add(Hd, [s * 0.046, 0.12, -0.115]), 0.008, 0.008, { caps: 2, rings: 2, n: 6, weights: hw });
 const glb = new Glb();
-const mats = { band: glb.material('vest', 0.5), suit: glb.material('suit', 0.62), vest: glb.material('vest', 0.88), glove: glb.material('glove', 0.5), boot: glb.material('boot', 0.55), helmet: glb.material('helmet', 0.22), visor: glb.material('visor', 0.08, 0.3) };
-const color = { band: [0.9, 0.3, 0.05, 1], suit: [0.05, 0.055, 0.07, 1], vest: [0.9, 0.3, 0.05, 1], glove: [0.03, 0.03, 0.035, 1], boot: [0.04, 0.04, 0.05, 1], helmet: [0.85, 0.85, 0.82, 1], visor: [0.02, 0.03, 0.04, 1] };
+const mats = { suit: glb.material('suit', 0.58), vest: glb.material('vest', 0.86), strap: glb.material('strap', 0.85), accent: glb.material('accent', 0.55), glove: glb.material('glove', 0.7), boot: glb.material('boot', 0.62), helmet: glb.material('helmet', 0.26), visor: glb.material('visor', 0.08, 0.35) };
+const color = { suit: [0.035, 0.04, 0.05, 1], vest: [0.9, 0.3, 0.05, 1], strap: [0.018, 0.018, 0.022, 1], accent: [0.9, 0.3, 0.05, 1], glove: [0.06, 0.06, 0.07, 1], boot: [0.05, 0.05, 0.06, 1], helmet: [0.82, 0.82, 0.8, 1], visor: [0.02, 0.03, 0.05, 1] };
 for (const [k, c] of Object.entries(color)) glb.materials[mats[k]].pbrMetallicRoughness.baseColorFactor = c;
 const jn = BONES.map((n) => glb.node({ name: n, translation: T[n] }));
 BONES.forEach((n, i) => { if (PARENT[n]) (glb.nodes[jn[BI[PARENT[n]]]].children ||= []).push(jn[i]); });
@@ -123,62 +177,69 @@ class Plain {
 // ── the craft: forward is +z, the waterline about y = 0, length 3.1 m ──
 {
   const P = new Plain();
-  // the hull section at u (0 stern .. 1 bow): half beam, keel depth (deadvee), chine, gunwale height
   const sec = (u) => {
-    const bow = smooth(0.58, 1.0, u), sb = smooth(0.0, 0.06, u);
-    const beam = lerp(0.58, 0.02, Math.pow(bow, 1.5)) * lerp(0.86, 1, sb);
+    const bow = smooth(0.58, 1.0, u), sb = smooth(0.0, 0.05, u);
+    const beam = lerp(0.58, 0.02, Math.pow(bow, 1.5)) * lerp(0.9, 1, sb);
     const rocker = 0.34 * Math.pow(smooth(0.6, 1.0, u), 1.6);
     return { z: lerp(-1.5, 1.6, u), beam, keel: -0.2 + rocker, chine: -0.09 + rocker * 0.85, gun: 0.2 + rocker * 0.55 + 0.04 * Math.sin(u * Math.PI) };
   };
-  const US = 28, lower = [], upper = [], deck = [];
-  for (let k = 0; k <= US; k++) {
-    const u = k / US, s = sec(u), row = [];
-    // port gunwale, chine, keel, chine, starboard gunwale
-    const pts = [[-s.beam, s.gun], [-s.beam * 1.02, s.gun * 0.45 + s.chine * 0.55], [-s.beam * 0.92, s.chine], [-s.beam * 0.5, (s.chine + s.keel) / 2 ], [0, s.keel], [s.beam * 0.5, (s.chine + s.keel) / 2], [s.beam * 0.92, s.chine], [s.beam * 1.02, s.gun * 0.45 + s.chine * 0.55], [s.beam, s.gun]];
-    for (const [x, y] of pts) row.push([x, y, s.z]);
-    lower.push(row);
-    // deck: domed over the gunwales, higher amidships into the steering tower, a footwell each side of the seat
-    const drow = [];
-    for (let i = 0; i <= 12; i++) {
-      const t = i / 12 * 2 - 1, ax = Math.abs(t);
-      const crown = 0.1 + 0.05 * (1 - u) ;
-      const tower = 0.34 * Math.exp(-Math.pow((u - 0.62) / 0.1, 2)) * (1 - ax * ax);
-      const nose = 0.22 * smooth(0.62, 0.85, u) * (1 - smooth(0.85, 1, u)) * (1 - ax * ax);
-      const well = -0.13 * smooth(0.32, 0.48, ax) * (1 - smooth(0.78, 0.96, ax)) * smooth(0.05, 0.12, u) * (1 - smooth(0.46, 0.58, u));
-      drow.push([t * s.beam, s.gun + crown * (1 - ax * ax) + tower + nose + well, s.z]);
-    }
-    deck.push(drow);
+  const US = 36;
+  // the sides, top to chine, so each band is its own colour: side panel, a stripe, lower side, then the V of the bottom with a strake
+  const sidePt = (u, sg, f) => { const s = sec(u); return [sg * s.beam * lerp(1, 1.02, f), lerp(s.gun, s.chine, f), s.z]; };
+  const band = (mat, f0, f1, flip) => { for (const sg of [-1, 1]) { const rows = []; for (let k = 0; k <= US; k++) { const u = k / US, row = []; for (let j = 0; j <= 3; j++) row.push(sidePt(u, sg, lerp(f0, f1, j / 3))); rows.push(row); } P.grid(mat, rows, { flip: sg > 0 ? !flip : flip }); } };
+  band('panel', 0, 0.32); band('stripe', 0.32, 0.46); band('panel', 0.46, 0.72); band('hull', 0.72, 1);
+  { const rows = []; for (let k = 0; k <= US; k++) { const s = sec(k / US), row = []; for (const [x, y] of [[-s.beam * 1.02, s.chine], [-s.beam * 0.72, (s.chine * 2 + s.keel) / 3 - 0.012], [-s.beam * 0.68, (s.chine * 2 + s.keel) / 3], [-s.beam * 0.3, (s.chine + s.keel * 2) / 3 - 0.012], [-s.beam * 0.26, (s.chine + s.keel * 2) / 3], [0, s.keel], [s.beam * 0.26, (s.chine + s.keel * 2) / 3], [s.beam * 0.3, (s.chine + s.keel * 2) / 3 - 0.012], [s.beam * 0.68, (s.chine * 2 + s.keel) / 3], [s.beam * 0.72, (s.chine * 2 + s.keel) / 3 - 0.012], [s.beam * 1.02, s.chine]]) row.push([x, y, s.z]); rows.push(row); } P.grid('hull', rows, { flip: true }); }
+  // the deck: a raised spine with the seat on it, footwells either side, gunwale rails, a stepped rear platform, a tower and a nose
+  const deckPt = (u, t) => {
+    const s = sec(u), ax = Math.abs(t);
+    const crown = 0.1 + 0.05 * (1 - u);
+    const tower = 0.34 * Math.exp(-Math.pow((u - 0.62) / 0.1, 2)) * (1 - ax * ax);
+    const nose = 0.22 * smooth(0.62, 0.85, u) * (1 - smooth(0.85, 1, u)) * (1 - ax * ax);
+    const well = -0.15 * smooth(0.36, 0.46, ax) * (1 - smooth(0.82, 0.92, ax)) * smooth(0.13, 0.18, u) * (1 - smooth(0.5, 0.58, u));
+    const rear = -0.1 * (1 - smooth(0.13, 0.17, u));
+    return [t * s.beam, s.gun + crown * (1 - ax * ax) + tower + nose + well + rear, s.z];
+  };
+  const deckRegion = (mat, u0, u1, t0, t1, nu = 18, nt = 6) => { const rows = []; for (let k = 0; k <= nu; k++) { const u = lerp(u0, u1, k / nu), row = []; for (let j = 0; j <= nt; j++) row.push(deckPt(u, lerp(t0, t1, j / nt))); rows.push(row); } P.grid(mat, rows); };
+  deckRegion('deck', 0.0, 1.0, -0.4, 0.4, 36, 6);
+  for (const sg of [-1, 1]) {
+    const [a, b] = sg > 0 ? [0.4, 0.88] : [-0.88, -0.4], [c, d] = sg > 0 ? [0.88, 1] : [-1, -0.88];
+    deckRegion('mat', 0.15, 0.56, a, b, 14, 6);
+    deckRegion('deck', 0.56, 1, a, b, 18, 6);
+    deckRegion('deck2', 0.0, 0.15, a, b, 6, 6);
+    deckRegion('deck2', 0.0, 1, c, d, 36, 2);
   }
-  P.grid('hull', lower, { flip: true });
-  P.grid('deck', deck);
-  // the stern and the bow closed
-  const sr = sec(0);
-  P.grid('hull', [lower[0], lower[0].map((p) => [0, p[1] * 0.2 + 0.02, sr.z])], { flip: false });
-  // the seat: a long vinyl saddle
-  const seat = [];
-  for (let k = 0; k <= 16; k++) {
-    const t = k / 16, z = lerp(-1.02, 0.22, t), wid = 0.17 * Math.pow(Math.sin(Math.PI * clamp(t * 0.96 + 0.02)), 0.35), row = [];
-    const top = 0.45 + 0.1 * Math.sin(t * Math.PI) - 0.14 * (1 - smooth(0, 0.2, t));
-    for (let i = 0; i <= 10; i++) { const a = i / 10 * Math.PI; row.push([Math.cos(a) * wid * 1.05, 0.28 + (top - 0.28) * Math.pow(Math.sin(a), 0.5), z]); }
-    seat.push(row);
-  }
-  P.grid('seat', seat, { flip: true });
-  // rub rail and stern step in dark rubber
-  for (const s of [-1, 1]) P.tube('trim', Array.from({ length: 20 }, (_, i) => { const q = sec(0.02 + i / 19 * 0.78); return [s * (q.beam + 0.012), q.gun - 0.02, q.z]; }), 0.022, 6, {});
-  // jet nozzle
-  P.tube('metal', [[0, -0.06, -1.5], [0, -0.05, -1.62]], (t) => lerp(0.1, 0.08, t), 12);
-  // the cowl behind the bars
+  // the stern's face: closed, dark, with two tail lamps, and the round steering nozzle standing out of it
+  const s0 = sec(0);
+  { const row0 = []; for (let j = 0; j <= 12; j++) { const t = j / 12 * 2 - 1; const p = deckPt(0, t); row0.push(p); } const row1 = row0.map(([x, y, z]) => { const ax = Math.abs(x / s0.beam); return [x, lerp(s0.chine, s0.keel, 1 - ax), z]; }); P.grid('transom', [row1, row0]); }
+  for (const sg of [-1, 1]) P.tube('lamp', [[sg * s0.beam * 0.72, s0.gun - 0.02, s0.z - 0.012], [sg * s0.beam * 0.72, s0.gun - 0.02, s0.z - 0.03]], 0.035, 10, { ratio: 0.5 });
+  // ride plate, under the jet
+  P.grid('metal', [[[-0.17, -0.19, -1.72], [0.17, -0.19, -1.72]], [[-0.17, -0.2, -1.42], [0.17, -0.2, -1.42]]], { flip: false });
+  P.tube('metal', [[0, -0.04, -1.5], [0, -0.04, -1.56]], 0.135, 18);
+  P.tube('nozzle', [[0, -0.045, -1.54], [0, -0.05, -1.7]], (t) => lerp(0.115, 0.088, t), 18, { cap: false });
+  P.tube('dark', [[0, -0.05, -1.66], [0, -0.05, -1.701]], 0.07, 16);
+  P.tube('metal', [[0, -0.05, -1.695], [0, -0.05, -1.712]], (t) => lerp(0.094, 0.09, t), 18, { cap: false });
+  // the rear grab loop and the boarding step
+  P.tube('metal', [[-0.2, s0.gun + 0.04, -1.46], [-0.22, s0.gun + 0.12, -1.35], [-0.16, s0.gun + 0.17, -1.2], [0, s0.gun + 0.18, -1.14], [0.16, s0.gun + 0.17, -1.2], [0.22, s0.gun + 0.12, -1.35], [0.2, s0.gun + 0.04, -1.46]], 0.012, 8);
+  // the seat: one long saddle in two parts with a stepped back, stitched rolls and bright sides, on a raised plinth
+  const seatRow = (z, wid, top, lo) => { const row = []; for (let i = 0; i <= 12; i++) { const an = (i / 12) * Math.PI; row.push([Math.cos(an) * wid, lo + (top - lo) * Math.pow(Math.sin(an), 0.45), z]); } return row; };
+  const SZ = [[-0.96, 0.09, 0.37], [-0.92, 0.135, 0.44], [-0.84, 0.158, 0.47], [-0.5, 0.17, 0.48], [-0.32, 0.17, 0.485], [-0.3, 0.172, 0.53], [-0.26, 0.174, 0.555], [-0.05, 0.17, 0.57], [0.15, 0.135, 0.585], [0.24, 0.05, 0.6]];
+  P.grid('seat', SZ.map(([z, w, t]) => seatRow(z, w, t, 0.3)), { flip: true });
+  for (const sg of [-1, 1]) P.tube('stripe', SZ.slice(1, 8).map(([z, w, t]) => [sg * w * 0.96, t - 0.085, z]), 0.016, 6);
+  P.tube('strapdark', [[-0.15, 0.487, -0.56], [0, 0.494, -0.56], [0.15, 0.487, -0.56]], 0.009, 6);
+  // the steering tower: a cowl, a dark instrument pod, vents on its flanks
   const cowl = [];
-  for (let k = 0; k <= 8; k++) { const t = k / 8, z = lerp(0.22, 0.6, t), row = []; for (let i = 0; i <= 10; i++) { const a = i / 10 * Math.PI; const w = 0.17 * (1 - 0.25 * t); row.push([Math.cos(a) * w, 0.6 + (0.22 * Math.pow(Math.sin(a), 0.7)) * (1 - 0.6 * t) - 0.05 * t, z]); } cowl.push(row); }
-  P.grid('trim', cowl, { flip: true });
+  for (let k = 0; k <= 10; k++) { const t = k / 10, z = lerp(0.2, 0.72, t), row = []; for (let i = 0; i <= 12; i++) { const an = i / 12 * Math.PI; const w = 0.19 * (1 - 0.32 * t); row.push([Math.cos(an) * w, 0.52 + (0.27 * Math.pow(Math.sin(an), 0.7)) * (1 - 0.7 * t) - 0.02 * t, z]); } cowl.push(row); }
+  P.grid('deck2', cowl, { flip: true });
+  P.grid('dark', [[[-0.1, 0.74, 0.27], [0.1, 0.74, 0.27]], [[-0.11, 0.79, 0.22], [0.11, 0.79, 0.22]]], { flip: false });
+  for (const sg of [-1, 1]) for (let k = 0; k < 3; k++) { const z = 0.3 + k * 0.08; P.grid('dark', [[[sg * 0.168, 0.56, z], [sg * 0.15, 0.62, z]], [[sg * 0.164, 0.56, z + 0.05], [sg * 0.146, 0.62, z + 0.05]]], { flip: sg > 0 }); }
   const bars = new Plain();
-  // the handlebars: a separate node that steers, about (0, 0.86, 0.3)
   bars.tube('metal', [[0, -0.28, 0.04], [0, 0, 0]], 0.03, 8);
   bars.tube('metal', [[-0.31, 0.02, -0.03], [-0.15, 0.0, 0.0], [0, -0.01, 0.0], [0.15, 0.0, 0.0], [0.31, 0.02, -0.03]], 0.014, 8);
-  for (const s of [-1, 1]) bars.tube('trim', [[s * 0.23, 0.015, -0.015], [s * 0.34, 0.025, -0.033]], 0.02, 8);
+  for (const sg of [-1, 1]) bars.tube('trim', [[sg * 0.23, 0.015, -0.015], [sg * 0.34, 0.025, -0.033]], 0.02, 8);
+  bars.tube('dark', [[-0.03, 0.01, -0.03], [0.03, 0.01, -0.03]], 0.03, 8);
   const g = new Glb();
-  const mi = { hull: g.material('hull', 0.36), deck: g.material('deck', 0.24), seat: g.material('seat', 0.42), trim: g.material('trim', 0.62), metal: g.material('metal', 0.3, 0.9) };
-  const col = { hull: [0.06, 0.07, 0.09, 1], deck: [0.88, 0.1, 0.06, 1], seat: [0.03, 0.03, 0.035, 1], trim: [0.02, 0.02, 0.025, 1], metal: [0.6, 0.62, 0.64, 1] };
+  const mi = { hull: g.material('hull', 0.34), panel: g.material('panel', 0.3), stripe: g.material('deck2', 0.3), deck: g.material('deck', 0.24), deck2: g.material('deck2', 0.24), mat: g.material('mat', 0.92), transom: g.material('transom', 0.5), lamp: g.material('lamp', 0.3, 0, [9, 0.5, 0.2]), seat: g.material('seat', 0.62), trim: g.material('trim', 0.62), metal: g.material('metal', 0.28, 0.95), nozzle: g.material('nozzle', 0.38, 0.8), dark: g.material('dark', 0.7), strapdark: g.material('dark', 0.7) };
+  const col = { hull: [0.11, 0.13, 0.17, 1], panel: [0.78, 0.78, 0.76, 1], stripe: [0.05, 0.05, 0.06, 1], deck: [0.88, 0.1, 0.06, 1], deck2: [0.05, 0.05, 0.06, 1], mat: [0.14, 0.14, 0.15, 1], transom: [0.09, 0.1, 0.12, 1], lamp: [0.5, 0.03, 0.02, 1], seat: [0.085, 0.09, 0.1, 1], trim: [0.02, 0.02, 0.025, 1], metal: [0.62, 0.64, 0.66, 1], nozzle: [0.28, 0.29, 0.31, 1], dark: [0.015, 0.015, 0.018, 1], strapdark: [0.015, 0.015, 0.018, 1] };
   for (const [k, c] of Object.entries(col)) g.materials[mi[k]].pbrMetallicRoughness.baseColorFactor = c;
   const hullN = g.node({ name: 'Hull', mesh: g.mesh('hull', P.prims(mi)) });
   const barN = g.node({ name: 'Bars', mesh: g.mesh('bars', bars.prims(mi)), translation: [0, 0.86, 0.3] });
@@ -278,4 +339,36 @@ class Plain {
   g.materials[mi.bannerB].pbrMetallicRoughness.baseColorFactor = [0.04, 0.05, 0.07, 1];
   g.sceneNodes.push(g.node({ name: 'Gate', mesh: g.mesh('gate', P.prims(mi)) }));
   g.write(join(OUT, 'gate.glb'));
+}
+
+// ── waterline rocks and shrubs: rough lumps, a few of each so nothing repeats; the scatter turns and scales them ──
+function lump(mat, seed, rx, ry, rz, rough, P) {
+  const hash = (a, b) => { let h = (a * 374761393 + b * 668265263 + seed * 1274126177) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+  const rows = [];
+  const NR = 12, NS = 18;
+  const R = [];
+  for (let j = 0; j <= NR; j++) { R[j] = []; for (let i = 0; i < NS; i++) R[j][i] = 1 + rough * (hash(j, i) - 0.5) + rough * 0.6 * (hash(j >> 1, i >> 1) - 0.5); }
+  for (let j = 0; j <= NR; j++) {
+    const th = j / NR * Math.PI, row = [];
+    for (let i = 0; i <= NS; i++) { const a = (i % NS) / NS * Math.PI * 2, r = R[j][i % NS]; row.push([Math.cos(a) * Math.sin(th) * rx * r, Math.cos(th) * ry * r + ry * 0.15, Math.sin(a) * Math.sin(th) * rz * r]); }
+    rows.push(row);
+  }
+  P.grid(mat, rows, { wrap: true, flip: true });
+}
+for (let v = 0; v < 3; v++) {
+  const P = new Plain();
+  lump('rock', 11 + v, 1.0 + v * 0.25, 0.6 + 0.2 * (v % 2), 0.8, 0.5, P);
+  const g = new Glb(), mi = { rock: g.material('rock', 0.93) };
+  g.materials[mi.rock].pbrMetallicRoughness.baseColorFactor = [0.075 + 0.02 * v, 0.07 + 0.015 * v, 0.07, 1];
+  g.sceneNodes.push(g.node({ name: 'Rock', mesh: g.mesh('rock', P.prims(mi)) }));
+  g.write(join(OUT, 'rock' + v + '.glb'));
+}
+{
+  const P = new Plain();
+  lump('leaf', 31, 1.4, 1.0, 1.3, 0.9, P);
+  lump('leaf', 32, 0.8, 0.8, 0.9, 1.0, { grid: (mat, rows, o) => P.grid(mat, rows.map((r) => r.map(([x, y, z]) => [x + 0.9, y - 0.1, z + 0.5])), o) });
+  const g = new Glb(), mi = { leaf: g.material('leaf', 0.8) };
+  g.materials[mi.leaf].pbrMetallicRoughness.baseColorFactor = [0.05, 0.13, 0.03, 1];
+  g.sceneNodes.push(g.node({ name: 'Shrub', mesh: g.mesh('shrub', P.prims(mi)) }));
+  g.write(join(OUT, 'shrub.glb'));
 }

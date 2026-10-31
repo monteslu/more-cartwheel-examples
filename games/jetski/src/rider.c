@@ -57,18 +57,27 @@ static t3_vec3 joint(t3_vec3 a, t3_vec3 target, float l1, float l2, t3_vec3 pole
 void rider_pose(int i, const craft *c, float alpha) {
   (void)alpha;
   if (!B[i][HIPS]) return;
-  /* the wave of the body: everything comes from what the craft does */
-  float steer = c->steer, lean = c->lean < 0 ? c->lean : c->lean;
-  float crouch = c->kick * 0.28f + c->load * 0.14f;
-  float stand = c->air ? 0.05f : 0.0f;
+  /* the body works: a spring behind the hips takes the craft's heave and yaw, so a rise compresses the legs, a drop lifts
+   * the rider off the seat, and the upper body lags into each turn. Presentation only. */
+  static float bv[RACERS], by[RACERS], sv[RACERS], sx[RACERS], lastvy[RACERS];
+  float acc = (c->vy - lastvy[i]);
+  lastvy[i] = c->vy;
+  bv[i] += (-acc * 0.012f - by[i] * 0.16f - bv[i] * 0.3f);
+  by[i] += bv[i];
+  by[i] = by[i] > 0.14f ? 0.14f : by[i] < -0.22f ? -0.22f : by[i];
+  sv[i] += ((c->steer - sx[i]) * 0.1f - sv[i] * 0.28f);
+  sx[i] += sv[i];
+  float steer = sx[i], lean = c->lean;
+  float crouch = c->kick * 0.26f + c->load * 0.16f - by[i];
+  float stand = c->air ? 0.08f : 0.0f;
   float speedk = c->speed / 28.0f;
-  /* hips over the seat's back, sliding inside the turn and back with the pull */
-  float hx = -steer * 0.13f, hz = -0.62f - 0.22f * (lean > 0 ? lean : 0) + 0.1f * (lean < 0 ? -lean : 0);
-  float hy = 0.92f - crouch + stand + 0.03f * speedk;
+  /* a riding crouch, not a seat: knees bent, weight over the bars, hips out over the side in a turn, back with the pull */
+  float hx = -steer * 0.2f, hz = -0.58f - 0.24f * (lean > 0 ? lean : 0) + 0.12f * (lean < 0 ? -lean : 0);
+  float hy = 0.86f - crouch + stand - 0.05f * speedk;
   t3_vec3 hips = V(hx, hy, hz);
   /* the upper body leans into the corner and over the bars, more when it hunts for speed */
-  float fwd = 0.5f + 0.18f * speedk - 0.26f * (lean > 0 ? lean : 0) + 0.22f * c->kick;
-  float side = steer * 0.2f;
+  float fwd = 0.78f + 0.2f * speedk - 0.3f * (lean > 0 ? lean : 0) + 0.25f * c->kick - by[i] * 1.2f;
+  float side = steer * 0.34f;
   t3_quat qh = euler(fwd * 0.45f, -steer * 0.15f, side * 0.4f);
   t3_quat qs = t3_quat_multiply(qh, euler(fwd * 0.3f, -steer * 0.12f, side * 0.3f));
   t3_quat qc = t3_quat_multiply(qs, euler(fwd * 0.25f, -steer * 0.12f, side * 0.3f));
@@ -91,7 +100,7 @@ void rider_pose(int i, const craft *c, float alpha) {
     int arm = s ? ARMR : ARML, fore = s ? FORER : FOREL, hand = s ? HANDR : HANDL;
     t3_vec3 sh = vadd(chest, qrot(qc, V(sg * 0.2f, 0.2f, 0)));
     t3_vec3 grip = V(0 + sg * 0.285f * bc, 0.885f, 0.3f + sg * 0.285f * bs - 0.03f);
-    t3_vec3 elbow = joint(sh, grip, 0.29f, 0.26f, V(sg * 0.9f, -0.3f, -0.35f));
+    t3_vec3 elbow = joint(sh, grip, 0.29f, 0.26f, V(sg * 0.95f, 0.15f, -0.25f));
     t3_vec3 d0 = V(sg, 0, 0);
     t3_quat qa = qbetween(d0, vnorm(vsub(elbow, sh)));
     t3_quat qf = qbetween(d0, vnorm(vsub(grip, elbow)));
@@ -104,13 +113,13 @@ void rider_pose(int i, const craft *c, float alpha) {
     float sg = s ? -1.0f : 1.0f;
     int th = s ? THIGHR : THIGHL, sh = s ? SHINR : SHINL, ft = s ? FOOTR : FOOTL;
     t3_vec3 hipj = vadd(hips, qrot(qh, V(sg * 0.1f, -0.06f, 0)));
-    t3_vec3 ankle = V(sg * 0.36f, 0.27f, -0.42f);
+    t3_vec3 ankle = V(sg * 0.38f, 0.27f + 0.1f, -0.36f - 0.08f * (sg * steer > 0 ? 1.0f : 0.0f));
     t3_vec3 knee = joint(hipj, ankle, 0.44f, 0.43f, V(sg * 0.5f, 0.2f, 1));
     t3_vec3 d0 = V(0, -1, 0);
     t3_quat qt = qbetween(d0, vnorm(vsub(knee, hipj)));
     t3_quat qn = qbetween(d0, vnorm(vsub(ankle, knee)));
     B[i][th]->quaternion = t3_quat_multiply(qinv(qh), qt);
     B[i][sh]->quaternion = t3_quat_multiply(qinv(qt), qn);
-    B[i][ft]->quaternion = qinv(qn);
+    B[i][ft]->quaternion = t3_quat_multiply(qinv(qn), qbetween(V(0, 0, 1), vnorm(V(0, 0.05f, 1))));
   }
 }
