@@ -6,6 +6,8 @@
   course opens up and two shortcut ramps well off the racing line, aimed at the correct
   side of the next buoy.
 - jetski: computer riders miss fewer buoys around the ramps on Cold Sound.
+- fighter: at Low graphics, fighters and the crowd no longer lose their skin and heads.
+- partypack: at Low graphics, Blast Ring no longer loses its arena and all four players.
 
 ## 0.12.5
 
