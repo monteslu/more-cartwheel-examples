@@ -283,7 +283,7 @@ static void init(void *user) {
   a_atk = cw_action_find("attack"), a_kick = cw_action_find("kick"), a_jump = cw_action_find("jump");
   a_grab = cw_action_find("grab"), a_special = cw_action_find("special");
   cw_shell_init(&(cw_shell_desc){
-    .title = "Brawler",
+    .title = "Street Toughs",
     .subtitle = "four fighters, one street",
     .max_players = MAXP,
     .shared_screen = true,

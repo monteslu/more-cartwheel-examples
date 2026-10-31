@@ -1,6 +1,6 @@
 ; brawler project settings
 game_app = brawler
-name = "Brawler"
+name = "Street Toughs"
 app = "brawler"
 export.linux.platform = "linux-x64"
 export.windows.platform = "windows-x64"

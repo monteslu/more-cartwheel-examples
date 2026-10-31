@@ -40,11 +40,11 @@ with the right trigger, jump with (A), change weapons with (Y) and (X).
 `games/arenafps/` (its [README](games/arenafps/README.md) has the full
 controls).
 
-### brawler
+### Street Toughs (brawler)
 
-![brawler: four players walk the docks past a knocked-out thug](docs/screenshots/brawler.jpg)
+![Street Toughs: four players walk the docks past a knocked-out thug](docs/screenshots/brawler.jpg)
 
-A side-scrolling street brawler for one to four players on one shared
+Street Toughs, a side-scrolling street brawler for one to four players on one shared
 screen. Four stages (an alley, the docks, an arcade and a roof), a crowd that
 surrounds you, crates and barrels with food and weapons, and a three-phase
 boss at the end of each stage. Knocked-down bodies fall loose as ragdolls.

@@ -1,4 +1,4 @@
-# Brawler: a 1 to 4 player co-op street brawler on one shared scrolling screen.
+# Street Toughs: a 1 to 4 player co-op street brawler on one shared scrolling screen.
 #   brawler       the game
 #   brawler_auto  bots play it (for hosts that send no input, and the gates)
 set(SRC src/main.c src/sim.c src/level.c src/fx.c src/ui.c src/secondary.c src/rag.c src/looks.c)

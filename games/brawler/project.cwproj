@@ -1,5 +1,5 @@
 ; export presets (node <host sdk>/tools/cwexport.mjs --project games/brawler --preset <preset>)
-name = "Brawler"
+name = "Street Toughs"
 app = "brawler"
 version = "0.1.0"
 app_id = "org.cartwheel.brawler"

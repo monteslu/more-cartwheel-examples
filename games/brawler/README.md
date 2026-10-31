@@ -1,6 +1,6 @@
-# Brawler
+# Street Toughs
 
-One to four players fight through four street stages on one shared scrolling screen. Walk along the street
+Street Toughs is the game in `games/brawler/`. One to four players fight through four street stages on one shared scrolling screen. Walk along the street
 and up and down its width, fight a crowd that surrounds you, break crates and barrels for food and weapons,
 beat a mini boss and a boss at the end of every stage.
 
