@@ -31,5 +31,35 @@
       ],
       "maxGt16": 0.5
     }
+  },
+  {
+    "name": "jetski-beach",
+    "app": "jetski",
+    "frames": 300,
+    "input": "jetski-beach.json",
+    "controlInput": "jetski-beach-control.json",
+    "maxGt16": 0.5,
+    "startCmds": [
+      "beach 300"
+    ],
+    "fields": [
+      "p0.pos",
+      "p0.yaw",
+      "p0.speed",
+      "p0.beached",
+      "p0.escapes",
+      "race.hash"
+    ],
+    "expect": {
+      "p0.escapes": 1
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ],
+      "maxGt16": 0.5
+    },
+    "note": "beached on the sand, nose inland, throttle and stick: the craft drives back to the water in about 3 s (it spun on the spot, 8 s and no metres, before); control: no throttle does not count as driving off"
   }
 ]

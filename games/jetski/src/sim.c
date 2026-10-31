@@ -122,7 +122,10 @@ static void craft_tick(craft *c, int idx, float dt) {
   float under = hm - c->y;
   bool was_air = c->air;
   c->wet = clampf((under + 0.08f) / 0.26f, 0, 1);
-  c->air = c->wet <= 0;
+  /* on the sand the hull is not in the air: it rests on the ground, and the rider can still drive it off */
+  float land_y = ground_at(c->x, c->z);
+  bool land = land_y > c->y - 0.32f && land_y > s.height - 0.1f && c->vy < 2.5f;
+  c->air = c->wet <= 0 && !land;
   /* the rise of the surface itself, seen from the moving craft */
   float rel_vy = c->vy - s.velocity.y;
   float ay = -G_ACC;
@@ -137,11 +140,11 @@ static void craft_tick(craft *c, int idx, float dt) {
   float drag = THRUST / (top * top);
   float af = 0;
   if (!c->air) {
-    af += THRUST * c->in.throttle * (c->wet > 0.2f ? 1.0f : 0.3f);
+    af += THRUST * c->in.throttle * (land ? 0.8f : c->wet > 0.2f ? 1.0f : 0.3f);
     af -= drag * vf * fabsf(vf) * (0.35f + 0.65f * c->wet) * (1.0f + 0.5f * c->lean * fabsf(c->steer));
     if (c->in.throttle < 0.1f) af -= 0.8f * vf * 0.25f;
     /* lateral grip: the hull carves */
-    float grip = (2.6f + 2.4f * c->wet + 1.8f * c->lean) * c->wet;
+    float grip = land ? 4.0f : (2.6f + 2.4f * c->wet + 1.8f * c->lean) * c->wet;
     vl -= vl * clampf(grip * dt, 0, 1);
   } else {
     c->air_time += dt;
@@ -165,10 +168,17 @@ static void craft_tick(craft *c, int idx, float dt) {
   float sp = sqrtf(c->vx * c->vx + c->vz * c->vz);
   c->speed = sp;
   float rate = 1.5f - 0.028f * sp + 0.75f * clampf(c->lean, 0, 1);
+  /* a hull on sand pivots only as it moves: steering turns its path, it does not spin on the spot */
+  if (land) rate = 0.25f + clampf(sp * 0.45f, 0, 1.1f);
   if (c->air) rate *= 0.35f;
   c->yaw = wrap_pi(c->yaw - c->steer * rate * dt);
   /* attitude */
   float pitch_t = cw_atan2(hb - hs, 2.3f) + 0.045f + 0.06f * clampf(c->lean, 0, 1) + 0.004f * sp;
+  if (land) {
+    /* lie on the ground's own slope */
+    float gb = ground_at(c->x + fx * 1.15f, c->z + fz * 1.15f), gs = ground_at(c->x - fx * 1.15f, c->z - fz * 1.15f);
+    pitch_t = cw_atan2(gb - gs, 2.3f);
+  }
   float roll_t = cw_atan2(hp - hq, 1.1f) + c->steer * (0.2f + 0.009f * sp) * (1.0f + 0.25f * clampf(c->lean, 0, 1));
   if (!c->air) {
     c->pr += ((pitch_t - c->pitch) * 70.0f - c->pr * 11.0f) * dt;
@@ -248,9 +258,10 @@ static void craft_tick(craft *c, int idx, float dt) {
     t3_vec3 n = cw_terrain_normal_at(G.land, c->x, c->z);
     float over = gy - (c->y - 0.22f);
     c->y += clampf(over, 0, 0.5f) * 0.7f;
+    if (land && c->wet <= 0) c->y = gy + 0.22f;
     if (c->vy < 0) c->vy *= 0.2f;
     c->grounded = clampf(over * 3, 0, 1);
-    float k = clampf(1.0f - dt * (1.5f + 9.0f * c->grounded), 0, 1);
+    float k = clampf(1.0f - dt * (1.2f + 1.6f * c->grounded), 0, 1);
     c->vx *= k, c->vz *= k;
     float hspeed = c->vx * n.x + c->vz * n.z;
     if (over > 0.35f) {
@@ -258,6 +269,19 @@ static void craft_tick(craft *c, int idx, float dt) {
       c->vx += n.x * 22.0f * dt, c->vz += n.z * 22.0f * dt;
       if (sp > 6) c->bump = true;
     }
+  }
+  /* beached: the sand's slope and a helping shove take the craft back toward the water beside the course, gently without
+   * throttle, firmly with it */
+  if (land) {
+    c->beached++;
+    float tx = TRACK[c->track_i][0] - c->x, tz = TRACK[c->track_i][1] - c->z, tl = sqrtf(tx * tx + tz * tz);
+    if (tl > 1) {
+      float shove = (c->beached > 40 ? 2.2f : 0.8f) + (c->beached > 40 ? 3.0f * c->in.throttle : 0);
+      c->vx += tx / tl * shove * dt, c->vz += tz / tl * shove * dt;
+    }
+  } else if (c->beached > 0) {
+    if (c->beached > 30 && sp > 2) c->escapes++;
+    c->beached = 0;
   }
   /* never lost in the world: a soft wall past the course's sea */
   float r2 = c->x * c->x + c->z * c->z;

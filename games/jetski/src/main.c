@@ -68,6 +68,35 @@ static void warp_from_env(void) {
 }
 #endif
 
+/* beach <track metres>: the human on the first sand left or right of the course there, nose inland, race running: what a
+ * rider does who misses a corner. The beaching gate starts here. */
+static void cmd_beach(int argc, const char **argv, cw_reply *r) {
+  float s = argc > 1 ? (float)atof(argv[1]) : 300;
+  float x, z, dx, dz;
+  track_at(s, &x, &z, &dx, &dz);
+  G.state = RACE_ON;
+  if (G.clock < 1) G.clock = 1;
+  craft *c = &G.c[0];
+  for (int sd = 0; sd < 2; sd++) {
+    float rx = sd ? dz : -dz, rz = sd ? -dx : dx;
+    for (float d = 5; d < 260; d += 2) {
+      float px = x + rx * d, pz = z + rz * d, gy = ground_at(px, pz);
+      if (gy > 0.7f && gy < 3.0f) {
+        c->x = c->px = px, c->z = c->pz = pz, c->y = c->py = gy + 0.22f;
+        c->yaw = c->pyaw = cw_atan2(rx, rz);
+        c->vx = c->vy = c->vz = 0;
+        c->pr = c->rr = 0, c->pitch = c->roll = 0;
+        c->lap = 0;
+        c->beached = 0, c->escapes = 0;
+        G.cam[0] = 0, G.look[0] = 0;
+        if (r) cw_reply_printf(r, "{\"x\":%.1f,\"z\":%.1f,\"ground\":%.2f,\"away\":%.0f}", px, pz, gy, d);
+        return;
+      }
+    }
+  }
+  if (r) cw_reply_raw(r, "false");
+}
+
 static void init(void *user) {
   (void)user;
   if (!cw_input_load_bindings_asset("input.cfg")) cw_warn("jetski: input.cfg had errors");
@@ -119,6 +148,9 @@ static void init(void *user) {
   cw_debug_i32("cam.under_ticks", &G.cam_under);
   cw_debug_f32_array("perf.ms", perf, 7);
   cw_debug_f32_array("sun.dir", sun_dbg, 3);
+  cw_debug_i32("p0.beached", &G.c[0].beached);
+  cw_debug_i32("p0.escapes", &G.c[0].escapes);
+  cw_debug_command("beach", "beach <metres>: the human on the sand beside the course there, nose inland", cmd_beach);
   cw_debug_command("race", "start a race", cmd_race);
   cw_debug_command("warp", "warp <metres>: every racer to that place on the course", cmd_warp);
 }

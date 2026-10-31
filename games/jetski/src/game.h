@@ -46,6 +46,8 @@ typedef struct craft {
   bool human;
   bool bump;                      /* hit the ground this tick */
   int wake_hit;                   /* riding over a rival's wake */
+  int beached;                    /* ticks on land */
+  int escapes;                    /* times it got back to the water under way */
 } craft;
 
 typedef struct game {
