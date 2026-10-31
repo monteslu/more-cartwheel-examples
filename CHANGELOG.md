@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.12.3
+
+- jetski: the tan bands across Cold Sound's water are gone: they were the sky's sandy
+  default ground colour reflected on the backs of waves.
+- jetski: Cold Sound's arch is broken granite with moss and a tide stain, not a smooth
+  blob.
+
 ## 0.12.2
 
 - jetski: the hard-edged light patches behind the rider are gone: they were the skyline
