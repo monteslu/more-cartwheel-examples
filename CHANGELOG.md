@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.2
+
+- brawler is now called Street Toughs. The cart file is still `brawler.wasc`.
+
 ## 0.7.1
 
 - jetski: a beached craft no longer spins on the sand. Throttle drives it back
