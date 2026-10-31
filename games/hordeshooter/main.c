@@ -127,14 +127,26 @@ static void shell_screen(cw_shell_screen from, cw_shell_screen to, void *u) {
 
 /* ── the match ──────────────────────────────────────────────────────── */
 
-static void build_world(void) {
-  if (G.built) return;
+/* The world, a piece at a time (true when it is built): the warm-up runs it under the loading screen, so Start finds it
+ * ready and never sits still while it builds. */
+static bool build_world_step(void) {
+  if (G.built) return true;
+  static bool view_done;
   cw_node root = cw_tree_root(cw_scene_app_tree());
-  view_init(root);
+  if (!view_done) {
+    int done, total;
+    view_done = view_init_step(root, &done, &total);
+    cw_loading_set(done, total + 1, CW_LOAD_MESHES);
+    return false;
+  }
   fx_init(root);
   G.camera = cw_node_get(root, "Arena/Camera");
   G.sun = cw_node_get(root, "Arena/Sun");
   G.built = true;
+  return true;
+}
+static void build_world(void) { /* an autopilot's start, before any warm-up: all of it now */
+  while (!build_world_step()) {}
 }
 
 static void start(int players, void *u) {
@@ -165,6 +177,18 @@ static void start(int players, void *u) {
   if (getenv("HORDE_POWER")) /* development (screenshots, surveys): every player starts holding power-up n, refreshed as it runs out */
     for (int i = 0; i < players; i++) sim_power_give(&G.S, i, atoi(getenv("HORDE_POWER")) % PU_KINDS);
   memset(G.level_flash, 0, sizeof G.level_flash);
+}
+
+/* the app's warm-up: the world, then a simulation to draw it with (start replaces it), so the shader phase after this
+ * compiles what the match draws */
+static bool warmup(void *u) {
+  (void)u;
+  if (!build_world_step()) return false;
+  if (!G.in_match) {
+    sim_init(&G.S, 1, 4242, 1);
+    horde_floors_load(&G.S, LEVELS);
+  }
+  return true;
 }
 
 static void init(void *u) {
@@ -599,7 +623,7 @@ static void render(void *u, double alpha) {
 cw_app_desc cw_main(int argc, char **argv) {
   (void)argc, (void)argv;
   cw_scene_register_builtin_types();
-  static cw_app_desc app = { .title = "Horde", .width = 1280, .height = 720, .debug = true, .init = init, .fixed_update = fixed_update, .render = render };
+  static cw_app_desc app = { .title = "Horde", .width = 1280, .height = 720, .debug = true, .init = init, .warmup = warmup, .fixed_update = fixed_update, .render = render };
   cw_project_apply_app(&app);
   app.save = cw_shell_save_region();
   app.save_size = cw_shell_save_region_size();

@@ -1,0 +1,39 @@
+[
+  {
+    "name": "start-panels-hordeshooter-play-pauses",
+    "app": "hordeshooter",
+    "assets": "games/hordeshooter/assets",
+    "frames": 90,
+    "input": "start-panels-hordeshooter-play-pauses.json",
+    "controlInput": "start-panels-hordeshooter-play-pauses-control.json",
+    "hosts": [
+      "native",
+      "romdev"
+    ],
+    "minColors": 50,
+    "maxGt16": 0.08,
+    "fields": [
+      "shell.screen",
+      "shell.players",
+      "game.state"
+    ],
+    "expect": {
+      "shell.screen": 4,
+      "shell.players": 1
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ],
+      "maxGt16": 0.08,
+      "vsGl": 0.08
+    },
+    "note": "no panel after the join screen: the yard is play and Start pauses; control: no press"
+  },
+  {
+    "name": "start-panels-press-frames",
+    "script": "tests/start-press-frames.mjs",
+    "note": "hordeshooter and brawler: no frame over 100 ms from the press to play on the cart through romdev; control: the meter sees the load's own long frames"
+  }
+]

@@ -817,7 +817,16 @@ static void crowd_kind_load(int k, const char *file) {
     crowd_materials(k, V_floor > 0);
 }
 
-void view_init(cw_node root) {
+/* One piece of the view each call, so the loading screen moves between them (main.c's warm-up); true when it is built.
+ * The pieces in order are the same work as one pass, so a run that does them all in a frame draws the same. */
+bool view_init_step(cw_node root, int *done, int *total) {
+  enum { S_GROUND, S_CROWD, S_SHOTS = S_CROWD + EK_KINDS, S_SCENERY, S_DRESS, S_SOLDIER, S_PLAYERS, S_POWER = S_PLAYERS + MAXP, S_SHAFTS, S_SPLATS, S_DONE };
+  static int step;
+  static bool have;
+  *total = S_DONE;
+  int s = step++;
+  *done = step;
+  if (s == S_GROUND) {
   memset(&V, 0, sizeof V);
   V.root = cw_node_new("Node3D", "View");
   cw_node_add_child(root, V.root);
@@ -853,9 +862,9 @@ void view_init(cw_node root) {
   cw_mesh3d_set_procedural(gn, gmesh);
   t3_release(gmesh), t3_release(pg), t3_release(gm);
   /* the yard's wall: a low rim of blocks round the edge, one instanced mesh */
-  {
-    for (int k = 0; k < EK_KINDS; k++) crowd_kind_load(k, files[k]);
-  }
+  } else if (s >= S_CROWD && s < S_SHOTS) {
+    crowd_kind_load(s - S_CROWD, files[s - S_CROWD]);
+  } else if (s == S_SHOTS) {
   V.bullet = imesh("Bullets", t3_box_geometry_new(0.09f, 0.09f, 1.2f, 1, 1, 1), glow(1, 0.82f, 0.35f, 9), MAXB, false); /* a long hot tracer */
   V.rocket = imesh("Rockets", t3_cylinder_geometry_new(0.1f, 0.1f, 0.7f, 8, 1, false), glow(1, 0.45f, 0.12f, 5), 64, false);
   { /* xp gems: a faceted shard (a stretched octahedron: each face keeps its own normal), glassy with a glowing core; a richer gem is
@@ -888,6 +897,7 @@ void view_init(cw_node root) {
     pbr_apply(cm, TX_CRATE, 1, 1.0f);
     V.crate = imesh("Crates", t3_box_geometry_new(1.3f, 1.3f, 1.3f, 1, 1, 1), cm, MAXO, true);
   }
+  } else if (s == S_SCENERY) {
   {
     part bp[] = {
       { t3_cylinder_geometry_new(0.5f, 0.5f, 1.1f, 14, 1, false), M(0, 0.55f, 0, 1, 1, 1), { 0.8f, 0.12f, 0.1f } },
@@ -906,11 +916,15 @@ void view_init(cw_node root) {
     pbr_apply(pm, TX_PILLAR, 1, 1.0f);
     V.pillar = imesh("Pillars", t3_cylinder_geometry_new(1.2f, 1.3f, 4.5f, 16, 3, false), pm, 16, true);
   }
+  } else if (s == S_DRESS) {
   view_dress();
+  } else if (s == S_SOLDIER) {
+  have = chr_load(&V.soldier, "models/soldier.cwchar");
+  } else if (s >= S_PLAYERS && s < S_POWER) {
   /* players: the soldier's cycles, one mesh per frame (shown by turns), body plus a team-coloured trim */
   static const float PC[MAXP][3] = { { 0.2f, 0.7f, 1 }, { 1, 0.55f, 0.1f }, { 0.4f, 0.95f, 0.35f }, { 0.95f, 0.3f, 0.75f } };
-  bool have = chr_load(&V.soldier, "models/soldier.cwchar");
-  for (int i = 0; i < MAXP; i++) {
+  {
+    int i = s - S_PLAYERS;
     t3_object *g = t3_group_new();
     t3_material *bm = mat(1, 1, 1, 0.45f, 0.35f, true);
     pbr_apply(bm, TX_ARMOR, 2.0f, 0.9f);
@@ -953,8 +967,11 @@ void view_init(cw_node root) {
     t3_release(mr), t3_release(ring), t3_release(bm), t3_release(tm), t3_release(rm);
     t3_release(g);
   }
+  } else if (s == S_POWER) {
   view_power_init(); /* after the players: the shield bubble hangs on each */
+  } else if (s == S_SHAFTS) {
   view_shafts();
+  } else if (s == S_SPLATS) {
   V.shadows = cw_splats_new(V.root, "Shadows", CW_SPLATS_SHADOW, MAXE + MAXP + MAXO);
   V.pools = cw_splats_new(V.root, "LightPools", CW_SPLATS_LIGHT, 96);
   V.zones = cw_splats_new(V.root, "Zones", CW_SPLATS_LIGHT, MAXZ);
@@ -983,6 +1000,8 @@ void view_init(cw_node root) {
     t3_release(t);
   }
   V.sun_x = 0.6f, V.sun_z = 0.8f, V.sun_len = 1.5f, V.sun_yaw = cw_atan2(0.6f, 0.8f);
+  }
+  return step >= S_DONE;
 }
 
 void view_set_sun(t3_vec3 d) { /* d: where the sunlight travels */

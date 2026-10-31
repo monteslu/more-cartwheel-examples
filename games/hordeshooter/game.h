@@ -212,7 +212,7 @@ void sim_team_box(const sim *s, float *cx, float *cy, float *hw, float *hh);
 
 t3_color lin(float r, float g, float b); /* screen colour -> linear */
 /* view.c */
-void view_init(cw_node root);
+bool view_init_step(cw_node root, int *done, int *total);
 void view_free(void);
 void view_sync(const sim *s, float time);
 extern float g_cam_dist;
