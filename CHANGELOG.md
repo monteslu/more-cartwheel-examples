@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.1
+
+- fighter: no more infinite combos. A juggle ends after three hits, a fourth
+  shows JUGGLE OVER with a whoosh, and hitstun shortens over a long combo.
+- fighter: Beam and Wide beam hit once for 400 damage and then fly on. Blocked,
+  they chip 50 and don't break the guard.
+- fighter: the computer reads repeats, so spamming one move stops working. Hard
+  beat all 22 one-move bots in the test, normal loses to 5.
+- fighter: knockdowns no longer trap a fallen player, fighters keep facing each
+  other, Vex has 950 life, and training callouts sit clear of the move list.
+
 ## 0.6.0
 
 - All 8 games now run on cartwheel-engine v0.25.0 (three.c v0.187.2, three.js
