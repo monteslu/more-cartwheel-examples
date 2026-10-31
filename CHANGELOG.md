@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.12.4
+
+- jetski: the ramps look like steel that has been out there a while: panel seams, rust
+  runs, tyre scuffs, hazard stripes worn at the lip, and heavy side girders that show on
+  approach. The hard white foam edge over their low end is gone.
+- jetski: on the atoll a fill light from opposite the low sun keeps backlit decks, riders
+  and land from going black.
+- jetski: Low and Medium graphics no longer skip draws or show the red missing shader
+  banner.
+
 ## 0.12.3
 
 - jetski: the tan bands across Cold Sound's water are gone: they were the sky's sandy
