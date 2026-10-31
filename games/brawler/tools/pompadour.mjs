@@ -14,9 +14,9 @@ export const pompTA = (d) => [d[1], Math.atan2(d[2], d[0])];
  * The same curve the face texture paints its fading band of strands under (make-characters.mjs pompEdge) on the front and sides */
 export function pompEdge(a) {
   let df = Math.abs(a - Math.PI / 2); if (df > Math.PI) df = 2 * Math.PI - df;
-  return 0.04 + 0.3 * smooth(1.35, 0.8, df) - 0.5 * smooth(1.9, 2.7, df);
+  return 0.04 + 0.48 * smooth(1.35, 0.8, df) - 0.5 * smooth(1.9, 2.7, df); // the forehead is bare up to about the middle of its height
 }
-const PROFILE = [[0.3, 0], [0.44, 0.032], [0.62, 0.066], [0.9, 0.078], [1.25, 0.066], [1.7, 0.042], [2.25, 0.021], [2.9, 0.011], [3.95, 0.008]];
+const PROFILE = [[0.3, 0], [0.5, 0.03], [0.68, 0.066], [0.95, 0.08], [1.3, 0.066], [1.7, 0.042], [2.25, 0.021], [2.9, 0.011], [3.95, 0.008]];
 /** the hair's height over the skull in metres (a 1.0 head): tall at the front, leaning out past the brow, lying back over the
  * crown, flat and slick on the sides, in soft combed furrows along the comb lines */
 export function pompHeight(s, u) {

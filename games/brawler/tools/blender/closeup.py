@@ -35,10 +35,16 @@ if len(argv) > 8 and argv[8] == 'clay':  # every material grey: shows the geomet
     for o in bpy.data.objects:
         if o.type == 'MESH':
             for sl in o.material_slots: sl.material = clay
-bone = {'head': 'Head', 'handL': 'HandL', 'handR': 'HandR', 'legs': 'Hips', 'body': 'Spine'}[target]
+if target == 'figure':  # the bind pose, no perspective: real proportions, front and side
+    arm.animation_data.action = None
+    for pb0 in arm.pose.bones: pb0.matrix_basis.identity()
+    bpy.context.view_layer.update()
+bone = {'head': 'Head', 'handL': 'HandL', 'handR': 'HandR', 'legs': 'Hips', 'body': 'Spine', 'figure': 'Spine'}[target]
 pb = arm.pose.bones[bone]
 m = arm.matrix_world @ pb.matrix
-if target in ('legs', 'body'):  # the legs and crotch (leg webbing, coat skirts) or the whole figure
+if target == 'figure':
+    focus = Vector((0, 0, 0)); zs = [(arm.matrix_world @ b.head).z for b in arm.pose.bones]; focus = Vector((0, 0, (max(zs) + 0.1) / 2)); dist, lens = 6, 50
+elif target in ('legs', 'body'):  # the legs and crotch (leg webbing, coat skirts) or the whole figure
     hips = arm.matrix_world @ pb.head
     focus = hips + Vector((0, 0, -0.35 if target == 'legs' else 0.05))
     dist, lens = (2.9, 50) if target == 'legs' else (3.6, 50)
@@ -61,6 +67,7 @@ bg = next(n for n in w.node_tree.nodes if n.type == 'BACKGROUND'); bg.inputs[0].
 sc.world = w
 cam = bpy.data.cameras.new('c'); cam.lens = lens
 co = bpy.data.objects.new('c', cam); sc.collection.objects.link(co); sc.camera = co
+if target == 'figure': cam.type = 'ORTHO'; cam.ortho_scale = focus.z * 2.25
 try:
     sc.render.engine = 'CYCLES'
 except TypeError:

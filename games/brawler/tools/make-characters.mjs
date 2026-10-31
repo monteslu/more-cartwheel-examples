@@ -12,12 +12,13 @@ import { Glb } from './gltf-writer.mjs';
 import { SkinMesh, add, sub, mul, norm } from './charmesh.mjs';
 import { writeSet } from './texlib.mjs';
 import { pompDir, pompTA, pompEdge, pompHeight } from './pompadour.mjs';
-import { faceParams, headModel, buildHead, shellGrid, paintFace, paintEye, FACE_BONES, EXPRESSIONS, FACE_TARGETS, faceTargets } from './face.mjs';
+import { faceParams, headModel, buildHead, shellGrid, hairCap, paintFace, paintEye, FACE_BONES, EXPRESSIONS, FACE_TARGETS, faceTargets } from './face.mjs';
 const HEAD_GROUPS = ['face', 'lash'];
 const HAIR_GROUPS = ['hairCard', 'pomadeCard', 'pomadeShell'];
 
 const CARD_INWARD = process.env.BRAWLER_CARD_WINDING === 'inward';
-const OUT = join(dirname(fileURLToPath(import.meta.url)), '..', 'assets', 'models');
+const BRAWLER_PROP = process.env.BRAWLER_PROP; // the controls tests/brawler-heads.mjs must see fail: longneck (a tiny head on a long neck), balloon (an ellipsoid head a sixth of the body)
+const OUT = process.env.BRAWLER_MODELS_OUT || join(dirname(fileURLToPath(import.meta.url)), '..', 'assets', 'models');
 mkdirSync(OUT, { recursive: true });
 
 // ── the skeleton: names and parents are fixed; translations come from each character's proportions ──
@@ -34,10 +35,10 @@ const BI = Object.fromEntries(BONE_NAMES.map((n, i) => [n, i]));
 
 /** per character bone translations (relative to the parent) */
 function skeleton(sp) {
-  const sw = sp.sw ?? 0.2, hw = sp.hw ?? 0.1, HS = sp.head ?? 1.15, al = sp.armLen ?? 1, ll = sp.legLen ?? 1;
+  const sw = shoulder(sp), hw = sp.hw ?? 0.1, HS = headScale(sp), al = sp.armLen ?? 1, ll = sp.legLen ?? 1;
   const hair = sp.hairRoot ?? [0, 0.17, -0.1];
   const T = {
-    Hips: [0, 0.97 * ll + 0.03 * (1 - ll), 0], Spine: [0, 0.12, 0], Chest: [0, 0.2, 0], Neck: [0, 0.24, 0], Head: [0, 0.08, 0],
+    Hips: [0, 0.97 * ll + 0.03 * (1 - ll), 0], Spine: [0, 0.12, 0], Chest: [0, 0.2, 0], Neck: [0, 0.24, 0], Head: [0, neckDrop(sp), 0],
     UpperArmL: [sw, 0.17, 0], LowerArmL: [0, -0.28 * al, 0], HandL: [0, -0.26 * al, 0],
     UpperArmR: [-sw, 0.17, 0], LowerArmR: [0, -0.28 * al, 0], HandR: [0, -0.26 * al, 0],
     UpperLegL: [hw, -0.06, 0], LowerLegL: [0, -0.44 * ll, 0], FootL: [0, -0.43 * ll, 0],
@@ -59,19 +60,54 @@ function skeleton(sp) {
   return { T, world, M };
 }
 
+/** the natural hairline: the ring height t at loft angle a (PI/2 the front): the forehead, the corners at the temples, a sideburn in front of the
+ *  ear, up over the ear, down behind it to the nape. h: forehead height, recede: how far back the corners go */
+export function hairlineEdge(a, h = 0.56, recede = 0.08) {
+  let d = Math.abs(a - PI / 2); if (d > PI) d = 2 * PI - d;
+  const f = curve([[0, h], [0.3, h + 0.015], [0.62, h + recede], [0.84, h - 0.08 + recede], [1.08, 0.2], [1.28, -0.06], [1.42, -0.04], [1.62, 0.2], [1.92, 0.2], [2.2, -0.16], [2.6, -0.34], [PI, -0.4]]);
+  return f(d);
+}
 /** the head: size, envelope rings (hats and hair are built on the same rings) and the sculpted face model */
+// Real proportions, checked by tools/check-heads.mjs: a figure is sp.heads head heights tall (about 7.5), so the head is solved from the body.
+const neckDrop = (sp) => (BRAWLER_PROP === 'longneck' ? 0.12 : 0.08 - (sp.neckShort ?? 0) - 0.05 * Math.max(0, (sp.neck ?? 1) - 1));
+const headScale = (sp) => {
+  const ll = sp.legLen ?? 1, yHd = 0.97 * ll + 0.03 * (1 - ll) + 0.12 + 0.2 + 0.24 + neckDrop(sp), h = 0.142 * (sp.skull?.h ?? 1), n = BRAWLER_PROP === 'longneck' ? 8.6 : BRAWLER_PROP === 'balloon' ? 6 : sp.heads ?? 7.5;
+  return yHd / (n * 2 * h - 0.125 - h); // stature = the Head joint + 0.125 HS + h HS = n * 2 h HS
+};
+/** the shoulder joint's reach: the figure over the deltoids is sp.shoulders head heights across (men about 2.25, women less, big men up to 2.6) */
+const armRadius = (sp) => 0.05 * (sp.arm ?? 1) * 0.86 * (0.8 + 0.2 * (sp.width ?? 1));
+const shoulder = (sp) => { const H = 2 * 0.142 * (sp.skull?.h ?? 1) * headScale(sp); return (BRAWLER_PROP === 'longneck' ? 2.9 : sp.shoulders ?? 2.25) * H / 2 - armRadius(sp) * 1.3 - 0.016; };
+/** a smooth curve through [t, value] points, t rising (Catmull-Rom tangents, flat past the ends) */
+function curve(pts) {
+  return (t) => {
+    let i = 0; while (i < pts.length - 2 && t > pts[i + 1][0]) i++;
+    const a = pts[Math.max(0, i - 1)], b = pts[i], c = pts[i + 1], d = pts[Math.min(pts.length - 1, i + 2)], h = c[0] - b[0], u = Math.max(0, Math.min(1, (t - b[0]) / h));
+    const m0 = ((c[1] - a[1]) / Math.max(1e-6, c[0] - a[0])) * h, m1 = ((d[1] - b[1]) / Math.max(1e-6, d[0] - b[0])) * h, u2 = u * u, u3 = u2 * u;
+    return (2 * u3 - 3 * u2 + 1) * b[1] + (u3 - 2 * u2 + u) * m0 + (3 * u2 - 2 * u3) * c[1] + (u3 - u2) * m1;
+  };
+}
+// the skull's defaults: w, h, d its overall width, height and depth; slope how far the forehead leans back; occ the back of the
+// skull; chin the chin's width, chinZ how far forward it comes; cheek and temple the cheekbones and temples (per character in SPECS skull)
+const SKULL = { w: 1, h: 1, d: 1, slope: 0.5, occ: 1, chin: 1, chinZ: 1, cheek: 1, temple: 1 };
 const HEADS = new Map();
 function headOf(sp, world) {
   if (HEADS.has(sp.name)) return HEADS.get(sp.name);
-  const HS = sp.head ?? 1.15, yHd = world.Head[1], jawW = sp.jaw ?? 1;
+  const HS = headScale(sp), yHd = world.Head[1];
   const hc = [0, yHd + 0.125 * HS, 0.008 * HS];
-  const R = 0.11 * HS, RZ = 0.127 * HS, HY = 0.142 * HS;
-  const ring = (t, k = 1, add2 = 0) => {
-    const s = Math.sqrt(Math.max(0, 1 - t * t));
-    const jaw = t < -0.15 ? lerp(1, 0.72 + 0.2 * jawW, ss(-0.15, -0.95, t)) : 1;
-    const zoff = t < -0.25 ? 0.022 * HS * ss(-0.25, -0.9, t) : 0;
-    return { c: [0, hc[1] + HY * t, hc[2] + zoff], U: [1, 0, 0], V: [0, 0, 1], ru: Math.max(0.002, R * s * jaw * k + add2), rv: Math.max(0.002, RZ * s * lerp(1, 0.9, ss(-0.1, -0.35, t)) * k + add2), e: lerp(2.3, 2.6 + 0.6 * jawW, ss(-0.15, -0.5, t)),
-      mod: (a) => 1 + 0.06 * gauss(t - 0.15, 0.25) * gauss(wrapA(a - BACK), 1.0) }; // the back of the skull (every term smooth in t: the face is dense)
+  const K = { ...SKULL, ...sp.skull, jaw: sp.skull?.jaw ?? 0.72 + 0.28 * (sp.jaw ?? 1) };
+  const R = 0.104 * HS * K.w, HY = 0.142 * HS * K.h, RZ = HY * 0.85 * K.d; // about 7.5 to 8 heads to the body, as long as it is wide and deep as a person's
+  const crownZ = -0.03;
+  // a skull is not an ellipsoid. Three outlines, in head units up the head (t: -1 under the chin, +1 the crown): how wide it is
+  // seen from the front (parietals, temples, cheekbones, the jaw's angle, a chin with a width), where its front runs seen from
+  // the side (forehead, brow, face plane, chin), and its back (the occiput, in to the nape, along under the jaw to the chin)
+  const wide = curve([[-1, 0.2], [-0.95, 0.28 * K.chin], [-0.85, 0.42 * K.chin], [-0.7, 0.62 * K.jaw], [-0.5, 0.8 * K.jaw], [-0.3, 0.88 + 0.03 * K.jaw], [-0.12, 0.94 * K.cheek], [0.05, 0.94 * K.temple], [0.22, 0.97], [0.42, 1.0], [0.62, 1.0], [1, 0.96]]);
+  const front = curve([[-1, 0.4 * K.chinZ], [-0.97, 0.52 * K.chinZ], [-0.88, 0.64 * K.chinZ], [-0.75, 0.67], [-0.58, 0.72], [-0.4, 0.74], [-0.2, 0.74], [0.03, 0.76], [0.2, 0.84], [0.35, 0.82 - 0.05 * K.slope], [0.55, 0.76 - 0.1 * K.slope], [0.75, 0.62 - 0.1 * K.slope], [0.9, 0.38 - 0.05 * K.slope], [1, crownZ]]);
+  const rear = curve([[-1, 0.4 * K.chinZ], [-0.9, 0.08], [-0.75, -0.16], [-0.6, -0.36], [-0.45, -0.54], [-0.3, -0.66], [-0.1, -0.8], [0.1, -0.9 * K.occ], [0.25, -0.93 * K.occ], [0.5, -0.88 * K.occ], [0.75, -0.7], [0.9, -0.42], [1, crownZ]]);
+  const ring = BRAWLER_PROP === 'balloon' ? (t, k = 1, add2 = 0) => { const s0 = Math.sqrt(Math.max(0, 1 - t * t)); return { c: [0, hc[1] + HY * t, hc[2]], U: [1, 0, 0], V: [0, 0, 1], ru: Math.max(0.002, R * 1.06 * s0 * k + add2), rv: Math.max(0.002, RZ * 1.1 * s0 * k + add2), e: 2.3 }; } : (t, k = 1, add2 = 0) => {
+    t = Math.max(-1, Math.min(1, t));
+    const cap = t > 0 ? Math.sqrt(Math.max(0, 1 - t ** 4)) : Math.sqrt(Math.max(0, 1 - Math.abs(t) ** 12));
+    const zf = front(t) * HY, zb = rear(t) * HY, cz = hc[2] + (zf + zb) / 2 * (K.d), rz = Math.abs(zf - zb) / 2 * K.d;
+    return { c: [0, hc[1] + HY * t, cz], U: [1, 0, 0], V: [0, 0, 1], ru: Math.max(0.002, R * wide(t) * cap * k + add2), rv: Math.max(0.002, rz * k + add2), e: lerp(2.2, 2.5 + 0.5 * (K.jaw - 1), ss(0.3, -0.3, t)) };
   };
   const M = headModel({ hc, R, RZ, HY, HS, ring }, faceParams(sp.face));
   HEADS.set(sp.name, M);
@@ -79,7 +115,7 @@ function headOf(sp, world) {
 }
 /** hand layout: palm, knuckle line (first finger bone), middle joints (second finger bone), thumb root */
 function handGeom(sp, sx, world) {
-  const H = world['Hand' + (sx > 0 ? 'L' : 'R')], s = (sp.hand ?? 1.35) * (sp.gloves ? 1.2 : 1);
+  const H = world['Hand' + (sx > 0 ? 'L' : 'R')], s = (sp.hand ?? 1.35) * 0.8 * (sp.gloves ? 1.06 : 1);
   const hx = H[0] + sx * 0.002, hy = H[1], ky = hy - 0.078 * s, kx = hx - sx * 0.004 * s;
   return { s, hx, hy, k1: [kx, ky, 0], k2: [kx, ky - 0.042 * s, 0], tb: [hx - sx * 0.016 * s, hy - 0.024 * s, 0.03 * s] };
 }
@@ -536,7 +572,7 @@ function quat(r) { // rest-relative euler, q = qz * qy * qx
 // ── the body ────────────────────────────────────────────────────────────
 const hexRaw = (h) => [((h >> 16) & 255) / 255, ((h >> 8) & 255) / 255, (h & 255) / 255];
 const hex = (h) => hexRaw(h).map((c) => Math.pow(c, 2.2));
-const TEX = join(dirname(fileURLToPath(import.meta.url)), '..', 'assets', 'textures');
+const TEX = process.env.BRAWLER_TEX_DIR || join(dirname(fileURLToPath(import.meta.url)), '..', 'assets', 'textures');
 const ss = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const gauss = (x, w) => Math.exp(-(x * x) / (w * w));
 const wrapA = (a) => { a = ((a + PI) % (PI * 2) + PI * 2) % (PI * 2) - PI; return a; }; // -PI..PI
@@ -546,12 +582,12 @@ const folds = (y, a, list) => { let m = 0; for (const [fy, amp, w, side, sw] of 
 const noise1 = (x, s) => { const i = Math.floor(x), f = x - i, h = (n) => { let v = Math.imul(n ^ s, 0x27d4eb2d); v ^= v >>> 15; v = Math.imul(v, 0x85ebca6b); v ^= v >>> 13; return (v >>> 0) / 4294967296; }; const u = f * f * (3 - 2 * f); return lerp(h(i), h(i + 1), u); };
 
 function build(sp) {
-  const m = new SkinMesh(); m.lod = 0.6; // the fixed street camera: a body is at most about 400 pixels tall (B-PT19)
+  const m = new SkinMesh(); m.lod = 0.5; // the fixed street camera: a body is at most about 400 pixels tall (B-PT19)
   const { world } = skeleton(sp);
   const B = (n) => world[n];
   const X = [1, 0, 0], Y = [0, 1, 0], Z = [0, 0, 1];
-  const W = sp.width ?? 1, AR = sp.arm ?? 1, LG = sp.leg ?? 1, HS = sp.head ?? 1.15, HN = sp.hand ?? 1.35, belly = sp.belly ?? 0, chest = sp.chest ?? 1;
-  const sw = sp.sw ?? 0.2, hw = sp.hw ?? 0.1;
+  const W = sp.width ?? 1, AR = (sp.arm ?? 1) * 0.86, LG = (sp.leg ?? 1) * 0.88, HS = headScale(sp), HL = HS / 0.84, HN = (sp.hand ?? 1.35) * 0.8, belly = sp.belly ?? 0, chest = sp.chest ?? 1;
+  const sw = shoulder(sp), hw = sp.hw ?? 0.1;
   const yH = B('Hips')[1], yS = B('Spine')[1], yC = B('Chest')[1], yN = B('Neck')[1], yHd = B('Head')[1];
   const ySh = B('UpperArmL')[1], yEl = B('LowerArmL')[1], yWr = B('HandL')[1];
   const yHip = B('UpperLegL')[1], yKn = B('LowerLegL')[1], yAn = B('FootL')[1];
@@ -581,7 +617,7 @@ function build(sp) {
     const a = ss(yHip + 0.07, yHip - 0.08, y), b = ss(yKn + 0.05, yKn - 0.05, y), c = ss(yAn + 0.06, yAn + 0.0, y);
     return [[BI.Hips, 1 - a], [BI['UpperLeg' + sd], a * (1 - b)], [BI['LowerLeg' + sd], a * b * (1 - c)], [BI['Foot' + sd], a * b * c]];
   };
-  const headW = (P) => { const t = ss(yHd - 0.02, yHd + 0.05, P[1]); return [[BI.Neck, 1 - t], [BI.Head, t]]; };
+  const headW = (P) => { const t = ss(yHd - 0.03, yHd + 0.04, P[1]); return [[BI.Neck, 1 - t], [BI.Head, t]]; };
   const tailW = (P, side) => { // coat skirts: hips at the waist, the spring bones toward the hem, a share of the thigh
     const y = P[1], sd = side, t = ss(yH - 0.02, yKn + 0.05, y), back = lerp(0.3, 1, ss(0.08, -0.08, P[2])); // front panels follow the thigh, the back the spring bone, blended round the side (a hard switch tore the side seam on kicks)
     return [[BI.Hips, 1 - t], [BI['Coat' + sd], t * 0.75 * back], [BI['UpperLeg' + sd], t * (1 - 0.75 * back)]];
@@ -589,11 +625,12 @@ function build(sp) {
 
   // ── the torso: rings from the crotch to the neck; pecs, glutes, belly, shoulder mass by angle ──
   const bw = 0.78 + 0.22 * W, bd = 0.85 + 0.15 * W, sws = sw / 0.2;
+  const hN = headOf(sp, world).H, NECKR = hN.R * (0.74 + 0.25 * ((sp.neck ?? 1) - 1) + 0.04 * (W - 1)), wkTop = sws * (0.92 + 0.08 * chest);
   // [y, half width, half depth, z offset, superellipse]
   const PROF = [[yHip - 0.08, 0.04, 0.045, 0, 2], [yHip - 0.05, 0.13, 0.095, 0, 2.2], [yHip, 0.172, 0.115, -0.005, 2.4], [yHip + 0.06, 0.18, 0.122, -0.008, 2.5],
     [yH + 0.07, 0.168, 0.112, -0.004, 2.5], [yS + 0.03, 0.152, 0.104, 0, 2.5], [yS + 0.11, 0.165, 0.112, 0.004, 2.6], [yC + 0.02, 0.19, 0.124, 0.008, 2.7],
-    [yC + 0.09, 0.2, 0.13, 0.008, 2.8], [ySh - 0.05, 0.205, 0.124, 0.002, 3.0], [ySh, 0.185, 0.11, -0.004, 3.2], [ySh + 0.04, 0.145, 0.094, -0.01, 3.0],
-    [yN + 0.0, 0.085, 0.068, -0.012, 2.4], [yN + 0.035, 0.064, 0.062, -0.01, 2.2]];
+    [yC + 0.09, 0.2, 0.13, 0.008, 2.8], [ySh - 0.06, 0.2, 0.124, 0.002, 2.9], [ySh - 0.02, sw * 1.05 / wkTop, 0.116, -0.002, 2.8], [ySh + 0.012, sw * 0.97 / wkTop, 0.102, -0.006, 2.5], [ySh + 0.038, sw * 0.8 / wkTop, 0.088, -0.012, 2.3],
+    [yN + 0.0, NECKR * 1.42 / wkTop, 0.075, -0.016, 2.4], [yN + 0.035, NECKR * 1.08 / wkTop, 0.066, -0.016, 2.2]];
   const prof = (y) => { // interpolate the profile at y
     let i = 0; while (i < PROF.length - 2 && PROF[i + 1][0] < y) i++;
     const A = PROF[i], Bq = PROF[i + 1], t = EASE.io(Math.max(0, Math.min(1, (y - A[0]) / (Bq[0] - A[0]))));
@@ -603,7 +640,7 @@ function build(sp) {
     let k = 1 + extra;
     const s = Math.sin(a), c = Math.cos(a);
     const front = Math.max(0, s), back = Math.max(0, -s);
-    k += 0.07 * chest * gauss(y - (yC + 0.08), 0.06) * (gauss(wrapA(a - (FRONT - 0.5)), 0.45) + gauss(wrapA(a - (FRONT + 0.5)), 0.45)); // pecs
+    k += (0.07 * chest + 0.2 * FIG.bust) * gauss(y - (yC + 0.06 - 0.02 * FIG.bust), 0.06) * (gauss(wrapA(a - (FRONT - 0.5)), 0.42) + gauss(wrapA(a - (FRONT + 0.5)), 0.42)); // pecs, a bust
     k += 0.08 * gauss(y - (yHip + 0.03), 0.06) * (gauss(wrapA(a - (BACK - 0.5)), 0.5) + gauss(wrapA(a - (BACK + 0.5)), 0.5)); // seat
     k += belly * 0.3 * gauss(y - (yS - 0.01), 0.1) * Math.pow(front, 2.5); // belly
     k += 0.05 * gauss(y - (yC + 0.03), 0.07) * Math.pow(Math.abs(c), 3); // lats
@@ -612,7 +649,13 @@ function build(sp) {
     return k;
   };
   // below the ribs the width follows the build; from the chest up it follows the shoulders, so arms never sink into it
-  const ringAt = (y, k = 1, kz = 1, add = 0, mod = null) => { const p = prof(y); const u = ss(yS + 0.05, yC + 0.06, y); const wk = lerp(bw, sws * (0.92 + 0.08 * chest), u); return { c: [0, y, p[3]], U: X, V: Z, ru: p[1] * wk * k + add, rv: p[2] * bd * (1 + (chest - 1) * 0.6 * u) * kz + add, e: p[4], mod }; };
+  const FIG = { waist: 0.94, hip: 1, bust: 0, ...sp.fig };
+  const figW = (y) => 1 - (1 - FIG.waist) * gauss(y - (yS + 0.06), 0.1) + (FIG.hip - 1) * gauss(y - (yHip + 0.04), 0.09);
+  const figD = (y) => 1 - 0.55 * (1 - FIG.waist) * gauss(y - (yS + 0.06), 0.1);
+  const ringAt = (y, k = 1, kz = 1, add = 0, mod = null) => { const p = prof(y); const u = ss(yS + 0.05, yC + 0.06, y); const wk = lerp(bw, sws * (0.92 + 0.08 * chest), u); return { c: [0, y, p[3]], U: X, V: Z, ru: p[1] * wk * k * figW(y) + add, rv: p[2] * bd * (1 + (chest - 1) * 0.6 * u) * kz * figD(y) + add, e: p[4], mod }; };
+  // bare skin over the chest: collarbones running out from the notch at the throat, the notch itself
+  const clavicle = (y, a) => { const da = Math.abs(wrapA(a - FRONT)), yc = yN - 0.035 + 0.022 * da; return 0.035 * gauss(y - yc, 0.011) * ss(0.12, 0.3, da) * ss(1.5, 1.05, da) - 0.05 * gauss(da, 0.2) * gauss(y - (yN - 0.012), 0.016); };
+  const skinUpper = (y0) => { const l0 = m.lod; m.lod = 1; m.loft('skin', ys(y0, yN + 0.035, 0.013).map((y) => ringAt(y, 1, 1, 0, (a) => torsoMod(y)(a) + clavicle(y, a))), { n: 30, weights: (k, P, a) => torsoW(P, a), tile: 0.5 }); m.lod = l0; };
   const ys = (y0, y1, step = 0.025) => { const n = Math.max(1, Math.round((y1 - y0) / step)), r = []; for (let i = 0; i <= n; i++) r.push(y0 + ((y1 - y0) * i) / n); return r; };
 
   const top = sp.top ?? 'tee', bottom = sp.bottom ?? 'jeans';
@@ -626,17 +669,19 @@ function build(sp) {
   const shirtTop = top === 'tank' ? ySh - 0.02 : yN + 0.0;
   const hemY = tuck ? waist : waist - 0.06;
   const shirtFolds = [[hemY + 0.06, 0.018, 0.012, FRONT, 1.2], [hemY + 0.12, 0.014, 0.012, FRONT + 0.6, 0.6], [hemY + 0.1, 0.012, 0.012, FRONT - 0.7, 0.6], [yC - 0.02, 0.01, 0.015, null]];
-  if (top === 'none') m.loft('skin', ys(waist - 0.01, yN + 0.035).map((y) => ringAt(y, 1, 1, 0, torsoMod(y))), { n: 32, weights: (k, P, a) => torsoW(P, a), tile: 0.5 });
+  if (top === 'none') { m.loft('skin', ys(waist - 0.01, ySh - 0.03).map((y) => ringAt(y, 1, 1, 0, torsoMod(y))), { n: 32, weights: (k, P, a) => torsoW(P, a), tile: 0.5 }); skinUpper(ySh - 0.03); }
   else {
     const rings = ys(hemY, shirtTop).map((y) => ringAt(y, 1.05, 1.06, 0.01, torsoMod(y, 0, shirtFolds)));
-    rings.unshift({ ...ringAt(hemY, 1.08, 1.1, 0.012, torsoMod(hemY)), c: [0, hemY - 0.005, prof(hemY)[3]] });
+    rings.unshift({ ...ringAt(hemY, 1.06, 1.07, 0.008, torsoMod(hemY)), c: [0, hemY - 0.005, prof(hemY)[3]] });
     m.loft(shirtMat, rings, { n: 32, weights: (k, P, a) => torsoW(P, a), tile: shirtTile });
     if (top === 'tank') { // straps over the shoulders and skin above
-      m.loft('skin', ys(shirtTop - 0.02, yN + 0.035).map((y) => ringAt(y, 1, 1, 0, torsoMod(y))), { n: 32, weights: (k, P, a) => torsoW(P, a), tile: 0.5 });
-      for (const ac of [0.82, -0.82, PI - 0.82, -PI + 0.82]) // straps: front and back, left and right
-        m.loft(shirtMat, ys(shirtTop - 0.03, ySh + 0.05, 0.012).map((y) => ringAt(y, 1, 1, 0.007, torsoMod(y))), { n: 3, arc: [ac - 0.11, ac + 0.11], weights: (k, P, a) => torsoW(P, a), tile: 0.3 });
+      skinUpper(shirtTop - 0.02);
+      { const yS1 = ySh + 0.044, strapP = (ac) => { const r = ringAt(yS1, 1, 1, 0.006), sc = (v, e) => Math.sign(v) * Math.pow(Math.abs(v), 2 / e); return [r.ru * sc(Math.cos(ac), r.e), yS1 + 0.004, r.c[2] + r.rv * sc(Math.sin(ac), r.e)]; };
+      for (const ac of [0.72, -0.72, PI - 0.72, -PI + 0.72]) // straps: front and back, left and right, an even width
+        m.loft(shirtMat, ys(shirtTop - 0.03, yS1, 0.012).map((y) => { const r = ringAt(y, 1, 1, 0.006, torsoMod(y)), w = 0.016 / Math.max(0.05, r.ru); return { ...r, arc: [ac - w, ac + w] }; }), { n: 3, arc: [ac - 0.1, ac + 0.1], weights: (k, P, a) => torsoW(P, a), tile: 0.3 });
+      for (const [af, ab] of [[0.72, -0.72], [PI - 0.72, -PI + 0.72]]) m.capsule(shirtMat, strapP(af), strapP(ab), 0.0075, 0.0075, { weights: (t, P) => torsoW(P, FRONT), n: 5, caps: 1, rings: 2, ratio: 0.5 }); }
     } else { // a collar
-      m.loft(shirtMat, [ringAt(yN - 0.005, 1.0, 1.0, 0.012), ringAt(yN + 0.025, 1.0, 1.0, 0.016), ringAt(yN + 0.04, 0.96, 0.96, 0.012)], { n: 24, weights: (k, P, a) => torsoW(P, a), tile: 0.3 });
+      m.loft(shirtMat, [ringAt(yN - 0.02, 1.0, 1.0, 0.012), ringAt(yN + 0.002, 1.0, 1.0, 0.016), ringAt(yN + 0.012, 0.96, 0.96, 0.012)], { n: 24, weights: (k, P, a) => torsoW(P, a), tile: 0.3 });
     }
   }
   if (sp.tiedSleeves) { // the coverall's top half peeled down: its sleeves round the waist, knotted in front, the ends hanging
@@ -677,23 +722,28 @@ function build(sp) {
     }
   }
   if (sp.armor) { // a chest plate and a back plate
-    const rr = ys(yS + 0.02, ySh - 0.02).map((y) => ringAt(y, 1.15, 1.2, 0.03, torsoMod(y)));
+    const rr = ys(yS + 0.02, ySh - 0.02).map((y) => ringAt(y, 1.06, 1.12, 0.02, torsoMod(y)));
     m.loft('metal', rr, { n: 20, arc: [FRONT - 1.25, FRONT + 1.25], weights: (k, P, a) => torsoW(P, a), tile: 0.5 });
     m.loft('metal', rr, { n: 20, arc: [BACK - 1.1, BACK + 1.1], weights: (k, P, a) => torsoW(P, a), tile: 0.5 });
   }
   if (sp.hood) { // a hood lying on the upper back
     const hc = [0, yN - 0.03, -prof(yN)[2] * bd - 0.04];
     m.ellipsoid('shirt', hc, 0.15 * bw, 0.07, 0.075, { weights: (k, P, a) => torsoW(P, a), steps: 7, n: 16, mod: (a) => 1 + 0.06 * Math.sin(a * 5) });
-    for (const sx of [0.045, -0.045]) m.capsule('band', [sx, yN - 0.02, prof(yN)[2] * bd + 0.03], [sx, yC - 0.06, prof(yC)[2] * bd + 0.045], 0.006, 0.006, { weights: (t, P, a) => torsoW(P, a), n: 6, caps: 2 });
+    for (const sx of [0.035, -0.035]) { const on = (y) => { const p = prof(y); return [sx, y, p[3] + p[2] * bd * 1.12 + 0.016]; }; const y0 = ySh + 0.0, y1 = ySh - 0.06, y2 = yC - 0.01; m.capsule('band', on(y0), on(y1), 0.0035, 0.0035, { weights: (t, P, a) => torsoW(P, a), n: 5, caps: 1 }); m.capsule('band', on(y1), on(y2), 0.0035, 0.0045, { weights: (t, P, a) => torsoW(P, a), n: 5, caps: 2 }); }
   }
 
   // ── neck ──
-  const nr = 0.058 * (0.85 + 0.15 * W) * (sp.neck ?? 1);
-  m.loft('skin', ys(yN - 0.02, yHd + 0.06, 0.02).map((y) => ({ c: [0, y, -0.008 + 0.012 * ss(yN, yHd + 0.06, y)], U: X, V: Z, ru: nr * (1 + 0.25 * ss(yN + 0.03, yN - 0.02, y)), rv: nr * 0.95, e: 2.2, mod: (a) => 1 + 0.06 * gauss(wrapA(a - FRONT), 0.4) * gauss(y - (yN + 0.06), 0.03) })), { n: 18, weights: (k, P) => (P[1] < yN + 0.02 ? torsoW(P, 0) : headW(P)), tile: 0.3 });
+  // a column that leans forward going up, wider at its root (the trapezius), a slight flare for the sternomastoids and an Adam's apple;
+  // a thick neck grows sideways more than forward. Its top stays inside the skull so turning the head never opens a gap.
+  const hcN = hN.hc, hyN = hN.HY, yTop = hcN[1] - 0.12 * hyN, nd = NECKR * 0.9;
+  m.lod = 0.75;
+  m.loft('skin', ys(yN - 0.02, yTop, 0.012).map((y) => { const u = ss(yN - 0.02, yTop, y); return { c: [0, y, lerp(-0.2, -0.13, u) * hyN], U: X, V: Z, ru: NECKR * (1 + 0.42 * ss(yN + 0.045, yN - 0.01, y)), rv: nd * (1 + 0.1 * ss(yN + 0.04, yN - 0.02, y)), e: 2.2,
+    mod: (a) => 1 + 0.035 * (sp.adam === false ? 0 : 1) * gauss(wrapA(a - FRONT), 0.26) * gauss(y - (yN + 0.04), 0.018) + 0.05 * (gauss(wrapA(a - FRONT - 0.95), 0.35) + gauss(wrapA(a - FRONT + 0.95), 0.35)) * ss(yTop, yN, y) }; }), { n: 24, weights: (k, P) => (P[1] < yN + 0.01 ? torsoW(P, 0) : headW(P)), tile: 0.3 });
+  m.lod = 0.5;
 
   // ── head: a sculpted face (sockets, eyes and lids, nose, lips and a mouth that opens, teeth, ears) on the head envelope ──
   const M = headOf(sp, world), { hc, R, RZ, HY } = M.H, headRing = M.H.ring, F = M.F;
-  buildHead(m, M, BI, { glowEyes: !!sp.glowEyes, piercings: sp.piercings, lipRing: sp.lipRing, cols: 48, rows: 38 });
+  buildHead(m, M, BI, { glowEyes: !!sp.glowEyes, piercings: sp.piercings, lipRing: sp.lipRing, cols: 48, rows: 40 });
   if (sp.shades) { // pushed up on the forehead
     const P = M.surf(0, 0.4);
     m.ellipsoid('shades', add(P, [0, 0.004, 0.008 * HS]), 0.1 * HS, 0.02 * HS, 0.016 * HS, { bone: BI.Head, steps: 6, n: 16, e: 3, axis: norm([0, 1, -0.35]), U: X, V: norm([0, 0.35, 1]) });
@@ -721,16 +771,13 @@ function build(sp) {
     const t = ss(ya, yb, P[1]);
     return [[BI.Head, (1 - t) * ss(ya - 0.12, ya, P[1])], [BI.HairA, (1 - t) * (1 - ss(ya - 0.12, ya, P[1])) + 0.001], [BI.HairB, t]];
   };
-  const shell = (t0, t1, k, add, steps, o = {}) => { const r = []; for (let i = 0; i <= steps; i++) { const t = t0 + (t1 - t0) * (i / steps); const hr = headRing(Math.min(t, 0.999), k, add); if (o.mod) hr.mod = o.mod(t, i); r.push(hr); } return r; };
+  const shell = (t0, t1, k, add, steps, o = {}) => { const r = []; for (let i = 0; i <= steps; i++) { const t = t0 + (t1 - t0) * (i / steps); const hr = headRing(Math.min(t, 0.999), k, add); if (o.mod) hr.mod = o.mod(t, i); if (t > 0) hr.c = [hr.c[0], hr.c[1] + ((k - 1) * HY + add) * t, hr.c[2]]; r.push(hr); } if (t1 >= 1) { const l = r[r.length - 1]; r.push({ ...l, c: [l.c[0], l.c[1] + add * 0.4, l.c[2]], ru: 0.0005, rv: 0.0005 }); } return r; };
   const tuft = (seed, amp) => (t, i) => (a) => 1 + amp * (noise1(a * 7 + seed, seed) - 0.5) * ss(-0.6, 0.6, t);
   const hairCut = sp.hair ?? 'crop';
   // the front of the crown shell sinks under the skin below the hairline, higher at the temples
   const hairline = (t, a) => { const f = Math.pow(Math.max(0, Math.sin(a)), 1.4), ax = Math.abs(Math.cos(a)); return 1 - 0.13 * f * ss(0.5 + 0.06 * gauss(ax - 0.42, 0.18), 0.36, t); };
-  const scalp = (k = 1.06, add = 0.006, seed = 1) => {
-    m.loft('hair', [...shell(0.28, 1.0, k, add, 10, { mod: (t, i) => (a) => tuft(seed, 0.1)(t, i)(a) * hairline(t, a) })], { n: 32, bone: BI.Head, tile: 0.25 }); // crown down to the hairline (it sinks under the forehead skin)
-    m.loft('hair', shell(-0.45, 0.32, k, add, 6, { mod: tuft(seed + 3, 0.08) }), { n: 16, arc: [BACK - 1.3, BACK + 1.3], bone: BI.Head, tile: 0.25 }); // the back, behind the ears
-    m.loft('hair', shell(0.14, 0.32, k, add, 3, { mod: tuft(seed + 5, 0.08) }), { n: 22, arc: [BACK - 1.95, BACK + 1.95], bone: BI.Head, tile: 0.25 }); // over the ears
-  };
+  const hairEdge = (a) => hairlineEdge(a, sp.hairlineH ?? 0.56, sp.recede ?? 0.08);
+  const scalp = (k = 1.06, add = 0.006, seed = 1) => hairCap(m, 'hair', M, hairEdge, { bone: BI.Head, lift: 0.006, rough: 0.05, cols: 26, rows: 9 });
   // swept clumps over the scalp break up the outline (a smooth shell reads as a helmet)
   const clumps = (rows, len, rad, sweep, seed) => {
     for (let r = 0; r < rows; r++) for (let i = 0, nI = 5 + r * 2; i < nI; i++) {
@@ -755,7 +802,7 @@ function build(sp) {
   /** grow a curve from p along dir in seg steps of len/seg, bending by bend(i, p, d); kept off (head units) off the skull */
   const grow = (p, dir, len, seg, bend, off = 0) => { const pts = [p]; let d = norm(dir); for (let i = 0; i < seg; i++) { d = norm(bend(i, pts[pts.length - 1], d)); let q = add(pts[pts.length - 1], mul(d, len / seg)); if (off > 0) { const e = ell(q); if (e < 1 + off) q = add(q, mul(norm(sub(q, hcC)), (1 + off - e) * R)); } pts.push(q); } return pts; };
   /** q put back onto the scalp `o` metres out (the same height and angle around the head): lying cards follow the head */
-  const onScalp = (q, o) => { const t = Math.max(-0.95, Math.min(0.995, (q[1] - hc[1]) / HY)), r = headRing(t); return scalpPt(t, Math.atan2((q[2] - r.c[2]) / r.rv, q[0] / r.ru), o)[0]; };
+  const onScalp = (q, o) => { const t = Math.max(-0.5, Math.min(0.995, (q[1] - hc[1]) / HY)), r = headRing(t); return scalpPt(t, Math.atan2((q[2] - r.c[2]) / r.rv, q[0] / r.ru), o)[0]; };
   /** grow a curve that lies on the scalp: each step along the (bent) direction, then back onto the scalp at o metres */
   const growS = (p, dir, len, seg, bend, o) => { const pts = [p]; let d = norm(dir); for (let i = 0; i < seg; i++) { d = norm(bend(i, pts[pts.length - 1], d)); const q = onScalp(add(pts[pts.length - 1], mul(d, len / seg)), o); d = norm(sub(q, pts[pts.length - 1])); pts.push(q); } return pts; };
   const crossv = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
@@ -786,21 +833,21 @@ function build(sp) {
     m.raw(mat, verts, tris);
   };
   const onHead = () => [[BI.Head, 1]];
-  const thinShell = (mat, t0, t1, steps, arc) => { const rr = []; for (let i = 0; i <= steps; i++) { const t = t0 + (t1 - t0) * (i / steps), e = ss(0, 0.25, i / steps); rr.push(headRing(Math.min(t, 0.999), 1 + 0.006 * e, 0.0006 + 0.0012 * e)); } m.loft(mat, rr, { n: 32, bone: BI.Head, tile: 0.25, ...(arc ? { arc } : {}) }); };
+  const slick = () => hairCap(m, 'hair', M, hairEdge, { bone: BI.Head, lift: 0.0022, cols: 26, rows: 9 });
   if (hairCut === 'spiky') { scalp(1.05, 0.004, sp.name.length); clumps(3, 0.085 * HS, 0.03 * HS, 0.6, sp.name.length); }
   if (hairCut === 'crop' || hairCut === 'long') {
     scalp(1.04, 0.003, sp.name.length);
     // short hair combed back: layered lying cards over the crown and the back (none low on the sides: the shell carries those)
-    const n = hairCut === 'crop' ? 220 : 170;
+    const n = hairCut === 'crop' ? 120 : 90;
     for (let i = 0; i < n; i++) {
       const t = lerp(0.38, 0.97, Math.pow(rnd(), 0.8)), a = PI / 2 + (rnd() * 2 - 1) * PI * 0.97;
-      if (Math.sin(a) > 0.3 && t < 0.5 + 0.1 * Math.sin(a)) continue; // the forehead stays clear below the hairline
+      if (t < hairEdge(((a % (2 * PI)) + 2 * PI) % (2 * PI)) + 0.08) continue; // none below the hairline
       const [p, nn] = scalpPt(t, a, 0.004 + 0.004 * rnd());
       const back = [0, hairCut === 'long' ? -0.35 : -0.15, -1];
       const dir = add(sub(back, mul(nn, dotv(back, nn))), [(rnd() - 0.5) * 0.25, 0, 0]);
       const len = (hairCut === 'crop' ? 0.04 + 0.03 * rnd() : 0.07 + 0.05 * rnd()) * HS;
       const pts = growS(p, dir, len, 4, (k, q, d) => d, 0.004 + 0.005 * rnd());
-      card(pts, (hairCut === 'crop' ? 0.03 : 0.04) * HS, 0.012 * HS, 0, onHead);
+      card(pts, (hairCut === 'crop' ? 0.034 : 0.044) * HS, 0.014 * HS, 0, onHead);
     }
   }
   if (hairCut === 'long') { // a fall of hair down the back to the shoulder blades: a solid core and long cards over it
@@ -811,24 +858,24 @@ function build(sp) {
       hr.mod = (a) => 1 + 0.07 * Math.sin(a * 11 + i * 0.3) * t; return hr;
     });
     m.loft('hair', rr, { n: 26, arc: [BACK - 1.55, BACK + 1.55], weights: (k, P) => hairW(P), tile: 0.3 });
-    for (let i = 0; i < 110; i++) {
+    for (let i = 0; i < 80; i++) {
       const a = BACK + (rnd() * 2 - 1) * 1.45, [p] = scalpPt(lerp(0.35, 0.75, rnd()), a, 0.012);
       const out = norm([Math.cos(a), 0, Math.sin(a)]);
-      const pts = grow(p, [out[0] * 0.25, -1, out[2] * 0.25 - 0.15], (0.3 + 0.08 * rnd()) * HS, 8, (k, q, d) => add(d, [out[0] * 0.03, 0, out[2] * 0.06 - 0.02]));
+      const pts = grow(p, [out[0] * 0.25, -1, out[2] * 0.25 - 0.15], (0.3 + 0.08 * rnd()) * HL, 8, (k, q, d) => add(d, [out[0] * 0.03, 0, out[2] * 0.06 - 0.02]));
       card(pts, 0.05 * HS, 0.025 * HS, 0, (sv, q) => hairW(q), { outAt: (k, q) => norm(add([q[0], 0, q[2] - hc[2]], [0, 0, -0.02])) });
     }
   }
   if (hairCut === 'mohawk') { // shaved sides; a crest of tall stiff tufts along the midline over thin cores, tips raked back
-    m.loft('stubble', shell(0.3, 1.0, 1.015, 0.002, 7), { n: 28, bone: BI.Head, tile: 0.25 }); m.loft('stubble', shell(-0.5, 0.32, 1.015, 0.002, 6), { n: 18, arc: [BACK - 2.05, BACK + 2.05], bone: BI.Head, tile: 0.25 });
+    const mid = (ang, k) => { const t = Math.max(-0.5, Math.cos(ang)) * k, r = headRing(t); return [0, r.c[1], r.c[2] + Math.sign(Math.sin(ang)) * r.rv * k]; };
     for (let i = 0; i < 7; i++) {
       const u = i / 6, ang = lerp(0.55, -1.75, u), dir = norm([0, Math.cos(ang) * 0.9 + 0.1, Math.sin(ang) + 0.15]);
-      const base = add(hc, [0, Math.cos(ang) * HY * 0.9, Math.sin(ang) * RZ * 0.9]);
-      const h = (0.1 + 0.05 * Math.sin(u * PI)) * HS * (sp.mohawk ?? 1);
+      const base = mid(ang, 0.94);
+      const h = (0.1 + 0.05 * Math.sin(u * PI)) * HS * 1.15 * (sp.mohawk ?? 1);
       m.cone('hair', base, add(base, mul(dir, h)), 0.026 * HS, { ratio: 0.4, U: [0, -dir[2], dir[1]], V: X, weights: () => (u > 0.6 ? [[BI.Head, 0.6], [BI.HairA, 0.4]] : [[BI.Head, 1]]), n: 8, bend: [0, -0.01, -0.035] });
     }
     for (let i = 0; i < 80; i++) {
-      const u = i / 79, ang = lerp(0.62, -1.7, u), base = add(hc, [(rnd() - 0.5) * 0.022 * HS, Math.cos(ang) * HY * 0.97, Math.sin(ang) * RZ * 0.97]);
-      const h = (0.11 + 0.07 * Math.sin(u * PI) + 0.03 * rnd()) * HS * (sp.mohawk ?? 1), nn = norm(sub(base, hcC));
+      const u = i / 79, ang = lerp(0.62, -1.7, u), base = add(mid(ang, 0.985), [(rnd() - 0.5) * 0.022 * HS, 0, 0]);
+      const h = (0.11 + 0.07 * Math.sin(u * PI) + 0.03 * rnd()) * HS * 1.15 * (sp.mohawk ?? 1), nn = norm(sub(base, hcC));
       const dir = add(nn, [(rnd() - 0.5) * 0.25, 0.25, -0.15]);
       const pts = grow(base, dir, h, 5, (k, q, d) => add(d, [0, -0.02 * k, -0.07 * k]));
       const w = u > 0.55 ? [[BI.Head, 0.6], [BI.HairA, 0.4]] : [[BI.Head, 1]], tw = rnd() * PI;
@@ -836,38 +883,40 @@ function build(sp) {
     }
   }
   if (hairCut === 'ponytail') { // swept back over the scalp to a tie at the crown, the tail on its spring bones
-    thinShell('hair', 0.56, 1, 9); thinShell('hair', -0.42, 0.58, 8, [BACK - 1.75, BACK + 1.75]);
-    const tie = add(hc, [0, HY * 0.5, -RZ * 0.9]);
+    slick();
+    const tie = add(hc, [0, HY * 0.5, -RZ * 1.03]);
     m.capsule('band', add(tie, [0, 0.008, 0.012]), add(tie, [0, -0.006, -0.01]), 0.02 * HS, 0.02 * HS, { bone: BI.Head, n: 12, caps: 2 });
-    for (let i = 0; i < 190; i++) {
-      const t = lerp(0.5, 0.98, Math.pow(rnd(), 0.7)), a = PI / 2 + (rnd() * 2 - 1) * PI * 0.97;
+    for (let i = 0; i < 110; i++) {
+      const t = lerp(0.3, 0.98, Math.pow(rnd(), 0.7)), a = PI / 2 + (rnd() * 2 - 1) * PI * 0.97;
+      if (t < hairEdge(((a % (2 * PI)) + 2 * PI) % (2 * PI)) + 0.06) continue;
       const [p] = scalpPt(t, a, 0.0012 + 0.003 * rnd());
       const to = sub(tie, p), L0 = Math.hypot(...to);
       if (L0 < 0.03) continue;
       const pts = growS(p, to, L0 * 0.98, 6, (k, q, d) => add(d, mul(norm(sub(tie, q)), 0.35)), 0.002 + 0.003 * rnd());
-      card(pts, 0.034 * HS, 0.03 * HS, 0, onHead);
+      card(pts, 0.042 * HS, 0.036 * HS, 0, onHead);
     }
     { const a = add(tie, [0, -0.004, -0.012]), b = add(a, [0, -0.12, -0.07]), c = add(b, [0, -0.15, -0.01]);
-      m.capsule('hair', a, b, 0.022 * HS, 0.03 * HS, { weights: (t) => [[BI.Head, 1 - t], [BI.HairA, t]], n: 12, caps: 3, ratio: 0.8, mod: (an) => 1 + 0.08 * Math.sin(an * 6) });
-      m.capsule('hair', b, c, 0.03 * HS, 0.008 * HS, { weights: (t) => [[BI.HairA, 1 - t], [BI.HairB, t]], n: 12, caps: 3, ratio: 0.8, mod: (an) => 1 + 0.08 * Math.sin(an * 6) }); }
+      m.capsule('hair', a, b, 0.024 * HS, 0.036 * HS, { weights: (t) => [[BI.Head, 1 - t], [BI.HairA, t]], n: 12, caps: 3, ratio: 0.8, mod: (an) => 1 + 0.08 * Math.sin(an * 6) });
+      m.capsule('hair', b, c, 0.036 * HS, 0.008 * HS, { weights: (t) => [[BI.HairA, 1 - t], [BI.HairB, t]], n: 12, caps: 3, ratio: 0.8, mod: (an) => 1 + 0.08 * Math.sin(an * 6) }); }
     const tw = (sv) => (sv < 0.4 ? [[BI.Head, 1 - sv / 0.4], [BI.HairA, sv / 0.4]] : [[BI.HairA, 1 - (sv - 0.4) / 0.6], [BI.HairB, (sv - 0.4) / 0.6]]);
-    for (let i = 0; i < 46; i++) {
+    for (let i = 0; i < 44; i++) {
       const ang = rnd() * PI * 2, rr2 = 0.012 * Math.sqrt(rnd()), p = add(tie, [Math.cos(ang) * rr2, Math.sin(ang) * rr2 * 0.6, -0.008]);
-      const len = (0.27 + 0.08 * rnd()) * HS, spread = [Math.cos(ang) * 0.35, 0.1, Math.sin(ang) * 0.15 - 0.6];
+      const len = (0.22 + 0.14 * rnd()) * HL, spread = [Math.cos(ang) * 0.1, 0.1, Math.sin(ang) * 0.08 - 0.5];
       const pts = grow(p, add([0, 0.25, -1], spread), len, 9, (k, q, d) => add(d, [Math.cos(ang) * 0.04 * (k < 4 ? 1 : -1.2), -0.32, 0.02]));
-      card(pts, 0.04 * HS, 0.008 * HS, ang, (sv) => tw(sv));
+      card(pts, 0.036 * HS, 0.012 * HS, ang, (sv) => tw(sv), { outAt: () => norm([Math.cos(ang) * 0.3, 0.35, 0.9]) });
     }
   }
   if (hairCut === 'bun') { // pulled tight up the head to a bun on the crown, wisps left at the nape
-    thinShell('hair', 0.3, 1, 9); thinShell('hair', -0.42, 0.34, 8, [BACK - 1.75, BACK + 1.75]);
+    slick();
     const bun = add(hc, [0, HY * 1.02, -RZ * 0.42]);
     m.ellipsoid('hair', bun, 0.058 * HS, 0.05 * HS, 0.058 * HS, { bone: BI.Head, steps: 7, n: 18, e: 2.1, tile: 0.2, mod: (a) => 1 + 0.05 * Math.sin(a * 5) });
-    for (let i = 0; i < 170; i++) { // strands drawn up over the scalp to the bun
+    for (let i = 0; i < 110; i++) { // strands drawn up over the scalp to the bun
       const t = lerp(0.3, 0.98, Math.pow(rnd(), 0.7)), a = PI / 2 + (rnd() * 2 - 1) * PI * 0.97, [p] = scalpPt(t, a, 0.0012 + 0.003 * rnd());
+      if (t < hairEdge(((a % (2 * PI)) + 2 * PI) % (2 * PI)) + 0.06) continue;
       const to = sub(bun, p), L0 = Math.hypot(...to);
       if (L0 < 0.05) continue;
       const pts = growS(p, to, (L0 - 0.03) * 0.98, 6, (k, q, d) => add(d, mul(norm(sub(bun, q)), 0.35)), 0.002 + 0.003 * rnd());
-      card(pts, 0.03 * HS, 0.024 * HS, 0, onHead);
+      card(pts, 0.038 * HS, 0.03 * HS, 0, onHead);
     }
     for (let i = 0; i < 60; i++) { // wound round the bun
       const a0 = rnd() * PI * 2, y0 = (rnd() - 0.5) * 0.06 * HS, rr2 = Math.sqrt(Math.max(0.05, 1 - (y0 / (0.05 * HS)) ** 2)) * 0.06 * HS, pts = [];
@@ -885,7 +934,7 @@ function build(sp) {
     // and cards: a roll standing off the forehead and leaning past the brow, lying back over the crown, the sides slick and
     // flat, the hairline ending in strands (alpha). The furrows and strands run along its comb lines, and the tangent runs
     // across them, so the pomade's highlight lies across the comb lines as on real slicked hair.
-    const NU = 56, NV = 44, HK = HS * 1.0, P = [], out = (s, u, lift = 0) => {
+    const NU = 42, NV = 32, HK = HS * 1.05, P = [], out = (s, u, lift = 0) => {
       const d = pompDir(s, u), [t, a] = pompTA(d), [q, nn] = scalpPt(Math.max(-0.95, Math.min(0.995, t)), a, 0);
       const e = pompEdge(a), rise = ss(e, e + 0.1, t); // sinks under the skin past the hairline
       return add(q, mul(nn, (0.0025 + pompHeight(s, u) * HK) * rise - 0.012 * ss(e, e - 0.1, t) + lift));
@@ -926,23 +975,23 @@ function build(sp) {
     if (facing.out <= 4 * facing.in) throw new Error(`${sp.name}: hair cards wound inward (${facing.out} triangles face out, ${facing.in} in): double-sided shading would light them from inside`);
   }
   if (hairCut === 'beanie') {
-    m.loft('hat', shell(0.22, 1.0, 1.1, 0.012, 10, { mod: (t) => (a) => 1 + 0.012 * Math.sin(a * 24) }), { n: 32, bone: BI.Head, tile: 0.25 });
-    m.loft('hat', [headRing(0.18, 1.12, 0.016), headRing(0.22, 1.14, 0.02), headRing(0.36, 1.13, 0.018), headRing(0.41, 1.1, 0.012)], { n: 32, bone: BI.Head, tile: 0.25 });
+    m.loft('hat', shell(0.34, 1.0, 1.04, 0.007, 12, { mod: (t) => (a) => 1 + 0.012 * Math.sin(a * 24) }), { n: 40, bone: BI.Head, tile: 0.25 });
+    m.loft('hat', [headRing(0.28, 1.03, 0.005), headRing(0.31, 1.05, 0.01), headRing(0.46, 1.05, 0.01), headRing(0.5, 1.04, 0.006)], { n: 40, bone: BI.Head, tile: 0.25 });
   }
   if (hairCut === 'cap' || hairCut === 'capback') {
     scalp(1.05, 0.004, 5);
-    m.loft('hat', shell(0.25, 1.0, 1.1, 0.012, 9), { n: 32, bone: BI.Head, tile: 0.25 });
-    const fwd = hairCut === 'cap' ? 1 : -1, y = hc[1] + HY * 0.3;
-    m.ellipsoid('hat', [0, y, hc[2] + fwd * RZ * 1.18], 0.09 * HS, 0.008, 0.075 * HS, { bone: BI.Head, steps: 4, n: 18, e: 2.4 });
+    m.loft('hat', shell(0.34, 1.0, 1.035, 0.006, 11), { n: 36, bone: BI.Head, tile: 0.25 });
+    const fwd = hairCut === 'cap' ? 1 : -1, y = hc[1] + HY * 0.38;
+    m.ellipsoid('hat', [0, y, hc[2] + fwd * RZ * 1.2], 0.085 * HS, 0.007, 0.08 * HS, { bone: BI.Head, steps: 4, n: 18, e: 2.4 });
   }
   if (hairCut === 'foamcap') { // a foam-front cap pushed back on a mullet: the foam front stands tall with the letters on it
     scalp(1.05, 0.004, 5);
-    const t0 = 0.2, steps = 12, front = { mod: (t) => (a) => 1 + 0.07 * gauss(wrapA(a - FRONT), 0.55) * ss(0.2, 0.65, t) };
+    const t0 = 0.32, steps = 12, front = { mod: (t) => (a) => 1 + 0.07 * gauss(wrapA(a - FRONT), 0.55) * ss(0.32, 0.7, t) };
     // u once round the head (the front at 0.5, decreasing with the loft angle so the words read left to right from
     // outside), v from the top of the crown (0) down to the band (1): the layout cap_logo is drawn for
-    m.loft('capLogo', shell(t0, 1.0, 1.1, 0.012, steps, front), { n: 48, bone: BI.Head, uvFn: (p, k, j, n, a) => [0.75 - a / (PI * 2), 1 - (k / steps)] });
-    const y = hc[1] + HY * 0.24;
-    m.ellipsoid('capLogo', [0, y, hc[2] + RZ * 1.22], 0.095 * HS, 0.008, 0.08 * HS, { bone: BI.Head, steps: 4, n: 18, e: 2.4, uvFn: (p) => [0.02 + 0.3 * (p[0] + 0.12), 0.3 + 0.3 * (p[2] - hc[2])] });
+    m.loft('capLogo', shell(t0, 1.0, 1.035, 0.006, steps, front), { n: 48, bone: BI.Head, uvFn: (p, k, j, n, a) => [0.75 - a / (PI * 2), 0.55 - ((p[1] - hc[1]) / HY - 0.57) * 0.9] });
+    const y = hc[1] + HY * 0.36;
+    m.ellipsoid('capLogo', [0, y, hc[2] + RZ * 1.2], 0.088 * HS, 0.007, 0.08 * HS, { bone: BI.Head, steps: 4, n: 18, e: 2.4, uvFn: (p) => [0.02 + 0.3 * (p[0] + 0.12), 0.3 + 0.3 * (p[2] - hc[2])] });
     // the mullet: business under the cap, a fall to the collar at the back over a solid core
     const ya = hc[1] - 0.01, yb = yN + 0.035;
     const rr = ys(yb, ya, 0.025).reverse().map((yy, i) => {
@@ -954,7 +1003,7 @@ function build(sp) {
     for (let i = 0; i < 70; i++) {
       const a = BACK + (rnd() * 2 - 1) * 1.25, [p] = scalpPt(lerp(0.05, 0.3, rnd()), a, 0.012);
       const out = norm([Math.cos(a), 0, Math.sin(a)]);
-      const pts = grow(p, [out[0] * 0.2, -1, out[2] * 0.3 - 0.1], (0.15 + 0.05 * rnd()) * HS, 6, (k, q, d) => add(d, [out[0] * 0.03, 0, out[2] * 0.07 - 0.01]));
+      const pts = grow(p, [out[0] * 0.2, -1, out[2] * 0.3 - 0.1], (0.15 + 0.05 * rnd()) * HL, 6, (k, q, d) => add(d, [out[0] * 0.03, 0, out[2] * 0.07 - 0.01]));
       card(pts, 0.05 * HS, 0.03 * HS, 0, (sv, q) => hairW(q), { outAt: (k, q) => norm(add([q[0], 0, q[2] - hc[2]], [0, 0, -0.02])) });
     }
     // these cards come after the facing check above: the same rule, here
@@ -963,44 +1012,44 @@ function build(sp) {
   }
   if (hairCut === 'fedora') { // a sweat-stained fedora; under it a bald pate and a thin slicked fringe of hair at the sides
     m.loft('hair', shell(-0.45, 0.3, 1.02, 0.002, 8, { mod: tuft(4, 0.04) }), { n: 22, arc: [BACK - 1.6, BACK + 1.6], bone: BI.Head, tile: 0.25 });
-    const y0 = hc[1] + HY * 0.32, pinch = (a) => 1 - 0.1 * Math.pow(Math.max(0, Math.sin(a)), 4);
-    m.loft('hat', [[0, 0.002, 0.002], [0, 1.03, 1.05], [0.06, 1.02, 1.04], [0.11, 0.97, 0.99], [0.125, 0.8, 0.82], [0.13, 0.002, 0.002]].map(([dy, k, kk], i) => ({ c: [0, y0 + dy * HS, hc[2] - 0.005], U: X, V: Z, ru: R * k, rv: RZ * kk, e: 2.3, mod: i >= 3 ? pinch : null })), { n: 28, bone: BI.Head, tile: 0.3 });
-    m.loft('band', [{ c: [0, y0 + 0.012 * HS, hc[2] - 0.005], U: X, V: Z, ru: R * 1.04, rv: RZ * 1.06 }, { c: [0, y0 + 0.032 * HS, hc[2] - 0.005], U: X, V: Z, ru: R * 1.035, rv: RZ * 1.055 }], { n: 28, bone: BI.Head, tile: 0.3 });
-    m.ellipsoid('hat', [0, y0 + 0.004, hc[2] - 0.005], R * 1.6, 0.008, RZ * 1.5, { bone: BI.Head, steps: 4, n: 28, e: 2.2, mod: (a) => 1 + 0.06 * Math.sin(a) });
+    const tb = 0.4, rb = headRing(tb), y0 = hc[1] + HY * tb, cz = rb.c[2], R0 = rb.ru, Z0 = rb.rv, pinch = (a) => 1 - 0.1 * Math.pow(Math.max(0, Math.sin(a)), 4);
+    m.loft('hat', [[0, 0.002, 0.002], [0, 1.05, 1.05], [0.08, 1.04, 1.04], [0.14, 0.98, 0.99], [0.16, 0.8, 0.82], [0.165, 0.002, 0.002]].map(([dy, k, kk], i) => ({ c: [0, y0 + dy * HS, cz], U: X, V: Z, ru: R0 * k, rv: Z0 * kk, e: 2.3, mod: i >= 3 ? pinch : null })), { n: 32, bone: BI.Head, tile: 0.3 });
+    m.loft('band', [{ c: [0, y0 + 0.012 * HS, cz], U: X, V: Z, ru: R0 * 1.06, rv: Z0 * 1.06 }, { c: [0, y0 + 0.036 * HS, cz], U: X, V: Z, ru: R0 * 1.055, rv: Z0 * 1.055 }], { n: 32, bone: BI.Head, tile: 0.3 });
+    m.ellipsoid('hat', [0, y0 + 0.004, cz], R0 * 1.55, 0.008, Z0 * 1.42, { bone: BI.Head, steps: 4, n: 28, e: 2.2, mod: (a) => 1 + 0.06 * Math.sin(a) });
   }
   if (hairCut === 'tophat') {
     scalp(1.05, 0.004, 7);
-    const y0 = hc[1] + HY * 0.45;
-    m.loft('hat', [[0, 0.002, 0.002], [0, 1.0, 1.0], [0.02, 1.0, 1.0], [0.2, 0.95, 0.95], [0.23, 1.0, 1.0], [0.235, 0.9, 0.9], [0.236, 0.002, 0.002]].map(([dy, k, kk]) => ({ c: [0, y0 + dy * HS, hc[2] - 0.01], U: X, V: Z, ru: R * 0.92 * k, rv: RZ * 0.92 * kk, e: 2.2 })), { n: 28, bone: BI.Head, tile: 0.3 });
-    m.loft('band', [{ c: [0, y0 + 0.025 * HS, hc[2] - 0.01], U: X, V: Z, ru: R * 0.935, rv: RZ * 0.935 }, { c: [0, y0 + 0.055 * HS, hc[2] - 0.01], U: X, V: Z, ru: R * 0.93, rv: RZ * 0.93 }], { n: 28, bone: BI.Head, tile: 0.3 });
-    m.ellipsoid('hat', [0, y0 + 0.004, hc[2] - 0.01], R * 1.55, 0.008, RZ * 1.4, { bone: BI.Head, steps: 4, n: 28, e: 2.2 });
+    const tb = 0.42, rb = headRing(tb), y0 = hc[1] + HY * tb, cz = rb.c[2], R0 = rb.ru, Z0 = rb.rv;
+    m.loft('hat', [[0, 0.002, 0.002], [0, 1.04, 1.04], [0.02, 1.04, 1.04], [0.24, 0.99, 0.99], [0.27, 1.04, 1.04], [0.275, 0.94, 0.94], [0.276, 0.002, 0.002]].map(([dy, k, kk]) => ({ c: [0, y0 + dy * HS, cz], U: X, V: Z, ru: R0 * k, rv: Z0 * kk, e: 2.2 })), { n: 32, bone: BI.Head, tile: 0.3 });
+    m.loft('band', [{ c: [0, y0 + 0.025 * HS, cz], U: X, V: Z, ru: R0 * 1.05, rv: Z0 * 1.05 }, { c: [0, y0 + 0.06 * HS, cz], U: X, V: Z, ru: R0 * 1.045, rv: Z0 * 1.045 }], { n: 32, bone: BI.Head, tile: 0.3 });
+    m.ellipsoid('hat', [0, y0 + 0.004, cz], R0 * 1.55, 0.008, Z0 * 1.42, { bone: BI.Head, steps: 4, n: 28, e: 2.2 });
   }
   if (hairCut === 'hardhat' || hairCut === 'helmet') {
     if (hairCut === 'hardhat') scalp(1.04, 0.003, 9);
     const hmod = { mod: (t) => (a) => 1 + 0.035 * gauss(wrapA(a - FRONT), 0.18) * ss(0.2, 0.7, t) };
-    if (hairCut === 'hardhat') m.loft('helmet', shell(0.1, 1.0, 1.17, 0.014, 10, hmod), { n: 32, bone: BI.Head, tile: 0.3 });
+    if (hairCut === 'hardhat') m.loft('helmet', shell(0.28, 1.0, 1.1, 0.012, 11, hmod), { n: 36, bone: BI.Head, tile: 0.3 });
     else { // an open-faced riot helmet: the crown, then sides and back that leave the face clear
-      m.loft('helmet', shell(0.4, 1.0, 1.2, 0.014, 7, hmod), { n: 32, bone: BI.Head, tile: 0.3 });
-      m.loft('helmet', shell(-0.32, 0.42, 1.2, 0.014, 6), { n: 26, arc: [FRONT + 0.92, FRONT - 0.92 + PI * 2], bone: BI.Head, tile: 0.3 });
+      m.loft('helmet', shell(0.42, 1.0, 1.1, 0.012, 9, hmod), { n: 36, bone: BI.Head, tile: 0.3 });
+      m.loft('helmet', shell(-0.42, 0.44, 1.1, 0.012, 7), { n: 26, arc: [FRONT + 1.02, FRONT - 1.02 + PI * 2], bone: BI.Head, tile: 0.3 });
     }
-    if (hairCut === 'hardhat') m.ellipsoid('helmet', [0, hc[1] + HY * 0.12, hc[2] + 0.01], R * 1.42, 0.01, RZ * 1.38, { bone: BI.Head, steps: 4, n: 28, e: 2.3, mod: (a) => 1 + 0.25 * Math.pow(Math.max(0, Math.sin(a)), 3) });
+    if (hairCut === 'hardhat') m.ellipsoid('helmet', [0, hc[1] + HY * 0.3, hc[2] + 0.005], R * 1.34, 0.008, RZ * 1.3, { bone: BI.Head, steps: 4, n: 28, e: 2.3, mod: (a) => 1 + 0.25 * Math.pow(Math.max(0, Math.sin(a)), 3) });
     if (hairCut === 'helmet') { // a visor bar and cheek guards
-      m.loft('helmet', [headRing(0.36, 1.2, 0.012), headRing(0.4, 1.26, 0.022), headRing(0.47, 1.26, 0.022), headRing(0.5, 1.2, 0.014)], { n: 24, arc: [FRONT - 1.05, FRONT + 1.05], bone: BI.Head, tile: 0.3 });
-      m.loft('glow', [headRing(0.415, 1.268, 0.023), headRing(0.455, 1.268, 0.023)], { n: 24, arc: [FRONT - 0.8, FRONT + 0.8], bone: BI.Head, tile: 0.3 });
-      for (const sd of [1, -1]) m.ellipsoid('helmet', [sd * R * 1.1, hc[1] - 0.06 * HS, hc[2] - 0.02], 0.03 * HS, 0.065 * HS, 0.065 * HS, { bone: BI.Head, steps: 5, n: 12 });
+      m.loft('helmet', [headRing(0.4, 1.1, 0.012), headRing(0.44, 1.14, 0.02), headRing(0.52, 1.14, 0.02), headRing(0.56, 1.1, 0.012)], { n: 24, arc: [FRONT - 1.05, FRONT + 1.05], bone: BI.Head, tile: 0.3 });
+      m.loft('glow', [headRing(0.46, 1.146, 0.021), headRing(0.5, 1.146, 0.021)], { n: 24, arc: [FRONT - 0.8, FRONT + 0.8], bone: BI.Head, tile: 0.3 });
+      for (const sd of [1, -1]) m.ellipsoid('helmet', [sd * R * 1.04, hc[1] - 0.05 * HS, hc[2] - 0.015], 0.025 * HS, 0.06 * HS, 0.06 * HS, { bone: BI.Head, steps: 5, n: 12 });
     }
   }
-  if (sp.headband) m.loft('band', [-0.02, 0.02].map((dy) => headRing(0.42 + dy / HY, 1.09, 0.008)), { n: 32, bone: BI.Head, tile: 0.3 });
-  if (sp.headband) { const a = add(hc, [0, HY * 0.42, -RZ * 1.05]); m.capsule('band', a, add(a, [0.03, -0.14, -0.05]), 0.012, 0.008, { weights: (t) => [[BI.Head, 1 - t], [BI.HairA, t]], n: 6, caps: 2, ratio: 0.4 }); m.capsule('band', a, add(a, [-0.04, -0.12, -0.04]), 0.012, 0.008, { weights: (t) => [[BI.Head, 1 - t], [BI.HairA, t]], n: 6, caps: 2, ratio: 0.4 }); }
+  if (sp.headband) m.loft('band', [-0.014, 0.014].map((dy) => headRing(0.66 + dy / HY, 1.04, 0.009)), { n: 32, bone: BI.Head, tile: 0.3 });
+  if (sp.headband) { const a = add(hc, [0, HY * 0.66, -RZ * 0.95]); m.capsule('band', a, add(a, [0.03, -0.14, -0.05]), 0.012, 0.008, { weights: (t) => [[BI.Head, 1 - t], [BI.HairA, t]], n: 6, caps: 2, ratio: 0.4 }); m.capsule('band', a, add(a, [-0.04, -0.12, -0.04]), 0.012, 0.008, { weights: (t) => [[BI.Head, 1 - t], [BI.HairA, t]], n: 6, caps: 2, ratio: 0.4 }); }
 
   // ── arms: deltoid, biceps and triceps, elbow, forearm, wrist; sleeves are a layer over them ──
   const armR = 0.05 * AR * (0.8 + 0.2 * W);
   const sleeve = sp.sleeves ?? (top === 'longsleeve' || top === 'hoodie' ? 'long' : top === 'tee' ? 'short' : 'none');
   const outerSleeve = outer && (sp.outerKind ?? 'jacket') !== 'vest' && sp.outerKind !== 'hivis';
   const armRad = (y) => { // [radius side to side, radius front to back]
-    const top0 = ySh + 0.05, d = (top0 - y);
-    const k = lerp(0.25, 1.22, ss(0, 0.045, d)) // the shoulder cap
-      + 0.12 * gauss(y - (ySh - 0.04), 0.04) // deltoid
+    const top0 = ySh + 0.045, d = (top0 - y);
+    const k = lerp(0.6, 1.1, ss(0, 0.07, d)) // the shoulder cap: the arm comes out of the shoulder, no puff
+      + 0.1 * gauss(y - (ySh - 0.06), 0.05) // deltoid
       + lerp(0, -0.2, ss(ySh - 0.02, yEl + 0.02, y)) // down to the elbow
       + 0.13 * gauss(y - (yEl - 0.07), 0.05) // forearm
       - 0.3 * ss(yEl - 0.07, yWr + 0.01, y); // the wrist
@@ -1010,16 +1059,17 @@ function build(sp) {
   for (const sx of [1, -1]) {
     const ax = sx * sw; const sd = sx > 0 ? 'L' : 'R';
     const ringA = (y, k = 1, add = 0, fl = null) => { const [ru, rv] = armRad(y); return { c: [ax + sx * 0.008 * gauss(y - ySh, 0.05), y, 0.004], U: X, V: Z, ru: ru * k + add, rv: rv * k + add, e: 2.15, mod: fl ? (a) => armMod(y)(a) + folds(y, a, fl) : armMod(y) }; };
-    const yTop = ySh + 0.05, yWristEnd = yWr - 0.005;
+    const yTop = ySh + 0.02, yWristEnd = yWr - 0.005;
     const sleeveEnd = outerSleeve || sleeve === 'long' ? yWr + 0.03 : sleeve === 'short' ? ySh - 0.15 : yTop;
     const sFolds = [[yEl + 0.04, 0.05, 0.012, BACK, 0.9], [yEl - 0.0, 0.045, 0.012, FRONT, 0.6], [yEl - 0.035, 0.04, 0.012, BACK, 0.9], [yEl + 0.08, 0.03, 0.014, null], [yWr + 0.06, 0.035, 0.012, null]];
     const skinY = ys(yWristEnd, Math.min(yTop, sleeveEnd + 0.02), 0.02).reverse();
-    if (skinY.length > 1) m.loft('skin', skinY.map((y) => ringA(y)), { n: 20, weights: (k, P) => armW(P, sd), tile: 0.3 });
+    const dome = (k, add) => [{ ...ringA(yTop + 0.02, 0.1, add * 0.3), mod: null, c: [ax - sx * 0.022, yTop + 0.02, 0.0] }, { ...ringA(yTop + 0.012, 0.8 * k, add * 0.7), mod: null, c: [ax - sx * 0.01, yTop + 0.012, 0.002] }];
+    if (skinY.length > 1) m.loft('skin', [...(sleeveEnd >= yTop ? dome(1, 0) : []), ...skinY.map((y) => ringA(y))], { n: 20, weights: (k, P) => armW(P, sd), tile: 0.3 });
     if (sleeveEnd < yTop) {
-      const mat = outerSleeve ? 'outer' : shirtMat, th = outerSleeve ? 0.024 : 0.012;
+      const mat = outerSleeve ? 'outer' : shirtMat, th = outerSleeve ? 0.018 : 0.007;
       const yy = ys(sleeveEnd, yTop, 0.018).reverse();
-      const rr = yy.map((y) => ringA(y, 1.06, th, sFolds));
-      rr.push({ ...ringA(sleeveEnd, 1.08, th + 0.006), c: [ax, sleeveEnd - 0.005, 0.004] }); // the cuff
+      const rr = [...dome(1.03, th), ...yy.map((y) => ringA(y, 1.03, th, sFolds))];
+      rr.push({ ...ringA(sleeveEnd, 1.04, th + 0.003), c: [ax, sleeveEnd - 0.005, 0.004] }); // the cuff
       m.loft(mat, rr, { n: 22, weights: (k, P) => armW(P, sd), tile: 0.4 });
       if (outerSleeve && sleeve !== 'long') { /* the jacket hides the shirt sleeve */ }
     }
@@ -1038,8 +1088,8 @@ function build(sp) {
     const FL = [[0.04, 1.0, 0.052], [0.014, 1.04, 0.058], [-0.012, 0.98, 0.054], [-0.036, 0.86, 0.042]]; // z, thickness, distal length
     for (const [fz, th, l2] of FL) {
       const z = fz * s, r = 0.0122 * s * th, K = [kx, ky + 0.006 * s, z], J = [kx, hg.k2[1], z], T = [kx - sx * 0.003 * s, hg.k2[1] - l2 * s, z];
-      m.capsule(hm, K, J, r * 1.05, r, { n: 10, caps: 2, rings: 3, weights: (t) => (t < 0.25 ? [[H, 0.5 - 2 * t], [F1, 0.5 + 2 * t]] : t > 0.85 ? [[F1, 1 - (t - 0.85) * 3.3], [F2, (t - 0.85) * 3.3]] : [[F1, 1]]) });
-      m.capsule(hm, J, T, r * 0.98, r * 0.82, { n: 10, caps: 2, rings: 3, weights: (t) => (t < 0.15 ? [[F1, 0.5 - 3.3 * t], [F2, 0.5 + 3.3 * t]] : [[F2, 1]]) });
+      m.capsule(hm, K, J, r * 1.05, r, { n: 10, caps: 1, rings: 2, weights: (t) => (t < 0.25 ? [[H, 0.5 - 2 * t], [F1, 0.5 + 2 * t]] : t > 0.85 ? [[F1, 1 - (t - 0.85) * 3.3], [F2, (t - 0.85) * 3.3]] : [[F1, 1]]) });
+      m.capsule(hm, J, T, r * 0.98, r * 0.82, { n: 10, caps: 2, rings: 2, weights: (t) => (t < 0.15 ? [[F1, 0.5 - 3.3 * t], [F2, 0.5 + 3.3 * t]] : [[F2, 1]]) });
       if (!sp.gloves) m.ellipsoid('nail', add(T, [sx * r * 0.72, 0.009 * s, 0]), 0.0035 * s, 0.01 * s, r * 0.72, { bone: F2, steps: 3, n: 6, e: 3 }); // a nail on the back of the tip
     }
     const tb = hg.tb, dT = norm([-sx * 0.3, -0.75, 0.6]), tm = add(tb, mul(dT, 0.036 * s)), tt = add(tm, mul(norm([-sx * 0.25, -0.85, 0.45]), 0.036 * s));
@@ -1050,12 +1100,12 @@ function build(sp) {
   // ── legs: thigh, knee, calf, ankle; trousers are a layer over them ──
   const legR = 0.078 * LG * (0.8 + 0.2 * W);
   const legRad = (y) => {
-    const k = 1.08 + 0.1 * gauss(y - (yHip - 0.08), 0.08) - 0.38 * ss(yHip - 0.05, yKn + 0.05, y) // thigh to knee
-      + 0.14 * gauss(y - (yKn - 0.12), 0.07) // calf
-      - 0.34 * ss(yKn - 0.14, yAn + 0.08, y); // ankle
+    const k = 1.1 + 0.1 * gauss(y - (yHip - 0.1), 0.09) - 0.46 * ss(yHip - 0.06, yKn + 0.03, y) // thigh to knee
+      + 0.2 * gauss(y - (yKn - 0.13), 0.075) // calf
+      - 0.3 * ss(yKn - 0.12, yAn + 0.07, y); // ankle
     return [legR * k, legR * k * 1.04];
   };
-  const legMod = (y, sx) => (a) => 1 + 0.07 * gauss(y - (yHip - 0.16), 0.08) * gauss(wrapA(a - (FRONT - sx * 0.4)), 0.7) + 0.08 * gauss(y - (yKn - 0.11), 0.06) * gauss(wrapA(a - BACK), 0.8) + 0.04 * gauss(y - (yHip - 0.12), 0.1) * gauss(wrapA(a - (sx > 0 ? 0 : PI)), 0.6);
+  const legMod = (y, sx) => (a) => 1 + 0.08 * gauss(y - (yHip - 0.16), 0.08) * gauss(wrapA(a - (FRONT - sx * 0.4)), 0.7) + 0.16 * gauss(y - (yKn - 0.13), 0.07) * gauss(wrapA(a - BACK), 0.8) + 0.08 * gauss(y - yKn, 0.03) * gauss(wrapA(a - FRONT), 0.5) + 0.04 * gauss(y - (yHip - 0.12), 0.1) * gauss(wrapA(a - (sx > 0 ? 0 : PI)), 0.6);
   const pantsEnd = sp.cuffs ? yAn + 0.11 : bottom === 'shorts' ? yKn + 0.1 : bottom === 'none' ? yHip + 0.1 : sp.boots ? yAn + 0.2 : yAn + 0.075;
   const loose = bottom === 'cargo' ? 0.02 : bottom === 'tight' ? 0.004 : bottom === 'jeans' ? 0.014 : 0.02;
   for (const sx of [1, -1]) {
@@ -1066,7 +1116,8 @@ function build(sp) {
       [pantsEnd + 0.05, 0.05, 0.012, null], [pantsEnd + 0.1, 0.04, 0.012, null], [pantsEnd + 0.16, 0.03, 0.015, FRONT, 1]];
     if (bottom === 'cargo') pFolds.push([yHip - 0.25, 0.06, 0.045, sx > 0 ? 0 : PI, 0.45]); // side pockets
     if (pantsEnd > yAn + 0.03) m.loft('skin', ys(yAn + 0.02, pantsEnd + 0.02, 0.025).reverse().map((y) => ringL(y)), { n: 20, weights: (k, P) => legW(P, sd), tile: 0.3 });
-    const rr = ys(pantsEnd, yTop, 0.022).reverse().map((y) => ringL(y, 1.05, loose + 0.01 * ss(yKn, yAn, y) * (bottom === 'jeans' ? 1 : 0), bottom === 'none' ? null : pFolds));
+    const hangs = bottom === 'jeans' || bottom === 'cargo' || bottom === 'joggers', kneeR = legRad(yKn)[0];
+    const rr = ys(pantsEnd, yTop, 0.022).reverse().map((y) => { const r = ringL(y, 1.05, loose + 0.01 * ss(yKn, yAn, y) * (bottom === 'jeans' ? 1 : 0), bottom === 'none' ? null : pFolds); if (hangs && y < yKn) { r.ru = Math.max(r.ru, lerp(kneeR * 1.06 + loose, kneeR * 1.1 + loose, ss(yKn, yAn, y))); r.rv = Math.max(r.rv, lerp(kneeR * 1.08 + loose, kneeR * 1.16 + loose, ss(yKn, yAn, y))); } return r; });
     rr.push({ ...ringL(pantsEnd, 1.08, loose + 0.006), c: [lx, pantsEnd - 0.006, 0] });
     m.loft(bottom === 'none' ? 'skin' : 'pants', rr, { n: 24, weights: (k, P) => legW(P, sd), tile: 0.5 });
     if (sp.cuffs) { // turned-up hems: a band of the lighter reverse of the denim, a rolled top edge and a stitched lower fold
@@ -1078,8 +1129,8 @@ function build(sp) {
     // footwear: a loft heel to toe with a thick sole, boots with a shaft
     const f = B('Foot' + (sx > 0 ? 'L' : 'R')), F = BI['Foot' + (sx > 0 ? 'L' : 'R')], fs = sp.foot ?? 1.12, wsh = (0.82 + 0.18 * W) * fs;
     const sh = [[-0.1, 0.034, 0.03], [-0.09, 0.05, 0.06], [-0.04, 0.055, 0.072], [0.03, 0.057, 0.062], [0.1, 0.058, 0.052], [0.16, 0.052, 0.042], [0.2, 0.038, 0.032], [0.225, 0.016, 0.018]];
-    m.loft('shoe', sh.map(([z, w, h]) => ({ c: [f[0], 0.022 + h * 0.5, f[2] + z * fs], U: X, V: Y, ru: w * wsh, rv: h * 0.55 * fs, e: 2.6 })), { n: 18, weights: (k, P) => { const t = 0.4 * ss(yAn - 0.03, yAn + 0.03, P[1]); return [[F, 1 - t], [BI['LowerLeg' + sd], t]]; }, tile: 0.3 });
-    m.loft('sole', [[-0.104, 0.05], [-0.06, 0.06], [0.12, 0.064], [0.2, 0.046], [0.232, 0.02]].map(([z, w]) => ({ c: [f[0], 0.014, f[2] + z * fs], U: X, V: Y, ru: w * wsh * 1.06, rv: 0.016 * fs, e: 3.2 })), { n: 14, bone: F, tile: 0.3 });
+    m.loft('shoe', sh.map(([z, w, h]) => ({ c: [f[0], 0.022 + h * 0.5, f[2] + z * fs * 0.82], U: X, V: Y, ru: w * wsh, rv: h * 0.55 * fs, e: 2.6 })), { n: 18, weights: (k, P) => { const t = 0.4 * ss(yAn - 0.03, yAn + 0.03, P[1]); return [[F, 1 - t], [BI['LowerLeg' + sd], t]]; }, tile: 0.3 });
+    m.loft('sole', [[-0.104, 0.05], [-0.06, 0.06], [0.12, 0.064], [0.2, 0.046], [0.232, 0.02]].map(([z, w]) => ({ c: [f[0], 0.014, f[2] + z * fs * 0.82], U: X, V: Y, ru: w * wsh * 1.06, rv: 0.016 * fs, e: 3.2 })), { n: 14, bone: F, tile: 0.3 });
     if (sp.boots) m.loft('shoe', ys(yAn - 0.01, sp.cuffs ? yAn + 0.1 : yAn + 0.22, 0.03).reverse().map((y) => ringL(y, 1.1, 0.016 + loose * 0.3)).concat([{ ...ringL(yAn - 0.02, 1.15, 0.02), c: [lx, yAn - 0.02, 0.01] }]), { n: 18, weights: (k, P) => legW(P, sd), tile: 0.3 });
   }
   return { m, world };
@@ -1089,17 +1140,19 @@ function build(sp) {
 // where the pompadour's slicked sides meet the skin (ring height by loft angle): the shell sinks under the skin below it, and
 // the face texture paints a fading band of strands under it
 const desat = (c, k) => { const l = 0.3 * c[0] + 0.55 * c[1] + 0.15 * c[2]; return c.map((x) => lerp(x, l, k)); };
+/** the skin colour a sheet's hex becomes, on the body's material and under the face's paint alike (looks.c skin_lin does the same): the street's warm lights add the rest */
+const skinOf = (h) => desat(hexRaw(h), 0.2).map((x) => x * 0.95);
 /** the face and eye textures each character wears */
 function writeFace(sp) {
   const { M } = skeleton(sp), p = sp.paint ?? {};
-  const skin = desat(hexRaw(sp.colors.skin), 0.14), hair = hexRaw(sp.colors.hair), col = (h) => (h == null ? undefined : Array.isArray(h) ? h : hexRaw(h));
+  const skin = skinOf(sp.colors.skin), hair = hexRaw(sp.colors.hair), col = (h) => (h == null ? undefined : Array.isArray(h) ? h : hexRaw(h));
   const t = paintFace(M, {
     seed: sp.name.length * 7 + sp.name.charCodeAt(0), skin, hair: col(p.beardColor) ?? hair, brow: col(p.browColor) ?? hair.map((c) => c * 0.75),
     stubble: p.stubble ?? (sp.stubble ? 1 : 0), shadow: p.shadow ?? (sp.stubble ? 0.6 : 0), goatee: sp.goatee, chinstrap: p.chinstrap,
     frown: sp.frown, age: p.age ?? 0, freckles: p.freckles, ruddy: p.ruddy, lipstick: col(sp.lip), shadowCol: col(p.eyeShadow), shadowAmt: p.eyeShadowAmt,
     liner: p.liner, rouge: col(p.rouge), war: col(sp.war), scars: p.scars ?? (sp.scar ? [[0.3, 0.32, 0.5, -0.12, 0.012, true]] : []), tattoos: p.tattoos,
-    mole: p.mole, scalp: p.scalp, hairline: p.hairline, browSparse: p.browSparse, browSlit: p.browSlit,
-    hairEdge: sp.hair === 'pompadour' ? pompEdge : undefined,
+    mole: p.mole, scalp: p.scalp, browSparse: p.browSparse, browSlit: p.browSlit,
+    hairEdge: sp.hair === 'pompadour' ? pompEdge : ['crop', 'long', 'ponytail', 'bun', 'cap', 'capback', 'foamcap', 'hardhat', 'tophat', 'spiky'].includes(sp.hair) ? (a) => hairlineEdge(a, sp.hairlineH ?? 0.56, sp.recede ?? 0.08) : undefined, hairFade: sp.hair === 'pompadour' ? 0.14 : 0.09,
   }, 512);
   writeSet(TEX, 'face_' + sp.name, t, 2.2);
   writeSet(TEX, 'eye_' + sp.name, paintEye(sp.eyes ? hexRaw(sp.eyes) : col(p.iris) ?? [0.3, 0.19, 0.1], 128, sp.name.length), 1.0);
@@ -1115,12 +1168,12 @@ function shading(cls, t, sp) {
   if (cls === 'cloth') { ext.KHR_materials_sheen = { sheenColorFactor: t.map((x) => 0.3 * (0.02 + 0.3 * x)), sheenRoughnessFactor: 0.85 }; ext.KHR_materials_specular = { specularFactor: 0.12 }; }
   if (cls === 'skin') {
     const sk = hexRaw(sp.colors.skin), dark = 1 - (sk[0] + sk[1] + sk[2]) / 3;
-    ext.KHR_materials_sheen = { sheenColorFactor: [0.45 * (0.1 + 0.35 * t[0]), 0.45 * (0.03 + 0.15 * t[1]), 0.45 * (0.02 + 0.1 * t[2])], sheenRoughnessFactor: 0.6 };
-    ext.KHR_materials_specular = { specularFactor: 0.45 }; ext.KHR_materials_ior = { ior: 1.4 };
-    return { ext, extras: { skin_shading: { scatter: [lerp(1, 0.9, dark), lerp(0.36, 0.3, dark), lerp(0.24, 0.2, dark)], wrap: 0.5, translucency: lerp(0.38, 0.22, dark) } } };
+    ext.KHR_materials_sheen = { sheenColorFactor: [0.1 * (0.1 + 0.35 * t[0]), 0.1 * (0.05 + 0.2 * t[1]), 0.1 * (0.04 + 0.15 * t[2])], sheenRoughnessFactor: 0.7 };
+    ext.KHR_materials_specular = { specularFactor: 0.2 }; ext.KHR_materials_ior = { ior: 1.4 };
+    return { ext, extras: { skin_shading: { scatter: [lerp(0.62, 0.55, dark), lerp(0.38, 0.32, dark), lerp(0.3, 0.24, dark)], wrap: 0.28, translucency: lerp(0.12, 0.08, dark) } } };
   }
   if (cls === 'hair') { ext.KHR_materials_sheen = { sheenColorFactor: t.map((x) => 0.4 * (0.05 + 0.4 * x)), sheenRoughnessFactor: 0.5 }; ext.KHR_materials_specular = { specularFactor: 0.12 }; }
-  if (cls === 'card') { ext.KHR_materials_sheen = { sheenColorFactor: t.map((x) => 0.02 + 0.15 * x), sheenRoughnessFactor: 0.6 }; ext.KHR_materials_specular = { specularFactor: 0.2 }; ext.KHR_materials_anisotropy = { anisotropyStrength: 0.3, anisotropyRotation: PI / 2 }; }
+  if (cls === 'card') { ext.KHR_materials_sheen = { sheenColorFactor: t.map((x) => 0.01 + 0.08 * x), sheenRoughnessFactor: 0.7 }; ext.KHR_materials_specular = { specularFactor: 0.08 }; ext.KHR_materials_anisotropy = { anisotropyStrength: 0.2, anisotropyRotation: PI / 2 }; }
   // pomade is one of the things that shines: a wet, slick highlight along the comb lines (the same extensions as hair, so the
   // same program states, with more specular and a tighter sheen)
   if (cls === 'pomadecore') { ext.KHR_materials_sheen = { sheenColorFactor: t.map((x) => 0.05 + 0.15 * x), sheenRoughnessFactor: 0.35 }; ext.KHR_materials_specular = { specularFactor: 0.5 }; }
@@ -1134,7 +1187,7 @@ function shading(cls, t, sp) {
 }
 function materials(glb, sp) {
   const c = Object.fromEntries(Object.entries(sp.colors).map(([k, v]) => [k, hex(v)]));
-  c.skin = desat(hexRaw(sp.colors.skin), 0.14).map((x) => Math.pow(x, 2.2));
+  c.skin = skinOf(sp.colors.skin).map((x) => Math.pow(x, 2.2));
   const d = TEX, P = (n, cls, set, o) => { const sh = shading(cls === 'gloss' && n === 'teeth' ? 'enamel' : cls === 'hair' && n === 'pomade' ? 'pomadecore' : cls, o.tint, sp); return [n, glb.pbr(cls + '_' + n, d, set, { ext: sh.ext, extras: sh.extras, ...o })]; };
   const fab = (k) => (k === 'denim' ? 'fab_denim' : k === 'knit' ? 'fab_knit' : k === 'leather' ? 'fab_leather' : k === 'dirty' ? 'fab_dirty' : 'fab_cloth');
   return Object.fromEntries([
@@ -1288,60 +1341,60 @@ function emit(sp) {
 // shape and outline (hood, mohawk, long coat, tails, top hat, hard hat, plates) before colour.
 export const SPECS = [
   // fighters
-  { name: 'rook', face: { noseW: 1.05, hook: 0.6, brow: 1.2, browThick: 0.075, jawAng: 1.3, chin: 1.2, cleft: 0.5 }, paint: { age: 0.2, hairline: true, iris: 0x5a3418, scars: [[0.17, 0.27, 0.28, 0.13, 0.01, false]] },
-    stubble: true, scale: 1.06, width: 1.3, chest: 1.08, sw: 0.23, arm: 1.3, leg: 1.12, head: 1.12, hand: 1.3, jaw: 1.25, hair: 'crop', gloves: true, belt: true, boots: true,
+  { name: 'rook', shoulders: 2.35, heads: 7.35, skull: { chinZ: 1.05, slope: 0.5, chin: 1.12 }, face: { noseW: 1.08, hook: 0.6, brow: 1.45, browThick: 0.075, jawAng: 1.6, chin: 1.35, cleft: 0.5 }, paint: { age: 0.2, hairline: true, iris: 0x5a3418, scars: [[0.17, 0.27, 0.28, 0.13, 0.01, false]] },
+    stubble: true, scale: 1.06, width: 1.3, chest: 1.08, sw: 0.23, arm: 1.3, leg: 1.12, head: 1.12, hand: 1.3, jaw: 1.45, neck: 1.2, hair: 'crop', gloves: true, belt: true, boots: true,
     // a plain black cotton tee (B-PT16: the leather jacket made him look like Arthur), short sleeves, his jeans and boots
     top: 'tee', sleeves: 'short', bottom: 'jeans',
     colors: { skin: 0xc98e60, shirt: 0x1a1a1c, pants: 0x2c4a80, shoes: 0x3b2618, hair: 0x2a1d14, accent: 0xb02a2a, outer: 0x4a2a1c, glove: 0xb8231f, belt: 0x201a14 } },
   // Dolly, the fourth fighter: a big docks mechanic, the grappler (research: a roster reads when each fighter's main thing shows
   // in the look): broad shoulders, thick arms and leather work gloves, iron-grey hair in a bun under a bandana, coveralls
   // with the top half peeled down and the sleeves knotted at her waist over a plain ribbed tank
-  { name: 'dolly', face: { jawAng: 1.15, chin: 1.05, brow: 1.1, browThick: 0.052, noseW: 1.15, cheek: 1.2, lipU: 0.95, lipL: 1.05, mw: 0.25, tilt: 0.02, lidUp: 0.22, naso: 0.8 }, paint: { age: 0.45, iris: [0.2, 0.28, 0.32], hairline: true, freckles: 0.5, ruddy: 0.3, scars: [[-0.3, 0.3, -0.16, 0.2, 0.01, false]] },
-    scale: 1.13, width: 1.5, chest: 1.2, belly: 0.5, sw: 0.255, hw: 0.125, arm: 1.42, leg: 1.1, head: 1.03, hand: 1.42, jaw: 1.05, neck: 1.2, hair: 'bun', headband: true, boots: true, gloves: true, tiedSleeves: true,
+  { name: 'dolly', fig: { waist: 0.86, hip: 1.04, bust: 0.7 }, neckShort: 0.006, hairlineH: 0.64, shoulders: 2.45, heads: 7.3, skull: { w: 1.03, slope: 0.3, chin: 1.0 }, adam: false, face: { jawAng: 1.15, chin: 1.05, brow: 1.1, browThick: 0.052, noseW: 1.15, cheek: 1.2, lipU: 0.95, lipL: 1.05, mw: 0.25, tilt: 0.02, lidUp: 0.22, naso: 0.8 }, paint: { age: 0.45, iris: [0.2, 0.28, 0.32], hairline: true, freckles: 0.5, ruddy: 0.3, scars: [[-0.3, 0.3, -0.16, 0.2, 0.01, false]] },
+    scale: 1.13, width: 1.5, chest: 1.2, belly: 0.5, sw: 0.255, hw: 0.125, arm: 1.42, leg: 1.1, head: 1.03, hand: 1.42, jaw: 1.05, neck: 1.05, hair: 'bun', headband: true, boots: true, gloves: true, tiedSleeves: true,
     top: 'tank', shirtFab: 'cloth', bottom: 'cargo', pantsFab: 'cloth', temper: 'anger',
     colors: { skin: 0x8c5c3c, shirt: 0xb6b1a2, pants: 0x3f5a4c, shoes: 0x2a1c12, hair: 0x8f897e, accent: 0xc8601e, band: 0xc8601e, glove: 0x7a5a30, belt: 0x1a1510 } },
-  { name: 'mika', face: { eyeR: 0.185, noseLen: 0.85, noseW: 0.82, noseProj: 0.85, tipUp: 1, lipU: 1.2, lipL: 1.25, mw: 0.23, cheek: 1.25, jawAng: 0.6, chin: 0.8, chinW: 0.8, brow: 0.6, browThick: 0.04, browArch: 0.06, tilt: 0.08, socket: 0.9, naso: 0.4 }, paint: { freckles: 1, liner: 0.6, eyeShadow: [0.55, 0.36, 0.36], eyeShadowAmt: 0.3, iris: [0.25, 0.42, 0.22], hairline: true },
+  { name: 'mika', fig: { waist: 0.76, hip: 1.12, bust: 0.75 }, neckShort: 0.014, hairlineH: 0.66, shoulders: 1.86, heads: 7.45, skull: { w: 0.96, h: 0.97, d: 0.96, slope: 0.22, chin: 0.85 }, adam: false, face: { eyeR: 0.17, noseLen: 0.85, noseW: 0.82, noseProj: 0.85, tipUp: 1, lipU: 1.2, lipL: 1.25, mw: 0.23, cheek: 1.25, jawAng: 0.6, chin: 0.8, chinW: 0.8, brow: 0.6, browThick: 0.04, browArch: 0.06, tilt: 0.08, socket: 0.9, naso: 0.4 }, paint: { freckles: 1, liner: 0.6, eyeShadow: [0.55, 0.36, 0.36], eyeShadowAmt: 0.3, iris: [0.25, 0.42, 0.22], hairline: true },
     scale: 0.97, width: 0.9, chest: 0.95, sw: 0.185, hw: 0.095, arm: 0.95, leg: 1.0, head: 1.14, hand: 1.25, jaw: 0.75, nose: 0.8, hair: 'ponytail', hairRoot: [0, 0.203, -0.1], hairB: [0, -0.13, -0.06], headband: true, wristband: true,
     top: 'tank', bottom: 'tight', pantsFab: 'cloth', lip: 0xb04a50,
     colors: { skin: 0xf0c4a0, shirt: 0xe89a20, pants: 0x262836, shoes: 0xe8e8e8, hair: 0x8a2d1a, accent: 0xd03040, band: 0xd03040 } },
-  { name: 'jet', face: { noseW: 1.35, noseLen: 0.95, noseProj: 0.85, lipU: 1.35, lipL: 1.4, mw: 0.27, browThick: 0.055, cheek: 1.1, jawAng: 1.1 }, paint: { chinstrap: true, browSlit: 1, beardColor: [0.07, 0.05, 0.04], iris: [0.16, 0.09, 0.05], scalp: 0.7 },
+  { name: 'jet', shoulders: 2.25, heads: 7.5, skull: { w: 0.98, d: 1.0, occ: 1.04, chinZ: 1.02 }, recede: 0.02, face: { noseW: 1.35, noseLen: 0.95, noseProj: 0.85, lipU: 1.35, lipL: 1.4, mw: 0.27, browThick: 0.055, cheek: 1.1, jawAng: 1.1 }, paint: { chinstrap: true, browSlit: 1, beardColor: [0.07, 0.05, 0.04], iris: [0.16, 0.09, 0.05], scalp: 0.7 },
     scale: 1.0, width: 1.05, sw: 0.205, arm: 1.12, leg: 1.05, head: 1.13, hand: 1.3, hair: 'mohawk', shades: true, wristband: true,
     top: 'tank', bottom: 'cargo', pantsFab: 'cloth', shirtFab: 'knit', kneepads: true,
     colors: { skin: 0x8a5838, shirt: 0x2f9a72, pants: 0x55583a, shoes: 0xf0d030, hair: 0xe0e0e8, accent: 0xf0d030, band: 0xf0d030, pad: 0x202020 } },
   // enemies
-  { name: 'thug', face: { noseW: 1.25, hook: 0.3, crook: 0.6, brow: 1.5, browThick: 0.07, eyeR: 0.16, socket: 1.25, jawAng: 1.4, chin: 1.1, jowl: 0.4, cheek: 0.8 }, paint: { age: 0.3, scars: [[-0.55, -0.05, -0.42, -0.35, 0.012, true]], tattoos: [{ kind: 'bars', x: -0.78, y: 0.12, s: 0.08 }], iris: [0.3, 0.24, 0.16] },
+  { name: 'thug', shoulders: 2.3, heads: 7.4, skull: { w: 1.02, h: 0.97, slope: 0.85, chin: 1.1, occ: 0.96 }, face: { noseW: 1.25, hook: 0.3, crook: 0.6, brow: 1.5, browThick: 0.07, eyeR: 0.16, socket: 1.25, jawAng: 1.4, chin: 1.1, jowl: 0.4, cheek: 0.8 }, paint: { age: 0.3, scars: [[-0.55, -0.05, -0.42, -0.35, 0.012, true]], tattoos: [{ kind: 'bars', x: -0.78, y: 0.12, s: 0.08 }], iris: [0.3, 0.24, 0.16] },
     stubble: true, frown: true, scale: 1.02, width: 1.2, belly: 0.5, sw: 0.215, arm: 1.15, leg: 1.1, head: 1.1, jaw: 1.2, hair: 'beanie', hatFab: 'knit', hood: true,
     top: 'hoodie', shirtFab: 'cloth', bottom: 'jeans', boots: false,
     colors: { skin: 0xc0906a, shirt: 0x5a2626, pants: 0x34384a, shoes: 0x1c1c1c, hair: 0x1a1410, accent: 0x2a2a2a, hat: 0x282828, band: 0xd8d8d8 } },
-  { name: 'punk', face: { noseLen: 1.05, noseW: 0.85, hook: 0.2, cheek: 1.2, hollow: 0.8, jawAng: 0.8, chin: 1.3, chinW: 0.7, brow: 0.9, browThick: 0.035, eyeR: 0.17, tilt: 0.1 }, paint: { liner: 1, browSparse: 0.3, scalp: 0.6, iris: [0.3, 0.38, 0.4], tattoos: [{ kind: 'tear', x: 0.37, y: -0.17, s: 0.05 }, { kind: 'star', x: -0.6, y: -0.18, s: 0.09 }, { kind: 'tribal', x: 0.78, y: 0.32, s: 0.16 }] }, piercings: [[0.12, -0.36, 0.022], [-0.55, 0.25, 0.018], [-0.47, 0.27, 0.018]], lipRing: true,
+  { name: 'punk', shoulders: 2.1, heads: 7.6, skull: { w: 0.94, h: 1.03, temple: 0.94, cheek: 0.97, chin: 0.85 }, face: { noseLen: 1.05, noseW: 0.85, hook: 0.2, cheek: 1.2, hollow: 0.8, jawAng: 0.8, chin: 1.3, chinW: 0.7, brow: 0.9, browThick: 0.035, eyeR: 0.17, tilt: 0.1 }, paint: { liner: 1, browSparse: 0.3, scalp: 0.6, iris: [0.3, 0.38, 0.4], tattoos: [{ kind: 'tear', x: 0.37, y: -0.17, s: 0.05 }, { kind: 'star', x: -0.6, y: -0.18, s: 0.09 }, { kind: 'tribal', x: 0.78, y: 0.32, s: 0.16 }] }, piercings: [[0.12, -0.36, 0.022], [-0.55, 0.25, 0.018], [-0.47, 0.27, 0.018]], lipRing: true,
     war: 0xb02060, frown: true, scale: 0.97, width: 0.88, sw: 0.19, arm: 0.95, head: 1.12, hair: 'mohawk', mohawk: 1.5, pads: true, spikes: true, padMat: 'outer', wristband: true, boots: true, belt: true,
     top: 'none', outer: true, outerKind: 'vest', outerFab: 'leather', openFront: 0.55, bottom: 'tight', pantsFab: 'cloth',
     colors: { skin: 0xe0b890, shirt: 0x2a2a30, pants: 0x4a2a5a, shoes: 0x101010, hair: 0x30d0a0, accent: 0xa0a0b0, outer: 0x18181c, band: 0x101010 } },
-  { name: 'runner', face: { mono: 1, fold: 0, lidUp: 0.24, eyeR: 0.165, tilt: 0.1, noseProj: 0.75, cheek: 1.25, hollow: 0.5, jawAng: 0.9, chin: 0.9, socket: 0.8, brow: 0.75, browThick: 0.05, browArch: 0.015 }, paint: { iris: [0.12, 0.07, 0.04], shadow: 0.2, hairline: true },
+  { name: 'runner', shoulders: 2.05, heads: 7.65, skull: { w: 0.96, d: 0.93, occ: 0.95, slope: 0.35 }, face: { mono: 1, fold: 0, lidUp: 0.24, eyeR: 0.165, tilt: 0.1, noseProj: 0.75, cheek: 1.25, hollow: 0.5, jawAng: 0.9, chin: 0.9, socket: 0.8, brow: 0.75, browThick: 0.05, browArch: 0.015 }, paint: { iris: [0.12, 0.07, 0.04], shadow: 0.2, hairline: true },
     scale: 0.95, width: 0.82, sw: 0.185, hw: 0.095, arm: 0.92, leg: 0.95, legLen: 1.04, head: 1.1, hair: 'capback', jaw: 0.9,
     top: 'longsleeve', outer: true, outerKind: 'jacket', outerFab: 'cloth', openFront: 0.12, bottom: 'joggers', pantsFab: 'cloth',
     colors: { skin: 0xb07e58, shirt: 0xe8e8e8, pants: 0x2a2e3a, shoes: 0xd04030, hair: 0x201810, accent: 0xd04030, outer: 0x2a5aa8, hat: 0xd04030, band: 0xe8e8e8 } },
-  { name: 'knifer', face: { eyeR: 0.16, socket: 1.3, brow: 1.3, bags: 1, lidUp: 0.22, tilt: -0.03 }, paint: { age: 0.35, iris: [0.35, 0.4, 0.3], scars: [[0.27, 0.36, 0.47, -0.04, 0.011, true]], hairline: true },
+  { name: 'knifer', shoulders: 2.1, heads: 7.6, skull: { w: 0.95, h: 1.04, temple: 0.95 }, recede: 0.14, face: { eyeR: 0.16, socket: 1.3, brow: 1.3, bags: 1, lidUp: 0.22, tilt: -0.03 }, paint: { age: 0.35, iris: [0.35, 0.4, 0.3], scars: [[0.27, 0.36, 0.47, -0.04, 0.011, true]], hairline: true },
     frown: true, scale: 1.0, width: 0.92, sw: 0.195, arm: 1.0, head: 1.1, jaw: 0.9, mask: true, hair: 'crop', boots: true,
     top: 'longsleeve', outer: true, outerKind: 'longcoat', outerFab: 'leather', openFront: 0.3, bottom: 'tight', pantsFab: 'cloth', gloves: false,
     colors: { skin: 0xc49470, shirt: 0x2a2a2a, pants: 0x1c2a1c, shoes: 0x101010, hair: 0x101010, accent: 0x505850, outer: 0x3a3a30, mask: 0x6a1a1a } },
-  { name: 'bruiser', face: { brow: 1.7, browThick: 0.075, eyeR: 0.15, socket: 1.35, noseW: 1.4, crook: -0.8, hook: 0.5, noseProj: 0.9, jawAng: 1.6, chin: 1.4, jowl: 0.3, cauli: 1, earOut: 1.3, cheek: 0.9, naso: 1.2 }, paint: { scalp: 1, age: 0.45, iris: [0.3, 0.25, 0.18], scars: [[0.3, 0.32, 0.5, -0.12, 0.012, true], [-0.2, 0.78, 0.15, 0.56, 0.014, true]], tattoos: [{ kind: 'cross', x: -0.84, y: 0.2, s: 0.1 }] },
-    stubble: true, scar: true, frown: true, goatee: true, scale: 1.24, width: 1.6, chest: 1.15, belly: 0.9, sw: 0.27, hw: 0.12, arm: 1.5, leg: 1.25, head: 1.05, hand: 1.45, jaw: 1.4, neck: 1.35, hair: 'none', belt: true, boots: true, wristband: true,
+  { name: 'bruiser', fig: { waist: 0.97 }, shoulders: 2.6, heads: 7.25, skull: { w: 1.02, h: 0.97, slope: 0.9, chin: 1.15, occ: 0.95, temple: 0.97 }, face: { brow: 1.7, browThick: 0.075, eyeR: 0.15, socket: 1.35, noseW: 1.4, crook: -0.8, hook: 0.5, noseProj: 0.9, jawAng: 1.6, chin: 1.4, jowl: 0.3, cauli: 1, earOut: 1.3, cheek: 0.9, naso: 1.2 }, paint: { scalp: 1, age: 0.45, iris: [0.3, 0.25, 0.18], scars: [[0.3, 0.32, 0.5, -0.12, 0.012, true], [-0.2, 0.78, 0.15, 0.56, 0.014, true]], tattoos: [{ kind: 'cross', x: -0.84, y: 0.2, s: 0.1 }] },
+    stubble: true, scar: true, frown: true, goatee: true, scale: 1.24, width: 1.6, chest: 1.15, belly: 0.9, sw: 0.27, hw: 0.12, arm: 1.4, leg: 1.12, head: 1.05, hand: 1.45, jaw: 1.4, neck: 1.35, hair: 'none', belt: true, boots: true, wristband: true,
     top: 'tank', shirtFab: 'cloth', bottom: 'cargo', pantsFab: 'cloth',
     colors: { skin: 0xb07a52, shirt: 0xd0ccb8, pants: 0x4a4430, shoes: 0x201810, hair: 0x281810, accent: 0x8a2a1a, belt: 0x141010, band: 0x101010 } },
   // the ranged thrower: tall and lean, forward cap, spiky hair under it, a sleeveless vest over a tee, shorts
-  { name: 'thrower', face: { noseLen: 1.1, noseW: 0.95, eyeR: 0.17, brow: 0.9, cheek: 0.9, hollow: 0.3, chin: 0.9, jawAng: 0.9, mw: 0.24, lipU: 0.9 }, paint: { freckles: 0.7, stubble: 0.6, iris: [0.35, 0.5, 0.6], hairline: true, tattoos: [{ kind: 'star', x: -0.55, y: -0.2, s: 0.06, color: [0.06, 0.08, 0.18] }] },
+  { name: 'thrower', shoulders: 2.05, heads: 7.7, skull: { w: 0.95, h: 1.04 }, face: { noseLen: 1.1, noseW: 0.95, eyeR: 0.17, brow: 0.9, cheek: 0.9, hollow: 0.3, chin: 0.9, jawAng: 0.9, mw: 0.24, lipU: 0.9 }, paint: { freckles: 0.7, stubble: 0.6, iris: [0.35, 0.5, 0.6], hairline: true, tattoos: [{ kind: 'star', x: -0.55, y: -0.2, s: 0.06, color: [0.06, 0.08, 0.18] }] },
     stubble: true, scale: 1.0, width: 0.86, sw: 0.19, hw: 0.095, arm: 1.02, leg: 0.98, legLen: 1.06, head: 1.1, jaw: 1.0, hair: 'cap', wristband: true,
     top: 'tee', outer: true, outerKind: 'vest', outerFab: 'cloth', openFront: 0.4, sleeves: 'short', bottom: 'shorts', pantsFab: 'cloth',
     colors: { skin: 0xd09a70, shirt: 0xe0c040, pants: 0x3a4a2a, shoes: 0x6a6a6a, hair: 0x302010, accent: 0x50a030, outer: 0x2a3a20, hat: 0x50a030, band: 0xe0c040 } },
   // the guard: broad, riot helmet with a visor, armour plates and pads (the shield is a separate prop in the game)
-  { name: 'guard', shield: true, face: { eyeR: 0.16, brow: 1.3, jawAng: 1.5, chin: 1.3, cleft: 1, noseW: 1.1, noseLen: 1.05, cheek: 0.9, lidUp: 0.26, mw: 0.24, lipU: 0.8, lipL: 0.9 }, paint: { shadow: 0.4, age: 0.25 },
+  { name: 'guard', shoulders: 2.45, heads: 7.35, skull: { w: 1.03, chin: 1.15 }, shield: true, face: { eyeR: 0.16, brow: 1.3, jawAng: 1.5, chin: 1.3, cleft: 1, noseW: 1.1, noseLen: 1.05, cheek: 0.9, lidUp: 0.26, mw: 0.24, lipU: 0.8, lipL: 0.9 }, paint: { shadow: 0.4, age: 0.25 },
     frown: true, scale: 1.08, width: 1.35, chest: 1.1, sw: 0.235, hw: 0.11, arm: 1.25, leg: 1.15, head: 1.0, hand: 1.35, jaw: 1.25, neck: 1.2, hair: 'helmet', pads: true, padMat: 'metal', armor: true, gloves: true, boots: true, belt: true, kneepads: true,
     top: 'longsleeve', shirtFab: 'cloth', bottom: 'cargo', pantsFab: 'cloth',
     colors: { skin: 0xb88a64, shirt: 0x1c2638, pants: 0x232a36, shoes: 0x111111, hair: 0x202020, accent: 0xd0d8e0, metal: 0x3a4a64, helmet: 0x26324a, glove: 0x161616, belt: 0x0e0e0e, pad: 0x3a4a64 }, eyes: 0xa0c0ff },
   // the wanker: a big soft-bellied man in a red foam-front cap that says "Dumb", a grimy stained tee, faded jeans and
   // work boots, a mullet and a scruffy moustache (a regular enemy: a wild haymaker and a shoulder charge)
-  { name: 'wanker', face: { noseW: 1.2, noseLen: 1.05, hook: 0.15, crook: 0.3, brow: 1.2, browThick: 0.06, eyeR: 0.155, socket: 1.1, jawAng: 1.1, chin: 1.0, jowl: 0.7, cheek: 0.95, naso: 1.1, lipU: 0.85, mw: 0.25 },
+  { name: 'wanker', fig: { waist: 1 }, shoulders: 2.05, heads: 7.4, skull: { w: 1.02, h: 0.98, chinZ: 0.93, chin: 0.9, slope: 0.7 }, recede: 0.16, face: { noseW: 1.2, noseLen: 1.05, hook: 0.15, crook: 0.3, brow: 1.2, browThick: 0.06, eyeR: 0.155, socket: 1.1, jawAng: 1.1, chin: 1.0, jowl: 0.7, cheek: 0.95, naso: 1.1, lipU: 0.85, mw: 0.25 },
     paint: { age: 0.35, ruddy: 0.8, stubble: 0.85, shadow: 0.3, iris: [0.3, 0.38, 0.45], hairline: true, browColor: [0.3, 0.2, 0.12], beardColor: [0.34, 0.23, 0.13] },
     // B-PT18: out of shape, not a brawler: skinny untoned arms, narrow sloping shoulders, a soft chest and a big round beer belly
     stubble: true, frown: true, moustache: 'thick', scale: 1.04, width: 1.3, belly: 3.4, chest: 0.86, sw: 0.188, hw: 0.105, arm: 0.78, leg: 1.0, head: 1.08, hand: 1.15, jaw: 1.15, neck: 1.1,
@@ -1349,30 +1402,30 @@ export const SPECS = [
     colors: { skin: 0xd49a78, shirt: 0xf4f0e6, pants: 0x46607e, shoes: 0x4a3220, hair: 0x5a3c22, accent: 0x8a2a1a, belt: 0x3a2614 } },
   // the creep: a pale, sweaty man in a long worn trench coat (collar up, belted loose), a fedora over a bald pate, a pencil
   // moustache and dark rings under the eyes; he enjoys being hit (a regular enemy)
-  { name: 'creep', face: { eyeR: 0.165, socket: 1.35, bags: 1.4, lidUp: 0.2, noseLen: 1.12, noseW: 0.9, hook: 0.35, cheek: 0.8, hollow: 0.9, jawAng: 0.75, chin: 0.85, chinW: 0.75, brow: 0.8, browThick: 0.03, browArch: 0.06, mw: 0.26, lipU: 0.7, lipL: 0.9 },
+  { name: 'creep', shoulders: 2.1, heads: 7.6, skull: { w: 0.96, h: 1.05, temple: 0.92, cheek: 0.96, chin: 0.8, chinZ: 0.96, slope: 0.2 }, face: { eyeR: 0.165, socket: 1.35, bags: 1.4, lidUp: 0.2, noseLen: 1.12, noseW: 0.9, hook: 0.35, cheek: 0.8, hollow: 0.9, jawAng: 0.75, chin: 0.85, chinW: 0.75, brow: 0.8, browThick: 0.03, browArch: 0.06, mw: 0.26, lipU: 0.7, lipL: 0.9 },
     paint: { age: 0.45, shadow: 0.2, iris: [0.32, 0.3, 0.22], eyeShadow: [0.5, 0.36, 0.38], eyeShadowAmt: 0.45, browColor: [0.25, 0.2, 0.16], beardColor: [0.2, 0.15, 0.12], ruddy: 0.15 },
     moustache: 'pencil', scale: 1.0, width: 0.95, belly: 0.35, sw: 0.2, hw: 0.1, arm: 1.0, leg: 1.0, head: 1.12, hand: 1.3, jaw: 0.85, neck: 0.95,
     hair: 'fedora', boots: true, belt: true, top: 'longsleeve', shirtFab: 'cloth', outer: true, outerKind: 'longcoat', outerFab: 'cloth', openFront: 0.22, bottom: 'tight', pantsFab: 'cloth',
     colors: { skin: 0xe6cbbf, shirt: 0xcfc8b4, pants: 0x3a3630, shoes: 0x2a1e16, hair: 0x2e241c, accent: 0x5a4a34, outer: 0x8a7652, hat: 0x5c4a34, band: 0x2a2018, belt: 0x6a5a40 } },
   // bosses
-  { name: 'foreman', face: { noseW: 1.3, noseLen: 1.15, noseProj: 1.1, hook: 0.3, bags: 1.2, jowl: 1.0, naso: 1.6, brow: 1.3, browThick: 0.075, browArch: 0.03, cheek: 0.8, jawAng: 1.2, ear: 1.15, lidUp: 0.22 }, paint: { age: 1, ruddy: 0.6, stubble: 0.8, browColor: [0.55, 0.53, 0.5], beardColor: [0.42, 0.39, 0.35], iris: [0.35, 0.4, 0.45], hairline: true },
-    stubble: true, frown: true, moustache: 'thick', scale: 1.34, width: 1.6, belly: 1.0, chest: 1.1, sw: 0.25, hw: 0.11, arm: 1.5, leg: 1.25, head: 1.04, hand: 1.45, jaw: 1.35, neck: 1.3, hair: 'hardhat', boots: true, gloves: true, belt: true,
+  { name: 'foreman', fig: { waist: 1 }, shoulders: 2.48, heads: 7.3, skull: { w: 1.0, h: 0.96, slope: 0.7, temple: 0.95, chin: 1.05 }, recede: 0.22, face: { noseW: 1.3, noseLen: 1.15, noseProj: 1.1, hook: 0.3, bags: 1.2, jowl: 1.0, naso: 1.6, brow: 1.3, browThick: 0.075, browArch: 0.03, cheek: 0.8, jawAng: 1.2, ear: 1.15, lidUp: 0.22 }, paint: { age: 1, ruddy: 0.6, stubble: 0.8, browColor: [0.55, 0.53, 0.5], beardColor: [0.42, 0.39, 0.35], iris: [0.35, 0.4, 0.45], hairline: true },
+    stubble: true, frown: true, moustache: 'thick', scale: 1.34, width: 1.6, belly: 1.0, chest: 1.1, sw: 0.25, hw: 0.11, arm: 1.4, leg: 1.12, head: 1.04, hand: 1.45, jaw: 1.35, neck: 1.3, hair: 'hardhat', boots: true, gloves: true, belt: true,
     top: 'longsleeve', shirtFab: 'cloth', outer: true, outerKind: 'hivis', outerFab: 'cloth', openFront: 0.3, bottom: 'cargo', pantsFab: 'denim', kneepads: true,
     colors: { skin: 0xa8704a, shirt: 0x3a4a60, pants: 0x30343a, shoes: 0x3a2410, hair: 0x2a2a2a, accent: 0xe0b020, outer: 0xf08a10, helmet: 0xf0c020, glove: 0x8a6a40, belt: 0x141010, pad: 0x202020 } },
-  { name: 'matron', face: { eyeR: 0.17, tilt: 0.12, noseLen: 1.1, noseW: 0.85, hook: 0.6, noseProj: 1.1, cheek: 1.4, hollow: 0.7, lipL: 1.05, mw: 0.24, jawAng: 0.8, chinW: 0.8, brow: 0.8, browThick: 0.035, browArch: 0.08, browTilt: 0.06, bags: 0.4, naso: 0.9 }, paint: { age: 0.55, liner: 0.9, eyeShadow: [0.32, 0.1, 0.35], eyeShadowAmt: 0.75, rouge: [0.7, 0.25, 0.3], mole: [-0.3, -0.48], browColor: [0.5, 0.5, 0.56], hairline: true },
+  { name: 'matron', fig: { waist: 0.78, hip: 1.1, bust: 0.7 }, neckShort: 0.01, shoulders: 1.86, heads: 7.5, skull: { w: 0.95, h: 1.02, temple: 0.93, cheek: 1.02, chin: 0.82, slope: 0.3 }, adam: false, face: { eyeR: 0.17, tilt: 0.12, noseLen: 1.1, noseW: 0.85, hook: 0.6, noseProj: 1.1, cheek: 1.4, hollow: 0.7, lipL: 1.05, mw: 0.24, jawAng: 0.8, chinW: 0.8, brow: 0.8, browThick: 0.035, browArch: 0.08, browTilt: 0.06, bags: 0.4, naso: 0.9 }, paint: { age: 0.55, liner: 0.9, eyeShadow: [0.32, 0.1, 0.35], eyeShadowAmt: 0.75, rouge: [0.7, 0.25, 0.3], mole: [-0.3, -0.48], browColor: [0.5, 0.5, 0.56], hairline: true },
     frown: true, scale: 1.2, width: 1.2, chest: 1.05, sw: 0.21, hw: 0.105, arm: 1.1, head: 1.1, jaw: 0.85, nose: 0.9, hair: 'long', pads: true, padMat: 'outer', boots: true, belt: true, lip: 0x901838,
     top: 'longsleeve', shirtFab: 'cloth', outer: true, outerKind: 'longcoat', outerFab: 'leather', openFront: 0.35, bottom: 'tight', pantsFab: 'leather', hairRoot: [0, 0.08, -0.12], hairB: [0, -0.16, -0.02],
     colors: { skin: 0xe8c0a0, shirt: 0x2a1a2a, pants: 0x1a1a24, shoes: 0x500a28, hair: 0xd0d0e0, accent: 0xe0d060, outer: 0x6a1a5a, belt: 0x201018 }, eyes: 0xe02060 },
-  { name: 'ringmaster', face: { noseLen: 1.1, noseProj: 1.1, tipUp: -0.5, cheek: 1.2, jowl: 0.5, chin: 1.2, cleft: 0.4, browThick: 0.06, browArch: 0.08, browTilt: 0.04, lidUp: 0.26, mw: 0.26, naso: 1.2 }, paint: { age: 0.5, rouge: [0.75, 0.3, 0.3], ruddy: 0.3, shadow: 0.25, iris: [0.2, 0.3, 0.15], hairline: true },
+  { name: 'ringmaster', shoulders: 2.2, heads: 7.5, skull: { d: 1.03, chinZ: 1.05, slope: 0.4 }, recede: 0.18, face: { noseLen: 1.1, noseProj: 1.1, tipUp: -0.5, cheek: 1.2, jowl: 0.5, chin: 1.2, cleft: 0.4, browThick: 0.06, browArch: 0.08, browTilt: 0.04, lidUp: 0.26, mw: 0.26, naso: 1.2 }, paint: { age: 0.5, rouge: [0.75, 0.3, 0.3], ruddy: 0.3, shadow: 0.25, iris: [0.2, 0.3, 0.15], hairline: true },
     scale: 1.14, width: 1.1, belly: 0.6, sw: 0.215, arm: 1.05, head: 1.12, jaw: 1.1, moustache: 'handlebar', hair: 'tophat', belt: false, boots: true, pads: true, padMat: 'buckle',
     top: 'longsleeve', shirtFab: 'cloth', outer: true, outerKind: 'tailcoat', outerFab: 'cloth', openFront: 0.32, bottom: 'tight', pantsFab: 'cloth',
     colors: { skin: 0xe0b890, shirt: 0xf0ece0, pants: 0xe8e4d8, shoes: 0x0a0a0a, hair: 0x1a1a1a, accent: 0xe8c840, outer: 0xb01a28, hat: 0x141414, band: 0xb01a28 } },
-  { name: 'colossus', face: { brow: 2, browThick: 0.08, eyeR: 0.15, socket: 1.5, noseW: 1.3, crook: 0.5, jawAng: 2, chin: 1.6, chinW: 1.2, cheek: 1.3, ear: 0.9, cauli: 0.6, mw: 0.26, lipU: 0.8, lipL: 0.9 }, paint: { age: 0.4, browSparse: 0.6, scars: [[0.15, 0.42, 0.35, -0.3, 0.014, true], [-0.1, -0.45, -0.25, -0.75, 0.012, true], [-0.6, 0.1, -0.35, -0.2, 0.012, false]] }, glowEyes: true,
-    scar: true, frown: true, scale: 1.62, width: 1.7, chest: 1.2, sw: 0.27, hw: 0.115, arm: 1.6, leg: 1.35, head: 1.0, hand: 1.5, jaw: 1.5, neck: 1.5, hair: 'helmet', pads: true, padMat: 'metal', armor: true, bracers: true, gloves: true, boots: true, belt: true,
+  { name: 'colossus', fig: { waist: 0.92 }, shoulders: 2.6, heads: 7.25, skull: { w: 1.0, h: 0.95, slope: 1, chin: 1.25, chinZ: 1.06, occ: 0.92 }, face: { brow: 2, browThick: 0.08, eyeR: 0.15, socket: 1.5, noseW: 1.3, crook: 0.5, jawAng: 2, chin: 1.6, chinW: 1.2, cheek: 1.3, ear: 0.9, cauli: 0.6, mw: 0.26, lipU: 0.8, lipL: 0.9 }, paint: { age: 0.4, browSparse: 0.6, scars: [[0.15, 0.42, 0.35, -0.3, 0.014, true], [-0.1, -0.45, -0.25, -0.75, 0.012, true], [-0.6, 0.1, -0.35, -0.2, 0.012, false]] }, glowEyes: true,
+    scar: true, frown: true, scale: 1.62, width: 1.7, chest: 1.2, sw: 0.27, hw: 0.115, arm: 1.5, leg: 1.15, head: 1.0, hand: 1.5, jaw: 1.5, neck: 1.5, hair: 'helmet', pads: true, padMat: 'metal', armor: true, bracers: true, gloves: true, boots: true, belt: true,
     top: 'longsleeve', shirtFab: 'leather', bottom: 'cargo', pantsFab: 'leather',
     colors: { skin: 0x8a9696, shirt: 0x5a4030, pants: 0x3e3c40, shoes: 0x1a1612, hair: 0x6a7a8a, accent: 0x40c0d0, metal: 0xa0acb8, helmet: 0x8a96a2, glove: 0x4a3426, belt: 0x2a1c14, pad: 0x9aa6b2 }, eyes: 0x40e0ff },
   // Arthur: a 1950s greaser. Black leather jacket over a white tee, turned-up blue jeans over black boots, a tall glossy pompadour
-  { name: 'arthur', face: { jawAng: 1.35, chin: 1.2, chinW: 1.05, cleft: 0.55, brow: 1.15, browThick: 0.062, browArch: 0.07, browTilt: -0.03, cheek: 1.2, hollow: 0.35, noseLen: 1.02, noseW: 0.95, noseProj: 1.1, lipU: 0.75, lipL: 0.85, mw: 0.25, tilt: 0.03, lidUp: 0.23, socket: 1.1 },
+  { name: 'arthur', shoulders: 2.28, heads: 7.45, skull: { chinZ: 1.04, slope: 0.4, chin: 1.08 }, face: { jawAng: 1.35, chin: 1.2, chinW: 1.05, cleft: 0.55, brow: 1.15, browThick: 0.062, browArch: 0.07, browTilt: -0.03, cheek: 1.2, hollow: 0.35, noseLen: 1.02, noseW: 0.95, noseProj: 1.1, lipU: 0.75, lipL: 0.85, mw: 0.25, tilt: 0.03, lidUp: 0.23, socket: 1.1 },
     paint: { iris: [0.2, 0.34, 0.55], shadow: 0.35, stubble: 0.25, hairline: true, browColor: [0.035, 0.03, 0.028], scars: [[0.52, 0.42, 0.62, 0.3, 0.008, false]] },
     scale: 1.12, width: 1.25, chest: 1.12, sw: 0.228, hw: 0.105, arm: 1.25, leg: 1.1, head: 1.08, hand: 1.35, jaw: 1.25, neck: 1.15, hair: 'pompadour', pomade: true, boots: true, belt: true, cuffs: true,
     top: 'tee', sleeves: 'short', outer: true, outerKind: 'jacket', outerFab: 'leather', openFront: 0.42, bottom: 'jeans', pantsFab: 'denim',

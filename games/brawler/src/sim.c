@@ -1704,7 +1704,7 @@ static void comb_hand(ent *e, float yaw) {
   /* the strokes: 0.25..0.55 and 0.7..1.0 go back; between them the hand returns to the front */
   float st = p < 0.55f ? (p - 0.25f) / 0.3f : p < 0.7f ? 1 - (p - 0.55f) / 0.15f : (p - 0.7f) / 0.3f;
   st = cw_clampf(st, 0, 1), st = st * st * (3 - 2 * st);
-  t3_vec3 l = rig_bone_point(&r->sr, "Head", (t3_vec3){ -0.2f, 0.24f - 0.02f * st, 0.12f - 0.24f * st });
+  t3_vec3 l = rig_bone_point(&r->sr, "Head", (t3_vec3){ -0.17f, 0.21f - 0.02f * st, 0.1f - 0.2f * st });
   float c = cw_cos(yaw), sn = cw_sin(yaw);
   t3_vec3 t = { e->x + c * l.x + sn * l.z, e->y + l.y, e->z - sn * l.x + c * l.z };
   cw_node_set(r->ik[1], "target_position", cw_val_vec3(t.x, t.y, t.z));

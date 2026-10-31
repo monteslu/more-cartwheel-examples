@@ -42,7 +42,7 @@ controls).
 
 ### Street Toughs (brawler)
 
-![Street Toughs: four players walk the docks past a knocked-out thug](docs/screenshots/brawler.jpg)
+![Street Toughs: four players walk up the back alley](docs/screenshots/brawler.jpg)
 
 Street Toughs, a side-scrolling street brawler for one to four players on one shared
 screen. Four stages (an alley, the docks, an arcade and a roof), a crowd that

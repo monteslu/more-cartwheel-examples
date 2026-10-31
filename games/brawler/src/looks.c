@@ -64,9 +64,9 @@ static const uint32_t TEE[] = { 0xf4f0e6, 0xd0d0cc, 0xece0b0, 0xc4d2e0, 0xe6e2d4
 
 static float lin(float c) { return c <= 0.04045f ? c / 12.92f : cw_pow((c + 0.055f) / 1.055f, 2.4f); }
 static t3_color rgb(uint32_t h) { return (t3_color){ lin((float)((h >> 16) & 255) / 255), lin((float)((h >> 8) & 255) / 255), lin((float)(h & 255) / 255) }; }
-static t3_color skin_lin(uint32_t h) { /* the models' skin is their sRGB colour desaturated 14 percent (make-characters.mjs) */
+static t3_color skin_lin(uint32_t h) { /* the models' skin is their sRGB colour desaturated 20 percent and 5 percent darker (make-characters.mjs skinOf) */
   float c[3] = { (float)((h >> 16) & 255) / 255, (float)((h >> 8) & 255) / 255, (float)(h & 255) / 255 }, l = 0.3f * c[0] + 0.55f * c[1] + 0.15f * c[2];
-  for (int i = 0; i < 3; i++) c[i] = lin(c[i] + (l - c[i]) * 0.14f);
+  for (int i = 0; i < 3; i++) c[i] = lin((c[i] + (l - c[i]) * 0.2f) * 0.95f);
   return (t3_color){ c[0], c[1], c[2] };
 }
 

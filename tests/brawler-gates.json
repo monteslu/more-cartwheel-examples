@@ -44,7 +44,7 @@
       "game.hash": 436229703,
       "rag.made": 7,
       "rag.missed": 0,
-      "rag.hash": 944326982,
+      "rag.hash": 108918658,
       "game.wave": 1,
       "game.hits": 23,
       "game.first_hit": 297,
@@ -352,7 +352,7 @@
         0
       ],
       "rag.made": 12,
-      "rag.hash": 1672081716,
+      "rag.hash": 1871177357,
       "game.overlaps": 0,
       "game.stage": 1
     },
@@ -716,8 +716,8 @@
     "expect": {
       "game.grab": [
         40,
-        4,
-        238
+        1,
+        228
       ],
       "game.bowled": 2,
       "game.nan": 0
@@ -928,7 +928,7 @@
     "expect": {
       "game.comb": [
         213,
-        36
+        30
       ],
       "game.nan": 0
     },
