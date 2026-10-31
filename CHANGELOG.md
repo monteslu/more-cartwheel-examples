@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.12.0
+
+- jetski: new ramps, and more of them: 9 on the atoll and 10 on Cold Sound. They are
+  rigid steel structures on piles, 18 m wide and 40 m long, with an orange lip. They
+  don't move, so a jump is the same every time, up to about 9 m high. The swell is held
+  down around each one.
+- jetski: computer riders use the ramps too.
+- jetski: a buoy pass now counts out to 48 m on the correct side, up from 34 m, so
+  coming off a ramp doesn't lose you the buoy.
+
 ## 0.11.2
 
 - Street Toughs: enemies and heroes no longer flash in the middle of the screen in
