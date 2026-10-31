@@ -68,7 +68,7 @@ return {
     ['granite', 'rock', [0.7, 0.86, 1.08], 0.06],
     ['moss', 'grass', [0.42, 0.56, 0.34], 0.09],
   ],
-  ramp_count: 10,
+  ramp_count: 12,
   ramp_top: 6.5,
   buoys: { first: 80, step: 92, wobble: 12, offset: 8.5 },
   // the long swell of an open ocean, on a course where it matters most at the west end

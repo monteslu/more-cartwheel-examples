@@ -92,6 +92,7 @@ static void buoys(craft *c) {
     c->meter = 0;
     c->misses++;
     c->flash_miss = 1;
+    if (!c->human) G.miss_at[c->next_buoy]++;
     if (c->misses >= 5 && c->human && !c->dq) c->dq = 1;
   }
   c->next_buoy = buoy_next(c->next_buoy);
@@ -116,7 +117,8 @@ static void computer(craft *c, int idx) {
     float sy, cy;
     cw_sincos(G.ramp_yaw[r], &sy, &cy);
     float dxr = c->x - G.ramp_x[r], dzr = c->z - G.ramp_z[r], al = dxr * sy + dzr * cy, la = dxr * -cy + dzr * sy;
-    if (al < -60 || al > RAMP_HALF_LEN + 2 || la < -34 || la > 34) continue;
+    float far_off = DEF->ramps[r][4] > 25 ? 1.0f : 0.0f; /* a shortcut: seen from further, across more water */
+    if (al < -60 - 50 * far_off || al > RAMP_HALF_LEN + 2 || la < -34 - 30 * far_off || la > 34 + 30 * far_off) continue;
     /* only once the buoy before it is passed, so going for a ramp never costs that buoy. One on the line is for everyone */
     bool takes = g_ai_ramps && BUOYS[c->next_buoy][3] > DEF->ramps[r][3] && (DEF->ramps[r][4] < 1 || !((idx + r) & 1));
     bool lined = la > -RAMP_HALF_W + 1 && la < RAMP_HALF_W - 1;
@@ -171,7 +173,7 @@ static void ramps_tick(void) {
     if (g_ramp_seesaw) {
       /* the control: what the old floating ramps did */
       float f = cw_water_height_at(G.water, x + sy * RAMP_HALF_LEN, z + cy * RAMP_HALF_LEN, G.wt), b = cw_water_height_at(G.water, x - sy * RAMP_HALF_LEN, z - cy * RAMP_HALF_LEN, G.wt);
-      G.ramp_ta[r] = (f - b) / (2 * RAMP_HALF_LEN) * 6;
+      G.ramp_ta[r] = (f - b) / (2 * RAMP_HALF_LEN) * (float)g_ramp_seesaw;
     } else G.ramp_ta[r] = 0;
     bool dry = false, swamped = false;
     for (int k = 0; k < 8; k++) {

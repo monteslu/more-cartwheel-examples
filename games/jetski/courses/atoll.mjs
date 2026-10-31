@@ -102,7 +102,7 @@ return {
     ['rock', 'rock', [0.52, 0.47, 0.45], 0.075],
     ['grass', 'grass', [0.42, 0.74, 0.32], 0.09],
   ],
-  ramp_count: 9,
+  ramp_count: 12,
   ramp_top: 5,
   // the lighthouse: on the top of the islet in the north-east
   landmark: { model: 'lighthouse', where: (x, z) => x > 120 && x < 420 && z > -340 && z < -80 },

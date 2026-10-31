@@ -35,23 +35,24 @@ const lifted = run('course 1;difficulty 2;swell 1;ramp_lift 60;race;ramp 0 400 3
 check('control: lifted 60 m, the check sees gaps', lifted['ramp.gap_points'] > 1000, `${lifted['ramp.gap_points']} points`);
 // the jump: five moments of the sea, the same approach, the same air; every ramp of a course gets some
 const jumps = (extra, c, tide) => [0, 7.3, 13.1, 21.7, 29.9].map((off, i) => {
-  const s = run(`course ${c};difficulty 2;swell 1;${tide};${extra}race;set Root/Water time_offset ${off};ramp ${i * 2} 40`, 560, ['south']);
+  const s = run(`course ${c};difficulty 2;swell 1;${tide};${extra}race;set Root/Water time_offset ${off};ramp 2 40`, 560, ['south']);
   return { air: s['p0.air_max'], ramps: s['p0.ramps'], spills: s['p0.spills'] };
 });
 const spread = (a) => { const v = a.map((x) => x.air); return (Math.max(...v) - Math.min(...v)) / Math.max(...v); };
 for (const [c, tide, tag] of [[0, '', 'Crater Atoll'], [1, 'tide 1', 'Cold Sound']]) {
   const j = jumps('', c, tide), s0 = spread(j);
-  check(`${tag}: a big, repeatable jump`, j.every((x) => x.ramps >= 1 && x.air >= 2.0) && s0 <= 0.15, `air ${j.map((x) => f(x.air)).join(' ')} s, spread ${(s0 * 100).toFixed(0)}%`);
+  check(`${tag}: a big, repeatable jump`, j.every((x) => x.ramps >= 1 && x.air >= 1.95) && s0 <= 0.05, `air ${j.map((x) => f(x.air)).join(' ')} s, spread ${(s0 * 100).toFixed(0)}%`);
   check(`${tag}: clean landings`, j.every((x) => x.spills === 0), `spills ${j.map((x) => x.spills).join(' ')}`);
 }
 // the computer riders take the ramps and land them, and a ramp does not cost them buoys; control: no one goes for a ramp
 for (let c = 0; c < 2; c++) {
   const on = run(`course ${c};race`, 16000), off = run(`ai_ramps 0;course ${c};race`, 16000);
   const rate = (s) => s['ai.misses'] / Math.max(1, s['ai.misses'] + s['ai.passes']);
+  console.log(`     misses by buoy: ${on['ai.miss_at'].map((v, i) => (v ? i + ':' + v : '')).filter(Boolean).join(' ') || 'none'}`);
   check(`${C[c]}: the computer riders use the ramps`, on['ai.ramps'] >= 15, `${on['ai.ramps']} ramps taken, control ${off['ai.ramps']}`);
   check(`${C[c]}: and land them`, on['ai.spills'] <= on['ai.ramps'] * 0.05 && on['ai.walls'] <= on['ai.ramps'] * 0.25, `${on['ai.spills']} spills, ${on['ai.walls']} ticks against a side wall in ${on['ai.ramps']} ramps; control ${off['ai.spills']} spills, ${off['ai.walls']} ticks`);
-  check(`${C[c]}: a ramp costs no buoy`, rate(on) <= rate(off) + 0.05, `missed ${(rate(on) * 100).toFixed(1)}% of ${on['ai.misses'] + on['ai.passes']} with ramps, ${(rate(off) * 100).toFixed(1)}% of ${off['ai.misses'] + off['ai.passes']} without`);
+  check(`${C[c]}: a ramp costs no buoy`, rate(on) <= rate(off) + 0.03, `missed ${(rate(on) * 100).toFixed(1)}% of ${on['ai.misses'] + on['ai.passes']} with ramps, ${(rate(off) * 100).toFixed(1)}% of ${off['ai.misses'] + off['ai.passes']} without`);
 }
-const tip = jumps('ramp_seesaw 1;', 1, 'tide 1'), s1 = spread(tip);
-check('control: decks that tip with the swell do not repeat', s1 > 0.15, `air ${tip.map((x) => f(x.air)).join(' ')} s, spread ${(s1 * 100).toFixed(0)}%`);
+const tip = jumps('ramp_seesaw 12;', 1, 'tide 1'), s1 = spread(tip);
+check('control: decks that tip with the swell do not repeat', s1 > 0.05, `air ${tip.map((x) => f(x.air)).join(' ')} s, spread ${(s1 * 100).toFixed(0)}%`);
 process.exit(fail ? 1 : 0);

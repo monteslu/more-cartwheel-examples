@@ -14,7 +14,7 @@
 #define LAPS 3
 #define TAU 6.2831853f
 #define LEVELS 2
-#define RAMP_MAX 12
+#define RAMP_MAX 14
 #define BUOY_MAX 64
 #define RAMP_HALF_LEN 20.0f /* a rigid structure on piles: tools/make-models.mjs builds these sizes */
 #define RAMP_HALF_W 9.0f
@@ -132,6 +132,7 @@ typedef struct game {
   float cam_orbit;  /* the attract loop's cut timer */
   int cam_mode;
   float ramp_x[RAMP_MAX], ramp_z[RAMP_MAX], ramp_yaw[RAMP_MAX], ramp_ta[RAMP_MAX]; /* place; and this tick: height, tilt along and across */
+  int32_t miss_at[BUOY_MAX]; /* computer riders' misses, per buoy */
   int32_t ai_ramps, ai_spills, ai_misses, ai_passes, ai_walls; /* all the computer riders so far */
   int32_t ramp_points, ramp_gap_points;      /* points measured around the ramps; of them, a pile's foot over the water */
   int32_t ramp_dry_entry, ramp_swamped;      /* ticks the deck's low end stood clear of the water; ticks the water reached over the top */

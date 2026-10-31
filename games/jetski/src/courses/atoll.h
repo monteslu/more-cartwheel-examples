@@ -289,15 +289,18 @@ static const float atoll_buoys[][4] = { /* x, z, side (+1: pass with the buoy on
 {-219.84f,144.28f,1.0f,2507.7f}
 };
 static const float atoll_ramps[][5] = { /* x, z, yaw, s, how far off the racing line */
-{63.65f,165.30f,1.8380f,218.7f,20.0f},
-{208.69f,91.94f,2.2632f,388.7f,0.0f},
+{-38.55f,158.58f,1.5573f,100.0f,32.0f},
+{68.94f,184.59f,1.8380f,218.7f,0.0f},
+{209.97f,93.47f,2.2632f,388.7f,-2.0f},
+{184.43f,62.69f,2.2632f,388.7f,38.0f},
+{208.60f,68.04f,2.3082f,404.7f,18.0f},
 {439.58f,9.83f,1.3810f,647.0f,0.0f},
 {643.83f,-96.42f,2.5855f,905.5f,20.0f},
-{644.76f,-337.66f,-2.4318f,1174.5f,0.0f},
+{659.93f,-350.69f,-2.4318f,1174.5f,20.0f},
 {422.78f,-420.89f,-1.7261f,1422.9f,20.0f},
 {254.33f,-415.87f,-1.2561f,1602.6f,20.0f},
-{47.75f,-267.28f,-0.3451f,1863.8f,20.0f},
-{-144.37f,148.76f,1.2942f,2582.3f,0.0f}
+{119.48f,-316.02f,-0.6036f,1787.3f,20.0f},
+{16.48f,-222.54f,-0.7350f,1924.0f,32.0f}
 };
 static const course_scatter atoll_scatter[] = {
 { "res://models/palm.glb", "course/atoll/palms.u8", 0.012f, 0.75f, 1.45f, 900.0f, 77, false, 0.25f },
@@ -333,7 +336,7 @@ static const char *const atoll_props[][3] = {
 };
 static const course_def atoll_course = {
   .id = "atoll", .name = "Crater Atoll", .quads = 896, .spacing = 2.0f, .minh = -48.0f, .maxh = 170.0f, .len = 2586.80f,
-  .track_n = 256, .track = atoll_track, .buoy_n = 29, .buoys = atoll_buoys, .ramp_n = 9, .ramps = atoll_ramps, .ramp_top = 5.0f,
+  .track_n = 256, .track = atoll_track, .buoy_n = 29, .buoys = atoll_buoys, .ramp_n = 12, .ramps = atoll_ramps, .ramp_top = 5.0f,
   .scatter_n = 5, .scatter = atoll_scatter, .prop_n = 23, .props = atoll_props,
   .layer = { "course/atoll/sand", "course/atoll/coast", "course/atoll/rock", "course/atoll/grass" }, .layer_uv = { 0.16f, 0.22f, 0.075f, 0.09f },
   .heights = "course/atoll/heights.r16", .control = "course/atoll/control.u32", .mask = "course/atoll/wavemask.f32", .mask_n = 256, .map_n = 448, .sky = "res://textures/sky.png",

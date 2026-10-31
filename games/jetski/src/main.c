@@ -321,6 +321,7 @@ static void init(void *user) {
   cw_debug_i32("p0.ramps", &G.c[0].ramps);
   cw_debug_i32("p0.tricks", &G.c[0].tricks);
   cw_debug_f32("p0.air_max", &G.c[0].air_max);
+  cw_debug_field("ai.miss_at", G.miss_at, CW_DBG_I32, BUOY_MAX);
   cw_debug_i32("ai.ramps", &G.ai_ramps);
   cw_debug_i32("ai.spills", &G.ai_spills);
   cw_debug_i32("ai.misses", &G.ai_misses);
