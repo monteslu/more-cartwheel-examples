@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.11.0
+
+- All games now run on cartwheel-engine v0.28.4. Shaders compile during the warm-up
+  for things the camera can't see yet, so they should no longer compile mid-game.
+- jetski: a second course, Cold Sound: a grey morning in a granite fjord, with its
+  own light, pines and longer swell. The tide falls through the race. At high tide a
+  drowned arch shuts the cut through the headland; at low tide it's the short way home.
+- jetski: floating ramps no longer hover above big swells. They fit the water at all
+  four corners and sit deeper in it, on both courses.
+- jetski: boulders no longer hang in the air off cliffs and sea stacks. The atoll has
+  fewer rocks around its shores as a result.
+- arenafps: Start begins or continues on the setup and results panels instead of
+  opening the pause menu, and the title and join screens now click.
+- fighter: Start locks in on character select and means rematch on the result screen.
+
 ## 0.10.0
 
 - jetski: four floating ramps on the racing line that ride the swell, for big air:
