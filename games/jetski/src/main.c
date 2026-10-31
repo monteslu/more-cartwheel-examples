@@ -209,8 +209,16 @@ static void cmd_grounding(int argc, const char **argv, cw_reply *r) {
   float shallowest_buoy = -1e9f, shallowest_ramp = -1e9f;
   for (int b = 0; b < d->buoy_n; b++) { float g = ground_at(d->buoys[b][0], d->buoys[b][1]); if (g > shallowest_buoy) shallowest_buoy = g; }
   for (int q = 0; q < d->ramp_n; q++) { float g = ground_at(G.ramp_x[q], G.ramp_z[q]); if (g > shallowest_ramp) shallowest_ramp = g; }
-  if (r) cw_reply_printf(r, "{\"course\":\"%s\",\"instances\":%d,\"gaps\":%d,\"worst\":%.3f,\"at\":[%.0f,%.0f],\"by_layer\":[%d,%d,%d,%d,%d],\"tide_low\":%.2f,\"swell_amp\":%.2f,\"shallowest_buoy_ground\":%.2f,\"shallowest_ramp_ground\":%.2f,\"ramp_gap_ticks\":%d}",
-    d->name, total, gaps, worst, worst_at[0], worst_at[1], by_layer[0], by_layer[1], by_layer[2], by_layer[3], by_layer[4], tl, amp, shallowest_buoy, shallowest_ramp, G.ramp_gap);
+  if (r) cw_reply_printf(r, "{\"course\":\"%s\",\"instances\":%d,\"gaps\":%d,\"worst\":%.3f,\"at\":[%.0f,%.0f],\"by_layer\":[%d,%d,%d,%d,%d],\"tide_low\":%.2f,\"swell_amp\":%.2f,\"shallowest_buoy_ground\":%.2f,\"shallowest_ramp_ground\":%.2f,\"ramp_gap_points\":%d}",
+    d->name, total, gaps, worst, worst_at[0], worst_at[1], by_layer[0], by_layer[1], by_layer[2], by_layer[3], by_layer[4], tl, amp, shallowest_buoy, shallowest_ramp, G.ramp_gap_points);
+}
+static void cmd_ai_ramps(int argc, const char **argv, cw_reply *r) {
+  g_ai_ramps = argc > 1 ? atoi(argv[1]) : 1;
+  if (r) cw_reply_raw(r, "true");
+}
+static void cmd_ramp_seesaw(int argc, const char **argv, cw_reply *r) {
+  g_ramp_seesaw = argc > 1 ? atoi(argv[1]) : 1;
+  if (r) cw_reply_raw(r, "true");
 }
 static void cmd_ramp_lift(int argc, const char **argv, cw_reply *r) {
   g_ramp_lift = argc > 1 ? (float)atof(argv[1]) : 0;
@@ -221,7 +229,7 @@ static void cmd_ramp_where(int argc, const char **argv, cw_reply *r) {
   int q = argc > 1 ? atoi(argv[1]) % RAMP_MAX : 0;
   float sy, cy;
   cw_sincos(G.ramp_yaw[q], &sy, &cy);
-  if (r) cw_reply_printf(r, "{\"x\":%.2f,\"z\":%.2f,\"h\":%.2f,\"sy\":%.3f,\"cy\":%.3f}", G.ramp_x[q], G.ramp_z[q], G.ramp_h[q], sy, cy);
+  if (r) cw_reply_printf(r, "{\"n\":%d,\"x\":%.2f,\"z\":%.2f,\"top\":%.2f,\"sy\":%.3f,\"cy\":%.3f}", RAMPS, G.ramp_x[q], G.ramp_z[q], DEF->ramp_top, sy, cy);
 }
 /* mode <0 championship, 1 time trial> */
 static void cmd_mode(int argc, const char **argv, cw_reply *r) {
@@ -313,14 +321,19 @@ static void init(void *user) {
   cw_debug_i32("p0.ramps", &G.c[0].ramps);
   cw_debug_i32("p0.tricks", &G.c[0].tricks);
   cw_debug_f32("p0.air_max", &G.c[0].air_max);
-  cw_debug_i32("ramp.gap", &G.ramp_gap);
+  cw_debug_i32("ai.ramps", &G.ai_ramps);
+  cw_debug_i32("ai.spills", &G.ai_spills);
+  cw_debug_i32("ai.misses", &G.ai_misses);
+  cw_debug_i32("ai.passes", &G.ai_passes);
+  cw_debug_i32("ai.walls", &G.ai_walls);
   cw_debug_i32("ramp.points", &G.ramp_points);
   cw_debug_i32("ramp.gap_points", &G.ramp_gap_points);
-  cw_debug_i32("ramp.belly_points", &G.ramp_belly_points);
+  cw_debug_i32("ramp.dry_entry", &G.ramp_dry_entry);
+  cw_debug_i32("ramp.swamped", &G.ramp_swamped);
   cw_debug_f32("ramp.gap_max", &G.ramp_gap_max);
-  cw_debug_f32("ramp.belly_max", &G.ramp_belly_max);
-  cw_debug_f32("ramp.tilt_max", &G.ramp_tilt_max);
-  cw_debug_f32_array("ramp.now", G.ramp_now, RAMP_MAX);
+  cw_debug_f32("ramp.entry_min", &G.ramp_entry_min);
+  cw_debug_f32("ramp.lip_min", &G.ramp_lip_min);
+  cw_debug_f32("ramp.foot_ground_max", &G.ramp_foot_ground_max);
   cw_debug_f32("p0.sink_max", &G.c[0].sink_max);
   cw_debug_i32("p0.dq", &G.c[0].dq);
   cw_debug_f32("p0.out_t", &G.c[0].out_t);
@@ -341,6 +354,8 @@ static void init(void *user) {
   cw_debug_command("arch", "arch <back>: lined up with the course's arch", cmd_arch);
   cw_debug_command("peek", "peek x y z ax ay az: hold the camera there", cmd_peek);
   cw_debug_command("grounding", "grounding [lift]: every scatter instance against the ground, and the marks against the sea", cmd_grounding);
+  cw_debug_command("ai_ramps", "ai_ramps 0: no computer rider goes for a ramp", cmd_ai_ramps);
+  cw_debug_command("ramp_seesaw", "ramp_seesaw 1: decks tip with the swell, the jump gate's control", cmd_ramp_seesaw);
   cw_debug_command("ramp_lift", "ramp_lift <metres>: the control for the ramps' gap count", cmd_ramp_lift);
   cw_debug_command("ramp_where", "ramp_where <index>: where that ramp is now", cmd_ramp_where);
   cw_debug_command("mode", "mode <0 championship, 1 time trial>", cmd_mode);

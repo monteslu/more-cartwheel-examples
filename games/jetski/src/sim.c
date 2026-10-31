@@ -81,7 +81,8 @@ static void buoys(craft *c) {
   if (along < 0 || along > 60) return;
   /* (side +1: the buoy stands right of the line: pass with it on your right, on the line's side of it) */
   float lat = (rx * -tz + rz * tx) * -b[2];
-  bool ok = lat > -1.0f && lat < 34.0f;
+  /* (the far limit leaves room for a ramp's far side, off the line away from the buoy) */
+  bool ok = lat > -1.0f && lat < 48.0f;
   if (ok) {
     if (c->meter < 5) c->meter++;
     c->passes++;
@@ -110,6 +111,28 @@ static void computer(craft *c, int idx) {
     float m = 1.0f - d2 / (22.0f * 22.0f);
     ax += (lx - ax) * m * 0.35f, az += (lz - az) * m * 0.35f;
   }
+  /* half the riders go for each ramp: lined up from well back, straight up its middle */
+  for (int r = 0; r < RAMPS; r++) {
+    float sy, cy;
+    cw_sincos(G.ramp_yaw[r], &sy, &cy);
+    float dxr = c->x - G.ramp_x[r], dzr = c->z - G.ramp_z[r], al = dxr * sy + dzr * cy, la = dxr * -cy + dzr * sy;
+    if (al < -60 || al > RAMP_HALF_LEN + 2 || la < -34 || la > 34) continue;
+    /* only once the buoy before it is passed, so going for a ramp never costs that buoy. One on the line is for everyone */
+    bool takes = g_ai_ramps && BUOYS[c->next_buoy][3] > DEF->ramps[r][3] && (DEF->ramps[r][4] < 1 || !((idx + r) & 1));
+    bool lined = la > -RAMP_HALF_W + 1 && la < RAMP_HALF_W - 1;
+    if (takes && (al < -RAMP_HALF_LEN - 6 || lined)) {
+      /* the low end first, then straight up the middle */
+      float at = al < -RAMP_HALF_LEN - 6 ? -RAMP_HALF_LEN : al + 24.0f;
+      ax = G.ramp_x[r] + sy * at, az = G.ramp_z[r] + cy * at;
+      break;
+    }
+    /* not going up it: round it, well clear of its side */
+    if (al > -RAMP_HALF_LEN - 18 && la > -RAMP_HALF_W - 5 && la < RAMP_HALF_W + 5) {
+      float out = (la < 0 ? -1.0f : 1.0f) * (RAMP_HALF_W + 8), at = al + 18.0f;
+      ax = G.ramp_x[r] + sy * at - cy * out, az = G.ramp_z[r] + cy * at + sy * out;
+      break;
+    }
+  }
   float want = cw_atan2(ax - c->x, az - c->z);
   float err = wrap_pi(want - c->yaw);
   c->in.steer = clampf(-err * 2.6f, -1, 1);
@@ -118,84 +141,83 @@ static void computer(craft *c, int idx) {
   c->in.trick = false;
 }
 
-/* floating ramps: they ride the swell with everything else, the deck a height over the water here */
+/* ramps: rigid structures standing on the sea bed. They do not move: the same jump every time, the water comes and goes on their legs */
+int g_ramp_seesaw;
+int g_ai_ramps = 1;
 static void ramps_place(void) {
-  for (int r = 0; r < RAMPS; r++) {
-    float x, z, dx, dz;
-    track_at(DEF->ramp_s[r], &x, &z, &dx, &dz);
-    G.ramp_x[r] = x, G.ramp_z[r] = z, G.ramp_yaw[r] = cw_atan2(dx, dz);
-  }
+  for (int r = 0; r < RAMPS; r++) G.ramp_x[r] = DEF->ramps[r][0], G.ramp_z[r] = DEF->ramps[r][1], G.ramp_yaw[r] = DEF->ramps[r][2];
+  G.ramp_entry_min = 1e9f, G.ramp_lip_min = 1e9f, G.ramp_gap_max = -1e9f, G.ramp_foot_ground_max = -1e9f;
 }
-/* heave, pitch and roll to fit the water at its four corners: it rides the waves it covers, not the slope at its middle */
-void ramp_pose(int r, double wt, float *h, float *ta, float *tl) {
-  float sy, cy;
-  cw_sincos(G.ramp_yaw[r], &sy, &cy);
-  float x = G.ramp_x[r], z = G.ramp_z[r], a = RAMP_HALF_LEN, l = RAMP_HALF_W + 0.75f, w[4];
-  for (int k = 0; k < 4; k++) {
-    float fa = k & 1 ? a : -a, fl = k & 2 ? l : -l;
-    w[k] = cw_water_height_at(G.water, x + sy * fa - cy * fl, z + cy * fa + sy * fl, wt);
-  }
-  *h = (w[0] + w[1] + w[2] + w[3]) * 0.25f;
-  *ta = (w[1] + w[3] - w[0] - w[2]) / (4 * a);
-  *tl = (w[2] + w[3] - w[0] - w[1]) / (4 * l);
-}
-static void ramps_tick(void) {
+float ramp_deck(int r, float a) { return DEF->ramp_top + g_ramp_lift - (RAMP_HALF_LEN - a) * RAMP_SLOPE; }
+bool ramp_over(float x, float z, float *deck) {
   for (int r = 0; r < RAMPS; r++) {
-    float sy, cy;
-    G.ramp_now[r] = -9;
-    cw_sincos(G.ramp_yaw[r], &sy, &cy);
-    ramp_pose(r, G.wt, &G.ramp_h[r], &G.ramp_ta[r], &G.ramp_tl[r]);
-    /* the measure: at each of nine points along each side, how far the skirt's foot (a gap: nothing there at all) and the pontoon's
-     * belly (the skirt on show) stand over the water */
-    bool gap = false;
-    for (int k = 0; k <= 8; k++) for (int side = -1; side <= 1; side += 2) {
-      float t = (float)k / 8.0f, a = -RAMP_HALF_LEN + 2 * RAMP_HALF_LEN * t, l = (float)side * (RAMP_HALF_W + 0.75f);
-      float wx = G.ramp_x[r] + sy * a - cy * l, wz = G.ramp_z[r] + cy * a + sy * l;
-      float plane = G.ramp_h[r] + G.ramp_ta[r] * a + G.ramp_tl[r] * l + g_ramp_lift;
-      float water = cw_water_height_at(G.water, wx, wz, G.wt);
-      float foot = plane - 2.2f - water, belly = plane - 0.75f - water;
-      G.ramp_points++;
-      if (foot > 0) { G.ramp_gap_points++; gap = true; }
-      if (foot > G.ramp_gap_max) G.ramp_gap_max = foot;
-      if (belly > 0) G.ramp_belly_points++;
-      if (belly > G.ramp_belly_max) G.ramp_belly_max = belly;
-      if (belly > G.ramp_now[r]) G.ramp_now[r] = belly;
-    }
-    if (gap) G.ramp_gap++;
-    float tilt = sqrtf(G.ramp_ta[r] * G.ramp_ta[r] + G.ramp_tl[r] * G.ramp_tl[r]);
-    if (tilt > G.ramp_tilt_max) G.ramp_tilt_max = tilt;
-  }
-}
-/* on a deck the hull runs up it and leaves its top edge at the slope: no jump code here either. From the side or behind it is
- * a wall */
-static void ramps_craft(craft *c, bool was_on) {
-  for (int r = 0; r < RAMPS; r++) {
-    float dx = c->x - G.ramp_x[r], dz = c->z - G.ramp_z[r];
-    if (dx * dx + dz * dz > 49.0f) continue;
+    float dx = x - G.ramp_x[r], dz = z - G.ramp_z[r];
+    if (dx * dx + dz * dz > 500.0f) continue;
     float sy, cy;
     cw_sincos(G.ramp_yaw[r], &sy, &cy);
     float a = dx * sy + dz * cy, l = dx * -cy + dz * sy;
     if (a < -RAMP_HALF_LEN || a > RAMP_HALF_LEN || l < -RAMP_HALF_W || l > RAMP_HALF_W) continue;
-    float t = (a + RAMP_HALF_LEN) / (2 * RAMP_HALF_LEN);
-    float rise = (RAMP_TOP - RAMP_LOW) / (2 * RAMP_HALF_LEN);
-    float deck = G.ramp_h[r] + G.ramp_ta[r] * a + G.ramp_tl[r] * l + RAMP_LOW + (RAMP_TOP - RAMP_LOW) * t;
+    if (deck) *deck = ramp_deck(r, a);
+    return true;
+  }
+  return false;
+}
+/* the measure: every tick, around each ramp: is a pile's foot under the water (a gap otherwise); does the low end of the deck stay under,
+ * so a rider always climbs on from the water; does the top stay clear of the highest water */
+static void ramps_tick(void) {
+  for (int r = 0; r < RAMPS; r++) {
+    float sy, cy, x = G.ramp_x[r], z = G.ramp_z[r];
+    cw_sincos(G.ramp_yaw[r], &sy, &cy);
+    if (g_ramp_seesaw) {
+      /* the control: what the old floating ramps did */
+      float f = cw_water_height_at(G.water, x + sy * RAMP_HALF_LEN, z + cy * RAMP_HALF_LEN, G.wt), b = cw_water_height_at(G.water, x - sy * RAMP_HALF_LEN, z - cy * RAMP_HALF_LEN, G.wt);
+      G.ramp_ta[r] = (f - b) / (2 * RAMP_HALF_LEN) * 6;
+    } else G.ramp_ta[r] = 0;
+    bool dry = false, swamped = false;
+    for (int k = 0; k < 8; k++) {
+      float a = k & 1 ? RAMP_HALF_LEN : -RAMP_HALF_LEN, l = (k & 2 ? RAMP_HALF_W : -RAMP_HALF_W) * (k & 4 ? 0.0f : 1.0f);
+      float wx = x + sy * a - cy * l, wz = z + cy * a + sy * l, water = cw_water_height_at(G.water, wx, wz, G.wt);
+      float foot = DEF->ramp_top + g_ramp_lift - RAMP_FOOT, over = foot - water;
+      G.ramp_points++;
+      if (over > 0) G.ramp_gap_points++;
+      if (over > G.ramp_gap_max) G.ramp_gap_max = over;
+      float fg = foot - ground_at(wx, wz);
+      if (fg > G.ramp_foot_ground_max) G.ramp_foot_ground_max = fg;
+      if (k & 1) { float lip = DEF->ramp_top + g_ramp_lift - water; if (lip < G.ramp_lip_min) G.ramp_lip_min = lip; if (lip < 0.3f) swamped = true; }
+      else { float e = water - ramp_deck(r, -RAMP_HALF_LEN); if (e < G.ramp_entry_min) G.ramp_entry_min = e; if (e < 0.2f) dry = true; }
+    }
+    if (dry) G.ramp_dry_entry++;
+    if (swamped) G.ramp_swamped++;
+  }
+}
+/* on a deck the hull runs up it and leaves its top edge at the slope. From the side or behind, a ramp is a wall */
+static void ramps_craft(craft *c, bool was_on) {
+  for (int r = 0; r < RAMPS; r++) {
+    float dx = c->x - G.ramp_x[r], dz = c->z - G.ramp_z[r];
+    if (dx * dx + dz * dz > 500.0f) continue;
+    float sy, cy;
+    cw_sincos(G.ramp_yaw[r], &sy, &cy);
+    float a = dx * sy + dz * cy, l = dx * -cy + dz * sy;
+    if (a < -RAMP_HALF_LEN || a > RAMP_HALF_LEN || l < -RAMP_HALF_W || l > RAMP_HALF_W) continue;
+    float slope = RAMP_SLOPE + G.ramp_ta[r], deck = ramp_deck(r, a) + G.ramp_ta[r] * a;
+    if (deck < c->surf - 0.3f) continue;  /* still under the water here */
+    if (c->y > deck + 0.7f) continue;     /* flying over it */
     float along = c->vx * sy + c->vz * cy;
-    if (c->y > deck + 0.5f) continue; /* flying over it */
-    if (along > 2 && (c->y > deck - 0.8f || a < -RAMP_HALF_LEN + 1.5f)) {
-      /* riding it */
+    if (along > 2 && c->y > deck - 1.0f) {
       if (!was_on) c->ramps++;
       c->on_ramp = true;
       c->y = deck + 0.22f;
-      c->vy = along * (rise + G.ramp_ta[r]);
+      c->vy = along * slope;
       c->air = false, c->air_time = 0;
-      c->pitch = cw_atan2(rise + G.ramp_ta[r], 1.0f), c->pr = 0;
+      c->pitch = cw_atan2(slope, 1.0f), c->pr = 0;
       continue;
     }
     /* a wall: out by the nearest side, and it costs */
-    float push = (l < 0 ? -RAMP_HALF_W - l : RAMP_HALF_W - l);
+    float push = (l < 0 ? -RAMP_HALF_W - l : RAMP_HALF_W - l) * 1.02f;
     c->x += -cy * push, c->z += sy * push;
     c->vx *= 0.7f, c->vz *= 0.7f;
     c->bump = true;
+    c->wall_hits++;
   }
 }
 
@@ -549,6 +571,7 @@ void sim_ramp_start(int r, float back, float aside) {
   float sy, cy;
   cw_sincos(G.ramp_yaw[r], &sy, &cy);
   craft *c = &G.c[0];
+  back += RAMP_HALF_LEN; /* from its low end */
   c->x = c->px = G.ramp_x[r] - sy * back - cy * aside, c->z = c->pz = G.ramp_z[r] - cy * back + sy * aside;
   c->y = c->py = cw_water_height_at(G.water, c->x, c->z, cw_water_time(G.water));
   c->yaw = c->pyaw = G.ramp_yaw[r], c->pitch = c->roll = c->pr = c->rr = 0;
@@ -639,6 +662,8 @@ void sim_tick(float dt) {
   if (G.state == RACE_ON && (G.c[0].finish > 0 || G.c[0].dq)) G.state = RACE_DONE;
   /* the attract loop races on and on, and stays out where the swell is */
   if (G.state == RACE_ATTRACT && G.c[G.order[0]].lap >= 1) for (int i = 0; i < RACERS; i++) G.c[i].lap = -1;
+  G.ai_ramps = G.ai_spills = G.ai_misses = G.ai_passes = G.ai_walls = 0;
+  for (int i = 1; i < RACERS; i++) { const craft *c = &G.c[i]; G.ai_ramps += c->ramps, G.ai_spills += c->spills, G.ai_misses += c->misses, G.ai_passes += c->passes, G.ai_walls += c->wall_hits; }
   uint32_t h = G.tick;
   for (int i = 0; i < RACERS; i++) {
     h = cw_hash32(&G.c[i].x, sizeof(float) * 6, h);

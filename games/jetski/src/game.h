@@ -14,12 +14,12 @@
 #define LAPS 3
 #define TAU 6.2831853f
 #define LEVELS 2
-#define RAMP_MAX 8
+#define RAMP_MAX 12
 #define BUOY_MAX 64
-#define RAMP_HALF_LEN 4.0f
-#define RAMP_HALF_W 2.6f
-#define RAMP_LOW (-0.75f)  /* the deck's height over the water at its lip */
-#define RAMP_TOP 1.9f      /* and at its top edge */
+#define RAMP_HALF_LEN 20.0f /* a rigid structure on piles: tools/make-models.mjs builds these sizes */
+#define RAMP_HALF_W 9.0f
+#define RAMP_SLOPE 0.36f
+#define RAMP_FOOT 50.0f     /* how far its piles reach under its top edge */
 static const char *const RIDER_NAMES[6] = { "You", "Marlin", "Kestrel", "Tide", "Juno", "Reef" };
 extern int g_difficulty; /* 0 easy, 1 normal, 2 hard */
 enum { MODE_CHAMPIONSHIP, MODE_TIME_TRIAL };
@@ -35,7 +35,7 @@ typedef struct course_def {
   float spacing, minh, maxh, len;
   int track_n; const float (*track)[4];
   int buoy_n; const float (*buoys)[4];
-  int ramp_n; const float *ramp_s;
+  int ramp_n; const float (*ramps)[5]; float ramp_top;
   int scatter_n; const course_scatter *scatter;
   int prop_n; const char *const (*props)[3];
   const char *layer[4]; float layer_uv[4];
@@ -111,6 +111,7 @@ typedef struct craft {
   float flash_short;
   float sink_max;                 /* deepest the hull's centre has been under the surface (m) */
   int ramps;                      /* ramps taken */
+  int wall_hits;                  /* times it ran into a ramp's side */
   float air_max;                  /* longest time in the air (s) */
 } craft;
 
@@ -130,10 +131,11 @@ typedef struct game {
   float cam[3], cam_prev[3], look[3], look_prev[3], cam_fov, cam_fov_prev;
   float cam_orbit;  /* the attract loop's cut timer */
   int cam_mode;
-  float ramp_x[RAMP_MAX], ramp_z[RAMP_MAX], ramp_yaw[RAMP_MAX], ramp_h[RAMP_MAX], ramp_ta[RAMP_MAX], ramp_tl[RAMP_MAX]; /* place; and this tick: height, tilt along and across */
-  int32_t ramp_gap; /* ramp-ticks with its skirt's foot over the water anywhere */
-  int32_t ramp_points, ramp_gap_points, ramp_belly_points; /* points measured on the ramps' sides, foot over water, belly over water */
-  float ramp_gap_max, ramp_belly_max, ramp_tilt_max, ramp_now[RAMP_MAX];
+  float ramp_x[RAMP_MAX], ramp_z[RAMP_MAX], ramp_yaw[RAMP_MAX], ramp_ta[RAMP_MAX]; /* place; and this tick: height, tilt along and across */
+  int32_t ai_ramps, ai_spills, ai_misses, ai_passes, ai_walls; /* all the computer riders so far */
+  int32_t ramp_points, ramp_gap_points;      /* points measured around the ramps; of them, a pile's foot over the water */
+  int32_t ramp_dry_entry, ramp_swamped;      /* ticks the deck's low end stood clear of the water; ticks the water reached over the top */
+  float ramp_gap_max, ramp_entry_min, ramp_lip_min, ramp_foot_ground_max; /* worst of each, metres */
   int32_t cam_under; /* ticks the chase camera spent under the surface */
   int32_t attract_under, attract_land, attract_blocked, attract_hidden; /* ticks the attract camera was under water, in land, had land in its view of the craft, or a crest over the hull */
   uint32_t sim_hash;
@@ -142,6 +144,8 @@ extern game G;
 
 /* sim.c */
 extern float g_swell_hold, g_tide_hold, g_ramp_lift;
+extern int g_ai_ramps;    /* debug: ai_ramps 0, no computer rider goes for a ramp: the control for what ramps cost them */
+extern int g_ramp_seesaw; /* debug: ramp_seesaw 1, the jump gate's control: decks that tip with the swell */
 void sim_hook_start(float back);
 extern int g_ride_top;
 void sim_reset(int state);
@@ -151,7 +155,8 @@ bool hook_open(void);     /* the course's hook lets a rider through now */
 void sim_tick(float dt);
 float ground_at(float x, float z);
 void track_at(float s, float *x, float *z, float *dx, float *dz);
-void ramp_pose(int r, double wt, float *h, float *ta, float *tl); /* the plane a ramp floats on */
+float ramp_deck(int r, float a); /* the deck's height at a metres along it from its middle */
+bool ramp_over(float x, float z, float *deck); /* over a ramp's deck: its height there */
 void sim_ramp_start(int r, float back, float aside); /* the human lined up with a ramp, at speed */
 /* view.c */
 extern int g_attract_clear;

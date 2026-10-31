@@ -21,7 +21,7 @@ Buoys mark the course. Pass each one on the side its colour and the chevron show
 left. Each one passed lights an arrow and raises your top speed, five at most. Miss one and they all go out.
 Five misses end your race, and the dots under the lap count show how many you have. So do five seconds away from the course,
 with a warning counting them down. Too much stick scrubs speed, and a long hard slide throws you off.
-Floating ramps ride the swell on the racing line: hit one square at speed for well over a second in the air, long enough for a trick. Each press of the trick button is one trick; land mid-trick and you are off the craft. From the side a ramp is a wall.
+Big steel ramps stand on piles along each course, some on the racing line and some off it. They do not move: the sea comes and goes on their legs, the swell is held down around them, and the same approach gives the same jump, well over two seconds in the air, long enough for a trick. Each press of the trick button is one trick; land mid-trick and you are off the craft. From the side or behind a ramp is a wall.
 Landing straight keeps your speed and a long clean landing gives you a shove; nose down costs you most of it, and leaning
 back on the way in saves some. Start or Esc pauses, with restart and quit.
 

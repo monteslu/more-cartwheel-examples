@@ -112,6 +112,6 @@
   {
     "name": "jetski-ramps",
     "script": "tests/jetski-ramps.mjs",
-    "note": "the ramps never float: a race's worth of ticks at the biggest sea of every difficulty on both courses, nine points a side against the water every tick; control: lifted 2.1 m, the check sees gaps"
+    "note": "the ramps stand: no pile's foot over the water, the low end always under, the top always clear, at the biggest sea of every difficulty on both courses and both ends of Cold Sound's tide (control: lifted 60 m); the same jump at any moment of the sea (control: decks that tip); computer riders take them, land them and lose no more than 5 points of buoys (control: no one goes for a ramp)"
   }
 ]

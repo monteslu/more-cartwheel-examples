@@ -10,7 +10,9 @@
 //   lying_drop        metres of drop within 4 m each way where they start to thin and where they stop (2.5, 4.5)
 //   scatter           [model, map, density, scale min, scale max, visible range, seed, sink, tilt] per kind of thing
 //   grades            [layer, scan, [r, g, b], uv scale]: four CC0 terrain scans graded to this place's palette
-//   ramps             where on the track the ramps stand, metres; buoys { first, step, wobble, offset } optional
+//   ramp_count        how many ramps to look for (9): they go in the straightest gaps between buoys with room to land
+//   ramp_top          how high a ramp's top edge stands over the sea's rest level (5)
+//   buoys             { first, step, wobble, offset }, optional
 //   landmark          { model, where(x, z) }: stands on the highest ground where says
 //   waves             [direction, wavelength, amplitude, amplitude per unit of swell, steepness] x 4
 //   swell, tide       [start of the race, end of the race]
@@ -94,11 +96,61 @@ export function makeCourse(def) {
   }
   writeFileSync(join(dir, 'control.u32'), Buffer.from(ctl.buffer));
 
-  // the wave mask, softened
+  // buoys: pairs of slaloms, alternating sides, spaced so the rhythm reads
+  const bd = { first: 70, step: 88, wobble: 14, offset: 8.5, ...(def.buoys || {}) };
+  const buoys = [];
+  let side = 1;
+  for (let s = bd.first; s < LEN - 60;) {
+    const p = pointAt(s);
+    buoys.push({ x: p.x - p.dz * side * bd.offset, z: p.z + p.dx * side * bd.offset, side, s });
+    side = -side;
+    s += bd.step + bd.wobble * Math.sin(s * 0.013);
+  }
+  // the ramps: in the straight gaps between buoys, with open water to land in. Some on the racing line, others off it on the far side
+  // from the next buoy, so going for one costs nothing at that buoy: a route to choose
+  const tideLow = Math.min(def.tide[0], def.tide[1]), rp = [];
+  const clear = (p, side, off, next) => {
+    const cx = p.x + p.dz * side * off, cz = p.z - p.dx * side * off, gnd = (x, z) => hAt(Math.round(x / SPACING + QUADS / 2), Math.round(z / SPACING + QUADS / 2));
+    for (let a = -22; a <= 90; a += 6) for (const l of [-12, 0, 12]) if (gnd(cx + p.dx * a - p.dz * l, cz + p.dz * a + p.dx * l) > tideLow - 1.2) return null;
+    for (const b of buoys) { const dx = b.x - cx, dz = b.z - cz, al = dx * p.dx + dz * p.dz, la = dx * -p.dz + dz * p.dx; if (Math.abs(al) < 26 && Math.abs(la) < 15) return null; }
+    // straight off the lip, a rider must come past the next buoy on its right side, near enough for the game's rule (sim.c's buoys)
+    if (next) {
+      const q = pointAt(next.s), bx = next.x - cx, bz = next.z - cz, cosA = p.dx * q.dx + p.dz * q.dz;
+      if (cosA < 0.6) return null;
+      const t = (bx * q.dx + bz * q.dz) / cosA, rx = cx + p.dx * t - next.x, rz = cz + p.dz * t - next.z, lat = (rx * -q.dz + rz * q.dx) * -next.side;
+      if (lat < 4 || lat > 36) return null;
+    }
+    return { x: cx, z: cz, dx: p.dx, dz: p.dz, off };
+  };
+  const cand = [];
+  for (let i = 0; i < buoys.length; i++) {
+    const A = buoys[i], B = buoys[(i + 1) % buoys.length], s1 = i + 1 < buoys.length ? B.s : B.s + LEN, s = (A.s + s1) / 2;
+    const p0 = pointAt(s - 28), p1 = pointAt(s + 50), turn = Math.abs(Math.atan2(p1.dx * p0.dz - p1.dz * p0.dx, p1.dx * p0.dx + p1.dz * p0.dz));
+    if (turn > 0.5) continue;
+    cand.push({ s, turn, side: B.side, p: pointAt(s), next: B });
+  }
+  const want = def.ramp_count ?? 9;
+  cand.sort((a, b) => a.turn - b.turn);
+  for (const c of cand) {
+    if (rp.length >= want) break;
+    const near = rp.some((r) => { const d = Math.abs(r.s - c.s); return Math.min(d, LEN - d) < (LEN / want) * 0.5; });
+    if (near) continue;
+    const off = rp.length % 3 === 0 ? 0 : 20;
+    const got = clear(c.p, c.side, off, c.next) || clear(c.p, c.side, 0, c.next) || clear(c.p, c.side, 20, c.next);
+    if (got) rp.push({ ...got, s: c.s });
+  }
+  rp.sort((a, b) => a.s - b.s);
+
+  // the wave mask, softened; held down around every ramp, so the approach reads and the launch is the same each time
   const MN = 256, M = new Float32Array(MN * MN), hWorld = (x, z) => hAt(Math.round(x / SPACING + QUADS / 2), Math.round(z / SPACING + QUADS / 2));
   for (let j = 0; j < MN; j++) for (let i = 0; i < MN; i++) {
     const x = ((i + 0.5) / MN - 0.5) * SIZE, z = ((j + 0.5) / MN - 0.5) * SIZE;
-    M[j * MN + i] = def.mask({ x, z, y: hWorld(x, z), r0: Math.hypot(x, z) });
+    let pad = 1;
+    for (const r of rp) {
+      const dx = x - r.x, dz = z - r.z, al = clamp(dx * r.dx + dz * r.dz, -60, 30), d = Math.hypot(dx - r.dx * al, dz - r.dz * al);
+      pad = Math.min(pad, lerp(0.14, 1, smooth(28, 80, d)));
+    }
+    M[j * MN + i] = def.mask({ x, z, y: hWorld(x, z), r0: Math.hypot(x, z) }) * pad;
   }
   for (let pass = 0; pass < 6; pass++) {
     const C = M.slice();
@@ -127,16 +179,6 @@ export function makeCourse(def) {
     writeFileSync(join(dir, name + '.u8'), Buffer.from(D));
   }
 
-  // buoys: pairs of slaloms, alternating sides, spaced so the rhythm reads
-  const bd = { first: 70, step: 88, wobble: 14, offset: 8.5, ...(def.buoys || {}) };
-  const buoys = [];
-  let side = 1;
-  for (let s = bd.first; s < LEN - 60;) {
-    const p = pointAt(s);
-    buoys.push({ x: p.x - p.dz * side * bd.offset, z: p.z + p.dx * side * bd.offset, side, s });
-    side = -side;
-    s += bd.step + bd.wobble * Math.sin(s * 0.013);
-  }
   // the landmark: on the highest ground its place allows
   let lh = [0, -100, 0];
   if (def.landmark) for (let j = 0; j < N; j += 2) for (let i = 0; i < N; i += 2) { const x = toW(i), z = toW(j), y = H[j * N + i]; if (def.landmark.where(x, z) && y > lh[1]) lh = [x, y, z]; }
@@ -158,11 +200,11 @@ export function makeCourse(def) {
   let c = `/* generated by tools/make-course.mjs from courses/${id}.mjs */\n`;
   c += `static const float ${id}_track[][4] = {\n` + TK.map((p) => `{${p.x.toFixed(2)}f,${p.z.toFixed(2)}f,${p.dx.toFixed(4)}f,${p.dz.toFixed(4)}f}`).join(',\n') + '\n};\n';
   c += `static const float ${id}_buoys[][4] = { /* x, z, side (+1: pass with the buoy on your right), s */\n` + buoys.map((b) => `{${b.x.toFixed(2)}f,${b.z.toFixed(2)}f,${b.side}.0f,${b.s.toFixed(1)}f}`).join(',\n') + '\n};\n';
-  c += `static const float ${id}_ramps[] = { ${def.ramps.map(f).join(', ')} };\n`;
+  c += `static const float ${id}_ramps[][5] = { /* x, z, yaw, s, how far off the racing line */\n` + rp.map((r) => `{${r.x.toFixed(2)}f,${r.z.toFixed(2)}f,${Math.atan2(r.dx, r.dz).toFixed(4)}f,${r.s.toFixed(1)}f,${r.off.toFixed(1)}f}`).join(',\n') + '\n};\n';
   c += `static const course_scatter ${id}_scatter[] = {\n` + def.scatter.map(([m, map, d, a, b, r, seed, sink, tilt]) => `{ ${q(`res://models/${m}.glb`)}, ${q(`course/${id}/${map}.u8`)}, ${f(d)}, ${f(a)}, ${f(b)}, ${f(r)}, ${seed}, ${sink}, ${f(tilt)} }`).join(',\n') + '\n};\n';
   c += `static const char *const ${id}_props[][3] = {\n` + (def.props.length ? def.props.map((p) => `{ ${q(p[0])}, ${q(p[1])}, ${q(String(p[2]))} }`).join(',\n') : '{ "", "", "" }') + '\n};\n';
   c += `static const course_def ${id}_course = {\n  .id = ${q(id)}, .name = ${q(def.name)}, .quads = ${QUADS}, .spacing = ${f(SPACING)}, .minh = ${f(MINH)}, .maxh = ${f(MAXH)}, .len = ${LEN.toFixed(2)}f,\n`;
-  c += `  .track_n = ${TK.length}, .track = ${id}_track, .buoy_n = ${buoys.length}, .buoys = ${id}_buoys, .ramp_n = ${def.ramps.length}, .ramp_s = ${id}_ramps,\n`;
+  c += `  .track_n = ${TK.length}, .track = ${id}_track, .buoy_n = ${buoys.length}, .buoys = ${id}_buoys, .ramp_n = ${rp.length}, .ramps = ${id}_ramps, .ramp_top = ${f(def.ramp_top ?? 5)},\n`;
   c += `  .scatter_n = ${def.scatter.length}, .scatter = ${id}_scatter, .prop_n = ${def.props.length}, .props = ${id}_props,\n`;
   c += `  .layer = { ${def.grades.map((g) => q(`course/${id}/${g[0]}`)).join(', ')} }, .layer_uv = { ${def.grades.map((g) => f(g[3])).join(', ')} },\n`;
   c += `  .heights = ${q(`course/${id}/heights.r16`)}, .control = ${q(`course/${id}/control.u32`)}, .mask = ${q(`course/${id}/wavemask.f32`)}, .mask_n = ${MN}, .map_n = ${DN}, .sky = ${q(def.sky)},\n`;
@@ -176,7 +218,7 @@ export function makeCourse(def) {
   mkdirSync(join(GAME, 'src/courses'), { recursive: true });
   writeFileSync(join(GAME, 'src/courses', id + '.h'), c);
   const land = H.filter((v) => v > 0).length / H.length * 100;
-  console.log(`${id}: track ${LEN.toFixed(0)} m, ${buoys.length} buoys, ${def.ramps.length} ramps, land ${land.toFixed(1)}%`);
+  console.log(`${id}: track ${LEN.toFixed(0)} m, ${buoys.length} buoys, ${rp.length} ramps, land ${land.toFixed(1)}%`);
   return { H, LEN, buoys, pointAt };
 }
 

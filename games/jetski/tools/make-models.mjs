@@ -261,34 +261,75 @@ class Plain {
   console.log('craft', P.tris() + bars.tris(), 'tris');
 }
 
-// ── a floating ramp: forward +z, y = 0 is the waterline. The deck climbs from under the water at its lip to its top edge; sides
-// and back run down below the water, so a swell never shows a gap under it. Sizes match src/sim.c (RAMP_*) ──
+// ── a ramp: a rigid steel structure standing on the sea bed. Forward +z; y 0 is its top edge. 40 m long, 18 m wide, on a 1 in 2.8 deck
+// (sizes match src/game.h RAMP_*), on piles that run far below any trough, braced, ropes along its sides, a wet band on every leg ──
 {
-  const P = new Plain(), L = 4, W = 2.6, LOW = -0.75, TOP = 1.9, SKIRT = -2.2, N = 8;
-  for (let i = 0; i < N; i++) {
-    const z0 = -L + (2 * L * i) / N, z1 = -L + (2 * L * (i + 1)) / N, y = (z) => LOW + ((z + L) / (2 * L)) * (TOP - LOW);
-    P.grid(i % 2 ? 'dark' : 'band', [[[-W, y(z0), z0], [W, y(z0), z0]], [[-W, y(z1), z1], [W, y(z1), z1]]]);
+  const P = new Plain(), HL = 20, HW = 9, SLOPE = 0.36, FOOT = -50;
+  const deckY = (z) => (z - HL) * SLOPE;
+  const beam = (mat, A, B, r) => P.tube(mat, [A, B], r, 6);
+  // the deck: broad steel plates, weathered in two tones, the last of them painted to read from far off
+  const PL = 2.5, rows = Math.round(2 * HL / PL);
+  for (let i = 0; i < rows; i++) {
+    const z0 = -HL + i * PL, z1 = z0 + PL;
+    const stripe = z1 > HL - 7.6 ? (i % 2 ? 'paint' : 'pale') : (i % 3 === 0 ? 'plate2' : 'plate');
+    for (let k = 0; k < 4; k++) {
+      const x0 = -HW + k * 4.5, x1 = x0 + 4.5, m = (stripe === 'plate' || stripe === 'plate2') && (i + k) % 5 === 0 ? 'rust' : stripe;
+      P.grid(m, [[[x0, deckY(z0), z0], [x1, deckY(z0), z0]], [[x0, deckY(z1), z1], [x1, deckY(z1), z1]]], { flip: false });
+    }
   }
-  for (const s of [-1, 1]) {
-    const top = (z) => LOW + ((z + L) / (2 * L)) * (TOP - LOW);
-    const a = [[s * W, SKIRT, -L], [s * W, SKIRT, L]], b = [[s * W, top(-L), -L], [s * W, top(L), L]];
-    P.grid('dark', s > 0 ? [a, b] : [b, a]);
-    // a pontoon along each side, half in the water
-    P.tube('band', [[s * (W + 0.25), -0.25, -L - 0.5], [s * (W + 0.25), -0.25, L]], (t) => 0.5 * Math.pow(Math.sin(Math.min(1, t * 6) * Math.PI / 2), 0.6), 12);
+  // chevrons up the middle of the deck and a seam at every plate edge, so it reads as a road to aim up, and as made of plates
+  for (let z = -6; z < HL - 9; z += 6) for (const sx of [-1, 1]) {
+    const q = (x, zz) => [x, deckY(zz) + 0.04, zz];
+    P.grid('pale', [[q(sx > 0 ? 0 : -3.2, sx > 0 ? z + 2.4 : z), q(sx > 0 ? 3.2 : 0, sx > 0 ? z : z + 2.4)], [q(sx > 0 ? 0 : -3.2, sx > 0 ? z + 3.6 : z + 1.2), q(sx > 0 ? 3.2 : 0, sx > 0 ? z + 1.2 : z + 3.6)]], { flip: false });
   }
-  P.grid('dark', [[[W, SKIRT, L], [-W, SKIRT, L]], [[W, TOP, L], [-W, TOP, L]]]);
-  // skirts all the way round under the waterline: a swell's hollow never shows under the lip or a pontoon
-  P.grid('dark', [[[-W - 0.75, LOW - 0.1, -L], [W + 0.75, LOW - 0.1, -L]], [[-W - 0.75, SKIRT, -L], [W + 0.75, SKIRT, -L]]]); // (its top under the lip: it must not stand up in front of the deck)
+  for (let z = -HL; z <= HL; z += PL) P.grid('seam', [[[-HW, deckY(z) + 0.02, z - 0.04], [HW, deckY(z) + 0.02, z - 0.04]], [[-HW, deckY(z + 0.08) + 0.02, z + 0.04], [HW, deckY(z + 0.08) + 0.02, z + 0.04]]], { flip: false });
+  for (let k = 1; k < 4; k++) { const x = -HW + k * 4.5; P.grid('seam', [[[x - 0.04, deckY(-HL) + 0.02, -HL], [x + 0.04, deckY(-HL) + 0.02, -HL]], [[x - 0.04, deckY(HL) + 0.02, HL], [x + 0.04, deckY(HL) + 0.02, HL]]], { flip: false }); }
+  // the frame under it: long girders, cross beams
+  for (const x of [-HW, -4.5, 0, 4.5, HW]) beam('steel', [x, deckY(-HL) - 0.35, -HL], [x, deckY(HL) - 0.35, HL], 0.28);
+  for (let z = -HL; z <= HL + 0.01; z += 5) beam('steel', [-HW, deckY(z) - 0.5, z], [HW, deckY(z) - 0.5, z], 0.2);
+  // side walls with an orange top rail, so a rider sees the edges
   for (const s of [-1, 1]) {
-    const a = [[s * (W + 0.75), SKIRT, -L], [s * (W + 0.75), SKIRT, L]], b = [[s * (W + 0.75), -0.25, -L], [s * (W + 0.75), -0.25, L]];
-    P.grid('band', s > 0 ? [a, b] : [b, a]); // the pontoon's colour: in a hollow it shows, as the side of the hull
+    const edge = [[s * HW, deckY(-HL), -HL], [s * HW, deckY(HL), HL]];
+    P.grid('steel', s > 0 ? [edge, edge.map(([x, y, z]) => [x, y + 0.8, z])] : [edge.map(([x, y, z]) => [x, y + 0.8, z]), edge], { flip: false });
+    beam('paint', [s * HW, deckY(-HL) + 0.85, -HL], [s * HW, deckY(HL) + 0.85, HL], 0.12);
+    for (let z = -HL; z <= HL + 0.01; z += 8) beam('steel', [s * HW, deckY(z), z], [s * HW, deckY(z) + 0.85, z], 0.07);
+  }
+  // a heavy lip bar
+  beam('paint', [-HW, 0.05, HL], [HW, 0.05, HL], 0.2);
+  // the piles: rows across, down past any sea; a dark wet band where the tide works; braces between them
+  const PZ = [-12, -4, 4, 12, 20], PX = [-HW, 0, HW];
+  for (const z of PZ) for (const x of PX) {
+    const top = deckY(z) - 0.5;
+    // (the wet band: the tide's range on a ramp whose top is 5 to 6.5 m over the rest level. A leg starts under its part of the deck)
+    if (top > -2) beam('steel', [x, top, z], [x, -2, z], 0.42);
+    if (top > -10.5) beam('wet', [x, Math.min(top, -2), z], [x, -10.5, z], 0.44);
+    beam('steel', [x, Math.min(top, -10.5), z], [x, FOOT, z], 0.42);
+  }
+  for (let i = 0; i < PZ.length - 1; i++) for (const x of PX) {
+    // crossed between neighbouring legs, from under the deck on each down to the same depth
+    const a = PZ[i], b = PZ[i + 1], ya = deckY(a) - 0.8, yb = deckY(b) - 0.8, low = Math.min(ya, yb) - 7;
+    beam('steel', [x, ya, a], [x, low, b], 0.13);
+    beam('steel', [x, yb, b], [x, low, a], 0.13);
+  }
+  for (const z of PZ) for (const s of [-1, 1]) {
+    const y0 = deckY(z) - 0.8;
+    beam('steel', [s * HW, y0, z], [0, y0 - 4.5, z], 0.13);
+    beam('steel', [0, y0, z], [s * HW, y0 - 4.5, z], 0.13);
+  }
+  // ropes slung along the sides, and fenders on the first legs
+  for (const s of [-1, 1]) {
+    const pts = [];
+    for (let i = 0; i <= 24; i++) { const t = i / 24, z = 4 + t * 16, sag = 0.5 * Math.sin((t * 2 % 1) * Math.PI); pts.push([s * (HW + 0.12), deckY(z) + 0.55 - sag, z]); }
+    P.tube('rope', pts, 0.045, 5, { cap: false });
+    for (const z of [12, 20]) P.tube('rust', [[s * (HW + 0.5), -1.2, z - 0.6], [s * (HW + 0.5), -3.4, z - 0.6]], 0.4, 8);
   }
   const g = new Glb();
-  const mi = { band: g.material('band', 0.45), dark: g.material('dark', 0.7) };
-  g.materials[mi.band].pbrMetallicRoughness.baseColorFactor = [0.95, 0.62, 0.08, 1];
-  g.materials[mi.dark].pbrMetallicRoughness.baseColorFactor = [0.07, 0.08, 0.1, 1];
+  const mi = { plate: g.material('plate', 0.82, 0.05), plate2: g.material('plate2', 0.86, 0.05), rust: g.material('rust', 0.92, 0), seam: g.material('seam', 0.9, 0), paint: g.material('paint', 0.62), pale: g.material('pale', 0.68), steel: g.material('steel', 0.62, 0.3), wet: g.material('wet', 0.55, 0.1), rope: g.material('rope', 0.95) };
+  const col = { plate: [0.27, 0.28, 0.27], plate2: [0.21, 0.22, 0.22], rust: [0.27, 0.15, 0.09], seam: [0.1, 0.1, 0.1], paint: [0.92, 0.38, 0.05], pale: [0.85, 0.82, 0.72], steel: [0.3, 0.31, 0.33], wet: [0.05, 0.07, 0.055], rope: [0.5, 0.42, 0.28] };
+  for (const k of Object.keys(mi)) { g.materials[mi[k]].pbrMetallicRoughness.baseColorFactor = [...col[k], 1]; g.materials[mi[k]].doubleSided = true; }
   g.sceneNodes.push(g.node({ name: 'Ramp', mesh: g.mesh('ramp', P.prims(mi)) }));
   g.write(join(OUT, 'ramp.glb'));
+  console.log('ramp', P.tris(), 'tris');
 }
 
 // ── a slalom buoy: y = 0 is the waterline; part 'band' takes the side's colour ──

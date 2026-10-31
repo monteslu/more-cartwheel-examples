@@ -102,7 +102,8 @@ return {
     ['rock', 'rock', [0.52, 0.47, 0.45], 0.075],
     ['grass', 'grass', [0.42, 0.74, 0.32], 0.09],
   ],
-  ramps: [219, 647, 1507, 2224],
+  ramp_count: 9,
+  ramp_top: 5,
   // the lighthouse: on the top of the islet in the north-east
   landmark: { model: 'lighthouse', where: (x, z) => x > 120 && x < 420 && z > -340 && z < -80 },
   // the sea: direction, wavelength, amplitude at no swell, amplitude per unit of swell, steepness

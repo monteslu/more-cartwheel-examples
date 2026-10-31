@@ -294,7 +294,18 @@ static const float sound_buoys[][4] = { /* x, z, side (+1: pass with the buoy on
 {-712.80f,87.45f,-1.0f,3107.4f},
 {-654.58f,166.31f,1.0f,3204.6f}
 };
-static const float sound_ramps[] = { 330.0f, 2392.0f, 2864.0f, 1088.0f };
+static const float sound_ramps[][5] = { /* x, z, yaw, s, how far off the racing line */
+{-389.73f,288.92f,1.2622f,232.5f,20.0f},
+{-137.52f,356.48f,1.6824f,492.0f,20.0f},
+{113.37f,214.44f,2.2077f,783.0f,20.0f},
+{284.34f,173.79f,1.5269f,950.2f,20.0f},
+{152.81f,-176.23f,-2.1462f,1868.4f,0.0f},
+{2.92f,-272.42f,-1.9952f,2047.1f,0.0f},
+{-265.84f,-346.75f,-1.6257f,2327.9f,0.0f},
+{-533.45f,-302.57f,-1.1535f,2602.2f,0.0f},
+{-745.56f,-137.29f,-0.4801f,2868.9f,20.0f},
+{-671.73f,113.29f,0.8070f,3156.0f,20.0f}
+};
 static const course_scatter sound_scatter[] = {
 { "res://models/pine.glb", "course/sound/pines.u8", 0.03f, 0.7f, 1.5f, 800.0f, 177, false, 0.1f },
 { "res://models/rock0.glb", "course/sound/boulders.u8", 0.25f, 0.7f, 2.6f, 700.0f, 179, true, 0.9f },
@@ -324,7 +335,7 @@ static const char *const sound_props[][3] = {
 };
 static const course_def sound_course = {
   .id = "sound", .name = "Cold Sound", .quads = 896, .spacing = 2.0f, .minh = -48.0f, .maxh = 170.0f, .len = 3268.00f,
-  .track_n = 256, .track = sound_track, .buoy_n = 35, .buoys = sound_buoys, .ramp_n = 4, .ramp_s = sound_ramps,
+  .track_n = 256, .track = sound_track, .buoy_n = 35, .buoys = sound_buoys, .ramp_n = 10, .ramps = sound_ramps, .ramp_top = 6.5f,
   .scatter_n = 4, .scatter = sound_scatter, .prop_n = 19, .props = sound_props,
   .layer = { "course/sound/shingle", "course/sound/tiderock", "course/sound/granite", "course/sound/moss" }, .layer_uv = { 0.2f, 0.1f, 0.06f, 0.09f },
   .heights = "course/sound/heights.r16", .control = "course/sound/control.u32", .mask = "course/sound/wavemask.f32", .mask_n = 256, .map_n = 448, .sky = "res://textures/sky-sound.png",

@@ -12,7 +12,7 @@
 #include "cartwheel/scene_file.h"
 #include "game.h"
 
-static cw_node craft_n[RACERS], rider_n[RACERS], buoy_n[BUOY_MAX], ramp_n[RAMP_MAX];
+static cw_node craft_n[RACERS], rider_n[RACERS], buoy_n[BUOY_MAX];
 static t3_object *bars_o[RACERS];
 static t3_material *band_mat[2], *lamp_mat[2];
 static float buoy_phase[BUOY_MAX];
@@ -227,6 +227,47 @@ static void land_init(cw_node root) {
   }
 }
 
+/* the ramps: every part of the model instanced over the course's ramps. They stand still, so this runs when a course loads */
+#define RAMP_PARTS 12 /* one per material */
+static t3_instanced_mesh *ramp_parts[RAMP_PARTS];
+static int ramp_part_n;
+static void ramps_apply(void) {
+  for (int p = 0; p < ramp_part_n; p++) {
+    t3_instanced_mesh *im = ramp_parts[p];
+    im->count = RAMPS;
+    for (int r = 0; r < RAMPS; r++) {
+      t3_mat4 m;
+      t3_mat4_compose(&m, (t3_vec3){ DEF->ramps[r][0], DEF->ramp_top, DEF->ramps[r][1] }, t3_quat_from_euler((t3_euler){ 0, DEF->ramps[r][2], 0, T3_YXZ }), (t3_vec3){ 1, 1, 1 });
+      t3_instanced_mesh_set_matrix_at(im, r, &m);
+    }
+    if (im->instance_matrix) im->instance_matrix->version++; /* a second course's places must reach the GPU */
+  }
+}
+static void ramps_init(cw_node root) {
+  t3_object *src = cw_gltf_instantiate(cw_res_load("res://models/ramp.glb", CW_RES_GLTF));
+  t3_object *stack[16];
+  int sp = 0;
+  stack[sp++] = src;
+  while (sp > 0) {
+    t3_object *o = stack[--sp];
+    if (o->type == T3_MESH && ramp_part_n < RAMP_PARTS) {
+      t3_mesh *m = (t3_mesh *)o;
+      t3_instanced_mesh *im = t3_instanced_mesh_new(m->geometry, m->materials[0], RAMP_MAX);
+      ((t3_object *)im)->cast_shadow = true, ((t3_object *)im)->receive_shadow = true;
+      char name[24];
+      snprintf(name, sizeof name, "RampPart%d", ramp_part_n);
+      model_node(root, name, (t3_object *)im);
+      t3_sphere everywhere = { { 0, 0, 0 }, 4000 };
+      t3_instanced_mesh_set_bounding_sphere(im, &everywhere);
+      ramp_parts[ramp_part_n++] = im;
+      t3_release(im);
+    }
+    for (int i = 0; i < o->child_count && sp < 16; i++) stack[sp++] = o->children[i];
+  }
+  t3_release(src);
+  ramps_apply();
+}
+
 /* the marks and the look of the course in G.level */
 static void marks_apply(cw_node root) {
   if (cw_node_valid(landmark_n)) cw_node_free(landmark_n);
@@ -284,6 +325,7 @@ void view_course_apply(void) {
   sky_apply();
   marks_apply(root);
   props_apply(root);
+  ramps_apply();
   g_marks_stale = true;
 }
 
@@ -366,15 +408,7 @@ void view_init(void) {
     t3_release(o);
     buoy_phase[b] = (float)b * 1.7f;
   }
-  { cw_res rr = cw_res_load("res://models/ramp.glb", CW_RES_GLTF);
-    for (int r = 0; r < RAMP_MAX; r++) {
-      char name[24];
-      snprintf(name, sizeof name, "Ramp%d", r);
-      t3_object *o = cw_gltf_instantiate(rr);
-      shadows(o);
-      ramp_n[r] = model_node(root, name, o);
-      t3_release(o);
-    } }
+  ramps_init(root);
   /* the lighthouse stands on the islet's top, the gate floats on the line */
   {
     marks_apply(root);
@@ -499,7 +533,9 @@ void view_tick(float dt) {
   float back = 4.0f + c->speed * 0.035f, up = 1.6f + c->speed * 0.012f;
   float wx = c->x - bx * back, wz = c->z - bz * back;
   float wh = cw_water_height_at(G.water, wx, wz, G.wt);
-  float wy = (c->y * 0.45f + wh * 0.55f) + up;
+  /* up after a jump: the camera rises with the craft, so the air is seen and the craft stays in the picture */
+  float rise = c->y - wh > 2.0f ? 0.8f : 0.45f;
+  float wy = (c->y * rise + wh * (1.0f - rise)) + up;
   if (wy < wh + 1.25f) wy = wh + 1.25f;
   float kx = 1.0f - cw_exp(-dt * 18.0f), ky = 1.0f - cw_exp(-dt * 5.5f);
   if (G.tick < 3 || G.cam[0] == 0) kx = ky = 1;
@@ -507,9 +543,11 @@ void view_tick(float dt) {
   G.cam[2] += (wz - G.cam[2]) * kx;
   G.cam[1] += (wy - G.cam[1]) * ky;
   if (G.cam[1] < wh + 1.1f) G.cam[1] = wh + 1.1f;
+  /* and never through a ramp's deck */
+  { float deck; if (ramp_over(G.cam[0], G.cam[2], &deck) && G.cam[1] < deck + 1.4f) G.cam[1] = deck + 1.4f; }
   /* the rubric's check: the chase camera at its own x, z is never under the water */
   if (G.cam[1] < cw_water_height_at(G.water, G.cam[0], G.cam[2], G.wt)) G.cam_under++;
-  float lx = c->x + sy * 7.0f, lz = c->z + cy * 7.0f, ly = c->y * 0.7f + cw_water_height_at(G.water, lx, lz, G.wt) * 0.3f + 1.0f;
+  float lx = c->x + sy * 7.0f, lz = c->z + cy * 7.0f, ly = (c->y - wh > 2.0f ? c->y : c->y * 0.7f + cw_water_height_at(G.water, lx, lz, G.wt) * 0.3f) + 1.0f;
   float kl = 1.0f - cw_exp(-dt * 8.0f);
   if (G.tick < 3 || G.look[0] == 0) kl = 1;
   G.look[0] += (lx - G.look[0]) * kl;
@@ -533,7 +571,6 @@ void view_sync(double alpha) {
       shown = now, g_marks_stale = false;
       for (int i = 0; i < RACERS; i++) cw_node_set(craft_n[i], "visible", cw_val_bool(racer_on(i)));
       for (int b = 0; b < BUOY_MAX; b++) cw_node_set(buoy_n[b], "visible", cw_val_bool(b < BUOY_N && buoy_on(b)));
-      for (int r = 0; r < RAMP_MAX; r++) cw_node_set(ramp_n[r], "visible", cw_val_bool(r < RAMPS));
     } }
   for (int i = 0; i < RACERS; i++) {
     const craft *c = &G.c[i];
@@ -546,13 +583,6 @@ void view_sync(double alpha) {
     rider_pose(i, c, a);
   }
   double wt = cw_water_time(G.water) + (a - 1.0f) * (1.0f / 60.0f);
-  for (int r = 0; r < RAMPS; r++) {
-    /* the sim's plane: the height, tilt along and across at the ramp's centre, the same formula as sim.c's deck */
-    float h, ta, tl;
-    ramp_pose(r, wt, &h, &ta, &tl);
-    cw_node3d_set_position(ramp_n[r], (t3_vec3){ G.ramp_x[r], h, G.ramp_z[r] });
-    cw_node3d_set_quaternion(ramp_n[r], t3_quat_from_euler((t3_euler){ -cw_atan2(ta, 1.0f), G.ramp_yaw[r], -cw_atan2(tl, 1.0f), T3_YXZ }));
-  }
   for (int b = 0; b < BUOY_N; b++) {
     cw_water_sample s;
     cw_water_sample_at(G.water, BUOYS[b][0], BUOYS[b][1], wt, &s);

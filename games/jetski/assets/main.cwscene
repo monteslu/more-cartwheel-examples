@@ -81,6 +81,7 @@ foam_fade = 0.36
 foam_spread = 0.55
 caustic_size = 7
 caustics = 0.7
+underwater = false
 resolution_scale = 0.5
 
 [node name="Fx" parent="." type="Node3D"]

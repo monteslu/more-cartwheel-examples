@@ -50,7 +50,7 @@ const onTop = run(HULL(''), [TH], 1200), under = run(HULL('ride_top 0;'), [TH], 
 check('the hull rides on top of the biggest sea', onTop['p0.sink_max'] <= 0.33, `deepest ${f2(onTop['p0.sink_max'])} m`);
 check('control: on its spring alone it sinks', under['p0.sink_max'] > 0.5, `deepest ${f2(under['p0.sink_max'])} m`);
 // a ramp on the line throws the hull high and long enough for a trick; beside it nothing happens; the trick lands
-const onRamp = run('ramp 1 30', [TH], 240), beside = run('ramp 1 30 14', [TH], 240), trick = run('ramp 1 30', [{ frame: 4, buttons: [TH] }, { frame: 12, buttons: [TH, 'west'] }, { frame: 13, buttons: [TH] }], 240);
+const onRamp = run('ramp 1 30', [TH], 480), beside = run('ramp 1 30 22', [TH], 480), trick = run('ramp 1 30', [{ frame: 4, buttons: [TH] }, { frame: 23, buttons: [TH, 'west'] }, { frame: 24, buttons: [TH] }], 480);
 check('JT1 a ramp gives big air', onRamp['p0.ramps'] >= 1 && onRamp['p0.air_max'] >= 1.0, `${onRamp['p0.ramps']} ramp, ${f2(onRamp['p0.air_max'])} s in the air`);
 check('JT1 control: beside the ramp, no ramp', beside['p0.ramps'] === 0 && beside['p0.air_max'] < onRamp['p0.air_max'] * 0.6, `${beside['p0.ramps']} ramps, ${f2(beside['p0.air_max'])} s`);
 check('JT2 a trick in that air completes', trick['p0.tricks'] >= 1 && trick['p0.spills'] === 0, `${trick['p0.tricks']} tricks, ${trick['p0.spills']} spills`);
