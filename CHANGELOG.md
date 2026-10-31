@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.12.6
+
+- jetski: each course now has 12 ramps, with a cluster of three side by side where the
+  course opens up and two shortcut ramps well off the racing line, aimed at the correct
+  side of the next buoy.
+- jetski: computer riders miss fewer buoys around the ramps on Cold Sound.
+
 ## 0.12.5
 
 - Street Toughs: all 18 characters have human heads and human proportions, about 7.5 heads
