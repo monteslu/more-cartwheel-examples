@@ -126,5 +126,28 @@
       "vsGl": 0.08
     },
     "note": "a pad with no seat presses A on the setup panel and takes a seat; control: no press"
+  },
+  {
+    "name": "start-panels-arenafps-unplug",
+    "app": "arenafps",
+    "frames": 110,
+    "input": "start-panels-arenafps-unplug.json",
+    "controlInput": "start-panels-arenafps-unplug-control.json",
+    "hosts": [
+      "native"
+    ],
+    "minColors": 50,
+    "maxGt16": 0.08,
+    "fields": [
+      "shell.screen",
+      "shell.players",
+      "game.state"
+    ],
+    "expect": {
+      "shell.screen": 3,
+      "shell.players": 1,
+      "game.state": 0
+    },
+    "note": "a pad takes a seat on the panel and is then unplugged: its seat frees by itself, as in play; control: it stays plugged in, two players. Not on romdev: its ports are all connected"
   }
 ]

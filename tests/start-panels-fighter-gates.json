@@ -120,5 +120,29 @@
       "game.state": 1
     },
     "note": "Start on the result screen is a rematch, no pause; control: no press, still on the result screen"
+  },
+  {
+    "name": "start-panels-fighter-unplug",
+    "app": "fighter",
+    "assets": "games/fighter/assets",
+    "frames": 110,
+    "input": "start-panels-fighter-unplug.json",
+    "controlInput": "start-panels-fighter-unplug-control.json",
+    "hosts": [
+      "native"
+    ],
+    "minColors": 50,
+    "maxGt16": 0.08,
+    "fields": [
+      "shell.screen",
+      "shell.players",
+      "game.state"
+    ],
+    "expect": {
+      "shell.screen": 3,
+      "shell.players": 1,
+      "game.state": 0
+    },
+    "note": "a pad takes a seat on the panel and is then unplugged: its seat frees by itself, as in play; control: it stays plugged in, two players. Not on romdev: its ports are all connected"
   }
 ]

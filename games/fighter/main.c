@@ -44,7 +44,7 @@ static struct {
   float shown_hp[2];
   float lag_hp[2];
   uint32_t ev_seen;
-  cw_action ui_start, ui_quit, a_left, a_right, a_up, a_down, fs_left, fs_right, fs_up, fs_down, dp_left, dp_right, dp_up, dp_down, a_p, a_k, a_g, a_pk, k_left, k_right, k_up, k_down, k_p, k_k, k_g, k_pk, tr_mode, tr_reset, tr_dummy, tr_boxes;
+  cw_action ui_start, ui_quit, ui_pause, a_left, a_right, a_up, a_down, fs_left, fs_right, fs_up, fs_down, dp_left, dp_right, dp_up, dp_down, a_p, a_k, a_g, a_pk, k_left, k_right, k_up, k_down, k_p, k_k, k_g, k_pk, tr_mode, tr_reset, tr_dummy, tr_boxes;
   t3_object *dbg_root;
   t3_mesh *dbg_box[10];
   int ndbg;
@@ -306,9 +306,12 @@ static void cmd_screen(int argc, const char **argv, cw_reply *r);
 #endif
 static void fixed(void *u, double dt) {
   (void)u; (void)dt;
-  /* the select and result panels are not play: Start confirms there (confirm), so the shell's Start-pauses never sees them */
+  /* the select and result panels are not play: Start confirms there (confirm), so the shell does not see that press and
+   * does not pause; every other tick it runs as usual, and a pad that goes away frees its seat */
   bool panel = cw_shell_screen_now() == CW_SHELL_PLAY && G.state != GS_MATCH;
-  if (!panel && !cw_shell_update()) return;
+  bool pause_press = false;
+  for (int p = 0; panel && p < cw_shell_players(); p++) pause_press |= cw_action_just_pressed(p, G.ui_pause);
+  if (!pause_press && !cw_shell_update()) return;
 #if defined(FIGHTER_AUTOPILOT) || defined(FIGHTER_SCRIPTED)
   static bool screen_env_done;
   if (!screen_env_done && getenv("FIGHTER_SCREEN")) { /* FIGHTER_SCREEN="select 1 3 0" or "result 0": the screen command at start */
@@ -926,6 +929,7 @@ static void init(void *u) {
   free(txt);
   cw_shell_init(&(cw_shell_desc){ .title = "Fighter", .subtitle = "one on one", .max_players = 2, .game_save_size = sizeof(save_t), .game_save_version = 1, .start = start,
                                   .sound = shell_sound, .screen_changed = screen_changed, .players_changed = players_changed, .font = G.font_bold, .accent = rgba(1, 0.5f, 0.3f, 1) });
+  G.ui_pause = cw_action_find("pause"); /* the shell's own, defined by cw_shell_init */
   SAVE = cw_shell_game_save();
 #if !defined(FIGHTER_AUTOPILOT) && !defined(FIGHTER_SCRIPTED)
   backdrop();

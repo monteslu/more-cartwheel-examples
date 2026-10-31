@@ -97,7 +97,7 @@ static struct game {
   int kill_streak[MAXH];
   cw_aim_state aim[MAXH];
   /* actions */
-  cw_action mv_l, mv_r, mv_f, mv_b, lk_l, lk_r, lk_u, lk_d, fire, jump, w_next, w_prev, sprint, ui_start, ui_back;
+  cw_action mv_l, mv_r, mv_f, mv_b, lk_l, lk_r, lk_u, lk_d, fire, jump, w_next, w_prev, sprint, ui_start, ui_back, ui_pause;
   /* nav cost */
   int path_requests, path_done;
   int path_links, link_jumps;  /* link waypoints in the paths bots took; jumps bots made up ledges */
@@ -2076,9 +2076,12 @@ static void game_step(void);
 static void ptest_update(void);
 static void fixed_update(void *user, double dt) {
   (void)user, (void)dt;
-  /* the setup and results panels are not play: Start confirms there (game_step), so the shell's Start-pauses never sees them */
+  /* the setup and results panels are not play: Start confirms there (game_step), so the shell does not see that press and
+   * does not pause; every other tick it runs as usual, and a pad that goes away frees its seat */
   bool panel = cw_shell_screen_now() == CW_SHELL_PLAY && (G.state == ST_SETUP || G.state == ST_OVER);
-  if (!panel && !cw_shell_update()) { rumble_stop_all(); return; } /* menus and pause: the motors stop */
+  bool pause_press = false;
+  for (int p = 0; panel && p < cw_shell_players(); p++) pause_press |= cw_action_just_pressed(p, G.ui_pause);
+  if (!pause_press && !cw_shell_update()) { rumble_stop_all(); return; } /* menus and pause: the motors stop */
 #ifdef ARENA_AUTOPILOT
   /* ARENA_SIM_BATCH=n: n game ticks per engine tick, for pacing and soak runs that measure the simulation only (every seat is a
    * bot, so no input is lost); the game time per drawn frame grows n times */
@@ -2694,7 +2697,7 @@ static void init(void *user) {
   G.bot_level = 1;
   G.aim_assist = 1;
   cw_shell_init(&(cw_shell_desc){ .title = "ARENA", .subtitle = "split screen shooter", .max_players = MAXH, .start = start, .sound = shell_sound, .players_changed = players_changed });
-  G.ui_back = cw_action_find("ui_back");
+  G.ui_back = cw_action_find("ui_back"), G.ui_pause = cw_action_find("pause");
   /* the persistent scene: environment, sun, post, lights, four cameras */
   G.env = cw_node_new("WorldEnvironment", "Env");
   cw_node_add_child(G.root, G.env);

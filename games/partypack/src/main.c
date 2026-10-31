@@ -86,7 +86,7 @@ static struct {
   float load_ms, start_ms;     /* measured: scene switch and the game's own setup (not in gates) */
 } G;
 
-static cw_action a_left, a_right, a_up, a_down, a_a, a_b, a_x, a_y, u_up, u_down, u_left, u_right, u_ok, u_back, u_start;
+static cw_action a_left, a_right, a_up, a_down, a_a, a_b, a_x, a_y, u_up, u_down, u_left, u_right, u_ok, u_back, u_start, u_pause;
 static bool just_resumed; /* the shell's join or pause screen closed this tick: the Start that closed it is not a press here */
 static cw_bus bus_music, bus_sfx;
 cw_bus pp_music_bus(void) { return bus_music; }
@@ -577,10 +577,13 @@ int pp_batch_active(void) { return batch_total != 0; }
 
 static void fixed_update(void *user, double dt) {
   (void)user, (void)dt;
-  /* the hub, the picker, the boards and the readying are panels, not play: Start confirms there (menu_ok), so the shell's
-   * Start-pauses never sees them. The countdown, the game and its finish pause as usual */
+  /* the hub, the picker, the boards and the readying are panels, not play: Start confirms there (menu_ok), so the shell does
+   * not see that press and does not pause; every other tick it runs as usual, and a pad that goes away frees its seat. The
+   * countdown, the game and its finish pause as usual */
   bool panel = cw_shell_screen_now() == CW_SHELL_PLAY && G.state != S_COUNT && G.state != S_PLAY && G.state != S_FINISH;
-  if (!panel && !cw_shell_update()) { pp_rumble_stop(); return; } /* the menus and pause: the motors stop */
+  bool pause_press = false;
+  for (int p = 0; panel && p < cw_shell_players(); p++) pause_press |= cw_action_just_pressed(p, u_pause);
+  if (!pause_press && !cw_shell_update()) { pp_rumble_stop(); return; } /* the menus and pause: the motors stop */
   pp_rumble_tick();
   if (G.state != S_PLAY && G.state != S_FINISH) pp_rumble_stop(); /* only play (and its finish) rumbles */
   /* join and leave in the middle of a session: a pad without a seat presses A and takes the CPU's seat at once (one
@@ -1012,7 +1015,7 @@ static void init(void *user) {
   });
   u_up = cw_action_find("ui_up"); u_down = cw_action_find("ui_down");
   u_left = cw_action_find("ui_left"); u_right = cw_action_find("ui_right");
-  u_ok = cw_action_find("ui_accept"); u_back = cw_action_find("ui_back"); u_start = cw_action_find("ui_start");
+  u_ok = cw_action_find("ui_accept"); u_back = cw_action_find("ui_back"); u_start = cw_action_find("ui_start"); u_pause = cw_action_find("pause");
   cw_tree_add_hook(cw_scene_app_tree(), 0, 900, hold_hook, NULL);
   bus_music = cw_shell_music_bus();
   bus_sfx = cw_shell_sfx_bus();
