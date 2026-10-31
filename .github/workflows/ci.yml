@@ -13,9 +13,9 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }} # a push to main never wipes out the run before it
 
 env:
-  GAMES: arenafps brawler coopplatformer fighter hordeshooter partypack skyfighter tuxracer
+  GAMES: arenafps brawler coopplatformer fighter hordeshooter jetski partypack skyfighter tuxracer
   # games with a self-playing <game>_auto cart (the others smoke-test their own cart)
-  AUTO_GAMES: arenafps brawler coopplatformer fighter hordeshooter partypack
+  AUTO_GAMES: arenafps brawler coopplatformer fighter hordeshooter jetski partypack
 
 # The games ship as dual GL + WebGPU carts (.wasc), built against the prebuilt
 # cart SDK pinned in scripts/deps.lock (cartwheel-engine's release asset):

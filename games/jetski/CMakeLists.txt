@@ -1,4 +1,4 @@
-# jetski (working name): a wave racing game on open water, 1 player and computer racers for now.
+# jetski: a wave racing game on open water, 1 player and computer racers for now.
 #   jetski       the game
 #   jetski_auto  a computer rider plays it (for hosts that send no input, and the gates)
 set(SRC src/main.c src/sim.c src/view.c src/rider.c src/fx.c src/hud.c src/audio.c)

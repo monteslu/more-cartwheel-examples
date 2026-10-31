@@ -91,9 +91,9 @@ controls and the power-up list).
 
 ### jetski
 
-![jetski: racing out of the lagoon at the end of the day, the wake and spray behind the rider](docs/screenshots/jetski.jpg)
+![jetski: the lagoon at the end of the day, the start gate ahead and the wake behind the rider](docs/screenshots/jetski.jpg)
 
-jetski (a working name), a wave racing game on one evening's water. Six riders race three laps around a volcanic
+jetski, a wave racing game on one evening's water. Six riders race three laps around a volcanic
 atoll, from a pale lagoon through a gap in the reef and out across open sea. The water is the track: its swells throw you
 into the air, the sea builds from lap to lap, and every buoy you pass on the correct side raises your top speed. One
 player and computer racers for now. See [its README](games/jetski/README.md).

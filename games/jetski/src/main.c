@@ -1,4 +1,4 @@
-/* jetski (working name): wave racing on a volcanic atoll. See README.md. */
+/* jetski: wave racing on a volcanic atoll. See README.md. */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -108,6 +108,7 @@ static void init(void *user) {
   cw_debug_i32("p0.meter", &G.c[0].meter);
   cw_debug_i32("p0.lap", &G.c[0].lap);
   cw_debug_i32("p0.place", &G.c[0].place);
+  cw_debug_i32("p0.next_buoy", &G.c[0].next_buoy);
   cw_debug_i32("p0.misses", &G.c[0].misses);
   cw_debug_i32("p0.passes", &G.c[0].passes);
   cw_debug_i32("p0.track_i", &G.c[0].track_i);

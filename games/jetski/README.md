@@ -1,4 +1,4 @@
-# jetski (working name)
+# jetski
 
 A wave racing game on one evening's water. Six riders race three laps around a volcanic atoll: out of a pale lagoon,
 through a gap in the reef, across open sea, past sea stacks and back in over the north pass. The water is the track. It

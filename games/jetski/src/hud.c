@@ -49,7 +49,6 @@ static void hud_body(void) {
   char buf[64];
   if (G.state == RACE_ATTRACT) {
     text(big, "JETSKI", w * 0.5f, h * 0.16f, 118 * u, white, 0.5f);
-    text(small, "working title", w * 0.5f, h * 0.285f, 30 * u, dim, 0.5f);
     float pulse = 0.65f + 0.35f * sinf((float)G.tick * 0.08f);
     text(small, "PRESS A OR ENTER", w * 0.5f, h * 0.86f, 40 * u, cw_rgba(1, 1, 1, pulse), 0.5f);
     return;

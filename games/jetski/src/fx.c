@@ -96,7 +96,7 @@ void fx_tick(float dt) {
     cw_node_set(tail[i], "direction", cw_val_vec3(-sy * 0.4f + c->vx * 0.012f, 0.85f, -cy * 0.4f + c->vz * 0.012f));
     cw_node_set(tail[i], "speed_min", cw_val_float(2.5f + 2.5f * k));
     cw_node_set(tail[i], "speed_max", cw_val_float(4 + 5.5f * k));
-    cw_node3d_set_position(mist[i], (t3_vec3){ sp.x, sp.y + 1, sp.z });
+    cw_node3d_set_position(mist[i], (t3_vec3){ sp.x - sy * 1.5f, sp.y + 0.5f, sp.z - cy * 1.5f });
     cw_node_set(mist[i], "emitting", cw_val_bool(on && v > 7));
     cw_node_set(mist[i], "direction", cw_val_vec3(c->vx * 0.05f, 0.6f, c->vz * 0.05f));
     cw_node_set(mist[i], "speed_min", cw_val_float(0.5f + 2 * k));
