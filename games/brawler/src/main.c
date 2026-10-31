@@ -284,7 +284,7 @@ static void init(void *user) {
   a_grab = cw_action_find("grab"), a_special = cw_action_find("special");
   cw_shell_init(&(cw_shell_desc){
     .title = "Street Toughs",
-    .subtitle = "four fighters, one street",
+    .subtitle = "they are tough and this is a street",
     .max_players = MAXP,
     .shared_screen = true,
     .start = start,

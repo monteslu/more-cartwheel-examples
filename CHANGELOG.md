@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.3
+
+- Street Toughs has a stupider subtitle: "they are tough and this is a street".
+
 ## 0.7.2
 
 - brawler is now called Street Toughs. The cart file is still `brawler.wasc`.
