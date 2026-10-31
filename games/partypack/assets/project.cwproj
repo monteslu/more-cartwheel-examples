@@ -8,6 +8,7 @@ input.move_right = key:d, key:right, pad:right, axis:lx+
 input.move_up = key:w, key:up, pad:up, axis:ly-
 input.move_down = key:s, key:down, pad:down, axis:ly+
 input.btn_a = key:space, key:return, pad:south
+input.ui_start = pad:start
 input.btn_b = key:lshift, key:rshift, pad:east
 input.btn_x = key:z, pad:west
 input.btn_y = key:x, pad:north

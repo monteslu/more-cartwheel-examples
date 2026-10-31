@@ -86,7 +86,8 @@ static struct {
   float load_ms, start_ms;     /* measured: scene switch and the game's own setup (not in gates) */
 } G;
 
-static cw_action a_left, a_right, a_up, a_down, a_a, a_b, a_x, a_y, u_up, u_down, u_left, u_right, u_ok, u_back;
+static cw_action a_left, a_right, a_up, a_down, a_a, a_b, a_x, a_y, u_up, u_down, u_left, u_right, u_ok, u_back, u_start;
+static bool just_resumed; /* the shell's join or pause screen closed this tick: the Start that closed it is not a press here */
 static cw_bus bus_music, bus_sfx;
 cw_bus pp_music_bus(void) { return bus_music; }
 cw_bus pp_sfx_bus(void) { return bus_sfx; }
@@ -132,7 +133,12 @@ static int menu_nav(void) { /* -2 up, 2 down, -1 left, 1 right, 0 none */
   if (any_human_pressed(u_right)) return 1;
   return 0;
 }
-static bool menu_ok(void) { return any_human_pressed(u_ok) || any_human_pressed(a_a); }
+static bool menu_start(int p) { return !just_resumed && cw_action_just_pressed(p, u_start); }
+static bool menu_ok(void) {
+  if (any_human_pressed(u_ok) || any_human_pressed(a_a)) return true;
+  for (int p = 0; p < NP; p++) if (G.human[p] && menu_start(p)) return true;
+  return false;
+}
 static bool menu_back(void) { return any_human_pressed(u_back) || any_human_pressed(a_b); }
 
 /* ── 3D scene switching ─────────────────────────────────────────────── */
@@ -498,8 +504,9 @@ static void on_background(cw_shell_screen s, cw_vec2 canvas, void *user) {
   stage_end();
 }
 static void on_screen(cw_shell_screen from, cw_shell_screen to, void *user) {
-  (void)from, (void)user;
+  (void)user;
   if (to == CW_SHELL_TITLE || to == CW_SHELL_JOIN) sfx_music(1);
+  just_resumed = to == CW_SHELL_PLAY && (from == CW_SHELL_JOIN || from == CW_SHELL_PAUSE);
 }
 
 /* ── per-tick play ──────────────────────────────────────────────────── */
@@ -570,7 +577,10 @@ int pp_batch_active(void) { return batch_total != 0; }
 
 static void fixed_update(void *user, double dt) {
   (void)user, (void)dt;
-  if (!cw_shell_update()) { pp_rumble_stop(); return; } /* the menus and pause: the motors stop */
+  /* the hub, the picker, the boards and the readying are panels, not play: Start confirms there (menu_ok), so the shell's
+   * Start-pauses never sees them. The countdown, the game and its finish pause as usual */
+  bool panel = cw_shell_screen_now() == CW_SHELL_PLAY && G.state != S_COUNT && G.state != S_PLAY && G.state != S_FINISH;
+  if (!panel && !cw_shell_update()) { pp_rumble_stop(); return; } /* the menus and pause: the motors stop */
   pp_rumble_tick();
   if (G.state != S_PLAY && G.state != S_FINISH) pp_rumble_stop(); /* only play (and its finish) rumbles */
   /* join and leave in the middle of a session: a pad without a seat presses A and takes the CPU's seat at once (one
@@ -581,9 +591,10 @@ static void fixed_update(void *user, double dt) {
     bool ask = cw_shell_join_requested();
     if (G.state == S_MENU || G.state == S_PICK || G.state == S_BOARD || G.state == S_RESULT || G.state == S_FINAL)
       for (int p = 0; p < NP; p++) if (G.human[p] && cw_action_just_pressed(p, a_y)) ask = true;
-    if (ask) { cw_shell_join_open(); return; }
+    if (ask) { just_resumed = false; cw_shell_join_open(); return; }
   }
   sim_step();
+  just_resumed = false;
 #ifdef PP_AUTOPILOT
   batch_run();
 #endif
@@ -609,6 +620,7 @@ static void sim_step(void) {
     if ((n == -1 || n == 1) && G.menu_item == 3) { SV->rounds_opt = (SV->rounds_opt + (n > 0 ? 1 : 2)) % 3; sfx(SFX_BLIP, 1, 1); cw_shell_save_commit(); }
     if ((n == -1 || n == 1) && G.menu_item == 4) { SV->skill = (SV->skill + (n > 0 ? 1 : 2)) % 3; sfx(SFX_BLIP, 1, 1); cw_shell_save_commit(); }
     if ((n == -1 || n == 1) && G.menu_item == 5) toggle_rumble();
+    if (menu_back() && !AUTO) { sfx(SFX_BACK, 1, 1); on_quit(NULL); cw_shell_to_title(); break; } /* no pause menu on the panels */
     if (menu_ok()) {
       sfx(SFX_SELECT, 1, 1);
       if (G.menu_item == 0) start_tournament();
@@ -646,7 +658,7 @@ static void sim_step(void) {
     break;
   }
   case S_INTRO: {
-    for (int p = 0; p < NP; p++) if (G.human[p] && !G.ready[p] && cw_action_just_pressed(p, a_a)) { G.ready[p] = true; sfx(SFX_COIN, 0.7f, 1.2f); }
+    for (int p = 0; p < NP; p++) if (G.human[p] && !G.ready[p] && (cw_action_just_pressed(p, a_a) || menu_start(p))) { G.ready[p] = true; sfx(SFX_COIN, 0.7f, 1.2f); }
     bool all = true;
     for (int p = 0; p < NP; p++) all = all && G.ready[p];
     if (AUTO && G.st_ticks > 20) all = true;
@@ -724,7 +736,7 @@ static void draw_menu(void) {
     if (v[0]) ui_text(v, cw_v2(r.x + r.w - 28, r.y + 6), 34, tc, CW_ALIGN_RIGHT);
   }
   char s[96];
-  snprintf(s, sizeof s, "%d player%s + %d CPU     new pad: A joins     Y: join or leave", G.humans, G.humans == 1 ? "" : "s", NP - G.humans);
+  snprintf(s, sizeof s, "%d player%s + %d CPU     new pad: A joins     Y: join or leave     B: title", G.humans, G.humans == 1 ? "" : "s", NP - G.humans);
   ui_text(s, cw_v2(STAGE_W / 2, 668), 26, cw_rgba(1, 1, 1, 0.85f), CW_ALIGN_CENTER);
 }
 
@@ -1000,7 +1012,7 @@ static void init(void *user) {
   });
   u_up = cw_action_find("ui_up"); u_down = cw_action_find("ui_down");
   u_left = cw_action_find("ui_left"); u_right = cw_action_find("ui_right");
-  u_ok = cw_action_find("ui_accept"); u_back = cw_action_find("ui_back");
+  u_ok = cw_action_find("ui_accept"); u_back = cw_action_find("ui_back"); u_start = cw_action_find("ui_start");
   cw_tree_add_hook(cw_scene_app_tree(), 0, 900, hold_hook, NULL);
   bus_music = cw_shell_music_bus();
   bus_sfx = cw_shell_sfx_bus();

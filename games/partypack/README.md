@@ -7,7 +7,9 @@ mini-game can be played by four CPUs on their own.
 ## How it plays
 
 The title, player join, pause and settings screens are the engine's game
-shell: each pad joins with A, Start pauses.
+shell: each pad joins with A. Start pauses a game; on the hub, the boards and
+the other panels between games it confirms, like A, and B on the hub goes back
+to the title.
 
 After joining you get the hub:
 

@@ -1,0 +1,199 @@
+[
+  {
+    "name": "start-panels-partypack-hub",
+    "app": "partypack",
+    "assets": "games/partypack/assets",
+    "frames": 110,
+    "input": "start-panels-partypack-hub.json",
+    "controlInput": "start-panels-partypack-hub-control.json",
+    "hosts": [
+      "native",
+      "romdev"
+    ],
+    "minColors": 50,
+    "maxGt16": 0.08,
+    "fields": [
+      "shell.screen",
+      "shell.players",
+      "game.state",
+      "game.round"
+    ],
+    "expect": {
+      "shell.screen": 3,
+      "game.state": 1
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ],
+      "maxGt16": 0.08,
+      "vsGl": 0.08
+    },
+    "note": "Start on the hub accepts the highlighted item (Free Play opens the picker), no pause; control: no press"
+  },
+  {
+    "name": "start-panels-partypack-picker",
+    "app": "partypack",
+    "assets": "games/partypack/assets",
+    "frames": 130,
+    "input": "start-panels-partypack-picker.json",
+    "controlInput": "start-panels-partypack-picker-control.json",
+    "hosts": [
+      "native",
+      "romdev"
+    ],
+    "minColors": 50,
+    "maxGt16": 0.08,
+    "fields": [
+      "shell.screen",
+      "shell.players",
+      "game.state",
+      "game.round"
+    ],
+    "expect": {
+      "shell.screen": 3,
+      "game.state": 4
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ],
+      "maxGt16": 0.08,
+      "vsGl": 0.08
+    },
+    "note": "Start on the picker chooses the game and shows its intro; control: no second press"
+  },
+  {
+    "name": "start-panels-partypack-intro",
+    "app": "partypack",
+    "assets": "games/partypack/assets",
+    "frames": 170,
+    "input": "start-panels-partypack-intro.json",
+    "controlInput": "start-panels-partypack-intro-control.json",
+    "hosts": [
+      "native",
+      "romdev"
+    ],
+    "minColors": 50,
+    "maxGt16": 0.08,
+    "fields": [
+      "shell.screen",
+      "shell.players",
+      "game.state",
+      "game.round"
+    ],
+    "expect": {
+      "shell.screen": 3,
+      "game.state": 5
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ],
+      "maxGt16": 0.08,
+      "vsGl": 0.08
+    },
+    "note": "Start on the intro readies the player and the countdown runs; control: no third press"
+  },
+  {
+    "name": "start-panels-partypack-count-pauses",
+    "app": "partypack",
+    "assets": "games/partypack/assets",
+    "frames": 190,
+    "input": "start-panels-partypack-count-pauses.json",
+    "controlInput": "start-panels-partypack-count-pauses-control.json",
+    "hosts": [
+      "native",
+      "romdev"
+    ],
+    "minColors": 50,
+    "maxGt16": 0.08,
+    "fields": [
+      "shell.screen",
+      "shell.players",
+      "game.state",
+      "game.round"
+    ],
+    "expect": {
+      "shell.screen": 4,
+      "game.state": 5
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ],
+      "maxGt16": 0.08,
+      "vsGl": 0.08
+    },
+    "note": "the countdown is play: Start pauses; control: no press"
+  },
+  {
+    "name": "start-panels-partypack-hub-back",
+    "app": "partypack",
+    "assets": "games/partypack/assets",
+    "frames": 90,
+    "input": "start-panels-partypack-hub-back.json",
+    "controlInput": "start-panels-partypack-hub-back-control.json",
+    "hosts": [
+      "native",
+      "romdev"
+    ],
+    "minColors": 50,
+    "maxGt16": 0.08,
+    "fields": [
+      "shell.screen",
+      "shell.players",
+      "game.state",
+      "game.round"
+    ],
+    "expect": {
+      "shell.screen": 1
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ],
+      "maxGt16": 0.08,
+      "vsGl": 0.08
+    },
+    "note": "B on the hub goes out to the title; control: no press"
+  },
+  {
+    "name": "start-panels-partypack-board",
+    "app": "partypack",
+    "assets": "games/partypack/assets",
+    "frames": 280,
+    "input": "start-panels-partypack-board.json",
+    "controlInput": "start-panels-partypack-board-control.json",
+    "hosts": [
+      "native",
+      "romdev"
+    ],
+    "minColors": 50,
+    "maxGt16": 0.08,
+    "fields": [
+      "shell.screen",
+      "shell.players",
+      "game.state",
+      "game.round"
+    ],
+    "expect": {
+      "shell.screen": 3,
+      "game.state": 4
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ],
+      "maxGt16": 0.08,
+      "vsGl": 0.08
+    },
+    "note": "Start on the tournament board goes on to the next game's intro; control: no press, still on the board"
+  }
+]
