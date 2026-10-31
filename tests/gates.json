@@ -164,7 +164,6 @@
   {
     "name": "arenafps-match",
     "app": "arenafps_auto",
-    "startCmds": ["quality high"],
     "frames": 1200,
     "maxGt16": 0.08,
     "fields": [
@@ -228,7 +227,7 @@
     "name": "arenafps-coop",
     "app": "arenafps_auto",
     "frames": 1800,
-    "startCmds": ["quality high", "match 1 2 0 3"
+    "startCmds": ["match 1 2 0 3"
     ],
     "maxGt16": 0.08,
     "fields": [
@@ -265,7 +264,7 @@
       "stats.kills": 14,
       "views": 3
     },
-    "controlStartCmds": ["quality high", "match 1 2 0 2"
+    "controlStartCmds": ["match 1 2 0 2"
     ],
     "webgpu": {
       "vsGl": 0.3,
@@ -282,7 +281,7 @@
     "name": "arenafps-tdm",
     "app": "arenafps_auto",
     "frames": 1800,
-    "startCmds": ["quality high", "match 2 1 4 4"
+    "startCmds": ["match 2 1 4 4"
     ],
     "maxGt16": 0.08,
     "fields": [
@@ -318,7 +317,7 @@
       "stats.kills": 13,
       "views": 4
     },
-    "controlStartCmds": ["quality high", "match 2 1 4 3"
+    "controlStartCmds": ["match 2 1 4 3"
     ],
     "webgpu": {
       "vsGl": 0.3,
@@ -334,7 +333,6 @@
   {
     "name": "arenafps-recoil",
     "app": "arenafps",
-    "startCmds": ["quality high"],
     "frames": 1000,
     "input": "arenafps-recoil.json",
     "webgpu": { "vsGl": 0.4, "maxGt16": 0.08, "hosts": ["native", "romdev", "chromium"] },
@@ -348,7 +346,6 @@
   {
     "name": "arenafps-camera",
     "app": "arenafps",
-    "startCmds": ["quality high"],
     "frames": 1600,
     "input": "arenafps-camera.json",
     "webgpu": {
