@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.0
+
+- All 8 games now run on cartwheel-engine v0.25.0 (three.c v0.187.2, three.js
+  r187). Gameplay is unchanged. The visible differences are very small: the
+  largest is in arenafps, where about 1.5% of pixels shift slightly on metal
+  and walls. Every game was checked on both GL and WebGPU.
+- arenafps: split screen costs less GPU time on the new engine, most of all on
+  WebGPU (11.9 ms down to 8.9 ms with four players in a short test on a Radeon
+  890M at 1080p).
+
 ## 0.5.3
 
 - coopplatformer: no more fire floating in the air: each flame sits in its
