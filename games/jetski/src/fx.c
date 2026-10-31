@@ -51,13 +51,13 @@ void fx_init(cw_node parent) {
   }
   /* the sheets a planing hull throws to each side: soft broad curtains with fine droplets flying out of their tops */
   for (int s = 0; s < 2; s++) {
-    sheet[s] = emitter(parent, s ? "SheetR" : "SheetL", 200, 0.5f, 0.26f, "0 1 1 1 0, 0.12 1 1 1 0.3, 0.6 1 1 1 0.14, 1 1 1 1 0", "0 0.3, 0.4 1, 1 1.5", 600 + s, false);
+    sheet[s] = emitter(parent, s ? "SheetR" : "SheetL", 120, 0.6f, 0.7f, "0 1 1 1 0, 0.15 1 1 1 0.09, 0.6 1 1 1 0.05, 1 1 1 1 0", "0 0.3, 0.4 1, 1 1.5", 600 + s, false);
     cw_node_set(sheet[s], "texture", cw_val_string("effects/mist.png"));
     cw_node_set(sheet[s], "camera_fade", cw_val_float(2.2f));
     cw_node_set(sheet[s], "soft_distance", cw_val_float(0.3f));
     cw_node_set(sheet[s], "energy", cw_val_float(1.15f));
     cw_node_set(sheet[s], "spread", cw_val_float(14));
-    sheet_fine[s] = emitter(parent, s ? "SheetFineR" : "SheetFineL", 500, 0.75f, 0.011f, "0 1 1 1 0.9, 0.6 1 1 1 0.6, 1 1 1 1 0", NULL, 620 + s, true);
+    sheet_fine[s] = emitter(parent, s ? "SheetFineR" : "SheetFineL", 1300, 0.7f, 0.012f, "0 1 1 1 0.9, 0.6 1 1 1 0.6, 1 1 1 1 0", NULL, 620 + s, true);
     cw_node_set(sheet_fine[s], "energy", cw_val_float(1.6f));
     cw_node_set(sheet_fine[s], "spread", cw_val_float(18));
     cw_node_set(sheet_fine[s], "camera_fade", cw_val_float(3));
@@ -158,8 +158,8 @@ void fx_tick(float dt) {
       }
       float rx = cy, rz = -sy;
       cw_water_wake(G.water, c->x - sy * 1.3f, c->z - cy * 1.3f, c->vx, c->vz, 0.5f, 0.045f + 0.03f * k, 0.35f + 0.4f * k);
-      cw_water_wake(G.water, c->x + rx * 0.6f + sy * 0.3f, c->z + rz * 0.6f + cy * 0.3f, c->vx, c->vz, 0.3f, 0.03f * k, 0.4f * k);
-      cw_water_wake(G.water, c->x - rx * 0.6f + sy * 0.3f, c->z - rz * 0.6f + cy * 0.3f, c->vx, c->vz, 0.3f, 0.03f * k, 0.4f * k);
+      cw_water_wake(G.water, c->x + rx * 0.6f + sy * 0.3f, c->z + rz * 0.6f + cy * 0.3f, c->vx, c->vz, 0.34f, 0.035f * k, 0.6f * k);
+      cw_water_wake(G.water, c->x - rx * 0.6f + sy * 0.3f, c->z - rz * 0.6f + cy * 0.3f, c->vx, c->vz, 0.34f, 0.035f * k, 0.6f * k);
     }
     if (c->big_splash) {
       t3_vec3 at = { c->x, c->surf + 0.1f, c->z };

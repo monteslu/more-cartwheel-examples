@@ -63,7 +63,7 @@ function height(x, z) {
   // the crater's rim: walls to the west and south-west, low cays to the east
   const wall = Math.pow(0.5 + 0.5 * Math.cos(a - Math.PI * 0.95), 1.4);
   const rimH = 5 + 26 * smooth(0.4, 0.75, fbm(Math.cos(a) * 5 + 2, Math.sin(a) * 5, 3, 22)) + 150 * wall * (0.55 + 0.75 * fbm(Math.cos(a) * 3, Math.sin(a) * 3, 3, 21));
-  const w = 46 + 72 * wall;
+  const w = 60 + 125 * wall;
   const g = Math.exp(-Math.pow((r0 - R - 8 * wall) / w, 2));
   let rim = (rimH + 3) * g - 3;
   if (wall > 0.05) rim += g * wall * 34 * (ridged(x * 0.018, z * 0.018, 5, 31) - 0.5) * 2;
@@ -74,6 +74,8 @@ function height(x, z) {
     const k = smooth(1.5, 12, y);
     y += k * ((ridged(x * 0.03, z * 0.03, 5, 61) - 0.55) * 13 * (0.35 + 0.65 * smooth(8, 50, y)) + (fbm(x * 0.14, z * 0.14, 3, 62) - 0.5) * 3.2);
   }
+  // rock strata: ledges across the slope, so a wall reads as layers, not as streaks down it
+  if (y > 6) { const bands = fbm(x * 0.01 + 2, z * 0.01, 2, 63) * 22; y += smooth(6, 30, y) * 1.7 * Math.sin((y + bands) * 0.42); }
   // sea stacks
   for (const [sx, sz, h, sw] of STACKS) {
     const d = Math.hypot(x - sx, z - sz) * (0.8 + 0.7 * fbm(x * 0.07 + sx, z * 0.07, 3, 41));
