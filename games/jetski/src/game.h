@@ -14,6 +14,11 @@
 #define LAPS 3
 #define TAU 6.2831853f
 #define LEVELS 1
+#define RAMPS 4
+#define RAMP_HALF_LEN 4.0f
+#define RAMP_HALF_W 2.6f
+#define RAMP_LOW (-0.2f)   /* the deck's height over the water at its lip */
+#define RAMP_TOP 1.9f      /* and at its top edge */
 #define LEVEL_NAME_LIST { "Crater Atoll" }
 static const char *const RIDER_NAMES[6] = { "You", "Marlin", "Kestrel", "Tide", "Juno", "Reef" };
 extern int g_difficulty; /* 0 easy, 1 normal, 2 hard */
@@ -51,6 +56,8 @@ typedef struct craft {
   craft_input in;
   bool human;
   bool bump;                      /* hit the ground this tick */
+  bool on_ramp;                   /* on a ramp's deck this tick */
+  bool trick_held;                /* the trick button last tick */
   bool big_slide;                 /* the slide that threw the rider */
   int wake_hit;                   /* riding over a rival's wake */
   int beached;                    /* ticks on land */
@@ -66,6 +73,8 @@ typedef struct craft {
   int dq;                         /* 1 too many misses, 2 left the course */
   int ok_tick;                    /* passed a buoy this tick: which, plus one */
   float sink_max;                 /* deepest the hull's centre has been under the surface (m) */
+  int ramps;                      /* ramps taken */
+  float air_max;                  /* longest time in the air (s) */
 } craft;
 
 typedef struct game {
@@ -84,6 +93,8 @@ typedef struct game {
   float cam[3], cam_prev[3], look[3], look_prev[3], cam_fov, cam_fov_prev;
   float cam_orbit;  /* the attract loop's cut timer */
   int cam_mode;
+  float ramp_x[RAMPS], ramp_z[RAMPS], ramp_yaw[RAMPS], ramp_h[RAMPS], ramp_ta[RAMPS], ramp_tl[RAMPS]; /* place; and this tick: height, tilt along and across */
+  int32_t ramp_gap; /* ticks any ramp's skirt showed above the water at a corner */
   int32_t cam_under; /* ticks the chase camera spent under the surface */
   int32_t attract_under, attract_land, attract_blocked, attract_hidden; /* ticks the attract camera was under water, in land, had land in its view of the craft, or a crest over the hull */
   uint32_t sim_hash;
@@ -99,6 +110,7 @@ bool racer_on(int i);     /* a time trial is the human alone */
 void sim_tick(float dt);
 float ground_at(float x, float z);
 void track_at(float s, float *x, float *z, float *dx, float *dz);
+void sim_ramp_start(int r, float back, float aside); /* the human lined up with a ramp, at speed */
 /* view.c */
 extern int g_attract_clear;
 void view_init(void);

@@ -10,12 +10,14 @@
 #include "cartwheel/pipeline.h"
 #include "cartwheel/platform.h"
 #include "cartwheel/project.h"
+#include "cartwheel/render3d.h"
 #include "cartwheel/render2d.h"
 #include "cartwheel/scene_file.h"
 #include "cartwheel/shell.h"
 #include "game.h"
 
 static float perf[7], sun_dbg[3];
+static int32_t gpu_programs; /* programs compiled so far: if this grows during play, the warm-up missed them */
 static cw_action a_left, a_right, a_back, a_fwd, a_throttle, a_trick;
 
 static void start(int players, void *user) {
@@ -135,6 +137,14 @@ static void cmd_ride_top(int argc, const char **argv, cw_reply *r) {
   g_ride_top = argc > 1 ? atoi(argv[1]) : 1;
   if (r) cw_reply_raw(r, "true");
 }
+/* ramp <index> [back metres] [aside metres]: the human lined up with a ramp at speed, the race running */
+static void cmd_ramp(int argc, const char **argv, cw_reply *r) {
+  menu_off();
+  G.state = RACE_ON;
+  if (G.clock < 1) G.clock = 1;
+  sim_ramp_start(argc > 1 ? atoi(argv[1]) % RAMPS : 0, argc > 2 ? (float)atof(argv[2]) : 40, argc > 3 ? (float)atof(argv[3]) : 0);
+  if (r) cw_reply_raw(r, "true");
+}
 /* mode <0 championship, 1 time trial> */
 static void cmd_mode(int argc, const char **argv, cw_reply *r) {
   if (argc > 1) g_mode = atoi(argv[1]) ? MODE_TIME_TRIAL : MODE_CHAMPIONSHIP;
@@ -177,6 +187,7 @@ static void init(void *user) {
   warp_from_env();
 #endif
   cw_debug_i32("race.state", &G.state);
+  cw_debug_i32("gpu.programs", &gpu_programs);
   cw_debug_i32("race.mode", &g_mode);
   cw_debug_i32("race.difficulty", &g_difficulty);
   cw_debug_i32("cam.attract_under", &G.attract_under);
@@ -214,6 +225,10 @@ static void init(void *user) {
   cw_debug_f32("p0.slip", &G.c[0].slip);
   cw_debug_f32("p0.spill", &G.c[0].spill);
   cw_debug_i32("p0.spills", &G.c[0].spills);
+  cw_debug_i32("p0.ramps", &G.c[0].ramps);
+  cw_debug_i32("p0.tricks", &G.c[0].tricks);
+  cw_debug_f32("p0.air_max", &G.c[0].air_max);
+  cw_debug_i32("ramp.gap", &G.ramp_gap);
   cw_debug_f32("p0.sink_max", &G.c[0].sink_max);
   cw_debug_i32("p0.dq", &G.c[0].dq);
   cw_debug_f32("p0.out_t", &G.c[0].out_t);
@@ -228,6 +243,7 @@ static void init(void *user) {
   cw_debug_command("swell", "swell <0..1>: hold the sea at that size (0: let it build)", cmd_swell);
   cw_debug_command("difficulty", "difficulty <0 easy, 1 normal, 2 hard>", cmd_difficulty);
   cw_debug_command("ride_top", "ride_top 0: the hull held by its spring alone", cmd_ride_top);
+  cw_debug_command("ramp", "ramp <index> [back] [aside]: lined up with a ramp at speed", cmd_ramp);
   cw_debug_command("mode", "mode <0 championship, 1 time trial>", cmd_mode);
   cw_debug_command("finish", "finish: the human crosses the line now", cmd_finish);
   cw_debug_command("warp", "warp <metres>: every racer to that place on the course", cmd_warp);
@@ -279,6 +295,7 @@ static void fixed_update(void *user, double dt) {
 
 /* frame numbers for the perf script: game tick ms; frame GPU ms; the water pass; the scene pass; frame CPU (render callback's sync) */
 static void perf_read(void) {
+  { cw_render3d_stats rs; cw_render3d_get_stats(cw_scene_app_tree(), &rs); gpu_programs = (int32_t)rs.programs; }
   { cw_sky_state sk; cw_sky_get_state(cw_scene_app_tree(), &sk); sun_dbg[0] = sk.sun_direction.x, sun_dbg[1] = sk.sun_direction.y, sun_dbg[2] = sk.sun_direction.z; }
   cw_tree *t = cw_scene_app_tree();
   const cw_pass_stat *st;

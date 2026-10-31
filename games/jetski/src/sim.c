@@ -117,6 +117,65 @@ static void computer(craft *c, int idx) {
   c->in.trick = false;
 }
 
+/* floating ramps: they ride the swell with everything else, the deck a height over the water here */
+static const float RAMP_S[RAMPS] = { 219, 647, 1507, 2224 };
+static void ramps_place(void) {
+  for (int r = 0; r < RAMPS; r++) {
+    float x, z, dx, dz;
+    track_at(RAMP_S[r], &x, &z, &dx, &dz);
+    G.ramp_x[r] = x, G.ramp_z[r] = z, G.ramp_yaw[r] = cw_atan2(dx, dz);
+  }
+}
+static void ramps_tick(void) {
+  for (int r = 0; r < RAMPS; r++) {
+    cw_water_sample s;
+    cw_water_sample_at(G.water, G.ramp_x[r], G.ramp_z[r], G.wt, &s);
+    float sy, cy, ny = s.normal.y > 0.2f ? s.normal.y : 0.2f;
+    cw_sincos(G.ramp_yaw[r], &sy, &cy);
+    G.ramp_h[r] = s.height;
+    G.ramp_ta[r] = -(s.normal.x * sy + s.normal.z * cy) / ny;
+    G.ramp_tl[r] = -(s.normal.x * -cy + s.normal.z * sy) / ny;
+    /* grounded: the skirt must stay under the water at all four corners */
+    for (int k = 0; k < 4; k++) {
+      float a = k & 1 ? RAMP_HALF_LEN : -RAMP_HALF_LEN, l = k & 2 ? RAMP_HALF_W : -RAMP_HALF_W;
+      float wx = G.ramp_x[r] + sy * a - cy * l, wz = G.ramp_z[r] + cy * a + sy * l;
+      if (G.ramp_h[r] + G.ramp_ta[r] * a + G.ramp_tl[r] * l - 2.2f > cw_water_height_at(G.water, wx, wz, G.wt)) { G.ramp_gap++; break; }
+    }
+  }
+}
+/* on a deck the hull runs up it and leaves its top edge at the slope: no jump code here either. From the side or behind it is
+ * a wall */
+static void ramps_craft(craft *c, bool was_on) {
+  for (int r = 0; r < RAMPS; r++) {
+    float dx = c->x - G.ramp_x[r], dz = c->z - G.ramp_z[r];
+    if (dx * dx + dz * dz > 49.0f) continue;
+    float sy, cy;
+    cw_sincos(G.ramp_yaw[r], &sy, &cy);
+    float a = dx * sy + dz * cy, l = dx * -cy + dz * sy;
+    if (a < -RAMP_HALF_LEN || a > RAMP_HALF_LEN || l < -RAMP_HALF_W || l > RAMP_HALF_W) continue;
+    float t = (a + RAMP_HALF_LEN) / (2 * RAMP_HALF_LEN);
+    float rise = (RAMP_TOP - RAMP_LOW) / (2 * RAMP_HALF_LEN);
+    float deck = G.ramp_h[r] + G.ramp_ta[r] * a + G.ramp_tl[r] * l + RAMP_LOW + (RAMP_TOP - RAMP_LOW) * t;
+    float along = c->vx * sy + c->vz * cy;
+    if (c->y > deck + 0.5f) continue; /* flying over it */
+    if (along > 2 && (c->y > deck - 0.8f || a < -RAMP_HALF_LEN + 1.5f)) {
+      /* riding it */
+      if (!was_on) c->ramps++;
+      c->on_ramp = true;
+      c->y = deck + 0.22f;
+      c->vy = along * (rise + G.ramp_ta[r]);
+      c->air = false, c->air_time = 0;
+      c->pitch = cw_atan2(rise + G.ramp_ta[r], 1.0f), c->pr = 0;
+      continue;
+    }
+    /* a wall: out by the nearest side, and it costs */
+    float push = (l < 0 ? -RAMP_HALF_W - l : RAMP_HALF_W - l);
+    c->x += -cy * push, c->z += sy * push;
+    c->vx *= 0.7f, c->vz *= 0.7f;
+    c->bump = true;
+  }
+}
+
 static void craft_tick(craft *c, int idx, float dt) {
   c->px = c->x, c->py = c->y, c->pz = c->z, c->pyaw = c->yaw, c->ppitch = c->pitch, c->proll = c->roll;
   if (c->spill > 0) {
@@ -227,7 +286,8 @@ static void craft_tick(craft *c, int idx, float dt) {
     /* left alone the hull settles level for its landing; the stick trims it */
     if (!c->trick_kind) c->pr += ((0.1f - c->pitch) * 2.2f - c->pr * 1.8f + c->in.lean * 2.6f) * dt;
     c->rr += (-c->roll * 2.4f + c->steer * 1.5f - c->rr * 1.6f) * dt;
-    if (c->trick_kind == 0 && c->in.trick && c->air_time > 0.08f) {
+    /* one trick a press */
+    if (c->trick_kind == 0 && c->in.trick && !c->trick_held && c->air_time > 0.08f) {
       c->trick_kind = c->in.lean > 0.4f ? 2 : 1;
       c->trick_t = 0;
       c->trick_dir = c->steer < 0 ? -1.0f : 1.0f;
@@ -247,6 +307,7 @@ static void craft_tick(craft *c, int idx, float dt) {
       }
     }
   }
+  c->trick_held = c->in.trick;
   c->pitch += c->pr * dt;
   c->roll += c->rr * dt;
   c->x += c->vx * dt, c->y += c->vy * dt, c->z += c->vz * dt;
@@ -257,6 +318,10 @@ static void craft_tick(craft *c, int idx, float dt) {
     if (c->vy < s.velocity.y) c->vy = s.velocity.y;
   }
   if (hm - c->y > c->sink_max) c->sink_max = hm - c->y;
+  if (c->air_time > c->air_max) c->air_max = c->air_time;
+  { bool was_on = c->on_ramp;
+    c->on_ramp = false;
+    ramps_craft(c, was_on); }
   /* landing */
   c->big_splash = false;
   if (was_air && !c->air) {
@@ -361,6 +426,7 @@ void sim_reset(int state) {
   G.state = state;
   G.level = level;
   G.wt_extra = wt_extra;
+  ramps_place();
   memcpy(G.cam, keep_cam, sizeof keep_cam);
   G.clock = state == RACE_GRID ? -3.6f : 0;
   float yaw = cw_atan2(START_DX, START_DZ);
@@ -411,6 +477,18 @@ static void weather(void) {
   cw_node3d_set_position(G.water, (t3_vec3){ 0, G.tide, 0 });
 }
 
+void sim_ramp_start(int r, float back, float aside) {
+  float sy, cy;
+  cw_sincos(G.ramp_yaw[r], &sy, &cy);
+  craft *c = &G.c[0];
+  c->x = c->px = G.ramp_x[r] - sy * back - cy * aside, c->z = c->pz = G.ramp_z[r] - cy * back + sy * aside;
+  c->y = c->py = cw_water_height_at(G.water, c->x, c->z, cw_water_time(G.water));
+  c->yaw = c->pyaw = G.ramp_yaw[r], c->pitch = c->roll = c->pr = c->rr = 0;
+  c->vx = sy * 24, c->vz = cy * 24, c->vy = 0;
+  c->air_max = 0, c->air_time = 0, c->air = false, c->spill = 0;
+  G.cam[0] = 0, G.look[0] = 0;
+}
+
 /* every racer to a place on the course, at speed */
 void sim_place(float s) {
   for (int i = 0; i < RACERS; i++) {
@@ -441,6 +519,7 @@ void sim_tick(float dt) {
   G.tick++;
   G.wt = cw_water_time(G.water) + G.wt_extra;
   weather();
+  ramps_tick();
   G.clock += dt;
   bool go = G.state != RACE_GRID || G.clock >= 0;
   if (G.state == RACE_GRID && G.clock >= 0) G.state = RACE_ON;

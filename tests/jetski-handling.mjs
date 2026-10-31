@@ -11,7 +11,8 @@ const SIMX = 12;
 let n = 0;
 function run(cmds, buttons, ticks) {
   const tag = 'h' + n++, input = join(OUT, tag + '.input.json'), state = join(OUT, tag + '.json');
-  writeFileSync(input, JSON.stringify([{ frame: 4, buttons }]));
+  // buttons: held from frame 4; or a list of { frame, buttons }, for a press at a moment
+  writeFileSync(input, JSON.stringify(typeof buttons[0] === 'string' ? [{ frame: 4, buttons }] : buttons));
   const frames = Math.ceil(ticks / (SIMX + 1)) + 4;
   const r = spawnSync('node', [TOOL, '--host', 'native', '--gpu', 'gl', '--app', 'jetski', '--frames', String(frames), '--input', input, '--state', state, '--shot', join(OUT, tag + '.png'), '--start-cmds', cmds, '--exe', process.env.JETSKI_EXE || join(ROOT, 'build/native/games/jetski/jetski')], {
     cwd: join(ROOT, 'deps/cartwheel-engine'), encoding: 'utf8', maxBuffer: 1 << 26,
@@ -48,4 +49,11 @@ check('JS20 control: staying on the course does not', inb['p0.dq'] === 0, `dq ${
 const onTop = run(HULL(''), [TH], 1200), under = run(HULL('ride_top 0;'), [TH], 1200);
 check('the hull rides on top of the biggest sea', onTop['p0.sink_max'] <= 0.33, `deepest ${f2(onTop['p0.sink_max'])} m`);
 check('control: on its spring alone it sinks', under['p0.sink_max'] > 0.5, `deepest ${f2(under['p0.sink_max'])} m`);
+// a ramp on the line throws the hull high and long enough for a trick; beside it nothing happens; the trick lands
+const onRamp = run('ramp 1 30', [TH], 240), beside = run('ramp 1 30 14', [TH], 240), trick = run('ramp 1 30', [{ frame: 4, buttons: [TH] }, { frame: 12, buttons: [TH, 'west'] }, { frame: 13, buttons: [TH] }], 240);
+check('JT1 a ramp gives big air', onRamp['p0.ramps'] >= 1 && onRamp['p0.air_max'] >= 1.0, `${onRamp['p0.ramps']} ramp, ${f2(onRamp['p0.air_max'])} s in the air`);
+check('JT1 control: beside the ramp, no ramp', beside['p0.ramps'] === 0 && beside['p0.air_max'] < onRamp['p0.air_max'] * 0.6, `${beside['p0.ramps']} ramps, ${f2(beside['p0.air_max'])} s`);
+check('JT2 a trick in that air completes', trick['p0.tricks'] >= 1 && trick['p0.spills'] === 0, `${trick['p0.tricks']} tricks, ${trick['p0.spills']} spills`);
+check('JT2 control: no button, no trick', onRamp['p0.tricks'] === 0, `${onRamp['p0.tricks']} tricks`);
+check('JT3 the ramps never show a gap', onRamp['ramp.gap'] === 0, `${onRamp['ramp.gap']} ticks`);
 process.exit(fail ? 1 : 0);

@@ -261,6 +261,30 @@ class Plain {
   console.log('craft', P.tris() + bars.tris(), 'tris');
 }
 
+// ── a floating ramp: forward +z, y = 0 is the waterline. The deck climbs from under the water at its lip to its top edge; sides
+// and back run down below the water, so a swell never shows a gap under it. Sizes match src/sim.c (RAMP_*) ──
+{
+  const P = new Plain(), L = 4, W = 2.6, LOW = -0.2, TOP = 1.9, SKIRT = -2.2, N = 8;
+  for (let i = 0; i < N; i++) {
+    const z0 = -L + (2 * L * i) / N, z1 = -L + (2 * L * (i + 1)) / N, y = (z) => LOW + ((z + L) / (2 * L)) * (TOP - LOW);
+    P.grid(i % 2 ? 'dark' : 'band', [[[-W, y(z0), z0], [W, y(z0), z0]], [[-W, y(z1), z1], [W, y(z1), z1]]]);
+  }
+  for (const s of [-1, 1]) {
+    const top = (z) => LOW + ((z + L) / (2 * L)) * (TOP - LOW);
+    const a = [[s * W, SKIRT, -L], [s * W, SKIRT, L]], b = [[s * W, top(-L), -L], [s * W, top(L), L]];
+    P.grid('dark', s > 0 ? [a, b] : [b, a]);
+    // a pontoon along each side, half in the water
+    P.tube('band', [[s * (W + 0.25), 0.05, -L], [s * (W + 0.25), 0.05, L]], 0.42, 12);
+  }
+  P.grid('dark', [[[W, SKIRT, L], [-W, SKIRT, L]], [[W, TOP, L], [-W, TOP, L]]]);
+  const g = new Glb();
+  const mi = { band: g.material('band', 0.45), dark: g.material('dark', 0.7) };
+  g.materials[mi.band].pbrMetallicRoughness.baseColorFactor = [0.95, 0.62, 0.08, 1];
+  g.materials[mi.dark].pbrMetallicRoughness.baseColorFactor = [0.07, 0.08, 0.1, 1];
+  g.sceneNodes.push(g.node({ name: 'Ramp', mesh: g.mesh('ramp', P.prims(mi)) }));
+  g.write(join(OUT, 'ramp.glb'));
+}
+
 // ── a slalom buoy: y = 0 is the waterline; part 'band' takes the side's colour ──
 {
   const P = new Plain(), prof = [[0, -0.5], [0.34, -0.48], [0.56, -0.2], [0.62, 0.1], [0.58, 0.4], [0.46, 0.75], [0.34, 1.1], [0.28, 1.3], [0.05, 1.42], [0, 1.42]];

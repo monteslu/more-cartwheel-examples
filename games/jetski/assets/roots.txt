@@ -18,6 +18,7 @@ terrain/grass-normal.rgba
 models/craft.glb
 models/rider.glb
 models/buoy.glb
+models/ramp.glb
 models/palm.glb
 models/rock0.glb
 models/rock1.glb
