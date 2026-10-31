@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.1
+
+- All games now run on cartwheel-engine v0.28.0.
+- Join screens answer Start. A pad that hasn't joined takes a free seat and the
+  match starts, Start works on the title screen, and every press gets a sound
+  and "Starting..." on that same frame. Presses are no longer lost on displays
+  faster than 60 Hz.
+- Wave crests no longer turn black. Crests are still darker than they should be
+  in jetski; more on that to come.
+- Low, Medium and Auto graphics no longer lower the render resolution, so they
+  cost more GPU than before on a weak machine.
+
 ## 0.8.0
 
 - jetski: a real menu, with a pause menu in the race. There's one course so far,
