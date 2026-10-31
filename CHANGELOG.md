@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.11.1
+
+- All games now run on cartwheel-engine v0.28.5. Water reads its floor map and
+  ripples where the surface is drawn again, so foam sits where it was made and reads
+  whiter and crisper, in every game with water. v0.26.0 had changed this by accident.
+- jetski: the rocks come back on both courses, kept off true cliffs so they don't hang.
+- coopplatformer: the heroes on the join screen follow who has joined.
+
 ## 0.11.0
 
 - All games now run on cartwheel-engine v0.28.4. Shaders compile during the warm-up
