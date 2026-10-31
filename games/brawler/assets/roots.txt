@@ -47,6 +47,10 @@ decals/crack.png = textures/decal_crack.png
 decals/burst.png = textures/decal_burst.png
 decals/ring.png = textures/decal_ring.png
 decals/blood.png = textures/decal_blood.png
+lightmaps/stage0.cwlm
+lightmaps/stage1.cwlm
+lightmaps/stage2.cwlm
+lightmaps/stage3.cwlm
 luts/alley.cube
 luts/docks.cube
 luts/arcade.cube

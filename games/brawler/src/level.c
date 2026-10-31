@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "cartwheel/lightmap.h"
 #include "cartwheel/explosions.h"
 #include "cartwheel/render3d.h"
 #include "cartwheel/scene_file.h"
@@ -11,6 +12,9 @@
 
 /* per stage mood: the key light (a low sun or moon from behind the buildings, so they cast long shadows and
    shafts across the street), a cool fill from the camera side, a rim from behind, fog, grade, coloured accents. */
+static cw_node lm_root; static int lm_want; static bool lm_pending;
+static t3_mesh *lm_ms[64]; static int lm_nm;
+static void lm_collect(t3_object *o, void *u) { (void)u; if (o->type == T3_MESH && lm_nm < 64) lm_ms[lm_nm++] = (t3_mesh *)o; }
 bool g_legacy_fill; int g_mirror_z; /* see level_build: the front fill light */
 static float acc_y[3], acc_z[3];
 #define FILL_Y 4.6f
@@ -311,8 +315,7 @@ void level_build(int stage) {
   if (!oldfx) {
     cw_node_set(fog, "volumetric", cw_val_bool(false));
     cw_node_set(fog, "density", cw_val_float(th->fog_density * 0.3f));
-    cw_node_set(post, "ssao_slices", cw_val_int(1));
-    cw_node_set(post, "ssao_steps", cw_val_int(3));
+    cw_node_set(post, "ssao", cw_val_bool(false)); /* the bake carries it (lm_apply) */
     cw_node_set(sun, "shadow_cascades", cw_val_int(2));
     cw_node_set(sun, "shadow_distance", cw_val_float(24));
     cw_node_set(sun, "shadow_size", cw_val_int(1536));
@@ -322,6 +325,22 @@ void level_build(int stage) {
   snprintf(path, sizeof path, "models/stage%d.glb", stage & 3);
   cw_node scen = spawn_glb(s, path, &stage_gltf, true);
   (void)scen;
+  if (!oldfx && !g_legacy_fill && stage_gltf) { /* the scenery takes baked sky light and bounce (LIT: its materials and real-time lights stay): each mesh a STATIC MeshInstance3D */
+    lm_nm = 0;
+    t3_object_traverse(stage_gltf->scene, lm_collect, NULL);
+    t3_mesh **ms = lm_ms; int nm = lm_nm;
+    for (int i = 0; i < nm; i++) {
+      t3_retain(ms[i]); /* its scene held the only reference */
+      t3_object_remove(((t3_object *)ms[i])->parent, (t3_object *)ms[i]);
+      char mn[16]; snprintf(mn, sizeof mn, "stage%d", i);
+      cw_node mi = cw_node_new("MeshInstance3D", mn);
+      cw_node_add_child(s, mi);
+      cw_node_set(mi, "gi_mode", cw_val_enum("STATIC"));
+      cw_mesh3d_set_procedural(mi, ms[i]);
+      t3_release(ms[i]);
+    }
+    lm_root = s, lm_want = stage & 3, lm_pending = nm > 0;
+  }
   /* puddles (wet stages): glossy water blended over the street, many shapes, placed where water collects (make-world.mjs) */
   if ((stage & 3) != 2) {
     t3_gltf *pg = NULL;
@@ -345,6 +364,7 @@ void level_build(int stage) {
     }
     acc_y[i] = y, acc_z[i] = zz;
     acc_node[i] = light(s, "A", (t3_vec3){ th->acc[i].dx, y, zz }, th->acc[i].c, e, rg);
+    cw_node_set(acc_node[i], "bake", cw_val_bool(false)); /* it follows the camera */
   }
   g_mirror_z = (int)((acc_z[2] * 3.9f + 7.7f * acc_y[2]) / (3.9f + acc_y[2]) * 1000.0f + 0.5f);
   if ((stage & 3) == 1) juke_build(s); /* Arthur's jukebox */
@@ -389,8 +409,30 @@ void prop_hit(prop_t *p) {
       if (!W.item[i].used) { W.item[i] = (item_t){ .used = true, .kind = kind, .x = p->x, .z = p->z, .y = 0.9f }; break; }
 }
 
+/* the scenery's bake (assets/lightmaps/stageN.cwlm; written by the game itself with BRAWLER_BAKE=<file>, brawler_auto natively): indirect
+   light only, so the sun and lamps stay real time with their shadows and specular. It replaces the screen-space occlusion on the
+   scenery: corners, doorways and the alleys are dark because the sky does not reach them (ssao off: 0.85 ms) */
+static void lm_apply(void) {
+  static cw_lightmap_data *LM[4];
+  lm_pending = false;
+  cw_tree *t = cw_scene_app_tree();
+#ifdef BRAWLER_AUTOPILOT
+  const char *out = getenv("BRAWLER_BAKE");
+  if (out && *out) {
+    cw_lightmap_settings st = cw_lightmap_settings_default();
+    st.texel_density = 5, st.max_size = 2048, st.samples = 64, st.bounces = 2, st.probe_spacing = 0, st.denoise = 2;
+    LM[lm_want] = cw_lightmap_bake(t, lm_root, &st);
+    if (LM[lm_want]) { cw_lightmap_save(LM[lm_want], out); cw_lightmap_info in; cw_lightmap_get_info(LM[lm_want], &in); fprintf(stderr, "brawler: baked %s: %d meshes, %d texels\n", out, in.meshes, in.texels); }
+  }
+#endif
+  if (!LM[lm_want]) { char pt[40]; snprintf(pt, sizeof pt, "lightmaps/stage%d.cwlm", lm_want); LM[lm_want] = cw_lightmap_load(pt); }
+  if (LM[lm_want]) cw_lightmap_apply(t, lm_root, LM[lm_want], 1);
+  else cw_error("brawler: stage %d has no lightmap", lm_want);
+}
+
 /* items and props each frame */
 void level_update(void) {
+  if (lm_pending) lm_apply();
   juke_show();
   if (!W.wave_spawned && W.cam_x >= W.lock_x - 0.4f) W.wave_spawned = 1;
   for (int i = 0; i < MAXPROP; i++) {
