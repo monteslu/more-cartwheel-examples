@@ -91,12 +91,12 @@ controls and the power-up list).
 
 ### jetski
 
-![jetski: crossing the swell toward the crater with a rival alongside, at the end of the day](docs/screenshots/jetski.jpg)
+![jetski: lining up a steel ramp on the lagoon at the end of the day, with the lighthouse islet beyond](docs/screenshots/jetski.jpg)
 
-jetski, a wave racing game on one evening's water. Six riders race three laps around a volcanic
-atoll, from a pale lagoon through a gap in the reef and out across open sea. The water is the track: its swells throw you
-into the air, the sea builds from lap to lap, and every buoy you pass on the correct side raises your top speed. One
-player and computer racers for now. See [its README](games/jetski/README.md).
+jetski, a wave racing game where the water is the track. Six riders race three laps through a volcanic atoll at sunset and a cold
+granite fjord on a grey morning, whose falling tide opens a shortcut under a drowned arch. Swells throw you into the air and big
+steel ramps throw you further, long enough for a trick, and every buoy you pass on the correct side raises your top speed. A
+championship across both courses or a time trial, one player and computer racers for now. See [its README](games/jetski/README.md).
 
 ### partypack
 
