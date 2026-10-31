@@ -321,6 +321,9 @@ static const char *const atoll_props[][3] = {
 { "Water", "color", "color(0.93, 0.99, 0.98, 1)" },
 { "Water", "clarity", "9" },
 { "Water", "murk", "1" },
+{ "Water", "distortion", "0.16" },
+{ "Water", "normal_scale", "0.3" },
+{ "Water", "detail", "0.9" },
 { "Water", "crest_foam", "1" },
 { "Water", "crest_light", "1" },
 { "Water", "scatter", "1.1" },
@@ -330,7 +333,7 @@ static const char *const atoll_props[][3] = {
 static const course_def atoll_course = {
   .id = "atoll", .name = "Crater Atoll", .quads = 896, .spacing = 2.0f, .minh = -48.0f, .maxh = 170.0f, .len = 2586.80f,
   .track_n = 256, .track = atoll_track, .buoy_n = 29, .buoys = atoll_buoys, .ramp_n = 9, .ramps = atoll_ramps, .ramp_top = 5.0f,
-  .scatter_n = 5, .scatter = atoll_scatter, .prop_n = 19, .props = atoll_props,
+  .scatter_n = 5, .scatter = atoll_scatter, .prop_n = 22, .props = atoll_props,
   .layer = { "course/atoll/sand", "course/atoll/coast", "course/atoll/rock", "course/atoll/grass" }, .layer_uv = { 0.16f, 0.22f, 0.075f, 0.09f },
   .heights = "course/atoll/heights.r16", .control = "course/atoll/control.u32", .mask = "course/atoll/wavemask.f32", .mask_n = 256, .map_n = 448, .sky = "res://textures/sky.png",
   .landmark = "res://models/lighthouse.glb", .landmark_at = { 200.00f, 33.11f, -256.00f },

@@ -118,7 +118,8 @@ return {
     ['Post', 'exposure', '1.0'], ['Post', 'bloom_intensity', '0.09'],
     ['Water', 'shallow_color', 'color(0.05, 0.62, 0.58, 1)'], ['Water', 'deep_color', 'color(0.02, 0.14, 0.24, 1)'],
     ['Water', 'color', 'color(0.93, 0.99, 0.98, 1)'], ['Water', 'clarity', '9'], ['Water', 'murk', '1'],
-    ['Water', 'crest_foam', '1'], ['Water', 'crest_light', '1'], ['Water', 'scatter', '1.1'], ['Water', 'glint', '1.2'], ['Water', 'shore_foam', '1.6'],
+    // (ripples strong enough to break up a mirrored skyline: at less, its edge lies on the water as a hard patch)
+    ['Water', 'distortion', '0.16'], ['Water', 'normal_scale', '0.3'], ['Water', 'detail', '0.9'], ['Water', 'crest_foam', '1'], ['Water', 'crest_light', '1'], ['Water', 'scatter', '1.1'], ['Water', 'glint', '1.2'], ['Water', 'shore_foam', '1.6'],
   ],
 };
 };

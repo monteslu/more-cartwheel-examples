@@ -83,7 +83,8 @@ return {
     ['Post', 'exposure', '1.0'], ['Post', 'bloom_intensity', '0.05'],
     ['Water', 'shallow_color', 'color(0.1, 0.34, 0.36, 1)'], ['Water', 'deep_color', 'color(0.03, 0.08, 0.13, 1)'],
     ['Water', 'color', 'color(0.86, 0.92, 0.95, 1)'], ['Water', 'clarity', '4'], ['Water', 'murk', '1.2'],
-    ['Water', 'crest_foam', '1'], ['Water', 'crest_light', '0.3'], ['Water', 'scatter', '0.5'], ['Water', 'glint', '0.5'], ['Water', 'shore_foam', '2'],
+    // (ripples strong enough to break up a mirrored skyline: at less, its edge lies on the water as a hard patch)
+    ['Water', 'distortion', '0.16'], ['Water', 'normal_scale', '0.3'], ['Water', 'detail', '0.9'], ['Water', 'crest_foam', '1'], ['Water', 'crest_light', '0.3'], ['Water', 'scatter', '0.5'], ['Water', 'glint', '0.5'], ['Water', 'shore_foam', '2'],
   ],
   // an arch across the cut: nothing passes while the water stands too high under it
   hook: { kind: 1, x: (A[0] + B[0]) / 2, z: (A[1] + B[1]) / 2, dirx: (B[0] - A[0]) / Math.hypot(B[0] - A[0], B[1] - A[1]), dirz: (B[1] - A[1]) / Math.hypot(B[0] - A[0], B[1] - A[1]), half_w: 11, half_len: Math.hypot(B[0] - A[0], B[1] - A[1]) / 2, lintel: 3.6, s_in: near(A[0], A[1]), s_out: near(B[0], B[1]), model: 'arch' },
