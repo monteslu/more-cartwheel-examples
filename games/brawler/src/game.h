@@ -151,6 +151,8 @@ void rumble(int player, float low, float high, int ms);
 extern bool g_legacy_shake; /* autopilot debug only: the old camera shake, for the camera gate's control */
 /* level.c */
 void level_build(int stage);
+void level_keep_next(void); /* the next level_build keeps the stage already built (Start finds it ready) */
+void level_apply_bake(void); /* the scenery's bake now, not at the next level_update */
 void level_free(void);
 void level_update(void);
 void level_camera(float dt);
@@ -169,6 +171,8 @@ void sim_sync_extras(void);
 void stats_log(const char *why);
 int token_leak(void);
 void chars_reset(void);
+void char_preload(int def); /* parse a model now, so no rig waits for it later */
+void sim_put_away(void); /* every rig back in its pool, out of sight */
 int rig_count(void);
 void sim_goto_wave(int wave);
 /* fx.c */

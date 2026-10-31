@@ -1,0 +1,66 @@
+[
+  {
+    "name": "start-panels-brawler-play-pauses",
+    "app": "brawler",
+    "assets": "games/brawler/assets",
+    "frames": 90,
+    "input": "start-panels-brawler-play-pauses.json",
+    "controlInput": "start-panels-brawler-play-pauses-control.json",
+    "hosts": [
+      "native",
+      "romdev"
+    ],
+    "minColors": 50,
+    "maxGt16": 0.08,
+    "fields": [
+      "shell.screen",
+      "shell.players",
+      "game.phase"
+    ],
+    "expect": {
+      "shell.screen": 4,
+      "shell.players": 1
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ],
+      "maxGt16": 0.08,
+      "vsGl": 0.08
+    },
+    "note": "no panel after the join screen: the stage is play and Start pauses; control: no press"
+  },
+  {
+    "name": "start-panels-brawler-second-game",
+    "app": "brawler",
+    "assets": "games/brawler/assets",
+    "frames": 260,
+    "input": "start-panels-brawler-second-game.json",
+    "controlInput": "start-panels-brawler-second-game-control.json",
+    "hosts": [
+      "native",
+      "romdev"
+    ],
+    "minColors": 50,
+    "maxGt16": 0.08,
+    "fields": [
+      "shell.screen",
+      "shell.players",
+      "game.phase"
+    ],
+    "expect": {
+      "shell.screen": 3,
+      "shell.players": 1
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ],
+      "maxGt16": 0.08,
+      "vsGl": 0.08
+    },
+    "note": "quit to the title and play again: the world is prepared again and the second game runs; control: no Start on the join screen"
+  }
+]

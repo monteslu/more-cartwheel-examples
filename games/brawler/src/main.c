@@ -59,17 +59,64 @@ static void shell_sound(cw_shell_sound s, void *user) {
   cw_sound x = s == CW_SHELL_SND_MOVE ? snd_move : s == CW_SHELL_SND_BACK ? snd_back : snd_select;
   if (x.id) cw_audio_play(x, &(cw_play_desc){ .bus = cw_shell_sfx_bus() });
 }
+#ifndef BRAWLER_AUTOPILOT
+static int prep_step;
+static bool prep_ready, prep_show, prep_again;
+#endif
 static void shell_screen(cw_shell_screen from, cw_shell_screen to, void *user) {
   (void)from, (void)user;
   if (to == CW_SHELL_PLAY) play_music(W.stage);
   else if (to == CW_SHELL_TITLE && cw_voice_is_playing(music)) { cw_voice_stop(music, 0.3f); music_stage = -1; }
+#ifndef BRAWLER_AUTOPILOT
+  if (to == CW_SHELL_TITLE && prep_again && !prep_ready) prep_step = 0;
+  if (to == CW_SHELL_JOIN || to == CW_SHELL_PLAY) { if (!prep_ready) prep_step = -1; }
+#endif
 }
+
+/* The world for Start to find ready: the effects, every model, then stage 1 with all its rigs, a piece a call so the
+ * screen keeps moving. The warm-up runs it under the loading screen (and the shader phase after it compiles what the
+ * first stage draws); back on the title it runs again for the next game, a piece each frame. */
+#ifndef BRAWLER_AUTOPILOT
+static bool prepare_step(void) {
+  int s = prep_step++;
+  cw_loading_set(prep_step, D_COUNT + 2, CW_LOAD_MESHES);
+  if (s == 0) {
+    if (prep_again) {
+      cw_scene_app_change_scene("main.cwscene", false);
+      chars_reset();
+    }
+    fx_init();
+  } else if (s <= D_COUNT) char_preload(s - 1);
+  else {
+    sim_reset(MAXP, 0);
+    level_apply_bake();
+    cw_tree_update(cw_scene_app_tree(), 0); /* the warm-up has no tree update of its own: the shader phase must see the lights where the game has them */
+    prep_ready = prep_show = true;
+    return true;
+  }
+  return false;
+}
+static bool warmup(void *user) {
+  (void)user;
+  return prep_ready || prepare_step();
+}
+#endif
 
 static void start(int players, void *user) {
   (void)user;
-  cw_scene_app_change_scene("main.cwscene", false);
-  chars_reset(); /* the old scene's rigs went with it (a second game from the title) */
-  fx_init();
+#ifndef BRAWLER_AUTOPILOT
+  if (prep_ready) {
+    level_keep_next();
+    prep_again = true;
+    prep_ready = prep_show = false;
+    prep_step = -1; /* none until the title is back */
+  } else
+#endif
+  {
+    cw_scene_app_change_scene("main.cwscene", false);
+    chars_reset(); /* the old scene's rigs went with it (a second game from the title) */
+    fx_init();
+  }
   int stage0 = 0;
 #ifdef BRAWLER_AUTOPILOT
   { const char *e = getenv("BRAWLER_STAGE"); if (e) stage0 = atoi(e) & 3; } /* screenshots and the program survey start on any stage */
@@ -520,6 +567,12 @@ static void sim_step(void) {
 
 static void render(void *user, double alpha) {
   (void)user, (void)alpha;
+#ifndef BRAWLER_AUTOPILOT
+  if (!cw_loading_active()) {
+    if (prep_step >= 0 && !prep_ready && prep_again && cw_shell_screen_now() == CW_SHELL_TITLE) prepare_step();
+    if (prep_show) { prep_show = false; sim_put_away(); } /* the shader phase has seen the rigs: out of sight behind the menus */
+  }
+#endif
   if (cw_shell_screen_now() == CW_SHELL_PLAY || cw_shell_screen_now() == CW_SHELL_PAUSE) {
     for (int i = 0; i < MAXP; i++) if (W.p[i].used) char_sync(&W.p[i]);
     for (int i = 0; i < MAXE; i++) if (W.e[i].used) char_sync(&W.e[i]);
@@ -536,6 +589,9 @@ cw_app_desc cw_main(int argc, char **argv) {
   (void)argc, (void)argv;
   cw_scene_register_builtin_types();
   static cw_app_desc app = { .width = 1280, .height = 720, .debug = true, .init = init, .fixed_update = fixed_update, .render = render };
+#ifndef BRAWLER_AUTOPILOT
+  app.warmup = warmup;
+#endif
   cw_project_apply_app(&app);
   app.save = cw_shell_save_region();
   app.save_size = cw_shell_save_region_size();

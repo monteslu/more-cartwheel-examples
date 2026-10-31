@@ -67,3 +67,6 @@ standard+map+trans+l3001+xcluster_meshdecal
 standard+lmap+c1lmap+l2001+xcluster_csm
 standard+map+rep+nmap+ao+emap+rmap+mmap+lmap+c1lmap+l2001+xcluster_csm
 standard+map+rep+nmap+ao+rmap+mmap+lmap+c1lmap+l2001+xcluster_csm
+standard+map+rep+nmap+ao+rmap+mmap+shadow+lmap+c1lmap+l3001+s100+xcluster
+standard+map+rep+nmap+ao+emap+rmap+mmap+shadow+lmap+c1lmap+l3001+s100+xcluster
+standard+shadow+lmap+c1lmap+l3001+s100+xcluster

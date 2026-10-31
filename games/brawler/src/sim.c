@@ -215,6 +215,12 @@ static int ent_index(const ent *e) { return e->player ? (int)(e - W.p) : MAXP + 
 
 /* a new scene (a game started again from the title) freed every rig's nodes: start the pool over */
 int rig_count(void) { return rig_n; }
+void char_preload(int def) {
+  char path[64];
+  snprintf(path, sizeof path, "models/%s.glb", DEFS[def].model);
+  if (!RES[def].id) RES[def] = cw_res_load(path, CW_RES_GLTF);
+  if (!BLOB.id) BLOB = cw_res_load("models/blob.glb", CW_RES_GLTF);
+}
 void chars_reset(void) { /* (the glTF resources stay loaded: the next game instances them again) */
   rag_reset();
   looks_reset();
@@ -1393,6 +1399,8 @@ static void free_all(void) {
   for (int i = 0; i < MAXP; i++) if (W.p[i].used) { char_free(&W.p[i]); W.p[i].used = false; }
   for (int i = 0; i < MAXE; i++) if (W.e[i].used) { char_free(&W.e[i]); W.e[i].used = false; }
 }
+
+void sim_put_away(void) { free_all(); }
 
 void sim_reset(int players, int stage) {
   bool keep = stage > 0 && players == W.players;

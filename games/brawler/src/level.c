@@ -270,7 +270,39 @@ void level_free(void) {
   for (int i = 0; i < MAXITEM; i++) W.item[i].node = (cw_node){ 0 };
 }
 
+static void lm_apply(void);
+static bool keep_next;
+void level_keep_next(void) { keep_next = stage_node.id && cw_node_valid(stage_node); }
+void level_apply_bake(void) { if (lm_pending) lm_apply(); }
+
+/* the breakable props: their places and what they drop, from the stage's own seed. keep: the nodes already stand there */
+static void level_props(cw_node s, int stage, float len, bool keep) {
+  static cw_node nodes[MAXPROP];
+  cw_rng r;
+  cw_rng_seed(&r, 99 + (uint64_t)stage);
+  int np = 0;
+  static const char *PROP_GLB[3] = { "models/crate.glb", "models/barrel.glb", "models/bin.glb" };
+  for (float x = 8; x < len - 4 && np < MAXPROP; x += 5.2f + cw_rng_float(&r) * 2.0f, np++) {
+    prop_t *p = &W.prop[np];
+    p->used = true, p->kind = cw_rng_int(&r, 0, 2), p->hp = 3;
+    p->x = x, p->z = cw_rng_range(&r, -2.0f, 2.0f);
+    p->drop = cw_rng_int(&r, 0, 9);
+    if (!keep) nodes[np] = spawn_glb(s, PROP_GLB[p->kind], NULL, true);
+    p->node = nodes[np];
+    static const float PY[3] = { 0.42f, 0.49f, 0.57f };
+    cw_node3d_set_position(p->node, (t3_vec3){ x, PY[p->kind], p->z });
+    cw_node3d_set_rotation(p->node, (t3_vec3){ 0, (float)cw_rng_range(&r, -0.4f, 0.4f), 0 });
+  }
+}
+
 void level_build(int stage) {
+  if (keep_next) { /* built under the loading screen: only the round's state is new */
+    keep_next = false;
+    rag_level_build();
+    level_props(stage_node, stage, level_length(), true);
+    ncount = 0;
+    return;
+  }
   level_free();
   rag_level_build();
   const theme *th = &THEMES[stage & 3];
@@ -372,21 +404,7 @@ void level_build(int stage) {
   }
   g_mirror_z = (int)((acc_z[2] * 3.9f + 7.7f * acc_y[2]) / (3.9f + acc_y[2]) * 1000.0f + 0.5f);
   if ((stage & 3) == 1) juke_build(s); /* Arthur's jukebox */
-  /* breakable props */
-  cw_rng r;
-  cw_rng_seed(&r, 99 + (uint64_t)stage);
-  int np = 0;
-  static const char *PROP_GLB[3] = { "models/crate.glb", "models/barrel.glb", "models/bin.glb" };
-  for (float x = 8; x < len - 4 && np < MAXPROP; x += 5.2f + cw_rng_float(&r) * 2.0f, np++) {
-    prop_t *p = &W.prop[np];
-    p->used = true, p->kind = cw_rng_int(&r, 0, 2), p->hp = 3;
-    p->x = x, p->z = cw_rng_range(&r, -2.0f, 2.0f);
-    p->drop = cw_rng_int(&r, 0, 9);
-    p->node = spawn_glb(s, PROP_GLB[p->kind], NULL, true);
-    static const float PY[3] = { 0.42f, 0.49f, 0.57f };
-    cw_node3d_set_position(p->node, (t3_vec3){ x, PY[p->kind], p->z });
-    cw_node3d_set_rotation(p->node, (t3_vec3){ 0, (float)cw_rng_range(&r, -0.4f, 0.4f), 0 });
-  }
+  level_props(s, stage, len, false);
   ncount = 0;
 }
 
