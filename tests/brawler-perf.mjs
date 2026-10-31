@@ -15,8 +15,8 @@ if (!process.env.CW_GPU_SUITE_INNER) {
 const { wgpuPin, glPin, scrubDisplay } = await import(join(ENGINE, 'tools/lib/wgpu-pin.mjs'));
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : d; };
 const EXTRA = Object.fromEntries((arg('env', '') || '').split(',').filter(Boolean).map((kv) => kv.split('=')));
-// no arguments: the gate: every stage within 5 ms GPU on WebGPU and 6 on GL (GL measures 5.1 to 5.9 on this load, B-PT19 target 5: findings/brawler.md says why it stopped there); the control (the earlier settings) must exceed the bound
-const BOUND = +arg('bound', process.argv.length <= 2 ? 5 : 0), BOUND_GL = BOUND ? BOUND + 1 : 0;
+// no arguments: the gate: every stage within 5 ms GPU on GL and WebGPU (B-PT19: GL 4.3 to 4.8, WebGPU 3.6 to 4.3 on a quiet machine; other GPU work at the same time reads up to about 5.9 on GL); the control (the earlier settings) must exceed the bound
+const BOUND = +arg('bound', process.argv.length <= 2 ? 5 : 0), BOUND_GL = BOUND;
 let bad = 0;
 const exe = join(ROOT, 'build/native/games/brawler/brawler_auto');
 function run(gpu, stage, frames, extra = {}) {
