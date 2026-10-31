@@ -97,7 +97,7 @@ static struct game {
   int kill_streak[MAXH];
   cw_aim_state aim[MAXH];
   /* actions */
-  cw_action mv_l, mv_r, mv_f, mv_b, lk_l, lk_r, lk_u, lk_d, fire, jump, w_next, w_prev, sprint;
+  cw_action mv_l, mv_r, mv_f, mv_b, lk_l, lk_r, lk_u, lk_d, fire, jump, w_next, w_prev, sprint, ui_start, ui_back;
   /* nav cost */
   int path_requests, path_done;
   int path_links, link_jumps;  /* link waypoints in the paths bots took; jumps bots made up ledges */
@@ -2066,11 +2066,19 @@ static void view_hook(int view, void *u) {
   }
 }
 
+/* Start from any seated pad (Enter on the keyboard): tick by tick, so a press on a frame with no tick still counts */
+static bool any_start(void) {
+  for (int p = 0; p < G.players; p++) if (cw_action_just_pressed(p, G.ui_start)) return true;
+  return false;
+}
+
 static void game_step(void);
 static void ptest_update(void);
 static void fixed_update(void *user, double dt) {
   (void)user, (void)dt;
-  if (!cw_shell_update()) { rumble_stop_all(); return; } /* menus and pause: the motors stop */
+  /* the setup and results panels are not play: Start confirms there (game_step), so the shell's Start-pauses never sees them */
+  bool panel = cw_shell_screen_now() == CW_SHELL_PLAY && (G.state == ST_SETUP || G.state == ST_OVER);
+  if (!panel && !cw_shell_update()) { rumble_stop_all(); return; } /* menus and pause: the motors stop */
 #ifdef ARENA_AUTOPILOT
   /* ARENA_SIM_BATCH=n: n game ticks per engine tick, for pacing and soak runs that measure the simulation only (every seat is a
    * bot, so no input is lost); the game time per drawn frame grows n times */
@@ -2104,8 +2112,13 @@ static void game_step(void) {
         else rumble(h, 0.3f, 0.3f, 120); /* a taste of it */
       }
     }
-    if (cw_action_just_pressed(h, G.jump) || cw_action_just_pressed(h, G.fire)) {
+    if (cw_shell_join_press()) fx_play_ui(SND_CLICK, 0.6f); /* a pad with no seat: A takes one (players_changed) */
+    if (cw_action_just_pressed(h, G.jump) || cw_action_just_pressed(h, G.fire) || any_start() || cw_shell_join_requested()) {
+      fx_play_ui(SND_CLICK, 0.8f);
       { begin_match(); set_views(); }
+    } else if (cw_action_just_pressed(h, G.ui_back)) { /* out to the title: there is no pause menu on this panel */
+      fx_play_ui(SND_TICK, 0.5f);
+      cw_shell_to_title();
     }
     G.ticks++;
     item_tick();
@@ -2118,7 +2131,7 @@ static void game_step(void) {
     proj_tick();
     sync_nodes();
     if (AUTO && getenv("ARENA_ONE")) return; /* ARENA_ONE: one match, then the results stay (human-matches.mjs reads them) */
-    if (G.over_ticks > 60 * 3 && (cw_action_just_pressed(0, G.fire) || cw_action_just_pressed(0, G.jump) || AUTO)) {
+    if (G.over_ticks > 60 * 3 && (cw_action_just_pressed(0, G.fire) || cw_action_just_pressed(0, G.jump) || any_start() || AUTO)) {
       if (AUTO && G.over_ticks < 60 * 8) return;
       G.state = ST_SETUP;
       G.ticks = 0;
@@ -2447,7 +2460,7 @@ static void hud_setup(void) {
   float u = cs.y / 18;
   cw_r2d_rect(cw_rect_make(0, 0, cs.x, cs.y), cw_rgba(0, 0, 0, 0.7f));
   text("ARENA", 0, u * 1.2f, u * 2.4f, cw_rgba(1, 0.85f, 0.4f, 1), CW_ALIGN_CENTER, cs.x);
-  text("choose the match, then press fire", 0, u * 3.6f, u * 0.9f, cw_rgba(1, 1, 1, 0.8f), CW_ALIGN_CENTER, cs.x);
+  text("choose the match, then press Start or fire    B: back to the title", 0, u * 3.6f, u * 0.9f, cw_rgba(1, 1, 1, 0.8f), CW_ALIGN_CENTER, cs.x);
   char s[96];
   const char *rows[7];
   char r0[64], r1[64], r2[64], r3[64], r4[64], r5[64];
@@ -2489,7 +2502,7 @@ static void hud_over(void) {
     snprintf(s, sizeof s, "%-8s  %3d frags  %3d deaths", f->name, f->score, f->deaths);
     text(s, 0, cs.y * 0.34f + u * 1.25f * (float)k, u * 1.0f, f->human >= 0 ? cw_rgba(1, 1, 0.6f, 1) : cw_rgba(1, 1, 1, 0.85f), CW_ALIGN_CENTER, cs.x);
   }
-  if (G.over_ticks > 60 * 3) text("press fire to continue", 0, cs.y * 0.74f, u * 0.9f, cw_rgba(1, 1, 1, 0.8f), CW_ALIGN_CENTER, cs.x);
+  if (G.over_ticks > 60 * 3) text("press Start or fire to continue", 0, cs.y * 0.74f, u * 0.9f, cw_rgba(1, 1, 1, 0.8f), CW_ALIGN_CENTER, cs.x);
 }
 
 static void render(void *user, double alpha) {
@@ -2610,6 +2623,19 @@ static void overview_cams(void) {
   }
 }
 
+/* the shell's menus: the same click as the setup panel's */
+static void shell_sound(cw_shell_sound s, void *user) {
+  (void)user;
+  fx_play_ui(s == CW_SHELL_SND_MOVE ? SND_TICK : SND_CLICK, s == CW_SHELL_SND_MOVE ? 0.5f : 0.8f);
+}
+
+/* a pad took a seat on the setup panel */
+static void players_changed(int players, void *user) {
+  (void)user;
+  G.players = players;
+  set_views();
+}
+
 static void start(int players, void *user) {
   (void)user;
   G.players = players;
@@ -2658,6 +2684,7 @@ static void init(void *user) {
   G.lk_l = cw_action_find("look_left"), G.lk_r = cw_action_find("look_right");
   G.lk_u = cw_action_find("look_up"), G.lk_d = cw_action_find("look_down");
   G.fire = cw_action_find("fire"), G.jump = cw_action_find("jump");
+  G.ui_start = cw_action_find("ui_start");
   G.w_next = cw_action_find("weapon_next"), G.w_prev = cw_action_find("weapon_prev");
   G.sprint = cw_action_find("sprint");
   G.font = cw_ui_font_sans();
@@ -2666,7 +2693,8 @@ static void init(void *user) {
   G.bots_setting = -1; /* AUTO */
   G.bot_level = 1;
   G.aim_assist = 1;
-  cw_shell_init(&(cw_shell_desc){ .title = "ARENA", .subtitle = "split screen shooter", .max_players = MAXH, .start = start });
+  cw_shell_init(&(cw_shell_desc){ .title = "ARENA", .subtitle = "split screen shooter", .max_players = MAXH, .start = start, .sound = shell_sound, .players_changed = players_changed });
+  G.ui_back = cw_action_find("ui_back");
   /* the persistent scene: environment, sun, post, lights, four cameras */
   G.env = cw_node_new("WorldEnvironment", "Env");
   cw_node_add_child(G.root, G.env);

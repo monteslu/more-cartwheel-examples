@@ -6,12 +6,12 @@ bots that find their way over a navigation mesh, jump pads, ledge jumps and drop
 
 ## Play
 
-- Title -> join (each pad presses South to join) -> pick the arena, the mode, the number of bots, how good the bots are (easy, normal, veteran, hard; normal is for someone new to the game), aim assist on or off and rumble on or off -> fire to start.
+- Title -> join (each pad presses South to join) -> pick the arena, the mode, the number of bots, how good the bots are (easy, normal, veteran, hard; normal is for someone new to the game), aim assist on or off and rumble on or off -> Start or fire to play, B back to the title.
 - Move: left stick (keyboard: W A S D). Sprint: click the left stick (keyboard: left Shift), forward only, and firing
   ends it. Look: right stick (keyboard: arrow keys). Fire: right trigger or right shoulder (keyboard: J). Jump: South
   (keyboard: Space): high enough for a 1.2 m ledge. Next / previous weapon: North / West (keyboard: E / Q).
 - Jump pads (glowing discs with rising sparks) throw you up onto the roofs.
-- Pause with Start.
+- Pause with Start in a match; on the setup and results panels Start confirms.
 
 Modes
 - Deathmatch: everyone for themselves, first to 25 frags or the best score after eight minutes.

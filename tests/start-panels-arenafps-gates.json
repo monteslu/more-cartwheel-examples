@@ -1,0 +1,130 @@
+[
+  {
+    "name": "start-panels-arenafps-begin",
+    "app": "arenafps",
+    "frames": 90,
+    "input": "start-panels-arenafps-begin.json",
+    "controlInput": "start-panels-arenafps-begin-control.json",
+    "hosts": [
+      "native",
+      "romdev"
+    ],
+    "minColors": 50,
+    "maxGt16": 0.08,
+    "fields": [
+      "shell.screen",
+      "shell.players",
+      "game.state",
+      "game.mode"
+    ],
+    "expect": {
+      "shell.screen": 3,
+      "game.state": 1
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ],
+      "maxGt16": 0.08,
+      "vsGl": 0.08
+    },
+    "note": "Start on the setup panel begins the match, no pause; control: no press, still on the panel"
+  },
+  {
+    "name": "start-panels-arenafps-play-pauses",
+    "app": "arenafps",
+    "frames": 110,
+    "input": "start-panels-arenafps-play-pauses.json",
+    "controlInput": "start-panels-arenafps-play-pauses-control.json",
+    "hosts": [
+      "native",
+      "romdev"
+    ],
+    "minColors": 50,
+    "maxGt16": 0.08,
+    "fields": [
+      "shell.screen",
+      "shell.players",
+      "game.state",
+      "game.mode"
+    ],
+    "expect": {
+      "shell.screen": 4,
+      "game.state": 1
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ],
+      "maxGt16": 0.08,
+      "vsGl": 0.08
+    },
+    "note": "in the match Start still pauses; control: no second press"
+  },
+  {
+    "name": "start-panels-arenafps-back",
+    "app": "arenafps",
+    "frames": 90,
+    "input": "start-panels-arenafps-back.json",
+    "controlInput": "start-panels-arenafps-back-control.json",
+    "hosts": [
+      "native",
+      "romdev"
+    ],
+    "minColors": 50,
+    "maxGt16": 0.08,
+    "fields": [
+      "shell.screen",
+      "shell.players",
+      "game.state",
+      "game.mode"
+    ],
+    "expect": {
+      "shell.screen": 1
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ],
+      "maxGt16": 0.08,
+      "vsGl": 0.08
+    },
+    "note": "B on the setup panel goes out to the title; control: no press"
+  },
+  {
+    "name": "start-panels-arenafps-seat",
+    "app": "arenafps",
+    "frames": 90,
+    "input": "start-panels-arenafps-seat.json",
+    "controlInput": "start-panels-arenafps-seat-control.json",
+    "hosts": [
+      "native",
+      "romdev"
+    ],
+    "minColors": 50,
+    "maxGt16": 0.08,
+    "fields": [
+      "shell.screen",
+      "shell.players",
+      "game.state",
+      "game.mode"
+    ],
+    "expect": {
+      "shell.screen": 3,
+      "shell.players": 2,
+      "game.state": 0
+    },
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ],
+      "maxGt16": 0.08,
+      "vsGl": 0.08
+    },
+    "note": "a pad with no seat presses A on the setup panel and takes a seat; control: no press"
+  }
+]

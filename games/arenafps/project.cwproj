@@ -17,6 +17,7 @@ input.jump = key:space, pad:south
 input.weapon_next = key:e, pad:north
 input.weapon_prev = key:q, pad:west
 input.sprint = key:lshift, pad:lstick
+input.ui_start = key:return, pad:start
 layer_names_3d = "world, fighters"
 render.width = 960
 render.height = 540
