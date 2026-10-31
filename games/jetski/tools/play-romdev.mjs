@@ -36,7 +36,7 @@ console.log('state', JSON.stringify(state));
 if (+state === 0 || state?.[0] === 0) { await call('input', { op: 'press', button: 'south', frames: 3 }); }
 const log = [];
 const CMD = process.argv.find((a) => a.startsWith('--cmd='))?.slice(6);
-if (CMD) console.log('cmd', JSON.stringify(await call('wasm', { op: 'command', text: CMD })));
+if (CMD) for (const c of CMD.split(';')) console.log('cmd', JSON.stringify(await call('wasm', { op: 'command', text: c })));
 let frame = 0, nextShot = 0, shots = 0, maxAir = 0, lastLog = 0, trick = 0, wall = Date.now();
 const STEP = 4;
 const SHOTS = (process.argv.find((a) => a.startsWith('--shots='))?.slice(8) || '900,1800').split(',').map(Number);

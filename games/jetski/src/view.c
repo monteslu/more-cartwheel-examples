@@ -163,7 +163,7 @@ static void scatter_add(const char *model, const char *map, float density, float
   s.scale_min = smin, s.scale_max = smax;
   s.visible_range = range;
   s.fade = range * 0.08f;
-  s.cast_shadow = true;
+  s.cast_shadow = false;
   s.density_knob = "scatter";
   s.seed = seed;
   s.sink = sink;
@@ -209,7 +209,7 @@ static void land_init(cw_node root) {
     free(nn);
   }
   scatter_add("res://models/palm.glb", "course/palms.u8", 0.012f, 0.75f, 1.45f, 900, 77, false, 0.25f);
-  scatter_add("res://models/shrub.glb", "course/shrubs.u8", 0.03f, 0.8f, 2.0f, 650, 78, false, 0.35f);
+  scatter_add("res://models/shrub.glb", "course/shrubs.u8", 0.03f, 0.8f, 2.0f, 450, 78, false, 0.35f);
   scatter_add("res://models/rock0.glb", "course/rocks.u8", 0.05f, 0.6f, 2.4f, 700, 79, true, 0.3f);
   scatter_add("res://models/rock1.glb", "course/rocks.u8", 0.04f, 0.5f, 1.8f, 700, 80, true, 0.25f);
   scatter_add("res://models/rock2.glb", "course/rocks.u8", 0.03f, 0.7f, 3.2f, 700, 81, true, 0.35f);
@@ -269,7 +269,7 @@ void view_init(void) {
     snprintf(name, sizeof name, "Craft%d", i);
     t3_object *co = cw_gltf_instantiate(craft_res);
     paint(co, i);
-    shadows(co);
+    if (i == 0) shadows(co);
     craft_n[i] = model_node(root, name, co);
     cw_water_refraction_hide(G.water, craft_n[i]);
     bars_o[i] = t3_object_get_by_name(co, "Bars");
@@ -278,7 +278,7 @@ void view_init(void) {
     cw_node_add_child(craft_n[i], rider_n[i]);
     t3_object *ro = cw_gltf_instantiate(rider_res);
     paint(ro, i);
-    shadows(ro);
+    if (i == 0) shadows(ro);
     cw_node3d_set_object(rider_n[i], ro);
     rider_bind(i, ro);
     { cw_rim_light_desc rl = cw_rim_light_default(); rl.color = (t3_color){ 1.0f, 0.82f, 0.62f }; rl.strength = 0.1f; rl.power = 5.0f; cw_rim_light_apply_tree(ro, &rl); }

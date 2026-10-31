@@ -8,6 +8,17 @@ import { Glb } from './gltf-writer.mjs';
 import { SkinMesh, sub, add, mul, norm, cross, frame } from './charmesh.mjs';
 const OUT = join(resolve(dirname(fileURLToPath(import.meta.url)), '..'), 'assets/models');
 mkdirSync(OUT, { recursive: true });
+// one primitive per material: a draw call is what a racer costs, three times over with the reflection and the shadow
+function merged(prims) {
+  const by = new Map();
+  for (const [g, mi] of prims) {
+    if (!by.has(mi)) { by.set(mi, { pos: [...g.pos], nrm: [...g.nrm], uv: [...(g.uv || [])], idx: [...g.idx], joints: g.joints ? [...g.joints] : undefined, weights: g.weights ? [...g.weights] : undefined }); continue; }
+    const t = by.get(mi), base = t.pos.length / 3;
+    t.pos.push(...g.pos); t.nrm.push(...g.nrm); t.uv.push(...(g.uv || [])); for (const k of g.idx) t.idx.push(k + base);
+    if (t.joints) { t.joints.push(...g.joints); t.weights.push(...g.weights); }
+  }
+  return [...by].map(([mi, g]) => [g, mi]);
+}
 const clamp = (x, a = 0, b = 1) => (x < a ? a : x > b ? b : x), lerp = (a, b, t) => a + (b - a) * t;
 const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a)); return t * t * (3 - 2 * t); };
 
@@ -126,15 +137,16 @@ m.capsule('strap', add(Hd, [0, 0.0, -0.05]), add(Hd, [0, -0.055, -0.075]), 0.086
 m.ellipsoid('accent', add(Hd, [0, 0.086, -0.014]), 0.0255, 0.1125, 0.124, { steps: 10, n: 14, weights: hw });
 for (const s of [-1, 1]) m.capsule('strap', add(Hd, [s * 0.042, 0.15, -0.06]), add(Hd, [s * 0.046, 0.12, -0.115]), 0.008, 0.008, { caps: 2, rings: 2, n: 6, weights: hw });
 const glb = new Glb();
-const mats = { suit: glb.material('suit', 0.58), vest: glb.material('vest', 0.86), strap: glb.material('strap', 0.85), accent: glb.material('accent', 0.55), glove: glb.material('glove', 0.7), boot: glb.material('boot', 0.62), helmet: glb.material('helmet', 0.26), visor: glb.material('visor', 0.08, 0.35) };
-const color = { suit: [0.035, 0.04, 0.05, 1], vest: [0.9, 0.3, 0.05, 1], strap: [0.018, 0.018, 0.022, 1], accent: [0.9, 0.3, 0.05, 1], glove: [0.06, 0.06, 0.07, 1], boot: [0.05, 0.05, 0.06, 1], helmet: [0.82, 0.82, 0.8, 1], visor: [0.02, 0.03, 0.05, 1] };
+const suitMat = glb.material('suit', 0.66), vestMat = glb.material('vest', 0.82);
+const mats = { suit: suitMat, strap: suitMat, glove: suitMat, boot: suitMat, vest: vestMat, accent: vestMat, helmet: glb.material('helmet', 0.26), visor: glb.material('visor', 0.08, 0.35) };
+const color = { suit: [0.03, 0.033, 0.04, 1], vest: [0.9, 0.3, 0.05, 1], helmet: [0.82, 0.82, 0.8, 1], visor: [0.02, 0.03, 0.05, 1] };
 for (const [k, c] of Object.entries(color)) glb.materials[mats[k]].pbrMetallicRoughness.baseColorFactor = c;
 const jn = BONES.map((n) => glb.node({ name: n, translation: T[n] }));
 BONES.forEach((n, i) => { if (PARENT[n]) (glb.nodes[jn[BI[PARENT[n]]]].children ||= []).push(jn[i]); });
 const ibm = new Float32Array(BONES.length * 16);
 BONES.forEach((n, i) => ibm.set([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -W[n][0], -W[n][1], -W[n][2], 1], i * 16));
 glb.skins.push({ name: 'Rider', inverseBindMatrices: glb.acc(ibm, 'MAT4', 5126, 0), joints: jn, skeleton: jn[0] });
-const body = glb.node({ name: 'Body', mesh: glb.mesh('rider', m.prims(mats)), skin: 0 });
+const body = glb.node({ name: 'Body', mesh: glb.mesh('rider', merged(m.prims(mats))), skin: 0 });
 glb.sceneNodes.push(body, jn[0]);
 glb.write(join(OUT, 'rider.glb'));
 console.log('rider', m.tris(), 'tris');
@@ -238,11 +250,12 @@ class Plain {
   for (const sg of [-1, 1]) bars.tube('trim', [[sg * 0.23, 0.015, -0.015], [sg * 0.34, 0.025, -0.033]], 0.02, 8);
   bars.tube('dark', [[-0.03, 0.01, -0.03], [0.03, 0.01, -0.03]], 0.03, 8);
   const g = new Glb();
-  const mi = { hull: g.material('hull', 0.9), panel: g.material('panel', 0.3), stripe: g.material('deck2', 0.3), deck: g.material('deck', 0.24), deck2: g.material('deck2', 0.24), mat: g.material('mat', 0.92), transom: g.material('transom', 0.5), lamp: g.material('lamp', 0.3, 0, [9, 0.5, 0.2]), seat: g.material('seat', 0.62), trim: g.material('trim', 0.62), metal: g.material('metal', 0.28, 0.95), nozzle: g.material('nozzle', 0.38, 0.8), dark: g.material('dark', 0.7), strapdark: g.material('dark', 0.7) };
-  const col = { hull: [0.02, 0.022, 0.028, 1], panel: [0.78, 0.78, 0.76, 1], stripe: [0.05, 0.05, 0.06, 1], deck: [0.88, 0.1, 0.06, 1], deck2: [0.05, 0.05, 0.06, 1], mat: [0.14, 0.14, 0.15, 1], transom: [0.09, 0.1, 0.12, 1], lamp: [0.5, 0.03, 0.02, 1], seat: [0.085, 0.09, 0.1, 1], trim: [0.02, 0.02, 0.025, 1], metal: [0.62, 0.64, 0.66, 1], nozzle: [0.28, 0.29, 0.31, 1], dark: [0.015, 0.015, 0.018, 1], strapdark: [0.015, 0.015, 0.018, 1] };
+  const darkM = g.material('dark', 0.6), hullM = g.material('hull', 0.9), metalM = g.material('metal', 0.3, 0.9);
+  const mi = { hull: hullM, trim: hullM, dark: hullM, strapdark: hullM, panel: g.material('panel', 0.3), deck: g.material('deck', 0.24), stripe: darkM, deck2: darkM, mat: darkM, transom: darkM, seat: darkM, lamp: g.material('lamp', 0.3, 0, [9, 0.5, 0.2]), metal: metalM, nozzle: metalM };
+  const col = { hull: [0.02, 0.022, 0.028, 1], panel: [0.78, 0.78, 0.76, 1], deck: [0.88, 0.1, 0.06, 1], stripe: [0.075, 0.08, 0.09, 1], lamp: [0.5, 0.03, 0.02, 1], metal: [0.5, 0.52, 0.54, 1] };
   for (const [k, c] of Object.entries(col)) g.materials[mi[k]].pbrMetallicRoughness.baseColorFactor = c;
-  const hullN = g.node({ name: 'Hull', mesh: g.mesh('hull', P.prims(mi)) });
-  const barN = g.node({ name: 'Bars', mesh: g.mesh('bars', bars.prims(mi)), translation: [0, 0.86, 0.3] });
+  const hullN = g.node({ name: 'Hull', mesh: g.mesh('hull', merged(P.prims(mi))) });
+  const barN = g.node({ name: 'Bars', mesh: g.mesh('bars', merged(bars.prims(mi))), translation: [0, 0.86, 0.3] });
   g.sceneNodes.push(hullN, barN);
   g.write(join(OUT, 'craft.glb'));
   console.log('craft', P.tris() + bars.tris(), 'tris');
