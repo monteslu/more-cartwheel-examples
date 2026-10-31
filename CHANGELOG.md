@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.2
+
+- All games now run on cartwheel-engine v0.28.1.
+- jetski: wave crests read as crests, with lighter water and foam at the top where
+  one stands close. Not every crest shows foam yet.
+- jetski: the hull stays on the water when climbing big waves at speed. It used to
+  sink out of sight under its rider.
+- jetski: a brighter sea, and the menu pages go back to the row that opened them.
+
 ## 0.8.1
 
 - All games now run on cartwheel-engine v0.28.0.
