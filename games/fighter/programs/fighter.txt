@@ -200,3 +200,9 @@ physical+map+rep+nmap+ao+rmap+mmap+skin+morph+senv+morphn+sheen+l1001+xcluster
 physical+map+rep+nmap+ao+rmap+mmap+shadow+skin+morph+senv+morphn+sheen+l1001+xcluster
 physical+map+rep+nmap+ao+rmap+mmap+skin+morph+morphn+sheen+l1001+xcluster
 physical+map+rep+nmap+ao+rmap+mmap+shadow+skin+morph+morphn+sheen+l1001+xcluster
+physical+map+nmap+ao+rmap+mmap+shadow+skin+morph+senv+morphn+sheen+l1001+xcluster
+physical+map+nmap+ao+rmap+mmap+skin+morph+morphn+sheen+l0001+xcluster_csm
+physical+map+nmap+ao+rmap+mmap+skin+morph+senv+morphn+sheen+l0001+xcluster_csm
+physical+map+nmap+ao+rmap+mmap+skin+senv+sheen+l0001+xcluster_csm
+physical+map+nmap+ao+rmap+mmap+skin+senv+sheen+l1001+xcluster
+physical+map+nmap+ao+rmap+mmap+skin+sheen+l0001+xcluster_csm
