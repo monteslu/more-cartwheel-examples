@@ -31,7 +31,7 @@ static cw_node emitter(cw_node parent, const char *name, int amount, float life,
 
 void fx_init(cw_node parent) {
   for (int i = 0; i < RACERS; i++) {
-    int amount = i == 0 ? 1800 : 300;
+    int amount = i == 0 ? 1100 : 300;
     tail[i] = emitter(parent, i ? "TailAI" : "Tail", amount, 1.1f, 0.013f, "0 1 1 1 0.95, 0.5 0.95 0.97 1 0.7, 1 0.9 0.95 1 0", NULL, 100 + i, true);
     cw_node_set(tail[i], "energy", cw_val_float(1.7f));
     cw_node_set(tail[i], "spread", cw_val_float(16));
@@ -57,7 +57,7 @@ void fx_init(cw_node parent) {
     cw_node_set(sheet[s], "soft_distance", cw_val_float(0.3f));
     cw_node_set(sheet[s], "energy", cw_val_float(1.15f));
     cw_node_set(sheet[s], "spread", cw_val_float(14));
-    sheet_fine[s] = emitter(parent, s ? "SheetFineR" : "SheetFineL", 1300, 0.7f, 0.012f, "0 1 1 1 0.9, 0.6 1 1 1 0.6, 1 1 1 1 0", NULL, 620 + s, true);
+    sheet_fine[s] = emitter(parent, s ? "SheetFineR" : "SheetFineL", 800, 0.7f, 0.012f, "0 1 1 1 0.9, 0.6 1 1 1 0.6, 1 1 1 1 0", NULL, 620 + s, true);
     cw_node_set(sheet_fine[s], "energy", cw_val_float(1.6f));
     cw_node_set(sheet_fine[s], "spread", cw_val_float(18));
     cw_node_set(sheet_fine[s], "camera_fade", cw_val_float(3));
@@ -106,9 +106,9 @@ void fx_tick(float dt) {
     t3_vec3 sp = { c->x - sy * 1.65f, c->surf + 0.1f, c->z - cy * 1.65f };
     cw_node3d_set_position(tail[i], sp);
     cw_node_set(tail[i], "emitting", cw_val_bool(on));
-    cw_node_set(tail[i], "direction", cw_val_vec3(-sy * 0.22f + c->vx * 0.022f, 0.9f, -cy * 0.22f + c->vz * 0.022f));
+    cw_node_set(tail[i], "direction", cw_val_vec3(-sy * 0.45f + c->vx * 0.006f, 0.85f, -cy * 0.45f + c->vz * 0.006f));
     cw_node_set(tail[i], "speed_min", cw_val_float(3.0f + 3.5f * k));
-    cw_node_set(tail[i], "speed_max", cw_val_float(5 + 7.5f * k));
+    cw_node_set(tail[i], "speed_max", cw_val_float(5 + 4.5f * k));
     cw_node3d_set_position(mist[i], (t3_vec3){ sp.x - sy * 1.5f, sp.y + 0.5f, sp.z - cy * 1.5f });
     cw_node_set(mist[i], "emitting", cw_val_bool(on && v > 7));
     cw_node_set(mist[i], "direction", cw_val_vec3(c->vx * 0.05f, 0.6f, c->vz * 0.05f));
