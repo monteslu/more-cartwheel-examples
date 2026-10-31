@@ -3,9 +3,7 @@ standard+l1001
 standard+shadow+l1001
 standard+instbig+l1001
 standard+instbig+shadow+l1001
-standard+instbig+shadow+senv+l1500+s100
 physical+shadow+senv+cc+l1500+s100
-standard+shadow+senv+l1500+s100
 standard+senv+l1500
 standard+instbig+senv+l1500
 physical+instbig+shadow+senv+cc+l1400+s100
@@ -20,7 +18,10 @@ standard+map+rep+nmap+ao+emap+rmap+mmap+shadow+senv+l1800+s100+xgi
 standard+senv+l1800+xgibuf
 standard+senv+l1800+xgi
 standard+map+rep+nmap+ao+rmap+mmap+senv+l1500
-standard+map+rep+nmap+ao+rmap+mmap+shadow+senv+l1500+s100
-standard+map+rep+instbig+nmap+ao+rmap+mmap+shadow+senv+l1500+s100
 standard+shadow+senv+l1500+s100+xwater
 standard+shadow+senv+ds+l1500+s100+xwater
+standard+instbig+shadow+senv+l1700+s100
+standard+map+rep+instbig+nmap+ao+rmap+mmap+shadow+senv+l1700+s100
+standard+map+rep+nmap+ao+emap+rmap+mmap+shadow+senv+l1700+s100
+standard+map+rep+nmap+ao+rmap+mmap+shadow+senv+l1700+s100
+standard+shadow+senv+l1700+s100

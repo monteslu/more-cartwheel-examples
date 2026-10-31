@@ -459,6 +459,18 @@ static void on_start(int players, void *user) {
     if (only) for (int i = 0; i < MG_N; i++) if (!strcmp(MG_LIST[i]->id, only)) for (int k = 0; k < G.rounds; k++) G.order[k] = i; }
 #endif
 }
+#ifdef PP_AUTOPILOT
+/* debug channel: "game <id>" keeps every round left on one game, what PP_GAME does where there is no environment (a cart) */
+static void cmd_game(int argc, const char **argv, cw_reply *r) {
+  for (int i = 0; argc > 1 && i < MG_N; i++)
+    if (!strcmp(MG_LIST[i]->id, argv[1])) {
+      for (int k = G.round; k < G.rounds; k++) G.order[k] = i;
+      cw_reply_printf(r, "{\"game\":\"%s\"}", argv[1]);
+      return;
+    }
+  cw_reply_error(r, "usage: game <id>");
+}
+#endif
 static void on_quit(void *user) {
   (void)user;
   end_game_cleanup();
@@ -1025,6 +1037,9 @@ static void init(void *user) {
   for (int i = 0; i < MG_N; i++) if (MG_LIST[i]->unlock_points == 0) SV->unlocked |= 1u << i;
   sfx_init();
   load_scene(NULL); /* the 3D hub behind the title and join screens */
+#ifdef PP_AUTOPILOT
+  cw_debug_command("game", "game <id>: every round left on that game", cmd_game);
+#endif
   cw_debug_i32("game.state", &G.state);
   cw_debug_i32("game.round", &G.round);
   cw_debug_i32("game.mg", &G.cur);
