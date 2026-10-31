@@ -389,12 +389,12 @@ void view_tick(float dt) {
   float vs = c->speed > 1 ? 1 : 0;
   float hx = vs ? c->vx / c->speed : sy, hz = vs ? c->vz / c->speed : cy;
   float bx = sy * 0.72f + hx * 0.28f, bz = cy * 0.72f + hz * 0.28f;
-  float back = 4.7f + c->speed * 0.04f, up = 1.75f + c->speed * 0.012f;
+  float back = 4.0f + c->speed * 0.035f, up = 1.6f + c->speed * 0.012f;
   float wx = c->x - bx * back, wz = c->z - bz * back;
   float wh = cw_water_height_at(G.water, wx, wz, G.wt);
   float wy = (c->y * 0.45f + wh * 0.55f) + up;
   if (wy < wh + 1.25f) wy = wh + 1.25f;
-  float kx = 1.0f - cw_exp(-dt * 9.0f), ky = 1.0f - cw_exp(-dt * 5.5f);
+  float kx = 1.0f - cw_exp(-dt * 18.0f), ky = 1.0f - cw_exp(-dt * 5.5f);
   if (G.tick < 3 || G.cam[0] == 0) kx = ky = 1;
   G.cam[0] += (wx - G.cam[0]) * kx;
   G.cam[2] += (wz - G.cam[2]) * kx;
@@ -408,7 +408,7 @@ void view_tick(float dt) {
   G.look[0] += (lx - G.look[0]) * kl;
   G.look[1] += (ly - G.look[1]) * kl;
   G.look[2] += (lz - G.look[2]) * kl;
-  float fov = 56.0f + c->speed * 0.36f;
+  float fov = 54.0f + c->speed * 0.34f;
   if (G.cam_fov == 0) G.cam_fov = fov;
   G.cam_fov += (fov - G.cam_fov) * (dt * 2.0f);
   /* the ripples live around where the player looks */

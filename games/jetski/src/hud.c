@@ -55,8 +55,8 @@ static void hud_body(void) {
   }
   /* speed, bottom right */
   snprintf(buf, sizeof buf, "%d", (int)(c->speed * 3.6f + 0.5f));
-  text(big, buf, w - 150 * u, h - 148 * u, 92 * u, white, 1);
-  text(small, "km/h", w - 138 * u, h - 96 * u, 32 * u, dim, 0);
+  text(big, buf, w - 150 * u, h - 186 * u, 92 * u, white, 1);
+  text(small, "km/h", w - 138 * u, h - 134 * u, 32 * u, dim, 0);
   /* meter: five arrows, the speed the buoys have earned */
   for (int i = 0; i < 5; i++) {
     float x = w - 372 * u + (float)i * 58 * u, y = h - 42 * u;

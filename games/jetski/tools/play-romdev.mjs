@@ -37,6 +37,7 @@ if (+state === 0 || state?.[0] === 0) { await call('input', { op: 'press', butto
 const log = [];
 let frame = 0, nextShot = 0, shots = 0, maxAir = 0, lastLog = 0, trick = 0, wall = Date.now();
 const STEP = 4;
+const SHOTS = (process.argv.find((a) => a.startsWith('--shots='))?.slice(8) || '900,1800').split(',').map(Number);
 while (frame < FRAMES) {
   const p = await rd('p0.pos'), yaw = +(await rd('p0.yaw')), speed = +(await rd('p0.speed')), air = +(await rd('p0.air_time'));
   const ti = +(await rd('p0.track_i')), passes = +(await rd('p0.passes')), misses = +(await rd('p0.misses')), meter = +(await rd('p0.meter'));
@@ -53,10 +54,10 @@ while (frame < FRAMES) {
   while (err < -Math.PI) err += 2 * Math.PI;
   const lx = Math.max(-1, Math.min(1, -err * 2.4));
   const buttons = { south: true };
-  if (air > 0.25 && air < 0.3) trick = 1;
+  if (process.argv.includes('--tricks') && air > 0.1 && air < 0.2) trick = 1;
   if (trick > 0) { buttons.west = true; trick = air > 0.3 ? 0 : trick; }
   await call('input', { op: 'set', ports: [{ ...buttons, axes: { lx, ly: Math.abs(err) > 0.7 ? 0.9 : 0 }, right: lx > 0.2, left: lx < -0.2, down: Math.abs(err) > 0.7 }] });
-  const shoot = (air > 0.55 && frame >= nextShot) || frame === 900 || frame === 1800;
+  const shoot = (air > 0.55 && frame >= nextShot) || SHOTS.includes(frame);
   if (shoot) { await call('frame', { op: 'stepAndShot', frames: STEP, path: join(DIR, `f${frame}-air${air.toFixed(1)}.png`) }); nextShot = frame + 240; shots++; } else await call('frame', { op: 'step', frames: STEP });
   frame += STEP;
   if (air > maxAir) maxAir = air;

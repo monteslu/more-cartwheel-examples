@@ -53,7 +53,7 @@ function save(rel, w, h, bytes) { const p = join(OUT, rel); mkdirSync(dirname(p)
 // the evening sky, painted: u = azimuth (the sun's way at u = 0.5), v from the top of the sky (0) to the horizon (1) with
 // el = (1 - v)^1.7 of 90 degrees, so most of the texels lie low down where the eye looks
 {
-  const W = 6144, H = 1280, b = new Uint8Array(W * H * 4);
+  const W = 4096, H = 1024, b = new Uint8Array(W * H * 4);
   const PER = 32;
   const billow = (x, y, oct, s) => { let a = 0.5, f = 1, sum = 0, n = 0; for (let i = 0; i < oct; i++) { sum += a * (1 - Math.abs(2 * vnoise(x * f, y * f, s + i, PER * f) - 1)); n += a; a *= 0.52; f *= 2; } return sum / n; };
   const dens = (u, el) => {

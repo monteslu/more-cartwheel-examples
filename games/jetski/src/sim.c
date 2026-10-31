@@ -184,10 +184,10 @@ static void craft_tick(craft *c, int idx, float dt) {
     }
     if (c->trick_kind) {
       c->trick_t += dt;
-      float speed = TAU / 0.95f;
+      float speed = TAU / 0.72f;
       if (c->trick_kind == 1) c->roll += c->trick_dir * speed * dt;
       else c->pitch += speed * dt;
-      if (c->trick_t >= 0.95f) {
+      if (c->trick_t >= 0.72f) {
         if (c->trick_kind == 1) c->roll = wrap_pi(c->roll);
         else c->pitch = wrap_pi(c->pitch);
         c->trick_kind = 0;
@@ -348,6 +348,18 @@ void sim_tick(float dt) {
       buoys(c);
     }
   }
+  /* craft shoulder each other aside, they do not pass through */
+  for (int i = 0; i < RACERS; i++)
+    for (int j = i + 1; j < RACERS; j++) {
+      craft *a = &G.c[i], *b = &G.c[j];
+      float dx = b->x - a->x, dz = b->z - a->z, d2 = dx * dx + dz * dz;
+      if (d2 > 2.2f * 2.2f || d2 < 1e-4f) continue;
+      float d = sqrtf(d2), push = (2.2f - d) * 0.5f, nx = dx / d, nz = dz / d;
+      a->x -= nx * push, a->z -= nz * push, b->x += nx * push, b->z += nz * push;
+      float rel = (b->vx - a->vx) * nx + (b->vz - a->vz) * nz;
+      if (rel < 0) a->vx += nx * rel * 0.5f, a->vz += nz * rel * 0.5f, b->vx -= nx * rel * 0.5f, b->vz -= nz * rel * 0.5f;
+      a->kick = clampf(a->kick + 0.2f, 0, 1), b->kick = clampf(b->kick + 0.2f, 0, 1);
+    }
   /* places */
   for (int i = 0; i < RACERS; i++) G.order[i] = i;
   for (int a = 1; a < RACERS; a++) {
