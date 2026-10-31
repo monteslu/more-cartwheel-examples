@@ -113,6 +113,7 @@ return {
   sky: 'res://textures/sky.png',
   // set on the scene's nodes when the course loads
   props: [
+    ['Sky', 'ground_color', 'color(0.3, 0.27, 0.23, 1)'],
     ['Sky', 'time_of_day', '16.9'], ['Sky', 'sun_energy', '3.6'], ['Sky', 'sky_energy', '1.7'], ['Sky', 'north', '200'],
     ['Fill', 'energy', '0.75'], ['Fill', 'rotation', 'vec3(-0.75, 1.4, 0)'], ['Fill', 'color', 'color(0.55, 0.62, 0.95, 1)'],
     ['Post', 'exposure', '1.0'], ['Post', 'bloom_intensity', '0.09'],

@@ -379,12 +379,30 @@ class Plain {
 // ── a drowned arch: granite over a cut 22 m wide. Local y 0 is the sea's rest level, its underside at 3.6 m in the middle (the course
 // definition's lintel). Runs across z, the direction of travel along its own x-axis once placed ──
 {
-  const P = new Plain(), W = 17, ROCK = 6;
-  const pts = Array.from({ length: 17 }, (_, i) => { const t = i / 16 * 2 - 1; return [t * W, 3.6 + ROCK + 7 * (1 - t * t) * 0 - (Math.pow(Math.abs(t), 4)) * 18, 0]; });
-  P.tube('rock', pts, ROCK, 18, { cap: true });
+  // a span of broken granite: thick in the middle, its ends running down into the headland on each side. Cross sections around the span,
+  // knocked about at several scales and in ledges, moss on its back and the tide's dark stain under it. The opening stays clear: no point
+  // inside the cut comes below the lintel
+  const P = new Plain(), W = 42, LINTEL = 3.6, CUT = 12.5, NA = 36, NB = 26;
+  const h = (i, j, k) => { let v = Math.imul(i * 374761393 + j * 668265263 + k * 1274126177, 1274126177); v = Math.imul(v ^ (v >>> 13), 1274126177); return ((v ^ (v >>> 16)) >>> 0) / 4294967296; };
+  const noise = (x, y, k) => { const xi = Math.floor(x), yi = Math.floor(y), u = x - xi, t = y - yi, su = u * u * (3 - 2 * u), st = t * t * (3 - 2 * t); return lerp(lerp(h(xi, yi, k), h(xi + 1, yi, k), su), lerp(h(xi, yi + 1, k), h(xi + 1, yi + 1, k), su), st); };
+  const point = (i, j) => {
+    const t = i / NA * 2 - 1, x = t * W, a = (j % NB) / NB * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a);
+    const ax = Math.abs(x), under = LINTEL - 24 * smooth(CUT, 25, ax), ry = 4.2 + 13 * smooth(CUT - 2, 26, ax), rz = 6 + 5 * smooth(CUT, 26, ax); // a true arch: its legs stand in the water at the cut's banks and widen into them
+    const rough = 1 + 0.45 * (noise(i * 0.45, j * 0.5, 1) - 0.5) + 0.3 * (noise(i * 1.3, j * 1.5, 2) - 0.5) + 0.16 * (h(i, j % NB, 3) - 0.5);
+    let y = under + ry + sa * ry * rough, z = ca * rz * rough;
+    y += 0.5 * Math.sin((y + 3 * noise(i * 0.3, 0.5, 4)) * 2.1); // ledges
+    if (ax < CUT && y < LINTEL) y = LINTEL + 0.1 * h(i, j, 5);
+    return [x + 1.2 * (noise(i * 0.8, j * 0.8, 6) - 0.5), y, z];
+  };
+  const part = (m, from, to) => { const rows = []; for (let i = 0; i <= NA; i++) { const row = []; for (let j = from; j <= to; j++) row.push(point(i, j)); rows.push(row); } P.grid(m, rows, { flip: false }); };
+  part('dark', -Math.round(NB * 0.38), -Math.round(NB * 0.12)); // under it, the tide's stain
+  part('rock', -Math.round(NB * 0.12), Math.round(NB * 0.14));
+  part('moss', Math.round(NB * 0.14), Math.round(NB * 0.36));
+  part('rock', Math.round(NB * 0.36), Math.round(NB * 0.62));
   const g = new Glb();
-  const mi = { rock: g.material('rock', 0.95) };
-  g.materials[mi.rock].pbrMetallicRoughness.baseColorFactor = [0.26, 0.27, 0.29, 1];
+  const mi = { rock: g.material('rock', 0.95), moss: g.material('moss', 0.95), dark: g.material('dark', 0.85) };
+  const col = { rock: [0.2, 0.21, 0.23], moss: [0.13, 0.19, 0.08], dark: [0.05, 0.06, 0.055] };
+  for (const k of Object.keys(mi)) g.materials[mi[k]].pbrMetallicRoughness.baseColorFactor = [...col[k], 1];
   g.sceneNodes.push(g.node({ name: 'Arch', mesh: g.mesh('arch', P.prims(mi)) }));
   g.write(join(OUT, 'arch.glb'));
 }

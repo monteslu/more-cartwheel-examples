@@ -78,6 +78,8 @@ return {
   sky: 'res://textures/sky-sound.png',
   sun_disc: 0.12,
   props: [
+    // (what the water mirrors past the horizon on a wave's back: the sky's default sandy ground lay on this sea in tan bands)
+    ['Sky', 'ground_color', 'color(0.16, 0.26, 0.34, 1)'],
     ['Sky', 'time_of_day', '10.4'], ['Sky', 'sun_energy', '2.0'], ['Sky', 'sky_energy', '2.6'], ['Sky', 'north', '40'],
     ['Fill', 'energy', '2.4'], ['Fill', 'rotation', 'vec3(-0.55, -2.2, 0)'], ['Fill', 'color', 'color(0.72, 0.78, 0.92, 1)'],
     ['Post', 'exposure', '1.0'], ['Post', 'bloom_intensity', '0.05'],

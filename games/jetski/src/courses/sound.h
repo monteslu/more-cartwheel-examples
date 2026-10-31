@@ -313,6 +313,7 @@ static const course_scatter sound_scatter[] = {
 { "res://models/rock2.glb", "course/sound/boulders.u8", 0.15f, 0.8f, 3.4f, 700.0f, 181, true, 0.9f }
 };
 static const char *const sound_props[][3] = {
+{ "Sky", "ground_color", "color(0.16, 0.26, 0.34, 1)" },
 { "Sky", "time_of_day", "10.4" },
 { "Sky", "sun_energy", "2.0" },
 { "Sky", "sky_energy", "2.6" },
@@ -339,7 +340,7 @@ static const char *const sound_props[][3] = {
 static const course_def sound_course = {
   .id = "sound", .name = "Cold Sound", .quads = 896, .spacing = 2.0f, .minh = -48.0f, .maxh = 170.0f, .len = 3268.00f,
   .track_n = 256, .track = sound_track, .buoy_n = 35, .buoys = sound_buoys, .ramp_n = 10, .ramps = sound_ramps, .ramp_top = 6.5f,
-  .scatter_n = 4, .scatter = sound_scatter, .prop_n = 22, .props = sound_props,
+  .scatter_n = 4, .scatter = sound_scatter, .prop_n = 23, .props = sound_props,
   .layer = { "course/sound/shingle", "course/sound/tiderock", "course/sound/granite", "course/sound/moss" }, .layer_uv = { 0.2f, 0.1f, 0.06f, 0.09f },
   .heights = "course/sound/heights.r16", .control = "course/sound/control.u32", .mask = "course/sound/wavemask.f32", .mask_n = 256, .map_n = 448, .sky = "res://textures/sky-sound.png",
   .landmark = NULL, .landmark_at = { 0.00f, -100.40f, 0.00f },
