@@ -10,13 +10,12 @@
 #include "cartwheel/resource.h"
 #include "cartwheel/rim_light.h"
 #include "cartwheel/scene_file.h"
-#include "course_data.h"
 #include "game.h"
 
-static cw_node craft_n[RACERS], rider_n[RACERS], buoy_n[BUOY_N], ramp_n[RAMPS];
+static cw_node craft_n[RACERS], rider_n[RACERS], buoy_n[BUOY_MAX], ramp_n[RAMP_MAX];
 static t3_object *bars_o[RACERS];
 static t3_material *band_mat[2], *lamp_mat[2];
-static float buoy_phase[BUOY_N];
+static float buoy_phase[BUOY_MAX];
 static cw_node gate_n;
 
 static const float TEAMS[RACERS][6] = {
@@ -58,6 +57,7 @@ static void paint(t3_object *o, int team) {
  * and the light it casts; its own picture is off). In the reflection too. The sun itself is a bright sprite, so the bloom
  * takes it. */
 static t3_object *sky_dome, *sun_sprite;
+static t3_material *sun_mat;
 static t3_geometry *grid_geo(int nu, int nv, void (*fn)(float u, float v, float *p)) {
   int nvert = (nu + 1) * (nv + 1);
   float *pos = malloc((size_t)nvert * 12), *uv = malloc((size_t)nvert * 8), *nrm = calloc((size_t)nvert, 12);
@@ -94,16 +94,26 @@ static void dome_vertex(float u, float v, float *p) {
   p[0] = sa * ce * SKY_R, p[1] = se * SKY_R - (v > 0.999f ? 260.0f : 0.0f), p[2] = ca * ce * SKY_R;
 }
 static void quad_vertex(float u, float v, float *p) { p[0] = u - 0.5f, p[1] = 0.5f - v, p[2] = 0; }
-static void clouds_init(void) {
-  cw_res tex = cw_res_load("res://textures/sky.png", CW_RES_TEXTURE);
-  t3_geometry *g = grid_geo(96, 48, dome_vertex);
+static cw_node model_node(cw_node parent, const char *name, t3_object *o);
+/* a course's sky: its painted image on a material of its own */
+static t3_material *sky_material(const char *path) {
   t3_material *m = t3_mesh_basic_material_new(0xffffff);
-  m->map = cw_res_texture(tex);
+  m->map = cw_res_texture(cw_res_load(path, CW_RES_TEXTURE));
   if (m->map) { t3_retain(m->map); m->map->wrap_s = T3_REPEAT; m->map->color_space = T3_SRGB_COLOR_SPACE; }
   m->color = (t3_color){ 1.0f, 1.0f, 1.0f };
   m->depth_write = false;
   m->side = T3_DOUBLE_SIDE;
   m->fog = false;
+  return m;
+}
+/* every course's sky is loaded here, so choosing a course does not read a texture off the disk. Each is imported as colour by a
+ * .cwimport beside its image: on GL a loaded texture's sRGB cannot be changed afterwards */
+static t3_material *sky_mats[LEVELS];
+static void clouds_init(void) {
+  t3_geometry *g = grid_geo(96, 48, dome_vertex);
+  for (int i = 0; i < LEVELS; i++) sky_mats[i] = sky_material(COURSES[i]->sky);
+  t3_material *m = sky_mats[G.level];
+  t3_retain(m);
   t3_mesh *mesh = t3_mesh_new(g, m);
   t3_release(g), t3_release(m);
   mesh->base.frustum_culled = false;
@@ -124,6 +134,7 @@ static void clouds_init(void) {
   sm->blending = T3_ADDITIVE_BLENDING;
   sm->depth_write = false;
   sm->fog = false;
+  sun_mat = sm;
   t3_mesh *sq = t3_mesh_new(q, sm);
   t3_release(q), t3_release(sm);
   sq->base.frustum_culled = false;
@@ -159,7 +170,7 @@ static void scatter_add(const char *model, const char *map, float density, float
   uint8_t *dm = cw_asset_load(map, &db);
   s.density = density;
   s.density_map = dm;
-  s.dm_w = s.dm_h = PALMS_N;
+  s.dm_w = s.dm_h = DEF->map_n;
   s.scale_min = smin, s.scale_max = smax;
   s.visible_range = range;
   s.fade = range * 0.08f;
@@ -174,45 +185,106 @@ static void scatter_add(const char *model, const char *map, float density, float
   t3_release(po);
 }
 
+static cw_node land_n, landmark_n, hook_n;
+static bool g_marks_stale = true;
 static void land_init(cw_node root) {
 
 
   cw_node n = cw_node_new("Terrain3D", "Land");
-  cw_node_set(n, "size_x", cw_val_int(COURSE_QUADS));
-  cw_node_set(n, "size_z", cw_val_int(COURSE_QUADS));
-  cw_node_set(n, "vertex_spacing", cw_val_float(COURSE_SPACING));
-  cw_node_set(n, "min_height", cw_val_float(COURSE_MINH));
-  cw_node_set(n, "max_height", cw_val_float(COURSE_MAXH));
+  const course_def *d = DEF;
+  cw_node_set(n, "size_x", cw_val_int(d->quads));
+  cw_node_set(n, "size_z", cw_val_int(d->quads));
+  cw_node_set(n, "vertex_spacing", cw_val_float(d->spacing));
+  cw_node_set(n, "min_height", cw_val_float(d->minh));
+  cw_node_set(n, "max_height", cw_val_float(d->maxh));
   cw_node_set(n, "far_distance", cw_val_float(900));
   cw_node_set(n, "physics", cw_val_bool(true));
-  cw_node_set(n, "heightmap", cw_val_string("course/heights.r16"));
+  cw_node_set(n, "heightmap", cw_val_string(d->heights));
   cw_node_add_child(root, n);
+  land_n = n;
   G.land = cw_terrain_of(n);
   { t3_material *lm = cw_terrain_material(G.land); if (lm) lm->color = (t3_color){ 1.55f, 1.5f, 1.45f }; }
   size_t bytes;
-  uint32_t *ctl = cw_asset_load("course/control.u32", &bytes);
-  if (!ctl || bytes != (size_t)(COURSE_QUADS + 1) * (COURSE_QUADS + 1) * 4) CW_FATAL("course control missing");
-  cw_terrain_set_control(G.land, 0, 0, COURSE_QUADS + 1, COURSE_QUADS + 1, ctl);
+  uint32_t *ctl = cw_asset_load(d->control, &bytes);
+  if (!ctl || bytes != (size_t)(d->quads + 1) * (d->quads + 1) * 4) CW_FATAL("course control missing");
+  cw_terrain_set_control(G.land, 0, 0, d->quads + 1, d->quads + 1, ctl);
   free(ctl);
-  static const char *const names[4] = { "sand", "coast", "rock", "grass" };
-  static const float uv[4] = { 0.16f, 0.22f, 0.075f, 0.09f };
   for (int i = 0; i < 4; i++) {
     char p[64];
     size_t la, ln;
-    snprintf(p, sizeof p, "terrain/%s-albedo.rgba", names[i]);
+    snprintf(p, sizeof p, "%s-albedo.rgba", d->layer[i]);
     uint8_t *a = cw_asset_load(p, &la);
-    snprintf(p, sizeof p, "terrain/%s-normal.rgba", names[i]);
+    snprintf(p, sizeof p, "%s-normal.rgba", d->layer[i]);
     uint8_t *nn = cw_asset_load(p, &ln);
     if (!a || !nn) CW_FATAL("terrain layer missing");
-    cw_terrain_set_layer_pixels(G.land, i, a, nn, 1024, 1024, uv[i]);
+    cw_terrain_set_layer_pixels(G.land, i, a, nn, 1024, 1024, d->layer_uv[i]);
     free(a);
     free(nn);
   }
-  scatter_add("res://models/palm.glb", "course/palms.u8", 0.012f, 0.75f, 1.45f, 900, 77, false, 0.25f);
-  scatter_add("res://models/shrub.glb", "course/shrubs.u8", 0.03f, 0.8f, 2.0f, 450, 78, false, 0.35f);
-  scatter_add("res://models/rock0.glb", "course/rocks.u8", 0.05f, 0.6f, 2.4f, 700, 79, true, 0.3f);
-  scatter_add("res://models/rock1.glb", "course/rocks.u8", 0.04f, 0.5f, 1.8f, 700, 80, true, 0.25f);
-  scatter_add("res://models/rock2.glb", "course/rocks.u8", 0.03f, 0.7f, 3.2f, 700, 81, true, 0.35f);
+  for (int i = 0; i < d->scatter_n; i++) {
+    const course_scatter *s = &d->scatter[i];
+    scatter_add(s->model, s->map, s->density, s->smin, s->smax, s->range, s->seed, s->sink, s->tilt);
+  }
+}
+
+/* the marks and the look of the course in G.level */
+static void marks_apply(cw_node root) {
+  if (cw_node_valid(landmark_n)) cw_node_free(landmark_n);
+  if (cw_node_valid(hook_n)) cw_node_free(hook_n);
+  landmark_n = hook_n = (cw_node){ 0 };
+  const course_def *d = DEF;
+  if (d->landmark) {
+    t3_object *o = cw_gltf_instantiate(cw_res_load(d->landmark, CW_RES_GLTF));
+    shadows(o);
+    landmark_n = model_node(root, "Landmark", o);
+    cw_node3d_set_position(landmark_n, (t3_vec3){ d->landmark_at[0], d->landmark_at[1], d->landmark_at[2] });
+    t3_release(o);
+  }
+  if (d->hook.model) {
+    t3_object *o = cw_gltf_instantiate(cw_res_load(d->hook.model, CW_RES_GLTF));
+    shadows(o);
+    hook_n = model_node(root, "Hook", o);
+    cw_node3d_set_position(hook_n, (t3_vec3){ d->hook.x, 0, d->hook.z });
+    cw_node3d_set_rotation(hook_n, (t3_vec3){ 0, cw_atan2(d->hook.dirx, d->hook.dirz), 0 }); /* its span across the way through */
+    t3_release(o);
+  }
+}
+static void props_apply(cw_node root) {
+  const course_def *d = DEF;
+  for (int i = 0; i < d->prop_n; i++) {
+    cw_node n = cw_node_get(root, d->props[i][0]);
+    const cw_prop *p = cw_node_valid(n) ? cw_node_find_prop(n, d->props[i][1], NULL) : NULL;
+    cw_value v;
+    if (!p || !cw_value_parse(d->props[i][2], p->type, &v) || !cw_node_set(n, d->props[i][1], v)) CW_FATAL("course %s: %s.%s = %s refused", d->id, d->props[i][0], d->props[i][1], d->props[i][2]);
+  }
+}
+static void mask_apply(void) {
+  size_t mb;
+  float *mask = cw_asset_load(DEF->mask, &mb);
+  if (!mask || mb != (size_t)DEF->mask_n * DEF->mask_n * 4) CW_FATAL("wave mask missing");
+  cw_water_set_wave_mask(G.water, mask, DEF->mask_n, DEF->mask_n);
+  free(mask);
+}
+static void sky_apply(void) {
+  t3_mesh *dome = (t3_mesh *)sky_dome;
+  t3_material *m = sky_mats[G.level];
+  if (dome->materials[0] != m) {
+    t3_retain(m);
+    t3_release(dome->materials[0]);
+    dome->materials[0] = m;
+  }
+  if (sun_mat) sun_mat->color = (t3_color){ 42 * DEF->sun_disc, 28 * DEF->sun_disc, 13 * DEF->sun_disc };
+}
+/* G.level changed */
+void view_course_apply(void) {
+  cw_node root = cw_node_get(cw_tree_root(cw_scene_app_tree()), "Root");
+  if (cw_node_valid(land_n)) { G.land = NULL; cw_node_free(land_n); }
+  land_init(root);
+  mask_apply();
+  sky_apply();
+  marks_apply(root);
+  props_apply(root);
+  g_marks_stale = true;
 }
 
 /* the buoy's band and lamp take its side's colour; one shared material per side */
@@ -255,11 +327,8 @@ void view_init(void) {
   G.sky = cw_node_get(root, "Sky");
   land_init(root);
   clouds_init();
-  size_t mb;
-  float *mask = cw_asset_load("course/wavemask.f32", &mb);
-  if (!mask || mb != (size_t)MASK_N * MASK_N * 4) CW_FATAL("wave mask missing");
-  cw_water_set_wave_mask(G.water, mask, MASK_N, MASK_N);
-  free(mask);
+  mask_apply();
+  props_apply(root);
 
   cw_res craft_res = cw_res_load("res://models/craft.glb", CW_RES_GLTF);
   cw_res rider_res = cw_res_load("res://models/rider.glb", CW_RES_GLTF);
@@ -286,11 +355,11 @@ void view_init(void) {
     t3_release(co);
   }
   /* the buoys: one colour per side */
-  for (int b = 0; b < BUOY_N; b++) {
+  for (int b = 0; b < BUOY_MAX; b++) {
     char name[24];
     snprintf(name, sizeof name, "Buoy%d", b);
     t3_object *o = cw_gltf_instantiate(buoy_res);
-    int side = BUOYS[b][2] > 0;
+    int side = (b & 1) == 0; /* every course alternates, beginning on the right */
     buoy_paint(o, side);
     shadows(o);
     buoy_n[b] = model_node(root, name, o);
@@ -298,7 +367,7 @@ void view_init(void) {
     buoy_phase[b] = (float)b * 1.7f;
   }
   { cw_res rr = cw_res_load("res://models/ramp.glb", CW_RES_GLTF);
-    for (int r = 0; r < RAMPS; r++) {
+    for (int r = 0; r < RAMP_MAX; r++) {
       char name[24];
       snprintf(name, sizeof name, "Ramp%d", r);
       t3_object *o = cw_gltf_instantiate(rr);
@@ -308,12 +377,7 @@ void view_init(void) {
     } }
   /* the lighthouse stands on the islet's top, the gate floats on the line */
   {
-    cw_res lr = cw_res_load("res://models/lighthouse.glb", CW_RES_GLTF);
-    t3_object *lo = cw_gltf_instantiate(lr);
-    shadows(lo);
-    cw_node ln = model_node(root, "Lighthouse", lo);
-    cw_node3d_set_position(ln, (t3_vec3){ LIGHT_X, LIGHT_Y, LIGHT_Z });
-    t3_release(lo);
+    marks_apply(root);
     cw_res gr = cw_res_load("res://models/gate.glb", CW_RES_GLTF);
     t3_object *go = cw_gltf_instantiate(gr);
     shadows(go);
@@ -463,10 +527,11 @@ void view_sync(double alpha) {
   /* who is on the water, and which buoys count */
   { static int shown = -1;
     int now = g_difficulty * 2 + (racer_on(1) ? 1 : 0);
-    if (now != shown) {
-      shown = now;
+    if (now != shown || g_marks_stale) {
+      shown = now, g_marks_stale = false;
       for (int i = 0; i < RACERS; i++) cw_node_set(craft_n[i], "visible", cw_val_bool(racer_on(i)));
-      for (int b = 0; b < BUOY_N; b++) cw_node_set(buoy_n[b], "visible", cw_val_bool(buoy_on(b)));
+      for (int b = 0; b < BUOY_MAX; b++) cw_node_set(buoy_n[b], "visible", cw_val_bool(b < BUOY_N && buoy_on(b)));
+      for (int r = 0; r < RAMP_MAX; r++) cw_node_set(ramp_n[r], "visible", cw_val_bool(r < RAMPS));
     } }
   for (int i = 0; i < RACERS; i++) {
     const craft *c = &G.c[i];

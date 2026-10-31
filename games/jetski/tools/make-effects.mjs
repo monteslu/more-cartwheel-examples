@@ -50,9 +50,9 @@ function save(rel, w, h, bytes) { const p = join(OUT, rel); mkdirSync(dirname(p)
   save('effects/sun.png', N, N, b);
 }
 
-// the evening sky, painted: u = azimuth (the sun's way at u = 0.5), v from the top of the sky (0) to the horizon (1) with
+// a sky, painted: u = azimuth (the sun's way at u = 0.5), v from the top of the sky (0) to the horizon (1) with
 // el = (1 - v)^1.7 of 90 degrees, so most of the texels lie low down where the eye looks
-{
+function paintSky(path, S) {
   const W = 4096, H = 1024, b = new Uint8Array(W * H * 4);
   const PER = 32;
   const billow = (x, y, oct, s) => { let a = 0.5, f = 1, sum = 0, n = 0; for (let i = 0; i < oct; i++) { sum += a * (1 - Math.abs(2 * vnoise(x * f, y * f, s + i, PER * f) - 1)); n += a; a *= 0.52; f *= 2; } return sum / n; };
@@ -65,7 +65,7 @@ function save(rel, w, h, bytes) { const p = join(OUT, rel); mkdirSync(dirname(p)
     return smooth(0.5, 0.63, puff + 0.42 * (1 - smooth(top * 0.2, top, el)) - 0.36);
   };
   const mix3 = (A, B, t) => [lerp(A[0], B[0], t), lerp(A[1], B[1], t), lerp(A[2], B[2], t)];
-  const ZEN = [0.03, 0.085, 0.24], MID = [0.1, 0.22, 0.48], HIGHW = [0.95, 0.42, 0.2], LOWW = [1.0, 0.6, 0.22], AWAY = [0.34, 0.26, 0.44], AWAYLOW = [0.62, 0.38, 0.44];
+  const { ZEN, MID, HIGHW, LOWW, AWAY, AWAYLOW, HAZE0, HAZE1, CIR0, CIR1, SHADE0, SHADE1, LIGHT0, LIGHT1, RIM, cover } = S;
   for (let j = 0; j < H; j++) {
     const el = Math.pow(1 - (j + 0.5) / H, 1.7); // 0 horizon, 1 zenith
     for (let i = 0; i < W; i++) {
@@ -76,23 +76,23 @@ function save(rel, w, h, bytes) { const p = join(OUT, rel); mkdirSync(dirname(p)
       let c = mix3(band, MID, smooth(0.05, 0.3 - 0.06 * near, el));
       c = mix3(c, ZEN, smooth(0.28, 0.85, el));
       const haze = (1 - smooth(0.0, 0.035, el));
-      c = mix3(c, mix3([0.9, 0.72, 0.68], [1.0, 0.8, 0.5], near), haze * 0.75);
+      c = mix3(c, mix3(HAZE0, HAZE1, near), haze * 0.75);
       // high streaks, lit from below, thinning away from the sun
       const wob = fbm(u * 10, el * 3, 2, 42, 10);
       const cirrus = smooth(0.55, 0.82, fbm(u * PER * 1.5 + 3 * wob, el * 34, 5, 41, PER * 1.5)) * smooth(0.1, 0.22, el) * (1 - smooth(0.55, 0.85, el)) * 0.5;
-      c = mix3(c, mix3([1.0, 0.82, 0.8], [1.0, 0.66, 0.42], near), cirrus);
+      c = mix3(c, mix3(CIR0, CIR1, near), cirrus);
       // a bank of cumulus on the horizon, its near side in shade, lit along the edge toward the sun
-      if (el < 0.42) {
-        const e0 = el / 0.18;
+      if (el < (cover > 1 ? 1.01 : 0.42)) {
+        const e0 = el / (0.18 * cover);
         const d = dens(u, e0) * smooth(0, 0.006, el);
         if (d > 0.002) {
           const sd = u > 0.5 ? -1 : 1;
           let od = 0;
           for (let q = 1; q <= 4; q++) od += dens(u + sd * q * 0.0024, e0 + q * 0.016);
           const lit = Math.exp(-od * 0.7);
-          const shade = mix3([0.3, 0.27, 0.38], [0.42, 0.26, 0.28], near), light = mix3([1.0, 0.78, 0.72], [1.0, 0.68, 0.34], near);
+          const shade = mix3(SHADE0, SHADE1, near), light = mix3(LIGHT0, LIGHT1, near);
           let k = mix3(shade, light, lit);
-          const rim = (1 - smooth(0.12, 0.65, d)) * Math.pow(near, 1.5); k = mix3(k, [1.0, 0.86, 0.56], rim);
+          const rim = (1 - smooth(0.12, 0.65, d)) * Math.pow(near, 1.5); k = mix3(k, RIM, rim);
           c = mix3(c, k, d * (1 - 0.5 * Math.pow(near, 8) * (1 - smooth(0, 0.08, el))));
         }
       }
@@ -100,5 +100,17 @@ function save(rel, w, h, bytes) { const p = join(OUT, rel); mkdirSync(dirname(p)
       b[q] = Math.round(clamp(Math.pow(c[0], 1 / 2.2)) * 255); b[q + 1] = Math.round(clamp(Math.pow(c[1], 1 / 2.2)) * 255); b[q + 2] = Math.round(clamp(Math.pow(c[2], 1 / 2.2)) * 255); b[q + 3] = 255;
     }
   }
-  save('textures/sky.png', W, H, b);
+  save(path, W, H, b);
 }
+// Crater Atoll's evening
+paintSky('textures/sky.png', {
+  ZEN: [0.03, 0.085, 0.24], MID: [0.1, 0.22, 0.48], HIGHW: [0.95, 0.42, 0.2], LOWW: [1.0, 0.6, 0.22], AWAY: [0.34, 0.26, 0.44], AWAYLOW: [0.62, 0.38, 0.44],
+  HAZE0: [0.9, 0.72, 0.68], HAZE1: [1.0, 0.8, 0.5], CIR0: [1.0, 0.82, 0.8], CIR1: [1.0, 0.66, 0.42],
+  SHADE0: [0.3, 0.27, 0.38], SHADE1: [0.42, 0.26, 0.28], LIGHT0: [1.0, 0.78, 0.72], LIGHT1: [1.0, 0.68, 0.34], RIM: [1.0, 0.86, 0.56], cover: 1,
+});
+// Cold Sound's overcast morning: cloud to the top of the sky, a pale break low on the sun's side
+paintSky('textures/sky-sound.png', {
+  ZEN: [0.26, 0.31, 0.38], MID: [0.34, 0.4, 0.47], HIGHW: [0.62, 0.64, 0.64], LOWW: [0.82, 0.8, 0.72], AWAY: [0.36, 0.41, 0.47], AWAYLOW: [0.46, 0.51, 0.56],
+  HAZE0: [0.56, 0.6, 0.64], HAZE1: [0.8, 0.78, 0.72], CIR0: [0.62, 0.66, 0.7], CIR1: [0.82, 0.8, 0.74],
+  SHADE0: [0.2, 0.23, 0.28], SHADE1: [0.28, 0.3, 0.33], LIGHT0: [0.58, 0.61, 0.65], LIGHT1: [0.86, 0.84, 0.78], RIM: [0.95, 0.92, 0.84], cover: 5,
+});

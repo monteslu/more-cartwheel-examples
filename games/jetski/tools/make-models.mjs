@@ -302,6 +302,46 @@ class Plain {
   g.write(join(OUT, 'buoy.glb'));
 }
 
+// ── a pine: a dark trunk under tiers of drooping boughs, height about 11 m (the scatter scales it) ──
+{
+  const P = new Plain();
+  P.tube('trunk', [[0, -0.4, 0], [0, 10.5, 0]], (t) => lerp(0.26, 0.05, t), 7, { cap: false });
+  const tiers = 7;
+  for (let t = 0; t < tiers; t++) {
+    const k = t / (tiers - 1), y0 = 1.6 + k * 8.2, r = lerp(2.9, 0.55, k), top = y0 + lerp(2.3, 1.5, k);
+    const rows = [];
+    for (let q = 0; q <= 3; q++) {
+      const f = q / 3, row = [];
+      for (let i = 0; i <= 12; i++) {
+        const a = (i % 12) / 12 * Math.PI * 2 + t * 0.5, ragged = q === 3 ? 1 + 0.16 * Math.sin(i * 2.7 + t) : 1;
+        row.push([Math.cos(a) * r * f * ragged, lerp(top, y0, Math.pow(f, 0.8)), Math.sin(a) * r * f * ragged]);
+      }
+      rows.push(row);
+    }
+    P.grid('bough', rows, { flip: true });
+  }
+  const g = new Glb();
+  const mi = { trunk: g.material('trunk', 0.92), bough: g.material('bough', 0.85) };
+  g.materials[mi.trunk].pbrMetallicRoughness.baseColorFactor = [0.13, 0.1, 0.08, 1];
+  g.materials[mi.bough].pbrMetallicRoughness.baseColorFactor = [0.045, 0.1, 0.07, 1];
+  g.materials[mi.bough].doubleSided = true;
+  g.sceneNodes.push(g.node({ name: 'Pine', mesh: g.mesh('pine', P.prims(mi)) }));
+  g.write(join(OUT, 'pine.glb'));
+}
+
+// ── a drowned arch: granite over a cut 22 m wide. Local y 0 is the sea's rest level, its underside at 3.6 m in the middle (the course
+// definition's lintel). Runs across z, the direction of travel along its own x-axis once placed ──
+{
+  const P = new Plain(), W = 17, ROCK = 6;
+  const pts = Array.from({ length: 17 }, (_, i) => { const t = i / 16 * 2 - 1; return [t * W, 3.6 + ROCK + 7 * (1 - t * t) * 0 - (Math.pow(Math.abs(t), 4)) * 18, 0]; });
+  P.tube('rock', pts, ROCK, 18, { cap: true });
+  const g = new Glb();
+  const mi = { rock: g.material('rock', 0.95) };
+  g.materials[mi.rock].pbrMetallicRoughness.baseColorFactor = [0.26, 0.27, 0.29, 1];
+  g.sceneNodes.push(g.node({ name: 'Arch', mesh: g.mesh('arch', P.prims(mi)) }));
+  g.write(join(OUT, 'arch.glb'));
+}
+
 // ── a palm: a leaning ringed trunk and a crown of arching fronds, height about 9 m (the scatter scales it) ──
 {
   const trunk = new Plain(), crown = new Plain();

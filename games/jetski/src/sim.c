@@ -10,7 +10,6 @@
 
 #include "cartwheel/input.h"
 #include "cartwheel/platform.h"
-#include "course_data.h"
 #include "game.h"
 
 #define G_ACC 9.81f
@@ -23,6 +22,7 @@
 game G;
 #define MAX_SINK 0.32f   /* metres of the hull's centre under the surface */
 int g_ride_top = 1;  /* debug: 0 is the control, a hull held by the spring alone */
+float g_tide_hold = -100; /* debug: tide <metres> holds it */
 float g_swell_hold; /* debug: swell <0..1> holds the sea at that size */
 
 static cw_value cw_val_vec4(float x, float y, float z, float w) { cw_value v; memset(&v, 0, sizeof v); v.type = CW_T_VEC4; v.v[0] = x, v.v[1] = y, v.v[2] = z, v.v[3] = w; return v; }
@@ -118,11 +118,10 @@ static void computer(craft *c, int idx) {
 }
 
 /* floating ramps: they ride the swell with everything else, the deck a height over the water here */
-static const float RAMP_S[RAMPS] = { 219, 647, 1507, 2224 };
 static void ramps_place(void) {
   for (int r = 0; r < RAMPS; r++) {
     float x, z, dx, dz;
-    track_at(RAMP_S[r], &x, &z, &dx, &dz);
+    track_at(DEF->ramp_s[r], &x, &z, &dx, &dz);
     G.ramp_x[r] = x, G.ramp_z[r] = z, G.ramp_yaw[r] = cw_atan2(dx, dz);
   }
 }
@@ -174,6 +173,36 @@ static void ramps_craft(craft *c, bool was_on) {
     c->vx *= 0.7f, c->vz *= 0.7f;
     c->bump = true;
   }
+}
+
+/* the hook of a course with an arch: under the lintel only with room for the rider. Through it the rider rejoins the course further
+ * on, past the buoys it cut out. It is the tide that makes the room */
+#define ARCH_ROOM 2.4f
+bool hook_open(void) { return DEF->hook.kind != 1 || DEF->hook.lintel - G.tide >= ARCH_ROOM; }
+static void hook_craft(craft *c) {
+  if (DEF->hook.kind != 1) return;
+  float dx = c->x - DEF->hook.x, dz = c->z - DEF->hook.z, ux = DEF->hook.dirx, uz = DEF->hook.dirz;
+  float a = dx * ux + dz * uz, l = dx * -uz + dz * ux, along = c->vx * ux + c->vz * uz;
+  if (l < -DEF->hook.half_w * 1.6f || l > DEF->hook.half_w * 1.6f || a < -DEF->hook.half_len || a > DEF->hook.half_len) return;
+  c->out_t = 0; /* in the cut is on the course */
+  if (a > -2.4f && a < 2.4f && !hook_open()) {
+    /* a wall of rock down to the water: back out with a bump */
+    float back = (along >= 0 ? -2.5f : 2.5f) - a;
+    c->x += ux * back, c->z += uz * back;
+    c->vx *= -0.2f, c->vz *= -0.2f;
+    c->bump = true;
+    c->shut_hits++;
+  }
+  /* through: onto the course on the far side */
+  if (a > 2.4f && along > 1 && !c->hook_passed) {
+    c->hook_passed = true;
+    c->shortcuts++;
+    c->flash_short = 1;
+    int ti = (int)(DEF->hook.s_out / COURSE_LEN * (float)TRACK_N) % TRACK_N;
+    c->track_i = ti;
+    for (int b = 0; b < BUOY_N; b++) { int bb = b; if (buoy_on(bb) && BUOYS[bb][3] > DEF->hook.s_out) { c->next_buoy = bb; break; } }
+  }
+  if (a < -2.4f) c->hook_passed = false;
 }
 
 static void craft_tick(craft *c, int idx, float dt) {
@@ -322,6 +351,8 @@ static void craft_tick(craft *c, int idx, float dt) {
   { bool was_on = c->on_ramp;
     c->on_ramp = false;
     ramps_craft(c, was_on); }
+  hook_craft(c);
+  c->flash_short = clampf(c->flash_short - dt * 0.5f, 0, 1);
   /* landing */
   c->big_splash = false;
   if (was_air && !c->air) {
@@ -458,9 +489,9 @@ static void weather(void) {
   float lead = 0;
   for (int i = 0; i < RACERS; i++) if (racer_on(i) && G.c[i].dist > lead) lead = G.c[i].dist;
   float t = G.state == RACE_ATTRACT ? 0.75f : clampf(lead / (COURSE_LEN * (float)LAPS), 0, 1);
-  float target = 0.62f + 0.38f * t;
+  float target = DEF->swell[0] + (DEF->swell[1] - DEF->swell[0]) * t;
   G.swell += (target - G.swell) * 0.004f;
-  if (G.swell < 0.62f) G.swell = target;
+  if (G.swell < DEF->swell[0]) G.swell = target;
 #ifdef JETSKI_AUTOPILOT
   { const char *e = getenv("JETSKI_SWELL"); if (e) G.swell = (float)atof(e); }
 #endif
@@ -468,13 +499,25 @@ static void weather(void) {
   static const float DIFF_SEA[3] = { 0.8f, 1.0f, 1.18f };
   if (g_swell_hold > 0) G.swell = g_swell_hold;
   float a = G.swell * DIFF_SEA[g_difficulty];
-  cw_node_set(G.water, "wave0", cw_val_vec4(200, 46, 1.5f * a, 0.7f));
-  cw_node_set(G.water, "wave1", cw_val_vec4(216, 37, 1.05f * a, 0.7f));
-  cw_node_set(G.water, "wave2", cw_val_vec4(150, 14, 0.14f + 0.22f * a, 0.65f));
-  cw_node_set(G.water, "wave3", cw_val_vec4(252, 7, 0.05f + 0.05f * a, 0.5f));
+  static const char *const WAVE[4] = { "wave0", "wave1", "wave2", "wave3" };
+  for (int i = 0; i < 4; i++) {
+    const float *w = DEF->waves[i];
+    cw_node_set(G.water, WAVE[i], cw_val_vec4(w[0], w[1], w[2] + w[3] * a, w[4]));
+  }
   /* the tide comes in over the race */
-  G.tide = 0.5f * t;
+  G.tide = g_tide_hold > -90 ? g_tide_hold : DEF->tide[0] + (DEF->tide[1] - DEF->tide[0]) * t;
   cw_node3d_set_position(G.water, (t3_vec3){ 0, G.tide, 0 });
+}
+
+/* the human lined up with the hook's way through, at speed */
+void sim_hook_start(float back) {
+  craft *c = &G.c[0];
+  c->x = c->px = DEF->hook.x - DEF->hook.dirx * back, c->z = c->pz = DEF->hook.z - DEF->hook.dirz * back;
+  c->y = c->py = cw_water_height_at(G.water, c->x, c->z, cw_water_time(G.water));
+  c->yaw = c->pyaw = cw_atan2(DEF->hook.dirx, DEF->hook.dirz), c->pitch = c->roll = c->pr = c->rr = 0;
+  c->vx = DEF->hook.dirx * 24, c->vz = DEF->hook.dirz * 24, c->vy = 0, c->spill = 0;
+  c->lap = 0;
+  G.cam[0] = 0, G.look[0] = 0;
 }
 
 void sim_ramp_start(int r, float back, float aside) {

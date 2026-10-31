@@ -4,8 +4,8 @@ A wave racing game on one evening's water. Six riders race three laps around a v
 through a gap in the reef, across open sea, past sea stacks and back in over the north pass. The water is the track. It
 moves, its swells throw you into the air, and it builds from lap to lap while the tide comes in.
 
-Status: one course so far, one craft, a computer racer field, one player for now. The menu offers a championship (points by
-place over every course, one course until there are more) and a time trial (you alone, keeping your best time). Difficulty
+Status: two courses, one craft, a computer racer field, one player for now. The menu offers a championship (points by place over
+every course in turn) and a time trial (you alone on the course you choose, keeping your best time). Difficulty
 makes the sea bigger and adds buoys: every second one on Easy, three in four on Normal, all of them on Hard.
 
 ## How to ride
@@ -24,6 +24,13 @@ with a warning counting them down. Too much stick scrubs speed, and a long hard 
 Floating ramps ride the swell on the racing line: hit one square at speed for well over a second in the air, long enough for a trick. Each press of the trick button is one trick; land mid-trick and you are off the craft. From the side a ramp is a wall.
 Landing straight keeps your speed and a long clean landing gives you a shove; nose down costs you most of it, and leaning
 back on the way in saves some. Start or Esc pauses, with restart and quit.
+
+## The courses
+
+- Crater Atoll: a warm evening on a volcanic atoll, a pale lagoon, a reef, open swell round the sea stacks.
+- Cold Sound: a grey morning in a granite fjord, open to the ocean at its west end. The tide falls through the race: while it stands high a drowned arch shuts the cut through the headland, and once there is room under it, it is the short way home.
+
+A course is a definition in `courses/<id>.mjs`: track, ground, paint, wave mask, scatter, ramps, sea, tide, light and sky, and its hook. `tools/course-lib.mjs` says what each part does. To add one: write the definition, add it to `LEVEL_ORDER` in `tools/make-course.mjs` and raise `LEVELS` in `src/game.h`, then run `tools/make-course.mjs` and rebuild. `tools/course-look.mjs` shows it from the race camera, and `tests/jetski-handling.mjs` checks the computer riders get round it.
 
 ## How it is made
 

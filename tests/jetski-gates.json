@@ -71,5 +71,42 @@
     "name": "jetski-menu",
     "script": "tests/jetski-menu.mjs",
     "note": "the menus by real input, pad and keyboard: every page and back, pause with restart and quit, championship points, a time trial alone; controls: nothing finished pays nothing, a championship keeps its rivals"
+  },
+  {
+    "name": "jetski-sound",
+    "app": "jetski_auto",
+    "frames": 600,
+    "maxGt16": 0.5,
+    "fields": [
+      "race.state",
+      "race.tick",
+      "race.hash",
+      "race.swell",
+      "race.tide",
+      "p0.pos",
+      "p0.speed",
+      "p0.meter",
+      "p0.passes",
+      "p0.misses",
+      "p1.dist",
+      "p2.dist",
+      "cam.under_ticks"
+    ],
+    "controlEnv": {
+      "JETSKI_SWELL": "1.0"
+    },
+    "note": "Cold Sound from the grid, computer riders: every racer's position bits on every host, on the second course; control: a bigger sea must change them",
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "maxGt16": 0.5
+    },
+    "startCmds": [
+      "course 1",
+      "race"
+    ]
   }
 ]

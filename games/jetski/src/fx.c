@@ -4,7 +4,6 @@
 
 #include "cartwheel/input.h"
 #include "cartwheel/particles.h"
-#include "course_data.h"
 #include "game.h"
 #define BUOY_AT(i) (BUOYS[i])
 

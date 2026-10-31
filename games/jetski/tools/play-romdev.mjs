@@ -7,9 +7,9 @@ import { fileURLToPath } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url)), URL_ = 'http://127.0.0.1:7331/mcp';
 const FRAMES = +process.argv[2] || 1200, DIR = resolve(process.argv[3] || 'out/play'), WRONG = process.argv.includes('--wrong-side');
 mkdirSync(DIR, { recursive: true });
-const src = readFileSync(join(HERE, '../src/course_data.h'), 'utf8');
-const B = [...src.slice(src.indexOf('BUOYS[')).matchAll(/\{(-?[\d.]+)f,(-?[\d.]+)f,(-?[\d.]+)f,(-?[\d.]+)f\}/g)].map((m) => m.slice(1).map(Number));
-const T = [...src.slice(src.indexOf('TRACK['), src.indexOf('BUOYS[')).matchAll(/\{(-?[\d.]+)f,(-?[\d.]+)f,(-?[\d.]+)f,(-?[\d.]+)f\}/g)].map((m) => m.slice(1).map(Number));
+const src = readFileSync(join(HERE, '../src/courses/atoll.h'), 'utf8');
+const B = [...src.slice(src.indexOf('_buoys[')).matchAll(/\{(-?[\d.]+)f,(-?[\d.]+)f,(-?[\d.]+)f,(-?[\d.]+)f\}/g)].map((m) => m.slice(1).map(Number));
+const T = [...src.slice(src.indexOf('_track['), src.indexOf('_buoys[')).matchAll(/\{(-?[\d.]+)f,(-?[\d.]+)f,(-?[\d.]+)f,(-?[\d.]+)f\}/g)].map((m) => m.slice(1).map(Number));
 let sid = null, id = 1;
 async function rpc(method, params) {
   const headers = { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', 'x-romdev-session': process.env.JETSKI_SESSION || 'jetski' };

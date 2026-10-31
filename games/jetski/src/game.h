@@ -13,19 +13,52 @@
 #define RACERS 6
 #define LAPS 3
 #define TAU 6.2831853f
-#define LEVELS 1
-#define RAMPS 4
+#define LEVELS 2
+#define RAMP_MAX 8
+#define BUOY_MAX 64
 #define RAMP_HALF_LEN 4.0f
 #define RAMP_HALF_W 2.6f
 #define RAMP_LOW (-0.2f)   /* the deck's height over the water at its lip */
 #define RAMP_TOP 1.9f      /* and at its top edge */
-#define LEVEL_NAME_LIST { "Crater Atoll" }
 static const char *const RIDER_NAMES[6] = { "You", "Marlin", "Kestrel", "Tide", "Juno", "Reef" };
 extern int g_difficulty; /* 0 easy, 1 normal, 2 hard */
 enum { MODE_CHAMPIONSHIP, MODE_TIME_TRIAL };
 extern int g_mode;
 
 enum { RACE_ATTRACT, RACE_GRID, RACE_ON, RACE_DONE };
+
+/* a course: what tools/make-course.mjs generates from courses/<id>.mjs (src/courses/) */
+typedef struct course_scatter { const char *model, *map; float density, smin, smax, range; int seed; bool sink; float tilt; } course_scatter;
+typedef struct course_def {
+  const char *id, *name;
+  int quads;
+  float spacing, minh, maxh, len;
+  int track_n; const float (*track)[4];
+  int buoy_n; const float (*buoys)[4];
+  int ramp_n; const float *ramp_s;
+  int scatter_n; const course_scatter *scatter;
+  int prop_n; const char *const (*props)[3];
+  const char *layer[4]; float layer_uv[4];
+  const char *heights, *control, *mask; int mask_n, map_n;
+  const char *sky, *landmark; float landmark_at[3];
+  float start[4];
+  float waves[4][5], swell[2], tide[2];
+  float sun_disc;
+  /* kind 1: an arch over a cut, shut while the tide stands high: see hook_craft */
+  struct { int kind; float x, z, dirx, dirz, half_w, half_len, lintel, s_in, s_out; const char *model; } hook;
+} course_def;
+extern const course_def *const COURSES[LEVELS];
+#define DEF (COURSES[G.level])
+#define TRACK (DEF->track)
+#define TRACK_N (DEF->track_n)
+#define BUOYS (DEF->buoys)
+#define BUOY_N (DEF->buoy_n)
+#define COURSE_LEN (DEF->len)
+#define RAMPS (DEF->ramp_n)
+#define START_X (DEF->start[0])
+#define START_Z (DEF->start[1])
+#define START_DX (DEF->start[2])
+#define START_DZ (DEF->start[3])
 
 typedef struct craft_input {
   float steer, lean; /* -1..1; lean > 0: pulled back */
@@ -57,6 +90,7 @@ typedef struct craft {
   bool human;
   bool bump;                      /* hit the ground this tick */
   bool on_ramp;                   /* on a ramp's deck this tick */
+  bool hook_passed;               /* through the hook's far side, until it comes round again */
   bool trick_held;                /* the trick button last tick */
   bool big_slide;                 /* the slide that threw the rider */
   int wake_hit;                   /* riding over a rival's wake */
@@ -72,6 +106,9 @@ typedef struct craft {
   float out_t;                    /* seconds out of the course area */
   int dq;                         /* 1 too many misses, 2 left the course */
   int ok_tick;                    /* passed a buoy this tick: which, plus one */
+  int shortcuts;                  /* times through the hook's short way */
+  int shut_hits;                  /* times it ran into the hook while it was shut */
+  float flash_short;
   float sink_max;                 /* deepest the hull's centre has been under the surface (m) */
   int ramps;                      /* ramps taken */
   float air_max;                  /* longest time in the air (s) */
@@ -93,7 +130,7 @@ typedef struct game {
   float cam[3], cam_prev[3], look[3], look_prev[3], cam_fov, cam_fov_prev;
   float cam_orbit;  /* the attract loop's cut timer */
   int cam_mode;
-  float ramp_x[RAMPS], ramp_z[RAMPS], ramp_yaw[RAMPS], ramp_h[RAMPS], ramp_ta[RAMPS], ramp_tl[RAMPS]; /* place; and this tick: height, tilt along and across */
+  float ramp_x[RAMP_MAX], ramp_z[RAMP_MAX], ramp_yaw[RAMP_MAX], ramp_h[RAMP_MAX], ramp_ta[RAMP_MAX], ramp_tl[RAMP_MAX]; /* place; and this tick: height, tilt along and across */
   int32_t ramp_gap; /* ticks any ramp's skirt showed above the water at a corner */
   int32_t cam_under; /* ticks the chase camera spent under the surface */
   int32_t attract_under, attract_land, attract_blocked, attract_hidden; /* ticks the attract camera was under water, in land, had land in its view of the craft, or a crest over the hull */
@@ -102,11 +139,13 @@ typedef struct game {
 extern game G;
 
 /* sim.c */
-extern float g_swell_hold;
+extern float g_swell_hold, g_tide_hold;
+void sim_hook_start(float back);
 extern int g_ride_top;
 void sim_reset(int state);
 bool buoy_on(int b);      /* difficulty: how many of the course's buoys count */
 bool racer_on(int i);     /* a time trial is the human alone */
+bool hook_open(void);     /* the course's hook lets a rider through now */
 void sim_tick(float dt);
 float ground_at(float x, float z);
 void track_at(float s, float *x, float *z, float *dx, float *dz);
@@ -115,6 +154,7 @@ void sim_ramp_start(int r, float back, float aside); /* the human lined up with 
 extern int g_attract_clear;
 void view_init(void);
 void view_sync(double alpha);
+void view_course_apply(void);    /* G.level changed: land, sea, sky and marks for that course */
 void view_tick(float dt);
 /* rider.c */
 extern float rider_torso[RACERS];
@@ -131,6 +171,7 @@ void menu_draw(void);
 bool menu_blocks_sim(void);
 bool menu_active(void);
 void menu_off(void);
+void menu_course(int level); /* debug and tests: that course now */
 void menu_debug(void);
 float menu_best_time(void); /* this course's best time trial, 0: none */
 /* sim.c */

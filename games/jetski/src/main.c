@@ -145,6 +145,24 @@ static void cmd_ramp(int argc, const char **argv, cw_reply *r) {
   sim_ramp_start(argc > 1 ? atoi(argv[1]) % RAMPS : 0, argc > 2 ? (float)atof(argv[2]) : 40, argc > 3 ? (float)atof(argv[3]) : 0);
   if (r) cw_reply_raw(r, "true");
 }
+/* course <index>: that course now, attract running */
+static void cmd_course(int argc, const char **argv, cw_reply *r) {
+  if (argc > 1) menu_course(atoi(argv[1]));
+  sim_reset(RACE_ATTRACT);
+  if (r) cw_reply_printf(r, "{\"course\":\"%s\"}", DEF->name);
+}
+/* tide <metres>: hold it there; arch <back metres>: the human lined up with the hook's way through at speed, the race running */
+static void cmd_tide(int argc, const char **argv, cw_reply *r) {
+  g_tide_hold = argc > 1 ? (float)atof(argv[1]) : -100;
+  if (r) cw_reply_raw(r, "true");
+}
+static void cmd_arch(int argc, const char **argv, cw_reply *r) {
+  menu_off();
+  G.state = RACE_ON;
+  if (G.clock < 1) G.clock = 1;
+  sim_hook_start(argc > 1 ? (float)atof(argv[1]) : 40);
+  if (r) cw_reply_raw(r, "true");
+}
 /* mode <0 championship, 1 time trial> */
 static void cmd_mode(int argc, const char **argv, cw_reply *r) {
   if (argc > 1) g_mode = atoi(argv[1]) ? MODE_TIME_TRIAL : MODE_CHAMPIONSHIP;
@@ -164,6 +182,7 @@ static void init(void *user) {
   menu_init();
 #ifdef JETSKI_AUTOPILOT
   menu_off();
+  { const char *lv = getenv("JETSKI_LEVEL"); if (lv) menu_course(atoi(lv)); } /* the gates' run on another course */
 #endif
   if (getenv("JETSKI_SMALL")) { /* sim checks: nothing costly on the software rasteriser */
     cw_node_set(G.water, "reflection", cw_val_bool(false));
@@ -188,6 +207,9 @@ static void init(void *user) {
 #endif
   cw_debug_i32("race.state", &G.state);
   cw_debug_i32("gpu.programs", &gpu_programs);
+  cw_debug_i32("race.level", &G.level);
+  cw_debug_i32("p0.shortcuts", &G.c[0].shortcuts);
+  cw_debug_i32("p0.shut_hits", &G.c[0].shut_hits);
   cw_debug_i32("race.mode", &g_mode);
   cw_debug_i32("race.difficulty", &g_difficulty);
   cw_debug_i32("cam.attract_under", &G.attract_under);
@@ -244,6 +266,9 @@ static void init(void *user) {
   cw_debug_command("difficulty", "difficulty <0 easy, 1 normal, 2 hard>", cmd_difficulty);
   cw_debug_command("ride_top", "ride_top 0: the hull held by its spring alone", cmd_ride_top);
   cw_debug_command("ramp", "ramp <index> [back] [aside]: lined up with a ramp at speed", cmd_ramp);
+  cw_debug_command("course", "course <index>: that course now", cmd_course);
+  cw_debug_command("tide", "tide <metres>: hold the tide there", cmd_tide);
+  cw_debug_command("arch", "arch <back>: lined up with the course's arch", cmd_arch);
   cw_debug_command("mode", "mode <0 championship, 1 time trial>", cmd_mode);
   cw_debug_command("finish", "finish: the human crosses the line now", cmd_finish);
   cw_debug_command("warp", "warp <metres>: every racer to that place on the course", cmd_warp);

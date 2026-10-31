@@ -80,13 +80,18 @@ const done = run(['w40'], { cmds: 'race;finish' });
 check('finishing shows the results', done['menu.page'] === P_RESULTS && done['race.state'] === DONE, pg(done));
 check('the championship pays every place', pts(done) === 26 && done['cup.race'] === 1, `points ${done['cup.points']} after ${done['cup.race']} race`);
 // (past the countdown: a race that had not finished would be running by now, not on its grid)
-const again = run(['w300', 'south'], { cmds: 'race;finish' });
-check('from the results, A starts a new championship (one course so far)', pts(again) === 0 && again['race.state'] === GRID, pg(again) + ` points ${again['cup.points']}`);
+const again = run(['w300', 'south', 'w20'], { cmds: 'race;finish' });
+check('from the results, A goes on to the next course of the championship, keeping the points', pts(again) === 26 && again['race.level'] === 1 && again['race.state'] === GRID, pg(again) + ` course ${again['race.level']} points ${again['cup.points']}`);
 
 // a time trial is the human alone, and keeps the best
 const alone = run(['down', 'right', 'up', 'south', 'w300']);
 check('time trial: the others stay home', alone['race.mode'] === 1 && alone['p1.dist'] < -1000, `p1.dist ${alone['p1.dist']}`);
 check('control: in a championship they race', unpaused['p1.dist'] > -1000, `p1.dist ${unpaused['p1.dist']}`);
+const course = run(['down', 'right', 'down', 'right', 'w20']);
+check('time trial: right on Course loads the next course', course['race.level'] === 1 && course['menu.page'] === P_MAIN, `course ${course['race.level']}`);
+const courseBack = run(['down', 'right', 'down', 'right', 'w20', 'left', 'w20']);
+check('and left brings the first back', courseBack['race.level'] === 0, `course ${courseBack['race.level']}`);
+check('control: in a championship Course changes nothing', run(['down', 'down', 'right', 'w20'])['race.level'] === 0, 'course row, championship');
 const best = run(['down', 'right', 'up', 'south', 'w80']);
 check('control: no best before a finish', best['tt.best'] === 0, `best ${best['tt.best']}`);
 const fin = run(['w40'], { cmds: 'mode 1;race;finish' });

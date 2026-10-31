@@ -6,7 +6,6 @@
 #include "cartwheel/platform.h"
 #include "cartwheel/render2d.h"
 #include "cartwheel/render3d.h"
-#include "course_data.h"
 #include "game.h"
 
 static cw_font big, small;
@@ -47,6 +46,9 @@ static void hud_body(void) {
   const craft *c = &G.c[0];
   cw_color white = cw_rgba(1, 1, 1, 0.96f), gold = cw_rgba(1.0f, 0.78f, 0.25f, 1), dim = cw_rgba(1, 1, 1, 0.7f);
   char buf[64];
+  static float hook_seen;
+  static bool was_open;
+  { bool op = hook_open(); if (op && !was_open) hook_seen = G.clock; was_open = op; }
   if (G.state == RACE_ATTRACT || G.state == RACE_DONE) return; /* the results page has it all */
   /* speed, bottom right */
   snprintf(buf, sizeof buf, "%d", (int)(c->speed * 3.6f + 0.5f));
@@ -98,6 +100,8 @@ static void hud_body(void) {
     snprintf(buf, sizeof buf, "BACK TO THE COURSE  %d", (int)ceilf(5.0f - c->out_t));
     text(big, buf, w * 0.5f, h * 0.2f, 54 * u, cw_rgba(1, 0.4f, 0.15f, 1), 0.5f);
   }
+  if (c->flash_short > 0) text(big, "THE SHORT WAY", w * 0.5f, h * 0.2f, 66 * u, cw_rgba(0.6f, 1, 0.9f, c->flash_short), 0.5f);
+  if (DEF->hook.kind == 1 && hook_open() && G.clock - hook_seen < 5 && G.state == RACE_ON) text(small, "The tide has fallen: the arch is open", w * 0.5f, h * 0.14f, 40 * u, cw_rgba(0.6f, 1, 0.9f, 1), 0.5f);
   if (c->spill > 0) text(big, "WIPEOUT", w * 0.5f, h * 0.2f, 76 * u, cw_rgba(1, 1, 1, 0.9f), 0.5f);
   if (c->flash_miss > 0) text(big, "MISS", w * 0.5f, h * 0.2f, 76 * u, cw_rgba(1, 0.3f, 0.15f, c->flash_miss), 0.5f);
   if (c->air && c->air_time > 0.5f) {

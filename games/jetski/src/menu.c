@@ -18,6 +18,7 @@ static int page = P_MAIN, row, last_state = -1;
 /* the championship: every course in turn, points by place. A rider thrown out scores nothing */
 static const int POINTS[RACERS] = { 10, 6, 4, 3, 2, 1 };
 static int cup_points[RACERS], cup_race, new_best;
+static int pending_level = -1, pending_race, pending_wait, saved_level = -1;
 static float best[LEVELS];
 static cw_action a_up, a_down, a_left, a_right, a_ok, a_back, a_pause;
 static cw_font big, small;
@@ -50,7 +51,7 @@ void menu_init(void) {
   small = cw_font_load("fonts/Oswald-VF.ttf", NULL);
   save_data *s = save();
   if (s && s->magic == SAVE_MAGIC) {
-    if (s->level >= 0 && s->level < LEVELS) G.level = s->level;
+    if (s->level > 0 && s->level < LEVELS) { G.level = s->level; view_course_apply(); }
     if (s->difficulty >= 0 && s->difficulty < 3) g_difficulty = s->difficulty;
     music = s->music, sfx = s->sfx;
     if (s->mode == MODE_CHAMPIONSHIP || s->mode == MODE_TIME_TRIAL) g_mode = s->mode;
@@ -76,6 +77,7 @@ static void back_up(int row_main, int row_pause) {
 }
 
 void menu_off(void) { page = P_NONE; }
+void menu_course(int level) { if (level >= 0 && level < LEVELS && level != G.level) { G.level = level; view_course_apply(); } }
 /* the race holds still under every page opened from the pause */
 bool menu_blocks_sim(void) { return page != P_NONE && page != P_RESULTS && G.state != RACE_ATTRACT; }
 float menu_best_time(void) { return best[G.level]; }
@@ -89,7 +91,6 @@ void menu_debug(void) {
 }
 bool menu_active(void) { return page != P_NONE; }
 
-static const char *const LEVEL_NAMES[LEVELS] = LEVEL_NAME_LIST;
 static const char *const DIFF[3] = { "Easy", "Normal", "Hard" };
 static const char *const MODES[2] = { "Championship", "Time trial" };
 
@@ -97,9 +98,16 @@ static void start_race(void) {
   page = P_NONE;
   sim_reset(RACE_GRID);
 }
+/* a course to load: the page says so for a frame first */
+static void go_course(int level, int race) {
+  if (level == G.level) { if (race) start_race(); else sim_reset(RACE_ATTRACT); return; }
+  pending_level = level, pending_race = race, pending_wait = 2;
+}
 static void begin(void) {
   if (g_mode == MODE_CHAMPIONSHIP) {
-    memset(cup_points, 0, sizeof cup_points), cup_race = 0, G.level = 0;
+    memset(cup_points, 0, sizeof cup_points), cup_race = 0;
+    go_course(0, 1);
+    return;
   }
   start_race();
 }
@@ -123,6 +131,15 @@ static bool cup_done(void) { return g_mode == MODE_CHAMPIONSHIP && cup_race >= L
 
 void menu_tick(float dt) {
   anim += dt;
+  if (pending_level >= 0) {
+    if (--pending_wait > 0) return;
+    G.level = pending_level;
+    pending_level = -1;
+    view_course_apply();
+    if (saved_level >= 0) { saved_level = -1; store(); }
+    if (pending_race) start_race(); else sim_reset(RACE_ATTRACT);
+    return;
+  }
   if (G.state == RACE_DONE && last_state != RACE_DONE) { race_over(); open_page(P_RESULTS); }
   if (G.state == RACE_ATTRACT && last_state != RACE_ATTRACT && page == P_NONE) open_page(P_MAIN);
   last_state = G.state;
@@ -144,7 +161,7 @@ void menu_tick(float dt) {
   switch (page) {
   case P_MAIN:
     if (row == 1 && (dx || ok)) { g_mode = !g_mode; store(); }
-    if (row == 2 && g_mode == MODE_TIME_TRIAL && (dx || ok)) { int l = (G.level + LEVELS + (dx ? dx : 1)) % LEVELS; if (l != G.level) { G.level = l; store(); sim_reset(RACE_ATTRACT); } }
+    if (row == 2 && g_mode == MODE_TIME_TRIAL && (dx || ok)) { int l = (G.level + LEVELS + (dx ? dx : 1)) % LEVELS; if (l != G.level) { go_course(l, 0); saved_level = l; } }
     if (row == 3 && (dx || ok)) { g_difficulty = (g_difficulty + 3 + (dx ? dx : 1)) % 3; store(); }
     if (ok) {
       if (row == 0) begin();
@@ -174,7 +191,7 @@ void menu_tick(float dt) {
   case P_RESULTS:
     if (ok) {
       if (row == 0 && cup_done()) { begin(); }
-      else if (row == 0 && g_mode == MODE_CHAMPIONSHIP) { G.level = cup_race; start_race(); }
+      else if (row == 0 && g_mode == MODE_CHAMPIONSHIP) go_course(cup_race, 1);
       else if (row == 0) start_race();
       else { sim_reset(RACE_ATTRACT); open_page(P_MAIN); }
     }
@@ -207,6 +224,12 @@ static void item(float x, float y, float w, float u, const char *label, const ch
 }
 
 void menu_draw(void) {
+  if (pending_level >= 0) {
+    cw_vec2 s = cw_r2d_canvas_size();
+    cw_r2d_rect(cw_rect_make(0, 0, s.x, s.y), cw_rgba(0, 0.02f, 0.05f, 0.8f));
+    text(big, COURSES[pending_level]->name, s.x * 0.5f, s.y * 0.45f, 80 * s.y / 1080.0f, cw_rgba(1, 1, 1, 1), 0.5f);
+    return;
+  }
   if (page == P_NONE) return;
   cw_vec2 sz = cw_r2d_canvas_size();
   float w = sz.x, h = sz.y, u = h / 1080.0f, px = w * 0.07f, pw = 560 * u, y = h * 0.34f, step = 68 * u;
@@ -219,20 +242,20 @@ void menu_draw(void) {
   }
   if (G.state == RACE_ATTRACT) {
     text(big, "JETSKI", px, h * 0.11f, 124 * u, white, 0);
-    text(small, "RACING THE EVENING SEA", px + 6 * u, h * 0.24f, 30 * u, dim, 0);
+    text(small, "WAVE RACING", px + 6 * u, h * 0.24f, 30 * u, dim, 0);
   }
   if (page == P_PAUSE || ((page == P_AUDIO || page == P_CONTROLS) && G.state != RACE_ATTRACT) || page == P_RESULTS) cw_r2d_rect(cw_rect_make(0, 0, w, h), cw_rgba(0, 0.02f, 0.05f, 0.42f));
   switch (page) {
   case P_MAIN:
     item(px, y, pw, u, "Start", NULL, row == 0);
     item(px, y + step, pw, u, "Mode", MODES[g_mode], row == 1);
-    item(px, y + step * 2, pw, u, "Course", g_mode == MODE_CHAMPIONSHIP ? "All, in turn" : LEVEL_NAMES[G.level], row == 2);
+    item(px, y + step * 2, pw, u, "Course", g_mode == MODE_CHAMPIONSHIP ? "All, in turn" : DEF->name, row == 2);
     item(px, y + step * 3, pw, u, "Difficulty", DIFF[g_difficulty], row == 3);
     item(px, y + step * 4, pw, u, "Controls", NULL, row == 4);
     item(px, y + step * 5, pw, u, "Audio", NULL, row == 5);
     item(px, y + step * 6, pw, u, "Graphics", NULL, row == 6);
     if (g_mode == MODE_TIME_TRIAL && best[G.level] > 0) {
-      snprintf(buf, sizeof buf, "Best on %s: %d:%05.2f", LEVEL_NAMES[G.level], (int)(best[G.level] / 60), best[G.level] - 60.0f * (float)(int)(best[G.level] / 60));
+      snprintf(buf, sizeof buf, "Best on %s: %d:%05.2f", DEF->name, (int)(best[G.level] / 60), best[G.level] - 60.0f * (float)(int)(best[G.level] / 60));
       text(small, buf, px + 6 * u, y + step * 7 + 4 * u, 30 * u, cw_rgba(1, 0.78f, 0.25f, 1), 0);
     }
     text(small, "Up and down to choose, left and right to change, A or Enter to accept", px, h * 0.92f, 24 * u, dim, 0);

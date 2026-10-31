@@ -56,4 +56,14 @@ check('JT1 control: beside the ramp, no ramp', beside['p0.ramps'] === 0 && besid
 check('JT2 a trick in that air completes', trick['p0.tricks'] >= 1 && trick['p0.spills'] === 0, `${trick['p0.tricks']} tricks, ${trick['p0.spills']} spills`);
 check('JT2 control: no button, no trick', onRamp['p0.tricks'] === 0, `${onRamp['p0.tricks']} tricks`);
 check('JT3 the ramps never show a gap', onRamp['ramp.gap'] === 0, `${onRamp['ramp.gap']} ticks`);
+// Cold Sound's arch: shut while the tide stands high, the short way once it has fallen
+const high = run('course 1;race;tide 2.6;arch 60', [TH], 360), low = run('course 1;race;tide -1.6;arch 60', [TH], 360);
+check('JS6 high tide shuts the arch', high['p0.shut_hits'] >= 1 && high['p0.shortcuts'] === 0, `${high['p0.shut_hits']} hits, ${high['p0.shortcuts']} through`);
+check('JS6 low tide opens it', low['p0.shortcuts'] === 1 && low['p0.shut_hits'] === 0, `${low['p0.shut_hits']} hits, ${low['p0.shortcuts']} through`);
+// the computer riders get round every course: no one stuck on land; control: the grid before it moves
+for (const [lv, name] of [[0, 'Crater Atoll'], [1, 'Cold Sound']]) {
+  const r0 = run(`course ${lv};race`, [], 120), r1 = run(`course ${lv};race`, [], 7000);
+  check(`${name}: the riders go the whole way round`, r1['p1.dist'] > 2500 && r1['p2.dist'] > 2500, `${f2(r1['p1.dist'])} m and ${f2(r1['p2.dist'])} m after 7000 ticks`);
+  check(`${name} control: not yet on the grid`, r0['p1.dist'] < 300, `${f2(r0['p1.dist'])} m`);
+}
 process.exit(fail ? 1 : 0);
