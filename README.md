@@ -89,6 +89,15 @@ fire with the right, throw a blast with the left shoulder.
 `games/hordeshooter/` (its [README](games/hordeshooter/README.md) has the full
 controls and the power-up list).
 
+### jetski
+
+![jetski: crossing the swell toward the crater with a rival alongside, at the end of the day](docs/screenshots/jetski.jpg)
+
+jetski, a wave racing game on one evening's water. Six riders race three laps around a volcanic
+atoll, from a pale lagoon through a gap in the reef and out across open sea. The water is the track: its swells throw you
+into the air, the sea builds from lap to lap, and every buoy you pass on the correct side raises your top speed. One
+player and computer racers for now. See [its README](games/jetski/README.md).
+
 ### partypack
 
 ![partypack: four rafts paddle for buoys in Raft Rush](docs/screenshots/partypack.jpg)

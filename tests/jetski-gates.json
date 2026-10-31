@@ -1,0 +1,35 @@
+[
+  {
+    "name": "jetski-race",
+    "app": "jetski_auto",
+    "frames": 600,
+    "maxGt16": 0.5,
+    "fields": [
+      "race.state",
+      "race.tick",
+      "race.hash",
+      "race.swell",
+      "race.tide",
+      "p0.pos",
+      "p0.speed",
+      "p0.meter",
+      "p0.passes",
+      "p0.misses",
+      "p1.dist",
+      "p2.dist",
+      "cam.under_ticks"
+    ],
+    "controlEnv": {
+      "JETSKI_SWELL": "1.0"
+    },
+    "note": "the race from the grid, computer riders: every racer's position bits on every host, on a water with a wave mask; control: a bigger sea must change them",
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "maxGt16": 0.5
+    }
+  }
+]

@@ -22,7 +22,7 @@ const FRAMES = +opt('--frames', 60);
 const CARTS = resolve(opt('--carts', join(ROOT, 'build/cart-wgpu/carts')));
 const OUT = resolve(opt('--out', join(ROOT, 'out/cart-smoke')));
 const PLAYER = (process.env.WASMCART || 'npx --yes wasmcart@0.36.2').split(' ');
-const ALL = ['arenafps', 'brawler', 'coopplatformer', 'fighter', 'hordeshooter', 'partypack', 'skyfighter', 'tuxracer'];
+const ALL = ['arenafps', 'brawler', 'coopplatformer', 'fighter', 'hordeshooter', 'jetski', 'partypack', 'skyfighter', 'tuxracer'];
 const games = argv.filter((a, i) => !a.startsWith('--') && !VALUED.has(argv[i - 1]));
 
 /** the distinct colours of an RGB PNG as wasmcart writes it (8 bit, filter none on every row) */

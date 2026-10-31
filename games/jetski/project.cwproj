@@ -1,0 +1,11 @@
+name = "jetski"
+app = "jetski"
+version = "0.1.0"
+app_id = "org.cartwheel.jetski"
+render.width = 1920
+render.height = 1080
+export.linux-x64.platform = "linux-x64"
+export.linux-arm64.platform = "linux-arm64"
+export.windows-x64.platform = "windows-x64"
+export.macos-arm64.platform = "macos"
+export.android-arm64.platform = "android-arm64"
