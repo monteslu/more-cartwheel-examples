@@ -39,6 +39,7 @@ static int32_t d_py[MAXP], d_air_max, d_jumps; /* fighters' height (mm); player 
 static uint32_t d_hash;
 static float d_ex[8][4];
 static int32_t d_states[MAXP];
+static int32_t d_spawn_checked, d_spawn_bad, d_spawn_unposed;
 static int32_t d_unfair, d_still, d_frozen, d_blocks, d_pickups, d_bphase, d_deaths, d_first, d_hits, d_nan, d_stall, d_proj, d_weapon, d_rigs, d_overlaps, d_bowled;
 static int32_t d_juke[6];
 static int32_t d_wanker[6], d_creep[6], d_clones, d_blood[4]; /* the jukebox: uses, fighters knocked down by its shockwave, fighters who jumped it, playing, radius in cm, Arthur on his way to it */
@@ -352,6 +353,9 @@ static void init(void *user) {
     }
   }
   cw_debug_i32("game.ticks", &d_ticks);
+  cw_debug_i32("spawn.checked", &d_spawn_checked);
+  cw_debug_i32("spawn.bad", &d_spawn_bad);
+  cw_debug_i32("spawn.unposed", &d_spawn_unposed);
   rag_debug_fields();
   cw_debug_i32("game.players", &d_players);
   cw_debug_i32("game.stage", &d_stage);
@@ -565,6 +569,32 @@ static void sim_step(void) {
 #endif
 }
 
+/* The spawn gate: render runs after this frame's 3D, so each body's root still holds what was just drawn. A body seen for the
+ * first time must have been drawn where the simulation has it (spawn.checked bodies, spawn.bad of them elsewhere) and on its
+ * animation: its hand one frame later is about where it was (spawn.unposed: it jumped, the first frame was the bind pose). */
+static void spawn_check(void) {
+  static cw_node seen[MAXP + MAXE];
+  static float hand[MAXP + MAXE];
+  for (int i = 0; i < MAXP + MAXE; i++) {
+    ent *e = i < MAXP ? &W.p[i] : &W.e[i - MAXP];
+    if (!e->used || !e->root.id) { seen[i] = (cw_node){ 0 }; continue; }
+    if (seen[i].id == e->root.id) {
+      if (hand[i] >= 0) {
+        float h = char_hand_height(e);
+        if (h >= 0 && (h - hand[i]) * (h - hand[i]) > 0.1f * 0.1f) d_spawn_unposed++;
+        hand[i] = -1;
+      }
+      continue;
+    }
+    seen[i] = e->root;
+    hand[i] = char_hand_height(e);
+    t3_vec3 p = cw_node3d_position(e->root);
+    float dx = p.x - e->x, dy = p.y - e->y, dz = p.z - e->z;
+    d_spawn_checked++;
+    if (dx * dx + dy * dy + dz * dz > 0.25f) d_spawn_bad++;
+  }
+}
+
 static void render(void *user, double alpha) {
   (void)user, (void)alpha;
 #ifndef BRAWLER_AUTOPILOT
@@ -574,6 +604,7 @@ static void render(void *user, double alpha) {
   }
 #endif
   if (cw_shell_screen_now() == CW_SHELL_PLAY || cw_shell_screen_now() == CW_SHELL_PAUSE) {
+    spawn_check();
     for (int i = 0; i < MAXP; i++) if (W.p[i].used) char_sync(&W.p[i]);
     for (int i = 0; i < MAXE; i++) if (W.e[i].used) char_sync(&W.e[i]);
     sim_sync_extras();

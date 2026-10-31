@@ -993,5 +993,172 @@
       "vsGl": 0.005,
       "note": "the same dual cart on romdev and Chromium against native WebGPU (state exact). vsGl 0.5 percent: GL and WebGPU draw the same picture (0.01 percent apart); the brick, asphalt and corrugated detail that differed by 4 to 10.6 percent was the engine lighting normal maps from the wrong side on WebGPU, fixed (findings/gl-webgpu-parity.md)"
     }
+  },
+  {
+    "minColors": 50,
+    "maxGt16": 0.08,
+    "fields": [
+      "spawn.bad",
+      "spawn.unposed",
+      "spawn.checked",
+      "game.stage",
+      "game.enemies"
+    ],
+    "name": "brawler-spawn-play",
+    "app": "brawler",
+    "assets": "games/brawler/assets",
+    "frames": 1400,
+    "input": "brawler-spawn-walk.json",
+    "controlEnv": {
+      "BRAWLER_SPAWN_BUG": "1"
+    },
+    "hosts": [
+      "native",
+      "romdev"
+    ],
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ],
+      "maxGt16": 0.08,
+      "vsGl": 0.1
+    },
+    "expect": {
+      "spawn.bad": 0,
+      "spawn.unposed": 0
+    },
+    "note": "B-PT20: Start through the join screen and walk into the first wave on the real cart: every body is drawn where the simulation has it on its first visible frame; control: BRAWLER_SPAWN_BUG leaves it to the next render, as before"
+  },
+  {
+    "minColors": 50,
+    "maxGt16": 0.08,
+    "fields": [
+      "spawn.bad",
+      "spawn.unposed",
+      "spawn.checked",
+      "game.stage",
+      "game.enemies"
+    ],
+    "name": "brawler-spawn-stage0",
+    "app": "brawler_auto",
+    "frames": 1400,
+    "startCmds": [
+      "@120 wave 1",
+      "@420 wave 2",
+      "@720 wave 3",
+      "@1020 wave 4"
+    ],
+    "controlEnv": {
+      "BRAWLER_SPAWN_BUG": "1"
+    },
+    "hosts": [
+      "native"
+    ],
+    "expect": {
+      "spawn.bad": 0,
+      "game.stage": 0,
+      "spawn.unposed": 0
+    },
+    "note": "B-PT20: stage 1 and each of its waves: every body drawn where the simulation has it on its first visible frame; control: BRAWLER_SPAWN_BUG"
+  },
+  {
+    "minColors": 50,
+    "maxGt16": 0.08,
+    "fields": [
+      "spawn.bad",
+      "spawn.unposed",
+      "spawn.checked",
+      "game.stage",
+      "game.enemies"
+    ],
+    "name": "brawler-spawn-stage1",
+    "app": "brawler_auto",
+    "frames": 1400,
+    "startCmds": [
+      "stage 1",
+      "@120 wave 1",
+      "@420 wave 2",
+      "@720 wave 3",
+      "@1020 wave 4"
+    ],
+    "controlEnv": {
+      "BRAWLER_SPAWN_BUG": "1"
+    },
+    "hosts": [
+      "native"
+    ],
+    "expect": {
+      "spawn.bad": 0,
+      "game.stage": 1,
+      "spawn.unposed": 0
+    },
+    "note": "B-PT20: stage 2 and each of its waves: every body drawn where the simulation has it on its first visible frame; control: BRAWLER_SPAWN_BUG"
+  },
+  {
+    "minColors": 50,
+    "maxGt16": 0.08,
+    "fields": [
+      "spawn.bad",
+      "spawn.unposed",
+      "spawn.checked",
+      "game.stage",
+      "game.enemies"
+    ],
+    "name": "brawler-spawn-stage2",
+    "app": "brawler_auto",
+    "frames": 1400,
+    "startCmds": [
+      "stage 2",
+      "@120 wave 1",
+      "@420 wave 2",
+      "@720 wave 3",
+      "@1020 wave 4"
+    ],
+    "controlEnv": {
+      "BRAWLER_SPAWN_BUG": "1"
+    },
+    "hosts": [
+      "native"
+    ],
+    "expect": {
+      "spawn.bad": 0,
+      "game.stage": 2,
+      "spawn.unposed": 0
+    },
+    "note": "B-PT20: stage 3 and each of its waves: every body drawn where the simulation has it on its first visible frame; control: BRAWLER_SPAWN_BUG"
+  },
+  {
+    "minColors": 50,
+    "maxGt16": 0.08,
+    "fields": [
+      "spawn.bad",
+      "spawn.unposed",
+      "spawn.checked",
+      "game.stage",
+      "game.enemies"
+    ],
+    "name": "brawler-spawn-stage3",
+    "app": "brawler_auto",
+    "frames": 1400,
+    "startCmds": [
+      "stage 3",
+      "@120 wave 1",
+      "@420 wave 2",
+      "@720 wave 3",
+      "@1020 wave 4"
+    ],
+    "controlEnv": {
+      "BRAWLER_SPAWN_BUG": "1"
+    },
+    "hosts": [
+      "native"
+    ],
+    "expect": {
+      "spawn.bad": 0,
+      "game.stage": 3,
+      "spawn.unposed": 0
+    },
+    "note": "B-PT20: stage 4 and each of its waves: every body drawn where the simulation has it on its first visible frame; control: BRAWLER_SPAWN_BUG"
   }
 ]

@@ -171,6 +171,7 @@ void sim_sync_extras(void);
 void stats_log(const char *why);
 int token_leak(void);
 void chars_reset(void);
+float char_hand_height(const ent *e);
 void char_preload(int def); /* parse a model now, so no rig waits for it later */
 void sim_put_away(void); /* every rig back in its pool, out of sight */
 int rig_count(void);

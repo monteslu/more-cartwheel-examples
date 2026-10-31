@@ -242,6 +242,13 @@ void char_attach(ent *e) {
   for (int k = 0; k < 3; k++) { if (r->gore[k].id && cw_node_valid(r->gore[k])) cw_node_free(r->gore[k]); r->gore[k] = (cw_node){ 0 }; } /* a fresh face for the next one */
   r->sloose = false, r->spick = false, r->sblend = 10; /* the shield back on his arm */
   char_play(e, "idle", 0);
+  /* placed and posed now, not in the next render: render runs after this frame's 3D, so a body taken from the pool here
+     would be drawn once where the rig was left, in its bind pose (a new rig at the origin, the middle of the screen when a
+     stage starts). BRAWLER_SPAWN_BUG: the spawn gate's control */
+  if (!getenv("BRAWLER_SPAWN_BUG")) {
+    if (e->anim.id) cw_anim_player_seek(e->anim, 0, true);
+    char_sync(e);
+  }
 }
 
 /* gore on the characters (B-PT12): blood stamped on a bloodied face, on a fist that landed a big blow and on a weapon that
@@ -1842,6 +1849,12 @@ static t3_vec3 qrot4(t3_quat q, t3_vec3 v) {
 }
 static const float WGRIP7[8] = { 0, -0.3f, -0.38f, -0.11f, 0, 0, -0.05f, -0.21f }; /* along the prop: the middle of its grip (6: the comb's spine end, 7: the guard's baton) */
 int g_held[3]; bool g_legacy_hold; static int held_lo, held_hi = -1;
+/* the right hand's height over the feet as drawn (the spawn gate's pose check); -1 with no such bone */
+float char_hand_height(const ent *e) {
+  t3_vec3 hp; t3_quat hq;
+  if (!e->root.id || !rig_bone_xf(&RIGS[rig_of[ent_index(e)]].sr, "HandR", &hp, &hq)) return -1;
+  return hp.y - cw_node3d_position(e->root).y;
+}
 static void hold_in_hand(ent *e, rig *r, int kind) {
   t3_vec3 hp; t3_quat hq;
   if (!rig_bone_xf(&r->sr, "HandR", &hp, &hq)) return;
