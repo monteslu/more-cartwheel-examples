@@ -149,13 +149,14 @@ static void build_world(void) { /* an autopilot's start, before any warm-up: all
   while (!build_world_step()) {}
 }
 
+static int g_force_wave; /* the debug command "wave": where a cart, which reads no environment, starts over */
 static void start(int players, void *u) {
   (void)u;
   build_world();
 #ifndef HORDE_START_WAVE
 #define HORDE_START_WAVE 1
 #endif
-  int wave = getenv("HORDE_WAVE") ? atoi(getenv("HORDE_WAVE")) : HORDE_START_WAVE; /* hordeshooter_bench: a late wave from the start (carts read no environment) */
+  int wave = g_force_wave ? g_force_wave : getenv("HORDE_WAVE") ? atoi(getenv("HORDE_WAVE")) : HORDE_START_WAVE; /* hordeshooter_bench: a late wave from the start (carts read no environment) */
   sim_init(&G.S, players, 4242, wave);
   horde_floors_load(&G.S, LEVELS); /* each made floor's layout (the rest are played in the yard) */
   G.floor_stay = getenv("HORDE_FLOOR_STAY") && atoi(getenv("HORDE_FLOOR_STAY"));
@@ -178,6 +179,15 @@ static void start(int players, void *u) {
     for (int i = 0; i < players; i++) sim_power_give(&G.S, i, atoi(getenv("HORDE_POWER")) % PU_KINDS);
   memset(G.level_flash, 0, sizeof G.level_flash);
 }
+
+#ifdef HORDE_AUTOPILOT
+static void cmd_wave(int argc, const char **argv, cw_reply *r) {
+  if (argc < 2) { cw_reply_error(r, "usage: wave <n>"); return; }
+  g_force_wave = atoi(argv[1]);
+  start(G.players ? G.players : 2, NULL);
+  cw_reply_printf(r, "{\"wave\":%d}", g_force_wave);
+}
+#endif
 
 /* the app's warm-up: the world, then a simulation to draw it with (start replaces it), so the shader phase after this
  * compiles what the match draws */
@@ -251,6 +261,7 @@ static void init(void *u) {
   cw_debug_i32("melee.hits", &G.m_hits);
   cw_debug_field("melee.hit_delay", G.m_delay, CW_DBG_I32, EK_KINDS);
 #ifdef HORDE_AUTOPILOT
+  cw_debug_command("wave", "wave <n>: start over at that wave of the run", cmd_wave);
 #ifndef HORDE_AUTO_PLAYERS
 #define HORDE_AUTO_PLAYERS 2
 #endif
