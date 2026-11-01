@@ -10,6 +10,7 @@
 
 #include "cartwheel/input.h"
 #include "cartwheel/platform.h"
+#include "cartwheel/quality.h"
 #include "game.h"
 
 #define G_ACC 9.81f
@@ -28,6 +29,10 @@ game_event g_ev[EV_RING];
 unsigned g_ev_n;
 int g_ev_on = 1, g_turbo_on = 1, g_fb[EV_KINDS][4];
 float g_pack = 1;
+float g_ram_last[3];
+int g_ram_on = 1, g_ram_hits, g_ram_wipes, g_ram_setup;
+#define RAM_MIN 12.0f   /* closing speed along the line of contact under which nobody goes down */
+#define RAM_FULL 22.0f
 int g_old_crash, g_dist_step, g_place_hold = 45, g_hold_ticks, g_raw_flips, g_near_n;
 float g_near, g_near_sum;
 void ev_push(int kind, int a, float x, float z) { game_event *e = &g_ev[g_ev_n++ % EV_RING]; e->kind = kind, e->a = a, e->x = x, e->z = z; }
@@ -45,6 +50,33 @@ float g_swell_hold; /* debug: swell <0..1> holds the sea at that size */
 static cw_value cw_val_vec4(float x, float y, float z, float w) { cw_value v; memset(&v, 0, sizeof v); v.type = CW_T_VEC4; v.v[0] = x, v.v[1] = y, v.v[2] = z, v.v[3] = w; return v; }
 static float clampf(float x, float a, float b) { return x < a ? a : x > b ? b : x; }
 static void craft_hit(craft *c, float nx, float nz);
+/* Two craft meet hard. What counts is the closing speed along the line between them, so a side-by-side rub is nothing however fast they go. Each rider may go down: likelier the harder the hit,
+ * and for the one taken on the flank. A craft already down cannot be hit again, which keeps a pack from piling up. Decided by a hash of the moment, so a replay does the same */
+static void ram(craft *a, craft *b, float nx, float nz, float closing, int i, int j) {
+  if (!g_ram_on || a->spill > 0 || b->spill > 0 || a->ram_cool > 0 || b->ram_cool > 0) return;
+  a->ram_cool = b->ram_cool = 90;
+  g_ram_last[0] = closing;
+  g_ram_hits++;
+  float s = (closing - RAM_MIN) / (RAM_FULL - RAM_MIN), extra = closing > 34.0f ? 0.35f : 0.0f;
+  s = s > 1 ? 1 : s;
+  /* (its place in the seed too: a replay meets the same place at the same tick, two different meetings do not share a roll) */
+  float seed[5] = { (float)G.tick, (float)i, (float)j, a->x, a->z };
+  uint32_t h = cw_hash32(seed, sizeof seed, 7231u);
+  craft *c[2] = { a, b };
+  for (int k = 0; k < 2; k++) {
+    float sy, cy;
+    cw_sincos(c[k]->yaw, &sy, &cy);
+    float flank = fabsf(nx * cy - nz * sy), p = s * (0.25f + 0.65f * flank) + extra;
+    float roll = (float)((h >> (k * 12)) & 4095u) / 4096.0f;
+    g_ram_last[1 + k] = flank;
+    if (roll < p) {
+      c[k]->spill = 1.9f, c[k]->spills++, c[k]->big_slide = true, c[k]->crashed = true;
+      c[k]->vx *= 0.7f, c[k]->vz *= 0.7f;
+      g_ram_wipes++;
+      if (c[k]->human) ev_push(EV_CRASH, 1, c[k]->x, c[k]->z);
+    } else if (c[k]->human) ev_push(EV_WALL, 1, c[k]->x, c[k]->z);
+  }
+}
 static float wrap_pi(float a) {
   while (a > 3.14159265f) a -= TAU;
   while (a < -3.14159265f) a += TAU;
@@ -364,6 +396,7 @@ static void tanker_craft(craft *c, float dt) {
 static void craft_tick(craft *c, int idx, float dt) {
   c->px = c->x, c->py = c->y, c->pz = c->z, c->pyaw = c->yaw, c->ppitch = c->pitch, c->proll = c->roll;
   c->bump = false, c->crashed = false;
+  if (c->ram_cool > 0) c->ram_cool--;
   if (c->spill > 0) {
     /* thrown off: the hull coasts and rights itself while the rider climbs back on. Under three seconds, and the meter only
      * loses two arrows, so a big try is worth making */
@@ -777,6 +810,25 @@ static void ramp_try_tick(void) {
   if ((int)G.tick - try_t0 > 1500) g_try_res = g_try_hit ? -3 : -2;
 }
 
+/* the human and the first rival about to meet at speed; kind 0 the rival into the human's flank, 1 head on, 2 alongside, a rub. The others out of the way */
+void sim_ram_setup(int kind) {
+  craft *a = &G.c[0], *b = &G.c[1];
+  float sy, cy;
+  cw_sincos(a->yaw, &sy, &cy);
+  float rx = -cy, rz = sy, v = 28;
+  for (int i = 2; i < RACERS; i++) { G.c[i].x += sy * 200, G.c[i].z += cy * 200, G.c[i].px = G.c[i].x, G.c[i].pz = G.c[i].z; }
+  a->vx = sy * v, a->vz = cy * v, a->vy = 0;
+  float bx, bz, dx, dz;
+  if (kind == 0) bx = a->x + rx * 9.2f + sy * 7, bz = a->z + rz * 9.2f + cy * 7, dx = -rx, dz = -rz; /* its nose reaches the human's flank */
+  else if (kind == 1) bx = a->x + sy * 14, bz = a->z + cy * 14, dx = -sy, dz = -cy;
+  else bx = a->x + rx * 2.6f, bz = a->z + rz * 2.6f, dx = sy, dz = cy;
+  b->x = b->px = bx, b->z = b->pz = bz, b->y = b->py = a->y;
+  b->vx = dx * v, b->vz = dz * v, b->vy = 0;
+  if (kind == 2) b->vx += -rx * 2.5f, b->vz += -rz * 2.5f;
+  b->yaw = b->pyaw = cw_atan2(dx, dz), b->pitch = b->roll = b->pr = b->rr = 0, b->spill = 0;
+  a->spill = 0, g_ram_setup = 40;
+}
+
 /* every racer to a place on the course, at speed */
 void sim_place(float s) {
   for (int i = 0; i < RACERS; i++) {
@@ -817,11 +869,15 @@ void sim_tick(float dt) {
   }
   G.clock += dt;
   bool go = G.state != RACE_GRID || G.clock >= 0;
-  if (G.state == RACE_GRID && G.clock >= 0) G.state = RACE_ON;
+  if (G.state == RACE_GRID && G.clock >= 0) {
+    G.state = RACE_ON;
+    cw_log(CW_LOG_INFO, "jetski: course %s, green light, graphics %s", DEF->name, cw_quality_name(cw_quality_get()));
+  }
   for (int i = 0; i < RACERS; i++) {
     craft *c = &G.c[i];
     if (!racer_on(i)) continue;
     bool ai = !c->human || G.state == RACE_ATTRACT || g_try_ramp >= 0;
+    if (g_ram_setup > 0 && i < 2) ai = false, c->in.steer = 0, c->in.lean = 0, c->in.throttle = 1, c->in.trick = false;
 #ifdef JETSKI_AUTOPILOT
     ai = true;
 #endif
@@ -845,6 +901,7 @@ void sim_tick(float dt) {
       float d = sqrtf(d2), push = (2.2f - d) * 0.5f, nx = dx / d, nz = dz / d;
       a->x -= nx * push, a->z -= nz * push, b->x += nx * push, b->z += nz * push;
       float rel = (b->vx - a->vx) * nx + (b->vz - a->vz) * nz;
+      if (rel < -RAM_MIN && G.state == RACE_ON) ram(a, b, nx, nz, -rel, i, j);
       if (rel < 0) a->vx += nx * rel * 0.5f, a->vz += nz * rel * 0.5f, b->vx -= nx * rel * 0.5f, b->vz -= nz * rel * 0.5f;
       a->kick = clampf(a->kick + 0.2f, 0, 1), b->kick = clampf(b->kick + 0.2f, 0, 1);
     }
@@ -871,12 +928,14 @@ void sim_tick(float dt) {
   for (int i = 0; i < RACERS; i++) G.c[G.order[i]].place = i + 1;
   if (G.state == RACE_ON && (G.c[0].finish > 0 || G.c[0].dq)) {
     G.state = RACE_DONE;
+    cw_log(CW_LOG_INFO, "jetski: course %s, race over", DEF->name);
     /* the sim stops here, so those still out get the time their pace would have made: the results had blanks for everyone behind a winner */
     for (int i = 1; i < RACERS; i++) { craft *o = &G.c[i]; if (racer_on(i) && o->finish <= 0) { float left = (float)LAPS * COURSE_LEN - o->dist, pace = fmaxf(o->dist / fmaxf(G.clock, 1.0f), 8.0f); o->finish = G.clock + left / pace; } }
   }
   /* the attract loop races on and on, and stays out where the swell is */
   if (G.state == RACE_ATTRACT && G.c[G.order[0]].lap >= 1) for (int i = 0; i < RACERS; i++) G.c[i].lap = -1;
   ramp_try_tick();
+  if (g_ram_setup > 0) g_ram_setup--;
   /* how close the nearest rival is, for the pack gate */
   if (G.state == RACE_ON) { float n = 1e9f; for (int i = 1; i < RACERS; i++) if (racer_on(i)) n = fminf(n, fabsf(G.c[i].dist - G.c[0].dist)); g_near = n; if (n < 1e8f) g_near_sum += n, g_near_n++; }
   if (g_hold_ticks > 0) g_hold_ticks--;

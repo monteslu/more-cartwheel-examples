@@ -98,6 +98,7 @@ typedef struct craft {
   bool human;
   bool bump;                      /* hit something this tick */
   bool crashed;                   /* hit something square, hard */
+  int ram_cool;                   /* ticks before another hit from a rival counts */
   bool on_ramp;                   /* on a ramp's deck this tick */
   bool hook_passed;               /* through the hook's far side, until it comes round again */
   bool trick_held;                /* the trick button last tick */
@@ -217,6 +218,9 @@ float menu_best_time(void); /* this course's best time trial, 0: none */
 void sim_place(float s);
 /* hud.c */
 extern int g_fair, g_land_hist[21];
+extern float g_ram_last[3];
+extern int g_ram_on, g_ram_hits, g_ram_wipes, g_ram_setup;
+void sim_ram_setup(int kind);
 extern int g_old_crash, g_dist_step, g_place_hold, g_hold_ticks, g_raw_flips, g_near_n;
 extern float g_near, g_near_sum;
 void sim_ramp_side(int r, float across);

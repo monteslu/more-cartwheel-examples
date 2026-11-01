@@ -225,6 +225,8 @@ static void cmd_switch(int argc, const char **argv, cw_reply *r) {
     else if (!strcmp(argv[1], "stock")) G.c[0].stock = v;
     else if (!strcmp(argv[1], "meter")) G.c[0].meter = (int)v;
     else if (!strcmp(argv[1], "turbo")) g_force_turbo = (int)v;
+    else if (!strcmp(argv[1], "ram")) g_ram_on = (int)v;
+    else if (!strcmp(argv[1], "ram_setup")) sim_ram_setup((int)v);
     else if (!strcmp(argv[1], "old_crash")) g_old_crash = (int)v;
     else if (!strcmp(argv[1], "dist_step")) g_dist_step = (int)v;
     else if (!strcmp(argv[1], "place_hold")) g_place_hold = (int)v;
@@ -445,6 +447,10 @@ static void init(void *user) {
   cw_debug_field("land.hist", g_land_hist, CW_DBG_I32, 21);
   cw_debug_command("sw", "sw <ev_on|turbo_on|pack|stock|meter|turbo> <value>: the gates' switches", cmd_switch);
   cw_debug_field("fb", g_fb, CW_DBG_I32, EV_KINDS * 4);
+  cw_debug_i32("ram.hits", &g_ram_hits);
+  cw_debug_f32_array("ram.last", g_ram_last, 3);
+  cw_debug_i32("ram.wipes", &g_ram_wipes);
+  cw_debug_i32("p1.spills", &G.c[1].spills);
   cw_debug_i32("race.raw_flips", &g_raw_flips);
   cw_debug_i32("race.near_n", &g_near_n);
   cw_debug_f32("race.near", &g_near);

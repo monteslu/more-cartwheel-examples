@@ -155,6 +155,11 @@
     "note": "nothing lit reaches the water's refraction: lime pixels on the sea in a championship race, GL and WebGPU on the cart. Control: v0.14.0, whose marks came through the wakes as lime patches on WebGPU, must fail"
   },
   {
+    "name": "jetski-ram",
+    "script": "tests/jetski-ram.mjs",
+    "note": "a hard hit from another craft can put a rider down, a rub never does, and whole races stay races. Control: ram 0"
+  },
+  {
     "name": "jetski-quality",
     "script": "tests/jetski-quality.mjs",
     "note": "a program for everything drawn at every quality on both courses and backends"
