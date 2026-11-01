@@ -9,7 +9,7 @@ function height(x, z) {
   const d = trackDist(x, z) + 9 * Math.sin(x * 0.021 + z * 0.013) + (fbm(x * 0.02, z * 0.02, 3, 301) - 0.5) * 18;
   // a bed, a sand bar at the bank, a slope of fallen rock against the wall, then a wall that climbs in steps: benches of harder rock
   let y = lerp(-6, 1.5, smooth(34, 52, d));
-  if (d > 46) y = Math.max(y, lerp(1.5, 8.5, smooth(50, 80, d + (fbm(x * 0.05, z * 0.05, 3, 305) - 0.5) * 8)));
+  y = lerp(y, Math.max(y, lerp(1.5, 8.5, smooth(50, 80, d + (fbm(x * 0.05, z * 0.05, 3, 305) - 0.5) * 8))), smooth(42, 52, d));
   const up = smooth(66, 84, d);
   if (up > 0) {
     const top = 62 + 58 * fbm(x * 0.004 + 9, z * 0.004, 3, 302);

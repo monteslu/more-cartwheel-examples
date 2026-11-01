@@ -23,6 +23,7 @@ game G;
 #define MAX_SINK 0.32f   /* metres of the hull's centre under the surface */
 int g_ride_top = 1;  /* debug: 0 is the control, a hull held by the spring alone */
 float g_ramp_lift; /* debug: ramp_lift <metres>, the must-fail control for the ramps' gap count */
+int g_no_dq;
 float g_current = 1; /* debug: current 0, the river's control */
 float g_tide_hold = -100; /* debug: tide <metres> holds it */
 float g_swell_hold; /* debug: swell <0..1> holds the sea at that size */
@@ -94,7 +95,7 @@ static void buoys(craft *c) {
     c->misses++;
     c->flash_miss = 1;
     if (!c->human) G.miss_at[c->next_buoy]++;
-    if (c->misses >= 5 && c->human && !c->dq) c->dq = 1;
+    if (c->misses >= 5 && c->human && !c->dq && !g_no_dq) c->dq = 1;
   }
   c->next_buoy = buoy_next(c->next_buoy);
 }
@@ -134,6 +135,16 @@ static void computer(craft *c, int idx) {
       float out = (la < 0 ? -1.0f : 1.0f) * (RAMP_HALF_W + 8), at = al + 18.0f;
       ax = G.ramp_x[r] + sy * at - cy * out, az = G.ramp_z[r] + cy * at + sy * out;
       break;
+    }
+  }
+  /* a tanker across the way: under its stern, into its wake, as a person would; pressed against its side they sat there until it had gone by */
+  if (DEF->hook.kind == 3) {
+    float ux = DEF->hook.dirx, uz = DEF->hook.dirz, dir = G.tanker[2], hl = DEF->hook.lintel, hw = DEF->hook.half_w;
+    float dx = c->x - G.tanker[0], dz = c->z - G.tanker[1], ahead = (dx * ux + dz * uz) * dir, lat = dx * -uz + dz * ux;
+    float aim_lat = (ax - G.tanker[0]) * -uz + (az - G.tanker[1]) * ux;
+    if (fabsf(lat) < hw + 34 && ahead > -hl - 8 && ahead < hl + 30 && lat * aim_lat < 0) {
+      float side = lat < 0 ? -1.0f : 1.0f, back = -(hl + 22) * dir, out = side * (hw + 7);
+      ax = G.tanker[0] + ux * back - uz * out, az = G.tanker[1] + uz * back + ux * out;
     }
   }
   float want = cw_atan2(ax - c->x, az - c->z);
@@ -653,7 +664,7 @@ void sim_place(float s) {
 /* the course's area: far from the line for five seconds and the race is over, with a warning all the way */
 static void out_of_bounds(craft *c, float dt) {
   float tx = c->x - TRACK[c->track_i][0], tz = c->z - TRACK[c->track_i][1];
-  if (tx * tx + tz * tz > 110.0f * 110.0f) { c->out_t += dt; if (c->out_t > 5.0f && c->human && !c->dq) c->dq = 2; }
+  if (tx * tx + tz * tz > 110.0f * 110.0f) { c->out_t += dt; if (c->out_t > 5.0f && c->human && !c->dq && !g_no_dq) c->dq = 2; }
   else c->out_t = 0;
 }
 

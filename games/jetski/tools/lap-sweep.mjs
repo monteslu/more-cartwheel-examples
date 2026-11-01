@@ -28,6 +28,7 @@ await fetch(URL_, { method: 'POST', headers: { 'Content-Type': 'application/json
 await call('loadMedia', { platform: 'wasmcart', path: CART, gpuPower: 'low-power', ...(GL ? { wgpu: false } : {}) });
 await call('frame', { op: 'step', frames: 10 });
 await call('wasm', { op: 'command', text: `course ${LEVEL}` });
+await call('wasm', { op: 'command', text: 'no_dq 1' });
 await call('wasm', { op: 'command', text: 'race' });
 await call('frame', { op: 'step', frames: 240 }); // the countdown
 const STEP = 6, SHOT_EVERY = +process.env.SHOT_EVERY || 1200;

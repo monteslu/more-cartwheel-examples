@@ -188,6 +188,11 @@ static void cmd_next(int argc, const char **argv, cw_reply *r) {
   if (argc > 1) G.c[0].next_buoy = atoi(argv[1]);
   if (r) cw_reply_raw(r, "true");
 }
+/* no_dq 1: the computer rider in the human's seat rides the whole race whatever it misses, for race checks */
+static void cmd_no_dq(int argc, const char **argv, cw_reply *r) {
+  g_no_dq = argc > 1 ? atoi(argv[1]) : 1;
+  if (r) cw_reply_raw(r, "true");
+}
 /* detile <0..1>: the land's side_detile live, for the plaid comparison */
 static void cmd_detile(int argc, const char **argv, cw_reply *r) {
   if (G.land) cw_terrain_set_side_detile(G.land, argc > 1 ? (float)atof(argv[1]) : 1);
@@ -386,6 +391,7 @@ static void init(void *user) {
   cw_debug_command("arch", "arch <back>: lined up with the course's arch", cmd_arch);
   cw_debug_command("buoy_shot", "buoy_shot <hud mark> <buoys> <freeze>: picture pairs for the distance gate", cmd_buoy_shot);
   cw_debug_command("next", "next <buoy>: that one is the human's next", cmd_next);
+  cw_debug_command("no_dq", "no_dq 1: no disqualification, for race checks", cmd_no_dq);
   cw_debug_command("buoy_style", "buoy_style 0: the small buoy, the distance gate's control", cmd_buoy_style);
   cw_debug_i32("hud.ptr_mode", &g_hud_ptr_mode);
   cw_debug_f32_array("hud.ptr", g_hud_ptr, 2);

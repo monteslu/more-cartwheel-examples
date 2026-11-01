@@ -522,6 +522,8 @@ for (const [name, dir] of [['mark_left', 1], ['mark_right', -1]]) {
     P.grid(m, rows, { flip: false });
     const d = []; for (let i = 0; i <= 14; i++) { const t = i / 14, z = -L + 2 * L * t, w = W * (t > 0.82 ? Math.pow(1 - (t - 0.82) / 0.18, 0.55) : t < 0.05 ? 0.82 + t * 3.6 : 1) + 0.02; d.push([[-w, top, z], [w, top, z]]); }
     P.grid('deck', d, { flip: false });
+    // the stern: without it a hull seen from astern is open, with the water through it
+    { const w = W * 0.82 + 0.02; P.grid(m, [[[-w, top, -L], [w, top, -L]], [[-w * 0.92, bottom, -L], [w * 0.92, bottom, -L]]], { flip: true }); }
   };
   { // the tanker: 124 m long, y 0 the waterline, forward +z
     const P = new Plain();
@@ -790,7 +792,7 @@ for (let v = 0; v < 3; v++) {
   for (let k = 0; k < 9; k++) { const y = hash(k * 3) * 2 - 1, a = hash(k * 3 + 1) * 6.2832, r = Math.sqrt(1 - y * y); planes.push([Math.cos(a) * r, y, Math.sin(a) * r, 0.62 + 0.3 * hash(k * 3 + 2)]); }
   const rx = 1.1 + v * 0.2, ry = 0.75 + 0.15 * (v % 2), rz = 0.85, rows = [];
   for (let j = 0; j <= 16; j++) {
-    const th = j / 16 * Math.PI, row = [];
+    const th = Math.max(0.05, Math.min(Math.PI - 0.05, j / 16 * Math.PI)), row = []; // (not to the pole: its normals are undefined and the top came out with a dark spot)
     for (let i = 0; i <= 24; i++) {
       const a = (i % 24) / 24 * Math.PI * 2, d = [Math.cos(a) * Math.sin(th), Math.cos(th), Math.sin(a) * Math.sin(th)];
       let t = 1;
