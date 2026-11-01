@@ -35,6 +35,8 @@ typedef struct save_t {
   int32_t level;    /* where the group got to (the level a new match starts on) */
   int32_t unlocked; /* the furthest level reached: the map can go back to any before it */
   int32_t total_coins, total_deaths, total_betrayals;
+  int32_t hats;     /* levels whose secrets were all found: each one better, in a sense, than the last */
+  uint32_t hat_levels[2];
 } save_t;
 
 #define NTORCH 4
@@ -75,6 +77,7 @@ static struct {
   int nlight_src;
   bool built;
   bool graves_due;
+  t3_mesh *hat[MAX_PLAYERS][6][2];
 } S;
 
 static struct {
@@ -361,6 +364,9 @@ static void place_decals(const level *L) {
   }
 }
 
+#define HAT_Y 1.32f
+static bool hats_due;
+static void hats_apply(void);
 static void gore_build(void);
 static void graves_reset(void);
 static bool project(float x, float y, float z, float W, float H, float *sx, float *sy);
@@ -388,6 +394,7 @@ static void build_scene(void) {
   place_decals(&g->L);
   gore_build();
   graves_reset();
+  hats_due = true;
   cw_node wobj = S.world;
   const level *L = &g->L;
   /* environment, sun, post, camera: once */
@@ -568,6 +575,23 @@ static void build_scene(void) {
       rig_attach(S.prig[i], S.pmodel[i]);
       float fur[3] = { PLAYER_RGB[i][0], PLAYER_RGB[i][1], PLAYER_RGB[i][2] };
       rig_tint(S.prig[i], fur, ACCENT[i], i);
+    }
+    /* the hats. Terrible ones, and all of them sit on the head */
+    {
+      static const uint32_t HC[6] = { 0xff6a1a, 0x9098a0, 0xb0b8c0, 0x201a18, 0x484c52, 0x201018 };
+      t3_geometry *cone = t3_cone_geometry_new(0.2f, 0.42f, 12, 1, false), *buck = t3_cylinder_geometry_new(0.21f, 0.16f, 0.24f, 12, 1, false), *small = t3_cylinder_geometry_new(0.12f, 0.1f, 0.13f, 12, 1, false);
+      t3_geometry *top = t3_cylinder_geometry_new(0.14f, 0.15f, 0.32f, 12, 1, false), *brim = t3_cylinder_geometry_new(0.25f, 0.25f, 0.03f, 14, 1, false), *pan = t3_cylinder_geometry_new(0.22f, 0.2f, 0.14f, 12, 1, false), *handle = t3_box_geometry_new(0.34f, 0.03f, 0.05f, 1, 1, 1);
+      for (int h = 0; h < 6; h++) {
+        t3_material *hm = phys(HC[h], h == 1 || h == 2 || h == 4 ? 0.45f : 0.85f, h == 1 || h == 2 || h == 4 ? 0.8f : 0);
+        t3_geometry *g0 = h == 0 ? cone : h == 1 ? buck : h == 2 ? small : h == 4 ? pan : top;
+        float y = HAT_Y + (h == 0 ? 0.2f : h == 3 || h == 5 ? 0.17f : 0.08f);
+        S.hat[i][h][0] = part(S.pmodel[i], g0, hm, 0, y, 0, h == 5 ? 1.3f : 1, h == 5 ? 1.3f : 1, h == 5 ? 1.3f : 1);
+        S.hat[i][h][0]->base.visible = false;
+        S.hat[i][h][1] = NULL;
+        if (h == 3 || h == 5) { S.hat[i][h][1] = part(S.pmodel[i], brim, hm, 0, HAT_Y + 0.02f, 0, h == 5 ? 1.3f : 1, 1, h == 5 ? 1.3f : 1); S.hat[i][h][1]->base.visible = false; }
+        if (h == 4) { S.hat[i][h][1] = part(S.pmodel[i], handle, hm, 0.34f, HAT_Y + 0.08f, 0, 1, 1, 1); S.hat[i][h][1]->base.visible = false; }
+      }
+      t3_release(cone), t3_release(buck), t3_release(small), t3_release(top), t3_release(brim), t3_release(pan), t3_release(handle);
     }
     t3_material *bu = phys(0xaaddff, 0.05f, 0);
     bu->transparent = true, bu->opacity = 0.3f, bu->depth_write = false;
@@ -1013,6 +1037,7 @@ static void sync_scene(float alpha, float dt) {
   }
   coin_face_check();
   world_things_sync(g, S.time);
+  if (hats_due) hats_apply(), hats_due = false;
   /* the near layer stands at z 7 and the camera looks through it: find where the line from the camera to a player's feet
    * crosses that plane, and ask whether the layer's top is above that point there */
   for (int i = 0; i < g->nplayers; i++) {
@@ -1558,7 +1583,7 @@ static void init(void *user) {
   a_left = cw_action_find("left"), a_right = cw_action_find("right"), a_up = cw_action_find("up"), a_down = cw_action_find("down");
   a_jump = cw_action_find("jump"), a_run = cw_action_find("run"), a_grab = cw_action_find("grab"), a_dash = cw_action_find("dash"), a_map = cw_action_find("map"), a_retry = cw_action_find("retry");
   cw_shell_init(&(cw_shell_desc){ .title = "Co-op Platformer", .subtitle = "one to four players", .max_players = 4,
-                                  .game_save_size = sizeof(save_t), .game_save_version = 3, .start = start_match,
+                                  .game_save_size = sizeof(save_t), .game_save_version = 4, .start = start_match,
                                   .quit = quit_match, .sound = sound_hook, .draw_background = title_background });
   g_font = cw_ui_font_sans();
   audio_init();
@@ -2169,6 +2194,18 @@ static void gore_death(int who, int cause, float x, float y) {
   }
   if (big) g_gore_dbg[1]++;
 }
+/* whatever is the newest, on everybody: each player in a different one of the set */
+static void hats_apply(void) {
+  const save_t *sv = cw_shell_game_save();
+  int n = sv->hats > 6 ? 6 : sv->hats;
+  if (getenv("COOP_TEST_HATS")) n = atoi(getenv("COOP_TEST_HATS")); /* a look at them without earning them */
+  for (int i = 0; i < MAX_PLAYERS; i++)
+    for (int h = 0; h < 6; h++) {
+      bool on = n > 0 && h == (n - 1 + i * 2) % n;
+      if (S.hat[i][h][0]) S.hat[i][h][0]->base.visible = on;
+      if (S.hat[i][h][1]) S.hat[i][h][1]->base.visible = on;
+    }
+}
 static void grief_gag(int who, int victim) {
   if (victim < 0) { /* a throw: the one in the air has the last word */
     static const char *const T1[] = { "wheee", "i trusted you", "i regret nothing", "this was not discussed", "tell my mum", "aim for the good spikes" };
@@ -2180,8 +2217,25 @@ static void grief_gag(int who, int victim) {
 }
 
 /* on to the next level, or at the end of the last, back to the title */
+/* every secret coin of a level found: a hat is issued. Nobody asked */
+static const char *const HAT_NAMES[6] = { "A TRAFFIC CONE", "A BUCKET", "A SMALLER BUCKET", "A VERY GOOD HAT", "A POT", "THE LANDLORD'S HAT" };
+static int hat_new_t;
+static void hat_award(void) {
+  save_t *sv = cw_shell_game_save();
+  int total = 0, got = 0;
+  for (int k = 0; k < G.L.ncoins; k++) if (G.L.coins[k].secret) { total++; if (G.L.coins[k].taken) got++; }
+  if (total == 0 || got < total || G.level >= 64) return;
+  uint32_t bit = 1u << (G.level % 32);
+  if (sv->hat_levels[G.level / 32] & bit) return;
+  sv->hat_levels[G.level / 32] |= bit;
+  sv->hats++;
+  hat_new_t = 300;
+}
+static void hats_apply(void);
 static void next_level(void) {
   save_t *sv = cw_shell_game_save();
+  hat_award();
+  hats_apply();
   sv->total_coins += G.coins_total, sv->total_deaths += G.deaths;
   for (int i = 0; i < G.nplayers; i++) sv->total_betrayals += G.betrayals[i];
   int players = G.nplayers;
@@ -2740,6 +2794,13 @@ static void render(void *user, double alpha) {
         prev_end = x + 36 * s + tw; /* where the drawn word really ends */
       }
       if (ov) g_tags_dbg[1]++;
+    }
+    if (hat_new_t > 0) {
+      hat_new_t--;
+      const save_t *sv = cw_shell_game_save();
+      char hb[96];
+      snprintf(hb, sizeof hb, "ALL THE SECRETS. YOU HAVE BEEN ISSUED: %s", HAT_NAMES[(sv->hats - 1) % 6]);
+      text(hb, 0, H * 0.12f, 20 * s, cw_rgba(1, 0.95f, 0.6f, (float)(hat_new_t > 30 ? 1 : hat_new_t) / (hat_new_t > 30 ? 1 : 30)), CW_ALIGN_CENTER, W);
     }
     if (G.fake_t > 0 && !G.won) { /* it looks exactly like the end of a level, for a moment */
       float k = fminf(1.0f, (float)(150 - G.fake_t) / 20.0f);

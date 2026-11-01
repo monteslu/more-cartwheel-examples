@@ -587,7 +587,13 @@ bool sim_player_move(game *g, player *p, const input_state *is, float dt) {
     if (p->launch_vx != 0 && p->launched > 0 && (is->x > -0.2f && is->x < 0.2f)) pin.move_x = p->launch_vx > 0 ? 1.0f : -1.0f;
     if (p->launched == 0) p->launch_vx = 0;
   }
+  cw_vec2 lift = pf->body.platform_velocity;
   cw_platformer2d_step(pf, &pin, dt);
+  /* a jump off something moving keeps what it was doing */
+  if ((pf->events & CW_PF_JUMP) && (lift.x != 0 || lift.y > 0)) {
+    pf->body.velocity.x += lift.x;
+    if (lift.y > 0) pf->body.velocity.y += lift.y;
+  }
   /* the measurement of a jump: from the ground it left to the ground it lands on */
   float fx = pos_x(p), fy = pos_y(p);
   if (pf->events & CW_PF_JUMP) p->in_jump = true, p->jump_x = fx, p->jump_y = fy, p->jump_top = fy, g->last_jump[2] = fabsf(vx0);
