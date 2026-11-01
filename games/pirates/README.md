@@ -77,8 +77,9 @@ TARGETS="native cart-wgpu" scripts/build.sh pirates pirates_auto
 The playable cart is `build/cart-wgpu/carts/pirates.wasc`.
 `pirates_auto` runs four AI captains in Treasure Race for replay checks.
 Use `RELEASE=1 TARGETS=cart-wgpu scripts/build.sh pirates pirates_auto` for
-optimized carts. CI builds and smoke-tests both targets against the pinned
-SDK; Pirates is not yet included in release downloads.
+optimized carts. CI builds both carts against the pinned SDK and smoke-tests `pirates_auto`.
+Merges to main build `pirates.wasc` into the shared `release-carts` artifact;
+the next tagged release publishes it alongside the other games.
 
 For an engine source build, use a separate checkout of tag `v0.29.1`
 (commit `506dd0669d77b471a6f824feaf0ae1bde85aa7c9`) and follow the

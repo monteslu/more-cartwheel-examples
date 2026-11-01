@@ -141,14 +141,15 @@ jump with (X). One player. GPL-2.0-or-later, see its LICENSE and CREDITS.
 `games/tuxracer/` (its [README](games/tuxracer/README.md) has the controls
 and the credits).
 
-### Pirates (in development)
+### Pirates
 
 ![Pirates: four captains trade broadsides around a volcanic archipelago](docs/screenshots/pirates.jpg)
 
 A shared-screen naval game for one to four players: cooperative voyages,
 competitive treasure races, ship upgrades, a volcanic archipelago and a
 calmer palm lagoon. It builds with the pinned engine v0.29.1 SDK; no local
-engine patches are needed. It is not yet included in release downloads.
+engine patches are needed. CI includes Pirates with the other games; tagged
+releases publish `pirates.wasc` from the tagged commit’s successful main build.
 [Its README](games/pirates/README.md) covers controls, builds, credits and
 romdev verification.
 
@@ -158,7 +159,7 @@ Tagged versions are on the
 [Releases](https://github.com/monteslu/more-cartwheel-examples/releases)
 page: one cart per game, `<game>.wasc` (`arenafps.wasc`, `brawler.wasc`,
 `coopplatformer.wasc`, `fighter.wasc`, `hordeshooter.wasc`,
-`partypack.wasc`, `skyfighter.wasc`, `tuxracer.wasc`). Each cart holds GL and WebGPU: a host that has WebGPU
+`jetski.wasc`, `partypack.wasc`, `pirates.wasc`, `skyfighter.wasc`, `tuxracer.wasc`). Each cart holds GL and WebGPU: a host that has WebGPU
 runs it on WebGPU, any other on GL. Every push to `main` also builds them:
 the repository's
 [Actions](https://github.com/monteslu/more-cartwheel-examples/actions) tab,
@@ -283,8 +284,8 @@ costs, and `scripts/partypack-suite.sh` runs partypack's checks in pieces.
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push to
 `main`, on pull requests and by hand (workflow_dispatch), against the pinned
-cart SDK. It builds the eight carts and the self-playing `<game>_auto` carts
-of the six games that have one, and runs `tests/cart-smoke.mjs`: each game's
+cart SDK. It builds the ten carts and the self-playing `<game>_auto` carts
+of the eight games that have one, and runs `tests/cart-smoke.mjs`: each game's
 `_auto` cart (or its own cart where it has none) plays 60 frames in
 wasmcart's Node host on Mesa's software Vulkan (lavapipe, the WebGPU path),
 must exit cleanly and leave a picture that is not blank. The gates, which
@@ -292,7 +293,7 @@ compare the carts with native runs on every host, run locally on a GPU
 (`tests/gate.mjs`).
 
 Pushes to `main` link the carts as releases ship. Pushing a `v*` tag does not
-build anything: it takes the eight `<game>.wasc` from that commit's green run
+build anything: it takes the ten `<game>.wasc` from that commit's green run
 on `main` and publishes them as a GitHub release, its notes taken from
 [CHANGELOG.md](CHANGELOG.md). Push to `main`, wait for the run to go green,
 then `git tag v0.3.0 && git push origin v0.3.0`.
