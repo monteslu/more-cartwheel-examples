@@ -180,5 +180,7 @@ export function strongest(list) {
   let a = [0, -1], b = [0, -1];
   for (const q of list) { if (q[1] > a[1]) { b = a; a = q; } else if (q[1] > b[1]) b = q; }
   const sum = Math.max(1e-4, a[1] + Math.max(0, b[1]));
-  return [a[0], b[0], clamp(Math.max(0, b[1]) / sum) * 255];
+  // (a small share of a second layer is dropped: the shader reads a second layer wherever one has any share, and a wall is a lot of pixels. Rescaled so the blend stays continuous)
+  const share = clamp(Math.max(0, b[1]) / sum);
+  return [a[0], b[0], smooth(0.14, 0.5, share) * 0.5 * 255];
 }
