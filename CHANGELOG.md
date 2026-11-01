@@ -1,7 +1,16 @@
 # Changelog
 
+## 0.18.0
+
+- jetski: a hard hit from another craft at speed can put one rider or both in the water. A rider
+  taken on the flank goes down more often than the one who hit them, and a side-by-side rub
+  never does.
+- jetski: a race reached from the results page starts right behind your craft. The camera used
+  to fly in from the last course, and could show a frame from under the sea.
+
 ## 0.17.0
 
+- coopplatformer: saves from earlier versions start over.
 - coopplatformer: all five worlds, 25 levels, and the old single level is gone. Each level
   ends its own way: a chase, a piano recital, a collapsing bridge, a corridor of presses, a
   cannon relay.
