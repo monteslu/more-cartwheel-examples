@@ -1,0 +1,37 @@
+Engine review follow-up — 2026-11-01
+
+External encoder buffers now track outstanding external use independently
+of uniform-stream replacement. Partial attribute updates also rename while
+external work is outstanding. The added test cases fail against the earlier
+patch and pass with the fix; post-submit reuse and the rendered two-target
+instance-retention test pass, with zero renderer or GPU validation errors.
+
+Shore refraction uses the smaller of rest-plane and current surface depth.
+A crest cannot re-enable distortion where the refraction pass clipped land.
+The baked floor texture G channel records 1000 m for an unhit ray; R and the
+public CPU floor-depth query retain their existing probe-range convention.
+The new shader uses G only for distortion attenuation; other floor shading
+continues using R. Regenerate program tables when adopting the shader fix.
+
+Targeted local diagnostics:
+- Extracted production bake-cell C code with stubbed physics responses:
+  no hit, dynamic-only hit, land overlap, and static floor at 0.75 m.
+  Previous encoding fails the no-hit test; updated encoding passes all four.
+  This tests encoding branches, not the physics implementation.
+- Extracted production shader expressions evaluated with scalar arithmetic:
+  crest at land previously yielded 0.352 distortion weight, now 0;
+  missed 1 m probe previously yielded 0.104, now 1. Shallow trough, deep
+  floor, and disabled-map cases pass. This does not emulate GPU filtering.
+
+Pirates GL and WebGPU tables regenerated; Tint accepts all 17 programs.
+Both development carts rebuilt. Actual romdev GL and WebGPU replays at
+1500 ticks both report gameplay hash 726034506, GPU errors 0, skipped draws 0.
+Screenshots inspected at 1920x1080:
+ out/pirates-shore-review-gl.png
+ out/pirates-shore-review-webgpu.png
+A WebGPU diagnostic sets Root/Water.floor_range=1, switches to Palm Lagoon
+(which rebakes the floor), then runs 250 frames. Screenshot inspected:
+ out/pirates-shore-review-shortrange.png
+This is sampled visual verification, not coverage of every wave/camera phase.
+The optimized carts and full-match profiling records predate these review
+fixes; do not describe those older binaries as containing this update.
