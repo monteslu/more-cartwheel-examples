@@ -227,6 +227,7 @@ static void cmd_switch(int argc, const char **argv, cw_reply *r) {
     else if (!strcmp(argv[1], "turbo")) g_force_turbo = (int)v;
     else if (!strcmp(argv[1], "ram")) g_ram_on = (int)v;
     else if (!strcmp(argv[1], "ram_setup")) sim_ram_setup((int)v);
+    else if (!strcmp(argv[1], "cam_cut")) g_cam_cut = (int)v;
     else if (!strcmp(argv[1], "old_crash")) g_old_crash = (int)v;
     else if (!strcmp(argv[1], "dist_step")) g_dist_step = (int)v;
     else if (!strcmp(argv[1], "place_hold")) g_place_hold = (int)v;
@@ -447,6 +448,12 @@ static void init(void *user) {
   cw_debug_field("land.hist", g_land_hist, CW_DBG_I32, 21);
   cw_debug_command("sw", "sw <ev_on|turbo_on|pack|stock|meter|turbo> <value>: the gates' switches", cmd_switch);
   cw_debug_field("fb", g_fb, CW_DBG_I32, EV_KINDS * 4);
+  cw_debug_i32("cam.drawn_under", &g_cam_drawn_under);
+  cw_debug_i32("p0.kicks", &G.c[0].kicks);
+  cw_debug_i32("p0.dives", &G.c[0].dives);
+  cw_debug_f32("p0.dive_max", &G.c[0].dive_max);
+  cw_debug_f32("p0.dive_under", &G.c[0].dive_under);
+  cw_debug_f32("p0.legout", &G.c[0].legout);
   cw_debug_i32("ram.hits", &g_ram_hits);
   cw_debug_f32_array("ram.last", g_ram_last, 3);
   cw_debug_i32("ram.wipes", &g_ram_wipes);

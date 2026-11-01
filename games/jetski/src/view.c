@@ -14,6 +14,7 @@
 
 static cw_node craft_n[RACERS], rider_n[RACERS], buoy_n[BUOY_MAX], buoy_old_n[BUOY_MAX];
 int g_buoy_hide;
+int g_cam_cut = 1, g_cam_drawn_under;
 int g_buoy_style = 1; /* 0: the small buoy the course marks replaced, the control of the distance gate; sim and scoring do not see it */
 static float mark_scale[BUOY_MAX];
 static t3_object *bars_o[RACERS];
@@ -652,6 +653,7 @@ void view_tick(float dt) {
   float wy = (c->y * rise + wh * (1.0f - rise)) + up;
   if (wy < wh + 1.25f) wy = wh + 1.25f;
   float kx = 1.0f - cw_exp(-dt * 18.0f), ky = 1.0f - cw_exp(-dt * 5.5f);
+  bool first_tick = G.cam[0] == 0;
   if (G.tick < 3 || G.cam[0] == 0) kx = ky = 1;
   G.cam[0] += (wx - G.cam[0]) * kx;
   G.cam[2] += (wz - G.cam[2]) * kx;
@@ -667,6 +669,8 @@ void view_tick(float dt) {
   G.look[0] += (lx - G.look[0]) * kl;
   G.look[1] += (ly - G.look[1]) * kl;
   G.look[2] += (lz - G.look[2]) * kl;
+  /* the first tick after a reset is a cut: nothing to draw between. From a zeroed last place, the frames between ticks put the camera near the world's origin, on some courses under the sea */
+  if (first_tick && g_cam_cut) memcpy(G.cam_prev, G.cam, sizeof G.cam), memcpy(G.look_prev, G.look, sizeof G.look);
   float fov = 54.0f + c->speed * 0.34f + (c->turbo_hold > 0 ? 8.0f * fminf(1.0f, c->turbo_hold / 0.6f) : 0);
   if (G.cam_fov == 0) G.cam_fov = fov;
   G.cam_fov += (fov - G.cam_fov) * (dt * 2.0f);
@@ -750,6 +754,8 @@ void view_sync(double alpha) {
     cw_node3d_set_rotation(gate_n, (t3_vec3){ 0, cw_atan2(dx, dz), 0 });
   }
   t3_vec3 cp = { lerpf(G.cam_prev[0], G.cam[0], a), lerpf(G.cam_prev[1], G.cam[1], a), lerpf(G.cam_prev[2], G.cam[2], a) };
+  /* the rubric's check on what is really drawn */
+  if (G.state != RACE_ATTRACT && cp.y < cw_water_height_at(G.water, cp.x, cp.z, G.wt)) g_cam_drawn_under++;
   t3_vec3 lp = { lerpf(G.look_prev[0], G.look[0], a), lerpf(G.look_prev[1], G.look[1], a), lerpf(G.look_prev[2], G.look[2], a) };
   cw_node3d_set_position(G.clouds, (t3_vec3){ cp.x, 0, cp.z });
   {

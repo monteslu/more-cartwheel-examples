@@ -217,6 +217,7 @@ float menu_best_time(void); /* this course's best time trial, 0: none */
 /* sim.c */
 void sim_place(float s);
 /* hud.c */
+extern int g_cam_cut, g_cam_drawn_under;
 extern int g_fair, g_land_hist[21];
 extern float g_ram_last[3];
 extern int g_ram_on, g_ram_hits, g_ram_wipes, g_ram_setup;
