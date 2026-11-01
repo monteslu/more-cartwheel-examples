@@ -77,6 +77,7 @@ return {
   tide: [2.6, -1.6],
   sky: 'res://textures/sky-sound.png',
   sun_disc: 0.12,
+  side_detile: 1,
   props: [
     // (what the water mirrors past the horizon on a wave's back: the sky's default sandy ground lay on this sea in tan bands)
     ['Sky', 'ground_color', 'color(0.16, 0.26, 0.34, 1)'],

@@ -4,7 +4,7 @@
 //   node games/jetski/tools/warm-check.mjs <cart> [--gl]
 import { resolve } from 'node:path';
 const URL_ = 'http://127.0.0.1:7331/mcp', CART = resolve(process.argv[2]), GL = process.argv.includes('--gl');
-const SESSION = process.env.JETSKI_SESSION || 'jetski-warm';
+const SESSION = process.env.JETSKI_SESSION || 'jetski';
 let sid = null, id = 1;
 async function rpc(method, params) {
   const headers = { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', 'x-romdev-session': SESSION };

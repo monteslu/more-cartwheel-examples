@@ -81,8 +81,21 @@ function paintSky(path, S) {
       const wob = fbm(u * 10, el * 3, 2, 42, 10);
       const cirrus = smooth(0.55, 0.82, fbm(u * PER * 1.5 + 3 * wob, el * 34, 5, 41, PER * 1.5)) * smooth(0.1, 0.22, el) * (1 - smooth(0.55, 0.85, el)) * 0.5;
       c = mix3(c, mix3(CIR0, CIR1, near), cirrus);
+      // a storm's ceiling, in place of a bank: a layer of scud over a flat sea, seen in perspective, soft all the way (a bank's hard towers, lit by four
+      // samples, read as contour lines stretched this far up the sky). The sun is at u = 0.5, along -x of the layer
+      if (S.scud) {
+        const ang = el * 1.5708, t = 1 / (Math.tan(ang) + 0.16), az = u * 6.28318;
+        const px = Math.cos(az) * t * 2.2 + 300, pz = Math.sin(az) * t * 2.2 + 300;
+        const warpA = fbm(px * 0.7, pz * 0.7, 3, 51, 4096) - 0.5, warpB = fbm(px * 0.7 + 40, pz * 0.7, 3, 54, 4096) - 0.5;
+        const X = px * 1.1 + warpA * 0.8, Z = pz * 2.2 + warpB * 0.8; // torn along the wind
+        const mass = fbm(X, Z, 5, 52, 4096), tear = fbm(X * 4, Z * 4, 4, 53, 4096);
+        const dens = smooth(0.36, 0.62, mass * 0.8 + tear * 0.2);
+        const lit = smooth(-0.06, 0.08, fbm(X - 0.09, Z, 5, 52, 4096) - mass);
+        const k = mix3(mix3(SHADE0, SHADE1, near), mix3(LIGHT0, LIGHT1, near), lit * 0.75 + 0.25 * tear);
+        c = mix3(c, k, dens * smooth(0.006, 0.05, el));
+      }
       // a bank of cumulus on the horizon, its near side in shade, lit along the edge toward the sun
-      if (el < (cover > 1 ? 1.01 : 0.42)) {
+      if (!S.scud && el < (cover > 1 ? 1.01 : 0.42)) {
         const e0 = el / (0.18 * cover);
         const d = dens(u, e0) * smooth(0, 0.006, el);
         if (d > 0.002) {
@@ -112,7 +125,7 @@ paintSky('textures/sky.png', {
 paintSky('textures/sky-storm.png', {
   ZEN: [0.035, 0.045, 0.06], MID: [0.08, 0.1, 0.12], HIGHW: [0.26, 0.3, 0.32], LOWW: [0.58, 0.62, 0.58], AWAY: [0.09, 0.11, 0.13], AWAYLOW: [0.2, 0.24, 0.26],
   HAZE0: [0.3, 0.34, 0.36], HAZE1: [0.6, 0.62, 0.56], CIR0: [0.1, 0.12, 0.14], CIR1: [0.2, 0.22, 0.22],
-  SHADE0: [0.03, 0.04, 0.05], SHADE1: [0.06, 0.07, 0.08], LIGHT0: [0.14, 0.17, 0.2], LIGHT1: [0.34, 0.36, 0.36], RIM: [0.5, 0.52, 0.48], cover: 6,
+  SHADE0: [0.03, 0.04, 0.05], SHADE1: [0.06, 0.07, 0.08], LIGHT0: [0.14, 0.17, 0.2], LIGHT1: [0.34, 0.36, 0.36], RIM: [0.5, 0.52, 0.48], cover: 6, scud: true,
 });
 // Iron Quay's night: black over the sea, the city's sodium glow on the low cloud
 paintSky('textures/sky-harbour.png', {

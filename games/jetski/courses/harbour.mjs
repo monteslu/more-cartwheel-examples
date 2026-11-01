@@ -27,11 +27,13 @@ return {
     const n = fbm(x * 0.02, z * 0.02, 3, 411);
     return [0, 3, 255 * smooth(0.4, 0.6, n)];
   },
-  placed_models: ['ship', 'warehouse', 'block', 'containers', 'crane', 'lamp'],
+  placed_models: ['ship', 'warehouse', 'block', 'block2', 'block3', 'containers', 'crane', 'lamp'],
   keep_clear: (x, z) => onWay(x, z) < 34,
   // what stands on a grid along the quays. Tall things in rows, not scattered; ships at the wall, solid
   placed({ ground, pointAt, LEN }) {
     const out = [];
+    // every point under a footprint is on the quay's top: the basin's edge is corners and piers, and a thing placed by its centre hung over them
+    const onQuay = (x, z, yaw, x0, x1, z0, z1) => { const c = Math.cos(yaw), n = Math.sin(yaw); for (let a = x0; a <= x1; a += 1) for (let b = z0; b <= z1; b += 1) if (ground(x + a * c + b * n, z - a * n + b * c) < 4.3) return false; return true; };
     for (let s = 40; s < LEN; s += 118) {
       const p = pointAt(s), side = Math.floor(s / 118) % 2 ? 1 : -1, off = 74;
       const x = p.x - p.dz * side * off, z = p.z + p.dx * side * off, yaw = Math.atan2(p.dx, p.dz);
@@ -43,8 +45,8 @@ return {
       if (onWay(x, z) < 50 || ground(x, z) < 3) continue;
       let lo = 1e9; for (const [a, b] of [[-24, -14], [24, -14], [-24, 14], [24, 14]]) lo = Math.min(lo, ground(x + a, z + b));
       const r = hash(Math.round(x / 44), Math.round(z / 44), 431);
-      if (d > 132 && lo > 3 && r < 0.62) out.push({ model: r < 0.4 ? 'warehouse' : 'block', x, z, yaw: 0, scale: 0.85 + 0.3 * hash(x, z, 432) });
-      else if (d > 96 && d <= 132 && lo > 3 && r < 0.7) out.push({ model: 'containers', x, z, yaw: Math.PI / 2 * Math.floor(r * 8), scale: 1 });
+      if (d > 132 && lo > 3 && r < 0.62) out.push({ model: r < 0.4 ? 'warehouse' : ['block', 'block2', 'block3'][Math.floor(hash(x, z, 433) * 3)], x, z, yaw: Math.PI / 2 * Math.floor(hash(x, z, 434) * 4), scale: 0.85 + 0.3 * hash(x, z, 432) });
+      else if (d > 96 && d <= 132 && lo > 3 && r < 0.7) { const yaw = Math.PI / 2 * Math.floor(r * 8); if (onQuay(x, z, yaw, -14, 14, -19, 19)) out.push({ model: 'containers', x, z, yaw, scale: 1 }); }
     }
     // cranes and lamps along the quay's edge
     for (let s = 20; s < LEN; s += 34) for (const side of [-1, 1]) {
@@ -52,7 +54,12 @@ return {
       for (let off = 58; off < 130; off += 6) {
         const x = p.x - p.dz * side * off, z = p.z + p.dx * side * off;
         if (ground(x, z) > 3 && ground(x + p.dz * side * 6, z - p.dx * side * 6) < 0) {
-          if (onWay(x, z) > 40) out.push({ model: Math.floor(s / 34) % 5 === 0 ? 'crane' : 'lamp', x: x - p.dz * side * 9, z: z + p.dx * side * 9, yaw: Math.atan2(p.dx, p.dz) + (side > 0 ? Math.PI : 0), scale: 1 });
+          // back from the edge until the whole foot stands on the quay; a pier too narrow for it gets none
+          const crane = Math.floor(s / 34) % 5 === 0, yaw = Math.atan2(p.dx, p.dz) + (side > 0 ? Math.PI : 0);
+          if (onWay(x, z) > 40) for (let back = 9; back <= 36; back += 3) {
+            const px = x - p.dz * side * back, pz = z + p.dx * side * back;
+            if ((crane ? onQuay(px, pz, yaw, -11, 11, -11, 11) : onQuay(px, pz, yaw, -1, 1, -1, 6))) { out.push({ model: crane ? 'crane' : 'lamp', x: px, z: pz, yaw, scale: 1 }); break; }
+          }
           break;
         }
       }
@@ -78,6 +85,7 @@ return {
   tide: [0, 0],
   sky: 'res://textures/sky-harbour.png',
   sun_disc: 0.05,
+  side_detile: 1,
   props: [
     ['Sky', 'ground_color', 'color(0.02, 0.025, 0.04, 1)'],
     ['Sky', 'time_of_day', '22.5'], ['Sky', 'sun_energy', '0.4'], ['Sky', 'sky_energy', '0.5'], ['Sky', 'north', '30'],

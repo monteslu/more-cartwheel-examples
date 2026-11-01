@@ -112,6 +112,7 @@ return {
   tide: [0, 0.5],
   sky: 'res://textures/sky.png',
   // set on the scene's nodes when the course loads
+  side_detile: 1,
   props: [
     ['Sky', 'ground_color', 'color(0.3, 0.27, 0.23, 1)'],
     ['Sky', 'time_of_day', '16.9'], ['Sky', 'sun_energy', '3.6'], ['Sky', 'sky_energy', '1.7'], ['Sky', 'north', '200'],

@@ -21,6 +21,7 @@
 //   swell, tide       [start of the race, end of the race]
 //   sky               the sky dome's painted image
 //   props             [node, property, value as a scene file writes it]: the light, the weather, the water's colours
+//   side_detile       Terrain3D side_detile: how far cliffs hide the rock layer's repeat (0 off, 1 full)
 //   sun_disc          how bright the painted sun's disc is (1), for a sky that hides it
 //   hook              what makes this place different (src/sim.c's hook_craft), optional; kind 1: an arch over a cut across the
 //                     course, shut while the tide stands too high under its lintel, that takes a rider from s_in to s_out; kind 2: a river,
@@ -262,6 +263,7 @@ export function makeCourse(def) {
   const hk = def.hook;
   c += `  .rain = ${f(def.rain ?? 0)},\n`;
   c += `  .sun_disc = ${f(def.sun_disc ?? 1)},\n`;
+  c += `  .side_detile = ${f(def.side_detile ?? 0)},\n`;
   if (hk) c += `  .hook = { .kind = ${hk.kind}, .current = ${f(hk.current ?? 0)}, .x = ${hk.x.toFixed(2)}f, .z = ${hk.z.toFixed(2)}f, .dirx = ${hk.dirx.toFixed(4)}f, .dirz = ${hk.dirz.toFixed(4)}f, .half_w = ${f(hk.half_w)}, .half_len = ${hk.half_len.toFixed(2)}f, .lintel = ${f(hk.lintel)}, .s_in = ${f(hk.s_in)}, .s_out = ${f(hk.s_out)}, .model = ${hk.model ? q(`res://models/${hk.model}.glb`) : 'NULL'} },\n`;
   c += '};\n';
   mkdirSync(join(GAME, 'src/courses'), { recursive: true });

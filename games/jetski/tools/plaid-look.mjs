@@ -1,11 +1,12 @@
 // Cliffs from a held camera, the side_detile off and on, and how much each repeats (tools/plaid-measure.mjs). The off picture is the control: it
 // must read as a repeat.
 //   node games/jetski/tools/plaid-look.mjs <cart> <out dir> [--gl]
-import { mkdirSync, readFileSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { inflateSync } from 'node:zlib';
+import { readCourse, COURSE_IDS } from './course-read.mjs';
+import { plaid } from './plaid-measure.mjs';
 const URL_ = 'http://127.0.0.1:7331/mcp', CART = resolve(process.argv[2]), DIR = resolve(process.argv[3]), GL = process.argv.includes('--gl');
-const SESSION = process.env.JETSKI_SESSION || 'jetski-crests';
+const SESSION = process.env.JETSKI_SESSION || 'jetski';
 mkdirSync(DIR, { recursive: true });
 let sid = null, id = 1;
 async function rpc(method, params) {
@@ -24,48 +25,39 @@ const call = async (name, args) => {
 };
 await rpc('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'jetski-crests', version: '1' } });
 await fetch(URL_, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', 'x-romdev-session': SESSION, 'mcp-session-id': sid }, body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) });
-function png(path) {
-  const b = readFileSync(path), w = b.readUInt32BE(16), h = b.readUInt32BE(20), ch = b[25] === 6 ? 4 : 3, parts = [];
-  for (let o = 8; o < b.length;) { const n = b.readUInt32BE(o); if (b.toString('latin1', o + 4, o + 8) === 'IDAT') parts.push(b.subarray(o + 8, o + 8 + n)); o += 12 + n; }
-  const raw = inflateSync(Buffer.concat(parts)), out = Buffer.alloc(w * h * ch), s = w * ch;
-  for (let y = 0; y < h; y++) {
-    const f = raw[y * (s + 1)], r = y * (s + 1) + 1, d = y * s;
-    for (let x = 0; x < s; x++) {
-      const a = x >= ch ? out[d + x - ch] : 0, u = y ? out[d + x - s] : 0, c = y && x >= ch ? out[d + x - s - ch] : 0;
-      let p = 0;
-      if (f === 1) p = a; else if (f === 2) p = u; else if (f === 3) p = (a + u) >> 1;
-      else if (f === 4) { const q = a + u - c, pa = Math.abs(q - a), pb = Math.abs(q - u), pc = Math.abs(q - c); p = pa <= pb && pa <= pc ? a : pb <= pc ? u : c; }
-      out[d + x] = (raw[r + x] + p) & 255;
-    }
+// the tallest walls the course passes, from the racing line at the height of the race camera: three a course, well apart
+const walls = (c, id = c.id) => {
+  const cand = [];
+  for (let i = 0; i < c.track.length; i += 4) for (const side of [-1, 1]) {
+    const t = c.track[i], u = c.track[(i + 3) % c.track.length], l = Math.hypot(u[0] - t[0], u[1] - t[1]) || 1, nx = -(u[1] - t[1]) / l * side, nz = (u[0] - t[0]) / l * side;
+    let d = 0;
+    for (let r = 20; r < 260; r += 5) if (c.ground(t[0] + nx * r, t[1] + nz * r) > (id === "storm" ? 12 : 30)) { d = r; break; }
+    if (!d) continue;
+    const y = c.ground(t[0] + nx * (d + 40), t[1] + nz * (d + 40));
+    cand.push({ x: t[0], z: t[1], ax: t[0] + nx * d, az: t[1] + nz * d, ay: Math.min(y, 60) * 0.55, score: y / Math.max(d, 60) });
   }
-  return { w, h, ch, out };
-}
-function black(path) {
-  const { w, h, ch, out } = png(path);
-  let n = 0;
-  for (let y = 300; y < h - 120; y++) for (let x = 0; x < w; x++) {
-    if (x > w * 0.36 && x < w * 0.64 && y > h * 0.45) continue;     const i = (y * w + x) * ch;
-    if (out[i] + out[i + 1] + out[i + 2] < 24) n++;
-  }
-  return n;
-}
-
-import('./plaid-measure.mjs').then(async ({ plaid }) => {
-  const SPOTS = [[0, 'atoll wall', -170, 6, 40, -420, 55, 60], [1, 'sound wall', 530, 6, -20, 800, 50, -20], [1, 'sound north', 195, 6, -60, 195, 45, -300], [0, 'atoll stack', 560, 4, 60, 545, 25, -320]];
-  await call('loadMedia', { platform: 'wasmcart', path: CART, gpuPower: 'low-power', ...(GL ? { wgpu: false } : {}) });
-  const cmd = (t) => call('wasm', { op: 'command', text: t });
-  await call('frame', { op: 'step', frames: 20 });
-  for (const [c, name, x, y, z, ax, ay, az] of SPOTS) {
-    await cmd('course ' + c); await cmd('race');
-    await cmd(`peek ${x} ${y} ${z} ${ax} ${ay} ${az}`);
+  cand.sort((p, q) => q.score - p.score);
+  const out = [];
+  for (const w of cand) if (out.length < 3 && out.every((o) => Math.hypot(o.x - w.x, o.z - w.z) > 300)) out.push(w);
+  return out;
+};
+await call('loadMedia', { platform: 'wasmcart', path: CART, gpuPower: 'low-power', ...(GL ? { wgpu: false } : {}) });
+const cmd = (t) => call('wasm', { op: 'command', text: t });
+await call('frame', { op: 'step', frames: 20 });
+for (const id of (process.env.PLAID_COURSES || COURSE_IDS.join(',')).split(',')) {
+  const c = readCourse(id);
+  await cmd('course ' + COURSE_IDS.indexOf(id)); await cmd('race');
+  let k = 0;
+  for (const w of walls(c)) {
+    await cmd(`peek ${w.x} 5 ${w.z} ${w.ax} ${w.ay} ${w.az}`);
     const row = [];
     for (const d of [0, 1]) {
       await cmd('detile ' + d);
-      const p = DIR + '/' + name.replace(' ', '-') + '-' + d + '.png';
+      const p = `${DIR}/${id}-${k}-${d}.png`;
       await call('frame', { op: 'stepAndShot', frames: 8, path: p });
       row.push(plaid(p, 300, 170, 1300, 480).r.toFixed(3));
     }
-    console.log(name, 'repeat off', row[0], 'on', row[1]);
+    console.log(id, k++, 'at', w.x.toFixed(0), w.z.toFixed(0), 'repeat off', row[0], 'on', row[1]);
   }
-  process.exit(0);
-});
+}
+process.exit(0);

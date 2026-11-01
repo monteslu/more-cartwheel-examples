@@ -60,6 +60,7 @@ return {
   sky: 'res://textures/sky-storm.png',
   sun_disc: 0,
   rain: 1,
+  side_detile: 1,
   props: [
     ['Sky', 'ground_color', 'color(0.06, 0.09, 0.11, 1)'],
     ['Sky', 'time_of_day', '15.2'], ['Sky', 'sun_energy', '0.7'], ['Sky', 'sky_energy', '1.5'], ['Sky', 'north', '300'],

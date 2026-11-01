@@ -356,5 +356,6 @@ static const course_def sound_course = {
   .waves = { { 12.0f, 66.0f, 0.0f, 1.9f, 0.72f }, { 340.0f, 43.0f, 0.0f, 1.15f, 0.7f }, { 40.0f, 15.0f, 0.2f, 0.26f, 0.7f }, { 300.0f, 7.0f, 0.07f, 0.07f, 0.5f } }, .swell = { 0.7f, 1.0f }, .tide = { 2.6f, -1.6f },
   .rain = 0.0f,
   .sun_disc = 0.12f,
+  .side_detile = 1.0f,
   .hook = { .kind = 1, .current = 0.0f, .x = 195.00f, .z = 14.00f, .dirx = -0.0058f, .dirz = -1.0000f, .half_w = 11.0f, .half_len = 172.00f, .lintel = 3.6f, .s_in = 864.0f, .s_out = 1824.0f, .model = "res://models/arch.glb" },
 };

@@ -45,6 +45,7 @@ typedef struct course_def {
   float start[4];
   float waves[4][5], swell[2], tide[2];
   float sun_disc, rain; /* rain: 0 none, 1 a squall with lightning */
+  float side_detile;    /* cliffs hide the rock layer's repeat: not a course prop, setting the node's property rebuilds the land */
   /* kind 1: an arch over a cut, shut while the tide stands high: see hook_craft */
   struct { int kind; float current, x, z, dirx, dirz, half_w, half_len, lintel, s_in, s_out; const char *model; } hook;
 } course_def;

@@ -351,4 +351,5 @@ static const course_def atoll_course = {
   .waves = { { 200.0f, 46.0f, 0.0f, 1.5f, 0.7f }, { 216.0f, 37.0f, 0.0f, 1.05f, 0.7f }, { 150.0f, 14.0f, 0.14f, 0.22f, 0.65f }, { 252.0f, 7.0f, 0.05f, 0.05f, 0.5f } }, .swell = { 0.62f, 1.0f }, .tide = { 0.0f, 0.5f },
   .rain = 0.0f,
   .sun_disc = 1.0f,
+  .side_detile = 1.0f,
 };

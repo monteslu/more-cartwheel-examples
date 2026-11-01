@@ -237,6 +237,7 @@ static void land_init(cw_node root) {
   cw_node_add_child(root, n);
   land_n = n;
   G.land = cw_terrain_of(n);
+  cw_terrain_set_side_detile(G.land, d->side_detile);
   { t3_material *lm = cw_terrain_material(G.land); if (lm) lm->color = (t3_color){ 1.55f, 1.5f, 1.45f }; }
   size_t bytes;
   uint32_t *ctl = cw_asset_load(d->control, &bytes);

@@ -1,10 +1,10 @@
-// One lap of a course from the race camera: a computer rider (the _auto cart) rides it with the real camera. Contact sheet pictures
+// A course from the race camera: a computer rider (the _auto cart) rides it with the real camera, up to [frames], stopping when the race is over. Contact sheet pictures
 // at even steps, and every frame's camera against the last: how hard it jumps, how often the hull leaves the picture low, how far under the water it gets.
 //   node games/jetski/tools/lap-sweep.mjs <auto cart> <course index> <out dir> [frames] [--gl]
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
-const URL_ = 'http://127.0.0.1:7331/mcp', CART = resolve(process.argv[2]), LEVEL = +process.argv[3], DIR = resolve(process.argv[4]), FRAMES = +process.argv[5] || 7200, GL = process.argv.includes('--gl');
-const SESSION = process.env.JETSKI_SESSION || 'jetski-lap';
+const URL_ = 'http://127.0.0.1:7331/mcp', CART = resolve(process.argv[2]), LEVEL = +process.argv[3], DIR = resolve(process.argv[4]), FRAMES = +process.argv[5] || 30000, GL = process.argv.includes('--gl');
+const SESSION = process.env.JETSKI_SESSION || 'jetski';
 mkdirSync(DIR, { recursive: true });
 let sid = null, id = 1;
 async function rpc(method, params) {
@@ -30,10 +30,10 @@ await call('frame', { op: 'step', frames: 10 });
 await call('wasm', { op: 'command', text: `course ${LEVEL}` });
 await call('wasm', { op: 'command', text: 'race' });
 await call('frame', { op: 'step', frames: 240 }); // the countdown
-const STEP = 6, shots = 36;
-let prev = null, prevV = null, maxJump = 0, maxAcc = 0, big = 0, n = 0, maxSpeed = 0, sumSpeed = 0, air = 0, airMax = 0, stuck = 0, lastDist = -1e9, firstDist = null;
+const STEP = 6, SHOT_EVERY = +process.env.SHOT_EVERY || 1200;
+let end = -1, prev = null, prevV = null, maxJump = 0, maxAcc = 0, big = 0, n = 0, maxSpeed = 0, sumSpeed = 0, air = 0, airMax = 0, stuck = 0, lastDist = -1e9, firstDist = null;
 for (let f = 0; f < FRAMES; f += STEP) {
-  const shot = Math.floor(f / (FRAMES / shots)) !== Math.floor((f - STEP) / (FRAMES / shots));
+  const shot = f % SHOT_EVERY === 0;
   if (shot) await call('frame', { op: 'stepAndShot', frames: STEP, path: `${DIR}/f${String(f).padStart(5, '0')}.png` });
   else await call('frame', { op: 'step', frames: STEP });
   const cam = await rd('cam.pos'), sp = +(await rd('p0.speed')), dist = +(await rd('p0.dist')), a = +(await rd('p0.air_time'));
@@ -51,8 +51,9 @@ for (let f = 0; f < FRAMES; f += STEP) {
   if (a > airMax) airMax = a;
   if (sp < 2 && f > 300) stuck++;
   lastDist = dist;
+  if (f % 60 === 0 && +(await rd('race.state')) === 3) { end = f; break; }
 }
-const rd2 = {};
-for (const k of ['cam.under_ticks', 'p0.misses', 'p0.passes', 'p0.lap', 'p0.spills', 'p0.ramps', 'p0.shut_hits', 'p0.shortcuts', 'race.tide', 'race.swell', 'race.state', 'p0.sink_max', 'ramp.gap', 'p0.beached']) rd2[k] = await rd(k);
+const rd2 = { end_frame: end };
+for (const k of ['cam.under_ticks', 'p0.misses', 'p0.passes', 'p0.lap', 'p0.spills', 'p0.ramps', 'p0.shut_hits', 'p0.shortcuts', 'race.tide', 'race.swell', 'race.state', 'p0.sink_max', 'ramp.gap_points', 'p0.beached', 'ai.stuck', 'ai.walls', 'ai.spills', 'ai.misses', 'ai.passes', 'ai.ramps', 'race.clock', 'p0.place']) rd2[k] = await rd(k);
 console.log(JSON.stringify({ frames: FRAMES, dist: +(lastDist - firstDist).toFixed(0), speed_mean: +(sumSpeed / n).toFixed(1), speed_max: +maxSpeed.toFixed(1), cam_jump_max_m_per_0_1s: +maxJump.toFixed(2), cam_acc_max: +maxAcc.toFixed(1), cam_acc_over_40: big, air_max: +airMax.toFixed(2), air_share: +(air / n).toFixed(3), slow_samples: stuck, ...rd2 }));
 process.exit(0);

@@ -44,6 +44,13 @@ models/containers.glb
 models/crane.glb
 models/lamp.glb
 models/tanker.glb
+textures/sky-storm.png
+models/rig.glb
+models/wreck.glb
+models/tower.glb
+models/beacon.glb
+models/block2.glb
+models/block3.glb
 course/atoll/heights.r16
 course/atoll/control.u32
 course/atoll/wavemask.f32
@@ -77,6 +84,7 @@ course/canyon/wavemask.f32
 course/canyon/cactus.u8
 course/canyon/hoodoos.u8
 course/canyon/drift.u8
+course/canyon/boulders.u8
 course/canyon/riversand-albedo.rgba
 course/canyon/riversand-normal.rgba
 course/canyon/silt-albedo.rgba
@@ -107,8 +115,3 @@ course/storm/palerock-albedo.rgba
 course/storm/palerock-normal.rgba
 course/storm/pale2-albedo.rgba
 course/storm/pale2-normal.rgba
-textures/sky-storm.png
-models/rig.glb
-models/wreck.glb
-models/tower.glb
-models/beacon.glb

@@ -482,7 +482,7 @@ class Plain {
     g.sceneNodes.push(g.node({ name: node, mesh: g.mesh(name, P.prims(mi)) }));
     g.write(join(OUT, name + '.glb'));
   };
-  const LIT = { windows: [[0.02, 0.02, 0.02], 0.3, 0, [3.2, 2.1, 0.9]], cold: [[0.02, 0.02, 0.02], 0.3, 0, [1.2, 1.9, 2.6]] };
+  const LIT = { windows: [[0.02, 0.02, 0.02], 0.3, 0, [2.2, 1.45, 0.62]], cold: [[0.02, 0.02, 0.02], 0.3, 0, [0.8, 1.25, 1.7]] };
   const hullShape = (P, m, L, W, top, bottom) => {
     const rows = [];
     for (let i = 0; i <= 14; i++) {
@@ -523,14 +523,45 @@ class Plain {
     for (const s of [-1, 1]) { for (let k = -2; k <= 2; k++) box(P, 'windows', k * 6.4 - 1.6, k * 6.4 + 1.6, 7.5, 9.2, s * 18.05 - 0.05, s * 18.05 + 0.05); box(P, 'door', -5, 5, 0, 5.8, s * 18.05 - 0.05, s * 18.05 + 0.05); }
     write('warehouse', 'Warehouse', P, { wall: [[0.26, 0.28, 0.3], 0.85], roof: [[0.14, 0.15, 0.17], 0.7, 0.3], door: [[0.34, 0.13, 0.05], 0.8], windows: LIT.windows });
   }
-  { // an office block with some of its lights on
+  // office blocks with some of their lights on. Which ones by a hash, a few warm, fewer cold, some dim: a rule of floor and bay reads as a checkerboard
+  const hash3 = (a, b, c) => { const v = Math.sin(a * 127.1 + b * 311.7 + c * 74.7) * 43758.5453; return v - Math.floor(v); };
+  const blockWindows = (P, seed, hw, y0, floors, bays, floorH) => {
+    for (let f = 0; f < floors; f++) for (let k = 0; k < bays; k++) for (const [s, ax] of [[1, 0], [-1, 0], [1, 1], [-1, 1]]) {
+      // whole lit stretches of a floor, as offices are, and most of the rest dark
+      const stretch = hash3(seed, f, Math.floor(k / 3) + s * 7 + ax * 13), one = hash3(seed + 1, f * 31 + k, s * 5 + ax);
+      const m = stretch > 0.86 || one > 0.93 ? (one < 0.2 ? 'cold' : one < 0.55 ? 'dim' : 'windows') : 'glass';
+      const w = (2 * hw) / bays, a = -hw + (k + 0.5) * w - w * 0.32, b = -hw + (k + 0.5) * w + w * 0.32, y = y0 + f * floorH, y1 = y + floorH * 0.62;
+      if (ax) box(P, m, s * (hw + 0.05) - 0.05, s * (hw + 0.05) + 0.05, y, y1, a, b); else box(P, m, a, b, y, y1, s * (hw + 0.05) - 0.05, s * (hw + 0.05) + 0.05);
+    }
+  };
+  const BLOCK = { wall: [[0.2, 0.21, 0.24], 0.8], ledge: [[0.13, 0.14, 0.15], 0.75], plant: [[0.11, 0.11, 0.12], 0.6, 0.5], glass: [[0.03, 0.04, 0.05], 0.2, 0.4], windows: LIT.windows, dim: [[0.02, 0.02, 0.02], 0.3, 0, [0.85, 0.55, 0.26]], cold: LIT.cold };
+  const ledges = (P, hw, y0, floors, floorH) => { for (let f = 0; f <= floors; f += 2) box(P, 'ledge', -hw - 0.25, hw + 0.25, y0 + f * floorH - 0.65, y0 + f * floorH - 0.25, -hw - 0.25, hw + 0.25); };
+  { // tall and square, plant on the roof
     const P = new Plain();
     box(P, 'wall', -14, 14, 0, 44, -14, 14);
-    for (let f = 0; f < 11; f++) for (let k = -3; k <= 3; k++) for (const [s, ax] of [[1, 0], [-1, 0], [1, 1], [-1, 1]]) {
-      const lit = ((f * 7 + k * 13 + s * 5 + ax * 3) % 5 + 5) % 5 < 2, m = lit ? ((f + k) % 3 ? 'windows' : 'cold') : 'glass', y0 = 2 + f * 3.9, y1 = y0 + 2.4, a = k * 3.8 - 1.2, b = k * 3.8 + 1.2;
-      if (ax) box(P, m, s * 14.05 - 0.05, s * 14.05 + 0.05, y0, y1, a, b); else box(P, m, a, b, y0, y1, s * 14.05 - 0.05, s * 14.05 + 0.05);
-    }
-    write('block', 'Block', P, { wall: [[0.2, 0.21, 0.24], 0.8], glass: [[0.03, 0.04, 0.05], 0.2, 0.4], windows: LIT.windows, cold: LIT.cold });
+    ledges(P, 14, 2, 10, 3.9);
+    blockWindows(P, 11, 14, 2, 11, 7, 3.9);
+    box(P, 'plant', -6, 2, 44, 47, -5, 4); box(P, 'plant', 4, 9, 44, 45.6, 3, 9);
+    write('block', 'Block', P, BLOCK);
+  }
+  { // low and wide, a stair tower up one side
+    const P = new Plain();
+    box(P, 'wall', -14, 14, 0, 22, -14, 14);
+    ledges(P, 14, 2, 4, 3.9);
+    blockWindows(P, 23, 14, 2, 5, 9, 3.9);
+    box(P, 'wall', 8, 13, 22, 28, -13, -8); box(P, 'plant', -9, -3, 22, 24, 2, 9);
+    write('block2', 'Block2', P, BLOCK);
+  }
+  { // tall with a set-back top
+    const P = new Plain();
+    box(P, 'wall', -14, 14, 0, 30, -14, 14);
+    ledges(P, 14, 2, 6, 3.9);
+    blockWindows(P, 37, 14, 2, 7, 7, 3.9);
+    box(P, 'wall', -9, 9, 30, 58, -9, 9);
+    ledges(P, 9, 30, 6, 3.9);
+    blockWindows(P, 41, 9, 30, 7, 5, 3.9);
+    P.tube('plant', [[0, 58, 0], [0, 68, 0]], 0.25, 6); box(P, 'plant', -3, 3, 58, 60, -3, 3);
+    write('block3', 'Block3', P, BLOCK);
   }
   { // stacks of containers
     const P = new Plain(), cols = ['c0', 'c1', 'c2', 'c3'];

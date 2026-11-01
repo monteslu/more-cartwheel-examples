@@ -354,5 +354,6 @@ static const course_def storm_course = {
   .waves = { { 315.0f, 78.0f, 0.0f, 3.0f, 0.72f }, { 290.0f, 51.0f, 0.0f, 1.6f, 0.7f }, { 350.0f, 19.0f, 0.2f, 0.4f, 0.72f }, { 260.0f, 8.0f, 0.1f, 0.12f, 0.55f } }, .swell = { 0.45f, 1.05f }, .tide = { 0.0f, 0.0f },
   .rain = 1.0f,
   .sun_disc = 0.0f,
+  .side_detile = 1.0f,
   .hook = { .kind = 4, .current = 0.0f, .x = 60.00f, .z = -60.00f, .dirx = 1.0000f, .dirz = 0.0000f, .half_w = 0.0f, .half_len = 0.00f, .lintel = 0.0f, .s_in = 0.0f, .s_out = 0.0f, .model = "res://models/beacon.glb" },
 };

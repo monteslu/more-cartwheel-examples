@@ -4,7 +4,7 @@
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 const URL_ = 'http://127.0.0.1:7331/mcp', CART = resolve(process.argv[2]), LEVEL = +process.argv[3], DIR = resolve(process.argv[4]), GL = process.argv.includes('--gl');
-const SESSION = process.env.JETSKI_SESSION || 'jetski-look';
+const SESSION = process.env.JETSKI_SESSION || 'jetski';
 const AT = (process.argv.find((a) => a.startsWith('--at='))?.slice(5) || '100,500,900,1300,1700,2100,2500,2900').split(',').map(Number);
 mkdirSync(DIR, { recursive: true });
 let sid = null, id = 1;

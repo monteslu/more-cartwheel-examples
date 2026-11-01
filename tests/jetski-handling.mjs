@@ -74,7 +74,8 @@ for (const [lv, name] of [[0, 'Crater Atoll'], [1, 'Cold Sound'], [2, 'Red Reach
   if (lv < 3) check(`${name} control: lifted 0.6 m, the check sees it`, lifted['ground.gaps'] > 500, `${lifted['ground.gaps']} with a gap`);
 }
 // Red Reach: the river carries you. Downstream fast, upstream slow, slack at the banks; control: the river stood still
-const down = run('course 2;race;go 1200 1.5708', [TH], 240), up = run('course 2;race;go 1200 -1.5708', [TH], 240), still = run('course 2;current 0;race;go 1200 1.5708', [TH], 240);
+// (s 600: the river runs along +x here, and two seconds keeps a craft in the channel)
+const down = run('course 2;race;go 600 1.5708', [TH], 120), up = run('course 2;race;go 600 -1.5708', [TH], 120), still = run('course 2;current 0;race;go 600 1.5708', [TH], 120);
 check('Red Reach: the current carries a craft', down['p0.speed'] > still['p0.speed'] + 2 && up['p0.speed'] < still['p0.speed'] - 2, `${f2(down['p0.speed'])} with it, ${f2(still['p0.speed'])} on still water, ${f2(up['p0.speed'])} against`);
 // Iron Quay: the tanker's wake throws a craft; control: the same run on another course has no tanker
 const quay = run('course 3;race', [TH], 7000);

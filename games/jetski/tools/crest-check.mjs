@@ -8,7 +8,7 @@ import { inflateSync } from 'node:zlib';
 
 const URL_ = 'http://127.0.0.1:7331/mcp';
 const CART = resolve(process.argv[2]), DIR = resolve(process.argv[3]), GL = process.argv.includes('--gl');
-const SESSION = process.env.JETSKI_SESSION || 'jetski-crest';
+const SESSION = process.env.JETSKI_SESSION || 'jetski';
 mkdirSync(DIR, { recursive: true });
 let sid = null, id = 1;
 async function rpc(method, params) {
