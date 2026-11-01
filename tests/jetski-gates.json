@@ -160,6 +160,11 @@
     "note": "a hard hit from another craft can put a rider down, a rub never does, and whole races stay races. Control: ram 0"
   },
   {
+    "name": "jetski-cam-cut",
+    "script": "tests/jetski-cam-cut.mjs",
+    "note": "from one race to the next through the results page, no frame drawn with the camera under the sea. Control: the old first frame, drawn from a zeroed place"
+  },
+  {
     "name": "jetski-quality",
     "script": "tests/jetski-quality.mjs",
     "note": "a program for everything drawn at every quality on both courses and backends"

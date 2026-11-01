@@ -29,6 +29,7 @@ if (on('feedback')) {
   const total = new Array(K.length * 4).fill(0), add = (s) => s.fb.forEach((v, i) => { total[i] += v; });
   add(run('jetski_auto', 'course 0;no_dq 1;race', 8000));
   add(run('jetski_auto', 'course 1;no_dq 1;difficulty 2;race', 15000, 24));
+  add(run('jetski_auto', 'course 2;no_dq 1;difficulty 2;race', 15000, 24)); // (the river is where the computer rider misses)
   add(run('jetski', 'course 0;race;ramp 1 30', 480, 12, [{ frame: 4, buttons: [TH] }, ...[15, 18, 21, 24, 27].flatMap((a) => [{ frame: a, buttons: [TH, 'west'] }, { frame: a + 1, buttons: [TH] }])]));
   add(run('jetski', 'course 0;race;go 500;sw ramp_side 0', 400));
   add(run('jetski', 'course 0;race;go 500;sw ramp_side 0 0.3', 400));
