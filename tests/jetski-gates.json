@@ -125,6 +125,11 @@
     "note": "the next buoy from the race camera at 100 m and 150 m on every course, GL and WebGPU on the cart: its height, area and contrast from pictures of one held moment with and without it. Control: the small buoy this replaced must fail"
   },
   {
+    "name": "jetski-ramp-path",
+    "script": "tests/jetski-ramp-path.mjs",
+    "note": "following the buoys brings you to the ramps: each ramp within 12 m of the straight way between two buoys, pointing along it. Control: the layout released with clusters and shortcuts must fail on every course"
+  },
+  {
     "name": "jetski-quality",
     "script": "tests/jetski-quality.mjs",
     "note": "a program for everything drawn at every quality on both courses and backends"

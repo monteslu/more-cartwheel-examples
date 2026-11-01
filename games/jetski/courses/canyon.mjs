@@ -60,7 +60,6 @@ return {
     ['capstone', 'rock', [1.1, 0.92, 0.72], 0.07],
   ],
   ramp_count: 9,
-  ramp_routes: 1,
   ramp_top: 5,
   buoys: { first: 90, step: 84, wobble: 12, offset: 8 },
   // river chop, no swell

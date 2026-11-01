@@ -76,7 +76,6 @@ return {
     ['tarmac', 'coast', [0.14, 0.14, 0.16], 0.1],
   ],
   ramp_count: 10,
-  ramp_routes: 2,
   ramp_top: 5,
   buoys: { first: 80, step: 90, wobble: 12, offset: 8.5 },
   // a harbour's slop: short, steep and small

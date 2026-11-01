@@ -302,15 +302,15 @@ static const float canyon_buoys[][4] = { /* x, z, side (+1: pass with the buoy o
 {-527.78f,-215.44f,-1.0f,3505.6f}
 };
 static const float canyon_ramps[][5] = { /* x, z, yaw, s, how far off the racing line */
-{-264.39f,-343.24f,1.1114f,231.1f,20.0f},
-{412.71f,-284.76f,2.0560f,964.1f,20.0f},
-{455.85f,50.80f,-0.2512f,1480.0f,32.0f},
+{-273.26f,-325.31f,1.1114f,231.1f,0.0f},
+{403.38f,-302.45f,2.0560f,964.1f,0.0f},
+{445.83f,-40.16f,0.4283f,1386.5f,0.0f},
 {412.31f,245.43f,0.6425f,1731.8f,0.0f},
 {245.22f,345.05f,-2.1394f,2049.4f,0.0f},
 {-290.33f,343.54f,-2.0834f,2644.3f,0.0f},
-{-517.23f,266.90f,-2.7964f,2960.9f,20.0f},
-{-540.44f,-82.13f,-2.8669f,3377.8f,20.0f},
-{-480.83f,-286.96f,2.3194f,3586.9f,20.0f}
+{-536.05f,273.67f,-2.7964f,2960.9f,0.0f},
+{-521.19f,-87.56f,-2.8669f,3377.8f,0.0f},
+{-467.22f,-272.31f,2.3194f,3586.9f,0.0f}
 };
 static const char *const canyon_models[] = { NULL };
 static const float canyon_placed[][8] = { /* model, x, z, yaw, scale, solid half length, half width, floats */
