@@ -96,7 +96,7 @@ Use a separate checkout if your existing engine has unrelated work.
 
 All three fixes and the external-encoder regression test are bundled in
 `engine-patches/`. The buffer patch matches three.c commit
-`f967d958ff4fdbf93fbf7789dfa77817ff8a5079`
+`c112c20b17c01aafac2ac3ba18b3bdc10d3fbc8c`
 ([upstream PR](https://github.com/monteslu/three.c/pull/1)); the
 [engine PR](https://github.com/monteslu/cartwheel-engine/pull/1) now pins that
 commit directly. This bundle supports the older source baseline above. The preparation script checks both revisions and all

@@ -37,3 +37,12 @@ synchronization. These short samples are mixed, not proof of a universal speedup
 The reviewer's native Jetski/890M and weak-GPU libretro call-budget measurements
 have not been repeated here; four-pass tests establish reuse/correctness rather
 than a four-player hardware performance result. Engine CI remains separate.
+
+GL-only build follow-up: three.c c112c20 moves the test counter inside the
+T3_WGPU guard. The previous location broke non-WebGPU native linking and
+Emscripten compilation. Checked native GL-only renderer compilation with
+implicit declarations treated as errors, linked/ran the software-GL shared
+geometry rendering test, compiled the renderer with Emscripten without
+T3_WGPU, and reran the WebGPU external-encoder suite successfully. This only
+changes diagnostic conditional compilation; WebGPU rendering behavior is
+unchanged. The game bundle and engine dependency pin include the correction.

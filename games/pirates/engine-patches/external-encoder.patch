@@ -323,7 +323,7 @@ index 2485d23..3e6d016 100644
  #else
    for (int i = 0; i < r->gen_n; i++) t3_gen_gl_free(r->gen[i].gl);
 diff --git a/src/renderer_wgpu.inc b/src/renderer_wgpu.inc
-index de97367..9f323c0 100644
+index de97367..ee65f68 100644
 --- a/src/renderer_wgpu.inc
 +++ b/src/renderer_wgpu.inc
 @@ -330,7 +330,8 @@ static void wgpu_output_pass(t3_renderer *r, WGPUTextureView scene_view, WGPUTex
@@ -336,13 +336,15 @@ index de97367..9f323c0 100644
    t3_wgpu_set_vertex_buffer(w, 0, vb, 0);
    wgpuRenderPassEncoderDraw(t3_wgpu_pass_encoder(w), 3, 1, 0, 0);
    t3_wgpu_end_pass(w);
-@@ -535,3 +536,6 @@ t3_texture *t3_texture_from_wgpu(void *texture, void *view, int w, int h, int le
+@@ -508,6 +509,8 @@ bool t3_renderer_wgpu_read(t3_renderer *r, uint8_t *rgba) {
  }
- static bool wgpu_clear(t3_renderer *r, bool color, bool depth) { (void)r; (void)color; (void)depth; return false; }
- #endif
-+
+ void t3_renderer_wgpu_defer(t3_renderer *r, bool on) { if (r->wgpu) t3_wgpu_set_defer(r->wgpu, on); }
+ /* (tests) the WebGPU work counters: bind groups made, pass state set, sets skipped */
 +unsigned t3__wgpu_vertex_buffer_creates(t3_renderer *r);
 +unsigned t3__wgpu_vertex_buffer_creates(t3_renderer *r) { return r->wgpu ? t3_wgpu_vertex_buffer_creates(r->wgpu) : 0; }
+ void t3__wgpu_counters(t3_renderer *r, unsigned out[3]);
+ void t3__wgpu_counters(t3_renderer *r, unsigned out[3]) { if (r->wgpu) t3_wgpu_counters(r->wgpu, out); else out[0] = out[1] = out[2] = 0; }
+ void t3_renderer_wgpu_submit(t3_renderer *r) { if (r->wgpu) t3_wgpu_submitted(r->wgpu); }
 diff --git a/test/test_wgpu_external.c b/test/test_wgpu_external.c
 index 762cef9..55a4385 100644
 --- a/test/test_wgpu_external.c
