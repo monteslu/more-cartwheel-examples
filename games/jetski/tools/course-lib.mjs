@@ -179,6 +179,7 @@ export function makeCourse(def) {
   cand.sort((a, b) => a.turn - b.turn);
   for (const c of cand) {
     if (rp.length >= want) break;
+    if (def.ramp_skip?.some((x) => Math.abs(x - c.s) < 30)) continue; // a gap tests/jetski-ramp-reach.mjs found no way through
     if (rp.some((r) => { const d = Math.abs(r.s - c.s); return Math.min(d, LEN - d) < (LEN / want) * 0.5; })) continue;
     const off = rp.length % 3 === 0 ? 0 : 20;
     const got = clear(c.p, c.side, off, c.next) || clear(c.p, c.side, 0, c.next) || clear(c.p, c.side, 20, c.next);

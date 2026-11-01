@@ -50,6 +50,7 @@ return {
     ['pale2', 'coast', [0.5, 0.5, 0.48], 0.1],
   ],
   ramp_count: 8,
+  ramp_skip: [2929],
   ramp_top: 6.5,
   buoys: { first: 90, step: 104, wobble: 14, offset: 9 },
   // a long heavy swell and a confused sea on top of it
