@@ -65,5 +65,10 @@
     "name": "skyfighter-quality",
     "script": "tests/skyfighter-quality.mjs",
     "note": "a program for everything drawn at every quality on both backends, through a spread warm-up as a player gets it: the title, eight missions by a click on the tile with guns and missiles, a crash. A scene not reached fails. Control: a state the scene draws out of the table must be reported and skip draws"
+  },
+  {
+    "name": "skyfighter-settings",
+    "script": "tests/skyfighter-settings.mjs",
+    "note": "The graphics row in Settings by real pad and pointer input, on the cart through romdev on GL and WebGPU: every preset reached in both directions with its word in the save, each one still there after a restart, a save holding Auto or a Custom word, then the native build across two runs on a save file. Controls: presses on the PITCH row must fail the walk, a cleared word must fail the restart, no save file must come back on the default."
   }
 ]

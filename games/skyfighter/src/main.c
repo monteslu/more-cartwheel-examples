@@ -1386,7 +1386,7 @@ static void fixed_update(void *user, double dt) {
     if(cw_action_just_pressed(0,G.gun)||cw_action_just_pressed(0,G.left)||cw_action_just_pressed(0,G.right)||pointer_direction) {
       int direction=pointer_direction?pointer_direction:cw_action_just_pressed(0,G.left)?-1:1;
       if(G.settings_row==0)prefs.invert_pitch=!prefs.invert_pitch;
-      else if(G.settings_row==1) { cw_quality q=cw_quality_get();cw_quality_set((cw_quality)((q+3+direction)%3),true);prefs.graphics=cw_quality_saved(); }
+      else if(G.settings_row==1) { cw_quality q=cw_quality_get();cw_quality_set((cw_quality)((q+CW_QUALITY_COUNT+direction)%CW_QUALITY_COUNT),true);prefs.graphics=cw_quality_saved(); }
       if(G.settings_row==2){prefs.expert_controls=!prefs.expert_controls;G.flight.bank=G.flight.pitch_idle=G.flight.roll_rate=0;}
       if(G.settings_row==5){prefs.rumble_off=!prefs.rumble_off;if(!prefs.rumble_off)cw_input_rumble(0,.3f,.3f,120);} /* turned on: a taste of it */
       if(G.settings_row==3||G.settings_row==4) {
