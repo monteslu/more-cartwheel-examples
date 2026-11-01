@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.13.1
+
+- coopplatformer: coins stand up and spin face on. They lay flat and turned edge on before.
+- coopplatformer: every coin and room can be reached. Each mound room has a wooden hatch in
+  its roof (Down + Jump in, jump and air jump out), so its coins no longer need the dash,
+  which you find long after you see those rooms. The coin stuck in the cave wall is gone.
+
 ## 0.13.0
 
 - jetski: three new courses, five in all: Red Reach, a river in a red canyon whose current
