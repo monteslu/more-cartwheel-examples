@@ -1,0 +1,25 @@
+Engine patch reproduction, 2026-11-01
+
+Bundled water-pause.patch and external-encoder.patch from the current engine
+worktrees, including the existing external-encoder regression test. Baselines:
+cartwheel-engine 6f16bbf19b5a3b439c40d19e60104110e8f0a49c
+three.c 5c882fc1accdc2243608fd4d373911622d4a9164
+
+Verified tools/prepare-engine.py on temporary shared git clones with pristine
+versions of all three touched files restored from HEAD:
+- Read-only check returns 1 when fixes are absent, without applying them.
+- A deliberate conflict in three.c prevents either patch from being applied;
+  the unpatched water source remains byte-identical after the failed run.
+- --apply installs both patches on pristine sources.
+- Repeated --apply succeeds without modifying the already patched result.
+- Read-only check then succeeds.
+- All three patched files equal the current tested engine sources byte for
+  byte, including test/test_wgpu_external.c.
+- Read-only check also succeeds on the actual adjacent engine checkout.
+
+This verifies source reproduction, not a fresh network install or a full clean
+toolchain build. Existing runtime evidence is in REFRACTION-VERIFICATION.txt
+and RECOVERY-PAUSE-VERIFICATION.txt. The game was subsequently rebuilt and
+inspected through romdev for the terrain changes recorded in
+COAST-SMOOTHING-VERIFICATION.txt. No runtime code changed in this packaging step.
+The pinned binary SDK still lacks these fixes; use the documented source build.

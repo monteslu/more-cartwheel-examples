@@ -1,0 +1,36 @@
+AI route correction — 2026-11-01
+
+Reproduced the late-race P1 stall using the unchanged fixed_update gameplay
+loop through the new pirates_simulate debug command. Its 1500-tick hash
+1340679472 matched the previously rendered romdev/native baseline, validating
+this diagnostic path for the gameplay state (not rendering or water).
+
+Before fix: at10800 P1 held2, bank50, position(-13.525,-5.168), waypoint(-13,-5).
+At12600,14400,15900 it still held2/bank50 and circled within centimetres of
+(-13,-5). The nearest cargo was across a disconnected navigation region.
+The BFS returned the start cell when no route existed, but cargo selection
+kept choosing that same unreachable target.
+
+Fix: map construction labels connected navigation regions using exactly the
+pathfinder's diagonal-clearance rules. Cargo caches its navigation cell at
+spawn or salvage drop. Bots only select cargo in their own reachable region;
+if none exists they head toward their harbor. Cargo is not removed and human
+movement rules are unchanged.
+
+Actual romdev checks on rebuilt pirates/pirates_auto carts:
+- pirates_test_route: unreachable_nearest_fixture1, banked2,
+  unreachable_cargo_preserved1. Starts at the reproduced stalled approach.
+- Fresh load +1499 frames at1000/60 ms reaches simulation tick1500.
+  Every recorded baseline field is unchanged, including hash1340679472,
+  bank[7,4,1,2], shots138, goods25; skipped draws0 and GPU errors0.
+- pirates_simulate21600 on volcanic map reaches RESULT, winner index2 (P3),
+  bank[103,90,106,70], hash2614185590. P1 bank progresses through
+  55,64,70,77,83,95,103 over ticks10800..21600 instead of stalling at50.
+- Same full gameplay simulation on Lagoon reaches RESULT, winner index0,
+  bank[98,82,93,66], hash1741087084.
+- Volcano regression still passes all checks and24/24 AI escape cases.
+
+The full-race checks advance gameplay without rendering each intermediate
+frame, and deliberately leave water/particle effects unsuitable for visual
+judgment. They are NOT a full rendered soak or a performance measurement.
+A continuous rendered six-minute test and human balance testing remain open.

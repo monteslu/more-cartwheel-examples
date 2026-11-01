@@ -1,0 +1,30 @@
+Ship sinking presentation, 2026-11-01
+
+Replaced instant model removal on lethal damage with a 90-tick roll and
+accelerating descent below the water surface. Reuses the existing ship model;
+no extra nodes, meshes or per-frame allocations. Ship is immediately excluded
+from gameplay through its existing respawn state. Cargo, scoring, 120-tick
+captain recovery and 240-tick NPC recovery are unchanged. Visuals use that
+countdown and stop during pause. Wreck hidden after 90 ticks; normal placement
+and visibility restored by existing recovery code.
+
+Added pirates_sink 0..5 debug command, invoking normal damage rules without
+overriding respawn protection. Built native and cart pirates/pirates_auto.
+romdev playable solo Voyage, seed 1, fixed step 1000/60 ms:
+- Sink captain 0: hp=0, respawn=120. After 43 rendered frames inspected
+  out/pirates-sinking-mid.png: hull below surface, sails rolled to the side.
+- Captain visible during descent, hidden after the descent, visible again
+  after recovery. hp=100 and protection=231 at post-recovery sample.
+- Pause mid-sink: screenshots 60 frames apart have identical SHA-256:
+  af3097dfbab7645038f2c84749a534db5148fcb3e63888c0831171b5dc536537
+  out/pirates-sink-pause-a.png and pirates-sink-pause-b.png.
+- Sink patrol 5: respawn=240; hidden after 95 frames; visible again after
+  another 150. No timer writes or simulation-only advancement in these checks.
+- render.skipped=0 in the captain check.
+- pirates_test_recovery: all seven assertions true.
+- pirates_test_salvage: manifest/retained/reset true, salvage [1,2,3].
+- Native WebGPU 1500-frame replay passed every expected field, including
+  hash 1340679472, in 15.9 seconds. Output: out/pirates-sinking-replay/.
+
+These are targeted damage fixtures, not human combat playtesting. The model
+uses authored rolling/descent, not a physical buoyancy simulation of a wreck.

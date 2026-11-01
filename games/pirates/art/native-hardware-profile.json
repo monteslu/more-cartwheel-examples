@@ -1,0 +1,368 @@
+{
+  "runs": [
+    {
+      "run": 1,
+      "replay": {
+        "gate": "pirates-race-replay",
+        "app": "pirates_auto",
+        "frames": 1500,
+        "gpu": "gl",
+        "api": "gl",
+        "adapter": "OpenGL ES 3.2 Mesa 26.0.8-1ubuntu0.3 | AMD Radeon 890M Graphics (radeonsi, strix1, ACO, DRM 3.64, 7.0.0-42-generic) | OpenGL ES GLSL ES 3.20",
+        "platform": "linux-x64",
+        "seconds": 10.5,
+        "matched": null,
+        "state": {
+          "pirates.state": 1,
+          "pirates.mode": 1,
+          "pirates.tick": 1500,
+          "pirates.bank": [
+            7,
+            4,
+            1,
+            2
+          ],
+          "pirates.held": [
+            3,
+            0,
+            5,
+            3
+          ],
+          "pirates.hp": [
+            100,
+            36,
+            72,
+            15
+          ],
+          "pirates.pos": [
+            -1650,
+            627,
+            3051,
+            -1538,
+            -206,
+            -693,
+            1460,
+            -367
+          ],
+          "pirates.hash": 1340679472,
+          "pirates.shots": 138,
+          "pirates.goods": 25,
+          "pirates.eruptions": 1,
+          "pirates.rock_impacts": 3,
+          "render.skipped": 0
+        }
+      },
+      "view": [
+        1920,
+        1080,
+        1920,
+        1080,
+        0,
+        0
+      ],
+      "gpu_errors": 0,
+      "audio_underruns": 0,
+      "perf": {
+        "frames": 600,
+        "input": {
+          "avg": 0.0192,
+          "p50": 0.0178,
+          "p95": 0.0362,
+          "max": 0.0507
+        },
+        "sim": {
+          "avg": 0.9558,
+          "p50": 0.8972,
+          "p95": 1.4303,
+          "max": 1.9684
+        },
+        "update": {
+          "avg": 0.0711,
+          "p50": 0.0601,
+          "p95": 0.1209,
+          "max": 0.2925
+        },
+        "render": {
+          "avg": 5.5918,
+          "p50": 4.7534,
+          "p95": 9.895,
+          "max": 13.8987
+        },
+        "present": {
+          "avg": 0.0075,
+          "p50": 0.0061,
+          "p95": 0.0179,
+          "max": 0.0367
+        },
+        "audio": {
+          "avg": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "max": 0.0
+        },
+        "frame": {
+          "avg": 6.6466,
+          "p50": 5.7452,
+          "p95": 10.9206,
+          "max": 14.5369
+        },
+        "thread_cpu": {
+          "input": 0.0193,
+          "sim": 0.9557,
+          "update": 0.0709,
+          "render": 1.2119,
+          "present": 0.0069,
+          "audio": 0.0,
+          "frame": 2.2658
+        },
+        "draw_calls": 61,
+        "triangles": 405506,
+        "programs": 11,
+        "r3d_cpu_ms": 3.3842
+      },
+      "binary_sha256": "4f293f6a3e4ab3204fb93e1f2742cdd431c718026fad039eef244e09fdde9508"
+    },
+    {
+      "run": 2,
+      "replay": {
+        "gate": "pirates-race-replay",
+        "app": "pirates_auto",
+        "frames": 1500,
+        "gpu": "gl",
+        "api": "gl",
+        "adapter": "OpenGL ES 3.2 Mesa 26.0.8-1ubuntu0.3 | AMD Radeon 890M Graphics (radeonsi, strix1, ACO, DRM 3.64, 7.0.0-42-generic) | OpenGL ES GLSL ES 3.20",
+        "platform": "linux-x64",
+        "seconds": 10.5,
+        "matched": null,
+        "state": {
+          "pirates.state": 1,
+          "pirates.mode": 1,
+          "pirates.tick": 1500,
+          "pirates.bank": [
+            7,
+            4,
+            1,
+            2
+          ],
+          "pirates.held": [
+            3,
+            0,
+            5,
+            3
+          ],
+          "pirates.hp": [
+            100,
+            36,
+            72,
+            15
+          ],
+          "pirates.pos": [
+            -1650,
+            627,
+            3051,
+            -1538,
+            -206,
+            -693,
+            1460,
+            -367
+          ],
+          "pirates.hash": 1340679472,
+          "pirates.shots": 138,
+          "pirates.goods": 25,
+          "pirates.eruptions": 1,
+          "pirates.rock_impacts": 3,
+          "render.skipped": 0
+        }
+      },
+      "view": [
+        1920,
+        1080,
+        1920,
+        1080,
+        0,
+        0
+      ],
+      "gpu_errors": 0,
+      "audio_underruns": 0,
+      "perf": {
+        "frames": 600,
+        "input": {
+          "avg": 0.0202,
+          "p50": 0.0189,
+          "p95": 0.036,
+          "max": 0.0556
+        },
+        "sim": {
+          "avg": 1.0109,
+          "p50": 0.9903,
+          "p95": 1.48,
+          "max": 1.7739
+        },
+        "update": {
+          "avg": 0.0649,
+          "p50": 0.0568,
+          "p95": 0.1139,
+          "max": 0.242
+        },
+        "render": {
+          "avg": 5.6849,
+          "p50": 4.7786,
+          "p95": 10.6031,
+          "max": 14.2293
+        },
+        "present": {
+          "avg": 0.0071,
+          "p50": 0.0057,
+          "p95": 0.0174,
+          "max": 0.0527
+        },
+        "audio": {
+          "avg": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "max": 0.0
+        },
+        "frame": {
+          "avg": 6.7892,
+          "p50": 5.7948,
+          "p95": 11.6668,
+          "max": 14.8631
+        },
+        "thread_cpu": {
+          "input": 0.0203,
+          "sim": 1.0106,
+          "update": 0.0645,
+          "render": 1.1649,
+          "present": 0.0066,
+          "audio": 0.0,
+          "frame": 2.2682
+        },
+        "draw_calls": 61,
+        "triangles": 405506,
+        "programs": 11,
+        "r3d_cpu_ms": 4.4562
+      }
+    },
+    {
+      "run": 3,
+      "replay": {
+        "gate": "pirates-race-replay",
+        "app": "pirates_auto",
+        "frames": 1500,
+        "gpu": "gl",
+        "api": "gl",
+        "adapter": "OpenGL ES 3.2 Mesa 26.0.8-1ubuntu0.3 | AMD Radeon 890M Graphics (radeonsi, strix1, ACO, DRM 3.64, 7.0.0-42-generic) | OpenGL ES GLSL ES 3.20",
+        "platform": "linux-x64",
+        "seconds": 10.4,
+        "matched": null,
+        "state": {
+          "pirates.state": 1,
+          "pirates.mode": 1,
+          "pirates.tick": 1500,
+          "pirates.bank": [
+            7,
+            4,
+            1,
+            2
+          ],
+          "pirates.held": [
+            3,
+            0,
+            5,
+            3
+          ],
+          "pirates.hp": [
+            100,
+            36,
+            72,
+            15
+          ],
+          "pirates.pos": [
+            -1650,
+            627,
+            3051,
+            -1538,
+            -206,
+            -693,
+            1460,
+            -367
+          ],
+          "pirates.hash": 1340679472,
+          "pirates.shots": 138,
+          "pirates.goods": 25,
+          "pirates.eruptions": 1,
+          "pirates.rock_impacts": 3,
+          "render.skipped": 0
+        }
+      },
+      "view": [
+        1920,
+        1080,
+        1920,
+        1080,
+        0,
+        0
+      ],
+      "gpu_errors": 0,
+      "audio_underruns": 0,
+      "perf": {
+        "frames": 600,
+        "input": {
+          "avg": 0.0195,
+          "p50": 0.0187,
+          "p95": 0.0354,
+          "max": 0.0733
+        },
+        "sim": {
+          "avg": 0.9649,
+          "p50": 0.9267,
+          "p95": 1.4553,
+          "max": 1.7917
+        },
+        "update": {
+          "avg": 0.0635,
+          "p50": 0.0562,
+          "p95": 0.1072,
+          "max": 0.226
+        },
+        "render": {
+          "avg": 5.6455,
+          "p50": 4.8124,
+          "p95": 9.8273,
+          "max": 15.97
+        },
+        "present": {
+          "avg": 0.0068,
+          "p50": 0.0055,
+          "p95": 0.0165,
+          "max": 0.0357
+        },
+        "audio": {
+          "avg": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "max": 0.0
+        },
+        "frame": {
+          "avg": 6.7015,
+          "p50": 5.7747,
+          "p95": 10.8742,
+          "max": 16.7219
+        },
+        "thread_cpu": {
+          "input": 0.0196,
+          "sim": 0.9646,
+          "update": 0.0634,
+          "render": 1.1319,
+          "present": 0.0064,
+          "audio": 0.0,
+          "frame": 2.1871
+        },
+        "draw_calls": 61,
+        "triangles": 405506,
+        "programs": 11,
+        "r3d_cpu_ms": 4.0338
+      }
+    }
+  ]
+}

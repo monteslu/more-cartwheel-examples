@@ -1,0 +1,34 @@
+Full rendered volcanic Treasure Race, 2026-11-01
+
+Loaded build/pirates-current-cart/carts/pirates_auto.wasc in romdev with
+deterministicSeed=1 and deterministicStepMs=1000/60. Advanced all 21,600 frames
+through frame.step, with rendering enabled. Did not use pirates_simulate or
+write the timer/tick to accelerate the match. The initial settle frame counts
+as tick 1, so the first step request was 1,499 frames.
+
+At tick 1,500: hash 1340679472, matching the existing replay baseline.
+At tick 21,600: state=2 (results), winner=2 (P3), bank=[103,90,106,70],
+hash=2614185590, eruptions=12, rock_impacts=36. The final gameplay hash and
+scores match the prior simulation-only full-race evidence. P1 continued
+banking beyond the earlier unreachable-cargo route failure.
+
+Every sampled checkpoint returned render.skipped=0. Snapshots are recorded
+in rendered-race.json. Array values were not recorded in the first checkpoint;
+later checkpoints include bank, held and HP arrays. No GPU-error counter was
+collected during this run; zero skipped draws is not a claim of zero GPU errors.
+
+Inspected screenshots at 90 seconds, 180 seconds and the final results screen:
+out/pirates-race-90s.png
+out/pirates-race-180s.png
+out/pirates-race-finish.png
+Also captured out/pirates-race-270s.png.
+
+This verifies one full rendered AI race on volcanic shoals, not human fun,
+all modes/maps, cross-platform release readiness or sustained 60 FPS.
+Screenshots exposed harbor names overlapping ship labels near port; a
+subsequent HUD-only change tries nearby label rows while prioritizing ships.
+Rebuilt both carts and reproduced tick 10,800 via pirates_simulate for the
+targeted HUD check. P4's harbor name moved above its ship label with clear
+separation; render.skipped=0. out/pirates-harbor-label-spacing.png documents
+that check only: its accumulated wake foam is an artifact of simulation-only
+advancement, not the full rendered run. Reloaded afterward to clear it.

@@ -1,0 +1,24 @@
+Cargo feedback, 2026-11-01
+
+Each captain's existing status card now briefly reports cargo pickups and
+banking. Banking reports the actual hull repair amount, or confirms that cargo
+is safe when no repair occurred. A full hold replaces the temporary notice
+with a persistent instruction to return to that captain's harbor. Ordinary
+stored-resource totals return when notices expire. No new map overlays or
+per-event scene nodes were added. Timers use fixed simulation ticks and reset
+with the match; feedback is excluded from the gameplay hash.
+
+Built pirates and pirates_auto and loaded the latter through romdev. At tick
+180, inspected P1 and P2 banking confirmations. At tick 1500, inspected P2's
+"+3 BANKED +20 HULL REPAIRED" and P4's "+1 IRON COLLECTED". After another
+60 ticks, P4's notice expired and its stored-resource totals returned.
+Resetting the match returned all four notice timers to zero.
+
+At tick 1500, hash=1340679472 (the original gameplay baseline) and
+render.skipped=0. Screenshots inspected:
+out/pirates-cargo-feedback.png
+out/pirates-cargo-feedback-25s.png
+out/pirates-cargo-feedback-26s.png
+
+These captures verify normal pickup, banking, repair and expiry feedback.
+They do not include the full-hold prompt or human playtesting.

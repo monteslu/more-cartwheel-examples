@@ -1,0 +1,33 @@
+Full-match native hardware comparison, 2026-11-01
+
+Rebuilt current pirates/pirates_auto including terrain smoothing, cannon
+effects, lava, hit feedback and team HUD. Ran on AMD Radeon 890M / Mesa
+26.0.8 OpenGL ES 3.2, CW_RENDER_SCALE=1, offscreen, fixed 60 Hz simulation:
+
+CW_RENDER_SCALE=1 CW_DEBUG_CMDS='perf 600' node tests/native-replay.mjs --bin build/pirates-current/project --out out/pirates-native-full-profile --gpu gl --frames 21600 pirates
+
+Completed successfully in 165.8 seconds. The runner's --frames option skips
+the short gate's expected values, so separately asserted final tick=21600,
+state=2, bank=[103,90,106,70], hash=2614185590. These match the earlier complete
+rendered romdev Treasure Race. cw.gpu.errors=0 and render.skipped=0.
+Raw debug state, all timing phases, replay metadata and binary SHA-256 are
+preserved in native-full-profile.json.
+
+Final 600 frames: frame avg 7.1899 ms, median 6.2531, p95 14.1606, max 22.2431.
+Render wall avg 5.7628 ms; render thread CPU avg 2.5813 ms.
+Simulation wall avg 1.2657 ms. 65 draw calls, 416911 triangles, 12 programs.
+No locked-60-FPS claim: maximum exceeds the 16.67 ms budget, and only the
+last 600 frames have percentile data. Other graphics processes were observed
+running on the host near the end; this was not an isolated benchmark.
+
+The severe late-run frame-delivery slowdown in the romdev Teams run did not
+reproduce in this native GL Race. That narrows the investigation, but differs
+in both API and game mode and does not exonerate WebGPU or the cart host.
+Source inspection of romdev WasmcartHost._wgpuBurst shows a queue completion
+wait and event-loop yield between frames, outside the game's render phase.
+That is a possible location of the earlier unaccounted wall time, not proof
+of the cause. Next useful comparison is native WebGPU and host-side profiling.
+
+The former romdev session had been evicted; fresh load succeeded, reported
+cw.gpu.api=2 (WebGPU), cw.gpu.errors=0, and render.skipped=0 after 60 frames.
+Those counters describe the fresh session only, not the previous full run.

@@ -1,0 +1,28 @@
+Full native WebGPU comparison, 2026-11-01
+
+Used the same native binary/assets as the full GL replay. AMD Radeon 890M,
+RADV STRIX1 Vulkan through Dawn, validation enabled, 1920x1080 logical/render,
+CW_RENDER_SCALE=1, fixed 60 Hz simulation, offscreen/vsync disabled.
+
+CW_RENDER_SCALE=1 CW_DEBUG_CMDS='perf 600' node tests/native-replay.mjs --bin build/pirates-current/project --out out/pirates-native-full-webgpu --gpu webgpu --frames 21600 --ref out/pirates-native-full-profile pirates
+
+Completed 21600 frames in 216.1 seconds. Every selected gameplay field equals
+the full native GL reference, including final hash 2614185590 and bank
+[103,90,106,70]. GPU errors, skipped draws and audio underruns were all zero.
+Added pirates-race-full to tests/pirates-gates.json using these matching final
+values. The existing short replay remains the native runner's default gate.
+
+Final 600 frames: frame avg 8.1378 ms, median 7.6105, p95 12.2564, max 14.2459.
+Render wall avg 3.9860 ms; present wall avg 2.2958 ms; sim avg 1.6675 ms.
+Render thread CPU avg 3.9786 ms; present thread CPU avg 0.0622 ms.
+65 draws, 416911 triangles, 12 programs. Process RSS samples at approximately
+13, 43, 82, 119 and 166 seconds: 213460,213460,213464,213464,213464 KiB.
+No large resident-memory growth in those samples; this is not a VRAM/leak audit.
+Raw timing/debug/replay data and binary SHA-256: native-full-webgpu-profile.json.
+
+The severe slowdown from the prior romdev Teams run did not reproduce on
+native GL or native WebGPU Race. This narrows the investigation to remaining
+differences (host/runtime, mode, workload and host contention); it does not
+prove a romdev bug. Host-side queue waits/GC/VRAM still need direct profiling.
+This is one non-isolated run, with percentile data only for the final 600
+frames. It does not establish universal or locked 60 FPS.

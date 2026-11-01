@@ -1,0 +1,35 @@
+Wind/surf ambience, 2026-11-01
+
+tools/make-ambience.py creates original stereo filtered-noise surf and shared
+low-frequency wind, with offset swell envelopes and a half-second loop blend.
+Standard-library Python only; no external recordings or downloads. Asset:
+assets/audio/sea.wav, 12 seconds, stereo PCM16, 24000 Hz. Packed in roots.txt.
+Mixer starts one looping sample voice at volume .23, two-second fade-in,
+max_voices=1 and priority 1. It persists through menus/pause/match resets,
+and is stopped/freed at shutdown. Existing game RNG and SFX are unchanged.
+
+Source analysis in sea-audio-analysis.json: RMS .119996, peak .721863,
+zero clipped samples. Left/right loop-boundary deltas .023773/.019379 are
+below ordinary adjacent-sample p99 .171722. This is a seam signal check,
+not a listening judgment. Runtime gain reduces source levels further.
+
+Built native and cart pirates/pirates_auto. romdev loaded playable cart:
+- Title has one active audio voice.
+- Initial fade capture RMS 5, peak 18 (16-bit units).
+- Settled one-frame capture RMS 569, peak 1754.
+- After frame 783, beyond the loop boundary, still one voice; capture RMS
+  1117, peak 3875. audio.underruns=0; sampled audio.dropped_commands=0.
+- Captures: out/pirates-sea-title.wav, pirates-sea-steady.wav,
+  pirates-sea-after-loop.wav. These are only 16–17 ms each.
+
+Recorder limitation: romdev audioDebug record calls host.stepFrames without
+awaiting its WebGPU promise. A request for 180 frames captured only the first
+frame. Awaited a subsequent frame request to let that burst finish, and used
+single-frame capture for the stated checks. Do not present these captures as
+three-second recordings or evidence of the full loop's audible quality.
+There was also a temporary host response delay, including a healthz timeout;
+existing requests eventually completed without restarting the loaded cart.
+
+Native WebGPU 1500-frame replay passed all expected values in 12.3 seconds:
+out/pirates-sea-replay-check/. The new ambience uses no gameplay RNG.
+Subjective mix balance against cannons and a full listening pass remain.

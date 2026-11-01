@@ -13,6 +13,8 @@
 //   --out   <out>/<game>.json: {gate, gpu, api, state} per game
 //   --gpu   CW_GPU for the runs (default gl); auto lets the game pick
 //   --ref   a directory of another run's <game>.json to compare against
+//   --gate NAME select a gate for one explicitly named game; checks its full
+//           frame count and expectations (cannot combine with --frames/--smoke)
 //   --frames N run each game's first N frames instead of the whole replay: no
 //           end-of-replay expectations, but the state at frame N is written and
 //           (with --ref) compared, so platforms are held to the same bits on a
@@ -23,25 +25,30 @@
 // Exit status: 0 when every game ran, met its gate's expectations and (with
 // --ref) matched; 1 otherwise.
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, statSync, openSync, closeSync, rmSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const argv = process.argv.slice(2);
 const opt = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d; };
-const VALUED = new Set(['--bin', '--out', '--gpu', '--ref', '--smoke', '--frames']);
+const VALUED = new Set(['--bin', '--out', '--gpu', '--ref', '--smoke', '--frames', '--gate']);
 const BIN = opt('--bin') && resolve(opt('--bin'));
 const OUT = opt('--out') && resolve(opt('--out'));
 const GPU = opt('--gpu', 'gl');
 const REF = opt('--ref') && resolve(opt('--ref'));
 const SMOKE = opt('--smoke') ? +opt('--smoke') : 0;
 const SLICE = opt('--frames') ? +opt('--frames') : 0;
+const GATE = opt('--gate');
 if (!BIN || !OUT) {
   console.error('usage: node tests/native-replay.mjs --bin <dir> --out <dir> [--gpu gl|webgpu|auto] [--ref <dir>] [game ...]');
   process.exit(2);
 }
 const GAMES = argv.filter((a, i) => !a.startsWith('--') && !VALUED.has(argv[i - 1]));
+if (argv.includes('--gate') && (!GATE || GAMES.length !== 1 || argv.includes('--frames') || argv.includes('--smoke'))) {
+  console.error('--gate requires one explicitly named game and cannot be combined with --frames or --smoke');
+  process.exit(2);
+}
 // each game's replay: a gate whose app is <game>_auto, plays by itself and sets no environment
 const REPLAY = {
   arenafps: 'arenafps-match',
@@ -50,8 +57,9 @@ const REPLAY = {
   fighter: 'fighter-auto',
   hordeshooter: 'hordeshooter-match',
   partypack: 'partypack-tournament-short',
+  pirates: 'pirates-race-replay',
 };
-const GATE_FILES = ['gates.json', 'brawler-gates.json', 'coopplatformer-gates.json', 'fighter-gates.json', 'partypack-gates.json'];
+const GATE_FILES = ['gates.json', 'brawler-gates.json', 'coopplatformer-gates.json', 'fighter-gates.json', 'partypack-gates.json', 'pirates-gates.json'];
 const gates = GATE_FILES.flatMap((f) => JSON.parse(readFileSync(join(ROOT, 'tests', f), 'utf8')));
 const games = GAMES.length ? GAMES : Object.keys(REPLAY);
 const exe = process.platform === 'win32' ? '.exe' : '';
@@ -68,11 +76,17 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 mkdirSync(OUT, { recursive: true });
 let failed = 0;
 for (const game of games) {
-  const gate = gates.find((g) => g.name === REPLAY[game]);
+  const gate = gates.find((g) => g.name === (GATE || REPLAY[game]));
   if (!gate) { console.error(`${game}: no replay gate (REPLAY in tests/native-replay.mjs, gates in tests/${GATE_FILES.join(", ")})`); failed++; continue; }
+  if (gate.app !== `${game}_auto` || (gate.env && Object.keys(gate.env).length)) {
+    console.error(`${game}: gate ${gate.name} must use ${game}_auto without environment overrides`); failed++; continue;
+  }
   const bin = binary(gate.app);
   if (!bin) { console.error(`${game}: no ${gate.app}${exe} under ${BIN}`); failed++; continue; }
   const dump = join(OUT, `${game}.state.json`);
+  // A successful process that fails to dump must not reuse an earlier run.
+  rmSync(dump, { force: true });
+  rmSync(join(OUT, `${game}.json`), { force: true });
   const env = {
     ...process.env, CW_FRAMES: String(SMOKE || SLICE || gate.frames), CW_FRAME_HZ: '60', CW_WARMUP_SPREAD: '0', CW_DEBUG_DUMP: dump,
     SDL_AUDIODRIVER: process.env.SDL_AUDIODRIVER || 'dummy',
@@ -80,17 +94,25 @@ for (const game of games) {
   if (GPU === 'auto') delete env.CW_GPU;
   else env.CW_GPU = GPU;
   const t0 = Date.now();
-  const r = spawnSync(bin, [], { env, encoding: 'utf8', timeout: +(process.env.CW_RUN_TIMEOUT_MS || 3600000), cwd: dirname(bin) });
+  // Keep initialization/shader diagnostics visible while a long replay runs.
+  const log = join(OUT, `${game}.log`);
+  const logFd = openSync(log, 'w');
+  let r;
+  try {
+    r = spawnSync(bin, [], { env, encoding: 'utf8', timeout: +(process.env.CW_RUN_TIMEOUT_MS || 3600000),
+      cwd: dirname(bin), stdio: ['ignore', logFd, logFd] });
+  } finally { closeSync(logFd); }
+  const diagnostic = readFileSync(log, 'utf8');
   const secs = ((Date.now() - t0) / 1000).toFixed(1);
   if (r.error || r.status !== 0 || !existsSync(dump)) {
-    console.error(`${game}: ${gate.app} ${r.error ? r.error.message : `exited ${r.status ?? r.signal}`} after ${secs} s\n${(r.stderr || '').split('\n').slice(-30).join('\n')}`);
+    console.error(`${game}: ${gate.app} ${r.error ? r.error.message : `exited ${r.status ?? r.signal}`} after ${secs} s\n${diagnostic.split('\n').slice(-30).join('\n')}`);
     failed++;
     continue;
   }
   const all = JSON.parse(readFileSync(dump, 'utf8'));
   const state = Object.fromEntries(gate.fields.map((f) => [f, all[f]]));
   const api = all['cw.gpu.api'] === 2 ? 'webgpu' : all['cw.gpu.api'] === 1 ? 'gl' : 'unknown';
-  const adapter = /WebGPU adapter: (.*)/.exec(r.stderr || '')?.[1] || /GL: (.*)/.exec(r.stderr || '')?.[1] || '';
+  const adapter = /WebGPU adapter: (.*)/.exec(diagnostic)?.[1] || /GL: (.*)/.exec(diagnostic)?.[1] || '';
   const problems = [];
   for (const [k, v] of Object.entries(SMOKE || SLICE ? {} : gate.expect || {})) if (!same(all[k], v)) problems.push(`${k} = ${JSON.stringify(all[k])}, the gate expects ${JSON.stringify(v)}`);
   for (const f of gate.fields) if (all[f] === undefined) problems.push(`${f}: missing from the state`);

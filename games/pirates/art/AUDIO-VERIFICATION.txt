@@ -1,0 +1,15 @@
+Original synthesized effects added for cannon, impact, pickup, bank, upgrade.
+Samples generated once at initialization with independent noise state.
+Screen X controls stereo pan. Audio initialized, updated and shut down by
+the game (this game does not use the shared shell's audio lifecycle).
+
+Both carts rebuilt. Romdev pirates_auto, seed 1, step 16 ms:
+After 300 stepped frames: all five event types had fired [4,3,7,4,1].
+Mixer reported 233472 mixed frames, five voices, zero underruns and zero
+dropped commands. This verifies generated samples reach the audio mixer.
+
+romdev audioDebug record requested 600 frames but emitted only 768 samples
+(0.016 seconds), peak 3068/32767, RMS 1222, non-silent. Saved to
+out/pirates-audio-romdev.wav. This short capture is insufficient to judge
+the full sound envelope or the overall mix. Full listening review remains
+pending; no claim that the sound design is final.

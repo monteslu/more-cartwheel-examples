@@ -1,0 +1,41 @@
+{
+  "cw.gpu.api": 1,
+  "cw.gpu.errors": 0,
+  "pirates.eruptions": 1,
+  "pirates.rock_impacts": 3,
+  "pirates.state": 1,
+  "pirates.mode": 1,
+  "pirates.tick": 1500,
+  "pirates.shots": 150,
+  "pirates.goods": 22,
+  "pirates.bank": [
+    4,
+    6,
+    5,
+    1
+  ],
+  "pirates.held": [
+    3,
+    0,
+    2,
+    1
+  ],
+  "pirates.hp": [
+    1,
+    8,
+    65,
+    65
+  ],
+  "pirates.pos": [
+    -1156,
+    466,
+    3328,
+    -1293,
+    -1124,
+    -328,
+    1472,
+    -307
+  ],
+  "pirates.hash": 726034506,
+  "render.skipped": 0
+}

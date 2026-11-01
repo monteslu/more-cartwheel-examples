@@ -12,3 +12,9 @@ games/tuxracer/assets/project.cwproj
 *.sav
 
 games/jetski/assets/project.cwproj
+
+# Pirates authoring backups and generated project manifest
+games/pirates/art/*.blend1
+games/pirates/assets/project.cwproj
+games/pirates/assets/CREDITS
+games/pirates/assets/LICENSE

@@ -1,0 +1,70 @@
+Cannon feedback, 2026-10-31
+
+Added a bounded pool of 12 GPU smoke emitters, 14 particles each. Each
+broadside restarts three emitters at the gun positions. Smoke expands and
+fades using the engine's procedural CC0 smoke flipbook, copied from
+games/arenafps/textures/fx/smoke.png; provenance: arenafps/CREDITS and
+cartwheel-engine tools/fx/bake-flipbooks.mjs. No new external asset download.
+
+Romdev playable cart: left trigger produced three projectiles. Smoke node
+reported 14 alive particles. Screenshot out/pirates-cannon-romdev.png
+visually inspected with smoke visible over the firing side. Zero skipped
+renders and no missing material states. After cooldown, right trigger
+tested separately. Cannon projectile bounds expanded from x=39 to 46,
+outside the current sailing boundary x=42.
+
+D-pad up/down added for throttle, complementing existing D-pad steering.
+Further combat polish, impacts and full performance testing remain pending.
+
+2026-11-01 readability follow-up:
+The solo controller check showed that the original smoke was difficult to
+see at the near-overhead camera. Raised emission 0.6 m, moved it slightly
+outward, increased initial size and outward velocity, and extended lifetime
+to 1.6 seconds. Added a bounded pool of twelve single-particle muzzle flashes
+(0.13-second lifetime); no per-shot node allocation or new texture asset.
+Flashes sit farther outside the hull to remain visible alongside the sails.
+
+Rebuilt both carts and verified in the playable cart through romdev. Left
+trigger smoke and right trigger flashes/smoke were visually inspected at
+1920x1080. The final right broadside captures are:
+out/pirates-cannon-flash.png (three small bright muzzle flashes)
+out/pirates-cannon-smoke-new.png (three expanding puffs beside the hull)
+The sampled flash emitter reported one alive particle during the burst.
+After 210 more frames, sampled flash and smoke emitters both reported zero
+alive particles. render.skipped=0. Gameplay projectile rules are unchanged.
+This verifies appearance and expiry, not full combat performance under load.
+
+2026-11-01 impact feedback:
+Three bounded GPUParticles3D burst systems add sea spray, hull splinters,
+and shore dust. Each has 16 reusable burst slots: 384 / 192 / 128 particles
+capacity respectively. Each active system shares a simulation and draw;
+there is no allocation per impact. Sea impacts retain water ripples. Land
+impacts now emit dust rather than an erroneous water splash. Projectile
+trajectory, hit detection, damage, lifetime and gameplay RNG are unchanged.
+Existing CC0 smoke flipbook supplies the dust; spray/splinters use the
+engine's default particle texture with velocity stretching.
+
+Combat particle nodes are recreated at match reset only, clearing previous
+smoke and burst slots; ordinary combat reuses them. Volcanic ash is separate.
+
+Added pirates_impact 0/1/2 visual fixtures. They reset a race, place stationary
+ships, and fire three ordinary cannonballs through the real collision path.
+Romdev playable cart, 1920x1080, normal camera:
+- Sea: after 115 frames, 72 spray particles alive; three spray bursts visible.
+- Hull: after 26 frames, 36 splinters alive; target HP 79 (21 damage).
+  Bright wood fragments visible beside the hull, apart from muzzle smoke.
+- Shore: dust alive 24; subtler than muzzle smoke against sand/vegetation.
+- All three systems expired to zero alive after another 100 frames.
+- Pausing shore fixture held 24 particles alive across 90 rendered frames;
+  resuming plus 100 frames left zero.
+- Resetting while 72 sea particles were alive immediately cleared to zero.
+- render.skipped=0, cw.gpu.errors=0.
+Screenshots inspected: out/pirates-impact-{sea,hull,shore}.png.
+
+Initial native WebGPU 1500-frame replay passed; GL replay after the splinter
+visibility adjustment passed too. Final reset-lifecycle build checked below.
+This verifies feedback and bounded capacity, not full-match FPS or human fun.
+Final native WebGPU replay passed all existing 1500-frame expectations,
+including hash 726034506, in 11.6 s wall time (not an FPS measurement):
+out/pirates-impacts-final-webgpu. GL pre-reset-lifecycle result is at
+out/pirates-impacts-final-gl (18.4 s); no full-match performance claim.

@@ -1,0 +1,305 @@
+{
+  "before": {
+    "ticks": 1800,
+    "distance": 0,
+    "banked": 0,
+    "hull_clear": 1
+  },
+  "after": {
+    "ticks": 551,
+    "distance": 45.937,
+    "banked": 3,
+    "hull_clear": 1
+  },
+  "short_rendered_cart": {
+    "cw.gpu.errors": 0,
+    "pirates.eruptions": 1,
+    "pirates.rock_impacts": 3,
+    "pirates.state": 1,
+    "pirates.mode": 1,
+    "pirates.tick": 1500,
+    "pirates.shots": 150,
+    "pirates.goods": 22,
+    "pirates.bank": [
+      4,
+      6,
+      5,
+      1
+    ],
+    "pirates.held": [
+      3,
+      0,
+      2,
+      1
+    ],
+    "pirates.hp": [
+      1,
+      8,
+      65,
+      65
+    ],
+    "pirates.pos": [
+      -1156,
+      466,
+      3328,
+      -1293,
+      -1124,
+      -328,
+      1472,
+      -307
+    ],
+    "pirates.hash": 726034506,
+    "render.skipped": 0
+  },
+  "full_fast_simulation": {
+    "cw.gpu.errors": 0,
+    "pirates.eruptions": 12,
+    "pirates.rock_impacts": 36,
+    "pirates.state": 2,
+    "pirates.mode": 1,
+    "pirates.tick": 21600,
+    "pirates.shots": 1905,
+    "pirates.goods": 366,
+    "pirates.bank": [
+      104,
+      66,
+      109,
+      59
+    ],
+    "pirates.held": [
+      1,
+      6,
+      0,
+      0
+    ],
+    "pirates.hp": [
+      136,
+      36,
+      136,
+      100
+    ],
+    "pirates.pos": [
+      -3769,
+      -355,
+      -1496,
+      -390,
+      -349,
+      1771,
+      2850,
+      1068
+    ],
+    "pirates.hash": 3177904265,
+    "render.skipped": 0
+  },
+  "full_checkpoints": {
+    "checkpoints": [
+      {
+        "tick": 1800,
+        "bank": 4,
+        "held": 5,
+        "pos": [
+          -35.892,
+          -5.407
+        ],
+        "waypoint": [
+          -35,
+          -7
+        ],
+        "yaw": 3.086,
+        "speed": 5.163,
+        "shore": -6.663,
+        "hp": 1
+      },
+      {
+        "tick": 3600,
+        "bank": 13,
+        "held": 1,
+        "pos": [
+          -34.352,
+          -3.119
+        ],
+        "waypoint": [
+          -33,
+          -2
+        ],
+        "yaw": 0.752,
+        "speed": 5.813,
+        "shore": -5.853,
+        "hp": 100
+      },
+      {
+        "tick": 5400,
+        "bank": 22,
+        "held": 2,
+        "pos": [
+          -24.56,
+          10.833
+        ],
+        "waypoint": [
+          -22,
+          13
+        ],
+        "yaw": 1.006,
+        "speed": 5.079,
+        "shore": -9.046,
+        "hp": 118
+      },
+      {
+        "tick": 7200,
+        "bank": 33,
+        "held": 2,
+        "pos": [
+          -28.063,
+          7.81
+        ],
+        "waypoint": [
+          -25,
+          6
+        ],
+        "yaw": 0.892,
+        "speed": 1.452,
+        "shore": -8.155,
+        "hp": 136
+      },
+      {
+        "tick": 9000,
+        "bank": 41,
+        "held": 2,
+        "pos": [
+          -17.627,
+          16.506
+        ],
+        "waypoint": [
+          -15,
+          13
+        ],
+        "yaw": 1.451,
+        "speed": 4.587,
+        "shore": -9.731,
+        "hp": 110
+      },
+      {
+        "tick": 10800,
+        "bank": 53,
+        "held": 0,
+        "pos": [
+          -31.255,
+          -1.009
+        ],
+        "waypoint": [
+          -34,
+          2
+        ],
+        "yaw": -0.595,
+        "speed": 4.607,
+        "shore": -4.09,
+        "hp": 93
+      },
+      {
+        "tick": 12600,
+        "bank": 64,
+        "held": 1,
+        "pos": [
+          -31.014,
+          0.99
+        ],
+        "waypoint": [
+          -29,
+          3
+        ],
+        "yaw": 0.655,
+        "speed": 6.541,
+        "shore": -5.067,
+        "hp": 85
+      },
+      {
+        "tick": 14400,
+        "bank": 72,
+        "held": 0,
+        "pos": [
+          -32.837,
+          -7.473
+        ],
+        "waypoint": [
+          -37,
+          -5
+        ],
+        "yaw": -0.25,
+        "speed": 1.272,
+        "shore": -3.359,
+        "hp": 81
+      },
+      {
+        "tick": 16200,
+        "bank": 81,
+        "held": 0,
+        "pos": [
+          -33.367,
+          -7.126
+        ],
+        "waypoint": [
+          -36,
+          -4
+        ],
+        "yaw": -0.612,
+        "speed": 2.749,
+        "shore": -3.917,
+        "hp": 136
+      },
+      {
+        "tick": 18000,
+        "bank": 90,
+        "held": 0,
+        "pos": [
+          -33.244,
+          -6.482
+        ],
+        "waypoint": [
+          -36,
+          -4
+        ],
+        "yaw": -0.726,
+        "speed": 3.774,
+        "shore": -3.866,
+        "hp": 136
+      },
+      {
+        "tick": 19800,
+        "bank": 97,
+        "held": 1,
+        "pos": [
+          -34.095,
+          2.235
+        ],
+        "waypoint": [
+          -32,
+          5
+        ],
+        "yaw": -0.049,
+        "speed": 6.034,
+        "shore": -8.272,
+        "hp": 55
+      },
+      {
+        "tick": 21600,
+        "bank": 104,
+        "held": 1,
+        "pos": [
+          -37.694,
+          -3.556
+        ],
+        "waypoint": [
+          -36,
+          -6
+        ],
+        "yaw": 3.057,
+        "speed": 4.565,
+        "shore": -8.859,
+        "hp": 136
+      }
+    ],
+    "hash": 3177904265,
+    "winner": 2,
+    "state": 2
+  }
+}

@@ -1,0 +1,17 @@
+Crater lava, 2026-11-01
+
+Added an original Blender lava basin inside the volcanic crater. The liquid
+uses glTF emissive material; irregular cooling-crust plates leave connected
+orange seams visible at the gameplay camera. The first bright spotted pass
+was rejected after screenshot inspection and replaced with darker plates.
+Source: tools/make-lava.py and art/crater-lava.blend. Export:
+assets/models/crater-lava.glb, 8,076 bytes, 185 triangles, two materials.
+Credits and pack roots updated. Rockfall timing/damage and navigation unchanged.
+
+Built pirates and pirates_auto. Loaded playable cart in romdev, ran 180 frames
+and inspected out/pirates-crater-lava.png at 1920x1080. render.skipped=0.
+Switched to Lagoon: CraterLava node absent, render.skipped=0. Switched back:
+CraterLava node exists with visible=true. This verifies map isolation.
+
+The emissive surface is static; flowing lava, illuminated crater walls and
+further volcanic material detail remain art-polish opportunities.

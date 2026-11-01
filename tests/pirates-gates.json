@@ -1,0 +1,122 @@
+[
+  {
+    "name": "pirates-race-replay",
+    "app": "pirates_auto",
+    "frames": 1500,
+    "note": "Four AI captains in Treasure Race with hull-shaped shore collision and 3.8 m navigation clearance. New expected state independently matched by rendered romdev and native WebGPU at 1500 frames. Not a full-match balance assertion.",
+    "fields": [
+      "pirates.state",
+      "pirates.mode",
+      "pirates.tick",
+      "pirates.bank",
+      "pirates.held",
+      "pirates.hp",
+      "pirates.pos",
+      "pirates.hash",
+      "pirates.shots",
+      "pirates.goods",
+      "pirates.eruptions",
+      "pirates.rock_impacts",
+      "render.skipped"
+    ],
+    "expect": {
+      "pirates.state": 1,
+      "pirates.mode": 1,
+      "pirates.tick": 1500,
+      "pirates.bank": [
+        4,
+        6,
+        5,
+        1
+      ],
+      "pirates.held": [
+        3,
+        0,
+        2,
+        1
+      ],
+      "pirates.hp": [
+        1,
+        8,
+        65,
+        65
+      ],
+      "pirates.pos": [
+        -1156,
+        466,
+        3328,
+        -1293,
+        -1124,
+        -328,
+        1472,
+        -307
+      ],
+      "pirates.hash": 726034506,
+      "pirates.shots": 150,
+      "pirates.goods": 22,
+      "pirates.eruptions": 1,
+      "pirates.rock_impacts": 3,
+      "render.skipped": 0
+    }
+  },
+  {
+    "name": "pirates-race-full",
+    "app": "pirates_auto",
+    "frames": 21600,
+    "note": "Six-minute race with angular collision, AI shoreline maneuvering and narrowed shallows. All 13 expected fields match full rendered romdev, native WebGPU and native GL. Current GL check used reduced render resolution alongside a human playtest, not a performance benchmark. See games/pirates/art/SHALLOWS-FULL-RACE-VERIFICATION.txt.",
+    "fields": [
+      "pirates.state",
+      "pirates.mode",
+      "pirates.tick",
+      "pirates.bank",
+      "pirates.held",
+      "pirates.hp",
+      "pirates.pos",
+      "pirates.hash",
+      "pirates.shots",
+      "pirates.goods",
+      "pirates.eruptions",
+      "pirates.rock_impacts",
+      "render.skipped"
+    ],
+    "expect": {
+      "pirates.state": 2,
+      "pirates.mode": 1,
+      "pirates.tick": 21600,
+      "pirates.bank": [
+        104,
+        66,
+        109,
+        59
+      ],
+      "pirates.held": [
+        1,
+        6,
+        0,
+        0
+      ],
+      "pirates.hp": [
+        136,
+        36,
+        136,
+        100
+      ],
+      "pirates.pos": [
+        -3769,
+        -355,
+        -1496,
+        -390,
+        -349,
+        1771,
+        2850,
+        1068
+      ],
+      "pirates.hash": 3177904265,
+      "pirates.shots": 1905,
+      "pirates.goods": 366,
+      "pirates.eruptions": 12,
+      "pirates.rock_impacts": 36,
+      "render.skipped": 0
+    }
+  }
+]

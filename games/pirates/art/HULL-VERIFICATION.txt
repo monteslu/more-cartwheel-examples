@@ -1,0 +1,59 @@
+Hull-shaped shore collision, 2026-11-01
+
+Imported galleon lower vertices (Y < 0.6, after model rotation) span roughly
+X -1.12..1.09, Z -3.59..2.34. The old center-only radius 1.15 allowed bow and
+stern to penetrate beaches. Five overlapping discs now approximate the
+waterline, at longitudinal -2.5,-1.55,-0.6,0.35,1.3, radius 1.15. A 3.8 m
+center-distance broad phase skips extra coastline walks in open water.
+Invalid movement restores position and slows the ship. Invalid rotation is
+also rejected, preventing stern sweeps through land. Sails/bowsprit overhang
+is intentionally not collidable. This remains an approximate 2D hull.
+
+Navigation clearance increased from 1.8 to 3.8 m so bots plan room to turn.
+Cargo and spawns use that same navigation mesh. This intentionally changes
+routes, pickup positions, scores and hashes. Gameplay replay expectations
+were updated only after the behavioral checks and independent runs below.
+The old unreachable-cove test initially failed because its pickup was now
+relocated into open water; it now explicitly places a stranded pickup in the
+closed cove and starts the captain on a valid navigation cell.
+
+Romdev regression commands, final cart:
+pirates_test_hull: 21 valid approaches across both maps; no_penetration=1,
+blocked=21, reversed_clear=21, spawns_clear=1. Three candidate approaches
+were rejected during setup because the outward start lay in neighboring land.
+For each approach: 240 ticks forward, 90 turning ticks; reverse escape is
+checked independently from the ORIGINAL bow-first contact for 120 ticks.
+An initial test reversed after turning and one stern faced land, correctly
+blocking reverse; separating those scenarios avoids demanding reverse escape
+in a direction that itself points into land.
+pirates_test_route: fixture=1, banked=3, unreachable cargo preserved=1.
+Recovery/protection checks all true. Eruption tests retained 24/24 AI escapes.
+Fresh playable cart: actual reverse input 180 rendered frames at P1 harbor;
+screenshot out/pirates-hull-stern-stop.png inspected. No collision fields
+were written. This visual check covers that approach, not every coastline.
+
+Normal rendered romdev auto race at tick 1500: hash 726034506, bank [4,6,5,1],
+errors/skipped 0. Exact state saved in art/hull-short-romdev.json. Independent
+native WebGPU 1500-frame gate matched all expected fields, output:
+out/pirates-hull-short-native/ (15.7 seconds).
+
+Complete native WebGPU race: 21,600 rendered frames, 197.8 seconds, hash
+3006384452, bank [106,67,46,45]. GPU errors/skipped/audio underruns 0.
+Matches fast romdev simulation hash and scores. Every updated full-gate
+expectation checked in out/pirates-hull-full-native/full-gate.json.
+Final 600-frame sample: average 9.7442 ms, p95 12.9719, max 17.8678;
+simulation average 1.9637 ms. 1080p Radeon 890M, shared host, no locked-60
+claim. Romdev was active during earlier portions of this native run, so total
+wall time is not an isolated comparison with prior builds.
+
+Rendered romdev one-captain auto Voyage, NO simulate command or state writes:
+tick 1801 bank 9 stage 0; tick 3602 bank 15 stage 2; completed at tick 4380,
+bank 25, quota 24, winner 0. Screenshot out/pirates-hull-voyage-finish.png.
+This proves AI reachability, not human-led completion or balance.
+Lagoon auto race after 1800 rendered frames: bank [9,9,6,4], errors/skipped 0;
+all four captains continued banking. out/pirates-hull-lagoon.png inspected.
+The Lagoon host request returned slowly, and a concurrent /healthz request
+timed out at 5 seconds; the SAME pending request eventually completed.
+No restart/retry was issued. Fresh playable reload afterward was responsive.
+Current full rendered cart-host performance and renewed native GL comparison
+remain outstanding, as does human testing of narrow-passage handling.

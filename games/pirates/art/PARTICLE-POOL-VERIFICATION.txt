@@ -1,0 +1,39 @@
+Cannon particle pooling, 2026-11-01
+
+Replaced 12 separate smoke nodes and 12 flash nodes with one burst system
+for each. Each retains 32 muzzle positions; smoke capacity 448 (14 per
+muzzle), flash capacity 32. Previous capacities were 168 and 12. Lifetimes,
+textures, colors, trajectories and muzzle offsets are unchanged. Burst seeds
+change the exact arrangement of individual puffs. No per-shot allocations.
+Match reset still recreates the five combat systems to clear every burst.
+
+Romdev playable cart, four human input ports:
+- First simultaneous LT/RT/LT/RT volley: 12 shots, 168 smoke particles,
+  12 flashes, 3 total particle draws (smoke + flash + volcanic ash).
+- 18 further frames: smoke 168, flash 0, 2 particle draws.
+- Held triggers through a second volley: 24 shots total, smoke 336,
+  flashes 12, sea spray 216, 4 particle draws including ash.
+- Pausing retained these counts over 120 frames. After resuming, NPC
+  firing continued, so whole-scene counts are not an expiry-only test.
+- Six particle systems total, capacity 1232, including volcanic ash.
+- render.skipped=0, cw.gpu.errors=0.
+Inspected full-resolution screenshots from the normal camera:
+out/pirates-pooled-four-flashes.png and out/pirates-pooled-four-smoke.png.
+The debug command pirates_effects reports pool counts without GPU readback.
+
+Native WebGPU before/after runs both passed the existing 1500-frame replay
+expectations. Last-600-frame profiles are in particle-pool-profile.json.
+Before frame avg 9.1404 ms, p95 20.5864; after avg 8.1572, p95 14.7812.
+However render-thread CPU increased (2.1365 to 3.5217 ms), and presentation
+wait differed considerably. One pair on a shared host does not establish a
+stable FPS improvement. The bounded system/draw reduction is verified.
+No concurrent romdev stepping or other native run during these profiles.
+Evidence directories: out/pirates-particle-pool-before and
+out/pirates-particle-pool-after. Full-match/cart FPS remains unverified.
+
+Final GL 1500-frame replay also passed (19.4 s wall time):
+out/pirates-particle-pool-gl.
+Additional romdev isolated expiry fixture (NPCs disabled): 42 smoke / 3
+flashes after three frames; all combat alive counts zero after 180 more.
+Reset during a fresh live volley cleared every combat count immediately,
+kept six total systems/capacity 1232, and left only the ash draw.

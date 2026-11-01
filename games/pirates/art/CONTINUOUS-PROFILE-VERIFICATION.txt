@@ -1,0 +1,17 @@
+Continuous cart profiling — 2026-11-01
+
+Direct perf reads include the time between the previous frame and the read
+command, because the engine records frame intervals at the beginning of a
+frame before processing the mailbox. Even stepping 900 then reading perf600
+included a 497ms tool gap. Do not classify such maxima as gameplay hitches.
+
+pirates_profile defers its reply until N+2 frames have passed and runs perf N
+inside that continuing batch. Default 300, range 1..590; use maxFrames:600.
+No gameplay state is modified. This is an opt-in debug command.
+
+Current development auto cart, romdev GL, seed1, fixed step16.666666666666668:
+settle+1499 frames, then pirates_profile590 returned in593 frames.
+590 sampled frames: average5.681ms, p50 5.2987ms, p95 7.7032ms,
+maximum28.6098ms. Saved continuous-profile-gl.json. These are a short sample
+on a shared host, not proof of locked60 FPS or a full-match performance result.
+The earlier full-match gameplay tests remain separate correctness evidence.

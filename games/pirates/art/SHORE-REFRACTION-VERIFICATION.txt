@@ -1,0 +1,43 @@
+Shore refraction correction, 2026-11-01
+
+Dark blue slivers appeared between beach geometry and foam at some wave
+phases. Setting Water.distortion=0 in romdev removed the reproduced defect.
+The water shader previously applied the same screen-space refraction offset
+at the shoreline and offshore, allowing it to sample terrain clipped out of
+the refraction target.
+
+Engine src/water/extensions/water.mjs now uses the existing undistorted
+baked floor depth to fade refraction displacement smoothly from zero at
+0.5 m to full strength at 3 m. Outside the floor map / without a floor map,
+the existing depth fallback is 100 m, retaining full distortion. Reflection
+displacement is unchanged. No added texture sample: the floor lookup is
+moved earlier and reused. Physical waves, foam, buoyancy and gameplay remain
+unchanged. Default scene distortion is still 0.018, verified in romdev.
+
+Regenerated Pirates GL and WebGPU program tables explicitly with --table
+(the missing-state survey alone correctly reported no missing states and
+would not regenerate changed shader code). Tint accepted all 15 programs.
+Both native and cart pirates / pirates_auto rebuilt successfully.
+
+Romdev screenshots inspected at 1920x1080:
+ out/pirates-shore-slivers-before.png (original defect)
+ out/pirates-shore-no-distortion.png (diagnostic only)
+ out/pirates-shore-slivers-after.png (new shader, distortion 0.018)
+ out/pirates-shore-later.png (300 more rendered frames)
+ out/pirates-shore-lagoon.png (250 rendered frames on Lagoon)
+The reproduced slivers are absent in the inspected new screenshots. Both
+maps report GPU errors 0 and render.skipped 0. This is sampled visual
+verification, not proof for every possible view or arbitrary engine scene.
+
+Native 1500-frame replay gates pass on both GL and WebGPU, matching the
+hull-clearance expected state, hash 726034506. Outputs:
+ out/pirates-shore-gl/ (10.5 seconds)
+ out/pirates-shore-webgpu/ (10.3 seconds)
+No separate performance claim is made from those wall times.
+
+Bundled patch engine-patches/water-shore-refraction.patch and extended
+prepare-engine.py to install/check all three fixes. Verified on temporary
+shared clones at the documented pins: read-only check rejects missing fixes,
+--apply installs all three, repeated check accepts them, resulting water
+shader bytes match the working engine exactly. Existing unrelated edits in
+the development engine were not included in the new patch.

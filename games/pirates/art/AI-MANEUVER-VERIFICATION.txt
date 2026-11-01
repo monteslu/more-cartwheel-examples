@@ -1,0 +1,43 @@
+AI shoreline maneuver, 2026-11-01
+
+When a large requested turn sets AI throttle to zero but the full hull
+cannot rotate at its current position, evaluate forward and reverse .65 m
+probes. Candidates must fit the hull and map bounds. Choose the candidate
+with greater coast clearance, keep the current heading, and apply moderate
+forward or reverse throttle. Resume ordinary waypoint steering as soon as
+the turn fits. This changes AI input only; human controls and collision
+rules retain the preceding angular-clearance fix. No teleport or bypass.
+
+Extended pirates_test_escape: second argument 1 selects measured P1 pose
+(2.943144,18.608595), yaw 2.690814, speed zero, sails level 2, three goods.
+First argument 1 leaves the scenario active for normal rendered stepping.
+Before: 1800 ticks, distance zero, bank zero.
+After: 551 ticks to bank three, distance 45.937 m; hull clear every tick.
+Prior P3 scenario: still banks three in 573 ticks with clear hull.
+All 21 hull tests and 24 volcanic AI escape scenarios pass in romdev.
+
+Fresh playable cart, P1 live fixture: first second of rendered stepping
+shows safe repositioning and turning; after 600 frames P1 banked six (three
+initial plus three collected en route). GPU errors/skipped rendering zero.
+Inspected 1920x1080 captures out/pirates-maneuver-start.png and
+out/pirates-maneuver-bank.png. These were recaptured after fresh load to
+exclude residual ripples from bulk simulation tests.
+
+Short rendered romdev auto-cart: all 13 existing 1500-frame expectations
+still match (hash 726034506). Full native WebGPU race: 21600 rendered frames,
+all 13 fields independently match romdev fast simulation. Updated full gate
+after explicit equality comparison; full-gate.json saved alongside replay.
+New scores [104,66,109,59], hash 3177904265; 1905 shots, 366 pickups,
+12 eruptions / 36 impacts. Evidence: out/pirates-maneuver-full and
+art/ai-maneuver.json. 172.2 s wall time is not an isolated performance result:
+romdev rendered checks overlapped. Full rendered cart race on these AI rules
+remains pending; prior full-cart evidence used older movement rules.
+
+Rendered solo Voyage via pirates_auto, one active AI captain (no state writes
+or bulk simulation): tick1801 bank9 stage0; tick3602 bank15 stage2,
+patrol defeated, final quota24; success tick4380 bank25 winner0. Errors and
+skipped rendering zero. Inspected out/pirates-maneuver-voyage-finish.png.
+This checks objective reachability, not human fun or beginner balance.
+Final native GL short replay also passed all unchanged 1500-frame gate
+fields (15.0 s wall time): out/pirates-maneuver-short-gl. Both carts and
+native targets rebuilt with the updated runtime command help text.

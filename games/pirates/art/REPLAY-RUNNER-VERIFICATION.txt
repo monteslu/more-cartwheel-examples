@@ -1,0 +1,21 @@
+Native replay gate selection — 2026-11-01
+
+tests/native-replay.mjs now accepts --gate NAME for one named game.
+It runs that gate's frame count and checks its expected fields; combining
+--gate with --frames or --smoke is rejected. Gates must use the named
+game's _auto executable without unsupported environment overrides.
+Old dump/result files are removed before launching so a process that exits
+without writing state cannot accidentally reuse a previous passing dump.
+
+Validation used a temporary executable named pirates_auto and the actual
+pirates-race-full manifest. It asserted CW_FRAMES=21600, then:
+- emitted the expected state: passed, selected gate recorded correctly;
+- changed bank[0]: rejected with pirates.bank mismatch;
+- exited successfully without writing state after previous runs: rejected,
+  and no selected result remained;
+- combined --gate and --frames: rejected with usage exit code 2.
+node --check passed. Every existing default replay gate was inspected and
+has no environment overrides, preserving compatibility with that guard.
+These are runner checks, not additional gameplay/performance measurements.
+The current full rendered romdev gameplay evidence is recorded separately
+in SHALLOWS-FULL-RACE-VERIFICATION.txt. Full current native GL is still pending.

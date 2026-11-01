@@ -1,0 +1,31 @@
+Romdev performance pass, 2026-10-31
+
+Same pirates_auto cart scenario, seed 1, 16ms simulation step, 1920x1080.
+120 warm-up frames, perf reset, 600 stepped frames, perf 600.
+
+                        Before       After
+Reported triangles      339232       287172
+Draw calls              48           48
+Simulation avg ms       0.9926       0.9508
+Render avg ms           2.5930       2.3555
+Render p95 ms           4.7196       4.0149
+Frame interval p95 ms   14.3628      12.9538
+
+Removed only terrain quads fully coplanar with the separate flat seabed;
+all sloping seabed and visible land retained. Rebuilt Blender terrain.
+Moved sync_visuals and audio update from the post-3D HUD callback into the
+app update callback, before tree pre-render. Ship transforms and HUD now
+refer to the same simulation tick.
+
+Follow-up 1200-frame sample: sim avg .9522ms; render avg 2.3819ms,
+render p95 4.1119ms; frame interval p95 13.1018ms. Zero skipped renders
+in the post-change rendering check. Screenshot pirates-optimized-romdev.png
+visually inspected: coastline and water coverage retained.
+
+Limits: these are local, sequential observations, not repeated controlled
+benchmarks. Engine perf.c measures frame intervals from one frame begin to
+the next, so host scheduling, GPU waits and gaps between MCP calls are
+included. Maximum observed intervals 185-224ms remain unexplained; they
+must not be presented as pure game CPU cost or dismissed as proven tool
+overhead. GPU timing field remains unavailable (zero). Stable 60fps across
+target hardware is not established by this pass.

@@ -1,0 +1,25 @@
+Three-stage voyage, 2026-10-31
+
+Replaced the single quota victory with supply -> defeat patrol -> final haul.
+Supplies already banked remain safe and available for upgrades. Final haul
+requires another quota beyond the bank at the transition, so a stockpile
+cannot skip the last stage. A prior patrol defeat counts toward the hunt.
+Quota scales 10/17/24/31 for 1/2/3/4 humans; patrol HP 100/125/150/175.
+The 12-minute deadline remains. Merchant and patrol have explicit labels;
+title briefing explains mode rules, controls, pickup and banking.
+
+Romdev runtime command pirates_test_voyage N invokes actual damage/end
+functions: provision=1, blockade=1, victory=1 for N=1,2,3,4. Correct scaled
+quota and patrol health observed in each response. These controlled stage
+tests supersede the old single-quota voyage success test in RULES-VERIFICATION.
+
+Normal gameplay test: pirates_auto, seed 1, deterministic step 16ms,
+pirates_match 0 1. Only captain 1 active, controlled by normal AI. No score,
+health, timer or objective writes. After stepping 5400 host frames, game
+had finished at simulation tick 3561 with winner=0, state=RESULT,
+bank=[23,0,0,0], final_quota=22 and one credited patrol defeat.
+render.skipped=0. Capture: out/pirates-solo-victory-romdev.png.
+
+This establishes end-to-end reachability, not human enjoyment or balance.
+AI completion is about a minute; beginner pacing and multiplayer full runs
+still need evaluation. Stage screenshot: out/pirates-voyage-romdev.png.

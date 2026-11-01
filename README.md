@@ -141,6 +141,17 @@ jump with (X). One player. GPL-2.0-or-later, see its LICENSE and CREDITS.
 `games/tuxracer/` (its [README](games/tuxracer/README.md) has the controls
 and the credits).
 
+### Pirates (in development)
+
+![Pirates: four captains trade broadsides around a volcanic archipelago](docs/screenshots/pirates.jpg)
+
+A shared-screen naval game for one to four players: cooperative voyages,
+competitive treasure races, ship upgrades, a volcanic archipelago and a
+calmer palm lagoon. It currently requires the development engine fixes
+listed in [its README](games/pirates/README.md), and is not included in an
+existing release. That README also covers controls, source builds, credits
+and romdev verification.
+
 ## Play
 
 Tagged versions are on the

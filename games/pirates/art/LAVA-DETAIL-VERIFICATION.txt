@@ -1,0 +1,33 @@
+Crater lava detail, 2026-11-01
+
+Rebuilt original make-lava.py asset. Replaced straight Voronoi plate edges
+with shared, densely sampled warped boundaries; 24 unevenly spaced sites
+with minimum spacing avoid tiny sliver plates. Variable shrink leaves
+uneven fissures. Raised crust interiors and bevel-like lips add thickness.
+Smooth crust normals avoid the first revision's faceted appearance.
+
+Baked world-space noise into 512x512 albedo and emission atlases for basalt
+grain and spatial heat variation. Embedded both textures in the GLB, with
+one material instead of two. Asset is 2,134 triangles and 299,340 bytes;
+previous asset was 185 triangles. This is more geometry, not a free effect,
+but reduces this asset's material draws from two to one. No per-frame
+procedural evaluation or extra lights. No gameplay/collision changes.
+Original source and baked images are in art/crater-lava.blend,
+art/lava-albedo.png and art/lava-emission.png.
+
+Regenerated GL/WebGPU program tables: 16 states; Tint accepted all, including
+new standard+map+rep+emap+senv+ds+l2000. Built native and cart targets.
+Loaded playable cart through romdev, ran solo Voyage 250 rendered frames.
+Inspected normal 1920x1080 gameplay framing and a temporary close-up at
+camera (25,24,-2.9), FOV 20. Restored (0,64,23), FOV 46 afterward. Final
+GPU errors=0, render.skipped=0. Screenshots:
+out/pirates-lava-before.png
+out/pirates-lava-after.png
+out/pirates-lava-detail.png (diagnostic camera, NOT gameplay framing)
+
+The source remains stylized and the surrounding cone/harbor still need art
+work; this is a detail improvement, not final visual-quality approval.
+
+Native WebGPU 1500-frame replay gate passed unchanged expected state
+(hash 726034506), output out/pirates-lava-replay/. Runtime 17.7 seconds;
+this wall time is not an isolated performance comparison.

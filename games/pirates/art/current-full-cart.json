@@ -1,0 +1,266 @@
+{
+  "checkpoints": [
+    {
+      "tick": 3600,
+      "bank": [
+        13,
+        12,
+        14,
+        6
+      ],
+      "hash": 539927571,
+      "skipped": 0,
+      "gpu_errors": 0
+    },
+    {
+      "cw.gpu.errors": 0,
+      "pirates.state": 1,
+      "pirates.tick": 7200,
+      "pirates.bank": [
+        32,
+        28,
+        34,
+        15
+      ],
+      "pirates.hash": 1708179265,
+      "render.skipped": 0
+    },
+    {
+      "cw.gpu.errors": 0,
+      "pirates.state": 1,
+      "pirates.tick": 10800,
+      "pirates.bank": [
+        46,
+        37,
+        43,
+        23
+      ],
+      "pirates.hash": 1473577174,
+      "render.skipped": 0
+    },
+    {
+      "cw.gpu.errors": 0,
+      "pirates.state": 1,
+      "pirates.tick": 14400,
+      "pirates.bank": [
+        67,
+        47,
+        43,
+        30
+      ],
+      "pirates.hash": 1838344733,
+      "render.skipped": 0
+    },
+    {
+      "cw.gpu.errors": 0,
+      "pirates.state": 1,
+      "pirates.tick": 18000,
+      "pirates.bank": [
+        87,
+        57,
+        43,
+        38
+      ],
+      "pirates.hash": 495947296,
+      "render.skipped": 0
+    }
+  ],
+  "final": {
+    "cw.gpu.errors": 0,
+    "pirates.eruptions": 12,
+    "pirates.rock_impacts": 36,
+    "pirates.state": 2,
+    "pirates.mode": 1,
+    "pirates.tick": 21600,
+    "pirates.shots": 1683,
+    "pirates.goods": 281,
+    "pirates.bank": [
+      106,
+      67,
+      46,
+      45
+    ],
+    "pirates.held": [
+      0,
+      0,
+      4,
+      0
+    ],
+    "pirates.hp": [
+      136,
+      118,
+      136,
+      100
+    ],
+    "pirates.pos": [
+      -2998,
+      -261,
+      3013,
+      -518,
+      331,
+      1870,
+      3188,
+      524
+    ],
+    "pirates.hash": 3006384452,
+    "render.skipped": 0
+  },
+  "profiles": [
+    {
+      "tick": 7201,
+      "profile": {
+        "frames": 600,
+        "input": {
+          "avg": 0.0098,
+          "p50": 0.009,
+          "p95": 0.0132,
+          "max": 0.0702
+        },
+        "sim": {
+          "avg": 0.9546,
+          "p50": 0.948,
+          "p95": 1.0047,
+          "max": 1.4958
+        },
+        "update": {
+          "avg": 0.0896,
+          "p50": 0.0889,
+          "p95": 0.0969,
+          "max": 0.1456
+        },
+        "render": {
+          "avg": 1.755,
+          "p50": 1.7063,
+          "p95": 1.9301,
+          "max": 4.4797
+        },
+        "present": {
+          "avg": 0.0036,
+          "p50": 0.0034,
+          "p95": 0.0052,
+          "max": 0.0092
+        },
+        "audio": {
+          "avg": 0.0007,
+          "p50": 0.0007,
+          "p95": 0.0012,
+          "max": 0.002
+        },
+        "frame": {
+          "avg": 5.9187,
+          "p50": 5.3695,
+          "p95": 5.8803,
+          "max": 176.9856
+        },
+        "draw_calls": 49,
+        "triangles": 454938,
+        "programs": 14,
+        "r3d_cpu_ms": 3.5425
+      }
+    },
+    {
+      "tick": 14401,
+      "profile": {
+        "frames": 600,
+        "input": {
+          "avg": 0.0221,
+          "p50": 0.0178,
+          "p95": 0.0421,
+          "max": 0.2046
+        },
+        "sim": {
+          "avg": 1.1723,
+          "p50": 1.0714,
+          "p95": 1.7304,
+          "max": 4.375
+        },
+        "update": {
+          "avg": 0.1093,
+          "p50": 0.1016,
+          "p95": 0.1509,
+          "max": 0.4882
+        },
+        "render": {
+          "avg": 2.9378,
+          "p50": 2.4577,
+          "p95": 5.347,
+          "max": 22.525
+        },
+        "present": {
+          "avg": 0.0053,
+          "p50": 0.0044,
+          "p95": 0.0104,
+          "max": 0.0299
+        },
+        "audio": {
+          "avg": 0.0014,
+          "p50": 0.0011,
+          "p95": 0.0034,
+          "max": 0.0074
+        },
+        "frame": {
+          "avg": 13.0992,
+          "p50": 6.2326,
+          "p95": 12.7265,
+          "max": 2320.8965
+        },
+        "draw_calls": 52,
+        "triangles": 474166,
+        "programs": 14,
+        "r3d_cpu_ms": 18.6453
+      }
+    },
+    {
+      "tick": 21601,
+      "profile": {
+        "frames": 600,
+        "input": {
+          "avg": 0.0178,
+          "p50": 0.0197,
+          "p95": 0.0341,
+          "max": 0.1002
+        },
+        "sim": {
+          "avg": 1.1446,
+          "p50": 1.2232,
+          "p95": 1.628,
+          "max": 2.741
+        },
+        "update": {
+          "avg": 0.1044,
+          "p50": 0.1109,
+          "p95": 0.1433,
+          "max": 0.2144
+        },
+        "render": {
+          "avg": 2.4679,
+          "p50": 2.3961,
+          "p95": 4.6198,
+          "max": 7.1177
+        },
+        "present": {
+          "avg": 0.0045,
+          "p50": 0.0046,
+          "p95": 0.008,
+          "max": 0.018
+        },
+        "audio": {
+          "avg": 0.0011,
+          "p50": 0.001,
+          "p95": 0.0024,
+          "max": 0.0059
+        },
+        "frame": {
+          "avg": 6.7849,
+          "p50": 6.3181,
+          "p95": 9.2174,
+          "max": 180.8702
+        },
+        "draw_calls": 51,
+        "triangles": 473206,
+        "programs": 14,
+        "r3d_cpu_ms": 2.9083
+      }
+    }
+  ]
+}
