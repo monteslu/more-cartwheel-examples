@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.14.0
+
+- jetski: a minimap, bottom left, with no panel behind it: the course, your rivals, the buoys
+  with the next one ringed, and you as an arrow.
+- jetski: every ramp can be reached between one buoy and the next. Ramps sit on the line or
+  about 20 m off it, and the shortcuts and three-ramp clusters are gone.
+- jetski: a small hop off a wave no longer costs speed when you ask nothing of the craft.
+
 ## 0.13.2
 
 - skyfighter: the settings menu reaches Ultra graphics. Left and right cycled through only
