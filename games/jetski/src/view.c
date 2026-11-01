@@ -12,7 +12,10 @@
 #include "cartwheel/scene_file.h"
 #include "game.h"
 
-static cw_node craft_n[RACERS], rider_n[RACERS], buoy_n[BUOY_MAX];
+static cw_node craft_n[RACERS], rider_n[RACERS], buoy_n[BUOY_MAX], buoy_old_n[BUOY_MAX];
+int g_buoy_hide;
+int g_buoy_style = 1; /* 0: the small buoy the course marks replaced, the control of the distance gate; sim and scoring do not see it */
+static float mark_scale[BUOY_MAX];
 static t3_object *bars_o[RACERS];
 static t3_material *band_mat[2], *lamp_mat[2];
 static float buoy_phase[BUOY_MAX];
@@ -425,7 +428,9 @@ static void buoy_paint(t3_object *o, int side) {
         *slot = t3_material_clone(mat);
         t3_color col = side ? (t3_color){ 1.0f, 0.12f, 0.03f } : (t3_color){ 0.98f, 0.72f, 0.02f };
         (*slot)->color = col;
-        if (lamp) (*slot)->emissive = (t3_color){ col.r * 6, col.g * 6, col.b * 6 };
+        /* lit, so the colour holds in the dark and through rain */
+        float e = lamp ? 6.0f : 1.1f;
+        (*slot)->emissive = (t3_color){ col.r * e, col.g * e, col.b * e };
       }
       t3_retain(*slot);
       t3_release(m->materials[k]);
@@ -457,6 +462,7 @@ void view_init(void) {
   cw_res craft_res = cw_res_load("res://models/craft.glb", CW_RES_GLTF);
   cw_res rider_res = cw_res_load("res://models/rider.glb", CW_RES_GLTF);
   cw_res buoy_res = cw_res_load("res://models/buoy.glb", CW_RES_GLTF);
+  cw_res mark_left_res = cw_res_load("res://models/mark_left.glb", CW_RES_GLTF), mark_right_res = cw_res_load("res://models/mark_right.glb", CW_RES_GLTF);
   for (int i = 0; i < RACERS; i++) {
     char name[24];
     snprintf(name, sizeof name, "Craft%d", i);
@@ -483,12 +489,20 @@ void view_init(void) {
   for (int b = 0; b < BUOY_MAX; b++) {
     char name[24];
     snprintf(name, sizeof name, "Buoy%d", b);
-    t3_object *o = cw_gltf_instantiate(buoy_res);
     int side = (b & 1) == 0; /* every course alternates, beginning on the right */
+    /* side 1: keep it on your right, so the board's arrow points left */
+    t3_object *o = cw_gltf_instantiate(side ? mark_left_res : mark_right_res);
     buoy_paint(o, side);
     shadows(o);
     buoy_n[b] = model_node(root, name, o);
     t3_release(o);
+    snprintf(name, sizeof name, "BuoyOld%d", b);
+    o = cw_gltf_instantiate(buoy_res);
+    buoy_paint(o, side);
+    buoy_old_n[b] = model_node(root, name, o);
+    t3_release(o);
+    cw_node_set(buoy_old_n[b], "visible", cw_val_bool(false));
+    mark_scale[b] = 0.72f;
     buoy_phase[b] = (float)b * 1.7f;
   }
   ramps_init(root);
@@ -650,11 +664,14 @@ void view_sync(double alpha) {
   float a = (float)alpha;
   /* who is on the water, and which buoys count */
   { static int shown = -1;
-    int now = g_difficulty * 2 + (racer_on(1) ? 1 : 0);
+    int now = g_difficulty * 2 + (racer_on(1) ? 1 : 0) + g_buoy_style * 16 + g_buoy_hide * 32;
     if (now != shown || g_marks_stale) {
       shown = now, g_marks_stale = false;
       for (int i = 0; i < RACERS; i++) cw_node_set(craft_n[i], "visible", cw_val_bool(racer_on(i)));
-      for (int b = 0; b < BUOY_MAX; b++) cw_node_set(buoy_n[b], "visible", cw_val_bool(b < BUOY_N && buoy_on(b)));
+      for (int b = 0; b < BUOY_MAX; b++) {
+        cw_node_set(buoy_n[b], "visible", cw_val_bool(!g_buoy_hide && g_buoy_style && b < BUOY_N && buoy_on(b)));
+        cw_node_set(buoy_old_n[b], "visible", cw_val_bool(!g_buoy_hide && !g_buoy_style && b < BUOY_N && buoy_on(b)));
+      }
     } }
   for (int i = 0; i < RACERS; i++) {
     const craft *c = &G.c[i];
@@ -688,12 +705,24 @@ void view_sync(double alpha) {
   for (int b = 0; b < BUOY_N; b++) {
     cw_water_sample s;
     cw_water_sample_at(G.water, BUOYS[b][0], BUOYS[b][1], wt, &s);
-    cw_node3d_set_position(buoy_n[b], (t3_vec3){ BUOYS[b][0], s.height, BUOYS[b][1] });
+    t3_vec3 at = { BUOYS[b][0], s.height, BUOYS[b][1] };
+    cw_node3d_set_position(buoy_n[b], at);
+    if (!g_buoy_style) cw_node3d_set_position(buoy_old_n[b], at);
     t3_vec3 up = { 0, 1, 0 };
     t3_vec3 n = s.normal;
     float d = up.x * n.x + up.y * n.y + up.z * n.z;
     t3_vec3 c = { up.y * n.z - up.z * n.y, up.z * n.x - up.x * n.z, up.x * n.y - up.y * n.x };
-    cw_node3d_set_quaternion(buoy_n[b], t3_quat_normalize((t3_quat){ c.x, c.y, c.z, 1 + d }));
+    t3_quat tilt = t3_quat_normalize((t3_quat){ c.x, c.y, c.z, 1 + d });
+    /* its board faces the rider coming along the course, and it rides the water half as steeply: a mast this tall would wave about */
+    { float tx, tz, dx, dz;
+      track_at(BUOYS[b][3], &tx, &tz, &dx, &dz);
+      t3_quat level = t3_quat_normalize((t3_quat){ tilt.x * 0.5f, tilt.y * 0.5f, tilt.z * 0.5f, tilt.w });
+      cw_node3d_set_quaternion(buoy_n[b], t3_quat_multiply(level, t3_quat_from_euler((t3_euler){ 0, cw_atan2(dx, dz), 0, T3_YXZ }))); }
+    if (!g_buoy_style) cw_node3d_set_quaternion(buoy_old_n[b], tilt);
+    /* the next one stands full size, the ones after it smaller */
+    { float want = b == G.c[0].next_buoy ? 1.0f : 0.72f;
+      mark_scale[b] += (want - mark_scale[b]) * 0.1f;
+      cw_node3d_set_scale(buoy_n[b], (t3_vec3){ mark_scale[b], mark_scale[b], mark_scale[b] }); }
   }
   {
     float gx, gz, dx, dz;

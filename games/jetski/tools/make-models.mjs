@@ -346,6 +346,36 @@ class Plain {
   g.write(join(OUT, 'buoy.glb'));
 }
 
+// ── a course mark: what a rider steers by. A big float on the water, a mast that stands over the swell, a board with an arrow that faces the rider coming
+// and points the way past, a lit ball on top seen from anywhere. y = 0 is the waterline, forward +z, so a rider coming along +z has +x on their left.
+// 'band' and 'lamp' take the side's colour. buoy.glb above stays as the control for the distance gate (buoy_style 0) ──
+for (const [name, dir] of [['mark_left', 1], ['mark_right', -1]]) {
+  const P = new Plain(), prof = [[0, -1.1], [0.95, -1.05], [1.4, -0.45], [1.45, 0.3], [1.3, 1.1], [1.0, 1.6], [0.5, 1.9], [0.12, 2.0], [0, 2.0]];
+  const rowsOf = (pr) => pr.map(([r, y]) => Array.from({ length: 17 }, (_, i) => { const a = (i % 16) / 16 * Math.PI * 2; return [Math.cos(a) * r, y, Math.sin(a) * r]; }));
+  P.grid('body', rowsOf(prof.slice(0, 3)), { wrap: true });
+  P.grid('band', rowsOf(prof.slice(2, 7)), { wrap: true });
+  P.grid('body', rowsOf(prof.slice(6)), { wrap: true });
+  P.tube('metal', [[0, 1.9, 0], [0, 9.6, 0]], 0.09, 8);
+  // the board: 6.4 m by 2.8 m of the side's colour, two faces, and on the face the rider sees a white arrow standing proud of it
+  const bx = 3.2, y0 = 5.9, y1 = 8.7, ym = (y0 + y1) / 2;
+  // (a row of two points by a row of two points; the winding chosen by flip)
+  const plate = (m, pts, z, flip) => P.grid(m, [[[pts[0][0], pts[0][1], z], [pts[1][0], pts[1][1], z]], [[pts[3][0], pts[3][1], z], [pts[2][0], pts[2][1], z]]], { flip });
+  const board = [[-bx, y0], [bx, y0], [bx, y1], [-bx, y1]];
+  plate('band', board, -0.06, false); plate('band', board, 0.06, true);
+  P.tube('metal', [[-bx, y0, 0], [bx, y0, 0]], 0.08, 6); P.tube('metal', [[-bx, y1, 0], [bx, y1, 0]], 0.08, 6);
+  const X = (v) => v * dir, FL = dir < 0;
+  plate('arrow', [[X(-2.7), ym - 0.42], [X(0.5), ym - 0.42], [X(0.5), ym + 0.42], [X(-2.7), ym + 0.42]], -0.1, FL);
+  plate('arrow', [[X(0.5), ym - 1.2], [X(2.9), ym], [X(2.9), ym], [X(0.5), ym + 1.2]], -0.1, FL);
+  P.tube('lamp', [[0, 9.5, 0], [0, 11.3, 0]], (t) => 1.05 * Math.sin(Math.PI * clamp(t * 0.96 + 0.02)), 12);
+  const g = new Glb();
+  const mi = { body: g.material('body', 0.5), band: g.material('band', 0.4), metal: g.material('metal', 0.4, 0.8), arrow: g.material('arrow', 0.5, 0, [1.8, 1.8, 1.8]), lamp: g.material('lamp', 0.3, 0, [1, 1, 1]) };
+  g.materials[mi.body].pbrMetallicRoughness.baseColorFactor = [0.05, 0.05, 0.06, 1];
+  g.materials[mi.metal].pbrMetallicRoughness.baseColorFactor = [0.55, 0.55, 0.57, 1];
+  g.materials[mi.arrow].pbrMetallicRoughness.baseColorFactor = [0.95, 0.95, 0.95, 1];
+  g.sceneNodes.push(g.node({ name: 'Mark', mesh: g.mesh('mark', P.prims(mi)) }));
+  g.write(join(OUT, name + '.glb'));
+}
+
 // ── a pine: a dark trunk under tiers of drooping boughs, height about 11 m (the scatter scales it) ──
 {
   const P = new Plain();

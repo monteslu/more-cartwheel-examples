@@ -171,6 +171,23 @@ static void cmd_peek(int argc, const char **argv, cw_reply *r) {
   for (int i = 0; i < 6 && i + 1 < argc; i++) g_peek[i] = (float)atof(argv[i + 1]);
   if (r) cw_reply_printf(r, "{\"ground\":%.2f}", g_peek_on ? ground_at(g_peek[3], g_peek[5]) : 0.0f);
 }
+/* buoy_style 0: the small buoy and the old chevron, for the distance gate's control */
+static void cmd_buoy_style(int argc, const char **argv, cw_reply *r) {
+  g_buoy_style = argc > 1 ? atoi(argv[1]) : 1;
+  if (r) cw_reply_raw(r, "true");
+}
+/* for the distance gate: pictures of one moment with and without the buoys */
+int g_freeze;
+static void cmd_buoy_shot(int argc, const char **argv, cw_reply *r) {
+  /* buoy_shot <hud mark 0/1> <buoys 0/1> <freeze 0/1> */
+  if (argc > 3) g_hud_mark = atoi(argv[1]), g_buoy_hide = !atoi(argv[2]), g_freeze = atoi(argv[3]);
+  if (r) cw_reply_raw(r, "true");
+}
+/* next <buoy>: make that the human's next, for a look at one from farther off than the course's spacing */
+static void cmd_next(int argc, const char **argv, cw_reply *r) {
+  if (argc > 1) G.c[0].next_buoy = atoi(argv[1]);
+  if (r) cw_reply_raw(r, "true");
+}
 /* detile <0..1>: the land's side_detile live, for the plaid comparison */
 static void cmd_detile(int argc, const char **argv, cw_reply *r) {
   if (G.land) cw_terrain_set_side_detile(G.land, argc > 1 ? (float)atof(argv[1]) : 1);
@@ -367,6 +384,13 @@ static void init(void *user) {
   cw_debug_command("course", "course <index>: that course now", cmd_course);
   cw_debug_command("tide", "tide <metres>: hold the tide there", cmd_tide);
   cw_debug_command("arch", "arch <back>: lined up with the course's arch", cmd_arch);
+  cw_debug_command("buoy_shot", "buoy_shot <hud mark> <buoys> <freeze>: picture pairs for the distance gate", cmd_buoy_shot);
+  cw_debug_command("next", "next <buoy>: that one is the human's next", cmd_next);
+  cw_debug_command("buoy_style", "buoy_style 0: the small buoy, the distance gate's control", cmd_buoy_style);
+  cw_debug_i32("hud.ptr_mode", &g_hud_ptr_mode);
+  cw_debug_f32_array("hud.ptr", g_hud_ptr, 2);
+  cw_debug_f32_array("hud.buoy", g_hud_buoy, 4);
+  cw_debug_i32("hud.wrong", &g_hud_wrong);
   cw_debug_command("detile", "detile <0..1>: the land's side_detile live", cmd_detile);
   cw_debug_command("peek", "peek x y z ax ay az: hold the camera there", cmd_peek);
   cw_debug_command("grounding", "grounding [lift]: every scatter instance against the ground, and the marks against the sea", cmd_grounding);
@@ -404,7 +428,7 @@ static void fixed_update(void *user, double dt) {
   c->in.throttle = cw_action_strength(0, a_throttle);
   c->in.trick = cw_action_pressed(0, a_trick);
   menu_tick((float)dt);
-  if (menu_blocks_sim()) {
+  if (menu_blocks_sim() || g_freeze) {
     /* paused: the sea holds still with the race */
     cw_value v;
     if (cw_node_get_prop(G.water, "time_offset", &v)) cw_node_set(G.water, "time_offset", cw_val_float((float)v.f - (float)dt));

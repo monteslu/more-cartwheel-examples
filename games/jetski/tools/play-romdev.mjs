@@ -41,7 +41,10 @@ let frame = 0, nextShot = 0, shots = 0, maxAir = 0, lastLog = 0, trick = 0, wall
 const STEP = 4;
 const SHOTS = (process.argv.find((a) => a.startsWith('--shots='))?.slice(8) || '900,1800').split(',').map(Number);
 const BURST = +process.argv.find((a) => a.startsWith('--burst='))?.slice(8) || -1;
-let camPrev = null, camV = null, camAccMax = 0, camBig = 0, camJump = 0, hit = 0, lastPass = 0, lastMoved = 0, lastPos = null, stuckMax = 0;
+const LOST = (process.argv.find((a) => a.startsWith('--lost='))?.slice(7) || '').split(',').filter(Boolean).map(Number), BACK = +process.argv.find((a) => a.startsWith('--back='))?.slice(7) || -1;
+const STYLE0 = process.argv.includes('--style0');
+if (STYLE0) await call('wasm', { op: 'command', text: 'buoy_style 0' });
+let ptrSamples = 0, ptrOff = 0, ptrEdge = 0, wrongSeen = 0, camPrev = null, camV = null, camAccMax = 0, camBig = 0, camJump = 0, hit = 0, lastPass = 0, lastMoved = 0, lastPos = null, stuckMax = 0;
 while (frame < FRAMES) {
   const p = await rd('p0.pos'), yaw = +(await rd('p0.yaw')), speed = +(await rd('p0.speed')), air = +(await rd('p0.air_time'));
   const ti = +(await rd('p0.track_i')), passes = +(await rd('p0.passes')), misses = +(await rd('p0.misses')), meter = +(await rd('p0.meter'));
@@ -56,7 +59,10 @@ while (frame < FRAMES) {
   let err = Math.atan2(dx, dz) - yaw;
   while (err > Math.PI) err -= 2 * Math.PI;
   while (err < -Math.PI) err += 2 * Math.PI;
-  const lx = Math.max(-1, Math.min(1, -err * 2.4));
+  let lx = Math.max(-1, Math.min(1, -err * 2.4));
+  // a human who has lost the way: full lock for three seconds from each --lost frame, away from the line; --back: turned round and riding the wrong way for eight
+  if (LOST.some((f) => frame >= f && frame < f + 180)) lx = 1;
+  if (BACK >= 0 && frame >= BACK && frame < BACK + 480) { const t = T[(ti + T.length - 6) % T.length]; let e = Math.atan2(t[0] - p[0], t[1] - p[2]) - yaw; while (e > Math.PI) e -= 2 * Math.PI; while (e < -Math.PI) e += 2 * Math.PI; lx = Math.max(-1, Math.min(1, -e * 2.4)); }
   const buttons = { south: true };
   if (process.argv.includes('--tricks') && air > 0.1 && air < 0.2) trick = 1;
   if (trick > 0) { buttons.west = true; trick = air > 0.3 ? 0 : trick; }
@@ -64,7 +70,9 @@ while (frame < FRAMES) {
   const shoot = (air > 0.55 && frame >= nextShot) || SHOTS.includes(frame) || (BURST >= 0 && frame >= BURST && frame < BURST + 8 * STEP);
   if (shoot) { await call('frame', { op: 'stepAndShot', frames: STEP, path: join(DIR, `f${frame}-air${air.toFixed(1)}.png`) }); nextShot = frame + 240; shots++; } else await call('frame', { op: 'step', frames: STEP });
   frame += STEP;
+  if (frame > 240) { const m = +(await rd('hud.ptr_mode')); ptrSamples++; if (!m) ptrOff++; if (m === 2) ptrEdge++; if (+(await rd('hud.wrong'))) wrongSeen++; }
   const cam = await rd('cam.pos');
+  if (frame <= 244) camPrev = null, camV = null, lastMoved = frame; // the countdown and the jump to the grid are not riding
   if (camPrev) {
     const dt = STEP / 60, v = [(cam[0] - camPrev[0]) / dt, (cam[1] - camPrev[1]) / dt, (cam[2] - camPrev[2]) / dt];
     camJump = Math.max(camJump, Math.hypot(cam[0] - camPrev[0], cam[1] - camPrev[1], cam[2] - camPrev[2]));
@@ -80,4 +88,4 @@ while (frame < FRAMES) {
 }
 const end = await Promise.all(['race.state', 'race.clock', 'p0.place', 'p0.lap', 'p0.passes', 'p0.misses', 'p0.dq', 'menu.page', 'p0.meter', 'cam.under_ticks', 'race.swell'].map(async (n) => [n, await rd(n)]));
 await call('input', { op: 'set', ports: [{}] });
-console.log(JSON.stringify({ ...Object.fromEntries(end), cam_acc_max: +camAccMax.toFixed(1), cam_acc_over_40: camBig, cam_jump_max: +camJump.toFixed(2), longest_without_moving_frames: stuckMax, air_max: +maxAir.toFixed(2) }), 'shots', shots);
+console.log(JSON.stringify({ course: COURSE, ptr_samples: ptrSamples, ptr_none: ptrOff, ptr_edge: ptrEdge, wrong_way_samples: wrongSeen, ...Object.fromEntries(end), cam_acc_max: +camAccMax.toFixed(1), cam_acc_over_40: camBig, cam_jump_max: +camJump.toFixed(2), longest_without_moving_frames: stuckMax, air_max: +maxAir.toFixed(2) }), 'shots', shots);

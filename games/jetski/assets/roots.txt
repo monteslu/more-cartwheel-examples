@@ -6,6 +6,8 @@ fonts/Oswald-VF.ttf
 models/craft.glb
 models/rider.glb
 models/buoy.glb
+models/mark_left.glb
+models/mark_right.glb
 models/ramp.glb
 models/palm.glb
 models/rock0.glb
