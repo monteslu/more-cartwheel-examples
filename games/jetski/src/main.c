@@ -228,6 +228,12 @@ static void cmd_switch(int argc, const char **argv, cw_reply *r) {
     else if (!strcmp(argv[1], "ram")) g_ram_on = (int)v;
     else if (!strcmp(argv[1], "ram_setup")) sim_ram_setup((int)v);
     else if (!strcmp(argv[1], "cam_cut")) g_cam_cut = (int)v;
+    else if (!strcmp(argv[1], "wrong_side")) { /* the human just past the next buoy on its wrong side, for the feedback gate */
+      craft *c = &G.c[0]; const float *b = BUOYS[c->next_buoy]; float sx, sz, tx, tz;
+      track_at(b[3], &sx, &sz, &tx, &tz);
+      c->x = c->px = b[0] + tx * 1 - tz * 6 * b[2], c->z = c->pz = b[1] + tz * 1 + tx * 6 * b[2];
+      c->vx = tx * 25, c->vz = tz * 25;
+    }
     else if (!strcmp(argv[1], "old_crash")) g_old_crash = (int)v;
     else if (!strcmp(argv[1], "dist_step")) g_dist_step = (int)v;
     else if (!strcmp(argv[1], "place_hold")) g_place_hold = (int)v;
