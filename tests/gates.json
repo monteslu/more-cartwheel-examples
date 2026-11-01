@@ -956,5 +956,15 @@
       "native"
     ],
     "note": "the descent ends: three bots at the core's boss wave (HORDE_WAVE=44) with the Unmaker weak (HORDE_BOSS_WEAK). It falls at tick 440, the horde burns away, the bots gather the loot and one steps into the last hatch at 1337: the run is won (game.state 2). Measured 2026-10-30 on native GL. The control (HORDE_FLOOR_STAY=1) stays at the open hatch and must differ."
+  },
+  {
+    "name": "arenafps-quality",
+    "script": "tests/arenafps-quality.mjs",
+    "note": "a program for everything drawn at every quality on both backends, through a spread warm-up as a player gets it: every arena, in split screen and alone, each mode, from the title by real input. A scene not reached fails. Control: a state the scene draws out of the table must be reported and skip draws"
+  },
+  {
+    "name": "hordeshooter-quality",
+    "script": "tests/hordeshooter-quality.mjs",
+    "note": "a program for everything drawn at every quality on both backends, through a spread warm-up as a player gets it: the eight floors at the boss wave and in a crowd, the fall of the boss to the next floor, power-ups, from the title by real input. A scene not reached fails. Control: a state the scene draws out of the table must be reported and skip draws"
   }
 ]
