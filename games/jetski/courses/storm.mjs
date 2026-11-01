@@ -24,7 +24,7 @@ return {
   cliffs: { seed: 811, spurs: [[46, 9], [18, 3.5]], talus: 2.8, bench: 3.5, beds: [2, 9], dip: [0.05, 0.03], fold: 8, droplets: 120000, capacity: 1.5, cut: 3, keep: 2.5 },
   paint({ x, z, y, slope, flow, hard, wall }) {
     const n = fbm(x * 0.05, z * 0.05, 3, 511);
-    if (y < 2) return [0, 1, 255 * (1 - smooth(-1, 2, y + (n - 0.5) * 2))];
+    if (y < 2) return [0, 1, 255 * (1 - smooth(-1, 2, y + (n - 0.5) * 2)) * (1 - smooth(0.1, 0.45, wall))]; // (weed fades out on a wall's foot: its edge there comes out as teeth)
     // dark and grey rock in masses, white guano on the tops, wet where water runs. Not by height: paint is held every 2 m across the map, and a change with height on a wall comes out as a row of teeth
     if (y > 2 && (slope > 0.6 || wall > 0.2)) return strongest([[0, 0.7 - n * 0.5], [2, 0.35 + (hard - 0.5) + n * 0.4], [3, smooth(0.55, 0.85, n) * (1 - smooth(0.5, 1.2, slope)) * (1 - flow)], [4, flow * 0.7]]);
     return [0, 2, 255 * smooth(0.3, 0.7, n) * (1 - smooth(0.7, 1.2, slope))];
