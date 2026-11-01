@@ -1285,7 +1285,7 @@ static const course_def harbour_course = {
   .id = "harbour", .name = "Iron Quay", .quads = 896, .spacing = 2.0f, .minh = -48.0f, .maxh = 170.0f, .len = 3301.56f,
   .track_n = 256, .track = harbour_track, .buoy_n = 35, .buoys = harbour_buoys, .ramp_n = 10, .ramps = harbour_ramps, .ramp_top = 5.0f,
   .scatter_n = 0, .scatter = harbour_scatter, .model_n = 8, .models = harbour_models, .placed_n = 942, .placed = harbour_placed, .prop_n = 25, .props = harbour_props,
-  .layer = { "course/harbour/concrete", "course/harbour/quayfoot", "course/harbour/stone", "course/harbour/tarmac" }, .layer_uv = { 0.06f, 0.12f, 0.09f, 0.1f },
+  .layer_n = 4, .layer = { "course/harbour/concrete", "course/harbour/quayfoot", "course/harbour/stone", "course/harbour/tarmac" }, .layer_uv = { 0.06f, 0.12f, 0.09f, 0.1f },
   .heights = "course/harbour/heights.r16", .control = "course/harbour/control.u32", .mask = "course/harbour/wavemask.f32", .mask_n = 256, .map_n = 448, .sky = "res://textures/sky-harbour.png",
   .landmark = NULL, .landmark_at = { 0.00f, -100.40f, 0.00f },
   .start = { -537.73f, 278.35f, 0.6055f, 0.7959f },

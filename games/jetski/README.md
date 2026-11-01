@@ -39,6 +39,7 @@ A course is a definition in `courses/<id>.mjs`: track, ground, paint, wave mask,
 - The course comes from `tools/make-course.mjs`: heights, painted ground, the wave mask (the swell dies in the lagoon's
   shelter and on the shoals), palms, track and buoys. `tools/make-models.mjs` makes the craft, the rider, the buoys and the
   palms. `tools/make-effects.mjs` paints the sky. `tools/make-audio.mjs` makes every sound and the music.
+- Tall slopes go through `tools/cliff-forms.mjs` after a course's height function: spurs and gullies down the fall line, beds of harder rock standing out as ledges, a pass of water erosion, and a record of where water runs. A course's paint uses those to choose between several graded photo scans, so a wall has big masses, beds and wet streaks as well as near detail. `tests/jetski-cliff-structure.mjs` measures big shapes against fine grain from a distance.
 - The craft is four probes on the water (`src/sim.c`): the surface it rides is exactly the surface drawn, through
   `cw_water_sample_at`. A crest throws it up and the surface falling away leaves it in the air: no jump code.
 - The rider (`src/rider.c`) has no animation clips. Every bone is posed each frame from what the craft is doing.

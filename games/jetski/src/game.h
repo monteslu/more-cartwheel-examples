@@ -39,7 +39,7 @@ typedef struct course_def {
   int scatter_n; const course_scatter *scatter;
   int model_n; const char *const *models; int placed_n; const float (*placed)[8]; /* model, x, z, yaw, scale, solid half length, half width, floats */
   int prop_n; const char *const (*props)[3];
-  const char *layer[4]; float layer_uv[4];
+  int layer_n; const char *layer[8]; float layer_uv[8];
   const char *heights, *control, *mask; int mask_n, map_n;
   const char *sky, *landmark; float landmark_at[3];
   float start[4];

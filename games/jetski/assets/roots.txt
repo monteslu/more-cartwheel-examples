@@ -70,6 +70,10 @@ course/atoll/rock-albedo.rgba
 course/atoll/rock-normal.rgba
 course/atoll/grass-albedo.rgba
 course/atoll/grass-normal.rgba
+course/atoll/ash-albedo.rgba
+course/atoll/ash-normal.rgba
+course/atoll/wet-albedo.rgba
+course/atoll/wet-normal.rgba
 course/sound/heights.r16
 course/sound/control.u32
 course/sound/wavemask.f32

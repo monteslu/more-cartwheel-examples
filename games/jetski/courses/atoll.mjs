@@ -1,5 +1,5 @@
 // Crater Atoll: a volcanic atoll at the end of a warm day. A course definition: see tools/course-lib.mjs for what each part does.
-export default ({ clamp, lerp, smooth, hash, fbm, ridged, trackOf }) => {
+export default ({ clamp, lerp, smooth, hash, fbm, ridged, trackOf, strongest }) => {
 // The track: a closed loop, metres, x east, z south. Lagoon, out through the east gap into the open swell, round the
 // islet's sea stacks, back in over the north pass.
 const P = [[-140, 150], [-20, 195], [110, 170], [205, 95], [290, 25], [395, 5], [510, 15], [625, -40], [690, -160], [670, -300], [570, -400], [430, -440], [290, -445], [165, -395], [85, -300], [40, -200], [-40, -120], [-150, -115], [-250, -55], [-290, 45], [-245, 125]];
@@ -31,8 +31,6 @@ function height(x, z) {
     const k = smooth(1.5, 12, y);
     y += k * ((ridged(x * 0.03, z * 0.03, 5, 61) - 0.55) * 13 * (0.35 + 0.65 * smooth(8, 50, y)) + (fbm(x * 0.14, z * 0.14, 3, 62) - 0.5) * 3.2);
   }
-  // rock strata: ledges across the slope, so a wall reads as layers, not as streaks down it
-  if (y > 6) { const bands = fbm(x * 0.01 + 2, z * 0.01, 2, 63) * 22; y += smooth(6, 30, y) * 1.7 * Math.sin((y + bands) * 0.42); }
   // sea stacks
   for (const [sx, sz, h, sw] of STACKS) {
     const d = Math.hypot(x - sx, z - sz) * (0.8 + 0.7 * fbm(x * 0.07 + sx, z * 0.07, 3, 41));
@@ -54,7 +52,8 @@ return {
   track: P,
   height,
   // layers 0 pale sand, 1 wet coast sand, 2 basalt, 3 jungle
-  paint({ x, z, y, slope }) {
+  cliffs: { seed: 701, spurs: [[170, 26], [62, 10], [24, 3]], talus: 2.4, bench: 5, dip: [0.012, -0.022], fold: 34, droplets: 350000, capacity: 2, cut: 9, keep: 3.5 },
+  paint({ x, z, y, slope, flow, hard, wall }) {
     const n1 = fbm(x * 0.03, z * 0.03, 4, 51), n2 = fbm(x * 0.11, z * 0.11, 3, 52);
     const steep = smooth(0.95, 1.5, slope + (n2 - 0.5) * 0.7);
     const jungle = smooth(3.5 + n1 * 5, 8 + n1 * 8, y) * (1 - smooth(95 + n1 * 50, 135 + n1 * 50, y));
@@ -64,6 +63,11 @@ return {
     else { base = 0; over = 3; blend = 255 * jungle; }
     if (y > 2 || y < -10) { const rocky = Math.max(steep, y > 20 ? 0.1 : 0); if (rocky > 0.35) { base = jungle > 0.5 ? 3 : base; over = 2; blend = 255 * smooth(0.35, 0.8, rocky); } }
     if (y >= 0.4 && slope > 0.95) { base = 2; over = 3; blend = 255 * jungle * (1 - steep); }
+    // a tall face: dark basalt in big masses, paler flows of ash in beds of their own, wet black where water runs, green where a ledge can hold it
+    if ((y > 1.2 && slope > 0.8) || (y > -4 && wall > 0.25)) { // (down into the water: a sand sample at the foot of a steep rise paints teeth up the wall)
+      const mass = fbm(x * 0.0052 + 3, z * 0.0052, 3, 53), ash = smooth(0.42, 0.74, hard * 0.55 + mass * 0.75) * (0.35 + 0.65 * smooth(0.35, 0.6, fbm(x * 0.017, z * 0.017, 2, 54)));
+      return strongest([[2, 0.55 + (0.5 - mass) * 0.6], [4, ash], [5, flow * 0.75], [3, jungle * (1 - smooth(0.75, 1.45, slope)) * 1.7]]);
+    }
     return [base, over, blend];
   },
   // how free the swell is: open sea 1; it dies in the lagoon's shelter and as the floor shoals
@@ -86,7 +90,7 @@ return {
       return smooth(3, 8, y) * (1 - smooth(85, 120, y)) * (1 - smooth(0.9, 1.5, slope)) * smooth(0.3, 0.55, fbm(x * 0.04, z * 0.04, 3, 92));
     },
   },
-  lying: ['rocks'],
+  lying: ['rocks', 'shrubs'],
   // model, density map, density, scale range, visible range, seed, sink, tilt
   scatter: [
     ['palm', 'palms', 0.012, 0.75, 1.45, 900, 77, false, 0.25],
@@ -99,8 +103,10 @@ return {
   grades: [
     ['sand', 'sand', [1.28, 1.2, 1.02], 0.16],
     ['coast', 'coast', [0.72, 0.66, 0.56], 0.22],
-    ['rock', 'rock', [0.52, 0.47, 0.45], 0.075],
+    ['rock', 'rock_face_03', [0.42, 0.41, 0.44], 0.024, 0.35],
     ['grass', 'grass', [0.42, 0.74, 0.32], 0.09],
+    ['ash', 'cliff_side', [0.78, 0.7, 0.62], 0.018, 0.5],
+    ['wet', 'rock_face_03', [0.25, 0.25, 0.27], 0.03, 0.25],
   ],
   ramp_count: 12,
   ramp_top: 5,
@@ -112,7 +118,7 @@ return {
   tide: [0, 0.5],
   sky: 'res://textures/sky.png',
   // set on the scene's nodes when the course loads
-  side_detile: 1,
+  side_detile: 0.01,
   props: [
     ['Sky', 'ground_color', 'color(0.3, 0.27, 0.23, 1)'],
     ['Sky', 'time_of_day', '16.9'], ['Sky', 'sun_energy', '3.6'], ['Sky', 'sky_energy', '1.7'], ['Sky', 'north', '200'],

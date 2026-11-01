@@ -247,7 +247,7 @@ static void land_init(cw_node root) {
   if (!ctl || bytes != (size_t)(d->quads + 1) * (d->quads + 1) * 4) CW_FATAL("course control missing");
   cw_terrain_set_control(G.land, 0, 0, d->quads + 1, d->quads + 1, ctl);
   free(ctl);
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < d->layer_n; i++) {
     char p[64];
     size_t la, ln;
     snprintf(p, sizeof p, "%s-albedo.rgba", d->layer[i]);

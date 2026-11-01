@@ -355,7 +355,7 @@ static const course_def canyon_course = {
   .id = "canyon", .name = "Red Reach", .quads = 896, .spacing = 2.0f, .minh = -48.0f, .maxh = 170.0f, .len = 3578.19f,
   .track_n = 256, .track = canyon_track, .buoy_n = 42, .buoys = canyon_buoys, .ramp_n = 9, .ramps = canyon_ramps, .ramp_top = 5.0f,
   .scatter_n = 6, .scatter = canyon_scatter, .model_n = 0, .models = canyon_models, .placed_n = 0, .placed = canyon_placed, .prop_n = 25, .props = canyon_props,
-  .layer = { "course/canyon/riversand", "course/canyon/silt", "course/canyon/sandstone", "course/canyon/capstone" }, .layer_uv = { 0.15f, 0.2f, 0.05f, 0.07f },
+  .layer_n = 4, .layer = { "course/canyon/riversand", "course/canyon/silt", "course/canyon/sandstone", "course/canyon/capstone" }, .layer_uv = { 0.15f, 0.2f, 0.05f, 0.07f },
   .heights = "course/canyon/heights.r16", .control = "course/canyon/control.u32", .mask = "course/canyon/wavemask.f32", .mask_n = 256, .map_n = 448, .sky = "res://textures/sky-canyon.png",
   .landmark = NULL, .landmark_at = { 0.00f, -100.40f, 0.00f },
   .start = { -493.70f, -246.91f, 0.6971f, -0.7170f },

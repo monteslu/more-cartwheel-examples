@@ -347,7 +347,7 @@ static const course_def storm_course = {
   .id = "storm", .name = "Gale Bank", .quads = 896, .spacing = 2.0f, .minh = -48.0f, .maxh = 170.0f, .len = 3706.56f,
   .track_n = 256, .track = storm_track, .buoy_n = 35, .buoys = storm_buoys, .ramp_n = 8, .ramps = storm_ramps, .ramp_top = 6.5f,
   .scatter_n = 0, .scatter = storm_scatter, .model_n = 3, .models = storm_models, .placed_n = 6, .placed = storm_placed, .prop_n = 25, .props = storm_props,
-  .layer = { "course/storm/blackrock", "course/storm/weed", "course/storm/palerock", "course/storm/pale2" }, .layer_uv = { 0.09f, 0.15f, 0.07f, 0.1f },
+  .layer_n = 4, .layer = { "course/storm/blackrock", "course/storm/weed", "course/storm/palerock", "course/storm/pale2" }, .layer_uv = { 0.09f, 0.15f, 0.07f, 0.1f },
   .heights = "course/storm/heights.r16", .control = "course/storm/control.u32", .mask = "course/storm/wavemask.f32", .mask_n = 256, .map_n = 448, .sky = "res://textures/sky-storm.png",
   .landmark = NULL, .landmark_at = { 0.00f, -100.40f, 0.00f },
   .start = { -568.76f, -113.41f, 0.2926f, -0.9562f },

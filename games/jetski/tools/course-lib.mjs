@@ -11,7 +11,8 @@
 //   lying             names of the maps whose things lie on the ground (rocks): kept off any edge steeper than
 //   lying_drop        metres of drop within 4 m each way where they start to thin and where they stop (2.5, 4.5)
 //   scatter           [model, map, density, scale min, scale max, visible range, seed, sink, tilt] per kind of thing
-//   grades            [layer, scan, [r, g, b], uv scale]: four CC0 terrain scans graded to this place's palette
+//   grades            [layer, scan, [r, g, b], uv scale, saturation (1)]: up to eight CC0 terrain scans graded to this place's palette (art/scans, else skyfighter's)
+//   cliffs            what tools/cliff-forms.mjs does to the tall slopes; paint then also gets flow, hard, bed, t and wall
 //   ramp_count        how many ramps to look for (9): they go in the straightest gaps between buoys with room to land
 //   ramp_routes       how many shortcut ramps to look for (0: every one tried failed tests/jetski-ramp-reach.mjs): off the line inside a bend, aimed at the next buoy's right side; and a cluster of three if there is room
 //   ramp_top          how high a ramp's top edge stands over the sea's rest level (5)
@@ -29,18 +30,12 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { existsSync } from 'node:fs';
+import { clamp, lerp, smooth, hash, fbm, ridged } from './land-math.mjs';
+import { shapeCliffs, strongest } from './cliff-forms.mjs';
 const HERE = dirname(fileURLToPath(import.meta.url)), GAME = resolve(HERE, '..'), OUT = join(GAME, 'assets');
 export const QUADS = 896, SPACING = 2, SIZE = QUADS * SPACING, MINH = -48, MAXH = 170;
-export const clamp = (x, a = 0, b = 1) => (x < a ? a : x > b ? b : x);
-export const lerp = (a, b, t) => a + (b - a) * t;
-export const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a)); return t * t * (3 - 2 * t); };
-export function hash(x, y, s) { let h = (x * 374761393 + y * 668265263 + s * 1274126177) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
-function vnoise(x, y, s) {
-  const xi = Math.floor(x), yi = Math.floor(y), u = x - xi, v = y - yi, su = u * u * (3 - 2 * u), sv = v * v * (3 - 2 * v);
-  return lerp(lerp(hash(xi, yi, s), hash(xi + 1, yi, s), su), lerp(hash(xi, yi + 1, s), hash(xi + 1, yi + 1, s), su), sv);
-}
-export const fbm = (x, y, oct, s) => { let a = 0.5, f = 1, sum = 0, n = 0; for (let i = 0; i < oct; i++) { sum += a * vnoise(x * f, y * f, s + i); n += a; a *= 0.5; f *= 2.03; } return sum / n; };
-export const ridged = (x, y, oct, s) => { let a = 0.5, f = 1, sum = 0, n = 0; for (let i = 0; i < oct; i++) { sum += a * (1 - Math.abs(2 * vnoise(x * f, y * f, s + i) - 1)); n += a; a *= 0.5; f *= 2.1; } return sum / n; };
+export { clamp, lerp, smooth, hash, fbm, ridged };
 
 // the track from its control points: a closed Catmull-Rom curve, how far from it, a point along it
 export function trackOf(P) {
@@ -73,7 +68,7 @@ export function trackOf(P) {
   return { track, LEN, trackDist, pointAt };
 }
 
-const helpers = { clamp, lerp, smooth, hash, fbm, ridged, trackOf, SIZE };
+const helpers = { clamp, lerp, smooth, hash, fbm, ridged, trackOf, SIZE, strongest };
 export const load = async (id) => (await import(join(GAME, 'courses', id + '.mjs'))).default(helpers);
 const q = (s) => JSON.stringify(s);
 
@@ -84,6 +79,7 @@ export function makeCourse(def) {
   const { LEN, pointAt } = trackOf(def.track);
   const N = QUADS + 1, H = new Float32Array(N * N), toW = (i) => (i - QUADS / 2) * SPACING;
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) H[j * N + i] = def.height(toW(i), toW(j));
+  const cliff = def.cliffs ? shapeCliffs(H, N, SPACING, def.cliffs) : null;
   const r16 = new Uint16Array(N * N);
   for (let k = 0; k < N * N; k++) r16[k] = Math.round(clamp((H[k] - MINH) / (MAXH - MINH)) * 65535);
   writeFileSync(join(dir, 'heights.r16'), Buffer.from(r16.buffer));
@@ -95,9 +91,9 @@ export function makeCourse(def) {
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
     const y = hAt(i, j), x = toW(i), z = toW(j);
     const nx = (hAt(i + 1, j) - hAt(i - 1, j)) / (2 * SPACING), nz = (hAt(i, j + 1) - hAt(i, j - 1)) / (2 * SPACING), slope = Math.hypot(nx, nz);
-    const [base, over, blend] = def.paint({ x, z, y, slope });
+    const [base, over, blend] = def.paint({ x, z, y, slope, ...(cliff ? cliff.at(i, j, x, z, y) : null) });
     const h = hash(i >> 2, j >> 2, 61);
-    ctl[j * N + i] = word(base, over, Math.round(clamp(blend, 0, 255)), Math.floor(h * 16), Math.floor(hash(i >> 3, j >> 3, 62) * 3));
+    ctl[j * N + i] = word(base, over, Math.round(clamp(blend, 0, 255)), Math.floor(h * 16), 0); // (no uv scale per block: its hard edges drew a grid of rectangles on steep ground)
   }
   writeFileSync(join(dir, 'control.u32'), Buffer.from(ctl.buffer));
 
@@ -233,10 +229,12 @@ export function makeCourse(def) {
   const TK = []; for (let s = 0; s < LEN - 0.01; s += LEN / 256) { const p = pointAt(s); TK.push(p); }
 
   // this place's palette from the CC0 scans (albedo RGB height A; the normals are used as they are)
-  const SRC = resolve(GAME, '../skyfighter/assets/terrain');
-  for (const [name, src, g] of def.grades) {
-    const a = readFileSync(join(SRC, src + '-albedo.rgba')), n = readFileSync(join(SRC, src + '-normal.rgba'));
-    for (let k = 0; k < a.length; k += 4) for (let c = 0; c < 3; c++) a[k + c] = Math.min(255, a[k + c] * g[c]);
+  const SRC = resolve(GAME, '../skyfighter/assets/terrain'), SCANS = join(GAME, 'art/scans');
+  for (const grade of def.grades) {
+    const [name, src, g] = grade;
+    const from = existsSync(join(SCANS, src + '-albedo.rgba')) ? SCANS : SRC, a = readFileSync(join(from, src + '-albedo.rgba')), n = readFileSync(join(from, src + '-normal.rgba'));
+    const sat = grade[4] ?? 1;
+    for (let k = 0; k < a.length; k += 4) { const luma = a[k] * 0.3 + a[k + 1] * 0.59 + a[k + 2] * 0.11; for (let c = 0; c < 3; c++) a[k + c] = Math.min(255, (luma + (a[k + c] - luma) * sat) * g[c]); }
     writeFileSync(join(dir, name + '-albedo.rgba'), a);
     writeFileSync(join(dir, name + '-normal.rgba'), n);
   }
@@ -256,7 +254,7 @@ export function makeCourse(def) {
   c += `static const course_def ${id}_course = {\n  .id = ${q(id)}, .name = ${q(def.name)}, .quads = ${QUADS}, .spacing = ${f(SPACING)}, .minh = ${f(MINH)}, .maxh = ${f(MAXH)}, .len = ${LEN.toFixed(2)}f,\n`;
   c += `  .track_n = ${TK.length}, .track = ${id}_track, .buoy_n = ${buoys.length}, .buoys = ${id}_buoys, .ramp_n = ${rp.length}, .ramps = ${id}_ramps, .ramp_top = ${f(def.ramp_top ?? 5)},\n`;
   c += `  .scatter_n = ${def.scatter.length}, .scatter = ${id}_scatter, .model_n = ${placedModels.length}, .models = ${id}_models, .placed_n = ${placedList.length}, .placed = ${id}_placed, .prop_n = ${def.props.length}, .props = ${id}_props,\n`;
-  c += `  .layer = { ${def.grades.map((g) => q(`course/${id}/${g[0]}`)).join(', ')} }, .layer_uv = { ${def.grades.map((g) => f(g[3])).join(', ')} },\n`;
+  c += `  .layer_n = ${def.grades.length}, .layer = { ${def.grades.map((g) => q(`course/${id}/${g[0]}`)).join(', ')} }, .layer_uv = { ${def.grades.map((g) => f(g[3])).join(', ')} },\n`;
   c += `  .heights = ${q(`course/${id}/heights.r16`)}, .control = ${q(`course/${id}/control.u32`)}, .mask = ${q(`course/${id}/wavemask.f32`)}, .mask_n = ${MN}, .map_n = ${DN}, .sky = ${q(def.sky)},\n`;
   c += `  .landmark = ${def.landmark ? q(`res://models/${def.landmark.model}.glb`) : 'NULL'}, .landmark_at = { ${lh[0].toFixed(2)}f, ${(lh[1] - 0.4).toFixed(2)}f, ${lh[2].toFixed(2)}f },\n`;
   c += `  .start = { ${start.x.toFixed(2)}f, ${start.z.toFixed(2)}f, ${start.dx.toFixed(4)}f, ${start.dz.toFixed(4)}f },\n`;

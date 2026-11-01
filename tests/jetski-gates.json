@@ -249,5 +249,10 @@
       "course 4",
       "race"
     ]
+  },
+  {
+    "name": "jetski-cliff-structure",
+    "script": "tests/jetski-cliff-structure.mjs",
+    "note": "a rock wall from a distance has big shapes as well as fine grain: 24 to 96 px contrast against under 5 px, on rock pixels, from held cameras, GL and WebGPU on the cart. A tile of the picture repeated over the wall must read low; the cart before the rock faces (run with --expect-low) measures under the floor. Say nothing of beauty: look at the pictures"
   }
 ]
