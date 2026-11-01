@@ -1,0 +1,39 @@
+WebGPU buffer reuse review follow-up — 2026-11-01
+
+three.c f967d958ff4fdbf93fbf7789dfa77817ff8a5079, PR #1.
+Engine 37798d37c888c997147d1a896f523582921af9ed, PR #1.
+The engine pins the upstream change and removes its local three.c patch.
+Pirates bundles the identical six-file diff for its documented older baseline.
+Fresh application to pristine baseline files matches upstream byte for byte;
+prepare-engine.py accepts the tested local checkout as fully applied.
+
+Buffers are retained only after actual bindings, across external detachment
+and uniform-stream replacement. Submitted storage is reused. Obsolete sizes
+are retired, renderer-owned stream pools are released, and the output triangle
+is uploaded once.
+
+Native Dawn test_wgpu_external passes, including retained first-target pixels
+and a moved-image control, partial updates, uniform growth, independent
+internal/external submission, and two 60-frame/four-pass allocation checks.
+Both require zero creates over the 59-frame post-warmup window. Disabling reuse
+makes these checks fail. ASan/UBSan passes with modified backend/renderer/test
+instrumented and leak detection disabled; this is not a whole-library leak audit.
+
+Rebuilt optimized pirates and pirates_auto carts. romdev MCP GL and WebGPU
+both reach tick 1500, hash 726034506, cw.gpu.errors=0, render.skipped=0.
+Captured and inspected out/pirates-buffer-reuse-webgpu.png at 1920x1080.
+These are short checks of the new implementation, not another full-race run.
+
+Isolated romdev WasmcartHost comparison, RX7600 RADV Mesa 26.0.8, shared physical
+machine/GPU, deterministic warmup to tick 1500 then 590 measured frames:
+                          elapsed/frame ms   cart execution ms   GPU wait ms
+old broad retention #1         8.313              5.190             3.078
+new reuse #1                   7.558              4.435             3.088
+old broad retention #2         7.633              4.576             3.014
+new reuse #2                   7.778              4.603             3.136
+Every run has zero GPU errors/skipped draws and the expected warmup hash.
+Instrumentation times existing waits and runFrame calls without removing any
+synchronization. These short samples are mixed, not proof of a universal speedup.
+The reviewer's native Jetski/890M and weak-GPU libretro call-budget measurements
+have not been repeated here; four-pass tests establish reuse/correctness rather
+than a four-player hardware performance result. Engine CI remains separate.

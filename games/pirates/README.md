@@ -95,7 +95,11 @@ the engine commit above, then fetch dependencies from that checkout.
 Use a separate checkout if your existing engine has unrelated work.
 
 All three fixes and the external-encoder regression test are bundled in
-`engine-patches/`. The preparation script checks both revisions and all
+`engine-patches/`. The buffer patch matches three.c commit
+`f967d958ff4fdbf93fbf7789dfa77817ff8a5079`
+([upstream PR](https://github.com/monteslu/three.c/pull/1)); the
+[engine PR](https://github.com/monteslu/cartwheel-engine/pull/1) now pins that
+commit directly. This bundle supports the older source baseline above. The preparation script checks both revisions and all
 patches before applying missing changes; it never fetches or resets files.
 An already patched checkout is accepted. Recheck after fetching dependencies,
 because the engine dependency fetcher may restore its pinned three.c sources.
