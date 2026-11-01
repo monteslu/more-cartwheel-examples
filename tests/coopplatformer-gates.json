@@ -390,5 +390,10 @@
       "COOP_CAM_BUG": "1"
     },
     "note": "camera stability, the way a person plays: four pads through title, join and start, then stand, walk, stop, jump and stand while the drawn camera is measured every frame (g.camgate: frames at rest, at-rest frames that moved over 1 mm, frames in motion, frames in motion with a jump over 0.6 m or a jerk over 8 cm). At rest it must not move at all; in motion it must stay smooth. The control puts a 1 cm sway on the drawn camera (COOP_CAM_BUG, native): its g.camgate must differ."
+  },
+  {
+    "name": "coopplatformer-quality",
+    "script": "tests/coopplatformer-quality.mjs",
+    "note": "a program for everything drawn at every quality on both backends, through a spread warm-up as a player gets it: along the whole world, two and four players, the map, bubbles, the boss, from the title by real input. A scene not reached fails. Control: a state the scene draws out of the table must be reported and skip draws"
   }
 ]

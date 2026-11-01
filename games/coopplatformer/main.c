@@ -90,7 +90,7 @@ static bool g_attract; /* the title and join screens: four bots play the meadow 
 static int g_map_sel = -1; /* the flag the map's cursor is on */
 static cw_font g_font;
 static void title_background(cw_shell_screen scr, cw_vec2 cv, void *user);
-static int g_state_dbg, g_players_dbg, g_bubbles_dbg, g_hp_dbg;
+static int g_state_dbg, g_players_dbg, g_bubbles_dbg, g_hp_dbg, g_map_seen_dbg;
 static float g_pos_dbg[2], g_cam_dbg[3], g_ppos_dbg[MAX_PLAYERS * 2];
 /* the camera as drawn, measured every frame (the camera stability gate): g.view is x, y, z (and 0: nothing shakes it);
  * g.camgate counts frames at rest (every player still for 2.5 s), at-rest frames where the view moved more than
@@ -1412,6 +1412,14 @@ static void soak(int ticks, int players) {
 }
 #endif
 
+#ifdef COOP_AUTOPILOT
+/* debug channel: "warp <column>" puts every player there, what dev.warp does on a host that cannot write a field (Chromium) */
+static void cmd_warp(int argc, const char **argv, cw_reply *r) {
+  if (argc < 2) { cw_reply_error(r, "usage: warp <column>"); return; }
+  g_dev_warp = atoi(argv[1]);
+  cw_reply_printf(r, "{\"warp\":%d}", g_dev_warp);
+}
+#endif
 static void init(void *user) {
   (void)user;
   if (!cw_input_load_bindings_asset("input.cfg")) cw_warn("coopplatformer: input.cfg had errors");
@@ -1424,6 +1432,9 @@ static void init(void *user) {
   g_font = cw_ui_font_sans();
   audio_init();
   cw_debug_field("join.seats", join_seats, CW_DBG_I32, 4);
+#ifdef COOP_AUTOPILOT
+  cw_debug_command("warp", "warp <column>: every player there, with every ability", cmd_warp);
+#endif
   cw_debug_i32("g.state", &g_state_dbg);
   cw_debug_field("g.scenery", g_scenery_dbg, CW_DBG_I32, 2);
   cw_debug_i32("g.players", &g_players_dbg);
@@ -1451,6 +1462,7 @@ static void init(void *user) {
   cw_debug_field("rumble.sent", g_rumble_sent_dbg, CW_DBG_I32, MAX_PLAYERS);
   cw_debug_i32("g.hp", &g_hp_dbg);
   cw_debug_i32("g.bubbles", &g_bubbles_dbg);
+  cw_debug_i32("g.map_seen", &g_map_seen_dbg);
   cw_debug_i32("dev.warp", &g_dev_warp);
   cw_debug_field("g.flames", g_flames_dbg, CW_DBG_I32, 2);
   cw_debug_f32("g.viewbot", &g_viewbot_dbg);
@@ -2032,7 +2044,7 @@ static void render(void *user, double alpha) {
         for (int i = 0; i < G.nplayers; i++) portrait((cw_vec2){ W * 0.5f + ((float)i - (float)(G.nplayers - 1) * 0.5f) * 64 * s, H * 0.56f }, 18 * s, i, false);
       }
     }
-    if (g_map_open) draw_map(W, H);
+    if (g_map_open) { draw_map(W, H); g_map_seen_dbg = 1; }
   }
   cw_r2d_end();
   cw_shell_draw();
