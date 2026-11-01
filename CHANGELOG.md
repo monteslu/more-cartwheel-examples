@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.12.7
+
+- partypack: at Low graphics, Blast Ring keeps its arena and players for the whole round.
+  0.12.6 fixed only the first part of a round.
+- jetski: pines and palms use simpler far versions past 140 m, about 400,000 fewer
+  triangles a frame where a course's trees are in view.
+
 ## 0.12.6
 
 - jetski: each course now has 12 ramps, with a cluster of three side by side where the
