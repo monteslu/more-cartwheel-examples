@@ -132,3 +132,5 @@ course/canyon/deepred-albedo.rgba
 course/canyon/deepred-normal.rgba
 course/canyon/varnish-albedo.rgba
 course/canyon/varnish-normal.rgba
+course/storm/stormwet-albedo.rgba
+course/storm/stormwet-normal.rgba
