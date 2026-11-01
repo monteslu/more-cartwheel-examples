@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.13.0
+
+- jetski: three new courses, five in all: Red Reach, a river in a red canyon whose current
+  carries you; Iron Quay, a port at night with a tanker under way; Gale Bank, an open-sea
+  squall whose swell builds through the race.
+- jetski: cliffs show less of the rock texture's repeat (engine v0.29.0).
+- jetski: buoys you can find: tall masts with arrow boards, an on-screen pointer to the next
+  buoy, and a WRONG WAY warning.
+- jetski: six different riders, and a craft slides along a ship's hull instead of pinning.
+- All games: engine v0.29.0. Every game has a gate that every graphics preset draws
+  everything.
+
 ## 0.12.8
 
 - Street Toughs: the wanker has a real beer gut: round, full from the ribs down to a fold
