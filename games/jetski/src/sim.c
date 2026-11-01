@@ -411,9 +411,9 @@ static void craft_tick(craft *c, int idx, float dt) {
   c->top = BASE_TOP + METER_TOP * (float)c->meter + c->boost * 3.5f;
   float top = c->top;
   static const float DIFF_TOP[3] = { 0.93f, 1.0f, 1.05f };
-  /* the pack stays a race: the rival behind the human closes up, the one ahead eases, and a human at the back gets a hand. Numbers from the racer */
+  /* the pack stays a race: the rival behind the human closes up, the one ahead eases, and a human at the back gets a hand. Nobody waits for a rider who has stopped racing: past 300 m ahead they go at their own pace */
   { float gap = G.c[0].dist - c->dist; /* + : this rival is behind the human */
-    if (!c->human) top *= DIFF_TOP[g_difficulty] * c->skill * (1.0f + (g_pack >= 1 ? (gap > 0 ? 0.10f * clampf(gap / 80.0f, 0, 1) : -0.15f * clampf(-gap / 60.0f, 0, 1)) : 0.03f * clampf(gap / 120.0f, -1, 1)));
+    if (!c->human) top *= DIFF_TOP[g_difficulty] * c->skill * (1.0f + (g_pack >= 1 ? (gap > 0 ? 0.10f * clampf(gap / 80.0f, 0, 1) : -0.15f * clampf(-gap / 60.0f, 0, 1) * (1.0f - clampf((-gap - 150.0f) / 150.0f, 0, 1))) : 0.03f * clampf(gap / 120.0f, -1, 1)));
     else if (g_pack >= 1 && G.state == RACE_ON) { float lead = -1e9f; for (int i = 1; i < RACERS; i++) if (racer_on(i) && G.c[i].dist > lead) lead = G.c[i].dist; float back = lead - c->dist; top *= 1.0f + (c->place >= RACERS - 1 ? 0.08f : 0.06f) * clampf(back / 40.0f, 0, 1); }
   }
   /* a turbo: a shove along the hull, then a raised ceiling for it to run off under */

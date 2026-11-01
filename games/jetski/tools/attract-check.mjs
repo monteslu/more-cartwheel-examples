@@ -1,5 +1,5 @@
 // The attract loop through romdev: a picture from each of its shots, in motion, and what the game counted about its camera
-// over a whole cycle: ticks under the water, in land, with land between it and the craft (rubric J-PT4: all zero).
+// over a whole cycle: ticks under the water, in land, with land between it and the craft (all should be zero).
 //   node games/jetski/tools/attract-check.mjs <cart> <out dir> [--gl]
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
