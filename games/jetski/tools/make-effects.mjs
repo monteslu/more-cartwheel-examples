@@ -143,7 +143,7 @@ paintSky('textures/sky-canyon.png', {
 paintSky('textures/sky-sound.png', {
   ZEN: [0.26, 0.31, 0.38], MID: [0.34, 0.4, 0.47], HIGHW: [0.62, 0.64, 0.64], LOWW: [0.82, 0.8, 0.72], AWAY: [0.36, 0.41, 0.47], AWAYLOW: [0.46, 0.51, 0.56],
   HAZE0: [0.56, 0.6, 0.64], HAZE1: [0.8, 0.78, 0.72], CIR0: [0.62, 0.66, 0.7], CIR1: [0.82, 0.8, 0.74],
-  SHADE0: [0.2, 0.23, 0.28], SHADE1: [0.28, 0.3, 0.33], LIGHT0: [0.58, 0.61, 0.65], LIGHT1: [0.86, 0.84, 0.78], RIM: [0.95, 0.92, 0.84], cover: 5,
+  SHADE0: [0.2, 0.23, 0.28], SHADE1: [0.28, 0.3, 0.33], LIGHT0: [0.58, 0.61, 0.65], LIGHT1: [0.86, 0.84, 0.78], RIM: [0.95, 0.92, 0.84], cover: 5, scud: true,
 });
 // a ramp's deck: 18 m wide (u), 40 m long (v, 0 at the low end): worn steel plates, seams and rivets, rust from the seams, tyre-black scuffs
 // up the middle, chevrons and hazard paint at the lip worn through where hulls run

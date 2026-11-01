@@ -33,6 +33,9 @@ await call('loadMedia', { platform: 'wasmcart', path: CART, gpuPower: 'low-power
 const cmd = async (text) => (await call('wasm', { op: 'command', text })).content[0].text;
 await call('frame', { op: 'step', frames: 30 });
 await cmd(`course ${LEVEL}`);
+// out of the menu and past the countdown, so the pictures are clear but for the small HUD
+await cmd('race');
+await call('frame', { op: 'step', frames: 260 });
 console.log(ID, 'grounding', (await cmd('grounding')).replace(/\s+/g, ' ').slice(0, 300));
 // [label, x, z, how far off, how high over the ground or water]
 const spots = [];

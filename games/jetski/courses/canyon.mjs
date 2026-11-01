@@ -41,7 +41,7 @@ return {
   maps: {
     cactus({ x, z, y, slope }) { return smooth(2.5, 4, y) * (1 - smooth(9, 12, y)) * (1 - smooth(0.3, 0.5, slope)) * smooth(0.4, 0.55, fbm(x * 0.03, z * 0.03, 3, 321)); },
     hoodoos({ x, z, y, slope }) { return smooth(3, 5, y) * (1 - smooth(10, 14, y)) * (1 - smooth(0.32, 0.5, slope)) * smooth(0.5, 0.62, fbm(x * 0.022 + 4, z * 0.022, 3, 322)); },
-    drift({ x, z, y }) { return smooth(0.4, 1, y) * (1 - smooth(2, 3, y)) * smooth(0.4, 0.6, fbm(x * 0.05 + 3, z * 0.05, 3, 323)); },
+    drift({ x, z, y, slope }) { return (1 - smooth(0.16, 0.3, slope)) * smooth(0.4, 1, y) * (1 - smooth(2, 3, y)) * smooth(0.4, 0.6, fbm(x * 0.05 + 3, z * 0.05, 3, 323)); },
     boulders({ x, z, y, slope }) { return smooth(1.6, 3, y) * (1 - smooth(9, 13, y)) * (1 - smooth(0.4, 0.6, slope)) * smooth(0.36, 0.56, fbm(x * 0.04 + 7, z * 0.04, 3, 324)); },
   },
   lying: ['drift', 'boulders'],
@@ -49,9 +49,9 @@ return {
     ['cactus', 'cactus', 0.03, 0.7, 1.4, 650, 277, false, 0.08],
     ['hoodoo', 'hoodoos', 0.018, 0.7, 1.7, 800, 278, false, 0.15],
     ['driftwood', 'drift', 0.03, 0.7, 1.6, 450, 279, true, 0.12],
-    ['rock0', 'boulders', 0.05, 0.6, 2.2, 700, 280, true, 0.4],
-    ['rock1', 'boulders', 0.04, 0.5, 1.8, 700, 281, true, 0.35],
-    ['rock2', 'boulders', 0.03, 0.7, 3.0, 700, 282, true, 0.4],
+    ['boulder0', 'boulders', 0.05, 0.6, 2.6, 700, 280, true, 0.25],
+    ['boulder1', 'boulders', 0.04, 0.5, 2.0, 700, 281, true, 0.25],
+    ['boulder2', 'boulders', 0.03, 0.7, 3.4, 700, 282, true, 0.25],
   ],
   grades: [
     ['riversand', 'sand', [1.3, 1.05, 0.78], 0.15],

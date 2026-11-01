@@ -752,6 +752,29 @@ for (let v = 0; v < 3; v++) {
   g.sceneNodes.push(g.node({ name: 'Rock', mesh: g.mesh('rock', P.prims(mi)) }));
   g.write(join(OUT, 'rock' + v + '.glb'));
 }
+// Red Reach's fallen sandstone: a ball cut by a few planes, so it breaks in flat faces and square edges as this rock does
+for (let v = 0; v < 3; v++) {
+  const P = new Plain(), seed = 71 + v;
+  const hash = (k) => { let h = Math.imul(k * 374761393 + seed * 668265263, 1274126177); h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+  const planes = [];
+  for (let k = 0; k < 9; k++) { const y = hash(k * 3) * 2 - 1, a = hash(k * 3 + 1) * 6.2832, r = Math.sqrt(1 - y * y); planes.push([Math.cos(a) * r, y, Math.sin(a) * r, 0.62 + 0.3 * hash(k * 3 + 2)]); }
+  const rx = 1.1 + v * 0.2, ry = 0.75 + 0.15 * (v % 2), rz = 0.85, rows = [];
+  for (let j = 0; j <= 16; j++) {
+    const th = j / 16 * Math.PI, row = [];
+    for (let i = 0; i <= 24; i++) {
+      const a = (i % 24) / 24 * Math.PI * 2, d = [Math.cos(a) * Math.sin(th), Math.cos(th), Math.sin(a) * Math.sin(th)];
+      let t = 1;
+      for (const n of planes) { const c = d[0] * n[0] + d[1] * n[1] + d[2] * n[2]; if (c > 0.01) t = Math.min(t, n[3] / c); }
+      row.push([d[0] * t * rx, d[1] * t * ry + ry * 0.12, d[2] * t * rz]);
+    }
+    rows.push(row);
+  }
+  P.grid('rock', rows, { wrap: true, flip: true });
+  const g = new Glb(), mi = { rock: g.material('rock', 0.95) };
+  g.materials[mi.rock].pbrMetallicRoughness.baseColorFactor = [0.34 + 0.05 * v, 0.14 + 0.02 * v, 0.075, 1];
+  g.sceneNodes.push(g.node({ name: 'Boulder', mesh: g.mesh('rock', P.prims(mi)) }));
+  g.write(join(OUT, 'boulder' + v + '.glb'));
+}
 {
   const P = new Plain();
   lump('leaf', 31, 1.4, 1.0, 1.3, 0.9, P);

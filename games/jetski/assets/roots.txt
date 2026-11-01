@@ -93,6 +93,9 @@ course/canyon/sandstone-albedo.rgba
 course/canyon/sandstone-normal.rgba
 course/canyon/capstone-albedo.rgba
 course/canyon/capstone-normal.rgba
+models/boulder0.glb
+models/boulder1.glb
+models/boulder2.glb
 course/harbour/heights.r16
 course/harbour/control.u32
 course/harbour/wavemask.f32

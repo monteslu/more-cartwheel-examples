@@ -320,9 +320,9 @@ static const course_scatter canyon_scatter[] = {
 { "res://models/cactus.glb", NULL, "course/canyon/cactus.u8", 0.03f, 0.7f, 1.4f, 650.0f, 277, false, 0.08f },
 { "res://models/hoodoo.glb", NULL, "course/canyon/hoodoos.u8", 0.018f, 0.7f, 1.7f, 800.0f, 278, false, 0.15f },
 { "res://models/driftwood.glb", NULL, "course/canyon/drift.u8", 0.03f, 0.7f, 1.6f, 450.0f, 279, true, 0.12f },
-{ "res://models/rock0.glb", NULL, "course/canyon/boulders.u8", 0.05f, 0.6f, 2.2f, 700.0f, 280, true, 0.4f },
-{ "res://models/rock1.glb", NULL, "course/canyon/boulders.u8", 0.04f, 0.5f, 1.8f, 700.0f, 281, true, 0.35f },
-{ "res://models/rock2.glb", NULL, "course/canyon/boulders.u8", 0.03f, 0.7f, 3.0f, 700.0f, 282, true, 0.4f }
+{ "res://models/boulder0.glb", NULL, "course/canyon/boulders.u8", 0.05f, 0.6f, 2.6f, 700.0f, 280, true, 0.25f },
+{ "res://models/boulder1.glb", NULL, "course/canyon/boulders.u8", 0.04f, 0.5f, 2.0f, 700.0f, 281, true, 0.25f },
+{ "res://models/boulder2.glb", NULL, "course/canyon/boulders.u8", 0.03f, 0.7f, 3.4f, 700.0f, 282, true, 0.25f }
 };
 static const char *const canyon_props[][3] = {
 { "Sky", "ground_color", "color(0.5, 0.26, 0.15, 1)" },

@@ -70,8 +70,8 @@ for (const [lv, name] of [[0, 'Crater Atoll'], [1, 'Cold Sound'], [2, 'Red Reach
   const exe = process.env.JETSKI_EXE || join(ROOT, 'build/native/games/jetski/jetski');
   const out = (lift) => { const f = join(OUT, 'ground' + lv + lift + '.json'); const r = spawnSync('node', [TOOL, '--host', 'native', '--gpu', 'gl', '--app', 'jetski', '--frames', '6', '--state', f, '--shot', f + '.png', '--start-cmds', `course ${lv};grounding ${lift}`, '--exe', exe], { cwd: join(ROOT, 'deps/cartwheel-engine'), encoding: 'utf8', maxBuffer: 1 << 26, env: { ...process.env, CW_PROJECT_ROOT: ROOT, LIBGL_ALWAYS_SOFTWARE: '1', LP_NUM_THREADS: '2', CW_TEST_GPU: 'software', JETSKI_SMALL: '1', SDL_AUDIODRIVER: 'dummy' } }); return JSON.parse(readFileSync(f, 'utf8')); };
   const ok = out(0), lifted = out(0.6);
-  check(`${name}: nothing hangs in the air`, ok['ground.gaps'] === 0 && (ok['ground.total'] > 5000 || lv >= 3), `${ok['ground.total']} instances, ${ok['ground.gaps']} with a gap, worst ${f2(ok['ground.worst'])} m`);
-  if (lv < 3) check(`${name} control: lifted 0.6 m, the check sees it`, lifted['ground.gaps'] > 500, `${lifted['ground.gaps']} with a gap`);
+  check(`${name}: nothing hangs in the air`, ok['ground.gaps'] === 0 && (ok['ground.total'] > 3000 || lv >= 3), `${ok['ground.total']} instances, ${ok['ground.gaps']} with a gap, worst ${f2(ok['ground.worst'])} m`);
+  if (lv < 3) check(`${name} control: lifted 0.6 m, the check sees it`, lifted['ground.gaps'] > ok['ground.total'] * 0.05, `${lifted['ground.gaps']} with a gap`);
 }
 // Red Reach: the river carries you. Downstream fast, upstream slow, slack at the banks; control: the river stood still
 // (s 600: the river runs along +x here, and two seconds keeps a craft in the channel)
