@@ -456,5 +456,10 @@
       "note": "dual cart on romdev and Chromium against native WebGPU, and on romdev GL against native GL"
     },
     "note": "No shake: player 1 lands 4 hits and a throw on player 2 (the fighter-p1-moves script) while the camera as drawn is held against the framing on every frame within half a second of an impact (cam.offset: 137 frames, none off by over 0.1 mm or 0.1 milliradian; the build before: all 137 off, up to 13 cm and radians summed). The hits are felt in the pads instead: rumble.sent counts the requests to player 1 (dealt) and player 2 (taken), cw.rumble is the engine's last (pad 1). The sim hash is the one fighter-p1-moves pins: the shake was never in the rules. Control: the script without the fireball."
+  },
+  {
+    "name": "fighter-quality",
+    "script": "tests/fighter-quality.mjs",
+    "note": "a program for everything drawn at every quality on both backends, through a spread warm-up as a player gets it: every stage, all four fighters, the select and result screens, training, from the title by real input. A scene not reached fails. Control: a state the scene draws out of the table must be reported and skip draws"
   }
 ]

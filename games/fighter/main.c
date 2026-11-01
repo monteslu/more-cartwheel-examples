@@ -940,6 +940,8 @@ static void init(void *u) {
   for (int i = 0; i < STAGES; i++) G.music[i] = cw_sound_load(MUSIC[i], &(cw_sound_desc){ .mode = CW_SOUND_STREAM });
   G.difficulty = 1;
   G.sel[0] = 0; G.sel[1] = 1;
+  cw_debug_i32("game.panel", &G.state); /* live on the select and result screens too (0 select, 1 match, 2 result), where game.state is not updated */
+  cw_debug_i32("game.stage", &G.sel_stage);
   cw_debug_i32("game.state", &G.d_state); cw_debug_i32("game.phase", &G.d_phase); cw_debug_i32("game.round", &G.d_round);
   cw_debug_field("sim.hp", G.d_hp, CW_DBG_I32, 2); cw_debug_field("sim.meter", G.d_meter, CW_DBG_I32, 2); cw_debug_field("sim.wins", G.d_wins, CW_DBG_I32, 2);
   cw_debug_field("sim.pos", G.d_pos, CW_DBG_I32, 4); cw_debug_field("sim.fstate", G.d_fstate, CW_DBG_I32, 2); cw_debug_field("sim.def", G.d_def, CW_DBG_I32, 2);
