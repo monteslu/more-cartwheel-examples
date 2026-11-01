@@ -24,12 +24,16 @@ async function nextRaces(cut) {
     await call('frame', { op: 'step', frames: 30 });
     const before = +(await rd('cam.drawn_under')), lv0 = +(await rd('race.level'));
     // accept on the results page, by the pad
-    for (let t = 0; t < 12 && +(await rd('race.level')) === lv0; t++) { await call('input', { op: 'press', button: 'south', frames: 3 }); await call('frame', { op: 'step', frames: 12 }); }
+    for (let t = 0; t < 12 && +(await rd('race.level')) === lv0; t++) { await call('input', { op: 'press', button: 'south', frames: 3 }); for (let q = 0; q < 12 && +(await rd('race.level')) === lv0; q++) await call('frame', { op: 'step', frames: 1 }); }
+    // how far the camera is from the craft the moment the next course's race is up
+    let g = -1;
+    for (let t = 0; t < 40 && g < 0; t++) { if (+(await rd('race.state')) === 1) g = await gap(); else await call('frame', { op: 'step', frames: 1 }); }
     await call('frame', { op: 'step', frames: 6 });
-    seen.push({ level: +(await rd('race.level')), state: +(await rd('race.state')), under: +(await rd('cam.drawn_under')) - before });
+    seen.push({ level: +(await rd('race.level')), state: +(await rd('race.state')), under: +(await rd('cam.drawn_under')) - before, gap: +g.toFixed(1) });
   }
   return seen;
 }
+const gap = async () => { const p = await rd('p0.pos'), q = await rd('cam.pos'); return Math.hypot(p[0] - q[0], p[2] - q[2]); };
 const on = await nextRaces(1);
 check('from one race to the next, no frame under the sea', on.every((s) => s.under === 0) && new Set(on.map((s) => s.level)).size >= 3, JSON.stringify(on));
 const off = await nextRaces(0);
@@ -40,11 +44,8 @@ const a = +(await rd('cam.drawn_under')); await cmd('race'); await call('frame',
 const b = +(await rd('cam.drawn_under')); await cmd('sw cam_cut 0'); await cmd('course 0'); await cmd('race'); await call('frame', { op: 'step', frames: 90 }); await cmd('course 1');
 const c = +(await rd('cam.drawn_under')); await cmd('race'); await call('frame', { op: 'step', frames: 2 }); const d = +(await rd('cam.drawn_under'));
 check('the debug path too', b - a === 0, `${b - a} frames`);
-const gap = async () => { const p = await rd('p0.pos'), q = await rd('cam.pos'); return Math.hypot(p[0] - q[0], p[2] - q[2]); };
-const near = async (cut) => { await cmd(`sw cam_cut ${cut}`); await cmd('course 0'); await cmd('race'); await call('frame', { op: 'step', frames: 90 }); await cmd('course 1'); await cmd('race'); await call('frame', { op: 'step', frames: 1 }); const g = await gap(); return g; };
-const g1 = await near(1), g0 = await near(0);
-check('from another course the camera starts behind the craft', g1 < 15, `${g1.toFixed(1)} m away in the first frame`);
-check('control: cam_cut 0 flies in from where it was', g0 > 50, `${g0.toFixed(1)} m away`);
+check('in the flow the camera starts behind the craft', on.every((x) => x.gap >= 0 && x.gap < 15), on.map((x) => x.gap).join(' ') + ' m');
+check('control: cam_cut 0 flies in from where it was', off.some((x) => x.gap > 50), off.map((x) => x.gap).join(' ') + ' m');
 // the picture itself: no frame of that path is mostly water colour with no sky
 await cmd('sw cam_cut 1'); await cmd('course 0'); await cmd('race'); await call('frame', { op: 'step', frames: 90 }); await cmd('course 1'); await cmd('race');
 await call('frame', { op: 'stepAndShot', frames: 2, path: join(ROOT, 'out/cam-cut.png') });
