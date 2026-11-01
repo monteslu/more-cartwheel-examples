@@ -147,10 +147,10 @@ and the credits).
 
 A shared-screen naval game for one to four players: cooperative voyages,
 competitive treasure races, ship upgrades, a volcanic archipelago and a
-calmer palm lagoon. It currently requires the development engine fixes
-listed in [its README](games/pirates/README.md), and is not included in an
-existing release. That README also covers controls, source builds, credits
-and romdev verification.
+calmer palm lagoon. It builds with the pinned engine v0.29.1 SDK; no local
+engine patches are needed. It is not yet included in release downloads.
+[Its README](games/pirates/README.md) covers controls, builds, credits and
+romdev verification.
 
 ## Play
 

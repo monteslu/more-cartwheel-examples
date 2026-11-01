@@ -51,9 +51,8 @@ jobs:
           TARGETS=cart-wgpu scripts/build.sh $GAMES $(for g in $AUTO_GAMES; do echo ${g}_auto; done)
       - name: Smoke test (each game's cart in wasmcart's Node host on lavapipe, WebGPU)
         run: VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json node tests/cart-smoke.mjs --frames 60 $GAMES
-      # Pirates is still in development and needs the documented engine fixes
-      # for its verified presentation. Check SDK build/startup compatibility
-      # here without adding this cart to the release-carts artifact below.
+      # Check Pirates against the same released SDK, without adding this
+      # in-development cart to the release-carts artifact below.
       - name: Build Pirates development carts
         run: TARGETS=cart-wgpu scripts/build.sh pirates pirates_auto
       - name: Smoke test Pirates SDK compatibility

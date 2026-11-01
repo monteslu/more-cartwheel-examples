@@ -60,79 +60,31 @@ rockfall zones are marked every 30 seconds. Leave the circles during the
 areas are outside the impact zones. **Palm Lagoon** has sheltered coves and
 no volcanic hazard, making it the calmer map to learn.
 
-## Build from the current engine source
+## Build and play
 
-CMake discovers this directory automatically and creates `pirates` and
-`pirates_auto`. The latter runs four AI captains in Treasure Race.
+The repository pins cartwheel-engine **v0.29.1**, which includes the water,
+scene-pause and WebGPU buffer fixes. No local engine patches are needed.
+Committed assets and shader tables are sufficient to build.
 
-The current game was verified against the adjacent development checkout of
-cartwheel-engine, with three local fixes: water's paused render clock in
-`src/water/water.c` and scene interpolation in `src/scene/runner.c`,
-external-encoder vertex-buffer lifetime in
-`deps/three.c/src/gen_wgpu.c`, plus shallow-water refraction attenuation in
-`src/water/extensions/water.mjs`. The repository's older pinned SDK does not
-include those fixes. Do not treat an older SDK build as equivalent to the
-verified source build. Their evidence is in `art/RECOVERY-PAUSE-VERIFICATION.txt`
-and `art/REFRACTION-VERIFICATION.txt`; shoreline sampling evidence is in
-`art/SHORE-REFRACTION-VERIFICATION.txt`.
-
-The pinned 0.29.0 Linux SDK compiles both targets and passes the short GL
-gameplay replay, but its engine source still lacks the water-pause and
-near-shore refraction fixes. See `art/SDK-COMPATIBILITY-VERIFICATION.txt`.
-Use the patched source build below for the currently verified presentation.
-CI separately builds and smoke-tests Pirates against the pinned SDK for
-compatibility. It remains excluded from release downloads; that short check
-does not replace the patched-build gameplay and visual verification.
-
-From the more-cartwheel-examples root, with the prepared engine checkout at
-`../cartwheel-engine` (CMake, Ninja and the engine toolchains installed):
-
-The exact source baseline is cartwheel-engine commit
-`6f16bbf19b5a3b439c40d19e60104110e8f0a49c`, with its pinned three.c commit
-`5c882fc1accdc2243608fd4d373911622d4a9164`. Prepare dependencies with the
-engine's `scripts/fetch-deps.sh` before applying the fixes below. For a new
-checkout, clone `https://github.com/monteslu/cartwheel-engine.git`, check out
-the engine commit above, then fetch dependencies from that checkout.
-Use a separate checkout if your existing engine has unrelated work.
-
-The fixes and the external-encoder regression test are bundled in
-`engine-patches/`. The buffer patch matches three.c commit
-`c112c20b17c01aafac2ac3ba18b3bdc10d3fbc8c`
-([upstream PR](https://github.com/monteslu/three.c/pull/1)); the
-[engine PR](https://github.com/monteslu/cartwheel-engine/pull/1) now pins that
-commit directly. This bundle supports the older source baseline above. The preparation script checks both revisions and all
-patches before applying missing changes; it never fetches or resets files.
-An already patched checkout is accepted. Recheck after fetching dependencies,
-because the engine dependency fetcher may restore its pinned three.c sources.
+From the repository root:
 
 ```sh
-python3 games/pirates/tools/prepare-engine.py ../cartwheel-engine --apply
-# Read-only check; nonzero means missing fixes, conflicting edits or wrong pins:
-python3 games/pirates/tools/prepare-engine.py ../cartwheel-engine
+scripts/fetch-deps.sh
+TARGETS="native cart-wgpu" scripts/build.sh pirates pirates_auto
+./build/native/games/pirates/pirates
 ```
 
-```sh
-cmake -S ../cartwheel-engine -B build/pirates-current -G Ninja \
-  -DCMAKE_BUILD_TYPE=Release -DCW_ENGINE_ONLY=ON -DCW_WGPU=ON \
-  -DCW_PROJECT_DIR="$PWD"
-ninja -C build/pirates-current pirates pirates_auto cwpack
-cmake -S ../cartwheel-engine -B build/pirates-current-cart -G Ninja \
-  -DCMAKE_BUILD_TYPE=Release -DCW_ENGINE_ONLY=ON -DCW_WGPU=ON \
-  -DCW_PROJECT_DIR="$PWD" -DCW_CART_DEV=ON \
-  -DCMAKE_TOOLCHAIN_FILE="$PWD/../cartwheel-engine/cmake/cart.cmake" \
-  -DCW_CWPACK="$PWD/build/pirates-current/tools/cwpack/cwpack"
-ninja -C build/pirates-current-cart pirates pirates_auto
-```
+The playable cart is `build/cart-wgpu/carts/pirates.wasc`.
+`pirates_auto` runs four AI captains in Treasure Race for replay checks.
+Use `RELEASE=1 TARGETS=cart-wgpu scripts/build.sh pirates pirates_auto` for
+optimized carts. CI builds and smoke-tests both targets against the pinned
+SDK; Pirates is not yet included in release downloads.
 
-Native executables are under `build/pirates-current/project/games/pirates/`;
-carts are under `build/pirates-current-cart/carts/`. The development cart
-contains GL and WebGPU paths. To build with release optimization, use the
-same cart configure command with a separate `build/pirates-release-cart`
-directory, `-DCW_CART_DEV=OFF` and `-DCW_CART_LINK_JOBS=2`, then build its
-`pirates` and `pirates_auto` targets. This build passes short and full-match
-romdev replays on both WebGPU and OpenGL, plus the playable startup check.
-Exported platform packages still need verification.
-See `art/RELEASE-CART-VERIFICATION.txt`.
+For an engine source build, use a separate checkout of tag `v0.29.1`
+(commit `506dd0669d77b471a6f824feaf0ae1bde85aa7c9`) and follow the
+[source-build instructions](../../README.md#build). Its dependency lock pins
+three.c `v0.187.4`; do not apply the older development patches described in
+historical verification notes under `art/`.
 
 ## Assets
 
