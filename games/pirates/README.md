@@ -67,7 +67,8 @@ CMake discovers this directory automatically and creates `pirates` and
 
 The current game was verified against the adjacent development checkout of
 cartwheel-engine, with three local fixes: water's paused render clock in
-`src/water/water.c`, and external-encoder vertex-buffer lifetime in
+`src/water/water.c` and scene interpolation in `src/scene/runner.c`,
+external-encoder vertex-buffer lifetime in
 `deps/three.c/src/gen_wgpu.c`, plus shallow-water refraction attenuation in
 `src/water/extensions/water.mjs`. The repository's older pinned SDK does not
 include those fixes. Do not treat an older SDK build as equivalent to the
@@ -94,7 +95,7 @@ checkout, clone `https://github.com/monteslu/cartwheel-engine.git`, check out
 the engine commit above, then fetch dependencies from that checkout.
 Use a separate checkout if your existing engine has unrelated work.
 
-All three fixes and the external-encoder regression test are bundled in
+The fixes and the external-encoder regression test are bundled in
 `engine-patches/`. The buffer patch matches three.c commit
 `c112c20b17c01aafac2ac3ba18b3bdc10d3fbc8c`
 ([upstream PR](https://github.com/monteslu/three.c/pull/1)); the

@@ -19,6 +19,7 @@ def main():
     patches = Path(__file__).resolve().parents[1] / "engine-patches"
     requirements = (
         (args.engine, "6f16bbf19b5a3b439c40d19e60104110e8f0a49c", "water-pause.patch"),
+        (args.engine, "6f16bbf19b5a3b439c40d19e60104110e8f0a49c", "scene-pause.patch"),
         (args.engine, "6f16bbf19b5a3b439c40d19e60104110e8f0a49c", "water-shore-refraction.patch"),
         (args.engine / "deps/three.c", "5c882fc1accdc2243608fd4d373911622d4a9164", "external-encoder.patch"),
     )
