@@ -94,5 +94,7 @@ for p in sails.data.polygons:p.use_smooth=True
 ship.select_set(True)
 out=root/'assets/models/galleon.glb'
 bpy.ops.wm.save_as_mainfile(filepath=str(root/'art/galleon-prepared.blend'))
-bpy.ops.export_scene.gltf(filepath=str(out),export_format='GLB',use_selection=True,export_yup=True,export_apply=True)
+# Cloth subdivision was applied before adding Billow. Preserve shape keys
+# explicitly rather than asking the exporter to evaluate modifiers again.
+bpy.ops.export_scene.gltf(filepath=str(out),export_format='GLB',use_selection=True,export_yup=True,export_apply=False,export_morph=True)
 print('EXPORTED',out)

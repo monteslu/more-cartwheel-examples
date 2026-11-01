@@ -33,3 +33,14 @@ isolated. 69 draws, 452239 triangles, 13 programs at the sampled end frame.
 Raw results in sails-profile.json. Presentation waits dominate the worst
 spikes; these samples do not prove their cause or locked 60 FPS. Full-match
 timing evidence predates this art change and is not a retest of this version.
+
+Exporter review follow-up — 2026-11-01
+The preparation script now explicitly disables modifier application during
+glTF export and enables morph export. Cloth subdivision is already applied
+before the Billow shape key is created. In pinned Blender 4.2.9, exports of
+the prepared blend with export_apply=True and False both retain the Billow
+target and are byte-identical to the committed GLB (SHA256
+931a545e1b441a2e229c9569dbf3ed7f0d324c7712467a8106828ffe2c890017).
+Thus the reported morph loss did not reproduce on the documented version;
+the explicit flags avoid relying on unnecessary modifier evaluation. No
+shipped geometry, texture, shader, runtime behavior or asset bytes changed.
