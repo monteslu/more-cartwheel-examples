@@ -345,7 +345,7 @@ static const course_def atoll_course = {
   .scatter_n = 5, .scatter = atoll_scatter, .model_n = 0, .models = atoll_models, .placed_n = 0, .placed = atoll_placed, .prop_n = 25, .props = atoll_props,
   .layer_n = 6, .layer = { "course/atoll/sand", "course/atoll/coast", "course/atoll/rock", "course/atoll/grass", "course/atoll/ash", "course/atoll/wet" }, .layer_uv = { 0.16f, 0.22f, 0.024f, 0.09f, 0.018f, 0.03f },
   .heights = "course/atoll/heights.r16", .control = "course/atoll/control.u32", .mask = "course/atoll/wavemask.f32", .mask_n = 256, .map_n = 448, .sky = "res://textures/sky.png",
-  .landmark = "res://models/lighthouse.glb", .landmark_at = { 200.00f, 31.95f, -256.00f },
+  .landmark = "res://models/lighthouse.glb", .landmark_at = { 200.00f, 32.44f, -256.00f },
   .start = { -167.30f, 143.87f, 0.9859f, 0.1672f },
   .waves = { { 200.0f, 46.0f, 0.0f, 1.5f, 0.7f }, { 216.0f, 37.0f, 0.0f, 1.05f, 0.7f }, { 150.0f, 14.0f, 0.14f, 0.22f, 0.65f }, { 252.0f, 7.0f, 0.05f, 0.05f, 0.5f } }, .swell = { 0.62f, 1.0f }, .tide = { 0.0f, 0.5f },
   .rain = 0.0f,

@@ -84,7 +84,7 @@ function erode(H, N, c) {
         const w0 = W[k] * 0.2; // (most of it washes away: all of it left cones at the wall's foot)
         H[k] += put * (1 - u) * (1 - v) * w0, H[k + 1] += put * u * (1 - v) * w0, H[k + N] += put * (1 - u) * v * w0, H[k + N + 1] += put * u * v * w0;
       } else {
-        const take = Math.min((cap - load) * 0.3, -dh);
+        const take = Math.min((cap - load) * 0.3, -dh, 0.5); // (no more than this a step: a drop in a pit it is digging deepens it faster each step)
         for (const [a2, b2, w2] of brush) { const q = (iy + b2) * N + ix + a2; if (q < 0 || q >= N * N) continue; const got = take * w2 * W[q]; H[q] -= got; load += got; }
       }
       speed = Math.sqrt(Math.max(0, speed * speed - dh * 1.2));
@@ -99,10 +99,11 @@ function erode(H, N, c) {
  * @param {Float32Array} H heights, N x N samples, spacing metres apart, world (0, 0) at the middle
  * @param {{seed:number, spurs:number[][], bench:number, dip:number[], fold:number, droplets:number, capacity:number, keep:number, beds?:number[]}} c
  *   spurs [wavelength along the wall, height] per scale; bench how far a hard bed stands out, metres; dip metres per metre across x and z; fold metres of bending;
- *   droplets how many; capacity how much a drop carries; keep metres over the sea left alone; talus how steep rock can stand; cut how deep water may cut, metres; beds [thinnest, thickest] metres
+ *   droplets how many; capacity how much a drop carries; keep metres over the sea left alone; talus how steep rock can stand; cut how deep water may cut, metres; beds [thinnest, thickest] metres; spare(x, z) 0..1 how much of a place stays as the course made it
  */
 export function shapeCliffs(H, N, spacing, c) {
   const toW = (i) => (i - (N - 1) / 2) * spacing, at = (i, j) => H[clamp(j, 0, N - 1) * N + clamp(i, 0, N - 1)];
+  const original = c.spare ? H.slice() : null; // (what a course needs left as it is keeps its shape)
   const L = blur(H, N, 7), dip = dipOf(c), beds = bedsOf(c.seed, ...(c.beds || []));
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
     const k = j * N + i, y = H[k];
@@ -129,10 +130,11 @@ export function shapeCliffs(H, N, spacing, c) {
   relax(H, N, spacing, c, 24);
   const before = H.slice();
   erode(H, N, c);
-  for (let k = 0; k < N * N; k++) if (H[k] < before[k] - c.cut) H[k] = before[k] - c.cut + (H[k] - before[k] + c.cut) * 0.15; // (water cuts into a wall, it does not saw it to pieces)
+  for (let k = 0; k < N * N; k++) if (H[k] < before[k] - c.cut) H[k] = before[k] - c.cut; // (water cuts into a wall, it does not saw it to pieces)
   relax(H, N, spacing, { ...c, talus: c.talus * 0.72 }, 14); // (a cut's walls lie back: a face turned away from the eye catches the sky along its whole length)
   // and a wall's foot lies back as a skirt of fallen rock, with no fins standing in the water
   { const soft = blur(H, N, 4); for (let j = 1; j < N - 1; j++) for (let i = 1; i < N - 1; i++) { const k = j * N + i; if (H[k] <= 0.2) continue; const lie = Math.hypot(L[k + 1] - L[k - 1], L[k + N] - L[k - N]) / (2 * spacing), t = 1 - smooth(0.35, 0.9, lie) * (1 - smooth(c.keep + 2, c.keep + 20, H[k])); H[k] = Math.max(0.2, soft[k] + (H[k] - soft[k]) * t); } }
+  if (c.spare) for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { const k = j * N + i, a = c.spare(toW(i), toW(j)); if (a > 0) H[k] += (original[k] - H[k]) * a; }
   // where water goes: each sample, highest first, hands what it has to its lowest neighbour. Streaks run down from the ledges and gather in the gullies
   const order = new Uint32Array(N * N);
   for (let k = 0; k < N * N; k++) order[k] = k;
