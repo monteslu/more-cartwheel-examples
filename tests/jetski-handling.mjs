@@ -61,7 +61,7 @@ check('JS6 high tide shuts the arch', high['p0.shut_hits'] >= 1 && high['p0.shor
 check('JS6 low tide opens it', low['p0.shortcuts'] === 1 && low['p0.shut_hits'] === 0, `${low['p0.shut_hits']} hits, ${low['p0.shortcuts']} through`);
 // the computer riders get round every course: no one stuck on land; control: the grid before it moves
 for (const [lv, name] of [[0, 'Crater Atoll'], [1, 'Cold Sound'], [2, 'Red Reach'], [3, 'Iron Quay'], [4, 'Gale Bank']]) {
-  const r0 = run(`course ${lv};race`, [], 120), r1 = run(`course ${lv};race`, [], 8000);
+  const r0 = run(`course ${lv};no_dq 1;race`, [], 120), r1 = run(`course ${lv};no_dq 1;race`, [], 8000); // (no_dq: nobody is at the controls, and the sea carries an idle craft off the course)
   check(`${name}: the riders go the whole way round`, r1['p1.dist'] > 2500 && r1['p2.dist'] > 2500, `${f2(r1['p1.dist'])} m and ${f2(r1['p2.dist'])} m after 8000 ticks`);
   check(`${name} control: not yet on the grid`, r0['p1.dist'] < 300, `${f2(r0['p1.dist'])} m`);
 }
@@ -81,6 +81,6 @@ check('Red Reach: the current carries a craft', down['p0.speed'] > still['p0.spe
 const quay = run('course 3;race', [TH], 7000);
 check('Iron Quay: the tanker is under way', Math.abs(quay['hook.tanker'][2]) === 1, `at ${f2(quay['hook.tanker'][0])}, ${f2(quay['hook.tanker'][1])}`);
 // Gale Bank: the sea builds through the race; control: Red Reach's hardly does
-const g0 = run('course 4;race', [], 60), g1 = run('course 4;race', [], 22000);
+const g0 = run('course 4;no_dq 1;race', [], 60), g1 = run('course 4;no_dq 1;race', [], 22000);
 check('Gale Bank: the swell builds', g1['race.swell'] > g0['race.swell'] + 0.25, `${f2(g0['race.swell'])} to ${f2(g1['race.swell'])}`);
 process.exit(fail ? 1 : 0);
