@@ -95,7 +95,8 @@ cw_bus pp_sfx_bus(void) { return bus_sfx; }
 static const mg_def *cur_def(void) { return MG_LIST[G.cur]; }
 static bool is_unlocked(int i) { return (SV->unlocked >> i) & 1; }
 
-static void set_state(int s) { G.state = s; G.st_ticks = 0; }
+static int dbg_seen, dbg_mg_seen; /* debug fields game.seen, game.mg_seen: every state and every mini-game this run has been in, one bit each */
+static void set_state(int s) { G.state = s; G.st_ticks = 0; dbg_seen |= 1 << s; }
 
 /* Screens whose 3D scene is not on screen (the menus, the board, the 2D mini-games draw over a cleared window) ask
  * the renderer for the least: a quality scope lowers resolution, shadows, ambient occlusion, anti-aliasing and
@@ -160,6 +161,7 @@ static void load_scene(const char *path) {
 
 static void begin_game(int idx) {
   G.cur = idx;
+  dbg_mg_seen |= 1 << idx;
   const mg_def *d = cur_def();
   memset(&G.c.score, 0, sizeof G.c.score);
   memset(&G.c.eliminated, 0, sizeof G.c.eliminated);
@@ -1043,6 +1045,8 @@ static void init(void *user) {
   cw_debug_i32("game.state", &G.state);
   cw_debug_i32("game.round", &G.round);
   cw_debug_i32("game.mg", &G.cur);
+  cw_debug_i32("game.seen", &dbg_seen);
+  cw_debug_i32("game.mg_seen", &dbg_mg_seen);
   cw_debug_i32("game.tick", &G.c.tick);
   cw_debug_field("game.score", G.c.score, CW_DBG_F32, NP);
   cw_debug_field("game.points", G.points, CW_DBG_I32, NP);
