@@ -13,6 +13,7 @@
 //   scatter           [model, map, density, scale min, scale max, visible range, seed, sink, tilt] per kind of thing
 //   grades            [layer, scan, [r, g, b], uv scale]: four CC0 terrain scans graded to this place's palette
 //   ramp_count        how many ramps to look for (9): they go in the straightest gaps between buoys with room to land
+//   ramp_routes       how many shortcut ramps to look for (0: every one tried failed tests/jetski-ramp-reach.mjs): off the line inside a bend, aimed at the next buoy's right side; and a cluster of three if there is room
 //   ramp_top          how high a ramp's top edge stands over the sea's rest level (5)
 //   buoys             { first, step, wobble, offset }, optional
 //   landmark          { model, where(x, z) }: stands on the highest ground where says
@@ -113,7 +114,8 @@ export function makeCourse(def) {
     side = -side;
     s += bd.step + bd.wobble * Math.sin(s * 0.013);
   }
-  // the ramps: in the straight gaps between buoys, on the line, with open water to land in
+  // the ramps: in the straight gaps between buoys, with open water to land in. Some on the racing line, others off it on the far side
+  // from the next buoy, so going for one costs nothing at that buoy: a route to choose
   const tideLow = Math.min(def.tide[0], def.tide[1]), rp = [];
   const clear = (p, side, off, next) => {
     const cx = p.x + p.dz * side * off, cz = p.z - p.dx * side * off, gnd = (x, z) => hAt(Math.round(x / SPACING + QUADS / 2), Math.round(z / SPACING + QUADS / 2));
@@ -126,7 +128,7 @@ export function makeCourse(def) {
       const q = pointAt(next.s), bx = next.x - cx, bz = next.z - cz, cosA = p.dx * q.dx + p.dz * q.dz;
       if (cosA < 0.6) return null;
       const t = (bx * q.dx + bz * q.dz) / cosA, rx = cx + p.dx * t - next.x, rz = cz + p.dz * t - next.z, lat = (rx * -q.dz + rz * q.dx) * -next.side;
-      if (lat < 4 || lat > 47) return null;
+      if (lat < 7 || lat > 42) return null; // (margin: a rider comes off at a small angle. tests/jetski-ramp-reach.mjs)
     }
     return { x: cx, z: cz, dx: p.dx, dz: p.dz, off };
   };
@@ -135,24 +137,54 @@ export function makeCourse(def) {
     const A = buoys[i], B = buoys[(i + 1) % buoys.length], s1 = i + 1 < buoys.length ? B.s : B.s + LEN, s = (A.s + s1) / 2;
     const p0 = pointAt(s - 28), p1 = pointAt(s + 50), turn = Math.abs(Math.atan2(p1.dx * p0.dz - p1.dz * p0.dx, p1.dx * p0.dx + p1.dz * p0.dz));
     if (turn > 0.5) continue;
-    cand.push({ s, turn, side: B.side, p: pointAt(s), next: B, prev: A });
+    cand.push({ s, turn, side: B.side, p: pointAt(s), next: B });
   }
-  // every ramp stands on the line a rider follows from one buoy to the next, in the straight gaps, to the count wanted. Following the buoys brings you to the ramps: nothing off to the side
-  const want = def.ramp_count ?? 9;
-  const onChord = (g, c) => { const A = c.prev, B = c.next, dx = B.x - A.x, dz = B.z - A.z, t = clamp(((g.x - A.x) * dx + (g.z - A.z) * dz) / (dx * dx + dz * dz)); return Math.hypot(g.x - A.x - dx * t, g.z - A.z - dz * t) < 11; };
+  // first a cluster, where the course is most open: two side by side, staggered, to choose between
+  const gapRamps = (c, offs) => offs.map(([off, ahead]) => {
+    const p = pointAt(c.s + ahead), r = clear(p, c.side, off, c.next);
+    return r && { ...r, s: c.s + ahead, kind: 'cluster' };
+  });
+  let cluster = null;
+  for (const c of [...cand].sort((a, b) => a.turn - b.turn)) {
+    const g = gapRamps(c, [[-2, 0], [16, 16]]);
+    if (g.every(Boolean)) { cluster = g; break; }
+  }
+  if (cluster) rp.push(...cluster);
+  else console.log(`  ${def.id}: no gap open enough for a cluster; gaps tried ${cand.length}`);
+  // then shortcuts: a little off the line on the inside of a bend, aimed straight at the next buoy's right side. Near enough to reach from the buoy before and still make the next: tests/jetski-ramp-reach.mjs
+  const routes = [];
+  for (let s0 = 40; s0 < LEN - 60; s0 += 12) {
+    const next = buoys.find((b) => b.s > s0 + 70);
+    if (!next) continue;
+    const p = pointAt(s0), q = pointAt(next.s);
+    const aimLat = 16, ax = next.x + -q.dz * -next.side * aimLat, az = next.z + q.dx * -next.side * aimLat;
+    for (const sgn of [-1, 1]) for (const off of [16, 22, 28]) {
+      const lx = p.x - p.dz * sgn * off, lz = p.z + p.dx * sgn * off, dx = ax - lx, dz = az - lz, d = Math.hypot(dx, dz);
+      if (d < 90 || d > 230) continue;
+      const ux = dx / d, uz = dz / d;
+      if (ux * p.dx + uz * p.dz < 0.8 || ux * q.dx + uz * q.dz < 0.6) continue; // it must not run across the course
+      const saved = next.s - s0 - d - off * 0.3;
+      if (saved < 2) continue;
+      let ok = true;
+      for (let t = -24; t <= d && ok; t += 6) for (const l of [-12, 0, 12]) if (hAt(Math.round((lx + ux * t - uz * l) / SPACING + QUADS / 2), Math.round((lz + uz * t + ux * l) / SPACING + QUADS / 2)) > tideLow - 1.2) { ok = false; break; }
+      if (!ok) continue;
+      for (const b of buoys) { if (b === next) continue; const bx = b.x - lx, bz = b.z - lz, al = bx * ux + bz * uz, la = bx * -uz + bz * ux; if (al > -30 && al < d && Math.abs(la) < 15) { ok = false; break; } }
+      if (ok) routes.push({ x: lx, z: lz, dx: ux, dz: uz, off, s: s0, saved, kind: 'route' });
+    }
+  }
+  routes.sort((a, b) => b.saved - a.saved);
+  const want = def.ramp_count ?? 9, far = (x, s) => x.some((r) => { const d = Math.abs(r.s - s); return Math.min(d, LEN - d) < 150; });
+  for (const r of routes) { if (rp.filter((q) => q.kind === 'route').length >= (def.ramp_routes ?? 0)) break; if (!far(rp, r.s)) rp.push(r); }
+  // and ramps in the straight gaps between, to the count wanted
   cand.sort((a, b) => a.turn - b.turn);
   for (const c of cand) {
     if (rp.length >= want) break;
     if (rp.some((r) => { const d = Math.abs(r.s - c.s); return Math.min(d, LEN - d) < (LEN / want) * 0.5; })) continue;
-    // the middle of the gap if there is room, a little along it if not; no further from the straight way between its two buoys than tests/jetski-ramp-path.mjs allows
-    for (const along of [0, -14, 14, -24, 24]) {
-      const q = pointAt(c.s + along);
-      let got = null;
-      for (const off of [0, 4, -4]) { const g = clear(q, c.side, off, c.next); if (g && onChord(g, c)) { got = g; break; } }
-      if (got) { rp.push({ ...got, s: c.s + along, kind: 'line' }); break; }
-    }
+    const off = rp.length % 3 === 0 ? 0 : 20;
+    const got = clear(c.p, c.side, off, c.next) || clear(c.p, c.side, 0, c.next) || clear(c.p, c.side, 20, c.next);
+    if (got) rp.push({ ...got, s: c.s, kind: 'line' });
   }
-  if (rp.length < want) console.log(`  ${def.id}: ${rp.length} of ${want} ramps found room on the line`);
+  for (const r of rp) if (r.kind !== 'line') console.log(`  ${def.id} ${r.kind} s ${r.s.toFixed(0)} off ${r.off}${r.saved ? ' saves ' + r.saved.toFixed(0) + ' m' : ''}`);
   rp.sort((a, b) => a.s - b.s);
 
   // the wave mask, softened; held down around every ramp, so the approach reads and the launch is the same each time

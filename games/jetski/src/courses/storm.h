@@ -295,14 +295,14 @@ static const float storm_buoys[][4] = { /* x, z, side (+1: pass with the buoy on
 {-577.37f,-50.67f,1.0f,3615.6f}
 };
 static const float storm_ramps[][5] = { /* x, z, yaw, s, how far off the racing line */
-{-495.65f,-273.40f,2.5726f,148.4f,0.0f},
+{-478.80f,-262.62f,2.5726f,148.4f,20.0f},
 {143.76f,-492.74f,1.2901f,875.9f,0.0f},
-{418.83f,-350.51f,0.8899f,1187.8f,0.0f},
-{602.48f,-121.90f,0.4195f,1483.9f,0.0f},
-{605.35f,190.17f,-0.4645f,1808.4f,0.0f},
+{406.24f,-334.97f,0.8899f,1187.8f,20.0f},
+{620.74f,-130.04f,0.4195f,1483.9f,20.0f},
 {266.06f,309.39f,-1.8346f,2223.8f,0.0f},
-{-343.98f,498.69f,-1.8888f,2914.9f,0.0f},
-{-618.24f,114.64f,3.0120f,3444.9f,0.0f}
+{-363.53f,513.31f,-1.8888f,2928.9f,20.0f},
+{-597.75f,4.86f,2.9335f,3556.7f,-2.0f},
+{-611.87f,-14.84f,2.9109f,3572.7f,16.0f}
 };
 static const char *const storm_models[] = { "res://models/rig.glb", "res://models/wreck.glb", "res://models/tower.glb" };
 static const float storm_placed[][8] = { /* model, x, z, yaw, scale, solid half length, half width, floats */

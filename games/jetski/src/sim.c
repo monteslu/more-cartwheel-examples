@@ -24,6 +24,13 @@ game G;
 int g_ride_top = 1;  /* debug: 0 is the control, a hull held by the spring alone */
 float g_ramp_lift; /* debug: ramp_lift <metres>, the must-fail control for the ramps' gap count */
 int g_no_dq;
+int g_fair = 1; /* fair 0: every hop off the sea priced as a deliberate landing, the gate's control */
+int g_land_hist[21]; /* the human seat's landings by the share of speed kept, in twentieths */
+/* ramp_try: can a rider, by the craft's real handling, go from the buoy before a ramp over it and past the next buoy right? (tests/jetski-ramp-reach.mjs) */
+int g_try_ramp = -1, g_try_res;
+float g_try_look = 30;
+static int try_r0, try_m0, try_p0, try_t0;
+int g_try_hit, g_try_prev, g_try_missed; /* for the gate's report */
 float g_current = 1; /* debug: current 0, the river's control */
 float g_tide_hold = -100; /* debug: tide <metres> holds it */
 float g_swell_hold; /* debug: swell <0..1> holds the sea at that size */
@@ -136,6 +143,15 @@ static void computer(craft *c, int idx) {
       ax = G.ramp_x[r] + sy * at - cy * out, az = G.ramp_z[r] + cy * at + sy * out;
       break;
     }
+  }
+  if (g_try_ramp >= 0 && c == &G.c[0] && c->ramps == try_r0) {
+    /* the human's seat going for this one ramp */
+    float sy, cy;
+    cw_sincos(G.ramp_yaw[g_try_ramp], &sy, &cy);
+    float dxr = c->x - G.ramp_x[g_try_ramp], dzr = c->z - G.ramp_z[g_try_ramp], al = dxr * sy + dzr * cy;
+    /* onto its centre line well before it, as a rider lines up a jump, then up the middle */
+    float at = al + g_try_look;
+    ax = G.ramp_x[g_try_ramp] + sy * at, az = G.ramp_z[g_try_ramp] + cy * at;
   }
   /* a tanker across the way: under its stern, into its wake, as a person would; pressed against its side they sat there until it had gone by */
   if (DEF->hook.kind == 3) {
@@ -483,10 +499,13 @@ static void craft_tick(craft *c, int idx, float dt) {
       float e2 = err + (nose > 0 ? nose * 0.9f : 0) - 0.35f * clampf(c->in.lean, 0, 1) * (nose > 0 ? 1.0f : 0.0f);
       e2 = e2 < 0 ? 0 : e2;
       float keep = e2 < 0.12f ? 1.0f : 1.0f - clampf((e2 - 0.12f) * 0.42f, 0, 0.65f);
+      /* a hop the sea threw at you, with nothing asked of the craft, costs next to nothing: the water is the track, not the thing to avoid. A dive you asked for or a long fall still pays */
+      if (g_fair && c->air_time < 1.0f && !c->trick_kind && c->in.lean > -0.3f && e2 < 0.9f && keep < 0.97f) keep = 0.97f;
       if (nose > 0.3f) c->vy -= nose * 3.0f, c->y -= nose * 0.25f;
       if (c->trick_kind || e2 > 2.1f) keep = 0.35f, c->trick_kind = 0, c->spill = 1.9f, c->spills++;
       c->vx *= keep, c->vz *= keep;
       c->land_keep = keep;
+      if (c->human && c->air_time > 0.2f) g_land_hist[(int)(clampf(keep, 0, 1) * 20.0f)]++;
       if (e2 < 0.25f && c->air_time > 0.6f) { c->boost = 1; if (c->meter < 5) c->meter++; c->flash_ok = 1; }
       c->pitch = wrap_pi(c->pitch), c->roll = wrap_pi(c->roll);
       c->pr *= 0.25f, c->rr *= 0.25f;
@@ -649,6 +668,41 @@ void sim_ramp_start(int r, float back, float aside) {
   G.cam[0] = 0, G.look[0] = 0;
 }
 
+/* the human's seat just past the buoy before ramp r, at race speed on the line, with the ramp moved aside metres if asked (the control) */
+void sim_ramp_try(int r, float aside, float look, const float *at) {
+  g_try_look = look;
+  if (at) G.ramp_x[r] = at[0], G.ramp_z[r] = at[1], G.ramp_yaw[r] = at[2];
+  float rs = DEF->ramps[r][3];
+  int prev = -1;
+  for (int b = 0; b < BUOY_N; b++) if (buoy_on(b) && BUOYS[b][3] < rs - 34) prev = b;
+  float s0 = prev >= 0 ? BUOYS[prev][3] + 6 : 6;
+  sim_place(s0);
+  if (aside != 0) { float sy, cy; cw_sincos(G.ramp_yaw[r], &sy, &cy); G.ramp_x[r] += -cy * aside, G.ramp_z[r] += sy * aside; }
+  craft *c = &G.c[0];
+  c->next_buoy = prev >= 0 ? buoy_next(prev) : 0;
+  g_try_prev = prev;
+  c->meter = 5;
+  G.state = RACE_ON;
+  if (G.clock < 1) G.clock = 1;
+  g_try_ramp = r, g_try_res = 0, g_try_hit = 0, try_r0 = c->ramps, try_m0 = c->misses, try_t0 = (int)G.tick;
+}
+/* 1: over the ramp, then past the next buoy on its right side. -1: a buoy missed. -2: time ran out with the ramp not reached. -3: over it, then nothing passed */
+static void ramp_try_tick(void) {
+  if (g_try_ramp < 0 || g_try_res) return;
+  const craft *c = &G.c[0];
+  if (c->misses > try_m0) { g_try_res = -1; g_try_missed = c->next_buoy; return; }
+  if (!g_try_hit && c->ramps > try_r0) {
+    /* this ramp, not a neighbour: the craft is over it when the count goes up */
+    float sy, cy;
+    cw_sincos(G.ramp_yaw[g_try_ramp], &sy, &cy);
+    float dx = c->x - G.ramp_x[g_try_ramp], dz = c->z - G.ramp_z[g_try_ramp], al = dx * sy + dz * cy, la = dx * -cy + dz * sy;
+    if (al > -RAMP_HALF_LEN - 6 && al < RAMP_HALF_LEN + 40 && la > -RAMP_HALF_W - 3 && la < RAMP_HALF_W + 3) g_try_hit = 1, try_p0 = c->passes;
+    else try_r0 = c->ramps;
+  }
+  if (g_try_hit && c->passes > try_p0) { g_try_res = 1; return; }
+  if ((int)G.tick - try_t0 > 1500) g_try_res = g_try_hit ? -3 : -2;
+}
+
 /* every racer to a place on the course, at speed */
 void sim_place(float s) {
   for (int i = 0; i < RACERS; i++) {
@@ -693,7 +747,7 @@ void sim_tick(float dt) {
   for (int i = 0; i < RACERS; i++) {
     craft *c = &G.c[i];
     if (!racer_on(i)) continue;
-    bool ai = !c->human || G.state == RACE_ATTRACT;
+    bool ai = !c->human || G.state == RACE_ATTRACT || g_try_ramp >= 0;
 #ifdef JETSKI_AUTOPILOT
     ai = true;
 #endif
@@ -738,6 +792,7 @@ void sim_tick(float dt) {
   if (G.state == RACE_ON && (G.c[0].finish > 0 || G.c[0].dq)) G.state = RACE_DONE;
   /* the attract loop races on and on, and stays out where the swell is */
   if (G.state == RACE_ATTRACT && G.c[G.order[0]].lap >= 1) for (int i = 0; i < RACERS; i++) G.c[i].lap = -1;
+  ramp_try_tick();
   G.ai_ramps = G.ai_spills = G.ai_misses = G.ai_passes = G.ai_walls = 0;
   for (int i = 1; i < RACERS; i++) { craft *c = &G.c[i]; if (G.state == RACE_ON && c->speed < 2) { c->slow_ticks++; if (c->slow_ticks > G.ai_stuck) G.ai_stuck = c->slow_ticks; } else c->slow_ticks = 0; G.ai_ramps += c->ramps, G.ai_spills += c->spills, G.ai_misses += c->misses, G.ai_passes += c->passes, G.ai_walls += c->wall_hits; }
   uint32_t h = G.tick;

@@ -298,13 +298,13 @@ static const float harbour_ramps[][5] = { /* x, z, yaw, s, how far off the racin
 {-407.68f,362.63f,1.2846f,130.2f,0.0f},
 {-219.56f,368.23f,1.8534f,321.1f,0.0f},
 {384.03f,327.79f,2.0716f,956.5f,0.0f},
-{582.01f,133.29f,2.7768f,1240.5f,0.0f},
+{600.69f,140.42f,2.7768f,1240.5f,20.0f},
 {177.25f,-193.55f,-2.2197f,1937.8f,0.0f},
-{24.84f,-306.37f,-2.2150f,2127.5f,0.0f},
-{-296.94f,-356.64f,-1.2468f,2472.9f,0.0f},
-{-467.88f,-264.18f,-0.8697f,2668.2f,0.0f},
-{-572.00f,-132.84f,-0.4695f,2837.0f,0.0f},
-{-605.12f,131.81f,0.2753f,3111.4f,0.0f}
+{23.64f,-304.77f,-2.2150f,2127.5f,-2.0f},
+{21.54f,-328.79f,-2.2085f,2143.5f,16.0f},
+{-303.31f,-375.60f,-1.2468f,2472.9f,20.0f},
+{-480.78f,-279.46f,-0.8697f,2668.2f,20.0f},
+{-589.83f,-141.89f,-0.4695f,2837.0f,20.0f}
 };
 static const char *const harbour_models[] = { "res://models/ship.glb", "res://models/warehouse.glb", "res://models/block.glb", "res://models/block3.glb", "res://models/block2.glb", "res://models/containers.glb", "res://models/crane.glb", "res://models/lamp.glb" };
 static const float harbour_placed[][8] = { /* model, x, z, yaw, scale, solid half length, half width, floats */

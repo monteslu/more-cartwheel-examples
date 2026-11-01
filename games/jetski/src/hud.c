@@ -43,6 +43,52 @@ static bool to_screen(t3_vec3 p, float w, float h, cw_vec2 *out) {
 int g_hud_ptr_mode, g_hud_wrong;
 float g_hud_ptr[2], g_hud_buoy[4];
 int g_hud_mark = 1;
+float g_map_scale = 1;
+
+/* The minimap: the course's own line in a small corner, no panel behind it, so the water reads through. Rivals pale, the next buoy bright and ringed, you an arrow on top */
+int g_map_on = 1, g_map_skew;
+float g_map_rect[4], g_map_dots[RACERS * 2], g_map_next[2];
+static cw_rect map_rect(float h, float u) { float sz = 236 * u * g_map_scale; return cw_rect_make(44 * u, h - 44 * u - sz, sz, sz); }
+static void minimap(const craft *c, float h, float u) {
+  cw_rect r = map_rect(h, u);
+  static const course_def *fit_def;
+  static float minx, maxx, minz, maxz;
+  if (fit_def != DEF) {
+    fit_def = DEF, minx = minz = 1e9f, maxx = maxz = -1e9f;
+    for (int i = 0; i < TRACK_N; i++) { minx = fminf(minx, TRACK[i][0]), maxx = fmaxf(maxx, TRACK[i][0]), minz = fminf(minz, TRACK[i][1]), maxz = fmaxf(maxz, TRACK[i][1]); }
+  }
+  float sc = fminf(r.w / (maxx - minx + 1e-3f), r.h / (maxz - minz + 1e-3f)), ox = r.x + (r.w - (maxx - minx) * sc) * 0.5f, oy = r.y + (r.h - (maxz - minz) * sc) * 0.5f;
+#define MAP_PT(px, pz) cw_v2(ox + ((px) - minx) * sc, oy + ((pz) - minz) * sc)
+  g_map_rect[0] = r.x, g_map_rect[1] = r.y, g_map_rect[2] = r.w, g_map_rect[3] = r.h;
+  cw_vec2 line[128];
+  int n = 0;
+  for (int i = 0; i < TRACK_N && n < 128; i += TRACK_N / 96 + 1) line[n++] = MAP_PT(TRACK[i][0], TRACK[i][1]);
+  cw_r2d_polyline(line, n, 7 * u, true, cw_rgba(0, 0, 0, 0.28f));
+  cw_r2d_polyline(line, n, 3.2f * u, true, cw_rgba(1, 1, 1, 0.62f));
+  for (int b = 0; b < BUOY_N; b++) {
+    if (!buoy_on(b) || b == c->next_buoy) continue;
+    cw_r2d_circle(MAP_PT(BUOYS[b][0], BUOYS[b][1]), 2.6f * u, 8, BUOYS[b][2] > 0 ? cw_rgba(1, 0.3f, 0.15f, 0.55f) : cw_rgba(1, 0.8f, 0.15f, 0.55f));
+  }
+  for (int i = RACERS - 1; i >= 0; i--) {
+    const craft *k = &G.c[i];
+    cw_vec2 p = MAP_PT(k->x + (g_map_skew ? 60.0f : 0), k->z);
+    g_map_dots[i * 2] = p.x, g_map_dots[i * 2 + 1] = p.y;
+    if (i > 0 && racer_on(i)) cw_r2d_circle(p, 4.2f * u, 10, cw_rgba(0.72f, 0.86f, 1, 0.8f));
+  }
+  /* the next buoy over the rivals */
+  const float *nb = BUOYS[c->next_buoy];
+  cw_vec2 np = MAP_PT(nb[0], nb[1]);
+  g_map_next[0] = np.x, g_map_next[1] = np.y;
+  cw_color nc = nb[2] > 0 ? cw_rgba(1, 0.3f, 0.12f, 1) : cw_rgba(1, 0.82f, 0.1f, 1);
+  cw_r2d_circle(np, 4.4f * u, 12, nc);
+  cw_r2d_circle_lines(np, 8 * u, 1.6f * u, 14, cw_rgba(nc.r, nc.g, nc.b, 0.75f));
+  /* you: an arrow the way the craft points */
+  cw_vec2 me = cw_v2(g_map_dots[0], g_map_dots[1]);
+  float sy = sinf(c->yaw), cy = cosf(c->yaw), L = 11 * u, W = 6.5f * u;
+  cw_r2d_triangle(cw_v2(me.x + sy * (L + 2 * u), me.y + cy * (L + 2 * u)), cw_v2(me.x - sy * (L * 0.6f + 2 * u) + cy * (W + 2 * u), me.y - cy * (L * 0.6f + 2 * u) - sy * (W + 2 * u)), cw_v2(me.x - sy * (L * 0.6f + 2 * u) - cy * (W + 2 * u), me.y - cy * (L * 0.6f + 2 * u) + sy * (W + 2 * u)), cw_rgba(0, 0, 0, 0.55f));
+  cw_r2d_triangle(cw_v2(me.x + sy * L, me.y + cy * L), cw_v2(me.x - sy * L * 0.6f + cy * W, me.y - cy * L * 0.6f - sy * W), cw_v2(me.x - sy * L * 0.6f - cy * W, me.y - cy * L * 0.6f + sy * W), cw_rgba(1, 1, 1, 1));
+#undef MAP_PT
+}
 
 /* A triangle pointing along (dx, dy) with its tip at p, on a dark backing so it reads against bright sea, sky and foam */
 static void pointer(cw_vec2 p, float dx, float dy, float len, float half, cw_color col) {
@@ -98,6 +144,8 @@ static void next_mark(const craft *c, float w, float h, float u) {
   dx /= l, dy /= l;
   float hw = w * 0.5f - 100 * u, hh = h * 0.5f - 120 * u, t = fminf(fabsf(dx) > 0.001f ? hw / fabsf(dx) : 1e9f, fabsf(dy) > 0.001f ? hh / fabsf(dy) : 1e9f);
   cw_vec2 q = cw_v2(w * 0.5f + dx * t, h * 0.5f + dy * t);
+  /* clear of the minimap in its corner */
+  if (g_map_on) { cw_rect mr = map_rect(h, u); if (q.x < mr.x + mr.w + 110 * u && q.y > mr.y - 110 * u) q.y = mr.y - 110 * u; }
   pointer(q, dx, dy, 72 * u, 44 * u, col);
   text(small, buf, q.x - dx * 110 * u, q.y - dy * 110 * u - 18 * u, 30 * u, cw_rgba(1, 1, 1, 0.95f), 0.5f);
   g_hud_ptr_mode = 2, g_hud_ptr[0] = q.x - dx * 30 * u, g_hud_ptr[1] = q.y - dy * 30 * u;
@@ -153,6 +201,7 @@ static void hud_body(void) {
       text(small, buf, w - 60 * u, 100 * u, 34 * u, dim, 1);
     }
   }
+  if (g_map_on) minimap(c, h, u);
   next_mark(c, w, h, u);
   /* misses so far: five and the race is over */
   for (int i = 0; i < 5; i++) {

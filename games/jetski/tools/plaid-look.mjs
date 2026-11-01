@@ -1,11 +1,11 @@
-// Cliffs from a held camera, the side_detile off and on, and how much each repeats (tools/plaid-measure.mjs). The off picture is the control: it
+// Cliffs from a held camera, the side_detile off and on, and how much each repeats (tools/cliff-measure.mjs). The off picture is the control: it
 // must read as a repeat.
-//   node games/jetski/tools/plaid-look.mjs <cart> <out dir> [--gl]
+//   node games/jetski/tools/plaid-look.mjs <cart> <out dir> [--gl] [--released: a cart with no detile command]
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { readCourse, COURSE_IDS } from './course-read.mjs';
-import { plaid } from './plaid-measure.mjs';
-const URL_ = 'http://127.0.0.1:7331/mcp', CART = resolve(process.argv[2]), DIR = resolve(process.argv[3]), GL = process.argv.includes('--gl');
+import { repeatShare } from './cliff-measure.mjs';
+const URL_ = 'http://127.0.0.1:7331/mcp', CART = resolve(process.argv[2]), DIR = resolve(process.argv[3]), GL = process.argv.includes('--gl'), RELEASED = process.argv.includes('--released');
 const SESSION = process.env.JETSKI_SESSION || 'jetski';
 mkdirSync(DIR, { recursive: true });
 let sid = null, id = 1;
@@ -47,17 +47,20 @@ await call('frame', { op: 'step', frames: 20 });
 for (const id of (process.env.PLAID_COURSES || COURSE_IDS.join(',')).split(',')) {
   const c = readCourse(id);
   await cmd('course ' + COURSE_IDS.indexOf(id)); await cmd('race');
+  await call('frame', { op: 'step', frames: 340 }); // past the countdown and the GO, whose letters stand in the crop
   let k = 0;
   for (const w of walls(c)) {
-    await cmd(`peek ${w.x} 5 ${w.z} ${w.ax} ${w.ay} ${w.az}`);
+    // from the line, at the height of the race camera: a tile shows from here, where it is a few dozen pixels across
+    const cx = w.x, cz = w.z;
+    await cmd(`peek ${cx} 5 ${cz} ${w.ax} ${w.ay} ${w.az}`);
     const row = [];
-    for (const d of [0, 1]) {
-      await cmd('detile ' + d);
+    for (const d of RELEASED ? [0] : [0, 1]) {
+      if (!RELEASED) { await cmd('detile ' + d); await cmd('buoy_shot 0 1 0'); }
       const p = `${DIR}/${id}-${k}-${d}.png`;
       await call('frame', { op: 'stepAndShot', frames: 8, path: p });
-      row.push(plaid(p, 300, 170, 1300, 480).r.toFixed(3));
+      row.push(repeatShare(p, 710, 300, 500, 240, 32).share.toFixed(3));
     }
-    console.log(id, k++, 'at', w.x.toFixed(0), w.z.toFixed(0), 'repeat off', row[0], 'on', row[1]);
+    console.log(id, k++, 'at', w.x.toFixed(0), w.z.toFixed(0), 'repeat off', row[0], 'on', row[1] ?? '-');
   }
 }
 process.exit(0);

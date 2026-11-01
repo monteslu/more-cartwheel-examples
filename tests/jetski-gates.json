@@ -125,9 +125,14 @@
     "note": "the next buoy from the race camera at 100 m and 150 m on every course, GL and WebGPU on the cart: its height, area and contrast from pictures of one held moment with and without it. Control: the small buoy this replaced must fail"
   },
   {
-    "name": "jetski-ramp-path",
-    "script": "tests/jetski-ramp-path.mjs",
-    "note": "following the buoys brings you to the ramps: each ramp within 12 m of the straight way between two buoys, pointing along it. Control: the layout released with clusters and shortcuts must fail on every course"
+    "name": "jetski-ramp-reach",
+    "script": "tests/jetski-ramp-reach.mjs",
+    "note": "every ramp can be reached from the buoy before it and still make the next buoy on its right side, by the real handling at race speed on the course's biggest sea at Hard. Control: the same ramp moved 90 m aside must fail"
+  },
+  {
+    "name": "jetski-races",
+    "script": "tests/jetski-races.mjs",
+    "note": "a whole race on every course, nobody stuck, rivals missing no more buoys than recorded; control: a race cut short has not been run"
   },
   {
     "name": "jetski-quality",

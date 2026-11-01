@@ -289,15 +289,17 @@ static const float atoll_buoys[][4] = { /* x, z, side (+1: pass with the buoy on
 {-219.84f,144.28f,1.0f,2507.7f}
 };
 static const float atoll_ramps[][5] = { /* x, z, yaw, s, how far off the racing line */
-{68.94f,184.59f,1.8380f,218.7f,0.0f},
-{208.69f,91.94f,2.2632f,388.7f,0.0f},
-{439.58f,9.83f,1.3810f,647.0f,0.0f},
-{660.82f,-85.87f,2.5855f,905.5f,0.0f},
-{644.76f,-337.66f,-2.4318f,1174.5f,0.0f},
-{425.87f,-440.65f,-1.7261f,1422.9f,0.0f},
-{248.14f,-434.89f,-1.2561f,1602.6f,0.0f},
+{63.65f,165.30f,1.8380f,218.7f,20.0f},
+{195.93f,76.54f,2.2632f,388.7f,20.0f},
+{439.96f,7.87f,1.3810f,647.0f,-2.0f},
+{452.44f,28.55f,1.3911f,663.0f,16.0f},
+{643.83f,-96.42f,2.5855f,905.5f,20.0f},
+{659.93f,-350.69f,-2.4318f,1174.5f,20.0f},
+{422.78f,-420.89f,-1.7261f,1422.9f,20.0f},
+{254.33f,-415.87f,-1.2561f,1602.6f,20.0f},
 {66.57f,-260.52f,-0.3451f,1863.8f,0.0f},
-{-212.14f,-86.20f,-0.9969f,2224.3f,0.0f}
+{-223.00f,-103.00f,-0.9969f,2224.3f,20.0f},
+{-138.91f,129.52f,1.2942f,2582.3f,20.0f}
 };
 static const char *const atoll_models[] = { NULL };
 static const float atoll_placed[][8] = { /* model, x, z, yaw, scale, solid half length, half width, floats */
@@ -339,7 +341,7 @@ static const char *const atoll_props[][3] = {
 };
 static const course_def atoll_course = {
   .id = "atoll", .name = "Crater Atoll", .quads = 896, .spacing = 2.0f, .minh = -48.0f, .maxh = 170.0f, .len = 2586.80f,
-  .track_n = 256, .track = atoll_track, .buoy_n = 29, .buoys = atoll_buoys, .ramp_n = 9, .ramps = atoll_ramps, .ramp_top = 5.0f,
+  .track_n = 256, .track = atoll_track, .buoy_n = 29, .buoys = atoll_buoys, .ramp_n = 11, .ramps = atoll_ramps, .ramp_top = 5.0f,
   .scatter_n = 5, .scatter = atoll_scatter, .model_n = 0, .models = atoll_models, .placed_n = 0, .placed = atoll_placed, .prop_n = 25, .props = atoll_props,
   .layer = { "course/atoll/sand", "course/atoll/coast", "course/atoll/rock", "course/atoll/grass" }, .layer_uv = { 0.16f, 0.22f, 0.075f, 0.09f },
   .heights = "course/atoll/heights.r16", .control = "course/atoll/control.u32", .mask = "course/atoll/wavemask.f32", .mask_n = 256, .map_n = 448, .sky = "res://textures/sky.png",
