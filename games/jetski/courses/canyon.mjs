@@ -1,10 +1,11 @@
 // Red Reach: a river at noon, deep in a sandstone canyon, round a mesa. No swell, no sea: a narrow winding channel between walls, and the river's current.
 // The hook: the water runs one way down the valley. Going with it is fast; coming back against it is a slog in midstream, so the line is to hug the bank
 // where the water is slack.
-export default ({ clamp, lerp, smooth, hash, fbm, ridged, trackOf }) => {
+export default ({ clamp, lerp, smooth, hash, fbm, ridged, trackOf, strongest }) => {
 const P = [[-640, -360], [-470, -470], [-260, -400], [-90, -470], [100, -410], [290, -480], [480, -390], [640, -440], [720, -250], [590, -110], [660, 90], [520, 250], [610, 430], [430, 510], [230, 420], [60, 500], [-130, 410], [-320, 490], [-520, 400], [-660, 470], [-740, 280], [-610, 130], [-690, -70], [-720, -240]];
 for (const p of P) p[0] *= 0.74, p[1] *= 0.74;
 const { trackDist, pointAt, LEN } = trackOf(P);
+const smin = (a, b, k) => { const t = clamp(0.5 + 0.5 * (b - a) / k); return lerp(b, a, t) - k * t * (1 - t); }; // (a rim with a soft edge: a hard one zigzags on the land's grid against the sky)
 function height(x, z) {
   const d = trackDist(x, z) + 9 * Math.sin(x * 0.021 + z * 0.013) + (fbm(x * 0.02, z * 0.02, 3, 301) - 0.5) * 18;
   // a bed, a sand bar at the bank, a slope of fallen rock against the wall, then a wall that climbs in steps: benches of harder rock
@@ -13,10 +14,9 @@ function height(x, z) {
   const up = smooth(66, 84, d);
   if (up > 0) {
     const top = 62 + 58 * fbm(x * 0.004 + 9, z * 0.004, 3, 302);
-    // terraces: the climb flattens at each hard band. Wide enough risers for the 2 m grid (narrower ones came out as a row of teeth), and the bands wander
     const h = Math.max(0, d - 66) * 1.5 + 14 * (fbm(x * 0.009 + 3, z * 0.009, 3, 306) - 0.5);
-    const band = 16, t = h / band, fr = t - Math.floor(t), step = (Math.floor(t) + smooth(0.3, 1, fr)) * band;
-    y = Math.max(y, Math.min(top, step) + 6 + 2.5 * (fbm(x * 0.06, z * 0.06, 3, 303) - 0.5));
+    // (the wall starts past the sand: a level foot for what stands on the bank, whatever the noise does)
+    y = Math.max(y, smin(top, Math.max(0, h - 7), 16) + 6 + 2.5 * (fbm(x * 0.06, z * 0.06, 3, 303) - 0.5));
   }
   // the broken crown of the mesa
   if (y > 40) y += (ridged(x * 0.012, z * 0.012, 4, 304) - 0.5) * 14 * smooth(40, 90, y);
@@ -27,10 +27,16 @@ return {
   name: 'Red Reach',
   track: P,
   height,
-  // layers 0 river sand, 1 wet silt, 2 red sandstone, 3 pale capstone
-  paint({ x, z, y, slope }) {
+  cliffs: { seed: 303, spurs: [[190, 16], [70, 7], [26, 2.5]], talus: 2.6, bench: 11, beds: [5, 30], dip: [0.006, 0.011], fold: 16, droplets: 500000, capacity: 1.6, cut: 7, keep: 9 },
+  // layers 0 river sand, 1 wet silt, 2 red sandstone, 3 pale capstone, 4 deep red, 5 dark desert varnish
+  paint({ x, z, y, slope, flow, hard, wall }) {
     const n = fbm(x * 0.03, z * 0.03, 3, 311);
     if (y < 3.2) return [0, 1, 255 * (1 - smooth(-2.5, 1.5, y))];
+    // the wall: red sandstone in beds of its own colour, whole masses deeper red, pale hard beds, and the dark stain of water down from each ledge
+    if (y > 7 && (wall > 0.25 || slope > 0.8)) {
+      const mass = fbm(x * 0.0048 + 7, z * 0.0048, 3, 312);
+      return strongest([[2, 0.6], [4, smooth(0.34, 0.66, mass * 0.7 + (1 - hard) * 0.45)], [3, (smooth(0.72, 0.95, hard) * smooth(0.42, 0.66, fbm(x * 0.0075, z * 0.0075, 2, 313)) * 0.75 + smooth(60, 95, y) * smooth(0.35, 0.65, n)) * 0.9], [5, flow * 0.7]]);
+    }
     // sand and fallen rock against the wall's foot, by height, not by slope (by slope its edge followed the terrain's grid in teeth), and never up the wall itself
     const foot = (1 - smooth(4 + n * 3, 7 + n * 3, y)) * (1 - smooth(0.55, 0.9, slope));
     if (foot > 0.01) return [2, 0, 255 * foot];
@@ -46,8 +52,8 @@ return {
   },
   lying: ['drift', 'boulders'],
   scatter: [
-    ['cactus', 'cactus', 0.03, 0.7, 1.4, 650, 277, false, 0.08],
-    ['hoodoo', 'hoodoos', 0.018, 0.7, 1.7, 800, 278, false, 0.15],
+    ['cactus', 'cactus', 0.055, 0.7, 1.4, 650, 277, false, 0.08],
+    ['hoodoo', 'hoodoos', 0.035, 0.7, 1.7, 800, 278, false, 0.15],
     ['driftwood', 'drift', 0.03, 0.7, 1.6, 450, 279, true, 0.12],
     ['boulder0', 'boulders', 0.05, 0.6, 2.6, 700, 280, true, 0.25],
     ['boulder1', 'boulders', 0.04, 0.5, 2.0, 700, 281, true, 0.25],
@@ -56,8 +62,10 @@ return {
   grades: [
     ['riversand', 'sand', [1.3, 1.05, 0.78], 0.15],
     ['silt', 'coast', [0.62, 0.46, 0.33], 0.2],
-    ['sandstone', 'rock', [1.05, 0.56, 0.36], 0.05],
-    ['capstone', 'rock', [1.1, 0.92, 0.72], 0.07],
+    ['sandstone', 'cliff_side', [1.0, 0.72, 0.56], 0.055, 1.05],
+    ['capstone', 'marble_cliff_03', [1.02, 0.86, 0.68], 0.07, 0.7],
+    ['deepred', 'rock_face_03', [0.78, 0.46, 0.34], 0.06, 1],
+    ['varnish', 'rock_face_03', [0.3, 0.2, 0.16], 0.07, 0.6],
   ],
   ramp_count: 9,
   ramp_top: 5,
@@ -68,7 +76,7 @@ return {
   tide: [0, 0],
   sky: 'res://textures/sky-canyon.png',
   sun_disc: 1.3,
-  side_detile: 1,
+  side_detile: 0.01,
   props: [
     ['Sky', 'ground_color', 'color(0.5, 0.26, 0.15, 1)'],
     ['Sky', 'time_of_day', '12.6'], ['Sky', 'sun_energy', '4.2'], ['Sky', 'sky_energy', '1.6'], ['Sky', 'north', '120'],

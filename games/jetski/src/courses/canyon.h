@@ -317,8 +317,8 @@ static const float canyon_placed[][8] = { /* model, x, z, yaw, scale, solid half
 {0,0,0,0,0,0,0,0}
 };
 static const course_scatter canyon_scatter[] = {
-{ "res://models/cactus.glb", NULL, "course/canyon/cactus.u8", 0.03f, 0.7f, 1.4f, 650.0f, 277, false, 0.08f },
-{ "res://models/hoodoo.glb", NULL, "course/canyon/hoodoos.u8", 0.018f, 0.7f, 1.7f, 800.0f, 278, false, 0.15f },
+{ "res://models/cactus.glb", NULL, "course/canyon/cactus.u8", 0.055f, 0.7f, 1.4f, 650.0f, 277, false, 0.08f },
+{ "res://models/hoodoo.glb", NULL, "course/canyon/hoodoos.u8", 0.035f, 0.7f, 1.7f, 800.0f, 278, false, 0.15f },
 { "res://models/driftwood.glb", NULL, "course/canyon/drift.u8", 0.03f, 0.7f, 1.6f, 450.0f, 279, true, 0.12f },
 { "res://models/boulder0.glb", NULL, "course/canyon/boulders.u8", 0.05f, 0.6f, 2.6f, 700.0f, 280, true, 0.25f },
 { "res://models/boulder1.glb", NULL, "course/canyon/boulders.u8", 0.04f, 0.5f, 2.0f, 700.0f, 281, true, 0.25f },
@@ -355,13 +355,13 @@ static const course_def canyon_course = {
   .id = "canyon", .name = "Red Reach", .quads = 896, .spacing = 2.0f, .minh = -48.0f, .maxh = 170.0f, .len = 3578.19f,
   .track_n = 256, .track = canyon_track, .buoy_n = 42, .buoys = canyon_buoys, .ramp_n = 9, .ramps = canyon_ramps, .ramp_top = 5.0f,
   .scatter_n = 6, .scatter = canyon_scatter, .model_n = 0, .models = canyon_models, .placed_n = 0, .placed = canyon_placed, .prop_n = 25, .props = canyon_props,
-  .layer_n = 4, .layer = { "course/canyon/riversand", "course/canyon/silt", "course/canyon/sandstone", "course/canyon/capstone" }, .layer_uv = { 0.15f, 0.2f, 0.05f, 0.07f },
+  .layer_n = 6, .layer = { "course/canyon/riversand", "course/canyon/silt", "course/canyon/sandstone", "course/canyon/capstone", "course/canyon/deepred", "course/canyon/varnish" }, .layer_uv = { 0.15f, 0.2f, 0.055f, 0.07f, 0.06f, 0.07f },
   .heights = "course/canyon/heights.r16", .control = "course/canyon/control.u32", .mask = "course/canyon/wavemask.f32", .mask_n = 256, .map_n = 448, .sky = "res://textures/sky-canyon.png",
   .landmark = NULL, .landmark_at = { 0.00f, -100.40f, 0.00f },
   .start = { -493.70f, -246.91f, 0.6971f, -0.7170f },
   .waves = { { 20.0f, 17.0f, 0.1f, 0.18f, 0.6f }, { 110.0f, 11.0f, 0.06f, 0.1f, 0.6f }, { 65.0f, 6.5f, 0.04f, 0.05f, 0.5f }, { 160.0f, 3.6f, 0.015f, 0.02f, 0.4f } }, .swell = { 0.8f, 1.0f }, .tide = { 0.0f, 0.0f },
   .rain = 0.0f,
   .sun_disc = 1.3f,
-  .side_detile = 1.0f,
+  .side_detile = 0.01f,
   .hook = { .kind = 2, .current = 6.0f, .x = 0.00f, .z = 0.00f, .dirx = 1.0000f, .dirz = 0.0000f, .half_w = 34.0f, .half_len = 0.00f, .lintel = 0.0f, .s_in = 0.0f, .s_out = 0.0f, .model = NULL },
 };
