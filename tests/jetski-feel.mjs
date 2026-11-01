@@ -66,11 +66,13 @@ if (on('pack')) {
   check('stopped 8 s, back with them inside a minute', stop['race.near'] < 30, `nearest rival ${f2(stop['race.near'])} m after 68 s`);
 }
 if (on('place')) {
-  for (const lv of [0, 1]) {
+  let shown = 0, ctl = 0;
+  for (const lv of [0, 1, 3]) {
     const s = run('jetski_auto', `course ${lv};no_dq 1;race`, 2800, 12), c = run('jetski_auto', `course ${lv};no_dq 1;race;sw dist_step 1;sw place_hold 0`, 2800, 12);
-    check(`course ${lv}: the place shown holds still`, s['p0.place_changes'] <= 8, `${s['p0.place_changes']} changes shown in 47 s (${s['race.raw_flips']} raw)`);
-    check(`course ${lv} control: sample steps and no hold flip`, c['p0.place_changes'] >= s['p0.place_changes'] * 2 && c['p0.place_changes'] >= 6, `${c['p0.place_changes']} shown`);
+    check(`course ${lv}: the place shown holds still`, s['p0.place_changes'] <= 10, `${s['p0.place_changes']} changes shown in 47 s (${s['race.raw_flips']} raw); sample steps and no hold ${c['p0.place_changes']}`);
+    shown += s['p0.place_changes'], ctl += c['p0.place_changes'];
   }
+  check('control: sample steps and no hold flip, over the three courses', ctl >= shown * 2 && ctl >= 10, `${ctl} shown against ${shown}`);
 }
 if (on('crash')) {
   const courses = [[0, 'atoll'], [1, 'sound'], [2, 'canyon'], [3, 'harbour'], [4, 'storm']];

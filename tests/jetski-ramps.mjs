@@ -46,7 +46,7 @@ for (const [c, tide, tag] of [[0, '', 'Crater Atoll'], [1, 'tide 1', 'Cold Sound
 }
 // the computer riders take the ramps and land them, and a ramp does not cost them buoys; control: no one goes for a ramp
 for (let c = 0; c < C.length; c++) {
-  const on = run(`course ${c};race`, 16000), off = run(`ai_ramps 0;course ${c};race`, 16000);
+  const on = run(`course ${c};no_dq 1;race`, 16000), off = run(`ai_ramps 0;course ${c};no_dq 1;race`, 16000);
   const rate = (s) => s['ai.misses'] / Math.max(1, s['ai.misses'] + s['ai.passes']);
   console.log(`     misses by buoy: ${on['ai.miss_at'].map((v, i) => (v ? i + ':' + v : '')).filter(Boolean).join(' ') || 'none'}`);
   check(`${C[c]}: no rider stuck`, on['ai.stuck'] < 240, `longest under 2 m/s: ${on['ai.stuck']} ticks`);
