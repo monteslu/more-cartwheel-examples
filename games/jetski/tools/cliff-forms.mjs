@@ -121,10 +121,11 @@ export function shapeCliffs(H, N, spacing, c) {
         v += wall * up * amp * (fbm(px * f + q * 13.1, pz * f, 2, c.seed + 20 + q) - 0.5) * 2;
       }
     }
-    // the beds: a hard one stands out as a ledge with a sheer face under it, a soft one is cut back. Each comes and goes along the wall
+    // the beds: a hard one stands out as a ledge, a soft one is cut back. Each comes and goes along the wall
     const b = beds(v + dip(x, z)), comes = smooth(0.32, 0.62, fbm(x * 0.011 + b.k * 3.7, z * 0.011, 2, c.seed + 40));
     const hard = smooth(0.45, 0.8, b.hard) * comes * wall * up;
-    v += hard * c.bench * Math.min(1, b.size / 14) * (Math.pow(b.t, 3) * 1.6 - 0.45);
+    // (no step at a bed's top: 2 m samples across a sudden step on a steep wall come out as a row of teeth, and its edge lights up as a comb)
+    v += hard * c.bench * Math.min(1, b.size / 14) * (b.t < 0.65 ? smooth(0, 0.65, b.t) : 1 - smooth(0.65, 1, b.t));
     H[k] = v;
   }
   relax(H, N, spacing, c, 24);
@@ -134,6 +135,16 @@ export function shapeCliffs(H, N, spacing, c) {
   relax(H, N, spacing, { ...c, talus: c.talus * 0.72 }, 14); // (a cut's walls lie back: a face turned away from the eye catches the sky along its whole length)
   // and a wall's foot lies back as a skirt of fallen rock, with no fins standing in the water
   { const soft = blur(H, N, 4); for (let j = 1; j < N - 1; j++) for (let i = 1; i < N - 1; i++) { const k = j * N + i; if (H[k] <= 0.2) continue; const lie = Math.hypot(L[k + 1] - L[k - 1], L[k + N] - L[k - N]) / (2 * spacing), t = 1 - smooth(0.35, 0.9, lie) * (1 - smooth(c.keep + 2, c.keep + 20, H[k])); H[k] = Math.max(0.2, soft[k] + (H[k] - soft[k]) * t); } }
+  // the last of what a 2 m grid cannot carry: ripples a sample or two wide run down a steep wall and catch a low sun as a comb
+  for (let pass = 0; pass < 3; pass++) {
+    const O = H.slice();
+    for (let j = 1; j < N - 1; j++) for (let i = 1; i < N - 1; i++) {
+      const k = j * N + i;
+      if (O[k] < c.keep) continue;
+      const f = (O[k - N - 1] + O[k - N + 1] + O[k + N - 1] + O[k + N + 1] + 2 * (O[k - N] + O[k + N] + O[k - 1] + O[k + 1]) + 4 * O[k]) / 16;
+      H[k] = O[k] + (f - O[k]) * smooth(0.5, 1.2, Math.hypot(O[k + 1] - O[k - 1], O[k + N] - O[k - N]) / (2 * spacing));
+    }
+  }
   if (c.spare) for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { const k = j * N + i, a = c.spare(toW(i), toW(j)); if (a > 0) H[k] += (original[k] - H[k]) * a; }
   // where water goes: each sample, highest first, hands what it has to its lowest neighbour. Streaks run down from the ledges and gather in the gullies
   const order = new Uint32Array(N * N);
@@ -148,13 +159,17 @@ export function shapeCliffs(H, N, spacing, c) {
     if (best >= 0) F[best] += F[k];
   }
   const Sl = blur(H, N, 5);
+  // what the paint reads of the beds is soft across the land: paint is held every 2 m across the map, on a wall that is many metres of height, so a bed's own edge would come out as a comb of tall teeth
+  const Hs = new Float32Array(N * N);
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) Hs[j * N + i] = beds(H[j * N + i] + dip(toW(i), toW(j))).hard;
+  const HB = blur(Hs, N, 4);
   return {
     /** what the painter gets at a sample: flow 0..1 (a streak to a gully), hard 0..1 (the bed here), bed its number, wall 0..1 (how much the land's general lie is a wall) */
     at(i, j, x, z, y) {
       const k = j * N + i, gi = clamp(i, 1, N - 2), gj = clamp(j, 1, N - 2);
       const s = Math.hypot(Sl[gj * N + gi + 1] - Sl[gj * N + gi - 1], Sl[(gj + 1) * N + gi] - Sl[(gj - 1) * N + gi]) / (2 * spacing);
       const b = beds(y + dip(x, z));
-      return { flow: smooth(0.6, 3.6, Math.log10(F[k])), hard: b.hard, bed: b.k, t: b.t, wall: smooth(0.35, 0.9, s) };
+      return { flow: smooth(0.6, 3.6, Math.log10(F[k])), hard: HB[k], bed: b.k, t: b.t, wall: smooth(0.35, 0.9, s) };
     },
     at_h: at,
   };

@@ -64,9 +64,11 @@ return {
     if (y > 2 || y < -10) { const rocky = Math.max(steep, y > 20 ? 0.1 : 0); if (rocky > 0.35) { base = jungle > 0.5 ? 3 : base; over = 2; blend = 255 * smooth(0.35, 0.8, rocky); } }
     if (y >= 0.4 && slope > 0.95) { base = 2; over = 3; blend = 255 * jungle * (1 - steep); }
     // a tall face: dark basalt in big masses, paler flows of ash in beds of their own, wet black where water runs, green where a ledge can hold it
-    if ((y > 1.2 && slope > 0.8) || (y > -4 && wall > 0.25)) { // (down into the water: a sand sample at the foot of a steep rise paints teeth up the wall)
-      const mass = fbm(x * 0.0052 + 3, z * 0.0052, 3, 53), ash = smooth(0.42, 0.74, hard * 0.55 + mass * 0.75) * (0.35 + 0.65 * smooth(0.35, 0.6, fbm(x * 0.017, z * 0.017, 2, 54)));
-      return strongest([[2, 0.55 + (0.5 - mass) * 0.6], [4, ash], [5, flow * 0.75], [3, jungle * (1 - smooth(0.75, 1.45, slope)) * 1.7]]);
+    if ((y > 1.2 && slope > 0.8) || (y > -4 && wall > 0.05)) {
+      // (over several samples into the sand at its foot: a sudden change of paint there comes out as a row of teeth along the shore)
+      const k = Math.max(smooth(0.05, 0.5, wall), y > 1.2 ? smooth(0.8, 1.2, slope) : 0);
+      const mass = fbm(x * 0.0052 + 3, z * 0.0052, 3, 53), ash = smooth(0.36, 0.72, (hard - 0.5) * 1.1 + 0.28 + mass * 0.75) * (0.35 + 0.65 * smooth(0.35, 0.6, fbm(x * 0.017, z * 0.017, 2, 54)));
+      return strongest([[2, (0.55 + (0.5 - mass) * 0.6) * k], [4, ash * k], [5, flow * 0.75 * k], [3, jungle * (1 - smooth(0.75, 1.45, slope)) * 1.7], [base, (1 - k) * 1.2]]);
     }
     return [base, over, blend];
   },

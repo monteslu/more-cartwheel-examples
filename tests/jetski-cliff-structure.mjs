@@ -9,7 +9,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const { readImage } = await import(join(ROOT, 'deps/cartwheel-engine/tools/lib/png.mjs'));
 const URL_ = 'http://127.0.0.1:7331/mcp', args = process.argv.slice(2).filter((a) => !a.startsWith('--')), CART = resolve(args[0] || join(ROOT, 'build/cart-wgpu/carts/jetski.wasc')), DIR = join(ROOT, 'out/cliff-structure'), LOW = process.argv.includes('--expect-low');
 const SESSION = process.env.JETSKI_SESSION || 'jetski-cliff';
-const FLOOR = { 0: 1.45, 1: 1.15 }; // between the cart before the rock faces and the rock faces: Crater Atoll 1.17 and 1.69, Cold Sound 0.96 and 1.35
+const FLOOR = { 0: 1.45, 1: 1.15 }; // between the cart before the rock faces and the rock faces: Crater Atoll 1.16 and 1.69, Cold Sound 0.96 and 1.25
 // course index: [camera x y z, look x y z, rectangle x y w h]
 const VIEWS = {
   0: [
@@ -26,6 +26,7 @@ const VIEWS = {
     ['-274 5.0 335 -308 44 418', [200, 200, 1500, 420]],
   ],
 };
+// Not Red Reach: the terraced walls this replaced had strong big shapes of their own, regular ledges, and measure higher here than the rock faces do (1.33 to 1.06). Look at its pictures.
 mkdirSync(DIR, { recursive: true });
 let sid = null, id = 1;
 async function rpc(method, params) {
