@@ -182,9 +182,45 @@ static void extend(gen *G, int biome, const int *sections, int n, int columns) {
 }
 #define EXTEND(cols, ...) do { static const int S_[] = { __VA_ARGS__ }; extend(G, B, S_, (int)(sizeof S_ / sizeof S_[0]), cols); } while (0)
 
+enum { FIN_CHASE, FIN_PIANOS, FIN_COLLAPSE, FIN_PRESSES, FIN_SAWS, FIN_CANNONS, FIN_DOORS };
 static void L_finish(gen *G, int biome) {
   static const char *const RUN[BIOMES] = { "THE LANDSCAPING HAS BEEN UPGRADED. RUN.", "THE CEILING SENDS ITS REGARDS. RUN.", "THE PLUMBING HAS FOUND YOU. RUN.", "HEAD OFFICE IS ROLLING OUT A NEW INITIATIVE. RUN.", "THE MOUNTAIN IS DONE BEING DISAPPOINTED. RUN." };
-  chaser(G, biome, 90, RUN[biome]);
+  /* each level ends its own way: the idea of the level, turned up until it stops being reasonable */
+  switch (G->finale) {
+    case FIN_CHASE: chaser(G, biome, 90, RUN[biome]); break;
+    case FIN_PIANOS: { /* all of them. Every piano there is */
+      flat(G, 6, biome); check(G); flat(G, 8, biome);
+      sign(G, biome == BIOME_VOLCANO ? "THE ROCKS HAVE BEEN TOLD ABOUT YOU." : "THE RECITAL WILL NOW BEGIN.");
+      for (int i = 0; i < 14; i++) { flat(G, 6, biome); faller(G, G->x - 2); }
+      break;
+    }
+    case FIN_COLLAPSE: /* the whole end of the level is one bridge and it has heard about you */
+      flat(G, 6, biome); check(G); flat(G, 12, biome);
+      sign(G, "THE BEAVER HAS BUILT THE LAST PART ON HIS OWN. HE WOULD LIKE YOU TO HURRY.");
+      for (int i = 0; i < 3; i++) { crumble_bridge(G, 22); flat(G, 3, biome); }
+      break;
+    case FIN_PRESSES: /* a corridor of them, in time, like a very expensive song */
+      flat(G, 6, biome); check(G); flat(G, 8, biome);
+      sign(G, "THE FACTORY WOULD LIKE A WORD. IT IS THE SAME WORD, TWELVE TIMES.");
+      for (int i = 0; i < 12; i++) { flat(G, 8, biome); press(G, G->x - 4, 170, i * 30); }
+      break;
+    case FIN_SAWS: /* she has brought her sisters */
+      flat(G, 6, biome); check(G); flat(G, 8, biome);
+      sign(G, "THE HEDGE TRIMMER HAS BROUGHT HER SISTERS.");
+      for (int i = 0; i < 9; i++) { flat(G, 12, biome); saw(G, G->x - 6, G->g + 1, 4, 3.0f + 0.25f * (float)i); }
+      break;
+    case FIN_CANNONS: /* fired, re-hired, fired */
+      flat(G, 6, biome); check(G); flat(G, 6, biome);
+      sign(G, "YOU HAVE BEEN RE-HIRED. PLEASE RETURN TO THE CANNON.");
+      for (int i = 0; i < 6; i++) { flat(G, 5, biome); cannon(G, G->x - 2, 14, 15); gap(G, 12, biome, biome == BIOME_VOLCANO ? T_LAVA : T_SPIKE); flat(G, 5, biome); }
+      break;
+    case FIN_DOORS: /* one plate, a long way back, and every door in the building */
+      flat(G, 6, biome); check(G); flat(G, 6, biome);
+      sign(G, "ALL DOORS ARE ON ONE PLATE. WE WANTED TO SAVE ON PLATES. RUN.");
+      for (int i = 0; i < 5; i++) plate_door(G, 150, 8);
+      break;
+    default: break;
+  }
   flat(G, 8, biome);
   goal_booth(G);
   flat(G, 6, biome);
@@ -251,6 +287,7 @@ static void l_mandatory_fun(gen *G) {
   coin_row(G, G->x - 5, 4, G->g + 3);
   EXTEND(420, S_RUNGAP, S_STEPS, S_WALKERS, S_HOPS, S_DROP, S_RUNGAP);
   sign(G, "THE LEVEL IS OVER SOON. THE FEELING IS NOT.");
+  G->finale = FIN_CHASE;
   L_finish(G, B);
 }
 
@@ -315,6 +352,7 @@ static void l_trampolines(gen *G) {
   rise(G, -3, 12, B);
   EXTEND(420, S_RUNGAP, S_SPRING, S_WALKERS, S_HOPS, S_LEDGES, S_DROP, S_STEPS);
   sign(G, "YOU MAY KEEP THE AIR JUMP. WE WILL BE BILLING YOU FOR THE AIR.");
+  G->finale = FIN_CHASE;
   L_finish(G, B);
 }
 
@@ -364,6 +402,7 @@ static void l_ground_suggestion(gen *G) {
   flat(G, 10, B);
   EXTEND(440, S_CRUMBLE, S_RUNGAP, S_SPRING, S_WALKERS, S_LEDGES, S_DROP);
   sign(G, "CONGRATULATIONS. THE BEAVER HAS BEEN PROMOTED.");
+  G->finale = FIN_COLLAPSE;
   L_finish(G, B);
 }
 
@@ -414,6 +453,7 @@ static void l_gardening(gen *G) {
   EXTEND(420, S_SAW, S_RUNGAP, S_PLAT, S_CRUMBLE, S_WALKERS, S_LEDGES, S_DROP, S_SPRING);
   sign(G, "THE HEDGE TRIMMER WOULD LIKE TO SEE YOU IN HER OFFICE.");
   flat(G, 10, B);
+  G->finale = FIN_SAWS;
   L_finish(G, B);
 }
 
@@ -497,6 +537,7 @@ static void l_claws_out(gen *G) {
   EXTEND(400, S_SHAFT, S_RUNGAP, S_WALKERS, S_HOPS, S_LEDGES, S_DROP);
   sign(G, "YOU HAVE LEFT THE WALL. THE WALL HAS ASKED US TO SAY IT IS FINE.");
   ceiling(G, c0, G->x - c0, 11);
+  G->finale = FIN_CHASE;
   L_finish(G, B);
 }
 
@@ -546,6 +587,7 @@ static void l_complimentary_piano(gen *G) {
   flat(G, 8, B);
   faller(G, G->x - 2);
   ceiling(G, c0, G->x - c0, 11);
+  G->finale = FIN_PIANOS;
   L_finish(G, B);
 }
 
@@ -590,6 +632,7 @@ static void l_mine(gen *G) {
   sign(G, "THIS LEVEL WAS AN APPRENTICESHIP. YOU HAVE BEEN PAID IN EXPERIENCE.");
   flat(G, 8, B);
   ceiling(G, c0, G->x - c0, 11);
+  G->finale = FIN_CHASE;
   L_finish(G, B);
 }
 
@@ -637,6 +680,7 @@ static void l_health_safety(gen *G) {
   sign(G, "THIS WEEK'S WINNER OF THE SAFETY AWARD HAS BEEN SCRAPED OFF AND NOTIFIED.");
   flat(G, 8, B);
   ceiling(G, c0, G->x - c0, 11);
+  G->finale = FIN_PRESSES;
   L_finish(G, B);
 }
 
@@ -698,6 +742,7 @@ static void l_free_swim(gen *G) {
   rise(G, -3, 8, B);
   EXTEND(380, S_POOL, S_RUNGAP, S_WALKERS, S_PLAT, S_LEDGES, S_STEPS);
   sign(G, "THANK YOU FOR SWIMMING. THE POOL WILL KEEP WHAT IT HAS.");
+  G->finale = FIN_CHASE;
   L_finish(G, B);
 }
 
@@ -735,6 +780,7 @@ static void l_hold_door(gen *G) {
   flat(G, 8, B);
   EXTEND(400, S_PLATE, S_WALKERS, S_RUNGAP, S_PLAT, S_SAW, S_LEDGES, S_STEPS, S_POOL);
   sign(G, "THE DOOR WOULD LIKE YOU TO KNOW IT NEVER LIKED ANY OF YOU.");
+  G->finale = FIN_DOORS;
   L_finish(G, B);
 }
 
@@ -767,6 +813,7 @@ static void l_plumbing(gen *G) {
   flat(G, 12, B);
   EXTEND(380, S_POOL, S_WALKERS, S_FAN, S_PLATE, S_RUNGAP, S_STEPS, S_LEDGES);
   sign(G, "A REPAIRMAN IS ON THE WAY. HE LEFT IN THE FOURTH CENTURY.");
+  G->finale = FIN_CHASE;
   L_finish(G, B);
 }
 
@@ -807,6 +854,7 @@ static void l_load_bearing(gen *G) {
   flat(G, 8, B);
   EXTEND(400, S_CRACK, S_WALKERS, S_RUNGAP, S_PLAT, S_SAW, S_PLATE, S_POOL, S_STEPS);
   sign(G, "THE RUINS WERE FINE UNTIL YOU GOT HERE. WE HAVE PHOTOS.");
+  G->finale = FIN_COLLAPSE;
   L_finish(G, B);
 }
 
@@ -863,6 +911,7 @@ static void l_casual_friday(gen *G) {
   ice(G, 14, B);
   EXTEND(400, S_ICE, S_RUNGAP, S_CRACK, S_WALKERS, S_SHAFT, S_DROP, S_STEPS);
   sign(G, "PLEASE FILL IN THE FORM ABOUT HOW MUCH YOU ENJOYED CASUAL FRIDAY.");
+  G->finale = FIN_CHASE;
   L_finish(G, B);
 }
 
@@ -901,6 +950,7 @@ static void l_air_con(gen *G) {
   flat(G, 12, B);
   EXTEND(400, S_FAN, S_WALKERS, S_ICE, S_RUNGAP, S_SAW, S_STEPS, S_DROP);
   sign(G, "THE THERMOSTAT IS A PAINTING OF A THERMOSTAT.");
+  G->finale = FIN_SAWS;
   L_finish(G, B);
 }
 
@@ -933,6 +983,7 @@ static void l_conveyor_opportunity(gen *G) {
   flat(G, 8, B);
   EXTEND(400, S_BELT, S_ICE, S_WALKERS, S_FAN, S_PRESS, S_RUNGAP, S_DROP);
   sign(G, "YOU HAVE ARRIVED AT OPPORTUNITY. IT HAS GONE TO LUNCH.");
+  G->finale = FIN_PRESSES;
   L_finish(G, B);
 }
 
@@ -971,6 +1022,7 @@ static void l_launch_program(gen *G) {
   flat(G, 8, B);
   EXTEND(400, S_CANNON, S_WALKERS, S_ICE, S_BELT, S_FAN, S_RUNGAP, S_DROP);
   sign(G, "THANK YOU FOR YOUR FIVE YEARS OF SERVICE. IT HAS BEEN FOUR MINUTES.");
+  G->finale = FIN_CANNONS;
   L_finish(G, B);
 }
 
@@ -1026,6 +1078,7 @@ static void l_literal_lava(gen *G) {
   flat(G, 8, B);
   EXTEND(400, S_LAVAGAP, S_CRUMBLE, S_PLAT, S_HOPS, S_WALKERS, S_DROP, S_STEPS);
   sign(G, "YOUR DEPOSIT HAS EVAPORATED.");
+  G->finale = FIN_COLLAPSE;
   L_finish(G, B);
 }
 
@@ -1062,6 +1115,7 @@ static void l_complimentary_rocks(gen *G) {
   flat(G, 12, B);
   EXTEND(400, S_FALL, S_LAVAGAP, S_WALKERS, S_SHAFT, S_SAW, S_DROP, S_STEPS);
   sign(G, "THE MOUNTAIN IS NOT ANGRY. IT IS DISAPPOINTED.");
+  G->finale = FIN_PIANOS;
   L_finish(G, B);
 }
 
@@ -1095,6 +1149,7 @@ static void l_severance(gen *G) {
   flat(G, 10, B);
   EXTEND(400, S_CANNON, S_LAVAGAP, S_WALKERS, S_FAN, S_SHAFT, S_DROP, S_STEPS);
   sign(G, "THE CANNON WOULD LIKE A REFERENCE.");
+  G->finale = FIN_CANNONS;
   L_finish(G, B);
 }
 
@@ -1141,6 +1196,7 @@ static void l_everything(gen *G) {
   flat(G, 10, B);
   EXTEND(480, S_SPRING, S_CRUMBLE, S_SAW, S_BELT, S_SHAFT, S_PRESS, S_FALL, S_PLATE, S_CRACK, S_ICE, S_FAN, S_CANNON, S_WALKERS, S_LAVAGAP, S_DROP);
   sign(G, "THE FOUNDER IS EXPECTING YOU. HE IS EXPECTING MONEY, MORE PRECISELY.");
+  G->finale = FIN_CHASE;
   L_finish(G, B);
 }
 

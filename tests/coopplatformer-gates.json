@@ -279,35 +279,35 @@
       "g.players": 2,
       "g.abilities": 7,
       "g.checkpoint": 6,
-      "g.kills": 0,
-      "g.won": 0,
-      "g.boss_hp": 4,
-      "g.hitstops": 5,
+      "g.kills": 1,
+      "g.won": 1,
+      "g.boss_hp": 0,
+      "g.hitstops": 9,
       "g.reached": 127,
       "g.camgate": [
         0,
         0,
-        1097,
+        1098,
         0
       ],
       "g.camoffset": [
-        199,
+        301,
         0,
         0
       ],
-      "g.impacts": 8,
+      "g.impacts": 12,
       "rumble.sent": [
         11,
-        8,
+        9,
         0,
         0
       ],
       "cw.rumble": [
-        19,
-        1,
-        532,
-        104,
-        234
+        20,
+        0,
+        200,
+        500,
+        90
       ]
     },
     "note": "two bots from the arena flag with every ability: boss fight, hit-stops and the win, cross-host state. No shake (2026-10-29): the drawn camera stays smooth through the whole fight, the boss leaps, hits and its death included (g.camgate: 1498 frames in motion, none over the bounds; before, 160 of them shook and were let off), and g.camoffset holds the drawn camera against the follow camera on the 440 frames within half a second of the 19 impacts (none off by over 0.1 mm; the build before, the same 440 frames: 152 off, up to 23 cm). The impacts are felt in the pads: rumble.sent counts the requests to each player, cw.rumble is the engine's last (the boss going down, pad 1)."
@@ -559,7 +559,7 @@
     "expect": {
       "g.players": 1,
       "g.pitview": [
-        0,
+        36,
         0
       ]
     },

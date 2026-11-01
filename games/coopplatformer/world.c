@@ -194,7 +194,8 @@ static void gen_cave(float u, float v, texel *t) {
 static void gen_basalt(float u, float v, texel *t) {
   gen_rock(u, v, t);
   float seam = fabsf(fbm(u, v, 4, 5, 91) - 0.5f);
-  float glow = 1.0f - sstep(0.0f, 0.035f, seam);
+  float where = sstep(0.5f, 0.66f, fbm(u, v, 3, 3, 95));
+  float glow = (1.0f - sstep(0.0f, 0.02f, seam)) * where;
   float pulse = 0.5f + 0.5f * fbm(u, v, 8, 2, 93);
   float k = 0.26f * t->r;
   t->r = k, t->g = k * 0.85f, t->b = k * 0.85f;
@@ -988,6 +989,12 @@ static void wall_detail(const level *L, int x0, int x1, mb *prop, mb *glow, mb *
             mb_cone(prop, fx + 0.5f, fy + 0.6f, zf + 0.02f, 0.02f, 0.004f, -(0.5f + 0.5f * hh(x, y, 408)), (hh(x, y, 409) - 0.5f) * 0.9f, 0.0f, 3, c0, c1);
             mb_cone(prop, fx + 0.2f + 0.6f * hh(x, y, 404), fy + 0.95f, zf + 0.02f, 0.035f, 0.008f, -(0.4f + 0.7f * hh(x, y, 405)), (hh(x, y, 406) - 0.5f) * 0.3f, 0.04f, 4, c0, c1);
           }
+        } else if (bi == BIOME_FROST && t != T_ICE) {
+          /* snow over the edge, and icicles under it, none alike */
+          float sn0[3] = { 0.8f, 0.87f, 1.0f }, sn1[3] = { 1.15f, 1.2f, 1.28f }, ic0[3] = { 0.55f, 0.75f, 1.0f }, ic1[3] = { 1.0f, 1.15f, 1.3f };
+          mb_box(prop, fx + 0.5f, fy + 0.98f, zf + 0.05f, 0.52f, 0.1f + 0.05f * hh(x, y, 451), 0.1f, sn0, sn1);
+          for (int k = 0; k < 3; k++)
+            if (hh(x, k, 452) < 0.6f) mb_cone(prop, fx + 0.15f + 0.35f * (float)k, fy + 0.92f, zf + 0.06f, 0.06f, 0.004f, -(0.2f + 0.7f * hh(x, k, 453)), 0, 0, 4, ic1, ic0);
         } else {
           /* a worn stone lip: lighter, a little proud of the face */
           float lo[3], hi[3];

@@ -14,6 +14,7 @@ struct gen {
   uint32_t s;
   int x;     /* the cursor: next free column */
   int g;     /* surface height of the path at the cursor */
+  int finale; /* how this level ends */
 };
 
 static uint32_t rnd(gen *G, int n) {
@@ -382,7 +383,7 @@ static void close_level(gen *G, int biome) {
   if (G->x + 3 >= WORLD_W) cw_error("coopplatformer: level too wide: %d columns", G->x);
   L->width = G->x;
   block(L, G->x, 0, 3, WORLD_H, T_ROCK);
-  for (int x = G->x; x < G->x + 3 && x < WORLD_W; x++) L->ground[x] = WORLD_H;
+  for (int x = G->x; x < G->x + 3 && x < WORLD_W; x++) L->ground[x] = WORLD_H, L->biome[x] = (uint8_t)biome;
   for (int x = G->x + 3; x < WORLD_W; x++) {
     L->biome[x] = (uint8_t)biome;
     L->ground[x] = WORLD_H;
