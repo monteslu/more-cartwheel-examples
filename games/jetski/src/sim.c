@@ -272,9 +272,16 @@ static void solid_push(craft *c, float x, float z, float yaw, float hl, float hw
   cw_sincos(yaw, &sy, &cy);
   float a = dx * sy + dz * cy, l = dx * -cy + dz * sy;
   if (a < -hl || a > hl || l < -hw || l > hw) return;
-  float push = (l < 0 ? -hw - l : hw - l) * 1.02f;
-  c->x += -cy * push, c->z += sy * push;
-  c->vx *= 0.75f, c->vz *= 0.75f;
+  /* out by the nearest face, not always to the side: a bow sweeping over a craft threw it up to a half-beam in one tick. Only the speed into the face goes, so a craft can slide along a hull and away */
+  float nx, nz, depth;
+  float to_side = hw - fabsf(l), to_end = hl - fabsf(a);
+  if (to_end < to_side) nx = a < 0 ? -sy : sy, nz = a < 0 ? -cy : cy, depth = to_end;
+  else nx = l < 0 ? cy : -cy, nz = l < 0 ? -sy : sy, depth = to_side;
+  depth = fminf(depth * 1.02f, 0.6f);
+  c->x += nx * depth, c->z += nz * depth;
+  float into = c->vx * nx + c->vz * nz;
+  if (into < 0) c->vx -= nx * into, c->vz -= nz * into;
+  c->vx *= 0.99f, c->vz *= 0.99f;
   c->bump = true;
   c->wall_hits++;
 }
