@@ -674,6 +674,8 @@ void sim_reset(int state) {
   int level = G.level;
   double wt_extra = G.wt_extra;
   float keep_cam[3] = { G.cam[0], G.cam[1], G.cam[2] };
+  /* the swoop down to the start comes from the title's camera only. From a last race or another course it is a cut */
+  if (g_cam_cut && G.state != RACE_ATTRACT) keep_cam[0] = keep_cam[1] = keep_cam[2] = 0;
   cw_node water = G.water, camera = G.camera, sun = G.sun, sky = G.sky, clouds = G.clouds, sun_node = G.sun_node;
   cw_terrain *land = G.land;
   memset(&G, 0, sizeof G);

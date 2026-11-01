@@ -402,6 +402,7 @@ static void sky_apply(void) {
 }
 /* G.level changed */
 void view_course_apply(void) {
+  if (g_cam_cut) G.cam[0] = 0, G.look[0] = 0;
   cw_node root = cw_node_get(cw_tree_root(cw_scene_app_tree()), "Root");
   if (cw_node_valid(land_n)) { G.land = NULL; cw_node_free(land_n); }
   land_init(root);
@@ -682,6 +683,8 @@ bool g_peek_on;
 float g_peek[6];
 void view_sync(double alpha) {
   float a = (float)alpha;
+  /* a frame can come before the first tick after a reset, with no camera place at all: find it now */
+  if (g_cam_cut && G.cam[0] == 0 && cw_node_valid(G.water)) view_tick(1.0f / 60.0f);
   /* who is on the water, and which buoys count */
   { static int shown = -1;
     int now = g_difficulty * 2 + (racer_on(1) ? 1 : 0) + g_buoy_style * 16 + g_buoy_hide * 32;
@@ -754,8 +757,10 @@ void view_sync(double alpha) {
     cw_node3d_set_rotation(gate_n, (t3_vec3){ 0, cw_atan2(dx, dz), 0 });
   }
   t3_vec3 cp = { lerpf(G.cam_prev[0], G.cam[0], a), lerpf(G.cam_prev[1], G.cam[1], a), lerpf(G.cam_prev[2], G.cam[2], a) };
-  /* the rubric's check on what is really drawn */
-  if (G.state != RACE_ATTRACT && cp.y < cw_water_height_at(G.water, cp.x, cp.z, G.wt)) g_cam_drawn_under++;
+  /* never drawn under the sea: the first tick of a course can place the camera by the last course's tide. A held debug camera may go where it is told */
+  { float h = cw_water_height_at(G.water, cp.x, cp.z, G.wt);
+    if (g_cam_cut && !g_peek_on && G.state != RACE_ATTRACT && cp.y < h + 0.8f) cp.y = h + 0.8f;
+    if (G.state != RACE_ATTRACT && cp.y < h) g_cam_drawn_under++; }
   t3_vec3 lp = { lerpf(G.look_prev[0], G.look[0], a), lerpf(G.look_prev[1], G.look[1], a), lerpf(G.look_prev[2], G.look[2], a) };
   cw_node3d_set_position(G.clouds, (t3_vec3){ cp.x, 0, cp.z });
   {

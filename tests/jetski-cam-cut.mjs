@@ -40,5 +40,13 @@ const a = +(await rd('cam.drawn_under')); await cmd('race'); await call('frame',
 const b = +(await rd('cam.drawn_under')); await cmd('sw cam_cut 0'); await cmd('course 0'); await cmd('race'); await call('frame', { op: 'step', frames: 90 }); await cmd('course 1');
 const c = +(await rd('cam.drawn_under')); await cmd('race'); await call('frame', { op: 'step', frames: 2 }); const d = +(await rd('cam.drawn_under'));
 check('the debug path too', b - a === 0, `${b - a} frames`);
+const gap = async () => { const p = await rd('p0.pos'), q = await rd('cam.pos'); return Math.hypot(p[0] - q[0], p[2] - q[2]); };
+const near = async (cut) => { await cmd(`sw cam_cut ${cut}`); await cmd('course 0'); await cmd('race'); await call('frame', { op: 'step', frames: 90 }); await cmd('course 1'); await cmd('race'); await call('frame', { op: 'step', frames: 1 }); const g = await gap(); return g; };
+const g1 = await near(1), g0 = await near(0);
+check('from another course the camera starts behind the craft', g1 < 15, `${g1.toFixed(1)} m away in the first frame`);
+check('control: cam_cut 0 flies in from where it was', g0 > 50, `${g0.toFixed(1)} m away`);
+// the picture itself: no frame of that path is mostly water colour with no sky
+await cmd('sw cam_cut 1'); await cmd('course 0'); await cmd('race'); await call('frame', { op: 'step', frames: 90 }); await cmd('course 1'); await cmd('race');
+await call('frame', { op: 'stepAndShot', frames: 2, path: join(ROOT, 'out/cam-cut.png') });
 check('control: cam_cut 0 is under the sea on one or the other', off.some((s) => s.under > 0) || d - c > 0, `flow ${off.map((s) => s.under).join(' ')}, debug path ${d - c}`);
 process.exit(fail ? 1 : 0);
