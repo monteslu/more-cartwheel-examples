@@ -1160,5 +1160,10 @@
       "spawn.unposed": 0
     },
     "note": "B-PT20: stage 4 and each of its waves: every body drawn where the simulation has it on its first visible frame; control: BRAWLER_SPAWN_BUG"
+  },
+  {
+    "name": "brawler-quality",
+    "script": "tests/brawler-quality.mjs",
+    "note": "a program for everything drawn at every quality on both backends, through a spread warm-up as a player gets it: waves and the boss of every stage, bodies down, every item, the creep's flash on every stage, from the title by real input. A scene not reached fails. Control: physical+map+rep+nmap+ao+rmap+mmap+skin+sheen+l2001+xcluster_csm out of the table must be reported and skip draws"
   }
 ]
