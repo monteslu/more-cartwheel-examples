@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.15.0
+
+- coopplatformer: hold West to run and press South to jump, so a running jump goes more than
+  twice as far as a standing one. Dash moves to the right shoulder. On a keyboard, Shift or X
+  runs and C or F dashes.
+- coopplatformer: touch screens get controls: a stick, A, RUN and DASH.
+- coopplatformer: world 1, five long levels with a boss, signs and level names. The old level
+  follows it for now. Worlds 2 to 5 come in later releases.
+- coopplatformer: music, original tracks for the title, world 1 and bosses.
+- coopplatformer: bad days. Saws, presses and falling pianos are always a gory gag, lava,
+  spikes and enemies sometimes, with blood, bones, stains and a remark from a friend. Land on
+  a friend's head and you flatten them.
+- coopplatformer: saves from earlier versions start over.
+
 ## 0.14.0
 
 - jetski: a minimap, bottom left, with no panel behind it: the course, your rivals, the buoys
