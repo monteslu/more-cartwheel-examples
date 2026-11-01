@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.15.1
+
+- jetski: Crater Atoll's cliffs read as rock faces from a distance: spurs, gullies, ledges and
+  uneven rock beds, with new rock textures. The other four courses follow in later releases.
+- jetski: all five courses lose a grid of straight seams on their steep ground.
+
 ## 0.15.0
 
 - coopplatformer: hold West to run and press South to jump, so a running jump goes more than
