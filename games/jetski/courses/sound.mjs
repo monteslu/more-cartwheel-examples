@@ -1,6 +1,6 @@
 // Cold Sound: a grey morning in a granite fjord, open to the ocean at its west end and sheltered at its head. A tide that drains
 // through the race opens a drowned arch through the headland: the short way home, once there is room under it.
-export default ({ clamp, lerp, smooth, hash, fbm, ridged, trackOf }) => {
+export default ({ clamp, lerp, smooth, hash, fbm, ridged, trackOf, strongest }) => {
 const P = [[-600, 200], [-420, 300], [-200, 340], [20, 300], [180, 200], [360, 190], [520, 120], [560, -30], [470, -170], [320, -200], [190, -160], [30, -260], [-200, -340], [-460, -330], [-680, -200], [-760, 20]];
 const { trackDist, pointAt, LEN } = trackOf(P);
 // the cut through the headland's neck: from the south leg to the north leg
@@ -37,11 +37,17 @@ return {
   track: P,
   height,
   // layers 0 dark shingle, 1 kelp-stained tide rock, 2 granite, 3 moss; snow is granite graded pale up high (blend of 0 and 2 is enough down low)
-  paint({ x, z, y, slope }) {
+  cliffs: { seed: 507, spurs: [[210, 22], [80, 9], [28, 3]], talus: 2.3, bench: 4, beds: [10, 46], dip: [0.03, 0.05], fold: 40, droplets: 700000, capacity: 1.8, cut: 8, keep: 9, spare: (x, z) => 1 - smooth(30, 70, segDist(x, z)) },
+  paint({ x, z, y, slope, flow, hard, wall }) {
     const n = fbm(x * 0.03, z * 0.03, 3, 211), steep = smooth(0.6, 1.1, slope + (n - 0.5) * 0.5);
     // the tide's stain on the granite: one base layer across the band, or the terrain's grid shows as teeth along the waterline
     if (y < 6) return [2, 1, 255 * (1 - smooth(1.5, 6, y + (n - 0.5) * 2))];
     const moss = (1 - steep) * smooth(5, 14, y + n * 8) * (1 - smooth(60, 110, y + n * 30));
+    // a granite face: pale and dark masses split by joints, black where water runs, moss only where a ledge holds it
+    if (wall > 0.25 || slope > 0.8) {
+      const mass = fbm(x * 0.0058 + 5, z * 0.0058, 3, 212);
+      return strongest([[2, 0.55 + (mass - 0.5) * 0.6], [4, smooth(0.45, 0.68, 1 - mass + (hard - 0.5) * 0.25)], [5, flow * 0.6], [3, moss * 1.7]]);
+    }
     return [2, 3, 255 * moss];
   },
   mask({ x, z, y }) {
@@ -50,12 +56,12 @@ return {
     return Math.max(0.05, Math.max(open, 0.16) * smooth(-0.8, -7, y));
   },
   maps: {
-    pines({ x, z, y, slope }) { return smooth(5, 12, y) * (1 - smooth(55, 95, y)) * (1 - smooth(0.7, 1.05, slope)) * smooth(0.38, 0.55, fbm(x * 0.018, z * 0.018, 3, 221)); },
+    pines({ x, z, y, slope }) { return smooth(5, 12, y) * (1 - smooth(55, 95, y)) * (1 - smooth(0.45, 0.72, slope)) * smooth(0.38, 0.55, fbm(x * 0.018, z * 0.018, 3, 221)); },
     boulders({ x, z, y, slope }) { return smooth(-2.5, -0.5, y) * (1 - smooth(3, 7, y)) * smooth(0.42, 0.6, fbm(x * 0.05 + 3, z * 0.05, 3, 222)) * smooth(30, 42, trackDist(x, z)) * smooth(8, 16, segDist(x, z)); },
   },
   lying: ['boulders'],
   // the fjord's shore is steep everywhere: deep-set boulders hold on ground the atoll's could not
-  lying_drop: [8, 12],
+  lying_drop: [5, 8],
   scatter: [
     ['pine', 'pines', 0.03, 0.7, 1.5, 800, 177, false, 0.1],
     ['rock0', 'boulders', 0.25, 0.7, 2.6, 700, 179, true, 0.9],
@@ -65,8 +71,10 @@ return {
   grades: [
     ['shingle', 'coast', [0.42, 0.44, 0.48], 0.2],
     ['tiderock', 'rock', [0.24, 0.28, 0.26], 0.1],
-    ['granite', 'rock', [0.7, 0.86, 1.08], 0.06],
+    ['granite', 'marble_cliff_03', [0.66, 0.7, 0.76], 0.035, 0.35],
     ['moss', 'grass', [0.42, 0.56, 0.34], 0.09],
+    ['darkgranite', 'rock_face', [0.32, 0.34, 0.38], 0.022, 0.3],
+    ['wetgranite', 'rock_face_03', [0.27, 0.29, 0.31], 0.03, 0.2],
   ],
   ramp_count: 12,
   ramp_top: 6.5,
@@ -77,7 +85,7 @@ return {
   tide: [2.6, -1.6],
   sky: 'res://textures/sky-sound.png',
   sun_disc: 0.12,
-  side_detile: 1,
+  side_detile: 0.01,
   props: [
     // (what the water mirrors past the horizon on a wave's back: the sky's default sandy ground lay on this sea in tan bands)
     ['Sky', 'ground_color', 'color(0.16, 0.26, 0.34, 1)'],

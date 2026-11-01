@@ -9,7 +9,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const { readImage } = await import(join(ROOT, 'deps/cartwheel-engine/tools/lib/png.mjs'));
 const URL_ = 'http://127.0.0.1:7331/mcp', args = process.argv.slice(2).filter((a) => !a.startsWith('--')), CART = resolve(args[0] || join(ROOT, 'build/cart-wgpu/carts/jetski.wasc')), DIR = join(ROOT, 'out/cliff-structure'), LOW = process.argv.includes('--expect-low');
 const SESSION = process.env.JETSKI_SESSION || 'jetski-cliff';
-const FLOOR = 1.45; // released carts up to 0.15.0 measure 1.24 on Crater Atoll; the rock faces 1.68
+const FLOOR = { 0: 1.45, 1: 1.15 }; // between the cart before the rock faces and the rock faces: Crater Atoll 1.17 and 1.69, Cold Sound 0.96 and 1.35
 // course index: [camera x y z, look x y z, rectangle x y w h]
 const VIEWS = {
   0: [
@@ -17,6 +17,13 @@ const VIEWS = {
     ['306 2.2 21 -340 14 -60', [300, 230, 1000, 250]],
     ['120 2.2 110 -330 40 90', [60, 340, 860, 450]],
     ['-40 2.2 100 -300 40 330', [100, 100, 1700, 500]],
+  ],
+  1: [
+    ['-663 5.0 -218 -164 43 -425', [200, 280, 1500, 220]],
+    ['-696 5.0 -180 -463 43 384', [200, 280, 1500, 220]],
+    ['375 5.0 -199 126 42 -96', [200, 280, 1500, 220]],
+    ['-40 5.0 -291 -40 44 -191', [200, 200, 1500, 420]],
+    ['-274 5.0 335 -308 44 418', [200, 200, 1500, 420]],
   ],
 };
 mkdirSync(DIR, { recursive: true });
@@ -54,10 +61,10 @@ for (const [level, views] of Object.entries(VIEWS)) {
     tiled += scaleShares(t, ...rect).ratio;
     console.log(`  course ${level} view ${v}: big ${s.big.toFixed(3)} fine ${s.fine.toFixed(3)} ratio ${s.ratio.toFixed(2)} (rock ${(s.rock * 100).toFixed(0)}%)`);
   }
-  const mean = sum / views.length, tile = tiled / views.length, high = mean >= FLOOR;
-  console.log(`${high !== LOW ? 'ok  ' : 'FAIL'} course ${level}: mean ratio ${mean.toFixed(2)}, floor ${FLOOR}${LOW ? ' (control: must be under)' : ''}; repeated tile reads ${tile.toFixed(2)}`);
+  const mean = sum / views.length, tile = tiled / views.length, floor = FLOOR[level], high = mean >= floor;
+  console.log(`${high !== LOW ? 'ok  ' : 'FAIL'} course ${level}: mean ratio ${mean.toFixed(2)}, floor ${floor}${LOW ? ' (control: must be under)' : ''}; repeated tile reads ${tile.toFixed(2)}`);
   if (high === LOW) fail++;
-  if (tile >= FLOOR) { console.log(`FAIL course ${level}: a repeated tile passes the check`); fail++; }
+  if (tile >= floor) { console.log(`FAIL course ${level}: a repeated tile passes the check`); fail++; }
   await cmd('peek');
 }
 }

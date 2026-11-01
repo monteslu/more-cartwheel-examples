@@ -124,3 +124,7 @@ course/storm/palerock-albedo.rgba
 course/storm/palerock-normal.rgba
 course/storm/pale2-albedo.rgba
 course/storm/pale2-normal.rgba
+course/sound/darkgranite-albedo.rgba
+course/sound/darkgranite-normal.rgba
+course/sound/wetgranite-albedo.rgba
+course/sound/wetgranite-normal.rgba
