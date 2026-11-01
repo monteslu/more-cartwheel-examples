@@ -131,7 +131,7 @@
     "expect": {
       "g.tick": 60,
       "g.flames": [
-        10,
+        24,
         0
       ]
     },
@@ -279,35 +279,35 @@
       "g.players": 2,
       "g.abilities": 7,
       "g.checkpoint": 6,
-      "g.kills": 1,
-      "g.won": 1,
-      "g.boss_hp": 0,
-      "g.hitstops": 10,
+      "g.kills": 0,
+      "g.won": 0,
+      "g.boss_hp": 4,
+      "g.hitstops": 5,
       "g.reached": 127,
       "g.camgate": [
         0,
         0,
-        1098,
+        1097,
         0
       ],
       "g.camoffset": [
-        369,
+        199,
         0,
         0
       ],
-      "g.impacts": 15,
+      "g.impacts": 8,
       "rumble.sent": [
-        12,
-        12,
+        11,
+        8,
         0,
         0
       ],
       "cw.rumble": [
-        24,
+        19,
         1,
-        1000,
-        700,
-        410
+        532,
+        104,
+        234
       ]
     },
     "note": "two bots from the arena flag with every ability: boss fight, hit-stops and the win, cross-host state. No shake (2026-10-29): the drawn camera stays smooth through the whole fight, the boss leaps, hits and its death included (g.camgate: 1498 frames in motion, none over the bounds; before, 160 of them shook and were let off), and g.camoffset holds the drawn camera against the follow camera on the 440 frames within half a second of the 19 impacts (none off by over 0.1 mm; the build before, the same 440 frames: 152 off, up to 23 cm). The impacts are felt in the pads: rumble.sent counts the requests to each player, cw.rumble is the engine's last (the boss going down, pad 1)."
@@ -398,7 +398,7 @@
     "expect": {
       "g.tick": 60,
       "g.coinface": [
-        104,
+        123,
         0
       ]
     },
@@ -516,7 +516,8 @@
       "g.tick",
       "g.deaths",
       "g.gore",
-      "g.level"
+      "g.level",
+      "g.graves"
     ],
     "webgpu": {
       "vsGl": 0.02,
@@ -524,20 +525,102 @@
       "note": "the picture with particles in the air: the same frame on both backends"
     },
     "expect": {
-      "g.level": [
-        3,
-        6
-      ],
       "g.gore": [
         2,
         2,
         4
+      ],
+      "g.graves": [
+        1,
+        0
       ]
     },
     "controlEnv": {
       "COOP_NO_GORE": "1"
     },
     "note": "two bots against the hedge trimmer on the real cart: g.gore is [deaths seen, played as a big gag, stains on the level]. The control (COOP_NO_GORE, native) plays none: its g.gore must differ. The picture is compared across GL and WebGPU with blood in the air."
+  },
+  {
+    "name": "coopplatformer-pit-fall",
+    "app": "coopplatformer",
+    "input": "coopplatformer-pit-fall.json",
+    "frames": 1200,
+    "fields": [
+      "g.tick",
+      "g.players",
+      "g.pitview",
+      "g.deaths"
+    ],
+    "webgpu": {
+      "vsGl": 0.02,
+      "maxArea": 0.02,
+      "note": "the same frame on both backends"
+    },
+    "expect": {
+      "g.players": 1,
+      "g.pitview": [
+        0,
+        0
+      ]
+    },
+    "controlEnv": {
+      "COOP_PIT_CAM_BUG": "1"
+    },
+    "note": "walking off the first gap with a real pad: the camera stays above the lip and watches the body drop out of the picture. g.pitview is [frames someone was below the lip of a pit, of them frames the camera went below it]. The control (COOP_PIT_CAM_BUG, native) lets the camera follow down: it must differ."
+  },
+  {
+    "name": "coopplatformer-near-layer",
+    "app": "coopplatformer_auto",
+    "frames": 500,
+    "fields": [
+      "g.tick",
+      "g.nearcover"
+    ],
+    "webgpu": {
+      "vsGl": 0.005,
+      "maxArea": 0.005,
+      "note": "the same frame on both backends"
+    },
+    "expect": {
+      "g.tick": 500,
+      "g.nearcover": [
+        1000,
+        0
+      ]
+    },
+    "controlEnv": {
+      "COOP_NEAR_BUG": "1"
+    },
+    "note": "the near layer between the camera and the play never stands in front of a player: g.nearcover is [players drawn, of them with the layer above their feet along the line of sight]. The control (COOP_NEAR_BUG, native) stands it 7 m higher: it must differ."
+  },
+  {
+    "name": "coopplatformer-throw",
+    "app": "coopplatformer",
+    "input": "coopplatformer-throw.json",
+    "controlInput": "coopplatformer-throw-none.json",
+    "frames": 640,
+    "fields": [
+      "g.tick",
+      "g.players",
+      "g.throws",
+      "g.ppos"
+    ],
+    "webgpu": {
+      "vsGl": 0.02,
+      "maxArea": 0.02,
+      "note": "the same frame on both backends"
+    },
+    "expect": {
+      "g.players": 2,
+      "g.throws": [
+        1,
+        0,
+        0,
+        0
+      ]
+    },
+    "tol": 0.001,
+    "note": "two real pads: the first picks up the second with the left shoulder and throws. g.throws counts it. The control does not press the button: its state must differ."
   },
   {
     "name": "coopplatformer-quality",

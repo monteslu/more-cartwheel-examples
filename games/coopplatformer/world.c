@@ -138,18 +138,29 @@ static float sstep(float a, float b, float x) {
 static float mixf(float a, float b, float t) { return a + (b - a) * t; }
 typedef struct texel { float r, g, b, h, rough, ao, er, eg, eb; } texel;
 
+/* value noise stretched into bands: px cells across and py up the 4 m texture, both whole numbers, so it tiles */
+static float vband(float u, float v, int px, int py, int s) {
+  float x = (u - floorf(u)) * (float)px, y = (v - floorf(v)) * (float)py;
+  int ix = (int)x, iy = (int)y;
+  float fx = x - (float)ix, fy = y - (float)iy;
+  fx = fx * fx * (3 - 2 * fx), fy = fy * fy * (3 - 2 * fy);
+#define VB(a, b) hash2(((a) % px) * 131 + ((b) % py) * 7, ((b) % py), s, 1 << 20)
+  float t0 = VB(ix, iy) + (VB(ix + 1, iy) - VB(ix, iy)) * fx, t1 = VB(ix, iy + 1) + (VB(ix + 1, iy + 1) - VB(ix, iy + 1)) * fx;
+#undef VB
+  return t0 + (t1 - t0) * fy;
+}
 /* weathered stone: strata, cracks, pits (tinted per region by vertex colour) */
 static void gen_rock(float u, float v, texel *t) {
-  float strata = vnoise(u * 0.5f, v * 6.0f + fbm(u, v, 4, 3, 5) * 1.5f, 2, 9);
-  float n = fbm(u, v, 6, 5, 1), fine = fbm(u, v, 32, 3, 3);
-  float crack = fabsf(fbm(u, v, 5, 4, 41) - 0.5f);
-  float c = crack < 0.018f ? 0.55f + crack * 25.0f : 1.0f;
-  float k = 0.55f + 0.3f * n + 0.1f * strata + 0.08f * (fine - 0.5f);
-  k *= 0.55f + 0.45f * c;
-  t->r = k * 1.0f, t->g = k * 0.95f, t->b = k * 0.9f;
-  t->h = 0.5f * n + 0.35f * fine + 0.2f * strata - (1 - c) * 0.5f;
-  t->rough = 0.78f + 0.2f * fine;
-  t->ao = 0.6f + 0.4f * c * (0.6f + 0.4f * n);
+  /* laid down in beds: bands of several thicknesses that wander, each its own tone, soft pits and grit. The lines drawn
+   * round noise contours that used to be here read as a pen drawing of a map, half the screen of it */
+  float warp = fbm(u, v, 3, 3, 5);
+  float bed = vband(u, v + warp * 0.2f, 2, 7, 9), thin = vband(u, v + warp * 0.12f, 3, 23, 10), fine_bed = vband(u, v + warp * 0.08f, 5, 53, 12);
+  float n = fbm(u, v, 6, 5, 1), fine = fbm(u, v, 32, 3, 3), grit = vnoise(u, v, 128, 15);
+  float k = 0.46f + 0.2f * bed + 0.1f * thin + 0.05f * fine_bed + 0.14f * (n - 0.5f) + 0.1f * (fine - 0.5f) + 0.06f * (grit - 0.5f);
+  t->r = k * (0.98f + 0.1f * (bed - 0.5f)), t->g = k * 0.95f, t->b = k * (0.9f - 0.12f * (bed - 0.5f));
+  t->h = 0.3f * bed + 0.2f * thin + 0.25f * n + 0.25f * fine;
+  t->rough = 0.82f + 0.16f * fine;
+  t->ao = 0.8f + 0.2f * bed;
 }
 /* grass: blades streaked along v, patches of clover and dry tufts */
 static void gen_grass(float u, float v, texel *t) {
@@ -485,13 +496,17 @@ static void corner_col(const level *L, int bi, float vx, float vy, float *out) {
   for (int cx = ix - 1; cx <= ix; cx++) {
     if (cx < 0 || cx >= WORLD_W) continue;
     int u = 0;
-    while (iy + u < WORLD_H && u < 6 && world_solid(L, cx, iy + u)) u++;
+    while (iy + u < WORLD_H && u < 18 && world_solid(L, cx, iy + u)) u++;
     up += u, cnt++;
   }
   float depth = cnt ? (float)up / (float)cnt : 0;
-  float dk = 1.0f - 0.075f * fminf(depth, 6.0f);
+  /* falls away with depth: nearly full for the first two tiles, then down to about a seventh by nine */
+  float dk = 1.0f - 0.86f * sstep(1.0f, 9.0f, depth);
   static const float HUE2[BIOMES][3] = { { 0.75f, 0.62f, 0.5f }, { 0.42f, 0.5f, 0.78f }, { 0.85f, 0.8f, 0.6f }, { 0.62f, 0.72f, 0.92f }, { 0.6f, 0.38f, 0.36f } };
-  for (int c = 0; c < 3; c++) out[c] = mixf(st[c], HUE2[bi][c], hue * 0.6f) * var * dk;
+  /* a band per region just under the surface: dark loam and paler clay in the meadow, and so on */
+  static const float TOPB[BIOMES][3] = { { 0.5f, 0.32f, 0.2f }, { 0.34f, 0.4f, 0.62f }, { 0.78f, 0.66f, 0.46f }, { 0.92f, 0.98f, 1.08f }, { 0.5f, 0.34f, 0.32f } };
+  float loam = 1.0f - sstep(0.7f, 2.2f, depth);
+  for (int c = 0; c < 3; c++) out[c] = mixf(mixf(st[c], HUE2[bi][c], hue * 0.6f), TOPB[bi][c], loam * 0.8f) * var * dk;
 }
 
 static int tile_mat(const level *L, int x, int y) {
@@ -910,6 +925,43 @@ static void mb_rock(mb *b, float cx, float cy, float cz, float rx, float ry, flo
 static int g_surface[3];
 static int g_ledge_unheld; /* ends of wooden ledges with no post */
 void world_surface_audit(int out[3]) { memcpy(out, g_surface, sizeof g_surface); out[2] += g_ledge_unheld; }
+/* one thing set into the face, half sunk: a bone, a little skull with its ears still on, a coin, a fossil, a rubber duck */
+static void buried(mb *p, float x, float y, float z, int seed, int bi, const float *base) {
+  float bone[3] = { 1.3f, 1.2f, 1.0f }, bdk[3] = { 0.8f, 0.72f, 0.56f }, socket[3] = { 0.03f, 0.02f, 0.02f };
+  float gold0[3] = { 0.55f, 0.36f, 0.06f }, gold1[3] = { 0.95f, 0.72f, 0.2f };
+  (void)base;
+  float k = hh(seed, 1, 440), tilt = (hh(seed, 2, 441) - 0.5f) * 1.2f;
+  float dep = fminf(1.0f, 0.9f + 0.1f * base[1]);
+  (void)dep;
+  if (k < 0.4f) { /* a long bone, knuckles at both ends */
+    float dx = cosf(tilt) * 0.34f, dy = sinf(tilt) * 0.34f;
+    mb_cone(p, x - dx, y - dy, z + 0.01f, 0.05f, 0.04f, 2 * dy, 2 * dx, 0, 5, bdk, bone);
+    for (int e = -1; e <= 1; e += 2) {
+      mb_ellip(p, x + (float)e * dx, y + (float)e * dy + 0.04f, z + 0.02f, 0.07f, 0.07f, 0.03f, bdk, bone, 8, 4);
+      mb_ellip(p, x + (float)e * dx, y + (float)e * dy - 0.04f, z + 0.02f, 0.07f, 0.07f, 0.03f, bdk, bone, 8, 4);
+    }
+  } else if (k < 0.65f) { /* the skull of something small and cute: the ears survive */
+    mb_ellip(p, x, y, z + 0.02f, 0.2f, 0.18f, 0.05f, bdk, bone, 12, 5);
+    mb_cone(p, x - 0.13f, y + 0.12f, z + 0.02f, 0.07f, 0.01f, 0.16f, -0.05f, 0, 4, bdk, bone);
+    mb_cone(p, x + 0.13f, y + 0.12f, z + 0.02f, 0.07f, 0.01f, 0.16f, 0.05f, 0, 4, bdk, bone);
+    mb_ellip(p, x - 0.07f, y + 0.02f, z + 0.06f, 0.05f, 0.055f, 0.01f, socket, socket, 8, 3);
+    mb_ellip(p, x + 0.07f, y + 0.02f, z + 0.06f, 0.05f, 0.055f, 0.01f, socket, socket, 8, 3);
+    mb_box(p, x, y - 0.1f, z + 0.06f, 0.07f, 0.012f, 0.005f, socket, socket);
+  } else if (k < 0.85f) { /* coins nobody got: a stack, tipped over */
+    for (int i = 0; i < 4; i++) mb_ellip(p, x - 0.16f + 0.11f * (float)i, y - 0.06f + 0.05f * (float)(i & 1) + tilt * 0.06f * (float)i, z + 0.02f, 0.1f, 0.1f, 0.02f, gold0, gold1, 10, 3);
+  } else if (bi == BIOME_FROST) { /* a fish, frozen mid complaint */
+    float f0[3] = { 0.3f, 0.45f, 0.7f }, f1[3] = { 0.6f, 0.75f, 0.95f };
+    mb_ellip(p, x, y, z + 0.02f, 0.24f, 0.1f, 0.03f, f0, f1, 10, 4);
+    mb_cone(p, x + 0.22f, y, z + 0.02f, 0.02f, 0.12f, 0.0f, 0.14f, 0, 4, f0, f1);
+    mb_ellip(p, x - 0.15f, y + 0.02f, z + 0.05f, 0.022f, 0.022f, 0.008f, socket, socket, 6, 3);
+  } else { /* a rubber duck. Nobody knows */
+    float d0[3] = { 0.75f, 0.55f, 0.05f }, d1[3] = { 1.0f, 0.85f, 0.15f }, bk[3] = { 0.9f, 0.35f, 0.05f };
+    mb_ellip(p, x, y - 0.05f, z + 0.03f, 0.17f, 0.11f, 0.04f, d0, d1, 10, 4);
+    mb_ellip(p, x - 0.11f, y + 0.09f, z + 0.03f, 0.08f, 0.08f, 0.04f, d0, d1, 10, 4);
+    mb_box(p, x - 0.21f, y + 0.08f, z + 0.04f, 0.04f, 0.015f, 0.01f, bk, bk);
+    mb_ellip(p, x - 0.13f, y + 0.11f, z + 0.07f, 0.012f, 0.012f, 0.006f, socket, socket, 6, 3);
+  }
+}
 static void wall_detail(const level *L, int x0, int x1, mb *prop, mb *glow, mb *tiles) {
   const float zf = DEPTH_FRONT;
   for (int x = x0; x < x1 && x < WORLD_W; x++) {
@@ -930,8 +982,10 @@ static void wall_detail(const level *L, int x0, int x1, mb *prop, mb *glow, mb *
             float c0[3] = { 0.12f, 0.32f, 0.06f }, c1[3] = { 0.05f, 0.14f, 0.03f };
             mb_cone(prop, bx, fy + 1.03f, zf + 0.03f, 0.05f, 0.006f, -len, (hh(x, k, 403) - 0.5f) * 0.12f, 0.05f, 3, c0, c1);
           }
-          if (r < 0.18f) {
+          if (r < 0.34f) {
             float c0[3] = { 0.24f, 0.16f, 0.1f }, c1[3] = { 0.14f, 0.09f, 0.06f };
+            /* a side root off the main one, thinning */
+            mb_cone(prop, fx + 0.5f, fy + 0.6f, zf + 0.02f, 0.02f, 0.004f, -(0.5f + 0.5f * hh(x, y, 408)), (hh(x, y, 409) - 0.5f) * 0.9f, 0.0f, 3, c0, c1);
             mb_cone(prop, fx + 0.2f + 0.6f * hh(x, y, 404), fy + 0.95f, zf + 0.02f, 0.035f, 0.008f, -(0.4f + 0.7f * hh(x, y, 405)), (hh(x, y, 406) - 0.5f) * 0.3f, 0.04f, 4, c0, c1);
           }
         } else {
@@ -970,6 +1024,9 @@ static void wall_detail(const level *L, int x0, int x1, mb *prop, mb *glow, mb *
         shade(lo, base, 0.62f), shade(hi, base, 1.02f);
         mb_rock(&tiles[tile_mat(L, x, y)], fx + 0.5f + 0.2f * (hh(x, y, 419) - 0.5f), fy + 0.5f, zf - rx * 0.35f, rx, ry, rx * 0.6f, lo, hi, x * 7 + y * 131); /* a bulge, half buried, in the wall's own material */
       }
+      /* what is in the ground: bones of earlier visitors, coins nobody got, the odd thing that should not be there.
+       * Only deep enough to be in solid rock, never in a row */
+      if (t != T_BRICK && interior(L, x, y) && hh(x, y, 430) < 0.09f && x % 3 == (y % 3) && y > L->ground[x] - 8 && !(bi == BIOME_VOLCANO && hh(x, y, 431) < 0.4f)) buried(prop, fx + 0.5f, fy + 0.5f, zf, x * 13 + y * 7, bi, base);
       if (bi == BIOME_CAVES && r > 0.93f) { /* a vein of glowing crystal */
         float g0[3] = { 0.2f, 0.9f, 1.8f }, g1[3] = { 0.5f, 1.6f, 2.6f };
         int n = 3 + (int)(hh(x, y, 414) * 4);
@@ -1206,11 +1263,11 @@ void world_scene_build(game *g, cw_node root) {
   g_ledge_unheld = 0;
   g_plain_bug = getenv("COOP_PLAIN_BUG") != NULL;
   if (!g_mat[MT_ROCK]) { /* once: every level draws with the same generated materials, and a level loads without a new set */
-  g_mat[MT_ROCK] = pbr(gen_rock, 3.0f, 1.0f, false, 0);
+  g_mat[MT_ROCK] = pbr(gen_rock, 1.4f, 1.0f, false, 0);
   g_mat[MT_GRASS] = pbr(gen_grass, 2.0f, 1.0f, false, 0);
-  g_mat[MT_CAVE] = pbr(gen_cave, 3.0f, 1.0f, true, 0.7f);
+  g_mat[MT_CAVE] = pbr(gen_cave, 1.6f, 1.0f, true, 0.7f);
   g_mat[MT_BRICK] = pbr(gen_brick, 4.0f, 1.0f, false, 0);
-  g_mat[MT_BASALT] = pbr(gen_basalt, 3.5f, 1.0f, true, 2.2f);
+  g_mat[MT_BASALT] = pbr(gen_basalt, 1.8f, 1.0f, true, 1.1f);
   g_mat[MT_PROP] = t3_mesh_physical_material_new(0xffffff);
   g_mat[MT_PROP]->vertex_colors = true, g_mat[MT_PROP]->roughness = 0.75f, g_mat[MT_PROP]->side = T3_DOUBLE_SIDE;
   g_mat[MT_GLOW] = basic_vcol(false, false, 1);
@@ -1228,6 +1285,26 @@ void world_scene_build(game *g, cw_node root) {
         int t = L->t[y][x];
         if (t == T_ROCK || t == T_GRASS || t == T_BRICK || t == T_ICE || t == T_BELT) tile_faces(L, x, y, bs);
       }
+    /* the back of a pit: dark and going darker, so a gap reads as a hole with a bottom you do not want, and a body falling
+     * shows against it, instead of seeing through to the hills behind. Over lava it is lit from below */
+    for (int x = cx; x < cx + CHUNK && x < WORLD_W; x++) {
+      if (L->ground[x] != 0) continue;
+      int top = 0;
+      for (int k = x - 6; k <= x + 6; k++) if (k >= 0 && k < WORLD_W && L->ground[k] < WORLD_H && L->ground[k] > top) top = L->ground[k];
+      bool lava = L->t[2][x] == T_LAVA;
+      float n[3] = { 0, 0, 1 }, c0[3] = { 0.1f, 0.075f, 0.06f }, c1[3] = { 0.008f, 0.006f, 0.008f };
+      if (lava) rgb(c1, 1.1f, 0.3f, 0.06f), rgb(c0, 0.06f, 0.02f, 0.02f);
+      float fx = (float)x, midy = (float)top - 4.0f;
+      float p0[4][3] = { { fx, midy, DEPTH_BACK }, { fx + 1, midy, DEPTH_BACK }, { fx + 1, (float)top, DEPTH_BACK }, { fx, (float)top, DEPTH_BACK } };
+      float col0[4][3], col1[4][3];
+      float mid[3] = { (c0[0] + c1[0]) * 0.3f, (c0[1] + c1[1]) * 0.3f, (c0[2] + c1[2]) * 0.3f };
+      for (int k = 0; k < 3; k++) col0[0][k] = col0[1][k] = mid[k], col0[2][k] = col0[3][k] = c0[k];
+      float uv[4][2] = { { 0, 0 }, { 1, 0 }, { 1, 1 }, { 0, 1 } };
+      mb_quad(&bs[MT_PROP], p0, n, col0, uv);
+      float p1[4][3] = { { fx, 0, DEPTH_BACK }, { fx + 1, 0, DEPTH_BACK }, { fx + 1, midy, DEPTH_BACK }, { fx, midy, DEPTH_BACK } };
+      for (int k = 0; k < 3; k++) col1[0][k] = col1[1][k] = c1[k], col1[2][k] = col1[3][k] = mid[k];
+      mb_quad(&bs[MT_PROP], p1, n, col1, uv);
+    }
     scatter(L, cx, cx + CHUNK, &bs[MT_PROP], &bs[MT_GLOW]);
     wall_detail(L, cx, cx + CHUNK, &bs[MT_PROP], &bs[MT_GLOW], bs);
     for (int m = 0; m < MT_COUNT; m++) {
@@ -1675,6 +1752,51 @@ void world_things_build(game *g) {
         mb_box(&m, 0.5f, 0.66f, 0, 0.48f, 0.1f, 0.3f, c, d);
         g_thing_mesh[k][0] = thing_add(&m, t->x, t->y, 0, true);
         break;
+      case TH_MIMIC: { /* a coin. It stands still, unlike the others; a dark line where a mouth would be */
+        float g0[3] = { 0.6f, 0.4f, 0.06f }, g1[3] = { 1.0f, 0.8f, 0.2f }, mo[3] = { 0.05f, 0.02f, 0.02f };
+        mb_ellip(&m, 0, 0, 0, 0.3f, 0.3f, 0.07f, g0, g1, 16, 5);
+        mb_box(&m, 0, -0.03f, 0.075f, 0.17f, 0.018f, 0.005f, mo, mo);
+        g_thing_mesh[k][0] = thing_add(&m, t->x, t->y, 0, true);
+        break;
+      }
+      case TH_BOOM: { /* the post of a sign like any other, and a small red light that should not be there */
+        float rd0[3] = { 1.6f, 0.1f, 0.05f }, rd1[3] = { 3.0f, 0.3f, 0.1f };
+        sign_prop(&m, 0, 0, -0.9f, k * 5 + 1);
+        mb_ellip(&m, 0.72f, 2.5f, -0.78f, 0.07f, 0.07f, 0.07f, rd0, rd1, 8, 4);
+        g_thing_mesh[k][0] = thing_add(&m, t->x, t->y, 0, true);
+        break;
+      }
+      case TH_FAKE: /* the same booth, just standing there, on one mesh so it can fall over */
+        c3(a, 0.5f, 0.32f, 0.16f), c3(b, 0.72f, 0.5f, 0.28f), c3(c, 0.74f, 0.14f, 0.12f), c3(d, 0.96f, 0.92f, 0.82f);
+        mb_box(&m, 0, 1.1f, -1.1f, 1.5f, 1.1f, 0.3f, a, b);
+        mb_box(&m, -1.45f, 1.1f, -0.2f, 0.08f, 1.1f, 0.9f, a, b);
+        mb_box(&m, 1.45f, 1.1f, -0.2f, 0.08f, 1.1f, 0.9f, a, b);
+        mb_box(&m, 0, 0.5f, 0.55f, 1.5f, 0.5f, 0.1f, a, b);
+        for (int i = 0; i < 6; i++) { float *col = (i & 1) ? c : d; mb_box(&m, -1.25f + 0.5f * (float)i, 2.35f, -0.15f, 0.25f, 0.1f, 1.1f, col, col); }
+        c3(a, 0.3f, 0.32f, 0.36f), c3(b, 0.82f, 0.84f, 0.88f);
+        mb_box(&m, 0, 3.1f, 0, 1.2f, 0.42f, 0.05f, a, b);
+        g_thing_mesh[k][0] = thing_add(&m, t->x, t->y, 0, true);
+        break;
+      case TH_CHASER: { /* enormous, round, per region, and it has a face. The face does not turn with the rest */
+        static const float C0[BIOMES][3] = { { 0.1f, 0.26f, 0.08f }, { 0.12f, 0.13f, 0.2f }, { 0.4f, 0.34f, 0.22f }, { 0.75f, 0.82f, 0.92f }, { 0.25f, 0.06f, 0.03f } };
+        static const float C1[BIOMES][3] = { { 0.28f, 0.52f, 0.16f }, { 0.34f, 0.36f, 0.5f }, { 0.8f, 0.7f, 0.5f }, { 1.1f, 1.15f, 1.25f }, { 0.75f, 0.2f, 0.06f } };
+        int bi = L->biome[(int)t->a];
+        mb_rock(&m, 0, 0, 0, t->w, t->w, t->w * 0.8f, C0[bi], C1[bi], k * 3 + 11);
+        g_thing_mesh[k][0] = thing_add(&m, t->x, t->y + t->w, 0, true);
+        c3(a, 1.5f, 1.5f, 1.45f), c3(b, 0.02f, 0.02f, 0.02f), c3(c, 0.5f, 0.05f, 0.05f);
+        /* its face looks where it is going, on the side toward the camera: eyes too big, one a bit higher, a very small smile */
+#define ONFACE(X, Y) (t->w * 0.8f * sqrtf(fmaxf(0.02f, 1.0f - ((X) * (X) + (Y) * (Y)) / (t->w * t->w))) + 0.08f)
+        for (int s = 0; s < 2; s++) {
+          float ex = s ? 2.0f : 0.5f, ey = s ? 1.05f : 1.3f, ez = ONFACE(ex, ey);
+          mb_ellip(&m2, ex, ey, ez, 0.72f, 0.78f, 0.16f, a, a, 14, 6);
+          mb_ellip(&m2, ex + 0.26f, ey - 0.12f, ez + 0.16f, 0.27f, 0.29f, 0.05f, b, b, 10, 4);
+        }
+        { float mz = ONFACE(1.2f, -1.0f); mb_box(&m2, 1.2f, -1.0f, mz, 0.85f, 0.2f, 0.06f, c, c);
+          for (int i = 0; i < 4; i++) mb_box(&m2, 0.55f + 0.43f * (float)i, -0.86f, mz + 0.05f, 0.16f, 0.1f, 0.03f, a, a); }
+#undef ONFACE
+        g_thing_mesh[k][1] = thing_add(&m2, t->x, t->y + t->w, 0, true);
+        break;
+      }
       case TH_BOOTH: { /* the booth at the end: where an unimpressed clerk has been waiting for you to finish */
         c3(a, 0.5f, 0.32f, 0.16f), c3(b, 0.72f, 0.5f, 0.28f), c3(c, 0.74f, 0.14f, 0.12f), c3(d, 0.96f, 0.92f, 0.82f);
         mb_box(&still, t->x, t->y + 1.1f, -1.1f, 1.5f, 1.1f, 0.3f, a, b);       /* the back wall */
@@ -1700,6 +1822,65 @@ void world_things_build(game *g) {
   (void)sm;
 }
 
+/* ── the near layer: dark ground between the camera and the play, low in the frame, for depth. It hides the deep rock that is
+ * the plainest thing in the picture and gives the eye something to look past. Its top stays well below the lowest ground
+ * for a dozen columns either way, so in the camera's perspective it never covers a player. Everything on it stands on it. */
+static bool g_near_bug_on(void) { return getenv("COOP_NEAR_BUG") != NULL; }
+static float near_top(const level *L, int x) {
+  float low = 1e9f;
+  for (int k = x - 14; k <= x + 14; k++) {
+    if (k < 1 || k >= L->width) continue;
+    int g = L->ground[k];
+    if (g >= 4 && g < WORLD_H && (float)g < low) low = (float)g;
+  }
+  return low > 1e8f ? 0.0f : (g_near_bug_on() ? 7.0f : 0.0f) + low - 1.2f - 1.6f * wn((float)x, 0, 0.1f, 970) - 0.5f * wn((float)x, 3, 0.4f, 971);
+}
+float world_near_height(const level *L, float x) {
+  int c = (int)floorf(x);
+  c = c < 1 ? 1 : c >= L->width ? L->width - 1 : c;
+  return near_top(L, c);
+}
+void world_near_build(game *g) {
+  const level *L = &g->L;
+  if (L->width <= 0) return;
+  enum { Z = 7 };
+  static const float C0[BIOMES][3] = { { 0.012f, 0.03f, 0.012f }, { 0.006f, 0.008f, 0.02f }, { 0.03f, 0.028f, 0.018f }, { 0.08f, 0.1f, 0.14f }, { 0.016f, 0.006f, 0.006f } };
+  static const float C1[BIOMES][3] = { { 0.03f, 0.075f, 0.022f }, { 0.012f, 0.018f, 0.04f }, { 0.07f, 0.065f, 0.04f }, { 0.2f, 0.25f, 0.34f }, { 0.05f, 0.016f, 0.012f } };
+  for (int cx = -40; cx < L->width + 40; cx += 32) {
+    mb m = { 0 };
+    mb_room(&m, 64 * 2, 64 * 3);
+    int prev0 = -1, prev1 = -1;
+    for (int i = 0; i <= 32; i++) {
+      int x = cx + i;
+      int xi = x < 0 ? 0 : x >= WORLD_W ? WORLD_W - 1 : x;
+      int bi = L->biome[xi >= L->width ? L->width - 1 : xi];
+      float top = near_top(L, x < 1 ? 1 : x >= L->width ? L->width - 1 : x);
+      float n[3] = { 0, 0.3f, 0.95f };
+      int a = mb_vert(&m, (float)x, top, Z, n[0], n[1], n[2], C1[bi], (float)x * 0.1f, 1);
+      int b = mb_vert(&m, (float)x, top - 30.0f, Z, n[0], n[1], n[2], C0[bi], (float)x * 0.1f, 0);
+      if (prev0 >= 0) { mb_tri_i(&m, prev1, b, prev0); mb_tri_i(&m, prev0, b, a); }
+      prev0 = a, prev1 = b;
+    }
+    /* what stands on it: per region, sparse, never a row */
+    for (int x = cx; x < cx + 32; x++) {
+      int xi = x < 1 ? 1 : x >= L->width ? L->width - 1 : x;
+      float top = near_top(L, xi), h = hh(x + 2000, 5, 972);
+      int bi = L->biome[xi];
+      if (bi == BIOME_MEADOW) {
+        if (h < 0.6f) for (int k = 0; k < 5; k++) mb_cone(&m, (float)x + hh(x + 2000, k, 973), top - 0.05f, Z, 0.09f, 0.008f, 0.5f + 0.9f * hh(x + 2000, k, 974), (hh(x + 2000, k, 975) - 0.5f) * 0.5f, 0, 3, C1[bi], C1[bi]);
+      } else if (bi == BIOME_CAVES || bi == BIOME_VOLCANO) {
+        if (h < 0.14f) mb_cone(&m, (float)x + 0.5f, top - 0.1f, Z, 0.5f + 0.4f * h * 7, 0.03f, 1.0f + 2.0f * hh(x + 2000, 7, 976), 0.2f, 0, 5, C0[bi], C1[bi]);
+      } else if (bi == BIOME_RUINS) {
+        if (h < 0.06f) mb_box(&m, (float)x + 0.5f, top + 0.7f, Z, 0.4f, 0.8f + 0.5f * h * 16, 0.4f, C0[bi], C1[bi]);
+      } else {
+        if (h < 0.2f) mb_ellip(&m, (float)x + 0.5f, top - 0.05f, Z, 0.9f + 1.2f * h * 5, 0.35f, 0.5f, C1[bi], C1[bi], 10, 4);
+      }
+    }
+    t3_geometry *ge = mb_done(&m);
+    if (ge) add_mesh(ge, g_mat[MT_PROP], 0, 0, 0, false), t3_release(ge);
+  }
+}
+
 /* where the rules have them. time spins the fans and the saws */
 void world_things_sync(const game *g, float time) {
   const level *L = &g->L;
@@ -1709,6 +1890,27 @@ void world_things_sync(const game *g, float time) {
     if (!m) continue;
     switch (t->kind) {
       case TH_FAN: t3_object_set_rotation(m, 0, time * 18.0f, 0); break;
+      case TH_MIMIC: {
+        m->base.visible = t->state != 2;
+        float hop = t->state == 1 ? t->dy : 0.0f;
+        t3_object_set_position(m, t->x + hop * 0.4f, t->y + hop, 0);
+        /* it wiggles a tiny bit, every few seconds, and it does not spin */
+        t3_object_set_rotation(m, 0, 0, t->state == 1 ? time * 16.0f : 0.14f * sinf(time * 28.0f) * (sinf(time * 1.3f + (float)k) > 0.92f ? 1.0f : 0.0f));
+        break;
+      }
+      case TH_BOOM:
+        m->base.visible = t->state != 2;
+        if (t->state == 1) { float k2 = t->t * 14.0f; t3_object_set_position(m, t->x + 0.03f * sinf(k2 * 4.0f), t->y, 0); }
+        break;
+      case TH_FAKE: t3_object_set_rotation(m, t->state == 1 ? -fminf(1.4f, t->t * 1.8f) : 0.0f, 0, 0); break;
+      case TH_CHASER: {
+        float cx = t->state == 0 ? t->x : t->t, cy = t->y + t->w;
+        m->base.visible = t->state != 2;
+        t3_object_set_position(m, cx, cy, 0);
+        t3_object_set_rotation(m, 0, 0, -t->dy / t->w);
+        if (g_thing_mesh[k][1]) { g_thing_mesh[k][1]->base.visible = t->state != 2; t3_object_set_position(g_thing_mesh[k][1], cx, cy, 0); }
+        break;
+      }
       case TH_SAW:
         t3_object_set_position(m, t->t, t->y, 0);
         t3_object_set_rotation(m, 0, 0, -time * 14.0f);
@@ -1733,7 +1935,7 @@ int world_things_check(const level *L, int *checked) {
   int bad = 0, n = 0;
   for (int k = 0; k < L->nthings; k++) {
     const thing *t = &L->things[k];
-    if (t->kind == TH_DOOR || t->kind == TH_CRUMBLE || t->kind == TH_FALLER) continue;
+    if (t->kind == TH_DOOR || t->kind == TH_CRUMBLE || t->kind == TH_FALLER || t->kind == TH_MIMIC || t->kind == TH_CHASER) continue;
     float base = t->kind == TH_SAW ? t->h : t->y;
     int y = (int)floorf(base) - 1, xs[2] = { (int)floorf(t->x - (t->kind == TH_SAW ? t->a + 1.0f : 0.0f)), (int)floorf(t->x + (t->kind == TH_SAW ? t->a + 1.0f : 0.0f)) };
     n++;

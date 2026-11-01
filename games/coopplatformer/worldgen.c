@@ -24,7 +24,7 @@ static bool in_range(int x, int y) { return x >= 0 && x < WORLD_W && y >= 0 && y
 static void set(level *L, int x, int y, int t) {
   if (in_range(x, y)) L->t[y][x] = (uint8_t)t;
 }
-bool g_level_old; /* COOP_REACH_OLD: the reachability gate's control, the level as it was before C-PT4 */
+bool g_level_old; /* COOP_REACH_OLD: the reachability gate's control, the level with its rooms sealed and a coin in the rock */
 bool world_solid(const level *L, int x, int y) {
   if (x < 0 || x >= WORLD_W) return true;
   if (y < 0) return true;
@@ -71,9 +71,8 @@ static void gap(gen *G, int n, int biome, int hazard) {
 }
 /* a mound three tiles high with a pocket in its foot (3 tiles tall inside), a cracked wall in front of it and 'air'
  * columns of room: 4 or 3 secret coins inside. The way in is a wooden hatch in its roof, there from the moment the room is
- * seen: Down + Jump drops through it, and a jump and an air jump come back up. It was sealed, the cracked wall the only way
- * in, and the dash that breaks one is found much later: people standing on the roof over the coins could not reach them.
- * The wall still breaks to a dash, a way out and a shortcut. */
+ * seen: Down + Jump drops through it, and a jump and an air jump come back up. The wall still breaks to a dash, a way out
+ * and a shortcut. */
 static void pocket(gen *G, int air, int tail, int biome) {
   level *L = G->L;
   int mx = G->x, mg = G->g, n = 1 + air + tail;
@@ -192,7 +191,10 @@ static void fan(gen *G, int x, int w, int h) {
 static void fan_gap(gen *G, int n, int h) {
   int biome = G->L->biome[G->x - 1], g = G->g, x0 = G->x;
   gap(G, n, biome, T_AIR);
-  for (int x = x0; x < x0 + n; x++) for (int y = 0; y < 4; y++) set(G->L, x, y, T_ROCK);
+  for (int x = x0; x < x0 + n; x++) {
+    for (int y = 0; y < 4; y++) set(G->L, x, y, T_ROCK);
+    G->L->ground[x] = 4; /* a floor, with a fan on it: not a pit */
+  }
   thing *t = add_thing(G->L, TH_FAN, (float)x0 + 0.5f * (float)n, 4.0f);
   if (t) t->w = (float)n * 0.5f, t->h = (float)(g + h) - 4.0f;
 }
@@ -268,9 +270,11 @@ static void crumble_steps(gen *G, int n, int dir) {
   gap(G, n * 3, biome, T_SPIKE);
   for (int i = 0; i < n; i++) {
     int y = G->g - 1 + dir * (i + 1), x = x0 + i * 3 + 1;
-    set(L, x, y, T_CRUMBLE);
-    L->ground[x] = y + 1;
-    add_thing(L, TH_CRUMBLE, (float)x, (float)y);
+    for (int e = 0; e < 2; e++) { /* two planks wide: something to land on at a run */
+      set(L, x + e, y, T_CRUMBLE);
+      L->ground[x + e] = y + 1;
+      add_thing(L, TH_CRUMBLE, (float)(x + e), (float)y);
+    }
   }
   G->g += dir * n;
 }
@@ -337,6 +341,37 @@ static void crack_wall(gen *G) {
   for (int y = G->g; y < G->g + 4; y++) set(L, wx, y, T_CRACK);
   for (int y = G->g + 4; y < WORLD_H; y++) set(L, wx, y, biome == BIOME_RUINS ? T_BRICK : T_ROCK);
 }
+static void mimic(gen *G, int x, int y) {
+  thing *t = add_thing(G->L, TH_MIMIC, (float)x + 0.5f, (float)y + 0.5f);
+  (void)t;
+}
+static void boom_sign(gen *G, const char *text) {
+  level *L = G->L;
+  int x = G->x - 3;
+  add_thing(L, TH_BOOM, (float)x + 0.5f, (float)G->g);
+  if (L->nsigns < MAX_SIGNS) L->signs[L->nsigns++] = (sign_t){ (float)x + 0.5f, (float)G->g, text, false };
+}
+static void fake_finish(gen *G) {
+  add_thing(G->L, TH_FAKE, (float)G->x - 4.0f, (float)G->g);
+}
+/* the end of a level is a long run with something enormous behind it: flat and gaps a run clears, no rises */
+static void chaser(gen *G, int biome, int len, const char *text) {
+  level *L = G->L;
+  flat(G, 6, biome);
+  check(G);
+  flat(G, 8, biome);
+  sign(G, text);
+  int x0 = G->x;
+  flat(G, 12, biome);
+  int hz = biome == BIOME_VOLCANO ? T_LAVA : T_SPIKE;
+  while (G->x - x0 < len) {
+    gap(G, 4 + (int)rnd(G, 3), biome, hz);
+    flat(G, 14 + (int)rnd(G, 6), biome);
+    if (rnd(G, 2)) coin_row(G, G->x - 8, 4, G->g + 2);
+  }
+  thing *t = add_thing(L, TH_CHASER, (float)x0 - 10.0f, (float)G->g);
+  if (t) t->a = (float)x0 + 2.0f, t->b = (float)G->x + 8.0f, t->w = 3.4f, t->t = t->x;
+}
 static void goal_booth(gen *G) {
   level *L = G->L;
   L->goal_x = G->x - 2;
@@ -354,182 +389,6 @@ static void close_level(gen *G, int biome) {
     for (int y = 0; y < WORLD_H; y++) set(L, x, y, T_ROCK);
   }
   block(L, 0, 0, 1, WORLD_H, T_ROCK);
-  for (int x = 0; x < WORLD_W; x++)
-    if (L->t[0][x] == T_AIR) L->t[0][x] = T_ROCK;
-}
-
-/* the level that was the whole game until the worlds came, kept at the end until the last world replaces it */
-static void l_grand_tour(gen *G) {
-  level *L = G->L;
-  G->g = 18;
-  /* ── meadow: sun, grass, the first jumps; the air jump pedestal ── */
-  flat(G, 14, BIOME_MEADOW);
-  L->start_x = 4, L->start_y = G->g;
-  coin_row(G, 7, 5, G->g + 1);
-  rise(G, 2, 5, BIOME_MEADOW);
-  flat(G, 3, BIOME_MEADOW);
-  coin_row(G, 20, 4, G->g + 3);
-  gap(G, 4, BIOME_MEADOW, T_SPIKE);
-  oneway(G, G->x - 3, G->g + 2, 2);
-  flat(G, 5, BIOME_MEADOW);
-  walker(G, G->x - 3, G->g, 3, 0);
-  spikes(G, 2, BIOME_MEADOW);
-  flat(G, 4, BIOME_MEADOW);
-  check(G);
-  /* the first running jump: a long straight, then a gap a standing jump cannot clear. Coins arc over it to show the way */
-  rise(G, -1, 13, BIOME_MEADOW);
-  coin_arc(G, G->x, 7, G->g + 2);
-  gap(G, 7, BIOME_MEADOW, T_SPIKE);
-  flat(G, 7, BIOME_MEADOW);
-  pedestal(G, AB_DOUBLE);
-  coin_row(G, G->x - 5, 3, G->g + 2);
-  flat(G, 3, BIOME_MEADOW);
-  int gx0;
-  gate_begin(G, AB_DOUBLE, &gx0);
-  flat(G, 1, BIOME_MEADOW);
-  rise(G, 5, 1, BIOME_MEADOW);                    /* the air jump gate: a cliff higher than a running jump, however long the run */
-  gate_end(G, AB_DOUBLE, gx0);
-  flat(G, 6, BIOME_MEADOW);
-  walker(G, G->x - 3, G->g, 3, 0);
-  flat(G, 4, BIOME_MEADOW);
-  /* a hidden room: stand on the high ledge reached with the air jump */
-  oneway(G, G->x - 8, G->g + 4, 3);
-  oneway(G, G->x - 4, G->g + 7, 3);
-  coin_row(G, G->x - 4, 3, G->g + 8);
-  for (int i = 0; i < 3 && L->ncoins; i++) L->coins[L->ncoins - 1 - i].secret = true;
-  rise(G, 2, 4, BIOME_MEADOW);
-  /* a sealed vault in the hillside: only a dash breaks its cracked wall, and the dash is found much later, so
-   * this is somewhere to come back to (the map's flag warp makes the trip short) */
-  pocket(G, 4, 3, BIOME_MEADOW);
-  rise(G, -3, 3, BIOME_MEADOW);
-  /* ── caves: dark, torchlit; claws; a shaft; a cracked wall ── */
-  int cave0 = G->x;
-  rise(G, 0, 6, BIOME_CAVES);
-  check(G);
-  pedestal(G, AB_CLAWS);
-  flat(G, 6, BIOME_CAVES);
-  walker(G, G->x - 3, G->g, 3, 0);
-  gap(G, 3, BIOME_CAVES, T_SPIKE);
-  flat(G, 5, BIOME_CAVES);
-  spikes(G, 3, BIOME_CAVES);
-  flat(G, 3, BIOME_CAVES);
-  {
-    /* the shaft: two walls 3 apart, 6 and 9 tall; wall jump up the inside to the ledge on top */
-    int sx = G->x;
-    int base = G->g;
-    int sgx0;
-    gate_begin(G, AB_CLAWS, &sgx0);
-    flat(G, 1, BIOME_CAVES);                       /* left wall base */
-    block(L, sx, base, 1, base + 10, T_ROCK);
-    L->ground[sx] = base + 10;
-    for (int i = 0; i < 3; i++) column(G, G->x++, base - 2, BIOME_CAVES); /* the well floor, 2 lower */
-    int rx = G->x;
-    column(G, G->x++, base, BIOME_CAVES);
-    block(L, rx, base, 1, base + 8, T_ROCK);
-    L->ground[rx] = base + 8;
-    G->g = base + 8;
-    for (int i = 0; i < 4; i++) column(G, G->x++, base + 8, BIOME_CAVES);
-    gate_end(G, AB_CLAWS, sgx0);
-    /* open the way in from the left under the left wall: a low door so the shaft can be entered */
-    for (int y = base; y < base + 3; y++) set(L, sx, y, T_AIR);
-    for (int y = base + 3; y < base + 10; y++) set(L, sx, y, T_ROCK);
-    /* in the well, not in its far wall: the fourth coin used to sit inside the rock */
-    coin_row(G, sx + 1, g_level_old ? 4 : 3, base + 5);
-  }
-  walker(G, G->x - 3, G->g, 3, 0);
-  flat(G, 6, BIOME_CAVES);
-  check(G);
-  /* a mound with a sealed pocket in its foot: a dash into the cracked wall opens it (the path goes over the top) */
-  pocket(G, 3, 3, BIOME_CAVES);
-  rise(G, -4, 3, BIOME_CAVES);
-  rise(G, -3, 6, BIOME_CAVES);
-  walker(G, G->x - 3, G->g, 3, 0);
-  flat(G, 4, BIOME_CAVES);
-  ceiling(G, cave0, G->x - cave0, 8);
-  /* ── ruins: old brick, a flooded hall; swim; a current; a dash pedestal ── */
-  int ruin0 = G->x;
-  flat(G, 6, BIOME_RUINS);
-  check(G);
-  {
-    int surf = G->g;
-    int depth = 6, len = 18;
-    for (int i = 0; i < len; i++) {
-      int x = G->x++;
-      L->biome[x] = BIOME_RUINS;
-      int floor = surf - depth + (i < 2 ? (2 - i) * 2 : 0) + (i > len - 3 ? (i - (len - 3)) * 2 : 0);
-      L->ground[x] = floor;
-      for (int y = 0; y < floor; y++) set(L, x, y, T_BRICK);
-      for (int y = floor; y < surf; y++) set(L, x, y, T_WATER);
-      L->water_current[x] = (i > 6 && i < 12) ? 3.0f : 0.0f;
-    }
-    /* ledges in the pool and a sunken coin trail */
-    coin_row(G, G->x - len + 3, 12, surf - depth + 3);
-    oneway(G, G->x - 9, surf - 2, 3);
-    /* a hidden well under the pool floor: swim down into it for a secret handful of coins */
-    int wx = G->x - len + 4; /* clear of the ledge (x - 9) and the current (columns 7 to 11) */
-    for (int i = 0; i < 3; i++)
-      for (int y = L->ground[wx + i] - 3; y < L->ground[wx + i]; y++) set(L, wx + i, y, T_WATER);
-    coin_row(G, wx, 3, L->ground[wx] - 2);
-    for (int i = 0; i < 3; i++) L->coins[L->ncoins - 1 - i].secret = true;
-  }
-  flat(G, 4, BIOME_RUINS);
-  walker(G, G->x - 2, G->g, 2, 0);
-  gap(G, 7, BIOME_RUINS, T_SPIKE);                 /* crossable with a moving platform or the air jump */
-  L->plats[L->nplat++] = (mplat){ (float)(G->x - 7), (float)G->g - 0.5f, (float)(G->x - 2), (float)G->g - 0.5f, 2.2f, 0, 0.35f };
-  flat(G, 5, BIOME_RUINS);
-  check(G);
-  rise(G, 2, 4, BIOME_RUINS);
-  rise(G, 2, 6, BIOME_RUINS);
-  pedestal(G, AB_DASH);
-  walker(G, G->x - 3, G->g, 3, 1);
-  flat(G, 3, BIOME_RUINS);
-  (void)ruin0;
-  /* ── volcano: lava spans (dash and air jump), embers, the boss ── */
-  rise(G, -3, 6, BIOME_VOLCANO);
-  check(G);
-  walker(G, G->x - 3, G->g, 3, 0);
-  gap(G, 9, BIOME_VOLCANO, T_LAVA);                /* a lava span: jump and air jump */
-  flat(G, 5, BIOME_VOLCANO);
-  spikes(G, 3, BIOME_VOLCANO);
-  flat(G, 3, BIOME_VOLCANO);
-  check(G);
-  {
-    /* the dash gate: a wall of cracked rock from the floor to the top of the world, across the way; only a dash breaks it */
-    int dgx0;
-    gate_begin(G, AB_DASH, &dgx0);
-    flat(G, 3, BIOME_VOLCANO);
-    int wx = G->x;
-    flat(G, 1, BIOME_VOLCANO);
-    for (int y = G->g; y < WORLD_H; y++) set(L, wx, y, T_CRACK); /* to the top of the world: wall jumps cannot climb it */
-    flat(G, 3, BIOME_VOLCANO);
-    gate_end(G, AB_DASH, dgx0);
-  }
-  rise(G, 2, 3, BIOME_VOLCANO);
-  rise(G, 2, 3, BIOME_VOLCANO);
-  check(G);
-  gap(G, 6, BIOME_VOLCANO, T_LAVA);
-  oneway(G, G->x - 4, G->g + 1, 2);
-  flat(G, 4, BIOME_VOLCANO);
-  walker(G, G->x - 3, G->g, 3, 1);
-  rise(G, -4, 6, BIOME_VOLCANO);
-  check(G);
-  /* the arena: flat, walled in, the boss at the far end */
-  flat(G, 4, BIOME_VOLCANO);
-  L->boss_x = G->x + 10;
-  flat(G, 20, BIOME_VOLCANO);
-  walker(G, L->boss_x, G->g, 8, 2);
-  L->goal_x = G->x - 3;
-  block(L, G->x, 0, 3, WORLD_H, T_ROCK);
-  for (int x = G->x; x < G->x + 3 && x < WORLD_W; x++) L->ground[x] = WORLD_H;
-  for (int x = G->x + 3; x < WORLD_W; x++) {
-    L->biome[x] = BIOME_VOLCANO;
-    L->ground[x] = WORLD_H;
-    for (int y = 0; y < WORLD_H; y++) set(L, x, y, T_ROCK);
-  }
-  /* a roof over the arena's two ends keeps everyone in: a low arch near the walls only */
-  /* the world's left edge */
-  block(L, 0, 0, 1, WORLD_H, T_ROCK);
-  /* a bottom skirt: nothing falls past y = 0 */
   for (int x = 0; x < WORLD_W; x++)
     if (L->t[0][x] == T_AIR) L->t[0][x] = T_ROCK;
 }

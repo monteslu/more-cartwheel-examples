@@ -24,6 +24,7 @@ static void section(gen *G, int s, int biome, float hard) {
       break;
     case S_STEPS: {
       int d = G->g > 30 ? -1 : 1;
+      flat(G, 8, biome);
       for (int i = 0; i < 3 + (int)rnd(G, 3); i++) rise(G, d * (1 + (int)rnd(G, 2)), 4 + (int)rnd(G, 3), biome);
       coin_row(G, G->x - 4, 3, G->g + 2);
       break;
@@ -150,13 +151,30 @@ static void section(gen *G, int s, int biome, float hard) {
     default: break;
   }
 }
+/* lying to the player, about once every few sections. Each comes with a way to notice */
+static void gag_section(gen *G, int biome, int kind) {
+  static const char *const BOOM[6] = { "THIS SIGN HAS BEEN WAITING FOR YOU.", "PLEASE READ THIS NOTICE IN FULL BEFORE PROCEEDING.", "THE SMALL PRINT IS BELOW. CLOSER. CLOSER.", "WE VALUE YOUR FEEDBACK. PLEASE STAND HERE.", "IMPORTANT SAFETY INFORMATION: ", "FREE COINS. READ FOR DETAILS." };
+  flat(G, 10, biome);
+  if (kind == 0) {
+    coin_row(G, G->x - 8, 3, G->g + 1);
+    mimic(G, G->x - 5, G->g + 1); /* the fourth coin of the row. It does not spin with the others */
+  } else boom_sign(G, BOOM[rnd(G, 6)]);
+}
 static void extend(gen *G, int biome, const int *sections, int n, int columns) {
   int x0 = G->x, last = -1, lastflag = G->x;
+  bool faked = false;
   while (G->x - x0 < columns) {
     int k = (int)rnd(G, n);
     if (sections[k] == last) k = (k + 1) % n;
     last = sections[k];
     section(G, last, biome, (float)(G->x - x0) / (float)columns);
+    if (rnd(G, 3) == 0) gag_section(G, biome, (int)rnd(G, 2));
+    if (!faked && G->x - x0 > columns * 3 / 5) { /* a finish. It looks just like the finish */
+      flat(G, 12, biome);
+      fake_finish(G);
+      flat(G, 4, biome);
+      faked = true;
+    }
     if (G->x - lastflag > 42) { flat(G, 3, biome); check(G); lastflag = G->x; }
   }
   flat(G, 4, biome);
@@ -165,6 +183,8 @@ static void extend(gen *G, int biome, const int *sections, int n, int columns) {
 #define EXTEND(cols, ...) do { static const int S_[] = { __VA_ARGS__ }; extend(G, B, S_, (int)(sizeof S_ / sizeof S_[0]), cols); } while (0)
 
 static void L_finish(gen *G, int biome) {
+  static const char *const RUN[BIOMES] = { "THE LANDSCAPING HAS BEEN UPGRADED. RUN.", "THE CEILING SENDS ITS REGARDS. RUN.", "THE PLUMBING HAS FOUND YOU. RUN.", "HEAD OFFICE IS ROLLING OUT A NEW INITIATIVE. RUN.", "THE MOUNTAIN IS DONE BEING DISAPPOINTED. RUN." };
+  chaser(G, biome, 90, RUN[biome]);
   flat(G, 8, biome);
   goal_booth(G);
   flat(G, 6, biome);
@@ -342,7 +362,7 @@ static void l_ground_suggestion(gen *G) {
   crumble_bridge(G, 12);
   coin_row(G, G->x - 10, 8, G->g + 2);
   flat(G, 10, B);
-  EXTEND(440, S_CRUMBLE, S_RUNGAP, S_SPRING, S_CRUMSTEP, S_WALKERS, S_LEDGES, S_DROP);
+  EXTEND(440, S_CRUMBLE, S_RUNGAP, S_SPRING, S_WALKERS, S_LEDGES, S_DROP);
   sign(G, "CONGRATULATIONS. THE BEAVER HAS BEEN PROMOTED.");
   L_finish(G, B);
 }
@@ -767,7 +787,7 @@ static void l_load_bearing(gen *G) {
   coin_row(G, G->x - 3, 2, G->g + 1);
   flat(G, 6, B);
   gap(G, 9, B, T_SPIKE);
-  flat(G, 4, B);
+  flat(G, 11, B);
   crack_wall(G);
   flat(G, 8, B);
   check(G);
@@ -1141,7 +1161,7 @@ static void l_founder(gen *G) {
 
 /* every level, in order */
 #ifndef WORLDS_READY
-#define WORLDS_READY 1 /* the worlds in the game so far: each joins when it is proven, the old tour goes when the last does */
+#define WORLDS_READY 5 /* the worlds in the game (COOP_WORLDS: fewer, for a developer) */
 #endif
 static const level_info ALL_LEVELS[] = {
   { "Mandatory Fun", 0, l_mandatory_fun, 0, "Coins found: %d. Coins owed: %d. The Management thanks you for your patience." },
@@ -1169,7 +1189,6 @@ static const level_info ALL_LEVELS[] = {
   { "Severance Package", 4, l_severance, AB_DOUBLE | AB_CLAWS | AB_DASH, "Your package has landed. So have you, mostly." },
   { "All Of It Again, Angrier", 4, l_everything, AB_DOUBLE | AB_CLAWS | AB_DASH, "That was everything. We checked." },
   { "The Founder", 4, l_founder, AB_DOUBLE | AB_CLAWS | AB_DASH, "You have inherited the company, its debts and the piano." },
-  { "The Grand Tour", 4, l_grand_tour, AB_DOUBLE, "You have seen everything we have built so far." },
 };
 static level_info level_table[26];
 const level_info *const LEVELS = level_table;
@@ -1178,7 +1197,6 @@ int NLEVELS;
 void levels_set_worlds(int worlds) {
   int n = worlds * 5;
   for (int i = 0; i < n; i++) level_table[i] = ALL_LEVELS[i];
-  if (worlds < 5) level_table[n++] = ALL_LEVELS[25];
   NLEVELS = n;
 }
 __attribute__((constructor)) static void levels_init(void) {

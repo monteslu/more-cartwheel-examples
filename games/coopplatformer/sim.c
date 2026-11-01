@@ -47,6 +47,9 @@ static void place_player(game *g, int i, float x, float y) {
   p->alive = true;
   p->bubble = 0;
   p->run = 0, p->launched = 0, p->launch_vx = 0, p->pancake = 0, p->in_jump = false;
+  if (p->carrying) g->p[p->carrying - 1].carried_by = 0;
+  if (p->carried_by) g->p[p->carried_by - 1].carrying = 0;
+  p->carrying = p->carried_by = 0;
   p->hp = 3;
   p->invuln = 90;
 }
@@ -73,6 +76,8 @@ void sim_reset(game *g, int players) {
   for (int k = 0; k < g->L.nenemies; k++) if (g->L.enemies[k].kind == 2) g->L.enemies[k].hp = 5 + g->L.boss_kind, g->boss_hp = g->L.enemies[k].hp;
   memset(g->betrayals, 0, sizeof g->betrayals);
   g->things_hit = 0;
+  g->fake_t = 0, g->mimic_bites = 0;
+  memset(g->throws, 0, sizeof g->throws);
   g->hash = 2166136261u;
   memset(g->seen, 0, sizeof g->seen);
   world_build_physics(g);
@@ -222,6 +227,25 @@ void sim_rumble_at(game *g, float x, float y, float amount) {
  * the underside of the world and the backdrop behind it. The view is 2 tan(20 deg) z tall (fov 40). */
 bool g_cam_nofloor; /* the pit camera gate's control (COOP_PIT_CAM_BUG, set by main.c): no floor */
 static float cam_floor(float z) { return g_cam_nofloor ? -1e9f : 0.364f * z + 0.6f; }
+/* the lip of whatever pit x is over */
+float sim_lip_of(const level *L, float x) {
+  /* the ground either side of the pit, the nearest that is not pit; a tall wall further along has no say */
+  int c = (int)floorf(x), best = 0;
+  for (int dir = -1; dir <= 1; dir += 2)
+    for (int k = c + dir, n = 0; k >= 0 && k < WORLD_W && n < 30; k += dir, n++) {
+      int gr = L->ground[k];
+      if (gr == 0) continue;
+      if (gr < WORLD_H && gr > best) best = gr;
+      break;
+    }
+  return (float)best;
+}
+/* nothing to stand on all the way down from the path: a pit (a pool's or a shaft's floor is a floor) */
+bool sim_open_pit(const level *L, float x) {
+  int c = (int)floorf(x);
+  if (c < 0 || c >= WORLD_W) return false;
+  return L->ground[c] == 0;
+}
 static void camera_step(game *g, float dt) {
   float minx = 1e9f, maxx = -1e9f, miny = 1e9f, maxy = -1e9f;
   int n = 0;
@@ -229,6 +253,9 @@ static void camera_step(game *g, float dt) {
     const player *p = &g->p[i];
     if (!p->joined || !p->alive || p->bubble) continue;
     float x = pos_x(p), y = pos_y(p);
+    /* the camera stays up at the lip of a pit and watches someone drop out of the bottom of the picture; it never goes down
+     * after them to stare at two walls */
+    if (!g_cam_nofloor && sim_open_pit(&g->L, x)) { float lip = sim_lip_of(&g->L, x); if (y < lip) y = lip; }
     minx = fminf(minx, x), maxx = fmaxf(maxx, x), miny = fminf(miny, y), maxy = fmaxf(maxy, y), n++;
   }
   if (n == 0) {
@@ -411,6 +438,70 @@ static void things_step(game *g, float dt) {
         break;
       }
       case TH_PLATE: t->pressed = false; break; /* a player's step presses it again below */
+      case TH_MIMIC: /* a coin that has been waiting. It wiggles a little, for anyone paying attention. It lunges, bites, flees */
+        t->t += dt;
+        if (t->state == 0) {
+          for (int i = 0; i < g->nplayers; i++) {
+            player *p = &g->p[i];
+            if (!p->joined || !p->alive || p->bubble || p->invuln > 0) continue;
+            float dx = pos_x(p) - t->x, dy = pos_y(p) + 0.7f - t->y;
+            if (dx * dx + dy * dy < 1.2f * 1.2f) {
+              hurt_player(g, i, dx >= 0 ? 1.0f : -1.0f, 1, DIE_COIN);
+              t->state = 1, t->dy = 0, g->mimic_bites++;
+              break;
+            }
+          }
+        } else if (t->state == 1) { /* off it goes, laughing, up out of the world */
+          t->dy += 9.0f * dt;
+          if (t->dy > 14.0f) t->state = 2;
+        }
+        break;
+      case TH_BOOM: /* a sign with something to say, and a fuse: read it too long and up you go. Hurts nobody, offends everyone */
+        if (t->state == 0) {
+          for (int i = 0; i < g->nplayers; i++) {
+            const player *p = &g->p[i];
+            if (p->joined && p->alive && !p->bubble && fabsf(pos_x(p) - t->x) < 2.2f && fabsf(pos_y(p) - t->y) < 3.0f) t->state = 1, t->t = 0;
+          }
+        } else if (t->state == 1) {
+          t->t += dt;
+          if (t->t > 0.9f) {
+            t->state = 2;
+            g->events |= EV_BREAK;
+            sim_rumble_at(g, t->x, t->y + 1, 0.8f);
+            for (int i = 0; i < g->nplayers; i++) {
+              player *p = &g->p[i];
+              if (p->joined && p->alive && !p->bubble && fabsf(pos_x(p) - t->x) < 3.2f && fabsf(pos_y(p) - t->y) < 3.5f) {
+                p->pf.body.velocity = (cw_vec2){ pos_x(p) >= t->x ? 10.0f : -10.0f, 17.0f };
+                p->pf.body.on_floor = false, p->launched = 40, p->launch_vx = p->pf.body.velocity.x;
+              }
+            }
+          }
+        }
+        break;
+      case TH_FAKE: /* the end of the level. No */
+        if (t->state == 0)
+          for (int i = 0; i < g->nplayers; i++)
+            if (g->p[i].joined && g->p[i].alive && pos_x(&g->p[i]) >= t->x - 1.0f) { t->state = 1, t->t = 0, g->fake_t = 150, g->events |= EV_WIN; break; }
+        if (t->state == 1) t->t += dt;
+        break;
+      case TH_CHASER: { /* something enormous, with a face. It wakes when the first player passes its mark and it does not stop */
+        float lead = -1e9f, last = 1e9f;
+        int alive = 0;
+        for (int i = 0; i < g->nplayers; i++) {
+          const player *p = &g->p[i];
+          if (!p->joined || !p->alive || p->bubble) continue;
+          lead = fmaxf(lead, pos_x(p)), last = fminf(last, pos_x(p)), alive++;
+        }
+        if (t->state == 0 && alive && lead > t->a) t->state = 1, t->t = t->x; /* t: where its middle is */
+        if (t->state == 1) {
+          t->t += 9.4f * dt; /* faster than a walk, slower than a run: it is why you run */
+          t->dy += 9.4f * dt;
+          if ((g->tick % 36) == 0) sim_rumble_at(g, t->t, t->y, 0.45f); /* every thud of it comes up through the pad */
+          if (t->t > t->b) t->state = 2; /* it has met the wall at the end of the level */
+          if (alive && last < t->x - 2.0f && lead < t->a - 2.0f) t->state = 0, t->t = t->x, t->dy = 0; /* everyone sent back past its start: it goes home too */
+        } else if (t->state == 2 && alive && lead < t->a - 2.0f) t->state = 0, t->t = t->x, t->dy = 0;
+        break;
+      }
       default: break;
     }
   }
@@ -435,6 +526,9 @@ static void things_hurt(game *g, int i) {
         break;
       case TH_FALLER:
         if (t->state == 1 && fabsf(fx - t->x) < t->w && fy + 1.5f > t->y + t->h - t->dy - 0.2f && fy < t->y + t->h - t->dy + 2.0f) kill_player(g, i, DIE_FALLER);
+        break;
+      case TH_CHASER:
+        if (t->state == 1 && fx < t->t + t->w - 0.6f && fx > t->t - t->w) kill_player(g, i, DIE_CHASER);
         break;
       default: break;
     }
@@ -527,6 +621,7 @@ bool sim_dash_cracks(game *g, player *p, bool hide) {
 /* the tile hazards at a player's feet: 0 none, 1 spikes (hurt), 2 lava or the bottom of a pit (the end) */
 int sim_hazard_at(const level *L, float fx, float fy) {
   if (tile_at(L, fx, fy + 0.2f) == T_LAVA || tile_at(L, fx, fy) == T_LAVA || fy < 2.2f) return 2;
+  if (sim_open_pit(L, fx) && fy < sim_lip_of(L, fx) - 9.0f) return 2;
   int tf = tile_at(L, fx, fy + 0.15f), tb = tile_at(L, fx, fy + 0.9f);
   return tf == T_SPIKE || tb == T_SPIKE ? 1 : 0;
 }
@@ -569,6 +664,7 @@ void sim_step(game *g, const input_state in[MAX_PLAYERS], float dt) {
     cw_body2d_set_target(m->body, (cw_xform2){ { x, y }, { 1, 0 } }, dt);
   }
   things_step(g, dt);
+  if (g->fake_t > 0) g->fake_t--;
   for (int i = 0; i < g->nplayers; i++) {
     player *p = &g->p[i];
     if (!p->joined) continue;
@@ -598,6 +694,39 @@ void sim_step(game *g, const input_state in[MAX_PLAYERS], float dt) {
       continue;
     }
     cw_platformer2d *pf = &p->pf;
+    /* held overhead by a friend: no say in the matter, except a jump, which wriggles free */
+    if (p->carried_by) {
+      player *h = &g->p[p->carried_by - 1];
+      if (!h->joined || !h->alive || h->bubble || in[i].jump_pressed) {
+        h->carrying = 0, p->carried_by = 0;
+        pf->body.velocity = (cw_vec2){ 0, 9.0f };
+      } else {
+        pf->body.prev_position = pf->body.position;
+        pf->body.position = (cw_pos2){ h->pf.body.position.x, h->pf.body.position.y + 1.55 };
+        pf->body.velocity = (cw_vec2){ 0, 0 };
+        pf->body.on_floor = false;
+        p->anim = 3;
+        continue;
+      }
+    }
+    /* the grab button: pick up a friend in reach; with a friend overhead, throw them, wherever you happen to be facing */
+    if (in[i].grab_pressed) {
+      if (p->carrying) {
+        player *q = &g->p[p->carrying - 1];
+        q->carried_by = 0, p->carrying = 0;
+        q->pf.body.velocity = (cw_vec2){ (float)pf->facing * 15.0f + (float)pf->body.velocity.x * 0.5f, 13.0f };
+        q->launched = 45, q->launch_vx = q->pf.body.velocity.x, q->jump_fx = 2;
+        g->throws[i]++;
+        g->events |= EV_DASH;
+        if (g->ngrief_q < 4) g->grief_q[g->ngrief_q++] = (typeof(g->grief_q[0])){ pos_x(q), pos_y(q), i, -1 - (int)(q - g->p) };
+      } else {
+        for (int k = 0; k < g->nplayers; k++) {
+          player *q = &g->p[k];
+          if (k == i || !q->joined || !q->alive || q->bubble || q->carried_by || q->carrying) continue;
+          if (fabsf(pos_x(q) - pos_x(p)) < 1.3f && fabsf(pos_y(q) - pos_y(p)) < 1.2f) { p->carrying = k + 1, q->carried_by = i + 1; break; }
+        }
+      }
+    }
     p->retry_t = in[i].retry ? p->retry_t + 1 : 0;
     if (p->retry_t >= 60) {
       p->retry_t = 0;
@@ -626,7 +755,9 @@ void sim_step(game *g, const input_state in[MAX_PLAYERS], float dt) {
     int tf = tile_at(L, fx, fy + 0.15f), tb = tile_at(L, fx, fy + 0.9f);
     if (tf == T_SPIKE || tb == T_SPIKE) hurt_player(g, i, pf->body.velocity.x >= 0 ? -1.0f : 1.0f, 1, DIE_SPIKE);
     if (tile_at(L, fx, fy + 0.2f) == T_LAVA || tile_at(L, fx, fy) == T_LAVA) kill_player(g, i, DIE_LAVA);
-    if (fy < 2.2f) kill_player(g, i, DIE_PIT);
+    /* a pit ends well below the ground beside it, not at the bottom of the world: the fall has been seen by then and nobody
+     * waits for the rest of it */
+    if (fy < 2.2f || (sim_open_pit(L, fx) && fy < sim_lip_of(L, fx) - 9.0f)) kill_player(g, i, DIE_PIT);
     things_hurt(g, i);
     /* the goal: walk into the booth (a boss level ends with the boss) */
     if (!L->boss_x && !g->won && L->goal_x > 0 && fx >= (float)L->goal_x) g->won = 1, g->win_tick = g->tick, g->events |= EV_WIN;
@@ -840,6 +971,14 @@ void sim_bot_input(const game *g, int i, input_state *in) {
   (void)minx;
   in->x = 1.0f; /* nobody waits: a straggler is carried to the group in a bubble (that is the co-op rule being tested) */
   in->run = !g_bot_no_run; /* the bots run everywhere, as a person does */
+  /* stuck in one place for a few seconds: back up and take a run at it, as a person does */
+  {
+    player *me = (player *)p;
+    if (fabsf(x - me->bot_anchor) > 3.0f) me->bot_anchor = x, me->bot_stuck = 0;
+    else me->bot_stuck++;
+    if (me->bot_stuck > 200 && me->bot_back == 0 && pf->body.on_floor) me->bot_back = 50, me->bot_stuck = 0;
+    if (me->bot_back > 0) { me->bot_back--; in->x = -1.0f; if (pf->body.on_floor) return; }
+  }
   bool wet = pf->submerged > 0.5f;
   if (wet) {
     /* swim: stroke up when below the surface line or blocked, cross to the right */

@@ -7,7 +7,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const DIR = join(ROOT, 'build/native/games/coopplatformer');
+const DIR = process.env.COOP_BUILD_DIR || join(ROOT, 'build/native/games/coopplatformer');
 const BIN = join(DIR, 'coopplatformer_auto');
 const LIMIT_MS = 8 * 60000;
 

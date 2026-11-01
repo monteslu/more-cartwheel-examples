@@ -31,9 +31,9 @@
 enum { T_AIR, T_ROCK, T_GRASS, T_ONEWAY, T_SPIKE, T_LAVA, T_WATER, T_CRACK, T_BRICK, T_ICE, T_BELT, T_CRUMBLE, T_TILES };
 enum { BIOME_MEADOW, BIOME_CAVES, BIOME_RUINS, BIOME_FROST, BIOME_VOLCANO, BIOMES };
 /* what a level is made of besides tiles. Each has its rule in sim.c (things_*), its look in world.c (world_things_build) */
-enum { TH_SPRING, TH_FAN, TH_SAW, TH_PRESS, TH_FALLER, TH_CANNON, TH_PLATE, TH_DOOR, TH_CRUMBLE, TH_BOOTH };
+enum { TH_SPRING, TH_FAN, TH_SAW, TH_PRESS, TH_FALLER, TH_CANNON, TH_PLATE, TH_DOOR, TH_CRUMBLE, TH_BOOTH, TH_MIMIC, TH_BOOM, TH_FAKE, TH_CHASER };
 /* how a player died, for the death gags (main.c): the big ones belong to the things that do them */
-enum { DIE_SPIKE, DIE_LAVA, DIE_PIT, DIE_ENEMY, DIE_BOSS, DIE_SAW, DIE_PRESS, DIE_FALLER, DIE_KINDS };
+enum { DIE_SPIKE, DIE_LAVA, DIE_PIT, DIE_ENEMY, DIE_BOSS, DIE_SAW, DIE_PRESS, DIE_FALLER, DIE_COIN, DIE_CHASER, DIE_KINDS };
 enum { AB_DOUBLE = 1, AB_CLAWS = 2, AB_DASH = 4 };
 enum { LAYER_WORLD = 0, LAYER_ONEWAY = 5, LAYER_PLAYER = 1 };
 
@@ -97,12 +97,14 @@ typedef struct player {
   int launched;                  /* ticks since a spring or cannon threw this player: the throw is not cut short */
   float launch_vx;
   int pancake;                   /* ticks of being flat: a friend landed on this head */
+  float bot_anchor; int bot_stuck, bot_back; /* the autopilot: where it has been stuck and for how long */
+  int carrying, carried_by;      /* player index + 1 of the friend held overhead, of the friend holding this one; 0 none */
   int die_cause;
   float run_phase, squash;
   int land_fx, jump_fx, hurt_fx; /* one-frame event flags for the renderer */
 } player;
 
-typedef struct input_state { float x, y; bool jump_pressed, jump_held, dash_pressed, run, down, retry; } input_state;
+typedef struct input_state { float x, y; bool jump_pressed, jump_held, dash_pressed, run, down, retry, grab_pressed; } input_state;
 
 /* Running (West held): the speed and the height of a jump build with momentum. A standing jump is the short one, a running
  * jump goes about twice as far and over a metre higher. RUN_BUILD seconds of running on the ground to full speed. */
@@ -149,6 +151,9 @@ typedef struct game {
   bool reach;          /* the reachability check is running: things stay still and doors stay open once pressed */
   bool reach_changed;  /* the check opened a door: its search starts again */
   int betrayals[MAX_PLAYERS]; /* landing on a friend's head */
+  int throws[MAX_PLAYERS];    /* friends thrown */
+  int fake_t;                 /* ticks left of the level pretending to have ended */
+  int mimic_bites;
   struct { float x, y; int who, cause; } deaths_q[8]; /* this tick's deaths for the renderer's gags (not in the hash) */
   int ndeaths_q;
   struct { float x, y; int who, victim; } grief_q[4];
@@ -182,6 +187,8 @@ void rig_pose_boss(rig *r, float t, float rage);
 
 /* world.c */
 void world_generate(level *L, int index);
+float world_near_height(const level *L, float x); /* the near layer's top at x */
+void world_near_build(game *g);      /* the dark near layer in front of the play */
 void world_things_build(game *g);    /* the things' meshes */
 void world_things_sync(const game *g, float time); /* move them to where the rules have them */
 int world_things_check(const level *L, int *checked); /* things with no floor under them (or no ceiling over a press) */
@@ -218,6 +225,8 @@ uint32_t sim_hash(const game *g);
 bool sim_player_move(game *g, player *p, const input_state *is, float dt); /* one player's movement this tick; true in water */
 bool sim_dash_cracks(game *g, player *p, bool hide);
 int sim_hazard_at(const level *L, float fx, float fy);
+float sim_lip_of(const level *L, float x); /* the highest ground near x */
+bool sim_open_pit(const level *L, float x); /* nothing to stand on under x */
 bool sim_coin_touch(const coin *c, float fx, float fy);
 bool sim_pickup_touch(const pickup *pk, float fx, float fy);
 /* reach.c: prove from real movement which coins, pedestals and rooms a player can get to (COOP_REACH=1) */

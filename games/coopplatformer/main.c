@@ -74,6 +74,7 @@ static struct {
   float light_x[64], light_y[64], light_z[64], light_r[64], light_g[64], light_b[64], light_e[64], light_range[64];
   int nlight_src;
   bool built;
+  bool graves_due;
 } S;
 
 static struct {
@@ -85,7 +86,7 @@ static struct {
 } A;
 enum { SFX_JUMP, SFX_LAND, SFX_COIN, SFX_HURT, SFX_SPLASH, SFX_DASH, SFX_POWER, SFX_STOMP, SFX_BREAK, SFX_BUBBLE, SFX_POP, SFX_DIE, SFX_WIN, SFX_CHECK, SFX_WALL, SFX_COUNT };
 
-static cw_action a_left, a_right, a_up, a_down, a_jump, a_run, a_dash, a_map, a_retry;
+static cw_action a_left, a_right, a_up, a_down, a_jump, a_run, a_dash, a_grab, a_map, a_retry;
 static input_state INPUT[MAX_PLAYERS];
 static bool g_map_open;
 static int join_seats[4] = { -1, -1, -1, -1 }; /* who holds each seat on the join screen (join_seats_track) */
@@ -118,6 +119,9 @@ static bool g_blink_bug; /* COOP_BLINK_BUG: the blink gate's control */
 static bool g_coin_flat_bug; /* COOP_COIN_FLAT_BUG: the coin gate's control: the coins lie flat */
 static int g_coinface_dbg[2]; /* coins checked, coins whose face does not stand upright */
 static int g_uvrep_dbg;
+static int g_nearcover_dbg[2]; /* players drawn, of them with the near layer in front of their feet (never: it stays low) */
+static int g_pitview_dbg[2]; /* frames someone has been below the lip of a pit, of them frames the drawn camera went below the lip */
+static int g_graves_dbg[2]; /* graves on the level, of them not standing on stable ground */
 static int g_things_dbg[2]; /* things and signs checked on the built level, of them not on the ground */
 static int g_level_dbg[2];  /* the level being played, how many there are */
 static int g_gore_dbg[3];   /* deaths seen, of them played as a big gag, stains on the level */
@@ -358,6 +362,8 @@ static void place_decals(const level *L) {
 }
 
 static void gore_build(void);
+static void graves_reset(void);
+static bool project(float x, float y, float z, float W, float H, float *sx, float *sy);
 static void gore_step(float dt);
 static void gore_death(int who, int cause, float x, float y);
 static void build_scene(void) {
@@ -376,9 +382,12 @@ static void build_scene(void) {
     if (getenv("COOP_SCENERY")) printf("scenery: %d props seated, %d off the ground, worst %.1f mm\n", g_scenery_dbg[0], g_scenery_dbg[1], (double)worst_mm);
   }
   world_things_build(g);
+  world_near_build(g);
+  S.graves_due = true;
   g_things_dbg[1] = world_things_check(&g->L, &g_things_dbg[0]);
   place_decals(&g->L);
   gore_build();
+  graves_reset();
   cw_node wobj = S.world;
   const level *L = &g->L;
   /* environment, sun, post, camera: once */
@@ -993,6 +1002,29 @@ static void sync_scene(float alpha, float dt) {
   }
   coin_face_check();
   world_things_sync(g, S.time);
+  /* the near layer stands at z 7 and the camera looks through it: find where the line from the camera to a player's feet
+   * crosses that plane, and ask whether the layer's top is above that point there */
+  for (int i = 0; i < g->nplayers; i++) {
+    const player *p = &g->p[i];
+    if (!p->joined || !p->alive || p->bubble || g->cam.z <= 7.5f) continue;
+    float px = (float)p->pf.body.position.x, py = (float)p->pf.body.position.y;
+    float k = (g->cam.z - 7.0f) / g->cam.z, cx = g->cam.x + (px - g->cam.x) * k, cy = g->cam.y + (py - g->cam.y) * k;
+    /* a body falling in a pit is on its way out of the picture; below the lip it does not count */
+    if (sim_open_pit(&g->L, px) && py < sim_lip_of(&g->L, px)) continue;
+    g_nearcover_dbg[0]++;
+    if (world_near_height(&g->L, cx) > cy) g_nearcover_dbg[1]++;
+  }
+  for (int i = 0; i < g->nplayers; i++) {
+    const player *p = &g->p[i];
+    float px = (float)p->pf.body.position.x;
+    if (p->joined && p->alive && !p->bubble && sim_open_pit(&g->L, px)) {
+      float lip = sim_lip_of(&g->L, px);
+      if ((float)p->pf.body.position.y < lip) {
+        g_pitview_dbg[0]++;
+        if (g->cam.y < lip) g_pitview_dbg[1]++;
+      }
+    }
+  }
   gore_step(dt);
   for (int i = 0; i < L->npickups; i++) {
     cw_node_set(S.pick_node[i], "visible", cw_val_bool(!L->pickups[i].taken));
@@ -1093,6 +1125,7 @@ static void read_input(void) {
     s->jump_pressed = cw_action_just_pressed(i, a_jump);
     s->jump_held = cw_action_pressed(i, a_jump);
     s->run = cw_action_pressed(i, a_run);
+    s->grab_pressed = cw_action_just_pressed(i, a_grab);
     s->dash_pressed = cw_action_just_pressed(i, a_dash);
     s->down = cw_action_pressed(i, a_down);
     s->retry = cw_action_pressed(i, a_retry);
@@ -1140,8 +1173,13 @@ static void start_match(int players, void *user) {
   if (sv->abilities && !getenv("COOP_FRESH")) G.abilities |= sv->abilities;
   if (sv->level == G.level) G.reached |= sv->reached;
   if (cfg_int("COOP_ABILITIES", COOP_DEF_ABILITIES) >= 0) G.abilities = (uint32_t)cfg_int("COOP_ABILITIES", COOP_DEF_ABILITIES);
-  if (cfg_int("COOP_START_X", COOP_DEF_START_X) >= 0) { /* a test or a screenshot starts anywhere */
-    int sx = cfg_int("COOP_START_X", COOP_DEF_START_X);
+#ifdef COOP_DEF_AT_BOSS
+  int start_x = G.L.boss_x - 24; /* the door of the arena, wherever the road to it ends */
+#else
+  int start_x = cfg_int("COOP_START_X", COOP_DEF_START_X);
+#endif
+  if (start_x >= 0) { /* a test or a screenshot starts anywhere */
+    int sx = start_x;
     if (sx < 2) sx = 2;
     if (sx > WORLD_W - 3) sx = WORLD_W - 3;
     for (int i = 0; i < G.nplayers; i++) {
@@ -1503,10 +1541,11 @@ static void init(void *user) {
   cw_touch_add_round_button(&(cw_touch_button_desc){ .x = 90, .y = 110, .radius = 56, .label = "A" });
   cw_touch_add_round_button(&(cw_touch_button_desc){ .x = 210, .y = 90, .radius = 50, .label = "RUN" });
   cw_touch_add_round_button(&(cw_touch_button_desc){ .x = 130, .y = 230, .radius = 42, .label = "DASH" });
+  cw_touch_add_round_button(&(cw_touch_button_desc){ .x = 250, .y = 210, .radius = 42, .label = "GRAB" });
   if (!cw_input_load_bindings_asset("input.cfg")) cw_warn("coopplatformer: input.cfg had errors");
   cw_input_commit_defaults();
   a_left = cw_action_find("left"), a_right = cw_action_find("right"), a_up = cw_action_find("up"), a_down = cw_action_find("down");
-  a_jump = cw_action_find("jump"), a_run = cw_action_find("run"), a_dash = cw_action_find("dash"), a_map = cw_action_find("map"), a_retry = cw_action_find("retry");
+  a_jump = cw_action_find("jump"), a_run = cw_action_find("run"), a_grab = cw_action_find("grab"), a_dash = cw_action_find("dash"), a_map = cw_action_find("map"), a_retry = cw_action_find("retry");
   cw_shell_init(&(cw_shell_desc){ .title = "Co-op Platformer", .subtitle = "one to four players", .max_players = 4,
                                   .game_save_size = sizeof(save_t), .game_save_version = 3, .start = start_match,
                                   .quit = quit_match, .sound = sound_hook, .draw_background = title_background });
@@ -1560,6 +1599,11 @@ static void init(void *user) {
   cw_debug_field("g.gore", g_gore_dbg, CW_DBG_I32, 3);
   cw_debug_field("g.music", g_music_dbg, CW_DBG_I32, 3);
   cw_debug_i32("g.things_hit", &G.things_hit);
+  cw_debug_field("g.pitview", g_pitview_dbg, CW_DBG_I32, 2);
+  cw_debug_field("g.nearcover", g_nearcover_dbg, CW_DBG_I32, 2);
+  cw_debug_field("g.throws", G.throws, CW_DBG_I32, MAX_PLAYERS);
+  cw_debug_i32("g.bites", &G.mimic_bites);
+  cw_debug_field("g.graves", g_graves_dbg, CW_DBG_I32, 2);
   cw_debug_field("g.betrayals", G.betrayals, CW_DBG_I32, MAX_PLAYERS);
   cw_debug_i32("g.width", &G.L.width);
   cw_debug_i32("g.vanish", &g_vanish_dbg);
@@ -1604,8 +1648,15 @@ static void play_events(void) {
   static const int MAP[][2] = { { 1, SFX_JUMP }, { 2, SFX_LAND }, { 4, SFX_COIN }, { 8, SFX_HURT }, { 16, SFX_SPLASH }, { 32, SFX_DASH },
                                 { 64, SFX_POWER }, { 128, SFX_STOMP }, { 256, SFX_BREAK }, { 512, SFX_BUBBLE }, { 1024, SFX_POP },
                                 { 2048, SFX_DIE }, { 4096, SFX_WIN }, { 8192, SFX_CHECK }, { 16384, SFX_WALL } };
+  /* coins climb a scale while you keep getting them, and start again when you stop */
+  static int coin_tick, coin_run;
+  if (e & 4) {
+    coin_run = G.tick - coin_tick < 45 ? coin_run + 1 : 0;
+    coin_tick = G.tick;
+    if (A.on) cw_audio_play(A.sfx[SFX_COIN], &(cw_play_desc){ .volume = 0.7f, .pitch = powf(2.0f, (float)(coin_run < 14 ? coin_run : 14) * 2.0f / 12.0f) });
+  }
   for (size_t i = 0; i < sizeof MAP / sizeof MAP[0]; i++)
-    if (e & MAP[i][0]) sfx(MAP[i][1], 0.7f);
+    if ((e & MAP[i][0]) && MAP[i][1] != SFX_COIN) sfx(MAP[i][1], 0.7f);
   if (e & 4) burst(S.fx_spark, (float)G.p[0].pf.body.position.x, (float)G.p[0].pf.body.position.y + 1, 0.5f);
   if (e & 128) burst(S.fx_hit, (float)G.p[0].pf.body.position.x, (float)G.p[0].pf.body.position.y, 0.5f);
   if (e & 64) save_progress();
@@ -1839,8 +1890,10 @@ static void gore_build(void) {
   pfx(g_fx_spurt, 22, 0.5f, 5.0f, 15.0f, 0.42f, cw_rgba(0.85f, 0.05f, 0.05f, 1), -18.0f, 0, "0 0.85 0.05 0.05 1, 1 0.5 0.02 0.03 1", "0 1, 1 0.7", 1.0f);
 }
 static int gib_owner;
+static float gib_size = 1.0f;
 static void gib(float x, float y, float vx, float vy, float life) {
   int i = gib_next++ % NGIBS;
+  cw_node3d_set_scale(GIB[i].n, (t3_vec3){ gib_size, gib_size, gib_size });
   if (i % 3 == 2 && GIB[i].m) { /* the soft bits keep the colour of who they were */
     t3_material *mt = GIB[i].m->materials[0];
     if (mt) mt->color = (t3_color){ PLAYER_RGB[gib_owner][0], PLAYER_RGB[gib_owner][1], PLAYER_RGB[gib_owner][2] };
@@ -1898,6 +1951,102 @@ static void stain(float x, float y, float w, float h, int cell, bool down, float
   g_gore_dbg[2] = stain_count;
 }
 
+/* ── graves: every death leaves one on the nearest firm ground, and goes on leaving them. The same spot again and the same
+ * stone gets ruder. All of it is thrown away with the level ── */
+#define NGRAVES 16
+static struct { int col, count[MAX_PLAYERS], total, cause; float y; cw_node n; bool on; } GRAVE[NGRAVES];
+static int cause_counts[DIE_KINDS];
+static void graves_reset(void) {
+  t3_geometry *stone = t3_box_geometry_new(0.62f, 0.8f, 0.14f, 1, 1, 1), *top = t3_sphere_geometry_new(0.31f, 12, 8), *paw = t3_sphere_geometry_new(0.07f, 8, 6);
+  t3_material *sm = phys(0x8c8f96, 0.9f, 0), *pm = phys(0x3a3c42, 0.9f, 0);
+  for (int i = 0; i < NGRAVES; i++) {
+    GRAVE[i].on = false;
+    GRAVE[i].total = 0;
+    memset(GRAVE[i].count, 0, sizeof GRAVE[i].count);
+    cw_node n = GRAVE[i].n = make_node("Node3D", S.world, "Grave");
+    part(n, stone, sm, 0, 0.4f, 0, 1, 1, 1);
+    part(n, top, sm, 0, 0.8f, 0, 1, 0.8f, 0.46f);
+    part(n, paw, pm, 0, 0.55f, 0.08f, 1, 1, 0.3f);
+    for (int k = 0; k < 3; k++) part(n, paw, pm, -0.11f + 0.11f * (float)k, 0.72f, 0.08f, 0.5f, 0.6f, 0.3f);
+    cw_node_set(n, "visible", cw_val_bool(false));
+    cw_node3d_set_position(n, (t3_vec3){ 0, -60, 0 });
+  }
+  t3_release(stone), t3_release(top), t3_release(paw);
+  memset(cause_counts, 0, sizeof cause_counts);
+  g_graves_dbg[0] = g_graves_dbg[1] = 0;
+}
+static bool firm_col(const level *L, int c, int *top) {
+  if (c < 2 || c >= L->width) return false;
+  int g = L->ground[c];
+  if (g < 4 || g >= WORLD_H) return false;
+  int t = L->t[g - 1][c], up = L->t[g][c];
+  if (t != T_ROCK && t != T_GRASS && t != T_BRICK && t != T_ICE) return false;
+  if (up != T_AIR) return false;
+  *top = g;
+  return true;
+}
+static void grave_add(int who, int cause, float x) {
+  const level *L = &G.L;
+  cause_counts[cause]++;
+  int col = -1, top = 0;
+  for (int d = 0; d < 40 && col < 0; d++) {
+    for (int s = -1; s <= 1; s += 2) {
+      int c = (int)floorf(x) + s * d;
+      if (firm_col(L, c, &top)) { col = c; break; }
+    }
+  }
+  if (col < 0) return;
+  int slot = -1;
+  for (int i = 0; i < NGRAVES; i++) if (GRAVE[i].on && abs(GRAVE[i].col - col) <= 1) slot = i;
+  if (slot < 0) {
+    static int next;
+    slot = next++ % NGRAVES;
+    GRAVE[slot].on = true, GRAVE[slot].col = col, GRAVE[slot].total = 0;
+    memset(GRAVE[slot].count, 0, sizeof GRAVE[slot].count);
+    GRAVE[slot].y = (float)top;
+    cw_node_set(GRAVE[slot].n, "visible", cw_val_bool(true));
+    /* at the back of the path, crooked, a little different each */
+    cw_node3d_set_position(GRAVE[slot].n, (t3_vec3){ (float)col + 0.5f, (float)top, -0.8f });
+    cw_node3d_set_rotation(GRAVE[slot].n, (t3_vec3){ 0, 0.3f * ((float)(col % 7) / 7.0f - 0.5f), 0.14f * ((float)(col % 5) / 5.0f - 0.5f) });
+  }
+  GRAVE[slot].count[who]++, GRAVE[slot].total++, GRAVE[slot].cause = cause;
+  int n = 0, off = 0;
+  for (int i = 0; i < NGRAVES; i++) if (GRAVE[i].on) {
+    n++;
+    int tp;
+    if (!firm_col(L, GRAVE[i].col, &tp) || fabsf((float)tp - GRAVE[i].y) > 0.001f) off++;
+  }
+  g_graves_dbg[0] = n, g_graves_dbg[1] = off;
+}
+static void draw_graves(float W, float H, float s) {
+  static const char *const WHO[MAX_PLAYERS] = { "BLUE", "RED", "GREEN", "YELLOW" };
+  for (int i = 0; i < NGRAVES; i++) {
+    if (!GRAVE[i].on) continue;
+    bool near = false;
+    for (int k = 0; k < G.nplayers; k++) {
+      const player *p = &G.p[k];
+      if (p->joined && p->alive && !p->bubble && fabsf((float)p->pf.body.position.x - ((float)GRAVE[i].col + 0.5f)) < 3.5f && fabsf((float)p->pf.body.position.y - GRAVE[i].y) < 4) near = true;
+    }
+    if (!near) continue;
+    int who = 0, most = -1;
+    for (int k = 0; k < MAX_PLAYERS; k++) if (GRAVE[i].count[k] > most) most = GRAVE[i].count[k], who = k;
+    char b[96];
+    int c = GRAVE[i].total;
+    if (c == 1) snprintf(b, sizeof b, "HERE LIES %s. BRIEFLY.", WHO[who]);
+    else if (c == 2) snprintf(b, sizeof b, "%s AGAIN. WE KEPT THE PLOT.", WHO[who]);
+    else if (c == 3) snprintf(b, sizeof b, "%s, THIRD VISIT. A LOYALTY CARD IS IN THE POST.", WHO[who]);
+    else if (c == 4) snprintf(b, sizeof b, "%s. ONE MORE AND YOU GET A FREE ONE.", WHO[who]);
+    else if (c == 5) snprintf(b, sizeof b, "THIS ONE IS FREE.");
+    else if (c < 10) snprintf(b, sizeof b, "%s x%d. THE GRASS HAS STOPPED GROWING BACK.", WHO[who], c);
+    else snprintf(b, sizeof b, "%s x%d. WE HAVE STOPPED CARVING. PLEASE CARVE YOUR OWN.", WHO[who], c);
+    float sx, sy;
+    if (!project((float)GRAVE[i].col + 0.5f, GRAVE[i].y + 1.3f, -0.8f, W, H, &sx, &sy)) continue;
+    cw_text_metrics tm = cw_font_measure(g_font, b, &(cw_text_style){ .size = 13 * s });
+    cw_r2d_round_rect(cw_rect_make(sx - tm.width * 0.5f - 6 * s, sy - tm.height - 8 * s, tm.width + 12 * s, tm.height + 6 * s), 5 * s, 6, cw_rgba(0.16f, 0.17f, 0.2f, 0.78f));
+    cw_r2d_text(g_font, b, (cw_vec2){ sx - tm.width * 0.5f, sy - tm.height - 5 * s }, &(cw_text_style){ .size = 13 * s, .color = cw_rgba(0.9f, 0.9f, 0.88f, 1) });
+  }
+}
+
 /* what somebody says: over their head, for a moment */
 static struct { const char *text; int who; float t; } SAY[6];
 static void say(int who, const char *text, float secs) {
@@ -1922,6 +2071,7 @@ static void react(int who, const char *const *lines, int n) {
   if (witness >= 0) G.p[witness].squash = -0.3f; /* a small hop of horror, or joy */
 }
 static void gore_death(int who, int cause, float x, float y) {
+  grave_add(who, cause, x);
   g_gore_dbg[0]++;
   gib_owner = who;
   if (getenv("COOP_NO_GORE")) return; /* the gag gate's control (native) */
@@ -1935,6 +2085,23 @@ static void gore_death(int who, int cause, float x, float y) {
   uint32_t roll = gag_rand(1) % 100;
   bool big = false;
   switch (cause) {
+    case DIE_COIN: {
+      static const char *const CN[] = { "the coin did it", "money, again", "that coin looked at me", "keep the change" };
+      burst(g_fx_blood, x, y + 0.8f, 0.8f);
+      react(who, CN, 4);
+      big = true;
+      break;
+    }
+    case DIE_CHASER: {
+      static const char *const CH[] = { "it had such a nice face", "we should have run", "i was told to run", "it is still smiling" };
+      big = true;
+      burst(g_fx_blood, x, y + 0.8f, 0.8f);
+      burst(g_fx_spurt, x, y + 0.9f, 0.8f);
+      for (int i = 0; i < 6; i++) gib(x, y + 0.9f, (float)((int)(gag_rand(40 + (uint32_t)i) % 21) + 4), 9.0f + (float)(gag_rand(60 + (uint32_t)i) % 8), 1.3f);
+      stain(x, y, 3.2f, 2.4f, 5, true, 0);
+      react(who, CH, 4);
+      break;
+    }
     case DIE_SAW: big = true; /* a saw always tells a story */
       burst(g_fx_blood, x, y + 0.8f, 0.8f);
       burst(g_fx_spurt, x, y + 0.9f, 0.8f);
@@ -1959,7 +2126,11 @@ static void gore_death(int who, int cause, float x, float y) {
     case DIE_LAVA:
       if (roll < 50) { /* every other swim sends the bones back up */
         big = true;
-        for (int i = 0; i < 5; i++) gib(x, y + 0.2f, (float)((int)(gag_rand(70 + (uint32_t)i) % 7) - 3), 11.0f + (float)(gag_rand(80 + (uint32_t)i) % 6), 1.5f);
+        /* big enough to read against the glare, and high enough to come back up the pit past whoever is watching */
+        gib_size = 2.2f;
+        for (int i = 0; i < 6; i++) gib(x, y + 0.2f, (float)((int)(gag_rand(70 + (uint32_t)i) % 7) - 3), 16.0f + (float)(gag_rand(80 + (uint32_t)i) % 9), 2.2f);
+        gib_size = 1.0f;
+        burst(S.fx_burst, x, y + 0.6f, 0.8f);
         react(who, LAV, 4);
       } else react(who, SELF, 7);
       break;
@@ -1973,12 +2144,26 @@ static void gore_death(int who, int cause, float x, float y) {
         react(who, SEEN, 10);
       } else react(who, SELF, 7);
       break;
-    default: react(who, SELF, 7); break; /* a pit: nobody saw anything */
+    case DIE_PIT: { /* the pit answers: after the fall a bone comes back up over the lip, and something is said about it */
+      static const char *const PT[] = { "that was a long way", "i can see my house from down here", "...ow", "it's fine, it has a bottom", "the pit has returned a bone", "tell the bone i said hi", "gravity: 1, you: 0" };
+      float lip = sim_lip_of(&G.L, x);
+      gib_size = 1.6f;
+      for (int i = 0; i < 2; i++) gib(x + 0.3f * (float)i, lip - 2.0f, (float)((int)(gag_rand(100 + (uint32_t)i) % 7) - 3), 15.0f + (float)i * 3.0f, 2.2f);
+      gib_size = 1.0f;
+      big = true;
+      react(who, PT, 7);
+      break;
+    }
+    default: react(who, SELF, 7); break;
   }
   if (big) g_gore_dbg[1]++;
 }
 static void grief_gag(int who, int victim) {
-  (void)victim;
+  if (victim < 0) { /* a throw: the one in the air has the last word */
+    static const char *const T1[] = { "wheee", "i trusted you", "i regret nothing", "this was not discussed", "tell my mum", "aim for the good spikes" };
+    say(-victim - 1, T1[gag_rand(11) % 6], 1.8f);
+    return;
+  }
   static const char *const G1[] = { "sorry", "not sorry", "friendship minus one", "you were in the way", "that head was just there" };
   say(who, G1[gag_rand(9) % 5], 1.8f);
 }
@@ -2482,6 +2667,7 @@ static void render(void *user, double alpha) {
           text(BOSS[G.L.boss_kind], 0, by - 30 * s, 17 * s, cw_rgba(1, 0.85f, 0.7f, 1), CW_ALIGN_CENTER, W);
         }
       }
+    draw_graves(W, H, s);
     draw_signs(W, H, s);
     draw_says(W, H, s);
     draw_markers(W, H, s);
@@ -2509,6 +2695,13 @@ static void render(void *user, double alpha) {
       }
       if (ov) g_tags_dbg[1]++;
     }
+    if (G.fake_t > 0 && !G.won) { /* it looks exactly like the end of a level, for a moment */
+      float k = fminf(1.0f, (float)(150 - G.fake_t) / 20.0f);
+      panel(0, H * 0.16f, W, H * 0.17f * k, 0, cw_rgba(0.1f, 0.08f, 0.02f, 0.82f), cw_rgba(0.02f, 0.02f, 0.03f, 0.82f), cw_rgba(1, 0.8f, 0.3f, 0.7f));
+      if (k > 0.9f) {
+        text(G.fake_t > 70 ? "LEVEL COMPLETE" : "NO.", 0, H * 0.18f, 46 * s, cw_rgba(1, 0.85f, 0.3f, 1), CW_ALIGN_CENTER, W);
+      }
+    }
     if (G.won) {
       float k = fminf(1.0f, (float)(G.tick - G.win_tick) / 40.0f);
       panel(0, H * 0.28f, W, H * 0.42f * k, 0, cw_rgba(0.1f, 0.08f, 0.02f, 0.88f), cw_rgba(0.02f, 0.02f, 0.03f, 0.88f), cw_rgba(1, 0.8f, 0.3f, 0.7f));
@@ -2518,6 +2711,23 @@ static void render(void *user, double alpha) {
           char l[200];
           snprintf(l, sizeof l, LEVELS[G.level].line, G.coins_total, G.coins_total + 1);
           text(l, W * 0.1f, H * 0.53f, 24 * s, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER, W * 0.8f);
+        }
+        {
+          /* the incident report: everything that happened here, by what did it. Whoever finished it is not excused */
+          static const char *const WHAT[DIE_KINDS] = { "spikes", "lava", "gravity", "wildlife", "the management", "gardening", "health and safety", "falling objects", "a coin", "a large round colleague" };
+          char rp[220];
+          int n = snprintf(rp, sizeof rp, "INCIDENT REPORT: ");
+          bool any = false;
+          for (int k = 0; k < DIE_KINDS; k++) if (cause_counts[k] && n < 190) n += snprintf(rp + n, sizeof rp - (size_t)n, "%s%s x%d", any ? ", " : "", WHAT[k], cause_counts[k]), any = true;
+          if (!any) snprintf(rp + n, sizeof rp - (size_t)n, "nothing. We will be looking into this.");
+          text(rp, W * 0.08f, H * 0.395f, 17 * s, cw_rgba(1, 0.75f, 0.65f, 1), CW_ALIGN_CENTER, W * 0.84f);
+          int bet = 0, thr = 0;
+          for (int i = 0; i < G.nplayers; i++) bet += G.betrayals[i], thr += G.throws[i];
+          if (bet + thr > 0) {
+            char gr[120];
+            snprintf(gr, sizeof gr, "friends landed on: %d. friends thrown: %d. Nobody is keeping score. It is written here.", bet, thr);
+            text(gr, W * 0.08f, H * 0.6f, 15 * s, cw_rgba(0.8f, 0.9f, 1, 1), CW_ALIGN_CENTER, W * 0.84f);
+          }
         }
         char t[96];
         coin_icon((cw_vec2){ W * 0.5f - 250 * s, H * 0.485f }, 11 * s);
