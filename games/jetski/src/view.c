@@ -414,6 +414,13 @@ void view_course_apply(void) {
   g_marks_stale = true;
 }
 
+/* a bigger sea, a taller mark: a crest of the open sea at its worst stands higher than a mast made for a lagoon */
+float mark_size(void) {
+  float amp = 0;
+  for (int i = 0; i < 4; i++) amp += DEF->waves[i][2] + DEF->waves[i][3] * DEF->swell[1];
+  return fminf(1.45f, fmaxf(1.0f, 1.0f + (amp - 2.0f) * 0.12f));
+}
+
 /* the buoy's band and lamp take its side's colour; one shared material per side */
 static void buoy_paint(t3_object *o, int side) {
   if (o->type == T3_MESH) {
@@ -722,7 +729,8 @@ void view_sync(double alpha) {
     /* the next one stands full size, the ones after it smaller */
     { float want = b == G.c[0].next_buoy ? 1.0f : 0.72f;
       mark_scale[b] += (want - mark_scale[b]) * 0.1f;
-      cw_node3d_set_scale(buoy_n[b], (t3_vec3){ mark_scale[b], mark_scale[b], mark_scale[b] }); }
+      float k = mark_scale[b] * mark_size();
+      cw_node3d_set_scale(buoy_n[b], (t3_vec3){ k, k, k }); }
   }
   {
     float gx, gz, dx, dz;

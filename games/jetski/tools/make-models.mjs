@@ -519,7 +519,7 @@ for (const [name, dir] of [['mark_left', 1], ['mark_right', -1]]) {
       const t = i / 14, z = -L + 2 * L * t, w = W * (t > 0.82 ? Math.pow(1 - (t - 0.82) / 0.18, 0.55) : t < 0.05 ? 0.82 + t * 3.6 : 1) + 0.02;
       rows.push([[-w, top, z], [-w * 0.92, bottom, z], [w * 0.92, bottom, z], [w, top, z]]);
     }
-    P.grid(m, rows, { flip: false });
+    P.grid(m, rows, { flip: true }); // (faces out: wound inward, a bow seen end on showed the water through it)
     const d = []; for (let i = 0; i <= 14; i++) { const t = i / 14, z = -L + 2 * L * t, w = W * (t > 0.82 ? Math.pow(1 - (t - 0.82) / 0.18, 0.55) : t < 0.05 ? 0.82 + t * 3.6 : 1) + 0.02; d.push([[-w, top, z], [w, top, z]]); }
     P.grid('deck', d, { flip: false });
     // the stern: without it a hull seen from astern is open, with the water through it

@@ -59,7 +59,7 @@ static void next_mark(const craft *c, float w, float h, float u) {
   const float *b = BUOYS[c->next_buoy];
   cw_water_sample s;
   cw_water_sample_at(G.water, b[0], b[1], G.wt, &s);
-  float top = s.height + (g_buoy_style ? 11.6f : 3.3f);
+  float top = s.height + (g_buoy_style ? 11.6f * mark_size() : 3.3f);
   float dist = sqrtf((b[0] - c->x) * (b[0] - c->x) + (b[1] - c->z) * (b[1] - c->z));
   /* side +1: keep the buoy on your right: the chevron points to your way past it, left */
   float dir = b[2] > 0 ? -1.0f : 1.0f;

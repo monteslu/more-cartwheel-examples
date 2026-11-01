@@ -69,10 +69,11 @@ for (const backend of BACKENDS) {
     await cmd(`course ${level}`);
     // three buoys that count at normal difficulty, well apart, with room to run up to them, open water between and in the picture when the craft points along the course: a buoy behind a headland or round a bend is the HUD's work (tools/play-romdev.mjs)
     const at = (m) => c.track[Math.floor(((m + c.len) % c.len) / c.len * c.track.length)];
-    const open = (b) => [100, 162].every((d) => { const p = at(b[3] - d), q = at(b[3] - d + 8); const tx = q[0] - p[0], tz = q[1] - p[1]; const cos = (tx * (b[0] - p[0]) + tz * (b[1] - p[1])) / (Math.hypot(tx, tz) * Math.hypot(b[0] - p[0], b[1] - p[1])); if (cos < 0.93) return false; for (let k = 0; k <= 40; k++) { const t = k / 40, x = p[0] + (b[0] - p[0]) * t, z = p[1] + (b[1] - p[1]) * t; if (c.ground(x, z) > 1 || c.placed.some((q) => q[5] > 0 && Math.hypot(x - q[1], z - q[2]) < q[5] + 6)) return false; } return true; });
+    const open = (b) => [100, 162].every((d) => { const p = at(b[3] - d), q = at(b[3] - d + 8); const tx = q[0] - p[0], tz = q[1] - p[1]; const cos = (tx * (b[0] - p[0]) + tz * (b[1] - p[1])) / (Math.hypot(tx, tz) * Math.hypot(b[0] - p[0], b[1] - p[1])); if (cos < 0.93) return false; for (let k = 0; k <= 40; k++) { const t = k / 40, x = p[0] + (b[0] - p[0]) * t, z = p[1] + (b[1] - p[1]) * t; if (c.ground(x, z) > 1 || c.placed.some((q) => q[5] > 0 && Math.hypot(x - q[1], z - q[2]) < q[5] + 6) || (t < 0.97 && c.ramps.some((r) => Math.hypot(x - r[0], z - r[1]) < 34))) return false; } return true; });
     const on = c.buoys.map((b, i) => [b, i]).filter(([b, i]) => (i & 3) !== 3 && b[3] > 300 && open(b));
     console.log(`${cid}: ${on.length} buoys with open water to ${162} m`);
     const picks = [on[0], on[on.length >> 1], on[on.length - 1]];
+    if (on.length < 3) throw new Error(cid + ': too few buoys to measure');
     for (const style of [1, 0]) for (const D of [100, 150]) {
       const got = [];
       for (const [b, bi] of picks) {

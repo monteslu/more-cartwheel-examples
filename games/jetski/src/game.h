@@ -198,6 +198,7 @@ float menu_best_time(void); /* this course's best time trial, 0: none */
 void sim_place(float s);
 /* hud.c */
 extern int g_buoy_style, g_no_dq;
+float mark_size(void);
 extern int g_hud_ptr_mode;      /* the next buoy's mark on screen just now: 0 none, 1 over the buoy, 2 at the screen's edge */
 extern float g_hud_ptr[2], g_hud_buoy[4]; /* where it is drawn; where the buoy's top falls on screen, 1 if it is in front of the camera, the waterline's row */
 extern int g_hud_mark, g_buoy_hide, g_freeze; /* the distance gate's picture pairs: no HUD mark, no buoys, the world held still */
