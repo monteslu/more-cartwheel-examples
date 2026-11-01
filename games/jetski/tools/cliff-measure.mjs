@@ -40,4 +40,20 @@ export function repeatShare(path, X, Y, W, H, P = 48, NCC = 0.62) {
   }
   return { share: total ? hit / total : 0, patches: total };
 }
-if (process.argv[1].endsWith('cliff-measure.mjs')) { const [p, x, y, w, h] = process.argv.slice(2); console.log(JSON.stringify(repeatShare(p, +x, +y, +w, +h))); }
+if (process.argv[1]?.endsWith('cliff-measure.mjs') && process.argv[7] !== 'grid') { const [p, x, y, w, h] = process.argv.slice(2); console.log(JSON.stringify(repeatShare(p, +x, +y, +w, +h))); }
+/** A wall seen from the line: a tile shows as a grid, so brightness averaged down each column and along each row beats regularly. @returns {{score:number, lag:number}} the strongest regular beat, 0 none, 1 perfect */
+export function gridScore(path, X, Y, W, H) {
+  const { w, ch, out } = png(path), col = new Float64Array(W), row = new Float64Array(H);
+  for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) { const k = ((j + Y) * w + i + X) * ch, v = out[k] * 0.3 + out[k + 1] * 0.6 + out[k + 2] * 0.1; col[i] += v / H; row[j] += v / W; }
+  const beat = (p) => {
+    const n = p.length, R = 24, f = new Float64Array(n);
+    for (let i = 0; i < n; i++) { let m = 0, c = 0; for (let k = Math.max(0, i - R); k <= Math.min(n - 1, i + R); k++) { m += p[k]; c++; } f[i] = p[i] - m / c; }
+    const acf = (L) => { let a = 0, b = 0, c = 0; for (let i = 0; i + L < n; i++) { a += f[i] * f[i + L]; b += f[i] * f[i]; c += f[i + L] * f[i + L]; } return a / Math.sqrt(b * c + 1e-9); };
+    let best = 0, lag = 0;
+    for (let L = 18; L < n / 2.2; L++) { const r = acf(L); if (r > best && r > acf(L - 3) && r > acf(L + 3)) best = r, lag = L; }
+    return { best, lag };
+  };
+  const a = beat(col), b = beat(row);
+  return a.best > b.best ? { score: a.best, lag: a.lag } : { score: b.best, lag: b.lag };
+}
+if (process.argv[1]?.endsWith('cliff-measure.mjs') && process.argv[7] === 'grid') { const [p, x, y, w, h] = process.argv.slice(2); console.log(JSON.stringify(gridScore(p, +x, +y, +w, +h))); }

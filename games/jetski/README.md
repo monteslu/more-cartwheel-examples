@@ -14,11 +14,12 @@ makes the sea bigger and adds buoys: every second one on Easy, three in four on 
 | Left stick, d-pad | Arrows, A / D | Steer, and lean the rider into the turn |
 | Stick down | Down, S | Lean back: a tighter carve that costs speed. Throw it forward at a crest to jump higher |
 | A, right trigger | Space, J | Throttle |
-| X, right shoulder | K | In the air: a barrel roll, or a back flip with the stick pulled back |
+| X | K | In the air: a barrel roll, or a back flip with the stick pulled back |
+| Right shoulder | L | Fire a turbo, when you have one |
 
 Buoys mark the course: tall masts over the swell, each with a board whose arrow points the way past it. Pass each one on the side its colour and the arrow show: orange-red on your right, yellow on your
 left. The next one stands larger than the rest, and an arrow on screen sits over it with the distance, or at the screen's edge pointing to it when it is out of sight. Ride back along the course and the game says so. Each one passed lights an arrow and raises your top speed, five at most. Miss one and they all go out.
-Five misses end your race, and the dots under the lap count show how many you have. So do five seconds away from the course,
+At full power every clean buoy and every trick charges a turbo, up to three in hand, shown by the chips over the arrows. Five misses end your race, and the dots under the lap count show how many you have. So do five seconds away from the course,
 with a warning counting them down. Too much stick scrubs speed, and a long hard slide throws you off.
 Big steel ramps stand on piles along each course, some on the racing line and some off it. They do not move: the sea comes and goes on their legs, the swell is held down around them, and the same approach gives the same jump, well over two seconds in the air, long enough for a trick. Each press of the trick button is one trick; land mid-trick and you are off the craft. From the side or behind a ramp is a wall.
 Landing straight keeps your speed and a long clean landing gives you a shove; nose down costs you most of it, and leaning

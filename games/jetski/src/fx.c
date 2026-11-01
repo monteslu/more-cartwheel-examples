@@ -201,6 +201,20 @@ void fx_tick(float dt) {
       cw_water_splash(G.water, c->x, c->z, 1.6f + 2.4f * c->kick, 0.2f + 0.4f * c->kick, 1.0f);
       if (i == 0) cw_input_rumble(0, 0.35f + 0.6f * c->kick, 0.2f + 0.4f * c->kick, 180 + (int)(240 * c->kick));
     }
-    if (c->bump && i == 0) cw_input_rumble(0, 0.8f, 0.5f, 120);
+    if (c->bump && i == 0 && g_ev_on) cw_input_rumble(0, 0.8f, 0.5f, 120);
   }
+  /* the event list: a rumble and a burst for what the human just did */
+  { static unsigned read;
+    if (g_ev_n - read > EV_RING) read = g_ev_n - EV_RING;
+    for (; read != g_ev_n; read++) {
+      const game_event *e = &g_ev[read % EV_RING];
+      static const float rumble[EV_KINDS][3] = { [EV_PASS] = { 0.15f, 0.25f, 70 }, [EV_TOP] = { 0.5f, 0.7f, 220 }, [EV_TRICK] = { 0.3f, 0.5f, 140 }, [EV_MISS] = { 0.5f, 0.1f, 200 }, [EV_GAIN] = { 0.2f, 0.35f, 90 }, [EV_LOSE] = { 0.2f, 0.1f, 90 }, [EV_LAP] = { 0.25f, 0.3f, 120 }, [EV_FINAL] = { 0.4f, 0.5f, 240 }, [EV_WALL] = { 0.6f, 0.3f, 120 }, [EV_CRASH] = { 1, 0.8f, 420 }, [EV_CHARGE] = { 0.2f, 0.5f, 120 }, [EV_TURBO] = { 0.8f, 0.9f, 500 } };
+      if (!g_ev_on) continue;
+      if (rumble[e->kind][2] > 0) { cw_input_rumble(0, rumble[e->kind][0], rumble[e->kind][1], (int)rumble[e->kind][2]); g_fb[e->kind][2]++; }
+      if (e->kind == EV_PASS || e->kind == EV_TOP || e->kind == EV_CRASH || e->kind == EV_WALL || e->kind == EV_TURBO) {
+        float h = cw_water_height_at(G.water, e->x, e->z, G.wt);
+        cw_particles_burst(bursts, (t3_vec3){ e->x, h + 0.2f, e->z }, (t3_vec3){ 0, 1, 0 });
+        g_fb[e->kind][3]++;
+      }
+    } }
 }

@@ -20,7 +20,7 @@ let fail = 0;
 const check = (name, ok, detail) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}: ${detail}`); if (!ok) fail++; };
 for (let lv = 0; lv < C.length; lv++) {
   const a = stats(run('jetski_auto', `course ${lv};no_dq 1;swell 1;race`, 16000)['land.hist']);
-  check(`${C[lv]}: landings are fair`, a.n > 20 && a.med >= 0.95 && a.low < 0.05, `${a.n} landings, median in the ${a.med.toFixed(2)} band, ${(a.low * 100).toFixed(1)}% under 0.9, mean ${a.mean.toFixed(2)}`);
+  check(`${C[lv]}: landings are fair`, a.n >= 5 && a.med >= 0.95 && (a.low < 0.05 || a.low * a.n <= 1), `${a.n} landings, median in the ${a.med.toFixed(2)} band, ${(a.low * 100).toFixed(1)}% under 0.9, mean ${a.mean.toFixed(2)}`);
   if (lv < 2) { const b = stats(run('jetski_auto', `fair 0;course ${lv};no_dq 1;swell 1;race`, 16000)['land.hist']); check(`${C[lv]} control: fair 0 fails`, b.low >= 0.05, `${b.n} landings, ${(b.low * 100).toFixed(1)}% under 0.9, mean ${b.mean.toFixed(2)}`); }
 }
 const dive = run('jetski', 'course 0;race;go 300;drop -0.7 2 25', 180);

@@ -58,7 +58,7 @@ for (const id of (process.env.PLAID_COURSES || COURSE_IDS.join(',')).split(','))
       if (!RELEASED) { await cmd('detile ' + d); await cmd('buoy_shot 0 1 0'); }
       const p = `${DIR}/${id}-${k}-${d}.png`;
       await call('frame', { op: 'stepAndShot', frames: 8, path: p });
-      row.push(repeatShare(p, 710, 300, 500, 240, 32).share.toFixed(3));
+      if (!process.env.PLAID_NO_MEASURE) row.push(repeatShare(p, 710, 300, 500, 240, 32).share.toFixed(3));
     }
     console.log(id, k++, 'at', w.x.toFixed(0), w.z.toFixed(0), 'repeat off', row[0], 'on', row[1] ?? '-');
   }

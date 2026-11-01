@@ -135,6 +135,21 @@
     "note": "a whole race on every course, nobody stuck, rivals missing no more buoys than recorded; control: a race cut short has not been run"
   },
   {
+    "name": "jetski-landing-fair",
+    "script": "tests/jetski-landing-fair.mjs",
+    "note": "riding the water does not punish you: a whole race on the biggest sea on every course, the median landing keeps its speed, few under 0.9. Control: fair 0; a nose dive still costs"
+  },
+  {
+    "name": "jetski-feel",
+    "script": "tests/jetski-feel.mjs",
+    "note": "the race answers: every event on two channels, a turbo that pays, a pack that stays together, a place that does not flicker, a crash that is a crash; each with its control"
+  },
+  {
+    "name": "jetski-minimap",
+    "script": "tests/jetski-minimap.mjs",
+    "note": "the minimap tells the truth and stays small, on the cart, GL and WebGPU. Controls: dots 60 m off, three times the size"
+  },
+  {
     "name": "jetski-quality",
     "script": "tests/jetski-quality.mjs",
     "note": "a program for everything drawn at every quality on both courses and backends"

@@ -77,7 +77,7 @@ typedef struct craft {
   float top;                      /* top speed now */
   bool air, big_splash;
   float air_time, air_rise;
-  int trick_kind;                 /* 0 none, 1 barrel roll, 2 back flip */
+  int trick_kind, last_trick;     /* 0 none, 1 barrel roll, 2 back flip */
   float trick_t, trick_dir;
   int meter;                      /* 0..5 */
   int next_buoy;
@@ -88,12 +88,20 @@ typedef struct craft {
   int place, misses, tricks, passes;
   float flash_ok, flash_miss, boost, grounded, kick;
   float skill;                    /* computer racers */
+  float stock;                    /* turbos in hand, 0..3 */
+  float turbo_t, turbo_hold;      /* the shove now, then the raised ceiling after it */
+  int turbos;                     /* fired */
+  int shown_place, want_place, place_ticks; /* the place a person is told: only once it has held */
+  int place_changes;              /* held changes of place */
+  int slow3_ticks, slow_max;      /* under 3 m/s, throttle or not */
   craft_input in;
   bool human;
-  bool bump;                      /* hit the ground this tick */
+  bool bump;                      /* hit something this tick */
+  bool crashed;                   /* hit something square, hard */
   bool on_ramp;                   /* on a ramp's deck this tick */
   bool hook_passed;               /* through the hook's far side, until it comes round again */
   bool trick_held;                /* the trick button last tick */
+  bool in_turbo;                  /* the turbo button pressed this tick */
   bool wake_on;                   /* over a tanker's wake */
   bool big_slide;                 /* the slide that threw the rider */
   int wake_hit;                   /* riding over a rival's wake */
@@ -120,6 +128,17 @@ typedef struct craft {
   float air_max;                  /* longest time in the air (s) */
 } craft;
 
+/* what happened to the human this tick: the HUD, the sounds, the rumble and the bursts all read this list, each from its own place in it */
+enum { EV_PASS, EV_TOP, EV_TRICK, EV_LAND, EV_MISS, EV_GAIN, EV_LOSE, EV_LAP, EV_FINAL, EV_WALL, EV_CRASH, EV_CHARGE, EV_TURBO, EV_KINDS };
+typedef struct game_event { int kind; int a; float x, z; } game_event;
+#define EV_RING 64
+void ev_push(int kind, int a, float x, float z);
+extern game_event g_ev[EV_RING];
+extern unsigned g_ev_n;
+extern int g_ev_on;                /* ev_on 0: nothing answers, the feedback gate's control */
+extern int g_fb[EV_KINDS][4];      /* how each kind was answered: popups, sounds, rumbles, bursts */
+extern int g_turbo_on;             /* turbo_on 0: the turbo gate's control */
+extern float g_pack;               /* pack 0.25: the old small pull on rivals and none on the human, the pack gate's control */
 typedef struct game {
   int state;
   int level;
@@ -198,6 +217,9 @@ float menu_best_time(void); /* this course's best time trial, 0: none */
 void sim_place(float s);
 /* hud.c */
 extern int g_fair, g_land_hist[21];
+extern int g_old_crash, g_dist_step, g_place_hold, g_hold_ticks, g_raw_flips, g_near_n;
+extern float g_near, g_near_sum;
+void sim_ramp_side(int r, float across);
 extern int g_buoy_style, g_no_dq, g_try_ramp, g_try_res, g_try_hit, g_try_prev, g_try_missed;
 void sim_ramp_try(int r, float aside, float look, const float *at);
 float mark_size(void);

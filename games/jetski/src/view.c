@@ -658,7 +658,7 @@ void view_tick(float dt) {
   G.look[0] += (lx - G.look[0]) * kl;
   G.look[1] += (ly - G.look[1]) * kl;
   G.look[2] += (lz - G.look[2]) * kl;
-  float fov = 54.0f + c->speed * 0.34f;
+  float fov = 54.0f + c->speed * 0.34f + (c->turbo_hold > 0 ? 8.0f * fminf(1.0f, c->turbo_hold / 0.6f) : 0);
   if (G.cam_fov == 0) G.cam_fov = fov;
   G.cam_fov += (fov - G.cam_fov) * (dt * 2.0f);
   /* the ripples live around where the player looks */

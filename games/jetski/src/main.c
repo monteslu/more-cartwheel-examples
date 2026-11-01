@@ -20,7 +20,7 @@ static float perf[7], sun_dbg[3];
 static int32_t ground_total, ground_gaps;
 static float ground_worst;
 static int32_t gpu_programs; /* programs compiled so far: if this grows during play, the warm-up missed them */
-static cw_action a_left, a_right, a_back, a_fwd, a_throttle, a_trick;
+static cw_action a_left, a_right, a_back, a_fwd, a_throttle, a_trick, a_turbo;
 
 static void start(int players, void *user) {
   (void)players, (void)user;
@@ -213,6 +213,26 @@ static void cmd_fair(int argc, const char **argv, cw_reply *r) {
   g_fair = argc > 1 ? atoi(argv[1]) : 1;
   if (r) cw_reply_raw(r, "true");
 }
+/* gates' switches */
+int g_force_turbo;
+static void cmd_switch(int argc, const char **argv, cw_reply *r) {
+  /* sw <name> <value>: ev_on, turbo_on, pack, stock, turbo */
+  if (argc > 2) {
+    float v = (float)atof(argv[2]);
+    if (!strcmp(argv[1], "ev_on")) g_ev_on = (int)v;
+    else if (!strcmp(argv[1], "turbo_on")) g_turbo_on = (int)v;
+    else if (!strcmp(argv[1], "pack")) g_pack = v;
+    else if (!strcmp(argv[1], "stock")) G.c[0].stock = v;
+    else if (!strcmp(argv[1], "meter")) G.c[0].meter = (int)v;
+    else if (!strcmp(argv[1], "turbo")) g_force_turbo = (int)v;
+    else if (!strcmp(argv[1], "old_crash")) g_old_crash = (int)v;
+    else if (!strcmp(argv[1], "dist_step")) g_dist_step = (int)v;
+    else if (!strcmp(argv[1], "place_hold")) g_place_hold = (int)v;
+    else if (!strcmp(argv[1], "hold")) g_hold_ticks = (int)v;
+    else if (!strcmp(argv[1], "ramp_side")) sim_ramp_side((int)v, argc > 3 ? (float)atof(argv[3]) : 1);
+  }
+  if (r) cw_reply_raw(r, "true");
+}
 /* detile <0..1>: the land's side_detile live, for the plaid comparison */
 static void cmd_detile(int argc, const char **argv, cw_reply *r) {
   if (G.land) cw_terrain_set_side_detile(G.land, argc > 1 ? (float)atof(argv[1]) : 1);
@@ -293,7 +313,7 @@ static void init(void *user) {
   if (!cw_input_load_bindings_asset("input.cfg")) cw_warn("jetski: input.cfg had errors");
   a_left = cw_action_find("steer_left"), a_right = cw_action_find("steer_right");
   a_back = cw_action_find("lean_back"), a_fwd = cw_action_find("lean_fwd");
-  a_throttle = cw_action_find("throttle"), a_trick = cw_action_find("trick");
+  a_throttle = cw_action_find("throttle"), a_trick = cw_action_find("trick"), a_turbo = cw_action_find("turbo");
   cw_shell_init(&(cw_shell_desc){ .title = "jetski", .max_players = 1, .start = start, .game_save_size = 64 });
   view_init();
   hud_init();
@@ -423,6 +443,19 @@ static void init(void *user) {
   cw_debug_f32_array("hud.map_next", g_map_next, 2);
   cw_debug_command("fair", "fair 0: hops priced as deliberate landings, the landing gate's control", cmd_fair);
   cw_debug_field("land.hist", g_land_hist, CW_DBG_I32, 21);
+  cw_debug_command("sw", "sw <ev_on|turbo_on|pack|stock|meter|turbo> <value>: the gates' switches", cmd_switch);
+  cw_debug_field("fb", g_fb, CW_DBG_I32, EV_KINDS * 4);
+  cw_debug_i32("race.raw_flips", &g_raw_flips);
+  cw_debug_i32("race.near_n", &g_near_n);
+  cw_debug_f32("race.near", &g_near);
+  cw_debug_f32("race.near_sum", &g_near_sum);
+  cw_debug_f32("p0.stock", &G.c[0].stock);
+  cw_debug_i32("p0.turbos", &G.c[0].turbos);
+  cw_debug_i32("p0.place_changes", &G.c[0].place_changes);
+  cw_debug_i32("p0.shown_place", &G.c[0].shown_place);
+  cw_debug_i32("p0.slow_max", &G.c[0].slow_max);
+  cw_debug_i32("p0.wall_hits", &G.c[0].wall_hits);
+  cw_debug_f32("cam.fov", &G.cam_fov);
   cw_debug_command("buoy_style", "buoy_style 0: the small buoy, the distance gate's control", cmd_buoy_style);
   cw_debug_i32("hud.ptr_mode", &g_hud_ptr_mode);
   cw_debug_f32_array("hud.ptr", g_hud_ptr, 2);
@@ -464,6 +497,9 @@ static void fixed_update(void *user, double dt) {
   c->in.lean = cw_action_strength(0, a_back) - cw_action_strength(0, a_fwd);
   c->in.throttle = cw_action_strength(0, a_throttle);
   c->in.trick = cw_action_pressed(0, a_trick);
+  c->in_turbo = cw_action_pressed(0, a_turbo) || g_force_turbo > 0;
+  if (g_hold_ticks > 0) c->in.throttle = 0;
+  if (g_force_turbo > 0) g_force_turbo--;
   menu_tick((float)dt);
   if (menu_blocks_sim() || g_freeze) {
     /* paused: the sea holds still with the race */

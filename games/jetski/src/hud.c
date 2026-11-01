@@ -164,6 +164,73 @@ static bool wrong_way(const craft *c) {
   return since > 1.0f;
 }
 
+/* Popups: three at most, under the top of the picture, easing in and fading: what you just did, in words */
+typedef struct popup { char text[32]; float t; cw_color col; bool big; } popup;
+static popup pop[3];
+static void pop_add(const char *t, cw_color col, bool big) {
+  for (int i = 2; i > 0; i--) pop[i] = pop[i - 1];
+  snprintf(pop[0].text, sizeof pop[0].text, "%s", t), pop[0].t = 0, pop[0].col = col, pop[0].big = big;
+}
+static float meter_pulse, chip_pulse;
+static void hud_events(float dt) {
+  static unsigned read;
+  static const char *const ord[] = { "1ST", "2ND", "3RD", "4TH", "5TH", "6TH" };
+  cw_color gold = cw_rgba(1.0f, 0.78f, 0.25f, 1), white = cw_rgba(1, 1, 1, 1), red = cw_rgba(1, 0.35f, 0.2f, 1), cyan = cw_rgba(0.55f, 0.95f, 1, 1), green = cw_rgba(0.6f, 1, 0.6f, 1);
+  if (g_ev_n - read > EV_RING) read = g_ev_n - EV_RING;
+  for (; read != g_ev_n; read++) {
+    const game_event *e = &g_ev[read % EV_RING];
+    if (!g_ev_on) continue;
+    char b[32] = { 0 };
+    bool shown = true;
+    switch (e->kind) {
+      case EV_PASS: meter_pulse = 1; shown = false; g_fb[e->kind][0]++; break;
+      case EV_TOP: pop_add("MAX POWER", gold, true); meter_pulse = 1; break;
+      case EV_TRICK: pop_add(e->a == 2 ? "BACK FLIP" : "BARREL ROLL", cyan, true); break;
+      case EV_LAND: if (e->a) pop_add("PERFECT LANDING", green, false); else { shown = false; g_fb[e->kind][0]++; } break;
+      case EV_MISS: shown = false; g_fb[e->kind][0]++; break; /* MISS has its own big word */
+      case EV_GAIN: snprintf(b, sizeof b, "UP TO %s", ord[e->a - 1 < 0 ? 0 : e->a - 1 > 5 ? 5 : e->a - 1]); pop_add(b, green, false); break;
+      case EV_LOSE: snprintf(b, sizeof b, "DOWN TO %s", ord[e->a - 1 < 0 ? 0 : e->a - 1 > 5 ? 5 : e->a - 1]); pop_add(b, red, false); break;
+      case EV_LAP: snprintf(b, sizeof b, "LAP %d", e->a); pop_add(b, white, true); break;
+      case EV_FINAL: pop_add("FINAL LAP", gold, true); break;
+      case EV_WALL: shown = false; g_fb[e->kind][0]++; break;
+      case EV_CRASH: shown = false; g_fb[e->kind][0]++; break; /* WIPEOUT has its own */
+      case EV_CHARGE: pop_add("TURBO READY", cyan, false); chip_pulse = 1; break;
+      case EV_TURBO: pop_add("TURBO", cyan, true); chip_pulse = 1; break;
+    }
+    if (shown) g_fb[e->kind][0]++;
+  }
+  for (int i = 0; i < 3; i++) if (pop[i].text[0]) { pop[i].t += dt; if (pop[i].t > 1.5f) pop[i].text[0] = 0; }
+  meter_pulse = fmaxf(0, meter_pulse - dt * 3), chip_pulse = fmaxf(0, chip_pulse - dt * 2.5f);
+}
+static void hud_popups(float w, float h, float u) {
+  float y = h * 0.135f;
+  for (int i = 0; i < 3; i++) {
+    const popup *p = &pop[i];
+    if (!p->text[0]) continue;
+    float in = fminf(1, p->t / 0.14f), back = 1 + 0.5f * (1 - in) * (1 - in), a = fminf(in, (1.5f - p->t) / 0.4f) * 0.92f, size = (p->big ? 54.0f : 38.0f) * u * back;
+    if (a < 0) a = 0;
+    text(big, p->text, w * 0.5f, y, size, cw_rgba(p->col.r, p->col.g, p->col.b, a), 0.5f);
+    y += size * 1.15f;
+  }
+}
+/* who is just ahead and behind, and by how long: translucent, under the misses */
+static void hud_neighbours(const craft *c, float u) {
+  if (g_mode == MODE_TIME_TRIAL || G.state != RACE_ON) return;
+  int me = -1;
+  for (int i = 0; i < RACERS; i++) if (G.order[i] == 0) me = i;
+  float y = 236 * u;
+  for (int k = me - 1; k <= me + 1; k += 2) {
+    if (k < 0 || k >= RACERS) continue;
+    const craft *o = &G.c[G.order[k]];
+    if (!racer_on(G.order[k])) continue;
+    float gap = fabsf(o->dist - c->dist) / fmaxf(c->speed, 8.0f);
+    char b[40];
+    snprintf(b, sizeof b, "%s  %s%.1f", RIDER_NAMES[G.order[k]], k < me ? "-" : "+", gap);
+    text(small, b, 62 * u, y, 28 * u, cw_rgba(1, 1, 1, 0.62f), 0);
+    y += 32 * u;
+  }
+}
+
 static void hud_body(void) {
   cw_vec2 sz = cw_r2d_canvas_size();
   float w = sz.x, h = sz.y, u = h / 1080.0f;
@@ -173,6 +240,7 @@ static void hud_body(void) {
   static float hook_seen;
   static bool was_open;
   { bool op = hook_open(); if (op && !was_open) hook_seen = G.clock; was_open = op; }
+  hud_events(1.0f / 60.0f);
   if (G.state == RACE_ATTRACT || G.state == RACE_DONE) return; /* the results page has it all */
   /* speed, bottom right */
   snprintf(buf, sizeof buf, "%d", (int)(c->speed * 3.6f + 0.5f));
@@ -183,12 +251,19 @@ static void hud_body(void) {
     float x = w - 372 * u + (float)i * 58 * u, y = h - 42 * u;
     cw_color col = i < c->meter ? gold : cw_rgba(1, 1, 1, 0.18f);
     if (c->flash_miss > 0) col = cw_rgba(1, 0.2f, 0.12f, 0.2f + 0.7f * c->flash_miss);
-    cw_r2d_triangle(cw_v2(x, y - 4 * u), cw_v2(x + 46 * u, y - 4 * u), cw_v2(x + 23 * u, y - 32 * u), col);
+    float pu = i == c->meter - 1 ? meter_pulse : 0, gr = 5 * u * pu;
+    cw_r2d_triangle(cw_v2(x - gr, y - 4 * u + gr * 0.3f), cw_v2(x + 46 * u + gr, y - 4 * u + gr * 0.3f), cw_v2(x + 23 * u, y - 32 * u - gr * 1.4f), col);
+  }
+  /* turbos in hand: chips over the arrows, the part-charged one faint */
+  for (int i = 0; i < 3; i++) {
+    float x = w - 372 * u + (float)i * 58 * u, y = h - 92 * u, fill = fminf(1, fmaxf(0, c->stock - (float)i));
+    cw_r2d_round_rect(cw_rect_make(x, y, 46 * u, 15 * u), 7 * u, 6, cw_rgba(1, 1, 1, 0.14f));
+    if (fill > 0) { float gl = fill >= 1 ? 0.92f + 0.08f * chip_pulse : 0.5f; cw_r2d_round_rect(cw_rect_make(x, y, 46 * u * fill, 15 * u), 7 * u, 6, cw_rgba(0.55f, 0.95f, 1, gl)); }
   }
   /* place and lap, top left */
   static const char *const ord[] = { "1st", "2nd", "3rd", "4th", "5th", "6th" };
   if (g_mode == MODE_TIME_TRIAL) text(big, "TIME TRIAL", 60 * u, 58 * u, 52 * u, white, 0);
-  else text(big, ord[c->place - 1 < 0 ? 0 : c->place - 1], 60 * u, 42 * u, 84 * u, white, 0);
+  else { int sp = c->shown_place > 0 ? c->shown_place : c->place; text(big, ord[sp - 1 < 0 ? 0 : sp - 1], 60 * u, 42 * u, 84 * u, white, 0); }
   snprintf(buf, sizeof buf, "LAP %d/%d", c->lap < 0 ? 1 : c->lap + 1 > LAPS ? LAPS : c->lap + 1, LAPS);
   text(small, buf, 62 * u, 138 * u, 40 * u, dim, 0);
   if (G.clock >= 0) {
@@ -202,6 +277,8 @@ static void hud_body(void) {
     }
   }
   if (g_map_on) minimap(c, h, u);
+  hud_neighbours(c, u);
+  hud_popups(w, h, u);
   next_mark(c, w, h, u);
   /* misses so far: five and the race is over */
   for (int i = 0; i < 5; i++) {

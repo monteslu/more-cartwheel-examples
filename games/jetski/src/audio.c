@@ -46,10 +46,30 @@ void audio_tick(float dt) {
   cw_voice_set_volume(v_engine, quiet ? 0.0f : 0.2f + 0.26f * c->in.throttle);
   cw_voice_set_volume(v_hull, quiet ? 0.0f : hiss * 0.5f);
   cw_voice_set_pitch(v_hull, 0.75f + 0.5f * (c->speed / 30.0f));
+  /* every verb speaks: the event list, with what sounds there are today */
+  { static unsigned read;
+    if (g_ev_n - read > EV_RING) read = g_ev_n - EV_RING;
+    for (; read != g_ev_n; read++) {
+      const game_event *e = &g_ev[read % EV_RING];
+      cw_sound sn = (cw_sound){ 0 };
+      float vol = 0.6f, pitch = 1.0f;
+      switch (e->kind) {
+        case EV_PASS: sn = ok; vol = 0.5f; pitch = 1.0f + 0.05f * (float)e->a; break;
+        case EV_TOP: sn = top; vol = 0.75f; break;
+        case EV_TRICK: sn = top; pitch = 1.25f; break;
+        case EV_LAND: sn = e->a ? top : small; vol = e->a ? 0.5f : 0.45f; pitch = e->a ? 0.85f : 1.0f; break;
+        case EV_MISS: sn = miss; vol = 0.7f; break;
+        case EV_GAIN: sn = ok; pitch = 1.5f; break;
+        case EV_LOSE: sn = miss; vol = 0.3f; pitch = 1.3f; break;
+        case EV_LAP: case EV_FINAL: sn = go; vol = e->kind == EV_FINAL ? 0.8f : 0.55f; break;
+        case EV_WALL: sn = small; vol = 0.6f; pitch = 0.7f; break;
+        case EV_CRASH: sn = big; vol = 1.0f; pitch = 0.75f; break;
+        case EV_CHARGE: sn = top; vol = 0.6f; pitch = 1.5f; break;
+        case EV_TURBO: sn = big; vol = 0.75f; pitch = 1.4f; break;
+      }
+      if (g_ev_on && sn.id) { cw_voice v = cw_audio_play(sn, &(cw_play_desc){ .volume = vol, .bus = cw_shell_sfx_bus() }); cw_voice_set_pitch(v, pitch); g_fb[e->kind][1]++; }
+    } }
   if (c->big_splash) cw_audio_play(c->kick > 0.5f ? big : small, &(cw_play_desc){ .volume = 0.4f + 0.5f * c->kick, .bus = cw_shell_sfx_bus() });
-  if (c->passes > last_passes) cw_audio_play(c->meter >= 5 ? top : ok, &(cw_play_desc){ .volume = 0.55f, .bus = cw_shell_sfx_bus() });
-  if (c->misses > last_misses) cw_audio_play(miss, &(cw_play_desc){ .volume = 0.7f, .bus = cw_shell_sfx_bus() });
-  last_passes = c->passes, last_misses = c->misses, last_meter = c->meter;
   if (G.state == RACE_GRID) {
     int n = (int)ceilf(-G.clock);
     if (n < last_count && n <= 3) cw_audio_play(count, &(cw_play_desc){ .volume = 0.7f, .bus = cw_shell_sfx_bus() });
