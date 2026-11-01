@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.17.0
+
+- coopplatformer: all five worlds, 25 levels, and the old single level is gone. Each level
+  ends its own way: a chase, a piano recital, a collapsing bridge, a corridor of presses, a
+  cannon relay.
+- coopplatformer: grab and throw a friend with the left shoulder.
+- coopplatformer: coins that bite, signs that explode and a fake finish.
+- coopplatformer: graves that get ruder as they pile up, and an incident report at the end of
+  each level.
+- coopplatformer: bosses that differ by colour, hat and lines, and three that behave
+  differently. All the secrets in a level earn a terrible hat.
+- coopplatformer: a falling player stays in view from above the lip of a pit, and pits have a
+  dark back wall.
+- coopplatformer: new ground with sediment beds and buried junk, a near layer in front of the
+  action, and icicles.
+- coopplatformer: coins climb a scale as you collect them, and a jump off something moving
+  keeps its momentum.
+
 ## 0.16.0
 
 - jetski: turbo you spend. Right shoulder or L fires it, and past full power a buoy or trick
