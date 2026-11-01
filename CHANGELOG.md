@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.13.2
+
+- skyfighter: the settings menu reaches Ultra graphics. Left and right cycled through only
+  Low, Medium and High.
+
 ## 0.13.1
 
 - coopplatformer: coins stand up and spin face on. They lay flat and turned edge on before.
