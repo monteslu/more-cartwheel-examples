@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.16.0
+
+- jetski: turbo you spend. Right shoulder or L fires it, and past full power a buoy or trick
+  charges up to three shots.
+- jetski: the pack races you: rivals close up and ease off, and don't wait for a stopped rider.
+- jetski: fair landings. A hop off the sea keeps its speed, and nose dives still cost.
+- jetski: real crashes. A glance slides off and a square hit is a wipeout, and you're moving
+  again in about 1.6 seconds, with sound, rumble and spray.
+- jetski: your place holds steady instead of flickering, with your neighbours' names and gaps
+  under it. Rivals still out at the finish get an estimated time.
+- jetski: every action now answers with at least two of a popup, a sound, rumble or spray.
+- jetski: no more lime patches on the water on WebGPU.
+- jetski: the cliffs on Cold Sound and Red Reach read as rock faces from a distance, Gale
+  Bank's skerries are steep rock, and Crater Atoll's walls lose a comb of regular teeth.
+
 ## 0.15.1
 
 - jetski: Crater Atoll's cliffs read as rock faces from a distance: spurs, gullies, ledges and
