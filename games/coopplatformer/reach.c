@@ -29,7 +29,7 @@
 #define MAX_STATES 20000000 /* in one stage: about 5 minutes and 2 GB. A level that needs more fails loudly (TRUNCATED) */
 #define HOLD 6        /* ticks one choice of buttons is held */
 #define DT (1.0f / 60.0f)
-#define PLAT_BINS 8
+#define PLAT_BINS 4
 
 typedef struct rstate {
   cw_pos2 pos;
@@ -64,6 +64,7 @@ static bool clear_line(const level *L, float x0, float y0, float x1, float y1) {
   return true;
 }
 
+static int16_t SkyTop[WORLD_W];
 static float Run; /* the working player's momentum, set around each step */
 static void save(rstate *r, const cw_platformer2d *pf, const level *L, float plat_t) {
   const cw_mover2d *b = &pf->body;
@@ -98,7 +99,7 @@ static float plat_near(const level *L, float x) {
   float best = 1e9f;
   for (int i = 0; i < L->nplat; i++) {
     const mplat *m = &L->plats[i];
-    float lo = fminf(m->x0, m->x1) - 12, hi = fmaxf(m->x0, m->x1) + 12;
+    float lo = fminf(m->x0, m->x1) - 3, hi = fmaxf(m->x0, m->x1) + 3;
     if (x >= lo && x <= hi) best = 0;
   }
   return best;
@@ -108,14 +109,14 @@ static uint64_t key_of(const rstate *r, const level *L) {
   bool floor_ = r->flags & F_FLOOR;
   int qx = (int)floorf((float)r->pos.x * (floor_ ? QX * 2 : QX)), qy = (int)floorf((float)r->pos.y * QY);
   int vx = (int)floorf(r->vel.x * QVX + 0.5f) + 32, vy = (int)floorf(r->vel.y * QVY + 0.5f) + 32;
-  int rn = (int)(r->run * 3.0f + 0.5f);
+  int rn = (r->flags & F_FLOOR) ? (int)(r->run * 3.0f + 0.5f) : 0; /* in the air the speed it left the ground with is in the velocity */
   int ph = 0;
   if (L->nplat && plat_near(L, (float)r->pos.x) == 0) {
     float t = r->plat_t - floorf(r->plat_t);
     ph = (int)(t * PLAT_BINS);
   }
   bool floor = r->flags & F_FLOOR;
-  bool dash = HasDash && r->dash_t > 0, lock = r->wall_lock > 0, coy = false, wc = r->wall_coyote > 0;
+  bool dash = HasDash && r->dash_t > 0, lock = false, coy = false, wc = r->wall_coyote > 0;
   uint8_t fl = r->flags & (F_FLOOR | F_WALL | F_WET | (HasDash ? F_DASH : 0) | F_ONEWAY);
   int facing = HasDash && r->dash_t > 0 && r->facing > 0;
   if (r->flags & F_WET) qx = (int)floorf((float)r->pos.x), qy = (int)floorf((float)r->pos.y), vx = (int)floorf(r->vel.x * 0.2f + 0.5f) + 32, vy = (int)floorf(r->vel.y * 0.2f + 0.5f) + 32;
@@ -179,6 +180,9 @@ static void expand(game *g, player *p, const rstate *from, input_state a, int ti
     sim_player_move(g, p, &in, DT);
     float fx = (float)p->pf.body.position.x, fy = (float)p->pf.body.position.y;
     if (sim_hazard_at(L, fx, fy)) return; /* a route that takes damage ends here */
+    /* the sky over a level holds nothing: with claws a wall climbs to the top of the world, and the search would fill it.
+     * Above the highest thing near here it stops; anything up there would be reported as not reached, never passed */
+    if ((int)fx >= 0 && (int)fx < WORLD_W && fy > (float)SkyTop[(int)fx]) return;
     if (sim_dash_cracks(g, p, false)) Changed = true;
     for (int h = 0; h < 3; h++) {
       int cx = (int)floorf(fx), cy = (int)floorf(fy + 0.1f + (float)h * 0.65f);
@@ -207,22 +211,23 @@ static void successors(game *g, player *p, const rstate *r) {
     if (cx >= 0 && cx < WORLD_W && cy >= 0 && cy < WORLD_H) wet = g->L.t[cy][cx] == T_WATER;
   }
   static const float MX[3] = { -1, 0, 1 };
+  int HOLD_ = floor || (r->flags & F_WALL) ? HOLD : HOLD + 4; /* in the air a choice lasts a little longer */
   /* holding jump only differs from letting go while rising or on a wall; a press only does something where a jump can start */
   bool rising = r->vel.y > 0.1f, wall = r->flags & F_WALL || r->wall_coyote > 0;
   bool can_press = floor || wet || r->coyote > 0 || r->air > 0 || wall;
   for (int m = 0; m < 3; m++) {
     input_state a = { .x = MX[m], .run = true }; /* a person runs; a jump from standing still is a standing jump */
-    expand(g, p, r, a, HOLD); /* run, or stand */
+    expand(g, p, r, a, HOLD_); /* run, or stand */
     a.jump_held = true;
-    if (rising || wall) expand(g, p, r, a, HOLD); /* keep holding jump */
+    if (rising || wall) expand(g, p, r, a, HOLD_); /* keep holding jump */
     a.jump_pressed = true;
-    if (can_press) expand(g, p, r, a, HOLD); /* press jump */
+    if (can_press) expand(g, p, r, a, HOLD_); /* press jump */
     if (wet) {
       input_state s = { .x = MX[m], .y = 1, .run = true };
-      expand(g, p, r, s, HOLD);
+      expand(g, p, r, s, HOLD_);
       s.y = -1;
       s.down = true;
-      expand(g, p, r, s, HOLD);
+      expand(g, p, r, s, HOLD_);
     }
     /* a dash where a dash does something: at a cracked wall, or falling over a pit. Elsewhere it only multiplies the search */
     bool dash_use = false;
@@ -239,7 +244,7 @@ static void successors(game *g, player *p, const rstate *r) {
     }
     if (dash_use) {
       input_state d = { .x = MX[m], .dash_pressed = true, .run = true };
-      expand(g, p, r, d, HOLD);
+      expand(g, p, r, d, HOLD_);
     }
   }
   if (floor && (r->flags & F_ONEWAY)) {
@@ -328,6 +333,15 @@ int reach_check(void) {
   player *p = &g->p[0];
   g->margin_jump = REACH_JUMP, g->margin_run = REACH_RUN;
   for (int k = 0; k < L->ncoins; k++) CoinStage[k] = -1;
+  for (int x = 0; x < WORLD_W; x++) {
+    int top = 0;
+    for (int k = x - 10; k <= x + 10; k++) {
+      if (k < 0 || k >= WORLD_W) continue;
+      if (L->ground[k] < WORLD_H && L->ground[k] > top) top = L->ground[k];
+    }
+    for (int k = 0; k < L->ncoins; k++) if (fabsf(L->coins[k].x - (float)x) < 10 && (int)L->coins[k].y > top) top = (int)L->coins[k].y;
+    SkyTop[x] = (int16_t)(top + 13);
+  }
   rstate r0;
   save(&r0, &p->pf, L, 0);
   r0.flags = F_DASH;
@@ -348,6 +362,9 @@ int reach_check(void) {
   for (Stage = 0; Stage < nstages; Stage++) {
     g->abilities = stages[Stage];
     HasDash = g->abilities & AB_DASH;
+    /* with claws a body can be almost anywhere in the air at almost any speed: merge states harder, or the search spends
+     * minutes on the same spot. Coarser can only miss a route (a failure, loudly), never invent one */
+    if ((g->abilities & AB_CLAWS) && !getenv("COOP_REACH_FINE")) QX = QY = 1.5f, QVX = 0.2f, QVY = 0.125f;
     /* cracks break for good when a dash reaches them, and open more to the same stage */
     do {
       Changed = false;
