@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.12.8
+
+- Street Toughs: the wanker has a real beer gut: round, full from the ribs down to a fold
+  over his belt, with his T-shirt draped over it, a belly that bounces, and a cap that
+  no longer hides his eyes.
+- Street Toughs: the men's tops are T-shirts with the sleeves cut off, not straps.
+- Street Toughs: the creep wears dirty white briefs and dark socks on bare hairy legs. When
+  he flashes, his coat opens with his arms and he turns to show you.
+
 ## 0.12.7
 
 - partypack: at Low graphics, Blast Ring keeps its arena and players for the whole round.
