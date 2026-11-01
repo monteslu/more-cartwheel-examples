@@ -21,6 +21,7 @@ static bool in_range(int x, int y) { return x >= 0 && x < WORLD_W && y >= 0 && y
 static void set(level *L, int x, int y, int t) {
   if (in_range(x, y)) L->t[y][x] = (uint8_t)t;
 }
+bool g_level_old; /* COOP_REACH_OLD: the reachability gate's control, the level as it was before C-PT4 */
 bool world_solid(const level *L, int x, int y) {
   if (x < 0 || x >= WORLD_W) return true;
   if (y < 0) return true;
@@ -57,8 +58,11 @@ static void gap(gen *G, int n, int biome, int hazard) {
     if (hazard == T_SPIKE) set(G->L, x, 1, T_SPIKE);
   }
 }
-/* a mound three tiles high with a sealed pocket in its foot (3 tiles tall inside, the same on the way in), a cracked
- * wall in front of it and 'air' columns of room: 4 or 3 secret coins inside */
+/* a mound three tiles high with a pocket in its foot (3 tiles tall inside), a cracked wall in front of it and 'air'
+ * columns of room: 4 or 3 secret coins inside. The way in is a wooden hatch in its roof, there from the moment the room is
+ * seen: Down + Jump drops through it, and a jump and an air jump come back up. It was sealed, the cracked wall the only way
+ * in, and the dash that breaks one is found much later: people standing on the roof over the coins could not reach them.
+ * The wall still breaks to a dash, a way out and a shortcut. */
 static void pocket(gen *G, int air, int tail, int biome) {
   level *L = G->L;
   int mx = G->x, mg = G->g, n = 1 + air + tail;
@@ -67,6 +71,7 @@ static void pocket(gen *G, int air, int tail, int biome) {
     column(G, x, mg, biome);
     for (int y = mg - 1; y <= mg + 1; y++) set(L, x, y, i == 0 ? T_CRACK : (i <= air ? T_AIR : T_ROCK));
     set(L, x, mg + 2, T_ROCK);
+    if (!g_level_old && i >= 2 && i <= 3) set(L, x, mg + 2, T_ONEWAY); /* the hatch, over the middle of the room */
     L->ground[x] = mg + 3;
   }
   G->g = mg + 3;
@@ -196,7 +201,8 @@ void world_generate(level *L, uint32_t seed) {
     /* open the way in from the left under the left wall: a low door so the shaft can be entered */
     for (int y = base; y < base + 3; y++) set(L, sx, y, T_AIR);
     for (int y = base + 3; y < base + 10; y++) set(L, sx, y, T_ROCK);
-    coin_row(G, sx + 1, 4, base + 5);
+    /* in the well, not in its far wall: the fourth coin used to sit inside the rock */
+    coin_row(G, sx + 1, g_level_old ? 4 : 3, base + 5);
   }
   walker(G, G->x - 3, G->g, 3, 0);
   flat(G, 6, BIOME_CAVES);

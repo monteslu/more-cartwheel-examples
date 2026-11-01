@@ -108,6 +108,8 @@ static bool g_hud_bug; /* COOP_HUD_BUG: the rescue-tag gate's control */
 static int g_vanish_dbg; /* frames every player on the field was hidden by the invulnerable blink */
 static int g_blink_live, g_blink_hid;
 static bool g_blink_bug; /* COOP_BLINK_BUG: the blink gate's control */
+static bool g_coin_flat_bug; /* COOP_COIN_FLAT_BUG: the coin gate's control: the coins lie flat */
+static int g_coinface_dbg[2]; /* coins checked, coins whose face does not stand upright */
 static int g_uvrep_dbg;
 static int g_surface_dbg[3]; /* world_surface_audit */
 static int g_flames_dbg[2]; /* the fire check: flames burning, flames not in a seated brazier (floating fire) */
@@ -479,13 +481,19 @@ static void build_scene(void) {
     }
   }
   /* coins */
-  t3_geometry *cg = t3_cylinder_geometry_new(0.28f, 0.28f, 0.07f, 16, 1, false);
+  /* a struck coin: a raised rim round a dished face, turned on a lathe about its axis (mesh Y), so the rim still reads as
+   * a coin when the spin brings it edge on. The disc stands up: its axis lies along the view until the spin turns it */
+  static const t3_vec2 COIN_PROFILE[] = { { 0, 0.038f }, { 0.17f, 0.038f }, { 0.20f, 0.062f }, { 0.27f, 0.062f }, { 0.30f, 0.03f },
+                                          { 0.30f, -0.03f }, { 0.27f, -0.062f }, { 0.20f, -0.062f }, { 0.17f, -0.038f }, { 0, -0.038f } };
+  t3_geometry *cg = t3_lathe_geometry_new(COIN_PROFILE, 10, 20, 0, 6.2831853f);
   t3_material *cm = phys(0xffc83a, 0.25f, 1.0f);
   cm->emissive = (t3_color){ 0.5f, 0.3f, 0.0f }, cm->emissive_intensity = 0.8f;
   for (int i = 0; i < L->ncoins; i++) {
     S.coin_node[i] = make_node("Node3D", S.world, "Coin");
     S.coin_mesh[i] = part(S.coin_node[i], cg, cm, 0, 0, 0, 1, 1, 1);
-    S.coin_mesh[i]->base.rotation.x = 1.5708f;
+    /* through t3_object_set_rotation: writing base.rotation alone never reached the mesh's quaternion, so the coins lay
+     * flat like plates and turned about their own axis, edge on to the camera for ever */
+    if (!g_coin_flat_bug) t3_object_set_rotation(S.coin_mesh[i], 1.5707963f, 0, 0);
     cw_node3d_set_position(S.coin_node[i], (t3_vec3){ L->coins[i].x, L->coins[i].y, 0 });
   }
   t3_release(cg);
@@ -812,6 +820,7 @@ static void offsetgate(cw_node cam, float vx, float vy, float vz) {
 }
 
 /* ── frame: sync the scene to the sim ─────────────────────────────── */
+static void coin_face_check(void);
 static void sync_scene(float alpha, float dt) {
   game *g = &G;
   const level *L = &g->L;
@@ -952,6 +961,7 @@ static void sync_scene(float alpha, float dt) {
     cw_node_set(S.coin_node[i], "visible", cw_val_bool(!tk));
     if (!tk) cw_node3d_set_rotation(S.coin_node[i], (t3_vec3){ 0, S.time * 2.5f + (float)i, 0 });
   }
+  coin_face_check();
   for (int i = 0; i < L->npickups; i++) {
     cw_node_set(S.pick_node[i], "visible", cw_val_bool(!L->pickups[i].taken));
     cw_node3d_set_position(S.pick_node[i], (t3_vec3){ (float)L->pickups[i].x + 0.5f, (float)L->pickups[i].y + 1.1f + 0.12f * sinf(S.time * 2.0f), 0 });
@@ -1024,6 +1034,22 @@ static void sync_scene(float alpha, float dt) {
   g_bubbles_dbg = bubbles;
 }
 
+/* the coins as drawn: read each coin's disc axis (mesh Y) from the mesh's own quaternion, turned by the spin node's Y spin.
+ * A coin stands up when that axis is level (no part of it along world up), so the spin shows its face to the camera */
+static void coin_face_check(void) {
+  int n = 0, flat = 0;
+  for (int i = 0; i < G.L.ncoins; i++) {
+    const t3_mesh *m = S.coin_mesh[i];
+    if (!m) continue;
+    n++;
+    t3_quat q = m->base.quaternion;
+    /* the world up part of the disc axis: the Y of q applied to (0, 1, 0). The node above only spins about Y, which keeps it */
+    float up = 1.0f - 2.0f * (q.x * q.x + q.z * q.z);
+    if (fabsf(up) > 0.02f) flat++;
+  }
+  g_coinface_dbg[0] = n, g_coinface_dbg[1] = flat;
+}
+
 /* ── input ─────────────────────────────────────────────────────────── */
 static void read_input(void) {
   for (int i = 0; i < MAX_PLAYERS; i++) {
@@ -1065,6 +1091,7 @@ static void start_match(int players, void *user) {
   memset(G.rumble, 0, sizeof G.rumble); /* nothing the attract mode asked for carries into the match */
   g_cam_bug = getenv("COOP_CAM_BUG") != NULL; /* the camera gate's must-fail control (native only) */
   g_blink_bug = getenv("COOP_BLINK_BUG") != NULL; /* the blink gate's control (native only) */
+  g_coin_flat_bug = getenv("COOP_COIN_FLAT_BUG") != NULL; /* the coin gate's control (native only) */
   g_vanish_dbg = 0;
   g_hud_bug = getenv("COOP_HUD_BUG") != NULL; /* the rescue-tag gate's control (native only) */
   g_cam_nofloor = getenv("COOP_PIT_CAM_BUG") != NULL; /* the pit camera gate's control (native only) */
@@ -1470,11 +1497,13 @@ static void init(void *user) {
   cw_debug_field("g.tags", g_tags_dbg, CW_DBG_I32, 2);
   cw_debug_field("g.surface", g_surface_dbg, CW_DBG_I32, 3);
   cw_debug_i32("g.vanish", &g_vanish_dbg);
+  cw_debug_field("g.coinface", g_coinface_dbg, CW_DBG_I32, 2);
   cw_debug_i32("g.uvrep", &g_uvrep_dbg);
   cw_debug_i32("g.marker_over", &g_marker_over_dbg);
   cur_mood = MOODS[0];
 #ifdef COOP_AUTOPILOT
   if (getenv("COOP_MAP")) print_map(atoi(getenv("COOP_MAP")));
+  if (getenv("COOP_REACH")) exit(reach_check());
   if (getenv("COOP_SECRETS")) secret_routes(1);
   if (getenv("COOP_FUZZ")) fuzz(atoi(getenv("COOP_FUZZ")), getenv("COOP_PLAYERS") ? atoi(getenv("COOP_PLAYERS")) : 1);
   if (getenv("COOP_SOAK")) soak(atoi(getenv("COOP_SOAK")), getenv("COOP_PLAYERS") ? atoi(getenv("COOP_PLAYERS")) : 2);

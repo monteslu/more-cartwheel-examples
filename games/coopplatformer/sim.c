@@ -262,6 +262,62 @@ static void camera_step(game *g, float dt) {
   }
 }
 
+/* one player's movement for one tick: the water they are in, their abilities, the controller. The reachability check
+ * (reach.c) moves its players through this too, so what it proves is what the game does. True when in water. */
+bool sim_player_move(game *g, player *p, const input_state *is, float dt) {
+  const level *L = &g->L;
+  cw_platformer2d *pf = &p->pf;
+  float cx = pos_x(p), cy = pos_y(p) + 0.7f;
+  int tc = tile_at(L, cx, cy);
+  bool in_water = tc == T_WATER;
+  pf->submerged = in_water ? (tile_at(L, cx, cy + 0.9f) == T_WATER ? 1.0f : 0.7f) : 0.0f;
+  pf->current = (cw_vec2){ in_water ? L->water_current[(int)floorf(cx)] : 0.0f, 0 };
+  pf->can_dash = (g->abilities & AB_DASH) != 0;
+  pf->can_wall_jump = (g->abilities & AB_CLAWS) != 0;
+  pf->max_air_jumps = (g->abilities & AB_DOUBLE) ? 1 : 0;
+  cw_platformer2d_input pin = { .move_x = is->x, .move_y = is->y, .jump_pressed = is->jump_pressed, .jump_held = is->jump_held,
+                                .dash_pressed = is->dash_pressed, .down_held = is->down };
+  cw_platformer2d_step(pf, &pin, dt);
+  return in_water;
+}
+
+/* a dash breaks a cracked wall in its way (hide: also take it off the screen). True when something broke. */
+bool sim_dash_cracks(game *g, player *p, bool hide) {
+  const level *L = &g->L;
+  const cw_platformer2d *pf = &p->pf;
+  if (pf->dash_t <= 0) return false;
+  bool broke = false;
+  float fx = pos_x(p) + (float)pf->facing * 0.9f;
+  for (int dy = 0; dy < 3; dy++)
+    if (tile_at(L, fx, pos_y(p) + 0.4f + (float)dy * 0.9f) == T_CRACK) {
+      int tx = (int)floorf(fx);
+      for (int y = 0; y < WORLD_H; y++)
+        if (L->t[y][tx] == T_CRACK && world_break_crack(g, tx, y)) {
+          if (hide) world_hide_crack(tx, y), g->events |= EV_BREAK;
+          broke = true;
+        }
+    }
+  return broke;
+}
+
+/* the tile hazards at a player's feet: 0 none, 1 spikes (hurt), 2 lava or the bottom of a pit (the end) */
+int sim_hazard_at(const level *L, float fx, float fy) {
+  if (tile_at(L, fx, fy + 0.2f) == T_LAVA || tile_at(L, fx, fy) == T_LAVA || fy < 2.2f) return 2;
+  int tf = tile_at(L, fx, fy + 0.15f), tb = tile_at(L, fx, fy + 0.9f);
+  return tf == T_SPIKE || tb == T_SPIKE ? 1 : 0;
+}
+
+/* a coin touches a body whose feet are at fx, fy */
+bool sim_coin_touch(const coin *c, float fx, float fy) {
+  float dx = fx - c->x, dy = fy + 0.7f - c->y;
+  return dx * dx + dy * dy < 0.9f;
+}
+/* an ability pedestal touches anywhere on the body */
+bool sim_pickup_touch(const pickup *pk, float fx, float fy) {
+  float dx = fx - ((float)pk->x + 0.5f), dy = fy - (float)pk->y;
+  return fabsf(dx) < 1.0f && dy > -0.8f && dy < 2.6f;
+}
+
 void sim_step(game *g, const input_state in[MAX_PLAYERS], float dt) {
   level *L = &g->L;
   g->events = 0;
@@ -320,19 +376,9 @@ void sim_step(game *g, const input_state in[MAX_PLAYERS], float dt) {
       sim_return(g);
       return;
     }
-    float cx = pos_x(p), cy = pos_y(p) + 0.7f;
-    int tc = tile_at(L, cx, cy);
-    bool in_water = tc == T_WATER;
-    pf->submerged = in_water ? (tile_at(L, cx, cy + 0.9f) == T_WATER ? 1.0f : 0.7f) : 0.0f;
-    pf->current = (cw_vec2){ in_water ? L->water_current[(int)floorf(cx)] : 0.0f, 0 };
-    pf->can_dash = (g->abilities & AB_DASH) != 0;
-    pf->can_wall_jump = (g->abilities & AB_CLAWS) != 0;
-    pf->max_air_jumps = (g->abilities & AB_DOUBLE) ? 1 : 0;
     const input_state *is = &in[i];
-    cw_platformer2d_input pin = { .move_x = is->x, .move_y = is->y, .jump_pressed = is->jump_pressed, .jump_held = is->jump_held,
-                                  .dash_pressed = is->dash_pressed, .down_held = is->down };
     float vy0 = (float)pf->body.velocity.y;
-    cw_platformer2d_step(pf, &pin, dt);
+    bool in_water = sim_player_move(g, p, is, dt);
     uint32_t e = pf->events;
     if ((e & CW_PF_LAND) && vy0 < -14.0f) sim_rumble(g, i, fminf(0.35f, 0.08f + (-vy0 - 14.0f) * 0.02f), 0, 60); /* a long fall lands: a light bump */
     if (e & (CW_PF_JUMP | CW_PF_AIR_JUMP)) g->events |= EV_JUMP, p->jump_fx = 1;
@@ -340,16 +386,7 @@ void sim_step(game *g, const input_state in[MAX_PLAYERS], float dt) {
     if (e & CW_PF_LAND) g->events |= EV_LAND, p->land_fx = 1;
     if (e & CW_PF_DASH) g->events |= EV_DASH;
     if (e & (CW_PF_ENTER_WATER | CW_PF_LEAVE_WATER)) g->events |= EV_SPLASH, p->land_fx = 2;
-    /* a dash breaks a cracked wall in its way */
-    if (pf->dash_t > 0) {
-      float fx = pos_x(p) + (float)pf->facing * 0.9f;
-      for (int dy = 0; dy < 3; dy++)
-        if (tile_at(L, fx, pos_y(p) + 0.4f + (float)dy * 0.9f) == T_CRACK) {
-          int tx = (int)floorf(fx);
-          for (int y = 0; y < WORLD_H; y++)
-            if (L->t[y][tx] == T_CRACK && world_break_crack(g, tx, y)) world_hide_crack(tx, y), g->events |= EV_BREAK;
-        }
-    }
+    sim_dash_cracks(g, p, true);
     /* animation state */
     if (in_water) p->anim = 5;
     else if (pf->dash_t > 0) p->anim = 6;
@@ -377,8 +414,7 @@ void sim_step(game *g, const input_state in[MAX_PLAYERS], float dt) {
       if (pk->taken) continue;
       /* a box over the whole body: a player who jumps under the arch over a pedestal still touches it (a radius
        * around the waist missed a jump that kept the feet 1.5 m up, and the group went on without the claws) */
-      float dx = fx - ((float)pk->x + 0.5f), dy = fy - (float)pk->y;
-      if (fabsf(dx) < 1.0f && dy > -0.8f && dy < 2.6f) {
+      if (sim_pickup_touch(pk, fx, fy)) {
         pk->taken = true;
         g->abilities |= (uint32_t)pk->ability;
         g->events |= EV_POWER;
@@ -387,8 +423,7 @@ void sim_step(game *g, const input_state in[MAX_PLAYERS], float dt) {
     for (int k = 0; k < L->ncoins; k++) {
       coin *c = &L->coins[k];
       if (c->taken) continue;
-      float dx = fx - c->x, dy = fy + 0.7f - c->y;
-      if (dx * dx + dy * dy < 0.9f) {
+      if (sim_coin_touch(c, fx, fy)) {
         c->taken = true;
         g->coins_total++;
         p->coins++;

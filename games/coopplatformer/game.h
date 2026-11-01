@@ -139,6 +139,7 @@ int world_platform(int biome, float w, int seed, t3_mesh **out); /* a moving pla
 void world_backdrop(game *g);
 int world_scenery_check(const level *L, int *checked, float *worst_mm); /* seated props off their ground (0 = none) */
 bool world_solid(const level *L, int x, int y);
+extern bool g_level_old; /* the reachability gate's control */
 bool world_break_crack(game *g, int x, int y);
 void world_hide_crack(int x, int y);
 
@@ -150,6 +151,13 @@ void sim_respawn_player(game *g, int p);
 bool sim_warp(game *g, int flag);
 void sim_return(game *g);          /* everyone back to the last flag (or the start): the way out of anything */   /* the living players go to a reached flag; false if it is not reached */
 uint32_t sim_hash(const game *g);
+bool sim_player_move(game *g, player *p, const input_state *is, float dt); /* one player's movement this tick; true in water */
+bool sim_dash_cracks(game *g, player *p, bool hide);
+int sim_hazard_at(const level *L, float fx, float fy);
+bool sim_coin_touch(const coin *c, float fx, float fy);
+bool sim_pickup_touch(const pickup *pk, float fx, float fy);
+/* reach.c: prove from real movement which coins, pedestals and rooms a player can get to (COOP_REACH=1) */
+int reach_check(void);
 /* Rumble (the camera never shakes): sim_rumble asks one player's pad for low (heavy) and high (light) motor 0..1 for ms;
  * sim_rumble_at a heavy impact at a world point (a boss landing, a boss hit, a blast), amount 0..1, felt by each player
  * by their distance from it (full within 4 m, nothing past 24 m). The strongest request of a tick wins. */

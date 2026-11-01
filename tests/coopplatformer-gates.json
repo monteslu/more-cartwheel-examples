@@ -43,7 +43,7 @@
         0
       ],
       "g.scenery": [
-        160,
+        161,
         0
       ]
     },
@@ -93,7 +93,7 @@
         0
       ],
       "g.scenery": [
-        160,
+        161,
         0
       ]
     },
@@ -115,14 +115,14 @@
     "expect": {
       "g.tick": 60,
       "g.scenery": [
-        160,
+        161,
         0
       ]
     },
     "controlEnv": {
       "COOP_FLOAT_BUG": "1"
     },
-    "note": "no floating scenery: every prop that stands on the ground (grass, flowers, rocks, bushes, mushrooms, crystals and spires on the tiles; trees, columns and their rubble, spires and crystals on the lit 3D backdrop ground) is measured against the ground as drawn (a ray down through the backdrop mesh triangles, the tile tops) at its centre and 192 points of its base: g.scenery is [props seated, props whose base is more than 3 cm above or below the lowest ground under it or that overhang a ledge or the edge of the backdrop]. The control lifts the first meadow tree 0.5 m (COOP_FLOAT_BUG, native): its g.scenery must differ. Re-pinned 148 to 160: nine braziers and the posts under the wooden ledges joined the seated props, a few grass tufts left the footing of the braziers."
+    "note": "no floating scenery: every prop that stands on the ground (grass, flowers, rocks, bushes, mushrooms, crystals and spires on the tiles; trees, columns and their rubble, spires and crystals on the lit 3D backdrop ground) is measured against the ground as drawn (a ray down through the backdrop mesh triangles, the tile tops) at its centre and 192 points of its base: g.scenery is [props seated, props whose base is more than 3 cm above or below the lowest ground under it or that overhang a ledge or the edge of the backdrop]. The control lifts the first meadow tree 0.5 m (COOP_FLOAT_BUG, native): its g.scenery must differ. Re-pinned 148 to 160: nine braziers and the posts under the wooden ledges joined the seated props, a few grass tufts left the footing of the braziers. Re-pinned 160 to 161: the wooden hatches in the two mound rooms (C-PT4) are ledges with posts."
   },
   {
     "name": "coopplatformer-fire",
@@ -390,6 +390,36 @@
       "COOP_CAM_BUG": "1"
     },
     "note": "camera stability, the way a person plays: four pads through title, join and start, then stand, walk, stop, jump and stand while the drawn camera is measured every frame (g.camgate: frames at rest, at-rest frames that moved over 1 mm, frames in motion, frames in motion with a jump over 0.6 m or a jerk over 8 cm). At rest it must not move at all; in motion it must stay smooth. The control puts a 1 cm sway on the drawn camera (COOP_CAM_BUG, native): its g.camgate must differ."
+  },
+  {
+    "name": "coopplatformer-coins",
+    "app": "coopplatformer_auto",
+    "webgpu": {
+      "vsGl": 0.005,
+      "maxArea": 0.005,
+      "note": "the picture at frame 60 at the start of the meadow, GL vs WebGPU within the same bounds as the scenery gate"
+    },
+    "frames": 60,
+    "fields": [
+      "g.tick",
+      "g.coinface"
+    ],
+    "expect": {
+      "g.tick": 60,
+      "g.coinface": [
+        40,
+        0
+      ]
+    },
+    "controlEnv": {
+      "COOP_COIN_FLAT_BUG": "1"
+    },
+    "note": "every coin stands up: g.coinface is [coins, coins whose disc axis is not level]. Each coin spins about its upright axis through its node and its disc is stood up by its mesh; a coin whose axis has any part along world up lies flat like a plate, edge on to the camera for ever. The control (COOP_COIN_FLAT_BUG, native) leaves the coins flat as they were: its g.coinface must differ."
+  },
+  {
+    "name": "coopplatformer-reach",
+    "script": "tests/coopplatformer-reach.mjs",
+    "note": "from real movement, every coin, pedestal, flag, cracked wall and room of every level can be reached and no coin sits in rock (reach.c). Control: the levels as they were (COOP_REACH_OLD) must fail."
   },
   {
     "name": "coopplatformer-quality",

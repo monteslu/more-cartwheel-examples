@@ -3,8 +3,8 @@
 A co-op side-scrolling platformer for one to four players on one shared screen. The camera pulls back to keep
 everyone in view; if you fall too far behind (or fall in a pit while a friend is still up) you are carried to the
 group in a bubble. Four regions are laid out left to right: a sunny meadow, torchlit caves, a flooded ruin and a
-volcano with a boss at the end. Three abilities open the way: an air jump, wall claws and a dash. A cracked wall
-hides a treasure nook, a ledge high in the meadow hides coins, and the map screen shows where you have been.
+volcano with a boss at the end. Three abilities open the way: an air jump, wall claws and a dash. A wooden
+hatch drops into each treasure room (Down + Jump; a jump and an air jump come back up, and a dash breaks the cracked wall beside it), a ledge high in the meadow hides coins, and the map screen shows where you have been.
 
 ## Controls
 
@@ -38,5 +38,6 @@ runs the replay gates in `tests/coopplatformer-gates.json` (`--cpu` for the stat
 `COOP_SOAK=<ticks> COOP_PLAYERS=<n>` on `coopplatformer_auto` runs the bots through the whole game with no
 rendering and reports wins, stalls and deaths; `COOP_FUZZ=<runs>` checks that each ability gate needs its ability;
 `COOP_SECRETS=1` runs the scripted secret routes.
+`node tests/coopplatformer-reach.mjs` searches with the game's own movement for every coin, ability, flag, cracked wall and room nobody can get to with what they have found by then (`games/coopplatformer/reach.c`).
 
 The debug field `dev.warp` puts every player at a column with every ability (romdev: `wasm({op:'write', name:'dev.warp', value:178})`), so a sweep can reach any region. `COOP_MAP=<x0>` prints the level with its region row.
