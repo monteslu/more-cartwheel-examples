@@ -137,6 +137,14 @@ void rig_tint(rig *r, const float fur[3], const float scarf[3], int accessory) {
     if (r->acc[k]) r->acc[k]->visible = k == accessory;
 }
 
+/* every material of a rig coloured over: one model, five different bosses */
+void rig_shade(rig *r, const float k[3]) {
+  for (int i = 0; i < r->nmat; i++) {
+    t3_color c = r->mats[i]->color;
+    r->mats[i]->color = (t3_color){ c.r * k[0], c.g * k[1], c.b * k[2] };
+  }
+}
+
 /* white-hot flash on a hit: add to every material's emission, k in 0..1 */
 void rig_flash(rig *r, float k) {
   for (int i = 0; i < r->nmat; i++) {

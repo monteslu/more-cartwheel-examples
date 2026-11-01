@@ -534,7 +534,18 @@ static void build_scene(void) {
     rig_free(S.erig[i]);
     S.erig[i] = rig_load(e->kind == 2 ? RIG_BOSS : e->kind == 1 ? RIG_FLYER : RIG_WALKER);
     if (S.erig[i]) rig_attach(S.erig[i], S.emodel[i]);
-    float sc = e->kind == 2 ? 1.25f : e->kind == 1 ? 0.85f : 0.95f;
+    float sc = e->kind == 2 ? 1.2f + 0.14f * (float)L->boss_kind : e->kind == 1 ? 0.85f : 0.95f;
+    if (e->kind == 2 && S.erig[i]) {
+      /* one model, a different creature each time: a colour and something on its head */
+      static const float TINT[5][3] = { { 0.75f, 0.55f, 0.95f }, { 1.3f, 1.05f, 0.45f }, { 1.3f, 0.5f, 0.4f }, { 0.6f, 0.75f, 1.0f }, { 0.35f, 0.3f, 0.35f } };
+      rig_shade(S.erig[i], TINT[L->boss_kind]);
+      static const uint32_t HAT[5] = { 0x201018, 0xe8c040, 0xf2f2f2, 0x303848, 0xe8c040 };
+      t3_geometry *brim = t3_cylinder_geometry_new(0.62f, 0.62f, 0.07f, 16, 1, false), *crown = t3_cylinder_geometry_new(0.36f, 0.4f, 0.62f, 16, 1, false);
+      t3_material *hm = phys(HAT[L->boss_kind], 0.7f, L->boss_kind == 1 || L->boss_kind == 4 ? 0.9f : 0.0f);
+      part(S.emodel[i], brim, hm, 0, 1.66f, 0, 1, 1, 1);
+      part(S.emodel[i], crown, hm, 0, 2.0f, 0, 1, 1, 1);
+      t3_release(brim), t3_release(crown);
+    }
     cw_node3d_set_scale(S.emodel[i], (t3_vec3){ sc, sc, sc });
     S.ephase[i] = (float)i * 1.7f;
   }
@@ -2349,6 +2360,40 @@ static void draw_signs(float W, float H, float s) {
     cw_r2d_text(g_font, n->text, (cw_vec2){ x0 + 10 * s, y0 + 7 * s }, &(cw_text_style){ .size = ts, .color = cw_rgba(0.13f, 0.08f, 0.04f, a), .wrap_width = pw - 20 * s });
   }
 }
+/* a boss has something to say each time it is jumped on, and it is always about you */
+static void draw_boss_says(float W, float H, float s) {
+  static const char *const LINES[5][9] = {
+    { "THE RENT IS DUE", "THAT WILL COME OUT OF YOUR DEPOSIT", "YOU ARE SCUFFING THE HEAD", "I KNOW WHERE YOU LIVE. I OWN IT", "NOTICE OF EVICTION" , "OW", "", "", "" },
+    { "THAT IS DEDUCTIBLE", "I SEE YOU CLAIMED THAT COIN", "PLEASE KEEP YOUR RECEIPTS", "YOU OWE INTEREST ON THAT", "THIS IS AN AUDIT", "FORM ONE, LINE ONE: OW", "", "", "" },
+    { "NO RUNNING", "NO JUMPING", "NO JUMPING ON ME", "I HAVE NEVER SAVED ANYONE", "THIS IS A WHISTLE", "I WILL BLOW IT", "NO DIVING", "", "" },
+    { "LET'S CIRCLE BACK", "PER MY LAST STOMP", "THIS WILL GO IN YOUR REVIEW", "WE ARE A FAMILY HERE", "I AM DISAPPOINTED, NOT ANGRY", "LOW HANGING FRUIT", "SYNERGY", "OW", "" },
+    { "I STARTED WITH NOTHING", "MY FATHER GAVE ME A VOLCANO", "YOU WILL INHERIT THIS", "I HAVE A BIGGER HAT AT HOME", "THE COINS WERE NEVER REAL", "READ THE CONTRACT", "THERE IS NO PLAN B", "THIS IS PLAN B", "TELL THE PIANO I LOVED IT" },
+  };
+  static int shown_hp = -1;
+  static float t;
+  static const char *text_now;
+  for (int i = 0; i < G.L.nenemies; i++) {
+    const enemy *e = &G.L.enemies[i];
+    if (e->kind != 2) continue;
+    int kind = G.L.boss_kind, total = 5 + kind;
+    if (shown_hp < 0 || e->hp > shown_hp) shown_hp = e->hp;
+    if (e->hp < shown_hp) {
+      shown_hp = e->hp;
+      const char *l = LINES[kind][(total - e->hp - 1) % 9];
+      if (l[0]) text_now = l, t = 2.2f;
+    }
+    if (t > 0 && text_now && e->alive) {
+      t -= 1.0f / 60.0f;
+      float sx, sy;
+      if (project(e->x, e->y + 4.6f, 0, W, H, &sx, &sy)) {
+        cw_text_metrics tm = cw_font_measure(g_font, text_now, &(cw_text_style){ .size = 18 * s });
+        float x0 = fmaxf(8 * s, fminf(sx - tm.width * 0.5f - 10 * s, W - tm.width - 28 * s)), y0 = fmaxf(80 * s, sy - tm.height - 14 * s);
+        cw_r2d_round_rect(cw_rect_make(x0, y0, tm.width + 20 * s, tm.height + 12 * s), 8 * s, 8, cw_rgba(0.1f, 0.05f, 0.05f, 0.9f));
+        cw_r2d_text(g_font, text_now, (cw_vec2){ x0 + 10 * s, y0 + 6 * s }, &(cw_text_style){ .size = 18 * s, .color = cw_rgba(1, 0.85f, 0.7f, 1) });
+      }
+    }
+  }
+}
 /* who said what, over their head; the rest of the screen is not covered */
 static void draw_says(float W, float H, float s) {
   for (int i = 0; i < 6; i++) {
@@ -2670,6 +2715,7 @@ static void render(void *user, double alpha) {
     draw_graves(W, H, s);
     draw_signs(W, H, s);
     draw_says(W, H, s);
+    draw_boss_says(W, H, s);
     draw_markers(W, H, s);
     text("hold X to run, A to jump: run first and jump further     hold R or Y: back to the last flag", 20 * s, H - 30 * s, 14 * s, cw_rgba(1, 1, 1, 0.45f), CW_ALIGN_LEFT, 0);
     /* players carried in bubbles: a tag each (face and RESCUE), laid out side by side from the measured text and

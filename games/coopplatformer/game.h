@@ -56,7 +56,7 @@ typedef struct mplat { float x0, y0, x1, y1, w; float t, speed; cw_body2d body; 
 typedef struct enemy {
   int kind;            /* 0 walker, 1 flyer, 2 boss */
   float x, y, vx, vy, home_x, range;
-  int hp, hurt, dir;
+  int hp, hurt, dir, vx0_dir;
   bool alive;
   cw_mover2d m;
 } enemy;
@@ -179,6 +179,7 @@ void rig_attach(rig *r, cw_node holder);
 void rig_free(rig *r);
 void rig_tint(rig *r, const float fur[3], const float scarf[3], int accessory);
 void rig_flash(rig *r, float k);
+void rig_shade(rig *r, const float k[3]);
 void rig_glow(rig *r, float k);
 void rig_pose_hero(rig *r, int anim, float ph, float t, float st, float wd, float vy);
 void rig_pose_walker(rig *r, float ph, float t, float squash);

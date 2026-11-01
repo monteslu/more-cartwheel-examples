@@ -167,6 +167,10 @@ static void enemy_step(game *g, enemy *e, float dt) {
     return;
   }
   float sp = e->kind == 2 ? 3.2f + 0.45f * (float)L->boss_kind : 1.8f;
+  /* the bosses are not the same boss: the Lifeguard charges, the Manager will not stop in time, the Founder does both */
+  if (e->kind == 2 && (L->boss_kind == 2 || L->boss_kind == 4) && (g->tick % 210) < 45) sp *= 2.6f;
+  if (e->kind == 2 && (L->boss_kind == 3 || L->boss_kind == 4) && (g->tick % 90) < 20) e->dir = e->vx0_dir ? e->vx0_dir : e->dir;
+  if (e->kind == 2) e->vx0_dir = e->dir;
   float tx = 0;
   if (e->kind == 2) { /* boss: chases the nearest player inside the arena, leaps now and then */
     float best = 1e9f;

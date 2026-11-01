@@ -7,7 +7,7 @@
 {"frame":216,"buttons":[],"pad2":{"buttons":[]}},
 {"frame":240,"buttons":["start"],"pad2":{"buttons":[]}},
 {"frame":246,"buttons":[],"pad2":{"buttons":[]}},
-{"frame":520,"buttons":["lshoulder"],"pad2":{"buttons":[]}},
+{"frame":520,"buttons":["l"],"pad2":{"buttons":[]}},
 {"frame":524,"buttons":[],"pad2":{"buttons":[]}},
-{"frame":560,"buttons":["lshoulder"],"pad2":{"buttons":[]}},
+{"frame":560,"buttons":["l"],"pad2":{"buttons":[]}},
 {"frame":564,"buttons":[],"pad2":{"buttons":[]}}]
