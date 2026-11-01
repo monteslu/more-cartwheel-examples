@@ -84,7 +84,7 @@ return {
   tide: [0, 0],
   sky: 'res://textures/sky-harbour.png',
   sun_disc: 0.05,
-  side_detile: 1,
+  side_detile: 0.01,
   props: [
     ['Sky', 'ground_color', 'color(0.02, 0.025, 0.04, 1)'],
     ['Sky', 'time_of_day', '22.5'], ['Sky', 'sun_energy', '0.4'], ['Sky', 'sky_energy', '0.5'], ['Sky', 'north', '30'],

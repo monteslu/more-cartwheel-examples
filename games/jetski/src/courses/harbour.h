@@ -1292,6 +1292,6 @@ static const course_def harbour_course = {
   .waves = { { 30.0f, 24.0f, 0.14f, 0.2f, 0.6f }, { 120.0f, 15.0f, 0.08f, 0.14f, 0.6f }, { 75.0f, 7.0f, 0.05f, 0.06f, 0.5f }, { 200.0f, 3.8f, 0.02f, 0.02f, 0.4f } }, .swell = { 0.8f, 1.0f }, .tide = { 0.0f, 0.0f },
   .rain = 0.0f,
   .sun_disc = 0.05f,
-  .side_detile = 1.0f,
+  .side_detile = 0.01f,
   .hook = { .kind = 3, .current = 0.0f, .x = 150.00f, .z = 60.00f, .dirx = -0.2887f, .dirz = 0.9574f, .half_w = 11.0f, .half_len = 658.03f, .lintel = 62.0f, .s_in = 7.0f, .s_out = 0.0f, .model = "res://models/tanker.glb" },
 };
