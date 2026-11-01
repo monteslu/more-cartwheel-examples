@@ -341,7 +341,7 @@
     "expect": { "game.state": 1, "match.nf": 1, "cam.fire": [300, 0] },
     "controlInput": "arenafps-recoil.json",
     "controlEnv": { "ARENA_RECOIL_BUG": "1" },
-    "note": "recoil belongs to the gun model, never the view (monteslu: no camera shake ever). One pad through the setup with no bots, then hold the trigger with the look stick at rest for 3 and 2 seconds: cam.fire counts the ticks fired and those on which the view moved; the rifle's burst walks its shots and opens the crosshair instead. Control ARENA_RECOIL_BUG=1 (the old climb) moves the view on every shot. The gate pins High with a start command: Chromium is not a deterministic host, so Auto stays on there and since engine v0.27 it steps down on a loaded machine."
+    "note": "recoil belongs to the gun model, never the view (no camera shake). One pad through the setup with no bots, then hold the trigger with the look stick at rest for 3 and 2 seconds: cam.fire counts the ticks fired and those on which the view moved; the rifle's burst walks its shots and opens the crosshair instead. Control ARENA_RECOIL_BUG=1 (the old climb) moves the view on every shot. The gate pins High with a start command: Chromium is not a deterministic host, so Auto stays on there and since engine v0.27 it steps down on a loaded machine."
   },
   {
     "name": "arenafps-camera",

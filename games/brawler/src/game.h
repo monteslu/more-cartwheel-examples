@@ -146,7 +146,7 @@ void sim_reset(int players, int stage);
 void sim_tick(const inputs *in);
 int ent_spawn_enemy(int def, float x, float z);
 void ent_hurt(ent *v, ent *a, float dmg, int knock, float fx);
-/* pad rumble instead of screen shake (monteslu: no shaking screen): one player (-1: every fighter's pad) */
+/* pad rumble instead of screen shake: one player (-1: every fighter's pad) */
 void rumble(int player, float low, float high, int ms);
 extern bool g_legacy_shake; /* autopilot debug only: the old camera shake, for the camera gate's control */
 /* level.c */

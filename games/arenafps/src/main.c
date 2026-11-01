@@ -133,7 +133,7 @@ static bool is_bot(const fighter *f) { return (AUTO && !hm_driving(f)) || f->hum
 
 /* bot difficulty (setup row "bots"): skill scale, reaction before the first shot at a newly seen enemy (ticks, plus up to
  * react_span more for the least skilled), turn rate (rad/s = turn + turn_skill * skill) and the damage a bot's hit does to a
- * person. NORMAL is the default and is meant for a new pad player (playtest A-PT1: "too hard by default"); HARD is the old
+ * person. NORMAL is the default and is meant for a new pad player; HARD is the old
  * NORMAL's skill with quicker reactions. */
 typedef struct bot_level_def { float skill_mul, skill_add, react, react_span, turn, turn_skill, dmg_to_people, err; bool legacy; float fov; } bot_level_def;
 /* fov: the half angle (degrees) of the cone in which a bot notices a new enemy; 180 = all round. A bot that was just hit, or

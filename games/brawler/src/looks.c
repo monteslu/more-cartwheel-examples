@@ -80,7 +80,7 @@ static uint32_t look_make(int def, uint32_t seed) {
   for (int k = 0; k < 8; k++) {
     int n = sizes[k];
     if (k == LK_HAIR && def == D_PUNK) n = N(DYED);
-    if (k == LK_SKIN && def == D_WANKER) n = 5; /* the wanker: the lighter half of the palette only (monteslu, B-PT15) */
+    if (k == LK_SKIN && def == D_WANKER) n = 5; /* the wanker: the lighter half of the palette only */
     if (k == LK_SHIRT && def == D_WANKER) n = N(TEE);
     if (k == LK_OUTER && (def == D_RUNNER || def == D_THROWER)) n = N(CLOTH);
     if (k == LK_OUTER && def == D_CREEP) n = N(COAT);

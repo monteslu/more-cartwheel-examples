@@ -539,7 +539,7 @@
   },
   {
     "name": "brawler-camera",
-    "note": "monteslu: no screen shake. The Foreman's fight at real damage for 900 frames (big hits, knockdowns, his slam): game.camjit, the largest camera offset from its path on any frame in mm, stays 0, and the pads rumble instead (cw.rumble: request count, pad, low and high in thousandths, ms of the last request). The control turns the old camera shake back on (legacyshake 1): camjit 206 mm, so it fails. The simulation is the same either way (game.hash).",
+    "note": "No screen shake. The Foreman's fight at real damage for 900 frames (big hits, knockdowns, his slam): game.camjit, the largest camera offset from its path on any frame in mm, stays 0, and the pads rumble instead (cw.rumble: request count, pad, low and high in thousandths, ms of the last request). The control turns the old camera shake back on (legacyshake 1): camjit 206 mm, so it fails. The simulation is the same either way (game.hash).",
     "app": "brawler_auto",
     "frames": 900,
     "startCmds": [
@@ -588,7 +588,7 @@
   },
   {
     "name": "brawler-controls",
-    "note": "B-PT17 (monteslu: \"if he jumps and gets in the air he floats\"). Player 1 is driven by an input script like a person (human 1): steps right, jumps, jump-kicks every other jump, lands, punches a three-hit combo, grabs and knees, forty times over (mostly jumps, a jump kick every fourth, a combo every sixth, a grab every ninth), with two thugs and a punk on him. game.air_max (player 1's longest time off the ground in frames, hit-stop included) stays near a jump's 46 frames and game.jumps counts the jumps. The control (legacyair 1) is v0.4.0's stagger, which had no gravity: a fighter jab-hit in mid jump hung in the air and walked on there (air_max 155 with this script; 78 now), so it fails.",
+    "note": "A fighter in a jump must not float. Player 1 is driven by an input script like a person (human 1): steps right, jumps, jump-kicks every other jump, lands, punches a three-hit combo, grabs and knees, forty times over (mostly jumps, a jump kick every fourth, a combo every sixth, a grab every ninth), with two thugs and a punk on him. game.air_max (player 1's longest time off the ground in frames, hit-stop included) stays near a jump's 46 frames and game.jumps counts the jumps. The control (legacyair 1) is v0.4.0's stagger, which had no gravity: a fighter jab-hit in mid jump hung in the air and walked on there (air_max 155 with this script; 78 now), so it fails.",
     "app": "brawler_auto",
     "frames": 2300,
     "input": "brawler-controls.json",
