@@ -112,6 +112,7 @@ static void dome_vertex(float u, float v, float *p) {
 }
 static void quad_vertex(float u, float v, float *p) { p[0] = u - 0.5f, p[1] = 0.5f - v, p[2] = 0; }
 static cw_node model_node(cw_node parent, const char *name, t3_object *o);
+static cw_node dry_parent(cw_node root);
 /* a course's sky: its painted image on a material of its own */
 static t3_material *sky_material(const char *path) {
   t3_material *m = t3_mesh_basic_material_new(0xffffff);
@@ -295,7 +296,7 @@ static void ramps_init(cw_node root) {
       char name[24];
       snprintf(name, sizeof name, "RampPart%d", ramp_part_n);
       /* (not in the refraction: under the water its deck would read as a shoal, with a hard edge of shore foam over it) */
-      cw_water_refraction_hide(G.water, model_node(root, name, (t3_object *)im));
+      model_node(dry_parent(root), name, (t3_object *)im);
       t3_sphere everywhere = { { 0, 0, 0 }, 4000 };
       t3_instanced_mesh_set_bounding_sphere(im, &everywhere);
       ramp_parts[ramp_part_n++] = im;
@@ -340,8 +341,7 @@ static void placed_apply(cw_node root) {
         }
         char name[24];
         snprintf(name, sizeof name, "Placed%d", placed_count);
-        placed_n[placed_count] = model_node(root, name, (t3_object *)im);
-        cw_water_refraction_hide(G.water, placed_n[placed_count]);
+        placed_n[placed_count] = model_node(dry_parent(root), name, (t3_object *)im);
         placed_count++;
         t3_release(im);
       }
@@ -367,10 +367,9 @@ static void marks_apply(cw_node root) {
   if (d->hook.model) {
     t3_object *o = cw_gltf_instantiate(cw_res_load(d->hook.model, CW_RES_GLTF));
     shadows(o);
-    hook_n = model_node(root, "Hook", o);
+    hook_n = model_node(dry_parent(root), "Hook", o);
     cw_node3d_set_position(hook_n, (t3_vec3){ d->hook.x, d->hook.kind == 4 ? ground_at(d->hook.x, d->hook.z) : 0, d->hook.z });
     cw_node3d_set_rotation(hook_n, (t3_vec3){ 0, cw_atan2(d->hook.dirx, d->hook.dirz), 0 }); /* its span across the way through */
-    cw_water_refraction_hide(G.water, hook_n);
     t3_release(o);
   }
 }
@@ -447,6 +446,16 @@ static void buoy_paint(t3_object *o, int side) {
   for (int i = 0; i < o->child_count; i++) buoy_paint(o->children[i], side);
 }
 
+/* what must not show in the water's refraction hangs under one node: the engine holds 16 hidden nodes and quietly ignores the rest, and this game has over 100 */
+static cw_node dry_group;
+static cw_node dry_parent(cw_node root) {
+  if (!cw_node_valid(dry_group)) {
+    dry_group = cw_node_new("Node3D", "NotInRefraction");
+    cw_node_add_child(root, dry_group);
+    cw_water_refraction_hide(G.water, dry_group);
+  }
+  return dry_group;
+}
 static cw_node model_node(cw_node parent, const char *name, t3_object *o) {
   cw_node n = cw_node_new("Node3D", name);
   cw_node_add_child(parent, n);
@@ -476,8 +485,7 @@ void view_init(void) {
     t3_object *co = cw_gltf_instantiate(craft_res);
     paint(co, i);
     if (i == 0) shadows(co);
-    craft_n[i] = model_node(root, name, co);
-    cw_water_refraction_hide(G.water, craft_n[i]);
+    craft_n[i] = model_node(dry_parent(root), name, co);
     bars_o[i] = t3_object_get_by_name(co, "Bars");
     snprintf(name, sizeof name, "Rider%d", i);
     rider_n[i] = cw_node_new("Node3D", name);
@@ -501,12 +509,13 @@ void view_init(void) {
     t3_object *o = cw_gltf_instantiate(side ? mark_left_res : mark_right_res);
     buoy_paint(o, side);
     shadows(o);
-    buoy_n[b] = model_node(root, name, o);
+    /* (lit, and under the water its float reached the refraction: on WebGPU it came through the wakes as lime patches) */
+    buoy_n[b] = model_node(dry_parent(root), name, o);
     t3_release(o);
     snprintf(name, sizeof name, "BuoyOld%d", b);
     o = cw_gltf_instantiate(buoy_res);
     buoy_paint(o, side);
-    buoy_old_n[b] = model_node(root, name, o);
+    buoy_old_n[b] = model_node(dry_parent(root), name, o);
     t3_release(o);
     cw_node_set(buoy_old_n[b], "visible", cw_val_bool(false));
     mark_scale[b] = 0.72f;

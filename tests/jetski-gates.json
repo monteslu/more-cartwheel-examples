@@ -150,6 +150,11 @@
     "note": "the minimap tells the truth and stays small, on the cart, GL and WebGPU. Controls: dots 60 m off, three times the size"
   },
   {
+    "name": "jetski-refraction",
+    "script": "tests/jetski-refraction.mjs",
+    "note": "nothing lit reaches the water's refraction: lime pixels on the sea in a championship race, GL and WebGPU on the cart. Control: v0.14.0, whose marks came through the wakes as lime patches on WebGPU, must fail"
+  },
+  {
     "name": "jetski-quality",
     "script": "tests/jetski-quality.mjs",
     "note": "a program for everything drawn at every quality on both courses and backends"

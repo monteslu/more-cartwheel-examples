@@ -55,8 +55,8 @@ await rpc('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clien
 await fetch(URL_, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', 'x-romdev-session': SESSION, 'mcp-session-id': sid }, body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) });
 let fail = 0;
 const check = (name, ok, detail) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}: ${detail}`); if (!ok) fail++; };
-async function moment(c, level, s, tag, map) {
-  await cmd(`course ${level}`); await cmd(`map ${map}`); await cmd('buoy_shot 1 1 0'); await cmd('race'); await cmd(`go ${s}`);
+async function moment(c, level, s, tag, map, mode = 0) {
+  await cmd(`mode ${mode}`); await cmd(`course ${level}`); await cmd(`map ${map}`); await cmd('buoy_shot 1 1 0'); await cmd('race'); await cmd(`go ${s}`);
   await call('input', { op: 'set', ports: [{ south: true }] });
   await call('frame', { op: 'step', frames: 40 });
   await cmd('buoy_shot 1 1 1');
@@ -76,16 +76,17 @@ for (const backend of BACKENDS) {
   await call('frame', { op: 'step', frames: 30 });
   for (const cid of COURSE_IDS) {
     const c = readCourse(cid), level = COURSE_IDS.indexOf(cid);
-    for (const k of [0.2, 0.6]) {
-      const m = await moment(c, level, c.len * k, `${backend}-${cid}-${k}`, '1');
+    // a championship and a time trial, which has no rivals: the map is in both
+    for (const [k, mode] of [[0.2, 0], [0.6, 1]]) {
+      const m = await moment(c, level, c.len * k, `${backend}-${cid}-${k}`, '1', mode);
       const area = (m.R[2] * m.R[3]) / m.screen;
-      check(`${backend} ${cid} at ${k}: dots true`, m.err < MAX_DOT_PX && m.errBuoy < MAX_DOT_PX, `you ${m.err.toFixed(2)} px, next buoy ${m.errBuoy.toFixed(2)} px off`);
-      check(`${backend} ${cid} at ${k}: small, and the water reads through`, area < MAX_AREA && m.cover < MAX_COVER, `${(area * 100).toFixed(1)}% of the picture, ${(m.cover * 100).toFixed(0)}% of its rectangle changed`);
+      check(`${backend} ${cid} ${mode ? 'time trial' : 'championship'}: dots true`, m.err < MAX_DOT_PX && m.errBuoy < MAX_DOT_PX && m.cover > 0.01, `you ${m.err.toFixed(2)} px, next buoy ${m.errBuoy.toFixed(2)} px off`);
+      check(`${backend} ${cid} ${mode ? 'time trial' : 'championship'}: small, and the water reads through`, area < MAX_AREA && m.cover < MAX_COVER, `${(area * 100).toFixed(1)}% of the picture, ${(m.cover * 100).toFixed(0)}% of its rectangle changed`);
     }
   }
   const c = readCourse('atoll'), skew = await moment(c, 0, c.len * 0.2, `${backend}-skew`, '1 1'), big = await moment(c, 0, c.len * 0.2, `${backend}-big`, '1 0 3');
   check(`${backend} control: dots 60 m off fail`, skew.err >= MAX_DOT_PX, `${skew.err.toFixed(1)} px off`);
   check(`${backend} control: three times the size fails`, (big.R[2] * big.R[3]) / big.screen >= MAX_AREA, `${((big.R[2] * big.R[3]) / big.screen * 100).toFixed(1)}% of the picture`);
-  await cmd('map 1');
+  await cmd('map 1'); await cmd('mode 0');
 }
 process.exit(fail ? 1 : 0);
