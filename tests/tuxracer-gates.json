@@ -61,5 +61,10 @@
       "race bunny_hill"
     ],
     "note": "A tree hit, felt in the pad and not in the camera: Bunny Hill, paddling and holding right until Tux runs into the trees at tick 569 (race.tree_hits). cam.offset holds the camera as drawn against the view on the frames within half a second of a tree hit or a touchdown: none off. cw.rumble is the engine's last request, the tree hit (heavy 0.9, light 0.5). Tux Racer never shook; this pins that it still does not. Control: holding left from frame 60 instead, no tree."
+  },
+  {
+    "name": "tuxracer-quality",
+    "script": "tests/tuxracer-quality.mjs",
+    "note": "a program for everything drawn at every quality on both backends, through a spread warm-up as a player gets it: every course, sunny, cloudy and by night, the title. A scene not reached fails. Control: a state the scene draws out of the table must be reported and skip draws"
   }
 ]
