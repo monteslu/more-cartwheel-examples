@@ -323,6 +323,23 @@ function skinTex({ seed = 14 }) {
     o.h = -pore + 0.2 * g + 0.15 * (fz - 0.5); o.ro = clamp(0.58 + 0.15 * pore + 0.15 * (g - 0.5), 0.3, 0.9); o.ao = 1 - pore * 0.25;
   };
 }
+// the same skin with sparse dark hairs lying down the leg (u round it, v along it)
+function hairyLegTex({ seed = 15 }) {
+  const sk = skinTex({ seed });
+  return (u, v, o) => {
+    sk(u, v, o);
+    const N = 26, gu = Math.floor(u * N), gv = Math.floor(v * N * 0.55);
+    let k = 0;
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+      const a = (gu + i + N) % N, b = (gv + j + Math.floor(N * 0.55)) % Math.floor(N * 0.55);
+      if (hash2(a, b, seed + 7) > 0.42) continue;
+      const cx = (gu + i + hash2(a, b, seed + 8)) / N, cy = (gv + j + hash2(a, b, seed + 9)) / (N * 0.55), lean = (hash2(a, b, seed + 10) - 0.5) * 0.7, l = 0.018 + 0.012 * hash2(a, b, seed + 11);
+      const dy = v - cy, dx = u - cx - lean * dy;
+      if (dy > -l && dy < l && Math.abs(dx) < 0.0032) k = Math.max(k, smooth(0.0032, 0.0012, Math.abs(dx)) * smooth(l, l * 0.5, Math.abs(dy)));
+    }
+    o.r *= 1 - 0.72 * k; o.g *= 1 - 0.74 * k; o.b *= 1 - 0.76 * k;
+  };
+}
 function hairTex({ seed = 15 }) {
   return (u, v, o) => {
     const s = fbm(u * 40, v * 1.2, 40, 4, seed), s2 = hash2(Math.floor(u * 256), 0, seed);
@@ -652,6 +669,7 @@ const jobs = {
   fab_denim: () => [bake(256, denim({ seed: 13 })), 1.6],
   fab_leather: () => [bake(256, leather({ seed: 14 })), 1.4],
   fab_skin: () => [bake(256, skinTex({ seed: 15 })), 0.5],
+  fab_hairyleg: () => [bake(256, hairyLegTex({ seed: 15 })), 0.5],
   fab_hair: () => [bake(256, hairTex({ seed: 16 })), 1.6],
   hair_card: () => [hairCard(31), 1.2],
   pomp_shell: () => [pompShell(41), 1.6],

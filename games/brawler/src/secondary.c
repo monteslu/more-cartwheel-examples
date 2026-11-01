@@ -65,7 +65,7 @@ static const spring_def SDEF[SB_MAX] = {
   { "HairB", { 0, -0.15f, 0 }, 55, 6, 5.0f, 0.9f, false },
   { "CoatL", { 0, -0.36f, -0.02f }, 110, 9, 3.0f, 0.6f, false },
   { "CoatR", { 0, -0.36f, -0.02f }, 110, 9, 3.0f, 0.6f, false },
-  { "Belly", { 0, 0, 0.12f }, 260, 9, 0, 0, true },
+  { "Belly", { 0, 0, 0.12f }, 400, 14, 0, 0, true }, /* over 3 Hz: at 260 the 2.5 Hz bounce sat close to the 2 Hz stride */
 };
 
 /* ── faces: expression morph targets on the head mesh, driven by name every tick ──
@@ -221,7 +221,7 @@ void sb_jolt(spring_rig *s, float x, float y, float z) {
   face_rig *f = face_of(s);
   if (f && f->t > 8 && f->temper != FACE_FEAR) f->t = 0; /* a hit makes the eyes blink (not a frightened face: its eyes stay wide) */
   if (f) { float k = (x < 0 ? -x : x) / (2.2f * 1.6f); if (k > 1) k = 1; if (f->react <= 0 || k >= f->react * 0.8f) f->react = k, f->react_t = 0; }
-  for (int i = 0; i < SB_MAX; i++) if (s->b[i].bone) s->b[i].V = vadd(s->b[i].V, v3(x, y, z));
+  for (int i = 0; i < SB_MAX; i++) if (s->b[i].bone) s->b[i].V = vadd(s->b[i].V, vmul(v3(x, y, z), SDEF[i].move ? 0.12f : 1.0f)); /* a blow is a wobble to a belly: the whole push would throw it about 20 cm, held at its limit through a fight */
 }
 
 void sb_step(spring_rig *s, t3_vec3 pos, float yaw, float dt) {
@@ -243,15 +243,19 @@ void sb_step(spring_rig *s, t3_vec3 pos, float yaw, float dt) {
     t3_vec3 base = xpoint(pw, b->rest);
     t3_vec3 goal = xpoint(pw, vadd(b->rest, b->tip));
     float L = vlen(vsub(goal, base));
-    if (!b->live || vlen(vsub(b->T, goal)) > 1.5f) { b->T = goal; b->V = v3(0, 0, 0); b->live = true; }
-    t3_vec3 acc = vsub(vmul(vsub(goal, b->T), d->stiff), vmul(b->V, d->damp));
+    if (!b->live || vlen(vsub(b->T, goal)) > 1.5f) { b->T = goal; b->V = v3(0, 0, 0); b->G = goal; b->live = true; }
+    /* a belly damps against the body's own motion: it wobbles when the body stops, turns or is hit, and walking at a steady pace does not drag it to the end of its travel
+       (damped against the street, the lag is damp / stiff x speed: 6 cm at a walk, held at the limit for most of a fight) */
+    t3_vec3 gv = vmul(vsub(goal, b->G), 1.0f / dt), rel = d->move ? vsub(b->V, gv) : b->V;
+    b->G = goal;
+    t3_vec3 acc = vsub(vmul(vsub(goal, b->T), d->stiff), vmul(rel, d->damp));
     acc.y -= d->grav;
     b->V = vadd(b->V, vmul(acc, dt));
     b->T = vadd(b->T, vmul(b->V, dt));
     if (d->move) { /* a belly: the bone moves with the mass, a few centimetres at most */
-      t3_vec3 off = vsub(b->T, goal);
+      t3_vec3 ahead = vadd(goal, vmul(gv, dt)), off = vsub(b->T, ahead); /* T has already moved this tick and the goal has not: without this a body at a steady 2 m/s shows its belly a tick (3 cm) ahead */
       float ol = vlen(off), mx = 0.035f * pw.s;
-      if (ol > mx) { off = vmul(off, mx / ol); b->T = vadd(goal, off); }
+      if (ol > mx) { off = vmul(off, mx / ol); b->T = vadd(ahead, off); b->V = gv; } /* at the end of its travel it stops with the body */
       t3_vec3 lo = vmul(qrot(qconj(pw.q), off), 1.0f / pw.s);
       b->bone->position = vadd(b->rest, lo);
       continue;

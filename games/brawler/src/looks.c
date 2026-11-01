@@ -30,7 +30,7 @@ static uint32_t slots_of(int def) {
   case D_THROWER: return SKIN | HAIR | 1u << SL_SHIRT | 1u << SL_PANTS | 1u << SL_OUTER | 1u << SL_HAT;
   case D_GUARD: return SKIN; /* the uniform stays */
   case D_WANKER: return SKIN | HAIR | 1u << SL_SHIRT | 1u << SL_PANTS; /* the red cap stays */
-  case D_CREEP: return 1u << SL_SHIRT | 1u << SL_PANTS | 1u << SL_OUTER | 1u << SL_HAT; /* always pale: his coat and hat vary */
+  case D_CREEP: return 1u << SL_SHIRT | 1u << SL_OUTER | 1u << SL_HAT; /* always pale, always in his old white briefs: his coat and hat vary */
   default: return 0;
   }
 }

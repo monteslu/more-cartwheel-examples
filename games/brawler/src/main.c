@@ -234,6 +234,17 @@ static void cmd_bone(int argc, const char **argv, cw_reply *r) {
   if (argc < 3 || !debug_bone(atoi(argv[1]), argv[2], v)) { cw_reply_error(r, "usage: bone <ent> <name>"); return; }
   cw_reply_printf(r, "{\"p\":[%.3f,%.3f,%.3f],\"x\":[%.2f,%.2f,%.2f],\"y\":[%.2f,%.2f,%.2f],\"z\":[%.2f,%.2f,%.2f]}", v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8], v[9], v[10], v[11]);
 }
+static void cmd_flash(int argc, const char **argv, cw_reply *r) {
+  extern bool debug_flash(int ei);
+  if (argc < 2 || !debug_flash(atoi(argv[1]))) { cw_reply_error(r, "usage: flash <ent, a creep>"); return; }
+  cw_reply_printf(r, "{\"flash\":1}");
+}
+static void cmd_spring(int argc, const char **argv, cw_reply *r) {
+  extern bool debug_spring(int ei, const char *name, float out[4], int *def, const char **clip);
+  float v[4]; int d; const char *c;
+  if (argc < 3 || !debug_spring(atoi(argv[1]), argv[2], v, &d, &c)) { cw_reply_error(r, "usage: spring <ent> <Belly|CoatL|CoatR|HairA|HairB>"); return; }
+  cw_reply_printf(r, "{\"off\":[%.4f,%.4f,%.4f],\"swing\":%.3f,\"def\":%d,\"clip\":\"%s\"}", v[0], v[1], v[2], v[3], d, c);
+}
 static void cmd_legacygrab(int argc, const char **argv, cw_reply *r) { extern bool g_legacy_grab; g_legacy_grab = argc > 1 && atoi(argv[1]); cw_reply_printf(r, "{\"legacygrab\":%d}", g_legacy_grab); }
 static void cmd_pose(int argc, const char **argv, cw_reply *r) { /* pose <ent 0-3 fighters, 4+ enemies> <clip> [seconds into it]: holds a clip for close-ups */
   extern ent *g_pose_e; extern const char *g_pose_clip; static char clipn[32];
@@ -423,6 +434,8 @@ static void init(void *user) {
   cw_debug_command("legacyshield", "legacyshield <0|1>: a dropped shield goes where the old box went (gate control only)", cmd_legacyshield);
   cw_debug_command("bone", "bone <ent> <name>: a bone in its model space (0-3 fighters, 4+ enemies)", cmd_bone);
   cw_debug_command("legacygrab", "legacygrab <0|1>: the grab as it was (gate control only)", cmd_legacygrab);
+  cw_debug_command("flash", "flash <ent>: a creep starts his flash now", cmd_flash);
+  cw_debug_command("spring", "spring <ent> <bone>: a spring bone's own offset and swing, none of the clip in it", cmd_spring);
   cw_debug_command("pose", "pose <ent> <clip> [t]: hold a clip (no args: release)", cmd_pose);
   cw_debug_command("legacyhold", "legacyhold <0|1>: props upright by the hand as they were (gate control only)", cmd_legacyhold);
   cw_debug_command("legacyfill", "legacyfill <0|1>: the front fill light low in front of the near lane (gate control only)", cmd_legacyfill);

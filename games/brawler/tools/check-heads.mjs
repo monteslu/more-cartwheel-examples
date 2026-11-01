@@ -52,7 +52,7 @@ function measure(path) {
   const ySh = world.UpperArmL[1], cloth = body.filter((p) => !/pad|metal|buckle|helmet|spike|glow/.test(p.mat)).flatMap((p) => p.P);
   const shoulders = 2 * Math.max(...cloth.filter((p) => p[1] > ySh - 0.09 && p[1] < ySh + 0.05).map((p) => Math.abs(p[0])));
   // hands: fingertips, the elbow against the waist (the narrowest point of the torso, about the Spine joint), mid thigh
-  const yWr = world.HandL[1], handV = body.filter((p) => /skin|glove/.test(p.mat)).flatMap((p) => p.P).filter((p) => Math.abs(p[0] - world.HandL[0]) < 0.09 && p[1] < yWr + 0.002 && p[1] > yWr - 0.3);
+  const yWr = world.HandL[1], handV = body.filter((p) => /skin|glove/.test(p.mat) && !/legs/.test(p.mat)).flatMap((p) => p.P).filter((p) => Math.abs(p[0] - world.HandL[0]) < 0.09 && p[1] < yWr + 0.002 && p[1] > yWr - 0.3);
   const tip = Math.min(...handV.map((p) => p[1])), midThigh = (world.UpperLegL[1] + world.LowerLegL[1]) / 2, waist = world.Spine[1] + 0.03, elbow = world.LowerArmL[1];
   return { heads: stature / H, H, wOverH: headW / H, dOverH: headD / H, jawTaper: jawW / headW, chinTaper: chinW / headW, chinOk: mouthZ - chinZ, neckVis: neckVis / H, neckW: neckW / headW, shoulders: shoulders / H, tipThigh: (tip - midThigh) / H, elbowWaist: (elbow - waist) / H, hand: (yWr - tip) / H };
 }

@@ -37,7 +37,7 @@ combo, she kicks with a headbutt, and her special is a running clothesline.
 - Wankers (a red cap that says "Dumb", a grimy tee) wind up a huge haymaker: when he turns his whole body away
   and a red ring shows at his feet, step out of his lane. It knocks you down if it lands, and he stumbles after it, so
   punish the miss. Now and then he lowers a shoulder and barges along the lane from a few steps away.
-- Creeps, pale men in long trench coats and fedoras, enjoy being hit: a light blow does not stop them (it even does them
+- Creeps, pale men in long trench coats, fedoras, old white briefs and dark socks, enjoy being hit: a light blow does not stop them (it even does them
   a little good) and they grin with pleasure. Kick them, throw them or use a weapon. They lurch up, beckon you in and
   throw the coat open in a lunge that staggers.
 - No two of a kind look alike: every thug, punk, runner, knifer, bruiser, thrower and wanker walks on with his own skin

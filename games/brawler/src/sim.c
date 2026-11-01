@@ -1906,6 +1906,11 @@ void char_sync(ent *e) {
     k = k * k * (3 - 2 * k);
     yaw += ((float)e->face * 0.5f - yaw) * k;
   }
+  if (e->clipname && !strcmp(e->clipname, "flash") && e->anim.id && !g_freeze) { /* the flash is for the audience too: he swings the open coat round to the camera. Only how he is drawn: the blow still goes down the lane */
+    float p = (float)cw_anim_player_position(e->anim), k = cw_clampf((p - 0.3f) / 0.18f, 0, 1) * (1 - cw_clampf((p - 0.85f) / 0.22f, 0, 1));
+    k = k * k * (3 - 2 * k);
+    yaw += ((float)e->face * 0.3f - yaw) * k;
+  }
   t3_vec3 roff;
   if (rag_render(e, &yaw, &roff)) cw_node3d_set_position(e->root, (t3_vec3){ e->x + roff.x, e->y, e->z + roff.z }); /* a ragdoll or a get-up turned to lie the way the body fell */
   if (e->st == S_GRABBED && e->pitch > 0) { /* hoisted: tipped forward on his feet, flat over the holder's head */
@@ -1988,6 +1993,29 @@ void rig_release(int rid) { /* a corpse rag.c kept on the street is done: hide i
 float ent_render_yaw_sim(const ent *e) { return ent_yaw(e); }
 float char_scale(int def) { return BODY_SCALE[def]; }
 /* debug "bone <ent> <name>": a bone's place and its axes in the model's space (ent 0-3 fighters, 4+ enemies) */
+/* debug: this enemy starts his flash now, by the game's own code (start_attack: the telegraph, the clip, the turn to the camera) */
+bool debug_flash(int ei) {
+  ent *e = ei < MAXP ? &W.p[ei] : &W.e[(ei - MAXP) % MAXE];
+  if (!e->used || e->def != D_CREEP) return false;
+  start_attack(e, A_FLASH);
+  return true;
+}
+/* a spring bone's own motion, nothing of the clip in it: a belly's offset from its rest in its parent's frame, or how far a coat tail or the hair has swung */
+bool debug_spring(int ei, const char *name, float out[4], int *def, const char **clip) {
+  ent *e = ei < MAXP ? &W.p[ei] : &W.e[(ei - MAXP) % MAXE];
+  if (!e->used || !e->root.id) return false;
+  const spring_rig *sr = &RIGS[rig_of[ent_index(e)]].sr;
+  for (int i = 0; i < SB_MAX; i++) {
+    const spring_bone *b = &sr->b[i];
+    if (!b->bone || strcmp(b->bone->name, name)) continue;
+    t3_vec3 o = { b->bone->position.x - b->rest.x, b->bone->position.y - b->rest.y, b->bone->position.z - b->rest.z };
+    t3_quat q = b->bone->quaternion;
+    out[0] = o.x, out[1] = o.y, out[2] = o.z, out[3] = 2 * sqrtf(q.x * q.x + q.y * q.y + q.z * q.z);
+    *def = e->def, *clip = e->clipname ? e->clipname : "";
+    return true;
+  }
+  return false;
+}
 bool debug_bone(int ei, const char *name, float out[12]) {
   ent *e = ei < MAXP ? &W.p[ei] : &W.e[(ei - MAXP) % MAXE];
   if (!e->used || !e->root.id) return false;

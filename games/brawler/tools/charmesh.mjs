@@ -64,6 +64,7 @@ export class SkinMesh {
         const m = r.mod ? r.mod(a) : 1;
         const sx = sp(Math.cos(a), e), sz = sp(Math.sin(a), e);
         const p = add(r.c, add(mul(r.U, r.ru * sx * m), mul(r.V, r.rv * sz * m)));
+        if (r.dy) p[1] += r.dy(a); // a ring that is not level: a hem riding up over a gut
         P.push(p); A.push(a);
         UV.push(o.uvFn ? o.uvFn(p, k, j, n, a) : [(j / n) * perim / tile, dist / tile]);
       }
