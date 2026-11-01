@@ -51,7 +51,7 @@ for (let c = 0; c < C.length; c++) {
   console.log(`     misses by buoy: ${on['ai.miss_at'].map((v, i) => (v ? i + ':' + v : '')).filter(Boolean).join(' ') || 'none'}`);
   check(`${C[c]}: no rider stuck`, on['ai.stuck'] < 240, `longest under 2 m/s: ${on['ai.stuck']} ticks`);
   check(`${C[c]}: the computer riders use the ramps`, on['ai.ramps'] >= 15, `${on['ai.ramps']} ramps taken, control ${off['ai.ramps']}`);
-  check(`${C[c]}: and land them`, on['ai.spills'] <= on['ai.ramps'] * 0.05 && on['ai.walls'] <= on['ai.ramps'] * 0.25, `${on['ai.spills']} spills, ${on['ai.walls']} ticks against a side wall in ${on['ai.ramps']} ramps; control ${off['ai.spills']} spills, ${off['ai.walls']} ticks`);
+  check(`${C[c]}: and land them`, on['ai.spills'] - on['ram.wipes'] <= on['ai.ramps'] * 0.05 && on['ai.walls'] <= on['ai.ramps'] * 0.25, `${on['ai.spills'] - on['ram.wipes']} spills and ${on['ram.wipes']} from hits between craft, ${on['ai.walls']} ticks against a side wall in ${on['ai.ramps']} ramps; control ${off['ai.spills']} spills, ${off['ai.walls']} ticks`);
   check(`${C[c]}: a ramp costs no buoy`, rate(on) <= rate(off) + 0.03, `missed ${(rate(on) * 100).toFixed(1)}% of ${on['ai.misses'] + on['ai.passes']} with ramps, ${(rate(off) * 100).toFixed(1)}% of ${off['ai.misses'] + off['ai.passes']} without`);
 }
 const tip = jumps('ramp_seesaw 12;', 1, 'tide 1'), s1 = spread(tip);
