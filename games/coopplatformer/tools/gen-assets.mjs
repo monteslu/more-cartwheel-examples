@@ -150,6 +150,64 @@ for (let c = 0; c < COLS * ROWS; c++) {
 }
 writeFileSync(join(ASSETS, 'decals.png'), png(W, H, sheet));
 
+// ── the stains a bad day leaves (assets/gore.png): a 4 x 2 sheet of MULTIPLY decals in a bright cartoon red. Eight shapes, so
+// no two accidents look alike: four splats, a downward run, a skid, a ring of drops and a very surprised outline ──
+const RED = [0.74, 0.05, 0.06];
+const splat = (seed, reach) => (u, v) => {
+  const dx = u - 0.5, dy = v - 0.5, d = Math.hypot(dx, dy) * 2, ang = Math.atan2(dy, dx);
+  const arms = 0.5 + 0.5 * Math.sin(ang * (5 + seed % 4) + fbm(u * 3, v * 3, 3, seed) * 9);
+  const body = 1 - sstep(0.2, 0.5, d - arms * reach * 0.5 + (fbm(u * 9, v * 9, 3, seed + 1) - 0.5) * 0.3);
+  let drops = 0;
+  for (let i = 0; i < 16; i++) {
+    const th = 6.28 * hash(i, seed, 91), r = 0.28 + 0.2 * hash(i, seed, 92), sz = 0.008 + 0.022 * hash(i, seed, 93);
+    drops = Math.max(drops, 1 - sstep(sz * 0.7, sz, Math.hypot(u - 0.5 - Math.cos(th) * r, v - 0.5 - Math.sin(th) * r)));
+  }
+  return [...RED, clamp(Math.max(body, drops) * 0.95)];
+};
+const goreCells = [
+  splat(3, 0.9), splat(14, 1.2), splat(27, 0.7), splat(38, 1.4),
+  (u, v) => { // runs down from the top edge, a wall that has seen something
+    const col = fbm(u * 8, 0.5, 3, 101), len = 0.3 + 0.65 * fbm(u * 6, 1.5, 2, 102);
+    const run = sstep(0.42, 0.55, col) * (1 - sstep(len - 0.06, len, v));
+    const top = (1 - sstep(0.1, 0.24, v)) * (1 - sstep(0.3, 0.48, Math.abs(u - 0.5)));
+    return [...RED, clamp(Math.max(run * (1 - sstep(0.38, 0.48, Math.abs(u - 0.5))), top) * 0.95)];
+  },
+  (u, v) => { // a long skid
+    const w = 0.1 * (1 - u) + 0.02, n = fbm(u * 10, v * 16, 3, 111);
+    const a = (1 - sstep(w * 0.6, w, Math.abs(v - 0.5) + (n - 0.5) * 0.06)) * sstep(0.03, 0.1, u) * (1 - sstep(0.88, 0.97, u)) * (0.6 + 0.4 * n);
+    return [...RED, clamp(a * 1.2)];
+  },
+  (u, v) => { // a ring of drops
+    let a = 0;
+    for (let i = 0; i < 30; i++) {
+      const th = 6.28 * hash(i, 5, 121), r = 0.12 + 0.34 * hash(i, 6, 121), sz = 0.008 + 0.03 * hash(i, 7, 121);
+      a = Math.max(a, 1 - sstep(sz * 0.7, sz, Math.hypot(u - 0.5 - Math.cos(th) * r, v - 0.5 - Math.sin(th) * r)));
+    }
+    return [...RED, a * 0.95];
+  },
+  (u, v) => { // the outline of a small animal with its arms up, as if drawn round at the scene
+    const x = u - 0.5, y = v - 0.55;
+    const head = Math.hypot(x, y + 0.26) - 0.11, body = Math.hypot(x * 1.2, y * 0.9) - 0.13;
+    const ear = Math.min(Math.hypot(x - 0.09, y + 0.38) - 0.04, Math.hypot(x + 0.09, y + 0.38) - 0.04);
+    const armL = Math.hypot(x + 0.17 + (y + 0.08) * 0.5, y + 0.08) - 0.05, armR = Math.hypot(x - 0.17 - (y + 0.08) * 0.5, y + 0.08) - 0.05;
+    const legs = Math.min(Math.hypot(x - 0.08, y - 0.17) - 0.05, Math.hypot(x + 0.08, y - 0.17) - 0.05);
+    const sd = Math.min(head, body, ear, armL, armR, legs);
+    return [...RED, clamp((1 - sstep(0.0, 0.015, Math.abs(sd) - 0.01)) * 0.95 + (sd < 0 ? 0.3 : 0))];
+  },
+];
+const gore = new Uint8Array(W * H * 4);
+for (let c = 0; c < COLS * ROWS; c++) {
+  const ox = (c % COLS) * CELL, oy = Math.floor(c / COLS) * CELL;
+  for (let y = 0; y < CELL; y++)
+    for (let x = 0; x < CELL; x++) {
+      const [r, g, b, a] = goreCells[c]((x + 0.5) / CELL, (y + 0.5) / CELL);
+      const i = ((oy + y) * W + ox + x) * 4;
+      gore[i] = Math.round(255 * (1 - a + a * r)), gore[i + 1] = Math.round(255 * (1 - a + a * g)), gore[i + 2] = Math.round(255 * (1 - a + a * b));
+      gore[i + 3] = Math.round(255 * a);
+    }
+}
+writeFileSync(join(ASSETS, 'gore.png'), png(W, H, gore));
+
 // ── per-region grades ──
 /**
  * @param {object} g contrast (1 = none), sat, black point, shadow tint and highlight tint (added), gamma
@@ -182,8 +240,10 @@ const GRADES = {
   caves: { contrast: 1.3, sat: 1.15, black: 0.045, gamma: 1.06, shadow: [-0.01, 0.015, 0.06], high: [0.06, 0.02, -0.03] },
   // ruins: green-gold daylight, clear water greens, no milk in the shadows
   ruins: { contrast: 1.25, sat: 1.12, black: 0.05, gamma: 1.08, shadow: [-0.015, 0.025, 0.03], high: [0.04, 0.035, -0.02] },
+  // frost: blue-white cold, strong clean whites, the heating has been off since the founding of the company
+  frost: { contrast: 1.2, sat: 1.05, black: 0.04, gamma: 1.0, shadow: [-0.015, 0.01, 0.06], high: [0.0, 0.02, 0.04] },
   // volcano: hot orange highlights, red-black shadows, hard contrast
   volcano: { contrast: 1.35, sat: 1.2, black: 0.05, gamma: 1.05, shadow: [0.03, -0.01, -0.01], high: [0.07, 0.01, -0.05] },
 };
 for (const [k, g] of Object.entries(GRADES)) writeFileSync(join(ASSETS, 'grade', `${k}.cube`), cube(k, g));
-console.log('wrote assets/decals.png and assets/grade/*.cube');
+console.log('wrote assets/decals.png, assets/gore.png and assets/grade/*.cube');

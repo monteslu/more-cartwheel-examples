@@ -9,14 +9,15 @@
 #include "cartwheel/math.h"
 #include "cartwheel/render3d.h"
 #include "game.h"
+#include <stdio.h>
 
 /* ── physics ──────────────────────────────────────────────────────── */
 
 static cw_body2d g_static;
-static struct { int x, y; cw_body2d b; } g_crack[64];
+static struct { int x, y; cw_body2d b; } g_crack[128];
 int world_cracks = 0;
 
-static bool is_solid_t(int t) { return t == T_ROCK || t == T_GRASS || t == T_BRICK; }
+static bool is_solid_t(int t) { return t == T_ROCK || t == T_GRASS || t == T_BRICK || t == T_ICE || t == T_BELT; }
 
 void world_build_physics(game *g) {
   cw_world2d_def wd = cw_world2d_default_def();
@@ -55,7 +56,7 @@ void world_build_physics(game *g) {
   world_cracks = 0;
   for (int y = 0; y < WORLD_H; y++)
     for (int x = 0; x < WORLD_W; x++)
-      if (L->t[y][x] == T_CRACK && world_cracks < 64) {
+      if (L->t[y][x] == T_CRACK && world_cracks < 128) {
         cw_body2d_def cd = cw_body2d_default_def();
         cd.type = CW_BODY_STATIC;
         cd.position = (cw_pos2){ (double)x + 0.5, (double)y + 0.5 };
@@ -64,6 +65,17 @@ void world_build_physics(game *g) {
         g_crack[world_cracks].x = x, g_crack[world_cracks].y = y, g_crack[world_cracks].b = b;
         world_cracks++;
       }
+  /* doors and crumbling planks: kinematic boxes the rules move out of the way */
+  for (int i = 0; i < L->nthings; i++) {
+    thing *t = &g->L.things[i];
+    if (t->kind != TH_DOOR && t->kind != TH_CRUMBLE) continue;
+    float hw = t->kind == TH_DOOR ? t->w * 0.5f : 0.5f, hh = t->kind == TH_DOOR ? t->h * 0.5f : 0.5f;
+    cw_body2d_def pd = cw_body2d_default_def();
+    pd.type = CW_BODY_KINEMATIC;
+    pd.position = (cw_pos2){ t->kind == TH_DOOR ? t->x + hw : t->x + 0.5f, t->y + hh };
+    t->body = cw_body2d_create(g->world, &pd);
+    cw_shape2d_box(t->body, &sd, (cw_vec2){ hw, hh }, (cw_xform2){ { 0, 0 }, { 1, 0 } });
+  }
   /* moving platforms: kinematic boxes, driven by sim_step */
   for (int i = 0; i < L->nplat; i++) {
     cw_body2d_def pd = cw_body2d_default_def();
@@ -230,6 +242,26 @@ static void gen_wood(float u, float v, texel *t) {
   t->ao = 0.45f + 0.55f * edge;
 }
 /* lava: a dark crust broken by glowing cracks that the surface flow slides under */
+/* glassy pale ice with buried white fractures */
+static void gen_ice(float u, float v, texel *t) {
+  float n = fbm(u, v, 8, 4, 900), f = fabsf(fbm(u, v, 4, 4, 901) - 0.5f);
+  float crack = 1.0f - sstep(0.0f, 0.02f, f);
+  t->h = 0.5f + 0.15f * n;
+  t->r = 0.72f + 0.18f * crack + 0.08f * n, t->g = 0.86f + 0.1f * crack, t->b = 0.98f;
+  t->rough = 0.08f + 0.18f * crack;
+  t->ao = 1.0f;
+}
+/* a rubber belt: dark, matte, ribbed across its run */
+static void gen_belt(float u, float v, texel *t) {
+  (void)v;
+  float rib = 0.5f + 0.5f * cosf(u * 6.2831853f * 8.0f);
+  float n = fbm(u, v, 16, 2, 910);
+  t->h = 0.3f + 0.4f * rib;
+  float c = 0.08f + 0.06f * rib + 0.03f * n;
+  t->r = c, t->g = c, t->b = c * 1.1f;
+  t->rough = 0.85f;
+  t->ao = 0.8f + 0.2f * rib;
+}
 static void gen_lava(float u, float v, texel *t) {
   float w = fbm(u, v, 4, 4, 51);
   float c1 = fabsf(fbm(u + w * 0.1f, v + w * 0.1f, 5, 5, 53) - 0.5f);
@@ -435,10 +467,10 @@ static void shade(float *o, const float *c, float k) { o[0] = c[0] * k, o[1] = c
 
 /* ── the terrain ───────────────────────────────────────────────────── */
 
-enum { MT_ROCK, MT_GRASS, MT_CAVE, MT_BRICK, MT_BASALT, MT_PROP, MT_GLOW, MT_WOOD, MT_COUNT };
+enum { MT_ROCK, MT_GRASS, MT_CAVE, MT_BRICK, MT_BASALT, MT_PROP, MT_GLOW, MT_WOOD, MT_ICE, MT_BELT, MT_COUNT };
 /* stone tint per region (the texture is grey-brown, the vertex colour moves it) and the colour of a top surface */
-static const float STONE[BIOMES][3] = { { 0.95f, 0.72f, 0.55f }, { 0.55f, 0.66f, 0.9f }, { 1.0f, 0.88f, 0.66f }, { 1.1f, 0.85f, 0.85f } };
-static const float TOPS[BIOMES][3] = { { 0.85f, 1.0f, 0.7f }, { 0.55f, 0.7f, 0.95f }, { 1.0f, 0.9f, 0.7f }, { 1.2f, 0.9f, 0.85f } };
+static const float STONE[BIOMES][3] = { { 0.95f, 0.72f, 0.55f }, { 0.55f, 0.66f, 0.9f }, { 1.0f, 0.88f, 0.66f }, { 0.78f, 0.88f, 1.02f }, { 1.1f, 0.85f, 0.85f } };
+static const float TOPS[BIOMES][3] = { { 0.85f, 1.0f, 0.7f }, { 0.55f, 0.7f, 0.95f }, { 1.0f, 0.9f, 0.7f }, { 0.95f, 1.0f, 1.05f }, { 1.2f, 0.9f, 0.85f } };
 
 /* world-space noise, one cell per unit at f = 1, for colour that runs smoothly across tiles */
 static float wn(float x, float y, float f, int s) { return vnoise(x * f / 4096.0f + 0.5f, y * f / 4096.0f + 0.5f, 4096, s); }
@@ -458,13 +490,15 @@ static void corner_col(const level *L, int bi, float vx, float vy, float *out) {
   }
   float depth = cnt ? (float)up / (float)cnt : 0;
   float dk = 1.0f - 0.075f * fminf(depth, 6.0f);
-  static const float HUE2[BIOMES][3] = { { 0.75f, 0.62f, 0.5f }, { 0.42f, 0.5f, 0.78f }, { 0.85f, 0.8f, 0.6f }, { 0.6f, 0.38f, 0.36f } };
+  static const float HUE2[BIOMES][3] = { { 0.75f, 0.62f, 0.5f }, { 0.42f, 0.5f, 0.78f }, { 0.85f, 0.8f, 0.6f }, { 0.62f, 0.72f, 0.92f }, { 0.6f, 0.38f, 0.36f } };
   for (int c = 0; c < 3; c++) out[c] = mixf(st[c], HUE2[bi][c], hue * 0.6f) * var * dk;
 }
 
 static int tile_mat(const level *L, int x, int y) {
   int t = L->t[y][x], bi = L->biome[x];
   if (t == T_BRICK) return MT_BRICK;
+  if (t == T_ICE) return MT_ICE;
+  if (t == T_BELT) return MT_BELT;
   return bi == BIOME_CAVES ? MT_CAVE : bi == BIOME_VOLCANO ? MT_BASALT : MT_ROCK;
 }
 
@@ -504,7 +538,7 @@ static void tile_faces(const level *L, int x, int y, mb *bs) {
   float fx = (float)x, fy = (float)y;
   const float *st = STONE[bi], *tp = TOPS[bi];
   bool open_above = !world_solid(L, x, y + 1);
-  bool grass_top = open_above && bi == BIOME_MEADOW && mt == MT_ROCK;
+  bool grass_top = open_above && bi == BIOME_MEADOW && mt == MT_ROCK && L->t[y][x] != T_ICE;
   /* a different dark per tile so the wall is not a repeating pattern, plus a fall-off with depth under the surface */
   int below = 0;
   while (y - below > 0 && below < 6 && world_solid(L, x, y - below - 1)) below++;
@@ -982,6 +1016,11 @@ static void scatter(const level *L, int x0, int x1, mb *prop, mb *glow) {
           if (r < 0.1f && x % 2 == 0 && SEAT(fx + 0.5f, (hh(x, y, 118) > 0.5f ? 1 : -1) * 0.9f, 0.5f, 0.44f)) rock_pile(prop, px, fy, pz, seed, STONE[2], 0.8f);
           if (r > 0.1f && r < 0.3f && SEAT(fx + hh(x, y, 119), (hh(x, y, 120) > 0.5f ? 1.0f : -1.0f) * (0.5f + 0.9f * hh(x, y, 121)), 0.1f, 0.1f)) grass_tuft(prop, px, fy, pz, seed, 0.9f);
           if (r > 0.3f && r < 0.36f && SEAT(fx + hh(x, y, 122), -0.8f, 0.13f, 0.13f)) flower(prop, glow, px, fy, pz, seed);
+        } else if (bi == BIOME_FROST) {
+          /* snow drifts, a few boulders, ice crystals that catch the light */
+          s = 0.5f + 0.7f * hh(x, y, 140);
+          if (r < 0.1f && SEAT(fx + 0.5f, -0.9f - 0.3f * hh(x, y, 141), 0.55f * s, 0.3f + 0.2f * s)) crystal_cluster(glow, prop, px, fy, pz, seed, s, 1, false);
+          if (r > 0.12f && r < 0.2f && x % 2 == 0 && SEAT(fx + 0.5f, (hh(x, y, 142) > 0.5f ? 1 : -1) * 0.9f, 0.5f, 0.44f)) rock_pile(prop, px, fy, pz, seed, STONE[BIOME_FROST], 0.8f);
         } else {
           s = 0.8f + 0.9f * hh(x, y, 124);
           if (r < 0.07f && SEAT(fx + 0.5f, -0.9f - 0.5f * hh(x, y, 123), 0.34f * s, 0.34f * s + 0.05f)) lava_spire(prop, glow, px, fy, pz, seed, s);
@@ -1043,7 +1082,7 @@ static void hanging_supports(const level *L, mb *p) {
         /* the region's own stone, darker than the faces around it so a pillar reads as standing in the shade under
          * its block (a cream column in the blue caves looked pasted in) */
         int bi = L->biome[c];
-        static const float PK[BIOMES][3] = { { 0.42f, 0.5f, 0.6f }, { 0.3f, 0.36f, 0.44f }, { 0.5f, 0.6f, 0.72f }, { 0.16f, 0.2f, 0.24f } };
+        static const float PK[BIOMES][3] = { { 0.42f, 0.5f, 0.6f }, { 0.3f, 0.36f, 0.44f }, { 0.5f, 0.6f, 0.72f }, { 0.5f, 0.6f, 0.75f }, { 0.16f, 0.2f, 0.24f } };
         shade(lo, STONE[bi], PK[bi][0]), shade(hi, STONE[bi], PK[bi][1]), shade(cap, STONE[bi], PK[bi][2]);
         float h = (float)y - top;
         mb_box(p, px, top + 0.1f, pz, 0.4f, 0.3f, 0.4f, lo, cap);                 /* a plinth, sunk a little */
@@ -1058,11 +1097,11 @@ static void hanging_supports(const level *L, mb *p) {
 
 static cw_node g_root;
 static t3_material *g_mat[MT_COUNT], *g_spike, *g_lava_m, *g_water_front, *g_foam_m, *g_wall_m[BIOMES];
-static t3_mesh *g_crack_mesh[64];
+static t3_mesh *g_crack_mesh[128];
 static t3_texture *g_lava_tex;
 
 typedef struct span { float x0, x1, y0, y1; } span;
-static span g_waters[16], g_lavas[16];
+static span g_waters[16], g_lavas[48];
 static int g_nwaters, g_nlavas;
 int world_water_spans(float out[][4], int cap) {
   int n = g_nwaters < cap ? g_nwaters : cap;
@@ -1089,7 +1128,7 @@ static t3_mesh *add_mesh(t3_geometry *g, t3_material *m, float x, float y, float
 
 /* animated surfaces: the lava's top and front slide their uvs, the water's front sheet waves */
 typedef struct anim_surf { t3_geometry *geo; float *pos, *uv; int nv; float x0, x1, y_top, y_bot, z; int kind; int cols; } anim_surf;
-static anim_surf g_surf[40];
+static anim_surf g_surf[128];
 static int g_nsurf;
 
 void world_scene_free(void) {
@@ -1166,6 +1205,7 @@ void world_scene_build(game *g, cw_node root) {
   memset(g_surface, 0, sizeof g_surface);
   g_ledge_unheld = 0;
   g_plain_bug = getenv("COOP_PLAIN_BUG") != NULL;
+  if (!g_mat[MT_ROCK]) { /* once: every level draws with the same generated materials, and a level loads without a new set */
   g_mat[MT_ROCK] = pbr(gen_rock, 3.0f, 1.0f, false, 0);
   g_mat[MT_GRASS] = pbr(gen_grass, 2.0f, 1.0f, false, 0);
   g_mat[MT_CAVE] = pbr(gen_cave, 3.0f, 1.0f, true, 0.7f);
@@ -1175,6 +1215,9 @@ void world_scene_build(game *g, cw_node root) {
   g_mat[MT_PROP]->vertex_colors = true, g_mat[MT_PROP]->roughness = 0.75f, g_mat[MT_PROP]->side = T3_DOUBLE_SIDE;
   g_mat[MT_GLOW] = basic_vcol(false, false, 1);
   g_mat[MT_WOOD] = pbr(gen_wood, 3.0f, 1.0f, false, 0);
+  g_mat[MT_ICE] = pbr(gen_ice, 1.0f, 1.0f, false, 0);
+  g_mat[MT_BELT] = pbr(gen_belt, 2.0f, 1.0f, false, 0);
+  }
   place_torches(L); /* first, so the scatter leaves their footing clear */
   /* terrain and props in chunks */
   for (int cx = 0; cx < WORLD_W; cx += CHUNK) {
@@ -1183,7 +1226,7 @@ void world_scene_build(game *g, cw_node root) {
     for (int y = 0; y < WORLD_H; y++)
       for (int x = cx; x < cx + CHUNK && x < WORLD_W; x++) {
         int t = L->t[y][x];
-        if (t == T_ROCK || t == T_GRASS || t == T_BRICK) tile_faces(L, x, y, bs);
+        if (t == T_ROCK || t == T_GRASS || t == T_BRICK || t == T_ICE || t == T_BELT) tile_faces(L, x, y, bs);
       }
     scatter(L, cx, cx + CHUNK, &bs[MT_PROP], &bs[MT_GLOW]);
     wall_detail(L, cx, cx + CHUNK, &bs[MT_PROP], &bs[MT_GLOW], bs);
@@ -1216,7 +1259,7 @@ void world_scene_build(game *g, cw_node root) {
   memset(g_crack_mesh, 0, sizeof g_crack_mesh);
   for (int y = 0; y < WORLD_H; y++)
     for (int x = 0; x < WORLD_W; x++)
-      if (L->t[y][x] == T_CRACK && nc < 64) {
+      if (L->t[y][x] == T_CRACK && nc < 128) {
         int bi = L->biome[x];
         mb cb = { 0 };
         float lo[3], hi[3], dk[3];
@@ -1286,14 +1329,14 @@ void world_scene_build(game *g, cw_node root) {
         for (int k = 0; k < 2; k++) add_mesh(cone, g_spike, (float)x + 0.25f + 0.5f * (float)k, (float)y + 0.4f, 0.0f, true);
   t3_release(cone);
   /* lava: a glowing surface with a flowing crust, its top and the face that looks at the camera */
-  g_lava_m = pbr(gen_lava, 2.0f, 1.0f, true, 1.7f);
+  if (!g_lava_m) g_lava_m = pbr(gen_lava, 2.0f, 1.0f, true, 1.7f);
   g_lava_m->vertex_colors = false;
   for (int x = 0; x < WORLD_W; x++)
     if (L->t[2][x] == T_LAVA) {
       int x1 = x;
       while (x1 < WORLD_W && L->t[2][x1] == T_LAVA) x1++;
       float w = (float)(x1 - x), top = 2.75f;
-      if (g_nsurf + 2 > 40 || g_nlavas >= 16) break;
+      if (g_nsurf + 2 > 128 || g_nlavas >= 48) break;
       g_lavas[g_nlavas++] = (span){ (float)x, (float)x1, 0, top };
       /* top: a grid so the surface can heave */
       int cols = (int)w * 3, rows = 6, nv = (cols + 1) * (rows + 1);
@@ -1395,7 +1438,7 @@ void world_scene_build(game *g, cw_node root) {
       if (top != ty) break;
       x1++;
     }
-    if (x1 == x || g_nsurf + 2 > 40 || g_nwaters >= 16) { x = x1 > x ? x1 - 1 : x; continue; }
+    if (x1 == x || g_nsurf + 2 > 128 || g_nwaters >= 16) { x = x1 > x ? x1 - 1 : x; continue; }
     int low = ty;
     for (int xx = x; xx < x1; xx++)
       for (int y = 0; y < WORLD_H; y++)
@@ -1446,9 +1489,10 @@ void world_scene_build(game *g, cw_node root) {
 }
 
 /* each frame: the lava heaves and flows, the water waves and its foam rides the crest */
-void world_update_water_mesh(float time) {
+void world_update_water_mesh(float time, float cam_x) {
   for (int k = 0; k < g_nsurf; k++) {
     anim_surf *s = &g_surf[k];
+    if (s->x1 < cam_x - 45.0f || s->x0 > cam_x + 45.0f) continue; /* a long level has many: only what the camera can see moves */
     if (s->kind == 0) { /* lava top: uv slide and a slow heave */
       int cols = s->cols, rows = 6;
       for (int j = 0; j <= rows; j++)
@@ -1480,24 +1524,246 @@ void world_update_water_mesh(float time) {
 }
 
 void world_hide_crack(int x, int y) {
-  for (int i = 0; i < 64 && g_crack_mesh[i]; i++) {
+  for (int i = 0; i < 128 && g_crack_mesh[i]; i++) {
     t3_mesh *m = g_crack_mesh[i];
     if ((int)floorf(m->base.position.x) == x && (int)floorf(m->base.position.y) == y) m->base.visible = false;
   }
+}
+
+/* ── the things ──────────────────────────────────────────────────────
+ * Each is built from boxes, cones and blobs in vertex colours on the props' material, so no new draw state. A thing that moves
+ * is its own mesh, moved by world_things_sync; g_thing_mesh[k][1] is its second part where it has one. */
+static t3_mesh *g_thing_mesh[MAX_THINGS][2];
+static void c3(float *o, float r, float g, float b) { o[0] = r, o[1] = g, o[2] = b; }
+static t3_mesh *thing_add(mb *b, float x, float y, float z, bool shadow) {
+  t3_geometry *ge = mb_done(b);
+  if (!ge) return NULL;
+  t3_mesh *m = add_mesh(ge, g_mat[MT_PROP], x, y, z, shadow);
+  t3_release(ge);
+  return m;
+}
+/* a sign: a post on the ground and a board above head height, a little crooked */
+static void sign_prop(mb *p, float x, float y, float z, int seed) {
+  float w0[3], w1[3], d0[3], d1[3];
+  c3(w0, 0.36f, 0.24f, 0.13f), c3(w1, 0.55f, 0.38f, 0.2f), c3(d0, 0.62f, 0.5f, 0.3f), c3(d1, 0.85f, 0.72f, 0.46f);
+  mb_box(p, x, y + 1.0f, z, 0.07f, 1.0f, 0.07f, w0, w1);
+  float tilt = 0.08f * (hh(seed, 3, 951) - 0.5f);
+  mb_box(p, x + tilt * 3, y + 2.15f, z + 0.05f, 0.85f, 0.42f, 0.05f, d0, d1);
+  c3(d0, 0.2f, 0.13f, 0.07f);
+  mb_box(p, x + tilt * 3, y + 2.57f, z + 0.06f, 0.88f, 0.04f, 0.06f, d0, d0);
+  mb_box(p, x + tilt * 3, y + 1.73f, z + 0.06f, 0.88f, 0.04f, 0.06f, d0, d0);
+  /* the small print, seen from too far away to read: come closer */
+  for (int i = 0; i < 4; i++) {
+    float w = 0.45f + 0.28f * hh(seed, i, 952);
+    mb_box(p, x + tilt * 3 - 0.72f + w, y + 2.38f - 0.14f * (float)i, z + 0.105f, w, 0.028f, 0.004f, d0, d0);
+  }
+}
+void world_things_build(game *g) {
+  const level *L = &g->L;
+  memset(g_thing_mesh, 0, sizeof g_thing_mesh);
+  mb still = { 0 };
+  float a[3], b[3], c[3], d[3];
+  for (int k = 0; k < L->nthings; k++) {
+    const thing *t = &L->things[k];
+    mb m = { 0 }, m2 = { 0 };
+    switch (t->kind) {
+      case TH_SPRING: /* a red pad on a steel coil, on a base plate */
+        c3(a, 0.3f, 0.32f, 0.36f), c3(b, 0.55f, 0.58f, 0.62f), c3(c, 0.75f, 0.12f, 0.1f), c3(d, 1.0f, 0.3f, 0.22f);
+        mb_box(&still, t->x, t->y + 0.05f, 0, 0.75f, 0.05f, 0.75f, a, b);
+        for (int i = 0; i < 4; i++) mb_box(&still, t->x, t->y + 0.14f + 0.1f * (float)i, 0, 0.42f - 0.03f * (float)(i & 1), 0.03f, 0.42f - 0.03f * (float)(i & 1), a, b);
+        mb_box(&still, t->x, t->y + 0.56f, 0, 0.8f, 0.09f, 0.8f, c, d);
+        break;
+      case TH_FAN: /* a steel ring and four blades turning in it, low on its housing; a faint draught of streaks above */
+        c3(a, 0.28f, 0.3f, 0.34f), c3(b, 0.5f, 0.54f, 0.6f);
+        mb_box(&still, t->x, t->y + 0.12f, 0, t->w, 0.12f, 1.1f, a, b);
+        c3(c, 0.7f, 0.74f, 0.8f), c3(d, 0.9f, 0.92f, 0.96f);
+        mb_box(&m, 0, 0, 0, t->w * 0.92f, 0.03f, 0.14f, c, d);
+        mb_box(&m, 0, 0, 0, 0.14f, 0.03f, 0.98f, c, d);
+        g_thing_mesh[k][0] = thing_add(&m, t->x, t->y + 0.3f, 0, false);
+        break;
+      case TH_SAW: { /* a toothed steel disc on a rail between two posts that stand on the floor */
+        c3(a, 0.28f, 0.28f, 0.3f), c3(b, 0.42f, 0.42f, 0.46f);
+        float y0 = t->h, rail = t->y;
+        mb_box(&still, t->x, rail, -1.0f, t->a + 1.0f, 0.06f, 0.06f, a, b);
+        mb_box(&still, t->x - t->a - 1.0f, 0.5f * (y0 + rail), -1.0f, 0.08f, 0.5f * (rail - y0), 0.08f, a, b);
+        mb_box(&still, t->x + t->a + 1.0f, 0.5f * (y0 + rail), -1.0f, 0.08f, 0.5f * (rail - y0), 0.08f, a, b);
+        /* a toothed disc of dark steel, both faces: 14 raked teeth in the camera's plane, a bright ground edge behind each tip */
+        c3(c, 0.2f, 0.21f, 0.24f), c3(d, 0.72f, 0.74f, 0.78f);
+        for (int side = 0; side < 2; side++) {
+          float nz = side ? -1.0f : 1.0f, z = nz * 0.05f, nrm[3] = { 0, 0, nz };
+          mb_room(&m, 60, 90);
+          int hub = mb_vert(&m, 0, 0, z, nrm[0], nrm[1], nrm[2], c, 0, 0);
+          int first = -1, prev = -1;
+          for (int i = 0; i <= 28; i++) {
+            float an = (float)(i % 28) * 6.2831853f / 28.0f + ((i & 1) ? 0.13f : 0.0f), r = (i & 1) ? 0.92f : 0.68f;
+            int v = mb_vert(&m, cosf(an) * r, sinf(an) * r, z, nrm[0], nrm[1], nrm[2], (i & 1) ? d : c, 0, 0);
+            if (first < 0) first = v;
+            if (prev >= 0) { if (side) mb_tri_i(&m, hub, v, prev); else mb_tri_i(&m, hub, prev, v); }
+            prev = v;
+          }
+        }
+        c3(a, 0.1f, 0.1f, 0.11f), c3(b, 0.3f, 0.3f, 0.33f);
+        mb_ellip(&m, 0, 0, 0, 0.2f, 0.2f, 0.09f, a, b, 12, 4); /* the hub */
+        c3(a, 0.42f, 0.03f, 0.04f), c3(b, 0.56f, 0.05f, 0.05f); /* she has been working */
+        mb_ellip(&m, 0.34f, 0.2f, 0.06f, 0.2f, 0.11f, 0.008f, a, b, 8, 4);
+        mb_ellip(&m, -0.3f, -0.3f, 0.06f, 0.14f, 0.09f, 0.008f, a, b, 8, 4);
+        g_thing_mesh[k][0] = thing_add(&m, t->x, t->y, 0, true);
+        break;
+      }
+      case TH_PRESS: { /* a heavy block on a frame of two posts on the floor */
+        c3(a, 0.26f, 0.27f, 0.3f), c3(b, 0.42f, 0.44f, 0.48f);
+        float top = t->y + t->h + 0.6f;
+        for (int s = -1; s <= 1; s += 2) mb_box(&still, t->x + (float)s * (t->w + 0.3f), 0.5f * (t->y + top), -1.0f, 0.12f, 0.5f * (top - t->y), 0.12f, a, b);
+        mb_box(&still, t->x, top + 0.12f, -1.0f, t->w + 0.42f, 0.14f, 0.14f, a, b);
+        c3(c, 0.22f, 0.22f, 0.24f), c3(d, 0.72f, 0.58f, 0.12f);
+        mb_box(&m, 0, 0.8f, 0, t->w, 0.8f, 1.2f, c, d);
+        /* the warning stripes on its face */
+        c3(a, 0.1f, 0.1f, 0.1f);
+        for (int i = -1; i <= 1; i++) mb_box(&m, (float)i * t->w * 0.6f, 0.8f, 1.21f, 0.14f, 0.7f, 0.01f, a, a);
+        g_thing_mesh[k][0] = thing_add(&m, t->x, t->y, 0, true);
+        break;
+      }
+      case TH_FALLER: { /* a grand piano, or in the crater a boulder. It hangs on a rope from nothing you can see, which is the joke */
+        int bi = L->biome[(int)t->x];
+        if (bi == BIOME_VOLCANO) {
+          c3(c, 0.2f, 0.16f, 0.15f), c3(d, 0.45f, 0.36f, 0.3f);
+          mb_rock(&m, 0, 1.0f, 0, 1.05f, 1.0f, 1.05f, c, d, k * 7 + 3);
+        } else {
+          c3(c, 0.03f, 0.03f, 0.035f), c3(d, 0.12f, 0.12f, 0.14f);
+          mb_box(&m, 0, 1.0f, 0, 1.1f, 0.34f, 0.8f, c, d);       /* the case */
+          mb_ellip(&m, 0.75f, 1.0f, 0, 0.7f, 0.33f, 0.72f, c, d, 14, 6);
+          c3(a, 0.9f, 0.9f, 0.86f), c3(b, 1, 1, 0.96f);
+          mb_box(&m, -0.95f, 1.2f, 0, 0.18f, 0.06f, 0.7f, a, b); /* keys */
+          c3(a, 0.03f, 0.03f, 0.03f);
+          for (int i = 0; i < 3; i++) mb_box(&m, (i == 0 ? -0.8f : 0.8f) , 0.34f, (i == 2 ? -0.5f : 0.5f), 0.07f, 0.34f, 0.07f, a, a); /* legs */
+          c3(a, 0.25f, 0.18f, 0.1f), c3(b, 0.42f, 0.32f, 0.2f);
+          mb_box(&m, 0, 7.0f, 0, 0.025f, 5.6f, 0.025f, a, b);    /* the rope */
+        }
+        g_thing_mesh[k][0] = thing_add(&m, t->x, t->y + t->h, 0, true);
+        break;
+      }
+      case TH_CANNON: { /* a fat barrel on a carriage, aimed along its throw, and on its side the only instruction */
+        c3(a, 0.36f, 0.24f, 0.13f), c3(b, 0.5f, 0.34f, 0.2f);
+        mb_box(&still, t->x, t->y + 0.25f, 0, 0.8f, 0.25f, 0.5f, a, b);
+        c3(c, 0.08f, 0.09f, 0.11f), c3(d, 0.28f, 0.3f, 0.34f);
+        float len = sqrtf(t->a * t->a + t->b * t->b), lx = t->a / len, ly = t->b / len;
+        /* a barrel of rings along its aim, a band every so often, and a black mouth */
+        for (int i = 0; i < 9; i++) {
+          float k = (float)i * 0.2f - 0.3f, r = i == 8 ? 0.52f : (i & 3) == 1 ? 0.5f : 0.44f;
+          mb_ellip(&still, t->x + lx * k, t->y + 0.62f + ly * k, 0, r, r, r, c, d, 12, 6);
+        }
+        c3(a, 0.0f, 0.0f, 0.0f);
+        mb_ellip(&still, t->x + lx * 1.42f, t->y + 0.62f + ly * 1.42f, 0, 0.32f, 0.32f, 0.32f, a, a, 12, 6);
+        break;
+      }
+      case TH_PLATE: /* a slab with a raised pad, sinks a little when pressed */
+        c3(a, 0.3f, 0.3f, 0.3f), c3(b, 0.45f, 0.45f, 0.45f), c3(c, 0.7f, 0.5f, 0.1f), c3(d, 1.0f, 0.78f, 0.2f);
+        mb_box(&still, t->x, t->y + 0.04f, 0, 0.95f, 0.04f, 0.8f, a, b);
+        mb_box(&m, 0, 0, 0, 0.75f, 0.06f, 0.6f, c, d);
+        g_thing_mesh[k][0] = thing_add(&m, t->x, t->y + 0.14f, 0, false);
+        break;
+      case TH_DOOR: /* a portcullis: bars and cross bars, running up into the wall */
+        c3(a, 0.18f, 0.18f, 0.2f), c3(b, 0.38f, 0.38f, 0.42f);
+        for (int i = 0; i < 5; i++) mb_box(&m, t->w * (0.1f + 0.2f * (float)i) , t->h * 0.5f, 0, 0.08f, t->h * 0.5f, 1.3f, a, b);
+        for (int i = 0; i < 4; i++) mb_box(&m, t->w * 0.5f, t->h * (0.12f + 0.25f * (float)i), 0, t->w * 0.5f, 0.07f, 1.32f, a, b);
+        g_thing_mesh[k][0] = thing_add(&m, t->x, t->y, 0, true);
+        break;
+      case TH_CRUMBLE: /* a plank on its way out: a split board on a rough beam */
+        c3(a, 0.44f, 0.3f, 0.16f), c3(b, 0.66f, 0.48f, 0.26f);
+        for (int i = 0; i < 3; i++) mb_box(&m, 0.2f + 0.3f * (float)i, 0.86f, 0, 0.14f, 0.1f, 1.1f + 0.15f * hh(k, i, 960), a, b);
+        c3(c, 0.25f, 0.16f, 0.08f), c3(d, 0.4f, 0.27f, 0.14f);
+        mb_box(&m, 0.5f, 0.66f, 0, 0.48f, 0.1f, 0.3f, c, d);
+        g_thing_mesh[k][0] = thing_add(&m, t->x, t->y, 0, true);
+        break;
+      case TH_BOOTH: { /* the booth at the end: where an unimpressed clerk has been waiting for you to finish */
+        c3(a, 0.5f, 0.32f, 0.16f), c3(b, 0.72f, 0.5f, 0.28f), c3(c, 0.74f, 0.14f, 0.12f), c3(d, 0.96f, 0.92f, 0.82f);
+        mb_box(&still, t->x, t->y + 1.1f, -1.1f, 1.5f, 1.1f, 0.3f, a, b);       /* the back wall */
+        mb_box(&still, t->x - 1.45f, t->y + 1.1f, -0.2f, 0.08f, 1.1f, 0.9f, a, b);
+        mb_box(&still, t->x + 1.45f, t->y + 1.1f, -0.2f, 0.08f, 1.1f, 0.9f, a, b);
+        mb_box(&still, t->x, t->y + 0.5f, 0.55f, 1.5f, 0.5f, 0.1f, a, b);       /* the counter */
+        for (int i = 0; i < 6; i++) { /* a striped awning */
+          float *col = (i & 1) ? c : d;
+          mb_box(&still, t->x - 1.5f + 0.25f + 0.5f * (float)i, t->y + 2.35f, -0.15f, 0.25f, 0.1f, 1.1f, col, col);
+        }
+        c3(a, 0.3f, 0.32f, 0.36f), c3(b, 0.82f, 0.84f, 0.88f);
+        mb_box(&still, t->x, t->y + 3.1f, 0, 1.2f, 0.42f, 0.05f, a, b);         /* a board for the word over the booth */
+        mb_box(&still, t->x - 1.1f, t->y + 2.5f, 0, 0.05f, 0.3f, 0.05f, a, a);
+        mb_box(&still, t->x + 1.1f, t->y + 2.5f, 0, 0.05f, 0.3f, 0.05f, a, a);
+        break;
+      }
+      default: break;
+    }
+    (void)m2;
+  }
+  for (int k = 0; k < L->nsigns; k++) sign_prop(&still, L->signs[k].x, L->signs[k].y, -0.9f, k * 11 + 2);
+  t3_mesh *sm = thing_add(&still, 0, 0, 0, true);
+  (void)sm;
+}
+
+/* where the rules have them. time spins the fans and the saws */
+void world_things_sync(const game *g, float time) {
+  const level *L = &g->L;
+  for (int k = 0; k < L->nthings; k++) {
+    const thing *t = &L->things[k];
+    t3_mesh *m = g_thing_mesh[k][0];
+    if (!m) continue;
+    switch (t->kind) {
+      case TH_FAN: t3_object_set_rotation(m, 0, time * 18.0f, 0); break;
+      case TH_SAW:
+        t3_object_set_position(m, t->t, t->y, 0);
+        t3_object_set_rotation(m, 0, 0, -time * 14.0f);
+        break;
+      case TH_PRESS: t3_object_set_position(m, t->x, t->y + (t->h - 1.6f) * (1.0f - t->dy), 0); break;
+      case TH_FALLER: t3_object_set_position(m, t->x, t->y + t->h - t->dy, 0); m->base.visible = t->state != 2 || t->t < 5.5f; break;
+      case TH_PLATE: t3_object_set_position(m, t->x, t->y + (t->pressed ? 0.09f : 0.14f), 0); break;
+      case TH_DOOR: t3_object_set_position(m, t->x, t->y + t->dy, 0); break;
+      case TH_CRUMBLE: {
+        float wob = t->state == 1 ? 0.03f * sinf(time * 60.0f + (float)k) : 0.0f, drop = t->state == 2 ? 14.0f * t->t * t->t : 0.0f;
+        t3_object_set_position(m, t->x + wob, t->y - drop, 0);
+        m->base.visible = !(t->state == 2 && t->t > 1.2f);
+        break;
+      }
+      default: break;
+    }
+  }
+}
+
+/* the things that stand on the ground stand on the ground; a sign in the air would be an embarrassment */
+int world_things_check(const level *L, int *checked) {
+  int bad = 0, n = 0;
+  for (int k = 0; k < L->nthings; k++) {
+    const thing *t = &L->things[k];
+    if (t->kind == TH_DOOR || t->kind == TH_CRUMBLE || t->kind == TH_FALLER) continue;
+    float base = t->kind == TH_SAW ? t->h : t->y;
+    int y = (int)floorf(base) - 1, xs[2] = { (int)floorf(t->x - (t->kind == TH_SAW ? t->a + 1.0f : 0.0f)), (int)floorf(t->x + (t->kind == TH_SAW ? t->a + 1.0f : 0.0f)) };
+    n++;
+    bool ok = true;
+    for (int i = 0; i < 2; i++) if (!world_solid(L, xs[i], y) || world_solid(L, xs[i], y + 1)) ok = false;
+    if (!ok) { bad++; printf("things: %d (kind %d) at %.1f,%.1f not on the ground\n", k, t->kind, (double)t->x, (double)base); }
+  }
+  for (int k = 0; k < L->nsigns; k++) {
+    const sign_t *s = &L->signs[k];
+    n++;
+    int x = (int)floorf(s->x), y = (int)floorf(s->y) - 1;
+    if (!world_solid(L, x, y) || world_solid(L, x, y + 1)) { bad++; printf("things: sign %d at %.1f,%.1f not on the ground: %s\n", k, (double)s->x, (double)s->y, s->text); }
+  }
+  *checked = n;
+  return bad;
 }
 
 /* ── backdrop: a sky of five colour bands, a sun, drifting clouds, and four layers of silhouettes per region at
  * different depths (the camera's perspective makes the parallax). Each region's layers rise out of the ground where
  * the region begins and sink again where it ends, so the scenery changes with the ground under the players. ── */
 
-static const float SKY_HOR[BIOMES][3] = { { 0.56f, 0.7f, 0.86f }, { 0.07f, 0.1f, 0.2f }, { 0.5f, 0.68f, 0.62f }, { 1.0f, 0.4f, 0.12f } };
-static const float SKY_MID[BIOMES][3] = { { 0.24f, 0.46f, 0.86f }, { 0.04f, 0.05f, 0.12f }, { 0.2f, 0.42f, 0.5f }, { 0.4f, 0.1f, 0.08f } };
-static const float SKY_TOP[BIOMES][3] = { { 0.16f, 0.38f, 0.82f }, { 0.015f, 0.02f, 0.06f }, { 0.1f, 0.25f, 0.34f }, { 0.08f, 0.02f, 0.03f } };
+static const float SKY_HOR[BIOMES][3] = { { 0.56f, 0.7f, 0.86f }, { 0.07f, 0.1f, 0.2f }, { 0.5f, 0.68f, 0.62f }, { 0.72f, 0.82f, 0.92f }, { 1.0f, 0.4f, 0.12f } };
+static const float SKY_MID[BIOMES][3] = { { 0.24f, 0.46f, 0.86f }, { 0.04f, 0.05f, 0.12f }, { 0.2f, 0.42f, 0.5f }, { 0.45f, 0.62f, 0.82f }, { 0.4f, 0.1f, 0.08f } };
+static const float SKY_TOP[BIOMES][3] = { { 0.16f, 0.38f, 0.82f }, { 0.015f, 0.02f, 0.06f }, { 0.1f, 0.25f, 0.34f }, { 0.22f, 0.36f, 0.62f }, { 0.08f, 0.02f, 0.03f } };
 /* silhouette colours per region and layer, far to near (already hazed toward the sky: far layers are pale) */
 static const float LAYER_COL[BIOMES][4][3] = {
   { { 0.62f, 0.72f, 0.88f }, { 0.42f, 0.6f, 0.62f }, { 0.16f, 0.4f, 0.27f }, { 0.1f, 0.3f, 0.12f } },
   { { 0.08f, 0.1f, 0.2f }, { 0.06f, 0.08f, 0.16f }, { 0.05f, 0.06f, 0.13f }, { 0.04f, 0.05f, 0.1f } },
   { { 0.55f, 0.7f, 0.68f }, { 0.4f, 0.56f, 0.52f }, { 0.3f, 0.42f, 0.36f }, { 0.4f, 0.36f, 0.26f } },
+  { { 0.74f, 0.84f, 0.94f }, { 0.6f, 0.72f, 0.86f }, { 0.46f, 0.58f, 0.74f }, { 0.34f, 0.44f, 0.6f } },
   { { 0.5f, 0.15f, 0.1f }, { 0.32f, 0.08f, 0.07f }, { 0.16f, 0.05f, 0.05f }, { 0.07f, 0.035f, 0.035f } },
 };
 static const float LAYER_Z[4] = { -125, -85, -48, -9 };
@@ -1510,9 +1776,11 @@ static int g_ncloud;
 static t3_mesh *g_sun;
 
 /* 0..1: how much of region b is present at x (1 inside, easing over 30 units at the borders) */
+static int g_bfirst, g_blast; /* the first and last region this level has */
 static float bmask(int b, float x) {
-  float lo = b == 0 ? 1.0f : sstep(g_bx0[b] - 14.0f, g_bx0[b] + 40.0f, x);
-  float hi = b == BIOMES - 1 ? 1.0f : 1.0f - sstep(g_bx1[b] - 40.0f, g_bx1[b] + 14.0f, x);
+  if (g_bx1[b] <= g_bx0[b]) return 0.0f; /* a region this level does not have */
+  float lo = b == g_bfirst ? 1.0f : sstep(g_bx0[b] - 14.0f, g_bx0[b] + 40.0f, x);
+  float hi = b == g_blast ? 1.0f : 1.0f - sstep(g_bx1[b] - 40.0f, g_bx1[b] + 14.0f, x);
   return lo * hi;
 }
 static float ridge(float x, float sc, int s) { return 1.0f - fabsf(2.0f * fbm(x * sc, 0.31f, 8, 5, s) - 1.0f); }
@@ -1546,6 +1814,15 @@ static float profile(int b, int l, float x) {
       if (l == 1) return within < 0.34f ? 34.0f + 14.0f * h : 17.0f + 4.0f * h;                                   /* a colonnade */
       if (l == 2) return 22.0f + 12.0f * h * (within > 0.18f && within < 0.82f ? 1.0f : 0.5f);                    /* broken walls */
       return smoothg(x) + 2.5f + 3.0f * (h > 0.5f ? 1.0f : 0.0f) * (within < 0.7f ? 1.0f : 0.0f);               /* low wall */
+    }
+    case BIOME_FROST: {
+      float fr = x / (l == 0 ? 11.0f : l == 1 ? 8.0f : l == 2 ? 13.0f : 4.0f);
+      int cell = (int)floorf(fr);
+      float h = hh(cell, 11, 150 + l), within = fr - floorf(fr);
+      if (l == 0) return 32.0f + 30.0f * h * (within > 0.12f && within < 0.88f ? 1.0f : 0.2f);                 /* head office towers */
+      if (l == 1) return 26.0f + 22.0f * h * (within > 0.2f && within < 0.8f ? 1.0f : 0.15f);
+      if (l == 2) return 20.0f + 10.0f * ridge(x, 1.0f / 34.0f, 152);                                          /* snow banks */
+      return smoothg(x) + 2.2f + 1.2f * fbm(x / 26.0f, 0.3f, 8, 3, 153);
     }
     default: {
       float cx = 0.5f * (g_bx0[BIOME_VOLCANO] + g_bx1[BIOME_VOLCANO]);
@@ -1678,6 +1955,7 @@ static const float RICH[BIOMES][4][3] = {
   { { 0.36f, 0.45f, 0.62f }, { 0.22f, 0.4f, 0.33f }, { 0.13f, 0.34f, 0.15f }, { 0.2f, 0.42f, 0.13f } },
   { { 0.1f, 0.12f, 0.22f }, { 0.08f, 0.1f, 0.18f }, { 0.07f, 0.08f, 0.15f }, { 0.08f, 0.09f, 0.14f } },
   { { 0.4f, 0.48f, 0.45f }, { 0.4f, 0.4f, 0.33f }, { 0.36f, 0.33f, 0.26f }, { 0.24f, 0.3f, 0.15f } },
+  { { 0.5f, 0.6f, 0.74f }, { 0.44f, 0.56f, 0.72f }, { 0.38f, 0.48f, 0.64f }, { 0.34f, 0.42f, 0.58f } },
   { { 0.28f, 0.1f, 0.08f }, { 0.24f, 0.09f, 0.07f }, { 0.26f, 0.11f, 0.08f }, { 0.3f, 0.13f, 0.09f } },
 };
 static const float AERIAL[4] = { 0.42f, 0.24f, 0.1f, 0.0f };
@@ -1685,7 +1963,7 @@ static t3_material *g_ridge_m;
 static void ridge3d(int b, int l) {
   float x0 = fmaxf(-140.0f, g_bx0[b] - 70.0f), x1 = fminf((float)WORLD_W + 140.0f, g_bx1[b] + 70.0f);
   if (b == 0) x0 = -140.0f;
-  if (b == BIOMES - 1) x1 = (float)WORLD_W + 140.0f;
+  if (b == g_blast) x1 = (float)WORLD_W + 140.0f;
   float step = l == 3 ? 0.5f : l == 2 ? 1.0f : l == 1 ? 2.0f : 3.0f;
   int nx = (int)((x1 - x0) / step) + 1, nz = l == 3 ? 7 : l == 2 ? 9 : 11;
   bool blocks = b == BIOME_RUINS && l < 3;
@@ -1819,8 +2097,12 @@ void world_backdrop(game *g) {
     if (g_bx0[b] < 0) g_bx0[b] = (float)x, g_bx1[b] = (float)x1;
     x = x1;
   }
-  for (int b = 0; b < BIOMES; b++)
-    if (g_bx0[b] < 0) g_bx0[b] = g_bx1[b] = (float)WORLD_W;
+  g_bfirst = -1, g_blast = 0;
+  for (int b = 0; b < BIOMES; b++) {
+    if (g_bx0[b] < 0) { g_bx0[b] = g_bx1[b] = (float)WORLD_W; continue; }
+    if (g_bfirst < 0 || g_bx0[b] < g_bx0[g_bfirst]) g_bfirst = b;
+    if (g_bx1[b] >= g_bx1[g_blast] || g_bx1[g_blast] >= (float)WORLD_W) g_blast = b;
+  }
   for (int x = 0; x <= WORLD_W; x++) {
     float m = 0;
     for (int k = -7; k <= 7; k++) {
@@ -1876,7 +2158,7 @@ void world_backdrop(game *g) {
   /* the sun over the meadow, a pale moon-glow over the caves' far end, an ash-red sun behind the volcano */
   t3_texture *rad = tex_alpha(128, 128, radial_fn);
   g_sun = sprite_quad(rad, 0.5f * (g_bx0[0] + g_bx1[0]) + 26.0f, 56.0f, -160.0f, 90, 90, 3.2f, 2.6f, 1.6f, true, 1.0f);
-  sprite_quad(rad, 0.5f * (g_bx0[3] + g_bx1[3]) - 30.0f, 38.0f, -158.0f, 70, 70, 3.0f, 0.9f, 0.3f, true, 0.8f);
+  sprite_quad(rad, 0.5f * (g_bx0[BIOME_VOLCANO] + g_bx1[BIOME_VOLCANO]) - 30.0f, 38.0f, -158.0f, 70, 70, 3.0f, 0.9f, 0.3f, true, 0.8f);
   sprite_quad(rad, 0.5f * (g_bx0[2] + g_bx1[2]) + 10.0f, 52.0f, -158.0f, 80, 80, 1.6f, 2.4f, 2.2f, true, 0.5f);
   t3_release(rad);
   /* clouds over the meadow and the ruins */
@@ -1906,8 +2188,8 @@ void world_backdrop(game *g) {
     float *pos = malloc(sizeof(float) * 3 * N * 2), *nor = malloc(sizeof(float) * 3 * N * 2), *col = malloc(sizeof(float) * 3 * N * 2);
     uint32_t *idx = malloc(sizeof(uint32_t) * 6 * N);
     for (int i = 0; i < N; i++) {
-      float x = g_bx0[3] - 60.0f + (float)i * (g_bx1[3] - g_bx0[3] + 140.0f) / (float)(N - 1);
-      float m = bmask(3, x);
+      float x = g_bx0[BIOME_VOLCANO] - 60.0f + (float)i * (g_bx1[BIOME_VOLCANO] - g_bx0[BIOME_VOLCANO] + 140.0f) / (float)(N - 1);
+      float m = bmask(BIOME_VOLCANO, x);
       for (int k = 0; k < 2; k++) {
         int v = i * 2 + k;
         pos[v * 3] = x, pos[v * 3 + 1] = k ? 26.0f : -4.0f, pos[v * 3 + 2] = -60.0f;
@@ -1955,7 +2237,7 @@ void world_backdrop(game *g) {
       if (broken && bd_seat(3, px + 0.8f, pz + 0.3f, 0.5f, 0.45f, 0.6f, &ry) && fabsf(ry - cy) > 0.6f) ry = NAN, g_nplaced--; /* rubble only beside its own column */
       column_prop(&back, px, cy, pz, 3.5f + 4.0f * hh(x, 3, 171), x, broken, ry);
     }
-    for (int x = (int)g_bx0[3]; x < (int)g_bx1[3] - 20; x += 6 + (int)(hh(x, 1, 172) * 4)) {
+    for (int x = (int)g_bx0[BIOME_VOLCANO]; x < (int)g_bx1[BIOME_VOLCANO] - 20; x += 6 + (int)(hh(x, 1, 172) * 4)) {
       float s = 1.6f + hh(x, 3, 172);
       /* a spire of rock juts from the scree: steeper ground is fine, its uphill side sinks in */
       if (FIND(x, 6, -7.5f - 2.5f * hh(x, 2, 172), 2.5f, 0.34f * s, 0.34f * s + 0.05f, 0.8f)) lava_spire(&back, &backglow, px, py, pz, x, s);

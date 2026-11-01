@@ -10,3 +10,12 @@ grade/meadow.cube
 grade/caves.cube
 grade/ruins.cube
 grade/volcano.cube
+gore.png
+grade/frost.cube
+music/title.xm
+music/world1.xm
+music/world2.xm
+music/world3.xm
+music/world4.xm
+music/world5.xm
+music/boss.xm

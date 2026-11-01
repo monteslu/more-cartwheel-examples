@@ -6,6 +6,7 @@
 #include "game.h"
 
 game G;
+bool g_bot_no_run; /* COOP_BOT_NO_RUN: the levels gate's control: bots that never hold Run */
 
 enum { EV_JUMP = 1, EV_LAND = 2, EV_COIN = 4, EV_HURT = 8, EV_SPLASH = 16, EV_DASH = 32, EV_POWER = 64, EV_STOMP = 128,
        EV_BREAK = 256, EV_BUBBLE = 512, EV_POP = 1024, EV_DIE = 2048, EV_WIN = 4096, EV_CHECK = 8192, EV_WALL = 16384 };
@@ -27,7 +28,8 @@ static cw_platformer2d_def player_def(void) {
   d.air_jumps = 1;
   d.wall_jump = true;
   d.dash_speed = 17;
-  d.run_speed = 8.5f;
+  d.run_speed = WALK_SPEED;
+  d.jump_height = JUMP_STAND;
   d.wall_slide_speed = 2.6f;
   d.wall_jump_speed_x = 8.5f;
   d.wall_jump_speed_y = 13.5f;
@@ -44,6 +46,7 @@ static void place_player(game *g, int i, float x, float y) {
   p->pf.max_air_jumps = (g->abilities & AB_DOUBLE) ? 1 : 0;
   p->alive = true;
   p->bubble = 0;
+  p->run = 0, p->launched = 0, p->launch_vx = 0, p->pancake = 0, p->in_jump = false;
   p->hp = 3;
   p->invuln = 90;
 }
@@ -51,10 +54,13 @@ static void place_player(game *g, int i, float x, float y) {
 void sim_reset(game *g, int players) {
   uint32_t keep_ab = g->abilities;
   world_destroy_physics(g);
-  world_generate(&g->L, 7);
+  world_generate(&g->L, g->level);
   memset(g->p, 0, sizeof g->p);
   g->nplayers = players;
   g->tick = 0;
+  g->margin_jump = g->margin_run = 1;
+  memset(g->last_jump, 0, sizeof g->last_jump);
+  g->top_speed = 0;
   g->abilities = keep_ab;
   g->coins_total = g->kills = g->deaths = g->rescues = g->secrets = 0;
   g->won = 0;
@@ -63,7 +69,10 @@ void sim_reset(game *g, int players) {
   g->reached = 0;
   g->hitstop = g->hit_flash = g->hitstops = 0;
   g->events = 0;
-  g->boss_hp = 9;
+  g->boss_hp = 0;
+  for (int k = 0; k < g->L.nenemies; k++) if (g->L.enemies[k].kind == 2) g->L.enemies[k].hp = 5 + g->L.boss_kind, g->boss_hp = g->L.enemies[k].hp;
+  memset(g->betrayals, 0, sizeof g->betrayals);
+  g->things_hit = 0;
   g->hash = 2166136261u;
   memset(g->seen, 0, sizeof g->seen);
   world_build_physics(g);
@@ -90,7 +99,8 @@ void sim_respawn_player(game *g, int i) {
 static float pos_x(const player *p) { return (float)p->pf.body.position.x; }
 static float pos_y(const player *p) { return (float)p->pf.body.position.y; }
 
-static void hurt_player(game *g, int i, float kx, int dmg) {
+static void note_death(game *g, int i, int cause);
+static void hurt_player(game *g, int i, float kx, int dmg, int cause) {
   player *p = &g->p[i];
   if (p->invuln > 0 || p->bubble || !p->alive) return;
   p->hp -= dmg;
@@ -109,16 +119,23 @@ static void hurt_player(game *g, int i, float kx, int dmg) {
     p->alive = false;
     g->deaths++;
     g->events |= EV_DIE;
+    note_death(g, i, cause);
   }
 }
 
-static void kill_player(game *g, int i) {
+static void note_death(game *g, int i, int cause) {
+  player *p = &g->p[i];
+  p->die_cause = cause;
+  if (g->ndeaths_q < 8) g->deaths_q[g->ndeaths_q++] = (typeof(g->deaths_q[0])){ (float)p->pf.body.position.x, (float)p->pf.body.position.y, i, cause };
+}
+static void kill_player(game *g, int i, int cause) {
   player *p = &g->p[i];
   if (!p->alive || p->bubble) return;
   p->hp = 0;
   p->alive = false;
   g->deaths++;
   g->events |= EV_DIE;
+  note_death(g, i, cause);
 }
 
 static int others_alive(const game *g, int self) {
@@ -144,7 +161,7 @@ static void enemy_step(game *g, enemy *e, float dt) {
     e->y = e->home_x * 0 + (float)L->ground[(int)e->x < 0 ? 0 : (int)e->x >= WORLD_W ? WORLD_W - 1 : (int)e->x] + 2.2f + tri * 1.6f;
     return;
   }
-  float sp = e->kind == 2 ? 3.2f : 1.8f;
+  float sp = e->kind == 2 ? 3.2f + 0.45f * (float)L->boss_kind : 1.8f;
   float tx = 0;
   if (e->kind == 2) { /* boss: chases the nearest player inside the arena, leaps now and then */
     float best = 1e9f;
@@ -156,7 +173,7 @@ static void enemy_step(game *g, enemy *e, float dt) {
     if (best < 1e8f) e->dir = tx > 0 ? 1 : -1;
     bool awake = best <= 28 * 28; /* asleep until a player comes near: it neither walks nor leaps */
     if (!awake) sp = 0;
-    if (awake && (g->tick % 150) == 0 && e->vy == 0) e->vy = 11.0f;
+    if (awake && (g->tick % (150 - 12 * L->boss_kind)) == 0 && e->vy == 0) e->vy = 11.0f + 0.5f * (float)L->boss_kind;
   }
   float nx = e->x + (float)e->dir * sp * dt;
   bool wall = world_solid(L, (int)floorf(nx + (float)e->dir * half), (int)floorf(e->y + 0.3f)) ||
@@ -262,10 +279,173 @@ static void camera_step(game *g, float dt) {
   }
 }
 
+/* ── the things in a level ────────────────────────────────────────── */
+static float thing_tri(float t) { float f = t - floorf(t); return f < 0.5f ? f * 2 : 2 - f * 2; }
+
+/* what a thing does to one player's movement this tick: shared with the reachability check, so what it proves is real */
+static void things_move(game *g, player *p, const input_state *is, float dt) {
+  level *L = &g->L;
+  cw_platformer2d *pf = &p->pf;
+  float fx = pos_x(p), fy = pos_y(p);
+  for (int k = 0; k < L->nthings; k++) {
+    thing *t = &L->things[k];
+    float dx = fx - t->x, dy = fy - t->y;
+    switch (t->kind) {
+      case TH_SPRING:
+        if (fabsf(dx) < t->w && dy > -0.2f && dy < 0.45f && pf->body.velocity.y <= 0.5f) {
+          pf->body.velocity.y = 23.0f, pf->body.on_floor = false, p->launched = 40, p->jump_fx = 1;
+          g->things_hit++;
+          g->events |= EV_JUMP;
+        }
+        break;
+      case TH_FAN:
+        if (fabsf(dx) < t->w && fy > t->y - 0.5f && fy < t->y + t->h) {
+          float top = 1.0f - fminf(1.0f, fmaxf(0.0f, (fy - t->y) / t->h)); /* weaker at the top: you hang there */
+          float v = pf->body.velocity.y;
+          v += (40.0f + 90.0f * top) * dt;
+          pf->body.velocity.y = v > 10.0f ? 10.0f : v;
+          pf->body.on_floor = false;
+          p->launched = p->launched < 2 ? 2 : p->launched;
+        }
+        break;
+      case TH_CANNON:
+        if (fabsf(dx) < t->w + 0.2f && dy > -0.2f && dy < 1.6f && is->jump_pressed) {
+          pf->body.velocity = (cw_vec2){ t->a, t->b };
+          pf->body.on_floor = false;
+          pf->facing = t->a > 0 ? 1 : -1;
+          p->launched = 70, p->launch_vx = t->a, p->jump_fx = 2;
+          g->things_hit++;
+          g->events |= EV_BREAK;
+        }
+        break;
+      case TH_PLATE:
+        if (fabsf(dx) < t->w && dy > -0.2f && dy < 0.4f) {
+          t->pressed = true;
+          if (t->link >= 0) {
+            thing *d = &L->things[t->link];
+            if (g->reach && d->state == 0) g->reach_changed = true;
+            d->state = g->reach ? 1 << 30 : (d->state < (int)t->a ? (int)t->a : d->state);
+            if (g->reach) cw_body2d_set_transform(d->body, (cw_xform2){ { d->x + d->w * 0.5f, d->y + d->h * 1.5f }, { 1, 0 } });
+          }
+        }
+        break;
+      default: break;
+    }
+  }
+}
+
+/* the things move on their own: a tick of the clock (only in play: the reachability check holds them still) */
+static void things_step(game *g, float dt) {
+  level *L = &g->L;
+  for (int k = 0; k < L->nthings; k++) {
+    thing *t = &L->things[k];
+    switch (t->kind) {
+      case TH_SAW: {
+        float ph = (float)g->tick * dt * t->b / (t->a * 4.0f + 0.01f) + t->c;
+        t->t = t->x + t->a * (thing_tri(ph) * 2.0f - 1.0f);
+        break;
+      }
+      case TH_PRESS: {
+        int ph = (g->tick + (int)t->b) % (int)t->a, slam = (int)t->a - 60;
+        /* up, a drop in 10 ticks, a rest of 20, 30 back up */
+        float d = ph < slam ? 0.0f : ph < slam + 10 ? (float)(ph - slam) / 10.0f : ph < slam + 30 ? 1.0f : 1.0f - (float)(ph - slam - 30) / 30.0f;
+        t->dy = d;
+        break;
+      }
+      case TH_FALLER:
+        if (t->state == 0) {
+          for (int i = 0; i < g->nplayers; i++) {
+            const player *p = &g->p[i];
+            if (p->joined && p->alive && !p->bubble && pos_x(p) > t->x - 4.5f && pos_x(p) < t->x + 1.0f) t->state = 1, t->t = 0;
+          }
+        } else if (t->state == 1) {
+          t->t += dt;
+          t->dy = 19.0f * t->t * t->t;
+          if (t->dy >= t->h) t->dy = t->h, t->state = 2, t->t = 0, g->events |= EV_LAND, sim_rumble_at(g, t->x, t->y, 0.5f);
+        } else {
+          t->t += dt;
+          if (t->t > 6.0f) t->state = 0, t->dy = 0, t->t = 0; /* another one is on its way up there */
+        }
+        break;
+      case TH_CRUMBLE: {
+        bool on = false;
+        if (t->state < 2)
+          for (int i = 0; i < g->nplayers; i++) {
+            const player *p = &g->p[i];
+            float dx = pos_x(p) - (t->x + 0.5f), dy = pos_y(p) - (t->y + 1.0f);
+            if (p->joined && p->alive && !p->bubble && p->pf.body.on_floor && fabsf(dx) < 0.85f && fabsf(dy) < 0.25f) on = true;
+          }
+        if (t->state == 0 && on) t->state = 1, t->t = 0;
+        else if (t->state == 1) {
+          t->t += dt;
+          if (t->t > 0.55f) {
+            t->state = 2, t->t = 0;
+            cw_body2d_set_transform(t->body, (cw_xform2){ { t->x + 0.5f, -40.0f }, { 1, 0 } });
+            L->t[(int)t->y][(int)t->x] = T_AIR;
+            g->events |= EV_BREAK;
+          }
+        } else if (t->state == 2) {
+          t->t += dt;
+          if (t->t > 5.0f) {
+            bool clear = true;
+            for (int i = 0; i < g->nplayers; i++) if (fabsf(pos_x(&g->p[i]) - (t->x + 0.5f)) < 1.0f && fabsf(pos_y(&g->p[i]) - t->y) < 1.6f) clear = false;
+            if (clear) {
+              t->state = 0, t->t = 0;
+              cw_body2d_set_transform(t->body, (cw_xform2){ { t->x + 0.5f, t->y + 0.5f }, { 1, 0 } });
+              L->t[(int)t->y][(int)t->x] = T_CRUMBLE;
+            }
+          }
+        }
+        break;
+      }
+      case TH_DOOR: {
+        /* it does not come down on anyone standing in the doorway */
+        bool under = false;
+        for (int i = 0; i < g->nplayers; i++) {
+          const player *p = &g->p[i];
+          if (p->joined && !p->bubble && pos_x(p) > t->x - 0.4f && pos_x(p) < t->x + t->w + 0.4f && pos_y(p) < t->y + t->h) under = true;
+        }
+        if (t->state > 0 && !(t->state == 1 && under)) t->state--;
+        t->dy += ((t->state > 0 ? t->h : 0.0f) - t->dy) * fminf(1.0f, 10.0f * dt); /* slides up into the wall, drops back when time is up */
+        cw_body2d_set_transform(t->body, (cw_xform2){ { t->x + t->w * 0.5f, t->y + t->h * 0.5f + t->dy }, { 1, 0 } });
+        break;
+      }
+      case TH_PLATE: t->pressed = false; break; /* a player's step presses it again below */
+      default: break;
+    }
+  }
+}
+
+/* what the things do to a player: a saw, a press and a falling object end things at once */
+static void things_hurt(game *g, int i) {
+  level *L = &g->L;
+  player *p = &g->p[i];
+  if (p->invuln > 0 || p->bubble || !p->alive) return;
+  float fx = pos_x(p), fy = pos_y(p);
+  for (int k = 0; k < L->nthings; k++) {
+    const thing *t = &L->things[k];
+    switch (t->kind) {
+      case TH_SAW: {
+        float dx = fx - t->t, dy = fy + 0.7f - t->y;
+        if (dx * dx + dy * dy < 1.05f * 1.05f) kill_player(g, i, DIE_SAW);
+        break;
+      }
+      case TH_PRESS:
+        if (fabsf(fx - t->x) < t->w && t->dy > 0.8f && fy < t->y + 2.0f) kill_player(g, i, DIE_PRESS);
+        break;
+      case TH_FALLER:
+        if (t->state == 1 && fabsf(fx - t->x) < t->w && fy + 1.5f > t->y + t->h - t->dy - 0.2f && fy < t->y + t->h - t->dy + 2.0f) kill_player(g, i, DIE_FALLER);
+        break;
+      default: break;
+    }
+    if (!p->alive) return;
+  }
+}
+
 /* one player's movement for one tick: the water they are in, their abilities, the controller. The reachability check
  * (reach.c) moves its players through this too, so what it proves is what the game does. True when in water. */
 bool sim_player_move(game *g, player *p, const input_state *is, float dt) {
-  const level *L = &g->L;
+  level *L = &g->L;
   cw_platformer2d *pf = &p->pf;
   float cx = pos_x(p), cy = pos_y(p) + 0.7f;
   int tc = tile_at(L, cx, cy);
@@ -275,9 +455,53 @@ bool sim_player_move(game *g, player *p, const input_state *is, float dt) {
   pf->can_dash = (g->abilities & AB_DASH) != 0;
   pf->can_wall_jump = (g->abilities & AB_CLAWS) != 0;
   pf->max_air_jumps = (g->abilities & AB_DOUBLE) ? 1 : 0;
-  cw_platformer2d_input pin = { .move_x = is->x, .move_y = is->y, .jump_pressed = is->jump_pressed, .jump_held = is->jump_held,
+  things_move(g, p, is, dt);
+  /* momentum: West held while moving builds it on the ground, letting go or stopping drains it, a wall ends it. It is kept
+   * through a jump, so the speed and height a run built carry the whole way across */
+  float vx0 = pf->body.velocity.x;
+  bool moving = is->x > 0.2f || is->x < -0.2f, against = moving && vx0 * is->x < -0.5f;
+  if (in_water) p->run = 0;
+  else if (pf->body.on_floor) {
+    if (is->run && moving && !against) p->run = fminf(1.0f, p->run + dt / RUN_BUILD);
+    else p->run = fmaxf(0.0f, p->run - dt / (against ? RUN_DROP * 0.4f : RUN_DROP));
+    if (pf->body.on_wall && moving) p->run = 0;
+  }
+  /* underfoot: ice lets go of you, and a belt carries you */
+  {
+    int ty = (int)floorf(pos_y(p) - 0.2f), tx = (int)floorf(pos_x(p));
+    int under = pf->body.on_floor && tx >= 0 && tx < WORLD_W && ty >= 0 && ty < WORLD_H ? L->t[ty][tx] : T_AIR;
+    pf->def.ground_accel = under == T_ICE ? 14.0f : 70.0f;
+    pf->def.ground_brake = under == T_ICE ? 7.0f : 90.0f;
+    if (under == T_BELT) {
+      float nx = pos_x(p) + L->belt[tx] * dt, ahead = nx + (L->belt[tx] > 0 ? 0.4f : -0.4f);
+      if (!world_solid(L, (int)floorf(ahead), (int)floorf(pos_y(p) + 0.3f))) pf->body.position.x = nx;
+    }
+  }
+  pf->def.run_speed = (WALK_SPEED + (RUN_SPEED - WALK_SPEED) * p->run) * g->margin_run;
+  if (p->launched > 0 && p->launch_vx != 0 && fabsf(p->launch_vx) > pf->def.run_speed) pf->def.run_speed = fabsf(p->launch_vx); /* a cannon's speed is not braked to a run */
+  pf->def.jump_height = (JUMP_STAND + (JUMP_RUN - JUMP_STAND) * p->run) * g->margin_jump;
+  cw_platformer2d_input pin = { .move_x = is->x, .move_y = is->y, .jump_pressed = is->jump_pressed, .jump_held = is->jump_held || p->launched > 0,
                                 .dash_pressed = is->dash_pressed, .down_held = is->down };
+  if (p->launched > 0) {
+    p->launched--;
+    if (pf->body.on_floor && pf->body.velocity.y <= 0) p->launched = 0;
+    /* a cannon's throw is a throw: letting go of the stick does not stop it, pushing back does */
+    if (p->launch_vx != 0 && p->launched > 0 && (is->x > -0.2f && is->x < 0.2f)) pin.move_x = p->launch_vx > 0 ? 1.0f : -1.0f;
+    if (p->launched == 0) p->launch_vx = 0;
+  }
   cw_platformer2d_step(pf, &pin, dt);
+  /* the measurement of a jump: from the ground it left to the ground it lands on */
+  float fx = pos_x(p), fy = pos_y(p);
+  if (pf->events & CW_PF_JUMP) p->in_jump = true, p->jump_x = fx, p->jump_y = fy, p->jump_top = fy, g->last_jump[2] = fabsf(vx0);
+  if (p->in_jump) {
+    if (fy > p->jump_top) p->jump_top = fy;
+    if (pf->events & (CW_PF_LAND | CW_PF_AIR_JUMP | CW_PF_WALL_JUMP | CW_PF_DASH)) {
+      if (pf->events & CW_PF_LAND) g->last_jump[0] = fabsf(fx - p->jump_x), g->last_jump[1] = p->jump_top - p->jump_y;
+      p->in_jump = false;
+    }
+  }
+  float sp = fabsf((float)pf->body.velocity.x);
+  if (pf->dash_t <= 0 && sp > g->top_speed) g->top_speed = sp;
   return in_water;
 }
 
@@ -321,6 +545,8 @@ bool sim_pickup_touch(const pickup *pk, float fx, float fy) {
 void sim_step(game *g, const input_state in[MAX_PLAYERS], float dt) {
   level *L = &g->L;
   g->events = 0;
+  g->ndeaths_q = 0;
+  g->ngrief_q = 0;
   g->tick++;
   if (g->hit_flash > 0) g->hit_flash--;
   if (g->hitstop > 0) { /* hit-stop: the world stands still for a few ticks so a hit lands with weight */
@@ -342,10 +568,12 @@ void sim_step(game *g, const input_state in[MAX_PLAYERS], float dt) {
     float x = m->x0 + (m->x1 - m->x0) * tri, y = m->y0 + (m->y1 - m->y0) * tri;
     cw_body2d_set_target(m->body, (cw_xform2){ { x, y }, { 1, 0 } }, dt);
   }
+  things_step(g, dt);
   for (int i = 0; i < g->nplayers; i++) {
     player *p = &g->p[i];
     if (!p->joined) continue;
     p->land_fx = p->jump_fx = 0;
+    if (p->pancake > 0) p->pancake--;
     if (p->invuln > 0) p->invuln--;
     if (p->bubble) continue;
     if (!p->alive) {
@@ -396,9 +624,12 @@ void sim_step(game *g, const input_state in[MAX_PLAYERS], float dt) {
     /* hazards */
     float fx = pos_x(p), fy = pos_y(p);
     int tf = tile_at(L, fx, fy + 0.15f), tb = tile_at(L, fx, fy + 0.9f);
-    if (tf == T_SPIKE || tb == T_SPIKE) hurt_player(g, i, pf->body.velocity.x >= 0 ? -1.0f : 1.0f, 1);
-    if (tile_at(L, fx, fy + 0.2f) == T_LAVA || tile_at(L, fx, fy) == T_LAVA) kill_player(g, i);
-    if (fy < 2.2f) kill_player(g, i);
+    if (tf == T_SPIKE || tb == T_SPIKE) hurt_player(g, i, pf->body.velocity.x >= 0 ? -1.0f : 1.0f, 1, DIE_SPIKE);
+    if (tile_at(L, fx, fy + 0.2f) == T_LAVA || tile_at(L, fx, fy) == T_LAVA) kill_player(g, i, DIE_LAVA);
+    if (fy < 2.2f) kill_player(g, i, DIE_PIT);
+    things_hurt(g, i);
+    /* the goal: walk into the booth (a boss level ends with the boss) */
+    if (!L->boss_x && !g->won && L->goal_x > 0 && fx >= (float)L->goal_x) g->won = 1, g->win_tick = g->tick, g->events |= EV_WIN;
     /* checkpoints: touching a flag (its column, from the ground to a jump above it) makes it the respawn point */
     for (int k = 0; k < L->nchecks; k++) {
       float dx = fx - ((float)L->checks[k].x + 0.5f), dy = fy - (float)L->checks[k].y;
@@ -439,6 +670,26 @@ void sim_step(game *g, const input_state in[MAX_PLAYERS], float dt) {
       }
   }
   cw_world2d_step(g->world, dt);
+  /* landing on a friend's head: you bounce, they go flat for a moment. Nobody is hurt. Nobody forgets */
+  for (int i = 0; i < g->nplayers; i++) {
+    player *a = &g->p[i];
+    if (!a->joined || !a->alive || a->bubble || a->pf.body.velocity.y > -2.0f) continue;
+    for (int k = 0; k < g->nplayers; k++) {
+      player *b = &g->p[k];
+      if (k == i || !b->joined || !b->alive || b->bubble || b->pancake > 0) continue;
+      float dx = pos_x(a) - pos_x(b), dy = pos_y(a) - pos_y(b);
+      if (fabsf(dx) < 0.55f && dy > 1.1f && dy < 1.7f) {
+        a->pf.body.velocity.y = 12.0f;
+        b->pancake = 45;
+        a->jump_fx = 1;
+        g->betrayals[i]++;
+        g->events |= EV_STOMP;
+        if (g->ngrief_q < 4) g->grief_q[g->ngrief_q++] = (typeof(g->grief_q[0])){ pos_x(b), pos_y(b), i, k };
+        sim_rumble(g, k, 0.2f, 0.5f, 90);
+        break;
+      }
+    }
+  }
   /* enemies and contact */
   for (int k = 0; k < L->nenemies; k++) {
     enemy *e = &L->enemies[k];
@@ -472,7 +723,7 @@ void sim_step(game *g, const input_state in[MAX_PLAYERS], float dt) {
           if (e->kind == 2 && !g->won) g->won = 1, g->win_tick = g->tick, g->events |= EV_WIN;
         }
       } else if (e->hurt == 0 || e->kind != 2) {
-        hurt_player(g, i, dx >= 0 ? 1.0f : -1.0f, 1);
+        hurt_player(g, i, dx >= 0 ? 1.0f : -1.0f, 1, e->kind == 2 ? DIE_BOSS : DIE_ENEMY);
       }
     }
   }
@@ -588,6 +839,7 @@ void sim_bot_input(const game *g, int i, input_state *in) {
     if (g->p[k].joined && g->p[k].alive && !g->p[k].bubble && pos_x(&g->p[k]) < minx) minx = pos_x(&g->p[k]);
   (void)minx;
   in->x = 1.0f; /* nobody waits: a straggler is carried to the group in a bubble (that is the co-op rule being tested) */
+  in->run = !g_bot_no_run; /* the bots run everywhere, as a person does */
   bool wet = pf->submerged > 0.5f;
   if (wet) {
     /* swim: stroke up when below the surface line or blocked, cross to the right */
@@ -612,7 +864,7 @@ void sim_bot_input(const game *g, int i, input_state *in) {
   if (!pf->body.on_floor && (g->abilities & AB_CLAWS)) {
     bool lw = false, rw = false;
     for (int k = 1; k <= 5; k++) {
-      for (int dy = 1; dy <= 2; dy++) { /* beside the body, above the ground */
+      for (int dy = 1; dy <= 6; dy++) { /* beside the body and over it: the near wall of a shaft stands on a low door */
         if (world_solid(L, (int)floorf(x) - k, (int)floorf(y) + dy)) lw = true;
         if (world_solid(L, (int)floorf(x) + k, (int)floorf(y) + dy)) rw = true;
       }
@@ -623,6 +875,17 @@ void sim_bot_input(const game *g, int i, input_state *in) {
       in->jump_held = true;
       return;
     }
+  }
+  /* a cannon under the feet: climb in and press jump */
+  for (int k = 0; k < L->nthings; k++) {
+    const thing *t = &L->things[k];
+    if (t->kind == TH_CANNON && fabsf(x - t->x) < t->w && y - t->y > -0.2f && y - t->y < 1.6f) {
+      in->jump_pressed = true, in->jump_held = true;
+      return;
+    }
+    /* a saw on its way, jump it; a press about to come down, wait for it */
+    if (pf->body.on_floor && t->kind == TH_SAW && fabsf(t->t - (x + 2.2f)) < 1.6f && fabsf(t->y - (y + 0.7f)) < 1.6f) { in->jump_pressed = true, in->jump_held = true; return; }
+    if (pf->body.on_floor && t->kind == TH_PRESS && x < t->x && t->x - x < 4.0f && ((g->tick + (int)t->b) % (int)t->a) > (int)t->a - 100) { in->x = 0; in->run = false; return; }
   }
   /* wall jumps are for shafts: on the face of an ordinary wall the bot lets go and slides down to try again */
   if (pf->body.on_wall && !pf->body.on_floor && (g->abilities & AB_CLAWS) && in_shaft) {
@@ -657,7 +920,9 @@ void sim_bot_input(const game *g, int i, input_state *in) {
     }
   }
   if (!pf->body.on_floor && pf->wall_lock > 0) in->x = (float)pf->facing;
-  float ax1 = x + 1.0f, ax2 = x + 2.2f;
+  /* at a run, take off at the edge: a jump from 2 m back spends 2 m of the jump on ground */
+  bool fast = fabsf((float)pf->body.velocity.x) > 8.5f;
+  float ax1 = x + 1.0f, ax2 = x + (fast ? 0.75f : 2.2f);
   int fy = (int)floorf(y + 0.05f);
   bool wall_ahead = world_solid(L, (int)floorf(ax1), fy) || world_solid(L, (int)floorf(ax1), fy + 1);
   bool ground2 = false, haz2 = false;
@@ -670,18 +935,30 @@ void sim_bot_input(const game *g, int i, input_state *in) {
   int t1 = tile_at(L, ax1, y + 0.1f), t2 = tile_at(L, ax2, y + 0.1f);
   haz2 = t1 == T_SPIKE || t2 == T_SPIKE || t1 == T_LAVA || t2 == T_LAVA;
   int ft = tile_at(L, ax1, y - 0.5f);
-  bool pit = !ground2 || (ft == T_AIR && !world_solid(L, (int)floorf(ax1), fy - 1) && !world_solid(L, (int)floorf(ax1), fy - 2));
+  bool pit = !ground2 || (!fast && ft == T_AIR && !world_solid(L, (int)floorf(ax1), fy - 1) && !world_solid(L, (int)floorf(ax1), fy - 2));
   /* a ledge or ceiling ahead high up: just keep going */
   if (pf->body.on_floor) {
     /* cracked blocks guard side rooms, never the way on: the bots leave them alone (a bot that dashes into a pocket
      * only walks into its far wall) */
     /* a tall wall of cracked rock across the way (a dash gate): dash through it. Short cracks guard side rooms: leave them */
-    bool tall_crack = tile_at(L, x + 1.6f, y + 0.6f) == T_CRACK && tile_at(L, x + 1.6f, y + 6.5f) == T_CRACK && tile_at(L, x + 1.6f, y + 12.5f) == T_CRACK;
+    bool tall_crack = false;
+    for (float fw = 0.5f; fw <= 1.61f; fw += 0.55f)
+      if (tile_at(L, x + fw, y + 0.6f) == T_CRACK && tile_at(L, x + fw, y + 3.5f) == T_CRACK) tall_crack = true;
     if (tall_crack && (g->abilities & AB_DASH) && pf->dash_cd <= 0) in->dash_pressed = true;
     else if (wall_ahead || haz2 || pit) in->jump_pressed = true, in->jump_held = true;
     /* a high ledge at the cave shaft or a stack of steps: try again if blocked for long */
     if (!in->jump_pressed && x - minx < 0.01f && g->tick % 120 == 0 && wall_ahead) in->jump_pressed = true;
   } else {
+    /* in the air over somewhere to land with a gap coming: ease off and land here, as a person does, instead of sailing
+     * on into the far wall of the gap */
+    if (vy < 3.0f && pf->wall_lock <= 0) {
+      bool here = false, ahead = false;
+      for (int dy = 0; dy <= 9; dy++) {
+        if (world_solid(L, (int)floorf(x), (int)floorf(y) - dy)) here = true;
+        if (world_solid(L, (int)floorf(x + 1.8f), (int)floorf(y) - dy)) ahead = true;
+      }
+      if (here && !ahead) in->x = pf->body.velocity.x > 2.0f ? -0.8f : 0.0f;
+    }
     in->jump_held = vy > 0 ? true : false;
     if (vy > 0 && pf->coyote <= 0) in->jump_held = true;
     /* a chasm (not a mere drop): nothing solid for 12 tiles below the feet */

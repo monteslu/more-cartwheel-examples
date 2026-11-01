@@ -8,10 +8,13 @@ cw_add_app(coopplatformer_auto SOURCES ${SRC} PACK ${CMAKE_CURRENT_SOURCE_DIR}/a
 target_compile_definitions(coopplatformer_auto PRIVATE COOP_AUTOPILOT=1)
 add_dependencies(coopplatformer_auto_pack coopplatformer_pack)
 # gate variants: the same autopilot with a start the cart hosts (which have no environment) can run
-#   _auto4: four players from the start; _auto_boss: two players at the boss arena with every ability
-foreach(variant auto4 auto_boss)
+#   _auto4: four players from the start; _auto_boss: two players at the first boss with every ability; _auto_caves: the first
+#   level with caves in it, where the torches are; _auto_saw: two bots that only walk, straight into the hedge trimmer
+foreach(variant auto4 auto_boss auto_caves auto_saw)
   cw_add_app(coopplatformer_${variant} SOURCES ${SRC} PACK ${CMAKE_CURRENT_SOURCE_DIR}/assets/roots.txt)
   add_dependencies(coopplatformer_${variant}_pack coopplatformer_pack)
 endforeach()
 target_compile_definitions(coopplatformer_auto4 PRIVATE COOP_AUTOPILOT=1 COOP_DEF_PLAYERS=4)
-target_compile_definitions(coopplatformer_auto_boss PRIVATE COOP_AUTOPILOT=1 COOP_DEF_PLAYERS=2 COOP_DEF_START_X=246 COOP_DEF_ABILITIES=7)
+target_compile_definitions(coopplatformer_auto_boss PRIVATE COOP_AUTOPILOT=1 COOP_DEF_PLAYERS=2 COOP_DEF_LEVEL=4 COOP_DEF_START_X=308 COOP_DEF_ABILITIES=7)
+target_compile_definitions(coopplatformer_auto_caves PRIVATE COOP_AUTOPILOT=1 COOP_DEF_PLAYERS=2 COOP_DEF_LEVEL=5)
+target_compile_definitions(coopplatformer_auto_saw PRIVATE COOP_AUTOPILOT=1 COOP_DEF_PLAYERS=2 COOP_DEF_LEVEL=3 COOP_DEF_START_X=12 COOP_DEF_WALK_ONLY=1)

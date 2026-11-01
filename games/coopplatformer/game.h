@@ -15,17 +15,25 @@
 #include "cartwheel/scene.h"
 #include "three.h"
 
-#define WORLD_W 288
+#define WORLD_W 1024
 #define WORLD_H 64
 #define MAX_PLAYERS 4
-#define MAX_ENEMIES 48
-#define MAX_COINS 160
+#define MAX_ENEMIES 32
+#define MAX_COINS 320
 #define MAX_PICKUPS 8
-#define MAX_PLATFORMS 12
+#define MAX_PLATFORMS 16
 #define MAX_BITS 8
+#define MAX_THINGS 256
+#define MAX_SIGNS 32
+#define MAX_CHECKS 32
+#define NWORLDS 5
 
-enum { T_AIR, T_ROCK, T_GRASS, T_ONEWAY, T_SPIKE, T_LAVA, T_WATER, T_CRACK, T_BRICK };
-enum { BIOME_MEADOW, BIOME_CAVES, BIOME_RUINS, BIOME_VOLCANO, BIOMES };
+enum { T_AIR, T_ROCK, T_GRASS, T_ONEWAY, T_SPIKE, T_LAVA, T_WATER, T_CRACK, T_BRICK, T_ICE, T_BELT, T_CRUMBLE, T_TILES };
+enum { BIOME_MEADOW, BIOME_CAVES, BIOME_RUINS, BIOME_FROST, BIOME_VOLCANO, BIOMES };
+/* what a level is made of besides tiles. Each has its rule in sim.c (things_*), its look in world.c (world_things_build) */
+enum { TH_SPRING, TH_FAN, TH_SAW, TH_PRESS, TH_FALLER, TH_CANNON, TH_PLATE, TH_DOOR, TH_CRUMBLE, TH_BOOTH };
+/* how a player died, for the death gags (main.c): the big ones belong to the things that do them */
+enum { DIE_SPIKE, DIE_LAVA, DIE_PIT, DIE_ENEMY, DIE_BOSS, DIE_SAW, DIE_PRESS, DIE_FALLER, DIE_KINDS };
 enum { AB_DOUBLE = 1, AB_CLAWS = 2, AB_DASH = 4 };
 enum { LAYER_WORLD = 0, LAYER_ONEWAY = 5, LAYER_PLAYER = 1 };
 
@@ -33,6 +41,17 @@ typedef struct pickup { int x, y, ability; bool taken; } pickup;
 typedef struct coin { float x, y; bool taken; bool secret; } coin;
 typedef struct checkpoint { int x, y; } checkpoint;
 typedef struct gate { int x0, x1, need, flag; } gate; /* an ability gate: columns x0..x1 cannot be crossed without `need`; flag = the last flag before it */
+typedef struct thing {
+  int kind;
+  float x, y, w, h;  /* base position (feet level, column left edge for wide things), size */
+  float a, b, c;     /* SAW range speed phase; PRESS period offset; CANNON vx vy; PLATE ticks open; FAN top */
+  int link;          /* PLATE: the door it opens */
+  float t, dy;       /* running state: FALLER drop, PRESS drop, DOOR rise, SAW x */
+  int state;         /* FALLER 0 hung 1 falling 2 down; CRUMBLE 0 sound 1 shaking 2 gone; DOOR ticks left open */
+  bool pressed;
+  cw_body2d body;    /* DOOR and CRUMBLE: a kinematic box */
+} thing;
+typedef struct sign_t { float x, y; const char *text; bool secret; } sign_t;
 typedef struct mplat { float x0, y0, x1, y1, w; float t, speed; cw_body2d body; } mplat;
 typedef struct enemy {
   int kind;            /* 0 walker, 1 flyer, 2 boss */
@@ -50,7 +69,13 @@ typedef struct level {
   gate gates[8];
   coin coins[MAX_COINS];
   pickup pickups[MAX_PICKUPS];
-  checkpoint checks[16];
+  checkpoint checks[MAX_CHECKS];
+  thing things[MAX_THINGS];
+  sign_t signs[MAX_SIGNS];
+  int nthings, nsigns;
+  float belt[WORLD_W];           /* conveyor speed of T_BELT tiles in each column */
+  int boss_kind;                 /* which boss this level's arena holds */
+  int width;                     /* the columns the level uses */
   mplat plats[MAX_PLATFORMS];
   enemy enemies[MAX_ENEMIES];
   int start_x, start_y, goal_x;
@@ -66,11 +91,27 @@ typedef struct player {
   int rescue_timer, off_screen, retry_t;
   float draw_x, draw_y;          /* interpolated feet, set at render */
   int anim;                      /* 0 idle 1 run 2 rise 3 fall 4 wall 5 swim 6 dash */
+  float run;                     /* running momentum 0..1: built on the ground, kept through a jump */
+  float jump_x, jump_y, jump_top; /* where the last jump left the ground and the highest the feet went (g.jump) */
+  bool in_jump;
+  int launched;                  /* ticks since a spring or cannon threw this player: the throw is not cut short */
+  float launch_vx;
+  int pancake;                   /* ticks of being flat: a friend landed on this head */
+  int die_cause;
   float run_phase, squash;
   int land_fx, jump_fx, hurt_fx; /* one-frame event flags for the renderer */
 } player;
 
-typedef struct input_state { float x, y; bool jump_pressed, jump_held, dash_pressed, down, retry; } input_state;
+typedef struct input_state { float x, y; bool jump_pressed, jump_held, dash_pressed, run, down, retry; } input_state;
+
+/* Running (West held): the speed and the height of a jump build with momentum. A standing jump is the short one, a running
+ * jump goes about twice as far and over a metre higher. RUN_BUILD seconds of running on the ground to full speed. */
+#define WALK_SPEED 6.2f
+#define RUN_SPEED 11.5f
+#define JUMP_STAND 3.0f
+#define JUMP_RUN 4.3f
+#define RUN_BUILD 1.0f
+#define RUN_DROP 0.3f
 
 typedef struct camera_rig {
   float x, y, z;       /* world focus and distance */
@@ -85,6 +126,9 @@ typedef struct game {
   player p[MAX_PLAYERS];
   int nplayers;
   uint32_t abilities;
+  float margin_jump, margin_run; /* the reachability check's margins on height and speed; 1 in play */
+  float last_jump[3];  /* the last jump to land: distance, rise, speed at takeoff (the running-jump gate reads these) */
+  float top_speed;     /* the fastest any player has run */
   int tick;
   int coins_total, kills, deaths, rescues, secrets;
   int boss_hp, won, win_tick;
@@ -101,9 +145,26 @@ typedef struct game {
   int hitstop;         /* ticks the whole world stands still after a hit (stomp, hurt, boss down) */
   int hit_flash;       /* ticks of screen flash the renderer shows after a hit */
   int paused_map;
+  int level;           /* the index in LEVELS */
+  bool reach;          /* the reachability check is running: things stay still and doors stay open once pressed */
+  bool reach_changed;  /* the check opened a door: its search starts again */
+  int betrayals[MAX_PLAYERS]; /* landing on a friend's head */
+  struct { float x, y; int who, cause; } deaths_q[8]; /* this tick's deaths for the renderer's gags (not in the hash) */
+  int ndeaths_q;
+  struct { float x, y; int who, victim; } grief_q[4];
+  int ngrief_q;
+  int things_hit;      /* landings on things: springs and cannons (a counter for tests) */
 } game;
 
+typedef struct gen gen;
+typedef struct level_info { const char *name; int world; void (*build)(gen *G); uint32_t abilities; const char *line; } level_info;
+extern const level_info *const LEVELS;
+extern int NLEVELS;
+void levels_set_worlds(int worlds); /* the worlds in the table (dev.worlds: a sweep can see one before it joins) */
+extern const char *const WORLD_NAMES[NWORLDS];
+
 extern game G;
+extern bool g_bot_no_run;
 
 /* chars.c: skinned characters (glTF from tools/blender/characters.py) posed in code */
 typedef struct rig rig;
@@ -120,12 +181,15 @@ void rig_pose_flyer(rig *r, float ph, float t);
 void rig_pose_boss(rig *r, float t, float rage);
 
 /* world.c */
-void world_generate(level *L, uint32_t seed);
+void world_generate(level *L, int index);
+void world_things_build(game *g);    /* the things' meshes */
+void world_things_sync(const game *g, float time); /* move them to where the rules have them */
+int world_things_check(const level *L, int *checked); /* things with no floor under them (or no ceiling over a press) */
 void world_build_physics(game *g);
 void world_destroy_physics(game *g);
 void world_scene_build(game *g, cw_node root);
 void world_scene_free(void);
-void world_update_water_mesh(float time);
+void world_update_water_mesh(float time, float cam_x);
 void world_update_backdrop(float time);
 int world_water_spans(float out[][4], int cap); /* x0, x1, bottom, surface */
 int world_lava_spans(float out[][4], int cap);

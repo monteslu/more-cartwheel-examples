@@ -1,10 +1,8 @@
 # coopplatformer (working title)
 
-A co-op side-scrolling platformer for one to four players on one shared screen. The camera pulls back to keep
-everyone in view; if you fall too far behind (or fall in a pit while a friend is still up) you are carried to the
-group in a bubble. Four regions are laid out left to right: a sunny meadow, torchlit caves, a flooded ruin and a
-volcano with a boss at the end. Three abilities open the way: an air jump, wall claws and a dash. A wooden
-hatch drops into each treasure room (Down + Jump; a jump and an air jump come back up, and a dash breaks the cracked wall beside it), a ledge high in the meadow hides coins, and the map screen shows where you have been.
+A co-op side-scrolling platformer for one to four players on one shared screen, in a world owned by the Management, who would like you to know it. Five worlds of five levels each (the meadow, the caves, the ruins, a frozen head office, the crater), each with its own music and boss, and something new in every level: springs, crumbling bridges, a hedge trimmer, falling pianos, belts, presses, doors, fans, ice, and a cannon that is also your severance package.
+
+The camera pulls back to keep everyone in view; if you fall too far behind (or die while a friend is still up) you are carried to the group in a bubble. Run first and jump further: a running jump goes more than twice as far as a standing one. Three abilities open the way as you go: an air jump, wall claws and a dash. A wooden hatch drops into each secret room (Down + Jump; a jump and an air jump come back up). The cute animals are not spared. Sometimes it is only a bubble. Sometimes it is not.
 
 ## Controls
 
@@ -12,13 +10,14 @@ hatch drops into each treasure room (Down + Jump; a jump and an air jump come ba
 |---|---|---|
 | Move | arrows / WASD | left stick / d-pad |
 | Jump (hold for height; twice with the air jump; off a wall with the claws) | Space / Z | A |
-| Dash | Shift / X | X |
+| Run (hold: speed builds, and a running jump goes much further and higher) | Shift / X | X |
+| Dash | C / F | right shoulder |
 | Drop through a wooden ledge | Down + Jump | Down + A |
 | Swim | stick, Jump to stroke | same |
-| Map (left and right pick a flag you have touched, Jump travels there) | M / Tab | Back |
+| Map (left and right pick a flag you have touched, up and down a level you have reached, Jump travels there) | M / Tab | Back |
 | Back to the last flag (hold one second; the way out of any pit or wedge) | R | Y |
 
-Stomp enemies from above. Spikes hurt, lava and pits do not forgive. Walk through a flag to set a checkpoint.
+Stomp enemies from above. Spikes hurt, lava, pits and machinery do not forgive. Landing on a friend's head bounces you and flattens them for a moment. It does no harm and it will be remembered. Walk through a flag to set a checkpoint. On a touch screen there is a stick and buttons for Jump, Run and Dash.
 
 The camera never shakes. A hit you take, a stomp you land, a long fall, the boss landing near you, its hits and its end are felt in your own pad instead (rumble; the boss and the blasts by how close you are).
 

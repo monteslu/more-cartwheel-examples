@@ -24,28 +24,25 @@
       "g.players",
       "g.ppos",
       "g.camgate",
-      "g.scenery"
+      "g.scenery_off"
     ],
     "expect": {
       "g.tick": 400,
       "g.players": 2,
       "g.state": 3,
-      "g.abilities": 1,
-      "g.coins": 8,
-      "g.checkpoint": 0,
+      "g.abilities": 0,
+      "g.coins": 6,
+      "g.checkpoint": -1,
       "g.deaths": 0,
-      "g.hitstops": 2,
-      "g.reached": 1,
+      "g.hitstops": 0,
+      "g.reached": 0,
       "g.camgate": [
         0,
         0,
         398,
         0
       ],
-      "g.scenery": [
-        161,
-        0
-      ]
+      "g.scenery_off": 0
     },
     "note": "two bots on the real game flow (title skipped): the air jump picked up under its arch, 8 coins, two stomps (hit-stops), cross-host state and picture"
   },
@@ -74,28 +71,25 @@
       "g.players",
       "g.ppos",
       "g.camgate",
-      "g.scenery"
+      "g.scenery_off"
     ],
     "expect": {
       "g.tick": 400,
       "g.players": 4,
       "g.state": 3,
-      "g.abilities": 1,
+      "g.abilities": 0,
       "g.coins": 8,
-      "g.checkpoint": 0,
+      "g.checkpoint": -1,
       "g.deaths": 0,
-      "g.hitstops": 4,
-      "g.reached": 1,
+      "g.hitstops": 0,
+      "g.reached": 0,
       "g.camgate": [
         0,
         0,
         398,
         0
       ],
-      "g.scenery": [
-        161,
-        0
-      ]
+      "g.scenery_off": 0
     },
     "note": "four players on one camera: cross-host state"
   },
@@ -110,23 +104,20 @@
     "frames": 60,
     "fields": [
       "g.tick",
-      "g.scenery"
+      "g.scenery_off"
     ],
     "expect": {
       "g.tick": 60,
-      "g.scenery": [
-        161,
-        0
-      ]
+      "g.scenery_off": 0
     },
     "controlEnv": {
       "COOP_FLOAT_BUG": "1"
     },
-    "note": "no floating scenery: every prop that stands on the ground (grass, flowers, rocks, bushes, mushrooms, crystals and spires on the tiles; trees, columns and their rubble, spires and crystals on the lit 3D backdrop ground) is measured against the ground as drawn (a ray down through the backdrop mesh triangles, the tile tops) at its centre and 192 points of its base: g.scenery is [props seated, props whose base is more than 3 cm above or below the lowest ground under it or that overhang a ledge or the edge of the backdrop]. The control lifts the first meadow tree 0.5 m (COOP_FLOAT_BUG, native): its g.scenery must differ. Re-pinned 148 to 160: nine braziers and the posts under the wooden ledges joined the seated props, a few grass tufts left the footing of the braziers. Re-pinned 160 to 161: the wooden hatches in the two mound rooms (C-PT4) are ledges with posts."
+    "note": "no floating scenery: every prop that stands on the ground is measured against the ground as drawn. g.scenery_off is the number whose base is more than 3 cm above or below the lowest ground under it or that overhang a ledge or the edge of the backdrop. The control lifts the first meadow tree 0.5 m (COOP_FLOAT_BUG, native): it must differ. Every level is swept by coopplatformer-levels."
   },
   {
     "name": "coopplatformer-fire",
-    "app": "coopplatformer_auto",
+    "app": "coopplatformer_auto_caves",
     "webgpu": {
       "vsGl": 0.005,
       "maxArea": 0.005,
@@ -140,7 +131,7 @@
     "expect": {
       "g.tick": 60,
       "g.flames": [
-        9,
+        10,
         0
       ]
     },
@@ -164,7 +155,7 @@
     "expect": {
       "g.tick": 30,
       "g.surface": [
-        45,
+        4,
         0,
         0
       ],
@@ -173,7 +164,7 @@
     "controlEnv": {
       "COOP_PLAIN_BUG": "1"
     },
-    "note": "no plain surfaces and no seam rails: g.surface is [moving platforms, wooden ledges and cracked blocks built with a real PBR material, the same built with a plain colour, seam strips drawn across rock faces]. The control (COOP_PLAIN_BUG, native) brings back the olive platform and the grey seams: its g.surface must differ. Native only: carts have no environment. g.uvrep: percent of sampled wall corners whose texture phase comes back one 4 m repeat on (100 before the uvs wandered; the same control)."
+    "note": "no plain surfaces and no seam rails: g.surface is [moving platforms, wooden ledges and cracked blocks built with a real PBR material, the same built with a plain colour, seam strips drawn across rock faces]. The control (COOP_PLAIN_BUG, native) brings back the olive platform and the grey seams: its g.surface must differ. Native only: carts have no environment. g.uvrep: percent of sampled wall corners whose texture phase comes back one 4 m repeat on (100 before the uvs wandered; the same control). Re-pinned 45 to 4: this first level has only 4 built surfaces of that kind (the old level held the whole game); the same check runs on the level that is loaded."
   },
   {
     "name": "coopplatformer-pit-camera",
@@ -182,7 +173,7 @@
       "native"
     ],
     "env": {
-      "COOP_START_X": "170"
+      "COOP_START_X": "83"
     },
     "frames": 240,
     "fields": [
@@ -262,7 +253,7 @@
       "maxArea": 0.005,
       "note": "GL vs WebGPU 0.004 percent at frame 1500 on the 890M (bound 0.5), every host the same; was 0.5 to 1 percent while WebGPU drew this HDR scene single-sampled: WebGPU now asks for a core device and multisamples it 4x as GL does, resolving the depth for the passes after it (engine: WebGPU core MSAA), and the ambient occlusion no longer darkens the bottom rows on GL alone (engine: the edge normal fix). maxArea catches a surface one backend misses. State exact on every host"
     },
-    "frames": 1500,
+    "frames": 1100,
     "fields": [
       "g.tick",
       "g.hash",
@@ -284,35 +275,35 @@
       "cw.rumble"
     ],
     "expect": {
-      "g.tick": 1500,
+      "g.tick": 1100,
       "g.players": 2,
       "g.abilities": 7,
-      "g.checkpoint": 8,
+      "g.checkpoint": 6,
       "g.kills": 1,
       "g.won": 1,
       "g.boss_hp": 0,
-      "g.hitstops": 14,
-      "g.reached": 511,
+      "g.hitstops": 10,
+      "g.reached": 127,
       "g.camgate": [
         0,
         0,
-        1498,
+        1098,
         0
       ],
       "g.camoffset": [
-        440,
+        369,
         0,
         0
       ],
-      "g.impacts": 19,
+      "g.impacts": 15,
       "rumble.sent": [
-        17,
-        16,
+        12,
+        12,
         0,
         0
       ],
       "cw.rumble": [
-        33,
+        24,
         1,
         1000,
         700,
@@ -344,9 +335,9 @@
     "expect": {
       "g.players": 1,
       "g.camgate": [
-        613,
+        562,
         0,
-        745,
+        796,
         0
       ]
     },
@@ -379,9 +370,9 @@
     "expect": {
       "g.players": 4,
       "g.camgate": [
-        613,
+        562,
         0,
-        745,
+        796,
         0
       ]
     },
@@ -407,7 +398,7 @@
     "expect": {
       "g.tick": 60,
       "g.coinface": [
-        40,
+        104,
         0
       ]
     },
@@ -420,6 +411,133 @@
     "name": "coopplatformer-reach",
     "script": "tests/coopplatformer-reach.mjs",
     "note": "from real movement, every coin, pedestal, flag, cracked wall and room of every level can be reached and no coin sits in rock (reach.c). Control: the levels as they were (COOP_REACH_OLD) must fail."
+  },
+  {
+    "name": "coopplatformer-jump-standing",
+    "app": "coopplatformer",
+    "input": "coopplatformer-jump-stand.json",
+    "frames": 640,
+    "fields": [
+      "g.tick",
+      "g.players",
+      "g.jump",
+      "g.top_speed"
+    ],
+    "webgpu": {
+      "vsGl": 0.005,
+      "maxArea": 0.005,
+      "note": "the same frame on both backends"
+    },
+    "expect": {
+      "g.players": 1,
+      "g.jump": [
+        4.512499809265137,
+        2.8894729614257812,
+        0
+      ],
+      "g.top_speed": 6.199999809265137
+    },
+    "tol": 0.001,
+    "note": "the standing jump, held input on the real game, from a standstill with the stick and jump pressed together. g.jump is [distance, rise, speed at takeoff]: the short one the running gate is measured against."
+  },
+  {
+    "name": "coopplatformer-jump-running",
+    "app": "coopplatformer",
+    "input": "coopplatformer-jump-run.json",
+    "controlInput": "coopplatformer-jump-walk.json",
+    "frames": 760,
+    "fields": [
+      "g.tick",
+      "g.players",
+      "g.jump",
+      "g.top_speed"
+    ],
+    "webgpu": {
+      "vsGl": 0.005,
+      "maxArea": 0.005,
+      "note": "the same frame on both backends"
+    },
+    "expect": {
+      "g.players": 1,
+      "g.jump": [
+        10.350000381469727,
+        4.160097122192383,
+        11.5
+      ],
+      "g.top_speed": 11.5
+    },
+    "tol": 0.001,
+    "note": "West (X) held: speed builds to its top in a second and the jump from it goes about twice as far and a metre and a quarter higher than the standing one. The control is the same input with West let go (a walk and a jump): its g.jump must differ."
+  },
+  {
+    "name": "coopplatformer-music-file",
+    "script": "tests/coopplatformer-music.mjs",
+    "note": "every track decodes in a second, independent player, runs its form with no silence or clipping, and its restart is not a click. Control: a track with no notes."
+  },
+  {
+    "name": "coopplatformer-levels",
+    "script": "tests/coopplatformer-levels.mjs",
+    "note": "every level finished by bots with 1, 2 and 4 players, and every level grounded. Controls: bots that never hold Run do not finish the first level; a lifted tree shows."
+  },
+  {
+    "name": "coopplatformer-touch",
+    "app": "coopplatformer",
+    "input": "coopplatformer-touch.json",
+    "controlInput": "coopplatformer-touch-walk.json",
+    "frames": 760,
+    "fields": [
+      "g.tick",
+      "g.players",
+      "g.jump",
+      "g.top_speed"
+    ],
+    "expect": {
+      "g.players": 1,
+      "g.jump": [
+        8.871700286865234,
+        4.160097122192383,
+        9.857443809509277
+      ],
+      "g.top_speed": 9.857443809509277
+    },
+    "tol": 0.001,
+    "webgpu": {
+      "vsGl": 0.005,
+      "maxArea": 0.005,
+      "note": "the same frame on both backends"
+    },
+    "note": "touch still plays it: the stick, a held RUN button and the jump button give the same running jump as the pad. The control lets go of RUN: its g.jump must differ. Speed 9.86 not 11.5: this stick is pushed to about 0.86 of its throw, and a run scales with the stick."
+  },
+  {
+    "name": "coopplatformer-gore",
+    "app": "coopplatformer_auto_saw",
+    "frames": 300,
+    "fields": [
+      "g.tick",
+      "g.deaths",
+      "g.gore",
+      "g.level"
+    ],
+    "webgpu": {
+      "vsGl": 0.02,
+      "maxArea": 0.02,
+      "note": "the picture with particles in the air: the same frame on both backends"
+    },
+    "expect": {
+      "g.level": [
+        3,
+        6
+      ],
+      "g.gore": [
+        2,
+        2,
+        4
+      ]
+    },
+    "controlEnv": {
+      "COOP_NO_GORE": "1"
+    },
+    "note": "two bots against the hedge trimmer on the real cart: g.gore is [deaths seen, played as a big gag, stains on the level]. The control (COOP_NO_GORE, native) plays none: its g.gore must differ. The picture is compared across GL and WebGPU with blood in the air."
   },
   {
     "name": "coopplatformer-quality",

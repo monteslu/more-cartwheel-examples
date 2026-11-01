@@ -19,6 +19,13 @@ Made by tools/blender/characters.py (Blender 5.2, run headless, our own script, 
   - assets/models/hero.glb, walker.glb, flyer.glb, boss.glb: skinned meshes with PBR materials. The game poses
     their bones in code, so there are no baked animations.
 
+Made by tools/gen-music.mjs (our own script: every note written there and every instrument synthesized by it, nothing downloaded):
+  - assets/music/*.xm: the tracks, as FastTracker 2 modules. March of the Unimpressed (title), Cheerful Beyond Reason,
+    Something Is Dripping, Soggy Waltz, Please Hold Your Pelt, Surf Report: Lava (one per world), Mandatory Polka (bosses).
+    Original to this game, under this repository's licence.
+
+Made by tools/gen-assets.mjs too: assets/gore.png, the stains. And the signs' words, the jokes and the level names are original to this game.
+
 Fonts: the engine's built-in UI font (Fira Sans, SIL Open Font License 1.1, shipped with the engine).
 
 Design reading (ideas only, no code or assets copied): public notes on platformer feel

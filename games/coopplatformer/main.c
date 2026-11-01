@@ -31,7 +31,10 @@ typedef struct save_t {
   uint32_t abilities;
   int32_t coins, best_ticks;
   uint8_t seen[WORLD_H / 4][WORLD_W / 4];
-  uint32_t reached; /* flags touched (the map warps between them) */
+  uint32_t reached; /* flags touched in this level (the map warps between them) */
+  int32_t level;    /* where the group got to (the level a new match starts on) */
+  int32_t unlocked; /* the furthest level reached: the map can go back to any before it */
+  int32_t total_coins, total_deaths, total_betrayals;
 } save_t;
 
 #define NTORCH 4
@@ -65,7 +68,7 @@ static struct {
   cw_node fx_boom, fx_boomsmoke, fx_boomspark, fx_wave, fx_motes, fx_haze[4], fx_bubbles, fx_foam, fx_lavapop[4], fx_debris;
   bool prev_alive[MAX_ENEMIES];
   int nwspan, nlspan;
-  float wspan[16][4], lspan[16][4];
+  float wspan[16][4], lspan[48][4];
   int nember;
   float time;
   float light_x[64], light_y[64], light_z[64], light_r[64], light_g[64], light_b[64], light_e[64], light_range[64];
@@ -82,12 +85,14 @@ static struct {
 } A;
 enum { SFX_JUMP, SFX_LAND, SFX_COIN, SFX_HURT, SFX_SPLASH, SFX_DASH, SFX_POWER, SFX_STOMP, SFX_BREAK, SFX_BUBBLE, SFX_POP, SFX_DIE, SFX_WIN, SFX_CHECK, SFX_WALL, SFX_COUNT };
 
-static cw_action a_left, a_right, a_up, a_down, a_jump, a_dash, a_map, a_retry;
+static cw_action a_left, a_right, a_up, a_down, a_jump, a_run, a_dash, a_map, a_retry;
 static input_state INPUT[MAX_PLAYERS];
 static bool g_map_open;
 static int join_seats[4] = { -1, -1, -1, -1 }; /* who holds each seat on the join screen (join_seats_track) */
 static bool g_attract; /* the title and join screens: four bots play the meadow behind the menu */
 static int g_map_sel = -1; /* the flag the map's cursor is on */
+static int g_map_level = -1; /* the level the map's cursor is on */
+static int g_dev_level_keep = -1; /* travel to this level, keeping what has been found */
 static cw_font g_font;
 static void title_background(cw_shell_screen scr, cw_vec2 cv, void *user);
 static int g_state_dbg, g_players_dbg, g_bubbles_dbg, g_hp_dbg, g_map_seen_dbg;
@@ -101,6 +106,8 @@ static float g_view_dbg[4], g_camjit_dbg[4];
 static int g_camgate_dbg[4];
 static bool g_cam_bug; /* COOP_CAM_BUG: the camera gates' control */
 static int g_dev_warp = -1; /* dev.warp: write a column and every player is put there (romdev sweeps reach any region) */
+static int g_dev_worlds;
+static int g_dev_level = -1; /* dev.level: write a level and the group goes there, as a sweep or a gate does on a host with no environment */
 static int g_scenery_dbg[2]; /* the scenery check on the built world: props seated, props off their ground (world_scenery_check) */
 static int g_marker_over_dbg; /* markers drawn over the player panels (the rescue-tag gate) */
 static int g_tags_dbg[2]; /* HUD rescue tags: frames with two or more, frames where two of them overlapped */
@@ -111,6 +118,10 @@ static bool g_blink_bug; /* COOP_BLINK_BUG: the blink gate's control */
 static bool g_coin_flat_bug; /* COOP_COIN_FLAT_BUG: the coin gate's control: the coins lie flat */
 static int g_coinface_dbg[2]; /* coins checked, coins whose face does not stand upright */
 static int g_uvrep_dbg;
+static int g_things_dbg[2]; /* things and signs checked on the built level, of them not on the ground */
+static int g_level_dbg[2];  /* the level being played, how many there are */
+static int g_gore_dbg[3];   /* deaths seen, of them played as a big gag, stains on the level */
+static int g_music_dbg[3];  /* the track playing (-1 none), frames played last tick, ticks the clock moved */
 static int g_surface_dbg[3]; /* world_surface_audit */
 static int g_flames_dbg[2]; /* the fire check: flames burning, flames not in a seated brazier (floating fire) */
 static float g_viewbot_dbg = 1e9f; /* the lowest the bottom edge of the drawn view went this match (world y; below 0 shows the underside of the world) */
@@ -221,6 +232,9 @@ static const mood MOODS[BIOMES] = {
   /* ruins: green daylight through broken stone, hard shafts */
   { { 0.22f, 0.42f, 0.46f }, { 0.4f, 0.62f, 0.6f }, { 1.0f, 0.95f, 0.78f }, 3.6f, 0.4f, 0.9f, 1.05f, 0.12f, 45, 360, 0.5f,
     -1.0f, -0.45f, { 0.7f, 1.0f, 0.85f }, 1.0f, 0.0012f, 0.7f, 0.4f, { 0.8f, 1.0f, 0.9f }, 0.014f, 0.0f },
+  /* frost: a flat white winter noon, cold blue shade, clean air, a thin hard light */
+  { { 0.42f, 0.56f, 0.78f }, { 0.74f, 0.84f, 0.95f }, { 0.95f, 0.97f, 1.0f }, 3.4f, 0.55f, 1.0f, 1.0f, 0.08f, 90, 480, 0.1f,
+    -0.85f, 0.45f, { 0.75f, 0.88f, 1.0f }, 1.0f, 0.0008f, 0.8f, 0.45f, { 0.85f, 0.93f, 1.0f }, 0.008f, 0.0f },
   /* volcano: a low red sun behind the cone, lava orange rim, ash haze */
   { { 0.25f, 0.06f, 0.04f }, { 0.4f, 0.12f, 0.06f }, { 1.0f, 0.5f, 0.3f }, 1.8f, 0.42f, 0.95f, 1.25f, 0.24f, 34, 300, 0.8f,
     -0.35f, 0.9f, { 1.0f, 0.38f, 0.1f }, 2.4f, 0.0015f, 0.4f, 0.3f, { 1.0f, 0.5f, 0.3f }, 0.016f, 0.0015f },
@@ -343,6 +357,9 @@ static void place_decals(const level *L) {
   }
 }
 
+static void gore_build(void);
+static void gore_step(float dt);
+static void gore_death(int who, int cause, float x, float y);
 static void build_scene(void) {
   game *g = &G;
   cw_tree *tree = cw_scene_app_tree();
@@ -358,7 +375,10 @@ static void build_scene(void) {
     g_scenery_dbg[1] = world_scenery_check(&g->L, &g_scenery_dbg[0], &worst_mm);
     if (getenv("COOP_SCENERY")) printf("scenery: %d props seated, %d off the ground, worst %.1f mm\n", g_scenery_dbg[0], g_scenery_dbg[1], (double)worst_mm);
   }
+  world_things_build(g);
+  g_things_dbg[1] = world_things_check(&g->L, &g_things_dbg[0]);
   place_decals(&g->L);
+  gore_build();
   cw_node wobj = S.world;
   const level *L = &g->L;
   /* environment, sun, post, camera: once */
@@ -540,7 +560,7 @@ static void build_scene(void) {
   /* water: a Water3D surface (Gerstner waves, a ripple normal map, sky reflection) over each pool, and a volume of
    * tinted fog inside it. Lava spans are listed for the glow volumes and the heat haze. */
   {
-    float sp[16][4];
+    float sp[48][4];
     S.nwspan = world_water_spans(sp, 16);
     for (int i = 0; i < S.nwspan; i++) {
       memcpy(S.wspan[i], sp[i], sizeof sp[i]);
@@ -561,7 +581,7 @@ static void build_scene(void) {
       cw_node_set(w, "flow_speed", cw_val_float(0.05f));
       cw_node3d_set_position(w, (t3_vec3){ (sp[i][0] + sp[i][1]) * 0.5f, sp[i][3] - 0.08f, 0 });
     }
-    S.nlspan = world_lava_spans(sp, 16);
+    S.nlspan = world_lava_spans(sp, 48);
     for (int i = 0; i < S.nlspan; i++) memcpy(S.lspan[i], sp[i], sizeof sp[i]);
   }
   /* effects */
@@ -694,7 +714,7 @@ static void apply_mood(float x) {
   /* a colour grade per region (assets/grade/*.cube, tools/gen-assets.mjs): when the region changes the grade fades out,
    * the next LUT is loaded and it fades back in, so a border never snaps */
   {
-    static const char *const LUTS[BIOMES] = { "grade/meadow.cube", "grade/caves.cube", "grade/ruins.cube", "grade/volcano.cube" };
+    static const char *const LUTS[BIOMES] = { "grade/meadow.cube", "grade/caves.cube", "grade/ruins.cube", "grade/frost.cube", "grade/volcano.cube" };
     static int lut_b = -1;
     static float gk = 0;
     if (b != lut_b) {
@@ -855,14 +875,14 @@ static void sync_scene(float alpha, float dt) {
   if (!g_attract) offsetgate(S.cam, vx, vy, vz);
   cw_node3d_set_position(S.sun, (t3_vec3){ vx + 8, vy + 18, 14 });
   apply_mood(vx);
-  world_update_water_mesh(S.time);
+  world_update_water_mesh(S.time, g->cam.x);
   world_update_backdrop(S.time);
   update_spans(vx);
   /* the motes follow the camera and take the region's character */
   {
     int b = g->L.biome[(int)c->x < 0 ? 0 : (int)c->x >= WORLD_W ? WORLD_W - 1 : (int)c->x];
-    static const float MC[BIOMES][4] = { { 1.0f, 0.95f, 0.5f, 3.0f }, { 0.4f, 0.8f, 1.0f, 2.0f }, { 1.0f, 1.0f, 0.8f, 1.2f }, { 1.0f, 0.4f, 0.1f, 4.0f } };
-    static const float MG[BIOMES] = { 0.0f, 0.0f, -0.05f, 0.9f };
+    static const float MC[BIOMES][4] = { { 1.0f, 0.95f, 0.5f, 3.0f }, { 0.4f, 0.8f, 1.0f, 2.0f }, { 1.0f, 1.0f, 0.8f, 1.2f }, { 0.95f, 0.98f, 1.0f, 2.2f }, { 1.0f, 0.4f, 0.1f, 4.0f } };
+    static const float MG[BIOMES] = { 0.0f, 0.0f, -0.05f, -0.7f, 0.9f };
     static int last_b = -1;
     cw_node3d_set_position(S.fx_motes, (t3_vec3){ vx, vy, 0 });
     if (b != last_b) {
@@ -927,6 +947,15 @@ static void sync_scene(float alpha, float dt) {
     if (p->anim == 4) want = -want; /* on a wall it looks back along the wall */
     S.yaw[i] += (want - S.yaw[i]) * (1.0f - expf(-14.0f * dt));
     cw_node3d_set_rotation(S.pmodel[i], (t3_vec3){ 0, S.yaw[i], 0 });
+    /* a run leans into it, more the faster it goes, and throws dust from the heels at speed */
+    {
+      float lean = p->anim == 1 ? -face * 0.3f * p->run : 0.0f;
+      static float drawn_lean[MAX_PLAYERS];
+      drawn_lean[i] += (lean - drawn_lean[i]) * (1.0f - expf(-10.0f * dt));
+      cw_node3d_set_rotation(S.pnode[i], (t3_vec3){ 0, 0, drawn_lean[i] });
+      static int dust_t[MAX_PLAYERS];
+      if (p->anim == 1 && p->run > 0.6f && ++dust_t[i] >= 7) dust_t[i] = 0, burst(S.fx_dust[i], x - face * 0.3f, y + 0.08f, 0.2f);
+    }
     /* secondary animation: squash and stretch from events, a run cycle and the pose from the bones */
     if (p->land_fx) p->squash = 0.35f;
     if (p->jump_fx) p->squash = -0.3f;
@@ -936,6 +965,7 @@ static void sync_scene(float alpha, float dt) {
     float sq = p->squash > 0 ? p->squash : 0.0f;
     float st = 1.0f + stretch * 0.6f + (vy > 4 ? 0.06f : 0) - sq * 0.5f;
     float wd = 1.0f - stretch * 0.3f + sq * 0.4f;
+    if (p->pancake > 0) st = 0.28f, wd = 1.5f; /* a friend has landed on this head */
     float spd = fabsf((float)p->pf.body.velocity.x);
     S.runph[i] += (p->anim == 5 ? 7.0f : 4.0f + spd * 0.9f) * dt;
     if (S.prig[i]) {
@@ -962,6 +992,8 @@ static void sync_scene(float alpha, float dt) {
     if (!tk) cw_node3d_set_rotation(S.coin_node[i], (t3_vec3){ 0, S.time * 2.5f + (float)i, 0 });
   }
   coin_face_check();
+  world_things_sync(g, S.time);
+  gore_step(dt);
   for (int i = 0; i < L->npickups; i++) {
     cw_node_set(S.pick_node[i], "visible", cw_val_bool(!L->pickups[i].taken));
     cw_node3d_set_position(S.pick_node[i], (t3_vec3){ (float)L->pickups[i].x + 0.5f, (float)L->pickups[i].y + 1.1f + 0.12f * sinf(S.time * 2.0f), 0 });
@@ -1060,6 +1092,7 @@ static void read_input(void) {
     s->y = -cw_input_axis(i, a_up, a_down);
     s->jump_pressed = cw_action_just_pressed(i, a_jump);
     s->jump_held = cw_action_pressed(i, a_jump);
+    s->run = cw_action_pressed(i, a_run);
     s->dash_pressed = cw_action_just_pressed(i, a_dash);
     s->down = cw_action_pressed(i, a_down);
     s->retry = cw_action_pressed(i, a_retry);
@@ -1082,11 +1115,20 @@ static int cfg_int(const char *env, int def) {
   return v ? atoi(v) : def;
 }
 
+/* the level a build starts on (gates: a variant for a cart host, which has no environment) */
+#ifndef COOP_DEF_LEVEL
+#define COOP_DEF_LEVEL (-1)
+#endif
+static void music_for_level(void);
+static void music_play(int track);
 static void start_match(int players, void *user) {
   (void)user;
   g_attract = false;
   save_t *sv = cw_shell_game_save();
   G.abilities = 0;
+  G.level = sv->level < NLEVELS && sv->level >= 0 && !getenv("COOP_FRESH") ? sv->level : 0;
+  if (cfg_int("COOP_LEVEL", COOP_DEF_LEVEL) >= 0) G.level = cfg_int("COOP_LEVEL", COOP_DEF_LEVEL);
+  G.abilities = LEVELS[G.level].abilities;
   sim_reset(&G, players);
   memset(G.rumble, 0, sizeof G.rumble); /* nothing the attract mode asked for carries into the match */
   g_cam_bug = getenv("COOP_CAM_BUG") != NULL; /* the camera gate's must-fail control (native only) */
@@ -1095,8 +1137,8 @@ static void start_match(int players, void *user) {
   g_vanish_dbg = 0;
   g_hud_bug = getenv("COOP_HUD_BUG") != NULL; /* the rescue-tag gate's control (native only) */
   g_cam_nofloor = getenv("COOP_PIT_CAM_BUG") != NULL; /* the pit camera gate's control (native only) */
-  if (sv->abilities && !getenv("COOP_FRESH")) G.abilities = sv->abilities;
-  G.reached |= sv->reached;
+  if (sv->abilities && !getenv("COOP_FRESH")) G.abilities |= sv->abilities;
+  if (sv->level == G.level) G.reached |= sv->reached;
   if (cfg_int("COOP_ABILITIES", COOP_DEF_ABILITIES) >= 0) G.abilities = (uint32_t)cfg_int("COOP_ABILITIES", COOP_DEF_ABILITIES);
   if (cfg_int("COOP_START_X", COOP_DEF_START_X) >= 0) { /* a test or a screenshot starts anywhere */
     int sx = cfg_int("COOP_START_X", COOP_DEF_START_X);
@@ -1106,6 +1148,9 @@ static void start_match(int players, void *user) {
       cw_platformer2d_teleport(&G.p[i].pf, (cw_pos2){ (double)sx + 0.7 * i, (double)G.L.ground[sx] + 0.05 });
       G.p[i].invuln = 120;
     }
+#ifdef COOP_DEF_WALK_ONLY
+    for (int i = 0; i < G.nplayers; i++) G.p[i].invuln = 0; /* the gag gate: nothing protects them from the hedge trimmer */
+#endif
     G.cam.x = G.cam.tx = G.cam.px = (float)sx, G.cam.y = G.cam.ty = G.cam.py = (float)G.L.ground[sx] + 3;
     G.checkpoint = -1;
     for (int k = 0; k < G.L.nchecks; k++)
@@ -1117,6 +1162,7 @@ static void start_match(int players, void *user) {
   for (int i = 0; i < S.nwspan; i++) cw_info("  pool x %.0f..%.0f y %.0f..%.0f", S.wspan[i][0], S.wspan[i][1], S.wspan[i][2], S.wspan[i][3]);
   g_run_ticks = 0;
   g_map_open = false;
+  music_for_level();
 }
 static void quit_match(void *user) {
   (void)user;
@@ -1142,7 +1188,8 @@ static uint32_t frand(void) {
 
 /* a fresh run: no abilities unless COOP_ABILITIES says the player resumed a save with them */
 static void soak_reset(int players) {
-  G.abilities = 0;
+  G.level = getenv("COOP_LEVEL") ? atoi(getenv("COOP_LEVEL")) : 0;
+  G.abilities = LEVELS[G.level].abilities;
   sim_reset(&G, players);
   if (getenv("COOP_ABILITIES")) G.abilities = (uint32_t)atoi(getenv("COOP_ABILITIES"));
 }
@@ -1328,15 +1375,17 @@ static void print_map(int x0) {
   sim_reset(&G, 1);
   for (int y = WORLD_H - 1; y >= 0; y--) {
     printf("%2d ", y);
-    for (int x = x0; x < x0 + 48 && x < WORLD_W; x++) {
+    for (int x = x0; x < x0 + 60 && x < WORLD_W; x++) {
       int c = G.L.t[y][x];
       putchar(c == T_AIR ? '.' : c == T_ROCK ? '#' : c == T_GRASS ? 'g' : c == T_ONEWAY ? '-' : c == T_SPIKE ? '^' : c == T_LAVA ? 'L' : c == T_WATER ? '~' : c == T_CRACK ? 'x' : c == T_BRICK ? 'b' : '?');
     }
     putchar('\n');
   }
   printf("   ");
-  for (int x = x0; x < x0 + 48 && x < WORLD_W; x++) putchar('0' + G.L.biome[x]); /* the region of each column */
+  for (int x = x0; x < x0 + 60 && x < WORLD_W; x++) putchar('0' + G.L.biome[x]); /* the region of each column */
   putchar('\n');
+  for (int k = 0; k < G.L.nthings; k++) if (G.L.things[k].x >= (float)x0 && G.L.things[k].x < (float)x0 + 60) printf("thing %d kind %d at %.1f,%.1f a=%.1f b=%.1f\n", k, G.L.things[k].kind, (double)G.L.things[k].x, (double)G.L.things[k].y, (double)G.L.things[k].a, (double)G.L.things[k].b);
+  printf("width %d coins %d enemies %d things %d signs %d flags %d\n", G.L.width, G.L.ncoins, G.L.nenemies, G.L.nthings, G.L.nsigns, G.L.nchecks);
   for (int k = 0; k < G.L.nchecks; k++) printf("flag %d at %d,%d\n", k, G.L.checks[k].x, G.L.checks[k].y);
   for (int k = 0; k < G.L.ngates; k++) printf("gate %d x %d..%d needs %d flag %d\n", k, G.L.gates[k].x0, G.L.gates[k].x1, G.L.gates[k].need, G.L.gates[k].flag);
   for (int k = 0; k < G.L.npickups; k++) printf("pickup %d at %d,%d ability %d\n", k, G.L.pickups[k].x, G.L.pickups[k].y, G.L.pickups[k].ability);
@@ -1449,12 +1498,17 @@ static void cmd_warp(int argc, const char **argv, cw_reply *r) {
 #endif
 static void init(void *user) {
   (void)user;
+  /* touch: a stick and three buttons, made before the bindings that name them (ids 0 to 3, in this order) */
+  cw_touch_add_thumbstick(NULL);
+  cw_touch_add_round_button(&(cw_touch_button_desc){ .x = 90, .y = 110, .radius = 56, .label = "A" });
+  cw_touch_add_round_button(&(cw_touch_button_desc){ .x = 210, .y = 90, .radius = 50, .label = "RUN" });
+  cw_touch_add_round_button(&(cw_touch_button_desc){ .x = 130, .y = 230, .radius = 42, .label = "DASH" });
   if (!cw_input_load_bindings_asset("input.cfg")) cw_warn("coopplatformer: input.cfg had errors");
   cw_input_commit_defaults();
   a_left = cw_action_find("left"), a_right = cw_action_find("right"), a_up = cw_action_find("up"), a_down = cw_action_find("down");
-  a_jump = cw_action_find("jump"), a_dash = cw_action_find("dash"), a_map = cw_action_find("map"), a_retry = cw_action_find("retry");
+  a_jump = cw_action_find("jump"), a_run = cw_action_find("run"), a_dash = cw_action_find("dash"), a_map = cw_action_find("map"), a_retry = cw_action_find("retry");
   cw_shell_init(&(cw_shell_desc){ .title = "Co-op Platformer", .subtitle = "one to four players", .max_players = 4,
-                                  .game_save_size = sizeof(save_t), .game_save_version = 2, .start = start_match,
+                                  .game_save_size = sizeof(save_t), .game_save_version = 3, .start = start_match,
                                   .quit = quit_match, .sound = sound_hook, .draw_background = title_background });
   g_font = cw_ui_font_sans();
   audio_init();
@@ -1464,6 +1518,7 @@ static void init(void *user) {
 #endif
   cw_debug_i32("g.state", &g_state_dbg);
   cw_debug_field("g.scenery", g_scenery_dbg, CW_DBG_I32, 2);
+  cw_debug_i32("g.scenery_off", &g_scenery_dbg[1]); /* props off their ground. Not the count of props: the backdrop's are seated by float maths, and a native libm and a cart's seat a few differently */
   cw_debug_i32("g.players", &g_players_dbg);
   cw_debug_i32("g.tick", &G.tick);
   cw_debug_u32("g.abilities", &G.abilities);
@@ -1491,18 +1546,33 @@ static void init(void *user) {
   cw_debug_i32("g.bubbles", &g_bubbles_dbg);
   cw_debug_i32("g.map_seen", &g_map_seen_dbg);
   cw_debug_i32("dev.warp", &g_dev_warp);
+  cw_debug_i32("dev.level", &g_dev_level);
+  cw_debug_i32("dev.worlds", &g_dev_worlds);
   cw_debug_field("g.flames", g_flames_dbg, CW_DBG_I32, 2);
   cw_debug_f32("g.viewbot", &g_viewbot_dbg);
   cw_debug_field("g.underview", g_underview_dbg, CW_DBG_I32, 2);
   cw_debug_field("g.tags", g_tags_dbg, CW_DBG_I32, 2);
   cw_debug_field("g.surface", g_surface_dbg, CW_DBG_I32, 3);
+  cw_debug_f32_array("g.jump", G.last_jump, 3); /* the last jump to land: distance, rise, speed at takeoff */
+  cw_debug_f32("g.top_speed", &G.top_speed);
+  cw_debug_field("g.things", g_things_dbg, CW_DBG_I32, 2);
+  cw_debug_field("g.level", g_level_dbg, CW_DBG_I32, 2);
+  cw_debug_field("g.gore", g_gore_dbg, CW_DBG_I32, 3);
+  cw_debug_field("g.music", g_music_dbg, CW_DBG_I32, 3);
+  cw_debug_i32("g.things_hit", &G.things_hit);
+  cw_debug_field("g.betrayals", G.betrayals, CW_DBG_I32, MAX_PLAYERS);
+  cw_debug_i32("g.width", &G.L.width);
   cw_debug_i32("g.vanish", &g_vanish_dbg);
   cw_debug_field("g.coinface", g_coinface_dbg, CW_DBG_I32, 2);
   cw_debug_i32("g.uvrep", &g_uvrep_dbg);
   cw_debug_i32("g.marker_over", &g_marker_over_dbg);
   cur_mood = MOODS[0];
 #ifdef COOP_AUTOPILOT
+  G.level = getenv("COOP_LEVEL") ? atoi(getenv("COOP_LEVEL")) : 0;
+  g_bot_no_run = getenv("COOP_BOT_NO_RUN") != NULL;
   if (getenv("COOP_MAP")) print_map(atoi(getenv("COOP_MAP")));
+  if (getenv("COOP_REACH_COUNT")) { printf("levels %d\n", NLEVELS); fflush(stdout); exit(0); }
+  if (getenv("COOP_THINGS")) { int nn = 0; G.abilities = 0; sim_reset(&G, 1); int bad = world_things_check(&G.L, &nn); printf("things %d off the ground %d\n", nn, bad); fflush(stdout); exit(bad ? 1 : 0); }
   if (getenv("COOP_REACH")) exit(reach_check());
   if (getenv("COOP_SECRETS")) secret_routes(1);
   if (getenv("COOP_FUZZ")) fuzz(atoi(getenv("COOP_FUZZ")), getenv("COOP_PLAYERS") ? atoi(getenv("COOP_PLAYERS")) : 1);
@@ -1512,8 +1582,11 @@ static void init(void *user) {
 #endif
 }
 
+static void grief_gag(int who, int victim);
 static void save_progress(void) {
   save_t *sv = cw_shell_game_save();
+  sv->level = G.level;
+  if (G.level > sv->unlocked) sv->unlocked = G.level;
   sv->abilities |= G.abilities;
   sv->reached |= G.reached;
   if (G.coins_total > sv->coins) sv->coins = G.coins_total;
@@ -1524,6 +1597,8 @@ static void save_progress(void) {
 }
 
 static void play_events(void) {
+  for (int i = 0; i < G.ndeaths_q; i++) gore_death(G.deaths_q[i].who, G.deaths_q[i].cause, G.deaths_q[i].x, G.deaths_q[i].y);
+  for (int i = 0; i < G.ngrief_q; i++) grief_gag(G.grief_q[i].who, G.grief_q[i].victim);
   int e = G.events;
   if (!e) return;
   static const int MAP[][2] = { { 1, SFX_JUMP }, { 2, SFX_LAND }, { 4, SFX_COIN }, { 8, SFX_HURT }, { 16, SFX_SPLASH }, { 32, SFX_DASH },
@@ -1558,10 +1633,21 @@ static void map_cursor(void) {
     }
     sfx(SFX_CHECK, 0.3f);
   }
+  /* up and down pick a level already reached (replaying one is allowed; nobody is watching) */
+  const save_t *sv = cw_shell_game_save();
+  if (g_map_level < 0) g_map_level = G.level;
+  if (cw_action_just_pressed(0, a_up) && g_map_level < sv->unlocked && g_map_level < NLEVELS - 1) g_map_level++, sfx(SFX_CHECK, 0.3f);
+  if (cw_action_just_pressed(0, a_down) && g_map_level > 0) g_map_level--, sfx(SFX_CHECK, 0.3f);
   bool jump = cw_action_just_pressed(0, a_jump);
   memset(&INPUT[0], 0, sizeof INPUT[0]); /* the cursor is not a step */
-  if (jump && g_map_sel >= 0 && sim_warp(&G, g_map_sel)) {
+  if (jump && g_map_level != G.level) {
+    g_dev_level_keep = g_map_level;
     g_map_open = false;
+    g_map_level = -1;
+    sfx(SFX_POP, 0.6f);
+  } else if (jump && g_map_sel >= 0 && sim_warp(&G, g_map_sel)) {
+    g_map_open = false;
+    g_map_level = -1;
     sfx(SFX_POP, 0.6f);
   }
 }
@@ -1590,6 +1676,8 @@ static void rumble_stop_all(void) {
   for (int i = 0; i < MAX_PLAYERS; i++) if (RB.until[i] > RB.clock) cw_input_rumble_stop(i), RB.until[i] = 0;
 }
 
+static void next_level(void);
+static void music_tick(void);
 static void fixed_update(void *user, double dt) {
   (void)user;
   bool run = cw_shell_update();
@@ -1598,6 +1686,31 @@ static void fixed_update(void *user, double dt) {
   if (g_attract) return; /* the match has not started yet */
   if (G.nplayers == 0 || !G.world.id) return;
   g_run_ticks++;
+  if (g_dev_worlds > 0) levels_set_worlds(g_dev_worlds), g_dev_worlds = 0;
+  if (g_dev_level >= 0) {
+    int lv = g_dev_level >= NLEVELS ? NLEVELS - 1 : g_dev_level, players = G.nplayers;
+    g_dev_level = -1;
+    G.level = lv;
+    G.abilities = LEVELS[lv].abilities;
+    sim_reset(&G, players);
+    G.abilities = AB_DOUBLE | AB_CLAWS | AB_DASH;
+    build_scene();
+    camgate_reset();
+    music_for_level();
+  }
+  if (g_dev_level_keep >= 0) {
+    int lv = g_dev_level_keep, players = G.nplayers;
+    uint32_t ab = G.abilities;
+    g_dev_level_keep = -1;
+    G.level = lv;
+    sim_reset(&G, players);
+    G.abilities = ab | LEVELS[lv].abilities;
+    { save_t *sv = cw_shell_game_save(); sv->reached = 0; memset(sv->seen, 0, sizeof sv->seen); }
+    save_progress();
+    build_scene();
+    camgate_reset();
+    music_for_level();
+  }
   if (g_dev_warp >= 0) {
     int sx = g_dev_warp < 2 ? 2 : g_dev_warp > WORLD_W - 3 ? WORLD_W - 3 : g_dev_warp;
     g_dev_warp = -1;
@@ -1612,6 +1725,9 @@ static void fixed_update(void *user, double dt) {
   }
 #ifdef COOP_AUTOPILOT
   for (int i = 0; i < MAX_PLAYERS; i++) sim_bot_input(&G, i, &INPUT[i]);
+#ifdef COOP_DEF_WALK_ONLY
+  for (int i = 0; i < MAX_PLAYERS; i++) memset(&INPUT[i], 0, sizeof INPUT[i]), INPUT[i].x = 1;
+#endif
 #else
   read_input();
   if (cw_action_just_pressed(0, a_map)) {
@@ -1628,6 +1744,8 @@ static void fixed_update(void *user, double dt) {
   play_events();
   send_rumble();
   g_state_dbg = (int)cw_shell_screen_now();
+  g_level_dbg[0] = G.level, g_level_dbg[1] = NLEVELS;
+  music_tick();
   g_players_dbg = G.nplayers;
   g_pos_dbg[0] = (float)G.p[0].pf.body.position.x, g_pos_dbg[1] = (float)G.p[0].pf.body.position.y;
   g_cam_dbg[0] = G.cam.x, g_cam_dbg[1] = G.cam.y, g_cam_dbg[2] = G.cam.z;
@@ -1636,16 +1754,269 @@ static void fixed_update(void *user, double dt) {
     bool on = G.p[i].joined && i < G.nplayers;
     g_ppos_dbg[2 * i] = on ? (float)G.p[i].pf.body.position.x : 0, g_ppos_dbg[2 * i + 1] = on ? (float)G.p[i].pf.body.position.y : 0;
   }
-  if (G.won && G.tick - G.win_tick > 600) {
+  /* the end of a level: the results card, then the next. Jump skips the card once it has been up for a moment */
+  if (G.won) {
+    bool skip = false;
+#ifndef COOP_AUTOPILOT
+    for (int i = 0; i < G.nplayers; i++) if (INPUT[i].jump_pressed) skip = true;
+#endif
+    if (G.tick - G.win_tick > 480 || (skip && G.tick - G.win_tick > 90)) next_level();
+  }
+}
+
+/* ── music: one track per world, a boss has its own, the title its own. Modules loop on their own with no seam ── */
+static int music_track_now = -1;
+static int64_t music_last_frames;
+static void music_play(int track) {
+  if (!A.on || track == music_track_now) return;
+  static const char *const FILES[] = { "music/world1.xm", "music/world2.xm", "music/world3.xm", "music/world4.xm", "music/world5.xm", "music/boss.xm", "music/title.xm" };
+  if (cw_voice_is_playing(A.music_voice)) cw_voice_stop(A.music_voice, 0.5f);
+  if (A.music.id) cw_sound_free(A.music);
+  A.music = cw_sound_load(FILES[track], &(cw_sound_desc){ .mode = CW_SOUND_STREAM, .bus = A.music_bus });
+  A.music_voice = cw_audio_play(A.music, &(cw_play_desc){ .loop = true, .fade_in = 0.5f, .bus = A.music_bus });
+  music_track_now = track;
+  music_last_frames = 0;
+  g_music_dbg[0] = track;
+}
+static void music_for_level(void) {
+  music_play(LEVELS[G.level].world);
+}
+static void music_tick(void) {
+  if (!A.on) { g_music_dbg[0] = -1; return; }
+  /* a boss's own tune, from the moment anyone is near the arena (the door of the fight, not the road to it) */
+  if (G.L.boss_x > 0 && !G.won && music_track_now != 5)
+    for (int i = 0; i < G.nplayers; i++)
+      if (G.p[i].joined && (float)G.p[i].pf.body.position.x > (float)G.L.boss_x - 22.0f) { music_play(5); break; }
+  int64_t f = cw_voice_frames_played(A.music_voice);
+  if (f > music_last_frames) g_music_dbg[2]++;
+  g_music_dbg[1] = (int)f;
+  music_last_frames = f;
+}
+
+/* ── death gags: mostly you just go in the bubble. Sometimes it is a Bad Day ── */
+#define NGIBS 24
+#define NSTAINS 28
+static struct { cw_node n; t3_mesh *m; float x, y, vx, vy, spin, t, life; bool on; } GIB[NGIBS];
+static int gib_next;
+static cw_node g_stain[NSTAINS];
+static int stain_next, stain_count;
+static cw_node g_fx_blood, g_fx_spurt, g_fx_draft;
+static void gore_build(void) {
+  /* bones and bits, tinted for whose they were. Small, brief, and they fall out of the way */
+  t3_geometry *bone = t3_cylinder_geometry_new(0.06f, 0.05f, 0.42f, 8, 1, false);
+  t3_geometry *blob = t3_sphere_geometry_new(0.13f, 10, 8);
+  t3_material *bm = phys(0xf2ecd8, 0.75f, 0);
+  for (int i = 0; i < NGIBS; i++) {
+    GIB[i].n = make_node("Node3D", S.world, "Gib");
+    GIB[i].m = part(GIB[i].n, i % 3 == 2 ? blob : bone, i % 3 == 2 ? phys(0xd0463a, 0.8f, 0) : bm, 0, 0, 0, 1, 1, 1);
+    GIB[i].on = false;
+    cw_node3d_set_position(GIB[i].n, (t3_vec3){ 0, -60, 0 });
+  }
+  t3_release(bone), t3_release(blob);
+  for (int i = 0; i < NSTAINS; i++) {
+    cw_node d = g_stain[i] = make_node("Decal3D", S.world, "Stain");
+    cw_node_set(d, "texture", cw_val_string("gore.png"));
+    cw_node_set(d, "blend", cw_val_enum("MULTIPLY"));
+    cw_node_set(d, "edge_fade", cw_val_float(0.2f));
+    cw_node_set(d, "normal_fade", cw_val_float(0.4f));
+    cw_node_set(d, "color", cw_val_color(1, 1, 1, 0));
+    cw_node3d_set_position(d, (t3_vec3){ 0, -60, 0 });
+  }
+  stain_next = stain_count = 0;
+  g_gore_dbg[2] = 0;
+  g_fx_blood = make_node("GPUParticles3D", S.world, "Blood");
+  pfx(g_fx_blood, 60, 0.5f, 3.0f, 11.0f, 0.26f, cw_rgba(0.75f, 0.03f, 0.04f, 1), -16.0f, 0, "0 0.8 0.04 0.05 1, 1 0.45 0.02 0.03 0.9", "0 1, 1 0.6", 2.0f);
+  g_fx_draft = make_node("GPUParticles3D", S.world, "Draft");
+  pfx(g_fx_draft, 40, 1.1f, 6.0f, 9.0f, 0.07f, cw_rgba(0.9f, 0.95f, 1, 0.5f), 0.0f, 1, "0 1 1 1 0, 0.2 1 1 1 0.7, 1 1 1 1 0", "0 1, 1 0.5", 1.0f);
+  cw_node_set(g_fx_draft, "draw_mode", cw_val_enum("STRETCHED"));
+  cw_node_set(g_fx_draft, "one_shot", cw_val_bool(false));
+  cw_node_set(g_fx_draft, "explosiveness", cw_val_float(0));
+  cw_node_set(g_fx_draft, "emission_shape", cw_val_enum("BOX"));
+  cw_node_set(g_fx_draft, "direction", cw_val_vec3(0, 1, 0));
+  cw_node_set(g_fx_draft, "spread", cw_val_float(4));
+  cw_node_set(g_fx_draft, "emitting", cw_val_bool(false));
+  g_fx_spurt = make_node("GPUParticles3D", S.world, "Spurt");
+  pfx(g_fx_spurt, 22, 0.5f, 5.0f, 15.0f, 0.42f, cw_rgba(0.85f, 0.05f, 0.05f, 1), -18.0f, 0, "0 0.85 0.05 0.05 1, 1 0.5 0.02 0.03 1", "0 1, 1 0.7", 1.0f);
+}
+static int gib_owner;
+static void gib(float x, float y, float vx, float vy, float life) {
+  int i = gib_next++ % NGIBS;
+  if (i % 3 == 2 && GIB[i].m) { /* the soft bits keep the colour of who they were */
+    t3_material *mt = GIB[i].m->materials[0];
+    if (mt) mt->color = (t3_color){ PLAYER_RGB[gib_owner][0], PLAYER_RGB[gib_owner][1], PLAYER_RGB[gib_owner][2] };
+  }
+  GIB[i].x = x, GIB[i].y = y, GIB[i].vx = vx, GIB[i].vy = vy, GIB[i].spin = 6.0f + vx, GIB[i].t = 0, GIB[i].life = life, GIB[i].on = true;
+}
+static void gore_step(float dt) {
+  { /* the draught: over whichever fan is nearest the camera, so a fan can be read as something that lifts */
+    int fan = -1;
+    float best = 28.0f;
+    for (int k = 0; k < G.L.nthings; k++) {
+      const thing *t = &G.L.things[k];
+      if (t->kind == TH_FAN && fabsf(t->x - G.cam.x) < best) best = fabsf(t->x - G.cam.x), fan = k;
+    }
+    static int on_fan = -2;
+    if (fan != on_fan) {
+      on_fan = fan;
+      cw_node_set(g_fx_draft, "emitting", cw_val_bool(fan >= 0));
+      if (fan >= 0) {
+        const thing *t = &G.L.things[fan];
+        cw_node3d_set_position(g_fx_draft, (t3_vec3){ t->x, t->y + 0.5f, 0 });
+        cw_node_set(g_fx_draft, "emission_extents", cw_val_vec3(t->w, 0.2f, 0.9f));
+      }
+    }
+  }
+  for (int i = 0; i < NGIBS; i++) {
+    if (!GIB[i].on) continue;
+    GIB[i].t += dt;
+    if (GIB[i].t > GIB[i].life) { GIB[i].on = false; cw_node3d_set_position(GIB[i].n, (t3_vec3){ 0, -60, 0 }); continue; }
+    GIB[i].vy -= 30.0f * dt;
+    GIB[i].x += GIB[i].vx * dt, GIB[i].y += GIB[i].vy * dt;
+    if (GIB[i].vy < 0 && world_solid(&G.L, (int)floorf(GIB[i].x), (int)floorf(GIB[i].y - 0.1f))) { /* a bounce and then it lies there */
+      GIB[i].y = floorf(GIB[i].y - 0.1f) + 1.1f;
+      GIB[i].vy = -GIB[i].vy * 0.35f;
+      GIB[i].vx *= 0.5f, GIB[i].spin *= 0.4f;
+    }
+    cw_node3d_set_position(GIB[i].n, (t3_vec3){ GIB[i].x, GIB[i].y, 0.9f });
+    cw_node3d_set_rotation(GIB[i].n, (t3_vec3){ GIB[i].t * GIB[i].spin, 0, GIB[i].t * GIB[i].spin * 0.7f });
+  }
+}
+static void stain(float x, float y, float w, float h, int cell, bool down, float spin) {
+  cw_node d = g_stain[stain_next++ % NSTAINS];
+  cw_node_set(d, "region", val_vec4((float)(cell % 4) * 256, (float)(cell / 4) * 256, 256, 256));
+  cw_node_set(d, "color", cw_val_color(1, 1, 1, 0.92f));
+  if (down) {
+    cw_node_set(d, "size", cw_val_vec3(w, h, 0.5f));
+    cw_node3d_set_position(d, (t3_vec3){ x, y + 0.12f, 0 });
+    cw_node3d_set_rotation(d, (t3_vec3){ -1.5708f, spin, 0 });
+  } else {
+    cw_node_set(d, "size", cw_val_vec3(w, h, 0.8f));
+    cw_node3d_set_position(d, (t3_vec3){ x, y, 1.6f });
+    cw_node3d_set_rotation(d, (t3_vec3){ 0, 0, spin });
+  }
+  if (stain_count < NSTAINS) stain_count++;
+  g_gore_dbg[2] = stain_count;
+}
+
+/* what somebody says: over their head, for a moment */
+static struct { const char *text; int who; float t; } SAY[6];
+static void say(int who, const char *text, float secs) {
+  for (int i = 0; i < 6; i++) if (SAY[i].t <= 0 || SAY[i].who == who) { SAY[i].who = who, SAY[i].text = text, SAY[i].t = secs; return; }
+}
+static uint32_t gag_rand(uint32_t salt) {
+  uint32_t v = (uint32_t)G.tick * 2654435761u + salt * 40503u + (uint32_t)G.deaths * 977u;
+  v ^= v >> 15;
+  return v * 2246822519u >> 8;
+}
+/* a line from one of the friends who saw it, or if nobody did, from the one it happened to, on the way back */
+static void react(int who, const char *const *lines, int n) {
+  int witness = -1;
+  float best = 1e9f;
+  for (int i = 0; i < G.nplayers; i++) {
+    const player *p = &G.p[i];
+    if (i == who || !p->joined || !p->alive || p->bubble) continue;
+    float d = fabsf((float)p->pf.body.position.x - (float)G.p[who].pf.body.position.x);
+    if (d < best) best = d, witness = i;
+  }
+  say(witness >= 0 ? witness : who, lines[gag_rand(17) % (uint32_t)n], 2.4f);
+  if (witness >= 0) G.p[witness].squash = -0.3f; /* a small hop of horror, or joy */
+}
+static void gore_death(int who, int cause, float x, float y) {
+  g_gore_dbg[0]++;
+  gib_owner = who;
+  if (getenv("COOP_NO_GORE")) return; /* the gag gate's control (native) */
+  static const char *const SEEN[] = { "oh no", "was that load-bearing?", "dibs on the coins", "i did not see anything", "he's fine", "that one was mine", "more room in the bubble",
+                                      "tell my mum it was quick", "can i have your hat", "she had a family. of bees." };
+  static const char *const SELF[] = { "i'm fine", "that part was spare", "i meant to", "put that on the form", "still got one good ear", "ow", "again" };
+  static const char *const SAW[] = { "the trimmer is in a good mood", "she missed a bit", "that hedge is finished", "nice cut", "i found an ear" };
+  static const char *const PRS[] = { "days since last incident: 0", "flat pack", "now in a smaller size", "you could post him now" };
+  static const char *const PIA[] = { "that was b flat", "a bit sharp", "the piano is fine", "encore", "they did say complimentary" };
+  static const char *const LAV[] = { "medium rare", "the deposit is gone", "is that a bone", "smells like lunch" };
+  uint32_t roll = gag_rand(1) % 100;
+  bool big = false;
+  switch (cause) {
+    case DIE_SAW: big = true; /* a saw always tells a story */
+      burst(g_fx_blood, x, y + 0.8f, 0.8f);
+      burst(g_fx_spurt, x, y + 0.9f, 0.8f);
+      for (int i = 0; i < 6; i++) gib(x, y + 0.9f, (float)((int)(gag_rand(30 + (uint32_t)i) % 25) - 12), 6.0f + (float)(gag_rand(50 + (uint32_t)i) % 8), 1.3f);
+      stain(x + (gag_rand(3) & 1 ? 0.8f : -0.8f), y, 3.2f, 1.6f, 5, true, 0);
+      stain(x, y - 1.4f, 3.0f, 3.0f, 4, false, 0); /* it runs down the face of the ground */
+      react(who, SAW, 5);
+      break;
+    case DIE_PRESS: big = true; /* a flat stain with the shape still in it */
+      burst(g_fx_blood, x, y + 0.2f, 0.8f);
+      stain(x, y, 3.0f, 2.6f, gag_rand(5) & 3, true, 0);
+      stain(x, y - 1.2f, 2.8f, 2.8f, 4, false, 0);
+      for (int i = 0; i < 3; i++) gib(x, y + 0.3f, (float)((int)(gag_rand(60 + (uint32_t)i) % 13) - 6), 8.0f, 1.0f);
+      react(who, PRS, 4);
+      break;
+    case DIE_FALLER: big = true; /* the outline, drawn round at the scene */
+      burst(g_fx_blood, x, y + 0.2f, 0.8f);
+      stain(x, y - 1.3f, 2.6f, 2.6f, 7, false, 0); /* drawn round, on the nearest wall */
+      stain(x, y, 2.4f, 2.4f, gag_rand(6) & 3, true, 0);
+      react(who, PIA, 5);
+      break;
+    case DIE_LAVA:
+      if (roll < 50) { /* every other swim sends the bones back up */
+        big = true;
+        for (int i = 0; i < 5; i++) gib(x, y + 0.2f, (float)((int)(gag_rand(70 + (uint32_t)i) % 7) - 3), 11.0f + (float)(gag_rand(80 + (uint32_t)i) % 6), 1.5f);
+        react(who, LAV, 4);
+      } else react(who, SELF, 7);
+      break;
+    case DIE_SPIKE: case DIE_ENEMY: case DIE_BOSS:
+      if (roll < 34) { /* sometimes only */
+        big = true;
+        burst(g_fx_blood, x, y + 0.8f, 0.8f);
+        for (int i = 0; i < 3; i++) gib(x, y + 0.9f, (float)((int)(gag_rand(90 + (uint32_t)i) % 15) - 7), 7.0f, 1.1f);
+        stain(x, y, 2.2f, 2.2f, gag_rand(7) & 3, true, 0);
+        stain(x, y - 1.1f, 2.2f, 2.2f, gag_rand(8) % 3 ? 4 : 6, false, 0);
+        react(who, SEEN, 10);
+      } else react(who, SELF, 7);
+      break;
+    default: react(who, SELF, 7); break; /* a pit: nobody saw anything */
+  }
+  if (big) g_gore_dbg[1]++;
+}
+static void grief_gag(int who, int victim) {
+  (void)victim;
+  static const char *const G1[] = { "sorry", "not sorry", "friendship minus one", "you were in the way", "that head was just there" };
+  say(who, G1[gag_rand(9) % 5], 1.8f);
+}
+
+/* on to the next level, or at the end of the last, back to the title */
+static void next_level(void) {
+  save_t *sv = cw_shell_game_save();
+  sv->total_coins += G.coins_total, sv->total_deaths += G.deaths;
+  for (int i = 0; i < G.nplayers; i++) sv->total_betrayals += G.betrayals[i];
+  int players = G.nplayers;
+  uint32_t ab = G.abilities;
+  if (G.level + 1 >= NLEVELS) {
+    G.level = 0;
+    sv->level = 0;
+    sv->reached = 0;
+    memset(sv->seen, 0, sizeof sv->seen);
     save_progress();
 #ifdef COOP_AUTOPILOT
-    sim_reset(&G, G.nplayers);
+    G.abilities = LEVELS[0].abilities;
+    sim_reset(&G, players);
     build_scene();
+    music_for_level();
 #else
     cw_shell_to_title();
     G.nplayers = 0;
 #endif
+    return;
   }
+  G.level++;
+  G.abilities = ab | LEVELS[G.level].abilities;
+  sim_reset(&G, players);
+  G.abilities = ab | LEVELS[G.level].abilities;
+  sv->reached = 0;
+  memset(sv->seen, 0, sizeof sv->seen);
+  save_progress();
+  build_scene();
+  camgate_reset();
+  music_for_level();
 }
 
 /* ── HUD ───────────────────────────────────────────────────────────── */
@@ -1710,7 +2081,7 @@ static void coin_icon(cw_vec2 c, float r) {
   cw_r2d_circle((cw_vec2){ c.x - r * 0.2f, c.y - r * 0.2f }, r * 0.35f, 8, cw_rgba(1, 0.95f, 0.7f, 0.9f));
 }
 
-static const char *const REGION_NAMES[BIOMES] = { "Sunlit Meadow", "Glimmer Caves", "Drowned Ruins", "Ember Crater" };
+#define REGION_NAMES WORLD_NAMES
 
 static cw_color tile_color(int t, int biome) {
   switch (t) {
@@ -1753,6 +2124,67 @@ static bool project(float wx, float wy, float wz, float W, float H, float *sx, f
   return true;
 }
 
+/* the Management's signs: read when you are near one. Boards are in the world; their words are on a panel over the board */
+static void draw_signs(float W, float H, float s) {
+  const level *L = &G.L;
+  /* one at a time: the nearest to anybody, on its own board */
+  int pick = -1;
+  float pick_d = 8.0f;
+  for (int k = 0; k < L->nsigns; k++) {
+    const sign_t *n = &L->signs[k];
+    float best = 1e9f;
+    for (int i = 0; i < G.nplayers; i++) {
+      const player *p = &G.p[i];
+      if (!p->joined || !p->alive || p->bubble) continue;
+      float dx = fabsf((float)p->pf.body.position.x - n->x), dy = fabsf((float)p->pf.body.position.y - n->y);
+      if (dy < 6 && dx < best) best = dx;
+    }
+    if (best < pick_d) pick_d = best, pick = k;
+  }
+  if (pick >= 0) {
+    const sign_t *n = &L->signs[pick];
+    float a = pick_d < 6.0f ? 1.0f : (8.0f - pick_d) / 2.0f;
+    float sx, sy;
+    if (!project(n->x, n->y + 2.9f, 0, W, H, &sx, &sy)) return;
+    float pw = 300 * s, ts = 15.5f * s;
+    float x0 = sx - pw * 0.5f;
+    if (x0 < 12 * s) x0 = 12 * s;
+    if (x0 + pw > W - 12 * s) x0 = W - 12 * s - pw;
+    cw_text_metrics sz = cw_font_measure(g_font, n->text, &(cw_text_style){ .size = ts, .wrap_width = pw - 20 * s });
+    float ph = sz.height + 14 * s, y0 = sy - ph;
+    if (y0 < 80 * s) y0 = 80 * s;
+    /* the words never hide a player: anyone behind the panel and it thins right down */
+    for (int i = 0; i < G.nplayers; i++) {
+      const player *p = &G.p[i];
+      float px, py;
+      if (!p->joined || !project((float)p->pf.body.position.x, (float)p->pf.body.position.y + 0.7f, 0, W, H, &px, &py)) continue;
+      if (px > x0 - 30 * s && px < x0 + pw + 30 * s && py > y0 - 30 * s && py < y0 + ph + 30 * s) a *= 0.35f;
+    }
+    panel(x0, y0, pw, ph, 7 * s, cw_rgba(0.92f, 0.85f, 0.66f, 0.95f * a), cw_rgba(0.76f, 0.65f, 0.44f, 0.95f * a), cw_rgba(0.28f, 0.18f, 0.1f, 0.9f * a));
+    cw_r2d_text(g_font, n->text, (cw_vec2){ x0 + 10 * s, y0 + 7 * s }, &(cw_text_style){ .size = ts, .color = cw_rgba(0.13f, 0.08f, 0.04f, a), .wrap_width = pw - 20 * s });
+  }
+}
+/* who said what, over their head; the rest of the screen is not covered */
+static void draw_says(float W, float H, float s) {
+  for (int i = 0; i < 6; i++) {
+    if (SAY[i].t <= 0) continue;
+    SAY[i].t -= 1.0f / 60.0f;
+    const player *p = &G.p[SAY[i].who];
+    float wx = p->bubble ? p->bubble_x : (float)p->pf.body.position.x, wy = p->bubble ? p->bubble_y : (float)p->pf.body.position.y;
+    float sx, sy;
+    if (!project(wx, wy + 2.6f, 0, W, H, &sx, &sy)) continue;
+    float a = SAY[i].t < 0.3f ? SAY[i].t / 0.3f : 1.0f, ts = 15 * s;
+    cw_text_metrics sz = cw_font_measure(g_font, SAY[i].text, &(cw_text_style){ .size = ts });
+    float pw = sz.width + 18 * s, ph = sz.height + 10 * s, x0 = sx - pw * 0.5f, y0 = sy - ph - 20 * s;
+    if (x0 < 8 * s) x0 = 8 * s;
+    if (x0 + pw > W - 8 * s) x0 = W - 8 * s - pw;
+    if (y0 < 80 * s) y0 = 80 * s;
+    cw_r2d_round_rect(cw_rect_make(x0, y0, pw, ph), 8 * s, 8, cw_rgba(1, 1, 1, 0.92f * a));
+    cw_vec2 tri[3] = { { sx - 5 * s, y0 + ph }, { sx + 5 * s, y0 + ph }, { sx, y0 + ph + 7 * s } };
+    cw_r2d_polygon(tri, 3, cw_rgba(1, 1, 1, 0.92f * a));
+    cw_r2d_text(g_font, SAY[i].text, (cw_vec2){ x0 + 9 * s, y0 + 5 * s }, &(cw_text_style){ .size = ts, .color = cw_rgba(0.1f, 0.1f, 0.14f, a) });
+  }
+}
 static void draw_markers(float W, float H, float s) {
   /* project every marker first, then push markers that would overlap apart along the row (players in one spot get
    * one readable marker each, side by side, never a stack) */
@@ -1801,12 +2233,13 @@ static void draw_markers(float W, float H, float s) {
 static void draw_map(float W, float H) {
   float s = H / 540.0f;
   cw_r2d_rect(cw_rect_make(0, 0, W, H), cw_rgba(0.01f, 0.02f, 0.05f, 0.9f));
-  float mw = W * 0.9f, cell = mw / (WORLD_W / 4);
+  int map_w = G.L.width > 0 ? G.L.width / 4 + 2 : WORLD_W / 4;
+  float mw = W * 0.9f, cell = mw / (float)map_w;
   float ox = (W - mw) * 0.5f, oy = H * 0.52f - cell * (WORLD_H / 4) * 0.5f;
   const save_t *sv = cw_shell_game_save();
   panel(ox - 10 * s, oy - 10 * s, mw + 20 * s, cell * (WORLD_H / 4) + 20 * s, 12 * s, cw_rgba(0.08f, 0.12f, 0.2f, 0.95f), cw_rgba(0.03f, 0.05f, 0.09f, 0.95f), cw_rgba(0.5f, 0.65f, 0.9f, 0.5f));
   for (int by = 0; by < WORLD_H / 4; by++)
-    for (int bx = 0; bx < WORLD_W / 4; bx++) {
+    for (int bx = 0; bx < map_w; bx++) {
       if (!G.seen[by][bx] && !sv->seen[by][bx]) continue;
       int best = T_AIR, bc = 0, cnt[9] = { 0 };
       for (int y = 0; y < 4; y++)
@@ -1853,7 +2286,13 @@ static void draw_map(float W, float H) {
     text(REGION_NAMES[b], cx - 110 * s, oy + cell * (WORLD_H / 4) + 16 * s, 16 * s, lerpc(rgba3(MOODS[b].sun, 1), cw_rgba(1, 1, 1, 1), 0.4f), CW_ALIGN_CENTER, 220 * s);
   }
   text("MAP", 0, H * 0.035f, 30 * s, cw_rgba(1, 0.95f, 0.8f, 1), CW_ALIGN_CENTER, W);
-  text("left and right pick a flag you have touched, Jump travels there   (M or Back to close)", 0, H * 0.93f, 16 * s, cw_rgba(0.8f, 0.85f, 1, 0.9f), CW_ALIGN_CENTER, W);
+  {
+    char lv[160];
+    int shown = g_map_level < 0 ? G.level : g_map_level;
+    snprintf(lv, sizeof lv, "level %d of %d: %s%s", shown + 1, NLEVELS, LEVELS[shown].name, shown != G.level ? "   (Jump goes there)" : "");
+    text(lv, 0, H * 0.07f, 24 * s, cw_rgba(1, 0.92f, 0.7f, 1), CW_ALIGN_CENTER, W);
+  }
+  text("left and right pick a flag you have touched, up and down a level you have reached, Jump travels there   (M or Back to close)", 0, H * 0.93f, 16 * s, cw_rgba(0.8f, 0.85f, 1, 0.9f), CW_ALIGN_CENTER, W);
 }
 
 /* the title screen's picture: a painted dusk meadow with three drifting ridges, a sun, fireflies and the four heroes */
@@ -1963,6 +2402,7 @@ static void attract_step(void) {
   if (scr != CW_SHELL_TITLE && scr != CW_SHELL_JOIN && scr != CW_SHELL_SETTINGS) return;
   if (!g_attract || !G.world.id || G.nplayers == 0 || G.tick > 60 * 75) {
     G.abilities = AB_DOUBLE | AB_CLAWS | AB_DASH;
+    G.level = 0; /* the title always shows the meadow */
     sim_reset(&G, MAX_PLAYERS);
     G.abilities = AB_DOUBLE | AB_CLAWS | AB_DASH;
     for (int i = 0; i < G.nplayers; i++) {
@@ -1972,6 +2412,7 @@ static void attract_step(void) {
     build_scene();
     g_attract = true;
   }
+  music_play(6);
   for (int i = 0; i < MAX_PLAYERS; i++) sim_bot_input(&G, i, &INPUT[i]);
   sim_step(&G, INPUT, 1.0f / 60.0f);
   G.events = 0;
@@ -2013,31 +2454,38 @@ static void render(void *user, double alpha) {
       panel(x, y, cw_, 30 * s, 10 * s, on ? cw_rgba(0.2f, 0.45f, 0.6f, 0.9f) : cw_rgba(0.12f, 0.14f, 0.2f, 0.6f), on ? cw_rgba(0.05f, 0.12f, 0.2f, 0.9f) : cw_rgba(0.05f, 0.06f, 0.09f, 0.6f), on ? cw_rgba(0.5f, 0.9f, 1, 0.8f) : cw_rgba(0.4f, 0.4f, 0.5f, 0.3f));
       text(AB[k], x, y + 7 * s, 14 * s, on ? cw_rgba(0.85f, 0.98f, 1, 1) : cw_rgba(0.5f, 0.55f, 0.65f, 0.8f), CW_ALIGN_CENTER, cw_);
     }
-    /* the region you are in, fading in at the top when it changes */
+    /* the level you are on, fading in at the top when it starts */
     {
-      static int last_reg = -1;
-      static float reg_t = 0;
-      int b = G.L.biome[(int)G.cam.x < 0 ? 0 : (int)G.cam.x >= WORLD_W ? WORLD_W - 1 : (int)G.cam.x];
-      if (b != last_reg) last_reg = b, reg_t = 3.2f;
-      if (reg_t > 0) {
-        reg_t -= dt;
-        float a = reg_t > 2.6f ? (3.2f - reg_t) / 0.6f : reg_t < 0.8f ? reg_t / 0.8f : 1.0f;
-        text(REGION_NAMES[b], 0, H * 0.2f, 34 * s, cw_rgba(1, 0.96f, 0.85f, a), CW_ALIGN_CENTER, W);
-        cw_r2d_rect(cw_rect_make(W * 0.5f - 90 * s, H * 0.2f + 44 * s, 180 * s, 2 * s), cw_rgba(1, 0.85f, 0.5f, a * 0.8f));
+      static int last_lv = -1;
+      static float lv_t = 0;
+      if (G.level != last_lv) last_lv = G.level, lv_t = 4.2f;
+      if (G.tick < 3) lv_t = 4.2f;
+      if (lv_t > 0) {
+        lv_t -= dt;
+        float a = lv_t > 3.6f ? (4.2f - lv_t) / 0.6f : lv_t < 0.8f ? lv_t / 0.8f : 1.0f;
+        const level_info *li = &LEVELS[G.level];
+        text(WORLD_NAMES[li->world], 0, H * 0.17f, 19 * s, cw_rgba(1, 0.9f, 0.7f, a), CW_ALIGN_CENTER, W);
+        text(li->name, 0, H * 0.205f, 36 * s, cw_rgba(1, 0.96f, 0.85f, a), CW_ALIGN_CENTER, W);
+        cw_r2d_rect(cw_rect_make(W * 0.5f - 90 * s, H * 0.205f + 46 * s, 180 * s, 2 * s), cw_rgba(1, 0.85f, 0.5f, a * 0.8f));
       }
     }
     /* boss bar */
     for (int i = 0; i < G.L.nenemies; i++)
       if (G.L.enemies[i].kind == 2 && G.L.enemies[i].alive && fabsf(G.cam.x - G.L.enemies[i].x) < 30) {
         float bw = W * 0.5f, bx = (W - bw) * 0.5f, by = H - 52 * s;
-        float f = (float)G.L.enemies[i].hp / 9.0f;
+        float f = (float)G.L.enemies[i].hp / (float)(5 + G.L.boss_kind);
         panel(bx - 6 * s, by - 6 * s, bw + 12 * s, 28 * s, 10 * s, cw_rgba(0.2f, 0.1f, 0.1f, 0.9f), cw_rgba(0.06f, 0.03f, 0.03f, 0.9f), cw_rgba(1, 0.5f, 0.3f, 0.6f));
         cw_r2d_round_rect(cw_rect_make(bx, by, bw * f, 16 * s), 7 * s, 8, cw_rgba(0.8f, 0.12f, 0.1f, 1));
         cw_r2d_round_rect(cw_rect_make(bx, by, bw * f, 7 * s), 5 * s, 8, cw_rgba(1, 0.5f, 0.3f, 0.9f));
-        text("THE WARDEN", 0, by - 30 * s, 17 * s, cw_rgba(1, 0.85f, 0.7f, 1), CW_ALIGN_CENTER, W);
+        {
+          static const char *const BOSS[5] = { "THE LANDLORD", "THE TAX GOLEM", "THE LIFEGUARD", "THE REGIONAL MANAGER", "THE FOUNDER" };
+          text(BOSS[G.L.boss_kind], 0, by - 30 * s, 17 * s, cw_rgba(1, 0.85f, 0.7f, 1), CW_ALIGN_CENTER, W);
+        }
       }
+    draw_signs(W, H, s);
+    draw_says(W, H, s);
     draw_markers(W, H, s);
-    text("hold R or Y: back to the last flag", 20 * s, H - 30 * s, 14 * s, cw_rgba(1, 1, 1, 0.45f), CW_ALIGN_LEFT, 0);
+    text("hold X to run, A to jump: run first and jump further     hold R or Y: back to the last flag", 20 * s, H - 30 * s, 14 * s, cw_rgba(1, 1, 1, 0.45f), CW_ALIGN_LEFT, 0);
     /* players carried in bubbles: a tag each (face and RESCUE), laid out side by side from the measured text and
      * centred, so four tags never run into each other (a fixed 90 px step by player number overlapped them) */
     {
@@ -2063,14 +2511,19 @@ static void render(void *user, double alpha) {
     }
     if (G.won) {
       float k = fminf(1.0f, (float)(G.tick - G.win_tick) / 40.0f);
-      panel(0, H * 0.28f, W, H * 0.34f * k, 0, cw_rgba(0.1f, 0.08f, 0.02f, 0.88f), cw_rgba(0.02f, 0.02f, 0.03f, 0.88f), cw_rgba(1, 0.8f, 0.3f, 0.7f));
+      panel(0, H * 0.28f, W, H * 0.42f * k, 0, cw_rgba(0.1f, 0.08f, 0.02f, 0.88f), cw_rgba(0.02f, 0.02f, 0.03f, 0.88f), cw_rgba(1, 0.8f, 0.3f, 0.7f));
       if (k > 0.9f) {
-        text("THE DEEP IS QUIET", 0, H * 0.31f, 52 * s, cw_rgba(1, 0.85f, 0.3f, 1), CW_ALIGN_CENTER, W);
+        text(G.level + 1 >= NLEVELS ? "THE END. PLEASE LEAVE QUIETLY." : LEVELS[G.level].name, 0, H * 0.31f, 46 * s, cw_rgba(1, 0.85f, 0.3f, 1), CW_ALIGN_CENTER, W);
+        {
+          char l[200];
+          snprintf(l, sizeof l, LEVELS[G.level].line, G.coins_total, G.coins_total + 1);
+          text(l, W * 0.1f, H * 0.53f, 24 * s, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER, W * 0.8f);
+        }
         char t[96];
         coin_icon((cw_vec2){ W * 0.5f - 250 * s, H * 0.485f }, 11 * s);
         snprintf(t, sizeof t, "coins %d     secrets %d     rescues %d     falls %d", G.coins_total, G.secrets, G.rescues, G.deaths);
         text(t, 0, H * 0.46f, 24 * s, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER, W);
-        for (int i = 0; i < G.nplayers; i++) portrait((cw_vec2){ W * 0.5f + ((float)i - (float)(G.nplayers - 1) * 0.5f) * 64 * s, H * 0.56f }, 18 * s, i, false);
+        for (int i = 0; i < G.nplayers; i++) portrait((cw_vec2){ W * 0.5f + ((float)i - (float)(G.nplayers - 1) * 0.5f) * 64 * s, H * 0.645f }, 15 * s, i, false);
       }
     }
     if (g_map_open) { draw_map(W, H); g_map_seen_dbg = 1; }

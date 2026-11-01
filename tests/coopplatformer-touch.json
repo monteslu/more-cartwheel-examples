@@ -1,0 +1,11 @@
+[{"frame":1,"buttons":[]},
+{"frame":120,"buttons":["south"]},
+{"frame":126,"buttons":[]},
+{"frame":180,"buttons":["south"]},
+{"frame":186,"buttons":[]},
+{"frame":240,"buttons":["start"]},
+{"frame":246,"buttons":[]},
+{"frame":520,"buttons":[],"touches":[{"id":1,"x":215,"y":400},{"id":2,"x":750,"y":450}]},
+{"frame":590,"buttons":[],"touches":[{"id":1,"x":215,"y":400},{"id":2,"x":750,"y":450},{"id":3,"x":870,"y":430}]},
+{"frame":630,"buttons":[],"touches":[{"id":1,"x":215,"y":400},{"id":2,"x":750,"y":450}]},
+{"frame":680,"buttons":[],"touches":[]}]
