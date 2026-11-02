@@ -102,11 +102,15 @@ blender -b --disable-autoexec -t 8 --python games/pirates/tools/make-coast.py --
 The terrain generator writes the model, albedo, editable blend and matching
 collision/height header together. Keep those outputs together. Other Blender
 scripts prepare the licensed galleon and generate harbors, cargo and upgrades.
+`tools/make-shore-rock.py` derives solid shore boulders with broad embedded
+bases from the repository rock mesh; volcanic debris keeps its original mesh.
 After regenerating assets, run `tools/portable-blends.py` with Blender 4.2.9
 (from the game folder) to keep packed-image and file-browser paths portable.
 It reloads every saved blend and checks that geometry, morphs and packed
-textures are preserved. From the repository root, `python3 tests/pirates-assets.py` checks binary assets
-for embedded home paths; CI runs this check too.
+textures are preserved. From the repository root, `python3 tests/pirates-assets.py`
+checks binary assets for home-path fragments and reads the complete saved
+Blender directory fields, including unused bytes after the terminator. CI
+runs this check too.
 See [CREDITS](CREDITS) for ownership and source information.
 The original looping sea ambience is regenerated with
 `python3 games/pirates/tools/make-ambience.py` (no Blender or audio packages needed).
@@ -123,6 +127,8 @@ Runtime debug commands exercise actual gameplay functions and reset the match:
 - `pirates_placement`: inspect scenery support across each full footprint,
   cargo water contact and ship clearance. `pirates_placement 1` temporarily
   raises a prop; it must report unsupported scenery and then restore it.
+  `pirates_placement 2` raises a rock edge while its lowest corner stays buried;
+  the underside check must fail even though the old bounding-box check passes.
 - `pirates_test_hull`: check bow/stern shore and dock clearance, turning,
   reverse escape and spawns on both maps.
 - `pirates_test_route`: skip an unreachable cove pickup and continue banking.
@@ -181,11 +187,19 @@ node "$ENGINE_ROOT/tools/with-gpu-suite.mjs" pirates-review \
 `tests/pirates-review-gates.json` defines the two map checks. The suite starts
 its own romdev server inside the GPU sandbox and calls its HTTP tools on GL
 and WebGPU. It checks scenery across a 17-by-17 grid over each full bounding
-footprint, asserts the original prop counts, and requires a raised-prop
-negative control to fail before restoring it. It also checks cargo
+footprint for vegetation. For rocks, it intersects the mesh vertically over
+a 33-by-33 grid and at vertex projections, comparing the lowest 12 cm
+contact band with the terrain directly beneath each point. A separate check
+requires every rock to remain visible above the ground. It asserts the original prop counts
+and requires both raised-prop and raised-rock-edge controls to fail before
+restoring them. Close-ups revisit the two rocks identified in review. It also checks cargo
 water contact on both maps, renders all four graphics presets without missing
 shaders or skipped draws, tests dock collisions and AI banking, and checks
 idle captains at home. Four controller ports join through ordinary input;
 this does not replace testing four physical devices. It also checks the short replay on both APIs and a
 full rendered WebGPU race against `tests/pirates-gates.json`. Screenshots,
 state and frame-delivery timing samples are written to `out/pirates-review/`.
+
+For scenery-only changes, add `--checks-only` to run both backends, maps,
+graphics presets, placement controls and play checks without repeating the
+long deterministic replays.

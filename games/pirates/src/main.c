@@ -163,7 +163,7 @@ static void prop_bounds(t3_object *o,t3_vec3 *lo,t3_vec3 *hi) {
   }
   for(int i=0;i<o->child_count;i++)prop_bounds(o->children[i],lo,hi);
 }
-static float footprint_gap(cw_node n) {
+static float bounds_footprint_gap(cw_node n) {
   t3_object *o=cw_node3d_object(n);
   /* Scene transforms own these objects; refresh before measuring a moved prop. */
   t3_object_set_matrix_world(o,cw_node3d_global_transform(n));
@@ -173,6 +173,80 @@ static float footprint_gap(cw_node n) {
   for(int z=0;z<=16;z++)for(int x=0;x<=16;x++)
     lowest=fminf(lowest,coast_height(lo.x+(hi.x-lo.x)*x/16,lo.z+(hi.z-lo.z)*z/16));
   return lo.y-lowest;
+}
+/* Find the bottom surface at this X/Z, including overlapping rock lobes.
+ * Interior or overhanging upper triangles are not ground-contact points. */
+static void rock_point_gap(const t3_vec3 *tri,int count,float x,float z,float support_top,float *gap,int *samples) {
+  float lowest=1e9f;
+  for(int i=0;i+2<count;i+=3) {
+    t3_vec3 a=tri[i],b=tri[i+1],c=tri[i+2];
+    float bx=b.x-a.x,bz=b.z-a.z,cx=c.x-a.x,cz=c.z-a.z;
+    float det=bx*cz-bz*cx;
+    if(fabsf(det)<1e-8f)continue;
+    float u=((x-a.x)*cz-(z-a.z)*cx)/det;
+    float v=(bx*(z-a.z)-bz*(x-a.x))/det;
+    if(u<-.0001f || v<-.0001f || u+v>1.0001f)continue;
+    lowest=fminf(lowest,a.y+u*(b.y-a.y)+v*(c.y-a.y));
+  }
+  if(lowest<=support_top){*gap=fmaxf(*gap,lowest-coast_height(x,z));(*samples)++;}
+}
+/* Compare the lowest 12 cm of the rock with the terrain directly beneath
+ * each point, matching the review probe's contact band. Upper overhangs are
+ * not feet. The grid and vertex projections cover this band across the whole
+ * footprint, without a centre-radius exclusion. */
+static void rock_underside_gap(t3_object *o,float *gap,int *samples) {
+  if(o->type==T3_MESH) {
+    t3_geometry *g=((t3_mesh *)o)->geometry;
+    t3_attribute *p=g?g->attributes[T3_ATTR_POSITION]:NULL;
+    if(p && p->type==T3_FLOAT32 && p->item_size==3) {
+      const float *v=p->array;
+      int count=g->index?g->index->count:p->count;
+      t3_vec3 *tri=malloc(count*sizeof(*tri));
+      if(!tri){*gap=1e9f;return;}
+      float xlo=1e9f,zlo=1e9f,xhi=-1e9f,zhi=-1e9f,ylo=1e9f;
+      for(int i=0;i<count;i++) {
+        int j=i;
+        if(g->index)j=g->index->type==T3_UINT16?((uint16_t *)g->index->array)[i]:((uint32_t *)g->index->array)[i];
+        tri[i]=t3_vec3_apply_mat4((t3_vec3){v[j*3],v[j*3+1],v[j*3+2]},&o->matrix_world);
+        xlo=fminf(xlo,tri[i].x);xhi=fmaxf(xhi,tri[i].x);
+        zlo=fminf(zlo,tri[i].z);zhi=fmaxf(zhi,tri[i].z);ylo=fminf(ylo,tri[i].y);
+      }
+      for(int z=0;z<=32;z++)for(int x=0;x<=32;x++)
+        rock_point_gap(tri,count,xlo+(xhi-xlo)*x/32,zlo+(zhi-zlo)*z/32,ylo+.12f,gap,samples);
+      for(int i=0;i<count;i++) {
+        rock_point_gap(tri,count,tri[i].x,tri[i].z,ylo+.12f,gap,samples);
+        /* Also retain every contact-band vertex used by the review probe. */
+        if(tri[i].y<=ylo+.12f)
+          *gap=fmaxf(*gap,tri[i].y-coast_height(tri[i].x,tri[i].z));
+      }
+      free(tri);
+    }
+  }
+  for(int i=0;i<o->child_count;i++)rock_underside_gap(o->children[i],gap,samples);
+}
+static float footprint_gap(cw_node n) {
+  if(strncmp(cw_node_name(n),"ShoreRock",9))return bounds_footprint_gap(n);
+  t3_object *o=cw_node3d_object(n);
+  t3_object_set_matrix_world(o,cw_node3d_global_transform(n));
+  t3_object_update_world_matrix(o,false,true);
+  float gap=-1e9f;int samples=0;rock_underside_gap(o,&gap,&samples);
+  return samples?gap:1e9f;
+}
+static float rock_peak_clearance(t3_object *o) {
+  float peak=-1e9f;
+  if(o->type==T3_MESH) {
+    t3_geometry *g=((t3_mesh *)o)->geometry;
+    t3_attribute *a=g?g->attributes[T3_ATTR_POSITION]:NULL;
+    if(a && a->type==T3_FLOAT32 && a->item_size==3) {
+      const float *v=a->array;
+      for(int i=0;i<a->count;i++) {
+        t3_vec3 p=t3_vec3_apply_mat4((t3_vec3){v[i*3],v[i*3+1],v[i*3+2]},&o->matrix_world);
+        peak=fmaxf(peak,p.y-coast_height(p.x,p.z));
+      }
+    }
+  }
+  for(int i=0;i<o->child_count;i++)peak=fmaxf(peak,rock_peak_clearance(o->children[i]));
+  return peak;
 }
 static void ground_prop(cw_node n) {
   float gap=footprint_gap(n);
@@ -334,7 +408,7 @@ static void make_coast(void) {
     /* Leave irregular clearings so the bays and terrain remain legible.
      * Low broadleaf plants form an understory rather than a solid canopy. */
     if(d>=1.0f && cw_sin(x*.7f+z*.38f)+cw_cos(z*.8f-x*.24f)>.65f)continue;
-    const char *path=d<1.0f?"res://models/rock0.glb":"res://models/undergrowth.glb";
+    const char *path=d<1.0f?"res://models/shore-rock.glb":"res://models/undergrowth.glb";
     cw_node detail=cw_node_new("Node3D",d<1?"ShoreRock":"Undergrowth");cw_node_add_child(G.environment,detail);
     float h=coast_height(x,z);
     float scale=d<1?.65f:1.1f+(seed%4)*.15f;
@@ -1504,21 +1578,36 @@ static void mesh_vertical_bounds(t3_object *o,float *lo,float *hi) {
   for(int i=0;i<o->child_count;i++)mesh_vertical_bounds(o->children[i],lo,hi);
 }
 static void cmd_placement(int argc,const char **argv,cw_reply *r) {
-  int control=argc>1 && atoi(argv[1]);
-  int props=0,unsupported=0,cargo=0,floating=0,ships=0,overlaps=0;
-  float max_gap=-1000;
+  int control=argc>1?atoi(argv[1]):0,control_done=0;
+  int props=0,unsupported=0,cargo=0,floating=0,ships=0,overlaps=0,rocks=0,buried_rocks=0;
+  float max_gap=-1000,control_bbox_gap=0;
   for(int i=0;i<cw_node_child_count(G.environment);i++) {
     cw_node n=cw_node_child(G.environment,i);const char *name=cw_node_name(n);
     if(strncmp(name,"Palm",4)&&strncmp(name,"ShoreRock",9)&&strncmp(name,"Undergrowth",11)&&strncmp(name,"Port",4))continue;
     t3_vec3 saved=cw_node3d_position(n);
-    if(control && props==0)cw_node3d_set_position(n,(t3_vec3){saved.x,saved.y+20,saved.z});
+    t3_quat saved_rotation=cw_node3d_quaternion(n);
+    int moved=control==1 && props==0;
+    if(moved)cw_node3d_set_position(n,(t3_vec3){saved.x,saved.y+20,saved.z});
+    if(control==2 && !control_done && !strncmp(name,"ShoreRock",9)) {
+      /* Tilt a rock on the flat outer seabed as a reproducible fixture: bury the lowest
+       * corner 2 cm while leaving other points of the contact band exposed.
+       * The former single-lowest-point check must miss this raised edge. */
+      cw_node3d_set_rotation(n,(t3_vec3){.2f,0,0});
+      cw_node3d_set_position(n,(t3_vec3){80,saved.y,80});
+      float box=bounds_footprint_gap(n);
+      cw_node3d_set_position(n,(t3_vec3){80,saved.y-box-.02f,80});
+      control_bbox_gap=bounds_footprint_gap(n);moved=control_done=1;
+    }
     float gap;
     if(!strncmp(name,"Port",4)) {
       /* The connected quay anchors the pier; its offshore piles are not plants. */
       t3_object *o=cw_node3d_object(n);t3_object_update_world_matrix(o,true,true);
       float lo=1e9f,hi=-1e9f;mesh_vertical_bounds(o,&lo,&hi);gap=lo;
     } else gap=footprint_gap(n);
-    if(control && props==0)cw_node3d_set_position(n,saved);
+    if(!strncmp(name,"ShoreRock",9)) {
+      rocks++;buried_rocks+=rock_peak_clearance(cw_node3d_object(n))<.05f;
+    }
+    if(moved){cw_node3d_set_position(n,saved);cw_node3d_set_quaternion(n,saved_rotation);}
     max_gap=fmaxf(max_gap,gap);props++;unsupported+=gap>.001f;
   }
   for(int i=0;i<GOODS;i++)if(G.goods[i].active) {
@@ -1530,7 +1619,7 @@ static void cmd_placement(int argc,const char **argv,cw_reply *r) {
   for(int i=0;i<SHIPS;i++)if(G.ships[i].active&&!G.ships[i].respawn) {
     ship *s=&G.ships[i];ships++;overlaps+=!hull_clear(s->x,s->z,s->yaw);
   }
-  cw_reply_printf(r,"{\"props\":%d,\"unsupported\":%d,\"max_ground_gap\":%.3f,\"cargo\":%d,\"floating\":%d,\"ships\":%d,\"overlaps\":%d}",props,unsupported,max_gap,cargo,floating,ships,overlaps);
+  cw_reply_printf(r,"{\"props\":%d,\"unsupported\":%d,\"max_ground_gap\":%.3f,\"cargo\":%d,\"floating\":%d,\"ships\":%d,\"overlaps\":%d,\"control_bbox_gap\":%.3f,\"rocks\":%d,\"buried_rocks\":%d}",props,unsupported,max_gap,cargo,floating,ships,overlaps,control_bbox_gap,rocks,buried_rocks);
 }
 
 static void cmd_hull_test(int argc,const char **argv,cw_reply *r) {

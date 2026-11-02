@@ -6,6 +6,7 @@ models/coast.glb
 models/crater-lava.glb
 models/coconut-palm.glb
 models/rock0.glb
+models/shore-rock.glb
 models/undergrowth.glb
 models/port-fort.glb
 models/port-watchtower.glb

@@ -5,6 +5,14 @@ from pathlib import Path
 root=Path(__file__).resolve().parents[1]
 assert bpy.app.version[:3]==(4,2,9), bpy.app.version_string
 bpy.context.preferences.filepaths.save_version=0
+def portable_string(owner,name,value):
+ # Blender's fixed-size DNA strings retain bytes after the new terminating NUL.
+ # Overwrite the entire capacity before assigning the shorter portable value.
+ # Spaces survive RNA's C-string setter; embedded NUL padding does not.
+ capacity=owner.bl_rna.properties[name].length_max
+ if capacity:
+  setattr(owner,name,(b' ' if isinstance(value,bytes) else ' ')*(capacity-1))
+ setattr(owner,name,value)
 def geometry_digest():
  h=hashlib.sha256()
  for mesh in sorted(bpy.data.meshes,key=lambda x:x.name):
@@ -21,17 +29,17 @@ for path in sorted((root/'art').rglob('*.blend')):
  before=geometry_digest()
  for image in bpy.data.images:
   if image.filepath:
-   image.filepath='//'+image.filepath.replace('\\','/').rsplit('/',1)[-1]
+   portable_string(image,'filepath','//'+image.filepath.replace('\\','/').rsplit('/',1)[-1])
   for packed in image.packed_files:
-   packed.filepath='//'+packed.filepath.replace('\\','/').rsplit('/',1)[-1]
+   portable_string(packed,'filepath','//'+packed.filepath.replace('\\','/').rsplit('/',1)[-1])
  for scene in bpy.data.scenes:
-  scene.render.filepath='//renders/'
+  portable_string(scene.render,'filepath','//renders/')
   scene.render.use_stamp=False
  for screen in bpy.data.screens:
   for area in screen.areas:
    for space in area.spaces:
     if space.type=='FILE_BROWSER' and space.params:
-     space.params.directory=b'//'
+     portable_string(space.params,'directory',b'//')
  bpy.ops.wm.save_as_mainfile(filepath=str(path),relative_remap=False)
  # Reload with the pinned version, so validation covers the actual saved file.
  bpy.ops.wm.open_mainfile(filepath=str(path))

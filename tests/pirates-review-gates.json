@@ -13,7 +13,8 @@
       "unsupported": 0,
       "floating": 0,
       "overlaps": 0,
-      "props": 85
+      "props": 85,
+      "buried_rocks": 0
     },
     "expectIdleHull": [
       100,
@@ -36,7 +37,8 @@
       "unsupported": 0,
       "floating": 0,
       "overlaps": 0,
-      "props": 115
+      "props": 115,
+      "buried_rocks": 0
     },
     "expectIdleHull": [
       100,

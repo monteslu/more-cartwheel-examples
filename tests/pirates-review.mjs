@@ -60,6 +60,10 @@ for(const gpu of ['gl','webgpu']) {
    const control=await command(h,'pirates_placement 1');
    assert.ok(control.unsupported>0 && control.max_ground_gap>.1,'raised-prop control must fail: '+JSON.stringify(control));
    assert.equal((await command(h,'pirates_placement')).unsupported,0,'control must restore the prop');
+   const rockControl=await command(h,'pirates_placement 2');
+   assert.equal(rockControl.unsupported,1,'raised rock edge must fail: '+JSON.stringify(rockControl));
+   assert.ok(rockControl.max_ground_gap>.01 && rockControl.control_bbox_gap<0,'buried lowest corner must not hide a raised edge: '+JSON.stringify(rockControl));
+   assert.equal((await command(h,'pirates_placement')).unsupported,0,'rock control must restore the prop');
    assert.ok(placement.props>50);assert.ok(placement.cargo>0);assert.equal(placement.ships,6);
    for(const [k,v] of Object.entries(review.expectPlacement))assert.equal(placement[k],v,JSON.stringify(placement));
    for(const q of review.presets) {
@@ -69,13 +73,23 @@ for(const gpu of ['gl','webgpu']) {
    await command(h,'quality high');await h.stepFrames(review.idleFrames);
    assert.deepEqual(await field(h,'pirates.hp'),review.expectIdleHull);
    const late=await command(h,'pirates_placement');assert.equal(late.overlaps,0);
-   results.push({gpu,map,placement,raisedPropControl:control,idleHp:await field(h,'pirates.hp')});
+   results.push({gpu,map,placement,raisedPropControl:control,raisedRockEdgeControl:rockControl,idleHp:await field(h,'pirates.hp')});
+   // Revisit the two raised rock edges identified in review at ground level.
+   const [x,z]=map?[8.45,-8.46]:[-18.97,2.48];
+   await command(h,`set Root/Camera position vec3(${x},3.2,${z+5})`);
+   await command(h,'set Root/Camera rotation vec3(-0.55,0,0)');
+   await command(h,'set Root/Camera fov 40');
+   await h.stepFrames(2);await clean(h);await shot(h,`${gpu}-map${map}-rock-closeup`);
+   await command(h,'set Root/Camera position vec3(0,68,24)');
+   await command(h,`set Root/Camera rotation vec3(${-Math.atan2(68,22)},0,0)`);
+   await command(h,'set Root/Camera fov 46');
   }
   const hull=await command(h,'pirates_test_hull');assert.equal(hull.spawns_clear,1);assert.equal(hull.no_penetration,1);
   assert.equal(hull.blocked,hull.cases,JSON.stringify(hull));assert.equal(hull.reversed_clear,hull.cases,JSON.stringify(hull));
   for(const text of ['pirates_test_escape','pirates_test_route'])assert.equal((await command(h,text)).banked,3);
   await clean(h);console.log(gpu+': placement, four presets on both maps, harbor safety, hull and routes passed');
  } finally {await h.destroy();}
+ if(process.argv.includes('--checks-only'))continue;
  h=await load(gpu,true);
  try {
   const gates=JSON.parse(readFileSync(join(root,'tests/pirates-gates.json'),'utf8')).slice(0,2);
