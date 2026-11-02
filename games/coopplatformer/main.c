@@ -5,7 +5,7 @@
  * (a two-player run, no input), for tests and screenshots.
  *
  * Debug fields (g.*): state, players, tick, abilities, coins, kills, deaths, rescues, secrets, checkpoint, boss_hp,
- * won, hash, pos (player 0), cam (x, y, z), hp, bubbles. */
+ * won, hash, pos (player 0), cam (x, y, z), hp, bubbles, signgate, cardgate, bossgate. */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -116,6 +116,11 @@ static int g_scenery_dbg[2]; /* the scenery check on the built world: props seat
 static int g_marker_over_dbg; /* markers drawn over the player panels (the rescue-tag gate) */
 static int g_tags_dbg[2]; /* HUD rescue tags: frames with two or more, frames where two of them overlapped */
 static bool g_hud_bug; /* COOP_HUD_BUG: the rescue-tag gate's control */
+static int g_sign_dbg[3]; /* signs: frames a panel was up, of them over a player's body, of them thinner than its distance asks */
+static bool g_sign_bug; /* COOP_SIGN_BUG: the sign gate's control */
+static int g_card_dbg[3]; /* the results card: frames up, of them with the portraits on the line above them, levels whose closing line takes two rows */
+static bool g_card_bug; /* COOP_CARD_BUG: the card gate's control */
+static int g_boss_dbg[4]; /* this match's last boss, kept into the next level: its kind + 1, frames alive in view, hits taken, frames drawn since it died */
 static int g_vanish_dbg; /* frames every player on the field was hidden by the invulnerable blink */
 static int g_blink_live, g_blink_hid;
 static bool g_blink_bug; /* COOP_BLINK_BUG: the blink gate's control */
@@ -138,6 +143,7 @@ static void camgate_reset(void) {
   g_viewbot_dbg = 1e9f;
   g_underview_dbg[0] = g_underview_dbg[1] = 0;
   g_tags_dbg[0] = g_tags_dbg[1] = 0;
+  memset(g_sign_dbg, 0, sizeof g_sign_dbg);
   g_marker_over_dbg = 0;
   memset(&CS, 0, sizeof CS);
   memset(g_camgate_dbg, 0, sizeof g_camgate_dbg);
@@ -1083,6 +1089,12 @@ static void sync_scene(float alpha, float dt) {
       burst(S.fx_debris, e->x, by, 0.5f); /* its rumble comes from the sim (sim_rumble_at), where it died */
     }
     S.prev_alive[i] = e->alive;
+    if (e->kind == 2 && !g_attract) {
+      g_boss_dbg[0] = L->boss_kind + 1;
+      g_boss_dbg[2] = 5 + L->boss_kind - (e->hp > 0 ? e->hp : 0);
+      if (!e->alive) g_boss_dbg[3]++;
+      else if (fabsf(e->x - vx) < 0.648f * vz) g_boss_dbg[1]++; /* half the view is tan(20 deg) z tall, 16:9 wide */
+    }
     if (!e->alive || !S.erig[i]) continue;
     cw_node3d_set_position(S.enode[i], (t3_vec3){ e->x, e->y + (e->kind == 1 ? 0.2f * sinf(S.time * 5 + (float)i) : 0), 0 });
     float want = e->dir > 0 ? 1.2f : -1.2f;
@@ -1205,6 +1217,10 @@ static void start_match(int players, void *user) {
   g_coin_flat_bug = getenv("COOP_COIN_FLAT_BUG") != NULL; /* the coin gate's control (native only) */
   g_vanish_dbg = 0;
   g_hud_bug = getenv("COOP_HUD_BUG") != NULL; /* the rescue-tag gate's control (native only) */
+  g_sign_bug = getenv("COOP_SIGN_BUG") != NULL; /* the sign gate's control (native only) */
+  g_card_bug = getenv("COOP_CARD_BUG") != NULL; /* the card gate's control (native only) */
+  memset(g_card_dbg, 0, sizeof g_card_dbg);
+  memset(g_boss_dbg, 0, sizeof g_boss_dbg);
   g_cam_nofloor = getenv("COOP_PIT_CAM_BUG") != NULL; /* the pit camera gate's control (native only) */
   if (sv->abilities && !getenv("COOP_FRESH")) G.abilities |= sv->abilities;
   if (sv->level == G.level) G.reached |= sv->reached;
@@ -1627,6 +1643,9 @@ static void init(void *user) {
   cw_debug_f32("g.viewbot", &g_viewbot_dbg);
   cw_debug_field("g.underview", g_underview_dbg, CW_DBG_I32, 2);
   cw_debug_field("g.tags", g_tags_dbg, CW_DBG_I32, 2);
+  cw_debug_field("g.signgate", g_sign_dbg, CW_DBG_I32, 3);
+  cw_debug_field("g.cardgate", g_card_dbg, CW_DBG_I32, 3);
+  cw_debug_field("g.bossgate", g_boss_dbg, CW_DBG_I32, 4);
   cw_debug_field("g.surface", g_surface_dbg, CW_DBG_I32, 3);
   cw_debug_f32_array("g.jump", G.last_jump, 3); /* the last jump to land: distance, rise, speed at takeoff */
   cw_debug_f32("g.top_speed", &G.top_speed);
@@ -2374,7 +2393,20 @@ static bool project(float wx, float wy, float wz, float W, float H, float *sx, f
   return true;
 }
 
-/* the Management's signs: read when you are near one. Boards are in the world; their words are on a panel over the board */
+/* does a panel touch a player? rise: how far up from the feet counts (the body, or the body and its marker); pad: room around it */
+static bool sign_over_player(float x, float y, float w, float h, float rise, float pad, float W, float H) {
+  for (int i = 0; i < G.nplayers; i++) {
+    const player *p = &G.p[i];
+    if (!p->joined || !(p->alive || p->bubble)) continue;
+    float wx = p->bubble ? p->bubble_x : (float)p->pf.body.position.x, wy = p->bubble ? p->bubble_y : (float)p->pf.body.position.y;
+    float lx, ty, rx, by;
+    if (!project(wx - 0.8f, wy + rise, 0, W, H, &lx, &ty) || !project(wx + 0.8f, wy, 0, W, H, &rx, &by)) continue;
+    if (rx > x - pad && lx < x + w + pad && by > y - pad && ty < y + h + pad) return true;
+  }
+  return false;
+}
+/* the Management's signs: read when you are near one. Boards are in the world; their words are on a solid panel over the
+ * board, and when a player is where the panel would go it steps aside, so it never hides anyone and can always be read */
 static void draw_signs(float W, float H, float s) {
   const level *L = &G.L;
   /* one at a time: the nearest to anybody, on its own board */
@@ -2403,14 +2435,46 @@ static void draw_signs(float W, float H, float s) {
     cw_text_metrics sz = cw_font_measure(g_font, n->text, &(cw_text_style){ .size = ts, .wrap_width = pw - 20 * s });
     float ph = sz.height + 14 * s, y0 = sy - ph;
     if (y0 < 80 * s) y0 = 80 * s;
-    /* the words never hide a player: anyone behind the panel and it thins right down */
-    for (int i = 0; i < G.nplayers; i++) {
-      const player *p = &G.p[i];
-      float px, py;
-      if (!p->joined || !project((float)p->pf.body.position.x, (float)p->pf.body.position.y + 0.7f, 0, W, H, &px, &py)) continue;
-      if (px > x0 - 30 * s && px < x0 + pw + 30 * s && py > y0 - 30 * s && py < y0 + ph + 30 * s) a *= 0.35f;
+    float fade = a;
+    if (g_sign_bug) { /* the gate's control: the panel stays put and thins over a player */
+      for (int i = 0; i < G.nplayers; i++) {
+        const player *p = &G.p[i];
+        float px, py;
+        if (!p->joined || !project((float)p->pf.body.position.x, (float)p->pf.body.position.y + 0.7f, 0, W, H, &px, &py)) continue;
+        if (px > x0 - 30 * s && px < x0 + pw + 30 * s && py > y0 - 30 * s && py < y0 + ph + 30 * s) a *= 0.35f;
+      }
+    } else {
+      /* home over the board when that is well clear; otherwise stay put while clear; otherwise the nearest clear place */
+      static int shown = -1;
+      static float cx, cy;
+      const float rise = 3.0f, pad = 28 * s; /* the player's marker counts, and they move fast: leave room */
+      const float xmin = 12 * s, xmax = W - 12 * s - pw, ymin = 80 * s, ymax = H - 44 * s - ph;
+      float tx = x0, ty = y0;
+      bool home_ok = !sign_over_player(x0, y0, pw, ph, rise, pad * 1.5f, W, H);
+      if (!home_ok) {
+        if (shown == pick && !sign_over_player(cx, cy, pw, ph, rise, pad, W, H)) tx = cx, ty = cy;
+        else {
+          float best = 1e9f;
+          for (int tight = 0; tight < 2 && best > 1e8f; tight++) /* a crowded screen: the bodies alone, with no room to spare */
+            for (int v = -14; v <= 14; v++)
+              for (int u = -12; u <= 12; u++) {
+                float qx = x0 + (float)u * 40 * s, qy = y0 + (float)v * 22 * s;
+                float cost = fabsf((float)u) * 40 * s + fabsf((float)v) * 22 * s;
+                if (qx < xmin || qx > xmax || qy < ymin || qy > ymax || cost >= best) continue;
+                if (!sign_over_player(qx, qy, pw, ph, tight ? 1.9f : rise, tight ? 2 * s : pad, W, H)) best = cost, tx = qx, ty = qy;
+              }
+        }
+      }
+      if (shown != pick) cx = tx, cy = ty, shown = pick;
+      /* a quick glide when it has to move, unless the glide itself would cross somebody */
+      cx += (tx - cx) * 0.4f, cy += (ty - cy) * 0.4f;
+      if (sign_over_player(cx, cy, pw, ph, 1.9f, 6 * s, W, H)) cx = tx, cy = ty;
+      x0 = cx, y0 = cy;
     }
-    panel(x0, y0, pw, ph, 7 * s, cw_rgba(0.92f, 0.85f, 0.66f, 0.95f * a), cw_rgba(0.76f, 0.65f, 0.44f, 0.95f * a), cw_rgba(0.28f, 0.18f, 0.1f, 0.9f * a));
+    g_sign_dbg[0]++;
+    if (sign_over_player(x0, y0, pw, ph, 1.9f, 0, W, H)) g_sign_dbg[1]++;
+    if (a < fade - 1e-3f) g_sign_dbg[2]++;
+    panel(x0, y0, pw, ph, 7 * s, cw_rgba(0.92f, 0.85f, 0.66f, a), cw_rgba(0.76f, 0.65f, 0.44f, a), cw_rgba(0.28f, 0.18f, 0.1f, a));
     cw_r2d_text(g_font, n->text, (cw_vec2){ x0 + 10 * s, y0 + 7 * s }, &(cw_text_style){ .size = ts, .color = cw_rgba(0.13f, 0.08f, 0.04f, a), .wrap_width = pw - 20 * s });
   }
 }
@@ -2811,13 +2875,22 @@ static void render(void *user, double alpha) {
     }
     if (G.won) {
       float k = fminf(1.0f, (float)(G.tick - G.win_tick) / 40.0f);
-      panel(0, H * 0.28f, W, H * 0.42f * k, 0, cw_rgba(0.1f, 0.08f, 0.02f, 0.88f), cw_rgba(0.02f, 0.02f, 0.03f, 0.88f), cw_rgba(1, 0.8f, 0.3f, 0.7f));
+      /* the portraits sit on a row of their own, under the last line, with their hats and aerials (about 1.75 of the radius above the centre) clear of it */
+      const float card_h = g_card_bug ? 0.42f : 0.45f, portrait_y = g_card_bug ? 0.645f : 0.695f, line_w = g_card_bug ? 0.8f : 0.92f;
+      panel(0, H * 0.28f, W, H * card_h * k, 0, cw_rgba(0.1f, 0.08f, 0.02f, 0.88f), cw_rgba(0.02f, 0.02f, 0.03f, 0.88f), cw_rgba(1, 0.8f, 0.3f, 0.7f));
       if (k > 0.9f) {
         text(G.level + 1 >= NLEVELS ? "THE END. PLEASE LEAVE QUIETLY." : LEVELS[G.level].name, 0, H * 0.31f, 46 * s, cw_rgba(1, 0.85f, 0.3f, 1), CW_ALIGN_CENTER, W);
         {
           char l[200];
           snprintf(l, sizeof l, LEVELS[G.level].line, G.coins_total, G.coins_total + 1);
-          text(l, W * 0.1f, H * 0.53f, 24 * s, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER, W * 0.8f);
+          text(l, W * (1 - line_w) * 0.5f, H * 0.53f, 24 * s, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER, W * line_w);
+          /* no level's closing line may take two rows: the second would run into the line below it */
+          float row = cw_font_measure(g_font, "M", &(cw_text_style){ .size = 24 * s }).height;
+          g_card_dbg[2] = 0;
+          for (int i = 0; i < NLEVELS; i++) {
+            snprintf(l, sizeof l, LEVELS[i].line, 123, 124);
+            if (cw_font_measure(g_font, l, &(cw_text_style){ .size = 24 * s, .wrap_width = W * line_w }).height > row * 1.5f) g_card_dbg[2]++;
+          }
         }
         {
           /* the incident report: everything that happened here, by what did it. Whoever finished it is not excused */
@@ -2840,7 +2913,9 @@ static void render(void *user, double alpha) {
         coin_icon((cw_vec2){ W * 0.5f - 250 * s, H * 0.485f }, 11 * s);
         snprintf(t, sizeof t, "coins %d     secrets %d     rescues %d     falls %d", G.coins_total, G.secrets, G.rescues, G.deaths);
         text(t, 0, H * 0.46f, 24 * s, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER, W);
-        for (int i = 0; i < G.nplayers; i++) portrait((cw_vec2){ W * 0.5f + ((float)i - (float)(G.nplayers - 1) * 0.5f) * 64 * s, H * 0.645f }, 15 * s, i, false);
+        g_card_dbg[0]++;
+        if (H * portrait_y - 15 * s * 1.75f < H * 0.6f + cw_font_measure(g_font, "M", &(cw_text_style){ .size = 15 * s }).height) g_card_dbg[1]++;
+        for (int i = 0; i < G.nplayers; i++) portrait((cw_vec2){ W * 0.5f + ((float)i - (float)(G.nplayers - 1) * 0.5f) * 64 * s, H * portrait_y }, 15 * s, i, false);
       }
     }
     if (g_map_open) { draw_map(W, H); g_map_seen_dbg = 1; }
