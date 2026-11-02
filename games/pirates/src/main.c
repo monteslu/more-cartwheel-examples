@@ -440,6 +440,16 @@ static void make_coast(void) {
     if(d<1)rock_tilt(detail,x,z,seed*.7f);
     t3_object *o=cw_gltf_instantiate(cw_res_load(path,CW_RES_GLTF));
     if(o){model_shadows(o);t3_object_add(cw_node3d_object(detail),o);t3_release(o);ground_prop(detail);}
+    /* With the foot just under the sand, its rim (0.55 model units higher)
+     * would show as a skirt on the downhill side. Sink the stone by up to
+     * that depth, so the sand meets it around its widest outline, while at
+     * least 0.3 model units of it stay above the sand. */
+    if(o && d<1) {
+      t3_object *r=cw_node3d_object(detail);
+      t3_object_set_matrix_world(r,cw_node3d_global_transform(detail));t3_object_update_world_matrix(r,false,true);
+      float sink=fminf(.55f*scale,fmaxf(0,rock_peak_clearance(r)-.30f*scale));
+      t3_vec3 p=cw_node3d_position(detail);p.y-=sink;cw_node3d_set_position(detail,p);
+    }
   }
 }
 
