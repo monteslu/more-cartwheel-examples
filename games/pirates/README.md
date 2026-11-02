@@ -102,8 +102,9 @@ blender -b --disable-autoexec -t 8 --python games/pirates/tools/make-coast.py --
 The terrain generator writes the model, albedo, editable blend and matching
 collision/height header together. Keep those outputs together. Other Blender
 scripts prepare the licensed galleon and generate harbors, cargo and upgrades.
-`tools/make-shore-rock.py` derives solid shore boulders with broad embedded
-bases from the repository rock mesh; volcanic debris keeps its original mesh.
+`tools/make-shore-rock.py` generates three weathered shore stones, each with
+a flared foot that stays under the beach when the game leans the stone to the
+slope; volcanic debris keeps the repository rock mesh.
 After regenerating assets, run `tools/portable-blends.py` with Blender 4.2.9
 (from the game folder) to keep packed-image and file-browser paths portable.
 It reloads every saved blend and checks that geometry, morphs and packed

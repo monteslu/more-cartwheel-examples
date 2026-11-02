@@ -174,9 +174,10 @@ static float bounds_footprint_gap(cw_node n) {
     lowest=fminf(lowest,coast_height(lo.x+(hi.x-lo.x)*x/16,lo.z+(hi.z-lo.z)*z/16));
   return lo.y-lowest;
 }
-/* Find the bottom surface at this X/Z, including overlapping rock lobes.
- * Interior or overhanging upper triangles are not ground-contact points. */
-static void rock_point_gap(const t3_vec3 *tri,int count,float x,float z,float support_top,float *gap,int *samples) {
+/* The rock's underside at this X/Z: its lowest surface there, from the
+ * downward-facing triangles (a closed solid's lowest crossing of a vertical
+ * line is always on one). Compared with the terrain directly beneath. */
+static void rock_column_gap(const t3_vec3 *tri,int count,float x,float z,float *gap,int *samples) {
   float lowest=1e9f;
   for(int i=0;i+2<count;i+=3) {
     t3_vec3 a=tri[i],b=tri[i+1],c=tri[i+2];
@@ -188,36 +189,41 @@ static void rock_point_gap(const t3_vec3 *tri,int count,float x,float z,float su
     if(u<-.0001f || v<-.0001f || u+v>1.0001f)continue;
     lowest=fminf(lowest,a.y+u*(b.y-a.y)+v*(c.y-a.y));
   }
-  if(lowest<=support_top){*gap=fmaxf(*gap,lowest-coast_height(x,z));(*samples)++;}
+  if(lowest<1e8f){*gap=fmaxf(*gap,lowest-coast_height(x,z));(*samples)++;}
 }
-/* Compare the lowest 12 cm of the rock with the terrain directly beneath
- * each point, matching the review probe's contact band. Upper overhangs are
- * not feet. The grid and vertex projections cover this band across the whole
- * footprint, without a centre-radius exclusion. */
+/* Every point of the rock's underside, across its whole footprint, must be in
+ * contact with the terrain or under it: a grid over the footprint, every
+ * underside vertex and a lattice inside every underside triangle. No height
+ * band and no centre radius: a raised downhill edge or an overhang anywhere
+ * shows up as a gap. */
 static void rock_underside_gap(t3_object *o,float *gap,int *samples) {
   if(o->type==T3_MESH) {
     t3_geometry *g=((t3_mesh *)o)->geometry;
     t3_attribute *p=g?g->attributes[T3_ATTR_POSITION]:NULL;
     if(p && p->type==T3_FLOAT32 && p->item_size==3) {
       const float *v=p->array;
-      int count=g->index?g->index->count:p->count;
+      int count=g->index?g->index->count:p->count,down=0;
       t3_vec3 *tri=malloc(count*sizeof(*tri));
       if(!tri){*gap=1e9f;return;}
-      float xlo=1e9f,zlo=1e9f,xhi=-1e9f,zhi=-1e9f,ylo=1e9f;
-      for(int i=0;i<count;i++) {
-        int j=i;
-        if(g->index)j=g->index->type==T3_UINT16?((uint16_t *)g->index->array)[i]:((uint32_t *)g->index->array)[i];
-        tri[i]=t3_vec3_apply_mat4((t3_vec3){v[j*3],v[j*3+1],v[j*3+2]},&o->matrix_world);
-        xlo=fminf(xlo,tri[i].x);xhi=fmaxf(xhi,tri[i].x);
-        zlo=fminf(zlo,tri[i].z);zhi=fmaxf(zhi,tri[i].z);ylo=fminf(ylo,tri[i].y);
+      float xlo=1e9f,zlo=1e9f,xhi=-1e9f,zhi=-1e9f;
+      for(int i=0;i+2<count;i+=3) {
+        t3_vec3 t[3];
+        for(int k=0;k<3;k++) {
+          int j=i+k;
+          if(g->index)j=g->index->type==T3_UINT16?((uint16_t *)g->index->array)[i+k]:((uint32_t *)g->index->array)[i+k];
+          t[k]=t3_vec3_apply_mat4((t3_vec3){v[j*3],v[j*3+1],v[j*3+2]},&o->matrix_world);
+          xlo=fminf(xlo,t[k].x);xhi=fmaxf(xhi,t[k].x);zlo=fminf(zlo,t[k].z);zhi=fmaxf(zhi,t[k].z);
+        }
+        /* outward normal's Y below zero: this triangle faces the ground */
+        float ny=(t[1].z-t[0].z)*(t[2].x-t[0].x)-(t[1].x-t[0].x)*(t[2].z-t[0].z);
+        if(ny<0){tri[down++]=t[0];tri[down++]=t[1];tri[down++]=t[2];}
       }
-      for(int z=0;z<=32;z++)for(int x=0;x<=32;x++)
-        rock_point_gap(tri,count,xlo+(xhi-xlo)*x/32,zlo+(zhi-zlo)*z/32,ylo+.12f,gap,samples);
-      for(int i=0;i<count;i++) {
-        rock_point_gap(tri,count,tri[i].x,tri[i].z,ylo+.12f,gap,samples);
-        /* Also retain every contact-band vertex used by the review probe. */
-        if(tri[i].y<=ylo+.12f)
-          *gap=fmaxf(*gap,tri[i].y-coast_height(tri[i].x,tri[i].z));
+      for(int z=0;z<=40;z++)for(int x=0;x<=40;x++)
+        rock_column_gap(tri,down,xlo+(xhi-xlo)*x/40,zlo+(zhi-zlo)*z/40,gap,samples);
+      for(int i=0;i+2<down;i+=3)for(int a=0;a<=4;a++)for(int b=0;a+b<=4;b++) {
+        float u=a/4.0f,w=b/4.0f;
+        rock_column_gap(tri,down,tri[i].x+u*(tri[i+1].x-tri[i].x)+w*(tri[i+2].x-tri[i].x),
+          tri[i].z+u*(tri[i+1].z-tri[i].z)+w*(tri[i+2].z-tri[i].z),gap,samples);
       }
       free(tri);
     }
@@ -249,8 +255,10 @@ static float rock_peak_clearance(t3_object *o) {
   return peak;
 }
 static void ground_prop(cw_node n) {
-  float gap=footprint_gap(n);
-  if(gap>-.02f){t3_vec3 p=cw_node3d_position(n);p.y-=gap+.02f;cw_node3d_set_position(n,p);}
+  /* Rocks sink a little further: the drawn terrain is triangles between the
+   * height samples, up to about 2 cm off the sampled heights on a shore curve. */
+  float gap=footprint_gap(n),sink=strncmp(cw_node_name(n),"ShoreRock",9)?.02f:.04f;
+  if(gap>-sink){t3_vec3 p=cw_node3d_position(n);p.y-=gap+sink;cw_node3d_set_position(n,p);}
 }
 static void palm(cw_node parent, float x, float z, float height) {
   if(harbor_ground(x,z)||coast_distance(x,z)<.5f)return;
@@ -380,6 +388,19 @@ static void nav_waypoint(ship *s,float tx,float tz) {
   s->nav_x=(n%NAV_W)-NAV_X_ORIGIN;s->nav_z=(n/NAV_W)-22;
 }
 
+/* Lean a shore rock with the beach: its up axis follows the terrain's slope
+ * over its footprint, up to 15 degrees (the flared foot and the stone's
+ * inward-leaning sides keep its outline over the foot up to about 20 degrees). */
+static void rock_tilt(cw_node n,float x,float z,float yaw) {
+  const float r=.8f;
+  float gx=(coast_height(x+r,z)-coast_height(x-r,z))/(2*r),gz=(coast_height(x,z+r)-coast_height(x,z-r))/(2*r);
+  t3_vec3 up={-gx,1,-gz};float len=sqrtf(up.x*up.x+1+up.z*up.z);up.x/=len;up.y/=len;up.z/=len;
+  float angle=fminf(acosf(fminf(up.y,1)),15*(float)M_PI/180),axis_len=sqrtf(up.z*up.z+up.x*up.x);
+  t3_quat spin={0,sinf(yaw/2),0,cosf(yaw/2)},lean={0,0,0,1};
+  /* the axis of up x n is (n.z, 0, -n.x) */
+  if(axis_len>1e-5f)lean=(t3_quat){up.z/axis_len*sinf(angle/2),0,-up.x/axis_len*sinf(angle/2),cosf(angle/2)};
+  cw_node3d_set_quaternion(n,t3_quat_multiply(lean,spin));
+}
 static void make_coast(void) {
   cw_node n = cw_node_new("Node3D", "Coast"); cw_node_add_child(G.environment,n);
   t3_object *model = cw_gltf_instantiate(cw_res_load(active_map?"res://models/lagoon.glb":"res://models/coast.glb", CW_RES_GLTF));
@@ -408,13 +429,15 @@ static void make_coast(void) {
     /* Leave irregular clearings so the bays and terrain remain legible.
      * Low broadleaf plants form an understory rather than a solid canopy. */
     if(d>=1.0f && cw_sin(x*.7f+z*.38f)+cw_cos(z*.8f-x*.24f)>.65f)continue;
-    const char *path=d<1.0f?"res://models/shore-rock.glb":"res://models/undergrowth.glb";
+    static const char *rocks[]={"res://models/shore-rock-0.glb","res://models/shore-rock-1.glb","res://models/shore-rock-2.glb"};
+    const char *path=d<1.0f?rocks[seed%3]:"res://models/undergrowth.glb";
     cw_node detail=cw_node_new("Node3D",d<1?"ShoreRock":"Undergrowth");cw_node_add_child(G.environment,detail);
     float h=coast_height(x,z);
-    float scale=d<1?.65f:1.1f+(seed%4)*.15f;
+    float scale=d<1?.46f+(seed%5)*.05f:1.1f+(seed%4)*.15f;
     cw_node3d_set_position(detail,(t3_vec3){x,h+(d<1?.35f:-.04f),z});
     cw_node3d_set_scale(detail,(t3_vec3){scale,scale,scale});
     cw_node3d_set_rotation(detail,(t3_vec3){0,seed*.7f,0});
+    if(d<1)rock_tilt(detail,x,z,seed*.7f);
     t3_object *o=cw_gltf_instantiate(cw_res_load(path,CW_RES_GLTF));
     if(o){model_shadows(o);t3_object_add(cw_node3d_object(detail),o);t3_release(o);ground_prop(detail);}
   }
