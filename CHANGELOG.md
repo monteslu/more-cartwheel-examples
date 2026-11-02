@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.20.0
+
+- pirates: a new game. Sail with one to four players on one screen: collect cargo, bank it and
+  repair at your harbor, buy ship upgrades you can see on the hull, and trade broadsides with
+  rivals. Play solo or together against computer captains, or race each other for treasure, free
+  for all or in teams, on a volcanic island chain or a calmer palm lagoon.
+
 ## 0.19.0
 
 - jetski: two bigger ramps each on Crater Atoll, Cold Sound, Iron Quay and Gale Bank, good for
