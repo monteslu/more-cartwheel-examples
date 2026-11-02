@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.18.1
+
+- All games: cartwheel-engine v0.29.1. A paused scene holds still, including the water, and
+  steep terrain walls no longer catch bright shards of light at a grazing angle.
+- Water near the shore no longer shows dark slivers where its refraction crossed the shoreline.
+
 ## 0.18.0
 
 - jetski: a hard hit from another craft at speed can put one rider or both in the water. A rider
