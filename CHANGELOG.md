@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.20.1
+
+- pirates: shore rocks are weathered grey and tan stone in three shapes instead of smooth dark
+  boulders, and each one leans with the beach so its whole base sits in the sand.
+
 ## 0.20.0
 
 - pirates: a new game. Sail with one to four players on one screen: collect cargo, bank it and
