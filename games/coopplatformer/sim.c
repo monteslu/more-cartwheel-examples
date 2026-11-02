@@ -154,7 +154,7 @@ static void enemy_step(game *g, enemy *e, float dt) {
   const level *L = &g->L;
   if (!e->alive) return;
   if (e->hurt > 0) e->hurt--;
-  float half = e->kind == 2 ? 1.0f : 0.45f;
+  float half = e->kind == 2 ? (g_boss_clip_bug ? 1.0f : boss_half(L->boss_kind)) : 0.45f;
   float h = e->kind == 2 ? 2.0f : 0.9f;
   if (e->kind == 1) { /* flyer: a slow sine around its home */
     e->vx = (float)e->dir * 2.0f;
@@ -230,6 +230,7 @@ void sim_rumble_at(game *g, float x, float y, float amount) {
 /* the lowest the camera may look: the bottom of the view stays on the world's floor row (y 0), so a pit never shows
  * the underside of the world and the backdrop behind it. The view is 2 tan(20 deg) z tall (fov 40). */
 bool g_cam_nofloor; /* the pit camera gate's control (COOP_PIT_CAM_BUG, set by main.c): no floor */
+bool g_cam_endwall_bug, g_boss_clip_bug, g_bot_no_boss;
 static float cam_floor(float z) { return g_cam_nofloor ? -1e9f : 0.364f * z + 0.6f; }
 /* the lip of whatever pit x is over */
 float sim_lip_of(const level *L, float x) {
@@ -290,6 +291,13 @@ static void camera_step(game *g, float dt) {
   float z = need * 0.78f;
   c->tz = z < 17 ? 17 : z > 34 ? 34 : z;
   if (c->ty < cam_floor(c->tz)) c->ty = cam_floor(c->tz); /* a player low in a pit stays inside the bottom of the view */
+  /* the wall at the end of a level: the view stops with a strip of it in frame, enough to see that it is the end. Half the
+   * view is tan(20 deg) z high and 16:9 wide, measured at the wall's front face. Everybody stays in view: the rightmost is
+   * short of the wall, and the shift only gives the others more room */
+  if (!g_cam_endwall_bug && g->L.width > 0) {
+    float edge = (float)g->L.width + 0.6f - 0.64706f * (c->tz - 1.5f);
+    if (c->tx > edge) c->tx = edge;
+  }
   /* a target that jumped (a respawn, a warp, the group's centre moving to a rescued player) is a cut, not a whip
    * across the level */
   if (fabsf(c->tx - c->x) > 9.0f || fabsf(c->ty - c->y) > 9.0f) {
@@ -981,6 +989,18 @@ void sim_bot_input(const game *g, int i, input_state *in) {
   (void)minx;
   in->x = 1.0f; /* nobody waits: a straggler is carried to the group in a bubble (that is the co-op rule being tested) */
   in->run = !g_bot_no_run; /* the bots run everywhere, as a person does */
+  /* a boss in reach: go for it, as a person does. Run at it, take off close enough to come down on its head, and steer over it
+   * in the air (a boss keeps off the end wall, so running on past it never meets it) */
+  if (L->boss_x > 0 && !g_bot_no_boss)
+    for (int k = 0; k < L->nenemies; k++) {
+      const enemy *e = &L->enemies[k];
+      if (e->kind != 2 || !e->alive || fabsf(e->x - x) > 26.0f || fabsf(e->y - y) > 8.0f) continue;
+      float dx = e->x - x;
+      in->x = fabsf(dx) < 0.3f ? 0.0f : dx > 0 ? 1.0f : -1.0f;
+      in->jump_held = true;
+      if (pf->body.on_floor && fabsf(dx) < 4.5f) in->jump_pressed = true;
+      return;
+    }
   /* stuck in one place for a few seconds: back up and take a run at it, as a person does */
   {
     player *me = (player *)p;

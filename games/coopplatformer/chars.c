@@ -294,6 +294,24 @@ void rig_pose_flyer(rig *r, float ph, float t) {
 }
 
 /* boss: a heavy breath, arms that swing out and slam; rage 0..1 as it is hurt */
+void rig_boss_reach(const rig *r, float yaw, float sc, float *left, float *right) {
+  /* armL and armR: the hand of the model at rest, round the shoulder, by what the pose did to the arm */
+  float lo = -0.62f, hi = 0.62f; /* the hat's brim */
+  static const float SHOULDER[2][2] = { { 0.62f, 1.05f }, { -0.62f, 1.05f } }, HAND[2][2] = { { 0.99f, 0.29f }, { -0.99f, 0.29f } };
+  float cy = cosf(yaw), sy = sinf(yaw);
+  for (int a = 0; a < 2 && 3 + a < r->nb; a++) {
+    const bone *b = &r->b[3 + a];
+    t3_quat q = qmul(qmul(b->parent_w, qmul(b->o->quaternion, qconj(b->rest))), qconj(b->parent_w));
+    float vx = HAND[a][0] - SHOULDER[a][0], vy = HAND[a][1] - SHOULDER[a][1];
+    /* the arm's vector turned by q (it has no z at rest) */
+    float tx = 2 * (q.y * 0 - q.z * vy), ty = 2 * (q.z * vx - q.x * 0), tz = 2 * (q.x * vy - q.y * vx);
+    float x = SHOULDER[a][0] + vx + q.w * tx + (q.y * tz - q.z * ty), z = q.w * tz + (q.x * ty - q.y * tx);
+    float wx = x * cy + z * sy;
+    if (wx < lo) lo = wx;
+    if (wx > hi) hi = wx;
+  }
+  *left = lo * sc, *right = hi * sc;
+}
 void rig_pose_boss(rig *r, float t, float rage) {
   rest(r);
   float b = sinf(t * 1.6f);

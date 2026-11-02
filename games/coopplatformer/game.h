@@ -185,6 +185,14 @@ void rig_pose_hero(rig *r, int anim, float ph, float t, float st, float wd, floa
 void rig_pose_walker(rig *r, float ph, float t, float squash);
 void rig_pose_flyer(rig *r, float ph, float t);
 void rig_pose_boss(rig *r, float t, float rage);
+/* how far the boss as posed reaches left and right of its centre, turned by yaw and scaled by sc: its arms and its hat */
+void rig_boss_reach(const rig *r, float yaw, float sc, float *left, float *right);
+/* the size of a boss: the model's scale, and the half width it keeps from a wall so that no arm reaches into one in any pose */
+static inline float boss_scale(int kind) { return 1.2f + 0.14f * (float)kind; }
+static inline float boss_half(int kind) { return 1.45f * boss_scale(kind); }
+extern bool g_cam_endwall_bug; /* COOP_ENDWALL_BUG: the end wall gate's control */
+extern bool g_boss_clip_bug; /* COOP_BOSSCLIP_BUG: the clip gate's control */
+extern bool g_bot_no_boss; /* COOP_BOT_NO_BOSS: bots that run for the end wall and let the boss come to them (the arena gate) */
 
 /* world.c */
 void world_generate(level *L, int index);
