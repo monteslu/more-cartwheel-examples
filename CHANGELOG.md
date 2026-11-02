@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.20.2
+
+- pirates: shore stones are lumpier and lopsided, sit deeper in the sand, and are lighter so they
+  stay readable in palm shade.
+
 ## 0.20.1
 
 - pirates: shore rocks are weathered grey and tan stone in three shapes instead of smooth dark
