@@ -44,7 +44,7 @@
       ],
       "g.scenery_off": 0
     },
-    "note": "two bots on the real game flow (title skipped): the air jump picked up under its arch, 8 coins, two stomps (hit-stops), cross-host state and picture"
+    "note": "two bots on the real game flow (title skipped) along the first level: cross-host state and picture."
   },
   {
     "name": "coopplatformer-4p",
@@ -113,7 +113,9 @@
     "controlEnv": {
       "COOP_FLOAT_BUG": "1"
     },
-    "note": "no floating scenery: every prop that stands on the ground is measured against the ground as drawn. g.scenery_off is the number whose base is more than 3 cm above or below the lowest ground under it or that overhang a ledge or the edge of the backdrop. The control lifts the first meadow tree 0.5 m (COOP_FLOAT_BUG, native): it must differ. Every level is swept by coopplatformer-levels."
+    "note": "no floating scenery: every prop that stands on the ground is measured against the ground as drawn. g.scenery_off is the number whose base is more than 3 cm above or below the lowest ground under it or that overhang a ledge or the edge of the backdrop. The control lifts the first meadow tree 0.5 m (COOP_FLOAT_BUG, native): it must differ. Every level is swept by coopplatformer-levels.",
+    "controlField": "g.scenery_off",
+    "controlFrames": 60
   },
   {
     "name": "coopplatformer-fire",
@@ -121,24 +123,31 @@
     "webgpu": {
       "vsGl": 0.005,
       "maxArea": 0.005,
-      "note": "the picture at frame 60 at the start of the meadow, GL vs WebGPU within the same bounds as the scenery gate"
+      "note": "the picture at frame 60 at the start of the first level of the caves, GL vs WebGPU within the same bounds as the scenery gate"
     },
     "frames": 60,
     "fields": [
       "g.tick",
-      "g.flames"
+      "g.flames",
+      "g.level"
     ],
     "expect": {
       "g.tick": 60,
       "g.flames": [
         24,
         0
+      ],
+      "g.level": [
+        5,
+        25
       ]
     },
     "controlEnv": {
       "COOP_FLOAT_FIRE": "1"
     },
-    "note": "no floating fire: every flame (one emitter per brazier in the caves and ruins) is checked each frame against the basket of a brazier that the scenery check seated on the floor (within 6 cm). g.flames is [flames, flames not in a seated brazier]. Lava lights and ability crystals carry no flame. The control (COOP_FLOAT_FIRE, native) puts each flame where the old torch flames burned, 1.5 m in front of the playfield at the light: its g.flames must differ."
+    "note": "no floating fire: every flame (one emitter per brazier in the caves and ruins) is checked each frame against the basket of a brazier that the scenery check seated on the floor (within 6 cm). g.flames is [flames, flames not in a seated brazier]. Lava lights and ability crystals carry no flame. The control (COOP_FLOAT_FIRE, native) puts each flame where the old torch flames burned, 1.5 m in front of the playfield at the light: its g.flames must differ.",
+    "controlField": "g.flames",
+    "controlFrames": 60
   },
   {
     "name": "coopplatformer-surfaces",
@@ -164,7 +173,9 @@
     "controlEnv": {
       "COOP_PLAIN_BUG": "1"
     },
-    "note": "no plain surfaces and no seam rails: g.surface is [moving platforms, wooden ledges and cracked blocks built with a real PBR material, the same built with a plain colour, seam strips drawn across rock faces]. The control (COOP_PLAIN_BUG, native) brings back the olive platform and the grey seams: its g.surface must differ. Native only: carts have no environment. g.uvrep: percent of sampled wall corners whose texture phase comes back one 4 m repeat on (100 before the uvs wandered; the same control). Re-pinned 45 to 4: this first level has only 4 built surfaces of that kind (the old level held the whole game); the same check runs on the level that is loaded."
+    "note": "no plain surfaces and no seam rails: g.surface is [moving platforms, wooden ledges and cracked blocks built with a real PBR material, the same built with a plain colour, seam strips drawn across rock faces]. The control (COOP_PLAIN_BUG, native) brings back the olive platform and the grey seams: its g.surface must differ. Native only: carts have no environment. g.uvrep: percent of sampled wall corners whose texture phase comes back one 4 m repeat on (100 before the uvs wandered; the same control). Re-pinned 45 to 4: this first level has only 4 built surfaces of that kind (the old level held the whole game); the same check runs on the level that is loaded.",
+    "controlField": "g.surface",
+    "controlFrames": 30
   },
   {
     "name": "coopplatformer-pit-camera",
@@ -191,7 +202,9 @@
     "controlEnv": {
       "COOP_PIT_CAM_BUG": "1"
     },
-    "note": "the camera never looks under the world: two bots start in the ruins spike pit (floor at y 1, the deepest place in the level) and fight their way out. g.underview is [frames drawn, frames whose view reached below the world floor row]; the camera target is held so the bottom edge of the view stays above y 0 (a player at the pit floor stays inside the bottom of the frame). The control (COOP_PIT_CAM_BUG, native) lets the camera follow down: its g.underview must differ. Native only: carts have no environment."
+    "note": "the camera never looks under the world: two bots start in the first level's spike pit (x 80 to 86, floor at y 1, the deepest place in it) and fight their way out. g.underview is [frames drawn, frames whose view reached below the world floor row]; the camera target is held so the bottom edge of the view stays above y 0 (a player at the pit floor stays inside the bottom of the frame). The control (COOP_PIT_CAM_BUG, native) lets the camera follow down: its g.underview must differ. Native only: carts have no environment.",
+    "controlField": "g.underview",
+    "controlFrames": 240
   },
   {
     "name": "coopplatformer-rescue-tags",
@@ -220,7 +233,9 @@
     "controlEnv": {
       "COOP_HUD_BUG": "1"
     },
-    "note": "the RESCUE tags of players carried in bubbles never run into each other: three of four players are held in bubbles (COOP_TEST_BUBBLES, native). g.tags is [frames with two or more tags, frames where a tag starts before the word of the tag beside it ends (measured with the font)]. The control (COOP_HUD_BUG, native) brings back the old fixed 90 px step: its g.tags must differ. Native only: carts have no environment. g.marker_over counts markers drawn over the player panels: one bubble is held off the top of the view; the same control brings back the old clamp."
+    "note": "the RESCUE tags of players carried in bubbles never run into each other: three of four players are held in bubbles (COOP_TEST_BUBBLES, native). g.tags is [frames with two or more tags, frames where a tag starts before the word of the tag beside it ends (measured with the font)]. The control (COOP_HUD_BUG, native) brings back the old fixed 90 px step: its g.tags must differ. Native only: carts have no environment. g.marker_over counts markers drawn over the player panels: one bubble is held off the top of the view; the same control brings back the old clamp.",
+    "controlField": "g.tags",
+    "controlFrames": 240
   },
   {
     "name": "coopplatformer-blink",
@@ -243,7 +258,9 @@
     "controlEnv": {
       "COOP_BLINK_BUG": "1"
     },
-    "note": "the blink after a respawn never hides the whole group: two bots start invulnerable and g.vanish counts frames in which every player on the field was blinked out (only markers left on screen). The control (COOP_BLINK_BUG, native) brings back the 2-tick phase offset: its g.vanish must differ. Native only: carts have no environment."
+    "note": "the blink after a respawn never hides the whole group: two bots start invulnerable and g.vanish counts frames in which every player on the field was blinked out (only markers left on screen). The control (COOP_BLINK_BUG, native) brings back the 2-tick phase offset: its g.vanish must differ. Native only: carts have no environment.",
+    "controlField": "g.vanish",
+    "controlFrames": 100
   },
   {
     "name": "coopplatformer-boss",
@@ -251,7 +268,7 @@
     "webgpu": {
       "vsGl": 0.005,
       "maxArea": 0.005,
-      "note": "GL vs WebGPU 0.004 percent at frame 1500 on the 890M (bound 0.5), every host the same; was 0.5 to 1 percent while WebGPU drew this HDR scene single-sampled: WebGPU now asks for a core device and multisamples it 4x as GL does, resolving the depth for the passes after it (engine: WebGPU core MSAA), and the ambient occlusion no longer darkens the bottom rows on GL alone (engine: the edge normal fix). maxArea catches a surface one backend misses. State exact on every host"
+      "note": "GL vs WebGPU 0.004 percent on the last frame on the 890M (bound 0.5), every host the same; was 0.5 to 1 percent while WebGPU drew this HDR scene single-sampled: WebGPU now asks for a core device and multisamples it 4x as GL does, resolving the depth for the passes after it (engine: WebGPU core MSAA), and the ambient occlusion no longer darkens the bottom rows on GL alone (engine: the edge normal fix). maxArea catches a surface one backend misses. State exact on every host"
     },
     "frames": 1100,
     "fields": [
@@ -272,7 +289,9 @@
       "g.camoffset",
       "g.impacts",
       "rumble.sent",
-      "cw.rumble"
+      "cw.rumble",
+      "g.level",
+      "g.bossgate"
     ],
     "expect": {
       "g.tick": 1100,
@@ -308,9 +327,24 @@
         200,
         500,
         90
+      ],
+      "g.level": [
+        4,
+        25
+      ],
+      "g.bossgate": [
+        1,
+        751,
+        5,
+        237
       ]
     },
-    "note": "two bots from the arena flag with every ability: boss fight, hit-stops and the win, cross-host state. No shake (2026-10-29): the drawn camera stays smooth through the whole fight, the boss leaps, hits and its death included (g.camgate: 1498 frames in motion, none over the bounds; before, 160 of them shook and were let off), and g.camoffset holds the drawn camera against the follow camera on the 440 frames within half a second of the 19 impacts (none off by over 0.1 mm; the build before, the same 440 frames: 152 off, up to 23 cm). The impacts are felt in the pads: rumble.sent counts the requests to each player, cw.rumble is the engine's last (the boss going down, pad 1)."
+    "note": "two bots from the arena door of the first boss with every ability: boss fight, hit-stops and the win, cross-host state. g.bossgate is [its kind + 1, frames it was alive in view, hits it took, frames drawn since it died]; the control (COOP_LEVEL, native) starts a level with no boss in it: its g.bossgate must differ. The frames end on the results card, before the next level: g.level says so. No shake: the drawn camera stays smooth through the whole fight, the boss leaps, hits and its death included (g.camgate: frames in motion, none over the bounds), and g.camoffset holds the drawn camera against the follow camera on the frames within half a second of each impact (none off by over 0.1 mm). The impacts are felt in the pads: rumble.sent counts the requests to each player, cw.rumble is the engine's last (the boss going down, pad 1).",
+    "controlEnv": {
+      "COOP_LEVEL": "3"
+    },
+    "controlFrames": 1100,
+    "controlField": "g.bossgate"
   },
   {
     "name": "coopplatformer-camera-1p",
@@ -345,7 +379,8 @@
     "controlEnv": {
       "COOP_CAM_BUG": "1"
     },
-    "note": "camera stability, the way a person plays: one pad through title, join and start, then stand, walk, stop, jump and stand while the drawn camera is measured every frame (g.camgate: frames at rest, at-rest frames that moved over 1 mm, frames in motion, frames in motion with a jump over 0.6 m or a jerk over 8 cm). At rest it must not move at all; in motion it must stay smooth. The control puts a 1 cm sway on the drawn camera (COOP_CAM_BUG, native): its g.camgate must differ."
+    "note": "camera stability, the way a person plays: one pad through title, join and start, then stand, walk, stop, jump and stand while the drawn camera is measured every frame (g.camgate: frames at rest, at-rest frames that moved over 1 mm, frames in motion, frames in motion with a jump over 0.6 m or a jerk over 8 cm). At rest it must not move at all; in motion it must stay smooth. The control puts a 1 cm sway on the drawn camera (COOP_CAM_BUG, native): its g.camgate must differ.",
+    "controlField": "g.camgate"
   },
   {
     "name": "coopplatformer-camera-4p",
@@ -380,7 +415,8 @@
     "controlEnv": {
       "COOP_CAM_BUG": "1"
     },
-    "note": "camera stability, the way a person plays: four pads through title, join and start, then stand, walk, stop, jump and stand while the drawn camera is measured every frame (g.camgate: frames at rest, at-rest frames that moved over 1 mm, frames in motion, frames in motion with a jump over 0.6 m or a jerk over 8 cm). At rest it must not move at all; in motion it must stay smooth. The control puts a 1 cm sway on the drawn camera (COOP_CAM_BUG, native): its g.camgate must differ."
+    "note": "camera stability, the way a person plays: four pads through title, join and start, then stand, walk, stop, jump and stand while the drawn camera is measured every frame (g.camgate: frames at rest, at-rest frames that moved over 1 mm, frames in motion, frames in motion with a jump over 0.6 m or a jerk over 8 cm). At rest it must not move at all; in motion it must stay smooth. The control puts a 1 cm sway on the drawn camera (COOP_CAM_BUG, native): its g.camgate must differ.",
+    "controlField": "g.camgate"
   },
   {
     "name": "coopplatformer-coins",
@@ -405,7 +441,9 @@
     "controlEnv": {
       "COOP_COIN_FLAT_BUG": "1"
     },
-    "note": "every coin stands up: g.coinface is [coins, coins whose disc axis is not level]. Each coin spins about its upright axis through its node and its disc is stood up by its mesh; a coin whose axis has any part along world up lies flat like a plate, edge on to the camera for ever. The control (COOP_COIN_FLAT_BUG, native) leaves the coins flat as they were: its g.coinface must differ."
+    "note": "every coin stands up: g.coinface is [coins, coins whose disc axis is not level]. Each coin spins about its upright axis through its node and its disc is stood up by its mesh; a coin whose axis has any part along world up lies flat like a plate, edge on to the camera for ever. The control (COOP_COIN_FLAT_BUG, native) leaves the coins flat as they were: its g.coinface must differ.",
+    "controlField": "g.coinface",
+    "controlFrames": 60
   },
   {
     "name": "coopplatformer-reach",
@@ -438,7 +476,9 @@
       "g.top_speed": 6.199999809265137
     },
     "tol": 0.001,
-    "note": "the standing jump, held input on the real game, from a standstill with the stick and jump pressed together. g.jump is [distance, rise, speed at takeoff]: the short one the running gate is measured against."
+    "note": "the standing jump, held input on the real game, from a standstill with the stick and jump pressed together. g.jump is [distance, rise, speed at takeoff]: the short one the running gate is measured against. The control is the running gate's input: its g.jump must differ.",
+    "controlInput": "coopplatformer-jump-run.json",
+    "controlField": "g.jump"
   },
   {
     "name": "coopplatformer-jump-running",
@@ -467,7 +507,8 @@
       "g.top_speed": 11.5
     },
     "tol": 0.001,
-    "note": "West (X) held: speed builds to its top in a second and the jump from it goes about twice as far and a metre and a quarter higher than the standing one. The control is the same input with West let go (a walk and a jump): its g.jump must differ."
+    "note": "West (X) held: speed builds to its top in a second and the jump from it goes about twice as far and a metre and a quarter higher than the standing one. The control is the same input with West let go (a walk and a jump): its g.jump must differ.",
+    "controlField": "g.jump"
   },
   {
     "name": "coopplatformer-music-file",
@@ -506,7 +547,8 @@
       "maxArea": 0.005,
       "note": "the same frame on both backends"
     },
-    "note": "touch still plays it: the stick, a held RUN button and the jump button give the same running jump as the pad. The control lets go of RUN: its g.jump must differ. Speed 9.86 not 11.5: this stick is pushed to about 0.86 of its throw, and a run scales with the stick."
+    "note": "touch still plays it: the stick, a held RUN button and the jump button give the same running jump as the pad. The control lets go of RUN: its g.jump must differ. Speed 9.86 not 11.5: this stick is pushed to about 0.86 of its throw, and a run scales with the stick.",
+    "controlField": "g.jump"
   },
   {
     "name": "coopplatformer-gore",
@@ -533,12 +575,18 @@
       "g.graves": [
         1,
         0
+      ],
+      "g.level": [
+        3,
+        25
       ]
     },
     "controlEnv": {
       "COOP_NO_GORE": "1"
     },
-    "note": "two bots against the hedge trimmer on the real cart: g.gore is [deaths seen, played as a big gag, stains on the level]. The control (COOP_NO_GORE, native) plays none: its g.gore must differ. The picture is compared across GL and WebGPU with blood in the air."
+    "note": "two bots against the hedge trimmer on the real cart: g.gore is [deaths seen, played as a big gag, stains on the level]. The control (COOP_NO_GORE, native) plays none: its g.gore must differ. The picture is compared across GL and WebGPU with blood in the air.",
+    "controlField": "g.gore",
+    "controlFrames": 300
   },
   {
     "name": "coopplatformer-pit-fall",
@@ -566,7 +614,9 @@
     "controlEnv": {
       "COOP_PIT_CAM_BUG": "1"
     },
-    "note": "walking off the first gap with a real pad: the camera stays above the lip and watches the body drop out of the picture. g.pitview is [frames someone was below the lip of a pit, of them frames the camera went below it]. The control (COOP_PIT_CAM_BUG, native) lets the camera follow down: it must differ."
+    "note": "walking off the first gap with a real pad: the camera stays above the lip and watches the body drop out of the picture. g.pitview is [frames someone was below the lip of a pit, of them frames the camera went below it]. The control (COOP_PIT_CAM_BUG, native) lets the camera follow down: it must differ.",
+    "controlField": "g.pitview",
+    "controlFrames": 1200
   },
   {
     "name": "coopplatformer-near-layer",
@@ -591,7 +641,9 @@
     "controlEnv": {
       "COOP_NEAR_BUG": "1"
     },
-    "note": "the near layer between the camera and the play never stands in front of a player: g.nearcover is [players drawn, of them with the layer above their feet along the line of sight]. The control (COOP_NEAR_BUG, native) stands it 7 m higher: it must differ."
+    "note": "the near layer between the camera and the play never stands in front of a player: g.nearcover is [players drawn, of them with the layer above their feet along the line of sight]. The control (COOP_NEAR_BUG, native) stands it 7 m higher: it must differ.",
+    "controlField": "g.nearcover",
+    "controlFrames": 500
   },
   {
     "name": "coopplatformer-throw",
@@ -620,11 +672,75 @@
       ]
     },
     "tol": 0.001,
-    "note": "two real pads: the first picks up the second with the left shoulder and throws. g.throws counts it. The control does not press the button: its state must differ."
+    "note": "two real pads: the first picks up the second with the left shoulder and throws. g.throws counts it. The control does not press the button: its state must differ.",
+    "controlField": "g.throws"
+  },
+  {
+    "name": "coopplatformer-signs",
+    "app": "coopplatformer_auto4",
+    "frames": 1500,
+    "fields": [
+      "g.tick",
+      "g.signgate"
+    ],
+    "webgpu": {
+      "vsGl": 0.02,
+      "maxArea": 0.02,
+      "note": "the same frame on both backends"
+    },
+    "expect": {
+      "g.tick": 1500,
+      "g.signgate": [
+        853,
+        0,
+        0
+      ]
+    },
+    "controlEnv": {
+      "COOP_SIGN_BUG": "1"
+    },
+    "controlFrames": 1500,
+    "controlField": "g.signgate",
+    "note": "a sign can always be read and never hides a player: four bots run the first level past its signs. g.signgate is [frames a sign panel was up, of them over a player's body, of them drawn thinner than its distance asks]. The control (COOP_SIGN_BUG, native) leaves the panel over the board and thins it when a player is near, as it was: its g.signgate must differ."
+  },
+  {
+    "name": "coopplatformer-results-card",
+    "app": "coopplatformer_auto_boss",
+    "frames": 1100,
+    "fields": [
+      "g.tick",
+      "g.won",
+      "g.cardgate"
+    ],
+    "webgpu": {
+      "vsGl": 0.02,
+      "maxArea": 0.02,
+      "note": "the card over the arena, the same frame on both backends"
+    },
+    "expect": {
+      "g.tick": 1100,
+      "g.won": 1,
+      "g.cardgate": [
+        200,
+        0,
+        0
+      ]
+    },
+    "controlEnv": {
+      "COOP_CARD_BUG": "1"
+    },
+    "controlFrames": 1100,
+    "controlField": "g.cardgate",
+    "note": "the results card can be read: g.cardgate is [frames it was up, of them with the player portraits on the line above them, levels of the whole game whose closing line takes two rows and so runs into that line]. The control (COOP_CARD_BUG, native) puts the portraits and the wrap back as they were: its g.cardgate must differ."
+  },
+  {
+    "name": "coopplatformer-controls",
+    "script": "tests/coopplatformer-controls.mjs",
+    "note": "each control above run for its gate's own frames: the field the gate is about (its controlField) must differ from the value it expects. Control: no control at all must leave the field as expected, which this would report."
   },
   {
     "name": "coopplatformer-quality",
     "script": "tests/coopplatformer-quality.mjs",
-    "note": "a program for everything drawn at every quality on both backends, through a spread warm-up as a player gets it: along the whole world, two and four players, the map, bubbles, the boss, from the title by real input. A scene not reached fails. Control: a state the scene draws out of the table must be reported and skip draws"
+    "note": "a program for everything drawn at every quality on both backends, through a spread warm-up as a player gets it: along the whole world, two and four players, the map, bubbles, each of the five bosses fought to its end (g.bossgate), from the title by real input. A scene not reached fails. Controls: a state the scene draws out of the table must be reported and skip draws, on a level and on a boss; a level with no boss must not count as a boss fight"
   }
 ]

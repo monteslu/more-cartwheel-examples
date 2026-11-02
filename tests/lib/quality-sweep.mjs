@@ -136,8 +136,8 @@ function controlBuild(game, app, state, tables, outDir) {
  * @param {object} g
  * @param {string} g.game       games/<game>
  * @param {string[]} g.tables   its program tables (programs/<table>.txt)
- * @param {object[]} g.scenes   { name, app, frames, cmds?, env?, input?, reach?, show?, presets? }
- * @param {object} g.control    { state, scene (a scene's name), gpu?, quality? }: a state that scene draws at that preset
+ * @param {object[]} g.scenes   { name, app, frames, cmds?, env?, input?, reach?, show?, presets?, mustNotReach? (a control: its reach must fail, and a run that reaches it does) }
+ * @param {object|object[]} g.control    { state, scene (a scene's name), gpu?, quality? }: a state that scene draws at that preset; several when one scene can not speak for the rest
  * @param {string[]} [g.qualities] the presets
  */
 export function sweep({ game, tables, scenes, control, qualities = QUALITIES }) {
@@ -156,7 +156,8 @@ export function sweep({ game, tables, scenes, control, qualities = QUALITIES }) 
     if (sc.presets && !argv.includes('--all') && q !== 'step' && !sc.presets.includes(q)) continue;
     if (q === 'step' && si !== 0 && !argv.includes('--step-all')) continue; // one scene takes the step down, unless asked
     const r = runScene(OUT, sc, gpu, q);
-    const off = r.failed || (r.state && notReached(sc, r.state)) || (r.state && [].concat(r.state['cw.quality'])[0] !== (q === 'step' ? 0 : QUALITIES.indexOf(q)) && `cw.quality=${r.state['cw.quality']}`);
+    const offReach = r.state && notReached(sc, r.state);
+    const off = r.failed || (sc.mustNotReach ? (offReach ? null : 'a control scene that must not be reached was') : offReach) || (r.state && [].concat(r.state['cw.quality'])[0] !== (q === 'step' ? 0 : QUALITIES.indexOf(q)) && `cw.quality=${r.state['cw.quality']}`);
     const bad = r.failed ? -1 : r.missing.length + (r.skipped ? 1 : 0);
     if (off || bad) fail++;
     const line = `${off ? 'NOT REACHED' : bad ? 'FAIL' : 'ok'} ${gpu} ${q} ${sc.name}: missing ${r.missing ? r.missing.length : '?'} last-frame ${r.lastFrameMissing} skipped ${r.skipped}${off ? ` (${off})` : ''}${r.missing && r.missing.length ? ` [${r.missing.join(' ')}]` : ''} ${(r.ms / 1000).toFixed(0)}s${sc.show && r.state ? ' ' + sc.show.map((k) => `${k}=${JSON.stringify(r.state[k])}`).join(' ') : ''}`;
@@ -164,13 +165,13 @@ export function sweep({ game, tables, scenes, control, qualities = QUALITIES }) 
     results.push({ game, gpu, quality: q, scene: sc.name, missing: r.missing, reports: r.reports, lastFrameMissing: r.lastFrameMissing, skipped: r.skipped, reached: !off, off: off || null, ms: r.ms });
     if (opt('--json')) writeFileSync(opt('--json'), JSON.stringify(results));
   }
-  if (control && !argv.includes('--no-control')) {
-    const sc = scenes.find((s) => s.name === control.scene);
+  if (control && !argv.includes('--no-control')) for (const k of [].concat(control)) {
+    const sc = scenes.find((s) => s.name === k.scene);
     const dir = join(OUT, 'control');
-    const state = opt('--control-state') || control.state;
+    const state = opt('--control-state') || k.state;
     const exe = controlBuild(game, sc.app, state, tables, dir);
-    for (const gpu of control.gpu ? [control.gpu] : gpus) {
-      const q = control.quality || 'low';
+    for (const gpu of k.gpu ? [k.gpu] : gpus) {
+      const q = k.quality || 'low';
       const r = runScene(OUT, sc, gpu, q, exe);
       const ok = !r.failed && r.missing.includes(state) && r.skipped > 0;
       console.log(`${ok ? 'ok  ' : 'FAIL'} control ${gpu} ${q} ${sc.name}, ${state} out of the table: must report it and skip draws: ${r.failed || `missing [${r.missing.join(' ')}] skipped ${r.skipped}`}`);
