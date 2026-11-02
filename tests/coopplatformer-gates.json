@@ -270,7 +270,7 @@
       "maxArea": 0.005,
       "note": "GL vs WebGPU 0.004 percent on the last frame on the 890M (bound 0.5), every host the same; was 0.5 to 1 percent while WebGPU drew this HDR scene single-sampled: WebGPU now asks for a core device and multisamples it 4x as GL does, resolving the depth for the passes after it (engine: WebGPU core MSAA), and the ambient occlusion no longer darkens the bottom rows on GL alone (engine: the edge normal fix). maxArea catches a surface one backend misses. State exact on every host"
     },
-    "frames": 1100,
+    "frames": 700,
     "fields": [
       "g.tick",
       "g.hash",
@@ -294,39 +294,39 @@
       "g.bossgate"
     ],
     "expect": {
-      "g.tick": 1100,
+      "g.tick": 700,
       "g.players": 2,
       "g.abilities": 7,
       "g.checkpoint": 6,
       "g.kills": 1,
       "g.won": 1,
       "g.boss_hp": 0,
-      "g.hitstops": 9,
+      "g.hitstops": 8,
       "g.reached": 127,
       "g.camgate": [
         0,
         0,
-        1098,
+        698,
         0
       ],
       "g.camoffset": [
-        301,
+        237,
         0,
         0
       ],
-      "g.impacts": 12,
+      "g.impacts": 10,
       "rumble.sent": [
+        14,
         11,
-        9,
         0,
         0
       ],
       "cw.rumble": [
-        20,
+        25,
         0,
-        200,
-        500,
-        90
+        158,
+        0,
+        60
       ],
       "g.level": [
         4,
@@ -334,16 +334,16 @@
       ],
       "g.bossgate": [
         1,
-        751,
+        336,
         5,
-        237
+        285
       ]
     },
     "note": "two bots from the arena door of the first boss with every ability: boss fight, hit-stops and the win, cross-host state. g.bossgate is [its kind + 1, frames it was alive in view, hits it took, frames drawn since it died]; the control (COOP_LEVEL, native) starts a level with no boss in it: its g.bossgate must differ. The frames end on the results card, before the next level: g.level says so. No shake: the drawn camera stays smooth through the whole fight, the boss leaps, hits and its death included (g.camgate: frames in motion, none over the bounds), and g.camoffset holds the drawn camera against the follow camera on the frames within half a second of each impact (none off by over 0.1 mm). The impacts are felt in the pads: rumble.sent counts the requests to each player, cw.rumble is the engine's last (the boss going down, pad 1).",
     "controlEnv": {
       "COOP_LEVEL": "3"
     },
-    "controlFrames": 1100,
+    "controlFrames": 700,
     "controlField": "g.bossgate"
   },
   {
@@ -681,7 +681,8 @@
     "frames": 1500,
     "fields": [
       "g.tick",
-      "g.signgate"
+      "g.signgate",
+      "g.signmove"
     ],
     "webgpu": {
       "vsGl": 0.02,
@@ -694,6 +695,10 @@
         853,
         0,
         0
+      ],
+      "g.signmove": [
+        9,
+        103
       ]
     },
     "controlEnv": {
@@ -701,12 +706,12 @@
     },
     "controlFrames": 1500,
     "controlField": "g.signgate",
-    "note": "a sign can always be read and never hides a player: four bots run the first level past its signs. g.signgate is [frames a sign panel was up, of them over a player's body, of them drawn thinner than its distance asks]. The control (COOP_SIGN_BUG, native) leaves the panel over the board and thins it when a player is near, as it was: its g.signgate must differ."
+    "note": "a sign can always be read and never hides a player, and it does not chase them round the screen: four bots run the first level past its signs. Its words are a caption with a place of their own, top centre, or the bottom when a player comes up there. g.signgate is [frames a sign was up, of them over a player's body, of them drawn thin over a player]; g.signmove is [times it changed place, frames it was faded or held back for that]. The control (COOP_SIGN_BUG, native) leaves it over the board and thins it when a player is near, as it was: its g.signgate must differ."
   },
   {
     "name": "coopplatformer-results-card",
     "app": "coopplatformer_auto_boss",
-    "frames": 1100,
+    "frames": 700,
     "fields": [
       "g.tick",
       "g.won",
@@ -718,10 +723,10 @@
       "note": "the card over the arena, the same frame on both backends"
     },
     "expect": {
-      "g.tick": 1100,
+      "g.tick": 700,
       "g.won": 1,
       "g.cardgate": [
-        200,
+        248,
         0,
         0
       ]
@@ -729,9 +734,14 @@
     "controlEnv": {
       "COOP_CARD_BUG": "1"
     },
-    "controlFrames": 1100,
+    "controlFrames": 700,
     "controlField": "g.cardgate",
-    "note": "the results card can be read: g.cardgate is [frames it was up, of them with the player portraits on the line above them, levels of the whole game whose closing line takes two rows and so runs into that line]. The control (COOP_CARD_BUG, native) puts the portraits and the wrap back as they were: its g.cardgate must differ."
+    "note": "the results card can be read: g.cardgate is [frames it was up, of them with the player portraits on the line above them, levels of the whole game whose closing line takes two rows and so runs into that line]. That the card is solid is measured in the picture by coopplatformer-arena. The control (COOP_CARD_BUG, native) puts the portraits and the wrap back as they were: its g.cardgate must differ."
+  },
+  {
+    "name": "coopplatformer-arena",
+    "script": "tests/coopplatformer-arena.mjs",
+    "note": "all five boss arenas with the fight pushed against the end wall: the wall takes no more than 12 percent of the view, no arm goes into it, no words land on a marker or a player, and the results card is solid in the picture on GL and WebGPU. Each has a control that must fail in every arena: the old camera, the old boss width, the old labels, the old card."
   },
   {
     "name": "coopplatformer-controls",
