@@ -52,12 +52,12 @@ return {
   },
   lying: ['drift', 'boulders'],
   scatter: [
-    ['cactus', 'cactus', 0.055, 0.7, 1.4, 650, 277, false, 0.08],
-    ['hoodoo', 'hoodoos', 0.035, 0.7, 1.7, 800, 278, false, 0.15],
-    ['driftwood', 'drift', 0.03, 0.7, 1.6, 450, 279, true, 0.12],
-    ['boulder0', 'boulders', 0.05, 0.6, 2.6, 700, 280, true, 0.25],
-    ['boulder1', 'boulders', 0.04, 0.5, 2.0, 700, 281, true, 0.25],
-    ['boulder2', 'boulders', 0.03, 0.7, 3.4, 700, 282, true, 0.25],
+    ['cactus', 'cactus', 0.065, 0.7, 1.4, 650, 277, false, 0.08],
+    ['hoodoo', 'hoodoos', 0.04, 0.7, 1.7, 800, 278, false, 0.15],
+    ['driftwood', 'drift', 0.04, 0.7, 1.6, 450, 279, true, 0.12],
+    ['boulder0', 'boulders', 0.09, 0.6, 2.6, 700, 280, true, 0.25],
+    ['boulder1', 'boulders', 0.07, 0.5, 2.0, 700, 281, true, 0.25],
+    ['boulder2', 'boulders', 0.055, 0.7, 3.4, 700, 282, true, 0.25],
   ],
   grades: [
     ['riversand', 'sand', [1.3, 1.05, 0.78], 0.15],

@@ -93,10 +93,11 @@ return {
     },
   },
   lying: ['rocks', 'shrubs'],
+  lying_drop: { shrubs: [5, 8] }, // (shrubs reach down with their roots: only a real drop under them shows a gap)
   // model, density map, density, scale range, visible range, seed, sink, tilt
   scatter: [
     ['palm', 'palms', 0.012, 0.75, 1.45, 900, 77, false, 0.25],
-    ['shrub', 'shrubs', 0.03, 0.8, 2.0, 450, 78, false, 0.35],
+    ['shrub', 'shrubs', 0.05, 0.8, 2.0, 450, 78, false, 0.35],
     ['rock0', 'rocks', 0.05, 0.6, 2.4, 700, 79, true, 0.3],
     ['rock1', 'rocks', 0.04, 0.5, 1.8, 700, 80, true, 0.25],
     ['rock2', 'rocks', 0.03, 0.7, 3.2, 700, 81, true, 0.35],

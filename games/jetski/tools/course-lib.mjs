@@ -9,7 +9,7 @@
 //   placed({ground, pointAt, LEN})  things set by hand on a grid, not scattered: { model, x, z, yaw, scale, solid: [half length, half width], floats }; placed_models names them for the pack
 //   keep_clear(x, z)  no buoy or ramp here
 //   lying             names of the maps whose things lie on the ground (rocks): kept off any edge steeper than
-//   lying_drop        metres of drop within 4 m each way where they start to thin and where they stop (2.5, 4.5)
+//   lying_drop        metres of drop within 4 m each way where they start to thin and where they stop (2.5, 4.5), or per map { name: [a, b] }
 //   scatter           [model, map, density, scale min, scale max, visible range, seed, sink, tilt] per kind of thing
 //   grades            [layer, scan, [r, g, b], uv scale, saturation (1)]: up to eight CC0 terrain scans graded to this place's palette (art/scans, else skyfighter's)
 //   cliffs            what tools/cliff-forms.mjs does to the tall slopes; paint then also gets flow, hard, bed, t and wall
@@ -217,7 +217,8 @@ export function makeCourse(def) {
       // (from highest to lowest in the window: a thing lands anywhere in its density texel, the uphill side of a cliff too)
       let drop = 0;
       if (def.lying?.includes(name)) { let lo = 1e9, hi = -1e9; for (let b = -2; b <= 2; b++) for (let a = -2; a <= 2; a++) { const v = hAt(ii + a, jj + b); if (v < lo) lo = v; if (v > hi) hi = v; } drop = hi - lo; }
-      D[j * DN + i] = Math.round(fn({ x, z, y, slope }) * (1 - smooth(def.lying_drop?.[0] ?? 2.5, def.lying_drop?.[1] ?? 4.5, drop)) * 255);
+      const ld = def.lying_drop?.[name] ?? def.lying_drop;
+      D[j * DN + i] = Math.round(fn({ x, z, y, slope }) * (1 - smooth(ld?.[0] ?? 2.5, ld?.[1] ?? 4.5, drop)) * 255);
     }
     writeFileSync(join(dir, name + '.u8'), Buffer.from(D));
   }
