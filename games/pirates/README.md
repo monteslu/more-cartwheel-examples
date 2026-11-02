@@ -2,8 +2,7 @@
 
 ![Four captains trade broadsides around the volcanic archipelago](../../docs/screenshots/pirates.jpg)
 
-A real-time naval game for one to four players sharing one screen. This is
-an in-development example, not yet a release-quality game. The current maps
+A real-time naval game for one to four players sharing one screen. The maps
 have rounded bays, peninsulas, shallow water and harbors; ships collect cargo,
 fire broadsides and buy visible upgrades.
 
@@ -12,6 +11,8 @@ fire broadsides and buy visible upgrades.
 On the title screen, other players press START on their own controllers to
 join. Player one chooses the mode and map, then presses ENTER / START to sail.
 Keyboard controls belong to player one; each controller owns one captain.
+
+![Title screen with mode, map and controller instructions](../../docs/screenshots/pirates-title.jpg)
 
 | Action | Keyboard | Controller |
 | --- | --- | --- |
@@ -30,7 +31,7 @@ Keyboard controls belong to player one; each controller owns one captain.
 
 Sail over timber bundles, iron barrels and treasure chests to collect them.
 Your hold carries six items; a full hold slows the ship. Return within six
-metres of your own harbor and bank the cargo. Banking adds score, stores the
+metres of the end of your own pier and bank the cargo. Banking adds score, stores the
 resources for upgrades, and repairs up to 20 hull if you delivered cargo.
 Each upgrade costs two of its resource: timber for hull, coins for sails,
 iron for cannons. Each can be bought twice. Spending stored resources does
@@ -42,6 +43,8 @@ when the crew is ready, the remaining reload time, and left/right controls.
 Sinking drops your carried cargo but keeps banked score and purchased
 upgrades. Captains respawn after two seconds with four seconds of protection;
 firing ends that protection immediately. Salvage expires after 30 seconds.
+NPC ships leave captains alone within seven metres of their own pier end;
+other captains can still attack in competitive modes.
 
 ## Modes and maps
 
@@ -84,8 +87,7 @@ the next tagged release publishes it alongside the other games.
 For an engine source build, use a separate checkout of tag `v0.29.1`
 (commit `506dd0669d77b471a6f824feaf0ae1bde85aa7c9`) and follow the
 [source-build instructions](../../README.md#build). Its dependency lock pins
-three.c `v0.187.4`; do not apply the older development patches described in
-historical verification notes under `art/`.
+three.c `v0.187.4`.
 
 ## Assets
 
@@ -113,8 +115,10 @@ a native screenshot alone is not romdev verification.
 
 Runtime debug commands exercise actual gameplay functions and reset the match:
 
-- `pirates_test_hull`: check bow/stern shore clearance, turning, reverse escape
-  and spawns on both maps.
+- `pirates_placement`: inspect rendered scenery support, cargo water contact
+  and ship clearance on the current map.
+- `pirates_test_hull`: check bow/stern shore and dock clearance, turning,
+  reverse escape and spawns on both maps.
 - `pirates_test_route`: skip an unreachable cove pickup and continue banking.
 - `pirates_test_escape`: reproduce the previously stalled P3 shoreline turn
   and check safe escape and banking. Add `1` to start it for rendered stepping.
@@ -141,11 +145,11 @@ Runtime debug commands exercise actual gameplay functions and reset the match:
 The replay manifest is `tests/pirates-gates.json`. Native replay entry:
 
 ```sh
-node tests/native-replay.mjs --bin build/pirates-current/project \
+node tests/native-replay.mjs --bin build/native \
   --out out/pirates-replay-gl --gpu gl pirates
 
 # Complete six-minute match, checking all full-match expectations:
-node tests/native-replay.mjs --bin build/pirates-current/project \
+node tests/native-replay.mjs --bin build/native \
   --out out/pirates-full-gl --gpu gl --gate pirates-race-full pirates
 ```
 
@@ -154,32 +158,25 @@ the final selected state to `<out>/pirates.json`. A missing final dump is not
 a passing result. `--gate` selects the full gate's frame count and assertions;
 `--frames` alone is a state capture and does not check end-of-match expectations.
 
-Evidence and limitations for individual features are recorded under `art/`.
-`art/FULL-RACE-VERIFICATION.txt` records a complete rendered romdev race.
-`art/FULL-TEAMS-VERIFICATION.txt` records a complete rendered team race,
-including an unresolved late-run frame-delivery slowdown.
-`art/NATIVE-PERFORMANCE-VERIFICATION.txt` records three 1080p hardware GL
-replays on a Radeon 890M, with sampled frame averages of 6.65–6.79 ms;
-these measurements do not establish full-match or cross-hardware performance.
-`art/NATIVE-FULL-PERFORMANCE-VERIFICATION.txt` records a full native GL race
-and its final-600-frame timings; the romdev slowdown did not reproduce there,
-but WebGPU and host-side causes remain unverified.
-`art/NATIVE-WEBGPU-PERFORMANCE-VERIFICATION.txt` adds a full native WebGPU
-race with identical gameplay state and no reproduced late-match slowdown.
-The remaining performance investigation concerns the cart host and workload
-differences. `pirates-race-full` in the gate manifest preserves the full-match
-expected state; the native replay runner still defaults to the short gate.
-Use `--gate pirates-race-full` for its full-match assertions.
-`art/CURRENT-FULL-PERFORMANCE.txt` verifies the latest native WebGPU build
-through a complete race, with six timing samples and the full expected state.
-It includes the recent terrain, sail, sinking and audio changes; sampled
-frame averages were 7.96–8.49 ms at 1080p on a Radeon 890M. Occasional frames
-exceeded 16.7 ms. Current full-match cart-host profiling remains outstanding.
-`art/SHALLOWS-FULL-RACE-VERIFICATION.txt` records a full rendered romdev
-race with the current navigation and shallows: all 13 final-state fields
-matched, with zero GPU errors or skipped draws, and results/restart worked.
-This correctness check did not collect frame-time samples. Its subsequent
-interactive WebGPU window was slow and the romdev connection failed; a native
-GL build is available for human playtesting while that host issue is investigated.
-Outstanding work includes human playtesting, richer art, broader performance coverage,
-cross-host replay coverage, SDK integration and release packaging.
+The released SDK builds native and dual GL/WebGPU carts. Automated replay
+checks cover simulation consistency; they do not establish game balance or
+performance on every device. Human playtesting, four physical controllers
+and broader hardware coverage remain necessary.
+
+Run the placement, graphics and play checks through the engine's GPU suite
+wrapper. Set `ROMDEV_ROOT` to your romdev checkout and `ENGINE_ROOT` to an
+engine checkout with its test tools installed:
+
+```sh
+node "$ENGINE_ROOT/tools/with-gpu-suite.mjs" pirates-review \
+  node tests/pirates-review.mjs
+```
+
+`tests/pirates-review-gates.json` defines the two map checks. The suite uses
+romdev on GL and WebGPU, checks grounded scenery and cargo
+water contact on both maps, renders all four graphics presets without missing
+shaders or skipped draws, tests dock collisions and AI banking, and checks
+idle captains at home. Four controller ports join through ordinary input;
+this does not replace testing four physical devices. It also checks the short replay on both APIs and a
+full rendered WebGPU race against `tests/pirates-gates.json`. Screenshots,
+state and frame-delivery timing samples are written to `out/pirates-review/`.

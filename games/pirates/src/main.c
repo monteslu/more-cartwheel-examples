@@ -14,6 +14,7 @@
 #include "cartwheel/math.h"
 #include "cartwheel/pipeline.h"
 #include "cartwheel/platform.h"
+#include "cartwheel/physics_nodes.h"
 #include "cartwheel/render2d.h"
 #include "cartwheel/render3d.h"
 #include "cartwheel/resource.h"
@@ -32,6 +33,8 @@
 #undef COAST_HEIGHT
 #undef coast_height
 static int active_map;
+static cw_body3d seabed_body;
+static cw_heightfield3d seabed_field;
 static float map_height(float x,float z) {return active_map?lagoon_height(x,z):coast_height(x,z);}
 #define coast_height map_height
 #include "sound.h"
@@ -136,6 +139,10 @@ static void model_shadows(t3_object *o) {
   if (o->type == T3_MESH || o->type == T3_SKINNED_MESH) o->cast_shadow = o->receive_shadow = true;
   for (int i=0;i<o->child_count;i++) model_shadows(o->children[i]);
 }
+static void no_cast_shadow(t3_object *o) {
+  o->cast_shadow=false;
+  for(int i=0;i<o->child_count;i++)no_cast_shadow(o->children[i]);
+}
 static int harbor_ground(float x,float z) {
   for(int i=0;i<CAPTAINS;i++)if(dist2(x,z,PORT_X[i],PORT_Z[i])<25)return 1;
   return 0;
@@ -169,15 +176,44 @@ static float coast_distance(float x, float z) {
   return best;
 }
 
+/* Harbor models share a quay and a pier extending 4.96 m seaward.
+ * Use the same transform for rendering, navigation and hull collision. */
+static float port_angles[CAPTAINS];
+static float port_yaw(int i) { return port_angles[i]; }
+static void prepare_ports(void) {
+  for(int i=0;i<CAPTAINS;i++) {
+    float x=PORT_X[i],z=PORT_Z[i];
+    port_angles[i]=cw_atan2(coast_distance(x-.2f,z)-coast_distance(x+.2f,z),
+                           coast_distance(x,z-.2f)-coast_distance(x,z+.2f));
+  }
+}
+static float harbor_distance2(int i,float x,float z) {
+  float a=port_yaw(i);
+  return dist2(x,z,PORT_X[i]+cw_sin(a)*4,PORT_Z[i]+cw_cos(a)*4);
+}
+static int docks_clear(float x,float z,float radius) {
+  for(int i=0;i<CAPTAINS;i++) {
+    if(dist2(x,z,PORT_X[i],PORT_Z[i])>144)continue;
+    float a=port_yaw(i),dx=x-PORT_X[i],dz=z-PORT_Z[i];
+    float u=dx*cw_cos(a)-dz*cw_sin(a),v=dx*cw_sin(a)+dz*cw_cos(a);
+    /* Quay, including shore buildings; then pier, piles and mooring caps. */
+    float qx=fmaxf(fabsf(u)-3.3f,0),qz=fmaxf(fabsf(v+1.5f)-2.2f,0);
+    float px=fmaxf(fabsf(u)-1.2f,0),pz=fmaxf(fabsf(v-2.8f)-2.2f,0);
+    if(qx*qx+qz*qz<radius*radius||px*px+pz*pz<radius*radius)return 0;
+  }
+  return 1;
+}
+
 /* Five overlapping waterline discs follow the asymmetric imported hull:
  * stern -3.6 m, bow +2.4 m, beam about 2.2 m. Sails and bowsprit overhang
  * are deliberately excluded. Broad-phase avoids five polygon walks at sea. */
 static int hull_clear(float x,float z,float yaw) {
-  if(coast_distance(x,z)<-3.8f)return 1;
+  if(coast_distance(x,z)<-3.8f && docks_clear(x,z,3.8f))return 1;
   float sy=cw_sin(yaw),cy=cw_cos(yaw);
   for(int j=0;j<5;j++) {
     float along=-2.5f+j*.95f;
-    if(coast_distance(x+sy*along,z+cy*along)>-1.15f)return 0;
+    float px=x+sy*along,pz=z+cy*along;
+    if(coast_distance(px,pz)>-1.15f || !docks_clear(px,pz,1.15f))return 0;
   }
   return 1;
 }
@@ -190,7 +226,7 @@ static unsigned char nav_open[NAV_N];
 static int nav_region[NAV_N];
 static void navigation_init(void) {
   for(int z=0;z<NAV_H;z++) for(int x=0;x<NAV_W;x++)
-    nav_open[z*NAV_W+x]=(x>0 && x<NAV_W-1 && z>0 && z<NAV_H-1 && coast_distance(x-NAV_X_ORIGIN,z-22)<-3.8f);
+    nav_open[z*NAV_W+x]=(x>0 && x<NAV_W-1 && z>0 && z<NAV_H-1 && coast_distance(x-NAV_X_ORIGIN,z-22)<-3.8f && docks_clear(x-NAV_X_ORIGIN,z-22,3.8f));
   /* Match the pathfinder's diagonal clearance exactly. A nearby pickup
    * across a closed headland must not trap a bot in a futile route. */
   static int queue[NAV_N];
@@ -243,19 +279,17 @@ static void make_coast(void) {
   cw_node n = cw_node_new("Node3D", "Coast"); cw_node_add_child(G.environment,n);
   t3_object *model = cw_gltf_instantiate(cw_res_load(active_map?"res://models/lagoon.glb":"res://models/coast.glb", CW_RES_GLTF));
   if (model) { model_shadows(model); t3_object_add(cw_node3d_object(n),model); t3_release(model); }
-  /* Invisible floor samples supply shallow-water depth and shore foam. */
-  for (int z=-22;z<=22;z+=2) for (int x=-36;x<=36;x+=2) {
-    float d=coast_distance((float)x,(float)z); if (d < -5) continue;
-    cw_node body=cw_node_new("StaticBody3D","Shelf");cw_node_add_child(G.environment,body);
-    /* Match the continuous offshore slope in tools/make-coast.py. */
-    float offshore=-d;
-    float depth=.85f*offshore+1.25f*(offshore-1.2f*(1-expf(-offshore/1.2f)));
-    if(depth>7.75f){float t=fminf(1,(depth-7.75f)/8);depth=7.75f+8*(t-.5f*t*t);}
-    float h=d<0?-depth:0.5f;
-    cw_node3d_set_position(body,(t3_vec3){x,h-1,z});
-    cw_node shape=cw_node_new("CollisionShape3D","Floor");
-    cw_node_set(shape,"shape",cw_val_enum("BOX"));cw_node_set(shape,"size",cw_val_vec3(2,2,2));cw_node_add_child(body,shape);
-  }
+  /* A continuous collision heightfield matches the authored terrain. Boxes
+   * introduced two-metre stair steps into the water's shoreline depth map. */
+  enum { NX=145, NZ=89 };
+  uint16_t heights[NX*NZ];
+  for(int z=0;z<NZ;z++)for(int x=0;x<NX;x++)
+    heights[z*NX+x]=(uint16_t)clampf((coast_height(x*.5f-36,z*.5f-22)+16)*2048,0,65535);
+  seabed_field=cw_heightfield3d_create(heights,NX,NZ,(t3_vec3){.5f,1.0f/2048,.5f},NULL);
+  cw_body3d_def body=cw_body3d_default_def();body.type=CW_BODY_STATIC;
+  body.position=(t3_vec3){-36,-16,-22};
+  seabed_body=cw_body3d_create(cw_physics3d_world(cw_scene_app_tree()),&body);
+  cw_shape3d_heightfield(seabed_body,NULL,seabed_field);
   static const float trees[][2]={{-27,-9},{-25,-13},{-22,-15},{-14,-11},{-22,-2},{-18,1},{-7,9},{-4,8},{3,10},{5,13},{8,12},{6,-5},{9,-6},{24,3},{27,4}};
   for (int i=0;i<(int)(sizeof trees/sizeof trees[0]);i++) palm(G.environment,trees[i][0],trees[i][1],2.7f+(i%3)*.3f);
   for (int iz=-17;iz<=16;iz+=2) for (int ix=-29;ix<=30;ix+=2) {
@@ -294,9 +328,7 @@ static void make_port(int i) {
   cw_node n = cw_node_new("Node3D", "Port");
   cw_node_add_child(G.environment, n);
   cw_node3d_set_position(n, (t3_vec3){ PORT_X[i], 0, PORT_Z[i] });
-  float gx=coast_distance(PORT_X[i]+.2f,PORT_Z[i])-coast_distance(PORT_X[i]-.2f,PORT_Z[i]);
-  float gz=coast_distance(PORT_X[i],PORT_Z[i]+.2f)-coast_distance(PORT_X[i],PORT_Z[i]-.2f);
-  cw_node3d_set_rotation(n,(t3_vec3){0,cw_atan2(-gx,-gz),0});
+  cw_node3d_set_rotation(n,(t3_vec3){0,port_yaw(i),0});
   static const char *ports[]={"res://models/port-fort.glb","res://models/port-watchtower.glb","res://models/port-fishery.glb","res://models/port-shipyard.glb"};
   t3_object *model=cw_gltf_instantiate(cw_res_load(ports[i],CW_RES_GLTF));
   if(model){model_shadows(model);t3_object_add(cw_node3d_object(n),model);t3_release(model);}
@@ -366,7 +398,7 @@ static void make_good(int i) {
   for(int k=0;k<3;k++) {
     g->appearance[k]=cw_node_new("Node3D","CargoAppearance");cw_node_add_child(n,g->appearance[k]);
     t3_object *model=cw_gltf_instantiate(cw_res_load(models[k],CW_RES_GLTF));
-    if(model){model_shadows(model);t3_object_add(cw_node3d_object(g->appearance[k]),model);t3_release(model);}
+    if(model){model_shadows(model);no_cast_shadow(model);t3_object_add(cw_node3d_object(g->appearance[k]),model);t3_release(model);}
     cw_node_set(g->appearance[k],"visible",cw_val_bool(k==g->kind));
   }
   cw_node3d_set_scale(n,(t3_vec3){1.25f,1.25f,1.25f});
@@ -375,9 +407,11 @@ static void make_good(int i) {
 }
 
 static void build_map(void) {
+  if(cw_body3d_valid(seabed_body))cw_body3d_destroy(seabed_body);
+  cw_heightfield3d_destroy(seabed_field);
   if(cw_node_valid(G.environment))cw_node_free(G.environment);
   G.environment=cw_node_new("Node3D","Environment");cw_node_add_child(G.world,G.environment);
-  make_coast();navigation_init();
+  prepare_ports();make_coast();navigation_init();
   if(!active_map) {
     cw_node lava=cw_node_new("Node3D","CraterLava");cw_node_add_child(G.environment,lava);
     t3_object *model=cw_gltf_instantiate(cw_res_load("res://models/crater-lava.glb",CW_RES_GLTF));
@@ -575,6 +609,9 @@ static int can_hit(int owner, int target) {
     if (G.mode == TEAMS && G.ships[owner].team == G.ships[target].team) return 0;
   }
   if (owner == 5 && target == 4) return 0;
+  /* Home anchorages give captains room to bank, repair and learn controls. */
+  if(owner>=CAPTAINS && target<CAPTAINS &&
+     harbor_distance2(target,G.ships[target].x,G.ships[target].z)<49)return 0;
   return 1;
 }
 
@@ -626,7 +663,7 @@ static void ai_input(int id, float *turn, float *sail, int *fire, int *dock) {
   } else if (id == 5) {
     int prey = -1; float best = 1e9f;
     for (int i = 0; i < CAPTAINS; i++) {
-      ship *p = &G.ships[i]; if (!p->active || p->respawn) continue;
+      ship *p = &G.ships[i]; if (!p->active || p->respawn || !can_hit(5,i)) continue;
       float d = dist2(s->x, s->z, p->x, p->z) - held_total(p) * 40.0f;
       if (d < best) { best = d; prey = i; }
     }
@@ -634,7 +671,7 @@ static void ai_input(int id, float *turn, float *sail, int *fire, int *dock) {
   } else if (G.mode==VOYAGE && G.voyage_stage==1 && !G.ships[5].respawn) {
     tx=G.ships[5].x;tz=G.ships[5].z;
   } else if (held_total(s) >= 3 || (G.time_left < 1800 && held_total(s))) {
-    tx = PORT_X[id]; tz = PORT_Z[id];
+    tx = PORT_X[id]+cw_sin(port_yaw(id))*4; tz = PORT_Z[id]+cw_cos(port_yaw(id))*4;
   } else {
     float best = 1e9f; int found = -1;
     int region=nav_region[nav_nearest(s->x,s->z)];
@@ -675,7 +712,7 @@ static void ai_input(int id, float *turn, float *sail, int *fire, int *dock) {
     }
     if(escape){*turn=0;*sail=escape>0?.45f:-.35f;}
   }
-  *dock = id < CAPTAINS && dist2(s->x, s->z, PORT_X[id], PORT_Z[id]) < 34;
+  *dock = id < CAPTAINS && harbor_distance2(id,s->x,s->z) < 34;
   *fire = 0;
   if (enemy >= 0) {
     ship *t = &G.ships[enemy];
@@ -688,7 +725,7 @@ static void ai_input(int id, float *turn, float *sail, int *fire, int *dock) {
 
 static void bank_ship(int i) {
   ship *s = &G.ships[i];
-  if (dist2(s->x, s->z, PORT_X[i], PORT_Z[i]) > 36) return;
+  if (harbor_distance2(i,s->x,s->z) > 36) return;
   int n = held_total(s);
   if (n) {
     s->bank += n;
@@ -705,7 +742,7 @@ static void bank_ship(int i) {
 
 static void upgrade_ship(int i, int kind) {
   ship *s = &G.ships[i];
-  if (dist2(s->x, s->z, PORT_X[i], PORT_Z[i]) > 36) return;
+  if (harbor_distance2(i,s->x,s->z) > 36) return;
   if (kind == 0 && s->hull < 2 && s->stored[TIMBER] >= 2) {
     sound_play(S_UPGRADE,s->x);
     s->stored[TIMBER] -= 2; s->hull++; s->hp += 18;
@@ -792,6 +829,7 @@ static void step_goods(void) {
       continue;
     }
     if(k>=GOOD_SPAWNS && --g->timer<=0) {g->active=0;cw_node_set(g->node,"visible",cw_val_bool(false));continue;}
+    if((G.tick+k*7)%24==0)cw_water_splash(G.water,g->x,g->z,.65f,.012f,.035f);
     for (int i = 0; i < CAPTAINS; i++) {
       ship *s = &G.ships[i];
       if (!s->active || s->respawn || held_total(s) >= 6) continue;
@@ -957,7 +995,7 @@ static void sync_visuals(void) {
     good *g = &G.goods[i];
     for(int k=0;k<3;k++)cw_node_set(g->appearance[k],"visible",cw_val_bool(k==g->kind));
     float h = cw_water_height_at(G.water, g->x, g->z, wt);
-    cw_node3d_set_position(g->node, (t3_vec3){ g->x, h + 0.4f, g->z });
+    cw_node3d_set_position(g->node, (t3_vec3){ g->x, h + 0.08f, g->z });
     cw_node3d_set_rotation(g->node, (t3_vec3){ .12f*cw_sin(G.tick*.025f+i), (float)(i * 2) + .12f*cw_sin(G.tick*.009f+i), .1f*cw_cos(G.tick*.02f+i) });
   }
   for (int i = 0; i < SHOTS; i++) if (G.shots[i].active) {
@@ -979,11 +1017,12 @@ static void draw_hud(void) {
   const char *mode = G.mode == VOYAGE ? "COOPERATIVE VOYAGE" : G.mode == RACE ? "TREASURE RACE" : "TEAM TREASURE RACE";
   if (G.state == TITLE) {
     cw_r2d_rect(cw_rect_make(0, H * 0.17f, W, H * 0.39f), cw_rgba(0.015f, 0.045f, 0.07f, 0.77f));
+    cw_r2d_rect(cw_rect_make(0,H*.61f,W,H*.32f),cw_rgba(.015f,.045f,.07f,.88f));
     line("PIRATES", 0, H * 0.19f, 92 * scale, cw_hex(0xffdb92ff), W, CW_ALIGN_CENTER);
     line(active_map?"PALM LAGOON":"THE GILDED SHOALS", 0, H * 0.31f, 29 * scale, cw_hex(0xece1c4ff), W, CW_ALIGN_CENTER);
     snprintf(buf, sizeof buf, "<  %s  >", mode);
     line(buf, 0, H * 0.42f, 35 * scale, CW_WHITE, W, CW_ALIGN_CENTER);
-    line("Q / R mode   T / SELECT map   START joins   ENTER sets sail", 0, H * 0.51f, 24 * scale, CW_WHITE, W, CW_ALIGN_CENTER);
+    line("Q / R or LB / RB mode   T / SELECT map   START joins   ENTER / P1 START sails", 0, H * 0.51f, 24 * scale, CW_WHITE, W, CW_ALIGN_CENTER);
     snprintf(buf, sizeof buf, "%d captain%s ready", 1 + !!(G.joined & 2) + !!(G.joined & 4) + !!(G.joined & 8), G.joined == 1 ? "" : "s");
     line(buf, 0, H * 0.64f, 28 * scale, cw_hex(0xffdb92ff), W, CW_ALIGN_CENTER);
     const char *brief=G.mode==VOYAGE?"Supply your fleet, sink the patrol, then bank the final haul. Friendly fire is off.":
@@ -1108,7 +1147,7 @@ static void draw_hud(void) {
       cw_r2d_rect(cw_rect_make(x-bar_width/2,y+14*scale,bar_width*clampf(s->hp/max_hp,0,1),5*scale),label_color);
     }
     if(!active_map && eruption.warning) {
-      snprintf(buf,sizeof buf,"VOLCANIC ROCKFALL — CLEAR THE MARKED WATER  %.1fs",eruption.warning/60.0f);
+      snprintf(buf,sizeof buf,"VOLCANIC ROCKFALL: CLEAR THE MARKED WATER  %.1fs",eruption.warning/60.0f);
       cw_r2d_rect(cw_rect_make(W*.22f,112*scale,W*.56f,36*scale),cw_rgba(.12f,.035f,.015f,.88f));
       line(buf,W*.22f,117*scale,22*scale,cw_hex(0xffd59bff),W*.56f,CW_ALIGN_CENTER);
     }
@@ -1151,7 +1190,7 @@ static void draw_hud(void) {
       line(buf, x + 20 * scale, base_y + 30 * scale, 19 * scale, cw_hex(0xffdf9dff), 410 * scale, CW_ALIGN_LEFT);
       cw_color cargo_ink=CW_WHITE;
       if(!s->respawn&&held_total(s)==6) {
-        snprintf(buf,sizeof buf,"HOLD FULL — RETURN TO P%d HARBOR",i+1);
+        snprintf(buf,sizeof buf,"HOLD FULL: RETURN TO P%d HARBOR",i+1);
         cargo_ink=cw_hex(0xffdf9dff);
       } else if(!s->respawn&&G.cargo_notice_ticks[i]>0) {
         snprintf(buf,sizeof buf,"%s",G.cargo_notice[i]);cargo_ink=cw_hex(0xa9f2c1ff);
@@ -1163,7 +1202,7 @@ static void draw_hud(void) {
         float ready=s->respawn?0:clampf(1-s->cooldown/(float)(80-s->guns*11),0,1);
         cw_color ink=s->respawn?cw_hex(0x9aa6afff):s->cooldown?cw_hex(0xffdf9dff):cw_hex(0xa9f2c1ff);
         cw_r2d_rect(cw_rect_make(x,base_y-30*scale,440*scale,28*scale),cw_rgba(.012f,.035f,.055f,.88f));
-        if(s->respawn)snprintf(buf,sizeof buf,"CANNONS UNAVAILABLE — REPAIRING");
+        if(s->respawn)snprintf(buf,sizeof buf,"CANNONS UNAVAILABLE: REPAIRING");
         else if(s->cooldown)snprintf(buf,sizeof buf,"RELOAD %.1fs   J/LT LEFT   L/RT RIGHT",s->cooldown/60.0f);
         else snprintf(buf,sizeof buf,"CANNONS READY   J/LT LEFT   L/RT RIGHT");
         line(buf,x+20*scale,base_y-28*scale,17*scale,ink,410*scale,CW_ALIGN_LEFT);
@@ -1172,7 +1211,7 @@ static void draw_hud(void) {
       }
       if (G.state==PLAYING && s->human && !s->respawn &&
           (held_total(s)||s->stored[0]||s->stored[1]||s->stored[2]) &&
-          dist2(s->x,s->z,PORT_X[i],PORT_Z[i])<36) {
+          harbor_distance2(i,s->x,s->z)<36) {
         float top=base_y-142*scale;
         cw_r2d_rect(cw_rect_make(x,top,440*scale,108*scale),cw_rgba(.015f,.035f,.05f,.91f));
         line("HARBOR: A / E bank cargo",x+16*scale,top+5*scale,20*scale,col(PLAYER_COLOR[i]),410*scale,CW_ALIGN_LEFT);
@@ -1419,12 +1458,68 @@ static void cmd_route_test(int argc,const char **argv,cw_reply *r) {
   cw_reply_printf(r,"{\"unreachable_nearest_fixture\":%d,\"banked\":%d,\"unreachable_cargo_preserved\":%d}",fixture,bank,unclaimed);
 }
 
+/* Inspect the rendered meshes, not just the spawn coordinates. */
+static void mesh_vertical_bounds(t3_object *o,float *lo,float *hi) {
+  if(o->type==T3_MESH || o->type==T3_SKINNED_MESH) {
+    t3_geometry *g=((t3_mesh *)o)->geometry;
+    if(g) {
+      t3_geometry_compute_bounding_box(g);
+      t3_box3 b=g->bounding_box;
+      for(int i=0;i<8;i++) {
+        t3_vec3 p=t3_vec3_apply_mat4((t3_vec3){i&1?b.max.x:b.min.x,i&2?b.max.y:b.min.y,i&4?b.max.z:b.min.z},&o->matrix_world);
+        *lo=fminf(*lo,p.y);*hi=fmaxf(*hi,p.y);
+      }
+    }
+  }
+  for(int i=0;i<o->child_count;i++)mesh_vertical_bounds(o->children[i],lo,hi);
+}
+static void cmd_placement(int argc,const char **argv,cw_reply *r) {
+  (void)argc;(void)argv;
+  int props=0,unsupported=0,cargo=0,floating=0,ships=0,overlaps=0;
+  float max_gap=-1000;
+  for(int i=0;i<cw_node_child_count(G.environment);i++) {
+    cw_node n=cw_node_child(G.environment,i);const char *name=cw_node_name(n);
+    if(strncmp(name,"Palm",4)&&strncmp(name,"ShoreRock",9)&&strncmp(name,"Undergrowth",11)&&strncmp(name,"Port",4))continue;
+    t3_object *o=cw_node3d_object(n);t3_object_update_world_matrix(o,true,true);
+    float lo=1e9f,hi=-1e9f;mesh_vertical_bounds(o,&lo,&hi);
+    t3_vec3 p=cw_node3d_global_position(n);
+    float gap=lo-coast_height(p.x,p.z);
+    /* Piers are supported by piles extending into the seabed. */
+    if(!strncmp(name,"Port",4))gap=lo;
+    max_gap=fmaxf(max_gap,gap);props++;unsupported+=gap>.25f;
+  }
+  for(int i=0;i<GOODS;i++)if(G.goods[i].active) {
+    good *g=&G.goods[i];t3_object *o=cw_node3d_object(g->appearance[g->kind]);
+    t3_object_update_world_matrix(o,true,true);float lo=1e9f,hi=-1e9f;mesh_vertical_bounds(o,&lo,&hi);
+    float water=cw_water_height_at(G.water,g->x,g->z,cw_water_time(G.water));
+    cargo++;floating+=lo>water+.15f || hi<water;
+  }
+  for(int i=0;i<SHIPS;i++)if(G.ships[i].active&&!G.ships[i].respawn) {
+    ship *s=&G.ships[i];ships++;overlaps+=!hull_clear(s->x,s->z,s->yaw);
+  }
+  cw_reply_printf(r,"{\"props\":%d,\"unsupported\":%d,\"max_ground_gap\":%.3f,\"cargo\":%d,\"floating\":%d,\"ships\":%d,\"overlaps\":%d}",props,unsupported,max_gap,cargo,floating,ships,overlaps);
+}
+
 static void cmd_hull_test(int argc,const char **argv,cw_reply *r) {
   (void)argc;(void)argv;
   int map=active_map,cases=0,clear=1,blocked=0,escaped=0,spawn_clear=1;
+  float dock_reverse[8]={0};
   for(int m=0;m<2;m++) {
     active_map=m;build_map();reset_match(RACE,0);
     for(int i=0;i<SHIPS;i++)spawn_clear&=hull_clear(G.ships[i].x,G.ships[i].z,G.ships[i].yaw);
+    for(int i=0;i<CAPTAINS;i++) {
+      ship *s=&G.ships[i];float a=port_yaw(i);
+      int cell=nav_nearest(PORT_X[i]+cw_sin(a)*9,PORT_Z[i]+cw_cos(a)*9);
+      s->x=cell%NAV_W-NAV_X_ORIGIN;s->z=cell/NAV_W-22;
+      s->yaw=cw_atan2(PORT_X[i]-s->x,PORT_Z[i]-s->z);s->speed=0;s->respawn=0;
+      if(!hull_clear(s->x,s->z,s->yaw)){clear=0;continue;}
+      cases++;
+      for(int t=0;t<240;t++){move_ship(i,0,1);clear&=hull_clear(s->x,s->z,s->yaw);}
+      blocked+=s->speed<.5f;float x=s->x,z=s->z;
+      for(int t=0;t<120;t++){move_ship(i,0,-1);clear&=hull_clear(s->x,s->z,s->yaw);}
+      dock_reverse[m*4+i]=sqrtf(dist2(x,z,s->x,s->z));
+      escaped+=dock_reverse[m*4+i]>1;
+    }
     for(int k=0;k<3;k++)for(int j=0;j<4;j++) {
       const float (*poly)[2]=m?LAGOON[k]:COAST[k];
       int count=m?LAGOON_N[k]:COAST_N[k];
@@ -1449,7 +1544,7 @@ static void cmd_hull_test(int argc,const char **argv,cw_reply *r) {
     }
   }
   active_map=map;build_map();for(int i=0;i<GOODS;i++)position_good(i);reset_match(VOYAGE,1);
-  cw_reply_printf(r,"{\"cases\":%d,\"no_penetration\":%d,\"blocked\":%d,\"reversed_clear\":%d,\"spawns_clear\":%d}",cases,clear,blocked,escaped,spawn_clear);
+  cw_reply_printf(r,"{\"cases\":%d,\"no_penetration\":%d,\"blocked\":%d,\"reversed_clear\":%d,\"spawns_clear\":%d,\"dock_reverse\":[%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f]}",cases,clear,blocked,escaped,spawn_clear,dock_reverse[0],dock_reverse[1],dock_reverse[2],dock_reverse[3],dock_reverse[4],dock_reverse[5],dock_reverse[6],dock_reverse[7]);
 }
 
 static void cmd_simulate(int argc,const char **argv,cw_reply *r) {
@@ -1539,6 +1634,7 @@ static void init(void *user) {
   setup_world();
   G.state = TITLE; G.mode = VOYAGE; G.joined = 1; G.humans = 1;
   cw_debug_command("pirates_test_route","Test reachable cargo selection from the stalled cove approach; resets match",cmd_route_test);
+  cw_debug_command("pirates_placement","Inspect rendered prop support, cargo water contact and hull clearance",cmd_placement);
   cw_debug_command("pirates_test_hull","Check shore approach, rotation, reverse escape and spawn clearance on both maps; resets match",cmd_hull_test);
   cw_debug_command("pirates_sink","Sink ship 0..5 through normal damage rules for visual inspection",cmd_sink);
   cw_debug_command("pirates_effects","Read particle pool capacity, draw counts and active combat particles",cmd_effects);

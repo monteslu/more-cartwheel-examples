@@ -3,7 +3,7 @@
     "name": "pirates-race-replay",
     "app": "pirates_auto",
     "frames": 1500,
-    "note": "Four AI captains in Treasure Race with hull-shaped shore collision and 3.8 m navigation clearance. New expected state independently matched by rendered romdev and native WebGPU at 1500 frames. Not a full-match balance assertion.",
+    "note": "Dock-aware navigation and safe NPC harbor approaches. All 13 fields independently match native WebGPU and rendered romdev WebGPU and GL.",
     "fields": [
       "pirates.state",
       "pirates.mode",
@@ -24,36 +24,36 @@
       "pirates.mode": 1,
       "pirates.tick": 1500,
       "pirates.bank": [
-        4,
-        6,
+        3,
         5,
+        0,
         1
       ],
       "pirates.held": [
         3,
         0,
-        2,
-        1
+        5,
+        2
       ],
       "pirates.hp": [
-        1,
-        8,
-        65,
-        65
+        100,
+        50,
+        58,
+        71
       ],
       "pirates.pos": [
-        -1156,
-        466,
-        3328,
-        -1293,
-        -1124,
-        -328,
-        1472,
-        -307
+        -4183,
+        -350,
+        3829,
+        -1093,
+        3653,
+        -538,
+        747,
+        2100
       ],
-      "pirates.hash": 726034506,
-      "pirates.shots": 150,
-      "pirates.goods": 22,
+      "pirates.hash": 235489335,
+      "pirates.shots": 120,
+      "pirates.goods": 19,
       "pirates.eruptions": 1,
       "pirates.rock_impacts": 3,
       "render.skipped": 0
@@ -63,7 +63,7 @@
     "name": "pirates-race-full",
     "app": "pirates_auto",
     "frames": 21600,
-    "note": "Six-minute race with angular collision, AI shoreline maneuvering and narrowed shallows. All 13 expected fields match full rendered romdev, native WebGPU and native GL. Current GL check used reduced render resolution alongside a human playtest, not a performance benchmark. See games/pirates/art/SHALLOWS-FULL-RACE-VERIFICATION.txt.",
+    "note": "Dock-aware navigation and safe NPC harbor approaches. All 13 fields independently match native WebGPU and rendered romdev WebGPU through a full six-minute race. All four AI captains bank cargo.",
     "fields": [
       "pirates.state",
       "pirates.mode",
@@ -84,36 +84,36 @@
       "pirates.mode": 1,
       "pirates.tick": 21600,
       "pirates.bank": [
-        104,
-        66,
-        109,
+        78,
+        73,
+        63,
         59
       ],
       "pirates.held": [
         1,
+        1,
         6,
-        0,
-        0
+        1
       ],
       "pirates.hp": [
-        136,
-        36,
-        136,
-        100
+        100,
+        78,
+        30,
+        22
       ],
       "pirates.pos": [
-        -3769,
-        -355,
-        -1496,
-        -390,
-        -349,
-        1771,
-        2850,
-        1068
+        -4001,
+        -691,
+        3043,
+        -517,
+        3253,
+        1648,
+        3198,
+        618
       ],
-      "pirates.hash": 3177904265,
-      "pirates.shots": 1905,
-      "pirates.goods": 366,
+      "pirates.hash": 1347967832,
+      "pirates.shots": 1659,
+      "pirates.goods": 305,
       "pirates.eruptions": 12,
       "pirates.rock_impacts": 36,
       "render.skipped": 0
