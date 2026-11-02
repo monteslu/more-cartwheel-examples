@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.19.0
+
+- jetski: two bigger ramps each on Crater Atoll, Cold Sound, Iron Quay and Gale Bank, good for
+  about 40% more air than a normal ramp. Rival riders take them too.
+- jetski: flips. Press X in the air with the stick back for a back flip or forward for a front
+  flip; the camera swings to the side to show it. A flip that isn't finished throws the rider.
+- jetski: a kick out on Y (key I) while in the air.
+- jetski: hold the stick forward in the air to point the nose down. Going in nose first takes
+  the craft under the water for a moment and back up with most of its speed. Landing tail first
+  or flat is a wipeout.
+- jetski: trick words from the last race no longer show at the start of the next one.
+- jetski: the distance to the next mark moves clear of the countdown and other words on screen.
+- jetski: the underside of the craft is lighter, with a red keel, so it reads in a flip.
+- jetski: rival riders keep the nose down through long jumps instead of landing tail first.
+- jetski: more shrubs on Crater Atoll and more rocks and plants on Red Reach's banks.
+
 ## 0.18.3
 
 - coopplatformer: signs are a fixed caption that fades across when a player reaches them,
