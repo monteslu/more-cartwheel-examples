@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.18.2
+
+- coopplatformer: a sign's panel stays solid and steps aside from a player, instead of going
+  see-through on top of them.
+- coopplatformer: the results card keeps player portraits and a long closing line off the line
+  below them.
+
 ## 0.18.1
 
 - All games: cartwheel-engine v0.29.1. A paused scene holds still, including the water, and
