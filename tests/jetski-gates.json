@@ -284,5 +284,20 @@
     "name": "jetski-cliff-structure",
     "script": "tests/jetski-cliff-structure.mjs",
     "note": "a rock wall from a distance has big shapes as well as fine grain: 24 to 96 px contrast against under 5 px, on rock pixels, from held cameras, GL and WebGPU on the cart. A tile of the picture repeated over the wall must read low; the cart before the rock faces (run with --expect-low) measures under the floor. Say nothing of beauty: look at the pictures"
+  },
+  {
+    "name": "jetski-bigramp",
+    "script": "tests/jetski-bigramp.mjs",
+    "note": "the big ramps and the ways down, by real input on a software GL: every big ramp gives far more air than a normal one and lands clean, back and front flips land, the kick button kicks, nose down along the line goes under, tail first and straight down are wipeouts. Controls: a normal ramp fails the air bound, dive 0 does not go under, no button no trick"
+  },
+  {
+    "name": "jetski-air",
+    "script": "tests/jetski-air.mjs",
+    "note": "the air by the pad on the cart, GL and WebGPU, every tick: a big ramp gives 1.25 times the air of a normal one, a back flip turns the pitch one whole turn up and over and a front flip one whole turn nose first and both land, the kick puts a foot out to the side, nose down goes under and comes back up with no wipeout off big and normal ramps, tail first is a wipeout. Controls: the normal ramp against the big one, a barrel roll turns no pitch, no press keeps the foot in its well, dive 0 stays on top"
+  },
+  {
+    "name": "jetski-hud-words",
+    "script": "tests/jetski-hud-words.mjs",
+    "note": "words on the race screen on the cart, GL and WebGPU: restarting from the pause menu or starting a new race leaves no word from the last one, and the distance to the next buoy never meets a word in countdowns, wipeouts and big ramps on every course. Controls: pop_keep 1 keeps the word (a build without the reset failed the same way), label_old 1 meets words in the same rides"
   }
 ]

@@ -13,7 +13,8 @@ const SIMX = 12;
 let n = 0;
 function run(cmds, ticks, buttons = []) {
   const tag = 'r' + n++, state = join(OUT, tag + '.json'), input = join(OUT, tag + '.input.json'), frames = Math.ceil(ticks / (SIMX + 1)) + 4;
-  writeFileSync(input, JSON.stringify([{ frame: 4, buttons }]));
+  // (after the commands: South pressed while the menu is still up starts a race on the menu's course, and these runs were all on the first course)
+  writeFileSync(input, JSON.stringify([{ frame: cmds.split(';').length + 3, buttons }]));
   const r = spawnSync('node', [TOOL, '--host', 'native', '--gpu', 'gl', '--app', 'jetski', '--frames', String(frames), '--input', input, '--state', state, '--shot', join(OUT, tag + '.png'), '--start-cmds', cmds, '--exe', process.env.JETSKI_EXE || join(ROOT, 'build/native/games/jetski/jetski')], {
     cwd: join(ROOT, 'deps/cartwheel-engine'), encoding: 'utf8', maxBuffer: 1 << 26,
     env: { ...process.env, CW_PROJECT_ROOT: ROOT, LIBGL_ALWAYS_SOFTWARE: '1', LP_NUM_THREADS: '2', CW_TEST_GPU: 'software', JETSKI_SMALL: '1', JETSKI_SIMX: String(SIMX), SDL_AUDIODRIVER: 'dummy', CW_RUN_TIMEOUT_MS: '280000' },
@@ -34,15 +35,16 @@ for (const [t, tag] of [[2.6, 'high'], [-1.6, 'low']]) stand(`Cold Sound hard, $
 const lifted = run('course 1;difficulty 2;swell 1;ramp_lift 60;race;ramp 0 400 300', 2400);
 check('control: lifted 60 m, the check sees gaps', lifted['ramp.gap_points'] > 1000, `${lifted['ramp.gap_points']} points`);
 // the jump: five moments of the sea, the same approach, the same air; every ramp of a course gets some
-const jumps = (extra, c, tide) => [0, 7.3, 13.1, 21.7, 29.9].map((off, i) => {
-  const s = run(`course ${c};difficulty 2;swell 1;${tide};${extra}race;set Root/Water time_offset ${off};ramp 2 40`, 560, ['south']);
+// a normal ramp of each course: Red Reach's ramp 2 has the river's current across its run-up, so a rider lined up 40 m back and not steering never reaches it (ramp 0 is in slack water); Iron Quay's and Gale Bank's ramp 2 are big ones (jetski-bigramp and jetski-air measure those)
+const jumps = (extra, c, tide, r = 2) => [0, 7.3, 13.1, 21.7, 29.9].map((off, i) => {
+  const s = run(`course ${c};difficulty 2;swell 1;${tide};${extra}race;set Root/Water time_offset ${off};ramp ${r} 40`, 560, ['south']);
   return { air: s['p0.air_max'], ramps: s['p0.ramps'], spills: s['p0.spills'] };
 });
 const spread = (a) => { const v = a.map((x) => x.air); return (Math.max(...v) - Math.min(...v)) / Math.max(...v); };
-for (const [c, tide, tag] of [[0, '', 'Crater Atoll'], [1, 'tide 1', 'Cold Sound'], [2, '', 'Red Reach'], [3, '', 'Iron Quay'], [4, '', 'Gale Bank']]) {
-  const j = jumps('', c, tide), s0 = spread(j);
-  check(`${tag}: a big, repeatable jump`, j.every((x) => x.ramps >= 1 && x.air >= 1.95) && s0 <= 0.05, `air ${j.map((x) => f(x.air)).join(' ')} s, spread ${(s0 * 100).toFixed(0)}%`);
-  check(`${tag}: clean landings`, j.every((x) => x.spills === 0), `spills ${j.map((x) => x.spills).join(' ')}`);
+for (const [c, tide, tag, r] of [[0, '', 'Crater Atoll', 2], [1, 'tide 1', 'Cold Sound', 2], [2, '', 'Red Reach', 0], [3, '', 'Iron Quay', 1], [4, '', 'Gale Bank', 1]]) {
+  const j = jumps('', c, tide, r), s0 = spread(j);
+  check(`${tag} ramp ${r}: a big, repeatable jump`, j.every((x) => x.ramps >= 1 && x.air >= 1.95) && s0 <= 0.05, `air ${j.map((x) => f(x.air)).join(' ')} s, spread ${(s0 * 100).toFixed(0)}%`);
+  check(`${tag} ramp ${r}: clean landings`, j.every((x) => x.spills === 0), `spills ${j.map((x) => x.spills).join(' ')}`);
 }
 // the computer riders take the ramps and land them, and a ramp does not cost them buoys; control: no one goes for a ramp
 for (let c = 0; c < C.length; c++) {
