@@ -28,5 +28,7 @@ scene.view_settings.view_transform='AgX'
 scene.view_settings.exposure=0
 scene.view_settings.gamma=1
 scene.render.resolution_x=1000;scene.render.resolution_y=800;scene.render.resolution_percentage=100
-scene.render.image_settings.file_format='PNG';scene.render.filepath=str(root/'art/galleon-inspection.png')
+output=root.parents[1]/'out'/'pirates-art';output.mkdir(parents=True,exist_ok=True)
+scene.render.use_stamp=False
+scene.render.image_settings.file_format='PNG';scene.render.filepath=str(output/'galleon-inspection.png')
 bpy.ops.render.render(write_still=True)

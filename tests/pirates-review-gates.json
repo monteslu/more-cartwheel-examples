@@ -2,17 +2,47 @@
   {
     "name": "pirates-shoals-placement-and-graphics",
     "map": 0,
-    "presets": ["low", "medium", "high", "ultra"],
+    "presets": [
+      "low",
+      "medium",
+      "high",
+      "ultra"
+    ],
     "idleFrames": 1560,
-    "expectPlacement": {"unsupported": 0, "floating": 0, "overlaps": 0},
-    "expectIdleHull": [100, 100, 100, 100]
+    "expectPlacement": {
+      "unsupported": 0,
+      "floating": 0,
+      "overlaps": 0,
+      "props": 85
+    },
+    "expectIdleHull": [
+      100,
+      100,
+      100,
+      100
+    ]
   },
   {
     "name": "pirates-lagoon-placement-and-graphics",
     "map": 1,
-    "presets": ["low", "medium", "high", "ultra"],
+    "presets": [
+      "low",
+      "medium",
+      "high",
+      "ultra"
+    ],
     "idleFrames": 1560,
-    "expectPlacement": {"unsupported": 0, "floating": 0, "overlaps": 0},
-    "expectIdleHull": [100, 100, 100, 100]
+    "expectPlacement": {
+      "unsupported": 0,
+      "floating": 0,
+      "overlaps": 0,
+      "props": 115
+    },
+    "expectIdleHull": [
+      100,
+      100,
+      100,
+      100
+    ]
   }
 ]

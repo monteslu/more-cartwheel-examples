@@ -32,6 +32,8 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 24
+      - name: Check Pirates asset portability
+        run: python3 tests/pirates-assets.py
       - name: System packages
         run: |
           sudo apt-get update

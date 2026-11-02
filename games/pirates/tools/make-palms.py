@@ -19,6 +19,8 @@ for j in range(24):
  for step in (j,j+1):
   t=step/24;r=.23+.18*(1-t)**4+(.022 if step%2==0 else 0)
   c=trunk_center(t)
+  # Embed the root skirt below sloping ground without lowering the crown.
+  if step==0:c.z=-10.0
   points.extend(c+Vector((r*math.cos(k*math.tau/8),r*math.sin(k*math.tau/8),0)) for k in range(8))
  tris=[]
  for k in range(8):

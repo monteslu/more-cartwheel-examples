@@ -147,6 +147,37 @@ static int harbor_ground(float x,float z) {
   for(int i=0;i<CAPTAINS;i++)if(dist2(x,z,PORT_X[i],PORT_Z[i])<25)return 1;
   return 0;
 }
+/* Conservative support over the complete rendered footprint, including
+ * overhangs. Sampling the centre alone misses downhill gaps. */
+static void prop_bounds(t3_object *o,t3_vec3 *lo,t3_vec3 *hi) {
+  if(o->type==T3_MESH || o->type==T3_SKINNED_MESH) {
+    t3_geometry *g=((t3_mesh *)o)->geometry;
+    if(g) {
+      t3_geometry_compute_bounding_box(g);t3_box3 b=g->bounding_box;
+      for(int i=0;i<8;i++) {
+        t3_vec3 v=t3_vec3_apply_mat4((t3_vec3){i&1?b.max.x:b.min.x,i&2?b.max.y:b.min.y,i&4?b.max.z:b.min.z},&o->matrix_world);
+        lo->x=fminf(lo->x,v.x);lo->y=fminf(lo->y,v.y);lo->z=fminf(lo->z,v.z);
+        hi->x=fmaxf(hi->x,v.x);hi->y=fmaxf(hi->y,v.y);hi->z=fmaxf(hi->z,v.z);
+      }
+    }
+  }
+  for(int i=0;i<o->child_count;i++)prop_bounds(o->children[i],lo,hi);
+}
+static float footprint_gap(cw_node n) {
+  t3_object *o=cw_node3d_object(n);
+  /* Scene transforms own these objects; refresh before measuring a moved prop. */
+  t3_object_set_matrix_world(o,cw_node3d_global_transform(n));
+  t3_object_update_world_matrix(o,false,true);
+  t3_vec3 lo={1e9f,1e9f,1e9f},hi={-1e9f,-1e9f,-1e9f};prop_bounds(o,&lo,&hi);
+  float lowest=1e9f;
+  for(int z=0;z<=16;z++)for(int x=0;x<=16;x++)
+    lowest=fminf(lowest,coast_height(lo.x+(hi.x-lo.x)*x/16,lo.z+(hi.z-lo.z)*z/16));
+  return lo.y-lowest;
+}
+static void ground_prop(cw_node n) {
+  float gap=footprint_gap(n);
+  if(gap>-.02f){t3_vec3 p=cw_node3d_position(n);p.y-=gap+.02f;cw_node3d_set_position(n,p);}
+}
 static void palm(cw_node parent, float x, float z, float height) {
   if(harbor_ground(x,z)||coast_distance(x,z)<.5f)return;
   cw_node n=cw_node_new("Node3D","Palm");cw_node_add_child(parent,n);
@@ -155,7 +186,7 @@ static void palm(cw_node parent, float x, float z, float height) {
   float scale=height/9.0f;cw_node3d_set_scale(n,(t3_vec3){scale,scale,scale});
   cw_node3d_set_rotation(n,(t3_vec3){0,x*.8f+z,0});
   t3_object *model=cw_gltf_instantiate(cw_res_load("res://models/coconut-palm.glb",CW_RES_GLTF));
-  if (model) {model_shadows(model);t3_object_add(cw_node3d_object(n),model);t3_release(model);}
+  if (model) {model_shadows(model);t3_object_add(cw_node3d_object(n),model);t3_release(model);ground_prop(n);}
 }
 
 static float coast_distance(float x, float z) {
@@ -311,7 +342,7 @@ static void make_coast(void) {
     cw_node3d_set_scale(detail,(t3_vec3){scale,scale,scale});
     cw_node3d_set_rotation(detail,(t3_vec3){0,seed*.7f,0});
     t3_object *o=cw_gltf_instantiate(cw_res_load(path,CW_RES_GLTF));
-    if(o){model_shadows(o);t3_object_add(cw_node3d_object(detail),o);t3_release(o);}
+    if(o){model_shadows(o);t3_object_add(cw_node3d_object(detail),o);t3_release(o);ground_prop(detail);}
   }
 }
 
@@ -429,15 +460,15 @@ static void build_map(void) {
     cw_node_set(n,"visible",cw_val_bool(false));eruption.rocks[i]=n;
   }
   for(int i=0;i<CAPTAINS;i++)make_port(i);
-  /* The water rectangle is 240 x 210 metres. Ease the ocean swells down
+  /* The water rectangle is 144 x 108 metres. Ease the ocean swells down
    * over the last eight metres of shallow water; CPU buoyancy shares it. */
-  float *shelter=malloc(241*211*sizeof(float));
+  float *shelter=malloc(145*109*sizeof(float));
   if(shelter) {
-    for(int z=0;z<211;z++)for(int x=0;x<241;x++) {
-      float t=clampf(-coast_distance(x-120,z-105)/8.0f,0,1);
-      shelter[z*241+x]=t*t*(3-2*t);
+    for(int z=0;z<109;z++)for(int x=0;x<145;x++) {
+      float t=clampf(-coast_distance(x-72,z-54)/8.0f,0,1);
+      shelter[z*145+x]=t*t*(3-2*t);
     }
-    cw_water_set_wave_mask(G.water,shelter,241,211);free(shelter);
+    cw_water_set_wave_mask(G.water,shelter,145,109);free(shelter);
   }
   cw_water_rebake_floor(G.water);
 }
@@ -446,7 +477,7 @@ static void setup_world(void) {
   G.world = cw_node_get(cw_tree_root(cw_scene_app_tree()), "Root");
   G.water = cw_node_get(G.world, "Water");
   G.camera = cw_node_get(G.world, "Camera");
-  cw_node3d_look_at(G.camera, (t3_vec3){ 0, 0, 0 }, (t3_vec3){ 0, 1, 0 });
+  cw_node3d_look_at(G.camera, (t3_vec3){ 0, 0, 2 }, (t3_vec3){ 0, 1, 0 });
   effects_init(G.world);
   build_map();
   for (int i = 0; i < SHIPS; i++) G.ships[i].root = make_ship_model(i);
@@ -1016,8 +1047,7 @@ static void draw_hud(void) {
   char buf[160];
   const char *mode = G.mode == VOYAGE ? "COOPERATIVE VOYAGE" : G.mode == RACE ? "TREASURE RACE" : "TEAM TREASURE RACE";
   if (G.state == TITLE) {
-    cw_r2d_rect(cw_rect_make(0, H * 0.17f, W, H * 0.39f), cw_rgba(0.015f, 0.045f, 0.07f, 0.77f));
-    cw_r2d_rect(cw_rect_make(0,H*.61f,W,H*.32f),cw_rgba(.015f,.045f,.07f,.88f));
+    cw_r2d_rect(cw_rect_make(0, H * 0.17f, W, H * 0.76f), cw_rgba(0.015f, 0.045f, 0.07f, 0.77f));
     line("PIRATES", 0, H * 0.19f, 92 * scale, cw_hex(0xffdb92ff), W, CW_ALIGN_CENTER);
     line(active_map?"PALM LAGOON":"THE GILDED SHOALS", 0, H * 0.31f, 29 * scale, cw_hex(0xece1c4ff), W, CW_ALIGN_CENTER);
     snprintf(buf, sizeof buf, "<  %s  >", mode);
@@ -1474,19 +1504,22 @@ static void mesh_vertical_bounds(t3_object *o,float *lo,float *hi) {
   for(int i=0;i<o->child_count;i++)mesh_vertical_bounds(o->children[i],lo,hi);
 }
 static void cmd_placement(int argc,const char **argv,cw_reply *r) {
-  (void)argc;(void)argv;
+  int control=argc>1 && atoi(argv[1]);
   int props=0,unsupported=0,cargo=0,floating=0,ships=0,overlaps=0;
   float max_gap=-1000;
   for(int i=0;i<cw_node_child_count(G.environment);i++) {
     cw_node n=cw_node_child(G.environment,i);const char *name=cw_node_name(n);
     if(strncmp(name,"Palm",4)&&strncmp(name,"ShoreRock",9)&&strncmp(name,"Undergrowth",11)&&strncmp(name,"Port",4))continue;
-    t3_object *o=cw_node3d_object(n);t3_object_update_world_matrix(o,true,true);
-    float lo=1e9f,hi=-1e9f;mesh_vertical_bounds(o,&lo,&hi);
-    t3_vec3 p=cw_node3d_global_position(n);
-    float gap=lo-coast_height(p.x,p.z);
-    /* Piers are supported by piles extending into the seabed. */
-    if(!strncmp(name,"Port",4))gap=lo;
-    max_gap=fmaxf(max_gap,gap);props++;unsupported+=gap>.25f;
+    t3_vec3 saved=cw_node3d_position(n);
+    if(control && props==0)cw_node3d_set_position(n,(t3_vec3){saved.x,saved.y+20,saved.z});
+    float gap;
+    if(!strncmp(name,"Port",4)) {
+      /* The connected quay anchors the pier; its offshore piles are not plants. */
+      t3_object *o=cw_node3d_object(n);t3_object_update_world_matrix(o,true,true);
+      float lo=1e9f,hi=-1e9f;mesh_vertical_bounds(o,&lo,&hi);gap=lo;
+    } else gap=footprint_gap(n);
+    if(control && props==0)cw_node3d_set_position(n,saved);
+    max_gap=fmaxf(max_gap,gap);props++;unsupported+=gap>.001f;
   }
   for(int i=0;i<GOODS;i++)if(G.goods[i].active) {
     good *g=&G.goods[i];t3_object *o=cw_node3d_object(g->appearance[g->kind]);

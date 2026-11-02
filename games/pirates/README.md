@@ -1,6 +1,6 @@
 # Pirates
 
-![Four captains trade broadsides around the volcanic archipelago](../../docs/screenshots/pirates.jpg)
+![Four captains set sail around the volcanic archipelago](../../docs/screenshots/pirates.jpg)
 
 A real-time naval game for one to four players sharing one screen. The maps
 have rounded bays, peninsulas, shallow water and harbors; ships collect cargo,
@@ -102,6 +102,11 @@ blender -b --disable-autoexec -t 8 --python games/pirates/tools/make-coast.py --
 The terrain generator writes the model, albedo, editable blend and matching
 collision/height header together. Keep those outputs together. Other Blender
 scripts prepare the licensed galleon and generate harbors, cargo and upgrades.
+After regenerating assets, run `tools/portable-blends.py` with Blender 4.2.9
+(from the game folder) to keep packed-image and file-browser paths portable.
+It reloads every saved blend and checks that geometry, morphs and packed
+textures are preserved. From the repository root, `python3 tests/pirates-assets.py` checks binary assets
+for embedded home paths; CI runs this check too.
 See [CREDITS](CREDITS) for ownership and source information.
 The original looping sea ambience is regenerated with
 `python3 games/pirates/tools/make-ambience.py` (no Blender or audio packages needed).
@@ -115,8 +120,9 @@ a native screenshot alone is not romdev verification.
 
 Runtime debug commands exercise actual gameplay functions and reset the match:
 
-- `pirates_placement`: inspect rendered scenery support, cargo water contact
-  and ship clearance on the current map.
+- `pirates_placement`: inspect scenery support across each full footprint,
+  cargo water contact and ship clearance. `pirates_placement 1` temporarily
+  raises a prop; it must report unsupported scenery and then restore it.
 - `pirates_test_hull`: check bow/stern shore and dock clearance, turning,
   reverse escape and spawns on both maps.
 - `pirates_test_route`: skip an unreachable cove pickup and continue banking.
@@ -172,8 +178,11 @@ node "$ENGINE_ROOT/tools/with-gpu-suite.mjs" pirates-review \
   node tests/pirates-review.mjs
 ```
 
-`tests/pirates-review-gates.json` defines the two map checks. The suite uses
-romdev on GL and WebGPU, checks grounded scenery and cargo
+`tests/pirates-review-gates.json` defines the two map checks. The suite starts
+its own romdev server inside the GPU sandbox and calls its HTTP tools on GL
+and WebGPU. It checks scenery across a 17-by-17 grid over each full bounding
+footprint, asserts the original prop counts, and requires a raised-prop
+negative control to fail before restoring it. It also checks cargo
 water contact on both maps, renders all four graphics presets without missing
 shaders or skipped draws, tests dock collisions and AI banking, and checks
 idle captains at home. Four controller ports join through ordinary input;

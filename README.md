@@ -143,7 +143,7 @@ and the credits).
 
 ### Pirates
 
-![Pirates: four captains trade broadsides around a volcanic archipelago](docs/screenshots/pirates.jpg)
+![Pirates: four captains set sail around a volcanic archipelago](docs/screenshots/pirates.jpg)
 
 A shared-screen naval game for one to four players: cooperative voyages,
 competitive treasure races, ship upgrades, a volcanic archipelago and a

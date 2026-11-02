@@ -13,7 +13,10 @@ def branch(a,b,radius):
  base=len(verts)
  for p,r in [(a,radius),(b,radius*.45)]:
   for i in range(6):
-   v=p+r*(side*math.cos(i*math.tau/6)+other*math.sin(i*math.tau/6));verts.append(tuple(v))
+   v=p+r*(side*math.cos(i*math.tau/6)+other*math.sin(i*math.tau/6))
+   # Extend only the root ring; leaf origins and branch tips stay authored.
+   if p is a:v.z-=2.0
+   verts.append(tuple(v))
  for i in range(6):face((base+i,base+(i+1)%6,base+(i+1)%6+6,base+i+6),2)
 def leaf(origin,heading,length,width,material):
  forward=Vector((math.cos(heading),math.sin(heading),0));side=Vector((-forward.y,forward.x,0))

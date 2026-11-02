@@ -39,14 +39,14 @@ color = color(0.42, 0.6, 0.9, 1)
 energy = 0.45
 
 [node name="Camera" parent="." type="Camera3D"]
-position = vec3(0, 64, 23)
+position = vec3(0, 68, 24)
 fov = 46
 near = 0.5
 far = 240
 
 [node name="Water" parent="." type="Water3D"]
-size = vec2(240, 210)
-subdivisions = 220
+size = vec2(144, 108)
+subdivisions = 512
 wave_count = 4
 wave0 = vec4(200, 22, 0.7, 0.72)
 wave1 = vec4(218, 14, 0.36, 0.65)
