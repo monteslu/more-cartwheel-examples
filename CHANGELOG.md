@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.18.3
+
+- coopplatformer: signs are a fixed caption that fades across when a player reaches them,
+  instead of a panel that jumped around to avoid players.
+- coopplatformer: the camera stops at a level's end wall, so a boss arena no longer shows half
+  a screen of wall.
+- coopplatformer: bosses stay clear of the walls, so their arms don't go through them, and you
+  get a little more room behind them.
+- coopplatformer: a boss's words are a caption, clear of the player markers, and speech bubbles
+  stay off markers and players.
+- coopplatformer: the results card and fake finish banner are solid, with no labels showing
+  through.
+
 ## 0.18.2
 
 - coopplatformer: a sign's panel stays solid and steps aside from a player, instead of going
