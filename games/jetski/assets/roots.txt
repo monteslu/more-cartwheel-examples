@@ -87,6 +87,10 @@ course/sound/granite-albedo.rgba
 course/sound/granite-normal.rgba
 course/sound/moss-albedo.rgba
 course/sound/moss-normal.rgba
+course/sound/darkgranite-albedo.rgba
+course/sound/darkgranite-normal.rgba
+course/sound/wetgranite-albedo.rgba
+course/sound/wetgranite-normal.rgba
 course/canyon/heights.r16
 course/canyon/control.u32
 course/canyon/wavemask.f32
@@ -102,6 +106,10 @@ course/canyon/sandstone-albedo.rgba
 course/canyon/sandstone-normal.rgba
 course/canyon/capstone-albedo.rgba
 course/canyon/capstone-normal.rgba
+course/canyon/deepred-albedo.rgba
+course/canyon/deepred-normal.rgba
+course/canyon/varnish-albedo.rgba
+course/canyon/varnish-normal.rgba
 course/harbour/heights.r16
 course/harbour/control.u32
 course/harbour/wavemask.f32
@@ -124,13 +132,5 @@ course/storm/palerock-albedo.rgba
 course/storm/palerock-normal.rgba
 course/storm/pale2-albedo.rgba
 course/storm/pale2-normal.rgba
-course/sound/darkgranite-albedo.rgba
-course/sound/darkgranite-normal.rgba
-course/sound/wetgranite-albedo.rgba
-course/sound/wetgranite-normal.rgba
-course/canyon/deepred-albedo.rgba
-course/canyon/deepred-normal.rgba
-course/canyon/varnish-albedo.rgba
-course/canyon/varnish-normal.rgba
 course/storm/stormwet-albedo.rgba
 course/storm/stormwet-normal.rgba

@@ -301,16 +301,16 @@ static const float canyon_buoys[][4] = { /* x, z, side (+1: pass with the buoy o
 {-522.64f,-126.75f,1.0f,3416.5f},
 {-527.78f,-215.44f,-1.0f,3505.6f}
 };
-static const float canyon_ramps[][5] = { /* x, z, yaw, s, how far off the racing line */
-{-273.26f,-325.31f,1.1114f,231.1f,0.0f},
-{412.71f,-284.76f,2.0560f,964.1f,20.0f},
-{412.31f,245.43f,0.6425f,1731.8f,0.0f},
-{234.45f,361.90f,-2.1394f,2049.4f,20.0f},
-{-280.52f,326.11f,-2.0834f,2644.3f,20.0f},
-{-517.23f,266.90f,-2.7964f,2960.9f,20.0f},
-{-540.44f,-82.13f,-2.8669f,3377.8f,20.0f},
-{-465.86f,-270.84f,2.3194f,3586.9f,-2.0f},
-{-466.32f,-294.94f,2.3156f,3602.9f,16.0f}
+static const float canyon_ramps[][6] = { /* x, z, yaw, s, how far off the racing line, big */
+{-273.26f,-325.31f,1.1114f,231.1f,0.0f,0.0f},
+{412.71f,-284.76f,2.0560f,964.1f,20.0f,0.0f},
+{412.31f,245.43f,0.6425f,1731.8f,0.0f,0.0f},
+{234.45f,361.90f,-2.1394f,2049.4f,20.0f,0.0f},
+{-280.52f,326.11f,-2.0834f,2644.3f,20.0f,0.0f},
+{-517.23f,266.90f,-2.7964f,2960.9f,20.0f,0.0f},
+{-540.44f,-82.13f,-2.8669f,3377.8f,20.0f,0.0f},
+{-465.86f,-270.84f,2.3194f,3586.9f,-2.0f,0.0f},
+{-466.32f,-294.94f,2.3156f,3602.9f,16.0f,0.0f}
 };
 static const char *const canyon_models[] = { NULL };
 static const float canyon_placed[][8] = { /* model, x, z, yaw, scale, solid half length, half width, floats */

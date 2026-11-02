@@ -10,8 +10,10 @@ enum { HIPS, SPINE, CHEST, NECK, HEAD, ARML, FOREL, HANDL, ARMR, FORER, HANDR, T
 static const char *const NAMES[BONES] = { "Hips", "Spine", "Chest", "Neck", "Head", "ArmL", "ForeL", "HandL", "ArmR", "ForeR", "HandR", "ThighL", "ShinL", "FootL", "ThighR", "ShinR", "FootR" };
 static t3_object *B[RACERS][BONES];
 float rider_torso[RACERS]; /* how far forward the upper body is thrown (radians, about): the rubric's measure */
+float rider_foot_side[RACERS];
 
 static t3_vec3 V(float x, float y, float z) { return (t3_vec3){ x, y, z }; }
+static float clampf(float v, float a, float b) { return v < a ? a : v > b ? b : v; }
 static t3_vec3 vadd(t3_vec3 a, t3_vec3 b) { return V(a.x + b.x, a.y + b.y, a.z + b.z); }
 static t3_vec3 vsub(t3_vec3 a, t3_vec3 b) { return V(a.x - b.x, a.y - b.y, a.z - b.z); }
 static t3_vec3 vmul(t3_vec3 a, float k) { return V(a.x * k, a.y * k, a.z * k); }
@@ -77,9 +79,11 @@ void rider_pose(int i, const craft *c, float alpha) {
   /* a riding crouch, not a seat: knees bent, weight over the bars, hips out over the side in a turn, back with the pull */
   float hx = -steer * 0.2f, hz = -0.58f - 0.24f * (lean > 0 ? lean : 0) + 0.12f * (lean < 0 ? -lean : 0);
   float hy = 0.86f - crouch + stand - 0.05f * speedk;
-  t3_vec3 hips = V(hx, hy - off * 0.85f, hz - off * 2.6f);
+  { float k = c->legout > 0 ? sinf(3.14159265f * clampf(1.0f - c->legout / KICK_T, 0, 1)) : 0; hx -= c->leg_side * 0.14f * k; hy += 0.12f * k; }
+  t3_vec3 hips = V(hx, hy - off * 0.5f, hz - off * 2.3f);
   /* the upper body leans into the corner and over the bars, more when it hunts for speed */
-  float fwd = 0.78f + 0.2f * speedk - 0.42f * (lean > 0 ? lean : 0) + 0.25f * c->kick - by[i] * 1.2f - off * 1.5f;
+  /* off the craft he lies back on the water: flat, on his back, feet toward the hull */
+  float fwd = (0.78f + 0.2f * speedk - 0.42f * (lean > 0 ? lean : 0) + 0.25f * c->kick - by[i] * 1.2f) * (1.0f - off) - off * 1.45f;
   rider_torso[i] = fwd;
   float side = steer * 0.34f;
   t3_quat qh = euler(fwd * 0.45f, -steer * 0.15f, side * 0.4f);
@@ -104,6 +108,8 @@ void rider_pose(int i, const craft *c, float alpha) {
     int arm = s ? ARMR : ARML, fore = s ? FORER : FOREL, hand = s ? HANDR : HANDL;
     t3_vec3 sh = vadd(chest, qrot(qc, V(sg * 0.2f, 0.2f, 0)));
     t3_vec3 grip = V(0 + sg * 0.285f * bc, 0.885f, 0.3f + sg * 0.285f * bs - 0.03f);
+    /* let go of the bars, arms out on the water */
+    if (off > 0) { t3_vec3 out = vadd(sh, V(sg * 0.5f, -0.04f, -0.05f)); grip = V(grip.x + (out.x - grip.x) * off, grip.y + (out.y - grip.y) * off, grip.z + (out.z - grip.z) * off); }
     t3_vec3 elbow = joint(sh, grip, 0.29f, 0.26f, V(sg * 0.95f, 0.15f, -0.25f));
     t3_vec3 d0 = V(sg, 0, 0);
     t3_quat qa = qbetween(d0, vnorm(vsub(elbow, sh)));
@@ -113,11 +119,17 @@ void rider_pose(int i, const craft *c, float alpha) {
     B[i][hand]->quaternion = t3_quat_multiply(qinv(qf), qf);
   }
   /* legs to the footwells */
+  rider_foot_side[i] = 0;
   for (int s = 0; s < 2; s++) {
     float sg = s ? -1.0f : 1.0f;
     int th = s ? THIGHR : THIGHL, sh = s ? SHINR : SHINL, ft = s ? FOOTR : FOOTL;
     t3_vec3 hipj = vadd(hips, qrot(qh, V(sg * 0.1f, -0.06f, 0)));
     t3_vec3 ankle = V(sg * 0.38f, 0.27f + 0.1f, -0.36f - 0.08f * (sg * steer > 0 ? 1.0f : 0.0f));
+    /* off the craft the legs go with the body, out toward the hull */
+    if (off > 0) { t3_vec3 out = vadd(hipj, V(sg * 0.14f, 0.02f, 0.8f)); ankle = V(ankle.x + (out.x - ankle.x) * off, ankle.y + (out.y - ankle.y) * off, ankle.z + (out.z - ankle.z) * off); }
+    /* a kick out: that foot leaves the craft, straight out to the side and up, the other stays in its well */
+    if (c->legout > 0 && sg * c->leg_side > 0) { float k = sinf(3.14159265f * clampf(1.0f - c->legout / KICK_T, 0, 1)); k = clampf(k * 1.6f, 0, 1); ankle = V(ankle.x + (sg * 0.86f - ankle.x) * k, ankle.y + (hips.y + 0.1f - ankle.y) * k, ankle.z + (hips.z - 0.05f - ankle.z) * k); }
+    if (fabsf(ankle.x) > rider_foot_side[i]) rider_foot_side[i] = fabsf(ankle.x);
     t3_vec3 knee = joint(hipj, ankle, 0.44f, 0.43f, V(sg * 0.5f, 0.2f, 1));
     t3_vec3 d0 = V(0, -1, 0);
     t3_quat qt = qbetween(d0, vnorm(vsub(knee, hipj)));

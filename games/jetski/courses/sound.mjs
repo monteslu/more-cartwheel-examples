@@ -77,6 +77,7 @@ return {
     ['wetgranite', 'rock_face_03', [0.27, 0.29, 0.31], 0.03, 0.2],
   ],
   ramp_count: 12,
+  ramp_big: 2,
   ramp_top: 6.5,
   buoys: { first: 80, step: 92, wobble: 12, offset: 8.5 },
   // the long swell of an open ocean, on a course where it matters most at the west end

@@ -112,6 +112,7 @@ return {
     ['wet', 'rock_face_03', [0.25, 0.25, 0.27], 0.03, 0.25],
   ],
   ramp_count: 12,
+  ramp_big: 2,
   ramp_top: 5,
   // the lighthouse: on the top of the islet in the north-east
   landmark: { model: 'lighthouse', where: (x, z) => x > 120 && x < 420 && z > -340 && z < -80 },

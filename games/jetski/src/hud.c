@@ -29,6 +29,31 @@ static void text(cw_font f, const char *s, float x, float y, float size, cw_colo
   cw_r2d_text(f, s, cw_v2(x, y), &st);
 }
 
+/* Words across the middle of the picture: each one drawn says where it stands, and the next buoy's arrow and distance, drawn after them, keep clear */
+typedef struct word_box { float x0, y0, x1, y1; } word_box;
+#define WORDS_MAX 12
+static word_box words[WORDS_MAX];
+static int words_n;
+int g_hud_label_old, g_hud_label_hits, g_hud_words_n, g_hud_pop_n, g_hud_pop_keep;
+float g_hud_label[4];
+static void word(cw_font f, const char *s, float cx, float y, float size, cw_color c) {
+  text(f, s, cx, y, size, c, 0.5f);
+  if (c.a < 0.03f || words_n >= WORDS_MAX) return;
+  cw_text_style st = { .size = size };
+  float hw = cw_font_measure(f, s, &st).width * 0.5f;
+  words[words_n++] = (word_box){ cx - hw, y, cx + hw, y + size * 1.25f };
+}
+static bool word_hit(float x0, float y0, float x1, float y1, float *below) {
+  bool hit = false;
+  for (int i = 0; i < words_n; i++) {
+    const word_box *b = &words[i];
+    if (x1 < b->x0 || x0 > b->x1 || y1 < b->y0 || y0 > b->y1) continue;
+    hit = true;
+    if (below && b->y1 > *below) *below = b->y1;
+  }
+  return hit;
+}
+
 static bool to_screen(t3_vec3 p, float w, float h, cw_vec2 *out) {
   t3_camera *cam = cw_camera3d_t3(G.camera);
   if (!cam) return false;
@@ -128,9 +153,18 @@ static void next_mark(const craft *c, float w, float h, float u) {
   float mx = 70 * u, my = 90 * u;
   if (inside && p.x > mx && p.x < w - mx && p.y > my && p.y < h - my) {
     float k = dist < 40 ? 1.5f : dist > 200 ? 1.0f : 1.5f - 0.5f * (dist - 40) / 160, sz2 = 26 * u * k;
-    float py = p.y - 26 * u;
+    float py = p.y - 26 * u, ly = py - sz2 * 1.2f - 40 * u, lhw = 46 * u, ah = sz2 * 1.3f;
+    /* a word stands over them: both go down past it together, so the distance stays with its arrow */
+    if (!g_hud_label_old) for (int n = 0; n < 4; n++) {
+      float below = 0;
+      if (!word_hit(p.x - fmaxf(lhw, sz2 * 2.2f), ly, p.x + fmaxf(lhw, sz2 * 2.2f), py + ah, &below)) break;
+      float move = below + 8 * u - ly;
+      py += move, ly += move;
+    }
     pointer(cw_v2(p.x + dir * sz2 * 1.3f, py), dir, 0, sz2 * 1.6f, sz2, col);
-    text(small, buf, p.x, py - sz2 * 1.2f - 40 * u, 30 * u, cw_rgba(1, 1, 1, 0.95f), 0.5f);
+    text(small, buf, p.x, ly, 30 * u, cw_rgba(1, 1, 1, 0.95f), 0.5f);
+    g_hud_label[0] = p.x - lhw, g_hud_label[1] = ly, g_hud_label[2] = p.x + lhw, g_hud_label[3] = ly + 38 * u;
+    if (word_hit(g_hud_label[0], g_hud_label[1], g_hud_label[2], g_hud_label[3], NULL)) g_hud_label_hits++;
     g_hud_ptr_mode = 1, g_hud_ptr[0] = p.x + dir * sz2 * 0.5f, g_hud_ptr[1] = py;
     return;
   }
@@ -146,8 +180,17 @@ static void next_mark(const craft *c, float w, float h, float u) {
   cw_vec2 q = cw_v2(w * 0.5f + dx * t, h * 0.5f + dy * t);
   /* clear of the minimap in its corner */
   if (g_map_on) { cw_rect mr = map_rect(h, u); if (q.x < mr.x + mr.w + 110 * u && q.y > mr.y - 110 * u) q.y = mr.y - 110 * u; }
+  float lx = q.x - dx * 110 * u, ly = q.y - dy * 110 * u - 18 * u, lhw = 46 * u;
+  if (!g_hud_label_old) for (int n = 0; n < 4; n++) {
+    float below = 0;
+    if (!word_hit(fminf(lx - lhw, q.x - 72 * u), fminf(ly, q.y - 72 * u), fmaxf(lx + lhw, q.x + 72 * u), fmaxf(ly + 38 * u, q.y + 72 * u), &below)) break;
+    float move = below + 8 * u - fminf(ly, q.y - 72 * u);
+    q.y += move, ly += move;
+  }
   pointer(q, dx, dy, 72 * u, 44 * u, col);
-  text(small, buf, q.x - dx * 110 * u, q.y - dy * 110 * u - 18 * u, 30 * u, cw_rgba(1, 1, 1, 0.95f), 0.5f);
+  text(small, buf, lx, ly, 30 * u, cw_rgba(1, 1, 1, 0.95f), 0.5f);
+  g_hud_label[0] = lx - lhw, g_hud_label[1] = ly, g_hud_label[2] = lx + lhw, g_hud_label[3] = ly + 38 * u;
+  if (word_hit(g_hud_label[0], g_hud_label[1], g_hud_label[2], g_hud_label[3], NULL)) g_hud_label_hits++;
   g_hud_ptr_mode = 2, g_hud_ptr[0] = q.x - dx * 30 * u, g_hud_ptr[1] = q.y - dy * 30 * u;
 }
 
@@ -172,8 +215,16 @@ static void pop_add(const char *t, cw_color col, bool big) {
   snprintf(pop[0].text, sizeof pop[0].text, "%s", t), pop[0].t = 0, pop[0].col = col, pop[0].big = big;
 }
 static float meter_pulse, chip_pulse;
+static unsigned ev_read;
+/* a new race starts clean: words from the last one, and events it had not shown yet, do not hang over it */
+void hud_race_reset(void) {
+  if (g_hud_pop_keep) return;
+  for (int i = 0; i < 3; i++) pop[i].text[0] = 0;
+  ev_read = g_ev_n;
+  meter_pulse = chip_pulse = 0;
+}
 static void hud_events(float dt) {
-  static unsigned read;
+  unsigned read = ev_read;
   static const char *const ord[] = { "1ST", "2ND", "3RD", "4TH", "5TH", "6TH" };
   cw_color gold = cw_rgba(1.0f, 0.78f, 0.25f, 1), white = cw_rgba(1, 1, 1, 1), red = cw_rgba(1, 0.35f, 0.2f, 1), cyan = cw_rgba(0.55f, 0.95f, 1, 1), green = cw_rgba(0.6f, 1, 0.6f, 1);
   if (g_ev_n - read > EV_RING) read = g_ev_n - EV_RING;
@@ -185,8 +236,8 @@ static void hud_events(float dt) {
     switch (e->kind) {
       case EV_PASS: meter_pulse = 1; shown = false; g_fb[e->kind][0]++; break;
       case EV_TOP: pop_add("MAX POWER", gold, true); meter_pulse = 1; break;
-      case EV_TRICK: pop_add(e->a == 2 ? "BACK FLIP" : "BARREL ROLL", cyan, true); break;
-      case EV_LAND: if (e->a) pop_add("PERFECT LANDING", green, false); else { shown = false; g_fb[e->kind][0]++; } break;
+      case EV_TRICK: pop_add(e->a == 2 ? "BACK FLIP" : e->a == 3 ? "FRONT FLIP" : e->a == 4 ? "KICK OUT" : "BARREL ROLL", cyan, true); break;
+      case EV_LAND: if (e->a == 2) pop_add("DIVE", cyan, true); else if (e->a) pop_add("PERFECT LANDING", green, false); else { shown = false; g_fb[e->kind][0]++; } break;
       case EV_MISS: shown = false; g_fb[e->kind][0]++; break; /* MISS has its own big word */
       case EV_GAIN: snprintf(b, sizeof b, "UP TO %s", ord[e->a - 1 < 0 ? 0 : e->a - 1 > 5 ? 5 : e->a - 1]); pop_add(b, green, false); break;
       case EV_LOSE: snprintf(b, sizeof b, "DOWN TO %s", ord[e->a - 1 < 0 ? 0 : e->a - 1 > 5 ? 5 : e->a - 1]); pop_add(b, red, false); break;
@@ -199,7 +250,9 @@ static void hud_events(float dt) {
     }
     if (shown) g_fb[e->kind][0]++;
   }
-  for (int i = 0; i < 3; i++) if (pop[i].text[0]) { pop[i].t += dt; if (pop[i].t > 1.5f) pop[i].text[0] = 0; }
+  ev_read = read;
+  g_hud_pop_n = 0;
+  for (int i = 0; i < 3; i++) if (pop[i].text[0]) { pop[i].t += dt; if (pop[i].t > 1.5f) pop[i].text[0] = 0; else g_hud_pop_n++; }
   meter_pulse = fmaxf(0, meter_pulse - dt * 3), chip_pulse = fmaxf(0, chip_pulse - dt * 2.5f);
 }
 static void hud_popups(float w, float h, float u) {
@@ -209,7 +262,7 @@ static void hud_popups(float w, float h, float u) {
     if (!p->text[0]) continue;
     float in = fminf(1, p->t / 0.14f), back = 1 + 0.5f * (1 - in) * (1 - in), a = fminf(in, (1.5f - p->t) / 0.4f) * 0.92f, size = (p->big ? 54.0f : 38.0f) * u * back;
     if (a < 0) a = 0;
-    text(big, p->text, w * 0.5f, y, size, cw_rgba(p->col.r, p->col.g, p->col.b, a), 0.5f);
+    word(big, p->text, w * 0.5f, y, size, cw_rgba(p->col.r, p->col.g, p->col.b, a));
     y += size * 1.15f;
   }
 }
@@ -278,8 +331,8 @@ static void hud_body(void) {
   }
   if (g_map_on) minimap(c, h, u);
   hud_neighbours(c, u);
+  words_n = 0;
   hud_popups(w, h, u);
-  next_mark(c, w, h, u);
   /* misses so far: five and the race is over */
   for (int i = 0; i < 5; i++) {
     float x = 62 * u + (float)i * 34 * u, y = 196 * u;
@@ -287,26 +340,28 @@ static void hud_body(void) {
   }
   if (c->out_t > 0.2f) {
     snprintf(buf, sizeof buf, "BACK TO THE COURSE  %d", (int)ceilf(5.0f - c->out_t));
-    text(big, buf, w * 0.5f, h * 0.2f, 54 * u, cw_rgba(1, 0.4f, 0.15f, 1), 0.5f);
+    word(big, buf, w * 0.5f, h * 0.2f, 54 * u, cw_rgba(1, 0.4f, 0.15f, 1));
   }
-  if (c->flash_short > 0) text(big, "THE SHORT WAY", w * 0.5f, h * 0.2f, 66 * u, cw_rgba(0.6f, 1, 0.9f, c->flash_short), 0.5f);
-  if (DEF->hook.kind == 1 && hook_open() && G.clock - hook_seen < 5 && G.state == RACE_ON) text(small, "The tide has fallen: the arch is open", w * 0.5f, h * 0.14f, 40 * u, cw_rgba(0.6f, 1, 0.9f, 1), 0.5f);
+  if (c->flash_short > 0) word(big, "THE SHORT WAY", w * 0.5f, h * 0.2f, 66 * u, cw_rgba(0.6f, 1, 0.9f, c->flash_short));
+  if (DEF->hook.kind == 1 && hook_open() && G.clock - hook_seen < 5 && G.state == RACE_ON) word(small, "The tide has fallen: the arch is open", w * 0.5f, h * 0.14f, 40 * u, cw_rgba(0.6f, 1, 0.9f, 1));
   g_hud_wrong = wrong_way(c);
-  if (g_hud_wrong && g_buoy_style && c->out_t <= 0.2f && c->spill <= 0) text(big, "WRONG WAY", w * 0.5f, h * 0.2f, 76 * u, cw_rgba(1, 0.3f, 0.15f, 0.65f + 0.35f * sinf(G.clock * 9)), 0.5f);
-  if (c->spill > 0) text(big, "WIPEOUT", w * 0.5f, h * 0.2f, 76 * u, cw_rgba(1, 1, 1, 0.9f), 0.5f);
-  if (c->flash_miss > 0) text(big, "MISS", w * 0.5f, h * 0.2f, 76 * u, cw_rgba(1, 0.3f, 0.15f, c->flash_miss), 0.5f);
+  if (g_hud_wrong && g_buoy_style && c->out_t <= 0.2f && c->spill <= 0) word(big, "WRONG WAY", w * 0.5f, h * 0.2f, 76 * u, cw_rgba(1, 0.3f, 0.15f, 0.65f + 0.35f * sinf(G.clock * 9)));
+  if (c->spill > 0) word(big, "WIPEOUT", w * 0.5f, h * 0.2f, 76 * u, cw_rgba(1, 1, 1, 0.9f));
+  if (c->flash_miss > 0) word(big, "MISS", w * 0.5f, h * 0.2f, 76 * u, cw_rgba(1, 0.3f, 0.15f, c->flash_miss));
   if (c->air && c->air_time > 0.5f) {
     snprintf(buf, sizeof buf, "%.1f s", c->air_time);
-    text(small, buf, w * 0.5f, h * 0.26f, 44 * u, gold, 0.5f);
+    word(small, buf, w * 0.5f, h * 0.26f, 44 * u, gold);
   }
   if (G.state == RACE_GRID) {
     int n = (int)ceilf(-G.clock);
     if (n > 3) n = 3;
     snprintf(buf, sizeof buf, "%d", n);
-    if (G.clock < 0) text(big, buf, w * 0.5f, h * 0.3f, 190 * u, white, 0.5f);
+    if (G.clock < 0) word(big, buf, w * 0.5f, h * 0.3f, 190 * u, white);
   } else if (G.state == RACE_ON && G.clock < 1.2f) {
-    text(big, "GO", w * 0.5f, h * 0.3f, 190 * u, gold, 0.5f);
+    word(big, "GO", w * 0.5f, h * 0.3f, 190 * u, gold);
   }
+  g_hud_words_n = words_n;
+  next_mark(c, w, h, u);
 }
 
 void hud_draw(void) {

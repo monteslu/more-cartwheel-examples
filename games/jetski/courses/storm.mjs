@@ -54,6 +54,7 @@ return {
     ['stormwet', 'rock_face_03', [0.3, 0.32, 0.36], 0.07, 0.2],
   ],
   ramp_count: 8,
+  ramp_big: 2,
   ramp_skip: [2929],
   ramp_top: 6.5,
   buoys: { first: 90, step: 104, wobble: 14, offset: 9 },

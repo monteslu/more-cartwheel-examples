@@ -30,6 +30,7 @@ unsigned g_ev_n;
 int g_ev_on = 1, g_turbo_on = 1, g_fb[EV_KINDS][4];
 float g_pack = 1;
 float g_ram_last[3];
+int g_dive_on = 1;
 int g_ram_on = 1, g_ram_hits, g_ram_wipes, g_ram_setup;
 #define RAM_MIN 12.0f   /* closing speed along the line of contact under which nobody goes down */
 #define RAM_FULL 22.0f
@@ -179,19 +180,19 @@ static void computer(craft *c, int idx) {
     cw_sincos(G.ramp_yaw[r], &sy, &cy);
     float dxr = c->x - G.ramp_x[r], dzr = c->z - G.ramp_z[r], al = dxr * sy + dzr * cy, la = dxr * -cy + dzr * sy;
     float far_off = DEF->ramps[r][4] > 25 ? 1.0f : 0.0f; /* a shortcut: seen from further, across more water */
-    if (al < -60 - 50 * far_off || al > RAMP_HALF_LEN + 2 || la < -34 - 30 * far_off || la > 34 + 30 * far_off) continue;
+    if (al < -60 - 50 * far_off || al > ramp_hl(r) + 2 || la < -34 - 30 * far_off || la > 34 + 30 * far_off) continue;
     /* only once the buoy before it is passed, so going for a ramp never costs that buoy. One on the line is for everyone */
     bool takes = g_ai_ramps && BUOYS[c->next_buoy][3] > DEF->ramps[r][3] && (DEF->ramps[r][4] < 1 || !((idx + r) & 1));
-    bool lined = la > -RAMP_HALF_W + 1 && la < RAMP_HALF_W - 1;
-    if (takes && (al < -RAMP_HALF_LEN - 6 || lined)) {
+    bool lined = la > -ramp_hw(r) + 1 && la < ramp_hw(r) - 1;
+    if (takes && (al < -ramp_hl(r) - 6 || lined)) {
       /* the low end first, then straight up the middle */
-      float at = al < -RAMP_HALF_LEN - 6 ? -RAMP_HALF_LEN : al + 24.0f;
+      float at = al < -ramp_hl(r) - 6 ? -ramp_hl(r) : al + 24.0f;
       ax = G.ramp_x[r] + sy * at, az = G.ramp_z[r] + cy * at;
       break;
     }
     /* not going up it: round it, well clear of its side */
-    if (al > -RAMP_HALF_LEN - 18 && la > -RAMP_HALF_W - 5 && la < RAMP_HALF_W + 5) {
-      float out = (la < 0 ? -1.0f : 1.0f) * (RAMP_HALF_W + 8), at = al + 18.0f;
+    if (al > -ramp_hl(r) - 18 && la > -ramp_hw(r) - 5 && la < ramp_hw(r) + 5) {
+      float out = (la < 0 ? -1.0f : 1.0f) * (ramp_hw(r) + 8), at = al + 18.0f;
       ax = G.ramp_x[r] + sy * at - cy * out, az = G.ramp_z[r] + cy * at + sy * out;
       break;
     }
@@ -218,7 +219,10 @@ static void computer(craft *c, int idx) {
   float want = cw_atan2(ax - c->x, az - c->z);
   float err = wrap_pi(want - c->yaw);
   c->in.steer = clampf(-err * 2.6f, -1, 1);
-  c->in.lean = fabsf(err) > 0.55f ? 1.0f : 0.0f;
+  /* leaning back carves, in the air too, but it lifts the nose: in the air only while the nose is low, and for the last of a long jump ease it back down (not so far
+   * as a dive), or it comes down tail first */
+  c->in.lean = fabsf(err) > 0.55f && !(c->air && c->pitch > 0.45f) ? 1.0f : 0.0f;
+  if (c->air && c->air_time > 0.6f && c->vy < 0 && c->y - c->surf < -c->vy * 0.8f) c->in.lean = c->pitch > 0.35f ? -0.29f : 0.0f;
   c->in.throttle = 1;
   c->in.trick = false;
 }
@@ -230,15 +234,21 @@ static void ramps_place(void) {
   for (int r = 0; r < RAMPS; r++) G.ramp_x[r] = DEF->ramps[r][0], G.ramp_z[r] = DEF->ramps[r][1], G.ramp_yaw[r] = DEF->ramps[r][2];
   G.ramp_entry_min = 1e9f, G.ramp_lip_min = 1e9f, G.ramp_gap_max = -1e9f, G.ramp_foot_ground_max = -1e9f;
 }
-float ramp_deck(int r, float a) { return DEF->ramp_top + g_ramp_lift - (RAMP_HALF_LEN - a) * RAMP_SLOPE; }
+/* a big ramp: half as long and wide again, steeper and higher, so noticeably more air (tools/make-course.mjs marks them, view.c scales the model the same) */
+static bool ramp_big(int r) { return DEF->ramps[r][5] > 0; }
+float ramp_hl(int r) { return ramp_big(r) ? RAMP_HALF_LEN_N * RAMP_BIG_XZ : RAMP_HALF_LEN_N; }
+float ramp_hw(int r) { return ramp_big(r) ? RAMP_HALF_W_N * RAMP_BIG_XZ : RAMP_HALF_W_N; }
+float ramp_slope(int r) { return ramp_big(r) ? RAMP_SLOPE * RAMP_BIG_Y / RAMP_BIG_XZ : RAMP_SLOPE; }
+float ramp_top_at(int r) { return ramp_big(r) ? DEF->ramp_top + RAMP_BIG_RISE : DEF->ramp_top; }
+float ramp_deck(int r, float a) { return ramp_top_at(r) + g_ramp_lift - (ramp_hl(r) - a) * ramp_slope(r); }
 bool ramp_over(float x, float z, float *deck) {
   for (int r = 0; r < RAMPS; r++) {
     float dx = x - G.ramp_x[r], dz = z - G.ramp_z[r];
-    if (dx * dx + dz * dz > 500.0f) continue;
+    if (dx * dx + dz * dz > 1100.0f) continue;
     float sy, cy;
     cw_sincos(G.ramp_yaw[r], &sy, &cy);
     float a = dx * sy + dz * cy, l = dx * -cy + dz * sy;
-    if (a < -RAMP_HALF_LEN || a > RAMP_HALF_LEN || l < -RAMP_HALF_W || l > RAMP_HALF_W) continue;
+    if (a < -ramp_hl(r) || a > ramp_hl(r) || l < -ramp_hw(r) || l > ramp_hw(r)) continue;
     if (deck) *deck = ramp_deck(r, a);
     return true;
   }
@@ -252,21 +262,21 @@ static void ramps_tick(void) {
     cw_sincos(G.ramp_yaw[r], &sy, &cy);
     if (g_ramp_seesaw) {
       /* the control: what the old floating ramps did */
-      float f = cw_water_height_at(G.water, x + sy * RAMP_HALF_LEN, z + cy * RAMP_HALF_LEN, G.wt), b = cw_water_height_at(G.water, x - sy * RAMP_HALF_LEN, z - cy * RAMP_HALF_LEN, G.wt);
-      G.ramp_ta[r] = (f - b) / (2 * RAMP_HALF_LEN) * (float)g_ramp_seesaw;
+      float f = cw_water_height_at(G.water, x + sy * ramp_hl(r), z + cy * ramp_hl(r), G.wt), b = cw_water_height_at(G.water, x - sy * ramp_hl(r), z - cy * ramp_hl(r), G.wt);
+      G.ramp_ta[r] = (f - b) / (2 * ramp_hl(r)) * (float)g_ramp_seesaw;
     } else G.ramp_ta[r] = 0;
     bool dry = false, swamped = false;
     for (int k = 0; k < 8; k++) {
-      float a = k & 1 ? RAMP_HALF_LEN : -RAMP_HALF_LEN, l = (k & 2 ? RAMP_HALF_W : -RAMP_HALF_W) * (k & 4 ? 0.0f : 1.0f);
+      float a = k & 1 ? ramp_hl(r) : -ramp_hl(r), l = (k & 2 ? ramp_hw(r) : -ramp_hw(r)) * (k & 4 ? 0.0f : 1.0f);
       float wx = x + sy * a - cy * l, wz = z + cy * a + sy * l, water = cw_water_height_at(G.water, wx, wz, G.wt);
-      float foot = DEF->ramp_top + g_ramp_lift - RAMP_FOOT, over = foot - water;
+      float foot = ramp_top_at(r) + g_ramp_lift - RAMP_FOOT * (ramp_big(r) ? RAMP_BIG_Y : 1.0f), over = foot - water;
       G.ramp_points++;
       if (over > 0) G.ramp_gap_points++;
       if (over > G.ramp_gap_max) G.ramp_gap_max = over;
       float fg = foot - ground_at(wx, wz);
       if (fg > G.ramp_foot_ground_max) G.ramp_foot_ground_max = fg;
-      if (k & 1) { float lip = DEF->ramp_top + g_ramp_lift - water; if (lip < G.ramp_lip_min) G.ramp_lip_min = lip; if (lip < 0.3f) swamped = true; }
-      else { float e = water - ramp_deck(r, -RAMP_HALF_LEN); if (e < G.ramp_entry_min) G.ramp_entry_min = e; if (e < 0.2f) dry = true; }
+      if (k & 1) { float lip = ramp_top_at(r) + g_ramp_lift - water; if (lip < G.ramp_lip_min) G.ramp_lip_min = lip; if (lip < 0.3f) swamped = true; }
+      else { float e = water - ramp_deck(r, -ramp_hl(r)); if (e < G.ramp_entry_min) G.ramp_entry_min = e; if (e < 0.2f) dry = true; }
     }
     if (dry) G.ramp_dry_entry++;
     if (swamped) G.ramp_swamped++;
@@ -276,17 +286,17 @@ static void ramps_tick(void) {
 static void ramps_craft(craft *c, bool was_on) {
   for (int r = 0; r < RAMPS; r++) {
     float dx = c->x - G.ramp_x[r], dz = c->z - G.ramp_z[r];
-    if (dx * dx + dz * dz > 500.0f) continue;
+    if (dx * dx + dz * dz > 1100.0f) continue;
     float sy, cy;
     cw_sincos(G.ramp_yaw[r], &sy, &cy);
     float a = dx * sy + dz * cy, l = dx * -cy + dz * sy;
-    if (a < -RAMP_HALF_LEN || a > RAMP_HALF_LEN || l < -RAMP_HALF_W || l > RAMP_HALF_W) continue;
-    float slope = RAMP_SLOPE + G.ramp_ta[r], deck = ramp_deck(r, a) + G.ramp_ta[r] * a;
+    if (a < -ramp_hl(r) || a > ramp_hl(r) || l < -ramp_hw(r) || l > ramp_hw(r)) continue;
+    float slope = ramp_slope(r) + G.ramp_ta[r], deck = ramp_deck(r, a) + G.ramp_ta[r] * a;
     if (deck < c->surf - 0.3f) continue;  /* still under the water here */
     if (c->y > deck + 0.7f) continue;     /* flying over it */
     float along = c->vx * sy + c->vz * cy;
     if (along > 2 && c->y > deck - 1.0f) {
-      if (!was_on) c->ramps++;
+      if (!was_on) { c->ramps++; if (DEF->ramps[r][5] > 0) c->big_ramps++; }
       c->on_ramp = true;
       c->y = deck + 0.22f;
       c->vy = along * slope;
@@ -295,7 +305,7 @@ static void ramps_craft(craft *c, bool was_on) {
       continue;
     }
     /* a wall: out by the nearest side, and it costs */
-    float push = (l < 0 ? -RAMP_HALF_W - l : RAMP_HALF_W - l) * 1.02f;
+    float push = (l < 0 ? -ramp_hw(r) - l : ramp_hw(r) - l) * 1.02f;
     c->x += -cy * push, c->z += sy * push;
     craft_hit(c, l < 0 ? cy : -cy, l < 0 ? -sy : sy);
   }
@@ -396,6 +406,7 @@ static void tanker_craft(craft *c, float dt) {
 static void craft_tick(craft *c, int idx, float dt) {
   c->px = c->x, c->py = c->y, c->pz = c->z, c->pyaw = c->yaw, c->ppitch = c->pitch, c->proll = c->roll;
   c->bump = false, c->crashed = false;
+  if (c->dive_t > 0) c->in.trick = false, c->in_kick = false;
   if (c->ram_cool > 0) c->ram_cool--;
   if (c->spill > 0) {
     /* thrown off: the hull coasts and rights itself while the rider climbs back on. Under three seconds, and the meter only
@@ -519,16 +530,31 @@ static void craft_tick(craft *c, int idx, float dt) {
   } else {
     /* in the air: nose falls slowly, the stick trims */
     /* left alone the hull settles level for its landing; the stick trims it */
-    if (!c->trick_kind) c->pr += ((0.1f - c->pitch) * 2.2f - c->pr * 1.8f + c->in.lean * 2.6f) * dt;
+    /* the stick pushed forward points the nose down its own line of flight, so a steep fall goes in like a dive */
+    if (!c->trick_kind && c->in.lean < -0.3f) { float line = cw_atan2(c->vy, sp + 0.01f); c->pr += ((line - 0.12f - c->pitch) * 18.0f - c->pr * 7.0f) * dt; }
+    else if (!c->trick_kind) c->pr += ((0.1f - c->pitch) * 2.2f - c->pr * 1.8f + c->in.lean * 2.6f) * dt;
     c->rr += (-c->roll * 2.4f + c->steer * 1.5f - c->rr * 1.6f) * dt;
     /* nearly down, nothing asked: the hull settles to the slope it is about to meet, as a rider would let it. The sea's slope is not your mistake */
     if (g_fair && !c->trick_kind && fabsf(c->in.lean) < 0.3f && c->vy < 0 && c->y - hs < -c->vy * 0.3f + 0.3f && fabsf(wrap_pi(pitch_t - c->pitch)) < 0.6f) {
       c->pr += ((pitch_t - c->pitch) * 40.0f - c->pr * 8.0f) * dt;
       c->rr += ((roll_t - c->roll) * 30.0f - c->rr * 8.0f) * dt;
     }
+    /* a kick out: one foot off the craft and out to the side, for a moment. Another press kicks the other way */
+    if (c->legout <= 0 && c->in_kick && c->air_time > 0.08f) c->legout = KICK_T, c->leg_side = c->leg_side > 0 ? -1.0f : 1.0f;
+    if (c->legout > 0) {
+      c->legout -= dt;
+      if (c->legout <= 0 && !c->leg_paid) {
+        c->leg_paid = true, c->kicks++;
+        if (c->human) {
+          ev_push(EV_TRICK, 4, c->x, c->z);
+          if (c->meter >= 5 && c->stock < 3) { int was = (int)c->stock; c->stock = fminf(3, c->stock + 0.25f); if ((int)c->stock > was) ev_push(EV_CHARGE, (int)c->stock, c->x, c->z); }
+        }
+      }
+    } else c->leg_paid = false;
     /* one trick a press */
     if (c->trick_kind == 0 && c->in.trick && !c->trick_held && c->air_time > 0.08f) {
-      c->trick_kind = c->in.lean > 0.4f ? 2 : 1;
+      /* the stick picks: back for a back flip, forward for a front flip, else a barrel roll */
+      c->trick_kind = c->in.lean > 0.4f ? 2 : c->in.lean < -0.4f ? 3 : 1;
       c->last_trick = c->trick_kind;
       c->trick_t = 0;
       c->trick_dir = c->steer < 0 ? -1.0f : 1.0f;
@@ -537,7 +563,7 @@ static void craft_tick(craft *c, int idx, float dt) {
       c->trick_t += dt;
       float speed = TAU / 0.72f;
       if (c->trick_kind == 1) c->roll += c->trick_dir * speed * dt;
-      else c->pitch += speed * dt;
+      else c->pitch += (c->trick_kind == 3 ? -speed : speed) * dt;
       if (c->trick_t >= 0.72f) {
         /* round and square again */
         if (c->trick_kind == 1) c->roll = 0, c->rr = 0;
@@ -560,7 +586,7 @@ static void craft_tick(craft *c, int idx, float dt) {
   /* a hull floats: climbing a big face at speed the spring alone lets it lag under the surface, and it vanishes from under its
    * rider. It stays on top, rising at the water's rate */
   if (g_ride_top && hm - c->y > MAX_SINK && !land) {
-    c->y = hm - MAX_SINK;
+    if (c->dive_t <= 0) c->y = hm - MAX_SINK;
     if (c->vy < s.velocity.y) c->vy = s.velocity.y;
   }
   if (hm - c->y > c->sink_max) c->sink_max = hm - c->y;
@@ -576,8 +602,40 @@ static void craft_tick(craft *c, int idx, float dt) {
   /* landing */
   c->big_splash = false;
   if (was_air && !c->air) {
-    float err = fabsf(wrap_pi(c->pitch - pitch_t)) + fabsf(wrap_pi(c->roll - roll_t));
     float hit = -rel_vy;
+    /* three ways down. Nose down steeply with the hull along its own travel: it pierces, goes under and comes back up. Tail first, or falling straight down without that line: a wipeout. Anything else is a landing */
+    float travel = cw_atan2(rel_vy, c->speed + 0.01f);
+    bool aligned = fabsf(wrap_pi(c->pitch - travel)) < 0.45f && fabsf(wrap_pi(c->roll)) < 0.6f;
+    bool pierce = g_dive_on && !c->trick_kind && c->pitch < -0.42f && aligned && hit > 8;
+    /* only after a real jump: a hop off the swell while leaning into a carve is riding the water, not a fall */
+    bool jump = c->air_rise - c->y > 3.0f || c->air_time > 1.0f;
+    bool tail = g_dive_on && jump && !c->trick_kind && c->pitch > 0.75f && hit > 4;
+    bool dropped = g_dive_on && jump && !pierce && !c->trick_kind && hit > 4 && ((travel < -1.0f && hit > 10) || c->pitch < -0.95f);
+    float depth_room = c->surf - ground_at(c->x, c->z) - DIVE_FLOOR;
+    if (pierce && depth_room < 0.8f) pierce = false, tail = true; /* no water to go into: the bed stops it */
+    if (pierce) {
+      c->dive_depth = clampf(0.6f + hit * 0.2f, 1.2f, fminf(3.6f, depth_room));
+      c->dive_t = c->dive_len = 0.7f + c->dive_depth * 0.2f, c->dives++;
+      c->dive_entry = c->pitch;
+      c->big_splash = true, c->kick = 1;
+      c->vx *= 0.92f, c->vz *= 0.92f, c->vy = 0;
+      c->land_keep = 0.92f;
+      if (c->human) { g_land_hist[18]++; ev_push(EV_LAND, 2, c->x, c->z); }
+      c->air_time = 0, c->air_rise = c->y;
+      was_air = false;
+    } else if (tail || dropped) {
+      c->big_splash = true, c->kick = 1;
+      c->vx *= 0.6f, c->vz *= 0.6f;
+      c->spill = 1.9f, c->spills++, c->big_slide = true, c->land_keep = 0.6f;
+      if (c->human) { g_land_hist[12]++; ev_push(EV_CRASH, 2, c->x, c->z); }
+      c->pitch = wrap_pi(c->pitch) * 0.3f, c->pr = 0;
+      c->air_time = 0, c->air_rise = c->y;
+      was_air = false;
+    }
+  }
+  if (was_air && !c->air) {
+    float hit = -rel_vy;
+    float err = fabsf(wrap_pi(c->pitch - pitch_t)) + fabsf(wrap_pi(c->roll - roll_t));
     if (c->air_time > 0.2f) {
       c->big_splash = true;
       c->kick = clampf(hit * 0.16f, 0, 1);
@@ -591,6 +649,7 @@ static void craft_tick(craft *c, int idx, float dt) {
       if (g_fair && !c->trick_kind && c->in.lean > -0.3f && e2 < 1.2f && nose < 0.55f) { float floor_keep = c->air_time < 1.0f ? 0.97f : 0.95f; if (keep < floor_keep) keep = floor_keep; }
       if (nose > 0.3f) c->vy -= nose * 3.0f, c->y -= nose * 0.25f;
       if (c->trick_kind || e2 > 2.1f) keep = 0.35f, c->trick_kind = 0, c->spill = 1.9f, c->spills++;
+      if (c->legout > 0.12f) keep *= 0.85f, c->legout = 0, c->leg_paid = true; /* came down with a foot out */
       c->vx *= keep, c->vz *= keep;
       c->land_keep = keep;
       if (c->human && c->air_time > 0.2f) g_land_hist[(int)(clampf(keep, 0, 1) * 20.0f)]++;
@@ -602,6 +661,20 @@ static void craft_tick(craft *c, int idx, float dt) {
     }
     c->air_time = 0;
     c->air_rise = c->y;
+  }
+  /* under the water after a dive: down along a curve and back up, the hull levelling on the way, clear of the bed */
+  if (c->dive_t > 0) {
+    c->dive_t -= dt;
+    float u = clampf(1.0f - c->dive_t / c->dive_len, 0, 1), d = c->dive_depth * sinf(3.14159265f * u);
+    float bed = ground_at(c->x, c->z) + DIVE_FLOOR, y = c->surf - d;
+    c->y = y < bed ? bed : y;
+    c->vy = 0, c->air = false;
+    c->pitch = c->dive_entry + (0.42f - c->dive_entry) * clampf(u * 1.4f, 0, 1), c->pr = 0;
+    c->roll *= 0.9f, c->rr = 0;
+    float under = c->surf - c->y;
+    if (under > c->dive_max) c->dive_max = under;
+    if (under > 0.5f) c->dive_under += dt;
+    if (c->dive_t <= 0) { c->big_splash = true, c->kick = 0.5f; c->y = c->surf + 0.1f; c->vy = 2.0f; c->air_time = 0; }
   }
   /* a rival's wake: crossing the fresh water behind another craft bumps and shoves this one */
   c->wake_hit = 0;
@@ -678,6 +751,7 @@ void sim_reset(int state) {
   if (g_cam_cut && G.state != RACE_ATTRACT) keep_cam[0] = keep_cam[1] = keep_cam[2] = 0;
   cw_node water = G.water, camera = G.camera, sun = G.sun, sky = G.sky, clouds = G.clouds, sun_node = G.sun_node;
   cw_terrain *land = G.land;
+  hud_race_reset();
   memset(&G, 0, sizeof G);
   G.tick = tick, G.water = water, G.camera = camera, G.sun = sun, G.sky = sky, G.clouds = clouds, G.sun_node = sun_node, G.land = land;
   G.state = state;
@@ -750,7 +824,7 @@ void sim_ramp_start(int r, float back, float aside) {
   float sy, cy;
   cw_sincos(G.ramp_yaw[r], &sy, &cy);
   craft *c = &G.c[0];
-  back += RAMP_HALF_LEN; /* from its low end */
+  back += ramp_hl(r); /* from its low end */
   c->x = c->px = G.ramp_x[r] - sy * back - cy * aside, c->z = c->pz = G.ramp_z[r] - cy * back + sy * aside;
   c->y = c->py = cw_water_height_at(G.water, c->x, c->z, cw_water_time(G.water));
   c->yaw = c->pyaw = G.ramp_yaw[r], c->pitch = c->roll = c->pr = c->rr = 0;
@@ -805,7 +879,7 @@ static void ramp_try_tick(void) {
     float sy, cy;
     cw_sincos(G.ramp_yaw[g_try_ramp], &sy, &cy);
     float dx = c->x - G.ramp_x[g_try_ramp], dz = c->z - G.ramp_z[g_try_ramp], al = dx * sy + dz * cy, la = dx * -cy + dz * sy;
-    if (al > -RAMP_HALF_LEN - 6 && al < RAMP_HALF_LEN + 40 && la > -RAMP_HALF_W - 3 && la < RAMP_HALF_W + 3) g_try_hit = 1, try_p0 = c->passes;
+    if (al > -ramp_hl(g_try_ramp) - 6 && al < ramp_hl(g_try_ramp) + 40 && la > -ramp_hw(g_try_ramp) - 3 && la < ramp_hw(g_try_ramp) + 3) g_try_hit = 1, try_p0 = c->passes;
     else try_r0 = c->ramps;
   }
   if (g_try_hit && c->passes > try_p0) { g_try_res = 1; return; }
@@ -942,8 +1016,8 @@ void sim_tick(float dt) {
   if (G.state == RACE_ON) { float n = 1e9f; for (int i = 1; i < RACERS; i++) if (racer_on(i)) n = fminf(n, fabsf(G.c[i].dist - G.c[0].dist)); g_near = n; if (n < 1e8f) g_near_sum += n, g_near_n++; }
   if (g_hold_ticks > 0) g_hold_ticks--;
   { craft *h = &G.c[0]; if (G.state == RACE_ON && h->speed < 3) { h->slow3_ticks++; if (h->slow3_ticks > h->slow_max) h->slow_max = h->slow3_ticks; } else h->slow3_ticks = 0; }
-  G.ai_ramps = G.ai_spills = G.ai_misses = G.ai_passes = G.ai_walls = 0;
-  for (int i = 1; i < RACERS; i++) { craft *c = &G.c[i]; if (G.state == RACE_ON && c->speed < 2) { c->slow_ticks++; if (c->slow_ticks > G.ai_stuck) G.ai_stuck = c->slow_ticks; } else c->slow_ticks = 0; G.ai_ramps += c->ramps, G.ai_spills += c->spills, G.ai_misses += c->misses, G.ai_passes += c->passes, G.ai_walls += c->wall_hits; }
+  G.ai_ramps = G.ai_big_ramps = G.ai_spills = G.ai_misses = G.ai_passes = G.ai_walls = 0;
+  for (int i = 1; i < RACERS; i++) { craft *c = &G.c[i]; if (G.state == RACE_ON && c->speed < 2) { c->slow_ticks++; if (c->slow_ticks > G.ai_stuck) G.ai_stuck = c->slow_ticks; } else c->slow_ticks = 0; G.ai_ramps += c->ramps, G.ai_big_ramps += c->big_ramps, G.ai_spills += c->spills, G.ai_misses += c->misses, G.ai_passes += c->passes, G.ai_walls += c->wall_hits; }
   uint32_t h = G.tick;
   for (int i = 0; i < RACERS; i++) {
     h = cw_hash32(&G.c[i].x, sizeof(float) * 6, h);

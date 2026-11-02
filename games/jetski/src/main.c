@@ -20,7 +20,7 @@ static float perf[7], sun_dbg[3];
 static int32_t ground_total, ground_gaps;
 static float ground_worst;
 static int32_t gpu_programs; /* programs compiled so far: if this grows during play, the warm-up missed them */
-static cw_action a_left, a_right, a_back, a_fwd, a_throttle, a_trick, a_turbo;
+static cw_action a_left, a_right, a_back, a_fwd, a_throttle, a_trick, a_turbo, a_kick;
 
 static void start(int players, void *user) {
   (void)players, (void)user;
@@ -234,6 +234,9 @@ static void cmd_switch(int argc, const char **argv, cw_reply *r) {
       c->x = c->px = b[0] + tx * 1 - tz * 6 * b[2], c->z = c->pz = b[1] + tz * 1 + tx * 6 * b[2];
       c->vx = tx * 25, c->vz = tz * 25;
     }
+    else if (!strcmp(argv[1], "dive")) g_dive_on = (int)v;
+    else if (!strcmp(argv[1], "label_old")) g_hud_label_old = (int)v;
+    else if (!strcmp(argv[1], "pop_keep")) g_hud_pop_keep = (int)v;
     else if (!strcmp(argv[1], "old_crash")) g_old_crash = (int)v;
     else if (!strcmp(argv[1], "dist_step")) g_dist_step = (int)v;
     else if (!strcmp(argv[1], "place_hold")) g_place_hold = (int)v;
@@ -322,7 +325,7 @@ static void init(void *user) {
   if (!cw_input_load_bindings_asset("input.cfg")) cw_warn("jetski: input.cfg had errors");
   a_left = cw_action_find("steer_left"), a_right = cw_action_find("steer_right");
   a_back = cw_action_find("lean_back"), a_fwd = cw_action_find("lean_fwd");
-  a_throttle = cw_action_find("throttle"), a_trick = cw_action_find("trick"), a_turbo = cw_action_find("turbo");
+  a_throttle = cw_action_find("throttle"), a_trick = cw_action_find("trick"), a_turbo = cw_action_find("turbo"), a_kick = cw_action_find("kick");
   cw_shell_init(&(cw_shell_desc){ .title = "jetski", .max_players = 1, .start = start, .game_save_size = 64 });
   view_init();
   hud_init();
@@ -408,6 +411,7 @@ static void init(void *user) {
   cw_debug_f32_array("hook.tanker", G.tanker, 3);
   cw_debug_i32("ai.stuck", &G.ai_stuck);
   cw_debug_i32("ai.ramps", &G.ai_ramps);
+  cw_debug_i32("ai.big_ramps", &G.ai_big_ramps);
   cw_debug_i32("ai.spills", &G.ai_spills);
   cw_debug_i32("ai.misses", &G.ai_misses);
   cw_debug_i32("ai.passes", &G.ai_passes);
@@ -455,6 +459,19 @@ static void init(void *user) {
   cw_debug_command("sw", "sw <ev_on|turbo_on|pack|stock|meter|turbo> <value>: the gates' switches", cmd_switch);
   cw_debug_field("fb", g_fb, CW_DBG_I32, EV_KINDS * 4);
   cw_debug_i32("cam.drawn_under", &g_cam_drawn_under);
+  cw_debug_i32("p0.kicks", &G.c[0].kicks);
+  cw_debug_i32("p0.dives", &G.c[0].dives);
+  cw_debug_f32("p0.dive_max", &G.c[0].dive_max);
+  cw_debug_f32("p0.dive_under", &G.c[0].dive_under);
+  cw_debug_f32("p0.legout", &G.c[0].legout);
+  cw_debug_i32("hud.pop_n", &g_hud_pop_n);
+  cw_debug_i32("hud.words_n", &g_hud_words_n);
+  cw_debug_i32("hud.label_hits", &g_hud_label_hits);
+  cw_debug_f32_array("hud.label", g_hud_label, 4);
+  cw_debug_f32("p0.pitch", &G.c[0].pitch);
+  cw_debug_f32("p0.roll", &G.c[0].roll);
+  cw_debug_f32("p0.dive_t", &G.c[0].dive_t);
+  cw_debug_f32("rider.foot_side", &rider_foot_side[0]);
   cw_debug_i32("ram.hits", &g_ram_hits);
   cw_debug_f32_array("ram.last", g_ram_last, 3);
   cw_debug_i32("ram.wipes", &g_ram_wipes);
@@ -512,6 +529,7 @@ static void fixed_update(void *user, double dt) {
   c->in.throttle = cw_action_strength(0, a_throttle);
   c->in.trick = cw_action_pressed(0, a_trick);
   c->in_turbo = cw_action_pressed(0, a_turbo) || g_force_turbo > 0;
+  c->in_kick = cw_action_pressed(0, a_kick);
   if (g_hold_ticks > 0) c->in.throttle = 0;
   if (g_force_turbo > 0) g_force_turbo--;
   menu_tick((float)dt);

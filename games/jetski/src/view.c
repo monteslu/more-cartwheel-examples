@@ -277,7 +277,8 @@ static void ramps_apply(void) {
     im->count = RAMPS;
     for (int r = 0; r < RAMPS; r++) {
       t3_mat4 m;
-      t3_mat4_compose(&m, (t3_vec3){ DEF->ramps[r][0], DEF->ramp_top, DEF->ramps[r][1] }, t3_quat_from_euler((t3_euler){ 0, DEF->ramps[r][2], 0, T3_YXZ }), (t3_vec3){ 1, 1, 1 });
+      bool bigr = DEF->ramps[r][5] > 0;
+      t3_mat4_compose(&m, (t3_vec3){ DEF->ramps[r][0], ramp_top_at(r), DEF->ramps[r][1] }, t3_quat_from_euler((t3_euler){ 0, DEF->ramps[r][2], 0, T3_YXZ }), bigr ? (t3_vec3){ RAMP_BIG_XZ, RAMP_BIG_Y, RAMP_BIG_XZ } : (t3_vec3){ 1, 1, 1 });
       t3_instanced_mesh_set_matrix_at(im, r, &m);
     }
     if (im->instance_matrix) im->instance_matrix->version++; /* a second course's places must reach the GPU */
@@ -647,13 +648,21 @@ void view_tick(float dt) {
   float hx = vs ? c->vx / c->speed : sy, hz = vs ? c->vz / c->speed : cy;
   float bx = sy * 0.72f + hx * 0.28f, bz = cy * 0.72f + hz * 0.28f;
   float back = 4.0f + c->speed * 0.035f, up = 1.6f + c->speed * 0.012f;
-  float wx = c->x - bx * back, wz = c->z - bz * back;
+  /* a flip turns the whole craft over in front of the camera, and from straight behind it is only the hull's bottom. Swing out to the side for it, so craft and
+   * rider are seen going round together in profile, and look at the craft */
+  static float off;
+  {
+    float want = c->air && (c->trick_kind == 2 || c->trick_kind == 3) ? 1.0f : 0.0f;
+    off += (want - off) * fminf(1.0f, dt * (want > off ? 6.0f : 1.5f));
+    if (G.tick < 3) off = 0;
+    back -= 1.0f * off, up += 0.4f * off; }
+  float wx = c->x - bx * back + cy * 7.0f * off, wz = c->z - bz * back - sy * 7.0f * off;
   float wh = cw_water_height_at(G.water, wx, wz, G.wt);
   /* up after a jump: the camera rises with the craft, so the air is seen and the craft stays in the picture */
-  float rise = c->y - wh > 2.0f ? 0.8f : 0.45f;
+  float rise = c->y - wh > 2.0f ? 0.97f : 0.45f;
   float wy = (c->y * rise + wh * (1.0f - rise)) + up;
   if (wy < wh + 1.25f) wy = wh + 1.25f;
-  float kx = 1.0f - cw_exp(-dt * 18.0f), ky = 1.0f - cw_exp(-dt * 5.5f);
+  float kx = 1.0f - cw_exp(-dt * 18.0f), ky = 1.0f - cw_exp(-dt * (c->air && c->air_time > 0.25f ? 11.0f : 5.5f));
   bool first_tick = G.cam[0] == 0;
   if (G.tick < 3 || G.cam[0] == 0) kx = ky = 1;
   G.cam[0] += (wx - G.cam[0]) * kx;
@@ -664,7 +673,7 @@ void view_tick(float dt) {
   { float deck; if (ramp_over(G.cam[0], G.cam[2], &deck) && G.cam[1] < deck + 1.4f) G.cam[1] = deck + 1.4f; }
   /* the rubric's check: the chase camera at its own x, z is never under the water */
   if (G.cam[1] < cw_water_height_at(G.water, G.cam[0], G.cam[2], G.wt)) G.cam_under++;
-  float lx = c->x + sy * 7.0f, lz = c->z + cy * 7.0f, ly = (c->y - wh > 2.0f ? c->y : c->y * 0.7f + cw_water_height_at(G.water, lx, lz, G.wt) * 0.3f) + 1.0f;
+  float lx = c->x + sy * 7.0f * (1.0f - 0.8f * off), lz = c->z + cy * 7.0f * (1.0f - 0.8f * off), ly = (c->y - wh > 2.0f ? c->y : c->y * 0.7f + cw_water_height_at(G.water, lx, lz, G.wt) * 0.3f) + 1.0f;
   float kl = 1.0f - cw_exp(-dt * 8.0f);
   if (G.tick < 3 || G.look[0] == 0) kl = 1;
   G.look[0] += (lx - G.look[0]) * kl;
@@ -725,6 +734,13 @@ void view_sync(double alpha) {
     cw_node3d_set_rotation(hook_n, (t3_vec3){ 0, cw_atan2(DEF->hook.dirx * G.tanker[2], DEF->hook.dirz * G.tanker[2]), 0 });
     cw_water_wake(G.water, G.tanker[0], G.tanker[1], DEF->hook.dirx * G.tanker[2] * DEF->hook.s_in, DEF->hook.dirz * G.tanker[2] * DEF->hook.s_in, 9.0f, 0.2f, 0.7f);
   }
+  /* a craft under the water must reach the refraction, or it vanishes at the surface */
+  { static bool out[RACERS];
+    cw_node root = cw_node_get(cw_tree_root(cw_scene_app_tree()), "Root");
+    for (int i = 0; i < RACERS; i++) {
+      bool under = G.c[i].dive_t > 0;
+      if (under != out[i]) { out[i] = under; cw_node_reparent(craft_n[i], under ? root : dry_parent(root)); }
+    } }
   for (int b = 0; b < BUOY_N; b++) {
     cw_water_sample s;
     cw_water_sample_at(G.water, BUOYS[b][0], BUOYS[b][1], wt, &s);

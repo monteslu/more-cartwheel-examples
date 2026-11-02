@@ -16,8 +16,13 @@
 #define LEVELS 5
 #define RAMP_MAX 14
 #define BUOY_MAX 64
-#define RAMP_HALF_LEN 20.0f /* a rigid structure on piles: tools/make-models.mjs builds these sizes */
-#define RAMP_HALF_W 9.0f
+#define RAMP_HALF_LEN_N 20.0f /* a rigid structure on piles: tools/make-models.mjs builds these sizes */
+#define RAMP_HALF_W_N 9.0f
+#define RAMP_BIG_XZ 1.5f    /* a big ramp's model is scaled so */
+#define RAMP_BIG_Y 1.92f
+#define RAMP_BIG_RISE 7.0f  /* and its top edge stands this much higher */
+#define KICK_T 0.8f         /* a kick out in the air, seconds */
+#define DIVE_FLOOR 1.0f     /* a diving hull stays this far over the bed */
 #define RAMP_SLOPE 0.36f
 #define RAMP_FOOT 50.0f     /* how far its piles reach under its top edge */
 static const char *const RIDER_NAMES[6] = { "You", "Marlin", "Kestrel", "Tide", "Juno", "Reef" };
@@ -35,7 +40,7 @@ typedef struct course_def {
   float spacing, minh, maxh, len;
   int track_n; const float (*track)[4];
   int buoy_n; const float (*buoys)[4];
-  int ramp_n; const float (*ramps)[5]; float ramp_top;
+  int ramp_n; const float (*ramps)[6]; float ramp_top;
   int scatter_n; const course_scatter *scatter;
   int model_n; const char *const *models; int placed_n; const float (*placed)[8]; /* model, x, z, yaw, scale, solid half length, half width, floats */
   int prop_n; const char *const (*props)[3];
@@ -103,6 +108,11 @@ typedef struct craft {
   bool hook_passed;               /* through the hook's far side, until it comes round again */
   bool trick_held;                /* the trick button last tick */
   bool in_turbo;                  /* the turbo button pressed this tick */
+  bool in_kick;                   /* the kick button pressed this tick */
+  bool leg_paid;
+  float legout, leg_side;         /* a kick out: seconds left, which side */
+  int kicks, dives, big_ramps;
+  float dive_t, dive_len, dive_depth, dive_entry, dive_max, dive_under; /* under the water after piercing it */
   bool wake_on;                   /* over a tanker's wake */
   bool big_slide;                 /* the slide that threw the rider */
   int wake_hit;                   /* riding over a rival's wake */
@@ -162,7 +172,7 @@ typedef struct game {
   float tanker[3]; /* x, z, how far along its way */
   int32_t tanker_hits, wake_rides;
   int32_t ai_stuck; /* the most ticks in a row any computer rider has spent under 2 m/s */
-  int32_t ai_ramps, ai_spills, ai_misses, ai_passes, ai_walls; /* all the computer riders so far */
+  int32_t ai_ramps, ai_big_ramps, ai_spills, ai_misses, ai_passes, ai_walls; /* all the computer riders so far */
   int32_t ramp_points, ramp_gap_points;      /* points measured around the ramps; of them, a pile's foot over the water */
   int32_t ramp_dry_entry, ramp_swamped;      /* ticks the deck's low end stood clear of the water; ticks the water reached over the top */
   float ramp_gap_max, ramp_entry_min, ramp_lip_min, ramp_foot_ground_max; /* worst of each, metres */
@@ -185,6 +195,7 @@ bool hook_open(void);     /* the course's hook lets a rider through now */
 void sim_tick(float dt);
 float ground_at(float x, float z);
 void track_at(float s, float *x, float *z, float *dx, float *dz);
+float ramp_hl(int r), ramp_hw(int r), ramp_slope(int r), ramp_top_at(int r);
 float ramp_deck(int r, float a); /* the deck's height at a metres along it from its middle */
 bool ramp_over(float x, float z, float *deck); /* over a ramp's deck: its height there */
 void sim_ramp_start(int r, float back, float aside); /* the human lined up with a ramp, at speed */
@@ -198,6 +209,7 @@ extern bool g_peek_on;  /* debug: peek holds the camera, for the grounding sweep
 extern float g_peek[6];
 /* rider.c */
 extern float rider_torso[RACERS];
+extern float rider_foot_side[RACERS]; /* how far out to the side the further foot is, metres from the craft's middle */
 void rider_init(void);
 void rider_pose(int i, const craft *c, float alpha);
 void rider_bind(int i, t3_object *rider);
@@ -218,7 +230,10 @@ float menu_best_time(void); /* this course's best time trial, 0: none */
 void sim_place(float s);
 /* hud.c */
 extern int g_cam_cut, g_cam_drawn_under;
-extern int g_fair, g_land_hist[21];
+extern int g_fair, g_land_hist[21], g_dive_on;
+extern int g_hud_label_old, g_hud_label_hits, g_hud_words_n, g_hud_pop_n, g_hud_pop_keep;
+extern float g_hud_label[4];
+void hud_race_reset(void);
 extern float g_ram_last[3];
 extern int g_ram_on, g_ram_hits, g_ram_wipes, g_ram_setup;
 void sim_ram_setup(int kind);
