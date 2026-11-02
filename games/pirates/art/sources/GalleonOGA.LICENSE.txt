@@ -1,0 +1,8 @@
+GalleonOGA.blend by Daniel Quevedo
+Source: https://opengameart.org/content/pirate-ship-0
+Downloaded 2026-10-31.
+License: CC0 / public domain, as explicitly declared on the source page.
+License text: https://creativecommons.org/publicdomain/zero/1.0/
+Original asset is untextured and its author describes it as incomplete.
+This is an evaluation source; inclusion here does not mean it is approved as
+the final game ship. Repairs, materials, and a visual evaluation are required.

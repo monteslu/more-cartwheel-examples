@@ -1,0 +1,122 @@
+[
+  {
+    "name": "pirates-race-replay",
+    "app": "pirates_auto",
+    "frames": 1500,
+    "note": "Dock-aware navigation and safe NPC harbor approaches. All 13 fields independently match native WebGPU and rendered romdev WebGPU and GL.",
+    "fields": [
+      "pirates.state",
+      "pirates.mode",
+      "pirates.tick",
+      "pirates.bank",
+      "pirates.held",
+      "pirates.hp",
+      "pirates.pos",
+      "pirates.hash",
+      "pirates.shots",
+      "pirates.goods",
+      "pirates.eruptions",
+      "pirates.rock_impacts",
+      "render.skipped"
+    ],
+    "expect": {
+      "pirates.state": 1,
+      "pirates.mode": 1,
+      "pirates.tick": 1500,
+      "pirates.bank": [
+        3,
+        5,
+        0,
+        1
+      ],
+      "pirates.held": [
+        3,
+        0,
+        5,
+        2
+      ],
+      "pirates.hp": [
+        100,
+        50,
+        58,
+        71
+      ],
+      "pirates.pos": [
+        -4183,
+        -350,
+        3829,
+        -1093,
+        3653,
+        -538,
+        747,
+        2100
+      ],
+      "pirates.hash": 235489335,
+      "pirates.shots": 120,
+      "pirates.goods": 19,
+      "pirates.eruptions": 1,
+      "pirates.rock_impacts": 3,
+      "render.skipped": 0
+    }
+  },
+  {
+    "name": "pirates-race-full",
+    "app": "pirates_auto",
+    "frames": 21600,
+    "note": "Dock-aware navigation and safe NPC harbor approaches. All 13 fields independently match native WebGPU and rendered romdev WebGPU through a full six-minute race. All four AI captains bank cargo.",
+    "fields": [
+      "pirates.state",
+      "pirates.mode",
+      "pirates.tick",
+      "pirates.bank",
+      "pirates.held",
+      "pirates.hp",
+      "pirates.pos",
+      "pirates.hash",
+      "pirates.shots",
+      "pirates.goods",
+      "pirates.eruptions",
+      "pirates.rock_impacts",
+      "render.skipped"
+    ],
+    "expect": {
+      "pirates.state": 2,
+      "pirates.mode": 1,
+      "pirates.tick": 21600,
+      "pirates.bank": [
+        78,
+        73,
+        63,
+        59
+      ],
+      "pirates.held": [
+        1,
+        1,
+        6,
+        1
+      ],
+      "pirates.hp": [
+        100,
+        78,
+        30,
+        22
+      ],
+      "pirates.pos": [
+        -4001,
+        -691,
+        3043,
+        -517,
+        3253,
+        1648,
+        3198,
+        618
+      ],
+      "pirates.hash": 1347967832,
+      "pirates.shots": 1659,
+      "pirates.goods": 305,
+      "pirates.eruptions": 12,
+      "pirates.rock_impacts": 36,
+      "render.skipped": 0
+    }
+  }
+]

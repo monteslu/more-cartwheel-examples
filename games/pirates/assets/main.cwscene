@@ -1,0 +1,95 @@
+[scene format=1]
+
+[node name="Root" type="Node3D"]
+
+[node name="Post" parent="." type="PostProcess"]
+hdr = true
+msaa = 4
+aa = SMAA
+tonemap = "ACES_FILMIC"
+exposure = 1.15
+bloom = true
+bloom_intensity = 0.13
+bloom_threshold = 1.1
+ssao = false
+vignette = true
+vignette_intensity = 0.12
+
+[node name="Sky" parent="." type="ProceduralSky"]
+sun = "../Sun"
+time_of_day = 14.1
+latitude = 16
+declination = 14
+north = 180
+background = false
+sun_energy = 2.2
+sky_energy = 1.7
+ground_color = color(0.09, 0.22, 0.27, 1)
+
+[node name="Sun" parent="." type="DirectionalLight3D"]
+shadow = true
+shadow_extent = 55
+shadow_size = 2048
+shadow_bias = -0.00015
+shadow_normal_bias = 0.045
+
+[node name="Fill" parent="." type="DirectionalLight3D"]
+rotation = vec3(-0.6, 1.8, 0)
+color = color(0.42, 0.6, 0.9, 1)
+energy = 0.45
+
+[node name="Camera" parent="." type="Camera3D"]
+position = vec3(0, 68, 24)
+fov = 46
+near = 0.5
+far = 240
+
+[node name="Water" parent="." type="Water3D"]
+size = vec2(144, 108)
+subdivisions = 512
+wave_count = 4
+wave0 = vec4(200, 22, 0.7, 0.72)
+wave1 = vec4(218, 14, 0.36, 0.65)
+wave2 = vec4(155, 7, 0.15, 0.6)
+wave3 = vec4(95, 3.5, 0.055, 0.45)
+wave_shelter = vec4(1, 1, 0.9, 0.7)
+floor_map_size = 512
+floor_range = 16
+clarity = 2.8
+murk = 0.65
+shallow_color = color(0.035, 0.36, 0.32, 1)
+deep_color = color(0.006, 0.035, 0.105, 1)
+crest_light = 0.12
+color = color(0.9, 0.97, 0.95, 1)
+normal_scale = 0.28
+roughness = 0.04
+reflectivity = 0.008
+distortion = 0.018
+shore_foam = 0.65
+crest_foam = 0.18
+foam_lace = 0.7
+foam_soft = 0.8
+foam_spread = 0.4
+scatter = 0.7
+glint = 0.35
+ripple_cells = 224
+ripple_size = vec2(88, 64)
+ripple_speed = 3.2
+ripple_damping = 0.72
+ripple_strength = 1.1
+foam_fade = 0.45
+caustics = 0.12
+resolution_scale = 0.5
+
+[node name="Seabed" parent="." type="StaticBody3D"]
+position = vec3(0, -12, 0)
+
+[node name="Shape" parent="Seabed" type="CollisionShape3D"]
+shape = BOX
+size = vec3(240, 0.5, 210)
+
+[node name="Sand" parent="Seabed" type="MeshInstance3D"]
+size = vec3(240, 0.5, 210)
+color = color(0.58, 0.46, 0.29, 1)
+roughness = 0.95
+receive_shadow = true
