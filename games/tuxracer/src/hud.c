@@ -6,6 +6,7 @@
 #include <math.h>
 #include <stdio.h>
 
+#include "cartwheel/prompt.h"
 #include "cartwheel/render2d.h"
 
 static cw_font font_big, font_small;
@@ -36,6 +37,10 @@ static void text_shadowed(cw_font f, const char *s, float x, float y, float size
 }
 void hud_text(const char *s, float x, float y, float size, cw_color c, int align) { text_shadowed(font_small, s, x, y, size, c, align); }
 void hud_title(const char *s, float x, float y, float size, cw_color c, int align) { text_shadowed(font_big, s, x, y, size, c, align); }
+/* text with button prompts in it (cartwheel/prompt.h markup: "{menu_accept} race"), drawn for the player's device */
+void hud_prompt(const char *s, float x, float y, float size, cw_color c, int align) {
+  cw_prompt_text(font_small, s, 0, (cw_vec2){ x, y }, size, c, align == 1 ? CW_ALIGN_CENTER : align == 2 ? CW_ALIGN_RIGHT : CW_ALIGN_LEFT);
+}
 static void panel(float x, float y, float w, float h, float alpha);
 /* a translucent dark panel with rounded corners (the HUD's cards, the menus) */
 void hud_panel(float x, float y, float w, float h, float alpha) { panel(x, y, w, h, alpha); }

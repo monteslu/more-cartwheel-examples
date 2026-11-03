@@ -198,6 +198,7 @@ cw_font hud_font(void);
 void hud_begin(void);
 void hud_end(void);
 void hud_text(const char *s, float x, float y, float size, cw_color c, int align); /* align: 0 left 1 centre 2 right */
+void hud_prompt(const char *s, float x, float y, float size, cw_color c, int align); /* hud_text with button prompts: "{menu_accept} race" */
 void hud_title(const char *s, float x, float y, float size, cw_color c, int align);
 void hud_box(float x, float y, float w, float h, cw_color c);
 void hud_panel(float x, float y, float w, float h, float alpha); /* a rounded translucent card */

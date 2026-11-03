@@ -1157,7 +1157,7 @@ static void render(void *user, double alpha) {
         hud_text(buf, size.x / 2, 330, 18, (cw_color){ 1, 0.95f, 0.01f, 1 }, 1);
         snprintf(buf, sizeof buf, "Lives: %d", G.lives);
         hud_text(buf, size.x / 2, 360, 20, (cw_color){ 1, 1, 1, 1 }, 1);
-        hud_text("Press Enter to race, Escape to go back", size.x / 2, 470, 16, (cw_color){ 1, 1, 1, 0.6f }, 1);
+        hud_prompt("{menu_accept} race    {menu_back} back", size.x / 2, 468, 18, (cw_color){ 1, 1, 1, 0.6f }, 1);
       }
       hud_end();
       break;
@@ -1228,7 +1228,7 @@ static void render(void *user, double alpha) {
         G.won && G.race_idx + 1 >= G.cups[G.cup_idx].count ? "Congratulations! You won the cup!" : G.won ? "You advanced to the next race!" :
         G.lives <= 0 ? "You didn't advance, and you're out of lives." : "You didn't advance.";
       hud_text(msg, size.x / 2, 340, 20, (cw_color){ 1, 0.95f, 0.01f, 1 }, 1);
-      if (G.over_time >= 0.5f) hud_text("Press Enter to continue", size.x / 2, 375, 16, (cw_color){ 1, 1, 1, 0.6f }, 1);
+      if (G.over_time >= 0.5f) hud_prompt("{menu_accept} continue", size.x / 2, 373, 18, (cw_color){ 1, 1, 1, 0.6f }, 1);
       hud_end();
       break;
     }
