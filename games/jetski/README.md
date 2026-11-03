@@ -13,9 +13,9 @@ makes the sea bigger and adds buoys: every second one on Easy, three in four on 
 |---|---|---|
 | Left stick, d-pad | Arrows, A / D | Steer, and lean the rider into the turn |
 | Stick down | Down, S | Lean back: a tighter carve that costs speed. Throw it forward at a crest to jump higher |
-| A, right trigger | Space, J | Throttle |
-| X | K | In the air: a barrel roll, a back flip with the stick pulled back, a front flip with it pushed forward |
-| Y | I | In the air: kick a foot out |
+| South face button, right trigger | Space, J | Throttle |
+| West face button | K | In the air: a barrel roll, a back flip with the stick pulled back, a front flip with it pushed forward |
+| North face button | I | In the air: kick a foot out |
 | Right shoulder | L | Fire a turbo, when you have one |
 
 Buoys mark the course: tall masts over the swell, each with a board whose arrow points the way past it. Pass each one on the side its colour and the arrow show: orange-red on your right, yellow on your

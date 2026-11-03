@@ -5,6 +5,7 @@
 #include "cartwheel/audio.h"
 #include "cartwheel/debug.h"
 #include "cartwheel/input.h"
+#include "cartwheel/prompt.h"
 #include "cartwheel/quality_menu.h"
 #include "cartwheel/render2d.h"
 #include "cartwheel/shell.h"
@@ -207,6 +208,10 @@ static void text(cw_font f, const char *s, float x, float y, float size, cw_colo
   if (align != 0) { cw_text_metrics m = cw_font_measure(f, s, &st); x -= m.width * align; }
   cw_r2d_text(f, s, cw_v2(x, y), &st);
 }
+/* text with button prompts in it (cartwheel/prompt.h markup: "{throttle}"), for every seat: align 0 left, 0.5 centre, 1 right */
+static void ptext(cw_font f, const char *s, float x, float y, float size, cw_color c, float align) {
+  cw_prompt_text(f, s, -1, cw_v2(x, y), size, c, align == 0 ? CW_ALIGN_LEFT : align == 1 ? CW_ALIGN_RIGHT : CW_ALIGN_CENTER);
+}
 
 /* a row: a dark bar that lights up, its label, its value */
 static void item(float x, float y, float w, float u, const char *label, const char *value, bool sel) {
@@ -258,14 +263,14 @@ void menu_draw(void) {
       snprintf(buf, sizeof buf, "Best on %s: %d:%05.2f", DEF->name, (int)(best[G.level] / 60), best[G.level] - 60.0f * (float)(int)(best[G.level] / 60));
       text(small, buf, px + 6 * u, y + step * 7 + 4 * u, 30 * u, cw_rgba(1, 0.78f, 0.25f, 1), 0);
     }
-    text(small, "Up and down to choose, left and right to change, A or Enter to accept", px, h * 0.92f, 24 * u, dim, 0);
+    ptext(small, "{ui_up|ui_down} choose    {ui_left|ui_right} change    {ui_accept} accept", px, h * 0.92f, 24 * u, dim, 0);
     break;
   case P_CONTROLS: {
-    static const char *const L[][2] = { { "Steer and lean", "Left stick, d-pad, arrows" }, { "Throttle", "A, right trigger, Space" }, { "Lean back: tighter carve", "Stick down, S" }, { "Lean back, then throw forward at a crest", "Jump higher" }, { "In the air: barrel roll", "X, K" }, { "In the air, stick back: back flip", "X, K" }, { "Pause", "Start, Esc" } };
+    static const char *const L[][2] = { { "Steer and lean", "{steer_left|steer_right}" }, { "Throttle", "{throttle}" }, { "Lean back: tighter carve", "{lean_back}" }, { "Lean back, then throw forward at a crest", "Jump higher" }, { "In the air: barrel roll", "{trick}" }, { "In the air, stick back: back flip", "{lean_back} + {trick}" }, { "Pause", "{race_pause}" } };
     cw_r2d_round_rect(cw_rect_make(px, y, 980 * u, 530 * u), 10 * u, 8, cw_rgba(0.03f, 0.07f, 0.11f, 0.72f));
     for (int i = 0; i < 7; i++) {
       text(small, L[i][0], px + 26 * u, y + (20 + (float)i * 62) * u, 34 * u, white, 0);
-      text(small, L[i][1], px + 954 * u, y + (20 + (float)i * 62) * u, 34 * u, cw_rgba(1.0f, 0.78f, 0.3f, 1), 1);
+      ptext(small, L[i][1], px + 954 * u, y + (20 + (float)i * 62) * u, 34 * u, cw_rgba(1.0f, 0.78f, 0.3f, 1), 1);
     }
     text(small, "Pass each buoy on the side its arrow shows: five in a row is your top speed. A miss loses them all.", px + 26 * u, y + 462 * u, 26 * u, dim, 0);
     break;

@@ -320,6 +320,19 @@ static void cmd_mode(int argc, const char **argv, cw_reply *r) {
   if (r) cw_reply_raw(r, "true");
 }
 
+/* debug channel: "bind <action> <bindings>" replaces an action's bindings (the text form, "key:x, pad:north"): for checking
+ * that a rebound action's prompt shows its new button */
+static void cmd_bind(int argc, const char **argv, cw_reply *r) {
+  if (argc < 3) { cw_reply_error(r, "bind <action> <bindings>"); return; }
+  cw_action a = cw_action_find(argv[1]);
+  if (a < 0) { cw_reply_error(r, "no such action"); return; }
+  char list[256] = "";
+  for (int i = 2; i < argc; i++) { if (i > 2) strncat(list, " ", sizeof list - strlen(list) - 1); strncat(list, argv[i], sizeof list - strlen(list) - 1); }
+  cw_action_clear_bindings(a);
+  if (!cw_action_bind_text(a, list)) { cw_reply_error(r, "bad bindings"); return; }
+  cw_reply_printf(r, "ok");
+}
+
 static void init(void *user) {
   (void)user;
   if (!cw_input_load_bindings_asset("input.cfg")) cw_warn("jetski: input.cfg had errors");
@@ -357,6 +370,7 @@ static void init(void *user) {
   warp_from_env();
 #endif
   cw_debug_i32("race.state", &G.state);
+  cw_debug_command("bind", "bind <action> <bindings>: replace an action's bindings", cmd_bind);
   cw_debug_i32("gpu.programs", &gpu_programs);
   cw_debug_i32("ground.total", &ground_total);
   cw_debug_i32("ground.gaps", &ground_gaps);
