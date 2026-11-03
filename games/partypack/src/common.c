@@ -324,25 +324,10 @@ void ui_bar(cw_rect r, float f, cw_color c) {
   f = fclampf(f, 0, 1);
   if (f > 0.02f) ui_pill(cw_rect_make(r.x + 2, r.y + 2, (r.w - 4) * f, r.h - 4), c);
 }
-void ui_button_glyph(cw_vec2 p, float r, char which) {
-  cw_color c = which == 'A' ? cw_rgba(0.3f, 0.8f, 0.4f, 1) : which == 'B' ? cw_rgba(0.9f, 0.3f, 0.3f, 1) : which == 'X' ? cw_rgba(0.3f, 0.5f, 0.95f, 1) : cw_rgba(0.95f, 0.8f, 0.25f, 1);
-  cw_r2d_circle(p, r, 20, c);
-  cw_r2d_circle_lines(p, r, 2, 20, cw_rgba(0, 0, 0, 0.5f));
-  char s[2] = { which, 0 };
-  ui_text(s, cw_v2(p.x, p.y - r * 0.7f), r * 1.3f, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
+cw_vec2 ui_prompt(const char *s, int player, cw_vec2 p, float size, cw_color c, cw_text_align al) {
+  return cw_prompt_text(pp_font(), s, player, p, size, c, al);
 }
-/* the stick as a picture: a rounded well, a knob, four arrows */
-void ui_stick_glyph(cw_vec2 p, float r) {
-  cw_r2d_circle(p, r, 20, cw_rgba(0.15f, 0.15f, 0.25f, 1));
-  cw_r2d_circle_lines(p, r, 3, 20, cw_rgba(1, 1, 1, 0.8f));
-  cw_r2d_circle(p, r * 0.42f, 14, cw_rgba(0.85f, 0.85f, 0.95f, 1));
-  for (int k = 0; k < 4; k++) {
-    float a = TAU * (float)k / 4.0f;
-    cw_vec2 tip = cw_v2(p.x + cosf(a) * r * 0.9f, p.y + sinf(a) * r * 0.9f), l = cw_v2(p.x + cosf(a + 0.35f) * r * 0.6f, p.y + sinf(a + 0.35f) * r * 0.6f), rr = cw_v2(p.x + cosf(a - 0.35f) * r * 0.6f, p.y + sinf(a - 0.35f) * r * 0.6f);
-    cw_vec2 tri[3] = { tip, l, rr };
-    cw_r2d_polygon(tri, 3, cw_rgba(1, 0.9f, 0.4f, 1));
-  }
-}
+cw_vec2 ui_prompt_size(const char *s, int player, float size) { return cw_prompt_text_size(pp_font(), s, player, size); }
 /* a quad with a vertical colour gradient (smooth, unlike stacked bands) */
 void ui_grad(cw_rect r, cw_color top, cw_color bot) {
   cw_vertex2d v[4] = { { cw_v2(r.x, r.y), cw_v2(0, 0), top }, { cw_v2(r.x + r.w, r.y), cw_v2(1, 0), top }, { cw_v2(r.x + r.w, r.y + r.h), cw_v2(1, 1), bot }, { cw_v2(r.x, r.y + r.h), cw_v2(0, 1), bot } };

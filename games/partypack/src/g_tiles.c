@@ -1,6 +1,6 @@
 /* Tile Drop (2D, last standing): the floor is made of tiles, and a tile you stand on cracks and falls away, and so
- * do random ones. Keep moving and hop gaps with A. When a tile goes under you, you fall. Out? Move your ghost
- * cursor with the stick and press A to crack a tile under it. The last blob standing wins. */
+ * do random ones. Keep moving and hop gaps with south. When a tile goes under you, you fall. Out? Move your ghost
+ * cursor with the stick and press south to crack a tile under it. The last blob standing wins. */
 #include "mg.h"
 
 #define COLS 10
@@ -69,7 +69,7 @@ static void tick(mg_ctx *c) {
       p->gx = fclampf(p->gx + in->x * 380 * dt, X0 + 10, X0 + TW * COLS - 10);
       p->gy = fclampf(p->gy + in->y * 380 * dt, Y0 + 10, Y0 + TH * ROWS - 10);
       if (p->gcd > 0) p->gcd--;
-      if (in->pa && p->gcd == 0) {
+      if (in->psouth && p->gcd == 0) {
         int r, cc;
         if (floor_at(p->gx, p->gy, &r, &cc)) { crack(r, cc); p->gcd = 170; fx_ring(cw_v2(p->gx, p->gy), 8, 60, 0.4f, PCOL[i]); }
       }
@@ -97,7 +97,7 @@ static void tick(mg_ctx *c) {
     float sp = p->air > 0 ? 300 : 230;
     p->vx += (ax * sp - p->vx) * 0.25f;
     p->vy += (ay * sp - p->vy) * 0.25f;
-    if (in->pa && p->air == 0) { p->air = 34; sfx(SFX_JUMP, 0.4f, 1.2f); }
+    if (in->psouth && p->air == 0) { p->air = 34; sfx(SFX_JUMP, 0.4f, 1.2f); }
     if (p->air > 0) p->air--;
     p->x = fclampf(p->x + p->vx * dt, X0 + 6, X0 + TW * COLS - 6);
     p->y = fclampf(p->y + p->vy * dt, Y0 + 6, Y0 + TH * ROWS - 6);
@@ -127,7 +127,7 @@ static void think(mg_ctx *c, int p, mg_in *out) {
     if (tgt >= 0) {
       float dx = T.p[tgt].x - me->gx, dy = T.p[tgt].y - me->gy, d = bd + 0.001f;
       out->x = dx / d; out->y = dy / d;
-      out->a = me->gcd == 0 && bd < 60 && (h % 100) < 20;
+      out->south = me->gcd == 0 && bd < 60 && (h % 100) < 20;
     }
     return;
   }
@@ -172,12 +172,12 @@ static void think(mg_ctx *c, int p, mg_in *out) {
     /* a gap on the way: hop it */
     int nr, nc;
     bool ahead = floor_at(me->x + dx / d * 50, me->y + dy / d * 50, &nr, &nc);
-    if (me->air == 0 && !ahead && (h % 100) < (uint32_t)leap_pct[sk]) out->a = true;
+    if (me->air == 0 && !ahead && (h % 100) < (uint32_t)leap_pct[sk]) out->south = true;
     /* a better CPU reads the tile ahead: a cracking one on the way means another plan */
     if (sk > 0 && ahead && T.tile[nr][nc].st == 1 && (h % 100) < (uint32_t)(sk * 40)) me->hold = 0;
   }
-  if (me->air == 0 && !on) out->a = true; /* too late to hop, but try */
-  if (on && me->air == 0 && T.tile[r][cc].st == 1 && (h % 100) < (uint32_t)(20 + leap_pct[sk] / 3)) out->a = true; /* cracking under us: leap */
+  if (me->air == 0 && !on) out->south = true; /* too late to hop, but try */
+  if (on && me->air == 0 && T.tile[r][cc].st == 1 && (h % 100) < (uint32_t)(20 + leap_pct[sk] / 3)) out->south = true; /* cracking under us: leap */
 }
 
 static void draw(mg_ctx *c, float alpha, float t) {
@@ -217,8 +217,8 @@ static void score_text(mg_ctx *c, int p, char *buf, int cap) { snprintf(buf, (si
 
 const mg_def mg_tiles = {
   .id = "tiles", .name = "Tile Drop", .tagline = "The floor crumbles. Keep moving and be the last one standing.",
-  .how = { "Stick: run, a tile you stand on cracks", "A: hop a gap (a short flight)", "Out? Ghost cursor, A cracks a tile under it" },
-  .buttons = 1, .keys = "SA",
+  .how = { MOVE4 ": run, a tile you stand on cracks", "{btn_south}: hop a gap (a short flight)", "Out? Ghost cursor, {btn_south} cracks a tile under it" },
+  .controls = MOVE4 "  {btn_south}",
   .kind = "2D", .scene = NULL, .seconds = 50, .unlock_points = 0, .higher_is_better = true,
   .start = start, .tick = tick, .think = think, .draw = draw, .score_text = score_text,
 };

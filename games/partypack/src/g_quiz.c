@@ -1,5 +1,5 @@
-/* Quick Quiz (2D, trivia by pad): eight questions, four answers on A, B, X
- * and Y. Answer first and right to score the most; a wrong answer scores
+/* Quick Quiz (2D, trivia by pad): eight questions, four answers in a diamond,
+ * each on the face button that sits there. Answer first and right to score the most; a wrong answer scores
  * nothing. Questions come from a built-in bank. */
 #include "mg.h"
 
@@ -53,7 +53,7 @@ static struct {
   int gained[NP], total[NP];
   int cpu_slot[NP], cpu_t[NP];
   int right_slot;
-  float px[NP], py[NP]; /* the stick last tick: a flick picks an answer too (down A, right B, left X, up Y) */
+  float px[NP], py[NP]; /* the stick last tick: a flick picks an answer too (down south, right east, left west, up north) */
 } Q;
 
 static void setup_round(mg_ctx *c) {
@@ -101,7 +101,7 @@ static void tick(mg_ctx *c) {
       if (Q.ans[p] < 0) {
         int s = -1;
         const mg_in *in = &c->in[p];
-        if (in->pa) s = 0; else if (in->pb) s = 1; else if (in->pc) s = 2; else if (in->pd) s = 3;
+        if (in->psouth) s = 0; else if (in->peast) s = 1; else if (in->pwest) s = 2; else if (in->pnorth) s = 3;
         else if (in->y > 0.6f && oy[p] <= 0.6f) s = 0;
         else if (in->x > 0.6f && ox[p] <= 0.6f) s = 1;
         else if (in->x < -0.6f && ox[p] >= -0.6f) s = 2;
@@ -136,7 +136,7 @@ static void think(mg_ctx *c, int p, mg_in *out) {
   memset(out, 0, sizeof *out);
   if (Q.phase != 0 || Q.ans[p] >= 0 || Q.t < Q.cpu_t[p]) return;
   int s = Q.cpu_slot[p];
-  out->a = s == 0; out->b = s == 1; out->c = s == 2; out->d = s == 3;
+  out->south = s == 0; out->east = s == 1; out->west = s == 2; out->north = s == 3;
 }
 
 static void draw(mg_ctx *c, float alpha, float t) {
@@ -163,18 +163,21 @@ static void draw(mg_ctx *c, float alpha, float t) {
   ui_text_wrap(q->q, cw_rect_make(170, 160, 940, 90), 40, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
   float f = Q.phase == 0 ? 1.0f - (float)Q.t / QTICKS : 0;
   ui_bar(cw_rect_make(240, 262, 800, 16), f, f < 0.25f ? cw_rgba(1, 0.4f, 0.3f, 1) : cw_rgba(0.4f, 0.9f, 1, 1));
-  static const char LBL[4] = { 'A', 'B', 'X', 'Y' };
+  /* the answers sit as the buttons do, in a diamond: slot 0 south, 1 east, 2 west, 3 north, so the slot, its button and
+   * the flick all point the same way */
+  static const char *SLOT_KEY[4] = { "{btn_south}", "{btn_east}", "{btn_west}", "{btn_north}" };
+  static const float SLOT_X[4] = { 395, 650, 140, 395 }, SLOT_Y[4] = { 444, 368, 368, 292 };
   for (int sl = 0; sl < 4; sl++) {
-    float x = 140 + (sl % 2) * 510, y = 300 + (sl / 2) * 95;
+    float x = SLOT_X[sl], y = SLOT_Y[sl];
     bool rev = Q.phase == 1, right = sl == Q.right_slot;
     cw_color fill = !rev ? cw_rgba(0.45f, 0.55f, 0.95f, 0.95f) : right ? cw_rgba(0.4f, 0.95f, 0.5f, 1) : cw_rgba(0.3f, 0.3f, 0.45f, 0.65f);
-    art_nine("tile", cw_rect_make(x, y, 490, 80), 24, 0.9f, fill);
-    if (right && rev) art_glow("glow", cw_v2(x + 245, y + 40), 560, cw_rgba(0.4f, 1, 0.5f, 0.3f));
-    ui_button_glyph(cw_v2(x + 44, y + 40), 26, LBL[sl]);
-    ui_text(q->a[Q.perm[Q.q][sl]], cw_v2(x + 90, y + 20), 34, cw_rgba(1, 1, 1, rev && !right ? 0.55f : 1), CW_ALIGN_LEFT);
+    art_nine("tile", cw_rect_make(x, y, 490, 68), 24, 0.9f, fill);
+    if (right && rev) art_glow("glow", cw_v2(x + 245, y + 34), 560, cw_rgba(0.4f, 1, 0.5f, 0.3f));
+    cw_vec2 g = ui_prompt(SLOT_KEY[sl], -1, cw_v2(x + 22, y + 16), 34, cw_rgba(1, 1, 1, 1), CW_ALIGN_LEFT);
+    ui_text(q->a[Q.perm[Q.q][sl]], cw_v2(x + 34 + (g.x > 40 ? g.x : 40), y + 15), 32, cw_rgba(1, 1, 1, rev && !right ? 0.55f : 1), CW_ALIGN_LEFT);
     for (int p = 0; p < NP; p++) /* who picked it: shown after the reveal */
       if (Q.ans[p] == sl && (rev || c->human[p] == false)) {
-        if (rev) ui_blob(cw_v2(x + 330 + p * 38, y + 40), 16, p, 0, 0, 1, right ? 1 : 3, !c->human[p]);
+        if (rev) ui_blob(cw_v2(x + 330 + p * 38, y + 34), 16, p, 0, 0, 1, right ? 1 : 3, !c->human[p]);
       }
   }
   for (int p = 0; p < NP; p++) { /* locked-in markers */
@@ -189,8 +192,8 @@ static void score_text(mg_ctx *c, int p, char *buf, int cap) { snprintf(buf, (si
 
 const mg_def mg_quiz = {
   .id = "quiz", .name = "Quick Quiz", .tagline = "Eight questions. Fast and right scores most.",
-  .how = { "Flick the stick or press A B X Y", "Faster correct answers score more", "Wrong answers score nothing" },
-  .buttons = 0, .keys = "S",
+  .how = { "Press the answer's button, or flick " MOVE4 " toward it", "Faster correct answers score more", "Wrong answers score nothing" },
+  .controls = MOVE4,
   .kind = "2D", .scene = NULL, .seconds = 0, .unlock_points = 20, .higher_is_better = true,
   .start = start, .tick = tick, .think = think, .draw = draw, .score_text = score_text,
 };

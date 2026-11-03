@@ -1,5 +1,5 @@
 /* Coin Rush (2D, collect): coins pop up all over the yard; run over them to grab them. Gold coins are worth three.
- * A is a dash, and a dash that bumps another blob shakes a coin out of its pockets for anyone to take. Most coins
+ * The south button is a dash, and a dash that bumps another blob shakes a coin out of its pockets for anyone to take. Most coins
  * after 35 seconds wins. */
 #include "mg.h"
 
@@ -58,7 +58,7 @@ static void tick(mg_ctx *c) {
       p->vy += ay * 1500 * dt;
       if (l > 0.3f) p->fx = ax, p->fy = ay;
       if (p->cd > 0) p->cd--;
-      if (in->pa && p->cd == 0) {
+      if (in->psouth && p->cd == 0) {
         p->vx += p->fx * 520; p->vy += p->fy * 520;
         p->cd = 80; p->dash = 12;
         sfx(SFX_JUMP, 0.4f, 1.5f);
@@ -143,13 +143,13 @@ static void think(mg_ctx *c, int p, mg_in *out) {
   if (best < 0) return;
   float dx = C.c[best].x - C.p[p].x, dy = C.c[best].y - C.p[p].y, d = sqrtf(dx * dx + dy * dy) + 0.001f;
   out->x = dx / d; out->y = dy / d;
-  if (d > 150 && C.p[p].cd == 0 && c->cpu_skill[p] > 0 && (h % 100) < 6 + (uint32_t)c->cpu_skill[p] * 6) out->a = true;
+  if (d > 150 && C.p[p].cd == 0 && c->cpu_skill[p] > 0 && (h % 100) < 6 + (uint32_t)c->cpu_skill[p] * 6) out->south = true;
   /* a hard CPU also dashes into a rich neighbour that is close */
   if (c->cpu_skill[p] == 2 && C.p[p].cd == 0) {
     for (int q = 0; q < NP; q++) {
       if (q == p || C.p[q].coins < 3) continue;
       float qx = C.p[q].x - C.p[p].x, qy = C.p[q].y - C.p[p].y, qd = sqrtf(qx * qx + qy * qy);
-      if (qd < 90 && (h % 100) < 30) { out->x = qx / qd; out->y = qy / qd; out->a = true; }
+      if (qd < 90 && (h % 100) < 30) { out->x = qx / qd; out->y = qy / qd; out->south = true; }
     }
   }
 }
@@ -179,8 +179,8 @@ static void score_text(mg_ctx *c, int p, char *buf, int cap) { snprintf(buf, (si
 
 const mg_def mg_coins = {
   .id = "coins", .name = "Coin Rush", .tagline = "Grab the most coins. Gold ones are worth three.",
-  .how = { "Stick: run over coins to grab them", "A: dash (it recharges)", "A dash that bumps a blob shakes a coin loose" },
-  .buttons = 1, .keys = "SA",
+  .how = { MOVE4 ": run over coins to grab them", "{btn_south}: dash (it recharges)", "A dash that bumps a blob shakes a coin loose" },
+  .controls = MOVE4 "  {btn_south}",
   .kind = "2D", .scene = NULL, .seconds = 35, .unlock_points = 0, .higher_is_better = true,
   .start = start, .tick = tick, .think = think, .draw = draw, .score_text = score_text,
 };

@@ -1,5 +1,5 @@
 /* Loop Racers (3D, racing): four karts race three laps of a stadium oval.
- * Left / Right slide across the track, A is a nitro burst (three of them),
+ * Left / Right slide across the track, south is a nitro burst (three of them),
  * oil slicks and barrels slow you, blue pads give a free boost. The inside
  * lane is shorter, so everyone wants it, and the hazards sit there. First
  * past three laps wins; the rest rank by distance. */
@@ -124,7 +124,7 @@ static void tick(mg_ctx *c) {
     if (Rc.boost[i] > 0) { Rc.boost[i]--; vmax = 18.0f; }
     if (Rc.slow[i] > 0) { Rc.slow[i]--; vmax = 4.5f; }
     if (Rc.finished[i]) vmax = 0;
-    if (in->pa && Rc.nitro[i] > 0 && Rc.boost[i] == 0 && !Rc.finished[i]) {
+    if (in->psouth && Rc.nitro[i] > 0 && Rc.boost[i] == 0 && !Rc.finished[i]) {
       Rc.nitro[i]--; Rc.boost[i] = 70;
       sfx(SFX_GO, 0.4f, 1.4f);
     }
@@ -211,7 +211,7 @@ static void think(mg_ctx *c, int p, mg_in *out) {
     float st = fmodf(Rc.s[p], LTOT);
     bool straight = st < SLEN - 5 || (st > SLEN + PI_ * RAD_ && st < 2 * SLEN + PI_ * RAD_ - 5);
     uint32_t h = hash_u32(Rc.seed + (uint32_t)p * 7u, (uint32_t)(c->tick / 20));
-    if (straight && (h % 100) < 4 + (uint32_t)c->cpu_skill[p] * 3) out->a = true;
+    if (straight && (h % 100) < 4 + (uint32_t)c->cpu_skill[p] * 3) out->south = true;
   }
 }
 
@@ -244,8 +244,8 @@ static void score_text(mg_ctx *c, int p, char *buf, int cap) {
 
 const mg_def mg_kart = {
   .id = "loop", .name = "Loop Racers", .tagline = "Three laps. The inside lane is short and full of traps.",
-  .how = { "Left / Right: change lane", "A: nitro burst (three of them)", "Blue pads boost, oil and barrels slow" },
-  .buttons = 1, .keys = "SA",
+  .how = { MOVE_LR ": change lane", "{btn_south}: nitro burst (three of them)", "Blue pads boost, oil and barrels slow" },
+  .controls = MOVE_LR "  {btn_south}",
   .kind = "3D", .scene = "scenes/kart.cwscene", .seconds = 60, .unlock_points = 16, .higher_is_better = true,
   .start = start, .tick = tick, .think = think, .draw = draw, .score_text = score_text,
 };

@@ -1,6 +1,6 @@
 /* Sumo Push (2D, last standing): four blobs on a round plate that shrinks. Shove the others off the edge;
- * A is a dash that hits hard. Out players become ghosts at the rim: left and right slide the ghost around the
- * edge and A sends a bump inward, so nobody sits and waits. The last blob on the plate wins; the rest rank by how
+ * South is a dash that hits hard. Out players become ghosts at the rim: left and right slide the ghost around the
+ * edge and south sends a bump inward, so nobody sits and waits. The last blob on the plate wins; the rest rank by how
  * long they lasted. */
 #include "mg.h"
 
@@ -41,7 +41,7 @@ static void tick(mg_ctx *c) {
     if (!b->alive) { /* ghost on the rim */
       b->ang += in->x * 2.6f * dt;
       if (b->gcd > 0) b->gcd--;
-      if (in->pa && b->gcd == 0) {
+      if (in->psouth && b->gcd == 0) {
         b->gcd = 150;
         float gx = CX + cosf(b->ang) * (S.radius + 40), gy = CY + sinf(b->ang) * (S.radius + 40);
         fx_ring(cw_v2(gx, gy), 10, 90, 0.4f, col_a(PCOL[i], 0.9f));
@@ -61,7 +61,7 @@ static void tick(mg_ctx *c) {
     if (l > 0.3f) b->fx = ax / (l > 1 ? 1 : l), b->fy = ay / (l > 1 ? 1 : l);
     if (b->cd > 0) b->cd--;
     if (b->dash > 0) b->dash--;
-    if (in->pa && b->cd == 0) {
+    if (in->psouth && b->cd == 0) {
       float fl = sqrtf(b->fx * b->fx + b->fy * b->fy);
       if (fl < 0.01f) fl = 1;
       b->vx += b->fx / fl * 700;
@@ -149,7 +149,7 @@ static void think(mg_ctx *c, int p, mg_in *out) {
       while (da < -3.14159f) da += TAU;
       out->x = da > 0.1f ? 1 : da < -0.1f ? -1 : 0;
     }
-    out->a = me->gcd == 0 && (h % 100) < 8;
+    out->south = me->gcd == 0 && (h % 100) < 8;
     return;
   }
   { static const int lag[3] = { 12, 5, 0 }; if ((int)(h % 100) < lag[c->cpu_skill[p]]) return; } /* lower skill reacts late now and then */
@@ -183,7 +183,7 @@ static void think(mg_ctx *c, int p, mg_in *out) {
     float ux = (S.b[tgt].x - me->x) / (d + 0.001f), uy = (S.b[tgt].y - me->y) / (d + 0.001f);
     float after = hypotf(me->x + ux * 150 - CX, me->y + uy * 150 - CY); /* where the dash would carry me */
     bool safe = c->cpu_skill[p] == 0 || after < S.radius + (c->cpu_skill[p] == 2 ? 15.0f : 30.0f);
-    if (safe && d < 120 && me->cd == 0 && (int)(h % 100) < dash_pct[c->cpu_skill[p]] * 2) { out->a = true; out->x = (S.b[tgt].x - me->x) / d; out->y = (S.b[tgt].y - me->y) / d; }
+    if (safe && d < 120 && me->cd == 0 && (int)(h % 100) < dash_pct[c->cpu_skill[p]] * 2) { out->south = true; out->x = (S.b[tgt].x - me->x) / d; out->y = (S.b[tgt].y - me->y) / d; }
   }
 }
 
@@ -215,8 +215,8 @@ static void score_text(mg_ctx *c, int p, char *buf, int cap) { snprintf(buf, (si
 
 const mg_def mg_sumo = {
   .id = "sumo", .name = "Sumo Push", .tagline = "Shove everyone off the shrinking plate. Last blob on it wins.",
-  .how = { "Stick: move", "A: dash and shove (then it recharges)", "Out? Slide your ghost round the rim, A bumps them" },
-  .buttons = 1, .keys = "SA",
+  .how = { MOVE4 ": move", "{btn_south}: dash and shove (then it recharges)", "Out? Slide your ghost round the rim, {btn_south} bumps them" },
+  .controls = MOVE4 "  {btn_south}",
   .kind = "2D", .scene = NULL, .seconds = 50, .unlock_points = 0, .higher_is_better = true,
   .start = start, .tick = tick, .think = think, .draw = draw, .score_text = score_text,
 };

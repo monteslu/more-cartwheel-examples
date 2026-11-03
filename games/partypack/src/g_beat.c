@@ -1,7 +1,8 @@
 /* Beat Box (2D, rhythm): the same song for everyone, one lane each. Notes
- * fall onto your line; press the matching button (A green, B red, X blue)
- * as they land. Perfect hits build a combo multiplier. A hit plays the
- * note, so a good lane makes the music. */
+ * fall onto your line in three lanes, laid out as the buttons sit on the pad:
+ * west, south, east, left to right; press the lane's button as a note
+ * lands. Perfect hits build a combo multiplier. A hit plays the note, so a
+ * good lane makes the music. */
 #include "mg.h"
 
 #define MAXN 200
@@ -15,15 +16,16 @@ static struct {
   int score[NP], perfects[NP], misses[NP];
   uint32_t seed;
   int beat_t;
-  float prev_y[NP]; /* stick up is the third lane, so a game needs only A, B and the stick */
 } B;
 
 static const int BPM_TICKS = 28; /* ticks per beat (about 128 bpm) */
 static const cw_color KCOL[3] = { { 0.3f, 0.85f, 0.4f, 1 }, { 0.95f, 0.3f, 0.3f, 1 }, { 0.3f, 0.5f, 0.98f, 1 } };
-static const char KLBL[3] = { 'A', 'B', '^' };
+/* each lane's button, by where it sits on the pad: west, south, east */
+static const char *LANE[3] = { "{btn_west}", "{btn_south}", "{btn_east}" };
 
 static void start(mg_ctx *c) {
   memset(&B, 0, sizeof B);
+  memset(beat_presses_dbg, 0, sizeof beat_presses_dbg);
   int t = TRAVEL + 2 * BPM_TICKS, bar = 0;
   int motif[8];
   while (t < 42 * 60 && B.count < MAXN) {
@@ -42,7 +44,10 @@ static void start(mg_ctx *c) {
   B.seed = (uint32_t)cw_rng_u32(&c->rng);
 }
 
+int32_t beat_presses_dbg[3]; /* debug beat.presses: the presses a person made on each lane, west, south, east (gates) */
+
 static void judge(mg_ctx *c, int p, int kind) {
+  if (c->human[p]) beat_presses_dbg[kind]++;
   int best = -1, bd = 99;
   for (int i = 0; i < B.count; i++) {
     if (B.hit[p][i]) continue;
@@ -80,10 +85,9 @@ static void tick(mg_ctx *c) {
   if (c->tick % BPM_TICKS == 0 && c->tick > 0) sfx((c->tick / BPM_TICKS) % 4 == 0 ? SFX_BOUNCE : SFX_BLIP, 0.25f, (c->tick / BPM_TICKS) % 4 == 0 ? 0.6f : 1.5f);
   for (int p = 0; p < NP; p++) {
     const mg_in *in = &c->in[p];
-    if (in->pa) judge(c, p, 0);
-    if (in->pb) judge(c, p, 1);
-    if (in->pc || (in->y < -0.6f && B.prev_y[p] >= -0.6f)) judge(c, p, 2);
-    B.prev_y[p] = in->y;
+    if (in->pwest) judge(c, p, 0);
+    if (in->psouth) judge(c, p, 1);
+    if (in->peast) judge(c, p, 2);
     for (int i = 0; i < B.count; i++) {
       if (B.hit[p][i]) continue;
       if (B.n[i].t - c->tick < -9) { B.hit[p][i] = 2; B.combo[p] = 0; B.misses[p]++; B.judge[p] = 0; B.judge_t[p] = 20; }
@@ -109,7 +113,7 @@ static void think(mg_ctx *c, int p, mg_in *out) {
     int jit = (int)((h >> 8) % (uint32_t)range[s]) - range[s] / 2;
     if (dt == -jit + 0 || (c->tick == B.n[i].t + jit)) {
       int k = B.n[i].kind;
-      out->a = k == 0; out->b = k == 1; out->c = k == 2;
+      out->west = k == 0; out->south = k == 1; out->east = k == 2;
       return;
     }
   }
@@ -147,8 +151,11 @@ static void draw(mg_ctx *c, float alpha, float t) {
       bool on = B.flash[p][k] > 0;
       art_draw(on ? KPAD_ON[k] : KPAD[k], cw_v2(x, 560), cw_v2(64, 64), 0, (cw_color){ 0 });
       if (on) art_light(cw_v2(x, 560), 220, KCOL[k], 1.3f, false);
-      char bl[2] = { KLBL[k], 0 };
-      ui_text(bl, cw_v2(x, 545), 28, cw_rgba(1, 1, 1, on ? 1 : 0.6f), CW_ALIGN_CENTER);
+      { /* the lane's glyph on its pad, smaller when it is wide (a keycap such as "Left Shift"), never past the pad */
+        int who = c->human[p] ? p : -1;
+        float gs = 30, gw = ui_prompt_size(LANE[k], who, gs).x;
+        if (gw > 62) gs = fmaxf(18, gs * 62 / gw);
+        ui_prompt(LANE[k], who, cw_v2(x, 560 - gs * 0.5f), gs, cw_rgba(1, 1, 1, on ? 1 : 0.75f), CW_ALIGN_CENTER); }
     }
     for (int i = 0; i < B.count; i++) {
       if (B.hit[p][i] == 1) continue;
@@ -180,8 +187,8 @@ static void score_text(mg_ctx *c, int p, char *buf, int cap) { snprintf(buf, (si
 
 const mg_def mg_beat = {
   .id = "beatbox", .name = "Beat Box", .tagline = "Hit the notes as they land on your line.",
-  .how = { "A green, B red, stick up blue", "Press as the note reaches the ring", "Perfect hits build a combo" },
-  .buttons = 2, .keys = "ABS",
+  .how = { "Three lanes, left to right: {btn_west}  {btn_south}  {btn_east}", "Press as the note reaches the ring", "Perfect hits build a combo" },
+  .controls = "{btn_west}  {btn_south}  {btn_east}",
   .kind = "2D", .scene = NULL, .seconds = 0, .unlock_points = 12, .higher_is_better = true,
   .start = start, .tick = tick, .think = think, .draw = draw, .score_text = score_text,
 };

@@ -36,7 +36,8 @@ from the roofs. Three two-level arenas (Foundry, Courtyard, Terraces), each
 with its own light design, and three modes: deathmatch, team deathmatch and
 co-op waves against the bots. Four weapons: a pulse rifle, a scatter gun,
 rockets and a rail gun. Move with the left stick, look with the right, fire
-with the right trigger, jump with (A), change weapons with (Y) and (X).
+with the right trigger, jump with the south face button, change weapons with
+the north and west ones.
 `games/arenafps/` (its [README](games/arenafps/README.md) has the full
 controls).
 
@@ -48,7 +49,8 @@ Street Toughs, a side-scrolling street brawler for one to four players on one sh
 screen. Four stages (an alley, the docks, an arcade and a roof), a crowd that
 surrounds you, crates and barrels with food and weapons, and a three-phase
 boss at the end of each stage. Knocked-down bodies fall loose as ragdolls.
-Attack with (X), kick with (Y), jump with (A), grab with the right bumper,
+Attack with the west face button, kick with the north, jump with the south,
+grab with the right shoulder,
 spin with the left. `games/brawler/` (its [README](games/brawler/README.md)
 has the full controls).
 
@@ -61,7 +63,8 @@ screen. The camera pulls back to keep everyone in view, and anyone left behind
 is carried to the group in a bubble. Four regions left to right (a meadow,
 torchlit caves, a flooded ruin and a volcano with a boss), three abilities
 that open the way (an air jump, wall claws and a dash), secrets and a map
-screen. Jump with (A), dash with (X), the map on Back.
+screen. Jump with the south face button, run with the west, dash with the
+right shoulder, the map on Back.
 `games/coopplatformer/` (its [README](games/coopplatformer/README.md) has the
 full controls).
 
@@ -72,7 +75,8 @@ full controls).
 A one-on-one fighting game: 2D rules, 3D look. Two players, or one against
 the computer. Four fighters, three stages, special moves on stick motions,
 parries, throws, and a training mode that shows hitboxes and frame data.
-Punch with (X), kick with (A), block with (B); the stick picks a high, mid or
+Punch with the west face button, kick with the south, block with the east; the
+stick picks a high, mid or
 low attack. `games/fighter/` (its [README](games/fighter/README.md) has the
 full controls and the move notation).
 
@@ -122,7 +126,8 @@ canyon, interceptors over an island, a mothership over a city, a snowbound
 fortress, the North Pole, and oil rigs at dusk. Guns, guided missiles,
 flares, an afterburner and an airbrake; a crash breaks the jet into Box3D
 pieces. Bank and pitch with the left stick, guns on the right trigger,
-missiles with (X), afterburner with (B), flares with the left trigger.
+missiles with the west face button, afterburner with the east, flares with the
+left trigger.
 `games/skyfighter/` (its [README](games/skyfighter/README.md) has the mission
 table and the full controls).
 
@@ -137,8 +142,9 @@ down the original courses, with the original penguin, music and sounds
 converted from the GPL data, the sliding rebuilt on Box3D, and the look on
 the engine's PBR terrain, sky, cascaded shadows, particles and post effects.
 Practice on any of the 13 courses in sunny, cloudy or night conditions, or
-race the Canadian Cup. Steer with the stick, paddle with (A), brake with (B),
-jump with (X). One player. GPL-2.0-or-later, see its LICENSE and CREDITS.
+race the Canadian Cup. Steer with the stick, paddle with the south face button,
+brake with the east,
+jump with the west. One player. GPL-2.0-or-later, see its LICENSE and CREDITS.
 `games/tuxracer/` (its [README](games/tuxracer/README.md) has the controls
 and the credits).
 

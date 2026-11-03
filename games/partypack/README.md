@@ -7,9 +7,9 @@ mini-game can be played by four CPUs on their own.
 ## How it plays
 
 The title, player join, pause and settings screens are the engine's game
-shell: each pad joins with A. Start pauses a game; on the hub, the boards and
-the other panels between games it confirms, like A, and B on the hub goes back
-to the title.
+shell: each pad joins with its bottom (south) face button. Start pauses a game;
+on the hub, the boards and the other panels between games it confirms, like
+the south button, and the east button on the hub goes back to the title.
 
 After joining you get the hub:
 
@@ -24,7 +24,7 @@ After joining you get the hub:
 - **Trophy Room**: party points, tournament wins per seat, best scores.
 - **Rounds** and **CPU Skill** (easy, medium, hard) are set on the menu.
 
-Every mini-game opens with a card (how to play, press A to be ready), a
+Every mini-game opens with a card (how to play, press the south button to be ready), a
 3-2-1 countdown, play, a finish banner and results.
 
 ## Mini-games
@@ -32,12 +32,12 @@ Every mini-game opens with a card (how to play, press A to be ready), a
 | Name | Kind | Idea | Unlock |
 |---|---|---|---|
 | Hurdle Dash | 2D | jump rocks, duck bars, three lives | open |
-| Echo | 2D | repeat a growing pattern on A B X Y | open |
+| Echo | 2D | repeat a growing pattern on the four face buttons | open |
 | Stack Attack | 2D physics | crane and blocks, tallest standing tower | 4 points |
 | Blast Ring | 3D physics | bombs shove you, the ring shrinks | 8 points |
-| Beat Box | 2D rhythm | hit the notes as they land | 12 points |
+| Beat Box | 2D rhythm | hit the notes as they land, in three lanes on the west, south and east buttons | 12 points |
 | Loop Racers | 3D racing | three laps, hazards on the short lane | 16 points |
-| Quick Quiz | 2D trivia | four answers on A B X Y | 20 points |
+| Quick Quiz | 2D trivia | four answers in a diamond, one per face button | 20 points |
 | Raft Rush | 3D water | paddle a raft for floating buoys | open |
 | Sumo Push | 2D | shove everyone off the shrinking plate | open |
 | Coin Rush | 2D | grab the most coins, gold ones count three | open |
@@ -48,9 +48,11 @@ Everything is saved by the shell.
 
 ## Controls
 
-Stick or d-pad or arrows / WASD move. A (Space, Enter) is the main button,
-B (Shift) the second, X (Z) and Y (X) the others. Player 1 can also use the
-keyboard. Each mini-game's card names the buttons it uses.
+Stick or d-pad or arrows / WASD move. The south face button (Space, Enter) is
+the main button, east (Shift) the second, west (Z) and north (X) the others.
+Player 1 can also use the keyboard. Each mini-game's card shows the buttons it
+uses as the engine's button prompts, drawn for the device each player holds
+(a pad's four-dot diamond with the one to press solid, or a keycap).
 
 The picture never shakes: hits, bumps, drops and the bombs of Blast Ring (by how close they go off) are felt in each
 person's own pad (rumble; Rumble on or off in the menu, saved).

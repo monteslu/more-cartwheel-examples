@@ -1,7 +1,7 @@
 /* Hurdle Dash (2D, platform dodging): four lanes, the same course for all.
- * A jumps the rocks, Down (or B) ducks the hanging bars. Three lives; the
+ * South jumps the rocks, down (or east) ducks the hanging bars. Three lives; the
  * runner who lasts the farthest wins. The course speeds up.
- * A runner who is out becomes a pebble thrower: A drops a rock into the lane
+ * A runner who is out becomes a pebble thrower: south drops a rock into the lane
  * of the runner with the most lives left (a few seconds between throws). It
  * can cost that runner a life but never changes an out runner's own score. */
 #include "mg.h"
@@ -63,8 +63,8 @@ static void tick(mg_ctx *c) {
     alive++;
     const mg_in *in = &c->in[i];
     bool ground = p->y <= 0 && p->vy <= 0;
-    p->duck = ground && (in->y > 0.5f || in->b);
-    if (ground && (in->pa || (in->a && p->air)) && !p->duck) { p->vy = JUMP_V; p->air = true; if (c->human[i]) sfx(SFX_JUMP, 0.5f, 1); }
+    p->duck = ground && (in->y > 0.5f || in->east);
+    if (ground && (in->psouth || (in->south && p->air)) && !p->duck) { p->vy = JUMP_V; p->air = true; if (c->human[i]) sfx(SFX_JUMP, 0.5f, 1); }
     if (!ground || p->vy > 0) {
       p->vy -= GRAV * dt;
       p->y += p->vy * dt;
@@ -122,7 +122,7 @@ static void tick(mg_ctx *c) {
   for (int g = 0; g < LANES; g++) {
     if (D.p[g].alive) continue;
     if (D.throw_cd[g] > 0) D.throw_cd[g]--;
-    if (!c->in[g].pa || D.throw_cd[g] > 0) continue;
+    if (!c->in[g].psouth || D.throw_cd[g] > 0) continue;
     /* the runner with the most lives; a tie is drawn from the game's rng (not the lowest seat) */
     int most = 0, cand[LANES], nc = 0;
     for (int i = 0; i < LANES; i++) if (D.p[i].alive && D.p[i].lives > most) most = D.p[i].lives;
@@ -152,7 +152,7 @@ static void tick(mg_ctx *c) {
 static void think(mg_ctx *c, int p, mg_in *out) {
   memset(out, 0, sizeof *out);
   if (!D.p[p].alive) { /* a CPU ghost throws now and then */
-    out->a = D.throw_cd[p] == 0 && cw_rng_int(&c->rng, 0, 99) < 4;
+    out->south = D.throw_cd[p] == 0 && cw_rng_int(&c->rng, 0, 99) < 4;
     return;
   }
   /* a thrown rock in my lane that is nearer than the next course obstacle: a jump, like a rock */
@@ -161,7 +161,7 @@ static void think(mg_ctx *c, int p, mg_in *out) {
     float pdx = D.peb[p][q].x - D.dist;
     if (pdx < -30 || D.peb[p][q].roll < (int[3]){ 30, 12, 3 }[c->cpu_skill[p]]) continue;
     float plead = D.speed * 0.31f;
-    if (pdx < plead && pdx > plead - D.speed * 0.08f && D.p[p].y <= 0) { out->a = true; return; }
+    if (pdx < plead && pdx > plead - D.speed * 0.08f && D.p[p].y <= 0) { out->south = true; return; }
   }
   int k = 0;
   while (k < D.n_obs && D.o[k].x - D.dist < -30) k++;
@@ -176,7 +176,7 @@ static void think(mg_ctx *c, int p, mg_in *out) {
   float dx = D.o[k].x - D.dist;
   float lead = D.speed * (D.o[k].kind == 2 ? 0.36f : 0.31f);
   if (D.o[k].kind == 1) out->y = dx < D.speed * 0.25f && dx > -30 ? 1.0f : 0.0f;
-  else if (dx < lead && dx > lead - D.speed * 0.08f && D.p[p].y <= 0) out->a = true;
+  else if (dx < lead && dx > lead - D.speed * 0.08f && D.p[p].y <= 0) out->south = true;
 }
 
 static void draw_lane(int i) {
@@ -238,7 +238,7 @@ static void draw(mg_ctx *c, float alpha, float t) {
         else ui_blob(cw_v2(PX - (D.dist - p->out_at), gy - r), r, i, 0, 0, 0.8f, 3, !c->human[i]);
       }
     }
-    if (!p->alive && c->tick % 40 < 28) ui_text(D.throw_cd[i] > 0 ? "ghost" : "A: throw a rock", cw_v2(STAGE_W / 2, gy - 40), 24, col_a(c->human[i] ? PCOL[i] : cw_rgba(1, 1, 1, 1), 0.9f), CW_ALIGN_CENTER);
+    if (!p->alive && c->tick % 40 < 28) ui_prompt(D.throw_cd[i] > 0 || !c->human[i] ? "ghost" : "{btn_south}: throw a rock", i, cw_v2(STAGE_W / 2, gy - 40), 24, col_a(c->human[i] ? PCOL[i] : cw_rgba(1, 1, 1, 1), 0.9f), CW_ALIGN_CENTER);
     for (int l = 0; l < 3; l++) /* lives */
       art_draw("star", cw_v2(46 + l * 34, gy - 98), cw_v2(30, 30), 0, l < p->lives ? cw_rgba(1, 0.45f, 0.55f, 1) : cw_rgba(0.1f, 0.1f, 0.14f, 0.55f));
   }
@@ -248,8 +248,8 @@ static void score_text(mg_ctx *c, int p, char *buf, int cap) { snprintf(buf, (si
 
 const mg_def mg_dodge = {
   .id = "hurdle", .name = "Hurdle Dash", .tagline = "Jump the rocks, duck the bars, last the longest.",
-  .how = { "A: jump (hold for a quick re-jump)", "Down or B: duck under the bars", "Out? A throws a rock at the leader" },
-  .buttons = 1, .keys = "AS",
+  .how = { "{btn_south}: jump (hold for a quick re-jump)", "{move_down} or {btn_east}: duck under the bars", "Out? {btn_south} throws a rock at the leader" },
+  .controls = "{btn_south}  {move_down}",
   .kind = "2D", .scene = NULL, .seconds = 45, .unlock_points = 0, .higher_is_better = true,
   .start = start, .tick = tick, .think = think, .draw = draw, .score_text = score_text,
 };

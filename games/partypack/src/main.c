@@ -86,7 +86,7 @@ static struct {
   float load_ms, start_ms;     /* measured: scene switch and the game's own setup (not in gates) */
 } G;
 
-static cw_action a_left, a_right, a_up, a_down, a_a, a_b, a_x, a_y, u_up, u_down, u_left, u_right, u_ok, u_back, u_start, u_pause;
+static cw_action a_left, a_right, a_up, a_down, a_south, a_east, a_west, a_north, u_up, u_down, u_left, u_right, u_ok, u_back, u_start, u_pause;
 static bool just_resumed; /* the shell's join or pause screen closed this tick: the Start that closed it is not a press here */
 static cw_bus bus_music, bus_sfx;
 cw_bus pp_music_bus(void) { return bus_music; }
@@ -136,11 +136,11 @@ static int menu_nav(void) { /* -2 up, 2 down, -1 left, 1 right, 0 none */
 }
 static bool menu_start(int p) { return !just_resumed && cw_action_just_pressed(p, u_start); }
 static bool menu_ok(void) {
-  if (any_human_pressed(u_ok) || any_human_pressed(a_a)) return true;
+  if (any_human_pressed(u_ok) || any_human_pressed(a_south)) return true;
   for (int p = 0; p < NP; p++) if (G.human[p] && menu_start(p)) return true;
   return false;
 }
-static bool menu_back(void) { return any_human_pressed(u_back) || any_human_pressed(a_b); }
+static bool menu_back(void) { return any_human_pressed(u_back) || any_human_pressed(a_east); }
 
 /* ── 3D scene switching ─────────────────────────────────────────────── */
 
@@ -438,6 +438,10 @@ static void after_results(void) {
 static void on_start(int players, void *user) {
   (void)user;
   G.humans = AUTO ? 0 : players;
+#ifdef PP_AUTOPILOT
+  { const char *h = getenv("PP_HUMANS"); /* the autopilot with people in it: seats 0..n-1 read their pads (gates that play a mini-game by hand) */
+    if (h) G.humans = atoi(h) < 0 ? 0 : atoi(h) > players ? players : atoi(h); }
+#endif
   for (int p = 0; p < NP; p++) G.human[p] = p < G.humans;
   G.cur = 0;
   G.serial = 0;
@@ -533,17 +537,17 @@ static void read_inputs(void) {
     if (G.human[p]) {
       in->x = cw_input_axis(p, a_left, a_right);
       in->y = cw_input_axis(p, a_up, a_down);
-      in->a = cw_action_pressed(p, a_a);
-      in->b = cw_action_pressed(p, a_b);
-      in->c = cw_action_pressed(p, a_x);
-      in->d = cw_action_pressed(p, a_y);
+      in->south = cw_action_pressed(p, a_south);
+      in->east = cw_action_pressed(p, a_east);
+      in->west = cw_action_pressed(p, a_west);
+      in->north = cw_action_pressed(p, a_north);
     } else if (G.state == S_PLAY) {
       cur_def()->think(&G.c, p, in);
     }
-    in->pa = in->a && !old.a;
-    in->pb = in->b && !old.b;
-    in->pc = in->c && !old.c;
-    in->pd = in->d && !old.d;
+    in->psouth = in->south && !old.south;
+    in->peast = in->east && !old.east;
+    in->pwest = in->west && !old.west;
+    in->pnorth = in->north && !old.north;
   }
 }
 
@@ -552,9 +556,9 @@ static void tick_play(void) {
    * freeze is still a fresh press on the first tick after it */
   if (!G.scene3d && G.hold > 0) { G.hold--; G.hitstop_shown++; return; }
   read_inputs();
-  /* a knocked-out person is never left idle: A cheers (confetti and a note), and some games give ghosts a job */
+  /* a knocked-out person is never left idle: south cheers (confetti and a note), and some games give ghosts a job */
   for (int p = 0; p < NP; p++)
-    if (G.c.eliminated[p] && G.human[p] && G.c.in[p].pa) {
+    if (G.c.eliminated[p] && G.human[p] && G.c.in[p].psouth) {
       fx_burst(cw_v2(160 + 320 * (float)p, 700), 10, PCOL[p], 240, 0.8f, 6);
       fx_text(cw_v2(160 + 320 * (float)p, 640), "Go!", PCOL[p], 30);
       sfx(SFX_NOTE0 + (G.c.tick / 7 + p) % 8, 0.5f, 1);
@@ -600,14 +604,14 @@ static void fixed_update(void *user, double dt) {
   if (!pause_press && !cw_shell_update()) { pp_rumble_stop(); return; } /* the menus and pause: the motors stop */
   pp_rumble_tick();
   if (G.state != S_PLAY && G.state != S_FINISH) pp_rumble_stop(); /* only play (and its finish) rumbles */
-  /* join and leave in the middle of a session: a pad without a seat presses A and takes the CPU's seat at once (one
-   * press; players_changed hands the seat over); Start on such a pad, or Y from a seated player between rounds (the
+  /* join and leave in the middle of a session: a pad without a seat presses south and takes the CPU's seat at once (one
+   * press; players_changed hands the seat over); Start on such a pad, or north from a seated player between rounds (the
    * board, the menu, the picker), opens the shell's join screen over the game, which is also how a player leaves */
   if (!AUTO && G.state != S_COUNT && G.state != S_FINISH) {
     if (cw_shell_join_press()) return;
     bool ask = cw_shell_join_requested();
     if (G.state == S_MENU || G.state == S_PICK || G.state == S_BOARD || G.state == S_RESULT || G.state == S_FINAL)
-      for (int p = 0; p < NP; p++) if (G.human[p] && cw_action_just_pressed(p, a_y)) ask = true;
+      for (int p = 0; p < NP; p++) if (G.human[p] && cw_action_just_pressed(p, a_north)) ask = true;
     if (ask) { just_resumed = false; cw_shell_join_open(); return; }
   }
   sim_step();
@@ -675,7 +679,7 @@ static void sim_step(void) {
     break;
   }
   case S_INTRO: {
-    for (int p = 0; p < NP; p++) if (G.human[p] && !G.ready[p] && (cw_action_just_pressed(p, a_a) || menu_start(p))) { G.ready[p] = true; sfx(SFX_COIN, 0.7f, 1.2f); }
+    for (int p = 0; p < NP; p++) if (G.human[p] && !G.ready[p] && (cw_action_just_pressed(p, a_south) || menu_start(p))) { G.ready[p] = true; sfx(SFX_COIN, 0.7f, 1.2f); }
     bool all = true;
     for (int p = 0; p < NP; p++) all = all && G.ready[p];
     if (AUTO && G.st_ticks > 20) all = true;
@@ -752,9 +756,11 @@ static void draw_menu(void) {
     if (i == 5) snprintf(v, sizeof v, "< %s >", SV->rumble_off ? "Off" : "On");
     if (v[0]) ui_text(v, cw_v2(r.x + r.w - 28, r.y + 6), 34, tc, CW_ALIGN_RIGHT);
   }
-  char s[96];
-  snprintf(s, sizeof s, "%d player%s + %d CPU     new pad: A joins     Y: join or leave     B: title", G.humans, G.humans == 1 ? "" : "s", NP - G.humans);
-  ui_text(s, cw_v2(STAGE_W / 2, 668), 26, cw_rgba(1, 1, 1, 0.85f), CW_ALIGN_CENTER);
+  char s[160];
+  /* a pad with no seat joins with its south button (the shell's join press reads the pad itself, so the hint names that
+   * input, not an action) */
+  snprintf(s, sizeof s, "%d player%s + %d CPU     new pad: {pad:south} joins     {btn_north} join or leave     {ui_back} title", G.humans, G.humans == 1 ? "" : "s", NP - G.humans);
+  ui_prompt(s, -1, cw_v2(STAGE_W / 2, 668), 26, cw_rgba(1, 1, 1, 0.85f), CW_ALIGN_CENTER);
 }
 
 static void draw_pick(void) {
@@ -775,7 +781,7 @@ static void draw_pick(void) {
     ui_text(s, cw_v2(r.x + 18, r.y + 112), 22, sel ? tc : cw_rgba(0.8f, 0.85f, 1, 0.9f), CW_ALIGN_LEFT);
     if (lock) cw_r2d_round_rect(r, 16, 8, cw_rgba(0, 0, 0, 0.45f));
   }
-  ui_text("B: back", cw_v2(60, 670), 26, cw_rgba(1, 1, 1, 0.8f), CW_ALIGN_LEFT);
+  ui_prompt("{ui_back} back", -1, cw_v2(60, 670), 26, cw_rgba(1, 1, 1, 0.8f), CW_ALIGN_LEFT);
 }
 
 static void draw_trophy(void) {
@@ -834,9 +840,9 @@ static void draw_board(void) {
   if (G.round < G.rounds) {
     snprintf(s, sizeof s, !G.tournament || !is_double_round(G.round) ? "Next: %s" : G.round == G.rounds - 1 ? "Next: %s   (triple points)" : "Next: %s   (double points)", MG_LIST[G.order[G.round]]->name);
     ui_text(s, cw_v2(STAGE_W / 2, 96), 40, cw_rgba(1, 0.92f, 0.5f, 1), CW_ALIGN_CENTER);
-    if (G.st_ticks > 150) ui_text("press A", cw_v2(STAGE_W / 2, 580), 28, cw_rgba(1, 1, 1, 0.5f + 0.5f * sinf(G.clock * 6)), CW_ALIGN_CENTER);
+    if (G.st_ticks > 150) ui_prompt("{ui_accept} play", -1, cw_v2(STAGE_W / 2, 580), 28, cw_rgba(1, 1, 1, 0.5f + 0.5f * sinf(G.clock * 6)), CW_ALIGN_CENTER);
   } else {
-    ui_text("press A", cw_v2(STAGE_W / 2, 580), 28, cw_rgba(1, 1, 1, 0.5f + 0.5f * sinf(G.clock * 6)), CW_ALIGN_CENTER);
+    ui_prompt("{ui_accept} the final standings", -1, cw_v2(STAGE_W / 2, 580), 28, cw_rgba(1, 1, 1, 0.5f + 0.5f * sinf(G.clock * 6)), CW_ALIGN_CENTER);
   }
 }
 
@@ -848,18 +854,14 @@ static void draw_intro(void) {
   ui_panel(r, cw_rgba(0.1f, 0.1f, 0.25f, 0.95f), cw_rgba(1, 0.85f, 0.3f, 1));
   ui_text(d->name, cw_v2(STAGE_W / 2, r.y + 14), 72, cw_rgba(1, 0.92f, 0.5f, 1), CW_ALIGN_CENTER);
   ui_text(d->tagline, cw_v2(STAGE_W / 2, r.y + 100), 30, cw_rgba(1, 1, 1, 0.9f), CW_ALIGN_CENTER);
-  /* the controls as pictures first (one glyph per letter of keys: A B X Y, or S for the stick), then the lines */
-  { int nk = d->keys ? (int)strlen(d->keys) : 0;
-    float gx = STAGE_W / 2 - (float)(nk - 1) * 40;
-    for (int i = 0; i < nk; i++) {
-      cw_vec2 gp = cw_v2(gx + (float)i * 80, r.y + 172);
-      if (d->keys[i] == 'S') ui_stick_glyph(gp, 26); else ui_button_glyph(gp, 24, d->keys[i]);
-    } }
-  for (int i = 0; i < 3 && d->how[i]; i++) ui_text(d->how[i], cw_v2(r.x + 60, r.y + 210 + i * 40), 28, cw_rgba(1, 1, 1, 1), CW_ALIGN_LEFT);
+  /* the controls as pictures first, then the lines: prompt markup, drawn for every seat's device */
+  if (d->controls) ui_prompt(d->controls, -1, cw_v2(STAGE_W / 2, r.y + 142), 40, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
+  for (int i = 0; i < 3 && d->how[i]; i++) ui_prompt(d->how[i], -1, cw_v2(r.x + 60, r.y + 192 + i * 37), 28, cw_rgba(1, 1, 1, 1), CW_ALIGN_LEFT);
   for (int p = 0; p < NP; p++) {
     cw_vec2 c = cw_v2(r.x + 130 + p * 180, r.y + 350);
     ui_blob(c, 30, p, 0, 0, G.ready[p] ? 1 + 0.08f * sinf(G.clock * 8) : 1, G.ready[p] ? 1 : 0, !G.human[p]);
-    ui_text(G.ready[p] ? "READY" : "press A", cw_v2(c.x, c.y + 42), 22, G.ready[p] ? cw_rgba(0.6f, 1, 0.6f, 1) : cw_rgba(1, 1, 1, 0.6f), CW_ALIGN_CENTER);
+    if (G.ready[p] || !G.human[p]) ui_text("READY", cw_v2(c.x, c.y + 42), 22, G.ready[p] ? cw_rgba(0.6f, 1, 0.6f, 1) : cw_rgba(1, 1, 1, 0.6f), CW_ALIGN_CENTER);
+    else ui_prompt("{btn_south} ready", p, cw_v2(c.x, c.y + 40), 22, cw_rgba(1, 1, 1, 0.8f), CW_ALIGN_CENTER); /* each seat sees its own device */
   }
 }
 
@@ -900,7 +902,7 @@ static void draw_results(void) {
     snprintf(s, sizeof s, "Unlocked: %s", MG_LIST[G.unlock_toast]->name);
     ui_text(s, cw_v2(STAGE_W / 2, 625), 40, cw_rgba(0.6f, 1, 0.9f, 1), CW_ALIGN_CENTER);
   }
-  if (G.st_ticks > 60) ui_text("press A", cw_v2(STAGE_W / 2, 675), 26, cw_rgba(1, 1, 1, 0.5f + 0.5f * sinf(G.clock * 6)), CW_ALIGN_CENTER);
+  if (G.st_ticks > 60) ui_prompt("{ui_accept} next", -1, cw_v2(STAGE_W / 2, 675), 26, cw_rgba(1, 1, 1, 0.5f + 0.5f * sinf(G.clock * 6)), CW_ALIGN_CENTER);
 }
 
 static void draw_final(void) {
@@ -931,7 +933,7 @@ static void draw_final(void) {
     snprintf(tb, sizeof tb, "Tied on points: decided by %s", G.tiebreak);
     ui_text(tb, cw_v2(STAGE_W / 2, 182), 26, cw_rgba(1, 1, 1, 0.85f), CW_ALIGN_CENTER);
   }
-  ui_text("press A", cw_v2(STAGE_W / 2, 672), 26, cw_rgba(1, 1, 1, 0.5f + 0.5f * sinf(G.clock * 6)), CW_ALIGN_CENTER);
+  ui_prompt("{ui_accept} back to the menu", -1, cw_v2(STAGE_W / 2, 672), 26, cw_rgba(1, 1, 1, 0.5f + 0.5f * sinf(G.clock * 6)), CW_ALIGN_CENTER);
 }
 
 /* the 3D hub follows the game's state: stage, board or podium */
@@ -1007,13 +1009,26 @@ static void render(void *user, double alpha) {
 
 /* ── setup ──────────────────────────────────────────────────────────── */
 
+/* debug channel: "bind <action> <bindings>" replaces an action's bindings (the text form, "key:x, pad:north"), as the
+ * shell's controls screen does: for checking a rebound action's prompt */
+static void cmd_bind(int argc, const char **argv, cw_reply *r) {
+  if (argc < 3) { cw_reply_error(r, "bind <action> <bindings>"); return; }
+  cw_action a = cw_action_find(argv[1]);
+  if (a < 0) { cw_reply_error(r, "no such action"); return; }
+  char list[256] = "";
+  for (int i = 2; i < argc; i++) { if (i > 2) strncat(list, " ", sizeof list - strlen(list) - 1); strncat(list, argv[i], sizeof list - strlen(list) - 1); }
+  cw_action_clear_bindings(a);
+  if (!cw_action_bind_text(a, list)) { cw_reply_error(r, "bad bindings"); return; }
+  cw_reply_printf(r, "ok");
+}
+
 static void init(void *user) {
   (void)user;
   cw_project_load_input();
   cw_r2d_layer_set(0, &(cw_r2d_layer_desc){ .lit = true });
   a_left = cw_action_find("move_left"); a_right = cw_action_find("move_right");
   a_up = cw_action_find("move_up"); a_down = cw_action_find("move_down");
-  a_a = cw_action_find("btn_a"); a_b = cw_action_find("btn_b"); a_x = cw_action_find("btn_x"); a_y = cw_action_find("btn_y");
+  a_south = cw_action_find("btn_south"); a_east = cw_action_find("btn_east"); a_west = cw_action_find("btn_west"); a_north = cw_action_find("btn_north");
   cw_shell_init(&(cw_shell_desc){
     .title = "Party Pack",
     .subtitle = "one screen, up to four players",
@@ -1042,6 +1057,7 @@ static void init(void *user) {
 #ifdef PP_AUTOPILOT
   cw_debug_command("game", "game <id>: every round left on that game", cmd_game);
 #endif
+  cw_debug_command("bind", "bind <action> <bindings>: replace an action's bindings (as the controls screen does)", cmd_bind);
   cw_debug_i32("game.state", &G.state);
   cw_debug_i32("game.round", &G.round);
   cw_debug_i32("game.mg", &G.cur);
@@ -1060,6 +1076,7 @@ static void init(void *user) {
   cw_debug_i32("game.hitstops", &G.hitstop_shown);
   cw_debug_field("cam.offset", cam_offset_dbg, CW_DBG_I32, 3);
   cw_debug_field("rumble.sent", pp_rumble_sent, CW_DBG_I32, NP);
+  cw_debug_field("beat.presses", beat_presses_dbg, CW_DBG_I32, 3);
   cw_debug_field("probe.load_ms", &G.load_ms, CW_DBG_F32, 1);
   cw_debug_field("probe.start_ms", &G.start_ms, CW_DBG_F32, 1);
 #ifdef PP_AUTOPILOT

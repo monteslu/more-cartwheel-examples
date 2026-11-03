@@ -30,6 +30,7 @@
 #include "cartwheel/input.h"
 #include "cartwheel/math.h"
 #include "cartwheel/physics_nodes.h"
+#include "cartwheel/prompt.h"
 #include "cartwheel/render2d.h"
 #include "cartwheel/scene.h"
 #include "cartwheel/scene_file.h"
@@ -39,11 +40,14 @@
 #define STAGE_W 1280.0f
 #define STAGE_H 720.0f
 #define TAU 6.28318530718f
+/* prompt markup for the movement actions: the stick (or d-pad, or keys) as one glyph */
+#define MOVE4 "{move_left|move_right|move_up|move_down}"
+#define MOVE_LR "{move_left|move_right}"
 
 typedef struct mg_in {
   float x, y;           /* stick / d-pad, -1..1, y down */
-  bool a, b, c, d;      /* held: south, east, west, north */
-  bool pa, pb, pc, pd;  /* went down this tick */
+  bool south, east, west, north;      /* the face buttons held, by where they sit on the pad */
+  bool psouth, peast, pwest, pnorth;  /* went down this tick */
 } mg_in;
 
 typedef struct mg_ctx {
@@ -67,9 +71,8 @@ typedef struct mg_def {
   const char *id;       /* save key and debug name */
   const char *name;
   const char *tagline;  /* the rule in one line on the card: what you do and how you win */
-  int buttons;          /* buttons the game needs besides the stick (0 to 2: the card shows them as pictures) */
-  const char *keys;     /* the pictogram on the card, one glyph per letter: A B X Y, or S for the stick */
-  const char *how[3];   /* control lines on the intro card, NULL-terminated */
+  const char *controls; /* the controls as pictures on the card: prompt markup (cartwheel/prompt.h), one glyph per control */
+  const char *how[3];   /* control lines on the intro card, NULL-terminated: prompt markup, "{btn_south}: dash" */
   const char *kind;     /* "2D", "3D" (shown on the card) */
   const char *scene;    /* a 3D game's scene (assets/scenes/...); NULL = drawn in 2D over the hub scene */
   float seconds;        /* the clock; 0 = the game ends itself */
@@ -89,6 +92,7 @@ typedef struct mg_def {
 extern int MG_N;
 extern const mg_def *MG_LIST[MG_MAX];
 extern const mg_def mg_dodge, mg_memory, mg_beat, mg_quiz, mg_tower, mg_blast, mg_raft, mg_kart, mg_sumo, mg_coins, mg_tiles;
+extern int32_t beat_presses_dbg[3]; /* Beat Box: a person's presses per lane (debug beat.presses) */
 
 /* ── shared looks and sounds (common.c) ─────────────────────────────── */
 extern const cw_color PCOL[NP];
@@ -138,8 +142,10 @@ float ui_text_w(const char *s, float size);
 void ui_panel(cw_rect r, cw_color fill, cw_color edge);
 void ui_bar(cw_rect r, float f, cw_color c);
 void ui_pill(cw_rect r, cw_color c);
-void ui_button_glyph(cw_vec2 p, float r, char which); /* A B X Y in pad colours */
-void ui_stick_glyph(cw_vec2 p, float r);              /* the stick, as a picture */
+/* text with button prompts in it (cartwheel/prompt.h markup: "{btn_south}: dash"), in the game font, for one player
+ * (-1: every seat, for a card all of them read); the glyphs follow each player's device and bindings */
+cw_vec2 ui_prompt(const char *s, int player, cw_vec2 p, float size, cw_color c, cw_text_align al);
+cw_vec2 ui_prompt_size(const char *s, int player, float size); /* the box ui_prompt would draw */
 /* the party character: a round blob with eyes. look: -1..1 gaze; squash 1 = normal; blink; hat 0 none */
 void ui_blob(cw_vec2 p, float r, int player, float look_x, float look_y, float squash, int mood, bool cpu);
 cw_color col_mix(cw_color a, cw_color b, float t);

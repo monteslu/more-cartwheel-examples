@@ -1,9 +1,9 @@
 /* Blast Ring (3D, physics and explosions): four rolling bots on a steel
  * ring over a lava pit. Bombs drop; each blast shoves everything near it.
- * The ring shrinks. Stick to move, A to dash (a dash knocks others hard).
+ * The ring shrinks. Stick to move, south to dash (a dash knocks others hard).
  * Last bot on the ring wins; otherwise the longest survivor.
  * A bot that is knocked off becomes a bomber: its stick moves a marker over
- * the ring and A calls a bomb down there (every few seconds). */
+ * the ring and south calls a bomb down there (every few seconds). */
 #include "mg.h"
 
 #define NBOMB 6
@@ -219,7 +219,7 @@ static void tick(mg_ctx *c) {
     cw_node_set(K.bomb[b].ring, "energy", cw_val_float(0.7f + 1.6f * (blink > 0)));
     if (K.bomb[b].fuse <= 0) explode(b);
   }
-  /* ghost bombers: the marker follows the stick, A calls a bomb down on it */
+  /* ghost bombers: the marker follows the stick, south calls a bomb down on it */
   for (int g = 0; g < NP; g++) {
     if (K.alive[g]) continue;
     const mg_in *gi = &c->in[g];
@@ -227,7 +227,7 @@ static void tick(mg_ctx *c) {
     K.cur_x[g] = fclampf(K.cur_x[g] + gi->x * 7.0f * dt, -lim, lim);
     K.cur_z[g] = fclampf(K.cur_z[g] + gi->y * 7.0f * dt, -lim, lim);
     if (K.call_cd[g] > 0) K.call_cd[g]--;
-    if (gi->pa && K.call_cd[g] == 0 && spawn_bomb_at(K.cur_x[g], K.cur_z[g])) { K.call_cd[g] = 200; sfx(SFX_POP, 0.6f, 0.8f); }
+    if (gi->psouth && K.call_cd[g] == 0 && spawn_bomb_at(K.cur_x[g], K.cur_z[g])) { K.call_cd[g] = 200; sfx(SFX_POP, 0.6f, 0.8f); }
   }
   /* bots */
   int alive = 0;
@@ -246,7 +246,7 @@ static void tick(mg_ctx *c) {
     vx += fclampf(tx - vx, -accel, accel);
     vz += fclampf(tz - vz, -accel, accel);
     if (K.dash_cd[i] > 0) K.dash_cd[i]--;
-    if (in->pa && K.dash_cd[i] == 0 && grounded && ln > 0.2f) {
+    if (in->psouth && K.dash_cd[i] == 0 && grounded && ln > 0.2f) {
       vx += ix / (ln > 1 ? 1 : ln) * 10; vz += iz / (ln > 1 ? 1 : ln) * 10;
       K.dash_cd[i] = 70; K.dash_fx[i] = 8;
       sfx(SFX_JUMP, 0.5f, 1.3f);
@@ -296,7 +296,7 @@ static void think(mg_ctx *c, int p, mg_in *out) {
     cw_vec2 q = ball_xz(best);
     float dx = q.x - K.cur_x[p], dz = q.y - K.cur_z[p], d = sqrtf(dx * dx + dz * dz);
     if (d > 0.4f) { out->x = dx / d; out->y = dz / d; }
-    out->a = K.call_cd[p] == 0 && d < 1.8f - 0.4f * (float)c->cpu_skill[p] && ((hash_u32(K.seed + (uint32_t)p, (uint32_t)(c->tick / 30)) & 3) == 0);
+    out->south = K.call_cd[p] == 0 && d < 1.8f - 0.4f * (float)c->cpu_skill[p] && ((hash_u32(K.seed + (uint32_t)p, (uint32_t)(c->tick / 30)) & 3) == 0);
     return;
   }
   cw_vec2 me = ball_xz(p);
@@ -330,7 +330,7 @@ static void think(mg_ctx *c, int p, mg_in *out) {
       mx = q.x - me.x; mz = q.y - me.y;
       float d = sqrtf(bd);
       float qe = fmaxf(fabsf(q.x), fabsf(q.y));
-      if (d < 2.6f && K.dash_cd[p] == 0 && qe > edge - 0.5f && ((h >> 4) % 100) < 20 + c->cpu_skill[p] * 35) out->a = true;
+      if (d < 2.6f && K.dash_cd[p] == 0 && qe > edge - 0.5f && ((h >> 4) % 100) < 20 + c->cpu_skill[p] * 35) out->south = true;
     } else { /* drift about */
       mx = (float)((int)(h % 200) - 100) / 100.0f - me.x * 0.1f;
       mz = (float)((int)((h >> 9) % 200) - 100) / 100.0f - me.y * 0.1f;
@@ -339,7 +339,7 @@ static void think(mg_ctx *c, int p, mg_in *out) {
   float l = sqrtf(mx * mx + mz * mz);
   if (l > 0.001f) { out->x = mx / l; out->y = mz / l; }
   if (flee && K.dash_cd[p] == 0) {
-    for (int b = 0; b < NBOMB; b++) if (K.bomb[b].on && K.bomb[b].drop == 0 && K.bomb[b].fuse < 26) out->a = true;
+    for (int b = 0; b < NBOMB; b++) if (K.bomb[b].on && K.bomb[b].drop == 0 && K.bomb[b].fuse < 26) out->south = true;
   }
 }
 
@@ -358,7 +358,7 @@ static void draw(mg_ctx *c, float alpha, float t) {
     cw_vec2 s = n3_project((t3_vec3){ K.cur_x[g], 0.5f, K.cur_z[g] });
     cw_r2d_circle_lines(s, 18, 4, 20, PCOL[g]);
     cw_r2d_circle(s, 5, 10, PCOL[g]);
-    if (c->human[g]) ui_text(K.call_cd[g] > 0 ? "ghost" : "A: bomb", cw_v2(s.x, s.y - 44), 22, PCOL[g], CW_ALIGN_CENTER);
+    if (c->human[g]) ui_prompt(K.call_cd[g] > 0 ? "ghost" : "{btn_south}: bomb", g, cw_v2(s.x, s.y - 44), 22, PCOL[g], CW_ALIGN_CENTER);
   }
   if (K.warn && (c->tick / 15) % 2 == 0) ui_text("The ring is shrinking!", cw_v2(STAGE_W / 2, 640), 44, cw_rgba(1, 0.6f, 0.3f, 1), CW_ALIGN_CENTER);
 }
@@ -370,8 +370,8 @@ static void score_text(mg_ctx *c, int p, char *buf, int cap) {
 
 const mg_def mg_blast = {
   .id = "blast", .name = "Blast Ring", .tagline = "Bombs shove, the ring shrinks. Stay on.",
-  .how = { "Stick: roll", "A: dash (knocks others hard)", "Out? Aim a marker, A drops a bomb" },
-  .buttons = 1, .keys = "SA",
+  .how = { MOVE4 ": roll", "{btn_south}: dash (knocks others hard)", "Out? Aim a marker, {btn_south} drops a bomb" },
+  .controls = MOVE4 "  {btn_south}",
   .kind = "3D", .scene = "scenes/blast.cwscene", .seconds = 60, .unlock_points = 8, .higher_is_better = true,
   .start = start, .tick = tick, .think = think, .draw = draw, .score_text = score_text,
 };

@@ -1,5 +1,5 @@
 /* Stack Attack (2D physics): each player runs a crane over their own
- * platform. Stick moves it, A drops the block, B turns it. Build the
+ * platform. Stick moves it, south drops the block, east turns it. Build the
  * tallest tower that stands when the clock runs out; blocks that fall off
  * are lost. The physics is real: lean too far and the pile topples. */
 #include "mg.h"
@@ -94,9 +94,9 @@ static void tick(mg_ctx *c) {
   for (int p = 0; p < NP; p++) {
     const mg_in *in = &c->in[p];
     T.cx[p] = fclampf(T.cx[p] + in->x * 3.2f * dt, -1.35f, 1.35f);
-    if (in->pb || in->pc) T.turned[p] = !T.turned[p];
+    if (in->peast || in->pwest) T.turned[p] = !T.turned[p];
     if (T.cooldown[p] > 0) T.cooldown[p]--;
-    if (in->pa) drop(c, p);
+    if (in->psouth) drop(c, p);
   }
   for (int p = 0; p < NP; p++) cw_world2d_step(T.w[p], dt);
   for (int p = 0; p < NP; p++) {
@@ -149,7 +149,7 @@ static void think(mg_ctx *c, int p, mg_in *out) {
     T.cpu_aim[p] = jitter;
     int s = T.next_shape[p][T.dropped[p]];
     T.cpu_turn[p] = s == 2 ? ((h >> 12) % 100 < 60 + c->cpu_skill[p] * 15) : (s == 0 ? false : false);
-    if (T.cpu_turn[p] != T.turned[p]) out->b = true;
+    if (T.cpu_turn[p] != T.turned[p]) out->east = true;
     T.cpu_plan_t[p] = 1;
     return;
   }
@@ -163,7 +163,7 @@ static void think(mg_ctx *c, int p, mg_in *out) {
         calm = v.x * v.x + v.y * v.y < 0.6f;
       }
     }
-    if (calm) { out->a = true; T.cpu_plan_t[p] = 0; }
+    if (calm) { out->south = true; T.cpu_plan_t[p] = 0; }
   }
 }
 
@@ -226,8 +226,8 @@ static void score_text(mg_ctx *c, int p, char *buf, int cap) { snprintf(buf, (si
 
 const mg_def mg_tower = {
   .id = "stack", .name = "Stack Attack", .tagline = "Drop blocks, build the tallest tower that stands.",
-  .how = { "Left / Right: move the crane", "A: drop the block, B: turn it", "Blocks that fall off are lost" },
-  .buttons = 2, .keys = "SAB",
+  .how = { MOVE_LR ": move the crane", "{btn_south}: drop the block    {btn_east}: turn it", "Blocks that fall off are lost" },
+  .controls = MOVE_LR "  {btn_south}  {btn_east}",
   .kind = "2D physics", .scene = NULL, .seconds = 50, .unlock_points = 4, .higher_is_better = true,
   .start = start, .tick = tick, .think = think, .draw = draw, .stop = stop, .score_text = score_text,
 };

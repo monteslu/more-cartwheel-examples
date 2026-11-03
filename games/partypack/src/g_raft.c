@@ -1,6 +1,6 @@
 /* Raft Rush (3D, water): four rafts bob on a wavy lagoon. Paddle into the
  * floating buoys to collect them (gold ones count three). Rafts shove each
- * other. A boosts your paddle for a burst. Most buoys wins. */
+ * other. South boosts your paddle for a burst. Most buoys wins. */
 #include "mg.h"
 #include "cartwheel/water.h"
 
@@ -96,7 +96,7 @@ static void tick(mg_ctx *c) {
     vz += fclampf(iz * 5.2f - vz, -acc, acc);
     if (R.boost_cd[i] > 0) R.boost_cd[i]--;
     t3_vec3 p = cw_node3d_position(R.raft[i]);
-    if (in->pa && R.boost_cd[i] == 0 && ln > 0.2f) {
+    if (in->psouth && R.boost_cd[i] == 0 && ln > 0.2f) {
       vx += ix * 7; vz += iz * 7;
       R.boost_cd[i] = 80; R.boost_fx[i] = 14;
       sfx(SFX_SPLASH, 0.35f, 1.4f);
@@ -162,7 +162,7 @@ static void think(mg_ctx *c, int p, mg_in *out) {
   if (best < 0) return;
   float dx = R.buoy[best].x - me.x, dz = R.buoy[best].z - me.z, l = sqrtf(dx * dx + dz * dz);
   if (l > 0.05f) { out->x = dx / l; out->y = dz / l; }
-  if (c->cpu_skill[p] > 0 && l > 6 && R.boost_cd[p] == 0 && c->cpu_skill[p] + (int)(hash_u32(R.seed, (uint32_t)(c->tick / 30 + p)) % 3) >= 3) out->a = true;
+  if (c->cpu_skill[p] > 0 && l > 6 && R.boost_cd[p] == 0 && c->cpu_skill[p] + (int)(hash_u32(R.seed, (uint32_t)(c->tick / 30 + p)) % 3) >= 3) out->south = true;
 }
 
 static void draw(mg_ctx *c, float alpha, float t) {
@@ -180,8 +180,8 @@ static void score_text(mg_ctx *c, int p, char *buf, int cap) { snprintf(buf, (si
 
 const mg_def mg_raft = {
   .id = "raft", .name = "Raft Rush", .tagline = "Paddle for the buoys. Gold ones count three.",
-  .how = { "Stick: paddle", "A: burst of speed", "Bump rivals off the buoys" },
-  .buttons = 1, .keys = "SA",
+  .how = { MOVE4 ": paddle", "{btn_south}: burst of speed", "Bump rivals off the buoys" },
+  .controls = MOVE4 "  {btn_south}",
   .kind = "3D", .scene = "scenes/raft.cwscene", .seconds = 45, .unlock_points = 0, .higher_is_better = true,
   .start = start, .tick = tick, .think = think, .draw = draw, .score_text = score_text,
 };

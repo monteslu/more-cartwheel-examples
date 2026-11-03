@@ -309,6 +309,43 @@
     }
   },
   {
+    "name": "partypack-beat-lanes",
+    "app": "partypack_auto",
+    "assets": "games/partypack/assets",
+    "frames": 820,
+    "hosts": [
+      "native"
+    ],
+    "env": {
+      "PP_GAME": "beatbox",
+      "PP_HUMANS": "1"
+    },
+    "input": "partypack-beat-lanes.json",
+    "controlInput": "partypack-beat-lanes-control.json",
+    "minColors": 60,
+    "fields": [
+      "game.state",
+      "game.humans",
+      "beat.presses"
+    ],
+    "expect": {
+      "game.state": 6,
+      "game.humans": 1,
+      "beat.presses": [
+        1,
+        1,
+        1
+      ]
+    },
+    "note": "Beat Box played by button position: seat 0 is a person, and the west, south and east face buttons land on the left, middle and right lanes (one press each); north and the stick push up are no lane. Control: only north and the stick push up, so no lane is pressed",
+    "webgpu": {
+      "hosts": [
+        "native"
+      ],
+      "vsGl": 0.05
+    }
+  },
+  {
     "name": "partypack-game-quiz",
     "app": "partypack_auto",
     "assets": "games/partypack/assets",

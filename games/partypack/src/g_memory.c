@@ -1,7 +1,7 @@
 /* Echo (2D, memory): watch a pattern of four coloured pads light up, then
- * play it back on your pad: A, B, X, Y or the matching direction (down,
- * right, left, up). One wrong press and you are out. Every round adds a
- * step; the last player standing, or the longest memory, wins.
+ * play it back on your pad: each pad on the face button that sits where it
+ * does (south, east, west, north), or the matching direction. One wrong
+ * press and you are out. Every round adds a step; the last player standing, or the longest memory, wins.
  * A player who is out plays on as a ghost: every round they can play the
  * pattern too, and each full round earns a little bonus that only breaks ties
  * between players who went out on the same pattern (the score is the longest pattern played back) (it never beats a player
@@ -23,7 +23,8 @@ static struct {
 } M;
 
 static const cw_color PAD_COL[4] = { { 0.3f, 0.8f, 0.4f, 1 }, { 0.9f, 0.3f, 0.3f, 1 }, { 0.3f, 0.5f, 0.95f, 1 }, { 0.95f, 0.8f, 0.25f, 1 } };
-static const char PAD_LBL[4] = { 'A', 'B', 'X', 'Y' };
+/* each pad's button, by where it sits (the pads are laid out as the buttons are): south, east, west, north */
+static const char *PAD_KEY[4] = { "{btn_south}", "{btn_east}", "{btn_west}", "{btn_north}" };
 static const int NOTE_OF[4] = { 0, 2, 4, 5 };
 
 static void start(mg_ctx *c) {
@@ -37,10 +38,10 @@ static void start(mg_ctx *c) {
 static int pressed_symbol(mg_ctx *c, int p) {
   const mg_in *in = &c->in[p];
   int s = -1;
-  if (in->pa) s = 0;
-  else if (in->pb) s = 1;
-  else if (in->pc) s = 2;
-  else if (in->pd) s = 3;
+  if (in->psouth) s = 0;
+  else if (in->peast) s = 1;
+  else if (in->pwest) s = 2;
+  else if (in->pnorth) s = 3;
   else if (in->y > 0.6f && M.dirprev_y[p] <= 0.6f) s = 0;
   else if (in->x > 0.6f && M.dirprev_x[p] <= 0.6f) s = 1;
   else if (in->x < -0.6f && M.dirprev_x[p] >= -0.6f) s = 2;
@@ -134,7 +135,7 @@ static void think(mg_ctx *c, int p, mg_in *out) {
   int s = M.seq[*pr];
   if (r < err_pct[c->cpu_skill[p]] + M.len / 3) s = (s + 1) % 4;
   int d = cw_rng_int(&c->rng, 0, 1);
-  if (d) { out->a = s == 0; out->b = s == 1; out->c = s == 2; out->d = s == 3; }
+  if (d) { out->south = s == 0; out->east = s == 1; out->west = s == 2; out->north = s == 3; }
   else { out->y = s == 0 ? 1.0f : s == 3 ? -1.0f : 0; out->x = s == 1 ? 1.0f : s == 2 ? -1.0f : 0; }
   M.cpu_wait[p] = cw_rng_int(&c->rng, 14 - c->cpu_skill[p] * 3, 26 - c->cpu_skill[p] * 5);
 }
@@ -149,8 +150,7 @@ static void draw_pad(cw_vec2 ctr, int s, bool lit, float r) {
     art_light(ctr, 520, col, 1.8f, false);
     art_glow("glow", ctr, r * 5, col_a(col, 0.45f));
   }
-  char b[2] = { PAD_LBL[s], 0 };
-  ui_text(b, cw_v2(ctr.x, ctr.y - r * 0.4f), r * 0.8f, cw_rgba(1, 1, 1, lit ? 1 : 0.55f), CW_ALIGN_CENTER);
+  ui_prompt(PAD_KEY[s], -1, cw_v2(ctr.x, ctr.y - r * 0.4f), r * 0.8f, cw_rgba(1, 1, 1, lit ? 1 : 0.75f), CW_ALIGN_CENTER);
 }
 
 static void draw(mg_ctx *c, float alpha, float t) {
@@ -190,8 +190,8 @@ static void score_text(mg_ctx *c, int p, char *buf, int cap) { snprintf(buf, (si
 
 const mg_def mg_memory = {
   .id = "echo", .name = "Echo", .tagline = "Repeat the pattern. One slip and you are out.",
-  .how = { "Flick the stick (or A B X Y) to match", "Watch the pads, then play it back", "Out? Play along as a ghost for a tie-break" },
-  .buttons = 0, .keys = "S",
+  .how = { "Press the pad's button, or flick " MOVE4 " toward it", "Watch the pads, then play it back", "Out? Play along as a ghost for a tie-break" },
+  .controls = MOVE4,
   .kind = "2D", .scene = NULL, .seconds = 85, .unlock_points = 0, .higher_is_better = true,
   .start = start, .tick = tick, .think = think, .draw = draw, .score_text = score_text,
 };
