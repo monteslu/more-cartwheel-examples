@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.21.0
+
+- Every game shows its controls with the engine's button prompts (engine v0.30.0). On a pad a
+  four-dot diamond marks the face button to press, with shoulder, trigger and stick pictures for
+  the rest; on a keyboard it shows the key. Prompts follow whichever device each player last
+  used and follow rebinding, so the hint always names the button that does the job.
+- partypack: Beat Box lanes are the west, south and east face buttons, left to right. Quick Quiz
+  answers sit in a diamond that matches the face buttons, and Echo's pads show their buttons.
+- pirates: each broadside has its own button, so the hint shows which one fires left and which
+  fires right. Pads without analog triggers fire the left side on the left shoulder.
+- pirates: larger hint text, a taller cannon bar, and the harbor panel sits higher.
+- skyfighter: flares also fire on Back, for pads without triggers. Keyboard players see their roll
+  keys; stick look is marked as pad only.
+- tuxracer: the cup screen and race end show their buttons as prompts.
+- The game READMEs name buttons by position instead of by letter.
+
 ## 0.20.2
 
 - pirates: shore stones are lumpier and lopsided, sit deeper in the sand, and are lighter so they
