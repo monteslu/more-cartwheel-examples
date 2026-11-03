@@ -6,7 +6,7 @@ bots that find their way over a navigation mesh, jump pads, ledge jumps and drop
 
 ## Play
 
-- Title -> join (each pad presses South to join) -> pick the arena, the mode, the number of bots, how good the bots are (easy, normal, veteran, hard; normal is for someone new to the game), aim assist on or off and rumble on or off -> Start or fire to play, B back to the title.
+- Title -> join (each pad presses South to join) -> pick the arena, the mode, the number of bots, how good the bots are (easy, normal, veteran, hard; normal is for someone new to the game), aim assist on or off and rumble on or off -> Start or fire to play, the east face button back to the title. The screens show each control with the engine's button prompts, drawn for the device each player holds.
 - Move: left stick (keyboard: W A S D). Sprint: click the left stick (keyboard: left Shift), forward only, and firing
   ends it. Look: right stick (keyboard: arrow keys). Fire: right trigger or right shoulder (keyboard: J). Jump: South
   (keyboard: Space): high enough for a 1.2 m ledge. Next / previous weapon: North / West (keyboard: E / Q).

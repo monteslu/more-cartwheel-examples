@@ -12,6 +12,7 @@
 #include "cartwheel/core.h"
 #include "cartwheel/debug.h"
 #include "cartwheel/input.h"
+#include "cartwheel/prompt.h"
 #include "cartwheel/math.h"
 #include "cartwheel/nav.h"
 #include "cartwheel/physics.h"

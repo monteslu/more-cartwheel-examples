@@ -2257,6 +2257,12 @@ static const float ITEM_RGB[ITEM_KINDS][3] = { { 0.4f, 1, 0.5f }, { 0.5f, 0.75f,
 static void text(const char *s, float x, float y, float size, cw_color c, cw_text_align align, float wrap) {
   cw_r2d_text(G.font, s, cw_v2(x, y), &(cw_text_style){ .size = size, .color = c, .outline_width = size * 0.09f, .outline_color = cw_rgba(0, 0, 0, c.a), .align = align, .wrap_width = wrap }); /* the outline fades with the text: a fading line must not leave black letters */
 }
+/* text with button prompts in it (cartwheel/prompt.h markup: "{jump} jump") for one player (-1: every seat), in the box
+ * text() would use */
+static void ptext(const char *s, int player, float x, float y, float size, cw_color c, cw_text_align align, float wrap) {
+  float px = align == CW_ALIGN_CENTER ? x + wrap * 0.5f : align == CW_ALIGN_RIGHT ? x + wrap : x;
+  cw_prompt_text(G.font, s, player, cw_v2(px, y), size, c, align);
+}
 
 static void hud_view(int h) {
   fighter *f = F(h);
@@ -2374,8 +2380,8 @@ static void hud_view(int h) {
   if (G.state == ST_PLAY && G.match_ticks < 60 * 9 && f->alive && f->deaths == 0 && f->score == 0) { /* a newcomer's first seconds: the controls */
     float a = CW_MIN(1.0f, (float)(60 * 9 - G.match_ticks) / 60.0f) * 0.92f;
     float hs = CW_MIN(u * 0.82f, r.w / 30.0f); /* the longer line is about 26 of these wide: it fits a half width view */
-    text("left stick move   right stick look   right trigger fire", r.x, r.y + r.h * 0.66f, hs, cw_rgba(1, 1, 1, a), CW_ALIGN_CENTER, r.w);
-    text("A jump   X / Y change weapon   click left stick sprint", r.x, r.y + r.h * 0.66f + hs * 1.4f, hs, cw_rgba(1, 1, 1, a), CW_ALIGN_CENTER, r.w);
+    ptext("{move_left|move_right|move_forward|move_back} move   {look_left|look_right|look_up|look_down} look   {fire} fire", h, r.x, r.y + r.h * 0.66f, hs, cw_rgba(1, 1, 1, a), CW_ALIGN_CENTER, r.w);
+    ptext("{jump} jump   {weapon_prev|weapon_next} change weapon   {sprint} sprint", h, r.x, r.y + r.h * 0.66f + hs * 1.6f, hs, cw_rgba(1, 1, 1, a), CW_ALIGN_CENTER, r.w);
   }
   /* top right: the time left and who leads (deathmatch: the frag leader; team deathmatch shows both teams on the left) */
   if (G.state == ST_PLAY && G.mode != MODE_COOP) {
@@ -2463,7 +2469,7 @@ static void hud_setup(void) {
   float u = cs.y / 18;
   cw_r2d_rect(cw_rect_make(0, 0, cs.x, cs.y), cw_rgba(0, 0, 0, 0.7f));
   text("ARENA", 0, u * 1.2f, u * 2.4f, cw_rgba(1, 0.85f, 0.4f, 1), CW_ALIGN_CENTER, cs.x);
-  text("choose the match, then press Start or fire    B: back to the title", 0, u * 3.6f, u * 0.9f, cw_rgba(1, 1, 1, 0.8f), CW_ALIGN_CENTER, cs.x);
+  ptext("choose the match, then press {ui_start} or {fire}    {ui_back} back to the title", -1, 0, u * 3.6f, u * 0.9f, cw_rgba(1, 1, 1, 0.8f), CW_ALIGN_CENTER, cs.x);
   char s[96];
   const char *rows[7];
   char r0[64], r1[64], r2[64], r3[64], r4[64], r5[64];
@@ -2505,7 +2511,7 @@ static void hud_over(void) {
     snprintf(s, sizeof s, "%-8s  %3d frags  %3d deaths", f->name, f->score, f->deaths);
     text(s, 0, cs.y * 0.34f + u * 1.25f * (float)k, u * 1.0f, f->human >= 0 ? cw_rgba(1, 1, 0.6f, 1) : cw_rgba(1, 1, 1, 0.85f), CW_ALIGN_CENTER, cs.x);
   }
-  if (G.over_ticks > 60 * 3) text("press Start or fire to continue", 0, cs.y * 0.74f, u * 0.9f, cw_rgba(1, 1, 1, 0.8f), CW_ALIGN_CENTER, cs.x);
+  if (G.over_ticks > 60 * 3) ptext("press {ui_start} or {fire} to continue", -1, 0, cs.y * 0.74f, u * 0.9f, cw_rgba(1, 1, 1, 0.8f), CW_ALIGN_CENTER, cs.x);
 }
 
 static void render(void *user, double alpha) {
@@ -2677,6 +2683,19 @@ static void quality_changed(cw_quality q, void *u) {
   (void)q;
 }
 
+/* debug channel: "bind <action> <bindings>" replaces an action's bindings (the text form, "key:x, pad:north"): for checking
+ * that a rebound action's prompt shows its new button */
+static void cmd_bind(int argc, const char **argv, cw_reply *r) {
+  if (argc < 3) { cw_reply_error(r, "bind <action> <bindings>"); return; }
+  cw_action a = cw_action_find(argv[1]);
+  if (a < 0) { cw_reply_error(r, "no such action"); return; }
+  char list[256] = "";
+  for (int i = 2; i < argc; i++) { if (i > 2) strncat(list, " ", sizeof list - strlen(list) - 1); strncat(list, argv[i], sizeof list - strlen(list) - 1); }
+  cw_action_clear_bindings(a);
+  if (!cw_action_bind_text(a, list)) { cw_reply_error(r, "bad bindings"); return; }
+  cw_reply_printf(r, "ok");
+}
+
 static void init(void *user) {
   (void)user;
   cw_project_load_input();
@@ -2752,6 +2771,7 @@ static void init(void *user) {
   cw_quality_on_change(quality_changed, NULL);
   cw_quality_auto(true, 0);
   cw_debug_i32("game.state", (int32_t *)&G.state);
+  cw_debug_command("bind", "bind <action> <bindings>: replace an action's bindings", cmd_bind);
   cw_debug_i32("game.mode", &G.mode);
   cw_debug_i32("game.arena", &G.arena_id);
   cw_debug_i32("game.players", &G.players);
