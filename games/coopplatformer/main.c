@@ -15,6 +15,7 @@
 #include "cartwheel/debug.h"
 #include "cartwheel/explosions.h"
 #include "cartwheel/input.h"
+#include "cartwheel/prompt.h"
 #include "cartwheel/particles.h"
 #include "cartwheel/pipeline.h"
 #include "cartwheel/platform.h"
@@ -1627,6 +1628,19 @@ static void cmd_warp(int argc, const char **argv, cw_reply *r) {
   cw_reply_printf(r, "{\"warp\":%d}", g_dev_warp);
 }
 #endif
+/* debug channel: "bind <action> <bindings>" replaces an action's bindings (the text form, "key:x, pad:north"): for checking
+ * that a rebound action's prompt shows its new button */
+static void cmd_bind(int argc, const char **argv, cw_reply *r) {
+  if (argc < 3) { cw_reply_error(r, "bind <action> <bindings>"); return; }
+  cw_action a = cw_action_find(argv[1]);
+  if (a < 0) { cw_reply_error(r, "no such action"); return; }
+  char list[256] = "";
+  for (int i = 2; i < argc; i++) { if (i > 2) strncat(list, " ", sizeof list - strlen(list) - 1); strncat(list, argv[i], sizeof list - strlen(list) - 1); }
+  cw_action_clear_bindings(a);
+  if (!cw_action_bind_text(a, list)) { cw_reply_error(r, "bad bindings"); return; }
+  cw_reply_printf(r, "ok");
+}
+
 static void init(void *user) {
   (void)user;
   /* touch: a stick and three buttons, made before the bindings that name them (ids 0 to 3, in this order) */
@@ -1645,6 +1659,7 @@ static void init(void *user) {
   g_font = cw_ui_font_sans();
   audio_init();
   cw_debug_field("join.seats", join_seats, CW_DBG_I32, 4);
+  cw_debug_command("bind", "bind <action> <bindings>: replace an action's bindings", cmd_bind);
 #ifdef COOP_AUTOPILOT
   cw_debug_command("warp", "warp <column>: every player there, with every ability", cmd_warp);
 #endif
@@ -2339,6 +2354,11 @@ static void text(const char *s, float x, float y, float size, cw_color c, cw_tex
   cw_r2d_text(g_font, s, (cw_vec2){ x + 2, y + 2 }, &(cw_text_style){ .size = size, .color = cw_rgba(0, 0, 0, 0.6f * c.a), .align = al, .wrap_width = w });
   cw_r2d_text(g_font, s, (cw_vec2){ x, y }, &(cw_text_style){ .size = size, .color = c, .align = al, .wrap_width = w });
 }
+/* text with button prompts in it (cartwheel/prompt.h markup: "{jump} jump"), for every player, in the box text() would use */
+static void ptext(const char *s, float x, float y, float size, cw_color c, cw_text_align al, float w) {
+  float px = al == CW_ALIGN_CENTER ? x + w * 0.5f : al == CW_ALIGN_RIGHT ? x + w : x;
+  cw_prompt_text(g_font, s, -1, (cw_vec2){ px, y }, size, c, al);
+}
 
 
 static cw_color rgba3(const float *c, float a) { return cw_rgba(c[0], c[1], c[2], a); }
@@ -2750,10 +2770,10 @@ static void draw_map(float W, float H) {
   {
     char lv[160];
     int shown = g_map_level < 0 ? G.level : g_map_level;
-    snprintf(lv, sizeof lv, "level %d of %d: %s%s", shown + 1, NLEVELS, LEVELS[shown].name, shown != G.level ? "   (Jump goes there)" : "");
-    text(lv, 0, H * 0.07f, 24 * s, cw_rgba(1, 0.92f, 0.7f, 1), CW_ALIGN_CENTER, W);
+    snprintf(lv, sizeof lv, "level %d of %d: %s%s", shown + 1, NLEVELS, LEVELS[shown].name, shown != G.level ? "   ({jump} goes there)" : "");
+    ptext(lv, 0, H * 0.07f, 24 * s, cw_rgba(1, 0.92f, 0.7f, 1), CW_ALIGN_CENTER, W);
   }
-  text("left and right pick a flag you have touched, up and down a level you have reached, Jump travels there   (M or Back to close)", 0, H * 0.93f, 16 * s, cw_rgba(0.8f, 0.85f, 1, 0.9f), CW_ALIGN_CENTER, W);
+  ptext("{left|right} pick a flag you have touched    {up|down} a level you have reached    {jump} travels there    {map} closes", 0, H * 0.93f, 16 * s, cw_rgba(0.8f, 0.85f, 1, 0.9f), CW_ALIGN_CENTER, W);
 }
 
 /* the title screen's picture: a painted dusk meadow with three drifting ridges, a sun, fireflies and the four heroes */
@@ -2951,7 +2971,9 @@ static void render(void *user, double alpha) {
       draw_boss_says(W, H, s);
     }
     draw_markers(W, H, s);
-    text("hold X to run, A to jump: run first and jump further     hold R or Y: back to the last flag", 20 * s, H - 30 * s, 14 * s, cw_rgba(1, 1, 1, 0.45f), CW_ALIGN_LEFT, 0);
+#ifndef COOP_AUTOPILOT /* the bots play the autopilot: nobody to tell, and each host would draw its own device's glyphs into the compared frames */
+    ptext("hold {run} to run, {jump} to jump: run first and jump further     hold {retry}: back to the last flag", 20 * s, H - 32 * s, 16 * s, cw_rgba(1, 1, 1, 0.45f), CW_ALIGN_LEFT, 0);
+#endif
     /* players carried in bubbles: a tag each (face and RESCUE), laid out side by side from the measured text and
      * centred, so four tags never run into each other (a fixed 90 px step by player number overlapped them) */
     {

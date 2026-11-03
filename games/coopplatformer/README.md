@@ -9,14 +9,14 @@ The camera pulls back to keep everyone in view; if you fall too far behind (or d
 | | Keyboard | Pad |
 |---|---|---|
 | Move | arrows / WASD | left stick / d-pad |
-| Jump (hold for height; twice with the air jump; off a wall with the claws) | Space / Z | A |
-| Run (hold: speed builds, and a running jump goes much further and higher) | Shift / X | X |
+| Jump (hold for height; twice with the air jump; off a wall with the claws) | Space / Z | south face button |
+| Run (hold: speed builds, and a running jump goes much further and higher) | Shift / X | west face button |
 | Dash | C / F | right shoulder |
 | Grab a friend; again to throw them (a jump wriggles free) | V / E | left shoulder |
-| Drop through a wooden ledge | Down + Jump | Down + A |
+| Drop through a wooden ledge | Down + Jump | down + south face button |
 | Swim | stick, Jump to stroke | same |
 | Map (left and right pick a flag you have touched, up and down a level you have reached, Jump travels there) | M / Tab | Back |
-| Back to the last flag (hold one second; the way out of any pit or wedge) | R | Y |
+| Back to the last flag (hold one second; the way out of any pit or wedge) | R | north face button |
 
 Stomp enemies from above. Spikes hurt, lava, pits and machinery do not forgive. Landing on a friend's head bounces you and flattens them for a moment. You can also pick them up and throw them, over a gap or otherwise. It does no harm and it will be remembered. Not everything that looks like a coin is a coin, and not every finish is a finish. Every level ends with something large behind you; run. Walk through a flag to set a checkpoint. On a touch screen there is a stick and buttons for Jump, Run, Dash and Grab.
 
