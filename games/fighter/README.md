@@ -5,7 +5,7 @@ Four fighters, three stages, a training mode that shows hitboxes and frame data.
 
 ## Playing
 
-Run `fighter` (or `scripts/build.sh` then `build/native/.../fighter`). Pick Play, join with a pad (A) or the keyboard (enter), choose a fighter (left / right) and a stage (up / down), lock in with A (kick).
+Run `fighter` (or `scripts/build.sh` then `build/native/.../fighter`). Pick Play, join with a pad (the south face button) or the keyboard (enter), choose a fighter (left / right) and a stage (up / down), lock in with kick (the south face button).
 
 The camera never shakes: hits, throws, wall splats, knockdowns, supers and the KO are felt in each player's own pad (rumble; the computer's fighter has none).
 
@@ -16,10 +16,12 @@ Three buttons: punch, kick and block. The stick (or d-pad) picks where a punch o
 | Walk (hold), dash (tap twice) | left stick or d-pad, left / right | A, D | left, right arrows |
 | Jump (up-forward, up-back: that way) | up | W | up arrow |
 | Crouch (hold) | down | S | down arrow |
-| Punch | X | J | comma |
-| Kick | A | K | period |
-| Block | B or right shoulder | L | slash |
-| Throw (punch + kick together) | Y or left shoulder, or X + A | I, or J + K | semicolon |
+| Punch | west face button | J | comma |
+| Kick | south face button | K | period |
+| Block | east face button or right shoulder | L | slash |
+| Throw (punch + kick together) | north face button or left shoulder, or punch + kick | I, or J + K | semicolon |
+
+The screens show each control with the engine's button prompts, drawn for the device each player holds.
 
 Attack height: up with a button for a high attack (press them together), nothing for a mid one, down for a low one, forward for a
 stepping one (it moves in). Every fighter has its own eight: for example Bolt has a straight (punch), a rising elbow
@@ -64,7 +66,7 @@ the super. Hits scale their damage in a combo, and a long combo runs out of hits
 
 ## Training mode
 
-Press X (punch) on the select screen to switch Versus to Training. It shows the last move's name and height, whether it hit, was blocked, parried or ducked, its startup, active and recovery frames, the frame advantage, the damage and combo, and your recent inputs (direction digits with P, K and G for punch, kick and block). A move list for your fighter sits on the right. Keys: F or left-stick click cycles what the dummy does (nothing, stand, block, block low, jump, block everything at the right height, play like the computer), B or right-stick click shows hitboxes (blue: hurtboxes, red: hitboxes), R resets, Tab returns to the select screen.
+Press punch on the select screen to switch Versus to Training. It shows the last move's name and height, whether it hit, was blocked, parried or ducked, its startup, active and recovery frames, the frame advantage, the damage and combo, and your recent inputs (direction digits with P, K and G for punch, kick and block). A move list for your fighter sits on the right. Keys: F or left-stick click cycles what the dummy does (nothing, stand, block, block low, jump, block everything at the right height, play like the computer), B or right-stick click shows hitboxes (blue: hurtboxes, red: hitboxes), R resets, Tab returns to the select screen.
 
 ## Tools
 

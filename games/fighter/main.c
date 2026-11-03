@@ -594,6 +594,10 @@ static void text(cw_font f, const char *s, float x, float y, float size, cw_colo
   cw_text_style st = { .size = size, .color = c, .align = CW_ALIGN_LEFT, .outline_color = rgba(0, 0, 0, 0.85f), .outline_width = size * 0.07f };
   cw_r2d_text(f, s, (cw_vec2){ x, y }, &st);
 }
+/* text with button prompts in it (cartwheel/prompt.h markup: "{atk_k} lock in") for one player, or -1 for both */
+static void ptext(cw_font f, const char *s, int player, float x, float y, float size, cw_color c, cw_text_align al) {
+  cw_prompt_text(f, s, player, (cw_vec2){ x, y }, size, c, al);
+}
 
 static void bar(float x, float y, float w, float h, float fill, float lag, cw_color c, bool right_to_left) {
   cw_r2d_round_rect(cw_rect_make(x - 3, y - 3, w + 6, h + 6), h * 0.35f, 6, rgba(0.02f, 0.02f, 0.03f, 0.9f));
@@ -652,8 +656,8 @@ static void draw_training(float W, float H, float s) {
   else snprintf(b, sizeof b, "Frame advantage --   Damage %d   Combo %d", g->last_dmg, g->last_combo);
   text(G.font_ui, b, x + 14 * s, y + 56 * s, 16 * s, g->adv_valid && g->adv > 0 ? rgba(0.5f, 1, 0.6f, 1) : rgba(1, 0.65f, 0.55f, 1), CW_ALIGN_LEFT);
   static const char *const DUMMY[T_COUNT] = { "Off", "Stand", "Block", "Block low", "Jump", "Block all", "CPU" };
-  snprintf(b, sizeof b, "Dummy: %s (F / left stick)   Hitboxes: %s (B / right stick)", DUMMY[g->dummy < T_COUNT ? g->dummy : 0], G.show_boxes ? "on" : "off");
-  text(G.font_ui, b, x + 14 * s, y + 80 * s, 14 * s, rgba(0.7f, 0.8f, 0.9f, 1), CW_ALIGN_LEFT);
+  snprintf(b, sizeof b, "Dummy: %s ({tr_dummy})   Hitboxes: %s ({tr_boxes})", DUMMY[g->dummy < T_COUNT ? g->dummy : 0], G.show_boxes ? "on" : "off");
+  ptext(G.font_ui, b, 0, x + 14 * s, y + 80 * s, 16 * s, rgba(0.7f, 0.8f, 0.9f, 1), CW_ALIGN_LEFT);
   /* the input history of player 1: direction digits and buttons (P punch, K kick, G block), newest first */
   char h[200];
   int n = 0;
@@ -777,12 +781,12 @@ static void draw_select(float W, float H, float s) {
   cw_r2d_rect(cw_rect_make(0, 0, W, 130 * s), rgba(0.02f, 0.025f, 0.05f, 0.55f));
   text(G.font_score, "CHOOSE YOUR FIGHTER", W * 0.5f, 14 * s, 34 * s, rgba(1, 0.9f, 0.5f, 1), CW_ALIGN_CENTER);
   char b[160];
-  snprintf(b, sizeof b, "Stage: %s   (up / down)", STAGE_NAME[G.sel_stage]);
-  text(G.font_ui, b, W * 0.5f, 56 * s, 19 * s, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
-  snprintf(b, sizeof b, "Mode: %s   (X)", G.training ? "Training" : G.players > 1 ? "Versus" : "Versus the computer");
-  if (G.players < 2) { size_t l = strlen(b); snprintf(b + l, sizeof b - l, "      Computer: %s   (B)", DIFF_NAME[G.difficulty]); }
-  text(G.font_ui, b, W * 0.5f, 84 * s, 17 * s, rgba(1, 0.9f, 0.6f, 1), CW_ALIGN_CENTER);
-  text(G.font_ui, "Hold left / right: walk     Up: jump (up-forward, up-back)     Hold down: crouch     Tap twice: dash", W * 0.5f, 108 * s, 14 * s, rgba(0.85f, 0.92f, 1, 1), CW_ALIGN_CENTER);
+  snprintf(b, sizeof b, "Stage: %s   ({mv_up|mv_down})", STAGE_NAME[G.sel_stage]);
+  ptext(G.font_ui, b, 0, W * 0.5f, 56 * s, 19 * s, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
+  snprintf(b, sizeof b, "Mode: %s   ({atk_p})", G.training ? "Training" : G.players > 1 ? "Versus" : "Versus the computer");
+  if (G.players < 2) { size_t l = strlen(b); snprintf(b + l, sizeof b - l, "      Computer: %s   ({atk_g})", DIFF_NAME[G.difficulty]); }
+  ptext(G.font_ui, b, 0, W * 0.5f, 84 * s, 17 * s, rgba(1, 0.9f, 0.6f, 1), CW_ALIGN_CENTER);
+  ptext(G.font_ui, "Hold {mv_left|mv_right}: walk     {mv_up}: jump (up-forward, up-back)     Hold {mv_down}: crouch     Tap twice: dash", -1, W * 0.5f, 106 * s, 16 * s, rgba(0.85f, 0.92f, 1, 1), CW_ALIGN_CENTER);
   int n = G.roster.n;
   float cw_ = 190 * s, ch = 132 * s, gap = 16 * s, total = (float)n * cw_ + (float)(n - 1) * gap, x0 = (W - total) * 0.5f, y0 = H - 176 * s;
   for (int i = 0; i < n; i++) {
@@ -798,17 +802,18 @@ static void draw_select(float W, float H, float s) {
     text(G.font_ui, ROLE[i & 3], cx, y0 + 62 * s, 13 * s, rgba(0.75f, 0.8f, 0.9f, 1), CW_ALIGN_CENTER);
     for (int k = 0; k < 3; k++) { /* the specials: motion, button, name */
       char in[24];
-      ft_special_text(d, k, in, sizeof in);
-      snprintf(b, sizeof b, "%s %s", in, d->mv[M_SP1 + k].name);
-      text(G.font_ui, b, cx, y0 + (80 + 15 * (float)k) * s, 13 * s, rgba(1, 0.85f, 0.5f, 1), CW_ALIGN_CENTER);
+      uint16_t mb = d->mbtn[k]; /* the motion in direction digits, then the button as a prompt */
+      snprintf(in, sizeof in, "%s", d->motion[k]);
+      snprintf(b, sizeof b, "%s %s %s", in, mb == B_P ? "{atk_p}" : mb == B_K ? "{atk_k}" : "{atk_p}/{atk_k}", d->mv[M_SP1 + k].name);
+      ptext(G.font_ui, b, -1, cx, y0 + (80 + 15 * (float)k) * s, 13 * s, rgba(1, 0.85f, 0.5f, 1), CW_ALIGN_CENTER);
     }
     if (p1) cw_r2d_round_rect_lines(cw_rect_make(x - 4 * s, y0 - 4 * s, cw_ + 8 * s, ch + 8 * s), 14 * s, 4 * s, 8, G.ready[0] ? rgba(1, 0.85f, 0.2f, 1) : rgba(1, 0.4f, 0.3f, 1));
     if (p2) cw_r2d_round_rect_lines(cw_rect_make(x - 8 * s, y0 - 8 * s, cw_ + 16 * s, ch + 16 * s), 16 * s, 3 * s, 8, G.ready[1] ? rgba(1, 0.85f, 0.2f, 1) : rgba(0.3f, 0.6f, 1, 1));
     if (p1) text(G.font_bold, "P1", x + 10 * s, y0 - 24 * s, 18 * s, rgba(1, 0.5f, 0.4f, 1), CW_ALIGN_LEFT);
     if (p2) text(G.font_bold, "P2", x + cw_ - 10 * s, y0 - 24 * s, 18 * s, rgba(0.4f, 0.7f, 1, 1), CW_ALIGN_RIGHT);
   }
-  text(G.font_ui, "Punch X (J)   Kick A (K)   Block B (L)   Up + button (together): high   Down + button: low   Punch + kick: throw", W * 0.5f, H - 38 * s, 13 * s, rgba(1, 0.95f, 0.8f, 1), CW_ALIGN_CENTER);
-  text(G.font_ui, "Left / right: fighter     A or Start: lock in     B: back out (two players) or computer level     Back: title", W * 0.5f, H - 20 * s, 13 * s, rgba(0.7f, 0.75f, 0.85f, 1), CW_ALIGN_CENTER);
+  ptext(G.font_ui, "Punch {atk_p}   Kick {atk_k}   Block {atk_g}   Up + button (together): high   Down + button: low   Punch + kick, or {atk_pk}: throw", -1, W * 0.5f, H - 42 * s, 16 * s, rgba(1, 0.95f, 0.8f, 1), CW_ALIGN_CENTER);
+  ptext(G.font_ui, "{mv_left|mv_right} fighter     {atk_k} or {ui_start} lock in     {atk_g} back out (two players) or computer level     {ui_quit} title", -1, W * 0.5f, H - 22 * s, 16 * s, rgba(0.7f, 0.75f, 0.85f, 1), CW_ALIGN_CENTER);
 }
 
 static void draw_result(float W, float H, float s) {
@@ -822,7 +827,7 @@ static void draw_result(float W, float H, float s) {
   text(G.font_score, b, W * 0.5f, 14 * s, 60 * s, rgba(1, 0.9f, 0.4f, 1), CW_ALIGN_CENTER);
   snprintf(b, sizeof b, "%d - %d", g->f[0].wins, g->f[1].wins);
   text(G.font_bold, b, W * 0.5f, 78 * s, 30 * s, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
-  text(G.font_ui, "A or Start: rematch      B: back to fighter select", W * 0.5f, H - 50 * s, 22 * s, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
+  ptext(G.font_ui, "{atk_k} or {ui_start} rematch      {atk_g} back to fighter select", -1, W * 0.5f, H - 50 * s, 22 * s, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
 }
 
 static void render(void *u, double alpha) {
@@ -895,11 +900,25 @@ static void cmd_match(int argc, const char **argv, cw_reply *r) {
 }
 #endif
 
+/* debug channel: "bind <action> <bindings>" replaces an action's bindings (the text form, "key:x, pad:north"): for checking
+ * that a rebound action's prompt shows its new button */
+static void cmd_bind(int argc, const char **argv, cw_reply *r) {
+  if (argc < 3) { cw_reply_error(r, "bind <action> <bindings>"); return; }
+  cw_action a = cw_action_find(argv[1]);
+  if (a < 0) { cw_reply_error(r, "no such action"); return; }
+  char list[256] = "";
+  for (int i = 2; i < argc; i++) { if (i > 2) strncat(list, " ", sizeof list - strlen(list) - 1); strncat(list, argv[i], sizeof list - strlen(list) - 1); }
+  cw_action_clear_bindings(a);
+  if (!cw_action_bind_text(a, list)) { cw_reply_error(r, "bad bindings"); return; }
+  cw_reply_printf(r, "ok");
+}
+
 static void init(void *u) {
   (void)u;
 #if defined(FIGHTER_AUTOPILOT) || defined(FIGHTER_SCRIPTED)
   cw_debug_command("cam", "cam <zoom> [who 0|1|2] [yaw]: close-up camera (zoom 0: normal)", cmd_cam);
   cw_debug_command("match", "match <stage 0-2> [p1] [p2]: start a match on a stage", cmd_match);
+  cw_debug_command("bind", "bind <action> <bindings>: replace an action's bindings", cmd_bind);
   cw_debug_command("screen", "screen select <p1> <p2> <stage> | result <winner> | off: hold a menu screen", cmd_screen);
   { const char *e = getenv("FIGHTER_CAM"); if (e) sscanf(e, "%f %f %f", &g_cam[0], &g_cam[1], &g_cam[2]); }
 #endif

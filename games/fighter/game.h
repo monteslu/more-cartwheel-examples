@@ -11,6 +11,7 @@
 #include "cartwheel/math.h"
 #include "cartwheel/particles.h"
 #include "cartwheel/platform.h"
+#include "cartwheel/prompt.h"
 #include "cartwheel/render2d.h"
 #include "cartwheel/render3d.h"
 #include "cartwheel/scene.h"
