@@ -14,6 +14,7 @@
 #include "cartwheel/math.h"
 #include "cartwheel/pipeline.h"
 #include "cartwheel/platform.h"
+#include "cartwheel/prompt.h"
 #include "cartwheel/physics_nodes.h"
 #include "cartwheel/render2d.h"
 #include "cartwheel/render3d.h"
@@ -99,7 +100,7 @@ static struct {
   float hit_previous_hp[SHIPS];
   float canvas_weights[SHIPS];
   float gpu_ms;
-  cw_action turn_l, turn_r, sail_u, sail_d, aim_l, aim_r, fire, dock, up_hull, up_sails, up_guns, start, mode_l, mode_r, map_next, pause, leave;
+  cw_action turn_l, turn_r, sail_u, sail_d, aim_l, aim_r, fire_l, fire_r, dock, up_hull, up_sails, up_guns, start, mode_l, mode_r, map_next, pause, leave;
 } G;
 
 enum { ROCKFALLS = 3, ERUPTION_PERIOD = 1800, ERUPTION_WARNING = 210 };
@@ -1067,8 +1068,9 @@ static void fixed_update(void *user, double dt) {
     if (s->human) {
       turn = cw_input_axis(i, G.turn_l, G.turn_r);
       sail = cw_action_strength(i, G.sail_u) - cw_action_strength(i, G.sail_d) * 0.3f;
-      if (cw_action_pressed(i, G.fire)) {
-        float aim = cw_input_axis(i, G.aim_l, G.aim_r);
+      bool fl = cw_action_pressed(i, G.fire_l), fr = cw_action_pressed(i, G.fire_r);
+      if (fl || fr) { /* the left cannons, the right ones, or the side the right stick leans to; both buttons: the right */
+        float aim = cw_input_axis(i, G.aim_l, G.aim_r) - (fl ? cw_action_strength(i, G.fire_l) : 0) + (fl && fr ? 1 : 0);
         fire = aim < -0.1f ? -1 : 1;
       }
       dock = cw_action_just_pressed(i, G.dock);
@@ -1146,6 +1148,12 @@ static void sync_visuals(void) {
 static void line(const char *str, float x, float y, float size, cw_color color, float width, cw_text_align align) {
   cw_r2d_text(G.font, str, cw_v2(x, y), &(cw_text_style){ .size = size, .color = color, .wrap_width = width, .align = align });
 }
+/* a line with button prompts in it (cartwheel/prompt.h markup: "{dock} bank cargo"), for one captain (-1: every
+ * seat, on the shared screens), in the box line() would use */
+static void pline(const char *str, int player, float x, float y, float size, cw_color color, float width, cw_text_align align) {
+  float px = align == CW_ALIGN_CENTER ? x + width * 0.5f : align == CW_ALIGN_RIGHT ? x + width : x;
+  cw_prompt_text(G.font, str, player, cw_v2(px, y), size, color, align);
+}
 
 static void draw_hud(void) {
   cw_r2d_begin(&(cw_r2d_pass_desc){ .clear = false });
@@ -1159,7 +1167,7 @@ static void draw_hud(void) {
     line(active_map?"PALM LAGOON":"THE GILDED SHOALS", 0, H * 0.31f, 29 * scale, cw_hex(0xece1c4ff), W, CW_ALIGN_CENTER);
     snprintf(buf, sizeof buf, "<  %s  >", mode);
     line(buf, 0, H * 0.42f, 35 * scale, CW_WHITE, W, CW_ALIGN_CENTER);
-    line("Q / R or LB / RB mode   T / SELECT map   START joins   ENTER / P1 START sails", 0, H * 0.51f, 24 * scale, CW_WHITE, W, CW_ALIGN_CENTER);
+    pline("{mode_left|mode_right} mode    {map_next} map    other captains: Start joins    {start} set sail", -1, 0, H * 0.51f, 28 * scale, CW_WHITE, W, CW_ALIGN_CENTER);
     snprintf(buf, sizeof buf, "%d captain%s ready", 1 + !!(G.joined & 2) + !!(G.joined & 4) + !!(G.joined & 8), G.joined == 1 ? "" : "s");
     line(buf, 0, H * 0.64f, 28 * scale, cw_hex(0xffdb92ff), W, CW_ALIGN_CENTER);
     const char *brief=G.mode==VOYAGE?"Supply your fleet, sink the patrol, then bank the final haul. Friendly fire is off.":
@@ -1169,8 +1177,8 @@ static void draw_hud(void) {
     line(active_map?"Sheltered coves and quiet waters. A calmer place to learn the ropes.":
          "An active volcano guards the eastern passage. Clear marked water before rocks land.",
          0,H*.87f,22*scale,cw_hex(0xffdb92ff),W,CW_ALIGN_CENTER);
-    line("WASD / stick sail   J / LT left cannons   L / RT right cannons   ESC / START pause",0,H*.77f,22*scale,CW_WHITE,W,CW_ALIGN_CENTER);
-    line("Sail over cargo to collect it. Return to your harbor and press E / A to bank and repair.",0,H*.82f,22*scale,CW_WHITE,W,CW_ALIGN_CENTER);
+    pline("{turn_left|turn_right|sail_up|sail_down} sail    {fire_left} left cannons    {fire_right} right cannons    {game_pause} pause",-1,0,H*.77f,28*scale,CW_WHITE,W,CW_ALIGN_CENTER);
+    pline("Sail over cargo to collect it. Return to your harbor and press {dock} to bank and repair.",-1,0,H*.82f,26*scale,CW_WHITE,W,CW_ALIGN_CENTER);
   } else {
     t3_camera *camera=cw_camera3d_t3(G.camera);
     /* Lay out complete ship annotations before ports. Keep health, damage
@@ -1305,15 +1313,15 @@ static void draw_hud(void) {
       line("COLLECT  >  BANK  >  UPGRADE", 25 * scale, 53 * scale, 25 * scale, CW_WHITE, W * 0.55f, CW_ALIGN_LEFT);
     }
     if(G.tick<1200 && G.humans>0 && G.mode!=VOYAGE)
-      line("WASD / LEFT STICK SAIL     J / LT LEFT CANNONS     L / RT RIGHT CANNONS",W*.40f,58*scale,19*scale,cw_hex(0xd7d6caff),W*.58f,CW_ALIGN_RIGHT);
+      pline("{turn_left|turn_right|sail_up|sail_down} SAIL     {fire_left} LEFT CANNONS     {fire_right} RIGHT CANNONS",-1,W*.40f,58*scale,24*scale,cw_hex(0xd7d6caff),W*.58f,CW_ALIGN_RIGHT);
     if(G.mode==VOYAGE&&G.state==PLAYING&&G.objective_notice_ticks>0) {
       float fade=clampf(G.objective_notice_ticks/30.0f,0,1);
       float top=(!active_map&&eruption.warning?158:114)*scale;
       cw_r2d_rect(cw_rect_make(W*.27f,top,W*.46f,78*scale),cw_rgba(.015f,.04f,.06f,.9f*fade));
       const char *title=G.voyage_stage==0?"1 / 3   SUPPLY THE FLEET":G.voyage_stage==1?"2 / 3   BREAK THE BLOCKADE":"3 / 3   BRING IT HOME";
       line(title,W*.28f,top+8*scale,27*scale,cw_rgba(1,.86f,.57f,fade),W*.44f,CW_ALIGN_CENTER);
-      const char *hint=G.voyage_stage==0?"Collect floating cargo. E / A banks it at your harbor.":G.voyage_stage==1?"Turn your side toward the patrol. J / LT or L / RT fires.":"Gather the final cargo and bank it safely at your harbor.";
-      line(hint,W*.28f,top+46*scale,19*scale,cw_rgba(1,1,1,fade),W*.44f,CW_ALIGN_CENTER);
+      const char *hint=G.voyage_stage==0?"Collect floating cargo. {dock} banks it at your harbor.":G.voyage_stage==1?"Turn your side toward the patrol. {fire_left} or {fire_right} fires.":"Gather the final cargo and bank it safely at your harbor.";
+      pline(hint,-1,W*.28f,top+46*scale,24*scale,cw_rgba(1,1,1,fade),W*.44f,CW_ALIGN_CENTER);
     }
     float base_y = H - 94 * scale;
     for (int i = 0; i < CAPTAINS; i++) {
@@ -1338,28 +1346,28 @@ static void draw_hud(void) {
          * meter, rather than suggesting the other side can fire sooner. */
         float ready=s->respawn?0:clampf(1-s->cooldown/(float)(80-s->guns*11),0,1);
         cw_color ink=s->respawn?cw_hex(0x9aa6afff):s->cooldown?cw_hex(0xffdf9dff):cw_hex(0xa9f2c1ff);
-        cw_r2d_rect(cw_rect_make(x,base_y-30*scale,440*scale,28*scale),cw_rgba(.012f,.035f,.055f,.88f));
+        cw_r2d_rect(cw_rect_make(x,base_y-36*scale,440*scale,34*scale),cw_rgba(.012f,.035f,.055f,.88f));
         if(s->respawn)snprintf(buf,sizeof buf,"CANNONS UNAVAILABLE: REPAIRING");
-        else if(s->cooldown)snprintf(buf,sizeof buf,"RELOAD %.1fs   J/LT LEFT   L/RT RIGHT",s->cooldown/60.0f);
-        else snprintf(buf,sizeof buf,"CANNONS READY   J/LT LEFT   L/RT RIGHT");
-        line(buf,x+20*scale,base_y-28*scale,17*scale,ink,410*scale,CW_ALIGN_LEFT);
+        else if(s->cooldown)snprintf(buf,sizeof buf,"RELOAD %.1fs   {fire_left} LEFT   {fire_right} RIGHT",s->cooldown/60.0f);
+        else snprintf(buf,sizeof buf,"CANNONS READY   {fire_left} LEFT   {fire_right} RIGHT");
+        pline(buf,i,x+20*scale,base_y-35*scale,24*scale,ink,410*scale,CW_ALIGN_LEFT);
         cw_r2d_rect(cw_rect_make(x+20*scale,base_y-7*scale,400*scale,3*scale),cw_hex(0x42515bff));
         cw_r2d_rect(cw_rect_make(x+20*scale,base_y-7*scale,400*scale*ready,3*scale),ink);
       }
       if (G.state==PLAYING && s->human && !s->respawn &&
           (held_total(s)||s->stored[0]||s->stored[1]||s->stored[2]) &&
           harbor_distance2(i,s->x,s->z)<36) {
-        float top=base_y-142*scale;
+        float top=base_y-148*scale;
         cw_r2d_rect(cw_rect_make(x,top,440*scale,108*scale),cw_rgba(.015f,.035f,.05f,.91f));
-        line("HARBOR: A / E bank cargo",x+16*scale,top+5*scale,20*scale,col(PLAYER_COLOR[i]),410*scale,CW_ALIGN_LEFT);
+        pline("HARBOR: {dock} bank cargo",i,x+16*scale,top+5*scale,22*scale,col(PLAYER_COLOR[i]),410*scale,CW_ALIGN_LEFT);
         const int levels[]={s->hull,s->sails,s->guns};
         const int funds[]={s->stored[TIMBER],s->stored[COIN],s->stored[IRON]};
-        const char *names[]={"X / 1 Hull","Y / 2 Sails","B / 3 Cannons"};
+        const char *names[]={"{upgrade_hull} Hull","{upgrade_sails} Sails","{upgrade_guns} Cannons"};
         const char *costs[]={"2 wood","2 coin","2 iron"};
         for(int k=0;k<3;k++) {
           snprintf(buf,sizeof buf,"%s %d/2  %s",names[k],levels[k],levels[k]>=2?"MAX":costs[k]);
           cw_color ink=levels[k]>=2?cw_hex(0x87c5a0ff):funds[k]>=2?cw_hex(0xffdf9dff):cw_hex(0x9aa6afff);
-          line(buf,x+16*scale,top+(32+23*k)*scale,18*scale,ink,410*scale,CW_ALIGN_LEFT);
+          pline(buf,i,x+16*scale,top+(32+23*k)*scale,21*scale,ink,410*scale,CW_ALIGN_LEFT);
         }
       }
     }
@@ -1398,15 +1406,15 @@ static void draw_hud(void) {
         }
         if(G.mode==TEAMS)line("Each team's score combines both captains' banked cargo.",W*.2f,H*.56f,22*scale,CW_WHITE,W*.6f,CW_ALIGN_CENTER);
       }
-      line("PRESS START TO CHOOSE A NEW MATCH",W*.2f,H*.665f,25*scale,CW_WHITE,W*.6f,CW_ALIGN_CENTER);
+      pline("PRESS {start} TO CHOOSE A NEW MATCH",-1,W*.2f,H*.665f,25*scale,CW_WHITE,W*.6f,CW_ALIGN_CENTER);
     }
   }
   if(G.paused) {
     cw_r2d_rect(cw_rect_make(0,0,W,H),cw_rgba(.005f,.015f,.025f,.6f));
     cw_r2d_rect(cw_rect_make(W*.2f,H*.3f,W*.6f,H*.38f),cw_rgba(.015f,.04f,.06f,.95f));
     line("PAUSED",0,H*.34f,64*scale,cw_hex(0xffdb92ff),W,CW_ALIGN_CENTER);
-    line("ESC / START resumes",0,H*.45f,29*scale,CW_WHITE,W,CW_ALIGN_CENTER);
-    line("Q / SELECT returns to the chart room",0,H*.51f,25*scale,CW_WHITE,W,CW_ALIGN_CENTER);
+    pline("{game_pause} resumes",-1,0,H*.45f,29*scale,CW_WHITE,W,CW_ALIGN_CENTER);
+    pline("{leave_match} returns to the chart room",-1,0,H*.51f,25*scale,CW_WHITE,W,CW_ALIGN_CENTER);
     line("After sinking: 4 seconds of protection. Firing ends it early.",0,H*.59f,22*scale,cw_hex(0xa9f2e8ff),W,CW_ALIGN_CENTER);
   }
   cw_r2d_end();
@@ -1772,13 +1780,26 @@ static void cmd_map(int argc,const char **argv,cw_reply *r) {
   cw_reply_printf(r,"{\"map\":%d}",active_map);
 }
 
+/* debug channel: "bind <action> <bindings>" replaces an action's bindings (the text form, "key:x, pad:north"): for checking
+ * that a rebound action's prompt shows its new button */
+static void cmd_bind(int argc, const char **argv, cw_reply *r) {
+  if (argc < 3) { cw_reply_error(r, "bind <action> <bindings>"); return; }
+  cw_action a = cw_action_find(argv[1]);
+  if (a < 0) { cw_reply_error(r, "no such action"); return; }
+  char list[256] = "";
+  for (int i = 2; i < argc; i++) { if (i > 2) strncat(list, " ", sizeof list - strlen(list) - 1); strncat(list, argv[i], sizeof list - strlen(list) - 1); }
+  cw_action_clear_bindings(a);
+  if (!cw_action_bind_text(a, list)) { cw_reply_error(r, "bad bindings"); return; }
+  cw_reply_printf(r, "ok");
+}
+
 static void init(void *user) {
   (void)user;
   if (!cw_input_load_bindings_asset("input.cfg")) cw_warn("pirates: input.cfg had errors");
   G.turn_l = cw_action_find("turn_left"); G.turn_r = cw_action_find("turn_right");
   G.sail_u = cw_action_find("sail_up"); G.sail_d = cw_action_find("sail_down");
   G.aim_l = cw_action_find("aim_left"); G.aim_r = cw_action_find("aim_right");
-  G.fire = cw_action_find("fire"); G.dock = cw_action_find("dock");
+  G.fire_l = cw_action_find("fire_left"); G.fire_r = cw_action_find("fire_right"); G.dock = cw_action_find("dock");
   G.up_hull = cw_action_find("upgrade_hull"); G.up_sails = cw_action_find("upgrade_sails");
   G.up_guns = cw_action_find("upgrade_guns"); G.start = cw_action_find("start");
   G.map_next=cw_action_find("map_next");
@@ -1806,6 +1827,7 @@ static void init(void *user) {
   cw_debug_command("pirates_map","Select map 0 volcanic / 1 lagoon; resets match",cmd_map);
   cw_debug_i32("pirates.state", &G.state);
   cw_debug_i32("pirates.paused", &G.paused);
+  cw_debug_command("bind", "bind <action> <bindings>: replace an action's bindings", cmd_bind);
   cw_debug_field("pirates.protection", G.dbg_protection, CW_DBG_I32, CAPTAINS);
   cw_debug_field("pirates.cooldown", G.dbg_cooldown, CW_DBG_I32, CAPTAINS);
   cw_debug_i32("pirates.mode", &G.mode);

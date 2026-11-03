@@ -10,6 +10,8 @@ fire broadsides and buy visible upgrades.
 
 On the title screen, other players press START on their own controllers to
 join. Player one chooses the mode and map, then presses ENTER / START to sail.
+The screens show each control with the engine's button prompts, drawn for the
+device each captain holds.
 Keyboard controls belong to player one; each controller owns one captain.
 
 ![Title screen with mode, map and controller instructions](../../docs/screenshots/pirates-title.jpg)
@@ -17,17 +19,18 @@ Keyboard controls belong to player one; each controller owns one captain.
 | Action | Keyboard | Controller |
 | --- | --- | --- |
 | Turn / sail / reverse | WASD or arrows | Left stick or D-pad |
-| Left broadside | J | Left trigger |
-| Right broadside | L | Right trigger |
-| Bank cargo / repair at your harbor | E | South / A |
-| Buy hull upgrade | 1 | West / X |
-| Buy sail upgrade | 2 | North / Y |
-| Buy cannon upgrade | 3 | East / B |
+| Left broadside | J | Left trigger or left shoulder |
+| Right broadside | L or Space | Right trigger or right shoulder |
+| Aim a broadside while firing | | Right stick |
+| Bank cargo / repair at your harbor | E | South face button |
+| Buy hull upgrade | 1 | West face button |
+| Buy sail upgrade | 2 | North face button |
+| Buy cannon upgrade | 3 | East face button |
 | Choose mode on title | Q / R | Shoulder buttons |
-| Choose map on title | T | SELECT / Back |
+| Choose map on title | T | Back |
 | Begin / join | ENTER | START |
 | Pause / resume | ESC | START |
-| Return to title while paused | Q | SELECT / Back |
+| Return to title while paused | Q | Back |
 
 Sail over timber bundles, iron barrels and treasure chests to collect them.
 Your hold carries six items; a full hold slows the ship. Return within six
