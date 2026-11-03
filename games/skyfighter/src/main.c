@@ -10,6 +10,7 @@
 #include "cartwheel/debug.h"
 #include "cartwheel/input.h"
 #include "cartwheel/platform.h"
+#include "cartwheel/prompt.h"
 #include "cartwheel/render2d.h"
 #include "cartwheel/render3d.h"
 #include "cartwheel/resource.h"
@@ -1207,6 +1208,19 @@ static void enemy_fire(enemy *e,bool missile) {
 
 #include "campaign.h"
 
+/* debug channel: "bind <action> <bindings>" replaces an action's bindings (the text form, "key:x, pad:north"): for checking
+ * that a rebound action's prompt shows its new button */
+static void cmd_bind(int argc, const char **argv, cw_reply *r) {
+  if (argc < 3) { cw_reply_error(r, "bind <action> <bindings>"); return; }
+  cw_action a = cw_action_find(argv[1]);
+  if (a < 0) { cw_reply_error(r, "no such action"); return; }
+  char list[256] = "";
+  for (int i = 2; i < argc; i++) { if (i > 2) strncat(list, " ", sizeof list - strlen(list) - 1); strncat(list, argv[i], sizeof list - strlen(list) - 1); }
+  cw_action_clear_bindings(a);
+  if (!cw_action_bind_text(a, list)) { cw_reply_error(r, "bad bindings"); return; }
+  cw_reply_printf(r, "ok");
+}
+
 static void init(void *user) {
   (void)user;
   G.rng = 0x5eeda11u;
@@ -1217,7 +1231,7 @@ static void init(void *user) {
   G.down = cw_action_add("dive", 0.06f);
   G.gun = cw_action_add("guns", 0.35f);
   G.missile = cw_action_add("missile", 0.5f);
-  G.flares_action=cw_action_add("countermeasures",0.35f);cw_action_bind_text(G.flares_action,"key:f, pad:rstick, axis:lt+@0.35");
+  G.flares_action=cw_action_add("countermeasures",0.35f);cw_action_bind_text(G.flares_action,"key:f, axis:lt+@0.35, pad:rstick, pad:back"); /* Back too: a pad without analog triggers or stick presses still has it */
   G.brake=cw_action_add("airbrake",0.5f);
   cw_action_bind_text(G.brake,"key:lctrl, pad:lshoulder");
   G.roll_left=cw_action_add("roll_left",0.06f);G.roll_right=cw_action_add("roll_right",0.06f);
@@ -1247,6 +1261,7 @@ static void init(void *user) {
   G.ui_font = cw_font_load("fonts/Oswald-VF.ttf", NULL);
   cw_font_preload_range(G.title_font,32,126);cw_font_preload_range(G.ui_font,32,126);menu_load();
   cw_debug_i32("mission.state", &G.state);
+  cw_debug_command("bind", "bind <action> <bindings>: replace an action's bindings", cmd_bind);
   cw_debug_i32("mission.level",&G.level);cw_debug_i32("menu.row",&G.menu_row);cw_debug_f32_array("menu.pointer",&menu_ui.pointer.x,2);cw_debug_i32("mission.balloons",&G.balloon_kills);cw_debug_i32("mission.blimps",&G.blimp_kills);cw_debug_i32("mission.shields",&G.shields_left);
   cw_debug_f32("mission.elapsed",&G.mission_time);cw_debug_f32("mothership.explosion_age",&capital.age);cw_debug_i32("mothership.fragments",&capital.fragments);cw_debug_f32_array("mothership.fragment_position",&capital.chunks[0]->position.x,3);
   static char air_keys[AIR_TARGETS][7][40];
@@ -1690,6 +1705,14 @@ static void text(cw_font f, const char *s, float x, float y, float size, cw_colo
     .wrap_width = width, .align = align, .outline_width = size * 0.032f,
     .outline_color = cw_hex(0x07111be0) });
 }
+/* text with button prompts in it (cartwheel/prompt.h markup: "{guns} GUNS"), in the box text() would use: the glyphs
+ * are the ones for the device the pilot is holding */
+static void ptext(cw_font f, const char *s, float x, float y, float size, cw_color color, float width, cw_text_align align) {
+  float px = align == CW_ALIGN_CENTER ? x + width * 0.5f : align == CW_ALIGN_RIGHT ? x + width : x;
+  cw_prompt_text(f, s, 0, (cw_vec2){ px, y }, size, color, align);
+}
+/* the pilot is on a pad (the stick look and the shoulder rolls are pad controls; a keyboard rolls on Q and E) */
+static bool on_pad(void) { return cw_prompt_device_of(0) == CW_PROMPT_PAD; }
 static bool hud_project(float x,float y,float z,cw_vec2 *out) {
   t3_vec3 v=t3_vec3_apply_mat4((t3_vec3){x,y,z},&G.camera->matrix_world_inverse);
   if(v.z>-1)return false;
@@ -1761,7 +1784,7 @@ static void hud(void) {
     }
     if(G.notice_timer>0)text(G.ui_font,G.notice,28,H-79,12,white,650,CW_ALIGN_LEFT);
     if(G.incoming) {
-      text(G.title_font,G.threat_eta<=1.6f?"BREAK NOW / R3 OR LT: FLARES":"MISSILE INBOUND",W/2-220,110,20,red,440,CW_ALIGN_CENTER);
+      ptext(G.title_font,G.threat_eta<=1.6f?"BREAK NOW / {countermeasures} FLARES":"MISSILE INBOUND",W/2-220,110,20,red,440,CW_ALIGN_CENTER);
       char threat[80];snprintf(threat,sizeof threat,"%d INBOUND  /  %.0f M  /  %.1f SEC CLOSING",G.incoming,G.threat_range,fminf(G.threat_eta,99.9f));
       text(G.ui_font,threat,W/2-240,136,12,white,480,CW_ALIGN_CENTER);
       float x=W/2+sinf(G.threat_bearing)*210,y=H/2-cosf(G.threat_bearing)*135;
@@ -1814,10 +1837,14 @@ static void hud(void) {
       cw_r2d_circle((cw_vec2){rc.x+clampf((dx*cs+dz*sn)*.025f,-44,44),rc.y-clampf((dx*sn-dz*cs)*.025f,-44,44)},4,8,amber);
     }
   }
-  cw_r2d_rect((cw_rect){24,H-47,355,25},cw_hex(0x07161a88));
-  if(G.flares)snprintf(buf,sizeof buf,"AIRFRAME %03d   MSL %02d   FLARES READY [R3/LT]",G.health,G.missiles);
+  cw_r2d_rect((cw_rect){24,H-50,355,29},cw_hex(0x07161a88));
+  if(G.flares)snprintf(buf,sizeof buf,"AIRFRAME %03d   MSL %02d   FLARES READY",G.health,G.missiles);
   else snprintf(buf,sizeof buf,"AIRFRAME %03d   MSL %02d   FLARES %.0f SEC",G.health,G.missiles,ceilf(G.flare_cool));
-  text(G.ui_font,buf,31,H-44,12,white,342,CW_ALIGN_LEFT);
+  text(G.ui_font,buf,31,H-45,12,white,342,CW_ALIGN_LEFT);
+  if(G.flares) { /* the flares button after the words, at the prompts' 16 pixel minimum (the line's own size would draw it smaller) */
+    float tw=cw_font_measure(G.ui_font,buf,&(cw_text_style){ .size = 12 }).width;
+    cw_prompt_action(G.flares_action,0,(cw_vec2){ 31+tw+8,H-46 },16,white);
+  }
   text(G.ui_font,G.boost_exhausted?"BURNER: RELEASE / RECHARGE":"AFTERBURNER",W/2-(G.boost_exhausted?160:95),H-43,11,muted,G.boost_exhausted?170:110,CW_ALIGN_LEFT);
   cw_r2d_rect((cw_rect){W/2+12,H-36,88,3},cw_hex(0x263b3bbb));
   cw_r2d_rect((cw_rect){W/2+12,H-36,G.boost_fuel*0.88f,3},amber);
@@ -1834,7 +1861,8 @@ static void card(const char *head, const char *sub, const char *foot) {
   text(G.title_font, head, 54, 118, 38, cw_hex(0xffb45cff), 375, CW_ALIGN_LEFT);
   text(G.ui_font, sub, 55, 194, 21, cw_hex(0xe7eff2ff), 365, CW_ALIGN_LEFT);
   if (G.state == TITLE)
-    text(G.ui_font, "STICK / ARROWS  BANK + PITCH\nA / RT / SPACE  GUNS   X / M  MISSILE\nB / SHIFT  BURN   LB / CTRL  AIRBRAKE\nRB + STICK  ROLL / LOOP   R-STICK  LOOK\nY / I  TARGET   LT / F  FLARES", 55, 238, 17,
+    ptext(G.ui_font, on_pad() ? "{bank_left|bank_right|climb|dive}  BANK + PITCH\n{guns}  GUNS    {missile}  MISSILE\n{afterburner}  BURN    {airbrake}  AIRBRAKE\n{aerobatic_roll} + {bank_left|bank_right|climb|dive}  ROLL / LOOP    {look_left|look_right|look_up|look_down}  LOOK\n{settings}  TARGET    {countermeasures}  FLARES"
+                              : "{bank_left|bank_right|climb|dive}  BANK + PITCH\n{guns}  GUNS    {missile}  MISSILE\n{afterburner}  BURN    {airbrake}  AIRBRAKE\n{aerobatic_roll} + {bank_left|bank_right|climb|dive}  LOOP    {roll_left|roll_right}  ROLL\n{settings}  TARGET    {countermeasures}  FLARES", 55, 238, 17,
          cw_hex(0xffd8aaff), 365, CW_ALIGN_LEFT);
   text(G.ui_font, foot, 55, 361, 16, cw_hex(0x93e6edff), 365, CW_ALIGN_LEFT);
 }

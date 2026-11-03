@@ -30,22 +30,25 @@ Dense GPU-instanced settlements add farms, alpine villages, canyon compounds, ci
 | Bank and pitch | Left stick / D-pad | Arrows / WASD |
 | Stunts: rolls / loops | Hold right shoulder + stick | Hold R + arrows/WASD; Q / E rolls |
 | Look around | Right stick | — |
-| Guns | South (A) / Right trigger | Space / Return |
+| Guns | South face button / right trigger | Space / Return |
 | Select mission on title | D-pad / left stick | Arrow keys / click mission |
 | Mission selection | Choose Mission Select | Choose Mission Select |
-| Start sortie / retry | South (A) | Space / Return |
-| Cycle target | North (Y) | I |
-| Flares (7-second recharge) | Right stick press (R3) / Left trigger | F |
-| Guided missile (tap to queue / hold to repeat) | West (X) | M |
-| Afterburner | East (B) | Shift |
+| Start sortie / retry | South face button | Space / Return |
+| Cycle target | North face button | I |
+| Flares (7-second recharge) | Left trigger / right stick press / Back | F |
+| Guided missile (tap to queue / hold to repeat) | West face button | M |
+| Afterburner | East face button | Shift |
 | Airbrake | Left shoulder | Left Ctrl |
 | Pause | Start | P |
-| Settings from title or pause | North (Y) | I |
-| Back from settings | East (B) | Escape |
+| Settings from title or pause | North face button | I |
+| Back from settings | East face button | Escape |
 
-Standard flight keeps steering, pitch and visual bank independent: pulling up raises the flight path even while banked or inverted. Normal pitch stops at 85 degrees. Releasing pitch levels the nose after 0.25 seconds even while turning. Hold RB (keyboard R) for continuous loops and barrel rolls; releasing it returns to assisted flight. Expert mode keeps body-axis controls. Afterburner is optional for stunts. Fine aiming, tighter turns, 600 m/s afterburner and 135 m/s airbraking retain their existing response. The control kernel is in `src/flight-controls.h`; `node tools/test-flight-math.mjs` compiles that exact C code to WASM with the bundled SDK and tests recovery at all banks/headings and cruise/boost speeds without rendering.
+The game draws each control with the engine's button prompts, for the device the
+pilot is holding.
 
-Each sortie starts with eighteen missiles and rechargeable flares. Press R3, LT, or F to release a salvo; flares recharge after seven seconds and the HUD shows readiness. Guns have a lead cue; missile locks can be selected manually. Enemy missiles launch no more often than once every twelve seconds, with only one unresolved missile threat at a time and a minimum 900-metre launch distance. Their 28-degree-per-second turn limit allows committed turns to beat them. Direction, distance, estimated closing time, and a terminal break cue accompany accelerating alert tones; break turns, flares, and dense cloud can defeat their heat seekers. Flares draw missiles off course, while cloud removes guidance: maneuver after entering cover. Losing guidance does not immediately clear the warning: a missile is only announced defeated once it is safely passing away. Missile impacts sweep both the jet and the projectile through the tick. Enemies use attack passes, extensions and defensive breaks instead of continuously circling the player. Four fuel storage sites can cause nearby secondary destruction. Wingtip condensation appears under high load or in cloud, and close jet passes produce a brief flyby sound.
+Standard flight keeps steering, pitch and visual bank independent: pulling up raises the flight path even while banked or inverted. Normal pitch stops at 85 degrees. Releasing pitch levels the nose after 0.25 seconds even while turning. Hold the right shoulder (keyboard R) for continuous loops and barrel rolls; releasing it returns to assisted flight. Expert mode keeps body-axis controls. Afterburner is optional for stunts. Fine aiming, tighter turns, 600 m/s afterburner and 135 m/s airbraking retain their existing response. The control kernel is in `src/flight-controls.h`; `node tools/test-flight-math.mjs` compiles that exact C code to WASM with the bundled SDK and tests recovery at all banks/headings and cruise/boost speeds without rendering.
+
+Each sortie starts with eighteen missiles and rechargeable flares. Press the left trigger, the right stick, Back or F to release a salvo; flares recharge after seven seconds and the HUD shows readiness. Guns have a lead cue; missile locks can be selected manually. Enemy missiles launch no more often than once every twelve seconds, with only one unresolved missile threat at a time and a minimum 900-metre launch distance. Their 28-degree-per-second turn limit allows committed turns to beat them. Direction, distance, estimated closing time, and a terminal break cue accompany accelerating alert tones; break turns, flares, and dense cloud can defeat their heat seekers. Flares draw missiles off course, while cloud removes guidance: maneuver after entering cover. Losing guidance does not immediately clear the warning: a missile is only announced defeated once it is safely passing away. Missile impacts sweep both the jet and the projectile through the tick. Enemies use attack passes, extensions and defensive breaks instead of continuously circling the player. Four fuel storage sites can cause nearby secondary destruction. Wingtip condensation appears under high load or in cloud, and close jet passes produce a brief flyby sound.
 
 Eight scattered cumulus clouds use noisy, sunlit volumetric fog: you can fly through them, with visibility reducing inside. World-space wind and disabled fog-grid jitter keep their drift steady as you approach. A denser Medium fog grid and cubic spatial reconstruction soften voxel edges without jittering the cloud density.
 

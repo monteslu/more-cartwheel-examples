@@ -58,7 +58,7 @@ static void draw_mission_menu(void) {
     text(G.ui_font,names[i],r.x+9,r.y+71,16,cw_hex(selected?0xffd0a1ff:0xf0f0eaff),r.w-18,CW_ALIGN_LEFT);text(G.ui_font,settings[i],r.x+9,r.y+99,11,cw_hex(0xa0bdceff),r.w-18,CW_ALIGN_LEFT);
   }
   text(G.ui_font,brief[G.level],70,394,17,cw_hex(0xd4e4ecff),820,CW_ALIGN_CENTER);
-  text(G.ui_font,"ARROWS / STICK: CHOOSE     A / ENTER: PLAY     CLICK A MISSION TO PLAY",0,429,14,cw_hex(0xa9c4d6ff),W,CW_ALIGN_CENTER);
+  ptext(G.ui_font,"{bank_left|bank_right|climb|dive} CHOOSE     {guns} PLAY     OR CLICK A MISSION TO PLAY",0,426,18,cw_hex(0xa9c4d6ff),W,CW_ALIGN_CENTER);
   menu_button(title_button(0),"PLAY",true);menu_button(title_button(1),"CONTROLS",false);menu_button(title_button(2),"SETTINGS",false);
 }
 static void draw_action_menu(void) {
@@ -67,13 +67,17 @@ static void draw_action_menu(void) {
   cw_r2d_rect((cw_rect){0,0,W,H},cw_hex(0x061422b0));cw_r2d_rect((cw_rect){300,85,360,395},cw_hex(0x0c2135f2));
   text(G.title_font,paused?"PAUSED":win?"MISSION CLEAR":"JET DOWN",315,115,30,cw_hex(0xffbc7aff),330,CW_ALIGN_CENTER);text(G.ui_font,mission_name()+5,315,171,18,cw_hex(0xd4e3ebff),330,CW_ALIGN_CENTER);
   for(int i=0;i<3;i++)menu_button(action_button(i),labels[i],i==G.menu_row);
-  text(G.ui_font,paused?"A SELECT    B / START RESUME":"A SELECT    B MISSION SELECT",315,440,14,cw_hex(0xb5cbd8ff),330,CW_ALIGN_CENTER);
+  ptext(G.ui_font,paused?"{guns} SELECT    {back} OR {pause} RESUME":"{guns} SELECT    {back} MISSION SELECT",315,437,18,cw_hex(0xb5cbd8ff),330,CW_ALIGN_CENTER);
 }
 static void draw_controls_menu(void) {
   cw_r2d_rect((cw_rect){0,0,W,H},cw_hex(0x061422ef));text(G.title_font,"FLIGHT CONTROLS",0,42,34,cw_hex(0xffbb78ff),W,CW_ALIGN_CENTER);
   static const char *actions[]={"BANK / PITCH","GUNS","MISSILE","AFTERBURNER","AIRBRAKE","FLARES","ROLL / LOOP","LOOK AROUND","CYCLE TARGET","PAUSE"};
-  static const char *keys[]={"LEFT STICK / D-PAD       ARROWS / WASD","A / RT                            SPACE","X                                   M","B                                   SHIFT","LB                                  CTRL","R3 / LT                             F","RB + STICK             R + ARROWS / Q,E","RIGHT STICK","Y                                   I","START                             P / ESC"};
-  for(int i=0;i<10;i++){float y=104+i*30;cw_r2d_rect((cw_rect){160,y-3,640,29},cw_hex(i%2?0x152c3fdf:0x0b2135df));text(G.ui_font,actions[i],178,y,17,cw_hex(0xf0e8dbff),205,CW_ALIGN_LEFT);text(G.ui_font,keys[i],395,y,16,cw_hex(0xbad5e4ff),385,CW_ALIGN_LEFT);}
-  text(G.ui_font,"X / M: TAP TO QUEUE, HOLD TO FIRE ON LOCK. FLARES RECHARGE IN 7 SEC.",100,418,13,cw_hex(0xbad5e4ff),760,CW_ALIGN_CENTER);
+  /* each control as the engine draws it for the pilot's device: a pad's glyphs, or the keys (the stick look is a pad control,
+   * and a keyboard rolls on Q and E) */
+  const char *keys[]={"{bank_left|bank_right|climb|dive}","{guns}","{missile}","{afterburner}","{airbrake}","{countermeasures}",
+    on_pad()?"{aerobatic_roll} + {bank_left|bank_right|climb|dive}":"{aerobatic_roll} + {bank_left|bank_right|climb|dive}    {roll_left|roll_right}",
+    on_pad()?"{look_left|look_right|look_up|look_down}":"PAD ONLY","{settings}","{pause}"};
+  for(int i=0;i<10;i++){float y=104+i*30;cw_r2d_rect((cw_rect){160,y-3,640,29},cw_hex(i%2?0x152c3fdf:0x0b2135df));text(G.ui_font,actions[i],178,y,17,cw_hex(0xf0e8dbff),205,CW_ALIGN_LEFT);ptext(G.ui_font,keys[i],395,y-1,18,cw_hex(0xbad5e4ff),385,CW_ALIGN_LEFT);}
+  ptext(G.ui_font,"{missile}: TAP TO QUEUE, HOLD TO FIRE ON LOCK. FLARES RECHARGE IN 7 SEC.",100,416,16,cw_hex(0xbad5e4ff),760,CW_ALIGN_CENTER);
   menu_button((cw_rect){390,455,180,42},"BACK",true);
 }
