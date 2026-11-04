@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.21.1
+
+- Engine v0.30.1: the analog stick prompt is a picture of a thumbstick, with the other stick shown
+  smaller beside it, instead of a ring and dot that read as an eye. Single-letter keys are drawn
+  larger so they read in small hint text.
+
 ## 0.21.0
 
 - Every game shows its controls with the engine's button prompts (engine v0.30.0). On a pad a
