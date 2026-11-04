@@ -15,6 +15,7 @@
 #include "cartwheel/pipeline.h"
 #include "cartwheel/platform.h"
 #include "cartwheel/prompt.h"
+#include "cartwheel/quality.h"
 #include "cartwheel/physics_nodes.h"
 #include "cartwheel/render2d.h"
 #include "cartwheel/render3d.h"
@@ -100,6 +101,9 @@ static struct {
   float hit_previous_hp[SHIPS];
   float canvas_weights[SHIPS];
   float gpu_ms;
+  cw_node post;
+  int lever_msaa, lever_scenery_shadows;
+  t3_object *big_scenery[1 + CAPTAINS]; /* the coast and the four port buildings: the Island shadows setting */
   cw_action turn_l, turn_r, sail_u, sail_d, aim_l, aim_r, fire_l, fire_r, dock, up_hull, up_sails, up_guns, start, mode_l, mode_r, map_next, pause, leave;
 } G;
 
@@ -406,6 +410,7 @@ static void make_coast(void) {
   cw_node n = cw_node_new("Node3D", "Coast"); cw_node_add_child(G.environment,n);
   t3_object *model = cw_gltf_instantiate(cw_res_load(active_map?"res://models/lagoon.glb":"res://models/coast.glb", CW_RES_GLTF));
   if (model) { model_shadows(model); t3_object_add(cw_node3d_object(n),model); t3_release(model); }
+  G.big_scenery[0] = model;
   /* A continuous collision heightfield matches the authored terrain. Boxes
    * introduced two-metre stair steps into the water's shoreline depth map. */
   enum { NX=145, NZ=89 };
@@ -471,6 +476,7 @@ static void make_port(int i) {
   static const char *ports[]={"res://models/port-fort.glb","res://models/port-watchtower.glb","res://models/port-fishery.glb","res://models/port-shipyard.glb"};
   t3_object *model=cw_gltf_instantiate(cw_res_load(ports[i],CW_RES_GLTF));
   if(model){model_shadows(model);t3_object_add(cw_node3d_object(n),model);t3_release(model);}
+  G.big_scenery[1 + i] = model;
   part(n,"Flagpole","CYLINDER",1.8f,2,0,.09f,4,.09f,0x775434ff,true);
   G.harbor_flags[i]=make_standard(n,i,1.8f,3.95f,0);
 
@@ -545,7 +551,10 @@ static void make_good(int i) {
 
 }
 
-static void build_map(void) {
+static void apply_graphics(void);
+static void build_map_scene(void);
+static void build_map(void) { build_map_scene(); apply_graphics(); }
+static void build_map_scene(void) {
   if(cw_body3d_valid(seabed_body))cw_body3d_destroy(seabed_body);
   cw_heightfield3d_destroy(seabed_field);
   if(cw_node_valid(G.environment))cw_node_free(G.environment);
@@ -1441,6 +1450,7 @@ static void update(void *user, double dt) {
 static void render(void *user, double alpha) {
   (void)user; (void)alpha;
   G.gpu_ms = cw_pipeline_gpu_ms(cw_pipeline_of(cw_scene_app_tree()));
+  cw_quality_auto_measure(G.state == PLAYING && !G.paused);
   draw_hud();
 }
 
@@ -1793,6 +1803,37 @@ static void cmd_bind(int argc, const char **argv, cw_reply *r) {
   cw_reply_printf(r, "ok");
 }
 
+/* Graphics settings. Auto is the default: the engine steps from High down to
+ * Medium and Low while frames take too long, so a handheld drops detail and
+ * a desktop keeps the full picture. Below High the scene draws without 4x
+ * multisampling (the engine's FXAA or SMAA pass still smooths edges); on Low
+ * the island and the four port buildings (100,000 triangles) stop casting
+ * into the sun's shadow map, which is redrawn every frame because the ships
+ * move. Palms, rocks, flagpoles and ships keep their shadows. The level reached is saved. */
+typedef struct { uint32_t magic, gfx; } save_data;
+static save_data SAVE;
+enum { SAVE_MAGIC = 0x50495231u };
+static const char *const MSAA_VALUES[] = { "Off", "4x" };
+static const uint8_t MSAA_PRESET[CW_QUALITY_COUNT] = { 0, 0, 1, 1 };
+static const char *const SCENERY_SHADOW_VALUES[] = { "Off", "On" };
+static const uint8_t SCENERY_SHADOW_PRESET[CW_QUALITY_COUNT] = { 0, 1, 1, 1 };
+
+static void set_cast_shadow(t3_object *o, bool on) {
+  if (o->type == T3_MESH || o->type == T3_SKINNED_MESH) o->cast_shadow = on;
+  for (int i = 0; i < o->child_count; i++) set_cast_shadow(o->children[i], on);
+}
+static void apply_graphics(void) {
+  if (cw_node_valid(G.post)) cw_node_set(G.post, "msaa", cw_val_int(cw_gfx_get(G.lever_msaa) ? 4 : 0));
+  for (int i = 0; i < 1 + CAPTAINS; i++)
+    if (G.big_scenery[i]) set_cast_shadow(G.big_scenery[i], cw_gfx_get(G.lever_scenery_shadows) > 0);
+}
+static void quality_changed(cw_quality q, void *user) {
+  (void)q; (void)user;
+  apply_graphics();
+  uint32_t word = cw_quality_saved();
+  if (word != SAVE.gfx) { SAVE.magic = SAVE_MAGIC; SAVE.gfx = word; cw_save_commit(); }
+}
+
 static void init(void *user) {
   (void)user;
   if (!cw_input_load_bindings_asset("input.cfg")) cw_warn("pirates: input.cfg had errors");
@@ -1807,7 +1848,14 @@ static void init(void *user) {
   G.mode_l = cw_action_find("mode_left"); G.mode_r = cw_action_find("mode_right");
   G.font = cw_ui_font_sans();
   sound_init();
+  G.lever_msaa = cw_quality_lever_add("Edge smoothing", MSAA_VALUES, 2, MSAA_PRESET);
+  G.lever_scenery_shadows = cw_quality_lever_add("Island shadows", SCENERY_SHADOW_VALUES, 2, SCENERY_SHADOW_PRESET);
+  cw_quality_auto(true, 0);
+  if (SAVE.magic == SAVE_MAGIC && SAVE.gfx) cw_quality_restore(SAVE.gfx);
+  cw_quality_on_change(quality_changed, NULL);
   setup_world();
+  G.post = cw_node_get(G.world, "Post");
+  apply_graphics();
   G.state = TITLE; G.mode = VOYAGE; G.joined = 1; G.humans = 1;
   cw_debug_command("pirates_test_route","Test reachable cargo selection from the stalled cove approach; resets match",cmd_route_test);
   cw_debug_command("pirates_placement","Inspect rendered prop support, cargo water contact and hull clearance",cmd_placement);
@@ -1873,7 +1921,8 @@ static void init(void *user) {
 cw_app_desc cw_main(int argc, char **argv) {
   (void)argc; (void)argv;
   static cw_app_desc app = { .title = "Pirates", .width = 1920, .height = 1080, .debug = true,
-                             .init = init, .shutdown = sound_shutdown, .fixed_update = fixed_update, .update = update, .render = render };
+                             .init = init, .shutdown = sound_shutdown, .fixed_update = fixed_update, .update = update, .render = render,
+                             .save = &SAVE, .save_size = sizeof SAVE };
   if (getenv("PIRATES_SMALL")) app.width = 480, app.height = 270;
   return cw_scene_app("main.cwscene", &app);
 }
