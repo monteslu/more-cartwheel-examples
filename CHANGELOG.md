@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.21.2
+
+- Pirates: graphics quality is automatic. On a device that cannot hold the frame rate the game
+  steps down from High to Medium (no 4x multisampling, a half-size water grid, no water
+  refraction) and then Low (also no island or port shadows), and remembers the level it reached.
+  Medium takes about half of High's GPU time and Low about 40%; a desktop that holds the frame
+  rate keeps High.
+
 ## 0.21.1
 
 - Engine v0.30.1: the analog stick prompt is a picture of a thumbstick, with the other stick shown
