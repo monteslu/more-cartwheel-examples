@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.22.0
+
+- Engine v0.31.0: every game has a Very Low graphics preset below Low, for handhelds and older
+  laptops. It keeps the full resolution and gives up what costs most: shadow maps shrink to the sun
+  alone with small objects left out (characters and props keep their shadows), no multisampling,
+  bloom, ambient occlusion, volumetric fog, reflections or distortion, fewer particles and less
+  grass, and a cheaper water surface that keeps its shore foam and wakes. Low and Medium also drop
+  the 4x multisampling now. Auto (the default in Pirates and Arena FPS) walks down one setting at a
+  time and jumps straight to the level a slow device needs within a few seconds of play.
+- The resolution setting is its own choice: picking a preset no longer resets it.
+- Pirates: on Very Low the GPU time is about a quarter of High's (1.5 ms against 5.5 ms on a
+  Radeon 890M at 1080p) and the cart's CPU time per frame about 40% (1.2 ms against 3.1 ms):
+  palms, plants and rocks draw at a coarser level of detail (new Scenery detail setting), the
+  island and ports cast no shadow, and the sea uses the cheaper surface. The engine now handles the
+  multisampling Pirates used to switch itself.
+- Measured on Very Low against High (GPU time, 1080p, Radeon 890M, GL): Jetski 2.4 against 7.5 ms,
+  Arena FPS 4.8 against 9.7 ms, the co-op platformer 2.5 against 5.1 ms, Tux Racer 2.3 against
+  4.7 ms, Sky Fighter 3.3 against 6.6 ms.
+- tuxracer keeps the larger graphics settings word in its save; older saves still load.
+
 ## 0.21.2
 
 - Pirates: graphics quality is automatic. On a device that cannot hold the frame rate the game
