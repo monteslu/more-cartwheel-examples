@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.23.0
+
+- Every game carries its own launcher art (engine v0.32.0, wasmcart 0.38.0): an icon, a cover
+  with the game's name, a background, a logo, the title screen and three to five labelled
+  screenshots of real play, with a one or two sentence description and the author, packed under
+  `art/` in each `.wasc`. A launcher that knows the manifest's `art` shows them without running
+  the cart; a host that does not runs the cart as before. The pictures live in
+  `games/<game>/art`, named in its `art.json`, and `tests/cart-art.mjs` checks every release cart
+  carries them.
+- Tux Racer: a race started on a course directly draws Tux's shadow again (a program state was
+  missing from its table).
+
 ## 0.22.0
 
 - Engine v0.31.0: every game has a Very Low graphics preset below Low, for handhelds and older
