@@ -3,7 +3,7 @@
 import { sweep } from './lib/quality-sweep.mjs';
 const COURSES = ['frozen_river', 'path_of_daggers', 'bunny_hill', 'twisty_slope', 'bumpy_ride', 'contrib/downhill_fear', 'contrib/ice_canyon', 'contrib/ingos_speedway', 'contrib/jools_big_mountain', 'contrib/nebula', 'contrib/penguins_cant_fly', 'contrib/sentinel_towers', 'contrib/twin_paths'];
 const CONDS = ['sunny', 'cloudy', 'night'];
-const race = (c, cond) => ({ name: `${c} ${cond}`, app: 'tuxracer', frames: 900, presets: ['low', 'ultra'], cmds: [`@60 race ${c} ${cond}`], reach: { 'race.time': (v) => v > 1 }, show: ['game.state', 'race.time', 'ticks'] });
+const race = (c, cond) => ({ name: `${c} ${cond}`, app: 'tuxracer', frames: 900, presets: ['verylow', 'low', 'ultra'], cmds: [`@60 race ${c} ${cond}`], reach: { 'race.time': (v) => v > 1 }, show: ['game.state', 'race.time', 'ticks'] });
 sweep({
   game: 'tuxracer', tables: ['tuxracer'],
   scenes: [...COURSES.map((c, i) => race(c, CONDS[i % 3])), ...['bunny_hill', 'path_of_daggers'].flatMap((c) => CONDS.filter((d) => COURSES.indexOf(c) % 3 !== CONDS.indexOf(d)).map((d) => race(c, d))), { name: 'title', app: 'tuxracer', frames: 300, reach: { ticks: (v) => v >= 0 }, show: ['game.state', 'ticks'] }],

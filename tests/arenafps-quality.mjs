@@ -3,7 +3,7 @@
 import { sweep, mash } from './lib/quality-sweep.mjs';
 const play = { 'game.state': 1, 'game.ticks': (v) => v > 100 };
 const match = (arena, mode, bots, players) => ({
-  name: `arena ${arena} mode ${mode} ${players}p`, app: 'arenafps_auto', frames: 1300, presets: ['low', 'ultra'], cmds: [`@60 match ${arena} ${mode} ${bots} ${players}`],
+  name: `arena ${arena} mode ${mode} ${players}p`, app: 'arenafps_auto', frames: 1300, presets: ['verylow', 'low', 'ultra'], cmds: [`@60 match ${arena} ${mode} ${bots} ${players}`],
   reach: { ...play, 'game.arena': arena, 'game.mode': mode, 'game.players': players }, show: ['game.ticks', 'match.nf'],
 });
 sweep({

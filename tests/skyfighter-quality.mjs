@@ -7,7 +7,7 @@ const mission = (i) => {
   for (const f of [240, 300, 360, 420]) input.push({ frame: f, mouse: { ...p, buttons: ['left'] } }, { frame: f + 3, mouse: { ...p, buttons: [] } });
   // guns held, a missile and flares now and then
   for (let f = 520; f < 1500; f += 60) input.push({ frame: f, buttons: ['west'], axes: { rt: 1, lt: f % 240 === 40 ? 1 : 0 } }, { frame: f + 3, buttons: [], axes: { rt: 1 } });
-  return { name: `mission ${i}`, app: 'skyfighter', frames: 1500, presets: ['low', 'ultra'], input, reach: { 'mission.level': i, 'mission.ticks': (v) => v > 60 }, show: ['mission.state', 'mission.level', 'mission.ticks', 'mission.kills'] };
+  return { name: `mission ${i}`, app: 'skyfighter', frames: 1500, presets: ['verylow', 'low', 'ultra'], input, reach: { 'mission.level': i, 'mission.ticks': (v) => v > 60 }, show: ['mission.state', 'mission.level', 'mission.ticks', 'mission.kills'] };
 };
 sweep({
   game: 'skyfighter', tables: ['skyfighter', 'cw_samples', 'terrain_demo'],

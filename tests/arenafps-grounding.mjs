@@ -13,7 +13,7 @@ mkdirSync(out, { recursive: true });
 function run(arena, extra) {
   const dump = join(out, `a${arena}.json`);
   const env = { ...process.env, SDL_VIDEODRIVER: 'offscreen', LIBGL_ALWAYS_SOFTWARE: '1', GALLIUM_DRIVER: 'llvmpipe', CW_GPU: 'gl', SDL_AUDIODRIVER: 'dummy', LP_NUM_THREADS: '2', CW_WORKERS: '2',
-    CW_FRAMES: '6', CW_WARMUP_SPREAD: '0', CW_QUALITY: 'low', ARENA_RES: '320x180', ARENA_ID: String(arena), ARENA_PLAYERS: '1', CW_DEBUG_DUMP: dump, ...extra };
+    CW_FRAMES: '6', CW_WARMUP_SPREAD: '0', CW_QUALITY: 'verylow', ARENA_RES: '320x180', ARENA_ID: String(arena), ARENA_PLAYERS: '1', CW_DEBUG_DUMP: dump, ...extra };
   for (const k of ['DISPLAY', 'WAYLAND_DISPLAY', 'XAUTHORITY']) delete env[k];
   const p = spawnSync('nice', ['-n', '10', exe], { env, encoding: 'utf8', timeout: 300e3 });
   if (p.status !== 0) { console.error(`arena ${arena}: exit ${p.status}\n${(p.stderr || '').slice(-800)}`); process.exit(2); }

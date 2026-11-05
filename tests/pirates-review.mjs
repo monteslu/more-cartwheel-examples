@@ -68,6 +68,8 @@ for(const gpu of ['gl','webgpu']) {
    for(const [k,v] of Object.entries(review.expectPlacement))assert.equal(placement[k],v,JSON.stringify(placement));
    for(const q of review.presets) {
     await command(h,'quality '+q);await h.stepFrames(16);await clean(h);await shot(h,`${gpu}-map${map}-${q}`);
+    // Very Low draws the scenery at a coarser level of detail: what stands on it must still be supported, nothing floats
+    if(q==='verylow'){const p=await command(h,'pirates_placement');assert.equal(p.unsupported,0,'very low: '+JSON.stringify(p));assert.equal(p.floating,0,'very low: '+JSON.stringify(p));}
    }
    // Idle captains may learn controls at their home anchorage without patrol camping.
    await command(h,'quality high');await h.stepFrames(review.idleFrames);

@@ -28,7 +28,9 @@ const EXE = resolve(opt('--exe', join(ROOT, 'build/native/games/skyfighter/skyfi
 const GPUS = argv.includes('--gpu') ? [opt('--gpu')] : ['gl', 'webgpu'];
 const SESSION = `skyfighter-settings-${process.pid}`;
 const SETTINGS = 5; // mission.state
-const LOW = 0, MEDIUM = 1, HIGH = 2, ULTRA = 3, NAMES = ['Low', 'Medium', 'High', 'Ultra'];
+const VERY_LOW = 0, LOW = 1, MEDIUM = 2, HIGH = 3, ULTRA = 4, NAMES = ['Very Low', 'Low', 'Medium', 'High', 'Ultra'];
+// the saved word of a preset at Resolution 100% (cartwheel/quality.h, word v2: code 7, the preset in bits 3-5, Resolution in 6-8)
+const presetWord = (level) => 7 | level << 3 | 5 << 6;
 const MODE_PRESET = 0, MODE_CUSTOM = 1, MODE_AUTO = 2; // cw.quality_mode
 const GRAPHICS_OFFSET = 8; // preferences.graphics: magic, the flag byte, three bytes of settings, then this word
 const ROW = { pointerY: 169 + 42 + 19, right: 650, left: 400 }; // the graphics row: the right of x 590 steps up, the left of it down
@@ -95,7 +97,7 @@ async function openRow() {
 }
 /**
  * press, read, and hold each step to the next preset with its word in the save. Returns what it saw; ok only for a walk that
- * went preset by preset the given way, round all four, back to the start.
+ * went preset by preset the given way, round all five, back to the start.
  */
 async function walk(press, dir) {
   const start = await reading();
@@ -107,7 +109,7 @@ async function walk(press, dir) {
     const want = (seen[i] + NAMES.length + dir) % NAMES.length;
     if (r.level !== want) problems.push(`${NAMES[seen[i]]} went to ${NAMES[r.level]}, not ${NAMES[want]}`);
     if (r.name !== NAMES[r.level]) problems.push(`the row would print ${r.name} on ${NAMES[r.level]}`);
-    if (r.word !== r.level + 1) problems.push(`the save holds ${r.word} on ${NAMES[r.level]}`);
+    if (r.word !== presetWord(r.level)) problems.push(`the save holds ${r.word} on ${NAMES[r.level]}`);
     if (r.mode !== MODE_PRESET) problems.push(`mode ${r.mode} on ${NAMES[r.level]}`);
     if (r.state['cw.gpu.errors'] || r.state['render.skipped']) problems.push(`${NAMES[r.level]}: ${r.state['cw.gpu.errors'] || 0} GPU errors, ${r.state['render.skipped'] || 0} draws skipped`);
   }
@@ -146,7 +148,7 @@ async function suite(gpu) {
     const before = await reading();
     await restart(gpu);
     const after = await reading();
-    check(`${NAMES[q]} survives a restart`, before.level === q && after.level === q && after.mode === MODE_PRESET && after.word === q + 1 && after.name === NAMES[q], `${NAMES[before.level]} before, ${NAMES[after.level]} after, word ${after.word}`);
+    check(`${NAMES[q]} survives a restart`, before.level === q && after.level === q && after.mode === MODE_PRESET && after.word === presetWord(q) && after.name === NAMES[q], `${NAMES[before.level]} before, ${NAMES[after.level]} after, word ${after.word}`);
     if (q === ULTRA) {
       // the wrap, from the restored preset rather than one set this run
       await openRow();
@@ -156,7 +158,7 @@ async function suite(gpu) {
       const up = await reading();
       await tap('right');
       const wrap = await reading();
-      check('from a restored Ultra: left is High, right is Ultra, right again is Low', down.level === HIGH && up.level === ULTRA && wrap.level === LOW, `${NAMES[down.level]}, ${NAMES[up.level]}, ${NAMES[wrap.level]}`);
+      check('from a restored Ultra: left is High, right is Ultra, right again is Very Low', down.level === HIGH && up.level === ULTRA && wrap.level === VERY_LOW, `${NAMES[down.level]}, ${NAMES[up.level]}, ${NAMES[wrap.level]}`);
       await tap('left'); // back on Ultra, the choice the next restart starts from
       await restart(gpu);
     }
@@ -187,7 +189,7 @@ async function suite(gpu) {
   const fromAuto = auto.level;
   await tap('right');
   const leftAuto = await reading();
-  check('from Auto, right leaves Auto for the next preset and saves that', leftAuto.mode === MODE_PRESET && leftAuto.level === (fromAuto + 1) % NAMES.length && leftAuto.word === leftAuto.level + 1, `${NAMES[fromAuto]} to ${NAMES[leftAuto.level]}, mode ${leftAuto.mode}, word ${leftAuto.word}`);
+  check('from Auto, right leaves Auto for the next preset and saves that', leftAuto.mode === MODE_PRESET && leftAuto.level === (fromAuto + 1) % NAMES.length && leftAuto.word === presetWord(leftAuto.level), `${NAMES[fromAuto]} to ${NAMES[leftAuto.level]}, mode ${leftAuto.mode}, word ${leftAuto.word}`);
   // resolution 100%, ambient occlusion off, shadows High, FXAA, effects Ultra: matches no preset
   const custom = await withWord(6 | 5 << 3 | 0 << 6 | 2 << 7 | 1 << 9 | 3 << 11);
   check('a saved Custom word restores as Custom', custom.mode === MODE_CUSTOM, `mode ${custom.mode}, level ${custom.level}`);
@@ -195,7 +197,7 @@ async function suite(gpu) {
   const fromCustom = custom.level;
   await tap('left');
   const leftCustom = await reading();
-  check('from Custom, left leaves it for a preset and saves that', leftCustom.mode === MODE_PRESET && leftCustom.level === (fromCustom + NAMES.length - 1) % NAMES.length && leftCustom.word === leftCustom.level + 1, `${NAMES[fromCustom]} to ${NAMES[leftCustom.level]}, mode ${leftCustom.mode}, word ${leftCustom.word}`);
+  check('from Custom, left leaves it for a preset and saves that', leftCustom.mode === MODE_PRESET && leftCustom.level === (fromCustom + NAMES.length - 1) % NAMES.length && leftCustom.word === presetWord(leftCustom.level), `${NAMES[fromCustom]} to ${NAMES[leftCustom.level]}, mode ${leftCustom.mode}, word ${leftCustom.word}`);
 
   await writeSave(fresh);
   await call('host', { op: 'shutdown' });

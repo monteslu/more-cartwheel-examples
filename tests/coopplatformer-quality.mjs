@@ -24,7 +24,7 @@ sweep({
     { name: 'map', app: 'coopplatformer', frames: 700, env: { COOP_FRESH: '1' }, input: [...mash(240, 420, 30, ['start']), { frame: 480, buttons: ['back'] }, { frame: 486, buttons: [] }], reach: { 'g.state': 3, 'g.map_seen': 1 }, show: ['g.state', 'g.map_seen'] },
     boss('landlord', 4, 0, 5, 640), boss('tax golem', 9, 1, 6, 720), boss('lifeguard', 14, 2, 7, 740), boss('regional manager', 19, 3, 8, 850), boss('founder', 24, 4, 9, 910),
     // a level with no boss in it: the proof above must not pass here
-    { ...boss('none', 3, 0, 5, 60), mustNotReach: true, presets: ['low'] },
+    { ...boss('none', 3, 0, 5, 60), mustNotReach: true, presets: ['verylow', 'low'] },
     { name: 'title to play by input', app: 'coopplatformer', frames: 900, env: { COOP_FRESH: '1' }, input: mash(240, 700, 30, ['start']), reach: { 'g.state': 3 }, show: ['g.state'] },
   ],
   control: [

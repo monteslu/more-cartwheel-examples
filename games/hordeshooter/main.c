@@ -214,7 +214,7 @@ static void init(void *u) {
                                   .sound = shell_sound, .screen_changed = shell_screen });
   font = cw_ui_font_sans();
   cw_quality_full_resolution(true); /* no preset and no Auto step draws the yard below the output size: no upscaling */
-  if (getenv("HORDE_QUALITY")) cw_quality_set((cw_quality)CW_CLAMP(atoi(getenv("HORDE_QUALITY")), 0, 3), true);
+  if (getenv("HORDE_QUALITY")) cw_quality_set((cw_quality)CW_CLAMP(atoi(getenv("HORDE_QUALITY")), 0, CW_QUALITY_COUNT - 1), true); /* 0 Very Low .. 4 Ultra */
   snd_boom = synth(1.1f, 70, 28, 0.75f, 1.0f, 3.5f);
   snd_shot = synth(0.14f, 260, 55, 0.62f, 0.5f, 9); /* a low thump with a crack of noise */
   snd_kill = synth(0.12f, 200, 90, 0.7f, 0.4f, 5);
@@ -554,7 +554,7 @@ static void hud(void) {
 static void render(void *u, double alpha) {
   (void)u, (void)alpha;
   cw_shell_screen sc = cw_shell_screen_now();
-  g_fx_level = cw_gfx_get(CW_GFX_EFFECTS);
+  g_fx_level = CW_MAX(0, cw_gfx_effective(CW_GFX_EFFECTS) - 1); /* Low .. Ultra as 0..3; Very Low as Low */
   if (G.built) {
     static float t;
     t += 1.0f / 60.0f;

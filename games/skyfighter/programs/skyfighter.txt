@@ -62,3 +62,4 @@ standard+map+trans+shadow+senv+l1001+xmeshdecal
 standard+map+trans+senv+l1001+xmeshdecal
 standard+senv+ds+l0001+xwater
 standard+shadow+senv+ds+l1001+xwater
+standard+senv+ds+l0001+xwaterlow

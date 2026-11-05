@@ -45,7 +45,8 @@ typedef struct save_data {
   int32_t cup_lives;
   uint8_t cup_won : 1;       /* was a whole byte holding 0 or 1: Rumble OFF takes the next bit, so an older save keeps */
   uint8_t rumble_off : 1;    /* its size and reads Rumble on */
-  uint8_t gfx[3];            /* the graphics settings (cw_quality_saved, 24 bits little-endian); 0 = never chosen */
+  uint8_t gfx_hi : 6;        /* the graphics word's bits 24-29 (zero in an older save, whose word fit in gfx) */
+  uint8_t gfx[3];            /* the graphics settings (cw_quality_saved, bits 0-23 little-endian); 0 = never chosen */
 } save_data;
 static save_data SAVE;
 _Static_assert(sizeof(save_data) == 12 + 16 * MAX_COURSES + 12, "the save keeps its size");
@@ -127,10 +128,10 @@ static void save_write(void) {
   SAVE.checksum = save_checksum();
   cw_save_commit();
 }
-static uint32_t gfx_saved(void) { return SAVE.gfx[0] | (uint32_t)SAVE.gfx[1] << 8 | (uint32_t)SAVE.gfx[2] << 16; }
+static uint32_t gfx_saved(void) { return SAVE.gfx[0] | (uint32_t)SAVE.gfx[1] << 8 | (uint32_t)SAVE.gfx[2] << 16 | (uint32_t)SAVE.gfx_hi << 24; }
 static void gfx_store(void) {
   uint32_t q = cw_quality_saved();
-  SAVE.gfx[0] = q & 255, SAVE.gfx[1] = (q >> 8) & 255, SAVE.gfx[2] = (q >> 16) & 255;
+  SAVE.gfx[0] = q & 255, SAVE.gfx[1] = (q >> 8) & 255, SAVE.gfx[2] = (q >> 16) & 255, SAVE.gfx_hi = (q >> 24) & 63; /* 30 bits */
 }
 static void save_read(void) {
   if (SAVE.magic != 0x56535254u || SAVE.version != 1 || SAVE.size != sizeof SAVE || SAVE.checksum != save_checksum()) memset(&SAVE, 0, sizeof SAVE);
@@ -773,7 +774,8 @@ static void quality_changed(cw_quality q, void *u) {
   course_set_tree_coverage(smooth);
   /* the terrain's tier (its near shader and how far the tiles reach) is the
    * frame's biggest cost after the resolution: its own lever */
-  course_set_terrain_quality(G.lever_terrain >= 0 ? cw_gfx_get(G.lever_terrain) : -1);
+  /* the lever's values are Low .. Ultra: the terrain's quality one above Very Low (cartwheel/terrain.h) */
+  course_set_terrain_quality(G.lever_terrain >= 0 ? CW_QUALITY_LOW + cw_gfx_get(G.lever_terrain) : -1);
   /* Tux in the sun's cascades is ~25 meshes x 3 cascades of draws a frame: a
    * cart host pays dearly per draw, and the contact decal already grounds him */
   tux_set_cast_shadow(&G.tux, G.lever_tux_shadow < 0 || cw_gfx_get(G.lever_tux_shadow) > 0);
@@ -854,7 +856,7 @@ static void init(void *user) {
   save_read();
   /* graphics: the engine's presets plus one lever of ours; Medium unless the player chose */
   static const char *const EDGES[] = { "Sharp", "Smooth" };
-  static const uint8_t EDGES_PRESET[CW_QUALITY_COUNT] = { 0, 0, 1, 1 };
+  const cw_quality_lever_presets EDGES_PRESET = { .very_low = 0, .low = 0, .medium = 1, .high = 1, .ultra = 1 };
   /* GL only: the engine's WebGPU path has no MSAA on an HDR scene, and alpha
    * to coverage is three.c's GL feature; the lever would be a no-op there */
   G.lever_edges = cw_gpu_backend() == CW_GPU_WEBGPU ? -1 : cw_quality_lever_add("Tree edges", EDGES, 2, EDGES_PRESET);
@@ -864,13 +866,14 @@ static void init(void *user) {
    * diff of the same frame: 0.02 mean on bunny_hill; the rock on
    * path_of_daggers smears where Medium's triplanar keeps it crisp), so the
    * High preset takes Medium's and Ultra takes High's */
-  static const uint8_t TERRAIN_PRESET[CW_QUALITY_COUNT] = { 0, 1, 1, 2 };
+  const cw_quality_lever_presets TERRAIN_PRESET = { .very_low = 0, .low = 0, .medium = 1, .high = 1, .ultra = 2 };
   G.lever_terrain = cw_quality_lever_add("Terrain", TERRAIN, 4, TERRAIN_PRESET);
   static const char *const TUXSH[] = { "Contact", "Cast" };
-  static const uint8_t TUXSH_PRESET[CW_QUALITY_COUNT] = { 0, 0, 1, 1 };
+  const cw_quality_lever_presets TUXSH_PRESET = { .very_low = 0, .low = 0, .medium = 1, .high = 1, .ultra = 1 };
   G.lever_tux_shadow = cw_quality_lever_add("Tux shadow", TUXSH, 2, TUXSH_PRESET);
   static const char *const SNOWD[] = { "Plain", "Glints", "Full" };
-  static const uint8_t SNOWD_PRESET[CW_QUALITY_COUNT] = { 0, 1, 2, 2 }; /* Low: nothing; Medium: glints + cloud shadows; High: + ripples and the trail */
+  /* Very Low and Low: nothing; Medium: glints + cloud shadows; High: + ripples and the trail */
+  const cw_quality_lever_presets SNOWD_PRESET = { .very_low = 0, .low = 0, .medium = 1, .high = 2, .ultra = 2 };
   G.lever_snow = cw_quality_lever_add("Snow detail", SNOWD, 3, SNOWD_PRESET);
   cw_quality_on_change(quality_changed, NULL);
   if (gfx_saved()) cw_quality_restore(gfx_saved());

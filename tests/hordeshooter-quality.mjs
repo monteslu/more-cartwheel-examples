@@ -3,11 +3,11 @@
 import { sweep, mash } from './lib/quality-sweep.mjs';
 const BOSS = [5, 10, 15, 20, 26, 32, 38, 44], FIRST = [1, 6, 11, 16, 21, 27, 33, 39];
 const floor = (n) => ({
-  name: `floor ${n + 1} boss wave`, app: 'hordeshooter_auto', frames: 900, presets: ['low', 'ultra'], env: { HORDE_WAVE: String(BOSS[n]), HORDE_PLAYERS: '3', HORDE_BOSS_WEAK: '1', HORDE_FLOOR_STAY: '1' },
+  name: `floor ${n + 1} boss wave`, app: 'hordeshooter_auto', frames: 900, presets: ['verylow', 'low', 'ultra'], env: { HORDE_WAVE: String(BOSS[n]), HORDE_PLAYERS: '3', HORDE_BOSS_WEAK: '1', HORDE_FLOOR_STAY: '1' },
   reach: { 'floor.level': (v) => v >= n, 'game.ticks': (v) => v > 100 }, show: ['game.ticks', 'floor.level', 'game.wave', 'game.enemies', 'game.boss', 'game.state'],
 });
 const crowd = (n) => ({
-  name: `floor ${n + 1} crowd`, app: 'hordeshooter_auto', frames: 1100, presets: ['low'], env: { HORDE_WAVE: String(FIRST[n] + 2), HORDE_PLAYERS: '4', HORDE_FLOOR_STAY: '1' },
+  name: `floor ${n + 1} crowd`, app: 'hordeshooter_auto', frames: 1100, presets: ['verylow', 'low'], env: { HORDE_WAVE: String(FIRST[n] + 2), HORDE_PLAYERS: '4', HORDE_FLOOR_STAY: '1' },
   reach: { 'floor.level': n, 'game.enemies': (v) => v > 0, 'game.ticks': (v) => v > 100 }, show: ['game.ticks', 'floor.level', 'game.wave', 'game.enemies', 'game.state'],
 });
 sweep({

@@ -1,0 +1,12 @@
+[
+  { "name": "pirates", "app": "pirates_auto", "frames": 900 },
+  { "name": "jetski", "app": "jetski_auto", "frames": 600 },
+  { "name": "arenafps", "app": "arenafps_auto", "frames": 900, "env": { "ARENA_PLAYERS": "1" } },
+  { "name": "tuxracer", "app": "tuxracer", "frames": 700, "startCmds": ["@60 race bunny_hill sunny"] },
+  { "name": "skyfighter", "app": "skyfighter", "frames": 360, "input": "tests/skyfighter-sortie.json" },
+  { "name": "brawler", "app": "brawler_auto", "frames": 900 },
+  { "name": "hordeshooter", "app": "hordeshooter_auto", "frames": 900 },
+  { "name": "coopplatformer", "app": "coopplatformer_auto", "frames": 400 },
+  { "name": "fighter", "app": "fighter_auto", "frames": 900 },
+  { "name": "partypack", "app": "partypack_auto", "frames": 1200 }
+]

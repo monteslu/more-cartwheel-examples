@@ -106,7 +106,9 @@ static void apply_scope(void) {
   bool want = !G.scene3d;
   if (want == scoped) return;
   if (want) {
-    static const int8_t caps[CW_GFX_ENGINE_COUNT] = { 0, 0, 0, 0, 0 }; /* resolution, ssao, shadows, aa, effects: lowest */
+    static const int8_t caps[CW_GFX_ENGINE_COUNT] = { [CW_GFX_RESOLUTION] = CW_GFX_RES_50, [CW_GFX_SSAO] = CW_GFX_SSAO_OFF,
+                                                      [CW_GFX_SHADOWS] = CW_GFX_SHADOWS_MINIMAL, [CW_GFX_AA] = CW_GFX_AA_OFF,
+                                                      [CW_GFX_EFFECTS] = CW_QUALITY_VERY_LOW }; /* every setting at its lowest */
     scoped = cw_quality_scope_push("hub", caps);
   } else {
     cw_quality_scope_pop();

@@ -102,7 +102,10 @@ static struct {
   float canvas_weights[SHIPS];
   float gpu_ms;
   cw_node post;
-  int lever_msaa, lever_scenery_shadows;
+  int lever_scenery_shadows, lever_scenery_detail;
+  /* the palms, undergrowth and shore rocks: the Scenery detail setting draws them at a coarser LOD (cwpack's 1/2 and 1/4) */
+  t3_object *scenery_lod[512];
+  int n_scenery_lod;
   t3_object *big_scenery[1 + CAPTAINS]; /* the coast and the four port buildings: the Island shadows setting */
   cw_action turn_l, turn_r, sail_u, sail_d, aim_l, aim_r, fire_l, fire_r, dock, up_hull, up_sails, up_guns, start, mode_l, mode_r, map_next, pause, leave;
 } G;
@@ -140,6 +143,8 @@ static cw_node part(cw_node parent, const char *name, const char *shape, float x
 }
 
 static float coast_distance(float x, float z);
+/* a scenery model the Scenery detail setting picks the LOD of, at the LOD it picks now */
+static void scenery_lod_add(t3_object *o);
 static void model_shadows(t3_object *o) {
   if (o->type == T3_MESH || o->type == T3_SKINNED_MESH) o->cast_shadow = o->receive_shadow = true;
   for (int i=0;i<o->child_count;i++) model_shadows(o->children[i]);
@@ -273,7 +278,7 @@ static void palm(cw_node parent, float x, float z, float height) {
   float scale=height/9.0f;cw_node3d_set_scale(n,(t3_vec3){scale,scale,scale});
   cw_node3d_set_rotation(n,(t3_vec3){0,x*.8f+z,0});
   t3_object *model=cw_gltf_instantiate(cw_res_load("res://models/coconut-palm.glb",CW_RES_GLTF));
-  if (model) {model_shadows(model);t3_object_add(cw_node3d_object(n),model);t3_release(model);ground_prop(n);}
+  if (model) {model_shadows(model);t3_object_add(cw_node3d_object(n),model);t3_release(model);ground_prop(n);scenery_lod_add(model);}
 }
 
 static float coast_distance(float x, float z) {
@@ -407,6 +412,7 @@ static void rock_tilt(cw_node n,float x,float z,float yaw) {
   cw_node3d_set_quaternion(n,t3_quat_multiply(lean,spin));
 }
 static void make_coast(void) {
+  G.n_scenery_lod = 0; /* the environment is built again: its models are new */
   cw_node n = cw_node_new("Node3D", "Coast"); cw_node_add_child(G.environment,n);
   t3_object *model = cw_gltf_instantiate(cw_res_load(active_map?"res://models/lagoon.glb":"res://models/coast.glb", CW_RES_GLTF));
   if (model) { model_shadows(model); t3_object_add(cw_node3d_object(n),model); t3_release(model); }
@@ -445,7 +451,7 @@ static void make_coast(void) {
     cw_node3d_set_rotation(detail,(t3_vec3){0,seed*.7f,0});
     if(d<1)rock_tilt(detail,x,z,seed*.7f);
     t3_object *o=cw_gltf_instantiate(cw_res_load(path,CW_RES_GLTF));
-    if(o){model_shadows(o);t3_object_add(cw_node3d_object(detail),o);t3_release(o);ground_prop(detail);}
+    if(o){model_shadows(o);t3_object_add(cw_node3d_object(detail),o);t3_release(o);ground_prop(detail);scenery_lod_add(o);}
     /* With the foot just under the sand, its rim (0.55 model units higher)
      * would show as a skirt on the downhill side. Sink the stone by up to
      * that depth, so the sand meets it around its widest outline, while at
@@ -1803,27 +1809,33 @@ static void cmd_bind(int argc, const char **argv, cw_reply *r) {
   cw_reply_printf(r, "ok");
 }
 
-/* Graphics settings. Auto is the default: the engine steps from High down to
- * Medium and Low while frames take too long, so a handheld drops detail and
- * a desktop keeps the full picture. Below High the scene draws without 4x
- * multisampling (the engine's FXAA or SMAA pass still smooths edges); on Low
- * the island and the four port buildings (100,000 triangles) stop casting
- * into the sun's shadow map, which is redrawn every frame because the ships
- * move. Palms, rocks, flagpoles and ships keep their shadows. The level reached is saved. */
+/* Graphics settings. Auto is the default: the engine steps from High down
+ * through Medium and Low to Very Low while frames take too long, so a handheld
+ * drops detail and a desktop keeps the full picture. Below High the engine
+ * draws the scene without 4x multisampling (its FXAA or SMAA pass smooths
+ * edges instead). On Very Low the island and the four port buildings
+ * (100,000 triangles) stop casting into the sun's shadow map, which is redrawn
+ * every frame because the ships move. Palms, rocks, flagpoles and ships keep
+ * their shadows. The level reached is saved. */
 typedef struct { uint32_t magic, gfx; } save_data;
 static save_data SAVE;
 enum { SAVE_MAGIC = 0x50495231u };
-static const char *const MSAA_VALUES[] = { "Off", "4x" };
-static const uint8_t MSAA_PRESET[CW_QUALITY_COUNT] = { 0, 0, 1, 1 };
 static const char *const SCENERY_SHADOW_VALUES[] = { "Off", "On" };
-static const uint8_t SCENERY_SHADOW_PRESET[CW_QUALITY_COUNT] = { 0, 1, 1, 1 };
+/* Scenery detail: the palms, undergrowth and shore rocks at cwpack's quarter, half or full triangle count (on Very Low the
+ * island's 225,000 triangles are a third of the frame there) */
+static const char *const SCENERY_DETAIL_VALUES[] = { "Coarse", "Reduced", "Full" };
+static int scenery_lod_now(void) { return G.lever_scenery_detail >= 0 ? 2 - cw_gfx_get(G.lever_scenery_detail) : 0; }
+static void scenery_lod_add(t3_object *o) {
+  if (G.n_scenery_lod < (int)(sizeof G.scenery_lod / sizeof G.scenery_lod[0])) G.scenery_lod[G.n_scenery_lod++] = o;
+  cw_gltf_instance_set_lod(o, scenery_lod_now());
+}
 
 static void set_cast_shadow(t3_object *o, bool on) {
   if (o->type == T3_MESH || o->type == T3_SKINNED_MESH) o->cast_shadow = on;
   for (int i = 0; i < o->child_count; i++) set_cast_shadow(o->children[i], on);
 }
 static void apply_graphics(void) {
-  if (cw_node_valid(G.post)) cw_node_set(G.post, "msaa", cw_val_int(cw_gfx_get(G.lever_msaa) ? 4 : 0));
+  for (int i = 0; i < G.n_scenery_lod; i++) cw_gltf_instance_set_lod(G.scenery_lod[i], scenery_lod_now());
   for (int i = 0; i < 1 + CAPTAINS; i++)
     if (G.big_scenery[i]) set_cast_shadow(G.big_scenery[i], cw_gfx_get(G.lever_scenery_shadows) > 0);
 }
@@ -1848,8 +1860,10 @@ static void init(void *user) {
   G.mode_l = cw_action_find("mode_left"); G.mode_r = cw_action_find("mode_right");
   G.font = cw_ui_font_sans();
   sound_init();
-  G.lever_msaa = cw_quality_lever_add("Edge smoothing", MSAA_VALUES, 2, MSAA_PRESET);
-  G.lever_scenery_shadows = cw_quality_lever_add("Island shadows", SCENERY_SHADOW_VALUES, 2, SCENERY_SHADOW_PRESET);
+  G.lever_scenery_shadows = cw_quality_lever_add("Island shadows", SCENERY_SHADOW_VALUES, 2,
+                                                 (cw_quality_lever_presets){ .very_low = 0, .low = 1, .medium = 1, .high = 1, .ultra = 1 });
+  G.lever_scenery_detail = cw_quality_lever_add("Scenery detail", SCENERY_DETAIL_VALUES, 3,
+                                                (cw_quality_lever_presets){ .very_low = 0, .low = 1, .medium = 2, .high = 2, .ultra = 2 });
   cw_quality_auto(true, 0);
   if (SAVE.magic == SAVE_MAGIC && SAVE.gfx) cw_quality_restore(SAVE.gfx);
   cw_quality_on_change(quality_changed, NULL);

@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const ENGINE = join(ROOT, 'deps/cartwheel-engine');
 const TOOL = join(ENGINE, 'tools/run-cart.mjs');
-export const QUALITIES = ['low', 'medium', 'high', 'ultra'];
+export const QUALITIES = ['verylow', 'low', 'medium', 'high', 'ultra']; // cw_quality's order: the index is cw.quality
 /** a player pressing a button on and on, to get through the menus: [from, to) every `every` frames */
 export const mash = (from, to, every, buttons = ['south'], extra = {}) => {
   const out = [];
@@ -43,8 +43,8 @@ function runScene(outDir, scene, gpu, quality, exe) {
   rmSync(state, { force: true });
   const args = [TOOL, '--host', 'native', '--gpu', gpu, '--app', scene.app, '--frames', String(scene.frames), '--warmup-spread', '--allow-skipped',
     '--shot', join(outDir, 's.png'), '--state', state, '--log', log];
-  // 'step': the settings stepped down in play, as Auto does: High from the start, then Medium, then Low
-  const cmds = [...(scene.cmds || []), ...(quality === 'step' ? [`@${Math.floor(scene.frames / 2)} quality medium`, `@${Math.floor(scene.frames * 3 / 4)} quality low`] : [])];
+  // 'step': the settings stepped down in play, as Auto does: High from the start, then Medium, Low and Very Low
+  const cmds = [...(scene.cmds || []), ...(quality === 'step' ? [`@${Math.floor(scene.frames / 2)} quality medium`, `@${Math.floor(scene.frames * 3 / 4)} quality low`, `@${Math.floor(scene.frames * 7 / 8)} quality verylow`] : [])];
   if (cmds.length) args.push('--start-cmds', cmds.join(';'));
   if (scene.input) {
     const f = join(outDir, 'input.json');

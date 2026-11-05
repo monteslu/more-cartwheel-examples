@@ -3,6 +3,7 @@
     "name": "pirates-shoals-placement-and-graphics",
     "map": 0,
     "presets": [
+      "verylow",
       "low",
       "medium",
       "high",
@@ -27,6 +28,7 @@
     "name": "pirates-lagoon-placement-and-graphics",
     "map": 1,
     "presets": [
+      "verylow",
       "low",
       "medium",
       "high",
