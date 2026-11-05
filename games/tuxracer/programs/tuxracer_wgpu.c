@@ -428,6 +428,31 @@ static const t3_gen_attribute a_depth_skin_xcsm_feather[] = {
   { "normal", "vec3", 3, false },
 };
 
+/* ── depth+skin+xcsm_feather_skinshade ── */
+static const t3_bk_group_layout g_depth_skin_xcsm_feather_skinshade_render = { "render", 0, 128, 0, NULL, 0, NULL, 0 };
+static const t3_bk_buffer_layout b_depth_skin_xcsm_feather_skinshade_object[] = {
+  { "nodeUniform1", 1, 448, false, "boneMatrices" },
+};
+static const t3_bk_group_layout g_depth_skin_xcsm_feather_skinshade_object = { "object", 1, 208, 0, NULL, 0, b_depth_skin_xcsm_feather_skinshade_object, 1 };
+static const t3_bk_group_layout *const groups_depth_skin_xcsm_feather_skinshade[] = { &g_depth_skin_xcsm_feather_skinshade_render, &g_depth_skin_xcsm_feather_skinshade_object };
+static const t3_gen_property p_depth_skin_xcsm_feather_skinshade[] = {
+  { "skin.bindMatrix", 1, 64, 64, false },
+  { "skin.bindMatrixInverse", 1, 0, 64, false },
+  { "object.matrixWorld", 1, 144, 64, false },
+  { "camera.projectionMatrix", 0, 0, 64, false },
+  { "camera.matrixWorldInverse", 0, 64, 64, false },
+};
+static const uint8_t kb_depth_skin_xcsm_feather_skinshade[] = {0x00, 0x00, 0x80, 0x3f };
+static const t3_gen_constant k_depth_skin_xcsm_feather_skinshade[] = {
+  { 1, 128, 4, kb_depth_skin_xcsm_feather_skinshade + 0 },
+};
+static const t3_gen_attribute a_depth_skin_xcsm_feather_skinshade[] = {
+  { "position", "vec3", 0, false },
+  { "skinIndex", "uvec4", 1, false },
+  { "skinWeight", "vec4", 2, false },
+  { "normal", "vec3", 3, false },
+};
+
 /* ── depth+skin+xcsm_feather_skinshade_gi ── */
 static const t3_bk_group_layout g_depth_skin_xcsm_feather_skinshade_gi_render = { "render", 0, 128, 0, NULL, 0, NULL, 0 };
 static const t3_bk_buffer_layout b_depth_skin_xcsm_feather_skinshade_gi_object[] = {
@@ -6016,6 +6041,7 @@ static const t3_gen_program programs[] = {
   { "depth+instbig+xterrainlow_snow", T3_GEN_DEPTH, 256ull, { 1, 0, 0, 0 }, "terrainlow_snow", T3_GEN_WGPU, groups_depth_instbig_xterrainlow_snow, 3, p_depth_instbig_xterrainlow_snow, 11, a_depth_instbig_xterrainlow_snow, 7, k_depth_instbig_xterrainlow_snow, 1, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 10, 11 },
   { "depth+skin+xcsm", T3_GEN_DEPTH, 262144ull, { 1, 0, 0, 0 }, "csm", T3_GEN_WGPU, groups_depth_skin_xcsm, 2, p_depth_skin_xcsm, 5, a_depth_skin_xcsm, 4, k_depth_skin_xcsm, 1, { 7, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 12, 13 },
   { "depth+skin+xcsm_feather", T3_GEN_DEPTH, 262144ull, { 1, 0, 0, 0 }, "csm_feather", T3_GEN_WGPU, groups_depth_skin_xcsm_feather, 2, p_depth_skin_xcsm_feather, 5, a_depth_skin_xcsm_feather, 4, k_depth_skin_xcsm_feather, 1, { 7, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 12, 13 },
+  { "depth+skin+xcsm_feather_skinshade", T3_GEN_DEPTH, 262144ull, { 1, 0, 0, 0 }, "csm_feather_skinshade", T3_GEN_WGPU, groups_depth_skin_xcsm_feather_skinshade, 2, p_depth_skin_xcsm_feather_skinshade, 5, a_depth_skin_xcsm_feather_skinshade, 4, k_depth_skin_xcsm_feather_skinshade, 1, { 7, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 12, 13 },
   { "depth+skin+xcsm_feather_skinshade_gi", T3_GEN_DEPTH, 262144ull, { 1, 0, 0, 0 }, "csm_feather_skinshade_gi", T3_GEN_WGPU, groups_depth_skin_xcsm_feather_skinshade_gi, 2, p_depth_skin_xcsm_feather_skinshade_gi, 5, a_depth_skin_xcsm_feather_skinshade_gi, 4, k_depth_skin_xcsm_feather_skinshade_gi, 1, { 7, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 12, 13 },
   { "depth+skin+xcsm_gi", T3_GEN_DEPTH, 262144ull, { 1, 0, 0, 0 }, "csm_gi", T3_GEN_WGPU, groups_depth_skin_xcsm_gi, 2, p_depth_skin_xcsm_gi, 5, a_depth_skin_xcsm_gi, 4, k_depth_skin_xcsm_gi, 1, { 7, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 12, 13 },
   { "depth+skin+xcsm_gi_feather", T3_GEN_DEPTH, 262144ull, { 1, 0, 0, 0 }, "csm_gi_feather", T3_GEN_WGPU, groups_depth_skin_xcsm_gi_feather, 2, p_depth_skin_xcsm_gi_feather, 5, a_depth_skin_xcsm_gi_feather, 4, k_depth_skin_xcsm_gi_feather, 1, { 7, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 12, 13 },
@@ -6075,4 +6101,4 @@ static const t3_gen_program programs[] = {
   { "standard+map+trans+rep+instbig+senv+l0001+xcsm", T3_GEN_STANDARD, 2097489ull, { 0, 0, 0, 1 }, "csm", T3_GEN_WGPU, groups_standard_map_trans_rep_instbig_senv_l0001_xcsm, 3, p_standard_map_trans_rep_instbig_senv_l0001_xcsm, 30, a_standard_map_trans_rep_instbig_senv_l0001_xcsm, 7, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 98, 105 },
   { "standard+senv+l0001+xcsm", T3_GEN_STANDARD, 2097152ull, { 0, 0, 0, 1 }, "csm", T3_GEN_WGPU, groups_standard_senv_l0001_xcsm, 3, p_standard_senv_l0001_xcsm, 29, a_standard_senv_l0001_xcsm, 2, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 106, 107 },
 };
-const t3_gen_table tuxracer_wgpu = { programs, 74 };
+const t3_gen_table tuxracer_wgpu = { programs, 75 };
