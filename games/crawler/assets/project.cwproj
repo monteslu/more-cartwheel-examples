@@ -1,0 +1,18 @@
+; crawler project settings
+name = Crawler
+app = crawler
+main_scene = scenes/main.cwscene
+version = 0.1.0
+app_id = org.cartwheel.crawler
+; gameplay actions (the classic one stick and two buttons); the menus' (ui_*, pause) come from the engine's shell
+input.move_left = key:a, key:left, pad:left, axis:lx-
+input.move_right = key:d, key:right, pad:right, axis:lx+
+input.move_up = key:w, key:up, pad:up, axis:ly-
+input.move_down = key:s, key:down, pad:down, axis:ly+
+input.fire = key:space, key:j, mouse:left, pad:south, axis:rt+@0.4
+input.magic = key:lshift, key:k, key:e, pad:east, pad:west, pad:lshoulder
+input.join = key:enter, pad:north
+render.width = 1280
+render.height = 720
+render.msaa = 1
+render.vsync = true

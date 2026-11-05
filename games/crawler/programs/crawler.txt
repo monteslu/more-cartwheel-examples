@@ -1,0 +1,17 @@
+
+lambert+vcol+instbig+fog2+icol+l2001+xcluster
+standard+vcol+instbig+fog2+icol+l2001+xcluster
+basic+instbig+fog2+icol
+basic+vcol+instbig+fog2+icol
+standard+map+vcol+rep+fog2+l2001+xcluster
+basic+vcol+fog2
+basic+map+trans+instbig+icol
+standard+vcol+fog2+l2001+xcluster
+basic+fog2
+basic+map+vcol+rep+lmap+fog2+c1lmap
+basic+vcol+trans+instbig+fog2+ds+icol
+basic+trans+fog2
+standard+vcol+instbig+fog2+icol+l2001+xcluster_rim
+standard+vcol+fog2+l2001+xcluster_rim
+basic+fog2+bs
+basic+instbig+fog2+bs+icol

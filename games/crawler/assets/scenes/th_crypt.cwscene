@@ -1,0 +1,55 @@
+[scene format=1]
+
+; crawler's crypt tileset: its light (the torches and glows are in each floor's bake)
+[node name="ossuary" type="Node3D"]
+
+; the key: a dim cold fill from high above; the braziers and candles (baked) are the real light
+[node name="Sun" parent="." type="DirectionalLight3D"]
+rotation = vec3(-1.15, 0.35, 0)
+position = vec3(-8, 30, 14)
+color = color(0.95, 0.92, 0.86, 1)
+energy = 3.2
+shadow = false
+fog_energy = 0.6
+bake_direct = true
+
+; the rim: edging every character against the dark
+[node name="Rim" parent="." type="DirectionalLight3D"]
+rotation = vec3(-0.6, 2.4, 0)
+position = vec3(20, 6, -24)
+color = color(1, 0.62, 0.3, 1)
+energy = 1.0
+fog_energy = 0
+bake_direct = true
+
+[node name="Env" parent="." type="WorldEnvironment"]
+background = color(0.008, 0.008, 0.012, 1)
+ambient_color = color(0.3, 0.33, 0.45, 1)
+ambient_energy = 0.45
+sky_color = color(0.25, 0.28, 0.4, 1)
+ground_color = color(0.06, 0.05, 0.04, 1)
+hemi_energy = 0.5
+fog_mode = EXP2
+fog_color = color(0.07, 0.05, 0.035, 1)
+fog_density = 0.0006
+
+[node name="Post" parent="." type="PostProcess"]
+depth_prepass = false
+fuse_distortion = true
+tonemap = ACES_FILMIC
+exposure = 1.2
+bloom = true
+bloom_intensity = 0.2
+bloom_threshold = 1.0
+bloom_knee = 0.6
+ssao = false
+ssr = false
+aa = FXAA
+grade = true
+grade_intensity = 0.55
+lut = "grade/crypt.cube"
+vignette = true
+vignette_intensity = 0.5
+vignette_smoothness = 0.6
+grain = true
+grain_intensity = 0.035

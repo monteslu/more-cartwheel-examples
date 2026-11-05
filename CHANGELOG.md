@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.23.0
+
+- New game: crawler (working title), a co-op maze dungeon crawler for one to four players on one shared top-down
+  screen. 120 floors in six tilesets (the crypt, the sewers, the foundry, the grotto, the cathedral and the abyss),
+  each a maze with spawners pouring monsters out, locked doors and their keys, food, potions, treasure and a stair
+  down; health drains all the time and food gives it back. Four heroes (the Brute, the Warden, the Mage and the
+  Ranger), twelve kinds of monster, sixteen charms and six elixirs. The floors are generated in bulk and checked in
+  CI: every exit reachable with the keys on the way, nothing in a wall, every prop grounded, every floor's light
+  baked and current, and every floor cleared by bots. The spawners keep pouring, but one screen holds at most 120
+  monsters, so a corridor reads as a line to shoot through.
+
 ## 0.22.0
 
 - Engine v0.31.0: every game has a Very Low graphics preset below Low, for handhelds and older

@@ -8,5 +8,6 @@
   { "name": "fighter", "app": "fighter_auto", "frames": 900, "maxVeryLow": 0.79, "maxLow": 0.85 },
   { "name": "brawler", "app": "brawler_auto", "frames": 900, "maxVeryLow": 0.84, "maxLow": 0.99 },
   { "name": "hordeshooter", "app": "hordeshooter_auto", "frames": 900, "maxVeryLow": 0.85, "maxLow": 1.07 },
+  { "name": "crawler", "app": "crawler_auto", "frames": 900, "env": { "CRAWLER_FLOOR": "58", "CRAWLER_PLAYERS": "4", "CRAWLER_CROWD": "600" }, "maxVeryLow": 0.8, "maxLow": 0.95 },
   { "name": "partypack", "app": "partypack_auto", "frames": 1200, "maxVeryLow": 1.15, "maxLow": 1.15 }
 ]

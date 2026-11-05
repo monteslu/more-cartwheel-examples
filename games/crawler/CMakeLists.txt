@@ -1,0 +1,25 @@
+# crawler (working title): a 1-4 player co-op maze dungeon crawler on one shared top-down screen (DESIGN.md).
+#   crawler        the game
+#   crawler_auto   bots play it (for hosts that send no input)
+#   crawler_bench  the bots on a crowded late floor with four players (the perf gate's scene; carts read no environment)
+#   crawler_soak   the rules and the bots with no window and no GPU (native only): the long soak and the level check's
+#                  clear run
+#   crawler_levelview  builds a floor as the game does: review in romdev, and the native bakes (tools/levelview)
+set(SRC main.c sim.c bot.c view.c fx.c maze.c mazebuild.c)
+set(CW_PROGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/programs/crawler.txt)
+cw_add_app(crawler SOURCES ${SRC} PACK ${CMAKE_CURRENT_SOURCE_DIR}/assets/roots.txt)
+cw_add_app(crawler_auto SOURCES ${SRC} PACK ${CMAKE_CURRENT_SOURCE_DIR}/assets/roots.txt)
+target_compile_definitions(crawler_auto PRIVATE CRAWLER_AUTOPILOT=1)
+add_dependencies(crawler_auto_pack crawler_pack)
+cw_add_app(crawler_bench SOURCES ${SRC} PACK ${CMAKE_CURRENT_SOURCE_DIR}/assets/roots.txt)
+target_compile_definitions(crawler_bench PRIVATE CRAWLER_AUTOPILOT=1 CRAWLER_BENCH_FLOOR=58 CRAWLER_BENCH_CROWD=1800 CRAWLER_AUTO_PLAYERS=4)
+add_dependencies(crawler_bench_pack crawler_pack)
+foreach(t crawler crawler_auto crawler_bench)
+  target_compile_definitions(${t} PRIVATE CRAWLER_RENDER=1)
+endforeach()
+if(NOT CW_CART)
+  add_executable(crawler_soak soak.c sim.c bot.c maze.c)
+  target_link_libraries(crawler_soak PRIVATE cartwheel)
+  target_compile_definitions(crawler_soak PRIVATE CRAWLER_ASSETS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets")
+endif()
+include(tools/levelview/levelview.cmake)

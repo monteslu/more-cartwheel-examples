@@ -1,0 +1,49 @@
+crawler-maze 1
+# floor 1, drawn by hand: a gentle start. A hall to learn to move and shoot in, a side room with a potion and a
+# charm, two weak spawners, one key and its door, food on the way, and the stair down past the door.
+floor 1
+theme crypt
+size 28 20
+seed 0
+grid
+############################
+#........#########.........#
+#........#.......#.........#
+#........#.......#.........#
+#..............B...........#
+#........#.......#.........#
+#........#.......####.######
+#####.####.......#.........#
+#........#########.........#
+#........#.................#
+#..........................#
+#........#.................#
+#........##############DD###
+#####.####...........#.....#
+#........#...........#.....#
+#........#...........#.....#
+#....................#.....#
+#........#...........#.....#
+#........#...........#.....#
+############################
+end
+start 4 3
+exit 24 16 1
+item 24 3 key
+item 6 6 food_roast
+item 2 10 food_bread
+item 22 9 gold
+item 25 9 cup
+item 12 3 potion
+item 14 3 charm_0
+item 13 5 gold
+item 12 16 food_flagon
+item 18 14 chest
+item 23 14 gold
+item 25 18 food_plate
+spawner 21 4 shade 1
+spawner 5 15 ghoul 1
+spawner 15 15 shade 1
+monster 20 2 shade 1
+monster 22 5 shade 1
+monster 6 15 ghoul 1

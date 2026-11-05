@@ -68,6 +68,18 @@ right shoulder, the map on Back.
 `games/coopplatformer/` (its [README](games/coopplatformer/README.md) has the
 full controls).
 
+### crawler
+
+![crawler: four heroes hold a foundry corridor as monsters pour in from both sides, each kind edged in its own colour](docs/screenshots/crawler.jpg)
+
+A co-op maze dungeon crawler for one to four players on one shared top-down screen: 120 floors in six tilesets, each a
+maze of corridors and rooms with spawners pouring monsters out, locked doors and the keys that open them, food,
+potions, treasure and a stair down. Health drains all the time and food gives it back. Four heroes (the Brute, the
+Warden, the Mage and the Ranger), sixteen charms, elixirs that last the run, and corridors packed with hundreds of
+monsters. Hold the shoot button to stand and shoot, walk into a monster to fight it, magic uses a potion on
+everything on the screen. `games/crawler/` (its [README](games/crawler/README.md) has the full controls and how the
+floors are made).
+
 ### fighter
 
 ![fighter: Vex lands a kick on Bolt on the rooftop stage](docs/screenshots/fighter.jpg)
@@ -165,7 +177,7 @@ romdev verification.
 Tagged versions are on the
 [Releases](https://github.com/monteslu/more-cartwheel-examples/releases)
 page: one cart per game, `<game>.wasc` (`arenafps.wasc`, `brawler.wasc`,
-`coopplatformer.wasc`, `fighter.wasc`, `hordeshooter.wasc`,
+`coopplatformer.wasc`, `crawler.wasc`, `fighter.wasc`, `hordeshooter.wasc`,
 `jetski.wasc`, `partypack.wasc`, `pirates.wasc`, `skyfighter.wasc`, `tuxracer.wasc`). Each cart holds GL and WebGPU: a host that has WebGPU
 runs it on WebGPU, any other on GL. Every push to `main` also builds them:
 the repository's

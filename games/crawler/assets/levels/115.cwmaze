@@ -1,0 +1,316 @@
+crawler-maze 1
+# floor 115: written by tools/gen-levels.mjs (seed 910685); edit the generator or tools/levels/, not this file
+floor 115
+theme abyss
+size 45 41
+seed 910685
+grid
+#############################################
+###########################......############
+########.....##..##########......####.....###
+#######..........................#.........##
+######.....................................##
+#####....##..##............................##
+####....########...........................##
+###.....########...........................##
+##......########....................##......#
+##......######....................#####.....#
+##.....######....................######.....#
+##.....######.....................#####.....#
+##......#####.......................##......#
+##........###...............................#
+##.........##..............................##
+##........................................###
+##......##................................###
+##.....####...............................###
+##.....#######............................###
+##.........####..................##......####
+#...........###.................####....#####
+#...............................###.....#####
+#...............................###....######
+#...............................###...#######
+#.......#........................#....#######
+#.......B.....................##......#######
+#.....###.....................###.....#######
+#.....###.....................####....#######
+#................##...........####....#######
+#...............####...........##......######
+#...............#####.....................###
+#................####......................##
+#..........................................##
+#......................##..................##
+#.....................####............##...##
+#.....................####...........########
+#.....................####...........########
+##........##..........#####....###....#######
+#####....####...........####..#####..########
+##############....##....#####################
+#############################################
+end
+start 4 8
+exit 42 33 1
+spawner 2 29 ogre 2
+spawner 9 35 imp 1
+spawner 25 26 hound 2
+spawner 40 10 hexer 2
+spawner 33 7 hexer 1
+spawner 6 24 imp 2
+spawner 38 15 imp 3
+spawner 16 13 bloater 2
+spawner 27 14 slinger 2
+spawner 14 16 bloater 2
+spawner 18 34 hexer 3
+spawner 14 36 bloater 2
+spawner 19 10 hound 2
+spawner 28 2 shade 3
+spawner 34 29 shade 2
+spawner 33 33 shade 2
+monster 4 27 ogre 2
+monster 16 16 bloater 2
+monster 30 10 hexer 1
+monster 11 35 imp 1
+monster 21 12 hound 2
+monster 30 7 hexer 1
+monster 4 27 ogre 2
+monster 39 12 imp 3
+monster 34 31 shade 2
+monster 13 33 bloater 2
+monster 9 33 imp 1
+monster 31 33 shade 2
+monster 18 32 hexer 3
+monster 38 17 imp 3
+monster 3 27 imp 2
+monster 8 35 imp 1
+monster 39 18 imp 3
+monster 7 38 imp 1
+monster 15 14 bloater 2
+monster 18 8 hound 2
+monster 39 13 hexer 2
+monster 3 28 ogre 2
+monster 26 5 shade 3
+monster 27 15 slinger 2
+monster 35 36 shade 2
+monster 17 13 bloater 2
+monster 17 37 bloater 2
+monster 34 32 shade 2
+monster 21 11 hound 2
+monster 14 14 bloater 2
+monster 20 34 hexer 3
+monster 37 17 imp 3
+monster 5 23 imp 2
+monster 40 16 imp 3
+monster 34 32 shade 2
+monster 27 15 slinger 2
+monster 32 4 hexer 1
+monster 27 26 hound 2
+monster 19 11 bloater 2
+monster 15 39 bloater 2
+monster 12 35 bloater 2
+monster 16 7 hound 2
+monster 27 12 slinger 2
+monster 26 15 slinger 2
+monster 28 13 slinger 2
+monster 22 28 hound 2
+monster 12 34 imp 1
+monster 35 34 shade 2
+monster 8 23 imp 2
+monster 34 26 shade 2
+monster 31 31 dread 1
+item 23 15 cup
+item 37 21 chest
+item 31 1 food_flagon
+item 19 26 food_roast
+item 32 12 food_flagon
+item 8 34 food_roast
+item 34 7 food_flagon
+item 16 27 food_bread
+item 25 31 food_bread
+item 35 38 food_roast
+item 13 23 food_flagon
+item 18 4 food_flagon
+item 6 25 food_roast
+item 6 36 food_roast
+item 13 16 food_plate
+item 23 38 food_plate
+item 27 12 food_bread
+item 28 29 food_roast
+item 37 32 food_bread
+item 9 27 food_roast
+item 21 5 potion
+item 5 29 potion
+item 3 20 potion
+item 26 36 cup
+item 5 38 cup
+item 14 39 gold
+item 29 11 cup
+item 18 3 gold
+item 18 5 gold
+item 5 13 gold
+item 33 34 chest
+item 32 30 gold
+item 36 14 gold
+item 26 5 cup
+item 32 2 cup
+item 21 27 chest
+item 38 17 gold
+item 7 6 gold
+item 23 12 chest
+item 25 7 charm_12
+item 9 25 charm_15
+item 16 12 charm_7
+item 24 25 charm_6
+item 25 12 charm_9
+ambush 23 15 slinger 1 30
+ambush 37 21 hexer 2 30
+prop 21 30 torch 0 w
+prop 36 13 torch 0 n
+prop 1 26 torch 0 w
+prop 12 21 torch 0 n
+prop 32 19 torch 0 e
+prop 42 4 torch 0 e
+prop 30 29 torch 0 e
+prop 2 15 torch 0 w
+prop 34 3 torch 0 n
+prop 25 3 torch 0 n
+prop 19 3 torch 0 n
+prop 12 37 torch 0 w
+prop 10 14 torch 0 n
+prop 14 9 torch 0 w
+prop 34 37 torch 0 w
+prop 33 26 torch 0 w
+prop 2 9 torch 0 w
+prop 15 2 torch 0 n
+prop 43 8 torch 0 e
+prop 33 9 torch 0 e
+prop 37 34 torch 0 e
+prop 41 30 torch 0 n
+prop 2 37 torch 0 w
+prop 29 1 torch 0 n
+prop 7 3 torch 0 w
+prop 7 19 torch 0 n
+prop 16 28 torch 0 e
+prop 9 24 torch 0 w
+prop 7 12 torch 0 n
+prop 39 20 torch 0 e
+prop 42 14 torch 0 e
+prop 7 28 torch 0 n
+prop 18 32 torch 0 n
+prop 39 9 torch 0 w
+prop 39 2 torch 0 n
+prop 22 38 torch 0 n
+prop 4 6 torch 0 n
+prop 1 33 torch 0 w
+prop 26 35 torch 0 w
+prop 12 5 torch 0 e
+prop 8 38 torch 0 e
+prop 15 19 torch 0 w
+prop 29 38 torch 0 e
+prop 37 25 torch 0 e
+prop 35 21 torch 0 n
+prop 31 23 torch 0 e
+prop 1 20 torch 0 n
+prop 13 10 decor 1 3
+prop 2 8 decor 1 3
+prop 42 34 decor 3 1
+prop 22 33 decor 1 0
+prop 40 19 decor 0 1
+prop 36 38 decor 3 2
+prop 10 19 decor 2 1
+prop 11 17 decor 3 3
+prop 33 11 decor 0 0
+prop 42 14 decor 1 3
+prop 34 24 decor 3 2
+prop 19 28 decor 1 2
+prop 5 5 decor 3 1
+prop 40 34 decor 1 3
+prop 30 29 decor 0 1
+prop 34 37 decor 2 0
+prop 30 37 decor 1 1
+prop 43 13 decor 2 2
+prop 16 31 decor 1 1
+prop 10 16 decor 2 0
+prop 33 9 decor 0 3
+prop 32 1 decor 1 3
+prop 28 38 decor 2 1
+prop 2 37 decor 3 0
+prop 12 37 decor 2 1
+prop 32 24 decor 0 1
+prop 34 3 decor 3 0
+prop 16 28 decor 3 2
+prop 41 18 decor 1 0
+prop 16 2 decor 2 2
+prop 11 5 decor 3 0
+prop 25 33 decor 2 0
+prop 14 9 decor 3 3
+prop 23 39 decor 2 1
+prop 15 5 decor 1 0
+prop 8 2 decor 3 0
+prop 35 12 decor 0 1
+prop 32 25 decor 2 0
+prop 8 5 decor 3 1
+prop 20 39 decor 1 3
+prop 13 38 decor 2 1
+light 21 30 1 0.62 0.42 1 70 8
+light 36 13 1 0.62 0.42 1 70 8
+light 1 26 1 0.62 0.42 1 70 8
+light 12 21 1 0.62 0.42 1 70 8
+light 32 19 1 0.62 0.42 1 70 8
+light 42 4 1 0.62 0.42 1 70 8
+light 30 29 1 0.62 0.42 1 70 8
+light 2 15 1 0.62 0.42 1 70 8
+light 34 3 1 0.62 0.42 1 70 8
+light 25 3 1 0.62 0.42 1 70 8
+light 19 3 1 0.62 0.42 1 70 8
+light 12 37 1 0.62 0.42 1 70 8
+light 10 14 1 0.62 0.42 1 70 8
+light 14 9 1 0.62 0.42 1 70 8
+light 34 37 1 0.62 0.42 1 70 8
+light 33 26 1 0.62 0.42 1 70 8
+light 2 9 1 0.62 0.42 1 70 8
+light 15 2 1 0.62 0.42 1 70 8
+light 43 8 1 0.62 0.42 1 70 8
+light 33 9 1 0.62 0.42 1 70 8
+light 37 34 1 0.62 0.42 1 70 8
+light 41 30 1 0.62 0.42 1 70 8
+light 2 37 1 0.62 0.42 1 70 8
+light 29 1 1 0.62 0.42 1 70 8
+light 7 3 1 0.62 0.42 1 70 8
+light 7 19 1 0.62 0.42 1 70 8
+light 16 28 1 0.62 0.42 1 70 8
+light 9 24 1 0.62 0.42 1 70 8
+light 7 12 1 0.62 0.42 1 70 8
+light 39 20 1 0.62 0.42 1 70 8
+light 42 14 1 0.62 0.42 1 70 8
+light 7 28 1 0.62 0.42 1 70 8
+light 18 32 1 0.62 0.42 1 70 8
+light 39 9 1 0.62 0.42 1 70 8
+light 39 2 1 0.62 0.42 1 70 8
+light 22 38 1 0.62 0.42 1 70 8
+light 4 6 1 0.62 0.42 1 70 8
+light 1 33 1 0.62 0.42 1 70 8
+light 26 35 1 0.62 0.42 1 70 8
+light 12 5 1 0.62 0.42 1 70 8
+light 8 38 1 0.62 0.42 1 70 8
+light 15 19 1 0.62 0.42 1 70 8
+light 29 38 1 0.62 0.42 1 70 8
+light 37 25 1 0.62 0.42 1 70 8
+light 35 21 1 0.62 0.42 1 70 8
+light 31 23 1 0.62 0.42 1 70 8
+light 1 20 1 0.62 0.42 1 70 8
+light 2 29 1 0.9 0.3 0.2 34 4.5
+light 9 35 1 1 0.45 0.15 26 4.5
+light 25 26 1 1 0.35 0.1 34 4.5
+light 40 10 1 0.75 0.35 1 34 4.5
+light 33 7 1 0.75 0.35 1 26 4.5
+light 6 24 1 1 0.45 0.15 34 4.5
+light 38 15 1 1 0.45 0.15 42 4.5
+light 16 13 1 0.5 1 0.3 34 4.5
+light 27 14 1 1 0.55 0.2 34 4.5
+light 14 16 1 0.5 1 0.3 34 4.5
+light 18 34 1 0.75 0.35 1 42 4.5
+light 14 36 1 0.5 1 0.3 34 4.5
+light 19 10 1 1 0.35 0.1 34 4.5
+light 28 2 1 0.6 0.8 1 42 4.5
+light 34 29 1 0.6 0.8 1 34 4.5
+light 33 33 1 0.6 0.8 1 34 4.5
+light 42 33 0.6 1 0.85 0.6 40 5
