@@ -8,3 +8,7 @@ export.linux-arm64.platform = "linux-arm64"
 export.windows-x64.platform = "windows-x64"
 export.macos-arm64.platform = "macos"
 export.android-arm64.platform = "android-arm64"
+# launcher art and credits, packed into the cart (art/art.json)
+art = art
+description = "A one-on-one 3D fighting game for one or two players. Four fighters, each with special moves and a super, battle on a rainy neon alley, a rooftop at dusk and a training hall."
+author = "Luis Montes"

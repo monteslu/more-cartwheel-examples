@@ -1,6 +1,7 @@
 /* brawler effects: pooled GPU particle bursts, a pool of flash lights, and every sound synthesised in code. */
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "cartwheel/audio.h"
@@ -272,6 +273,9 @@ void fx_player_ring(int i, float x, float z, float k) {
     cw_node3d_set_rotation(d, (t3_vec3){ -1.5708f, 0, 0 });
     cw_node_set(d, "size", cw_val_vec3(1.1f, 0.72f, 0.5f));
   }
+#ifdef BRAWLER_AUTOPILOT
+  { static int nohud = -1; if (nohud < 0) nohud = getenv("BRAWLER_NOHUD") != NULL; if (nohud) k = 0; } /* key art: no rings either */
+#endif
   if (k <= 0) { cw_node3d_set_position(d, (t3_vec3){ 0, -20, 0 }); return; }
   g_rings++;
   cw_node3d_set_position(d, (t3_vec3){ x, 0.2f, z });

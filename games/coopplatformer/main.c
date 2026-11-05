@@ -913,6 +913,14 @@ static void sync_scene(float alpha, float dt) {
   /* the follow camera is the whole camera: it never shakes (a boss landing, a hit or a blast is felt in the pads) */
   float ox = 0;
   if (g_cam_bug) ox = 0.01f * sinf((float)G.tick * 0.3f); /* the camera gate's control (COOP_CAM_BUG, native): a 1 cm sway */
+#ifdef COOP_AUTOPILOT
+  float cam_yaw = 0, cam_pitch = -0.06f;
+  { /* COOP_CAM=dx,dy,zk[,yaw,pitch]: the follow camera moved, its distance scaled and turned (key art) */
+    const char *e = getenv("COOP_CAM");
+    float dx, dy, zk;
+    if (e && sscanf(e, "%f,%f,%f,%f,%f", &dx, &dy, &zk, &cam_yaw, &cam_pitch) >= 3) vx += dx, vy += dy, vz *= zk;
+  }
+#endif
   cw_node3d_set_position(S.cam, (t3_vec3){ vx + ox, vy, vz });
   g_view_dbg[0] = vx + ox, g_view_dbg[1] = vy, g_view_dbg[2] = vz, g_view_dbg[3] = 0;
   if (!g_attract) { /* fov 40: half the view is tan(20 deg) z tall */
@@ -929,7 +937,11 @@ static void sync_scene(float alpha, float dt) {
     }
     camgate_frame(g_view_dbg, pp, g->nplayers, snapped);
   }
+#ifdef COOP_AUTOPILOT
+  cw_node3d_set_rotation(S.cam, (t3_vec3){ cam_pitch, cam_yaw, 0 });
+#else
   cw_node3d_set_rotation(S.cam, (t3_vec3){ -0.06f, 0, 0 });
+#endif
   if (!g_attract) offsetgate(S.cam, vx, vy, vz);
   cw_node3d_set_position(S.sun, (t3_vec3){ vx + 8, vy + 18, 14 });
   apply_mood(vx);
@@ -2908,7 +2920,11 @@ static void render(void *user, double alpha) {
   cw_r2d_begin(&(cw_r2d_pass_desc){ .clear = false });
   cw_vec2 cs = cw_r2d_canvas_size();
   float W = cs.x, H = cs.y, s = H / 540.0f;
-  if (G.nplayers && G.world.id && !g_attract && cw_shell_screen_now() != CW_SHELL_TITLE) {
+  bool hud_on = true;
+#ifdef COOP_AUTOPILOT
+  { static int nohud = -1; if (nohud < 0) nohud = getenv("COOP_NOHUD") != NULL; hud_on = !nohud; } /* COOP_NOHUD: no HUD at all (key art) */
+#endif
+  if (hud_on && G.nplayers && G.world.id && !g_attract && cw_shell_screen_now() != CW_SHELL_TITLE) {
     /* a panel per player: face, hearts, coins */
     for (int i = 0; i < G.nplayers; i++) {
       const player *p = &G.p[i];

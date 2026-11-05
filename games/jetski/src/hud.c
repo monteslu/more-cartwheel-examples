@@ -2,6 +2,7 @@
  * size; everything scales with its height. */
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "cartwheel/platform.h"
 #include "cartwheel/render2d.h"
@@ -365,6 +366,9 @@ static void hud_body(void) {
 }
 
 void hud_draw(void) {
+#ifdef JETSKI_AUTOPILOT
+  if (getenv("JETSKI_NO_HUD")) return; /* key art: the picture alone */
+#endif
   cw_r2d_begin(NULL);
   hud_body();
   menu_draw();

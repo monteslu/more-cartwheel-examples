@@ -1,0 +1,21 @@
+{
+  "icon": "icon.png",
+  "cover": "cover.jpg",
+  "background": "background.jpg",
+  "logo": "logo.png",
+  "title": "title.jpg",
+  "screenshots": [
+    {
+      "path": "shot-1.jpg",
+      "label": "Two players stand back to back in a pale stone arena as a dark crowd closes in from every side"
+    },
+    {
+      "path": "shot-2.jpg",
+      "label": "Two players fire into a packed crowd of skeletons in a candlelit crypt"
+    },
+    {
+      "path": "shot-3.jpg",
+      "label": "Two players clear a path through giant mushrooms and spiders in a purple cave"
+    }
+  ]
+}

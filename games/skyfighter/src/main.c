@@ -872,7 +872,14 @@ static void follow_jet(void) {
   t3_vec3 right=t3_vec3_normalize(t3_vec3_cross(f,up));
   t3_quat look=t3_quat_multiply(t3_quat_from_axis_angle(up,-look_x),t3_quat_from_axis_angle(right,-look_y));
   f=t3_vec3_apply_quat(f,look);up=t3_vec3_apply_quat(up,look);
-  cw_node3d_set_position(G.camera_node,(t3_vec3){G.px-f.x*34+up.x*12,G.py-f.y*34+up.y*12,G.pz-f.z*34+up.z*12});
+  float back=34,lift=12;
+#ifndef __wasm__
+  { /* development (native key art): SKY_ART_CHASE scales the chase distance, SKY_ART_LIFT sets the camera height over the jet */
+    const char *e=getenv("SKY_ART_CHASE");if(e){back*=(float)atof(e);lift*=(float)atof(e);}
+    if((e=getenv("SKY_ART_LIFT")))lift=(float)atof(e);
+  }
+#endif
+  cw_node3d_set_position(G.camera_node,(t3_vec3){G.px-f.x*back+up.x*lift,G.py-f.y*back+up.y*lift,G.pz-f.z*back+up.z*lift});
   cw_node3d_look_at(G.camera_node,(t3_vec3){G.px+f.x*170,G.py+f.y*170,G.pz+f.z*170},up);
 }
 
@@ -1365,6 +1372,12 @@ static void init(void *user) {
   cw_quality_restore(prefs.graphics);cw_save_commit();
   cw_audio_open(48000,audio_fill,NULL);
   cw_debug_i32("render.skipped",&G.skipped);cw_debug_i32("art.hide_hud",&art_hide_hud);
+#ifndef __wasm__
+  { /* development (native key art captures; carts read no environment): SKY_ART_MISSION picks the title mission, SKY_ART_HIDE_HUD hides the HUD */
+    const char *e=getenv("SKY_ART_MISSION");if(e)G.level=atoi(e)%MISSIONS;
+    if(getenv("SKY_ART_HIDE_HUD"))art_hide_hud=1;
+  }
+#endif
   cw_debug_i32("impact.scorch_triangles",&impact_scorch_triangles);cw_debug_i32("impact.decals",&impact_stats.mesh_decals);cw_debug_i32("impact.triangles",&impact_stats.mesh_triangles);cw_debug_i32("impact.builds",&impact_stats.mesh_builds);
   cw_debug_i32("scenery.meshes",&scenery_stats.meshes);cw_debug_i32("scenery.visible",&scenery_stats.visible);cw_debug_i32("scenery.culled",&scenery_stats.frustum_culled);
   cw_debug_i32("target.index",&G.lock_target);

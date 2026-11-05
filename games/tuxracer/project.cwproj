@@ -29,3 +29,7 @@ export.linux-arm64.platform = linux-arm64
 export.windows-x64.platform = windows-x64
 export.macos-arm64.platform = macos
 export.android-arm64.platform = android-arm64
+# launcher art and credits, packed into the cart (art/art.json)
+art = art
+description = "Tux slides belly-first down snowy mountain courses, steering past trees and flags to grab herring against the clock, in sun, cloud or under the northern lights at night."
+author = "Luis Montes, after Tux Racer 0.61 by Jasmin F. Patry and Sunspire Studios"

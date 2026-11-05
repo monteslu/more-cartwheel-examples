@@ -1,0 +1,29 @@
+{
+  "icon": "icon.png",
+  "cover": "cover.jpg",
+  "background": "background.jpg",
+  "logo": "logo.png",
+  "title": "title.jpg",
+  "screenshots": [
+    {
+      "path": "shot-1.jpg",
+      "label": "Tux slides down Bunny Hill on a sunny day, mountains on the horizon"
+    },
+    {
+      "path": "shot-2.jpg",
+      "label": "The same slope at night under the northern lights"
+    },
+    {
+      "path": "shot-3.jpg",
+      "label": "Racing toward a towering wall of ice in Ice Canyon"
+    },
+    {
+      "path": "shot-4.jpg",
+      "label": "Sliding past jagged rock on Path of Daggers"
+    },
+    {
+      "path": "shot-5.jpg",
+      "label": "Tux carves down Frozen River on a grey, cloudy day"
+    }
+  ]
+}

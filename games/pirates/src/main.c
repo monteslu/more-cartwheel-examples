@@ -1457,7 +1457,7 @@ static void render(void *user, double alpha) {
   (void)user; (void)alpha;
   G.gpu_ms = cw_pipeline_gpu_ms(cw_pipeline_of(cw_scene_app_tree()));
   cw_quality_auto_measure(G.state == PLAYING && !G.paused);
-  draw_hud();
+  if (!getenv("PIRATES_NO_HUD")) draw_hud(); /* dev: key art without the HUD */
 }
 
 typedef struct {int remaining,samples;} profile_wait;

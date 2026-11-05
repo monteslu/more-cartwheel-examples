@@ -1,0 +1,25 @@
+{
+  "icon": "icon.png",
+  "cover": "cover.jpg",
+  "background": "background.jpg",
+  "logo": "logo.png",
+  "title": "title.jpg",
+  "screenshots": [
+    {
+      "path": "shot-1.jpg",
+      "label": "Four captains race for cargo around a volcanic archipelago while a patrol ship trades cannon fire"
+    },
+    {
+      "path": "shot-2.jpg",
+      "label": "Two captains on a cooperative voyage supply their fleet as a patrol ship lurks by the volcano"
+    },
+    {
+      "path": "shot-3.jpg",
+      "label": "Two teams of captains race to bank cargo at their harbors"
+    },
+    {
+      "path": "shot-4.jpg",
+      "label": "Ships collect cargo among the sheltered coves of Palm Lagoon"
+    }
+  ]
+}

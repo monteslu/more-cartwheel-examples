@@ -2049,6 +2049,18 @@ static void sync_nodes(void) {
       cw_node_set(G.vm[0], "visible", cw_val_bool(false));
     }
   }
+  { /* ARENA_CHASE=i,fwd,right,up,lookh: view 1 from a spot in fighter i's own frame, looking at it (key art) */
+    const char *v = getenv("ARENA_CHASE");
+    int i;
+    float fw, rt, up, lh;
+    if (v && sscanf(v, "%d,%f,%f,%f,%f", &i, &fw, &rt, &up, &lh) == 5 && i >= 0 && i < G.nf && cw_node_valid(F(i)->body)) {
+      t3_vec3 p = cw_node3d_position(F(i)->body), d = look_dir(F(i)->yaw, 0), r = v3(-d.z, 0, d.x);
+      t3_vec3 c = v3(p.x + d.x * fw + r.x * rt, p.y + up, p.z + d.z * fw + r.z * rt);
+      cw_node3d_set_position(G.cam[0], c);
+      cw_node3d_look_at(G.cam[0], v3(p.x, p.y + lh, p.z), v3(0, 1, 0));
+      cw_node_set(G.vm[0], "visible", cw_val_bool(false));
+    }
+  }
 #endif
 }
 
@@ -2518,6 +2530,10 @@ static void render(void *user, double alpha) {
   (void)user, (void)alpha;
   cw_shell_screen sc = cw_shell_screen_now();
   cw_quality_auto_measure(sc == CW_SHELL_PLAY && G.state == ST_PLAY); /* Auto steps the preset down when play runs slow */
+#ifdef ARENA_AUTOPILOT
+  { static int nohud = -1; if (nohud < 0) nohud = getenv("ARENA_NOHUD") != NULL; /* ARENA_NOHUD: no HUD at all (key art) */
+    if (nohud) { cw_shell_draw(); return; } }
+#endif
   if (sc == CW_SHELL_PLAY || sc == CW_SHELL_PAUSE) {
     cw_r2d_begin(NULL);
     if (G.state != ST_SETUP) for (int h = 0; h < G.players; h++) hud_view(h);

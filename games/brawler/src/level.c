@@ -520,6 +520,19 @@ void level_camera(float dt) {
   /* g_cam (debug "cam" command in the autopilot build): zoom toward a point on the street for close-ups */
   cw_node3d_set_position(cam, (t3_vec3){ W.cam_x + g_cam[1] + shx, 1.0f + 2.9f * g_cam[0] + shy, -1.66f + g_cam[2] + 9.36f * g_cam[0] });
   cw_node3d_set_rotation(cam, (t3_vec3){ -0.3f, 0, 0 });
+#ifdef BRAWLER_AUTOPILOT
+  { /* BRAWLER_CAM=dx,y,dz,ty: key art: the camera at (players' centre + dx, y, + dz), looking at their centre at height ty */
+    const char *e = getenv("BRAWLER_CAM");
+    float dx, y, dz, ty, hx = 0, hz = 0;
+    int n = 0;
+    for (int i = 0; i < MAXP; i++) if (W.p[i].used) hx += W.p[i].x, hz += W.p[i].z, n++;
+    if (e && n && sscanf(e, "%f,%f,%f,%f", &dx, &y, &dz, &ty) == 4) {
+      hx /= (float)n, hz /= (float)n;
+      cw_node3d_set_position(cam, (t3_vec3){ hx + dx, y, hz + dz });
+      cw_node3d_look_at(cam, (t3_vec3){ hx, ty, hz }, (t3_vec3){ 0, 1, 0 });
+    }
+  }
+#endif
   cw_node sun = cw_node_get(tree_root(), "Sun");
   cw_node3d_set_position(sun, (t3_vec3){ W.cam_x - 8, 14, -8 });
   {
