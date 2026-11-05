@@ -25,3 +25,5 @@ standard+map+rep+instbig+nmap+ao+rmap+mmap+shadow+senv+l1800+s100
 standard+map+rep+nmap+ao+emap+rmap+mmap+shadow+senv+l1800+s100
 standard+map+rep+nmap+ao+rmap+mmap+shadow+senv+l1800+s100
 standard+shadow+senv+l1800+s100
+standard+senv+l1500+xwaterlow
+standard+senv+ds+l1500+xwaterlow

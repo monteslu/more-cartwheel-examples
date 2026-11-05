@@ -28,3 +28,6 @@ physical+instbig+shadow+l2801+s100
 physical+map+rep+nmap+ao+emap+rmap+shadow+l2801+s100
 physical+vcol+trans+nmap+shadow+ds+l2801+s100
 standard+shadow+ds+l2801+s100+xwater
+standard+fog+l2801+xwaterlow
+standard+fog+ds+l2801+xwaterlow
+standard+ds+l2801+xwaterlow

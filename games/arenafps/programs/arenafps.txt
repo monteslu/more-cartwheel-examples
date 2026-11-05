@@ -37,3 +37,5 @@ standard+map+rep+nmap+rmap+senv+ds+l1000+xcluster_gi
 basic+map+trans+ds
 standard+senv+ds+l1001+xgibuf
 standard+senv+ds+l1001+xcluster_gi
+standard+senv+l1001+xwaterlow
+standard+senv+ds+l1001+xwaterlow
