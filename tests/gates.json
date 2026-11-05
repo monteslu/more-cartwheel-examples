@@ -958,6 +958,21 @@
     "note": "the descent ends: three bots at the core's boss wave (HORDE_WAVE=44) with the Unmaker weak (HORDE_BOSS_WEAK). It falls at tick 440, the horde burns away, the bots gather the loot and one steps into the last hatch at 1337: the run is won (game.state 2). Measured 2026-10-30 on native GL. The control (HORDE_FLOOR_STAY=1) stays at the open hatch and must differ."
   },
   {
+    "name": "quality-range-1",
+    "script": "tests/quality-range-1.mjs",
+    "note": "each graphics preset's GPU time in play at 1080p on the test GPU, GL and WebGPU (Pirates, Jetski, Arena FPS; the engine's tools/quality-range.mjs over tests/quality-range-scenes.json): no preset dearer than the one above it, Ultra not under High, Very Low and Low under each game's share of High (Pirates: Very Low at most 0.3). Control: every preset drawing High must fail"
+  },
+  {
+    "name": "quality-range-2",
+    "script": "tests/quality-range-2.mjs",
+    "note": "each graphics preset's GPU time in play at 1080p on the test GPU, GL and WebGPU (Tux Racer, Sky Fighter, the co-op platformer; the engine's tools/quality-range.mjs over tests/quality-range-scenes.json): no preset dearer than the one above it, Ultra not under High, Very Low and Low under each game's share of High (Pirates: Very Low at most 0.3). Control: every preset drawing High must fail"
+  },
+  {
+    "name": "quality-range-3",
+    "script": "tests/quality-range-3.mjs",
+    "note": "each graphics preset's GPU time in play at 1080p on the test GPU, GL and WebGPU (the fighter, the brawler, the horde shooter, the party pack; the engine's tools/quality-range.mjs over tests/quality-range-scenes.json): no preset dearer than the one above it, Ultra not under High, Very Low and Low under each game's share of High (Pirates: Very Low at most 0.3). Control: every preset drawing High must fail"
+  },
+  {
     "name": "arenafps-quality",
     "script": "tests/arenafps-quality.mjs",
     "note": "a program for everything drawn at every quality on both backends, through a spread warm-up as a player gets it: every arena, in split screen and alone, each mode, from the title by real input. A scene not reached fails. Control: a state the scene draws out of the table must be reported and skip draws"
