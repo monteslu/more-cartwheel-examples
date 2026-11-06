@@ -62,6 +62,9 @@ jobs:
         run: |
           [ "${GITHUB_EVENT_NAME}" = pull_request ] || export RELEASE=1
           TARGETS=cart-wgpu scripts/build.sh $GAMES $(for g in $AUTO_GAMES; do echo ${g}_auto; done)
+      # every release cart carries its launcher art (games/<game>/art, project.cwproj art/description/author)
+      - name: Cart art
+        run: node tests/cart-art.mjs $GAMES
       - name: Smoke test (each game's cart in wasmcart's Node host on lavapipe, WebGPU)
         run: VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json node tests/cart-smoke.mjs --frames 60 $GAMES
       - uses: actions/upload-artifact@v7

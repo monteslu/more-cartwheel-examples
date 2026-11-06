@@ -262,6 +262,7 @@ static void init(void *u) {
   cw_debug_field("melee.hit_delay", G.m_delay, CW_DBG_I32, EK_KINDS);
 #ifdef HORDE_AUTOPILOT
   cw_debug_command("wave", "wave <n>: start over at that wave of the run", cmd_wave);
+  if (getenv("HORDE_CAM_DIST")) g_cam_dist = (float)atof(getenv("HORDE_CAM_DIST")); /* development (key art): dev.cam_dist from the environment */
 #ifndef HORDE_AUTO_PLAYERS
 #define HORDE_AUTO_PLAYERS 2
 #endif
@@ -594,7 +595,11 @@ static void render(void *u, double alpha) {
       if (m) view_set_sun((t3_vec3){ -m->e[8], -m->e[9], -m->e[10] });
     }
   }
-  if (G.in_match && (sc == CW_SHELL_PLAY || sc == CW_SHELL_PAUSE)) { CW_PROFILE_SCOPE("horde.hud"); hud(); }
+  bool hud_on = true;
+#ifdef HORDE_AUTOPILOT
+  hud_on = !getenv("HORDE_NOHUD"); /* development (key art): the play view with no HUD */
+#endif
+  if (hud_on && G.in_match && (sc == CW_SHELL_PLAY || sc == CW_SHELL_PAUSE)) { CW_PROFILE_SCOPE("horde.hud"); hud(); }
   cw_quality_auto_measure(sc == CW_SHELL_PLAY);
   double now = cw_wall();
   if (T_last > 0) T_frame += (now - T_last) * 1000;

@@ -9,3 +9,7 @@ export.linux-arm64.platform = "linux-arm64"
 export.windows-x64.platform = "windows-x64"
 export.macos-arm64.platform = "macos"
 export.android-arm64.platform = "android-arm64"
+# launcher art and credits, packed into the cart (art/art.json)
+art = art
+description = "Race jet skis across five waters, from a sunset atoll and a red canyon river to a port at night and an open-sea squall. Swells throw you into the air and steel ramps launch you into tricks."
+author = "Luis Montes"

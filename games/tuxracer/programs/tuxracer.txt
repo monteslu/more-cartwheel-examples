@@ -80,3 +80,4 @@ depth+skin+xcsm_feather_skinshade_gi
 physical+vcol+instbig+senv+cc+irid+l0001+xcsm_rim
 physical+vcol+skin+senv+sheen+l0001+xcsm_feather_skinshade_gi
 depth+instbig+xrim
+depth+skin+xcsm_feather_skinshade

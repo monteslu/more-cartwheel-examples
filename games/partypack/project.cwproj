@@ -8,3 +8,7 @@ export.linux-arm64.platform = "linux-arm64"
 export.windows-x64.platform = "windows-x64"
 export.macos-arm64.platform = "macos"
 export.android-arm64.platform = "android-arm64"
+# launcher art and credits, packed into the cart (art/art.json)
+art = art
+description = "A party game for one to four players. Race rafts and karts, shove rivals off shrinking rings and dodge bombs across a board of quick mini-games, against friends or the computer."
+author = "Luis Montes"

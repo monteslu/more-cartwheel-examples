@@ -1080,6 +1080,13 @@ static void pre_render_hook(cw_tree *t, double alpha, void *u) {
     place_tux(bx.p);
     G.dbg_alpha = (float)alpha;
     G.dbg_body_r[0] = bx.p.x, G.dbg_body_r[1] = bx.p.y, G.dbg_body_r[2] = bx.p.z;
+    const char *kc = getenv("TUXRACER_KEYCAM"); /* dev: key art, the camera held at an offset from Tux, aimed at an offset from him */
+    float k[6];
+    if (kc && sscanf(kc, "%f %f %f %f %f %f", &k[0], &k[1], &k[2], &k[3], &k[4], &k[5]) == 6) {
+      cw_node3d_set_position(G.cam, (t3_vec3){ bx.p.x + k[0], bx.p.y + k[1], bx.p.z + k[2] });
+      cw_node3d_look_at(G.cam, (t3_vec3){ bx.p.x + k[3], bx.p.y + k[4], bx.p.z + k[5] }, (t3_vec3){ 0, 1, 0 });
+      return;
+    }
   }
   if (G.view.mode == VIEW_FIXED || !G.view.initialized) return; /* parked by the cam dev command */
   float a = G.view_prev.initialized && G.view.mode == G.view_prev.mode ? (float)alpha : 1.0f;
@@ -1202,7 +1209,7 @@ static void render(void *user, double alpha) {
       break;
     }
     case ST_RACING:
-      hud_draw(&G.phys, G.race_time, G.herring, G.mode == MODE_CUP ? G.lives : 0);
+      if (!getenv("TUXRACER_NO_HUD")) hud_draw(&G.phys, G.race_time, G.herring, G.mode == MODE_CUP ? G.lives : 0); /* dev: key art without the HUD */
       break;
     case ST_PAUSED: {
       const char *const ITEMS[] = { "Resume", "Settings", SAVE.rumble_off ? "Rumble: Off" : "Rumble: On", "Quit race" };

@@ -118,6 +118,9 @@ void hub_update(float dt) {
     if (H.mode == 0) { /* the four stand in a row and bob to a beat */
       float ph = H.clock * 3.2f + (float)p * 1.3f;
       float b = fabsf(sinf(ph));
+#ifdef PP_AUTOPILOT
+      if (getenv("PP_KEYART")) b = 0; /* development (key art): all four stand on the table */
+#endif
       pos = (t3_vec3){ -3.3f + (float)p * 2.2f, 0.55f + b * 0.45f, 0 };
       yaw = sinf(H.clock * 0.8f + (float)p) * 0.35f;
       sq = 1 - 0.07f * (1 - b);

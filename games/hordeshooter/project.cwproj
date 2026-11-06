@@ -8,3 +8,7 @@ export.linux-arm64.platform = "linux-arm64"
 export.windows-x64.platform = "windows-x64"
 export.macos-arm64.platform = "macos"
 export.android-arm64.platform = "android-arm64"
+# launcher art and credits, packed into the cart (art/art.json)
+art = art
+description = "A co-op twin-stick shooter for one to four players: hold a walled yard against a horde that never stops coming, level up into upgrades and face a boss every fifth wave."
+author = "Luis Montes"

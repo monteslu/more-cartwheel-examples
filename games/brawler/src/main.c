@@ -627,6 +627,10 @@ static void render(void *user, double alpha) {
     for (int i = 0; i < MAXP; i++) if (W.p[i].used) char_sync(&W.p[i]);
     for (int i = 0; i < MAXE; i++) if (W.e[i].used) char_sync(&W.e[i]);
     sim_sync_extras();
+#ifdef BRAWLER_AUTOPILOT
+    static int nohud = -1; if (nohud < 0) nohud = getenv("BRAWLER_NOHUD") != NULL; /* BRAWLER_NOHUD: no HUD at all (key art) */
+    if (!nohud)
+#endif
     ui_draw();
 #ifdef BRAWLER_AUTOPILOT
     bench_line();

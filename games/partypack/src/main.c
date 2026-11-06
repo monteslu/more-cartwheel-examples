@@ -462,7 +462,7 @@ static void on_start(int players, void *user) {
   { const char *b = getenv("PP_BATCH"); batch_total = b ? atoi(b) : 0; }
   { const char *r = getenv("PP_ROUNDS"); if (r) SV->rounds_opt = atoi(r); }
   if (batch_total) for (int i = 0; i < MG_N; i++) if (MG_LIST[i]->scene) SV->unlocked &= ~(1u << i); /* 2D games only */
-  start_tournament();
+  if (!getenv("PP_KEYART")) start_tournament(); /* development (key art): PP_KEYART stays on the hub, the four characters on the table */
   { const char *only = getenv("PP_GAME"); /* a single game on repeat, for screenshots and probes */
     if (only) for (int i = 0; i < MG_N; i++) if (!strcmp(MG_LIST[i]->id, only)) for (int k = 0; k < G.rounds; k++) G.order[k] = i; }
 #endif
@@ -978,11 +978,16 @@ static void render(void *user, double alpha) {
   if (sc == CW_SHELL_PLAY || sc == CW_SHELL_PAUSE) {
     bool in_game = G.state >= S_INTRO && G.state <= S_RESULT;
     bool over3d = in_game && G.scene3d;
+    bool art_clean = false; /* development (key art): PP_KEYART or PP_NOHUD draw no 2D over the 3D view */
+#ifdef PP_AUTOPILOT
+    art_clean = getenv("PP_KEYART") || (getenv("PP_NOHUD") && over3d);
+#endif
     cw_r2d_begin(&(cw_r2d_pass_desc){ .clear = !(over3d || G_hub_live), .clear_color = cw_rgba(0.05f, 0.05f, 0.1f, 1), .ambient = art_ambient });
     art_world(false);
     if (G.state == S_RESULT || G.state == S_FINISH || G.state == S_PLAY || G.state == S_COUNT || G.state == S_INTRO) fx_update(sc == CW_SHELL_PLAY ? dt_ : 0);
     stage_begin();
-    if (in_game) {
+    if (art_clean) {
+    } else if (in_game) {
       const mg_def *d = cur_def();
       if (!G.scene3d) art_world(true);   /* the 2D world is lit: sprites with normal maps, real 2D lights */
       d->draw(&G.c, (float)alpha, G.clock);

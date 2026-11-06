@@ -1,0 +1,29 @@
+{
+  "icon": "icon.png",
+  "cover": "cover.jpg",
+  "background": "background.jpg",
+  "logo": "logo.png",
+  "title": "title.jpg",
+  "screenshots": [
+    {
+      "path": "shot-1.jpg",
+      "label": "Leading the race across a turquoise lagoon at sunset, a palm-covered island ahead"
+    },
+    {
+      "path": "shot-2.jpg",
+      "label": "Riders side by side on a river in a red sandstone canyon"
+    },
+    {
+      "path": "shot-3.jpg",
+      "label": "Racing through a working port at night under cranes and lit windows"
+    },
+    {
+      "path": "shot-4.jpg",
+      "label": "Three riders on a grey storm swell, a rig on the horizon"
+    },
+    {
+      "path": "shot-5.jpg",
+      "label": "Racing past granite cliffs in a fjord on a grey morning"
+    }
+  ]
+}

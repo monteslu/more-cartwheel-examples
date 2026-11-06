@@ -1,0 +1,25 @@
+{
+  "icon": "icon.png",
+  "cover": "cover.jpg",
+  "background": "background.jpg",
+  "logo": "logo.png",
+  "title": "title.jpg",
+  "screenshots": [
+    {
+      "path": "shot-1.jpg",
+      "label": "A rocket bursts against a robot across a sunlit courtyard"
+    },
+    {
+      "path": "shot-2.jpg",
+      "label": "Firing on a rival over the flooded terraces at dusk"
+    },
+    {
+      "path": "shot-3.jpg",
+      "label": "Lining up a head shot in the foundry hall"
+    },
+    {
+      "path": "shot-4.jpg",
+      "label": "Four players sharing one screen in the foundry"
+    }
+  ]
+}

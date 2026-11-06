@@ -1,0 +1,25 @@
+{
+  "icon": "icon.png",
+  "cover": "cover.jpg",
+  "background": "background.jpg",
+  "logo": "logo.png",
+  "title": "title.jpg",
+  "screenshots": [
+    {
+      "path": "shot-1.jpg",
+      "label": "Two fighters trade blows in a rainy neon alley as a punch lands with a burst of sparks"
+    },
+    {
+      "path": "shot-2.jpg",
+      "label": "A fighter in a white uniform lands a hit on a rooftop at dusk while the crowd cheers"
+    },
+    {
+      "path": "shot-3.jpg",
+      "label": "A high kick knocks the opponent flat on the floor of a wooden training hall"
+    },
+    {
+      "path": "shot-4.jpg",
+      "label": "The character select screen with four fighters, their life and their special moves"
+    }
+  ]
+}

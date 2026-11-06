@@ -1,0 +1,25 @@
+{
+  "icon": "icon.png",
+  "cover": "cover.jpg",
+  "background": "background.jpg",
+  "logo": "logo.png",
+  "title": "title.jpg",
+  "screenshots": [
+    {
+      "path": "shot-1.jpg",
+      "label": "A jet flies low over a dense city toward a huge flying saucer guarded by four shield generators"
+    },
+    {
+      "path": "shot-2.jpg",
+      "label": "A jet locks onto a striped hot air balloon above patchwork farmland"
+    },
+    {
+      "path": "shot-3.jpg",
+      "label": "A jet takes off from a coastal runway between a steep mountain and the sea"
+    },
+    {
+      "path": "shot-4.jpg",
+      "label": "A jet skims the open ocean toward a group of offshore oil rigs"
+    }
+  ]
+}

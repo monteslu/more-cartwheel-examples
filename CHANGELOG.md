@@ -1,8 +1,8 @@
 # Changelog
 
-## 0.23.0
+## 0.24.0
 
-- New game: crawler (working title), a co-op maze dungeon crawler for one to four players on one shared top-down
+- New game: crawler, a co-op maze dungeon crawler for one to four players on one shared top-down
   screen. 120 floors in six tilesets (the crypt, the sewers, the foundry, the grotto, the cathedral and the abyss),
   each a maze with spawners pouring monsters out, locked doors and their keys, food, potions, treasure and a stair
   down; health drains all the time and food gives it back. Four heroes (the Brute, the Warden, the Mage and the
@@ -10,6 +10,20 @@
   CI: every exit reachable with the keys on the way, nothing in a wall, every prop grounded, every floor's light
   baked and current, and every floor cleared by bots. The spawners keep pouring, but one screen holds at most 120
   monsters, so a corridor reads as a line to shoot through.
+- Crawler ships with its launcher art, HUD and menu text of at least 26 px at 1080p (2.4% of the screen
+  height), button prompts on every control hint and the Very Low preset.
+
+## 0.23.0
+
+- Every game carries its own launcher art (engine v0.32.0, wasmcart 0.38.0): an icon, a cover
+  with the game's name, a background, a logo, the title screen and three to five labelled
+  screenshots of real play, with a one or two sentence description and the author, packed under
+  `art/` in each `.wasc`. A launcher that knows the manifest's `art` shows them without running
+  the cart; a host that does not runs the cart as before. The pictures live in
+  `games/<game>/art`, named in its `art.json`, and `tests/cart-art.mjs` checks every release cart
+  carries them.
+- Tux Racer: a race started on a course directly draws Tux's shadow again (a program state was
+  missing from its table).
 
 ## 0.22.0
 
