@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.26.1
+
+- Engine v0.34.2: control hints for movement show the d-pad, with the arms to press solid, wherever the d-pad and
+  the left stick both move: moving in Arena FPS, the horde shooter, the brawler, the crawler, the co-op platformer,
+  the fighter and every party pack mini-game, sailing in Pirates, flying in Sky Fighter, steering and leaning in
+  Jetski, and the menus. A single direction (Jetski's lean back) lights its one arm. Actions only the right stick
+  does, looking in Arena FPS and Sky Fighter, still show the stick.
+
 ## 0.26.0
 
 - Engine v0.34.1: text you can read on a small screen. Every game's Settings now has Text size (100%,
