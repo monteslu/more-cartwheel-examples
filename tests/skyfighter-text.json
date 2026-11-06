@@ -1,0 +1,72 @@
+{
+  "app": "skyfighter",
+  "secondary": [
+    "^KNOTS$",
+    "^FT MSL$"
+  ],
+  "screens": [
+    {
+      "name": "title",
+      "frames": 40
+    },
+    {
+      "name": "controls",
+      "frames": 60,
+      "input": "skyfighter-text-controls.json"
+    },
+    {
+      "name": "controls-end",
+      "frames": 90,
+      "input": "skyfighter-text-controls-end.json"
+    },
+    {
+      "name": "settings",
+      "frames": 60,
+      "input": "skyfighter-text-settings.json"
+    },
+    {
+      "name": "settings-text-rows",
+      "frames": 116,
+      "input": "skyfighter-text-settings-rows.json"
+    },
+    {
+      "name": "play",
+      "frames": 300,
+      "input": "skyfighter-text-play.json"
+    },
+    {
+      "name": "pause",
+      "frames": 240,
+      "input": "skyfighter-text-pause.json"
+    },
+    {
+      "name": "pause-settings",
+      "frames": 260,
+      "input": "skyfighter-text-pause-settings.json"
+    },
+    {
+      "name": "mission-clear",
+      "frames": 60,
+      "input": "skyfighter-text-play.json",
+      "startCmds": [
+        "preview win"
+      ]
+    },
+    {
+      "name": "mothership-destroyed",
+      "frames": 60,
+      "input": "skyfighter-text-play.json",
+      "startCmds": [
+        "preview mothership"
+      ]
+    },
+    {
+      "name": "jet-down",
+      "frames": 60,
+      "input": "skyfighter-text-play.json",
+      "startCmds": [
+        "preview lost"
+      ]
+    }
+  ]
+}

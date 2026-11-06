@@ -53,7 +53,9 @@
 #define SAVE_MAGIC_V1 0x534d5331u
 
 /* invert_pitch was a whole byte holding 0 or 1: Rumble OFF takes its next bit, so an older save reads Rumble on and keeps its size */
-typedef struct { uint32_t magic; uint8_t invert_pitch : 1, rumble_off : 1, : 6; uint8_t expert_controls, music_volume, sfx_volume; uint32_t graphics, progress; } preferences;
+/* progress was a 32-bit word whose top half was always written zero: the text size settings (cw_text_scale_saved) take
+ * its third byte, so an older save reads 0 there, the defaults */
+typedef struct { uint32_t magic; uint8_t invert_pitch : 1, rumble_off : 1, : 6; uint8_t expert_controls, music_volume, sfx_volume; uint32_t graphics; uint16_t progress; uint8_t text_size, reserved; } preferences;
 _Static_assert(sizeof(preferences) == 16, "the save keeps its size");
 static preferences prefs;
 
@@ -130,6 +132,10 @@ static struct {cw_texture thumbnails[MISSIONS];cw_vec2 pointer;uint32_t previous
 static void menu_read_pointer(void);
 static void menu_load(void);
 static bool menu_tick(void);
+#define SETTINGS_ROWS 8
+#define SETTINGS_BACK (-2)
+/* the settings row (or SETTINGS_BACK) under the pointer as the rows are drawn, -1 none; direction: the row's side */
+static int settings_pointer(cw_vec2 p,int *direction);
 
 static float rand01(void) {
   G.rng = G.rng * 1664525u + 1013904223u;
@@ -1217,6 +1223,13 @@ static void enemy_fire(enemy *e,bool missile) {
 
 /* debug channel: "bind <action> <bindings>" replaces an action's bindings (the text form, "key:x, pad:north"): for checking
  * that a rebound action's prompt shows its new button */
+/* development: `preview win|mothership|lost|off` draws a mission's results screen over the frame (render only: the state is
+ * put back after drawing), so the text size check reaches the screens a whole mission stands in front of */
+static int32_t menu_preview;
+static void cmd_preview(int argc, const char **argv, cw_reply *r) {
+  if (argc > 1) menu_preview = !strcmp(argv[1], "win") ? 1 : !strcmp(argv[1], "mothership") ? 2 : !strcmp(argv[1], "lost") ? 3 : 0;
+  cw_reply_printf(r, "{\"preview\":%d}", (int)menu_preview);
+}
 static void cmd_bind(int argc, const char **argv, cw_reply *r) {
   if (argc < 3) { cw_reply_error(r, "bind <action> <bindings>"); return; }
   cw_action a = cw_action_find(argv[1]);
@@ -1269,6 +1282,7 @@ static void init(void *user) {
   cw_font_preload_range(G.title_font,32,126);cw_font_preload_range(G.ui_font,32,126);menu_load();
   cw_debug_i32("mission.state", &G.state);
   cw_debug_command("bind", "bind <action> <bindings>: replace an action's bindings", cmd_bind);
+  cw_debug_command("preview", "preview win|mothership|lost|off: draw a results screen over the frame (render only)", cmd_preview);
   cw_debug_i32("mission.level",&G.level);cw_debug_i32("menu.row",&G.menu_row);cw_debug_f32_array("menu.pointer",&menu_ui.pointer.x,2);cw_debug_i32("mission.balloons",&G.balloon_kills);cw_debug_i32("mission.blimps",&G.blimp_kills);cw_debug_i32("mission.shields",&G.shields_left);
   cw_debug_f32("mission.elapsed",&G.mission_time);cw_debug_f32("mothership.explosion_age",&capital.age);cw_debug_i32("mothership.fragments",&capital.fragments);cw_debug_f32_array("mothership.fragment_position",&capital.chunks[0]->position.x,3);
   static char air_keys[AIR_TARGETS][7][40];
@@ -1352,8 +1366,8 @@ static void init(void *user) {
   cw_debug_f32("audio.sfx_gain",&G.sfx_gain);
   cw_debug_f32("audio.music_gain",&G.music_gain);cw_debug_f32("audio.music_rms",&G.music_rms);
   cw_debug_i32("audio.music_ready",&G.music_ready);cw_debug_i32("audio.music_underflows",&G.music_underflows);cw_debug_i32("audio.music_played",&G.music_played);
-  if(prefs.magic==SAVE_MAGIC_V1){prefs.magic=SAVE_MAGIC;prefs.music_volume=10;prefs.sfx_volume=100;prefs.progress=0;}
-  if(prefs.magic==SAVE_MAGIC_V2){prefs.magic=SAVE_MAGIC;prefs.progress=0;}
+  if(prefs.magic==SAVE_MAGIC_V1){prefs.magic=SAVE_MAGIC;prefs.music_volume=10;prefs.sfx_volume=100;prefs.progress=0;prefs.text_size=0;}
+  if(prefs.magic==SAVE_MAGIC_V2){prefs.magic=SAVE_MAGIC;prefs.progress=0;prefs.text_size=0;}
   if (prefs.magic != SAVE_MAGIC) {
     memset(&prefs, 0, sizeof prefs);
     prefs.magic = SAVE_MAGIC;prefs.music_volume=10;prefs.sfx_volume=100;
@@ -1364,12 +1378,12 @@ static void init(void *user) {
     const char *names[]={"hp","x","y","z"};for(int j=0;j<4;j++)snprintf(building_keys[i][j],32,"building.%d.%s",i,names[j]);
     cw_debug_i32(building_keys[i][0],&G.buildings[i].hp);cw_debug_f32(building_keys[i][1],&G.buildings[i].x);cw_debug_f32(building_keys[i][2],&G.buildings[i].y);cw_debug_f32(building_keys[i][3],&G.buildings[i].z);
   }
-  cw_debug_u32("campaign.progress",&prefs.progress);cw_debug_i32("map.style",&G.map_style);
+  cw_debug_field("campaign.progress",&prefs.progress,CW_DBG_U16,1);cw_debug_i32("map.style",&G.map_style);
   prefs.invert_pitch = !!prefs.invert_pitch;
   prefs.expert_controls=!!prefs.expert_controls;
   prefs.music_volume=(uint8_t)clampf(prefs.music_volume,0,100);prefs.sfx_volume=(uint8_t)clampf(prefs.sfx_volume,0,100);
   G.music_gain=prefs.music_volume*.01f;G.sfx_gain=prefs.sfx_volume*.01f;
-  cw_quality_restore(prefs.graphics);cw_save_commit();
+  cw_quality_restore(prefs.graphics);cw_text_scale_restore(prefs.text_size);prefs.reserved=0;cw_save_commit();
   cw_audio_open(48000,audio_fill,NULL);
   cw_debug_i32("render.skipped",&G.skipped);cw_debug_i32("art.hide_hud",&art_hide_hud);
 #ifndef __wasm__
@@ -1406,11 +1420,12 @@ static void fixed_update(void *user, double dt) {
   if(G.state==SETTINGS) {
     int pointer_direction=0;
     if(menu_ui.clicked){
-      if(menu_ui.pointer.x>=240&&menu_ui.pointer.x<=360&&menu_ui.pointer.y>=450&&menu_ui.pointer.y<=480){G.state=G.return_state;return;}
-      for(int i=0;i<6;i++)if(menu_ui.pointer.x>=230&&menu_ui.pointer.x<=730&&menu_ui.pointer.y>=169+i*42&&menu_ui.pointer.y<207+i*42){G.settings_row=i;pointer_direction=menu_ui.pointer.x<590?-1:1;}
+      int hit=settings_pointer(menu_ui.pointer,&pointer_direction); /* the rows as drawn (menus.h), at the player's text size */
+      if(hit==SETTINGS_BACK){G.state=G.return_state;return;}
+      if(hit>=0)G.settings_row=hit;
     }
-    if(cw_action_just_pressed(0,G.up))G.settings_row=(G.settings_row+5)%6;
-    if(cw_action_just_pressed(0,G.down))G.settings_row=(G.settings_row+1)%6;
+    if(cw_action_just_pressed(0,G.up))G.settings_row=(G.settings_row+SETTINGS_ROWS-1)%SETTINGS_ROWS;
+    if(cw_action_just_pressed(0,G.down))G.settings_row=(G.settings_row+1)%SETTINGS_ROWS;
     if(cw_action_just_pressed(0,G.gun)||cw_action_just_pressed(0,G.left)||cw_action_just_pressed(0,G.right)||pointer_direction) {
       int direction=pointer_direction?pointer_direction:cw_action_just_pressed(0,G.left)?-1:1;
       if(G.settings_row==0)prefs.invert_pitch=!prefs.invert_pitch;
@@ -1424,6 +1439,10 @@ static void fixed_update(void *user, double dt) {
         *volume=(uint8_t)clampf(value,0,100);
         G.music_gain=prefs.music_volume*.01f;G.sfx_gain=prefs.sfx_volume*.01f;
       }
+      /* the text size rows: presentation only (cartwheel/render2d.h "text size"), kept in the save */
+      if(G.settings_row==6){if(direction<0)cw_text_scale_cycle_back();else cw_text_scale_cycle();}
+      if(G.settings_row==7){cw_text_backdrop_cycle();if(direction<0)cw_text_backdrop_cycle();} /* three settings: twice forward is one back */
+      if(G.settings_row>=6)prefs.text_size=cw_text_scale_saved();
       cw_save_commit();
     }
     if(cw_action_just_pressed(0,G.back)||cw_action_just_pressed(0,G.pause)||cw_action_just_pressed(0,G.settings))G.state=G.return_state;
@@ -1712,17 +1731,31 @@ static void fixed_update(void *user, double dt) {
   campaign_finish();
 }
 
-static void text(cw_font f, const char *s, float x, float y, float size, cw_color color, float width,
+/* Text at the player's text size (cartwheel/render2d.h "text size"): every size here is the one asked for at 100% and
+ * the engine scales it, so each block places its lines under each other by their measured height and sizes its panel
+ * from measured widths. Returns the drawn box. */
+static cw_text_metrics text(cw_font f, const char *s, float x, float y, float size, cw_color color, float width,
                  cw_text_align align) {
-  cw_r2d_text(f, s, (cw_vec2){ x, y }, &(cw_text_style){ .size = size, .color = color,
+  return cw_r2d_text(f, s, (cw_vec2){ x, y }, &(cw_text_style){ .size = size, .color = color,
     .wrap_width = width, .align = align, .outline_width = size * 0.032f,
     .outline_color = cw_hex(0x07111be0) });
 }
+/* the box text() would draw (width 0: one line) */
+static cw_text_metrics measure(cw_font f, const char *s, float size, float width) {
+  return cw_font_measure(f, s, &(cw_text_style){ .size = size, .wrap_width = width });
+}
+/* one line centred on cx, or ending at right (a box wide enough that it never wraps) */
+static cw_text_metrics ctext(cw_font f, const char *s, float cx, float y, float size, cw_color color) {
+  return text(f, s, cx - W, y, size, color, 2 * W, CW_ALIGN_CENTER);
+}
+static cw_text_metrics rtext(cw_font f, const char *s, float right, float y, float size, cw_color color) {
+  return text(f, s, right - 2 * W, y, size, color, 2 * W, CW_ALIGN_RIGHT);
+}
 /* text with button prompts in it (cartwheel/prompt.h markup: "{guns} GUNS"), in the box text() would use: the glyphs
- * are the ones for the device the pilot is holding */
-static void ptext(cw_font f, const char *s, float x, float y, float size, cw_color color, float width, cw_text_align align) {
+ * are the ones for the device the pilot is holding. Returns the size drawn. */
+static cw_vec2 ptext(cw_font f, const char *s, float x, float y, float size, cw_color color, float width, cw_text_align align) {
   float px = align == CW_ALIGN_CENTER ? x + width * 0.5f : align == CW_ALIGN_RIGHT ? x + width : x;
-  cw_prompt_text(f, s, 0, (cw_vec2){ px, y }, size, color, align);
+  return cw_prompt_text(f, s, 0, (cw_vec2){ px, y }, size, color, align);
 }
 /* the pilot is on a pad (the stick look and the shoulder rolls are pad controls; a keyboard rolls on Q and E) */
 static bool on_pad(void) { return cw_prompt_device_of(0) == CW_PROMPT_PAD; }
@@ -1733,28 +1766,41 @@ static bool hud_project(float x,float y,float z,cw_vec2 *out) {
   out->x=(v.x*0.5f+0.5f)*W;out->y=(0.5f-v.y*0.5f)*H;
   return out->x>20&&out->x<W-20&&out->y>40&&out->y<H-45;
 }
+static bool mothership_menu(void); /* menus.h */
 static void hud(void) {
   if(G.state==VICTORY){cw_render3d_stats stats;cw_render3d_get_stats(G.tree,&stats);G.skipped=stats.skipped;return;}
   cw_color green=cw_hex(0xa6edbcdf),muted=cw_hex(0xadddc6a8),white=cw_hex(0xe3ece7ff);
   cw_color amber=cw_hex(0xffb366ff),red=cw_hex(0xff6655ff);
-  char buf[128];
-  text(G.ui_font,mission_name(),28,21,15,white,0,CW_ALIGN_LEFT);
-  text(G.ui_font,mission_goal(),28,47,13,amber,670,CW_ALIGN_LEFT);
+  char buf[128];cw_text_metrics m;
+  /* top left: the mission, its goal and the objective, each under the last, wrapped clear of the heading readout */
+  float left_w=W*0.5f-28-70,y=21,left_right=28;
+  m=text(G.ui_font,mission_name(),28,y,15,white,0,CW_ALIGN_LEFT);y+=m.height+3;left_right=fmaxf(left_right,28+m.width);
+  m=text(G.ui_font,mission_goal(),28,y,13,amber,left_w,CW_ALIGN_LEFT);y+=m.height+3;left_right=fmaxf(left_right,28+measure(G.ui_font,mission_goal(),13,left_w).width);
+  int wp=G.state==PLAY?campaign_waypoint():-1;float wx=0,wy=0,wz=0;
+  bool objective=wp>=0&&!G.incoming&&target_position(wp,&wx,&wy,&wz);
+  if(objective) {
+    t3_vec3 local=aircraft_local(wx,wy,wz);float distance=t3_vec3_length(local);
+    snprintf(buf,sizeof buf,"OBJECTIVE %.1f KM / %s",distance*.001f,local.z>0?"TURN BACK":fabsf(local.x)>-local.z*.2f?(local.x<0?"LEFT":"RIGHT"):local.y>150?"CLIMB":local.y< -150?"DESCEND":"AHEAD");
+    m=text(G.ui_font,buf,28,y,13,muted,left_w,CW_ALIGN_LEFT);y+=m.height+3;left_right=fmaxf(left_right,28+measure(G.ui_font,buf,13,left_w).width);
+  }
+  float left_bottom=y;
   snprintf(buf,sizeof buf,"AIR KILLS %02d   SCORE %06d",G.kills,G.score);
-  text(G.ui_font,buf,W-280,21,15,white,255,CW_ALIGN_RIGHT);
+  rtext(G.ui_font,buf,W-25,21,15,white);
   int heading=((int)(G.heading*180/PI)%360+360)%360;
   snprintf(buf,sizeof buf,"%03d",heading);
-  text(G.title_font,buf,W*0.5f-40,37,17,green,80,CW_ALIGN_CENTER);
+  m=ctext(G.title_font,buf,W*0.5f,37,17,green);
+  float heading_bottom=37+m.height;
   for(int i=-3;i<=3;i++) {
     float x=W*0.5f+i*37;
     cw_r2d_line((cw_vec2){x,24},(cw_vec2){x,30+(i==0?4:0)},1,muted);
   }
+  /* speed and altitude: the number, its unit under it (a small label under a big number) */
   snprintf(buf,sizeof buf,"%03d",(int)(G.speed*1.94384f));
-  text(G.title_font,buf,155,232,25,green,80,CW_ALIGN_CENTER);
-  text(G.ui_font,"KNOTS",155,267,11,muted,80,CW_ALIGN_CENTER);
+  m=ctext(G.title_font,buf,195,232,25,green);
+  ctext(G.ui_font,"KNOTS",195,232+m.height,11,muted);
   snprintf(buf,sizeof buf,"%05d",(int)(G.py*3.28084f));
-  text(G.title_font,buf,W-240,232,25,green,105,CW_ALIGN_CENTER);
-  text(G.ui_font,"FT MSL",W-240,267,11,muted,105,CW_ALIGN_CENTER);
+  m=ctext(G.title_font,buf,W-187.5f,232,25,green);
+  ctext(G.ui_font,"FT MSL",W-187.5f,232+m.height,11,muted);
   cw_r2d_line((cw_vec2){230,245},(cw_vec2){245,245},1,green);
   cw_r2d_line((cw_vec2){W-245,245},(cw_vec2){W-230,245},1,green);
   if(G.state==PLAY){
@@ -1782,12 +1828,12 @@ static void hud(void) {
       cw_r2d_line((cw_vec2){p.x+r,p.y-r},(cw_vec2){p.x+r,p.y+r},1,c);
       float dx=e->x-G.px,dz=e->z-G.pz;
       snprintf(buf,sizeof buf,"%s %.1f KM",locked?"LOCK":e->role==2?"ACE":"HOSTILE",sqrtf(dx*dx+dz*dz)*0.001f);
-      if(locked||i==G.lock_target)text(G.ui_font,buf,p.x-70,p.y+r+6,12,c,140,CW_ALIGN_CENTER);
+      if(locked||i==G.lock_target)ctext(G.ui_font,buf,p.x,p.y+r+6,13,c);
     }
     if(G.lock_target>=ENEMIES){float x,y,z;cw_vec2 p;
       if(target_position(G.lock_target,&x,&y,&z)&&hud_project(x,y,z,&p)) {
         cw_r2d_circle_lines(p,20,1,4,amber);
-        text(G.ui_font,G.lock_timer>0.6f?(G.lock_target>=ENEMIES+BUILDINGS?(G.level==4?(G.shields_left?"SHIELD GENERATOR":"CORE EXPOSED"):G.level==6?"SANTA LOCK":((G.lock_target-ENEMIES-BUILDINGS)%2?"BASKET LOCK":"ENVELOPE LOCK")):(fuel_depot(G.lock_target-ENEMIES)?"FUEL DEPOT LOCK":"GROUND LOCK")):"ACQUIRING",p.x-60,p.y+26,12,amber,120,CW_ALIGN_CENTER);
+        ctext(G.ui_font,G.lock_timer>0.6f?(G.lock_target>=ENEMIES+BUILDINGS?(G.level==4?(G.shields_left?"SHIELD GENERATOR":"CORE EXPOSED"):G.level==6?"SANTA LOCK":((G.lock_target-ENEMIES-BUILDINGS)%2?"BASKET LOCK":"ENVELOPE LOCK")):(fuel_depot(G.lock_target-ENEMIES)?"FUEL DEPOT LOCK":"GROUND LOCK")):"ACQUIRING",p.x,p.y+26,13,amber);
       }
     }
     if(G.lock_target>=0&&G.lock_target<ENEMIES) {
@@ -1795,21 +1841,26 @@ static void hud(void) {
       float time=sqrtf(dx*dx+dy*dy+dz*dz)/1080;cw_vec2 lead;
       if(hud_project(e->x+e->vx*60*time,e->y+e->vy*60*time,e->z+e->vz*60*time,&lead))cw_r2d_circle_lines(lead,5,1,12,green);
     }
-    if(G.notice_timer>0)text(G.ui_font,G.notice,28,H-79,12,white,650,CW_ALIGN_LEFT);
+    /* the warnings, one column under the heading: pushed under the top left block when they would reach it */
+    const char *incoming_line=G.threat_eta<=1.6f?"BREAK NOW / {countermeasures} FLARES":"MISSILE INBOUND";
+    char threat[80];snprintf(threat,sizeof threat,"%d INBOUND  /  %.0f M  /  %.1f SEC CLOSING",G.incoming,G.threat_range,fminf(G.threat_eta,99.9f));
+    float half=0;
+    if(G.kill_flash>0)half=fmaxf(half,measure(G.title_font,"TARGET DESTROYED",19,0).width*.5f);
+    if(G.incoming)half=fmaxf(half,fmaxf(cw_prompt_text_size(G.title_font,incoming_line,0,20).x,measure(G.ui_font,threat,13,0).width)*.5f);
+    if(G.warning>0)half=fmaxf(half,measure(G.title_font,"PULL UP",24,0).width*.5f);
+    float top=fmaxf(82,heading_bottom+4);
+    if(half>0&&left_right+8>W*.5f-half)top=fmaxf(top,left_bottom+6);
+    float cy=top;
+    if(G.kill_flash>0){m=ctext(G.title_font,"TARGET DESTROYED",W*.5f,cy,19,amber);cy+=m.height;}
+    cy=fmaxf(cy,top+28);
     if(G.incoming) {
-      ptext(G.title_font,G.threat_eta<=1.6f?"BREAK NOW / {countermeasures} FLARES":"MISSILE INBOUND",W/2-220,110,20,red,440,CW_ALIGN_CENTER);
-      char threat[80];snprintf(threat,sizeof threat,"%d INBOUND  /  %.0f M  /  %.1f SEC CLOSING",G.incoming,G.threat_range,fminf(G.threat_eta,99.9f));
-      text(G.ui_font,threat,W/2-240,136,12,white,480,CW_ALIGN_CENTER);
+      cy+=ptext(G.title_font,incoming_line,W*.5f-W,cy,20,red,2*W,CW_ALIGN_CENTER).y;
+      m=ctext(G.ui_font,threat,W*.5f,cy,13,white);cy+=m.height+4;
       float x=W/2+sinf(G.threat_bearing)*210,y=H/2-cosf(G.threat_bearing)*135;
       cw_r2d_circle_lines((cw_vec2){x,y},9,2,3,red);
     }
-    if(G.warning>0)text(G.title_font,"PULL UP",W/2-90,115,24,red,180,CW_ALIGN_CENTER);
-    if(G.missiles<=0)snprintf(buf,sizeof buf,"NO MISSILES");
-    else if(G.missile_cool>0)snprintf(buf,sizeof buf,"MISSILE RELOAD %.1f SEC",G.missile_cool/60);
-    else snprintf(buf,sizeof buf,"%s",G.lock_timer>.6f?"GUIDED MISSILE READY":G.missile_request>0?"MISSILE QUEUED / ACQUIRING":"MISSILE / AIM FOR LOCK");
-    text(G.ui_font,buf,W/2-130,H-120,13,amber,260,CW_ALIGN_CENTER);
-    if(G.hit_flash>0)text(G.ui_font,"HIT",sight.x+25,sight.y+15,14,white,60,CW_ALIGN_LEFT);
-    if(G.kill_flash>0)text(G.title_font,"TARGET DESTROYED",W/2-150,82,19,amber,300,CW_ALIGN_CENTER);
+    if(G.warning>0)ctext(G.title_font,"PULL UP",W*.5f,fmaxf(cy,top+33),24,red);
+    if(G.hit_flash>0)text(G.ui_font,"HIT",sight.x+25,sight.y+15,14,white,0,CW_ALIGN_LEFT);
     cw_vec2 rc={W-88,H-104};
     cw_r2d_circle(rc,48,48,cw_hex(0x05131799));
     cw_r2d_circle_lines(rc,48,1,48,muted);
@@ -1834,92 +1885,75 @@ static void hud(void) {
       if(p.x>W*.40f&&p.x<W*.60f&&p.y>H*.64f&&p.y<H*.86f)continue;
       cw_r2d_circle_lines(p,i%2?5:9,1,4,muted);
       const char *label=G.air_targets[i/2].kind==0?(i%2?"BASKET":"BALLOON"):G.air_targets[i/2].kind==1?(i%2?"GONDOLA":"BLIMP"):G.air_targets[i/2].kind==2?"SHIELD GEN":G.air_targets[i/2].kind==4?"SANTA":"CORE";
-      if(distance<450&&i%2)text(G.ui_font,label,p.x-55,p.y+12,11,muted,110,CW_ALIGN_CENTER);
+      if(distance<450&&i%2)ctext(G.ui_font,label,p.x,p.y+12,13,muted);
     }
-    int wp=campaign_waypoint();float x,y,z;
-    if(wp>=0&&!G.incoming&&target_position(wp,&x,&y,&z)) {
-      t3_vec3 local=aircraft_local(x,y,z);float distance=t3_vec3_length(local);
-      snprintf(buf,sizeof buf,"OBJECTIVE %.1f KM / %s",distance*.001f,local.z>0?"TURN BACK":fabsf(local.x)>-local.z*.2f?(local.x<0?"LEFT":"RIGHT"):local.y>150?"CLIMB":local.y< -150?"DESCEND":"AHEAD");
-      text(G.ui_font,buf,28,73,12,muted,540,CW_ALIGN_LEFT);
-      cw_vec2 marker;if(!hud_project(x,y,z,&marker)){
-        float bearing=cw_wrap_angle(atan2f(x-G.px,G.pz-z)-G.heading);float sx=W*.5f+clampf(bearing/(PI*.5f),-1,1)*(W*.5f-55),sy=H*.30f;
-        cw_r2d_circle_lines((cw_vec2){sx,sy},14,2,4,amber);text(G.ui_font,"OBJECTIVE",sx-65,sy+20,12,amber,130,CW_ALIGN_CENTER);
-        if(fabsf(bearing)>PI*.65f)text(G.ui_font,"BEHIND",sx-65,sy+37,12,amber,130,CW_ALIGN_CENTER);
+    if(objective) {
+      cw_vec2 marker;if(!hud_project(wx,wy,wz,&marker)){
+        float bearing=cw_wrap_angle(atan2f(wx-G.px,G.pz-wz)-G.heading);float sx=W*.5f+clampf(bearing/(PI*.5f),-1,1)*(W*.5f-55),sy=H*.30f;
+        if(sx-70<left_right)sy=fmaxf(sy,left_bottom+20); /* under the top left block when it would reach it */
+        float lx=clampf(sx,8+measure(G.ui_font,"OBJECTIVE",13,0).width*.5f,W-8-measure(G.ui_font,"OBJECTIVE",13,0).width*.5f); /* the captions kept on screen */
+        cw_r2d_circle_lines((cw_vec2){sx,sy},14,2,4,amber);m=ctext(G.ui_font,"OBJECTIVE",lx,sy+20,13,amber);
+        if(fabsf(bearing)>PI*.65f)ctext(G.ui_font,"BEHIND",lx,sy+20+m.height,13,amber);
       }
-      cw_vec2 rc={W-88,H-104};float dx=x-G.px,dz=z-G.pz,sn=sinf(G.heading),cs=cosf(G.heading);
+      cw_vec2 rc={W-88,H-104};float dx=wx-G.px,dz=wz-G.pz,sn=sinf(G.heading),cs=cosf(G.heading);
       cw_r2d_circle((cw_vec2){rc.x+clampf((dx*cs+dz*sn)*.025f,-44,44),rc.y-clampf((dx*sn-dz*cs)*.025f,-44,44)},4,8,amber);
     }
   }
-  cw_r2d_rect((cw_rect){24,H-50,355,29},cw_hex(0x07161a88));
+  /* the bottom row: the status line in a panel sized from the measured text (and the flares button after it at the
+   * prompts' 16 pixel minimum), the afterburner gauge beside it; above them the airbrake, the missile state and the
+   * notices, each stacked on what is under it */
   if(G.flares)snprintf(buf,sizeof buf,"AIRFRAME %03d   MSL %02d   FLARES READY",G.health,G.missiles);
   else snprintf(buf,sizeof buf,"AIRFRAME %03d   MSL %02d   FLARES %.0f SEC",G.health,G.missiles,ceilf(G.flare_cool));
-  text(G.ui_font,buf,31,H-45,12,white,342,CW_ALIGN_LEFT);
-  if(G.flares) { /* the flares button after the words, at the prompts' 16 pixel minimum (the line's own size would draw it smaller) */
-    float tw=cw_font_measure(G.ui_font,buf,&(cw_text_style){ .size = 12 }).width;
-    cw_prompt_action(G.flares_action,0,(cw_vec2){ 31+tw+8,H-46 },16,white);
+  cw_text_metrics status=measure(G.ui_font,buf,13,0);
+  cw_vec2 glyph=G.flares?cw_prompt_action_size(G.flares_action,0,16):(cw_vec2){0,0};
+  float panel_h=fmaxf(29,fmaxf(status.height,glyph.y)+8),panel_w=fmaxf(355,7+status.width+(G.flares?8+glyph.x:0)+10);
+  float panel_y=H-21-panel_h;
+  bool row=!mothership_menu(); /* the mothership's buttons stand on this row */
+  if(row)cw_r2d_rect((cw_rect){24,panel_y,panel_w,panel_h},cw_hex(0x07161a88));
+  if(row)text(G.ui_font,buf,31,panel_y+(panel_h-status.height)*.5f,13,white,0,CW_ALIGN_LEFT);
+  if(row&&G.flares)cw_prompt_action(G.flares_action,0,(cw_vec2){ 31+status.width+8,panel_y+(panel_h-glyph.y)*.5f },16,white);
+  const char *burner=G.boost_exhausted?"BURNER: RELEASE / RECHARGE":"AFTERBURNER";
+  cw_text_metrics bm=measure(G.ui_font,burner,13,0);
+  float bar_y=H-36,bx=fmaxf(W/2+2-bm.width,24+panel_w+14);
+  if(row)text(G.ui_font,burner,bx,bar_y+1.5f-bm.height*.5f,13,muted,0,CW_ALIGN_LEFT);
+  if(row)cw_r2d_rect((cw_rect){bx+bm.width+10,bar_y,88,3},cw_hex(0x263b3bbb));
+  if(row)cw_r2d_rect((cw_rect){bx+bm.width+10,bar_y,G.boost_fuel*0.88f,3},amber);
+  float row_top=fminf(panel_y,bar_y+1.5f-bm.height*.5f)-4;
+  float brake_h=measure(G.ui_font,"AIRBRAKE",14,0).height;
+  if(cw_action_pressed(0,G.brake)&&G.state==PLAY)ctext(G.ui_font,"AIRBRAKE",W*.5f,row_top-brake_h,14,amber);
+  float missile_half=0;
+  if(G.state==PLAY) {
+    if(G.missiles<=0)snprintf(buf,sizeof buf,"NO MISSILES");
+    else if(G.missile_cool>0)snprintf(buf,sizeof buf,"MISSILE RELOAD %.1f SEC",G.missile_cool/60);
+    else snprintf(buf,sizeof buf,"%s",G.lock_timer>.6f?"GUIDED MISSILE READY":G.missile_request>0?"MISSILE QUEUED / ACQUIRING":"MISSILE / AIM FOR LOCK");
+    m=measure(G.ui_font,buf,13,0);missile_half=m.width*.5f;
+    ctext(G.ui_font,buf,W*.5f,fminf(H-120,row_top-brake_h-4-m.height),13,amber);
+    if(G.notice_timer>0) {
+      float notice_w=W*.5f-28-fmaxf(missile_half,measure(G.ui_font,"AIRBRAKE",14,0).width*.5f)-16;
+      m=measure(G.ui_font,G.notice,13,notice_w);
+      text(G.ui_font,G.notice,28,panel_y-6-m.height,13,white,notice_w,CW_ALIGN_LEFT);
+    }
   }
-  text(G.ui_font,G.boost_exhausted?"BURNER: RELEASE / RECHARGE":"AFTERBURNER",W/2-(G.boost_exhausted?160:95),H-43,11,muted,G.boost_exhausted?170:110,CW_ALIGN_LEFT);
-  cw_r2d_rect((cw_rect){W/2+12,H-36,88,3},cw_hex(0x263b3bbb));
-  cw_r2d_rect((cw_rect){W/2+12,H-36,G.boost_fuel*0.88f,3},amber);
-  if(cw_action_pressed(0,G.brake)&&G.state==PLAY)text(G.ui_font,"AIRBRAKE",W/2-60,H-67,14,amber,120,CW_ALIGN_CENTER);
   if(G.damage_flash>0.04f)cw_r2d_rect((cw_rect){0,0,W,H},cw_rgba(1,0.1f,0.07f,G.damage_flash*0.17f));
   cw_render3d_stats stats;cw_render3d_get_stats(G.tree,&stats);G.skipped=stats.skipped;
   cw_quality_auto_measure(G.state==PLAY);
 }
 #include "menus.h"
 
-static void card(const char *head, const char *sub, const char *foot) {
-  cw_r2d_rect((cw_rect){ 28, 92, 428, 340 }, cw_hex(0x071522d9));
-  cw_r2d_rect((cw_rect){ 28, 92, 5, 340 }, cw_hex(0xffae5dff));
-  text(G.title_font, head, 54, 118, 38, cw_hex(0xffb45cff), 375, CW_ALIGN_LEFT);
-  text(G.ui_font, sub, 55, 194, 21, cw_hex(0xe7eff2ff), 365, CW_ALIGN_LEFT);
-  if (G.state == TITLE)
-    ptext(G.ui_font, on_pad() ? "{bank_left|bank_right|climb|dive}  BANK + PITCH\n{guns}  GUNS    {missile}  MISSILE\n{afterburner}  BURN    {airbrake}  AIRBRAKE\n{aerobatic_roll} + {bank_left|bank_right|climb|dive}  ROLL / LOOP    {look_left|look_right|look_up|look_down}  LOOK\n{settings}  TARGET    {countermeasures}  FLARES"
-                              : "{bank_left|bank_right|climb|dive}  BANK + PITCH\n{guns}  GUNS    {missile}  MISSILE\n{afterburner}  BURN    {airbrake}  AIRBRAKE\n{aerobatic_roll} + {bank_left|bank_right|climb|dive}  LOOP    {roll_left|roll_right}  ROLL\n{settings}  TARGET    {countermeasures}  FLARES", 55, 238, 17,
-         cw_hex(0xffd8aaff), 365, CW_ALIGN_LEFT);
-  text(G.ui_font, foot, 55, 361, 16, cw_hex(0x93e6edff), 365, CW_ALIGN_LEFT);
-}
-
 static void render(void *user, double alpha) {
   (void)user; (void)alpha;
   cw_r2d_begin(&(cw_r2d_pass_desc){ .clear = false });
+  int shown=G.state;if(menu_preview)G.state=menu_preview==3?LOST:WIN; /* the preview command: drawn as that screen, then put back */
   if(!art_hide_hud&&G.state!=CRASH&&G.state!=TITLE&&G.state!=CONTROLS&&G.state!=SETTINGS)hud();
   if(capital.active&&capital.age<.16f)cw_r2d_rect((cw_rect){0,0,W,H},cw_rgba(1,.87f,.65f,(1-capital.age/.16f)*.4f));
   if(G.state==CRASH&&G.crash_age<0.10f)cw_r2d_rect((cw_rect){0,0,W,H},cw_rgba(1,0.9f,0.76f,(1-G.crash_age/0.10f)*0.4f));
   if(G.state==TITLE)draw_mission_menu();
   else if(G.state==CONTROLS)draw_controls_menu();
   else if(G.state==PAUSED)draw_action_menu();
-  else if(G.state==SETTINGS) {
-    cw_color white=cw_hex(0xe3ece7ff),amber=cw_hex(0xffb366ff),muted=cw_hex(0x93b5beff);
-    cw_r2d_rect((cw_rect){210,65,540,420},cw_hex(0x071522f2));
-    text(G.title_font,"SETTINGS",240,88,30,amber,470,CW_ALIGN_LEFT);
-    text(G.ui_font,"FLIGHT / GRAPHICS / AUDIO",241,131,14,muted,470,CW_ALIGN_LEFT);
-    const char *labels[]={"PITCH","GRAPHICS","FLIGHT CONTROLS","MUSIC","SOUND EFFECTS","RUMBLE"};
-    char value[96];
-    for(int i=0;i<6;i++) {
-      float y=174+i*42;
-      if(i==G.settings_row)cw_r2d_rect((cw_rect){230,y-5,500,38},cw_hex(0x29414edb));
-      text(G.ui_font,labels[i],243,y,17,i==G.settings_row?amber:white,220,CW_ALIGN_LEFT);
-      if(i==0)snprintf(value,sizeof value,"%s",prefs.invert_pitch?"INVERTED":"NORMAL");
-      else if(i==1)snprintf(value,sizeof value,"%s",cw_quality_name(cw_quality_get()));
-      else if(i==2)snprintf(value,sizeof value,"%s",prefs.expert_controls?"EXPERT":"STANDARD");
-      else if(i==5)snprintf(value,sizeof value,"%s",prefs.rumble_off?"OFF":"ON");
-      else snprintf(value,sizeof value,"%d%%",i==3?prefs.music_volume:prefs.sfx_volume);
-      text(G.ui_font,value,480,y,17,white,225,CW_ALIGN_RIGHT);
-      if(i==3||i==4) {
-        float volume=(i==3?prefs.music_volume:prefs.sfx_volume)*.01f;
-        cw_r2d_rect((cw_rect){480,y+26,225,3},cw_hex(0x43545bff));
-        cw_r2d_rect((cw_rect){480,y+26,225*volume,3},amber);
-      }
-    }
-    text(G.ui_font,"UP / DOWN SELECT   LEFT / RIGHT ADJUST",240,426,14,muted,475,CW_ALIGN_LEFT);
-    menu_button((cw_rect){240,450,120,30},"BACK",true);text(G.ui_font,"CHANGES SAVE AUTOMATICALLY",390,455,13,muted,320,CW_ALIGN_LEFT);
-  }
-  else if (G.state == WIN&&G.level==4&&capital.active&&capital.age<8){
-    text(G.title_font,"MOTHERSHIP DESTROYED",W*.5f-340,150,32,cw_hex(0xffd0a5ff),680,CW_ALIGN_CENTER);
-    const char *labels[]={"NEXT MISSION","REPLAY","MISSION SELECT"};for(int i=0;i<3;i++)menu_button(action_button(i),labels[i],G.menu_row==i);
-  }
+  else if(G.state==SETTINGS)draw_settings_menu();
+  else if(mothership_menu())draw_mothership_menu();
   else if(G.state==WIN||G.state==LOST)draw_action_menu();
+  G.state=shown;
   cw_r2d_end();
 }
 
