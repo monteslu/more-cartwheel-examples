@@ -238,6 +238,14 @@
    }
   },
   {
+   "name": "final",
+   "app": "partypack_auto",
+   "frames": 11380,
+   "env": {
+    "PP_GAME": "coins"
+   }
+  },
+  {
    "name": "results",
    "app": "partypack_auto",
    "frames": 2700,

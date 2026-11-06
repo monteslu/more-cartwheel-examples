@@ -1135,28 +1135,45 @@ static void draw_final(void) {
       int a = order[j - 1], b = order[j];
       if (G.points[b] > G.points[a] || (G.points[b] == G.points[a] && G.round_wins[b] > G.round_wins[a])) { order[j] = a; order[j - 1] = b; } else break;
     }
-  for (int i = 0; i < NP; i++) {
-    int p = order[i];
-    cw_vec2 sp = hub_podium_screen(i);
-    char s[48];
-    snprintf(s, sizeof s, "%d pts", G.points[p]);
-    float k = ease_out(((float)G.st_ticks - 30) / 30.0f);
-    /* over the podium, growing upward: the points, the name over them */
-    float pts_top = sp.y - 32 * k + ui_line_h(32) / ui_grow(32) - ui_line_h(32);
-    ui_text(s, cw_v2(sp.x, pts_top), 32, cw_rgba(1, 1, 1, k), CW_ALIGN_CENTER);
-    ui_text(!G.human[p] ? "CPU" : PNAME[p], cw_v2(sp.x, pts_top - 30 * k * ui_grow(28)), 28, col_a(PCOL[p], k), CW_ALIGN_CENTER);
-  }
-  float y = 118;
+  /* the heading first: the labels over the podiums keep below it */
+  float y = 118, hdr_bot = 20 + ui_line_h(64);
   if (G.winner >= 0) {
     char s[64];
     snprintf(s, sizeof s, "%s wins!", !G.human[G.winner] ? "CPU" : PNAME[G.winner]);
     ui_text(s, cw_v2(STAGE_W / 2, y), 56, PCOL[G.winner], CW_ALIGN_CENTER);
+    hdr_bot = y + ui_line_h(56);
     y += 64 * ui_grow(56);
   }
   if (G.tiebreak) {
     char tb[64];
     snprintf(tb, sizeof tb, "Tied on points: decided by %s", G.tiebreak);
     ui_text(tb, cw_v2(STAGE_W / 2, fmaxf(182, y)), 26, cw_rgba(1, 1, 1, 0.85f), CW_ALIGN_CENTER);
+    hdr_bot = fmaxf(182, y) + ui_line_h(26);
+  }
+  /* over each podium, growing upward: the name, the points under it. Laid out from the size they draw at: never over
+   * the heading, and a label that would meet one ranked above it moves down under it (at 200% text the podiums are
+   * closer together than the labels are wide) */
+  float k = ease_out(((float)G.st_ticks - 30) / 30.0f);
+  float name_h = ui_line_h(28), pts_h = ui_line_h(32);
+  struct { float x, top, w; char pts[24]; const char *name; int p; } L[NP];
+  for (int i = 0; i < NP; i++) {
+    int p = order[i];
+    cw_vec2 sp = hub_podium_screen(i);
+    L[i].p = p, L[i].x = sp.x, L[i].name = !G.human[p] ? "CPU" : PNAME[p];
+    snprintf(L[i].pts, sizeof L[i].pts, "%d pts", G.points[p]);
+    L[i].w = fmaxf(ui_text_w(L[i].pts, 32), ui_text_w(L[i].name, 28));
+    float pts_top = sp.y - 32 * k + pts_h / ui_grow(32) - pts_h; /* the points' foot stays where it was at 100% */
+    L[i].top = fmaxf(pts_top - name_h, hdr_bot + 6);
+    for (int pass = 0; pass < 2; pass++)
+      for (int j = 0; j < i; j++) {
+        bool side = fabsf(L[i].x - L[j].x) < (L[i].w + L[j].w) * 0.5f + 10;
+        bool over = L[i].top < L[j].top + name_h + pts_h + 4 && L[j].top < L[i].top + name_h + pts_h + 4;
+        if (side && over) L[i].top = L[j].top + name_h + pts_h + 4;
+      }
+  }
+  for (int i = 0; i < NP; i++) {
+    ui_text(L[i].name, cw_v2(L[i].x, L[i].top), 28, col_a(PCOL[L[i].p], k), CW_ALIGN_CENTER);
+    ui_text(L[i].pts, cw_v2(L[i].x, L[i].top + name_h), 32, cw_rgba(1, 1, 1, k), CW_ALIGN_CENTER);
   }
   const char *pr = "{ui_accept} back to the menu";
   float ph = ui_prompt_size(pr, -1, 26).y;
@@ -1211,6 +1228,7 @@ static void render(void *user, double alpha) {
     art_world(false);
     if (G.state == S_RESULT || G.state == S_FINISH || G.state == S_PLAY || G.state == S_COUNT || G.state == S_INTRO) fx_update(sc == CW_SHELL_PLAY ? dt_ : 0);
     stage_begin();
+    bool hud = cw_shell_hud_shown(); /* the game's own panels and banners: not under the shell's menus (the world stays) */
     if (art_clean) {
     } else if (in_game) {
       const mg_def *d = cur_def();
@@ -1219,12 +1237,12 @@ static void render(void *user, double alpha) {
       d->draw(&G.c, (float)alpha, G.clock);
       art_world(false);                  /* the HUD, particles and banners are not */
       fx_draw();
-      draw_strip();
-      if (G.state == S_INTRO) draw_intro();
-      if (G.state == S_COUNT) draw_count();
-      if (G.state == S_FINISH) ui_text("FINISH!", cw_v2(STAGE_W / 2, 280), 130 * (1 + 0.3f * ease_out(1 - G.st_ticks / 20.0f)), cw_rgba(1, 0.9f, 0.3f, 1), CW_ALIGN_CENTER);
-      if (G.state == S_RESULT) draw_results();
-    } else {
+      if (hud && G.state != S_RESULT) draw_strip(); /* the results table has the same numbers, and its heading needs the top at large text */
+      if (hud && G.state == S_INTRO) draw_intro();
+      if (hud && G.state == S_COUNT) draw_count();
+      if (hud && G.state == S_FINISH) ui_text("FINISH!", cw_v2(STAGE_W / 2, 280), 130 * (1 + 0.3f * ease_out(1 - G.st_ticks / 20.0f)), cw_rgba(1, 0.9f, 0.3f, 1), CW_ALIGN_CENTER);
+      if (hud && G.state == S_RESULT) draw_results();
+    } else if (hud) {
       switch (G.state) {
       case S_MENU: draw_menu(); break;
       case S_PICK: draw_pick(); break;
