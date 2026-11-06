@@ -2843,6 +2843,12 @@ static void cmd_match(int argc, const char **argv, cw_reply *r) {
 static void quality_changed(cw_quality q, void *u) {
   (void)u;
   (void)q;
+  /* anisotropic filtering by effects detail: 8 (as authored) from Medium up, 4 on Low, 2 on Very Low */
+  int fx = cw_gfx_effective(CW_GFX_EFFECTS);
+  tex_anisotropy(fx >= CW_QUALITY_MEDIUM ? 8 : fx == CW_QUALITY_LOW ? 4 : 2);
+  /* Low and Very Low draw the arena after a depth prepass: its halls, roofs and girders stack several surfaces deep on
+   * every pixel, and the prepass shades each pixel once (the same picture; from Medium up the scene as authored) */
+  if (cw_node_valid(G.post)) cw_node_set(G.post, "depth_prepass", cw_val_bool(fx <= CW_QUALITY_LOW));
 }
 
 /* debug channel: "bind <action> <bindings>" replaces an action's bindings (the text form, "key:x, pad:north"): for checking
@@ -2931,6 +2937,7 @@ static void init(void *user) {
   overview_cams();
   cw_pipeline_set_view_hook(cw_pipeline_of(G.tree), view_hook, NULL);
   cw_quality_on_change(quality_changed, NULL);
+  quality_changed(cw_quality_get(), NULL); /* the preset the engine started at */
   cw_quality_auto(true, 0);
   cw_debug_i32("game.state", (int32_t *)&G.state);
   cw_debug_command("bind", "bind <action> <bindings>: replace an action's bindings", cmd_bind);

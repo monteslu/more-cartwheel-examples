@@ -904,8 +904,8 @@ static void init(void *user) {
    * diff of the same frame: 0.02 mean on bunny_hill; the rock on
    * path_of_daggers smears where Medium's triplanar keeps it crisp), so the
    * High preset takes Medium's and Ultra takes High's. Very Low's tier reads each layer once and switches to the
-   * coarser levels sooner */
-  const cw_quality_lever_presets TERRAIN_PRESET = { .very_low = 0, .low = 1, .medium = 2, .high = 2, .ultra = 3 };
+   * coarser levels sooner; Low takes it too (the snow reads the same from the race camera) */
+  const cw_quality_lever_presets TERRAIN_PRESET = { .very_low = 0, .low = 0, .medium = 2, .high = 2, .ultra = 3 };
   G.lever_terrain = cw_quality_lever_add("Terrain", TERRAIN, 4, TERRAIN_PRESET);
   static const char *const TUXSH[] = { "Contact", "Cast" };
   const cw_quality_lever_presets TUXSH_PRESET = { .very_low = 0, .low = 0, .medium = 1, .high = 1, .ultra = 1 };

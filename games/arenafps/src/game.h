@@ -66,6 +66,7 @@ enum { TEX_DIRT, TEX_CONCRETE, TEX_RUBBER, TEX_PAINT, TEX_RUST, TEX_STEEL, TEX_W
        TEX_SLAB, TEX_PANEL_STEEL, TEX_PANEL_TEAL, TEX_PANEL_RED, TEX_HAZARD, TEX_GRATE, TEX_TILES_SAND, TEX_TILES_SLATE, TEX_BLOCKS, TEX_PLASTER, TEX_TREAD, TEX_FORMED, TEX_WINDOWS, TEX_KINDS };
 typedef struct tex_set { t3_texture *map, *normal, *rough, *ao; } tex_set;
 const tex_set *tex_get(int kind);
+void tex_anisotropy(float a); /* every set's anisotropic filtering (the graphics preset) */
 void tex_apply(t3_material *m, int kind, float repeat, float normal_scale, float ao_intensity);
 void tex_free_all(void);
 extern uint32_t tex_hash;

@@ -102,3 +102,4 @@ standard+instbig+senv+l0001+xterrainmin_csm_plain_snow
 depth+instbig+xterrainmin_csm_plain_snow
 depth+skin+xcsm_feather_skinshade
 depth+instbig+xterrainmin_csm_snow
+standard+instbig+senv+l0001+xterrainmin_csm_snow

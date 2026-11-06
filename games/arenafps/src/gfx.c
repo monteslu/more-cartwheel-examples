@@ -520,6 +520,7 @@ static const float NORMAL_STRENGTH[TEX_KINDS] = { 3, 2.5f, 4, 1, 5, 1.5f, 3, 3, 
                                                   6, 8, 8, 8, 3, 10, 8, 8, 8, 5, 10, 6, 3 };
 
 static tex_set SETS[TEX_KINDS];
+static float ANISO = 8; /* the sets' anisotropic filtering (tex_anisotropy) */
 uint32_t tex_hash = 2166136261u;
 uint32_t tex_each[TEX_KINDS + 2]; /* per texture (the last two: numbers, crack), to find a host that differs */
 
@@ -530,7 +531,7 @@ static t3_texture *finish(const uint8_t *px, bool srgb) {
   t->generate_mipmaps = true;
   t->min_filter = T3_LINEAR_MIPMAP_LINEAR;
   t->mag_filter = T3_LINEAR;
-  t->anisotropy = 8;
+  t->anisotropy = ANISO;
   t->color_space = srgb ? T3_SRGB_COLOR_SPACE : T3_NO_COLOR_SPACE;
   return t;
 }
@@ -622,6 +623,17 @@ void tex_apply_uv(t3_material *m, int kind, float ru, float rv, float normal_sca
   }
   m->normal_scale = (t3_vec2){ normal_scale, normal_scale };
   m->ao_map_intensity = ao_intensity;
+}
+
+/* the anisotropic filtering every set samples with (the graphics preset: 8 as authored, less on the cheaper presets,
+ * where four filtered reads of each grazing floor and wall texel are much of the scene's cost) */
+void tex_anisotropy(float a) {
+  ANISO = a;
+  for (int k = 0; k < TEX_KINDS; k++) {
+    tex_set *s = &SETS[k];
+    if (!s->map) continue;
+    s->map->anisotropy = s->normal->anisotropy = s->rough->anisotropy = s->ao->anisotropy = a;
+  }
 }
 
 void tex_free_all(void) {
