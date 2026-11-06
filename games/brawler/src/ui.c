@@ -18,6 +18,12 @@ static void text(const char *s, float x, float y, float size, cw_color c, bool c
   if (center) { cw_text_metrics m = cw_font_measure(f, s, &st); x -= m.width * 0.5f; }
   cw_r2d_text(f, s, cw_v2(x, y), &st);
 }
+/* how much the player's text size grows text asked for at `size` (1 at 100%): the HUD spaces its lines by it, so
+ * at 100% everything sits where it always did and at 200% the lines move apart as the text grows */
+static float grow(float size) { return cw_text_drawn_size(cw_ui_font_sans(), size) / size; }
+static float text_w(const char *s, float size) {
+  return cw_font_measure(cw_ui_font_sans(), s, &(cw_text_style){ .size = size, .outline_width = size * 0.1f }).width;
+}
 
 /* the game camera's projection (level.c places it: cam_x, 3.9 m up, 7.7 m out, pitched 0.3 rad down, 40 degrees) */
 static bool to_screen(float x, float y, float z, cw_vec2 sz, cw_vec2 *out) {
@@ -36,16 +42,25 @@ void ui_draw(void) {
   float u = sz.y / 36.0f;
   static const cw_color PC[4] = { { 0.95f, 0.35f, 0.3f, 1 }, { 1.0f, 0.75f, 0.2f, 1 }, { 0.3f, 0.85f, 0.55f, 1 }, { 0.4f, 0.6f, 1.0f, 1 } };
   cw_r2d_begin(NULL);
+  /* the fighter cards: name, life bar, score and lives, each line under the last by its drawn size. When the score
+   * line is wider than the card (a big text size, a narrow screen) the lives go up beside the name instead */
+  float g_name = grow(u * 1.0f), g_score = grow(u * 0.9f), card_bottom = 0;
   for (int i = 0; i < W.players; i++) {
     const ent *p = &W.p[i];
     float x = u * 1.2f + (float)i * (sz.x - u * 2.4f) / 4.0f, y = u * 1.0f, w = (sz.x - u * 2.4f) / 4.0f - u;
-    cw_r2d_round_rect(cw_rect_make(x - u * 0.3f, y - u * 0.3f, w + u * 0.6f, u * 3.8f), u * 0.4f, 6, cw_rgba(0, 0, 0, 0.45f));
-    char b[64];
+    float bar_y = y + u * 1.3f * g_name, score_y = bar_y + u * 0.8f, ch = u * 3.8f + (score_y - (y + u * 2.1f)) + u * 1.1f * (g_score - 1);
+    cw_r2d_round_rect(cw_rect_make(x - u * 0.3f, y - u * 0.3f, w + u * 0.6f, ch), u * 0.4f, 6, cw_rgba(0, 0, 0, 0.45f));
+    if (y - u * 0.3f + ch > card_bottom) card_bottom = y - u * 0.3f + ch;
+    char b[64], lives[16];
+    snprintf(b, sizeof b, "%07d   x%d", p->score, p->lives);
+    snprintf(lives, sizeof lives, "x%d", p->lives);
+    bool split = text_w(b, u * 0.9f) > w;
+    if (split) snprintf(b, sizeof b, "%07d", p->score);
+    text(b, x, score_y, u * 0.9f, cw_rgba(1, 1, 1, 0.95f), false);
+    if (split) text(lives, x + w - text_w(lives, u * 1.0f), y, u * 1.0f, cw_rgba(1, 1, 1, 0.95f), false);
     snprintf(b, sizeof b, "P%d %s", i + 1, DEFS[p->def].name);
     text(b, x, y, u * 1.0f, PC[i], false);
-    bar(cw_rect_make(x, y + u * 1.3f, w, u * 0.7f), p->hp / p->maxhp, p->hp / p->maxhp > 0.3f ? cw_rgba(0.9f, 0.25f, 0.2f, 1) : cw_rgba(1, 0.5f, 0.1f, 1), cw_rgba(0.1f, 0.1f, 0.1f, 0.8f));
-    snprintf(b, sizeof b, "%07d   x%d", p->score, p->lives);
-    text(b, x, y + u * 2.1f, u * 0.9f, cw_rgba(1, 1, 1, 0.95f), false);
+    bar(cw_rect_make(x, bar_y, w, u * 0.7f), p->hp / p->maxhp, p->hp / p->maxhp > 0.3f ? cw_rgba(0.9f, 0.25f, 0.2f, 1) : cw_rgba(1, 0.5f, 0.1f, 1), cw_rgba(0.1f, 0.1f, 0.1f, 0.8f));
   }
   /* a number over every fighter's head in its colour (players differ by more than colour) */
   for (int i = 0; i < W.players; i++) {
@@ -64,7 +79,7 @@ void ui_draw(void) {
     if (!to_screen(at.x, at.y, at.z, sz, &s)) continue;
     char b[8];
     snprintf(b, sizeof b, "P%d", i + 1);
-    text(b, s.x, s.y - u * 1.05f, u * 0.95f, PC[i], true);
+    text(b, s.x, s.y - u * 1.05f * grow(u * 0.95f), u * 0.95f, PC[i], true);
     cw_vec2 tri[3] = { cw_v2(s.x - u * 0.3f, s.y - u * 0.15f), cw_v2(s.x + u * 0.3f, s.y - u * 0.15f), cw_v2(s.x, s.y + u * 0.25f) };
     cw_r2d_polygon(tri, 3, PC[i]);
   }
@@ -90,7 +105,10 @@ void ui_draw(void) {
         cw_vec2 t2[3] = { cw_v2(dx - k * 0.32f, dy), cw_v2(dx + k * 0.32f, dy), cw_v2(dx, dy - k * 0.95f) };
         cw_r2d_polygon(t2, 3, drop);
       }
-      text("!!", sx - k * 1.6f, sy - k * 1.6f, k * 2.4f, cw_rgba(1, 1, 1, fade), true);
+      { /* the "!!" is a drawn comic mark like the drops round it (it pops in from nothing): art, drawn as asked */
+        cw_text_style st = { .size = k * 2.4f, .outline_width = k * 0.24f, .color = cw_rgba(1, 1, 1, fade), .fixed_size = true };
+        cw_r2d_text(cw_ui_font_sans(), "!!", cw_v2(sx - k * 1.6f - cw_font_measure(cw_ui_font_sans(), "!!", &st).width * 0.5f, sy - k * 1.6f), &st);
+      }
     } else if (tp == FACE_ANGER) { /* the cross-shaped vein: four bulging arcs */
       cw_color red = cw_rgba(0.95f, 0.12f, 0.1f, fade), ink = cw_rgba(0.15f, 0.0f, 0.0f, 0.9f * fade);
       for (int q = 0; q < 4; q++) {
@@ -117,7 +135,7 @@ void ui_draw(void) {
   if (W.boss_active && W.boss_idx >= 0 && W.e[W.boss_idx].used) {
     const ent *bo = &W.e[W.boss_idx];
     float w = sz.x * 0.5f;
-    text(DEFS[bo->def].name, sz.x * 0.5f, sz.y - u * 3.6f, u * 1.1f, cw_rgba(1, 0.85f, 0.4f, 1), true);
+    text(DEFS[bo->def].name, sz.x * 0.5f, sz.y - u * 2.2f - u * 1.4f * grow(u * 1.1f), u * 1.1f, cw_rgba(1, 0.85f, 0.4f, 1), true);
     bar(cw_rect_make(sz.x * 0.25f, sz.y - u * 2.2f, w, u * 1.0f), bo->hp / bo->maxhp, cw_rgba(0.85f, 0.15f, 0.55f, 1), cw_rgba(0.1f, 0.05f, 0.1f, 0.85f));
     /* the three phases: notches where the boss changes, the phases it has reached lit */
     for (int k = 1; k <= 2; k++) {
@@ -136,9 +154,9 @@ void ui_draw(void) {
   if (W.combo_n >= 3) {
     char b[32];
     snprintf(b, sizeof b, "%d HIT COMBO", W.combo_n);
-    text(b, sz.x * 0.5f, u * 5.0f, u * 1.4f, cw_rgba(1, 0.9f, 0.3f, 1), true);
+    text(b, sz.x * 0.5f, fmaxf(u * 5.0f, card_bottom + u * 0.5f), u * 1.4f, cw_rgba(1, 0.9f, 0.3f, 1), true);
   }
-  if (W.go_flash > 0 && (W.go_flash / 18) % 2 == 0) text("GO  >>>", sz.x - u * 6, sz.y * 0.4f, u * 2.2f, cw_rgba(1, 1, 1, 1), true);
+  if (W.go_flash > 0 && (W.go_flash / 18) % 2 == 0) text("GO  >>>", sz.x - fmaxf(u * 6, text_w("GO  >>>", u * 2.2f) * 0.5f + u * 0.6f), sz.y * 0.4f, u * 2.2f, cw_rgba(1, 1, 1, 1), true);
   if (W.phase == PH_INTRO) {
     char b[48];
     snprintf(b, sizeof b, "STAGE %d", W.stage + 1);

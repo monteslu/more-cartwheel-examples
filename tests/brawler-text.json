@@ -1,0 +1,15 @@
+{
+  "app": "brawler",
+  "secondary": [],
+  "screens": [
+    { "name": "title", "frames": 90 },
+    { "name": "settings", "frames": 130, "input": "brawler-text-settings.json" },
+    { "name": "controls", "frames": 160, "input": "brawler-text-controls.json" },
+    { "name": "graphics", "frames": 130, "input": "brawler-text-graphics.json" },
+    { "name": "join", "frames": 130, "input": "brawler-text-join.json" },
+    { "name": "play4", "frames": 300, "input": "brawler-text-play4.json" },
+    { "name": "pause", "frames": 408, "input": "brawler-text-pause.json" },
+    { "name": "intro", "app": "brawler_auto", "frames": 60 },
+    { "name": "boss", "app": "brawler_auto", "frames": 250, "startCmds": [   "wave 4" ] }
+  ]
+}
