@@ -174,6 +174,7 @@ t3_color view_light_at(float x, float z); /* the bake's light on a thing standin
 extern float g_cam_dist;
 extern float g_tilt, g_lean; /* the view's tilt and the standing things' lean, degrees (view.c) */
 extern float g_rim_k; /* the brightness of the crowd's kind-coloured edges (view.c) */
+extern bool g_hide_rings; /* key-art captures: no team rings (view.c) */
 /* fx.c */
 void fx_init(cw_node root);
 void fx_free(void);

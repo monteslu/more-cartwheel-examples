@@ -278,6 +278,7 @@ static void init(void *u) {
   cw_debug_f32("dev.lean", &g_lean);
 #ifdef CRAWLER_AUTOPILOT
   cw_debug_command("floor", "floor <n>: go to that floor", cmd_floor);
+  if (getenv("CRAWLER_CAM_DIST")) g_cam_dist = (float)atof(getenv("CRAWLER_CAM_DIST")); /* key-art captures: a closer camera */
 #ifndef CRAWLER_AUTO_PLAYERS
 #define CRAWLER_AUTO_PLAYERS 2
 #endif
@@ -397,37 +398,38 @@ static const char *const THEME_NAME[MZ_THEMES] = { "THE CRYPT", "THE SEWERS", "T
 static void hud_player(int i, float u, cw_vec2 cs) {
   const player *p = &G.S.p[i];
   const float *pc = PCOL[i];
-  float w = 250 * u, h = 76 * u, x = (i & 1) ? cs.x - w - 12 * u : 12 * u, y = (i & 2) ? cs.y - h - 12 * u : 12 * u;
+  /* body text at 26 px at 1080p (2.4% of the canvas height, the engine's readable floor), the health larger */
+  float w = 300 * u, h = 92 * u, x = (i & 1) ? cs.x - w - 12 * u : 12 * u, y = (i & 2) ? cs.y - h - 12 * u : 12 * u;
   cw_r2d_rect(cw_rect_make(x, y, w, h), rgba(0.03f, 0.03f, 0.05f, 0.7f));
   cw_r2d_rect(cw_rect_make(x, y, 6 * u, h), rgba(pc[0], pc[1], pc[2], 1));
   char b[96];
   if (!p->active) {
-    cw_prompt_text(font, "{join}: join in", i, cw_v2(x + 16 * u, y + 24 * u), 22 * u, rgba(1, 1, 1, 0.85f), CW_ALIGN_LEFT);
+    cw_prompt_text(font, "{join}: join in", i, cw_v2(x + 16 * u, y + 30 * u), 26 * u, rgba(1, 1, 1, 0.85f), CW_ALIGN_LEFT);
     return;
   }
   snprintf(b, sizeof b, "P%d  %s", i + 1, sim_class_name(p->cls));
-  text(b, x + 16 * u, y + 5 * u, 22 * u, rgba(0.6f + 0.4f * pc[0], 0.6f + 0.4f * pc[1], 0.6f + 0.4f * pc[2], 1), CW_ALIGN_LEFT);
+  text(b, x + 16 * u, y + 4 * u, 26 * u, rgba(0.6f + 0.4f * pc[0], 0.6f + 0.4f * pc[1], 0.6f + 0.4f * pc[2], 1), CW_ALIGN_LEFT);
   snprintf(b, sizeof b, "%d", p->score);
-  text(b, x + w - 10 * u, y + 5 * u, 22 * u, rgba(1, 0.92f, 0.6f, 1), CW_ALIGN_RIGHT);
+  text(b, x + w - 10 * u, y + 4 * u, 26 * u, rgba(1, 0.92f, 0.6f, 1), CW_ALIGN_RIGHT);
   if (p->down) {
-    cw_prompt_text(font, "{join}: back in", i, cw_v2(x + 16 * u, y + 34 * u), 22 * u, rgba(1, 0.7f, 0.6f, 1), CW_ALIGN_LEFT);
+    cw_prompt_text(font, "{join}: back in", i, cw_v2(x + 16 * u, y + 40 * u), 26 * u, rgba(1, 0.7f, 0.6f, 1), CW_ALIGN_LEFT);
     return;
   }
   /* health: the big number, red when low */
   bool low = p->hp < 150;
   snprintf(b, sizeof b, "%d", p->hp);
-  text(b, x + 16 * u, y + 30 * u, 34 * u, low && (G.S.tick / 15) % 2 ? rgba(1, 0.25f, 0.2f, 1) : rgba(1, 1, 1, 1), CW_ALIGN_LEFT);
+  text(b, x + 16 * u, y + 36 * u, 40 * u, low && (G.S.tick / 15) % 2 ? rgba(1, 0.25f, 0.2f, 1) : rgba(1, 1, 1, 1), CW_ALIGN_LEFT);
   /* keys and potions as counts beside little shapes */
-  float ix = x + 120 * u, iy = y + 40 * u;
+  float ix = x + 140 * u, iy = y + 48 * u;
   cw_r2d_circle(cw_v2(ix, iy + 10 * u), 7 * u, 16, rgba(1, 0.82f, 0.3f, 1));
   cw_r2d_rect(cw_rect_make(ix + 4 * u, iy + 8 * u, 14 * u, 4 * u), rgba(1, 0.82f, 0.3f, 1));
   snprintf(b, sizeof b, "%d", p->keys);
-  text(b, ix + 22 * u, iy - 2 * u, 22 * u, rgba(1, 0.9f, 0.6f, 1), CW_ALIGN_LEFT);
-  ix += 60 * u;
+  text(b, ix + 22 * u, iy - 4 * u, 26 * u, rgba(1, 0.9f, 0.6f, 1), CW_ALIGN_LEFT);
+  ix += 72 * u;
   cw_r2d_circle(cw_v2(ix, iy + 12 * u), 8 * u, 16, rgba(0.35f, 0.6f, 1, 1));
   cw_r2d_rect(cw_rect_make(ix - 3 * u, iy - 2 * u, 6 * u, 8 * u), rgba(0.75f, 0.8f, 0.9f, 1));
   snprintf(b, sizeof b, "%d", p->potions);
-  text(b, ix + 14 * u, iy - 2 * u, 22 * u, rgba(0.7f, 0.85f, 1, 1), CW_ALIGN_LEFT);
+  text(b, ix + 16 * u, iy - 4 * u, 26 * u, rgba(0.7f, 0.85f, 1, 1), CW_ALIGN_LEFT);
   /* the charms held, with their seconds */
   char cb[160];
   int n = 0;
@@ -437,7 +439,7 @@ static void hud_player(int i, float u, cw_vec2 cs) {
     if (c == CH_FIREBOMBS) n += snprintf(cb + n, sizeof cb - (size_t)n, "%s x%d  ", sim_charm_name(c), p->charm[c]);
     else n += snprintf(cb + n, sizeof cb - (size_t)n, "%s %d  ", sim_charm_name(c), (p->charm[c] + 59) / 60);
   }
-  if (n) text(cb, x + 4 * u, (i & 2) ? y - 26 * u : y + h + 4 * u, 18 * u, rgba(1, 0.88f, 0.45f, 1), CW_ALIGN_LEFT);
+  if (n) text(cb, x + 4 * u, (i & 2) ? y - 32 * u : y + h + 4 * u, 26 * u, rgba(1, 0.88f, 0.45f, 1), CW_ALIGN_LEFT);
 }
 
 static void hud(void) {
@@ -446,8 +448,8 @@ static void hud(void) {
   cw_r2d_begin(NULL);
   if (G.phase == PH_PICK) {
     text("CHOOSE YOUR HEROES", cs.x * 0.5f, cs.y * 0.16f, 60 * u, rgba(1, 0.85f, 0.45f, 1), CW_ALIGN_CENTER);
-    static const char *const ROLE[CL_KINDS] = { "fights best hand to hand, throws axes", "the heaviest armour, a thrown hammer",
-                                                "the strongest magic: fireballs, and potions that crack spawners", "the fastest feet and the quickest bow" };
+    static const char *const ROLE[CL_KINDS][2] = { { "fights best hand to hand,", "throws axes" }, { "the heaviest armour,", "a thrown hammer" },
+                                                   { "fireballs, and potions", "that crack spawners" }, { "the fastest feet", "and the quickest bow" } };
     for (int i = 0; i < G.players; i++) {
       float bx = cs.x * (0.5f + ((float)i - (float)(G.players - 1) * 0.5f) * 0.24f), by = cs.y * 0.34f, bw = cs.x * 0.22f, bh = cs.y * 0.4f;
       cw_r2d_rect(cw_rect_make(bx - bw * 0.5f, by, bw, bh), rgba(0.03f, 0.03f, 0.05f, 0.8f));
@@ -456,16 +458,16 @@ static void hud(void) {
       snprintf(b, sizeof b, "P%d", i + 1);
       text(b, bx, by + 20 * u, 30 * u, rgba(PCOL[i][0], PCOL[i][1], PCOL[i][2], 1), CW_ALIGN_CENTER);
       text(sim_class_name(G.cls[i]), bx, by + 70 * u, 48 * u, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
-      text(ROLE[G.cls[i]], bx, by + 140 * u, 20 * u, rgba(0.85f, 0.85f, 0.85f, 1), CW_ALIGN_CENTER);
-      cw_prompt_text(font, "{move_left|move_right}: choose", i, cw_v2(bx, by + bh - 110 * u), 24 * u, rgba(1, 1, 1, 0.9f), CW_ALIGN_CENTER);
-      cw_prompt_text(font, G.ready[i] ? "READY  {fire}: change" : "{fire}: ready", i, cw_v2(bx, by + bh - 60 * u), 24 * u,
+      for (int l = 0; l < 2; l++) text(ROLE[G.cls[i]][l], bx, by + (140 + 34 * (float)l) * u, 26 * u, rgba(0.85f, 0.85f, 0.85f, 1), CW_ALIGN_CENTER);
+      cw_prompt_text(font, "{move_left|move_right}: choose", i, cw_v2(bx, by + bh - 110 * u), 26 * u, rgba(1, 1, 1, 0.9f), CW_ALIGN_CENTER);
+      cw_prompt_text(font, G.ready[i] ? "READY  {fire}: change" : "{fire}: ready", i, cw_v2(bx, by + bh - 60 * u), 26 * u,
                      G.ready[i] ? rgba(0.5f, 1, 0.5f, 1) : rgba(1, 0.9f, 0.5f, 1), CW_ALIGN_CENTER);
     }
     char b[96];
     if (G.best_floor > 20) {
       snprintf(b, sizeof b, "{join}: start at floor %d", G.start_floor == 1 ? ((G.best_floor - 1) / 20) * 20 + 1 : 1);
       text(G.start_floor == 1 ? "FROM FLOOR 1" : "FROM THE FURTHEST TILESET", cs.x * 0.5f, cs.y * 0.82f, 26 * u, rgba(1, 0.9f, 0.6f, 1), CW_ALIGN_CENTER);
-      cw_prompt_text(font, b, 0, cw_v2(cs.x * 0.5f, cs.y * 0.86f), 24 * u, rgba(1, 1, 1, 0.9f), CW_ALIGN_CENTER);
+      cw_prompt_text(font, b, 0, cw_v2(cs.x * 0.5f, cs.y * 0.86f), 26 * u, rgba(1, 1, 1, 0.9f), CW_ALIGN_CENTER);
     }
     cw_r2d_end();
     return;
@@ -538,7 +540,12 @@ static void render(void *u, double alpha) {
     G.cut = vs.cut, G.walls_drawn = vs.walls_drawn, G.drawn = vs.enemies_drawn;
     for (int i = 0; i < MAXP; i++) if (G.S.p[i].active) view_screen((t3_vec3){ G.S.p[i].x, 1.0f, G.S.p[i].y }, &G.pu[i], &G.pv[i]);
   }
-  if (G.in_match && (sc == CW_SHELL_PLAY || sc == CW_SHELL_PAUSE)) { CW_PROFILE_SCOPE("crawler.hud"); hud(); }
+  bool show_hud = true;
+#ifdef CRAWLER_AUTOPILOT
+  show_hud = !getenv("CRAWLER_NO_HUD"); /* key-art captures: the play with no panels and no rings */
+  g_hide_rings = !show_hud;
+#endif
+  if (show_hud && G.in_match && (sc == CW_SHELL_PLAY || sc == CW_SHELL_PAUSE)) { CW_PROFILE_SCOPE("crawler.hud"); hud(); }
   cw_quality_auto_measure(sc == CW_SHELL_PLAY);
   double now = wall();
   if (G.t_last > 0) G.t_frame += (now - G.t_last) * 1000;

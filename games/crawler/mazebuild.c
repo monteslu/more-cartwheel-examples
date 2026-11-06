@@ -471,7 +471,7 @@ bool mazebuild_lightmap(cw_tree *t, mb_built *b, const char *bake_path, const ch
   }
   /* a mid-key floor under the characters (DESIGN.md, the look): each tileset's floor brought to about the same value, so the
    * darker stone of the deep tilesets does not sink the screen */
-  static const float FLOOR_GAIN[MZ_THEMES] = { 1.35f, 1.9f, 2.6f, 1.45f, 2.0f, 2.6f };
+  static const float FLOOR_GAIN[MZ_THEMES] = { 1.35f, 1.65f, 2.6f, 1.45f, 2.0f, 2.6f };
   cw_lightmap_apply_shaded(t, b->node, b->lm, FLOOR_GAIN[CW_CLAMP(b->theme, 0, MZ_THEMES - 1)], CW_LIGHTMAP_BAKED);
   /* the scenery stands still: its light from the bake set once per instance (a little out from a wall's middle) */
   for (int v = 0; v < MB_VARIANTS; v++) {

@@ -8,3 +8,7 @@ export.linux-arm64.platform = "linux-arm64"
 export.windows-x64.platform = "windows-x64"
 export.macos-arm64.platform = "macos"
 export.android-arm64.platform = "android-arm64"
+# launcher art and credits, packed into the cart (art/art.json)
+art = art
+description = "A co-op maze crawler for one to four players on one shared screen: fight down 120 floors of six tilesets, find keys for the doors, keep your health up with food and blast the crowds with potions."
+author = "Luis Montes"

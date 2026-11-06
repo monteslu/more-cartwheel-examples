@@ -113,6 +113,7 @@ static t3_material *mat_emissive(float r, float g, float b, float k) {
  * feet: the classic three-quarter cheat. The maze, the floor's rings and shadows never lean. Both are debug fields
  * (dev.tilt, dev.lean) for the comparison runs. */
 float g_tilt = 15.0f, g_lean = 15.0f;
+bool g_hide_rings; /* key-art captures (the autopilot builds): no team rings */
 static t3_quat lean_q(float yaw) {
   float l = g_lean * 3.14159265f / 180.0f;
   t3_quat qx = { cw_sin(l * 0.5f), 0, 0, cw_cos(l * 0.5f) }, qy = { 0, cw_sin(yaw * 0.5f), 0, cw_cos(yaw * 0.5f) };
@@ -504,8 +505,8 @@ void view_camera(const sim *s, cw_node camera, float aspect) {
   t3_vec3 eye = { at.x, cw_cos(tl) * d, at.z + cw_sin(tl) * d }; /* g_tilt from straight down, from the south */
   cw_node3d_set_position(camera, eye);
   cw_node_set(camera, "fov", cw_val_float(CAM_FOV));
-  cw_node_set(camera, "near", cw_val_float(60.0f));
-  cw_node_set(camera, "far", cw_val_float(140.0f));
+  cw_node_set(camera, "near", cw_val_float(d * 0.62f)); /* 60 m at the game's 97.5 */
+  cw_node_set(camera, "far", cw_val_float(d * 1.44f));
   cw_node3d_look_at(camera, at, g_tilt > 0.5f ? (t3_vec3){ 0, 1, 0 } : (t3_vec3){ 0, 0, -1 });
   V.eye = eye, V.at = at, V.aspect = aspect;
 }
@@ -814,6 +815,7 @@ static void sync_players(const sim *s, float time) {
     if (!p->active) {
       cw_node3d_set_position(V.pn[i], (t3_vec3){ 0, -100, 0 });
       cw_node_set(V.pl_light[i], "energy", cw_val_float(0));
+      if (V.pl_ring[i]) V.pl_ring[i]->base.visible = false; /* an empty seat has no ring on the floor */
       continue;
     }
     if (V.pl_cls[i] != p->cls) hero_build(i, p->cls);
@@ -834,7 +836,7 @@ static void sync_players(const sim *s, float time) {
     else cw_node3d_set_quaternion(V.pn[i], lean_q(-p->face + 1.5708f));
     if (cw_node_valid(V.ring_node[i])) cw_node3d_set_position(V.ring_node[i], (t3_vec3){ p->x, 0, p->y }); /* the ring stays flat on the floor */
     cw_node3d_set_scale(V.pn[i], (t3_vec3){ 1.9f * giant, 1.9f * giant, 1.9f * giant }); /* a hero about a tile across, as the classic: it reads from straight above */
-    if (V.pl_ring[i]) V.pl_ring[i]->base.visible = !p->down;
+    if (V.pl_ring[i]) V.pl_ring[i]->base.visible = !p->down && !g_hide_rings;
     if (!c->total) continue;
     float speed = sqrtf(p->vx * p->vx + p->vy * p->vy);
     int clip = 1, fr;

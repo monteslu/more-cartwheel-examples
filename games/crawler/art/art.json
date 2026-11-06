@@ -1,0 +1,25 @@
+{
+  "icon": "icon.png",
+  "cover": "cover.jpg",
+  "background": "background.jpg",
+  "logo": "logo.png",
+  "title": "title.jpg",
+  "screenshots": [
+    {
+      "path": "shot-1.jpg",
+      "label": "Two heroes cross a moss-grown crypt as pale shades drift in from the spawners"
+    },
+    {
+      "path": "shot-2.jpg",
+      "label": "Three heroes hold a flooded sewer chamber against bone ghouls and teal skitters"
+    },
+    {
+      "path": "shot-3.jpg",
+      "label": "Four heroes hold a foundry corridor as monsters pour in from both sides, each kind edged in its own colour"
+    },
+    {
+      "path": "shot-4.jpg",
+      "label": "Two heroes deep in the abyss, ringed by ogres, hounds and cold shades"
+    }
+  ]
+}
