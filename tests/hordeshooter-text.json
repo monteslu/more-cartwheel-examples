@@ -1,0 +1,18 @@
+{
+  "app": "hordeshooter",
+  "secondary": [],
+  "screens": [
+    { "name": "title", "frames": 60 },
+    { "name": "settings", "frames": 60, "input": "hordeshooter-text-settings.json" },
+    { "name": "controls", "frames": 80, "input": "hordeshooter-text-controls.json" },
+    { "name": "graphics", "frames": 60, "input": "hordeshooter-text-graphics.json" },
+    { "name": "join", "frames": 40, "input": "hordeshooter-text-join.json" },
+    { "name": "play1", "frames": 120, "input": "hordeshooter-text-play.json" },
+    { "name": "pause", "frames": 205, "input": "hordeshooter-text-pause.json" },
+    { "name": "bots2", "app": "hordeshooter_auto", "frames": 400, "env": { "HORDE_PLAYERS": "2" } },
+    { "name": "bots3", "app": "hordeshooter_auto", "frames": 400, "env": { "HORDE_PLAYERS": "3" } },
+    { "name": "bots4-power", "app": "hordeshooter_auto", "frames": 400, "env": { "HORDE_PLAYERS": "4", "HORDE_POWER": "3" } },
+    { "name": "boss", "app": "hordeshooter_auto", "frames": 600, "env": { "HORDE_PLAYERS": "2", "HORDE_WAVE": "5" } },
+    { "name": "hud-show", "app": "hordeshooter_auto", "frames": 300, "env": { "HORDE_PLAYERS": "4", "HORDE_POWER": "3", "HORDE_HUD_SHOW": "1" } }
+  ]
+}

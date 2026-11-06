@@ -434,69 +434,145 @@ static void fixed_update(void *u, double dt) {
 /* ── frame ──────────────────────────────────────────────────────────── */
 
 static cw_color rgba(float r, float g, float b, float a) { return (cw_color){ r, g, b, a }; }
-static void text(const char *s, float x, float y, float size, cw_color c, cw_text_align al) {
-  cw_text_style st = { .size = size, .color = c, .outline_width = size * 0.08f, .outline_color = rgba(0, 0, 0, 0.9f) };
+static cw_text_style tstyle(float size, cw_color c) { return (cw_text_style){ .size = size, .color = c, .outline_width = size * 0.08f, .outline_color = rgba(0, 0, 0, 0.9f) }; }
+/* the box a line takes at the player's text size (the HUD lays out from these, so it holds at 200%) */
+static cw_text_metrics measure(const char *s, float size) {
+  cw_text_style st = tstyle(size, rgba(1, 1, 1, 1));
+  return cw_font_measure(font, s, &st);
+}
+static cw_text_metrics text(const char *s, float x, float y, float size, cw_color c, cw_text_align al) {
+  cw_text_style st = tstyle(size, c);
   if (al != CW_ALIGN_LEFT) {
     cw_text_metrics m = cw_font_measure(font, s, &st);
     x -= al == CW_ALIGN_CENTER ? m.width * 0.5f : m.width;
   }
-  cw_r2d_text(font, s, cw_v2(x, y), &st);
+  return cw_r2d_text(font, s, cw_v2(x, y), &st);
+}
+/* centred lines wrapped to a width */
+static cw_text_metrics text_wrapped(const char *s, float cx, float y, float wrap, float size, cw_color c) {
+  cw_text_style st = tstyle(size, c);
+  st.align = CW_ALIGN_CENTER, st.wrap_width = wrap;
+  return cw_r2d_text(font, s, cw_v2(cx - wrap * 0.5f, y), &st);
+}
+/* a size held to the body text floor: 26 px at 1080 lines (cartwheel/render2d.h "text size") */
+static float body(float size) {
+  float m = cw_r2d_canvas_size().y * CW_TEXT_FLOOR_BODY * 1.02f;
+  return size > m ? size : m;
+}
+/* parts ("SHIELD 5") packed into lines no wider than maxw, two spaces between them on a line, '\n' between lines */
+static void pack(char *out, size_t cap, const char *const *part, int n, const char *sep, float size, float maxw) {
+  out[0] = 0;
+  size_t line = 0; /* where the current line starts */
+  for (int k = 0; k < n; k++) {
+    size_t len = strlen(out);
+    if (len > line) {
+      char trial[256];
+      snprintf(trial, sizeof trial, "%s%s%s", out + line, sep, part[k]);
+      if (measure(trial, size).width <= maxw) { snprintf(out + len, cap - len, "%s%s", sep, part[k]); continue; }
+      snprintf(out + len, cap - len, "\n"), line = len + 1, len++;
+    }
+    snprintf(out + len, cap - len, "%s", part[k]);
+  }
 }
 
 static const float PC[MAXP][3] = { { 0.2f, 0.7f, 1 }, { 1, 0.55f, 0.1f }, { 0.4f, 0.95f, 0.35f }, { 0.95f, 0.3f, 0.75f } };
 
 static void hud(void) {
   cw_vec2 cs = cw_r2d_canvas_size();
-  float u = cs.y / 540.0f;
+  float u = cs.y / 540.0f, cx = cs.x * 0.5f;
   cw_r2d_begin(NULL);
-  /* a panel per player in its own corner */
+  /* what the top corners hold (panels and the lines under them): the centred lines keep clear of them */
+  float left_r = 0, left_b = 0, right_l = cs.x, right_b = 0, panel_l = 0, panel_r = cs.x;
+#ifdef HORDE_AUTOPILOT
+  static int show = -1; /* HORDE_HUD_SHOW (development, the text size contact sheet): every optional panel line at once, drawn only */
+  if (show < 0) show = getenv("HORDE_HUD_SHOW") != NULL;
+#else
+  const int show = 0;
+#endif
+  /* a panel per player in its own corner, sized from its measured text; its other lines stack away from the corner */
   for (int i = 0; i < G.S.players; i++) {
-    const player *p = &G.S.p[i];
-    float w = 190 * u, h = 52 * u, x = (i & 1) ? cs.x - w - 14 * u : 14 * u, y = (i & 2) ? cs.y - h - 14 * u : 14 * u;
-    cw_r2d_rect(cw_rect_make(x, y, w, h), rgba(0.03f, 0.03f, 0.05f, 0.65f));
-    cw_r2d_rect(cw_rect_make(x, y, 5 * u, h), rgba(PC[i][0], PC[i][1], PC[i][2], 1));
+    player pv = G.S.p[i];
+    int flash = G.level_flash[i], up = G.level_up[i];
+    if (show) {
+      if (i == 0 || i == 3) pv.offer_ticks = 300, pv.offer[0] = 1, pv.offer[1] = 4, pv.offer[2] = 7;
+      if (i == 1) pv.down = true;
+      if (i != 1) flash = 100, up = 2, pv.shield_t = 300, pv.grenades = 3, pv.mines = 2;
+    }
+    const player *p = &pv;
+    bool right = i & 1, bottom = i & 2;
     char b[64];
     snprintf(b, sizeof b, "P%d  LV %d  %d", i + 1, p->level, p->score);
-    text(b, x + 12 * u, y + 4 * u, 15 * u, rgba(1, 1, 1, 1), CW_ALIGN_LEFT);
+    float ts = 15 * u;
+    cw_text_metrics tm = measure(b, ts);
+    float w = fmaxf(190 * u, 22 * u + tm.width), bar = fmaxf(26 * u, 4 * u + tm.height + 3 * u), h = bar + 26 * u;
+    float x = right ? cs.x - w - 14 * u : 14 * u, y = bottom ? cs.y - h - 14 * u : 14 * u;
+    float edge = right ? x + w - 4 * u : x + 4 * u; /* the lines beside the panel line up with its outer side */
+    cw_text_align al = right ? CW_ALIGN_RIGHT : CW_ALIGN_LEFT;
+    cw_r2d_rect(cw_rect_make(x, y, w, h), rgba(0.03f, 0.03f, 0.05f, 0.65f));
+    cw_r2d_rect(cw_rect_make(x, y, 5 * u, h), rgba(PC[i][0], PC[i][1], PC[i][2], 1));
+    text(b, x + 12 * u, y + 4 * u, ts, rgba(1, 1, 1, 1), CW_ALIGN_LEFT);
     float f = cw_clampf(p->hp / 100.0f, 0, 1);
-    cw_r2d_rect(cw_rect_make(x + 12 * u, y + 26 * u, w - 22 * u, 9 * u), rgba(0.15f, 0.05f, 0.05f, 1));
-    cw_r2d_rect(cw_rect_make(x + 12 * u, y + 26 * u, (w - 22 * u) * f, 9 * u), p->down ? rgba(0.5f, 0.5f, 0.5f, 1) : rgba(0.25f + 0.7f * (1 - f), 0.9f * f + 0.1f, 0.2f, 1));
+    cw_r2d_rect(cw_rect_make(x + 12 * u, y + bar, w - 22 * u, 9 * u), rgba(0.15f, 0.05f, 0.05f, 1));
+    cw_r2d_rect(cw_rect_make(x + 12 * u, y + bar, (w - 22 * u) * f, 9 * u), p->down ? rgba(0.5f, 0.5f, 0.5f, 1) : rgba(0.25f + 0.7f * (1 - f), 0.9f * f + 0.1f, 0.2f, 1));
     float xf = (float)p->xp / (float)p->xp_next;
-    cw_r2d_rect(cw_rect_make(x + 12 * u, y + 40 * u, (w - 22 * u) * cw_clampf(xf, 0, 1), 4 * u), rgba(0.3f, 1, 0.8f, 1));
+    cw_r2d_rect(cw_rect_make(x + 12 * u, y + bar + 14 * u, (w - 22 * u) * cw_clampf(xf, 0, 1), 4 * u), rgba(0.3f, 1, 0.8f, 1));
+    float cur = bottom ? y - 2 * u : y + h + 2 * u, wide = w, maxw = cs.x * 0.5f - 24 * u; /* cur: the next line's edge nearest the panel */
     if (p->offer_ticks > 0) {
       static const char *const KEYS[3] = { "X/1", "Y/2", "B/3" };
-      float oy = (i & 2) ? y - 64 * u : y + h + 4 * u;
-      cw_r2d_rect(cw_rect_make(x, oy, w, 60 * u), rgba(0.05f, 0.08f, 0.1f, 0.8f));
+      float os = body(14 * u), step = fmaxf(18 * u, measure("Ag", os).height), ow = w;
+      char lines[3][64];
       for (int k = 0; k < 3; k++) {
-        snprintf(b, sizeof b, "%s  %s", KEYS[k], sim_upgrade_name(p->offer[k]));
-        text(b, x + 10 * u, oy + 3 * u + (float)k * 18 * u, 14 * u, k == 0 ? rgba(0.6f, 1, 0.85f, 1) : rgba(1, 1, 1, 1), CW_ALIGN_LEFT);
+        snprintf(lines[k], sizeof lines[k], "%s  %s", KEYS[k], sim_upgrade_name(p->offer[k]));
+        ow = fmaxf(ow, measure(lines[k], os).width + 20 * u);
       }
-      cw_r2d_rect(cw_rect_make(x, oy + 58 * u, w * (float)p->offer_ticks / 480.0f, 2 * u), rgba(0.3f, 1, 0.8f, 1));
+      float oh = step * 3 + 6 * u, ox = right ? x + w - ow : x, oy = bottom ? cur - oh - 2 * u : cur + 2 * u;
+      cw_r2d_rect(cw_rect_make(ox, oy, ow, oh), rgba(0.05f, 0.08f, 0.1f, 0.8f));
+      for (int k = 0; k < 3; k++) text(lines[k], ox + 10 * u, oy + 3 * u + (float)k * step, os, k == 0 ? rgba(0.6f, 1, 0.85f, 1) : rgba(1, 1, 1, 1), CW_ALIGN_LEFT);
+      cw_r2d_rect(cw_rect_make(ox, oy + oh - 2 * u, ow * (float)p->offer_ticks / 480.0f, 2 * u), rgba(0.3f, 1, 0.8f, 1));
+      cur = bottom ? oy - 2 * u : oy + oh, wide = fmaxf(wide, ow);
     }
-    if (p->down) text("DOWN: a friend can pull you up", x + 12 * u, y + h + 2 * u, 12 * u, rgba(1, 0.6f, 0.5f, 1), CW_ALIGN_LEFT);
-    else { /* power-ups held: name and seconds left, or charges */
-      char pw[96];
+    if (p->down) {
+      const char *dt = "DOWN: a friend can pull you up";
+      float ds = body(12 * u);
+      cw_text_metrics dm = measure(dt, ds);
+      float dy = bottom ? cur - dm.height : cur;
+      text(dt, right ? edge : x + 12 * u, dy, ds, rgba(1, 0.6f, 0.5f, 1), al);
+      cur = bottom ? dy : dy + dm.height, wide = fmaxf(wide, dm.width + 12 * u);
+    } else { /* power-ups held: name and seconds left, or charges, packed into lines that keep to this half of the screen */
+      char part[7][48];
+      const char *pp[7];
       int n = 0;
-      pw[0] = 0;
-      if (p->pu_weapon_t > 0) n += snprintf(pw + n, sizeof pw - (size_t)n, "%s%s%s %d  ", p->pu_rarity > 0 ? sim_rarity_name(p->pu_rarity) : "", p->pu_rarity > 0 ? " " : "", sim_power_name(p->pu_weapon), (p->pu_weapon_t + 59) / 60);
-      if (p->pu_ammo_t > 0) n += snprintf(pw + n, sizeof pw - (size_t)n, "%s %d  ", sim_power_name(p->pu_ammo), (p->pu_ammo_t + 59) / 60);
-      if (p->saw_t > 0) n += snprintf(pw + n, sizeof pw - (size_t)n, "SAWS %d  ", (p->saw_t + 59) / 60);
-      if (p->shield_t > 0) n += snprintf(pw + n, sizeof pw - (size_t)n, "SHIELD %d  ", (p->shield_t + 59) / 60);
-      if (p->magnet_t > 0) n += snprintf(pw + n, sizeof pw - (size_t)n, "MAGNET %d  ", (p->magnet_t + 59) / 60);
-      if (p->grenades > 0) n += snprintf(pw + n, sizeof pw - (size_t)n, "GRENADES x%d  ", p->grenades);
-      if (p->mines > 0 && n < (int)sizeof pw - 16) n += snprintf(pw + n, sizeof pw - (size_t)n, "MINES x%d", p->mines);
+      if (p->pu_weapon_t > 0) snprintf(part[n++], sizeof part[0], "%s%s%s %d", p->pu_rarity > 0 ? sim_rarity_name(p->pu_rarity) : "", p->pu_rarity > 0 ? " " : "", sim_power_name(p->pu_weapon), (p->pu_weapon_t + 59) / 60);
+      if (p->pu_ammo_t > 0) snprintf(part[n++], sizeof part[0], "%s %d", sim_power_name(p->pu_ammo), (p->pu_ammo_t + 59) / 60);
+      if (p->saw_t > 0) snprintf(part[n++], sizeof part[0], "SAWS %d", (p->saw_t + 59) / 60);
+      if (p->shield_t > 0) snprintf(part[n++], sizeof part[0], "SHIELD %d", (p->shield_t + 59) / 60);
+      if (p->magnet_t > 0) snprintf(part[n++], sizeof part[0], "MAGNET %d", (p->magnet_t + 59) / 60);
+      if (p->grenades > 0) snprintf(part[n++], sizeof part[0], "GRENADES x%d", p->grenades);
+      if (p->mines > 0) snprintf(part[n++], sizeof part[0], "MINES x%d", p->mines);
       if (n) {
-        float py = (i & 2) ? y - 18 * u : y + h + 2 * u;
-        if (p->offer_ticks > 0) py = (i & 2) ? py - 66 * u : py + 62 * u;
-        text(pw, x + 4 * u, py, 13 * u, rgba(1, 0.9f, 0.45f, 1), CW_ALIGN_LEFT);
+        float ps = body(13 * u);
+        char pw[400];
+        for (int k = 0; k < n; k++) pp[k] = part[k];
+        pack(pw, sizeof pw, pp, n, "  ", ps, maxw);
+        cw_text_style st = tstyle(ps, rgba(1, 0.9f, 0.45f, 1));
+        st.align = al;
+        cw_text_metrics pm = cw_font_measure(font, pw, &st);
+        float py = bottom ? cur - pm.height : cur;
+        cw_r2d_text(font, pw, cw_v2(right ? edge - pm.width : edge, py), &(cw_text_style){ .size = ps, .color = st.color, .outline_width = st.outline_width, .outline_color = st.outline_color, .align = al, .wrap_width = pm.width + 1 });
+        cur = bottom ? py : py + pm.height, wide = fmaxf(wide, pm.width + 4 * u);
       }
     }
-    if (G.level_flash[i] > 0) {
-      snprintf(b, sizeof b, "P%d: %s", i + 1, sim_upgrade_name(G.level_up[i]));
-      /* by the player's own panel, not over the action */
-      float ly = (i & 2) ? y - 40 * u : y + h + 20 * u;
-      if (p->offer_ticks > 0) ly = (i & 2) ? ly - 66 * u : ly + 62 * u;
-      text(b, x + 4 * u, ly, 16 * u, rgba(PC[i][0], PC[i][1], PC[i][2], cw_clampf(G.level_flash[i] / 40.0f, 0, 1)), CW_ALIGN_LEFT);
+    if (flash > 0) { /* the level's upgrade, by the player's own panel, not over the action */
+      snprintf(b, sizeof b, "P%d: %s", i + 1, sim_upgrade_name(up));
+      float ls = 16 * u;
+      cw_text_metrics lm = measure(b, ls);
+      float ly = bottom ? cur - lm.height : cur;
+      text(b, edge, ly, ls, rgba(PC[i][0], PC[i][1], PC[i][2], cw_clampf(flash / 40.0f, 0, 1)), al);
+      cur = bottom ? ly : ly + lm.height, wide = fmaxf(wide, lm.width + 4 * u);
+    }
+    if (!bottom) {
+      if (right) right_l = fminf(right_l, x + w - wide), right_b = fmaxf(right_b, cur), panel_r = fminf(panel_r, x);
+      else left_r = fmaxf(left_r, x + wide), left_b = fmaxf(left_b, cur), panel_l = fmaxf(panel_l, x + w);
     }
   }
   for (int i = 0; i < G.S.players; i++) { /* P1..P4 over each soldier: who is who without the colours */
@@ -505,49 +581,68 @@ static void hud(void) {
     if (!p->active || !view_screen((t3_vec3){ p->x, 2.3f, p->y }, &su, &sv)) continue;
     char t[8];
     snprintf(t, sizeof t, "P%d", i + 1);
-    text(t, su * cs.x, sv * cs.y - 16 * u, 13 * u, rgba(0.55f + 0.45f * PC[i][0], 0.55f + 0.45f * PC[i][1], 0.55f + 0.45f * PC[i][2], 1), CW_ALIGN_CENTER);
+    float ps = body(13 * u);
+    text(t, su * cs.x, sv * cs.y - 3 * u - measure(t, ps).height, ps, rgba(0.55f + 0.45f * PC[i][0], 0.55f + 0.45f * PC[i][1], 0.55f + 0.45f * PC[i][2], 1), CW_ALIGN_CENTER);
   }
-  char b[96];
-  snprintf(b, sizeof b, "FLOOR %d  %s     WAVE %d / %d     %d kills     %d on the floor", G.S.level + 1, FLOOR_NAME[G.S.level], G.S.level_wave,
-           sim_level_waves(G.S.level), G.S.killed_total, G.S.nenemies);
-  text(b, cs.x * 0.5f, 10 * u, 16 * u, rgba(1, 0.95f, 0.8f, 1), CW_ALIGN_CENTER);
+  /* the top line between the top panels: its parts packed into as many lines as that room needs at this text size */
+  char b[160], tp[4][48];
+  snprintf(tp[0], sizeof tp[0], "FLOOR %d  %s", G.S.level + 1, FLOOR_NAME[G.S.level]);
+  snprintf(tp[1], sizeof tp[1], "WAVE %d / %d", G.S.level_wave, sim_level_waves(G.S.level));
+  snprintf(tp[2], sizeof tp[2], "%d kills", G.S.killed_total);
+  snprintf(tp[3], sizeof tp[3], "%d on the floor", G.S.nenemies);
+  const char *tpp[4] = { tp[0], tp[1], tp[2], tp[3] };
+  float top_s = 16 * u, room = 2 * fminf(cx - panel_l, panel_r - cx) - 16 * u;
+  char top[200];
+  pack(top, sizeof top, tpp, 4, "     ", top_s, fmaxf(room, cs.x * 0.2f));
+  float top_b = 10 * u + text_wrapped(top, cx, 10 * u, cs.x, top_s, rgba(1, 0.95f, 0.8f, 1)).height;
+  /* a centred line of width w wanted at y: lower, under a top corner's lines it would run into */
+#define CLEAR_Y(y, w) (fmaxf(fmaxf((y), cx - (w) * 0.5f < left_r ? left_b + 4 * u : 0), cx + (w) * 0.5f > right_l ? right_b + 4 * u : 0))
+  float mid = top_b; /* the bottom of what is centred at the top */
+  if (G.S.boss_alive && G.S.boss_maxhp > 0) {
+    float bw = cs.x * 0.4f, bx = cx - bw * 0.5f, by = fmaxf(34 * u, top_b + 6 * u);
+    cw_r2d_rect(cw_rect_make(bx - 2 * u, by - 2 * u, bw + 4 * u, 12 * u), rgba(0, 0, 0, 0.7f));
+    cw_r2d_rect(cw_rect_make(bx, by, bw * cw_clampf((float)G.S.boss_hp / (float)G.S.boss_maxhp, 0, 1), 8 * u), rgba(0.9f, 0.2f, 0.15f, 1));
+    mid = by + 10 * u;
+    if (G.S.boss_phase == 1) {
+      const char *bt = "THE BOSS IS ABOUT TO CHARGE";
+      float bs = 16 * u, ty = CLEAR_Y(by + 14 * u, measure(bt, bs).width);
+      mid = ty + text(bt, cx, ty, bs, rgba(1, 0.4f, 0.2f, 1), CW_ALIGN_CENTER).height;
+    }
+  }
   if (G.banner_t > 0) {
     float a = cw_clampf(G.banner_t / 40.0f, 0, 1);
     if (G.banner_kind == 3) snprintf(b, sizeof b, "FLOOR %d  -  %s", G.banner_n + 1, FLOOR_NAME[CW_CLAMP(G.banner_n, 0, NLEVELS - 1)]);
     else snprintf(b, sizeof b, G.banner_kind == 2 ? "WAVE %d  -  BOSS INCOMING" : G.banner_kind == 1 ? "WAVE %d" : "HOLD THE YARD", G.banner_n);
-    text(b, cs.x * 0.5f, cs.y * 0.28f, 38 * u, rgba(1, G.banner_kind == 2 ? 0.35f : 0.85f, 0.3f, a), CW_ALIGN_CENTER);
-  }
-  if (G.S.boss_alive && G.S.boss_maxhp > 0) {
-    float bw = cs.x * 0.4f, bx = cs.x * 0.5f - bw * 0.5f, by = 34 * u;
-    cw_r2d_rect(cw_rect_make(bx - 2 * u, by - 2 * u, bw + 4 * u, 12 * u), rgba(0, 0, 0, 0.7f));
-    cw_r2d_rect(cw_rect_make(bx, by, bw * cw_clampf((float)G.S.boss_hp / (float)G.S.boss_maxhp, 0, 1), 8 * u), rgba(0.9f, 0.2f, 0.15f, 1));
-    if (G.S.boss_phase == 1) text("THE BOSS IS ABOUT TO CHARGE", cs.x * 0.5f, by + 14 * u, 16 * u, rgba(1, 0.4f, 0.2f, 1), CW_ALIGN_CENTER);
+    float bs = 38 * u, by = CLEAR_Y(fmaxf(cs.y * 0.28f, mid + 6 * u), fminf(measure(b, bs).width, cs.x * 0.94f));
+    text_wrapped(b, cx, by, cs.x * 0.94f, bs, rgba(1, G.banner_kind == 2 ? 0.35f : 0.85f, 0.3f, a));
   }
   if (G.S.state == ST_CLEAR || G.S.state == ST_HATCH) { /* the floor is won: the way down */
     if (G.banner_kind != 3) G.banner_t = 0; /* no wave banner over it */
-    text(G.S.state == ST_CLEAR ? "THE FLOOR FALLS SILENT" : "THE WAY DOWN IS OPEN", cs.x * 0.5f, cs.y * 0.2f, 34 * u, rgba(1, 0.8f, 0.4f, 1), CW_ALIGN_CENTER);
+    const char *ct = G.S.state == ST_CLEAR ? "THE FLOOR FALLS SILENT" : "THE WAY DOWN IS OPEN";
+    float s = 34 * u, y = CLEAR_Y(fmaxf(cs.y * 0.2f, mid + 6 * u), fminf(measure(ct, s).width, cs.x * 0.94f));
+    text_wrapped(ct, cx, y, cs.x * 0.94f, s, rgba(1, 0.8f, 0.4f, 1));
     float su, sv; /* the marker: an arrow over the hatch, or at the screen's edge pointing to it */
     if (G.S.state == ST_HATCH && view_screen((t3_vec3){ 0, 3.2f + 0.3f * cw_sin((float)G.S.tick * 0.12f), 0 }, &su, &sv)) {
       float x = cw_clampf(su, 0.05f, 0.95f) * cs.x, y = cw_clampf(sv, 0.08f, 0.92f) * cs.y;
       cw_vec2 tri[3] = { cw_v2(x - 16 * u, y - 30 * u), cw_v2(x + 16 * u, y - 30 * u), cw_v2(x, y - 6 * u) }; /* an arrow down at the hatch */
       cw_r2d_polygon(tri, 3, rgba(1, 0.72f, 0.28f, 1));
       cw_r2d_polygon_lines(tri, 3, 2 * u, rgba(0, 0, 0, 0.8f));
-      text("STEP IN", x, y - 58 * u, 18 * u, rgba(1, 0.85f, 0.5f, 1), CW_ALIGN_CENTER);
+      float ss = 18 * u;
+      text("STEP IN", x, y - 34 * u - measure("STEP IN", ss).height, ss, rgba(1, 0.85f, 0.5f, 1), CW_ALIGN_CENTER);
     }
   }
+#undef CLEAR_Y
   if (G.fade_t > 0) { /* the descent: black down over the step, back up on the new floor */
     float t = (float)G.fade_t, a = t < DESCEND_TICKS ? t / (float)DESCEND_TICKS : 1.0f - (t - DESCEND_TICKS) / 45.0f;
     cw_r2d_rect(cw_rect_make(0, 0, cs.x, cs.y), rgba(0, 0, 0, cw_clampf(a, 0, 1)));
   }
-  if (G.S.state == ST_WON) {
-    text("THE DESCENT IS DONE", cs.x * 0.5f, cs.y * 0.36f, 56 * u, rgba(1, 0.85f, 0.35f, 1), CW_ALIGN_CENTER);
-    snprintf(b, sizeof b, "%d kills in %d minutes  -  a new run in a moment", G.S.killed_total, G.S.tick / 3600);
-    text(b, cs.x * 0.5f, cs.y * 0.5f, 18 * u, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
-  }
-  if (G.S.state == ST_OVER) {
-    text("OVERRUN", cs.x * 0.5f, cs.y * 0.4f, 52 * u, rgba(1, 0.3f, 0.25f, 1), CW_ALIGN_CENTER);
-    snprintf(b, sizeof b, "the yard resets in a moment  -  best wave %d", G.best_wave);
-    text(b, cs.x * 0.5f, cs.y * 0.52f, 18 * u, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
+  if (G.S.state == ST_WON || G.S.state == ST_OVER) { /* the title, and under it as measured the line, wrapped to the screen */
+    bool won = G.S.state == ST_WON;
+    float y = cs.y * (won ? 0.36f : 0.4f), s2 = 18 * u;
+    y += text_wrapped(won ? "THE DESCENT IS DONE" : "OVERRUN", cx, y, cs.x * 0.94f, won ? 56 * u : 52 * u, won ? rgba(1, 0.85f, 0.35f, 1) : rgba(1, 0.3f, 0.25f, 1)).height;
+    if (won) snprintf(b, sizeof b, "%d kills in %d minutes  -  a new run in a moment", G.S.killed_total, G.S.tick / 3600);
+    else snprintf(b, sizeof b, "the yard resets in a moment  -  best wave %d", G.best_wave);
+    text_wrapped(b, cx, fmaxf(y + 4 * u, cs.y * (won ? 0.5f : 0.52f)), cs.x * 0.9f, s2, rgba(1, 1, 1, 1));
   }
   cw_r2d_end();
 }
