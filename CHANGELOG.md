@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.25.0
+
+- Engine v0.33.1: Very Low draws every lit surface with a cheaper lighting model (the same colours,
+  textures and normal maps, a simpler highlight, no reflections sampled), runs the fog and edge
+  smoothing inside one final pass, and reads the ground textures once. Every game regenerated its
+  program tables for it and passes its quality sweep on Very Low with nothing missing.
+- Tux Racer: the Terrain setting gains a Very Low value (the cheaper ground), picked by the Very Low
+  preset; Ultra's terrain is High's, as the Ultra preset already chose.
+- GPU time on Very Low against High (1080p, Radeon 890M, GL): Pirates 1.4 against 5.7 ms, Jetski
+  1.5 against 7.5 ms, Sky Fighter 2.1 against 6.6 ms, the co-op platformer 1.6 against 4.2 ms, Arena
+  FPS 3.8 against 9.9 ms, Tux Racer 1.9 against 4.7 ms, the fighter 3.2 against 5.9 ms, the brawler
+  2.0 against 3.2 ms, crawler 1.7 against 2.5 ms, the horde shooter 1.3 against 1.9 ms.
+- The range gates hold each game's Very Low share of High to these numbers.
+
 ## 0.24.0
 
 - New game: crawler, a co-op maze dungeon crawler for one to four players on one shared top-down
