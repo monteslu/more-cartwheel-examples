@@ -125,6 +125,7 @@ static int g_bossclip_dbg[3]; /* frames a boss was drawn, of them with an arm in
 static int g_label_dbg[4]; /* frames a boss's words were up, of them on a marker, frames a player's words were up, of them on a marker */
 static int g_signmove_dbg[2]; /* signs: times a panel changed place, frames it was faded or held back for that */
 static float g_sign_box[4]; /* the panel up this frame: x, y, width (0: none), height; other words keep off it */
+static float g_caption_box[4], g_caption_prev[4]; /* the sign's panel as drawn this frame and the last (width 0: none): the chips and the level name stand aside for it */
 static int g_labelmove_dbg[2]; /* times the boss's words and a player's words were moved off a marker */
 static bool g_label_bug; /* COOP_LABEL_BUG: the label gate's control */
 static bool g_card_bug; /* COOP_CARD_BUG: the card gate's control */
@@ -2146,6 +2147,18 @@ static void grave_add(int who, int cause, float x) {
   }
   g_graves_dbg[0] = n, g_graves_dbg[1] = off;
 }
+/* the layout of the HUD this frame, from the drawn text (the player's text size grows it): the bottom of the player
+ * panels, the top of the hint line along the bottom, the top of the boss's name over its bar and the radius of a
+ * player marker, in px. At 100% they are where they always were (74, H - 32, H - 82 and 11, times s) */
+static float g_hud_bot, g_hint_top, g_boss_top, g_mark_r;
+/* how much the player's text size grows text asked for at `size` (1 at 100%) */
+static float text_grow(float size) { return cw_text_drawn_size(g_font, size) / size; }
+/* is a box under the sign's words drawn last frame? */
+static bool caption_over(float x, float y, float w, float h) {
+  const float *b = g_caption_prev;
+  return b[2] > 0 && b[0] < x + w && b[0] + b[2] > x && b[1] < y + h && b[1] + b[3] > y;
+}
+
 static void draw_graves(float W, float H, float s) {
   static const char *const WHO[MAX_PLAYERS] = { "BLUE", "RED", "GREEN", "YELLOW" };
   for (int i = 0; i < NGRAVES; i++) {
@@ -2363,13 +2376,38 @@ static void next_level(void) {
 
 /* ── HUD ───────────────────────────────────────────────────────────── */
 static void text(const char *s, float x, float y, float size, cw_color c, cw_text_align al, float w) {
-  cw_r2d_text(g_font, s, (cw_vec2){ x + 2, y + 2 }, &(cw_text_style){ .size = size, .color = cw_rgba(0, 0, 0, 0.6f * c.a), .align = al, .wrap_width = w });
+  /* the drop shadow is a second copy: the player's Text background goes on the words alone */
+  cw_r2d_text(g_font, s, (cw_vec2){ x + 2, y + 2 }, &(cw_text_style){ .size = size, .color = cw_rgba(0, 0, 0, 0.6f * c.a), .align = al, .wrap_width = w, .own_backdrop = true });
   cw_r2d_text(g_font, s, (cw_vec2){ x, y }, &(cw_text_style){ .size = size, .color = c, .align = al, .wrap_width = w });
 }
 /* text with button prompts in it (cartwheel/prompt.h markup: "{jump} jump"), for every player, in the box text() would use */
 static void ptext(const char *s, float x, float y, float size, cw_color c, cw_text_align al, float w) {
   float px = al == CW_ALIGN_CENTER ? x + w * 0.5f : al == CW_ALIGN_RIGHT ? x + w : x;
   cw_prompt_text(g_font, s, -1, (cw_vec2){ px, y }, size, c, al);
+}
+/* a hint of parts split by runs of five spaces, wrapped onto as many lines as it needs to fit maxw (a big text size,
+ * a narrow screen): the text with '\n' between its lines in out. Returns the number of lines */
+static int wrap_hint(const char *s, float size, float maxw, char *out, size_t cap) {
+  static const char SEP[] = "     ";
+  size_t n = 0;
+  int lines = 1;
+  char line[256] = "";
+  out[0] = 0;
+  for (const char *p = s; *p;) {
+    const char *e = strstr(p, SEP);
+    size_t len = e ? (size_t)(e - p) : strlen(p);
+    char trial[512];
+    snprintf(trial, sizeof trial, "%s%s%.*s", line, line[0] ? SEP : "", (int)len, p);
+    if (line[0] && cw_prompt_text_size(g_font, trial, -1, size).x > maxw) { /* this part starts a new line */
+      n += (size_t)snprintf(out + n, n < cap ? cap - n : 0, "%s\n", line);
+      lines++;
+      snprintf(line, sizeof line, "%.*s", (int)len, p);
+    } else snprintf(line, sizeof line, "%.*s", (int)sizeof line - 1, trial);
+    p += len;
+    while (*p == ' ') p++;
+  }
+  snprintf(out + n, n < cap ? cap - n : 0, "%s", line);
+  return lines;
 }
 
 
@@ -2508,13 +2546,13 @@ static void draw_signs(float W, float H, float s) {
     float a = pick_d < 6.0f ? 1.0f : (8.0f - pick_d) / 2.0f;
     float sx, sy;
     if (!project(n->x, n->y + 2.9f, 0, W, H, &sx, &sy)) return;
-    float pw = 300 * s, ts = 15.5f * s;
+    float ts = 15.5f * s, pw = fminf(W - 24 * s, 300 * s * text_grow(ts)); /* wider as the text grows */
     float x0 = sx - pw * 0.5f;
     if (x0 < 12 * s) x0 = 12 * s;
     if (x0 + pw > W - 12 * s) x0 = W - 12 * s - pw;
     cw_text_metrics sz = cw_font_measure(g_font, n->text, &(cw_text_style){ .size = ts, .wrap_width = pw - 20 * s });
     float ph = sz.height + 14 * s, y0 = sy - ph;
-    if (y0 < 80 * s) y0 = 80 * s;
+    if (y0 < g_hud_bot + 6 * s) y0 = g_hud_bot + 6 * s;
     float fade = a;
     g_sign_box[2] = 0;
     if (g_sign_bug) { /* the gate's control: over the board, and thin over a player */
@@ -2530,7 +2568,7 @@ static void draw_signs(float W, float H, float s) {
        * chases them round the screen. Nobody is ever behind it: over a body, it is not drawn */
       static int shown = -1, slot, hold;
       static float swap = 1; /* 0..1 how far it has faded back in; below zero, fading out to change place */
-      const float slot_y[2] = { 80 * s, H - 66 * s - ph }, slot_x = (W - pw) * 0.5f;
+      const float slot_y[2] = { g_hud_bot + 6 * s, fminf(H - 66 * s, g_hint_top - 34 * s) - ph }, slot_x = (W - pw) * 0.5f;
       const float rise = 3.0f, near_pad = 26 * s, clear_pad = 46 * s;
       if (shown != pick) {
         shown = pick, swap = 1, hold = 0;
@@ -2551,6 +2589,7 @@ static void draw_signs(float W, float H, float s) {
     g_sign_dbg[0]++;
     if (a > 0.02f && sign_over_player(x0, y0, pw, ph, 1.9f, 0, W, H)) g_sign_dbg[1]++;
     if (g_sign_bug && a < fade - 1e-3f) g_sign_dbg[2]++;
+    if (a > 0.02f) g_caption_box[0] = x0, g_caption_box[1] = y0, g_caption_box[2] = pw, g_caption_box[3] = ph;
     panel(x0, y0, pw, ph, 7 * s, cw_rgba(0.92f, 0.85f, 0.66f, a), cw_rgba(0.76f, 0.65f, 0.44f, a), cw_rgba(0.28f, 0.18f, 0.1f, a));
     cw_r2d_text(g_font, n->text, (cw_vec2){ x0 + 10 * s, y0 + 7 * s }, &(cw_text_style){ .size = ts, .color = cw_rgba(0.13f, 0.08f, 0.04f, a), .wrap_width = pw - 20 * s });
   }
@@ -2582,14 +2621,14 @@ static void draw_boss_says(float W, float H, float s) {
       float sx, sy;
       if (project(e->x, e->y + 4.6f, 0, W, H, &sx, &sy)) {
         cw_text_metrics tm = cw_font_measure(g_font, text_now, &(cw_text_style){ .size = 18 * s });
-        float x0 = fmaxf(8 * s, fminf(sx - tm.width * 0.5f - 10 * s, W - tm.width - 28 * s)), y0 = fmaxf(80 * s, sy - tm.height - 14 * s);
+        float x0 = fmaxf(8 * s, fminf(sx - tm.width * 0.5f - 10 * s, W - tm.width - 28 * s)), y0 = fmaxf(g_hud_bot + 6 * s, sy - tm.height - 14 * s);
         float lw = tm.width + 20 * s, lh = tm.height + 12 * s;
         if (!g_label_bug) {
           /* a caption like a sign's, in the boss's own colours: top centre, or just over its health bar when somebody is up there.
            * In a fight everyone is over the boss's head all the time: words that dodged them would never hold still to be read */
           static const char *placed;
           static int slot, hold;
-          const float cx = (W - lw) * 0.5f, ys[2] = { 80 * s, H - 104 * s - lh };
+          const float cx = (W - lw) * 0.5f, ys[2] = { g_hud_bot + 6 * s, g_boss_top - 22 * s - lh };
           #define BOSS_WORDS_BLOCKED(i, pad) (label_on_marker(cx, ys[i], lw, lh, pad, W, H, s) || sign_over_player(cx, ys[i], lw, lh, 1.9f, pad, W, H))
           if (placed != text_now) placed = text_now, hold = 0, slot = BOSS_WORDS_BLOCKED(0, 16 * s) && !BOSS_WORDS_BLOCKED(1, 16 * s) ? 1 : 0;
           if (hold > 0) hold--;
@@ -2624,7 +2663,7 @@ static void draw_says(float W, float H, float s) {
     float pw = sz.width + 18 * s, ph = sz.height + 10 * s, x0 = sx - pw * 0.5f, y0 = sy - ph - 20 * s;
     if (x0 < 8 * s) x0 = 8 * s;
     if (x0 + pw > W - 8 * s) x0 = W - 8 * s - pw;
-    if (y0 < 80 * s) y0 = 80 * s;
+    if (y0 < g_hud_bot + 6 * s) y0 = g_hud_bot + 6 * s;
     float hx = x0, hy = y0; /* where it would hang over the head */
     if (!g_label_bug) {
       /* off a marker, and never on a body, and it stays that far off its place until its place is well clear: words that hop cannot be read */
@@ -2654,7 +2693,7 @@ static void draw_says(float W, float H, float s) {
  * one readable marker each, side by side, never a stack) */
 static int marker_layout(float W, float H, float s, float *px, float *py, int *id, bool count) {
   int n = 0;
-  float r = 11 * s;
+  float r = g_mark_r;
   for (int i = 0; i < G.nplayers && i < MAX_PLAYERS; i++) {
     const player *p = &G.p[i];
     if (!p->joined || (!p->alive && !p->bubble)) continue;
@@ -2662,9 +2701,9 @@ static int marker_layout(float W, float H, float s, float *px, float *py, int *i
     float sx, sy;
     if (!project(wx, wy, 0, W, H, &sx, &sy)) continue;
     /* held under the player panels: a marker clamped to the top of the view sat on the panels (their bottom is 75 * s) */
-    float sy_min = g_hud_bug ? r + 60 * s : 75 * s + 1.5f * r;
+    float sy_min = g_hud_bug ? r + 60 * s : g_hud_bot + 1 * s + 1.5f * r;
     if (sy < sy_min) sy = sy_min;
-    if (count && sy - r < 75 * s) g_marker_over_dbg++;
+    if (count && sy - r < g_hud_bot + 1 * s) g_marker_over_dbg++;
     px[n] = sx, py[n] = sy, id[n] = i, n++;
   }
   for (int a = 0; a < n; a++) /* by screen x, so the spreading keeps the order the players stand in */
@@ -2690,7 +2729,7 @@ static int marker_layout(float W, float H, float s, float *px, float *py, int *i
 static bool label_on_marker(float x, float y, float w, float h, float pad, float W, float H, float s) {
   float px[MAX_PLAYERS], py[MAX_PLAYERS];
   int id[MAX_PLAYERS], n = marker_layout(W, H, s, px, py, id, false);
-  float r = 13 * s + pad;
+  float r = g_mark_r + 2 * s + pad;
   for (int k = 0; k < n; k++)
     if (px[k] + r > x && px[k] - r < x + w && py[k] + r > y && py[k] - r < y + h) return true;
   if (g_sign_box[2] > 0 && g_sign_box[0] + g_sign_box[2] > x && g_sign_box[0] < x + w && g_sign_box[1] + g_sign_box[3] > y && g_sign_box[1] < y + h) return true;
@@ -2698,7 +2737,7 @@ static bool label_on_marker(float x, float y, float w, float h, float pad, float
 }
 /* the nearest place to a box of words where it is on no marker (and, when asked, on no player): its own place if it can have it */
 static void label_clear_spot(float *x, float *y, float w, float h, bool bodies, float W, float H, float s) {
-  const float xmin = 8 * s, xmax = W - 8 * s - w, ymin = 80 * s, ymax = H - 60 * s - h, x0 = *x, y0 = *y;
+  const float xmin = 8 * s, xmax = W - 8 * s - w, ymin = g_hud_bot + 6 * s, ymax = g_hint_top - 28 * s - h, x0 = *x, y0 = *y;
   float best = 1e9f;
   for (int v = -14; v <= 14; v++)
     for (int u = -16; u <= 16; u++) {
@@ -2710,7 +2749,7 @@ static void label_clear_spot(float *x, float *y, float w, float h, bool bodies, 
 static void draw_markers(float W, float H, float s) {
   float px[MAX_PLAYERS], py[MAX_PLAYERS];
   int id[MAX_PLAYERS], n = marker_layout(W, H, s, px, py, id, true);
-  float r = 11 * s;
+  float r = g_mark_r;
   for (int k = 0; k < n; k++) {
     int i = id[k];
     float sx = px[k], sy = py[k];
@@ -2729,6 +2768,16 @@ static void draw_map(float W, float H) {
   int map_w = G.L.width > 0 ? G.L.width / 4 + 2 : WORLD_W / 4;
   float mw = W * 0.9f, cell = mw / (float)map_w;
   float ox = (W - mw) * 0.5f, oy = H * 0.52f - cell * (WORLD_H / 4) * 0.5f;
+  /* the words round the map, measured: the level line under the title by the title's drawn height, the hint wrapped
+   * to the screen along the bottom and the region names (wrapped as wide as they grow) over it; the map moves up when
+   * they would meet it */
+  float line30 = cw_font_measure(g_font, "M", &(cw_text_style){ .size = 30 * s }).height, lv_y = H * 0.07f + (line30 - line30 / text_grow(30 * s)) * 1.3f;
+  float lv_bot = lv_y + cw_font_measure(g_font, "M", &(cw_text_style){ .size = 24 * s }).height, reg_w = 220 * s * text_grow(16 * s), reg_h = 0;
+  for (int b = 0; b < BIOMES; b++) reg_h = fmaxf(reg_h, cw_font_measure(g_font, REGION_NAMES[b], &(cw_text_style){ .size = 16 * s, .wrap_width = reg_w }).height);
+  char mhint[256];
+  wrap_hint("{left|right} pick a flag you have touched     {up|down} a level you have reached     {jump} travels there     {map} closes", 16 * s, W - 40 * s, mhint, sizeof mhint);
+  float hint_y = fminf(H * 0.93f, H - 6 * s - cw_prompt_text_size(g_font, mhint, -1, 16 * s).y), map_h = cell * (WORLD_H / 4);
+  if (oy + map_h + 16 * s + reg_h > hint_y - 4 * s) oy = fmaxf(lv_bot + 16 * s, hint_y - 4 * s - reg_h - 16 * s - map_h);
   const save_t *sv = cw_shell_game_save();
   panel(ox - 10 * s, oy - 10 * s, mw + 20 * s, cell * (WORLD_H / 4) + 20 * s, 12 * s, cw_rgba(0.08f, 0.12f, 0.2f, 0.95f), cw_rgba(0.03f, 0.05f, 0.09f, 0.95f), cw_rgba(0.5f, 0.65f, 0.9f, 0.5f));
   for (int by = 0; by < WORLD_H / 4; by++)
@@ -2776,16 +2825,16 @@ static void draw_map(float W, float H) {
       if (G.L.biome[x] == b && x < WORLD_W - 4) { if (x0 < 0) x0 = x; x1 = x; }
     if (x0 < 0) continue;
     float cx = ox + ((float)(x0 + x1) * 0.5f) / 4 * cell;
-    text(REGION_NAMES[b], cx - 110 * s, oy + cell * (WORLD_H / 4) + 16 * s, 16 * s, lerpc(rgba3(MOODS[b].sun, 1), cw_rgba(1, 1, 1, 1), 0.4f), CW_ALIGN_CENTER, 220 * s);
+    text(REGION_NAMES[b], cx - reg_w * 0.5f, oy + map_h + 16 * s, 16 * s, lerpc(rgba3(MOODS[b].sun, 1), cw_rgba(1, 1, 1, 1), 0.4f), CW_ALIGN_CENTER, reg_w);
   }
   text("MAP", 0, H * 0.035f, 30 * s, cw_rgba(1, 0.95f, 0.8f, 1), CW_ALIGN_CENTER, W);
   {
     char lv[160];
     int shown = g_map_level < 0 ? G.level : g_map_level;
     snprintf(lv, sizeof lv, "level %d of %d: %s%s", shown + 1, NLEVELS, LEVELS[shown].name, shown != G.level ? "   ({jump} goes there)" : "");
-    ptext(lv, 0, H * 0.07f, 24 * s, cw_rgba(1, 0.92f, 0.7f, 1), CW_ALIGN_CENTER, W);
+    ptext(lv, 0, lv_y, 24 * s, cw_rgba(1, 0.92f, 0.7f, 1), CW_ALIGN_CENTER, W);
   }
-  ptext("{left|right} pick a flag you have touched    {up|down} a level you have reached    {jump} travels there    {map} closes", 0, H * 0.93f, 16 * s, cw_rgba(0.8f, 0.85f, 1, 0.9f), CW_ALIGN_CENTER, W);
+  ptext(mhint, 0, hint_y, 16 * s, cw_rgba(0.8f, 0.85f, 1, 0.9f), CW_ALIGN_CENTER, W);
 }
 
 /* the title screen's picture: a painted dusk meadow with three drifting ridges, a sun, fireflies and the four heroes */
@@ -2813,6 +2862,12 @@ static void join_seats_track(cw_shell_screen scr) {
   }
 }
 
+/* where a hero stands in its join slot card: 0.625 of the height, or lower when the shell's words in the card grow (its
+ * slot label at 0.36, the pad or join line under it at 0.5 or lower, in units of a twentieth of the height) */
+static float join_y(float H, float s) {
+  float u = H / 20.0f, ly = fmaxf(H * 0.5f, H * 0.36f + cw_text_drawn_size(g_font, u * 1.4f) * 1.25f);
+  return fmaxf(H * 0.625f, ly + cw_text_drawn_size(g_font, u) * 1.25f + 21 * s * 1.6f);
+}
 static void title_background(cw_shell_screen scr, cw_vec2 cv, void *user) {
   (void)user;
   join_seats_track(scr);
@@ -2829,7 +2884,7 @@ static void title_background(cw_shell_screen scr, cw_vec2 cv, void *user) {
     if (scr == CW_SHELL_JOIN) {
       for (int i = 0; i < 4; i++) {
         bool in = join_seats[i] >= 0;
-        float x = W * (0.125f + 0.25f * (float)i), y = H * 0.625f - (in ? 7 * s * fabsf(sinf(t * 3.0f + (float)i * 0.9f)) : 0);
+        float x = W * (0.125f + 0.25f * (float)i), y = join_y(H, s) - (in ? 7 * s * fabsf(sinf(t * 3.0f + (float)i * 0.9f)) : 0);
         portrait((cw_vec2){ x, y }, 21 * s, i, !in);
       }
     }
@@ -2874,8 +2929,8 @@ static void title_background(cw_shell_screen scr, cw_vec2 cv, void *user) {
      * dimmed */
     for (int i = 0; i < 4; i++) {
       bool in = join_seats[i] >= 0;
-      float x = W * (0.125f + 0.25f * (float)i), y = H * 0.625f - (in ? 7 * s * fabsf(sinf(t * 3.0f + (float)i * 0.9f)) : 0);
-      cw_r2d_circle((cw_vec2){ x, H * 0.672f }, 22 * s, 16, cw_rgba(0, 0, 0, 0.22f));
+      float x = W * (0.125f + 0.25f * (float)i), y = join_y(H, s) - (in ? 7 * s * fabsf(sinf(t * 3.0f + (float)i * 0.9f)) : 0);
+      cw_r2d_circle((cw_vec2){ x, join_y(H, s) + H * 0.047f }, 22 * s, 16, cw_rgba(0, 0, 0, 0.22f));
       portrait((cw_vec2){ x, y }, 21 * s, i, !in);
     }
     return;
@@ -2925,10 +2980,23 @@ static void render(void *user, double alpha) {
   { static int nohud = -1; if (nohud < 0) nohud = getenv("COOP_NOHUD") != NULL; hud_on = !nohud; } /* COOP_NOHUD: no HUD at all (key art) */
 #endif
   if (hud_on && G.nplayers && G.world.id && !g_attract && cw_shell_screen_now() != CW_SHELL_TITLE) {
+    /* the layout from the drawn text: panels as tall as their coin count, the marker as big as its number, the hint
+     * line wrapped to the screen and lifted off its bottom edge */
+    memcpy(g_caption_prev, g_caption_box, sizeof g_caption_box);
+    g_caption_box[2] = 0;
+    const float k_coin = text_grow(18 * s), ph_all = 58 * s + 22 * s * (k_coin - 1);
+    g_hud_bot = 16 * s + ph_all;
+    g_mark_r = 11 * s * text_grow(15 * s);
+    g_boss_top = H - 58 * s - 24 * s * text_grow(17 * s);
+    static const char *const HINT = "hold {run} to run, {jump} to jump: run first and jump further     hold {retry}: back to the last flag";
+    char hint[256];
+    int hint_lines = wrap_hint(HINT, 16 * s, W - 40 * s, hint, sizeof hint);
+    float hint_h = cw_prompt_text_size(g_font, hint, -1, 16 * s).y;
+    g_hint_top = H - 13 * s - 19 * s * text_grow(16 * s) - (hint_lines > 1 ? hint_h - hint_h / (float)hint_lines : 0);
     /* a panel per player: face, hearts, coins */
     for (int i = 0; i < G.nplayers; i++) {
       const player *p = &G.p[i];
-      float x0 = 20 * s + (float)i * 176 * s, y0 = 16 * s, pw = 166 * s, ph = 58 * s;
+      float x0 = 20 * s + (float)i * 176 * s, y0 = 16 * s, pw = 166 * s, ph = ph_all;
       panel(x0, y0, pw, ph, 12 * s, cw_rgba(0.16f, 0.2f, 0.3f, 0.82f), cw_rgba(0.04f, 0.05f, 0.09f, 0.82f), rgba3(PLAYER_RGB[i], p->alive || p->bubble ? 0.9f : 0.3f));
       portrait((cw_vec2){ x0 + 28 * s, y0 + 34 * s }, 17 * s, i, !(p->alive || p->bubble));
       for (int h = 0; h < 3; h++) {
@@ -2940,17 +3008,26 @@ static void render(void *user, double alpha) {
       }
       char b[32];
       snprintf(b, sizeof b, "%d", p->coins);
-      coin_icon((cw_vec2){ x0 + 78 * s, y0 + 44 * s }, 7 * s);
+      coin_icon((cw_vec2){ x0 + 78 * s, y0 + 31 * s + 13 * s * k_coin }, 7 * s);
       text(b, x0 + 90 * s, y0 + 31 * s, 18 * s, cw_rgba(1, 0.95f, 0.8f, 1), CW_ALIGN_LEFT, 0);
     }
-    /* the abilities: a chip each, lit when found */
+    /* the abilities: a chip each, lit when found, as wide as its word; below the panels when they would meet them */
     static const char *const AB[3] = { "AIR JUMP", "CLAWS", "DASH" };
+    float chip_w[3], chips = 0, k_chip = text_grow(14 * s);
+    for (int k = 0; k < 3; k++) chip_w[k] = fmaxf(76 * s, cw_font_measure(g_font, AB[k], &(cw_text_style){ .size = 14 * s }).width + 16 * s), chips += chip_w[k] + 6 * s;
+    float panels_right = 20 * s + (float)G.nplayers * 176 * s - 10 * s, cx = W - 22 * s - chips + 6 * s;
+    float chip_y = cx < panels_right + 8 * s ? g_hud_bot + 10 * s : 20 * s;
     for (int k = 0; k < 3; k++) {
       bool on = (G.abilities >> k) & 1;
-      float cw_ = 76 * s, x = W - (16 + (float)(3 - k) * 82) * s, y = (G.nplayers > 3 ? 84 : 20) * s; /* below the panels when four players fill the top */
-      panel(x, y, cw_, 30 * s, 10 * s, on ? cw_rgba(0.2f, 0.45f, 0.6f, 0.9f) : cw_rgba(0.12f, 0.14f, 0.2f, 0.6f), on ? cw_rgba(0.05f, 0.12f, 0.2f, 0.9f) : cw_rgba(0.05f, 0.06f, 0.09f, 0.6f), on ? cw_rgba(0.5f, 0.9f, 1, 0.8f) : cw_rgba(0.4f, 0.4f, 0.5f, 0.3f));
-      text(AB[k], x, y + 7 * s, 14 * s, on ? cw_rgba(0.85f, 0.98f, 1, 1) : cw_rgba(0.5f, 0.55f, 0.65f, 0.8f), CW_ALIGN_CENTER, cw_);
+      float cw_ = chip_w[k], x = cx, y = chip_y;
+      cx += cw_ + 6 * s;
+      if (caption_over(x, y, cw_, 30 * s * k_chip)) continue; /* a sign's words are up over it: they come first */
+      panel(x, y, cw_, 30 * s * k_chip, 10 * s, on ? cw_rgba(0.2f, 0.45f, 0.6f, 0.9f) : cw_rgba(0.12f, 0.14f, 0.2f, 0.6f), on ? cw_rgba(0.05f, 0.12f, 0.2f, 0.9f) : cw_rgba(0.05f, 0.06f, 0.09f, 0.6f), on ? cw_rgba(0.5f, 0.9f, 1, 0.8f) : cw_rgba(0.4f, 0.4f, 0.5f, 0.3f));
+      text(AB[k], x, y + 7 * s * k_chip, 14 * s, on ? cw_rgba(0.85f, 0.98f, 1, 1) : cw_rgba(0.5f, 0.55f, 0.65f, 0.8f), CW_ALIGN_CENTER, cw_);
     }
+    /* chips under the panels push the words below them down by what the chips grow (nothing at 100%, where the words
+     * keep their places) */
+    if (chip_y > 20 * s) g_hud_bot += 30 * s * (k_chip - 1);
     /* the level you are on, fading in at the top when it starts */
     {
       static int last_lv = -1;
@@ -2961,9 +3038,12 @@ static void render(void *user, double alpha) {
         lv_t -= dt;
         float a = lv_t > 3.6f ? (4.2f - lv_t) / 0.6f : lv_t < 0.8f ? lv_t / 0.8f : 1.0f;
         const level_info *li = &LEVELS[G.level];
-        text(WORLD_NAMES[li->world], 0, H * 0.17f, 19 * s, cw_rgba(1, 0.9f, 0.7f, a), CW_ALIGN_CENTER, W);
-        text(li->name, 0, H * 0.205f, 36 * s, cw_rgba(1, 0.96f, 0.85f, a), CW_ALIGN_CENTER, W);
-        cw_r2d_rect(cw_rect_make(W * 0.5f - 90 * s, H * 0.205f + 46 * s, 180 * s, 2 * s), cw_rgba(1, 0.85f, 0.5f, a * 0.8f));
+        float y1 = H * 0.17f + fmaxf(0, g_hud_bot + 6 * s - H * 0.17f), y2 = y1 + H * 0.035f * text_grow(19 * s); /* under the panels, each line under the last */
+        float lv_h = y2 + 48 * s * text_grow(36 * s) - y1;
+        if (caption_over(0, y1, W, lv_h)) { float d = g_hint_top - 8 * s - lv_h - y1; y1 += d, y2 += d; if (caption_over(0, y1, W, lv_h)) a = 0; } /* a sign's words are up there: over the hint line instead */
+        text(WORLD_NAMES[li->world], 0, y1, 19 * s, cw_rgba(1, 0.9f, 0.7f, a), CW_ALIGN_CENTER, W);
+        text(li->name, 0, y2, 36 * s, cw_rgba(1, 0.96f, 0.85f, a), CW_ALIGN_CENTER, W);
+        cw_r2d_rect(cw_rect_make(W * 0.5f - 90 * s, y2 + 46 * s * text_grow(36 * s), 180 * s, 2 * s), cw_rgba(1, 0.85f, 0.5f, a * 0.8f));
       }
     }
     /* boss bar */
@@ -2976,7 +3056,7 @@ static void render(void *user, double alpha) {
         cw_r2d_round_rect(cw_rect_make(bx, by, bw * f, 7 * s), 5 * s, 8, cw_rgba(1, 0.5f, 0.3f, 0.9f));
         {
           static const char *const BOSS[5] = { "THE LANDLORD", "THE TAX GOLEM", "THE LIFEGUARD", "THE REGIONAL MANAGER", "THE FOUNDER" };
-          text(BOSS[G.L.boss_kind], 0, by - 30 * s, 17 * s, cw_rgba(1, 0.85f, 0.7f, 1), CW_ALIGN_CENTER, W);
+          text(BOSS[G.L.boss_kind], 0, g_boss_top, 17 * s, cw_rgba(1, 0.85f, 0.7f, 1), CW_ALIGN_CENTER, W);
         }
       }
     /* the results card is up: the words that hang in the world would be cut by its edges or sit behind it */
@@ -2988,7 +3068,7 @@ static void render(void *user, double alpha) {
     }
     draw_markers(W, H, s);
 #ifndef COOP_AUTOPILOT /* the bots play the autopilot: nobody to tell, and each host would draw its own device's glyphs into the compared frames */
-    ptext("hold {run} to run, {jump} to jump: run first and jump further     hold {retry}: back to the last flag", 20 * s, H - 32 * s, 16 * s, cw_rgba(1, 1, 1, 0.45f), CW_ALIGN_LEFT, 0);
+    if (!g_map_open) ptext(hint, 20 * s, g_hint_top, 16 * s, cw_rgba(1, 1, 1, 0.45f), CW_ALIGN_LEFT, 0);
 #endif
     /* players carried in bubbles: a tag each (face and RESCUE), laid out side by side from the measured text and
      * centred, so four tags never run into each other (a fixed 90 px step by player number overlapped them) */
@@ -3001,13 +3081,14 @@ static void render(void *user, double alpha) {
       if (g_hud_bug) tag = 90 * s, gap = 0; /* the HUD gate's control (native): the old fixed step */
       float x0 = W * 0.5f - ((float)n * tag + (float)(n - 1) * gap) * 0.5f;
       float prev_end = -1e9f;
+      float tag_y = fminf(H - 110 * s, g_hint_top - 8 * s - 21.6f * s * text_grow(18 * s)); /* over the hint line */
       if (n > 1) g_tags_dbg[0]++;
       bool ov = false;
       for (int k = 0; k < n; k++) {
         int i = who[k];
         float x = x0 + (float)k * (tag + gap); /* the tag's left edge */
-        portrait((cw_vec2){ x + 15 * s, H - 100 * s }, 15 * s, i, false);
-        text("RESCUE", x + 36 * s, H - 110 * s, 18 * s, rgba3(PLAYER_RGB[i], 1), CW_ALIGN_LEFT, 0);
+        portrait((cw_vec2){ x + 15 * s, tag_y + 10 * s * text_grow(18 * s) }, 15 * s, i, false);
+        text("RESCUE", x + 36 * s, tag_y, 18 * s, rgba3(PLAYER_RGB[i], 1), CW_ALIGN_LEFT, 0);
         if (x < prev_end) ov = true;
         prev_end = x + 36 * s + tw; /* where the drawn word really ends */
       }
@@ -3018,7 +3099,7 @@ static void render(void *user, double alpha) {
       const save_t *sv = cw_shell_game_save();
       char hb[96];
       snprintf(hb, sizeof hb, "ALL THE SECRETS. YOU HAVE BEEN ISSUED: %s", HAT_NAMES[(sv->hats - 1) % 6]);
-      text(hb, 0, H * 0.12f, 20 * s, cw_rgba(1, 0.95f, 0.6f, (float)(hat_new_t > 30 ? 1 : hat_new_t) / (hat_new_t > 30 ? 1 : 30)), CW_ALIGN_CENTER, W);
+      text(hb, 0, H * 0.12f + (g_hud_bot - 74 * s), 20 * s, cw_rgba(1, 0.95f, 0.6f, (float)(hat_new_t > 30 ? 1 : hat_new_t) / (hat_new_t > 30 ? 1 : 30)), CW_ALIGN_CENTER, W);
     }
     if (G.fake_t > 0 && !G.won) { /* it looks exactly like the end of a level, for a moment */
       float k = fminf(1.0f, (float)(150 - G.fake_t) / 20.0f);
@@ -3030,47 +3111,64 @@ static void render(void *user, double alpha) {
     if (G.won) {
       float k = fminf(1.0f, (float)(G.tick - G.win_tick) / 40.0f);
       /* the portraits sit on a row of their own, under the last line, with their hats and aerials (about 1.75 of the radius above the centre) clear of it */
-      const float card_h = g_card_bug ? 0.42f : 0.45f, portrait_y = g_card_bug ? 0.645f : 0.695f, line_w = g_card_bug ? 0.8f : 0.92f;
+      const float line_w = g_card_bug ? 0.8f : 0.92f;
       const float card_a = g_card_bug ? 0.88f : 1.0f; /* solid: nothing of the level shows through the words */
-      panel(0, H * 0.28f, W, H * card_h * k, 0, cw_rgba(0.1f, 0.08f, 0.02f, card_a), cw_rgba(0.02f, 0.02f, 0.03f, card_a), cw_rgba(1, 0.8f, 0.3f, 0.7f));
+      /* the words, measured first: each row keeps the room it has at 100% and takes what its text grows by (a bigger
+       * text size, a row that wraps), and the card grows to hold them (it moves up when it would run off the screen) */
+      char l[200], rp[220], gr[120], t[96];
+      const char *title = G.level + 1 >= NLEVELS ? "THE END. PLEASE LEAVE QUIETLY." : LEVELS[G.level].name;
+      snprintf(l, sizeof l, LEVELS[G.level].line, G.coins_total, G.coins_total + 1);
+      {
+        /* the incident report: everything that happened here, by what did it. Whoever finished it is not excused */
+        static const char *const WHAT[DIE_KINDS] = { "spikes", "lava", "gravity", "wildlife", "the management", "gardening", "health and safety", "falling objects", "a coin", "a large round colleague" };
+        int n = snprintf(rp, sizeof rp, "INCIDENT REPORT: ");
+        bool any = false;
+        for (int c = 0; c < DIE_KINDS; c++) if (cause_counts[c] && n < 190) n += snprintf(rp + n, sizeof rp - (size_t)n, "%s%s x%d", any ? ", " : "", WHAT[c], cause_counts[c]), any = true;
+        if (!any) snprintf(rp + n, sizeof rp - (size_t)n, "nothing. We will be looking into this.");
+      }
+      int bet = 0, thr = 0;
+      for (int i = 0; i < G.nplayers; i++) bet += G.betrayals[i], thr += G.throws[i];
+      snprintf(gr, sizeof gr, "friends landed on: %d. friends thrown: %d. Nobody is keeping score. It is written here.", bet, thr);
+      snprintf(t, sizeof t, "coins %d     secrets %d     rescues %d     falls %d", G.coins_total, G.secrets, G.rescues, G.deaths);
+      /* rows: title, report, stats, closing line, friends; their offsets from the card's top at 100% (share of H) */
+      const char *row_text[5] = { title, rp, t, l, gr };
+      const float row_size[5] = { 46 * s, 17 * s, 24 * s, 24 * s, 15 * s }, row_wrap[5] = { W, W * 0.84f, W, W * line_w, W * 0.84f };
+      const float row_off[6] = { 0.03f, 0.115f, 0.18f, 0.25f, 0.32f, 0.415f }; /* the last: the portraits' centre */
+      float row_y[6], extra[5];
+      for (int r = 0; r < 5; r++) {
+        float h = cw_font_measure(g_font, row_text[r], &(cw_text_style){ .size = row_size[r], .wrap_width = row_wrap[r] }).height;
+        float one = cw_font_measure(g_font, "M", &(cw_text_style){ .size = row_size[r] }).height / text_grow(row_size[r]); /* a line at 100% */
+        extra[r] = g_card_bug || (r == 4 && bet + thr == 0) ? 0 : fmaxf(0, h - one);
+      }
+      float card_top = H * 0.28f;
+      row_y[0] = H * row_off[0];
+      for (int r = 1; r < 6; r++) row_y[r] = row_y[r - 1] + H * (row_off[r] - row_off[r - 1]) + extra[r - 1];
+      if (g_card_bug) row_y[5] = H * (0.645f - 0.28f);
+      float card_h = g_card_bug ? H * 0.42f : row_y[5] + H * 0.035f;
+      if (card_top + card_h > H - 4 * s) card_top = fmaxf(g_hud_bot + 4 * s, H - 4 * s - card_h); /* never over the player panels */
+      for (int r = 0; r < 6; r++) row_y[r] += card_top;
+      panel(0, card_top, W, card_h * k, 0, cw_rgba(0.1f, 0.08f, 0.02f, card_a), cw_rgba(0.02f, 0.02f, 0.03f, card_a), cw_rgba(1, 0.8f, 0.3f, 0.7f));
       if (k > 0.9f) {
-        text(G.level + 1 >= NLEVELS ? "THE END. PLEASE LEAVE QUIETLY." : LEVELS[G.level].name, 0, H * 0.31f, 46 * s, cw_rgba(1, 0.85f, 0.3f, 1), CW_ALIGN_CENTER, W);
+        text(title, 0, row_y[0], 46 * s, cw_rgba(1, 0.85f, 0.3f, 1), CW_ALIGN_CENTER, W);
         {
-          char l[200];
-          snprintf(l, sizeof l, LEVELS[G.level].line, G.coins_total, G.coins_total + 1);
-          text(l, W * (1 - line_w) * 0.5f, H * 0.53f, 24 * s, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER, W * line_w);
+          text(l, W * (1 - line_w) * 0.5f, row_y[3], 24 * s, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER, W * line_w);
           /* no level's closing line may take two rows: the second would run into the line below it */
           float row = cw_font_measure(g_font, "M", &(cw_text_style){ .size = 24 * s }).height;
           g_card_dbg[2] = 0;
           for (int i = 0; i < NLEVELS; i++) {
-            snprintf(l, sizeof l, LEVELS[i].line, 123, 124);
-            if (cw_font_measure(g_font, l, &(cw_text_style){ .size = 24 * s, .wrap_width = W * line_w }).height > row * 1.5f) g_card_dbg[2]++;
+            char li[200];
+            snprintf(li, sizeof li, LEVELS[i].line, 123, 124);
+            if (cw_font_measure(g_font, li, &(cw_text_style){ .size = 24 * s, .wrap_width = W * line_w }).height > row * 1.5f) g_card_dbg[2]++;
           }
         }
-        {
-          /* the incident report: everything that happened here, by what did it. Whoever finished it is not excused */
-          static const char *const WHAT[DIE_KINDS] = { "spikes", "lava", "gravity", "wildlife", "the management", "gardening", "health and safety", "falling objects", "a coin", "a large round colleague" };
-          char rp[220];
-          int n = snprintf(rp, sizeof rp, "INCIDENT REPORT: ");
-          bool any = false;
-          for (int k = 0; k < DIE_KINDS; k++) if (cause_counts[k] && n < 190) n += snprintf(rp + n, sizeof rp - (size_t)n, "%s%s x%d", any ? ", " : "", WHAT[k], cause_counts[k]), any = true;
-          if (!any) snprintf(rp + n, sizeof rp - (size_t)n, "nothing. We will be looking into this.");
-          text(rp, W * 0.08f, H * 0.395f, 17 * s, cw_rgba(1, 0.75f, 0.65f, 1), CW_ALIGN_CENTER, W * 0.84f);
-          int bet = 0, thr = 0;
-          for (int i = 0; i < G.nplayers; i++) bet += G.betrayals[i], thr += G.throws[i];
-          if (bet + thr > 0) {
-            char gr[120];
-            snprintf(gr, sizeof gr, "friends landed on: %d. friends thrown: %d. Nobody is keeping score. It is written here.", bet, thr);
-            text(gr, W * 0.08f, H * 0.6f, 15 * s, cw_rgba(0.8f, 0.9f, 1, 1), CW_ALIGN_CENTER, W * 0.84f);
-          }
-        }
-        char t[96];
-        coin_icon((cw_vec2){ W * 0.5f - 250 * s, H * 0.485f }, 11 * s);
-        snprintf(t, sizeof t, "coins %d     secrets %d     rescues %d     falls %d", G.coins_total, G.secrets, G.rescues, G.deaths);
-        text(t, 0, H * 0.46f, 24 * s, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER, W);
+        text(rp, W * 0.08f, row_y[1], 17 * s, cw_rgba(1, 0.75f, 0.65f, 1), CW_ALIGN_CENTER, W * 0.84f);
+        if (bet + thr > 0) text(gr, W * 0.08f, row_y[4], 15 * s, cw_rgba(0.8f, 0.9f, 1, 1), CW_ALIGN_CENTER, W * 0.84f);
+        float stats_w = cw_font_measure(g_font, t, &(cw_text_style){ .size = 24 * s, .wrap_width = W }).width;
+        coin_icon((cw_vec2){ fmaxf(14 * s, fminf(W * 0.5f - 250 * s, W * 0.5f - stats_w * 0.5f - 18 * s)), row_y[2] + H * 0.025f * text_grow(24 * s) }, 11 * s);
+        text(t, 0, row_y[2], 24 * s, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER, W);
         g_card_dbg[0]++;
-        if (H * portrait_y - 15 * s * 1.75f < H * 0.6f + cw_font_measure(g_font, "M", &(cw_text_style){ .size = 15 * s }).height) g_card_dbg[1]++;
-        for (int i = 0; i < G.nplayers; i++) portrait((cw_vec2){ W * 0.5f + ((float)i - (float)(G.nplayers - 1) * 0.5f) * 64 * s, H * portrait_y }, 15 * s, i, false);
+        if (row_y[5] - 15 * s * 1.75f < row_y[4] + cw_font_measure(g_font, "M", &(cw_text_style){ .size = 15 * s }).height) g_card_dbg[1]++;
+        for (int i = 0; i < G.nplayers; i++) portrait((cw_vec2){ W * 0.5f + ((float)i - (float)(G.nplayers - 1) * 0.5f) * 64 * s, row_y[5] }, 15 * s, i, false);
       }
     }
     if (g_map_open) { draw_map(W, H); g_map_seen_dbg = 1; }

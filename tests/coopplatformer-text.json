@@ -1,0 +1,17 @@
+{
+  "app": "coopplatformer",
+  "secondary": [],
+  "screens": [
+    { "name": "title", "frames": 90 },
+    { "name": "settings", "frames": 130, "input": "coopplatformer-text-settings.json" },
+    { "name": "join", "frames": 130, "input": "coopplatformer-text-join.json" },
+    { "name": "play4", "frames": 420, "input": "coopplatformer-text-play4.json" },
+    { "name": "map", "frames": 430, "input": "coopplatformer-text-map.json" },
+    { "name": "pause", "frames": 420, "input": "coopplatformer-text-pause.json" },
+    { "name": "level-name", "app": "coopplatformer_auto4", "frames": 60 },
+    { "name": "rescue", "app": "coopplatformer_auto4", "frames": 240, "env": {   "COOP_TEST_BUBBLES": "1" } },
+    { "name": "graves", "app": "coopplatformer_auto_saw", "frames": 300 },
+    { "name": "boss", "app": "coopplatformer_auto_boss", "frames": 400 },
+    { "name": "results", "app": "coopplatformer_auto_boss", "frames": 700 }
+  ]
+}
