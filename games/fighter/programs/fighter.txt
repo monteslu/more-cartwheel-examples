@@ -274,3 +274,4 @@ standard+map+rep+nmap+ao+emap+rmap+mmap+l0001+xcluster_csm_plain
 standard+map+rep+nmap+ao+rmap+mmap+l0001+xcluster_csm_plain
 standard+map+rep+nmap+ao+rmap+mmap+skin+l0001+xcluster_csm_plain
 standard+skin+l0001+xcluster_csm_plain
+physical+map+rep+nmap+ao+rmap+mmap+skin+sheen+aniso+l0001+xcluster_csm_plain

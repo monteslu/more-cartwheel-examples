@@ -50,3 +50,7 @@ physical+map+vcol+fog+rep+nmap+ao+emap+rmap+shadow+l2801+s100+xplain
 physical+fog+trans+shadow+l2801+s100+xplain
 physical+instbig+shadow+l2801+s100+xplain
 physical+shadow+l2801+s100+xplain
+physical+vcol+fog+trans+nmap+shadow+ds+l2801+s100+xplain
+physical+vcol+trans+nmap+shadow+ds+l2801+s100+xplain
+physical+map+rep+nmap+ao+emap+rmap+shadow+l2801+s100+xplain
+physical+map+fog+rep+nmap+ao+emap+rmap+shadow+l2801+s100+xplain
