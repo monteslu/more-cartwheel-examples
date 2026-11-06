@@ -126,6 +126,8 @@ static int g_label_dbg[4]; /* frames a boss's words were up, of them on a marker
 static int g_signmove_dbg[2]; /* signs: times a panel changed place, frames it was faded or held back for that */
 static float g_sign_box[4]; /* the panel up this frame: x, y, width (0: none), height; other words keep off it */
 static float g_caption_box[4], g_caption_prev[4]; /* the sign's panel as drawn this frame and the last (width 0: none): the chips and the level name stand aside for it */
+static int g_words_dbg[3]; /* frames with words up (a caption, a boss's words, a player's), of them with the sign's caption on a marker, of them with two boxes of words overlapping */
+static bool g_words_bug; /* the words gate's control (native): captions neither keep off markers nor off each other */
 static int g_labelmove_dbg[2]; /* times the boss's words and a player's words were moved off a marker */
 static bool g_label_bug; /* COOP_LABEL_BUG: the label gate's control */
 static bool g_card_bug; /* COOP_CARD_BUG: the card gate's control */
@@ -1272,8 +1274,10 @@ static void start_match(int players, void *user) {
   memset(g_boss_dbg, 0, sizeof g_boss_dbg);
   memset(g_endwall_dbg, 0, sizeof g_endwall_dbg), memset(g_bossclip_dbg, 0, sizeof g_bossclip_dbg);
   memset(g_label_dbg, 0, sizeof g_label_dbg), memset(g_signmove_dbg, 0, sizeof g_signmove_dbg), memset(g_labelmove_dbg, 0, sizeof g_labelmove_dbg);
+  memset(g_words_dbg, 0, sizeof g_words_dbg);
   g_cam_endwall_bug = getenv("COOP_ENDWALL_BUG") != NULL; /* the end wall gate's control (native only) */
   g_boss_clip_bug = getenv("COOP_BOSSCLIP_BUG") != NULL; /* the clip gate's control (native only) */
+  g_words_bug = getenv("COOP_WORDS_BUG") != NULL; /* the words gate's control (native only) */
   g_label_bug = getenv("COOP_LABEL_BUG") != NULL; /* the label gate's control (native only) */
   g_bot_no_boss = getenv("COOP_BOT_NO_BOSS") != NULL; /* the arena gate: the bots stay at the end wall */
   g_cam_nofloor = getenv("COOP_PIT_CAM_BUG") != NULL; /* the pit camera gate's control (native only) */
@@ -1717,6 +1721,7 @@ static void init(void *user) {
   cw_debug_field("g.endwall", g_endwall_dbg, CW_DBG_I32, 3);
   cw_debug_field("g.bossclip", g_bossclip_dbg, CW_DBG_I32, 3);
   cw_debug_field("g.labelgate", g_label_dbg, CW_DBG_I32, 4);
+  cw_debug_field("g.wordsgate", g_words_dbg, CW_DBG_I32, 3);
   cw_debug_field("g.signmove", g_signmove_dbg, CW_DBG_I32, 2);
   cw_debug_field("g.labelmove", g_labelmove_dbg, CW_DBG_I32, 2);
   cw_debug_field("g.bossgate", g_boss_dbg, CW_DBG_I32, 4);
@@ -2151,9 +2156,27 @@ static void grave_add(int who, int cause, float x) {
  * panels, the top of the hint line along the bottom, the top of the boss's name over its bar and the radius of a
  * player marker, in px. At 100% they are where they always were (74, H - 32, H - 82 and 11, times s) */
 static float g_hud_bot, g_hint_top, g_boss_top, g_mark_r;
+/* the ability chips when they sit under the player panels (four players, or large text): their left edge and bottom
+ * (0: they are up beside the panels). The level name and the markers keep below them */
+static float g_chip_x, g_chip_bot;
 /* how much the player's text size grows text asked for at `size` (1 at 100%) */
 static float text_grow(float size) { return cw_text_drawn_size(g_font, size) / size; }
 /* is a box under the sign's words drawn last frame? */
+/* the boxes of words already drawn this frame (the sign's caption, a boss's words, what players say): later words
+ * keep off them, so two captions never stack */
+static float g_boxes[12][4];
+static int g_nbox;
+static void box_add(float x, float y, float w, float h) {
+  if (g_nbox < 12) g_boxes[g_nbox][0] = x, g_boxes[g_nbox][1] = y, g_boxes[g_nbox][2] = w, g_boxes[g_nbox][3] = h, g_nbox++;
+}
+static bool box_hit(float x, float y, float w, float h, float pad) {
+  if (g_words_bug) return false;
+  for (int i = 0; i < g_nbox; i++) {
+    const float *b = g_boxes[i];
+    if (b[0] - pad < x + w && b[0] + b[2] + pad > x && b[1] - pad < y + h && b[1] + b[3] + pad > y) return true;
+  }
+  return false;
+}
 static bool caption_over(float x, float y, float w, float h) {
   const float *b = g_caption_prev;
   return b[2] > 0 && b[0] < x + w && b[0] + b[2] > x && b[1] < y + h && b[1] + b[3] > y;
@@ -2570,18 +2593,21 @@ static void draw_signs(float W, float H, float s) {
       static float swap = 1; /* 0..1 how far it has faded back in; below zero, fading out to change place */
       const float slot_y[2] = { g_hud_bot + 6 * s, fminf(H - 66 * s, g_hint_top - 34 * s) - ph }, slot_x = (W - pw) * 0.5f;
       const float rise = 3.0f, near_pad = 26 * s, clear_pad = 46 * s;
+      /* a player, or a player's marker (spread sideways and held under the panels, so not always over its body) */
+      #define SIGN_BLOCKED(i, pad) (sign_over_player(slot_x, slot_y[i], pw, ph, rise, pad, W, H) || (!g_words_bug && label_on_marker(slot_x, slot_y[i], pw, ph, (pad) * 0.25f, W, H, s)))
       if (shown != pick) {
         shown = pick, swap = 1, hold = 0;
-        slot = sign_over_player(slot_x, slot_y[0], pw, ph, rise, near_pad, W, H) && !sign_over_player(slot_x, slot_y[1], pw, ph, rise, near_pad, W, H) ? 1 : 0;
+        slot = SIGN_BLOCKED(0, near_pad) && !SIGN_BLOCKED(1, near_pad) ? 1 : 0;
       }
       if (hold > 0) hold--;
-      if (swap >= 1 && hold == 0 && sign_over_player(slot_x, slot_y[slot], pw, ph, rise, near_pad, W, H) && !sign_over_player(slot_x, slot_y[!slot], pw, ph, rise, clear_pad, W, H)) swap = -1, g_signmove_dbg[0]++;
+      if (swap >= 1 && hold == 0 && SIGN_BLOCKED(slot, near_pad) && !SIGN_BLOCKED(!slot, clear_pad)) swap = -1, g_signmove_dbg[0]++;
+      #undef SIGN_BLOCKED
       if (swap < 0) {
         swap += 0.2f;
         if (swap >= 0) swap = 0, slot = !slot, hold = 60;
       } else if (swap < 1) swap = fminf(1.0f, swap + 1.0f / 6.0f);
       a *= fabsf(swap);
-      if (a > 0.02f && sign_over_player(slot_x, slot_y[slot], pw, ph, 1.9f, 0, W, H)) a = 0;
+      if (a > 0.02f && (sign_over_player(slot_x, slot_y[slot], pw, ph, 1.9f, 0, W, H) || (!g_words_bug && label_on_marker(slot_x, slot_y[slot], pw, ph, 0, W, H, s)))) a = 0;
       if (a < fade - 1e-3f) g_signmove_dbg[1]++;
       x0 = slot_x, y0 = slot_y[slot];
       if (a > 0.02f) g_sign_box[0] = x0, g_sign_box[1] = y0, g_sign_box[2] = pw, g_sign_box[3] = ph;
@@ -2589,7 +2615,7 @@ static void draw_signs(float W, float H, float s) {
     g_sign_dbg[0]++;
     if (a > 0.02f && sign_over_player(x0, y0, pw, ph, 1.9f, 0, W, H)) g_sign_dbg[1]++;
     if (g_sign_bug && a < fade - 1e-3f) g_sign_dbg[2]++;
-    if (a > 0.02f) g_caption_box[0] = x0, g_caption_box[1] = y0, g_caption_box[2] = pw, g_caption_box[3] = ph;
+    if (a > 0.02f) g_caption_box[0] = x0, g_caption_box[1] = y0, g_caption_box[2] = pw, g_caption_box[3] = ph, box_add(x0, y0, pw, ph);
     panel(x0, y0, pw, ph, 7 * s, cw_rgba(0.92f, 0.85f, 0.66f, a), cw_rgba(0.76f, 0.65f, 0.44f, a), cw_rgba(0.28f, 0.18f, 0.1f, a));
     cw_r2d_text(g_font, n->text, (cw_vec2){ x0 + 10 * s, y0 + 7 * s }, &(cw_text_style){ .size = ts, .color = cw_rgba(0.13f, 0.08f, 0.04f, a), .wrap_width = pw - 20 * s });
   }
@@ -2629,13 +2655,13 @@ static void draw_boss_says(float W, float H, float s) {
           static const char *placed;
           static int slot, hold;
           const float cx = (W - lw) * 0.5f, ys[2] = { g_hud_bot + 6 * s, g_boss_top - 22 * s - lh };
-          #define BOSS_WORDS_BLOCKED(i, pad) (label_on_marker(cx, ys[i], lw, lh, pad, W, H, s) || sign_over_player(cx, ys[i], lw, lh, 1.9f, pad, W, H))
+          #define BOSS_WORDS_BLOCKED(i, pad) (label_on_marker(cx, ys[i], lw, lh, pad, W, H, s) || sign_over_player(cx, ys[i], lw, lh, 1.9f, pad, W, H) || box_hit(cx, ys[i], lw, lh, pad))
           if (placed != text_now) placed = text_now, hold = 0, slot = BOSS_WORDS_BLOCKED(0, 16 * s) && !BOSS_WORDS_BLOCKED(1, 16 * s) ? 1 : 0;
           if (hold > 0) hold--;
           if (hold == 0 && BOSS_WORDS_BLOCKED(slot, 8 * s) && !BOSS_WORDS_BLOCKED(!slot, 24 * s)) slot = !slot, hold = 45, g_labelmove_dbg[0]++;
           #undef BOSS_WORDS_BLOCKED
           x0 = cx, y0 = ys[slot];
-          if (label_on_marker(x0, y0, lw, lh, 0, W, H, s) || sign_over_player(x0, y0, lw, lh, 1.9f, 0, W, H)) { /* both places taken this moment: not drawn, never on anyone */
+          if (label_on_marker(x0, y0, lw, lh, 0, W, H, s) || sign_over_player(x0, y0, lw, lh, 1.9f, 0, W, H) || box_hit(x0, y0, lw, lh, 0)) { /* both places taken this moment: not drawn, never on anyone or on other words */
             g_label_dbg[0]++;
             t += 1.0f / 60.0f; /* the words wait */
             continue;
@@ -2643,6 +2669,7 @@ static void draw_boss_says(float W, float H, float s) {
         }
         g_label_dbg[0]++;
         if (label_on_marker(x0, y0, lw, lh, 0, W, H, s)) g_label_dbg[1]++;
+        box_add(x0, y0, lw, lh);
         cw_r2d_round_rect(cw_rect_make(x0, y0, lw, lh), 8 * s, 8, cw_rgba(0.1f, 0.05f, 0.05f, 0.9f));
         cw_r2d_text(g_font, text_now, (cw_vec2){ x0 + 10 * s, y0 + 6 * s }, &(cw_text_style){ .size = 18 * s, .color = cw_rgba(1, 0.85f, 0.7f, 1) });
       }
@@ -2670,8 +2697,9 @@ static void draw_says(float W, float H, float s) {
       static float off[6][2];
       static const char *said[6];
       if (said[i] != SAY[i].text) said[i] = SAY[i].text, off[i][0] = off[i][1] = 0;
-      if (!label_on_marker(x0, y0, pw, ph, 10 * s, W, H, s) && !sign_over_player(x0, y0, pw, ph, 1.9f, 6 * s, W, H)) off[i][0] = off[i][1] = 0;
-      else if (label_on_marker(x0 + off[i][0], y0 + off[i][1], pw, ph, 0, W, H, s) || sign_over_player(x0 + off[i][0], y0 + off[i][1], pw, ph, 1.9f, 0, W, H) || (off[i][0] == 0 && off[i][1] == 0)) {
+      if (!label_on_marker(x0, y0, pw, ph, 10 * s, W, H, s) && !sign_over_player(x0, y0, pw, ph, 1.9f, 6 * s, W, H) && !box_hit(x0, y0, pw, ph, 6 * s)) off[i][0] = off[i][1] = 0;
+      else if (label_on_marker(x0 + off[i][0], y0 + off[i][1], pw, ph, 0, W, H, s) || sign_over_player(x0 + off[i][0], y0 + off[i][1], pw, ph, 1.9f, 0, W, H) ||
+               box_hit(x0 + off[i][0], y0 + off[i][1], pw, ph, 0) || (off[i][0] == 0 && off[i][1] == 0)) {
         float qx = x0, qy = y0;
         label_clear_spot(&qx, &qy, pw, ph, true, W, H, s);
         off[i][0] = qx - x0, off[i][1] = qy - y0;
@@ -2679,8 +2707,13 @@ static void draw_says(float W, float H, float s) {
       }
       x0 += off[i][0], y0 += off[i][1];
     }
+    if (box_hit(x0, y0, pw, ph, 0)) { /* no clear place this moment (large text, a crowded screen): it waits, never on other words */
+      SAY[i].t += 1.0f / 60.0f;
+      continue;
+    }
     g_label_dbg[2]++;
     if (label_on_marker(x0, y0, pw, ph, 0, W, H, s) || (!g_label_bug && sign_over_player(x0, y0, pw, ph, 1.9f, 0, W, H))) g_label_dbg[3]++;
+    box_add(x0, y0, pw, ph);
     cw_r2d_round_rect(cw_rect_make(x0, y0, pw, ph), 8 * s, 8, cw_rgba(1, 1, 1, 0.92f * a));
     if (x0 == hx && y0 == hy) { /* the tail only when it still points at the head */
       cw_vec2 tri[3] = { { sx - 5 * s, y0 + ph }, { sx + 5 * s, y0 + ph }, { sx, y0 + ph + 7 * s } };
@@ -2703,6 +2736,7 @@ static int marker_layout(float W, float H, float s, float *px, float *py, int *i
     /* held under the player panels: a marker clamped to the top of the view sat on the panels (their bottom is 75 * s) */
     float sy_min = g_hud_bug ? r + 60 * s : g_hud_bot + 1 * s + 1.5f * r;
     if (sy < sy_min) sy = sy_min;
+    if (!g_hud_bug && g_chip_bot > 0 && sx + r > g_chip_x - 2 * s && sy - r < g_chip_bot + 2 * s) sy = g_chip_bot + 2 * s + r; /* not on the chips */
     if (count && sy - r < g_hud_bot + 1 * s) g_marker_over_dbg++;
     px[n] = sx, py[n] = sy, id[n] = i, n++;
   }
@@ -2743,7 +2777,7 @@ static void label_clear_spot(float *x, float *y, float w, float h, bool bodies, 
     for (int u = -16; u <= 16; u++) {
       float qx = x0 + (float)u * 20 * s, qy = y0 + (float)v * 12 * s, cost = fabsf((float)u) * 20 * s + fabsf((float)v) * 12 * s;
       if (cost >= best || qx < xmin || qx > xmax || qy < ymin || qy > ymax) continue;
-      if (!label_on_marker(qx, qy, w, h, 3 * s, W, H, s) && !(bodies && sign_over_player(qx, qy, w, h, 1.9f, 2 * s, W, H))) best = cost, *x = qx, *y = qy;
+      if (!label_on_marker(qx, qy, w, h, 3 * s, W, H, s) && !box_hit(qx, qy, w, h, 3 * s) && !(bodies && sign_over_player(qx, qy, w, h, 1.9f, 2 * s, W, H))) best = cost, *x = qx, *y = qy;
     }
 }
 static void draw_markers(float W, float H, float s) {
@@ -2979,11 +3013,12 @@ static void render(void *user, double alpha) {
 #ifdef COOP_AUTOPILOT
   { static int nohud = -1; if (nohud < 0) nohud = getenv("COOP_NOHUD") != NULL; hud_on = !nohud; } /* COOP_NOHUD: no HUD at all (key art) */
 #endif
-  if (hud_on && G.nplayers && G.world.id && !g_attract && cw_shell_screen_now() != CW_SHELL_TITLE) {
+  if (hud_on && G.nplayers && G.world.id && !g_attract && cw_shell_hud_shown()) { /* not under the shell's menus */
     /* the layout from the drawn text: panels as tall as their coin count, the marker as big as its number, the hint
      * line wrapped to the screen and lifted off its bottom edge */
     memcpy(g_caption_prev, g_caption_box, sizeof g_caption_box);
     g_caption_box[2] = 0;
+    g_nbox = 0;
     const float k_coin = text_grow(18 * s), ph_all = 58 * s + 22 * s * (k_coin - 1);
     g_hud_bot = 16 * s + ph_all;
     g_mark_r = 11 * s * text_grow(15 * s);
@@ -3022,11 +3057,13 @@ static void render(void *user, double alpha) {
       float cw_ = chip_w[k], x = cx, y = chip_y;
       cx += cw_ + 6 * s;
       if (caption_over(x, y, cw_, 30 * s * k_chip)) continue; /* a sign's words are up over it: they come first */
+      if (G.won && !g_card_bug && chip_y > 20 * s) continue; /* under the panels the results card would cut them in half */
       panel(x, y, cw_, 30 * s * k_chip, 10 * s, on ? cw_rgba(0.2f, 0.45f, 0.6f, 0.9f) : cw_rgba(0.12f, 0.14f, 0.2f, 0.6f), on ? cw_rgba(0.05f, 0.12f, 0.2f, 0.9f) : cw_rgba(0.05f, 0.06f, 0.09f, 0.6f), on ? cw_rgba(0.5f, 0.9f, 1, 0.8f) : cw_rgba(0.4f, 0.4f, 0.5f, 0.3f));
       text(AB[k], x, y + 7 * s * k_chip, 14 * s, on ? cw_rgba(0.85f, 0.98f, 1, 1) : cw_rgba(0.5f, 0.55f, 0.65f, 0.8f), CW_ALIGN_CENTER, cw_);
     }
     /* chips under the panels push the words below them down by what the chips grow (nothing at 100%, where the words
      * keep their places) */
+    g_chip_x = W - 22 * s - chips + 6 * s, g_chip_bot = chip_y > 20 * s ? chip_y + 30 * s * k_chip : 0;
     if (chip_y > 20 * s) g_hud_bot += 30 * s * (k_chip - 1);
     /* the level you are on, fading in at the top when it starts */
     {
@@ -3038,7 +3075,7 @@ static void render(void *user, double alpha) {
         lv_t -= dt;
         float a = lv_t > 3.6f ? (4.2f - lv_t) / 0.6f : lv_t < 0.8f ? lv_t / 0.8f : 1.0f;
         const level_info *li = &LEVELS[G.level];
-        float y1 = H * 0.17f + fmaxf(0, g_hud_bot + 6 * s - H * 0.17f), y2 = y1 + H * 0.035f * text_grow(19 * s); /* under the panels, each line under the last */
+        float y1 = H * 0.17f + fmaxf(0, fmaxf(g_hud_bot, g_chip_bot) + 6 * s - H * 0.17f), y2 = y1 + H * 0.035f * text_grow(19 * s); /* under the panels, each line under the last */
         float lv_h = y2 + 48 * s * text_grow(36 * s) - y1;
         if (caption_over(0, y1, W, lv_h)) { float d = g_hint_top - 8 * s - lv_h - y1; y1 += d, y2 += d; if (caption_over(0, y1, W, lv_h)) a = 0; } /* a sign's words are up there: over the hint line instead */
         text(WORLD_NAMES[li->world], 0, y1, 19 * s, cw_rgba(1, 0.9f, 0.7f, a), CW_ALIGN_CENTER, W);
@@ -3063,10 +3100,27 @@ static void render(void *user, double alpha) {
     if (!G.won || g_card_bug) {
       draw_graves(W, H, s);
       draw_signs(W, H, s);
+      draw_boss_says(W, H, s); /* before what players say: their words keep off the boss's */
       draw_says(W, H, s);
-      draw_boss_says(W, H, s);
     }
     draw_markers(W, H, s);
+    if (g_nbox > 0) { /* the words gate: the caption off every marker, no two boxes of words on each other */
+      g_words_dbg[0]++;
+      if (g_caption_box[2] > 0) {
+        float px[MAX_PLAYERS], py[MAX_PLAYERS], r = g_mark_r + 2 * s;
+        int id[MAX_PLAYERS], n = marker_layout(W, H, s, px, py, id, false);
+        const float *b = g_caption_box;
+        for (int k = 0; k < n; k++)
+          if (px[k] + r > b[0] && px[k] - r < b[0] + b[2] && py[k] + r > b[1] && py[k] - r < b[1] + b[3]) { g_words_dbg[1]++; break; }
+      }
+      bool stack = false;
+      for (int i = 0; i < g_nbox && !stack; i++)
+        for (int j = i + 1; j < g_nbox && !stack; j++) {
+          const float *a = g_boxes[i], *b = g_boxes[j];
+          stack = a[0] < b[0] + b[2] && b[0] < a[0] + a[2] && a[1] < b[1] + b[3] && b[1] < a[1] + a[3];
+        }
+      if (stack) g_words_dbg[2]++;
+    }
 #ifndef COOP_AUTOPILOT /* the bots play the autopilot: nobody to tell, and each host would draw its own device's glyphs into the compared frames */
     if (!g_map_open) ptext(hint, 20 * s, g_hint_top, 16 * s, cw_rgba(1, 1, 1, 0.45f), CW_ALIGN_LEFT, 0);
 #endif
