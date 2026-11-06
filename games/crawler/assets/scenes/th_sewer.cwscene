@@ -1,0 +1,55 @@
+[scene format=1]
+
+; crawler's sewer tileset: its light (the torches and glows are in each floor's bake)
+[node name="sluice" type="Node3D"]
+
+; the key: cold light falling through a broken grating in the north-east, low and hard
+[node name="Sun" parent="." type="DirectionalLight3D"]
+rotation = vec3(-1.15, 0.35, 0)
+position = vec3(22, 30, -18)
+color = color(0.95, 0.92, 0.86, 1)
+energy = 3.2
+shadow = false
+fog_energy = 1.2
+bake_direct = true
+
+; the rim: edging every character against the dark
+[node name="Rim" parent="." type="DirectionalLight3D"]
+rotation = vec3(-0.6, 2.4, 0)
+position = vec3(-24, 8, 20)
+color = color(0.35, 0.75, 0.62, 1)
+energy = 1.0
+fog_energy = 0
+bake_direct = true
+
+[node name="Env" parent="." type="WorldEnvironment"]
+background = color(0.01, 0.018, 0.018, 1)
+ambient_color = color(0.3, 0.42, 0.4, 1)
+ambient_energy = 0.45
+sky_color = color(0.32, 0.45, 0.45, 1)
+ground_color = color(0.05, 0.06, 0.05, 1)
+hemi_energy = 0.5
+fog_mode = EXP2
+fog_color = color(0.06, 0.09, 0.08, 1)
+fog_density = 0.0006
+
+[node name="Post" parent="." type="PostProcess"]
+depth_prepass = false
+fuse_distortion = true
+tonemap = ACES_FILMIC
+exposure = 1.2
+bloom = true
+bloom_intensity = 0.16
+bloom_threshold = 1.0
+bloom_knee = 0.6
+ssao = false
+ssr = false
+aa = FXAA
+grade = true
+grade_intensity = 0.55
+lut = "grade/sewer.cube"
+vignette = true
+vignette_intensity = 0.45
+vignette_smoothness = 0.6
+grain = true
+grain_intensity = 0.035

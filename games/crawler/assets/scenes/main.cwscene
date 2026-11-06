@@ -1,0 +1,10 @@
+[scene format=1]
+
+; crawler's main scene: the camera; each floor brings its tileset's light scene (mazebuild.c)
+[node name="Main" type="Node3D"]
+
+[node name="Camera" parent="." type="Camera3D"]
+position = vec3(0, 22, 12)
+fov = 38
+near = 0.5
+far = 300

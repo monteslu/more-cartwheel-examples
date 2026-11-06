@@ -973,6 +973,11 @@
     "note": "each graphics preset's GPU time in play at 1080p on the test GPU, GL and WebGPU (the fighter, the brawler, the horde shooter, the party pack; the engine's tools/quality-range.mjs over tests/quality-range-scenes.json): no preset dearer than the one above it, Ultra not under High, Very Low and Low under each game's share of High (Pirates: Very Low at most 0.3). Control: every preset drawing High must fail"
   },
   {
+    "name": "quality-range-4",
+    "script": "tests/quality-range-4.mjs",
+    "note": "each graphics preset's GPU time in play at 1080p on the test GPU, GL and WebGPU (the crawler on a crowded floor 58; the engine's tools/quality-range.mjs over tests/quality-range-scenes.json): no preset dearer than the one above it, Ultra not under High, Very Low and Low under the game's share of High (Very Low at most 0.8, Low 0.95). A part of its own: after part 2's three games the card's memory is nearly full (973 of 1024 MiB) and the crawler's Low ran 1.4 times its own time. Control: every preset drawing High must fail"
+  },
+  {
     "name": "arenafps-quality",
     "script": "tests/arenafps-quality.mjs",
     "note": "a program for everything drawn at every quality on both backends, through a spread warm-up as a player gets it: every arena, in split screen and alone, each mode, from the title by real input. A scene not reached fails. Control: a state the scene draws out of the table must be reported and skip draws"

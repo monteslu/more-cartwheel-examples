@@ -1,0 +1,138 @@
+crawler-maze 1
+# floor 6: written by tools/gen-levels.mjs (seed 47514); edit the generator or tools/levels/, not this file
+floor 6
+theme crypt
+size 31 25
+seed 47514
+grid
+###############################
+###############################
+###.........###....#####....###
+###................#####....###
+###................#####....###
+#####..#...#####...#####....###
+#####..#...#####...#####....###
+#####.......####...#####....###
+#####.......####...#####....###
+#####.......##......######..###
+#####.......##......######DD###
+#####.......##..............###
+#####..##..###......###......##
+#####..##..############......##
+#####..##..############......##
+#####..##..####....####.....###
+#####..##..####....####.....###
+##.........####....####.....###
+##.........####.............###
+##.........####............####
+##.........................####
+##.........................####
+##.......#############.....####
+###############################
+###############################
+end
+start 3 21
+exit 24 3 1
+spawner 26 5 ghoul 1
+spawner 24 20 ghoul 1
+spawner 15 11 imp 1
+spawner 17 17 ghoul 1
+spawner 9 7 imp 1
+spawner 17 8 ghoul 1
+spawner 15 3 ghoul 1
+spawner 9 18 imp 1
+monster 11 21 imp 1
+monster 17 4 ghoul 1
+monster 26 8 ghoul 1
+monster 17 11 ghoul 1
+item 14 9 key
+item 26 15 chest
+item 17 5 food_bread
+item 9 9 food_roast
+item 24 16 food_flagon
+item 22 18 food_roast
+item 27 11 food_bread
+item 8 19 food_flagon
+item 17 11 potion
+item 19 18 potion
+item 24 8 chest
+item 26 9 gold
+item 27 2 gold
+item 19 11 cup
+item 16 7 chest
+item 10 19 chest
+item 11 21 gold
+item 27 3 gold
+item 23 11 cup
+item 3 17 gold
+item 15 4 charm_13
+item 9 21 charm_10
+ambush 26 15 shade 1 9
+prop 22 11 torch 0 n
+prop 9 16 torch 0 w
+prop 27 11 torch 0 e
+prop 15 15 torch 0 n
+prop 19 9 torch 0 n
+prop 6 2 torch 0 n
+prop 20 18 torch 0 n
+prop 10 5 torch 0 e
+prop 13 3 torch 0 n
+prop 27 4 torch 0 e
+prop 7 7 torch 0 n
+prop 14 9 torch 0 n
+prop 16 6 torch 0 w
+prop 27 16 torch 0 e
+prop 5 14 torch 0 w
+prop 13 20 torch 0 n
+prop 26 21 torch 0 e
+prop 17 2 torch 0 n
+prop 2 17 torch 0 w
+prop 11 11 torch 0 e
+prop 2 22 torch 0 w
+prop 23 15 torch 0 w
+prop 22 22 torch 0 w
+prop 24 2 torch 0 n
+prop 15 2 decor 3 2
+prop 14 12 decor 2 2
+prop 3 4 decor 1 2
+prop 11 11 decor 3 2
+prop 11 2 decor 1 2
+prop 2 22 decor 1 3
+prop 20 11 decor 2 2
+prop 21 11 decor 3 0
+prop 26 22 decor 0 2
+prop 28 14 decor 0 0
+prop 11 7 decor 3 2
+light 22 11 1 1 0.6 0.3 70 8
+light 9 16 1 1 0.6 0.3 70 8
+light 27 11 1 1 0.6 0.3 70 8
+light 15 15 1 1 0.6 0.3 70 8
+light 19 9 1 1 0.6 0.3 70 8
+light 6 2 1 1 0.6 0.3 70 8
+light 20 18 1 1 0.6 0.3 70 8
+light 10 5 1 1 0.6 0.3 70 8
+light 13 3 1 1 0.6 0.3 70 8
+light 27 4 1 1 0.6 0.3 70 8
+light 7 7 1 1 0.6 0.3 70 8
+light 14 9 1 1 0.6 0.3 70 8
+light 16 6 1 1 0.6 0.3 70 8
+light 27 16 1 1 0.6 0.3 70 8
+light 5 14 1 1 0.6 0.3 70 8
+light 13 20 1 1 0.6 0.3 70 8
+light 26 21 1 1 0.6 0.3 70 8
+light 17 2 1 1 0.6 0.3 70 8
+light 2 17 1 1 0.6 0.3 70 8
+light 11 11 1 1 0.6 0.3 70 8
+light 2 22 1 1 0.6 0.3 70 8
+light 23 15 1 1 0.6 0.3 70 8
+light 22 22 1 1 0.6 0.3 70 8
+light 24 2 1 1 0.6 0.3 70 8
+light 26 5 1 0.9 0.85 0.6 26 4.5
+light 24 20 1 0.9 0.85 0.6 26 4.5
+light 15 11 1 1 0.45 0.15 26 4.5
+light 17 17 1 0.9 0.85 0.6 26 4.5
+light 9 7 1 1 0.45 0.15 26 4.5
+light 17 8 1 0.9 0.85 0.6 26 4.5
+light 15 3 1 0.9 0.85 0.6 26 4.5
+light 9 18 1 1 0.45 0.15 26 4.5
+light 24 3 0.6 1 0.85 0.6 40 5

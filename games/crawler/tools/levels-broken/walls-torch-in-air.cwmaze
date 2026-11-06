@@ -1,0 +1,26 @@
+crawler-maze 1
+# a small floor the controls each break one way (tools/check-levels.mjs runs them; each must fail its check)
+floor 901
+theme crypt
+size 14 10
+seed 0
+grid
+##############
+#....#.......#
+#....#.......#
+#....D.......#
+#....#.......#
+#....#.......#
+#....#########
+#............#
+#............#
+##############
+end
+start 2 2
+exit 11 2 1
+item 10 8 key
+spawner 8 8 ghoul 1
+item 3 5 food_roast
+prop 2 4 torch 0 n
+prop 12 8 decor 1 0
+light 2 1 1.9 1 0.6 0.3 70 8

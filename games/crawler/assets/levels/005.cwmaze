@@ -1,0 +1,162 @@
+crawler-maze 1
+# floor 5: written by tools/gen-levels.mjs (seed 39595); edit the generator or tools/levels/, not this file
+floor 5
+theme crypt
+size 33 25
+seed 39595
+grid
+#################################
+#.....#...........#.....#.....###
+#.....#...........#............##
+#..#..#..#######..#..##........##
+#..#.....#..#.....#..#.........##
+#..#.....#..#.....#..#.........##
+#..#..####..#..####..#.........##
+#..B..#.....#..#..#.....#.....###
+#..#..#.....#..#..#.....#.....###
+#..#..#..####..B..#.....#..#DD###
+#.....#..#.....#..#........#..###
+#.....#..#.................#..###
+#..####..#..##..........#########
+#..#.....#....................###
+#..#.....#....................###
+#..#..#####B#.........##......###
+#..#..#........#..#...........###
+#..#..#........#..#...........###
+#..#..#..#######..#...........###
+#..#.....#....................###
+#..#.....#....................###
+#..#######..#############..#..###
+#..........................#..###
+#..........................#..###
+#################################
+end
+start 27 18
+exit 3 1 1
+spawner 26 7 shade 1
+spawner 22 13 shade 2
+spawner 7 13 ghoul 1
+spawner 17 14 ghoul 1
+spawner 28 4 shade 2
+spawner 10 22 shade 1
+spawner 20 2 shade 1
+spawner 5 5 ghoul 1
+spawner 8 8 shade 1
+monster 23 11 shade 2
+monster 5 7 shade 1
+monster 20 15 ghoul 1
+monster 23 1 shade 1
+item 28 10 chest
+item 29 11 gold
+item 28 11 gold
+item 14 5 key
+item 24 14 food_bread
+item 8 9 food_roast
+item 19 9 food_plate
+item 17 7 food_roast
+item 22 4 food_plate
+item 11 7 food_plate
+item 20 5 food_bread
+item 11 13 potion
+item 28 23 gold
+item 11 8 gold
+item 10 14 gold
+item 5 8 gold
+item 23 22 gold
+item 20 16 cup
+item 5 11 gold
+item 14 2 chest
+item 29 20 gold
+item 29 5 charm_13
+item 20 22 charm_8
+item 23 3 charm_13
+item 25 5 charm_1
+prop 26 23 torch 0 e
+prop 1 20 torch 0 w
+prop 8 10 torch 0 e
+prop 13 4 torch 0 n
+prop 19 1 torch 0 n
+prop 17 7 torch 0 n
+prop 20 22 torch 0 n
+prop 14 19 torch 0 n
+prop 26 1 torch 0 n
+prop 6 22 torch 0 n
+prop 6 13 torch 0 n
+prop 10 16 torch 0 n
+prop 5 2 torch 0 e
+prop 25 13 torch 0 n
+prop 1 8 torch 0 w
+prop 1 14 torch 0 w
+prop 4 6 torch 0 w
+prop 21 15 torch 0 e
+prop 23 7 torch 0 e
+prop 15 11 torch 0 n
+prop 29 18 torch 0 e
+prop 17 16 torch 0 e
+prop 11 1 torch 0 n
+prop 29 10 torch 0 e
+prop 8 5 torch 0 e
+prop 1 3 torch 0 w
+prop 12 22 torch 0 n
+prop 30 2 torch 0 n
+prop 4 17 torch 0 w
+prop 11 7 torch 0 e
+prop 12 13 torch 0 n
+prop 13 4 decor 3 0
+prop 26 23 decor 3 2
+prop 26 11 decor 1 3
+prop 29 1 decor 3 2
+prop 7 1 decor 0 2
+prop 19 1 decor 1 0
+prop 30 6 decor 2 0
+prop 30 2 decor 1 0
+prop 17 1 decor 3 2
+prop 4 20 decor 3 3
+prop 29 13 decor 0 2
+prop 10 19 decor 1 2
+prop 1 1 decor 2 1
+prop 25 1 decor 2 0
+prop 14 17 decor 3 0
+prop 1 23 decor 1 0
+prop 5 1 decor 0 0
+light 26 23 1 1 0.6 0.3 70 8
+light 1 20 1 1 0.6 0.3 70 8
+light 8 10 1 1 0.6 0.3 70 8
+light 13 4 1 1 0.6 0.3 70 8
+light 19 1 1 1 0.6 0.3 70 8
+light 17 7 1 1 0.6 0.3 70 8
+light 20 22 1 1 0.6 0.3 70 8
+light 14 19 1 1 0.6 0.3 70 8
+light 26 1 1 1 0.6 0.3 70 8
+light 6 22 1 1 0.6 0.3 70 8
+light 6 13 1 1 0.6 0.3 70 8
+light 10 16 1 1 0.6 0.3 70 8
+light 5 2 1 1 0.6 0.3 70 8
+light 25 13 1 1 0.6 0.3 70 8
+light 1 8 1 1 0.6 0.3 70 8
+light 1 14 1 1 0.6 0.3 70 8
+light 4 6 1 1 0.6 0.3 70 8
+light 21 15 1 1 0.6 0.3 70 8
+light 23 7 1 1 0.6 0.3 70 8
+light 15 11 1 1 0.6 0.3 70 8
+light 29 18 1 1 0.6 0.3 70 8
+light 17 16 1 1 0.6 0.3 70 8
+light 11 1 1 1 0.6 0.3 70 8
+light 29 10 1 1 0.6 0.3 70 8
+light 8 5 1 1 0.6 0.3 70 8
+light 1 3 1 1 0.6 0.3 70 8
+light 12 22 1 1 0.6 0.3 70 8
+light 30 2 1 1 0.6 0.3 70 8
+light 4 17 1 1 0.6 0.3 70 8
+light 11 7 1 1 0.6 0.3 70 8
+light 12 13 1 1 0.6 0.3 70 8
+light 26 7 1 0.6 0.8 1 26 4.5
+light 22 13 1 0.6 0.8 1 34 4.5
+light 7 13 1 0.9 0.85 0.6 26 4.5
+light 17 14 1 0.9 0.85 0.6 26 4.5
+light 28 4 1 0.6 0.8 1 34 4.5
+light 10 22 1 0.6 0.8 1 26 4.5
+light 20 2 1 0.6 0.8 1 26 4.5
+light 5 5 1 0.9 0.85 0.6 26 4.5
+light 8 8 1 0.6 0.8 1 26 4.5
+light 3 1 0.6 1 0.85 0.6 40 5
