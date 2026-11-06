@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.27.0
+
+- Engine v0.36.0: Low and Very Low cost less GPU time with the same picture or close to it. Both draw the
+  scene into a smaller HDR target (half the bytes a pixel), and Low runs the fog, the edge smoothing and
+  bloom inside one final pass, with a lighter first bloom level. Low draws no volumetric fog or heat haze;
+  a game whose fog is volumetric (Arena FPS, Sky Fighter, the co-op platformer) now draws it as plain
+  height fog on Low and Very Low, where Very Low drew none before.
+- Arena FPS: Low and Very Low draw the arena after a depth pass (each pixel of its stacked halls, roofs
+  and girders is shaded once) and filter its textures less steeply at grazing angles (4x on Low, 2x on
+  Very Low, 8x from Medium up).
+- Tux Racer: Low draws the Very Low snow terrain tier.
+- GPU time on Very Low and Low as a share of High (1080p, Radeon 890M, GL / WebGPU), before -> after:
+  Pirates 0.22 / 0.27 -> 0.22 / 0.23 and 0.39 / 0.47 -> 0.37 / 0.36; Jetski 0.26 / 0.21 -> 0.19 / 0.23
+  and 0.42 / 0.51 -> 0.34 / 0.42; Arena FPS 0.48 / 0.42 -> 0.23 / 0.24 and 0.62 / 0.59 -> 0.31 / 0.31;
+  Tux Racer 0.39 / 0.45 -> 0.35 / 0.38 and 0.60 / 0.77 -> 0.43 / 0.45; Sky Fighter 0.34 / 0.41 -> 0.32 /
+  0.37 and 0.68 / 0.77 -> 0.54 / 0.65; the co-op platformer 0.37 / 0.34 -> 0.37 / 0.33 and 0.65 / 0.57 ->
+  0.50 / 0.43; the fighter 0.54 / 0.56 -> 0.48 / 0.51 and 0.73 / 0.76 -> 0.63 / 0.65; the brawler 0.66 /
+  0.63 -> 0.58 / 0.55 and 0.88 / 0.88 -> 0.75 / 0.76; the horde shooter 0.69 / 0.72 -> 0.50 / 0.50 and
+  0.95 / 1.00 -> 0.63 / 0.60; crawler 0.67 / 0.66 -> 0.60 / 0.54 and 0.92 / 0.89 -> 0.67 / 0.59; the party
+  pack 1.00 -> 0.99 on GL (its cost is its 2D drawing, which no preset changes).
+- The range gates hold each game to these shares (Pirates, Jetski and Arena FPS to Very Low 0.3 and Low
+  0.45 of High); the party pack is measured on GL only, since WebGPU does not time its 2D pass.
+
 ## 0.26.1
 
 - Engine v0.34.3: control hints for movement show the d-pad, with the arms to press solid, wherever the d-pad and
