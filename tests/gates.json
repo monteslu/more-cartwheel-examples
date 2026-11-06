@@ -970,7 +970,7 @@
   {
     "name": "quality-range-3",
     "script": "tests/quality-range-3.mjs",
-    "note": "each graphics preset's GPU time in play at 1080p on the test GPU, GL and WebGPU (the fighter, the brawler, the horde shooter, the party pack; the engine's tools/quality-range.mjs over tests/quality-range-scenes.json): no preset dearer than the one above it, Ultra not under High, Very Low and Low under each game's share of High (Pirates: Very Low at most 0.3). Control: every preset drawing High must fail"
+    "note": "each preset's order with 35% slack (the party pack's WebGPU frame is a quarter of a millisecond, where the timers' steps move a preset by a quarter); each graphics preset's GPU time in play at 1080p on the test GPU, GL and WebGPU (the fighter, the brawler, the horde shooter, the party pack; the engine's tools/quality-range.mjs over tests/quality-range-scenes.json): no preset dearer than the one above it, Ultra not under High, Very Low and Low under each game's share of High (Pirates: Very Low at most 0.3). Control: every preset drawing High must fail"
   },
   {
     "name": "quality-range-4",
