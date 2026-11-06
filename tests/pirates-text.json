@@ -1,0 +1,76 @@
+{
+  "app": "pirates",
+  "secondary": [
+    "^BANKED CARGO$"
+  ],
+  "screens": [
+    {
+      "name": "title",
+      "frames": 30
+    },
+    {
+      "name": "play-voyage",
+      "frames": 30,
+      "startCmds": [
+        "pirates_match 0 1"
+      ]
+    },
+    {
+      "name": "play-race-4",
+      "frames": 30,
+      "startCmds": [
+        "pirates_match 1 4"
+      ]
+    },
+    {
+      "name": "play-teams",
+      "frames": 30,
+      "startCmds": [
+        "pirates_match 2 2"
+      ]
+    },
+    {
+      "name": "protected",
+      "frames": 140,
+      "startCmds": [
+        "pirates_match 1 1",
+        "pirates_sink 0"
+      ]
+    },
+    {
+      "name": "harbor",
+      "frames": 30,
+      "startCmds": [
+        "pirates_match 0 1",
+        "pirates_stock 2 2 2"
+      ]
+    },
+    {
+      "name": "pause",
+      "frames": 30,
+      "input": "pirates-text-pause.json",
+      "startCmds": [
+        "pirates_match 0 1"
+      ]
+    },
+    {
+      "name": "result-race",
+      "frames": 20,
+      "startCmds": [
+        "pirates_simulate 21600"
+      ]
+    },
+    {
+      "name": "result-voyage",
+      "frames": 20,
+      "startCmds": [
+        "pirates_test_voyage 1"
+      ]
+    },
+    {
+      "name": "title-settings",
+      "frames": 30,
+      "input": "pirates-text-settings.json"
+    }
+  ]
+}

@@ -108,6 +108,7 @@ static struct {
   int n_scenery_lod;
   t3_object *big_scenery[1 + CAPTAINS]; /* the coast and the four port buildings: the Island shadows setting */
   cw_action turn_l, turn_r, sail_u, sail_d, aim_l, aim_r, fire_l, fire_r, dock, up_hull, up_sails, up_guns, start, mode_l, mode_r, map_next, pause, leave;
+  cw_action text_size, text_background; /* the player's text settings, on the title and the pause box */
 } G;
 
 enum { ROCKFALLS = 3, ERUPTION_PERIOD = 1800, ERUPTION_WARNING = 210 };
@@ -1160,14 +1161,355 @@ static void sync_visuals(void) {
   }
 }
 
-static void line(const char *str, float x, float y, float size, cw_color color, float width, cw_text_align align) {
-  cw_r2d_text(G.font, str, cw_v2(x, y), &(cw_text_style){ .size = size, .color = color, .wrap_width = width, .align = align });
+/* The HUD is laid out from measured text: the player's text scale (cartwheel/render2d.h "text size") grows every
+ * line, so panels take their size from what they hold and stack by measured heights, and lines too wide for their
+ * box wrap. Every text sits on a panel of its own (own_backdrop). Sizes are a share of the canvas height: body text
+ * 26 px at 1080 lines or more. */
+static cw_text_style tstyle(float size, cw_color color, float width, cw_text_align align) {
+  return (cw_text_style){ .size = size, .color = color, .wrap_width = width, .align = align, .own_backdrop = true };
 }
-/* a line with button prompts in it (cartwheel/prompt.h markup: "{dock} bank cargo"), for one captain (-1: every
- * seat, on the shared screens), in the box line() would use */
-static void pline(const char *str, int player, float x, float y, float size, cw_color color, float width, cw_text_align align) {
-  float px = align == CW_ALIGN_CENTER ? x + width * 0.5f : align == CW_ALIGN_RIGHT ? x + width : x;
-  cw_prompt_text(G.font, str, player, cw_v2(px, y), size, color, align);
+/* a text in the box [x, x + width] (wrapped there); returns its measured height */
+static float line(const char *str, float x, float y, float size, cw_color color, float width, cw_text_align align) {
+  cw_text_style st = tstyle(size, color, width, align);
+  return cw_r2d_text(G.font, str, cw_v2(x, y), &st).height;
+}
+static cw_text_metrics measure(const char *str, float size, float width) {
+  cw_text_style st = tstyle(size, CW_WHITE, width, CW_ALIGN_LEFT);
+  return cw_font_measure(G.font, str, &st);
+}
+/* A line with button prompts in it (cartwheel/prompt.h markup: "{dock} bank cargo"), for one captain (-1: every
+ * seat, on the shared screens), flowed into the box [x, x + width]: its groups (runs of three or more spaces part
+ * them) stay whole and go onto as many lines as they need; only a group wider than the box breaks between its
+ * words. draw false only measures. Returns the height. */
+static float pflow_out(const char *s, int player, float x, float y, float size, cw_color color, float width, cw_text_align align, bool draw) {
+  float h = cw_prompt_text_size(G.font, s, player, size).y;
+  if (draw) {
+    float px = align == CW_ALIGN_CENTER ? x + width * 0.5f : align == CW_ALIGN_RIGHT ? x + width : x;
+    cw_prompt_text(G.font, s, player, cw_v2(px, y), size, color, align);
+  }
+  return h;
+}
+static float pflow(const char *str, int player, float x, float y, float size, cw_color color, float width, cw_text_align align, bool draw) {
+  char out[256] = "", cand[256];
+  float top = y;
+  const char *p = str;
+  while (*p == ' ') p++;
+  while (*p) {
+    /* the next group: up to a run of 3+ spaces */
+    const char *e = p;
+    while (*e && !(e[0] == ' ' && e[1] == ' ' && e[2] == ' ')) e++;
+    const char *next = e;
+    while (*next == ' ') next++;
+    snprintf(cand, sizeof cand, "%s%s%.*s", out, out[0] ? "    " : "", (int)(e - p), p);
+    if (!out[0] || cw_prompt_text_size(G.font, cand, player, size).x <= width) {
+      snprintf(out, sizeof out, "%s", cand);
+    } else {
+      y += pflow_out(out, player, x, y, size, color, width, align, draw);
+      snprintf(out, sizeof out, "%.*s", (int)(e - p), p);
+    }
+    /* a group too wide alone: its words, as many as fit a line */
+    while (cw_prompt_text_size(G.font, out, player, size).x > width) {
+      char *cut = NULL;
+      for (char *q = out + strlen(out) - 1; q > out; q--)
+        if (*q == ' ') { *q = 0; bool fit = cw_prompt_text_size(G.font, out, player, size).x <= width; *q = ' '; if (fit) { cut = q; break; } }
+      if (!cut) cut = strchr(out, ' ');
+      if (!cut) break;
+      *cut = 0;
+      y += pflow_out(out, player, x, y, size, color, width, align, draw);
+      char rest[256];
+      const char *r = cut + 1;
+      while (*r == ' ') r++;
+      snprintf(rest, sizeof rest, "%s", r);
+      snprintf(out, sizeof out, "%s", rest);
+    }
+    p = next;
+  }
+  if (out[0]) y += pflow_out(out, player, x, y, size, color, width, align, draw);
+  return y - top;
+}
+static float pline(const char *str, int player, float x, float y, float size, cw_color color, float width, cw_text_align align) {
+  return pflow(str, player, x, y, size, color, width, align, true);
+}
+/* a box's width: wider with the text scale, never past the canvas less its margins */
+static float box_width(float base, float W, float margin) { return fminf(base * fmaxf(1, cw_text_scale()), W - 2 * margin); }
+static float text_scale_k(void) { return fmaxf(1, cw_text_scale()); }
+
+/* the captain panels at the bottom: one per active captain, side by side; each grows upward from the bottom
+ * margin with what it holds (the panel, the cannon meter over it, the harbor's upgrades over that). draw false
+ * only measures; returns the height of the tallest stack */
+static float captain_panels(float W, float H, float scale, bool draw) {
+  char buf[160];
+  float m = 25 * scale, pad = 10 * scale, gap = 6 * scale, size = 26 * scale;
+  int count = 0;
+  for (int i = 0; i < CAPTAINS; i++) count += G.ships[i].active;
+  if (!count) return 0;
+  float slot = fminf((W - m * (float)(count + 1)) / (float)count, 440 * scale * text_scale_k());
+  float bottom = H - 14 * scale, tallest = 0;
+  int slot_i = 0;
+  for (int i = 0; i < CAPTAINS; i++) {
+    ship *s = &G.ships[i]; if (!s->active) continue;
+    float x = m + (float)slot_i++ * (slot + m), inner = slot - 2 * pad - 8 * scale, tx = x + pad + 8 * scale;
+    /* the panel: who, hull and cargo, the hold */
+    char r1[96], r2[96], r3[96];
+    cw_color cargo_ink = CW_WHITE;
+    snprintf(r1, sizeof r1, "P%d %s     %d BANKED", i + 1, s->human ? "CAPTAIN" : "BOT", s->bank);
+    snprintf(r2, sizeof r2, "HULL %d    CARGO %d / 6%s", (int)s->hp, held_total(s), s->respawn ? "    REPAIRING" : s->protection ? "    PROTECTED" : "");
+    if (!s->respawn && held_total(s) == 6) { snprintf(r3, sizeof r3, "HOLD FULL: RETURN TO P%d HARBOR", i + 1); cargo_ink = cw_hex(0xffdf9dff); }
+    else if (!s->respawn && G.cargo_notice_ticks[i] > 0) { snprintf(r3, sizeof r3, "%s", G.cargo_notice[i]); cargo_ink = cw_hex(0xa9f2c1ff); }
+    else snprintf(r3, sizeof r3, "WOOD %d   IRON %d   COIN %d", s->stored[0], s->stored[1], s->stored[2]);
+    float h1 = pflow(r1, i, 0, 0, size, CW_WHITE, inner, CW_ALIGN_LEFT, false);
+    float h2 = pflow(r2, i, 0, 0, size, CW_WHITE, inner, CW_ALIGN_LEFT, false);
+    float h3 = pflow(r3, i, 0, 0, size, CW_WHITE, inner, CW_ALIGN_LEFT, false);
+    float ph = pad + h1 + h2 + h3 + pad * 0.6f, top = bottom - ph;
+    if (draw) {
+      cw_r2d_rect(cw_rect_make(x, top, slot, ph), cw_rgba(0.012f, 0.035f, 0.055f, 0.78f));
+      cw_r2d_rect(cw_rect_make(x, top, 8 * scale, ph), col(PLAYER_COLOR[i]));
+      float y = top + pad * 0.6f;
+      y += pflow(r1, i, tx, y, size, CW_WHITE, inner, CW_ALIGN_LEFT, true);
+      y += pflow(r2, i, tx, y, size, cw_hex(0xffdf9dff), inner, CW_ALIGN_LEFT, true);
+      pflow(r3, i, tx, y, size, cargo_ink, inner, CW_ALIGN_LEFT, true);
+    }
+    if (G.state == PLAYING && s->human) {
+      /* Both broadsides share the crew's existing reload timer. Show one
+       * meter, rather than suggesting the other side can fire sooner. */
+      float ready = s->respawn ? 0 : clampf(1 - s->cooldown / (float)(80 - s->guns * 11), 0, 1);
+      cw_color ink = s->respawn ? cw_hex(0x9aa6afff) : s->cooldown ? cw_hex(0xffdf9dff) : cw_hex(0xa9f2c1ff);
+      if (s->respawn) snprintf(buf, sizeof buf, "CANNONS UNAVAILABLE: REPAIRING");
+      else if (s->cooldown) snprintf(buf, sizeof buf, "RELOAD %.1fs   {fire_left} LEFT   {fire_right} RIGHT", s->cooldown / 60.0f);
+      else snprintf(buf, sizeof buf, "CANNONS READY   {fire_left} LEFT   {fire_right} RIGHT");
+      float th = pflow(buf, i, 0, 0, size, ink, inner, CW_ALIGN_LEFT, false);
+      float ch = pad * 0.4f + th + 9 * scale;
+      top -= gap + ch;
+      if (draw) {
+        cw_r2d_rect(cw_rect_make(x, top, slot, ch), cw_rgba(.012f, .035f, .055f, .88f));
+        pflow(buf, i, tx, top + pad * 0.4f, size, ink, inner, CW_ALIGN_LEFT, true);
+        cw_r2d_rect(cw_rect_make(tx, top + ch - 6 * scale, inner, 3 * scale), cw_hex(0x42515bff));
+        cw_r2d_rect(cw_rect_make(tx, top + ch - 6 * scale, inner * ready, 3 * scale), ink);
+      }
+    }
+    if (G.state == PLAYING && s->human && !s->respawn &&
+        (held_total(s) || s->stored[0] || s->stored[1] || s->stored[2]) &&
+        harbor_distance2(i, s->x, s->z) < 36) {
+      const int levels[] = { s->hull, s->sails, s->guns };
+      const int funds[] = { s->stored[TIMBER], s->stored[COIN], s->stored[IRON] };
+      const char *names[] = { "{upgrade_hull} Hull", "{upgrade_sails} Sails", "{upgrade_guns} Cannons" };
+      const char *costs[] = { "2 wood", "2 coin", "2 iron" };
+      char rows[3][96];
+      float hh = pflow("HARBOR: {dock} bank cargo", i, 0, 0, size, CW_WHITE, inner, CW_ALIGN_LEFT, false), rh[3];
+      for (int k = 0; k < 3; k++) {
+        snprintf(rows[k], sizeof rows[k], "%s %d/2  %s", names[k], levels[k], levels[k] >= 2 ? "MAX" : costs[k]);
+        rh[k] = pflow(rows[k], i, 0, 0, size, CW_WHITE, inner, CW_ALIGN_LEFT, false);
+      }
+      float bh = pad * 0.6f + hh + rh[0] + rh[1] + rh[2] + pad * 0.6f;
+      top -= gap + bh;
+      if (draw) {
+        cw_r2d_rect(cw_rect_make(x, top, slot, bh), cw_rgba(.015f, .035f, .05f, .91f));
+        float y = top + pad * 0.6f;
+        y += pflow("HARBOR: {dock} bank cargo", i, tx, y, size, col(PLAYER_COLOR[i]), inner, CW_ALIGN_LEFT, true);
+        for (int k = 0; k < 3; k++) {
+          cw_color ink = levels[k] >= 2 ? cw_hex(0x87c5a0ff) : funds[k] >= 2 ? cw_hex(0xffdf9dff) : cw_hex(0x9aa6afff);
+          y += pflow(rows[k], i, tx, y, size, ink, inner, CW_ALIGN_LEFT, true);
+        }
+      }
+    }
+    tallest = fmaxf(tallest, bottom - top);
+  }
+  return tallest + 14 * scale;
+}
+
+/* the bar along the top: the mode and the clock, the objective, the controls hint early in a match. draw false
+ * only measures; returns its height */
+static float top_bar(float W, float scale, const char *mode, bool draw) {
+  char obj[160], tm[16];
+  float m = 25 * scale, pad = 12 * scale;
+  cw_color obj_ink = CW_WHITE;
+  snprintf(tm, sizeof tm, "%d:%02d", G.time_left / 3600, (G.time_left / 60) % 60);
+  if (G.mode == VOYAGE) {
+    int bank = 0; for (int i = 0; i < CAPTAINS; i++) bank += G.ships[i].bank;
+    if (G.voyage_stage == 0) snprintf(obj, sizeof obj, "1/3 SUPPLY THE FLEET: BANK %d / %d", bank, G.quota);
+    else if (G.voyage_stage == 1) snprintf(obj, sizeof obj, "2/3 BREAK THE BLOCKADE: SINK THE PATROL");
+    else snprintf(obj, sizeof obj, "3/3 BRING IT HOME: BANK %d / %d", bank, G.final_quota);
+  } else if (G.mode == TEAMS) {
+    snprintf(obj, sizeof obj, "P1 + P3: %d      P2 + P4: %d", G.ships[0].bank + G.ships[2].bank, G.ships[1].bank + G.ships[3].bank);
+    obj_ink = cw_hex(0xffdf9dff);
+  } else snprintf(obj, sizeof obj, "COLLECT  >  BANK  >  UPGRADE");
+  const char *hint = G.tick < 1200 && G.humans > 0 && G.mode != VOYAGE ?
+    "{turn_left|turn_right|sail_up|sail_down} SAIL     {fire_left} LEFT CANNONS     {fire_right} RIGHT CANNONS" : NULL;
+  float inner = W - 2 * m;
+  cw_text_metrics tmm = measure(tm, 31 * scale, 0);
+  cw_text_metrics mdm = measure(mode, 30 * scale, inner - tmm.width - m);
+  float row1 = fmaxf(tmm.height, mdm.height);
+  cw_text_metrics om = measure(obj, 26 * scale, 0);
+  float obj_w = fminf(om.width, inner);
+  float obj_h = measure(obj, 26 * scale, inner).height;
+  /* the hint sits right of the objective when both fit on the row, else under it */
+  float hint_side = inner - obj_w - 2 * m, hint_h = 0, hint_w = 0;
+  bool hint_beside = false;
+  if (hint) {
+    cw_vec2 hs = cw_prompt_text_size(G.font, hint, -1, 26 * scale);
+    hint_w = hs.x;
+    hint_beside = hs.x <= hint_side;
+    hint_h = hint_beside ? hs.y : pflow(hint, -1, 0, 0, 26 * scale, CW_WHITE, inner, CW_ALIGN_RIGHT, false);
+  }
+  float h = pad + row1 + (hint && hint_beside ? fmaxf(obj_h, hint_h) : obj_h + hint_h) + pad;
+  if (!draw) return h;
+  cw_r2d_rect(cw_rect_make(0, 0, W, h), cw_rgba(0.015f, 0.04f, 0.07f, 0.73f));
+  line(mode, m, pad, 30 * scale, cw_hex(0xffdb92ff), inner - tmm.width - m, CW_ALIGN_LEFT);
+  line(tm, W - m - tmm.width, pad, 31 * scale, CW_WHITE, 0, CW_ALIGN_LEFT);
+  float y = pad + row1;
+  line(obj, m, y, 26 * scale, obj_ink, inner, CW_ALIGN_LEFT);
+  if (hint) {
+    if (hint_beside) cw_prompt_text(G.font, hint, -1, cw_v2(W - m, y), 26 * scale, cw_hex(0xd7d6caff), CW_ALIGN_RIGHT);
+    else pflow(hint, -1, m, y + obj_h, 26 * scale, cw_hex(0xd7d6caff), inner, CW_ALIGN_RIGHT, true);
+  }
+  (void)hint_w;
+  return h;
+}
+
+/* the player's own text settings, a line for the title and the pause box */
+static void text_settings_line(char *buf, size_t n) {
+  snprintf(buf, n, "{text_size} Text size %s    {text_background} Text background %s", cw_text_scale_label(), cw_text_backdrop_label());
+}
+
+static void draw_title(float W, float H, float scale, const char *mode) {
+  char buf[160], settings[160];
+  float m = 25 * scale, inner = W - 4 * m, gap = 14 * scale;
+  text_settings_line(settings, sizeof settings);
+  snprintf(buf, sizeof buf, "<  %s  >", mode);
+  char ready[48];
+  snprintf(ready, sizeof ready, "%d captain%s ready", 1 + !!(G.joined & 2) + !!(G.joined & 4) + !!(G.joined & 8), G.joined == 1 ? "" : "s");
+  const char *brief = G.mode == VOYAGE ? "Supply your fleet, sink the patrol, then bank the final haul. Friendly fire is off." :
+                      G.mode == TEAMS ? "P1 + P3 versus P2 + P4. The team with the most banked cargo wins." :
+                      "Bank the most cargo before time runs out. Unclaimed captains are AI rivals.";
+  const char *place = active_map ? "Sheltered coves and quiet waters. A calmer place to learn the ropes." :
+                      "An active volcano guards the eastern passage. Clear marked water before rocks land.";
+  const char *menu = "{mode_left|mode_right} mode    {map_next} map    other captains: Start joins    {start} set sail";
+  const char *controls = "{turn_left|turn_right|sail_up|sail_down} sail    {fire_left} left cannons    {fire_right} right cannons    {game_pause} pause";
+  const char *help = "Sail over cargo to collect it. Return to your harbor and press {dock} to bank and repair.";
+  /* measure the stack, then fit it: the gaps close up first, then the title (art, drawn as asked) shrinks */
+  float hm = measure(active_map ? "PALM LAGOON" : "THE GILDED SHOALS", 29 * scale, inner).height;
+  float hs = measure(buf, 35 * scale, inner).height;
+  float hmenu = pflow(menu, -1, 0, 0, 28 * scale, CW_WHITE, inner, CW_ALIGN_CENTER, false);
+  float hr = measure(ready, 28 * scale, inner).height;
+  float hb = measure(brief, 26 * scale, inner).height;
+  float hc = pflow(controls, -1, 0, 0, 28 * scale, CW_WHITE, inner, CW_ALIGN_CENTER, false);
+  float hh = pflow(help, -1, 0, 0, 26 * scale, CW_WHITE, inner, CW_ALIGN_CENTER, false);
+  float hp = measure(place, 26 * scale, inner).height;
+  float hset = pflow(settings, -1, 0, 0, 26 * scale, CW_WHITE, inner, CW_ALIGN_CENTER, false);
+  float body = hm + hs + hmenu + hr + hb + hc + hh + hp + hset;
+  float logo = 92 * scale, avail = H - 2 * m - 2 * gap;
+  int gaps = 5;
+  float g = gap;
+  if (body + logo * 1.1f + gaps * g > avail) g = fmaxf(4 * scale, (avail - body - logo * 1.1f) / gaps);
+  if (body + logo * 1.1f + gaps * g > avail) logo = fmaxf(40 * scale, (avail - body - gaps * g) / 1.1f);
+  float total = logo * 1.1f + body + gaps * g + 2 * gap;
+  float top = fmaxf(m, (H - total) * 0.5f);
+  cw_r2d_rect(cw_rect_make(0, top, W, total), cw_rgba(0.015f, 0.045f, 0.07f, 0.77f));
+  float y = top + gap;
+  cw_text_style ts = { .size = logo, .color = cw_hex(0xffdb92ff), .wrap_width = W, .align = CW_ALIGN_CENTER, .fixed_size = true };
+  cw_r2d_text(G.font, "PIRATES", cw_v2(0, y), &ts); /* the logo: art */
+  y += logo * 1.1f;
+  float x = (W - inner) * 0.5f;
+  y += line(active_map ? "PALM LAGOON" : "THE GILDED SHOALS", x, y, 29 * scale, cw_hex(0xece1c4ff), inner, CW_ALIGN_CENTER);
+  y += line(buf, x, y, 35 * scale, CW_WHITE, inner, CW_ALIGN_CENTER) + g;
+  y += pline(menu, -1, x, y, 28 * scale, CW_WHITE, inner, CW_ALIGN_CENTER);
+  y += line(ready, x, y, 28 * scale, cw_hex(0xffdb92ff), inner, CW_ALIGN_CENTER) + g;
+  y += line(brief, x, y, 26 * scale, CW_WHITE, inner, CW_ALIGN_CENTER) + g;
+  y += pline(controls, -1, x, y, 28 * scale, CW_WHITE, inner, CW_ALIGN_CENTER);
+  y += pline(help, -1, x, y, 26 * scale, CW_WHITE, inner, CW_ALIGN_CENTER) + g;
+  y += line(place, x, y, 26 * scale, cw_hex(0xffdb92ff), inner, CW_ALIGN_CENTER) + g;
+  pline(settings, -1, x, y, 26 * scale, cw_hex(0xc2c9cdff), inner, CW_ALIGN_CENTER);
+}
+
+static void draw_result(float W, float H, float scale, float top_limit) {
+  char buf[160];
+  float m = 25 * scale, bw = box_width(W * .66f, W, m), bx = (W - bw) * 0.5f, inner = bw - 4 * m, ix = bx + 2 * m;
+  float gap = 12 * scale;
+  if (G.mode == VOYAGE) snprintf(buf, sizeof buf, "%s", G.winner >= 0 ? "VOYAGE COMPLETE" : "TIME RAN OUT");
+  else if (G.winner == -2) snprintf(buf, sizeof buf, "%s", G.mode == TEAMS ? "TEAM MATCH DRAW" : "TREASURE RACE DRAW");
+  else if (G.mode == TEAMS) snprintf(buf, sizeof buf, "TEAM %d WINS - P%d + P%d", G.winner + 1, G.winner + 1, G.winner + 3);
+  else snprintf(buf, sizeof buf, "CAPTAIN %d WINS", G.winner + 1);
+  char a[96] = "", b[96] = "";
+  const char *next = NULL;
+  int order[CAPTAINS] = { 0, 1, 2, 3 }, count = G.mode == TEAMS ? 2 : CAPTAINS, scores[CAPTAINS];
+  char names[CAPTAINS][48], nums[CAPTAINS][16];
+  float row_h[CAPTAINS] = { 0 }, name_w = inner * 0.7f;
+  float hhead = measure(buf, 52 * scale, inner).height, body = 0;
+  if (G.mode == VOYAGE) {
+    int total = 0; for (int i = 0; i < CAPTAINS; i++) total += G.ships[i].bank;
+    snprintf(a, sizeof a, "FLEET CARGO SAFELY BANKED: %d", total);
+    snprintf(b, sizeof b, "PATROL SHIPS DEFEATED: %d", G.patrol_defeats);
+    next = G.winner >= 0 ? "All three objectives completed." : G.voyage_stage == 0 ? "Unfinished: supply the fleet." :
+           G.voyage_stage == 1 ? "Unfinished: break the patrol blockade." : "Unfinished: bring the final haul home.";
+    body = measure(a, 28 * scale, inner).height + measure(b, 26 * scale, inner).height + gap + measure(next, 26 * scale, inner).height;
+  } else {
+    for (int i = 0; i < count; i++) scores[i] = G.ships[i].bank + (G.mode == TEAMS ? G.ships[i + 2].bank : 0);
+    for (int i = 1; i < count; i++) for (int j = i; j > 0 && scores[order[j]] > scores[order[j - 1]]; j--) {
+      int temp = order[j]; order[j] = order[j - 1]; order[j - 1] = temp;
+    }
+    body = measure("BANKED CARGO", 22 * scale, inner).height;
+    for (int row = 0; row < count; row++) {
+      int id = order[row];
+      if (G.mode == TEAMS) snprintf(names[row], sizeof names[row], "TEAM %d   P%d + P%d", id + 1, id + 1, id + 3);
+      else snprintf(names[row], sizeof names[row], "P%d   %s", id + 1, G.ships[id].human ? "CAPTAIN" : "BOT CAPTAIN");
+      snprintf(nums[row], sizeof nums[row], "%d", scores[id]);
+      float nw = measure(nums[row], 27 * scale, 0).width;
+      name_w = fminf(name_w, inner - nw - 2 * m);
+      row_h[row] = 0;
+    }
+    for (int row = 0; row < count; row++) {
+      row_h[row] = fmaxf(measure(names[row], 26 * scale, name_w).height, measure(nums[row], 27 * scale, 0).height) + 6 * scale;
+      body += row_h[row];
+    }
+    if (G.mode == TEAMS) body += gap + measure("Each team's score combines both captains' banked cargo.", 26 * scale, inner).height;
+  }
+  const char *press = "PRESS {start} TO CHOOSE A NEW MATCH";
+  float hpress = pflow(press, -1, 0, 0, 26 * scale, CW_WHITE, inner, CW_ALIGN_CENTER, false);
+  float bh = gap * 2 + hhead + gap + body + gap * 1.5f + hpress + gap * 1.5f;
+  float by = fmaxf(top_limit + gap, (H - bh) * 0.5f);
+  if (by + bh > H - m) by = fmaxf(m, H - m - bh);
+  cw_r2d_rect(cw_rect_make(bx, by, bw, bh), cw_rgba(.015f, .045f, .07f, .94f));
+  float y = by + gap * 2;
+  y += line(buf, ix, y, 52 * scale, cw_hex(0xffdb92ff), inner, CW_ALIGN_CENTER) + gap;
+  if (G.mode == VOYAGE) {
+    y += line(a, ix, y, 28 * scale, CW_WHITE, inner, CW_ALIGN_CENTER);
+    y += line(b, ix, y, 26 * scale, CW_WHITE, inner, CW_ALIGN_CENTER) + gap;
+    y += line(next, ix, y, 26 * scale, cw_hex(0xffdf9dff), inner, CW_ALIGN_CENTER);
+  } else {
+    y += line("BANKED CARGO", ix, y, 22 * scale, cw_hex(0xc2c9cdff), inner, CW_ALIGN_RIGHT);
+    for (int row = 0; row < count; row++) {
+      int id = order[row];
+      cw_color ink = col(PLAYER_COLOR[id]);
+      cw_r2d_rect(cw_rect_make(ix, y + 3 * scale, 4 * scale, row_h[row] - 9 * scale), ink);
+      line(names[row], ix + 14 * scale, y, 26 * scale, ink, name_w, CW_ALIGN_LEFT);
+      line(nums[row], ix, y, 27 * scale, CW_WHITE, inner, CW_ALIGN_RIGHT);
+      y += row_h[row];
+    }
+    if (G.mode == TEAMS) y += gap + line("Each team's score combines both captains' banked cargo.", ix, y + gap, 26 * scale, CW_WHITE, inner, CW_ALIGN_CENTER);
+  }
+  y += gap * 1.5f;
+  pline(press, -1, ix, y, 26 * scale, CW_WHITE, inner, CW_ALIGN_CENTER);
+}
+
+static void draw_pause(float W, float H, float scale) {
+  char settings[160];
+  float m = 25 * scale, bw = box_width(W * .6f, W, m), bx = (W - bw) * 0.5f, inner = bw - 4 * m, ix = bx + 2 * m, gap = 14 * scale;
+  text_settings_line(settings, sizeof settings);
+  const char *note = "After sinking: 4 seconds of protection. Firing ends it early.";
+  float h = gap * 2 + measure("PAUSED", 64 * scale, inner).height + gap +
+            pflow("{game_pause} resumes", -1, 0, 0, 29 * scale, CW_WHITE, inner, CW_ALIGN_CENTER, false) +
+            pflow("{leave_match} returns to the chart room", -1, 0, 0, 26 * scale, CW_WHITE, inner, CW_ALIGN_CENTER, false) + gap +
+            measure(note, 26 * scale, inner).height + gap +
+            pflow(settings, -1, 0, 0, 26 * scale, CW_WHITE, inner, CW_ALIGN_CENTER, false) + gap * 2;
+  float by = fmaxf(m, (H - h) * 0.5f);
+  cw_r2d_rect(cw_rect_make(0, 0, W, H), cw_rgba(.005f, .015f, .025f, .6f));
+  cw_r2d_rect(cw_rect_make(bx, by, bw, h), cw_rgba(.015f, .04f, .06f, .95f));
+  float y = by + gap * 2;
+  y += line("PAUSED", ix, y, 64 * scale, cw_hex(0xffdb92ff), inner, CW_ALIGN_CENTER) + gap;
+  y += pline("{game_pause} resumes", -1, ix, y, 29 * scale, CW_WHITE, inner, CW_ALIGN_CENTER);
+  y += pline("{leave_match} returns to the chart room", -1, ix, y, 26 * scale, CW_WHITE, inner, CW_ALIGN_CENTER) + gap;
+  y += line(note, ix, y, 26 * scale, cw_hex(0xa9f2e8ff), inner, CW_ALIGN_CENTER) + gap;
+  pline(settings, -1, ix, y, 26 * scale, cw_hex(0xc2c9cdff), inner, CW_ALIGN_CENTER);
 }
 
 static void draw_hud(void) {
@@ -1177,29 +1519,44 @@ static void draw_hud(void) {
   char buf[160];
   const char *mode = G.mode == VOYAGE ? "COOPERATIVE VOYAGE" : G.mode == RACE ? "TREASURE RACE" : "TEAM TREASURE RACE";
   if (G.state == TITLE) {
-    cw_r2d_rect(cw_rect_make(0, H * 0.17f, W, H * 0.76f), cw_rgba(0.015f, 0.045f, 0.07f, 0.77f));
-    line("PIRATES", 0, H * 0.19f, 92 * scale, cw_hex(0xffdb92ff), W, CW_ALIGN_CENTER);
-    line(active_map?"PALM LAGOON":"THE GILDED SHOALS", 0, H * 0.31f, 29 * scale, cw_hex(0xece1c4ff), W, CW_ALIGN_CENTER);
-    snprintf(buf, sizeof buf, "<  %s  >", mode);
-    line(buf, 0, H * 0.42f, 35 * scale, CW_WHITE, W, CW_ALIGN_CENTER);
-    pline("{mode_left|mode_right} mode    {map_next} map    other captains: Start joins    {start} set sail", -1, 0, H * 0.51f, 28 * scale, CW_WHITE, W, CW_ALIGN_CENTER);
-    snprintf(buf, sizeof buf, "%d captain%s ready", 1 + !!(G.joined & 2) + !!(G.joined & 4) + !!(G.joined & 8), G.joined == 1 ? "" : "s");
-    line(buf, 0, H * 0.64f, 28 * scale, cw_hex(0xffdb92ff), W, CW_ALIGN_CENTER);
-    const char *brief=G.mode==VOYAGE?"Supply your fleet, sink the patrol, then bank the final haul. Friendly fire is off.":
-                      G.mode==TEAMS?"P1 + P3 versus P2 + P4. The team with the most banked cargo wins.":
-                      "Bank the most cargo before time runs out. Unclaimed captains are AI rivals.";
-    line(brief,0,H*.71f,23*scale,CW_WHITE,W,CW_ALIGN_CENTER);
-    line(active_map?"Sheltered coves and quiet waters. A calmer place to learn the ropes.":
-         "An active volcano guards the eastern passage. Clear marked water before rocks land.",
-         0,H*.87f,22*scale,cw_hex(0xffdb92ff),W,CW_ALIGN_CENTER);
-    pline("{turn_left|turn_right|sail_up|sail_down} sail    {fire_left} left cannons    {fire_right} right cannons    {game_pause} pause",-1,0,H*.77f,28*scale,CW_WHITE,W,CW_ALIGN_CENTER);
-    pline("Sail over cargo to collect it. Return to your harbor and press {dock} to bank and repair.",-1,0,H*.82f,26*scale,CW_WHITE,W,CW_ALIGN_CENTER);
+    draw_title(W, H, scale, mode);
   } else {
     t3_camera *camera=cw_camera3d_t3(G.camera);
+    /* paused or the results: the box over the field takes the place of the labels and the captain panels */
+    bool overlay = G.paused || G.state == RESULT;
+    if (overlay) camera = NULL;
+    float bar_h = top_bar(W, scale, mode, false), panels_h = overlay ? 0 : captain_panels(W, H, scale, false);
+    /* the boxes under the bar (the rockfall warning, the voyage's objective), then the labels below them */
+    float below = bar_h + 8 * scale;
+    if(!overlay && !active_map && eruption.warning) {
+      snprintf(buf,sizeof buf,"VOLCANIC ROCKFALL: CLEAR THE MARKED WATER  %.1fs",eruption.warning/60.0f);
+      float bw=box_width(W*.56f,W,25*scale),bx=(W-bw)*.5f;
+      float th=measure(buf,26*scale,bw-20*scale).height,bh=th+12*scale;
+      cw_r2d_rect(cw_rect_make(bx,below,bw,bh),cw_rgba(.12f,.035f,.015f,.88f));
+      line(buf,bx+10*scale,below+6*scale,26*scale,cw_hex(0xffd59bff),bw-20*scale,CW_ALIGN_CENTER);
+      below+=bh+6*scale;
+    }
+    if(!overlay&&G.mode==VOYAGE&&G.state==PLAYING&&G.objective_notice_ticks>0) {
+      float fade=clampf(G.objective_notice_ticks/30.0f,0,1);
+      float bw=box_width(W*.46f,W,25*scale),bx=(W-bw)*.5f,inner=bw-20*scale;
+      const char *title=G.voyage_stage==0?"1 / 3   SUPPLY THE FLEET":G.voyage_stage==1?"2 / 3   BREAK THE BLOCKADE":"3 / 3   BRING IT HOME";
+      const char *hint=G.voyage_stage==0?"Collect floating cargo. {dock} banks it at your harbor.":G.voyage_stage==1?"Turn your side toward the patrol. {fire_left} or {fire_right} fires.":"Gather the final cargo and bank it safely at your harbor.";
+      float t1=measure(title,27*scale,inner).height,t2=pflow(hint,-1,0,0,26*scale,CW_WHITE,inner,CW_ALIGN_CENTER,false);
+      float bh=8*scale+t1+6*scale+t2+10*scale;
+      cw_r2d_rect(cw_rect_make(bx,below,bw,bh),cw_rgba(.015f,.04f,.06f,.9f*fade));
+      line(title,bx+10*scale,below+8*scale,27*scale,cw_rgba(1,.86f,.57f,fade),inner,CW_ALIGN_CENTER);
+      pline(hint,-1,bx+10*scale,below+8*scale+t1+6*scale,26*scale,cw_rgba(1,1,1,fade),inner,CW_ALIGN_CENTER);
+      below+=bh+6*scale;
+    }
+    float lab_top = below, lab_bottom = H - panels_h - 6 * scale;
+    float lsize = 26 * scale, lpad = 4 * scale;
     /* Lay out complete ship annotations before ports. Keep health, damage
-     * and protection together, and connect displaced labels to their ship. */
+     * and protection together, and connect displaced labels to their ship.
+     * Each label's box comes from its measured text: half its width, how far it reaches above its line (the
+     * protection timer, a hit notice) and below it (the hull bar). */
     float label_x[SHIPS]={0},label_y[SHIPS]={0},anchor_x[SHIPS]={0},anchor_y[SHIPS]={0};
-    float label_half[SHIPS]={0},label_top[SHIPS]={0};
+    float label_half[SHIPS]={0},label_top[SHIPS]={0},label_down[SHIPS]={0},box_half[SHIPS]={0},box_h[SHIPS]={0};
+    char label_text[SHIPS][24], prot_text[SHIPS][32];
     int label_visible[SHIPS]={0};
     if(camera)for(int i=0;i<SHIPS;i++) {
       ship *s=&G.ships[i];if(!s->active||s->respawn)continue;
@@ -1207,51 +1564,64 @@ static void draw_hud(void) {
       p=t3_vec3_apply_mat4(p,&camera->projection_matrix);
       float ax=(p.x*.5f+.5f)*W,ay=(.5f-p.y*.5f)*H;
       int target=G.mode==VOYAGE&&G.voyage_stage==1&&i==5;
-      float half=(target?96:i<CAPTAINS?32:52)*scale;
-      if(s->protection)half=fmaxf(half,78*scale);
-      float top=(s->protection?37:G.hit_ticks[i]?46:13)*scale;
+      if(i<CAPTAINS)snprintf(label_text[i],sizeof label_text[i],"P%d",i+1);
+      else snprintf(label_text[i],sizeof label_text[i],"%s",target?"TARGET: PATROL":i==4?"MERCHANT":"PATROL");
+      cw_text_metrics lm=measure(label_text[i],lsize,0);
+      float bar_half=(i<CAPTAINS?28:45)*scale;
+      box_half[i]=lm.width*.5f+8*scale;box_h[i]=lm.height+lpad;
+      float half=fmaxf(box_half[i],bar_half)+4*scale;
+      float top=box_h[i]*.5f;
+      if(s->protection) {
+        snprintf(prot_text[i],sizeof prot_text[i],"PROTECTED %.1fs",s->protection/60.0f);
+        cw_text_metrics pm=measure("PROTECTED 9.9s",lsize,0);
+        half=fmaxf(half,pm.width*.5f+8*scale);top+=4*scale+pm.height+lpad;
+      } else if(G.hit_ticks[i]) top+=8*scale+measure("-99",lsize,0).height+lpad;
+      float down=box_h[i]*.5f+8*scale;
       float preferred_y=ay-(target?34*scale:0),best=1e30f;
+      float lo=lab_top+top,hi=fmaxf(lo,lab_bottom-down);
       label_x[i]=clampf(ax,half+4*scale,W-half-4*scale);
-      label_y[i]=clampf(preferred_y,110*scale+top,H-120*scale);
+      label_y[i]=clampf(preferred_y,lo,hi);
       for(int row=-4;row<=4;row++)for(int column=-4;column<=4;column++) {
         float x=clampf(ax+column*70*scale,half+4*scale,W-half-4*scale);
-        float y=clampf(preferred_y+row*60*scale,110*scale+top,H-120*scale);
+        float y=clampf(preferred_y+row*60*scale,lo,hi);
         float score=(x-ax)*(x-ax)+(y-preferred_y)*(y-preferred_y)*1.1f;
         if(score>=best)continue;
         int overlap=0;
         for(int j=0;j<i;j++)if(label_visible[j]&&
           x+half+6*scale>label_x[j]-label_half[j]&&x-half-6*scale<label_x[j]+label_half[j]&&
-          y+25*scale>label_y[j]-label_top[j]&&y-top-6*scale<label_y[j]+19*scale) {overlap=1;break;}
+          y+down+6*scale>label_y[j]-label_top[j]&&y-top-6*scale<label_y[j]+label_down[j]) {overlap=1;break;}
         if(!overlap){label_x[i]=x;label_y[i]=y;best=score;}
       }
-      anchor_x[i]=ax;anchor_y[i]=ay;label_half[i]=half;label_top[i]=top;label_visible[i]=1;
+      anchor_x[i]=ax;anchor_y[i]=ay;label_half[i]=half;label_top[i]=top;label_down[i]=down;label_visible[i]=1;
     }
     if(camera)for(int i=0;i<CAPTAINS;i++)if(G.ships[i].active) {
       t3_vec3 p=t3_vec3_apply_mat4((t3_vec3){PORT_X[i],0,PORT_Z[i]},&camera->matrix_world_inverse);
       p=t3_vec3_apply_mat4(p,&camera->projection_matrix);
+      snprintf(buf,sizeof buf,"P%d HARBOR",i+1);
+      cw_text_metrics hm=measure(buf,lsize,0);
+      float hw=hm.width*.5f+10*scale,hh=hm.height+lpad;
       float x=(p.x*.5f+.5f)*W,y=(.5f-p.y*.5f)*H+26*scale;
+      x=clampf(x,hw+4*scale,W-hw-4*scale);
       /* Ship identity and protection timers take priority over port names.
        * Try nearby rows before hiding a port label in a crowded fight. */
-      static const float rows[]={0,-34,34,-68,68};
+      static const float rows[]={0,-1,1,-2,2};
       float anchor_y=y;int placed=0;
       for(int row=0;row<5&&!placed;row++) {
-        float candidate=anchor_y+rows[row]*scale;
-        if(candidate<110*scale||candidate+26*scale>H-100*scale)continue;
+        float candidate=anchor_y+rows[row]*(hh+8*scale);
+        if(candidate<lab_top||candidate+hh>lab_bottom)continue;
         int overlap=0;
         for(int j=0;j<SHIPS;j++) {
-          ship *s=&G.ships[j];if(!s->active||s->respawn)continue;
+          if(!label_visible[j])continue;
           float sx=label_x[j],sy=label_y[j],half=label_half[j];
-          float top=sy-label_top[j];
-          if(x+62*scale>sx-half&&x-62*scale<sx+half&&candidate+30*scale>top&&candidate-4*scale<sy+18*scale) {overlap=1;break;}
+          if(x+hw+4*scale>sx-half&&x-hw-4*scale<sx+half&&candidate+hh+4*scale>sy-label_top[j]&&candidate-4*scale<sy+label_down[j]) {overlap=1;break;}
         }
         if(!overlap){y=candidate;placed=1;}
       }
       if(!placed)continue;
-      if(y!=anchor_y)cw_r2d_line(cw_v2(x,anchor_y),cw_v2(x,y+13*scale),1*scale,col(PLAYER_COLOR[i]));
-      cw_r2d_rect(cw_rect_make(x-58*scale,y,116*scale,26*scale),cw_rgba(.012f,.035f,.055f,.88f));
-      cw_r2d_rect(cw_rect_make(x-58*scale,y,4*scale,26*scale),col(PLAYER_COLOR[i]));
-      snprintf(buf,sizeof buf,"P%d HARBOR",i+1);
-      line(buf,x-54*scale,y+3*scale,18*scale,cw_hex(0xffe6baff),108*scale,CW_ALIGN_CENTER);
+      if(y!=anchor_y)cw_r2d_line(cw_v2(x,anchor_y),cw_v2(x,y+hh*.5f),1*scale,col(PLAYER_COLOR[i]));
+      cw_r2d_rect(cw_rect_make(x-hw,y,hw*2,hh),cw_rgba(.012f,.035f,.055f,.88f));
+      cw_r2d_rect(cw_rect_make(x-hw,y,4*scale,hh),col(PLAYER_COLOR[i]));
+      line(buf,x-hw,y+lpad*.5f,lsize,cw_hex(0xffe6baff),hw*2,CW_ALIGN_CENTER);
     }
     if(camera && !active_map && eruption.warning) {
       for(int k=0;k<ROCKFALLS;k++) {
@@ -1276,166 +1646,49 @@ static void draw_hud(void) {
       cw_r2d_line(cw_v2(anchor_x[i],anchor_y[i]),cw_v2(label_x[i],label_y[i]),1*scale,color);
     }
     if(camera) for(int i=0;i<SHIPS;i++) {
-      ship *s=&G.ships[i];if(!s->active||s->respawn)continue;
+      ship *s=&G.ships[i];if(!label_visible[i])continue;
       float x=label_x[i],y=label_y[i];
       bool objective_target=G.mode==VOYAGE&&G.voyage_stage==1&&i==5;
-      float half=objective_target?96:i<CAPTAINS?20:52;
       cw_color label_color=i<CAPTAINS?col(PLAYER_COLOR[i]):i==4?cw_hex(0xe4bd47ff):cw_hex(0xf2907aff);
-      cw_r2d_rect(cw_rect_make(x-half*scale,y-13*scale,half*2*scale,26*scale),cw_rgba(.01f,.025f,.035f,.87f));
-      if(i<CAPTAINS)snprintf(buf,sizeof buf,"P%d",i+1);else snprintf(buf,sizeof buf,"%s",objective_target?"TARGET: PATROL":i==4?"MERCHANT":"PATROL");
       if(objective_target)label_color=cw_hex(0xffdb92ff);
-      line(buf,x-half*scale,y-11*scale,20*scale,label_color,half*2*scale,CW_ALIGN_CENTER);
+      float bh=box_h[i],bhalf=box_half[i];
+      cw_r2d_rect(cw_rect_make(x-bhalf,y-bh*.5f,bhalf*2,bh),cw_rgba(.01f,.025f,.035f,.87f));
+      line(label_text[i],x-bhalf,y-bh*.5f+lpad*.5f,lsize,label_color,bhalf*2,CW_ALIGN_CENTER);
       if(s->protection) {
-        snprintf(buf,sizeof buf,"PROTECTED %.1fs",s->protection/60.0f);
-        cw_r2d_rect(cw_rect_make(x-78*scale,y-37*scale,156*scale,23*scale),cw_rgba(.015f,.09f,.11f,.9f));
-        line(buf,x-78*scale,y-35*scale,17*scale,cw_hex(0xa9f2e8ff),156*scale,CW_ALIGN_CENTER);
+        cw_text_metrics pm=measure("PROTECTED 9.9s",lsize,0);
+        float pw=pm.width*.5f+8*scale,ph=pm.height+lpad,py=y-bh*.5f-4*scale-ph;
+        cw_r2d_rect(cw_rect_make(x-pw,py,pw*2,ph),cw_rgba(.015f,.09f,.11f,.9f));
+        line(prot_text[i],x-pw,py+lpad*.5f,lsize,cw_hex(0xa9f2e8ff),pw*2,CW_ALIGN_CENTER);
       }
       float max_hp=i==5 && G.mode==VOYAGE?75+25*G.humans:100+18*s->hull;
-      float bar_width=(i<CAPTAINS?56:90)*scale;
-      cw_r2d_rect(cw_rect_make(x-bar_width/2,y+14*scale,bar_width,5*scale),cw_hex(0x342c29ff));
+      float bar_width=(i<CAPTAINS?56:90)*scale,bar_y=y+bh*.5f+2*scale;
+      cw_r2d_rect(cw_rect_make(x-bar_width/2,bar_y,bar_width,5*scale),cw_hex(0x342c29ff));
       if(G.hit_ticks[i]>0&&!s->protection) {
         float fade=clampf(G.hit_ticks[i]/30.0f,0,1);
         float trail=s->hp+(G.hit_previous_hp[i]-s->hp)*fade;
-        cw_r2d_rect(cw_rect_make(x-bar_width/2,y+14*scale,bar_width*clampf(trail/max_hp,0,1),5*scale),cw_hex(0xffe3b4ff));
+        cw_r2d_rect(cw_rect_make(x-bar_width/2,bar_y,bar_width*clampf(trail/max_hp,0,1),5*scale),cw_hex(0xffe3b4ff));
         snprintf(buf,sizeof buf,"-%d",G.hit_amount[i]);
+        cw_text_metrics nm=measure(buf,lsize,0);
+        float nw=nm.width*.5f+8*scale,nh=nm.height+lpad;
         float rise=(75-G.hit_ticks[i])*.12f*scale;
-        float notice_x=x,notice_y=y-36*scale-rise;
-        if(notice_y<108*scale) {notice_x=x+(half+29)*scale;notice_y=y-11*scale;}
-        cw_r2d_rect(cw_rect_make(notice_x-25*scale,notice_y,50*scale,22*scale),cw_rgba(.07f,.025f,.015f,.85f*fade));
-        line(buf,notice_x-25*scale,notice_y+scale,18*scale,cw_rgba(1,.8f,.6f,fade),50*scale,CW_ALIGN_CENTER);
+        float notice_x=x,notice_y=y-bh*.5f-8*scale-nh-rise;
+        if(notice_y<lab_top) {notice_x=x+bhalf+nw+4*scale;notice_y=y-nh*.5f;}
+        cw_r2d_rect(cw_rect_make(notice_x-nw,notice_y,nw*2,nh),cw_rgba(.07f,.025f,.015f,.85f*fade));
+        line(buf,notice_x-nw,notice_y+lpad*.5f,lsize,cw_rgba(1,.8f,.6f,fade),nw*2,CW_ALIGN_CENTER);
       }
-      cw_r2d_rect(cw_rect_make(x-bar_width/2,y+14*scale,bar_width*clampf(s->hp/max_hp,0,1),5*scale),label_color);
+      cw_r2d_rect(cw_rect_make(x-bar_width/2,bar_y,bar_width*clampf(s->hp/max_hp,0,1),5*scale),label_color);
     }
-    if(!active_map && eruption.warning) {
-      snprintf(buf,sizeof buf,"VOLCANIC ROCKFALL: CLEAR THE MARKED WATER  %.1fs",eruption.warning/60.0f);
-      cw_r2d_rect(cw_rect_make(W*.22f,112*scale,W*.56f,36*scale),cw_rgba(.12f,.035f,.015f,.88f));
-      line(buf,W*.22f,117*scale,22*scale,cw_hex(0xffd59bff),W*.56f,CW_ALIGN_CENTER);
-    }
-    cw_r2d_rect(cw_rect_make(0, 0, W, 104 * scale), cw_rgba(0.015f, 0.04f, 0.07f, 0.73f));
-    line(mode, 25 * scale, 12 * scale, 30 * scale, cw_hex(0xffdb92ff), W * 0.5f, CW_ALIGN_LEFT);
-    snprintf(buf, sizeof buf, "%d:%02d", G.time_left / 3600, (G.time_left / 60) % 60);
-    line(buf, W - 185 * scale, 12 * scale, 31 * scale, CW_WHITE, 160 * scale, CW_ALIGN_RIGHT);
-    if (G.mode == VOYAGE) {
-      int bank = 0; for (int i = 0; i < CAPTAINS; i++) bank += G.ships[i].bank;
-      if(G.voyage_stage==0)snprintf(buf,sizeof buf,"1/3 SUPPLY THE FLEET: BANK %d / %d",bank,G.quota);
-      else if(G.voyage_stage==1)snprintf(buf,sizeof buf,"2/3 BREAK THE BLOCKADE: SINK THE PATROL");
-      else snprintf(buf,sizeof buf,"3/3 BRING IT HOME: BANK %d / %d",bank,G.final_quota);
-      line(buf, 25 * scale, 53 * scale, 24 * scale, CW_WHITE, W * 0.6f, CW_ALIGN_LEFT);
-    } else if(G.mode==TEAMS) {
-      snprintf(buf,sizeof buf,"P1 + P3: %d     |     P2 + P4: %d",G.ships[0].bank+G.ships[2].bank,G.ships[1].bank+G.ships[3].bank);
-      line(buf,25*scale,53*scale,25*scale,cw_hex(0xffdf9dff),W*.55f,CW_ALIGN_LEFT);
-    } else {
-      line("COLLECT  >  BANK  >  UPGRADE", 25 * scale, 53 * scale, 25 * scale, CW_WHITE, W * 0.55f, CW_ALIGN_LEFT);
-    }
-    if(G.tick<1200 && G.humans>0 && G.mode!=VOYAGE)
-      pline("{turn_left|turn_right|sail_up|sail_down} SAIL     {fire_left} LEFT CANNONS     {fire_right} RIGHT CANNONS",-1,W*.40f,58*scale,24*scale,cw_hex(0xd7d6caff),W*.58f,CW_ALIGN_RIGHT);
-    if(G.mode==VOYAGE&&G.state==PLAYING&&G.objective_notice_ticks>0) {
-      float fade=clampf(G.objective_notice_ticks/30.0f,0,1);
-      float top=(!active_map&&eruption.warning?158:114)*scale;
-      cw_r2d_rect(cw_rect_make(W*.27f,top,W*.46f,78*scale),cw_rgba(.015f,.04f,.06f,.9f*fade));
-      const char *title=G.voyage_stage==0?"1 / 3   SUPPLY THE FLEET":G.voyage_stage==1?"2 / 3   BREAK THE BLOCKADE":"3 / 3   BRING IT HOME";
-      line(title,W*.28f,top+8*scale,27*scale,cw_rgba(1,.86f,.57f,fade),W*.44f,CW_ALIGN_CENTER);
-      const char *hint=G.voyage_stage==0?"Collect floating cargo. {dock} banks it at your harbor.":G.voyage_stage==1?"Turn your side toward the patrol. {fire_left} or {fire_right} fires.":"Gather the final cargo and bank it safely at your harbor.";
-      pline(hint,-1,W*.28f,top+46*scale,24*scale,cw_rgba(1,1,1,fade),W*.44f,CW_ALIGN_CENTER);
-    }
-    float base_y = H - 94 * scale;
-    for (int i = 0; i < CAPTAINS; i++) {
-      ship *s = &G.ships[i]; if (!s->active) continue;
-      float x = (25 + i * 472) * scale;
-      cw_r2d_rect(cw_rect_make(x, base_y, 440 * scale, 80 * scale), cw_rgba(0.012f, 0.035f, 0.055f, 0.78f));
-      cw_r2d_rect(cw_rect_make(x, base_y, 8 * scale, 80 * scale), col(PLAYER_COLOR[i]));
-      snprintf(buf, sizeof buf, "P%d %s     %d BANKED", i + 1, s->human ? "CAPTAIN" : "BOT", s->bank);
-      line(buf, x + 20 * scale, base_y + 5 * scale, 22 * scale, CW_WHITE, 410 * scale, CW_ALIGN_LEFT);
-      snprintf(buf, sizeof buf, "HULL %d    CARGO %d / 6    %s", (int)s->hp, held_total(s), s->respawn ? "REPAIRING" : s->protection ? "PROTECTED" : "");
-      line(buf, x + 20 * scale, base_y + 30 * scale, 19 * scale, cw_hex(0xffdf9dff), 410 * scale, CW_ALIGN_LEFT);
-      cw_color cargo_ink=CW_WHITE;
-      if(!s->respawn&&held_total(s)==6) {
-        snprintf(buf,sizeof buf,"HOLD FULL: RETURN TO P%d HARBOR",i+1);
-        cargo_ink=cw_hex(0xffdf9dff);
-      } else if(!s->respawn&&G.cargo_notice_ticks[i]>0) {
-        snprintf(buf,sizeof buf,"%s",G.cargo_notice[i]);cargo_ink=cw_hex(0xa9f2c1ff);
-      } else snprintf(buf, sizeof buf, "WOOD %d   IRON %d   COIN %d", s->stored[0], s->stored[1], s->stored[2]);
-      line(buf, x + 20 * scale, base_y + 54 * scale, 18 * scale, cargo_ink, 410 * scale, CW_ALIGN_LEFT);
-      if(G.state==PLAYING && s->human) {
-        /* Both broadsides share the crew's existing reload timer. Show one
-         * meter, rather than suggesting the other side can fire sooner. */
-        float ready=s->respawn?0:clampf(1-s->cooldown/(float)(80-s->guns*11),0,1);
-        cw_color ink=s->respawn?cw_hex(0x9aa6afff):s->cooldown?cw_hex(0xffdf9dff):cw_hex(0xa9f2c1ff);
-        cw_r2d_rect(cw_rect_make(x,base_y-36*scale,440*scale,34*scale),cw_rgba(.012f,.035f,.055f,.88f));
-        if(s->respawn)snprintf(buf,sizeof buf,"CANNONS UNAVAILABLE: REPAIRING");
-        else if(s->cooldown)snprintf(buf,sizeof buf,"RELOAD %.1fs   {fire_left} LEFT   {fire_right} RIGHT",s->cooldown/60.0f);
-        else snprintf(buf,sizeof buf,"CANNONS READY   {fire_left} LEFT   {fire_right} RIGHT");
-        pline(buf,i,x+20*scale,base_y-35*scale,24*scale,ink,410*scale,CW_ALIGN_LEFT);
-        cw_r2d_rect(cw_rect_make(x+20*scale,base_y-7*scale,400*scale,3*scale),cw_hex(0x42515bff));
-        cw_r2d_rect(cw_rect_make(x+20*scale,base_y-7*scale,400*scale*ready,3*scale),ink);
-      }
-      if (G.state==PLAYING && s->human && !s->respawn &&
-          (held_total(s)||s->stored[0]||s->stored[1]||s->stored[2]) &&
-          harbor_distance2(i,s->x,s->z)<36) {
-        float top=base_y-148*scale;
-        cw_r2d_rect(cw_rect_make(x,top,440*scale,108*scale),cw_rgba(.015f,.035f,.05f,.91f));
-        pline("HARBOR: {dock} bank cargo",i,x+16*scale,top+5*scale,22*scale,col(PLAYER_COLOR[i]),410*scale,CW_ALIGN_LEFT);
-        const int levels[]={s->hull,s->sails,s->guns};
-        const int funds[]={s->stored[TIMBER],s->stored[COIN],s->stored[IRON]};
-        const char *names[]={"{upgrade_hull} Hull","{upgrade_sails} Sails","{upgrade_guns} Cannons"};
-        const char *costs[]={"2 wood","2 coin","2 iron"};
-        for(int k=0;k<3;k++) {
-          snprintf(buf,sizeof buf,"%s %d/2  %s",names[k],levels[k],levels[k]>=2?"MAX":costs[k]);
-          cw_color ink=levels[k]>=2?cw_hex(0x87c5a0ff):funds[k]>=2?cw_hex(0xffdf9dff):cw_hex(0x9aa6afff);
-          pline(buf,i,x+16*scale,top+(32+23*k)*scale,21*scale,ink,410*scale,CW_ALIGN_LEFT);
-        }
-      }
-    }
-    if (G.state == RESULT) {
-      cw_r2d_rect(cw_rect_make(W*.17f,H*.29f,W*.66f,H*.43f),cw_rgba(.015f,.045f,.07f,.94f));
-      if (G.mode == VOYAGE) snprintf(buf,sizeof buf,"%s",G.winner>=0?"VOYAGE COMPLETE":"TIME RAN OUT");
-      else if (G.winner == -2) snprintf(buf,sizeof buf,"%s",G.mode==TEAMS?"TEAM MATCH DRAW":"TREASURE RACE DRAW");
-      else if (G.mode == TEAMS) snprintf(buf,sizeof buf,"TEAM %d WINS - P%d + P%d",G.winner+1,G.winner+1,G.winner+3);
-      else snprintf(buf,sizeof buf,"CAPTAIN %d WINS",G.winner+1);
-      line(buf,W*.18f,H*.32f,52*scale,cw_hex(0xffdb92ff),W*.64f,CW_ALIGN_CENTER);
-      if(G.mode==VOYAGE) {
-        int total=0;for(int i=0;i<CAPTAINS;i++)total+=G.ships[i].bank;
-        snprintf(buf,sizeof buf,"FLEET CARGO SAFELY BANKED: %d",total);
-        line(buf,W*.2f,H*.43f,28*scale,CW_WHITE,W*.6f,CW_ALIGN_CENTER);
-        snprintf(buf,sizeof buf,"PATROL SHIPS DEFEATED: %d",G.patrol_defeats);
-        line(buf,W*.2f,H*.48f,26*scale,CW_WHITE,W*.6f,CW_ALIGN_CENTER);
-        const char *next=G.winner>=0?"All three objectives completed.":G.voyage_stage==0?"Unfinished: supply the fleet.":G.voyage_stage==1?"Unfinished: break the patrol blockade.":"Unfinished: bring the final haul home.";
-        line(next,W*.2f,H*.55f,24*scale,cw_hex(0xffdf9dff),W*.6f,CW_ALIGN_CENTER);
-      } else {
-        int order[CAPTAINS]={0,1,2,3},count=G.mode==TEAMS?2:CAPTAINS;
-        int scores[CAPTAINS];
-        for(int i=0;i<count;i++)scores[i]=G.ships[i].bank+(G.mode==TEAMS?G.ships[i+2].bank:0);
-        for(int i=1;i<count;i++)for(int j=i;j>0&&scores[order[j]]>scores[order[j-1]];j--) {
-          int temp=order[j];order[j]=order[j-1];order[j-1]=temp;
-        }
-        line("BANKED CARGO",W*.52f,H*.405f,19*scale,cw_hex(0xc2c9cdff),W*.22f,CW_ALIGN_RIGHT);
-        for(int row=0;row<count;row++) {
-          int id=order[row];float y=H*.445f+row*43*scale;
-          cw_color ink=col(PLAYER_COLOR[id]);
-          cw_r2d_rect(cw_rect_make(W*.25f,y+3*scale,4*scale,26*scale),ink);
-          if(G.mode==TEAMS)snprintf(buf,sizeof buf,"TEAM %d   P%d + P%d",id+1,id+1,id+3);
-          else snprintf(buf,sizeof buf,"P%d   %s",id+1,G.ships[id].human?"CAPTAIN":"BOT CAPTAIN");
-          line(buf,W*.27f,y,25*scale,ink,W*.3f,CW_ALIGN_LEFT);
-          snprintf(buf,sizeof buf,"%d",scores[id]);
-          line(buf,W*.58f,y,27*scale,CW_WHITE,W*.16f,CW_ALIGN_RIGHT);
-        }
-        if(G.mode==TEAMS)line("Each team's score combines both captains' banked cargo.",W*.2f,H*.56f,22*scale,CW_WHITE,W*.6f,CW_ALIGN_CENTER);
-      }
-      pline("PRESS {start} TO CHOOSE A NEW MATCH",-1,W*.2f,H*.665f,25*scale,CW_WHITE,W*.6f,CW_ALIGN_CENTER);
-    }
+    top_bar(W, scale, mode, true);
+    if (!overlay) captain_panels(W, H, scale, true);
+    if (G.state == RESULT) draw_result(W, H, scale, bar_h);
   }
-  if(G.paused) {
-    cw_r2d_rect(cw_rect_make(0,0,W,H),cw_rgba(.005f,.015f,.025f,.6f));
-    cw_r2d_rect(cw_rect_make(W*.2f,H*.3f,W*.6f,H*.38f),cw_rgba(.015f,.04f,.06f,.95f));
-    line("PAUSED",0,H*.34f,64*scale,cw_hex(0xffdb92ff),W,CW_ALIGN_CENTER);
-    pline("{game_pause} resumes",-1,0,H*.45f,29*scale,CW_WHITE,W,CW_ALIGN_CENTER);
-    pline("{leave_match} returns to the chart room",-1,0,H*.51f,25*scale,CW_WHITE,W,CW_ALIGN_CENTER);
-    line("After sinking: 4 seconds of protection. Firing ends it early.",0,H*.59f,22*scale,cw_hex(0xa9f2e8ff),W,CW_ALIGN_CENTER);
-  }
+  if(G.paused) draw_pause(W, H, scale);
   cw_r2d_end();
   t3_renderer *r = cw_render3d_renderer(cw_scene_app_tree());
   if (r) t3_renderer_reset_bindings(r);
 }
+
+static void text_settings_save(void); /* with the save data, below */
 
 static void update(void *user, double dt) {
   (void)user; (void)dt;
@@ -1450,6 +1703,16 @@ static void update(void *user, double dt) {
     }
   }
   previous_state=G.state;
+  /* the text settings: render only, saved with the graphics settings */
+  if(G.state==TITLE||G.paused) {
+    bool size=false,back=false;
+    for(int i=0;i<CAPTAINS;i++)if(i==0||G.ships[i].human) {
+      size|=cw_action_just_pressed(i,G.text_size);back|=cw_action_just_pressed(i,G.text_background);
+    }
+    if(size)cw_text_scale_cycle();
+    if(back)cw_text_backdrop_cycle();
+    if(size||back)text_settings_save();
+  }
   if(!G.paused)sync_visuals();
 }
 
@@ -1485,6 +1748,13 @@ static void cmd_match(int argc, const char **argv, cw_reply *r) {
   humans = humans < 1 ? 1 : humans > 4 ? 4 : humans;
   reset_match(mode < 0 ? 0 : mode > 2 ? 2 : mode, (1 << humans) - 1);
   cw_reply_printf(r, "{\"mode\":%d,\"humans\":%d}", G.mode, G.humans);
+}
+
+/* a test screen: captain 0's banked wood, coin and iron, for the harbor's upgrade panel (visual inspection) */
+static void cmd_stock(int argc,const char **argv,cw_reply *r) {
+  ship *s=&G.ships[0];
+  for(int k=0;k<3;k++)if(argc>1+k)s->stored[k==0?TIMBER:k==1?COIN:IRON]=atoi(argv[1+k]);
+  cw_reply_printf(r,"{\"wood\":%d,\"coin\":%d,\"iron\":%d}",s->stored[TIMBER],s->stored[COIN],s->stored[IRON]);
 }
 
 static void cmd_sink(int argc,const char **argv,cw_reply *r) {
@@ -1817,7 +2087,9 @@ static void cmd_bind(int argc, const char **argv, cw_reply *r) {
  * (100,000 triangles) stop casting into the sun's shadow map, which is redrawn
  * every frame because the ships move. Palms, rocks, flagpoles and ships keep
  * their shadows. The level reached is saved. */
-typedef struct { uint32_t magic, gfx; } save_data;
+/* text: the Text size and Text background settings (cw_text_scale_saved); an older 8-byte save reads it as 0,
+ * never chosen */
+typedef struct { uint32_t magic, gfx; uint8_t text, reserved[3]; } save_data;
 static save_data SAVE;
 enum { SAVE_MAGIC = 0x50495231u };
 static const char *const SCENERY_SHADOW_VALUES[] = { "Off", "On" };
@@ -1839,6 +2111,12 @@ static void apply_graphics(void) {
   for (int i = 0; i < 1 + CAPTAINS; i++)
     if (G.big_scenery[i]) set_cast_shadow(G.big_scenery[i], cw_gfx_get(G.lever_scenery_shadows) > 0);
 }
+/* the text settings changed: keep them (0 graphics: those stay never chosen) */
+static void text_settings_save(void) {
+  if (SAVE.magic != SAVE_MAGIC) { SAVE.magic = SAVE_MAGIC; SAVE.gfx = 0; }
+  SAVE.text = cw_text_scale_saved();
+  cw_save_commit();
+}
 static void quality_changed(cw_quality q, void *user) {
   (void)q; (void)user;
   apply_graphics();
@@ -1857,6 +2135,7 @@ static void init(void *user) {
   G.up_guns = cw_action_find("upgrade_guns"); G.start = cw_action_find("start");
   G.map_next=cw_action_find("map_next");
   G.pause=cw_action_find("game_pause");G.leave=cw_action_find("leave_match");
+  G.text_size=cw_action_find("text_size");G.text_background=cw_action_find("text_background");
   G.mode_l = cw_action_find("mode_left"); G.mode_r = cw_action_find("mode_right");
   G.font = cw_ui_font_sans();
   sound_init();
@@ -1866,6 +2145,7 @@ static void init(void *user) {
                                                 (cw_quality_lever_presets){ .very_low = 0, .low = 1, .medium = 2, .high = 2, .ultra = 2 });
   cw_quality_auto(true, 0);
   if (SAVE.magic == SAVE_MAGIC && SAVE.gfx) cw_quality_restore(SAVE.gfx);
+  if (SAVE.magic == SAVE_MAGIC) cw_text_scale_restore(SAVE.text);
   cw_quality_on_change(quality_changed, NULL);
   setup_world();
   G.post = cw_node_get(G.world, "Post");
@@ -1874,6 +2154,7 @@ static void init(void *user) {
   cw_debug_command("pirates_test_route","Test reachable cargo selection from the stalled cove approach; resets match",cmd_route_test);
   cw_debug_command("pirates_placement","Inspect rendered prop support, cargo water contact and hull clearance",cmd_placement);
   cw_debug_command("pirates_test_hull","Check shore approach, rotation, reverse escape and spawn clearance on both maps; resets match",cmd_hull_test);
+  cw_debug_command("pirates_stock","pirates_stock <wood> <coin> <iron>: captain 0's stored cargo, for inspecting the harbor panel",cmd_stock);
   cw_debug_command("pirates_sink","Sink ship 0..5 through normal damage rules for visual inspection",cmd_sink);
   cw_debug_command("pirates_effects","Read particle pool capacity, draw counts and active combat particles",cmd_effects);
   cw_debug_command("pirates_ai","Inspect a ship's steering waypoint and shoreline clearance",cmd_ai);
