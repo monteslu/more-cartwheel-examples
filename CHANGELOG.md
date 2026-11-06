@@ -4,8 +4,9 @@
 
 - Engine v0.34.1: text you can read on a small screen. Every game's Settings now has Text size (100%,
   125%, 150%, 200%) and Text background (Off, Outline, Panel: a dark outline or a dark panel behind
-  text over the scene). Both are saved. Shell games get the rows from the game shell; Pirates, Sky
-  Fighter and Tux Racer add them to their own settings, and Jetski to its Audio and text page.
+  text over the scene). Both are saved. Shell games get the rows from the game shell; Sky Fighter and
+  Tux Racer add them to their own settings (Tux Racer gains a Settings page), Jetski to its Audio and
+  text page, and Pirates sets both from its title and pause screens with a button each.
 - Every game's text meets one floor at 100%: body text (HUD values, menus, hints, results) at least
   26 px at 1080 lines (2.4% of the screen height), nothing anywhere under 18 px (1.7%). Title logos
   drawn as text are marked as art and left as they are.
@@ -13,7 +14,9 @@
   runs off screen; long menus and lists scroll with the selection, and wide hint lines break into lines.
 - Each game has `tests/<game>-text.json`, its screens for the engine's `tools/check-text.mjs`, checked at
   every text size at 1920x1080 and 1280x800. Every gate now fails a run that draws text under the floor.
-- Pirates: the HUD and menu sizes that were 12 to 20 px at 1080 lines are body size now.
+- Pirates: the ship, harbor and captain panel labels (17 to 22 px at 1080 lines before) are body size
+  now; the HUD lays out from measured text, labels keep clear of the top bar and the captain panels,
+  and the world labels step aside under the pause and results boxes.
 - Sky Fighter: the HUD (speed and altitude blocks, warnings, status panel, notices) is stacked by
   measured height; the title tiles, controls table and settings are measured and scroll when they do not
   fit; small labels (11 px on its 540-line canvas) are at least 13.
