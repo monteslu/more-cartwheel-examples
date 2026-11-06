@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.26.0
+
+- Engine v0.34.1: text you can read on a small screen. Every game's Settings now has Text size (100%,
+  125%, 150%, 200%) and Text background (Off, Outline, Panel: a dark outline or a dark panel behind
+  text over the scene). Both are saved. Shell games get the rows from the game shell; Pirates, Sky
+  Fighter and Tux Racer add them to their own settings, and Jetski to its Audio and text page.
+- Every game's text meets one floor at 100%: body text (HUD values, menus, hints, results) at least
+  26 px at 1080 lines (2.4% of the screen height), nothing anywhere under 18 px (1.7%). Title logos
+  drawn as text are marked as art and left as they are.
+- Every HUD, menu and results screen is laid out from measured text, so at 200% nothing overlaps or
+  runs off screen; long menus and lists scroll with the selection, and wide hint lines break into lines.
+- Each game has `tests/<game>-text.json`, its screens for the engine's `tools/check-text.mjs`, checked at
+  every text size at 1920x1080 and 1280x800. Every gate now fails a run that draws text under the floor.
+- Pirates: the HUD and menu sizes that were 12 to 20 px at 1080 lines are body size now.
+- Sky Fighter: the HUD (speed and altitude blocks, warnings, status panel, notices) is stacked by
+  measured height; the title tiles, controls table and settings are measured and scroll when they do not
+  fit; small labels (11 px on its 540-line canvas) are at least 13.
+- Jetski: the menus scroll with their selection, the Controls page puts a control under its label when
+  both do not fit, and the results table is measured; the hint line is larger.
+- Party pack: every mini-game's HUD, intro card and results grow with the text; the free play picker
+  (whose last row was off screen) and the trophy room scroll.
+- Tux Racer, Arena FPS, the brawler, the co-op platformer, crawler, the fighter and the horde shooter:
+  HUD values, menus and results at the body size and laid out for 200%, split-screen cards included.
+
 ## 0.25.0
 
 - Engine v0.33.1: Very Low draws every lit surface with a cheaper lighting model (the same colours,
