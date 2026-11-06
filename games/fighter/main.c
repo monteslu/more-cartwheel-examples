@@ -1054,7 +1054,7 @@ static void render(void *u, double alpha) {
   cw_r2d_begin(&(cw_r2d_pass_desc){ .clear = false });
   cw_vec2 cs = cw_r2d_canvas_size();
   float W = cs.x, H = cs.y, s = H / 540.0f;
-  if (cw_shell_screen_now() == CW_SHELL_PLAY || cw_shell_screen_now() == CW_SHELL_PAUSE) {
+  if (cw_shell_hud_shown()) { /* not under the shell's menus */
     bool hud_on = true;
 #if defined(FIGHTER_AUTOPILOT) || defined(FIGHTER_SCRIPTED)
     hud_on = !getenv("FIGHTER_NOHUD"); /* development (key art): the match and the select and result scenes with no 2D over them */

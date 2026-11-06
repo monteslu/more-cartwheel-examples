@@ -609,7 +609,7 @@ static void hud(void) {
       mid = ty + text(bt, cx, ty, bs, rgba(1, 0.4f, 0.2f, 1), CW_ALIGN_CENTER).height;
     }
   }
-  if (G.banner_t > 0 && cw_shell_screen_now() != CW_SHELL_PAUSE) { /* not under the pause menu's lines */
+  if (G.banner_t > 0 && cw_shell_hud_shown()) { /* not under the pause menu's lines */
     float a = cw_clampf(G.banner_t / 40.0f, 0, 1);
     if (G.banner_kind == 3) snprintf(b, sizeof b, "FLOOR %d  -  %s", G.banner_n + 1, FLOOR_NAME[CW_CLAMP(G.banner_n, 0, NLEVELS - 1)]);
     else snprintf(b, sizeof b, G.banner_kind == 2 ? "WAVE %d  -  BOSS INCOMING" : G.banner_kind == 1 ? "WAVE %d" : "HOLD THE YARD", G.banner_n);
@@ -694,7 +694,7 @@ static void render(void *u, double alpha) {
 #ifdef HORDE_AUTOPILOT
   hud_on = !getenv("HORDE_NOHUD"); /* development (key art): the play view with no HUD */
 #endif
-  if (hud_on && G.in_match && (sc == CW_SHELL_PLAY || sc == CW_SHELL_PAUSE)) { CW_PROFILE_SCOPE("horde.hud"); hud(); }
+  if (hud_on && G.in_match && cw_shell_hud_shown()) { CW_PROFILE_SCOPE("horde.hud"); hud(); }
   cw_quality_auto_measure(sc == CW_SHELL_PLAY);
   double now = cw_wall();
   if (T_last > 0) T_frame += (now - T_last) * 1000;

@@ -631,7 +631,7 @@ static void render(void *user, double alpha) {
     static int nohud = -1; if (nohud < 0) nohud = getenv("BRAWLER_NOHUD") != NULL; /* BRAWLER_NOHUD: no HUD at all (key art) */
     if (!nohud)
 #endif
-    ui_draw();
+    if (cw_shell_hud_shown()) ui_draw(); /* not under the shell's menus */
 #ifdef BRAWLER_AUTOPILOT
     bench_line();
 #endif

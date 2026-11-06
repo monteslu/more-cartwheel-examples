@@ -2681,11 +2681,11 @@ static void render(void *user, double alpha) {
   if (sc == CW_SHELL_PLAY || sc == CW_SHELL_PAUSE) {
     cw_r2d_begin(NULL);
     memset(hud_top_bottom, 0, sizeof hud_top_bottom);
-    bool paused = sc == CW_SHELL_PAUSE; /* the pause menu stands alone over the dimmed views */
+    bool paused = !cw_shell_hud_shown(); /* the pause menu stands alone over the dimmed views */
     if (G.state == ST_PLAY && !paused) for (int h = 0; h < G.players; h++) hud_view(h); /* the results replace the views' HUD */
     if (!paused) hud_feed();
-    if (G.state == ST_SETUP) hud_setup();
-    if (G.state == ST_OVER) hud_over();
+    if (G.state == ST_SETUP && !paused) hud_setup(); /* the shell's menus stand alone (cw_shell_hud_shown) */
+    if (G.state == ST_OVER && !paused) hud_over();
     cw_r2d_end();
   }
   cw_shell_draw();

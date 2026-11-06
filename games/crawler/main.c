@@ -570,7 +570,7 @@ static void hud(void) {
   char b[96];
   snprintf(b, sizeof b, "FLOOR %d", G.S.floor);
   float top = 12 * u + text(b, cs.x * 0.5f, 12 * u, 30 * u, rgba(1, 0.92f, 0.75f, 1), CW_ALIGN_CENTER).height;
-  if (G.banner_t > 0 && cw_shell_screen_now() != CW_SHELL_PAUSE) { /* each line under the last as measured; not under the pause menu's lines */
+  if (G.banner_t > 0 && cw_shell_hud_shown()) { /* each line under the last as measured; not under the pause menu's lines */
     float a = cw_clampf((float)G.banner_t / 40.0f, 0, 1), y = cs.y * 0.3f;
     snprintf(b, sizeof b, "FLOOR %d", G.S.floor);
     y += text(b, cs.x * 0.5f, y, 72 * u, rgba(1, 0.85f, 0.45f, a), CW_ALIGN_CENTER).height;
@@ -632,7 +632,7 @@ static void render(void *u, double alpha) {
   show_hud = !getenv("CRAWLER_NO_HUD"); /* key-art captures: the play with no panels and no rings */
   g_hide_rings = !show_hud;
 #endif
-  if (show_hud && G.in_match && (sc == CW_SHELL_PLAY || sc == CW_SHELL_PAUSE)) { CW_PROFILE_SCOPE("crawler.hud"); hud(); }
+  if (show_hud && G.in_match && cw_shell_hud_shown()) { CW_PROFILE_SCOPE("crawler.hud"); hud(); }
   cw_quality_auto_measure(sc == CW_SHELL_PLAY);
   double now = wall();
   if (G.t_last > 0) G.t_frame += (now - G.t_last) * 1000;

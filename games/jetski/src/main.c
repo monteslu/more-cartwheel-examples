@@ -612,7 +612,7 @@ static void render(void *user, double alpha) {
   double t1 = cw_time();
   view_sync(alpha);
   perf_read();
-  if (cw_shell_screen_now() == CW_SHELL_PLAY) hud_draw();
+  if (cw_shell_hud_shown()) hud_draw(); /* not under the shell's menus */
   cw_shell_draw();
   perf[4] += ((float)((cw_time() - t1) * 1000.0) - perf[4]) * 0.05f;
 }
