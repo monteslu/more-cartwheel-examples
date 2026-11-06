@@ -39,7 +39,7 @@ jobs:
       - name: System packages
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends cmake ninja-build mesa-vulkan-drivers libvulkan1
+          sudo apt-get install -y --no-install-recommends cmake ninja-build mesa-vulkan-drivers libvulkan1 libgles2 libegl1
       - name: Cache dependencies
         uses: actions/cache@v6
         with:
