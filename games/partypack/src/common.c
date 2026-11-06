@@ -306,6 +306,27 @@ void ui_text(const char *s, cw_vec2 p, float size, cw_color c, cw_text_align al)
   else if (al == CW_ALIGN_RIGHT) p.x -= w;
   cw_r2d_text(pp_font(), s, p, &(cw_text_style){ .size = size, .color = c, .outline_width = size * 0.07f, .outline_color = cw_rgba(0.05f, 0.04f, 0.1f, c.a) });
 }
+/* Text size (cartwheel/render2d.h): the player's text scale grows every size here; layouts read these to make room */
+float ui_grow(float size) { return cw_text_drawn_size(pp_font(), size) / size; }
+float ui_line_h(float size) { return cw_font_measure(pp_font(), "Ag", &(cw_text_style){ .size = size }).height; }
+float ui_wrap_h(const char *s, float w, float size) { return cw_font_measure(pp_font(), s, &(cw_text_style){ .size = size, .wrap_width = w }).height; }
+/* text over something it labels (a blob, a tile): p.y is where its top sits at 100%; larger text grows upward, its foot stays */
+void ui_text_up(const char *s, cw_vec2 p, float size, cw_color c, cw_text_align al) {
+  float h = ui_line_h(size);
+  ui_text(s, cw_v2(p.x, p.y + h / ui_grow(size) - h), size, c, al);
+}
+cw_vec2 ui_prompt_up(const char *s, int player, cw_vec2 p, float size, cw_color c, cw_text_align al) {
+  float h = ui_prompt_size(s, player, size).y;
+  return ui_prompt(s, player, cw_v2(p.x, p.y + h / ui_grow(size) - h), size, c, al);
+}
+/* the player strip across the top of play: chips as tall as their two lines draw, the clock's pill under them */
+float ui_chip_h(void) { return fmaxf(58, 3 + 24 * ui_grow(22) + 31 * ui_grow(26)); }
+float ui_clock_y(void) { return 10 + ui_chip_h() + 8; }
+float ui_clock_h(void) { return 40 * ui_grow(34); }
+/* how far the strip and the clock reach below where they end at 100% (0 then): a game's own top lines move down by it */
+bool pp_clock_on = true;
+float ui_hud_shift(void) { return pp_clock_on ? ui_clock_y() + ui_clock_h() - 116 : 10 + ui_chip_h() - 68; }
+float ui_grew(float size) { float h = ui_line_h(size); return h - h / ui_grow(size); }
 void ui_text_wrap(const char *s, cw_rect r, float size, cw_color c, cw_text_align al) {
   float x = r.x;
   if (al == CW_ALIGN_CENTER) x = r.x + r.w * 0.5f;

@@ -225,7 +225,7 @@ static void draw(mg_ctx *c, float alpha, float t) {
     if (Rc.finished[i]) {
       char b[16];
       snprintf(b, sizeof b, "#%d", Rc.finished[i]);
-      ui_text(b, cw_v2(s.x, s.y - 40), 28, PCOL[i], CW_ALIGN_CENTER);
+      ui_text_up(b, cw_v2(s.x, s.y - 40), 28, PCOL[i], CW_ALIGN_CENTER);
     }
   }
   /* nitro charges per player under the strip */

@@ -172,7 +172,7 @@ static void draw(mg_ctx *c, float alpha, float t) {
     cw_vec2 s = n3_project((t3_vec3){ p.x, p.y + 2.3f, p.z });
     cw_vec2 tri[3] = { cw_v2(s.x - 12, s.y - 10), cw_v2(s.x + 12, s.y - 10), cw_v2(s.x, s.y + 4) };
     cw_r2d_polygon(tri, 3, PCOL[i]);
-    ui_text(!c->human[i] ? "CPU" : PNAME[i], cw_v2(s.x, s.y - 40), 24, PCOL[i], CW_ALIGN_CENTER);
+    ui_text_up(!c->human[i] ? "CPU" : PNAME[i], cw_v2(s.x, s.y - 40), 24, PCOL[i], CW_ALIGN_CENTER);
   }
 }
 

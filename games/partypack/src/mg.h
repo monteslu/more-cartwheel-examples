@@ -139,6 +139,17 @@ void fx_draw(void);
 void ui_text(const char *s, cw_vec2 p, float size, cw_color c, cw_text_align al);
 void ui_text_wrap(const char *s, cw_rect r, float size, cw_color c, cw_text_align al);
 float ui_text_w(const char *s, float size);
+float ui_grow(float size);                       /* how much the player's text scale grows text asked at this size (1 at 100%) */
+float ui_line_h(float size);                     /* the height of one line at this size, as drawn */
+float ui_wrap_h(const char *s, float w, float size); /* the height of text wrapped to w */
+void ui_text_up(const char *s, cw_vec2 p, float size, cw_color c, cw_text_align al); /* p.y: its top at 100%; it grows upward */
+cw_vec2 ui_prompt_up(const char *s, int player, cw_vec2 p, float size, cw_color c, cw_text_align al);
+float ui_chip_h(void);   /* the player strip's chip height */
+float ui_clock_y(void);  /* the clock pill under the strip: its top and height */
+float ui_clock_h(void);
+float ui_hud_shift(void); /* how far the strip and clock reach below their 100% place: a game's top lines move down by it */
+extern bool pp_clock_on;  /* the clock pill shows under the strip (a game with a clock): ui_hud_shift counts it */
+float ui_grew(float size); /* how much taller a line at this size draws than at 100%: what the lines under it move down by */
 void ui_panel(cw_rect r, cw_color fill, cw_color edge);
 void ui_bar(cw_rect r, float f, cw_color c);
 void ui_pill(cw_rect r, cw_color c);

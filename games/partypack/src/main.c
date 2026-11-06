@@ -579,6 +579,7 @@ static void tick_play(void) {
 }
 
 static void sim_step(void);
+static int trophy_scroll; /* the trophy room's list, scrolled by up / down when it does not fit (the screen only, no game state) */
 #ifdef PP_AUTOPILOT
 /* Balance runs (tools/balance.mjs): PP_BATCH=<n> plays n whole tournaments of 2D mini-games per process as fast as
  * the CPU goes inside one tick, and prints one GAME line per mini-game and one TOURN line per tournament. PP_SKILLS
@@ -669,9 +670,13 @@ static void sim_step(void) {
     }
     break;
   }
-  case S_TROPHY:
+  case S_TROPHY: {
+    int n = menu_nav(); /* a list longer than the screen at a large text size scrolls */
+    if (n == 2) trophy_scroll++;
+    if (n == -2 && trophy_scroll > 0) trophy_scroll--;
     if (menu_back() || menu_ok()) { sfx(SFX_BACK, 1, 1); to_menu(); }
     break;
+  }
   case S_BOARD: {
     bool done_anim = G.st_ticks > 150;
     if (G.round >= G.rounds && G.tournament) {
@@ -718,11 +723,11 @@ static cw_vec2 board_cell_pos(int i, int rows) {
 static void draw_chip(int p, float x, float y, float w, const char *line, float alpha) {
   cw_color c = PCOL[p];
   bool out = G.c.eliminated[p];
-  cw_rect r = cw_rect_make(x, y, w, 58);
+  cw_rect r = cw_rect_make(x, y, w, ui_chip_h());
   ui_panel(r, cw_rgba(0.08f, 0.08f, 0.16f, 0.82f * alpha), col_a(c, out ? 0.2f : 0.9f));
-  ui_blob(cw_v2(x + 30, y + 31), 18, p, 0, 0, 1, out ? 3 : 0, !G.human[p]);
+  ui_blob(cw_v2(x + 30, y + ui_chip_h() * (31.0f / 58.0f)), 18, p, 0, 0, 1, out ? 3 : 0, !G.human[p]);
   ui_text(!G.human[p] ? "CPU" : PNAME[p], cw_v2(x + 58, y + 3), 22, col_a(c, out ? 0.4f : 1), CW_ALIGN_LEFT);
-  if (line && line[0]) ui_text(line, cw_v2(x + 58, y + 27), 26, cw_rgba(1, 1, 1, out ? 0.4f : 1), CW_ALIGN_LEFT);
+  if (line && line[0]) ui_text(line, cw_v2(x + 58, y + 3 + 24 * ui_grow(22)), 26, cw_rgba(1, 1, 1, out ? 0.4f : 1), CW_ALIGN_LEFT);
 }
 
 static void draw_strip(void) {
@@ -733,12 +738,54 @@ static void draw_strip(void) {
     if (d->score_text) d->score_text(&G.c, p, line, sizeof line);
     draw_chip(p, x0 + p * (cw_ + gap), 10, cw_, line, 1);
   }
-  if (d->seconds > 0 && G.state == S_PLAY) {
+  /* the clock: not under the shell's pause menu, whose title would sit on it at a large text size */
+  if (d->seconds > 0 && G.state == S_PLAY && cw_shell_screen_now() == CW_SHELL_PLAY) {
     char t[16];
     snprintf(t, sizeof t, "%d", (int)ceilf(G.c.time_left));
-    ui_pill(cw_rect_make(STAGE_W * 0.5f - 44, 76, 88, 40), cw_rgba(0, 0, 0, 0.5f));
-    ui_text(t, cw_v2(STAGE_W * 0.5f, 78), 34, G.c.time_left < 6 ? cw_rgba(1, 0.4f, 0.35f, 1) : cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
+    float py = ui_clock_y(), ph = ui_clock_h(), pw = fmaxf(88, ui_text_w(t, 34) + 40 * ui_grow(34));
+    ui_pill(cw_rect_make(STAGE_W * 0.5f - pw * 0.5f, py, pw, ph), cw_rgba(0, 0, 0, 0.5f));
+    ui_text(t, cw_v2(STAGE_W * 0.5f, py + 2 * ui_grow(34)), 34, G.c.time_left < 6 ? cw_rgba(1, 0.4f, 0.35f, 1) : cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
   }
+}
+
+/* Every screen is laid out from its text as drawn (the player's Text size, cartwheel/render2d.h): rows as tall as their
+ * text, panels as wide as their widest line, lists that run out of room scroll with their selection, and lines that
+ * stand over something (a tile, a podium) grow upward. At 100% each sits where it always did. */
+
+/* the first of n rows to show when `fit` of them fit, keeping `sel` in view */
+static int scroll_first(int n, int fit, int sel) {
+  if (fit >= n) return 0;
+  int first = sel - fit / 2;
+  if (first < 0) first = 0;
+  if (first > n - fit) first = n - fit;
+  return first;
+}
+static void scroll_arrow(float cx, float y, float dir, float s) {
+  cw_vertex2d v[3] = { { cw_v2(cx - s, y), { 0, 0 }, cw_rgba(1, 1, 1, 0.85f) }, { cw_v2(cx + s, y), { 0, 0 }, cw_rgba(1, 1, 1, 0.85f) }, { cw_v2(cx, y + dir * s), { 0, 0 }, cw_rgba(1, 1, 1, 0.85f) } };
+  static const uint32_t idx[3] = { 0, 1, 2 };
+  cw_r2d_triangles((cw_texture){ 0 }, v, 3, idx, 3);
+}
+/* a hint of prompt parts, centred, as many to a line as fit in w, the last line's foot at `bottom`; returns the top */
+static float hint_lines(const char *const *parts, int n, float cx, float w, float bottom, float size, cw_color c) {
+  float gap = 30 * ui_grow(size), lh = 0, wid[8];
+  int brk[9], nl = 0;
+  for (int i = 0; i < n; i++) { cw_vec2 s = ui_prompt_size(parts[i], -1, size); wid[i] = s.x; lh = fmaxf(lh, s.y); }
+  brk[nl++] = 0;
+  for (int i = 1, lw = 0; i <= n; i++) {
+    float cur = 0;
+    for (int k = brk[nl - 1]; k < i; k++) cur += wid[k] + (k > brk[nl - 1] ? gap : 0);
+    (void)lw;
+    if (i < n && cur + gap + wid[i] > w) brk[nl++] = i;
+  }
+  brk[nl] = n;
+  float top = bottom - lh * (float)nl;
+  for (int l = 0; l < nl; l++) {
+    float lwid = 0;
+    for (int k = brk[l]; k < brk[l + 1]; k++) lwid += wid[k] + (k > brk[l] ? gap : 0);
+    float x = cx - lwid * 0.5f;
+    for (int k = brk[l]; k < brk[l + 1]; k++) { ui_prompt(parts[k], -1, cw_v2(x, top + lh * (float)l), size, c, CW_ALIGN_LEFT); x += wid[k] + gap; }
+  }
+  return top;
 }
 
 static void draw_menu(void) {
@@ -746,44 +793,89 @@ static void draw_menu(void) {
   ui_title("PARTY PACK", cw_v2(STAGE_W / 2, 24), 96, G.clock);
   static const char *labels[6] = { "Party Tournament", "Free Play", "Trophy Room", "Rounds", "CPU Skill", "Rumble" };
   static const char *skills[3] = { "Easy", "Medium", "Hard" };
-  for (int i = 0; i < 6; i++) {
-    bool sel = i == G.menu_item;
-    cw_rect r = cw_rect_make(STAGE_W / 2 - 250, 300 + i * 60, 500, 54);
-    ui_panel(r, sel ? cw_rgba(1, 0.85f, 0.3f, 0.95f) : cw_rgba(0.08f, 0.07f, 0.2f, 0.8f), sel ? cw_rgba(1, 1, 1, 0.9f) : cw_rgba(1, 1, 1, 0.15f));
-    cw_color tc = sel ? cw_rgba(0.15f, 0.1f, 0.25f, 1) : cw_rgba(1, 1, 1, 1);
-    ui_text(labels[i], cw_v2(r.x + 28, r.y + 6), 34, tc, CW_ALIGN_LEFT);
-    char v[24] = "";
-    if (i == 3) snprintf(v, sizeof v, "< %d >", 4 + 2 * (SV->rounds_opt % 3));
-    if (i == 4) snprintf(v, sizeof v, "< %s >", skills[SV->skill % 3]);
-    if (i == 5) snprintf(v, sizeof v, "< %s >", SV->rumble_off ? "Off" : "On");
-    if (v[0]) ui_text(v, cw_v2(r.x + r.w - 28, r.y + 6), 34, tc, CW_ALIGN_RIGHT);
-  }
-  char s[160];
+  char vals[6][24] = { "", "", "", "", "", "" };
+  snprintf(vals[3], sizeof vals[3], "< %d >", 4 + 2 * (SV->rounds_opt % 3));
+  snprintf(vals[4], sizeof vals[4], "< %s >", skills[SV->skill % 3]);
+  snprintf(vals[5], sizeof vals[5], "< %s >", SV->rumble_off ? "Off" : "On");
   /* a pad with no seat joins with its south button (the shell's join press reads the pad itself, so the hint names that
    * input, not an action) */
-  snprintf(s, sizeof s, "%d player%s + %d CPU     new pad: {pad:south} joins     {btn_north} join or leave     {ui_back} title", G.humans, G.humans == 1 ? "" : "s", NP - G.humans);
-  ui_prompt(s, -1, cw_v2(STAGE_W / 2, 668), 26, cw_rgba(1, 1, 1, 0.85f), CW_ALIGN_CENTER);
+  char who[48];
+  snprintf(who, sizeof who, "%d player%s + %d CPU", G.humans, G.humans == 1 ? "" : "s", NP - G.humans);
+  const char *parts[4] = { who, "new pad: {pad:south} joins", "{btn_north} join or leave", "{ui_back} title" };
+  float hs = 26, ht = hint_lines(parts, 4, STAGE_W / 2, STAGE_W - 80, 668 + ui_line_h(hs) / ui_grow(hs), hs, cw_rgba(1, 1, 1, 0.85f));
+  float g = ui_grow(34), rh = 54 * g, step = rh + 6 * g, w = 500;
+  for (int i = 0; i < 6; i++) w = fmaxf(w, 56 * g + ui_text_w(labels[i], 34) + (vals[i][0] ? 30 * g + ui_text_w(vals[i], 34) : 0));
+  w = fminf(w, STAGE_W - 40);
+  float title_bottom = 24 + 120 * ui_grow(96), top = fmaxf(title_bottom + 12, fminf(300, ht - 12 - 6 * step + 6 * g));
+  int fit = (int)((ht - 12 - top + 6 * g) / step), first = scroll_first(6, fit < 1 ? 1 : fit, G.menu_item);
+  if (fit > 6) fit = 6;
+  if (fit < 1) fit = 1;
+  for (int k = 0; k < fit; k++) {
+    int i = first + k;
+    bool sel = i == G.menu_item;
+    cw_rect r = cw_rect_make(STAGE_W / 2 - w / 2, top + k * step, w, rh);
+    ui_panel(r, sel ? cw_rgba(1, 0.85f, 0.3f, 0.95f) : cw_rgba(0.08f, 0.07f, 0.2f, 0.8f), sel ? cw_rgba(1, 1, 1, 0.9f) : cw_rgba(1, 1, 1, 0.15f));
+    cw_color tc = sel ? cw_rgba(0.15f, 0.1f, 0.25f, 1) : cw_rgba(1, 1, 1, 1);
+    ui_text(labels[i], cw_v2(r.x + 28 * g, r.y + 6 * g), 34, tc, CW_ALIGN_LEFT);
+    if (vals[i][0]) ui_text(vals[i], cw_v2(r.x + r.w - 28 * g, r.y + 6 * g), 34, tc, CW_ALIGN_RIGHT);
+  }
+  if (first > 0) scroll_arrow(STAGE_W / 2, top - 4, -1, 12 * g);
+  if (first + fit < 6) scroll_arrow(STAGE_W / 2, top + fit * step - 6 * g + 4, 1, 12 * g);
 }
 
 static void draw_pick(void) {
   ui_grad(cw_rect_make(0, 0, STAGE_W, STAGE_H), cw_rgba(0.04f, 0.05f, 0.16f, 0.82f), cw_rgba(0.08f, 0.04f, 0.18f, 0.9f));
   ui_text("FREE PLAY", cw_v2(STAGE_W / 2, 24), 64, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
+  /* back, beside the heading */
+  ui_prompt("{ui_back} back", -1, cw_v2(60, 24 + (ui_line_h(64) - ui_prompt_size("{ui_back} back", -1, 26).y) * 0.5f), 26, cw_rgba(1, 1, 1, 0.8f), CW_ALIGN_LEFT);
+  /* three cards to a row (the pad moves by three); each card as tall as its text wraps. When a card cannot hold the rule
+   * as well, the cards show the name and the line under it, and the chosen game's rule runs under the grid */
+  float x0 = 110, gx = 20, cwid = 350, inner = cwid - 36, top = 24 + ui_line_h(64) + 12, bottom = STAGE_H - 14;
+  float nh = 0, th = 0, ih = ui_line_h(22);
   for (int i = 0; i < MG_N; i++) {
-    int cx = i % 3, cy = i / 3;
-    cw_rect r = cw_rect_make(110 + cx * 370, 120 + cy * 170, 350, 150);
+    char info[48];
+    if (!is_unlocked(i)) snprintf(info, sizeof info, "needs %d party points", MG_LIST[i]->unlock_points);
+    else snprintf(info, sizeof info, "%s   best %g", MG_LIST[i]->kind, SV->best[i]);
+    ih = fmaxf(ih, ui_wrap_h(info, inner, 22));
+    nh = fmaxf(nh, ui_wrap_h(MG_LIST[i]->name, inner, 36));
+    th = fmaxf(th, ui_wrap_h(is_unlocked(i) ? MG_LIST[i]->tagline : "Locked", inner, 24));
+  }
+  float pad = 10 * ui_grow(36), full_h = pad + nh + 4 + th + 4 + ih + pad, small_h = pad + nh + 4 + ih + pad;
+  int rows = (MG_N + 2) / 3, selrow = G.pick_item / 3;
+  bool compact = (bottom - top + 20) / (full_h + 20) < 2.0f;
+  if (fabsf(ui_grow(24) - 1) < 1e-3f) full_h = fmaxf(full_h, 150); /* 100%: the cards as they always were */
+  float ch = compact ? small_h : full_h, detail_top = bottom;
+  const mg_def *sd = MG_LIST[G.pick_item];
+  if (compact) {
+    const char *rule = is_unlocked(G.pick_item) ? sd->tagline : "Locked";
+    float dh = ui_wrap_h(rule, STAGE_W - 2 * x0, 24);
+    detail_top = bottom - dh;
+    ui_text_wrap(rule, cw_rect_make(x0, detail_top, STAGE_W - 2 * x0, dh), 24, cw_rgba(1, 0.92f, 0.6f, 1), CW_ALIGN_CENTER);
+    detail_top -= 10;
+  }
+  int fit = (int)((detail_top - top + 20) / (ch + 20));
+  if (fit < 1) fit = 1;
+  if (fit > rows) fit = rows;
+  int first = scroll_first(rows, fit, selrow);
+  for (int i = first * 3; i < MG_N && i < (first + fit) * 3; i++) {
+    int cx = i % 3, cy = i / 3 - first;
+    cw_rect r = cw_rect_make(x0 + cx * (cwid + gx), top + cy * (ch + 20), cwid, ch);
     bool sel = i == G.pick_item, lock = !is_unlocked(i);
     const mg_def *d = MG_LIST[i];
     ui_panel(r, sel ? cw_rgba(1, 0.85f, 0.3f, 0.95f) : cw_rgba(0.06f, 0.08f, 0.2f, 0.85f), sel ? cw_rgba(1, 1, 1, 1) : cw_rgba(1, 1, 1, 0.2f));
     cw_color tc = sel ? cw_rgba(0.12f, 0.08f, 0.2f, 1) : cw_rgba(1, 1, 1, 1);
-    ui_text(d->name, cw_v2(r.x + 18, r.y + 10), 36, tc, CW_ALIGN_LEFT);
-    ui_text_wrap(lock ? "Locked" : d->tagline, cw_rect_make(r.x + 18, r.y + 58, r.w - 36, 60), 24, tc, CW_ALIGN_LEFT);
+    float y = r.y + pad;
+    ui_text_wrap(d->name, cw_rect_make(r.x + 18, y, inner, nh), 36, tc, CW_ALIGN_LEFT);
+    y += nh + 4;
+    if (!compact) { ui_text_wrap(lock ? "Locked" : d->tagline, cw_rect_make(r.x + 18, y, inner, th), 24, tc, CW_ALIGN_LEFT); y += th + 4; }
     char s[48];
     if (lock) snprintf(s, sizeof s, "needs %d party points", d->unlock_points);
     else snprintf(s, sizeof s, "%s   best %g", d->kind, SV->best[i]);
-    ui_text(s, cw_v2(r.x + 18, r.y + 112), 22, sel ? tc : cw_rgba(0.8f, 0.85f, 1, 0.9f), CW_ALIGN_LEFT);
+    ui_text_wrap(s, cw_rect_make(r.x + 18, r.y + ch - pad - ih, inner, ih), 22, sel ? tc : cw_rgba(0.8f, 0.85f, 1, 0.9f), CW_ALIGN_LEFT);
     if (lock) cw_r2d_round_rect(r, 16, 8, cw_rgba(0, 0, 0, 0.45f));
   }
-  ui_prompt("{ui_back} back", -1, cw_v2(60, 670), 26, cw_rgba(1, 1, 1, 0.8f), CW_ALIGN_LEFT);
+  if (first > 0) scroll_arrow(STAGE_W / 2, top - 4, -1, 12);
+  if (first + fit < rows) scroll_arrow(STAGE_W / 2, top + fit * (ch + 20) - 16, 1, 12);
 }
 
 static void draw_trophy(void) {
@@ -791,18 +883,39 @@ static void draw_trophy(void) {
   ui_text("TROPHY ROOM", cw_v2(STAGE_W / 2, 24), 64, cw_rgba(1, 0.9f, 0.4f, 1), CW_ALIGN_CENTER);
   char s[200];
   snprintf(s, sizeof s, "party points %d   tournaments %d", SV->points_total, SV->tournaments);
-  ui_text(s, cw_v2(STAGE_W / 2, 120), 34, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
+  float y = fmaxf(120, 24 + ui_line_h(64));
+  ui_text(s, cw_v2(STAGE_W / 2, y), 34, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
+  y += ui_line_h(34);
+  float by = fmaxf(250, y + 10 + 44);
+  float wins_bottom = 0;
   for (int p = 0; p < NP; p++) {
-    ui_blob(cw_v2(240 + p * 270, 250), 44, p, 0, 0, 1, SV->wins[p] ? 1 : 0, false);
+    ui_blob(cw_v2(240 + p * 270, by), 44, p, 0, 0, 1, SV->wins[p] ? 1 : 0, false);
     snprintf(s, sizeof s, "%d win%s", SV->wins[p], SV->wins[p] == 1 ? "" : "s");
-    ui_text(s, cw_v2(240 + p * 270, 310), 30, PCOL[p], CW_ALIGN_CENTER);
+    ui_text(s, cw_v2(240 + p * 270, by + 60), 30, PCOL[p], CW_ALIGN_CENTER);
+    wins_bottom = by + 60 + ui_line_h(30);
   }
-  int n = 0;
+  /* the games: two columns when the longest line fits half the width, otherwise one; up / down scroll a list too long */
+  float top = fmaxf(380, wins_bottom + 8), lh = fmaxf(42, ui_line_h(26) * 1.05f), widest = 0;
+  char lines[MG_MAX][96];
   for (int i = 0; i < MG_N; i++) {
-    snprintf(s, sizeof s, "%s: %s  played %d  best %g", MG_LIST[i]->name, is_unlocked(i) ? "open" : "locked", SV->plays[i], SV->best[i]);
-    ui_text(s, cw_v2(180 + (n % 2) * 480, 380 + (n / 2) * 42), 26, is_unlocked(i) ? cw_rgba(1, 1, 1, 1) : cw_rgba(1, 1, 1, 0.5f), CW_ALIGN_LEFT);
-    n++;
+    snprintf(lines[i], sizeof lines[i], "%s: %s  played %d  best %g", MG_LIST[i]->name, is_unlocked(i) ? "open" : "locked", SV->plays[i], SV->best[i]);
+    widest = fmaxf(widest, ui_text_w(lines[i], 26));
   }
+  int cols = widest <= 460 ? 2 : 1, rows = (MG_N + cols - 1) / cols;
+  float colx = cols == 2 ? 180 : fmaxf(40, (STAGE_W - widest) * 0.5f);
+  int fit = (int)((STAGE_H - 14 - top) / lh);
+  if (fit < 1) fit = 1;
+  if (fit > rows) fit = rows;
+  if (trophy_scroll > rows - fit) trophy_scroll = rows - fit;
+  if (trophy_scroll < 0) trophy_scroll = 0;
+  for (int r = 0; r < fit; r++)
+    for (int c = 0; c < cols; c++) {
+      int i = (trophy_scroll + r) * cols + c;
+      if (i >= MG_N) continue;
+      ui_text(lines[i], cw_v2(colx + c * 480, top + r * lh), 26, is_unlocked(i) ? cw_rgba(1, 1, 1, 1) : cw_rgba(1, 1, 1, 0.5f), CW_ALIGN_LEFT);
+    }
+  if (trophy_scroll > 0) scroll_arrow(STAGE_W - 60, top + 12, -1, 12);
+  if (trophy_scroll + fit < rows) scroll_arrow(STAGE_W - 60, top + fit * lh - 12, 1, 12);
 }
 
 static void draw_board(void) {
@@ -812,39 +925,77 @@ static void draw_board(void) {
   if (G.round >= G.rounds) snprintf(s, sizeof s, "FINAL STANDINGS");
   else snprintf(s, sizeof s, "ROUND %d OF %d", G.round + 1, G.rounds);
   ui_text(s, cw_v2(STAGE_W / 2, 18), 58, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
-  for (int i = 0; i <= N; i++) { /* labels on the special tiles */
+  float y = fmaxf(96, 18 + ui_line_h(58));
+  for (int i = 0; i <= N; i++) { /* labels on the special tiles: over the tile, growing upward */
     int kind = i == N ? EV_NONE : cell_used(i) ? EV_NONE : cell_kind(i);
     if (i != N && kind == EV_NONE) continue;
     cw_vec2 p = hub_cell_screen(i);
-    if (i == N) ui_text("END", cw_v2(p.x, p.y - 30), 26, cw_rgba(1, 0.95f, 0.5f, 1), CW_ALIGN_CENTER);
-    else if (kind == EV_STAR) ui_text("+2", cw_v2(p.x, p.y - 30), 24, cw_rgba(1, 0.7f, 0.95f, 1), CW_ALIGN_CENTER);
-    else if (kind == EV_STEAL) ui_text("TAKE", cw_v2(p.x, p.y - 28), 20, cw_rgba(1, 0.65f, 0.3f, 1), CW_ALIGN_CENTER);
-    else if (kind == EV_SWAP) ui_text("SWAP", cw_v2(p.x, p.y - 28), 20, cw_rgba(0.4f, 0.95f, 0.9f, 1), CW_ALIGN_CENTER);
+    if (i == N) ui_text_up("END", cw_v2(p.x, p.y - 30), 26, cw_rgba(1, 0.95f, 0.5f, 1), CW_ALIGN_CENTER);
+    else if (kind == EV_STAR) ui_text_up("+2", cw_v2(p.x, p.y - 30), 24, cw_rgba(1, 0.7f, 0.95f, 1), CW_ALIGN_CENTER);
+    else if (kind == EV_STEAL) ui_text_up("TAKE", cw_v2(p.x, p.y - 28), 20, cw_rgba(1, 0.65f, 0.3f, 1), CW_ALIGN_CENTER);
+    else if (kind == EV_SWAP) ui_text_up("SWAP", cw_v2(p.x, p.y - 28), 20, cw_rgba(0.4f, 0.95f, 0.9f, 1), CW_ALIGN_CENTER);
   }
+  float chip_y = STAGE_H - 22 - ui_chip_h();
   for (int p = 0; p < NP; p++) {
     snprintf(s, sizeof s, "%d", G.st_ticks < 110 ? G.mid[p] : G.points[p]);
-    draw_chip(p, 70 + p * 285, 640, 270, s, 1);
+    draw_chip(p, 70 + p * 285, chip_y, 270, s, 1);
   }
-  if (G.tournament && G.round > 0 && G.st_ticks > 110) { /* what the board did, in words */
-    for (int i = 0; i < G.nev; i++) {
-      char e[96];
-      int p = G.ev[i].p, q = G.ev[i].q;
-      if (G.ev[i].kind == EV_STAR) snprintf(e, sizeof e, "%s lands on a star: +2", PNAME[p]);
-      else if (G.ev[i].kind == EV_STEAL) {
-        if (q >= 0) snprintf(e, sizeof e, "%s takes %d from %s", PNAME[p], G.ev[i].amt, PNAME[q]);
-        else snprintf(e, sizeof e, "%s lands on a take space: nobody is ahead", PNAME[p]);
-      } else if (G.ev[i].kind == EV_SWAP) snprintf(e, sizeof e, "%s swaps places with %s", PNAME[p], PNAME[q]);
-      else snprintf(e, sizeof e, "%s: underdog point, +1", PNAME[p]);
-      cw_r2d_rect(cw_rect_make(STAGE_W / 2 - 250, 140 + (float)i * 30 - 2, 500, 28), cw_rgba(0, 0, 0, 0.35f));
-      ui_text(e, cw_v2(STAGE_W / 2, 140 + (float)i * 30), 22, PCOL[p], CW_ALIGN_CENTER);
-    }
-  }
+  /* the prompt over the chips */
+  const char *pr = G.round < G.rounds ? "{ui_accept} play" : "{ui_accept} the final standings";
+  float pr_y = fminf(580, chip_y - 10 - ui_prompt_size(pr, -1, 28).y);
   if (G.round < G.rounds) {
     snprintf(s, sizeof s, !G.tournament || !is_double_round(G.round) ? "Next: %s" : G.round == G.rounds - 1 ? "Next: %s   (triple points)" : "Next: %s   (double points)", MG_LIST[G.order[G.round]]->name);
-    ui_text(s, cw_v2(STAGE_W / 2, 96), 40, cw_rgba(1, 0.92f, 0.5f, 1), CW_ALIGN_CENTER);
-    if (G.st_ticks > 150) ui_prompt("{ui_accept} play", -1, cw_v2(STAGE_W / 2, 580), 28, cw_rgba(1, 1, 1, 0.5f + 0.5f * sinf(G.clock * 6)), CW_ALIGN_CENTER);
+    ui_text(s, cw_v2(STAGE_W / 2, y), 40, cw_rgba(1, 0.92f, 0.5f, 1), CW_ALIGN_CENTER);
+    y += ui_line_h(40);
+    if (G.st_ticks > 150) ui_prompt(pr, -1, cw_v2(STAGE_W / 2, pr_y), 28, cw_rgba(1, 1, 1, 0.5f + 0.5f * sinf(G.clock * 6)), CW_ALIGN_CENTER);
   } else {
-    ui_prompt("{ui_accept} the final standings", -1, cw_v2(STAGE_W / 2, 580), 28, cw_rgba(1, 1, 1, 0.5f + 0.5f * sinf(G.clock * 6)), CW_ALIGN_CENTER);
+    ui_prompt(pr, -1, cw_v2(STAGE_W / 2, pr_y), 28, cw_rgba(1, 1, 1, 0.5f + 0.5f * sinf(G.clock * 6)), CW_ALIGN_CENTER);
+  }
+  if (G.tournament && G.round > 0 && G.st_ticks > 110) { /* what the board did, in words: in two columns when one runs out of room */
+    char e[8][96];
+    float ew = 0, step = 30 * ui_grow(22), top = fmaxf(140, y + 4);
+    int n = G.nev < 8 ? G.nev : 8;
+    for (int i = 0; i < n; i++) {
+      int p = G.ev[i].p, q = G.ev[i].q;
+      if (G.ev[i].kind == EV_STAR) snprintf(e[i], sizeof e[i], "%s lands on a star: +2", PNAME[p]);
+      else if (G.ev[i].kind == EV_STEAL) {
+        if (q >= 0) snprintf(e[i], sizeof e[i], "%s takes %d from %s", PNAME[p], G.ev[i].amt, PNAME[q]);
+        else snprintf(e[i], sizeof e[i], "%s lands on a take space: nobody is ahead", PNAME[p]);
+      } else if (G.ev[i].kind == EV_SWAP) snprintf(e[i], sizeof e[i], "%s swaps places with %s", PNAME[p], PNAME[q]);
+      else snprintf(e[i], sizeof e[i], "%s: underdog point, +1", PNAME[p]);
+      ew = fmaxf(ew, ui_text_w(e[i], 22) + 24);
+    }
+    int per = (int)((pr_y - 6 - top) / step);
+    if (per < 1) per = 1;
+    int cols = n > per ? 2 : 1;
+    float bw = fmaxf(500, ew), gap = 20;
+    if (cols == 2) bw = fminf(bw, (STAGE_W - 40 - gap) * 0.5f);
+    for (int i = 0; i < n; i++) {
+      int c = cols == 2 ? i / ((n + 1) / 2) : 0, r = cols == 2 ? i % ((n + 1) / 2) : i;
+      float cx = cols == 2 ? STAGE_W / 2 + (c ? 1 : -1) * (bw + gap) * 0.5f : STAGE_W / 2;
+      cw_r2d_rect(cw_rect_make(cx - bw / 2, top + (float)r * step - 2, bw, step - 2), cw_rgba(0, 0, 0, 0.35f));
+      ui_text(e[i], cw_v2(cx, top + (float)r * step), 22, PCOL[G.ev[i].p], CW_ALIGN_CENTER);
+    }
+  }
+}
+
+/* prompt markup broken into lines (\n) at spaces outside the {glyph} marks, each line no wider than maxw */
+static void prompt_wrap(const char *src, float maxw, float size, char *out, size_t cap) {
+  snprintf(out, cap, "%s", src);
+  size_t len = strlen(out), start = 0;
+  int depth = 0;
+  long last = -1;
+  for (size_t i = 0; i <= len; i++) {
+    char c = out[i];
+    if (c == '{') depth++;
+    else if (c == '}') depth--;
+    if ((c == ' ' && depth == 0) || c == 0) {
+      out[i] = 0;
+      float w = ui_prompt_size(out + start, -1, size).x;
+      out[i] = c;
+      if (w > maxw && last >= 0) { out[last] = '\n'; start = (size_t)last + 1; }
+      if (c == ' ') last = (long)i;
+    }
   }
 }
 
@@ -852,18 +1003,53 @@ static void draw_intro(void) {
   const mg_def *d = cur_def();
   cw_r2d_rect(cw_rect_make(0, 0, STAGE_W, STAGE_H), cw_rgba(0.02f, 0.02f, 0.08f, 0.6f));
   float k = ease_back((float)G.st_ticks / 25.0f);
-  cw_rect r = cw_rect_make(240, 130 + (1 - k) * 60, 800, 440);
+  /* the card as wide as its widest line (800 at least, the stage at most), the rule wrapped to it, as tall as it all */
+  int nhow = 0;
+  float need = ui_text_w(d->name, 72);
+  if (d->controls) need = fmaxf(need, ui_prompt_size(d->controls, -1, 40).x);
+  for (int i = 0; i < 3 && d->how[i]; i++, nhow++) need = fmaxf(need, 120 + ui_prompt_size(d->how[i], -1, 28).x);
+  float spacing = 180;
+  for (int p = 0; p < NP; p++) spacing = fmaxf(spacing, 20 + (G.human[p] ? ui_prompt_size("{btn_south} ready", p, 22).x : ui_text_w("READY", 22)));
+  need = fmaxf(need, spacing * NP);
+  float cwid = fminf(STAGE_W - 40, fmaxf(800, need + 80)), wrapw = cwid - 80;
+  float tag_h = ui_wrap_h(d->tagline, wrapw, 30), tag_1 = ui_line_h(30);
+  float g30 = ui_grow(30), g40 = ui_grow(40), g28 = ui_grow(28), g22 = ui_grow(22);
+  float o_tag = 86 * ui_grow(72), o_ctl = o_tag + 42 * g30 + (tag_h - tag_1), o_how = o_ctl + 50 * g40;
+  /* the control lines wrap to the card when one is wider than it; a wrapped line takes the room of its extra lines */
+  char how[3][192];
+  float how_extra = 0, how_w = 0;
+  for (int i = 0; i < nhow; i++) {
+    prompt_wrap(d->how[i], cwid - 120, 28, how[i], sizeof how[i]);
+    cw_vec2 hs = ui_prompt_size(how[i], -1, 28);
+    how_w = fmaxf(how_w, hs.x);
+    if (strchr(how[i], '\n')) how_extra += hs.y - ui_prompt_size(d->how[i], -1, 28).y;
+  }
+  float o_end = o_how + 3 * 37 * g28 + how_extra, o_blob = o_end + 47 * g28, o_ready = o_blob + 42 * g22;
+  float ch = fmaxf(440, o_ready + ui_line_h(22) + 22);
+  /* taller than the stage: the controls' picture row goes (the lines under it show the same buttons) and the blobs close up */
+  bool no_pics = false;
+  if (ch > STAGE_H - 20) {
+    no_pics = true;
+    o_how = o_ctl, o_end = o_how + 3 * 37 * g28 + how_extra, o_blob = o_end + 34, o_ready = o_blob + 34;
+    ch = o_ready + ui_line_h(22) + 14;
+  }
+  float ry = fmaxf(10, fminf(130, (STAGE_H - ch) * 0.5f));
+  cw_rect r = cw_rect_make(STAGE_W / 2 - cwid / 2, ry + (1 - k) * 60, cwid, ch);
   ui_panel(r, cw_rgba(0.1f, 0.1f, 0.25f, 0.95f), cw_rgba(1, 0.85f, 0.3f, 1));
   ui_text(d->name, cw_v2(STAGE_W / 2, r.y + 14), 72, cw_rgba(1, 0.92f, 0.5f, 1), CW_ALIGN_CENTER);
-  ui_text(d->tagline, cw_v2(STAGE_W / 2, r.y + 100), 30, cw_rgba(1, 1, 1, 0.9f), CW_ALIGN_CENTER);
+  ui_text_wrap(d->tagline, cw_rect_make(r.x + 40, r.y + 14 + o_tag, wrapw, tag_h), 30, cw_rgba(1, 1, 1, 0.9f), CW_ALIGN_CENTER);
   /* the controls as pictures first, then the lines: prompt markup, drawn for every seat's device */
-  if (d->controls) ui_prompt(d->controls, -1, cw_v2(STAGE_W / 2, r.y + 142), 40, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
-  for (int i = 0; i < 3 && d->how[i]; i++) ui_prompt(d->how[i], -1, cw_v2(r.x + 60, r.y + 192 + i * 37), 28, cw_rgba(1, 1, 1, 1), CW_ALIGN_LEFT);
+  if (d->controls && !no_pics) ui_prompt(d->controls, -1, cw_v2(STAGE_W / 2, r.y + 14 + o_ctl), 40, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
+  float hx = fminf(r.x + 60, STAGE_W / 2 - how_w * 0.5f), hy = r.y + 14 + o_how;
+  for (int i = 0; i < nhow; i++) {
+    ui_prompt(how[i], -1, cw_v2(hx, hy), 28, cw_rgba(1, 1, 1, 1), CW_ALIGN_LEFT);
+    hy += 37 * g28 + (strchr(how[i], '\n') ? ui_prompt_size(how[i], -1, 28).y - ui_prompt_size(d->how[i], -1, 28).y : 0);
+  }
   for (int p = 0; p < NP; p++) {
-    cw_vec2 c = cw_v2(r.x + 130 + p * 180, r.y + 350);
+    cw_vec2 c = cw_v2(STAGE_W / 2 + ((float)p - 1.5f) * spacing, r.y + 14 + o_blob);
     ui_blob(c, 30, p, 0, 0, G.ready[p] ? 1 + 0.08f * sinf(G.clock * 8) : 1, G.ready[p] ? 1 : 0, !G.human[p]);
-    if (G.ready[p] || !G.human[p]) ui_text("READY", cw_v2(c.x, c.y + 42), 22, G.ready[p] ? cw_rgba(0.6f, 1, 0.6f, 1) : cw_rgba(1, 1, 1, 0.6f), CW_ALIGN_CENTER);
-    else ui_prompt("{btn_south} ready", p, cw_v2(c.x, c.y + 40), 22, cw_rgba(1, 1, 1, 0.8f), CW_ALIGN_CENTER); /* each seat sees its own device */
+    if (G.ready[p] || !G.human[p]) ui_text("READY", cw_v2(c.x, r.y + 14 + o_ready), 22, G.ready[p] ? cw_rgba(0.6f, 1, 0.6f, 1) : cw_rgba(1, 1, 1, 0.6f), CW_ALIGN_CENTER);
+    else ui_prompt("{btn_south} ready", p, cw_v2(c.x, r.y + 12 + o_ready), 22, cw_rgba(1, 1, 1, 0.8f), CW_ALIGN_CENTER); /* each seat sees its own device */
   }
 }
 
@@ -882,29 +1068,62 @@ static void draw_results(void) {
   int order[NP], k = 0;
   for (int pl = 0; pl < NP; pl++) for (int p = 0; p < NP; p++) if (G.place[p] == pl) order[k++] = p;
   static const char *place_name[4] = { "1st", "2nd", "3rd", "4th" };
+  /* the foot first, from the bottom up: the prompt, the unlock, a new best */
+  float foot = 675 + ui_prompt_size("{ui_accept} next", -1, 26).y / ui_grow(26);
+  float y_prompt = foot - ui_prompt_size("{ui_accept} next", -1, 26).y, y_unlock = fminf(625, y_prompt - ui_line_h(40)), y_best = fminf(580, (G.unlock_toast >= 0 ? y_unlock : y_prompt) - ui_line_h(40));
+  float rows_end = (G.new_best ? y_best : G.unlock_toast >= 0 ? y_unlock : y_prompt) - 8;
+  /* the rows: two lines (who, then the score) when they fit, otherwise one wider line each */
+  char sc[NP][48], nm[NP][16], pts[NP][16];
+  float nw = 0, sw = 0, pw = 0;
+  for (int i = 0; i < NP; i++) {
+    int p = order[i];
+    sc[i][0] = 0;
+    if (cur_def()->score_text) cur_def()->score_text(&G.c, p, sc[i], sizeof sc[i]);
+    snprintf(nm[i], sizeof nm[i], "%s", !G.human[p] ? "CPU" : PNAME[p]);
+    snprintf(pts[i], sizeof pts[i], "+%d", G.round_pts[p]);
+    nw = fmaxf(nw, ui_text_w(nm[i], 26)), sw = fmaxf(sw, ui_text_w(sc[i], 28)), pw = fmaxf(pw, ui_text_w(pts[i], 46));
+  }
+  bool under = false;
+  for (int p = 0; p < NP; p++) under = under || (G.underdog[p] && G.tournament);
+  float place_w = fmaxf(170, ui_text_w("4th", 44) + 40), top = fmaxf(160, 60 + ui_line_h(70) + 4);
+  float two_h = fmaxf(84, 8 + 32 * ui_grow(26) + ui_line_h(28) + 8), gap = 16;
+  bool one_line = top + NP * (two_h + gap) - gap > rows_end;
+  float rh = one_line ? fmaxf(84, fmaxf(ui_line_h(44), ui_line_h(46)) + 16) : two_h;
+  float under_w = under ? ui_text_w("+1 underdog", 20) : 0;
+  float rw = one_line ? 20 + place_w + 70 + nw + 20 + sw + 30 + fmaxf(pw, under_w) + 30 : fmaxf(620, 240 + fmaxf(nw, sw) + 30 + fmaxf(pw, under_w) + 30);
+  rw = fminf(rw, STAGE_W - 40);
+  float step = fminf(rh + gap, (rows_end - top) / NP), x_end = STAGE_W / 2 - rw / 2;
+  if (fabsf(ui_grow(26) - 1) < 1e-3f) x_end = 330, step = 100; /* 100%: as it always was */
   for (int i = 0; i < NP; i++) {
     int p = order[i];
     float slide = ease_out(((float)G.st_ticks - i * 10) / 30.0f);
-    float x = flerp(-500, 330, slide), y = 160 + i * 100;
-    cw_rect r = cw_rect_make(x, y, 620, 84);
+    float x = flerp(-rw, x_end, slide), y = top + i * step;
+    cw_rect r = cw_rect_make(x, y, rw, rh);
     ui_panel(r, cw_rgba(0.1f, 0.1f, 0.25f, 0.95f), col_a(PCOL[p], 1));
-    ui_text(place_name[G.place[p]], cw_v2(x + 20, y + 16), 44, G.place[p] == 0 ? cw_rgba(1, 0.9f, 0.3f, 1) : cw_rgba(1, 1, 1, 1), CW_ALIGN_LEFT);
-    ui_blob(cw_v2(x + 190, y + 42), 28, p, 0, 0, 1, G.place[p] == 0 ? 1 : G.place[p] == 3 ? 3 : 0, !G.human[p]);
-    char s[48] = "";
-    if (cur_def()->score_text) cur_def()->score_text(&G.c, p, s, sizeof s);
-    ui_text(!G.human[p] ? "CPU" : PNAME[p], cw_v2(x + 240, y + 8), 26, PCOL[p], CW_ALIGN_LEFT);
-    ui_text(s, cw_v2(x + 240, y + 40), 28, cw_rgba(1, 1, 1, 1), CW_ALIGN_LEFT);
-    snprintf(s, sizeof s, "+%d", G.round_pts[p]);
-    ui_text(s, cw_v2(x + 590, y + 16), 46, cw_rgba(0.6f, 1, 0.6f, 1), CW_ALIGN_RIGHT);
-    if (G.underdog[p] && G.tournament) ui_text("+1 underdog", cw_v2(x + 590, y + 62), 20, cw_rgba(1, 0.85f, 0.4f, 1), CW_ALIGN_RIGHT);
+    ui_text(place_name[G.place[p]], cw_v2(x + 20, y + (rh - ui_line_h(44)) * 0.5f), 44, G.place[p] == 0 ? cw_rgba(1, 0.9f, 0.3f, 1) : cw_rgba(1, 1, 1, 1), CW_ALIGN_LEFT);
+    float bx = x + 20 + (one_line ? place_w : 170) - 0;
+    ui_blob(cw_v2(bx, y + rh * 0.5f), 28, p, 0, 0, 1, G.place[p] == 0 ? 1 : G.place[p] == 3 ? 3 : 0, !G.human[p]);
+    float tx = bx + 50;
+    if (one_line) {
+      ui_text(nm[i], cw_v2(tx, y + (rh - ui_line_h(26)) * 0.5f), 26, PCOL[p], CW_ALIGN_LEFT);
+      ui_text(sc[i], cw_v2(tx + nw + 20, y + (rh - ui_line_h(28)) * 0.5f), 28, cw_rgba(1, 1, 1, 1), CW_ALIGN_LEFT);
+    } else {
+      ui_text(nm[i], cw_v2(tx, y + 8), 26, PCOL[p], CW_ALIGN_LEFT);
+      ui_text(sc[i], cw_v2(tx, y + 8 + 32 * ui_grow(26)), 28, cw_rgba(1, 1, 1, 1), CW_ALIGN_LEFT);
+    }
+    bool ud = G.underdog[p] && G.tournament;
+    float ph = ui_line_h(46), uh = ud ? ui_line_h(20) : 0, py = y + (rh - ph - uh) * 0.5f;
+    if (fabsf(ui_grow(26) - 1) < 1e-3f) py = y + 16;
+    ui_text(pts[i], cw_v2(x + rw - 30, py), 46, cw_rgba(0.6f, 1, 0.6f, 1), CW_ALIGN_RIGHT);
+    if (ud) ui_text("+1 underdog", cw_v2(x + rw - 30, fabsf(ui_grow(26) - 1) < 1e-3f ? y + 62 : py + ph), 20, cw_rgba(1, 0.85f, 0.4f, 1), CW_ALIGN_RIGHT);
   }
-  if (G.new_best) ui_text("New best!", cw_v2(STAGE_W / 2, 580), 40, cw_rgba(1, 0.8f, 0.3f, 1), CW_ALIGN_CENTER);
+  if (G.new_best) ui_text("New best!", cw_v2(STAGE_W / 2, y_best), 40, cw_rgba(1, 0.8f, 0.3f, 1), CW_ALIGN_CENTER);
   if (G.unlock_toast >= 0) {
     char s[96];
     snprintf(s, sizeof s, "Unlocked: %s", MG_LIST[G.unlock_toast]->name);
-    ui_text(s, cw_v2(STAGE_W / 2, 625), 40, cw_rgba(0.6f, 1, 0.9f, 1), CW_ALIGN_CENTER);
+    ui_text(s, cw_v2(STAGE_W / 2, y_unlock), 40, cw_rgba(0.6f, 1, 0.9f, 1), CW_ALIGN_CENTER);
   }
-  if (G.st_ticks > 60) ui_prompt("{ui_accept} next", -1, cw_v2(STAGE_W / 2, 675), 26, cw_rgba(1, 1, 1, 0.5f + 0.5f * sinf(G.clock * 6)), CW_ALIGN_CENTER);
+  if (G.st_ticks > 60) ui_prompt("{ui_accept} next", -1, cw_v2(STAGE_W / 2, y_prompt), 26, cw_rgba(1, 1, 1, 0.5f + 0.5f * sinf(G.clock * 6)), CW_ALIGN_CENTER);
 }
 
 static void draw_final(void) {
@@ -922,20 +1141,26 @@ static void draw_final(void) {
     char s[48];
     snprintf(s, sizeof s, "%d pts", G.points[p]);
     float k = ease_out(((float)G.st_ticks - 30) / 30.0f);
-    ui_text(!G.human[p] ? "CPU" : PNAME[p], cw_v2(sp.x, sp.y - 62 * k), 28, col_a(PCOL[p], k), CW_ALIGN_CENTER);
-    ui_text(s, cw_v2(sp.x, sp.y - 32 * k), 32, cw_rgba(1, 1, 1, k), CW_ALIGN_CENTER);
+    /* over the podium, growing upward: the points, the name over them */
+    float pts_top = sp.y - 32 * k + ui_line_h(32) / ui_grow(32) - ui_line_h(32);
+    ui_text(s, cw_v2(sp.x, pts_top), 32, cw_rgba(1, 1, 1, k), CW_ALIGN_CENTER);
+    ui_text(!G.human[p] ? "CPU" : PNAME[p], cw_v2(sp.x, pts_top - 30 * k * ui_grow(28)), 28, col_a(PCOL[p], k), CW_ALIGN_CENTER);
   }
+  float y = 118;
   if (G.winner >= 0) {
     char s[64];
     snprintf(s, sizeof s, "%s wins!", !G.human[G.winner] ? "CPU" : PNAME[G.winner]);
-    ui_text(s, cw_v2(STAGE_W / 2, 118), 56, PCOL[G.winner], CW_ALIGN_CENTER);
+    ui_text(s, cw_v2(STAGE_W / 2, y), 56, PCOL[G.winner], CW_ALIGN_CENTER);
+    y += 64 * ui_grow(56);
   }
   if (G.tiebreak) {
     char tb[64];
     snprintf(tb, sizeof tb, "Tied on points: decided by %s", G.tiebreak);
-    ui_text(tb, cw_v2(STAGE_W / 2, 182), 26, cw_rgba(1, 1, 1, 0.85f), CW_ALIGN_CENTER);
+    ui_text(tb, cw_v2(STAGE_W / 2, fmaxf(182, y)), 26, cw_rgba(1, 1, 1, 0.85f), CW_ALIGN_CENTER);
   }
-  ui_prompt("{ui_accept} back to the menu", -1, cw_v2(STAGE_W / 2, 672), 26, cw_rgba(1, 1, 1, 0.5f + 0.5f * sinf(G.clock * 6)), CW_ALIGN_CENTER);
+  const char *pr = "{ui_accept} back to the menu";
+  float ph = ui_prompt_size(pr, -1, 26).y;
+  ui_prompt(pr, -1, cw_v2(STAGE_W / 2, 672 + ph / ui_grow(26) - ph), 26, cw_rgba(1, 1, 1, 0.5f + 0.5f * sinf(G.clock * 6)), CW_ALIGN_CENTER);
 }
 
 /* the 3D hub follows the game's state: stage, board or podium */
@@ -990,6 +1215,7 @@ static void render(void *user, double alpha) {
     } else if (in_game) {
       const mg_def *d = cur_def();
       if (!G.scene3d) art_world(true);   /* the 2D world is lit: sprites with normal maps, real 2D lights */
+      pp_clock_on = d->seconds > 0;
       d->draw(&G.c, (float)alpha, G.clock);
       art_world(false);                  /* the HUD, particles and banners are not */
       fx_draw();

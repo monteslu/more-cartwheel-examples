@@ -1,0 +1,249 @@
+{
+ "app": "partypack",
+ "secondary": [],
+ "env": {
+  "CW_QUALITY": "verylow"
+ },
+ "screens": [
+  {
+   "name": "title",
+   "frames": 40
+  },
+  {
+   "name": "join",
+   "frames": 40,
+   "input": "partypack-text-join.json"
+  },
+  {
+   "name": "settings",
+   "frames": 50,
+   "input": "partypack-text-settings.json"
+  },
+  {
+   "name": "menu",
+   "frames": 80,
+   "input": "partypack-text-menu.json"
+  },
+  {
+   "name": "pick",
+   "frames": 110,
+   "input": "partypack-text-pick.json"
+  },
+  {
+   "name": "trophy",
+   "frames": 115,
+   "input": "partypack-text-trophy.json"
+  },
+  {
+   "name": "board",
+   "frames": 140,
+   "input": "partypack-text-board.json"
+  },
+  {
+   "name": "pause",
+   "app": "partypack_auto",
+   "frames": 700,
+   "input": "partypack-text-pause.json",
+   "env": {
+    "PP_GAME": "coins"
+   }
+  },
+  {
+   "name": "board-events",
+   "app": "partypack_auto",
+   "frames": 2400
+  },
+  {
+   "name": "intro-hurdle",
+   "app": "partypack_auto",
+   "frames": 240,
+   "env": {
+    "PP_GAME": "hurdle"
+   }
+  },
+  {
+   "name": "play-hurdle",
+   "app": "partypack_auto",
+   "frames": 520,
+   "env": {
+    "PP_GAME": "hurdle"
+   }
+  },
+  {
+   "name": "intro-echo",
+   "app": "partypack_auto",
+   "frames": 240,
+   "env": {
+    "PP_GAME": "echo"
+   }
+  },
+  {
+   "name": "play-echo",
+   "app": "partypack_auto",
+   "frames": 520,
+   "env": {
+    "PP_GAME": "echo"
+   }
+  },
+  {
+   "name": "intro-beatbox",
+   "app": "partypack_auto",
+   "frames": 240,
+   "env": {
+    "PP_GAME": "beatbox"
+   }
+  },
+  {
+   "name": "play-beatbox",
+   "app": "partypack_auto",
+   "frames": 520,
+   "env": {
+    "PP_GAME": "beatbox"
+   }
+  },
+  {
+   "name": "intro-quiz",
+   "app": "partypack_auto",
+   "frames": 240,
+   "env": {
+    "PP_GAME": "quiz"
+   }
+  },
+  {
+   "name": "play-quiz",
+   "app": "partypack_auto",
+   "frames": 520,
+   "env": {
+    "PP_GAME": "quiz"
+   }
+  },
+  {
+   "name": "intro-blast",
+   "app": "partypack_auto",
+   "frames": 240,
+   "env": {
+    "PP_GAME": "blast"
+   }
+  },
+  {
+   "name": "play-blast",
+   "app": "partypack_auto",
+   "frames": 520,
+   "env": {
+    "PP_GAME": "blast"
+   }
+  },
+  {
+   "name": "intro-raft",
+   "app": "partypack_auto",
+   "frames": 240,
+   "env": {
+    "PP_GAME": "raft"
+   }
+  },
+  {
+   "name": "play-raft",
+   "app": "partypack_auto",
+   "frames": 520,
+   "env": {
+    "PP_GAME": "raft"
+   }
+  },
+  {
+   "name": "intro-stack",
+   "app": "partypack_auto",
+   "frames": 240,
+   "env": {
+    "PP_GAME": "stack"
+   }
+  },
+  {
+   "name": "play-stack",
+   "app": "partypack_auto",
+   "frames": 520,
+   "env": {
+    "PP_GAME": "stack"
+   }
+  },
+  {
+   "name": "intro-loop",
+   "app": "partypack_auto",
+   "frames": 240,
+   "env": {
+    "PP_GAME": "loop"
+   }
+  },
+  {
+   "name": "play-loop",
+   "app": "partypack_auto",
+   "frames": 520,
+   "env": {
+    "PP_GAME": "loop"
+   }
+  },
+  {
+   "name": "intro-sumo",
+   "app": "partypack_auto",
+   "frames": 240,
+   "env": {
+    "PP_GAME": "sumo"
+   }
+  },
+  {
+   "name": "play-sumo",
+   "app": "partypack_auto",
+   "frames": 520,
+   "env": {
+    "PP_GAME": "sumo"
+   }
+  },
+  {
+   "name": "intro-coins",
+   "app": "partypack_auto",
+   "frames": 240,
+   "env": {
+    "PP_GAME": "coins"
+   }
+  },
+  {
+   "name": "play-coins",
+   "app": "partypack_auto",
+   "frames": 520,
+   "env": {
+    "PP_GAME": "coins"
+   }
+  },
+  {
+   "name": "intro-tiles",
+   "app": "partypack_auto",
+   "frames": 240,
+   "env": {
+    "PP_GAME": "tiles"
+   }
+  },
+  {
+   "name": "play-tiles",
+   "app": "partypack_auto",
+   "frames": 520,
+   "env": {
+    "PP_GAME": "tiles"
+   }
+  },
+  {
+   "name": "count",
+   "app": "partypack_auto",
+   "frames": 300,
+   "env": {
+    "PP_GAME": "coins"
+   }
+  },
+  {
+   "name": "results",
+   "app": "partypack_auto",
+   "frames": 2700,
+   "env": {
+    "PP_GAME": "coins"
+   }
+  }
+ ]
+}

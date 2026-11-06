@@ -150,7 +150,8 @@ static void draw_pad(cw_vec2 ctr, int s, bool lit, float r) {
     art_light(ctr, 520, col, 1.8f, false);
     art_glow("glow", ctr, r * 5, col_a(col, 0.45f));
   }
-  ui_prompt(PAD_KEY[s], -1, cw_v2(ctr.x, ctr.y - r * 0.4f), r * 0.8f, cw_rgba(1, 1, 1, lit ? 1 : 0.75f), CW_ALIGN_CENTER);
+  float gs = r * 0.8f; /* the pad's button, centred on it at any text size */
+  ui_prompt(PAD_KEY[s], -1, cw_v2(ctr.x, ctr.y - ui_prompt_size(PAD_KEY[s], -1, gs).y * 0.5f + (ui_prompt_size(PAD_KEY[s], -1, gs).y / ui_grow(gs) * 0.5f - r * 0.4f) * 1.0f), gs, cw_rgba(1, 1, 1, lit ? 1 : 0.75f), CW_ALIGN_CENTER);
 }
 
 static void draw(mg_ctx *c, float alpha, float t) {
@@ -163,14 +164,28 @@ static void draw(mg_ctx *c, float alpha, float t) {
   art_light(cw_v2(mid.x, mid.y - 200), 900, cw_rgba(0.8f, 0.8f, 1, 1), 0.6f, false);
   for (int s = 0; s < 4; s++) draw_pad(pos[s], s, M.lit == s, 70);
   const char *msg = M.ph == PH_SHOW ? "Watch!" : M.ph == PH_INPUT ? "Your turn!" : "Get ready";
-  ui_text(msg, cw_v2(STAGE_W / 2, 98), 44, cw_rgba(1, 1, 1, 0.9f), CW_ALIGN_CENTER);
   char s[40];
   snprintf(s, sizeof s, "Pattern length %d", M.len);
-  ui_text(s, cw_v2(STAGE_W / 2, 148), 28, cw_rgba(1, 1, 1, 0.7f), CW_ALIGN_CENTER);
+  if (ui_grow(28) < 1.001f) {
+    ui_text(msg, cw_v2(STAGE_W / 2, 98), 44, cw_rgba(1, 1, 1, 0.9f), CW_ALIGN_CENTER);
+    ui_text(s, cw_v2(STAGE_W / 2, 148), 28, cw_rgba(1, 1, 1, 0.7f), CW_ALIGN_CENTER);
+  } else { /* larger text: the two lines either side of the top pad, under the strip and the clock */
+    float y = 98 + ui_hud_shift();
+    ui_text(msg, cw_v2(60, y), 44, cw_rgba(1, 1, 1, 0.9f), CW_ALIGN_LEFT);
+    ui_text(s, cw_v2(STAGE_W - 60, y + (ui_line_h(44) - ui_line_h(28)) * 0.5f), 28, cw_rgba(1, 1, 1, 0.7f), CW_ALIGN_RIGHT);
+  }
   for (int p = 0; p < NP; p++) { /* each player's progress */
-    float x = 90 + p * 280, y = 520;
-    art_nine("panel", cw_rect_make(x, y, 260, 140), 26, 1.0f, cw_rgba(0.9f, 0.9f, 1.0f, M.alive[p] ? 0.8f : 0.45f));
-    cw_r2d_round_rect_lines(cw_rect_make(x + 2, y + 2, 256, 136), 16, 3, 8, col_a(PCOL[p], M.alive[p] ? 0.9f : 0.2f));
+    /* the panel keeps its foot at 660 and grows upward with its text: the score over the ghost line, the gems over both */
+    bool ghost = !M.alive[p];
+    const char *gl = M.ph == PH_INPUT && M.gprog[p] < M.len ? "ghost: play along" : "ghost";
+    float gh = ui_wrap_h(gl, 240, 20), score_top = 610, ghost_top = 632;
+    if (ui_grow(20) > 1.001f) {
+      ghost_top = 660 - 6 - (ghost ? gh : 0);
+      score_top = ghost_top - ui_line_h(36);
+    }
+    float x = 90 + p * 280, y = fminf(520, score_top - 90), ph = 660 - y;
+    art_nine("panel", cw_rect_make(x, y, 260, ph), 26, 1.0f, cw_rgba(0.9f, 0.9f, 1.0f, M.alive[p] ? 0.8f : 0.45f));
+    cw_r2d_round_rect_lines(cw_rect_make(x + 2, y + 2, 256, ph - 4), 16, 3, 8, col_a(PCOL[p], M.alive[p] ? 0.9f : 0.2f));
     ui_blob(cw_v2(x + 40, y + 50), 26, p, 0, 0, M.flash[p] > 0 ? 1.15f : 1, M.alive[p] ? (M.flash[p] > 0 ? 2 : 0) : 3, !c->human[p]);
     int shown = M.len < 14 ? M.len : 14;
     static const char *GEMS[4] = { "gem_mint", "gem_ruby", "gem_sky", "gem_sun" };
@@ -180,9 +195,9 @@ static void draw(mg_ctx *c, float alpha, float t) {
       art_draw(M.ph == PH_INPUT && got ? GEMS[M.seq[i]] : "gem_sun", q, cw_v2(20, 20), 0, got ? (M.ph == PH_INPUT ? (cw_color){ 0 } : cw_rgba(1, 1, 1, 0.9f)) : cw_rgba(0.25f, 0.25f, 0.3f, 0.5f));
     }
     if (M.flash[p] > 0) art_draw(GEMS[M.last_sym[p]], cw_v2(x + 40, y + 100), cw_v2(30, 30), 0, (cw_color){ 0 });
-    if (!M.alive[p]) ui_text(M.ph == PH_INPUT && M.gprog[p] < M.len ? "ghost: play along" : "ghost", cw_v2(x + 130, y + 112), 20, cw_rgba(1, 1, 1, 0.8f), CW_ALIGN_CENTER);
+    if (ghost) ui_text_wrap(gl, cw_rect_make(x + 10, ghost_top, 240, gh), 20, cw_rgba(1, 1, 1, 0.8f), CW_ALIGN_CENTER);
     snprintf(s, sizeof s, "%d", M.best[p]);
-    ui_text(s, cw_v2(x + 240, y + 90), 36, cw_rgba(1, 1, 1, M.alive[p] ? 1 : 0.4f), CW_ALIGN_RIGHT);
+    ui_text(s, cw_v2(x + 240, score_top), 36, cw_rgba(1, 1, 1, M.alive[p] ? 1 : 0.4f), CW_ALIGN_RIGHT);
   }
 }
 

@@ -155,7 +155,8 @@ static void draw(mg_ctx *c, float alpha, float t) {
         int who = c->human[p] ? p : -1;
         float gs = 30, gw = ui_prompt_size(LANE[k], who, gs).x;
         if (gw > 62) gs = fmaxf(18, gs * 62 / gw);
-        ui_prompt(LANE[k], who, cw_v2(x, 560 - gs * 0.5f), gs, cw_rgba(1, 1, 1, on ? 1 : 0.75f), CW_ALIGN_CENTER); }
+        float gh = ui_prompt_size(LANE[k], who, gs).y; /* centred on the pad at any text size */
+        ui_prompt(LANE[k], who, cw_v2(x, 560 - gs * 0.5f - (gh - gh / ui_grow(gs)) * 0.5f), gs, cw_rgba(1, 1, 1, on ? 1 : 0.75f), CW_ALIGN_CENTER); }
     }
     for (int i = 0; i < B.count; i++) {
       if (B.hit[p][i] == 1) continue;
@@ -178,7 +179,7 @@ static void draw(mg_ctx *c, float alpha, float t) {
     if (B.combo[p] >= 4) {
       char s[24];
       snprintf(s, sizeof s, "x%d  combo", B.combo[p]);
-      ui_text(s, cw_v2(lx + w / 2, 150), 26, cw_rgba(1, 1, 1, 0.9f), CW_ALIGN_CENTER);
+      ui_text(s, cw_v2(lx + w / 2, 150 + ui_hud_shift()), 26, cw_rgba(1, 1, 1, 0.9f), CW_ALIGN_CENTER);
     }
   }
 }

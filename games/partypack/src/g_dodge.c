@@ -238,7 +238,7 @@ static void draw(mg_ctx *c, float alpha, float t) {
         else ui_blob(cw_v2(PX - (D.dist - p->out_at), gy - r), r, i, 0, 0, 0.8f, 3, !c->human[i]);
       }
     }
-    if (!p->alive && c->tick % 40 < 28) ui_prompt(D.throw_cd[i] > 0 || !c->human[i] ? "ghost" : "{btn_south}: throw a rock", i, cw_v2(STAGE_W / 2, gy - 40), 24, col_a(c->human[i] ? PCOL[i] : cw_rgba(1, 1, 1, 1), 0.9f), CW_ALIGN_CENTER);
+    if (!p->alive && c->tick % 40 < 28) ui_prompt_up(D.throw_cd[i] > 0 || !c->human[i] ? "ghost" : "{btn_south}: throw a rock", i, cw_v2(STAGE_W / 2, gy - 40), 24, col_a(c->human[i] ? PCOL[i] : cw_rgba(1, 1, 1, 1), 0.9f), CW_ALIGN_CENTER);
     for (int l = 0; l < 3; l++) /* lives */
       art_draw("star", cw_v2(46 + l * 34, gy - 98), cw_v2(30, 30), 0, l < p->lives ? cw_rgba(1, 0.45f, 0.55f, 1) : cw_rgba(0.1f, 0.1f, 0.14f, 0.55f));
   }

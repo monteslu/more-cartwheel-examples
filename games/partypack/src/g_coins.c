@@ -167,7 +167,7 @@ static void draw(mg_ctx *c, float alpha, float t) {
     cw_r2d_circle(cw_v2(C.c[k].x, C.c[k].y + 8), r, 14, cw_rgba(0, 0, 0, 0.25f));
     cw_r2d_circle(cw_v2(C.c[k].x, C.c[k].y + bob), r, 16, gold ? cw_rgba(1, 0.65f, 0.1f, 1) : cw_rgba(1, 0.88f, 0.25f, 1));
     cw_r2d_circle_lines(cw_v2(C.c[k].x, C.c[k].y + bob), r, 3, 16, cw_rgba(0.5f, 0.3f, 0, 1));
-    if (gold) ui_text("3", cw_v2(C.c[k].x, C.c[k].y + bob - 13), 24, cw_rgba(0.4f, 0.2f, 0, 1), CW_ALIGN_CENTER);
+    if (gold) ui_text("3", cw_v2(C.c[k].x, C.c[k].y + bob - 13 - ui_grew(24) * 0.5f), 24, cw_rgba(0.4f, 0.2f, 0, 1), CW_ALIGN_CENTER);
   }
   for (int i = 0; i < NP; i++) {
     float sq = C.p[i].dash > 0 ? 0.82f : C.p[i].stun > 0 ? 1.2f : 1;

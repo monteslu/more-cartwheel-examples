@@ -351,16 +351,16 @@ static void draw(mg_ctx *c, float alpha, float t) {
     cw_vec2 s = n3_project((t3_vec3){ p.x, p.y + 1.3f, p.z });
     cw_vec2 tri[3] = { cw_v2(s.x - 12, s.y - 10), cw_v2(s.x + 12, s.y - 10), cw_v2(s.x, s.y + 4) };
     cw_r2d_polygon(tri, 3, PCOL[i]);
-    ui_text(!c->human[i] ? "CPU" : PNAME[i], cw_v2(s.x, s.y - 40), 24, PCOL[i], CW_ALIGN_CENTER);
+    ui_text_up(!c->human[i] ? "CPU" : PNAME[i], cw_v2(s.x, s.y - 40), 24, PCOL[i], CW_ALIGN_CENTER);
   }
   for (int g = 0; g < NP; g++) { /* a ghost bomber's marker */
     if (K.alive[g] || !c->eliminated[g]) continue;
     cw_vec2 s = n3_project((t3_vec3){ K.cur_x[g], 0.5f, K.cur_z[g] });
     cw_r2d_circle_lines(s, 18, 4, 20, PCOL[g]);
     cw_r2d_circle(s, 5, 10, PCOL[g]);
-    if (c->human[g]) ui_prompt(K.call_cd[g] > 0 ? "ghost" : "{btn_south}: bomb", g, cw_v2(s.x, s.y - 44), 22, PCOL[g], CW_ALIGN_CENTER);
+    if (c->human[g]) ui_prompt_up(K.call_cd[g] > 0 ? "ghost" : "{btn_south}: bomb", g, cw_v2(s.x, s.y - 44), 22, PCOL[g], CW_ALIGN_CENTER);
   }
-  if (K.warn && (c->tick / 15) % 2 == 0) ui_text("The ring is shrinking!", cw_v2(STAGE_W / 2, 640), 44, cw_rgba(1, 0.6f, 0.3f, 1), CW_ALIGN_CENTER);
+  if (K.warn && (c->tick / 15) % 2 == 0) ui_text("The ring is shrinking!", cw_v2(STAGE_W / 2, 640 + ui_line_h(44) / ui_grow(44) - ui_line_h(44)), 44, cw_rgba(1, 0.6f, 0.3f, 1), CW_ALIGN_CENTER);
 }
 
 static void score_text(mg_ctx *c, int p, char *buf, int cap) {

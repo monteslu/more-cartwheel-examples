@@ -157,34 +157,63 @@ static void draw(mg_ctx *c, float alpha, float t) {
   const qa *q = &BANK[Q.pick[Q.q]];
   char s[64];
   snprintf(s, sizeof s, "Question %d of %d", Q.q + 1, ROUNDS);
-  ui_text(s, cw_v2(STAGE_W / 2, 100), 26, cw_rgba(1, 1, 1, 0.7f), CW_ALIGN_CENTER);
-  art_nine("panel", cw_rect_make(140, 135, 1000, 110), 26, 1.0f, cw_rgba(0.85f, 0.9f, 1.0f, 0.95f));
-  cw_r2d_round_rect_lines(cw_rect_make(143, 138, 994, 104), 16, 3, 8, cw_rgba(1, 1, 1, 0.35f));
-  ui_text_wrap(q->q, cw_rect_make(170, 160, 940, 90), 40, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
+  /* At 100% the page is as it always was. At a larger text size every block moves down by what the one over it grew,
+   * and when the diamond would then run into the markers it closes up: the west and east answers stand at the sides,
+   * level between the north and south ones, so it is two answers tall, not three */
+  float sh = ui_hud_shift(), y = 100 + sh;
+  ui_text(s, cw_v2(STAGE_W / 2, y), 26, cw_rgba(1, 1, 1, 0.7f), CW_ALIGN_CENTER);
+  y = 135 + sh + ui_grew(26);
+  float qh = ui_wrap_h(q->q, 940, 40), ph = fmaxf(110, qh + 40);
+  art_nine("panel", cw_rect_make(140, y, 1000, ph), 26, 1.0f, cw_rgba(0.85f, 0.9f, 1.0f, 0.95f));
+  cw_r2d_round_rect_lines(cw_rect_make(143, y + 3, 994, ph - 6), 16, 3, 8, cw_rgba(1, 1, 1, 0.35f));
+  ui_text_wrap(q->q, cw_rect_make(170, y + 25, 940, qh), 40, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
   float f = Q.phase == 0 ? 1.0f - (float)Q.t / QTICKS : 0;
-  ui_bar(cw_rect_make(240, 262, 800, 16), f, f < 0.25f ? cw_rgba(1, 0.4f, 0.3f, 1) : cw_rgba(0.4f, 0.9f, 1, 1));
+  y += ph + 17;
+  ui_bar(cw_rect_make(240, y, 800, 16), f, f < 0.25f ? cw_rgba(1, 0.4f, 0.3f, 1) : cw_rgba(0.4f, 0.9f, 1, 1));
+  float dy = y + 30 - 292; /* how far the diamond moved down */
+  /* the markers' row from the foot up: the line under each blob, the blob */
+  float mk_text = fminf(600, STAGE_H - 10 - ui_line_h(34) - (ui_line_h(22) > 0 ? 0 : 0)), blob_y = fminf(560, mk_text - 40);
+  if (ui_grow(22) > 1.001f) mk_text = STAGE_H - 10 - fmaxf(ui_line_h(22), ui_line_h(34)), blob_y = mk_text - 36;
   /* the answers sit as the buttons do, in a diamond: slot 0 south, 1 east, 2 west, 3 north, so the slot, its button and
    * the flick all point the same way */
   static const char *SLOT_KEY[4] = { "{btn_south}", "{btn_east}", "{btn_west}", "{btn_north}" };
   static const float SLOT_X[4] = { 395, 650, 140, 395 }, SLOT_Y[4] = { 444, 368, 368, 292 };
+  float sw = 490, shh = 68, ax[4], ay[4], gw = 0, aw = 0;
+  for (int sl = 0; sl < 4; sl++) { gw = fmaxf(gw, ui_prompt_size(SLOT_KEY[sl], -1, 34).x); aw = fmaxf(aw, ui_text_w(q->a[Q.perm[Q.q][sl]], 32)); }
+  float ah = ui_line_h(32), tight = 0;
+  shh = fmaxf(68, fmaxf(ah, ui_prompt_size("{btn_south}", -1, 34).y) + 14 * ui_grow(32));
+  for (int sl = 0; sl < 4; sl++) ax[sl] = SLOT_X[sl], ay[sl] = SLOT_Y[sl] + dy;
+  if (ay[0] + shh > blob_y - 34) { /* closed up: three columns, two answers tall */
+    sw = fminf(490, (STAGE_W - 40 - 32) / 3.0f);
+    float top = y + 30, half = shh * 0.5f + 4;
+    ax[2] = 20, ay[2] = top + half;                      /* west */
+    ax[3] = STAGE_W / 2 - sw / 2, ay[3] = top;           /* north */
+    ax[0] = ax[3], ay[0] = top + 2 * half;               /* south */
+    ax[1] = STAGE_W - 20 - sw, ay[1] = top + half;       /* east */
+    tight = 1;
+  }
+  (void)aw;
   for (int sl = 0; sl < 4; sl++) {
-    float x = SLOT_X[sl], y = SLOT_Y[sl];
+    float x = ax[sl], yy = ay[sl];
     bool rev = Q.phase == 1, right = sl == Q.right_slot;
     cw_color fill = !rev ? cw_rgba(0.45f, 0.55f, 0.95f, 0.95f) : right ? cw_rgba(0.4f, 0.95f, 0.5f, 1) : cw_rgba(0.3f, 0.3f, 0.45f, 0.65f);
-    art_nine("tile", cw_rect_make(x, y, 490, 68), 24, 0.9f, fill);
-    if (right && rev) art_glow("glow", cw_v2(x + 245, y + 34), 560, cw_rgba(0.4f, 1, 0.5f, 0.3f));
-    cw_vec2 g = ui_prompt(SLOT_KEY[sl], -1, cw_v2(x + 22, y + 16), 34, cw_rgba(1, 1, 1, 1), CW_ALIGN_LEFT);
-    ui_text(q->a[Q.perm[Q.q][sl]], cw_v2(x + 34 + (g.x > 40 ? g.x : 40), y + 15), 32, cw_rgba(1, 1, 1, rev && !right ? 0.55f : 1), CW_ALIGN_LEFT);
+    art_nine("tile", cw_rect_make(x, yy, sw, shh), 24, 0.9f, fill);
+    if (right && rev) art_glow("glow", cw_v2(x + sw * 0.5f, yy + shh * 0.5f), 560, cw_rgba(0.4f, 1, 0.5f, 0.3f));
+    float gy = yy + (shh - ui_prompt_size(SLOT_KEY[sl], -1, 34).y) * 0.5f, ty = yy + (shh - ah) * 0.5f;
+    if (!tight && ui_grow(32) < 1.001f) gy = yy + 16, ty = yy + 15;
+    cw_vec2 g = ui_prompt(SLOT_KEY[sl], -1, cw_v2(x + 22, gy), 34, cw_rgba(1, 1, 1, 1), CW_ALIGN_LEFT);
+    ui_text(q->a[Q.perm[Q.q][sl]], cw_v2(x + 34 + (g.x > 40 ? g.x : 40), ty), 32, cw_rgba(1, 1, 1, rev && !right ? 0.55f : 1), CW_ALIGN_LEFT);
     for (int p = 0; p < NP; p++) /* who picked it: shown after the reveal */
       if (Q.ans[p] == sl && (rev || c->human[p] == false)) {
-        if (rev) ui_blob(cw_v2(x + 330 + p * 38, y + 34), 16, p, 0, 0, 1, right ? 1 : 3, !c->human[p]);
+        if (rev) ui_blob(cw_v2(x + sw - 160 + p * 38, yy + shh * 0.5f), 16, p, 0, 0, 1, right ? 1 : 3, !c->human[p]);
       }
   }
+  (void)gw;
   for (int p = 0; p < NP; p++) { /* locked-in markers */
     float x = 190 + p * 270;
-    ui_blob(cw_v2(x, 560), 30, p, 0, 0, Q.ans[p] >= 0 ? 1.1f : 1, Q.ans[p] < 0 ? 0 : Q.phase == 1 ? (Q.ans[p] == Q.right_slot ? 1 : 3) : 2, !c->human[p]);
-    ui_text(Q.ans[p] >= 0 && Q.phase == 0 ? "locked" : Q.ans[p] < 0 ? "thinking" : "", cw_v2(x, 600), 22, cw_rgba(1, 1, 1, 0.7f), CW_ALIGN_CENTER);
-    if (Q.phase == 1 && Q.gained[p]) { snprintf(s, sizeof s, "+%d", Q.gained[p]); ui_text(s, cw_v2(x, 625), 34, cw_rgba(0.6f, 1, 0.6f, 1), CW_ALIGN_CENTER); }
+    ui_blob(cw_v2(x, blob_y), 30, p, 0, 0, Q.ans[p] >= 0 ? 1.1f : 1, Q.ans[p] < 0 ? 0 : Q.phase == 1 ? (Q.ans[p] == Q.right_slot ? 1 : 3) : 2, !c->human[p]);
+    ui_text(Q.ans[p] >= 0 && Q.phase == 0 ? "locked" : Q.ans[p] < 0 ? "thinking" : "", cw_v2(x, mk_text), 22, cw_rgba(1, 1, 1, 0.7f), CW_ALIGN_CENTER);
+    if (Q.phase == 1 && Q.gained[p]) { snprintf(s, sizeof s, "+%d", Q.gained[p]); ui_text(s, cw_v2(x, ui_grow(22) > 1.001f ? mk_text : 625), 34, cw_rgba(0.6f, 1, 0.6f, 1), CW_ALIGN_CENTER); }
   }
 }
 
