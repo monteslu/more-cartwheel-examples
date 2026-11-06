@@ -194,11 +194,17 @@ void audio_update(void);
 /* ── hud.c ───────────────────────────────────────────────────────────── */
 void hud_init(void);
 void hud_draw(const tux_phys *p, float race_time, int herring, int lives);
+float hud_top_bottom(void); /* how far down the last hud_draw's top cards reach: a card over the race goes below them */
 cw_font hud_font(void);
 void hud_begin(void);
 void hud_end(void);
 void hud_text(const char *s, float x, float y, float size, cw_color c, int align); /* align: 0 left 1 centre 2 right */
-void hud_prompt(const char *s, float x, float y, float size, cw_color c, int align); /* hud_text with button prompts: "{menu_accept} race" */
+cw_vec2 hud_prompt(const char *s, float x, float y, float size, cw_color c, int align); /* hud_text with button prompts: "{menu_accept} race"; its box */
+cw_vec2 hud_prompt_size(const char *s, float size); /* the box hud_prompt draws */
+/* text wrapped in the box [x, x + w] (align within it), the title font when big; returns its height */
+float hud_text_box(bool big, const char *s, float x, float y, float w, float size, cw_color c, int align);
+cw_text_metrics hud_measure(bool big, const char *s, float size, float w); /* w 0: no wrap */
+float hud_drawn(bool big, float size); /* the size text asked for at size draws at now (the player's text scale) */
 void hud_title(const char *s, float x, float y, float size, cw_color c, int align);
 void hud_box(float x, float y, float w, float h, cw_color c);
 void hud_panel(float x, float y, float w, float h, float alpha); /* a rounded translucent card */

@@ -1,0 +1,67 @@
+{
+  "app": "tuxracer",
+  "secondary": [],
+  "screens": [
+    {
+      "name": "title",
+      "frames": 40
+    },
+    {
+      "name": "practice",
+      "frames": 40,
+      "input": "tuxracer-text-practice.json"
+    },
+    {
+      "name": "cup",
+      "frames": 40,
+      "input": "tuxracer-text-cup.json"
+    },
+    {
+      "name": "graphics",
+      "frames": 40,
+      "input": "tuxracer-text-graphics.json"
+    },
+    {
+      "name": "settings",
+      "frames": 40,
+      "input": "tuxracer-text-settings.json"
+    },
+    {
+      "name": "credits",
+      "frames": 44,
+      "input": "tuxracer-text-credits.json"
+    },
+    {
+      "name": "race",
+      "frames": 70,
+      "input": "tuxracer-text-race.json",
+      "startCmds": [
+        "race bunny_hill"
+      ]
+    },
+    {
+      "name": "pause",
+      "frames": 60,
+      "input": "tuxracer-text-pause.json",
+      "startCmds": [
+        "race bunny_hill"
+      ]
+    },
+    {
+      "name": "race-over",
+      "frames": 100,
+      "input": "tuxracer-text-over.json",
+      "startCmds": [
+        "race bunny_hill"
+      ]
+    },
+    {
+      "name": "pause-settings",
+      "frames": 64,
+      "input": "tuxracer-text-pause-settings.json",
+      "startCmds": [
+        "race bunny_hill"
+      ]
+    }
+  ]
+}

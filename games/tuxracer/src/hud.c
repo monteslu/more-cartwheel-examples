@@ -25,22 +25,34 @@ void hud_init(void) {
 cw_font hud_font(void) { return font_small; }
 void hud_begin(void) { cw_r2d_begin(&(cw_r2d_pass_desc){ 0 }); }
 void hud_end(void) { cw_r2d_end(); }
-/* every HUD text carries a soft drop shadow: it stays readable on white snow */
-static void text_shadowed(cw_font f, const char *s, float x, float y, float size, cw_color c, int align) {
-  cw_text_style st = { .size = size, .color = c, .align = (cw_text_align)align };
-  if (align) { cw_text_metrics m = cw_font_measure(f, s, &st); x -= align == 1 ? m.width / 2 : m.width; }
-  cw_text_style sh = st;
-  sh.color = (cw_color){ 0, 0.02f, 0.06f, 0.55f * c.a };
+/* every HUD text carries a soft drop shadow (the style's own, so the player's Text background setting leaves it
+ * be): it stays readable on white snow. The shadow's offset grows with the player's text scale. */
+static cw_text_style shadowed_style(float size, cw_color c, float wrap, cw_text_align align) {
   float d = size > 24 ? 2.5f : 1.5f;
-  cw_r2d_text(f, s, (cw_vec2){ x + d, y + d }, &sh);
+  return (cw_text_style){ .size = size, .color = c, .wrap_width = wrap, .align = align,
+                          .shadow_color = { 0, 0.02f, 0.06f, 0.55f * c.a }, .shadow_offset = { d, d } };
+}
+static void text_shadowed(cw_font f, const char *s, float x, float y, float size, cw_color c, int align) {
+  cw_text_style st = shadowed_style(size, c, 0, CW_ALIGN_LEFT);
+  if (align) { cw_text_metrics m = cw_font_measure(f, s, &st); x -= align == 1 ? m.width / 2 : m.width; }
   cw_r2d_text(f, s, (cw_vec2){ x, y }, &st);
 }
 void hud_text(const char *s, float x, float y, float size, cw_color c, int align) { text_shadowed(font_small, s, x, y, size, c, align); }
 void hud_title(const char *s, float x, float y, float size, cw_color c, int align) { text_shadowed(font_big, s, x, y, size, c, align); }
-/* text with button prompts in it (cartwheel/prompt.h markup: "{menu_accept} race"), drawn for the player's device */
-void hud_prompt(const char *s, float x, float y, float size, cw_color c, int align) {
-  cw_prompt_text(font_small, s, 0, (cw_vec2){ x, y }, size, c, align == 1 ? CW_ALIGN_CENTER : align == 2 ? CW_ALIGN_RIGHT : CW_ALIGN_LEFT);
+float hud_text_box(bool big, const char *s, float x, float y, float w, float size, cw_color c, int align) {
+  cw_text_style st = shadowed_style(size, c, w, align == 1 ? CW_ALIGN_CENTER : align == 2 ? CW_ALIGN_RIGHT : CW_ALIGN_LEFT);
+  return cw_r2d_text(big ? font_big : font_small, s, (cw_vec2){ x, y }, &st).height;
 }
+cw_text_metrics hud_measure(bool big, const char *s, float size, float w) {
+  cw_text_style st = shadowed_style(size, (cw_color){ 1, 1, 1, 1 }, w, CW_ALIGN_LEFT);
+  return cw_font_measure(big ? font_big : font_small, s, &st);
+}
+float hud_drawn(bool big, float size) { return cw_text_drawn_size(big ? font_big : font_small, size); }
+/* text with button prompts in it (cartwheel/prompt.h markup: "{menu_accept} race"), drawn for the player's device */
+cw_vec2 hud_prompt(const char *s, float x, float y, float size, cw_color c, int align) {
+  return cw_prompt_text(font_small, s, 0, (cw_vec2){ x, y }, size, c, align == 1 ? CW_ALIGN_CENTER : align == 2 ? CW_ALIGN_RIGHT : CW_ALIGN_LEFT);
+}
+cw_vec2 hud_prompt_size(const char *s, float size) { return cw_prompt_text_size(font_small, s, 0, size); }
 static void panel(float x, float y, float w, float h, float alpha);
 /* a translucent dark panel with rounded corners (the HUD's cards, the menus) */
 void hud_panel(float x, float y, float w, float h, float alpha) { panel(x, y, w, h, alpha); }
@@ -95,27 +107,43 @@ static void gauge(const tux_phys *p, float x, float y) {
   cw_r2d_rect((cw_rect){ x + 8 * S, y + (128 - 3 - 103 * e) * S, 10 * S, 103 * e * S }, (cw_color){ 0.3f, 0.6f, 1, 0.9f });
   char buf[16];
   snprintf(buf, sizeof buf, "%.0f", kmh);
-  hud_title(buf, cx, cy - 22, 30, (cw_color){ 1, 1, 1, 1 }, 1);
-  hud_text("km/h", cx, cy + 10, 16, (cw_color){ 1, 1, 1, 0.9f }, 1);
+  /* the number and its unit stacked by their measured heights, centred in the dial at every text scale */
+  float nh = hud_measure(true, buf, 30, 0).height, kh = hud_measure(false, "km/h", 16, 0).height;
+  float ny = cy - 22 - (nh * 0.86f + kh - 50) * 0.5f;
+  hud_title(buf, cx, ny, 30, (cw_color){ 1, 1, 1, 1 }, 1);
+  hud_text("km/h", cx, ny + nh * 0.86f, 16, (cw_color){ 1, 1, 1, 0.9f }, 1);
 }
 
+static float hud_top;
+float hud_top_bottom(void) { return hud_top; }
 void hud_draw(const tux_phys *p, float race_time, int herring, int lives) {
   hud_begin();
   cw_vec2 size = cw_r2d_canvas_size();
   char buf[64];
   int minutes = (int)(race_time / 60), seconds = (int)race_time % 60, hundredths = (int)(race_time * 100) % 100;
   cw_color yellow = { 1, 0.9f, 0.2f, 1 };
-  panel(12, 10, 236, 70, 0.42f);
-  hud_text("TIME", 28, 14, 17, (cw_color){ 1, 1, 1, 0.8f }, 0);
+  /* the cards size themselves from their measured text: they grow with the player's text scale */
   snprintf(buf, sizeof buf, "%02d:%02d:%02d", minutes, seconds, hundredths);
-  hud_title(buf, 28, 32, 34, yellow, 0);
-  panel(size.x - 180, 10, 168, 50, 0.42f);
-  cw_r2d_sprite(&(cw_sprite){ .texture = tex_herring, .pos = { size.x - 168, 20 }, .size = { 48, 30 } });
+  float lh = hud_measure(false, "TIME", 17, 0).height, th = hud_measure(true, buf, 34, 0).height;
+  float tw = fmaxf(236, hud_measure(true, "00:00:00", 34, 0).width + 32);
+  float time_h = fmaxf(70, 14 + lh * 0.85f + th * 0.9f + 6 - 10);
+  panel(12, 10, tw, time_h, 0.42f);
+  hud_top = 10 + time_h;
+  hud_text("TIME", 28, 14, 17, (cw_color){ 1, 1, 1, 0.8f }, 0);
+  hud_title(buf, 28, 14 + lh * 0.85f, 34, yellow, 0);
   snprintf(buf, sizeof buf, "%03d", herring);
-  hud_title(buf, size.x - 108, 14, 34, yellow, 0);
+  cw_text_metrics hm = hud_measure(true, buf, 34, 0);
+  float k = hud_drawn(true, 34) / 34, iw = 48 * k, ih = 30 * k;
+  float hw = fmaxf(168, 12 + iw + 12 + hm.width + 14), hh = fmaxf(50, fmaxf(ih + 20, hm.height * 0.9f + 8));
+  panel(size.x - 12 - hw, 10, hw, hh, 0.42f);
+  hud_top = fmaxf(hud_top, 10 + hh);
+  cw_r2d_sprite(&(cw_sprite){ .texture = tex_herring, .pos = { size.x - 12 - hw + 12, 10 + (hh - ih) * 0.5f }, .size = { iw, ih } });
+  hud_title(buf, size.x - 12 - hw + 24 + iw, 10 + (hh - hm.height * 0.9f) * 0.5f, 34, yellow, 0);
   if (lives > 0) {
-    panel(size.x - 40 - 30 * (float)lives - 8, 66, 30 * (float)lives + 22, 38, 0.42f);
-    for (int i = 0; i < lives; i++) cw_r2d_sprite(&(cw_sprite){ .texture = tex_life, .pos = { size.x - 40 - 30 * (float)i, 72 }, .size = { 26, 26 } });
+    float ly = 10 + hh + 6;
+    hud_top = fmaxf(hud_top, ly + 38);
+    panel(size.x - 40 - 30 * (float)lives - 8, ly, 30 * (float)lives + 22, 38, 0.42f);
+    for (int i = 0; i < lives; i++) cw_r2d_sprite(&(cw_sprite){ .texture = tex_life, .pos = { size.x - 40 - 30 * (float)i, ly + 6 }, .size = { 26, 26 } });
   }
   gauge(p, size.x - 190, size.y - 190);
   hud_end();

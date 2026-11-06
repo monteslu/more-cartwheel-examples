@@ -25,7 +25,7 @@
 #include "cartwheel/scene_file.h"
 #include "game.h"
 
-typedef enum { ST_TITLE, ST_PRACTICE, ST_CUP, ST_CREDITS, ST_LOADING, ST_INTRO, ST_RACING, ST_PAUSED, ST_RACE_OVER } game_state;
+typedef enum { ST_TITLE, ST_PRACTICE, ST_CUP, ST_CREDITS, ST_LOADING, ST_INTRO, ST_RACING, ST_PAUSED, ST_RACE_OVER, ST_SETTINGS } game_state;
 enum { COND_SUNNY, COND_CLOUDY, COND_NIGHT, COND_COUNT };
 enum { MODE_PRACTICE, MODE_CUP };
 #define INIT_NUM_LIVES 4
@@ -47,9 +47,13 @@ typedef struct save_data {
   uint8_t rumble_off : 1;    /* its size and reads Rumble on */
   uint8_t gfx_hi : 6;        /* the graphics word's bits 24-29 (zero in an older save, whose word fit in gfx) */
   uint8_t gfx[3];            /* the graphics settings (cw_quality_saved, bits 0-23 little-endian); 0 = never chosen */
+  /* version 2 from here on (a version 1 save, which ends above, still loads: these read as never chosen) */
+  uint8_t text;              /* Text size and Text background (cw_text_scale_saved); 0 = never chosen */
+  uint8_t reserved[3];
 } save_data;
 static save_data SAVE;
-_Static_assert(sizeof(save_data) == 12 + 16 * MAX_COURSES + 12, "the save keeps its size");
+#define SAVE_V1_SIZE (12 + 16 * MAX_COURSES + 12)
+_Static_assert(sizeof(save_data) == SAVE_V1_SIZE + 4, "the save keeps its size");
 static void rumble(float low, float high, int ms);
 static int32_t cam_offset[3]; /* the shake check (pre_render_hook) */
 static int impacts, impact_frames; /* tree hits and touchdowns, for the shake check */
@@ -89,6 +93,9 @@ static struct {
   /* flow */
   game_state state;
   int mode, cursor, pause_cursor;
+  int settings_cursor;
+  game_state settings_from;  /* the menu the Settings page returns to: the title or the pause menu */
+  float credits_scroll;      /* render only: how far the credits roll has scrolled (large text) */
   int cup_idx, race_idx, lives;
   int practice_course, practice_cond;
   bool practice_wind, practice_mirror, practice_snow;
@@ -124,7 +131,7 @@ static uint32_t fnv(const void *p, size_t n) {
 }
 static uint32_t save_checksum(void) { return fnv((const uint8_t *)&SAVE + offsetof(save_data, best), sizeof SAVE - offsetof(save_data, best)); }
 static void save_write(void) {
-  SAVE.magic = 0x56535254u, SAVE.version = 1, SAVE.size = sizeof SAVE;
+  SAVE.magic = 0x56535254u, SAVE.version = 2, SAVE.size = sizeof SAVE;
   SAVE.checksum = save_checksum();
   cw_save_commit();
 }
@@ -134,7 +141,10 @@ static void gfx_store(void) {
   SAVE.gfx[0] = q & 255, SAVE.gfx[1] = (q >> 8) & 255, SAVE.gfx[2] = (q >> 16) & 255, SAVE.gfx_hi = (q >> 24) & 63; /* 30 bits */
 }
 static void save_read(void) {
-  if (SAVE.magic != 0x56535254u || SAVE.version != 1 || SAVE.size != sizeof SAVE || SAVE.checksum != save_checksum()) memset(&SAVE, 0, sizeof SAVE);
+  bool v1 = SAVE.magic == 0x56535254u && SAVE.version == 1 && SAVE.size == SAVE_V1_SIZE &&
+            SAVE.checksum == fnv((const uint8_t *)&SAVE + offsetof(save_data, best), SAVE_V1_SIZE - offsetof(save_data, best));
+  if (v1) { memset((uint8_t *)&SAVE + SAVE_V1_SIZE, 0, sizeof SAVE - SAVE_V1_SIZE); return; } /* rewritten as version 2 at the next save */
+  if (SAVE.magic != 0x56535254u || SAVE.version != 2 || SAVE.size != sizeof SAVE || SAVE.checksum != save_checksum()) memset(&SAVE, 0, sizeof SAVE);
 }
 static best_entry *best_of(const char *dir) {
   uint32_t h = fnv(dir, strlen(dir));
@@ -495,7 +505,8 @@ static void intro_tick(float dt) {
  * the player reads the course far ahead. */
 static void apply_dof(void) {
   if (!cw_node_valid(G.post)) return;
-  bool menu = G.state == ST_TITLE || G.state == ST_PRACTICE || G.state == ST_CUP || G.state == ST_CREDITS;
+  bool menu = G.state == ST_TITLE || G.state == ST_PRACTICE || G.state == ST_CUP || G.state == ST_CREDITS ||
+              (G.state == ST_SETTINGS && G.settings_from == ST_TITLE);
   bool on = G.course_loaded && (G.state == ST_INTRO || G.state == ST_RACE_OVER || (menu && G.backdrop));
   cw_node_set(G.post, "dof", cw_val_bool(on));
   if (!on) return;
@@ -683,7 +694,7 @@ static void title_tick(void) {
         G.lives = SAVE.cup_lives > 0 && SAVE.cup_lives <= INIT_NUM_LIVES ? SAVE.cup_lives : INIT_NUM_LIVES;
         break;
       case 1: G.mode = MODE_PRACTICE; G.state = ST_PRACTICE; G.cursor = 0; break;
-      case 2: cw_quality_menu_open(); break;
+      case 2: G.settings_from = ST_TITLE; G.state = ST_SETTINGS; G.settings_cursor = 0; break;
       case 3: rumble_toggle(); break;
       case 4: G.state = ST_CREDITS; audio_music(MUS_OPTIONS); break;
       case 5: cw_quit(); break;
@@ -721,11 +732,37 @@ static void paused_tick(void) {
   rumble_stop();
   if (menu_nav(&G.pause_cursor, 4)) {
     if (G.pause_cursor == 0) G.state = ST_RACING;
-    else if (G.pause_cursor == 1) cw_quality_menu_open();
+    else if (G.pause_cursor == 1) { G.settings_from = ST_PAUSED; G.state = ST_SETTINGS; G.settings_cursor = 0; }
     else if (G.pause_cursor == 2) rumble_toggle();
     else race_over(true);
   }
   if (cw_action_just_pressed(0, G.m_back) || cw_action_just_pressed(0, G.a_pause)) G.state = ST_RACING;
+}
+
+/* Settings: Graphics (the engine's page), Text size, Text background, Back. The text settings are the player's
+ * (cartwheel/render2d.h "text size"): render only, kept in the save */
+static void settings_tick(void) {
+  if (cw_quality_menu_is_open()) return; /* the graphics page has this frame's presses */
+  int row = G.settings_cursor;
+  if (cw_action_just_pressed(0, G.m_down)) row = (row + 1) % 4;
+  if (cw_action_just_pressed(0, G.m_up)) row = (row + 3) % 4;
+  G.settings_cursor = row;
+  int d = (cw_action_just_pressed(0, G.m_right) ? 1 : 0) - (cw_action_just_pressed(0, G.m_left) ? 1 : 0);
+  bool accept = cw_action_just_pressed(0, G.m_accept);
+  if (row == 1 && (d || accept)) {
+    if (d < 0) cw_text_scale_cycle_back(); else cw_text_scale_cycle();
+    SAVE.text = cw_text_scale_saved(); save_write();
+  }
+  if (row == 2 && (d || accept)) {
+    cw_text_backdrop_cycle();
+    if (d < 0) cw_text_backdrop_cycle(), cw_text_backdrop_cycle(); /* three steps: twice more is one back */
+    SAVE.text = cw_text_scale_saved(); save_write();
+  }
+  if (accept && row == 0) cw_quality_menu_open();
+  if ((accept && row == 3) || cw_action_just_pressed(0, G.m_back)) {
+    G.state = G.settings_from;
+    if (G.state == ST_TITLE) G.cursor = 2; else G.pause_cursor = 1;
+  }
 }
 
 static void race_over_tick(float dt) {
@@ -854,6 +891,7 @@ static void init(void *user) {
   G.state = ST_TITLE;
   G.lives = INIT_NUM_LIVES;
   save_read();
+  cw_text_scale_restore(SAVE.text); /* the player's Text size and Text background */
   /* graphics: the engine's presets plus one lever of ours; Medium unless the player chose */
   static const char *const EDGES[] = { "Sharp", "Smooth" };
   const cw_quality_lever_presets EDGES_PRESET = { .very_low = 0, .low = 0, .medium = 1, .high = 1, .ultra = 1 };
@@ -943,6 +981,7 @@ static void fixed_update(void *user, double ddt) {
     case ST_RACING: racing_tick(dt); break;
     case ST_PAUSED: paused_tick(); break;
     case ST_RACE_OVER: race_over_tick(dt); break;
+    case ST_SETTINGS: settings_tick(); break;
   }
   apply_dof();
   G.fx_time += dt;
@@ -1036,15 +1075,72 @@ static void menu_backdrop(void) {
 
 static void render_overlay(void);
 
-static void draw_menu(const char *title, const char *const *items, int count, int cursor, float y0) {
-  cw_vec2 size = cw_r2d_canvas_size();
-  if (!strcmp(title, "Tux Racer")) hud_image("original/textures/menu_title.png", size.x / 2 - 192, 36, 384, 192); /* the original logo */
-  else hud_title(title, size.x / 2, 60, 64, (cw_color){ 1, 0.9f, 0.2f, 1 }, 1);
-  if (G.course_loaded) hud_panel(size.x / 2 - 170, y0 - 18, 340, 48 * (float)count + 26, 0.42f);
+/* Menus lay out from the size their text draws at (the player's text scale, cartwheel/render2d.h "text size"):
+ * rows are spaced by hud_drawn, cards sized from measured widths, and a list too long for its space scrolls with
+ * its cursor (an arrow says more is above or below). */
+static const cw_color MENU_YELLOW = { 1, 0.89f, 0.01f, 1 }, MENU_WHITE = { 1, 1, 1, 1 };
+static void more_arrow(float cx, float y, float s, bool up) {
+  cw_vec2 q[3] = { { cx - s, up ? y + s * 0.6f : y }, { cx + s, up ? y + s * 0.6f : y }, { cx, up ? y : y + s * 0.6f } };
+  cw_r2d_polygon(q, 3, (cw_color){ 1, 1, 1, 0.8f });
+}
+/* the first row shown so the cursor stays in a window of `fit` rows */
+static int list_first(int count, int cursor, int fit) {
+  if (fit >= count) return 0;
+  int first = cursor - fit / 2;
+  return first < 0 ? 0 : first > count - fit ? count - fit : first;
+}
+/* a list of rows centred on cx, from y0 (the first row's top) to no lower than bottom; each row's text at its
+ * size (sizes[i], or size), spaced by pitch per px of drawn size. Returns where it ends. */
+static float draw_list(const char *const *items, const float *sizes, int count, int cursor, float cx, float y0, float bottom,
+                       float size, float pitch, float min_w, bool card) {
+  float drawn = 0, wmax = 0;
   for (int i = 0; i < count; i++) {
-    if (i == cursor) hud_panel(size.x / 2 - 150, y0 + 48 * (float)i - 4, 300, 44, 0.35f); /* the cursor's row a shade deeper */
-    hud_title(items[i], size.x / 2, y0 + 48 * (float)i, 30, i == cursor ? (cw_color){ 1, 0.89f, 0.01f, 1 } : (cw_color){ 1, 1, 1, 1 }, 1);
+    float s = sizes ? sizes[i] : size;
+    drawn = fmaxf(drawn, hud_drawn(true, s));
+    wmax = fmaxf(wmax, hud_measure(true, items[i], s, 0).width);
   }
+  cw_vec2 sz = cw_r2d_canvas_size();
+  float step = drawn * pitch, pad = 18 * drawn / size;
+  int fit = (int)floorf((bottom - y0) / step);
+  if (fit < 1) fit = 1;
+  int first = list_first(count, cursor, fit), shown = count - first < fit ? count - first : fit;
+  float cw = fminf(sz.x - 24, fmaxf(min_w, wmax + 2 * pad + 20));
+  if (card) hud_panel(cx - cw / 2, y0 - pad, cw, step * (float)shown + pad + 8, 0.42f);
+  for (int r = 0; r < shown; r++) {
+    int i = first + r;
+    float s = sizes ? sizes[i] : size, y = y0 + step * (float)r;
+    if (i == cursor) hud_panel(cx - cw / 2 + 20, y - 4 * drawn / size, cw - 40, step - 4 * drawn / size, 0.35f); /* the cursor's row a shade deeper */
+    hud_title(items[i], cx, y, s, i == cursor ? MENU_YELLOW : MENU_WHITE, 1);
+  }
+  float a = 9 * drawn / size;
+  if (first > 0) more_arrow(cx + cw / 2 - pad - a, y0 - pad + 4, a, true);
+  if (first + shown < count) more_arrow(cx + cw / 2 - pad - a, y0 + step * (float)shown - 2, a, false);
+  return y0 + step * (float)shown + 8;
+}
+/* bottom: the lowest the rows' text may reach */
+static void draw_menu(const char *title, const char *const *items, int count, int cursor, float y0, float bottom) {
+  cw_vec2 size = cw_r2d_canvas_size();
+  bool logo = !strcmp(title, "Tux Racer");
+  float drawn = hud_drawn(true, 30), step = 48 * drawn / 30, pad = 18 * drawn / 30;
+  float wmax = 0;
+  for (int i = 0; i < count; i++) wmax = fmaxf(wmax, hud_measure(true, items[i], 30, 0).width);
+  float card_w = fmaxf(340, wmax + 2 * pad + 20), list_h = step * (float)count + 8;
+  /* the list starts lower by as much as the title grew with the text scale */
+  float th = logo ? 0 : hud_measure(true, title, 64, 0).height, top = y0 + th - th * 64 / hud_drawn(true, 64);
+  if (top + step * (float)(count - 1) + drawn * 1.0f <= bottom || card_w > size.x / 2 - 16) { /* stacked: the title over the list (which scrolls if it must) */
+    if (logo) hud_image("original/textures/menu_title.png", size.x / 2 - 192, 36, 384, 192); /* the original logo */
+    else hud_title(title, size.x / 2, 60, 64, (cw_color){ 1, 0.9f, 0.2f, 1 }, 1);
+    draw_list(items, NULL, count, cursor, size.x / 2, top, bottom + step - drawn * 1.0f, 30, 48.0f / 30, 340, G.course_loaded);
+    return;
+  }
+  /* side by side when the text is large: the title on the left half, the list on the right */
+  float lx = size.x * 0.25f, rx = size.x * 0.75f, avail = bottom;
+  if (logo) {
+    float w = fminf(384, size.x / 2 - 32), h = w / 2;
+    hud_image("original/textures/menu_title.png", lx - w / 2, (size.y - h) / 2, w, h);
+  } else hud_text_box(true, title, 16, (size.y - hud_measure(true, title, 64, size.x / 2 - 32).height) / 2, size.x / 2 - 32, 64, (cw_color){ 1, 0.9f, 0.2f, 1 }, 1);
+  float y = fmaxf(16 + pad, (avail - list_h) / 2 + pad);
+  draw_list(items, NULL, count, cursor, rx, y, bottom + step - drawn * 1.0f, 30, 48.0f / 30, 340, G.course_loaded);
 }
 
 /* Per frame, before the nodes sync to three.c and the scene draws (a
@@ -1111,8 +1207,24 @@ static void render(void *user, double alpha) {
       hud_begin();
       size = cw_r2d_canvas_size();
       menu_backdrop();
-      draw_menu("Tux Racer", ITEMS, 6, G.cursor, 236);
-      hud_text("Tux Racer 0.61 by Sunspire Studios, on the cartwheel engine", size.x / 2, size.y - 30, 14, (cw_color){ 1, 1, 1, 0.55f }, 1);
+      const char *by = "Tux Racer 0.61 by Sunspire Studios, on the cartwheel engine";
+      float fh = hud_measure(false, by, 14, size.x - 24).height;
+      draw_menu("Tux Racer", ITEMS, 6, G.cursor, 236, size.y - 12 - fh * 0.85f - 4);
+      hud_text_box(false, by, 12, size.y - 12 - fh * 0.85f, size.x - 24, 14, (cw_color){ 1, 1, 1, 0.55f }, 1);
+      hud_end();
+      break;
+    }
+    case ST_SETTINGS: {
+      char r1[48], r2[48];
+      snprintf(r1, sizeof r1, "Text size:  < %s >", cw_text_scale_label());
+      snprintf(r2, sizeof r2, "Text background:  < %s >", cw_text_backdrop_label());
+      const char *const ITEMS[] = { "Graphics", r1, r2, "Back" };
+      if (G.settings_from == ST_PAUSED) hud_draw(&G.phys, G.race_time, G.herring, G.mode == MODE_CUP ? G.lives : 0);
+      hud_begin();
+      size = cw_r2d_canvas_size();
+      if (G.settings_from == ST_PAUSED) hud_box(0, 0, size.x, size.y, (cw_color){ 0, 0, 0, 0.45f });
+      else menu_backdrop();
+      draw_menu("Settings", ITEMS, 4, G.settings_cursor, 200, size.y - 12);
       hud_end();
       break;
     }
@@ -1124,9 +1236,6 @@ static void render(void *user, double alpha) {
       char preview[128];
       snprintf(preview, sizeof preview, "courses/%s/preview.png", c->dir);
       hud_title("Practice", size.x / 2, 40, 48, (cw_color){ 1, 0.9f, 0.2f, 1 }, 1);
-      hud_panel(size.x / 2 - 260, 104, 520, 404, 0.42f);
-      hud_panel(size.x - 200, 100, 180, 180, 0.42f);
-      hud_image(preview, size.x - 190, 110, 160, 160);
       const char *rows[7];
       snprintf(buf, sizeof buf, "<  %s  >", c->title);
       char r1[64], r2[64], r3[64], r4[64];
@@ -1135,17 +1244,43 @@ static void render(void *user, double alpha) {
       snprintf(r3, sizeof r3, "Snow:  < %s >", G.practice_snow ? "On" : "Off");
       snprintf(r4, sizeof r4, "Mirror:  < %s >", G.practice_mirror ? "On" : "Off");
       rows[0] = buf, rows[1] = r1, rows[2] = r2, rows[3] = r3, rows[4] = r4, rows[5] = "Race!", rows[6] = "Back";
-      for (int i = 0; i < 7; i++)
-        hud_title(rows[i], size.x / 2, 120 + 42 * (float)i, i == 0 ? 30 : 24, i == G.cursor ? (cw_color){ 1, 0.89f, 0.01f, 1 } : (cw_color){ 1, 1, 1, 1 }, 1);
-      hud_text(c->desc, size.x / 2, 430, 17, (cw_color){ 1, 1, 1, 0.85f }, 1);
-      snprintf(buf, sizeof buf, "Par time %.0f s   by %s", c->par, c->contrib ? "contributor" : "Sunspire");
-      hud_text(buf, size.x / 2, 458, 16, (cw_color){ 1, 1, 1, 0.6f }, 1);
+      const float sizes[7] = { 30, 24, 24, 24, 24, 24, 24 };
+      /* the card: the rows (they scroll when the text is large), the course's description, par and best under them */
+      float card_w = 520;
+      for (int i = 0; i < 7; i++) card_w = fmaxf(card_w, hud_measure(true, rows[i], sizes[i], 0).width + 60);
+      float cx = size.x / 2, right = size.x - 210; /* the preview's column */
+      if (cx + card_w / 2 > right - 8) { card_w = fminf(card_w, right - 20); cx = fmaxf(12 + card_w / 2, right - 8 - card_w / 2); }
+      float iw = card_w - 40, ix = cx - iw / 2;
+      char par[96], best[128] = "";
+      snprintf(par, sizeof par, "Par time %.0f s   by %s", c->par, c->contrib ? "contributor" : "Sunspire");
       const best_entry *b = NULL;
       for (int i = 0; i < MAX_COURSES; i++) if (SAVE.best[i].course_hash == fnv(c->dir, strlen(c->dir)) && (SAVE.best[i].score || SAVE.best[i].time)) b = &SAVE.best[i];
-      if (b) {
-        snprintf(buf, sizeof buf, "Best: %02d:%02d.%02d   %d herring   score %06d", (int)(b->time / 60), (int)b->time % 60, (int)(b->time * 100) % 100, b->herring, b->score);
-        hud_text(buf, size.x / 2, 484, 16, (cw_color){ 1, 0.95f, 0.01f, 0.9f }, 1);
+      if (b) snprintf(best, sizeof best, "Best: %02d:%02d.%02d   %d herring   score %06d", (int)(b->time / 60), (int)b->time % 60, (int)(b->time * 100) % 100, b->herring, b->score);
+      float hd = c->desc[0] ? hud_measure(false, c->desc, 17, iw).height : 0, hp = hud_measure(false, par, 16, iw).height;
+      float hb = b ? hud_measure(false, best, 16, iw).height : 0;
+      float pitch = 42.0f / 30; /* 42 px a row at 100% */
+      float drawn = fmaxf(hud_drawn(true, 30), hud_drawn(true, 24)), step = drawn * pitch;
+      float card_top = 40 + hud_measure(true, "Practice", 48, 0).height + 6;
+      float info_h = hd + 6 + hp + (b ? 6 + hb : 0) + 12;
+      float card_bottom = fminf(size.y - 12, fmaxf(508, card_top + 16 + 7 * step + info_h));
+      hud_panel(cx - card_w / 2, card_top, card_w, card_bottom - card_top, 0.42f);
+      hud_panel(size.x - 200, 100, 180, 180, 0.42f);
+      hud_image(preview, size.x - 190, 110, 160, 160);
+      float info_y = fmaxf(card_bottom - info_h, card_top + 16 + 42 * hud_drawn(true, 30) / 30 + 8);
+      int fit = (int)floorf((info_y - 8 - (card_top + 16)) / step);
+      if (fit < 1) fit = 1;
+      int first = list_first(7, G.cursor, fit), shown = 7 - first < fit ? 7 - first : fit;
+      for (int r = 0; r < shown; r++) {
+        int i = first + r;
+        hud_title(rows[i], cx, card_top + 16 + step * (float)r, sizes[i], i == G.cursor ? MENU_YELLOW : MENU_WHITE, 1);
       }
+      float a = 9 * drawn / 30;
+      if (first > 0) more_arrow(cx + card_w / 2 - 20 - a, card_top + 10, a, true);
+      if (first + shown < 7) more_arrow(cx + card_w / 2 - 20 - a, card_top + 16 + step * (float)shown - 8, a, false);
+      float y = info_y;
+      if (hd > 0) y += hud_text_box(false, c->desc, ix, y, iw, 17, (cw_color){ 1, 1, 1, 0.85f }, 1) + 6;
+      y += hud_text_box(false, par, ix, y, iw, 16, (cw_color){ 1, 1, 1, 0.6f }, 1) + 6;
+      if (b) hud_text_box(false, best, ix, y, iw, 16, (cw_color){ 1, 0.95f, 0.01f, 0.9f }, 1);
       hud_end();
       break;
     }
@@ -1156,19 +1291,42 @@ static void render(void *user, double alpha) {
       if (G.ncups) {
         const cup_def *cup = &G.cups[G.cup_idx];
         hud_title(cup->name, size.x / 2, 40, 48, (cw_color){ 1, 0.9f, 0.2f, 1 }, 1);
-        hud_panel(size.x / 2 - 300, 112, 600, 282, 0.42f);
+        const char *names[MAX_RACES];
+        char rows[MAX_RACES][96];
         for (int i = 0; i < cup->count; i++) {
           const course_info *ci = find_course(cup->races[i].dir);
-          snprintf(buf, sizeof buf, "%d. %s", i + 1, ci ? ci->title : cup->races[i].dir);
-          hud_title(buf, size.x / 2, 130 + 46 * (float)i, 26, i == G.race_idx ? (cw_color){ 1, 0.89f, 0.01f, 1 } : i < G.race_idx ? (cw_color){ 0.6f, 1, 0.6f, 1 } : (cw_color){ 1, 1, 1, 0.5f }, 1);
+          snprintf(rows[i], sizeof rows[i], "%d. %s", i + 1, ci ? ci->title : cup->races[i].dir);
+          names[i] = rows[i];
         }
         const cup_race *r = &cup->races[G.race_idx];
         int m = (int)(r->time[DIFFICULTY] / 60), s = (int)r->time[DIFFICULTY] % 60, hs = (int)(r->time[DIFFICULTY] * 100) % 100;
-        snprintf(buf, sizeof buf, "Requirements:  Time %02d:%02d.%02d   Herring %03d   Score %06d", m, s, hs, r->herring[DIFFICULTY], r->score[DIFFICULTY]);
-        hud_text(buf, size.x / 2, 330, 18, (cw_color){ 1, 0.95f, 0.01f, 1 }, 1);
-        snprintf(buf, sizeof buf, "Lives: %d", G.lives);
-        hud_text(buf, size.x / 2, 360, 20, (cw_color){ 1, 1, 1, 1 }, 1);
-        hud_prompt("{menu_accept} race    {menu_back} back", size.x / 2, 468, 18, (cw_color){ 1, 1, 1, 0.6f }, 1);
+        char req[160], lives[32];
+        snprintf(req, sizeof req, "Requirements:  Time %02d:%02d.%02d   Herring %03d   Score %06d", m, s, hs, r->herring[DIFFICULTY], r->score[DIFFICULTY]);
+        snprintf(lives, sizeof lives, "Lives: %d", G.lives);
+        const char *keys = "{menu_accept} race    {menu_back} back";
+        float card_w = 600;
+        for (int i = 0; i < cup->count; i++) card_w = fmaxf(card_w, hud_measure(true, names[i], 26, 0).width + 60);
+        card_w = fminf(card_w, size.x - 24);
+        float iw = card_w - 40, ix = size.x / 2 - iw / 2;
+        float card_top = 40 + hud_measure(true, cup->name, 48, 0).height + 14;
+        float hr = hud_measure(false, req, 18, iw).height, hl = hud_measure(false, lives, 20, iw).height, hk = hud_prompt_size(keys, 18).y;
+        float info_h = hr + 8 + hl + 12;
+        float step = 46 * hud_drawn(true, 26) / 26;
+        float bottom = size.y - 12 - hk - 12; /* the keys line sits under the card */
+        int fit = (int)floorf((bottom - info_h - (card_top + 18)) / step);
+        if (fit < 1) fit = 1;
+        int first = list_first(cup->count, G.race_idx, fit), shown = cup->count - first < fit ? cup->count - first : fit;
+        float card_h = 18 + step * (float)shown + info_h;
+        hud_panel(size.x / 2 - card_w / 2, card_top, card_w, card_h, 0.42f);
+        for (int k = 0; k < shown; k++) {
+          int i = first + k;
+          hud_title(names[i], size.x / 2, card_top + 18 + step * (float)k, 26,
+                    i == G.race_idx ? MENU_YELLOW : i < G.race_idx ? (cw_color){ 0.6f, 1, 0.6f, 1 } : (cw_color){ 1, 1, 1, 0.5f }, 1);
+        }
+        float y = card_top + 18 + step * (float)shown;
+        y += hud_text_box(false, req, ix, y, iw, 18, (cw_color){ 1, 0.95f, 0.01f, 1 }, 1) + 8;
+        hud_text_box(false, lives, ix, y, iw, 20, (cw_color){ 1, 1, 1, 1 }, 1);
+        hud_prompt(keys, size.x / 2, fmaxf(card_top + card_h + 12, fminf(468, size.y - 12 - hk)), 18, (cw_color){ 1, 1, 1, 0.6f }, 1);
       }
       hud_end();
       break;
@@ -1177,17 +1335,40 @@ static void render(void *user, double alpha) {
       hud_begin();
       size = cw_r2d_canvas_size();
       menu_backdrop();
-      hud_panel(size.x / 2 - 330, 16, 660, size.y - 32, 0.45f);
-      float y = 30;
+      float pw = fminf(660, size.x - 24), iw = pw - 40, top = 16, bottom = size.y - 16;
+      hud_panel(size.x / 2 - pw / 2, top, pw, bottom - top, 0.45f);
+      /* the roll: wrapped lines; when it is taller than the card (large text) it scrolls by itself, holding at
+       * each end (render time: nothing here reaches the simulation) */
+      float total = 0;
       for (int i = 0; i < G.ncredits; i++) {
         const char *bar = strchr(G.credits[i], '|');
         if (!bar) continue;
         bool h1 = !strncmp(G.credits[i], "h1", 2), h2 = !strncmp(G.credits[i], "h2", 2), small = !strncmp(G.credits[i], "text_small", 10);
         float sz = h1 ? 30 : h2 ? 22 : small ? 13 : 16;
-        if (h1 || h2) hud_title(bar + 1, size.x / 2, y, sz, (cw_color){ 1, 0.9f, 0.2f, 1 }, 1);
-        else hud_text(bar + 1, size.x / 2, y, sz, (cw_color){ 1, 1, 1, 1 }, 1);
-        y += sz * 1.15f;
+        int lines = bar[1] ? hud_measure(h1 || h2, bar + 1, sz, iw).lines : 1;
+        total += (float)(lines < 1 ? 1 : lines) * 1.15f * hud_drawn(h1 || h2, sz);
       }
+      float room = bottom - top - 28, over = total - room;
+      static int frames;
+      if (over > 0) {
+        float speed = 30.0f / 60, hold = 120, run = over / speed, t = fmodf((float)frames, hold + run + hold + run);
+        G.credits_scroll = t < hold ? 0 : t < hold + run ? (t - hold) * speed : t < hold + run + hold ? over : over - (t - hold - run - hold) * speed;
+        frames++;
+      } else G.credits_scroll = 0, frames = 0;
+      cw_r2d_push_clip((cw_rect){ size.x / 2 - pw / 2, top + 6, pw, bottom - top - 12 });
+      float y = top + 14 - G.credits_scroll;
+      for (int i = 0; i < G.ncredits; i++) {
+        const char *bar = strchr(G.credits[i], '|');
+        if (!bar) continue;
+        bool h1 = !strncmp(G.credits[i], "h1", 2), h2 = !strncmp(G.credits[i], "h2", 2), small = !strncmp(G.credits[i], "text_small", 10);
+        float sz = h1 ? 30 : h2 ? 22 : small ? 13 : 16;
+        int lines = bar[1] ? hud_measure(h1 || h2, bar + 1, sz, iw).lines : 1;
+        float h = (float)(lines < 1 ? 1 : lines) * 1.15f * hud_drawn(h1 || h2, sz);
+        if (bar[1] && y + h > top && y < bottom)
+          hud_text_box(h1 || h2, bar + 1, size.x / 2 - iw / 2, y, iw, sz, h1 || h2 ? (cw_color){ 1, 0.9f, 0.2f, 1 } : (cw_color){ 1, 1, 1, 1 }, 1);
+        y += h;
+      }
+      cw_r2d_pop_clip();
       hud_end();
       break;
     }
@@ -1218,7 +1399,7 @@ static void render(void *user, double alpha) {
       hud_begin();
       size = cw_r2d_canvas_size();
       hud_box(0, 0, size.x, size.y, (cw_color){ 0, 0, 0, 0.45f });
-      draw_menu("Paused", ITEMS, 4, G.pause_cursor, 220);
+      draw_menu("Paused", ITEMS, 4, G.pause_cursor, 220, size.y - 12);
       hud_end();
       break;
     }
@@ -1226,20 +1407,41 @@ static void render(void *user, double alpha) {
       hud_draw(&G.phys, G.race_time, G.herring, G.mode == MODE_CUP ? G.lives : 0);
       hud_begin();
       size = cw_r2d_canvas_size();
-      hud_panel(size.x / 2 - 300, 110, 600, 300, 0.55f);
-      hud_title("Race Over", size.x / 2, 130, 44, (cw_color){ 1, 0.9f, 0.2f, 1 }, 1);
-      int m = (int)(G.race_time / 60), s = (int)G.race_time % 60, hs = (int)(G.race_time * 100) % 100;
-      snprintf(buf, sizeof buf, "Time: %02d:%02d.%02d", m, s, hs);
-      hud_title(buf, size.x / 2, 200, 26, (cw_color){ 1, 1, 1, 1 }, 1);
-      snprintf(buf, sizeof buf, "Herring: %03d", G.herring);
-      hud_title(buf, size.x / 2, 240, 26, (cw_color){ 1, 1, 1, 1 }, 1);
-      snprintf(buf, sizeof buf, "Score: %06d", G.score);
-      hud_title(buf, size.x / 2, 280, 26, (cw_color){ 1, 1, 1, 1 }, 1);
       const char *msg = G.aborted ? "Race aborted." : G.mode == MODE_PRACTICE ? (G.new_best ? "You beat your best score!" : "") :
         G.won && G.race_idx + 1 >= G.cups[G.cup_idx].count ? "Congratulations! You won the cup!" : G.won ? "You advanced to the next race!" :
         G.lives <= 0 ? "You didn't advance, and you're out of lives." : "You didn't advance.";
-      hud_text(msg, size.x / 2, 340, 20, (cw_color){ 1, 0.95f, 0.01f, 1 }, 1);
-      if (G.over_time >= 0.5f) hud_prompt("{menu_accept} continue", size.x / 2, 373, 18, (cw_color){ 1, 1, 1, 0.6f }, 1);
+      int m = (int)(G.race_time / 60), s = (int)G.race_time % 60, hs = (int)(G.race_time * 100) % 100;
+      char rows[3][48];
+      snprintf(rows[0], sizeof rows[0], "Time: %02d:%02d.%02d", m, s, hs);
+      snprintf(rows[1], sizeof rows[1], "Herring: %03d", G.herring);
+      snprintf(rows[2], sizeof rows[2], "Score: %06d", G.score);
+      /* the card from its measured lines, centred; 600 x 300 at 100% */
+      float pw = 600;
+      for (int i = 0; i < 3; i++) pw = fmaxf(pw, hud_measure(true, rows[i], 26, 0).width + 60);
+      /* between the top cards and the bottom; clear of the speed gauge (bottom right) when it reaches down there */
+      float top_limit = hud_top_bottom() + 8, gauge_top = size.y - 190;
+      pw = fminf(pw, size.x - 24);
+      float iw = pw - 40, ix = size.x / 2 - iw / 2;
+      float ht = hud_measure(true, "Race Over", 44, iw).height, step = 40 * hud_drawn(true, 26) / 26;
+      float hm = msg[0] ? hud_measure(false, msg, 20, iw).height : hud_drawn(false, 20) * 1.2f, hk = hud_prompt_size("{menu_accept} continue", 18).y;
+      float ph = 20 + ht + 14 + 3 * step + 20 + hm + 8 + hk + 20;
+      ph = fmaxf(ph, fminf(300, size.y - 8 - top_limit));
+      float py = fmaxf(top_limit, fminf(110, top_limit + (size.y - 8 - top_limit - ph) / 2));
+      if (py + ph > gauge_top && pw > size.x - 2 * 198) { /* narrower, so the card clears the gauge; the text wraps */
+        pw = size.x - 2 * 198, iw = pw - 40, ix = size.x / 2 - iw / 2;
+        ht = hud_measure(true, "Race Over", 44, iw).height;
+        hm = msg[0] ? hud_measure(false, msg, 20, iw).height : hm;
+        ph = fmaxf(20 + ht + 14 + 3 * step + 20 + hm + 8 + hk + 20, fminf(300, size.y - 8 - top_limit));
+        py = fmaxf(top_limit, fminf(110, top_limit + (size.y - 8 - top_limit - ph) / 2));
+      }
+      hud_panel(size.x / 2 - pw / 2, py, pw, ph, 0.55f);
+      float y = py + 20;
+      y += hud_text_box(true, "Race Over", ix, y, iw, 44, (cw_color){ 1, 0.9f, 0.2f, 1 }, 1) + 14;
+      for (int i = 0; i < 3; i++) hud_title(rows[i], size.x / 2, y + step * (float)i, 26, (cw_color){ 1, 1, 1, 1 }, 1);
+      y += 3 * step + 20;
+      if (msg[0]) hud_text_box(false, msg, ix, y, iw, 20, (cw_color){ 1, 0.95f, 0.01f, 1 }, 1);
+      y += hm + 8;
+      if (G.over_time >= 0.5f) hud_prompt("{menu_accept} continue", size.x / 2, y, 18, (cw_color){ 1, 1, 1, 0.6f }, 1);
       hud_end();
       break;
     }
