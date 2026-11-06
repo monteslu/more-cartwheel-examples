@@ -108,7 +108,7 @@ static struct {
   cw_action m_up, m_down, m_left, m_right, m_accept, m_back;
   int lever_edges;           /* the "Tree edges" graphics lever: Sharp / Smooth (MSAA 2x + alpha to coverage) */
   int lever_terrain;
-  int lever_tux_shadow, lever_snow;      /* the "Tux shadow" lever: contact decal only, or the sun's cascades too */         /* the "Terrain" lever: the tier (Low..Ultra), the preset's by default */
+  int lever_tux_shadow, lever_snow;      /* the "Tux shadow" lever: contact decal only, or the sun's cascades too */         /* the "Terrain" lever: the tier (Very Low..High), the preset's by default */
   /* debug */
   int32_t ticks, dbg_state, dbg_finished, dbg_airborne, dbg_tree, dbg_contacts;
   float dbg_pos[3], dbg_vel[3], dbg_speed, dbg_fric;
@@ -774,8 +774,8 @@ static void quality_changed(cw_quality q, void *u) {
   course_set_tree_coverage(smooth);
   /* the terrain's tier (its near shader and how far the tiles reach) is the
    * frame's biggest cost after the resolution: its own lever */
-  /* the lever's values are Low .. Ultra: the terrain's quality one above Very Low (cartwheel/terrain.h) */
-  course_set_terrain_quality(G.lever_terrain >= 0 ? CW_QUALITY_LOW + cw_gfx_get(G.lever_terrain) : -1);
+  /* the lever's values are Very Low .. High: the terrain's quality (cartwheel/terrain.h) */
+  course_set_terrain_quality(G.lever_terrain >= 0 ? CW_QUALITY_VERY_LOW + cw_gfx_get(G.lever_terrain) : -1);
   /* Tux in the sun's cascades is ~25 meshes x 3 cascades of draws a frame: a
    * cart host pays dearly per draw, and the contact decal already grounds him */
   tux_set_cast_shadow(&G.tux, G.lever_tux_shadow < 0 || cw_gfx_get(G.lever_tux_shadow) > 0);
@@ -860,13 +860,14 @@ static void init(void *user) {
   /* GL only: the engine's WebGPU path has no MSAA on an HDR scene, and alpha
    * to coverage is three.c's GL feature; the lever would be a no-op there */
   G.lever_edges = cw_gpu_backend() == CW_GPU_WEBGPU ? -1 : cw_quality_lever_add("Tree edges", EDGES, 2, EDGES_PRESET);
-  static const char *const TERRAIN[] = { "Low", "Medium", "High", "Ultra" };
+  static const char *const TERRAIN[] = { "Very Low", "Low", "Medium", "High" };
   /* High's tier (4 control texels blended, height blending) costs 5 ms of a
    * 14 ms frame at 3024x1702 and draws the original tiles no better (a pixel
    * diff of the same frame: 0.02 mean on bunny_hill; the rock on
    * path_of_daggers smears where Medium's triplanar keeps it crisp), so the
-   * High preset takes Medium's and Ultra takes High's */
-  const cw_quality_lever_presets TERRAIN_PRESET = { .very_low = 0, .low = 0, .medium = 1, .high = 1, .ultra = 2 };
+   * High preset takes Medium's and Ultra takes High's. Very Low's tier reads each layer once and switches to the
+   * coarser levels sooner */
+  const cw_quality_lever_presets TERRAIN_PRESET = { .very_low = 0, .low = 1, .medium = 2, .high = 2, .ultra = 3 };
   G.lever_terrain = cw_quality_lever_add("Terrain", TERRAIN, 4, TERRAIN_PRESET);
   static const char *const TUXSH[] = { "Contact", "Cast" };
   const cw_quality_lever_presets TUXSH_PRESET = { .very_low = 0, .low = 0, .medium = 1, .high = 1, .ultra = 1 };

@@ -77,3 +77,8 @@ basic+fog2
 standard+trans+fog2+l2001
 standard+trans+env+fog2+l2001
 basic+map+rep+fog2
+standard+vcol+fog2+l2001+xplain
+standard+map+vcol+rep+fog2+l2001+xplain
+standard+vcol+instbig+fog2+icol+l2001+xplain
+standard+trans+fog2+l2001+xplain
+standard+trans+env+fog2+l2001+xplain
