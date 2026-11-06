@@ -2400,6 +2400,7 @@ static void hud_view(int h) {
   if (G.state == ST_PLAY && G.mode != MODE_COOP) {
     int secs = CW_MAX(0, (G.time_limit - G.match_ticks) / 60);
     snprintf(s, sizeof s, "%d:%02d", secs / 60, secs % 60);
+    if (cx - measure(s, u * 1.3f, 0).width * 0.5f < top_right + u * 0.6f) top_mid = fmaxf(top_mid, top_left); /* it would meet the score: under it */
     tm = text(s, r.x, top_mid, u * 1.3f, secs < 30 ? cw_rgba(1, 0.45f, 0.35f, 1) : cw_rgba(1, 1, 1, 0.95f), CW_ALIGN_CENTER, r.w); /* top centre: the kill feed owns the screen's top right */
     top_mid += tm.height, top_right = fmaxf(top_right, cx + tm.width * 0.5f);
     if (G.mode == MODE_DM) {
@@ -2430,7 +2431,7 @@ static void hud_view(int h) {
     }
   }
   if (f->spawn_guard > 0 && f->alive) cw_r2d_rect_lines(r, 3, cw_rgba(0.4f, 0.8f, 1, 0.5f));
-  bool hints = G.state == ST_PLAY && G.match_ticks < 60 * 9 && f->alive && f->deaths == 0 && f->score == 0;
+  bool hints = cw_shell_screen_now() != CW_SHELL_PAUSE && G.state == ST_PLAY && G.match_ticks < 60 * 9 && f->alive && f->deaths == 0 && f->score == 0;
   if (hints) { /* a newcomer's first seconds: the controls */
     float a = CW_MIN(1.0f, (float)(60 * 9 - G.match_ticks) / 60.0f) * 0.92f;
     float hs = body(CW_MIN(u * 0.82f, r.w / 30.0f)); /* the longer line is about 26 of these wide: it fits a half width view */
@@ -2680,8 +2681,9 @@ static void render(void *user, double alpha) {
   if (sc == CW_SHELL_PLAY || sc == CW_SHELL_PAUSE) {
     cw_r2d_begin(NULL);
     memset(hud_top_bottom, 0, sizeof hud_top_bottom);
-    if (G.state == ST_PLAY) for (int h = 0; h < G.players; h++) hud_view(h); /* the results replace the views' HUD */
-    hud_feed();
+    bool paused = sc == CW_SHELL_PAUSE; /* the pause menu stands alone over the dimmed views */
+    if (G.state == ST_PLAY && !paused) for (int h = 0; h < G.players; h++) hud_view(h); /* the results replace the views' HUD */
+    if (!paused) hud_feed();
     if (G.state == ST_SETUP) hud_setup();
     if (G.state == ST_OVER) hud_over();
     cw_r2d_end();
