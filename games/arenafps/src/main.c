@@ -2266,9 +2266,20 @@ static void game_step(void) {
 /* the item colours of the pickups (arena.c draws them), for the HUD's respawn timers */
 static const float ITEM_RGB[ITEM_KINDS][3] = { { 0.4f, 1, 0.5f }, { 0.5f, 0.75f, 1 }, { 1, 0.8f, 0.35f }, { 1, 0.45f, 0.35f }, { 0.85f, 0.55f, 1 }, { 1, 1, 0.55f } };
 
-static void text(const char *s, float x, float y, float size, cw_color c, cw_text_align align, float wrap) {
-  cw_r2d_text(G.font, s, cw_v2(x, y), &(cw_text_style){ .size = size, .color = c, .outline_width = size * 0.09f, .outline_color = cw_rgba(0, 0, 0, c.a), .align = align, .wrap_width = wrap }); /* the outline fades with the text: a fading line must not leave black letters */
+static cw_text_metrics text(const char *s, float x, float y, float size, cw_color c, cw_text_align align, float wrap) {
+  return cw_r2d_text(G.font, s, cw_v2(x, y), &(cw_text_style){ .size = size, .color = c, .outline_width = size * 0.09f, .outline_color = cw_rgba(0, 0, 0, c.a), .align = align, .wrap_width = wrap }); /* the outline fades with the text: a fading line must not leave black letters */
 }
+/* the box text() would draw, at the player's text scale (the HUD lays out from these, so it holds at 200%) */
+static cw_text_metrics measure(const char *s, float size, float wrap) {
+  return cw_font_measure(G.font, s, &(cw_text_style){ .size = size, .outline_width = size * 0.09f, .wrap_width = wrap });
+}
+/* a size held to the body text floor: 26 px at 1080 lines (cartwheel/render2d.h "text size"), whatever the view's size */
+static float body(float size) {
+  float m = cw_r2d_canvas_size().y * CW_TEXT_FLOOR_BODY * 1.02f;
+  return size > m ? size : m;
+}
+/* the HUD's top rows' bottom in each view this frame (the kill feed and the wave call go under them); 0: not drawn */
+static float hud_top_bottom[MAXH], hud_top_right[MAXH]; /* and their right edge */
 /* text with button prompts in it (cartwheel/prompt.h markup: "{jump} jump") for one player (-1: every seat), in the box
  * text() would use */
 static void ptext(const char *s, int player, float x, float y, float size, cw_color c, cw_text_align align, float wrap) {
@@ -2281,7 +2292,7 @@ static void hud_view(int h) {
   cw_rect r = cw_shell_player_rect(h);
   float u = r.h / 22.0f; /* a unit that scales with the view's height */
   if (u < 8) u = 8;
-  float cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+  float cx = r.x + r.w / 2, cy = r.y + r.h / 2, kill_bottom = 0; /* kill_bottom: the kill line's bottom, when one shows */
   /* damage flash at the edges */
   if (G.dmg_flash[h] > 0.02f) {
     cw_color c = cw_rgba(0.9f, 0.05f, 0.05f, G.dmg_flash[h] * 0.45f);
@@ -2330,7 +2341,8 @@ static void hud_view(int h) {
       cw_r2d_line(cw_v2(cx + d, cy - d), cw_v2(cx + d * 0.62f, cy - d * 0.62f), th, wc);
       cw_r2d_line(cw_v2(cx - d, cy + d), cw_v2(cx - d * 0.62f, cy + d * 0.62f), th, wc);
       cw_r2d_line(cw_v2(cx + d, cy + d), cw_v2(cx + d * 0.62f, cy + d * 0.62f), th, wc);
-      text("HEAD", r.x, cy - u * 3.2f, u * 0.95f, wc, CW_ALIGN_CENTER, r.w);
+      float hs = body(u * 0.95f); /* the word's bottom clear of the white cross at any text size */
+      text("HEAD", r.x, fminf(cy - u * 3.2f, cy - d - u * 0.3f - measure("HEAD", hs, 0).height), hs, wc, CW_ALIGN_CENTER, r.w);
     }
   }
   /* a kill: a gold cross over the crosshair and the victim's name, longer than a hit marker */
@@ -2342,64 +2354,54 @@ static void hud_view(int h) {
     char ks[40];
     if (G.kill_streak[h] >= 2) snprintf(ks, sizeof ks, "FRAGGED %s  x%d", G.kill_name[h], G.kill_streak[h]);
     else snprintf(ks, sizeof ks, "FRAGGED %s", G.kill_name[h]);
-    text(ks, r.x, cy + u * 2.6f, u * 1.2f, cw_rgba(1, 0.85f, 0.2f, a), CW_ALIGN_CENTER, r.w);
+    float ky = cy + u * 2.6f, ksz = body(u * 1.2f);
+    kill_bottom = ky + text(ks, r.x, ky, ksz, cw_rgba(1, 0.85f, 0.2f, a), CW_ALIGN_CENTER, r.w).height;
   }
   /* health and armour bars, bottom left */
-  float bw = r.w * 0.28f, bh = u * 0.7f, bx = r.x + u, by = r.y + r.h - u * 3.2f;
+  float bw = r.w * 0.28f, bh = u * 0.7f, bx = r.x + u, by = r.y + r.h - u * 3.2f, bottom = r.y + r.h;
   cw_r2d_rect(cw_rect_make(bx, by, bw, bh), cw_rgba(0, 0, 0, 0.55f));
   float hpk = cw_clampf((float)f->hp / 100.0f, 0, 1);
   cw_r2d_rect(cw_rect_make(bx, by, bw * hpk, bh), f->hp > 30 ? cw_rgba(0.25f, 0.85f, 0.35f, 0.95f) : cw_rgba(0.95f, 0.25f, 0.2f, 0.95f));
   cw_r2d_rect(cw_rect_make(bx, by + bh * 1.4f, bw, bh * 0.6f), cw_rgba(0, 0, 0, 0.55f));
   cw_r2d_rect(cw_rect_make(bx, by + bh * 1.4f, bw * cw_clampf((float)f->armor / 100.0f, 0, 1), bh * 0.6f), cw_rgba(0.3f, 0.6f, 1, 0.95f));
   char s[48];
+  float big = u * 1.8f, block_top = by; /* block_top: the bottom rows' top, what the lines above them stay over */
   snprintf(s, sizeof s, "%d", f->hp > 0 ? f->hp : 0);
-  text(s, bx + bw + u * 0.4f, by - u * 0.45f, u * 1.8f, cw_rgba(1, 1, 1, 1), CW_ALIGN_LEFT, 0);
+  float ny = fminf(by - u * 0.45f, bottom - u * 0.4f - measure(s, big, 0).height); /* a larger text size grows it up, not off the view */
+  text(s, bx + bw + u * 0.4f, ny, big, cw_rgba(1, 1, 1, 1), CW_ALIGN_LEFT, 0);
+  block_top = fminf(block_top, ny);
   /* weapon and ammo, bottom right */
   /* the name over a big ammo count: two short lines, so neither meets the health number in a half-width view */
   snprintf(s, sizeof s, "%d", f->ammo[f->weapon]);
-  text(s, r.x, r.y + r.h - u * 3.4f, u * 1.8f, cw_rgba(1, 0.9f, 0.6f, 1), CW_ALIGN_RIGHT, r.w - u);
-  text(W[f->weapon].name, r.x, r.y + r.h - u * 4.8f, u * 0.85f, cw_rgba(1, 0.9f, 0.6f, 0.85f), CW_ALIGN_RIGHT, r.w - u);
+  float ay = fminf(bottom - u * 3.4f, bottom - u * 1.1f - measure(s, big, 0).height); /* over the weapon pips */
+  text(s, r.x, ay, big, cw_rgba(1, 0.9f, 0.6f, 1), CW_ALIGN_RIGHT, r.w - u);
+  float wsz = body(u * 0.85f), wy = fminf(bottom - u * 4.8f, ay - measure(W[f->weapon].name, wsz, 0).height * 0.92f);
+  text(W[f->weapon].name, r.x, wy, wsz, cw_rgba(1, 0.9f, 0.6f, 0.85f), CW_ALIGN_RIGHT, r.w - u);
+  block_top = fminf(block_top, wy);
   /* weapon pips */
   for (int k = 0; k < NWEAP; k++) {
     bool have = f->have >> k & 1;
     cw_color c = k == f->weapon ? cw_rgba(1, 0.85f, 0.3f, 1) : have ? cw_rgba(1, 1, 1, 0.6f) : cw_rgba(1, 1, 1, 0.15f);
     cw_r2d_rect(cw_rect_make(r.x + r.w - u * (1 + 1.3f * (float)(NWEAP - k)), r.y + r.h - u * 0.9f, u * 1.0f, u * 0.25f), c);
   }
-  /* score, top left */
+  /* score, top left: each line under the last as measured */
+  float top_left = r.y + u * 0.5f, top_mid = top_left;
   if (G.mode == MODE_COOP) snprintf(s, sizeof s, "WAVE %d   LIVES %d", G.wave, G.lives);
   else snprintf(s, sizeof s, "FRAGS %d", f->score);
-  text(s, r.x + u, r.y + u * 0.5f, u * 1.3f, cw_rgba(1, 1, 1, 1), CW_ALIGN_LEFT, 0);
+  cw_text_metrics tm = text(s, r.x + u, top_left, u * 1.3f, cw_rgba(1, 1, 1, 1), CW_ALIGN_LEFT, 0);
+  float top_right = r.x + u + tm.width;
+  top_left += tm.height;
   if (G.mode == MODE_TDM) {
     snprintf(s, sizeof s, "%s %d : %d %s", TEAM_NAME[0], G.team_score[0], G.team_score[1], TEAM_NAME[1]);
-    text(s, r.x + u, r.y + u * 2.1f, u * 0.9f, cw_rgba(TEAM_RGB[f->team & 1][0], TEAM_RGB[f->team & 1][1], TEAM_RGB[f->team & 1][2], 1), CW_ALIGN_LEFT, 0);
+    tm = text(s, r.x + u, top_left, body(u * 0.9f), cw_rgba(TEAM_RGB[f->team & 1][0], TEAM_RGB[f->team & 1][1], TEAM_RGB[f->team & 1][2], 1), CW_ALIGN_LEFT, 0);
+    top_left += tm.height, top_right = fmaxf(top_right, r.x + u + tm.width);
   }
-  if (!f->alive) {
-    text("DOWN", cx - r.w / 2, cy - u * 3, u * 3.2f, cw_rgba(1, 0.3f, 0.25f, 1), CW_ALIGN_CENTER, r.w);
-    if (G.killed_by[h][0]) {
-      char by[32];
-      snprintf(by, sizeof by, "by %s", G.killed_by[h]);
-      text(by, cx - r.w / 2, cy + u * 1.7f, u * 1.1f, cw_rgba(1, 0.75f, 0.65f, 0.95f), CW_ALIGN_CENTER, r.w);
-    }
-    if (!(G.mode == MODE_COOP && G.lives <= 0)) {
-      char rs[24];
-      snprintf(rs, sizeof rs, "back in %d", CW_MAX(1, (150 - f->dead_ticks + 59) / 60));
-      text(rs, cx - r.w / 2, cy + u * 0.3f, u * 1.2f, cw_rgba(1, 1, 1, 0.85f), CW_ALIGN_CENTER, r.w);
-    }
-    if (G.mode == MODE_COOP && G.lives <= 0) text("NO LIVES LEFT", cx - r.w / 2, cy, u * 1.2f, cw_rgba(1, 1, 1, 0.9f), CW_ALIGN_CENTER, r.w);
-  }
-  if (f->spawn_guard > 0 && f->alive) cw_r2d_rect_lines(r, 3, cw_rgba(0.4f, 0.8f, 1, 0.5f));
-  if (G.pick_t[h] > 0.08f && f->alive) text(G.pick_text[h], r.x, r.y + r.h - u * 6.6f, u * 1.05f, cw_rgba(0.75f, 1, 0.8f, CW_MIN(1.0f, G.pick_t[h] * 1.6f)), CW_ALIGN_CENTER, r.w);
-  if (G.state == ST_PLAY && G.match_ticks < 60 * 9 && f->alive && f->deaths == 0 && f->score == 0) { /* a newcomer's first seconds: the controls */
-    float a = CW_MIN(1.0f, (float)(60 * 9 - G.match_ticks) / 60.0f) * 0.92f;
-    float hs = CW_MIN(u * 0.82f, r.w / 30.0f); /* the longer line is about 26 of these wide: it fits a half width view */
-    ptext("{move_left|move_right|move_forward|move_back} move   {look_left|look_right|look_up|look_down} look   {fire} fire", h, r.x, r.y + r.h * 0.66f, hs, cw_rgba(1, 1, 1, a), CW_ALIGN_CENTER, r.w);
-    ptext("{jump} jump   {weapon_prev|weapon_next} change weapon   {sprint} sprint", h, r.x, r.y + r.h * 0.66f + hs * 1.6f, hs, cw_rgba(1, 1, 1, a), CW_ALIGN_CENTER, r.w);
-  }
-  /* top right: the time left and who leads (deathmatch: the frag leader; team deathmatch shows both teams on the left) */
+  /* top centre: the time left and who leads (deathmatch: the frag leader; team deathmatch shows both teams on the left) */
   if (G.state == ST_PLAY && G.mode != MODE_COOP) {
     int secs = CW_MAX(0, (G.time_limit - G.match_ticks) / 60);
     snprintf(s, sizeof s, "%d:%02d", secs / 60, secs % 60);
-    text(s, r.x, r.y + u * 0.5f, u * 1.3f, secs < 30 ? cw_rgba(1, 0.45f, 0.35f, 1) : cw_rgba(1, 1, 1, 0.95f), CW_ALIGN_CENTER, r.w); /* top centre: the kill feed owns the screen's top right */
+    tm = text(s, r.x, top_mid, u * 1.3f, secs < 30 ? cw_rgba(1, 0.45f, 0.35f, 1) : cw_rgba(1, 1, 1, 0.95f), CW_ALIGN_CENTER, r.w); /* top centre: the kill feed owns the screen's top right */
+    top_mid += tm.height, top_right = fmaxf(top_right, cx + tm.width * 0.5f);
     if (G.mode == MODE_DM) {
       int lead = -1, ls = -9999;
       for (int i = 0; i < G.nf; i++) if (F(i)->active && F(i)->score > ls) ls = F(i)->score, lead = i;
@@ -2407,9 +2409,73 @@ static void hud_view(int h) {
         bool me = lead == h;
         if (me) snprintf(s, sizeof s, "YOU LEAD  %d / %d", ls, G.frag_limit);
         else snprintf(s, sizeof s, "LEADER %s  %d / %d", F(lead)->name, ls, G.frag_limit);
-        text(s, r.x, r.y + u * 2.0f, u * 0.85f, me ? cw_rgba(1, 0.85f, 0.3f, 1) : cw_rgba(1, 1, 1, 0.8f), CW_ALIGN_CENTER, r.w);
+        tm = text(s, r.x, top_mid, body(u * 0.85f), me ? cw_rgba(1, 0.85f, 0.3f, 1) : cw_rgba(1, 1, 1, 0.8f), CW_ALIGN_CENTER, r.w);
+        top_mid += tm.height, top_right = fmaxf(top_right, cx + tm.width * 0.5f);
       }
     }
+  }
+  hud_top_bottom[h] = fmaxf(top_left, top_mid), hud_top_right[h] = top_right;
+  if (!f->alive) { /* a stack from the middle down: each line under the last as measured */
+    float dy = cy - u * 3;
+    dy += text("DOWN", cx - r.w / 2, dy, u * 3.2f, cw_rgba(1, 0.3f, 0.25f, 1), CW_ALIGN_CENTER, r.w).height * 0.86f;
+    if (!(G.mode == MODE_COOP && G.lives <= 0)) {
+      char rs[24];
+      snprintf(rs, sizeof rs, "back in %d", CW_MAX(1, (150 - f->dead_ticks + 59) / 60));
+      dy += text(rs, cx - r.w / 2, dy, u * 1.2f, cw_rgba(1, 1, 1, 0.85f), CW_ALIGN_CENTER, r.w).height;
+    } else dy += text("NO LIVES LEFT", cx - r.w / 2, dy, u * 1.2f, cw_rgba(1, 1, 1, 0.9f), CW_ALIGN_CENTER, r.w).height;
+    if (G.killed_by[h][0]) {
+      char by[32];
+      snprintf(by, sizeof by, "by %s", G.killed_by[h]);
+      text(by, cx - r.w / 2, dy, u * 1.1f, cw_rgba(1, 0.75f, 0.65f, 0.95f), CW_ALIGN_CENTER, r.w);
+    }
+  }
+  if (f->spawn_guard > 0 && f->alive) cw_r2d_rect_lines(r, 3, cw_rgba(0.4f, 0.8f, 1, 0.5f));
+  bool hints = G.state == ST_PLAY && G.match_ticks < 60 * 9 && f->alive && f->deaths == 0 && f->score == 0;
+  if (hints) { /* a newcomer's first seconds: the controls */
+    float a = CW_MIN(1.0f, (float)(60 * 9 - G.match_ticks) / 60.0f) * 0.92f;
+    float hs = body(CW_MIN(u * 0.82f, r.w / 30.0f)); /* the longer line is about 26 of these wide: it fits a half width view */
+    /* the hints, packed into as few lines as fit the view's width at this text size */
+    static const char *const PART[] = { "{move_left|move_right|move_forward|move_back} move", "{look_left|look_right|look_up|look_down} look", "{fire} fire",
+                                        "{jump} jump", "{weapon_prev|weapon_next} change weapon", "{sprint} sprint" };
+    enum { NPART = sizeof PART / sizeof PART[0] };
+    char lines[NPART][320];
+    int nl = 0;
+    for (int k = 0; k < NPART; k++) {
+      char join[sizeof lines[0]];
+      bool brk = k == 3; /* the first three on one line, the rest on the next, as they read best */
+      if (nl > 0 && !brk) {
+        snprintf(join, sizeof join, "%s   %s", lines[nl - 1], PART[k]);
+        if (cw_prompt_text_size(G.font, join, h, hs).x <= r.w * 0.94f) { memcpy(lines[nl - 1], join, sizeof lines[0]); continue; }
+      }
+      snprintf(lines[nl++], sizeof lines[0], "%s", PART[k]);
+    }
+    float total = 0, lh[NPART];
+    for (int k = 0; k < nl; k++) total += (lh[k] = cw_prompt_text_size(G.font, lines[k], h, hs).y * 1.15f);
+    /* between the crosshair (and a kill's line) and the bottom rows; when a large text size leaves room for fewer
+     * lines than there are, they take turns, a page every two and a half seconds */
+    float top = fmaxf(cy + u * 1.8f, kill_bottom), bot = block_top - u * 0.3f;
+    int first = 0, count = nl;
+    if (total > bot - top) {
+      int starts[NPART], np = 0;
+      for (int k = 0; k < nl;) {
+        float used = 0;
+        starts[np++] = k;
+        do used += lh[k++]; while (k < nl && used + lh[k] <= bot - top);
+      }
+      int pg = (G.match_ticks / 150) % np;
+      first = starts[pg], count = (pg + 1 < np ? starts[pg + 1] : nl) - first;
+      total = 0;
+      for (int k = first; k < first + count; k++) total += lh[k];
+    }
+    float hy = fminf(fmaxf(top, fminf(r.y + r.h * 0.66f, bot - total)), bot - total); /* no room: nearer the crosshair, never on the rows */
+    for (int k = first; k < first + count; k++) ptext(lines[k], h, r.x, hy, hs, cw_rgba(1, 1, 1, a), CW_ALIGN_CENTER, r.w), hy += lh[k];
+  }
+  if (G.pick_t[h] > 0.08f && f->alive) { /* over the bottom rows; while a kill's line holds that space, the kill's line wins;
+                                          * while the controls show there, over the crosshair if there is room */
+    float psz = body(u * 1.05f), ph = measure(G.pick_text[h], psz, r.w).height, py = fminf(r.y + r.h - u * 6.6f, block_top - ph);
+    bool room = !(kill_bottom > 0 && py < kill_bottom);
+    if (hints) py = cy - u * 1.8f - ph, room = py >= hud_top_bottom[h] && G.head_marker[h] <= 0.05f;
+    if (room) text(G.pick_text[h], r.x, py, psz, cw_rgba(0.75f, 1, 0.8f, CW_MIN(1.0f, G.pick_t[h] * 1.6f)), CW_ALIGN_CENTER, r.w);
   }
   /* respawn timers over the item spots this player can see (not through walls): seconds until it is back */
   if (f->alive && G.state == ST_PLAY) {
@@ -2426,7 +2492,7 @@ static void hud_view(int h) {
       if (sx < r.x || sx > r.x + r.w || sy < r.y || sy > r.y + r.h) continue;
       if (arena_ray(e, at, NULL, NULL)) continue;
       bool power = it->kind == ITEM_ROCKET || it->kind == ITEM_RAIL || it->kind == ITEM_ARMOR;
-      float sz = u * (power ? 1.1f : 0.8f) * CW_CLAMP(12.0f / z, 0.6f, 1.4f);
+      float sz = body(u * (power ? 1.1f : 0.8f) * CW_CLAMP(12.0f / z, 0.6f, 1.4f));
       snprintf(s, sizeof s, "%d", (it->respawn + 59) / 60);
       const float *c = ITEM_RGB[it->kind];
       text(s, sx - u * 4, sy - sz * 0.6f, sz, cw_rgba(c[0], c[1], c[2], power ? 0.95f : 0.7f), CW_ALIGN_CENTER, u * 8);
@@ -2434,26 +2500,43 @@ static void hud_view(int h) {
   }
 }
 
+/* a prompt line split at its wide gaps ("    ") into lines no wider than maxw at this size, '\n' between them */
+static const char *fit_hint(const char *markup, float size, float maxw) {
+  static char o[256];
+  snprintf(o, sizeof o, "%s", markup);
+  if (cw_prompt_text_size(G.font, o, -1, size).x <= maxw) return o;
+  for (char *p = strstr(o, "    "); p; p = strstr(p + 1, "    ")) p[0] = '\n', memmove(p + 1, p + 4, strlen(p + 4) + 1);
+  return o;
+}
+
 /* three players: the fourth quadrant shows the arena and the score, not a black square */
 static void hud_quadrant(void) {
   cw_vec2 cs = cw_r2d_canvas_size();
   float x = cs.x * 0.5f, y = cs.y * 0.5f, w = cs.x * 0.5f, h = cs.y * 0.5f, u = h / 22.0f;
   cw_r2d_rect(cw_rect_make(x, y, w, h), cw_rgba(0.035f, 0.04f, 0.05f, 1));
-  text(ARENA_INFO[G.arena_id].name, x, y + u * 1.6f, u * 2.2f, cw_rgba(1, 0.85f, 0.4f, 1), CW_ALIGN_CENTER, w);
-  text(MODE_NAME[G.mode], x, y + u * 4.4f, u * 1.1f, cw_rgba(1, 1, 1, 0.75f), CW_ALIGN_CENTER, w);
+  float ty = y + u * 1.6f;
+  ty += text(ARENA_INFO[G.arena_id].name, x, ty, u * 2.2f, cw_rgba(1, 0.85f, 0.4f, 1), CW_ALIGN_CENTER, w).height;
+  ty = fmaxf(ty + text(MODE_NAME[G.mode], x, fmaxf(ty, y + u * 4.4f), body(u * 1.1f), cw_rgba(1, 1, 1, 0.75f), CW_ALIGN_CENTER, w).height, y + u * 7.0f);
   int order[MAXF], n = 0;
   for (int i = 0; i < G.nf; i++) if (F(i)->active) order[n++] = i;
   for (int a = 0; a < n; a++) for (int b = a + 1; b < n; b++) if (F(order[b])->score > F(order[a])->score) { int t = order[a]; order[a] = order[b]; order[b] = t; }
   char s[48];
   if (G.mode == MODE_COOP) {
     snprintf(s, sizeof s, "WAVE %d   LIVES %d", G.wave, G.lives);
-    text(s, x, y + u * 7.2f, u * 1.4f, cw_rgba(1, 1, 1, 0.9f), CW_ALIGN_CENTER, w);
+    text(s, x, fmaxf(ty, y + u * 7.2f), u * 1.4f, cw_rgba(1, 1, 1, 0.9f), CW_ALIGN_CENTER, w);
     return;
   }
-  for (int k = 0; k < n && k < 8; k++) {
+  /* the board, best first, as many rows as the quadrant holds at this text size; the rest as a count */
+  float rs = u * 1.3f, step = fmaxf(u * 1.7f, measure("Ag", rs, 0).height * 1.08f), room = y + h - u * 0.6f - ty;
+  int fit = CW_MAX(1, (int)(room / step)), show = n <= fit ? n : fit - 1;
+  for (int k = 0; k < show && k < 8; k++) {
     const fighter *f = F(order[k]);
     snprintf(s, sizeof s, "%-8s  %3d frags", f->name, f->score);
-    text(s, x, y + u * (7.0f + 1.7f * (float)k), u * 1.3f, f->human >= 0 ? cw_rgba(1, 1, 0.6f, 1) : cw_rgba(1, 1, 1, 0.8f), CW_ALIGN_CENTER, w);
+    text(s, x, ty + step * (float)k, rs, f->human >= 0 ? cw_rgba(1, 1, 0.6f, 1) : cw_rgba(1, 1, 1, 0.8f), CW_ALIGN_CENTER, w);
+  }
+  if (show < n && show < 8) {
+    snprintf(s, sizeof s, "and %d more", CW_MIN(n, 8) - show);
+    text(s, x, ty + step * (float)show, rs, cw_rgba(1, 1, 1, 0.6f), CW_ALIGN_CENTER, w);
   }
 }
 
@@ -2461,27 +2544,53 @@ static void hud_feed(void) {
   cw_vec2 cs = cw_r2d_canvas_size();
   if (G.players == 3 && G.state == ST_PLAY) hud_quadrant();
   float u = cs.y / 40;
-  float y = u;
-  for (int i = 0; i < MAX_FEED; i++) {
+  /* the feed sits in the top right view, under that view's top rows, and keeps to its top part: at a large text size
+   * it shows the newest lines that fit there */
+  float fs = u * 1.05f, step = fmaxf(u * 1.3f, measure("Ag", fs, 0).height), feed_w = 0;
+  for (int i = 0; i < MAX_FEED; i++) if (G.feed[i].ticks > 0) feed_w = fmaxf(feed_w, measure(G.feed[i].text, fs, 0).width);
+  float y = u, limit = cs.y * 0.4f, wave_y = cs.y * 0.14f;
+  for (int h = 0; h < G.players && h < MAXH; h++) {
+    cw_rect r = cw_shell_player_rect(h);
+    if (hud_top_bottom[h] <= 0 || r.y > 1) continue;
+    wave_y = fmaxf(wave_y, hud_top_bottom[h] + u * 0.3f); /* the wave call: under every top view's rows */
+    if (r.x + r.w < cs.x - 1) continue;
+    limit = r.y + r.h * 0.4f;
+    if (cs.x - u - feed_w < hud_top_right[h] + u * 0.5f) y = fmaxf(y, hud_top_bottom[h] + u * 0.2f); /* it would meet them */
+  }
+  int room = CW_MAX(1, (int)((limit - y) / step));
+  for (int i = 0; i < MAX_FEED && room > 0; i++) {
     if (G.feed[i].ticks <= 0) continue;
     float a = CW_MIN(1.0f, (float)G.feed[i].ticks / 30.0f);
-    text(G.feed[i].text, 0, y, u * 1.05f, cw_rgba(1, 1, 1, a), CW_ALIGN_RIGHT, cs.x - u);
-    y += u * 1.3f;
+    text(G.feed[i].text, 0, y, fs, cw_rgba(1, 1, 1, a), CW_ALIGN_RIGHT, cs.x - u);
+    y += step, room--;
   }
   /* co-op: the next wave announced while the last is cleared, so the lull reads as a pause and not a stall */
   if (G.state == ST_PLAY && G.mode == MODE_COOP && G.wave_state == 0) {
     char s[48];
     snprintf(s, sizeof s, "WAVE %d IN %d", G.wave + 1, G.wave_timer / 60 + 1);
-    text(s, 0, cs.y * 0.14f, u * 2.2f, cw_rgba(1, 0.85f, 0.3f, 1), CW_ALIGN_CENTER, cs.x);
+    text(s, 0, wave_y, u * 2.2f, cw_rgba(1, 0.85f, 0.3f, 1), CW_ALIGN_CENTER, cs.x);
   }
+}
+
+/* a small triangle: more rows above (up) or below */
+static void more_mark(float cx, float y, float d, bool up) {
+  float s = d * 0.28f;
+  cw_vec2 p[3] = { { cx - s, up ? y + s * 0.5f : y - s * 0.5f }, { cx + s, up ? y + s * 0.5f : y - s * 0.5f }, { cx, up ? y - s * 0.5f : y + s * 0.5f } };
+  cw_r2d_polygon(p, 3, cw_rgba(1, 1, 1, 0.7f));
 }
 
 static void hud_setup(void) {
   cw_vec2 cs = cw_r2d_canvas_size();
   float u = cs.y / 18;
   cw_r2d_rect(cw_rect_make(0, 0, cs.x, cs.y), cw_rgba(0, 0, 0, 0.7f));
-  text("ARENA", 0, u * 1.2f, u * 2.4f, cw_rgba(1, 0.85f, 0.4f, 1), CW_ALIGN_CENTER, cs.x);
-  ptext("choose the match, then press {ui_start} or {fire}    {ui_back} back to the title", -1, 0, u * 3.6f, u * 0.9f, cw_rgba(1, 1, 1, 0.8f), CW_ALIGN_CENTER, cs.x);
+  /* from the top down, each line under the last as measured; the rows scroll when a large text size leaves no room */
+  float y = u * 1.2f;
+  y += text("ARENA", 0, y, u * 2.4f, cw_rgba(1, 0.85f, 0.4f, 1), CW_ALIGN_CENTER, cs.x).height;
+  float hs = u * 0.9f;
+  const char *hint = fit_hint("choose the match, then press {ui_start} or {fire}    {ui_back} back to the title", hs, cs.x * 0.94f);
+  y = fmaxf(y, u * 3.6f);
+  ptext(hint, -1, 0, y, hs, cw_rgba(1, 1, 1, 0.8f), CW_ALIGN_CENTER, cs.x);
+  y += cw_prompt_text_size(G.font, hint, -1, hs).y + u * 0.4f;
   char s[96];
   const char *rows[7];
   char r0[64], r1[64], r2[64], r3[64], r4[64], r5[64];
@@ -2495,35 +2604,69 @@ static void hud_setup(void) {
   rows[0] = r0, rows[1] = r1, rows[2] = r2, snprintf(r4, sizeof r4, "<  aim assist: %s  >", G.aim_assist ? "ON" : "OFF");
   snprintf(r5, sizeof r5, "<  rumble: %s  >", G.rumble_off ? "OFF" : "ON");
   rows[3] = r3, rows[4] = r4, rows[5] = r5, rows[6] = "START";
-  for (int i = 0; i < 7; i++) {
-    bool sel = i == G.setup_row;
-    text(rows[i], 0, u * (5.2f + 1.35f * (float)i), u * 1.3f, sel ? cw_rgba(1, 0.9f, 0.3f, 1) : cw_rgba(1, 1, 1, 0.75f), CW_ALIGN_CENTER, cs.x);
-  }
-  snprintf(s, sizeof s, "%s", ARENA_INFO[G.arena_id].blurb);
-  text(s, 0, u * 14.7f, u * 0.9f, cw_rgba(1, 1, 1, 0.7f), CW_ALIGN_CENTER, cs.x);
+  /* the foot: the arena's line and the player count, from the bottom up */
+  float fs = u * 0.9f, foot = cs.y - u * 0.5f;
   snprintf(s, sizeof s, "%d player%s", G.players, G.players == 1 ? "" : "s");
-  text(s, 0, u * 15.9f, u * 0.9f, cw_rgba(1, 1, 1, 0.7f), CW_ALIGN_CENTER, cs.x);
+  float ph = measure(s, fs, cs.x * 0.94f).height, bh = measure(ARENA_INFO[G.arena_id].blurb, fs, cs.x * 0.94f).height;
+  float py = fminf(u * 15.9f, foot - ph), byy = fminf(u * 14.7f, py - bh);
+  float rs = u * 1.3f, d = measure("Ag", rs, 0).height, step = fmaxf(u * 1.35f, d * 1.08f);
+  float y0 = fmaxf(y, u * 5.2f), y1 = byy - u * 0.3f;
+  bool blurb = 7 * step <= y1 - y0; /* the arena's line gives way to the rows when they need its room */
+  if (!blurb) y1 = py - u * 0.3f;
+  text(s, cs.x * 0.03f, py, fs, cw_rgba(1, 1, 1, 0.7f), CW_ALIGN_CENTER, cs.x * 0.94f);
+  if (blurb) text(ARENA_INFO[G.arena_id].blurb, cs.x * 0.03f, byy, fs, cw_rgba(1, 1, 1, 0.7f), CW_ALIGN_CENTER, cs.x * 0.94f);
+  int first = 0, count = 7;
+  if (7 * step > y1 - y0) { /* scroll: the selected row stays in view, a mark says there is more */
+    y0 += d * 0.4f;
+    count = CW_MAX(1, (int)((y1 - y0 - d * 0.4f) / step));
+    first = CW_CLAMP(G.setup_row - count / 2, 0, 7 - count);
+  }
+  for (int i = first; i < first + count && i < 7; i++) {
+    bool sel = i == G.setup_row;
+    text(rows[i], 0, y0 + step * (float)(i - first), rs, sel ? cw_rgba(1, 0.9f, 0.3f, 1) : cw_rgba(1, 1, 1, 0.75f), CW_ALIGN_CENTER, cs.x);
+  }
+  if (first > 0) more_mark(cs.x * 0.5f, y0 - d * 0.25f, d, true);
+  if (first + count < 7) more_mark(cs.x * 0.5f, y0 + step * (float)count + d * 0.1f, d, false);
 }
 
 static void hud_over(void) {
   cw_vec2 cs = cw_r2d_canvas_size();
   float u = cs.y / 22;
-  cw_r2d_rect(cw_rect_make(0, cs.y * 0.18f, cs.x, cs.y * 0.64f), cw_rgba(0, 0, 0, 0.62f));
   char s[96];
   if (G.mode == MODE_COOP) snprintf(s, sizeof s, G.winner == 0 ? "ARENA HELD  -  all %d waves cleared" : "OVERRUN  -  wave %d", G.winner == 0 ? 6 : G.wave);
   else if (G.mode == MODE_TDM) snprintf(s, sizeof s, "%s TEAM WINS", TEAM_NAME[G.winner & 1]);
   else snprintf(s, sizeof s, "%s WINS", G.winner >= 0 ? F(G.winner)->name : "NOBODY");
-  text(s, 0, cs.y * 0.22f, u * 2.2f, cw_rgba(1, 0.85f, 0.3f, 1), CW_ALIGN_CENTER, cs.x);
+  float ts = u * 2.2f, th = measure(s, ts, cs.x * 0.94f).height;
   /* the board, best first */
   int order[MAXF], n = 0;
   for (int i = 0; i < G.nf; i++) if (F(i)->active || F(i)->deaths || F(i)->score) order[n++] = i;
   for (int a = 0; a < n; a++) for (int b = a + 1; b < n; b++) if (F(order[b])->score > F(order[a])->score) { int t = order[a]; order[a] = order[b]; order[b] = t; }
-  for (int k = 0; k < n && k < 10; k++) {
+  n = CW_MIN(n, 10);
+  const char *cont = "press {ui_start} or {fire} to continue";
+  float bs = u * 1.0f, d = measure("Ag", bs, 0).height, step = fmaxf(u * 1.25f, d * 1.05f), cs_ = u * 0.9f, ch = cw_prompt_text_size(G.font, cont, -1, cs_).y;
+  /* the panel: the title, the board and the prompt, each measured; a board too long for the screen at this text size
+   * pages through, a page every three seconds */
+  float top = cs.y * 0.18f, ty = cs.y * 0.22f, by = fmaxf(cs.y * 0.34f, ty + th + d * 0.3f), cy = fmaxf(cs.y * 0.74f, by + step * (float)n + d * 0.2f);
+  int per = n, pages = 1;
+  if (cy + ch > cs.y - u * 0.3f) {
+    float room = cs.y - u * 0.3f - ch - d * 0.2f - by;
+    per = CW_MAX(1, (int)(room / step) - (n > (int)(room / step) ? 1 : 0)), pages = (n + per - 1) / per;
+    cy = by + step * (float)(per + (pages > 1)) + d * 0.2f;
+  }
+  float bottom = fmaxf(cs.y * 0.82f, cy + ch + u * 0.3f);
+  cw_r2d_rect(cw_rect_make(0, top, cs.x, fminf(bottom, cs.y) - top), cw_rgba(0, 0, 0, 0.62f));
+  text(s, cs.x * 0.03f, ty, ts, cw_rgba(1, 0.85f, 0.3f, 1), CW_ALIGN_CENTER, cs.x * 0.94f);
+  int page = pages > 1 ? (G.over_ticks / 180) % pages : 0;
+  for (int k = page * per, row = 0; k < n && row < per; k++, row++) {
     fighter *f = F(order[k]);
     snprintf(s, sizeof s, "%-8s  %3d frags  %3d deaths", f->name, f->score, f->deaths);
-    text(s, 0, cs.y * 0.34f + u * 1.25f * (float)k, u * 1.0f, f->human >= 0 ? cw_rgba(1, 1, 0.6f, 1) : cw_rgba(1, 1, 1, 0.85f), CW_ALIGN_CENTER, cs.x);
+    text(s, 0, by + step * (float)row, bs, f->human >= 0 ? cw_rgba(1, 1, 0.6f, 1) : cw_rgba(1, 1, 1, 0.85f), CW_ALIGN_CENTER, cs.x);
   }
-  if (G.over_ticks > 60 * 3) ptext("press {ui_start} or {fire} to continue", -1, 0, cs.y * 0.74f, u * 0.9f, cw_rgba(1, 1, 1, 0.8f), CW_ALIGN_CENTER, cs.x);
+  if (pages > 1) {
+    snprintf(s, sizeof s, "page %d of %d", page + 1, pages);
+    text(s, 0, by + step * (float)per, bs, cw_rgba(1, 1, 1, 0.6f), CW_ALIGN_CENTER, cs.x);
+  }
+  if (G.over_ticks > 60 * 3) ptext(cont, -1, 0, cy, cs_, cw_rgba(1, 1, 1, 0.8f), CW_ALIGN_CENTER, cs.x);
 }
 
 static void render(void *user, double alpha) {
@@ -2536,7 +2679,8 @@ static void render(void *user, double alpha) {
 #endif
   if (sc == CW_SHELL_PLAY || sc == CW_SHELL_PAUSE) {
     cw_r2d_begin(NULL);
-    if (G.state != ST_SETUP) for (int h = 0; h < G.players; h++) hud_view(h);
+    memset(hud_top_bottom, 0, sizeof hud_top_bottom);
+    if (G.state == ST_PLAY) for (int h = 0; h < G.players; h++) hud_view(h); /* the results replace the views' HUD */
     hud_feed();
     if (G.state == ST_SETUP) hud_setup();
     if (G.state == ST_OVER) hud_over();

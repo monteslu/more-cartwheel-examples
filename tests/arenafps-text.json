@@ -1,0 +1,20 @@
+{
+  "app": "arenafps",
+  "secondary": [],
+  "screens": [
+    { "name": "title", "frames": 60 },
+    { "name": "settings", "frames": 60, "input": "arenafps-text-settings.json" },
+    { "name": "controls", "frames": 80, "input": "arenafps-text-controls.json" },
+    { "name": "graphics", "frames": 60, "input": "arenafps-text-graphics.json" },
+    { "name": "join", "frames": 40, "input": "arenafps-text-join.json" },
+    { "name": "setup", "frames": 60, "input": "arenafps-text-setup.json" },
+    { "name": "play1", "frames": 190, "input": "arenafps-text-play.json" },
+    { "name": "pause", "frames": 215, "input": "arenafps-text-pause.json" },
+    { "name": "split2", "app": "arenafps_auto", "frames": 240, "env": { "ARENA_PLAYERS": "2" } },
+    { "name": "split3", "app": "arenafps_auto", "frames": 240, "env": { "ARENA_PLAYERS": "3" } },
+    { "name": "split4", "app": "arenafps_auto", "frames": 240, "env": { "ARENA_PLAYERS": "4" } },
+    { "name": "tdm4", "app": "arenafps_auto", "frames": 240, "env": { "ARENA_PLAYERS": "4", "ARENA_MODE": "1" } },
+    { "name": "coop4", "app": "arenafps_auto", "frames": 240, "env": { "ARENA_PLAYERS": "4", "ARENA_MODE": "2" } },
+    { "name": "over", "app": "arenafps_auto", "frames": 500, "env": { "ARENA_PLAYERS": "1", "ARENA_SECS": "5", "ARENA_ONE": "1" } }
+  ]
+}
