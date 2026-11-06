@@ -1,0 +1,7 @@
+
+basic+vcol+fog2
+standard+map+vcol+rep+fog2+l2001+xplain
+lambert+vcol+instbig+fog2+icol+l2001
+standard+vcol+instbig+fog2+icol+l2001
+basic+vcol+instbig+fog2+icol
+basic+map+vcol+rep+lmap+fog2+c1lmap

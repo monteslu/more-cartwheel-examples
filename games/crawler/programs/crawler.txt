@@ -15,3 +15,6 @@ standard+vcol+instbig+fog2+icol+l2001+xcluster_rim
 standard+vcol+fog2+l2001+xcluster_rim
 basic+fog2+bs
 basic+instbig+fog2+bs+icol
+standard+vcol+instbig+fog2+icol+l2001+xcluster_plain
+standard+map+vcol+rep+fog2+l2001+xcluster_plain
+standard+vcol+fog2+l2001+xcluster_plain_rim

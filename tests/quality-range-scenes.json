@@ -1,13 +1,13 @@
 [
   { "name": "pirates", "app": "pirates_auto", "frames": 900, "maxVeryLow": 0.3, "maxLow": 0.55 },
-  { "name": "jetski", "app": "jetski_auto", "frames": 600, "maxVeryLow": 0.48, "maxLow": 0.6 },
-  { "name": "arenafps", "app": "arenafps_auto", "frames": 900, "env": { "ARENA_PLAYERS": "1" }, "maxVeryLow": 0.63, "maxLow": 0.73 },
-  { "name": "tuxracer", "app": "tuxracer", "frames": 700, "startCmds": ["@60 race bunny_hill sunny"], "maxVeryLow": 0.71, "maxLow": 0.8 },
-  { "name": "skyfighter", "app": "skyfighter", "frames": 360, "input": "tests/skyfighter-sortie.json", "maxVeryLow": 0.66, "maxLow": 0.82 },
-  { "name": "coopplatformer", "app": "coopplatformer_auto", "frames": 400, "maxVeryLow": 0.57, "maxLow": 0.76 },
-  { "name": "fighter", "app": "fighter_auto", "frames": 900, "maxVeryLow": 0.79, "maxLow": 0.85 },
-  { "name": "brawler", "app": "brawler_auto", "frames": 900, "maxVeryLow": 0.84, "maxLow": 0.99 },
-  { "name": "hordeshooter", "app": "hordeshooter_auto", "frames": 900, "maxVeryLow": 0.85, "maxLow": 1.07 },
-  { "name": "crawler", "app": "crawler_auto", "frames": 900, "env": { "CRAWLER_FLOOR": "58", "CRAWLER_PLAYERS": "4", "CRAWLER_CROWD": "600" }, "maxVeryLow": 0.8, "maxLow": 0.95 },
+  { "name": "jetski", "app": "jetski_auto", "frames": 600, "maxVeryLow": 0.33, "maxLow": 0.6 },
+  { "name": "arenafps", "app": "arenafps_auto", "frames": 900, "env": { "ARENA_PLAYERS": "1" }, "maxVeryLow": 0.48, "maxLow": 0.73 },
+  { "name": "tuxracer", "app": "tuxracer", "frames": 700, "startCmds": ["@60 race bunny_hill sunny"], "maxVeryLow": 0.52, "maxLow": 0.8 },
+  { "name": "skyfighter", "app": "skyfighter", "frames": 360, "input": "tests/skyfighter-sortie.json", "maxVeryLow": 0.48, "maxLow": 0.82 },
+  { "name": "coopplatformer", "app": "coopplatformer_auto", "frames": 400, "maxVeryLow": 0.46, "maxLow": 0.76 },
+  { "name": "fighter", "app": "fighter_auto", "frames": 900, "maxVeryLow": 0.63, "maxLow": 0.85 },
+  { "name": "brawler", "app": "brawler_auto", "frames": 900, "maxVeryLow": 0.72, "maxLow": 0.99 },
+  { "name": "hordeshooter", "app": "hordeshooter_auto", "frames": 900, "maxVeryLow": 0.78, "maxLow": 1.07 },
+  { "name": "crawler", "app": "crawler_auto", "frames": 900, "env": { "CRAWLER_FLOOR": "58", "CRAWLER_PLAYERS": "4", "CRAWLER_CROWD": "600" }, "maxVeryLow": 0.78, "maxLow": 0.95 },
   { "name": "partypack", "app": "partypack_auto", "frames": 1200, "maxVeryLow": 1.15, "maxLow": 1.15 }
 ]
