@@ -2,21 +2,22 @@
 
 [![CI](https://github.com/monteslu/more-cartwheel-examples/actions/workflows/ci.yml/badge.svg)](https://github.com/monteslu/more-cartwheel-examples/actions/workflows/ci.yml)
 
-Eight more games built with
+Eleven more games built with
 [cartwheel-engine](https://github.com/monteslu/cartwheel-engine), a 2D and 3D
 game engine in C, after the ones in
 [cartwheel-examples](https://github.com/monteslu/cartwheel-examples). Each
 game is written to push the engine: to find what it lacks (split screen for
 four, crowds of thousands, skinned fighters, ragdolls, a party game's many
-small scenes) so the generic fixes go back into the engine. Six of the games
-are for one to four players on one machine, one pad each; Sky Fighter and Tux
-Racer are for one player.
+small scenes, a dungeon of 120 generated floors) so the generic fixes go back
+into the engine. Seven of the games are for one to four players on one
+machine, one pad each; the fighter is for two, and Sky Fighter, Tux Racer and
+(for now) Jetski are for one player.
 
 The games ship as [wasmcart](https://github.com/wasmcart/wasmcart) carts
 (`.wasc`): one file per game that runs in a browser, in Node, in a native
 player and in RetroArch, with GL and WebGPU in the same cart.
 
-In six of the games everything is made by code in this repository (models,
+In most of the games everything is made by code in this repository (models,
 textures, levels, sound and music) except a few fonts, which ship with their
 licence (SIL Open Font License). Sky Fighter also builds on CC0 and
 public-domain sources (Poly Haven surface scans, an F-15 model, open
@@ -75,8 +76,8 @@ full controls).
 A co-op maze dungeon crawler for one to four players on one shared top-down screen: 120 floors in six tilesets, each a
 maze of corridors and rooms with spawners pouring monsters out, locked doors and the keys that open them, food,
 potions, treasure and a stair down. Health drains all the time and food gives it back. Four heroes (the Brute, the
-Warden, the Mage and the Ranger), sixteen charms, elixirs that last the run, and corridors packed with hundreds of
-monsters. Hold the shoot button to stand and shoot, walk into a monster to fight it, magic uses a potion on
+Warden, the Mage and the Ranger), sixteen charms, elixirs that last the run, and spawners that never stop pouring:
+up to 120 monsters on a screen. Hold the shoot button to stand and shoot, walk into a monster to fight it, magic uses a potion on
 everything on the screen. `games/crawler/` (its [README](games/crawler/README.md) has the full controls and how the
 floors are made).
 
@@ -303,8 +304,8 @@ costs, and `scripts/partypack-suite.sh` runs partypack's checks in pieces.
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push to
 `main`, on pull requests and by hand (workflow_dispatch), against the pinned
-cart SDK. It builds the ten carts and the self-playing `<game>_auto` carts
-of the eight games that have one, and runs `tests/cart-smoke.mjs`: each game's
+cart SDK. It builds the eleven carts and the self-playing `<game>_auto` carts
+of the nine games that have one, and runs `tests/cart-smoke.mjs`: each game's
 `_auto` cart (or its own cart where it has none) plays 60 frames in
 wasmcart's Node host on Mesa's software Vulkan (lavapipe, the WebGPU path),
 must exit cleanly and leave a picture that is not blank. The gates, which
@@ -312,7 +313,7 @@ compare the carts with native runs on every host, run locally on a GPU
 (`tests/gate.mjs`).
 
 Pushes to `main` link the carts as releases ship. Pushing a `v*` tag does not
-build anything: it takes the ten `<game>.wasc` from that commit's green run
+build anything: it takes the eleven `<game>.wasc` from that commit's green run
 on `main` and publishes them as a GitHub release, its notes taken from
 [CHANGELOG.md](CHANGELOG.md). Push to `main`, wait for the run to go green,
 then `git tag v0.3.0 && git push origin v0.3.0`.
@@ -321,7 +322,7 @@ then `git tag v0.3.0 && git push origin v0.3.0`.
 
 | Path | Contents |
 |---|---|
-| `games/<game>/` | one game: its C sources, `CMakeLists.txt`, `CREDITS`, `README.md`, `project.cwproj` (native export presets), its assets and `tools/` |
+| `games/<game>/` | one game: its C sources, `CMakeLists.txt`, `CREDITS`, `README.md`, `project.cwproj` (native export presets, the description and author), `art/` (its launcher art: `art.json`, icon, cover, background, logo, title and screenshots), its assets and `tools/` |
 | `games/<game>/tools/` | the scripts that generate the game's assets (models, textures, levels, colour grades, sound), committed next to their output |
 | `games/<game>/programs/` | the game's three.c program table: `<game>.txt` and the C generated from it |
 | `tests/` | the gates, their input scripts, the gate and replay runners, the cart smoke test, benchmarks |
