@@ -1,0 +1,18 @@
+{
+  "app": "jetski",
+  "secondary": [],
+  "env": { "CW_QUALITY": "verylow" },
+  "screens": [
+    { "name": "title", "frames": 40 },
+    { "name": "mode", "frames": 50, "input": "jetski-text-mode.json" },
+    { "name": "controls", "frames": 60, "input": "jetski-text-controls.json" },
+    { "name": "audio", "frames": 75, "input": "jetski-text-audiorow.json" },
+    { "name": "graphics", "frames": 70, "input": "jetski-text-graphics.json" },
+    { "name": "grid", "frames": 90, "startCmds": ["race"] },
+    { "name": "race", "frames": 60, "startCmds": ["go 400"] },
+    { "name": "pause", "frames": 40, "input": "jetski-text-pause.json", "startCmds": ["race"] },
+    { "name": "results", "frames": 40, "startCmds": ["race", "finish"] },
+    { "name": "results-trial", "frames": 40, "startCmds": ["mode 1", "race", "finish"] },
+    { "name": "results-final", "frames": 110, "startCmds": ["race", "finish", "@20 race", "@22 finish", "@40 race", "@42 finish", "@60 race", "@62 finish", "@80 race", "@82 finish"] }
+  ]
+}

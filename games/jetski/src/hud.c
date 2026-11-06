@@ -21,14 +21,17 @@ void hud_init(void) {
   small = cw_font_load("fonts/Oswald-VF.ttf", NULL);
 }
 
-static void text(cw_font f, const char *s, float x, float y, float size, cw_color c, float align) {
+/* Text is placed by its measured size: at the player's text scale (cartwheel/render2d.h "text size") each block grows
+ * away from its corner and the lines under it move down with it. Returns the drawn box. */
+static cw_text_metrics text(cw_font f, const char *s, float x, float y, float size, cw_color c, float align) {
   cw_text_style st = { .size = size, .color = c, .outline_width = size * 0.05f, .outline_color = cw_rgba(0, 0, 0, 0.45f) };
-  if (align != 0) {
-    cw_text_metrics m = cw_font_measure(f, s, &st);
-    x -= m.width * align;
-  }
+  cw_text_metrics m = cw_font_measure(f, s, &st);
+  x -= m.width * align;
   cw_r2d_text(f, s, cw_v2(x, y), &st);
+  return m;
 }
+/* how much the text scale grows text asked for at this size (1 at 100%; less than the scale where the cap holds it) */
+static float grow(cw_font f, float size) { return cw_text_drawn_size(f, size) / size; }
 
 /* Words across the middle of the picture: each one drawn says where it stands, and the next buoy's arrow and distance, drawn after them, keep clear */
 typedef struct word_box { float x0, y0, x1, y1; } word_box;
@@ -38,11 +41,10 @@ static int words_n;
 int g_hud_label_old, g_hud_label_hits, g_hud_words_n, g_hud_pop_n, g_hud_pop_keep;
 float g_hud_label[4];
 static void word(cw_font f, const char *s, float cx, float y, float size, cw_color c) {
-  text(f, s, cx, y, size, c, 0.5f);
+  cw_text_metrics m = text(f, s, cx, y, size, c, 0.5f);
   if (c.a < 0.03f || words_n >= WORDS_MAX) return;
-  cw_text_style st = { .size = size };
-  float hw = cw_font_measure(f, s, &st).width * 0.5f;
-  words[words_n++] = (word_box){ cx - hw, y, cx + hw, y + size * 1.25f };
+  float hw = m.width * 0.5f;
+  words[words_n++] = (word_box){ cx - hw, y, cx + hw, y + cw_text_drawn_size(f, size) * 1.25f };
 }
 static bool word_hit(float x0, float y0, float x1, float y1, float *below) {
   bool hit = false;
@@ -154,7 +156,7 @@ static void next_mark(const craft *c, float w, float h, float u) {
   float mx = 70 * u, my = 90 * u;
   if (inside && p.x > mx && p.x < w - mx && p.y > my && p.y < h - my) {
     float k = dist < 40 ? 1.5f : dist > 200 ? 1.0f : 1.5f - 0.5f * (dist - 40) / 160, sz2 = 26 * u * k;
-    float py = p.y - 26 * u, ly = py - sz2 * 1.2f - 40 * u, lhw = 46 * u, ah = sz2 * 1.3f;
+    float lk = grow(small, 30 * u), py = p.y - 26 * u, ly = py - sz2 * 1.2f - 40 * u * lk, lhw = 46 * u * lk, ah = sz2 * 1.3f;
     /* a word stands over them: both go down past it together, so the distance stays with its arrow */
     if (!g_hud_label_old) for (int n = 0; n < 4; n++) {
       float below = 0;
@@ -164,7 +166,7 @@ static void next_mark(const craft *c, float w, float h, float u) {
     }
     pointer(cw_v2(p.x + dir * sz2 * 1.3f, py), dir, 0, sz2 * 1.6f, sz2, col);
     text(small, buf, p.x, ly, 30 * u, cw_rgba(1, 1, 1, 0.95f), 0.5f);
-    g_hud_label[0] = p.x - lhw, g_hud_label[1] = ly, g_hud_label[2] = p.x + lhw, g_hud_label[3] = ly + 38 * u;
+    g_hud_label[0] = p.x - lhw, g_hud_label[1] = ly, g_hud_label[2] = p.x + lhw, g_hud_label[3] = ly + 38 * u * lk;
     if (word_hit(g_hud_label[0], g_hud_label[1], g_hud_label[2], g_hud_label[3], NULL)) g_hud_label_hits++;
     g_hud_ptr_mode = 1, g_hud_ptr[0] = p.x + dir * sz2 * 0.5f, g_hud_ptr[1] = py;
     return;
@@ -181,16 +183,16 @@ static void next_mark(const craft *c, float w, float h, float u) {
   cw_vec2 q = cw_v2(w * 0.5f + dx * t, h * 0.5f + dy * t);
   /* clear of the minimap in its corner */
   if (g_map_on) { cw_rect mr = map_rect(h, u); if (q.x < mr.x + mr.w + 110 * u && q.y > mr.y - 110 * u) q.y = mr.y - 110 * u; }
-  float lx = q.x - dx * 110 * u, ly = q.y - dy * 110 * u - 18 * u, lhw = 46 * u;
+  float lk = grow(small, 30 * u), off = 72 * u + 38 * u * lk, lx = q.x - dx * off, ly = q.y - dy * off - 18 * u * lk, lhw = 46 * u * lk;
   if (!g_hud_label_old) for (int n = 0; n < 4; n++) {
     float below = 0;
-    if (!word_hit(fminf(lx - lhw, q.x - 72 * u), fminf(ly, q.y - 72 * u), fmaxf(lx + lhw, q.x + 72 * u), fmaxf(ly + 38 * u, q.y + 72 * u), &below)) break;
+    if (!word_hit(fminf(lx - lhw, q.x - 72 * u), fminf(ly, q.y - 72 * u), fmaxf(lx + lhw, q.x + 72 * u), fmaxf(ly + 38 * u * lk, q.y + 72 * u), &below)) break;
     float move = below + 8 * u - fminf(ly, q.y - 72 * u);
     q.y += move, ly += move;
   }
   pointer(q, dx, dy, 72 * u, 44 * u, col);
   text(small, buf, lx, ly, 30 * u, cw_rgba(1, 1, 1, 0.95f), 0.5f);
-  g_hud_label[0] = lx - lhw, g_hud_label[1] = ly, g_hud_label[2] = lx + lhw, g_hud_label[3] = ly + 38 * u;
+  g_hud_label[0] = lx - lhw, g_hud_label[1] = ly, g_hud_label[2] = lx + lhw, g_hud_label[3] = ly + 38 * u * lk;
   if (word_hit(g_hud_label[0], g_hud_label[1], g_hud_label[2], g_hud_label[3], NULL)) g_hud_label_hits++;
   g_hud_ptr_mode = 2, g_hud_ptr[0] = q.x - dx * 30 * u, g_hud_ptr[1] = q.y - dy * 30 * u;
 }
@@ -264,15 +266,14 @@ static void hud_popups(float w, float h, float u) {
     float in = fminf(1, p->t / 0.14f), back = 1 + 0.5f * (1 - in) * (1 - in), a = fminf(in, (1.5f - p->t) / 0.4f) * 0.92f, size = (p->big ? 54.0f : 38.0f) * u * back;
     if (a < 0) a = 0;
     word(big, p->text, w * 0.5f, y, size, cw_rgba(p->col.r, p->col.g, p->col.b, a));
-    y += size * 1.15f;
+    y += cw_text_drawn_size(big, size) * 1.15f;
   }
 }
 /* who is just ahead and behind, and by how long: translucent, under the misses */
-static void hud_neighbours(const craft *c, float u) {
+static void hud_neighbours(const craft *c, float u, float y) {
   if (g_mode == MODE_TIME_TRIAL || G.state != RACE_ON) return;
   int me = -1;
   for (int i = 0; i < RACERS; i++) if (G.order[i] == 0) me = i;
-  float y = 236 * u;
   for (int k = me - 1; k <= me + 1; k += 2) {
     if (k < 0 || k >= RACERS) continue;
     const craft *o = &G.c[G.order[k]];
@@ -281,7 +282,7 @@ static void hud_neighbours(const craft *c, float u) {
     char b[40];
     snprintf(b, sizeof b, "%s  %s%.1f", RIDER_NAMES[G.order[k]], k < me ? "-" : "+", gap);
     text(small, b, 62 * u, y, 28 * u, cw_rgba(1, 1, 1, 0.62f), 0);
-    y += 32 * u;
+    y += 32 * u * grow(small, 28 * u);
   }
 }
 
@@ -298,8 +299,12 @@ static void hud_body(void) {
   if (G.state == RACE_ATTRACT || G.state == RACE_DONE) return; /* the results page has it all */
   /* speed, bottom right */
   snprintf(buf, sizeof buf, "%d", (int)(c->speed * 3.6f + 0.5f));
-  text(big, buf, w - 150 * u, h - 186 * u, 92 * u, white, 1);
-  text(small, "km/h", w - 138 * u, h - 134 * u, 32 * u, dim, 0);
+  /* km/h stands on its line beside the number however large it draws: its baseline holds, the word grows upward, and
+   * it keeps inside the right edge, the number moving left with it */
+  { cw_text_style ks = { .size = 32 * u }; cw_text_metrics km = cw_font_measure(small, "km/h", &ks);
+    float asc1 = km.ascent / grow(small, 32 * u), kx = fminf(w - 138 * u, w - 24 * u - km.width);
+    text(big, buf, kx - 12 * u, h - 186 * u, 92 * u, white, 1);
+    text(small, "km/h", kx, h - 134 * u + asc1 - km.ascent, 32 * u, dim, 0); }
   /* meter: five arrows, the speed the buoys have earned */
   for (int i = 0; i < 5; i++) {
     float x = w - 372 * u + (float)i * 58 * u, y = h - 42 * u;
@@ -316,10 +321,13 @@ static void hud_body(void) {
   }
   /* place and lap, top left */
   static const char *const ord[] = { "1st", "2nd", "3rd", "4th", "5th", "6th" };
-  if (g_mode == MODE_TIME_TRIAL) text(big, "TIME TRIAL", 60 * u, 58 * u, 52 * u, white, 0);
-  else { int sp = c->shown_place > 0 ? c->shown_place : c->place; text(big, ord[sp - 1 < 0 ? 0 : sp - 1], 60 * u, 42 * u, 84 * u, white, 0); }
+  /* each line of the block under the one above, by how much the text scale grew that one */
+  float lap_y;
+  if (g_mode == MODE_TIME_TRIAL) { text(big, "TIME TRIAL", 60 * u, 58 * u, 52 * u, white, 0); lap_y = 58 * u + 80 * u * grow(big, 52 * u); }
+  else { int sp = c->shown_place > 0 ? c->shown_place : c->place; text(big, ord[sp - 1 < 0 ? 0 : sp - 1], 60 * u, 42 * u, 84 * u, white, 0); lap_y = 42 * u + 96 * u * grow(big, 84 * u); }
   snprintf(buf, sizeof buf, "LAP %d/%d", c->lap < 0 ? 1 : c->lap + 1 > LAPS ? LAPS : c->lap + 1, LAPS);
-  text(small, buf, 62 * u, 138 * u, 40 * u, dim, 0);
+  text(small, buf, 62 * u, lap_y, 40 * u, dim, 0);
+  float miss_y = lap_y + 58 * u * grow(small, 40 * u), next_y = miss_y + 24 * u + 16 * u * grow(small, 28 * u);
   if (G.clock >= 0) {
     float tm = c->finish > 0 ? c->finish : G.clock;
     snprintf(buf, sizeof buf, "%d:%05.2f", (int)(tm / 60), tm - 60.0f * (float)(int)(tm / 60));
@@ -327,16 +335,16 @@ static void hud_body(void) {
     float best = menu_best_time();
     if (g_mode == MODE_TIME_TRIAL && best > 0) {
       snprintf(buf, sizeof buf, "best %d:%05.2f", (int)(best / 60), best - 60.0f * (float)(int)(best / 60));
-      text(small, buf, w - 60 * u, 100 * u, 34 * u, dim, 1);
+      text(small, buf, w - 60 * u, 48 * u + 52 * u * grow(small, 44 * u), 34 * u, dim, 1);
     }
   }
   if (g_map_on) minimap(c, h, u);
-  hud_neighbours(c, u);
+  hud_neighbours(c, u, next_y);
   words_n = 0;
   hud_popups(w, h, u);
   /* misses so far: five and the race is over */
   for (int i = 0; i < 5; i++) {
-    float x = 62 * u + (float)i * 34 * u, y = 196 * u;
+    float x = 62 * u + (float)i * 34 * u, y = miss_y;
     cw_r2d_round_rect(cw_rect_make(x, y, 24 * u, 24 * u), 12 * u, 8, i < c->misses ? cw_rgba(1, 0.25f, 0.12f, 0.95f) : cw_rgba(1, 1, 1, 0.2f));
   }
   if (c->out_t > 0.2f) {

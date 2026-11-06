@@ -1,4 +1,5 @@
 /* The menus: over the live attract loop, a pause in the race, the results. Pad and keyboard; back works from any page. */
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -64,7 +65,7 @@ void menu_init(void) {
 static int page_rows(void) {
   switch (page) {
   case P_MAIN: return 7;
-  case P_AUDIO: return 3;
+  case P_AUDIO: return 5;
   case P_PAUSE: return 5;
   case P_RESULTS: return 2;
   default: return 1;
@@ -177,7 +178,19 @@ void menu_tick(float dt) {
   case P_AUDIO:
     if (row == 0 && dx) { music = music + dx < 0 ? 0 : music + dx > 10 ? 10 : music + dx; apply_audio(); store(); }
     if (row == 1 && dx) { sfx = sfx + dx < 0 ? 0 : sfx + dx > 10 ? 10 : sfx + dx; apply_audio(); store(); }
-    if ((ok && row == 2) || back) back_up(5, 3);
+    /* Text size (100, 125, 150, 200%) and Text background: left / right step them, stopping at the ends; accept goes round.
+     * Kept in the shell's save with the other settings (store commits it) */
+    if (row == 2 && (dx || ok)) {
+      if (dx < 0 && cw_text_scale() > 1.01f) cw_text_scale_cycle_back();
+      else if ((dx > 0 && cw_text_scale() < 1.99f) || ok) cw_text_scale_cycle();
+      store();
+    }
+    if (row == 3 && (dx || ok)) {
+      int b = (int)cw_text_backdrop_get();
+      cw_text_backdrop_set((cw_text_backdrop)(ok ? (b + 1) % 3 : b + dx < 0 ? 0 : b + dx > 2 ? 2 : b + dx));
+      store();
+    }
+    if ((ok && row == 4) || back) back_up(5, 3);
     break;
   case P_PAUSE:
     if (back) { page = P_NONE; break; }
@@ -190,6 +203,7 @@ void menu_tick(float dt) {
     }
     break;
   case P_RESULTS:
+    if (dx) row = (row + 1) % 2; /* the two choices can stand side by side (a large text size) */
     if (ok) {
       if (row == 0 && cup_done()) { begin(); }
       else if (row == 0 && g_mode == MODE_CHAMPIONSHIP) go_course(cup_race, 1);
@@ -203,29 +217,118 @@ void menu_tick(float dt) {
   (void)dt;
 }
 
-static void text(cw_font f, const char *s, float x, float y, float size, cw_color c, float align) {
-  cw_text_style st = { .size = size, .color = c, .outline_width = size * 0.04f, .outline_color = cw_rgba(0, 0, 0, 0.5f) };
-  if (align != 0) { cw_text_metrics m = cw_font_measure(f, s, &st); x -= m.width * align; }
+/* Text is laid out from its measured size, so every page holds at the player's text scale (cartwheel/render2d.h "text
+ * size"): rows are as tall as their text draws, panels as wide as their widest line, and a page that runs out of
+ * height scrolls (the menu) or moves up over the title (the long pages). */
+static cw_text_style tstyle(float size, cw_color c) {
+  return (cw_text_style){ .size = size, .color = c, .outline_width = size * 0.04f, .outline_color = cw_rgba(0, 0, 0, 0.5f) };
+}
+static cw_text_metrics measure(cw_font f, const char *s, float size) {
+  cw_text_style st = tstyle(size, cw_rgba(1, 1, 1, 1));
+  return cw_font_measure(f, s, &st);
+}
+/* draws with the box's top-left at (x, y) moved by align (0 left, 0.5 centre, 1 right); returns the box's height */
+static float text(cw_font f, const char *s, float x, float y, float size, cw_color c, float align) {
+  cw_text_style st = tstyle(size, c);
+  cw_text_metrics m = cw_font_measure(f, s, &st);
+  x -= m.width * align;
   cw_r2d_text(f, s, cw_v2(x, y), &st);
+  return m.height;
 }
 /* text with button prompts in it (cartwheel/prompt.h markup: "{throttle}"), for every seat: align 0 left, 0.5 centre, 1 right */
 static void ptext(cw_font f, const char *s, float x, float y, float size, cw_color c, float align) {
   cw_prompt_text(f, s, -1, cw_v2(x, y), size, c, align == 0 ? CW_ALIGN_LEFT : align == 1 ? CW_ALIGN_RIGHT : CW_ALIGN_CENTER);
 }
+static void tri(cw_vec2 a, cw_vec2 b, cw_vec2 c, cw_color col) {
+  cw_vertex2d v[3] = { { a, { 0, 0 }, col }, { b, { 0, 0 }, col }, { c, { 0, 0 }, col } };
+  static const uint32_t idx[3] = { 0, 1, 2 };
+  cw_r2d_triangles((cw_texture){ 0 }, v, 3, idx, 3);
+}
 
+/* this frame's rows: the label size, how much the text scale grows it, the bar's height and the step to the next */
+static float row_size, row_k, row_h, row_step, U;
+static void rows_setup(float u) {
+  U = u, row_size = 36 * u;
+  row_k = cw_text_drawn_size(small, row_size) / row_size;
+  row_h = 58 * u * row_k, row_step = row_h + 10 * u;
+}
+/* the width a row needs for its label and its value (as drawn selected, "< value >") */
+static float row_need(const char *label, const char *value) {
+  float need = 44 * U * row_k + measure(small, label, row_size).width;
+  if (value) {
+    char v[64];
+    snprintf(v, sizeof v, "< %s >", value);
+    need += 40 * U * row_k + measure(small, v, row_size).width;
+  }
+  return need;
+}
 /* a row: a dark bar that lights up, its label, its value */
-static void item(float x, float y, float w, float u, const char *label, const char *value, bool sel) {
-  float h = 58 * u;
-  cw_r2d_round_rect(cw_rect_make(x, y, w, h), 8 * u, 8, sel ? cw_rgba(0.98f, 0.58f, 0.14f, 0.92f) : cw_rgba(0.03f, 0.07f, 0.11f, 0.62f));
+static void item(float x, float y, float w, const char *label, const char *value, bool sel) {
+  cw_r2d_round_rect(cw_rect_make(x, y, w, row_h), 8 * U, 8, sel ? cw_rgba(0.98f, 0.58f, 0.14f, 0.92f) : cw_rgba(0.03f, 0.07f, 0.11f, 0.62f));
   cw_color tc = sel ? cw_rgba(0.04f, 0.04f, 0.05f, 1) : cw_rgba(1, 1, 1, 0.92f);
-  cw_text_style st = { .size = 36 * u, .color = tc };
-  cw_r2d_text(small, label, cw_v2(x + 22 * u, y + 7 * u), &st);
+  cw_text_style st = { .size = row_size, .color = tc, .own_backdrop = true };
+  float ty = y + 7 * U * row_k, pad = 22 * U * row_k;
+  cw_r2d_text(small, label, cw_v2(x + pad, ty), &st);
   if (value) {
     char v[64];
     snprintf(v, sizeof v, sel ? "< %s >" : "%s", value);
     cw_text_metrics m = cw_font_measure(small, v, &st);
-    cw_r2d_text(small, v, cw_v2(x + w - m.width - 22 * u, y + 7 * u), &st);
+    cw_r2d_text(small, v, cw_v2(x + w - m.width - pad, ty), &st);
   }
+}
+/* a page's rows from y, at most down to y_end: every row when they fit, otherwise as many as fit, scrolled to keep the
+ * selected one in view, with an arrow where more are hidden. Returns the y under the last row drawn */
+typedef struct row_def { const char *label, *value; } row_def;
+static float row_width(const row_def *r, int n, float min_w, float max_w) {
+  float pw = min_w;
+  for (int i = 0; i < n; i++) pw = fmaxf(pw, row_need(r[i].label, r[i].value));
+  return fminf(pw, max_w);
+}
+static float rows_draw(float x, float y, float y_end, float pw, const row_def *r, int n, int sel) {
+  int fit = (int)((y_end - y + 10 * U) / row_step);
+  if (fit < 1) fit = 1;
+  int first = 0;
+  if (fit < n) {
+    first = sel - fit / 2;
+    if (first < 0) first = 0;
+    if (first > n - fit) first = n - fit;
+  } else fit = n;
+  cw_color arrow = cw_rgba(1, 1, 1, 0.8f);
+  float a = 12 * U * row_k, cx = x + pw * 0.5f;
+  if (first > 0) tri(cw_v2(cx - a, y - 4 * U), cw_v2(cx + a, y - 4 * U), cw_v2(cx, y - 4 * U - a), arrow);
+  for (int i = 0; i < fit; i++) item(x, y + row_step * (float)i, pw, r[first + i].label, r[first + i].value, first + i == sel);
+  float end = y + row_step * (float)fit - 10 * U;
+  if (first + fit < n) tri(cw_v2(cx - a, end + 4 * U), cw_v2(cx + a, end + 4 * U), cw_v2(cx, end + 4 * U + a), arrow);
+  return end;
+}
+
+/* the title over the attract loop: the logo is art (drawn as it is at every text scale); returns the y under it */
+static float title(float px, float h, float u, bool draw) {
+  cw_color white = cw_rgba(1, 1, 1, 0.97f), dim = cw_rgba(1, 1, 1, 0.75f);
+  float sub_y = h * 0.24f, sub_h = measure(small, "WAVE RACING", 30 * u).height;
+  if (draw) {
+    cw_text_style logo = tstyle(124 * u, white);
+    logo.fixed_size = true;
+    cw_r2d_text(big, "JETSKI", cw_v2(px, h * 0.11f), &logo);
+    text(small, "WAVE RACING", px + 6 * u, sub_y, 30 * u, dim, 0);
+  }
+  return sub_y + sub_h;
+}
+/* the hint line, at the foot of the page: its parts on one line when they fit, otherwise one under another. Returns its top */
+static float hint(const char *const *parts, int n, float x, float w_avail, float bottom, float size, cw_color c) {
+  float gap = 2.2f * cw_text_drawn_size(small, size), total = 0, lh = 0;
+  for (int i = 0; i < n; i++) { cw_vec2 s = cw_prompt_text_size(small, parts[i], -1, size); total += s.x + (i ? gap : 0); lh = fmaxf(lh, s.y); }
+  if (total <= w_avail) {
+    float top = bottom - lh, cx = x;
+    for (int i = 0; i < n; i++) { ptext(small, parts[i], cx, top, size, c, 0); cx += cw_prompt_text_size(small, parts[i], -1, size).x + gap; }
+    return top;
+  }
+  float top = bottom - lh * (float)n;
+  for (int i = 0; i < n; i++) ptext(small, parts[i], x, top + lh * (float)i, size, c, 0);
+  return top;
+}
+static void fmt_time(char *buf, size_t cap, const char *pre, float t) {
+  snprintf(buf, cap, "%s%d:%05.2f", pre, (int)(t / 60), t - 60.0f * (float)(int)(t / 60));
 }
 
 void menu_draw(void) {
@@ -237,94 +340,146 @@ void menu_draw(void) {
   }
   if (page == P_NONE) return;
   cw_vec2 sz = cw_r2d_canvas_size();
-  float w = sz.x, h = sz.y, u = h / 1080.0f, px = w * 0.07f, pw = 560 * u, y = h * 0.34f, step = 68 * u;
-  cw_color white = cw_rgba(1, 1, 1, 0.97f), dim = cw_rgba(1, 1, 1, 0.75f);
+  float w = sz.x, h = sz.y, u = h / 1080.0f, px = w * 0.07f, y = h * 0.34f;
+  cw_color white = cw_rgba(1, 1, 1, 0.97f), dim = cw_rgba(1, 1, 1, 0.75f), gold = cw_rgba(1, 0.78f, 0.25f, 1);
   char buf[64];
   if (page == P_GRAPHICS) {
     cw_quality_menu_style st = { .font = small };
     cw_quality_menu_draw(&st);
     return;
   }
-  if (G.state == RACE_ATTRACT) {
-    text(big, "JETSKI", px, h * 0.11f, 124 * u, white, 0);
-    text(small, "WAVE RACING", px + 6 * u, h * 0.24f, 30 * u, dim, 0);
-  }
-  if (page == P_PAUSE || ((page == P_AUDIO || page == P_CONTROLS) && G.state != RACE_ATTRACT) || page == P_RESULTS) cw_r2d_rect(cw_rect_make(0, 0, w, h), cw_rgba(0, 0.02f, 0.05f, 0.42f));
+  rows_setup(u);
+  bool attract = G.state == RACE_ATTRACT;
+  /* the widest a page may grow: the screen less a margin, the left margin shrinking first */
+  float margin = 30 * u, max_w = w - 2 * margin;
+  if (page == P_PAUSE || ((page == P_AUDIO || page == P_CONTROLS) && !attract) || page == P_RESULTS) cw_r2d_rect(cw_rect_make(0, 0, w, h), cw_rgba(0, 0.02f, 0.05f, 0.42f));
   switch (page) {
-  case P_MAIN:
-    item(px, y, pw, u, "Start", NULL, row == 0);
-    item(px, y + step, pw, u, "Mode", MODES[g_mode], row == 1);
-    item(px, y + step * 2, pw, u, "Course", g_mode == MODE_CHAMPIONSHIP ? "All, in turn" : DEF->name, row == 2);
-    item(px, y + step * 3, pw, u, "Difficulty", DIFF[g_difficulty], row == 3);
-    item(px, y + step * 4, pw, u, "Controls", NULL, row == 4);
-    item(px, y + step * 5, pw, u, "Audio", NULL, row == 5);
-    item(px, y + step * 6, pw, u, "Graphics", NULL, row == 6);
-    if (g_mode == MODE_TIME_TRIAL && best[G.level] > 0) {
-      snprintf(buf, sizeof buf, "Best on %s: %d:%05.2f", DEF->name, (int)(best[G.level] / 60), best[G.level] - 60.0f * (float)(int)(best[G.level] / 60));
-      text(small, buf, px + 6 * u, y + step * 7 + 4 * u, 30 * u, cw_rgba(1, 0.78f, 0.25f, 1), 0);
+  case P_MAIN: {
+    float top = title(px, h, u, attract);
+    y = fmaxf(y, top + 24 * u);
+    char course[48];
+    snprintf(course, sizeof course, "%s", g_mode == MODE_CHAMPIONSHIP ? "All, in turn" : DEF->name);
+    const row_def r[7] = { { "Start", NULL }, { "Mode", MODES[g_mode] }, { "Course", course }, { "Difficulty", DIFF[g_difficulty] }, { "Controls", NULL }, { "Audio and text", NULL }, { "Graphics", NULL } };
+    static const char *const parts[3] = { "{ui_up|ui_down} choose", "{ui_left|ui_right} change", "{ui_accept} accept" };
+    float hs = 28 * u, ht = hint(parts, 3, px, w - px - margin, h - 40 * u, hs, dim);
+    float pw = row_width(r, 7, 560 * u, max_w), x = px + pw > w - margin ? w - margin - pw : px;
+    float best_h = 0;
+    bool show_best = g_mode == MODE_TIME_TRIAL && best[G.level] > 0;
+    if (show_best) best_h = measure(small, "Best", 30 * u).height + 4 * u;
+    float end = rows_draw(x, y, ht - 20 * u - best_h, pw, r, 7, row);
+    if (show_best) {
+      char pre[48];
+      snprintf(pre, sizeof pre, "Best on %s: ", DEF->name);
+      fmt_time(buf, sizeof buf, pre, best[G.level]);
+      text(small, buf, x + 6 * u, end + 4 * u + 10 * u, 30 * u, gold, 0);
     }
-    ptext(small, "{ui_up|ui_down} choose    {ui_left|ui_right} change    {ui_accept} accept", px, h * 0.92f, 24 * u, dim, 0);
     break;
+  }
   case P_CONTROLS: {
     static const char *const L[][2] = { { "Steer and lean", "{steer_left|steer_right}" }, { "Throttle", "{throttle}" }, { "Lean back: tighter carve", "{lean_back}" }, { "Lean back, then throw forward at a crest", "Jump higher" }, { "In the air: barrel roll", "{trick}" }, { "In the air, stick back: back flip", "{lean_back} + {trick}" }, { "Pause", "{race_pause}" } };
-    cw_r2d_round_rect(cw_rect_make(px, y, 980 * u, 530 * u), 10 * u, 8, cw_rgba(0.03f, 0.07f, 0.11f, 0.72f));
+    static const char *const FOOT = "Pass each buoy on the side its arrow shows: five in a row is your top speed. A miss loses them all.";
+    float ts = 34 * u, k = cw_text_drawn_size(small, ts) / ts, pad = 26 * u * k, lh = measure(small, "Ag", ts).height;
+    float lw = 0, vw = 0, vh = lh;
+    for (int i = 0; i < 7; i++) { lw = fmaxf(lw, measure(small, L[i][0], ts).width); cw_vec2 v = cw_prompt_text_size(small, L[i][1], -1, ts); vw = fmaxf(vw, v.x); vh = fmaxf(vh, v.y); }
+    float pw = fmaxf(980 * u, pad * 2 + lw + 40 * u * k + vw);
+    bool two_lines = pw > max_w; /* too narrow for a label and its control side by side: the control goes under its label */
+    if (two_lines) pw = max_w;
+    float step = fmaxf(62 * u, fmaxf(lh, vh) + 8 * u * k), row2 = two_lines ? vh : 0;
+    cw_text_style fs = tstyle(26 * u, dim);
+    fs.wrap_width = pw - pad * 2;
+    float foot_h = cw_font_measure(small, FOOT, &fs).height;
+    /* taller than the screen: the rows close up (the font's line box has room to spare), never below the glyphs' own height */
+    { float rest = 20 * u * k + 7 * row2 + 10 * u * k + foot_h + 24 * u * k, room = (h - 2 * margin - rest) / 7;
+      if (step > room) step = fmaxf(room, fmaxf(lh * 0.8f, vh)); }
+    float ph = 20 * u * k + 7 * (step + row2) + 10 * u * k + foot_h + 24 * u * k;
+    float x = px + pw > w - margin ? w - margin - pw : px;
+    float py = fminf(y, h - margin - ph);
+    if (py < margin) py = margin;
+    if (attract && py >= title(px, h, u, false) + 12 * u) title(px, h, u, true);
+    cw_r2d_round_rect(cw_rect_make(x, py, pw, ph), 10 * u, 8, cw_rgba(0.03f, 0.07f, 0.11f, 0.72f));
+    float ry = py + 20 * u * k;
     for (int i = 0; i < 7; i++) {
-      text(small, L[i][0], px + 26 * u, y + (20 + (float)i * 62) * u, 34 * u, white, 0);
-      ptext(small, L[i][1], px + 954 * u, y + (20 + (float)i * 62) * u, 34 * u, cw_rgba(1.0f, 0.78f, 0.3f, 1), 1);
+      text(small, L[i][0], x + pad, ry, ts, white, 0);
+      ptext(small, L[i][1], x + pw - pad, two_lines ? ry + lh : ry, ts, cw_rgba(1.0f, 0.78f, 0.3f, 1), 1);
+      ry += step + row2;
     }
-    text(small, "Pass each buoy on the side its arrow shows: five in a row is your top speed. A miss loses them all.", px + 26 * u, y + 462 * u, 26 * u, dim, 0);
+    cw_r2d_text(small, FOOT, cw_v2(x + pad, ry + 10 * u * k), &fs);
     break;
   }
-  case P_AUDIO:
-    snprintf(buf, sizeof buf, "%d", music);
-    item(px, y, pw, u, "Music", buf, row == 0);
-    snprintf(buf, sizeof buf, "%d", sfx);
-    item(px, y + step, pw, u, "Effects", buf, row == 1);
-    item(px, y + step * 2, pw, u, "Back", NULL, row == 2);
+  case P_AUDIO: {
+    char m[8], s[8];
+    snprintf(m, sizeof m, "%d", music);
+    snprintf(s, sizeof s, "%d", sfx);
+    const row_def r[5] = { { "Music", m }, { "Effects", s }, { "Text size", cw_text_scale_label() }, { "Text background", cw_text_backdrop_label() }, { "Back", NULL } };
+    float top = title(px, h, u, attract);
+    if (attract) y = fmaxf(y, top + 24 * u);
+    float pw = row_width(r, 5, 560 * u, max_w), x = px + pw > w - margin ? w - margin - pw : px;
+    rows_draw(x, y, h - margin, pw, r, 5, row);
     break;
-  case P_PAUSE:
-    text(big, "PAUSED", w * 0.5f, h * 0.2f, 96 * u, white, 0.5f);
-    px = w * 0.5f - pw * 0.5f;
-    item(px, y, pw, u, "Resume", NULL, row == 0);
-    item(px, y + step, pw, u, "Restart race", NULL, row == 1);
-    item(px, y + step * 2, pw, u, "Controls", NULL, row == 2);
-    item(px, y + step * 3, pw, u, "Audio", NULL, row == 3);
-    item(px, y + step * 4, pw, u, "Quit to title", NULL, row == 4);
+  }
+  case P_PAUSE: {
+    float th = text(big, "PAUSED", w * 0.5f, h * 0.2f, 96 * u, white, 0.5f);
+    const row_def r[5] = { { "Resume", NULL }, { "Restart race", NULL }, { "Controls", NULL }, { "Audio and text", NULL }, { "Quit to title", NULL } };
+    float pw = row_width(r, 5, 560 * u, max_w);
+    rows_draw(w * 0.5f - pw * 0.5f, fmaxf(y, h * 0.2f + th + 12 * u), h - margin, pw, r, 5, row);
     break;
+  }
   case P_RESULTS: {
     static const char *const ord[] = { "1st", "2nd", "3rd", "4th", "5th", "6th" };
+    row_def r[2] = { { g_mode == MODE_TIME_TRIAL ? "Try again" : cup_done() ? "New championship" : "Next race", NULL }, { "Back to title", NULL } };
+    float pw = row_width(r, 2, 560 * u, (max_w - 20 * u) * 0.5f), yy;
     if (g_mode == MODE_TIME_TRIAL && !G.c[0].dq) {
       float t = G.c[0].finish;
-      snprintf(buf, sizeof buf, "%d:%05.2f", (int)(t / 60), t - 60.0f * (float)(int)(t / 60));
-      text(big, buf, w * 0.5f, h * 0.14f, 130 * u, cw_rgba(1, 0.78f, 0.25f, 1), 0.5f);
-      text(small, new_best ? "A new best on this course" : "Not your best", w * 0.5f, h * 0.3f, 42 * u, white, 0.5f);
-      if (best[G.level] > 0) { snprintf(buf, sizeof buf, "Best %d:%05.2f", (int)(best[G.level] / 60), best[G.level] - 60.0f * (float)(int)(best[G.level] / 60)); text(small, buf, w * 0.5f, h * 0.37f, 36 * u, dim, 0.5f); }
-      px = w * 0.5f - pw * 0.5f;
-      item(px, h * 0.6f, pw, u, "Try again", NULL, row == 0);
-      item(px, h * 0.6f + step, pw, u, "Back to title", NULL, row == 1);
-      break;
+      fmt_time(buf, sizeof buf, "", t);
+      yy = h * 0.14f + text(big, buf, w * 0.5f, h * 0.14f, 130 * u, gold, 0.5f);
+      yy = fmaxf(h * 0.3f, yy + 8 * u);
+      yy += text(small, new_best ? "A new best on this course" : "Not your best", w * 0.5f, yy, 42 * u, white, 0.5f);
+      if (best[G.level] > 0) { fmt_time(buf, sizeof buf, "Best ", best[G.level]); yy = fmaxf(h * 0.37f, yy + 4 * u); yy += text(small, buf, w * 0.5f, yy, 36 * u, dim, 0.5f); }
+    } else {
+      if (G.c[0].dq) yy = h * 0.11f + text(big, G.c[0].dq == 1 ? "FIVE MISSES" : "LEFT THE COURSE", w * 0.5f, h * 0.11f, 90 * u, cw_rgba(1, 0.4f, 0.15f, 1), 0.5f);
+      else yy = h * 0.09f + text(big, ord[G.c[0].place - 1 < 0 ? 0 : G.c[0].place - 1], w * 0.5f, h * 0.09f, 130 * u, gold, 0.5f);
+      /* the race's order, each rider's time, and the championship's points so far: columns as wide as their widest entry */
+      if (g_mode == MODE_CHAMPIONSHIP) {
+        float ts = 36 * u, k = cw_text_drawn_size(small, ts) / ts, gap = 40 * u * k, nw = 0, tw = 0, pwid = 0;
+        char names[RACERS][48], times[RACERS][16], pts[RACERS][16];
+        for (int i = 0; i < RACERS; i++) {
+          const craft *c = &G.c[G.order[i]];
+          snprintf(names[i], sizeof names[i], "%s  %s", ord[i], G.order[i] == 0 ? "You" : RIDER_NAMES[G.order[i]]);
+          times[i][0] = 0;
+          if (c->finish > 0) fmt_time(times[i], sizeof times[i], "", c->finish);
+          snprintf(pts[i], sizeof pts[i], "%d pts", cup_points[G.order[i]]);
+          nw = fmaxf(nw, measure(small, names[i], ts).width), tw = fmaxf(tw, measure(small, times[i], ts).width), pwid = fmaxf(pwid, measure(small, pts[i], ts).width);
+        }
+        float time_r = fmaxf(470 * u, nw + gap + tw), pts_r = time_r + fmaxf(150 * u, gap + pwid), tx = w * 0.5f - pts_r * 0.5f;
+        float ty = fmaxf(h * 0.27f, yy + 10 * u), step = 46 * u * k, tlh = measure(small, "Ag", ts).height;
+        /* the rows close up (never tighter than the text's own size) when the table, the champion's line and the two
+         * choices side by side would run off the foot of the page */
+        float room = h - margin - row_h - 16 * u - (cup_done() ? measure(small, "Ag", 40 * u).height + 8 * u : 0) - ty - tlh;
+        if (step * (RACERS - 1) > room) step = fmaxf(room / (RACERS - 1), cw_text_drawn_size(small, ts));
+        for (int i = 0; i < RACERS; i++) {
+          float ry = ty + (float)i * step;
+          text(small, names[i], tx, ry, ts, G.order[i] == 0 ? gold : white, 0);
+          if (times[i][0]) text(small, times[i], tx + time_r, ry, ts, white, 1);
+          text(small, pts[i], tx + pts_r, ry, ts, gold, 1);
+        }
+        yy = ty + (float)(RACERS - 1) * step + measure(small, "Ag", ts).height;
+      }
+      if (cup_done()) {
+        int top = 0;
+        for (int i = 1; i < RACERS; i++) if (cup_points[i] > cup_points[top]) top = i;
+        snprintf(buf, sizeof buf, top == 0 ? "You win the championship" : "%s wins the championship", RIDER_NAMES[top]);
+        yy = fmaxf(h * 0.54f, yy + 8 * u);
+        yy += text(small, buf, w * 0.5f, yy, 40 * u, white, 0.5f);
+      }
     }
-    if (G.c[0].dq) text(big, G.c[0].dq == 1 ? "FIVE MISSES" : "LEFT THE COURSE", w * 0.5f, h * 0.11f, 90 * u, cw_rgba(1, 0.4f, 0.15f, 1), 0.5f);
-    else text(big, ord[G.c[0].place - 1 < 0 ? 0 : G.c[0].place - 1], w * 0.5f, h * 0.09f, 130 * u, cw_rgba(1, 0.78f, 0.25f, 1), 0.5f);
-    float tx = w * 0.5f - 300 * u, ty = h * 0.27f;
-    /* the race's order, each rider's time, and the championship's points so far */
-    for (int i = 0; i < RACERS && g_mode == MODE_CHAMPIONSHIP; i++) {
-      const craft *c = &G.c[G.order[i]];
-      snprintf(buf, sizeof buf, "%s  %s", ord[i], G.order[i] == 0 ? "You" : RIDER_NAMES[G.order[i]]);
-      text(small, buf, tx, ty + (float)i * 46 * u, 36 * u, G.order[i] == 0 ? cw_rgba(1, 0.78f, 0.25f, 1) : white, 0);
-      if (c->finish > 0) { snprintf(buf, sizeof buf, "%d:%05.2f", (int)(c->finish / 60), c->finish - 60.0f * (float)(int)(c->finish / 60)); text(small, buf, tx + 470 * u, ty + (float)i * 46 * u, 36 * u, white, 1); }
-      snprintf(buf, sizeof buf, "%d pts", cup_points[G.order[i]]);
-      text(small, buf, tx + 620 * u, ty + (float)i * 46 * u, 36 * u, cw_rgba(1, 0.78f, 0.25f, 1), 1);
+    /* the two choices under it all: one over the other, or side by side when the page has no room left for that */
+    float iy = fmaxf(h * 0.6f, yy + 16 * u);
+    if (iy + row_step + row_h <= h - margin) rows_draw(w * 0.5f - pw * 0.5f, iy, h - margin, pw, r, 2, row);
+    else {
+      iy = fminf(iy, h - margin - row_h);
+      item(w * 0.5f - pw - 10 * u, iy, pw, r[0].label, r[0].value, row == 0);
+      item(w * 0.5f + 10 * u, iy, pw, r[1].label, r[1].value, row == 1);
     }
-    px = w * 0.5f - pw * 0.5f;
-    if (cup_done()) {
-      int top = 0;
-      for (int i = 1; i < RACERS; i++) if (cup_points[i] > cup_points[top]) top = i;
-      snprintf(buf, sizeof buf, top == 0 ? "You win the championship" : "%s wins the championship", RIDER_NAMES[top]);
-      text(small, buf, w * 0.5f, h * 0.54f, 40 * u, white, 0.5f);
-    }
-    item(px, h * 0.6f, pw, u, g_mode == MODE_TIME_TRIAL ? "Try again" : cup_done() ? "New championship" : "Next race", NULL, row == 0);
-    item(px, h * 0.6f + step, pw, u, "Back to title", NULL, row == 1);
     break;
   }
   default: break;
