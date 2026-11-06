@@ -1,0 +1,18 @@
+{
+  "app": "crawler",
+  "secondary": [],
+  "screens": [
+    { "name": "title", "frames": 60 },
+    { "name": "settings", "frames": 60, "input": "crawler-text-settings.json" },
+    { "name": "controls", "frames": 80, "input": "crawler-text-controls.json" },
+    { "name": "graphics", "frames": 60, "input": "crawler-text-graphics.json" },
+    { "name": "join", "frames": 40, "input": "crawler-text-join.json" },
+    { "name": "pick", "frames": 60, "input": "crawler-text-pick.json" },
+    { "name": "pick4", "frames": 90, "input": "crawler-text-pick4.json" },
+    { "name": "play1", "frames": 160, "input": "crawler-text-play.json" },
+    { "name": "pause", "frames": 315, "input": "crawler-text-pause.json" },
+    { "name": "bots2", "app": "crawler_auto", "frames": 400, "env": { "CRAWLER_PLAYERS": "2", "CRAWLER_CHARM": "1" } },
+    { "name": "bots4", "app": "crawler_auto", "frames": 400, "env": { "CRAWLER_PLAYERS": "4", "CRAWLER_CHARM": "2" } },
+    { "name": "hud-show", "app": "crawler_auto", "frames": 300, "env": { "CRAWLER_PLAYERS": "4", "CRAWLER_CHARM": "2", "CRAWLER_HUD_SHOW": "1" } }
+  ]
+}

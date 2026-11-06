@@ -385,89 +385,175 @@ static void fixed_update(void *u, double dt) {
 /* ── the HUD ────────────────────────────────────────────────────────── */
 
 static cw_color rgba(float r, float g, float b, float a) { return (cw_color){ r, g, b, a }; }
-static void text(const char *s, float x, float y, float size, cw_color c, cw_text_align al) {
-  cw_text_style st = { .size = size, .color = c, .outline_width = size * 0.09f, .outline_color = rgba(0, 0, 0, 0.9f) };
+static cw_text_style tstyle(float size, cw_color c) { return (cw_text_style){ .size = size, .color = c, .outline_width = size * 0.09f, .outline_color = rgba(0, 0, 0, 0.9f) }; }
+/* the box a line takes at the player's text size (the HUD lays out from these, so it holds at 200%) */
+static cw_text_metrics measure(const char *s, float size) {
+  cw_text_style st = tstyle(size, rgba(1, 1, 1, 1));
+  return cw_font_measure(font, s, &st);
+}
+static cw_text_metrics text(const char *s, float x, float y, float size, cw_color c, cw_text_align al) {
+  cw_text_style st = tstyle(size, c);
   if (al != CW_ALIGN_LEFT) {
     cw_text_metrics m = cw_font_measure(font, s, &st);
     x -= al == CW_ALIGN_CENTER ? m.width * 0.5f : m.width;
   }
-  cw_r2d_text(font, s, cw_v2(x, y), &st);
+  return cw_r2d_text(font, s, cw_v2(x, y), &st);
+}
+/* lines wrapped to a width, each aligned on its own in the box [x, x + wrap] */
+static cw_text_metrics text_box(const char *s, float x, float y, float wrap, float size, cw_color c, cw_text_align al) {
+  cw_text_style st = tstyle(size, c);
+  st.align = al, st.wrap_width = wrap;
+  return cw_r2d_text(font, s, cw_v2(x, y), &st);
+}
+static cw_text_metrics measure_box(const char *s, float wrap, float size) {
+  cw_text_style st = tstyle(size, rgba(1, 1, 1, 1));
+  st.wrap_width = wrap;
+  return cw_font_measure(font, s, &st);
+}
+/* a prompt line split at its wide gaps ("   ") into lines no wider than maxw at this size */
+static const char *fit_prompt(const char *markup, int player, float size, float maxw) {
+  static char o[256];
+  snprintf(o, sizeof o, "%s", markup);
+  if (cw_prompt_text_size(font, o, player, size).x <= maxw) return o;
+  for (char *p = strstr(o, "   "); p; p = strstr(p + 1, "   ")) p[0] = '\n', memmove(p + 1, p + 3, strlen(p + 3) + 1);
+  return o;
 }
 static const char *const THEME_NAME[MZ_THEMES] = { "THE CRYPT", "THE SEWERS", "THE FOUNDRY", "THE GROTTO", "THE CATHEDRAL", "THE ABYSS" };
 
 static void hud_player(int i, float u, cw_vec2 cs) {
-  const player *p = &G.S.p[i];
+  player pv = G.S.p[i];
+#ifdef CRAWLER_AUTOPILOT
+  static int show = -1; /* CRAWLER_HUD_SHOW (development, the text size contact sheet): the downed and empty seat panels, drawn only */
+  if (show < 0) show = getenv("CRAWLER_HUD_SHOW") != NULL;
+  if (show && i == 1) pv.down = true;
+  if (show && i == 3) pv.active = false;
+#endif
+  const player *p = &pv;
   const float *pc = PCOL[i];
-  /* body text at 26 px at 1080p (2.4% of the canvas height, the engine's readable floor), the health larger */
-  float w = 300 * u, h = 92 * u, x = (i & 1) ? cs.x - w - 12 * u : 12 * u, y = (i & 2) ? cs.y - h - 12 * u : 12 * u;
+  /* body text at 26 px at 1080p (2.4% of the canvas height, the engine's readable floor), the health larger; the panel
+   * is sized from its measured text, so it holds the player's text size */
+  float bs = 26 * u;
+  char b[96], sc[24];
+  bool right = i & 1, bottom = i & 2;
+  float w = 300 * u, h = 92 * u;
+  const char *pm = !p->active ? "{join}: join in" : p->down ? "{join}: back in" : NULL;
+  snprintf(b, sizeof b, "P%d  %s", i + 1, sim_class_name(p->cls));
+  snprintf(sc, sizeof sc, "%d", p->score);
+  cw_text_metrics nm = measure(b, bs), sm = measure(sc, bs);
+  float row2 = fmaxf(36 * u, 4 * u + nm.height + u); /* the second row's top */
+  char hp[16], keys[16], pots[16];
+  snprintf(hp, sizeof hp, "%d", p->hp), snprintf(keys, sizeof keys, "%d", p->keys), snprintf(pots, sizeof pots, "%d", p->potions);
+  cw_text_metrics hm = measure(hp, 40 * u), km = measure(keys, bs);
+  float iu = u * cw_text_drawn_size(font, bs) / bs; /* the icons grow with the text beside them */
+  float ix = fmaxf(140 * u, 16 * u + hm.width + 22 * iu), px = fmaxf(ix + 72 * u, ix + 22 * iu + km.width + 24 * iu); /* the key and potion icons' x */
+  if (!p->active) {
+    cw_vec2 ps = cw_prompt_text_size(font, pm, i, bs);
+    w = fmaxf(w, 16 * u + ps.x + 12 * u), h = fmaxf(h, 30 * u + ps.y + 8 * u);
+  } else {
+    w = fmaxf(w, 16 * u + nm.width + 20 * iu + sm.width + 10 * u);
+    if (p->down) {
+      cw_vec2 ps = cw_prompt_text_size(font, pm, i, bs);
+      w = fmaxf(w, 16 * u + ps.x + 12 * u), h = fmaxf(h, row2 + 4 * u + ps.y + 8 * u);
+    } else w = fmaxf(w, px + 16 * iu + measure(pots, bs).width + 12 * u), h = fmaxf(h, row2 + hm.height + 4 * u);
+  }
+  float x = right ? cs.x - w - 12 * u : 12 * u, y = bottom ? cs.y - h - 12 * u : 12 * u;
   cw_r2d_rect(cw_rect_make(x, y, w, h), rgba(0.03f, 0.03f, 0.05f, 0.7f));
   cw_r2d_rect(cw_rect_make(x, y, 6 * u, h), rgba(pc[0], pc[1], pc[2], 1));
-  char b[96];
   if (!p->active) {
-    cw_prompt_text(font, "{join}: join in", i, cw_v2(x + 16 * u, y + 30 * u), 26 * u, rgba(1, 1, 1, 0.85f), CW_ALIGN_LEFT);
+    cw_prompt_text(font, pm, i, cw_v2(x + 16 * u, y + 30 * u), bs, rgba(1, 1, 1, 0.85f), CW_ALIGN_LEFT);
     return;
   }
-  snprintf(b, sizeof b, "P%d  %s", i + 1, sim_class_name(p->cls));
-  text(b, x + 16 * u, y + 4 * u, 26 * u, rgba(0.6f + 0.4f * pc[0], 0.6f + 0.4f * pc[1], 0.6f + 0.4f * pc[2], 1), CW_ALIGN_LEFT);
-  snprintf(b, sizeof b, "%d", p->score);
-  text(b, x + w - 10 * u, y + 4 * u, 26 * u, rgba(1, 0.92f, 0.6f, 1), CW_ALIGN_RIGHT);
+  text(b, x + 16 * u, y + 4 * u, bs, rgba(0.6f + 0.4f * pc[0], 0.6f + 0.4f * pc[1], 0.6f + 0.4f * pc[2], 1), CW_ALIGN_LEFT);
+  text(sc, x + w - 10 * u, y + 4 * u, bs, rgba(1, 0.92f, 0.6f, 1), CW_ALIGN_RIGHT);
   if (p->down) {
-    cw_prompt_text(font, "{join}: back in", i, cw_v2(x + 16 * u, y + 40 * u), 26 * u, rgba(1, 0.7f, 0.6f, 1), CW_ALIGN_LEFT);
+    cw_prompt_text(font, pm, i, cw_v2(x + 16 * u, y + row2 + 4 * u), bs, rgba(1, 0.7f, 0.6f, 1), CW_ALIGN_LEFT);
     return;
   }
   /* health: the big number, red when low */
   bool low = p->hp < 150;
-  snprintf(b, sizeof b, "%d", p->hp);
-  text(b, x + 16 * u, y + 36 * u, 40 * u, low && (G.S.tick / 15) % 2 ? rgba(1, 0.25f, 0.2f, 1) : rgba(1, 1, 1, 1), CW_ALIGN_LEFT);
-  /* keys and potions as counts beside little shapes */
-  float ix = x + 140 * u, iy = y + 48 * u;
-  cw_r2d_circle(cw_v2(ix, iy + 10 * u), 7 * u, 16, rgba(1, 0.82f, 0.3f, 1));
-  cw_r2d_rect(cw_rect_make(ix + 4 * u, iy + 8 * u, 14 * u, 4 * u), rgba(1, 0.82f, 0.3f, 1));
-  snprintf(b, sizeof b, "%d", p->keys);
-  text(b, ix + 22 * u, iy - 4 * u, 26 * u, rgba(1, 0.9f, 0.6f, 1), CW_ALIGN_LEFT);
-  ix += 72 * u;
-  cw_r2d_circle(cw_v2(ix, iy + 12 * u), 8 * u, 16, rgba(0.35f, 0.6f, 1, 1));
-  cw_r2d_rect(cw_rect_make(ix - 3 * u, iy - 2 * u, 6 * u, 8 * u), rgba(0.75f, 0.8f, 0.9f, 1));
-  snprintf(b, sizeof b, "%d", p->potions);
-  text(b, ix + 16 * u, iy - 4 * u, 26 * u, rgba(0.7f, 0.85f, 1, 1), CW_ALIGN_LEFT);
-  /* the charms held, with their seconds */
-  char cb[160];
+  text(hp, x + 16 * u, y + row2, 40 * u, low && (G.S.tick / 15) % 2 ? rgba(1, 0.25f, 0.2f, 1) : rgba(1, 1, 1, 1), CW_ALIGN_LEFT);
+  /* keys and potions as counts beside little shapes, on the health number's middle */
+  float mid = y + row2 + hm.height * 0.55f, cy = mid - km.height * 0.5f;
+  float kx = x + ix, iy = mid - 12 * iu;
+  cw_r2d_circle(cw_v2(kx, iy + 10 * iu), 7 * iu, 16, rgba(1, 0.82f, 0.3f, 1));
+  cw_r2d_rect(cw_rect_make(kx + 4 * iu, iy + 8 * iu, 14 * iu, 4 * iu), rgba(1, 0.82f, 0.3f, 1));
+  text(keys, kx + 22 * iu, cy, bs, rgba(1, 0.9f, 0.6f, 1), CW_ALIGN_LEFT);
+  kx = x + px;
+  cw_r2d_circle(cw_v2(kx, iy + 12 * iu), 8 * iu, 16, rgba(0.35f, 0.6f, 1, 1));
+  cw_r2d_rect(cw_rect_make(kx - 3 * iu, iy - 2 * iu, 6 * iu, 8 * iu), rgba(0.75f, 0.8f, 0.9f, 1));
+  text(pots, kx + 16 * iu, cy, bs, rgba(0.7f, 0.85f, 1, 1), CW_ALIGN_LEFT);
+  /* the charms held, with their seconds, wrapped to this half of the screen, by the panel's outer side */
+  char cb[200];
   int n = 0;
   cb[0] = 0;
   for (int c = 0; c < CH_KINDS && n < (int)sizeof cb - 24; c++) {
     if (p->charm[c] <= 0) continue;
-    if (c == CH_FIREBOMBS) n += snprintf(cb + n, sizeof cb - (size_t)n, "%s x%d  ", sim_charm_name(c), p->charm[c]);
-    else n += snprintf(cb + n, sizeof cb - (size_t)n, "%s %d  ", sim_charm_name(c), (p->charm[c] + 59) / 60);
+    if (c == CH_FIREBOMBS) n += snprintf(cb + n, sizeof cb - (size_t)n, "%s%s x%d", n ? "  " : "", sim_charm_name(c), p->charm[c]);
+    else n += snprintf(cb + n, sizeof cb - (size_t)n, "%s%s %d", n ? "  " : "", sim_charm_name(c), (p->charm[c] + 59) / 60);
   }
-  if (n) text(cb, x + 4 * u, (i & 2) ? y - 32 * u : y + h + 4 * u, 26 * u, rgba(1, 0.88f, 0.45f, 1), CW_ALIGN_LEFT);
+  if (n) {
+    float wrap = cs.x * 0.5f - 24 * u;
+    cw_text_metrics cm = measure_box(cb, wrap, bs);
+    float cy2 = bottom ? y - 2 * u - cm.height : y + h + 4 * u;
+    text_box(cb, right ? x + w - 4 * u - wrap : x + 4 * u, cy2, wrap, bs, rgba(1, 0.88f, 0.45f, 1), right ? CW_ALIGN_RIGHT : CW_ALIGN_LEFT);
+  }
+}
+
+/* a seat's ready prompt, on two lines when one is wider than its box */
+static const char *ready_line(int i, float size, float maxw) {
+  if (!G.ready[i]) return "{fire}: ready";
+  return cw_prompt_text_size(font, "READY  {fire}: change", i, size).x <= maxw ? "READY  {fire}: change" : "READY\n{fire}: change";
+}
+
+/* the two lines of a hero's role, wrapped to the box, stacked */
+static float role_h(const char *const role[2], float wrap, float size) {
+  float h = 0;
+  for (int l = 0; l < 2; l++) h += fmaxf(34 * cw_r2d_canvas_size().y / 1080.0f, measure_box(role[l], wrap, size).height);
+  return h;
 }
 
 static void hud(void) {
   cw_vec2 cs = cw_r2d_canvas_size();
-  float u = cs.y / 1080.0f;
+  float u = cs.y / 1080.0f, bs = 26 * u;
   cw_r2d_begin(NULL);
   if (G.phase == PH_PICK) {
-    text("CHOOSE YOUR HEROES", cs.x * 0.5f, cs.y * 0.16f, 60 * u, rgba(1, 0.85f, 0.45f, 1), CW_ALIGN_CENTER);
+    float y = cs.y * 0.16f;
+    y += text("CHOOSE YOUR HEROES", cs.x * 0.5f, y, 60 * u, rgba(1, 0.85f, 0.45f, 1), CW_ALIGN_CENTER).height;
     static const char *const ROLE[CL_KINDS][2] = { { "fights best hand to hand,", "throws axes" }, { "the heaviest armour,", "a thrown hammer" },
                                                    { "fireballs, and potions", "that crack spawners" }, { "the fastest feet", "and the quickest bow" } };
+    float by = fmaxf(cs.y * 0.34f, y + 30 * u), bw = cs.x * 0.22f, inner = bw - 24 * u, bh = cs.y * 0.4f;
+    /* the boxes' height: what the tallest needs at this text size (each box measured from its own text) */
     for (int i = 0; i < G.players; i++) {
-      float bx = cs.x * (0.5f + ((float)i - (float)(G.players - 1) * 0.5f) * 0.24f), by = cs.y * 0.34f, bw = cs.x * 0.22f, bh = cs.y * 0.4f;
+      float need = 20 * u + measure("P1", 30 * u).height + 8 * u + measure(sim_class_name(G.cls[i]), 48 * u).height + 10 * u + role_h(ROLE[G.cls[i]], inner, bs) + 30 * u +
+                   cw_prompt_text_size(font, "{move_left|move_right}: choose", i, bs).y + 14 * u + cw_prompt_text_size(font, ready_line(i, bs, inner), i, bs).y + 34 * u;
+      bh = fmaxf(bh, need);
+    }
+    for (int i = 0; i < G.players; i++) {
+      float bx = cs.x * (0.5f + ((float)i - (float)(G.players - 1) * 0.5f) * 0.24f);
       cw_r2d_rect(cw_rect_make(bx - bw * 0.5f, by, bw, bh), rgba(0.03f, 0.03f, 0.05f, 0.8f));
       cw_r2d_rect(cw_rect_make(bx - bw * 0.5f, by, bw, 8 * u), rgba(PCOL[i][0], PCOL[i][1], PCOL[i][2], 1));
       char b[48];
       snprintf(b, sizeof b, "P%d", i + 1);
-      text(b, bx, by + 20 * u, 30 * u, rgba(PCOL[i][0], PCOL[i][1], PCOL[i][2], 1), CW_ALIGN_CENTER);
-      text(sim_class_name(G.cls[i]), bx, by + 70 * u, 48 * u, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
-      for (int l = 0; l < 2; l++) text(ROLE[G.cls[i]][l], bx, by + (140 + 34 * (float)l) * u, 26 * u, rgba(0.85f, 0.85f, 0.85f, 1), CW_ALIGN_CENTER);
-      cw_prompt_text(font, "{move_left|move_right}: choose", i, cw_v2(bx, by + bh - 110 * u), 26 * u, rgba(1, 1, 1, 0.9f), CW_ALIGN_CENTER);
-      cw_prompt_text(font, G.ready[i] ? "READY  {fire}: change" : "{fire}: ready", i, cw_v2(bx, by + bh - 60 * u), 26 * u,
-                     G.ready[i] ? rgba(0.5f, 1, 0.5f, 1) : rgba(1, 0.9f, 0.5f, 1), CW_ALIGN_CENTER);
+      float ty = by + 20 * u;
+      ty += text(b, bx, ty, 30 * u, rgba(PCOL[i][0], PCOL[i][1], PCOL[i][2], 1), CW_ALIGN_CENTER).height;
+      ty = fmaxf(ty + 8 * u, by + 70 * u);
+      ty += text(sim_class_name(G.cls[i]), bx, ty, 48 * u, rgba(1, 1, 1, 1), CW_ALIGN_CENTER).height;
+      ty = fmaxf(ty + 10 * u, by + 140 * u);
+      for (int l = 0; l < 2; l++) /* each line wrapped to the box, under the last as measured */
+        ty += fmaxf(34 * u, text_box(ROLE[G.cls[i]][l], bx - inner * 0.5f, ty, inner, bs, rgba(0.85f, 0.85f, 0.85f, 1), CW_ALIGN_CENTER).height);
+      /* the two prompts from the box's bottom up */
+      const char *ready = ready_line(i, bs, inner);
+      float ry = by + bh - fmaxf(60 * u, cw_prompt_text_size(font, ready, i, bs).y + 34 * u);
+      float cy = fminf(by + bh - 110 * u, ry - 14 * u - cw_prompt_text_size(font, "{move_left|move_right}: choose", i, bs).y);
+      cw_prompt_text(font, "{move_left|move_right}: choose", i, cw_v2(bx, cy), bs, rgba(1, 1, 1, 0.9f), CW_ALIGN_CENTER);
+      cw_prompt_text(font, ready, i, cw_v2(bx, ry), bs, G.ready[i] ? rgba(0.5f, 1, 0.5f, 1) : rgba(1, 0.9f, 0.5f, 1), CW_ALIGN_CENTER);
     }
     char b[96];
     if (G.best_floor > 20) {
+      float fy = fmaxf(cs.y * 0.82f, by + bh + 16 * u);
+      fy += text(G.start_floor == 1 ? "FROM FLOOR 1" : "FROM THE FURTHEST TILESET", cs.x * 0.5f, fy, bs, rgba(1, 0.9f, 0.6f, 1), CW_ALIGN_CENTER).height;
       snprintf(b, sizeof b, "{join}: start at floor %d", G.start_floor == 1 ? ((G.best_floor - 1) / 20) * 20 + 1 : 1);
-      text(G.start_floor == 1 ? "FROM FLOOR 1" : "FROM THE FURTHEST TILESET", cs.x * 0.5f, cs.y * 0.82f, 26 * u, rgba(1, 0.9f, 0.6f, 1), CW_ALIGN_CENTER);
-      cw_prompt_text(font, b, 0, cw_v2(cs.x * 0.5f, cs.y * 0.86f), 26 * u, rgba(1, 1, 1, 0.9f), CW_ALIGN_CENTER);
+      cw_prompt_text(font, b, 0, cw_v2(cs.x * 0.5f, fmaxf(fy + 4 * u, cs.y * 0.86f)), bs, rgba(1, 1, 1, 0.9f), CW_ALIGN_CENTER);
     }
     cw_r2d_end();
     return;
@@ -479,28 +565,29 @@ static void hud(void) {
     if (!p->active || p->down || !view_screen((t3_vec3){ p->x, 2.2f, p->y }, &su, &sv)) continue;
     char t[8];
     snprintf(t, sizeof t, "P%d", i + 1);
-    text(t, su * cs.x, sv * cs.y - 30 * u, 26 * u, rgba(0.6f + 0.4f * PCOL[i][0], 0.6f + 0.4f * PCOL[i][1], 0.6f + 0.4f * PCOL[i][2], 1), CW_ALIGN_CENTER);
+    text(t, su * cs.x, sv * cs.y - 4 * u - measure(t, bs).height, bs, rgba(0.6f + 0.4f * PCOL[i][0], 0.6f + 0.4f * PCOL[i][1], 0.6f + 0.4f * PCOL[i][2], 1), CW_ALIGN_CENTER);
   }
   char b[96];
   snprintf(b, sizeof b, "FLOOR %d", G.S.floor);
-  text(b, cs.x * 0.5f, 12 * u, 30 * u, rgba(1, 0.92f, 0.75f, 1), CW_ALIGN_CENTER);
-  if (G.banner_t > 0) {
-    float a = cw_clampf((float)G.banner_t / 40.0f, 0, 1);
+  float top = 12 * u + text(b, cs.x * 0.5f, 12 * u, 30 * u, rgba(1, 0.92f, 0.75f, 1), CW_ALIGN_CENTER).height;
+  if (G.banner_t > 0) { /* each line under the last as measured */
+    float a = cw_clampf((float)G.banner_t / 40.0f, 0, 1), y = cs.y * 0.3f;
     snprintf(b, sizeof b, "FLOOR %d", G.S.floor);
-    text(b, cs.x * 0.5f, cs.y * 0.3f, 72 * u, rgba(1, 0.85f, 0.45f, a), CW_ALIGN_CENTER);
-    text(THEME_NAME[CW_CLAMP(G.S.m.theme, 0, MZ_THEMES - 1)], cs.x * 0.5f, cs.y * 0.3f + 84 * u, 34 * u, rgba(1, 0.95f, 0.85f, a), CW_ALIGN_CENTER);
+    y += text(b, cs.x * 0.5f, y, 72 * u, rgba(1, 0.85f, 0.45f, a), CW_ALIGN_CENTER).height;
+    y += text(THEME_NAME[CW_CLAMP(G.S.m.theme, 0, MZ_THEMES - 1)], cs.x * 0.5f, y, 34 * u, rgba(1, 0.95f, 0.85f, a), CW_ALIGN_CENTER).height;
     if (G.S.floor == 1 && G.floors_done == 0)
-      cw_prompt_text(font, "{fire}: hold to shoot   {magic}: a potion   walk into a monster to fight it", 0, cw_v2(cs.x * 0.5f, cs.y * 0.3f + 140 * u), 26 * u,
+      cw_prompt_text(font, fit_prompt("{fire}: hold to shoot   {magic}: a potion   walk into a monster to fight it", 0, bs, cs.x * 0.94f), 0, cw_v2(cs.x * 0.5f, y + 14 * u), bs,
                      rgba(1, 1, 1, a), CW_ALIGN_CENTER);
   }
-  if (G.S.floor_ticks > 175 * 60 && G.S.floor_ticks < 186 * 60) text("THE DOORS GIVE WAY", cs.x * 0.5f, cs.y * 0.22f, 40 * u, rgba(1, 0.75f, 0.4f, 1), CW_ALIGN_CENTER);
+  if (G.S.floor_ticks > 175 * 60 && G.S.floor_ticks < 186 * 60) text("THE DOORS GIVE WAY", cs.x * 0.5f, fmaxf(cs.y * 0.22f, top + 12 * u), 40 * u, rgba(1, 0.75f, 0.4f, 1), CW_ALIGN_CENTER);
   if (G.S.state == ST_EXIT || G.S.state == ST_WON) { /* the fade down the stairs */
     float a = cw_clampf((float)G.S.state_ticks / 50.0f, 0, 1);
     cw_r2d_rect(cw_rect_make(0, 0, cs.x, cs.y), rgba(0, 0, 0, a));
   }
   if (G.S.state == ST_OVER) {
-    text("THE TEAM HAS FALLEN", cs.x * 0.5f, cs.y * 0.4f, 64 * u, rgba(1, 0.3f, 0.25f, 1), CW_ALIGN_CENTER);
-    text("the floor begins again", cs.x * 0.5f, cs.y * 0.4f + 80 * u, 28 * u, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
+    float y = cs.y * 0.4f;
+    y += text("THE TEAM HAS FALLEN", cs.x * 0.5f, y, 64 * u, rgba(1, 0.3f, 0.25f, 1), CW_ALIGN_CENTER).height;
+    text("the floor begins again", cs.x * 0.5f, y + 4 * u, 28 * u, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
   }
   cw_r2d_end();
 }
