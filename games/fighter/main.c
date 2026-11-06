@@ -598,6 +598,42 @@ static void text(cw_font f, const char *s, float x, float y, float size, cw_colo
 static void ptext(cw_font f, const char *s, int player, float x, float y, float size, cw_color c, cw_text_align al) {
   cw_prompt_text(f, s, player, (cw_vec2){ x, y }, size, c, al);
 }
+/* how much the player's text size grows text asked for at `size` (1 at 100%): the HUD and the panels space their
+ * lines by it, so at 100% everything sits where it always did and at 200% lines move apart as the text grows */
+static float grow(cw_font f, float size) { return cw_text_drawn_size(f, size) / size; }
+/* the round pips under the health bars: under the name at 100%; beside it, on the name's row, once the text grows (the
+ * names sit at the far ends, the pips by the timer) */
+static float pip_y(float s) {
+  float k = grow(G.font_bold, 20 * s);
+  return k < 1.001f ? 90 * s : 58 * s + 13 * s * k;
+}
+static float text_w(cw_font f, const char *s, float size) { return cw_font_measure(f, s, &(cw_text_style){ .size = size }).width; }
+/* a hint line of parts split by `sep` (runs of spaces), wrapped onto as many lines as it needs to fit `maxw`: the
+ * text with '\n' between the lines in out. Returns the number of lines */
+static int wrap_parts(cw_font f, const char *s, const char *sep, int player, float size, float maxw, char *out, size_t cap) {
+  size_t sl = strlen(sep), n = 0;
+  int lines = 1;
+  char line[256] = "";
+  out[0] = 0;
+  const char *p = s;
+  while (*p) {
+    const char *e = strstr(p, sep);
+    size_t len = e ? (size_t)(e - p) : strlen(p);
+    char part[256];
+    snprintf(part, sizeof part, "%.*s", (int)len, p);
+    char trial[512];
+    snprintf(trial, sizeof trial, "%s%s%s", line, line[0] ? sep : "", part);
+    if (line[0] && cw_prompt_text_size(f, trial, player, size).x > maxw) { /* this part starts a new line */
+      n += (size_t)snprintf(out + n, n < cap ? cap - n : 0, "%s\n", line);
+      lines++;
+      snprintf(line, sizeof line, "%s", part);
+    } else snprintf(line, sizeof line, "%.*s", (int)sizeof line - 1, trial);
+    p = e ? e + sl : p + len;
+    while (e && *p == ' ') p++; /* a longer run of spaces than sep */
+  }
+  snprintf(out + n, n < cap ? cap - n : 0, "%s", line);
+  return lines;
+}
 
 static void bar(float x, float y, float w, float h, float fill, float lag, cw_color c, bool right_to_left) {
   cw_r2d_round_rect(cw_rect_make(x - 3, y - 3, w + 6, h + 6), h * 0.35f, 6, rgba(0.02f, 0.02f, 0.03f, 0.9f));
@@ -610,56 +646,90 @@ static void bar(float x, float y, float w, float h, float fill, float lag, cw_co
 
 static const char *btn_name(int b) { return b == 0 ? "P" : b == 1 ? "K" : "G"; }
 
-/* the move list of a fighter: every normal by its direction and button, the throw, the specials and the super */
-static void draw_move_list(const ft_def *d, float x, float y, float w, float s) {
+/* the move list of a fighter: every normal by its direction and button, the throw, the specials and the super. Laid
+ * out from the measured text in the box (x right edge, y top) and no lower than y_max: when the rows do not all fit
+ * (a big text size) it shows them a page at a time, turning every few seconds */
+static float draw_move_list(const ft_def *d, float right, float y, float y_max, float s, bool draw) {
   static const int ORDER[] = { M_8P, M_5P, M_2P, M_6P, M_8K, M_5K, M_2K, M_6K, M_JP, M_JK, M_THROW };
   static const char *const INPUT[] = { "up + P", "P", "down + P", "fwd + P", "up + K", "K", "down + K", "fwd + K", "jump, P", "jump, K", "P + K" };
-  int n = (int)(sizeof ORDER / sizeof ORDER[0]);
-  float lh = 15 * s, h = (float)(n + 6) * lh + 34 * s;
+  enum { NN = (int)(sizeof ORDER / sizeof ORDER[0]), ROWS = NN + 5 };
+  const float ts = 13 * s, k = grow(G.font_ui, ts), kh = grow(G.font_bold, 16 * s), lh = 15 * s * k;
+  /* the columns: the input, the move's name, its level (normals) */
+  char spec_in[4][24];
+  float in_w = 0, sp_w = 0, name_w = 0, lv_w = 0;
+  for (int i = 0; i < NN; i++) {
+    in_w = fmaxf(in_w, text_w(G.font_ui, INPUT[i], ts));
+    name_w = fmaxf(name_w, text_w(G.font_ui, d->mv[ORDER[i]].name, ts));
+    if (ORDER[i] != M_THROW) lv_w = fmaxf(lv_w, text_w(G.font_ui, ft_level_name(d->mv[ORDER[i]].lv), ts));
+  }
+  float spname_w = 0;
+  for (int i = 0; i < 4; i++) {
+    ft_special_text(d, i, spec_in[i], sizeof spec_in[i]);
+    sp_w = fmaxf(sp_w, text_w(G.font_ui, spec_in[i], ts));
+    spname_w = fmaxf(spname_w, text_w(G.font_ui, d->mv[M_SP1 + i].name, ts));
+  }
+  char head[64];
+  snprintf(head, sizeof head, "%s: moves", d->name);
+  const char *block = "Block: G   low: down + G";
+  float col_name = fmaxf(72 * s, in_w + 10 * s * k), col_sp = fmaxf(100 * s, sp_w + 10 * s * k);
+  float w = fmaxf(248 * s, 20 * s + fmaxf(fmaxf(col_name + name_w + 12 * s * k + lv_w, col_sp + spname_w),
+                                         fmaxf(text_w(G.font_bold, head, 16 * s) + 50 * s * k, text_w(G.font_ui, block, ts))));
+  float x = right - w;
+  if (!draw) return w;
+  /* how many rows fit: the header, then the rows */
+  float top = 30 * s * kh, avail = y_max - y - top - 10 * s;
+  int fit = (int)(avail / lh);
+  if (fit > ROWS) fit = ROWS;
+  if (fit < 1) fit = 1;
+  int pages = (ROWS + fit - 1) / fit, page = 0;
+  if (pages > 1) {
+    static uint32_t frames;
+    frames++;
+    page = (int)((frames / 240u) % (uint32_t)pages); /* four seconds a page */
+  }
+  int r0 = page * fit, r1 = r0 + fit < ROWS ? r0 + fit : ROWS;
+  float h = pages > 1 ? top + (float)fit * lh + 10 * s : (float)(NN + 6) * lh + 34 * s + (top - 30 * s);
   cw_r2d_round_rect(cw_rect_make(x, y, w, h), 10 * s, 6, rgba(0.02f, 0.03f, 0.05f, 0.72f));
-  char b[64];
-  snprintf(b, sizeof b, "%s: moves", d->name);
-  text(G.font_bold, b, x + 10 * s, y + 6 * s, 16 * s, rgba(1, 0.9f, 0.6f, 1), CW_ALIGN_LEFT);
-  float ly = y + 30 * s;
-  for (int i = 0; i < n; i++, ly += lh) {
-    const ft_move *m = &d->mv[ORDER[i]];
-    text(G.font_ui, INPUT[i], x + 10 * s, ly, 13 * s, rgba(0.75f, 0.85f, 1, 1), CW_ALIGN_LEFT);
-    text(G.font_ui, m->name, x + 82 * s, ly, 13 * s, rgba(1, 1, 1, 1), CW_ALIGN_LEFT);
-    if (ORDER[i] != M_THROW) {
-      cw_color c = m->lv == LV_HIGH ? rgba(1, 0.75f, 0.4f, 1) : m->lv == LV_LOW ? rgba(0.5f, 0.85f, 1, 1) : rgba(0.75f, 0.95f, 0.6f, 1);
-      text(G.font_ui, ft_level_name(m->lv), x + w - 10 * s, ly, 13 * s, c, CW_ALIGN_RIGHT);
-    }
+  text(G.font_bold, head, x + 10 * s, y + 6 * s, 16 * s, rgba(1, 0.9f, 0.6f, 1), CW_ALIGN_LEFT);
+  if (pages > 1) {
+    char pg[16];
+    snprintf(pg, sizeof pg, "%d/%d", page + 1, pages);
+    text(G.font_ui, pg, x + w - 10 * s, y + 6 * s, ts, rgba(0.7f, 0.8f, 0.9f, 1), CW_ALIGN_RIGHT);
   }
-  ly += 4 * s;
-  for (int k = 0; k < 4; k++, ly += lh) {
-    char in[24];
-    ft_special_text(d, k, in, sizeof in);
-    text(G.font_ui, in, x + 10 * s, ly, 13 * s, rgba(1, 0.85f, 0.45f, 1), CW_ALIGN_LEFT);
-    text(G.font_ui, d->mv[M_SP1 + k].name, x + 110 * s, ly, 13 * s, rgba(1, 1, 1, 1), CW_ALIGN_LEFT);
+  float ly = y + top;
+  for (int r = r0; r < r1; r++, ly += lh) {
+    if (r < NN) {
+      const ft_move *m = &d->mv[ORDER[r]];
+      text(G.font_ui, INPUT[r], x + 10 * s, ly, ts, rgba(0.75f, 0.85f, 1, 1), CW_ALIGN_LEFT);
+      text(G.font_ui, m->name, x + 10 * s + col_name, ly, ts, rgba(1, 1, 1, 1), CW_ALIGN_LEFT);
+      if (ORDER[r] != M_THROW) {
+        cw_color c = m->lv == LV_HIGH ? rgba(1, 0.75f, 0.4f, 1) : m->lv == LV_LOW ? rgba(0.5f, 0.85f, 1, 1) : rgba(0.75f, 0.95f, 0.6f, 1);
+        text(G.font_ui, ft_level_name(m->lv), x + w - 10 * s, ly, ts, c, CW_ALIGN_RIGHT);
+      }
+    } else if (r < NN + 4) {
+      if (r == NN && pages == 1) ly += 4 * s;
+      int sp = r - NN;
+      text(G.font_ui, spec_in[sp], x + 10 * s, ly, ts, rgba(1, 0.85f, 0.45f, 1), CW_ALIGN_LEFT);
+      text(G.font_ui, d->mv[M_SP1 + sp].name, x + 10 * s + col_sp, ly, ts, rgba(1, 1, 1, 1), CW_ALIGN_LEFT);
+    } else text(G.font_ui, block, x + 10 * s, ly + (pages == 1 ? 2 * s : 0), ts, rgba(0.7f, 0.8f, 0.9f, 1), CW_ALIGN_LEFT);
   }
-  text(G.font_ui, "Block: G   low: down + G", x + 10 * s, ly + 2 * s, 13 * s, rgba(0.7f, 0.8f, 0.9f, 1), CW_ALIGN_LEFT);
+  return w;
 }
 
 static void draw_training(float W, float H, float s) {
   const ft_game *g = &G.sim;
-  float x = W * 0.5f - 250 * s, y = H * 0.70f;
-  cw_r2d_round_rect(cw_rect_make(x, y, 500 * s, 124 * s), 10 * s, 6, rgba(0.02f, 0.03f, 0.05f, 0.75f));
-  char b[200];
+  char lines[5][200];
   const ft_def *d = &g->roster->d[g->f[g->last_who].def];
   const ft_move *lm = &d->mv[g->last_move];
   static const char *const RESULT[6] = { "", "hit", "blocked", "parried", "ducked under", "guard break" };
-  snprintf(b, sizeof b, "%s %s: %s (%s)  %s", d->name, FT_MOVE_ID[g->last_move], lm->name, lm->flags & FM_THROW ? "throw" : ft_level_name(lm->lv), RESULT[g->last_result < 6 ? g->last_result : 0]);
-  text(G.font_ui, b, x + 14 * s, y + 8 * s, 17 * s, rgba(1, 0.95f, 0.7f, 1), CW_ALIGN_LEFT);
-  snprintf(b, sizeof b, "Startup %d   Active %d   Recovery %d   Total %d", g->last_su, g->last_ac, g->last_rc, g->last_su + g->last_ac + g->last_rc);
-  text(G.font_ui, b, x + 14 * s, y + 32 * s, 16 * s, rgba(0.85f, 0.9f, 1, 1), CW_ALIGN_LEFT);
-  if (g->adv_valid) snprintf(b, sizeof b, "Frame advantage %+d   Damage %d   Combo %d", g->adv, g->last_dmg, g->last_combo);
-  else snprintf(b, sizeof b, "Frame advantage --   Damage %d   Combo %d", g->last_dmg, g->last_combo);
-  text(G.font_ui, b, x + 14 * s, y + 56 * s, 16 * s, g->adv_valid && g->adv > 0 ? rgba(0.5f, 1, 0.6f, 1) : rgba(1, 0.65f, 0.55f, 1), CW_ALIGN_LEFT);
+  snprintf(lines[0], sizeof lines[0], "%s %s: %s (%s)  %s", d->name, FT_MOVE_ID[g->last_move], lm->name, lm->flags & FM_THROW ? "throw" : ft_level_name(lm->lv), RESULT[g->last_result < 6 ? g->last_result : 0]);
+  snprintf(lines[1], sizeof lines[1], "Startup %d   Active %d   Recovery %d   Total %d", g->last_su, g->last_ac, g->last_rc, g->last_su + g->last_ac + g->last_rc);
+  if (g->adv_valid) snprintf(lines[2], sizeof lines[2], "Frame advantage %+d   Damage %d   Combo %d", g->adv, g->last_dmg, g->last_combo);
+  else snprintf(lines[2], sizeof lines[2], "Frame advantage --   Damage %d   Combo %d", g->last_dmg, g->last_combo);
   static const char *const DUMMY[T_COUNT] = { "Off", "Stand", "Block", "Block low", "Jump", "Block all", "CPU" };
-  snprintf(b, sizeof b, "Dummy: %s ({tr_dummy})   Hitboxes: %s ({tr_boxes})", DUMMY[g->dummy < T_COUNT ? g->dummy : 0], G.show_boxes ? "on" : "off");
-  ptext(G.font_ui, b, 0, x + 14 * s, y + 80 * s, 16 * s, rgba(0.7f, 0.8f, 0.9f, 1), CW_ALIGN_LEFT);
+  snprintf(lines[3], sizeof lines[3], "Dummy: %s ({tr_dummy})   Hitboxes: %s ({tr_boxes})", DUMMY[g->dummy < T_COUNT ? g->dummy : 0], G.show_boxes ? "on" : "off");
   /* the input history of player 1: direction digits and buttons (P punch, K kick, G block), newest first */
-  char h[200];
+  char *h = lines[4];
   int n = 0;
   uint8_t last = 0;
   h[0] = 0;
@@ -674,12 +744,57 @@ static void draw_training(float W, float H, float s) {
       int len = snprintf(tmp, sizeof tmp, "%d", f->dir);
       for (int bb = 0; bb < 3; bb++) if (f->buttons & (1 << bb)) { tmp[len++] = btn_name(bb)[0]; }
       tmp[len] = 0;
-      if (f->dir != 5 || f->buttons) { strncat(h, tmp, sizeof h - strlen(h) - 2); strncat(h, " ", sizeof h - strlen(h) - 1); n++; }
+      if (f->dir != 5 || f->buttons) { strncat(h, tmp, 200 - strlen(h) - 2); strncat(h, " ", 200 - strlen(h) - 1); n++; }
       last = f->dir; lastb = f->buttons;
     }
   }
-  text(G.font_ui, h, x + 14 * s, y + 102 * s, 14 * s, rgba(0.6f, 0.75f, 0.6f, 1), CW_ALIGN_LEFT);
-  draw_move_list(&g->roster->d[g->f[0].def], W - 262 * s, 96 * s, 248 * s, s);
+  /* the panel: rows spaced by their drawn size, as wide as its widest row, bottom-centred over the meters and clear of
+   * the SUPER labels. The move list runs down the right: when the two would meet the panel moves left of it, and when
+   * there is no room for that (a big text size) the panel takes the width left of the list and its rows wrap */
+  static const float SIZE[5] = { 17, 16, 16, 16, 14 };
+  static const float GAP[5] = { 24, 24, 24, 22, 22 }; /* from this row's top to the next row's top at 100% */
+  const ft_def *md = &g->roster->d[g->f[0].def];
+  float meter_top = H - 37 * s - 19 * s * grow(G.font_ui, 15 * s);
+  float list_y = 64 * s + 32 * s * grow(G.font_bold, 20 * s) + 8 * s * (grow(G.font_bold, 20 * s) - 1), list_right = W - 14 * s;
+  float list_x = list_right - draw_move_list(md, list_right, list_y, H, s, false);
+  float wid = 0;
+  for (int i = 0; i < 5; i++) {
+    float lw = i == 3 ? cw_prompt_text_size(G.font_ui, lines[i], 0, SIZE[i] * s).x : text_w(G.font_ui, lines[i], SIZE[i] * s);
+    wid = fmaxf(wid, lw);
+  }
+  float pw = fminf(W - 28 * s, fmaxf(500 * s, wid + 28 * s)), x = W * 0.5f - pw * 0.5f;
+  if (x + pw > list_x - 8 * s) {
+    if (list_x - 8 * s - pw >= 14 * s) x = list_x - 8 * s - pw;
+    else x = 14 * s, pw = list_x - 22 * s;
+  }
+  float tw = pw - 28 * s;
+  char dummy[200];
+  wrap_parts(G.font_ui, lines[3], "   ", 0, SIZE[3] * s, tw, dummy, sizeof dummy);
+  snprintf(lines[3], sizeof lines[3], "%s", dummy);
+  float rows_h[5], ph = 8 * s;
+  for (int i = 0; i < 5; i++) {
+    float kk = grow(G.font_ui, SIZE[i] * s);
+    float mh = i == 3 ? cw_prompt_text_size(G.font_ui, lines[i], 0, SIZE[i] * s).y : cw_font_measure(G.font_ui, lines[i], &(cw_text_style){ .size = SIZE[i] * s, .wrap_width = tw }).height;
+    float line = i == 3 ? cw_prompt_text_size(G.font_ui, "M", 0, SIZE[i] * s).y : cw_font_measure(G.font_ui, "M", &(cw_text_style){ .size = SIZE[i] * s }).height;
+    float one = GAP[i] * s + line - line / kk; /* its gap at 100%, and what its line grew by */
+    rows_h[i] = one + fmaxf(0, mh - line); /* a wrapped row takes its extra lines */
+    ph += i < 4 ? rows_h[i] : fmaxf(mh, line) + 6 * s; /* the last row: its text and a margin */
+  }
+  ph = fmaxf(124 * s, ph);
+  float y = fminf(H * 0.70f, meter_top - 4 * s - ph), list_bottom = meter_top - 4 * s;
+  float pips = pip_y(s) + 13 * s; /* under the round pips, while that leaves it over the SUPER labels */
+  if (y < pips && pips + ph <= meter_top) y = pips;
+  cw_r2d_round_rect(cw_rect_make(x, y, pw, ph), 10 * s, 6, rgba(0.02f, 0.03f, 0.05f, 0.75f));
+  static const float LC[5][3] = { { 1, 0.95f, 0.7f }, { 0.85f, 0.9f, 1 }, { 0, 0, 0 }, { 0.7f, 0.8f, 0.9f }, { 0.6f, 0.75f, 0.6f } };
+  float ly = y + 8 * s;
+  for (int i = 0; i < 5; i++) {
+    cw_color c = rgba(LC[i][0], LC[i][1], LC[i][2], 1);
+    if (i == 2) c = g->adv_valid && g->adv > 0 ? rgba(0.5f, 1, 0.6f, 1) : rgba(1, 0.65f, 0.55f, 1);
+    if (i == 3) ptext(G.font_ui, lines[i], 0, x + 14 * s, ly, SIZE[i] * s, c, CW_ALIGN_LEFT);
+    else cw_r2d_text(G.font_ui, lines[i], (cw_vec2){ x + 14 * s, ly }, &(cw_text_style){ .size = SIZE[i] * s, .color = c, .wrap_width = tw, .outline_color = rgba(0, 0, 0, 0.85f), .outline_width = SIZE[i] * s * 0.07f });
+    ly += rows_h[i];
+  }
+  draw_move_list(md, list_right, list_y, list_bottom, s, true);
 }
 
 static void draw_hud(float W, float H, float s) {
@@ -705,7 +820,7 @@ static void draw_hud(float W, float H, float s) {
     /* round pips */
     for (int w = 0; w < 2; w++) {
       float px = i == 0 ? W * 0.5f - gap - 10 * s - (float)w * 22 * s : W * 0.5f + gap + 10 * s + (float)w * 22 * s;
-      cw_r2d_circle((cw_vec2){ px, by + bh + 42 * s }, 7 * s, 12, w < f->wins ? rgba(1, 0.85f, 0.2f, 1) : rgba(0.2f, 0.2f, 0.2f, 0.8f));
+      cw_r2d_circle((cw_vec2){ px, pip_y(s) }, 7 * s, 12, w < f->wins ? rgba(1, 0.85f, 0.2f, 1) : rgba(0.2f, 0.2f, 0.2f, 0.8f));
     }
     /* meter */
     float mw = W * 0.30f, mh = 14 * s, my = H - 34 * s, mx = i == 0 ? 28 * s : W - 28 * s - mw;
@@ -714,7 +829,7 @@ static void draw_hud(float W, float H, float s) {
     bool full = f->meter >= FT_METER_MAX;
     float pulse = full ? 0.75f + 0.25f * (float)cw_sin((float)g->tick * 0.2f) : 1;
     cw_r2d_rect(cw_rect_make(i == 0 ? mx : mx + mw * (1 - mf), my, mw * mf, mh), full ? rgba(1 * pulse, 0.85f * pulse, 0.2f * pulse, 1) : rgba(0.25f, 0.6f, 1, 1));
-    text(G.font_ui, full ? "SUPER READY" : "SUPER", i == 0 ? mx : mx + mw, my - 22 * s, 15 * s, rgba(1, 1, 1, 0.9f), i == 0 ? CW_ALIGN_LEFT : CW_ALIGN_RIGHT);
+    text(G.font_ui, full ? "SUPER READY" : "SUPER", i == 0 ? mx : mx + mw, my - 3 * s - 19 * s * grow(G.font_ui, 15 * s), 15 * s, rgba(1, 1, 1, 0.9f), i == 0 ? CW_ALIGN_LEFT : CW_ALIGN_RIGHT);
     /* combo */
     const ft_fighter *o = &g->f[1 - i];
     if (o->combo_hits >= 2) {
@@ -723,14 +838,17 @@ static void draw_hud(float W, float H, float s) {
       float cx = i == 0 ? 40 * s : W - 40 * s;
       text(G.font_score, c, cx, H * 0.32f, 34 * s, rgba(1, 0.85f, 0.25f, 1), i == 0 ? CW_ALIGN_LEFT : CW_ALIGN_RIGHT);
       snprintf(c, sizeof c, "%d damage", o->combo_dmg);
-      text(G.font_ui, c, cx, H * 0.32f + 40 * s, 18 * s, rgba(1, 1, 1, 0.9f), i == 0 ? CW_ALIGN_LEFT : CW_ALIGN_RIGHT);
+      text(G.font_ui, c, cx, H * 0.32f + 40 * s * grow(G.font_score, 34 * s), 18 * s, rgba(1, 1, 1, 0.9f), i == 0 ? CW_ALIGN_LEFT : CW_ALIGN_RIGHT);
     }
   }
   /* timer */
   char t[16];
   if (g->training) snprintf(t, sizeof t, "--");
   else snprintf(t, sizeof t, "%d", (g->timer + 59) / 60);
-  cw_r2d_round_rect(cw_rect_make(W * 0.5f - 38 * s, by - 6 * s, 76 * s, 56 * s), 12 * s, 8, rgba(0.02f, 0.02f, 0.03f, 0.85f));
+  {
+    float tg = grow(G.font_score, 42 * s), tw = fmaxf(76 * s, text_w(G.font_score, t, 42 * s) + 16 * s);
+    cw_r2d_round_rect(cw_rect_make(W * 0.5f - tw * 0.5f, by - 6 * s, tw, 56 * s * tg), 12 * s, 8, rgba(0.02f, 0.02f, 0.03f, 0.85f));
+  }
   text(G.font_score, t, W * 0.5f, by - 2 * s, 42 * s, g->timer < 600 && !g->training ? rgba(1, 0.4f, 0.3f, 1) : rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
   /* banners */
   float pt = (float)g->phase_t;
@@ -778,17 +896,116 @@ static void draw_select(float W, float H, float s) {
     float y0b = floorf(H * (0.6f + 0.4f * (float)i / 32.0f)), y1b = floorf(H * (0.6f + 0.4f * (float)(i + 1) / 32.0f));
     cw_r2d_rect(cw_rect_make(0, y0b, W, y1b - y0b), rgba(0.02f, 0.025f, 0.05f, 0.2f + 0.7f * (float)i / 31.0f));
   }
-  cw_r2d_rect(cw_rect_make(0, 0, W, 130 * s), rgba(0.02f, 0.025f, 0.05f, 0.55f));
-  text(G.font_score, "CHOOSE YOUR FIGHTER", W * 0.5f, 14 * s, 34 * s, rgba(1, 0.9f, 0.5f, 1), CW_ALIGN_CENTER);
-  char b[160];
-  snprintf(b, sizeof b, "Stage: %s   ({mv_up|mv_down})", STAGE_NAME[G.sel_stage]);
-  ptext(G.font_ui, b, 0, W * 0.5f, 56 * s, 19 * s, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
-  snprintf(b, sizeof b, "Mode: %s   ({atk_p})", G.training ? "Training" : G.players > 1 ? "Versus" : "Versus the computer");
-  if (G.players < 2) { size_t l = strlen(b); snprintf(b + l, sizeof b - l, "      Computer: %s   ({atk_g})", DIFF_NAME[G.difficulty]); }
-  ptext(G.font_ui, b, 0, W * 0.5f, 84 * s, 17 * s, rgba(1, 0.9f, 0.6f, 1), CW_ALIGN_CENTER);
-  ptext(G.font_ui, "Hold {mv_left|mv_right}: walk     {mv_up}: jump (up-forward, up-back)     Hold {mv_down}: crouch     Tap twice: dash", -1, W * 0.5f, 106 * s, 16 * s, rgba(0.85f, 0.92f, 1, 1), CW_ALIGN_CENTER);
+  /* everything is laid out from the drawn text, top down and bottom up: at 100% it sits where it always did, at a
+   * bigger text size the lines move apart, the long hints wrap to the screen and the cards grow round their words.
+   * When the screen cannot hold it all (200% on a short screen) the cards put each special's name under its input, and
+   * then the walking hint and the specials share the bottom slot with the button hint, a few seconds each (below) */
+  static const char *const MOVE_HINT = "Hold {mv_left|mv_right}: walk     {mv_up}: jump (up-forward, up-back)     Hold {mv_down}: crouch     Tap twice: dash";
+  static const char *const BTN_HINT = "Punch {atk_p}   Kick {atk_k}   Block {atk_g}   Up + button (together): high   Down + button: low   Punch + kick, or {atk_pk}: throw";
+  static const char *const NAV_HINT = "{mv_left|mv_right} fighter     {atk_k} or {ui_start} lock in     {atk_g} back out (two players) or computer level     {ui_quit} title";
+  char stage[160], mode[160], move[320], btn[320], nav[320];
+  snprintf(stage, sizeof stage, "Stage: %s   ({mv_up|mv_down})", STAGE_NAME[G.sel_stage]);
+  snprintf(mode, sizeof mode, "Mode: %s   ({atk_p})", G.training ? "Training" : G.players > 1 ? "Versus" : "Versus the computer");
+  if (G.players < 2) { size_t l = strlen(mode); snprintf(mode + l, sizeof mode - l, "      Computer: %s   ({atk_g})", DIFF_NAME[G.difficulty]); }
+  const float maxw = W - 24 * s;
+  wrap_parts(G.font_ui, MOVE_HINT, "     ", -1, 16 * s, maxw, move, sizeof move);
+  wrap_parts(G.font_ui, BTN_HINT, "   ", -1, 16 * s, maxw, btn, sizeof btn);
+  wrap_parts(G.font_ui, NAV_HINT, "     ", -1, 16 * s, maxw, nav, sizeof nav);
+  float one16 = cw_prompt_text_size(G.font_ui, "M", -1, 16 * s).y; /* a line of the hints, now */
+  float mode_w = cw_prompt_text_size(G.font_ui, mode, 0, 17 * s).x;
+  if (mode_w > maxw) { /* the mode and the computer's level on two lines */
+    char m2[160];
+    snprintf(m2, sizeof m2, "%s", mode);
+    char *cut = strstr(m2, "      Computer");
+    if (cut) { *cut = '\n'; memmove(cut + 1, cut + 6, strlen(cut + 6) + 1); snprintf(mode, sizeof mode, "%s", m2); }
+  }
+  float y_title = 14 * s, y_stage = y_title + 42 * s * grow(G.font_score, 34 * s);
+  float y_mode = y_stage + 28 * s * grow(G.font_ui, 19 * s);
+  float y_move = y_mode + 22 * s * grow(G.font_ui, 17 * s) + (cw_prompt_text_size(G.font_ui, mode, 0, 17 * s).y - cw_prompt_text_size(G.font_ui, "M", 0, 17 * s).y);
+  float h_move = cw_prompt_text_size(G.font_ui, move, -1, 16 * s).y, h_btn = cw_prompt_text_size(G.font_ui, btn, -1, 16 * s).y;
+  float h_nav = cw_prompt_text_size(G.font_ui, nav, -1, 16 * s).y;
+  /* bottom up: the navigation hint's last line ends where a line at 100% always did, the button hint over it */
+  float y_nav = H - 22 * s + one16 / grow(G.font_ui, 16 * s) - h_nav;
+  /* the cards: name, life, role and the three specials, spaced by their drawn size */
   int n = G.roster.n;
-  float cw_ = 190 * s, ch = 132 * s, gap = 16 * s, total = (float)n * cw_ + (float)(n - 1) * gap, x0 = (W - total) * 0.5f, y0 = H - 176 * s;
+  const float k13 = grow(G.font_ui, 13 * s), gap = 16 * s;
+  char sp[4][3][96];
+  float content_w = 0;
+  for (int i = 0; i < n; i++) {
+    const ft_def *d = &G.roster.d[i];
+    content_w = fmaxf(content_w, text_w(G.font_bold, d->name, 24 * s));
+    char b[96];
+    snprintf(b, sizeof b, "Life %d", d->hp);
+    content_w = fmaxf(content_w, text_w(G.font_ui, b, 13 * s));
+    content_w = fmaxf(content_w, text_w(G.font_ui, ROLE[i & 3], 13 * s));
+    for (int k = 0; k < 3; k++) { /* the specials: motion, button, name */
+      uint16_t mb = d->mbtn[k]; /* the motion in direction digits, then the button as a prompt */
+      snprintf(sp[i][k], sizeof sp[i][k], "%s %s %s", d->motion[k], mb == B_P ? "{atk_p}" : mb == B_K ? "{atk_k}" : "{atk_p}/{atk_k}", d->mv[M_SP1 + k].name);
+    }
+  }
+  float sp_w = 0;
+  for (int i = 0; i < n; i++)
+    for (int k = 0; k < 3; k++) sp_w = fmaxf(sp_w, cw_prompt_text_size(G.font_ui, sp[i][k], -1, 13 * s).x);
+  float cw_ = fmaxf(190 * s, fmaxf(content_w, sp_w) + 16 * s);
+  bool split = (float)n * cw_ + (float)(n - 1) * gap > W - 16 * s; /* each special on two lines: its input, then its name */
+  if (split) {
+    float w2 = 0;
+    for (int i = 0; i < n; i++)
+      for (int k = 0; k < 3; k++) {
+        char *nm = strchr(strchr(sp[i][k], ' ') + 1, ' '); /* after the motion and the button */
+        if (nm) *nm = '\n';
+        w2 = fmaxf(w2, cw_prompt_text_size(G.font_ui, sp[i][k], -1, 13 * s).x);
+      }
+    cw_ = fmaxf(190 * s, fmaxf(content_w, w2) + 16 * s);
+    if ((float)n * cw_ + (float)(n - 1) * gap > W - 16 * s) cw_ = (W - 16 * s - (float)(n - 1) * gap) / (float)n;
+  }
+  const float sp_step = 15 * s * k13 * (split ? 2 : 1);
+  float y_life = 16 * s + 30 * s * grow(G.font_bold, 24 * s), y_role = y_life + 16 * s * k13, y_sp = y_role + 18 * s * k13;
+  float ch = y_sp + 3 * sp_step + 7 * s;
+  /* fit, when the cards would meet the top band: first the walking hint goes down to share the button hint's slot (a
+   * few seconds each); then the cards leave out the specials, and the specials of each player's fighter take turns in
+   * that slot too */
+  const float tag_h = 24 * s * grow(G.font_bold, 18 * s); /* the P1 and P2 tags over the cards */
+  int pages = 1;
+  bool compact = false;
+  char spec_line[2][320];
+  float band = fmaxf(130 * s, y_move + h_move + 5 * s), slot_h = h_btn, y_btn = y_nav - 0.8f * s - slot_h, y0 = y_btn - 2 * s - ch;
+  if (y0 - tag_h < band + 2 * s) {
+    pages = 2;
+    band = fmaxf(130 * s, y_move);
+    slot_h = fmaxf(h_btn, h_move);
+    y_btn = y_nav - 0.8f * s - slot_h;
+    y0 = y_btn - 2 * s - ch;
+  }
+  if (y0 - tag_h < band + 2 * s) {
+    compact = true;
+    ch = y_sp - 18 * s * k13 + 22 * s * k13 + 7 * s; /* name, life, role */
+    for (int p = 0; p < (G.players > 1 ? 2 : 1); p++) {
+      const ft_def *d = &G.roster.d[G.sel[p] % n];
+      char raw[320];
+      int l = snprintf(raw, sizeof raw, "%s%s:", G.players > 1 ? (p ? "P2 " : "P1 ") : "", d->name);
+      for (int k = 0; k < 3; k++) {
+        char one[96];
+        snprintf(one, sizeof one, "%s", sp[G.sel[p] % n][k]);
+        for (char *q = one; *q; q++) if (*q == '\n') *q = ' ';
+        l += snprintf(raw + l, sizeof raw - (size_t)l, "%s%s", k ? "     " : "   ", one);
+      }
+      char *colon = strchr(raw, ':'); /* the name and the first special stay together */
+      if (colon) memmove(colon + 1, colon + 3, strlen(colon + 3) + 1), colon[1] = ' ';
+      wrap_parts(G.font_ui, raw, "     ", -1, 16 * s, maxw, spec_line[p], sizeof spec_line[p]);
+      slot_h = fmaxf(slot_h, cw_prompt_text_size(G.font_ui, spec_line[p], -1, 16 * s).y);
+      pages++;
+    }
+    y_btn = y_nav - 0.8f * s - slot_h;
+    y0 = y_btn - 2 * s - ch;
+  }
+  cw_r2d_rect(cw_rect_make(0, 0, W, band), rgba(0.02f, 0.025f, 0.05f, 0.55f));
+  text(G.font_score, "CHOOSE YOUR FIGHTER", W * 0.5f, y_title, 34 * s, rgba(1, 0.9f, 0.5f, 1), CW_ALIGN_CENTER);
+  ptext(G.font_ui, stage, 0, W * 0.5f, y_stage, 19 * s, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
+  ptext(G.font_ui, mode, 0, W * 0.5f, y_mode, 17 * s, rgba(1, 0.9f, 0.6f, 1), CW_ALIGN_CENTER);
+  int page = pages > 1 ? (int)((G.sim.tick / 240u) % (uint32_t)pages) : 0; /* four seconds a page */
+  if (pages == 1) ptext(G.font_ui, move, -1, W * 0.5f, y_move, 16 * s, rgba(0.85f, 0.92f, 1, 1), CW_ALIGN_CENTER);
+  float total = (float)n * cw_ + (float)(n - 1) * gap, x0 = (W - total) * 0.5f;
   for (int i = 0; i < n; i++) {
     const ft_def *d = &G.roster.d[i];
     float x = x0 + (float)i * (cw_ + gap), cx = x + cw_ * 0.5f;
@@ -797,37 +1014,39 @@ static void draw_select(float W, float H, float s) {
     cw_r2d_round_rect(cw_rect_make(x, y0, cw_, ch), 12 * s, 8, rgba(0.06f, 0.07f, 0.1f, 0.88f));
     cw_r2d_round_rect(cw_rect_make(x + 8 * s, y0 + 8 * s, cw_ - 16 * s, 5 * s), 2 * s, 4, rgba(c[0], c[1], c[2], 1));
     text(G.font_bold, d->name, cx, y0 + 16 * s, 24 * s, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
+    char b[96];
     snprintf(b, sizeof b, "Life %d", d->hp);
-    text(G.font_ui, b, cx, y0 + 46 * s, 13 * s, rgba(0.8f, 0.85f, 0.95f, 1), CW_ALIGN_CENTER);
-    text(G.font_ui, ROLE[i & 3], cx, y0 + 62 * s, 13 * s, rgba(0.75f, 0.8f, 0.9f, 1), CW_ALIGN_CENTER);
-    for (int k = 0; k < 3; k++) { /* the specials: motion, button, name */
-      char in[24];
-      uint16_t mb = d->mbtn[k]; /* the motion in direction digits, then the button as a prompt */
-      snprintf(in, sizeof in, "%s", d->motion[k]);
-      snprintf(b, sizeof b, "%s %s %s", in, mb == B_P ? "{atk_p}" : mb == B_K ? "{atk_k}" : "{atk_p}/{atk_k}", d->mv[M_SP1 + k].name);
-      ptext(G.font_ui, b, -1, cx, y0 + (80 + 15 * (float)k) * s, 13 * s, rgba(1, 0.85f, 0.5f, 1), CW_ALIGN_CENTER);
-    }
+    text(G.font_ui, b, cx, y0 + y_life, 13 * s, rgba(0.8f, 0.85f, 0.95f, 1), CW_ALIGN_CENTER);
+    text(G.font_ui, ROLE[i & 3], cx, y0 + y_role, 13 * s, rgba(0.75f, 0.8f, 0.9f, 1), CW_ALIGN_CENTER);
+    for (int k = 0; k < 3 && !compact; k++) ptext(G.font_ui, sp[i][k], -1, cx, y0 + y_sp + sp_step * (float)k, 13 * s, rgba(1, 0.85f, 0.5f, 1), CW_ALIGN_CENTER);
     if (p1) cw_r2d_round_rect_lines(cw_rect_make(x - 4 * s, y0 - 4 * s, cw_ + 8 * s, ch + 8 * s), 14 * s, 4 * s, 8, G.ready[0] ? rgba(1, 0.85f, 0.2f, 1) : rgba(1, 0.4f, 0.3f, 1));
     if (p2) cw_r2d_round_rect_lines(cw_rect_make(x - 8 * s, y0 - 8 * s, cw_ + 16 * s, ch + 16 * s), 16 * s, 3 * s, 8, G.ready[1] ? rgba(1, 0.85f, 0.2f, 1) : rgba(0.3f, 0.6f, 1, 1));
-    if (p1) text(G.font_bold, "P1", x + 10 * s, y0 - 24 * s, 18 * s, rgba(1, 0.5f, 0.4f, 1), CW_ALIGN_LEFT);
-    if (p2) text(G.font_bold, "P2", x + cw_ - 10 * s, y0 - 24 * s, 18 * s, rgba(0.4f, 0.7f, 1, 1), CW_ALIGN_RIGHT);
+    if (p1) text(G.font_bold, "P1", x + 10 * s, y0 - tag_h, 18 * s, rgba(1, 0.5f, 0.4f, 1), CW_ALIGN_LEFT);
+    if (p2) text(G.font_bold, "P2", x + cw_ - 10 * s, y0 - tag_h, 18 * s, rgba(0.4f, 0.7f, 1, 1), CW_ALIGN_RIGHT);
   }
-  ptext(G.font_ui, "Punch {atk_p}   Kick {atk_k}   Block {atk_g}   Up + button (together): high   Down + button: low   Punch + kick, or {atk_pk}: throw", -1, W * 0.5f, H - 42 * s, 16 * s, rgba(1, 0.95f, 0.8f, 1), CW_ALIGN_CENTER);
-  ptext(G.font_ui, "{mv_left|mv_right} fighter     {atk_k} or {ui_start} lock in     {atk_g} back out (two players) or computer level     {ui_quit} title", -1, W * 0.5f, H - 22 * s, 16 * s, rgba(0.7f, 0.75f, 0.85f, 1), CW_ALIGN_CENTER);
+  if (page == 1) ptext(G.font_ui, move, -1, W * 0.5f, y_btn, 16 * s, rgba(0.85f, 0.92f, 1, 1), CW_ALIGN_CENTER);
+  else if (page >= 2) ptext(G.font_ui, spec_line[page - 2], -1, W * 0.5f, y_btn, 16 * s, rgba(1, 0.85f, 0.5f, 1), CW_ALIGN_CENTER);
+  else ptext(G.font_ui, btn, -1, W * 0.5f, y_btn, 16 * s, rgba(1, 0.95f, 0.8f, 1), CW_ALIGN_CENTER);
+  ptext(G.font_ui, nav, -1, W * 0.5f, y_nav, 16 * s, rgba(0.7f, 0.75f, 0.85f, 1), CW_ALIGN_CENTER);
 }
 
 static void draw_result(float W, float H, float s) {
-  /* the winner's face fills the middle (update_camera); the words sit in bands above and below it */
+  /* the winner's face fills the middle (update_camera); the words sit in bands above and below it, each band as tall
+   * as its words (the player's text size grows them; the hint wraps to the screen) */
   const ft_game *g = &G.sim;
-  cw_r2d_rect(cw_rect_make(0, 0, W, 120 * s), rgba(0.02f, 0.02f, 0.04f, 0.6f));
-  cw_r2d_rect(cw_rect_make(0, H - 70 * s, W, 70 * s), rgba(0.02f, 0.02f, 0.04f, 0.6f));
+  char hint[256];
+  wrap_parts(G.font_ui, "{atk_k} or {ui_start} rematch      {atk_g} back to fighter select", "      ", -1, 22 * s, W - 32 * s, hint, sizeof hint);
+  float hh = cw_prompt_text_size(G.font_ui, hint, -1, 22 * s).y, hy = H - 50 * s + cw_prompt_text_size(G.font_ui, "M", -1, 22 * s).y / grow(G.font_ui, 22 * s) - hh; /* its last line ends where a line at 100% always did */
+  float top = fmaxf(120 * s, 78 * s + 36 * s * grow(G.font_bold, 30 * s) + 6 * s), bot = fmaxf(70 * s, H - hy + 20 * s);
+  cw_r2d_rect(cw_rect_make(0, 0, W, top), rgba(0.02f, 0.02f, 0.04f, 0.6f));
+  cw_r2d_rect(cw_rect_make(0, H - bot, W, bot), rgba(0.02f, 0.02f, 0.04f, 0.6f));
   char b[80];
   if (g->match_winner >= 0) snprintf(b, sizeof b, "%s WINS", g->roster->d[g->f[g->match_winner].def].name);
   else snprintf(b, sizeof b, "DRAW");
   text(G.font_score, b, W * 0.5f, 14 * s, 60 * s, rgba(1, 0.9f, 0.4f, 1), CW_ALIGN_CENTER);
   snprintf(b, sizeof b, "%d - %d", g->f[0].wins, g->f[1].wins);
-  text(G.font_bold, b, W * 0.5f, 78 * s, 30 * s, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
-  ptext(G.font_ui, "{atk_k} or {ui_start} rematch      {atk_g} back to fighter select", -1, W * 0.5f, H - 50 * s, 22 * s, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
+  text(G.font_bold, b, W * 0.5f, 14 * s + 64 * s * grow(G.font_score, 60 * s), 30 * s, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
+  ptext(G.font_ui, hint, -1, W * 0.5f, hy, 22 * s, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
 }
 
 static void render(void *u, double alpha) {

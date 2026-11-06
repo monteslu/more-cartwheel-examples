@@ -1,0 +1,16 @@
+{
+  "app": "fighter",
+  "secondary": [],
+  "screens": [
+    { "name": "title", "frames": 90 },
+    { "name": "settings", "frames": 130, "input": "fighter-text-settings.json" },
+    { "name": "join", "frames": 130, "input": "fighter-text-join.json" },
+    { "name": "select-cpu", "frames": 140, "input": "fighter-text-select.json" },
+    { "name": "select-2p", "app": "fighter_auto", "frames": 60, "env": {   "FIGHTER_SCREEN": "select 1 3 0" } },
+    { "name": "intro", "app": "fighter_auto", "frames": 40 },
+    { "name": "match", "app": "fighter_auto", "frames": 400 },
+    { "name": "pause", "frames": 420, "input": "fighter-text-pause.json" },
+    { "name": "result", "app": "fighter_auto", "frames": 60, "env": {   "FIGHTER_SCREEN": "result 0" } },
+    { "name": "training", "app": "fighter_train", "frames": 300 }
+  ]
+}
