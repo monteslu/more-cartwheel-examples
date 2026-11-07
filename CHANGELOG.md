@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.27.3
+
+- Crawler: a seat nobody plays no longer pins the team at the start. A second pad that joined and was then put
+  down held the player within one screen of its idle hero, so floor 1's key and exit (more than a screen from the
+  start) could not be reached. A hero whose pad has not been touched for five seconds now holds nobody back: the
+  view glides over two seconds to the players who play, and the idle hero is carried along beside them when it
+  would leave the screen. When nobody plays, everyone counts as before.
+- Tests: tests/crawler-left-behind.mjs clears floor 1 on the cart through romdev with the stick, on GL and WebGPU,
+  alone and beside an idle seat (the view never jerks), with a control (`sw idle_anchor 1`, the old rule) that must
+  stay on floor 1; the crawler level check in CI clears floor 1 with one bot and one or three idle seats, with a
+  control that must fail.
+
 ## 0.27.2
 
 - Engine v0.36.1: on WebGPU a game's GPU time now includes its reflection probe and sky captures (they were untimed), every frame is timed, and the range gates count a frame as the sum of each pass's average. Arena FPS's WebGPU High reads about 10 ms where it read 9.7.

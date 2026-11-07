@@ -29,6 +29,11 @@ time, monsters take more, food gives it back. Four classes with their own streng
   eight frames, with no lead ahead (the reference's screen moved one for one with the walking player). Nobody can
   leave the screen: a player can be at most the screen less about 2 m from every other player, so one player at the
   edge holds the others back and the group moves together. The bots and the soak keep to the same limit.
+- A seat nobody plays never holds the team: a hero whose pad has not been touched for five seconds (IDLE_TICKS) is
+  left behind. It holds nobody back and the view glides over two seconds (IDLE_FADE) to follow the others only; then,
+  when it would leave the screen, it is carried to the side of the nearest hero who plays (the teleport's flash). When nobody plays, everyone counts as before. A pad
+  that joined and was put down would otherwise pin the team to the start for good (floor 1's exit is 26 m below its
+  start, the team's reach 19 m).
 - Walls are low (1.2 m) blocky tiles, so the maze reads as a clean tile layout. From straight above only their
   tops show, and the tops carry each tileset's look: a crisp pattern, a bevel, materials, the bake's light and the
   shadow they cast on the floor. Nothing is cut away or faded: nothing stands between the camera and a hero.

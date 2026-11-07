@@ -24,6 +24,8 @@ Every player has one stick and two buttons; the game shows each player's own but
   weaker where it lies); shooting a friend stuns them for a moment.
 - A key opens a whole door: walk into the door holding one. Every floor can be finished with the keys found on
   the way. A floor held for three minutes opens all its doors.
+- The team shares one screen: nobody walks off it while a friend is at its far edge. A hero whose pad has not
+  been touched for five seconds holds nobody back: the screen follows the others and carries that hero along.
 - Health drains by one every 1.2 seconds. Roast, bread, flagons and covered plates give it back. A fallen player
   comes back with fresh health on the join button (at half their score); when the whole team falls the floor
   starts again.
@@ -53,8 +55,9 @@ Every player has one stick and two buttons; the game shows each player's own but
   each bake's hash beside it. As a cart it shows the floors for review (left and right change floor).
 - `tools/check-levels.mjs` (run in CI) fails a floor whose exit cannot be reached with the keys on the way (even
   spending keys on side rooms first), that has anything standing in a wall, a prop that floats or sinks, a missing or
-  stale bake, or that the bots cannot clear in the soak build (`--soak build/native/games/crawler/crawler_soak`). The
-  floors in `tools/levels-broken/` are each broken on purpose in one way, and the check fails if it passes one.
+  stale bake, or that the bots cannot clear in the soak build (`--soak build/native/games/crawler/crawler_soak`); with
+  the soak build it also clears floor 1 with one bot and seats nobody plays (`CRAWLER_IDLE_SEATS=n`), whose control
+  (`CRAWLER_IDLE_ANCHOR=1`, the idle seats holding the team back) must fail. The floors in `tools/levels-broken/` are each broken on purpose in one way, and the check fails if it passes one.
 - `tools/gen-roots.mjs` writes the pack list (`assets/roots.txt`).
 
 ## Building and testing
@@ -69,7 +72,9 @@ Every player has one stick and two buttons; the game shows each player's own but
   floor of every tileset, with controls that must fail).
 - Development switches (native): `CRAWLER_FLOOR=n` starts on floor n, `CRAWLER_PLAYERS=n` the auto build's players,
   `CRAWLER_CROWD=n` packs n monsters round the start, `CRAWLER_CHARM=n` keeps charm n held, `CRAWLER_BENCH=1`
-  prints timings, `CRAWLER_QUALITY=0..3` a graphics preset. The auto cart answers the debug command `floor <n>`.
+  prints timings, `CRAWLER_QUALITY=0..3` a graphics preset. The auto cart answers the debug command `floor <n>`;
+  every cart answers `sw idle_anchor 1` (the control of `tests/crawler-left-behind.mjs`, which clears floor 1 on the
+  cart through romdev with the stick, alone and beside a seat nobody plays).
 
 ## How it is drawn
 

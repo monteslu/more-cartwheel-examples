@@ -23,6 +23,10 @@
 #define VIEW_HH 12.0f
 #define TETHER_HW 19.3f /* how far a player may be from the team's middle: the screen less a margin */
 #define TETHER_HH 9.6f
+/* a player who has not touched the controls for this long holds nobody back: the screen follows the others and
+ * carries them along (sim_player_leads) */
+#define IDLE_TICKS 300
+#define IDLE_FADE 120 /* and the view glides off them over this long */
 /* the most monsters on one screen (DESIGN.md, the crowd): the floor's spawners keep pouring, but at the cap the spawners
  * on screen hold back and the monsters off it wait at its edge, so a corridor reads as a line to shoot through, never a
  * carpet */
@@ -61,6 +65,8 @@ typedef struct player {
   int drained;            /* a dread holding on: health taken so far */
   int stolen;             /* what a pilferer took last (for the panel) */
   int at_exit;
+  int idle;               /* ticks since this player last touched the controls (IDLE_TICKS: left behind) */
+  int behind;             /* ticks left behind (the view glides off over IDLE_FADE) */
 } player;
 
 typedef struct enemy {
@@ -89,6 +95,7 @@ typedef struct sim {
   bool no_spawn;  /* tests: spawners make nothing */
   bool god;       /* tests: nobody takes damage */
   bool no_cap;    /* the perf gate's stress scene: no cap on the monsters on screen */
+  bool idle_anchor; /* tests (the control): a player who never moves holds the team back as before */
   cw_rng rng;
   maze m;                       /* the floor as loaded */
   uint8_t t[MZ_MAX][MZ_MAX];    /* the tiles now (doors open, walls break, trap walls vanish) */
@@ -110,6 +117,7 @@ typedef struct sim {
   int on_screen;        /* monsters on the screen now (the cap, SCREEN_CAP) */
   uint32_t hash;
   /* stats (not state) */
+  int carried; /* players left behind and carried to the team */
   int nboom_total, potions_used, food_eaten, keys_used, spawners_killed, hp_lost[MAXP], damage_taken, dmg_kind[EK_KINDS + 1], falls;
   float crowd_ms;
   /* nav and flow */
@@ -141,7 +149,9 @@ int sim_exit_way(const sim *s, float x, float y, float *dx, float *dy); /* the s
 int sim_melee_windup(int kind);
 int sim_attack_frame(const enemy *e, float *tell); /* -1 none, 0 the wind-up, 1 the strike, 2 the recovery */
 bool sim_hexer_hidden(const sim *s, const enemy *e);
-void sim_team_box(const sim *s, float *cx, float *cy, float *hw, float *hh);
+void sim_team_box(const sim *s, float *cx, float *cy, float *hw, float *hh); /* the leading players' box */
+/* a living player the team keeps to: one who plays, or anyone when nobody does (IDLE_TICKS) */
+bool sim_player_leads(const sim *s, int i);
 void sim_give_charm(sim *s, int pi, int c);
 void sim_add_player(sim *s, int i, int cls); /* a player joins during play */
 void crawler_bot(const sim *s, int i, input *in); /* bot.c */

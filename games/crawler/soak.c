@@ -9,7 +9,10 @@
  *       The long soak: floor after floor (a fallen team starts its floor again), checking every tick: no NaN or
  *       stray position, nobody inside a wall, counts that agree with the tables, the team on one screen. A line a
  *       game minute (floor, monsters, kills, health lost, resident memory). Exit 0 = nothing broke.
- * CRAWLER_SOAK_INJECT=1 puts a NaN into player 1 at tick 100 (the control: the checks must catch it). */
+ * CRAWLER_SOAK_INJECT=1 puts a NaN into player 1 at tick 100 (the control: the checks must catch it).
+ * CRAWLER_IDLE_SEATS=n leaves the last n of the players with nobody at the controls (a pad that joined and was put
+ * down): the bots play the rest. CRAWLER_IDLE_ANCHOR=1 lets such a player hold the team back as the game did before
+ * (the control: the team cannot get far from the start). */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -84,19 +87,22 @@ static bool load_floor(int n, maze *m) {
 static sim S;
 static maze M;
 
+static int idle_seats(int players) { return getenv("CRAWLER_IDLE_SEATS") ? CW_CLAMP(atoi(getenv("CRAWLER_IDLE_SEATS")), 0, players - 1) : 0; }
+
 static int clear_once(const char *file, int players, int minutes, uint32_t seed) {
   char *t = read_text(file), err[200];
   if (!t || !maze_parse(t, &M, sim_kind_by_name, err, sizeof err)) { printf("clear: %s: %s\n", file, t ? err : "cannot read"); free(t); return 2; }
   free(t);
   int cls[MAXP] = { CL_BRUTE, CL_MAGE, CL_RANGER, CL_WARDEN };
   sim_init(&S, players, cls, seed);
+  S.idle_anchor = getenv("CRAWLER_IDLE_ANCHOR") != NULL;
   sim_floor_start(&S, &M);
   long total = (long)minutes * 3600;
-  int most = 0;
+  int most = 0, idle = idle_seats(players);
   for (long k = 0; k < total; k++) {
     input in[MAXP];
     memset(in, 0, sizeof in);
-    for (int i = 0; i < players; i++) crawler_bot(&S, i, &in[i]);
+    for (int i = 0; i < players - idle; i++) crawler_bot(&S, i, &in[i]);
     sim_step(&S, in);
     if (check(&S)) return 1;
     if (S.nenemies > most) most = S.nenemies;
@@ -111,8 +117,8 @@ static int clear_once(const char *file, int players, int minutes, uint32_t seed)
       return 1;
     }
     if (S.state == ST_EXIT || S.state == ST_WON) {
-      printf("clear: floor %d cleared in %.1f s (%d kills, %d doors opened, %d spawners down, most monsters %d, health lost %d, falls %d)\n", M.floor, (float)S.floor_ticks / 60.0f,
-             S.killed_total, S.doors_opened, S.spawners_killed, most, S.damage_taken, S.falls);
+      printf("clear: floor %d cleared in %.1f s (%d kills, %d doors opened, %d spawners down, most monsters %d, health lost %d, falls %d, carried %d)\n", M.floor, (float)S.floor_ticks / 60.0f,
+             S.killed_total, S.doors_opened, S.spawners_killed, most, S.damage_taken, S.falls, S.carried);
       return 0;
     }
     if (S.state == ST_OVER) {
@@ -145,6 +151,8 @@ int main(int argc, char **argv) {
   int minutes = argc > 1 ? atoi(argv[1]) : 30, players = argc > 2 ? atoi(argv[2]) : 4, floor0 = argc > 3 ? atoi(argv[3]) : 1;
   int cls[MAXP] = { CL_BRUTE, CL_WARDEN, CL_MAGE, CL_RANGER };
   sim_init(&S, players, cls, 4242);
+  S.idle_anchor = getenv("CRAWLER_IDLE_ANCHOR") != NULL;
+  int idle = idle_seats(players);
   if (!load_floor(floor0, &M)) { printf("soak: no floor %d\n", floor0); return 2; }
   sim_floor_start(&S, &M);
   long total = (long)minutes * 3600, rss0 = 0;
@@ -152,7 +160,7 @@ int main(int argc, char **argv) {
   for (long t = 1; t <= total; t++) {
     input in[MAXP];
     memset(in, 0, sizeof in);
-    for (int i = 0; i < players; i++) crawler_bot(&S, i, &in[i]);
+    for (int i = 0; i < players - idle; i++) crawler_bot(&S, i, &in[i]);
     if (t == 100 && getenv("CRAWLER_SOAK_INJECT")) S.p[0].x = NAN;
     sim_step(&S, in);
     if (check(&S)) return 1;

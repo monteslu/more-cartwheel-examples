@@ -51,6 +51,8 @@ static struct {
   int cls[MAXP];
   bool ready[MAXP];
   int32_t state, floor, ticks, enemies, kills, alive, floors_done, doors, keys_used, potions_used, spawners_down, best_floor, cut, walls_drawn, drawn;
+  int32_t carried, idle_anchor; /* players left behind and carried to the team; the control switch (sw idle_anchor) */
+  int32_t idle[MAXP];
   float pu[MAXP], pv[MAXP]; /* where each player stands on screen, 0 to 1 (review crops) */
   int32_t hp[MAXP], score[MAXP], px[MAXP], py[MAXP];
   uint32_t hash;
@@ -210,6 +212,13 @@ static bool warmup(void *u) {
   return true;
 }
 
+/* the gates' switches */
+static void cmd_sw(int argc, const char **argv, cw_reply *r) {
+  if (argc < 3 || strcmp(argv[1], "idle_anchor")) { cw_reply_error(r, "usage: sw idle_anchor <0|1>"); return; }
+  G.idle_anchor = atoi(argv[2]) != 0;
+  cw_reply_printf(r, "{\"idle_anchor\":%d}", G.idle_anchor);
+}
+
 #ifdef CRAWLER_AUTOPILOT
 static void cmd_floor(int argc, const char **argv, cw_reply *r) {
   if (argc < 2) { cw_reply_error(r, "usage: floor <n>"); return; }
@@ -260,6 +269,8 @@ static void init(void *u) {
   cw_debug_i32("game.keys_used", &G.keys_used);
   cw_debug_i32("game.potions_used", &G.potions_used);
   cw_debug_i32("game.spawners_down", &G.spawners_down);
+  cw_debug_i32("game.carried", &G.carried);
+  cw_debug_field("player.idle", G.idle, CW_DBG_I32, MAXP);
   cw_debug_field("player.hp", G.hp, CW_DBG_I32, MAXP);
   cw_debug_field("player.score", G.score, CW_DBG_I32, MAXP);
   cw_debug_field("player.x", G.px, CW_DBG_I32, MAXP);
@@ -276,6 +287,7 @@ static void init(void *u) {
   cw_debug_f32("dev.tilt", &g_tilt);
   cw_debug_f32("dev.rim_k", &g_rim_k);
   cw_debug_f32("dev.lean", &g_lean);
+  cw_debug_command("sw", "sw idle_anchor <0|1>: a test switch (1: a player nobody plays holds the team back, as before)", cmd_sw);
 #ifdef CRAWLER_AUTOPILOT
   cw_debug_command("floor", "floor <n>: go to that floor", cmd_floor);
   if (getenv("CRAWLER_CAM_DIST")) g_cam_dist = (float)atof(getenv("CRAWLER_CAM_DIST")); /* key-art captures: a closer camera */
@@ -340,6 +352,7 @@ static void fixed_update(void *u, double dt) {
   if (G.phase == PH_PICK) { pick_update(); return; }
   input in[MAXP];
   read_input(in);
+  G.S.idle_anchor = G.idle_anchor != 0;
   if (getenv("CRAWLER_CHARM") && G.S.tick % 300 == 0)
     for (int i = 0; i < G.S.players; i++) sim_give_charm(&G.S, i, atoi(getenv("CRAWLER_CHARM")));
   double t0 = wall();
@@ -377,8 +390,8 @@ static void fixed_update(void *u, double dt) {
   }
   G.state = G.S.state, G.floor = G.S.floor, G.ticks = G.S.tick, G.enemies = G.S.nenemies, G.kills = G.S.killed_total;
   G.alive = sim_alive_players(&G.S), G.doors = G.S.doors_opened, G.keys_used = G.S.keys_used, G.potions_used = G.S.potions_used;
-  G.spawners_down = G.S.spawners_killed, G.hash = G.S.hash;
-  for (int i = 0; i < MAXP; i++) G.hp[i] = G.S.p[i].hp, G.score[i] = G.S.p[i].score, G.px[i] = (int)(G.S.p[i].x * 100), G.py[i] = (int)(G.S.p[i].y * 100);
+  G.spawners_down = G.S.spawners_killed, G.hash = G.S.hash, G.carried = G.S.carried;
+  for (int i = 0; i < MAXP; i++) G.hp[i] = G.S.p[i].hp, G.score[i] = G.S.p[i].score, G.px[i] = (int)(G.S.p[i].x * 100), G.py[i] = (int)(G.S.p[i].y * 100), G.idle[i] = G.S.p[i].idle;
   if (G.banner_t > 0) G.banner_t--;
 }
 

@@ -631,12 +631,17 @@ static void player_step(sim *s, int i, const input *in) {
     if (in->join && p->down_ticks > 120 && sim_alive_players(s) > 0) { /* back in, beside a friend, with fresh health */
       for (int k = 0; k < MAXP; k++)
         if (k != i && s->p[k].active && !s->p[k].down) { p->x = s->p[k].x, p->y = s->p[k].y; break; }
-      p->down = false, p->hp = 1000, p->score /= 2, p->inv = 120;
+      p->down = false, p->hp = 1000, p->score /= 2, p->inv = 120, p->idle = 0;
       ev(s, EV_REJOIN, p->x, p->y, 0, 0, i, 0);
     }
     return;
   }
   const class_stats *c = &CLASS[p->cls];
+  { /* any touch of the controls: this player plays (a seat nobody plays is left behind, IDLE_TICKS) */
+    float l2 = in->mx * in->mx + in->my * in->my;
+    if (l2 > 0.25f * 0.25f || in->fire || in->magic || in->magic_held || in->join) p->idle = 0;
+    else if (p->idle < IDLE_TICKS * 1000) p->idle++;
+  }
   if (s->tick % 72 == 0 && !s->god) p->hp--; /* the clock: one every 1.2 s */
   if (p->hp <= 0 && !p->down) { p->hp = 0, p->down = true, p->down_ticks = 0; ev(s, EV_DOWN, p->x, p->y, 0, 0, i, 0), s->falls++; return; }
   if (p->cd > 0) p->cd--;
@@ -675,12 +680,12 @@ static void player_step(sim *s, int i, const input *in) {
   p->vx += (mx * sp - p->vx) * 0.4f;
   p->vy += (my * sp - p->vy) * 0.4f;
   float nx = p->x + p->vx / TICK, ny = p->y + p->vy / TICK;
-  /* the team on one screen: nobody past its edge */
+  /* the team on one screen: nobody past its edge (a player left behind holds nobody back: the screen carries them) */
   float lo_x = -1e9f, hi_x = 1e9f, lo_y = -1e9f, hi_y = 1e9f;
   {
     for (int k = 0; k < MAXP; k++) {
       const player *q = &s->p[k];
-      if (k == i || !q->active || q->down) continue;
+      if (k == i || !sim_player_leads(s, k)) continue;
       lo_x = CW_MAX(lo_x, q->x - 2 * TETHER_HW), hi_x = CW_MIN(hi_x, q->x + 2 * TETHER_HW);
       lo_y = CW_MAX(lo_y, q->y - 2 * TETHER_HH), hi_y = CW_MIN(hi_y, q->y + 2 * TETHER_HH);
     }
@@ -1198,16 +1203,74 @@ int sim_alive_players(const sim *s) {
   for (int i = 0; i < MAXP; i++) n += s->p[i].active && !s->p[i].down;
   return n;
 }
-void sim_team_box(const sim *s, float *cx, float *cy, float *hw, float *hh) {
+bool sim_player_leads(const sim *s, int i) {
+  const player *p = &s->p[i];
+  if (!p->active || p->down) return false;
+  if (p->idle < IDLE_TICKS || s->idle_anchor) return true;
+  for (int k = 0; k < MAXP; k++) /* left behind, unless nobody plays */
+    if (s->p[k].active && !s->p[k].down && s->p[k].idle < IDLE_TICKS) return false;
+  return true;
+}
+
+/* a player left behind and about to leave the screen: carried to the nearest who leads, a step to one side of them */
+static void carry_left_behind(sim *s) {
+  float cx, cy, hw, hh;
+  sim_team_box(s, &cx, &cy, &hw, &hh);
+  for (int i = 0; i < MAXP; i++) {
+    player *p = &s->p[i];
+    if (!p->active || p->down || sim_player_leads(s, i) || p->behind < IDLE_FADE) continue; /* once the view has glided off */
+    if (fabsf(p->x - cx) <= TETHER_HW && fabsf(p->y - cy) <= TETHER_HH) continue;
+    int to = -1;
+    float best = 1e18f;
+    for (int k = 0; k < MAXP; k++) {
+      if (!sim_player_leads(s, k)) continue;
+      float dx = s->p[k].x - p->x, dy = s->p[k].y - p->y, d = dx * dx + dy * dy;
+      if (d < best) best = d, to = k;
+    }
+    if (to < 0) continue;
+    const player *q = &s->p[to];
+    float ox = p->x, oy = p->y, nx = q->x, ny = q->y;
+    static const float SX[4] = { -0.8f, 0.8f, 0, 0 }, SY[4] = { 0, 0, -0.8f, 0.8f };
+    for (int k = 0; k < 4; k++) { /* beside them on open floor (where they stand when every side is a wall) */
+      float x = q->x + SX[k], y = q->y + SY[k];
+      bool open = true;
+      for (int c = 0; c < 4 && open; c++) open = !sim_solid(s, tile_x(s, x + (c & 1 ? 0.4f : -0.4f)), tile_y(s, y + (c & 2 ? 0.4f : -0.4f)));
+      if (open) { nx = x, ny = y; break; }
+    }
+    p->x = nx, p->y = ny, p->vx = p->vy = 0;
+    s->carried++;
+    ev(s, EV_TELEPORT, ox, oy, p->x, p->y, i, 0);
+  }
+}
+
+/* the box round the living players who lead, or every living player (all = true) */
+static int team_box(const sim *s, bool all, float *cx, float *cy, float *hw, float *hh) {
   float x0 = 1e9f, x1 = -1e9f, y0 = 1e9f, y1 = -1e9f;
   int n = 0;
   for (int i = 0; i < MAXP; i++) {
     const player *p = &s->p[i];
-    if (!p->active || p->down) continue;
+    if (all ? !p->active || p->down : !sim_player_leads(s, i)) continue;
     x0 = CW_MIN(x0, p->x), x1 = CW_MAX(x1, p->x), y0 = CW_MIN(y0, p->y), y1 = CW_MAX(y1, p->y), n++;
   }
-  if (!n) { *cx = s->cam_x, *cy = s->cam_y, *hw = *hh = 0; return; }
-  *cx = (x0 + x1) * 0.5f, *cy = (y0 + y1) * 0.5f, *hw = (x1 - x0) * 0.5f, *hh = (y1 - y0) * 0.5f;
+  if (n) *cx = (x0 + x1) * 0.5f, *cy = (y0 + y1) * 0.5f, *hw = (x1 - x0) * 0.5f, *hh = (y1 - y0) * 0.5f;
+  return n;
+}
+
+/* the team's middle (the camera's target): the players who lead; a player just left behind eases out of it over
+ * IDLE_FADE ticks, so the view glides to the others instead of jumping */
+void sim_team_box(const sim *s, float *cx, float *cy, float *hw, float *hh) {
+  if (!team_box(s, false, cx, cy, hw, hh)) { *cx = s->cam_x, *cy = s->cam_y, *hw = *hh = 0; return; }
+  float k = 1;
+  for (int i = 0; i < MAXP; i++) {
+    const player *p = &s->p[i];
+    if (!p->active || p->down || sim_player_leads(s, i)) continue;
+    float t = CW_CLAMP((float)p->behind / (float)IDLE_FADE, 0.0f, 1.0f);
+    k = CW_MIN(k, t * t * (3 - 2 * t));
+  }
+  if (k >= 1) return;
+  float ax, ay, aw, ah;
+  team_box(s, true, &ax, &ay, &aw, &ah);
+  *cx = ax + (*cx - ax) * k, *cy = ay + (*cy - ay) * k, *hw = aw + (*hw - aw) * k, *hh = ah + (*hh - ah) * k;
 }
 
 static void hash_state(sim *s) {
@@ -1246,6 +1309,8 @@ void sim_step(sim *s, const input in[MAXP]) {
       if (s->door_open[y][x] > 0 && s->door_open[y][x] < 255) s->door_open[y][x]++;
   { CW_PROFILE_SCOPE("sim.players"); for (int i = 0; i < MAXP; i++) player_step(s, i, &in[i]); }
   if (s->state != ST_PLAY) { hash_state(s); return; }
+  for (int i = 0; i < MAXP; i++) s->p[i].behind = sim_player_leads(s, i) || !s->p[i].active || s->p[i].down ? 0 : s->p[i].behind + 1;
+  carry_left_behind(s);
   { float hw, hh; sim_team_box(s, &s->cam_x, &s->cam_y, &hw, &hh); }
   { /* the screen: the camera's rule (view.c), and the monsters on it */
     float mw = (float)s->m.w, mh = (float)s->m.h;

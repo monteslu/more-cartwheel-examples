@@ -208,11 +208,12 @@ void crawler_bot(const sim *s, int i, input *in) {
     float dx = gx - p->x, dy = gy - p->y, l = sqrtf(dx * dx + dy * dy);
     if (l > 0.05f) mx = dx / l, my = dy / l;
   }
-  /* the leader waits for a follower fallen far behind (one screen holds the team) */
+  /* the leader waits for a follower fallen far behind (one screen holds the team; not for one left behind, whom the
+   * screen carries) */
   if (bot_leader(s) == i) {
     for (int k = 0; k < MAXP; k++) {
       const player *q = &s->p[k];
-      if (k == i || !q->active || q->down) continue;
+      if (k == i || !sim_player_leads(s, k)) continue;
       if (fabsf(q->x - p->x) > TETHER_HW * 1.1f || fabsf(q->y - p->y) > TETHER_HH * 1.1f) mx = my = 0;
     }
   }

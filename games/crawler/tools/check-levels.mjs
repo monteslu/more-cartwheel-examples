@@ -11,6 +11,9 @@
 //                  (a floor changed after its bake fails)
 //   clear          be cleared by the bots in the soak build (--soak <crawler_soak>): four bots from the start
 //                  reach the exit within the time limit, with the game's rules (damage on)
+//   alone          (with --soak, floor 1) not be held at the start by a seat nobody plays (a pad that joined and was
+//                  put down): one bot with one idle seat, and with three, reaches the exit; the control
+//                  (CRAWLER_IDLE_ANCHOR=1: the idle seat holds the team back as the game once let it) must fail
 // The controls (tools/levels-broken/*.cwmaze, each broken on purpose in one way) must each fail exactly the check
 // its name says; a check that cannot fail is not a check, so the run fails when a control passes.
 //
@@ -128,10 +131,10 @@ function checkFloor(file, text, { bakeDir = join(A, 'lightmaps'), modelsRequired
 }
 
 // the soak build's bot run on one floor: exit code 0 when the bots reached the exit
-function runClear(file) {
+function runClear(file, players = 4, env = {}) {
   return new Promise((resolve) => {
     const t0 = Date.now();
-    const p = spawn(SOAK, ['--clear', file], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const p = spawn(SOAK, ['--clear', file, String(players)], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...env } });
     let out = '';
     p.stdout.on('data', (d) => (out += d));
     p.stderr.on('data', (d) => (out += d));
@@ -166,6 +169,19 @@ if (SOAK) {
     if (r.code) { bad++; console.log(`FAIL ${list[i]} clear: ${r.out}`); }
   });
   console.log(`clear: ${res.filter((r) => !r.code).length} of ${list.length} floors cleared by the bots (${((Date.now() - t0) / 1000).toFixed(0)} s, slowest ${Math.max(...res.map((r) => r.ms)) / 1000} s)`);
+  if (list.includes('001.cwmaze')) {
+    const f1 = join(A, 'levels/001.cwmaze');
+    for (const [players, idle] of [[2, 1], [4, 3]]) {
+      const r = await runClear(f1, players, { CRAWLER_IDLE_SEATS: String(idle) });
+      if (r.code) { bad++; console.log(`FAIL 001.cwmaze alone: one bot with ${idle} idle seat(s) did not reach the exit: ${r.out}`); }
+      else console.log(`alone: one bot with ${idle} idle seat(s) clears floor 1 (${r.out})`);
+    }
+    if (CONTROLS) {
+      const r = await runClear(f1, 2, { CRAWLER_IDLE_SEATS: '1', CRAWLER_IDLE_ANCHOR: '1' });
+      if (r.code) console.log(`control alone: caught (an idle seat that holds the team back: ${r.out})`);
+      else { bad++; console.log(`FAIL control alone: an idle seat that holds the team back, and the bot still cleared floor 1 (${r.out})`); }
+    }
+  }
 }
 
 if (CONTROLS) {
