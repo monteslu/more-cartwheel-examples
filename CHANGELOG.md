@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.27.1
+
+- The game's HUD goes away under the pause menu, its settings and the join screen in every game on the
+  game shell (Arena FPS, the brawler, the co-op platformer, the crawler, the fighter, the horde shooter,
+  Jetski and the party pack), so the menu stands alone at large text (the engine's cw_shell_hud_shown).
+  The party pack keeps its mini-game in view and hides only its panels and banners.
+- Party pack: its text reaches the full 200% size on its own stage (an engine fix since v0.35.0), and
+  the screens are laid out for it: the tournament-over podium labels keep below the heading and stack
+  instead of running into each other, and the results heading no longer sits on the score strip.
+- Party pack: Blast Ring draws everything once Auto steps down to Very Low in the middle of a round
+  (three programs were missing from its table).
+- Co-op platformer: a sign's caption never sits on a player marker, a boss's words and what players
+  say never stack (words wait for a clear place), and the ability chips under the player panels keep
+  the level name and the markers below them; the results card hides them instead of cutting them.
+- Tests: coopplatformer-words and coopplatformer-words-boss (four players at 200% text, each with a
+  control that must fail); the party pack's tournament-over screen in its text check;
+  skyfighter-settings checks the native save holds the current graphics word and that the row wraps
+  from Ultra to Very Low (it still expected the four-preset values); coopplatformer-signs counts the
+  frames its caption now waits for a marker to move.
+
 ## 0.27.0
 
 - Engine v0.36.0: Low and Very Low cost less GPU time with the same picture or close to it. Both draw the
