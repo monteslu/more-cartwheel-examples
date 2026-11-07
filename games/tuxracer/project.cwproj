@@ -21,7 +21,6 @@ input.menu_left = key:left, key:a, key:j, pad:left, axis:lx-@0.5, deadzone:0.5
 input.menu_right = key:right, key:d, key:l, pad:right, axis:lx+@0.5, deadzone:0.5
 input.menu_accept = key:return, key:space, key:e, pad:south, pad:start
 input.menu_back = key:escape, key:backspace, pad:east, pad:back
-version = 0.1.0
 app_id = org.cartwheel.tuxracer
 ; release builds: node <host sdk>/tools/cwexport.mjs --project games/tuxracer --preset <preset>
 export.linux-x64.platform = linux-x64

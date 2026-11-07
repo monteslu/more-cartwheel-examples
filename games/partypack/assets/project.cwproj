@@ -1,7 +1,6 @@
 name = Party Pack
 app = partypack
 main_scene = scenes/hub.cwscene
-version = 0.1.0
 game_app = partypack
 input.move_left = key:a, key:left, pad:left, axis:lx-
 input.move_right = key:d, key:right, pad:right, axis:lx+

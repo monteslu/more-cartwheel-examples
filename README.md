@@ -169,7 +169,7 @@ A shared-screen naval game for one to four players: cooperative voyages,
 competitive treasure races, ship upgrades, a volcanic archipelago and a
 calmer palm lagoon. It builds with the pinned engine v0.29.1 SDK; no local
 engine patches are needed. CI includes Pirates with the other games; tagged
-releases publish `pirates.wasc` from the tagged commit’s successful main build.
+releases publish `pirates.wasc` with the others.
 [Its README](games/pirates/README.md) covers controls, builds, credits and
 romdev verification.
 
@@ -312,11 +312,18 @@ must exit cleanly and leave a picture that is not blank. The gates, which
 compare the carts with native runs on every host, run locally on a GPU
 (`tests/gate.mjs`).
 
-Pushes to `main` link the carts as releases ship. Pushing a `v*` tag does not
-build anything: it takes the eleven `<game>.wasc` from that commit's green run
-on `main` and publishes them as a GitHub release, its notes taken from
-[CHANGELOG.md](CHANGELOG.md). Push to `main`, wait for the run to go green,
-then `git tag v0.3.0 && git push origin v0.3.0`.
+Pushes to `main` link the carts as releases ship. Pushing a `v*` tag builds
+the eleven `<game>.wasc` again at the tag, checks that every one's manifest
+carries the tag's version (`tests/cart-version.mjs`), and publishes them as a
+GitHub release, its notes taken from [CHANGELOG.md](CHANGELOG.md). The tagged
+commit must have a green run on `main`: push to `main`, wait for the run to
+go green, then `git tag v0.3.0 && git push origin v0.3.0`.
+
+Every cart's manifest says which version it is, and the build works it out
+from the checkout (the engine's `cw_add_app`): a build of a `v*` tag is that
+version (`0.27.3`), any other build the last tag plus the commit
+(`0.27.3-dev.g1a2b3c4`), so a cart built locally or from `main` is never taken
+for a release.
 
 ## Layout
 
