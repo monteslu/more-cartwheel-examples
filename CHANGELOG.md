@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.27.2
+
+- Engine v0.36.1: on WebGPU a game's GPU time now includes its reflection probe and sky captures (they were untimed), every frame is timed, and the range gates count a frame as the sum of each pass's average. Arena FPS's WebGPU High reads about 10 ms where it read 9.7.
+- The fighter: Low and Very Low light the stage with at most 4 of its omni lights: the rims behind the fighters, then the stage's strongest, without the explosion flashes. On the select screen the portrait's key and fill take the stage lights' places. Medium and up light every one, as before.
+- GPU time on Very Low and Low as a share of High (1080p, Radeon 890M, GL / WebGPU, measured on a quiet machine): Pirates 0.22 / 0.20 and 0.37 / 0.33; Jetski 0.18 / 0.18 and 0.34 / 0.34; Arena FPS 0.23 / 0.22 and 0.31 / 0.30; Tux Racer 0.35 / 0.38 and 0.43 / 0.48; Sky Fighter 0.31 / 0.35 and 0.52 / 0.57; the co-op platformer 0.38 / 0.35 and 0.49 / 0.46; the fighter 0.45 / 0.45 and 0.57 / 0.59; the brawler 0.62 / 0.56 and 0.78 / 0.74; the horde shooter 0.51 / 0.50 and 0.65 / 0.63; crawler 0.58 / 0.53 and 0.69 / 0.65; the party pack 1.01 and 1.00 on GL. The range gates hold each game to these shares plus 0.06 (Pirates, Jetski and Arena FPS to Very Low 0.3 and Low 0.45 of High).
+
 ## 0.27.1
 
 - The game's HUD goes away under the pause menu, its settings and the join screen in every game on the
