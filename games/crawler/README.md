@@ -22,7 +22,9 @@ Every player has one stick and two buttons; the game shows each player's own but
   spawners too), the **Ranger** is the fastest, with the quickest bow.
 - Walk into a monster to fight it. Shots stop at walls. Shooting food or a potion breaks it (a shot potion goes off
   weaker where it lies); shooting a friend stuns them for a moment.
-- A key opens a whole door: walk into the door holding one. Every floor can be finished with the keys found on
+- A key opens a whole door: walk into the door holding one (a shut door carries a glowing key on its top). EXIT is
+  written over every way down, and after 20 seconds on a floor an arrow by the leading hero points the way to the exit,
+  or to a key while a shut door is in the way. Every floor can be finished with the keys found on
   the way. A floor held for three minutes opens all its doors.
 - The team shares one screen: nobody walks off it while a friend is at its far edge. A hero whose pad has not
   been touched for five seconds holds nobody back: the screen follows the others and carries that hero along.
@@ -74,7 +76,8 @@ Every player has one stick and two buttons; the game shows each player's own but
   `CRAWLER_CROWD=n` packs n monsters round the start, `CRAWLER_CHARM=n` keeps charm n held, `CRAWLER_BENCH=1`
   prints timings, `CRAWLER_QUALITY=0..3` a graphics preset. The auto cart answers the debug command `floor <n>`;
   every cart answers `sw idle_anchor 1` (the control of `tests/crawler-left-behind.mjs`, which clears floor 1 on the
-  cart through romdev with the stick, alone and beside a seat nobody plays).
+  cart through romdev with the stick, alone and beside a seat nobody plays) and `sw guide_off 1` (the control of
+  `tests/crawler-find-the-way.mjs`, where a player following only the arrow gets from floor 1 to floor 2).
 
 ## How it is drawn
 

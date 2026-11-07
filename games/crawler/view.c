@@ -45,6 +45,7 @@ static struct {
   t3_instanced_mesh *stub, *trapwall, *breakable[2], *door[8], *door_glow[8], *spawner[3], *spawner_glow[3];
   int door_frames;
   t3_instanced_mesh *exit_im, *exit_glow, *tele, *tele_glow, *trap;
+  t3_instanced_mesh *lock, *lock_glow; /* the key sign on a shut door's top: it wants a key */
   /* creatures and heroes */
   kindv k[EK_KINDS];
   mb_chr hero[CL_KINDS];
@@ -131,6 +132,7 @@ static t3_vec3 pull(float x, float y, float z, float d) {
 #define PULL_HERO 3.2f
 #define PULL_SHOT 3.6f
 #define PULL_ITEM 2.6f
+#define DOOR_SHUT_DEPTH 3.0f /* a shut door's gate stretched through its tile: 0.64 m of bars read as a rail from above */
 /* a standing thing: yawed, then leaned toward the camera from its feet */
 static void put_up(t3_instanced_mesh *im, int i, float x, float y, float z, float yaw, float s) {
   t3_mat4 m;
@@ -385,6 +387,7 @@ static void floor_dynamic_free(void) {
   memset(V.breakable, 0, sizeof V.breakable), memset(V.door, 0, sizeof V.door), memset(V.door_glow, 0, sizeof V.door_glow);
   memset(V.spawner, 0, sizeof V.spawner), memset(V.spawner_glow, 0, sizeof V.spawner_glow);
   V.exit_im = V.exit_glow = V.tele = V.tele_glow = V.trap = NULL;
+  V.lock = V.lock_glow = NULL;
 }
 
 /* an instanced mesh under the floor's Level node (freed with the floor) */
@@ -452,6 +455,9 @@ void view_floor(const sim *s) {
     eg[0] = NULL;
     model_meshes("models/teleporter.cwchar", "Teleporters", &V.tele, eg, 1, MZ_MAXTELE, fb_plate, 0.5f), V.tele_glow = eg[0];
     model_meshes("models/trap.cwchar", "Traps", &V.trap, NULL, 1, MZ_MAXTRAP, fb_plate, 0.7f);
+    eg[0] = NULL;
+    if (!model_meshes("models/key.cwchar", "DoorLocks", &V.lock, eg, 1, 96, fb_plate, 0.3f)) V.lock = NULL;
+    V.lock_glow = eg[0];
     V.root = keep;
   }
   cw_info("crawler: floor %d (%s, %d x %d tiles) built", V.m.floor, MZ_THEME_ID[V.theme], V.m.w, V.m.h);
@@ -596,7 +602,7 @@ static void sync_walls(const sim *s) {
   done(V.stub, nstub);
   V.st.walls_drawn = ndrawn + nstub, V.st.cut = ncut;
   /* the walls that change: trap walls (until they vanish), breakable walls (then their rubble), doors (opening) */
-  int nt = 0, nb[2] = { 0, 0 }, nd[8] = { 0 };
+  int nt = 0, nb[2] = { 0, 0 }, nd[8] = { 0 }, nl = 0;
   for (int y = 0; y < V.m.h; y++)
     for (int x = 0; x < V.m.w; x++) {
       int t0 = V.m.t[y][x];
@@ -625,16 +631,28 @@ static void sync_walls(const sim *s) {
         int o = s->door_open[y][x];
         int f = o == 0 ? 0 : CW_MIN(1 + o / 6, V.door_frames - 1);
         if (nd[f] >= 96) continue;
-        put_s(V.door[f], nd[f], wx, 0, wz, yaw, 1, V.b.wall_sy, 1);
+        /* shut, the gate fills its tile (a slab as thick as a wall, not a rail); opening, it sinks as modelled */
+        put_s(V.door[f], nd[f], wx, 0, wz, yaw, 1, V.b.wall_sy, o == 0 ? DOOR_SHUT_DEPTH : 1);
         t3_instanced_mesh_set_color_at(V.door[f], nd[f], light);
         if (V.door_glow[f]) {
-          put_s(V.door_glow[f], nd[f], wx, 0, wz, yaw, 1, V.b.wall_sy, 1);
+          put_s(V.door_glow[f], nd[f], wx, 0, wz, yaw, 1, V.b.wall_sy, o == 0 ? DOOR_SHUT_DEPTH : 1);
           float pulse = 0.8f + 0.2f * cw_sin((float)s->tick * 0.08f + (float)x);
           t3_instanced_mesh_set_color_at(V.door_glow[f], nd[f], (t3_color){ 1.4f * pulse, 1.1f * pulse, 0.5f * pulse });
         }
         nd[f]++;
+        if (o == 0 && V.lock && nl < 96) { /* the key sign on its top, and warm light on the floor either side: it wants a key */
+          float pulse = 0.75f + 0.25f * cw_sin((float)s->tick * 0.1f + (float)x);
+          put(V.lock, nl, wx, 1.24f * V.b.wall_sy + 0.02f, wz, yaw + 0.6f, 2.3f);
+          t3_instanced_mesh_set_color_at(V.lock, nl, (t3_color){ 1.2f, 1.0f, 0.6f });
+          if (V.lock_glow) put(V.lock_glow, nl, wx, 1.24f * V.b.wall_sy + 0.02f, wz, yaw + 0.6f, 2.3f), t3_instanced_mesh_set_color_at(V.lock_glow, nl, (t3_color){ 3.2f * pulse, 2.4f * pulse, 0.8f * pulse });
+          nl++;
+          float ox = yaw == 0 ? 0 : 1.6f, oz = yaw == 0 ? 1.6f : 0;
+          cw_splats_add(V.glows, (t3_vec3){ wx + ox, 0, wz + oz }, 2.4f, 2.4f, 0, 0, (t3_color){ 1.0f, 0.7f, 0.25f }, 1.3f * pulse);
+          cw_splats_add(V.glows, (t3_vec3){ wx - ox, 0, wz - oz }, 2.4f, 2.4f, 0, 0, (t3_color){ 1.0f, 0.7f, 0.25f }, 1.3f * pulse);
+        }
       }
     }
+  done(V.lock, nl), done(V.lock_glow, nl);
   done(V.trapwall, nt), done(V.breakable[0], nb[0]);
   if (V.breakable[1]) done(V.breakable[1], nb[1]);
   for (int f = 0; f < V.door_frames; f++) done(V.door[f], nd[f]), done(V.door_glow[f], nd[f]);
@@ -674,11 +692,16 @@ static void sync_features(const sim *s, float time) {
     t3_instanced_mesh_set_color_at(V.exit_im, ne, view_light_at(x, z));
     if (V.exit_glow) {
       put(V.exit_glow, ne, x, 0.0f, z, 0, 1);
-      float p = 1.4f + 0.5f * cw_sin(time * 2.5f + (float)k);
+      float p = 2.6f + 0.9f * cw_sin(time * 2.5f + (float)k);
       t3_instanced_mesh_set_color_at(V.exit_glow, ne, skip > 1 ? (t3_color){ 0.4f * p, 0.9f * p, 1.6f * p } : (t3_color){ 1.6f * p, 1.1f * p, 0.5f * p });
     }
     ne++;
-    cw_splats_add(V.glows, (t3_vec3){ x, 0, z }, 3.4f, 3.4f, 0, 0, skip > 1 ? (t3_color){ 0.3f, 0.6f, 1.0f } : (t3_color){ 1.0f, 0.75f, 0.35f }, 1.6f);
+    { /* a wide pool of light that breathes round the hatch: the way down reads from across the screen */
+      float br = 0.5f + 0.5f * cw_sin(time * 2.5f + (float)k);
+      t3_color ec = skip > 1 ? (t3_color){ 0.3f, 0.6f, 1.0f } : (t3_color){ 1.0f, 0.75f, 0.35f };
+      cw_splats_add(V.glows, (t3_vec3){ x, 0, z }, 3.4f, 3.4f, 0, 0, ec, 2.6f);
+      cw_splats_add(V.glows, (t3_vec3){ x, 0, z }, 4.2f + 1.4f * br, 4.2f + 1.4f * br, 0, 0, ec, 1.2f + 0.8f * br);
+    }
     { float p = 0.45f + 0.12f * cw_sin(time * 2.5f + (float)k); beam(x, z, 5.5f, 0.95f, skip > 1 ? (t3_color){ 0.25f * p, 0.55f * p, 1.0f * p } : (t3_color){ 1.0f * p, 0.7f * p, 0.3f * p }); }
   }
   done(V.exit_im, ne), done(V.exit_glow, ne);
@@ -951,7 +974,7 @@ static void sync_items(const sim *s, float time) {
       int i = n[owner][fi]++;
       if (i >= im->instance_matrix->count) continue;
       float y = still ? 0 : 0.35f + bob, yaw = still ? (float)(k * 53 % 100) * 0.06f : spin;
-      float sc_ = still ? 1.35f : 1.6f;
+      float sc_ = still ? 1.35f : g->kind == IT_KEY ? 2.4f : 1.6f; /* a key reads from across the screen */
       t3_vec3 q = pull(g->x, y, g->y, PULL_ITEM);
       if (still) put(im, i, q.x, q.y, q.z, yaw, sc_);
       else put_up(im, i, q.x, q.y, q.z, yaw, sc_);
@@ -961,13 +984,16 @@ static void sync_items(const sim *s, float time) {
         if (still) put(gm, i, q.x, q.y, q.z, yaw, sc_);
         else put_up(gm, i, q.x, q.y, q.z, yaw, sc_);
         const float *lc = g->kind == IT_ELIXIR ? ELIXIR_COL[g->arg % EL_KINDS] : gc;
-        t3_instanced_mesh_set_color_at(gm, i, (t3_color){ lc[0] * 2.4f, lc[1] * 2.4f, lc[2] * 2.4f });
+        float gk = g->kind == IT_KEY ? 4.0f : 2.4f;
+        t3_instanced_mesh_set_color_at(gm, i, (t3_color){ lc[0] * gk, lc[1] * gk, lc[2] * gk });
       }
       if (g->kind == IT_ELIXIR) gc = ELIXIR_COL[g->arg % EL_KINDS], glow_k = 1.4f;
-      if (g->kind == IT_KEY || g->kind == IT_POTION) glow_k = 1.5f;
+      if (g->kind == IT_POTION) glow_k = 1.5f;
+      if (g->kind == IT_KEY) glow_k = 2.6f;
       if (still && g->kind != IT_CHEST && g->kind != IT_CHEST_TRAP) glow_k = 0.7f;
     }
-    cw_splats_add(V.glows, (t3_vec3){ g->x, 0, g->y }, 2.2f, 2.2f, 0, 0, lin(gc[0], gc[1], gc[2]), glow_k * (0.85f + 0.15f * cw_sin(time * 4.0f + (float)k)));
+    { float gr = g->kind == IT_KEY ? 3.4f + 0.6f * cw_sin(time * 4.0f + (float)k) : 2.2f;
+      cw_splats_add(V.glows, (t3_vec3){ g->x, 0, g->y }, gr, gr, 0, 0, lin(gc[0], gc[1], gc[2]), glow_k * (0.85f + 0.15f * cw_sin(time * 4.0f + (float)k))); }
     if (g->kind == IT_KEY || g->kind == IT_POTION || g->kind == IT_ELIXIR || g->kind == IT_CHARM || g->kind == IT_CHEST) {
       float p = 0.3f + 0.08f * cw_sin(time * 3.0f + (float)k);
       t3_color lc = lin(gc[0], gc[1], gc[2]);

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.27.4
+
+- Crawler: the way down reads from the overhead camera on every preset. A shut door's gate now fills its tile with a
+  glowing key on its top and warm light either side (from above it read as a low rail); a key is drawn half as big
+  again in a strong pool of light; every way down has EXIT over it (DOWN n for a stair that skips floors) in a ring of
+  light, with a wide pool of light round the hatch. After 20 seconds on a floor an arrow by the leading hero points the
+  way: to the exit, or to the nearest key while a shut door is in the way and nobody holds one.
+- Tests: tests/crawler-find-the-way.mjs (the cart through romdev, GL and WebGPU) stands a player on floor 1 until the
+  arrow appears, then follows only the arrow to the key, through the door and down to floor 2; its control
+  (`sw guide_off 1`) leaves the player on floor 1 with nothing to follow.
+
 ## 0.27.3
 
 - Crawler: a seat nobody plays no longer pins the team at the start. A second pad that joined and was then put

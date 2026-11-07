@@ -149,6 +149,19 @@ its monster's colour and pulses as it spawns.
   with the keys found on the way (the level check proves it on every floor).
 - A floor held for 180 s opens all its doors by themselves.
 
+## Finding the way (read from the overhead camera, on every preset)
+
+- From straight above a column of light is only a disc and a 0.64 m gate of bars is a rail, so what matters is
+  marked where the camera sees it:
+  - A shut door's gate fills its tile (stretched through it, DOOR_SHUT_DEPTH), with a glowing key lying on its top and
+    warm light on the floor either side: it wants a key. Opening, it sinks as modelled.
+  - A key is drawn half as big again as other pickups, with a strong pulsing pool of light.
+  - Every way down has EXIT over it (DOWN n for a stair that skips floors) in a ring of light, and a wide pool of light
+    round the hatch.
+- After 20 s on a floor an arrow by the leading hero points a few tiles along the way: to the exit, or to the nearest
+  key while a shut door stands between the team and the exit and nobody holds one; a key in sight gets a ring and KEY.
+  tests/crawler-find-the-way.mjs proves a player following only the arrow gets from floor 1 to floor 2.
+
 ## Health, food and potions
 
 | Item | Gives | Shootable |

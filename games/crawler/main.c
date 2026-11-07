@@ -52,6 +52,8 @@ static struct {
   bool ready[MAXP];
   int32_t state, floor, ticks, enemies, kills, alive, floors_done, doors, keys_used, potions_used, spawners_down, best_floor, cut, walls_drawn, drawn;
   int32_t carried, idle_anchor; /* players left behind and carried to the team; the control switch (sw idle_anchor) */
+  int32_t guide_kind, guide_off, exits_marked; /* the arrow (0 none, 1 the exit, 2 a key); its switch (sw guide_off); EXIT labels drawn */
+  float guide_u, guide_v;  /* where the arrow points from the hero (screen 0..1) */
   int32_t idle[MAXP];
   float pu[MAXP], pv[MAXP]; /* where each player stands on screen, 0 to 1 (review crops) */
   int32_t hp[MAXP], score[MAXP], px[MAXP], py[MAXP];
@@ -214,9 +216,10 @@ static bool warmup(void *u) {
 
 /* the gates' switches */
 static void cmd_sw(int argc, const char **argv, cw_reply *r) {
-  if (argc < 3 || strcmp(argv[1], "idle_anchor")) { cw_reply_error(r, "usage: sw idle_anchor <0|1>"); return; }
-  G.idle_anchor = atoi(argv[2]) != 0;
-  cw_reply_printf(r, "{\"idle_anchor\":%d}", G.idle_anchor);
+  if (argc < 3 || (strcmp(argv[1], "idle_anchor") && strcmp(argv[1], "guide_off"))) { cw_reply_error(r, "usage: sw idle_anchor|guide_off <0|1>"); return; }
+  if (!strcmp(argv[1], "idle_anchor")) G.idle_anchor = atoi(argv[2]) != 0;
+  else G.guide_off = atoi(argv[2]) != 0;
+  cw_reply_printf(r, "{\"idle_anchor\":%d,\"guide_off\":%d}", G.idle_anchor, G.guide_off);
 }
 
 #ifdef CRAWLER_AUTOPILOT
@@ -270,6 +273,9 @@ static void init(void *u) {
   cw_debug_i32("game.potions_used", &G.potions_used);
   cw_debug_i32("game.spawners_down", &G.spawners_down);
   cw_debug_i32("game.carried", &G.carried);
+  cw_debug_i32("guide.kind", &G.guide_kind);
+  cw_debug_i32("guide.exits_marked", &G.exits_marked);
+  cw_debug_f32("guide.u", &G.guide_u), cw_debug_f32("guide.v", &G.guide_v);
   cw_debug_field("player.idle", G.idle, CW_DBG_I32, MAXP);
   cw_debug_field("player.hp", G.hp, CW_DBG_I32, MAXP);
   cw_debug_field("player.score", G.score, CW_DBG_I32, MAXP);
@@ -287,7 +293,7 @@ static void init(void *u) {
   cw_debug_f32("dev.tilt", &g_tilt);
   cw_debug_f32("dev.rim_k", &g_rim_k);
   cw_debug_f32("dev.lean", &g_lean);
-  cw_debug_command("sw", "sw idle_anchor <0|1>: a test switch (1: a player nobody plays holds the team back, as before)", cmd_sw);
+  cw_debug_command("sw", "sw idle_anchor|guide_off <0|1>: test switches (a player nobody plays holds the team back, as before; no EXIT labels or arrow)", cmd_sw);
 #ifdef CRAWLER_AUTOPILOT
   cw_debug_command("floor", "floor <n>: go to that floor", cmd_floor);
   if (getenv("CRAWLER_CAM_DIST")) g_cam_dist = (float)atof(getenv("CRAWLER_CAM_DIST")); /* key-art captures: a closer camera */
@@ -525,6 +531,122 @@ static float role_h(const char *const role[2], float wrap, float size) {
   return h;
 }
 
+/* ── the way on ─────────────────────────────────────────────────────── */
+
+/* "EXIT" over every way down on the screen, and, once a floor has been walked GUIDE_TICKS without going down, an
+ * arrow by the leading hero pointing a few tiles along the way to the exit (or to a key, while a shut door stands
+ * between the team and the exit and nobody holds one), and a ring round that key when it is on the screen */
+#define GUIDE_TICKS (20 * 60)
+static int16_t guide_prev[MZ_MAX * MZ_MAX];
+static uint16_t guide_dist[MZ_MAX * MZ_MAX];
+
+/* what the arrow points to: 1 the exit, 2 a key, 0 nothing (no way); *wx, *wz the goal, *ax, *az a point a few
+ * tiles along the way to it from the hero */
+static int guide_goal(const sim *s, int hero, float *wx, float *wz, float *ax, float *az) {
+  const maze *m = &s->m;
+  int keys = 0;
+  for (int i = 0; i < MAXP; i++) if (s->p[i].active && !s->p[i].down) keys += s->p[i].keys;
+  int W = m->w, n = W * m->h, q[MZ_MAX * MZ_MAX], qh = 0, qt = 0;
+  for (int i = 0; i < n; i++) guide_dist[i] = 0xffff, guide_prev[i] = -1;
+  int sx = mz_tx(m, s->p[hero].x), sy = mz_ty(m, s->p[hero].y);
+  if (!mz_in(m, sx, sy)) return 0;
+  guide_dist[sy * W + sx] = 0, q[qt++] = sy * W + sx;
+  while (qh < qt) {
+    int c = q[qh++], cx = c % W, cy = c / W;
+    static const int DX[4] = { 1, -1, 0, 0 }, DY[4] = { 0, 0, 1, -1 };
+    for (int d = 0; d < 4; d++) {
+      int nx = cx + DX[d], ny = cy + DY[d], k = ny * W + nx;
+      if (!mz_in(m, nx, ny) || guide_dist[k] != 0xffff) continue;
+      int t = s->t[ny][nx];
+      if (!(t == T_FLOOR || (t == T_DOOR && keys > 0))) continue;
+      guide_dist[k] = (uint16_t)(guide_dist[c] + 1), guide_prev[k] = (int16_t)c, q[qt++] = k;
+    }
+  }
+  int goal = -1, kind = 0;
+  for (int e = 0; e < m->nexit && kind != 1; e++) {
+    int k = m->exit[e][1] * W + m->exit[e][0];
+    if (m->exit[e][2] == 1 && guide_dist[k] != 0xffff) goal = k, kind = 1;
+  }
+  if (!kind)
+    for (int i = 0; i < MAXG; i++) {
+      const pickup *g = &s->g[i];
+      if (!g->alive || g->kind != IT_KEY) continue;
+      int gx = mz_tx(m, g->x), gy = mz_ty(m, g->y), k = gy * W + gx;
+      if (mz_in(m, gx, gy) && guide_dist[k] != 0xffff && (goal < 0 || guide_dist[k] < guide_dist[goal])) goal = k, kind = 2;
+    }
+  if (!kind) return 0;
+  *wx = mz_wx(m, (float)(goal % W)), *wz = mz_wz(m, (float)(goal / W));
+  /* the farthest tile on the way, at most 5 steps on, that the hero can walk to in a straight line (a body's width
+   * clear of every wall), so the arrow never points into a corner */
+  int path[MZ_MAX * MZ_MAX], np = 0;
+  for (int p = goal; p >= 0 && np < MZ_MAX * MZ_MAX; p = guide_prev[p]) path[np++] = p;
+  int pick = np >= 2 ? path[np - 2] : goal;
+  for (int k = np - 2; k >= 0 && guide_dist[path[k]] <= 5; k--) {
+    float tx = mz_wx(m, (float)(path[k] % W)), tz = mz_wz(m, (float)(path[k] / W)), dx = tx - s->p[hero].x, dz = tz - s->p[hero].y;
+    float l = sqrtf(dx * dx + dz * dz), nx = l > 0 ? -dz / l : 0, nz = l > 0 ? dx / l : 0;
+    bool clear = true;
+    for (int i = 1; i <= (int)(l / 0.4f) + 1 && clear; i++)
+      for (int sd = -1; sd <= 1 && clear; sd++) {
+        float f = (float)i / ((float)(int)(l / 0.4f) + 1), x = s->p[hero].x + dx * f + nx * 0.5f * (float)sd, z = s->p[hero].y + dz * f + nz * 0.5f * (float)sd;
+        int cx = mz_tx(m, x), cz = mz_ty(m, z), c = mz_in(m, cx, cz) ? s->t[cz][cx] : T_WALL;
+        clear = c == T_FLOOR || (c == T_DOOR && keys > 0);
+      }
+    if (clear) pick = path[k];
+  }
+  *ax = mz_wx(m, (float)(pick % W)), *az = mz_wz(m, (float)(pick / W));
+  return kind;
+}
+
+static void guide(cw_vec2 cs, float u) {
+  const sim *s = &G.S;
+  G.guide_kind = 0;
+  if (s->state != ST_PLAY || G.guide_off) return;
+  float pulse = 0.5f + 0.5f * cw_sin((float)s->tick * 0.1f);
+  for (int e = 0; e < s->m.nexit; e++) { /* EXIT over each hatch, in a ring of light */
+    float x = mz_wx(&s->m, s->m.exit[e][0]), z = mz_wz(&s->m, s->m.exit[e][1]), u0, v0, u1, v1;
+    if (!view_screen((t3_vec3){ x, 0, z }, &u0, &v0) || !view_screen((t3_vec3){ x + MZ_TILE * 0.8f, 0, z }, &u1, &v1)) continue;
+    cw_vec2 c = cw_v2(u0 * cs.x, v0 * cs.y);
+    float r = fabsf(u1 - u0) * cs.x;
+    cw_color col = s->m.exit[e][2] > 1 ? rgba(0.55f, 0.8f, 1, 1) : rgba(1, 0.85f, 0.4f, 1);
+    cw_r2d_circle_lines(c, r * (1.0f + 0.12f * pulse), 4 * u, 48, rgba(col.r, col.g, col.b, 0.55f + 0.35f * pulse));
+    char b[24];
+    if (s->m.exit[e][2] > 1) snprintf(b, sizeof b, "DOWN %d", s->m.exit[e][2]);
+    else snprintf(b, sizeof b, "EXIT");
+    float th = measure(b, 30 * u).height;
+    text(b, c.x, c.y - r * 1.15f - th, 30 * u, col, CW_ALIGN_CENTER);
+    G.exits_marked++;
+  }
+  if (s->floor_ticks < GUIDE_TICKS) return;
+  int hero = -1;
+  for (int i = 0; i < MAXP && hero < 0; i++) if (sim_player_leads(s, i)) hero = i;
+  if (hero < 0) return;
+  float gx, gz, ax, az, hu, hv, gu, gv, pu, pv;
+  int kind = guide_goal(s, hero, &gx, &gz, &ax, &az);
+  if (!kind) return;
+  const player *p = &s->p[hero];
+  if (view_screen((t3_vec3){ gx, 0.5f, gz }, &gu, &gv) && gu > 0.04f && gu < 0.96f && gv > 0.08f && gv < 0.94f) {
+    if (kind == 2) { /* the key in sight: a ring round it */
+      cw_r2d_circle_lines(cw_v2(gu * cs.x, gv * cs.y), (36 + 8 * pulse) * u, 4 * u, 40, rgba(1, 0.85f, 0.3f, 0.6f + 0.3f * pulse));
+      text("KEY", gu * cs.x, gv * cs.y - 52 * u - measure("KEY", 30 * u).height, 30 * u, rgba(1, 0.85f, 0.3f, 1), CW_ALIGN_CENTER);
+    }
+  }
+  if (!view_screen((t3_vec3){ p->x, 1.0f, p->y }, &hu, &hv) || !view_screen((t3_vec3){ ax, 1.0f, az }, &pu, &pv)) return;
+  float dx = (pu - hu) * cs.x, dy = (pv - hv) * cs.y, l = sqrtf(dx * dx + dy * dy);
+  if (l < 1) return;
+  dx /= l, dy /= l;
+  G.guide_kind = kind, G.guide_u = pu, G.guide_v = pv;
+  float d = (96 + 10 * pulse) * u;
+  cw_vec2 tip = cw_v2(hu * cs.x + dx * (d + 30 * u), hv * cs.y + dy * (d + 30 * u)), b0 = cw_v2(hu * cs.x + dx * d - dy * 20 * u, hv * cs.y + dy * d + dx * 20 * u),
+          b1 = cw_v2(hu * cs.x + dx * d + dy * 20 * u, hv * cs.y + dy * d - dx * 20 * u);
+  cw_vec2 tri[3] = { tip, b0, b1 };
+  cw_color col = kind == 1 ? rgba(1, 0.85f, 0.4f, 0.95f) : rgba(1, 0.8f, 0.25f, 0.95f);
+  cw_r2d_polygon(tri, 3, col);
+  cw_r2d_polygon_lines(tri, 3, 2.5f * u, rgba(0, 0, 0, 0.85f));
+  const char *what = kind == 1 ? "EXIT" : "KEY";
+  float lx = hu * cs.x + dx * (d + 70 * u), ly = hv * cs.y + dy * (d + 70 * u) - measure(what, 30 * u).height * 0.5f;
+  text(what, lx, ly, 30 * u, col, CW_ALIGN_CENTER);
+}
+
 static void hud(void) {
   cw_vec2 cs = cw_r2d_canvas_size();
   float u = cs.y / 1080.0f, bs = 26 * u;
@@ -580,6 +702,7 @@ static void hud(void) {
     snprintf(t, sizeof t, "P%d", i + 1);
     text(t, su * cs.x, sv * cs.y - 4 * u - measure(t, bs).height, bs, rgba(0.6f + 0.4f * PCOL[i][0], 0.6f + 0.4f * PCOL[i][1], 0.6f + 0.4f * PCOL[i][2], 1), CW_ALIGN_CENTER);
   }
+  guide(cs, u);
   char b[96];
   snprintf(b, sizeof b, "FLOOR %d", G.S.floor);
   float top = 12 * u + text(b, cs.x * 0.5f, 12 * u, 30 * u, rgba(1, 0.92f, 0.75f, 1), CW_ALIGN_CENTER).height;
