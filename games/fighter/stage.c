@@ -7,11 +7,13 @@
 #include <string.h>
 
 #include "game.h"
+#include "cartwheel/quality.h"
 
 #define MAXPART 32
 typedef struct anim_part { t3_object *o; int kind; float phase; t3_quat rest; } anim_part;
 enum { PK_FAN, PK_BLINK, PK_LAMP, PK_SIGN };
 
+typedef struct stage_light { cw_node n; int kind; float score; bool shown; } stage_light;
 static struct {
   int stage;
   cw_node node, rim[2], neon[4], key[2], fill;
@@ -23,7 +25,11 @@ static struct {
   cw_node fx[4];
   int nfx;
   crowd crowd;
+  /* every omni light of the stage, for the cap on Low and Very Low (stage_lights_cap) */
+  stage_light light[24];
+  int nlights;
 } S;
+enum { LK_RIM, LK_KEY, LK_OTHER, LK_FLASH }; /* (the key lights and the fill: LK_KEY) */
 
 static void shadows(t3_object *o, bool cast) {
   if (o->type == T3_MESH || o->type == T3_SKINNED_MESH) { o->cast_shadow = cast; o->receive_shadow = true; }
@@ -103,6 +109,18 @@ void stage_load(int stage, cw_node parent) {
     cw_value v = { 0 };
     S.neon_e[i] = cw_node_valid(S.neon[i]) && cw_node_get_prop(S.neon[i], "energy", &v) ? (float)v.f : 0;
   }
+  /* the stage's omni lights: the rims, the portrait's key and fill, the explosion flashes and the stage's own (ranked
+   * by how much light they throw: energy x range^2) */
+  S.nlights = 0;
+  for (int i = 0, n = cw_node_child_count(parent); i < n && S.nlights < 24; i++) {
+    cw_node c = cw_node_child(parent, i);
+    if (!cw_node_is(c, "OmniLight3D")) continue;
+    const char *nm = cw_node_name(c) ? cw_node_name(c) : "";
+    cw_value e = { 0 }, r = { 0 };
+    float energy = cw_node_get_prop(c, "energy", &e) ? (float)e.f : 0, range = cw_node_get_prop(c, "range", &r) ? (float)r.f : 0;
+    int kind = !strncmp(nm, "Rim", 3) ? LK_RIM : !strncmp(nm, "Key", 3) || !strncmp(nm, "Fill", 4) ? LK_KEY : !strncmp(nm, "Flash", 5) ? LK_FLASH : LK_OTHER;
+    S.light[S.nlights++] = (stage_light){ c, kind, energy * range * range, true };
+  }
   /* ambient particles per stage */
   if (stage == 1) {
     S.fx[S.nfx++] = particles("Rain", RAIN, 301, (t3_vec3){ 0, 11, -1 });
@@ -129,6 +147,29 @@ static bool showcase;
 void stage_set_showcase(bool on) { showcase = on; }
 
 static float hash01(uint32_t x) { x ^= x >> 16; x *= 0x7feb352dU; x ^= x >> 15; x *= 0x846ca68bU; x ^= x >> 16; return (float)(x & 0xffff) / 65535.0f; }
+
+/* Low and Very Low draw at most 4 of the stage's omni lights (the stage has 11 to 15, clustered: a pixel loops
+ * over every light whose range reaches its cell). The rims stay, then the strongest of the stage's own; the
+ * explosion flashes are dropped (the engine draws none on Very Low either), and the portrait's key and fill take the
+ * stage lights' places on the select screen. From Medium up every light draws, as authored. */
+static void stage_lights_cap(void) {
+  int fx = cw_gfx_effective(CW_GFX_EFFECTS), cap = fx <= CW_QUALITY_LOW ? 4 : -1;
+  int order[24], n = 0;
+  bool want[24];
+  for (int k = 0; k < S.nlights; k++) want[k] = cap < 0;
+  for (int pass = 0; pass < 3 && cap >= 0; pass++) {
+    int kind = pass == 0 ? LK_RIM : pass == 1 ? (showcase ? LK_KEY : -1) : LK_OTHER;
+    if (kind < 0) continue;
+    int first = n;
+    for (int k = 0; k < S.nlights; k++)
+      if (S.light[k].kind == kind) order[n++] = k;
+    for (int a = first + 1; a < n; a++) /* the strongest first */
+      for (int b = a; b > first && S.light[order[b]].score > S.light[order[b - 1]].score; b--) { int t = order[b]; order[b] = order[b - 1]; order[b - 1] = t; }
+  }
+  for (int i = 0; i < n && i < cap; i++) want[order[i]] = true;
+  for (int k = 0; k < S.nlights; k++) /* (the node's visible: the engine copies it to the light each frame) */
+    if (want[k] != S.light[k].shown) S.light[k].shown = want[k], cw_node_set(S.light[k].n, "visible", cw_val_bool(want[k]));
+}
 
 void stage_frame(const ft_game *g, float dt) {
   (void)dt;
@@ -177,4 +218,5 @@ void stage_frame(const ft_game *g, float dt) {
     cw_node_set(S.fill, "energy", cw_val_float(showcase ? 1.2f : 0));
   }
   crowd_frame(&S.crowd, g, dt);
+  stage_lights_cap();
 }
