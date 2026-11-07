@@ -229,15 +229,15 @@ function native(gpu) {
   const picked = run('pick', presses('north', 'down', 'right', 'right'), FRAMES);
   check('native: from Medium, two rights reach Ultra', picked['cw.quality'] === ULTRA, `cw.quality ${picked['cw.quality']}`);
   const word = readFileSync(join(dir, 'save.dat')).readUInt32LE(GRAPHICS_OFFSET);
-  check('native: the save file holds Ultra', word === ULTRA + 1, `word ${word}`);
+  check('native: the save file holds Ultra', word === presetWord(ULTRA), `word ${word}`);
   const again = run('again', [], 30);
   check('native: Ultra survives a restart', again['cw.quality'] === ULTRA, `cw.quality ${again['cw.quality']}`);
   const back = run('back', presses('north', 'down', 'right'), FRAMES);
-  check('native: right from a restored Ultra wraps to Low', back['cw.quality'] === LOW, `cw.quality ${back['cw.quality']}`);
+  check('native: right from a restored Ultra wraps to Very Low', back['cw.quality'] === VERY_LOW, `cw.quality ${back['cw.quality']}`);
   // control: no save file, the same run must come back on the default
   rmSync(join(dir, 'save.dat'));
   const none = run('none', [], 30);
-  if (none['cw.quality'] === ULTRA || none['cw.quality'] === LOW) { console.log(`FAIL control passed: no save file and still ${NAMES[none['cw.quality']]}`); failed++; }
+  if (none['cw.quality'] === ULTRA || none['cw.quality'] === VERY_LOW) { console.log(`FAIL control passed: no save file and still ${NAMES[none['cw.quality']]}`); failed++; }
   else console.log(`ok   control failed as it must, no save file: ${NAMES[none['cw.quality']]}`);
   rmSync(dir, { recursive: true, force: true });
 }
