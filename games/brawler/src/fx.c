@@ -315,8 +315,8 @@ void fx_hit(float x, float y, float z, int kind, int face) {
 static uint32_t fxh(uint32_t a, uint32_t b) { uint32_t h = a * 0x9e3779b9u ^ (b + 0x7f4a7c15u) * 0x85ebca6bu; h ^= h >> 15; h *= 0x2c1b3c6du; h ^= h >> 12; return h; }
 static float fxu(uint32_t a, uint32_t b) { return (float)(fxh(a, b) & 0xffff) / 65535.0f; }
 static int nstain;
-#define STAIN_K 0.52f /* a fresh stain's shade (was 0.78) */
-#define STAIN_DRY 0.36f /* and once it has soaked in (fx_tick: over its first 20 s) */
+#define STAIN_K 0.36f /* a fresh stain's shade (was 0.78: on the arcade's dark tiles a pool read as a flat bright red blob) */
+#define STAIN_DRY 0.25f /* and once it has soaked in (fx_tick: over its first 20 s) */
 void fx_stain(float x, float z, float size, int kind) {
   /* kind 0: drops (a light or heavy blow), 1: a splat (a body landing), 2: a pool (the dead) */
   static const int CELLS[3][4] = { { 4, 6, 1, 2 }, { 0, 7, 3, 1 }, { 5, 0, 7, 5 } };

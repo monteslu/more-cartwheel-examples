@@ -645,7 +645,7 @@ void ent_hurt(ent *v, ent *a, float dmg, int knock, float fx) {
     }
   }
   if (v->st == S_FALL && v->hp > 0 && (launch || juggled)) { /* up it goes, close in front, open to more */
-    v->vy = launch ? 7.4f : 4.0f, v->vx = (float)dir * (launch ? 0.9f : 0.7f), v->invuln = 0;
+    v->vy = launch ? 6.4f : 3.8f, v->vx = (float)dir * (launch ? 0.25f : 0.3f), v->invuln = 0; /* up, not away: the next blows reach it */
     if (launch) v->juggle = 3; else v->juggle--;
   } else if (v->st == S_FALL) v->juggle = 0;
   if (stomped && v->hp > 0) { v->st = S_DOWN, v->t = down_t; char_play(v, "down", 0.02f); } /* stamped on where it lies: it stays down (no longer than it would have) */

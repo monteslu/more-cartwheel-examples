@@ -739,14 +739,15 @@ static void title_pose(void) {
   for (int i = 0; i < MAXP; i++) {
     ent *e = &W.p[i];
     if (!e->used) continue;
-    e->x = 2.0f + ((float)i - 1.5f) * 1.45f, e->z = (i & 1) ? -0.25f : 0.1f, e->y = 0, e->face = i < 2 ? 1 : -1;
+    static const float TX[MAXP] = { -3.3f, -2.2f, 2.2f, 3.3f }; /* two each side of the menu */
+    e->x = 2.0f + TX[i], e->z = (i & 1) ? -0.3f : 0.15f, e->y = 0, e->face = i < 2 ? 1 : -1;
     char_sync(e);
   }
   g_freeze = true;
   { extern float g_freeze_yaw; g_freeze_yaw = 0.35f; }
   for (int i = 0; i < MAXP; i++) if (W.p[i].used) char_sync(&W.p[i]);
   cw_node cam = cw_node_get(cw_node_get(cw_tree_root(cw_scene_app_tree()), "Level"), "Camera");
-  cw_node3d_set_position(cam, (t3_vec3){ 2.0f, 2.3f, 4.4f });
+  cw_node3d_set_position(cam, (t3_vec3){ 2.0f, 2.05f, 6.0f });
   cw_node3d_set_rotation(cam, (t3_vec3){ -0.04f, 0, 0 });
 }
 #endif
