@@ -93,7 +93,7 @@ python3 tools/build-engine-audio.py
 
 ## Handling and combat references
 
-Standard bank-and-turn and optional direct roll/pitch controls follow the distinction described in [Bandai Namco’s Ace Combat controls guide](https://www.bandainamcoent.com/es_mx/news/8-steps-to-fly-towards-victory-in-ace-combat-7). Response shaping and limited smoothing draw on [War Thunder’s axis guide](https://wiki.warthunder.com/controls/4785-setting-up-control-axis-and-sensitivity). Player agency, varied air/ground encounters, tactical clouds and clear sound feedback are informed by the [Ace Combat 7 development interview](https://www.bandainamcostudios.com/en/behind-the-game/205). These are design references; Sky Fighter uses its own simplified flight and combat model.
+Standard bank-and-turn and optional direct roll/pitch controls follow the usual split in arcade air-combat games between an assisted mode that banks to turn and an expert mode with direct roll and pitch. Response shaping and limited smoothing follow common practice for flight-game stick curves. Player agency, varied air/ground encounters, tactical clouds and clear sound feedback follow the same arcade air-combat genre. Sky Fighter uses its own simplified flight and combat model.
 
 Music: the user-provided `assets/audio/music/GallopingRiff.mp3` plays in stereo at 0.10 gain (−20 dB), fades in over two seconds, and ducks further under effects. It decodes on the game thread into a 256 KiB ring; the full eight-minute song stays encoded in memory. The real-time audio callback only reads ready samples. The audio playtest verifies playback, quiet music, exact silence at idle when music is muted, afterburner prominence and zero streaming underruns.
 

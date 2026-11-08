@@ -15,6 +15,7 @@ static const char *const sw_names[SW_COUNT] = { "objective_nearest", "lock_flick
 static int32_t sw[SW_COUNT];
 
 #define KILLS 4
+#define CARD_PARTS 3
 #define DEBRIS 4
 #define LIGHTS 2 /* flash lights: none on Very Low, one on Low and Medium, two on High and Ultra (the "flash_lights" knob) */
 #define FLASH_RISE .30f
@@ -24,7 +25,7 @@ static struct {
   /* bandits: a vapour trail, a hot exhaust and the hp they started with */
   cw_node contrail[ENEMIES]; t3_object *glow[ENEMIES]; int32_t max_hp[ENEMIES], smoking[ENEMIES]; int rim_on, rim_ace[ENEMIES];
   /* kills: a fireball, a smoke column, a swelling light, heat ripple and burning pieces */
-  cw_node fire[KILLS], smoke[KILLS], light[LIGHTS], ripple[KILLS]; float light_age[LIGHTS], light_peak[LIGHTS], light_prev[LIGHTS]; int next_light;
+  cw_node fire[KILLS], core[KILLS], smoke[KILLS], light[LIGHTS], ripple[KILLS]; float light_age[LIGHTS], light_peak[LIGHTS], light_prev[LIGHTS]; int next_light;
   debris pieces[KILLS * DEBRIS]; t3_material *charred; int next_kill;
   float since_rise; int32_t rises; float min_gap, max_step; /* fx.flash_*: the gates read these */
   /* the player's jet: smoke below 60 % airframe, fire below 30 % */
@@ -34,7 +35,7 @@ static struct {
   /* guns, flights, low passes */
   cw_node sparks, puff, spray; int lead, twist, inbound; int32_t flight_max, active_max, low_passes, smoked; float low_time;
   /* cumulus cards: soft lit billboards where the volumes stand, drawn when the volumetric fog is off */
-  cw_node cards[8][2]; int32_t cards_on;
+  cw_node cards[8][CARD_PARTS]; float card_size[CARD_PARTS]; int32_t cards_on;
   /* the objective as the HUD shows it */
   int32_t objective; float objective_view[3]; /* bearing and elevation off the nose (degrees), distance (m) */
   /* tests */
@@ -97,10 +98,15 @@ static void feel_make(void) {
       "0 0.35, 0.15 1, 0.6 1.7, 1 2.2");
     cw_node_set(F.fire[k], "energy", cw_val_float(2.6f)); cw_node_set(F.fire[k], "speed_min", cw_val_float(6)); cw_node_set(F.fire[k], "speed_max", cw_val_float(30));
     cw_node_set(F.fire[k], "damping", cw_val_float(1.6f)); cw_node_set(F.fire[k], "gravity", cw_val_vec3(0, 2, 0));
+    /* a white-hot core inside the fireball, swelling with it and gone in half a second */
+    snprintf(name, sizeof name, "KillCore%d", k);
+    F.core[k] = fx_particles(name, 24, .55f, 9, "ADD", "0 1 0.9 0.7 0.2, 0.15 1 0.85 0.55 1, 0.5 1 0.5 0.15 0.6, 1 0.4 0.1 0.02 0", "0 0.4, 0.2 1, 1 1.6");
+    cw_node_set(F.core[k], "energy", cw_val_float(5)); cw_node_set(F.core[k], "speed_min", cw_val_float(2)); cw_node_set(F.core[k], "speed_max", cw_val_float(12));
+    cw_node_set(F.core[k], "damping", cw_val_float(2));
     snprintf(name, sizeof name, "KillSmoke%d", k);
-    F.smoke[k] = fx_particles(name, 46, 5, 15, "ALPHA",
+    F.smoke[k] = fx_particles(name, 70, 5.5f, 15, "ALPHA",
       "0 0.15 0.13 0.12 0, 0.12 0.13 0.12 0.11 0.7, 0.6 0.22 0.21 0.2 0.5, 1 0.32 0.32 0.32 0", "0 0.3, 0.2 1, 1 2.8");
-    cw_node_set(F.smoke[k], "speed_min", cw_val_float(3)); cw_node_set(F.smoke[k], "speed_max", cw_val_float(14));
+    cw_node_set(F.smoke[k], "speed_min", cw_val_float(6)); cw_node_set(F.smoke[k], "speed_max", cw_val_float(26)); /* rolls out of the fireball */
     cw_node_set(F.smoke[k], "damping", cw_val_float(.8f)); cw_node_set(F.smoke[k], "gravity", cw_val_vec3(0, 3, 0));
     cw_node_set(F.smoke[k], "explosiveness", cw_val_float(.6f));
     if (k < LIGHTS) { /* hidden while dark: a light only costs while it glows */
@@ -119,7 +125,7 @@ static void feel_make(void) {
   F.charred = t3_mesh_standard_material_new(0x2a2624); F.charred->roughness = .9f; F.charred->metalness = .3f;
   for (int i = 0; i < KILLS * DEBRIS; i++) {
     debris *d = &F.pieces[i];
-    d->node = box((t3_object *)G.scene, 0, 0, 0, 1.6f + (i % 3) * .8f, .35f + (i % 2) * .3f, 1.2f + (i % 4) * .6f, F.charred);
+    d->node = box((t3_object *)G.scene, 0, 0, 0, 2.6f + (i % 3) * 1.2f, .6f + (i % 2) * .5f, 2 + (i % 4) * 1, F.charred);
     d->node->visible = false;
     snprintf(name, sizeof name, "DebrisSmoke%d", i);
     cw_node t = d->smoke = cw_node_new("Trail3D", name);
@@ -152,25 +158,28 @@ static void feel_make(void) {
   /* both ride on the aircraft node at the nozzles (it carries the jet's drawn position), the puffs left in the world */
   cw_node_reparent(F.hurt_smoke, G.jet_node); cw_node_reparent(F.hurt_fire, G.jet_node);
   cw_node3d_set_position(F.hurt_smoke, (t3_vec3){ .3f, -.5f, 7.2f }); cw_node3d_set_position(F.hurt_fire, (t3_vec3){ -.58f, -.5f, 6.9f });
-  /* cumulus cards: a sunlit crown and a greyer base per site, a dozen soft puffs each that slowly turn over */
-  for (int i = 0; i < 8; i++) for (int part = 0; part < 2; part++) {
+  /* cumulus cards: per site a flat grey-blue base, a body and a sunlit crown, each many overlapping soft puffs at low
+   * opacity (softer edges than a few big ones) that slowly turn over; all of it at the cloud's own height */
+  for (int i = 0; i < 8; i++) for (int part = 0; part < CARD_PARTS; part++) {
+    static const struct { int amount; float ex, ey, ez, dy, size; const char *ramp; float energy; } P[CARD_PARTS] = {
+      { 20, 470, 14, 230, -5, 360, "0 0.62 0.67 0.75 0, 0.25 0.62 0.67 0.75 0.26, 0.75 0.62 0.67 0.75 0.26, 1 0.62 0.67 0.75 0", 1 },
+      { 24, 420, 24, 210, 22, 340, "0 0.88 0.9 0.94 0, 0.25 0.88 0.9 0.94 0.24, 0.75 0.88 0.9 0.94 0.24, 1 0.88 0.9 0.94 0", 1.05f },
+      { 18, 330, 20, 170, 48, 300, "0 1 0.98 0.95 0, 0.25 1 0.98 0.95 0.26, 0.75 1 0.98 0.95 0.26, 1 1 0.98 0.95 0", 1.2f } };
     snprintf(name, sizeof name, "CumulusCard%d_%d", i, part);
     cw_node n = F.cards[i][part] = cw_node_new("GPUParticles3D", name);
-    cw_node_set(n, "amount", cw_val_int(part ? 14 : 10)); cw_node_set(n, "lifetime", cw_val_float(40));
+    cw_node_set(n, "amount", cw_val_int(P[part].amount)); cw_node_set(n, "lifetime", cw_val_float(40));
     cw_node_set(n, "preprocess", cw_val_float(40)); cw_node_set(n, "explosiveness", cw_val_float(0)); cw_node_set(n, "one_shot", cw_val_bool(false));
-    cw_node_set(n, "emission_shape", cw_val_enum("BOX"));
-    cw_node_set(n, "emission_extents", part ? cw_val_vec3(290, 80, 210) : cw_val_vec3(330, 35, 240));
+    cw_node_set(n, "emission_shape", cw_val_enum("BOX")); cw_node_set(n, "emission_extents", cw_val_vec3(P[part].ex, P[part].ey, P[part].ez));
     cw_node_set(n, "speed_min", cw_val_float(.3f)); cw_node_set(n, "speed_max", cw_val_float(1.2f)); cw_node_set(n, "gravity", cw_val_vec3(0, 0, 0));
     cw_node_set(n, "direction", cw_val_vec3(.92f, 0, .38f)); cw_node_set(n, "spread", cw_val_float(12)); /* a slow drift with the wind, tens of metres over a puff's life */
-    cw_node_set(n, "size", cw_val_float(part ? 260 : 300)); cw_node_set(n, "size_random", cw_val_float(.35f)); cw_node_set(n, "spin", cw_val_float(.02f));
+    cw_node_set(n, "size", cw_val_float(0)); cw_node_set(n, "size_random", cw_val_float(.4f)); cw_node_set(n, "spin", cw_val_float(.02f));
     cw_node_set(n, "texture", cw_val_string("effects/billow.sprite")); cw_node_set(n, "blend", cw_val_enum("ALPHA"));
-    cw_node_set(n, "soft_distance", cw_val_float(60)); cw_node_set(n, "camera_fade", cw_val_float(160));
-    cw_node_set(n, "color_ramp", cw_val_string(part ? "0 1 1 1 0, 0.15 1 1 1 0.85, 0.85 1 1 1 0.85, 1 1 1 1 0"
-                                                     : "0 0.62 0.66 0.72 0, 0.15 0.62 0.66 0.72 0.8, 0.85 0.62 0.66 0.72 0.8, 1 0.62 0.66 0.72 0"));
-    cw_node_set(n, "energy", cw_val_float(part ? 1.15f : 1));
+    cw_node_set(n, "soft_distance", cw_val_float(80)); cw_node_set(n, "camera_fade", cw_val_float(180));
+    cw_node_set(n, "color_ramp", cw_val_string(P[part].ramp)); cw_node_set(n, "energy", cw_val_float(P[part].energy));
     cw_node_set(n, "emitting", cw_val_bool(false)); cw_node_set(n, "visible", cw_val_bool(false));
+    F.card_size[part] = P[part].size;
     float y = fmaxf(cloud_sites[i][1], terrain_height(cloud_sites[i][0], cloud_sites[i][2]) + 350);
-    cw_node3d_set_position(n, (t3_vec3){ cloud_sites[i][0] + 30, y + (part ? 75 : -10), cloud_sites[i][2] - 10 });
+    cw_node3d_set_position(n, (t3_vec3){ cloud_sites[i][0] + 30, y + P[part].dy, cloud_sites[i][2] - 10 });
     cw_node_add_child(cw_tree_root(G.tree), n);
   }
   F.cards_on = -1;
@@ -203,7 +212,8 @@ static void feel_kill(float x, float y, float z, float vx, float vy, float vz, f
   G.audio_boom = 1.2f;
   int k = F.next_kill++ % KILLS;
   cw_node_set(F.fire[k], "size", cw_val_float(13 * scale)); cw_node_set(F.smoke[k], "size", cw_val_float(15 * scale));
-  start_burst(F.fire[k], x, y, z); start_burst(F.smoke[k], x, y + 4, z);
+  cw_node_set(F.core[k], "size", cw_val_float(9 * scale));
+  start_burst(F.fire[k], x, y, z); start_burst(F.core[k], x, y, z); start_burst(F.smoke[k], x, y + 4, z);
   cw_node3d_set_position(F.ripple[k], (t3_vec3){ x, y, z }); cw_shockwave_fire(F.ripple[k]);
   /* one rise a second at most: a kill inside a second of the last flash glows with its fire, without a new light */
   int lights = (int)ceilf(LIGHTS * cw_quality_scale("flash_lights"));
@@ -220,7 +230,7 @@ static void feel_kill(float x, float y, float z, float vx, float vy, float vz, f
     d->vx = vx * .55f + sinf(a) * out; d->vy = vy * .4f + up; d->vz = vz * .55f + cosf(a) * out;
     t3_object_set_position(d->node, x, y, z);
     cw_node3d_set_position(d->smoke, (t3_vec3){ x, y, z }); cw_node3d_snapshot(d->smoke);
-    cw_node_set(d->smoke, "visible", cw_val_bool(true)); cw_node_set(d->smoke, "emitting", cw_val_bool(true)); cw_node_set(d->smoke, "width", cw_val_float(2.4f));
+    cw_node_set(d->smoke, "visible", cw_val_bool(true)); cw_node_set(d->smoke, "emitting", cw_val_bool(true)); cw_node_set(d->smoke, "width", cw_val_float(4));
   }
 }
 
@@ -355,9 +365,9 @@ static void feel_update(float dt) {
   int cards = !G.cloud_active && !sw[SW_NO_CLOUD_CARDS];
   if (cards != F.cards_on) {
     F.cards_on = cards;
-    for (int i = 0; i < 8; i++) for (int p = 0; p < 2; p++) {
+    for (int i = 0; i < 8; i++) for (int p = 0; p < CARD_PARTS; p++) {
       /* particles draw while alive whatever their node's visibility: off means zero size */
-      cw_node_set(F.cards[i][p], "visible", cw_val_bool(cards)); cw_node_set(F.cards[i][p], "emitting", cw_val_bool(cards)); cw_node_set(F.cards[i][p], "size", cw_val_float(cards ? (p ? 260 : 300) : 0));
+      cw_node_set(F.cards[i][p], "visible", cw_val_bool(cards)); cw_node_set(F.cards[i][p], "emitting", cw_val_bool(cards)); cw_node_set(F.cards[i][p], "size", cw_val_float(cards ? F.card_size[p] : 0));
       if (cards) cw_particles_restart(F.cards[i][p]);
     }
   }
@@ -411,8 +421,10 @@ static void sw_cmd(int argc, const char **argv, cw_reply *r) {
     }
     if (!strcmp(argv[1], "cloud_view")) {
       int i = F.test_site = atoi(argv[2]) & 7;
-      float y = fmaxf(cloud_sites[i][1], terrain_height(cloud_sites[i][0], cloud_sites[i][2]) + 350) + 40;
-      G.px = cloud_sites[i][0]; G.pz = cloud_sites[i][2] + 1700; G.py = y; G.heading = 0; G.pitch = 0; G.roll = 0;
+      /* [height over the cloud] [range]: the jet that far off, nose on the cloud (a negative height looks up at it) */
+      float dy = argc >= 4 ? (float)atof(argv[3]) : 40, range = argc >= 5 ? (float)atof(argv[4]) : 1700;
+      float y = fmaxf(cloud_sites[i][1], terrain_height(cloud_sites[i][0], cloud_sites[i][2]) + 350);
+      G.px = cloud_sites[i][0]; G.pz = cloud_sites[i][2] + range; G.py = y + dy; G.heading = 0; G.pitch = argc >= 4 ? -atan2f(dy - 40, range) : 0; G.roll = 0;
       sync_attitude(); follow_jet(); cw_node3d_snapshot(G.jet_node); cw_node3d_snapshot(G.camera_node);
       cw_reply_printf(r, "ok"); return;
     }
