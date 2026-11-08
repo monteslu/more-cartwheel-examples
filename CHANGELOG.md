@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.27.7
+
+- A second pad that joins and is then put down no longer holds up the player who plays:
+  - Fighter: once one seat locks in, the other gets 12 s (the last 6 counted down on screen); then the computer plays it. Before, the select screen waited for ever.
+  - Party pack: once one person is ready on a mini-game's instructions card, the card waits 10 s for the rest (a countdown by each seat still out), then starts with everyone. Before, the card waited for ever, and its Start meant ready, so the player could not even pause.
+  - Co-op platformer: a seat whose pad is untouched for 5 s holds nobody back. The camera and the bubble rescue follow the players who play, the view glides off the idle one, and it is carried to the group in a bubble. Before, the player was floated back to the idle seat at the start every time, short of level 1's first flag.
+  - Pirates: in a shared voyage, a captain whose controller is left alone for 20 s while another person sails goes on autopilot ("P2 AUTOPILOT"), and any of its controls takes the helm back. Before, the idle captain raised the quota and the patrol for the one person playing.
+  - Arena FPS: in co-op, a seat untouched for 20 s stays down once downed ("press any button to come back in"), spends no shared lives and does not grow the waves.
+- Arena FPS: the program for bullet holes on walls in shadow was missing from the cart, which put a red error banner over the timer two minutes into the first deathmatch and left those holes undrawn.
+- Tests: newcomer and idle-seat gates, each the built cart through romdev on GL and WebGPU with a control that must fail: `tests/fighter-idle-seat.mjs`, `tests/partypack-idle-seat.mjs`, `tests/coopplatformer-idle-seat.mjs`, `tests/pirates-idle-seat.mjs`, `tests/arenafps-idle-seat.mjs`. Each of these and the crawler gates tears its romdev host down when it exits. AGENTS.md says every new game needs a newcomer gate and an idle-seat gate.
+
 ## 0.27.6
 
 - Engine v0.38.3 (from v0.38.1, and v0.36.1 before 0.27.5). The engine's grounding check judges a wall or a row of stands at its foot nearest the camera and leaves out what stands around the camera, instead of the middle of its box; cascaded sun shadows skip their lookups where no cascade weighs in (frames the same to the bit); a terrain obeys visible. From v0.37.0 and v0.38.0 the 2D renderer gains an HDR canvas, a post chain, soft shadows and global illumination, which the games do not turn on.
