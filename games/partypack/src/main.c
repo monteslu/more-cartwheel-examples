@@ -63,6 +63,9 @@ static struct {
   uint32_t star_taken;         /* star cells already claimed */
   int32_t round_pts[NP], place[NP];
   bool ready[NP];
+  int32_t ready_wait;          /* ticks since the first person readied on the card; the rest are counted in at READY_WAIT */
+  int32_t ready_left;          /* whole seconds the card still waits (debug), 0 when nobody has readied */
+  int32_t ready_forever;       /* test switch (sw ready_forever 1): the card waits for every seat, as it once did */
   mg_ctx c;
   int32_t serial;
   uint32_t hash;
@@ -96,6 +99,9 @@ static const mg_def *cur_def(void) { return MG_LIST[G.cur]; }
 static bool is_unlocked(int i) { return (SV->unlocked >> i) & 1; }
 
 static int dbg_seen, dbg_mg_seen; /* debug fields game.seen, game.mg_seen: every state and every mini-game this run has been in, one bit each */
+/* the instructions card waits this long for the other people once one has readied, then the game starts with
+ * everyone: a pad that joined and was put down never holds the others on the card (it plays standing still) */
+enum { READY_WAIT = 60 * 10 };
 static void set_state(int s) { G.state = s; G.st_ticks = 0; dbg_seen |= 1 << s; }
 
 /* Screens whose 3D scene is not on screen (the menus, the board, the 2D mini-games draw over a cleared window) ask
@@ -191,6 +197,7 @@ static void begin_game(int idx) {
   G.start_ms = (float)((cw_time() - t0) * 1000.0) - G.load_ms;
   memset(G.ready, 0, sizeof G.ready);
   for (int p = 0; p < NP; p++) G.ready[p] = !G.human[p];
+  G.ready_wait = 0, G.ready_left = 0;
   set_state(S_INTRO);
   sfx_music(1);
 }
@@ -479,6 +486,12 @@ static void cmd_game(int argc, const char **argv, cw_reply *r) {
   cw_reply_error(r, "usage: game <id>");
 }
 #endif
+/* debug channel: test switches */
+static void cmd_sw(int argc, const char **argv, cw_reply *r) {
+  if (argc < 3 || strcmp(argv[1], "ready_forever")) { cw_reply_error(r, "usage: sw ready_forever <0|1>"); return; }
+  G.ready_forever = atoi(argv[2]) != 0;
+  cw_reply_printf(r, "{\"ready_forever\":%d}", G.ready_forever);
+}
 static void on_quit(void *user) {
   (void)user;
   end_game_cleanup();
@@ -687,8 +700,12 @@ static void sim_step(void) {
   }
   case S_INTRO: {
     for (int p = 0; p < NP; p++) if (G.human[p] && !G.ready[p] && (cw_action_just_pressed(p, a_south) || menu_start(p))) { G.ready[p] = true; sfx(SFX_COIN, 0.7f, 1.2f); }
-    bool all = true;
-    for (int p = 0; p < NP; p++) all = all && G.ready[p];
+    bool all = true, any = false;
+    for (int p = 0; p < NP; p++) all = all && G.ready[p], any = any || (G.human[p] && G.ready[p]);
+    if (any && !all && !G.ready_forever) {
+      G.ready_left = (READY_WAIT - G.ready_wait + 59) / 60;
+      if (++G.ready_wait >= READY_WAIT) { all = true; for (int p = 0; p < NP; p++) G.ready[p] = true; }
+    } else G.ready_left = 0;
     if (AUTO && G.st_ticks > 20) all = true;
     if (all && G.st_ticks > 30) { set_state(S_COUNT); sfx_music(2); }
     break;
@@ -1009,7 +1026,7 @@ static void draw_intro(void) {
   if (d->controls) need = fmaxf(need, ui_prompt_size(d->controls, -1, 40).x);
   for (int i = 0; i < 3 && d->how[i]; i++, nhow++) need = fmaxf(need, 120 + ui_prompt_size(d->how[i], -1, 28).x);
   float spacing = 180;
-  for (int p = 0; p < NP; p++) spacing = fmaxf(spacing, 20 + (G.human[p] ? ui_prompt_size("{btn_south} ready", p, 22).x : ui_text_w("READY", 22)));
+  for (int p = 0; p < NP; p++) spacing = fmaxf(spacing, 20 + (G.human[p] ? ui_prompt_size("{btn_south} ready 10", p, 22).x : ui_text_w("READY", 22)));
   need = fmaxf(need, spacing * NP);
   float cwid = fminf(STAGE_W - 40, fmaxf(800, need + 80)), wrapw = cwid - 80;
   float tag_h = ui_wrap_h(d->tagline, wrapw, 30), tag_1 = ui_line_h(30);
@@ -1049,7 +1066,11 @@ static void draw_intro(void) {
     cw_vec2 c = cw_v2(STAGE_W / 2 + ((float)p - 1.5f) * spacing, r.y + 14 + o_blob);
     ui_blob(c, 30, p, 0, 0, G.ready[p] ? 1 + 0.08f * sinf(G.clock * 8) : 1, G.ready[p] ? 1 : 0, !G.human[p]);
     if (G.ready[p] || !G.human[p]) ui_text("READY", cw_v2(c.x, r.y + 14 + o_ready), 22, G.ready[p] ? cw_rgba(0.6f, 1, 0.6f, 1) : cw_rgba(1, 1, 1, 0.6f), CW_ALIGN_CENTER);
-    else ui_prompt("{btn_south} ready", p, cw_v2(c.x, r.y + 12 + o_ready), 22, cw_rgba(1, 1, 1, 0.8f), CW_ALIGN_CENTER); /* each seat sees its own device */
+    else if (G.ready_left > 0) { /* someone is ready: the seats still out see how long the card waits for them */
+      char w[48];
+      snprintf(w, sizeof w, "{btn_south} ready %d", G.ready_left);
+      ui_prompt(w, p, cw_v2(c.x, r.y + 12 + o_ready), 22, cw_rgba(1, 0.85f, 0.4f, 1), CW_ALIGN_CENTER);
+    } else ui_prompt("{btn_south} ready", p, cw_v2(c.x, r.y + 12 + o_ready), 22, cw_rgba(1, 1, 1, 0.8f), CW_ALIGN_CENTER); /* each seat sees its own device */
   }
 }
 
@@ -1308,6 +1329,7 @@ static void init(void *user) {
 #ifdef PP_AUTOPILOT
   cw_debug_command("game", "game <id>: every round left on that game", cmd_game);
 #endif
+  cw_debug_command("sw", "sw ready_forever <0|1>: test switch (the instructions card waits for every person, as it once did)", cmd_sw);
   cw_debug_command("bind", "bind <action> <bindings>: replace an action's bindings (as the controls screen does)", cmd_bind);
   cw_debug_i32("game.state", &G.state);
   cw_debug_i32("game.round", &G.round);
@@ -1322,6 +1344,7 @@ static void init(void *user) {
   cw_debug_u32("game.unlocked", &SV->unlocked);
   cw_debug_i32("game.winner", &G.winner);
   cw_debug_i32("game.humans", &G.humans);
+  cw_debug_i32("game.ready_left", &G.ready_left);
   cw_debug_i32("game.events", &G.nev);
   cw_debug_field("game.wins", G.round_wins, CW_DBG_I32, NP);
   cw_debug_i32("game.hitstops", &G.hitstop_shown);

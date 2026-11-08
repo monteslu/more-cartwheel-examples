@@ -25,7 +25,12 @@ After joining you get the hub:
 - **Rounds** and **CPU Skill** (easy, medium, hard) are set on the menu.
 
 Every mini-game opens with a card (how to play, press the south button to be ready), a
-3-2-1 countdown, play, a finish banner and results.
+3-2-1 countdown, play, a finish banner and results. Once one person is ready, the
+card waits 10 seconds for the rest (the seats still out show the seconds left) and
+then starts with everyone, so a pad that joined and was put down never holds the
+others on the card. `tests/partypack-idle-seat.mjs` plays the first round through
+romdev alone and with such a seat; its control (`sw ready_forever 1`, the card
+waiting for every person) must stay on the card.
 
 ## Mini-games
 
