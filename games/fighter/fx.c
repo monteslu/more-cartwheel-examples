@@ -286,7 +286,7 @@ float fx_flash(void) { return FX.flash; }
 
 static void at(cw_node n, t3_vec3 p) { cw_node3d_set_position(n, p); cw_particles_restart(n); }
 static void tint(cw_node n, float r, float g, float b) { cw_node_set(n, "color", cw_val_color(r, g, b, 1)); }
-static void light(t3_vec3 p, float e, float cr, float cg, float cb) {
+static void light_raw(t3_vec3 p, float e, float cr, float cg, float cb) {
   int i = FX.next_light++ % 3;
   if (!cw_node_valid(FX.light[i])) return;
   cw_node3d_set_position(FX.light[i], p);
@@ -294,6 +294,10 @@ static void light(t3_vec3 p, float e, float cr, float cg, float cb) {
   FX.light_age[i] = 1;
   FX.light_e[i] = e;
 }
+static bool flash_ok(uint32_t tick);
+static uint32_t light_tick;
+/* every other light (a block, a throw, a shot, a clash, a tech) is in the blows' flash budget too */
+static void light(t3_vec3 p, float e, float cr, float cg, float cb) { if (flash_ok(light_tick)) light_raw(p, e, cr, cg, cb); }
 
 static const float PROJ_COL[4][3] = { { 1, 0.45f, 0.1f }, { 0.9f, 0.7f, 0.3f }, { 0.2f, 0.9f, 1 }, { 0.5f, 1, 0.3f } };
 static int beam_free(void) { /* a beam slot whose shot is not flying (the oldest fading one) */
@@ -302,6 +306,7 @@ static int beam_free(void) { /* a beam slot whose shot is not flying (the oldest
   return best;
 }
 void fx_event(const ft_game *g, const ft_event *e) {
+  light_tick = g->tick;
   if (e->type == EV_HIT || e->type == EV_BLOCK || e->type == EV_THROW || e->type == EV_WALL || e->type == EV_SUPER || e->type == EV_KO) fx_count_impact++;
   t3_vec3 p = { (float)e->x / 1000.0f, (float)e->y / 1000.0f, 0.15f };
   float k = (float)e->power;
@@ -346,7 +351,7 @@ void fx_event(const ft_game *g, const ft_event *e) {
       if (big && !(fx_hitfx_off & 16)) heavy_boom(p, true);
     }
     /* outside the budget: no light */
-    if (lit && !(fx_hitfx_off & 32)) light(p, big ? 70 : light_hit ? 26 : 50, 1, light_hit ? 0.9f : 0.75f, light_hit ? 0.7f : 0.4f);
+    if (lit && !(fx_hitfx_off & 32)) light_raw(p, big ? 70 : light_hit ? 26 : 50, 1, light_hit ? 0.9f : 0.75f, light_hit ? 0.7f : 0.4f);
     /* the one hit: short and sharp on the light motor, a heavy hit (a launcher, a knockdown) with some weight under it */
     rumble(who, big ? 0.35f : 0.05f + 0.03f * k, big ? 0.85f : 0.35f + 0.1f * k, big ? 140 : 70 + 15 * (int)k);
     rumble(other, big ? 0.15f : 0, big ? 0.5f : 0.2f + 0.06f * k, big ? 80 : 50);
@@ -378,7 +383,7 @@ void fx_event(const ft_game *g, const ft_event *e) {
     int r = FX.ri++ % 4;
     cw_node_set(FX.ring[r], "amount", cw_val_int(24));
     at(FX.ring[r], (t3_vec3){ p.x, 1.0f, 0.2f });
-    light((t3_vec3){ p.x, 1.2f, 1.0f }, 120, 0.7f, 0.8f, 1);
+    light_raw((t3_vec3){ p.x, 1.2f, 1.0f }, 120, 0.7f, 0.8f, 1);
     super_boom(p.x, g->tick);
     break;
   }
@@ -390,7 +395,7 @@ void fx_event(const ft_game *g, const ft_event *e) {
     rumble(other, 0.5f, 0.3f, 180);
     for (int i = 0; i < 3; i++) at(FX.sparks[FX.si++ % 4], (t3_vec3){ p.x, 1.1f, 0.2f });
     at(FX.streaks[FX.sti++ % 2], (t3_vec3){ p.x, 1.1f, 0.2f });
-    light((t3_vec3){ p.x, 1.2f, 1.0f }, 140, 1, 0.9f, 0.7f);
+    light_raw((t3_vec3){ p.x, 1.2f, 1.0f }, 140, 1, 0.9f, 0.7f);
     super_boom(p.x, g->tick);
     break;
   }
@@ -451,8 +456,8 @@ void fx_frame(const ft_game *g, float dt) {
     int a = FX.light_age[i];
     float e = 0;
     if (a > 0) {
-      /* a swell, never a one-frame jump: up over 3 frames, then down over about 15 (no strobe: tools/flash-check.mjs) */
-      e = a <= 3 ? FX.light_e[i] * (float)a / 3.0f : FX.light_e[i] * cw_exp(-(float)(a - 3) * 0.16f);
+      /* a swell, never a one-frame jump: up over 5 frames, then down over about 20 (no strobe: tools/flash-check.mjs) */
+      e = a <= 5 ? FX.light_e[i] * (float)a / 5.0f : FX.light_e[i] * cw_exp(-(float)(a - 5) * 0.12f);
       FX.light_age[i] = a < 40 ? a + 1 : 0;
     }
     cw_node_set(FX.light[i], "energy", cw_val_float(e));
