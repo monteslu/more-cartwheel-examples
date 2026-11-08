@@ -55,8 +55,8 @@ const check = (name, ok, detail) => { results.push({ name, ok, detail }); consol
 }
 // finish: 12 m before the line at 3 s; the moment fires once and gives a medal
 {
-  const a = run('finish', 420, ['race bunny_hill', '@200 tp finish 12'], { input: join(ROOT, 'tests/tuxracer-bunny-run.json') }).s;
-  const c = run('finish-control', 420, ['race bunny_hill']).s;
+  const a = run('finish', 420, ['race bunny_hill', '@320 tp finish 12'], { input: null }).s; // no presses: the results stay up
+  const c = run('finish-control', 420, ['race bunny_hill'], { input: null }).s;
   check('finish', a['race.finish_events'] === 1 && a['race.medal'] === 3 && a['game.state'] === 8, `events ${a['race.finish_events']}, medal ${a['race.medal']}, state ${a['game.state']}`);
   check('finish control', c['race.finish_events'] === 0 && c['race.medal'] === 0, `events ${c['race.finish_events']}, medal ${c['race.medal']}`);
 }
@@ -71,7 +71,7 @@ function above(a, b) {
   return n;
 }
 {
-  const f = 250, at = ['race bunny_hill'];
+  const f = 200, at = ['race bunny_hill']; // turning hard right at 53 km/h: the spray and the turn spray both up
   const now = above(run('spray', f, at).shot, run('spray-hidden', f, [...at, 'hide spray']).shot);
   const v0 = { env: { TUXRACER_SPRAY_V0: '1' } };
   const old = above(run('spray-v0', f, at, v0).shot, run('spray-v0-hidden', f, [...at, 'hide spray'], v0).shot);

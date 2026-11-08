@@ -112,3 +112,6 @@ physical+vcol+trans+skin+senv+sheen+l0001+xcsm_feather
 physical+trans+senv+cc+l0001+xcsm_gi
 physical+trans+senv+sheen+l0001+xcsm_gi
 physical+vcol+trans+skin+senv+sheen+l0001+xcsm_feather_skinshade_gi
+physical+senv+cc+l0001+xcsm_plain_gi
+physical+senv+sheen+l0001+xcsm_plain_gi
+physical+vcol+skin+senv+sheen+l0001+xcsm_feather_plain_gi

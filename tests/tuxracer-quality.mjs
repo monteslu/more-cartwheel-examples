@@ -8,6 +8,6 @@ sweep({
   game: 'tuxracer', tables: ['tuxracer'],
   scenes: [...COURSES.map((c, i) => race(c, CONDS[i % 3])), ...['bunny_hill', 'path_of_daggers'].flatMap((c) => CONDS.filter((d) => COURSES.indexOf(c) % 3 !== CONDS.indexOf(d)).map((d) => race(c, d))),
     // the ghost: a kept run drawn beside him in the next race (translucent: its own states)
-    { name: 'bunny_hill ghost', app: 'tuxracer', frames: 1000, presets: ['verylow', 'low', 'ultra'], cmds: ['@60 race bunny_hill', '@600 ghost keep', '@602 race bunny_hill'], reach: { ghost: (v) => v[0] === 1 }, show: ['game.state', 'ghost', 'ticks'] }, { name: 'title', app: 'tuxracer', frames: 300, reach: { ticks: (v) => v >= 0 }, show: ['game.state', 'ticks'] }],
-  control: { state: 'standard+instbig+senv+l0001+xterrainlow_csm_snow', scene: 'bunny_hill cloudy' },
+    { name: 'bunny_hill ghost', app: 'tuxracer', frames: 1000, presets: ['verylow', 'low', 'ultra'], cmds: ['@60 race bunny_hill', '@600 ghost keep', '@602 race bunny_hill'], reach: { ghost: (v) => v === 1 }, show: ['game.state', 'ghost', 'ticks'] }, { name: 'title', app: 'tuxracer', frames: 300, reach: { ticks: (v) => v >= 0 }, show: ['game.state', 'ticks'] }],
+  control: { state: 'standard+instbig+senv+l0001+xterrainmin_csm_snow', scene: 'bunny_hill cloudy' },
 });
