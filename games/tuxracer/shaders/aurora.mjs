@@ -25,19 +25,24 @@ export async function apply({ TSL, THREE, mat, props, sentinel }) {
     return mix(a, b, smoothstep(0.85, 1.0, u));
   };
   const band = n(5, 0.03, 2.1).mul(0.6).add(n(13, 0.07, 7.7).mul(0.4)); // where curtains hang
-  const base = float(0.05).add(n(3, 0.02, 4.4).mul(0.1));                 // the lower edge wanders, above the ring's haze band; the racer sees the first 20 degrees of sky
+  // a curtain is a folded sheet, not a row of bars: its lower edge rises and falls along the horizon (the folds), the
+  // rays inside lean and bend with height (the sheet's sway), and the bright hem runs along that lower edge
+  const fold = n(6, 0.025, 4.4);
+  const base = float(0.04).add(fold.mul(0.16));                            // the lower edge wanders: folds up and down
   const h = v.sub(base);
-  const lower = smoothstep(0, 0.03, h);
-  const falloff = exp(h.mul(-5.0)).mul(float(1).sub(smoothstep(0.55, 0.95, v))); // gone well before the band's top
-  // the curtain's rays: fine vertical structure along the azimuth, warped by slow noise, drifting
-  const ray1 = float(0.5).add(sin(u.mul(1400).add(n(7, 0.05, 9.1).mul(60)).add(t.mul(0.8))).mul(0.5));
-  const ray2 = float(0.5).add(sin(u.mul(520).add(n(4, 0.03, 5.5).mul(30)).sub(t.mul(0.5))).mul(0.5));
-  const rayNoise = n(40, 0.09, 12.3); // some rays bright, some dim
-  const rays = float(0.1).add(ray1.mul(ray1).mul(0.5).mul(float(0.4).add(rayNoise))).add(ray2.mul(0.25));
+  const lower = smoothstep(0, 0.02, h);
+  const falloff = exp(h.mul(-4.5)).mul(float(1).sub(smoothstep(0.55, 0.95, v))); // gone well before the band's top
+  const hem = exp(h.mul(-28)).mul(0.9);                                     // the bright fold line at the foot
+  const warp = n(4, 0.02, 1.7).sub(0.5).mul(0.05).add(n(11, 0.04, 6.2).sub(0.5).mul(0.015));
+  const uw = u.add(warp.mul(float(1).add(h.mul(3))));                       // rays lean more the higher they climb
+  const ray1 = float(0.5).add(sin(uw.mul(900).add(t.mul(0.6))).mul(0.5));
+  const ray2 = float(0.5).add(sin(uw.mul(340).sub(t.mul(0.4))).mul(0.5));
+  const rayNoise = n(30, 0.06, 12.3); // some rays bright, some dim
+  const rays = float(0.45).add(ray1.mul(ray1).mul(0.3).mul(float(0.4).add(rayNoise))).add(ray2.mul(0.25)).add(hem);
   const flicker = float(0.85).add(sin(t.mul(1.7).add(u.mul(30))).mul(0.15));
   // curtains hang in a few places, dark sky between; one always hangs ahead, down the course (u 0), where the racer looks
   const du = u.sub(float(1).mul(u.greaterThan(0.5))).abs(); // azimuth distance from straight ahead, 0..0.5
-  const ahead = float(1).sub(smoothstep(0.02, 0.07, du)).mul(float(0.5).add(n(2, 0.02, 1.3).mul(0.5)));
+  const ahead = float(1).sub(smoothstep(0.03, 0.12, du)).mul(float(0.5).add(n(2, 0.02, 1.3).mul(0.5)));
   const slow = float(0.35).add(n(2.5, 0.015, 3.9).mul(0.9)); // brightness breathes along the horizon
   const mask = max(smoothstep(0.42, 0.62, band), ahead).mul(slow);
   const strength = mask.mul(lower).mul(falloff).mul(rays).mul(flicker).mul(prm.y);

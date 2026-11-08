@@ -455,7 +455,7 @@ static void ghost_look(tux_model *m) {
 }
 
 /* the full-rate path of the run being recorded: what `ghost check` holds the samples against */
-#define CHECK_TICKS (GHOST_MAX * GHOST_STEP)
+#define CHECK_TICKS (180 * TICK_HZ)
 static float rec_full[CHECK_TICKS + 1][3];
 
 static void ghost_alpha(float a) {
@@ -504,6 +504,7 @@ static void ghost_draw(double alpha) {
  * (the control: a check that cannot tell one tick from the next could not prove anything). */
 static void cmd_ghost(int argc, const char **argv, cw_reply *r) {
   if (argc >= 2 && !strcmp(argv[1], "keep")) { /* this run so far as the course's ghost, as if it had finished */
+    ghost_rec_flush(&G.rec);
     if (!G.info || G.rec.run.count < 2) { cw_reply_str(r, "no run"); return; }
     ghost_run *g = ghost_of(ghost_key(G.info->dir, G.mirrored), true);
     if (!g) { cw_reply_str(r, "no slot"); return; }
@@ -514,7 +515,8 @@ static void cmd_ghost(int argc, const char **argv, cw_reply *r) {
   }
   if (argc >= 2 && !strcmp(argv[1], "check")) {
     int off = argc >= 3 ? atoi(argv[2]) : 0;
-    static ghost_run run; /* 29 kB: not on the stack */
+    ghost_rec_flush(&G.rec);
+    static ghost_run run; /* 38 kB: not on the stack */
     run = G.rec.run;
     run.time = 1;
     ghost_play gp = { .cache_i = -1 };
@@ -746,6 +748,7 @@ static void race_over(bool aborted) {
     /* the medal of this time, and the fastest run kept as the course's ghost */
     G.medal = medal_for(G.info, G.race_time);
     G.finish_events++;
+    ghost_rec_flush(&G.rec);
     ghost_run *g = ghost_of(ghost_key(G.info->dir, G.mirrored), true);
     if (g && !G.rec.broken && G.rec.run.count >= 2 && (!ghost_valid(g) || G.race_time < g->time)) {
       bool had = ghost_valid(g);

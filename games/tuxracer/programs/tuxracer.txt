@@ -103,3 +103,12 @@ depth+instbig+xterrainmin_csm_plain_snow
 depth+skin+xcsm_feather_skinshade
 depth+instbig+xterrainmin_csm_snow
 standard+instbig+senv+l0001+xterrainmin_csm_snow
+physical+trans+senv+cc+l0001+xcsm_plain
+physical+trans+senv+sheen+l0001+xcsm_plain
+physical+vcol+trans+skin+senv+sheen+l0001+xcsm_feather_plain
+physical+trans+senv+cc+l0001+xcsm
+physical+trans+senv+sheen+l0001+xcsm
+physical+vcol+trans+skin+senv+sheen+l0001+xcsm_feather
+physical+trans+senv+cc+l0001+xcsm_gi
+physical+trans+senv+sheen+l0001+xcsm_gi
+physical+vcol+trans+skin+senv+sheen+l0001+xcsm_feather_skinshade_gi

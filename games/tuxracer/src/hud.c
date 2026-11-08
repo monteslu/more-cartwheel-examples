@@ -10,14 +10,13 @@
 #include "cartwheel/render2d.h"
 
 static cw_font font_big, font_small;
-static cw_texture tex_herring, tex_life, tex_gauge, tex_speed_mask, tex_energy_mask;
+static cw_texture tex_herring, tex_life, tex_speed_mask, tex_energy_mask;
 
 void hud_init(void) {
   font_big = cw_font_load("fonts/TitanOne-Regular.ttf", NULL);
   font_small = cw_font_load("fonts/Fredoka-SemiBold.ttf", NULL);
   tex_herring = cw_texture_load("original/textures/herringicon.png", NULL);
   tex_life = cw_texture_load("original/textures/tuxlife.png", NULL);
-  tex_gauge = cw_texture_load("original/textures/gaugeoutline.png", NULL);
   tex_speed_mask = cw_texture_load("original/textures/gaugespeedmask.png", NULL);
   tex_energy_mask = cw_texture_load("original/textures/gaugeenergymask.png", NULL);
 }
@@ -84,12 +83,39 @@ void hud_image(const char *asset, float x, float y, float w, float h) {
   cw_r2d_sprite(&(cw_sprite){ .texture = t, .pos = { x, y }, .size = { w, h } });
 }
 
+/* the original gauge outline (gaugeoutline.png's design), drawn as shapes so it is sharp at any size: the dial's
+ * circle and the speed band's outline round its top from 225 to 45 degrees, its ends rounded; in the art's 128 px
+ * units about its centre (71, 55 from the bottom) */
+static void arc_stroke(float cx, float cy, float r, float w, float a0, float a1, cw_color c) {
+  int segs = (int)(fabsf(a1 - a0) / 4) + 2;
+  for (int i = 0; i < segs; i++) {
+    float a = TR_DEG(a0 + (a1 - a0) * (float)i / (float)segs), b = TR_DEG(a0 + (a1 - a0) * (float)(i + 1) / (float)segs);
+    float ri = r - w / 2, ro = r + w / 2;
+    cw_vec2 q[4] = { { cx + cosf(a) * ri, cy - sinf(a) * ri }, { cx + cosf(a) * ro, cy - sinf(a) * ro },
+                     { cx + cosf(b) * ro, cy - sinf(b) * ro }, { cx + cosf(b) * ri, cy - sinf(b) * ri } };
+    cw_r2d_polygon(q, 4, c);
+  }
+}
+static void disc(float cx, float cy, float r, cw_color c);
+static void gauge_outline(float x, float y, float S) {
+  const cw_color ink = { 0.04f, 0.05f, 0.07f, 0.95f };
+  float cx = x + 71 * S, cy = y + (128 - 55) * S, w = 2.6f * S;
+  arc_stroke(cx, cy, 44 * S, w, 0, 360, ink);          /* the dial */
+  arc_stroke(cx, cy, 68.5f * S, w, 45, 225, ink);      /* the band's outer edge */
+  arc_stroke(cx, cy, 47.5f * S, w, 45, 225, ink);      /* its inner edge, just outside the dial */
+  for (int e = 0; e < 2; e++) { /* the rounded ends: a half ring joining the two edges */
+    float a = TR_DEG(e ? 225 : 45), mr = (68.5f + 47.5f) / 2 * S, ex = cx + cosf(a) * mr, ey = cy - sinf(a) * mr;
+    float base = e ? 225 : 45;
+    arc_stroke(ex, ey, 10.5f * S, w, e ? base : base - 180, e ? base + 180 : base, ink);
+  }
+}
+
 /* the original gauge: a 128 px image, the speed bar sweeping from 225 to 45
  * degrees around (71, 55), green to 60 km/h, yellow to 100, red to 160 */
 static void gauge(const tux_phys *p, float x, float y) {
   const float S = 1.4f; /* 128 px art at 179 px */
   disc(x + 71 * S, y + (128 - 55) * S, 74 * S, (cw_color){ 0.02f, 0.05f, 0.1f, 0.42f }); /* a dark dish behind the dial */
-  cw_r2d_sprite(&(cw_sprite){ .texture = tex_gauge, .pos = { x, y }, .size = { 128 * S, 128 * S } });
+  gauge_outline(x, y, S);
   float kmh = p->speed * 3.6f;
   float frac = kmh <= 60 ? kmh / 60 * 0.5f : kmh <= 100 ? 0.5f + (kmh - 60) / 40 * 0.25f : 0.75f + fminf(1, (kmh - 100) / 60) * 0.25f;
   cw_color col = kmh <= 60 ? (cw_color){ 0.25f, 0.95f, 0.3f, 0.9f } : kmh <= 100 ? (cw_color){ 1, 0.9f, 0.2f, 0.9f } : (cw_color){ 1, 0.25f, 0.2f, 0.9f };

@@ -8,7 +8,7 @@
 //   ext.forestWind  f32: sway scale (1 calm, more on a windy race)
 export const name = 'foliage';
 export async function apply({ TSL, mat, props, sentinel, kind }) {
-  const { uniform, float, vec3, positionLocal, normalWorld, instanceIndex, sin, cos, clamp, pow, max, dot, materialColor, materialEmissive, materialOpacity, texture, uv, smoothstep } = TSL;
+  const { uniform, float, vec3, mix, positionLocal, normalWorld, instanceIndex, sin, cos, clamp, pow, max, dot, materialColor, materialEmissive, materialOpacity, texture, uv, smoothstep } = TSL;
   const seed = sentinel(), time = uniform(seed).setName('forestTime');
   props['ext.forestTime'] = { kind: 'f32', value: [seed] };
   const wseed = sentinel(), wind = uniform(wseed).setName('forestWind');
@@ -27,7 +27,9 @@ export async function apply({ TSL, mat, props, sentinel, kind }) {
   }
   if (kind !== 'depth') {
     // crown interiors a little darker; the sunlit needle detail keeps the map
-    mat.colorNode = materialColor.mul(height.mul(0.25).add(0.78));
+    // snow lying on the boughs: faces turned to the sky go white (the snow load), the undersides keep the needles
+    const load = smoothstep(0.45, 0.85, normalWorld.y).mul(smoothstep(0.15, 0.5, height)).mul(0.55);
+    mat.colorNode = mix(materialColor.mul(height.mul(0.25).add(0.78)), vec3(0.93, 0.95, 1.0), load);
     // light through the needles on the far side
     const back = max(dot(normalWorld, vec3(0.45, -0.8, 0.4)), 0);
     mat.emissiveNode = materialEmissive.add(vec3(0.018, 0.026, 0.009).mul(pow(back, 2)));

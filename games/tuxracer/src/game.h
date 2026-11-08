@@ -194,9 +194,8 @@ void audio_slide(const float w[SURF_KINDS], float speed, bool airborne, bool on)
 void audio_update(void);
 
 /* ── ghost.c: the best run, recorded and replayed (render only) ──────── */
-#define GHOST_STEP 3    /* ticks between samples: 20 Hz */
-#define GHOST_MAX 3600  /* samples: three minutes */
-typedef struct ghost_sample { int16_t d[3]; int8_t turn; uint8_t flags; } ghost_sample; /* d: mm from the previous sample; flags: 1 air, 2 hidden */
+#define GHOST_MAX 4800  /* samples (the corners of the path): three minutes of hard carving */
+typedef struct ghost_sample { int16_t d[3]; int8_t turn; uint8_t flags; } ghost_sample; /* d: mm from the previous sample; flags: 1 air, 2 hidden, bits 2-7 the tick gap - 1 */
 typedef struct ghost_run {
   uint32_t course_hash; /* 0: empty */
   float time;           /* the run's race time */
@@ -204,11 +203,13 @@ typedef struct ghost_run {
   float origin[3];
   ghost_sample s[GHOST_MAX];
 } ghost_run;
-typedef struct ghost_rec { ghost_run run; t3_vec3 last; int32_t ticks; bool broken; } ghost_rec;
-typedef struct ghost_play { t3_vec3 cache; int cache_i; } ghost_play;
+typedef struct ghost_pend { t3_vec3 pos; float turn; uint8_t flags; } ghost_pend;
+typedef struct ghost_rec { ghost_run run; t3_vec3 last; int32_t ticks; bool broken; ghost_pend pend[64]; int npend; } ghost_rec;
+typedef struct ghost_play { t3_vec3 cache; int cache_i, cache_tick; } ghost_play;
 typedef struct ghost_pose { t3_vec3 pos, vel; float turn; bool airborne, hidden; } ghost_pose;
 void ghost_rec_begin(ghost_rec *r, uint32_t course_hash, t3_vec3 at);
 void ghost_rec_tick(ghost_rec *r, t3_vec3 pos, float turn, bool airborne, bool hidden);
+void ghost_rec_flush(ghost_rec *r); /* the run ends (or is kept) here */
 bool ghost_valid(const ghost_run *g);
 bool ghost_at(ghost_play *gp, const ghost_run *g, float ticks, ghost_pose *out);
 
