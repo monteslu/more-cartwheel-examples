@@ -379,7 +379,7 @@
     "controlEnv": {
       "COOP_CAM_BUG": "1"
     },
-    "note": "camera stability, the way a person plays: one pad through title, join and start, then stand, walk, stop, jump and stand while the drawn camera is measured every frame (g.camgate: frames at rest, at-rest frames that moved over 1 mm, frames in motion, frames in motion with a jump over 0.6 m or a jerk over 8 cm). At rest it must not move at all; in motion it must stay smooth. The control puts a 1 cm sway on the drawn camera (COOP_CAM_BUG, native): its g.camgate must differ.",
+    "note": "camera stability, the way a person plays: one pad through title, join and start, then stand, walk, stop, jump and stand while the drawn camera is measured every frame (g.camgate: frames at rest, at-rest frames that moved over 1 mm, frames in motion, frames in motion with a jump over 0.6 m or a jerk over 8 cm). At rest it must not move at all (but for that glide); in motion it must stay smooth. The control puts a 1 cm sway on the drawn camera (COOP_CAM_BUG, native): its g.camgate must differ.",
     "controlField": "g.camgate"
   },
   {
@@ -405,9 +405,9 @@
     "expect": {
       "g.players": 4,
       "g.camgate": [
-        562,
-        0,
-        796,
+        560,
+        13,
+        798,
         0
       ]
     },
@@ -415,7 +415,7 @@
     "controlEnv": {
       "COOP_CAM_BUG": "1"
     },
-    "note": "camera stability, the way a person plays: four pads through title, join and start, then stand, walk, stop, jump and stand while the drawn camera is measured every frame (g.camgate: frames at rest, at-rest frames that moved over 1 mm, frames in motion, frames in motion with a jump over 0.6 m or a jerk over 8 cm). At rest it must not move at all; in motion it must stay smooth. The control puts a 1 cm sway on the drawn camera (COOP_CAM_BUG, native): its g.camgate must differ.",
+    "note": "camera stability, the way a person plays: four pads through title, join and start (only pad 1 plays after that, so five seconds in the three others are seats nobody plays and the view glides off them onto player 1 over two seconds: the 13 at-rest frames that move are that glide, smooth, no jump or jerk), then stand, walk, stop, jump and stand while the drawn camera is measured every frame (g.camgate: frames at rest, at-rest frames that moved over 1 mm, frames in motion, frames in motion with a jump over 0.6 m or a jerk over 8 cm). At rest it must not move at all; in motion it must stay smooth. The control puts a 1 cm sway on the drawn camera (COOP_CAM_BUG, native): its g.camgate must differ.",
     "controlField": "g.camgate"
   },
   {

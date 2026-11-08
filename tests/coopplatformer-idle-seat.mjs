@@ -4,7 +4,7 @@
 // bubble, and player 1 gets as far as alone (past column GOAL). Control: sw idle_anchor 1 (the idle seat holds the
 // group back, as the game once let it: the player is bubbled back to the start whenever they get a screen and a half
 // ahead) must keep player 1 short of GOAL in the same frames.
-//   node tests/coopplatformer-idle-seat.mjs [--gl] [--webgpu] [--cart <path>]
+//   node tests/coopplatformer-idle-seat.mjs [--gl] [--webgpu] [--cart <path>] [--legs alone,idle,control]
 import { mkdirSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..'), SESSION = process.env.COOP_SESSION || 'coopplatformer-idle-seat', OUT = join(ROOT, 'out/coopplatformer-idle-seat');
 const arg = (n, d) => { const i = process.argv.indexOf(n); return i > 0 ? process.argv[i + 1] : d; };
 const CART = resolve(arg('--cart', join(ROOT, 'build/cart-wgpu/carts/coopplatformer.wasc')));
+const LEGS = arg('--legs', 'alone,idle,control').split(',');
 const BACKENDS = process.argv.includes('--gl') ? ['gl'] : process.argv.includes('--webgpu') ? ['webgpu'] : ['gl', 'webgpu'];
 /* the first level (COOP_MAP=0): flat to the spike pit at columns 80 to 86, the first flag at 92, steps up at 105 and 111.
  * Player 1 takes a running jump at the pit's lip, as its sign and the hint line say, and jumps a step it runs into. The
@@ -76,12 +77,18 @@ async function run(backend, tag, idle, pre) {
 
 for (const backend of BACKENDS) {
   console.log(`--- ${backend}`);
-  const one = await run(backend, 'alone', false);
-  check('one seat: player 1 runs the first level past column ' + GOAL, one.players === 1 && one.maxx >= GOAL, `${one.players} player(s), column ${one.maxx.toFixed(1)} after ${one.frames} frames (${one.deaths} falls)`);
-  const two = await run(backend, 'idle-seat', true);
-  check('a second seat nobody plays: player 1 still gets past column ' + GOAL, two.players === 2 && two.maxx >= GOAL && two.carried > 0, `${two.players} players, column ${two.maxx.toFixed(1)} after ${two.frames} frames (the idle seat carried ${two.carried} times, at column ${two.p2.toFixed(1)}, idle ${two.idle[1]} ticks, ${two.deaths} falls)`);
-  const ctl = await run(backend, 'control', true, 'sw idle_anchor 1');
-  check('control: sw idle_anchor 1, the idle seat holds player 1 back', ctl.players === 2 && ctl.maxx < GOAL, `${ctl.players} players, furthest column ${ctl.maxx.toFixed(1)} after ${ctl.frames} frames (now at ${ctl.x.toFixed(1)}, the idle seat at ${ctl.p2.toFixed(1)}, ${ctl.deaths} falls)`);
+  if (LEGS.includes('alone')) {
+    const one = await run(backend, 'alone', false);
+    check('one seat: player 1 runs the first level past column ' + GOAL, one.players === 1 && one.maxx >= GOAL, `${one.players} player(s), column ${one.maxx.toFixed(1)} after ${one.frames} frames (${one.deaths} falls)`);
+  }
+  if (LEGS.includes('idle')) {
+    const two = await run(backend, 'idle-seat', true);
+    check('a second seat nobody plays: player 1 still gets past column ' + GOAL, two.players === 2 && two.maxx >= GOAL && two.carried > 0, `${two.players} players, column ${two.maxx.toFixed(1)} after ${two.frames} frames (the idle seat carried ${two.carried} times, at column ${two.p2.toFixed(1)}, idle ${two.idle[1]} ticks, ${two.deaths} falls)`);
+  }
+  if (LEGS.includes('control')) {
+    const ctl = await run(backend, 'control', true, 'sw idle_anchor 1');
+    check('control: sw idle_anchor 1, the idle seat holds player 1 back', ctl.players === 2 && ctl.maxx < GOAL, `${ctl.players} players, furthest column ${ctl.maxx.toFixed(1)} after ${ctl.frames} frames (now at ${ctl.x.toFixed(1)}, the idle seat at ${ctl.p2.toFixed(1)}, ${ctl.deaths} falls)`);
+  }
 }
 await pads({}, {});
 console.log(fail ? `${fail} FAILED` : 'all ok');
