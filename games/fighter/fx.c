@@ -248,7 +248,7 @@ static void beam_place(t3_mesh *m, float x0, float x1, float y, float r, float a
  * lands them, inside the three a second of WCAG 2.3.1 and the Harding test); within that it sparks and rings, a heavy one
  * bursts, without the flash. A super or a knockout always flashes, and starts the wait again. fx_flash_cap 0 (test switch sw flash_cap 0): every one flashes,
  * as before. fx_boom_every N (sw boom_every N): a heavy hit's effects every N ticks, the flash check's fast combo */
-int fx_flash_cap = 1, fx_boom_every, fx_unlit_sparks = 1;
+int fx_flash_cap = 1, fx_boom_every, fx_hitfx_off; /* fx_hitfx_off (sw hitfx_off <mask>): leave out a blow's sparks 1, flash sprite 2, ring 4, embers 8, explosion 16, light 32 (finding what flashes) */
 int32_t fx_flashes; /* debug fx.flashes: explosion flashes lit */
 static uint32_t flash_tick;
 static bool flash_seen;
@@ -329,24 +329,24 @@ void fx_event(const ft_game *g, const ft_event *e) {
     if (light_hit || !lit) { /* no flash sprite: a small spray of sparks */
       cw_node ls = FX.lsparks[FX.lsi++ % 3];
       cw_node_set(ls, "amount", cw_val_int(lit ? 14 : 8));
-      if (lit || fx_unlit_sparks) at(ls, p);
+      if (!(fx_hitfx_off & 1)) at(ls, p);
       cw_node_set(FX.ring[r], "amount", cw_val_int(light_hit ? 6 : 10));
     } else {
       int i = FX.si++ % 4;
       cw_node_set(FX.sparks[i], "amount", cw_val_int(big ? 48 : e->power >= 2 ? 34 : 24));
-      at(FX.sparks[i], p);
-      at(FX.flash_p[FX.fi++ % 4], p);
+      if (!(fx_hitfx_off & 1)) at(FX.sparks[i], p);
+      if (!(fx_hitfx_off & 2)) at(FX.flash_p[FX.fi++ % 4], p);
       cw_node_set(FX.ring[r], "amount", cw_val_int(big ? 18 : 10));
     }
     /* outside the budget a blow is only its small spray: the ring, the embers and a heavy one's explosion (its burst and
      * shockwave) are bright enough over a fighter to read as a flash of their own when blows land seven times a second */
     if (lit) {
-      at(FX.ring[r], p);
-      if (big) at(FX.embers[FX.emi++ % 2], p);
-      if (big) heavy_boom(p, true);
+      if (!(fx_hitfx_off & 4)) at(FX.ring[r], p);
+      if (big && !(fx_hitfx_off & 8)) at(FX.embers[FX.emi++ % 2], p);
+      if (big && !(fx_hitfx_off & 16)) heavy_boom(p, true);
     }
     /* outside the budget: no light */
-    if (lit) light(p, big ? 70 : light_hit ? 26 : 50, 1, light_hit ? 0.9f : 0.75f, light_hit ? 0.7f : 0.4f);
+    if (lit && !(fx_hitfx_off & 32)) light(p, big ? 70 : light_hit ? 26 : 50, 1, light_hit ? 0.9f : 0.75f, light_hit ? 0.7f : 0.4f);
     /* the one hit: short and sharp on the light motor, a heavy hit (a launcher, a knockdown) with some weight under it */
     rumble(who, big ? 0.35f : 0.05f + 0.03f * k, big ? 0.85f : 0.35f + 0.1f * k, big ? 140 : 70 + 15 * (int)k);
     rumble(other, big ? 0.15f : 0, big ? 0.5f : 0.2f + 0.06f * k, big ? 80 : 50);
