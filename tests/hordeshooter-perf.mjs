@@ -1,8 +1,9 @@
 // hordeshooter late-wave perf gate: hordeshooter_bench (the bots at the run's wave 24, the grotto's wave 4, with three players, about 2000
 // enemies) at 1920x1080, High, natively on the test GPU (the 890M), GL and WebGPU, with the pipeline's GPU
 // pass timers. Bounds the frame's GPU time (the mean of the bench's last three 120-frame windows):
-//   GL      4.1 ms   (a third of the 12.2 before the baked yard; about 2.4 in the grotto)
-//   WebGPU  4.1 ms   (11.1 before; about 2.1 in the grotto)
+//   GL      5.0 ms   (a third of the 12.2 before the baked yard; 4.1 before High gained ambient occlusion, the flashlights and the floor splats;
+//                     measured 3.7 to 4.5 across the floors on 2026-11-08)
+//   WebGPU  5.0 ms   (11.1 before; 3.9 to 4.6 across the floors on 2026-11-08)
 // The same bound on every made floor's late wave (its own level, bake and creatures; the yard, the sluice, the ossuary,
 // the foundry, the grotto, the cathedral, the rift, the core), with at least 100 on the floor. Every run must draw everything (no "not in any program table" line) and keep about 2000 enemies.
 // Controls, which must fail: GL at 3840x2160 (4 times the pixels: the deeper floors are cheaper than the bound by about a third), and
@@ -48,11 +49,11 @@ const check = (name, r, bound, mustFail = false, crowd = 1500) => {
     if (within) { console.log(`CONTROL PASSED (a failure): ${line}`); bad++; } else console.log(`ok   control fails as it must: ${line}`);
   } else if (!within) { console.log(`FAIL ${line}`); bad++; } else console.log(`ok   ${line}`);
 };
-check('GL', run('gl'), 4.1);
-check('WebGPU', run('webgpu'), 4.1);
+check('GL', run('gl'), 5.0);
+check('WebGPU', run('webgpu'), 5.0);
 /* every made floor's late wave (its last before the boss), its own level and bake: the same bound */
 for (const [floor, wave] of [['the yard', 4], ['the sluice', 9], ['the ossuary', 14], ['the foundry', 19], ['the grotto', 25], ['the cathedral', 31], ['the rift', 37], ['the core', 43]])
-  for (const gpu of ['gl', 'webgpu']) check(`${floor} wave ${wave} ${gpu === 'gl' ? 'GL' : 'WebGPU'}`, run(gpu, { HORDE_WAVE: String(wave) }), 4.1, false, 100);
-check('GL at 3840x2160 (4 times the pixels)', run('gl', { CW_RENDER_SCALE: '3' }), 4.1, true);
+  for (const gpu of ['gl', 'webgpu']) check(`${floor} wave ${wave} ${gpu === 'gl' ? 'GL' : 'WebGPU'}`, run(gpu, { HORDE_WAVE: String(wave) }), 5.0, false, 100);
+check('GL at 3840x2160 (4 times the pixels)', run('gl', { CW_RENDER_SCALE: '3' }), 5.0, true);
 check('WebGPU against 1 ms', run('webgpu'), 1, true);
 process.exit(bad ? 1 : 0);
