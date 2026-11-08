@@ -284,7 +284,7 @@ static void campaign_start(void) {
     {16.0f, 95,4.3f,.085f,.33f,.000030f,.30f,1.10f}, /* city: warm facade edges */
     { 9.6f, 80,4.2f,.080f,.34f,.000037f,.30f,1.02f}, /* winter capital */
     { 8.7f, 95,4.5f,.085f,.40f,.000040f,.36f,1.05f}, /* polar: pale dawn */
-    {16.4f,105,4.5f,.070f,.32f,.000032f,.34f,1.10f}  /* open ocean */
+    {18.45f,250,3.6f,.070f,.30f,.000036f,.46f,1.28f}  /* open ocean at dusk: a low red sun over the rigs */
   };
   cw_node root=cw_tree_root(G.tree),sky=cw_node_get(root,"Coast/Sky");
   cw_node_set(sky,"time_of_day",cw_val_float(looks[style].hour));
@@ -369,6 +369,7 @@ static void air_target_damage(int id,bool missile) {
   int32_t *hp=basket?&a->basket_hp:&a->hull_hp;*hp-=missile?3:1;
   explode(a->x,basket?a->by:a->y,a->z);if(*hp>0)return;*hp=0;
   blast_rumble(a->x,basket?a->by:a->y,a->z,a->kind>=3?1:.8f); /* a target goes down */
+  if(a->kind<2)feel_kill(a->x,basket?a->by:a->y,a->z,0,basket?0:-.2f,0,a->kind==1?2.2f:basket?.8f:1.5f); /* feel.h: the fireball, the light and the falling pieces */
   if(a->kind==2){a->state=3;a->root->visible=false;G.shields_left--;G.score+=400;notify(G.shields_left?"SHIELD GENERATOR DESTROYED":"SHIELD COLLAPSED / CORE EXPOSED",4);return;}
   if(!a->credited){a->credited=1;if(a->kind==0)G.balloon_kills++;if(a->kind==1)G.blimp_kills++;G.score+=basket?350:200;}
   a->ropes->visible=false;a->age=0;
@@ -452,7 +453,7 @@ static int campaign_waypoint(void) {
     if(id<ENEMIES&&(G.level==0||G.level==2||G.level>=5||(G.level==1&&G.kills>=8)||G.level==4))continue;
     if(id>=ENEMIES+BUILDINGS&&(id-ENEMIES-BUILDINGS)%2)continue;
     float x,y,z;if(!target_position(id,&x,&y,&z))continue;
-    float d=(x-G.px)*(x-G.px)+(y-G.py)*(y-G.py)+(z-G.pz)*(z-G.pz);
+    float d=objective_rating(x,y,z);if(id==F.objective&&!sw[SW_OBJECTIVE_NEAREST])d*=.87f; /* feel.h: the goal ahead, the one shown kept unless another is clearly better */
     if(d<nearest){nearest=d;best=id;}
   }
   return best;

@@ -26,6 +26,8 @@
 #include "cartwheel/environment.h"
 #include "cartwheel/visibility.h"
 #include "cartwheel/decals.h"
+#include "cartwheel/explosions.h"
+#include "cartwheel/rim_light.h"
 #include "wreck-parts.h"
 
 #define W 960
@@ -60,7 +62,7 @@ _Static_assert(sizeof(preferences) == 16, "the save keeps its size");
 static preferences prefs;
 
 typedef struct { t3_object *node, *modern, *vintage, *sleigh, *propeller; float x, y, z, vx, vy, vz, heading, phase, maneuver_time, fire_cool, seeker; int active, hp, maneuver, role, burst, passed; } enemy;
-typedef struct { t3_object *node; cw_node trail; float x, y, z, vx, vy, vz, age, obscured, decoy[3]; int active, missile, target; } shot;
+typedef struct { t3_object *node; cw_node trail; float x, y, z, vx, vy, vz, age, obscured, decoy[3]; int active, missile, target, tracer; } shot;
 typedef struct { t3_object *node; cw_node particles; float x, y, z, age; int active; } blast;
 typedef struct { t3_object *node; float x, z, span; } scenery;
 typedef struct { t3_object *node, *ruin; float x,y,z,radius; int hp; t3_box3 bounds,colliders[16]; int collider_count; } structure;
@@ -127,6 +129,11 @@ static struct {
 } G;
 
 static int art_hide_hud; /* Developer capture switch; never stored in preferences. */
+/* feel.h */
+static void feel_reset(void);
+static void feel_spawn(int i);
+static void explode(float x, float y, float z);
+static void rumble(float low, float high, int ms);
 enum { TITLE, PLAY, PAUSED, WIN, LOST, SETTINGS, CRASH, CONTROLS, VICTORY };
 static struct {cw_texture thumbnails[MISSIONS];cw_vec2 pointer;uint32_t previous_buttons;bool clicked;} menu_ui;
 static void menu_read_pointer(void);
@@ -370,7 +377,7 @@ static void flight_material(t3_object *o, void *ctx) {
     t3_material *old=m->materials[i],*mat=t3_material_clone(old);
     m->materials[i]=mat;t3_release(old);
     mat->roughness=clampf(mat->roughness,0.25f,0.8f);
-    if(ctx){mat->color.r*=0.85f;mat->color.g*=0.79f;mat->color.b*=0.71f;}
+    if(ctx){mat->color.r*=0.30f;mat->color.g*=0.29f;mat->color.b*=0.28f;} /* hostile: dark charcoal paint, a silhouette against the haze (feel.h adds the warm edge and the exhaust) */
     else if(mat->color.r+mat->color.g+mat->color.b>1.35f){
       /* Player-only cloned paint: readable over snow, retaining the texture
        * panel lines and the dark glass/cockpit/engine materials. */
@@ -587,7 +594,7 @@ static void make_clouds(void) {
       cw_node_set(cloud,"noise_scale",cw_val_float(0.012f));
       cw_node_set(cloud,"noise_wind",cw_val_vec3(0.8f,0,0.3f));
       cw_node_set(cloud,"emission",cw_val_color(0.65f,0.67f,0.70f,1));
-      cw_node_set(cloud,"emission_energy",cw_val_float(.50f));
+      cw_node_set(cloud,"emission_energy",cw_val_float(.24f)); /* lit mostly by the sun: bright crowns, greyer bases */
       cw_node3d_set_position(cloud,(t3_vec3){cloud_sites[i][0]+(lobe?70:0),y+(lobe?85:0),cloud_sites[i][2]+(lobe?-30:0)});
       cw_node_add_child(cw_tree_root(G.tree),cloud);
     }
@@ -765,7 +772,7 @@ static void make_world(void) {
     cw_node_set(n,"energy",cw_val_float(1.5f));
     cw_node_set(n,"blend",cw_val_enum("ALPHA"));
     cw_node_set(n,"size_curve",cw_val_string("0 0.3, 0.2 1, 1 2.4"));
-    cw_node_set(n,"color_ramp",cw_val_string("0 1 0.85 0.4 1, 0.2 1 0.3 0.04 0.9, 0.45 0.12 0.10 0.08 0.7, 1 0.06 0.06 0.06 0"));
+    cw_node_set(n,"color_ramp",cw_val_string("0 1 0.85 0.4 0.3, 0.06 1 0.85 0.4 1, 0.2 1 0.3 0.04 0.9, 0.45 0.12 0.10 0.08 0.7, 1 0.06 0.06 0.06 0")); /* the fire swells up out of the blast, no full-bright first frame */
     cw_node_add_child(cw_tree_root(G.tree),n);
   }
   for(int i=0;i<2;i++) {
@@ -962,7 +969,7 @@ static void new_mission(void) {
   for (int i = 0; i < FOE_SHOTS; ++i)
     G.foe_shots[i].active = G.foe_shots[i].node->visible = false;
   for (int i = 0; i < FX; ++i){G.blasts[i].active=G.blasts[i].node->visible=false;cw_node_set(G.blasts[i].particles,"visible",cw_val_bool(false));}
-  campaign_start();follow_jet();cw_node3d_snapshot(G.jet_node);cw_node3d_snapshot(G.camera_node);
+  feel_reset();campaign_start();follow_jet();cw_node3d_snapshot(G.jet_node);cw_node3d_snapshot(G.camera_node);
 }
 
 static void spawn_enemy(void) {
@@ -975,7 +982,7 @@ static void spawn_enemy(void) {
     e->heading=G.heading+(i&1?0.35f:-0.35f);
     e->vx=sinf(e->heading)*2.5f;e->vz=-cosf(e->heading)*2.5f;e->vy=0;
     e->modern->visible=G.level!=1&&G.level!=6;e->vintage->visible=G.level==1;e->sleigh->visible=G.level==6;
-    e->phase=rand01()*6.28f;e->hp=G.wave>=3?4:3;
+    e->phase=rand01()*6.28f;e->hp=G.wave>=3?4:3;feel_spawn(i);
     e->role=(G.wave>=2&&i%3==0)?2:i%2;e->maneuver=0;e->maneuver_time=0;e->fire_cool=3;e->seeker=0;e->burst=e->passed=0;
     /* Patrols cross the player's path; interceptors turn in from the flanks. */
     if(e->role==1)e->heading=G.heading+PI*0.65f;
@@ -996,9 +1003,11 @@ static bool target_position(int id,float *x,float *y,float *z) {
   if(id>=ENEMIES&&id<ENEMIES+BUILDINGS&&G.buildings[id-ENEMIES].hp>0){structure *b=&G.buildings[id-ENEMIES];*x=b->x;*y=b->y;*z=b->z;return true;}
   return air_target_position(id,x,y,z);
 }
+#include "feel.h"
 static void update_lock(float dt) {
   int best=-1,next=-1,first=-1;float rating=1e9f;bool current_valid=false;
-  for(int i=0;i<TARGET_COUNT;i++) {
+  static float lock_lost;bool blind=lock_blinded();
+  for(int i=0;i<TARGET_COUNT&&!blind;i++) {
     float x,y,z;if(!target_position(i,&x,&y,&z))continue;
     t3_vec3 local=aircraft_local(x,y,z);float ahead=-local.z,side=local.x,vert=local.y;
     bool ground=i>=ENEMIES&&i<ENEMIES+BUILDINGS;
@@ -1013,6 +1022,13 @@ static void update_lock(float dt) {
     float r=(fabsf(side)+fabsf(vert))/ahead+(ground?.14f:0)+(i!=G.lock_target?.08f:0);
     if(r<rating){best=i;rating=r;}
   }
+  /* a target that winks out of the cone or behind a wisp for under 0.4 s keeps its lock (held, not growing): a far
+   * bandit a few pixels across would otherwise start the lock over every time */
+  float tx,ty,tz;
+  if(!current_valid&&!sw[SW_LOCK_FLICKER]&&G.lock_target>=0&&lock_lost<.4f&&!G.cycle_target&&target_position(G.lock_target,&tx,&ty,&tz)){
+    lock_lost+=dt;return;
+  }
+  if(current_valid)lock_lost=0;
   if(G.manual_target&&current_valid)best=G.lock_target;
   if(!current_valid)G.manual_target=0;
   if(G.cycle_target){best=next>=0?next:first;G.cycle_target=0;G.manual_target=1;}
@@ -1138,6 +1154,7 @@ static void update_effects(float dt) {
     if(G.blasts[i].age>2.8f)G.blasts[i].active=false;
   }
   G.damage_flash*=0.88f;
+  feel_update(dt);
   if(G.impact_age>0){G.impact_age+=dt;float r=6+G.impact_age*90;
     t3_object_set_scale(G.shockwave,r,r,r);G.shock_mat->opacity=fmaxf(0,0.14f-G.impact_age*0.18f);
     G.shockwave->visible=G.impact_age<1.8f;}
@@ -1181,6 +1198,7 @@ static void fire_shot(int missile) {
     s->missile=missile;s->target=missile?G.lock_target:-1;
     s->vx=G.visual_forward[0]*velocity;s->vy=G.visual_forward[1]*velocity;
     s->vz=G.visual_forward[2]*velocity;
+    s->tracer=0;
     if(missile) {
       t3_object_set_scale(s->node,2.2f,2.2f,1.7f);G.missiles--;G.missile_cool=65;RB.sent[3]++;rumble(.3f,.2f,80); /* a missile leaves the rail */
       G.missile_request=0;G.missile_launches++;G.missile_last_target=s->target;notify("MISSILE AWAY",1.2f);
@@ -1195,7 +1213,9 @@ static void fire_shot(int missile) {
         cw_node_set(s->trail,"color_ramp",cw_val_string("0 1 1 1 0, 0.8 1 1 1 0.5, 1 1 1 1 1"));
         cw_node_add_child(cw_tree_root(G.tree),s->trail);
       }
-      cw_node3d_set_position(s->trail,(t3_vec3){s->x,s->y,s->z});
+      /* the slot's trail may have last drawn a tracer (feel.h) */
+      cw_node_set(s->trail,"length",cw_val_int(45));cw_node_set(s->trail,"color",cw_val_color(0.85f,0.85f,0.8f,0.45f));cw_node_set(s->trail,"color_ramp",cw_val_string("0 1 1 1 0, 0.8 1 1 1 0.5, 1 1 1 1 1"));
+      cw_node3d_set_position(s->trail,(t3_vec3){s->x,s->y,s->z});cw_node3d_snapshot(s->trail);
       cw_node_set(s->trail,"visible",cw_val_bool(true));cw_node_set(s->trail,"emitting",cw_val_bool(true));cw_node_set(s->trail,"width",cw_val_float(.7f));
     } else {
       t3_object_set_scale(s->node,1,1,7);
@@ -1212,7 +1232,7 @@ static void fire_shot(int missile) {
           s->vx=ax*inv;s->vy=ay*inv;s->vz=az*inv;
         }
       }
-      G.gun_cool=4;
+      G.gun_cool=4;feel_tracer(s);
     }
     t3_object_set_rotation(s->node,-asinf(clampf(s->vy/velocity,-1,1)),atan2f(-s->vx,-s->vz),0);
     G.shots_fired++;G.audio_shot=missile?1.5f:0.9f;
@@ -1286,7 +1306,7 @@ static void cmd_bind(int argc, const char **argv, cw_reply *r) {
 static void init(void *user) {
   (void)user;
   G.rng = 0x5eeda11u;
-  make_world();cw_debug_i32("forest.grid",&forest_grid);
+  make_world();feel_make();cw_debug_i32("forest.grid",&forest_grid);
   G.left = cw_action_add("bank_left", 0.06f);
   G.right = cw_action_add("bank_right", 0.06f);
   G.up = cw_action_add("climb", 0.06f);
@@ -1595,7 +1615,10 @@ static void fixed_update(void *user, double dt) {
   }
   if(missile_down&&G.missiles>0)G.missile_request=fmaxf(G.missile_request,.15f);
   if(G.missile_request>0){
-    G.missile_request=fmaxf(0,G.missile_request-step);
+    /* a tap waits out the lock while it is being acquired (up to 3 s from the tap), not only the first 1.25 s */
+    static float queued_for;queued_for=cw_action_just_pressed(0,G.missile)?0:queued_for+step;
+    bool acquiring=!sw[SW_LOCK_FLICKER]&&G.lock_target>=0&&G.lock_timer<.6f&&queued_for<3;
+    if(!acquiring)G.missile_request=fmaxf(0,G.missile_request-step);
     if(G.missiles>0&&G.missile_cool<=0)fire_shot(1);
     if(G.missile_request==0&&!missile_down&&G.lock_timer<.6f)notify("NO LOCK / KEEP TARGET IN SIGHT",1.5f);
   }
@@ -1603,7 +1626,7 @@ static void fixed_update(void *user, double dt) {
   if (G.spawn <= 0) {
     int active=0;for(int i=0;i<ENEMIES;i++)active+=!!G.enemies[i].active;
     int limit=G.level==0?0:G.level==1?(G.kills>=8?0:3):G.level==4?2:4;
-    if(active<limit)spawn_enemy();
+    if(active<limit)feel_flight(limit-active);
     G.spawn = clampf(420-G.wave*18,240,420);
   }
   bool missile_busy=false;
@@ -1727,12 +1750,12 @@ static void fixed_update(void *user, double dt) {
       float dx=e->x-s->x, dy=e->y-s->y, dz=e->z-s->z;
       if(segment_distance2(ox,oy,oz,s->x,s->y,s->z,e->x,e->y,e->z)<(s->missile?100:36)) {
         s->active = s->node->visible = false;
-        G.hits++; G.hit_flash = 12; e->hp -= s->missile ? 3 : 1;
+        G.hits++; G.hit_flash = 12; e->hp -= s->missile ? 3 : 1;if(e->hp>0)feel_hit(s->x,s->y,s->z);
         if (e->hp <= 0) {
           e->active = e->node->visible = false;
           G.kills++; G.score += 100 + G.wave * 20; G.kill_flash = 54;
           if (G.kills % 2 == 0 && G.missiles < MISSILE_CAPACITY) G.missiles++;
-          explode(e->x, e->y, e->z);blast_rumble(e->x,e->y,e->z,.7f);
+          feel_kill(e->x,e->y,e->z,e->vx,e->vy,e->vz,1);feel_score(100+G.wave*20);blast_rumble(e->x,e->y,e->z,.7f);
           if(G.kills%12==0){G.patrols++;G.spawn=1500;notify("CONTROL: AIRSPACE SECURED. PATROL CONTINUES.",7);}
         }
         break;
@@ -1766,9 +1789,9 @@ static void fixed_update(void *user, double dt) {
       s->active = s->node->visible = false;
   }
   for(int i=0;i<SHOTS;i++)if(!CW_HANDLE_IS_NULL(G.shots[i].trail)) {
-    bool active=G.shots[i].active&&G.shots[i].missile;
+    bool active=G.shots[i].active&&(G.shots[i].missile||G.shots[i].tracer);
     cw_node_set(G.shots[i].trail,"visible",cw_val_bool(active));cw_node_set(G.shots[i].trail,"emitting",cw_val_bool(active));
-    cw_node_set(G.shots[i].trail,"width",cw_val_float(active?.7f:0));
+    cw_node_set(G.shots[i].trail,"width",cw_val_float(active?(G.shots[i].missile?.7f:.55f):0));
   }
   campaign_finish();
 }
@@ -1818,7 +1841,7 @@ static void hud(void) {
   float left_w=W*0.5f-28-70,y=21,left_right=28;
   m=text(G.ui_font,mission_name(),28,y,15,white,0,CW_ALIGN_LEFT);y+=m.height+3;left_right=fmaxf(left_right,28+m.width);
   m=text(G.ui_font,mission_goal(),28,y,13,amber,left_w,CW_ALIGN_LEFT);y+=m.height+3;left_right=fmaxf(left_right,28+measure(G.ui_font,mission_goal(),13,left_w).width);
-  int wp=G.state==PLAY?campaign_waypoint():-1;float wx=0,wy=0,wz=0;
+  int wp=G.state==PLAY?campaign_waypoint():-1;float wx=0,wy=0,wz=0;objective_view(wp);
   bool objective=wp>=0&&!G.incoming&&target_position(wp,&wx,&wy,&wz);
   if(objective) {
     t3_vec3 local=aircraft_local(wx,wy,wz);float distance=t3_vec3_length(local);
@@ -1887,13 +1910,18 @@ static void hud(void) {
     const char *incoming_line=G.threat_eta<=1.6f?"BREAK NOW / {countermeasures} FLARES":"MISSILE INBOUND";
     char threat[80];snprintf(threat,sizeof threat,"%d INBOUND  /  %.0f M  /  %.1f SEC CLOSING",G.incoming,G.threat_range,fminf(G.threat_eta,99.9f));
     float half=0;
-    if(G.kill_flash>0)half=fmaxf(half,measure(G.title_font,"TARGET DESTROYED",19,0).width*.5f);
+    if(G.kill_flash>0)half=fmaxf(half,measure(G.title_font,"TARGET DESTROYED",26,0).width*.5f);
     if(G.incoming)half=fmaxf(half,fmaxf(cw_prompt_text_size(G.title_font,incoming_line,0,20).x,measure(G.ui_font,threat,13,0).width)*.5f);
     if(G.warning>0)half=fmaxf(half,measure(G.title_font,"PULL UP",24,0).width*.5f);
     float top=fmaxf(82,heading_bottom+4);
     if(half>0&&left_right+8>W*.5f-half)top=fmaxf(top,left_bottom+6);
     float cy=top;
-    if(G.kill_flash>0){m=ctext(G.title_font,"TARGET DESTROYED",W*.5f,cy,19,amber);cy+=m.height;}
+    if(G.kill_flash>0){
+      /* the kill call: big, with the points it paid rising off it */
+      m=ctext(G.title_font,"TARGET DESTROYED",W*.5f,cy,26,amber);cy+=m.height;
+      if(F.pop_age<1.2f&&F.pop_score>0){snprintf(buf,sizeof buf,"+%d",F.pop_score);cw_color pop=white;pop.a*=1-smooth01((F.pop_age-.7f)/.5f);
+        m=ctext(G.title_font,buf,W*.5f,cy-F.pop_age*6,17,pop);cy+=m.height;}
+    }
     cy=fmaxf(cy,top+28);
     if(G.incoming) {
       cy+=ptext(G.title_font,incoming_line,W*.5f-W,cy,20,red,2*W,CW_ALIGN_CENTER).y;
@@ -1986,6 +2014,9 @@ static void render(void *user, double alpha) {
   (void)user; (void)alpha;
   cw_r2d_begin(&(cw_r2d_pass_desc){ .clear = false });
   int shown=G.state;if(menu_preview)G.state=menu_preview==3?LOST:WIN; /* the preview command: drawn as that screen, then put back */
+  F.test_screen_ok=hud_project(G.enemies[0].x,G.enemies[0].y,G.enemies[0].z,(cw_vec2 *)F.test_screen); /* feel.h: where the tests look */
+  {int s=F.test_site;hud_project(cloud_sites[s][0],fmaxf(cloud_sites[s][1],terrain_height(cloud_sites[s][0],cloud_sites[s][2])+350),cloud_sites[s][2],(cw_vec2 *)F.test_cloud);}
+  feel_publish();
   if(!art_hide_hud&&G.state!=CRASH&&G.state!=TITLE&&G.state!=CONTROLS&&G.state!=SETTINGS)hud();
   if(capital.active&&capital.age<.16f)cw_r2d_rect((cw_rect){0,0,W,H},cw_rgba(1,.87f,.65f,(1-capital.age/.16f)*.4f));
   if(G.state==CRASH&&G.crash_age<0.10f)cw_r2d_rect((cw_rect){0,0,W,H},cw_rgba(1,0.9f,0.76f,(1-G.crash_age/0.10f)*0.4f));
