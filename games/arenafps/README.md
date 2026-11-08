@@ -10,7 +10,7 @@ bots that find their way over a navigation mesh, jump pads, ledge jumps and drop
 - Move: left stick (keyboard: W A S D). Sprint: click the left stick (keyboard: left Shift), forward only, and firing
   ends it. Look: right stick (keyboard: arrow keys). Fire: right trigger or right shoulder (keyboard: J). Jump: South
   (keyboard: Space): high enough for a 1.2 m ledge. Next / previous weapon: North / West (keyboard: E / Q). Grenade: left
-  shoulder or left trigger (keyboard: G): thrown in an arc, it bounces and goes off 0.8 s after it lands (2.5 s at most); two
+  shoulder or left trigger (keyboard: G): thrown in an arc, it bounces and goes off half a second after it lands (2.5 s at most); two
   at a spawn, one more with each ammo pickup, four at most. Bash: East (keyboard: F): a blow with the stock, close up.
 - Jump pads (glowing discs with rising sparks) throw you up onto the roofs.
 - Pause with Start in a match; on the setup and results panels Start confirms.
@@ -25,6 +25,10 @@ Modes
   on a shared life and its view says "press any button to come back in", and the next waves are sized for the people
   playing. Any press on that pad brings it back (for a life). `sw idle_lives 1` (every cart) spends lives on it and
   counts it as before, the control of `tests/arenafps-idle-seat.mjs`.
+
+`tests/arenafps-newcomer.mjs` plays from power-on through a first deathmatch and back to the setup, acting only on what
+the screen shows (an enemy in view, the red bar toward whoever hit you, the results' continue prompt), with a pause on the
+way. `sw cues 0` (every cart) hides the bar, the red edges and the continue prompt: its control.
 
 Feedback: the view never shakes, bobs or kicks; blasts (by how close), hits taken, big hits and frags dealt, hard landings and each rocket or rail shot are felt in your own pad instead (rumble, Rumble on the setup screen; nothing without motors). A hit throws the target back a moment, a red cross and a dry thwack on a hit, a white cross, the word HEAD and a bright ping on a head shot, a gold cross, the victim's name, your streak and a rising chime on a frag, the name of whoever downed you, a red bar on a ring around the crosshair points at whoever hit you, the edges pulse red when health is low, and a downed player sees a respawn countdown (about 2.5 s; two seconds of protection after you spawn).
 

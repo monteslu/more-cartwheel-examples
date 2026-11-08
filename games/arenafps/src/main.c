@@ -113,6 +113,7 @@ static struct game {
    * killer's health then; the dead view turns to them and follows them until the respawn */
   int kc_who[MAXH], kc_weapon[MAXH], kc_hp[MAXH];
   float kc_dist[MAXH];
+  int sw_no_cues, cue_over; /* sw cues 0: no damage edges or bearing bar, no continue prompt on the results (the newcomer gate's control); the prompt drawn now */
   int sw_no_killcam; /* sw killcam 0: the old dead view (lies on the floor, looks nowhere): the killer cam gate's control */
   float head_marker[MAXH], pick_t[MAXH];
   int kill_streak[MAXH];
@@ -630,7 +631,7 @@ static void gren_tick(void) {
       if (cw_node_valid(g->node)) cw_node_set(g->node, "visible", cw_val_bool(false)), cw_node3d_set_position(g->node, v3(0, -500, 0));
       if (cw_node_valid(g->light)) cw_node_set(g->light, "energy", cw_val_float(0));
       gren_stats[1]++;
-      blast(v3add(g->p, v3(0, 0.15f, 0)), v3(0, 1, 0), g->owner, 100, 5.5f, WK_GRENADE);
+      blast(v3add(g->p, v3(0, 0.15f, 0)), v3(0, 1, 0), g->owner, 125, 6.0f, WK_GRENADE); /* kills at its feet, softens to 6 m */
       continue;
     }
     if (!g->rest) {
@@ -642,7 +643,7 @@ static void gren_tick(void) {
         g->v = v3add(v3scale(vt, 0.7f), v3scale(hn, -vn * 0.4f)); /* a dull bounce, it skids */
         g->p = v3add(hp, v3scale(hn, 0.07f));
         if (fabsf(vn) > 2.5f) fx_play(SND_BOUNCE, g->p, CW_MIN(0.6f, fabsf(vn) * 0.06f), 1);
-        if (hn.y > 0.7f && g->fuse > 48) g->fuse = 48; /* on the floor: it goes off 0.8 s later (in the air it waits up to 2.5 s) */
+        if (hn.y > 0.7f && g->fuse > 32) g->fuse = 32; /* on the floor: it goes off about half a second later (in the air it waits up to 2.5 s) */
         if (hn.y > 0.7f && v3len(g->v) < 1.2f) g->rest = true, g->v = v3(0, 0, 0);
       } else g->p = np;
     }
@@ -1000,9 +1001,10 @@ static void bot_think(fighter *f, int idx) {
     if (f->last_pos.x != 0 || f->last_pos.z != 0) {
       if (f->target < 0 && f->wander_wait++ < 240 && bi < 0 && bi != -4) bi = -2;
     }
-    /* hunt: co-op bots (both sides) go after the nearest enemy, and any bot that has seen no enemy for 20 s goes looking
+    /* hunt: co-op bots (both sides) go after the nearest enemy, and any bot that has seen no enemy for 20 s (12 s in team
+     * deathmatch, where half the fighters are friends and a big arena went quiet for 45 s) goes looking
      * (the longest stretch without an encounter stays short); only health when hurt comes first */
-    if ((G.mode == MODE_COOP || f->alive_t - f->saw_t > 20 * 60) && !(bi >= 0 && A.items[bi].kind == ITEM_HEALTH && f->hp < 50)) {
+    if ((G.mode == MODE_COOP || f->alive_t - f->saw_t > (G.mode == MODE_TDM ? 12 : 20) * 60) && !(bi >= 0 && A.items[bi].kind == ITEM_HEALTH && f->hp < 50)) {
       float hd = 1e9f;
       int hi = -1;
       for (int i = 0; i < G.nf; i++) {
@@ -1161,7 +1163,7 @@ static void bot_tick(fighter *f, int idx) {
     bool hid = !see && f->alive_t - f->saw_t < 45 && dist > 5 && dist < 18;
     bool open = see && f->react <= 0 && dist > 7 && dist < 18 && v3len(v3(t->mv.velocity.x, 0, t->mv.velocity.z)) < 2.0f;
     int roll = cw_rng_int(&G.rng, 0, 99);
-    if ((hid && roll < 20) || (open && roll < 6)) {
+    if ((hid && roll < 35) || (open && roll < 14)) {
       float miss = (1.2f - f->skill) * 2.5f, a = cw_rng_float(&G.rng) * 6.2831853f, sa, ca;
       cw_sincos(a, &sa, &ca);
       t3_vec3 from = eye_pos(f), lead = v3scale(v3(t->mv.velocity.x, 0, t->mv.velocity.z), cw_clampf(dist / 13.0f, 0.45f, 1.4f) * 0.8f * f->skill);
@@ -1225,7 +1227,7 @@ static void bot_tick(fighter *f, int idx) {
   /* a live grenade close by: get away from it (after a moment to notice) */
   for (int g = 0; g < MAXGREN; g++) {
     const gren *gr = &GR[g];
-    if (!gr->on || gr->fuse > GREN_FUSE - 24) continue;
+    if (!gr->on || gr->fuse > GREN_FUSE - 30) continue;
     t3_vec3 d = v3sub(f->mv.position, gr->p);
     float dd = sqrtf(d.x * d.x + d.z * d.z);
     if (dd > 5.5f || dd < 1e-3f) continue;
@@ -1325,7 +1327,7 @@ static void ptest_update(void) {
   int best = -9999;
   for (int i = 1; i < G.nf; i++) if (F(i)->active && F(i)->score > best) best = F(i)->score;
   ptest[12] = (float)best;
-  ptest[17] = (float)G.match_ticks, ptest[18] = (float)f->deaths, ptest[19] = G.dmg_flash[0], ptest[20] = G.dmg_dir[0];
+  ptest[17] = (float)G.match_ticks, ptest[18] = (float)f->deaths, ptest[19] = G.sw_no_cues ? 0 : G.dmg_flash[0], ptest[20] = G.sw_no_cues ? 0 : G.dmg_dir[0]; /* the bearing bar, as drawn */
   ptest[21] = (float)f->have, ptest[22] = (float)G.frag_limit;
   /* the view's half angles: 78 degrees tall, wide by the view's aspect */
   cw_rect vr = cw_shell_player_rect(0);
@@ -2611,6 +2613,7 @@ static void game_step(void) {
     if (G.over_ticks > 60 * 3 && (cw_action_just_pressed(0, G.fire) || cw_action_just_pressed(0, G.jump) || any_start() || AUTO)) {
       if (AUTO && G.over_ticks < 60 * 8) return;
       G.state = ST_SETUP;
+      G.cue_over = 0;
       G.ticks = 0;
       if (AUTO) { /* the autopilot plays the next arena and mode: a soak test sees them all */
         if (!getenv("ARENA_REPEAT")) { /* ARENA_REPEAT: play the same arena and mode again (pacing runs) */
@@ -2766,7 +2769,7 @@ static void hud_view(int h) {
   if (u < 8) u = 8;
   float cx = r.x + r.w / 2, cy = r.y + r.h / 2, kill_bottom = 0; /* kill_bottom: the kill line's bottom, when one shows */
   /* damage flash at the edges */
-  if (G.dmg_flash[h] > 0.02f) {
+  if (G.dmg_flash[h] > 0.02f && !G.sw_no_cues) {
     cw_color c = cw_rgba(0.9f, 0.05f, 0.05f, G.dmg_flash[h] * 0.45f);
     cw_r2d_rect(cw_rect_make(r.x, r.y, r.w, u * 0.8f), c);
     cw_r2d_rect(cw_rect_make(r.x, r.y + r.h - u * 0.8f, r.w, u * 0.8f), c);
@@ -2774,7 +2777,7 @@ static void hud_view(int h) {
     cw_r2d_rect(cw_rect_make(r.x + r.w - u * 0.8f, r.y, u * 0.8f, r.h), c);
   }
   /* where the hit came from: a bar on a ring around the crosshair, rotated to the shooter's bearing */
-  if (G.dmg_flash[h] > 0.05f && f->alive) {
+  if (G.dmg_flash[h] > 0.05f && f->alive && !G.sw_no_cues) {
     float sa, ca;
     cw_sincos(G.dmg_dir[h], &sa, &ca);
     float r0 = CW_MIN(r.w, r.h) * 0.26f, r1 = r0 + u * 1.6f;
@@ -3189,7 +3192,8 @@ static void hud_over(void) {
     snprintf(s, sizeof s, "page %d of %d", page + 1, pages);
     text(s, 0, by + step * (float)per, bs, cw_rgba(1, 1, 1, 0.6f), CW_ALIGN_CENTER, cs.x);
   }
-  if (G.over_ticks > 60 * 3) ptext(cont, -1, 0, cy, cs_, cw_rgba(1, 1, 1, 0.8f), CW_ALIGN_CENTER, cs.x);
+  G.cue_over = G.over_ticks > 60 * 3 && !G.sw_no_cues;
+  if (G.cue_over) ptext(cont, -1, 0, cy, cs_, cw_rgba(1, 1, 1, 0.8f), CW_ALIGN_CENTER, cs.x);
 }
 
 static void render(void *user, double alpha) {
@@ -3388,12 +3392,17 @@ static void quality_changed(cw_quality q, void *u) {
 /* the gates' switch: sw idle_lives 1 (the control of tests/arenafps-idle-seat.mjs) */
 /* sw killcam 0: the old dead view, the control of tests/arenafps-killcam.mjs */
 static void cmd_sw(int argc, const char **argv, cw_reply *r) {
+  if (argc >= 3 && !strcmp(argv[1], "cues")) {
+    G.sw_no_cues = atoi(argv[2]) == 0;
+    cw_reply_printf(r, "{\"cues\":%d}", !G.sw_no_cues);
+    return;
+  }
   if (argc >= 3 && !strcmp(argv[1], "killcam")) {
     G.sw_no_killcam = atoi(argv[2]) == 0;
     cw_reply_printf(r, "{\"killcam\":%d}", !G.sw_no_killcam);
     return;
   }
-  if (argc < 3 || strcmp(argv[1], "idle_lives")) { cw_reply_error(r, "usage: sw idle_lives <0|1> | sw killcam <0|1>"); return; }
+  if (argc < 3 || strcmp(argv[1], "idle_lives")) { cw_reply_error(r, "usage: sw idle_lives <0|1> | sw killcam <0|1> | sw cues <0|1>"); return; }
   G.sw_idle_lives = atoi(argv[2]) != 0;
   cw_reply_printf(r, "{\"idle_lives\":%d}", G.sw_idle_lives);
 }
@@ -3498,6 +3507,7 @@ static void init(void *user) {
   cw_debug_i32("coop.away_skips", &G.away_skips); cw_debug_i32("coop.present", &G.present); /* co-op respawns held back for a seat nobody plays; the people the last wave was sized for */
   cw_debug_command("sw", "sw idle_lives <0|1>: test switch (co-op spends shared lives on a seat nobody plays and sizes the waves for it, as before)", cmd_sw);
   cw_debug_i32("match.winner", &G.winner);
+  cw_debug_i32("cue.over", &G.cue_over); /* the results' continue prompt is on screen */
   cw_debug_i32("match.nf", &G.nf);
   cw_debug_i32("nav.requests", &G.path_requests);
   cw_debug_i32("nav.done", &G.path_done);
