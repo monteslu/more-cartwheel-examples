@@ -334,7 +334,10 @@ void fx_event(const ft_game *g, const ft_event *e) {
     if (light_hit || !lit) { /* no flash sprite: a small spray of sparks */
       cw_node ls = FX.lsparks[FX.lsi++ % 3];
       cw_node_set(ls, "amount", cw_val_int(lit ? 14 : 8));
-      if (!(fx_hitfx_off & 1)) at(ls, p);
+      /* and at most one such spray every 8 ticks (a flurry landing a blow every 4 sparked as a flicker) */
+      static uint32_t spray_tick; static bool sprayed;
+      bool spray = lit || !fx_flash_cap || !sprayed || g->tick - spray_tick >= 8;
+      if (spray && !(fx_hitfx_off & 1)) { at(ls, p); spray_tick = g->tick; sprayed = true; }
       cw_node_set(FX.ring[r], "amount", cw_val_int(light_hit ? 6 : 10));
     } else {
       int i = FX.si++ % 4;
