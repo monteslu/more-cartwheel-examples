@@ -1652,6 +1652,7 @@ static void draw_hud(void) {
       below+=bh+6*scale;
     }
     float lab_top = below, lab_bottom = H - panels_h - 6 * scale;
+    float rects[64][4];int n_rects=0; /* every annotation box drawn over the sea, for the overlap count (pirates.label_overlaps) */
     float lsize = 26 * scale, lpad = 4 * scale;
     /* Lay out complete ship annotations before ports. Keep health, damage
      * and protection together, and connect displaced labels to their ship.
@@ -1661,6 +1662,30 @@ static void draw_hud(void) {
     float label_half[SHIPS]={0},label_top[SHIPS]={0},label_down[SHIPS]={0},box_half[SHIPS]={0},box_h[SHIPS]={0};
     char label_text[SHIPS][24], prot_text[SHIPS][32];
     int label_visible[SHIPS]={0};
+    /* A hit's damage number floats up over the hit ship itself (its hull, not its label, which may sit off to one
+     * side), and the labels keep clear of it. Two numbers over ships side by side stack instead of covering. */
+    float note_x[SHIPS]={0},note_y[SHIPS]={0},note_w[SHIPS]={0},note_h[SHIPS]={0};int note_on[SHIPS]={0};char note_text[SHIPS][16];
+    if(camera)for(int i=0;i<SHIPS;i++) {
+      ship *s=&G.ships[i];
+      if(!s->active||s->respawn||s->protection||G.hit_ticks[i]<=0)continue;
+      t3_vec3 p=t3_vec3_apply_mat4((t3_vec3){s->x,1.5f,s->z},&camera->matrix_world_inverse);
+      p=t3_vec3_apply_mat4(p,&camera->projection_matrix);
+      float hx=(p.x*.5f+.5f)*W,hy=(.5f-p.y*.5f)*H;
+      snprintf(note_text[i],sizeof note_text[i],"-%d",G.hit_amount[i]);
+      cw_text_metrics nm=measure(note_text[i],lsize,0);
+      note_w[i]=nm.width+16*scale;note_h[i]=nm.height+lpad;
+      float rise=(75-G.hit_ticks[i])*.25f*scale;
+      note_x[i]=clampf(hx-note_w[i]*.5f,4*scale,W-note_w[i]-4*scale);
+      note_y[i]=clampf(hy-note_h[i]-12*scale-rise,lab_top,lab_bottom-note_h[i]);
+      for(int tries=0;tries<SHIPS;tries++) {
+        int moved=0;
+        for(int j=0;j<i;j++)if(note_on[j]&&note_x[i]<note_x[j]+note_w[j]+4*scale&&note_x[i]+note_w[i]+4*scale>note_x[j]&&
+          note_y[i]<note_y[j]+note_h[j]+4*scale&&note_y[i]+note_h[i]+4*scale>note_y[j]) {note_y[i]=note_y[j]-note_h[i]-4*scale;moved=1;}
+        if(!moved)break;
+      }
+      note_y[i]=fmaxf(note_y[i],lab_top);
+      note_on[i]=1;
+    }
     if(camera)for(int i=0;i<SHIPS;i++) {
       ship *s=&G.ships[i];if(!s->active||s->respawn)continue;
       t3_vec3 p=t3_vec3_apply_mat4((t3_vec3){s->x,6.6f,s->z},&camera->matrix_world_inverse);
@@ -1678,7 +1703,7 @@ static void draw_hud(void) {
         snprintf(prot_text[i],sizeof prot_text[i],"PROTECTED %.1fs",s->protection/60.0f);
         cw_text_metrics pm=measure("PROTECTED 9.9s",lsize,0);
         half=fmaxf(half,pm.width*.5f+8*scale);top+=4*scale+pm.height+lpad;
-      } else if(G.hit_ticks[i]) top+=8*scale+measure("-99",lsize,0).height+lpad;
+      }
       float down=box_h[i]*.5f+8*scale;
       float preferred_y=ay-(target?34*scale:0),best=1e30f;
       float lo=lab_top+top,hi=fmaxf(lo,lab_bottom-down);
@@ -1693,6 +1718,10 @@ static void draw_hud(void) {
         for(int j=0;j<i;j++)if(label_visible[j]&&
           x+half+6*scale>label_x[j]-label_half[j]&&x-half-6*scale<label_x[j]+label_half[j]&&
           y+down+6*scale>label_y[j]-label_top[j]&&y-top-6*scale<label_y[j]+label_down[j]) {overlap=1;break;}
+        if(!G.labels_stack)for(int j=0;j<SHIPS&&!overlap;j++)if(note_on[j]&&
+          x+half+6*scale>note_x[j]&&x-half-6*scale<note_x[j]+note_w[j]&&
+          y+down+6*scale>note_y[j]&&y-top-6*scale<note_y[j]+note_h[j])overlap=1;
+        if(G.labels_stack)overlap=column||row; /* sw labels_stack 1: every label at its ship, as if nothing else were there */
         if(!overlap){label_x[i]=x;label_y[i]=y;best=score;}
       }
       anchor_x[i]=ax;anchor_y[i]=ay;label_half[i]=half;label_top[i]=top;label_down[i]=down;label_visible[i]=1;
@@ -1718,9 +1747,12 @@ static void draw_hud(void) {
           float sx=label_x[j],sy=label_y[j],half=label_half[j];
           if(x+hw+4*scale>sx-half&&x-hw-4*scale<sx+half&&candidate+hh+4*scale>sy-label_top[j]&&candidate-4*scale<sy+label_down[j]) {overlap=1;break;}
         }
+        for(int j=0;j<SHIPS&&!overlap;j++)if(note_on[j]&&x+hw+4*scale>note_x[j]&&x-hw-4*scale<note_x[j]+note_w[j]&&
+          candidate+hh+4*scale>note_y[j]&&candidate-4*scale<note_y[j]+note_h[j])overlap=1;
         if(!overlap){y=candidate;placed=1;}
       }
       if(!placed)continue;
+      if(n_rects<64){rects[n_rects][0]=x-hw;rects[n_rects][1]=y;rects[n_rects][2]=x+hw;rects[n_rects][3]=y+hh;n_rects++;}
       if(y!=anchor_y)cw_r2d_line(cw_v2(x,anchor_y),cw_v2(x,y+hh*.5f),1*scale,col(PLAYER_COLOR[i]));
       cw_r2d_rect(cw_rect_make(x-hw,y,hw*2,hh),cw_rgba(.012f,.035f,.055f,.88f));
       cw_r2d_rect(cw_rect_make(x-hw,y,4*scale,hh),col(PLAYER_COLOR[i]));
@@ -1770,16 +1802,41 @@ static void draw_hud(void) {
         float fade=clampf(G.hit_ticks[i]/30.0f,0,1);
         float trail=s->hp+(G.hit_previous_hp[i]-s->hp)*fade;
         cw_r2d_rect(cw_rect_make(x-bar_width/2,bar_y,bar_width*clampf(trail/max_hp,0,1),5*scale),cw_hex(0xffe3b4ff));
-        snprintf(buf,sizeof buf,"-%d",G.hit_amount[i]);
-        cw_text_metrics nm=measure(buf,lsize,0);
-        float nw=nm.width*.5f+8*scale,nh=nm.height+lpad;
-        float rise=(75-G.hit_ticks[i])*.12f*scale;
-        float notice_x=x,notice_y=y-bh*.5f-8*scale-nh-rise;
-        if(notice_y<lab_top) {notice_x=x+bhalf+nw+4*scale;notice_y=y-nh*.5f;}
-        cw_r2d_rect(cw_rect_make(notice_x-nw,notice_y,nw*2,nh),cw_rgba(.07f,.025f,.015f,.85f*fade));
-        line(buf,notice_x-nw,notice_y+lpad*.5f,lsize,cw_rgba(1,.8f,.6f,fade),nw*2,CW_ALIGN_CENTER);
       }
       cw_r2d_rect(cw_rect_make(x-bar_width/2,bar_y,bar_width*clampf(s->hp/max_hp,0,1),5*scale),label_color);
+    }
+    if(camera)for(int i=0;i<SHIPS;i++)if(label_visible[i]&&n_rects<64) {
+      rects[n_rects][0]=label_x[i]-label_half[i];rects[n_rects][1]=label_y[i]-label_top[i];
+      rects[n_rects][2]=label_x[i]+label_half[i];rects[n_rects][3]=label_y[i]+label_down[i];n_rects++;
+    }
+    /* the hit: a ring spreading on the water round the ship for half a second, and the number over it */
+    if(camera)for(int i=0;i<SHIPS;i++)if(note_on[i]) {
+      ship *s=&G.ships[i];
+      float fade=clampf(G.hit_ticks[i]/30.0f,0,1);
+      if(G.hit_ticks[i]>45) {
+        float age=(75-G.hit_ticks[i])/30.0f,radius=2.6f+age*2.2f;
+        cw_color ring=cw_rgba(1,.85f,.62f,.75f*(1-age));
+        for(int j=0;j<24;j++) {
+          cw_vec2 points[2];
+          for(int e=0;e<2;e++) {
+            float a=(j+e)*2*PI/24;
+            t3_vec3 p={s->x+radius*cw_cos(a),.2f,s->z+radius*cw_sin(a)};
+            p=t3_vec3_apply_mat4(p,&camera->matrix_world_inverse);
+            p=t3_vec3_apply_mat4(p,&camera->projection_matrix);
+            points[e]=cw_v2((p.x*.5f+.5f)*W,(.5f-p.y*.5f)*H);
+          }
+          cw_r2d_line(points[0],points[1],2*scale,ring);
+        }
+      }
+      cw_r2d_rect(cw_rect_make(note_x[i],note_y[i],note_w[i],note_h[i]),cw_rgba(.07f,.025f,.015f,.85f*fade));
+      line(note_text[i],note_x[i],note_y[i]+lpad*.5f,lsize,cw_rgba(1,.8f,.6f,fade),note_w[i],CW_ALIGN_CENTER);
+      if(n_rects<64){rects[n_rects][0]=note_x[i];rects[n_rects][1]=note_y[i];rects[n_rects][2]=note_x[i]+note_w[i];rects[n_rects][3]=note_y[i]+note_h[i];n_rects++;}
+    }
+    {
+      int overlaps=0;
+      for(int a=0;a<n_rects;a++)for(int b=a+1;b<n_rects;b++)
+        overlaps+=rects[a][0]<rects[b][2]-.5f&&rects[b][0]<rects[a][2]-.5f&&rects[a][1]<rects[b][3]-.5f&&rects[b][1]<rects[a][3]-.5f;
+      G.label_overlaps=overlaps;if(overlaps>G.label_overlaps_max)G.label_overlaps_max=overlaps;
     }
     top_bar(W, scale, mode, true);
     if (!overlay) captain_panels(W, H, scale, true);
@@ -2378,6 +2435,8 @@ static void init(void *user) {
   cw_debug_i32("pirates.supply_coin",&G.ships[0].stored[COIN]);
   cw_debug_i32("pirates.supply_iron",&G.ships[0].stored[IRON]);
   cw_debug_i32("pirates.alert", &G.alert);
+  cw_debug_i32("pirates.label_overlaps", &G.label_overlaps);
+  cw_debug_i32("pirates.label_overlaps_max", &G.label_overlaps_max);
   cw_debug_field("pirates.cargo_notice_ticks",G.cargo_notice_ticks,CW_DBG_I32,CAPTAINS);
   cw_debug_field("pirates.hit_ticks",G.hit_ticks,CW_DBG_I32,SHIPS);
   cw_debug_field("pirates.hit_amount",G.hit_amount,CW_DBG_I32,SHIPS);
