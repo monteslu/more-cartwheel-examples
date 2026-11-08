@@ -19,9 +19,10 @@
    middle lane is about 31 percent of the picture's height, the far lane 25, the near lane 40 (it was 28, 22 and 38 with
    the near lane's feet at the bottom edge, from 3.9 m up at a 0.3 rad pitch). W.cam_back moves it back along its own axis
    when the fighters spread wider than the picture. */
-#define CAM_Y 2.9f
-#define CAM_Z 7.5f
-#define CAM_PITCH 0.18f
+extern float g_camp[3]; /* y, z, pitch: 2.9, 7.5, 0.18 (brawler_auto's BRAWLER_EXP=oldcam: the 3.9, 7.7, 0.3 camera, perf A/B only) */
+#define CAM_Y g_camp[0]
+#define CAM_Z g_camp[1]
+#define CAM_PITCH g_camp[2]
 #define CAM_T 0.36397f
 /* the jukebox on the docks pavement in the boss arena (world metres; its front faces the street) */
 #define JUKE_X 53.8f

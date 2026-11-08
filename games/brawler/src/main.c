@@ -195,6 +195,7 @@ static void start(int players, void *user) {
   int stage0 = 0;
 #ifdef BRAWLER_AUTOPILOT
   { const char *e = getenv("BRAWLER_STAGE"); if (e) stage0 = atoi(e) & 3; } /* screenshots and the program survey start on any stage */
+  { const char *x = getenv("BRAWLER_EXP"); if (x && strstr(x, "oldcam")) g_camp[0] = 3.9f, g_camp[1] = 7.7f, g_camp[2] = 0.3f; }
 #endif
   sim_reset(players, stage0);
   play_music(stage0);

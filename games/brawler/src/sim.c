@@ -387,9 +387,9 @@ static bool free_state(const ent *e) { return e->st == S_IDLE || e->st == S_WALK
 float level_cam_halfw(void) { return 7.2f; }
 /* what the game camera sees (game.h CAM_*, 16:9): the half width of the view at depth z and height y. The near lane
    sees much less than the far one. */
+float g_camp[3] = { 2.9f, 7.5f, 0.18f };
 float view_halfw(float z, float y) {
-  static float s, c;
-  if (c == 0) s = sinf(CAM_PITCH), c = cosf(CAM_PITCH);
+  float s = sinf(CAM_PITCH), c = cosf(CAM_PITCH);
   float depth = -((y - CAM_Y) * s + (z - CAM_Z) * c) + W.cam_back; /* along the view axis */
   return depth * CAM_T * (16.0f / 9.0f);
 }

@@ -360,9 +360,24 @@ void level_build(int stage) {
     cw_node_set(fog, "volumetric", cw_val_bool(strstr(xp, "volfog") != NULL));
     cw_node_set(fog, "volumetric_distance", cw_val_float(28));
     cw_node_set(post, "ssao", cw_val_bool(false)); /* the bake carries it (lm_apply) */
-    cw_node_set(sun, "shadow_cascades", cw_val_int(2));
-    cw_node_set(sun, "shadow_distance", cw_val_float(24));
-    cw_node_set(sun, "shadow_size", cw_val_int(1536));
+    /* the shadow cascades fitted to what the street camera sees: its far facades are about 12 m along its axis, so 16 m covers
+       them (it was 24, from the higher camera). 1024 texels over 16 m is the 1536 over 24 m density: the same shadows for
+       0.3 ms less on GL at 1080p (890M; the arcade had read 4.4 to 5.1 ms against the 5 ms B-PT19 bound). BRAWLER_EXP
+       sd=<m>, ss=<texels>, c1 (one cascade) and oldcam (the 3.9 m camera) are the A/B knobs */
+    float sdist = 16;
+    int scas = 2;
+#ifdef BRAWLER_AUTOPILOT
+    { const char *x = getenv("BRAWLER_EXP"); const char *p;
+      if (x && (p = strstr(x, "sd="))) sdist = (float)atof(p + 3); /* perf A/B */
+      if (x && strstr(x, "c1")) scas = 1; }
+#endif
+    cw_node_set(sun, "shadow_cascades", cw_val_int(scas));
+    cw_node_set(sun, "shadow_distance", cw_val_float(sdist));
+    int ssz = 1024;
+#ifdef BRAWLER_AUTOPILOT
+    { const char *x = getenv("BRAWLER_EXP"); const char *p; if (x && (p = strstr(x, "ss="))) ssz = atoi(p + 3); }
+#endif
+    cw_node_set(sun, "shadow_size", cw_val_int(ssz));
   }
   /* the scenery: street, kerb, pavement, buildings with lit windows, lamp posts (one glb per stage) */
   char path[40];
@@ -410,6 +425,9 @@ void level_build(int stage) {
       continue;
     }
     acc_y[i] = y, acc_z[i] = zz;
+#ifdef BRAWLER_AUTOPILOT
+    { const char *x = getenv("BRAWLER_EXP"); const char *p; if (x && (p = strstr(x, "accr="))) rg = (float)atof(p + 5); }
+#endif
     acc_node[i] = light(s, "A", (t3_vec3){ th->acc[i].dx, y, zz }, th->acc[i].c, e, rg);
     cw_node_set(acc_node[i], "bake", cw_val_bool(false)); /* it follows the camera */
   }
