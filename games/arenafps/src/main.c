@@ -1160,7 +1160,8 @@ static void bot_tick(fighter *f, int idx) {
     if ((hid && roll < 20) || (open && roll < 6)) {
       float miss = (1.2f - f->skill) * 2.5f, a = cw_rng_float(&G.rng) * 6.2831853f, sa, ca;
       cw_sincos(a, &sa, &ca);
-      t3_vec3 to = v3add(t->mv.position, v3(sa * miss, 0.1f, ca * miss)), from = eye_pos(f);
+      t3_vec3 from = eye_pos(f), lead = v3scale(v3(t->mv.velocity.x, 0, t->mv.velocity.z), cw_clampf(dist / 13.0f, 0.45f, 1.4f) * 0.8f * f->skill);
+      t3_vec3 to = v3add(v3add(t->mv.position, lead), v3(sa * miss, 0.1f, ca * miss)); /* where it will be, about */
       f->yaw = cw_atan2(-(to.x - from.x), -(to.z - from.z));
       throw_grenade(f, idx, lob_vel(from, to));
     }

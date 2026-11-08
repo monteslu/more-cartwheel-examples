@@ -37,7 +37,7 @@ def build(team):
     plate = material('plate', (0.24, 0.25, 0.27), 0.5, 0.55)
     rubber = material('rubber', (0.03, 0.03, 0.03), 0.8, 0.0)
     trim = material('trim', col, 0.4, 0.0, emit=col, emit_strength=2.2)
-    visor = material('visor', (col[0] * 0.15, col[1] * 0.15, col[2] * 0.15), 0.1, 0.0, emit=col, emit_strength=6.0)
+    visor = material('visor', (col[0] * 0.15, col[1] * 0.15, col[2] * 0.15), 0.1, 0.0, emit=col, emit_strength=3.0)
     gun = material('gunmetal', (0.06, 0.06, 0.065), 0.4, 0.85)
     parts = []   # (object, bone name or weights fn)
 
@@ -101,7 +101,7 @@ def build(team):
         rbox('thighplate_' + s, (0.04, 0.15, 0.2), (sg * 0.225, 0.01, 0.8), 'thigh_' + s, armor, 0.018, 2)
         if s == 'r':
             rbox('holster', (0.06, 0.1, 0.16), (sg * 0.215, -0.02, 0.7), 'thigh_' + s, web, 0.015, 2)
-        add(sphere('kneepad_' + s, 0.075, (sg * 0.14, 0.07, 0.53), (1.0, 0.7, 1.15), armor, seg=14, rings=8), 'shin_' + s)
+        add(sphere('kneepad_' + s, 0.062, (sg * 0.14, 0.07, 0.53), (1.0, 0.55, 1.1), armor, seg=14, rings=8), 'shin_' + s)
         rbox('shinguard_' + s, (0.09, 0.04, 0.24), (sg * 0.14, 0.06, 0.3), 'shin_' + s, plate, 0.018, 2)
         rbox('boot_' + s, (0.11, 0.25, 0.14), (sg * 0.14, 0.04, 0.075), 'foot_' + s, suit, 0.035, 3)
         rbox('sole_' + s, (0.115, 0.26, 0.03), (sg * 0.14, 0.04, 0.015), 'foot_' + s, rubber, 0.01, 1)
