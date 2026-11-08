@@ -165,8 +165,8 @@ static const struct { float tile, tint[3], rough, rock[3]; } TS[MZ_THEMES] = {
   { 4.0f, { 0.85f, 0.95f, 0.92f }, 0.6f, { 0.035f, 0.05f, 0.05f } },
   { 5.0f, { 1.0f, 0.92f, 0.85f }, 0.8f, { 0.05f, 0.04f, 0.035f } },
   { 6.0f, { 1.25f, 1.35f, 1.3f }, 0.85f, { 0.035f, 0.045f, 0.04f } },
-  { 5.0f, { 1.0f, 0.98f, 0.95f }, 0.5f, { 0.07f, 0.065f, 0.06f } },
-  { 5.0f, { 1.9f, 1.6f, 1.7f }, 0.7f, { 0.04f, 0.025f, 0.035f } },
+  { 5.0f, { 0.84f, 0.8f, 0.8f }, 0.5f, { 0.07f, 0.065f, 0.06f } }, /* (a darker floor under the checker: less pastel) */
+  { 5.0f, { 1.45f, 1.15f, 1.3f }, 0.7f, { 0.04f, 0.025f, 0.035f } }, /* (the lava's base kept below the warm kinds' edges) */
 };
 
 static void build_floor(mb_built *b, const maze *m) {
@@ -207,6 +207,10 @@ static void build_floor(mb_built *b, const maze *m) {
   t3_release(mesh), t3_release(pg), t3_release(gm);
 }
 
+/* the rock's value over its colour (TS rock), and its accent in patches: crypt moss, sewer slime, foundry rust glow,
+ * grotto lichen, cathedral violet, abyss ember red */
+#define ROCK_K 1.6f
+static const float ROCK_ACC[MZ_THEMES][3] = { { 0.9f, 1.3f, 0.8f }, { 0.7f, 1.4f, 1.1f }, { 2.2f, 1.1f, 0.5f }, { 0.7f, 1.6f, 1.5f }, { 1.3f, 0.8f, 1.6f }, { 2.6f, 0.8f, 0.6f } };
 static bool solid_tile(const maze *m, int x, int y) { return !mz_in(m, x, y) || m->t[y][x] == T_WALL || m->t[y][x] == T_VOID; }
 /* a wall tile drawn as a block: one with open ground (anything not wall or void) among its eight neighbours */
 static bool faces_open(const maze *m, int x, int y) {
@@ -290,7 +294,9 @@ static void build_walls(mb_built *b, const maze *m) {
   if (have) mb_chr_free(&c);
 }
 
-/* the rock: a flat dark top over every solid tile that is not a drawn block, and a margin of it round the maze */
+/* the rock: a flat dark top over every solid tile that is not a drawn block, and a margin of it round the maze. A
+ * mass of stone in the tileset's colour, mottled slowly with its accent in patches (never the black of empty space:
+ * the maze is cut into rock, it does not float in a void) */
 static void build_rock(mb_built *b, const maze *m) {
   const int MARGIN = 14;
   int cap = (m->w + 2 * MARGIN) * (m->h + 2 * MARGIN);
@@ -303,12 +309,14 @@ static void build_rock(mb_built *b, const maze *m) {
       bool in = mz_in(m, x, y);
       if (in && (!solid_tile(m, x, y) || (m->t[y][x] == T_WALL && faces_open(m, x, y)))) continue;
       float cx = mz_wx(m, (float)x), cz = mz_wz(m, (float)y), hs = MZ_TILE * 0.5f;
-      float k = 0.75f + 0.5f * fhash(x, y, 9);
       static const float QX[4] = { -1, 1, 1, -1 }, QZ[4] = { -1, -1, 1, 1 };
       for (int v = 0; v < 4; v++) {
         float *p = pos + (nq * 4 + v) * 3, *cc = col + (nq * 4 + v) * 3, *nn = nrm + (nq * 4 + v) * 3;
         p[0] = cx + QX[v] * hs, p[1] = MB_WALL_H - 0.02f, p[2] = cz + QZ[v] * hs;
-        cc[0] = rc[0] * k * 0.22f, cc[1] = rc[1] * k * 0.22f, cc[2] = rc[2] * k * 0.22f; /* nearly black: solid rock in the dark */
+        /* smooth over the corners (a corner's colour from its position, so the quads join without seams) */
+        float k = 0.6f + 0.55f * vnoise(p[0] / 6.0f, p[2] / 6.0f, 41) + 0.25f * (vnoise(p[0] / 1.7f, p[2] / 1.7f, 43) - 0.5f);
+        float a = CW_CLAMP((vnoise(p[0] / 9.0f, p[2] / 9.0f, 47) - 0.55f) * 3.0f, 0.0f, 1.0f);
+        for (int c = 0; c < 3; c++) cc[c] = rc[c] * k * ROCK_K * (1.0f + a * (ROCK_ACC[b->theme][c] - 1.0f));
         nn[0] = 0, nn[1] = 1, nn[2] = 0;
       }
       uint32_t *q = idx + nq * 6, o = (uint32_t)nq * 4;

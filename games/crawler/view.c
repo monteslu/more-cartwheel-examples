@@ -233,6 +233,14 @@ static t3_geometry *hull(t3_geometry *g, float d) {
 static const float KIND_RIM[EK_KINDS][3] = { { 0.55f, 0.95f, 1.0f }, { 1.0f, 0.9f, 0.5f }, { 1.0f, 0.3f, 0.08f }, { 1.0f, 0.65f, 0.1f }, { 0.75f, 0.3f, 1.0f }, { 0.45f, 0.7f, 1.0f },
                                              { 1.0f, 0.85f, 0.15f }, { 1.0f, 0.12f, 0.1f }, { 1.0f, 0.45f, 0.05f }, { 0.55f, 1.0f, 0.15f }, { 0.1f, 1.0f, 0.85f }, { 0.35f, 1.0f, 0.45f } };
 float g_rim_k = 1.5f; /* the edge's brightness (debug field dev.rim_k) */
+/* a kind's edge on this tileset: its identity colour, but on the abyss's burning floor the warm kinds (imps, slingers,
+ * pilferers, ogres, hounds) burn white-hot at the edge instead, so they part from the orange lava by value and hue */
+static t3_color edge_color(int k, int theme, float rk) {
+  const float *c = KIND_RIM[k];
+  t3_color kc = lin(c[0], c[1], c[2]);
+  if (theme == MZ_THEME_ABYSS && c[0] > 0.9f && c[2] < 0.2f) kc = lin(1.0f, 0.95f, 0.78f), rk *= 1.5f;
+  return (t3_color){ kc.r * rk, kc.g * rk, kc.b * rk };
+}
 static void kind_load(int k) {
   kindv *kv = &V.k[k];
   const char *file = cw_vfs_exists(MON_FILE[k]) ? MON_FILE[k] : "models/ghoul.cwchar";
@@ -249,8 +257,7 @@ static void kind_load(int k) {
   m->vertex_colors = true;
   t3_material *em = t3_mesh_basic_material_new(0xffffff);
   em->side = T3_BACK_SIDE;
-  t3_color kc = lin(KIND_RIM[k][0], KIND_RIM[k][1], KIND_RIM[k][2]);
-  em->color = (t3_color){ kc.r * g_rim_k, kc.g * g_rim_k, kc.b * g_rim_k };
+  em->color = edge_color(k, V.theme, g_rim_k);
   for (int f = 0; f < kv->nwalk + kv->natk && f < MB_MAXF; f++) {
     int cap = f < kv->nwalk ? MON_CAP[k] / CW_MAX(kv->nwalk, 1) * 3 / 2 + 32 : MON_CAP[k] / 3 + 32;
     kv->im[f] = imesh(MON_NAME[k], t3_retain(kv->c.geo[0][f]), t3_retain(m), cap);
@@ -724,11 +731,12 @@ static void sync_features(const sim *s, float time) {
 }
 
 static void sync_monsters(const sim *s, float time) {
-  static float rk = -1; /* the edge follows its debug field (tuning runs) */
-  if (rk != g_rim_k) {
-    rk = g_rim_k;
+  static float rk = -1; /* the edge follows its debug field (tuning runs) and the tileset */
+  static int rt = -1;
+  if (rk != g_rim_k || rt != V.theme) {
+    rk = g_rim_k, rt = V.theme;
     for (int k = 0; k < EK_KINDS; k++)
-      if (V.k[k].edge_mat) { t3_color kc = lin(KIND_RIM[k][0], KIND_RIM[k][1], KIND_RIM[k][2]); V.k[k].edge_mat->color = (t3_color){ kc.r * rk, kc.g * rk, kc.b * rk }; }
+      if (V.k[k].edge_mat) V.k[k].edge_mat->color = edge_color(k, V.theme, rk);
   }
   static int cnt[EK_KINDS][MB_MAXF];
   memset(cnt, 0, sizeof cnt);

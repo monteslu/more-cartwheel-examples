@@ -105,9 +105,10 @@ static const char *const TRAIL_HAZE[] = { "amount", "1", "lifetime", "0.5", "exp
   "emission_shape", "POINT", "spread", "30", "speed_min", "0.2", "speed_max", "0.6", "direction", "vec3(0, 1, 0)",
   "blend", "DISTORT", "distort_strength", "0.09", "size", "1.4", "size_curve", "\"0 0.5, 1 1.4\"",
   "color_ramp", "\"0 1 1 1 0, 0.2 1 1 1 1, 1 1 1 1 0\"", "texture", "\"fx/haze.png\"", NULL };
-/* the Ranger's arrow: a thin streak shed along its flight, and a glint riding its head */
-static const char *const STREAK[] = { "amount", "2", "lifetime", "0.16", "explosiveness", "1", "one_shot", "true",
-  "emission_shape", "POINT", "spread", "2", "speed_min", "0.5", "speed_max", "1", "draw_mode", "STRETCHED", "stretch", "0.09", "size", "0.035",
+/* the Ranger's arrow: a warm streak a body long shed along its flight (the arrow reads in flight), and a glint riding
+ * its head */
+static const char *const STREAK[] = { "amount", "3", "lifetime", "0.22", "explosiveness", "1", "one_shot", "true",
+  "emission_shape", "POINT", "spread", "2", "speed_min", "0.5", "speed_max", "1", "draw_mode", "STRETCHED", "stretch", "0.2", "size", "0.07",
   "color_ramp", "\"0 0.9 1 0.85 1, 1 0.4 0.8 0.5 0\"", "energy", "6", "blend", "ADD", NULL };
 static const char *const GLINT[] = { "amount", "1", "lifetime", "0.05", "explosiveness", "1", "one_shot", "true",
   "emission_shape", "POINT", "spread", "0", "speed_min", "0", "speed_max", "0", "size", "0.42", "size_curve", "\"0 1, 1 0.6\"",
