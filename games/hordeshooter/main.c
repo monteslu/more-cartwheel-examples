@@ -84,7 +84,7 @@ static struct {
   int32_t dev_hold; /* development (romdev, screenshots): 1 the bots stand where they are, 2 and hold their fire, so the horde reaches them */
   int32_t step_in_y0, step_in_y1, banner_y0, banner_y1;
   int32_t cards_shown;
-  int32_t end_y0, end_y1; /* the end screen's text block, rows on screen */
+  int32_t end_y0, end_y1, end_short; /* end_short: the lines took their short form */ /* the end screen's text block, rows on screen */
   int32_t slow; /* the solo slow-down is on (the cards are up) */
   /* the score chase (render side, from the sim's events): each kill raises a player's multiplier a little, a hit drops it
    * back to x1; points come in at the multiplier. And for the run's summary: the best multiplier, what downed each, the guns held */
@@ -711,6 +711,7 @@ static void hud(void) {
     }
     const player *p = &pv;
     bool right = i & 1, bottom = i & 2;
+    if (bottom && (G.S.state == ST_OVER || G.S.state == ST_WON)) continue; /* the end screen has each player's line: the bottom panels make room for it */
     char b[64];
     snprintf(b, sizeof b, "P%d  LV %d  %d  x%.1f", i + 1, p->level, G.mscore[i], (double)G.mult[i]);
     float ts = 15 * u;
@@ -865,28 +866,44 @@ static void hud(void) {
       snprintf(b, sizeof b, "%s again from wave %d in a moment  -  deepest: floor %d, wave %d", FLOOR_NAME[CW_CLAMP(G.S.level, 0, NLEVELS - 1)],
                G.S.level_wave > 1 ? G.S.level_wave - 1 : 1, bl + 1, G.best_wave - sim_level_first_wave(bl) + 1);
     }
-    char lines[MAXP][200];
+    char lines[MAXP][200], brief[MAXP][120], bshort[160];
+    snprintf(bshort, sizeof bshort, "%s", b);
+    if (!won) snprintf(bshort, sizeof bshort, "%s again in a moment", FLOOR_NAME[CW_CLAMP(G.S.level, 0, NLEVELS - 1)]);
     for (int i = 0; i < G.S.players && i < MAXP; i++) { /* each player's line: what took them down (or the run's record when it is won) */
       char guns[120] = "";
       if (won) {
         for (int t = 0, n = 0; t < PU_KINDS; t++)
           if (G.guns[i] & (1u << t)) snprintf(guns + strlen(guns), sizeof guns - strlen(guns), "%s%s", n++ ? ", " : "  -  ", sim_power_name(t));
         snprintf(lines[i], sizeof lines[i], "P%d  %d points  -  %d kills  -  best x%.1f%s", i + 1, G.mscore[i], G.S.p[i].kills, (double)G.best_mult[i], guns);
+        snprintf(brief[i], sizeof brief[i], "P%d  %d points  -  %d kills", i + 1, G.mscore[i], G.S.p[i].kills);
       } else {
         int k = G.downed_by[i];
         const char *by = k == EK_BOSS ? BOSS_NAME[CW_CLAMP(G.S.level, 0, NLEVELS - 1)] : k >= 0 && k < EK_KINDS ? sim_kind_name(k) : "a blast or the fire underfoot";
-        snprintf(lines[i], sizeof lines[i], "P%d  taken down by %s%s  -  best x%.1f  -  %d kills", i + 1, k >= 0 && k < EK_KINDS && k != EK_BOSS ? "a " : "", by, (double)G.best_mult[i], G.S.p[i].kills);
+        snprintf(lines[i], sizeof lines[i], "P%d  taken down by %s%s  -  %d points  -  best x%.1f  -  %d kills", i + 1, k >= 0 && k < EK_KINDS && k != EK_BOSS ? "a " : "", by, G.mscore[i], (double)G.best_mult[i], G.S.p[i].kills);
+        snprintf(brief[i], sizeof brief[i], "P%d  downed by %s%s  -  %d points", i + 1, k >= 0 && k < EK_KINDS && k != EK_BOSS ? "a " : "", by, G.mscore[i]);
       }
     }
-    /* measure it all, then the panel round it, centred down the screen (under the top corners' panels when it is tall) */
-    cw_text_style ms = tstyle(ts, rgba(1, 1, 1, 1));
-    ms.wrap_width = wrap;
-    float th = cw_font_measure(font, title, &ms).height;
-    ms.size = s2;
-    float lh = cw_font_measure(font, b, &ms).height, h = th + 6 * u + lh + 10 * u, ph[MAXP] = { 0 };
-    ms.size = ps;
-    for (int i = 0; i < G.S.players && i < MAXP; i++) ph[i] = cw_font_measure(font, lines[i], &ms).height, h += ph[i] + 4 * u;
-    float pad = 14 * u, y = fmaxf(cs.y * 0.5f - h * 0.5f, cs.y * 0.12f);
+    /* measure it all, then the panel round it, centred down the screen and never over the top line (wave, kills); when the
+     * full lines will not fit between that and the bottom (large text, four players) each line takes its short form */
+    float pad = 14 * u, room = cs.y - (mid + 6 * u + pad) - pad - 6 * u, h = 0;
+    for (int form = 0; form < 2; form++) {
+      cw_text_style ms = tstyle(ts, rgba(1, 1, 1, 1));
+      ms.wrap_width = wrap;
+      h = cw_font_measure(font, title, &ms).height + 6 * u;
+      ms.size = s2;
+      h += cw_font_measure(font, form ? bshort : b, &ms).height + 10 * u;
+      ms.size = ps;
+      for (int i = 0; i < G.S.players && i < MAXP; i++) h += cw_font_measure(font, form ? brief[i] : lines[i], &ms).height + 4 * u;
+      if (h <= room || form) {
+        if (form) {
+          snprintf(b, sizeof b, "%s", bshort);
+          for (int i = 0; i < G.S.players && i < MAXP; i++) memcpy(lines[i], brief[i], sizeof brief[i]); /* brief is the shorter buffer */
+        }
+        G.end_short = form;
+        break;
+      }
+    }
+    float y = fmaxf(cs.y * 0.5f - h * 0.5f, mid + 6 * u + pad);
     cw_r2d_rect(cw_rect_make(cs.x * 0.03f, y - pad, cs.x * 0.94f, h + 2 * pad), rgba(0.02f, 0.02f, 0.03f, 0.72f)); /* the lines read over any crowd */
     y += text_wrapped(title, cx, y, wrap, ts, won ? rgba(1, 0.85f, 0.35f, 1) : rgba(1, 0.3f, 0.25f, 1)).height + 6 * u;
     y += text_wrapped(b, cx, y, wrap, s2, rgba(1, 1, 1, 1)).height + 10 * u;

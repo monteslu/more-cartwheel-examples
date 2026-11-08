@@ -15,6 +15,6 @@
     { "name": "boss", "app": "hordeshooter_auto", "frames": 600, "env": { "HORDE_PLAYERS": "2", "HORDE_WAVE": "5" } },
     { "name": "hud-show", "app": "hordeshooter_auto", "frames": 300, "env": { "HORDE_PLAYERS": "4", "HORDE_POWER": "3", "HORDE_HUD_SHOW": "1" } },
     { "name": "overrun2", "app": "hordeshooter_auto", "frames": 1500, "env": { "HORDE_PLAYERS": "2", "HORDE_WAVE": "12", "HORDE_HOLD": "2" } },
-    { "name": "overrun4", "app": "hordeshooter_auto", "frames": 2400, "env": { "HORDE_PLAYERS": "4", "HORDE_WAVE": "12", "HORDE_HOLD": "2" } }
+    { "name": "overrun4", "app": "hordeshooter_auto", "frames": 1750, "env": { "HORDE_PLAYERS": "4", "HORDE_WAVE": "12", "HORDE_HOLD": "2" } }
   ]
 }
