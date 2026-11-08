@@ -1277,6 +1277,7 @@ static void cmd_bind(int argc, const char **argv, cw_reply *r) {
 static void cmd_sw(int argc, const char **argv, cw_reply *r) {
   if (argc >= 3 && !strcmp(argv[1], "seat_wait")) { G.sw_seat_wait = atoi(argv[2]) != 0; cw_reply_printf(r, "{\"seat_wait\":%d}", G.sw_seat_wait); return; }
   if (argc >= 3 && !strcmp(argv[1], "flash_cap")) { fx_flash_cap = atoi(argv[2]) != 0; cw_reply_printf(r, "{\"flash_cap\":%d}", fx_flash_cap); return; }
+  if (argc >= 3 && !strcmp(argv[1], "unlit_sparks")) { fx_unlit_sparks = atoi(argv[2]) != 0; cw_reply_printf(r, "{\"unlit_sparks\":%d}", fx_unlit_sparks); return; }
   if (argc >= 3 && !strcmp(argv[1], "boom_every")) { fx_boom_every = atoi(argv[2]); cw_reply_printf(r, "{\"boom_every\":%d}", fx_boom_every); return; }
   if (argc >= 3 && !strcmp(argv[1], "cpu_hp")) { G.sw_cpu_hp = atoi(argv[2]); cw_reply_printf(r, "{\"cpu_hp\":%d}", G.sw_cpu_hp); return; }
   if (argc >= 3 && !strcmp(argv[1], "crowd_sync")) { crowd_sync = atoi(argv[2]) != 0; crowd_same_max = 0; cw_reply_printf(r, "{\"crowd_sync\":%d}", crowd_sync); return; }

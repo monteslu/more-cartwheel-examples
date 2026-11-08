@@ -89,7 +89,7 @@ void fx_rumble_stop(void); /* both pads' motors off now (menus, pause) */
 extern int32_t fx_rumble_sent[2];
 float fx_flash(void); /* a white screen flash 0..1 (super) */
 extern int fx_count_hit, fx_count_block, fx_count_impact;
-extern int fx_flash_cap, fx_boom_every; /* test switches: the explosion flash budget on/off, a heavy blow's effects every N ticks */
+extern int fx_flash_cap, fx_boom_every, fx_unlit_sparks; /* test switches: the explosion flash budget on/off, a heavy blow's effects every N ticks */
 extern int32_t fx_flashes;    /* explosion flashes lit */
 
 #endif
