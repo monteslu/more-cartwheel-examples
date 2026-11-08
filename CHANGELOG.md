@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.27.5
+
+- Engine v0.38.1: every cart's manifest says which version it is. A release's carts carry the release's version (every cart said 0.1.0 before), and a cart built from any other commit says `<last tag>-dev.g<commit>`, so it is never taken for a release. The engine works the version out from the checkout on every build; `project.cwproj` no longer carries one. Engine v0.37.0 and v0.38.0 (the 2D renderer's HDR canvas, post chain, tiled lights and global illumination) come with it.
+- A `v*` tag builds its own carts (it took `main`'s before), and the release checks that every cart's manifest carries the tag's version (`tests/cart-version.mjs`, which every build runs too; its control, a cart rewritten to another version, must fail).
+
 ## 0.27.4
 
 - Crawler: the way down reads from the overhead camera on every preset. A shut door's gate now fills its tile with a
