@@ -757,7 +757,13 @@ static void sync_monsters(const sim *s, float time) {
     t3_instanced_mesh *im = kv->im[fr];
     if (!im || cnt[e->kind][fr] >= im->instance_matrix->count) continue;
     int n = cnt[e->kind][fr]++;
-    float sc = SIZE[e->kind] * (0.82f + 0.13f * (float)e->str) * (e->flash > 0 ? 1.08f : 1.0f);
+    /* a hit's glow swells in over a few frames and fades over a quarter of a second; hits in a row hold it up, so
+     * rapid hits are a steady glow, never a blink */
+    static float glow[MAXE];
+    if (e->age < 2) glow[i] = 0;
+    glow[i] += ((e->flash > 0 ? 1.0f : 0.0f) - glow[i]) * (e->flash > 0 ? 0.45f : 0.12f);
+    const float hg = glow[i] * glow[i] * (3 - 2 * glow[i]);
+    float sc = SIZE[e->kind] * (0.82f + 0.13f * (float)e->str) * (1.0f + 0.08f * hg);
     float yaw = -e->face + 1.5708f;
     float y = e->kind == EK_DREAD || e->kind == EK_SHADE ? 0.05f + 0.06f * cw_sin(time * 2.2f + (float)i) : 0;
     put_up(im, n, e->x, y, e->y, yaw, sc);
@@ -768,8 +774,8 @@ static void sync_monsters(const sim *s, float time) {
     t3_color gl = view_light_at(e->x, e->y);
     float lm = CW_MAX(gl.r, CW_MAX(gl.g, gl.b)), lk = lm > 1.4f ? 1.4f / lm : 1.0f; /* a torch tints, never burns out */
     t3_color c = { st[0] * gl.r * lk, st[1] * gl.g * lk, st[2] * gl.b * lk };
-    if (e->flash > 0) c = (t3_color){ 4, 3, 2.4f };
-    else if (e->frozen > 0) c = (t3_color){ 1.3f, 1.7f, 2.3f };
+    if (hg > 0.01f) c = (t3_color){ c.r + (3.0f - c.r) * hg, c.g + (2.3f - c.g) * hg, c.b + (1.9f - c.b) * hg };
+    if (e->frozen > 0) c = (t3_color){ 1.3f, 1.7f, 2.3f };
     else if (e->slow > 0) c.r *= 0.55f, c.g *= 0.8f, c.b *= 1.5f;
     if (af == 0 && e->flash <= 0) { float t = tell * tell; c.r *= 1.0f + 1.2f * t, c.g *= 1.0f + 0.4f * t; }
     if (e->kind == EK_HEXER && sim_hexer_hidden(s, e)) c = (t3_color){ 0.04f, 0.03f, 0.06f };
@@ -861,7 +867,7 @@ static void sync_players(const sim *s, float time) {
     }
     if (!p->down) shadow_at(p->x, p->y, 0.48f, 0.7f);
     float giant = p->charm[CH_GIANT] > 0 ? 1.5f : 1.0f;
-    float blink = p->inv > 0 && p->stun <= 0 && (s->tick / 4) % 2 ? 0.0f : 1.0f; /* fresh back in: a flicker */
+    float blink = p->inv > 0 && p->stun <= 0 && (s->tick / 15) % 2 ? 0.0f : 1.0f; /* fresh back in: a slow blink (2 Hz, never a strobe) */
     cw_node3d_set_position(V.pn[i], p->down ? (t3_vec3){ p->x, -0.5f, p->y } : pull(p->x, 0, p->y, PULL_HERO));
     if (p->down) cw_node3d_set_rotation(V.pn[i], (t3_vec3){ 1.4f, -p->face + 1.5708f, 0 });
     else cw_node3d_set_quaternion(V.pn[i], lean_q(-p->face + 1.5708f));

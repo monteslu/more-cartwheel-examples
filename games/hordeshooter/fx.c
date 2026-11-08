@@ -52,6 +52,9 @@ static struct {
   int nb, ns, nlv, nh, nsp, nf, nst, nl, nm;
   cw_node stain[STAIN], light[LIGHTS], fire_haze[FIRES];
   float light_e0[LIGHTS];
+  float light_up[LIGHTS]; /* 0..1: how far a light has swelled toward its peak (it rises over four frames) */
+  int light_hold[LIGHTS]; /* frames a muzzle light is held: a burst keeps it at a steady glow */
+  int shot_light[MAXP + 1], shot_age[MAXP + 1]; /* each player's muzzle light and the frames since it was lit */
   t3_vec3 fire_pos[FIRES];
   float light_e[LIGHTS], light_c[LIGHTS][3];
   float stain_a[STAIN];
@@ -463,12 +466,28 @@ static void set_decal(cw_node d, t3_vec3 at, float size, float rot) {
   cw_node_set(d, "size", cw_val_vec3(size, size, 1.0f));
 }
 
-static void flash_light(t3_vec3 at, float e, float r, float g, float b) {
+/* a flash of light swells over four frames and fades over about half a second: never a switch from dark to full */
+static int flash_light(t3_vec3 at, float e, float r, float g, float b) {
   int i = FX.nl++ % LIGHTS;
   cw_node3d_set_position(FX.light[i], (t3_vec3){ at.x, 1.6f, at.z });
   FX.light_e[i] = e;
   FX.light_e0[i] = e;
+  FX.light_up[i] = 0;
+  FX.light_hold[i] = 0;
   FX.light_c[i][0] = r, FX.light_c[i][1] = g, FX.light_c[i][2] = b;
+  return i;
+}
+/* a player's muzzle light: while it is still bright, a new shot moves it and holds it at its peak instead of lighting
+ * another, so a burst is a steady glow at the gun, not a flicker at the fire rate */
+static void muzzle_light(int who, t3_vec3 at) {
+  int slot = who >= 0 && who < MAXP ? who : MAXP;
+  int i = FX.shot_light[slot];
+  if (FX.shot_age[slot] < 20 && FX.light_e0[i] == 16 && FX.light_e[i] > 0.05f) {
+    cw_node3d_set_position(FX.light[i], (t3_vec3){ at.x, 1.6f, at.z });
+    FX.light_e[i] += (16 - FX.light_e[i]) * 0.3f; /* back toward the peak over a few frames, never a jump */
+  } else FX.shot_light[slot] = flash_light(at, 16, 1, 0.75f, 0.35f);
+  FX.light_hold[FX.shot_light[slot]] = 12; /* steady while the shots keep coming (it rose and fell at the fire rate) */
+  FX.shot_age[slot] = 0;
 }
 
 static void spawn_gibs(t3_vec3 at, int n, t3_color c, float speed, float dirx, float dirz) {
@@ -526,7 +545,7 @@ void fx_events(sim *s) {
     case EV_SHOT:
       if (!(shot_seen & (1u << (e->a & 7)))) { /* each player's first shot this frame: a flash of light and a cone of fire at the barrel */
         shot_seen |= 1u << (e->a & 7);
-        if (lvl >= 1) flash_light((t3_vec3){ at.x + e->z * 0.02f, 0, at.z + e->w * 0.02f }, 16, 1, 0.75f, 0.35f);
+        if (lvl >= 1) muzzle_light(e->a, (t3_vec3){ at.x + e->z * 0.02f, 0, at.z + e->w * 0.02f });
         cw_particles_burst(FX.muzzle[0], (t3_vec3){ at.x, 0.95f, at.z }, (t3_vec3){ e->z, 0.05f, e->w });
         /* a heavy weapon's shot: a light tick (rockets, the rail gun, the shotgun; not every bullet) */
         const player *p = e->a < MAXP ? &s->p[e->a] : NULL;
@@ -707,10 +726,15 @@ void fx_tick(const sim *s) {
   FX.gibs->instance_matrix->version++;
   if (recolour) FX.gibs->instance_color->version++;
   /* lights */
+  for (int k = 0; k <= MAXP; k++) if (FX.shot_age[k] < 1000) FX.shot_age[k]++;
   for (int i = 0; i < LIGHTS; i++) {
-    FX.light_e[i] *= 0.9f;
+    float up = FX.light_up[i];
+    FX.light_up[i] = up < 1 ? fminf(1, up + 0.25f) : 1;
+    if (FX.light_hold[i] > 0) FX.light_hold[i]--;
+    else if (up >= 1) FX.light_e[i] *= 0.93f; /* the fade starts once it is up and no longer held */
     if (FX.light_e[i] < 0.05f) FX.light_e[i] = 0;
-    cw_node_set(FX.light[i], "energy", cw_val_float(FX.light_e[i]));
+    float u = FX.light_up[i];
+    cw_node_set(FX.light[i], "energy", cw_val_float(FX.light_e[i] * u * u * (3 - 2 * u)));
     { /* white-hot at the flash, the blast's own orange as it dies */
       float hot = FX.light_e0[i] > 0 ? CW_CLAMP(FX.light_e[i] / FX.light_e0[i], 0.0f, 1.0f) : 0;
       hot = hot * hot;

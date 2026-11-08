@@ -102,6 +102,7 @@ static struct game {
   int winner; /* fighter index or team, -1 none */
   /* per human view feedback */
   float hit_marker[MAXH], dmg_flash[MAXH], dmg_dir[MAXH], kill_flash[MAXH];
+  float dmg_want[MAXH]; /* what the hits ask of the damage tint: the tint swells toward it, a burst holds it up */
   int dmg_taken[MAXH], dmg_dealt[MAXH], kills_now[MAXH]; /* this tick's damage per person, for the rumble */
   int rumble_off;          /* Rumble OFF on the setup screen (for the session, like aim assist: a game save added now
                             * would reset the shell's saved settings once) */
@@ -404,7 +405,7 @@ static void damage(fighter *v, fighter *k, int dmg, t3_vec3 dir, float knock, in
   v->flinch = CW_MIN(1.0f, v->flinch + 0.35f + (float)dmg * 0.02f); /* the body is thrown back a moment (drawn only) */
   v->hit_t = 0;
   if (v->human >= 0) {
-    G.dmg_flash[v->human] = 1;
+    G.dmg_want[v->human] = 1;
     if (k) {
       t3_vec3 d = v3sub(k->mv.position, v->mv.position);
       G.dmg_dir[v->human] = cw_atan2(-d.x, -d.z) - v->yaw;
@@ -775,8 +776,11 @@ static void do_fire(fighter *f, int idx) {
     if (f->weapon <= 1) fx_casing(f->human >= 0 ? v3add(e, v3add(v3add(v3scale(d0, 0.62f), v3scale(right, 0.22f)), v3(0, -0.24f, 0))) : muzzle, right, v3(0, 1, 0));
   }
   if (cw_node_valid(f->light)) {
-    cw_node_set(f->light, "energy", cw_val_float(f->weapon == 1 ? 26 : 14)); /* a wall lit by the shot, not a white-out of the view */
-    cw_node3d_set_position(f->light, v3add(muzzle, v3scale(d0, 0.9f))); /* out past the barrel: at the barrel it bleaches the first person gun */
+    /* a wall lit by the shot, not a white-out of the view: the light swells and fades on an envelope (muzzle_light),
+     * and a burst holds it up instead of switching it on and off with every shot */
+    f->mpeak = fmaxf(f->mhold > 0 ? f->mpeak : 0, f->weapon == 1 ? 16 : 9);
+    f->mhold = 9;
+    if (f->mglow < 0.05f) f->mreach = 0, f->mnear = 0.5f; /* a fresh shot: the light is placed from the barrel out (muzzle_place) */
   }
 }
 
@@ -1856,7 +1860,7 @@ static void body_rim(const fighter *f, t3_object *scene, bool force) {
     d.strength = 3.4f, d.power = 1.8f, d.close = 0.8f, d.far = 40;
   }
   if (g > 0) {
-    float k = 0.5f + 0.5f * cw_sin((float)G.ticks * 0.45f + (float)slot);
+    float k = 0.5f + 0.5f * cw_sin((float)G.ticks * 0.18f + (float)slot); /* 1.7 Hz: a slow pulse, never a flicker */
     d.color = (t3_color){ 0.55f, 0.85f, 1.0f };
     d.strength = 1.2f + 2.4f * k, d.power = 1.6f, d.close = 1.0f;
   }
@@ -2143,6 +2147,7 @@ static void begin_match(void) {
   memset(G.killed_by, 0, sizeof G.killed_by);
   for (int h = 0; h < MAXH; h++) G.kc_who[h] = -1;
   memset(G.dmg_flash, 0, sizeof G.dmg_flash);
+  memset(G.dmg_want, 0, sizeof G.dmg_want);
   memset(G.aim, 0, sizeof G.aim);
   G.frag_limit = G.mode == MODE_TDM ? 40 : 25; /* about five minutes against bots at 4 fighters (FUN-RUBRIC FP17; 15 frags took 3 minutes) */
   G.time_limit = 60 * 60 * 8;
@@ -2294,6 +2299,32 @@ static bool kc_project(int h, t3_vec3 p, float *sx, float *sy) {
 }
 
 /* cameras and bodies follow the fighters: drawn from the tick's state */
+/* the muzzle light stands out past the barrel (at the barrel it bleaches the first person gun), followed every tick with the
+ * fighter's aim, and short of the first surface ahead: placed 0.9 m out on each shot, a light swung through a wall by a turn
+ * or a step lit the wall and went dark behind it shot by shot, a near wall or floor blinking at the fire rate. The reach
+ * eases toward what the ray allows, so a wall coming close dims the light in over a few ticks instead of jumping */
+static void muzzle_place(fighter *f) {
+  t3_vec3 e = eye_pos(f), d0 = look_dir(f->yaw, f->pitch), right = v3norm(v3cross(d0, v3(0, 1, 0)));
+  t3_vec3 muzzle = v3add(e, v3add(v3scale(d0, 0.5f), v3scale(right, 0.12f)));
+  float want = 0.9f;
+  t3_vec3 hp;
+  if (arena_ray(e, v3add(e, v3scale(d0, 1.4f + 0.6f)), &hp, NULL)) want = CW_CLAMP(v3len(v3sub(hp, e)) - 0.5f - 0.6f, 0.0f, 0.9f);
+  f->mreach += (want - f->mreach) * (want < f->mreach ? 0.5f : 0.2f);
+  t3_vec3 at = v3add(muzzle, v3scale(d0, f->mreach));
+  cw_node3d_set_position(f->light, at);
+  /* a light a hand's width from a wall lights it white, and a step or a turn of a few centimetres along the wall swings it
+   * from bright to dark frame by frame (a fighter hugging a wall strobed it): the light keeps its energy only as far as
+   * the nearest surface around it allows, eased over a quarter second */
+  static const t3_vec3 DIRS[5] = { { 1, 0, 0 }, { -1, 0, 0 }, { 0, 0, 1 }, { 0, 0, -1 }, { 0, -1, 0 } };
+  float dmin = 1.5f;
+  for (int k = 0; k < 5; k++) {
+    t3_vec3 hp2;
+    if (arena_ray(at, v3add(at, v3scale(DIRS[k], 1.5f)), &hp2, NULL)) dmin = fminf(dmin, v3len(v3sub(hp2, at)));
+  }
+  float keep = CW_CLAMP((dmin - 0.3f) / 1.2f, 0.0f, 1.0f);
+  f->mnear += (keep - f->mnear) * 0.07f;
+}
+
 static void sync_nodes(void) {
   for (int i = 0; i < G.nf; i++) {
     fighter *f = F(i);
@@ -2320,7 +2351,12 @@ static void sync_nodes(void) {
     }
     if (RIG[i]) body_rim(f, RIG[i]->scene, false);
     if (f->flash > 0) f->flash--;
-    else if (cw_node_valid(f->light)) cw_node_set(f->light, "energy", cw_val_float(0));
+    /* the muzzle light's envelope: up in about three ticks while held (9 ticks after each shot), then a fade of about
+     * a fifth of a second; under rapid fire it stays up, a steady glow, never a 10 Hz blink */
+    if (f->mhold > 0) f->mhold--, f->mglow += (1.0f - f->mglow) * 0.4f;
+    else f->mglow = f->mglow > 0.01f ? f->mglow * 0.8f : 0.0f;
+    if (cw_node_valid(f->light) && f->mglow > 0) muzzle_place(f);
+    if (cw_node_valid(f->light)) cw_node_set(f->light, "energy", cw_val_float(f->alive ? f->mglow * f->mpeak * f->mnear : 0));
   }
   if (G.views < 2 && G.nf > 0) { /* no view hook with one view: this player's own gun, not own body */
     if (cw_node_valid(F(0)->body)) cw_node_set(F(0)->body, "visible", cw_val_bool(false));
@@ -2412,15 +2448,20 @@ static void sync_nodes(void) {
     cw_node3d_set_position(G.vm[h], v3(vm_x + bx - dyaw[h] * 0.25f - bk * 0.09f, -0.2f + by - draw[h] * 0.3f + dpitch[h] * 0.2f - tk * 0.22f + bk * 0.03f, -0.36f + kick * 0.075f - bk * 0.16f));
     cw_node3d_set_rotation(G.vm[h], v3(kick * 0.1f + draw[h] * 0.5f + dpitch[h] * 0.5f - tk * 0.5f, dyaw[h] * 0.5f + 0.03f + bk * 0.55f, -bx * 1.5f + bk * 0.35f));
     cw_node3d_set_position(G.vm_flash[h], v3(0, MUZ_UP[f->weapon] * VM_SCALE, -(MUZ[f->weapon] + 0.04f) * VM_SCALE));
-    cw_node_set(G.vm_flash[h], "visible", cw_val_bool(f->flash > 0 && f->alive));
-    if (f->flash > 0 && f->alive) { /* the star turns and changes shot by shot (drawn only: hashed from the tick) */
-      uint32_t fh = (uint32_t)G.ticks * 2654435761u;
-      float big = (f->weapon == 1 || f->weapon == 2 ? 0.46f : f->weapon == 3 ? 0.34f : 0.26f) * (0.8f + 0.4f * (float)((fh >> 8) & 255) / 255.0f);
+    /* the star grows and shrinks with the muzzle light's envelope (it swells on a shot and fades; a burst holds it at
+     * full size), so rapid fire is a steady glow at the barrel, never a star switched on and off ten times a second */
+    bool star = f->mglow > 0.05f && f->alive;
+    cw_node_set(G.vm_flash[h], "visible", cw_val_bool(star));
+    if (star) { /* the star turns shot by shot (drawn only: hashed from the shot's tick) */
+      uint32_t fh = (uint32_t)(G.ticks - (uint32_t)(9 - f->mhold)) * 2654435761u;
+      float big = (f->weapon == 1 || f->weapon == 2 ? 0.46f : f->weapon == 3 ? 0.34f : 0.26f) * (0.95f + 0.1f * (float)((fh >> 8) & 255) / 255.0f) * f->mglow;
       cw_node3d_set_scale(G.vm_flash[h], v3(big, big, 1));
       cw_node3d_set_rotation(G.vm_flash[h], v3(0, 0, (float)(fh >> 24) / 255.0f * 6.283f));
     }
     G.hit_marker[h] *= 0.9f;
-    G.dmg_flash[h] *= 0.93f;
+    /* the damage tint rises over about four frames and fades slowly; hits in a burst hold it, never a red blink */
+    G.dmg_flash[h] += (G.dmg_want[h] - G.dmg_flash[h]) * (G.dmg_want[h] > G.dmg_flash[h] ? 0.35f : 0.1f);
+    G.dmg_want[h] *= 0.93f;
     G.kill_flash[h] *= 0.965f;
     G.head_marker[h] *= 0.93f;
     G.pick_t[h] *= 0.985f;

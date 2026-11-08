@@ -226,7 +226,7 @@ static void draw(mg_ctx *c, float alpha, float t) {
     }
     __typeof__(D.p[0]) *p = &D.p[i];
     if (p->alive || (c->tick % 20 < 10)) {
-      bool blink = p->inv > 0 && (p->inv / 4) % 2 == 0;
+      bool blink = p->inv > 0 && (p->inv / 15) % 2 == 0; /* a slow blink: 2 Hz, never a strobe */
       if (!blink || !p->alive) {
         float sq = p->duck ? 0.55f : p->y > 4 ? 1.18f : 1 + 0.06f * sinf(p->run * 0.05f);
         float r = 32; /* about 90 px tall at 1080p (it was 26: a 40 px runner) */

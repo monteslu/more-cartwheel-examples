@@ -987,8 +987,8 @@ bool view_init_step(cw_node root, int *done, int *total) {
   } else if (s >= S_CROWD && s < S_SHOTS) {
     crowd_kind_load(s - S_CROWD, files[s - S_CROWD]);
   } else if (s == S_SHOTS) {
-  V.bullet = imesh("Bullets", t3_box_geometry_new(0.13f, 0.13f, 1.3f, 1, 1, 1), glow(1, 0.7f, 0.28f, 7), MAXB, false); /* a long hot tracer */
-  V.bullet_head = imesh("BulletHeads", t3_icosahedron_geometry_new(0.13f, 1), glow(1, 0.93f, 0.75f, 16), MAXB, false); /* its white-hot head */
+  V.bullet = imesh("Bullets", t3_box_geometry_new(0.08f, 0.08f, 1.3f, 1, 1, 1), glow(1, 0.7f, 0.28f, 4), MAXB, false); /* a long hot tracer, slim: volleys of thick bright tracers through a crowd flashed the middle of the screen at the fire rate */
+  V.bullet_head = imesh("BulletHeads", t3_icosahedron_geometry_new(0.13f, 1), glow(1, 0.85f, 0.6f, 6), MAXB, false); /* its hot head: bright, not a white flash at the fire rate in a crowd of guns */
   V.rocket = imesh("Rockets", t3_cylinder_geometry_new(0.1f, 0.1f, 0.7f, 8, 1, false), glow(1, 0.45f, 0.12f, 5), 64, false);
   { /* xp gems: a faceted shard (a stretched octahedron: each face keeps its own normal), glassy with a glowing core; a richer gem is
      * bigger and changes colour: cool cyan, green, then gold */
@@ -1698,7 +1698,13 @@ void view_sync(const sim *s, float time) {
     int n = cnt[k][fr];
     if (n >= im->instance_matrix->count) continue;
     cnt[k][fr]++;
-    float sq = (e->elite ? 1.6f : 1.0f) * (1.0f + (e->flash > 0 ? 0.1f : 0)); /* an elite stands taller */
+    /* a hit's glow swells in over a few frames and fades over a quarter of a second; hits in a row hold it up, so
+     * rapid fire on an enemy is a steady glow, never a blink at the fire rate */
+    static float glow[MAXE];
+    if (e->spawn_age < 2) glow[i] = 0;
+    glow[i] += ((e->flash > 0 ? 1.0f : 0.0f) - glow[i]) * (e->flash > 0 ? 0.45f : 0.12f);
+    const float hg = glow[i] * glow[i] * (3 - 2 * glow[i]);
+    float sq = (e->elite ? 1.6f : 1.0f) * (1.0f + 0.1f * hg); /* an elite stands taller */
     float yaw = -e->face + 1.5708f; /* the model faces +Z; face is atan2(z, x) */
     float ey = g_deck_off ? 0 : ground_y(e->x, e->y);
     if (ey < ground_y(e->x, e->y) - 0.05f) g_deck_sunk++; /* the grounding gate: drawn into the hatch's plate (over the run) */
@@ -1724,8 +1730,8 @@ void view_sync(const sim *s, float time) {
     const float *hide = HIDE[k][hash2((uint32_t)i, 77u) % 6];
     float tint = V_floor > 0 ? 0.85f + 0.2f * h01((uint32_t)i, 5) : k >= EK_SKITTER ? 1.25f + 0.2f * h01((uint32_t)i, 5) : 0.39f + 0.2f * h01((uint32_t)i, 5); /* the floors' own creatures keep their authored colours */
     /* the hides over the greyed baked colours: the variety stays */
-    t3_color c = e->flash > 0 ? (t3_color){ 4, 2.8f, 2.2f }
-                              : (t3_color){ tint * (0.35f * hide[0] + 0.65f * 0.8f), tint * (0.35f * hide[1] + 0.65f * 0.8f), tint * (0.35f * hide[2] + 0.65f * 0.86f) };
+    t3_color c = (t3_color){ tint * (0.35f * hide[0] + 0.65f * 0.8f), tint * (0.35f * hide[1] + 0.65f * 0.8f), tint * (0.35f * hide[2] + 0.65f * 0.86f) };
+    c = (t3_color){ c.r + (3.0f - c.r) * hg, c.g + (2.2f - c.g) * hg, c.b + (1.8f - c.b) * hg };
     {
       t3_color gl = ground_light(e->x, e->y);
       c.r *= gl.r, c.g *= gl.g, c.b *= gl.b;
@@ -1836,7 +1842,8 @@ void view_sync(const sim *s, float time) {
   for (int i = 0; i < MAXG; i++) {
     const pickup *g = &s->g[i];
     if (!g->alive) continue;
-    float blink = g->life < 180 && ((g->life / 6) & 1) ? 0 : 1;
+    /* about to go: it pulses (2 Hz, smaller and back), never blinks out */
+    float blink = g->life < 180 ? 0.75f + 0.25f * cw_cos((float)g->life * (6.2831853f / 30.0f)) : 1;
     if (g->kind == 0) {
       int t = g->value >= 20 ? 2 : g->value >= 5 ? 1 : 0;
       if (ng[t] >= V.gem[t]->instance_matrix->count) continue;
@@ -1997,7 +2004,7 @@ void view_sync(const sim *s, float time) {
     if (V.pl_mat[i]) V.pl_mat[i]->color = ground_light(p->x, p->y);
     shadow_at(p->x, p->y, 0.42f, 1.8f, 0.7f);
     cw_node_set(V.pl_light[i], "energy", cw_val_float(p->down ? 8.0f : V_floor > 0 ? 40.0f : 32.0f)); /* brighter on the darker floors (and the yard under its lowered fill): the soldier always reads */
-    if (V.shield[i]) V.shield[i]->base.visible = p->shield_t > 0 && !p->down && (p->shield_t > 90 || (p->shield_t / 6) & 1);
+    if (V.shield[i]) V.shield[i]->base.visible = p->shield_t > 0 && !p->down && (p->shield_t > 90 || (p->shield_t / 15) & 1) /* running out: a slow blink, 2 Hz */;
     cw_node3d_set_position(V.pn[i], (t3_vec3){ p->x, (p->down ? -0.6f : 0) + ground_y(p->x, p->y), p->y });
     cw_node3d_set_rotation(V.pn[i], (t3_vec3){ p->down ? 1.4f : 0, -p->aim + 1.5708f, 0 }); /* the model faces +Z */
     if (V.soldier.nclip < 2) continue;
@@ -2067,8 +2074,20 @@ void view_sync(const sim *s, float time) {
     for (int i = 0; i < MAXP; i++) {
       const player *p = &s->p[i];
       bool on = p->active && !p->down;
-      float ax = cw_cos(p->aim), az = cw_sin(p->aim), gy = ground_y(p->x, p->y);
-      if (on) cw_splats_add(V.lamps, (t3_vec3){ p->x + ax * LAMP_LEN * 0.5f, gy, p->y + az * LAMP_LEN * 0.5f }, LAMP_LEN, LAMP_LEN * 0.95f, 1.5707963f - p->aim, 0,
+      /* the beam swings after the aim at up to three quarters of a turn a second: a snapped aim (a computer player's, a stick
+       * flicked across) threw the bright cone from one side of the player to the other between frames, a flash on the floor */
+      static float lamp_yaw[MAXP];
+      static bool lamp_seen[MAXP];
+      if (!on || !lamp_seen[i]) lamp_yaw[i] = p->aim, lamp_seen[i] = on;
+      else {
+        float d = p->aim - lamp_yaw[i];
+        while (d > 3.14159265f) d -= 6.2831853f;
+        while (d < -3.14159265f) d += 6.2831853f;
+        lamp_yaw[i] += fmaxf(-0.08f, fminf(0.08f, d));
+      }
+      float yaw = lamp_yaw[i];
+      float ax = cw_cos(yaw), az = cw_sin(yaw), gy = ground_y(p->x, p->y);
+      if (on) cw_splats_add(V.lamps, (t3_vec3){ p->x + ax * LAMP_LEN * 0.5f, gy, p->y + az * LAMP_LEN * 0.5f }, LAMP_LEN, LAMP_LEN * 0.95f, 1.5707963f - yaw, 0,
                             (t3_color){ 1.0f, 0.9f, 0.72f }, V_floor > 0 ? 0.32f : 0.36f);
       cw_node_set(V.pl_spot[i], "energy", cw_val_float(on && spots ? 26.0f : 0.0f));
       if (!on) continue;
@@ -2076,7 +2095,7 @@ void view_sync(const sim *s, float time) {
       cw_node3d_look_at(V.pl_spot[i], (t3_vec3){ p->x + ax * 7.0f, gy, p->y + az * 7.0f }, (t3_vec3){ 0, 1, 0 });
       for (int k = 0; k < 5; k++) { /* the brightness gate: points on the floor in the cone, and as far off to the side, on screen */
         float d = 2.5f + 1.2f * (float)k, su, sv;
-        float ox = cw_cos(p->aim + 1.7f), oz = cw_sin(p->aim + 1.7f);
+        float ox = cw_cos(yaw + 1.7f), oz = cw_sin(yaw + 1.7f);
         g_light_probe[i * 20 + k * 4] = view_screen((t3_vec3){ p->x + ax * d, gy, p->y + az * d }, &su, &sv) ? (int32_t)(su * 10000) * 10000 + (int32_t)(sv * 10000) : -1;
         g_light_probe[i * 20 + k * 4 + 1] = view_screen((t3_vec3){ p->x + ox * d, gy, p->y + oz * d }, &su, &sv) ? (int32_t)(su * 10000) * 10000 + (int32_t)(sv * 10000) : -1;
         g_light_probe[i * 20 + k * 4 + 2] = g_light_probe[i * 20 + k * 4 + 3] = 0;

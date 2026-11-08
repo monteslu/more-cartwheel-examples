@@ -62,6 +62,7 @@ static struct {
   rig *erig[MAX_ENEMIES];
   t3_mesh *eextra[MAX_ENEMIES][2]; /* the new kinds' parts: a shell and its rim, a slider's spikes, a dropper's thread */
   float ephase[MAX_ENEMIES], eyaw[MAX_ENEMIES];
+  float eflash[MAX_ENEMIES]; /* a hit's glow: rises in about a tenth of a second, fades over half a second */
   cw_node coin_node[MAX_COINS];
   t3_mesh *coin_mesh[MAX_COINS];
   cw_node pick_node[MAX_PICKUPS];
@@ -623,6 +624,7 @@ static void build_scene(void) {
     }
     cw_node3d_set_scale(S.emodel[i], (t3_vec3){ sc, sc, sc });
     S.ephase[i] = (float)i * 1.7f;
+    S.eflash[i] = 0;
   }
   /* moving platforms */
   for (int i = 0; i < L->nplat; i++) {
@@ -1194,12 +1196,13 @@ static void sync_scene(float alpha, float dt) {
     S.runph[i] += (p->anim == 5 ? 7.0f : 4.0f + spd * 0.9f) * dt;
     if (S.prig[i]) {
       rig_pose_hero(S.prig[i], p->anim, S.runph[i], S.time + (float)i, st, wd, vy);
-      /* the blink while invulnerable: each player on its own phase, so a group that respawns together never vanishes
-       * all at once (the screen showed four markers and no one under them) */
-      /* phases spread evenly over the 8-tick cycle: with two players a 2-tick offset left both hidden a quarter of the time */
-      bool inv = p->invuln > 0 && (((p->invuln + (g_blink_bug ? 2 * i : 8 * i / (G.nplayers > 0 ? G.nplayers : 1))) / 4) & 1);
+      /* invulnerable: a soft glow that pulses twice a second, never a blink (nothing on screen strobes), and the
+       * player is always drawn, so a group that respawns together never vanishes. The control (COOP_BLINK_BUG) brings
+       * back the old 8-tick on/off blink with a 2-tick phase offset, which hid the whole group */
+      bool inv = g_blink_bug && p->invuln > 0 && (((p->invuln + 2 * i) / 4) & 1);
       if (p->joined && p->alive && !p->bubble) { g_blink_live++; if (inv) g_blink_hid++; }
       cw_node_set(S.pmodel[i], "visible", cw_val_bool(!inv));
+      rig_flash(S.prig[i], p->invuln > 0 && !g_blink_bug ? 0.3f * (0.5f - 0.5f * cosf((float)p->invuln * (6.2831853f / 30.0f))) : 0.0f);
     }
     cw_node3d_set_position(S.plight[i], (t3_vec3){ x, y + 1.2f, 2.0f });
     cw_node_set(S.plight[i], "energy", cw_val_float(p->bubble ? 3.0f : 2.0f));
@@ -1326,7 +1329,10 @@ static void sync_scene(float alpha, float dt) {
     cw_node3d_set_rotation(S.emodel[i], (t3_vec3){ 0, S.eyaw[i], 0 });
     float esq = 1.0f; /* the walker pose's squash: the new kinds use it */
     if (e->kind >= EK_HOPPER) enemy_look(i, e, dt, &esq);
-    float flash = e->hurt > 0 && (e->hurt / 3) % 2 ? 1.0f : 0.0f;
+    /* hurt: a glow that swells and fades, never a blink. Hits in a row hold it up instead of restarting it */
+    { float want = e->hurt > 0 ? fminf(1.0f, (float)e->hurt / 16.0f) : 0.0f;
+      S.eflash[i] += (want - S.eflash[i]) * (1.0f - expf(-(want > S.eflash[i] ? 14.0f : 5.0f) * dt)); }
+    float flash = 0.6f * S.eflash[i];
     S.ephase[i] += dt * (e->kind == 1 ? 16.0f : 11.0f);
     if (e->kind != EK_FLYER && e->kind != EK_BOSS) rig_pose_walker(S.erig[i], S.ephase[i], S.time, esq);
     else if (e->kind == 1) rig_pose_flyer(S.erig[i], S.ephase[i], S.time);

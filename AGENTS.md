@@ -19,6 +19,19 @@ Gates and screenshots that use the GPU go through the engine's GPU lock:
 `scripts/partypack-suite.sh` shows how a game's whole suite is split into short
 lock holds.
 
+## No strobing
+
+Nothing in any game may strobe. Every flash swells and fades: a light, a hit glow or a full-screen tint rises over a
+few frames and fades over many, anything that can retrigger (a weapon's muzzle light, a hit flash, a damage tint) is
+held up by a burst instead of restarting, and any blink is a soft pulse at 2 Hz or slower. The engine's accessibility
+guide (`docs/guides/l10n-a11y.md`, "Flashes") has the thresholds and the recipes.
+
+`tests/flash-sweep.mjs` holds it: each entry of `tests/flash-sweep.json` runs a stretch of a game's brightest play
+natively (the gate it names gives the app, input and start requests) and checks every frame with the engine's
+`tools/flash-check.mjs` (WCAG 2.3.1 / Harding flash and red-flash limits, and no regular flicker above 3 Hz). Each
+entry's control, the same frames with an 8 Hz full-screen strobe over them, must fail. A new game adds entries for
+its explosions, hits, weapons, pickups, weather, menus and transitions.
+
 ## Newcomer and idle-seat gates
 
 Bots and soaks know the map and always press something, so they cannot catch a

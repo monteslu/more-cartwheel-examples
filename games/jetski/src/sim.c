@@ -956,9 +956,18 @@ void sim_tick(float dt) {
   ramps_tick();
   tanker_tick();
   if (DEF->rain > 0) {
-    /* a stroke every so often, by the clock: two quick flashes dying away */
-    uint32_t slot = (uint32_t)(G.tick / 300u), at = cw_hash32(&slot, sizeof slot, 77u) % 240u, t = G.tick % 300u;
-    float e = t >= at && t < at + 26u ? (t < at + 4u ? 1.0f : t < at + 8u ? 0.35f : t < at + 12u ? 0.85f : 0.8f * (1.0f - (float)(t - at - 12u) / 14.0f)) : 0.0f;
+    /* a stroke every so often, by the clock, as a glow behind the clouds: it swells over a fifth of a second, holds,
+     * and fades over a second and a half with a soft shimmer of distant strokes in it (under 2 Hz and a tenth deep, so
+     * it never strobes: no hard on/off, one flash a stroke, a stroke at most every 5 s). The stroke ends inside its
+     * 5 s slot, so a slot change never cuts it off. */
+    uint32_t slot = (uint32_t)(G.tick / 300u), at = cw_hash32(&slot, sizeof slot, 77u) % 200u, t = G.tick % 300u;
+    float e = 0.0f;
+    if (t >= at && t < at + 100u) {
+      float s = (float)(t - at);
+      if (s < 12.0f) { float u = s / 12.0f; e = u * u * (3.0f - 2.0f * u); }
+      else if (s < 18.0f) e = 1.0f;
+      else { float u = 1.0f - (s - 18.0f) / 82.0f, sn, cs; cw_sincos((s - 18.0f) * (6.2831853f * 1.6f / 60.0f), &sn, &cs); e = u * u * (0.92f + 0.08f * cs); }
+    }
     G.flash = e;
   }
   G.clock += dt;

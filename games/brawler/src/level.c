@@ -236,7 +236,7 @@ static void juke_show(void) {
     static const float C[4][3] = { { 1, 0.25f, 0.15f }, { 1, 0.6f, 0.15f }, { 1, 0.3f, 0.6f }, { 0.35f, 0.55f, 1 } };
     lvl = 3.2f + 2.0f * expf(-f * 5);
     r = C[k][0], g = C[k][1], b = C[k][2];
-  } else { lvl = tele ? 1.0f + 3.0f * tk * (((W.tick / 3) & 1) ? 1.0f : 0.25f) : 0.8f; r = 1, g = 0.55f, b = 0.25f; }
+  } else { lvl = tele ? 1.0f + 3.0f * tk * (0.625f + 0.375f * sinf((float)W.tick * 0.21f)) : 0.8f; /* a 2 Hz pulse, never a strobe */ r = 1, g = 0.55f, b = 0.25f; }
   if (W.juke.t > 0 && W.juke.t < 8) lvl += 6.0f * (1 - (float)W.juke.t / 8); /* the thump */
   for (int k = 0; k < 3; k++) if (juke_mat[k]) {
     float m = k == 0 ? lvl : k == 1 ? 0.6f + 0.3f * lvl : 0.5f + 0.4f * lvl;

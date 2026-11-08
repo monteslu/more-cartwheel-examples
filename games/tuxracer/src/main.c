@@ -783,7 +783,7 @@ static void racing_tick(float dt) {
   if (G.reset_ticks) {
     G.reset_ticks--;
     p->enabled = false;
-    tux_set_visible(&G.tux, (G.reset_ticks / 4) & 1);
+    tux_set_visible(&G.tux, (G.reset_ticks / 15) & 1); /* a slow blink (2 Hz, never a strobe) */
     if (G.reset_ticks == TICK_HZ / 2) {
       t3_vec3 r = course_reset_point(&G.course, p->pos);
       r.y += TUX_RADIUS;

@@ -104,7 +104,7 @@ static struct {
   int32_t state, return_state, ticks, kills, score, health, missiles, wave, shots_fired, hits;
   int32_t model_triangles, model_children, enemy_triangles, model_lods;
   float px, py, pz, heading, pitch, roll, speed;
-  float spawn, gun_cool, missile_cool, damage_flash, world_scroll;
+  float spawn, gun_cool, missile_cool, damage_flash, damage_want, world_scroll;
   float boost_fuel, hit_flash, kill_flash, missile_request;
   int32_t boost_exhausted, boost_active, missile_launches, missile_last_target;
   int lock_target, near_misses, settings_row, menu_row, cycle_target, manual_target;
@@ -963,7 +963,7 @@ static void new_mission(void) {
   G.boost_fuel = 100; G.hit_flash = G.kill_flash = G.missile_request = 0;
   G.boost_exhausted=G.boost_active=G.missile_launches=0;G.missile_last_target=-1;
   G.lock_target=-1;G.lock_timer=0;G.warning=0;G.manual_target=G.cycle_target=0;
-  G.spawn = 50; G.gun_cool = G.missile_cool = G.damage_flash = G.world_scroll = 0;
+  G.spawn = 50; G.gun_cool = G.missile_cool = G.damage_flash = G.damage_want = G.world_scroll = 0;
   for (int i = 0; i < ENEMIES; ++i) G.enemies[i].active = G.enemies[i].node->visible = false;
   for (int i = 0; i < SHOTS; ++i) G.shots[i].active = G.shots[i].node->visible = false;
   for (int i = 0; i < FOE_SHOTS; ++i)
@@ -1153,7 +1153,10 @@ static void update_effects(float dt) {
     G.blasts[i].age+=dt;G.blasts[i].node->visible=false;
     if(G.blasts[i].age>2.8f)G.blasts[i].active=false;
   }
-  G.damage_flash*=0.88f;
+  /* the red damage tint swells toward what the hits ask for over about five ticks and fades slowly; a burst of hits
+   * holds it up as a steady tint instead of jumping it up on every hit */
+  G.damage_flash+=(G.damage_want-G.damage_flash)*(G.damage_want>G.damage_flash?0.3f:0.12f);
+  G.damage_want*=0.95f;
   feel_update(dt);
   if(G.impact_age>0){G.impact_age+=dt;float r=6+G.impact_age*90;
     t3_object_set_scale(G.shockwave,r,r,r);G.shock_mat->opacity=fmaxf(0,0.14f-G.impact_age*0.18f);
@@ -1666,7 +1669,7 @@ static void fixed_update(void *user, double dt) {
     if(pass_range>500*500)e->passed=0;
     if(pass_range<90*90&&!e->passed){e->passed=1;G.near_misses++;G.audio_pass=.8f;}
     if (pass_range < 90.0f) {
-      G.health -= 26; G.damage_flash = 1;
+      G.health -= 26; G.damage_want = 1;
       RB.sent[1]++;rumble(.8f,.8f,300); /* a mid-air collision */
       explode(G.px, G.py, G.pz);
       e->active = e->node->visible = false;
@@ -1708,7 +1711,7 @@ static void fixed_update(void *user, double dt) {
     if(!CW_HANDLE_IS_NULL(s->trail))cw_node3d_set_position(s->trail,(t3_vec3){s->x,s->y,s->z});
     float clearance=segment_distance2(ox-previous_position.x,oy-previous_position.y,oz-previous_position.z,s->x-G.px,s->y-G.py,s->z-G.pz,0,0,0);
     if(clearance<(s->missile?64:25)) {
-      s->active=s->node->visible=false;G.health-=s->missile?35:9;G.damage_flash=.8f;
+      s->active=s->node->visible=false;G.health-=s->missile?35:9;G.damage_want=fmaxf(G.damage_want,.8f);
       RB.sent[1]++;if(s->missile)rumble(.7f,.8f,260);else rumble(.1f,.45f,70); /* hit: a missile hard, a round sharp */
       if(G.health<=0){crash_aircraft();return;}
       continue;
@@ -2018,8 +2021,12 @@ static void render(void *user, double alpha) {
   {int s=F.test_site;hud_project(cloud_sites[s][0],fmaxf(cloud_sites[s][1],terrain_height(cloud_sites[s][0],cloud_sites[s][2])+350),cloud_sites[s][2],(cw_vec2 *)F.test_cloud);}
   feel_publish();
   if(!art_hide_hud&&G.state!=CRASH&&G.state!=TITLE&&G.state!=CONTROLS&&G.state!=SETTINGS)hud();
-  if(capital.active&&capital.age<.16f)cw_r2d_rect((cw_rect){0,0,W,H},cw_rgba(1,.87f,.65f,(1-capital.age/.16f)*.4f));
-  if(G.state==CRASH&&G.crash_age<0.10f)cw_r2d_rect((cw_rect){0,0,W,H},cw_rgba(1,0.9f,0.76f,(1-G.crash_age/0.10f)*0.4f));
+  /* the mothership's end and a crash light the screen with a glow that swells over a tenth of a second and fades over
+   * half a second, never a hard flash */
+  #define SWELL(t) ((t)<.1f?((t)/.1f)*((t)/.1f)*(3-2*(t)/.1f):(t)<.6f?(1-((t)-.1f)/.5f)*(1-((t)-.1f)/.5f):0.0f)
+  if(capital.active&&capital.age<.6f)cw_r2d_rect((cw_rect){0,0,W,H},cw_rgba(1,.87f,.65f,SWELL(capital.age)*.32f));
+  if(G.state==CRASH&&G.crash_age<0.6f)cw_r2d_rect((cw_rect){0,0,W,H},cw_rgba(1,0.9f,0.76f,SWELL(G.crash_age)*0.32f));
+  #undef SWELL
   if(G.state==TITLE)draw_mission_menu();
   else if(G.state==CONTROLS)draw_controls_menu();
   else if(G.state==PAUSED)draw_action_menu();

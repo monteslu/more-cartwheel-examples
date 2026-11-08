@@ -258,7 +258,7 @@
     "controlEnv": {
       "COOP_BLINK_BUG": "1"
     },
-    "note": "the blink after a respawn never hides the whole group: two bots start invulnerable and g.vanish counts frames in which every player on the field was blinked out (only markers left on screen). The control (COOP_BLINK_BUG, native) brings back the 2-tick phase offset: its g.vanish must differ. Native only: carts have no environment.",
+    "note": "invulnerable after a respawn, a player pulses with a soft glow and is never hidden: two bots start invulnerable and g.vanish counts frames in which every player on the field was hidden (only markers left on screen). The control (COOP_BLINK_BUG, native) brings back the old on/off blink with a 2-tick phase offset: its g.vanish must differ. Native only: carts have no environment.",
     "controlField": "g.vanish",
     "controlFrames": 100
   },

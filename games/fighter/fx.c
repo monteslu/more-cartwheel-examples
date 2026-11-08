@@ -8,8 +8,8 @@
  *   knockdown, landing and dashes  low smoke-flipbook dust along the floor (soft against it) and chips
  *   fireball a glowing core with an ember trail, a muzzle flash; each fighter
  *            has its own colour
- *   super    a white screen flash, a burst of impact lines and streaks, a shockwave that bends the picture
- *   KO       a big flash, a shockwave in the air and one along the floor
+ *   super    the world dims for a moment (swelling in, lifting slowly), a burst of impact lines and streaks, a shockwave that bends the picture
+ *   KO       the world dims, a shockwave in the air and one along the floor
  *   heavy hits fire a small Explosion3D at the contact (a hot burst, a fast shockwave that bends the picture, a flash);
  *            supers and knockouts a big one on the floor (rings in the air and along the ground, a flash)
  *
@@ -57,7 +57,7 @@ static struct {
   cw_node hboom[3], sboom;
   int hbi;
   cw_node ember[8];
-  float flash;
+  float flash, flash_want; /* the super / knockout dimming: the level shown, and what the moment asks for */
   uint32_t seen;
 } FX;
 
@@ -165,12 +165,12 @@ void fx_init(cw_node root) {
     cw_node_add_child(FX.root, b);
     cw_node w = cw_node_new("Shockwave3D", "AirWave");
     cw_node_set(w, "autostart", cw_val_bool(false)); cw_node_set(w, "max_radius", cw_val_float(5.0)); cw_node_set(w, "duration", cw_val_float(0.7));
-    cw_node_set(w, "thickness", cw_val_float(1.0)); cw_node_set(w, "strength", cw_val_float(0.32));
+    cw_node_set(w, "thickness", cw_val_float(1.0)); cw_node_set(w, "strength", cw_val_float(0.14)); /* bent air, not colour fringes */
     cw_node3d_set_position(w, (t3_vec3){ 0, 1.05f, 0.2f });
     cw_node_add_child(b, w);
     cw_node gw = cw_node_new("Shockwave3D", "GroundWave");
     cw_node_set(gw, "autostart", cw_val_bool(false)); cw_node_set(gw, "ground", cw_val_bool(true)); cw_node_set(gw, "max_radius", cw_val_float(6.0));
-    cw_node_set(gw, "duration", cw_val_float(0.75)); cw_node_set(gw, "thickness", cw_val_float(0.8)); cw_node_set(gw, "strength", cw_val_float(0.2));
+    cw_node_set(gw, "duration", cw_val_float(0.75)); cw_node_set(gw, "thickness", cw_val_float(0.8)); cw_node_set(gw, "strength", cw_val_float(0.12));
     cw_node3d_set_position(gw, (t3_vec3){ 0, 0.03f, 0 });
     cw_node_add_child(b, gw);
   }
@@ -188,7 +188,7 @@ void fx_bind_lights(cw_node stage) {
   }
 }
 
-void fx_reset(void) { fx_rumble_stop(); FX.flash = 0; FX.seen = 0; for (int i = 0; i < 3; i++) FX.light_age[i] = 0; }
+void fx_reset(void) { fx_rumble_stop(); FX.flash = FX.flash_want = 0; FX.seen = 0; for (int i = 0; i < 3; i++) FX.light_age[i] = 0; }
 float fx_flash(void) { return FX.flash; }
 
 static void at(cw_node n, t3_vec3 p) { cw_node3d_set_position(n, p); cw_particles_restart(n); }
@@ -244,7 +244,7 @@ void fx_event(const ft_game *g, const ft_event *e) {
   case EV_WALL: at(FX.dust[FX.di++ % 4], (t3_vec3){ p.x, 0.04f, 0.1f }); at(FX.chips[FX.ci++ % 3], (t3_vec3){ p.x, 0.02f, 0.1f }); rumble(who, 0.45f, 0.2f, 110); break; /* a wall splat */
   case EV_FIRE: light((t3_vec3){ p.x, 1.05f, 0.5f }, 30, 1, 0.6f, 0.3f); at(FX.flash_p[FX.fi++ % 4], (t3_vec3){ p.x, 1.05f, 0.2f }); break;
   case EV_SUPER: {
-    FX.flash = 1;
+    FX.flash_want = 1;
     rumble(who, 0.3f, 0.3f, 120); /* the super starts */
     at(FX.streaks[FX.sti++ % 2], (t3_vec3){ p.x, 1.0f, 0.2f });
     int r = FX.ri++ % 4;
@@ -257,7 +257,7 @@ void fx_event(const ft_game *g, const ft_event *e) {
   case EV_CLASH: at(FX.flash_p[FX.fi++ % 4], p); at(FX.sparks[FX.si++ % 4], p); light(p, 40, 1, 0.8f, 0.5f); break;
   case EV_TECH: at(FX.bring[FX.bri++ % 3], p); at(FX.bsparks[FX.bi++ % 3], p); light(p, 30, 0.7f, 0.9f, 1); break;
   case EV_KO: {
-    FX.flash = 0.8f;
+    FX.flash_want = fmaxf(FX.flash_want, 0.8f);
     rumble(who, 0.9f, 0.6f, 300); /* knocked out: the biggest one */
     rumble(other, 0.5f, 0.3f, 180);
     for (int i = 0; i < 3; i++) at(FX.sparks[FX.si++ % 4], (t3_vec3){ p.x, 1.1f, 0.2f });
@@ -309,5 +309,8 @@ void fx_frame(const ft_game *g, float dt) {
     }
     cw_node_set(FX.light[i], "energy", cw_val_float(e));
   }
-  FX.flash *= cw_exp(-dt * 6.0f);
+  /* the moment dims the world: it swells in over about a tenth of a second and lifts over most of a second, never a
+   * white wash or a jump */
+  FX.flash += (FX.flash_want - FX.flash) * (1.0f - cw_exp(-dt * (FX.flash_want > FX.flash ? 18.0f : 4.0f)));
+  FX.flash_want *= cw_exp(-dt * 3.0f);
 }

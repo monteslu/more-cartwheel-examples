@@ -779,10 +779,10 @@ void view_sync(double alpha) {
     cw_node root = cw_node_get(cw_tree_root(cw_scene_app_tree()), "Root");
     if (DEF->rain > 0) {
       cw_node fill = cw_node_get(root, "Fill");
-      float f = 1.5f + 14.0f * G.flash;
+      float f = 1.5f + 7.0f * G.flash;
       if (f != last_fill) { cw_node_set(fill, "energy", cw_val_float(f)); last_fill = f; }
       t3_mesh *dome = (t3_mesh *)sky_dome;
-      float k = 1.0f + 5.0f * G.flash;
+      float k = 1.0f + 2.5f * G.flash;
       dome->materials[0]->color = (t3_color){ k, k, k * 1.08f };
     } else if (last_fill >= 0) { last_fill = -1; ((t3_mesh *)sky_dome)->materials[0]->color = (t3_color){ 1, 1, 1 }; }
   }

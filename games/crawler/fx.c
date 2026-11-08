@@ -42,6 +42,8 @@ static struct {
   cw_node motes; /* the air: dust, spores or embers drifting over the visible maze, in the tileset's colour */
   int motes_theme;
   float light_e[LIGHTS], light_e0[LIGHTS];
+  float light_up[LIGHTS], light_pos[LIGHTS][2]; /* how far a flash has swelled (over four frames); where it is */
+  int light_age[LIGHTS];
   int nl;
   /* rumble: per pad the strength running and when it ends; this frame's strongest request */
   float rum_k[MAXP];
@@ -357,10 +359,22 @@ fx_stats fx_get_stats(void) {
 
 static void flash(float x, float y, float z, float e, float r, float g, float b) {
   if (g_fx_level <= 0 && e < 40) return; /* the Low preset keeps the big flashes only */
+  /* a flash swells over four frames and fades over about a third of a second. Hits in a row in one place (a brute's
+   * swings, an imp's volley) feed the young flash already there instead of lighting another, so they hold a glow
+   * rather than retrigger a flicker */
+  for (int k = 0; k < LIGHTS; k++) {
+    float dx = FX.light_pos[k][0] - x, dz = FX.light_pos[k][1] - z;
+    if (FX.light_e[k] > 0.5f && FX.light_age[k] < 18 && dx * dx + dz * dz < 9.0f) {
+      if (e > FX.light_e[k]) FX.light_e[k] = FX.light_e0[k] = e;
+      FX.light_age[k] = CW_MIN(FX.light_age[k], 4);
+      return;
+    }
+  }
   int i = FX.nl++ % LIGHTS;
   cw_node3d_set_position(FX.light[i], (t3_vec3){ x, y, z });
   cw_node_set(FX.light[i], "color", cw_val_color(r, g, b, 1));
   FX.light_e[i] = FX.light_e0[i] = e;
+  FX.light_up[i] = 0, FX.light_age[i] = 0, FX.light_pos[i][0] = x, FX.light_pos[i][1] = z;
 }
 static void blast(float x, float z, float r, bool big) {
   FX.booms_total++;
@@ -507,7 +521,7 @@ void fx_tick(const sim *s, float time) {
       if (nl < SHOT_LIGHTS) {
         cw_node3d_set_position(FX.shot_light[nl], (t3_vec3){ b->x, 1.2f, b->y });
         cw_node_set(FX.shot_light[nl], "color", cw_val_color(1, 0.55f, 0.22f, 1));
-        cw_node_set(FX.shot_light[nl], "energy", cw_val_float(42.0f + 6.0f * cw_sin((float)FX.tick * 0.9f + (float)j)));
+        cw_node_set(FX.shot_light[nl], "energy", cw_val_float(42.0f + 6.0f * cw_sin((float)FX.tick * 0.2f + (float)j))); /* a slow waver (under 2 Hz), never a flicker */
         nl++;
       }
       break;
@@ -539,8 +553,12 @@ void fx_tick(const sim *s, float time) {
   for (int i = nl; i < SHOT_LIGHTS; i++) cw_node_set(FX.shot_light[i], "energy", cw_val_float(0));
   for (int i = 0; i < LIGHTS; i++) {
     if (FX.light_e[i] <= 0.01f) continue;
-    FX.light_e[i] *= 0.82f;
-    cw_node_set(FX.light[i], "energy", cw_val_float(FX.light_e[i] > 0.5f ? FX.light_e[i] : 0));
+    FX.light_age[i]++;
+    if (FX.light_up[i] < 1) FX.light_up[i] = fminf(1, FX.light_up[i] + 0.25f);
+    else if (FX.light_age[i] > 4) FX.light_e[i] *= 0.88f;
+    if (FX.light_e[i] <= 0.5f) FX.light_e[i] = 0;
+    float u = FX.light_up[i];
+    cw_node_set(FX.light[i], "energy", cw_val_float(FX.light_e[i] * u * u * (3 - 2 * u)));
   }
   rumble_send();
 }

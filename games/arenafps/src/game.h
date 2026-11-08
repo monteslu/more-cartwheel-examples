@@ -199,6 +199,10 @@ typedef struct fighter {
   cw_node anim;          /* AnimationPlayer of the skinned body */
   const char *clip;      /* the clip playing: idle, run, die */
   int flash;
+  float mglow, mpeak;    /* the muzzle light's level (0..1) and energy: it swells on a shot and fades */
+  int mhold;             /* ticks the muzzle light is held up (a burst keeps it there) */
+  float mreach;          /* how far ahead of the barrel the muzzle light stands, eased: never through a wall, never jumping */
+  float mnear;           /* 0..1, eased: how much of its energy the muzzle light keeps by the nearest surface around it */
   /* bot brain */
   float skill;           /* 0..1 */
   int think;             /* ticks to the next decision */

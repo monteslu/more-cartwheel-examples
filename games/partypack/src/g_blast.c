@@ -214,9 +214,10 @@ static void tick(mg_ctx *c) {
       continue;
     }
     K.bomb[b].fuse--;
-    float blink = sinf((float)K.bomb[b].fuse * (0.25f + (80 - K.bomb[b].fuse) * 0.01f));
-    n3_emissive(K.bomb[b].mesh, (cw_color){ blink > 0 ? 2.5f : 0.15f, 0.1f, 0.05f, 1 });
-    cw_node_set(K.bomb[b].ring, "energy", cw_val_float(0.7f + 1.6f * (blink > 0)));
+    /* the fuse pulses quicker as it burns down, 1.1 Hz to 2.3 Hz, a glow that swells and fades, never a strobe */
+    float blink = 0.5f + 0.5f * sinf((float)K.bomb[b].fuse * (0.12f + (80 - K.bomb[b].fuse) * 0.0015f));
+    n3_emissive(K.bomb[b].mesh, (cw_color){ 0.15f + 2.35f * blink, 0.1f, 0.05f, 1 });
+    cw_node_set(K.bomb[b].ring, "energy", cw_val_float(0.7f + 1.6f * blink));
     if (K.bomb[b].fuse <= 0) explode(b);
   }
   /* ghost bombers: the marker follows the stick, south calls a bomb down on it */

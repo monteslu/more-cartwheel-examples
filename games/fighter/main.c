@@ -907,9 +907,9 @@ static void draw_hud(float W, float H, float s) {
     }
   }
   if (g->training) draw_training(W, H, s);
-  /* super flash */
+  /* a super or a knockout dims the world for a moment (fx_flash swells and lifts): a darkening, never a white wash */
   float fl = fx_flash();
-  if (fl > 0.01f) cw_r2d_rect(cw_rect_make(0, 0, W, H), rgba(1, 1, 1, fl * 0.6f));
+  if (fl > 0.01f) cw_r2d_rect(cw_rect_make(0, 0, W, H), rgba(0.02f, 0.02f, 0.05f, fl * 0.45f));
 }
 
 static void draw_select(float W, float H, float s) {
