@@ -82,6 +82,11 @@ static struct game {
   int ticks, match_ticks, over_ticks, time_limit, frag_limit;
   int team_score[2];
   int wave, wave_state, wave_timer, lives;
+  /* co-op: the game tick each person last touched their pad; a seat untouched for AWAY_TICKS is away (it neither
+   * comes back on a shared life nor makes the waves bigger) until its player presses something; sw idle_lives 1 (the
+   * control of tests/arenafps-idle-seat.mjs) spends lives on it and counts it as before. away_skips: respawns held back */
+  int last_in[MAXH], sw_idle_lives;
+  int32_t away_skips, present;
   uint32_t hash;
   feed_line feed[MAX_FEED];
   int winner; /* fighter index or team, -1 none */
@@ -129,6 +134,7 @@ static struct game {
 
 static fighter *F(int i) { return &G.f[i]; }
 static bool hm_driving(const fighter *f);
+static int present_players(void); /* co-op: the people holding the arena (below) */
 static bool is_bot(const fighter *f) { return (AUTO && !hm_driving(f)) || f->human < 0; }
 
 /* bot difficulty (setup row "bots"): skill scale, reaction before the first shot at a newly seen enemy (ticks, plus up to
@@ -1717,7 +1723,8 @@ static void setup_fighters(void) {
 static void spawn_wave(void) {
   G.wave++;
   /* the wave grows with the wave number and with how many people hold the arena: 4 bots at wave 1 for one player, 8 for four */
-  int n = CW_MIN(2 + G.wave + G.players * (1 + G.wave / 2), MAXF - G.players);
+  G.present = present_players();
+  int n = CW_MIN(2 + G.wave + G.present * (1 + G.wave / 2), MAXF - G.players);
   for (int i = 0; i < n; i++) {
     int slot = -1;
     for (int k = G.players; k < MAXF; k++) if (!F(k)->active || !F(k)->alive) { if (!F(k)->active) { slot = k; break; } }
@@ -1784,6 +1791,8 @@ static void begin_match(void) {
   for (int s = 0; s < MAX_SPAWNS; s++) G.spawn_used[s] = -100000;
   G.team_score[0] = G.team_score[1] = 0;
   G.wave = 0;
+  G.away_skips = 0;
+  G.present = G.players;
   G.wave_state = 0;
   G.wave_timer = 60 * 3;
   G.lives = 4 + 3 * G.players;
@@ -2085,6 +2094,17 @@ static bool any_start(void) {
 }
 
 static void game_step(void);
+/* a person at the pad: any action held this tick (the sticks are actions too) */
+enum { AWAY_TICKS = 60 * 20 };
+static void seats_touched(void) {
+  const cw_action a[] = { G.mv_l, G.mv_r, G.mv_f, G.mv_b, G.lk_l, G.lk_r, G.lk_u, G.lk_d, G.fire, G.jump, G.w_next, G.w_prev, G.sprint, G.ui_start };
+  for (int h = 0; h < MAXH; h++)
+    for (size_t k = 0; k < sizeof a / sizeof a[0]; k++) if (cw_action_pressed(h, a[k])) { G.last_in[h] = G.steps; break; }
+  if (HM.drive) G.last_in[0] = G.steps;
+}
+static bool away(int h) { return G.mode == MODE_COOP && !G.sw_idle_lives && !AUTO && G.steps - G.last_in[h] > AWAY_TICKS; }
+/* the people holding the arena: every seat but the away ones, at least one */
+static int present_players(void) { int n = 0; for (int h = 0; h < G.players; h++) n += !away(h); return CW_MAX(1, n); }
 static void ptest_update(void);
 static void fixed_update(void *user, double dt) {
   (void)user, (void)dt;
@@ -2109,6 +2129,7 @@ static void fixed_update(void *user, double dt) {
 static void game_step(void) {
   RB.clock++; /* the rumble's clock: every game tick */
   G.steps++; /* every game tick since the start, across matches (soaks) */
+  seats_touched();
   if (G.state == ST_SETUP) {
     int h = 0;
     if (cw_action_just_pressed(h, G.mv_f)) G.setup_row = (G.setup_row + 6) % 7, fx_play_ui(SND_CLICK, 0.4f);
@@ -2174,6 +2195,10 @@ static void game_step(void) {
     if (!f->alive) {
       f->dead_ticks++;
       bool can_respawn = G.mode != MODE_COOP || f->human < 0 ? G.mode != MODE_COOP : G.lives > 0;
+      if (can_respawn && f->human >= 0 && away(f->human)) { /* nobody at that pad: no life is spent on it */
+        if (f->dead_ticks == 151) G.away_skips++;
+        can_respawn = false;
+      }
       if (f->dead_ticks > (f->human >= 0 ? 150 : 120) && can_respawn) {
         if (G.mode == MODE_COOP && f->human >= 0) G.lives--;
         spawn_fighter(f);
@@ -2419,7 +2444,9 @@ static void hud_view(int h) {
   if (!f->alive) { /* a stack from the middle down: each line under the last as measured */
     float dy = cy - u * 3;
     dy += text("DOWN", cx - r.w / 2, dy, u * 3.2f, cw_rgba(1, 0.3f, 0.25f, 1), CW_ALIGN_CENTER, r.w).height * 0.86f;
-    if (!(G.mode == MODE_COOP && G.lives <= 0)) {
+    if (!(G.mode == MODE_COOP && G.lives <= 0) && away(h)) /* this seat sits out until someone plays it */
+      dy += text("press any button to come back in", cx - r.w / 2, dy, u * 1.2f, cw_rgba(1, 1, 1, 0.85f), CW_ALIGN_CENTER, r.w).height;
+    else if (!(G.mode == MODE_COOP && G.lives <= 0)) {
       char rs[24];
       snprintf(rs, sizeof rs, "back in %d", CW_MAX(1, (150 - f->dead_ticks + 59) / 60));
       dy += text(rs, cx - r.w / 2, dy, u * 1.2f, cw_rgba(1, 1, 1, 0.85f), CW_ALIGN_CENTER, r.w).height;
@@ -2853,6 +2880,12 @@ static void quality_changed(cw_quality q, void *u) {
 
 /* debug channel: "bind <action> <bindings>" replaces an action's bindings (the text form, "key:x, pad:north"): for checking
  * that a rebound action's prompt shows its new button */
+/* the gates' switch: sw idle_lives 1 (the control of tests/arenafps-idle-seat.mjs) */
+static void cmd_sw(int argc, const char **argv, cw_reply *r) {
+  if (argc < 3 || strcmp(argv[1], "idle_lives")) { cw_reply_error(r, "usage: sw idle_lives <0|1>"); return; }
+  G.sw_idle_lives = atoi(argv[2]) != 0;
+  cw_reply_printf(r, "{\"idle_lives\":%d}", G.sw_idle_lives);
+}
 static void cmd_bind(int argc, const char **argv, cw_reply *r) {
   if (argc < 3) { cw_reply_error(r, "bind <action> <bindings>"); return; }
   cw_action a = cw_action_find(argv[1]);
@@ -2949,6 +2982,9 @@ static void init(void *user) {
   cw_debug_u32("game.hash", &G.hash);
   cw_debug_i32("match.wave", &G.wave);
   cw_debug_i32("match.lives", &G.lives);
+  for (int h = 0; h < MAXH; h++) G.last_in[h] = -(1 << 29); /* nobody has touched a pad yet */
+  cw_debug_i32("coop.away_skips", &G.away_skips); cw_debug_i32("coop.present", &G.present); /* co-op respawns held back for a seat nobody plays; the people the last wave was sized for */
+  cw_debug_command("sw", "sw idle_lives <0|1>: test switch (co-op spends shared lives on a seat nobody plays and sizes the waves for it, as before)", cmd_sw);
   cw_debug_i32("match.winner", &G.winner);
   cw_debug_i32("match.nf", &G.nf);
   cw_debug_i32("nav.requests", &G.path_requests);

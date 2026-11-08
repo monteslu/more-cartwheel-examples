@@ -16,7 +16,11 @@ bots that find their way over a navigation mesh, jump pads, ledge jumps and drop
 Modes
 - Deathmatch: everyone for themselves, first to 25 frags or the best score after eight minutes.
 - Team deathmatch: red against blue, first team to 40.
-- Co-op waves: the players hold the arena against six waves of bots, with a shared pool of lives. A wave is bigger and tougher each time and bigger again for every extra player; between waves everyone heals a little and the rifle is topped up, and the next wave is counted down on screen.
+- Co-op waves: the players hold the arena against six waves of bots, with a shared pool of lives. A wave is bigger and tougher each time and bigger again for every extra player; between waves everyone heals a little and the rifle is topped up, and the next wave is counted down on screen. A seat nobody plays (a pad
+  that joined and was put down: nothing touched on it for 20 seconds) sits out: once it is downed it does not come back
+  on a shared life and its view says "press any button to come back in", and the next waves are sized for the people
+  playing. Any press on that pad brings it back (for a life). `sw idle_lives 1` (every cart) spends lives on it and
+  counts it as before, the control of `tests/arenafps-idle-seat.mjs`.
 
 Feedback: the view never shakes, bobs or kicks; blasts (by how close), hits taken, big hits and frags dealt, hard landings and each rocket or rail shot are felt in your own pad instead (rumble, Rumble on the setup screen; nothing without motors). A hit throws the target back a moment, a red cross and a dry thwack on a hit, a white cross, the word HEAD and a bright ping on a head shot, a gold cross, the victim's name, your streak and a rising chime on a frag, the name of whoever downed you, a red bar on a ring around the crosshair points at whoever hit you, the edges pulse red when health is low, and a downed player sees a respawn countdown (about 2.5 s; two seconds of protection after you spawn).
 
