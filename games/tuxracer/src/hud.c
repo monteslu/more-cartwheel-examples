@@ -115,6 +115,9 @@ static void gauge(const tux_phys *p, float x, float y) {
 }
 
 static float hud_top;
+static int chain_n;
+static float chain_age;
+void hud_chain(int chain, float age) { chain_n = chain, chain_age = age; }
 float hud_top_bottom(void) { return hud_top; }
 void hud_draw(const tux_phys *p, float race_time, int herring, int lives) {
   hud_begin();
@@ -139,6 +142,13 @@ void hud_draw(const tux_phys *p, float race_time, int herring, int lives) {
   hud_top = fmaxf(hud_top, 10 + hh);
   cw_r2d_sprite(&(cw_sprite){ .texture = tex_herring, .pos = { size.x - 12 - hw + 12, 10 + (hh - ih) * 0.5f }, .size = { iw, ih } });
   hud_title(buf, size.x - 12 - hw + 24 + iw, 10 + (hh - hm.height * 0.9f) * 0.5f, 34, yellow, 0);
+  if (chain_n >= 2) { /* a chain of herring: "chain x3" beside the count, fading as the window to catch the next one closes */
+    char cb[16];
+    snprintf(cb, sizeof cb, "chain x%d", chain_n);
+    float a = fmaxf(0, fminf(1, 1 - (chain_age - 1.5f) / 1.0f));
+    float ch = hud_measure(true, cb, 24, 0).height; /* beside the herring card, on its left */
+    hud_title(cb, size.x - 12 - hw - 12, 10 + (hh - ch * 0.9f) * 0.5f, 24, (cw_color){ 1, 0.8f, 0.25f, a }, 2);
+  }
   if (lives > 0) {
     float ly = 10 + hh + 6;
     hud_top = fmaxf(hud_top, ly + 38);

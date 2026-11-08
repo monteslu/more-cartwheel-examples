@@ -151,6 +151,7 @@ typedef struct tux_view {
   view_mode mode;
   bool initialized;
   t3_vec3 pos, dir, up, plyr_pos;
+  float dist; /* the camera's distance behind him: 0 is the original's CAMERA_DISTANCE (the speed camera closes in) */
 } tux_view;
 void view_reset(tux_view *v, view_mode mode);
 void view_update(tux_view *v, const tux_phys *p, const course *c, float dt);
@@ -188,12 +189,33 @@ enum { SFX_PICKUP, SFX_TREE, SFX_COUNT };
 void audio_init(void);
 void audio_music(int which);
 void audio_sfx(int id);
+void audio_pickup(int chain); /* the pickup sound, pitched up the chain */
 void audio_slide(const float w[SURF_KINDS], float speed, bool airborne, bool on);
 void audio_update(void);
+
+/* ── ghost.c: the best run, recorded and replayed (render only) ──────── */
+#define GHOST_STEP 3    /* ticks between samples: 20 Hz */
+#define GHOST_MAX 3600  /* samples: three minutes */
+typedef struct ghost_sample { int16_t d[3]; int8_t turn; uint8_t flags; } ghost_sample; /* d: mm from the previous sample; flags: 1 air, 2 hidden */
+typedef struct ghost_run {
+  uint32_t course_hash; /* 0: empty */
+  float time;           /* the run's race time */
+  int32_t count;
+  float origin[3];
+  ghost_sample s[GHOST_MAX];
+} ghost_run;
+typedef struct ghost_rec { ghost_run run; t3_vec3 last; int32_t ticks; bool broken; } ghost_rec;
+typedef struct ghost_play { t3_vec3 cache; int cache_i; } ghost_play;
+typedef struct ghost_pose { t3_vec3 pos, vel; float turn; bool airborne, hidden; } ghost_pose;
+void ghost_rec_begin(ghost_rec *r, uint32_t course_hash, t3_vec3 at);
+void ghost_rec_tick(ghost_rec *r, t3_vec3 pos, float turn, bool airborne, bool hidden);
+bool ghost_valid(const ghost_run *g);
+bool ghost_at(ghost_play *gp, const ghost_run *g, float ticks, ghost_pose *out);
 
 /* ── hud.c ───────────────────────────────────────────────────────────── */
 void hud_init(void);
 void hud_draw(const tux_phys *p, float race_time, int herring, int lives);
+void hud_chain(int chain, float age); /* the herring chain under the herring card (2 and up), fading over its window */
 float hud_top_bottom(void); /* how far down the last hud_draw's top cards reach: a card over the race goes below them */
 cw_font hud_font(void);
 void hud_begin(void);
@@ -217,7 +239,9 @@ void sky_ring_update(t3_vec3 cam, t3_vec3 to_sun, float time, bool windy);
 void sky_ring_renderer(t3_renderer *r); /* register the clouds and aurora parts */
 void fx_init(cw_node parent);
 void fx_set_snowing(bool on);
-void fx_set_motes(bool on); /* sunlit dust around the camera (sunny) */
+void fx_set_motes(bool on);
+void fx_set_spray_hidden(bool hidden);
+void fx_finish(t3_vec3 at, t3_vec3 vel); /* the finish moment's flakes */ /* sunlit dust around the camera (sunny) */
 void fx_set_wind(bool windy);
 void fx_track_reset(void);
 void fx_update(const tux_phys *p, t3_vec3 cam_pos, t3_vec3 cam_dir, bool racing);

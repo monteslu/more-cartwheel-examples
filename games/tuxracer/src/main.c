@@ -49,11 +49,16 @@ typedef struct save_data {
   uint8_t gfx[3];            /* the graphics settings (cw_quality_saved, bits 0-23 little-endian); 0 = never chosen */
   /* version 2 from here on (a version 1 save, which ends above, still loads: these read as never chosen) */
   uint8_t text;              /* Text size and Text background (cw_text_scale_saved); 0 = never chosen */
-  uint8_t reserved[3];
+  uint8_t opts;              /* OPT_*: zero in an older save (the ghost on, the speed camera) */
+  uint8_t reserved[2];
+  /* version 3 from here on (a version 2 save, which ends above, still loads: no ghosts yet) */
+  ghost_run ghosts[MAX_COURSES]; /* the fastest finished run per course */
 } save_data;
+enum { OPT_GHOST_OFF = 1, OPT_CLASSIC_CAMERA = 2 };
 static save_data SAVE;
 #define SAVE_V1_SIZE (12 + 16 * MAX_COURSES + 12)
-_Static_assert(sizeof(save_data) == SAVE_V1_SIZE + 4, "the save keeps its size");
+#define SAVE_V2_SIZE (SAVE_V1_SIZE + 4)
+_Static_assert(offsetof(save_data, ghosts) == SAVE_V2_SIZE, "a version 2 save is the start of version 3");
 static void rumble(float low, float high, int ms);
 static int32_t cam_offset[3]; /* the shake check (pre_render_hook) */
 static int impacts, impact_frames; /* tree hits and touchdowns, for the shake check */
@@ -116,6 +121,16 @@ static struct {
   int lever_edges;           /* the "Tree edges" graphics lever: Sharp / Smooth (MSAA 2x + alpha to coverage) */
   int lever_terrain;
   int lever_tux_shadow, lever_snow;      /* the "Tux shadow" lever: contact decal only, or the sun's cascades too */         /* the "Terrain" lever: the tier (Very Low..High), the preset's by default */
+  /* the ghost (ghost.c): this run's recording, the course's best run replayed beside him (Practice) */
+  tux_model ghost_tux;
+  bool ghost_loaded;
+  ghost_rec rec;
+  ghost_play gplay;
+  const ghost_run *ghost;    /* the save's run for this race, NULL for none */
+  int32_t race_ticks;        /* racing ticks since the start (the recording's clock: resets count, pauses do not) */
+  int32_t medal, best_time_new; /* this finish: 0 none, 1 bronze, 2 silver, 3 gold; a new fastest time */
+  int32_t finish_events;     /* finishes this run (the finish moment fires once each) */
+  int32_t dbg_ghost[4];      /* ghost: shown, samples, check error (0.1 mm), ticks checked */
   /* debug */
   int32_t ticks, dbg_state, dbg_finished, dbg_airborne, dbg_tree, dbg_contacts;
   float dbg_pos[3], dbg_vel[3], dbg_speed, dbg_fric;
@@ -131,7 +146,7 @@ static uint32_t fnv(const void *p, size_t n) {
 }
 static uint32_t save_checksum(void) { return fnv((const uint8_t *)&SAVE + offsetof(save_data, best), sizeof SAVE - offsetof(save_data, best)); }
 static void save_write(void) {
-  SAVE.magic = 0x56535254u, SAVE.version = 2, SAVE.size = sizeof SAVE;
+  SAVE.magic = 0x56535254u, SAVE.version = 3, SAVE.size = (uint16_t)(sizeof SAVE & 0xffff); /* the size field is 16 bits: the low bits, the version says the rest */
   SAVE.checksum = save_checksum();
   cw_save_commit();
 }
@@ -143,8 +158,12 @@ static void gfx_store(void) {
 static void save_read(void) {
   bool v1 = SAVE.magic == 0x56535254u && SAVE.version == 1 && SAVE.size == SAVE_V1_SIZE &&
             SAVE.checksum == fnv((const uint8_t *)&SAVE + offsetof(save_data, best), SAVE_V1_SIZE - offsetof(save_data, best));
-  if (v1) { memset((uint8_t *)&SAVE + SAVE_V1_SIZE, 0, sizeof SAVE - SAVE_V1_SIZE); return; } /* rewritten as version 2 at the next save */
-  if (SAVE.magic != 0x56535254u || SAVE.version != 2 || SAVE.size != sizeof SAVE || SAVE.checksum != save_checksum()) memset(&SAVE, 0, sizeof SAVE);
+  if (v1) { memset((uint8_t *)&SAVE + SAVE_V1_SIZE, 0, sizeof SAVE - SAVE_V1_SIZE); return; } /* rewritten as version 3 at the next save */
+  bool v2 = SAVE.magic == 0x56535254u && SAVE.version == 2 && SAVE.size == SAVE_V2_SIZE &&
+            SAVE.checksum == fnv((const uint8_t *)&SAVE + offsetof(save_data, best), SAVE_V2_SIZE - offsetof(save_data, best));
+  if (v2) { memset((uint8_t *)&SAVE + SAVE_V2_SIZE, 0, sizeof SAVE - SAVE_V2_SIZE); return; }
+  if (SAVE.magic != 0x56535254u || SAVE.version != 3 || SAVE.size != (uint16_t)(sizeof SAVE & 0xffff) || SAVE.checksum != save_checksum()) memset(&SAVE, 0, sizeof SAVE);
+  for (int i = 0; i < MAX_COURSES; i++) if (SAVE.ghosts[i].course_hash && !ghost_valid(&SAVE.ghosts[i])) memset(&SAVE.ghosts[i], 0, offsetof(ghost_run, s));
 }
 static best_entry *best_of(const char *dir) {
   uint32_t h = fnv(dir, strlen(dir));
@@ -155,6 +174,15 @@ static best_entry *best_of(const char *dir) {
   }
   if (free_slot) free_slot->course_hash = h;
   return free_slot;
+}
+static ghost_run *ghost_of(const char *dir, bool make) {
+  uint32_t h = fnv(dir, strlen(dir));
+  ghost_run *free_slot = NULL;
+  for (int i = 0; i < MAX_COURSES; i++) {
+    if (SAVE.ghosts[i].course_hash == h) return &SAVE.ghosts[i];
+    if (!free_slot && !SAVE.ghosts[i].course_hash) free_slot = &SAVE.ghosts[i];
+  }
+  return make ? free_slot : NULL;
 }
 
 /* ── data files ──────────────────────────────────────────────────────── */
@@ -225,6 +253,7 @@ static cw_node add(cw_node parent, const char *type, const char *name) {
   return n;
 }
 
+static void ghost_look(tux_model *m);
 static void build_world(void) {
   G.root = cw_tree_root(G.tree);
   G.vis = add(G.root, "VisibilityManager", "Visibility");
@@ -310,6 +339,8 @@ static void build_world(void) {
   cw_node_set(G.cam, "far", cw_val_float(3000));
   if (!tux_load(&G.tux, cw_render3d_scene(G.tree))) CW_FATAL("tux model did not load");
   tux_set_visible(&G.tux, false);
+  G.ghost_loaded = tux_load(&G.ghost_tux, cw_render3d_scene(G.tree));
+  if (G.ghost_loaded) { ghost_look(&G.ghost_tux); tux_set_visible(&G.ghost_tux, false); }
   static const char *const CUBES[3] = { "sky/sunny.cube", "sky/cloudy.cube", "sky/night.cube" };
   for (int i = 0; i < 3; i++) {
     size_t len;
@@ -323,11 +354,13 @@ static void build_world(void) {
   }
 }
 
+static float SUNNY_ENV = 0.25f, SUNNY_HEMI = 0.5f; /* TUXRACER_SUNNY="env hemi" overrides (dev) */
 /* the original's lighting scripts (sunny_light / foggy_light / night_light.tcl) as engine settings */
 static void apply_conditions(int cond) {
   bool night = cond == COND_NIGHT, cloudy = cond == COND_CLOUDY;
   /* sunny: the engine's sky with the cube's mountains on a ring (skyring.c); night and cloudy: the original cube */
   bool sunny = !night && !cloudy;
+  if (getenv("TUXRACER_SUNNY")) sscanf(getenv("TUXRACER_SUNNY"), "%f %f", &SUNNY_ENV, &SUNNY_HEMI);
   sky_ring_init(cw_render3d_scene(G.tree));
   sky_ring_set(sunny, night);
   course_set_night(night);
@@ -349,18 +382,21 @@ static void apply_conditions(int cond) {
   cw_node_set(G.moon, "visible", cw_val_bool(night));
   cw_node_set(G.moon, "energy", cw_val_float(0.9f));
   cw_render3d_scene(G.tree)->background_intensity = night ? 0.4f : 1;
+  /* sunny snow with contrast: the sky cube (white snow all round) fills the shade less, a blue sky above lights it
+   * instead, so shaded slopes and hollows go blue while the sunlit faces stay warm white */
+  cw_render3d_scene(G.tree)->environment_intensity = sunny ? SUNNY_ENV : 1;
   cw_node_set(G.env, "ambient_energy", cw_val_float(night ? 0.07f : cloudy ? 0.12f : 0.05f)); /* night: the sky glow fills the slopes the moon misses */
   cw_node_set(G.env, "ambient_color", night ? cw_val_color(0.0f, 0.3f, 1.0f, 1) : cw_val_color(1, 1, 1, 1));
-  cw_node_set(G.env, "hemi_energy", cw_val_float(night ? 0.14f : cloudy ? 0.35f : 0.2f));
-  cw_node_set(G.env, "sky_color", night ? cw_val_color(0.1f, 0.2f, 0.5f, 1) : cloudy ? cw_val_color(0.6f, 0.62f, 0.68f, 1) : cw_val_color(0.6f, 0.75f, 1.0f, 1));
-  cw_node_set(G.env, "ground_color", night ? cw_val_color(0.05f, 0.08f, 0.15f, 1) : cw_val_color(0.8f, 0.85f, 0.9f, 1));
+  cw_node_set(G.env, "hemi_energy", cw_val_float(night ? 0.14f : cloudy ? 0.35f : SUNNY_HEMI));
+  cw_node_set(G.env, "sky_color", night ? cw_val_color(0.1f, 0.2f, 0.5f, 1) : cloudy ? cw_val_color(0.6f, 0.62f, 0.68f, 1) : cw_val_color(0.42f, 0.6f, 1.0f, 1));
+  cw_node_set(G.env, "ground_color", night ? cw_val_color(0.05f, 0.08f, 0.15f, 1) : cloudy ? cw_val_color(0.8f, 0.85f, 0.9f, 1) : cw_val_color(0.45f, 0.5f, 0.62f, 1));
   cw_node_set(G.fog, "density", cw_val_float(cloudy ? 0.006f : night ? 0.0025f : 0.0007f)); /* cloudy: mist that still shows the overcast deck and the near range */
   cw_node_set(G.fog, "height_falloff", cw_val_float(cloudy ? 0 : 0.004f));
   cw_node_set(G.fog, "base_height", cw_val_float(-400));
   cw_node_set(G.fog, "use_sky_color", cw_val_bool(false));
-  cw_node_set(G.fog, "color", night ? cw_val_color(0.02f, 0.04f, 0.1f, 1) : cloudy ? cw_val_color(0.58f, 0.59f, 0.65f, 1) : cw_val_color(0.70f, 0.80f, 0.95f, 1));
+  cw_node_set(G.fog, "color", night ? cw_val_color(0.02f, 0.04f, 0.1f, 1) : cloudy ? cw_val_color(0.58f, 0.59f, 0.65f, 1) : cw_val_color(0.62f, 0.74f, 0.95f, 1)); /* sunny: a blue aerial haze, the far ridges apart from it */
   cw_node_set(G.fog, "sun_scatter", cw_val_float(cloudy ? 0.1f : 0.3f));
-  cw_node_set(G.fog, "max_opacity", cw_val_float(cloudy ? 0.9f : night ? 0.38f : 0.6f)); /* night: the far snow stays snow, not a blue plane */
+  cw_node_set(G.fog, "max_opacity", cw_val_float(cloudy ? 0.9f : night ? 0.38f : 0.5f)); /* night: the far snow stays snow, not a blue plane */
   cw_node_set(G.fog, "start_distance", cw_val_float(cloudy ? 0 : 80));
   cw_node_set(G.fog, "sky_distance", cw_val_float(0)); /* the sky is never fogged: the overcast deck is the ceiling, its own far fade does the rest */
   cw_node_set(G.fog, "volumetric", cw_val_bool(night || cloudy)); /* moonbeams through the trees, a real overcast */
@@ -373,6 +409,161 @@ static void apply_conditions(int cond) {
   cw_node_set(G.post, "grade_intensity", cw_val_float(0.8f));
   cw_node_set(G.post, "grain", cw_val_bool(night));
   cw_node_set(G.post, "grain_intensity", cw_val_float(0.03f)); /* sunny: the snow out of AgX's shoulder, so its texture, glints and cloud shadows show */
+}
+
+/* ── medals and the ghost ────────────────────────────────────────────── */
+
+/* medal times (bronze, silver, gold): a Canadian Cup course takes the Cup's own times for the normal, hard and
+ * expert difficulties (cups.txt); the others the same shares of their par (Bunny Hill: 35, 32 and 30 s of par 40) */
+static void medal_times(const course_info *ci, float out[3]) {
+  for (int k = 0; k < G.ncups; k++)
+    for (int i = 0; i < G.cups[k].count; i++)
+      if (!strcmp(G.cups[k].races[i].dir, ci->dir)) { for (int m = 0; m < 3; m++) out[m] = G.cups[k].races[i].time[m + 1]; return; }
+  out[0] = ci->par * 0.875f, out[1] = ci->par * 0.8f, out[2] = ci->par * 0.75f;
+}
+static int medal_for(const course_info *ci, float t) {
+  float m[3];
+  medal_times(ci, m);
+  return t <= m[2] ? 3 : t <= m[1] ? 2 : t <= m[0] ? 1 : 0;
+}
+static const char *const MEDAL_NAME[4] = { "", "Bronze", "Silver", "Gold" };
+static const cw_color MEDAL_COLOR[4] = { { 1, 1, 1, 1 }, { 0.86f, 0.55f, 0.3f, 1 }, { 0.82f, 0.86f, 0.92f, 1 }, { 1, 0.82f, 0.2f, 1 } };
+/* a run is the ghost of its course as raced: a mirrored course has a ghost of its own */
+static const char *ghost_key(const char *dir, bool mirrored) {
+  static char k[80];
+  snprintf(k, sizeof k, "%s%s", dir, mirrored ? "|mirror" : "");
+  return k;
+}
+static bool ghost_wanted(void) { return G.mode == MODE_PRACTICE && !(SAVE.opts & OPT_GHOST_OFF); }
+
+/* the ghost's look: Tux in pale blue glass, no shadow (a thing that is not there casts none) */
+static void ghost_look(tux_model *m) {
+  t3_material *mats[TUX_MAX_MATERIALS + 1];
+  int n = 0;
+  for (int i = 0; i < m->mat_count; i++) mats[n++] = m->mats[i];
+  if (m->skin_mat) mats[n++] = m->skin_mat;
+  for (int i = 0; i < n; i++) {
+    t3_material *mt = mats[i];
+    mt->transparent = true;
+    mt->opacity = 0.42f;
+    mt->depth_write = true; /* his own far side stays hidden: one translucent shape, not a stack of spheres */
+    mt->color = (t3_color){ 0.35f + mt->color.r * 0.3f, 0.6f + mt->color.g * 0.25f, 0.95f };
+    mt->emissive = (t3_color){ 0.1f, 0.3f, 0.75f };
+    mt->emissive_intensity = 0.5f;
+  }
+  tux_set_cast_shadow(m, false);
+}
+
+/* the full-rate path of the run being recorded: what `ghost check` holds the samples against */
+#define CHECK_TICKS (GHOST_MAX * GHOST_STEP)
+static float rec_full[CHECK_TICKS + 1][3];
+
+static void ghost_alpha(float a) {
+  for (int i = 0; i < G.ghost_tux.mat_count; i++) G.ghost_tux.mats[i]->opacity = a;
+  if (G.ghost_tux.skin_mat) G.ghost_tux.skin_mat->opacity = a;
+}
+/* where the ghost is drawn this frame (render: between the last two ticks, as Tux is) */
+static void ghost_draw(double alpha) {
+  bool show = false;
+  ghost_pose gp;
+  if (G.ghost_loaded && G.ghost && (G.state == ST_RACING || G.state == ST_PAUSED) && G.course_loaded) {
+    float t = (float)G.race_ticks - 1 + (G.state == ST_RACING ? (float)alpha : 1);
+    show = ghost_at(&G.gplay, G.ghost, t < 0 ? 0 : t, &gp) && !gp.hidden;
+  }
+  tux_set_visible(&G.ghost_tux, show);
+  G.dbg_ghost[0] = show;
+  if (!show) return;
+  /* the physics' target orientation (physics.c adjust_orientation): along the travel, belly into the slope */
+  float speed = t3_vec3_length(gp.vel);
+  t3_vec3 vdir = speed > 1e-3f ? t3_vec3_scale(gp.vel, 1 / speed) : (t3_vec3){ 0, 0, -1 };
+  t3_vec3 nml = course_normal(&G.course, gp.pos.x, gp.pos.z), ny, nz;
+  float roll = 30.0f * gp.turn;
+  if (gp.airborne) {
+    ny = vdir;
+    nz = t3_vec3_normalize(tr_project_into_plane(ny, (t3_vec3){ 0, -1, 0 }));
+    if (t3_vec3_length_sq(nz) < 1e-6f) nz = (t3_vec3){ 0, 0, 1 };
+  } else {
+    nz = t3_vec3_scale(nml, -1);
+    ny = t3_vec3_normalize(tr_project_into_plane(nml, vdir));
+    if (t3_vec3_length_sq(ny) < 1e-6f) ny = (t3_vec3){ 0, 0, -1 };
+  }
+  t3_vec3 vp = tr_project_into_plane(nz, ny);
+  if (t3_vec3_length_sq(vp) > 1e-6f) nz = tr_rotate_about(nz, t3_vec3_normalize(vp), roll);
+  t3_quat q = tr_quat_from_basis(t3_vec3_cross(ny, nz), ny, nz);
+  t3_vec3 at = t3_vec3_add(gp.pos, t3_vec3_scale(t3_vec3_apply_quat((t3_vec3){ 0, 0, 1 }, q), TUX_RADIUS));
+  at.y += 0.33f; /* TUX_Y_CORRECTION_ON_STOMACH, as place_tux */
+  tux_set_transform(&G.ghost_tux, at, q);
+  /* he fades as he nears Tux: two penguins in one place read as one blur */
+  float near = t3_vec3_length(t3_vec3_sub(gp.pos, G.phys.pos)), k = fmaxf(0, fminf(1, (near - 0.8f) / 2.2f));
+  ghost_alpha(0.42f * k * k * (3 - 2 * k));
+  tux_pose_slide(&G.ghost_tux, gp.turn, false, 0, speed, (t3_vec3){ 0, 0, 0 }, 0);
+}
+
+/* ghost check [offset]: the recording so far decoded at every tick against the path it was recorded from; the
+ * largest distance (0.1 mm) goes in ghost[2]. An offset compares each tick with the path that many ticks later
+ * (the control: a check that cannot tell one tick from the next could not prove anything). */
+static void cmd_ghost(int argc, const char **argv, cw_reply *r) {
+  if (argc >= 2 && !strcmp(argv[1], "keep")) { /* this run so far as the course's ghost, as if it had finished */
+    if (!G.info || G.rec.run.count < 2) { cw_reply_str(r, "no run"); return; }
+    ghost_run *g = ghost_of(ghost_key(G.info->dir, G.mirrored), true);
+    if (!g) { cw_reply_str(r, "no slot"); return; }
+    *g = G.rec.run;
+    g->time = G.race_time > 0 ? G.race_time : 1;
+    cw_reply_str(r, "kept");
+    return;
+  }
+  if (argc >= 2 && !strcmp(argv[1], "check")) {
+    int off = argc >= 3 ? atoi(argv[2]) : 0;
+    static ghost_run run; /* 29 kB: not on the stack */
+    run = G.rec.run;
+    run.time = 1;
+    ghost_play gp = { .cache_i = -1 };
+    float worst = 0;
+    int n = 0;
+    for (int t = 0; t + off <= G.rec.ticks && t + off <= CHECK_TICKS; t++) {
+      ghost_pose pose;
+      if (!ghost_at(&gp, &run, (float)t, &pose)) break;
+      float dx = pose.pos.x - rec_full[t + off][0], dy = pose.pos.y - rec_full[t + off][1], dz = pose.pos.z - rec_full[t + off][2];
+      worst = fmaxf(worst, sqrtf(dx * dx + dy * dy + dz * dz));
+      n++;
+    }
+    G.dbg_ghost[2] = (int32_t)(worst * 1e4f), G.dbg_ghost[3] = n;
+    char buf[96];
+    snprintf(buf, sizeof buf, "%d ticks, worst %.2f mm", n, worst * 1000);
+    cw_reply_str(r, buf);
+    return;
+  }
+  cw_reply_str(r, "usage: ghost keep | ghost check [offset]");
+}
+
+/* The camera's lens. Classic: the original's 60 degrees at the original's distance. Speed (the default): the
+ * field of view opens from 60 to 75 degrees and the camera closes from 4 m to 3.3 m behind him as he goes from
+ * 15 to 90 km/h, eased (a half-second time constant) so a bump or a tree hit never jerks it; after the finish it
+ * eases back. Racing ticks only feed it a speed: the simulation never reads it. */
+static float cam_fov = 60, cam_k;
+static int32_t dbg_fov[3]; /* cam.fov: now, least and most this race (0.01 degree) */
+static int32_t chain[2], chain_tick; /* race.chain: the herring chain now, the longest this race */
+static void speed_camera(float speed, float dt) {
+  bool classic = SAVE.opts & OPT_CLASSIC_CAMERA;
+  float x = fmaxf(0, fminf(1, (speed - 4.0f) / 21.0f)), target = classic ? 0 : x * x * (3 - 2 * x);
+  cam_k += (target - cam_k) * fminf(1, dt / 0.5f);
+  if (classic) cam_k = 0;
+  cam_fov = 60 + 15 * cam_k;
+  G.view.dist = classic ? 0 : 4.0f - 0.7f * cam_k;
+  cw_node_set(G.cam, "fov", cw_val_float(cam_fov));
+  int32_t f = (int32_t)lrintf(cam_fov * 100);
+  dbg_fov[0] = f;
+  if (!dbg_fov[1] || f < dbg_fov[1]) dbg_fov[1] = f;
+  if (f > dbg_fov[2]) dbg_fov[2] = f;
+}
+
+/* opt <ghost|camera> <on|off|classic|speed>: the Practice ghost row and the Settings camera row, for tests */
+static void cmd_opt(int argc, const char **argv, cw_reply *r) {
+  if (argc < 3) { cw_reply_str(r, "usage: opt ghost on|off | opt camera speed|classic"); return; }
+  if (!strcmp(argv[1], "ghost")) SAVE.opts = (uint8_t)(!strcmp(argv[2], "off") ? SAVE.opts | OPT_GHOST_OFF : SAVE.opts & ~OPT_GHOST_OFF);
+  else if (!strcmp(argv[1], "camera")) SAVE.opts = (uint8_t)(!strcmp(argv[2], "classic") ? SAVE.opts | OPT_CLASSIC_CAMERA : SAVE.opts & ~OPT_CLASSIC_CAMERA);
+  else { cw_reply_str(r, "unknown option"); return; }
+  cw_reply_str(r, "ok");
 }
 
 /* ── races ───────────────────────────────────────────────────────────── */
@@ -389,6 +580,7 @@ static void unload_race(void) {
   fx_set_snowing(false);
   G.course_loaded = false;
   tux_set_visible(&G.tux, false);
+  if (G.ghost_loaded) tux_set_visible(&G.ghost_tux, false);
 }
 
 static void begin_loading(const char *dir, int conditions, bool windy, bool mirrored, bool snowing) {
@@ -441,6 +633,16 @@ static void start_racing(void) {
   G.phys.enabled = true;
   view_reset(&G.view, VIEW_BEHIND);
   G.state = ST_RACING;
+  G.race_ticks = 0;
+  cam_k = 0, dbg_fov[1] = dbg_fov[2] = 0;
+  chain[0] = chain[1] = 0, chain_tick = 0;
+  speed_camera(0, 0);
+  ghost_rec_begin(&G.rec, fnv(ghost_key(G.info->dir, G.mirrored), strlen(ghost_key(G.info->dir, G.mirrored))), G.phys.pos);
+  rec_full[0][0] = G.phys.pos.x, rec_full[0][1] = G.phys.pos.y, rec_full[0][2] = G.phys.pos.z;
+  G.ghost = ghost_wanted() ? ghost_of(ghost_key(G.info->dir, G.mirrored), false) : NULL;
+  if (G.ghost && !ghost_valid(G.ghost)) G.ghost = NULL;
+  G.gplay = (ghost_play){ .cache_i = -1 };
+  G.dbg_ghost[1] = G.ghost ? G.ghost->count : 0;
   textures_trail_reset(G.phys.pos);
   if (cw_node_valid(G.probe)) cw_reflection_probe_update(G.probe); /* one capture of the course around the start */
 }
@@ -537,9 +739,21 @@ static void race_over(bool aborted) {
   }
   /* best score (and its time and herring) per course; the cup's progress */
   G.new_best = false;
+  G.medal = 0, G.best_time_new = 0;
   if (!aborted) {
     best_entry *b = best_of(G.info->dir);
     if (b && (b->score == 0 && b->time == 0 ? true : G.score > b->score)) { b->score = G.score, b->time = G.race_time, b->herring = G.herring; G.new_best = true; }
+    /* the medal of this time, and the fastest run kept as the course's ghost */
+    G.medal = medal_for(G.info, G.race_time);
+    G.finish_events++;
+    ghost_run *g = ghost_of(ghost_key(G.info->dir, G.mirrored), true);
+    if (g && !G.rec.broken && G.rec.run.count >= 2 && (!ghost_valid(g) || G.race_time < g->time)) {
+      bool had = ghost_valid(g);
+      *g = G.rec.run;
+      g->time = G.race_time;
+      G.best_time_new = had ? 2 : 1; /* 2: beat a time that stood */
+    }
+    if (G.medal || G.best_time_new == 2) rumble(0.25f, 0.35f, 220); /* a soft swell in the pad, not a jolt */
   }
   if (G.mode == MODE_CUP) {
     SAVE.cup_race = G.won ? G.race_idx + 1 : G.race_idx;
@@ -548,6 +762,9 @@ static void race_over(bool aborted) {
     if (G.lives <= 0) { SAVE.cup_race = 0; SAVE.cup_lives = INIT_NUM_LIVES; }
   }
   save_write();
+  if (!aborted) fx_finish(G.phys.pos, G.phys.vel);
+  chain[0] = 0;
+  hud_chain(0, 0);
   G.over_time = 0;
   G.state = ST_RACE_OVER;
   G.dbg_finished = 1;
@@ -576,6 +793,9 @@ static void racing_tick(float dt) {
   }
   if (cw_action_just_pressed(0, G.a_view)) view_reset(&G.view, G.view.mode == VIEW_BEHIND ? VIEW_FOLLOW : VIEW_BEHIND);
   physics_after_step(p, dt);
+  G.race_ticks++;
+  ghost_rec_tick(&G.rec, p->pos, p->turn_anim, p->airborne, G.reset_ticks > 0);
+  if (G.rec.ticks <= CHECK_TICKS) rec_full[G.rec.ticks][0] = p->pos.x, rec_full[G.rec.ticks][1] = p->pos.y, rec_full[G.rec.ticks][2] = p->pos.z;
   /* landing squash (render only): a spring kicked by the vertical speed lost on touchdown */
   if (G.was_airborne && !p->airborne) {
     G.squash_v += fminf(0.35f, fabsf(p->vel.y) * 0.03f + 0.06f);
@@ -585,11 +805,17 @@ static void racing_tick(float dt) {
   G.was_airborne = p->airborne;
   G.squash_v += (-G.squash * 160 - G.squash_v * 14) * dt;
   G.squash += G.squash_v * dt;
+  speed_camera(p->speed, dt);
   view_update(&G.view, p, &G.course, dt);
-  /* the camera widens with speed: 60 degrees at rest, up to 74 */
-  cw_node_set(G.cam, "fov", cw_val_float(60 + fminf(14, p->speed * 0.45f)));
   int got = course_collect(&G.course, p->pos);
-  if (got) { G.herring += got; audio_sfx(SFX_PICKUP); fx_pickup((t3_vec3){ p->pos.x, p->pos.y + 0.5f, p->pos.z }); rumble(0, 0.45f, 70); }
+  /* a chain: herring caught within 2.5 s of the last one (the sound climbs with it; the score is the original's) */
+  if (got) {
+    chain[0] = G.race_ticks - chain_tick <= (int)(2.5f * TICK_HZ) && chain[0] ? chain[0] + got : got;
+    chain_tick = G.race_ticks;
+    if (chain[0] > chain[1]) chain[1] = chain[0];
+    audio_pickup(chain[0]);
+  } else if (chain[0] && G.race_ticks - chain_tick > (int)(2.5f * TICK_HZ)) chain[0] = 0;
+  if (got) { G.herring += got; fx_pickup((t3_vec3){ p->pos.x, p->pos.y + 0.5f, p->pos.z }); rumble(0, 0.45f, 70); }
   if (p->tree_hit_now) { audio_sfx(SFX_TREE); fx_tree_hit(p->pos, p->vel); impacts++; tree_hits[0]++, tree_hits[1] = G.ticks; rumble(0.9f, 0.5f, 260); }
   audio_slide(p->surf_w, p->speed, p->airborne, p->enabled);
   /* rock under the belly: a low buzz that grows with the share of rock (renewed every 6 ticks; a stronger one still running is kept) */
@@ -703,10 +929,10 @@ static void title_tick(void) {
 }
 
 static void practice_tick(void) {
-  /* rows: course (left/right), conditions, wind, snow, mirror, Race, Back */
+  /* rows: course (left/right), conditions, wind, snow, mirror, ghost, Race, Back */
   int row = G.cursor;
-  if (cw_action_just_pressed(0, G.m_down)) row = (row + 1) % 7;
-  if (cw_action_just_pressed(0, G.m_up)) row = (row + 6) % 7;
+  if (cw_action_just_pressed(0, G.m_down)) row = (row + 1) % 8;
+  if (cw_action_just_pressed(0, G.m_up)) row = (row + 7) % 8;
   G.cursor = row;
   int d = (cw_action_just_pressed(0, G.m_right) ? 1 : 0) - (cw_action_just_pressed(0, G.m_left) ? 1 : 0);
   if (d && row == 0) G.practice_course = (G.practice_course + G.ncourses + d) % G.ncourses;
@@ -715,8 +941,9 @@ static void practice_tick(void) {
   if (d && row == 3) G.practice_snow = !G.practice_snow;
   if (d && row == 4) G.practice_mirror = !G.practice_mirror;
   bool accept = cw_action_just_pressed(0, G.m_accept);
-  if (accept && (row == 5 || row == 0)) begin_loading(G.courses[G.practice_course].dir, G.practice_cond, G.practice_wind, G.practice_mirror, G.practice_snow);
-  if ((accept && row == 6) || cw_action_just_pressed(0, G.m_back)) { G.state = ST_TITLE; G.cursor = 1; }
+  if ((d || accept) && row == 5) { SAVE.opts ^= OPT_GHOST_OFF; save_write(); }
+  if (accept && (row == 6 || row == 0)) begin_loading(G.courses[G.practice_course].dir, G.practice_cond, G.practice_wind, G.practice_mirror, G.practice_snow);
+  if ((accept && row == 7) || cw_action_just_pressed(0, G.m_back)) { G.state = ST_TITLE; G.cursor = 1; }
 }
 
 static void cup_tick(void) {
@@ -739,13 +966,14 @@ static void paused_tick(void) {
   if (cw_action_just_pressed(0, G.m_back) || cw_action_just_pressed(0, G.a_pause)) G.state = ST_RACING;
 }
 
-/* Settings: Graphics (the engine's page), Text size, Text background, Back. The text settings are the player's
+/* Settings: Graphics (the engine's page), Text size, Text background, Camera (Speed: wider and closer with speed; Classic:
+ * the original's), Back. The text settings are the player's
  * (cartwheel/render2d.h "text size"): render only, kept in the save */
 static void settings_tick(void) {
   if (cw_quality_menu_is_open()) return; /* the graphics page has this frame's presses */
   int row = G.settings_cursor;
-  if (cw_action_just_pressed(0, G.m_down)) row = (row + 1) % 4;
-  if (cw_action_just_pressed(0, G.m_up)) row = (row + 3) % 4;
+  if (cw_action_just_pressed(0, G.m_down)) row = (row + 1) % 5;
+  if (cw_action_just_pressed(0, G.m_up)) row = (row + 4) % 5;
   G.settings_cursor = row;
   int d = (cw_action_just_pressed(0, G.m_right) ? 1 : 0) - (cw_action_just_pressed(0, G.m_left) ? 1 : 0);
   bool accept = cw_action_just_pressed(0, G.m_accept);
@@ -758,8 +986,9 @@ static void settings_tick(void) {
     if (d < 0) cw_text_backdrop_cycle(), cw_text_backdrop_cycle(); /* three steps: twice more is one back */
     SAVE.text = cw_text_scale_saved(); save_write();
   }
+  if (row == 3 && (d || accept)) { SAVE.opts ^= OPT_CLASSIC_CAMERA; save_write(); }
   if (accept && row == 0) cw_quality_menu_open();
-  if ((accept && row == 3) || cw_action_just_pressed(0, G.m_back)) {
+  if ((accept && row == 4) || cw_action_just_pressed(0, G.m_back)) {
     G.state = G.settings_from;
     if (G.state == ST_TITLE) G.cursor = 2; else G.pause_cursor = 1;
   }
@@ -768,10 +997,11 @@ static void settings_tick(void) {
 static void race_over_tick(float dt) {
   G.over_time += dt;
   physics_after_step(&G.phys, dt);
+  speed_camera(0, dt * 0.4f); /* the lens eases back slowly past the line */
   view_update(&G.view, &G.phys, &G.course, dt);
   if (G.over_time < 0.5f) return;
   if (cw_action_just_pressed(0, G.m_accept) || cw_action_just_pressed(0, G.m_back)) {
-    if (G.mode == MODE_PRACTICE) { G.state = ST_PRACTICE; G.cursor = 4; }
+    if (G.mode == MODE_PRACTICE) { G.state = ST_PRACTICE; G.cursor = 6; } /* on Race!: one press races again */
     else {
       const cup_def *cup = &G.cups[G.cup_idx];
       if (G.won && G.race_idx + 1 < cup->count) G.race_idx++;
@@ -850,6 +1080,7 @@ static void cmd_hide(int argc, const char **argv, cw_reply *r) {
     cw_reply_str(r, rr ? (hide ? "batching off" : "batching on") : "no renderer");
     return;
   }
+  if (!strcmp(argv[1], "spray")) { fx_set_spray_hidden(hide); cw_reply_str(r, hide ? "hidden" : "shown"); return; }
   if (!strcmp(argv[1], "tux") || !strcmp(argv[1], "all")) tux_set_visible(&G.tux, !hide);
   if (strcmp(argv[1], "tux")) course_objects_show(argv[1], !hide);
   cw_reply_str(r, hide ? "hidden" : "shown");
@@ -859,6 +1090,7 @@ static void cmd_hide(int argc, const char **argv, cw_reply *r) {
 static void cmd_tp(int argc, const char **argv, cw_reply *r) {
   if (argc < 3 || !G.course_loaded || G.state != ST_RACING || !G.phys.course) { cw_reply_str(r, "usage: tp <x> <z> (while racing)"); return; }
   float x = (float)atof(argv[1]), z = (float)atof(argv[2]);
+  if (!strcmp(argv[1], "finish")) x = G.course.start_x, z = -G.course.play_length + (float)atof(argv[2]); /* tp finish <m before the line> */
   physics_place(&G.phys, (t3_vec3){ x, course_height(&G.course, x, z) + TUX_RADIUS, z }, true);
   cw_reply_str(r, "placed");
 }
@@ -930,6 +1162,8 @@ static void init(void *user) {
   cw_debug_command("tp", "tp <x> <z>: put Tux on the surface there (dev)", cmd_tp);
   cw_debug_command("hide", "hide <tux|trees|splats|items|all> [0|1]: hide (1) or show (0) a group of objects, for perf triage", cmd_hide);
   cw_debug_command("snowfx", "snowfx <mask|auto>: the snow shader's features (1 glints, 2 detail, 4 trail, 8 clouds), for perf triage", cmd_snowfx);
+  cw_debug_command("opt", "opt ghost on|off | opt camera speed|classic: the ghost and camera options (tests)", cmd_opt);
+  cw_debug_command("ghost", "ghost keep | ghost check [offset]: keep this run as the course's ghost, or check the recording against the path (dev)", cmd_ghost);
   const char *start = getenv("TUXRACER_COURSE"); /* dev: straight into a practice race */
   if (start && *start) begin_loading(start, COND_SUNNY, false, false, false);
   else { /* the title's backdrop: Bunny Hill under the sun */
@@ -957,6 +1191,12 @@ static void init(void *user) {
   cw_debug_field("race.tree_hits", tree_hits, CW_DBG_I32, 2);
   cw_debug_i32("phys.contacts", &G.dbg_contacts);
   cw_debug_i32("ticks", &G.ticks);
+  cw_debug_field("ghost", G.dbg_ghost, CW_DBG_I32, 4);
+  cw_debug_i32("race.medal", &G.medal);
+  cw_debug_field("cam.fov", dbg_fov, CW_DBG_I32, 3);
+  cw_debug_field("race.chain", chain, CW_DBG_I32, 2);
+  cw_debug_i32("race.best_time_new", &G.best_time_new);
+  cw_debug_i32("race.finish_events", &G.finish_events);
   cw_debug_f32("dbg.alpha", &G.dbg_alpha);             /* render-time: the interpolation alpha */
   cw_debug_f32_array("dbg.body_r", G.dbg_body_r, 3);   /* render-time: the interpolated body position Tux is drawn at */
   cw_debug_f32_array("dbg.cam_r", G.dbg_cam_r, 6);     /* render-time: the camera position and direction */
@@ -983,6 +1223,7 @@ static void fixed_update(void *user, double ddt) {
     case ST_RACE_OVER: race_over_tick(dt); break;
     case ST_SETTINGS: settings_tick(); break;
   }
+  if (G.state != ST_RACING && G.state != ST_PAUSED && G.state != ST_RACE_OVER && cam_fov != 60) { cam_fov = 60, cam_k = 0, G.view.dist = 0; cw_node_set(G.cam, "fov", cw_val_float(60)); }
   apply_dof();
   G.fx_time += dt;
   { cw_sky_state sk; cw_sky_get_state(G.tree, &sk); sky_ring_update(G.view.pos, sk.active ? sk.sun_direction : (t3_vec3){ 0, 1, 0 }, (float)G.fx_time, G.windy); }
@@ -1172,6 +1413,7 @@ static void offsetgate(t3_vec3 pos, t3_vec3 dir) {
 static void pre_render_hook(cw_tree *t, double alpha, void *u) {
   (void)t, (void)u;
   if (!G.course_loaded) return;
+  ghost_draw(alpha);
   if (G.state != ST_INTRO && cw_body3d_valid(G.phys.body)) {
     cw_xform3 bx = cw_body3d_interpolated(G.phys.body, (float)alpha);
     place_tux(bx.p);
@@ -1218,13 +1460,13 @@ static void render(void *user, double alpha) {
       char r1[48], r2[48];
       snprintf(r1, sizeof r1, "Text size:  < %s >", cw_text_scale_label());
       snprintf(r2, sizeof r2, "Text background:  < %s >", cw_text_backdrop_label());
-      const char *const ITEMS[] = { "Graphics", r1, r2, "Back" };
+      const char *const ITEMS[] = { "Graphics", r1, r2, SAVE.opts & OPT_CLASSIC_CAMERA ? "Camera:  < Classic >" : "Camera:  < Speed >", "Back" };
       if (G.settings_from == ST_PAUSED) hud_draw(&G.phys, G.race_time, G.herring, G.mode == MODE_CUP ? G.lives : 0);
       hud_begin();
       size = cw_r2d_canvas_size();
       if (G.settings_from == ST_PAUSED) hud_box(0, 0, size.x, size.y, (cw_color){ 0, 0, 0, 0.45f });
       else menu_backdrop();
-      draw_menu("Settings", ITEMS, 4, G.settings_cursor, 200, size.y - 12);
+      draw_menu("Settings", ITEMS, 5, G.settings_cursor, 200, size.y - 12);
       hud_end();
       break;
     }
@@ -1236,51 +1478,58 @@ static void render(void *user, double alpha) {
       char preview[128];
       snprintf(preview, sizeof preview, "courses/%s/preview.png", c->dir);
       hud_title("Practice", size.x / 2, 40, 48, (cw_color){ 1, 0.9f, 0.2f, 1 }, 1);
-      const char *rows[7];
+      const char *rows[8];
       snprintf(buf, sizeof buf, "<  %s  >", c->title);
-      char r1[64], r2[64], r3[64], r4[64];
+      char r1[64], r2[64], r3[64], r4[64], r5[64];
       snprintf(r1, sizeof r1, "Conditions:  < %s >", COND_NAME[G.practice_cond]);
       snprintf(r2, sizeof r2, "Wind:  < %s >", G.practice_wind ? "On" : "Off");
       snprintf(r3, sizeof r3, "Snow:  < %s >", G.practice_snow ? "On" : "Off");
       snprintf(r4, sizeof r4, "Mirror:  < %s >", G.practice_mirror ? "On" : "Off");
-      rows[0] = buf, rows[1] = r1, rows[2] = r2, rows[3] = r3, rows[4] = r4, rows[5] = "Race!", rows[6] = "Back";
-      const float sizes[7] = { 30, 24, 24, 24, 24, 24, 24 };
+      snprintf(r5, sizeof r5, "Ghost:  < %s >", SAVE.opts & OPT_GHOST_OFF ? "Off" : "On");
+      rows[0] = buf, rows[1] = r1, rows[2] = r2, rows[3] = r3, rows[4] = r4, rows[5] = r5, rows[6] = "Race!", rows[7] = "Back";
+      const float sizes[8] = { 30, 24, 24, 24, 24, 24, 24, 24 };
       /* the card: the rows (they scroll when the text is large), the course's description, par and best under them */
       float card_w = 520;
-      for (int i = 0; i < 7; i++) card_w = fmaxf(card_w, hud_measure(true, rows[i], sizes[i], 0).width + 60);
+      for (int i = 0; i < 8; i++) card_w = fmaxf(card_w, hud_measure(true, rows[i], sizes[i], 0).width + 60);
       float cx = size.x / 2, right = size.x - 210; /* the preview's column */
       if (cx + card_w / 2 > right - 8) { card_w = fminf(card_w, right - 20); cx = fmaxf(12 + card_w / 2, right - 8 - card_w / 2); }
       float iw = card_w - 40, ix = cx - iw / 2;
       char par[96], best[128] = "";
-      snprintf(par, sizeof par, "Par time %.0f s   by %s", c->par, c->contrib ? "contributor" : "Sunspire");
+      float mt[3];
+      medal_times(c, mt);
+      snprintf(par, sizeof par, "Par %.0f s     Bronze %.0f s     Silver %.0f s     Gold %.0f s", c->par, mt[0], mt[1], mt[2]);
+      const ghost_run *gh = ghost_of(ghost_key(c->dir, G.practice_mirror), false);
+      if (gh && !ghost_valid(gh)) gh = NULL;
       const best_entry *b = NULL;
       for (int i = 0; i < MAX_COURSES; i++) if (SAVE.best[i].course_hash == fnv(c->dir, strlen(c->dir)) && (SAVE.best[i].score || SAVE.best[i].time)) b = &SAVE.best[i];
-      if (b) snprintf(best, sizeof best, "Best: %02d:%02d.%02d   %d herring   score %06d", (int)(b->time / 60), (int)b->time % 60, (int)(b->time * 100) % 100, b->herring, b->score);
+      int bm = gh ? medal_for(c, gh->time) : 0;
+      if (b && gh) snprintf(best, sizeof best, "Fastest %02d:%02d.%02d%s%s     Best score %06d", (int)(gh->time / 60), (int)gh->time % 60, (int)(gh->time * 100) % 100, bm ? "  " : "", MEDAL_NAME[bm], b->score);
+      else if (b) snprintf(best, sizeof best, "Best: %02d:%02d.%02d   %d herring   score %06d", (int)(b->time / 60), (int)b->time % 60, (int)(b->time * 100) % 100, b->herring, b->score);
       float hd = c->desc[0] ? hud_measure(false, c->desc, 17, iw).height : 0, hp = hud_measure(false, par, 16, iw).height;
       float hb = b ? hud_measure(false, best, 16, iw).height : 0;
-      float pitch = 42.0f / 30; /* 42 px a row at 100% */
+      float pitch = 38.0f / 30; /* 38 px a row at 100% */
       float drawn = fmaxf(hud_drawn(true, 30), hud_drawn(true, 24)), step = drawn * pitch;
       float card_top = 40 + hud_measure(true, "Practice", 48, 0).height + 6;
       float info_h = hd + 6 + hp + (b ? 6 + hb : 0) + 12;
-      float card_bottom = fminf(size.y - 12, fmaxf(508, card_top + 16 + 7 * step + info_h));
+      float card_bottom = fminf(size.y - 12, fmaxf(508, card_top + 16 + 8 * step + info_h));
       hud_panel(cx - card_w / 2, card_top, card_w, card_bottom - card_top, 0.42f);
       hud_panel(size.x - 200, 100, 180, 180, 0.42f);
       hud_image(preview, size.x - 190, 110, 160, 160);
       float info_y = fmaxf(card_bottom - info_h, card_top + 16 + 42 * hud_drawn(true, 30) / 30 + 8);
       int fit = (int)floorf((info_y - 8 - (card_top + 16)) / step);
       if (fit < 1) fit = 1;
-      int first = list_first(7, G.cursor, fit), shown = 7 - first < fit ? 7 - first : fit;
+      int first = list_first(8, G.cursor, fit), shown = 8 - first < fit ? 8 - first : fit;
       for (int r = 0; r < shown; r++) {
         int i = first + r;
         hud_title(rows[i], cx, card_top + 16 + step * (float)r, sizes[i], i == G.cursor ? MENU_YELLOW : MENU_WHITE, 1);
       }
       float a = 9 * drawn / 30;
       if (first > 0) more_arrow(cx + card_w / 2 - 20 - a, card_top + 10, a, true);
-      if (first + shown < 7) more_arrow(cx + card_w / 2 - 20 - a, card_top + 16 + step * (float)shown - 8, a, false);
+      if (first + shown < 8) more_arrow(cx + card_w / 2 - 20 - a, card_top + 16 + step * (float)shown - 8, a, false);
       float y = info_y;
       if (hd > 0) y += hud_text_box(false, c->desc, ix, y, iw, 17, (cw_color){ 1, 1, 1, 0.85f }, 1) + 6;
       y += hud_text_box(false, par, ix, y, iw, 16, (cw_color){ 1, 1, 1, 0.6f }, 1) + 6;
-      if (b) hud_text_box(false, best, ix, y, iw, 16, (cw_color){ 1, 0.95f, 0.01f, 0.9f }, 1);
+      if (b) hud_text_box(false, best, ix, y, iw, 16, bm ? MEDAL_COLOR[bm] : (cw_color){ 1, 0.95f, 0.01f, 0.9f }, 1);
       hud_end();
       break;
     }
@@ -1391,6 +1640,7 @@ static void render(void *user, double alpha) {
       break;
     }
     case ST_RACING:
+      hud_chain(chain[0], (float)(G.race_ticks - chain_tick) / TICK_HZ);
       if (!getenv("TUXRACER_NO_HUD")) hud_draw(&G.phys, G.race_time, G.herring, G.mode == MODE_CUP ? G.lives : 0); /* dev: key art without the HUD */
       break;
     case ST_PAUSED: {
@@ -1407,7 +1657,9 @@ static void render(void *user, double alpha) {
       hud_draw(&G.phys, G.race_time, G.herring, G.mode == MODE_CUP ? G.lives : 0);
       hud_begin();
       size = cw_r2d_canvas_size();
-      const char *msg = G.aborted ? "Race aborted." : G.mode == MODE_PRACTICE ? (G.new_best ? "You beat your best score!" : "") :
+      const char *msg = G.aborted ? "Race aborted." :
+        G.mode == MODE_PRACTICE ? (G.best_time_new == 2 ? "New best time! Your ghost races this run from now on." :
+                                   G.best_time_new == 1 && ghost_wanted() ? "Your ghost will race this run next time." : G.new_best ? "You beat your best score!" : "") :
         G.won && G.race_idx + 1 >= G.cups[G.cup_idx].count ? "Congratulations! You won the cup!" : G.won ? "You advanced to the next race!" :
         G.lives <= 0 ? "You didn't advance, and you're out of lives." : "You didn't advance.";
       int m = (int)(G.race_time / 60), s = (int)G.race_time % 60, hs = (int)(G.race_time * 100) % 100;
@@ -1422,24 +1674,30 @@ static void render(void *user, double alpha) {
       float top_limit = hud_top_bottom() + 8, gauge_top = size.y - 190;
       pw = fminf(pw, size.x - 24);
       float iw = pw - 40, ix = size.x / 2 - iw / 2;
-      float ht = hud_measure(true, "Race Over", 44, iw).height, step = 40 * hud_drawn(true, 26) / 26;
+      /* the medal is the headline: it swells in over the first second (never a blink), the medal's colour */
+      const char *head = !G.aborted && G.medal ? (G.medal == 3 ? "Gold medal!" : G.medal == 2 ? "Silver medal!" : "Bronze medal!") : "Race Over";
+      float swell = fminf(1, G.over_time / 0.8f), ease = swell * swell * (3 - 2 * swell);
+      cw_color head_c = !G.aborted && G.medal ? MEDAL_COLOR[G.medal] : (cw_color){ 1, 0.9f, 0.2f, 1 };
+      if (!G.aborted && G.medal) head_c.a = 0.15f + 0.85f * ease;
+      float msg_a = fmaxf(0, fminf(1, (G.over_time - 0.4f) / 0.6f));
+      float ht = hud_measure(true, head, 44, iw).height, step = 40 * hud_drawn(true, 26) / 26;
       float hm = msg[0] ? hud_measure(false, msg, 20, iw).height : hud_drawn(false, 20) * 1.2f, hk = hud_prompt_size("{menu_accept} continue", 18).y;
       float ph = 20 + ht + 14 + 3 * step + 20 + hm + 8 + hk + 20;
       ph = fmaxf(ph, fminf(300, size.y - 8 - top_limit));
       float py = fmaxf(top_limit, fminf(110, top_limit + (size.y - 8 - top_limit - ph) / 2));
       if (py + ph > gauge_top && pw > size.x - 2 * 198) { /* narrower, so the card clears the gauge; the text wraps */
         pw = size.x - 2 * 198, iw = pw - 40, ix = size.x / 2 - iw / 2;
-        ht = hud_measure(true, "Race Over", 44, iw).height;
+        ht = hud_measure(true, head, 44, iw).height;
         hm = msg[0] ? hud_measure(false, msg, 20, iw).height : hm;
         ph = fmaxf(20 + ht + 14 + 3 * step + 20 + hm + 8 + hk + 20, fminf(300, size.y - 8 - top_limit));
         py = fmaxf(top_limit, fminf(110, top_limit + (size.y - 8 - top_limit - ph) / 2));
       }
       hud_panel(size.x / 2 - pw / 2, py, pw, ph, 0.55f);
       float y = py + 20;
-      y += hud_text_box(true, "Race Over", ix, y, iw, 44, (cw_color){ 1, 0.9f, 0.2f, 1 }, 1) + 14;
-      for (int i = 0; i < 3; i++) hud_title(rows[i], size.x / 2, y + step * (float)i, 26, (cw_color){ 1, 1, 1, 1 }, 1);
+      y += hud_text_box(true, head, ix, y, iw, 44, head_c, 1) + 14;
+      for (int i = 0; i < 3; i++) hud_title(rows[i], size.x / 2, y + step * (float)i, 26, i == 0 && !G.aborted && G.medal ? MEDAL_COLOR[G.medal] : (cw_color){ 1, 1, 1, 1 }, 1);
       y += 3 * step + 20;
-      if (msg[0]) hud_text_box(false, msg, ix, y, iw, 20, (cw_color){ 1, 0.95f, 0.01f, 1 }, 1);
+      if (msg[0]) hud_text_box(false, msg, ix, y, iw, 20, (cw_color){ 1, 0.95f, 0.01f, G.mode == MODE_PRACTICE ? msg_a : 1 }, 1);
       y += hm + 8;
       if (G.over_time >= 0.5f) hud_prompt("{menu_accept} continue", size.x / 2, y, 18, (cw_color){ 1, 1, 1, 0.6f }, 1);
       hud_end();

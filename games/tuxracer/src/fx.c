@@ -14,7 +14,7 @@ static struct {
   cw_node spray, turn_spray, powder, snow, streaks, motes;
   cw_node sparkle[4], treesnow[2]; /* one-shot bursts: a herring's sparkle, snow shaken off a hit tree */
   int sparkle_next, treesnow_next;
-  bool snowing;
+  bool snowing, no_spray, v0;
   cw_node track[TRACK_DECALS]; /* the original buttprint, laid behind the belly on snow */
   int track_next;
   t3_vec3 track_last;
@@ -41,8 +41,9 @@ void fx_init(cw_node parent) {
   cw_node_set(F.spray, "emission_shape", cw_val_enum("SPHERE"));
   cw_node_set(F.spray, "emission_radius", cw_val_float(0.25f));
   cw_node_set(F.spray, "spread", cw_val_float(35));
-  cw_node_set(F.spray, "speed_min", cw_val_float(2.5f));
-  cw_node_set(F.spray, "speed_max", cw_val_float(6));
+  cw_node_set(F.spray, "speed_min", cw_val_float(1.5f));
+  cw_node_set(F.spray, "speed_max", cw_val_float(4));
+  cw_node_set(F.spray, "camera_fade", cw_val_float(2.5f)); /* never a smear on the lens */
   cw_node_set(F.spray, "gravity", cw_val_vec3(0, -9.8f, 0));
   cw_node_set(F.spray, "size", cw_val_float(0.05f));
   cw_node_set(F.spray, "size_random", cw_val_float(0.6f));
@@ -68,9 +69,10 @@ void fx_init(cw_node parent) {
   cw_node_set(F.powder, "damping", cw_val_float(1.2f));
   cw_node_set(F.powder, "turbulence", cw_val_float(0.8f));
   cw_node_set(F.powder, "turbulence_scale", cw_val_float(0.6f));
-  cw_node_set(F.powder, "size", cw_val_float(0.28f));
+  cw_node_set(F.powder, "size", cw_val_float(0.2f));
   cw_node_set(F.powder, "size_random", cw_val_float(0.4f));
-  cw_node_set(F.powder, "size_curve", cw_val_string("0 0.4, 0.3 1, 1 1.6"));
+  cw_node_set(F.powder, "size_curve", cw_val_string("0 0.4, 0.3 1, 1 1.3"));
+  cw_node_set(F.powder, "camera_fade", cw_val_float(3));
   cw_node_set(F.powder, "color_ramp", cw_val_string("0 1 1 1 0.5, 0.4 1 1 1 0.3, 1 1 1 1 0"));
   cw_node_set(F.powder, "soft_distance", cw_val_float(0.6f));
   cw_node_set(F.powder, "spin", cw_val_float(0.8f));
@@ -78,8 +80,9 @@ void fx_init(cw_node parent) {
   cw_node_set(F.turn_spray, "emission_shape", cw_val_enum("SPHERE"));
   cw_node_set(F.turn_spray, "emission_radius", cw_val_float(0.3f));
   cw_node_set(F.turn_spray, "spread", cw_val_float(40));
-  cw_node_set(F.turn_spray, "speed_min", cw_val_float(4));
-  cw_node_set(F.turn_spray, "speed_max", cw_val_float(10));
+  cw_node_set(F.turn_spray, "speed_min", cw_val_float(3));
+  cw_node_set(F.turn_spray, "speed_max", cw_val_float(7));
+  cw_node_set(F.turn_spray, "camera_fade", cw_val_float(2.5f));
   cw_node_set(F.turn_spray, "gravity", cw_val_vec3(0, -9.8f, 0));
   cw_node_set(F.turn_spray, "size", cw_val_float(0.07f));
   cw_node_set(F.turn_spray, "size_random", cw_val_float(0.6f));
@@ -89,6 +92,12 @@ void fx_init(cw_node parent) {
   cw_node_set(F.turn_spray, "stretch", cw_val_float(0.018f));
   cw_node_set(F.turn_spray, "collide_depth", cw_val_bool(true));
   cw_node_set(F.turn_spray, "bounce", cw_val_float(0.25f));
+  if (getenv("TUXRACER_SPRAY_V0")) { /* dev: the spray as it was (high and back at the lens), to measure the change against */
+    F.v0 = true;
+    cw_node_set(F.spray, "speed_min", cw_val_float(2.5f)), cw_node_set(F.spray, "speed_max", cw_val_float(6)), cw_node_set(F.spray, "camera_fade", cw_val_float(0));
+    cw_node_set(F.powder, "size", cw_val_float(0.28f)), cw_node_set(F.powder, "size_curve", cw_val_string("0 0.4, 0.3 1, 1 1.6")), cw_node_set(F.powder, "camera_fade", cw_val_float(0));
+    cw_node_set(F.turn_spray, "speed_min", cw_val_float(4)), cw_node_set(F.turn_spray, "speed_max", cw_val_float(10)), cw_node_set(F.turn_spray, "camera_fade", cw_val_float(0));
+  }
   track_init(parent);
   /* speed: snow dust whipping past the camera above ~50 km/h, thin streaks along the travel */
   F.streaks = emitter(parent, "Streaks", 500, 0.4f);
@@ -262,19 +271,22 @@ void fx_update(const tux_phys *p, t3_vec3 cam_pos, t3_vec3 cam_dir, bool racing)
   bool base = ground && p->speed > 12;
   bool hard = ground && (turn > 0.3f || p->braking);
   t3_vec3 v = p->vel, back = { 0, 1, 0 };
-  if (p->speed > 1e-3f) back = t3_vec3_normalize(t3_vec3_add(t3_vec3_scale(v, -0.6f / p->speed), (t3_vec3){ 0, 1, 0 }));
+  if (p->speed > 1e-3f) back = t3_vec3_normalize(t3_vec3_add(t3_vec3_scale(v, -1.0f / p->speed), (t3_vec3){ 0, 0.35f, 0 })); /* low and behind */
+  if (F.v0 && p->speed > 1e-3f) back = t3_vec3_normalize(t3_vec3_add(t3_vec3_scale(v, -0.6f / p->speed), (t3_vec3){ 0, 1, 0 }));
   t3_vec3 at = t3_vec3_add(p->pos, t3_vec3_scale(p->surf_nml, -TUX_RADIUS * 0.6f));
   if (p->speed > 1e-3f) at = t3_vec3_add(at, t3_vec3_scale(v, -0.7f / p->speed)); /* thrown up behind the belly */
   cw_node3d_set_position(F.spray, at);
   cw_node3d_set_position(F.turn_spray, at);
   cw_node3d_set_position(F.powder, at);
   cw_node_set(F.spray, "direction", cw_val_vec3(back.x, back.y, back.z));
-  cw_node_set(F.powder, "direction", cw_val_vec3(back.x, back.y + 0.4f, back.z));
+  cw_node_set(F.powder, "direction", cw_val_vec3(back.x, back.y + (F.v0 ? 0.4f : 0.1f), back.z));
   cw_node_set(F.powder, "emitting", cw_val_bool(ground && p->speed > 9));
   t3_vec3 side = t3_vec3_cross((t3_vec3){ 0, 1, 0 }, v);
   if (t3_vec3_length_sq(side) > 1e-4f) side = t3_vec3_scale(t3_vec3_normalize(side), p->turn_fact < 0 ? 1 : -1);
-  t3_vec3 td = t3_vec3_normalize(t3_vec3_add(t3_vec3_add(back, t3_vec3_scale(side, 0.8f * turn)), (t3_vec3){ 0, 0.4f, 0 }));
+  t3_vec3 td = t3_vec3_normalize(t3_vec3_add(t3_vec3_add(back, t3_vec3_scale(side, 0.8f * turn)), (t3_vec3){ 0, F.v0 ? 0.4f : 0.15f, 0 }));
   cw_node_set(F.turn_spray, "direction", cw_val_vec3(td.x, td.y, td.z));
+  if (F.no_spray) base = hard = false;
+  cw_node_set(F.powder, "emitting", cw_val_bool(ground && p->speed > 9 && !F.no_spray));
   cw_node_set(F.spray, "emitting", cw_val_bool(base));
   cw_node_set(F.turn_spray, "emitting", cw_val_bool(hard));
   if (F.snowing) cw_node3d_set_position(F.snow, (t3_vec3){ cam_pos.x, cam_pos.y + 10, cam_pos.z });
@@ -300,3 +312,43 @@ void fx_tree_hit(t3_vec3 tux_pos, t3_vec3 vel) {
 }
 
 void fx_set_motes(bool on) { cw_node_set(F.motes, "emitting", cw_val_bool(on)); }
+
+void fx_set_spray_hidden(bool hidden) { F.no_spray = hidden; } /* perf and look triage: hide spray */
+
+/* the finish: a slow fountain of snow and gold flakes around him that rises, hangs and settles (alpha blended and
+ * fading in: a swell, never a flash) */
+static cw_node confetti;
+void fx_finish(t3_vec3 at, t3_vec3 vel) {
+  if (!cw_node_valid(confetti)) {
+    cw_node n = cw_node_new("GPUParticles3D", "FinishFlakes");
+    cw_node_set(n, "amount", cw_val_int(220));
+    cw_node_set(n, "lifetime", cw_val_float(2.4f));
+    cw_node_set(n, "lifetime_random", cw_val_float(0.35f));
+    cw_node_set(n, "one_shot", cw_val_bool(true));
+    cw_node_set(n, "explosiveness", cw_val_float(0.55f));
+    cw_node_set(n, "emitting", cw_val_bool(false));
+    cw_node_set(n, "seed", cw_val_int(61));
+    cw_node_set(n, "emission_shape", cw_val_enum("SPHERE"));
+    cw_node_set(n, "emission_radius", cw_val_float(1.2f));
+    cw_node_set(n, "direction", cw_val_vec3(0, 1, 0));
+    cw_node_set(n, "spread", cw_val_float(55));
+    cw_node_set(n, "speed_min", cw_val_float(2.5f));
+    cw_node_set(n, "speed_max", cw_val_float(5.5f));
+    cw_node_set(n, "gravity", cw_val_vec3(0, -2.2f, 0));
+    cw_node_set(n, "damping", cw_val_float(1.1f));
+    cw_node_set(n, "turbulence", cw_val_float(0.7f));
+    cw_node_set(n, "turbulence_scale", cw_val_float(0.5f));
+    cw_node_set(n, "size", cw_val_float(0.07f));
+    cw_node_set(n, "size_random", cw_val_float(0.5f));
+    cw_node_set(n, "spin", cw_val_float(3));
+    cw_node_set(n, "blend", cw_val_enum("ALPHA"));
+    cw_node_set(n, "color_ramp", cw_val_string("0 1 0.85 0.35 0, 0.12 1 0.9 0.5 0.95, 0.5 1 1 1 0.9, 1 1 1 1 0"));
+    cw_node_set(n, "camera_fade", cw_val_float(1.5f));
+    cw_node_add_child(cw_node_parent(F.spray), n);
+    confetti = n;
+  }
+  t3_vec3 ahead = t3_vec3_length_sq(vel) > 1e-4f ? t3_vec3_scale(t3_vec3_normalize(vel), 2.5f) : (t3_vec3){ 0, 0, -2.5f };
+  cw_node3d_set_position(confetti, (t3_vec3){ at.x + ahead.x, at.y + 0.3f, at.z + ahead.z });
+  cw_node_set(confetti, "emitting", cw_val_bool(false));
+  cw_node_set(confetti, "emitting", cw_val_bool(true));
+}

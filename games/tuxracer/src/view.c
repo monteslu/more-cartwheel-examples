@@ -59,7 +59,8 @@ void view_update(tux_view *v, const tux_phys *p, const course *c, float dt) {
   t3_vec3 up = Y, dir;
   t3_vec3 vel_dir = speed > 1e-4f ? t3_vec3_scale(p->vel, 1 / speed) : (t3_vec3){ 0, 0, -1 };
   float a = TR_DEG(c->angle - CAMERA_ANGLE_ABOVE_SLOPE + PLAYER_ANGLE_IN_CAMERA);
-  t3_vec3 view_vec = t3_vec3_scale((t3_vec3){ 0, sinf(a), cosf(a) }, CAMERA_DISTANCE);
+  float cam_dist = v->dist > 0 ? v->dist : CAMERA_DISTANCE;
+  t3_vec3 view_vec = t3_vec3_scale((t3_vec3){ 0, sinf(a), cosf(a) }, cam_dist);
   t3_vec3 view_pt;
   if (v->mode == VIEW_BEHIND || v->mode == VIEW_FOLLOW) {
     t3_vec3 vp = tr_project_into_plane(Y, vel_dir);
@@ -70,7 +71,7 @@ void view_update(tux_view *v, const tux_phys *p, const course *c, float dt) {
     if (v->initialized) {
       float tc = (v->mode == VIEW_BEHIND ? BEHIND_ORBIT_TIME_CONSTANT : FOLLOW_ORBIT_TIME_CONSTANT) * tc_mult;
       t3_vec3 ref = v->mode == VIEW_BEHIND ? p->pos : v->plyr_pos;
-      for (int i = 0; i < 2; i++) view_pt = interpolate_view_pos(ref, p->pos, MAX_CAMERA_PITCH, v->pos, view_pt, CAMERA_DISTANCE, dt, tc);
+      for (int i = 0; i < 2; i++) view_pt = interpolate_view_pos(ref, p->pos, MAX_CAMERA_PITCH, v->pos, view_pt, cam_dist, dt, tc);
     }
     y = course_height(c, view_pt.x, view_pt.z);
     if (view_pt.y < y + ABSOLUTE_MIN_CAMERA_HEIGHT) view_pt.y = y + ABSOLUTE_MIN_CAMERA_HEIGHT;

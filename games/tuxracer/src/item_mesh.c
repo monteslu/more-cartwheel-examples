@@ -53,8 +53,7 @@ static t3_geometry *finish_colored(mesh_build *b, float *col) {
 }
 
 /* the herring: a swept body (fat in the middle, pointed at the snout, a stalk into a forked tail), a
- * dorsal fin and the tail fin, coloured per vertex: a deep blue back, silver sides and belly, the eye a
- * dark spot. Nose at +x, centred on y 0.5 of the unit card it replaces; about 0.9 long. */
+ * dorsal fin and the tail fin, coloured per vertex: gold, an orange back, the eye a dark spot. Nose at +x, centred on y 0.5 of the unit card it replaces; about 0.9 long. */
 t3_geometry *item_mesh_fish(void) {
   enum { NT = 26, NA = 14 };
   mesh_build b = { 0 };
@@ -72,8 +71,9 @@ t3_geometry *item_mesh_fish(void) {
       t3_vec3 p = { x, 0.5f + cy * ry, sz * rz };
       t3_vec3 n = t3_vec3_normalize((t3_vec3){ 0, cy / ry, sz / rz });
       float up = cy * 0.5f + 0.5f;                  /* 1 back, 0 belly */
-      float R = 0.06f + 0.6f * (1 - up) * (1 - up), G = 0.18f + 0.6f * (1 - up), B = 0.55f + 0.4f * (1 - up);
-      if (up < 0.25f) R = 0.8f, G = 0.86f, B = 0.92f; /* silver belly */
+      /* gold, the colour of a prize against the snow: a deep orange back, bright gold flanks, a pale gold belly */
+      float R = 0.95f + 0.05f * (1 - up), G = 0.38f + 0.45f * (1 - up), B = 0.04f + 0.16f * (1 - up) * (1 - up);
+      if (up < 0.25f) R = 1.0f, G = 0.88f, B = 0.5f;
       float ex = x - 0.3f, ey = (cy * ry) - 0.06f, eye = ex * ex + ey * ey * 1.4f;
       if (eye < 0.0016f && fabsf(sz) > 0.5f) R = 0.02f, G = 0.02f, B = 0.03f;
       id[i][a] = vertc(&b, p, n, t, (float)a / NA, col, R, G, B);
@@ -85,8 +85,8 @@ t3_geometry *item_mesh_fish(void) {
       tri(&b, id[i][a], id[i + 1][a], id[i + 1][a1]);
       tri(&b, id[i][a], id[i + 1][a1], id[i][a1]);
     }
-  /* fins: thin double-sided sheets, a translucent blue-grey */
-  const float FR = 0.3f, FG = 0.45f, FB = 0.75f;
+  /* fins: thin double-sided sheets, a deep orange */
+  const float FR = 0.95f, FG = 0.42f, FB = 0.06f;
   t3_vec3 zn = { 0, 0, 1 };
   int t0 = vertc(&b, (t3_vec3){ -0.38f, 0.5f, 0 }, zn, 0, 0, col, FR, FG, FB);
   int t1 = vertc(&b, (t3_vec3){ -0.5f, 0.5f + 0.2f, 0 }, zn, 0, 0, col, FR, FG, FB);

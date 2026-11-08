@@ -6,6 +6,8 @@
  * cross-fade by the surface weights; flying uses the snow sound). */
 #include "game.h"
 
+#include <math.h>
+
 #include "cartwheel/audio.h"
 #include "cartwheel/core.h"
 #include "cartwheel/resource.h"
@@ -53,7 +55,7 @@ void audio_music(int which) {
 
 void audio_sfx(int id) {
   if (!A.on) return;
-  if (id == SFX_PICKUP) { cw_audio_play(A.pickup[A.pickup_next], &(cw_play_desc){ .bus = A.sfx_bus }); A.pickup_next = (A.pickup_next + 1) % 3; }
+  if (id == SFX_PICKUP) audio_pickup(1);
   else if (id == SFX_TREE) cw_audio_play(A.tree, &(cw_play_desc){ .bus = A.sfx_bus });
 }
 
@@ -73,3 +75,13 @@ void audio_slide(const float w[SURF_KINDS], float speed, bool airborne, bool on)
 }
 
 void audio_update(void) { if (A.on) cw_audio_update(); }
+
+/* a herring in a chain (the n-th caught within a couple of seconds of the last): the pickup sound a step higher
+ * for each, a semitone a fish up to an octave, so a line of herring plays as a rising run */
+void audio_pickup(int chain) {
+  if (!A.on) return;
+  int n = chain < 1 ? 0 : chain > 13 ? 12 : chain - 1;
+  float pitch = powf(2.0f, (float)n / 12.0f); /* a semitone a fish: twelve fish, an octave */
+  cw_audio_play(A.pickup[A.pickup_next], &(cw_play_desc){ .bus = A.sfx_bus, .pitch = pitch });
+  A.pickup_next = (A.pickup_next + 1) % 3;
+}

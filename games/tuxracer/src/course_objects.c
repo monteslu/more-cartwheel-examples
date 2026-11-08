@@ -335,21 +335,21 @@ void course_build_objects(course *c, cw_tree *tree) {
   if (!O.fish) O.fish = fish_card ? item_mesh_fish_card() : item_mesh_fish();
   if (!O.flag_card) O.flag_card = item_mesh_flag();
   if (!O.fish_mat) { /* the herring's scales: colour from the vertices, a wet shine, a clearcoat */
-    O.fish_mat = t3_mesh_physical_material_new(0xffffff);
+    O.fish_mat = t3_mesh_physical_material_new(0xc8660a); /* gold (the vertex colours shade it: an orange back) */
     O.fish_mat->vertex_colors = true;
-    O.fish_mat->roughness = 0.32f;
-    O.fish_mat->metalness = 0.3f;
-    O.fish_mat->clearcoat = 0.5f;
+    O.fish_mat->roughness = 0.35f;
+    O.fish_mat->metalness = 0.8f; /* a gold sheen: the snow and the sky in its flanks, tinted by the gold */
+    O.fish_mat->clearcoat = 0.1f; /* a thin wet coat: a white one washed the gold out to cream */
     O.fish_mat->clearcoat_roughness = 0.2f;
-    O.fish_mat->emissive = (t3_color){ 0.9f, 0.6f, 0.15f }; /* a warm glow: the collectible reads from afar */
-    O.fish_mat->emissive_intensity = 0.35f;
+    O.fish_mat->emissive = (t3_color){ 0.95f, 0.38f, 0.02f }; /* a warm glow: the collectible reads from afar, and is the warm point at night */
+    O.fish_mat->emissive_intensity = 0.22f;
     { /* v0.19 rim light: a gold outline along the fish that reads 30 m down the course, faint at arm's length */
       cw_rim_light_desc rd = cw_rim_light_default();
-      rd.color = (t3_color){ 1.0f, 0.72f, 0.22f };
-      rd.strength = 1.6f, rd.power = 2.5f, rd.near = 5, rd.far = 30, rd.close = 0.15f;
+      rd.color = (t3_color){ 1.0f, 0.42f, 0.03f }; /* a deep orange edge: a bright gold one went pastel through the tone map */
+      rd.strength = 0.7f, rd.power = 3.0f, rd.near = 5, rd.far = 45, rd.close = 0.15f;
       cw_rim_light_apply(O.fish_mat, &rd);
     }
-    O.fish_mat->iridescence = 0.7f; /* scales shimmer as it turns */
+    O.fish_mat->iridescence = 0.3f; /* scales shimmer as it turns (more washed the gold to pastel) */
     O.fish_mat->iridescence_ior = 1.4f;
     O.fish_mat->iridescence_thickness_range[0] = 150, O.fish_mat->iridescence_thickness_range[1] = 420;
     /* (no anisotropy: it needs tangents, and without them the fish became a screen-sized black triangle) */
@@ -494,8 +494,8 @@ void course_update_billboards(course *c, t3_vec3 eye) {
     float yaw, bob = 0;
     if (o->type == OBJ_HERRING) {
       float ph = (float)((i * 2654435761u) & 255) / 255.0f * 6.2831853f;
-      yaw = O.item_time * 1.6f + ph;
-      bob = cw_sin(O.item_time * 2.4f + ph) * 0.05f + 0.05f;
+      yaw = O.item_time * 1.9f + ph;
+      bob = cw_sin(O.item_time * 2.4f + ph) * 0.08f + 0.08f; /* a slow bob over the snow, never into it */
     } else yaw = atan2f(eye.x - o->x, eye.z - o->z);
     t3_mat4 m;
     t3_mat4_compose(&m, (t3_vec3){ o->x, o->y + bob, o->z }, t3_quat_from_axis_angle((t3_vec3){ 0, 1, 0 }, yaw), (t3_vec3){ o->diam, o->height, o->type == OBJ_HERRING ? o->diam : 1 });
