@@ -67,12 +67,15 @@ typedef struct player {
   int at_exit;
   int idle;               /* ticks since this player last touched the controls (IDLE_TICKS: left behind) */
   int behind;             /* ticks left behind (the view glides off over IDLE_FADE) */
+  /* this floor's tally (the card at its end): monsters killed, treasure taken (score), food eaten, food shot, keys */
+  int fl_kills, fl_gold, fl_food, fl_shot_food, fl_keys;
 } player;
 
 typedef struct enemy {
   bool alive;
   uint8_t kind, str;
   int hp, flash, age, atk, atk_cd, tgt, act, act_t, act_next, slow, frozen, burn, hold, carry, spawner;
+  int stag, stag_cd; /* staggered by a hit (ticks left; no second stagger until stag_cd runs out) */
   float x, y, kx, ky, face, speed;
   cw_crowd_agent agent;
 } enemy;
@@ -96,6 +99,7 @@ typedef struct sim {
   bool god;       /* tests: nobody takes damage */
   bool no_cap;    /* the perf gate's stress scene: no cap on the monsters on screen */
   bool idle_anchor; /* tests (the control): a player who never moves holds the team back as before */
+  bool old_mow;   /* tests (the control): the monsters' health, shots and spawners as before the mowing rules */
   cw_rng rng;
   maze m;                       /* the floor as loaded */
   uint8_t t[MZ_MAX][MZ_MAX];    /* the tiles now (doors open, walls break, trap walls vanish) */
@@ -154,6 +158,10 @@ void sim_team_box(const sim *s, float *cx, float *cy, float *hw, float *hh); /* 
 bool sim_player_leads(const sim *s, int i);
 void sim_give_charm(sim *s, int pi, int c);
 void sim_add_player(sim *s, int i, int cls); /* a player joins during play */
+/* a team starting deep (the furthest tileset's first floor): an elixir a player for each tileset passed by, two
+ * potions each */
+void sim_head_start(sim *s, int floor);
+int sim_enemy_hp(const sim *s, int kind, int str); /* a new monster's health */
 void crawler_bot(const sim *s, int i, input *in); /* bot.c */
 void crawler_bot_goal(int i, int *kind, int *x, int *y);
 

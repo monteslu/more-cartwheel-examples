@@ -70,6 +70,11 @@ Every player has one stick and two buttons; the game shows each player's own but
 - `crawler_soak --clear <floor.cwmaze>`: the bots play one floor (the level check's clear run).
 - `crawler_soak [minutes] [players] [first floor]`: floor after floor with no window or GPU, checking every tick for
   stray positions, players inside walls, counts that disagree and a team spread past one screen.
+- `node tests/crawler-mow.mjs`: the mowing rules (every class cuts a charging line of 10 within 3.2 s on floors 18, 58
+  and 118; a fresh pair from the furthest-tileset offer clears floor 101 without a fall), with the old rules as the
+  control (`CRAWLER_OLD_MOW=1`).
+- `node tests/crawler-banner.mjs`: the FLOOR banner never covers a hero on the first floor of any tileset (the auto
+  cart through romdev; control `sw banner_centre 1`).
 - `node tests/crawler-perf.mjs`: the perf gate (GPU time a frame at 1920x1080 High on GL and WebGPU, a crowded late
   floor of every tileset, with controls that must fail).
 - Development switches (native): `CRAWLER_FLOOR=n` starts on floor n, `CRAWLER_PLAYERS=n` the auto build's players,

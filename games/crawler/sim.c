@@ -44,9 +44,9 @@ static const int CHARM_TICKS[CH_KINDS] = { 1200, 1200, 1200, 1200, 1200, 900, 90
 /* speed, armour (damage taken), shot kind, damage, cooldown, in flight, melee, its cooldown, magic, shot speed */
 const class_stats CLASS[CL_KINDS] = {
   { 5.6f, 0.80f, SK_AXE, 3, 24, 2, 4, 18, 2, 13.0f },
-  { 6.2f, 0.65f, SK_HAMMER, 2, 20, 2, 3, 20, 2, 15.0f },
-  { 6.2f, 1.00f, SK_FIRE, 2, 22, 2, 1, 22, 4, 14.0f },
-  { 7.4f, 0.90f, SK_ARROW, 1, 12, 3, 2, 20, 3, 22.0f },
+  { 6.2f, 0.65f, SK_HAMMER, 2, 17, 2, 3, 20, 2, 15.0f },
+  { 6.2f, 1.00f, SK_FIRE, 2, 18, 3, 1, 22, 4, 14.0f },
+  { 7.4f, 0.90f, SK_ARROW, 1, 10, 4, 2, 20, 3, 22.0f },
 };
 
 /* radius, speed, health a strength, damage a strength, score */
@@ -260,14 +260,26 @@ static int spawn_enemy(sim *s, int kind, int str, float x, float y) {
   if (CW_HANDLE_IS_NULL(a)) return -1;
   enemy *e = &s->e[slot];
   *e = (enemy){ .alive = true, .kind = (uint8_t)kind, .str = (uint8_t)str, .x = x, .y = y, .agent = a, .speed = sp, .tgt = -1, .spawner = -1, .carry = -1 };
-  e->hp = EK[kind].hp * str;
-  if (s->players > 2 && kind == EK_OGRE) e->hp += str * 2; /* a team of three or four: the heavies a little tougher */
+  e->hp = sim_enemy_hp(s, kind, str);
   e->face = rf(s) * 6.28f;
   e->act_next = 60 + (int)(rf(s) * 120);
   s->nenemies++;
   return slot;
 }
 int sim_spawn(sim *s, int kind, int str, float x, float y) { return spawn_enemy(s, kind, str, x, y); }
+/* the mowing rules (DESIGN.md, the crowd): the line dies to one shot a body. Every light kind at strength 1 and 2 has
+ * one health (strength 3: two), the shooters (slingers, hexers) one a strength, and only the heavies (ogres) stand up
+ * to a few shots; deep floors bring more of them and tougher spawners, not tougher bodies */
+int sim_enemy_hp(const sim *s, int kind, int str) {
+  str = CW_CLAMP(str, 1, 3);
+  if (s->old_mow) return EK[kind].hp * str + (s->players > 2 && kind == EK_OGRE ? str * 2 : 0);
+  switch (kind) {
+  case EK_OGRE: return 8 * str + (s->players > 2 ? str * 2 : 0); /* the exception, as before: a heavy (a team of three or four: tougher still) */
+  case EK_SLINGER: case EK_HEXER: return str;
+  case EK_DREAD: return 1;
+  default: return str >= 3 ? 2 : 1;
+  }
+}
 
 static void drop_item(sim *s, int kind, int arg, float x, float y, bool dropped);
 static void kill_enemy(sim *s, int i, int owner, float dx, float dy, bool score) {
@@ -281,6 +293,7 @@ static void kill_enemy(sim *s, int i, int owner, float dx, float dy, bool score)
   if (score && owner >= 0 && owner < MAXP) {
     const player *kp = &s->p[owner];
     s->p[owner].score += EK[e->kind].score * e->str * (kp->charm[CH_FORTUNE] > 0 ? 2 : 1);
+    s->p[owner].fl_kills++;
   }
   ev(s, EV_KILL, e->x, e->y, dx, dy, e->kind, owner);
   if (e->kind == EK_BLOATER) { /* it bursts: a cloud of poison */
@@ -326,7 +339,7 @@ static void spawner_hurt(sim *s, int k, int dmg, int owner) {
   if (!sp->alive) return;
   sp->hp -= dmg;
   ev(s, EV_SPAWNER_HIT, sp->x, sp->y, 0, 0, sp->kind, sp->str);
-  int str = (sp->hp + 2) / 3; /* three hits a strength */
+  int str = (sp->hp - (s->old_mow ? 0 : 2 * ((s->floor - 1) / 20)) + 2) / 3; /* three hits a strength (after a deep spawner's extra) */
   if (str < sp->str && str > 0) sp->str = (uint8_t)str;
   if (sp->hp > 0) return;
   sp->alive = false;
@@ -344,8 +357,9 @@ bool sim_on_screen(const sim *s, float x, float y, float margin) {
 static bool at_cap(const sim *s) { return !s->no_cap && s->on_screen >= SCREEN_CAP; }
 static void spawners_step(sim *s) {
   if (s->no_spawn) return;
-  float deep = cw_clampf(1.0f - (float)s->floor / 240.0f, 0.55f, 1.0f);
-  int cap = CW_MIN(24 + s->floor / 3, 64);
+  /* deeper: quicker and more of them (the mowing rules make each body weaker, so the line is longer) */
+  float deep = s->old_mow ? cw_clampf(1.0f - (float)s->floor / 240.0f, 0.55f, 1.0f) : cw_clampf(1.0f - (float)s->floor / 200.0f, 0.45f, 1.0f);
+  int cap = s->old_mow ? CW_MIN(24 + s->floor / 3, 64) : CW_MIN(30 + s->floor / 2, 80);
   for (int k = 0; k < s->nsp; k++) {
     spawner *sp = &s->sp[k];
     if (!sp->alive) continue;
@@ -364,14 +378,17 @@ static void spawners_step(sim *s) {
     if (!near) continue;
     /* out of a free side of the spawner's tile */
     static const int DX[4] = { 1, -1, 0, 0 }, DY[4] = { 0, 0, 1, -1 };
-    int o = (int)(cw_rng_u32(&s->rng) & 3);
-    for (int t = 0; t < 4; t++) {
+    /* a pulse brings one body, and deeper (the mowing rules) a pair of the light biters from floor 60, three from floor
+     * 120 (the shooters and the heavies stay one at a time: their numbers are what a line cannot mow) */
+    bool light = sp->kind != EK_IMP && sp->kind != EK_SLINGER && sp->kind != EK_HEXER && sp->kind != EK_OGRE && sp->kind != EK_DREAD;
+    int bodies = s->old_mow || !light ? 1 : 1 + s->floor / 60, o = (int)(cw_rng_u32(&s->rng) & 3);
+    for (int t = 0; t < 4 && bodies > 0; t++) {
       int d = (o + t) & 3, tx = sp->tx + DX[d], ty = sp->ty + DY[d];
       if (sim_solid(s, tx, ty)) continue;
       float x = sp->x + (float)DX[d] * 1.25f + (rf(s) - 0.5f) * 0.6f, y = sp->y + (float)DY[d] * 1.25f + (rf(s) - 0.5f) * 0.6f;
       int e = spawn_enemy(s, sp->kind, sp->str, x, y);
       if (e >= 0) s->e[e].spawner = k, sp->nalive++, sp->pulse = 12, ev(s, EV_SPAWN, x, y, sp->x, sp->y, sp->kind, sp->str);
-      break;
+      if (--bodies <= 0 || sp->nalive >= cap) break;
     }
   }
 }
@@ -421,10 +438,16 @@ void sim_floor_start(sim *s, const maze *m) {
     for (int x = 0; x < m->w; x++)
       if (m->t[y][x] == T_DOOR || m->t[y][x] == T_BREAK || m->t[y][x] == T_TRAPWALL) tile_block(s, x, y);
   s->nsp = 0;
+  /* a tileset's first floor is a breather (a team starting there from the furthest-tileset offer, too): no strength 3 */
+  bool breather = s->floor > 1 && s->floor % 20 == 1;
   for (int i = 0; i < m->nspawn && s->nsp < MAXSP; i++) {
     const mz_spawn *ms = &m->spawn[i];
     spawner *sp = &s->sp[s->nsp];
-    *sp = (spawner){ true, ms->kind, ms->str, ms->x, ms->y, 3 * ms->str, 30 + (int)(rf(s) * 90), 0, 0, mz_wx(m, ms->x), mz_wz(m, ms->y), 0 };
+    int str = ms->str;
+    if (!s->old_mow && breather && str > 2) str = 2;
+    /* deeper spawners take more hits (the mowing rules: deep floors are harder by their spawners and numbers) */
+    int hp = 3 * str + (s->old_mow ? 0 : 2 * ((s->floor - 1) / 20));
+    *sp = (spawner){ true, ms->kind, (uint8_t)str, ms->x, ms->y, hp, 30 + (int)(rf(s) * 90), 0, 0, mz_wx(m, ms->x), mz_wz(m, ms->y), 0 };
     sp->nav = cw_nav_obstacle_add_box(s->nav, (t3_vec3){ sp->x, 0, sp->y }, (t3_vec3){ 0.9f, 1.5f, 0.9f }, 0);
     s->sp_at[ms->y][ms->x] = (int16_t)(s->nsp + 1);
     s->nsp++;
@@ -444,10 +467,12 @@ void sim_floor_start(sim *s, const maze *m) {
     }
     placed++;
     p->x = x, p->y = y, p->vx = p->vy = 0, p->face = -1.5708f, p->at_exit = 0, p->firing = 0, p->shots_out = 0, p->drained = 0, p->stun = 0;
+    p->fl_kills = p->fl_gold = p->fl_food = p->fl_shot_food = p->fl_keys = 0;
     if (p->down) p->down = false, p->hp = 1000; /* a fallen player comes back for the new floor */
   }
   build_flow(s);
-  for (int i = 0; i < m->nmon; i++) spawn_enemy(s, m->mon[i].kind, m->mon[i].str, mz_wx(m, m->mon[i].x), mz_wz(m, m->mon[i].y));
+  for (int i = 0; i < m->nmon; i++)
+    spawn_enemy(s, m->mon[i].kind, !s->old_mow && breather ? CW_MIN(m->mon[i].str, 2) : m->mon[i].str, mz_wx(m, m->mon[i].x), mz_wz(m, m->mon[i].y));
   ev(s, EV_FLOOR, 0, 0, 0, 0, (uint8_t)(m->floor & 0xff), (uint8_t)(m->floor >> 8));
 }
 
@@ -507,7 +532,8 @@ static void hurt_player(sim *s, int i, float dmg, int from_kind, float fx, float
 static void fire(sim *s, int i, float ax, float ay) {
   player *p = &s->p[i];
   const class_stats *c = &CLASS[p->cls];
-  int max_out = c->shots_max + (p->charm[CH_TRIPLE] > 0 ? 4 : 0) + (p->charm[CH_RAPID] > 0 ? 1 : 0);
+  static const int OLD_CD[CL_KINDS] = { 24, 20, 22, 12 }, OLD_MAX[CL_KINDS] = { 2, 2, 2, 3 }; /* before the mowing rules (the control) */
+  int max_out = (s->old_mow ? OLD_MAX[p->cls] : c->shots_max) + (p->charm[CH_TRIPLE] > 0 ? 4 : 0) + (p->charm[CH_RAPID] > 0 ? 1 : 0);
   if (p->shots_out >= max_out) return;
   int n = p->charm[CH_TRIPLE] > 0 ? 3 : 1;
   float sp = c->shot_speed * (1.0f + 0.12f * (float)p->elixir[EL_SHOTSPEED]);
@@ -524,7 +550,7 @@ static void fire(sim *s, int i, float ax, float ay) {
         break;
       }
   }
-  int cd = c->shot_cd - p->elixir[EL_SHOTSPEED];
+  int cd = (s->old_mow ? OLD_CD[p->cls] : c->shot_cd) - p->elixir[EL_SHOTSPEED];
   p->cd = CW_MAX(5, p->charm[CH_RAPID] > 0 ? cd / 2 : cd);
   ev(s, EV_SHOT, p->x, p->y, cw_cos(a0), cw_sin(a0), i, c->shot_kind);
 }
@@ -560,27 +586,27 @@ static void pickup_take(sim *s, int pi, int gi) {
   switch (g->kind) {
   case IT_KEY:
     if (p->keys >= 9) return;
-    p->keys++;
+    p->keys++, p->fl_keys++;
     break;
   case IT_POTION:
     if (p->potions >= 9) return;
     p->potions++;
     break;
-  case IT_GOLD: p->score += 100 * fortune; ev(s, EV_TREASURE, g->x, g->y, 0, 0, pi, 0); break;
-  case IT_CUP: p->score += 250 * fortune; ev(s, EV_TREASURE, g->x, g->y, 0, 0, pi, 1); break;
+  case IT_GOLD: p->score += 100 * fortune, p->fl_gold += 100 * fortune; ev(s, EV_TREASURE, g->x, g->y, 0, 0, pi, 0); break;
+  case IT_CUP: p->score += 250 * fortune, p->fl_gold += 250 * fortune; ev(s, EV_TREASURE, g->x, g->y, 0, 0, pi, 1); break;
   case IT_CHEST:
   case IT_CHEST_TRAP:
-    p->score += 500 * fortune;
+    p->score += 500 * fortune, p->fl_gold += 500 * fortune;
     ev(s, EV_CHEST, g->x, g->y, 0, 0, pi, g->kind == IT_CHEST_TRAP);
     if (g->kind == IT_CHEST_TRAP) { /* a trap: monsters burst out */
       int kind = s->nsp ? s->sp[0].kind : EK_GHOUL;
       for (int k = 0; k < 6; k++) spawn_enemy(s, kind, CW_CLAMP(1 + s->floor / 30, 1, 3), g->x + cw_cos((float)k) * 1.2f, g->y + cw_sin((float)k) * 1.2f);
     } else if (rf(s) < 0.4f) drop_item(s, rf(s) < 0.5f ? IT_POTION : IT_CHARM, (int)(cw_rng_u32(&s->rng) % CH_KINDS), g->x, g->y + 0.8f, true);
     break;
-  case IT_ROAST: p->hp += 100, s->food_eaten++; break;
-  case IT_BREAD: p->hp += 50, s->food_eaten++; break;
-  case IT_FLAGON: p->hp += 100, s->food_eaten++; break;
-  case IT_PLATE: p->hp += 200, s->food_eaten++; break;
+  case IT_ROAST: p->hp += 100, s->food_eaten++, p->fl_food++; break;
+  case IT_BREAD: p->hp += 50, s->food_eaten++, p->fl_food++; break;
+  case IT_FLAGON: p->hp += 100, s->food_eaten++, p->fl_food++; break;
+  case IT_PLATE: p->hp += 200, s->food_eaten++, p->fl_food++; break;
   case IT_ELIXIR:
     p->elixir[g->arg % EL_KINDS] = CW_MIN(p->elixir[g->arg % EL_KINDS] + 1, 4);
     ev(s, EV_ELIXIR, g->x, g->y, 0, 0, pi, g->arg);
@@ -859,9 +885,15 @@ static void bullet_hit(sim *s, int i, void *u) {
     b->alive = false, c->stop = true;
     return;
   }
-  e->hp -= (int)(b->dmg + 0.5f);
+  int had = e->hp, dmg = (int)(b->dmg + 0.5f);
+  e->hp -= dmg;
   e->flash = 5;
   e->kx += b->vx * 0.006f / (float)e->str, e->ky += b->vy * 0.006f / (float)e->str;
+  if (!s->old_mow && e->hp > 0 && e->stag_cd <= 0 && e->kind != EK_OGRE) { /* a survivor reels (an ogre never): knocked back, held 8 ticks, its wind-up undone */
+    e->kx += b->vx * 0.01f / (float)e->str, e->ky += b->vy * 0.01f / (float)e->str;
+    e->stag = 8, e->stag_cd = 30;
+    if (e->atk > 0 && e->atk <= MEL[e->kind].windup) e->atk = 0, e->atk_cd = 6;
+  }
   if (p->charm[CH_FROST] > 0) { if (e->slow > 0) e->frozen = 90; e->slow = 150; }
   ev(s, EV_HIT, b->x, b->y, b->vx, b->vy, e->kind, b->kind);
   if (p->charm[CH_CHAIN] > 0) { /* the hit arcs on to three more within 4 m */
@@ -876,8 +908,10 @@ static void bullet_hit(sim *s, int i, void *u) {
       if (o->hp <= 0) kill_enemy(s, k, b->owner, dx, dy, true);
     }
   }
-  if (b->kind == SK_FIRE) queue_boom(s, b->x, b->y, 1.2f, 1, 0, b->owner, false); /* the fireball bursts */
+  if (b->kind == SK_FIRE) queue_boom(s, b->x, b->y, s->old_mow ? 1.2f : 1.6f, 1, 0, b->owner, false); /* the fireball bursts */
   if (e->hp <= 0) kill_enemy(s, i, b->owner, b->vx, b->vy, true);
+  /* a kill with damage to spare goes on through the line with what is left (the mowing rules) */
+  if (!s->old_mow && e->hp <= 0 && dmg > had && b->kind != SK_FIRE) { b->dmg -= (float)had; return; }
   if (b->pierce-- <= 0) b->alive = false, c->stop = true;
 }
 
@@ -965,7 +999,7 @@ static void bullets_step(sim *s) {
       if (dx * dx + dy * dy > 0.5f * 0.5f) continue;
       g->alive = false;
       if (g->kind == IT_POTION) magic_blast(s, b->owner, g->x, g->y, 5.0f, 5.0f, 0.34f), ev(s, EV_POTION_BREAK, g->x, g->y, 0, 0, b->owner, 0);
-      else ev(s, EV_FOOD_BREAK, g->x, g->y, 0, 0, b->owner, g->kind);
+      else ev(s, EV_FOOD_BREAK, g->x, g->y, 0, 0, b->owner, g->kind), s->p[b->owner].fl_shot_food++;
       bullet_end(s, b);
       break;
     }
@@ -1099,6 +1133,8 @@ static void enemies_step(sim *s) {
       if (fabsf(ox - s->view_x) < fabsf(e->x - s->view_x) || fabsf(oy - s->view_y) < fabsf(e->y - s->view_y)) sp = 0;
     }
     if (e->atk > 0) sp = 0;
+    if (e->stag_cd > 0) e->stag_cd--;
+    if (e->stag > 0) e->stag--, sp = 0;
     if (e->frozen > 0) e->frozen--, sp = 0;
     if (e->slow > 0) e->slow--, sp *= 0.5f;
     if (e->age < 20) sp *= 0.5f;
@@ -1189,7 +1225,7 @@ static void enemies_step(sim *s) {
       }
       continue;
     }
-    if (e->atk_cd > 0 || e->act) continue;
+    if (e->atk_cd > 0 || e->act || e->stag > 0) continue;
     if (d <= touch + m->trigger) {
       e->atk = 1, e->tgt = best;
       float dx = p->x - e->x, dy = p->y - e->y;
@@ -1354,6 +1390,21 @@ void sim_step(sim *s, const input in[MAXP]) {
 }
 
 /* a player joins during play (a pad that pressed to join): fresh health, beside a living friend */
+void sim_head_start(sim *s, int floor) {
+  int passed = (floor - 1) / 20; /* tilesets passed by */
+  if (passed <= 0) return;
+  for (int i = 0; i < MAXP; i++) {
+    player *p = &s->p[i];
+    if (!p->active) continue;
+    p->potions = CW_MAX(p->potions, 2);
+    for (int k = 0; k < passed; k++) { /* each a kind at random, at most 4 of a kind as on the floor */
+      int e = (int)(cw_rng_u32(&s->rng) % EL_KINDS);
+      for (int t = 0; t < EL_KINDS && p->elixir[e] >= 4; t++) e = (e + 1) % EL_KINDS;
+      if (p->elixir[e] < 4) p->elixir[e]++;
+    }
+  }
+}
+
 void sim_add_player(sim *s, int i, int cls) {
   if (i < 0 || i >= MAXP || s->p[i].active) return;
   player *p = &s->p[i];

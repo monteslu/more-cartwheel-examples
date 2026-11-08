@@ -43,6 +43,8 @@ static double wall(void) {
 typedef struct save_data { int32_t best_floor, best_score; } save_data;
 
 enum { PH_PICK, PH_PLAY }; /* the match's phases: choosing heroes, then the floors */
+enum { CALL_LOW, CALL_FOOD, CALL_STEAL, CALL_DREAD, CALL_BLAST, CALL_CHARM, CALL_ELIXIR };
+#define TALLY_TICKS 105 /* the floor's tally card at most (with the second's fade down the stair: under 3 s to play) */
 static struct {
   sim S;
   maze M;
@@ -59,6 +61,14 @@ static struct {
   int32_t hp[MAXP], score[MAXP], px[MAXP], py[MAXP];
   uint32_t hash;
   int banner_t;
+  int32_t tally_t; /* ticks into the floor's tally card (0: none) */
+  /* callouts: a short line by a hero for what just happened to them (low health, food shot, a theft, a dread, a big
+   * blast, a charm or elixir taken), in their colour; one at a time a player, each kind once per cooldown */
+  char call[MAXP][40];
+  int call_t[MAXP], call_cd[MAXP][8], low_was[MAXP];
+  int32_t callouts;
+  int banner_side;               /* the floor banner's band: 0 the top, 1 the bottom (where no hero stands) */
+  int32_t banner_shown, banner_hit, banner_centre; /* frames drawn; frames it covered a hero; the control switch (sw banner_centre) */
   cw_action move[4], fire, magic, join;
   cw_node camera;
   int lm_frames;
@@ -70,6 +80,7 @@ static struct {
 } G;
 
 static cw_font font;
+static cw_sound snd_call[8];
 static cw_sound snd_boom, snd_shot[CL_KINDS], snd_kill, snd_pick, snd_key, snd_door, snd_hurt, snd_magic, snd_exit, snd_move, snd_select, snd_back, snd_music;
 static cw_voice music;
 
@@ -157,7 +168,7 @@ static bool floor_go(int n) {
   }
   view_floor(&G.S);
   G.lm_frames = 0;
-  G.banner_t = 180;
+  G.banner_t = 180, G.banner_side = 0, G.tally_t = 0;
   G.floor = G.S.floor;
   save_data *sd = cw_shell_game_save();
   if (n > sd->best_floor) sd->best_floor = n, G.best_floor = n, cw_shell_save_commit();
@@ -177,6 +188,7 @@ static void begin_play(void) {
   sim_init(&G.S, G.players, G.cls, 4242);
   G.phase = PH_PLAY;
   G.floors_done = 0, G.over_ticks = 0;
+  if (G.start_floor > 1) sim_head_start(&G.S, G.start_floor); /* the furthest-tileset offer: a fresh team gets that depth's elixirs */
   if (!floor_go(first_floor())) floor_go(1);
 }
 
@@ -216,10 +228,14 @@ static bool warmup(void *u) {
 
 /* the gates' switches */
 static void cmd_sw(int argc, const char **argv, cw_reply *r) {
-  if (argc < 3 || (strcmp(argv[1], "idle_anchor") && strcmp(argv[1], "guide_off"))) { cw_reply_error(r, "usage: sw idle_anchor|guide_off <0|1>"); return; }
+  if (argc < 3 || (strcmp(argv[1], "idle_anchor") && strcmp(argv[1], "guide_off") && strcmp(argv[1], "banner_centre"))) {
+    cw_reply_error(r, "usage: sw idle_anchor|guide_off|banner_centre <0|1>");
+    return;
+  }
   if (!strcmp(argv[1], "idle_anchor")) G.idle_anchor = atoi(argv[2]) != 0;
-  else G.guide_off = atoi(argv[2]) != 0;
-  cw_reply_printf(r, "{\"idle_anchor\":%d,\"guide_off\":%d}", G.idle_anchor, G.guide_off);
+  else if (!strcmp(argv[1], "guide_off")) G.guide_off = atoi(argv[2]) != 0;
+  else G.banner_centre = atoi(argv[2]) != 0;
+  cw_reply_printf(r, "{\"idle_anchor\":%d,\"guide_off\":%d,\"banner_centre\":%d}", G.idle_anchor, G.guide_off, G.banner_centre);
 }
 
 #ifdef CRAWLER_AUTOPILOT
@@ -260,6 +276,15 @@ static void init(void *u) {
   snd_select = synth(0.12f, 520, 1040, 0, 0.3f, 3);
   snd_back = synth(0.12f, 520, 260, 0, 0.3f, 3);
   snd_music = synth(2.0f, 55, 55, 0.05f, 0.3f, 0.2f);
+  /* each callout its own sound: low health a falling pair, the food a sour drop, a theft a quick slide, a dread a low
+   * swell, a big blast a rising chime, a charm or an elixir a bright one */
+  snd_call[CALL_LOW] = synth(0.45f, 440, 220, 0.05f, 0.45f, 2.2f);
+  snd_call[CALL_FOOD] = synth(0.35f, 320, 160, 0.3f, 0.4f, 3);
+  snd_call[CALL_STEAL] = synth(0.25f, 900, 300, 0.2f, 0.35f, 4);
+  snd_call[CALL_DREAD] = synth(0.9f, 70, 110, 0.35f, 0.5f, 1.4f);
+  snd_call[CALL_BLAST] = synth(0.6f, 520, 1560, 0.05f, 0.35f, 2.5f);
+  snd_call[CALL_CHARM] = synth(0.4f, 880, 1760, 0, 0.3f, 3);
+  snd_call[CALL_ELIXIR] = synth(0.4f, 660, 1320, 0, 0.3f, 3);
   G.best_floor = ((save_data *)cw_shell_game_save())->best_floor;
   cw_debug_i32("game.state", &G.state);
   cw_debug_i32("game.floor", &G.floor);
@@ -293,7 +318,11 @@ static void init(void *u) {
   cw_debug_f32("dev.tilt", &g_tilt);
   cw_debug_f32("dev.rim_k", &g_rim_k);
   cw_debug_f32("dev.lean", &g_lean);
-  cw_debug_command("sw", "sw idle_anchor|guide_off <0|1>: test switches (a player nobody plays holds the team back, as before; no EXIT labels or arrow)", cmd_sw);
+  cw_debug_i32("game.tally", &G.tally_t);
+  cw_debug_i32("game.callouts", &G.callouts);
+  cw_debug_i32("banner.shown", &G.banner_shown);
+  cw_debug_i32("banner.hit", &G.banner_hit);
+  cw_debug_command("sw", "sw idle_anchor|guide_off|banner_centre <0|1>: test switches (a player nobody plays holds the team back, as before; no EXIT labels or arrow; the floor banner at the screen's middle, as before)", cmd_sw);
 #ifdef CRAWLER_AUTOPILOT
   cw_debug_command("floor", "floor <n>: go to that floor", cmd_floor);
   if (getenv("CRAWLER_CAM_DIST")) g_cam_dist = (float)atof(getenv("CRAWLER_CAM_DIST")); /* key-art captures: a closer camera */
@@ -302,6 +331,42 @@ static void init(void *u) {
 #endif
   cw_shell_start(getenv("CRAWLER_PLAYERS") ? CW_CLAMP(atoi(getenv("CRAWLER_PLAYERS")), 1, 4) : CRAWLER_AUTO_PLAYERS);
 #endif
+}
+
+/* a callout by hero i, unless that kind is cooling down for them (charms and elixirs: none, each is news) */
+static void callout(int i, int kind, const char *line) {
+  static const int CD[8] = { 60 * 12, 60 * 6, 60 * 6, 60 * 10, 60 * 4, 0, 0, 0 };
+  if (i < 0 || i >= MAXP || !G.S.p[i].active || G.call_cd[i][kind] > 0) return;
+  snprintf(G.call[i], sizeof G.call[i], "%s", line);
+  G.call_t[i] = 100, G.call_cd[i][kind] = CD[kind], G.callouts++;
+  play(snd_call[kind], 0.7f);
+}
+static void callouts_step(void) {
+  const sim *s = &G.S;
+  char b[48];
+  int blast_from = -1, blast_kills = 0;
+  for (int k = 0; k < s->ev_n; k++) {
+    const event *e = &s->ev[k];
+    switch (e->kind) {
+    case EV_FOOD_BREAK: if (e->a < MAXP) callout(e->a, CALL_FOOD, "SHOT THE FOOD!"); break;
+    case EV_STEAL: snprintf(b, sizeof b, "A THIEF TOOK MY %s!", e->b == IT_KEY ? "KEY" : e->b == IT_POTION ? "POTION" : "GOLD"); callout(e->a, CALL_STEAL, b); break;
+    case EV_DRAIN: callout(e->a, CALL_DREAD, "A DREAD! USE MAGIC!"); break;
+    case EV_MAGIC: blast_from = e->a, blast_kills = 0; break;
+    case EV_KILL: if (blast_from >= 0 && e->b == blast_from) blast_kills++; break;
+    case EV_CHARM: callout(e->a, CALL_CHARM, sim_charm_name(e->b)); break;
+    case EV_ELIXIR: snprintf(b, sizeof b, "%s UP", sim_elixir_name(e->b)); callout(e->a, CALL_ELIXIR, b); break;
+    default: break;
+    }
+  }
+  if (blast_from >= 0 && blast_kills >= 8) { snprintf(b, sizeof b, "%d IN ONE BLAST!", blast_kills); callout(blast_from, CALL_BLAST, b); }
+  for (int i = 0; i < MAXP; i++) {
+    const player *p = &s->p[i];
+    bool low = p->active && !p->down && p->hp < 200;
+    if (low && !G.low_was[i]) callout(i, CALL_LOW, "HEALTH LOW: FIND FOOD");
+    G.low_was[i] = low;
+    if (G.call_t[i] > 0) G.call_t[i]--;
+    for (int k = 0; k < 8; k++) if (G.call_cd[i][k] > 0) G.call_cd[i][k]--;
+  }
 }
 
 /* ── input ──────────────────────────────────────────────────────────── */
@@ -381,7 +446,16 @@ static void fixed_update(void *u, double dt) {
     }
   }
   if (G.S.killed_total != kills && G.S.tick % 3 == 0) play(snd_kill, 0.35f);
-  if (G.S.state == ST_WON) { /* down to the next floor */
+  callouts_step();
+  /* the floor's tally: a card for a second and a half or so (any player's fire, magic or join goes on after half a
+   * second), then down to the next floor: under three seconds from the stair to play */
+  if (G.S.state == ST_WON && ++G.tally_t < TALLY_TICKS) {
+    bool go = false;
+    for (int i = 0; i < G.S.players; i++) go |= cw_action_just_pressed(i, G.fire) || cw_action_just_pressed(i, G.magic) || cw_action_just_pressed(i, G.join);
+    if (go && G.tally_t > 30) G.tally_t = TALLY_TICKS;
+  }
+  if (G.S.state == ST_WON && G.tally_t >= TALLY_TICKS) { /* down to the next floor */
+    G.tally_t = 0;
     G.floors_done++;
     int next = G.S.next_floor;
     if (maze_count() > 0 && next > maze_count()) next = 1; /* the bottom: round again from the top */
@@ -647,6 +721,101 @@ static void guide(cw_vec2 cs, float u) {
   text(what, lx, ly, 30 * u, col, CW_ALIGN_CENTER);
 }
 
+/* the floor banner: FLOOR n, the tileset's name (and on the first floor what the buttons do), in the band at the top
+ * or the bottom of the screen where no hero stands (never over the team: the camera puts it in the middle), easing in
+ * over a third of a second and out over two thirds; each line under the last as measured; not under the pause menu */
+static void banner(cw_vec2 cs, float u, float top) {
+  char b[32];
+  snprintf(b, sizeof b, "FLOOR %d", G.S.floor);
+  const char *theme = THEME_NAME[CW_CLAMP(G.S.m.theme, 0, MZ_THEMES - 1)];
+  bool help = G.S.floor == 1 && G.floors_done == 0;
+  float bs = 26 * u, maxw = cs.x - 2 * 340 * u; /* clear of the players' corner panels */
+  const char *hl = help ? fit_prompt("{fire}: hold to shoot   {magic}: a potion   walk into a monster to fight it", 0, bs, maxw) : NULL;
+  cw_text_metrics m0 = measure(b, 72 * u), m1 = measure(theme, 34 * u);
+  cw_vec2 m2 = hl ? cw_prompt_text_size(font, hl, 0, bs) : cw_v2(0, 0);
+  float h = m0.height + m1.height + (hl ? 14 * u + m2.y : 0), w = fmaxf(fmaxf(m0.width, m1.width), m2.x);
+  /* the heroes' boxes on screen: feet to the P tag over the head, a body's width */
+  float hx0[MAXP], hx1[MAXP], hy0[MAXP], hy1[MAXP];
+  int nh = 0;
+  for (int i = 0; i < MAXP; i++) {
+    const player *p = &G.S.p[i];
+    float fu, fv, tu, tv;
+    if (!p->active || p->down || !view_screen((t3_vec3){ p->x, 0, p->y }, &fu, &fv) || !view_screen((t3_vec3){ p->x, 2.2f, p->y }, &tu, &tv)) continue;
+    hx0[nh] = fu * cs.x - 48 * u, hx1[nh] = fu * cs.x + 48 * u, hy0[nh] = tv * cs.y - 8 * u - measure("P1", bs).height, hy1[nh] = fv * cs.y + 8 * u, nh++;
+  }
+  float ys[2] = { fmaxf(top + 24 * u, cs.y * 0.1f), cs.y * 0.86f - h }, x0 = cs.x * 0.5f - w * 0.5f - 12 * u, x1 = cs.x * 0.5f + w * 0.5f + 12 * u;
+  float cover[2];
+  for (int k = 0; k < 2; k++) {
+    cover[k] = 0;
+    for (int i = 0; i < nh; i++)
+      cover[k] += fmaxf(0, fminf(x1, hx1[i]) - fmaxf(x0, hx0[i])) * fmaxf(0, fminf(ys[k] + h, hy1[i]) - fmaxf(ys[k], hy0[i]));
+  }
+  if (cover[G.banner_side] > 0 && cover[!G.banner_side] < cover[G.banner_side]) G.banner_side = !G.banner_side; /* stays put until a hero walks under it */
+  float y = G.banner_centre ? cs.y * 0.3f : ys[G.banner_side]; /* (the control: the middle, as before) */
+  if (G.banner_centre) {
+    float c = 0;
+    for (int i = 0; i < nh; i++) c += fmaxf(0, fminf(x1, hx1[i]) - fmaxf(x0, hx0[i])) * fmaxf(0, fminf(y + h, hy1[i]) - fmaxf(y, hy0[i]));
+    G.banner_hit += c > 0;
+  } else G.banner_hit += cover[G.banner_side] > 0;
+  G.banner_shown++;
+  float a = cw_clampf(fminf((float)G.banner_t / 40.0f, (float)(180 - G.banner_t) / 20.0f), 0, 1);
+  a = a * a * (3 - 2 * a); /* eased: no step */
+  y += text(b, cs.x * 0.5f, y, 72 * u, rgba(1, 0.85f, 0.45f, a), CW_ALIGN_CENTER).height;
+  y += text(theme, cs.x * 0.5f, y, 34 * u, rgba(1, 0.95f, 0.85f, a), CW_ALIGN_CENTER).height;
+  if (hl) cw_prompt_text(font, hl, 0, cw_v2(cs.x * 0.5f, y + 14 * u), bs, rgba(1, 1, 1, a), CW_ALIGN_CENTER);
+}
+
+/* the floor's tally card over the black of the stair: each player's kills, treasure, food eaten and shot, keys, and
+ * a title for the best of each; easing in and out (no step) */
+static void tally(cw_vec2 cs, float u) {
+  const sim *s = &G.S;
+  float a = cw_clampf(fminf((float)G.tally_t / 12.0f, (float)(TALLY_TICKS - G.tally_t) / 12.0f), 0, 1), bs = 26 * u;
+  a = a * a * (3 - 2 * a);
+  char b[64];
+  snprintf(b, sizeof b, "FLOOR %d CLEARED", s->floor);
+  float y = cs.y * 0.12f;
+  y += text(b, cs.x * 0.5f, y, 60 * u, rgba(1, 0.85f, 0.45f, a), CW_ALIGN_CENTER).height;
+  /* the titles: the one best at each (more than nothing, and alone at the top) */
+  static const char *const TITLE[5] = { "MOST KILLS", "MOST TREASURE", "THE HUNGRIEST", "SHOT THE FOOD", "KEY KEEPER" };
+  static const char *const LABEL[5] = { "kills", "treasure", "food eaten", "food shot", "keys" };
+  int val[MAXP][5], best[5];
+  for (int i = 0; i < MAXP; i++) {
+    const player *p = &s->p[i];
+    val[i][0] = p->fl_kills, val[i][1] = p->fl_gold, val[i][2] = p->fl_food, val[i][3] = p->fl_shot_food, val[i][4] = p->fl_keys;
+  }
+  for (int k = 0; k < 5; k++) {
+    best[k] = -1;
+    int top = 0, n = 0;
+    for (int i = 0; i < s->players; i++)
+      if (s->p[i].active) { if (val[i][k] > top) top = val[i][k], best[k] = i, n = 1; else if (val[i][k] == top && top > 0) n++; }
+    if (n != 1 || s->players < 2) best[k] = -1; /* a tie, or one player: no title */
+  }
+  float bw = cs.x * 0.22f, by = fmaxf(cs.y * 0.3f, y + 30 * u), rh = fmaxf(34 * u, measure("kills 0", bs).height + 4 * u);
+  float bh = 20 * u + measure("P1", 30 * u).height + 6 * u + measure("MOST KILLS", bs).height + 12 * u + 5 * rh + 16 * u;
+  for (int i = 0; i < s->players; i++) {
+    const player *p = &s->p[i];
+    if (!p->active) continue;
+    float bx = cs.x * (0.5f + ((float)i - (float)(s->players - 1) * 0.5f) * 0.24f), x0 = bx - bw * 0.5f;
+    cw_r2d_rect(cw_rect_make(x0, by, bw, bh), rgba(0.03f, 0.03f, 0.05f, 0.85f * a));
+    cw_r2d_rect(cw_rect_make(x0, by, bw, 8 * u), rgba(PCOL[i][0], PCOL[i][1], PCOL[i][2], a));
+    snprintf(b, sizeof b, "P%d  %s", i + 1, sim_class_name(p->cls));
+    float ty = by + 20 * u;
+    ty += text(b, bx, ty, 30 * u, rgba(0.6f + 0.4f * PCOL[i][0], 0.6f + 0.4f * PCOL[i][1], 0.6f + 0.4f * PCOL[i][2], a), CW_ALIGN_CENTER).height + 6 * u;
+    const char *title = "";
+    for (int k = 0; k < 5 && !*title; k++) if (best[k] == i) title = TITLE[k];
+    ty += fmaxf(measure("MOST KILLS", bs).height, text(title, bx, ty, bs, rgba(1, 0.85f, 0.35f, a), CW_ALIGN_CENTER).height) + 12 * u;
+    for (int k = 0; k < 5; k++, ty += rh) {
+      text(LABEL[k], x0 + 18 * u, ty, bs, rgba(0.85f, 0.85f, 0.85f, a), CW_ALIGN_LEFT);
+      snprintf(b, sizeof b, "%d", val[i][k]);
+      text(b, x0 + bw - 18 * u, ty, bs, best[k] == i ? rgba(1, 0.85f, 0.35f, a) : rgba(1, 1, 1, a), CW_ALIGN_RIGHT);
+    }
+  }
+  y = by + bh + 24 * u;
+  snprintf(b, sizeof b, "best floor %d", CW_MAX(G.best_floor, s->floor));
+  y += text(b, cs.x * 0.5f, y, bs, rgba(1, 0.92f, 0.75f, a), CW_ALIGN_CENTER).height + 10 * u;
+  if (G.tally_t > 30) cw_prompt_text(font, "{fire}: go on", 0, cw_v2(cs.x * 0.5f, y), bs, rgba(1, 1, 1, a), CW_ALIGN_CENTER);
+}
+
 static void hud(void) {
   cw_vec2 cs = cw_r2d_canvas_size();
   float u = cs.y / 1080.0f, bs = 26 * u;
@@ -700,26 +869,25 @@ static void hud(void) {
     if (!p->active || p->down || !view_screen((t3_vec3){ p->x, 2.2f, p->y }, &su, &sv)) continue;
     char t[8];
     snprintf(t, sizeof t, "P%d", i + 1);
-    text(t, su * cs.x, sv * cs.y - 4 * u - measure(t, bs).height, bs, rgba(0.6f + 0.4f * PCOL[i][0], 0.6f + 0.4f * PCOL[i][1], 0.6f + 0.4f * PCOL[i][2], 1), CW_ALIGN_CENTER);
+    float th = measure(t, bs).height;
+    text(t, su * cs.x, sv * cs.y - 4 * u - th, bs, rgba(0.6f + 0.4f * PCOL[i][0], 0.6f + 0.4f * PCOL[i][1], 0.6f + 0.4f * PCOL[i][2], 1), CW_ALIGN_CENTER);
+    if (G.call_t[i] > 0) { /* the callout over the tag, easing in and out (a quarter second each) */
+      float a = cw_clampf(fminf((float)(100 - G.call_t[i]) / 15.0f, (float)G.call_t[i] / 15.0f), 0, 1);
+      a = a * a * (3 - 2 * a);
+      text(G.call[i], su * cs.x, sv * cs.y - 10 * u - th - measure(G.call[i], bs).height, bs, rgba(0.75f + 0.25f * PCOL[i][0], 0.75f + 0.25f * PCOL[i][1], 0.75f + 0.25f * PCOL[i][2], a), CW_ALIGN_CENTER);
+    }
   }
   guide(cs, u);
   char b[96];
   snprintf(b, sizeof b, "FLOOR %d", G.S.floor);
   float top = 12 * u + text(b, cs.x * 0.5f, 12 * u, 30 * u, rgba(1, 0.92f, 0.75f, 1), CW_ALIGN_CENTER).height;
-  if (G.banner_t > 0 && cw_shell_hud_shown()) { /* each line under the last as measured; not under the pause menu's lines */
-    float a = cw_clampf((float)G.banner_t / 40.0f, 0, 1), y = cs.y * 0.3f;
-    snprintf(b, sizeof b, "FLOOR %d", G.S.floor);
-    y += text(b, cs.x * 0.5f, y, 72 * u, rgba(1, 0.85f, 0.45f, a), CW_ALIGN_CENTER).height;
-    y += text(THEME_NAME[CW_CLAMP(G.S.m.theme, 0, MZ_THEMES - 1)], cs.x * 0.5f, y, 34 * u, rgba(1, 0.95f, 0.85f, a), CW_ALIGN_CENTER).height;
-    if (G.S.floor == 1 && G.floors_done == 0)
-      cw_prompt_text(font, fit_prompt("{fire}: hold to shoot   {magic}: a potion   walk into a monster to fight it", 0, bs, cs.x * 0.94f), 0, cw_v2(cs.x * 0.5f, y + 14 * u), bs,
-                     rgba(1, 1, 1, a), CW_ALIGN_CENTER);
-  }
+  if (G.banner_t > 0 && cw_shell_hud_shown()) banner(cs, u, top);
   if (G.S.floor_ticks > 175 * 60 && G.S.floor_ticks < 186 * 60) text("THE DOORS GIVE WAY", cs.x * 0.5f, fmaxf(cs.y * 0.22f, top + 12 * u), 40 * u, rgba(1, 0.75f, 0.4f, 1), CW_ALIGN_CENTER);
   if (G.S.state == ST_EXIT || G.S.state == ST_WON) { /* the fade down the stairs */
     float a = cw_clampf((float)G.S.state_ticks / 50.0f, 0, 1);
     cw_r2d_rect(cw_rect_make(0, 0, cs.x, cs.y), rgba(0, 0, 0, a));
   }
+  if (G.S.state == ST_WON && G.tally_t > 0) tally(cs, u);
   if (G.S.state == ST_OVER) {
     float y = cs.y * 0.4f;
     y += text("THE TEAM HAS FALLEN", cs.x * 0.5f, y, 64 * u, rgba(1, 0.3f, 0.25f, 1), CW_ALIGN_CENTER).height;

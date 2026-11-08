@@ -9,6 +9,13 @@
  *       The long soak: floor after floor (a fallen team starts its floor again), checking every tick: no NaN or
  *       stray position, nobody inside a wall, counts that agree with the tables, the team on one screen. A line a
  *       game minute (floor, monsters, kills, health lost, resident memory). Exit 0 = nothing broke.
+ *   crawler_soak --mow <floor> [class]
+ *       The mowing check: one hero (each class, or the one named 0..3) in an open room of the floor's tileset holds
+ *       fire into a line of 10 of the floor's spawner kinds at their strengths (the light ones: no ogres, dreads or
+ *       pilferers) charging it, nobody hurt; a line "mow floor <n> <CLASS>: <s> s" each, the time to the last kill
+ *       (99 when the line is still standing after 10 s). Exit 0 when every one is cleared within 3.2 s.
+ * CRAWLER_HEAD_START=1 (--clear) gives the fresh team what the furthest-tileset offer gives (sim_head_start).
+ * CRAWLER_OLD_MOW=1 plays the monsters' health, shots and spawners as before the mowing rules (the controls).
  * CRAWLER_SOAK_INJECT=1 puts a NaN into player 1 at tick 100 (the control: the checks must catch it).
  * CRAWLER_IDLE_SEATS=n leaves the last n of the players with nobody at the controls (a pad that joined and was put
  * down): the bots play the rest. CRAWLER_IDLE_ANCHOR=1 lets such a player hold the team back as the game did before
@@ -96,6 +103,8 @@ static int clear_once(const char *file, int players, int minutes, uint32_t seed)
   int cls[MAXP] = { CL_BRUTE, CL_MAGE, CL_RANGER, CL_WARDEN };
   sim_init(&S, players, cls, seed);
   S.idle_anchor = getenv("CRAWLER_IDLE_ANCHOR") != NULL;
+  S.old_mow = getenv("CRAWLER_OLD_MOW") != NULL;
+  if (getenv("CRAWLER_HEAD_START")) sim_head_start(&S, M.floor);
   sim_floor_start(&S, &M);
   long total = (long)minutes * 3600;
   int most = 0, idle = idle_seats(players);
@@ -145,13 +154,59 @@ static int clear_run(const char *file, int players, int minutes) {
   return r;
 }
 
+/* the mowing check: seconds to clear a charging line of 10 (99: not cleared in 10 s) */
+static float mow_once(int floor, int cls_) {
+  if (!load_floor(floor, &M)) return -1;
+  static maze R;
+  R = M;
+  R.w = 34, R.h = 11;
+  for (int y = 0; y < MZ_MAX; y++)
+    for (int x = 0; x < MZ_MAX; x++) R.t[y][x] = x >= R.w || y >= R.h ? T_VOID : (x == 0 || y == 0 || x == R.w - 1 || y == R.h - 1) ? T_WALL : T_FLOOR;
+  R.nstart = 1, R.start[0][0] = 2, R.start[0][1] = 5;
+  R.nexit = 1, R.exit[0][0] = 32, R.exit[0][1] = 1, R.exit[0][2] = 1;
+  R.nspawn = R.nmon = R.nitem = R.ntele = R.ntrap = R.nprop = R.nlight = R.nambush = 0;
+  int cls[MAXP] = { cls_, 0, 0, 0 };
+  sim_init(&S, 1, cls, 4242);
+  S.old_mow = getenv("CRAWLER_OLD_MOW") != NULL;
+  S.no_spawn = true, S.god = true;
+  sim_floor_start(&S, &R);
+  int n = 0;
+  for (int k = 0; k < M.nspawn * 4 && n < 10; k++) {
+    const mz_spawn *sp = &M.spawn[k % M.nspawn];
+    if (sp->kind == EK_OGRE || sp->kind == EK_DREAD || sp->kind == EK_PILFERER) continue;
+    if (sim_spawn(&S, sp->kind, sp->str, S.p[0].x + 8.0f + 1.3f * (float)n, S.p[0].y) >= 0) n++;
+  }
+  if (!n) return -1;
+  for (int t = 0; t < 600; t++) {
+    input in[MAXP];
+    memset(in, 0, sizeof in);
+    in[0].mx = 1, in[0].fire = true;
+    sim_step(&S, in);
+    if (S.nenemies == 0) return (float)(t + 1) / 60.0f;
+  }
+  return 99;
+}
+static int mow_run(int floor, int only) {
+  int bad = 0;
+  for (int c = 0; c < CL_KINDS; c++) {
+    if (only >= 0 && c != only) continue;
+    float t = mow_once(floor, c);
+    if (t < 0) { printf("mow floor %d: no floor or no light kinds\n", floor); return 2; }
+    printf("mow floor %d %s: %.2f s\n", floor, sim_class_name(c), t);
+    bad += t > 3.2f;
+  }
+  return bad ? 1 : 0;
+}
+
 int main(int argc, char **argv) {
   cw_jobs_init(3);
+  if (argc > 2 && !strcmp(argv[1], "--mow")) return mow_run(atoi(argv[2]), argc > 3 ? atoi(argv[3]) : -1);
   if (argc > 2 && !strcmp(argv[1], "--clear")) return clear_run(argv[2], argc > 3 ? atoi(argv[3]) : 4, argc > 4 ? atoi(argv[4]) : 8);
   int minutes = argc > 1 ? atoi(argv[1]) : 30, players = argc > 2 ? atoi(argv[2]) : 4, floor0 = argc > 3 ? atoi(argv[3]) : 1;
   int cls[MAXP] = { CL_BRUTE, CL_WARDEN, CL_MAGE, CL_RANGER };
   sim_init(&S, players, cls, 4242);
   S.idle_anchor = getenv("CRAWLER_IDLE_ANCHOR") != NULL;
+  S.old_mow = getenv("CRAWLER_OLD_MOW") != NULL;
   int idle = idle_seats(players);
   if (!load_floor(floor0, &M)) { printf("soak: no floor %d\n", floor0); return 2; }
   sim_floor_start(&S, &M);

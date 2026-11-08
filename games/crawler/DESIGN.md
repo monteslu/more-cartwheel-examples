@@ -103,6 +103,13 @@ Hit points: every class starts with 1500 health (the panel shows it; the referen
 Every monster has a strength of 1, 2 or 3 (size, colour and hit points); a spawner makes its kind at its own
 strength. Damage is per touch or per hit, before the player's armour.
 
+Killing is mowing: the line dies to one shot a body. Every light kind has 1 health at strength 1 and 2 and 2 at
+strength 3; the shooters (slingers, hexers) 1 a strength; only the ogre stands up to a volley. A shot that kills
+with damage to spare goes on through the line with what is left (an axe of 3 cuts three weak ones down). A
+survivor reels: knocked back and held for 8 ticks, its wind-up undone (an ogre never reels). Deep floors are harder
+by numbers and spawners, not by tougher bodies (Spawners). The health column below is the old table, kept for the
+heavies; `tests/crawler-mow.mjs` holds every class to cutting a charging line of 10 within 3.2 s.
+
 | Monster | Our design | Moves | Attack | Health per strength | Score |
 |---|---|---|---|---|---|
 | Shade | a tattered gliding wraith | 4.6 m/s, glides | touches you for 8 x strength and is gone | 1 | 10 |
@@ -133,9 +140,11 @@ dodges it; in a crowd you cannot step away.
 
 Each spawner makes one kind of monster at one strength. It takes 3 hits a strength level (strength 3: 9 hits)
 and drops a strength each 3 hits (its model changes: a cracked, then a broken one). It makes a monster every
-1.4 s at strength 1, 1.0 s at 2, 0.7 s at 3 (faster on deeper floors, to 0.4 s), only while a player is within
-24 m of it, and keeps up to 40 of its own alive (60 on deep floors). The Mage's magic hits spawners too (every
-spawner on screen loses a strength).
+1.4 s at strength 1, 1.0 s at 2, 0.7 s at 3 (faster on deeper floors, to 0.45 of that), only while a player is
+within 24 m of it, and keeps up to 30 + floor / 2 of its own alive (at most 80). From floor 60 a spawner of a light
+biting kind brings a pair at each pulse, from floor 120 three (shooters and heavies stay one at a time). A deep
+spawner takes 2 more hits for each tileset passed. The first floor of each tileset is a breather: nothing on it
+above strength 2. The Mage's magic hits spawners too (every spawner on screen loses a strength).
 
 The look is the tileset's: a heap of bones in the crypt, a grated sluice mouth in the sewer, a cracked furnace in
 the foundry, a pulsing spore pod in the grotto, a reliquary in the cathedral, a rift in the abyss. Each glows in
@@ -173,10 +182,20 @@ its monster's colour and pulses as it spawns.
 | potion | one magic: every monster on the screen takes 8 x your magic (spawners only for the Mage, a strength each) | yes: a third of the blast where it lies |
 | elixir (a coloured potion, the rest of the run) | +1 to armour, shot power, shot speed, magic, melee, or speed (its colour says which) | no |
 
+Callouts tell the story: a short line over a hero, in their colour, with a sound of its own, when their health runs
+low, they shoot the food, a thief takes something of theirs, a dread holds on, their potion takes eight or more at
+once, or they pick up a charm or an elixir (its name). One line at a time a player, each kind once per cooldown,
+easing in and out.
+
 ## Treasure
 
 Gold (100), a gem cup (250), a chest (500, takes 3 hits or a key: a trapped chest, 1 in 6, lets out 6 monsters).
-A score at the end of each floor; the panel keeps each player's score.
+A tally card at the end of each floor (under 3 s from the stair to play, any player's button goes on): each
+player's kills, treasure, food eaten, food shot and keys, a title for the one best at each, and the best floor.
+The panel keeps each player's score.
+
+A team that starts on the furthest tileset's first floor (the hero pick's offer) gets that depth's worth: an
+elixir a player for each tileset passed by (a kind at random) and two potions each.
 
 ## Power-ups (the expanded set; hordeshooter's, made for the dungeon, and more)
 
