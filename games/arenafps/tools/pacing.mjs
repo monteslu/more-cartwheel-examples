@@ -65,12 +65,17 @@ for (const r of runs) {
     spawnK: +(100 * g('stats.spawn_kills') / Math.max(1, kills)).toFixed(1), quick: +(100 * g('stats.quick_deaths') / Math.max(1, kills)).toFixed(0),
     no_kill_s: +(g('stats.gap_max') / 60).toFixed(1), ttk_s: g('stats.ttk_n') ? +(g('stats.ttk_sum') / g('stats.ttk_n') / 60).toFixed(2) : null,
     by_weapon: g('stats.by_weapon'), skipped: g('render.skipped'), wall_s: Math.round((Date.now() - t0) / 1000),
+    /* grenades thrown / gone off / enemies hurt; bashes swung / landed; power-ups: appeared, taken, frags by holders, holders
+     * downed, holder ticks; frags a minute while holding one against everyone else's frags a minute */
+    gren: g('gren.stats'), bash: g('bash.stats'), power: g('power.stats'),
+    held_kpm: g('power.stats') && g('power.stats')[4] ? +(g('power.stats')[2] / (g('power.stats')[4] / 3600)).toFixed(2) : null,
+    base_kpm: g('power.stats') ? +((kills - g('power.stats')[2]) / Math.max(1, (ft - g('power.stats')[4]) / 3600)).toFixed(2) : null,
   };
   if (row.ticks < secs * 60 * 0.98) { console.error(`${tag}: only ${row.ticks} ticks of ${secs * 60}: the run did not cover the game time`); process.exit(1); }
   rows.push(row);
   console.log(JSON.stringify(row));
 }
-const cols = ['run', 'fighters', 'p1_kd', 'p1_ratio', 'enc_s', 'gap_s', 'contact', 'sight_s', 'kills', 'unsafe', 'spawnK', 'quick', 'no_kill_s', 'ttk_s'];
+const cols = ['run', 'fighters', 'p1_kd', 'p1_ratio', 'enc_s', 'gap_s', 'contact', 'sight_s', 'kills', 'unsafe', 'spawnK', 'quick', 'no_kill_s', 'ttk_s', 'held_kpm', 'base_kpm'];
 console.log('\n| ' + cols.join(' | ') + ' |\n|' + cols.map(() => '---').join('|') + '|');
 for (const r of rows) console.log('| ' + cols.map((c) => r[c] + (['contact', 'unsafe', 'spawnK', 'quick'].includes(c) ? '%' : '')).join(' | ') + ' |');
 const out = arg('--out', '');

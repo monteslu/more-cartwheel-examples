@@ -263,6 +263,13 @@ SND(kill, 0.62f, tone_into(p, n, rate, 170, 55, 0.35f, 0.95f, 11, 0.8f);
     for (int k = 0; k < 2; k++) { int off = k * (int)(0.085f * (float)rate); tone_into(p + off, n - off, rate, k ? 1318 : 880, k ? 1318 : 880, 0, k ? 0.5f : 0.42f, 7, 1); tone_into(p + off, n - off, rate, k ? 2636 : 1760, k ? 2636 : 1760, 0, 0.14f, 11, 1); })
 SND(land, 0.18f, tone_into(p, n, rate, 110, 45, 0.7f, 0.9f, 10, 0.2f);)
 SND(pad, 0.45f, tone_into(p, n, rate, 160, 620, 0.25f, 0.8f, 4, 0.5f); tone_into(p, n, rate, 80, 140, 0.0f, 0.6f, 5, 1);)
+/* a bash: a dull body thud with a crack of the stock on top; a throw: an arm's whoosh; a grenade on the floor: a hollow clink;
+ * a power-up: a rising chord with a low swell under it */
+SND(bash, 0.3f, tone_into(p, n, rate, 140, 60, 0.55f, 1.2f, 14, 0.35f); tone_into(p, n, rate, 1800, 700, 0.9f, 0.5f, 40, 0.8f);)
+SND(throw, 0.28f, tone_into(p, n, rate, 600, 250, 0.98f, 0.5f, 6, 0.08f);)
+SND(bounce, 0.14f, tone_into(p, n, rate, 2100, 1900, 0.05f, 0.35f, 20, 1); tone_into(p, n, rate, 420, 300, 0.4f, 0.4f, 25, 0.5f);)
+SND(power, 1.1f, tone_into(p, n, rate, 110, 220, 0.1f, 0.6f, 2.2f, 1);
+    for (int k = 0; k < 3; k++) { int off = k * (int)(0.11f * (float)rate); tone_into(p + off, n - off, rate, k == 0 ? 523 : k == 1 ? 659 : 784, k == 0 ? 523 : k == 1 ? 659 : 784, 0, 0.32f, 3.5f, 1); })
 
 void fx_init(cw_node root) {
   ROOT = root;
@@ -292,6 +299,7 @@ void fx_init(cw_node root) {
     S[SND_DIE] = die_m(), S[SND_CLICK] = click_m(), S[SND_SPAWN] = spawn_m(), S[SND_STEP] = step_m();
     S[SND_SHELL] = shell_m(), S[SND_TICK] = tick_m(), S[SND_PAD] = pad_m(), S[SND_LAND] = land_m();
     S[SND_HEAD] = head_m(), S[SND_KILL] = kill_m();
+    S[SND_BASH] = bash_m(), S[SND_THROW] = throw_m(), S[SND_BOUNCE] = bounce_m(), S[SND_POWER] = power_m();
   }
 }
 

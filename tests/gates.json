@@ -983,6 +983,11 @@
     "note": "a program for everything drawn at every quality on both backends, through a spread warm-up as a player gets it: every arena, in split screen and alone, each mode, from the title by real input. A scene not reached fails. Control: a state the scene draws out of the table must be reported and skip draws"
   },
   {
+    "name": "arenafps-killcam",
+    "script": "tests/arenafps-killcam.mjs",
+    "note": "a downed player's view turns to whoever downed them and follows them until the respawn: on 90 percent or more of the dead ticks (after the turn) the killer's chest is inside that player's view (software GL, two seats and four bots on Foundry). Control: ARENA_NO_KILLCAM=1, the old view on the floor, must fall under it"
+  },
+  {
     "name": "hordeshooter-quality",
     "script": "tests/hordeshooter-quality.mjs",
     "note": "a program for everything drawn at every quality on both backends, through a spread warm-up as a player gets it: the eight floors at the boss wave and in a crowd, the fall of the boss to the next floor, power-ups, from the title by real input. A scene not reached fails. Control: a state the scene draws out of the table must be reported and skip draws"

@@ -37,6 +37,8 @@
 #define PLAYER_HT 1.8f
 
 typedef enum { MODE_DM, MODE_TDM, MODE_COOP, MODE_COUNT } game_mode;
+/* power-ups: one spot per arena, a new one every 60 s (quad damage, haste, regeneration in turn), held for 20 s */
+enum { POW_NONE, POW_QUAD, POW_HASTE, POW_REGEN, POW_KINDS };
 typedef enum { ST_SETUP, ST_PLAY, ST_OVER } game_state;
 
 static inline t3_vec3 v3(float x, float y, float z) { return (t3_vec3){ x, y, z }; }
@@ -177,6 +179,10 @@ typedef struct fighter {
   bool sprint_want;        /* bots: wants to sprint (set by its brain) */
   int personality;         /* bots: 0 balanced, 1 rusher, 2 holder (keeps high ground and power items) */
   int hit_t;               /* ticks since it was last hit */
+  int grenades, gcool;     /* grenades carried, ticks before the next throw */
+  int bash_cool;           /* ticks before the next melee bash */
+  int bash_t, throw_t;     /* presentation: ticks since the last bash and throw (the first person arm) */
+  int power, power_t;      /* the power-up held (POW_*) and its ticks left */
   /* presentation only (never read by the simulation) */
   float flinch;            /* a hit throws the body back for a moment */
   int hp, armor;

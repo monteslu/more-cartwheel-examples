@@ -778,6 +778,147 @@ static void dress_terraces(const palette *p) {
   }
 }
 
+/* ── the world past the walls: each arena stands in a place, not a void. Low-poly silhouettes 60 to 160 m out (the fog
+ * greys them into depth), never casting or taking shadows, two draws: the hulls, and the lit windows and flares ── */
+static void arena_release_mesh(t3_mesh *mesh);
+static uint32_t sk_rng;
+static float sk_rand(void) { sk_rng = sk_rng * 1664525u + 1013904223u; return (float)(sk_rng >> 8) / 16777216.0f; }
+/* a turn about y, then a tilt about the turned x axis */
+static t3_quat sk_q(float yaw, float tilt) {
+  t3_quat qy = { 0, sinf(yaw * 0.5f), 0, cosf(yaw * 0.5f) }, qx = { sinf(tilt * 0.5f), 0, 0, cosf(tilt * 0.5f) };
+  return (t3_quat){ qy.w * qx.x + qy.x * qx.w + qy.y * qx.z - qy.z * qx.y, qy.w * qx.y - qy.x * qx.z + qy.y * qx.w + qy.z * qx.x,
+                    qy.w * qx.z + qy.x * qx.y - qy.y * qx.x + qy.z * qx.w, qy.w * qx.w - qy.x * qx.x - qy.y * qx.y - qy.z * qx.z };
+}
+/* an upright prism of n sides (a stack, a tank, a tower), base at y0 */
+static void sk_cyl(mesh_build *b, float x, float y0, float z, float r0, float r1, float h, int n, const float rgb[3]) {
+  for (int i = 0; i < n; i++) {
+    float a0 = 6.2831853f * (float)i / (float)n, a1 = 6.2831853f * (float)(i + 1) / (float)n, s0, c0, s1, c1, sm, cm;
+    cw_sincos(a0, &s0, &c0), cw_sincos(a1, &s1, &c1), cw_sincos((a0 + a1) * 0.5f, &sm, &cm);
+    t3_vec3 nn = { sm, 0, cm };
+    int v0 = mb_vert(b, (t3_vec3){ x + s0 * r0, y0, z + c0 * r0 }, nn, (float)i, 0), v1 = mb_vert(b, (t3_vec3){ x + s1 * r0, y0, z + c1 * r0 }, nn, (float)i + 1, 0);
+    int v2 = mb_vert(b, (t3_vec3){ x + s1 * r1, y0 + h, z + c1 * r1 }, nn, (float)i + 1, h / 4), v3i = mb_vert(b, (t3_vec3){ x + s0 * r1, y0 + h, z + c0 * r1 }, nn, (float)i, h / 4);
+    mb_color(b, v0, rgb[0], rgb[1], rgb[2]), mb_color(b, v1, rgb[0], rgb[1], rgb[2]), mb_color(b, v2, rgb[0], rgb[1], rgb[2]), mb_color(b, v3i, rgb[0], rgb[1], rgb[2]);
+    mb_quad(b, v0, v1, v2, v3i);
+  }
+}
+/* a gable roof over a w x d footprint at height y (two sloped slabs meeting at the ridge, along x) */
+static void sk_gable(mesh_build *b, float x, float y, float z, float w, float d, float pitch, float yaw, const float rgb[3]) {
+  float rise = d * 0.5f * tanf(pitch), slope = sqrtf(rise * rise + d * d * 0.25f);
+  for (int s = -1; s <= 1; s += 2) {
+    float sy, cy;
+    cw_sincos(yaw, &sy, &cy);
+    float ox = -sy * (float)s * d * 0.25f, oz = -cy * (float)s * d * 0.25f; /* half way out from the ridge, across */
+    mb_box(b, (t3_vec3){ x + ox, y + rise * 0.5f, z + oz }, sk_q(yaw, (float)s * pitch), (t3_vec3){ w + 0.6f, 0.35f, slope + 0.3f }, 8, rgb);
+  }
+}
+static void skyline(int id, float half) {
+  mesh_build hull = { 0 }, lit = { 0 };
+  float macro = mb_macro;
+  mb_macro = 0;
+  sk_rng = 0x5C1E + (uint32_t)id * 7919u;
+  if (id == 0) { /* the foundry's works: sheds with saw-tooth roofs, smoke stacks, gantry cranes, gas holders, a flare stack */
+    const float shed[3] = { 0.30f, 0.29f, 0.28f }, steel[3] = { 0.36f, 0.2f, 0.16f }, stack[3] = { 0.42f, 0.38f, 0.35f }, tank[3] = { 0.3f, 0.33f, 0.34f };
+    for (int i = 0; i < 22; i++) {
+      float a = 6.2831853f * ((float)i + sk_rand() * 0.6f) / 22.0f, r = 75 + sk_rand() * 55, sa, ca;
+      cw_sincos(a, &sa, &ca);
+      float w = 18 + sk_rand() * 22, d = 12 + sk_rand() * 14, h = 8 + sk_rand() * 12, yaw = a + 1.5708f;
+      t3_quat q = { 0, sinf(yaw * 0.5f), 0, cosf(yaw * 0.5f) };
+      mb_box(&hull, (t3_vec3){ sa * r, h * 0.5f - 1, ca * r }, q, (t3_vec3){ w, h, d }, 8, shed);
+      for (int k = 0; k < 3; k++) { /* the saw teeth: sloped slabs along the shed */
+        float off = ((float)k - 1) * w / 3, sy, cy;
+        cw_sincos(yaw, &sy, &cy);
+        mb_box(&hull, (t3_vec3){ sa * r + cy * off, h + 1.4f, ca * r - sy * off }, sk_q(yaw + 1.5708f, 0.35f), (t3_vec3){ d * 0.95f, 0.4f, w / 3 - 0.4f }, 8, shed);
+      }
+      if (i % 4 == 1) { /* a stack beside the shed */
+        float sh = 30 + sk_rand() * 30;
+        sk_cyl(&hull, sa * (r + d), -1, ca * (r + d), 2.2f, 1.6f, sh, 12, stack);
+        sk_cyl(&lit, sa * (r + d), sh - 3, ca * (r + d), 1.62f, 1.62f, 0.6f, 12, (const float[3]){ 1.0f, 0.3f, 0.15f }); /* an aircraft warning band */
+      }
+      if (i % 5 == 3) { /* a gas holder */
+        sk_cyl(&hull, sa * (r + 14), -1, ca * (r + 14), 11, 11, 16 + sk_rand() * 8, 16, tank);
+      }
+      if (i % 6 == 0) { /* a gantry crane: two legs and the beam over them */
+        float cr = r - 12, sy, cy;
+        cw_sincos(yaw, &sy, &cy);
+        for (int s = -1; s <= 1; s += 2) mb_box(&hull, (t3_vec3){ sa * cr + cy * (float)s * 9, 11, ca * cr - sy * (float)s * 9 }, q, (t3_vec3){ 1.4f, 24, 1.4f }, 8, steel);
+        mb_box(&hull, (t3_vec3){ sa * cr, 23.5f, ca * cr }, q, (t3_vec3){ 26, 2.2f, 2 }, 8, steel);
+      }
+    }
+    { /* the flare stack: a thin tower and a burning tip (lit) */
+      float a = 2.3f, r = 120, sa, ca;
+      cw_sincos(a, &sa, &ca);
+      sk_cyl(&hull, sa * r, -1, ca * r, 1.4f, 0.8f, 52, 8, stack);
+      sk_cyl(&lit, sa * r, 51, ca * r, 1.2f, 0.2f, 5, 8, (const float[3]){ 1.0f, 0.55f, 0.15f });
+    }
+  } else if (id == 1) { /* the courtyard's town: houses with gable roofs, a church tower, trees */
+    const float wall[3] = { 0.62f, 0.55f, 0.46f }, roof[3] = { 0.38f, 0.22f, 0.17f }, tree[3] = { 0.16f, 0.24f, 0.12f }, stone[3] = { 0.55f, 0.5f, 0.44f };
+    for (int i = 0; i < 40; i++) {
+      float a = 6.2831853f * ((float)i + sk_rand() * 0.7f) / 40.0f, r = 58 + sk_rand() * 60, sa, ca;
+      cw_sincos(a, &sa, &ca);
+      float w = 9 + sk_rand() * 10, d = 7 + sk_rand() * 5, h = 6 + sk_rand() * 9, yaw = a + 1.5708f + (sk_rand() - 0.5f) * 0.3f;
+      t3_quat q = { 0, sinf(yaw * 0.5f), 0, cosf(yaw * 0.5f) };
+      float tone = 0.8f + sk_rand() * 0.35f, c[3] = { wall[0] * tone, wall[1] * tone, wall[2] * tone };
+      mb_box(&hull, (t3_vec3){ sa * r, h * 0.5f - 1, ca * r }, q, (t3_vec3){ w, h, d }, 8, c);
+      sk_gable(&hull, sa * r, h - 1, ca * r, w, d, 0.6f, yaw, roof);
+      if (i % 3 == 0) { /* a tree in front */
+        float tr = r - d - 2;
+        sk_cyl(&hull, sa * tr, -1, ca * tr, 0.3f, 0.25f, 4, 6, roof);
+        sk_cyl(&hull, sa * tr, 2.5f, ca * tr, 3.0f, 0.4f, 7 + sk_rand() * 3, 8, tree);
+      }
+    }
+    { /* the church tower and its spire */
+      float a = 0.9f, r = 95, sa, ca;
+      cw_sincos(a, &sa, &ca);
+      mb_box(&hull, (t3_vec3){ sa * r, 15, ca * r }, QI, (t3_vec3){ 7, 32, 7 }, 8, stone);
+      sk_cyl(&hull, sa * r, 31, ca * r, 4.6f, 0.15f, 16, 4, roof);
+    }
+  } else { /* the terraces' city at dusk: towers with lit windows, a lit mast */
+    const float tower[3] = { 0.2f, 0.21f, 0.24f };
+    for (int i = 0; i < 30; i++) {
+      float a = 6.2831853f * ((float)i + sk_rand() * 0.6f) / 30.0f, r = 80 + sk_rand() * 70, sa, ca;
+      cw_sincos(a, &sa, &ca);
+      float w = 12 + sk_rand() * 16, d = 12 + sk_rand() * 14, h = 25 + sk_rand() * 70 * (0.4f + 0.6f * sk_rand()), yaw = a + 1.5708f;
+      t3_quat q = { 0, sinf(yaw * 0.5f), 0, cosf(yaw * 0.5f) };
+      mb_box(&hull, (t3_vec3){ sa * r, h * 0.5f - 1, ca * r }, q, (t3_vec3){ w, h, d }, 8, tower);
+      /* the lit floors: a skin just proud of the facade, the window texture repeating every 4 m */
+      float lit_h = h * (0.5f + 0.4f * sk_rand()), tone = 0.6f + 0.5f * sk_rand();
+      mb_box(&lit, (t3_vec3){ sa * r, lit_h * 0.5f + 2, ca * r }, q, (t3_vec3){ w + 0.1f, lit_h, d + 0.1f }, 4, (const float[3]){ tone, tone * 0.9f, tone * 0.75f });
+      if (i % 7 == 2) sk_cyl(&lit, sa * r, h - 1, ca * r, 0.3f, 0.3f, 1.2f, 6, (const float[3]){ 1, 0.15f, 0.1f }); /* a warning lamp on top */
+    }
+  }
+  (void)half;
+  mb_macro = macro;
+  for (int pass = 0; pass < 2; pass++) {
+    mesh_build *b = pass ? &lit : &hull;
+    if (!b->nv) continue;
+    t3_geometry *geo = mb_finish(b);
+    /* the level's own material shape (physical, its maps, vertex colours): no new shader program on any preset */
+    t3_material *m = t3_mesh_physical_material_new(0xffffff);
+    m->vertex_colors = true;
+    m->roughness = 0.95f;
+    if (!pass) tex_apply(m, id == 1 ? TEX_PLASTER : TEX_CONCRETE, 1, 0.4f, 1.0f);
+    else if (id == 2) { /* the city's windows glow by themselves, as the arena's own windows do */
+      tex_apply(m, TEX_WINDOWS, 1, 0.5f, 1.0f);
+      t3_material_set_texture(m, T3_EMISSIVE_MAP, tex_get(TEX_WINDOWS)->map);
+      m->emissive = (t3_color){ WINDOW_GLOW[id][0] * 1.4f, WINDOW_GLOW[id][1] * 1.4f, WINDOW_GLOW[id][2] * 1.4f };
+      m->emissive_intensity = 1;
+    } else { /* a flare, the stacks' warning bands */
+      tex_apply(m, TEX_CONCRETE, 1, 0.4f, 1.0f);
+      m->emissive = (t3_color){ 1.0f, 0.42f, 0.12f };
+      m->emissive_intensity = 6;
+    }
+    t3_mesh *mesh = t3_mesh_new(geo, m);
+    mesh->base.cast_shadow = false;
+    mesh->base.receive_shadow = true; /* out past the shadow's reach it reads as lit; kept for the level's program */
+    cw_node n = cw_node_new("MeshInstance3D", pass ? "SkylineLit" : "Skyline");
+    cw_node_add_child(A.root, n);
+    cw_mesh3d_set_procedural(n, mesh);
+    t3_release(geo);
+    t3_release(m);
+    arena_release_mesh(mesh);
+  }
+}
+
 static cw_color ITEM_COLOR[ITEM_KINDS] = {
   { 0.2f, 1, 0.3f, 1 }, { 0.3f, 0.6f, 1, 1 }, { 1, 0.7f, 0.2f, 1 }, { 1, 0.3f, 0.2f, 1 }, { 0.8f, 0.4f, 1, 1 }, { 1, 1, 0.4f, 1 },
 };
@@ -820,6 +961,7 @@ void arena_build(int id, cw_node world_root) {
     case 1: dress_courtyard(p); break;
     default: dress_terraces(p); break;
   }
+  if (tune("skyline", 1) > 0.5f) skyline(id, 0); /* ARENA_T_skyline=0 (autopilot): the void, for before and after */
   {
     for (int k = 0; k < K_KINDS; k++) {
       mesh_build *b = &MB[k];
