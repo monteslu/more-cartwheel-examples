@@ -9,7 +9,8 @@
  * Environment (development, native): CRAWLER_FLOOR=n starts on floor n; CRAWLER_PLAYERS=n the auto build's
  * players; CRAWLER_BENCH=1 prints timings every 120 frames; CRAWLER_BAKE=<file> bakes the floor's lightmap there
  * (the bake tool, tools/levelview, does it for every floor); CRAWLER_QUALITY=0..3 a graphics preset;
- * CRAWLER_CHARM=n hands every player charm n and keeps it held. */
+ * CRAWLER_CHARM=n hands every player charm n and keeps it held; CRAWLER_OLD_MOW=1 plays the rules before the mowing
+ * rules (comparison runs). */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -187,6 +188,7 @@ static int first_floor(void) {
 static void begin_play(void) {
   sim_init(&G.S, G.players, G.cls, 4242);
   G.phase = PH_PLAY;
+  G.S.old_mow = getenv("CRAWLER_OLD_MOW") != NULL; /* development (native): the rules before mowing, for comparison runs */
   G.floors_done = 0, G.over_ticks = 0;
   if (G.start_floor > 1) sim_head_start(&G.S, G.start_floor); /* the furthest-tileset offer: a fresh team gets that depth's elixirs */
   if (!floor_go(first_floor())) floor_go(1);
