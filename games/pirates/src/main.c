@@ -40,6 +40,9 @@ static int active_map;
 static cw_body3d seabed_body;
 static cw_heightfield3d seabed_field;
 static float map_height(float x,float z) {return active_map?lagoon_height(x,z):coast_height(x,z);}
+/* The wind blows the same way all match (toward this heading, radians, the ships' yaw convention): from the north
+ * east on the Gilded Shoals, from the south west in Palm Lagoon */
+static float wind_to(void) { return active_map ? 2.3f : -0.8f; }
 #define coast_height map_height
 #include "sound.h"
 #include "effects.h"
@@ -600,6 +603,27 @@ static void make_good(int i) {
 
 }
 
+/* smooth value noise in 0..1 over the water's 1 m grid: a hashed lattice 15 m apart and a finer one 6 m apart,
+ * interpolated with smoothstep (no period inside the 144 m rectangle) */
+static float lattice(int x, int z, uint32_t seed) {
+  uint32_t h = (uint32_t)x * 0x8da6b343u ^ (uint32_t)z * 0xd8163841u ^ seed;
+  h ^= h >> 13; h *= 0x5bd1e995u; h ^= h >> 15;
+  return (h & 0xffff) / 65535.0f;
+}
+static float value_noise(float x, float z, float cell, uint32_t seed) {
+  x /= cell; z /= cell;
+  int ix = (int)floorf(x), iz = (int)floorf(z);
+  float fx = x - ix, fz = z - iz;
+  fx = fx * fx * (3 - 2 * fx); fz = fz * fz * (3 - 2 * fz);
+  float a = lattice(ix, iz, seed), b = lattice(ix + 1, iz, seed), c = lattice(ix, iz + 1, seed), d = lattice(ix + 1, iz + 1, seed);
+  return (a + (b - a) * fx) + ((c + (d - c) * fx) - (a + (b - a) * fx)) * fz;
+}
+static float sea_patches(int x, int z) {
+  float n = .7f * value_noise((float)x, (float)z, 15, 0x51a1u) + .3f * value_noise((float)x, (float)z, 6, 0x9e37u);
+  n = clampf((n - .3f) / .45f, 0, 1);
+  return n * n * (3 - 2 * n);
+}
+
 static void apply_graphics(void);
 static void build_map_scene(void);
 static void build_map(void) { build_map_scene(); apply_graphics(); }
@@ -616,6 +640,7 @@ static void build_map_scene(void) {
   }
   eruption.warning=0;
   eruption.plume=volcano_plume(G.environment);
+  cw_node_set(eruption.plume,"gravity",cw_val_vec3(.25f*cw_sin(wind_to()),.12f,.25f*cw_cos(wind_to()))); /* the ash drifts downwind */
   cw_node_set(eruption.plume,"visible",cw_val_bool(!active_map));
   cw_node_set(eruption.plume,"emitting",cw_val_bool(!active_map));
   for(int i=0;i<ROCKFALLS;i++) {
@@ -637,7 +662,9 @@ static void build_map_scene(void) {
   if(shelter) {
     for(int z=0;z<109;z++)for(int x=0;x<145;x++) {
       float t=clampf(-coast_distance(x-72,z-54)/8.0f,0,1);
-      shelter[z*145+x]=t*t*(3-2*t);
+      /* Patches of calmer and rougher sea, about 15 m across: the chop's crests (and the foam on them) gather in
+       * drifts instead of lying in the waves' regular diagonal bands. */
+      shelter[z*145+x]=t*t*(3-2*t)*(.55f+.45f*sea_patches(x,z));
     }
     cw_water_set_wave_mask(G.water,shelter,145,109);free(shelter);
   }
@@ -991,7 +1018,10 @@ static void move_ship(int i, float turn, float sail) {
   float max_speed = (i == 4 ? 4.1f : i == 5 ? 5.0f : 5.6f) + s->sails * 0.65f;
   float load = i < CAPTAINS ? held_total(s) * 0.08f : 0;
   max_speed -= load;
-  float wind = 1.0f + 0.14f * cw_cos(s->yaw + 0.8f);
+  /* Points of sail: a ship running before the wind makes its full speed, one with the wind on its beam a little
+   * more (the fastest point), and one beating into it barely seven tenths */
+  float c = cw_cos(s->yaw - wind_to());
+  float wind = 1.15f + 0.15f * c - 0.3f * c * c;
   float wanted = max_speed * clampf(sail, -0.35f, 1) * wind;
   s->speed += (wanted - s->speed) * (sail < 0 ? 0.045f : 0.02f);
   s->yaw = cw_wrap_angle(s->yaw + clampf(turn, -1, 1) * (0.021f + s->speed * 0.002f));
@@ -1440,7 +1470,8 @@ static float top_bar(float W, float scale, const char *mode, bool draw) {
     "{turn_left|turn_right|sail_up|sail_down} SAIL     {fire_left} LEFT CANNONS     {fire_right} RIGHT CANNONS" : NULL;
   float inner = W - 2 * m;
   cw_text_metrics tmm = measure(tm, 31 * scale, 0);
-  cw_text_metrics mdm = measure(mode, 30 * scale, inner - tmm.width - m);
+  float wind_w = measure("WIND", 22 * scale, 0).width + 52 * scale; /* the wind arrow's place, left of the clock */
+  cw_text_metrics mdm = measure(mode, 30 * scale, inner - tmm.width - wind_w - 2 * m);
   float row1 = fmaxf(tmm.height, mdm.height);
   cw_text_metrics om = measure(obj, 26 * scale, 0);
   float obj_w = fminf(om.width, inner);
@@ -1457,8 +1488,27 @@ static float top_bar(float W, float scale, const char *mode, bool draw) {
   float h = pad + row1 + (hint && hint_beside ? fmaxf(obj_h, hint_h) : obj_h + hint_h) + pad;
   if (!draw) return h;
   cw_r2d_rect(cw_rect_make(0, 0, W, h), cw_rgba(0.015f, 0.04f, 0.07f, 0.73f));
-  line(mode, m, pad, 30 * scale, cw_hex(0xffdb92ff), inner - tmm.width - m, CW_ALIGN_LEFT);
+  line(mode, m, pad, 30 * scale, cw_hex(0xffdb92ff), inner - tmm.width - wind_w - 2 * m, CW_ALIGN_LEFT);
   line(tm, W - m - tmm.width, pad, 31 * scale, CW_WHITE, 0, CW_ALIGN_LEFT);
+  {
+    /* WIND and an arrow the way it blows on the map below (the camera's view of the heading) */
+    float wx = W - m - tmm.width - m - wind_w, cy = pad + row1 * 0.5f;
+    cw_text_metrics wm = measure("WIND", 22 * scale, 0);
+    line("WIND", wx, cy - wm.height * 0.5f, 22 * scale, cw_hex(0xc2d6e0ff), 0, CW_ALIGN_LEFT);
+    float dx = cw_sin(wind_to()), dy = cw_cos(wind_to()), ax = wx + wm.width + 26 * scale, len = 17 * scale;
+    t3_camera *cam = cw_camera3d_t3(G.camera);
+    if (cam) {
+      t3_vec3 a = t3_vec3_apply_mat4(t3_vec3_apply_mat4((t3_vec3){ 0, 0, 0 }, &cam->matrix_world_inverse), &cam->projection_matrix);
+      t3_vec3 b = t3_vec3_apply_mat4(t3_vec3_apply_mat4((t3_vec3){ dx * 10, 0, dy * 10 }, &cam->matrix_world_inverse), &cam->projection_matrix);
+      dx = b.x - a.x; dy = a.y - b.y;
+      float l = sqrtf(dx * dx + dy * dy) + 1e-6f; dx /= l; dy /= l;
+    }
+    cw_color ink = cw_hex(0xe8f4faff);
+    cw_vec2 tail = cw_v2(ax - dx * len, cy - dy * len), tip = cw_v2(ax + dx * len, cy + dy * len);
+    cw_r2d_line(tail, tip, 3 * scale, ink);
+    cw_r2d_line(tip, cw_v2(tip.x - dx * 9 * scale - dy * 7 * scale, tip.y - dy * 9 * scale + dx * 7 * scale), 3 * scale, ink);
+    cw_r2d_line(tip, cw_v2(tip.x - dx * 9 * scale + dy * 7 * scale, tip.y - dy * 9 * scale - dx * 7 * scale), 3 * scale, ink);
+  }
   float y = pad + row1;
   line(obj, m, y, 26 * scale, obj_ink, inner, CW_ALIGN_LEFT);
   if (hint) {
