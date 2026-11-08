@@ -84,7 +84,7 @@ void hud_image(const char *asset, float x, float y, float w, float h) {
 }
 
 /* the original gauge outline (gaugeoutline.png's design), drawn as shapes so it is sharp at any size: the dial's
- * circle and the speed band's outline round its top from 225 to 45 degrees, its ends rounded; in the art's 128 px
+ * circle and the speed band round its top from 230 to 45 degrees, its ends cut square; in the art's 128 px
  * units about its centre (71, 55 from the bottom) */
 static void arc_stroke(float cx, float cy, float r, float w, float a0, float a1, cw_color c) {
   int segs = (int)(fabsf(a1 - a0) / 4) + 2;
@@ -101,12 +101,13 @@ static void gauge_outline(float x, float y, float S) {
   const cw_color ink = { 0.04f, 0.05f, 0.07f, 0.95f };
   float cx = x + 71 * S, cy = y + (128 - 55) * S, w = 2.6f * S;
   arc_stroke(cx, cy, 44 * S, w, 0, 360, ink);          /* the dial */
-  arc_stroke(cx, cy, 68.5f * S, w, 45, 225, ink);      /* the band's outer edge */
-  arc_stroke(cx, cy, 47.5f * S, w, 45, 225, ink);      /* its inner edge, just outside the dial */
-  for (int e = 0; e < 2; e++) { /* the rounded ends: a half ring joining the two edges */
-    float a = TR_DEG(e ? 225 : 45), mr = (68.5f + 47.5f) / 2 * S, ex = cx + cosf(a) * mr, ey = cy - sinf(a) * mr;
-    float base = e ? 225 : 45;
-    arc_stroke(ex, ey, 10.5f * S, w, e ? base : base - 180, e ? base + 180 : base, ink);
+  arc_stroke(cx, cy, 68.5f * S, w, 45, 230, ink);      /* the band's outer edge */
+  for (int e = 0; e < 2; e++) { /* its square ends: radial lines from the dial out to the band edge (the dial is its inner edge) */
+    float a = TR_DEG(e ? 230 : 45), ca = cosf(a), sa = -sinf(a), n0 = -sa, n1 = ca, h = w / 2;
+    float r0 = 44 * S, r1 = 68.5f * S + h;
+    cw_vec2 q[4] = { { cx + ca * r0 - n0 * h, cy + sa * r0 - n1 * h }, { cx + ca * r1 - n0 * h, cy + sa * r1 - n1 * h },
+                     { cx + ca * r1 + n0 * h, cy + sa * r1 + n1 * h }, { cx + ca * r0 + n0 * h, cy + sa * r0 + n1 * h } };
+    cw_r2d_polygon(q, 4, ink);
   }
 }
 
