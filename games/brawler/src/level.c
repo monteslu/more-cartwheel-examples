@@ -350,9 +350,13 @@ void level_build(int stage) {
        mapping pass, at no cost of its own. A short grid: the street camera sees about 25 m */
     const char *xp = "";
 #ifdef BRAWLER_AUTOPILOT
-    { const char *x = getenv("BRAWLER_EXP"); if (x) xp = x; } /* perf A/B: nofog (none, as B-PT19 left it), volfog (the light-shaft grid) */
+    { const char *x = getenv("BRAWLER_EXP"); if (x) xp = x; } /* perf A/B: nofog (none on the docks either), allfog (fog on every stage), volfog (the light-shaft grid) */
 #endif
-    cw_node_set(fog, "visible", cw_val_bool(!strstr(xp, "nofog")));
+    /* the fog pass costs 0.39 ms on GL at 1080p (890M), which put every stage over the 5 ms B-PT19 budget: the Foggy
+       Docks get their fog back, the other stages stay clear (density 0 skips the pass) */
+    bool fogged = ((stage & 3) == 1 && !strstr(xp, "nofog")) || strstr(xp, "allfog");
+    cw_node_set(fog, "visible", cw_val_bool(fogged));
+    if (!fogged) cw_node_set(fog, "density", cw_val_float(0));
     cw_node_set(fog, "volumetric", cw_val_bool(strstr(xp, "volfog") != NULL));
     cw_node_set(fog, "volumetric_distance", cw_val_float(28));
     cw_node_set(post, "ssao", cw_val_bool(false)); /* the bake carries it (lm_apply) */
