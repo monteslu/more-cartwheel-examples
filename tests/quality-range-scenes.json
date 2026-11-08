@@ -9,5 +9,9 @@
   { "name": "brawler", "app": "brawler_auto", "frames": 900, "maxVeryLow": 0.68, "maxLow": 0.85 },
   { "name": "hordeshooter", "app": "hordeshooter_auto", "frames": 900, "maxVeryLow": 0.58, "maxLow": 0.71 },
   { "name": "crawler", "app": "crawler_auto", "frames": 900, "env": { "CRAWLER_FLOOR": "58", "CRAWLER_PLAYERS": "4", "CRAWLER_CROWD": "600" }, "maxVeryLow": 0.64, "maxLow": 0.75 },
-  { "name": "partypack", "app": "partypack_auto", "frames": 1200, "gpus": ["gl"], "maxVeryLow": 1.08, "maxLow": 1.06 }
+  { "name": "partypack", "app": "partypack_auto", "frames": 1200, "gpus": ["gl"], "maxVeryLow": 1.08, "maxLow": 1.06 },
+  { "name": "partypack-sumo", "app": "partypack_auto", "frames": 1100, "env": { "PP_GAME": "sumo" }, "gpus": ["gl", "webgpu"] },
+  { "name": "partypack-coins", "app": "partypack_auto", "frames": 1100, "env": { "PP_GAME": "coins" }, "gpus": ["gl", "webgpu"], "maxVeryLow": 0.38, "maxLow": 0.58 },
+  { "name": "partypack-tiles", "app": "partypack_auto", "frames": 1100, "env": { "PP_GAME": "tiles" }, "gpus": ["gl", "webgpu"] },
+  { "name": "partypack-stack", "app": "partypack_auto", "frames": 1100, "env": { "PP_GAME": "stack" }, "gpus": ["gl", "webgpu"], "maxVeryLow": 0.38, "maxLow": 0.52 }
 ]

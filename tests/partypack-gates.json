@@ -15,19 +15,6 @@
       "game.hash",
       "game.points_total"
     ],
-    "expect": {
-      "game.state": 3,
-      "game.round": 1,
-      "game.mg": 0,
-      "game.points": [
-        1,
-        3,
-        2,
-        7
-      ],
-      "game.hash": 3018185753,
-      "game.points_total": 0
-    },
     "webgpu": {
       "hosts": [
         "native",
@@ -39,7 +26,20 @@
     },
     "controlFrames": 1800,
     "note": "the autopilot tournament at frame 2400 (the board after round 2); control: frame 1800, an earlier point of the same run, whose state and picture must differ (one frame short sits on the same still board under the WebGPU bound)",
-    "maxGt16": 0.005
+    "maxGt16": 0.005,
+    "expect": {
+      "game.state": 3,
+      "game.round": 1,
+      "game.mg": 0,
+      "game.points": [
+        1,
+        4,
+        2,
+        7
+      ],
+      "game.hash": 3018185753,
+      "game.points_total": 0
+    }
   },
   {
     "name": "partypack-menu",
@@ -201,23 +201,23 @@
       "game.hash"
     ],
     "note": "one mini-game on repeat by the autopilot (all four seats CPU); the control runs the next game, so game.mg and the hash must differ",
+    "webgpu": {
+      "hosts": [
+        "native"
+      ],
+      "vsGl": 0.05
+    },
     "expect": {
       "game.state": 6,
       "game.round": 2,
       "game.mg": 0,
       "game.points": [
         6,
-        10,
-        5,
-        7
+        11,
+        6,
+        14
       ],
-      "game.hash": 345231733
-    },
-    "webgpu": {
-      "hosts": [
-        "native"
-      ],
-      "vsGl": 0.05
+      "game.hash": 3997439427
     }
   },
   {
@@ -245,23 +245,23 @@
       "game.hash"
     ],
     "note": "one mini-game on repeat by the autopilot (all four seats CPU); the control runs the next game, so game.mg and the hash must differ",
-    "expect": {
-      "game.state": 6,
-      "game.round": 2,
-      "game.mg": 1,
-      "game.points": [
-        4,
-        5,
-        5,
-        14
-      ],
-      "game.hash": 3789681255
-    },
     "webgpu": {
       "hosts": [
         "native"
       ],
       "vsGl": 0.05
+    },
+    "expect": {
+      "game.state": 3,
+      "game.round": 2,
+      "game.mg": 1,
+      "game.points": [
+        10,
+        8,
+        4,
+        12
+      ],
+      "game.hash": 3664201541
     }
   },
   {
@@ -289,23 +289,23 @@
       "game.hash"
     ],
     "note": "one mini-game on repeat by the autopilot (all four seats CPU); the control runs the next game, so game.mg and the hash must differ",
+    "webgpu": {
+      "hosts": [
+        "native"
+      ],
+      "vsGl": 0.05
+    },
     "expect": {
       "game.state": 6,
       "game.round": 1,
       "game.mg": 2,
       "game.points": [
         3,
-        1,
-        7,
-        2
+        2,
+        4,
+        5
       ],
-      "game.hash": 1338107420
-    },
-    "webgpu": {
-      "hosts": [
-        "native"
-      ],
-      "vsGl": 0.05
+      "game.hash": 2740323446
     }
   },
   {
@@ -370,23 +370,23 @@
       "game.hash"
     ],
     "note": "one mini-game on repeat by the autopilot (all four seats CPU); the control runs the next game, so game.mg and the hash must differ",
-    "expect": {
-      "game.state": 6,
-      "game.round": 1,
-      "game.mg": 3,
-      "game.points": [
-        7,
-        3,
-        2,
-        1
-      ],
-      "game.hash": 3922103096
-    },
     "webgpu": {
       "hosts": [
         "native"
       ],
       "vsGl": 0.05
+    },
+    "expect": {
+      "game.state": 6,
+      "game.round": 1,
+      "game.mg": 3,
+      "game.points": [
+        4,
+        3,
+        3,
+        4
+      ],
+      "game.hash": 863607028
     }
   },
   {
@@ -414,24 +414,24 @@
       "game.hash"
     ],
     "note": "one mini-game on repeat by the autopilot (all four seats CPU); the control runs the next game, so game.mg and the hash must differ. WebGPU vs GL: 8.4% of pixels differ on thin edges (grid lines, rivets: the WebGPU host renders this scene single-sampled where GL has MSAA, engine c5bcc32), so the per-pixel bound is 10% and maxArea (solid 7x7 blocks) catches a missing surface",
-    "expect": {
-      "game.state": 6,
-      "game.round": 1,
-      "game.mg": 4,
-      "game.points": [
-        2,
-        3,
-        1,
-        7
-      ],
-      "game.hash": 3302209870
-    },
     "webgpu": {
       "hosts": [
         "native"
       ],
       "vsGl": 0.1,
       "maxArea": 0.005
+    },
+    "expect": {
+      "game.state": 6,
+      "game.round": 1,
+      "game.mg": 4,
+      "game.points": [
+        4,
+        3,
+        1,
+        6
+      ],
+      "game.hash": 414657741
     }
   },
   {
@@ -459,23 +459,23 @@
       "game.hash"
     ],
     "note": "one mini-game on repeat by the autopilot (all four seats CPU); the control runs the next game, so game.mg and the hash must differ",
+    "webgpu": {
+      "hosts": [
+        "native"
+      ],
+      "vsGl": 0.05
+    },
     "expect": {
       "game.state": 6,
       "game.round": 1,
       "game.mg": 5,
       "game.points": [
         1,
-        2,
+        3,
         3,
         7
       ],
-      "game.hash": 2270606427
-    },
-    "webgpu": {
-      "hosts": [
-        "native"
-      ],
-      "vsGl": 0.05
+      "game.hash": 3698375884
     }
   },
   {
@@ -503,23 +503,23 @@
       "game.hash"
     ],
     "note": "one mini-game on repeat by the autopilot (all four seats CPU); the control runs the next game, so game.mg and the hash must differ",
-    "expect": {
-      "game.state": 5,
-      "game.round": 2,
-      "game.mg": 6,
-      "game.points": [
-        6,
-        5,
-        6,
-        8
-      ],
-      "game.hash": 362587856
-    },
     "webgpu": {
       "hosts": [
         "native"
       ],
       "vsGl": 0.05
+    },
+    "expect": {
+      "game.state": 5,
+      "game.round": 2,
+      "game.mg": 6,
+      "game.points": [
+        10,
+        5,
+        7,
+        12
+      ],
+      "game.hash": 362587856
     }
   },
   {
@@ -547,24 +547,24 @@
       "game.hash"
     ],
     "note": "one mini-game on repeat by the autopilot (all four seats CPU); the control runs the next game, so game.mg and the hash must differ. WebGPU vs GL: 10.2% of pixels differ in the fine asphalt and grass textures (sampling/filtering between backends; the same picture by eye at native scale), so the per-pixel bound is 12% and maxArea (solid 7x7 blocks) catches a missing surface",
-    "expect": {
-      "game.state": 5,
-      "game.round": 2,
-      "game.mg": 7,
-      "game.points": [
-        9,
-        7,
-        4,
-        5
-      ],
-      "game.hash": 2610167409
-    },
     "webgpu": {
       "hosts": [
         "native"
       ],
       "vsGl": 0.12,
       "maxArea": 0.005
+    },
+    "expect": {
+      "game.state": 3,
+      "game.round": 2,
+      "game.mg": 7,
+      "game.points": [
+        10,
+        7,
+        5,
+        11
+      ],
+      "game.hash": 2610167409
     }
   },
   {
@@ -592,23 +592,23 @@
       "game.hash"
     ],
     "note": "one mini-game on repeat by the autopilot (all four seats CPU); the control runs the next game, so game.mg and the hash must differ",
-    "expect": {
-      "game.state": 6,
-      "game.round": 1,
-      "game.mg": 8,
-      "game.points": [
-        7,
-        5,
-        5,
-        5
-      ],
-      "game.hash": 1360226592
-    },
     "webgpu": {
       "hosts": [
         "native"
       ],
       "vsGl": 0.05
+    },
+    "expect": {
+      "game.state": 6,
+      "game.round": 1,
+      "game.mg": 8,
+      "game.points": [
+        4,
+        5,
+        4,
+        7
+      ],
+      "game.hash": 3964141536
     }
   },
   {
@@ -636,23 +636,23 @@
       "game.hash"
     ],
     "note": "one mini-game on repeat by the autopilot (all four seats CPU); the control runs the next game, so game.mg and the hash must differ",
+    "webgpu": {
+      "hosts": [
+        "native"
+      ],
+      "vsGl": 0.05
+    },
     "expect": {
       "game.state": 6,
       "game.round": 1,
       "game.mg": 9,
       "game.points": [
         3,
-        7,
+        5,
         2,
-        1
+        4
       ],
-      "game.hash": 705133566
-    },
-    "webgpu": {
-      "hosts": [
-        "native"
-      ],
-      "vsGl": 0.05
+      "game.hash": 194201018
     }
   },
   {
@@ -680,23 +680,23 @@
       "game.hash"
     ],
     "note": "one mini-game on repeat by the autopilot (all four seats CPU); the control runs the next game, so game.mg and the hash must differ",
+    "webgpu": {
+      "hosts": [
+        "native"
+      ],
+      "vsGl": 0.05
+    },
     "expect": {
       "game.state": 6,
       "game.round": 2,
       "game.mg": 10,
       "game.points": [
         5,
-        10,
-        7,
-        4
+        11,
+        8,
+        11
       ],
-      "game.hash": 2639598356
-    },
-    "webgpu": {
-      "hosts": [
-        "native"
-      ],
-      "vsGl": 0.05
+      "game.hash": 2513720916
     }
   },
   {

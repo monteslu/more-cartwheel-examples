@@ -4,7 +4,9 @@
 // second seat that joined and was never played. A seat nobody plays holds nobody on the card: once a person is
 // ready, the seats still out see how long the card waits for them ("ready" and the seconds left) and the round
 // starts with everyone after 10 s.
-// Control: sw ready_forever 1 (the card waits for every person, as it once did) must keep the round from starting.
+// The board of round 2 opens on its shop: once the person has picked, the seat still out gets 10 s, then everyone moves.
+// Controls: sw ready_forever 1 (the card waits for every person, as it once did) must keep the round from starting;
+// sw shop_forever 1 (the shop waits for every person) must keep the board from moving.
 //   node tests/partypack-idle-seat.mjs [--gl] [--webgpu] [--cart <path>]
 import { mkdirSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
@@ -48,6 +50,7 @@ async function run(backend, tag, idle, pre, play = true) {
   await press(0, 'south'); if (idle) await press(1, 'south');
   await press(0, 'start'); await step(40);            /* join: Start plays, the hub */
   const humans = +(await rd('game.humans'));
+  const unlocked = +(await rd('game.unlocked'));     /* a fresh save: every mini-game open (party points unlock hats) */
   await press(0, 'south');                            /* the highlighted Party Tournament */
   const board = await waitState((s) => s === S_BOARD, 120);
   await step(160); await press(0, 'south');           /* the board's next, once the tokens have moved */
@@ -57,7 +60,7 @@ async function run(backend, tag, idle, pre, play = true) {
   const left = +(await rd('game.ready_left'));
   await shot(`${backend}-${tag}-card.png`);
   const go = await waitState((s) => s >= S_COUNT, 60 * 20);
-  const r = { humans, board: board.s === S_BOARD, intro: intro.s === S_INTRO, left, started: go.s >= S_COUNT, wait: 60 + go.f, results: false, round: 0 };
+  const r = { unlocked, humans, board: board.s === S_BOARD, intro: intro.s === S_INTRO, left, started: go.s >= S_COUNT, wait: 60 + go.f, results: false, round: 0 };
   if (!r.started || !play) return r;
   await waitState((s) => s === S_PLAY, 400);
   const dirs = [[1, 0], [0, 1], [-1, 0], [0, -1]];
@@ -73,18 +76,35 @@ async function run(backend, tag, idle, pre, play = true) {
   const b2 = await waitState((s) => s === S_BOARD, 300);
   r.round = b2.s === S_BOARD ? +(await rd('game.round')) : -1;
   r.playFrames = f;
+  /* the board's shop: the seat's roll and its pick over its chip, "pick" under it; P1 picks (south), the idle seat never does */
+  await step(60);
+  r.shop = +(await rd('game.phase')) === 0;
+  await shot(`${backend}-${tag}-shop.png`);
+  await press(0, 'south');
+  let g = 0;
+  for (; g < 60 * 14 && +(await rd('game.phase')) === 0; g += 10) await step(10);
+  r.shopMoved = +(await rd('game.phase')) === 1;
+  r.shopWait = g;
+  await shot(`${backend}-${tag}-moved.png`);
   return r;
 }
 
 for (const backend of BACKENDS) {
   console.log(`--- ${backend}`);
   const one = await run(backend, 'alone', false);
+  check('a fresh save has all eleven mini-games open', one.unlocked === 0x7ff, `game.unlocked ${one.unlocked.toString(16)}`);
+  const locks = await run(backend, 'locks-control', false, 'sw old_locks 1', false);
+  check('control: sw old_locks 1, a fresh save has only six open', locks.unlocked !== 0x7ff, `game.unlocked ${locks.unlocked.toString(16)}`);
   check('one seat: the card starts the round at once', one.humans === 1 && one.intro && one.started && one.wait <= 90, `${one.humans} person, started ${one.started} after ${one.wait} frames`);
   check('one seat: round 1 played to the results and the board of round 2', one.results && one.round === 1, `results ${one.results}, board round ${one.round} (played ${one.playFrames} frames)`);
   const two = await run(backend, 'idle-seat', true);
   check('a second seat nobody plays: the card shows how long it waits', two.humans === 2 && two.left >= 8 && two.left <= 10, `${two.humans} people, ${two.left} s shown under the seat still out`);
   check('a second seat nobody plays: the round starts within 10 s of the first ready', two.started && two.wait > 60 * 8 && two.wait <= 60 * 10 + 30, `started ${two.started} after ${two.wait} frames`);
   check('a second seat nobody plays: round 1 played to the results and the board of round 2', two.results && two.round === 1, `results ${two.results}, board round ${two.round} (played ${two.playFrames} frames)`);
+  check('one seat: the shop opens and moves on as soon as the person picks', one.shop && one.shopMoved && one.shopWait <= 30, `shop ${one.shop}, moved ${one.shopMoved} after ${one.shopWait} frames`);
+  check('a second seat nobody plays: the shop moves on within 10 s of the first pick', two.shop && two.shopMoved && two.shopWait > 60 * 8 && two.shopWait <= 60 * 10 + 30, `shop ${two.shop}, moved ${two.shopMoved} after ${two.shopWait} frames`);
+  const ctl2 = await run(backend, 'shop-control', true, 'sw shop_forever 1');
+  check('control: sw shop_forever 1, the idle seat holds the shop', ctl2.shop && !ctl2.shopMoved, `shop ${ctl2.shop}, moved ${ctl2.shopMoved} in ${ctl2.shopWait} frames`);
   const ctl = await run(backend, 'control', true, 'sw ready_forever 1', false);
   check('control: sw ready_forever 1, the idle seat holds the card', ctl.humans === 2 && ctl.intro && !ctl.started && ctl.left === 0, `${ctl.humans} people, started ${ctl.started} in ${ctl.wait} frames, ${ctl.left} s shown`);
 }

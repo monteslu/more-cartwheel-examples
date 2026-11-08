@@ -8,7 +8,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const ENGINE = join(ROOT, 'deps/cartwheel-engine');
-export const PARTS = { 1: 'pirates,jetski,arenafps', 2: 'tuxracer,skyfighter,coopplatformer', 3: 'fighter,brawler,hordeshooter,partypack', 4: 'crawler' };
+export const PARTS = { 1: 'pirates,jetski,arenafps', 2: 'tuxracer,skyfighter,coopplatformer', 3: 'fighter,brawler,hordeshooter,partypack,partypack-sumo,partypack-coins,partypack-tiles,partypack-stack', 4: 'crawler' };
 export function runPart(part, extra = []) {
   const apps = part ? ['--apps', PARTS[part]] : [];
   const r = spawnSync('node', [join(ENGINE, 'tools/quality-range.mjs'), '--project', ROOT, '--scenes', join(ROOT, 'tests/quality-range-scenes.json'), ...apps, ...extra], { stdio: 'inherit' });
