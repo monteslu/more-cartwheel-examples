@@ -918,6 +918,11 @@
     "note": "the results card counts each player: coins, stomps, friends thrown and falls in a column under each portrait, and an awards line for whoever got the most of something (a clear winner only). g.tally is [columns drawn, frames the awards line was up]; g.cardgate as in coopplatformer-results-card. The control (COOP_TALLY_OFF, native) leaves the tally off: its g.tally must differ."
   },
   {
+    "name": "coopplatformer-save",
+    "script": "tests/coopplatformer-save.mjs",
+    "note": "a save from version 4 (before the big coins) loads with its settings and progress: the stored block tests/coopplatformer-save-v4.dat keeps level, unlocked levels, coins, abilities, totals, hats, screen shake and music volume, and the big coins start empty. Control: with the migration off the shell starts over and the check must fail."
+  },
+  {
     "name": "coopplatformer-arena",
     "script": "tests/coopplatformer-arena.mjs",
     "note": "all five boss arenas with the fight pushed against the end wall: the wall takes no more than 12 percent of the view, no arm goes into it, no words land on a marker or a player, and the results card is solid in the picture on GL and WebGPU. Each has a control that must fail in every arena: the old camera, the old boss width, the old labels, the old card."

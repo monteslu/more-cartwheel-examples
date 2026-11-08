@@ -8,6 +8,7 @@
  * won, hash, pos (player 0), cam (x, y, z), hp, bubbles, signgate, signmove, labelmove, cardgate, bossgate, bossclip, endwall, labelgate. */
 #include <math.h>
 #include <stdio.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -1862,6 +1863,36 @@ static void cmd_bind(int argc, const char **argv, cw_reply *r) {
   cw_reply_printf(r, "ok");
 }
 
+/* A save from version 4 (before the big coins): the shell starts over on any other game version or size, settings and
+ * all, so a version 4 save is carried forward here, before cw_shell_init reads it. Its game data is save_t up to
+ * `medals`; the big coins start empty. Only a save whose shell header and checksum read exactly as the shell writes
+ * them (magic, shell version 1, game version 4, that size, FNV-1a from the settings to the end) is touched: any other
+ * block is left for the shell to judge. COOP_SAVE_FIXTURE (native) loads a save file in place of the stored one, as
+ * the save gate does; COOP_SAVE_NO_MIGRATE is its control. */
+static int g_migrate_dbg[9]; /* migrated, level, unlocked, coins, abilities, total deaths, hats, shake setting, music volume; then big coins taken, in g.migrate_coins */
+static int g_migrate_coins;
+static uint32_t shell_sum(const uint8_t *b, size_t n) {
+  uint32_t h = 2166136261u;
+  for (size_t i = 16; i < n; i++) h = (h ^ b[i]) * 16777619u;
+  return h;
+}
+static bool save_migrate_v4(void) {
+  uint8_t *b = cw_shell_save_region();
+  size_t n = cw_shell_save_region_size();
+  const size_t v4_size = offsetof(save_t, medals), game_at = 32;
+  if (n != game_at + CW_SHELL_GAME_SAVE_MAX) return false; /* not the shell layout this was written for */
+  uint32_t magic, size, sum;
+  uint16_t ver, gver;
+  memcpy(&magic, b, 4), memcpy(&ver, b + 4, 2), memcpy(&gver, b + 6, 2), memcpy(&size, b + 8, 4), memcpy(&sum, b + 12, 4);
+  if (magic != 0x4c485357u || ver != 1 || gver != 4 || size != v4_size || sum != shell_sum(b, n)) return false;
+  memset(b + game_at + v4_size, 0, sizeof(save_t) - v4_size); /* no big coins yet */
+  gver = 5, size = (uint32_t)sizeof(save_t);
+  memcpy(b + 6, &gver, 2), memcpy(b + 8, &size, 4);
+  sum = shell_sum(b, n);
+  memcpy(b + 12, &sum, 4);
+  return true;
+}
+
 static void init(void *user) {
   (void)user;
   /* touch: a stick and three buttons, made before the bindings that name them (ids 0 to 3, in this order) */
@@ -1874,11 +1905,31 @@ static void init(void *user) {
   cw_input_commit_defaults();
   a_left = cw_action_find("left"), a_right = cw_action_find("right"), a_up = cw_action_find("up"), a_down = cw_action_find("down");
   a_jump = cw_action_find("jump"), a_run = cw_action_find("run"), a_grab = cw_action_find("grab"), a_dash = cw_action_find("dash"), a_map = cw_action_find("map"), a_retry = cw_action_find("retry");
+  {
+    const char *fx = getenv("COOP_SAVE_FIXTURE");
+    FILE *fp = fx && fx[0] ? fopen(fx, "rb") : NULL;
+    if (fp) {
+      memset(cw_shell_save_region(), 0, cw_shell_save_region_size());
+      size_t got = fread(cw_shell_save_region(), 1, cw_shell_save_region_size(), fp);
+      fclose(fp);
+      cw_info("coopplatformer: save fixture %s, %zu bytes", fx, got);
+    }
+    if (!getenv("COOP_SAVE_NO_MIGRATE") && save_migrate_v4()) g_migrate_dbg[0] = 1, cw_info("coopplatformer: a version 4 save carried forward");
+  }
   cw_shell_init(&(cw_shell_desc){ .title = "Co-op Platformer", .subtitle = "one to four players", .max_players = 4,
                                   .game_save_size = sizeof(save_t), .game_save_version = 5, .start = start_match,
                                   .quit = quit_match, .sound = sound_hook, .draw_background = title_background });
   g_font = cw_ui_font_sans();
   audio_init();
+  {
+    const save_t *sv = cw_shell_game_save();
+    g_migrate_dbg[1] = sv->level, g_migrate_dbg[2] = sv->unlocked, g_migrate_dbg[3] = sv->coins, g_migrate_dbg[4] = (int)sv->abilities;
+    g_migrate_dbg[5] = sv->total_deaths, g_migrate_dbg[6] = sv->hats, g_migrate_dbg[7] = (int)cw_shell_shake_level();
+    g_migrate_dbg[8] = ((const uint8_t *)cw_shell_save_region())[17];
+    for (int l = 0; l < 32; l++) g_migrate_coins += (sv->medals[l] & 1) + ((sv->medals[l] >> 1) & 1) + ((sv->medals[l] >> 2) & 1);
+    cw_debug_field("g.migrate", g_migrate_dbg, CW_DBG_I32, 9);
+    cw_debug_i32("g.migrate_coins", &g_migrate_coins);
+  }
   cw_debug_field("join.seats", join_seats, CW_DBG_I32, 4);
   cw_debug_command("bind", "bind <action> <bindings>: replace an action's bindings", cmd_bind);
   cw_debug_command("sw", "sw idle_anchor <0|1>: a test switch (1: a seat nobody plays holds the group back, as before)", cmd_sw);
