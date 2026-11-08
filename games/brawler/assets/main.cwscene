@@ -70,8 +70,8 @@ shadow = false
 fog_energy = 0
 
 [node name="Camera" parent="." type="Camera3D"]
-position = vec3(0, 3.9, 7.7)
-rotation = vec3(-0.3, 0, 0)
+position = vec3(0, 2.9, 7.5)
+rotation = vec3(-0.18, 0, 0)
 fov = 40
 near = 0.3
 far = 150

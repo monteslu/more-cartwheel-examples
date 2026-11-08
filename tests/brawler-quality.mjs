@@ -17,7 +17,7 @@ sweep({
     stage(0, 0, props), stage(1, 2, ['spawn 14', 'spawn 15', 'spawn 16', ...props]), stage(2, 1, props), stage(3, 3, props),
     stage(0, 4, ['@400 knockdown']), stage(1, 4, ['@400 knockdown']), stage(2, 4, ['@400 knockdown']), stage(3, 4, ['@400 knockdown']),
     creep(0), creep(1), creep(2), creep(3),
-    { name: 'title to play by input', app: 'brawler', frames: 900, input: mash(240, 700, 30, ['start']), reach: { 'game.ticks': (v) => v > 100 }, show: ['game.ticks', 'game.stage', 'shell.screen'] },
+    { name: 'title to play by input', app: 'brawler', frames: 900, input: [...mash(240, 330, 60, ['start']), ...mash(400, 700, 30, ['south'])] /* title, join, then ready on the character select */, reach: { 'game.ticks': (v) => v > 100 }, show: ['game.ticks', 'game.stage', 'shell.screen'] },
   ],
   control: { state: 'physical+map+rep+nmap+ao+rmap+mmap+skin+sheen+l2001+xcluster_csm', scene: 'stage 0 creep' },
 });

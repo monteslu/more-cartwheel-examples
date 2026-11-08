@@ -16,8 +16,12 @@
 #include "game.h"
 
 world_t W;
+bool g_legacy_moves; /* autopilot debug "legacymoves 1": no dash, backfist, launcher, juggle, stomp or refund (the moves gate's control) */
 bool g_legacy_air; /* autopilot debug "legacyair 1": the v0.4.0 airborne stagger without gravity (the controls gate's control) */
-int g_heroes[MAXP] = { D_ROOK, D_MIKA, D_JET, D_DOLLY }; /* who each seat plays (autopilot debug "hero <seat> <def>": close-ups and human-input runs) */
+int g_heroes[MAXP] = { D_ROOK, D_MIKA, D_JET, D_DOLLY }; /* who each seat plays: the character select picks them (autopilot debug "hero <seat> <def>") */
+const int HEROES[NHEROES] = { D_ROOK, D_MIKA, D_JET, D_DOLLY };
+bool g_absent[MAXP]; /* seats that joined and never came in: no fighter, nothing sized for them, a press drops them in */
+int crew(void) { int n = 0; for (int i = 0; i < W.players && i < MAXP; i++) n += !g_absent[i]; return n > 0 ? n : 1; }
 bool g_legacy_grab; /* autopilot debug "legacygrab 1": the grab as it was (the arms as the clip left them, 0.75 m apart, no hoist): the grab gate's control */
 bool g_legacy_throw; /* autopilot debug "legacythrow 1": the old thrown-body test (it hit the fighters, never the enemies): the throw gate's control */
 bool g_log_frozen; /* autopilot BRAWLER_LOG: name every enemy that stood frozen a second */
@@ -68,6 +72,11 @@ const atk_data ATK[] = {
   [A_HAYMAKER] = { "haymaker", 42, 2, 9, 14, 1.4f, 0.8f, 2, 0.45f }, /* the wanker's looping right: the wind-up is the tell, the stumble after it the opening */
   [A_BARGE] = { "shoulder", 50, 6, 34, 11, 1.3f, 0.85f, 2, 0.0f }, /* the wanker lowers a shoulder and runs along the lane */
   [A_FLASH] = { "flash", 40, 2, 12, 8, 1.35f, 0.9f, 1, 0.5f }, /* the creep throws his coat open wide and lunges: a stagger (his own clip; the tell is its first 0.43 s) */
+  /* the fighters' combo toolbox */
+  [A_DASH] = { "kick", 34, 5, 18, 13, 1.4f, 0.75f, 2, 0.9f },    /* attack while running: a running kick that carries on through */
+  [A_BACK] = { "punch2", 24, 5, 12, 11, 1.25f, 0.75f, 1, 0.3f }, /* attack with the stick away and an enemy behind: a turning backfist */
+  [A_LAUNCH] = { "finisher", 38, 12, 20, 10, 1.35f, 0.8f, 3, 0.2f }, /* kick after two punches: knock 3 pops the body up for a juggle */
+  [A_STOMP] = { "kick", 30, 10, 16, 7, 1.05f, 0.7f, 0, 0.0f },   /* attack over a body on the ground with nobody standing in reach: a stomp */
 };
 /* attacks that need the long (heavy) telegraph and a danger ring on the street */
 static bool heavy_atk(int k) { return k == A_SLAM || k == A_SWING || k == A_BSPIN || k == A_RUSH || k == A_FLICK || k == A_HAYMAKER || k == A_BARGE || k == A_FLASH; }
@@ -376,11 +385,13 @@ static bool alive(const ent *e) { return e->used && e->st != S_DEAD && e->hp > 0
 static bool free_state(const ent *e) { return e->st == S_IDLE || e->st == S_WALK; }
 
 float level_cam_halfw(void) { return 7.2f; }
-/* what the game camera sees (position (cam_x, 3.9, 7.7), pitched down 0.3 rad, 40 degree vertical field, 16:9):
-   the half width of the view at depth z and height y. The near lane sees much less than the far one. */
+/* what the game camera sees (game.h CAM_*, 16:9): the half width of the view at depth z and height y. The near lane
+   sees much less than the far one. */
 float view_halfw(float z, float y) {
-  float depth = -((y - 3.9f) * 0.29552f + (z - 7.7f) * 0.95534f); /* along the view axis */
-  return depth * 0.36397f * (16.0f / 9.0f);
+  static float s, c;
+  if (c == 0) s = sinf(CAM_PITCH), c = cosf(CAM_PITCH);
+  float depth = -((y - CAM_Y) * s + (z - CAM_Z) * c) + W.cam_back; /* along the view axis */
+  return depth * CAM_T * (16.0f / 9.0f);
 }
 /* a body (its middle, 1 m up) inside the picture with this much room to the edge */
 bool on_screen(float x, float z, float margin) { float d = x - W.cam_x; return (d < 0 ? -d : d) < view_halfw(z, 1.0f) - margin; }
@@ -425,7 +436,7 @@ static void ent_init(ent *e, int def, bool player, float x, float z) {
   /* more fighters: tougher enemies (35 percent of a fighter each); a boss 22 percent (each fighter also brings more of
      the crowd and the helpers to deal with, so the fight still ends a little sooner with four than alone) */
   float per = DEFS[def].boss ? 0.22f : 0.35f;
-  e->hp = e->maxhp = DEFS[def].hp * (player ? 1.0f : 1.0f + per * (float)(W.players > 1 ? W.players - 1 : 0));
+  e->hp = e->maxhp = DEFS[def].hp * (player ? 1.0f : 1.0f + per * (float)(crew() > 1 ? crew() - 1 : 0));
   e->st = S_IDLE, e->target = -1, e->victim = -1, e->holder = -1;
   e->cd = 40 + ri(0, 60);
   e->slot = ri(0, 9);
@@ -514,6 +525,25 @@ void ent_hurt(ent *v, ent *a, float dmg, int knock, float fx) {
   if (!alive(v) || v->invuln > 0) return;
   if (guard_blocks(v, a, knock)) return;
   bool boss = DEFS[v->def].boss || DEFS[v->def].mini;
+  /* the combo toolbox: a body in the air off a launcher takes blows there (a juggle), one on the ground a stomp */
+  bool juggled = v->st == S_FALL && v->juggle > 0 && a && a->player, stomped = v->st == S_DOWN && a && a->player && a->atk == A_STOMP;
+  bool launch = knock == 3 && !boss && !g_legacy_moves;
+  int down_t = v->t;
+  if (knock == 3) knock = boss || g_legacy_moves ? 1 : 2;
+  if (juggled) knock = 2;
+  if (a && a->player && dmg > 0 && !v->player) {
+    if (a->atk == A_DASH) W.moves[0]++;
+    if (a->atk == A_BACK) W.moves[1]++;
+    if (launch) W.moves[2]++;
+    if (juggled) W.moves[3]++;
+    if (stomped) W.moves[4]++;
+    if (a->refund > 0) { /* the special's cost comes back as the blows land (half of each, until it is all back) */
+      float back = dmg * 0.5f < a->refund ? dmg * 0.5f : a->refund;
+      a->hp = a->hp + back > a->maxhp ? a->maxhp : a->hp + back, a->refund -= back;
+      W.moves[5] += (int)(back * 10 + 0.5f); /* tenths of a point */
+    }
+  }
+  if (v->player && dmg > 0) v->refund = 0, v->refund_t = 0; /* hurt before it was won back: it is gone */
   /* the wanker's haymaker wind-up shrugs off a light blow (only a heavy one stops it): with every jab interrupting it,
      not one in the self-play runs ever landed. The tell is long, so the answer is to step out of the lane */
   bool armour = boss || (v->def == D_WANKER && v->st == S_ATK && v->atk == A_HAYMAKER);
@@ -525,6 +555,7 @@ void ent_hurt(ent *v, ent *a, float dmg, int knock, float fx) {
     if (!on_screen(sx, sz, 0) || (a && !a->player && !g_src && a->ptimer < 20)) W.st.unfair++;
     W.st.dmg_taken += (int)dmg;
   }
+  if (!v->player && a && a->player && dmg > 0 && !DEFS[v->def].boss) W.last_hit = (int)(v - W.e), W.last_hit_t = 120; /* its bar over its head */
   if (!v->player && a && a->player && dmg > 0) {
     if (W.st.first_hit < 0) W.st.first_hit = W.tick - W.st.t0;
     W.st.hits++;
@@ -540,7 +571,13 @@ void ent_hurt(ent *v, ent *a, float dmg, int knock, float fx) {
   }
   v->hurtflash = 1;
   int dir = a ? (a->x <= v->x ? 1 : -1) : -v->face;
-  W.hitstop = knock >= 2 ? 8 : 4; /* frozen frames: 4 on a light blow, 8 on a heavy one */
+  /* frozen frames: 6 on a light blow, 10 on a heavy one, 16 on a combo finisher or a blow that kills (the genre's
+     weight; they were 4 and 8). A throw that bowls several over does not stack them: the longest one holds */
+  { bool fin = dmg > 0 && a && a->player && ((a->atk == A_FINISH && knock >= 2) || v->hp <= 0);
+    int hs = fin ? 16 : knock >= 2 ? 10 : 6;
+    if (hs > W.hitstop) W.hitstop = hs;
+    v->squash = fin ? 1.3f : knock >= 2 ? 1.0f : 0.6f;
+    if (dmg > 0 && (fin || knock >= 2)) sfx(SFX_THUD); else if (dmg > 0) sfx(SFX_SNAP); }
   W.shake = knock >= 2 ? 10 : 4;
   W.shake_amp = knock >= 2 ? 0.12f : 0.05f;
   if (dmg > 0 && knock >= 2) { rumble_ent(v, 0.35f, 0.9f, 140); rumble_ent(a, 0.25f, 0.75f, 110); } /* a big hit: short and sharp, to both ends of it */
@@ -607,13 +644,39 @@ void ent_hurt(ent *v, ent *a, float dmg, int knock, float fx) {
       char_restart(v, tp == FACE_FEAR ? "react_fear" : tp == FACE_ANGER ? "react_rage" : tp == FACE_BLISS ? "react_bliss" : knock >= 1 ? "hit_hard" : body ? "hit_gut" : "hit", 0.02f);
     }
   }
+  if (v->st == S_FALL && v->hp > 0 && (launch || juggled)) { /* up it goes, close in front, open to more */
+    v->vy = launch ? 7.4f : 4.0f, v->vx = (float)dir * (launch ? 0.9f : 0.7f), v->invuln = 0;
+    if (launch) v->juggle = 3; else v->juggle--;
+  } else if (v->st == S_FALL) v->juggle = 0;
+  if (stomped && v->hp > 0) { v->st = S_DOWN, v->t = down_t; char_play(v, "down", 0.02f); } /* stamped on where it lies: it stays down (no longer than it would have) */
   if (boss && v->st != S_FALL && v->st != S_HIT) v->hurtflash = 1;
 }
 
 /* ── attacks ────────────────────────────────────────────────────────── */
+bool g_legacy_lane; /* autopilot debug "legacylane 1": no lane assist (the lane gate's control) */
+float g_bot_aim; /* autopilot debug "botaim <m>": the bots misjudge depth by up to this much and swing when level along the street (a player reading the picture) */
+static float body_size(const ent *e);
+/* The lane assist: a fighter's blow aimed at an enemy just off its lane (0.25 to 0.95 m across the street, in reach along
+   it) steps across onto it during the wind-up, as the genre does; the depth band is what a player reads worst */
+static void lane_aim(ent *e, akind k) {
+  e->lane_dz = 0, e->lane_near = false, e->landed = false;
+  if (!(k == A_PUNCH1 || k == A_PUNCH2 || k == A_FINISH || k == A_KICK || k == A_SWING || k == A_STAB)) return;
+  int best = -1;
+  float bd = 1e9f;
+  for (int i = 0; i < MAXE; i++) {
+    const ent *v = &W.e[i];
+    if (!alive(v) || v->st == S_DOWN || v->st == S_FALL || v->st == S_THROWN || v->st == S_GRABBED) continue;
+    float ax = absf(v->x - e->x), dx = (v->x - e->x) * (float)e->face, adz = absf(v->z - e->z);
+    float girth = 0.6f * (body_size(e) + body_size(v) - 2.0f);
+    if (ax < 1.5f + girth) e->lane_near = true;
+    if (dx > -0.1f && dx < ATK[k].reach + girth + 0.25f && adz < 0.95f && adz < bd) bd = adz, best = i;
+  }
+  if (best >= 0 && bd > 0.25f && !g_legacy_lane) e->lane_dz = (W.e[best].z - e->z) * (1.0f - 0.2f / bd); /* to 0.2 m of its line */
+}
 static void start_attack(ent *e, akind k) {
   e->st = S_ATK, e->atk = k, e->t = 0, e->hitmask = 0, e->chain_ok = 0;
   const atk_data *a = &ATK[k];
+  if (e->player) lane_aim(e, k);
   if (!e->player) { /* a readable telegraph: guard pose and a flash before the swing (12+ frames, 24+ for heavies) */
     e->t = k == A_JUKE ? -36 : k == A_RUSH || k == A_BARGE ? -40 : heavy_atk(k) ? -26 : k == A_THROW ? -18 : -14;
     /* the jukebox thump: the raised fist is the tell; the haymaker: its own wind-up (the first 0.43 s of the clip, 26 ticks) */
@@ -641,6 +704,7 @@ static bool in_round(const ent *a, const ent *v, float r) {
   return dx * dx + dz * dz < r * r && absf(v->y - a->y) < 1.4f;
 }
 
+
 #ifdef BRAWLER_AUTOPILOT
 float g_bot_dmg = 3.0f;
 uint64_t g_seed_salt; /* BRAWLER_SEED: another match from the same rules (measurement runs; 0 in every gate) */
@@ -663,7 +727,10 @@ static void do_hits(ent *a) {
   for (int i = 0; i < (a->player ? MAXE : MAXP); i++) {
     ent *v = a->player ? &W.e[i] : &W.p[i];
     if (!alive(v) || (a->hitmask & (1u << (i & 31)))) continue;
-    if (v->st == S_DOWN || v->st == S_FALL || v->st == S_DEAD || v->st == S_GRABBED || v->st == S_THROWN) continue;
+    bool juggle = a->player && v->st == S_FALL && v->juggle > 0 && v->y > 0.25f && !g_legacy_moves;
+    bool otg = a->player && a->atk == A_STOMP && v->st == S_DOWN;
+    if (!juggle && !otg && (v->st == S_DOWN || v->st == S_FALL || v->st == S_DEAD || v->st == S_GRABBED || v->st == S_THROWN)) continue;
+    if (a->atk == A_STOMP && !otg) continue;
     bool ok = round ? in_round(a, v, ad->reach) : in_box(a, v, ad->reach, ad->width);
     if (a->atk == A_SLAM && a->y > 0.2f) ok = false;
     if (!ok) continue;
@@ -675,6 +742,7 @@ static void do_hits(ent *a) {
     if (a->atk == A_FLASH) W.creep.flash_hits++;
     ent_hurt(v, a, dmg, knock, 0);
     hit_any = true;
+    a->landed = true;
   }
   if (a->player) { /* props */
     for (int i = 0; i < MAXPROP; i++) {
@@ -736,7 +804,10 @@ static void proj_update(void) {
 /* ── shared states ──────────────────────────────────────────────────── */
 static void arena_clamp(ent *e) {
   /* fighters stay inside the picture: the view is narrower in the near lane */
-  e->z = clampf(e->z, -LANE_Z, LANE_Z);
+  /* Arthur walks onto the pavement to his jukebox (behind the far lane) and back off it at a walk, not in one jump */
+  if (e->def == D_ARTHUR && (e->juke || (e->st == S_ATK && e->atk == A_JUKE))) {}
+  else if (e->def == D_ARTHUR && (e->z < -LANE_Z || e->z > LANE_Z)) e->z += clampf(clampf(e->z, -LANE_Z, LANE_Z) - e->z, -3.0f / TPS, 3.0f / TPS);
+  else e->z = clampf(e->z, -LANE_Z, LANE_Z);
   /* enemies walk in from off camera; once they have been in the picture they stay in it (one standing just outside,
      behind fighters held at the edge, could neither be reached nor reach anyone: a soft lock the soak found) */
   /* the clamp sits inside the 0.3 m margin an enemy needs to be allowed to attack ('ready'): held exactly on that edge
@@ -767,9 +838,9 @@ static bool common_state(ent *e) {
     e->vx *= 0.985f;
     if (e->y <= 0 && e->vy < 0) {
       e->y = 0;
-      e->st = S_DOWN, e->t = 0;
+      e->st = S_DOWN, e->t = 0, e->juggle = 0;
       fx_dust(e->x, e->z, 1.2f);
-      if (e->hp <= 0) fx_stain(e->x - (float)e->face * 0.55f, e->z, 2.0f, 2); /* a pool spreading under the head (it fell away from the blow) */
+      if (e->hp <= 0) fx_stain(e->x - (float)e->face * 0.55f, e->z, 1.6f, 2); /* a pool spreading under the head (it fell away from the blow) */
       else fx_stain(e->x - (float)e->face * 0.5f, e->z, e->hp < e->maxhp * 0.6f ? 0.6f : 0.42f, 1); /* a body that hits the street leaves a splat, bigger when it is hurt */
       W.shake = 6, W.shake_amp = 0.06f;
       rumble_ent(e, 0.25f, 0.1f, 90); /* a knockdown: light */
@@ -863,13 +934,30 @@ static void apply_invuln(ent *e) {
 }
 
 /* ── players ────────────────────────────────────────────────────────── */
+/* someone standing in reach in front, behind, or lying in front (the toolbox's choices) */
+static int enemy_near(const ent *e, float lo, float hi, bool down) {
+  for (int i = 0; i < MAXE; i++) {
+    const ent *v = &W.e[i];
+    if (!alive(v) || (down ? v->st != S_DOWN : (v->st == S_DOWN || v->st == S_FALL || v->st == S_THROWN || v->st == S_GRABBED))) continue;
+    float dx = (v->x - e->x) * (float)e->face;
+    if (dx > lo && dx < hi && absf(v->z - e->z) < 0.7f) return i;
+  }
+  return -1;
+}
 static void player_start_attack_ground(ent *e, const inputs *in) {
   if (in->special && e->hp > e->maxhp * 0.1f && e->st != S_GRAB) {
     e->hp -= e->maxhp * 0.05f;
+    if (!g_legacy_moves) { e->refund += e->maxhp * 0.05f; e->refund_t = 4 * TPS; } /* won back by the blows that land in the next 4 s */
     start_attack(e, A_SPIN);
     e->invuln = 20;
     return;
   }
+  if (in->atk && !e->weapon && !g_legacy_moves) {
+    if (e->dash > 6) { e->dash = 0; start_attack(e, A_DASH); return; } /* running: the dash attack */
+    if (e->back_face > 0 && enemy_near(e, -0.2f, 1.45f, false) >= 0) { e->back_face = 0; start_attack(e, A_BACK); return; } /* turned round onto someone who was behind: the backfist */
+    if (enemy_near(e, -0.2f, 1.3f, false) < 0 && enemy_near(e, -0.3f, 1.2f, true) >= 0) { start_attack(e, A_STOMP); return; } /* only a body on the ground in reach */
+  }
+  if (in->kick && !e->weapon && !g_legacy_moves && e->combo_t > 0 && e->combo == 2) { e->combo = 0, e->combo_t = 0; start_attack(e, A_LAUNCH); return; }
   if (in->atk) {
     if (e->weapon) start_attack(e, e->weapon == 3 ? A_STAB : A_SWING);
     else {
@@ -891,6 +979,7 @@ static void player_update(int pi, const inputs *in) {
   apply_invuln(e);
   if (e->hold > 0) { e->hold--; return; }
   if (e->combo_t > 0) e->combo_t--;
+  if (e->refund_t > 0 && --e->refund_t == 0) e->refund = 0;
   if (common_state(e)) {
     if (e->st == S_DEAD) {
       if (e->t > 100) {
@@ -918,12 +1007,25 @@ static void player_update(int pi, const inputs *in) {
   case S_WALK: {
     float spd = DEFS[e->def].speed;
     float mx = in->mx, mz = in->mz;
+    { /* a double tap along the street runs (until the stick comes back or turns) */
+      int dir = mx > 0.5f ? 1 : mx < -0.5f ? -1 : 0;
+      if (dir && dir != e->lastdir) {
+        if (dir == e->tapdir && W.tick - e->taptick < 14 && !g_legacy_moves) e->dash = 1;
+        e->tapdir = dir, e->taptick = W.tick;
+      }
+      if (!dir || dir != e->face) e->dash = 0;
+      else if (e->dash) e->dash++;
+      e->lastdir = dir;
+    }
+    if (e->dash) spd *= 1.75f;
+    if ((mx > 0.2f && e->face < 0) || (mx < -0.2f && e->face > 0)) e->back_face = 10; /* the stick turned it round: a blow in the next 10 ticks is the backfist */
+    else if (e->back_face > 0) e->back_face--;
     e->x += mx * spd / TPS, e->z += mz * spd * 0.8f / TPS;
     if (mx > 0.2f) e->face = 1;
     if (mx < -0.2f) e->face = -1;
     bool mv = mx * mx + mz * mz > 0.04f;
     e->st = mv ? S_WALK : S_IDLE;
-    char_play(e, mv ? (spd > 3.5f ? "run" : "walk") : idle_clip(e), 0.12f);
+    char_play(e, mv ? (spd > 3.5f || e->dash ? "run" : "walk") : idle_clip(e), 0.12f);
     if (in->jump) { e->st = S_JUMP, e->vy = 6.8f, e->vx = mx * spd, e->t = 0; char_restart(e, "jump", 0.05f); break; }
     if (in->grab) { /* grab a body in front, or a weapon underfoot */
       int best = -1;
@@ -968,14 +1070,17 @@ static void player_update(int pi, const inputs *in) {
   case S_ATK: {
     const atk_data *ad = &ATK[e->atk];
     e->t++;
-    if (in->atk || in->kick) e->chain_ok = 1;
+    if (in->atk) e->chain_ok = 1;
+    if (in->kick) e->chain_ok = e->atk == A_PUNCH2 && !g_legacy_moves ? 2 : 1;
     if (e->t < ad->a1 && ad->lunge > 0) e->x += (float)e->face * ad->lunge * 5.0f / TPS;
+    if (e->lane_dz != 0 && e->t <= ad->a0) { float st = clampf(e->lane_dz, -0.07f, 0.07f); e->z += st, e->lane_dz -= st; } /* the lane assist's step */
     if (e->def == D_DOLLY && e->atk == A_SPIN && e->t < ad->a1) e->x += (float)e->face * 3.4f / TPS; /* the clothesline runs */
     do_hits(e);
+    if (e->t == ad->a1 && e->lane_near) { W.st.lane_press++; if (!e->landed) W.st.lane_miss++; } /* the lane-miss audit */
     if (e->t == ad->a0) sfx(SFX_WHIFF);
     bool chain = e->chain_ok && e->t >= ad->a1 && (e->atk == A_PUNCH1 || e->atk == A_PUNCH2) && !e->weapon;
     if (chain) {
-      akind k = e->atk == A_PUNCH1 ? A_PUNCH2 : A_FINISH;
+      akind k = e->atk == A_PUNCH1 ? A_PUNCH2 : e->chain_ok == 2 ? A_LAUNCH : A_FINISH;
       start_attack(e, k);
       e->combo = k == A_PUNCH2 ? 2 : 0;
       break;
@@ -1432,6 +1537,7 @@ void sim_reset(int players, int stage) {
   level_build(stage);
   crowd_setup();
   for (int i = 0; i < players; i++) {
+    if (g_absent[i]) { W.p[i].used = false; continue; } /* joined, never came in: a press drops it in (sim_join_seat) */
     int def = g_heroes[i];
     ent_init(&W.p[i], def, true, -3.0f + (float)i * 0.9f, -1.2f + (float)i * 0.8f);
     W.p[i].lives = keep ? old[i].lives : 3;
@@ -1443,7 +1549,37 @@ void sim_reset(int players, int stage) {
   stage_wave_load(stage, 0);
 }
 
+/* the character select: the seat's fighter becomes another hero where it stands (nothing has run yet) */
+void sim_set_hero(int seat, int def) {
+  ent *e = &W.p[seat];
+  g_heroes[seat] = def;
+  if (!e->used || e->def == def) return;
+  float x = e->x, z = e->z;
+  int lives = e->lives;
+  ent_remove(e);
+  ent_init(e, def, true, x, z);
+  e->lives = lives, e->idx = seat, e->face = 1;
+}
+/* an absent seat comes in: it drops in from above at the left of the picture, as a fighter back from a lost life */
+bool sim_join_seat(int seat) {
+  if (seat < 0 || seat >= W.players || !g_absent[seat]) return false;
+  g_absent[seat] = false;
+  ent *e = &W.p[seat];
+  float x = W.cam_x - view_halfw(0, 1.0f) + 1.5f;
+  ent_init(e, g_heroes[seat], true, x, -1.2f + (float)seat * 0.8f);
+  e->idx = seat, e->face = 1, e->lives = 2;
+  e->y = 4.0f, e->st = S_JUMP, e->invuln = 150;
+  char_play(e, "jump", 0.05f);
+  return true;
+}
+
 /* debug: straight to a wave of this stage (the camera and the fighters jump to its lock) */
+/* the character select is over: the seats nobody came in on leave the street, and the first wave is sized for the rest */
+void sim_pick_done(void) {
+  for (int i = 0; i < W.players; i++)
+    if (g_absent[i] && W.p[i].used) ent_remove(&W.p[i]);
+  stage_wave_load(W.stage, W.wave);
+}
 void sim_goto_wave(int wave) {
   for (int i = 0; i < MAXE; i++) if (W.e[i].used) ent_remove(&W.e[i]);
   W.tokens_out = 0, W.boss_active = false;
@@ -1538,10 +1674,18 @@ static void spawn_from_queue(void) {
     if (W.spawn_q[i].def < 0) continue;
     if (!W.wave_spawned) continue;
     if (W.spawn_q[i].delay > 0) { W.spawn_q[i].delay--; continue; }
-    if (enemies_alive() >= 6 + 2 * W.players && !DEFS[W.spawn_q[i].def].boss) continue;
+    if (enemies_alive() >= 6 + 2 * crew() && !DEFS[W.spawn_q[i].def].boss) continue;
     float side = (float)W.spawn_q[i].side;
-    float x = W.cam_x + side * (level_cam_halfw() + 1.4f);
-    ent_spawn_enemy(W.spawn_q[i].def, x, rf(-LANE_Z + 0.3f, LANE_Z - 0.3f));
+    /* staggered entrances: one side brings its enemies on at four places across the street in turn (far, near, middle
+       far, middle near), never twice in one place running, and one that comes on close behind the last from that side
+       starts further back, so a wave walks in spread across the street, not stacked in single file */
+    int sd = side > 0 ? 1 : 0, k = W.spawn_k[sd]++;
+    static const float ZS[4] = { -0.78f, 0.62f, -0.18f, 0.95f };
+    float z = (LANE_Z - 0.3f) * (side > 0 ? ZS[k & 3] : -ZS[(k + 1) & 3]) + rf(-0.15f, 0.15f);
+    float behind = W.tick - W.spawn_t[sd] < 90 ? 1.3f : 0;
+    W.spawn_t[sd] = W.tick;
+    float x = W.cam_x + side * (level_cam_halfw() + 1.4f + behind);
+    ent_spawn_enemy(W.spawn_q[i].def, x, z);
     W.spawn_q[i].def = -1;
   }
 }
@@ -1553,13 +1697,20 @@ void sim_tick(const inputs *in) {
   if (W.slow > 0) { W.slow--; if (W.slow & 1) return; } /* a boss falls in slow motion */
   if (W.hitstop > 0) {
     W.hitstop--;
+    W.stopped++;
     for (int i = 0; i < MAXP; i++) if (W.p[i].used && W.p[i].hold == 0) { /* hold the pose */ }
     return;
   }
   W.tick++;
   if (W.shake > 0) W.shake--;
-  if (W.combo_t > 0 && --W.combo_t == 0) W.combo_n = 0;
+  if (W.combo_t > 0 && --W.combo_t == 0) {
+    int n = W.combo_n;
+    if (n > W.st.combo_max) W.st.combo_max = n;
+    W.combos[n >= 8 ? 4 : n >= 5 ? 3 : n >= 3 ? 2 : n == 2 ? 1 : 0]++;
+    W.combo_n = 0;
+  }
   if (W.go_flash > 0) W.go_flash--;
+  if (W.last_hit_t > 0) W.last_hit_t--;
   if (W.phase_banner > 0) W.phase_banner--;
 
   /* positions into the crowd: bodies not driven by it */
@@ -1607,6 +1758,8 @@ void sim_tick(const inputs *in) {
       if (W.wave + 1 >= waves) stats_log("clear");
       if (W.wave + 1 >= waves) {
         W.phase = PH_CLEAR, W.phase_t = 0;
+        W.st.clear_t = W.tick - W.st.t0;
+        if (W.combo_n > W.st.combo_max) W.st.combo_max = W.combo_n;
       } else {
         W.wave++;
         stage_wave_load(W.stage, W.wave);
@@ -1662,6 +1815,16 @@ void sim_tick(const inputs *in) {
   W.hash = h;
 }
 
+/* the grade card at a stage's end: 100 points over four things a player can see and better */
+int stage_grade(int *pts) {
+  int s = W.st.clear_t / TPS, p = 0;
+  p += s < 240 ? 30 : s < 330 ? 22 : s < 450 ? 12 : 5;                       /* time */
+  p += W.st.dmg_taken < 60 ? 30 : W.st.dmg_taken < 160 ? 22 : W.st.dmg_taken < 320 ? 12 : 4; /* damage taken (all fighters) */
+  p += W.st.combo_max >= 10 ? 25 : W.st.combo_max >= 6 ? 18 : W.st.combo_max >= 4 ? 10 : 4; /* best combo */
+  p += W.st.deaths == 0 ? 15 : W.st.deaths == 1 ? 7 : 0;                     /* lives */
+  if (pts) *pts = p;
+  return p >= 90 ? 0 : p >= 75 ? 1 : p >= 55 ? 2 : p >= 35 ? 3 : 4;
+}
 /* one line per stage for the measurement scripts (tools/measure.mjs): ticks are 1/60 s of game time */
 void stats_log(const char *why) {
   const int *h = W.st.atk_hits;
@@ -1889,6 +2052,11 @@ static const float HAND_OFF[3] = { 0, -0.05f, 0.05f };
 void char_sync(ent *e) {
   if (!e->root.id) return;
   cw_node3d_set_position(e->root, (t3_vec3){ e->x, e->y, e->z });
+  { /* the squash of a blow: held through the hit-stop, then it springs back in a few frames */
+    float s = e->squash > 0 ? e->squash : 0;
+    cw_node3d_set_scale(e->root, (t3_vec3){ 1 + 0.07f * s, 1 - 0.09f * s, 1 + 0.07f * s });
+    if (W.hitstop == 0 && e->squash > 0) { e->squash -= 0.22f; if (e->squash < 0) e->squash = 0; }
+  }
   {
     /* the soft shadow on the ground: stays under the actor, smaller and fainter in the air */
     rig *r = &RIGS[rig_of[ent_index(e)]];

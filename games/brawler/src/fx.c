@@ -167,12 +167,12 @@ void fx_init(void) {
     cw_node_set(n, "gravity", cw_val_vec3(0, -14, 0));
     cw_node_set(n, "damping", cw_val_float(0.4f));
     cw_node_set(n, "draw_mode", cw_val_enum("STRETCHED"));
-    cw_node_set(n, "stretch", cw_val_float(0.03));
+    cw_node_set(n, "stretch", cw_val_float(0.09)); /* droplets and thin streaks along their flight, not flakes (they read as confetti at 0.05 m and a short stretch) */
     cw_node_set(n, "blend", cw_val_enum("ALPHA"));
-    cw_node_set(n, "size", cw_val_float(0.05));
-    cw_node_set(n, "size_random", cw_val_float(0.6));
-    cw_node_set(n, "color", cw_val_color(0.45f, 0.02f, 0.015f, 1));
-    cw_node_set(n, "color_ramp", cw_val_string("0 0.55 0.025 0.02 1, 0.7 0.4 0.015 0.01 1, 1 0.3 0.01 0.008 0"));
+    cw_node_set(n, "size", cw_val_float(0.022));
+    cw_node_set(n, "size_random", cw_val_float(0.5));
+    cw_node_set(n, "color", cw_val_color(0.32f, 0.015f, 0.01f, 1));
+    cw_node_set(n, "color_ramp", cw_val_string("0 0.36 0.018 0.012 1, 0.7 0.26 0.01 0.008 1, 1 0.2 0.008 0.006 0"));
     cw_node_set(n, "size_curve", cw_val_string("0 1, 1 0.6"));
     cw_node_set(n, "seed", cw_val_int(900 + i));
   }
@@ -194,12 +194,12 @@ void fx_init(void) {
     cw_node_set(n, "gravity", cw_val_vec3(0, -12, 0));
     cw_node_set(n, "damping", cw_val_float(0.2f));
     cw_node_set(n, "draw_mode", cw_val_enum("STRETCHED"));
-    cw_node_set(n, "stretch", cw_val_float(0.04));
+    cw_node_set(n, "stretch", cw_val_float(0.12)); /* a fat arc was 0.15 m petals; it is drops now, stretched into streaks by their speed */
     cw_node_set(n, "blend", cw_val_enum("ALPHA"));
-    cw_node_set(n, "size", cw_val_float(0.15));
-    cw_node_set(n, "size_random", cw_val_float(0.7));
-    cw_node_set(n, "color", cw_val_color(0.75f, 0.03f, 0.02f, 1));
-    cw_node_set(n, "color_ramp", cw_val_string("0 0.85 0.04 0.03 1, 0.8 0.6 0.02 0.015 1, 1 0.45 0.015 0.01 0"));
+    cw_node_set(n, "size", cw_val_float(0.034));
+    cw_node_set(n, "size_random", cw_val_float(0.6));
+    cw_node_set(n, "color", cw_val_color(0.42f, 0.02f, 0.014f, 1));
+    cw_node_set(n, "color_ramp", cw_val_string("0 0.46 0.022 0.016 1, 0.8 0.32 0.012 0.01 1, 1 0.24 0.01 0.008 0"));
     cw_node_set(n, "size_curve", cw_val_string("0 0.8, 0.3 1, 1 0.7"));
     cw_node_set(n, "seed", cw_val_int(950 + i));
   }
@@ -315,11 +315,13 @@ void fx_hit(float x, float y, float z, int kind, int face) {
 static uint32_t fxh(uint32_t a, uint32_t b) { uint32_t h = a * 0x9e3779b9u ^ (b + 0x7f4a7c15u) * 0x85ebca6bu; h ^= h >> 15; h *= 0x2c1b3c6du; h ^= h >> 12; return h; }
 static float fxu(uint32_t a, uint32_t b) { return (float)(fxh(a, b) & 0xffff) / 65535.0f; }
 static int nstain;
+#define STAIN_K 0.52f /* a fresh stain's shade (was 0.78) */
+#define STAIN_DRY 0.36f /* and once it has soaked in (fx_tick: over its first 20 s) */
 void fx_stain(float x, float z, float size, int kind) {
   /* kind 0: drops (a light or heavy blow), 1: a splat (a body landing), 2: a pool (the dead) */
   static const int CELLS[3][4] = { { 4, 6, 1, 2 }, { 0, 7, 3, 1 }, { 5, 0, 7, 5 } };
   uint32_t s = (uint32_t)++nstain;
-  float r = 2.0f * size * (0.85f + 0.3f * fxu(s, 2)); /* over the top (B-PT12): big stains */ /* the box: each shape fills about the middle half of its cell */
+  float r = (kind == 2 ? 1.35f : 1.5f) * size * (0.85f + 0.3f * fxu(s, 2)); /* smaller than the B-PT12 pass (2.0): a pool read as a flat red blob */ /* the box: each shape fills about the middle half of its cell */
   /* the spot is taken: nearly on top of any stain, move along (drops: leave it); then the first of the kind's shapes no
      stain of the same shape overlaps (none free: nothing) */
   for (int i = 0; i < NBLOOD; i++) {
@@ -367,7 +369,7 @@ void fx_stain(float x, float z, float size, int kind) {
   bst[k].sx = sx, bst[k].sy = sy;
   cw_node_set(d, "size", cw_val_vec3(sx * bst[k].grow, sy * bst[k].grow, 0.26f)); /* a pool spreads out (fx_tick) */
   cw_node3d_set_rotation(d, (t3_vec3){ -1.5708f, 0, fxu(s, 7) * 6.28318f });
-  cw_node_set(d, "color", cw_val_color(0.78f, 0.74f, 0.74f, bst[k].a)); /* MIX is unlit: a little under full so it sits in the night street */
+  cw_node_set(d, "color", cw_val_color(STAIN_K, STAIN_K * 0.95f, STAIN_K * 0.95f, bst[k].a)); /* MIX is unlit: well under full so it sits dark in the night street, not bright red */
 }
 static int nblow;
 /* a splash on something upright: the back walls (a box past the far lane, where nobody walks) or a prop's face */
@@ -383,7 +385,7 @@ static void fx_wall_splat(float x, float y, float z, float depth, float size) {
   cw_node3d_set_position(d, (t3_vec3){ x, y, z });
   cw_node3d_set_rotation(d, (t3_vec3){ 0, 0, fxu(s, 22) * 6.28318f }); /* projects along -z: away from the camera, onto what stands behind */
   cw_node_set(d, "size", cw_val_vec3(size * (0.8f + 0.4f * fxu(s, 23)), size * (0.8f + 0.4f * fxu(s, 24)), depth));
-  cw_node_set(d, "color", cw_val_color(0.78f, 0.74f, 0.74f, 0.85f));
+  cw_node_set(d, "color", cw_val_color(STAIN_K, STAIN_K * 0.95f, STAIN_K * 0.95f, 0.85f));
 }
 void fx_blood(float x, float y, float z, int dir, int knock) {
   uint32_t s = (uint32_t)++nblow;
@@ -396,7 +398,7 @@ void fx_blood(float x, float y, float z, int dir, int knock) {
   if (knock >= 1) { /* a spurt arcs out and comes down: drops land along the arc */
     cw_node p = spurt[nsp++ % NSPURT];
     cw_node3d_set_position(p, (t3_vec3){ x, y, z });
-    cw_node_set(p, "amount", cw_val_int(knock >= 2 ? 80 : 36));
+    cw_node_set(p, "amount", cw_val_int(knock >= 2 ? 64 : 30));
     cw_node_set(p, "direction", cw_val_vec3((float)dir, 0.9f, 0.2f * (fxu(s, 15) - 0.5f)));
     cw_particles_restart(p);
     fx_stain(x + (float)dir * (0.45f + 0.4f * fxu(s, 13)), z + 0.3f * (fxu(s, 14) - 0.5f), knock >= 2 ? 0.75f : 0.5f, 0);
@@ -404,7 +406,7 @@ void fx_blood(float x, float y, float z, int dir, int knock) {
     for (int i = 0; i < land; i++) fx_stain(x + (float)dir * (1.0f + 0.7f * (float)i + 0.5f * fxu(s, 30 + (uint32_t)i)), z + 0.5f * (fxu(s, 40 + (uint32_t)i) - 0.5f), 0.32f + 0.15f * fxu(s, 50 + (uint32_t)i), 0);
   }
   if (knock >= 2) {
-    if (z < -1.5f) fx_wall_splat(x + (float)dir * 0.4f, y - 0.2f, -2.75f - 1.4f, 2.8f, 0.9f); /* the wall behind the far lane */
+    if (z < -LANE_Z * 0.6f) fx_wall_splat(x + (float)dir * 0.4f, y - 0.2f, -2.75f - 1.4f, 2.8f, 0.9f); /* the wall behind the far lane */
     for (int i = 0; i < MAXPROP; i++) { /* a crate, barrel or bin next to the blow */
       const prop_t *pp = &W.prop[i];
       if (!pp->used || fabsf(pp->x - x) > 1.3f || fabsf(pp->z - z) > 1.0f) continue;
@@ -458,10 +460,14 @@ void fx_tick(void) {
     if (b->cell < 0 || b->a <= 0) continue;
     if (b->grow < 1 && b->sx > 0) { b->grow += (1.0f - b->grow) * 0.03f + 0.002f; if (b->grow > 1) b->grow = 1; cw_node_set(blood[i], "size", cw_val_vec3(b->sx * b->grow, b->sy * b->grow, 0.26f)); } /* the pool under a body spreads over a couple of seconds */
     int age = fx_frames - b->born;
+    if (age < 20 * 60 && age % 30 == 0) { /* soaking in: darker by a step each half second (slow, no flicker) */
+      float k = STAIN_K + (STAIN_DRY - STAIN_K) * (float)age / (20.0f * 60.0f);
+      cw_node_set(blood[i], "color", cw_val_color(k, k * 0.95f, k * 0.95f, b->a));
+    }
     if (age > 40 * 60) {
       b->a -= 0.006f;
       if (b->a <= 0) { b->a = 0; cw_node3d_set_position(blood[i], (t3_vec3){ 0, -20, 0 }); }
-      cw_node_set(blood[i], "color", cw_val_color(0.78f, 0.74f, 0.74f, b->a > 0 ? b->a : 0));
+      cw_node_set(blood[i], "color", cw_val_color(STAIN_DRY, STAIN_DRY * 0.95f, STAIN_DRY * 0.95f, b->a > 0 ? b->a : 0));
     }
   }
   for (int i = 0; i < NFLASH; i++)
@@ -535,6 +541,8 @@ void audio_init(void) {
   SND[SFX_HEAL] = make(0.3f, 520, 1040, 0.0f, 0.4f, 3);
   SND[SFX_THUMP] = make(0.5f, 95, 42, 0.45f, 1.0f, 5); /* a fist on the jukebox cabinet */
   SND[SFX_SWAGGER] = make_swagger();
+  SND[SFX_THUD] = make(0.24f, 92, 36, 0.3f, 0.95f, 6);  /* the body layer under a heavy blow: low and short */
+  SND[SFX_SNAP] = make(0.05f, 2600, 900, 1.0f, 0.35f, 16); /* the crack on top of a light one */
 }
 void sfx(int id) {
   if (!SND[id].id) return;

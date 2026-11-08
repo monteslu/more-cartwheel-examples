@@ -6,6 +6,7 @@
 #include "cartwheel/render2d.h"
 #include "cartwheel/shell.h"
 #include "cartwheel/ui.h"
+#include "cartwheel/prompt.h"
 #include "game.h"
 
 static void bar(cw_rect r, float f, cw_color fill, cw_color back) {
@@ -25,12 +26,13 @@ static float text_w(const char *s, float size) {
   return cw_font_measure(cw_ui_font_sans(), s, &(cw_text_style){ .size = size, .outline_width = size * 0.1f }).width;
 }
 
-/* the game camera's projection (level.c places it: cam_x, 3.9 m up, 7.7 m out, pitched 0.3 rad down, 40 degrees) */
+/* the game camera's projection (game.h CAM_*; level.c places it, drawn back by W.cam_back along its axis) */
 static bool to_screen(float x, float y, float z, cw_vec2 sz, cw_vec2 *out) {
-  float ry = y - 3.9f, rz = z - 7.7f;
-  float cy = ry * 0.95534f - rz * 0.29552f, cz = ry * 0.29552f + rz * 0.95534f;
+  float s = sinf(CAM_PITCH), c = cosf(CAM_PITCH);
+  float ry = y - (CAM_Y + W.cam_back * s), rz = z - (CAM_Z + W.cam_back * c);
+  float cy = ry * c - rz * s, cz = ry * s + rz * c;
   if (cz > -0.1f) return false;
-  float t = 0.36397f, asp = sz.x / sz.y;
+  float t = CAM_T, asp = sz.x / sz.y;
   out->x = sz.x * 0.5f * (1 + ((x - W.cam_x) / -cz) / (t * asp));
   out->y = sz.y * 0.5f * (1 - (cy / -cz) / t);
   return true;
@@ -61,6 +63,10 @@ void ui_draw(void) {
     snprintf(b, sizeof b, "P%d %s", i + 1, DEFS[p->def].name);
     text(b, x, y, u * 1.0f, PC[i], false);
     bar(cw_rect_make(x, bar_y, w, u * 0.7f), p->hp / p->maxhp, p->hp / p->maxhp > 0.3f ? cw_rgba(0.9f, 0.25f, 0.2f, 1) : cw_rgba(1, 0.5f, 0.1f, 1), cw_rgba(0.1f, 0.1f, 0.1f, 0.8f));
+    if (p->refund > 0 && p->hp < p->maxhp) { /* the special's cost still to win back by landing blows: green after the bar */
+      float f0 = p->hp / p->maxhp, f1 = fminf(1, (p->hp + p->refund) / p->maxhp);
+      cw_r2d_round_rect(cw_rect_make(x + w * f0, bar_y + u * 0.12f, w * (f1 - f0), u * 0.46f), u * 0.15f, 4, cw_rgba(0.35f, 0.9f, 0.4f, 0.85f));
+    }
   }
   /* a number over every fighter's head in its colour (players differ by more than colour) */
   for (int i = 0; i < W.players; i++) {
@@ -131,6 +137,20 @@ void ui_draw(void) {
       }
     }
   }
+  /* the last enemy a fighter hit: its name and a small health bar over its head for two seconds (fading out) */
+  if (W.last_hit_t > 0 && W.last_hit >= 0 && W.last_hit < MAXE && W.e[W.last_hit].used) {
+    const ent *e = &W.e[W.last_hit];
+    cw_vec2 s;
+    t3_vec3 at = { e->x, e->y + 2.05f * char_scale(e->def), e->z }, hips;
+    if (rag_hips(e, &hips)) at = (t3_vec3){ hips.x, hips.y + 0.6f, hips.z };
+    if (to_screen(at.x, at.y, at.z, sz, &s)) {
+      float a = W.last_hit_t < 20 ? (float)W.last_hit_t / 20.0f : 1.0f, bw = u * 4.2f, bh = u * 0.38f;
+      float f = e->hp > 0 ? e->hp / e->maxhp : 0;
+      float ny = s.y - bh - u * 0.25f - u * 1.0f * grow(u * 0.9f);
+      text(DEFS[e->def].name, s.x, ny, u * 0.9f, cw_rgba(1, 0.92f, 0.8f, a), true);
+      bar(cw_rect_make(s.x - bw * 0.5f, s.y - bh, bw, bh), f, cw_rgba(0.95f, 0.75f, 0.2f, a), cw_rgba(0.08f, 0.06f, 0.06f, 0.75f * a));
+    }
+  }
   /* the boss bar */
   if (W.boss_active && W.boss_idx >= 0 && W.e[W.boss_idx].used) {
     const ent *bo = &W.e[W.boss_idx];
@@ -163,13 +183,93 @@ void ui_draw(void) {
     text(b, sz.x * 0.5f, sz.y * 0.32f, u * 3.0f, cw_rgba(1, 0.9f, 0.5f, 1), true);
     text(stage_name(W.stage), sz.x * 0.5f, sz.y * 0.32f + u * 3.6f, u * 1.8f, cw_rgba(1, 1, 1, 1), true);
   }
-  if (W.phase == PH_CLEAR) text("STAGE CLEAR", sz.x * 0.5f, sz.y * 0.35f, u * 3.2f, cw_rgba(1, 0.9f, 0.4f, 1), true);
+  if (W.phase == PH_CLEAR) { /* the grade card: the stage's numbers come up one by one, then the grade */
+    int pts, g = stage_grade(&pts), t = W.phase_t;
+    float a = fminf(1, (float)t / 20.0f), y = sz.y * 0.2f, cwid = fminf(sz.x * 0.86f, u * 26);
+    float lh = u * 1.5f * grow(u * 1.1f);
+    cw_r2d_round_rect(cw_rect_make(sz.x * 0.5f - cwid * 0.5f, y - u * 0.8f, cwid, u * 0.8f + u * 3.4f * grow(u * 2.6f) + lh * 4 + u * 4.4f * grow(u * 2.8f)), u * 0.6f, 8, cw_rgba(0.02f, 0.02f, 0.04f, 0.78f * a));
+    text("STAGE CLEAR", sz.x * 0.5f, y, u * 2.6f, cw_rgba(1, 0.9f, 0.4f, a), true);
+    y += u * 3.4f * grow(u * 2.6f);
+    char b[64];
+    const char *lab[4] = { "Time", "Damage taken", "Best combo", "Lives lost" };
+    int val[4] = { W.st.clear_t / TPS, W.st.dmg_taken, W.st.combo_max, W.st.deaths };
+    for (int k = 0; k < 4; k++) {
+      float ak = fminf(1, fmaxf(0, (float)(t - 30 - k * 25) / 15.0f));
+      if (k == 0) snprintf(b, sizeof b, "%d:%02d", val[0] / 60, val[0] % 60); else snprintf(b, sizeof b, "%d", val[k]);
+      text(lab[k], sz.x * 0.5f - cwid * 0.4f, y, u * 1.1f, cw_rgba(0.85f, 0.85f, 0.85f, ak), false);
+      text(b, sz.x * 0.5f + cwid * 0.4f - text_w(b, u * 1.1f), y, u * 1.1f, cw_rgba(1, 1, 1, ak), false);
+      y += lh;
+    }
+    float ag = fminf(1, fmaxf(0, (float)(t - 150) / 20.0f)); /* the grade swells in after the numbers */
+    static const char *G[5] = { "S", "A", "B", "C", "D" };
+    static const cw_color GC[5] = { { 1, 0.85f, 0.3f, 1 }, { 0.5f, 1, 0.55f, 1 }, { 0.5f, 0.8f, 1, 1 }, { 0.9f, 0.9f, 0.9f, 1 }, { 0.9f, 0.5f, 0.45f, 1 } };
+    snprintf(b, sizeof b, "GRADE %s", G[g]);
+    text(b, sz.x * 0.5f, y + u * 0.6f, u * (2.2f + 0.6f * ag), cw_rgba(GC[g].r, GC[g].g, GC[g].b, ag), true);
+  }
   if (W.phase == PH_OVER) text("GAME OVER", sz.x * 0.5f, sz.y * 0.35f, u * 3.6f, cw_rgba(1, 0.3f, 0.25f, 1), true);
   if (W.phase == PH_WIN) {
     char b[64];
     text("THE STREETS ARE YOURS", sz.x * 0.5f, sz.y * 0.3f, u * 3.2f, cw_rgba(1, 0.9f, 0.4f, 1), true);
     snprintf(b, sizeof b, "SCORE %d", W.total_score);
     text(b, sz.x * 0.5f, sz.y * 0.3f + u * 4.5f, u * 2.0f, cw_rgba(1, 1, 1, 1), true);
+  }
+  cw_r2d_end();
+}
+
+/* ── the character select: the fighters stand in the street behind it; one card per seat along the bottom ── */
+static const char *const ROLE[NHEROES][2] = {
+  { "strong all-rounder", "hits hard, takes a beating" },
+  { "the quickest", "fast feet, fast hands" },
+  { "reach and pace", "long kicks, long legs" },
+  { "the grappler", "grabs far, throws hardest" },
+};
+static int hero_slot(int def) { for (int k = 0; k < NHEROES; k++) if (HEROES[k] == def) return k; return 0; }
+void ui_pick(void) {
+  cw_vec2 sz = cw_r2d_canvas_size();
+  float u = sz.y / 36.0f, bs = u * 0.9f;
+  static const cw_color PC[4] = { { 0.95f, 0.35f, 0.3f, 1 }, { 1.0f, 0.75f, 0.2f, 1 }, { 0.3f, 0.85f, 0.55f, 1 }, { 0.4f, 0.6f, 1.0f, 1 } };
+  cw_font f = cw_ui_font_sans();
+  cw_r2d_begin(NULL);
+  float y = u * 1.4f;
+  text("CHOOSE YOUR FIGHTER", sz.x * 0.5f, y, u * 2.0f, cw_rgba(1, 0.88f, 0.5f, 1), true);
+  y += u * 2.4f * grow(u * 2.0f);
+  if (g_pick.left > 0) {
+    char b[96] = "";
+    for (int i = 0; i < W.players; i++) if (!g_pick.ready[i]) { char p[8]; snprintf(p, sizeof p, "%sP%d", b[0] ? ", " : "", i + 1); strncat(b, p, sizeof b - strlen(b) - 1); }
+    char line[160];
+    snprintf(line, sizeof line, "%s not ready: starting in %d", b, (g_pick.left + TPS - 1) / TPS);
+    text(line, sz.x * 0.5f, y, u * 1.0f, cw_rgba(1, 1, 1, 0.95f), true);
+  }
+  int n = W.players;
+  float cw = fminf((sz.x - u * 2.4f) / 4.0f - u, u * 16), gap = u;
+  float total = (float)n * cw + (float)(n - 1) * gap, x0 = (sz.x - total) * 0.5f;
+  /* the card's height: what its lines need at this text size, measured */
+  float lh_name = u * 1.9f * grow(u * 1.6f), lh_role = u * 1.05f * grow(u * 0.9f), lh_p = cw_prompt_text_size(f, "{left|right}: choose", 0, bs).y + u * 0.4f;
+  float ch = u * 0.8f + u * 1.2f * grow(u * 0.9f) + lh_name + 2 * lh_role + u * 0.6f + 2 * lh_p + u * 0.6f;
+  float cy = sz.y - ch - u * 1.2f;
+  for (int i = 0; i < n; i++) {
+    float x = x0 + (float)i * (cw + gap), ty = cy + u * 0.5f;
+    int h = hero_slot(g_heroes[i]);
+    bool rd = g_pick.ready[i];
+    cw_r2d_round_rect(cw_rect_make(x, cy, cw, ch), u * 0.4f, 6, cw_rgba(0.02f, 0.02f, 0.04f, rd ? 0.82f : 0.7f));
+    cw_r2d_round_rect(cw_rect_make(x, cy, cw, u * 0.25f), u * 0.1f, 4, PC[i]);
+    char b[32];
+    snprintf(b, sizeof b, "P%d", i + 1);
+    text(b, x + cw * 0.5f, ty, u * 0.9f, PC[i], true);
+    ty += u * 1.2f * grow(u * 0.9f);
+    text(DEFS[HEROES[h]].name, x + cw * 0.5f, ty, u * 1.6f, cw_rgba(1, 1, 1, 1), true);
+    ty += lh_name;
+    for (int l = 0; l < 2; l++) { text(ROLE[h][l], x + cw * 0.5f, ty, u * 0.9f, cw_rgba(0.85f, 0.85f, 0.85f, 1), true); ty += lh_role; }
+    ty += u * 0.6f;
+    if (rd) {
+      text("READY", x + cw * 0.5f, ty, u * 1.0f, cw_rgba(0.5f, 1, 0.5f, 1), true);
+      ty += lh_p;
+      cw_prompt_text(f, "{kick}: change", i, cw_v2(x + cw * 0.5f, ty), bs, cw_rgba(1, 1, 1, 0.8f), CW_ALIGN_CENTER);
+    } else {
+      cw_prompt_text(f, "{left|right}: choose", i, cw_v2(x + cw * 0.5f, ty), bs, cw_rgba(1, 1, 1, 0.9f), CW_ALIGN_CENTER);
+      ty += lh_p;
+      cw_prompt_text(f, "{attack}: ready", i, cw_v2(x + cw * 0.5f, ty), bs, cw_rgba(1, 0.9f, 0.5f, 1), CW_ALIGN_CENTER);
+    }
   }
   cw_r2d_end();
 }

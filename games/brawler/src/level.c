@@ -118,9 +118,9 @@ void stage_wave_load(int stage, int wave) {
     n++;
   }
   /* more fighters on screen: more to fight */
-  if (W.players >= 3) for (int i = 0; i < w->n && n < 22; i++)
+  if (crew() >= 3) for (int i = 0; i < w->n && n < 22; i++)
     if (!DEFS[w->def[i]].mini && !DEFS[w->def[i]].boss && (i % 2) == 0) { W.spawn_q[n].def = w->def[i], W.spawn_q[n].side = (i & 1) ? -1 : 1, W.spawn_q[n].delay = 60 + i * 40; n++; }
-  if (W.players == 2) for (int i = 0; i < w->n && n < 22; i += 3)
+  if (crew() == 2) for (int i = 0; i < w->n && n < 22; i += 3)
     if (!DEFS[w->def[i]].mini && !DEFS[w->def[i]].boss) { W.spawn_q[n].def = w->def[i], W.spawn_q[n].side = 1, W.spawn_q[n].delay = 80 + i * 40; n++; }
   W.spawn_q_n = n;
 }
@@ -285,7 +285,7 @@ static void level_props(cw_node s, int stage, float len, bool keep) {
   for (float x = 8; x < len - 4 && np < MAXPROP; x += 5.2f + cw_rng_float(&r) * 2.0f, np++) {
     prop_t *p = &W.prop[np];
     p->used = true, p->kind = cw_rng_int(&r, 0, 2), p->hp = 3;
-    p->x = x, p->z = cw_rng_range(&r, -2.0f, 2.0f);
+    p->x = x, p->z = cw_rng_range(&r, -LANE_Z + 0.3f, LANE_Z - 0.3f);
     p->drop = cw_rng_int(&r, 0, 9);
     if (!keep) nodes[np] = spawn_glb(s, PROP_GLB[p->kind], NULL, true);
     p->node = nodes[np];
@@ -345,9 +345,12 @@ void level_build(int stage) {
   { const char *x = getenv("BRAWLER_EXP"); oldfx = x && strstr(x, "oldfx"); } /* the earlier settings: the perf gate's control */
 #endif
   if (!oldfx) {
-    cw_node_set(fog, "volumetric", cw_val_bool(false));
-    cw_node_set(fog, "density", cw_val_float(0)); /* a full-screen pass (0.37 ms) for a haze the near street hardly shows */
-    cw_node_set(fog, "visible", cw_val_bool(false));
+    /* the fog is back (B-PT19 took it out whole, the Foggy Docks too): volumetric where the preset asks for it (High and
+       up: the accents scatter in it), and on Low and Very Low the engine draws it as plain height fog inside the tone
+       mapping pass, at no cost of its own. A short grid: the street camera sees about 25 m */
+    cw_node_set(fog, "visible", cw_val_bool(true));
+    cw_node_set(fog, "volumetric", cw_val_bool(true));
+    cw_node_set(fog, "volumetric_distance", cw_val_float(28));
     cw_node_set(post, "ssao", cw_val_bool(false)); /* the bake carries it (lm_apply) */
     cw_node_set(sun, "shadow_cascades", cw_val_int(2));
     cw_node_set(sun, "shadow_distance", cw_val_float(24));
@@ -402,7 +405,7 @@ void level_build(int stage) {
     acc_node[i] = light(s, "A", (t3_vec3){ th->acc[i].dx, y, zz }, th->acc[i].c, e, rg);
     cw_node_set(acc_node[i], "bake", cw_val_bool(false)); /* it follows the camera */
   }
-  g_mirror_z = (int)((acc_z[2] * 3.9f + 7.7f * acc_y[2]) / (3.9f + acc_y[2]) * 1000.0f + 0.5f);
+  g_mirror_z = (int)((acc_z[2] * CAM_Y + CAM_Z * acc_y[2]) / (CAM_Y + acc_y[2]) * 1000.0f + 0.5f);
   if ((stage & 3) == 1) juke_build(s); /* Arthur's jukebox */
   level_props(s, stage, len, false);
   ncount = 0;
@@ -504,6 +507,16 @@ void level_camera(float dt) {
   }
   float goal = W.cam_x;
   if (n > 0) goal = sx / n + 0.6f;
+  { /* fighters spread wider than the picture: the camera draws back along its axis until they fit (and comes in again) */
+    float lo = 1e9f, hi = -1e9f;
+    for (int i = 0; i < W.players; i++) { const ent *p = &W.p[i]; if (!p->used || p->st == S_DEAD) continue; if (p->x < lo) lo = p->x; if (p->x > hi) hi = p->x; }
+    float want = 0;
+    if (hi > lo) {
+      float need = (hi - lo) * 0.5f + 1.6f, have = view_halfw(0, 1.0f) - W.cam_back * CAM_T * (16.0f / 9.0f); /* the half width with no draw back */
+      want = cw_clampf((need - have) / (CAM_T * (16.0f / 9.0f)), 0, 3.0f);
+    }
+    W.cam_back += (want - W.cam_back) * 0.03f;
+  }
   /* the scroll is released only when the wave is cleared: lock_x is the next stop */
   if (goal > W.lock_x) goal = W.lock_x;
   if (goal < W.cam_x) goal = W.cam_x;
@@ -518,8 +531,11 @@ void level_camera(float dt) {
   }
   { int j = (int)((fabsf(shx) + fabsf(shy)) * 1000 + 0.5f); if (j > g_camjit) g_camjit = j; }
   /* g_cam (debug "cam" command in the autopilot build): zoom toward a point on the street for close-ups */
-  cw_node3d_set_position(cam, (t3_vec3){ W.cam_x + g_cam[1] + shx, 1.0f + 2.9f * g_cam[0] + shy, -1.66f + g_cam[2] + 9.36f * g_cam[0] });
-  cw_node3d_set_rotation(cam, (t3_vec3){ -0.3f, 0, 0 });
+  { /* g_cam zoom: along the line from the camera to a point on the street ahead of it */
+    float cy = CAM_Y + W.cam_back * sinf(CAM_PITCH), cz = CAM_Z + W.cam_back * cosf(CAM_PITCH);
+    cw_node3d_set_position(cam, (t3_vec3){ W.cam_x + g_cam[1] + shx, 1.0f + (cy - 1.0f) * g_cam[0] + shy, -1.66f + g_cam[2] + (cz + 1.66f) * g_cam[0] });
+  }
+  cw_node3d_set_rotation(cam, (t3_vec3){ -CAM_PITCH, 0, 0 });
 #ifdef BRAWLER_AUTOPILOT
   { /* BRAWLER_CAM=dx,y,dz,ty: key art: the camera at (players' centre + dx, y, + dz), looking at their centre at height ty */
     const char *e = getenv("BRAWLER_CAM");

@@ -44,7 +44,8 @@ static int32_t d_unfair, d_still, d_frozen, d_blocks, d_pickups, d_bphase, d_dea
 static int32_t d_juke[6];
 static int32_t d_wanker[6], d_creep[6], d_clones, d_blood[4]; /* the jukebox: uses, fighters knocked down by its shockwave, fighters who jumped it, playing, radius in cm, Arthur on his way to it */
 static float d_face[8]; /* the boss's expression weights (blink snarl shout wince ko grin effort grimace) */
-static int64_t run_ticks; /* fixed updates since the program started (status lines) */
+static int64_t run_ticks;
+static int32_t d_crew, d_lane[2], d_pick[2], d_pick_ready[MAXP], d_absent[MAXP]; /* fixed updates since the program started (status lines) */
 
 static void play_music(int stage) {
   if (music_stage == stage && cw_voice_is_playing(music)) return;
@@ -64,6 +65,7 @@ static void shell_sound(cw_shell_sound s, void *user) {
 static int prep_step;
 static bool prep_ready, prep_show, prep_again;
 #endif
+static void shell_sound(cw_shell_sound s, void *user);
 static void shell_screen(cw_shell_screen from, cw_shell_screen to, void *user) {
   (void)from, (void)user;
   if (to == CW_SHELL_PLAY) play_music(W.stage);
@@ -103,8 +105,80 @@ static bool warmup(void *user) {
 }
 #endif
 
+/* ── the character select ──────────────────────────────────────────────
+ * Before stage 1 each seat picks its fighter: left and right through the four (a hero another seat holds is passed
+ * over), attack or jump to be ready, kick to change your mind. Everyone ready starts at once. Once one seat
+ * is ready, a seat that has not touched its pad since the screen opened is counted down (6 s) and the match starts
+ * without it: it joined and walked away, so it gets no fighter and nothing is sized for it; a press of attack in play
+ * drops it in. A seat that is still choosing gets 15 s. sw pick_wait 1 (a test switch): wait for every seat for ever. */
+pick_t g_pick;
+static bool sw_pick_wait;
+static int pick_index(int def) { for (int k = 0; k < NHEROES; k++) if (HEROES[k] == def) return k; return 0; }
+static bool hero_taken(int seat, int def) {
+  for (int k = 0; k < W.players; k++) if (k != seat && g_heroes[k] == def) return true;
+  return false;
+}
+static void pick_open(void) {
+  memset(&g_pick, 0, sizeof g_pick);
+  g_pick.on = true;
+  g_freeze = true; /* the fighters stand and turn to the camera (sim.c ent_yaw) */
+  { extern float g_freeze_yaw; g_freeze_yaw = 0.3f; }
+  for (int i = 0; i < W.players; i++) /* each seat starts on a hero nobody else holds */
+    if (hero_taken(i, g_heroes[i]))
+      for (int k = 0; k < NHEROES; k++) if (!hero_taken(i, HEROES[k])) { sim_set_hero(i, HEROES[k]); break; }
+}
+static void pick_update(void) {
+  static int held[MAXP];
+  g_pick.t++;
+  int ready = 0, choosing = 0, n = W.players;
+  for (int i = 0; i < n; i++) {
+    float mx = cw_input_axis(i, a_left, a_right);
+    int dir = mx > 0.5f ? 1 : mx < -0.5f ? -1 : 0;
+    bool yes = cw_action_just_pressed(i, a_atk) || cw_action_just_pressed(i, a_jump);
+    bool no = cw_action_just_pressed(i, a_kick);
+    if (dir || yes || no || cw_action_just_pressed(i, a_grab) || cw_action_just_pressed(i, a_special)) g_pick.touched[i] = true;
+    if (dir && !held[i] && !g_pick.ready[i]) {
+      int k = pick_index(g_heroes[i]);
+      for (int t = 0; t < NHEROES; t++) { k = (k + dir + NHEROES) % NHEROES; if (!hero_taken(i, HEROES[k])) break; }
+      sim_set_hero(i, HEROES[k]);
+      shell_sound(CW_SHELL_SND_MOVE, NULL);
+    }
+    held[i] = dir;
+    if (yes && !g_pick.ready[i]) g_pick.ready[i] = true, shell_sound(CW_SHELL_SND_SELECT, NULL);
+    else if (no && g_pick.ready[i]) g_pick.ready[i] = false, shell_sound(CW_SHELL_SND_BACK, NULL);
+    ready += g_pick.ready[i];
+    choosing += !g_pick.ready[i] && g_pick.touched[i];
+  }
+  /* the wait: none until someone is ready; then 6 s for seats nobody touched, 15 s while one is still choosing */
+  int want = choosing ? 15 * TPS : 6 * TPS;
+  if (ready == 0 || sw_pick_wait) g_pick.wait = 0;
+  else g_pick.wait++;
+  g_pick.left = ready == n ? 0 : want - g_pick.wait;
+  if (ready == n || (ready > 0 && !sw_pick_wait && g_pick.wait >= want)) {
+    for (int i = 0; i < n; i++) g_absent[i] = !g_pick.ready[i] && !g_pick.touched[i];
+    sim_pick_done();
+    g_pick.on = false;
+    g_freeze = false;
+  }
+  level_camera(1.0f / TPS);
+  if (g_pick.on) { /* the select's camera: close on the fighters, who turn toward it */
+    float cx = 0, cz = 0; int k = 0;
+    for (int i = 0; i < W.players; i++) if (W.p[i].used) cx += W.p[i].x, cz += W.p[i].z, k++;
+    if (k) cx /= (float)k, cz /= (float)k;
+    cw_node cam = cw_node_get(cw_node_get(cw_tree_root(cw_scene_app_tree()), "Level"), "Camera");
+    /* the fighters in the upper part of the picture (the cards are below them): 5.3 m off along a 0.21 rad look down */
+    cw_node3d_set_position(cam, (t3_vec3){ cx, 1.6f, cz + 5.15f });
+    cw_node3d_set_rotation(cam, (t3_vec3){ -0.21f, 0, 0 });
+  }
+}
+static void cmd_sw(int argc, const char **argv, cw_reply *r) {
+  if (argc >= 3 && !strcmp(argv[1], "pick_wait")) { sw_pick_wait = atoi(argv[2]) != 0; cw_reply_printf(r, "{\"pick_wait\":%d}", sw_pick_wait); return; }
+  cw_reply_error(r, "usage: sw pick_wait <0|1>");
+}
+
 static void start(int players, void *user) {
   (void)user;
+  memset(g_absent, 0, sizeof g_absent);
 #ifndef BRAWLER_AUTOPILOT
   if (prep_ready) {
     level_keep_next();
@@ -124,6 +198,9 @@ static void start(int players, void *user) {
 #endif
   sim_reset(players, stage0);
   play_music(stage0);
+#ifndef BRAWLER_AUTOPILOT
+  pick_open(); /* the character select, over the street the match starts on */
+#endif
 }
 
 #ifdef BRAWLER_AUTOPILOT
@@ -273,6 +350,9 @@ static void cmd_hero(int argc, const char **argv, cw_reply *r) { /* hero <seat 0
   g_heroes[atoi(argv[1]) & 3] = atoi(argv[2]);
   cw_reply_printf(r, "{\"seat\":%d,\"def\":%d}", atoi(argv[1]) & 3, atoi(argv[2]));
 }
+static void cmd_legacymoves(int argc, const char **argv, cw_reply *r) { extern bool g_legacy_moves; g_legacy_moves = argc > 1 && atoi(argv[1]); cw_reply_printf(r, "{\"legacymoves\":%d}", g_legacy_moves); }
+static void cmd_botaim(int argc, const char **argv, cw_reply *r) { extern float g_bot_aim; g_bot_aim = argc > 1 ? (float)atof(argv[1]) : 0; cw_reply_printf(r, "{\"botaim\":%g}", g_bot_aim); }
+static void cmd_legacylane(int argc, const char **argv, cw_reply *r) { extern bool g_legacy_lane; g_legacy_lane = argc > 1 && atoi(argv[1]); cw_reply_printf(r, "{\"legacylane\":%d}", g_legacy_lane); }
 static void cmd_legacyair(int argc, const char **argv, cw_reply *r) { extern bool g_legacy_air; g_legacy_air = argc > 1 && atoi(argv[1]); cw_reply_printf(r, "{\"legacyair\":%d}", g_legacy_air); }
 /* bots: walk to the nearest enemy and fight; grab, kick and jump now and then */
 static int bot_pick[MAXP] = { -1, -1, -1, -1 };
@@ -312,17 +392,32 @@ static void bot(int i, inputs *in) {
     float off = DEFS[v->def].boss ? 1.15f : DEFS[v->def].mini ? 1.0f : 0.9f; /* big bodies are held further off (separate_bodies) */
     tx = v->x - (e->x < v->x ? off : -off);
     tz = v->z + ((i & 1) ? 0.3f : -0.3f); /* fighters on one enemy flank it a step apart in depth, not in single file */
+    { extern float g_bot_aim; /* botaim: a player who reads the depth off the picture, wrong by up to this much, new each second */
+      if (g_bot_aim > 0) { uint32_t h = (uint32_t)(W.tick / 60) * 2654435761u ^ (uint32_t)(i * 40503 + best * 977); h ^= h >> 13; h *= 0x5bd1e995u; h ^= h >> 15; tz = v->z + ((float)(h & 1023) / 511.5f - 1.0f) * g_bot_aim; } }
   }
   float dx = tx - e->x, dz = tz - e->z;
   in->mx = dx > 0.15f ? 1 : dx < -0.15f ? -1 : 0;
   in->mz = dz > 0.12f ? 1 : dz < -0.12f ? -1 : 0;
+  extern bool g_legacy_moves;
+  if (best >= 0 && !g_legacy_moves) { /* the toolbox: run at a far target (a double tap) and kick into it; stamp on one lying close */
+    const ent *v = &W.e[best];
+    int ph = (W.tick + i * 13) % 60;
+    if (fabsf(dx) > 3.2f && (ph == 0 || ph == 2)) in->mx = 0;
+    float fx = (v->x - e->x) * (float)e->face;
+    if (e->dash > 6 && fx > 0.9f && fx < 1.7f && fabsf(v->z - e->z) < 0.4f) in->atk = true;
+  }
+  if (best >= 0 && !g_legacy_moves && e->st == S_IDLE && (W.tick + i * 5) % 20 == 0) {
+    for (int k = 0; k < MAXE; k++) { const ent *v = &W.e[k]; float fx = (v->x - e->x) * (float)e->face;
+      if (v->used && v->st == S_DOWN && v->hp > 0 && fx > -0.2f && fx < 1.1f && fabsf(v->z - e->z) < 0.6f) { in->atk = true; break; } }
+  }
   if (best >= 0) {
     const ent *v = &W.e[best];
     /* standing in place next to it but turned away (no step to turn on): a nudge toward it turns the bot round (four bots
        round a boss at the screen edge stood there back to back for minutes) */
     if (in->mx == 0 && (v->x - e->x) * (float)e->face < -0.1f && fabsf(v->x - e->x) < 2.0f) in->mx = v->x > e->x ? 0.3f : -0.3f;
     float fx = (v->x - e->x) * (float)e->face;
-    bool near = fx > -0.2f && fx < (DEFS[v->def].boss ? 1.45f : DEFS[v->def].mini ? 1.32f : 1.2f) && (v->z - e->z) * (v->z - e->z) < 0.3f;
+    extern float g_bot_aim;
+    bool near = fx > -0.2f && fx < (DEFS[v->def].boss ? 1.45f : DEFS[v->def].mini ? 1.32f : 1.2f) && (v->z - e->z) * (v->z - e->z) < (g_bot_aim > 0 ? 1.0f : 0.3f);
     if (near && (W.tick + i * 7) % 12 == 0) {
       int r = (int)(W.hash ^ (uint32_t)(W.tick * 7 + i)) % 11;
       if (v->def == D_GUARD && (v->x - e->x) * (float)v->face < 0) r = r < 5 ? 1 : r < 7 ? 0 : 3; /* a shield in the way: kick or grab */
@@ -332,6 +427,8 @@ static void bot(int i, inputs *in) {
       else in->atk = true;
     }
     if (e->st == S_GRAB) { in->atk = (W.tick % 14) == 0; in->mx = 0; }
+    if (!g_legacy_moves && e->st == S_ATK && e->atk == A_PUNCH2 && !DEFS[v->def].boss && !DEFS[v->def].mini && (W.tick + i) % 3 == 0) in->kick = true, in->atk = false; /* the launcher */
+    if (!g_legacy_moves && v->st == S_FALL && v->juggle > 0 && near && W.tick % 5 == 0) in->atk = true; /* juggle it */
     if (e->st == S_IDLE && (W.tick + i * 31) % 233 == 0) in->jump = true;
   }
   if (W.juke.t > 0 && !(W.juke.mask & (1u << i))) { /* the jukebox ring is coming: jump it when it is close */
@@ -370,6 +467,13 @@ static void init(void *user) {
     }
   }
   cw_debug_i32("game.ticks", &d_ticks);
+  cw_debug_i32("pick.on", &d_pick[0]);           /* the character select is up */
+  cw_debug_field("pick.heroes", g_heroes, CW_DBG_I32, MAXP); /* who each seat plays (0 Rook, 1 Mika, 2 Jet, 17 Dolly) */
+  cw_debug_field("pick.ready", d_pick_ready, CW_DBG_I32, MAXP);
+  cw_debug_i32("pick.left", &d_pick[1]);         /* ticks the countdown has left, 0 none */
+  cw_debug_field("seat.absent", d_absent, CW_DBG_I32, MAXP);
+  cw_debug_i32("game.crew", &d_crew);             /* fighters the waves are sized for (absent seats raise nothing) */ /* seats that joined but never came in */
+  cw_debug_command("sw", "sw pick_wait <0|1>: test switch (the character select waits for every seat for ever)", cmd_sw);
   cw_debug_i32("spawn.checked", &d_spawn_checked);
   cw_debug_i32("spawn.bad", &d_spawn_bad);
   cw_debug_i32("spawn.unposed", &d_spawn_unposed);
@@ -395,6 +499,10 @@ static void init(void *user) {
   { extern int g_markgap; cw_debug_i32("game.markgap", &g_markgap); } /* farthest a player marker was from its loose body's hips, mm */
   { extern int g_comb[2]; cw_debug_field("game.comb", g_comb, CW_DBG_I32, 2); } /* frames mid stroke of Arthur's comb, farthest the wrist was from its place on the hair, mm */
   cw_debug_i32("game.bowled", &d_bowled);
+  cw_debug_field("game.moves", W.moves, CW_DBG_I32, 6); /* landed: dash attacks, backfists, launchers, juggle blows, stomps; tenths of health won back */
+  cw_debug_i32("game.stopped", &W.stopped); /* frames held by hit-stop this match */
+  cw_debug_field("game.combos", W.combos, CW_DBG_I32, 5); /* finished hit combos of 1, 2, 3-4, 5-7, 8+ */
+  cw_debug_field("game.lane", d_lane, CW_DBG_I32, 2); /* fighters' blows thrown with an enemy within 1.5 m along the street this stage, and those that hit nobody */
   { extern int g_shield[5]; cw_debug_field("game.shield", g_shield, CW_DBG_I32, 5); } /* shields dropped, taken up, lowest and highest mm a lying one sat over the street, frames on a prop */       /* enemies knocked over by a thrown body this stage */
   cw_debug_i32("game.overlaps", &d_overlaps);   /* most pairs of standing bodies inside each other on any tick (separate_bodies): 0 */
   cw_debug_i32("game.boss_phase", &d_bphase);   /* highest boss phase reached this stage (0 to 2) */
@@ -448,6 +556,9 @@ static void init(void *user) {
   cw_debug_command("legacymarker", "legacymarker <0|1>: the marker over the simulated spot (gate control only)", cmd_legacymarker);
   cw_debug_command("knockat", "knockat <tick>: everyone knocked down at that tick of the run", cmd_knockat);
   cw_debug_command("hero", "hero <seat> <def>: who a seat plays from the next start", cmd_hero);
+  cw_debug_command("legacymoves", "legacymoves <0|1>: no dash, backfist, launcher, juggle, stomp or refund (gate control only)", cmd_legacymoves);
+  cw_debug_command("botaim", "botaim <m>: the bots misjudge depth by up to m and swing when level along the street", cmd_botaim);
+  cw_debug_command("legacylane", "legacylane <0|1>: no lane assist (gate control only)", cmd_legacylane);
   cw_debug_command("legacyair", "legacyair <0|1>: the old airborne stagger (gate control only)", cmd_legacyair);
   cw_debug_command("botdmg", "botdmg <k>: the bots' damage factor (3 default, 1 real)", cmd_botdmg);
   cw_debug_command("hurtat", "hurtat <tick> <enemy> [knock]: a blow on an enemy at that tick", cmd_hurtat);
@@ -459,6 +570,10 @@ static void init(void *user) {
 }
 
 static void publish(void) {
+  d_crew = crew();
+  d_lane[0] = W.st.lane_press, d_lane[1] = W.st.lane_miss;
+  d_pick[0] = g_pick.on, d_pick[1] = g_pick.on ? g_pick.left : 0;
+  for (int i = 0; i < MAXP; i++) d_pick_ready[i] = g_pick.ready[i], d_absent[i] = g_absent[i];
   d_ticks = W.tick, d_players = W.players, d_stage = W.stage, d_phase = W.phase, d_kills = W.kills, d_wave = W.wave;
   d_score = W.total_score, d_tokens = W.tokens_out, d_cam = W.cam_x, d_hash = W.hash;
   int n = 0;
@@ -491,6 +606,9 @@ static void sim_step(void);
 static void fixed_update(void *user, double dt) {
   (void)user, (void)dt;
   if (!cw_shell_update()) return;
+  if (g_pick.on) { pick_update(); publish(); return; }
+  for (int i = 0; i < W.players && i < MAXP; i++) /* a seat that joined and never came in: a press of attack drops it in */
+    if (g_absent[i] && W.phase == PH_PLAY && (cw_action_just_pressed(i, a_atk) || cw_action_just_pressed(i, a_jump))) sim_join_seat(i);
   int turbo = 1;
 #ifdef BRAWLER_AUTOPILOT
   { static int tb = -1; if (tb < 0) { const char *v = getenv("BRAWLER_TURBO"); tb = v && atoi(v) > 0 ? atoi(v) : 1; } turbo = tb; } /* soaks: N ticks per frame */
@@ -559,7 +677,7 @@ static void sim_step(void) {
   rag_tick(); /* after the rules, before the springs: the ragdolls show what the simulation decided */
   chars_secondary();
   /* the stage is done: the next one, or the end */
-  if (W.phase == PH_CLEAR && W.phase_t > 240) {
+  if (W.phase == PH_CLEAR && W.phase_t > 420) { /* (the grade card stays up 7 s) */
     if (W.stage + 1 >= 4) W.phase = PH_WIN, W.phase_t = 0;
     else { sim_reset(W.players, W.stage + 1); play_music(W.stage); }
   }
@@ -614,12 +732,30 @@ static void spawn_check(void) {
   }
 }
 
+#ifndef BRAWLER_AUTOPILOT
+/* the title's picture: the four fighters side by side under the first street lamp, from the waist up below the menu,
+   turned to the camera (the world the warm-up prepared; Start builds the match over it) */
+static void title_pose(void) {
+  for (int i = 0; i < MAXP; i++) {
+    ent *e = &W.p[i];
+    if (!e->used) continue;
+    e->x = 2.0f + ((float)i - 1.5f) * 1.45f, e->z = (i & 1) ? -0.25f : 0.1f, e->y = 0, e->face = i < 2 ? 1 : -1;
+    char_sync(e);
+  }
+  g_freeze = true;
+  { extern float g_freeze_yaw; g_freeze_yaw = 0.35f; }
+  for (int i = 0; i < MAXP; i++) if (W.p[i].used) char_sync(&W.p[i]);
+  cw_node cam = cw_node_get(cw_node_get(cw_tree_root(cw_scene_app_tree()), "Level"), "Camera");
+  cw_node3d_set_position(cam, (t3_vec3){ 2.0f, 2.3f, 4.4f });
+  cw_node3d_set_rotation(cam, (t3_vec3){ -0.04f, 0, 0 });
+}
+#endif
 static void render(void *user, double alpha) {
   (void)user, (void)alpha;
 #ifndef BRAWLER_AUTOPILOT
   if (!cw_loading_active()) {
     if (prep_step >= 0 && !prep_ready && prep_again && cw_shell_screen_now() == CW_SHELL_TITLE) prepare_step();
-    if (prep_show) { prep_show = false; sim_put_away(); } /* the shader phase has seen the rigs: out of sight behind the menus */
+    if (prep_show) { prep_show = false; title_pose(); } /* the shader phase has seen the rigs: they stand for the title */
   }
 #endif
   if (cw_shell_screen_now() == CW_SHELL_PLAY || cw_shell_screen_now() == CW_SHELL_PAUSE) {
@@ -631,7 +767,7 @@ static void render(void *user, double alpha) {
     static int nohud = -1; if (nohud < 0) nohud = getenv("BRAWLER_NOHUD") != NULL; /* BRAWLER_NOHUD: no HUD at all (key art) */
     if (!nohud)
 #endif
-    if (cw_shell_hud_shown()) ui_draw(); /* not under the shell's menus */
+    if (cw_shell_hud_shown()) { if (g_pick.on) ui_pick(); else ui_draw(); } /* not under the shell's menus */
 #ifdef BRAWLER_AUTOPILOT
     bench_line();
 #endif

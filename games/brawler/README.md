@@ -9,17 +9,26 @@ beat a mini boss and a boss at the end of every stage.
 | Action | Pad | Keyboard |
 |---|---|---|
 | Move | stick or d-pad | WASD or arrows |
-| Attack (three hit combo) | X | J or Z |
-| Heavy kick | Y | K or X |
-| Jump (attack in the air: flying kick) | A | Space |
+| Attack (three hit combo) | left face button | J or Z |
+| Heavy kick | top face button | K or X |
+| Jump (attack in the air: flying kick) | bottom face button | Space |
 | Grab | right bumper | L or C |
-| Spin move (costs a little health) | left bumper | I or V |
+| Spin move (costs a little health, won back by the blows that land in the next 4 s: the green on your bar) | left bumper | I or V |
 
 Grab a body in front of you, then Attack to knee it. Three knees hoist it overhead and throw it forward, or hold the stick
 away from it and press Grab or Kick to throw it over your head behind you. A thrown body knocks down every enemy it hits and
 smashes crates and barrels in its way.
 
+The combo toolbox: tap a direction twice to run, and Attack while running for a running kick. Kick after the second punch of
+the combo is a launcher: the body goes up and takes your blows in the air (a juggle). Turn round onto someone behind you
+and Attack straight away for a backfist. Attack over a body on the ground, with nobody standing in reach, to stamp on it.
+Enemies just off your lane are reached: a blow steps across onto the one it is aimed at.
+
 Walk over food, coins and weapons to pick them up; you can reach them from a step to either side.
+
+Before the first stage each player picks a fighter (left and right, Attack to be ready). A pad that joined and is never
+used does not hold the others up: once someone is ready it is counted down and left out, and it can drop in during play
+by pressing Attack. Each stage ends with a grade for its time, the damage taken, the best combo and the lives lost.
 
 ## The fighters
 
