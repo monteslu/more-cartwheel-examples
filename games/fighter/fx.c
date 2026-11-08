@@ -406,7 +406,8 @@ void fx_frame(const ft_game *g, float dt) {
     int a = FX.light_age[i];
     float e = 0;
     if (a > 0) {
-      e = a < 2 ? FX.light_e[i] : FX.light_e[i] * cw_exp(-(float)(a - 2) * 0.35f);
+      /* a swell, never a one-frame jump: up over 3 frames, then down over about 15 (no strobe: tools/flash-check.mjs) */
+      e = a <= 3 ? FX.light_e[i] * (float)a / 3.0f : FX.light_e[i] * cw_exp(-(float)(a - 3) * 0.16f);
       FX.light_age[i] = a < 40 ? a + 1 : 0;
     }
     cw_node_set(FX.light[i], "energy", cw_val_float(e));
