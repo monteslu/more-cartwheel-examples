@@ -167,7 +167,7 @@ and the credits).
 
 A shared-screen naval game for one to four players: cooperative voyages,
 competitive treasure races, ship upgrades, a volcanic archipelago and a
-calmer palm lagoon. It builds with the pinned engine v0.29.1 SDK; no local
+calmer palm lagoon. It builds with the pinned engine SDK; no local
 engine patches are needed. CI includes Pirates with the other games; tagged
 releases publish `pirates.wasc` with the others.
 [Its README](games/pirates/README.md) covers controls, builds, credits and
