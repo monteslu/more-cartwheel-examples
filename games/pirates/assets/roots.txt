@@ -31,3 +31,5 @@ models/flag-2.glb
 models/flag-3.glb
 models/flag-4.glb
 models/flag-5.glb
+lightmaps/shoals.cwlm
+lightmaps/lagoon.cwlm

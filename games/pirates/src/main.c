@@ -11,6 +11,8 @@
 #include "cartwheel/debug.h"
 #include "cartwheel/core.h"
 #include "cartwheel/input.h"
+#include "cartwheel/lightmap.h"
+#include "cartwheel/splats.h"
 #include "cartwheel/math.h"
 #include "cartwheel/pipeline.h"
 #include "cartwheel/platform.h"
@@ -105,7 +107,11 @@ static struct {
   float canvas_weights[SHIPS];
   float gpu_ms;
   cw_node post;
-  int lever_scenery_shadows, lever_scenery_detail;
+  int lever_sun_shadows, lever_scenery_detail;
+  cw_lightmap_data *lightmap; /* the map's baked light (NULL: none, everything lit in real time) */
+  int no_lightmap;            /* test switch: build the maps without their lightmaps (the bake, and the before/after) */
+  bool blob_shadows;          /* the ships' blob shadows stand in for the sun's shadow map */
+  cw_splats *ship_shadows;
   /* the palms, undergrowth and shore rocks: the Scenery detail setting draws them at a coarser LOD (cwpack's 1/2 and 1/4) */
   t3_object *scenery_lod[512];
   int n_scenery_lod;
@@ -415,12 +421,39 @@ static void rock_tilt(cw_node n,float x,float z,float yaw) {
   if(axis_len>1e-5f)lean=(t3_quat){up.z/axis_len*sinf(angle/2),0,-up.x/axis_len*sinf(angle/2),cosf(angle/2)};
   cw_node3d_set_quaternion(n,t3_quat_multiply(lean,spin));
 }
+static t3_mesh *first_mesh(t3_object *o) {
+  if (o->type == T3_MESH) return (t3_mesh *)o;
+  for (int i = 0; i < o->child_count; i++) { t3_mesh *m = first_mesh(o->children[i]); if (m) return m; }
+  return NULL;
+}
+/* Baked lighting (cartwheel/lightmap.h). The camera never moves and the islands and harbors never move, so their
+ * light is baked: the sun's soft shadows (the palms', the huts', the hills'), the sky shut out of the coves, the light
+ * the sand bounces. Each map's island and harbor buildings are one mesh each, drawn from its lightmap alone (shading
+ * BAKED: a few texture reads a pixel, and nothing of them goes into the sun's shadow map). A model of one mesh
+ * becomes a STATIC MeshInstance3D named `name` under `parent` (the bake's geometry; the node path is how the bake
+ * finds it again), in the place the model put it; *out is its mesh (NULL when the model has none). */
+static void static_mesh(cw_node parent, const char *name, t3_object *model, t3_object **out) {
+  t3_mesh *m = model ? first_mesh(model) : NULL;
+  *out = m ? &m->base : NULL;
+  if (!m) return;
+  t3_object_update_world_matrix(model, false, true); /* the mesh's place within the model (the model at the origin) */
+  t3_vec3 p, s; t3_quat q;
+  t3_mat4_decompose(&m->base.matrix_world, &p, &q, &s);
+  t3_retain(m);
+  t3_object_remove(m->base.parent, m);
+  m->base.position = p; m->base.quaternion = q; m->base.scale = s;
+  m->base.cast_shadow = false; m->base.receive_shadow = true;
+  cw_node n = cw_node_new("MeshInstance3D", name);
+  cw_node_add_child(parent, n);
+  cw_node_set(n, "gi_mode", cw_val_enum("STATIC"));
+  cw_mesh3d_set_procedural(n, m);
+  t3_release(m);
+}
 static void make_coast(void) {
   G.n_scenery_lod = 0; /* the environment is built again: its models are new */
   cw_node n = cw_node_new("Node3D", "Coast"); cw_node_add_child(G.environment,n);
   t3_object *model = cw_gltf_instantiate(cw_res_load(active_map?"res://models/lagoon.glb":"res://models/coast.glb", CW_RES_GLTF));
-  if (model) { model_shadows(model); t3_object_add(cw_node3d_object(n),model); t3_release(model); }
-  G.big_scenery[0] = model;
+  if (model) { static_mesh(n, "Ground", model, &G.big_scenery[0]); t3_release(model); }
   /* A continuous collision heightfield matches the authored terrain. Boxes
    * introduced two-metre stair steps into the water's shoreline depth map. */
   enum { NX=145, NZ=89 };
@@ -479,15 +512,15 @@ static cw_node make_standard(cw_node parent,int captain,float x,float y,float z)
 }
 
 static void make_port(int i) {
-  cw_node n = cw_node_new("Node3D", "Port");
+  static const char *names[]={"Port0","Port1","Port2","Port3"}; /* one name each: the bake finds its mesh by path */
+  cw_node n = cw_node_new("Node3D", names[i]);
   cw_node_add_child(G.environment, n);
   cw_node3d_set_position(n, (t3_vec3){ PORT_X[i], 0, PORT_Z[i] });
   cw_node3d_set_rotation(n,(t3_vec3){0,port_yaw(i),0});
   static const char *ports[]={"res://models/port-fort.glb","res://models/port-watchtower.glb","res://models/port-fishery.glb","res://models/port-shipyard.glb"};
   t3_object *model=cw_gltf_instantiate(cw_res_load(ports[i],CW_RES_GLTF));
-  if(model){model_shadows(model);t3_object_add(cw_node3d_object(n),model);t3_release(model);}
-  G.big_scenery[1 + i] = model;
-  part(n,"Flagpole","CYLINDER",1.8f,2,0,.09f,4,.09f,0x775434ff,true);
+  if(model){static_mesh(n,"Buildings",model,&G.big_scenery[1+i]);t3_release(model);}
+  part(n,"Flagpole","CYLINDER",1.8f,2,0,.09f,4,.09f,0x775434ff,false);
   G.harbor_flags[i]=make_standard(n,i,1.8f,3.95f,0);
 
 }
@@ -587,6 +620,11 @@ static void build_map_scene(void) {
     cw_node_set(n,"visible",cw_val_bool(false));eruption.rocks[i]=n;
   }
   for(int i=0;i<CAPTAINS;i++)make_port(i);
+  /* the map's baked light (tools: the pirates_bake command writes it); without it the island and harbors draw lit in
+   * real time as before, casting into the sun's shadow map */
+  cw_lightmap_free(G.lightmap);G.lightmap=NULL;
+  if(!G.no_lightmap)G.lightmap=cw_lightmap_load(active_map?"lightmaps/lagoon.cwlm":"lightmaps/shoals.cwlm");
+  if(G.lightmap)cw_lightmap_apply_shaded(cw_scene_app_tree(),G.world,G.lightmap,1,CW_LIGHTMAP_BAKED);
   /* The water rectangle is 144 x 108 metres. Ease the ocean swells down
    * over the last eight metres of shallow water; CPU buoyancy shares it. */
   float *shelter=malloc(145*109*sizeof(float));
@@ -611,6 +649,7 @@ static void setup_world(void) {
   for (int i = 0; i < SHIPS; i++) cw_water_refraction_hide(G.water,G.ships[i].root);
   G.cargo_root=cw_node_new("Node3D","CargoGroup");cw_node_add_child(G.world,G.cargo_root);
   cw_water_refraction_hide(G.water,G.cargo_root);
+  G.ship_shadows=cw_splats_new(G.world,"ShipShadows",CW_SPLATS_SHADOW,SHIPS);
   for (int i = 0; i < GOODS; i++) make_good(i);
   for (int i = 0; i < SHOTS; i++) {
     shot *b = &G.shots[i];
@@ -1167,6 +1206,22 @@ static void sync_visuals(void) {
     G.canvas_weights[i]=s->canvas?.5f+.35f*cw_sin((float)wt*1.7f+i)+.12f*cw_sin((float)wt*3.1f+i*.7f):-1;
     if(s->canvas)s->canvas->morph_influences[0]=G.canvas_weights[i];
   }
+  /* Very Low and Low: no sun shadow map, so each ship lays a soft blob shadow on the water, cast the way the sun
+   * falls (its mast and sails reach about 3 m up), and nothing sails without a shadow */
+  cw_splats_begin(G.ship_shadows);
+  if (G.blob_shadows) {
+    const t3_mat4 *sun = cw_node3d_global_transform(cw_node_get(G.world, "Sun"));
+    float lx = -sun->e[8], lz = -sun->e[10], ly = -sun->e[9]; /* the direction the light travels */
+    float reach = ly < -0.2f ? 3.0f / -ly : 15.0f;
+    for (int i = 0; i < SHIPS; i++) {
+      ship *s = &G.ships[i];
+      if (!s->active || s->respawn) continue;
+      float h = cw_water_height_at(G.water, s->x, s->z, wt);
+      cw_splats_add(G.ship_shadows, (t3_vec3){ s->x + lx * reach * .5f, h, s->z + lz * reach * .5f }, 6.4f, 3.0f, s->yaw, 0,
+                    (t3_color){ 0, 0, 0 }, .42f);
+    }
+  }
+  cw_splats_end(G.ship_shadows);
   for (int i = 0; i < GOODS; i++) if (G.goods[i].active) {
     good *g = &G.goods[i];
     for(int k=0;k<3;k++)cw_node_set(g->appearance[k],"visible",cw_val_bool(k==g->kind));
@@ -2085,6 +2140,61 @@ static void cmd_eruption_test(int argc,const char **argv,cw_reply *r) {
   cw_reply_printf(r,"{\"harbors_safe\":%d,\"warning\":%d,\"damage_and_escape\":%d,\"single_impact\":%d,\"reset\":%d,\"lagoon_quiet\":%d,\"ai_escapes\":%d,\"ai_scenarios\":24}",safe,warning,damage,once,reset,lagoon,escapes);
 }
 
+/* the plants and rocks on the island shade it in the bake: each of their meshes joins it as a one-instance mesh
+ * (cartwheel/lightmap.h: an instanced mesh under a STATIC MeshInstance3D occludes and bounces light but gets no
+ * lightmap of its own, so nothing of them is in the .cwlm and nothing needs them at run time) */
+static void bake_occluders(cw_node holder,t3_object *o,int *k) {
+  if(!o->visible)return;
+  if(o->type==T3_MESH && ((t3_mesh *)o)->geometry && ((t3_mesh *)o)->material_count) {
+    t3_mesh *m=(t3_mesh *)o;
+    t3_instanced_mesh *im=t3_instanced_mesh_new(m->geometry,m->materials[0],1);
+    t3_instanced_mesh_set_matrix_at(im,0,&m->base.matrix_world);
+    char name[32];snprintf(name,sizeof name,"Occluder%d",(*k)++);
+    cw_node n=cw_node_new("MeshInstance3D",name);cw_node_add_child(holder,n);
+    cw_node_set(n,"gi_mode",cw_val_enum("STATIC"));
+    cw_mesh3d_set_procedural(n,&im->mesh);t3_release(im);
+  }
+  for(int i=0;i<o->child_count;i++)bake_occluders(holder,o->children[i],k);
+}
+/* pirates_bake <map> <file> [texel density]: bake a map's light and write the .cwlm (native; the shipped files are
+ * games/pirates/assets/lightmaps/shoals.cwlm and lagoon.cwlm, baked at High's full scenery detail) */
+static void cmd_bake(int argc,const char **argv,cw_reply *r) {
+  if(argc<3){cw_reply_error(r,"pirates_bake <map 0|1> <file.cwlm> [texel density] [occluders 1|0] [show 0|1]");return;}
+  int map=active_map;active_map=atoi(argv[1])?1:0;
+  G.no_lightmap=1;build_map();
+  cw_tree *tree=cw_scene_app_tree();
+  cw_tree_pre_render(tree,1);
+  cw_node holder=cw_node_new("Node3D","BakeOccluders");cw_node_add_child(G.environment,holder);
+  int k=0;
+  for(int i=0;i<G.n_scenery_lod;i++) {
+    cw_gltf_instance_set_lod(G.scenery_lod[i],0);
+    t3_object_update_world_matrix(G.scenery_lod[i],true,true);
+    if(argc<=4||atoi(argv[4]))bake_occluders(holder,G.scenery_lod[i],&k);
+  }
+  cw_tree_pre_render(tree,1);
+  cw_lightmap_settings s=cw_lightmap_settings_default();
+  s.texel_density=argc>3?(float)atof(argv[3]):8; /* 4 leaves the harbors' thin planks and roofs too few texels: they bake black */
+  s.max_size=2048;s.samples=96;s.bounces=2;s.probe_spacing=0;
+  s.direct_samples=24;s.shadow_softness=.035f;s.denoise=2;
+  double t0=cw_time();
+  cw_lightmap_data *d=cw_lightmap_bake(tree,G.world,&s);
+  double secs=cw_time()-t0;
+  bool ok=d&&cw_lightmap_save(d,argv[2]);
+  cw_lightmap_info info={0};if(d)cw_lightmap_get_info(d,&info);
+  size_t len=0;if(d)cw_lightmap_bytes(d,&len);
+  if(argc>5&&atoi(argv[5])&&d) {
+    /* show this bake on the map just baked (looking at a bake before it ships) */
+    build_map();for(int i=0;i<GOODS;i++)position_good(i);reset_match(RACE,0);
+    cw_lightmap_free(G.lightmap);G.lightmap=d;
+    cw_lightmap_apply_shaded(tree,G.world,d,1,CW_LIGHTMAP_BAKED);apply_graphics();G.no_lightmap=0;
+  } else {
+    cw_lightmap_free(d);
+    G.no_lightmap=0;active_map=map;build_map();for(int i=0;i<GOODS;i++)position_good(i);reset_match(VOYAGE,1);
+  }
+  cw_reply_printf(r,"{\"saved\":%d,\"seconds\":%.1f,\"occluders\":%d,\"meshes\":%d,\"triangles\":%d,\"texels\":%d,\"width_total\":%d,\"bytes\":%zu,\"hash\":\"%016llx\"}",
+    ok,secs,k,info.meshes,info.triangles,info.texels,info.width_total,len,(unsigned long long)info.hash);
+}
+
 static void cmd_map(int argc,const char **argv,cw_reply *r) {
   int requested=argc>1?atoi(argv[1]):0;active_map=requested==1?1:0;
   build_map();for(int i=0;i<GOODS;i++)position_good(i);
@@ -2109,10 +2219,11 @@ static void cmd_bind(int argc, const char **argv, cw_reply *r) {
  * through Medium and Low to Very Low while frames take too long, so a handheld
  * drops detail and a desktop keeps the full picture. Below High the engine
  * draws the scene without 4x multisampling (its FXAA or SMAA pass smooths
- * edges instead). On Very Low the island and the four port buildings
- * (100,000 triangles) stop casting into the sun's shadow map, which is redrawn
- * every frame because the ships move. Palms, rocks, flagpoles and ships keep
- * their shadows. The level reached is saved. */
+ * edges instead). The island, the harbors and the plants never draw into the
+ * sun's shadow map: their light and shadows are baked (static_mesh above). The
+ * Sun shadows setting keeps a real-time shadow map for what moves (ships, flags,
+ * cargo) on Medium and up; on Very Low and Low there is none and the ships take
+ * a blob shadow on the water. The level reached is saved. */
 /* text: the Text size and Text background settings (cw_text_scale_saved); an older 8-byte save reads it as 0,
  * never chosen */
 typedef struct { uint32_t magic, gfx; uint8_t text, reserved[3]; } save_data;
@@ -2134,8 +2245,15 @@ static void set_cast_shadow(t3_object *o, bool on) {
 }
 static void apply_graphics(void) {
   for (int i = 0; i < G.n_scenery_lod; i++) cw_gltf_instance_set_lod(G.scenery_lod[i], scenery_lod_now());
-  for (int i = 0; i < 1 + CAPTAINS; i++)
-    if (G.big_scenery[i]) set_cast_shadow(G.big_scenery[i], cw_gfx_get(G.lever_scenery_shadows) > 0);
+  /* With the map's light baked, the island, the harbors and the plants on them are in the lightmap's shadows, so
+   * none of them draws into the sun's shadow map; the sun's real-time shadow is for what moves (the ships, the
+   * cargo, the flags), and on Very Low and Low the ships take a blob shadow on the water instead of it. */
+  bool sun = cw_gfx_get(G.lever_sun_shadows) > 0;
+  for (int i = 0; i < G.n_scenery_lod; i++) set_cast_shadow(G.scenery_lod[i], !G.lightmap);
+  for (int i = 0; i < 1 + CAPTAINS; i++) if (G.big_scenery[i]) G.big_scenery[i]->cast_shadow = !G.lightmap && sun;
+  cw_node light = cw_node_get(G.world, "Sun");
+  if (cw_node_valid(light)) cw_node_set(light, "shadow", cw_val_bool(sun || !G.lightmap));
+  G.blob_shadows = !sun && G.lightmap;
 }
 /* the text settings changed: keep them (0 graphics: those stay never chosen) */
 static void text_settings_save(void) {
@@ -2165,14 +2283,15 @@ static void init(void *user) {
   G.mode_l = cw_action_find("mode_left"); G.mode_r = cw_action_find("mode_right");
   G.font = cw_ui_font_sans();
   sound_init();
-  G.lever_scenery_shadows = cw_quality_lever_add("Island shadows", SCENERY_SHADOW_VALUES, 2,
-                                                 (cw_quality_lever_presets){ .very_low = 0, .low = 1, .medium = 1, .high = 1, .ultra = 1 });
+  G.lever_sun_shadows = cw_quality_lever_add("Sun shadows", SCENERY_SHADOW_VALUES, 2,
+                                              (cw_quality_lever_presets){ .very_low = 0, .low = 0, .medium = 1, .high = 1, .ultra = 1 });
   G.lever_scenery_detail = cw_quality_lever_add("Scenery detail", SCENERY_DETAIL_VALUES, 3,
                                                 (cw_quality_lever_presets){ .very_low = 0, .low = 1, .medium = 2, .high = 2, .ultra = 2 });
   cw_quality_auto(true, 0);
   if (SAVE.magic == SAVE_MAGIC && SAVE.gfx) cw_quality_restore(SAVE.gfx);
   if (SAVE.magic == SAVE_MAGIC) cw_text_scale_restore(SAVE.text);
   cw_quality_on_change(quality_changed, NULL);
+  G.no_lightmap = getenv("PIRATES_NO_LIGHTMAP") != NULL; /* dev: the maps lit in real time, for a before and after */
   setup_world();
   G.post = cw_node_get(G.world, "Post");
   apply_graphics();
@@ -2193,6 +2312,7 @@ static void init(void *user) {
   cw_debug_i32("pirates.eruptions",&eruption.count);
   cw_debug_i32("pirates.rock_impacts",&eruption.impacts);
   cw_debug_i32("pirates.map",&active_map);
+  cw_debug_command("pirates_bake","pirates_bake <map> <file.cwlm> [texel density]: bake a map's light (native)",cmd_bake);
   cw_debug_command("pirates_map","Select map 0 volcanic / 1 lagoon; resets match",cmd_map);
   cw_debug_i32("pirates.state", &G.state);
   cw_debug_i32("pirates.paused", &G.paused);

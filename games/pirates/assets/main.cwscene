@@ -28,12 +28,14 @@ ground_color = color(0.09, 0.22, 0.27, 1)
 
 [node name="Sun" parent="." type="DirectionalLight3D"]
 shadow = true
+bake_direct = true
 shadow_extent = 55
 shadow_size = 2048
 shadow_bias = -0.00015
 shadow_normal_bias = 0.045
 
 [node name="Fill" parent="." type="DirectionalLight3D"]
+bake_direct = true
 rotation = vec3(-0.6, 1.8, 0)
 color = color(0.42, 0.6, 0.9, 1)
 energy = 0.45

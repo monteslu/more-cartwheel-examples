@@ -27,3 +27,13 @@ standard+instbig+shadow+senv+l2000+s100+xplain
 standard+map+rep+instbig+shadow+senv+ds+l2000+s100+xplain
 standard+map+rep+nmap+shadow+senv+ds+l2000+s100+xplain
 standard+shadow+senv+l2000+s100+xplain
+standard+instbig+senv+ds+l2000+xplain
+basic+map+rep+lmap+ds+c1lmap
+standard+senv+ds+l2000+xplain
+standard+map+rep+morph+senv+morphn+ds+l2000+xplain
+standard+map+rep+instbig+senv+ds+l2000+xplain
+standard+instbig+senv+l2000+xplain
+standard+senv+l2000+xplain
+basic+map+trans+instbig+icol
+standard+map+rep+morph+senv+morphn+ds+l2000
+standard+senv+ds+l2000+xwater
