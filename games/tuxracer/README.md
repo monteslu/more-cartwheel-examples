@@ -16,8 +16,11 @@ What is in: the 13 courses of 0.61 (the five stock courses and the eight contrib
 on any of them in sunny, cloudy or night conditions with wind and mirroring, the Canadian Cup (Bunny
 Hill, Twisty Slope, Bumpy Ride, four lives, the time and herring requirements per difficulty), the
 walk-in intro, the speedometer and the energometer, best scores saved per course. The physics constants,
-camera and rules are ported from the original source. What is still open is in this README's last
-section.
+camera and rules are ported from the original source. Beside them, and never changing a race: the ghost of your
+fastest run on each course racing beside you in Practice (the Practice card's Ghost row turns it off), bronze, silver
+and gold medal times (the Cup's own times on its courses, the same shares of par elsewhere), a herring chain that
+climbs in pitch, and a speed camera that widens and closes in as you go (Settings, Camera: Classic is the original's).
+What is still open is in this README's last section.
 
 ## Playing
 
