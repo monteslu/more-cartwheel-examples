@@ -11,7 +11,7 @@ import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..'), OUT = join(ROOT, 'out/feel'), TOOL = join(ROOT, 'deps/cartwheel-engine/tools/run-cart.mjs');
 mkdirSync(OUT, { recursive: true });
-const K = ['PASS', 'TOP', 'TRICK', 'LAND', 'MISS', 'GAIN', 'LOSE', 'LAP', 'FINAL', 'WALL', 'CRASH', 'CHARGE', 'TURBO'], TH = 'south';
+const K = ['PASS', 'TOP', 'TRICK', 'LAND', 'MISS', 'GAIN', 'LOSE', 'LAP', 'FINAL', 'WALL', 'CRASH', 'CHARGE', 'TURBO', 'ROCKET'], TH = 'south';
 const WANT = process.argv.slice(2);
 const on = (n) => !WANT.length || WANT.includes(n);
 function run(app, cmds, ticks, simx = 12, buttons = [TH]) {
@@ -36,6 +36,8 @@ if (on('feedback')) {
   add(run('jetski', 'course 0;race;go 500;sw ramp_side 0 0.3', 400));
   add(run('jetski', 'course 0;race;go 500;sw stock 2;sw turbo 3', 200));
   add(run('jetski', 'course 0;race;go 500', 900, 12, []));
+  // a rocket start: the throttle down in the last beat of the countdown (the grid is 216 ticks from the race command)
+  add(run('jetski', 'course 0;race', 300, 0, [{ frame: 200, buttons: [TH] }]));
   for (let k = 0; k < K.length; k++) {
     const row = total.slice(k * 4, k * 4 + 4), channels = row.filter((v) => v > 0).length;
     check(`${K[k]} answered`, channels >= 2, `popup ${row[0]}, sound ${row[1]}, rumble ${row[2]}, burst ${row[3]}`);

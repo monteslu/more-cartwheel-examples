@@ -110,6 +110,12 @@ void rider_pose(int i, const craft *c, float alpha) {
     t3_vec3 grip = V(0 + sg * 0.285f * bc, 0.885f, 0.3f + sg * 0.285f * bs - 0.03f);
     /* let go of the bars, arms out on the water */
     if (off > 0) { t3_vec3 out = vadd(sh, V(sg * 0.5f, -0.04f, -0.05f)); grip = V(grip.x + (out.x - grip.x) * off, grip.y + (out.y - grip.y) * off, grip.z + (out.z - grip.z) * off); }
+    /* a style move on a short hop: that hand off the bar, thrown up and out, and back on before the water */
+    if (c->style > 0 && sg * c->style_side > 0 && off <= 0) {
+      float k = clampf(sinf(3.14159265f * clampf(1.0f - c->style / STYLE_T, 0, 1)) * 1.6f, 0, 1);
+      t3_vec3 up = vadd(sh, V(sg * 0.42f, 0.38f, -0.12f));
+      grip = V(grip.x + (up.x - grip.x) * k, grip.y + (up.y - grip.y) * k, grip.z + (up.z - grip.z) * k);
+    }
     t3_vec3 elbow = joint(sh, grip, 0.29f, 0.26f, V(sg * 0.95f, 0.15f, -0.25f));
     t3_vec3 d0 = V(sg, 0, 0);
     t3_quat qa = qbetween(d0, vnorm(vsub(elbow, sh)));

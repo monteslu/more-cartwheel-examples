@@ -235,6 +235,15 @@ static void cmd_switch(int argc, const char **argv, cw_reply *r) {
       c->vx = tx * 25, c->vz = tz * 25;
     }
     else if (!strcmp(argv[1], "dive")) g_dive_on = (int)v;
+    else if (!strcmp(argv[1], "trick_guard")) g_trick_guard = (int)v;
+    else if (!strcmp(argv[1], "autosteer")) g_autosteer = (int)v;
+    else if (!strcmp(argv[1], "audio_old")) { extern int g_audio_old; g_audio_old = (int)v; }
+    else if (!strcmp(argv[1], "waterline")) { extern int g_waterline; g_waterline = (int)v; }
+    else if (!strcmp(argv[1], "spray_lit")) { extern int g_spray_lit; g_spray_lit = (int)v; }
+    else if (!strcmp(argv[1], "finish_hold")) g_finish_hold = v;
+    else if (!strcmp(argv[1], "fov_span")) { extern float g_fov_span; g_fov_span = v; }
+    else if (!strcmp(argv[1], "speedlines")) { extern int g_speedlines_on; g_speedlines_on = (int)v; }
+    else if (!strcmp(argv[1], "cam_roll")) { extern float g_cam_roll_max; g_cam_roll_max = v; }
     else if (!strcmp(argv[1], "label_old")) g_hud_label_old = (int)v;
     else if (!strcmp(argv[1], "pop_keep")) g_hud_pop_keep = (int)v;
     else if (!strcmp(argv[1], "old_crash")) g_old_crash = (int)v;
@@ -474,6 +483,18 @@ static void init(void *user) {
   cw_debug_field("fb", g_fb, CW_DBG_I32, EV_KINDS * 4);
   cw_debug_i32("cam.drawn_under", &g_cam_drawn_under);
   cw_debug_i32("p0.kicks", &G.c[0].kicks);
+  cw_debug_i32("p0.styles", &G.c[0].styles);
+  cw_debug_f32("cam.roll", &G.cam_roll);
+  { extern int g_waterline_stamps; cw_debug_i32("fx.waterline", &g_waterline_stamps); }
+  { extern float g_spray_glow; cw_debug_f32("fx.spray_glow", &g_spray_glow); }
+  cw_debug_i32("race.rocket", &G.rocket);
+  cw_debug_f32("race.fin_t", &G.fin_t);
+  cw_debug_f32("race.done_after", &G.done_after);
+  cw_debug_i32("race.real_finishes", &G.real_finishes);
+  { extern float g_finish_times[RACERS]; cw_debug_f32_array("race.finish_times", g_finish_times, RACERS); }
+  { extern float g_speedlines; cw_debug_f32("hud.speedlines", &g_speedlines); }
+  { extern int32_t g_snd_shots, g_music_on, g_rival_heard; cw_debug_i32("audio.shots", &g_snd_shots); cw_debug_i32("audio.music", &g_music_on); cw_debug_i32("audio.rivals_near", &g_rival_heard); }
+  cw_debug_i32("p0.trick_wipes", &G.c[0].trick_wipes);
   cw_debug_i32("p0.dives", &G.c[0].dives);
   cw_debug_f32("p0.dive_max", &G.c[0].dive_max);
   cw_debug_f32("p0.dive_under", &G.c[0].dive_under);

@@ -6,6 +6,7 @@
 
 #include "cartwheel/environment.h"
 #include "cartwheel/platform.h"
+#include "cartwheel/quality.h"
 #include "cartwheel/render3d.h"
 #include "cartwheel/resource.h"
 #include "cartwheel/rim_light.h"
@@ -47,6 +48,27 @@ static const struct rider_look { float suit[3], helmet[3], skin[3], hair[3]; boo
   { { 0.08f, 0.02f, 0.09f }, { 0.86f, 0.3f, 0.55f }, { 0.58f, 0.38f, 0.25f }, { 0.25f, 0.05f, 0.08f }, true, true, 0.91f, 0.88f },
   { { 0.13f, 0.13f, 0.14f }, { 0.9f, 0.2f, 0.1f }, { 0.13f, 0.08f, 0.055f }, { 0.01f, 0.01f, 0.01f }, false, false, 1.03f, 1.06f },
 };
+static t3_material *suit_mat[RACERS], *vest_mat[RACERS], *helmet_mat[RACERS], *deck_mat[RACERS];
+static float wetness[RACERS];
+/* spray soaks the rider: the suit and vest darken as they take water and dry over some seconds (they stay matte); the
+ * helmet's clear coat goes on only from Medium up */
+static void rider_wet(float dt) {
+  bool coat = cw_quality_get() >= CW_QUALITY_MEDIUM;
+  for (int i = 0; i < RACERS; i++) {
+    const craft *c = &G.c[i];
+    float soak = c->big_splash ? 0.6f : 0.0f;
+    if (!c->air && c->wet > 0.15f && c->speed > 8) soak += dt * 0.25f * (c->speed / 28.0f);
+    if (c->spill > 0 || c->dive_t > 0) soak = 1;
+    wetness[i] = fminf(1.0f, wetness[i] + soak) - dt / 9.0f;
+    wetness[i] = fmaxf(0.0f, wetness[i]);
+    float k = 1.0f - 0.35f * wetness[i];
+    const struct rider_look *lk = &LOOK[i];
+    if (suit_mat[i]) suit_mat[i]->color = (t3_color){ lk->suit[0] * k, lk->suit[1] * k, lk->suit[2] * k };
+    if (vest_mat[i]) vest_mat[i]->color = (t3_color){ TEAMS[i][3] * k, TEAMS[i][4] * k, TEAMS[i][5] * k };
+    if (helmet_mat[i] && (helmet_mat[i]->clearcoat > 0) != coat) { helmet_mat[i]->clearcoat = coat ? 1.0f : 0.0f; helmet_mat[i]->version++; }
+    if (deck_mat[i] && (deck_mat[i]->clearcoat > 0) != coat) { deck_mat[i]->clearcoat = coat ? 0.8f : 0.0f; deck_mat[i]->version++; }
+  }
+}
 static void paint(t3_object *o, int team) {
   if ((o->type == T3_MESH || o->type == T3_SKINNED_MESH)) {
     t3_mesh *m = (t3_mesh *)o;
@@ -64,6 +86,14 @@ static void paint(t3_object *o, int team) {
       if (!c) continue;
       t3_material *cl = t3_material_clone(mat);
       cl->color = (t3_color){ c[0], c[1], c[2] };
+      /* what each surface is: the helmet's shell a lacquered clear coat over its paint, the suit's fabric a matte knit
+       * that goes flat at grazing angles (cloth never shines), skin a soft sheen of water */
+      if (!strcmp(mat->name, "helmet")) cl->type = T3_MESH_PHYSICAL_MATERIAL, cl->roughness = 0.3f, cl->clearcoat = 1.0f, cl->clearcoat_roughness = 0.06f;
+      else if (!strcmp(mat->name, "suit")) cl->type = T3_MESH_PHYSICAL_MATERIAL, cl->roughness = 0.88f, cl->diffuse_roughness = 0.7f, cl->sheen = 0.35f, cl->sheen_roughness = 0.9f, cl->sheen_color = (t3_color){ c[0] * 2 + 0.05f, c[1] * 2 + 0.05f, c[2] * 2 + 0.05f };
+      else if (!strcmp(mat->name, "vest") || !strcmp(mat->name, "accent")) cl->type = T3_MESH_PHYSICAL_MATERIAL, cl->roughness = 0.86f, cl->diffuse_roughness = 0.5f;
+      else if (!strcmp(mat->name, "deck")) cl->type = T3_MESH_PHYSICAL_MATERIAL, cl->roughness = 0.35f, cl->clearcoat = 0.8f, cl->clearcoat_roughness = 0.1f; /* gelcoat over the paint */
+      if (o->type == T3_SKINNED_MESH && team < RACERS) { if (!strcmp(mat->name, "suit")) suit_mat[team] = cl; else if (!strcmp(mat->name, "vest")) vest_mat[team] = cl; else if (!strcmp(mat->name, "helmet")) helmet_mat[team] = cl; }
+      if (o->type == T3_MESH && team < RACERS && !strcmp(mat->name, "deck")) deck_mat[team] = cl;
       t3_retain(cl); t3_release(m->materials[k]); m->materials[k] = cl;
       t3_release(cl);
     }
@@ -637,6 +667,7 @@ static bool attract_camera(float dt) {
 
 /* the fixed-tick camera: chases the human, its height smoothed so it rides over swells instead of through them */
 void view_tick(float dt) {
+  rider_wet(dt);
   if (attract_camera(dt)) return;
   const craft *c = &G.c[0];
   memcpy(G.cam_prev, G.cam, sizeof G.cam);
@@ -681,14 +712,34 @@ void view_tick(float dt) {
   G.look[2] += (lz - G.look[2]) * kl;
   /* the first tick after a reset is a cut: nothing to draw between. From a zeroed last place, the frames between ticks put the camera near the world's origin, on some courses under the sea */
   if (first_tick && g_cam_cut) memcpy(G.cam_prev, G.cam, sizeof G.cam), memcpy(G.look_prev, G.look, sizeof G.look);
-  float fov = 54.0f + c->speed * 0.34f + (c->turbo_hold > 0 ? 8.0f * fminf(1.0f, c->turbo_hold / 0.6f) : 0);
+  /* over the line: the camera swings slowly round to the rider's side and front, low over the water, and holds the craft in the middle */
+  if (c->finish > 0 && G.state == RACE_ON) {
+    float ang = c->yaw + 1.2f + G.fin_t * 0.32f, sa, ca;
+    cw_sincos(ang, &sa, &ca);
+    float ox = c->x + sa * 9.5f, oz = c->z + ca * 9.5f, oh = cw_water_height_at(G.water, ox, oz, G.wt);
+    float oy = fmaxf(oh + 1.6f, c->y + 1.9f), k = 1.0f - cw_exp(-dt * 1.8f);
+    G.cam[0] += (ox - G.cam[0]) * k, G.cam[1] += (oy - G.cam[1]) * k, G.cam[2] += (oz - G.cam[2]) * k;
+    if (G.cam[1] < cw_water_height_at(G.water, G.cam[0], G.cam[2], G.wt) + 1.1f) G.cam[1] = cw_water_height_at(G.water, G.cam[0], G.cam[2], G.wt) + 1.1f;
+    float kl2 = 1.0f - cw_exp(-dt * 4.0f);
+    G.look[0] += (c->x - G.look[0]) * kl2, G.look[1] += (c->y + 1.0f - G.look[1]) * kl2, G.look[2] += (c->z - G.look[2]) * kl2;
+  }
+  /* speed you can feel: the view widens from 56 degrees at a crawl to 72 at full speed, and a turbo opens it further */
+  float sk = fminf(1.0f, fmaxf(0.0f, (c->speed - 6.0f) / 24.0f));
+  float fov = c->finish > 0 && G.state == RACE_ON ? 50.0f : 56.0f + g_fov_span * sk * (2.0f - sk) * 0.5f + g_fov_span * 0.5f * sk + (c->turbo_hold > 0 ? 6.0f * fminf(1.0f, c->turbo_hold / 0.6f) : 0);
   if (G.cam_fov == 0) G.cam_fov = fov;
   G.cam_fov += (fov - G.cam_fov) * (dt * 2.0f);
+  /* and the camera leans into a hard carve, up to 4.5 degrees: from the stick and the speed, smoothed, never from the waves under the hull */
+  G.cam_roll_prev = G.cam_roll;
+  { float want = c->air || c->spill > 0 || c->finish > 0 ? 0.0f : c->steer * fminf(1.0f, c->speed / 28.0f) * (1.0f + 0.3f * fminf(1.0f, fmaxf(0.0f, c->lean))) * g_cam_roll_max;
+    want = fmaxf(-g_cam_roll_max, fminf(g_cam_roll_max, want));
+    G.cam_roll += (want - G.cam_roll) * (1.0f - cw_exp(-dt * 2.5f));
+    if (G.tick < 3 || first_tick) G.cam_roll = G.cam_roll_prev = 0; }
   /* the ripples live around where the player looks */
   cw_water_ripple_follow(G.water, c->x + sy * 34.0f, c->z + cy * 34.0f);
 }
 
 bool g_peek_on;
+float g_fov_span = 16.0f, g_cam_roll_max = 0.0785f; /* debug: fov_span 6, cam_roll 0 bring the old flat camera back (the speed gate control) */
 float g_peek[6];
 void view_sync(double alpha) {
   float a = (float)alpha;
@@ -793,6 +844,11 @@ void view_sync(double alpha) {
   }
   if (g_peek_on) { cp = (t3_vec3){ g_peek[0], g_peek[1], g_peek[2] }; lp = (t3_vec3){ g_peek[3], g_peek[4], g_peek[5] }; }
   cw_node3d_set_position(G.camera, cp);
-  cw_node3d_look_at(G.camera, lp, (t3_vec3){ 0, 1, 0 });
+  { /* the up the camera keeps, leaned about its line of sight */
+    float roll = g_peek_on || G.state == RACE_ATTRACT ? 0.0f : lerpf(G.cam_roll_prev, G.cam_roll, a);
+    float fx = lp.x - cp.x, fz = lp.z - cp.z, fl = sqrtf(fx * fx + fz * fz);
+    t3_vec3 upv = { 0, 1, 0 };
+    if (fl > 1e-3f && roll != 0) { float rx = -fz / fl, rz = fx / fl; upv = (t3_vec3){ rx * sinf(roll), cosf(roll), rz * sinf(roll) }; }
+    cw_node3d_look_at(G.camera, lp, upv); }
   if (G.cam_fov > 1) cw_node_set(G.camera, "fov", cw_val_float(lerpf(G.cam_fov_prev > 1 ? G.cam_fov_prev : G.cam_fov, G.cam_fov, a)));
 }

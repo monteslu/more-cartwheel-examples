@@ -46,8 +46,12 @@ const kick = trick({ buttons: ['north'] }, (s) => s['p0.kicks'] >= 1);
 check('the kick button kicks out', !!kick, kick ? `${kick['p0.kicks']} kicks, trick popups ${kick.fb[2 * 4]}` : 'none');
 const none = run(`course ${lvB};no_dq 1;swell 0.5;race;ramp ${rB} 50`, 600);
 check('control: no button, no trick or kick', none['p0.tricks'] === 0 && none['p0.kicks'] === 0, `${none['p0.tricks']} and ${none['p0.kicks']}`);
-const late = run('course 0;no_dq 1;race;go 400;drop 0.05 2 25', 70, [{ frame: 9, buttons: [TH] }, { frame: 28, buttons: [TH, 'west'], axes: { ly: 1 } }, { frame: 30, buttons: [TH] }], 0);
-check('a flip not finished in time throws the rider', late['p0.spills'] >= 1, `${late['p0.spills']} spills`);
+// a hop too short for a flip: the press is a style move and nobody is thrown; with the old rule (trick_guard 0) the flip is not finished in time and throws the rider
+const shortHop = [{ frame: 9, buttons: [TH] }, { frame: 28, buttons: [TH, 'west'], axes: { ly: 1 } }, { frame: 30, buttons: [TH] }];
+const safe = run('course 0;no_dq 1;race;go 400;drop 0.05 2 25', 70, shortHop, 0);
+check('a press on a hop too short for a flip is a style move, not a wipeout', safe['p0.spills'] === 0 && safe['p0.styles'] === 1 && safe['p0.tricks'] === 0, `${safe['p0.spills']} spills, ${safe['p0.styles']} style moves`);
+const late = run('sw trick_guard 0;course 0;no_dq 1;race;go 400;drop 0.05 2 25', 70, shortHop, 0);
+check('control: trick_guard 0, a flip not finished in time throws the rider', late['p0.spills'] >= 1, `${late['p0.spills']} spills`);
 // ways down, over deep open water: the human dropped at a pitch from a height at a speed
 const DEEP = 'course 4;no_dq 1;race;go 200';
 // (the stick holds the nose: left alone the hull settles level in the air)

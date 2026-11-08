@@ -296,6 +296,21 @@
     "note": "the air by the pad on the cart, GL and WebGPU, every tick: a big ramp gives 1.25 times the air of a normal one, a back flip turns the pitch one whole turn up and over and a front flip one whole turn nose first and both land, the kick puts a foot out to the side, nose down goes under and comes back up with no wipeout off big and normal ramps, tail first is a wipeout. Controls: the normal ramp against the big one, a barrel roll turns no pitch, no press keeps the foot in its well, dive 0 stays on top"
   },
   {
+    "name": "jetski-trick-mash",
+    "script": "tests/jetski-trick-mash.mjs",
+    "note": "a newcomer mashing the trick button through a lap of Crater Atoll on its biggest sea at Hard, the computer steering: no wipeout from a trick, a press on a hop too short for one is a style move; a ramp still takes a full trick under the same mashing. Control: trick_guard 0 comes down mid-trick"
+  },
+  {
+    "name": "jetski-finish",
+    "script": "tests/jetski-finish.mjs",
+    "note": "the two ends of a race on the CPU: the throttle down in the last beat of the countdown is a rocket start and ahead off the line (control: held from the first beat, a plain start); over the line the results wait at least 2.5 s while the rivals race on, and every rival has a time (control: finish_hold 0 puts them up at once)"
+  },
+  {
+    "name": "jetski-sound-life",
+    "script": "tests/jetski-sound-life.mjs",
+    "note": "a minute of racing starts at least 90 sounds (55 before) (hull slaps, tricks, buoys, places); every course plays its own loop; the nearest rivals engines are placed in the world. Control: audio_old 1, only the sounds before this pass, falls short"
+  },
+  {
     "name": "jetski-hud-words",
     "script": "tests/jetski-hud-words.mjs",
     "note": "words on the race screen on the cart, GL and WebGPU: restarting from the pause menu or starting a new race leaves no word from the last one, and the distance to the next buoy never meets a word in countdowns, wipeouts and big ramps on every course. Controls: pop_keep 1 keeps the word (a build without the reset failed the same way), label_old 1 meets words in the same rides"

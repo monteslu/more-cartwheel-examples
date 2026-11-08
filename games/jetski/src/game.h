@@ -21,6 +21,8 @@
 #define RAMP_BIG_XZ 1.5f    /* a big ramp's model is scaled so */
 #define RAMP_BIG_Y 1.92f
 #define RAMP_BIG_RISE 7.0f  /* and its top edge stands this much higher */
+#define TRICK_T 0.72f       /* a roll or a flip, seconds */
+#define STYLE_T 0.6f        /* a hand off the bar on a short hop, seconds */
 #define KICK_T 0.8f         /* a kick out in the air, seconds */
 #define DIVE_FLOOR 1.0f     /* a diving hull stays this far over the bed */
 #define RAMP_SLOPE 0.36f
@@ -137,10 +139,13 @@ typedef struct craft {
   int wall_hits;                  /* times it ran into a ramp's side */
   int slow_ticks;
   float air_max;                  /* longest time in the air (s) */
+  float style, style_side;        /* a hand off the bar: seconds left, which hand */
+  int trick_wipes;                /* came down mid-trick */
+  int styles;                     /* style moves: trick presses on hops too short for a trick */
 } craft;
 
 /* what happened to the human this tick: the HUD, the sounds, the rumble and the bursts all read this list, each from its own place in it */
-enum { EV_PASS, EV_TOP, EV_TRICK, EV_LAND, EV_MISS, EV_GAIN, EV_LOSE, EV_LAP, EV_FINAL, EV_WALL, EV_CRASH, EV_CHARGE, EV_TURBO, EV_KINDS };
+enum { EV_PASS, EV_TOP, EV_TRICK, EV_LAND, EV_MISS, EV_GAIN, EV_LOSE, EV_LAP, EV_FINAL, EV_WALL, EV_CRASH, EV_CHARGE, EV_TURBO, EV_ROCKET, EV_KINDS };
 typedef struct game_event { int kind; int a; float x, z; } game_event;
 #define EV_RING 64
 void ev_push(int kind, int a, float x, float z);
@@ -149,6 +154,11 @@ extern unsigned g_ev_n;
 extern int g_ev_on;                /* ev_on 0: nothing answers, the feedback gate's control */
 extern int g_fb[EV_KINDS][4];      /* how each kind was answered: popups, sounds, rumbles, bursts */
 extern int g_turbo_on;             /* turbo_on 0: the turbo gate's control */
+extern int g_autosteer;            /* autosteer 1: the computer steers the human seat, the pad keeps its trick button */
+#define ROCKET_WINDOW 0.6f /* the throttle down in the last this many seconds of the countdown and held: a rocket start */
+#define FINISH_HOLD 4.5f   /* seconds of the finish before the results, or 3 once every rival is in */
+extern float g_finish_hold;        /* debug: finish_hold 0, the results at once (the finish gate control) */
+extern int g_trick_guard;          /* trick_guard 0: a trick on any hop, the trick gate's control */
 extern float g_pack;               /* pack 0.25: the old small pull on rivals and none on the human, the pack gate's control */
 typedef struct game {
   int state;
@@ -164,6 +174,7 @@ typedef struct game {
   double wt_extra;  /* sim checks that run many ticks a frame */
   craft c[RACERS];
   float cam[3], cam_prev[3], look[3], look_prev[3], cam_fov, cam_fov_prev;
+  float cam_roll, cam_roll_prev; /* the chase camera leaning into a carve, radians: smooth, never noise */
   float cam_orbit;  /* the attract loop's cut timer */
   int cam_mode;
   float ramp_x[RAMP_MAX], ramp_z[RAMP_MAX], ramp_yaw[RAMP_MAX], ramp_ta[RAMP_MAX]; /* place; and this tick: height, tilt along and across */
@@ -178,6 +189,11 @@ typedef struct game {
   float ramp_gap_max, ramp_entry_min, ramp_lip_min, ramp_foot_ground_max; /* worst of each, metres */
   int32_t cam_under; /* ticks the chase camera spent under the surface */
   int32_t attract_under, attract_land, attract_blocked, attract_hidden; /* ticks the attract camera was under water, in land, had land in its view of the craft, or a crest over the hull */
+  float rocket_at;  /* the clock when the human's throttle went down on the grid and stayed down; positive: not down */
+  int32_t rocket;   /* the human got a rocket start */
+  float fin_t;      /* seconds since the human crossed the line: the finish is shown before the results */
+  float done_after; /* fin_t when the results came up */
+  int32_t real_finishes; /* rivals over the line under their own power before the results, not given a time by their pace */
   uint32_t sim_hash;
 } game;
 extern game G;
@@ -201,6 +217,7 @@ bool ramp_over(float x, float z, float *deck); /* over a ramp's deck: its height
 void sim_ramp_start(int r, float back, float aside); /* the human lined up with a ramp, at speed */
 /* view.c */
 extern int g_attract_clear;
+extern float g_fov_span, g_cam_roll_max; /* debug: fov_span, cam_roll */
 void view_init(void);
 void view_sync(double alpha);
 void view_course_apply(void);    /* G.level changed: land, sea, sky and marks for that course */

@@ -37,6 +37,10 @@ int g_ram_on = 1, g_ram_hits, g_ram_wipes, g_ram_setup;
 int g_old_crash, g_dist_step, g_place_hold = 45, g_hold_ticks, g_raw_flips, g_near_n;
 float g_near, g_near_sum;
 void ev_push(int kind, int a, float x, float z) { game_event *e = &g_ev[g_ev_n++ % EV_RING]; e->kind = kind, e->a = a, e->x = x, e->z = z; }
+int g_autosteer;
+float g_finish_hold = FINISH_HOLD;
+float g_finish_times[RACERS]; /* every racer's time when the results came up */
+int g_trick_guard = 1; /* trick_guard 0: a press on any hop starts a trick, the trick gate's control */
 int g_fair = 1; /* fair 0: every hop off the sea priced as a deliberate landing, the gate's control */
 int g_land_hist[21]; /* the human seat's landings by the share of speed kept, in twentieths */
 /* ramp_try: can a rider, by the craft's real handling, go from the buoy before a ramp over it and past the next buoy right? (tests/jetski-ramp-reach.mjs) */
@@ -140,7 +144,7 @@ static void buoys(craft *c) {
   /* (the far limit leaves room for a ramp's far side, off the line away from the buoy) */
   bool ok = lat > -1.0f && lat < 48.0f;
   if (ok) {
-    if (c->human) {
+    if (c->human && c->finish <= 0) {
       ev_push(c->meter == 4 ? EV_TOP : EV_PASS, c->meter, b[0], b[1]);
       /* past full power a clean buoy charges a turbo */
       if (c->meter >= 5 && c->stock < 3) { int was = (int)c->stock; c->stock = fminf(3, c->stock + 0.34f); if ((int)c->stock > was) ev_push(EV_CHARGE, (int)c->stock, b[0], b[1]); }
@@ -152,10 +156,10 @@ static void buoys(craft *c) {
   } else {
     c->meter = 0;
     c->misses++;
-    if (c->human) ev_push(EV_MISS, 0, b[0], b[1]);
+    if (c->human && c->finish <= 0) ev_push(EV_MISS, 0, b[0], b[1]);
     c->flash_miss = 1;
-    if (!c->human) G.miss_at[c->next_buoy]++;
-    if (c->misses >= 5 && c->human && !c->dq && !g_no_dq) c->dq = 1;
+    if (!c->human && c->finish <= 0) G.miss_at[c->next_buoy]++;
+    if (c->misses >= 5 && c->human && !c->dq && !g_no_dq && c->finish <= 0) c->dq = 1;
   }
   c->next_buoy = buoy_next(c->next_buoy);
 }
@@ -413,7 +417,7 @@ static void craft_tick(craft *c, int idx, float dt) {
      * loses two arrows, so a big try is worth making */
     c->spill -= dt;
     c->in.steer = 0, c->in.lean = 0, c->in.throttle = 0, c->in.trick = false;
-    c->trick_kind = 0;
+    c->trick_kind = 0, c->style = 0;
     if (c->spill <= 0) { c->roll = 0, c->rr = 0; c->meter = c->meter > 2 ? c->meter - 2 : 0; }
   }
   c->steer += (c->in.steer - c->steer) * clampf(dt * 9, 0, 1);
@@ -551,20 +555,31 @@ static void craft_tick(craft *c, int idx, float dt) {
         }
       }
     } else c->leg_paid = false;
-    /* one trick a press */
+    /* one trick a press, and only one there is air left to finish: the time to fall to the water below from this height at
+     * this climb. A press on a hop too short for it is a hand off the bar instead, a small style move that pays a little and
+     * never throws the rider */
     if (c->trick_kind == 0 && c->in.trick && !c->trick_held && c->air_time > 0.08f) {
-      /* the stick picks: back for a back flip, forward for a front flip, else a barrel roll */
-      c->trick_kind = c->in.lean > 0.4f ? 2 : c->in.lean < -0.4f ? 3 : 1;
-      c->last_trick = c->trick_kind;
-      c->trick_t = 0;
-      c->trick_dir = c->steer < 0 ? -1.0f : 1.0f;
+      float below = fmaxf(c->surf, ground_at(c->x, c->z)), h = c->y - below, left = (c->vy + sqrtf(fmaxf(c->vy * c->vy + 2 * G_ACC * fmaxf(h, 0), 0))) / G_ACC;
+      if (!g_trick_guard || left >= TRICK_T + 0.06f) {
+        /* the stick picks: back for a back flip, forward for a front flip, else a barrel roll */
+        c->trick_kind = c->in.lean > 0.4f ? 2 : c->in.lean < -0.4f ? 3 : 1;
+        c->last_trick = c->trick_kind;
+        c->trick_t = 0;
+        c->trick_dir = c->steer < 0 ? -1.0f : 1.0f;
+      } else if (c->style <= 0) {
+        c->style = STYLE_T, c->style_side = c->steer < 0 ? -1.0f : 1.0f, c->styles++;
+        if (c->human) {
+          ev_push(EV_TRICK, 5, c->x, c->z);
+          if (c->meter >= 5 && c->stock < 3) { int was = (int)c->stock; c->stock = fminf(3, c->stock + 0.1f); if ((int)c->stock > was) ev_push(EV_CHARGE, (int)c->stock, c->x, c->z); }
+        }
+      }
     }
     if (c->trick_kind) {
       c->trick_t += dt;
-      float speed = TAU / 0.72f;
+      float speed = TAU / TRICK_T;
       if (c->trick_kind == 1) c->roll += c->trick_dir * speed * dt;
       else c->pitch += (c->trick_kind == 3 ? -speed : speed) * dt;
-      if (c->trick_t >= 0.72f) {
+      if (c->trick_t >= TRICK_T) {
         /* round and square again */
         if (c->trick_kind == 1) c->roll = 0, c->rr = 0;
         else c->pitch = 0.1f, c->pr = 0;
@@ -648,6 +663,7 @@ static void craft_tick(craft *c, int idx, float dt) {
       /* a hop the sea threw at you, with nothing asked of the craft, costs next to nothing: the water is the track, not the thing to avoid. A dive you asked for or a long fall still pays */
       if (g_fair && !c->trick_kind && c->in.lean > -0.3f && e2 < 1.2f && nose < 0.55f) { float floor_keep = c->air_time < 1.0f ? 0.97f : 0.95f; if (keep < floor_keep) keep = floor_keep; }
       if (nose > 0.3f) c->vy -= nose * 3.0f, c->y -= nose * 0.25f;
+      if (c->trick_kind) c->trick_wipes++;
       if (c->trick_kind || e2 > 2.1f) keep = 0.35f, c->trick_kind = 0, c->spill = 1.9f, c->spills++;
       if (c->legout > 0.12f) keep *= 0.85f, c->legout = 0, c->leg_paid = true; /* came down with a foot out */
       c->vx *= keep, c->vz *= keep;
@@ -739,6 +755,7 @@ static void craft_tick(craft *c, int idx, float dt) {
   c->flash_ok = clampf(c->flash_ok - dt * 1.4f, 0, 1);
   c->flash_miss = clampf(c->flash_miss - dt * 1.1f, 0, 1);
   c->kick = clampf(c->kick - dt * 3.0f, 0, 1);
+  if (c->style > 0) c->style -= dt;
   (void)idx;
 }
 
@@ -760,6 +777,7 @@ void sim_reset(int state) {
   ramps_place();
   memcpy(G.cam, keep_cam, sizeof keep_cam);
   G.clock = state == RACE_GRID ? -3.6f : 0;
+  G.rocket_at = 1;
   float yaw = cw_atan2(START_DX, START_DZ);
   for (int i = 0; i < RACERS; i++) {
     craft *c = &G.c[i];
@@ -927,7 +945,7 @@ void sim_place(float s) {
 /* the course's area: far from the line for five seconds and the race is over, with a warning all the way */
 static void out_of_bounds(craft *c, float dt) {
   float tx = c->x - TRACK[c->track_i][0], tz = c->z - TRACK[c->track_i][1];
-  if (tx * tx + tz * tz > 110.0f * 110.0f) { c->out_t += dt; if (c->out_t > 5.0f && c->human && !c->dq && !g_no_dq) c->dq = 2; }
+  if (tx * tx + tz * tz > 110.0f * 110.0f) { c->out_t += dt; if (c->out_t > 5.0f && c->human && !c->dq && !g_no_dq && c->finish <= 0) c->dq = 2; }
   else c->out_t = 0;
 }
 
@@ -947,6 +965,9 @@ void sim_tick(float dt) {
   bool go = G.state != RACE_GRID || G.clock >= 0;
   if (G.state == RACE_GRID && G.clock >= 0) {
     G.state = RACE_ON;
+    /* a rocket start: the throttle down in the last beat of the countdown and still down at the green light. Held from the start of the count, it is a plain start */
+    { craft *h = &G.c[0];
+      if (h->in.throttle > 0.5f && G.rocket_at < 0 && G.rocket_at >= -ROCKET_WINDOW) { h->turbo_t = 0.35f, h->turbo_hold = 1.0f; G.rocket = 1; ev_push(EV_ROCKET, 0, h->x, h->z); } }
     cw_log(CW_LOG_INFO, "jetski: course %s, green light, graphics %s", DEF->name, cw_quality_name(cw_quality_get()));
   }
   for (int i = 0; i < RACERS; i++) {
@@ -959,6 +980,9 @@ void sim_tick(float dt) {
 #endif
     if (c->finish > 0) ai = true;
     if (ai) computer(c, i);
+    /* autosteer 1: the computer steers the human seat and the pad keeps its trick button, for the trick gate */
+    else if (g_autosteer && c->human) { bool t = c->in.trick; computer(c, i); c->in.trick = t; }
+    if (c->human && G.state == RACE_GRID) { if (c->in.throttle > 0.5f) { if (G.rocket_at > 0) G.rocket_at = G.clock; } else G.rocket_at = 1; }
     if (!go) c->in.throttle = 0;
     craft_tick(c, i, dt);
     c->ok_tick = 0;
@@ -1002,11 +1026,22 @@ void sim_tick(float dt) {
     if (now != h->want_place) g_raw_flips++, h->want_place = now, h->place_ticks = 0; else if (h->place_ticks < 1000) h->place_ticks++;
     if (h->want_place != h->shown_place && h->place_ticks >= g_place_hold) { ev_push(h->want_place < h->shown_place ? EV_GAIN : EV_LOSE, h->want_place, h->x, h->z); h->shown_place = h->want_place; h->place_changes++; } }
   for (int i = 0; i < RACERS; i++) G.c[G.order[i]].place = i + 1;
-  if (G.state == RACE_ON && (G.c[0].finish > 0 || G.c[0].dq)) {
+  /* over the line: a few seconds of the finish while the rivals race on for their own times, then the results */
+  bool over = G.c[0].dq;
+  if (G.state == RACE_ON && G.c[0].finish > 0 && !over) {
+    G.fin_t += dt;
+    bool all = true;
+    for (int i = 1; i < RACERS; i++) if (racer_on(i) && G.c[i].finish <= 0) all = false;
+    over = G.fin_t >= g_finish_hold || (all && G.fin_t >= fminf(3.0f, g_finish_hold));
+  }
+  if (G.state == RACE_ON && over) {
     G.state = RACE_DONE;
+    G.done_after = G.fin_t;
+    for (int i = 1; i < RACERS; i++) if (racer_on(i) && G.c[i].finish > 0) G.real_finishes++;
     cw_log(CW_LOG_INFO, "jetski: course %s, race over", DEF->name);
     /* the sim stops here, so those still out get the time their pace would have made: the results had blanks for everyone behind a winner */
     for (int i = 1; i < RACERS; i++) { craft *o = &G.c[i]; if (racer_on(i) && o->finish <= 0) { float left = (float)LAPS * COURSE_LEN - o->dist, pace = fmaxf(o->dist / fmaxf(G.clock, 1.0f), 8.0f); o->finish = G.clock + left / pace; } }
+    for (int i = 0; i < RACERS; i++) g_finish_times[i] = racer_on(i) ? G.c[i].finish : 0;
   }
   /* the attract loop races on and on, and stays out where the swell is */
   if (G.state == RACE_ATTRACT && G.c[G.order[0]].lap >= 1) for (int i = 0; i < RACERS; i++) G.c[i].lap = -1;

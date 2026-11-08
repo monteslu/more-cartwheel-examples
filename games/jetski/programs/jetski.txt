@@ -40,3 +40,17 @@ standard+instbig+senv+l2000+xplain
 standard+senv+l2000+xplain
 standard+shadow+senv+ds+l2000+s100+xplain
 standard+skin+senv+l2000+xplain_rim
+physical+shadow+skin+senv+sheen+eon+l2000+s100+xrim
+physical+shadow+skin+senv+eon+l2000+s100+xrim
+physical+shadow+skin+senv+cc+l2000+s100+xrim
+physical+shadow+senv+cc+l2000+s100
+physical+shadow+skin+senv+sheen+eon+l2000+s100+xplain_rim
+physical+shadow+skin+senv+eon+l2000+s100+xplain_rim
+physical+shadow+skin+senv+l2000+s100+xplain_rim
+physical+shadow+senv+l2000+s100+xplain
+physical+shadow+skin+senv+l2000+s100+xrim
+physical+shadow+senv+l2000+s100
+physical+senv+cc+l2000
+physical+skin+senv+sheen+eon+l2000+xrim
+physical+skin+senv+eon+l2000+xrim
+physical+skin+senv+cc+l2000+xrim

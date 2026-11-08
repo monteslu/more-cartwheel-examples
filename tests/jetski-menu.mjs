@@ -76,11 +76,11 @@ check('Quit to title', quit['menu.page'] === P_MAIN && quit['race.state'] === AT
 const unfinished = run(race);
 const pts = (s) => s['cup.points'].reduce((a, b) => a + b, 0);
 check('control: a race not finished pays nothing', pts(unfinished) === 0, `points ${unfinished['cup.points']}`);
-const done = run(['w40'], { cmds: 'race;finish' });
+const done = run(['w300'], { cmds: 'race;finish' }); // (the finish shows for 4.5 s before the results)
 check('finishing shows the results', done['menu.page'] === P_RESULTS && done['race.state'] === DONE, pg(done));
 check('the championship pays every place', pts(done) === 26 && done['cup.race'] === 1, `points ${done['cup.points']} after ${done['cup.race']} race`);
 // (past the countdown: a race that had not finished would be running by now, not on its grid)
-const again = run(['w300', 'south', 'w20'], { cmds: 'race;finish' });
+const again = run(['w320', 'south', 'w20'], { cmds: 'race;finish' });
 check('from the results, A goes on to the next course of the championship, keeping the points', pts(again) === 26 && again['race.level'] === 1 && again['race.state'] === GRID, pg(again) + ` course ${again['race.level']} points ${again['cup.points']}`);
 
 // a time trial is the human alone, and keeps the best
@@ -94,7 +94,7 @@ check('and left brings the first back', courseBack['race.level'] === 0, `course 
 check('control: in a championship Course changes nothing', run(['down', 'down', 'right', 'w20'])['race.level'] === 0, 'course row, championship');
 const best = run(['down', 'right', 'up', 'south', 'w80']);
 check('control: no best before a finish', best['tt.best'] === 0, `best ${best['tt.best']}`);
-const fin = run(['w40'], { cmds: 'mode 1;race;finish' });
+const fin = run(['w300'], { cmds: 'mode 1;race;finish' });
 check('a finished time trial sets the best and shows it', fin['tt.best'] > 0 && fin['tt.new_best'] === 1 && fin['menu.page'] === P_RESULTS, `best ${fin['tt.best']} new ${fin['tt.new_best']} ${pg(fin)}`);
 check('a time trial pays no championship points', pts(fin) === 0, `points ${fin['cup.points']}`);
 process.exit(fail ? 1 : 0);

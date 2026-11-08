@@ -160,6 +160,7 @@ void menu_tick(float dt) {
   if (up) row = (row + n - 1) % n;
   if (down) row = (row + 1) % n;
   int dx = (right ? 1 : 0) - (left ? 1 : 0);
+  { extern int g_menu_sfx; if (up || down || dx) g_menu_sfx = 1; if (ok) g_menu_sfx = 2; if (back) g_menu_sfx = 3; }
   switch (page) {
   case P_MAIN:
     if (row == 1 && (dx || ok)) { g_mode = !g_mode; store(); }

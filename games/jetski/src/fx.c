@@ -2,7 +2,9 @@
  * bursts where something lands. Wakes and foam go into the water's ripple layer. */
 #include <math.h>
 
+#include "cartwheel/environment.h"
 #include "cartwheel/input.h"
+#include "cartwheel/scene_file.h"
 #include "cartwheel/particles.h"
 #include "game.h"
 #define BUOY_AT(i) (BUOYS[i])
@@ -59,10 +61,10 @@ void fx_init(cw_node parent) {
     cw_node_set(sheet[s], "soft_distance", cw_val_float(0.3f));
     cw_node_set(sheet[s], "energy", cw_val_float(1.15f));
     cw_node_set(sheet[s], "spread", cw_val_float(14));
-    sheet_fine[s] = emitter(parent, s ? "SheetFineR" : "SheetFineL", 800, 0.7f, 0.012f, "0 1 1 1 0.9, 0.6 1 1 1 0.6, 1 1 1 1 0", NULL, 620 + s, true);
+    sheet_fine[s] = emitter(parent, s ? "SheetFineR" : "SheetFineL", 520, 0.7f, 0.017f, "0 1 1 1 0.9, 0.6 1 1 1 0.6, 1 1 1 1 0", NULL, 620 + s, true);
     cw_node_set(sheet_fine[s], "energy", cw_val_float(1.6f));
     cw_node_set(sheet_fine[s], "spread", cw_val_float(18));
-    cw_node_set(sheet_fine[s], "camera_fade", cw_val_float(3));
+    cw_node_set(sheet_fine[s], "camera_fade", cw_val_float(5.5f));
   }
   rain_n = emitter(parent, "Rain", 3000, 0.62f, 0.02f, "0 0.8 0.86 0.95 0, 0.1 0.82 0.88 0.96 0.75, 1 0.82 0.88 0.96 0.5", NULL, 900, true);
   cw_node_set(rain_n, "stretch", cw_val_float(0.022f));
@@ -74,7 +76,7 @@ void fx_init(cw_node parent) {
   side_spray = emitter(parent, "Carve", 1000, 0.7f, 0.012f, "0 1 1 1 0.9, 0.6 0.95 0.97 1 0.6, 1 0.9 0.95 1 0", NULL, 300, true);
   cw_node_set(side_spray, "energy", cw_val_float(1.6f));
   cw_node_set(side_spray, "spread", cw_val_float(24));
-  cw_node_set(side_spray, "camera_fade", cw_val_float(5));
+  cw_node_set(side_spray, "camera_fade", cw_val_float(6.5f));
   bursts = emitter(parent, "Bursts", 2400, 1.2f, 0.016f, "0 1 1 1 1, 0.6 0.95 0.97 1 0.7, 1 0.9 0.95 1 0", NULL, 400, true);
   cw_node_set(bursts, "bursts", cw_val_int(8));
   cw_node_set(bursts, "explosiveness", cw_val_float(1));
@@ -110,8 +112,86 @@ static void rain_tick(void) {
   if (on) cw_node3d_set_position(rain_n, (t3_vec3){ G.look[0] + (G.look[0] - G.cam[0]) * 1.2f - 4, G.cam[1] + 16, G.look[2] + (G.look[2] - G.cam[2]) * 1.2f + 3 });
 }
 
+/* Spray lit by the sun. Particles draw unlit, so each frame the spray is tinted from where the sun stands against the
+ * view: looking into a low sun the droplets glow in its colour and bloom (energy over 1), with it behind they are plain
+ * white water, and at night they take the dim sky's colour. One colour and one energy a system, set only when they move */
+float g_spray_glow;     /* how back-lit the spray is now, 0..1, for the look gate */
+int g_spray_lit = 1;    /* sw spray_lit 0: the old flat white spray, the control */
+static void spray_light(void) {
+  cw_sky_state sk;
+  cw_sky_get_state(cw_scene_app_tree(), &sk);
+  float vx = G.look[0] - G.cam[0], vy = G.look[1] - G.cam[1], vz = G.look[2] - G.cam[2], vl = sqrtf(vx * vx + vy * vy + vz * vz);
+  float back = 0, day = 1;
+  t3_color sun = { 1, 1, 1 };
+  if (sk.active && vl > 1e-3f) {
+    float f = (vx * sk.sun_direction.x + vy * sk.sun_direction.y + vz * sk.sun_direction.z) / vl;
+    back = fminf(1.0f, fmaxf(0.0f, (f - 0.15f) / 0.75f));
+    back *= back * (3.0f - 2.0f * back);
+    /* a low sun lights the spray through more than a high one */
+    float low = 1.0f - fminf(1.0f, fmaxf(0.0f, (sk.sun_elevation - 8.0f) / 50.0f));
+    back *= 0.45f + 0.55f * low;
+    day = fminf(1.0f, fmaxf(0.0f, (sk.sun_elevation + 4.0f) / 14.0f)) * fminf(1.0f, sk.sun_energy / 2.0f);
+    float m = fmaxf(sk.sun_color.r, fmaxf(sk.sun_color.g, sk.sun_color.b));
+    if (m > 1e-3f) sun = (t3_color){ sk.sun_color.r / m, sk.sun_color.g / m, sk.sun_color.b / m };
+  }
+  if (!g_spray_lit) back = 0, day = 1;
+  g_spray_glow = back * day;
+  /* front-lit or overcast: white water a shade under the sky; back-lit: the sun's colour, brighter */
+  float k = g_spray_glow, base = 0.55f + 0.45f * day;
+  float r = base * (1 - k) + sun.r * k, g = base * (1 - k) + sun.g * k, b = base * (1 - k) * 1.03f + sun.b * k;
+  static float last[4] = { -1, -1, -1, -1 };
+  if (fabsf(r - last[0]) + fabsf(g - last[1]) + fabsf(b - last[2]) + fabsf(k - last[3]) < 0.01f) return;
+  last[0] = r, last[1] = g, last[2] = b, last[3] = k;
+  cw_value col = cw_val_color(r, g, b, 1);
+  for (int i = 0; i < RACERS; i++) {
+    cw_node_set(tail[i], "color", col), cw_node_set(tail[i], "energy", cw_val_float(1.7f + 2.2f * k));
+    cw_node_set(mist[i], "color", col), cw_node_set(mist[i], "energy", cw_val_float(1.0f + 2.6f * k));
+  }
+  for (int s = 0; s < 2; s++) {
+    cw_node_set(sheet[s], "color", col), cw_node_set(sheet[s], "energy", cw_val_float(1.15f + 2.0f * k));
+    cw_node_set(sheet_fine[s], "color", col), cw_node_set(sheet_fine[s], "energy", cw_val_float(1.6f + 2.2f * k));
+  }
+  cw_node_set(side_spray, "color", col), cw_node_set(side_spray, "energy", cw_val_float(1.6f + 2.2f * k));
+  cw_node_set(bursts, "color", col), cw_node_set(bursts, "energy", cw_val_float(1.7f + 2.0f * k));
+  cw_node_set(burst_mist, "color", col), cw_node_set(burst_mist, "energy", cw_val_float(1.0f + 2.4f * k));
+}
+
+/* Things standing in the sea sit in it: a collar of foam where each ramp leg and each buoy meets the moving surface, thicker
+ * as the swell works up and down it. Stamped into the ripple layer each tick near the player (sw waterline 0: none, the control) */
+int g_waterline = 1, g_waterline_stamps;
+static void waterline_foam(void) {
+  g_waterline_stamps = 0;
+  if (!g_waterline || G.state == RACE_DONE) return;
+  const craft *p = &G.c[0];
+  static const float PZ[5] = { -8, 0, 8, 14, 20 }, PX[3] = { -9.75f, 0, 9.75f };
+  for (int r = 0; r < RAMPS; r++) {
+    float dx = G.ramp_x[r] - p->x, dz = G.ramp_z[r] - p->z;
+    if (dx * dx + dz * dz > 140.0f * 140.0f) continue;
+    float sy, cy, s = DEF->ramps[r][5] > 0 ? RAMP_BIG_XZ : 1.0f, sv = DEF->ramps[r][5] > 0 ? RAMP_BIG_Y : 1.0f;
+    cw_sincos(G.ramp_yaw[r], &sy, &cy);
+    for (int a = 0; a < 5; a++) for (int b = 0; b < 3; b++) {
+      float xl = PX[b] * s, zl = PZ[a] * s, wx = G.ramp_x[r] + cy * xl + sy * zl, wz = G.ramp_z[r] - sy * xl + cy * zl;
+      cw_water_sample w;
+      cw_water_sample_at(G.water, wx, wz, G.wt, &w);
+      float top = ramp_top_at(r) + ((PZ[a] - RAMP_HALF_LEN_N) * RAMP_SLOPE - 0.5f) * sv;
+      if (top < w.height) continue; /* this leg is under its part of the deck below the water */
+      cw_water_splash(G.water, wx, wz, 0.95f * s, 0.0f, 0.1f + 0.12f * fminf(1.0f, fabsf(w.velocity.y)));
+      g_waterline_stamps++;
+    }
+  }
+  for (int b = 0; b < BUOY_N; b++) {
+    float dx = BUOYS[b][0] - p->x, dz = BUOYS[b][1] - p->z;
+    if (dx * dx + dz * dz > 140.0f * 140.0f || !buoy_on(b)) continue;
+    cw_water_sample w;
+    cw_water_sample_at(G.water, BUOYS[b][0], BUOYS[b][1], G.wt, &w);
+    cw_water_splash(G.water, BUOYS[b][0], BUOYS[b][1], 1.1f, 0.0f, 0.08f + 0.12f * fminf(1.0f, fabsf(w.velocity.y)));
+    g_waterline_stamps++;
+  }
+}
+
 void fx_tick(float dt) {
   rain_tick();
+  spray_light();
   (void)dt;
   for (int i = 0; i < RACERS; i++) {
     craft *c = &G.c[i];
@@ -208,13 +288,14 @@ void fx_tick(float dt) {
     if (g_ev_n - read > EV_RING) read = g_ev_n - EV_RING;
     for (; read != g_ev_n; read++) {
       const game_event *e = &g_ev[read % EV_RING];
-      static const float rumble[EV_KINDS][3] = { [EV_PASS] = { 0.15f, 0.25f, 70 }, [EV_TOP] = { 0.5f, 0.7f, 220 }, [EV_TRICK] = { 0.3f, 0.5f, 140 }, [EV_MISS] = { 0.5f, 0.1f, 200 }, [EV_GAIN] = { 0.2f, 0.35f, 90 }, [EV_LOSE] = { 0.2f, 0.1f, 90 }, [EV_LAP] = { 0.25f, 0.3f, 120 }, [EV_FINAL] = { 0.4f, 0.5f, 240 }, [EV_WALL] = { 0.6f, 0.3f, 120 }, [EV_CRASH] = { 1, 0.8f, 420 }, [EV_CHARGE] = { 0.2f, 0.5f, 120 }, [EV_TURBO] = { 0.8f, 0.9f, 500 } };
+      static const float rumble[EV_KINDS][3] = { [EV_PASS] = { 0.15f, 0.25f, 70 }, [EV_TOP] = { 0.5f, 0.7f, 220 }, [EV_TRICK] = { 0.3f, 0.5f, 140 }, [EV_MISS] = { 0.5f, 0.1f, 200 }, [EV_GAIN] = { 0.2f, 0.35f, 90 }, [EV_LOSE] = { 0.2f, 0.1f, 90 }, [EV_LAP] = { 0.25f, 0.3f, 120 }, [EV_FINAL] = { 0.4f, 0.5f, 240 }, [EV_WALL] = { 0.6f, 0.3f, 120 }, [EV_CRASH] = { 1, 0.8f, 420 }, [EV_CHARGE] = { 0.2f, 0.5f, 120 }, [EV_TURBO] = { 0.8f, 0.9f, 500 }, [EV_ROCKET] = { 0.7f, 0.9f, 350 } };
       if (!g_ev_on) continue;
       if (rumble[e->kind][2] > 0) { cw_input_rumble(0, rumble[e->kind][0], rumble[e->kind][1], (int)rumble[e->kind][2]); g_fb[e->kind][2]++; }
-      if (e->kind == EV_PASS || e->kind == EV_TOP || e->kind == EV_CRASH || e->kind == EV_WALL || e->kind == EV_TURBO) {
+      if (e->kind == EV_PASS || e->kind == EV_TOP || e->kind == EV_CRASH || e->kind == EV_WALL || e->kind == EV_TURBO || e->kind == EV_ROCKET) {
         float h = cw_water_height_at(G.water, e->x, e->z, G.wt);
         cw_particles_burst(bursts, (t3_vec3){ e->x, h + 0.2f, e->z }, (t3_vec3){ 0, 1, 0 });
         g_fb[e->kind][3]++;
       }
     } }
+  waterline_foam();
 }

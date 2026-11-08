@@ -21,7 +21,7 @@ async function nextRaces(cut) {
   for (let k = 0; k < 4; k++) {
     await call('frame', { op: 'step', frames: 90 });
     await cmd('finish');
-    await call('frame', { op: 'step', frames: 30 });
+    await call('frame', { op: 'step', frames: 300 }); // the finish shows for 4.5 s, then the results
     const before = +(await rd('cam.drawn_under')), lv0 = +(await rd('race.level'));
     // accept on the results page, by the pad
     for (let t = 0; t < 12 && +(await rd('race.level')) === lv0; t++) { await call('input', { op: 'press', button: 'south', frames: 3 }); for (let q = 0; q < 12 && +(await rd('race.level')) === lv0; q++) await call('frame', { op: 'step', frames: 1 }); }

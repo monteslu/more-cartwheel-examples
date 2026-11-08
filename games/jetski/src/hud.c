@@ -3,8 +3,10 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "cartwheel/platform.h"
+#include "cartwheel/prompt.h"
 #include "cartwheel/render2d.h"
 #include "cartwheel/render3d.h"
 #include "game.h"
@@ -239,7 +241,7 @@ static void hud_events(float dt) {
     switch (e->kind) {
       case EV_PASS: meter_pulse = 1; shown = false; g_fb[e->kind][0]++; break;
       case EV_TOP: pop_add("MAX POWER", gold, true); meter_pulse = 1; break;
-      case EV_TRICK: pop_add(e->a == 2 ? "BACK FLIP" : e->a == 3 ? "FRONT FLIP" : e->a == 4 ? "KICK OUT" : "BARREL ROLL", cyan, true); break;
+      case EV_TRICK: pop_add(e->a == 2 ? "BACK FLIP" : e->a == 3 ? "FRONT FLIP" : e->a == 4 ? "KICK OUT" : e->a == 5 ? "STYLE" : "BARREL ROLL", cyan, true); break;
       case EV_LAND: if (e->a == 2) pop_add("DIVE", cyan, true); else if (e->a) pop_add("PERFECT LANDING", green, false); else { shown = false; g_fb[e->kind][0]++; } break;
       case EV_MISS: shown = false; g_fb[e->kind][0]++; break; /* MISS has its own big word */
       case EV_GAIN: snprintf(b, sizeof b, "UP TO %s", ord[e->a - 1 < 0 ? 0 : e->a - 1 > 5 ? 5 : e->a - 1]); pop_add(b, green, false); break;
@@ -250,6 +252,7 @@ static void hud_events(float dt) {
       case EV_CRASH: shown = false; g_fb[e->kind][0]++; break; /* WIPEOUT has its own */
       case EV_CHARGE: pop_add("TURBO READY", cyan, false); chip_pulse = 1; break;
       case EV_TURBO: pop_add("TURBO", cyan, true); chip_pulse = 1; break;
+      case EV_ROCKET: pop_add("ROCKET START", gold, true); break;
     }
     if (shown) g_fb[e->kind][0]++;
   }
@@ -286,6 +289,31 @@ static void hud_neighbours(const craft *c, float u, float y) {
   }
 }
 
+/* speed lines: thin streaks running out to the edges of the frame near top speed and under a turbo. Each one fades in and out over
+ * its own run, so the light of the frame never jumps; the middle of the picture, where the course is, stays clear */
+float g_speedlines; /* how strong they are now, 0..1 (sw speedlines 0: never, the speed gate control) */
+int g_speedlines_on = 1;
+static void hud_speedlines(const craft *c, float w, float h, float u) {
+  float want = 0;
+  if (g_speedlines_on && G.state == RACE_ON && c->spill <= 0 && c->finish <= 0 && c->top > 1) {
+    want = fminf(1.0f, fmaxf(0.0f, (c->speed / c->top - 0.72f) / 0.25f)) * 0.75f;
+    if (c->turbo_hold > 0) want = fminf(1.0f, want + 0.45f * fminf(1.0f, c->turbo_hold / 0.6f));
+  }
+  g_speedlines += (want - g_speedlines) * (want > g_speedlines ? 0.08f : 0.04f);
+  if (g_speedlines < 0.02f) return;
+  float cx = w * 0.5f, cy = h * 0.46f, R = sqrtf(cx * cx + cy * cy);
+  for (int i = 0; i < 28; i++) {
+    uint32_t k = (uint32_t)i * 2654435761u;
+    float ang = (float)i / 28.0f * TAU + (float)((k >> 8) & 255) / 255.0f * 0.2f, rate = 1.6f + (float)((k >> 16) & 255) / 255.0f * 1.2f;
+    float p = G.clock * rate + (float)((k >> 4) & 255) / 255.0f;
+    p -= floorf(p);
+    float r0 = R * (0.5f + 0.42f * p), len = R * (0.08f + 0.1f * g_speedlines), a = g_speedlines * 0.3f * sinf(3.14159265f * p);
+    float dx = cosf(ang), dy = sinf(ang), nx = -dy, ny = dx, wd = 2.4f * u * (0.6f + p);
+    cw_vec2 a0 = cw_v2(cx + dx * r0, cy + dy * r0), a1 = cw_v2(cx + dx * (r0 + len) + nx * wd, cy + dy * (r0 + len) + ny * wd), a2 = cw_v2(cx + dx * (r0 + len) - nx * wd, cy + dy * (r0 + len) - ny * wd);
+    cw_r2d_triangle(a0, a1, a2, cw_rgba(0.92f, 0.97f, 1.0f, a));
+  }
+}
+
 static void hud_body(void) {
   cw_vec2 sz = cw_r2d_canvas_size();
   float w = sz.x, h = sz.y, u = h / 1080.0f;
@@ -296,7 +324,8 @@ static void hud_body(void) {
   static bool was_open;
   { bool op = hook_open(); if (op && !was_open) hook_seen = G.clock; was_open = op; }
   hud_events(1.0f / 60.0f);
-  if (G.state == RACE_ATTRACT || G.state == RACE_DONE) return; /* the results page has it all */
+  if (G.state == RACE_ATTRACT || G.state == RACE_DONE) { g_speedlines = 0; return; } /* the results page has it all */
+  hud_speedlines(c, w, h, u);
   /* speed, bottom right */
   snprintf(buf, sizeof buf, "%d", (int)(c->speed * 3.6f + 0.5f));
   /* km/h stands on its line beside the number however large it draws: its baseline holds, the word grows upward, and
@@ -360,6 +389,29 @@ static void hud_body(void) {
   if (c->air && c->air_time > 0.5f) {
     snprintf(buf, sizeof buf, "%.1f s", c->air_time);
     word(small, buf, w * 0.5f, h * 0.26f, 44 * u, gold);
+  }
+  /* the course card while the field waits: where this is and how it changes, and the rocket start for those who read it */
+  if (G.state == RACE_GRID || (G.state == RACE_ON && G.clock < 0.6f)) {
+    float k = G.state == RACE_GRID ? fminf(1.0f, (G.clock + 3.6f) / 0.4f) : fmaxf(0.0f, 1.0f - G.clock / 0.6f);
+    static const char *const LINE[][2] = { { "atoll", "Evening on the atoll: the sea builds and the tide comes in" }, { "sound", "Morning in the fjord: the falling tide opens the arch" },
+      { "canyon", "Noon on the river: fast with the current, slow against it" }, { "harbour", "Night in the port: mind the tanker and its wake" }, { "storm", "A squall at sea: the swell keeps building" } };
+    const char *line = "";
+    for (unsigned i = 0; i < sizeof LINE / sizeof LINE[0]; i++) if (!strcmp(DEF->id, LINE[i][0])) line = LINE[i][1];
+    float cy = 46 * u; /* across the top, clear of the countdown, the craft and the next buoy */
+    cw_r2d_round_rect(cw_rect_make(w * 0.5f - 560 * u, cy - 16 * u, 1120 * u, 196 * u * grow(small, 34 * u)), 18 * u, 8, cw_rgba(0.02f, 0.05f, 0.09f, 0.55f * k));
+    word(big, DEF->name, w * 0.5f, cy, 62 * u, cw_rgba(1, 1, 1, k));
+    float y2 = cy + 76 * u * grow(big, 62 * u);
+    word(small, line, w * 0.5f, y2, 34 * u, cw_rgba(1, 1, 1, 0.85f * k));
+    if (G.state == RACE_GRID && k > 0.5f) cw_prompt_text(small, "{throttle} on the last beat: a rocket start", 0, cw_v2(w * 0.5f, y2 + 50 * u * grow(small, 34 * u)), 30 * u, cw_rgba(1.0f, 0.82f, 0.4f, k), CW_ALIGN_CENTER);
+  }
+  /* over the line: the place, big, while the camera comes round */
+  if (c->finish > 0 && G.state == RACE_ON && !c->dq) {
+    static const char *const FIN[] = { "FINISHED 1ST", "FINISHED 2ND", "FINISHED 3RD", "FINISHED 4TH", "FINISHED 5TH", "FINISHED 6TH" };
+    float k = fminf(1.0f, G.fin_t / 0.5f);
+    const char *s = g_mode == MODE_TIME_TRIAL ? "FINISHED" : FIN[c->place - 1 < 0 ? 0 : c->place - 1 > 5 ? 5 : c->place - 1];
+    word(big, s, w * 0.5f, h * 0.2f, 96 * u, c->place == 1 || g_mode == MODE_TIME_TRIAL ? cw_rgba(1.0f, 0.78f, 0.25f, k) : cw_rgba(1, 1, 1, k));
+    snprintf(buf, sizeof buf, "%d:%05.2f", (int)(c->finish / 60), c->finish - 60.0f * (float)(int)(c->finish / 60));
+    word(small, buf, w * 0.5f, h * 0.2f + 120 * u * grow(big, 96 * u), 48 * u, cw_rgba(1, 1, 1, 0.9f * k));
   }
   if (G.state == RACE_GRID) {
     int n = (int)ceilf(-G.clock);
