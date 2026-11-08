@@ -1202,13 +1202,22 @@
     ],
     "expect": {
       "game.moves": [
+        6,
+        0,
+        2,
+        0,
+        0,
         0
       ],
       "game.combos": [
-        0
+        4,
+        0,
+        0,
+        0,
+        2
       ],
-      "game.stopped": 0,
-      "game.hash": 0,
+      "game.stopped": 282,
+      "game.hash": 3271058940,
       "game.unfair": 0,
       "game.overlaps": 0,
       "game.nan": 0,
@@ -1249,11 +1258,11 @@
     ],
     "expect": {
       "game.lane": [
-        0,
+        15,
         0
       ],
-      "game.hits": 0,
-      "game.hash": 0,
+      "game.hits": 20,
+      "game.hash": 3588468229,
       "game.unfair": 0,
       "game.nan": 0
     }
