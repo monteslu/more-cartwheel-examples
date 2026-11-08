@@ -610,8 +610,9 @@ const burst = (u, v, o) => {
 // ── the set ─────────────────────────────────────────────────────────────
 const jobs = {
   // rooftop at dusk
-  // nine slabs a side over three times the old span: the floor repeats every 5.4 m instead of 1.8, each slab its own
-  roof_deck: () => [bake(2048, slabs({ base: [0.5, 0.47, 0.44], n: 9, seed: 61, tint: [1.04, 1, 0.95], vary: 1 })), 5.4],
+  // nine slabs a side over three times the old span: the floor repeats every 5.4 m instead of 1.8, each slab its own;
+  // 1024 like the old one (a 2048 map cost GL 0.6 ms at Very Low and Low, tests/quality-range.mjs)
+  roof_deck: () => [bake(1024, slabs({ base: [0.5, 0.47, 0.44], n: 9, seed: 61, tint: [1.04, 1, 0.95], vary: 1 })), 5.4],
   roof_tar: () => [bake(512, asphalt({ base: [0.17, 0.165, 0.17], seed: 62, wet: 0.15 })), 2.0],
   concrete: () => [bake(512, plaster({ base: [0.52, 0.5, 0.47], seed: 63, stain: 0.45 })), 2.2],
   facade_dusk: () => [bake(1024, facade({ wall: brick({ seed: 64, rows: 24, nx: 8, soot: 0.45 }), seed: 64, lit: 0.42 })), 2.4],
