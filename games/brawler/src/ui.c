@@ -177,6 +177,16 @@ void ui_draw(void) {
     text(b, sz.x * 0.5f, fmaxf(u * 5.0f, card_bottom + u * 0.5f), u * 1.4f, cw_rgba(1, 0.9f, 0.3f, 1), true);
   }
   if (W.go_flash > 0 && (W.go_flash / 18) % 2 == 0) text("GO  >>>", sz.x - fmaxf(u * 6, text_w("GO  >>>", u * 2.2f) * 0.5f + u * 0.6f), sz.y * 0.4f, u * 2.2f, cw_rgba(1, 1, 1, 1), true);
+  if (W.stage == 0 && W.wave == 0 && W.tick - W.st.t0 < 900 && W.phase != PH_CLEAR) { /* the first stage: what the buttons do, under the street */
+    cw_font f = cw_ui_font_sans();
+    float bs = u * 0.95f, k = W.tick - W.st.t0 > 840 ? (float)(900 - (W.tick - W.st.t0)) / 60.0f : 1.0f;
+    const char *one = "{attack}: punch   {kick}: kick   {jump}: jump   {grab}: grab   {special}: spin";
+    const char *two = "{attack}: punch   {kick}: kick   {jump}: jump\n{grab}: grab   {special}: spin";
+    const char *t = cw_prompt_text_size(f, one, 0, bs).x < sz.x * 0.94f ? one : two;
+    cw_vec2 m = cw_prompt_text_size(f, t, 0, bs);
+    cw_r2d_round_rect(cw_rect_make(sz.x * 0.5f - m.x * 0.5f - u * 0.6f, sz.y - m.y - u * 1.6f, m.x + u * 1.2f, m.y + u * 0.8f), u * 0.4f, 6, cw_rgba(0, 0, 0, 0.5f * k));
+    cw_prompt_text(f, t, 0, cw_v2(sz.x * 0.5f, sz.y - m.y - u * 1.2f), bs, cw_rgba(1, 1, 1, 0.95f * k), CW_ALIGN_CENTER);
+  }
   if (W.phase == PH_INTRO) {
     char b[48];
     snprintf(b, sizeof b, "STAGE %d", W.stage + 1);
