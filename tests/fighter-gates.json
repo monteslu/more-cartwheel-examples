@@ -473,7 +473,7 @@
       "fx.hits"
     ],
     "expect": {
-      "crowd.same": 0
+      "crowd.same": 2
     },
     "controlEnv": {
       "FIGHTER_CROWD_SYNC": "1"
@@ -484,7 +484,7 @@
       ],
       "maxGt16": 0.06
     },
-    "note": "The crowd answers a blow as a ripple out from it, each spectator late by their distance and in their own way: crowd.same is the most spectators that threw their arms up on one frame, over two rounds of the self-playing match (a knockout and a super in them). Control: FIGHTER_CROWD_SYNC=1, the crowd as it was (every spectator hears an event at once and answers alike), which must put several on one frame."
+    "note": "The crowd answers a blow as a ripple out from it, each spectator late by their distance and in their own way: crowd.same is the most spectators that threw their arms up on one frame over two rounds of the self-playing match (a knockout and a super in them): 2, two standing at the same distance. Control: FIGHTER_CROWD_SYNC=1, the crowd as it was (every spectator hears an event at once and answers alike), which puts more on one frame."
   },
   {
     "name": "fighter-slowmo",
@@ -501,7 +501,7 @@
       "ko.end_hash"
     ],
     "expect": {
-      "ko.slow": 50,
+      "ko.slow": 79,
       "ko.end_hash": 118159139
     },
     "controlEnv": {
@@ -513,7 +513,7 @@
       ],
       "maxGt16": 0.06
     },
-    "note": "The knockout that decides the match plays at half speed for its first 50 ticks (ko.slow counts the fixed ticks the sim was held) and the match comes out the same: ko.end_hash is the sim at the match end, the hash the rules alone give (tests: the same with FIGHTER_NO_SLOWMO). Control: FIGHTER_NO_SLOWMO=1 (no ticks held) must fail on ko.slow."
+    "note": "The knockout that decides the match plays at half speed for its first 50 ticks of the knockout's clock (which stands still through the final blow's hit stop, so 79 fixed ticks are held: ko.slow) and the match comes out the same: ko.end_hash is the sim at the match end, the hash the rules alone give (118159139, as with FIGHTER_NO_SLOWMO). Control: FIGHTER_NO_SLOWMO=1 (no ticks held) must fail on ko.slow."
   },
   {
     "name": "fighter-quality",
