@@ -1,4 +1,4 @@
-# The armoured fighter: one skinned mesh, 20 bones, clips idle / run / die. Usage (see build.sh):
+# The armoured fighter: one skinned mesh, 15 bones, clips idle / run / die. Usage (see build.sh):
 #   blender -b --python soldier.py -- <out_dir> [sheet.png]
 # Everything is modelled here from primitives (our own work, same licence as the game).
 import bpy, bmesh, math, sys, os
@@ -30,13 +30,15 @@ BONES = {
 def build(team):
     reset()
     col = TEAMS[team]
-    # team readability at split-screen sizes: the armour itself carries the team colour, the trims glow it
-    suit = material('suit', (0.06, 0.065, 0.07), 0.85, 0.0)
-    armor = material('armor', (0.08 + col[0] * 0.32, 0.08 + col[1] * 0.3, 0.08 + col[2] * 0.32), 0.38, 0.35)
-    plate = material('plate', (0.30, 0.31, 0.33), 0.45, 0.6)
-    trim = material('trim', col, 0.4, 0.0, emit=col, emit_strength=2.5)
-    visor = material('visor', (col[0] * 0.2, col[1] * 0.2, col[2] * 0.2), 0.15, 0.0, emit=col, emit_strength=8.0)
-    gun = material('gunmetal', (0.07, 0.07, 0.08), 0.35, 0.9)
+    # cloth is matte (a fabric suit and webbing); the armour is painted plate in the team colour, the trims glow it a little
+    suit = material('suit', (0.055, 0.06, 0.055), 0.95, 0.0)
+    web = material('webbing', (0.11, 0.105, 0.085), 0.95, 0.0)
+    armor = material('armor', (0.06 + col[0] * 0.34, 0.06 + col[1] * 0.32, 0.06 + col[2] * 0.34), 0.42, 0.25)
+    plate = material('plate', (0.24, 0.25, 0.27), 0.5, 0.55)
+    rubber = material('rubber', (0.03, 0.03, 0.03), 0.8, 0.0)
+    trim = material('trim', col, 0.4, 0.0, emit=col, emit_strength=2.2)
+    visor = material('visor', (col[0] * 0.15, col[1] * 0.15, col[2] * 0.15), 0.1, 0.0, emit=col, emit_strength=6.0)
+    gun = material('gunmetal', (0.06, 0.06, 0.065), 0.4, 0.85)
     parts = []   # (object, bone name or weights fn)
 
     def add(ob, bone):
@@ -45,28 +47,70 @@ def build(team):
         parts.append(ob)
         return ob
 
-    # --- torso
-    add(bevel_box('pelvis', (0.36, 0.24, 0.20), (0, 0, 1.0), 0.04, 3, armor), 'hips')
-    add(bevel_box('belly', (0.30, 0.20, 0.26), (0, 0, 1.25), 0.05, 3, suit), 'spine')
-    add(bevel_box('chestplate', (0.46, 0.28, 0.34), (0, 0.02, 1.47), 0.07, 4, armor), 'chest')
-    add(bevel_box('chesttrim', (0.30, 0.02, 0.07), (0, 0.165, 1.52), 0.01, 2, trim), 'chest')
-    add(bevel_box('backpack', (0.30, 0.14, 0.34), (0, -0.20, 1.45), 0.04, 3, plate), 'chest')
-    add(bevel_box('packtrim', (0.08, 0.02, 0.22), (0, -0.275, 1.45), 0.01, 2, trim), 'chest')
-    add(bevel_box('belt', (0.37, 0.25, 0.05), (0, 0, 1.12), 0.015, 2, plate), 'hips')
-    add(cyl('neck', 0.055, 0.12, (0, 0, 1.64), verts=14, mat=suit), 'neck')
-    # --- head: helmet, visor
-    add(sphere('helmet', 0.15, (0, 0, 1.80), (0.95, 1.1, 1.0), armor), 'head')
-    add(bevel_box('visor', (0.20, 0.05, 0.065), (0, 0.115, 1.81), 0.02, 3, visor), 'head')
-    add(bevel_box('crest', (0.04, 0.2, 0.05), (0, -0.02, 1.925), 0.015, 2, trim), 'head')
-    add(bevel_box('jaw', (0.14, 0.09, 0.07), (0, 0.09, 1.72), 0.025, 2, suit), 'head')
-    # --- shoulders
+    def rbox(name, size, loc, bone, mat, bevel=0.015, segs=2, rot=(0, 0, 0)):
+        return add(bevel_box(name, size, loc, bevel, segs, mat, rot), bone)
+
+    # --- hips: a belt of webbing with pouches, a groin plate, the seat
+    rbox('pelvis', (0.30, 0.20, 0.17), (0, 0, 1.0), 'hips', suit, 0.05, 3)
+    rbox('belt', (0.33, 0.23, 0.05), (0, 0, 1.08), 'hips', web, 0.015, 2)
+    rbox('buckle', (0.06, 0.02, 0.04), (0, 0.118, 1.08), 'hips', plate, 0.008, 1)
+    rbox('groin', (0.13, 0.04, 0.12), (0, 0.105, 0.98), 'hips', armor, 0.02, 2)
+    for i, x in enumerate((-0.12, 0.12, -0.155, 0.155)):
+        y = 0.105 if i < 2 else -0.06
+        rbox('beltpouch%d' % i, (0.07, 0.05, 0.08), (x, y, 1.05), 'hips', web, 0.012, 2)
+    # --- the waist and torso: a fabric waist, a shaped chest plate over it, two stomach plates, a chest rig of pouches
+    add(cyl('waist', 0.13, 0.22, (0, 0, 1.22), verts=16, mat=suit, r2=0.15), 'spine')
+    rbox('abs1', (0.24, 0.04, 0.07), (0, 0.13, 1.19), 'spine', armor, 0.02, 2)
+    rbox('abs2', (0.26, 0.04, 0.07), (0, 0.135, 1.265), 'spine', armor, 0.02, 2)
+    add(sphere('torso', 0.2, (0, 0.0, 1.46), (1.12, 0.72, 0.85), suit, seg=20, rings=12), 'chest')
+    rbox('chestplate', (0.38, 0.06, 0.24), (0, 0.13, 1.47), 'chest', armor, 0.035, 3, rot=(0.12, 0, 0))
+    rbox('backplate', (0.36, 0.05, 0.28), (0, -0.14, 1.46), 'chest', armor, 0.03, 3, rot=(-0.08, 0, 0))
+    rbox('chesttrim', (0.22, 0.01, 0.025), (0, 0.168, 1.565), 'chest', trim, 0.004, 1, rot=(0.12, 0, 0))
+    for i, x in enumerate((-0.09, 0.0, 0.09)):   # three magazine pouches across the stomach
+        rbox('magpouch%d' % i, (0.075, 0.05, 0.11), (x, 0.17, 1.33), 'chest', web, 0.012, 2)
+        rbox('magflap%d' % i, (0.078, 0.054, 0.025), (x, 0.172, 1.385), 'chest', web, 0.008, 1)
+    rbox('radio', (0.06, 0.045, 0.1), (0.13, 0.15, 1.5), 'chest', web, 0.012, 2)
+    add(cyl('radio_ant', 0.006, 0.14, (0.15, 0.15, 1.6), verts=6, mat=rubber), 'chest')
+    for x in (-0.12, 0.12):   # shoulder straps over the plates
+        rbox('strap%.2f' % x, (0.05, 0.3, 0.025), (x, 0.0, 1.62), 'chest', web, 0.008, 1, rot=(0, 0, 0))
+    add(cyl('collar', 0.085, 0.07, (0, 0, 1.62), verts=16, mat=armor, r2=0.075), 'neck')
+    add(cyl('neck', 0.05, 0.1, (0, 0.005, 1.66), verts=12, mat=suit), 'neck')
+    # --- the pack: a frame, a bag with a rolled mat, an antenna
+    rbox('pack', (0.26, 0.12, 0.3), (0, -0.23, 1.42), 'chest', web, 0.03, 3)
+    rbox('packlid', (0.27, 0.13, 0.05), (0, -0.23, 1.58), 'chest', web, 0.015, 2)
+    add(cyl('packroll', 0.045, 0.28, (0, -0.24, 1.25), rot=(0, math.pi / 2, 0), verts=12, mat=plate), 'chest')
+    rbox('packtrim', (0.06, 0.012, 0.16), (0, -0.292, 1.42), 'chest', trim, 0.004, 1)
+    add(cyl('antenna', 0.006, 0.42, (-0.1, -0.26, 1.78), verts=6, mat=rubber), 'chest')
+    # --- the head: a helmet with a brim, ear cups and a wrap visor; a dark face mask under it
+    add(sphere('helmet', 0.135, (0, -0.005, 1.8), (0.95, 1.08, 0.92), armor, seg=24, rings=14), 'head')
+    add(cyl('brim', 0.138, 0.03, (0, -0.005, 1.765), verts=24, mat=armor, r2=0.13), 'head')
+    rbox('neckguard', (0.2, 0.05, 0.07), (0, -0.12, 1.73), 'head', armor, 0.02, 2, rot=(-0.35, 0, 0))
+    for sx in (-1, 1):
+        add(cyl('earcup%d' % sx, 0.045, 0.04, (sx * 0.13, 0.0, 1.77), rot=(0, math.pi / 2, 0), verts=14, mat=plate), 'head')
+    rbox('visor', (0.2, 0.05, 0.055), (0, 0.118, 1.79), 'head', visor, 0.02, 3)
+    for sx in (-1, 1):
+        rbox('visorside%d' % sx, (0.05, 0.08, 0.05), (sx * 0.1, 0.075, 1.79), 'head', visor, 0.015, 2, rot=(0, 0, sx * 0.6))
+    rbox('mask', (0.13, 0.08, 0.07), (0, 0.085, 1.715), 'head', suit, 0.025, 2)
+    rbox('crest', (0.03, 0.18, 0.03), (0, -0.01, 1.92), 'head', trim, 0.01, 2)
+    # --- shoulders, elbows, forearms, gloves; knees, shins, thighs, boots
     for s, sg in (('l', 1), ('r', -1)):
-        add(sphere('pauld_' + s, 0.115, (sg * 0.30, 0, 1.56), (1.1, 1.0, 0.85), armor), 'upper_' + s)
-        add(bevel_box('pauldtrim_' + s, (0.05, 0.16, 0.03), (sg * 0.31, 0, 1.64), 0.01, 2, trim), 'upper_' + s)
-        add(bevel_box('kneepad_' + s, (0.12, 0.08, 0.13), (sg * 0.14, 0.085, 0.52), 0.03, 3, plate), 'shin_' + s)
-        add(bevel_box('boot_' + s, (0.12, 0.28, 0.12), (sg * 0.14, 0.05, 0.06), 0.035, 3, armor), 'foot_' + s)
-        add(bevel_box('hip_' + s, (0.12, 0.2, 0.2), (sg * 0.20, 0, 0.98), 0.04, 3, plate), 'thigh_' + s)
-        add(bevel_box('glove_' + s, (0.10, 0.12, 0.10), ((0.14 if sg > 0 else -0.04), 0.46 if sg > 0 else 0.55, 1.32), 0.03, 3, armor), 'fore_' + s)
+        add(sphere('pauld_' + s, 0.095, (sg * 0.27, 0, 1.585), (1.15, 1.1, 0.7), armor, seg=18, rings=10), 'upper_' + s)
+        rbox('pauld2_' + s, (0.1, 0.17, 0.04), (sg * 0.305, 0, 1.52), 'upper_' + s, armor, 0.015, 2, rot=(0, sg * 0.5, 0))
+        rbox('pauldtrim_' + s, (0.03, 0.14, 0.015), (sg * 0.29, 0, 1.645), 'upper_' + s, trim, 0.005, 1)
+        hip = Vector(BONES['thigh_' + s][1]); knee = Vector(BONES['thigh_' + s][2]); ankle = Vector(BONES['shin_' + s][2])
+        rbox('thighplate_' + s, (0.04, 0.15, 0.2), (sg * 0.225, 0.01, 0.8), 'thigh_' + s, armor, 0.018, 2)
+        if s == 'r':
+            rbox('holster', (0.06, 0.1, 0.16), (sg * 0.215, -0.02, 0.7), 'thigh_' + s, web, 0.015, 2)
+        add(sphere('kneepad_' + s, 0.075, (sg * 0.14, 0.07, 0.53), (1.0, 0.7, 1.15), armor, seg=14, rings=8), 'shin_' + s)
+        rbox('shinguard_' + s, (0.09, 0.04, 0.24), (sg * 0.14, 0.06, 0.3), 'shin_' + s, plate, 0.018, 2)
+        rbox('boot_' + s, (0.11, 0.25, 0.14), (sg * 0.14, 0.04, 0.075), 'foot_' + s, suit, 0.035, 3)
+        rbox('sole_' + s, (0.115, 0.26, 0.03), (sg * 0.14, 0.04, 0.015), 'foot_' + s, rubber, 0.01, 1)
+        rbox('toecap_' + s, (0.1, 0.06, 0.07), (sg * 0.14, 0.15, 0.055), 'foot_' + s, plate, 0.02, 2)
+        sh = Vector(BONES['upper_' + s][1]); el = Vector(BONES['upper_' + s][2]); hand = Vector(BONES['fore_' + s][2])
+        add(sphere('elbow_' + s, 0.05, tuple(el + Vector((sg * 0.02, -0.03, 0))), (1, 1, 1), plate, seg=12, rings=8), 'fore_' + s)
+        mid = el.lerp(hand, 0.45)
+        add(cyl('bracer_' + s, 0.055, 0.15, tuple(mid), rot=((hand - el).to_track_quat('Z', 'Y').to_euler()), verts=12, mat=armor, r2=0.05), 'fore_' + s)
+        add(sphere('glove_' + s, 0.05, tuple(hand), (1.0, 1.3, 0.9), rubber, seg=12, rings=8), 'fore_' + s)
 
     # --- limbs as tubes with a blend across the joint
     def tube(name, pts, radii, mat, bone_a, bone_b, blend_at, blend_w=0.10, seg=12):
@@ -100,15 +144,15 @@ def build(team):
         parts.append(ob)
         return ob
 
-    def arm(s, shoulder, elbow, hand, ra=0.09, rb=0.07):
+    def arm(s, shoulder, elbow, hand, ra=0.062, rb=0.045):
         n = 7
         pts = []; rad = []
         for i in range(n):
             t = i / (n - 1)
-            pts.append(Vector(shoulder).lerp(Vector(elbow), t)); rad.append(ra + (ra * 0.9 - ra) * t)
+            pts.append(Vector(shoulder).lerp(Vector(elbow), t)); rad.append(ra + (ra * 0.85 - ra) * t)
         for i in range(1, n):
             t = i / (n - 1)
-            pts.append(Vector(elbow).lerp(Vector(hand), t)); rad.append(ra * 0.9 + (rb - ra * 0.9) * t)
+            pts.append(Vector(elbow).lerp(Vector(hand), t)); rad.append(ra * 0.85 + (rb - ra * 0.85) * t)
         tube('arm_' + s, pts, rad, suit, 'upper_' + s, 'fore_' + s, Vector(elbow))
     arm('l', BONES['upper_l'][1], BONES['upper_l'][2], BONES['fore_l'][2])
     arm('r', BONES['upper_r'][1], BONES['upper_r'][2], BONES['fore_r'][2])
@@ -117,19 +161,24 @@ def build(team):
         pts = []; rad = []
         for i in range(8):
             t = i / 7
-            pts.append(Vector(hip).lerp(Vector(knee), t)); rad.append(0.14 - 0.03 * t)
+            pts.append(Vector(hip).lerp(Vector(knee), t)); rad.append(0.1 - 0.025 * t)
         for i in range(1, 8):
             t = i / 7
-            pts.append(Vector(knee).lerp(Vector(ankle), t)); rad.append(0.11 - 0.03 * t)
+            pts.append(Vector(knee).lerp(Vector(ankle), t)); rad.append(0.075 - 0.025 * t)
         tube('leg_' + s, pts, rad, suit, 'thigh_' + s, 'shin_' + s, Vector(knee), 0.12)
     leg('l', BONES['thigh_l'][1], BONES['thigh_l'][2], BONES['shin_l'][2])
     leg('r', BONES['thigh_r'][1], BONES['thigh_r'][2], BONES['shin_r'][2])
 
-    # --- the rifle, held by both hands, rigid to the right forearm
-    add(bevel_box('rifle_body', (0.07, 0.62, 0.11), (-0.04, 0.38, 1.35), 0.02, 3, gun), 'fore_r')
-    add(bevel_box('rifle_stock', (0.06, 0.2, 0.13), (-0.04, 0.02, 1.33), 0.02, 3, plate), 'fore_r')
-    add(cyl('rifle_barrel', 0.022, 0.4, (-0.04, 0.82, 1.37), rot=(math.pi / 2, 0, 0), verts=14, mat=gun), 'fore_r')
-    add(bevel_box('rifle_glow', (0.075, 0.18, 0.02), (-0.04, 0.42, 1.415), 0.005, 2, visor), 'fore_r')
+    # --- the rifle, held by both hands, rigid to the right forearm: receiver, magazine, shroud and barrel, stock, sight, grip
+    rbox('rifle_body', (0.06, 0.34, 0.1), (-0.04, 0.36, 1.35), 'fore_r', gun, 0.012, 2)
+    rbox('rifle_shroud', (0.055, 0.26, 0.07), (-0.04, 0.63, 1.36), 'fore_r', plate, 0.015, 2)
+    add(cyl('rifle_barrel', 0.016, 0.22, (-0.04, 0.86, 1.365), rot=(math.pi / 2, 0, 0), verts=10, mat=gun), 'fore_r')
+    add(cyl('rifle_muzzle', 0.024, 0.06, (-0.04, 0.97, 1.365), rot=(math.pi / 2, 0, 0), verts=10, mat=gun), 'fore_r')
+    rbox('rifle_mag', (0.04, 0.07, 0.14), (-0.04, 0.42, 1.25), 'fore_r', gun, 0.01, 1, rot=(-0.25, 0, 0))
+    rbox('rifle_grip', (0.035, 0.05, 0.1), (-0.04, 0.27, 1.27), 'fore_r', rubber, 0.01, 1, rot=(0.3, 0, 0))
+    rbox('rifle_stock', (0.05, 0.2, 0.09), (-0.04, 0.1, 1.33), 'fore_r', plate, 0.015, 2)
+    rbox('rifle_sight', (0.035, 0.08, 0.04), (-0.04, 0.38, 1.42), 'fore_r', gun, 0.008, 1)
+    rbox('rifle_glow', (0.062, 0.12, 0.012), (-0.04, 0.5, 1.39), 'fore_r', visor, 0.004, 1)
 
     ob = join(parts, 'Soldier')
     arm_data = bpy.data.armatures.new('Rig')
