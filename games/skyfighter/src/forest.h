@@ -35,8 +35,17 @@ static void forest_setup(void) {
   static const char *names[]={"forest.oak","forest.birch","forest.spruce","forest.pine"};for(int i=0;i<4;i++)cw_debug_f32_array(names[i],forest_samples[i],4);cw_debug_f32_array("forest.height_range",forest_height_range,2);
   cw_debug_i32("forest.trees",&forest_count);cw_debug_i32("forest.species",&forest_species);cw_debug_f32("forest.wind_time",&forest_clock);cw_debug_i32("forest.near",&forest_near_count);cw_debug_i32("forest.far",&forest_far_count);cw_debug_i32("forest.triangles",&forest_triangles);
 }
+/* The trunk's foot: the widest reach of the bark's lowest hundredth (either LOD), for a tree one unit tall. A tree stands on
+ * the lowest ground under that foot, sunk 20 cm, so its downhill side never shows a gap on a slope. */
+static float forest_foot(int model) {
+  static float foot[8];if(foot[model]>0)return foot[model];
+  for(int lod=0;lod<2;lod++){t3_attribute *p=forest_geometry[lod][model][0]->attributes[T3_ATTR_POSITION];const float *a=p->array;float lo=1e9f;
+    for(int i=0;i<p->count;i++)lo=fminf(lo,a[i*3+1]);for(int i=0;i<p->count;i++)if(a[i*3+1]<lo+.01f)foot[model]=fmaxf(foot[model],hypotf(a[i*3],a[i*3+2]));}
+  return foot[model];
+}
+static float forest_ground(float x,float z,int model,float scale){float r=forest_foot(model)*scale;return ground_under(x,z,2*r,2*r)-.2f;}
 static void forest_single(t3_object *parent,float x,float z,float height,int species,bool snowy) {
-  forest_setup();int model=species*2+((int)fabsf(x*3+z)&1);float y=terrain_height(x,z),angle=x*.031f+z*.012f;
+  forest_setup();int model=species*2+((int)fabsf(x*3+z)&1);float y=forest_ground(x,z,model,height),angle=x*.031f+z*.012f;
   for(int part=0;part<2;part++){t3_mesh *m=t3_mesh_new(forest_geometry[0][model][part],part?forest_leaf[species][snowy]:forest_bark);m->base.cast_shadow=m->base.receive_shadow=true;t3_object_set_position(m,x,y,z);t3_object_set_scale(m,height,height,height);t3_object_set_rotation(m,0,angle,0);t3_object_add(parent,(t3_object *)m);t3_release(m);}
 }
 static bool forest_clear(float x,float z,int style) {
@@ -74,7 +83,7 @@ static void forest_make(t3_object *root,int style,uint32_t *seed) {
     }
     float species_roll=district_rand(seed);int species=style==2||style==6?(species_roll<.75f?2:3):style==5?(species_roll<.55f?2:1):species_roll<.55f?0:species_roll<.8f?1:3;
     int model=species*2+(district_rand(seed)>.5f);float age=district_rand(seed);float h=species==1?13+age*22:species==2?12+age*27:9+age*23;
-    trees[i]=(struct tree_placement){x,clear?terrain_height(x,z)-.2f:-2000,z,h,.76f+district_rand(seed)*.50f,.80f+district_rand(seed)*.45f,district_rand(seed)*2*PI,.78f+district_rand(seed)*.30f,model,1,0};int cx=(int)clampf((x+3400)/(6800/grid),0,grid-1),cz=(int)clampf((z+3400)/(6800/grid),0,grid-1);trees[i].cell=cz*grid+cx;counts[trees[i].cell][model]++;
+    trees[i]=(struct tree_placement){x,clear?terrain_height(x,z)-.2f:-2000,z,h,.76f+district_rand(seed)*.50f,.80f+district_rand(seed)*.45f,district_rand(seed)*2*PI,.78f+district_rand(seed)*.30f,model,1,0};if(clear)trees[i].y=forest_ground(x,z,model,h*fmaxf(trees[i].sx,trees[i].sz));int cx=(int)clampf((x+3400)/(6800/grid),0,grid-1),cz=(int)clampf((z+3400)/(6800/grid),0,grid-1);trees[i].cell=cz*grid+cx;counts[trees[i].cell][model]++;
   }
   /* Freeze each cell's full geometry bounds before LOD subsets change.
    * Transform both LODs, including foliage sway margin; elevation comes

@@ -66,9 +66,9 @@ static void make_kremlin_walls(t3_object *root) {
   for(int edge=0;edge<3;edge++){
     float ax=corners[edge][0],az=corners[edge][1],bx=corners[(edge+1)%3][0],bz=corners[(edge+1)%3][1],length=hypotf(bx-ax,bz-az),angle=atan2f(bx-ax,bz-az);int count=(int)(length/55)+1;
     for(int j=0;j<count;j++){
-      float x=ax+(bx-ax)*(j+.5f)/count,z=az+(bz-az)*(j+.5f)/count,y=terrain_height(x,z);t3_object *segment=t3_group_new();t3_object_add(root,segment);t3_object_set_position(segment,x,y,z);t3_object_set_rotation(segment,0,angle,0);
+      float x=ax+(bx-ax)*(j+.5f)/count,z=az+(bz-az)*(j+.5f)/count,footing,y=site(x,z,11,length/count+1,angle,&footing);t3_object *segment=t3_group_new();t3_object_add(root,segment);t3_object_set_position(segment,x,y,z);t3_object_set_rotation(segment,0,angle,0);plinth(segment,11,length/count+1,footing,cap);
       facade_box(segment,0,13,0,10,26,length/count+1,architecture[0],1,2);for(int k=0;k<4;k++)box(segment,0,28,-length/count*.5f+(k+.5f)*length/count/4,11,5,6,cap);
-      struct district *d=&districts[5];if(d->count<DISTRICT_SOLIDS){int n=d->count++;float dx=fabsf(sinf(angle))*length/count*.5f+fabsf(cosf(angle))*6,dz=fabsf(cosf(angle))*length/count*.5f+fabsf(sinf(angle))*6;d->solid[n].custom=segment;d->solid[n].alive=1;d->solid[n].box=(t3_box3){{x-dx,y,z-dz},{x+dx,y+31,z+dz}};}
+      struct district *d=&districts[5];if(d->count<DISTRICT_SOLIDS){int n=d->count++;float dx=fabsf(sinf(angle))*length/count*.5f+fabsf(cosf(angle))*6,dz=fabsf(cosf(angle))*length/count*.5f+fabsf(sinf(angle))*6;d->solid[n].custom=segment;d->solid[n].alive=1;d->solid[n].box=(t3_box3){{x-dx,y-footing,z-dz},{x+dx,y+31,z+dz}};}
     }
   }
 }
@@ -82,22 +82,22 @@ static void make_kremlin_courtyard(t3_object *root) {
   paved_strip(root,-710,-590,-2180,140,paving);paved_strip(root,-1320,350,-1700,-1600,paving);paved_strip(root,-1280,-100,-1040,-930,paving);
   static const float ministries[][4]={{-1080,-1820,180,105},{-920,-2030,180,100},{-380,-2010,220,110},{-1130,-1450,170,100},{-300,-1490,190,110},{-910,-740,130,85},{-550,-620,140,90},{-450,-1060,170,95},{-155,-1230,160,100},{-1090,-1660,120,65}};
   for(int i=0;i<10;i++){
-    float x=ministries[i][0],z=ministries[i][1],w=ministries[i][2],depth=ministries[i][3],y=terrain_height(x,z),h=29+(i%3)*8;
-    t3_object *b=t3_group_new();t3_object_add(root,b);t3_object_set_position(b,x,y,z);facade_box(b,0,h/2,0,w,h,depth,architecture[1],w/60,h/66);box(b,0,h+3,0,w+4,6,depth+4,roof);box(b,0,2,0,w+7,4,depth+7,stone);
+    float x=ministries[i][0],z=ministries[i][1],w=ministries[i][2],depth=ministries[i][3],footing,y=site(x,z,w+7,depth+7,0,&footing),h=29+(i%3)*8;
+    t3_object *b=t3_group_new();t3_object_add(root,b);t3_object_set_position(b,x,y,z);plinth(b,w+7,depth+7,footing,stone);facade_box(b,0,h/2,0,w,h,depth,architecture[1],w/60,h/66);box(b,0,h+3,0,w+4,6,depth+4,roof);box(b,0,2,0,w+7,4,depth+7,stone);
     if(i%3==0){facade_box(b,0,h+12,0,36,22,40,architecture[1],1,.5f);box(b,0,h+25,0,42,5,46,roof);}
-    courtyard_solid(b,x,y,z,w+8,h+28,depth+8);
+    courtyard_solid(b,x,y-footing,z,w+8,h+28+footing,depth+8);
   }
   /* A cluster of white, gold-domed churches and a tall bell tower. */
   for(int i=0;i<3;i++){
-    float x=-1020+i*260,z=-1130-(i%2)*350,y=terrain_height(x,z);t3_object *church=t3_group_new();t3_object_add(root,church);t3_object_set_position(church,x,y,z);
+    float x=-1020+i*260,z=-1130-(i%2)*350,footing,y=site(x,z,100,85,0,&footing);t3_object *church=t3_group_new();t3_object_add(root,church);t3_object_set_position(church,x,y,z);plinth(church,100,85,footing,stone);
     facade_box(church,0,28,0,95,56,80,architecture[1],1.4f,.9f);box(church,0,58,0,100,5,85,white);
     for(int dome=0;dome<5;dome++){float dx=dome==4?0:(dome%2?28:-28),dz=dome==4?0:(dome/2?24:-24),h=dome==4?78:65;
       t3_mesh *drum=t3_mesh_new(t3_cylinder_geometry_new(11,11,h-58,24,1,false),white);t3_object_set_position(drum,dx,58+(h-58)*.5f,dz);t3_object_add(church,(t3_object *)drum);onion_dome(church,dx,h,dz,12,27,0xe2bb51,false);box(church,dx,h+31,dz,.7f,8,.7f,roof);
     }
-    courtyard_solid(church,x,y,z,102,113,88);
+    courtyard_solid(church,x,y-footing,z,102,113+footing,88);
   }
-  float x=-400,z=-1770,y=terrain_height(x,z);t3_object *bell=t3_group_new();t3_object_add(root,bell);t3_object_set_position(bell,x,y,z);
-  for(int i=0;i<3;i++){float r=20-i*4,h=45-i*5;t3_mesh *drum=t3_mesh_new(t3_cylinder_geometry_new(r,r,h,32,1,false),white);t3_object_set_position(drum,0,i*40+h/2,0);t3_object_add(bell,(t3_object *)drum);box(bell,0,i*40+h,0,r*2+5,3,r*2+5,stone);}onion_dome(bell,0,120,0,16,38,0xe2bb51,false);courtyard_solid(bell,x,y,z,48,165,48);
+  float x=-400,z=-1770,footing,y=site(x,z,45,45,0,&footing);t3_object *bell=t3_group_new();t3_object_add(root,bell);t3_object_set_position(bell,x,y,z);plinth(bell,45,45,footing,stone);
+  for(int i=0;i<3;i++){float r=20-i*4,h=45-i*5;t3_mesh *drum=t3_mesh_new(t3_cylinder_geometry_new(r,r,h,32,1,false),white);t3_object_set_position(drum,0,i*40+h/2,0);t3_object_add(bell,(t3_object *)drum);box(bell,0,i*40+h,0,r*2+5,3,r*2+5,stone);}onion_dome(bell,0,120,0,16,38,0xe2bb51,false);courtyard_solid(bell,x,y-footing,z,48,165+footing,48);
   uint32_t seed=0xb74c012u;
   for(int i=0;i<120;i++){
     float tx=-1350+district_rand(&seed)*1300,tz=-2200+district_rand(&seed)*1800;

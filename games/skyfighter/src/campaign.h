@@ -128,15 +128,15 @@ static void country_road(float offset,float z0,float z1,t3_material *mat,float w
   }
   for(int j=0;j<segments;j++){int a=j*2,k=j*6;idx[k]=a;idx[k+1]=a+2;idx[k+2]=a+1;idx[k+3]=a+1;idx[k+4]=a+2;idx[k+5]=a+3;}
   t3_geometry *g=t3_geometry_new();t3_attribute *p=t3_attribute_new(T3_FLOAT32,pos,(segments+1)*2,3),*n=t3_attribute_new(T3_FLOAT32,normal,(segments+1)*2,3),*ix=t3_attribute_new(T3_UINT32,idx,segments*6,1);
-  t3_geometry_set_attribute(g,T3_ATTR_POSITION,p);t3_geometry_set_attribute(g,T3_ATTR_NORMAL,n);t3_geometry_set_index(g,ix);t3_release(p);t3_release(n);t3_release(ix);t3_object_add(G.countryside,(t3_object *)t3_mesh_new(g,mat));t3_release(g);
+  t3_geometry_set_attribute(g,T3_ATTR_POSITION,p);t3_geometry_set_attribute(g,T3_ATTR_NORMAL,n);t3_geometry_set_index(g,ix);t3_release(p);t3_release(n);t3_release(ix);t3_mesh *ribbon=t3_mesh_new(g,mat);ribbon->base.name="surface";t3_object_add(G.countryside,(t3_object *)ribbon);t3_release(g);
 }
 static void make_countryside(void) {
   if(G.countryside)return;G.countryside=t3_group_new();t3_object_add((t3_object *)G.scene,G.countryside);
   t3_material *road=campaign_mat(0x696357,0),*red=campaign_mat(0x934735,0),*roof=campaign_mat(0x4b5152,.25f),*trim=campaign_mat(0xd9cdb3,0),*wood=campaign_mat(0x74634c,0);
   country_road(-700,-2600,2300,road,7);country_road(-1800,-2100,2000,road,6);
   for(int i=0;i<8;i++) {
-    float z=-2000+(i/2)*1120,road_x=(i%2?-1800:-700)+125*sinf(z*.0017f)+60*cosf(z*.0031f),x=road_x-90,y=terrain_height(x,z);
-    t3_object *barn=t3_group_new();t3_object_add(G.countryside,barn);t3_object_set_position(barn,x,y,z);
+    float z=-2000+(i/2)*1120,road_x=(i%2?-1800:-700)+125*sinf(z*.0017f)+60*cosf(z*.0031f),x=road_x-90,footing,y=site(x,z,30,42,0,&footing);
+    t3_object *barn=t3_group_new();t3_object_add(G.countryside,barn);t3_object_set_position(barn,x,y,z);plinth(barn,30,42,footing,trim);
     box(barn,0,9,0,30,18,42,red);
     for(int side=-1;side<=1;side+=2){t3_object *r=box(barn,side*8,23,0,19,1,46,roof);t3_object_set_rotation(r,0,0,-side*.52f);}
     box(barn,0,7,21.2f,12,14,.4f,wood);box(barn,-7,7,21.6f,.6f,15,.5f,trim);box(barn,7,7,21.6f,.6f,15,.5f,trim);box(barn,0,14.5f,21.6f,14,.6f,.5f,trim);
@@ -180,7 +180,7 @@ static void make_land_horizon(int style) {
   if(G.horizon[style]||style==0||style==7)return;
   t3_object *root=G.horizon[style]=t3_group_new();t3_object_add((t3_object *)G.scene,root);
   t3_material *mat=campaign_mat(G.landscape_far_color,0);
-  static const float rings[]={4096,6000,10000,24000,100000,1200000};
+  const float *rings=horizon_rings;
   for(int side=0;side<4;side++) {
     int count=6*1025;float *p=malloc(count*3*sizeof(float)),*n=malloc(count*3*sizeof(float));uint32_t *ix=malloc(5*1024*6*sizeof(uint32_t));int at=0;
     for(int ring=0;ring<6;ring++)for(int j=0;j<=1024;j++) {
@@ -204,7 +204,7 @@ static void make_distinct_map(int style) {
   int count=style==4||style==5?16:style==6?4:8;
   if(style==4||style==5){
     if(style==5){/* A winding river separates the fortress from the old city. */
-      t3_material *ice=campaign_mat(0x578597,.55f);for(int j=0;j<90;j++){float z=-4000+j*90,x=950+220*sinf(z*.0007f);box(root,x,4,z,240,2,92,ice);}
+      t3_material *ice=campaign_mat(0x578597,.55f);for(int j=0;j<90;j++){float z=-4000+j*90,x=950+220*sinf(z*.0007f);box(root,x,4,z,240,2,92,ice)->name="water";} /* the frozen surface, above the riverbed as water is */
     }
   }
   if(style==6){paved_strip(root,-1400,1000,-700,-680,road);paved_strip(root,-310,-290,-2100,1500,road);}
@@ -218,7 +218,10 @@ static void make_distinct_map(int style) {
     }
     else if(style==6){x=-1100+(i%2)*1100;z=-1600+(i/2)*1200;}
     else{x=-1400+(i%2)*2000;z=-2200+(i/2)*1150;}
-    y=style==7?15:terrain_height(x,z);t3_object *b=t3_group_new();t3_object_add(root,b);t3_object_set_position(b,x,y,z);
+    /* each structure's footprint (the palace with its wings and front steps): it stands on its site, on a plinth where the ground falls away */
+    float fw=style==2?44:style==3?(i<4?53:58):style==4?75:style==5?(i<3?34:i==3?342:i==4?43:i==5?170:34):style==6?70:120;
+    float fd=style==2?64:style==3?(i<4?53:42):style==4?95:style==5?(i<3?30:i==3?190:i==4?41:i==5?150:34):style==6?67:100,footing=0;
+    y=style==7?15:site(x,z,fw,fd,0,&footing);t3_object *b=t3_group_new();t3_object_add(root,b);t3_object_set_position(b,x,y,z);plinth(b,fw,fd,footing,stone);
     float radius=45,cy=25;
     if(style==2){box(b,0,13,0,44,26,64,stone);for(int s=-1;s<=1;s+=2){t3_object *roof=box(b,s*12,35,0,28,2,68,snow);t3_object_set_rotation(roof,0,0,-s*.5f);}box(b,0,7,32.3f,8,14,1,dark);}
     else if(style==3){
@@ -234,12 +237,15 @@ static void make_distinct_map(int style) {
       box(b,0,16,0,70,32,60,i%2?green:red);for(int s=-1;s<=1;s+=2){t3_object *r=box(b,s*18,40,0,42,3,67,snow);t3_object_set_rotation(r,0,0,-s*.45f);}
       box(b,0,12,30.5f,14,24,1,gold);box(b,23,49,-15,9,24,9,red);for(int j=0;j<3;j++)box(b,-24+j*24,24,31,5,6,1,t3_mesh_basic_material_new(0xffd580));
       if(i<3){oval(b,0,53,0,10,12,10,t3_mesh_basic_material_new(0x5ce5db));cy=35;}
-      /* Elf gun crew: coat, face and pointed red hat beside a twin AA barrel. */
-      box(root,x+52,y+2,z,14,4,14,dark);box(root,x+52,y+6,z,3,6,3,green);oval(root,x+52,y+11,z,2,2,2,campaign_mat(0xe1b691,0));cone(root,x+52,y+15,z,2.5f,5,red);
-      for(int s=-1;s<=1;s+=2){t3_object *gun=box(root,x+55+s*2,y+9,z-5,1,1,15,dark);t3_object_set_rotation(gun,-.4f,0,0);}
-      for(int j=0;j<4;j++){float gx=x-55+j*15;box(root,gx,y+2,z+55,9,4,9,j%2?red:green);box(root,gx,y+2.2f,z+55,1,4.6f,9.5f,gold);}
+      /* Elf gun crew: coat, face and pointed red hat beside a twin AA barrel, whose breeches rest on a mount. The crew's
+       * platform and each present stand on their own ground. */
+      float gy=ground_under(x+52,z,14,14);
+      box(root,x+52,gy+2,z,14,4,14,dark);box(root,x+52,gy+6,z,3,6,3,green);oval(root,x+52,gy+11,z,2,2,2,campaign_mat(0xe1b691,0));cone(root,x+52,gy+15,z,2.5f,5,red);
+      box(root,x+56,gy+5.6f,z-4.5f,7,3.2f,6,dark);
+      for(int s=-1;s<=1;s+=2){t3_object *gun=box(root,x+56+s*2,gy+9,z,1,1,15,dark);t3_object_set_rotation(gun,-.4f,0,0);}
+      for(int j=0;j<4;j++){float gx=x-55+j*15,py=ground_under(gx,z+55,9.5f,9.5f);box(root,gx,py+2,z+55,9,4,9,j%2?red:green);box(root,gx,py+2.2f,z+55,1,4.6f,9.5f,gold);}
     } else {
-      radius=80;cy=35;box(b,0,7,0,120,7,100,dark);for(int j=0;j<4;j++)box(b,j&1?46:-46,-2,j&2?36:-36,10,28,10,red);
+      radius=80;cy=35;box(b,0,7,0,120,7,100,dark);for(int j=0;j<4;j++)box(b,j&1?46:-46,-10,j&2?36:-36,10,44,10,red); /* the legs reach 17 m under the sea, below the deepest wave trough */
       box(b,-25,25,0,46,30,56,stone);box(b,32,44,-20,7,70,7,gold);box(b,15,75,-20,42,4,4,gold);oval(b,26,22,22,17,13,17,red);
       box(b,-25,42,0,52,4,62,snow);for(int j=0;j<2;j++)box(b,-28+j*16,55,-8,5,24,5,dark);
     }
@@ -247,13 +253,18 @@ static void make_distinct_map(int style) {
     finish_structure(first+i,b,x,y+cy,z,radius);
   }
   if(style==2||style==6){for(int i=0;i<42;i++){float x=-2600+(i*937%5200),z=-3200+(i*653%6200);fir_tree(root,x,z,style==6?24+(i%4)*5:30+(i%5)*7,style==6);}}
-  if(style==6){for(int i=0;i<16;i++){float x=-1400+i*150,z=-680,y=terrain_height(x,z);box(root,x,y+9,z,2,18,2,snow);for(int k=0;k<4;k++)box(root,x,y+2+k*4,z,2.2f,1.8f,2.2f,red);oval(root,x+3,y+18,z,4,4,1.2f,red);}}
+  if(style==6){for(int i=0;i<16;i++){float x=-1400+i*150,z=-680,y=ground_under(x,z,2.2f,2.2f);t3_object *cane=t3_group_new();t3_object_add(root,cane);t3_object_set_position(cane,x,y,z); /* one candy cane */
+    box(cane,0,9,0,2,18,2,snow);for(int k=0;k<4;k++)box(cane,0,2+k*4,0,2.2f,1.8f,2.2f,red);oval(cane,3,18,0,4,4,1.2f,red);}}
   make_land_horizon(style);
 }
 
 #include "map-details.h"
+#include "grounding.h"
 
 static void campaign_start(void) {
+#ifndef __wasm__
+  ground_old_districts=getenv("SKY_GROUND_OLD_DISTRICTS")&&atoi(getenv("SKY_GROUND_OLD_DISTRICTS"));
+#endif
   impact_clear();breakup_reset();capital_reset();santa_shielded=1;
   G.level=(G.level%MISSIONS+MISSIONS)%MISSIONS;
   prefs.progress=(prefs.progress&255u)|((uint32_t)G.level<<8);cw_save_commit();
@@ -321,8 +332,14 @@ static void campaign_start(void) {
   static const float starts[8][3]={{-900,350,650},{-600,900,1400},{0,550,1800},{-65,130,550},{-900,1250,1000},{-650,330,950},{-800,350,1400},{0,350,1500}};
   G.px=starts[G.level][0];G.py=starts[G.level][1];G.pz=starts[G.level][2];
   if(G.level==4){G.px=-900;G.py=1250;G.pz=1000;}
+#ifndef __wasm__
+  {const char *e=getenv("SKY_ART_START");if(e)sscanf(e,"%f,%f,%f",&G.px,&G.py,&G.pz);} /* development (native captures): where the sortie starts, x,y,z */
+#endif
   static const char *brief[]={"CONTROL: BASKET HITS PAY A PRECISION BONUS.","CONTROL: PROP FIGHTERS AND AIRSHIPS. HAVE FUN.","CONTROL: PICK A FUEL TANK. WATCH THE SECONDARIES.","CONTROL: INTERCEPTORS INBOUND. OWN THE SKY.","CONTROL: BREAK THE GENERATORS ABOVE ITS SHIELD.","CONTROL: THREE RADARS. ONE COMMAND PALACE.","CONTROL: TAKE OUT THE CORES. THEN SANTA.","CONTROL: FOUR RIGS. MAKE THE OCEAN GLOW."};
   notify(brief[G.level],6);G.spawn=G.level==1?90:200;
+#ifndef __wasm__
+  if(getenv("SKY_GROUND_CHECK"))ground_check();
+#endif
 }
 static bool air_target_position(int id,float *x,float *y,float *z) {
   int n=id-ENEMIES-BUILDINGS;if(n<0||n>=AIR_TARGETS*2)return false;

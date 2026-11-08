@@ -302,6 +302,10 @@ The newcomer and idle-seat gates (`tests/<game>-idle-seat.mjs`,
 game's built cart through romdev on GL and WebGPU the way a first-time player
 would: only by what the screen shows, and beside a second pad that joined and
 then sits idle. AGENTS.md describes what every game needs from them.
+The grounding gates (`tests/arenafps-grounding.mjs`, `tests/skyfighter-grounding.mjs`)
+run a native build on software GL and check that every placed prop stands on
+the ground or on something that carries it; each has a control that puts the
+old floating placement back and must fail.
 `tests/arenafps-split-bench.mjs` measures what each extra split-screen view
 costs, and `scripts/partypack-suite.sh` runs partypack's checks in pieces.
 

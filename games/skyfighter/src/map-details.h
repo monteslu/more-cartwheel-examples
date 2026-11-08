@@ -9,38 +9,64 @@ static void map_detail_solid(int style,t3_object *node,float x,float y,float z,f
 static void detail_farms(t3_object *root) {
   t3_material *siding=campaign_mat(0xd1c3a5,0),*roof=campaign_mat(0x4e5559,.2f),*metal=campaign_mat(0xa5a59b,.7f),*dark=campaign_mat(0x545955,.5f);
   for(int i=0;i<8;i++){
-    structure *barn=&G.buildings[28+i];float x=barn->x-45,z=barn->z-22,y=terrain_height(x,z);
-    t3_object *silo=t3_group_new();t3_object_add(root,silo);t3_object_set_position(silo,x,y,z);
+    structure *barn=&G.buildings[28+i];float x=barn->x-45,z=barn->z-22,footing,y=site(x,z,14,14,0,&footing);
+    t3_object *silo=t3_group_new();t3_object_add(root,silo);t3_object_set_position(silo,x,y,z);plinth(silo,15,15,footing,dark);
     t3_object *body=(t3_object *)t3_mesh_new(t3_cylinder_geometry_new(6.5f,6.5f,28,24,1,false),metal);t3_object_set_position(body,0,14,0);t3_object_add(silo,body);cone(silo,0,30,0,6.8f,5,roof);
     for(int ring=0;ring<5;ring++){t3_mesh *band=t3_mesh_new(t3_torus_geometry_new(6.6f,.18f,6,24,2*PI),dark);t3_object_set_rotation(band,PI/2,0,0);t3_object_set_position(band,0,2+ring*5.5f,0);t3_object_add(silo,(t3_object *)band);}
-    map_detail_solid(1,silo,x,y,z,14,34,14);
-    x=barn->x+58;z=barn->z+22;y=terrain_height(x,z);t3_object *house=t3_group_new();t3_object_add(root,house);t3_object_set_position(house,x,y,z);
+    map_detail_solid(1,silo,x,y-footing,z,14,34+footing,14);
+    x=barn->x+58;z=barn->z+22;y=site(x,z,22,29,0,&footing);t3_object *house=t3_group_new();t3_object_add(root,house);t3_object_set_position(house,x,y,z);plinth(house,22,29,footing,dark);
     box(house,0,6,0,22,12,28,siding);for(int side=-1;side<=1;side+=2){t3_object *r=box(house,side*5.8f,15,0,14,1,31,roof);t3_object_set_rotation(r,0,0,-side*.44f);}
     for(int j=-1;j<=1;j+=2){box(house,j*6,7,14.2f,4,4,.4f,dark);box(house,j*6,7,-14.2f,4,4,.4f,dark);}box(house,0,4,14.4f,4,8,.5f,dark);box(house,7,19,-6,2,8,2,siding);
-    map_detail_solid(1,house,x,y,z,24,24,32);paved_strip(root,x-4,x+4,z+16,z+70,roof);
+    map_detail_solid(1,house,x,y-footing,z,24,24+footing,32);paved_strip(root,x-4,x+4,z+16,z+70,roof);
   }
+}
+/* A bridge's approach: an embankment from the deck's end (its road at top) down to the bank over 200 m, stone sides and
+ * an abutment face under the deck, reaching 1 m into the ground everywhere; then the road on the ground to x_end. */
+/* one triangle wound to face out (ox,oy,oz): single-sided, like the rest of the scenery */
+static void approach_tri(float *q,float *v,float ox,float oy,float oz) {
+  t3_vec3 n=t3_vec3_cross((t3_vec3){v[3]-v[0],v[4]-v[1],v[5]-v[2]},(t3_vec3){v[6]-v[0],v[7]-v[1],v[8]-v[2]});
+  if(n.x*ox+n.y*oy+n.z*oz<0)for(int k=0;k<3;k++){float t=v[3+k];v[3+k]=v[6+k];v[6+k]=t;}
+  memcpy(q,v,9*sizeof(float));
+}
+static void bridge_approach(t3_object *root,float x0,float dir,float x_end,float z,float top,t3_material *road,t3_material *stone) {
+  enum{N=50};const float length=200,half=19,base_half=22;float tops[N+1],bottoms[N+1],xs[N+1];
+  float far_y=terrain_height(x0+dir*length,z)+.19f;
+  for(int i=0;i<=N;i++){float s=i*length/N;xs[i]=x0+dir*s;tops[i]=fmaxf(top+(far_y-top)*s/length,terrain_height(xs[i],z)+.19f);bottoms[i]=ground_under(xs[i],z,4,base_half*2)-1;}
+  int faces=N*2+N*2*2+4;float *p=malloc(faces*3*3*sizeof(float)),*q=p;int tri=0;
+  #define TRI(ax,ay,az,bx,by,bz,cx,cy,cz,ox,oy,oz) do{float v_[9]={ax,ay,az,bx,by,bz,cx,cy,cz};approach_tri(q,v_,ox,oy,oz);q+=9;tri++;}while(0)
+  for(int i=0;i<N;i++){float a=xs[i],b=xs[i+1];TRI(a,tops[i],z-half,a,tops[i],z+half,b,tops[i+1],z+half,0,1,0);TRI(a,tops[i],z-half,b,tops[i+1],z+half,b,tops[i+1],z-half,0,1,0);}
+  int road_tris=tri;
+  for(int i=0;i<N;i++)for(int side=-1;side<=1;side+=2){float a=xs[i],b=xs[i+1],e=z+side*half,f=z+side*base_half;TRI(a,tops[i],e,b,tops[i+1],e,b,bottoms[i+1],f,0,0,side);TRI(a,tops[i],e,b,bottoms[i+1],f,a,bottoms[i],f,0,0,side);}
+  TRI(x0,tops[0],z-half,x0,tops[0],z+half,x0,bottoms[0],z+base_half,-dir,0,0);TRI(x0,tops[0],z-half,x0,bottoms[0],z+base_half,x0,bottoms[0],z-base_half,-dir,0,0);
+  float xe=xs[N];TRI(xe,tops[N],z-half,xe,tops[N],z+half,xe,bottoms[N],z+base_half,dir,0,0);TRI(xe,tops[N],z-half,xe,bottoms[N],z+base_half,xe,bottoms[N],z-base_half,dir,0,0);
+  #undef TRI
+  t3_object *group=t3_group_new();t3_object_add(root,group);
+  for(int part=0;part<2;part++){int first=part?road_tris:0,count=part?tri-road_tris:road_tris;t3_geometry *g=t3_geometry_new();t3_attribute *a=t3_attribute_new(T3_FLOAT32,p+first*9,count*3,3);t3_geometry_set_attribute(g,T3_ATTR_POSITION,a);t3_release(a);t3_geometry_compute_vertex_normals(g);
+    t3_mesh *m=t3_mesh_new(g,part?stone:road);m->base.cast_shadow=m->base.receive_shadow=true;t3_object_add(group,(t3_object *)m);t3_release(g);}
+  free(p);
+  paved_strip(root,fminf(xe,x_end),fmaxf(xe,x_end),z-19,z+19,road);
 }
 static void detail_frozen_river(t3_object *root) {
   enum{N=128};float p[(N+1)*6],normal[(N+1)*6];uint32_t ix[N*6];
   t3_material *ice=campaign_mat(0x65848e,.18f),*stone=campaign_mat(0x879293,0),*road=campaign_mat(0x414c51,.05f),*gold=campaign_mat(0xa28c63,.5f);ice->roughness=.32f;
   for(int j=0;j<=N;j++)for(int side=0;side<2;side++){float z=-4096+j*(8192.0f/N),x=950+220*sinf(z*.0007f)+(side?160:-160);int k=(j*2+side)*3;p[k]=x;p[k+1]=0;p[k+2]=z;normal[k]=normal[k+2]=0;normal[k+1]=1;}
   for(int i=0;i<N;i++){int a=i*2,k=i*6;ix[k]=a;ix[k+1]=a+2;ix[k+2]=a+1;ix[k+3]=a+1;ix[k+4]=a+2;ix[k+5]=a+3;}
-  t3_geometry *g=t3_geometry_new();t3_attribute *pa=t3_attribute_new(T3_FLOAT32,p,(N+1)*2,3),*na=t3_attribute_new(T3_FLOAT32,normal,(N+1)*2,3),*ia=t3_attribute_new(T3_UINT32,ix,N*6,1);t3_geometry_set_attribute(g,T3_ATTR_POSITION,pa);t3_geometry_set_attribute(g,T3_ATTR_NORMAL,na);t3_geometry_set_index(g,ia);t3_release(pa);t3_release(na);t3_release(ia);t3_mesh *river=t3_mesh_new(g,ice);river->base.receive_shadow=true;t3_object_add(root,(t3_object *)river);t3_release(g);
+  t3_geometry *g=t3_geometry_new();t3_attribute *pa=t3_attribute_new(T3_FLOAT32,p,(N+1)*2,3),*na=t3_attribute_new(T3_FLOAT32,normal,(N+1)*2,3),*ia=t3_attribute_new(T3_UINT32,ix,N*6,1);t3_geometry_set_attribute(g,T3_ATTR_POSITION,pa);t3_geometry_set_attribute(g,T3_ATTR_NORMAL,na);t3_geometry_set_index(g,ia);t3_release(pa);t3_release(na);t3_release(ia);t3_mesh *river=t3_mesh_new(g,ice);river->base.name="water";river->base.receive_shadow=true;t3_object_add(root,(t3_object *)river);t3_release(g);
   for(int i=0;i<64;i++)for(int side=-1;side<=1;side+=2){float z=-3500+i*110,x=950+220*sinf(z*.0007f)+side*170;box(root,x,18,z,9,36,114,stone);}
   for(int bridge=0;bridge<3;bridge++){
-    float z=-2200+bridge*2000,x=950+220*sinf(z*.0007f),deck_y=58;t3_object *deck=t3_group_new();t3_object_add(root,deck);bridge_decks[bridge]=deck;
+    float z=-2200+bridge*2000,x=950+220*sinf(z*.0007f),deck_y=58;t3_object *deck=t3_group_new();t3_object_add(root,deck);bridge_decks[bridge]=deck;deck->name="span";
     box(deck,x,deck_y+3,z,660,6,44,stone);box(deck,x,deck_y+6.2f,z,660,.3f,34,road);
     for(int side=-1;side<=1;side+=2){box(deck,x,deck_y+9,z+side*20,660,2,1.2f,gold);for(int j=0;j<22;j++)box(deck,x-315+j*30,deck_y+7.5f,z+side*20,1.2f,6,1.2f,stone);}
     for(int j=0;j<26;j++)box(deck,x-312+j*25,deck_y+6.5f,z,10,.15f,.8f,gold);
     map_detail_solid(5,deck,x,deck_y,z,660,12,44);
     for(int side=-1;side<=1;side+=2){float px=x+side*210;t3_object *pier=t3_group_new();t3_object_add(root,pier);box(pier,px,29,z,22,58,40,stone);map_detail_solid(5,pier,px,0,z,22,58,40);}
-    paved_strip(root,x-650,x-330,z-19,z+19,road);paved_strip(root,x+330,x+650,z-19,z+19,road);
+    bridge_approach(root,x-330,-1,x-650,z,deck_y+6.35f,road,stone);bridge_approach(root,x+330,1,x+650,z,deck_y+6.35f,road,stone);
   }
 }
 static void detail_north_pole(t3_object *root) {
-  float y=terrain_height(0,0);north_pole_position[0]=0;north_pole_position[1]=y;north_pole_position[2]=0;
+  float footing,y=site(0,0,60,60,0,&footing);north_pole_position[0]=0;north_pole_position[1]=y;north_pole_position[2]=0;
   t3_material *red=campaign_mat(0xb52b35,.2f),*white=campaign_mat(0xf2eee4,.15f),*gold=campaign_mat(0xe8bd53,.9f),*stone=campaign_mat(0xbbccd3,.1f);gold->roughness=.20f;
-  t3_object *pole=north_pole_node=t3_group_new();t3_object_add(root,pole);t3_object_set_position(pole,0,y,0);
+  t3_object *pole=north_pole_node=t3_group_new();t3_object_add(root,pole);t3_object_set_position(pole,0,y,0);plinth(pole,60,60,footing,stone);
   for(int i=0;i<8;i++){pole_sections[i]=t3_group_new();t3_object_add(pole,pole_sections[i]);t3_object_set_position(pole_sections[i],0,i<7?20+i*40:300,0);}
   for(int i=0;i<28;i++){t3_mesh *band=t3_mesh_new(t3_cylinder_geometry_new(10,10,10.04f,40,1,false),i%2?red:white);t3_object_set_position(band,0,5+(i%4)*10-20,0);t3_object_add(pole_sections[i/4],(t3_object *)band);}
   for(int i=0;i<3;i++){t3_mesh *base=t3_mesh_new(t3_cylinder_geometry_new(30-i*6,30-i*6,5,48,1,false),stone);t3_object_set_position(base,0,2.5f+i*5,0);t3_object_add(pole,(t3_object *)base);}

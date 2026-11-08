@@ -205,6 +205,32 @@ static float landscape_height(float x, float z) {
 static float terrain_height(float x,float z) {
   return G.terrain ? cw_terrain_height_at(G.terrain,x,z) : landscape_height(x,z);
 }
+/* Past the 8 km terrain tile the land is make_land_horizon's mesh: square rings, landscape_height at each ring's 1025
+ * vertices a side, flat triangles between (the rings are kilometres apart, so the drawn ground there is not
+ * landscape_height). The ground as drawn, anywhere. */
+static const float horizon_rings[]={4096,6000,10000,24000,100000,1200000};
+static float land_height(float x,float z) {
+  float a=fmaxf(fabsf(x),fabsf(z));if(a<=horizon_rings[0]||G.map_style==0||G.map_style==7)return terrain_height(x,z);
+  int r=0;while(r<4&&a>horizon_rings[r+1])r++;
+  bool xside=fabsf(x)>=fabsf(z);float sign=xside?(x<0?-1:1):(z<0?-1:1),u=(xside?z:x)/a,jf=fminf(fmaxf((u+1)*512,0),1023.999f);int j=(int)jf;
+  float px[4],pz[4],py[4];
+  for(int k=0;k<4;k++){float A=horizon_rings[r+(k>>1)],along=-A+2*A*(j+(k&1))/1024;px[k]=xside?sign*A:along;pz[k]=xside?along:sign*A;py[k]=landscape_height(px[k],pz[k]);}
+  /* the two triangles of the quad (ring r: 0,1; ring r+1: 2,3), as make_land_horizon indexes them */
+  static const int tri[2][3]={{0,2,1},{1,2,3}};
+  for(int t=0;t<2;t++){int a0=tri[t][0],b0=tri[t][1],c0=tri[t][2];
+    float d=(pz[b0]-pz[c0])*(px[a0]-px[c0])+(px[c0]-px[b0])*(pz[a0]-pz[c0]),l0=((pz[b0]-pz[c0])*(x-px[c0])+(px[c0]-px[b0])*(z-pz[c0]))/d,l1=((pz[c0]-pz[a0])*(x-px[c0])+(px[a0]-px[c0])*(z-pz[c0]))/d,l2=1-l0-l1;
+    if(t==1||(l0>=-1e-4f&&l1>=-1e-4f&&l2>=-1e-4f))return l0*py[a0]+l1*py[b0]+l2*py[c0];}
+  return landscape_height(x,z);
+}
+/* The lowest and highest ground under a w x d footprint turned by angle about y: its corners, centre and a grid finer than
+ * the 8 m terrain spacing. A prop seated on the lowest point cannot float over a slope; the spread says how far the
+ * uphill side sinks. */
+static float footprint_ground(float x,float z,float w,float d,float angle,float *highest) {
+  int nx=(int)ceilf(w/4)+1,nz=(int)ceilf(d/4)+1;if(nx>48)nx=48;if(nz>48)nz=48;float s=sinf(angle),c=cosf(angle),lo=1e9f,hi=-1e9f;
+  for(int j=0;j<=nz;j++)for(int i=0;i<=nx;i++){float lx=(i/(float)nx-.5f)*w,lz=(j/(float)nz-.5f)*d,y=land_height(x+lx*c+lz*s,z-lx*s+lz*c);lo=fminf(lo,y);hi=fmaxf(hi,y);}
+  if(highest)*highest=hi;return lo;
+}
+static float ground_under(float x,float z,float w,float d){return footprint_ground(x,z,w,d,0,NULL);}
 static void paint_landscape(bool materials) {
   const cw_terrain_def *d=cw_terrain_get_def(G.terrain);
   int nx=d->size_x+1,nz=d->size_z+1;
@@ -275,6 +301,18 @@ static t3_object *box(t3_object *parent, float x, float y, float z, float w, flo
   t3_object_add(parent, m);
   return (t3_object *)m;
 }
+/* A site for a prop with a w x d footprint (turned by angle) at x,z. Where the ground under it lies within 2.5 m the prop
+ * stands on the lowest point and its uphill side sinks; on a steeper site it is levelled 1 m under the highest point and
+ * *foundation is the plinth it needs, from 1 m into the lowest ground up to its base (0 when it needs none). */
+static float site(float x,float z,float w,float d,float angle,float *foundation) {
+  float hi,lo=footprint_ground(x,z,w,d,angle,&hi);
+  if(hi-lo<=2.5f){*foundation=0;return lo;}
+  float base=hi-1;*foundation=base-lo+1;return base;
+}
+/* The plinth under a prop's group (its origin at the prop's base): w x d, height tall, straight down. */
+static void plinth(t3_object *group,float w,float d,float height,t3_material *mat) {
+  if(height>0)box(group,0,-height*.5f,0,w,height,d,mat);
+}
 static t3_object *cone(t3_object *parent, float x, float y, float z, float r, float h,
                        t3_material *mat) {
   t3_mesh *m = t3_mesh_new(t3_cone_geometry_new(r, h, 12, 1, false), mat);
@@ -321,7 +359,8 @@ static void paved_strip(t3_object *parent, float x0, float x1, float z0, float z
   a = t3_attribute_new(T3_UINT32, idx, ni, 1);
   t3_geometry_set_index(g, a); t3_release(a);
   free(pos);free(nor);free(idx);
-  t3_object_add(parent, t3_mesh_new(g, mat)); t3_release(g);
+  t3_mesh *strip=t3_mesh_new(g, mat);strip->base.name="surface"; /* draped on the ground (the grounding check reads it vertex by vertex) */
+  t3_object_add(parent, strip); t3_release(g);
 }
 static void flight_material(t3_object *o, void *ctx) {
   if(o->type!=T3_MESH)return;
@@ -470,7 +509,9 @@ static void mark_source(t3_object *object,int index,bool ruin) {
 static void register_building(int i,t3_object *node,float x,float y,float z,float radius) {
   structure *b=&G.buildings[i];b->node=node;b->x=x;b->y=y;b->z=z;b->radius=radius;b->hp=8;
   t3_material *charcoal=t3_mesh_standard_material_new(0x252724);charcoal->roughness=1;
-  b->ruin=box((t3_object *)G.scene,x,terrain_height(x,z)+1,z,radius*1.6f,2,radius*1.4f,charcoal);
+  /* the charred base: 30 cm into the lowest ground under it, 2 m above that, or 60 cm above the highest on a slope */
+  float high,low=footprint_ground(x,z,radius*1.6f,radius*1.4f,0,&high),top=fmaxf(low+2,high+.6f),bottom=low-.3f;
+  b->ruin=box((t3_object *)G.scene,x,(top+bottom)*.5f,z,radius*1.6f,top-bottom,radius*1.4f,charcoal);
   b->ruin->visible=false;mark_source(node,i,false);mark_source(b->ruin,i,true);
 }
 /* Collect each solid mesh separately: a hangar and its control tower must
@@ -1052,7 +1093,8 @@ static void ground_explosion(float x,float y,float z,bool cloud) {
 }
 static void destroy_building(int i) {
   structure *b=&G.buildings[i];if(!b->node->visible)return;
-  b->hp=0;b->node->visible=false;b->ruin->visible=true;impact_stamp((t3_vec3){b->x,terrain_height(b->x,b->z)+2,b->z},(t3_vec3){.001f,-1,0},b->radius*1.4f,i,true);G.buildings_destroyed++;G.score+=200;
+  t3_geometry *rg=((t3_mesh *)b->ruin)->geometry;if(!rg->has_bounding_box)t3_geometry_compute_bounding_box(rg); /* the scorch lands on the ruin's top */
+  b->hp=0;b->node->visible=false;b->ruin->visible=true;impact_stamp((t3_vec3){b->x,b->ruin->position.y+rg->bounding_box.max.y,b->z},(t3_vec3){.001f,-1,0},b->radius*1.4f,i,true);G.buildings_destroyed++;G.score+=200;
   ground_explosion(b->x,b->y,b->z,fuel_depot(i)||i%3==0);
   if(fuel_depot(i)) {
     G.fuel_depots++;notify("FUEL DEPOT DESTROYED / SECONDARIES",4);
