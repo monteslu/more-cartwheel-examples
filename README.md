@@ -297,6 +297,11 @@ Node host (what CI runs). `tests/native-replay.mjs` runs each game's replay
 gate (a self-playing `<game>_auto` session) on a native build without the
 gate runner, and `tests/compare-replays.mjs` compares two such runs (GL and
 WebGPU, say) field for field.
+The newcomer and idle-seat gates (`tests/<game>-idle-seat.mjs`,
+`tests/crawler-left-behind.mjs`, `tests/crawler-find-the-way.mjs`) play a
+game's built cart through romdev on GL and WebGPU the way a first-time player
+would: only by what the screen shows, and beside a second pad that joined and
+then sits idle. AGENTS.md describes what every game needs from them.
 `tests/arenafps-split-bench.mjs` measures what each extra split-screen view
 costs, and `scripts/partypack-suite.sh` runs partypack's checks in pieces.
 

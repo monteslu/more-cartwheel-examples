@@ -17,11 +17,16 @@ const arg = (n, d) => { const i = process.argv.indexOf(n); return i > 0 ? proces
 const CART = resolve(arg('--cart', join(ROOT, 'build/cart-wgpu/carts/pirates.wasc')));
 const BACKENDS = process.argv.includes('--gl') ? ['gl'] : process.argv.includes('--webgpu') ? ['webgpu'] : ['gl', 'webgpu'];
 mkdirSync(OUT, { recursive: true });
+// every exit tears this session's romdev host down, a failed run too: a host left loaded holds the server's memory
+const bye = async (code) => {
+  try { await fetch('http://127.0.0.1:7331/tool/host', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-romdev-session': SESSION }, body: '{"op":"shutdown"}', signal: AbortSignal.timeout(30000) }); } catch {}
+  process.exit(code);
+};
 const tool = async (name, args) => {
   const r = await fetch(`http://127.0.0.1:7331/tool/${name}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-romdev-session': SESSION }, body: JSON.stringify(args) });
   const t = await r.text();
   let j; try { j = JSON.parse(t); } catch { j = t; }
-  if (!r.ok || j?.error) { console.error(`romdev ${name}: ${t.slice(0, 400)}`); process.exit(3); }
+  if (!r.ok || j?.error) { console.error(`romdev ${name}: ${t.slice(0, 400)}`); await bye(3); }
   return j;
 };
 const rd = async (n) => { const v = await tool('wasm', { op: 'read', name: n }); return v.values ?? v.value; };
@@ -56,7 +61,7 @@ async function sail(tx, tz, near, max) {
 // alone, and nobody touches the pad: a voyage nobody plays does not play itself
 async function alone(backend) {
   const l = await tool('loadMedia', { platform: 'wasmcart', path: CART, gpuPower: 'low-power', ...(backend === 'gl' ? { wgpu: false } : {}) });
-  if (!l.loaded) { console.error(JSON.stringify(l).slice(0, 300)); process.exit(3); }
+  if (!l.loaded) { console.error(JSON.stringify(l).slice(0, 300)); await bye(3); }
   await step(60);
   await press(0, 'start'); await step(20);
   const p0 = (await rd('pirates.pos')).slice(0, 2);
@@ -68,7 +73,7 @@ async function alone(backend) {
 
 async function run(backend, tag, pre, budget) {
   const l = await tool('loadMedia', { platform: 'wasmcart', path: CART, gpuPower: 'low-power', ...(backend === 'gl' ? { wgpu: false } : {}) });
-  if (!l.loaded) { console.error(JSON.stringify(l).slice(0, 300)); process.exit(3); }
+  if (!l.loaded) { console.error(JSON.stringify(l).slice(0, 300)); await bye(3); }
   await step(60);
   if (pre) await tool('wasm', { op: 'command', text: pre });
   await press(1, 'start');                                  /* "other captains: Start joins" */
@@ -112,4 +117,4 @@ for (const backend of BACKENDS) {
 }
 await pads({}, {});
 console.log(fail ? `${fail} FAILED` : 'all ok');
-process.exit(fail ? 1 : 0);
+await bye(fail ? 1 : 0);

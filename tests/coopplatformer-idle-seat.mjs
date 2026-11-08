@@ -19,13 +19,18 @@ const BACKENDS = process.argv.includes('--gl') ? ['gl'] : process.argv.includes(
  * control is bubbled back to the idle seat at the start once a screen and a half ahead, short of the first flag. */
 const GOAL = 108, FRAMES = 60 * 50, LIPS = [78.6];
 mkdirSync(OUT, { recursive: true });
+// every exit tears this session's romdev host down, a failed run too: a host left loaded holds the server's memory
+const bye = async (code) => {
+  try { await fetch('http://127.0.0.1:7331/tool/host', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-romdev-session': SESSION }, body: '{"op":"shutdown"}', signal: AbortSignal.timeout(30000) }); } catch {}
+  process.exit(code);
+};
 const tool = async (name, args) => {
   let r;
   try { r = await fetch(`http://127.0.0.1:7331/tool/${name}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-romdev-session': SESSION }, body: JSON.stringify(args) }); }
-  catch (e) { console.error(`romdev ${name}: ${e.cause?.message || e.message} (the server is down)`); process.exit(3); }
+  catch (e) { console.error(`romdev ${name}: ${e.cause?.message || e.message} (the server is down)`); await bye(3); }
   const t = await r.text();
   let j; try { j = JSON.parse(t); } catch { j = t; }
-  if (!r.ok || j?.error) { console.error(`romdev ${name}: ${t.slice(0, 400)}`); process.exit(3); }
+  if (!r.ok || j?.error) { console.error(`romdev ${name}: ${t.slice(0, 400)}`); await bye(3); }
   return j;
 };
 const rd = async (n) => { const v = await tool('wasm', { op: 'read', name: n }); return v.values ?? v.value; };
@@ -38,7 +43,7 @@ const check = (name, ok, detail) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${nam
 // from the title: Play, the seats join (P1, and P2 when idle), Start; P2 never touches its pad again
 async function run(backend, tag, idle, pre) {
   const l = await tool('loadMedia', { platform: 'wasmcart', path: CART, gpuPower: 'low-power', ...(backend === 'gl' ? { wgpu: false } : {}) });
-  if (!l.loaded) { console.error(JSON.stringify(l).slice(0, 300)); process.exit(3); }
+  if (!l.loaded) { console.error(JSON.stringify(l).slice(0, 300)); await bye(3); }
   await step(60);
   if (pre) await tool('wasm', { op: 'command', text: pre });
   await press(0, 'south'); await step(20);
@@ -92,4 +97,4 @@ for (const backend of BACKENDS) {
 }
 await pads({}, {});
 console.log(fail ? `${fail} FAILED` : 'all ok');
-process.exit(fail ? 1 : 0);
+await bye(fail ? 1 : 0);

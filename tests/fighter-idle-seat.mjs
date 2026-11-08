@@ -15,11 +15,16 @@ const arg = (n, d) => { const i = process.argv.indexOf(n); return i > 0 ? proces
 const CART = resolve(arg('--cart', join(ROOT, 'build/cart-wgpu/carts/fighter.wasc')));
 const BACKENDS = process.argv.includes('--gl') ? ['gl'] : process.argv.includes('--webgpu') ? ['webgpu'] : ['gl', 'webgpu'];
 mkdirSync(OUT, { recursive: true });
+// every exit tears this session's romdev host down, a failed run too: a host left loaded holds the server's memory
+const bye = async (code) => {
+  try { await fetch('http://127.0.0.1:7331/tool/host', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-romdev-session': SESSION }, body: '{"op":"shutdown"}', signal: AbortSignal.timeout(30000) }); } catch {}
+  process.exit(code);
+};
 const tool = async (name, args) => {
   const r = await fetch(`http://127.0.0.1:7331/tool/${name}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-romdev-session': SESSION }, body: JSON.stringify(args) });
   const t = await r.text();
   let j; try { j = JSON.parse(t); } catch { j = t; }
-  if (!r.ok || j?.error) { console.error(`romdev ${name}: ${t.slice(0, 400)}`); process.exit(3); }
+  if (!r.ok || j?.error) { console.error(`romdev ${name}: ${t.slice(0, 400)}`); await bye(3); }
   return j;
 };
 const rd = async (n) => { const v = await tool('wasm', { op: 'read', name: n }); return v.values ?? v.value; };
@@ -32,7 +37,7 @@ const WAIT = 60 * 20; /* player 1 waits this long after locking in (the seat's w
 
 async function run(backend, tag, idle, pre) {
   const l = await tool('loadMedia', { platform: 'wasmcart', path: CART, gpuPower: 'low-power', ...(backend === 'gl' ? { wgpu: false } : {}) });
-  if (!l.loaded) { console.error(JSON.stringify(l).slice(0, 300)); process.exit(3); }
+  if (!l.loaded) { console.error(JSON.stringify(l).slice(0, 300)); await bye(3); }
   await step(60);
   if (pre) await tool('wasm', { op: 'command', text: pre });
   await press(0, 'south'); await step(20);  /* the title: Play */
@@ -74,4 +79,4 @@ for (const backend of BACKENDS) {
 }
 await pads({}, {});
 console.log(fail ? `${fail} FAILED` : 'all ok');
-process.exit(fail ? 1 : 0);
+await bye(fail ? 1 : 0);

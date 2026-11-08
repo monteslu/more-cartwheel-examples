@@ -19,6 +19,34 @@ Gates and screenshots that use the GPU go through the engine's GPU lock:
 `scripts/partypack-suite.sh` shows how a game's whole suite is split into short
 lock holds.
 
+## Newcomer and idle-seat gates
+
+Bots and soaks know the map and always press something, so they cannot catch a
+game that only someone who already knows it can finish, or one that a second
+pad put down on the table holds hostage. Every game gets two gates of its own,
+both on the built cart through romdev, on GL and on WebGPU:
+
+- **Newcomer gate.** From power-on to the end of the first level, race, round
+  or match, driven only by what the screen shows: the title's prompts, the
+  objective text, markers and arrows (read from the debug fields the game
+  draws them from), never a route or map the test knows in advance. Its
+  control turns the cue off (a `sw` debug switch) and must leave the player
+  short of the goal in the same frames.
+- **Idle-seat gate.** A second pad joins, then never touches anything. The
+  first player must still reach play and finish the first level, race or round:
+  no ready check, select screen or instructions card that waits for ever, no
+  shared camera or tether that holds the player back, no lives or quota spent or
+  raised for the seat nobody plays. Its control (a `sw` switch that brings the
+  old wait or tether back) must fail.
+
+Pause, resume, retry and quit belong in one of the two. The existing ones show
+the shape: `tests/crawler-find-the-way.mjs` (newcomer), and
+`tests/crawler-left-behind.mjs`, `tests/coopplatformer-idle-seat.mjs`,
+`tests/fighter-idle-seat.mjs`, `tests/partypack-idle-seat.mjs`,
+`tests/pirates-idle-seat.mjs` and `tests/arenafps-idle-seat.mjs` (idle seat).
+Look at the frames they save: a frame hash cannot show that the way is
+readable. A new game is not done until both gates pass.
+
 The repository pins one engine release. When you move the pin, change the engine
 commit and every SDK line (with its sha256) in `scripts/deps.lock`, run
 `scripts/fetch-deps.sh`, and re-run every gate of every game you touch: a new
