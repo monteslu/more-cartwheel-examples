@@ -708,8 +708,68 @@
     "controlField": "g.signgate",
     "note": "a sign can always be read and never hides a player, and it does not chase them round the screen: four bots run the first level past its signs. Its words are a caption with a place of their own, top centre, or the bottom when a player comes up there. g.signgate is [frames a sign was up, of them over a player's body, of them drawn thin over a player]; g.signmove is [times it changed place, frames it was faded or held back for that, a player marker under its place counting too]. The control (COOP_SIGN_BUG, native) leaves it over the board and thins it when a player is near, as it was: its g.signgate must differ."
   },
-  {"name":"coopplatformer-words","app":"coopplatformer_auto4","hosts":["native"],"frames":1500,"startCmds":["text scale 2"],"fields":["g.tick","g.wordsgate"],"expect":{"g.tick":1500,"g.wordsgate":[545,0,0]},"controlEnv":{"COOP_WORDS_BUG":"1"},"controlFrames":1500,"controlField":"g.wordsgate","note":"words never sit on words or on a marker, four players at 200% text: four bots run the first level past its signs. g.wordsgate is [frames with words up, of them with the sign's caption on a player marker, of them with two boxes of words (the caption, a boss's words, what players say) overlapping]. The control (COOP_WORDS_BUG, native) lets the caption ignore the markers and the words ignore each other: its g.wordsgate must differ."},
-  {"name":"coopplatformer-words-boss","app":"coopplatformer_auto_boss","hosts":["native"],"env":{"COOP_PLAYERS":"4"},"frames":620,"startCmds":["text scale 2"],"fields":["g.tick","g.wordsgate"],"expect":{"g.tick":620,"g.wordsgate":[233,0,0]},"controlEnv":{"COOP_PLAYERS":"4","COOP_WORDS_BUG":"1"},"controlFrames":620,"controlField":"g.wordsgate","note":"the boss fight with four players at 200% text: the boss's words and what the players say never stack (g.wordsgate as in coopplatformer-words). The control (COOP_WORDS_BUG) stacks them: its g.wordsgate must differ."},
+  {
+    "name": "coopplatformer-words",
+    "app": "coopplatformer_auto4",
+    "hosts": [
+      "native"
+    ],
+    "frames": 1500,
+    "startCmds": [
+      "text scale 2"
+    ],
+    "fields": [
+      "g.tick",
+      "g.wordsgate"
+    ],
+    "expect": {
+      "g.tick": 1500,
+      "g.wordsgate": [
+        545,
+        0,
+        0
+      ]
+    },
+    "controlEnv": {
+      "COOP_WORDS_BUG": "1"
+    },
+    "controlFrames": 1500,
+    "controlField": "g.wordsgate",
+    "note": "words never sit on words or on a marker, four players at 200% text: four bots run the first level past its signs. g.wordsgate is [frames with words up, of them with the sign's caption on a player marker, of them with two boxes of words (the caption, a boss's words, what players say) overlapping]. The control (COOP_WORDS_BUG, native) lets the caption ignore the markers and the words ignore each other: its g.wordsgate must differ."
+  },
+  {
+    "name": "coopplatformer-words-boss",
+    "app": "coopplatformer_auto_boss",
+    "hosts": [
+      "native"
+    ],
+    "env": {
+      "COOP_PLAYERS": "4"
+    },
+    "frames": 620,
+    "startCmds": [
+      "text scale 2"
+    ],
+    "fields": [
+      "g.tick",
+      "g.wordsgate"
+    ],
+    "expect": {
+      "g.tick": 620,
+      "g.wordsgate": [
+        233,
+        0,
+        0
+      ]
+    },
+    "controlEnv": {
+      "COOP_PLAYERS": "4",
+      "COOP_WORDS_BUG": "1"
+    },
+    "controlFrames": 620,
+    "controlField": "g.wordsgate",
+    "note": "the boss fight with four players at 200% text: the boss's words and what the players say never stack (g.wordsgate as in coopplatformer-words). The control (COOP_WORDS_BUG) stacks them: its g.wordsgate must differ."
+  },
   {
     "name": "coopplatformer-results-card",
     "app": "coopplatformer_auto_boss",
@@ -739,6 +799,123 @@
     "controlFrames": 700,
     "controlField": "g.cardgate",
     "note": "the results card can be read: g.cardgate is [frames it was up, of them with the player portraits on the line above them, levels of the whole game whose closing line takes two rows and so runs into that line]. That the card is solid is measured in the picture by coopplatformer-arena. The control (COOP_CARD_BUG, native) puts the portraits and the wrap back as they were: its g.cardgate must differ."
+  },
+  {
+    "name": "coopplatformer-shadows",
+    "app": "coopplatformer_auto",
+    "hosts": [
+      "native"
+    ],
+    "env": {
+      "COOP_START_X": "20"
+    },
+    "frames": 200,
+    "fields": [
+      "g.tick",
+      "g.blobs",
+      "g.charshadow"
+    ],
+    "expect": {
+      "g.tick": 200,
+      "g.charshadow": 0,
+      "g.blobs": [
+        7,
+        7,
+        0
+      ]
+    },
+    "controlEnv": {
+      "COOP_SHADOW_OLD": "1"
+    },
+    "controlFrames": 200,
+    "controlField": "g.charshadow",
+    "note": "no hero or enemy throws a sun shadow (on the hills behind the play they were dark figures of their own, read as enemies); each stands on a soft contact blob instead. g.blobs is [characters drawn this frame, of them with a blob, blobs under a player standing on a floor that are not at the floor (none: nothing floats)]. g.charshadow counts heroes that throw a sun shadow. The control (COOP_SHADOW_OLD, native) brings the sun shadows back and drops the blobs: its g.charshadow must differ."
+  },
+  {
+    "name": "coopplatformer-rim",
+    "app": "coopplatformer_auto_caves",
+    "hosts": [
+      "native"
+    ],
+    "frames": 120,
+    "fields": [
+      "g.tick",
+      "g.rim"
+    ],
+    "expect": {
+      "g.tick": 120,
+      "g.rim": 52
+    },
+    "controlEnv": {
+      "COOP_RIM_OFF": "1"
+    },
+    "controlFrames": 120,
+    "controlField": "g.rim",
+    "note": "the heroes carry a rim of their own colour, strong in the caves and the crater, so the four read against navy and red (the contrast is measured in frames in the fun-graphics notes). g.rim counts materials with a rim. The control (COOP_RIM_OFF, native) leaves the rims off: its g.rim must differ."
+  },
+  {
+    "name": "coopplatformer-hint",
+    "app": "coopplatformer",
+    "input": "coopplatformer-hint.json",
+    "controlInput": "coopplatformer-hint-walk.json",
+    "frames": 820,
+    "fields": [
+      "g.tick",
+      "g.hint",
+      "g.jump"
+    ],
+    "webgpu": {
+      "vsGl": 0.005,
+      "maxArea": 0.005,
+      "note": "the same frame on both backends"
+    },
+    "expect": {
+      "g.tick": 580,
+      "g.hint": [
+        538,
+        0
+      ]
+    },
+    "controlFrames": 820,
+    "controlField": "g.hint",
+    "note": "the hint line retires once each half has been done: a running jump that went far (over 7.5 m at more than 80 percent of the top speed) and a return to the last flag (held Retry; or the third level reached). Both halves stay in the pause menu. g.hint is [frames the line was drawn, the halves still up: bit 0 the running jump, bit 1 the flag]. The input runs, jumps far and holds Retry. The control walks instead of running (a walking jump of about 6 m) and holds Retry: the running half stays, so its g.hint must differ."
+  },
+  {
+    "name": "coopplatformer-tally",
+    "app": "coopplatformer_auto_boss",
+    "hosts": [
+      "native"
+    ],
+    "env": {
+      "COOP_PLAYERS": "4"
+    },
+    "frames": 700,
+    "fields": [
+      "g.tick",
+      "g.won",
+      "g.tally",
+      "g.cardgate"
+    ],
+    "expect": {
+      "g.tick": 700,
+      "g.won": 1,
+      "g.tally": [
+        1244,
+        311
+      ],
+      "g.cardgate": [
+        311,
+        0,
+        0
+      ]
+    },
+    "controlEnv": {
+      "COOP_PLAYERS": "4",
+      "COOP_TALLY_OFF": "1"
+    },
+    "controlFrames": 700,
+    "controlField": "g.tally",
+    "note": "the results card counts each player: coins, stomps, friends thrown and falls in a column under each portrait, and an awards line for whoever got the most of something (a clear winner only). g.tally is [columns drawn, frames the awards line was up]; g.cardgate as in coopplatformer-results-card. The control (COOP_TALLY_OFF, native) leaves the tally off: its g.tally must differ."
   },
   {
     "name": "coopplatformer-arena",

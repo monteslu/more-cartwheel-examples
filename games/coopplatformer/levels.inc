@@ -29,12 +29,22 @@ static void section(gen *G, int s, int biome, float hard) {
       coin_row(G, G->x - 4, 3, G->g + 2);
       break;
     }
-    case S_WALKERS:
+    case S_WALKERS: {
+      /* each world brings its own creature (game.h EK_*): met in the second half of the world's first level, beside
+       * the walkers it already knows, then everywhere in the world after; the crater has all four. The very first
+       * level keeps to walkers and flyers */
+      static const int NEW_KIND[BIOMES] = { EK_HOPPER, EK_DROPPER, EK_SHELL, EK_SLIDER, -1 };
+      int nk = G->level == 0 ? -1 : biome == BIOME_VOLCANO ? EK_HOPPER + (G->x / 13) % 4 : NEW_KIND[biome];
       flat(G, 12, biome);
-      if (L->nenemies < 22) walker(G, G->x - 8, G->g, 3, 0);
-      if (L->nenemies < 22 && hard > 0.5f) walker(G, G->x - 3, G->g, 2, biome == BIOME_VOLCANO || rnd(G, 3) == 0 ? 1 : 0);
+      if (nk == EK_DROPPER) ceiling(G, G->x - 12, 12, 7); /* a roof to hang from */
+      if (L->nenemies < 22) walker(G, G->x - 8, G->g, 3, nk >= 0 && G->level % 5 != 0 ? nk : 0);
+      if (L->nenemies < 22 && hard > 0.5f) {
+        int k = biome == BIOME_VOLCANO || rnd(G, 3) == 0 ? 1 : 0;
+        walker(G, G->x - 3, G->g, 2, k == 0 && nk >= 0 ? nk : k);
+      }
       coin_row(G, G->x - 9, 5, G->g + 3);
       break;
+    }
     case S_HOPS:
       for (int i = 0; i < 3; i++) { flat(G, 3 + (int)rnd(G, 2), biome); gap(G, 3 + (int)rnd(G, 2), biome, hz); }
       flat(G, 3, biome);

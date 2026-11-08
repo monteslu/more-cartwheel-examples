@@ -22,8 +22,10 @@
 #include "cartwheel/quality.h"
 #include "cartwheel/render2d.h"
 #include "cartwheel/render3d.h"
+#include "cartwheel/rim_light.h"
 #include "cartwheel/scene_file.h"
 #include "cartwheel/shell.h"
+#include "cartwheel/splats.h"
 #include "cartwheel/ui.h"
 #include "game.h"
 
@@ -38,6 +40,7 @@ typedef struct save_t {
   int32_t total_coins, total_deaths, total_betrayals;
   int32_t hats;     /* levels whose secrets were all found: each one better, in a sense, than the last */
   uint32_t hat_levels[2];
+  uint8_t medals[32]; /* per level, bit k: big coin k + 1 has been taken there (the map counts them) */
 } save_t;
 
 #define NTORCH 4
@@ -56,6 +59,7 @@ static struct {
   float spread_x[MAX_PLAYERS], spread_z[MAX_PLAYERS]; /* drawn apart when players stand in one spot */
   cw_node enode[MAX_ENEMIES], emodel[MAX_ENEMIES];
   rig *erig[MAX_ENEMIES];
+  t3_mesh *eextra[MAX_ENEMIES][2]; /* the new kinds' parts: a shell and its rim, a slider's spikes, a dropper's thread */
   float ephase[MAX_ENEMIES], eyaw[MAX_ENEMIES];
   cw_node coin_node[MAX_COINS];
   t3_mesh *coin_mesh[MAX_COINS];
@@ -79,6 +83,8 @@ static struct {
   bool built;
   bool graves_due;
   t3_mesh *hat[MAX_PLAYERS][6][2];
+  cw_splats *blobs;         /* a soft contact shadow under every character (they throw no sun shadow onto the backdrop) */
+  int rim_biome;            /* the region the heroes' rims were last set for */
 } S;
 
 static struct {
@@ -150,6 +156,14 @@ static int g_surface_dbg[3]; /* world_surface_audit */
 static int g_flames_dbg[2]; /* the fire check: flames burning, flames not in a seated brazier (floating fire) */
 static float g_viewbot_dbg = 1e9f; /* the lowest the bottom edge of the drawn view went this match (world y; below 0 shows the underside of the world) */
 static int g_underview_dbg[2]; /* frames drawn in the match, of them frames whose view reached under the world floor */
+static int g_blob_dbg[3]; /* characters drawn this frame, of them with a contact blob, blobs not on a floor's top (none: nothing floats) */
+static int g_charshadow_dbg; /* character meshes that throw a sun shadow (none: their shadows fell on the backdrop as detached figures) */
+static bool g_shadow_old; /* COOP_SHADOW_OLD: the characters throw sun shadows again and have no blob (the shadow gate's control) */
+static bool g_rim_off; /* COOP_RIM_OFF: no rim on the heroes (the rim gate's control) */
+static bool g_tally_off; /* COOP_TALLY_OFF: the card without its tally (the tally check's control) */
+static int g_tally_dbg[2]; /* tally columns drawn (a player each frame), frames with the awards line */
+static int g_hint_dbg[2]; /* frames the hint line was drawn, the halves still up (bit 0 the running jump, bit 1 the flag) */
+static int g_rim_dbg; /* materials drawn with a rim light (the heroes' own, cw_rim_light_count) */
 static struct { float last[3], step[3], ppos[MAX_PLAYERS * 2]; int still, frames; } CS;
 static void camgate_reset(void) {
   g_viewbot_dbg = 1e9f;
@@ -542,9 +556,12 @@ static void build_scene(void) {
   t3_geometry *cg = t3_lathe_geometry_new(COIN_PROFILE, 10, 20, 0, 6.2831853f);
   t3_material *cm = phys(0xffc83a, 0.25f, 1.0f);
   cm->emissive = (t3_color){ 0.5f, 0.3f, 0.0f }, cm->emissive_intensity = 0.8f;
+  t3_material *cmb = phys(0xffe07a, 0.18f, 1.0f); /* the big coins: brighter, and they glow enough to bloom */
+  cmb->emissive = (t3_color){ 0.9f, 0.6f, 0.15f }, cmb->emissive_intensity = 1.6f;
   for (int i = 0; i < L->ncoins; i++) {
     S.coin_node[i] = make_node("Node3D", S.world, "Coin");
-    S.coin_mesh[i] = part(S.coin_node[i], cg, cm, 0, 0, 0, 1, 1, 1);
+    S.coin_mesh[i] = part(S.coin_node[i], cg, L->coins[i].medal ? cmb : cm, 0, 0, 0, 1, 1, 1);
+    if (L->coins[i].medal) cw_node3d_set_scale(S.coin_node[i], (t3_vec3){ 1.9f, 1.9f, 1.9f });
     /* through t3_object_set_rotation: writing base.rotation alone never reached the mesh's quaternion, so the coins lay
      * flat like plates and turned about their own axis, edge on to the camera for ever */
     if (!g_coin_flat_bug) t3_object_set_rotation(S.coin_mesh[i], 1.5707963f, 0, 0);
@@ -559,6 +576,7 @@ static void build_scene(void) {
     rig_free(S.erig[i]);
     S.erig[i] = rig_load(e->kind == 2 ? RIG_BOSS : e->kind == 1 ? RIG_FLYER : RIG_WALKER);
     if (S.erig[i]) rig_attach(S.erig[i], S.emodel[i]);
+    if (S.erig[i]) rig_cast_shadow(S.erig[i], g_shadow_old); /* a contact blob grounds it (sync_scene) */
     float sc = e->kind == 2 ? boss_scale(L->boss_kind) : e->kind == 1 ? 0.85f : 0.95f;
     if (e->kind == 2 && S.erig[i]) {
       /* one model, a different creature each time: a colour and something on its head */
@@ -567,9 +585,40 @@ static void build_scene(void) {
       static const uint32_t HAT[5] = { 0x201018, 0xe8c040, 0xf2f2f2, 0x303848, 0xe8c040 };
       t3_geometry *brim = t3_cylinder_geometry_new(0.62f, 0.62f, 0.07f, 16, 1, false), *crown = t3_cylinder_geometry_new(0.36f, 0.4f, 0.62f, 16, 1, false);
       t3_material *hm = phys(HAT[L->boss_kind], 0.7f, L->boss_kind == 1 || L->boss_kind == 4 ? 0.9f : 0.0f);
-      part(S.emodel[i], brim, hm, 0, 1.66f, 0, 1, 1, 1);
-      part(S.emodel[i], crown, hm, 0, 2.0f, 0, 1, 1, 1);
+      part(S.emodel[i], brim, hm, 0, 1.66f, 0, 1, 1, 1)->base.cast_shadow = g_shadow_old;
+      part(S.emodel[i], crown, hm, 0, 2.0f, 0, 1, 1, 1)->base.cast_shadow = g_shadow_old;
       t3_release(brim), t3_release(crown);
+    }
+    S.eextra[i][0] = S.eextra[i][1] = NULL;
+    if (e->kind >= EK_HOPPER && S.erig[i]) {
+      /* each world's own creature: the walker's body in its own colours, with the one thing that says what it does */
+      static const float KT[EK_KINDS][3] = { { 1, 1, 1 }, { 1, 1, 1 }, { 1, 1, 1 }, { 0.75f, 1.25f, 0.45f }, { 0.62f, 0.42f, 0.95f }, { 0.45f, 1.0f, 0.9f }, { 1.2f, 0.95f, 0.4f } };
+      rig_shade(S.erig[i], KT[e->kind]);
+      if (e->kind == EK_SHELL) { /* a domed shell on its back; alone, it is what is left after a stomp */
+        static const t3_vec2 DOME[] = { { 0, 0.62f }, { 0.22f, 0.6f }, { 0.4f, 0.5f }, { 0.52f, 0.32f }, { 0.58f, 0.12f }, { 0.6f, 0.0f }, { 0.0f, 0.0f } };
+        t3_geometry *dg = t3_lathe_geometry_new(DOME, 7, 18, 0, 6.2831853f);
+        t3_material *dm = phys(0x2f8a6e, 0.35f, 0.0f);
+        S.eextra[i][0] = part(S.enode[i], dg, dm, 0, 0.12f, 0, 1, 1, 1);
+        t3_geometry *rg = t3_torus_geometry_new(0.6f, 0.06f, 6, 18, 6.2831853f);
+        S.eextra[i][1] = part(S.enode[i], rg, phys(0xe8d8a0, 0.6f, 0.0f), 0, 0.12f, 0, 1, 1, 1); /* its rim */
+        t3_object_set_rotation(S.eextra[i][1], 1.5707963f, 0, 0);
+        t3_release(dg), t3_release(rg);
+      } else if (e->kind == EK_SLIDER) { /* a crown of spikes on its front: from behind or nothing */
+        t3_geometry *cg2 = t3_cone_geometry_new(0.09f, 0.42f, 6, 1, false);
+        t3_material *sm = phys(0xd8dce4, 0.3f, 0.9f);
+        for (int k = 0; k < 2; k++) {
+          S.eextra[i][k] = part(S.emodel[i], cg2, sm, 0, 0.45f + 0.28f * (float)k, 0.48f, 1, 1, 1);
+          t3_object_set_rotation(S.eextra[i][k], 1.5707963f, 0, 0); /* points along the model's facing */
+        }
+        t3_release(cg2);
+      } else if (e->kind == EK_DROPPER) { /* the thread it hangs from and climbs back up */
+        t3_geometry *tg = t3_cylinder_geometry_new(0.015f, 0.015f, 1.0f, 5, 1, false);
+        t3_material *tm = phys(0xd0d4e0, 0.4f, 0.0f);
+        tm->emissive = (t3_color){ 0.3f, 0.32f, 0.4f }, tm->emissive_intensity = 0.6f;
+        S.eextra[i][0] = part(S.world, tg, tm, e->x, e->hang_y, 0, 1, 1, 1);
+        t3_release(tg);
+      }
+      for (int k = 0; k < 2; k++) if (S.eextra[i][k]) S.eextra[i][k]->base.cast_shadow = g_shadow_old;
     }
     cw_node3d_set_scale(S.emodel[i], (t3_vec3){ sc, sc, sc });
     S.ephase[i] = (float)i * 1.7f;
@@ -593,6 +642,15 @@ static void build_scene(void) {
       rig_attach(S.prig[i], S.pmodel[i]);
       float fur[3] = { PLAYER_RGB[i][0], PLAYER_RGB[i][1], PLAYER_RGB[i][2] };
       rig_tint(S.prig[i], fur, ACCENT[i], i);
+      rig_cast_shadow(S.prig[i], g_shadow_old);
+      /* a rim of the player's own colour, lightened, round the silhouette: the four read against the navy caves and the red
+       * crater (its strength follows the region, sync_scene); every preset draws it */
+      if (!g_rim_off) {
+        cw_rim_light_desc rd = cw_rim_light_default();
+        rd.color = (t3_color){ 0.45f + 0.55f * fur[0], 0.45f + 0.55f * fur[1], 0.45f + 0.55f * fur[2] };
+        rd.strength = 0.6f, rd.power = 2.6f, rd.near = 0, rd.far = 1, rd.close = 1;
+        rig_rim(S.prig[i], &rd);
+      }
     }
     /* the hats. Terrible ones, and all of them sit on the head */
     {
@@ -605,9 +663,10 @@ static void build_scene(void) {
         float y = HAT_Y + (h == 0 ? 0.2f : h == 3 || h == 5 ? 0.17f : 0.08f);
         S.hat[i][h][0] = part(S.pmodel[i], g0, hm, 0, y, 0, h == 5 ? 1.3f : 1, h == 5 ? 1.3f : 1, h == 5 ? 1.3f : 1);
         S.hat[i][h][0]->base.visible = false;
+        S.hat[i][h][0]->base.cast_shadow = g_shadow_old;
         S.hat[i][h][1] = NULL;
-        if (h == 3 || h == 5) { S.hat[i][h][1] = part(S.pmodel[i], brim, hm, 0, HAT_Y + 0.02f, 0, h == 5 ? 1.3f : 1, 1, h == 5 ? 1.3f : 1); S.hat[i][h][1]->base.visible = false; }
-        if (h == 4) { S.hat[i][h][1] = part(S.pmodel[i], handle, hm, 0.34f, HAT_Y + 0.08f, 0, 1, 1, 1); S.hat[i][h][1]->base.visible = false; }
+        if (h == 3 || h == 5) { S.hat[i][h][1] = part(S.pmodel[i], brim, hm, 0, HAT_Y + 0.02f, 0, h == 5 ? 1.3f : 1, 1, h == 5 ? 1.3f : 1); S.hat[i][h][1]->base.visible = false; S.hat[i][h][1]->base.cast_shadow = g_shadow_old; }
+        if (h == 4) { S.hat[i][h][1] = part(S.pmodel[i], handle, hm, 0.34f, HAT_Y + 0.08f, 0, 1, 1, 1); S.hat[i][h][1]->base.visible = false; S.hat[i][h][1]->base.cast_shadow = g_shadow_old; }
       }
       t3_release(cone), t3_release(buck), t3_release(small), t3_release(top), t3_release(brim), t3_release(pan), t3_release(handle);
     }
@@ -619,6 +678,8 @@ static void build_scene(void) {
     cw_node3d_set_position(S.pnode[i], (t3_vec3){ 0, -100, 0 });
   }
   t3_release(bub);
+  if (!S.blobs) S.blobs = cw_splats_new(S.root, "Blobs", CW_SPLATS_SHADOW, MAX_PLAYERS + MAX_ENEMIES);
+  S.rim_biome = -1;
   /* water: a Water3D surface (Gerstner waves, a ripple normal map, sky reflection) over each pool, and a volume of
    * tinted fog inside it. Lava spans are listed for the glow volumes and the heat haze. */
   {
@@ -902,6 +963,94 @@ static void offsetgate(cw_node cam, float vx, float vy, float vz) {
 }
 
 /* ── frame: sync the scene to the sim ─────────────────────────────── */
+/* the top of what a character at (x, y) would land on: a tile, a wooden ledge or a moving platform, at most `reach` below;
+ * false over a pit or a long drop */
+static bool floor_under(const game *g, float x, float y, float reach, float *top) {
+  const level *L = &g->L;
+  int c = (int)floorf(x);
+  if (c < 0 || c >= WORLD_W) return false;
+  float best = -1e9f;
+  for (int ty = (int)floorf(y + 0.05f); ty >= 0 && (float)ty + 1.0f >= y - reach; ty--)
+    if (ty < WORLD_H && (world_solid(L, c, ty) || L->t[ty][c] == T_ONEWAY) && (float)ty + 1.0f <= y + 0.05f) { best = (float)ty + 1.0f; break; }
+  for (int i = 0; i < L->nplat; i++) {
+    cw_pos2 pp = cw_body2d_position(L->plats[i].body);
+    float pt = (float)pp.y + 0.2f;
+    if (fabsf(x - (float)pp.x) < L->plats[i].w * 0.5f && pt <= y + 0.05f && pt > best) best = pt;
+  }
+  for (int i = 0; i < L->nthings; i++) { /* doors and crumbling planks: their boxes as the rules have them now */
+    const thing *t = &L->things[i];
+    if ((t->kind != TH_DOOR && t->kind != TH_CRUMBLE) || !t->body.id || (t->kind == TH_CRUMBLE && t->state == 2)) continue;
+    float hw = t->kind == TH_DOOR ? t->w * 0.5f : 0.5f, hh = t->kind == TH_DOOR ? t->h * 0.5f : 0.5f;
+    cw_pos2 tp = cw_body2d_position(t->body);
+    float tt = (float)tp.y + hh;
+    if (fabsf(x - (float)tp.x) < hw && tt <= y + 0.05f && tt > best) best = tt;
+  }
+  if (best < y - reach) return false;
+  *top = best;
+  return true;
+}
+/* how each world's own creature looks this frame (after the shared walker placement): the hopper squashes before a hop
+ * and stretches in the air, the dropper hangs upside down from its thread and climbs it back, the shell is a shell (and
+ * spins when kicked), the slider leans into its skate */
+static void enemy_look(int i, const enemy *e, float dt, float *squash) {
+  (void)dt;
+  t3_mesh **x = S.eextra[i];
+  switch (e->kind) {
+    case EK_HOPPER:
+      *squash = e->vy > 1 ? 1.25f : e->vy < -1 ? 1.1f : 1.0f;
+      break;
+    case EK_DROPPER: {
+      bool hang = e->state == 0 || e->state == 3;
+      if (hang) { /* upside down, its feet on the roof */
+        cw_node3d_set_position(S.enode[i], (t3_vec3){ e->x, e->y + 0.95f, 0 });
+        cw_node3d_set_rotation(S.emodel[i], (t3_vec3){ 0, S.eyaw[i], 3.14159265f });
+      }
+      if (e->state == 2 && e->t < 45) *squash = 0.75f + 0.1f * sinf(S.time * 30.0f); /* dazed, a quick wobble */
+      if (x[0]) { /* the thread from the roof down to it while it is not up there */
+        float top = e->hang_y + 0.95f, bot = hang ? e->y + 0.95f : e->y + 0.85f, len = fmaxf(0.0f, top - bot);
+        x[0]->base.visible = e->state != 0 && len > 0.05f;
+        x[0]->base.position = (t3_vec3){ e->x, bot + 0.5f * len, 0 };
+        x[0]->base.scale = (t3_vec3){ 1, fmaxf(0.01f, len), 1 };
+      }
+      break;
+    }
+    case EK_SHELL: {
+      bool shut = e->state > 0;
+      cw_node_set(S.emodel[i], "visible", cw_val_bool(!shut));
+      if (x[0]) {
+        float s2 = shut ? 1.0f : 0.8f;
+        x[0]->base.scale = (t3_vec3){ s2, s2, s2 };
+        x[0]->base.position = (t3_vec3){ 0, shut ? 0.0f : 0.42f, shut ? 0.0f : -0.08f * (float)e->dir };
+        static float spin[MAX_ENEMIES];
+        if (e->state == 2) spin[i] += dt * 14.0f * (float)e->dir;
+        t3_object_set_rotation(x[0], 0, spin[i], 0);
+      }
+      if (x[1]) {
+        float s2 = e->state > 0 ? 1.0f : 0.8f;
+        x[1]->base.scale = (t3_vec3){ s2, s2, s2 };
+        x[1]->base.position = (t3_vec3){ 0, e->state > 0 ? 0.04f : 0.46f, e->state > 0 ? 0.0f : -0.08f * (float)e->dir };
+      }
+      break;
+    }
+    case EK_SLIDER:
+      cw_node3d_set_rotation(S.emodel[i], (t3_vec3){ 0, S.eyaw[i], -0.18f * (float)e->dir }); /* leans into the skate */
+      *squash = 0.92f;
+      break;
+  }
+}
+/* a soft contact shadow under a character, fading and widening with its height over the floor */
+static void blob_add(const game *g, float x, float y, float z, float size, bool feet_on_floor) {
+  g_blob_dbg[0]++;
+  float top;
+  if (!floor_under(g, x, y + 0.3f, 6.0f, &top)) return;
+  float h = fmaxf(0.0f, y - top), k = 1.0f - h / 6.0f;
+  if (cw_splats_add(S.blobs, (t3_vec3){ x, top, z }, size * 0.85f * (1.0f + 0.35f * (1 - k)), size * (1.0f + 0.35f * (1 - k)), 0, 0, (t3_color){ 0, 0, 0 }, 0.62f * k * k)) {
+    g_blob_dbg[1]++;
+    /* on a floor's top: a tile, a ledge or a platform (floor_under found it), and right under the feet when they stand */
+    if (feet_on_floor && h > 0.12f) g_blob_dbg[2]++;
+  }
+}
+
 static void coin_face_check(void);
 static void sync_scene(float alpha, float dt) {
   game *g = &G;
@@ -1091,6 +1240,44 @@ static void sync_scene(float alpha, float dt) {
       }
     }
   }
+  /* contact blobs: every hero on the field and every live enemy (the sun throws none of their shadows: on the hills
+   * behind the play they were dark figures of their own) */
+  g_blob_dbg[0] = g_blob_dbg[1] = g_blob_dbg[2] = 0;
+  if (S.blobs) {
+    cw_splats_begin(S.blobs);
+    if (!g_shadow_old) {
+      for (int i = 0; i < g->nplayers && i < MAX_PLAYERS; i++) {
+        const player *p = &g->p[i];
+        if (!p->joined || !p->alive || p->bubble) continue;
+        cw_pos2 ip = cw_mover2d_interpolated(&p->pf.body, alpha);
+        blob_add(g, (float)ip.x + S.spread_x[i], (float)ip.y, S.spread_z[i], 1.0f, p->pf.body.on_floor);
+      }
+      for (int i = 0; i < L->nenemies; i++) {
+        const enemy *e = &L->enemies[i];
+        if (!e->alive) continue;
+        blob_add(g, e->x, e->y, 0, e->kind == 2 ? 1.6f * boss_scale(L->boss_kind) : e->kind == 1 ? 0.8f : 0.95f, false);
+      }
+    }
+    cw_splats_end(S.blobs);
+  }
+  g_rim_dbg = cw_rim_light_count();
+  g_charshadow_dbg = 0;
+  for (int i = 0; i < MAX_PLAYERS; i++) if (S.prig[i] && g_shadow_old) g_charshadow_dbg++;
+  /* the heroes' rims: strong where the world is dark (the caves, the crater), a trace elsewhere */
+  {
+    int b = g->L.biome[(int)c->x < 0 ? 0 : (int)c->x >= WORLD_W ? WORLD_W - 1 : (int)c->x];
+    if (b != S.rim_biome && !g_rim_off) {
+      static const float RIM_K[BIOMES] = { 0.35f, 1.5f, 0.5f, 0.4f, 1.3f };
+      S.rim_biome = b;
+      for (int i = 0; i < MAX_PLAYERS; i++) {
+        if (!S.prig[i]) continue;
+        cw_rim_light_desc rd = cw_rim_light_default();
+        rd.color = (t3_color){ 0.45f + 0.55f * PLAYER_RGB[i][0], 0.45f + 0.55f * PLAYER_RGB[i][1], 0.45f + 0.55f * PLAYER_RGB[i][2] };
+        rd.strength = RIM_K[b], rd.power = 2.6f, rd.near = 0, rd.far = 1, rd.close = 1;
+        rig_rim(S.prig[i], &rd);
+      }
+    }
+  }
   gore_step(dt);
   for (int i = 0; i < L->npickups; i++) {
     cw_node_set(S.pick_node[i], "visible", cw_val_bool(!L->pickups[i].taken));
@@ -1104,6 +1291,7 @@ static void sync_scene(float alpha, float dt) {
   for (int i = 0; i < L->nenemies; i++) {
     const enemy *e = &L->enemies[i];
     cw_node_set(S.enode[i], "visible", cw_val_bool(e->alive));
+    if (e->kind == EK_DROPPER && S.eextra[i][0] && !e->alive) S.eextra[i][0]->base.visible = false;
     if (S.prev_alive[i] && !e->alive) { /* it just died: a blast, bigger for the boss */
       float bs = e->kind == 2 ? 2.4f : 1.0f, by = e->y + (e->kind == 2 ? 1.0f : 0.5f);
       burst(S.fx_boom, e->x, by, 0.8f), burst(S.fx_boomsmoke, e->x, by, 0.6f), burst(S.fx_boomspark, e->x, by, 0.6f);
@@ -1135,9 +1323,11 @@ static void sync_scene(float alpha, float dt) {
     float want = e->dir > 0 ? 1.2f : -1.2f;
     S.eyaw[i] += (want - S.eyaw[i]) * (1.0f - expf(-10.0f * dt));
     cw_node3d_set_rotation(S.emodel[i], (t3_vec3){ 0, S.eyaw[i], 0 });
+    float esq = 1.0f; /* the walker pose's squash: the new kinds use it */
+    if (e->kind >= EK_HOPPER) enemy_look(i, e, dt, &esq);
     float flash = e->hurt > 0 && (e->hurt / 3) % 2 ? 1.0f : 0.0f;
     S.ephase[i] += dt * (e->kind == 1 ? 16.0f : 11.0f);
-    if (e->kind == 0) rig_pose_walker(S.erig[i], S.ephase[i], S.time, 1.0f);
+    if (e->kind != EK_FLYER && e->kind != EK_BOSS) rig_pose_walker(S.erig[i], S.ephase[i], S.time, esq);
     else if (e->kind == 1) rig_pose_flyer(S.erig[i], S.ephase[i], S.time);
     else {
       rig_pose_boss(S.erig[i], S.time, 1.0f - (float)e->hp / 9.0f);
@@ -1538,6 +1728,8 @@ static void print_map(int x0) {
   printf("width %d coins %d enemies %d things %d signs %d flags %d\n", G.L.width, G.L.ncoins, G.L.nenemies, G.L.nthings, G.L.nsigns, G.L.nchecks);
   for (int k = 0; k < G.L.nchecks; k++) printf("flag %d at %d,%d\n", k, G.L.checks[k].x, G.L.checks[k].y);
   for (int k = 0; k < G.L.ngates; k++) printf("gate %d x %d..%d needs %d flag %d\n", k, G.L.gates[k].x0, G.L.gates[k].x1, G.L.gates[k].need, G.L.gates[k].flag);
+  for (int k = 0; k < G.L.nenemies; k++) printf("enemy %d kind %d at %.1f,%.1f\n", k, G.L.enemies[k].kind, (double)G.L.enemies[k].x, (double)G.L.enemies[k].y);
+  for (int k = 0; k < G.L.ncoins; k++) if (G.L.coins[k].medal) printf("big coin %d at %.1f,%.1f\n", G.L.coins[k].medal, (double)G.L.coins[k].x, (double)G.L.coins[k].y);
   for (int k = 0; k < G.L.npickups; k++) printf("pickup %d at %d,%d ability %d\n", k, G.L.pickups[k].x, G.L.pickups[k].y, G.L.pickups[k].ability);
   fflush(stdout);
   exit(0);
@@ -1683,7 +1875,7 @@ static void init(void *user) {
   a_left = cw_action_find("left"), a_right = cw_action_find("right"), a_up = cw_action_find("up"), a_down = cw_action_find("down");
   a_jump = cw_action_find("jump"), a_run = cw_action_find("run"), a_grab = cw_action_find("grab"), a_dash = cw_action_find("dash"), a_map = cw_action_find("map"), a_retry = cw_action_find("retry");
   cw_shell_init(&(cw_shell_desc){ .title = "Co-op Platformer", .subtitle = "one to four players", .max_players = 4,
-                                  .game_save_size = sizeof(save_t), .game_save_version = 4, .start = start_match,
+                                  .game_save_size = sizeof(save_t), .game_save_version = 5, .start = start_match,
                                   .quit = quit_match, .sound = sound_hook, .draw_background = title_background });
   g_font = cw_ui_font_sans();
   audio_init();
@@ -1756,6 +1948,14 @@ static void init(void *user) {
   cw_debug_field("g.betrayals", G.betrayals, CW_DBG_I32, MAX_PLAYERS);
   cw_debug_i32("g.width", &G.L.width);
   cw_debug_i32("g.vanish", &g_vanish_dbg);
+  cw_debug_field("g.blobs", g_blob_dbg, CW_DBG_I32, 3);
+  cw_debug_i32("g.charshadow", &g_charshadow_dbg);
+  cw_debug_i32("g.rim", &g_rim_dbg);
+  cw_debug_field("g.hint", g_hint_dbg, CW_DBG_I32, 2);
+  g_shadow_old = getenv("COOP_SHADOW_OLD") != NULL; /* the shadow gate's control (native only) */
+  g_rim_off = getenv("COOP_RIM_OFF") != NULL; /* the rim gate's control (native only) */
+  g_tally_off = getenv("COOP_TALLY_OFF") != NULL; /* the tally check's control (native only) */
+  cw_debug_field("g.tally", g_tally_dbg, CW_DBG_I32, 2);
   cw_debug_field("g.coinface", g_coinface_dbg, CW_DBG_I32, 2);
   cw_debug_i32("g.uvrep", &g_uvrep_dbg);
   cw_debug_i32("g.marker_over", &g_marker_over_dbg);
@@ -1783,6 +1983,7 @@ static void save_progress(void) {
   sv->abilities |= G.abilities;
   sv->reached |= G.reached;
   if (G.coins_total > sv->coins) sv->coins = G.coins_total;
+  if (G.level >= 0 && G.level < 32) sv->medals[G.level] |= (uint8_t)G.medals;
   for (int y = 0; y < WORLD_H / 4; y++)
     for (int x = 0; x < WORLD_W / 4; x++) sv->seen[y][x] |= G.seen[y][x];
   if (G.won && (sv->best_ticks == 0 || G.win_tick < sv->best_ticks)) sv->best_ticks = G.win_tick;
@@ -1809,6 +2010,14 @@ static void play_events(void) {
   if (e & 4) burst(S.fx_spark, (float)G.p[0].pf.body.position.x, (float)G.p[0].pf.body.position.y + 1, 0.5f);
   if (e & 128) burst(S.fx_hit, (float)G.p[0].pf.body.position.x, (float)G.p[0].pf.body.position.y, 0.5f);
   if (e & 64) save_progress();
+  { /* a big coin: the power chime and the save (the map counts them) */
+    static int last_medals;
+    if (G.medals != last_medals) {
+      if (G.medals & ~last_medals) sfx(SFX_POWER, 0.8f);
+      last_medals = G.medals;
+      save_progress();
+    }
+  }
   if (e & 8192) save_progress();
   if (e & 256) burst(S.fx_burst, (float)G.p[0].pf.body.position.x + 1, (float)G.p[0].pf.body.position.y + 1, 0.5f);
   if (e & 4096) {
@@ -2272,6 +2481,15 @@ static void gore_death(int who, int cause, float x, float y) {
       big = true;
       break;
     }
+    case DIE_SHELL: { /* somebody kicked that */
+      static const char *const SH[] = { "who kicked that", "that was a team shell", "i was standing right there", "five stars for the kick", "it came back" };
+      big = true;
+      burst(g_fx_blood, x, y + 0.8f, 0.8f);
+      for (int i = 0; i < 4; i++) gib(x, y + 0.9f, (float)((int)(gag_rand(70 + (uint32_t)i) % 17) - 8), 7.0f + (float)(gag_rand(80 + (uint32_t)i) % 6), 1.2f);
+      stain(x, y, 2.4f, 1.6f, 5, true, 0);
+      react(who, SH, 5);
+      break;
+    }
     case DIE_CHASER: {
       static const char *const CH[] = { "it had such a nice face", "we should have run", "i was told to run", "it is still smiling" };
       big = true;
@@ -2426,6 +2644,40 @@ static void ptext(const char *s, float x, float y, float size, cw_color c, cw_te
 }
 /* a hint of parts split by runs of five spaces, wrapped onto as many lines as it needs to fit maxw (a big text size,
  * a narrow screen): the text with '\n' between its lines in out. Returns the number of lines */
+/* the results card's awards: who got the most of something this level (a clear winner only), in the voice of the
+ * Management. Empty with one player: nobody to be compared with */
+static int top_of(const int *v) {
+  int best = -1, n = 0;
+  for (int i = 0; i < G.nplayers; i++) {
+    if (v[i] <= 0) continue;
+    if (best < 0 || v[i] > v[best]) best = i, n = 1;
+    else if (v[i] == v[best]) n++;
+  }
+  return n == 1 ? best : -1;
+}
+static void tally_awards(char *out, size_t cap) {
+  out[0] = 0;
+  if (G.nplayers < 2) return;
+  int coins[MAX_PLAYERS], trust[MAX_PLAYERS];
+  for (int i = 0; i < MAX_PLAYERS; i++) coins[i] = G.p[i].coins, trust[i] = G.betrayals[i] + G.throws[i];
+  struct { const char *what; int who; } aw[4] = { { "Employee of the level", top_of(coins) }, { "Most violent", top_of(G.stomps) },
+                                                 { "Most incidents filed", top_of(G.falls) }, { "Least trusted", top_of(trust) } };
+  size_t n = 0;
+  for (int k = 0; k < 4 && n + 48 < cap; k++)
+    if (aw[k].who >= 0) n += (size_t)snprintf(out + n, cap - n, "%s%s: %d.", n ? "   " : "", aw[k].what, aw[k].who + 1);
+}
+
+/* the hint line at the bottom of play: how to run and jump far, and the way back to the last flag */
+static const char *const HINT_FULL = "hold {run} to run, {jump} to jump: run first and jump further     hold {retry}: back to the last flag";
+static const char *const HINT_RUN = "hold {run} to run, {jump} to jump: run first and jump further";
+static const char *const HINT_RETRY = "hold {retry}: back to the last flag";
+static bool g_hint_ran, g_hint_returned; /* this session has made a far running jump; has gone back to a flag (or got to the third level) */
+static int hint_mask(void) {
+  if (G.last_jump[0] > 7.5f && G.last_jump[2] > RUN_SPEED * 0.8f) g_hint_ran = true; /* a running jump: a standing one goes about 4.5 m, a walking one about 6 */
+  if (G.returns > 0 || G.level >= 2) g_hint_returned = true;
+  return (g_hint_ran ? 0 : 1) | (g_hint_returned ? 0 : 2);
+}
+
 static int wrap_hint(const char *s, float size, float maxw, char *out, size_t cap) {
   static const char SEP[] = "     ";
   size_t n = 0;
@@ -2881,7 +3133,16 @@ static void draw_map(float W, float H) {
   {
     char lv[160];
     int shown = g_map_level < 0 ? G.level : g_map_level;
+    int mine = 0, all = 0; /* big coins: this level's, and the whole game's */
+    for (int l = 0; l < NLEVELS && l < 32; l++) {
+      int b = sv->medals[l] | (l == G.level ? G.medals : 0), n = (b & 1) + ((b >> 1) & 1) + ((b >> 2) & 1);
+      all += n;
+      if (l == shown) mine = n;
+    }
     snprintf(lv, sizeof lv, "level %d of %d: %s%s", shown + 1, NLEVELS, LEVELS[shown].name, shown != G.level ? "   ({jump} goes there)" : "");
+    char bc[96];
+    snprintf(bc, sizeof bc, "big coins: %d of 3 here, %d of %d in all", mine, all, 3 * NLEVELS);
+    text(bc, W * 0.62f, H * 0.035f + (line30 - cw_font_measure(g_font, "M", &(cw_text_style){ .size = 18 * s }).height) * 0.5f, 18 * s, cw_rgba(1, 0.85f, 0.4f, 1), CW_ALIGN_RIGHT, W * 0.36f);
     ptext(lv, 0, lv_y, 24 * s, cw_rgba(1, 0.92f, 0.7f, 1), CW_ALIGN_CENTER, W);
   }
   ptext(mhint, 0, hint_y, 16 * s, cw_rgba(0.8f, 0.85f, 1, 0.9f), CW_ALIGN_CENTER, W);
@@ -2990,6 +3251,13 @@ static void title_background(cw_shell_screen scr, cw_vec2 cv, void *user) {
     cw_r2d_circle((cw_vec2){ x, H * 0.9f }, 30 * s, 16, cw_rgba(0, 0, 0, 0.25f));
     portrait((cw_vec2){ x, y }, 26 * s, i, false);
   }
+  if (scr == CW_SHELL_PAUSE && G.nplayers) { /* the whole hint line, in pause, whatever has retired in play */
+    char hw[256];
+    wrap_hint(HINT_FULL, 16 * s, W - 40 * s, hw, sizeof hw);
+    float hh = cw_prompt_text_size(g_font, hw, -1, 16 * s).y;
+    cw_r2d_rect(cw_rect_make(0, H - hh - 26 * s, W, hh + 26 * s), cw_rgba(0.02f, 0.03f, 0.06f, 0.55f));
+    ptext(hw, 20 * s, H - hh - 13 * s, 16 * s, cw_rgba(1, 1, 1, 0.85f), CW_ALIGN_LEFT, 0);
+  }
 }
 
 /* attract mode behind the title, join and settings screens: the real world, four bots with every ability running
@@ -3039,9 +3307,8 @@ static void render(void *user, double alpha) {
     g_hud_bot = 16 * s + ph_all;
     g_mark_r = 11 * s * text_grow(15 * s);
     g_boss_top = H - 58 * s - 24 * s * text_grow(17 * s);
-    static const char *const HINT = "hold {run} to run, {jump} to jump: run first and jump further     hold {retry}: back to the last flag";
     char hint[256];
-    int hint_lines = wrap_hint(HINT, 16 * s, W - 40 * s, hint, sizeof hint);
+    int hint_lines = wrap_hint(HINT_FULL, 16 * s, W - 40 * s, hint, sizeof hint); /* the layout keeps the full line's room */
     float hint_h = cw_prompt_text_size(g_font, hint, -1, 16 * s).y;
     g_hint_top = H - 13 * s - 19 * s * text_grow(16 * s) - (hint_lines > 1 ? hint_h - hint_h / (float)hint_lines : 0);
     /* a panel per player: face, hearts, coins */
@@ -3079,6 +3346,18 @@ static void render(void *user, double alpha) {
     }
     /* chips under the panels push the words below them down by what the chips grow (nothing at 100%, where the words
      * keep their places) */
+    { /* the level's three big coins, under the chips: filled when taken in this run, ringed when taken in an earlier one */
+      const save_t *sv = cw_shell_game_save();
+      int had = G.level >= 0 && G.level < 32 ? sv->medals[G.level] : 0;
+      float my = chip_y + 30 * s * k_chip + 16 * s, mx = W - 22 * s - 9 * s;
+      if (!(G.won && !g_card_bug && chip_y > 20 * s) && !caption_over(mx - 60 * s, my - 10 * s, 70 * s, 20 * s))
+        for (int k = 2; k >= 0; k--, mx -= 24 * s) {
+          bool got = (G.medals >> k) & 1, before = (had >> k) & 1;
+          cw_r2d_circle((cw_vec2){ mx, my }, 9 * s, 16, got ? cw_rgba(1, 0.82f, 0.25f, 1) : cw_rgba(0.08f, 0.09f, 0.14f, 0.7f));
+          cw_r2d_circle_lines((cw_vec2){ mx, my }, 9 * s, 1.5f * s, 16, got || before ? cw_rgba(1, 0.9f, 0.5f, 1) : cw_rgba(0.6f, 0.62f, 0.7f, 0.7f));
+          if (got) cw_r2d_circle((cw_vec2){ mx - 3 * s, my - 3 * s }, 2.5f * s, 8, cw_rgba(1, 1, 0.85f, 0.9f));
+        }
+    }
     g_chip_x = W - 22 * s - chips + 6 * s, g_chip_bot = chip_y > 20 * s ? chip_y + 30 * s * k_chip : 0;
     if (chip_y > 20 * s) g_hud_bot += 30 * s * (k_chip - 1);
     /* the level you are on, fading in at the top when it starts */
@@ -3138,7 +3417,19 @@ static void render(void *user, double alpha) {
       if (stack) g_words_dbg[2]++;
     }
 #ifndef COOP_AUTOPILOT /* the bots play the autopilot: nobody to tell, and each host would draw its own device's glyphs into the compared frames */
-    if (!g_map_open) ptext(hint, 20 * s, g_hint_top, 16 * s, cw_rgba(1, 1, 1, 0.45f), CW_ALIGN_LEFT, 0);
+    if (!g_map_open) {
+      /* each half of the hint retires once it has been done: a running jump that went far, a return to the flag (or
+       * the third level reached without one). Both stay in the pause menu (title_background) */
+      int mask = hint_mask();
+      const char *h = mask == 3 ? HINT_FULL : mask == 1 ? HINT_RUN : mask == 2 ? HINT_RETRY : NULL;
+      if (h) {
+        char hw[256];
+        wrap_hint(h, 16 * s, W - 40 * s, hw, sizeof hw);
+        ptext(hw, 20 * s, g_hint_top, 16 * s, cw_rgba(1, 1, 1, 0.45f), CW_ALIGN_LEFT, 0);
+        g_hint_dbg[0]++;
+      }
+      g_hint_dbg[1] = mask;
+    }
 #endif
     /* players carried in bubbles: a tag each (face and RESCUE), laid out side by side from the measured text and
      * centred, so four tags never run into each other (a fixed 90 px step by player number overlapped them) */
@@ -3190,7 +3481,7 @@ static void render(void *user, double alpha) {
       snprintf(l, sizeof l, LEVELS[G.level].line, G.coins_total, G.coins_total + 1);
       {
         /* the incident report: everything that happened here, by what did it. Whoever finished it is not excused */
-        static const char *const WHAT[DIE_KINDS] = { "spikes", "lava", "gravity", "wildlife", "the management", "gardening", "health and safety", "falling objects", "a coin", "a large round colleague" };
+        static const char *const WHAT[DIE_KINDS] = { "spikes", "lava", "gravity", "wildlife", "the management", "gardening", "health and safety", "falling objects", "a coin", "a large round colleague", "a coworker's shell" };
         int n = snprintf(rp, sizeof rp, "INCIDENT REPORT: ");
         bool any = false;
         for (int c = 0; c < DIE_KINDS; c++) if (cause_counts[c] && n < 190) n += snprintf(rp + n, sizeof rp - (size_t)n, "%s%s x%d", any ? ", " : "", WHAT[c], cause_counts[c]), any = true;
@@ -3199,7 +3490,7 @@ static void render(void *user, double alpha) {
       int bet = 0, thr = 0;
       for (int i = 0; i < G.nplayers; i++) bet += G.betrayals[i], thr += G.throws[i];
       snprintf(gr, sizeof gr, "friends landed on: %d. friends thrown: %d. Nobody is keeping score. It is written here.", bet, thr);
-      snprintf(t, sizeof t, "coins %d     secrets %d     rescues %d     falls %d", G.coins_total, G.secrets, G.rescues, G.deaths);
+      snprintf(t, sizeof t, "coins %d     big coins %d of 3     secrets %d     rescues %d     falls %d", G.coins_total, (G.medals & 1) + ((G.medals >> 1) & 1) + ((G.medals >> 2) & 1), G.secrets, G.rescues, G.deaths);
       /* rows: title, report, stats, closing line, friends; their offsets from the card's top at 100% (share of H) */
       const char *row_text[5] = { title, rp, t, l, gr };
       const float row_size[5] = { 46 * s, 17 * s, 24 * s, 24 * s, 15 * s }, row_wrap[5] = { W, W * 0.84f, W, W * line_w, W * 0.84f };
@@ -3214,7 +3505,15 @@ static void render(void *user, double alpha) {
       row_y[0] = H * row_off[0];
       for (int r = 1; r < 6; r++) row_y[r] = row_y[r - 1] + H * (row_off[r] - row_off[r - 1]) + extra[r - 1];
       if (g_card_bug) row_y[5] = H * (0.645f - 0.28f);
-      float card_h = g_card_bug ? H * 0.42f : row_y[5] + H * 0.035f;
+      /* the tally under the portraits: each player's own column, then the awards (tally_rows) */
+      const float tl_size = 14 * s, tl_line = cw_font_measure(g_font, "M", &(cw_text_style){ .size = tl_size }).height * 1.1f;
+      const float aw_size = 16 * s, aw_line = cw_font_measure(g_font, "M", &(cw_text_style){ .size = aw_size, .wrap_width = W * 0.9f }).height;
+      char awards[200];
+      tally_awards(awards, sizeof awards);
+      const float aw_h = awards[0] ? cw_font_measure(g_font, awards, &(cw_text_style){ .size = aw_size, .wrap_width = W * 0.9f }).height : 0;
+      const float tally_h = g_tally_off ? 0 : 22 * s + 4 * tl_line + (awards[0] ? 8 * s + aw_h : 0);
+      (void)aw_line;
+      float card_h = g_card_bug ? H * 0.42f : row_y[5] + H * 0.035f + tally_h;
       if (card_top + card_h > H - 4 * s) card_top = fmaxf(g_hud_bot + 4 * s, H - 4 * s - card_h); /* never over the player panels */
       for (int r = 0; r < 6; r++) row_y[r] += card_top;
       panel(0, card_top, W, card_h * k, 0, cw_rgba(0.1f, 0.08f, 0.02f, card_a), cw_rgba(0.02f, 0.02f, 0.03f, card_a), cw_rgba(1, 0.8f, 0.3f, 0.7f));
@@ -3238,7 +3537,21 @@ static void render(void *user, double alpha) {
         text(t, 0, row_y[2], 24 * s, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER, W);
         g_card_dbg[0]++;
         if (row_y[5] - 15 * s * 1.75f < row_y[4] + cw_font_measure(g_font, "M", &(cw_text_style){ .size = 15 * s }).height) g_card_dbg[1]++;
-        for (int i = 0; i < G.nplayers; i++) portrait((cw_vec2){ W * 0.5f + ((float)i - (float)(G.nplayers - 1) * 0.5f) * 64 * s, row_y[5] }, 15 * s, i, false);
+        const float col = g_tally_off ? 64 * s : fminf(150 * s, W * 0.9f / (float)(G.nplayers > 0 ? G.nplayers : 1));
+        for (int i = 0; i < G.nplayers; i++) {
+          float px = W * 0.5f + ((float)i - (float)(G.nplayers - 1) * 0.5f) * col;
+          portrait((cw_vec2){ px, row_y[5] }, 15 * s, i, false);
+          if (g_tally_off) continue;
+          /* the player's own count, in the player's colour: coins, stomps, friends thrown, falls */
+          char ln[4][32];
+          snprintf(ln[0], sizeof ln[0], "coins %d", G.p[i].coins);
+          snprintf(ln[1], sizeof ln[1], "stomps %d", G.stomps[i]);
+          snprintf(ln[2], sizeof ln[2], "thrown %d", G.throws[i]);
+          snprintf(ln[3], sizeof ln[3], "falls %d", G.falls[i]);
+          for (int r = 0; r < 4; r++) text(ln[r], px - col * 0.5f, row_y[5] + 22 * s + (float)r * tl_line, tl_size, r == 0 ? rgba3(PLAYER_RGB[i], 1) : cw_rgba(0.92f, 0.92f, 0.95f, 1), CW_ALIGN_CENTER, col);
+          g_tally_dbg[0]++;
+        }
+        if (!g_tally_off && awards[0]) text(awards, W * 0.05f, row_y[5] + 22 * s + 4 * tl_line + 8 * s, aw_size, cw_rgba(1, 0.85f, 0.4f, 1), CW_ALIGN_CENTER, W * 0.9f), g_tally_dbg[1]++;
       }
     }
     if (g_map_open) { draw_map(W, H); g_map_seen_dbg = 1; }

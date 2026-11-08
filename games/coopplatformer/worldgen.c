@@ -15,6 +15,7 @@ struct gen {
   int x;     /* the cursor: next free column */
   int g;     /* surface height of the path at the cursor */
   int finale; /* how this level ends */
+  int level;  /* its index in LEVELS */
 };
 
 static uint32_t rnd(gen *G, int n) {
@@ -112,6 +113,12 @@ static void walker(gen *G, int x, int y, int range, int kind) {
   if (L->nenemies >= MAX_ENEMIES) return;
   enemy *e = &L->enemies[L->nenemies++];
   *e = (enemy){ .kind = kind, .x = (float)x + 0.5f, .y = (float)y, .home_x = (float)x + 0.5f, .range = (float)range, .hp = kind == 2 ? 9 : 1, .dir = -1, .alive = true };
+  if (kind == EK_DROPPER) { /* it hangs under the first roof over its spot, or it is a walker after all */
+    int c = y + 2;
+    while (c < y + 10 && c < WORLD_H && !world_solid(L, x, c)) c++;
+    if (c < y + 10 && c < WORLD_H) e->hang_y = (float)c - 0.95f, e->y = e->hang_y;
+    else e->kind = EK_WALKER;
+  }
 }
 static void check(gen *G) {
   level *L = G->L;
@@ -399,6 +406,7 @@ static void close_level(gen *G, int biome) {
 void world_generate(level *L, int index) {
   memset(L, 0, sizeof *L);
   gen g0 = { L, (uint32_t)index * 2654435761u + 12345u, 0, 18 };
+  g0.level = index;
   if (index < 0) index = 0;
   LEVELS[index % NLEVELS].build(&g0);
   /* a coin row laid over ground that rises under it: lifted clear, so no coin sits in rock (the control keeps them there) */
@@ -407,4 +415,23 @@ void world_generate(level *L, int index) {
       coin *c = &L->coins[k];
       while (c->y < (float)WORLD_H - 1 && world_solid(L, (int)floorf(c->x), (int)floorf(c->y))) c->y += 1.0f;
     }
+  /* the three big coins: the first secret coin there is (the room someone has to find), and in each half of the level the
+   * coin highest over its ground (over a gap, up a ledge): reach.c proves every coin reachable, these with them */
+  {
+    int pick[3] = { -1, -1, -1 };
+    for (int k = 0; k < L->ncoins && pick[0] < 0; k++) if (L->coins[k].secret) pick[0] = k;
+    for (int half = 0; half < 2; half++) {
+      float best = -1e9f;
+      for (int k = 0; k < L->ncoins; k++) {
+        const coin *c = &L->coins[k];
+        int cx = (int)floorf(c->x);
+        if (c->secret || cx < 0 || cx >= WORLD_W || (cx * 2 < L->width) != (half == 0) || k == pick[1]) continue;
+        float over = c->y - (float)(L->ground[cx] > 0 && L->ground[cx] < WORLD_H ? L->ground[cx] : 0) + 0.001f * (float)k;
+        if (over > best) best = over, pick[1 + half] = k;
+      }
+    }
+    if (pick[0] < 0) /* no secret room: the third highest goes */
+      for (int k = L->ncoins - 1; k >= 0 && pick[0] < 0; k--) if (k != pick[1] && k != pick[2] && !L->coins[k].secret) pick[0] = k;
+    for (int m = 0; m < 3; m++) if (pick[m] >= 0) L->coins[pick[m]].medal = m + 1;
+  }
 }

@@ -66,6 +66,7 @@ void sim_reset(game *g, int players) {
   g->top_speed = 0;
   g->abilities = keep_ab;
   g->coins_total = g->kills = g->deaths = g->rescues = g->secrets = 0;
+  g->medals = 0;
   g->won = 0;
   g->win_tick = 0;
   g->checkpoint = -1;
@@ -78,6 +79,8 @@ void sim_reset(game *g, int players) {
   g->things_hit = 0;
   g->fake_t = 0, g->mimic_bites = 0;
   memset(g->throws, 0, sizeof g->throws);
+  memset(g->stomps, 0, sizeof g->stomps);
+  memset(g->falls, 0, sizeof g->falls);
   g->hash = 2166136261u;
   memset(g->seen, 0, sizeof g->seen);
   world_build_physics(g);
@@ -131,6 +134,7 @@ static void hurt_player(game *g, int i, float kx, int dmg, int cause) {
 
 static void note_death(game *g, int i, int cause) {
   player *p = &g->p[i];
+  g->falls[i]++;
   p->die_cause = cause;
   if (g->ndeaths_q < 8) g->deaths_q[g->ndeaths_q++] = (typeof(g->deaths_q[0])){ (float)p->pf.body.position.x, (float)p->pf.body.position.y, i, cause };
 }
@@ -164,10 +168,83 @@ static int others_leading(const game *g, int self) {
   return n;
 }
 
+/* the four kinds each world adds (game.h EK_*): one idea each */
+static bool e_floor(const level *L, float x, float y) { return world_solid(L, (int)floorf(x), (int)floorf(y)); }
+static void e_fall(game *g, enemy *e, float dt) { /* gravity onto the ground (the walker's rule) */
+  const level *L = &g->L;
+  e->vy -= 30.0f * dt;
+  float ny = e->y + e->vy * dt;
+  if (e->vy <= 0 && e_floor(L, e->x, ny - 0.01f)) ny = floorf(ny - 0.01f) + 1.0f, e->vy = 0;
+  e->y = ny;
+  if (e->y < -2.0f) e->alive = false; /* down a pit */
+}
+static void e_walk(game *g, enemy *e, float sp, float dt, bool turn_at_edge) {
+  const level *L = &g->L;
+  float half = 0.45f, nx = e->x + (float)e->dir * sp * dt;
+  bool wall = e_floor(L, nx + (float)e->dir * half, e->y + 0.3f) || e_floor(L, nx + (float)e->dir * half, e->y + 0.8f);
+  bool edge = turn_at_edge && e->vy == 0 && !e_floor(L, nx + (float)e->dir * half, e->y - 0.2f);
+  if (wall || edge || nx > e->home_x + e->range || nx < e->home_x - e->range) e->dir = -e->dir, nx = e->x;
+  e->x = nx;
+}
+static void new_enemy_step(game *g, enemy *e, float dt) {
+  const level *L = &g->L;
+  e->t += 1;
+  switch (e->kind) {
+    case EK_HOPPER: /* walks, and hops on a beat of its own: a stomp has to be timed */
+      e_walk(g, e, 2.0f, dt, true);
+      if (e->vy == 0 && e_floor(L, e->x, e->y - 0.05f) && ((int)e->t + (int)(e->home_x * 7)) % 80 == 0) e->vy = 10.5f;
+      e_fall(g, e, dt);
+      break;
+    case EK_DROPPER:
+      if (e->state == 0) { /* hangs from the roof; anyone who walks under it gets it on the head */
+        e->y = e->hang_y;
+        for (int i = 0; i < g->nplayers; i++) {
+          const player *p = &g->p[i];
+          if (p->joined && p->alive && !p->bubble && fabsf(pos_x(p) - e->x) < 1.1f && pos_y(p) < e->y) { e->state = 1, e->t = 0, e->vy = 0; break; }
+        }
+      } else if (e->state == 1) { /* falls */
+        e_fall(g, e, dt);
+        if (e->vy == 0) e->state = 2, e->t = 0;
+      } else if (e->state == 2) { /* dazed on the floor: the moment to stomp it, then it wanders a little */
+        if (e->t > 45) e_walk(g, e, 1.2f, dt, true);
+        e_fall(g, e, dt);
+        if (e->t > 220) e->state = 3, e->t = 0;
+      } else { /* climbs back up its thread */
+        e->x += (e->home_x - e->x) * fminf(1.0f, 3.0f * dt);
+        e->y += 2.4f * dt;
+        if (e->y >= e->hang_y) e->y = e->hang_y, e->state = 0, e->t = 0;
+      }
+      break;
+    case EK_SHELL:
+      if (e->state == 0) { e_walk(g, e, 1.6f, dt, true); e_fall(g, e, dt); }
+      else if (e->state == 1) { e_fall(g, e, dt); if (e->t > 600) e->state = 0, e->t = 0; } /* it comes out again */
+      else { /* kicked: slides, bounces off walls, takes out whatever it meets, friends included */
+        float sp = 10.0f, nx = e->x + (float)e->dir * sp * dt;
+        if (e_floor(L, nx + (float)e->dir * 0.45f, e->y + 0.3f)) {
+          e->dir = -e->dir, nx = e->x;
+          if (++e->bounces >= 4) { e->alive = false; g->kills++; sim_rumble_at(g, e->x, e->y + 0.4f, 0.3f); break; }
+        }
+        e->x = nx;
+        e_fall(g, e, dt);
+        for (int k = 0; k < L->nenemies; k++) {
+          enemy *o = &g->L.enemies[k];
+          if (o == e || !o->alive || o->kind == EK_BOSS) continue;
+          if (fabsf(o->x - e->x) < 0.8f && fabsf(o->y - e->y) < 0.9f) o->alive = false, g->kills++, sim_rumble_at(g, o->x, o->y + 0.5f, 0.3f);
+        }
+      }
+      break;
+    case EK_SLIDER: /* skates its stretch fast, a spiked front first */
+      e_walk(g, e, 4.4f, dt, true);
+      e_fall(g, e, dt);
+      break;
+  }
+}
+
 static void enemy_step(game *g, enemy *e, float dt) {
   const level *L = &g->L;
   if (!e->alive) return;
   if (e->hurt > 0) e->hurt--;
+  if (e->kind >= EK_HOPPER) { new_enemy_step(g, e, dt); return; }
   float half = e->kind == 2 ? (g_boss_clip_bug ? 1.0f : boss_half(L->boss_kind)) : 0.45f;
   float h = e->kind == 2 ? 2.0f : 0.9f;
   if (e->kind == 1) { /* flyer: a slow sine around its home */
@@ -842,6 +919,7 @@ void sim_step(game *g, const input_state in[MAX_PLAYERS], float dt) {
         g->coins_total++;
         p->coins++;
         if (c->secret) g->secrets++;
+        if (c->medal) g->medals |= 1 << (c->medal - 1), p->coins += 4, g->coins_total += 4; /* a big coin is worth five */
         g->events |= EV_COIN;
       }
     }
@@ -887,8 +965,19 @@ void sim_step(game *g, const input_state in[MAX_PLAYERS], float dt) {
       if (dx < -(ew + 0.3f) || dx > ew + 0.3f) continue;
       if (py > e->y + eh + 0.2f || py + 1.5f < e->y) continue;
       bool stomp = p->pf.body.velocity.y < -1.0f && py > e->y + eh * 0.55f;
+      if (e->kind == EK_SHELL && (e->state > 0 || stomp)) { /* the shell: a stomp shuts it in, a touch kicks it, a stomp stops it */
+        if (stomp) p->pf.body.velocity.y = 11.0f, p->pf.air_jumps_left = p->pf.max_air_jumps, g->events |= EV_STOMP;
+        if (e->state == 0) { if (e->hurt == 0) e->state = 1, e->t = 0, e->hurt = 12, g->stomps[i]++, sim_rumble(g, i, 0.1f, 0.4f, 70); }
+        else if (e->state == 1) { if (e->hurt == 0) e->state = 2, e->t = 0, e->bounces = 0, e->dir = px < e->x ? 1 : -1, e->hurt = 14, sim_rumble(g, i, 0.15f, 0.5f, 80); }
+        else if (stomp) { if (e->hurt == 0) e->state = 1, e->t = 0, e->hurt = 12, g->stomps[i]++; }
+        else if (e->hurt == 0) hurt_player(g, i, dx >= 0 ? 1.0f : -1.0f, 1, DIE_SHELL);
+        continue;
+      }
+      if (e->kind == EK_SLIDER && (px - e->x) * (float)e->dir > 0.15f) stomp = false; /* its front is all spikes: from behind or nothing */
+      if (e->kind == EK_DROPPER && e->state < 2) stomp = false; /* hanging or falling: it is the one doing the landing */
       if (stomp && e->hurt == 0) {
         e->hp--;
+        g->stomps[i]++;
         e->hurt = 40;
         p->pf.body.velocity.y = 12.0f;
         p->pf.air_jumps_left = p->pf.max_air_jumps;
@@ -971,6 +1060,7 @@ void sim_step(game *g, const input_state in[MAX_PLAYERS], float dt) {
 /* holding Retry for one second sends the whole group back to the last flag it touched (the start before any): there
  * is always a way out of a pit, a wedge or a bad fall */
 void sim_return(game *g) {
+  g->returns++;
   if (g->checkpoint >= 0 && sim_warp(g, g->checkpoint)) return;
   for (int i = 0; i < g->nplayers; i++)
     if (g->p[i].joined) sim_respawn_player(g, i);

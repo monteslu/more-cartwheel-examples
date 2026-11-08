@@ -8,6 +8,7 @@
 
 #include "cartwheel/debug.h"
 #include "cartwheel/platform.h"
+#include "cartwheel/rim_light.h"
 #include "game.h"
 
 typedef struct bone {
@@ -121,9 +122,19 @@ void rig_attach(rig *r, cw_node holder) { cw_node3d_set_object(holder, r->scene)
 
 void rig_free(rig *r) {
   if (!r) return;
+  cw_rim_light_remove_tree(r->scene); /* a rim keeps its materials alive */
   t3_release(r->gltf);
   free(r);
 }
+
+static void cast_all(t3_object *o, bool cast) {
+  if (o->type == T3_SKINNED_MESH || o->type == T3_MESH) o->cast_shadow = cast;
+  for (int i = 0; i < o->child_count; i++) cast_all(o->children[i], cast);
+}
+/* whether the rig throws a sun shadow (the characters do not: a contact blob grounds them, main.c) */
+void rig_cast_shadow(rig *r, bool cast) { cast_all(r->scene, cast); }
+/* a rim light on every material of the rig (each rig has its own materials: the glTF is parsed per rig) */
+int rig_rim(rig *r, const cw_rim_light_desc *d) { return cw_rim_light_apply_tree(r->scene, d); }
 
 /* hero colours: the "fur" material takes the player colour, the scarf and the headgear its accent; headgear k is
  * shown for player k */

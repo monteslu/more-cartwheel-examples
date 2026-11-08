@@ -547,6 +547,10 @@ int world_uv_repeat(void) {
     }
   return same * 100 / n;
 }
+/* a pit's walls: how much light is left d metres under its lip (the far wall is in shade: half at the lip, nearly none by
+ * two metres), so the hole reads darker than any floor beside it */
+static bool g_pit_old; /* COOP_PIT_OLD: the flat pit box, the pit-art check's control */
+static float pit_dark(float d) { return 0.03f + 0.52f * (1.0f - sstep(0.0f, 2.0f, d)); }
 static void tile_faces(const level *L, int x, int y, mb *bs) {
   int bi = L->biome[x];
   int mt = tile_mat(L, x, y);
@@ -600,21 +604,28 @@ static void tile_faces(const level *L, int x, int y, mb *bs) {
     float uv[4][2] = { { fx / 4, 0 }, { (fx + 1) / 4, 0 }, { (fx + 1) / 4, 0.75f }, { fx / 4, 0.75f } };
     mb_quad(b, p, n, c, uv);
   }
+  /* a side wall that faces a pit goes dark with the depth under the lip, as the pit's far wall does */
+  int surf = y;
+  while (surf < WORLD_H && world_solid(L, x, surf)) surf++;
   if (x > 0 && !world_solid(L, x - 1, y)) { /* left side */
     float p[4][3] = { { fx, fy, DEPTH_BACK }, { fx, fy, DEPTH_FRONT }, { fx, fy + 1, DEPTH_FRONT }, { fx, fy + 1, DEPTH_BACK } };
     float n[3] = { -1, 0, 0 };
     float c[4][3];
     for (int i = 0; i < 4; i++) shade(c[i], cs, 0.9f);
+    if (L->ground[x - 1] == 0 && L->t[2][x - 1] != T_LAVA && !g_pit_old)
+      for (int i = 0; i < 4; i++) shade(c[i], c[i], pit_dark((float)surf - p[i][1]));
     float uv[4][2] = { { 0, fy / 4 }, { 0.75f, fy / 4 }, { 0.75f, (fy + 1) / 4 }, { 0, (fy + 1) / 4 } };
-    mb_quad(b, p, n, c, uv);
+    mb_quad(L->ground[x - 1] == 0 && L->t[2][x - 1] != T_LAVA && !g_pit_old && (mt == MT_CAVE || mt == MT_BASALT) ? &bs[MT_ROCK] : b, p, n, c, uv); /* no glowing seams down a pit */
   }
   if (x + 1 < WORLD_W && !world_solid(L, x + 1, y)) { /* right side */
     float p[4][3] = { { fx + 1, fy, DEPTH_FRONT }, { fx + 1, fy, DEPTH_BACK }, { fx + 1, fy + 1, DEPTH_BACK }, { fx + 1, fy + 1, DEPTH_FRONT } };
     float n[3] = { 1, 0, 0 };
     float c[4][3];
     for (int i = 0; i < 4; i++) shade(c[i], cs, 0.9f);
+    if (L->ground[x + 1] == 0 && L->t[2][x + 1] != T_LAVA && !g_pit_old)
+      for (int i = 0; i < 4; i++) shade(c[i], c[i], pit_dark((float)surf - p[i][1]));
     float uv[4][2] = { { 0, fy / 4 }, { 0.75f, fy / 4 }, { 0.75f, (fy + 1) / 4 }, { 0, (fy + 1) / 4 } };
-    mb_quad(b, p, n, c, uv);
+    mb_quad(L->ground[x + 1] == 0 && L->t[2][x + 1] != T_LAVA && !g_pit_old && (mt == MT_CAVE || mt == MT_BASALT) ? &bs[MT_ROCK] : b, p, n, c, uv);
   }
 }
 
@@ -691,6 +702,34 @@ static void rock_pile(mb *p, float x, float y, float z, int seed, const float *b
     float lo[3], hi[3];
     shade(lo, base, 0.55f + 0.2f * hh(seed, k, 10)), shade(hi, base, 0.95f);
     mb_ellip(p, x + (hh(seed, k, 11) - 0.5f) * 0.6f * s, y + ry * 0.45f, z + (hh(seed, k, 12) - 0.5f) * 0.4f, rx, ry, rx * 0.9f, lo, hi, 8, 5);
+  }
+}
+/* head office, frozen: what was left at the desks when the cold came. Each stands on its floor (y) at z, with a cap of
+ * snow; the water cooler's bottle glows a little (glow), the copier's panel too */
+static void office_prop(mb *p, mb *g, float x, float y, float z, int seed, int kind) {
+  float sn0[3] = { 0.78f, 0.84f, 0.95f }, sn1[3] = { 1.0f, 1.02f, 1.08f };
+  float gr0[3] = { 0.32f, 0.34f, 0.38f }, gr1[3] = { 0.55f, 0.58f, 0.62f }, bg0[3] = { 0.52f, 0.48f, 0.4f }, bg1[3] = { 0.78f, 0.74f, 0.64f };
+  float dk[3] = { 0.08f, 0.09f, 0.1f };
+  if (kind == 0) { /* a desk: a top on two pedestals, a dead monitor on it */
+    mb_box(p, x - 0.42f, y + 0.36f, z, 0.14f, 0.36f, 0.3f, gr0, gr1);
+    mb_box(p, x + 0.42f, y + 0.36f, z, 0.14f, 0.36f, 0.3f, gr0, gr1);
+    mb_box(p, x, y + 0.75f, z, 0.62f, 0.04f, 0.34f, bg0, bg1);
+    mb_box(p, x + 0.1f * (hh(seed, 1, 900) - 0.5f), y + 0.98f, z - 0.05f, 0.2f, 0.15f, 0.03f, dk, gr0);
+    mb_box(p, x, y + 0.8f, z - 0.05f, 0.05f, 0.03f, 0.05f, dk, gr0);
+    mb_box(p, x, y + 0.81f, z + 0.02f, 0.6f, 0.025f, 0.3f, sn0, sn1); /* snow on the desk */
+  } else if (kind == 1) { /* a filing cabinet, four drawers, one left open */
+    mb_box(p, x, y + 0.66f, z, 0.24f, 0.66f, 0.28f, gr0, gr1);
+    for (int d = 0; d < 4; d++) mb_box(p, x, y + 0.18f + 0.32f * (float)d, z + 0.285f + (d == 2 ? 0.18f : 0), 0.2f, 0.12f, (d == 2 ? 0.19f : 0.01f), gr1, gr1);
+    mb_box(p, x, y + 1.34f, z, 0.25f, 0.03f, 0.29f, sn0, sn1);
+  } else if (kind == 2) { /* a water cooler, its bottle frozen solid and faintly blue */
+    float bl0[3] = { 0.3f, 0.6f, 1.1f }, bl1[3] = { 0.6f, 0.9f, 1.4f };
+    mb_box(p, x, y + 0.45f, z, 0.17f, 0.45f, 0.17f, sn0, sn1);
+    mb_cone(g, x, y + 0.9f, z, 0.15f, 0.12f, 0.42f, 0, 0, 10, bl0, bl1);
+  } else { /* a copier, its panel still lit */
+    float pn0[3] = { 0.2f, 0.9f, 0.5f }, pn1[3] = { 0.4f, 1.3f, 0.8f };
+    mb_box(p, x, y + 0.45f, z, 0.42f, 0.45f, 0.32f, sn0, gr1);
+    mb_box(p, x, y + 0.94f, z, 0.4f, 0.04f, 0.3f, gr0, gr1);
+    mb_box(g, x + 0.25f, y + 0.82f, z + 0.325f, 0.1f, 0.05f, 0.005f, pn0, pn1);
   }
 }
 static void bush(mb *p, float x, float y, float z, int seed, float s) {
@@ -1074,8 +1113,8 @@ static void scatter(const level *L, int x0, int x1, mb *prop, mb *glow) {
           s = 0.7f + 0.8f * hh(x, y, 113);
           if (r < 0.1f && SEAT(fx + hh(x, y, 110), (hh(x, y, 111) > 0.5f ? 1.0f : -1.0f) * (0.7f + 0.6f * hh(x, y, 112)), 0.1f * s, 0.1f * s)) mushroom(prop, glow, px, fy, pz, seed, s);
           s = 0.6f + 0.8f * hh(x, y, 115);
-          if (r > 0.1f && r < 0.2f && SEAT(fx + 0.5f, -0.9f - 0.4f * hh(x, y, 114), 0.5f * s, 0.25f + 0.2f * s)) crystal_cluster(glow, prop, px, fy, pz, seed, s, x / 40, false);
-          if (r > 0.2f && r < 0.35f && SEAT(fx + hh(x, y, 116), -0.9f - 0.4f * hh(x, y, 117), 0.07f, 0.07f)) grass_tuft(prop, px, fy, pz, seed, 0.6f);
+          if (r > 0.1f && r < 0.26f && SEAT(fx + 0.5f, -0.9f - 0.4f * hh(x, y, 114), 0.5f * s, 0.25f + 0.2f * s)) crystal_cluster(glow, prop, px, fy, pz, seed, s, x / 40, false);
+          if (r > 0.26f && r < 0.35f && SEAT(fx + hh(x, y, 116), -0.9f - 0.4f * hh(x, y, 117), 0.07f, 0.07f)) grass_tuft(prop, px, fy, pz, seed, 0.6f);
         } else if (bi == BIOME_RUINS) {
           if (r < 0.1f && x % 2 == 0 && SEAT(fx + 0.5f, (hh(x, y, 118) > 0.5f ? 1 : -1) * 0.9f, 0.5f, 0.44f)) rock_pile(prop, px, fy, pz, seed, STONE[2], 0.8f);
           if (r > 0.1f && r < 0.3f && SEAT(fx + hh(x, y, 119), (hh(x, y, 120) > 0.5f ? 1.0f : -1.0f) * (0.5f + 0.9f * hh(x, y, 121)), 0.1f, 0.1f)) grass_tuft(prop, px, fy, pz, seed, 0.9f);
@@ -1085,6 +1124,10 @@ static void scatter(const level *L, int x0, int x1, mb *prop, mb *glow) {
           s = 0.5f + 0.7f * hh(x, y, 140);
           if (r < 0.1f && SEAT(fx + 0.5f, -0.9f - 0.3f * hh(x, y, 141), 0.55f * s, 0.3f + 0.2f * s)) crystal_cluster(glow, prop, px, fy, pz, seed, s, 1, false);
           if (r > 0.12f && r < 0.2f && x % 2 == 0 && SEAT(fx + 0.5f, (hh(x, y, 142) > 0.5f ? 1 : -1) * 0.9f, 0.5f, 0.44f)) rock_pile(prop, px, fy, pz, seed, STONE[BIOME_FROST], 0.8f);
+          /* the office furniture, at the back so nobody walks into it */
+          int ok = (int)(hh(x, y, 143) * 4.0f);
+          static const float OW[4][2] = { { 0.76f, 0.36f }, { 0.26f, 0.48f }, { 0.19f, 0.19f }, { 0.44f, 0.34f } };
+          if (r > 0.2f && r < 0.42f && x % 3 == 1 && SEAT(fx + 0.5f, -1.05f, OW[ok][0], OW[ok][1])) office_prop(prop, glow, px, fy, pz, seed, ok);
         } else {
           s = 0.8f + 0.9f * hh(x, y, 124);
           if (r < 0.07f && SEAT(fx + 0.5f, -0.9f - 0.5f * hh(x, y, 123), 0.34f * s, 0.34f * s + 0.05f)) lava_spire(prop, glow, px, fy, pz, seed, s);
@@ -1098,6 +1141,11 @@ static void scatter(const level *L, int x0, int x1, mb *prop, mb *glow) {
           if (r < 0.3f) stalactite(prop, fx + hh(x, y, 130), cy, -0.6f + 1.2f * hh(x, y, 131), seed, 0.8f + 0.8f * hh(x, y, 132));
           if (r > 0.3f && r < 0.36f) crystal_cluster(glow, prop, fx + 0.5f, cy, -0.8f, seed, 0.6f + 0.6f * hh(x, y, 133), x / 30 + 1, true);
         } else if (bi == BIOME_RUINS && r < 0.3f) vine(prop, fx + hh(x, y, 134), cy, 0.9f - 1.8f * hh(x, y, 135) , seed, 0.8f + 1.8f * hh(x, y, 136));
+        else if (bi == BIOME_FROST && r < 0.18f && x % 2 == 0) { /* a strip light, screwed to the roof, still on */
+          float h0[3] = { 0.5f, 0.52f, 0.56f }, h1[3] = { 0.7f, 0.72f, 0.76f }, l0[3] = { 1.6f, 1.7f, 1.8f };
+          mb_box(prop, fx + 0.5f, cy - 0.06f, -0.3f, 0.48f, 0.06f, 0.16f, h0, h1);
+          mb_box(glow, fx + 0.5f, cy - 0.125f, -0.3f, 0.42f, 0.006f, 0.1f, l0, l0);
+        }
         else if (bi == BIOME_VOLCANO && r < 0.2f) stalactite(prop, fx + hh(x, y, 137), cy, -0.6f + 1.2f * hh(x, y, 138), seed, 1.0f);
       }
     }
@@ -1269,6 +1317,7 @@ void world_scene_build(game *g, cw_node root) {
   memset(g_surface, 0, sizeof g_surface);
   g_ledge_unheld = 0;
   g_plain_bug = getenv("COOP_PLAIN_BUG") != NULL;
+  g_pit_old = getenv("COOP_PIT_OLD") != NULL;
   if (!g_mat[MT_ROCK]) { /* once: every level draws with the same generated materials, and a level loads without a new set */
   g_mat[MT_ROCK] = pbr(gen_rock, 1.4f, 1.0f, false, 0);
   g_mat[MT_GRASS] = pbr(gen_grass, 2.0f, 1.0f, false, 0);
@@ -1299,6 +1348,45 @@ void world_scene_build(game *g, cw_node root) {
       int top = 0;
       for (int k = x - 6; k <= x + 6; k++) if (k >= 0 && k < WORLD_W && L->ground[k] < WORLD_H && L->ground[k] > top) top = L->ground[k];
       bool lava = L->t[2][x] == T_LAVA;
+      if (!lava && !g_pit_old) {
+        /* the far wall of the hole: the ground's own strata (its texture, its loam band, its colour wash) carried on from
+         * the lip, going black over the first three metres, a root or two hanging off the lip and something left over from
+         * the last visitor; below that, black to the bottom. It reads as a cut into the ground, darker than any floor */
+        int bi = L->biome[x], mt = MT_ROCK; /* the stone texture tinted by region: the caves' and the crater's glowing seams do not run down a pit */
+        float fx = (float)x, n[3] = { 0, 0, 1 };
+        for (int r = 0; r < 4; r++) {
+          float y0 = (float)top - (float)(r + 1), y1 = (float)top - (float)r;
+          float p[4][3] = { { fx, y0, DEPTH_BACK }, { fx + 1, y0, DEPTH_BACK }, { fx + 1, y1, DEPTH_BACK }, { fx, y1, DEPTH_BACK } };
+          float c[4][3], uv[4][2];
+          for (int k = 0; k < 4; k++) {
+            float vy = p[k][1], d = (float)top - vy;
+            float base[3];
+            corner_col(L, bi, p[k][0], (float)top - 1.0f - 0.5f * d, base); /* the band under the surface, then deeper rock */
+            shade(c[k], base, pit_dark(d));
+            face_uv(p[k][0] + 0.37f, vy, mt, uv[k]);
+          }
+          mb_quad(&bs[mt], p, n, c, uv);
+        }
+        float k0[3] = { 0.004f, 0.004f, 0.006f }, mid = (float)top - 4.0f;
+        float p1[4][3] = { { fx, 0, DEPTH_BACK }, { fx + 1, 0, DEPTH_BACK }, { fx + 1, mid, DEPTH_BACK }, { fx, mid, DEPTH_BACK } };
+        float col1[4][3], uv1[4][2] = { { 0, 0 }, { 1, 0 }, { 1, 1 }, { 0, 1 } };
+        for (int k = 0; k < 4; k++) memcpy(col1[k], k0, sizeof k0);
+        mb_quad(&bs[MT_PROP], p1, n, col1, uv1);
+        /* roots off the lip in the meadow and the ruins, bones set in the strata everywhere now and then */
+        float rc0[3] = { 0.16f, 0.1f, 0.06f }, rc1[3] = { 0.3f, 0.2f, 0.12f };
+        if ((bi == BIOME_MEADOW || bi == BIOME_RUINS) && hh(x, 1, 901) < 0.7f)
+          for (int k = 0; k < 2; k++) {
+            float rx = fx + 0.2f + 0.6f * hh(x, k, 902), len = 0.5f + 1.1f * hh(x, k, 903);
+            mb_cone(&bs[MT_PROP], rx, (float)top - len, DEPTH_BACK + 0.06f, 0.012f, 0.045f, len, 0.25f * (hh(x, k, 904) - 0.5f), 0.05f, 4, rc0, rc1);
+          }
+        if (hh(x, 2, 905) < 0.22f) {
+          float bc0[3] = { 0.42f, 0.38f, 0.32f }, bc1[3] = { 0.85f, 0.8f, 0.7f };
+          float by = (float)top - 1.2f - 0.9f * hh(x, 3, 906), bx = fx + 0.5f;
+          mb_ellip(&bs[MT_PROP], bx, by + 0.1f, DEPTH_BACK + 0.04f, 0.16f, 0.13f, 0.12f, bc0, bc1, 8, 6); /* a skull, half in the wall */
+          mb_ellip(&bs[MT_PROP], bx + 0.32f, by + 0.04f, DEPTH_BACK + 0.02f, 0.22f, 0.035f, 0.035f, bc0, bc1, 6, 4); /* a long bone, in the strata */
+        }
+        continue;
+      }
       float n[3] = { 0, 0, 1 }, c0[3] = { 0.1f, 0.075f, 0.06f }, c1[3] = { 0.008f, 0.006f, 0.008f };
       if (lava) rgb(c1, 1.1f, 0.3f, 0.06f), rgb(c0, 0.06f, 0.02f, 0.02f);
       float fx = (float)x, midy = (float)top - 4.0f;

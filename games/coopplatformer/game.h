@@ -33,12 +33,13 @@ enum { BIOME_MEADOW, BIOME_CAVES, BIOME_RUINS, BIOME_FROST, BIOME_VOLCANO, BIOME
 /* what a level is made of besides tiles. Each has its rule in sim.c (things_*), its look in world.c (world_things_build) */
 enum { TH_SPRING, TH_FAN, TH_SAW, TH_PRESS, TH_FALLER, TH_CANNON, TH_PLATE, TH_DOOR, TH_CRUMBLE, TH_BOOTH, TH_MIMIC, TH_BOOM, TH_FAKE, TH_CHASER };
 /* how a player died, for the death gags (main.c): the big ones belong to the things that do them */
-enum { DIE_SPIKE, DIE_LAVA, DIE_PIT, DIE_ENEMY, DIE_BOSS, DIE_SAW, DIE_PRESS, DIE_FALLER, DIE_COIN, DIE_CHASER, DIE_KINDS };
+enum { DIE_SPIKE, DIE_LAVA, DIE_PIT, DIE_ENEMY, DIE_BOSS, DIE_SAW, DIE_PRESS, DIE_FALLER, DIE_COIN, DIE_CHASER, DIE_SHELL, DIE_KINDS };
+enum { EK_WALKER, EK_FLYER, EK_BOSS, EK_HOPPER, EK_DROPPER, EK_SHELL, EK_SLIDER, EK_KINDS };
 enum { AB_DOUBLE = 1, AB_CLAWS = 2, AB_DASH = 4 };
 enum { LAYER_WORLD = 0, LAYER_ONEWAY = 5, LAYER_PLAYER = 1 };
 
 typedef struct pickup { int x, y, ability; bool taken; } pickup;
-typedef struct coin { float x, y; bool taken; bool secret; } coin;
+typedef struct coin { float x, y; bool taken; bool secret; int medal; } coin; /* medal 1..3: one of the level's three big coins */
 typedef struct checkpoint { int x, y; } checkpoint;
 typedef struct gate { int x0, x1, need, flag; } gate; /* an ability gate: columns x0..x1 cannot be crossed without `need`; flag = the last flag before it */
 typedef struct thing {
@@ -54,9 +55,14 @@ typedef struct thing {
 typedef struct sign_t { float x, y; const char *text; bool secret; } sign_t;
 typedef struct mplat { float x0, y0, x1, y1, w; float t, speed; cw_body2d body; } mplat;
 typedef struct enemy {
-  int kind;            /* 0 walker, 1 flyer, 2 boss */
+  int kind;            /* 0 walker, 1 flyer, 2 boss, then one new idea per world: 3 hopper (meadow), 4 dropper (caves: hangs
+                        * from the roof and drops on whoever walks under), 5 shell (ruins: a stomp leaves a shell, a touch
+                        * kicks it, and it hits friends too), 6 slider (head office: skates, a spiked front, stomp it from behind) */
   float x, y, vx, vy, home_x, range;
   int hp, hurt, dir, vx0_dir;
+  int state;           /* shell: 0 walks 1 shell 2 sliding; dropper: 0 hangs 1 falls 2 on the floor 3 climbs back */
+  float t, hang_y;     /* ticks in this state; where a dropper hangs */
+  int bounces;         /* a sliding shell's wall hits (it breaks on the fourth) */
   bool alive;
   cw_mover2d m;
 } enemy;
@@ -154,6 +160,10 @@ typedef struct game {
   bool reach_changed;  /* the check opened a door: its search starts again */
   int betrayals[MAX_PLAYERS]; /* landing on a friend's head */
   int throws[MAX_PLAYERS];    /* friends thrown */
+  int medals;                 /* bits of this level's three big coins taken this match (bit k: medal k + 1) */
+  int returns;                /* times the group went back to the last flag by holding Retry (the hint line retires) */
+  int stomps[MAX_PLAYERS];    /* stomps landed on enemies and bosses, per player (the results card's tally) */
+  int falls[MAX_PLAYERS];     /* times each player died */
   int fake_t;                 /* ticks left of the level pretending to have ended */
   int mimic_bites;
   struct { float x, y; int who, cause; } deaths_q[8]; /* this tick's deaths for the renderer's gags (not in the hash) */
@@ -189,6 +199,9 @@ void rig_tint(rig *r, const float fur[3], const float scarf[3], int accessory);
 void rig_flash(rig *r, float k);
 void rig_shade(rig *r, const float k[3]);
 void rig_glow(rig *r, float k);
+void rig_cast_shadow(rig *r, bool cast);
+struct cw_rim_light_desc;
+int rig_rim(rig *r, const struct cw_rim_light_desc *d);
 void rig_pose_hero(rig *r, int anim, float ph, float t, float st, float wd, float vy);
 void rig_pose_walker(rig *r, float ph, float t, float squash);
 void rig_pose_flyer(rig *r, float ph, float t);
