@@ -445,11 +445,11 @@ static void ghost_look(tux_model *m) {
   for (int i = 0; i < n; i++) {
     t3_material *mt = mats[i];
     mt->transparent = true;
-    mt->opacity = 0.42f;
+    mt->opacity = 0.5f;
     mt->depth_write = true; /* his own far side stays hidden: one translucent shape, not a stack of spheres */
     mt->color = (t3_color){ 0.35f + mt->color.r * 0.3f, 0.6f + mt->color.g * 0.25f, 0.95f };
     mt->emissive = (t3_color){ 0.1f, 0.3f, 0.75f };
-    mt->emissive_intensity = 0.5f;
+    mt->emissive_intensity = 0.8f; /* a blue glow: he reads 40 m down the slope */
   }
   tux_set_cast_shadow(m, false);
 }
@@ -495,7 +495,7 @@ static void ghost_draw(double alpha) {
   tux_set_transform(&G.ghost_tux, at, q);
   /* he fades as he nears Tux: two penguins in one place read as one blur */
   float near = t3_vec3_length(t3_vec3_sub(gp.pos, G.phys.pos)), k = fmaxf(0, fminf(1, (near - 0.8f) / 2.2f));
-  ghost_alpha(0.42f * k * k * (3 - 2 * k));
+  ghost_alpha(0.5f * k * k * (3 - 2 * k));
   tux_pose_slide(&G.ghost_tux, gp.turn, false, 0, speed, (t3_vec3){ 0, 0, 0 }, 0);
 }
 
