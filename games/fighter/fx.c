@@ -243,23 +243,26 @@ static void beam_place(t3_mesh *m, float x0, float x1, float y, float r, float a
   m->materials[0]->color = (t3_color){ c[0] * k * a, c[1] * k * a, c[2] * k * a };
 }
 
-/* One flash budget shared by the three heavy-hit explosions and the super's: a heavy hit's explosion flashes its light only
- * if no explosion flashed in the last 24 ticks (at most 2.5 flashes a second however fast a combo lands them, inside the
- * three a second of WCAG 2.3.1 and the Harding test); within that it bursts and rings without the light. A super or a
- * knockout always flashes, and starts the wait again. fx_flash_cap 0 (test switch sw flash_cap 0): every one flashes,
+/* One flash budget shared by every blow's flash (its flash sprite, its big light, a heavy one's explosion flash) and the
+ * super's: a blow flashes only if nothing flashed in the last 24 ticks (at most 2.5 flashes a second however fast a combo
+ * lands them, inside the three a second of WCAG 2.3.1 and the Harding test); within that it sparks and rings, a heavy one
+ * bursts, without the flash. A super or a knockout always flashes, and starts the wait again. fx_flash_cap 0 (test switch sw flash_cap 0): every one flashes,
  * as before. fx_boom_every N (sw boom_every N): a heavy hit's effects every N ticks, the flash check's fast combo */
 int fx_flash_cap = 1, fx_boom_every;
 int32_t fx_flashes; /* debug fx.flashes: explosion flashes lit */
 static uint32_t flash_tick;
 static bool flash_seen;
-static bool heavy_boom(t3_vec3 p, uint32_t tick) {
+/* may a blow flash now? (and if so the wait starts again) */
+static bool flash_ok(uint32_t tick) {
+  if (fx_flash_cap && flash_seen && tick - flash_tick < 24) return false;
+  flash_tick = tick; flash_seen = true; fx_flashes++;
+  return true;
+}
+static void heavy_boom(t3_vec3 p, bool lit) {
   cw_node b = FX.hboom[FX.hbi++ % 3];
-  bool lit = !fx_flash_cap || !flash_seen || tick - flash_tick >= 24;
   cw_node_set(b, "flash_energy", cw_val_float(lit ? 35 : 0));
-  if (lit) { flash_tick = tick; flash_seen = true; fx_flashes++; }
   cw_node3d_set_position(b, p);
   cw_explosion_fire(b);
-  return lit;
 }
 static void super_boom(float x, uint32_t tick) {
   flash_tick = tick; flash_seen = true; fx_flashes++;
@@ -316,10 +319,13 @@ void fx_event(const ft_game *g, const ft_event *e) {
     }
     /* power: 0 light, 1 medium, 2 strong (by damage), 3 and up a knockdown or a launcher */
     bool big = e->power >= 3, light_hit = e->power == 0;
+    /* the flash of a blow (its flash sprite, its big light, a heavy one's explosion flash) is in the shared budget: in a
+     * fast combo only one blow in 24 ticks flashes, the rest spark without it */
+    bool lit = !light_hit && flash_ok(g->tick);
     int r = FX.ri++ % 4;
-    if (light_hit) {
+    if (light_hit || !lit) {
       at(FX.lsparks[FX.lsi++ % 3], p);
-      cw_node_set(FX.ring[r], "amount", cw_val_int(6));
+      cw_node_set(FX.ring[r], "amount", cw_val_int(light_hit ? 6 : 10));
     } else {
       int i = FX.si++ % 4;
       cw_node_set(FX.sparks[i], "amount", cw_val_int(big ? 48 : e->power >= 2 ? 34 : 24));
@@ -329,8 +335,8 @@ void fx_event(const ft_game *g, const ft_event *e) {
     }
     at(FX.ring[r], p);
     if (big) at(FX.embers[FX.emi++ % 2], p);
-    bool lit = big && heavy_boom(p, g->tick); /* a heavy blow's big light shares the explosions' flash budget */
-    light(p, lit ? 90 : light_hit ? 26 : 50, 1, light_hit ? 0.9f : 0.75f, light_hit ? 0.7f : 0.4f);
+    if (big) heavy_boom(p, lit);
+    light(p, !lit ? 26 : big ? 90 : 50, 1, lit ? 0.75f : 0.9f, lit ? 0.4f : 0.7f);
     /* the one hit: short and sharp on the light motor, a heavy hit (a launcher, a knockdown) with some weight under it */
     rumble(who, big ? 0.35f : 0.05f + 0.03f * k, big ? 0.85f : 0.35f + 0.1f * k, big ? 140 : 70 + 15 * (int)k);
     rumble(other, big ? 0.15f : 0, big ? 0.5f : 0.2f + 0.06f * k, big ? 80 : 50);
