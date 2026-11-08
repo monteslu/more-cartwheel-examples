@@ -20,7 +20,8 @@ static const char *const STAGE_NAME[STAGES] = { "Rooftop Dusk", "Neon Alley", "D
 static const char *const MUSIC[STAGES] = { "audio/music_dusk.ogg", "audio/music_neon.ogg", "audio/music_dojo.ogg" };
 static const char *const DIFF_NAME[3] = { "Easy", "Normal", "Hard" };
 static const char *const ROLE[4] = { "All-rounder", "Heavy grappler", "Fast, light hands", "Zoner, long legs" };
-static const float FCOL[4][3] = { { 0.9f, 0.25f, 0.2f }, { 0.95f, 0.55f, 0.1f }, { 0.15f, 0.85f, 0.95f }, { 0.4f, 0.9f, 0.4f } };
+const float FIGHTER_COL[4][3] = { { 0.9f, 0.25f, 0.2f }, { 0.95f, 0.55f, 0.1f }, { 0.15f, 0.85f, 0.95f }, { 0.4f, 0.9f, 0.4f } };
+#define FCOL FIGHTER_COL
 
 typedef struct save_t { uint32_t magic; int32_t wins[4], matches; } save_t;
 
@@ -31,6 +32,11 @@ static struct {
   /* the computer's level: a session opens on Easy and steps up to Normal after the first win against it, until the
    * player picks a level themselves (diff_picked). stepped_up: the result screen says so */
   int diff_picked, stepped_up;
+  /* arcade (one player): the three other fighters on the three stages, then the mirror match a level up. arc_step is the
+   * fight being played (0..3), arc_clear set when the fourth is won */
+  int arcade, arc_step, arc_clear, arc_lost, arc_stage0;
+  int32_t d_arc[4]; /* debug arcade: mode on, fights won, cleared, the fighters faced (a bit each; the mirror is bit 4) */
+  int sw_cpu_hp;    /* test switch (sw cpu_hp 1): the computer starts every round on 1 life (the arcade gate wins quickly) */
   int sel[2], ready[2], sel_stage;
   /* a seat that does not lock in: ticks the other side has waited since it locked in, the sides the computer plays for
    * that reason, and the test switch (sw seat_wait 1) that waits for ever, as the select screen once did */
@@ -60,11 +66,14 @@ static struct {
   /* player 1 movement counters for the F-PT3 gates: walk frames, takeoffs, forward takeoffs, back takeoffs, high
    * normals started, low normals started, crouch frames, dashes, the highest jump (mm), jump attacks */
   int32_t d_ctl[10];
-  uint32_t d_hash;
+  uint32_t d_hash, d_end_hash;
+  int32_t d_slow, d_tense;
+  int no_slowmo; /* FIGHTER_NO_SLOWMO (test builds): the knockout at full speed, as before (the slow-motion gate's control) */
   float d_cam[3], d_spring;
 } G;
 
 static save_t *SAVE;
+static float hash01(uint32_t x) { x ^= x >> 16; x *= 0x7feb352dU; x ^= x >> 15; x *= 0x846ca68bU; x ^= x >> 16; return (float)(x & 0xffff) / 65535.0f; }
 
 /* ── sound ──────────────────────────────────────────────────────────── */
 
@@ -224,6 +233,7 @@ static void begin_match(void) {
   G.sim.cpu[1] = G.players < 2 || G.training == 2;
   G.sim.cpu_level[0] = 1;
   G.sim.cpu_level[1] = (uint8_t)G.difficulty;
+  if (G.arcade && G.players < 2) G.sim.cpu_level[1] = (uint8_t)(G.arc_step == 3 ? (G.difficulty < 2 ? G.difficulty + 1 : 2) : G.difficulty); /* the mirror match: a level up */
   for (int p = 0; p < 2; p++) if (G.cpu_seat[p]) { G.sim.cpu[p] = true; G.sim.cpu_level[p] = (uint8_t)G.difficulty; } /* a seat nobody chose for */
   int d0 = G.sel[0], d1 = G.sel[1];
 #ifdef FIGHTER_AUTOPILOT
@@ -232,6 +242,7 @@ static void begin_match(void) {
 #endif
   ft_game_start(&G.sim, &G.roster, d0, d1);
   memset(&ft_stat, 0, sizeof ft_stat);
+  if (G.arcade && G.players < 2) G.d_arc[3] |= 1 << (G.arc_step == 3 ? 4 : d1);
   G.sim.rng = 12345u + (uint32_t)(d0 * 31 + d1 * 7 + G.sel_stage);
   load_match();
   G.state = GS_MATCH;
@@ -294,6 +305,19 @@ static bool select_touched(int p) {
 enum { SEAT_WAIT = 60 * 12, SEAT_WARN = 60 * 6 };
 static int seat_waiting(void) { return G.players > 1 && G.ready[0] != G.ready[1] ? (G.ready[0] ? 1 : 0) : -1; }
 
+/* the arcade's fight k: the other three fighters in turn from the one after yours, then your own fighter (the mirror),
+ * each on the next stage from the one chosen */
+static void arcade_setup(int k) {
+  G.arc_step = k;
+  G.sel[1] = k < 3 ? (G.sel[0] + 1 + k) % G.roster.n : G.sel[0];
+  G.sel_stage = (G.arc_stage0 + k) % STAGES;
+}
+/* the mode the punch button turns through on the select screen: versus, arcade (one player), training */
+static void next_mode(void) {
+  int m = G.training ? 2 : G.arcade ? 1 : 0;
+  do m = (m + 1) % 3; while (m == 1 && G.players > 1);
+  G.training = m == 2; G.arcade = m == 1;
+}
 static void update_select(void) {
   for (int p = 0; p < G.players && p < 2; p++) {
     if (G.ready[p]) {
@@ -304,7 +328,9 @@ static void update_select(void) {
     if (p == 0) {
       if (cw_action_just_pressed(0, G.a_up)) { G.sel_stage = (G.sel_stage + STAGES - 1) % STAGES; sfx(SFX_LAND, 0.4f, 1.3f); }
       if (cw_action_just_pressed(0, G.a_down)) { G.sel_stage = (G.sel_stage + 1) % STAGES; sfx(SFX_LAND, 0.4f, 1.3f); }
-      if (cw_action_just_pressed(0, G.a_p)) { G.training = (G.training + 1) % 2; sfx(SFX_BELL, 0.3f, 1.2f); }
+      if (cw_action_just_pressed(0, G.a_p)) { next_mode(); sfx(SFX_BELL, 0.3f, 1.2f); }
+      /* random: the cursor jumps to a fighter picked from the clock (any other than the one it is on) */
+      if (cw_action_just_pressed(0, G.a_pk)) { G.sel[0] = (G.sel[0] + 1 + (int)(hash01(G.sim.tick * 2654435761u) * 2.999f)) % G.roster.n; sfx(SFX_LAND, 0.4f, 1.6f); }
       if (back_out(0) && G.players < 2) { G.difficulty = (G.difficulty + 1) % 3; G.diff_picked = 1; sfx(SFX_BELL, 0.3f, 1.0f); }
     }
     if (confirm(p)) { G.ready[p] = 1; sfx(SFX_ROUND, 0.6f, 1.0f); }
@@ -319,6 +345,8 @@ static void update_select(void) {
       /* the computer picks someone else, by a fixed rule so a replay agrees */
       G.sel[1] = (G.sel[0] + 1 + (G.difficulty + G.sel_stage) % (G.roster.n - 1)) % G.roster.n;
     }
+    if (G.players > 1) G.arcade = 0;
+    if (G.arcade) { G.arc_clear = G.arc_lost = 0; G.arc_stage0 = G.sel_stage; G.d_arc[3] = 0; arcade_setup(0); }
     begin_match();
   }
 }
@@ -373,8 +401,10 @@ static void fixed(void *u, double dt) {
   }
   if (G.state == GS_RESULT) {
     G.result_t++;
-    if (G.result_t > 40 && confirm(0)) begin_match();
-    else if (G.result_t > 40 && back_out(0)) { G.state = GS_SELECT; seats_reset(); shown_sel[0] = -1; }
+    if (G.result_t > 40 && confirm(0)) {
+      if (G.arcade && G.arc_clear) { G.state = GS_SELECT; seats_reset(); shown_sel[0] = -1; } /* the ladder is done */
+      else { if (G.arcade) arcade_setup(G.arc_step); begin_match(); } /* the next fight, or this one again */
+    } else if (G.result_t > 40 && back_out(0)) { G.state = GS_SELECT; seats_reset(); shown_sel[0] = -1; }
 #if defined(FIGHTER_AUTOPILOT)
     if (G.result_t > 200 && !g_hold) { G.sel_stage = (G.sel_stage + 1) % STAGES; G.sel[0] = (G.sel[0] + 1) % 4; G.sel[1] = (G.sel[1] + 1) % 4; begin_match(); }
 #endif
@@ -388,7 +418,17 @@ static void fixed(void *u, double dt) {
     if (cw_action_just_pressed(0, G.tr_mode)) { G.state = GS_SELECT; seats_reset(); shown_sel[0] = -1; return; }
   }
   ft_input in[2] = { read_pad(0), G.players > 1 ? read_pad(1) : (ft_input){ 0 } };
+  /* the knockout that decides the match plays at half speed for its first 50 ticks: the sim simply takes every other
+   * fixed tick off (nothing is read or decided during a knockout, so the match comes out the same tick for tick, only
+   * later; ko.slow counts the ticks held, ko.end_hash is the sim at the match's end) */
+  {
+    const ft_game *g = &G.sim;
+    bool deciding = (g->f[0].wins == 1 && g->f[1].hp <= 0) || (g->f[1].wins == 1 && g->f[0].hp <= 0);
+    static int odd;
+    if (g->phase == P_KO && g->phase_t < 50 && deciding && !G.training && !G.no_slowmo && (odd ^= 1)) { G.d_slow++; return; }
+  }
   uint8_t was = G.sim.f[0].state, was_mv = G.sim.f[0].mv;
+  if (G.sw_cpu_hp > 0 && G.sim.phase == P_INTRO) for (int i = 0; i < 2; i++) if (G.sim.cpu[i] && !G.sim.cpu[1 - i] && G.sim.f[i].hp > G.sw_cpu_hp) G.sim.f[i].hp = (int16_t)G.sw_cpu_hp;
   ft_step(&G.sim, in);
   {
     const ft_fighter *f = &G.sim.f[0];
@@ -405,6 +445,7 @@ static void fixed(void *u, double dt) {
   }
   if (G.sim.phase == P_MATCH_END) {
     G.state = GS_RESULT;
+    G.d_end_hash = ft_hash(&G.sim);
     if (G.sim.match_winner >= 0) model_set_showcase(G.mdl[G.sim.match_winner], 0.9f);
     else for (int i = 0; i < 2; i++) model_set_showcase(G.mdl[i], 0.9f);
     G.result_t = 0;
@@ -412,10 +453,16 @@ static void fixed(void *u, double dt) {
     /* the first win against the easy computer: the next match is on Normal (the player can still pick Easy) */
     G.stepped_up = 0;
     int w = G.sim.match_winner;
-    if (w >= 0 && !G.sim.cpu[w] && G.sim.cpu[1 - w] && !G.training && !G.diff_picked && G.difficulty == 0) { G.difficulty = 1; G.stepped_up = 1; }
+    if (w >= 0 && !G.sim.cpu[w] && G.sim.cpu[1 - w] && !G.training && !G.arcade && !G.diff_picked && G.difficulty == 0) { G.difficulty = 1; G.stepped_up = 1; }
+    /* arcade: a win moves up the ladder (the fourth clears it); a loss stays on this fight */
+    if (G.arcade && G.players < 2) {
+      G.arc_lost = w != 0;
+      if (w == 0) { if (G.arc_step == 3) G.arc_clear = 1; else G.arc_step++; }
+    }
   }
   /* debug state */
   const ft_game *g = &G.sim;
+  G.d_arc[0] = G.arcade; G.d_arc[1] = G.arc_step + G.arc_clear; G.d_arc[2] = G.arc_clear;
   G.d_state = G.state; G.d_phase = g->phase; G.d_round = g->round_no; G.d_hash = ft_hash(g); G.d_combo = g->f[1].combo_hits > g->f[0].combo_hits ? g->f[1].combo_hits : g->f[0].combo_hits;
   G.d_adv = g->adv_valid ? g->adv : 0;
   for (int i = 0; i < 2; i++) {
@@ -430,7 +477,6 @@ static void fixed(void *u, double dt) {
 
 /* ── render-rate: poses, camera, effects, sound ─────────────────────── */
 
-static float hash01(uint32_t x) { x ^= x >> 16; x *= 0x7feb352dU; x ^= x >> 15; x *= 0x846ca68bU; x ^= x >> 16; return (float)(x & 0xffff) / 65535.0f; }
 
 static void sound_events(void) {
   const ft_game *g = &G.sim;
@@ -489,6 +535,22 @@ static void offsetgate(t3_vec3 pos, t3_vec3 tgt) {
   if (off > 1e-4f) cam_offset[1]++;
   if ((int32_t)(off * 1e4f) > cam_offset[2]) cam_offset[2] = (int32_t)(off * 1e4f);
 }
+/* A super winding up: from its first frame through its startup the camera moves in on the attacker (the framing's
+ * points and distance change; cw_frame_follow's spring carries the move, so it glides in and back out, never a cut or
+ * a jolt) and their rim light takes their colour (stage.c). The weight eases in over 8 frames and out over 20 once the
+ * super is out. Render only: it reads the sim, nothing in the sim reads it. */
+int super_cine_who = -1;
+float super_cine_w;
+static void super_cine(float dt) {
+  const ft_game *g = &G.sim;
+  int who = -1;
+  for (int i = 0; i < 2; i++) {
+    const ft_fighter *f = &g->f[i];
+    if (G.state == GS_MATCH && f->state == S_ATTACK && f->mv == M_SUPER && f->t <= g->roster->d[f->def].mv[M_SUPER].su) who = i;
+  }
+  if (who >= 0) { super_cine_who = who; super_cine_w = fminf(1, super_cine_w + dt * 60.0f / 8.0f); }
+  else { super_cine_w = fmaxf(0, super_cine_w - dt * 60.0f / 20.0f); if (super_cine_w <= 0) super_cine_who = -1; }
+}
 static void update_camera(float dt, float aspect) {
   if (!cw_node_valid(G.camera)) return;
   const ft_game *g = &G.sim;
@@ -532,6 +594,13 @@ static void update_camera(float dt, float aspect) {
     p.min_dist = w >= 0 ? 2.4f : 2.6f; p.margin = 0.02f; p.yaw = w >= 0 ? (g->f[w].facing > 0 ? 0.35f : -0.35f) : 0;
     stage_set_showcase(true);
   } else stage_set_showcase(false);
+  if (super_cine_who >= 0 && G.state == GS_MATCH && g_cam[0] <= 0) {
+    /* the super: the attacker's upper body fills more of the picture, the other fighter still in it */
+    float w = super_cine_w, ax = (float)g->f[super_cine_who].x / 1000.0f;
+    pts[super_cine_who] = (cw_frame_point){ ax, 1.25f + (float)g->f[super_cine_who].y / 1000.0f, 0, 0.8f - 0.25f * w };
+    p.min_dist = 5.4f - 2.0f * w;
+    p.yaw = 0.22f * w * (float)g->f[super_cine_who].facing;
+  }
   if (g_cam[0] > 0) {
     int who = (int)g_cam[1];
     if (who < 2) { pts[0] = (cw_frame_point){ (float)g->f[who].x / 1000.0f, 1.25f + (float)g->f[who].y / 1000.0f, 0, 0.55f }; npts = 1; }
@@ -595,7 +664,21 @@ static void update(void *u, double dtd) {
   if (sc != CW_SHELL_PLAY) fx_rumble_stop(); /* the menus and pause: the motors stop */
   if (sc != CW_SHELL_PLAY && sc != CW_SHELL_TITLE && sc != CW_SHELL_JOIN) return;
   pool_frame();
+  /* a deciding round (a knockout ends the match) with a fighter under a quarter of their life: the music lifts a
+   * semitone and comes up, and eases back when the round is over */
+  if (!CW_HANDLE_IS_NULL(G.music_voice)) {
+    const ft_game *g = &G.sim;
+    bool tense = false;
+    if (G.state == GS_MATCH && !g->training && (g->f[0].wins == 1 || g->f[1].wins == 1) && (g->phase == P_FIGHT || g->phase == P_KO))
+      for (int i = 0; i < 2; i++) tense |= g->f[i].hp * 4 < g->roster->d[g->f[i].def].hp;
+    static float lift;
+    lift += ((tense ? 1.0f : 0.0f) - lift) * (1 - cw_exp(-dt * 1.5f));
+    G.d_tense = tense;
+    cw_voice_set_pitch(G.music_voice, 1.0f + 0.0595f * lift);
+    cw_voice_set_volume(G.music_voice, 0.55f + 0.2f * lift);
+  }
   for (int i = 0; i < 2; i++) model_pose(G.mdl[i], &G.sim, i, dt);
+  super_cine(dt);
   G.d_spring = model_spring_speed(G.mdl[0]) + model_spring_speed(G.mdl[1]);
   stage_frame(&G.sim, dt);
   fx_frame(&G.sim, dt);
@@ -931,10 +1014,10 @@ static void draw_select(float W, float H, float s) {
    * then the walking hint and the specials share the bottom slot with the button hint, a few seconds each (below) */
   static const char *const MOVE_HINT = "Hold {mv_left|mv_right}: walk     {mv_up}: jump (up-forward, up-back)     Hold {mv_down}: crouch     Tap twice: dash";
   static const char *const BTN_HINT = "Punch {atk_p}   Kick {atk_k}   Block {atk_g}   Up + button (together): high   Down + button: low   Punch + kick, or {atk_pk}: throw";
-  static const char *const NAV_HINT = "{mv_left|mv_right} fighter     {atk_k} or {ui_start} lock in     {atk_g} back out (two players) or computer level     {ui_quit} title";
+  static const char *const NAV_HINT = "{mv_left|mv_right} fighter     {atk_pk} random     {atk_k} or {ui_start} lock in     {atk_g} back out (two players) or computer level     {ui_quit} title";
   char stage[160], mode[160], move[320], btn[320], nav[320];
   snprintf(stage, sizeof stage, "Stage: %s   ({mv_up|mv_down})", STAGE_NAME[G.sel_stage]);
-  snprintf(mode, sizeof mode, "Mode: %s   ({atk_p})", G.training ? "Training" : G.players > 1 ? "Versus" : "Versus the computer");
+  snprintf(mode, sizeof mode, "Mode: %s   ({atk_p})", G.training ? "Training" : G.players > 1 ? "Versus" : G.arcade ? "Arcade, four fights" : "Versus the computer");
   if (G.players < 2) { size_t l = strlen(mode); snprintf(mode + l, sizeof mode - l, "      Computer: %s   ({atk_g})", DIFF_NAME[G.difficulty]); }
   const float maxw = W - 24 * s;
   wrap_parts(G.font_ui, MOVE_HINT, "     ", -1, 16 * s, maxw, move, sizeof move);
@@ -1073,8 +1156,12 @@ static void draw_result(float W, float H, float s) {
   /* the winner's face fills the middle (update_camera); the words sit in bands above and below it, each band as tall
    * as its words (the player's text size grows them; the hint wraps to the screen) */
   const ft_game *g = &G.sim;
-  char hint[256];
-  wrap_parts(G.font_ui, "{atk_k} or {ui_start} rematch      {atk_g} back to fighter select", "      ", -1, 22 * s, W - 32 * s, hint, sizeof hint);
+  char hint[256], raw[200];
+  if (G.arcade && G.arc_clear) snprintf(raw, sizeof raw, "{atk_k} or {ui_start} back to fighter select");
+  else if (G.arcade && G.arc_lost) snprintf(raw, sizeof raw, "{atk_k} or {ui_start} try again      {atk_g} back to fighter select");
+  else if (G.arcade) snprintf(raw, sizeof raw, "{atk_k} or {ui_start} next fight: %s%s      {atk_g} back to fighter select", G.arc_step == 3 ? "the mirror, " : "", G.roster.d[G.arc_step < 3 ? (G.sel[0] + 1 + G.arc_step) % G.roster.n : G.sel[0]].name);
+  else snprintf(raw, sizeof raw, "{atk_k} or {ui_start} rematch      {atk_g} back to fighter select");
+  wrap_parts(G.font_ui, raw, "      ", -1, 22 * s, W - 32 * s, hint, sizeof hint);
   float hh = cw_prompt_text_size(G.font_ui, hint, -1, 22 * s).y, hy = H - 50 * s + cw_prompt_text_size(G.font_ui, "M", -1, 22 * s).y / grow(G.font_ui, 22 * s) - hh; /* its last line ends where a line at 100% always did */
   float top = fmaxf(120 * s, 78 * s + 36 * s * grow(G.font_bold, 30 * s) + 6 * s), bot = fmaxf(70 * s, H - hy + 20 * s);
   cw_r2d_rect(cw_rect_make(0, 0, W, top), rgba(0.02f, 0.02f, 0.04f, 0.6f));
@@ -1085,6 +1172,13 @@ static void draw_result(float W, float H, float s) {
   text(G.font_score, b, W * 0.5f, 14 * s, 60 * s, rgba(1, 0.9f, 0.4f, 1), CW_ALIGN_CENTER);
   snprintf(b, sizeof b, "%d - %d", g->f[0].wins, g->f[1].wins);
   text(G.font_bold, b, W * 0.5f, 14 * s + 64 * s * grow(G.font_score, 60 * s), 30 * s, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
+  if (G.arcade) {
+    char a[64];
+    if (G.arc_clear) snprintf(a, sizeof a, "ARCADE CLEAR");
+    else snprintf(a, sizeof a, "Arcade: fight %d of 4 %s", G.arc_step + (G.arc_lost ? 1 : 0), G.arc_lost ? "lost" : "won");
+    if (!G.arc_lost && !G.arc_clear) snprintf(a, sizeof a, "Arcade: %d of 4 won", G.arc_step);
+    text(G.font_bold, a, W * 0.5f, H - bot - 40 * s * grow(G.font_bold, 26 * s), 26 * s, G.arc_clear ? rgba(1, 0.85f, 0.3f, 1) : rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
+  }
   if (G.stepped_up) text(G.font_ui, "The computer steps up to Normal", W * 0.5f, H - bot - 34 * s * grow(G.font_ui, 20 * s), 20 * s, rgba(1, 0.85f, 0.45f, 1), CW_ALIGN_CENTER);
   ptext(G.font_ui, hint, -1, W * 0.5f, hy, 22 * s, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
 }
@@ -1178,22 +1272,26 @@ static void cmd_bind(int argc, const char **argv, cw_reply *r) {
   cw_reply_printf(r, "ok");
 }
 
-/* the gates' switch: sw seat_wait 1 waits for ever for a seat that never locks in (the control of tests/fighter-idle-seat.mjs) */
+/* the gates' switches: sw seat_wait 1 waits for ever for a seat that never locks in (the control of
+ * tests/fighter-idle-seat.mjs); sw crowd_sync 1 is the crowd as it was, every spectator answering an event at once */
 static void cmd_sw(int argc, const char **argv, cw_reply *r) {
-  if (argc < 3 || strcmp(argv[1], "seat_wait")) { cw_reply_error(r, "usage: sw seat_wait <0|1>"); return; }
-  G.sw_seat_wait = atoi(argv[2]) != 0;
-  cw_reply_printf(r, "{\"seat_wait\":%d}", G.sw_seat_wait);
+  if (argc >= 3 && !strcmp(argv[1], "seat_wait")) { G.sw_seat_wait = atoi(argv[2]) != 0; cw_reply_printf(r, "{\"seat_wait\":%d}", G.sw_seat_wait); return; }
+  if (argc >= 3 && !strcmp(argv[1], "cpu_hp")) { G.sw_cpu_hp = atoi(argv[2]); cw_reply_printf(r, "{\"cpu_hp\":%d}", G.sw_cpu_hp); return; }
+  if (argc >= 3 && !strcmp(argv[1], "crowd_sync")) { crowd_sync = atoi(argv[2]) != 0; crowd_same_max = 0; cw_reply_printf(r, "{\"crowd_sync\":%d}", crowd_sync); return; }
+  cw_reply_error(r, "usage: sw seat_wait <0|1> | sw crowd_sync <0|1> | sw cpu_hp <n>");
 }
 
 static void init(void *u) {
   (void)u;
-  cw_debug_command("sw", "sw seat_wait <0|1>: test switch (the select screen waits for ever for a seat that never locks in, as before)", cmd_sw);
+  cw_debug_command("sw", "sw seat_wait <0|1> | crowd_sync <0|1> | cpu_hp <n>: test switches (the select screen waits for ever for a seat that never locks in, as before; the crowd answers every event at once, as before; the computer starts each round on n life)", cmd_sw);
 #if defined(FIGHTER_AUTOPILOT) || defined(FIGHTER_SCRIPTED)
   cw_debug_command("cam", "cam <zoom> [who 0|1|2] [yaw]: close-up camera (zoom 0: normal)", cmd_cam);
   cw_debug_command("match", "match <stage 0-2> [p1] [p2]: start a match on a stage", cmd_match);
   cw_debug_command("bind", "bind <action> <bindings>: replace an action's bindings", cmd_bind);
   cw_debug_command("screen", "screen select <p1> <p2> <stage> | result <winner> | off: hold a menu screen", cmd_screen);
   { const char *e = getenv("FIGHTER_CAM"); if (e) sscanf(e, "%f %f %f", &g_cam[0], &g_cam[1], &g_cam[2]); }
+  G.no_slowmo = getenv("FIGHTER_NO_SLOWMO") != NULL;
+  crowd_sync = getenv("FIGHTER_CROWD_SYNC") != NULL;
 #endif
   cw_input_load_bindings_asset("input.cfg");
   cw_input_commit_defaults();
@@ -1251,6 +1349,9 @@ static void init(void *u) {
   cw_debug_u32("tex.hash", &tex_hash); cw_debug_f32_array("cam.pos", G.d_cam, 3); cw_debug_f32("fighter.spring", &G.d_spring);
   cw_debug_field("cam.offset", cam_offset, CW_DBG_I32, 3);
   cw_debug_field("rumble.sent", fx_rumble_sent, CW_DBG_I32, 2);
+  cw_debug_i32("crowd.same", &crowd_same_max);
+  cw_debug_field("arcade", G.d_arc, CW_DBG_I32, 4);
+  cw_debug_i32("ko.slow", &G.d_slow); cw_debug_i32("music.tense", &G.d_tense); cw_debug_u32("ko.end_hash", &G.d_end_hash);
 #if defined(FIGHTER_AUTOPILOT) || defined(FIGHTER_SCRIPTED)
   cw_shell_start(2);
 #endif

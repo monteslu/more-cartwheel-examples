@@ -17,7 +17,7 @@ typedef struct stage_light { cw_node n; int kind; float score; bool shown; } sta
 static struct {
   int stage;
   cw_node node, rim[2], neon[4], key[2], fill;
-  float rim_e[2];
+  float rim_e[2], rim_c[2][3];
   float neon_e[4];
   t3_gltf *gltf;
   anim_part part[MAXPART];
@@ -100,6 +100,8 @@ void stage_load(int stage, cw_node parent) {
     snprintf(nm, sizeof nm, "Rim%d", i); S.rim[i] = cw_node_get(parent, nm);
     cw_value v = { 0 };
     S.rim_e[i] = cw_node_valid(S.rim[i]) && cw_node_get_prop(S.rim[i], "energy", &v) ? (float)v.f : 0;
+    S.rim_c[i][0] = S.rim_c[i][1] = S.rim_c[i][2] = 1;
+    if (cw_node_valid(S.rim[i]) && cw_node_get_prop(S.rim[i], "color", &v)) { S.rim_c[i][0] = v.v[0]; S.rim_c[i][1] = v.v[1]; S.rim_c[i][2] = v.v[2]; }
     snprintf(nm, sizeof nm, "Key%d", i); S.key[i] = cw_node_get(parent, nm);
   }
   S.fill = cw_node_get(parent, "Fill0");
@@ -208,7 +210,11 @@ void stage_frame(const ft_game *g, float dt) {
       if (cw_node_valid(S.key[i])) { cw_node3d_set_position(S.key[i], (t3_vec3){ fx + fc * 1.5f, 2.55f, 1.1f }); cw_node_set(S.key[i], "energy", cw_val_float(9.0f)); }
     } else {
       cw_node3d_set_position(S.rim[i], (t3_vec3){ fx - fc * 0.35f, 2.3f + (float)f->y / 1000.0f, -1.7f });
-      cw_node_set(S.rim[i], "energy", cw_val_float(S.rim_e[i]));
+      /* a super winding up: the attacker's rim swells to three times and takes their colour, then settles back */
+      float w = super_cine_who == i ? super_cine_w : 0;
+      const float *c = FIGHTER_COL[f->def & 3];
+      cw_node_set(S.rim[i], "energy", cw_val_float(S.rim_e[i] * (1 + 2.0f * w)));
+      cw_node_set(S.rim[i], "color", cw_val_color(S.rim_c[i][0] + (c[0] - S.rim_c[i][0]) * w, S.rim_c[i][1] + (c[1] - S.rim_c[i][1]) * w, S.rim_c[i][2] + (c[2] - S.rim_c[i][2]) * w, 1));
       if (cw_node_valid(S.key[i])) cw_node_set(S.key[i], "energy", cw_val_float(0));
     }
   }

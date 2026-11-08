@@ -2,10 +2,14 @@
  * feeds the rules. GPU particles simulate on the tree's fixed step from hashed
  * seeds, so every host draws the same effects.
  *
- *   hit      a flash light, one short soft flash, a burst of hot streaking sparks and impact lines (more with power).
+ *   hit      by strength: a light hit is a small spray of pale sparks and a few short lines, a medium one hot streaking
+ *            sparks and impact lines, a heavy one (a knockdown, a launcher) those with a hot core, more lines and
+ *            embers that fall to the floor. A flash light and one short soft flash scaled the same way.
  *            Round additive dots are kept small and dim: bright ones clip into flat discs.
  *   block    cool white-blue sparks and short impact lines
- *   knockdown, landing and dashes  low smoke-flipbook dust along the floor (soft against it) and chips
+ *   landing and dashes  low smoke-flipbook dust along the floor (soft against it)
+ *   knockdown and throws  a wide low cloud of that dust rolling out both ways and a few dark grit chips that land on
+ *            the floor (particles are unlit: grit coloured like the lit floor, never pale cubes that read as confetti)
  *   fireball a glowing core with an ember trail, a muzzle flash; each fighter
  *            has its own colour
  *   super    the world dims for a moment (swelling in, lifting slowly), a burst of impact lines and streaks, a shockwave that bends the picture
@@ -17,6 +21,7 @@
  * cartwheel/input.h), each fighter's in their own player's pad, never a computer fighter's. Presentation only. */
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 
 #include "cartwheel/explosions.h"
 #include "cartwheel/input.h"
@@ -48,8 +53,8 @@ void fx_rumble_stop(void) {
 static struct {
   bool ready;
   cw_node root;
-  cw_node sparks[4], flash_p[4], ring[4], dust[4], bsparks[3], bring[3], chips[3], streaks[2];
-  int si, fi, ri, di, bi, bri, ci, sti;
+  cw_node sparks[4], flash_p[4], ring[4], dust[4], bsparks[3], bring[3], chips[3], streaks[2], lsparks[3], embers[2], dustk[2];
+  int si, fi, ri, di, bi, bri, ci, sti, lsi, emi, dki;
   cw_node light[3];
   int light_age[3], next_light;
   float light_e[3];
@@ -57,6 +62,11 @@ static struct {
   cw_node hboom[3], sboom;
   int hbi;
   cw_node ember[8];
+  /* a super's beam: from where it left the hands to its head, a bright core in a wider glow (additive), in the
+   * fighter's colour; it fades over a quarter second once the shot is gone */
+  t3_mesh *beam_core[8], *beam_glow[8];
+  float beam_x0[8], beam_x1[8], beam_y[8], beam_r[8], beam_a[8], beam_c[8][3];
+  bool beam_was[8];
   float flash, flash_want; /* the super / knockout dimming: the level shown, and what the moment asks for */
   uint32_t seen;
 } FX;
@@ -100,9 +110,27 @@ static const char *const BSPARKS[] = { "amount", "24", "lifetime", "0.35", "expl
 static const char *const BRING[] = { "amount", "10", "lifetime", "0.14", "lifetime_random", "0.3", "explosiveness", "1", "one_shot", "true", "emission_shape", "RING", "emission_radius", "0.08",
   "direction", "vec3(1, 0, 0)", "spread", "180", "speed_min", "7", "speed_max", "9", "damping", "7", "draw_mode", "STRETCHED", "stretch", "0.05", "size", "0.03",
   "color_ramp", "\"0 0.8 0.95 1 1, 1 0.3 0.5 1 0\"", "energy", "3.5", "blend", "ADD", NULL };
-static const char *const CHIPS[] = { "amount", "22", "lifetime", "0.8", "explosiveness", "1", "one_shot", "true", "emission_shape", "BOX", "emission_extents", "vec3(0.4, 0.02, 0.1)",
-  "direction", "vec3(0, 1, 0)", "spread", "50", "speed_min", "2", "speed_max", "5", "gravity", "vec3(0, -12, 0)", "draw_mode", "MESH", "mesh_primitive", "BOX", "size", "0.05",
-  "size_random", "0.6", "spin", "10", "blend", "OPAQUE", "color_ramp", "\"0 0.4 0.38 0.35 1, 1 0.35 0.33 0.3 1\"", "bounce", "0.3", "collision_radius", "0.03", NULL };
+/* grit knocked off the floor: a few small dark chips that hop low and land (depth collision). Particles are unlit, so their
+ * colour is what they show: the lit floor's dark grey-brown. At 0.4 grey they read as pale confetti cubes */
+static const char *const CHIPS[] = { "amount", "10", "lifetime", "1.1", "explosiveness", "1", "one_shot", "true", "emission_shape", "BOX", "emission_extents", "vec3(0.35, 0.02, 0.1)",
+  "direction", "vec3(0, 1, 0)", "spread", "55", "speed_min", "1.2", "speed_max", "3", "gravity", "vec3(0, -12, 0)", "draw_mode", "MESH", "mesh_primitive", "BOX", "size", "0.028",
+  "size_random", "0.6", "size_curve", "\"0 1, 0.8 1, 1 0\"", "spin", "8", "blend", "OPAQUE", "color_ramp", "\"0 0.075 0.062 0.05 1, 1 0.06 0.05 0.042 1\"", "collide_depth", "true",
+  "bounce", "0.25", "friction", "0.6", "collision_radius", "0.015", NULL };
+/* a knockdown's dust: the floor dust spread wide and low, rolling out both ways from where the body lands */
+static const char *const DUSTK[] = { "amount", "14", "lifetime", "1.1", "lifetime_random", "0.35", "explosiveness", "0.95", "one_shot", "true", "emission_shape", "BOX",
+  "emission_extents", "vec3(0.55, 0.02, 0.22)", "direction", "vec3(0, 0.12, 0)", "spread", "88", "speed_min", "0.9", "speed_max", "2.6", "gravity", "vec3(0, 0.1, 0)", "damping", "2.6",
+  "size", "0.85", "size_random", "0.45", "size_curve", "\"0 0.4, 0.35 1, 1 1.5\"", "color_ramp", "\"0 0.62 0.57 0.52 0, 0.1 0.6 0.56 0.52 0.38, 1 0.55 0.52 0.5 0\"",
+  "blend", "ALPHA", "sort", "true", "soft_distance", "0.35", "spin", "0.6", "texture", "\"fx/smoke.png\"", "motion_texture", "\"fx/smoke_mv.png\"", "hframes", "8", "vframes", "8",
+  "turbulence", "0.5", "turbulence_scale", "0.5", NULL };
+/* a light hit: a small quick spray of pale sparks, short and cool, so a jab never looks like a knockout */
+static const char *const LSPARKS[] = { "amount", "14", "lifetime", "0.22", "lifetime_random", "0.4", "explosiveness", "1", "one_shot", "true", "emission_shape", "SPHERE",
+  "emission_radius", "0.05", "spread", "180", "direction", "vec3(1, 0.3, 0)", "speed_min", "2", "speed_max", "6", "gravity", "vec3(0, -6, 0)", "damping", "1.5",
+  "draw_mode", "STRETCHED", "stretch", "0.05", "size", "0.018", "size_random", "0.4", "size_curve", "\"0 1, 1 0.3\"", "color_ramp", "\"0 1 0.97 0.88 1, 0.5 1 0.85 0.55 0.8, 1 0.8 0.5 0.3 0\"",
+  "energy", "4", "blend", "ADD", NULL };
+/* a heavy hit's embers: a few slow hot specks that drift down and die before the floor */
+static const char *const HEMBERS[] = { "amount", "12", "lifetime", "0.7", "lifetime_random", "0.4", "explosiveness", "1", "one_shot", "true", "emission_shape", "SPHERE",
+  "emission_radius", "0.1", "spread", "180", "direction", "vec3(0, 1, 0)", "speed_min", "0.6", "speed_max", "2.2", "gravity", "vec3(0, -2.5, 0)", "damping", "1.2",
+  "size", "0.035", "size_random", "0.5", "size_curve", "\"0 1, 0.7 0.7, 1 0\"", "color_ramp", "\"0 1 0.75 0.35 1, 0.5 1 0.4 0.08 0.8, 1 0.5 0.12 0.02 0\"", "energy", "3", "blend", "ADD", NULL };
 /* super and knockout streaks: thin lines that shrink to nothing as they slow (slow fat streaks read as floating white ovals) */
 static const char *const STREAKS[] = { "amount", "48", "lifetime", "0.32", "lifetime_random", "0.3", "explosiveness", "1", "one_shot", "true", "emission_shape", "RING", "emission_radius", "0.6",
   "direction", "vec3(1, 0, 0)", "spread", "180", "speed_min", "16", "speed_max", "24", "damping", "1.5", "draw_mode", "STRETCHED", "stretch", "0.09", "size", "0.045", "size_curve", "\"0 1, 0.5 0.6, 1 0\"",
@@ -113,6 +141,7 @@ static const char *const EMBER[] = { "amount", "40", "lifetime", "0.4", "lifetim
   "speed_min", "0.2", "speed_max", "1.2", "gravity", "vec3(0, 0.6, 0)", "size", "0.08", "size_curve", "\"0 1, 1 0\"",
   "color_ramp", "\"0 1 0.8 0.3 1, 0.5 1 0.35 0.05 0.7, 1 0.5 0.1 0.02 0\"", "energy", "4", "blend", "ADD", "local_coords", "false", NULL };
 
+static void beams_init(void);
 void fx_init(cw_node root) {
   memset(&FX, 0, sizeof FX);
   FX.root = cw_node_new("Node3D", "Fx");
@@ -130,6 +159,11 @@ void fx_init(cw_node root) {
     snprintf(nm, sizeof nm, "Chips%d", i); FX.chips[i] = pnode(nm, CHIPS, 160 + i);
   }
   for (int i = 0; i < 2; i++) { snprintf(nm, sizeof nm, "Streak%d", i); FX.streaks[i] = pnode(nm, STREAKS, 170 + i); }
+  for (int i = 0; i < 3; i++) { snprintf(nm, sizeof nm, "LSpark%d", i); FX.lsparks[i] = pnode(nm, LSPARKS, 210 + i); }
+  for (int i = 0; i < 2; i++) {
+    snprintf(nm, sizeof nm, "HEmber%d", i); FX.embers[i] = pnode(nm, HEMBERS, 220 + i);
+    snprintf(nm, sizeof nm, "DustK%d", i); FX.dustk[i] = pnode(nm, DUSTK, 230 + i);
+  }
   for (int i = 0; i < 8; i++) {
     snprintf(nm, sizeof nm, "Proj%d", i); FX.proj[i] = pnode(nm, CORE, 180 + i);
     snprintf(nm, sizeof nm, "Ember%d", i); FX.ember[i] = pnode(nm, EMBER, 190 + i);
@@ -174,7 +208,39 @@ void fx_init(cw_node root) {
     cw_node3d_set_position(gw, (t3_vec3){ 0, 0.03f, 0 });
     cw_node_add_child(b, gw);
   }
+  beams_init();
   FX.ready = true;
+}
+
+static t3_mesh *beam_mesh(float opacity) {
+  t3_material *m = t3_mesh_basic_material_new(0xffffff);
+  m->transparent = true; m->depth_write = false; m->opacity = opacity; m->blending = T3_ADDITIVE_BLENDING;
+  /* a cylinder along x (made along y and turned), unit length, unit radius: scaled to the beam every frame */
+  t3_mesh *b = t3_mesh_new(t3_cylinder_geometry_new(1, 1, 1, 16, 1, false), m);
+  t3_release(m);
+  b->base.visible = false;
+  b->base.render_order = 40;
+  return b;
+}
+static void beams_init(void) {
+  t3_object *root = t3_group_new();
+  for (int i = 0; i < 8; i++) {
+    FX.beam_glow[i] = beam_mesh(0.28f); t3_object_add(root, FX.beam_glow[i]);
+    FX.beam_core[i] = beam_mesh(0.85f); t3_object_add(root, FX.beam_core[i]);
+  }
+  cw_node n = cw_node_new("Node3D", "Beams");
+  cw_node_add_child(FX.root, n);
+  cw_node3d_set_object(n, root);
+  t3_release(root);
+}
+static void beam_place(t3_mesh *m, float x0, float x1, float y, float r, float a, const float c[3], float k) {
+  float len = fabsf(x1 - x0);
+  m->base.visible = a > 0.01f && len > 0.05f;
+  if (!m->base.visible) return;
+  m->base.position = (t3_vec3){ (x0 + x1) * 0.5f, y, 0.1f };
+  m->base.quaternion = (t3_quat){ 0, 0, 0.70710678f, 0.70710678f }; /* y along x */
+  m->base.scale = (t3_vec3){ r, len, r };
+  m->materials[0]->color = (t3_color){ c[0] * k * a, c[1] * k * a, c[2] * k * a };
 }
 
 static void heavy_boom(t3_vec3 p) { cw_node b = FX.hboom[FX.hbi++ % 3]; cw_node3d_set_position(b, p); cw_explosion_fire(b); }
@@ -210,15 +276,22 @@ void fx_event(const ft_game *g, const ft_event *e) {
   switch (e->type) {
   case EV_HIT: {
     fx_count_hit++;
-    bool big = e->power >= 3;
-    int i = FX.si++ % 4;
-    cw_node_set(FX.sparks[i], "amount", cw_val_int(big ? 48 : 28));
-    at(FX.sparks[i], p);
-    at(FX.flash_p[FX.fi++ % 4], p);
+    /* power: 0 light, 1 medium, 2 strong (by damage), 3 and up a knockdown or a launcher */
+    bool big = e->power >= 3, light_hit = e->power == 0;
     int r = FX.ri++ % 4;
-    cw_node_set(FX.ring[r], "amount", cw_val_int(big ? 18 : 10));
+    if (light_hit) {
+      at(FX.lsparks[FX.lsi++ % 3], p);
+      cw_node_set(FX.ring[r], "amount", cw_val_int(6));
+    } else {
+      int i = FX.si++ % 4;
+      cw_node_set(FX.sparks[i], "amount", cw_val_int(big ? 48 : e->power >= 2 ? 34 : 24));
+      at(FX.sparks[i], p);
+      at(FX.flash_p[FX.fi++ % 4], p);
+      cw_node_set(FX.ring[r], "amount", cw_val_int(big ? 18 : 10));
+    }
     at(FX.ring[r], p);
-    light(p, big ? 90 : 50, 1, 0.75f, 0.4f);
+    if (big) at(FX.embers[FX.emi++ % 2], p);
+    light(p, big ? 90 : light_hit ? 26 : 50, 1, light_hit ? 0.9f : 0.75f, light_hit ? 0.7f : 0.4f);
     /* the one hit: short and sharp on the light motor, a heavy hit (a launcher, a knockdown) with some weight under it */
     rumble(who, big ? 0.35f : 0.05f + 0.03f * k, big ? 0.85f : 0.35f + 0.1f * k, big ? 140 : 70 + 15 * (int)k);
     rumble(other, big ? 0.15f : 0, big ? 0.5f : 0.2f + 0.06f * k, big ? 80 : 50);
@@ -233,15 +306,16 @@ void fx_event(const ft_game *g, const ft_event *e) {
     rumble(who, 0, 0.18f, 40); /* a guarded hit: a tick */
     break;
   }
-  case EV_THROW: at(FX.dust[FX.di++ % 4], (t3_vec3){ p.x, 0.05f, 0.1f }); at(FX.chips[FX.ci++ % 3], (t3_vec3){ p.x, 0.02f, 0.1f }); rumble(who, 0.5f, 0.3f, 120); rumble(other, 0.3f, 0.1f, 80); light(p, 40, 1, 0.8f, 0.5f); break;
+  case EV_THROW: at(FX.dustk[FX.dki++ % 2], (t3_vec3){ p.x, 0.05f, 0.1f }); at(FX.chips[FX.ci++ % 3], (t3_vec3){ p.x, 0.02f, 0.1f }); rumble(who, 0.5f, 0.3f, 120); rumble(other, 0.3f, 0.1f, 80); light(p, 40, 1, 0.8f, 0.5f); break;
   case EV_DUST: {
-    cw_node d = FX.dust[FX.di++ % 4];
-    at(d, (t3_vec3){ p.x, 0.04f, 0.1f });
-    if (e->power >= 2) at(FX.chips[FX.ci++ % 3], (t3_vec3){ p.x, 0.02f, 0.1f });
+    /* a dash or a hop is a puff; a body landing from a knockdown (it lies down this tick) the wide cloud and grit */
+    bool down = who >= 0 && who < 2 && g->f[who].state == S_KD;
+    if (down) { at(FX.dustk[FX.dki++ % 2], (t3_vec3){ p.x, 0.04f, 0.1f }); at(FX.chips[FX.ci++ % 3], (t3_vec3){ p.x, 0.02f, 0.1f }); }
+    else at(FX.dust[FX.di++ % 4], (t3_vec3){ p.x, 0.04f, 0.1f });
     if (e->power >= 2) rumble(who, 0.3f, 0, 90); /* a knockdown hits the floor: a light thud */
     break;
   }
-  case EV_WALL: at(FX.dust[FX.di++ % 4], (t3_vec3){ p.x, 0.04f, 0.1f }); at(FX.chips[FX.ci++ % 3], (t3_vec3){ p.x, 0.02f, 0.1f }); rumble(who, 0.45f, 0.2f, 110); break; /* a wall splat */
+  case EV_WALL: rumble(who, 0.45f, 0.2f, 110); break; /* the body hits the floor (the dust and grit came with its EV_DUST) */
   case EV_FIRE: light((t3_vec3){ p.x, 1.05f, 0.5f }, 30, 1, 0.6f, 0.3f); at(FX.flash_p[FX.fi++ % 4], (t3_vec3){ p.x, 1.05f, 0.2f }); break;
   case EV_SUPER: {
     FX.flash_want = 1;
@@ -284,7 +358,7 @@ void fx_frame(const ft_game *g, float dt) {
   /* projectiles carry their glow */
   for (int i = 0; i < 8; i++) {
     const ft_proj *P = &g->proj[i];
-    bool live = P->live;
+    bool live = P->live, big = live && (g->roster->d[g->f[P->owner].def].mv[P->mv].flags & FM_SUPER);
     cw_node_set(FX.proj[i], "emitting", cw_val_bool(live));
     cw_node_set(FX.ember[i], "emitting", cw_val_bool(live));
     if (live) {
@@ -292,11 +366,22 @@ void fx_frame(const ft_game *g, float dt) {
       cw_node3d_set_position(FX.proj[i], pos);
       cw_node3d_set_position(FX.ember[i], pos);
       const float *c = PROJ_COL[g->f[P->owner].def % 4];
-      bool big = g->roster->d[g->f[P->owner].def].mv[P->mv].flags & FM_SUPER;
       tint(FX.proj[i], c[0], c[1], c[2]);
       tint(FX.ember[i], c[0], c[1], c[2]);
       cw_node_set(FX.proj[i], "size", cw_val_float(big ? 1.8 : 0.45 + (double)P->size / 900.0));
     }
+    /* the super's beam runs from where the shot left the hands to where its head is now */
+    if (live && big) {
+      if (!FX.beam_was[i]) FX.beam_x0[i] = (float)P->x / 1000.0f - (float)(P->vx > 0 ? 1 : -1) * 0.15f;
+      FX.beam_x1[i] = (float)P->x / 1000.0f; FX.beam_y[i] = (float)P->y / 1000.0f; FX.beam_r[i] = (float)P->size / 1000.0f;
+      FX.beam_a[i] = 1;
+      const float *c = PROJ_COL[g->f[P->owner].def % 4];
+      FX.beam_c[i][0] = c[0], FX.beam_c[i][1] = c[1], FX.beam_c[i][2] = c[2];
+    } else FX.beam_a[i] = fmaxf(0, FX.beam_a[i] - dt * 4.0f);
+    FX.beam_was[i] = live && big;
+    /* the core thins as it fades; the glow stays wide */
+    beam_place(FX.beam_core[i], FX.beam_x0[i], FX.beam_x1[i], FX.beam_y[i], FX.beam_r[i] * 0.32f * (0.4f + 0.6f * FX.beam_a[i]), FX.beam_a[i], FX.beam_c[i], 2.2f);
+    beam_place(FX.beam_glow[i], FX.beam_x0[i], FX.beam_x1[i], FX.beam_y[i], FX.beam_r[i] * 0.85f, FX.beam_a[i], FX.beam_c[i], 1.0f);
   }
   /* lights decay */
   for (int i = 0; i < 3; i++) {

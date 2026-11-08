@@ -458,6 +458,64 @@
     "note": "No shake: player 1 lands 4 hits and a throw on player 2 (the fighter-p1-moves script) while the camera as drawn is held against the framing on every frame within half a second of an impact (cam.offset: 137 frames, none off by over 0.1 mm or 0.1 milliradian; the build before: all 137 off, up to 13 cm and radians summed). The hits are felt in the pads instead: rumble.sent counts the requests to player 1 (dealt) and player 2 (taken), cw.rumble is the engine's last (pad 1). The sim hash is the one fighter-p1-moves pins: the shake was never in the rules. Control: the script without the fireball."
   },
   {
+    "name": "fighter-crowd",
+    "app": "fighter_auto",
+    "frames": 2300,
+    "hosts": [
+      "native"
+    ],
+    "maxGt16": 0.06,
+    "fields": [
+      "game.phase",
+      "game.round",
+      "sim.hash",
+      "crowd.same",
+      "fx.hits"
+    ],
+    "expect": {
+      "crowd.same": 0
+    },
+    "controlEnv": {
+      "FIGHTER_CROWD_SYNC": "1"
+    },
+    "webgpu": {
+      "hosts": [
+        "native"
+      ],
+      "maxGt16": 0.06
+    },
+    "note": "The crowd answers a blow as a ripple out from it, each spectator late by their distance and in their own way: crowd.same is the most spectators that threw their arms up on one frame, over two rounds of the self-playing match (a knockout and a super in them). Control: FIGHTER_CROWD_SYNC=1, the crowd as it was (every spectator hears an event at once and answers alike), which must put several on one frame."
+  },
+  {
+    "name": "fighter-slowmo",
+    "app": "fighter_auto",
+    "frames": 3600,
+    "hosts": [
+      "native"
+    ],
+    "maxGt16": 0.06,
+    "fields": [
+      "game.panel",
+      "sim.wins",
+      "ko.slow",
+      "ko.end_hash"
+    ],
+    "expect": {
+      "ko.slow": 50,
+      "ko.end_hash": 0
+    },
+    "controlEnv": {
+      "FIGHTER_NO_SLOWMO": "1"
+    },
+    "webgpu": {
+      "hosts": [
+        "native"
+      ],
+      "maxGt16": 0.06
+    },
+    "note": "The knockout that decides the match plays at half speed for its first 50 ticks (ko.slow counts the fixed ticks the sim was held) and the match comes out the same: ko.end_hash is the sim at the match end, the hash the rules alone give (tests: the same with FIGHTER_NO_SLOWMO). Control: FIGHTER_NO_SLOWMO=1 (no ticks held) must fail on ko.slow."
+  },
+  {
     "name": "fighter-quality",
     "script": "tests/fighter-quality.mjs",
     "note": "a program for everything drawn at every quality on both backends, through a spread warm-up as a player gets it: every stage, all four fighters, the select and result screens, training, from the title by real input. A scene not reached fails. Control: a state the scene draws out of the table must be reported and skip draws"

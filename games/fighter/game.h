@@ -57,8 +57,13 @@ enum { J_HEAD, J_HAND_F, J_HAND_B, J_FOOT_F, J_CHEST, J_HIPS };
 
 /* crowd.c: spectators around the stage, cheering from the sim's events */
 enum { CROWD_MAX = 10 };
-typedef struct crowd_member { t3_gltf *g; cw_node node; t3_object *b[10], *fing[2][3]; t3_vec3 hips; float x, z, phase, thr, cheer, clap; } crowd_member;
-typedef struct crowd { int n; crowd_member m[CROWD_MAX]; float excite; uint32_t seen; } crowd;
+/* each spectator has their own excitement, reached by an event after a delay that grows with their distance from it,
+ * and their own way of answering it (fists up, one fist pumping, pointing, clapping; a flinch on a big hit) */
+typedef struct crowd_member { t3_gltf *g; cw_node node; t3_object *b[10], *fing[2][3]; t3_vec3 hips; float x, z, phase, thr, cheer, clap, ex, flinch, rate, was_cheer; int kind; } crowd_member;
+typedef struct crowd_kick { uint32_t tick; float x, amount; uint8_t type, power; } crowd_kick;
+typedef struct crowd { int n; crowd_member m[CROWD_MAX]; float excite; uint32_t seen; crowd_kick k[16]; uint32_t nk, done[CROWD_MAX]; } crowd;
+extern int32_t crowd_same_max; /* debug crowd.same: the most spectators that threw their arms up on one frame */
+extern int crowd_sync;          /* test switch: the crowd as it was (every spectator hears an event at once, alike) */
 void crowd_load(crowd *c, int stage, cw_node parent);
 void crowd_free(crowd *c);
 void crowd_frame(crowd *c, const ft_game *g, float dt);
@@ -68,6 +73,11 @@ void stage_load(int stage, cw_node parent);
 void stage_free(void);
 void stage_frame(const ft_game *g, float dt);
 void stage_set_showcase(bool on); /* the rim lights become key lights on the faces (select and result screens) */
+/* a super winding up (main.c works it out from the sim each frame): the fighter (-1 none) and the moment's weight 0..1.
+ * The camera moves in on them and their rim light takes their colour */
+extern int super_cine_who;
+extern float super_cine_w;
+extern const float FIGHTER_COL[4][3]; /* each fighter's colour (the HUD's, their shots', their super) */
 
 /* fx.c: hit effects, all reading sim events */
 void fx_init(cw_node root);

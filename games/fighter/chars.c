@@ -166,11 +166,15 @@ static void leg(pose *p, int lead, int near_is_right, float fwd, float out, floa
 static void stance(pose *p, const spec *s, int nr, float t) {
   float bob = (float)cw_sin(t * 0.11f) * 0.012f * s->bounce;
   p->off[1] = -0.07f + bob;
+  /* each fighter's own idle rhythm: a breath in the chest and a slow weight shift, at their own tempo (the heavy one slow
+   * and deep, the light one quick and shallow) */
+  float tempo = 0.7f + 0.25f * s->bounce, breath = (float)cw_sin(t * 0.05f * tempo), shift = (float)cw_sin(t * 0.021f * tempo + 1.3f);
   leg(p, 1, nr, 0.35f, s->stance, 0.55f);
   leg(p, 0, nr, -0.2f, s->stance, 0.45f);
   p->r[SPINE][0] = 0.08f; p->r[SPINE][1] = 0.22f;
   p->r[CHEST][0] = 0.06f; p->r[CHEST][1] = 0.1f;
   p->r[HEAD][0] = -0.1f; p->r[HEAD][1] = -0.28f;
+  p->r[CHEST][0] += 0.025f * breath * (1.4f - 0.4f * s->bounce); p->r[SPINE][2] = 0.03f * shift; p->off[0] = 0.015f * shift;
   float g = s->guard;
   arm(p, 1, nr, 1.15f * g, 0.22f, 1.5f, 0.0f);
   arm(p, 0, nr, 0.95f * g, 0.30f, 1.7f, 0.0f);
@@ -226,6 +230,31 @@ static void strike(pose *p, const spec *s, int nr, int slot, int strength) {
   case M_SP3: leg(p, 1, nr, 1.4f, 0.1f, 0.2f); leg(p, 0, nr, 0.2f, 0.1f, 1.3f); p->r[SPINE][0] = 0.1f; p->r[SPINE][2] = 0.35f; p->off[1] = 0.05f;
               arm(p, 1, nr, 0.4f, 1.3f, 0.3f, 0); arm(p, 0, nr, 0.4f, 1.3f, 0.3f, 0); break;
   }
+}
+
+/* The wind-up a strike starts from (anticipation): the striking limb chambered and the body coiled the other way, weight
+ * back. It is reached by 45% of the startup, and the strike unwinds out of it. */
+static void windup(pose *p, const spec *s, int nr, int slot) {
+  switch (slot) {
+  case M_5P: case M_2P: case M_JP: arm(p, 1, nr, 0.65f, 0.3f, 2.15f, 0); p->r[SPINE][1] = 0.45f; p->r[CHEST][1] = 0.25f; p->off[2] = -0.04f; break;
+  case M_6P: arm(p, 0, nr, 0.45f, 0.35f, 2.2f, 0); p->r[SPINE][1] = 0.55f; p->r[CHEST][1] = 0.3f; p->off[2] = -0.06f; p->off[1] -= 0.04f; break;
+  case M_8P: arm(p, 0, nr, 0.25f, 0.3f, 1.9f, 0); p->r[SPINE][1] = 0.4f; p->r[SPINE][0] = 0.2f; p->off[1] -= 0.1f; break;
+  case M_5K: case M_6K: case M_JK: leg(p, 1, nr, 1.25f, 0.08f, 2.1f); p->r[SPINE][0] = -0.12f; p->off[2] = -0.04f; break;
+  case M_8K: leg(p, 1, nr, 1.05f, 0.5f, 2.15f); p->r[SPINE][1] = 0.35f; p->r[SPINE][0] = -0.1f; break;
+  case M_2K: p->off[1] = -0.32f; leg(p, 1, nr, 0.9f, 0.1f, 1.6f); leg(p, 0, nr, 0.8f, 0.3f, 1.9f); p->r[SPINE][1] = 0.35f; break;
+  default: /* specials, the super, the throw: a low coil, both hands drawn back */
+    p->off[1] -= 0.09f; p->off[2] = -0.05f; p->r[SPINE][1] = 0.4f; p->r[SPINE][0] = 0.18f;
+    arm(p, 1, nr, 0.5f, 0.35f, 2.0f, 0); arm(p, 0, nr, 0.35f, 0.4f, 2.1f, 0);
+    break;
+  }
+  (void)s;
+}
+/* Follow-through: from the strike, the body keeps turning a little past it and the limb drops with its weight before it
+ * comes back to the guard (the strike pose with these changes) */
+static void follow(pose *p, int slot) {
+  if (slot <= M_6P || slot == M_JP) { p->r[SPINE][1] -= 0.18f; p->r[CHEST][1] -= 0.12f; p->r[UAR_R][0] *= 0.8f; p->r[UAR_L][0] *= 0.8f; p->off[2] += 0.03f; }
+  else if (slot <= M_6K || slot == M_JK) { p->r[THI_R][0] *= 0.55f; p->r[THI_L][0] *= 0.55f; p->r[SHI_R][0] += 0.5f; p->r[SHI_L][0] += 0.3f; p->r[SPINE][0] += 0.12f; p->r[SPINE][1] -= 0.15f; }
+  else { p->r[SPINE][0] += 0.1f; p->off[1] -= 0.04f; }
 }
 
 static float envelope(const ft_move *m, int t) {
@@ -285,9 +314,25 @@ static void pose_for(fighter_model *m, const ft_game *g, int who, pose *out) {
     break;
   }
   case S_HIT: {
+    /* the reaction follows where the blow landed (the attacker's move's height) and how hard (the stun left): a high one
+     * snaps the head and chest back, a mid one folds the body over the gut, a low one buckles the front knee. A twist,
+     * one way or the other per blow, keeps two hits in a row from looking alike */
     float k = cw_clampf((float)f->stun / 12.0f, 0, 1);
-    out->r[SPINE][0] = -0.35f * k; out->r[CHEST][0] = -0.25f * k; out->r[HEAD][0] = -0.5f * k; out->off[2] = -0.06f * k;
+    const ft_fighter *op = &g->f[1 - who];
+    int lv = g->roster->d[op->def].mv[op->mv].lv;
+    float tw = ((g->tick / 7u + (unsigned)op->mv) & 1) ? 0.16f : -0.16f;
     arm(out, 1, nr, 0.5f, 0.6f, 0.8f, 0); arm(out, 0, nr, 0.4f, 0.7f, 0.7f, 0);
+    if (lv == LV_HIGH) {
+      out->r[SPINE][0] = -0.4f * k; out->r[CHEST][0] = -0.3f * k; out->r[HEAD][0] = -0.75f * k; out->r[HEAD][1] += tw * 2 * k; out->off[2] = -0.08f * k;
+      arm(out, 1, nr, 0.7f, 0.8f, 0.5f, 0); arm(out, 0, nr, 0.5f, 0.9f, 0.4f, 0);
+    } else if (lv == LV_LOW) {
+      out->off[1] = -0.07f - 0.14f * k; leg(out, 1, nr, 0.6f, s->stance, 1.3f * k + 0.5f); out->r[SPINE][0] = 0.22f * k; out->r[HEAD][0] = 0.15f * k;
+      arm(out, 1, nr, 0.6f, 1.0f, 0.4f, 0); arm(out, 0, nr, 0.3f, 1.1f, 0.3f, 0);
+    } else {
+      out->r[SPINE][0] = 0.45f * k; out->r[CHEST][0] = 0.3f * k; out->r[HEAD][0] = 0.25f * k; out->off[2] = -0.1f * k; out->off[1] = -0.07f - 0.06f * k;
+      arm(out, 1, nr, 0.7f, 0.2f, 2.0f, 0); arm(out, 0, nr, 0.6f, 0.25f, 2.1f, 0); /* the arms come in over the gut */
+    }
+    out->r[SPINE][1] += tw * k;
     hands(out, 0.25f);
     break;
   }
@@ -315,17 +360,42 @@ static void pose_for(fighter_model *m, const ft_game *g, int who, pose *out) {
   }
   case S_WIN: {
     float k = (float)cw_sin((float)f->t * 0.15f);
-    arm(out, 1, nr, 3.0f, 0.2f + 0.1f * k, 0.2f, 0); arm(out, 0, nr, 2.7f, 0.5f, 0.4f, 0);
-    out->off[1] = -0.02f + 0.03f * k; out->r[HEAD][0] = -0.2f;
-    leg(out, 1, nr, 0.1f, 0.14f, 0.1f); leg(out, 0, nr, 0.0f, 0.14f, 0.1f); out->r[SPINE][0] = -0.15f;
+    leg(out, 1, nr, 0.1f, 0.14f, 0.1f); leg(out, 0, nr, 0.0f, 0.14f, 0.1f);
+    if (((unsigned)g->round_no + (unsigned)who) & 1) { /* the first win pose: both arms up */
+      arm(out, 1, nr, 3.0f, 0.2f + 0.1f * k, 0.2f, 0); arm(out, 0, nr, 2.7f, 0.5f, 0.4f, 0);
+      out->off[1] = -0.02f + 0.03f * k; out->r[HEAD][0] = -0.2f; out->r[SPINE][0] = -0.15f;
+      break;
+    }
+    /* the second, each their own: a bow, a flex, a point at the camera, a fist to the palm */
+    float in = sm(0, 30, (float)f->t);
+    switch (s->kind) {
+    case 0: out->r[SPINE][0] = 0.55f * in * (0.6f + 0.4f * (float)cw_sin((float)f->t * 0.05f)); out->r[HEAD][0] = 0.25f * in; arm(out, 1, nr, 0.15f, 0.12f, 0.2f, 0); arm(out, 0, nr, 0.15f, 0.12f, 0.2f, 0); hands(out, 0.9f); break;
+    case 1: arm(out, 1, nr, 1.45f, 1.25f, 2.25f + 0.08f * k, 0.3f); arm(out, 0, nr, 1.45f, 1.25f, 2.25f - 0.08f * k, 0.3f); out->r[SPINE][0] = -0.1f; out->r[CHEST][0] = -0.12f; out->off[1] = -0.1f; hands(out, 1); break;
+    case 2: arm(out, 1, nr, 1.55f, -0.3f, 0.05f, 0); arm(out, 0, nr, 0.35f, 0.6f, 1.9f, 0); out->yaw = (f->facing > 0 ? -0.6f : 0.6f) * in; out->r[HEAD][1] = 0.25f; out->r[SPINE][2] = 0.1f; hand(out, 1, nr, 0.7f); break;
+    default: arm(out, 1, nr, 1.35f, 0.1f, 1.65f, 0); arm(out, 0, nr, 1.35f, -0.1f, 1.6f, 0); out->r[SPINE][0] = 0.25f * in; out->r[HEAD][0] = 0.2f * in; hand(out, 1, nr, 1); hand(out, 0, nr, 0); break;
+    }
     break;
   }
   case S_ATTACK: {
     const ft_move *mv = &d->mv[f->mv];
-    float e = envelope(mv, f->t);
-    pose ex = base;
+    pose ex = base, wu = base, ft;
     strike(&ex, s, nr, f->mv, f->strength);
-    blend(out, &base, &ex, e);
+    windup(&wu, s, nr, f->mv);
+    ft = ex; follow(&ft, f->mv);
+    if (f->t <= mv->su) { /* anticipation: into the wind-up, then the snap out of it into the strike */
+      float p = (float)f->t / (float)(mv->su ? mv->su : 1);
+      pose a;
+      blend(&a, &base, &wu, sm(0.0f, 0.45f, p));
+      float q = sm(0.45f, 1.0f, p);
+      blend(out, &a, &ex, q * q); /* slow off the wind-up, fastest into the hit */
+    } else if (f->t <= mv->su + mv->ac) *out = ex; /* the active frames: exactly the strike (where the hitbox is) */
+    else { /* follow-through, then back to the guard */
+      float r = (float)(f->t - mv->su - mv->ac) / (float)(mv->rc ? mv->rc : 1);
+      pose a;
+      blend(&a, &ex, &ft, sm(0.0f, 0.3f, r));
+      blend(out, &a, &base, sm(0.3f, 1.0f, r));
+    }
+    float e = envelope(mv, f->t);
     if (f->mv == M_SP3 && s->kind != 2) out->yaw = e * 12.5f * cw_clampf((float)(f->t - mv->su + 1) / (float)(mv->ac + 1), 0, 1);
     else if (f->mv == M_SP3) { /* the overhead leap */
       out->off[1] += 0.3f * (float)cw_sin(cw_clampf((float)f->t / 24.0f, 0, 1) * 3.14159265f);
