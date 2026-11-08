@@ -12,6 +12,7 @@ player on screen.
 | aim and shoot | arrow keys | right stick (aiming fires) |
 | shoot toward where you aim | Space | A or right trigger |
 | throw a blast | Left Shift or E | left shoulder |
+| dash | Q or Left Ctrl | right shoulder or left trigger |
 | take upgrade 1 / 2 / 3 | 1 / 2 / 3 | X / Y / B |
 | pause | Escape | Start |
 
@@ -21,9 +22,22 @@ Players 2 to 4 use pads 2 to 4. Join on the title screen.
   the richest gold: gems that land close together merge, and a gem left on the
   ground for eight seconds flies to the nearest player). Each level offers three
   upgrades (rapid fire, extra barrel, heavy rounds, piercing, rockets, boots,
-  magnet, bigger blasts, armor); pick one, or the first is taken after eight
-  seconds. The game keeps running while you choose. Every upgrade stops at a top
-  level, and the horde gets tougher each wave and bigger with more players.
+  magnet, bigger blasts, armor) as three cards in your corner, laid out as the
+  buttons sit: each its picture, what it does and the levels you hold as dots.
+  Pick one, or the first is taken after eight seconds. With friends the game
+  keeps running while you choose; alone it slows to a crawl until you pick.
+  Every upgrade stops at a top level, and the horde gets tougher each wave and
+  bigger with more players.
+- The dash throws you 4.5 m in a fifth of a second where the stick points (or
+  where you aim), untouchable through it; a ring of ticks round your feet
+  refills over 1.35 s and glows when it is ready. It is the way out of a strike
+  you see winding up.
+- Each kill raises your multiplier a little (up to x5); a hit drops it to x1.
+  Points come in at the multiplier, shown beside your score. When the run ends
+  each player's line says what took them down (or, after the last floor, their
+  points, kills, best multiplier and the guns they held).
+- Each soldier carries a flashlight: a cone of light on the floor ahead of the
+  gun (and on what stands in it, from Medium up).
 - Power-ups lie at set spots in the yard (the four corners, the gaps in the
   cinder ring the horde pours through, the ends of the painted lane, behind
   crates): a new one every 30 seconds at the next free spot, at most three at

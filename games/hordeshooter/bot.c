@@ -3,8 +3,10 @@
 #include "cartwheel/math.h"
 #include "game.h"
 
+bool g_bot_dash;
+
 /* bots: keep clear of the nearest enemies, drift toward gems, shoot the
- * nearest enemy, throw a blast into a thick crowd */
+ * nearest enemy, throw a blast into a thick crowd; with g_bot_dash, dash out of a strike about to land */
 void horde_bot(const sim *s, int i, input *in) {
   const player *p = &s->p[i];
   float best = 1e9f, bx = 0, by = 0, near_x = 0, near_y = 0;
@@ -70,5 +72,13 @@ void horde_bot(const sim *s, int i, input *in) {
   } else in->ax = cw_cos(p->aim), in->ay = cw_sin(p->aim);
   in->fire = best < 26 * 26;
   in->bomb = crowd > ((p->grenades > 0 || p->mines > 0) ? 10 : 28);
+  if (g_bot_dash && p->dash_cd == 0 && !p->down) /* a strike winding up at this bot and nearly due: dash away from it */
+    for (int k = 0; k < MAXE; k++) {
+      const enemy *e = &s->e[k];
+      if (!e->alive || e->tgt != i || e->atk <= 0 || e->atk < sim_melee_windup(e->kind) - 8 || e->atk > sim_melee_windup(e->kind)) continue;
+      float dx = p->x - e->x, dy = p->y - e->y, l = sqrtf(dx * dx + dy * dy) + 1e-3f, ox = near_x, oy = near_y, ol = sqrtf(ox * ox + oy * oy);
+      in->mx = ol > 1e-3f ? ox / ol : dx / l, in->my = ol > 1e-3f ? oy / ol : dy / l, in->dash = true;
+      break;
+    }
   if (p->offer_ticks > 0 && p->offer_ticks < 60 * 8 - 45) in->pick = 1 + (p->level + i) % 3; /* a bot takes a while, then picks */
 }

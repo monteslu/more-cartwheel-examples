@@ -12,6 +12,8 @@
 #include "cartwheel/core.h"
 #include "cartwheel/lightmap.h"
 #include "cartwheel/splats.h"
+#include "cartwheel/quality.h"
+#include "cartwheel/rim_light.h"
 #include <stdio.h>
 #include "game.h"
 #include "levelbuild.h"
@@ -86,7 +88,7 @@ static t3_mat4 MR(float x, float y, float z, float sx, float sy, float sz, float
  * shared topology (assets/models/*.cwchar). Each frame becomes a geometry;
  * the horde draws one instanced mesh per frame of the cycle, so an animated
  * crowd of thousands is a handful of draws and costs no skinning on the GPU. */
-enum { CH_MAXF = 24, CH_MAXG = 2, CH_MAXC = 4 }; /* a boss has four clips (LEVELS.md section 5) */
+enum { CH_MAXF = 24, CH_MAXG = 2, CH_MAXC = 4, DASH_ARC = 24 }; /* a boss has four clips (LEVELS.md section 5) */
 typedef struct chr {
   int nclip, ngroup, nf[CH_MAXC], first[CH_MAXC];
   t3_geometry *geo[CH_MAXG][CH_MAXF];
@@ -149,6 +151,7 @@ static void chr_free(chr *c) {
 
 /* ── state ──────────────────────────────────────────────────────────── */
 
+enum { NCORE = 6 }; /* contact shadow core levels (grounding, below) */
 static struct {
   cw_node root;
   chr ch[EK_KINDS], soldier;
@@ -163,6 +166,8 @@ static struct {
   cw_node eb_node[EK_KINDS][CH_MAXF];
   t3_material *crowd_lit[EK_KINDS], *crowd_unlit[EK_KINDS]; /* the yard lights its crowd in real time; a deeper floor's lights are in its bake, so its crowd is unlit, coloured by the bake (ground_light) */
   t3_mesh *pm[MAXP][CH_MAXC * CH_MAXF][CH_MAXG];
+  t3_instanced_mesh *dash_arc; /* each player's dash charge: an arc of ticks round the team ring, filling as it recharges */
+  t3_instanced_mesh *bullet_head;
   t3_instanced_mesh *bullet, *rocket, *gem[3], *health, *crate, *barrel, *wall, *pillar, *shadowblob;
   t3_instanced_mesh *power[PU_KINDS], *power_glow, *grenade, *rail, *flame, *saw, *mine;
   t3_mesh *shield[MAXP];
@@ -174,6 +179,9 @@ static struct {
   cw_node pl_light[MAXP];
   view_stats st;
   cw_splats *shadows, *pools, *sheen; /* blob shadows under everything that moves, light pools under the moving lights */
+  cw_splats *contact[NCORE * NCORE + NCORE]; /* boxes by (core across, core along), then rounds by core; made when first needed */
+  cw_splats *lamps; /* each player's flashlight: a cone of light on the floor ahead of the gun */
+  cw_node pl_spot[MAXP]; /* and on what stands in it, from Medium up (the crowd and the soldiers take real-time light) */ /* the dark band where a crate, wall, barrel or pillar meets the floor */
   float sun_x, sun_z, sun_len, sun_yaw; /* where shadows fall on the ground (unit) and how long they are for a 1 m caster */
   float cx, cy, cd;
   bool cam_init;
@@ -817,6 +825,120 @@ static void crowd_kind_load(int k, const char *file) {
     crowd_materials(k, V_floor > 0);
 }
 
+/* ── grounding ─────────────────────────────────────────────────────────
+ * A contact shadow: the floor darkest right at a prop's foot and light again a short way out (a crate, a wall or a
+ * pillar is not in the bake: it can fall). The texture's dark core covers the footprint (a share of the
+ * splat's size), the falloff is the band round it. A box's is a rounded square, a barrel's or pillar's a disc. */
+#define CONTACT_BAND 0.42f /* metres the dark band reaches past a footprint, whatever the prop's size */
+/* the texture's dark core as a share of the splat, per axis: a footprint f wants f / (f + CONTACT_BAND); the nearest level is drawn */
+static const float CORES[NCORE] = { 0.38f, 0.52f, 0.63f, 0.72f, 0.8f, 0.87f };
+static int core_level(float f) {
+  float want = f / (f + CONTACT_BAND);
+  int best = 0;
+  for (int k = 1; k < NCORE; k++)
+    if (fabsf(CORES[k] - want) < fabsf(CORES[best] - want)) best = k;
+  return best;
+}
+/* the flashlight's cone on the floor: bright a couple of metres ahead, widening and fading out to its far end. The splat
+ * is a disc: the texture's v runs from the far end (top row) to the player (bottom row), across is u. */
+static t3_texture *lamp_texture(void) {
+  enum { LN = 128 };
+  static uint8_t px[LN * LN * 4];
+  for (int y = 0; y < LN; y++)
+    for (int x = 0; x < LN; x++) {
+      float u = ((float)x + 0.5f) / LN * 2 - 1, d = 1.0f - ((float)y + 0.5f) / LN; /* d: 0 at the player's end, 1 at the far end */
+      float half = 0.1f + 0.62f * d; /* the beam widens */
+      float across = CW_CLAMP(1.0f - fabsf(u) / half, 0.0f, 1.0f);
+      across = across * across * (3 - 2 * across);
+      float near = CW_CLAMP((d - 0.04f) / 0.14f, 0.0f, 1.0f), far = CW_CLAMP((0.86f - d) / 0.3f, 0.0f, 1.0f);
+      float along = near * near * far * (1.0f - 0.45f * d); /* a little less light the farther it falls */
+      float r = sqrtf(u * u + (2 * d - 1) * (2 * d - 1));
+      float edge = CW_CLAMP((0.97f - r) / 0.08f, 0.0f, 1.0f); /* inside the disc the splat is drawn on */
+      uint8_t c = (uint8_t)CW_CLAMP((int)(across * along * edge * 255.0f + 0.5f), 0, 255);
+      uint8_t *p = px + (y * LN + x) * 4;
+      p[0] = p[1] = p[2] = c, p[3] = 255;
+    }
+  t3_texture *t = t3_texture_new(LN, LN, px);
+  t->wrap_s = t->wrap_t = T3_CLAMP_TO_EDGE;
+  t->flip_y = false;
+  t->generate_mipmaps = true;
+  t->min_filter = T3_LINEAR_MIPMAP_LINEAR;
+  t->mag_filter = T3_LINEAR;
+  t->color_space = T3_NO_COLOR_SPACE;
+  return t;
+}
+static t3_texture *contact_texture(bool box, float cu, float cv) {
+  enum { CN = 64 };
+  static uint8_t px[CN * CN * 4];
+  for (int y = 0; y < CN; y++)
+    for (int x = 0; x < CN; x++) {
+      float u = fabsf(((float)x + 0.5f) / CN * 2 - 1), v = fabsf(((float)y + 0.5f) / CN * 2 - 1);
+      /* how far out through the band, per axis (0 at the footprint's edge, 1 at the splat's), joined as a rounded square or a disc */
+      float bu = CW_MAX(u - cu, 0.0f) / (1.0f - cu), bv = CW_MAX(v - cv, 0.0f) / (1.0f - cv);
+      float d = box ? cw_pow(cw_pow(bu, 4) + cw_pow(bv, 4), 0.25f) : CW_MAX(sqrtf(u * u + v * v) - cu, 0.0f) / (1.0f - cu); /* a disc: out from its rim */
+      float t = CW_CLAMP(d, 0.0f, 1.0f);
+      float f = 1.0f - t * t * (3 - 2 * t);
+      f = f * (0.55f + 0.45f * f); /* dark at the foot, gone within the band (a soft tail, not a thin line) */
+      uint8_t c = (uint8_t)CW_CLAMP((int)(f * 255.0f + 0.5f), 0, 255);
+      uint8_t *p = px + (y * CN + x) * 4;
+      p[0] = p[1] = p[2] = c, p[3] = 255;
+    }
+  t3_texture *t = t3_texture_new(CN, CN, px);
+  t->wrap_s = t->wrap_t = T3_CLAMP_TO_EDGE;
+  t->flip_y = false;
+  t->generate_mipmaps = true;
+  t->min_filter = T3_LINEAR_MIPMAP_LINEAR;
+  t->mag_filter = T3_LINEAR;
+  t->color_space = T3_NO_COLOR_SPACE;
+  return t;
+}
+/* a deeper floor's closed hatch is a low plate (0.4 to 0.9 m) over the middle of the floor: whatever stands on it
+ * stands on its top, not inside it. Its height by distance from the middle, per frame of the door (it opens). */
+enum { DECK_BINS = 12 };
+#define DECK_STEP 0.25f
+static float DECK[8][DECK_BINS + 1];
+static int DECK_FRAMES;
+static float deck_frame_t; /* the frame drawn now (levelbuild_hatch's choice) */
+static int cmp_float(const void *a, const void *b) { float x = *(const float *)a, y = *(const float *)b; return x < y ? -1 : x > y; }
+static void deck_build(const lb_built *b) {
+  DECK_FRAMES = 0;
+  if (!b->hatch || b->hatch_frames < 1) return;
+  static float ys[DECK_BINS][4096];
+  for (int f = 0; f < b->hatch_frames; f++) {
+    const t3_attribute *pa = b->hatch_geo[0][f]->attributes[T3_ATTR_POSITION];
+    const float *p = t3_attribute_f32((t3_attribute *)pa);
+    int n[DECK_BINS] = { 0 };
+    for (int v = 0; v < pa->count; v++) {
+      int k = (int)(sqrtf(p[v * 3] * p[v * 3] + p[v * 3 + 2] * p[v * 3 + 2]) / DECK_STEP);
+      if (k < DECK_BINS && n[k] < 4096 && p[v * 3 + 1] > -0.5f) ys[k][n[k]++] = p[v * 3 + 1];
+    }
+    for (int k = 0; k < DECK_BINS; k++) { /* the top surface: the upper fifth of the ring's points, past an odd spike */
+      if (!n[k]) { DECK[f][k] = -1; continue; }
+      qsort(ys[k], (size_t)n[k], sizeof(float), cmp_float);
+      DECK[f][k] = CW_CLAMP(ys[k][(n[k] * 4) / 5], 0.0f, 1.0f);
+    }
+    DECK[f][DECK_BINS] = 0;
+    for (int k = 0; k < DECK_BINS; k++) /* rings with no points take the next ring out that has some (a flat face spans them) */
+      if (DECK[f][k] < 0) {
+        int j = k + 1;
+        while (j < DECK_BINS && DECK[f][j] < 0) j++;
+        DECK[f][k] = DECK[f][j < DECK_BINS ? j : DECK_BINS];
+      }
+  }
+  DECK_FRAMES = b->hatch_frames;
+}
+/* the height of the ground at (x, z): the hatch's top where it lies, else 0 */
+static float ground_y(float x, float z);
+float view_ground_y(float x, float z) { return ground_y(x, z); }
+static float ground_y(float x, float z) {
+  if (!DECK_FRAMES) return 0;
+  float r = sqrtf(x * x + z * z) / DECK_STEP;
+  if (r >= (float)DECK_BINS) return 0;
+  int f = CW_CLAMP((int)(deck_frame_t * (float)(DECK_FRAMES - 1) + 0.5f), 0, DECK_FRAMES - 1), k = (int)r;
+  float t = r - (float)k;
+  return DECK[f][k] + (DECK[f][k + 1] - DECK[f][k]) * t;
+}
+
 /* One piece of the view each call, so the loading screen moves between them (main.c's warm-up); true when it is built.
  * The pieces in order are the same work as one pass, so a run that does them all in a frame draws the same. */
 bool view_init_step(cw_node root, int *done, int *total) {
@@ -865,7 +987,8 @@ bool view_init_step(cw_node root, int *done, int *total) {
   } else if (s >= S_CROWD && s < S_SHOTS) {
     crowd_kind_load(s - S_CROWD, files[s - S_CROWD]);
   } else if (s == S_SHOTS) {
-  V.bullet = imesh("Bullets", t3_box_geometry_new(0.09f, 0.09f, 1.2f, 1, 1, 1), glow(1, 0.82f, 0.35f, 9), MAXB, false); /* a long hot tracer */
+  V.bullet = imesh("Bullets", t3_box_geometry_new(0.13f, 0.13f, 1.3f, 1, 1, 1), glow(1, 0.7f, 0.28f, 7), MAXB, false); /* a long hot tracer */
+  V.bullet_head = imesh("BulletHeads", t3_icosahedron_geometry_new(0.13f, 1), glow(1, 0.93f, 0.75f, 16), MAXB, false); /* its white-hot head */
   V.rocket = imesh("Rockets", t3_cylinder_geometry_new(0.1f, 0.1f, 0.7f, 8, 1, false), glow(1, 0.45f, 0.12f, 5), 64, false);
   { /* xp gems: a faceted shard (a stretched octahedron: each face keeps its own normal), glassy with a glowing core; a richer gem is
      * bigger and changes colour: cool cyan, green, then gold */
@@ -931,6 +1054,12 @@ bool view_init_step(cw_node root, int *done, int *total) {
     bm->emissive = lin(PC[i][0] * 0.5f + 0.1f, PC[i][1] * 0.5f + 0.1f, PC[i][2] * 0.5f + 0.1f); /* a faint team glow: the soldier never sinks into the dusk */
     bm->emissive_intensity = 0.35f;
     V.pl_mat[i] = bm;
+    { /* a rim in the team's colour along the soldier's silhouette: each player found by colour in a crowd of any hue (every preset) */
+      cw_rim_light_desc rd = cw_rim_light_default();
+      rd.color = lin(0.45f + 0.55f * PC[i][0], 0.45f + 0.55f * PC[i][1], 0.45f + 0.55f * PC[i][2]);
+      rd.strength = 2.2f, rd.power = 2.6f, rd.near = 6, rd.far = 20, rd.close = 0.3f;
+      cw_rim_light_apply(bm, &rd);
+    }
     t3_material *tm = glow(PC[i][0], PC[i][1], PC[i][2], 7);
     if (have)
       for (int f = 0; f < V.soldier.nf[0] + V.soldier.nf[1]; f++) {
@@ -942,10 +1071,12 @@ bool view_init_step(cw_node root, int *done, int *total) {
         t3_release(mb), t3_release(mt);
       }
     t3_material *rm = glow(PC[i][0], PC[i][1], PC[i][2], 6);
+    rm->transparent = true, rm->depth_test = false, rm->depth_write = false; /* over the crowd: the ring never hides under it */
     t3_geometry *ring = t3_ring_geometry_new(0.78f, 0.95f, 40, 1);
     t3_geometry_apply_matrix4(ring, &(t3_mat4){ { 1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1 } }); /* flat on the ground */
     t3_mesh *mr = t3_mesh_new(ring, rm);
     mr->base.position = (t3_vec3){ 0, 0.03f, 0 };
+    mr->base.render_order = 4;
     t3_object_add(g, mr);
     V.pl[i] = g;
     V.pl_ring[i] = mr;
@@ -969,11 +1100,18 @@ bool view_init_step(cw_node root, int *done, int *total) {
   }
   } else if (s == S_POWER) {
   view_power_init(); /* after the players: the shield bubble hangs on each */
+  { /* the dash charge: DASH_ARC short bright ticks on a circle just outside the team ring, one instanced mesh for all four */
+    t3_material *am = t3_mesh_basic_material_new(0xffffff);
+    am->blending = T3_ADDITIVE_BLENDING, am->transparent = true, am->depth_write = false, am->depth_test = false;
+    V.dash_arc = imesh("DashCharge", t3_box_geometry_new(0.17f, 0.02f, 0.07f, 1, 1, 1), am, DASH_ARC * MAXP, false);
+    V.dash_arc->mesh.base.render_order = 4; /* with the ring, over the crowd */
+  }
   } else if (s == S_SHAFTS) {
   view_shafts();
   } else if (s == S_SPLATS) {
   V.shadows = cw_splats_new(V.root, "Shadows", CW_SPLATS_SHADOW, MAXE + MAXP + MAXO);
   V.pools = cw_splats_new(V.root, "LightPools", CW_SPLATS_LIGHT, 96);
+  cw_splats_mesh(V.pools)->mesh.base.render_order = -3; /* light before the shadow splats: a contact or blob shadow darkens a lit floor too */
   V.zones = cw_splats_new(V.root, "Zones", CW_SPLATS_LIGHT, MAXZ);
   { /* the damp asphalt's sheen: streaks of light whose texture breaks up into wet patches and dry gaps */
     V.sheen = cw_splats_new(V.root, "Sheen", CW_SPLATS_LIGHT, 16);
@@ -999,6 +1137,22 @@ bool view_init_step(cw_node root, int *done, int *total) {
     cw_splats_set_texture(V.sheen, t);
     t3_release(t);
   }
+  V.lamps = cw_splats_new(V.root, "Flashlights", CW_SPLATS_LIGHT, MAXP);
+  cw_splats_mesh(V.lamps)->mesh.base.render_order = -3; /* as the pools: before the shadows */
+  { t3_texture *t = lamp_texture(); cw_splats_set_texture(V.lamps, t); t3_release(t); }
+  for (int i = 0; i < MAXP; i++) { /* the lamp's light on the crowd and the soldiers: a warm spot, no shadow, nothing baked */
+    cw_node l = cw_node_new("SpotLight3D", "Flashlight");
+    cw_node_add_child(V.root, l);
+    cw_node_set(l, "color", cw_val_color(1.0f, 0.9f, 0.74f, 1));
+    cw_node_set(l, "energy", cw_val_float(0));
+    cw_node_set(l, "range", cw_val_float(15));
+    cw_node_set(l, "decay", cw_val_float(1.6f));
+    cw_node_set(l, "angle", cw_val_float(0.42f));
+    cw_node_set(l, "penumbra", cw_val_float(0.6f));
+    cw_node_set(l, "fog_energy", cw_val_float(0));
+    cw_node3d_set_position(l, (t3_vec3){ 0, -60, 0 });
+    V.pl_spot[i] = l;
+  }
   V.sun_x = 0.6f, V.sun_z = 0.8f, V.sun_len = 1.5f, V.sun_yaw = cw_atan2(0.6f, 0.8f);
   }
   return step >= S_DONE;
@@ -1018,7 +1172,7 @@ static void shadow_at(float x, float z, float r, float ht, float strength) {
   if (V_floor > 0) strength *= 0.5f, ht *= 0.4f; /* the deeper floors are dark already: softer, shorter blob shadows (no low sun there) */
   float len = 2 * r + ht * V.sun_len * 0.35f;
   float yaw = V.sun_yaw;
-  cw_splats_add(V.shadows, (t3_vec3){ x, 0, z }, len, 2.0f * r, yaw, (len - 2 * r) / len, (t3_color){ 1, 1, 1 }, strength);
+  cw_splats_add(V.shadows, (t3_vec3){ x, ground_y(x, z), z }, len, 2.0f * r, yaw, (len - 2 * r) / len, (t3_color){ 1, 1, 1 }, strength);
 }
 
 /* ── baked lighting ─────────────────────────────────────────────────────
@@ -1028,6 +1182,9 @@ static void shadow_at(float x, float z, float r, float ht, float strength) {
  * time for everything that moves. The bake ships as lightmaps/yard.cwlm; HORDE_BAKE=<file> (native,
  * development) bakes it again from the yard as built and writes it there. */
 static cw_lightmap_data *LM;
+/* the yard's baked light, lowered so the players' flashlights matter (the floodlights' pools stay the bright islands they
+ * were against it); the crowd and the props keep their light (ground_light is a ratio to the open floor) */
+#define YARD_FILL 0.7f
 
 /* ── light from the floor ──────────────────────────────────────────────
  * The floodlights are in the bake only (no real-time cost). Everything that moves still walks through their
@@ -1154,7 +1311,7 @@ static void view_puddles(void) {
     PUD[k] = imesh("Puddles", g, m, PUDDLES, false);
     yard_node(LAST_NODE);
     PUD[k]->mesh.base.receive_shadow = false;
-    PUD[k]->mesh.base.render_order = -3; /* under the blob shadows and the light pools */
+    PUD[k]->mesh.base.render_order = -4; /* under the light pools and the shadows */
   }
   t3_release(atlas);
   for (int i = 0; i < PUDDLES; i++) {
@@ -1292,6 +1449,7 @@ void view_hatch(const sim *s) {
   float o = s->state == ST_HATCH ? cw_clampf((float)s->state_ticks / (float)HATCH_OPEN_TICKS, 0, 1) : s->state == ST_DESCEND ? 1.0f : 0.0f;
   hatch_open = o * o * (3 - 2 * o);
   if (V_lb_up) levelbuild_hatch(&V_lb, hatch_open); /* a deeper floor's own hatch opens (its frames) */
+  deck_frame_t = hatch_open; /* what stands on it rides its frame */
   if (HATCH_BEAM) HATCH_BEAM->base.visible = hatch_open > 0.01f;
   if (HATCH_RING) {
     float k = 1.75f * hatch_open * (1.0f + 0.06f * cw_sin((float)s->tick * 0.15f));
@@ -1327,6 +1485,7 @@ static void ground_light_build(void);
 void view_floor(int level, const struct lb_level *lv) {
   if (level == V_floor) return;
   if (V_lb_up) levelbuild_free(&V_lb), V_lb_up = false, V_lb_lit = false;
+  DECK_FRAMES = 0;
   if (V_floor == 0 && level != 0) yard_attach(false), YARD_LM = LM;
   V_floor = level;
   for (int k = 0; k < EK_KINDS; k++) crowd_materials(k, level > 0);
@@ -1337,7 +1496,7 @@ void view_floor(int level, const struct lb_level *lv) {
     if (LM) ground_light_build();
     return;
   }
-  if (lv && levelbuild_build(V.root, lv, NULL, NULL, &V_lb)) V_lb_up = true, floor_obstacles_map(lv);
+  if (lv && levelbuild_build(V.root, lv, NULL, NULL, &V_lb)) V_lb_up = true, floor_obstacles_map(lv), deck_build(&V_lb);
   else cw_error("horde: floor %d has no level to build: it is drawn empty", level + 1);
 }
 int view_floor_now(void) { return V_floor; }
@@ -1425,7 +1584,7 @@ bool view_lightmap(cw_tree *t) {
     cw_error("horde: no yard lightmap (lightmaps/yard.cwlm): the floor draws unlit and dark");
     return false;
   }
-  cw_lightmap_apply_shaded(t, root, LM, 1, CW_LIGHTMAP_BAKED);
+  cw_lightmap_apply_shaded(t, root, LM, YARD_FILL, CW_LIGHTMAP_BAKED);
   ground_light_build();
   view_puddles();
   return true;
@@ -1494,6 +1653,9 @@ static bool view_frustum_sphere(const view_frustum *v, float x, float y, float z
 }
 
 float g_cam_dist;
+int32_t g_ground_probe[GROUND_PROBES * 5], g_ground_probes, g_contact_off, g_deck_off, g_deck_sunk, g_deck_on;
+int32_t g_crowd_off;
+int32_t g_light_probe[MAXP * 20], g_lamps_off;
 int32_t g_cam_boss;
 int view_attack_drawn(void) { return V.attack_drawn; }
 
@@ -1516,7 +1678,7 @@ void view_sync(const sim *s, float time) {
   view_frustum fr_ = view_frustum_now();
   for (int i = 0; i < MAXE; i++) {
     const enemy *e = &s->e[i];
-    if (!e->alive) continue;
+    if (!e->alive || g_crowd_off) continue; /* g_crowd_off: the grounding gate sees the props' feet clear */
     if (cull_on && fr_.ok && cull_kind[e->kind] && !view_frustum_sphere(&fr_, e->x, V.bc_y[e->kind], e->y, V.br[e->kind])) continue;
     int k = e->kind, nf = V.bn[k];
     if (nf <= 0) continue;
@@ -1525,6 +1687,7 @@ void view_sync(const sim *s, float time) {
     float tell = 0;
     int af = sim_attack_frame(e, &tell); /* attacking: the attack clip's pose instead of the walk */
     if (af >= 0 && V.bt[k] > nf) fr = nf + CW_MIN(af, V.bt[k] - nf - 1), V.attack_drawn++;
+    else if (e->flash > 0 && k != EK_BOSS && V.bt[k] > nf + 2) fr = nf + 2; /* staggered by a hit: the recovery pose, thrown back (not an attack) */
     { /* a floor boss's arena attack or summon: its special or summon clip (the held tell, then the release) */
       int bc_, bf_;
       float bt_;
@@ -1537,7 +1700,10 @@ void view_sync(const sim *s, float time) {
     cnt[k][fr]++;
     float sq = (e->elite ? 1.6f : 1.0f) * (1.0f + (e->flash > 0 ? 0.1f : 0)); /* an elite stands taller */
     float yaw = -e->face + 1.5708f; /* the model faces +Z; face is atan2(z, x) */
-    put(im, n, e->x, 0.0f, e->y, yaw, sq, sq, sq);
+    float ey = g_deck_off ? 0 : ground_y(e->x, e->y);
+    if (ey < ground_y(e->x, e->y) - 0.05f) g_deck_sunk++; /* the grounding gate: drawn into the hatch's plate (over the run) */
+    if (ground_y(e->x, e->y) > 0.05f) g_deck_on++;     /* and drawn standing on it */
+    put(im, n, e->x, ey, e->y, yaw, sq, sq, sq);
     static const float SR[EK_KINDS] = { 0.42f, 0.75f, 0.62f, 1.5f, 0.5f, 0.45f, 0.7f, 0.5f, 0.45f, 0.5f, 0.5f }, SH[EK_KINDS] = { 1.6f, 2.2f, 1.5f, 4.0f, 0.8f, 2.0f, 2.2f, 1.2f, 2.0f, 1.2f, 1.2f };
     shadow_at(e->x, e->y, SR[k] * sq, SH[k], 0.62f);
     /* each enemy its own hide from its kind's palette (sallow, ashen, olive, rust, bruised, ochre), its brightness
@@ -1581,7 +1747,7 @@ void view_sync(const sim *s, float time) {
       V.st.enemies_drawn += cnt[k][f];
     }
   /* bullets */
-  int nb = 0, nr = 0, ngr = 0, nrl = 0, nfl = 0, nwh = 0, nfr = 0; /* nwh: the wheels' rings in flight */
+  int nb = 0, nr = 0, ngr = 0, nrl = 0, nfl = 0, nwh = 0, nfr = 0, nbh = 0; /* nwh: the wheels' rings in flight */
   for (int i = 0; i < MAXB; i++) {
     const bullet *b = &s->b[i];
     if (!b->alive) continue;
@@ -1632,9 +1798,14 @@ void view_sync(const sim *s, float time) {
       t3_quat q = t3_quat_multiply(qy, qx);
       t3_mat4_compose(&m, (t3_vec3){ b->x, 0.9f, b->y }, q, (t3_vec3){ 1, 1, 1 });
       t3_instanced_mesh_set_matrix_at(im, *c, &m);
-    } else put(im, *c, b->x, 0.9f, b->y, yaw, 1, 1, 1 + (b->dmg > 2 ? 0.4f : 0));
+    } else {
+      float heavy = b->dmg > 2 ? 1.25f : 1.0f, vl = sqrtf(b->vx * b->vx + b->vy * b->vy) + 1e-4f; /* heavy rounds: fatter and longer */
+      put(im, *c, b->x, 0.9f, b->y, yaw, heavy, heavy, heavy + (b->dmg > 2 ? 0.3f : 0));
+      if (nbh < V.bullet_head->instance_matrix->count) put(V.bullet_head, nbh++, b->x + b->vx / vl * 0.62f * heavy, 0.9f, b->y + b->vy / vl * 0.62f * heavy, 0, heavy, heavy, heavy);
+    }
     (*c)++;
   }
+  V.bullet_head->count = nbh, touch(V.bullet_head, false);
   V.bullet->count = nb, V.rocket->count = nr, V.grenade->count = ngr, V.rail->count = nrl, V.flame->count = nfl;
   V.frost->count = nfr, touch(V.frost, false);
   touch(V.bullet, false), touch(V.rocket, false), touch(V.grenade, false), touch(V.rail, false), touch(V.flame, false);
@@ -1642,7 +1813,7 @@ void view_sync(const sim *s, float time) {
   { /* mines */
     int nm = 0;
     for (int j = 0; j < MAXM; j++)
-      if (s->m[j].alive) put(V.mine, nm++, s->m[j].x, 0.05f, s->m[j].y, 0, 1, s->m[j].arm > 0 ? 0.6f : 1.0f, 1);
+      if (s->m[j].alive) put(V.mine, nm++, s->m[j].x, 0.05f + ground_y(s->m[j].x, s->m[j].y), s->m[j].y, 0, 1, s->m[j].arm > 0 ? 0.6f : 1.0f, 1);
     V.mine->count = nm;
     touch(V.mine, false);
   }
@@ -1670,15 +1841,15 @@ void view_sync(const sim *s, float time) {
       int t = g->value >= 20 ? 2 : g->value >= 5 ? 1 : 0;
       if (ng[t] >= V.gem[t]->instance_matrix->count) continue;
       float sc = blink * (t == 2 ? 1.9f : t == 1 ? 1.4f : 1.0f);
-      put(V.gem[t], ng[t]++, g->x, 0.45f + 0.12f * cw_sin(time * 3.2f + (float)i * 0.7f), g->y, time * 1.6f + (float)i, sc, sc, sc);
+      put(V.gem[t], ng[t]++, g->x, ground_y(g->x, g->y) + 0.45f + 0.12f * cw_sin(time * 3.2f + (float)i * 0.7f), g->y, time * 1.6f + (float)i, sc, sc, sc);
     } else if (g->kind == PK_POWER) {
       int t = g->value % PU_KINDS;
       if (np_[t] >= V.power[t]->instance_matrix->count || npg >= V.power_glow->instance_matrix->count) continue;
       float pulse = 1.0f + 0.12f * cw_sin(time * 5.0f + (float)i);
-      put(V.power[t], np_[t]++, g->x, 0.85f + 0.15f * cw_sin(time * 2.5f + (float)i), g->y, time * 1.4f + (float)i, 1.7f * blink, 1.7f * blink, 1.7f * blink);
-      put(V.power_glow, npg, g->x, 0.04f, g->y, 0, pulse * blink, 1, pulse * blink);
+      put(V.power[t], np_[t]++, g->x, ground_y(g->x, g->y) + 0.85f + 0.15f * cw_sin(time * 2.5f + (float)i), g->y, time * 1.4f + (float)i, 1.7f * blink, 1.7f * blink, 1.7f * blink);
+      put(V.power_glow, npg, g->x, ground_y(g->x, g->y) + 0.04f, g->y, 0, pulse * blink, 1, pulse * blink);
       t3_instanced_mesh_set_color_at(V.power_glow, npg++, lin(PUC[t][0], PUC[t][1], PUC[t][2]));
-    } else if (nh < 64) put(V.health, nh++, g->x, 0.55f + 0.1f * cw_sin(time * 3 + (float)i), g->y, time + (float)i, blink, blink, blink);
+    } else if (nh < 64) put(V.health, nh++, g->x, ground_y(g->x, g->y) + 0.55f + 0.1f * cw_sin(time * 3 + (float)i), g->y, time + (float)i, blink, blink, blink);
   }
   for (int t = 0; t < PU_KINDS; t++) V.power[t]->count = np_[t], touch(V.power[t], false);
   V.power_glow->count = npg;
@@ -1712,11 +1883,56 @@ void view_sync(const sim *s, float time) {
       if (np < 16) put(V.pillar, np++, o->x, 2.25f, o->y, 0, 1, 1, 1);
     }
   }
-  for (int i = 0; i < MAXO && V_floor == 0; i++) { /* the yard's pieces: their soft contact shadows */
+  for (int k = 0; k < NCORE * NCORE + NCORE; k++)
+    if (V.contact[k]) cw_splats_begin(V.contact[k]);
+  for (int i = 0; i < MAXO; i++) { /* the world's pieces: the sun's soft shadow (the yard's), and the dark band at each foot */
     const obstacle *o = &s->o[i];
     if (!o->alive) continue;
     static const float OR[OK_KINDS] = { 0.8f, 0.55f, 1.2f, 1.35f }, OH[OK_KINDS] = { 1.3f, 1.1f, 2.2f, 4.5f };
-    shadow_at(o->x, o->y, OR[o->kind], OH[o->kind], 0.7f);
+    if (V_floor == 0) shadow_at(o->x, o->y, OR[o->kind], OH[o->kind], 0.7f);
+    bool round = V_floor == 0 && (o->kind == OK_BARREL || o->kind == OK_PILLAR);
+    /* the footprint: the yard's crate is 1.3 m and turned, a pillar 1.3 m round at its foot; a deeper floor's prop fills its box */
+    float fx = V_floor == 0 ? (o->kind == OK_CRATE ? 0.65f : o->kind == OK_PILLAR ? 1.3f : o->kind == OK_BARREL ? 0.52f : o->hx) : o->hx;
+    float fz = V_floor == 0 ? (o->kind == OK_CRATE ? 0.65f : o->kind == OK_PILLAR ? 1.3f : o->kind == OK_BARREL ? 0.52f : o->hy) : o->hy;
+    float yaw = V_floor == 0 && o->kind == OK_CRATE ? (float)(i * 37 % 100) * 0.03f : 0;
+    int lx = core_level(fx), lz = core_level(fz), key = round ? NCORE * NCORE + lx : lz * NCORE + lx;
+    if (!V.contact[key]) { /* this pair of cores first seen: its set, begun late (an empty set is drawn as nothing) */
+      V.contact[key] = cw_splats_new(V.root, "Contact", CW_SPLATS_SHADOW, MAXO);
+      t3_texture *t = round ? contact_texture(false, CORES[lx], CORES[lx]) : contact_texture(true, CORES[lx], CORES[lz]);
+      cw_splats_set_texture(V.contact[key], t);
+      t3_release(t);
+      cw_splats_begin(V.contact[key]);
+    }
+    float cx = round ? CORES[lx] : CORES[lx], cz = round ? CORES[lx] : CORES[lz];
+    cw_splats_add(V.contact[key], (t3_vec3){ o->x, ground_y(o->x, o->y), o->y }, 2 * fz / cz, 2 * fx / cx, yaw, 0,
+                  (t3_color){ 1, 1, 1 }, V_floor == 0 ? 0.85f : 0.7f); /* a deeper floor's bake already darkens its props' feet a little */
+  }
+  for (int k = 0; k < NCORE * NCORE + NCORE; k++)
+    if (V.contact[k]) {
+      cw_splats_end(V.contact[k]);
+      if (g_contact_off) cw_splats_mesh(V.contact[k])->count = 0; /* the grounding gate's control */
+    }
+  { /* the grounding gate: each piece's foot on the camera's side (just past its footprint) and the open floor a metre further out, on screen */
+    int n = 0;
+    for (int i = 0; i < MAXO && n < GROUND_PROBES; i++) {
+      const obstacle *o = &s->o[i];
+      if (!o->alive) continue;
+      float yaw = V_floor == 0 && o->kind == OK_CRATE ? (float)(i * 37 % 100) * 0.03f : 0;
+      float ex = 0, ez = V_floor == 0 ? (o->kind == OK_PILLAR ? 1.3f : o->kind == OK_BARREL ? 0.52f : o->hy) : o->hy, nx = 0, nz = 1;
+      if (yaw != 0) /* a turned crate: the middle of its face turned most toward the camera (+z), as the mesh and the splat turn it */
+        for (int c = 0; c < 4; c++) {
+          float lx = c == 0 ? 1.0f : c == 1 ? -1.0f : 0, lz = c == 2 ? 1.0f : c == 3 ? -1.0f : 0;
+          float wx = lx * cw_cos(yaw) + lz * cw_sin(yaw), wz = -lx * cw_sin(yaw) + lz * cw_cos(yaw);
+          if (c == 0 || wz > nz) nx = wx, nz = wz, ex = wx * 0.65f, ez = wz * 0.65f;
+        }
+      float bu, bv, ru, rv, gy = ground_y(o->x, o->y), fx0 = o->x + ex + nx * 0.06f, fz0 = o->y + ez + nz * 0.06f;
+      if (!view_screen((t3_vec3){ fx0, gy, fz0 }, &bu, &bv) || !view_screen((t3_vec3){ fx0, gy, fz0 + 1.0f }, &ru, &rv)) continue;
+      if (bu < 0.03f || bu > 0.97f || bv < 0.05f || rv > 0.95f) continue;
+      g_ground_probe[n * 5] = (int32_t)(bu * 10000), g_ground_probe[n * 5 + 1] = (int32_t)(bv * 10000);
+      g_ground_probe[n * 5 + 2] = (int32_t)(ru * 10000), g_ground_probe[n * 5 + 3] = (int32_t)(rv * 10000), g_ground_probe[n * 5 + 4] = o->kind;
+      n++;
+    }
+    g_ground_probes = n;
   }
   V.crate->count = nc, V.barrel->count = nba, V.wall->count = nw, V.pillar->count = np;
   { /* the floor bosses' leavings: acid (green), fire (orange) and spores (cyan) glowing on the floor, lances in flight, bone piles */
@@ -1743,11 +1959,11 @@ void view_sync(const sim *s, float time) {
         int r = CW_CLAMP(g->value >> 8, 0, RARE_KINDS - 1);
         t3_color rc = lin(RARITY_RGB[r][0], RARITY_RGB[r][1], RARITY_RGB[r][2]);
         float yaw = (float)(i * 37 % 100) * 0.06f, pulse = 0.8f + 0.2f * cw_sin((float)s->tick * 0.1f + (float)i);
-        put(V.caches, nk, g->x, 0, g->y, yaw, 1.4f, 1.4f, 1.4f);
+        put(V.caches, nk, g->x, ground_y(g->x, g->y), g->y, yaw, 1.4f, 1.4f, 1.4f);
         t3_instanced_mesh_set_color_at(V.caches, nk, ground_light(g->x, g->y));
-        if (V.cache_trim) put(V.cache_trim, nk, g->x, 0, g->y, yaw, 1.4f, 1.4f, 1.4f), t3_instanced_mesh_set_color_at(V.cache_trim, nk, rc);
+        if (V.cache_trim) put(V.cache_trim, nk, g->x, ground_y(g->x, g->y), g->y, yaw, 1.4f, 1.4f, 1.4f), t3_instanced_mesh_set_color_at(V.cache_trim, nk, rc);
         nk++;
-        cw_splats_add(V.zones, (t3_vec3){ g->x, 0, g->y }, 3.2f, 3.2f, yaw, 0, rc, (1.6f + 0.8f * (float)r) * pulse);
+        cw_splats_add(V.zones, (t3_vec3){ g->x, ground_y(g->x, g->y), g->y }, 3.2f, 3.2f, yaw, 0, rc, (1.6f + 0.8f * (float)r) * pulse);
       }
       V.caches->count = nk, touch(V.caches, false);
       if (V.cache_trim) V.cache_trim->count = nk, touch(V.cache_trim, false);
@@ -1760,7 +1976,7 @@ void view_sync(const sim *s, float time) {
         const pile *p = &s->pl[i];
         if (!p->alive) continue;
         float shake = p->rise > 0 && p->rise < 60 ? 0.06f * cw_sin((float)s->tick * 1.3f) : 0; /* about to stand up: it stirs */
-        put(V.piles, np_, p->x + shake, 0, p->y, (float)(i * 53 % 100) * 0.06f, 1, 1, 1);
+        put(V.piles, np_, p->x + shake, ground_y(p->x, p->y), p->y, (float)(i * 53 % 100) * 0.06f, 1, 1, 1);
         t3_instanced_mesh_set_color_at(V.piles, np_++, ground_light(p->x, p->y));
       }
       V.piles->count = np_;
@@ -1782,7 +1998,7 @@ void view_sync(const sim *s, float time) {
     shadow_at(p->x, p->y, 0.42f, 1.8f, 0.7f);
     cw_node_set(V.pl_light[i], "energy", cw_val_float(p->down ? 8.0f : V_floor > 0 ? 40.0f : 22.0f)); /* brighter on the darker floors: the soldier always reads */
     if (V.shield[i]) V.shield[i]->base.visible = p->shield_t > 0 && !p->down && (p->shield_t > 90 || (p->shield_t / 6) & 1);
-    cw_node3d_set_position(V.pn[i], (t3_vec3){ p->x, p->down ? -0.6f : 0, p->y });
+    cw_node3d_set_position(V.pn[i], (t3_vec3){ p->x, (p->down ? -0.6f : 0) + ground_y(p->x, p->y), p->y });
     cw_node3d_set_rotation(V.pn[i], (t3_vec3){ p->down ? 1.4f : 0, -p->aim + 1.5708f, 0 }); /* the model faces +Z */
     if (V.soldier.nclip < 2) continue;
     float speed = sqrtf(p->vx * p->vx + p->vy * p->vy);
@@ -1798,6 +2014,39 @@ void view_sync(const sim *s, float time) {
       }
       V.pl_frame[i] = fr;
     }
+    { /* recoil: the soldier rocks back as a shot leaves (its gun's cooldown restarting) and settles; a heavy gun more */
+      static int last_cd[MAXP];
+      static float kick[MAXP];
+      int w = p->pu_weapon_t > 0 ? p->pu_weapon : -1;
+      if (p->cd > last_cd[i] && !p->down) kick[i] = fminf(1.0f, kick[i] + (w == PU_SHOTGUN || w == PU_RAIL || w == PU_ROCKETS || w == PU_MORTAR ? 1.0f : w == PU_MINIGUN || w == PU_FLAME || w == PU_HELLFIRE ? 0.25f : 0.45f));
+      last_cd[i] = p->cd;
+      kick[i] *= 0.8f;
+      for (int g = 0; g < 2; g++) {
+        t3_mesh *m = V.pm[i][V.pl_frame[i]][g];
+        if (!m) continue;
+        t3_object_set_rotation(m, -0.16f * kick[i], 0, 0);
+        m->base.position = (t3_vec3){ 0, 0, -0.12f * kick[i] };
+      }
+    }
+  }
+  { /* each living player's dash charge round its ring: the ticks fill clockwise from the front as it recharges, dim, then the
+     * whole circle holds a soft glow while it is ready */
+    static const float DC[MAXP][3] = { { 0.2f, 0.7f, 1 }, { 1, 0.55f, 0.1f }, { 0.4f, 0.95f, 0.35f }, { 0.95f, 0.3f, 0.75f } };
+    int na = 0;
+    for (int i = 0; i < MAXP; i++) {
+      const player *p = &s->p[i];
+      if (!p->active || p->down) continue;
+      float ready = 1.0f - (float)p->dash_cd / (float)DASH_COOLDOWN, gy = ground_y(p->x, p->y);
+      int lit = p->dash_cd > 0 ? (int)(ready * DASH_ARC) : DASH_ARC;
+      float k = p->dash_cd > 0 ? 0.9f : 1.6f;
+      for (int j = 0; j < lit; j++) {
+        float a = p->aim + 6.2831853f * ((float)j + 0.5f) / DASH_ARC;
+        put(V.dash_arc, na, p->x + cw_cos(a) * 1.12f, gy + 0.04f, p->y + cw_sin(a) * 1.12f, -a - 1.5707963f, 1, 1, 1); /* along the circle */
+        t3_instanced_mesh_set_color_at(V.dash_arc, na++, lin(DC[i][0] * k, DC[i][1] * k, DC[i][2] * k));
+      }
+    }
+    V.dash_arc->count = na;
+    touch(V.dash_arc, true);
   }
   cw_splats_end(V.shadows);
   { /* development (A/B timing): HORDE_HIDE bits hide 1 the crowd, 2 the blob shadows, 4 the light pools */
@@ -1812,6 +2061,30 @@ void view_sync(const sim *s, float time) {
   cw_splats_begin(V.pools);
   cw_splats_begin(V.sheen);
   cw_splats_add_lights(V.pools, cw_node_parent(V.root), 0, 0.1f / 3.14159265f);
+  { /* the flashlights: a cone on the floor ahead of each living player's gun; the spot on what stands in it from Medium up */
+    cw_splats_begin(V.lamps);
+    bool spots = cw_gfx_effective(CW_GFX_EFFECTS) >= CW_QUALITY_MEDIUM;
+    for (int i = 0; i < MAXP; i++) {
+      const player *p = &s->p[i];
+      bool on = p->active && !p->down;
+      float ax = cw_cos(p->aim), az = cw_sin(p->aim), gy = ground_y(p->x, p->y);
+      if (on) cw_splats_add(V.lamps, (t3_vec3){ p->x + ax * LAMP_LEN * 0.5f, gy, p->y + az * LAMP_LEN * 0.5f }, LAMP_LEN, LAMP_LEN * 0.95f, 1.5707963f - p->aim, 0,
+                            (t3_color){ 1.0f, 0.9f, 0.72f }, V_floor > 0 ? 0.42f : 0.5f);
+      cw_node_set(V.pl_spot[i], "energy", cw_val_float(on && spots ? 26.0f : 0.0f));
+      if (!on) continue;
+      cw_node3d_set_position(V.pl_spot[i], (t3_vec3){ p->x - ax * 0.3f, gy + 1.9f, p->y - az * 0.3f });
+      cw_node3d_look_at(V.pl_spot[i], (t3_vec3){ p->x + ax * 7.0f, gy, p->y + az * 7.0f }, (t3_vec3){ 0, 1, 0 });
+      for (int k = 0; k < 5; k++) { /* the brightness gate: points on the floor in the cone, and as far off to the side, on screen */
+        float d = 2.5f + 1.2f * (float)k, su, sv;
+        float ox = cw_cos(p->aim + 1.7f), oz = cw_sin(p->aim + 1.7f);
+        g_light_probe[i * 20 + k * 4] = view_screen((t3_vec3){ p->x + ax * d, gy, p->y + az * d }, &su, &sv) ? (int32_t)(su * 10000) * 10000 + (int32_t)(sv * 10000) : -1;
+        g_light_probe[i * 20 + k * 4 + 1] = view_screen((t3_vec3){ p->x + ox * d, gy, p->y + oz * d }, &su, &sv) ? (int32_t)(su * 10000) * 10000 + (int32_t)(sv * 10000) : -1;
+        g_light_probe[i * 20 + k * 4 + 2] = g_light_probe[i * 20 + k * 4 + 3] = 0;
+      }
+    }
+    if (g_lamps_off) cw_splats_mesh(V.lamps)->count = 0;
+    cw_splats_end(V.lamps);
+  }
   /* the wet asphalt's sheen: each floodlight's blurred mirror image on the ground, where the eye sees it reflected,
    * a long soft streak toward the camera that slides as the camera moves (what the floodlights' specular on a wet
    * floor showed, for six additive discs) */

@@ -95,3 +95,9 @@ standard+vcol+instbig+fog2+icol+l2001+xcluster_plain
 standard+map+vcol+rep+fog2+l2001+xcluster_plain
 standard+trans+fog2+l2001+xcluster_plain
 standard+trans+env+fog2+l2001+xcluster_plain
+standard+map+vcol+rep+nmap+rmap+senv+fog2+l2001+xcluster_plain_rim
+standard+trans+senv+fog2+l2001+xcluster_plain
+standard+map+vcol+rep+nmap+rmap+senv+fog2+l2001+xcluster_rim
+standard+trans+senv+fog2+l2001+xcluster
+standard+map+vcol+rep+nmap+rmap+fog2+l2001+xcluster_plain_rim
+standard+map+vcol+rep+nmap+rmap+fog2+l2001+xcluster_rim

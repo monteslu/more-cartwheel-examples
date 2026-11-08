@@ -27,7 +27,7 @@ int sim_kind_by_name(const char *name); /* -1 when not a kind */
 enum { OK_CRATE, OK_BARREL, OK_WALL, OK_PILLAR, OK_KINDS };
 enum { EV_SHOT, EV_HIT, EV_KILL, EV_BOOM, EV_CRATE, EV_BARREL, EV_WALL, EV_GEM, EV_HURT, EV_LEVEL, EV_WAVE, EV_BOSS, EV_DOWN, EV_ROCKET, EV_POWER, EV_POWER_SPAWN, EV_SWIPE,
        EV_MELT, EV_CLEAR, EV_HATCH, EV_DESCEND, EV_FLOOR,
-       EV_CACHE, EV_ARC, EV_BOUNCE, EV_SHATTER, EV_BOSS_TELL, /* EV_ARC: a lightning jump (x y to z w; b 1 through water); EV_BOUNCE: a wheel glances; EV_SHATTER: a frozen one breaks */ EV_ACID, EV_LANCE, EV_SPIKES, EV_RISE, EV_BROOD }; /* EV_BOSS_TELL: a boss begins an arena attack (a 1) or a summon (a 2);
+       EV_CACHE, EV_ARC, EV_BOUNCE, EV_SHATTER, EV_BOSS_TELL, /* EV_ARC: a lightning jump (x y to z w; b 1 through water); EV_BOUNCE: a wheel glances; EV_SHATTER: a frozen one breaks */ EV_ACID, EV_LANCE, EV_SPIKES, EV_RISE, EV_BROOD, EV_DASH }; /* EV_DASH: a player dashed (a who, z w the heading) */ /* EV_BOSS_TELL: a boss begins an arena attack (a 1) or a summon (a 2);
        EV_ACID: a puddle of acid lands; EV_LANCE: a bone lance flies (z w its velocity); EV_SPIKES: a ring of spikes (z its radius);
        EV_RISE: a pile of bones stands up; EV_BROOD: a skitter dropped by the mother */ /* EV_MELT: one of the horde melting after its boss fell (a its kind); EV_CLEAR: the floor is clear;
        EV_HATCH: the hatch opens; EV_DESCEND: a player stepped in; EV_FLOOR: a new floor starts (a its index) */ /* EV_SWIPE: an enemy's strike (a kind, b 1 when it hit; z, w its facing) */
@@ -51,7 +51,7 @@ extern const float RARITY_RGB[RARE_KINDS][3]; /* the five-step loot colours (sRG
 const char *sim_power_name(int t);
 int sim_power_category(int t); /* 0 weapon, 1 ammo, 2 charges, 3 saws, 4 shield, 5 magnet */
 
-typedef struct input { float mx, my, ax, ay; bool fire, bomb; int pick; /* 1..3 takes that upgrade offer, 0 none */ } input;
+typedef struct input { float mx, my, ax, ay; bool fire, bomb; int pick; /* 1..3 takes that upgrade offer, 0 none */ bool dash; /* pressed this tick */ } input;
 
 typedef struct player {
   bool active, down;
@@ -63,6 +63,8 @@ typedef struct player {
   /* power-ups held: a weapon and an ammo with their ticks left, grenades and mines, saws, shield, magnet */
   int pu_weapon, pu_weapon_t, pu_ammo, pu_ammo_t, grenades, mines, saw_t, shield_t, magnet_t;
   int pu_rarity;
+  int dash_t, dash_cd; /* the dash: ticks of it left, ticks before the next (DASH_*) */
+  float dash_x, dash_y; /* its heading */
   int beam; /* ticks the hellfire lance has burned without a pause: it ramps up */ /* the held weapon's rarity: its damage, an extra projectile, more pierce (a cache's) */
   float saw_a;
   int offer[3], offer_ticks, pending; /* an upgrade choice on screen: offer_ticks > 0 */
@@ -175,6 +177,11 @@ enum { ST_PLAY, ST_OVER, ST_WON, ST_CLEAR, ST_HATCH, ST_DESCEND };
 #define DESCEND_TICKS 60
 int sim_level_waves(int level);  /* waves on that floor, the last its boss wave */
 int sim_level_first_wave(int level); /* the run's wave number of that floor's first wave */
+/* the dash: 4.5 m in a fifth of a second, untouchable through it and a little after, ready again 1.35 s after it began */
+#define DASH_TICKS 12
+#define DASH_SPEED 22.5f
+#define DASH_COOLDOWN 81
+#define DASH_INV 16
 #define TETHER_HW 16.0f /* the living team box is at most 2 * this wide and 2 * TETHER_HH deep: one camera at its farthest (45 m) shows it */
 #define TETHER_HH 8.5f
 
@@ -183,7 +190,10 @@ void sim_free(sim *s);
 void sim_step(sim *s, const input in[MAXP]);
 int sim_alive_players(const sim *s);
 void horde_bot(const sim *s, int i, input *in); /* bot.c */
+extern bool g_bot_dash; /* the bots use the dash (HORDE_BOT_DASH; off: they play as before it existed) */
 const char *sim_upgrade_name(int u);
+int sim_upgrade_level(const player *p, int u); /* that upgrade's level now (0 none) */
+int sim_upgrade_max(int u);                    /* and its top level */
 /* team centre and the spread of the living players, for the camera */
 /* an enemy's melee attack as the view draws it: -1 none, 0 the wind-up, 1 the strike, 2 the recovery; *tell 0..1
  * how far into the wind-up (the telegraph) */
@@ -216,9 +226,18 @@ bool view_init_step(cw_node root, int *done, int *total);
 void view_free(void);
 void view_sync(const sim *s, float time);
 extern float g_cam_dist;
+#define GROUND_PROBES 48
+/* the grounding gate (development): each world piece's foot and the floor beside it on screen (u, v x 10000, kind),
+ * how many; switches that turn the contact shadows and the hatch's plate off (its control); enemies drawn sunk in the plate */
+extern int32_t g_ground_probe[GROUND_PROBES * 5], g_ground_probes, g_contact_off, g_deck_off, g_deck_sunk, g_deck_on, g_crowd_off;
+/* the flashlight gate: per player, five points on the floor in its cone and five as far off to the side (u x 10000 x 10000 + v x 10000;
+ * -1 off screen); a switch that turns the cones off (its control) */
+extern int32_t g_light_probe[MAXP * 20], g_lamps_off;
+#define LAMP_LEN 11.0f
 extern int32_t g_cam_boss; /* development: the camera on the boss */ /* development: a fixed camera distance (0: the game frames the team) */
 void view_floor(int level, const struct lb_level *lv); /* build that floor's look (0: the yard) */
 int view_floor_now(void);
+float view_ground_y(float x, float z); /* the ground's height there: a deeper floor's closed hatch is a low plate */
 void view_hatch(const sim *s); /* the hatch's beam and ring of light, by the floor's state */
 int view_attack_drawn(void); /* enemies drawn in an attack pose this frame */
 void view_camera(const sim *s, cw_node camera, float aspect, float control_x, float control_y);

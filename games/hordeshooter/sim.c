@@ -488,6 +488,9 @@ static int *up_slot(player *p, int u) {
   return f[u % 9];
 }
 
+int sim_upgrade_level(const player *p, int u) { return *up_slot((player *)p, u); }
+int sim_upgrade_max(int u) { return UP_MAX[u % 9]; }
+
 static void apply_upgrade(sim *s, player *p, int pi, int u) {
   p->last_up = u;
   int *lv = up_slot(p, u);
@@ -952,8 +955,20 @@ static void player_step(sim *s, int i, const input *in) {
   if (in_hazard(s, HZ_WATER, p->x, p->y) || in_hazard(s, HZ_SPORE, p->x, p->y) || in_zone(s, 2, p->x, p->y)) sp *= 0.7f; /* wading, spores */
   float mx = in->mx, my = in->my, ml = cw_v2_length(cw_v2(mx, my));
   if (ml > 1) mx /= ml, my /= ml;
-  p->vx += (mx * sp - p->vx) * 0.35f;
-  p->vy += (my * sp - p->vy) * 0.35f;
+  if (p->dash_cd > 0) p->dash_cd--;
+  if (in->dash && p->dash_cd == 0) { /* the dash: where the stick points, else where the gun does */
+    float dx = ml > 0.3f ? mx / CW_MAX(ml, 1.0f) : cw_cos(p->aim), dy = ml > 0.3f ? my / CW_MAX(ml, 1.0f) : cw_sin(p->aim), dl = cw_v2_length(cw_v2(dx, dy));
+    p->dash_x = dx / dl, p->dash_y = dy / dl;
+    p->dash_t = DASH_TICKS, p->dash_cd = DASH_COOLDOWN, p->inv = CW_MAX(p->inv, DASH_INV);
+    ev(s, EV_DASH, p->x, p->y, p->dash_x, p->dash_y, i, 0);
+  }
+  if (p->dash_t > 0) { /* a burst at full speed, straight; the walls still stop it */
+    p->dash_t--;
+    p->vx = p->dash_x * DASH_SPEED, p->vy = p->dash_y * DASH_SPEED;
+  } else {
+    p->vx += (mx * sp - p->vx) * 0.35f;
+    p->vy += (my * sp - p->vy) * 0.35f;
+  }
   p->x += p->vx / TICK;
   p->y += p->vy / TICK;
   p->x = cw_clampf(p->x, -HALF + 0.6f, HALF - 0.6f);

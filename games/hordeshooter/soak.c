@@ -50,6 +50,7 @@ static int check(const sim *s) {
 int main(int argc, char **argv) {
   int minutes = argc > 1 ? atoi(argv[1]) : 30, players = argc > 2 ? atoi(argv[2]) : 4, wave0 = argc > 3 ? atoi(argv[3]) : 1;
   cw_jobs_init(3);
+  g_bot_dash = getenv("HORDE_BOT_DASH") && atoi(getenv("HORDE_BOT_DASH")); /* the dash A/B */
   static sim S;
 #ifdef HORDE_ASSETS_DIR
   cw_vfs_set_root(HORDE_ASSETS_DIR); /* the floors' .cwlevel files */

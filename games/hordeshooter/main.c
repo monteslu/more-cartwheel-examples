@@ -31,6 +31,7 @@
 #include "cartwheel/pipeline.h"
 #include "cartwheel/profile.h"
 #include "cartwheel/project.h"
+#include "cartwheel/prompt.h"
 #include "cartwheel/quality.h"
 #include "cartwheel/render2d.h"
 #include "cartwheel/render3d.h"
@@ -62,7 +63,7 @@ static struct {
   float frame_ms;
   double ms_acc;
   int ms_n;
-  cw_action move[4], aim[4], fire, bomb, pick[3];
+  cw_action move[4], aim[4], fire, bomb, pick[3], dash;
   int won_ticks;
   cw_node camera, sun;
   int level_flash[MAXP], level_up[MAXP];
@@ -81,6 +82,15 @@ static struct {
   int32_t dev_gun; /* development (romdev): t + 1 hands every player gun t (the power-up table order) and keeps it held */
   int32_t dev_rarity; /* with dev_gun: its rarity (0 common .. 4 legendary) */
   int32_t dev_hold; /* development (romdev, screenshots): 1 the bots stand where they are, 2 and hold their fire, so the horde reaches them */
+  int32_t step_in_y0, step_in_y1, banner_y0, banner_y1;
+  int32_t cards_shown;
+  int32_t slow; /* the solo slow-down is on (the cards are up) */
+  /* the score chase (render side, from the sim's events): each kill raises a player's multiplier a little, a hit drops it
+   * back to x1; points come in at the multiplier. And for the run's summary: the best multiplier, what downed each, the guns held */
+  float mult[MAXP], best_mult[MAXP];
+  int32_t mscore[MAXP], mult100[MAXP], downs[MAXP];
+  int last_score[MAXP], last_hurt[MAXP], downed_by[MAXP];
+  uint32_t guns[MAXP]; /* frames an upgrade choice's cards were drawn (a player's each) */ /* the hatch marker's label and the floor-clear banner, rows on screen (the text check) */
   t3_vec3 cam_p[2];
   int cam_n;
 } G;
@@ -88,8 +98,10 @@ static struct {
 static cw_font font;
 static double T_sim, T_view, T_fx, T_frame, T_last; /* ms, averaged over the bench window */
 static int T_n;
-static cw_sound snd_boom, snd_shot, snd_kill, snd_gem, snd_move, snd_select, snd_back, snd_music, snd_power, snd_hatch, snd_descend;
+static cw_sound snd_dash, snd_boom, snd_shot, snd_kill, snd_gem, snd_move, snd_select, snd_back, snd_music, snd_power, snd_hatch, snd_descend;
 /* the floors' names (LEVELS.md); the code reads only these until a floor's own scene lands */
+static const char *const BOSS_NAME[NLEVELS] = { "KILNMAW, THE YARD TYRANT", "VHESSA, MOTHER OF THE DRAINS", "OSSIVAR, THE HOLLOW ABBOT", "ANVILGRAVE, THE FOUNDRY LORD",
+                                                 "MOTHER MYCEL", "SERAPHEL, THE CHOIR BISHOP", "KHAR-VAAL, THE SHATTERED WARDEN", "THE UNMAKER" };
 static const char *const FLOOR_NAME[NLEVELS] = { "The Yard", "The Drowned Sluice", "The Ossuary", "The Foundry", "The Grotto", "The Cathedral", "The Rift", "The Core" };
 static cw_voice music;
 
@@ -113,6 +125,45 @@ static cw_sound synth(float seconds, float hz0, float hz1, float noise, float ga
   return cw_sound_from_pcm(pcm, n, 1, RATE, NULL);
 }
 static void play(cw_sound s, cw_bus bus, float gain) { cw_audio_play(s, &(cw_play_desc){ .bus = bus, .volume = gain }); }
+
+/* the guns' voices: each family its own synthesised shot, played per player as it fires (a fast gun every fourth tick
+ * at most), pitch varied a little shot to shot; a kill sound for every kill, as long as one of three kill voices is
+ * free (a crowd melting is a rattle, not a wall of noise) */
+enum { GS_ROUND, GS_SHOTGUN, GS_MINIGUN, GS_RAIL, GS_ROCKET, GS_FLAME, GS_ARC, GS_N };
+static cw_sound snd_gun[GS_N];
+static cw_voice kill_voice[3];
+static uint32_t snd_rng = 99;
+static float snd_jitter(float k) { snd_rng = snd_rng * 1664525u + 1013904223u; return 1.0f + k * ((float)(snd_rng >> 9) / 8388608.0f - 1.0f); }
+static int gun_family(const player *p, int ev_kind) {
+  int w = p->pu_weapon_t > 0 ? p->pu_weapon : -1;
+  if (ev_kind == EV_ROCKET || w == PU_ROCKETS || w == PU_MORTAR || w == PU_SEEKER) return GS_ROCKET;
+  if (w == PU_SHOTGUN) return GS_SHOTGUN;
+  if (w == PU_MINIGUN) return GS_MINIGUN;
+  if (w == PU_RAIL || w == PU_STAKE || w == PU_FROST || w == PU_WHEEL) return GS_RAIL;
+  if (w == PU_FLAME || w == PU_HELLFIRE) return GS_FLAME;
+  if (w == PU_ARC) return GS_ARC;
+  return GS_ROUND;
+}
+static void gun_sounds(int ev0, int kills) {
+  static int last[MAXP];
+  bool done[MAXP] = { 0 };
+  for (int k = ev0 <= G.S.ev_n ? ev0 : 0; k < G.S.ev_n; k++) {
+    const event *v = &G.S.ev[k];
+    if ((v->kind != EV_SHOT && v->kind != EV_ROCKET) || v->a >= MAXP || done[v->a]) continue;
+    const player *p = &G.S.p[v->a];
+    int fam = gun_family(p, v->kind), gap = fam == GS_MINIGUN || fam == GS_FLAME ? 4 : 3;
+    if (G.S.tick - last[v->a] < gap && G.S.tick >= last[v->a]) continue;
+    done[v->a] = true, last[v->a] = G.S.tick;
+    static const float VOL[GS_N] = { 0.24f, 0.4f, 0.2f, 0.34f, 0.36f, 0.16f, 0.3f };
+    cw_audio_play(snd_gun[fam], &(cw_play_desc){ .bus = cw_shell_sfx_bus(), .volume = VOL[fam], .pitch = snd_jitter(0.06f) });
+  }
+  if (kills > 0)
+    for (int k = 0; k < 3; k++)
+      if (!cw_voice_is_playing(kill_voice[k])) {
+        kill_voice[k] = cw_audio_play(snd_kill, &(cw_play_desc){ .bus = cw_shell_sfx_bus(), .volume = fminf(0.3f + 0.05f * (float)kills, 0.5f), .pitch = snd_jitter(0.12f) });
+        break;
+      }
+}
 
 static void shell_sound(cw_shell_sound s, void *u) {
   (void)u;
@@ -162,7 +213,8 @@ static void start(int players, void *u) {
   G.floor_stay = getenv("HORDE_FLOOR_STAY") && atoi(getenv("HORDE_FLOOR_STAY"));
   if (getenv("HORDE_BOSS_WEAK")) G.dev_boss = 1; /* the floor gates: the floor's boss wave, its boss weak (the bots fell it in seconds) */
   G.floor_level = G.S.level, G.floor_boss_tick = G.floor_clear_tick = G.floor_hatch_tick = G.floor_descend_tick = G.floor_next_tick = 0, G.floor_left_at_hatch = -1;
-  G.m_test = getenv("HORDE_MELEE_TEST") ? (getenv("HORDE_MELEE_DODGE") && atoi(getenv("HORDE_MELEE_DODGE")) ? 2 : 1) : 0;
+  G.m_test = getenv("HORDE_MELEE_TEST") ? (getenv("HORDE_MELEE_DODGE") && atoi(getenv("HORDE_MELEE_DODGE")) ? 1 + atoi(getenv("HORDE_MELEE_DODGE")) : 1) : 0;
+  /* m_test: 1 stands still, 2 steps away from every wind-up, 3 dashes away in its last three ticks, 4 steps away then (the dash gate's control) */
   if (G.m_test) { /* the melee gate: one player standing still (or stepping away from each wind-up), a runner and a brute walking in */
     G.S.no_spawn = true, G.S.no_power = true;
     const player *p = &G.S.p[0];
@@ -172,12 +224,14 @@ static void start(int players, void *u) {
   G.players = players;
   G.in_match = true;
   G.ticks = 0;
-  G.banner_t = 180, G.banner_kind = 0;
+  G.banner_t = 360, G.banner_kind = 0; /* six seconds: the controls line under it */
   if (getenv("HORDE_POWER_SHOW")) /* development (screenshots): one of each power-up in a ring round the team */
     for (int t = 0; t < PU_KINDS; t++) sim_power_drop(&G.S, cw_cos((float)t * 0.5236f) * 7.0f, cw_sin((float)t * 0.5236f) * 5.0f, t);
   if (getenv("HORDE_POWER")) /* development (screenshots, surveys): every player starts holding power-up n, refreshed as it runs out */
     for (int i = 0; i < players; i++) sim_power_give(&G.S, i, atoi(getenv("HORDE_POWER")) % PU_KINDS);
   memset(G.level_flash, 0, sizeof G.level_flash);
+  for (int i = 0; i < MAXP; i++)
+    G.mult[i] = G.best_mult[i] = 1, G.mscore[i] = 0, G.mult100[i] = 100, G.downs[i] = 0, G.last_score[i] = 0, G.last_hurt[i] = -1, G.downed_by[i] = -1, G.guns[i] = 0;
 }
 
 #ifdef HORDE_AUTOPILOT
@@ -208,6 +262,7 @@ static void init(void *u) {
   for (int i = 0; i < 4; i++) G.move[i] = cw_action_find(names[i]), G.aim[i] = cw_action_find(an[i]);
   G.fire = cw_action_find("fire");
   G.bomb = cw_action_find("bomb");
+  G.dash = cw_action_find("dash");
   G.pick[0] = cw_action_find("pick1"), G.pick[1] = cw_action_find("pick2"), G.pick[2] = cw_action_find("pick3");
   cw_shell_init(&(cw_shell_desc){ .title = "HORDE", .subtitle = "hold the yard together", .max_players = MAXP,
                                   .game_save_size = sizeof(save_data), .game_save_version = 1, .start = start,
@@ -217,8 +272,16 @@ static void init(void *u) {
   if (getenv("HORDE_QUALITY")) cw_quality_set((cw_quality)CW_CLAMP(atoi(getenv("HORDE_QUALITY")), 0, CW_QUALITY_COUNT - 1), true); /* 0 Very Low .. 4 Ultra */
   snd_boom = synth(1.1f, 70, 28, 0.75f, 1.0f, 3.5f);
   snd_shot = synth(0.14f, 260, 55, 0.62f, 0.5f, 9); /* a low thump with a crack of noise */
+  snd_gun[GS_ROUND] = snd_shot;
+  snd_gun[GS_SHOTGUN] = synth(0.32f, 140, 38, 0.8f, 0.85f, 6.5f);  /* a deep boom and a spray of noise */
+  snd_gun[GS_MINIGUN] = synth(0.07f, 420, 160, 0.55f, 0.45f, 14);  /* a short hard tick */
+  snd_gun[GS_RAIL] = synth(0.4f, 2400, 180, 0.25f, 0.5f, 4.5f);    /* a charged zap falling away */
+  snd_gun[GS_ROCKET] = synth(0.45f, 90, 300, 0.75f, 0.6f, 3.5f);   /* a whoosh rising as it leaves */
+  snd_gun[GS_FLAME] = synth(0.18f, 120, 90, 0.95f, 0.5f, 2.0f);    /* a roar of noise */
+  snd_gun[GS_ARC] = synth(0.2f, 1600, 900, 0.7f, 0.45f, 7);        /* a crackle */
   snd_kill = synth(0.12f, 200, 90, 0.7f, 0.4f, 5);
   snd_gem = synth(0.1f, 1200, 1800, 0, 0.25f, 4);
+  snd_dash = synth(0.22f, 900, 260, 0.85f, 0.4f, 6); /* a dash: a short rush of air, falling */
   snd_power = synth(0.45f, 440, 1320, 0.05f, 0.45f, 2.5f); /* a rising chime: a power-up taken */
   snd_hatch = synth(2.2f, 48, 130, 0.35f, 0.9f, 1.2f);  /* the hatch grinding open, rising */
   snd_descend = synth(1.0f, 220, 55, 0.2f, 0.6f, 2.0f); /* stepping down: a falling sweep */
@@ -251,6 +314,29 @@ static void init(void *u) {
   cw_debug_i32("floor.next_tick", &G.floor_next_tick);
   cw_debug_i32("floor.left_at_hatch", &G.floor_left_at_hatch);
   cw_debug_i32("dev.hold", &G.dev_hold);
+  cw_debug_i32("hud.step_in_y0", &G.step_in_y0);
+  cw_debug_field("ground.probe", g_ground_probe, CW_DBG_I32, GROUND_PROBES * 5);
+  cw_debug_i32("ground.probes", &g_ground_probes);
+  cw_debug_field("light.probe", g_light_probe, CW_DBG_I32, MAXP * 20);
+  cw_debug_i32("sw.lamps_off", &g_lamps_off);
+  if (getenv("HORDE_LAMPS_OFF")) g_lamps_off = atoi(getenv("HORDE_LAMPS_OFF"));
+  cw_debug_i32("ground.deck_sunk", &g_deck_sunk);
+  cw_debug_i32("ground.deck_on", &g_deck_on);
+  cw_debug_i32("sw.contact_off", &g_contact_off);
+  cw_debug_i32("sw.deck_off", &g_deck_off);
+  if (getenv("HORDE_CONTACT_OFF")) g_contact_off = atoi(getenv("HORDE_CONTACT_OFF"));
+  if (getenv("HORDE_DECK_OFF")) g_deck_off = atoi(getenv("HORDE_DECK_OFF"));
+  if (getenv("HORDE_CROWD_OFF")) g_crowd_off = atoi(getenv("HORDE_CROWD_OFF"));
+  g_bot_dash = getenv("HORDE_BOT_DASH") && atoi(getenv("HORDE_BOT_DASH"));
+  if (getenv("HORDE_HOLD")) G.dev_hold = atoi(getenv("HORDE_HOLD")); /* dev.hold from the environment (screenshots, the grounding gate) */
+  cw_debug_i32("hud.step_in_y1", &G.step_in_y1);
+  cw_debug_i32("hud.banner_y0", &G.banner_y0);
+  cw_debug_i32("hud.banner_y1", &G.banner_y1);
+  cw_debug_i32("hud.cards_shown", &G.cards_shown);
+  cw_debug_i32("game.slow", &G.slow);
+  cw_debug_field("score.mult100", G.mult100, CW_DBG_I32, MAXP);
+  cw_debug_field("score.points", G.mscore, CW_DBG_I32, MAXP);
+  cw_debug_field("score.downs", G.downs, CW_DBG_I32, MAXP);
   cw_debug_i32("dev.gun", &G.dev_gun);
   cw_debug_i32("dev.rarity", &G.dev_rarity);
   cw_debug_i32("dev.boss", &G.dev_boss);
@@ -287,15 +373,17 @@ static void read_input(input in[MAXP]) {
   if (G.m_test) { /* stand still; the dodge control steps straight away from an enemy winding up at player 0 */
     const player *p = &G.S.p[0];
     float ax = 0, ay = 0; /* away from every enemy winding up at player 0 at once */
-    for (int i = 0; i < MAXE && G.m_test == 2; i++) {
+    for (int i = 0; i < MAXE && G.m_test >= 2; i++) {
       const enemy *e = &G.S.e[i];
       if (!e->alive || e->tgt != 0 || e->atk <= 0 || e->atk > sim_melee_windup(e->kind)) continue;
+      if (G.m_test >= 3 && e->atk < sim_melee_windup(e->kind) - 3) continue; /* late: the strike is three ticks away */
       float dx = p->x - e->x, dy = p->y - e->y, l = sqrtf(dx * dx + dy * dy);
       if (l > 0.01f) ax += dx / l, ay += dy / l;
     }
     float l = sqrtf(ax * ax + ay * ay);
     if (l > 0.01f) in[0].mx = ax / l, in[0].my = ay / l;
-    else if (G.m_test == 2 && (ax != 0 || ay != 0)) in[0].mx = -ay, in[0].my = ax; /* pincered from both sides: step out sideways */
+    else if (G.m_test >= 2 && (ax != 0 || ay != 0)) in[0].mx = -ay, in[0].my = ax; /* pincered from both sides: step out sideways */
+    in[0].dash = G.m_test == 3 && (in[0].mx != 0 || in[0].my != 0);
     return;
   }
   for (int i = 0; i < G.S.players; i++) {
@@ -307,7 +395,7 @@ static void read_input(input in[MAXP]) {
 #else
     cw_vec2 m = cw_input_vector(i, G.move[0], G.move[1], G.move[2], G.move[3], CW_DEADZONE_SCALED_RADIAL, 0.2f);
     cw_vec2 a = aim_stick(cw_input_vector(i, G.aim[0], G.aim[1], G.aim[2], G.aim[3], CW_DEADZONE_RADIAL, 0));
-    in[i] = (input){ m.x, m.y, a.x, a.y, cw_action_pressed(i, G.fire), cw_action_just_pressed(i, G.bomb), 0 };
+    in[i] = (input){ m.x, m.y, a.x, a.y, cw_action_pressed(i, G.fire), cw_action_just_pressed(i, G.bomb), 0, cw_action_just_pressed(i, G.dash) };
     for (int k = 0; k < 3; k++)
       if (cw_action_just_pressed(i, G.pick[k])) in[i].pick = k + 1;
     if (in[i].fire && cw_v2_length(a) < 0.25f) { /* fire toward the walking direction when not aiming */
@@ -323,6 +411,15 @@ static void fixed_update(void *u, double dt) {
   if (!G.in_match) return;
   input in[MAXP];
   read_input(in);
+  { /* alone, the yard slows to 30% while the level's cards are up (a choice to read, not a reflex); a pick goes through at once */
+    static int acc;
+    G.slow = G.S.players == 1 && G.S.p[0].active && G.S.p[0].offer_ticks > 0 && G.S.state == ST_PLAY && !G.m_test;
+    if (G.slow && !in[0].pick) {
+      acc += 3;
+      if (acc < 10) return;
+      acc -= 10;
+    }
+  }
   int before_level[MAXP];
   for (int i = 0; i < MAXP; i++) before_level[i] = G.S.p[i].level;
   int booms = G.S.nboom_total, kills = G.S.killed_total;
@@ -381,8 +478,24 @@ static void fixed_update(void *u, double dt) {
       if (e->alive && e->kind == v->a && e->atk == sim_melee_windup(e->kind) + 1 && v->b && !G.m_delay[e->kind]) G.m_delay[e->kind] = G.S.tick - G.m_start[i];
     }
   }
+  for (int k = ev0 <= G.S.ev_n ? ev0 : 0; k < G.S.ev_n; k++) { /* the score chase and the run's record */
+    const event *v = &G.S.ev[k];
+    if (v->kind == EV_KILL && v->b < MAXP) G.mult[v->b] = fminf(5.0f, G.mult[v->b] + 0.02f), G.best_mult[v->b] = fmaxf(G.best_mult[v->b], G.mult[v->b]);
+    else if (v->kind == EV_HURT && v->a < MAXP) G.mult[v->a] = 1, G.last_hurt[v->a] = v->b;
+    else if (v->kind == EV_DOWN && v->a < MAXP) G.downed_by[v->a] = G.last_hurt[v->a], G.downs[v->a]++;
+    else if (v->kind == EV_POWER && v->a < MAXP && pu_is_weapon(v->b)) G.guns[v->a] |= 1u << v->b;
+    else if (v->kind == EV_BOSS) G.banner_t = 210, G.banner_kind = 4, G.banner_n = G.S.level; /* the boss's name, as it comes */
+  }
+  for (int i = 0; i < MAXP; i++) { /* points at the multiplier */
+    int d = G.S.p[i].score - G.last_score[i];
+    if (d > 0) G.mscore[i] += (int32_t)((float)d * G.mult[i] + 0.5f);
+    G.last_score[i] = G.S.p[i].score;
+    if (G.S.state == ST_OVER) G.mult[i] = 1;
+    G.mult100[i] = (int32_t)(G.mult[i] * 100 + 0.5f);
+  }
   for (int k = ev0 <= G.S.ev_n ? ev0 : 0; k < G.S.ev_n; k++) /* the events this tick added */
     if (G.S.ev[k].kind == EV_POWER) play(snd_power, cw_shell_sfx_bus(), 0.7f);
+    else if (G.S.ev[k].kind == EV_DASH) play(snd_dash, cw_shell_sfx_bus(), 0.6f);
   T_sim += (cw_wall() - t0) * 1000;
   G.ticks = G.S.tick;
   G.wave = G.S.wave;
@@ -416,10 +529,7 @@ static void fixed_update(void *u, double dt) {
     cw_shell_save_commit();
   }
   if (G.S.nboom_total != booms) play(snd_boom, cw_shell_sfx_bus(), 0.8f);
-  if (G.S.killed_total != kills && G.S.tick % 3 == 0) play(snd_kill, cw_shell_sfx_bus(), 0.4f);
-  if (G.S.tick % 9 == 0 && G.S.nbullets >= 0)
-    for (int i = 0; i < MAXP; i++)
-      if (G.S.p[i].active && !G.S.p[i].down && G.S.p[i].cd > 0) { play(snd_shot, cw_shell_sfx_bus(), 0.25f); break; }
+  gun_sounds(ev0, G.S.killed_total - kills);
   if (G.S.state == ST_WON && G.S.state_ticks > 60 * 10) start(G.players, NULL); /* a new run */
   if (G.banner_t > 0) G.banner_t--;
   static int last_wave;
@@ -477,6 +587,104 @@ static void pack(char *out, size_t cap, const char *const *part, int n, const ch
 
 static const float PC[MAXP][3] = { { 0.2f, 0.7f, 1 }, { 1, 0.55f, 0.1f }, { 0.4f, 0.95f, 0.35f }, { 0.95f, 0.3f, 0.75f } };
 
+/* each upgrade's picture, drawn: a few strokes in a box of half size r round (cx, cy) */
+static void upgrade_icon(int up, float cx, float cy, float r, cw_color c) {
+  float t = r * 0.16f; /* stroke */
+  cw_vec2 P[8];
+  switch (up % 9) {
+  case 0: /* rapid fire: three chevrons */
+    for (int k = 0; k < 3; k++) {
+      float x = cx - r * 0.7f + (float)k * r * 0.55f;
+      cw_r2d_line(cw_v2(x, cy - r * 0.55f), cw_v2(x + r * 0.4f, cy), t, c), cw_r2d_line(cw_v2(x + r * 0.4f, cy), cw_v2(x, cy + r * 0.55f), t, c);
+    }
+    break;
+  case 1: /* extra barrel: two barrels side by side, a round ahead of each */
+    for (int k = -1; k <= 1; k += 2) {
+      cw_r2d_rect(cw_rect_make(cx - r * 0.8f, cy + (float)k * r * 0.32f - t * 0.8f, r * 0.9f, t * 1.6f), c);
+      cw_r2d_circle(cw_v2(cx + r * 0.55f, cy + (float)k * r * 0.32f), t * 1.3f, 12, c);
+    }
+    break;
+  case 2: /* heavy rounds: one big round and a small one */
+    cw_r2d_circle(cw_v2(cx - r * 0.15f, cy), r * 0.55f, 24, c), cw_r2d_circle(cw_v2(cx + r * 0.65f, cy), r * 0.2f, 12, c);
+    break;
+  case 3: /* piercing: an arrow through a wall */
+    cw_r2d_rect(cw_rect_make(cx - t, cy - r * 0.8f, t * 2, r * 1.6f), c);
+    cw_r2d_line(cw_v2(cx - r * 0.85f, cy), cw_v2(cx + r * 0.6f, cy), t, c);
+    P[0] = cw_v2(cx + r * 0.9f, cy), P[1] = cw_v2(cx + r * 0.45f, cy - r * 0.3f), P[2] = cw_v2(cx + r * 0.45f, cy + r * 0.3f);
+    cw_r2d_polygon(P, 3, c);
+    break;
+  case 4: /* rockets: body, nose, fins */
+    cw_r2d_rect(cw_rect_make(cx - r * 0.6f, cy - r * 0.2f, r * 1.0f, r * 0.4f), c);
+    P[0] = cw_v2(cx + r * 0.9f, cy), P[1] = cw_v2(cx + r * 0.4f, cy - r * 0.2f), P[2] = cw_v2(cx + r * 0.4f, cy + r * 0.2f);
+    cw_r2d_polygon(P, 3, c);
+    P[0] = cw_v2(cx - r * 0.6f, cy - r * 0.2f), P[1] = cw_v2(cx - r * 0.85f, cy - r * 0.55f), P[2] = cw_v2(cx - r * 0.3f, cy - r * 0.2f);
+    cw_r2d_polygon(P, 3, c);
+    P[0] = cw_v2(cx - r * 0.6f, cy + r * 0.2f), P[1] = cw_v2(cx - r * 0.85f, cy + r * 0.55f), P[2] = cw_v2(cx - r * 0.3f, cy + r * 0.2f);
+    cw_r2d_polygon(P, 3, c);
+    break;
+  case 5: /* boots */
+    P[0] = cw_v2(cx - r * 0.45f, cy - r * 0.8f), P[1] = cw_v2(cx + r * 0.05f, cy - r * 0.8f), P[2] = cw_v2(cx + r * 0.05f, cy + r * 0.2f), P[3] = cw_v2(cx + r * 0.75f, cy + r * 0.35f);
+    P[4] = cw_v2(cx + r * 0.75f, cy + r * 0.75f), P[5] = cw_v2(cx - r * 0.45f, cy + r * 0.75f);
+    cw_r2d_polygon(P, 6, c);
+    break;
+  case 6: /* magnet: a horseshoe */
+    cw_r2d_rect(cw_rect_make(cx - r * 0.7f, cy - r * 0.7f, t * 2.4f, r * 1.0f), c), cw_r2d_rect(cw_rect_make(cx + r * 0.7f - t * 2.4f, cy - r * 0.7f, t * 2.4f, r * 1.0f), c);
+    for (int k = 0; k < 8; k++) {
+      float a0 = 3.14159f * (float)k / 8, a1 = 3.14159f * (float)(k + 1) / 8, rr = r * 0.7f - t * 1.2f;
+      cw_r2d_line(cw_v2(cx + cw_cos(a0) * rr, cy + r * 0.3f + cw_sin(a0) * rr), cw_v2(cx + cw_cos(a1) * rr, cy + r * 0.3f + cw_sin(a1) * rr), t * 2.4f, c);
+    }
+    break;
+  case 7: /* bigger blasts: a burst */
+    for (int k = 0; k < 8; k++) {
+      float a = 0.785f * (float)k, l = k & 1 ? 0.55f : 0.9f;
+      cw_r2d_line(cw_v2(cx + cw_cos(a) * r * 0.3f, cy + cw_sin(a) * r * 0.3f), cw_v2(cx + cw_cos(a) * r * l, cy + cw_sin(a) * r * l), t, c);
+    }
+    cw_r2d_circle(cw_v2(cx, cy), r * 0.28f, 16, c);
+    break;
+  default: /* armor: a shield */
+    P[0] = cw_v2(cx - r * 0.7f, cy - r * 0.75f), P[1] = cw_v2(cx + r * 0.7f, cy - r * 0.75f), P[2] = cw_v2(cx + r * 0.7f, cy), P[3] = cw_v2(cx, cy + r * 0.85f), P[4] = cw_v2(cx - r * 0.7f, cy);
+    cw_r2d_polygon(P, 5, c);
+    break;
+  }
+}
+static const char *const UP_EFFECT[9] = { "shoots faster", "+1 round a shot", "+1 damage a round", "through +1 more", "a rocket every 4th shot",
+                                          "runs 10% faster", "pulls gems from farther", "blasts reach farther", "-8% melee damage" };
+/* the choice as three cards from (x, y) (the corner side: x the panel's outer edge, y its edge toward the middle), each its
+ * picture, name, what it does and its level so far as dots, the button's glyph on its corner; the time left under them */
+static void upgrade_cards(int pi, const player *p, float x, float y, bool right, bool bottom, float u, float *ow, float *oh) {
+  const float cwid = 116 * u, gap = 6 * u, pad = 5 * u;
+  float ns = body(14 * u), es = body(12 * u), icon = 15 * u, dot = 3.2f * u, glyph = 17 * u;
+  float h = 0;
+  for (int k = 0; k < 3; k++) { /* the tallest card sets the row's height */
+    cw_text_style st = tstyle(es, rgba(1, 1, 1, 1));
+    st.wrap_width = cwid - 2 * pad;
+    float eh = cw_font_measure(font, UP_EFFECT[p->offer[k] % 9], &st).height;
+    st.size = ns;
+    float nh = cw_font_measure(font, sim_upgrade_name(p->offer[k]), &st).height;
+    h = fmaxf(h, pad + glyph * 0.4f + icon * 2 + 3 * u + nh + eh + 4 * u + dot * 2 + pad);
+  }
+  float rw = 3 * cwid + 2 * gap, x0 = right ? x - rw : x, y0 = bottom ? y - h - 4 * u : y;
+  for (int k = 0; k < 3; k++) {
+    int up = p->offer[k] % 9, lv = sim_upgrade_level(p, up), mx = sim_upgrade_max(up);
+    float cx = x0 + (float)k * (cwid + gap), cy = y0;
+    cw_r2d_rect(cw_rect_make(cx, cy, cwid, h), rgba(0.04f, 0.06f, 0.09f, 0.86f));
+    cw_r2d_rect(cw_rect_make(cx, cy, cwid, 3 * u), rgba(PC[pi][0], PC[pi][1], PC[pi][2], 1));
+    float yy = cy + pad + glyph * 0.4f;
+    upgrade_icon(up, cx + cwid * 0.5f, yy + icon, icon, rgba(0.62f, 1, 0.86f, 1));
+    yy += icon * 2 + 3 * u;
+    yy += text_wrapped(sim_upgrade_name(up), cx + cwid * 0.5f, yy, cwid - 2 * pad, ns, rgba(1, 1, 1, 1)).height;
+    yy += text_wrapped(UP_EFFECT[up], cx + cwid * 0.5f, yy, cwid - 2 * pad, es, rgba(0.82f, 0.9f, 0.95f, 1)).height + 4 * u;
+    float dw = (float)mx * dot * 2.6f, dx = cx + (cwid - dw) * 0.5f + dot * 1.3f;
+    for (int d = 0; d < mx; d++) /* filled: the levels held; ringed: the next one this card gives; dim: the rest */
+      if (d < lv) cw_r2d_circle(cw_v2(dx + (float)d * dot * 2.6f, cy + h - pad - dot), dot, 12, rgba(0.62f, 1, 0.86f, 1));
+      else cw_r2d_circle_lines(cw_v2(dx + (float)d * dot * 2.6f, cy + h - pad - dot), dot, d == lv ? 1.6f * u : 0.8f * u, 12, d == lv ? rgba(1, 1, 1, 1) : rgba(1, 1, 1, 0.35f));
+    cw_prompt_action(G.pick[k], pi, cw_v2(cx + 3 * u, cy + 3 * u), glyph, rgba(0, 0, 0, 0)); /* west, north, east: left to right */
+  }
+  float left = (float)p->offer_ticks / 480.0f;
+  cw_r2d_rect(cw_rect_make(x0, bottom ? y0 - 4 * u : y0 + h + 1 * u, rw * cw_clampf(left, 0, 1), 3 * u), rgba(0.3f, 1, 0.8f, 1));
+  *ow = rw, *oh = h + 4 * u;
+}
+
 static void hud(void) {
   cw_vec2 cs = cw_r2d_canvas_size();
   float u = cs.y / 540.0f, cx = cs.x * 0.5f;
@@ -501,7 +709,7 @@ static void hud(void) {
     const player *p = &pv;
     bool right = i & 1, bottom = i & 2;
     char b[64];
-    snprintf(b, sizeof b, "P%d  LV %d  %d", i + 1, p->level, p->score);
+    snprintf(b, sizeof b, "P%d  LV %d  %d  x%.1f", i + 1, p->level, G.mscore[i], (double)G.mult[i]);
     float ts = 15 * u;
     cw_text_metrics tm = measure(b, ts);
     float w = fmaxf(190 * u, 22 * u + tm.width), bar = fmaxf(26 * u, 4 * u + tm.height + 3 * u), h = bar + 26 * u;
@@ -517,28 +725,20 @@ static void hud(void) {
     float xf = (float)p->xp / (float)p->xp_next;
     cw_r2d_rect(cw_rect_make(x + 12 * u, y + bar + 14 * u, (w - 22 * u) * cw_clampf(xf, 0, 1), 4 * u), rgba(0.3f, 1, 0.8f, 1));
     float cur = bottom ? y - 2 * u : y + h + 2 * u, wide = w, maxw = cs.x * 0.5f - 24 * u; /* cur: the next line's edge nearest the panel */
-    if (p->offer_ticks > 0) {
-      static const char *const KEYS[3] = { "X/1", "Y/2", "B/3" };
-      float os = body(14 * u), step = fmaxf(18 * u, measure("Ag", os).height), ow = w;
-      char lines[3][64];
-      for (int k = 0; k < 3; k++) {
-        snprintf(lines[k], sizeof lines[k], "%s  %s", KEYS[k], sim_upgrade_name(p->offer[k]));
-        ow = fmaxf(ow, measure(lines[k], os).width + 20 * u);
-      }
-      float oh = step * 3 + 6 * u, ox = right ? x + w - ow : x, oy = bottom ? cur - oh - 2 * u : cur + 2 * u;
-      cw_r2d_rect(cw_rect_make(ox, oy, ow, oh), rgba(0.05f, 0.08f, 0.1f, 0.8f));
-      for (int k = 0; k < 3; k++) text(lines[k], ox + 10 * u, oy + 3 * u + (float)k * step, os, k == 0 ? rgba(0.6f, 1, 0.85f, 1) : rgba(1, 1, 1, 1), CW_ALIGN_LEFT);
-      cw_r2d_rect(cw_rect_make(ox, oy + oh - 2 * u, ow * (float)p->offer_ticks / 480.0f, 2 * u), rgba(0.3f, 1, 0.8f, 1));
-      cur = bottom ? oy - 2 * u : oy + oh, wide = fmaxf(wide, ow);
+    if (p->offer_ticks > 0) { /* the level's choice: three cards in this player's corner, laid out as the buttons sit (west, north, east) */
+      float ow, oh;
+      upgrade_cards(i, p, right ? x + w : x, bottom ? cur - 2 * u : cur + 2 * u, right, bottom, u, &ow, &oh);
+      cur = bottom ? cur - oh - 4 * u : cur + oh + 4 * u, wide = fmaxf(wide, ow);
+      G.cards_shown++;
     }
-    if (p->down) {
+    if (p->down && G.S.players > 1) { /* alone, a fall is the end of the try: OVERRUN says it, no friend is coming */
       const char *dt = "DOWN: a friend can pull you up";
       float ds = body(12 * u);
       cw_text_metrics dm = measure(dt, ds);
       float dy = bottom ? cur - dm.height : cur;
       text(dt, right ? edge : x + 12 * u, dy, ds, rgba(1, 0.6f, 0.5f, 1), al);
       cur = bottom ? dy : dy + dm.height, wide = fmaxf(wide, dm.width + 12 * u);
-    } else { /* power-ups held: name and seconds left, or charges, packed into lines that keep to this half of the screen */
+    } else if (!p->down) { /* power-ups held: name and seconds left, or charges, packed into lines that keep to this half of the screen */
       char part[7][48];
       const char *pp[7];
       int n = 0;
@@ -603,32 +803,47 @@ static void hud(void) {
     cw_r2d_rect(cw_rect_make(bx - 2 * u, by - 2 * u, bw + 4 * u, 12 * u), rgba(0, 0, 0, 0.7f));
     cw_r2d_rect(cw_rect_make(bx, by, bw * cw_clampf((float)G.S.boss_hp / (float)G.S.boss_maxhp, 0, 1), 8 * u), rgba(0.9f, 0.2f, 0.15f, 1));
     mid = by + 10 * u;
+    { /* its name under the bar */
+      const char *bn = BOSS_NAME[CW_CLAMP(G.S.level, 0, NLEVELS - 1)];
+      float ns = body(12 * u), ny = CLEAR_Y(mid + 2 * u, fminf(measure(bn, ns).width, cs.x * 0.94f));
+      mid = ny + text_wrapped(bn, cx, ny, cs.x * 0.94f, ns, rgba(1, 0.75f, 0.65f, 1)).height;
+    }
     if (G.S.boss_phase == 1) {
       const char *bt = "THE BOSS IS ABOUT TO CHARGE";
-      float bs = 16 * u, ty = CLEAR_Y(by + 14 * u, measure(bt, bs).width);
+      float bs = 16 * u, ty = CLEAR_Y(mid + 4 * u, measure(bt, bs).width);
       mid = ty + text(bt, cx, ty, bs, rgba(1, 0.4f, 0.2f, 1), CW_ALIGN_CENTER).height;
     }
   }
   if (G.banner_t > 0 && cw_shell_hud_shown()) { /* not under the pause menu's lines */
     float a = cw_clampf(G.banner_t / 40.0f, 0, 1);
     if (G.banner_kind == 3) snprintf(b, sizeof b, "FLOOR %d  -  %s", G.banner_n + 1, FLOOR_NAME[CW_CLAMP(G.banner_n, 0, NLEVELS - 1)]);
+    else if (G.banner_kind == 4) snprintf(b, sizeof b, "%s", BOSS_NAME[CW_CLAMP(G.banner_n, 0, NLEVELS - 1)]);
     else snprintf(b, sizeof b, G.banner_kind == 2 ? "WAVE %d  -  BOSS INCOMING" : G.banner_kind == 1 ? "WAVE %d" : "HOLD THE YARD", G.banner_n);
     float bs = 38 * u, by = CLEAR_Y(fmaxf(cs.y * 0.28f, mid + 6 * u), fminf(measure(b, bs).width, cs.x * 0.94f));
-    text_wrapped(b, cx, by, cs.x * 0.94f, bs, rgba(1, G.banner_kind == 2 ? 0.35f : 0.85f, 0.3f, a));
+    float bh = text_wrapped(b, cx, by, cs.x * 0.94f, bs, rgba(1, G.banner_kind == 2 || G.banner_kind == 4 ? 0.35f : 0.85f, 0.3f, a)).height;
+    if (G.banner_kind == 0) /* the run's first moments: what the buttons do (the dash above all: the way out of a strike) */
+      cw_prompt_text(font, "{fire} shoot     {dash} dash     {bomb} blast", -1, cw_v2(cx, by + bh + 4 * u), body(15 * u), rgba(1, 0.95f, 0.85f, a), CW_ALIGN_CENTER);
   }
   if (G.S.state == ST_CLEAR || G.S.state == ST_HATCH) { /* the floor is won: the way down */
     if (G.banner_kind != 3) G.banner_t = 0; /* no wave banner over it */
     const char *ct = G.S.state == ST_CLEAR ? "THE FLOOR FALLS SILENT" : "THE WAY DOWN IS OPEN";
     float s = 34 * u, y = CLEAR_Y(fmaxf(cs.y * 0.2f, mid + 6 * u), fminf(measure(ct, s).width, cs.x * 0.94f));
-    text_wrapped(ct, cx, y, cs.x * 0.94f, s, rgba(1, 0.8f, 0.4f, 1));
-    float su, sv; /* the marker: an arrow over the hatch, or at the screen's edge pointing to it */
-    if (G.S.state == ST_HATCH && view_screen((t3_vec3){ 0, 3.2f + 0.3f * cw_sin((float)G.S.tick * 0.12f), 0 }, &su, &sv)) {
-      float x = cw_clampf(su, 0.05f, 0.95f) * cs.x, y = cw_clampf(sv, 0.08f, 0.92f) * cs.y;
-      cw_vec2 tri[3] = { cw_v2(x - 16 * u, y - 30 * u), cw_v2(x + 16 * u, y - 30 * u), cw_v2(x, y - 6 * u) }; /* an arrow down at the hatch */
+    float bw = fminf(measure(ct, s).width, cs.x * 0.94f), bh = text_wrapped(ct, cx, y, cs.x * 0.94f, s, rgba(1, 0.8f, 0.4f, 1)).height;
+    float su, sv; /* the marker: an arrow over the hatch pointing down at it, its label over the arrow */
+    float bob = 0.3f * cw_sin((float)G.S.tick * 0.12f);
+    if (G.S.state == ST_HATCH && view_screen((t3_vec3){ 0, 3.2f + bob, 0 }, &su, &sv)) {
+      float ss = 18 * u, lw = measure("STEP IN", ss).width, lh = measure("STEP IN", ss).height;
+      float x = cw_clampf(su, 0.05f, 0.95f) * cs.x, ty = cw_clampf(sv, 0.08f, 0.92f) * cs.y, dir = 1; /* dir 1: the arrow points down */
+      /* where the label would sit over the banner (or off the top), the arrow comes up at the hatch from under it instead */
+      bool clash = ty - 34 * u - lh < y + bh + 4 * u && ty - 6 * u > y - 4 * u && fabsf(x - cx) < bw * 0.5f + lw * 0.5f + 8 * u;
+      if ((clash || ty - 34 * u - lh < 4 * u) && view_screen((t3_vec3){ 0, 0, 2.0f }, &su, &sv)) /* the hatch's near rim */
+        x = cw_clampf(su, 0.05f, 0.95f) * cs.x, ty = cw_clampf(sv, 0.08f, 0.92f) * cs.y + (6 + 8 * bob) * u, dir = -1;
+      cw_vec2 tri[3] = { cw_v2(x - 16 * u, ty - dir * 30 * u), cw_v2(x + 16 * u, ty - dir * 30 * u), cw_v2(x, ty - dir * 6 * u) };
       cw_r2d_polygon(tri, 3, rgba(1, 0.72f, 0.28f, 1));
       cw_r2d_polygon_lines(tri, 3, 2 * u, rgba(0, 0, 0, 0.8f));
-      float ss = 18 * u;
-      text("STEP IN", x, y - 34 * u - measure("STEP IN", ss).height, ss, rgba(1, 0.85f, 0.5f, 1), CW_ALIGN_CENTER);
+      text("STEP IN", x, dir > 0 ? ty - 34 * u - lh : ty + 34 * u, ss, rgba(1, 0.85f, 0.5f, 1), CW_ALIGN_CENTER);
+      G.step_in_y0 = (int32_t)(dir > 0 ? ty - 34 * u - lh : ty + 34 * u), G.step_in_y1 = G.step_in_y0 + (int32_t)lh; /* the text check */
+      G.banner_y0 = (int32_t)y, G.banner_y1 = (int32_t)(y + bh);
     }
   }
 #undef CLEAR_Y
@@ -641,8 +856,27 @@ static void hud(void) {
     float y = cs.y * (won ? 0.36f : 0.4f), s2 = 18 * u;
     y += text_wrapped(won ? "THE DESCENT IS DONE" : "OVERRUN", cx, y, cs.x * 0.94f, won ? 56 * u : 52 * u, won ? rgba(1, 0.85f, 0.35f, 1) : rgba(1, 0.3f, 0.25f, 1)).height;
     if (won) snprintf(b, sizeof b, "%d kills in %d minutes  -  a new run in a moment", G.S.killed_total, G.S.tick / 3600);
-    else snprintf(b, sizeof b, "the yard resets in a moment  -  best wave %d", G.best_wave);
-    text_wrapped(b, cx, fmaxf(y + 4 * u, cs.y * (won ? 0.5f : 0.52f)), cs.x * 0.9f, s2, rgba(1, 1, 1, 1));
+    else { /* the floor the team fell on, a wave back (never before its first), and the deepest the save has seen */
+      int bl = 0;
+      while (bl < NLEVELS - 1 && G.best_wave >= sim_level_first_wave(bl + 1)) bl++;
+      snprintf(b, sizeof b, "%s again from wave %d in a moment  -  deepest: floor %d, wave %d", FLOOR_NAME[CW_CLAMP(G.S.level, 0, NLEVELS - 1)],
+               G.S.level_wave > 1 ? G.S.level_wave - 1 : 1, bl + 1, G.best_wave - sim_level_first_wave(bl) + 1);
+    }
+    float sy = fmaxf(y + 4 * u, cs.y * (won ? 0.5f : 0.52f));
+    sy += text_wrapped(b, cx, sy, cs.x * 0.9f, s2, rgba(1, 1, 1, 1)).height + 8 * u;
+    for (int i = 0; i < G.S.players; i++) { /* each player's line: what took them down (or the run's record when it is won) */
+      char l[200], guns[120] = "";
+      if (won) {
+        for (int t = 0, n = 0; t < PU_KINDS; t++)
+          if (G.guns[i] & (1u << t)) snprintf(guns + strlen(guns), sizeof guns - strlen(guns), "%s%s", n++ ? ", " : "  -  ", sim_power_name(t));
+        snprintf(l, sizeof l, "P%d  %d points  -  %d kills  -  best x%.1f%s", i + 1, G.mscore[i], G.S.p[i].kills, (double)G.best_mult[i], guns);
+      } else {
+        int k = G.downed_by[i];
+        const char *by = k == EK_BOSS ? BOSS_NAME[CW_CLAMP(G.S.level, 0, NLEVELS - 1)] : k >= 0 && k < EK_KINDS ? sim_kind_name(k) : "a blast or the fire underfoot";
+        snprintf(l, sizeof l, "P%d  taken down by %s%s  -  best x%.1f  -  %d kills", i + 1, k >= 0 && k < EK_KINDS && k != EK_BOSS ? "a " : "", by, (double)G.best_mult[i], G.S.p[i].kills);
+      }
+      sy += text_wrapped(l, cx, sy, cs.x * 0.9f, body(13 * u), rgba(0.55f + 0.45f * PC[i][0], 0.55f + 0.45f * PC[i][1], 0.55f + 0.45f * PC[i][2], 1)).height + 2 * u;
+    }
   }
   cw_r2d_end();
 }
@@ -653,7 +887,7 @@ static void render(void *u, double alpha) {
   g_fx_level = CW_MAX(0, cw_gfx_effective(CW_GFX_EFFECTS) - 1); /* Low .. Ultra as 0..3; Very Low as Low */
   if (G.built) {
     static float t;
-    t += 1.0f / 60.0f;
+    t += (G.slow ? 0.3f : 1.0f) / 60.0f; /* the crowd's steps slow with the yard */
     float sx, sy;
     fx_control_shake(&sx, &sy);
     int w, h;

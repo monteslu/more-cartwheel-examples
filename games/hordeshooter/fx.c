@@ -26,6 +26,7 @@
 #include "cartwheel/math.h"
 #include "cartwheel/particles.h"
 #include "cartwheel/quality.h"
+#include "cartwheel/splats.h"
 #include "game.h"
 
 #define BIGS 6
@@ -40,12 +41,13 @@
 #define STAIN 140
 #define LIGHTS 8
 #define GIBS 1600
+#define CARNAGE 3000
 typedef struct gib { t3_vec3 p, v, rot, spin; float size; int life; t3_color col; } gib;
 
 static struct {
   bool ready;
   cw_node root;
-  cw_node big[BIGS], small[SMALLB], level[LEVELS], hit[HITS], muzzle[MUZZLES], splat[SPLATS], slash, frost, fire[FIRES], fire_light[FIRES];
+  cw_node big[BIGS], small[SMALLB], level[LEVELS], hit[HITS], muzzle[MUZZLES], splat[SPLATS], slash, frost, dash, flare[2], fire[FIRES], fire_light[FIRES];
   int fire_age[FIRES];
   int nb, ns, nlv, nh, nsp, nf, nst, nl, nm;
   cw_node stain[STAIN], light[LIGHTS], fire_haze[FIRES];
@@ -54,6 +56,12 @@ static struct {
   float light_e[LIGHTS], light_c[LIGHTS][3];
   float stain_a[STAIN];
   t3_instanced_mesh *gibs;
+  /* the fight's record on the floor: a dark stain where each body fell, a scorch where each blast went off, kept for the
+   * floor (a ring of CARNAGE, thinned by the density setting) and drawn as one splat set */
+  cw_splats *carnage;
+  struct { float x, z, size, yaw, k; } mark[CARNAGE];
+  int nmark, mark_next, mark_cap, mark_dirty, last_floor;
+  uint32_t last_tick;
   t3_instanced_mesh *bolts;
   struct { float x0, y0, x1, y1; int life; } bolt[BOLTS];
   int nbolt;
@@ -133,6 +141,13 @@ static const char *const K_FIRE[] = { "amount", "10", "lifetime", "1.3", "explos
   "gravity", "vec3(0, 1.6, 0)", "damping", "2.2", "size", "4.6", "size_random", "0.35", "size_curve", "\"0 0.5, 0.3 1, 1 1.2\"",
   "color_ramp", "\"0 1 1 1 0, 0.06 1 1 1 1, 0.75 1 0.85 0.8 0.85, 1 1 0.7 0.6 0\"", "energy", "1.6",
   "texture", "\"fx/fire.png\"", "motion_texture", "\"fx/fire_mv.png\"", "hframes", "8", "vframes", "8", "spin", "0.25", "soft_distance", "0.8", NULL };
+/* the blast's hot heart: one soft white-yellow glow under the flipbook fire, up in two frames and gone in a third of a second */
+static const char *const K_CORE[] = { "amount", "1", "lifetime", "0.36", "explosiveness", "1", "one_shot", "true", "emission_shape", "POINT",
+  "speed_min", "0", "speed_max", "0", "size", "3.4", "size_curve", "\"0 0.55, 0.15 1, 1 1.25\"",
+  "color_ramp", "\"0 1 0.95 0.8 0, 0.1 1 0.92 0.72 1, 0.45 1 0.68 0.32 0.55, 1 1 0.4 0.1 0\"", "energy", "4.5", "blend", "ADD", NULL };
+static const char *const S_CORE[] = { "amount", "1", "lifetime", "0.26", "explosiveness", "1", "one_shot", "true", "emission_shape", "POINT",
+  "speed_min", "0", "speed_max", "0", "size", "1.7", "size_curve", "\"0 0.55, 0.15 1, 1 1.2\"",
+  "color_ramp", "\"0 1 0.95 0.8 0, 0.12 1 0.9 0.7 1, 1 1 0.45 0.12 0\"", "energy", "3.5", "blend", "ADD", NULL };
 static const char *const K_FLAMES[] = { "amount", "14", "lifetime", "1.0", "explosiveness", "0.8", "one_shot", "true",
   "emission_shape", "SPHERE", "emission_radius", "0.5", "direction", "vec3(0, 1, 0)", "spread", "90", "speed_min", "2.5", "speed_max", "6",
   "gravity", "vec3(0, 2, 0)", "damping", "1.6", "size", "2.2", "size_random", "0.5", "size_curve", "\"0 0.5, 0.35 1, 1 0.8\"",
@@ -200,6 +215,15 @@ static const char *const SLASH[] = { "amount", "16", "lifetime", "0.16", "explos
   "emission_shape", "POINT", "spread", "55", "speed_min", "7", "speed_max", "13", "draw_mode", "STRETCHED", "stretch", "0.05",
   "size", "0.06", "color_ramp", "\"0 0.95 0.92 1 1, 1 1 0.75 0.6 0\"", "energy", "4", "blend", "ADD", NULL };
 /* cold: pale blue-white shards (a frost lance's hit, a frozen one shattering) */
+/* a hit's flare: a soft hot glow where the round strikes, swelling over two frames and gone in eight (a rail or a
+ * stake's twice the size) */
+static const char *const FLARE[] = { "amount", "1", "lifetime", "0.14", "explosiveness", "1", "one_shot", "true", "emission_shape", "POINT",
+  "speed_min", "0", "speed_max", "0", "size", "0.85", "size_curve", "\"0 0.45, 0.3 1, 1 0.75\"",
+  "color_ramp", "\"0 1 0.9 0.7 0, 0.25 1 0.85 0.55 0.85, 1 1 0.45 0.15 0\"", "energy", "3.5", "blend", "ADD", NULL };
+/* a dash: pale dust kicked back along the way the player went */
+static const char *const DASH[] = { "amount", "26", "lifetime", "0.35", "explosiveness", "0.6", "one_shot", "true",
+  "emission_shape", "SPHERE", "emission_radius", "0.3", "spread", "25", "speed_min", "3", "speed_max", "8", "draw_mode", "STRETCHED", "stretch", "0.05",
+  "size", "0.07", "gravity", "vec3(0, -2, 0)", "damping", "3", "color_ramp", "\"0 0.9 0.92 1 0.9, 1 0.6 0.65 0.75 0\"", "energy", "1.5", "blend", "ADD", NULL };
 static const char *const FROST[] = { "amount", "16", "lifetime", "0.5", "explosiveness", "1", "one_shot", "true",
   "emission_shape", "SPHERE", "emission_radius", "0.15", "spread", "180", "speed_min", "2", "speed_max", "7",
   "gravity", "vec3(0, -9, 0)", "draw_mode", "STRETCHED", "stretch", "0.05", "size", "0.07",
@@ -235,11 +259,11 @@ static cw_node boom_node(const char *name, bool big, int seed) {
   cw_node_set(e, "shake_time", cw_val_float(big ? 0.8f : 0.4f));
   cw_node3d_set_position(e, (t3_vec3){ 0, -60, 0 });
   if (big) {
-    pnode(e, "Fire", K_FIRE, seed), pnode(e, "Flames", K_FLAMES, seed + 1), pnode(e, "Smoke", K_SMOKE, seed + 2);
+    pnode(e, "Core", K_CORE, seed + 8), pnode(e, "Fire", K_FIRE, seed), pnode(e, "Flames", K_FLAMES, seed + 1), pnode(e, "Smoke", K_SMOKE, seed + 2);
     pnode(e, "Sparks", K_SPARKS, seed + 3), pnode(e, "Debris", K_DEBRIS, seed + 4), pnode(e, "DebrisTrail", K_TRAIL, seed + 5);
     pnode(e, "Embers", K_EMBERS, seed + 6), pnode(e, "Haze", K_HAZE, seed + 7);
   } else
-    pnode(e, "Fire", S_FIRE, seed), pnode(e, "Sparks", S_SPARKS, seed + 1), pnode(e, "Smoke", S_SMOKE, seed + 2);
+    pnode(e, "Core", S_CORE, seed + 3), pnode(e, "Fire", S_FIRE, seed), pnode(e, "Sparks", S_SPARKS, seed + 1), pnode(e, "Smoke", S_SMOKE, seed + 2);
   cw_node w = cw_node_new("Shockwave3D", "Wave");
   cw_node_add_child(e, w);
   cw_node_set(w, "ground", cw_val_bool(true));
@@ -306,6 +330,10 @@ void fx_init(cw_node root) {
   FX.splat[0] = bnode(FX.root, "Splat", SPLAT, 800, SPLATS);
   FX.slash = bnode(FX.root, "Slash", SLASH, 850, SLASHES);
   FX.frost = bnode(FX.root, "Frost", FROST, 870, 24);
+  FX.dash = bnode(FX.root, "Dash", DASH, 880, 8);
+  FX.flare[0] = bnode(FX.root, "HitFlare", FLARE, 890, 24);
+  FX.flare[1] = bnode(FX.root, "HitFlareBig", FLARE, 895, 8);
+  cw_node_set(FX.flare[1], "size", cw_val_float(1.7f));
   { /* lightning: bright jagged bolts, a few segments a jump, re-jagged every frame while they last */
     t3_material *bm = t3_mesh_standard_material_new(0xffffff);
     bm->color = (t3_color){ 0.1f, 0.12f, 0.15f };
@@ -343,7 +371,43 @@ void fx_init(cw_node root) {
   t3_material *gm = t3_mesh_standard_material_new(0xffffff);
   gm->roughness = 0.75f;
   FX.gibs = imesh("Gibs", t3_box_geometry_new(1, 1, 1, 1, 1, 1), gm, GIBS, false);
+  FX.carnage = cw_splats_new(FX.root, "Carnage", CW_SPLATS_SHADOW, CARNAGE);
+  { /* a splatter: a blob whose rim the noise breaks into drops, darker toward its heart */
+    enum { MN = 128 };
+    static uint8_t px[MN * MN * 4];
+    for (int y = 0; y < MN; y++)
+      for (int x = 0; x < MN; x++) {
+        float u = ((float)x + 0.5f) / MN * 2 - 1, v = ((float)y + 0.5f) / MN * 2 - 1, r = sqrtf(u * u + v * v), a = atan2f(v, u);
+        uint32_t h = (uint32_t)(x * 7919 + y * 104729) * 2654435761u;
+        float wob = 0.62f + 0.12f * sinf(a * 5.0f + 1.3f) + 0.08f * sinf(a * 11.0f + 0.4f) + 0.05f * sinf(a * 17.0f);
+        float k = CW_CLAMP((wob - r) / 0.06f, 0.0f, 1.0f) * (0.75f + 0.25f * (1 - r));
+        float drops = r > 0.6f && r < 0.95f && ((h >> 20) & 63) == 0 ? 0.8f : 0; /* specks thrown past the rim */
+        uint8_t c = (uint8_t)CW_CLAMP((int)(fmaxf(k, drops) * 255.0f), 0, 255);
+        uint8_t *p = px + (y * MN + x) * 4;
+        p[0] = p[1] = p[2] = c, p[3] = 255;
+      }
+    t3_texture *t = t3_texture_new(MN, MN, px);
+    t->wrap_s = t->wrap_t = T3_CLAMP_TO_EDGE;
+    t->flip_y = false;
+    t->generate_mipmaps = true;
+    t->min_filter = T3_LINEAR_MIPMAP_LINEAR;
+    t->mag_filter = T3_LINEAR;
+    t->color_space = T3_NO_COLOR_SPACE;
+    cw_splats_set_texture(FX.carnage, t);
+    t3_release(t);
+  }
+  FX.last_floor = -1;
   FX.ready = true;
+}
+/* a mark on the floor that stays: k its darkness (0..1) */
+static void carnage_mark(float x, float z, float size, float k) {
+  int cap = CW_CLAMP((int)((float)CARNAGE * cw_quality_density()), 200, CARNAGE); /* Very Low keeps a few hundred, High thousands */
+  if (cap != FX.mark_cap) FX.mark_cap = cap, FX.nmark = CW_MIN(FX.nmark, cap), FX.mark_next %= cap;
+  int i = FX.mark_next;
+  FX.mark_next = (FX.mark_next + 1) % cap;
+  if (FX.nmark < cap) FX.nmark++;
+  FX.mark[i].x = x, FX.mark[i].z = z, FX.mark[i].size = size, FX.mark[i].yaw = rnd() * 6.2832f, FX.mark[i].k = k;
+  FX.mark_dirty = 1;
 }
 
 /* the camera gate's control only (HORDE_SHAKE_CONTROL): the old explosion-kit shake, to show the gate sees it */
@@ -450,9 +514,13 @@ void fx_events(sim *s) {
     const event *e = &s->ev[i];
     t3_vec3 at = { e->x, 0.7f, e->y };
     switch (e->kind) {
-    case EV_BOOM: blast(at, e->z, e->w > 0.5f), rumble_blast(s, e->x, e->y, e->w > 0.5f); break;
+    case EV_BOOM: blast(at, e->z, e->w > 0.5f), rumble_blast(s, e->x, e->y, e->w > 0.5f), carnage_mark(e->x, e->y, e->z * (e->w > 0.5f ? 1.1f : 0.9f), 0.22f); break;
     case EV_HIT:
-      if (FX.frame_hits++ < (lvl >= 2 ? 10 : lvl >= 1 ? 6 : 3)) cw_particles_burst(e->b == 10 ? FX.frost : FX.hit[0], (t3_vec3){ at.x, 0.9f, at.z }, (t3_vec3){ 0, 0, 0 });
+      if (FX.frame_hits++ < (lvl >= 2 ? 10 : lvl >= 1 ? 6 : 3)) {
+        cw_particles_burst(e->b == 10 ? FX.frost : FX.hit[0], (t3_vec3){ at.x, 0.9f, at.z }, (t3_vec3){ 0, 0, 0 });
+        bool big = e->b == 3 || e->b == 6 || e->b == 10; /* the rail, a stake, the frost lance */
+        if (e->b != 4 && e->b != 11) cw_particles_burst(FX.flare[big], (t3_vec3){ at.x - e->z * 0.004f, 0.95f, at.z - e->w * 0.004f }, (t3_vec3){ 0, 0, 0 }); /* (fire has its own glow) */
+      }
       break;
     case EV_ROCKET:
     case EV_SHOT:
@@ -469,6 +537,7 @@ void fx_events(sim *s) {
       }
       break;
     case EV_KILL: {
+      if (e->b < MAXP) carnage_mark(e->x, e->y, e->a == EK_RUNNER ? 1.1f + 0.5f * rnd() : e->a == EK_BOSS ? 6.0f : 2.0f + 0.6f * rnd(), 0.16f + 0.08f * rnd()); /* a stain, not a hole: the floor still shows through */
       if (e->a == EK_BRUTE || e->a == EK_BOSS) { /* a big kill reads: a burst of the explosion kit and a short rumble */
         blast(at, e->a == EK_BOSS ? 4.0f : 1.6f, e->a == EK_BOSS);
         if (e->a == EK_BOSS) rumble_blast(s, e->x, e->y, true);
@@ -557,6 +626,10 @@ void fx_events(sim *s) {
     case EV_SWIPE: /* the strike's streak, raked across the front */
       cw_particles_burst(FX.slash, (t3_vec3){ at.x, e->a == EK_BOSS ? 2.2f : e->a == EK_BRUTE ? 1.2f : 0.8f, at.z }, (t3_vec3){ e->z, -0.15f, e->w });
       break;
+    case EV_DASH: /* dust kicked back from the feet, a light buzz on the pad */
+      cw_particles_burst(FX.dash, (t3_vec3){ at.x, 0.25f, at.z }, (t3_vec3){ -e->z, 0.1f, -e->w });
+      rumble(e->a, 0.08f, 0.22f, 70);
+      break;
     case EV_LEVEL: cw_particles_burst(FX.level[0], (t3_vec3){ at.x, 0.3f, at.z }, (t3_vec3){ 0, 0, 0 }); break;
     case EV_POWER: /* taken: a ring of sparks and a flash in the power-up colour */
       cw_particles_burst(FX.level[0], (t3_vec3){ at.x, 0.3f, at.z }, (t3_vec3){ 0, 0, 0 });
@@ -642,6 +715,17 @@ void fx_tick(const sim *s) {
       float hot = FX.light_e0[i] > 0 ? CW_CLAMP(FX.light_e[i] / FX.light_e0[i], 0.0f, 1.0f) : 0;
       hot = hot * hot;
       cw_node_set(FX.light[i], "color", cw_val_color(FX.light_c[i][0], FX.light_c[i][1] + (1 - FX.light_c[i][1]) * hot * 0.7f, FX.light_c[i][2] + (1 - FX.light_c[i][2]) * hot * 0.8f, 1));
+    }
+  }
+  { /* the floor's record: cleared for a new floor or a new run; the set rebuilt when it changed (every sixth frame at most) */
+    if (s->level != FX.last_floor || s->tick < FX.last_tick) FX.nmark = FX.mark_next = 0, FX.mark_dirty = 1, FX.last_floor = s->level;
+    FX.last_tick = (uint32_t)s->tick;
+    if (FX.mark_dirty && (FX.tick % 6 == 0 || FX.nmark == 0)) {
+      cw_splats_begin(FX.carnage);
+      for (int i = 0; i < FX.nmark; i++)
+        cw_splats_add(FX.carnage, (t3_vec3){ FX.mark[i].x, view_ground_y(FX.mark[i].x, FX.mark[i].z), FX.mark[i].z }, FX.mark[i].size, FX.mark[i].size * 0.85f, FX.mark[i].yaw, 0, (t3_color){ 1, 1, 1 }, FX.mark[i].k);
+      cw_splats_end(FX.carnage);
+      FX.mark_dirty = 0;
     }
   }
   /* decals fade */

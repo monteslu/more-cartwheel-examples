@@ -528,6 +528,47 @@
       "native"
     ],
     "note": "dodging works: the same scene with the player stepping straight away from every enemy winding up at it (HORDE_MELEE_DODGE=1): 9 strikes, 0 hits, full health (the damage needs the player still in reach and in front on the strike tick). Measured 2026-10-29 on native GL. The control (HORDE_MELEE_DODGE=0: standing still) takes hits and must differ."
+  },  {
+    "name": "hordeshooter-melee-dash",
+    "app": "hordeshooter_auto",
+    "frames": 480,
+    "maxGt16": 0.12,
+    "env": {
+      "HORDE_MELEE_TEST": "1",
+      "HORDE_PLAYERS": "1",
+      "HORDE_MELEE_DODGE": "2"
+    },
+    "fields": [
+      "game.ticks",
+      "game.hash",
+      "player.hp",
+      "melee.attack_frames",
+      "melee.strikes",
+      "melee.hits",
+      "melee.hit_delay",
+      "cw.rumble"
+    ],
+    "expect": {
+      "game.ticks": 480,
+      "player.hp": [
+        82,
+        0,
+        0,
+        0
+      ],
+      "melee.strikes": 6,
+      "melee.hits": 1
+    },
+    "controlEnv": {
+      "HORDE_MELEE_TEST": "1",
+      "HORDE_PLAYERS": "1",
+      "HORDE_MELEE_DODGE": "3"
+    },
+    "controlFrames": 480,
+    "hosts": [
+      "native"
+    ],
+    "note": "the dash: the same scene, the player waiting until each strike is three ticks away and then dashing out (HORDE_MELEE_DODGE=2): 6 strikes and 1 hit, 82 hp. The control (HORDE_MELEE_DODGE=3: the same late moment, a step and no dash) takes 11 hits of 14 strikes and ends on 1 hp: a step that late is too slow. Measured 2026-11-08 on native GL."
   },
   {
     "name": "hordeshooter-floor",
@@ -991,5 +1032,10 @@
     "name": "hordeshooter-quality",
     "script": "tests/hordeshooter-quality.mjs",
     "note": "a program for everything drawn at every quality on both backends, through a spread warm-up as a player gets it: the eight floors at the boss wave and in a crowd, the fall of the boss to the next floor, power-ups, from the title by real input. A scene not reached fails. Control: a state the scene draws out of the table must be reported and skip draws"
+  },
+  {
+    "name": "hordeshooter-grounding",
+    "script": "tests/hordeshooter-grounding.mjs",
+    "note": "nothing floats: every prop of the yard and of each deeper floor has a dark band at its foot on Very Low and High (against the same frame with no contact shadows), and nothing of the crowd is drawn sunk into a closed hatch. Controls: two runs with no contact shadows find no dark foot; the crowd drawn at floor level sinks into the hatch"
   }
 ]

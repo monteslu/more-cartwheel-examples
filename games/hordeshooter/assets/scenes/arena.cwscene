@@ -62,7 +62,8 @@ bloom = true
 bloom_intensity = 0.14
 bloom_threshold = 1.0
 bloom_knee = 0.6
-ssao = false
+; ambient occlusion grounds the crowd and the props (the graphics presets keep it off on Very Low and Low)
+ssao = true
 ssao_radius = 0.8
 ssao_intensity = 1.0
 ssr = false
