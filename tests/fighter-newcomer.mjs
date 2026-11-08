@@ -9,7 +9,7 @@
 // each round on one life) keeps that part short; the ladder must be cleared, every opponent met once.
 // Controls that must fail: the same newcomer who only walks (no buttons) lands nothing in those 10 seconds; the arcade
 // run without the mode press (Versus) clears no ladder.
-//   node tests/fighter-newcomer.mjs [--gl] [--webgpu] [--cart <path>]
+//   node tests/fighter-newcomer.mjs [--gl] [--webgpu] [--cart <path>] [--part newcomer|arcade] (each part fits a GPU suite's time limit)
 import { mkdirSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..'), SESSION = process.env.FIGHTER_SESSION || 'fighter-newcomer', OUT = join(ROOT, 'out/fighter-newcomer');
 const arg = (n, d) => { const i = process.argv.indexOf(n); return i > 0 ? process.argv[i + 1] : d; };
 const CART = resolve(arg('--cart', join(ROOT, 'build/cart-wgpu/carts/fighter.wasc')));
+const PART = arg('--part', 'all');
 const BACKENDS = process.argv.includes('--gl') ? ['gl'] : process.argv.includes('--webgpu') ? ['webgpu'] : ['gl', 'webgpu'];
 mkdirSync(OUT, { recursive: true });
 const HDR = { 'Content-Type': 'application/json', 'x-romdev-session': SESSION, 'x-romdev-agent': 'fg-fighter' };
@@ -85,6 +86,7 @@ async function load(backend) {
 
 for (const backend of BACKENDS) {
   console.log(`--- ${backend}`);
+  if (PART !== 'arcade') {
   await load(backend);
   const diff0 = +(await rd('game.difficulty'));
   await shot(`${backend}-select`);
@@ -110,6 +112,8 @@ for (const backend of BACKENDS) {
   await press('south'); await step(30);
   const walker = await play(newcomer(0x5eed1234, false), 60 * 12);
   check('control: only walking lands no blow in 10 s', walker.first < 0 || walker.first > 600, `first blow ${walker.first}`);
+  }
+  if (PART === 'newcomer') continue;
   /* the arcade, and its control without the mode press */
   for (const [tag, mode] of [['arcade', true], ['arcade-control', false]]) {
     await load(backend);
