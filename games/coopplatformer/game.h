@@ -89,6 +89,8 @@ typedef struct player {
   int hp, coins, invuln, bubble, color;
   float bubble_x, bubble_y;
   int rescue_timer, off_screen, retry_t;
+  int idle;                      /* ticks since this player's pad was last touched (IDLE_TICKS: a seat nobody plays) */
+  float lead_w;                  /* how much the camera and the group follow this player: 1 plays, 0 left behind (glides) */
   float draw_x, draw_y;          /* interpolated feet, set at render */
   int anim;                      /* 0 idle 1 run 2 rise 3 fall 4 wall 5 swim 6 dash */
   float run;                     /* running momentum 0..1: built on the ground, kept through a jump */
@@ -159,7 +161,13 @@ typedef struct game {
   struct { float x, y; int who, victim; } grief_q[4];
   int ngrief_q;
   int things_hit;      /* landings on things: springs and cannons (a counter for tests) */
+  int carried;         /* seats nobody plays carried to the group in a bubble (a counter for tests) */
+  bool idle_anchor;    /* the idle-seat gate's control (sw idle_anchor 1): a seat nobody plays holds the group back */
 } game;
+/* a seat whose pad has not been touched for five seconds holds nobody back: the camera and the group follow the players
+ * who play, and the idle one is carried to them in a bubble when it leaves the screen */
+#define IDLE_TICKS 300
+bool sim_player_leads(const game *g, int i);
 
 typedef struct gen gen;
 typedef struct level_info { const char *name; int world; void (*build)(gen *G); uint32_t abilities; const char *line; } level_info;

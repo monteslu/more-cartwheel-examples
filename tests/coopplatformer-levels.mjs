@@ -1,4 +1,5 @@
-// coopplatformer: every level is finished by the bots from its start, with 1, 2 and 4 players, sim only, and every level's
+// coopplatformer: every level is finished by the bots from its start, with 1, 2 and 4 players (and the first beside seats
+// nobody plays), sim only, and every level's
 // scenery and things stand on the ground (the scene is built for each level on the software renderer, no GPU lock). Controls
 // that must fail: bots that never hold Run do not get past the first level's running jumps, and a tree lifted off the ground
 // (COOP_FLOAT_BUG) shows in the grounding numbers.
@@ -66,6 +67,16 @@ for (const l of levels) {
 const norun = await soak(0, 1, 7000, { COOP_BOT_NO_RUN: '1' });
 if (norun.wins > 0) { console.log(`FAIL control: bots that never run finished the first level (${norun.wins} wins), so its gaps do not ask for a running jump`); bad++; }
 else console.log(`ok   control: bots that never run do not finish the first level (wins ${norun.wins})`);
+// seats nobody plays: one bot beside one and three joined, untouched seats still finishes the first level; the control
+// (COOP_IDLE_ANCHOR=1, the idle seats holding the group back as the game once let them) must not
+for (const n of [2, 4]) {
+  const idle = await soak(0, n, 7000, { COOP_IDLE_SEATS: String(n - 1) });
+  if (idle.wins > 0) console.log(`ok   level 0 beside ${n - 1} idle seat(s): one bot finishes (${(idle.fastest / 3600).toFixed(1)} min x${idle.wins})`);
+  else { console.log(`FAIL level 0 beside ${n - 1} idle seat(s): one bot does not finish (wins ${idle.wins}, longest stall ${idle.stall})`); bad++; }
+}
+const anchored = await soak(0, 2, 7000, { COOP_IDLE_SEATS: '1', COOP_IDLE_ANCHOR: '1' });
+if (anchored.wins > 0) { console.log(`FAIL control: an idle seat that holds the group back still let the bot finish (${anchored.wins} wins)`); bad++; }
+else console.log(`ok   control: an idle seat that holds the group back stops the bot (wins ${anchored.wins})`);
 const lifted = await grounded(0, { COOP_FLOAT_BUG: '1' });
 if (!lifted.scenery || lifted.scenery[1] === 0) { console.log('FAIL control: a lifted tree was not seen'); bad++; }
 else console.log(`ok   control: a lifted tree shows (${lifted.scenery})`);

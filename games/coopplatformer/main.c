@@ -102,6 +102,7 @@ static cw_font g_font;
 static void title_background(cw_shell_screen scr, cw_vec2 cv, void *user);
 static int g_state_dbg, g_players_dbg, g_bubbles_dbg, g_hp_dbg, g_map_seen_dbg;
 static float g_pos_dbg[2], g_cam_dbg[3], g_ppos_dbg[MAX_PLAYERS * 2];
+static int g_idle_dbg[MAX_PLAYERS]; /* g.idle: ticks since each player's pad was touched */
 /* the camera as drawn, measured every frame (the camera stability gate): g.view is x, y, z (and 0: nothing shakes it);
  * g.camgate counts frames at rest (every player still for 2.5 s), at-rest frames where the view moved more than
  * 1 mm, frames in motion, and frames in motion where the view jumped (over 0.6 m) or jerked (its step changed by
@@ -1554,8 +1555,13 @@ static void soak(int ticks, int players) {
   memset(death_map, 0, sizeof death_map);
   bool was_alive[MAX_PLAYERS];
   for (int i = 0; i < MAX_PLAYERS; i++) was_alive[i] = true;
+  /* COOP_IDLE_SEATS=n: the last n seats are joined and never touched (a pad put down); COOP_IDLE_ANCHOR=1 is the control,
+   * those seats holding the group back as the game once let them */
+  int idle_seats = getenv("COOP_IDLE_SEATS") ? atoi(getenv("COOP_IDLE_SEATS")) : 0;
+  G.idle_anchor = getenv("COOP_IDLE_ANCHOR") != NULL;
   for (int t = 0; t < ticks; t++) {
     for (int i = 0; i < MAX_PLAYERS; i++) sim_bot_input(&G, i, &INPUT[i]);
+    for (int i = players - idle_seats; i < players; i++) if (i >= 0) memset(&INPUT[i], 0, sizeof INPUT[i]);
     sim_step(&G, INPUT, 1.0f / 60.0f);
     for (int i = 0; i < G.nplayers; i++) {
       float x = (float)G.p[i].pf.body.position.x, y = (float)G.p[i].pf.body.position.y;
@@ -1645,6 +1651,12 @@ static void cmd_warp(int argc, const char **argv, cw_reply *r) {
   cw_reply_printf(r, "{\"warp\":%d}", g_dev_warp);
 }
 #endif
+/* the idle-seat gate's switch: "sw idle_anchor 1" makes a seat nobody plays hold the group back, as the game once did */
+static void cmd_sw(int argc, const char **argv, cw_reply *r) {
+  if (argc < 3 || strcmp(argv[1], "idle_anchor")) { cw_reply_error(r, "usage: sw idle_anchor <0|1>"); return; }
+  G.idle_anchor = atoi(argv[2]) != 0;
+  cw_reply_printf(r, "{\"idle_anchor\":%d}", G.idle_anchor);
+}
 /* debug channel: "bind <action> <bindings>" replaces an action's bindings (the text form, "key:x, pad:north"): for checking
  * that a rebound action's prompt shows its new button */
 static void cmd_bind(int argc, const char **argv, cw_reply *r) {
@@ -1677,6 +1689,9 @@ static void init(void *user) {
   audio_init();
   cw_debug_field("join.seats", join_seats, CW_DBG_I32, 4);
   cw_debug_command("bind", "bind <action> <bindings>: replace an action's bindings", cmd_bind);
+  cw_debug_command("sw", "sw idle_anchor <0|1>: a test switch (1: a seat nobody plays holds the group back, as before)", cmd_sw);
+  cw_debug_i32("g.carried", &G.carried);
+  cw_debug_field("g.idle", g_idle_dbg, CW_DBG_I32, MAX_PLAYERS);
 #ifdef COOP_AUTOPILOT
   cw_debug_command("warp", "warp <column>: every player there, with every ability", cmd_warp);
 #endif
@@ -1938,6 +1953,7 @@ static void fixed_update(void *user, double dt) {
   for (int i = 0; i < MAX_PLAYERS; i++) {
     bool on = G.p[i].joined && i < G.nplayers;
     g_ppos_dbg[2 * i] = on ? (float)G.p[i].pf.body.position.x : 0, g_ppos_dbg[2 * i + 1] = on ? (float)G.p[i].pf.body.position.y : 0;
+    g_idle_dbg[i] = on ? G.p[i].idle : 0;
   }
   /* the end of a level: the results card, then the next. Jump skips the card once it has been up for a moment */
   if (G.won) {

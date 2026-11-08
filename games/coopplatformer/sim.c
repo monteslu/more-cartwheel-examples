@@ -84,6 +84,7 @@ void sim_reset(game *g, int players) {
   for (int i = 0; i < players; i++) {
     g->p[i].joined = true;
     g->p[i].color = i;
+    g->p[i].lead_w = 1; /* everyone plays until their pad has sat untouched for IDLE_TICKS */
     place_player(g, i, (float)g->L.start_x + 0.8f * (float)i, (float)g->L.start_y);
     g->p[i].pf.body.velocity = (cw_vec2){ 0, 0 };
   }
@@ -143,10 +144,23 @@ static void kill_player(game *g, int i, int cause) {
   note_death(g, i, cause);
 }
 
-static int others_alive(const game *g, int self) {
+/* a seat nobody plays (IDLE_TICKS without a touch of its pad) holds nobody back: the players the group follows are the
+ * ones who play. When nobody plays everyone counts, as before; the control switch (idle_anchor) makes everyone count. */
+static bool someone_plays(const game *g) {
+  for (int i = 0; i < g->nplayers; i++)
+    if (g->p[i].joined && g->p[i].idle < IDLE_TICKS) return true;
+  return false;
+}
+static bool plays(const game *g, int i) { return g->p[i].idle < IDLE_TICKS || g->idle_anchor || !someone_plays(g); }
+bool sim_player_leads(const game *g, int i) {
+  const player *p = &g->p[i];
+  return p->joined && p->alive && !p->bubble && plays(g, i);
+}
+/* the others who can carry a fallen player's bubble: up, and playing */
+static int others_leading(const game *g, int self) {
   int n = 0;
   for (int i = 0; i < g->nplayers; i++)
-    if (i != self && g->p[i].alive && !g->p[i].bubble) n++;
+    if (i != self && sim_player_leads(g, i)) n++;
   return n;
 }
 
@@ -254,18 +268,27 @@ bool sim_open_pit(const level *L, float x) {
 static void camera_step(game *g, float dt) {
   float minx = 1e9f, maxx = -1e9f, miny = 1e9f, maxy = -1e9f;
   int n = 0;
+  /* a player left behind (lead_w falling from 1 to 0 over two seconds) is framed nearer and nearer the centre of the ones
+   * who play, so the view glides off them instead of cutting */
+  float cx = 0, cy = 0, cw = 0;
   for (int i = 0; i < g->nplayers; i++) {
     const player *p = &g->p[i];
     if (!p->joined || !p->alive || p->bubble) continue;
-    float x = pos_x(p), y = pos_y(p);
+    cx += pos_x(p) * p->lead_w, cy += pos_y(p) * p->lead_w, cw += p->lead_w;
+  }
+  if (cw > 1e-4f) cx /= cw, cy /= cw;
+  for (int i = 0; i < g->nplayers; i++) {
+    const player *p = &g->p[i];
+    if (!p->joined || !p->alive || p->bubble || p->lead_w <= 1e-4f || cw <= 1e-4f) continue;
+    float x = cx + (pos_x(p) - cx) * p->lead_w, y = cy + (pos_y(p) - cy) * p->lead_w;
     /* the camera stays up at the lip of a pit and watches someone drop out of the bottom of the picture; it never goes down
      * after them to stare at two walls */
     if (!g_cam_nofloor && sim_open_pit(&g->L, x)) { float lip = sim_lip_of(&g->L, x); if (y < lip) y = lip; }
     minx = fminf(minx, x), maxx = fmaxf(maxx, x), miny = fminf(miny, y), maxy = fmaxf(maxy, y), n++;
   }
-  if (n == 0) {
+  if (n == 0 && cw <= 1e-4f) { /* nobody up who plays: follow a bubble (one left behind is glided to a stop) */
     for (int i = 0; i < g->nplayers; i++)
-      if (g->p[i].bubble) {
+      if (g->p[i].bubble && plays(g, i)) {
         minx = maxx = g->p[i].bubble_x, miny = maxy = g->p[i].bubble_y, n = 1;
         break;
       }
@@ -661,6 +684,17 @@ void sim_step(game *g, const input_state in[MAX_PLAYERS], float dt) {
   g->ndeaths_q = 0;
   g->ngrief_q = 0;
   g->tick++;
+  for (int i = 0; i < g->nplayers; i++) { /* any touch of the pad: this player plays */
+    player *p = &g->p[i];
+    const input_state *s = &in[i];
+    if (s->x * s->x + s->y * s->y > 0.0625f || s->jump_held || s->run || s->dash_pressed || s->grab_pressed || s->down || s->retry) p->idle = 0;
+    else if (p->idle < 1 << 30) p->idle++;
+  }
+  for (int i = 0; i < g->nplayers; i++) {
+    player *p = &g->p[i];
+    float tw = plays(g, i) ? 1.0f : 0.0f, k = dt / 2.0f;
+    p->lead_w = p->lead_w + (tw - p->lead_w > k ? k : tw - p->lead_w < -k ? -k : tw - p->lead_w);
+  }
   if (g->hit_flash > 0) g->hit_flash--;
   if (g->hitstop > 0) { /* hit-stop: the world stands still for a few ticks so a hit lands with weight */
     g->hitstop--;
@@ -692,7 +726,7 @@ void sim_step(game *g, const input_state in[MAX_PLAYERS], float dt) {
     if (p->bubble) continue;
     if (!p->alive) {
       /* a fallen player: carried in a bubble when someone is left, else back to the checkpoint */
-      if (others_alive(g, i) > 0) {
+      if (others_leading(g, i) > 0) {
         p->bubble = 1;
         p->bubble_x = pos_x(p), p->bubble_y = pos_y(p) + 1.0f;
         p->rescue_timer = 0;
@@ -702,7 +736,7 @@ void sim_step(game *g, const input_state in[MAX_PLAYERS], float dt) {
         if (p->rescue_timer > 45) {
           bool all_dead = true;
           for (int k = 0; k < g->nplayers; k++)
-            if (g->p[k].joined && g->p[k].alive) all_dead = false;
+            if (sim_player_leads(g, k)) all_dead = false; /* one nobody plays carries nobody */
           if (all_dead) {
             for (int k = 0; k < g->nplayers; k++)
               if (g->p[k].joined) sim_respawn_player(g, k);
@@ -882,7 +916,7 @@ void sim_step(game *g, const input_state in[MAX_PLAYERS], float dt) {
   float lead = -1e9f;
   for (int i = 0; i < g->nplayers; i++) {
     const player *p = &g->p[i];
-    if (p->joined && p->alive && !p->bubble) {
+    if (sim_player_leads(g, i)) {
       gx += pos_x(p), gy += pos_y(p), ng++;
       if (pos_x(p) > lead) lead = pos_x(p);
     }
@@ -911,12 +945,17 @@ void sim_step(game *g, const input_state in[MAX_PLAYERS], float dt) {
       p->bubble = 0; /* nobody left to carry it: back to the checkpoint */
       sim_respawn_player(g, i);
     }
-    /* falling too far behind the group: off screen for 2.5 s becomes a bubble */
-    if (p->alive && !p->bubble && ng > 1) {
+    /* falling too far behind the group: off screen for 2.5 s becomes a bubble. One nobody plays is off screen when it is
+     * out of the view, which follows the others */
+    bool leads = sim_player_leads(g, i);
+    if (p->alive && !p->bubble && (ng > 1 || (ng > 0 && !leads))) {
       float dx = pos_x(p) - gx, dy = pos_y(p) - gy;
-      if (dx > 24 || dx < -24 || dy > 15 || dy < -15) p->off_screen++;
+      bool off = dx > 24 || dx < -24 || dy > 15 || dy < -15;
+      if (!leads) off = fabsf(pos_x(p) - g->cam.x) > 0.645f * g->cam.z + 0.5f || fabsf(pos_y(p) - g->cam.y) > 0.364f * g->cam.z + 1.5f;
+      if (off) p->off_screen++;
       else p->off_screen = 0;
       if (p->off_screen > 150) {
+        if (!leads) g->carried++;
         p->bubble = 1;
         p->bubble_x = pos_x(p), p->bubble_y = pos_y(p) + 1.0f;
         p->rescue_timer = 0;
