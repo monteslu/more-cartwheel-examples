@@ -1276,14 +1276,16 @@ static void cmd_bind(int argc, const char **argv, cw_reply *r) {
  * tests/fighter-idle-seat.mjs); sw crowd_sync 1 is the crowd as it was, every spectator answering an event at once */
 static void cmd_sw(int argc, const char **argv, cw_reply *r) {
   if (argc >= 3 && !strcmp(argv[1], "seat_wait")) { G.sw_seat_wait = atoi(argv[2]) != 0; cw_reply_printf(r, "{\"seat_wait\":%d}", G.sw_seat_wait); return; }
+  if (argc >= 3 && !strcmp(argv[1], "flash_cap")) { fx_flash_cap = atoi(argv[2]) != 0; cw_reply_printf(r, "{\"flash_cap\":%d}", fx_flash_cap); return; }
+  if (argc >= 3 && !strcmp(argv[1], "boom_every")) { fx_boom_every = atoi(argv[2]); cw_reply_printf(r, "{\"boom_every\":%d}", fx_boom_every); return; }
   if (argc >= 3 && !strcmp(argv[1], "cpu_hp")) { G.sw_cpu_hp = atoi(argv[2]); cw_reply_printf(r, "{\"cpu_hp\":%d}", G.sw_cpu_hp); return; }
   if (argc >= 3 && !strcmp(argv[1], "crowd_sync")) { crowd_sync = atoi(argv[2]) != 0; crowd_same_max = 0; cw_reply_printf(r, "{\"crowd_sync\":%d}", crowd_sync); return; }
-  cw_reply_error(r, "usage: sw seat_wait <0|1> | sw crowd_sync <0|1> | sw cpu_hp <n>");
+  cw_reply_error(r, "usage: sw seat_wait <0|1> | sw crowd_sync <0|1> | sw cpu_hp <n> | sw flash_cap <0|1> | sw boom_every <ticks>");
 }
 
 static void init(void *u) {
   (void)u;
-  cw_debug_command("sw", "sw seat_wait <0|1> | crowd_sync <0|1> | cpu_hp <n>: test switches (the select screen waits for ever for a seat that never locks in, as before; the crowd answers every event at once, as before; the computer starts each round on n life)", cmd_sw);
+  cw_debug_command("sw", "sw seat_wait <0|1> | crowd_sync <0|1> | cpu_hp <n> | flash_cap <0|1> | boom_every <ticks>: test switches (explosion flashes capped at one per 24 ticks, or every one as before; a heavy blow's effects every n ticks; the select screen waits for ever for a seat that never locks in, as before; the crowd answers every event at once, as before; the computer starts each round on n life)", cmd_sw);
 #if defined(FIGHTER_AUTOPILOT) || defined(FIGHTER_SCRIPTED)
   cw_debug_command("cam", "cam <zoom> [who 0|1|2] [yaw]: close-up camera (zoom 0: normal)", cmd_cam);
   cw_debug_command("match", "match <stage 0-2> [p1] [p2]: start a match on a stage", cmd_match);
@@ -1349,7 +1351,7 @@ static void init(void *u) {
   cw_debug_u32("tex.hash", &tex_hash); cw_debug_f32_array("cam.pos", G.d_cam, 3); cw_debug_f32("fighter.spring", &G.d_spring);
   cw_debug_field("cam.offset", cam_offset, CW_DBG_I32, 3);
   cw_debug_field("rumble.sent", fx_rumble_sent, CW_DBG_I32, 2);
-  cw_debug_i32("crowd.same", &crowd_same_max);
+  cw_debug_i32("crowd.same", &crowd_same_max); cw_debug_i32("fx.flashes", &fx_flashes);
   cw_debug_field("arcade", G.d_arc, CW_DBG_I32, 4);
   cw_debug_i32("ko.slow", &G.d_slow); cw_debug_i32("music.tense", &G.d_tense); cw_debug_u32("ko.end_hash", &G.d_end_hash);
 #if defined(FIGHTER_AUTOPILOT) || defined(FIGHTER_SCRIPTED)

@@ -243,8 +243,29 @@ static void beam_place(t3_mesh *m, float x0, float x1, float y, float r, float a
   m->materials[0]->color = (t3_color){ c[0] * k * a, c[1] * k * a, c[2] * k * a };
 }
 
-static void heavy_boom(t3_vec3 p) { cw_node b = FX.hboom[FX.hbi++ % 3]; cw_node3d_set_position(b, p); cw_explosion_fire(b); }
-static void super_boom(float x) { cw_node3d_set_position(FX.sboom, (t3_vec3){ x, 0, 0 }); cw_explosion_fire(FX.sboom); }
+/* One flash budget shared by the three heavy-hit explosions and the super's: a heavy hit's explosion flashes its light only
+ * if no explosion flashed in the last 24 ticks (at most 2.5 flashes a second however fast a combo lands them, inside the
+ * three a second of WCAG 2.3.1 and the Harding test); within that it bursts and rings without the light. A super or a
+ * knockout always flashes, and starts the wait again. fx_flash_cap 0 (test switch sw flash_cap 0): every one flashes,
+ * as before. fx_boom_every N (sw boom_every N): a heavy hit's effects every N ticks, the flash check's fast combo */
+int fx_flash_cap = 1, fx_boom_every;
+int32_t fx_flashes; /* debug fx.flashes: explosion flashes lit */
+static uint32_t flash_tick;
+static bool flash_seen;
+static bool heavy_boom(t3_vec3 p, uint32_t tick) {
+  cw_node b = FX.hboom[FX.hbi++ % 3];
+  bool lit = !fx_flash_cap || !flash_seen || tick - flash_tick >= 24;
+  cw_node_set(b, "flash_energy", cw_val_float(lit ? 35 : 0));
+  if (lit) { flash_tick = tick; flash_seen = true; fx_flashes++; }
+  cw_node3d_set_position(b, p);
+  cw_explosion_fire(b);
+  return lit;
+}
+static void super_boom(float x, uint32_t tick) {
+  flash_tick = tick; flash_seen = true; fx_flashes++;
+  cw_node3d_set_position(FX.sboom, (t3_vec3){ x, 0, 0 });
+  cw_explosion_fire(FX.sboom);
+}
 
 void fx_bind_lights(cw_node stage) {
   for (int i = 0; i < 3; i++) {
@@ -308,11 +329,11 @@ void fx_event(const ft_game *g, const ft_event *e) {
     }
     at(FX.ring[r], p);
     if (big) at(FX.embers[FX.emi++ % 2], p);
-    light(p, big ? 90 : light_hit ? 26 : 50, 1, light_hit ? 0.9f : 0.75f, light_hit ? 0.7f : 0.4f);
+    bool lit = big && heavy_boom(p, g->tick); /* a heavy blow's big light shares the explosions' flash budget */
+    light(p, lit ? 90 : light_hit ? 26 : 50, 1, light_hit ? 0.9f : 0.75f, light_hit ? 0.7f : 0.4f);
     /* the one hit: short and sharp on the light motor, a heavy hit (a launcher, a knockdown) with some weight under it */
     rumble(who, big ? 0.35f : 0.05f + 0.03f * k, big ? 0.85f : 0.35f + 0.1f * k, big ? 140 : 70 + 15 * (int)k);
     rumble(other, big ? 0.15f : 0, big ? 0.5f : 0.2f + 0.06f * k, big ? 80 : 50);
-    if (big) heavy_boom(p);
     break;
   }
   case EV_BLOCK: {
@@ -342,7 +363,7 @@ void fx_event(const ft_game *g, const ft_event *e) {
     cw_node_set(FX.ring[r], "amount", cw_val_int(24));
     at(FX.ring[r], (t3_vec3){ p.x, 1.0f, 0.2f });
     light((t3_vec3){ p.x, 1.2f, 1.0f }, 120, 0.7f, 0.8f, 1);
-    super_boom(p.x);
+    super_boom(p.x, g->tick);
     break;
   }
   case EV_CLASH: at(FX.flash_p[FX.fi++ % 4], p); at(FX.sparks[FX.si++ % 4], p); light(p, 40, 1, 0.8f, 0.5f); break;
@@ -354,7 +375,7 @@ void fx_event(const ft_game *g, const ft_event *e) {
     for (int i = 0; i < 3; i++) at(FX.sparks[FX.si++ % 4], (t3_vec3){ p.x, 1.1f, 0.2f });
     at(FX.streaks[FX.sti++ % 2], (t3_vec3){ p.x, 1.1f, 0.2f });
     light((t3_vec3){ p.x, 1.2f, 1.0f }, 140, 1, 0.9f, 0.7f);
-    super_boom(p.x);
+    super_boom(p.x, g->tick);
     break;
   }
   default: break;
@@ -371,6 +392,14 @@ void fx_frame(const ft_game *g, float dt) {
   uint32_t n = g->ev_seq;
   if (n - FX.seen > 64) FX.seen = n - 64;
   while (FX.seen < n) { fx_event(g, &g->ev[FX.seen & 63]); FX.seen++; }
+  { /* the test switch's fast combo: a heavy blow's effects on player 2 every fx_boom_every ticks */
+    static uint32_t last;
+    if (fx_boom_every > 0 && g->tick != last && g->tick % (uint32_t)fx_boom_every == 0) {
+      last = g->tick;
+      ft_event e = { EV_HIT, 1, 3, 0, g->f[1].x, 1100, g->tick };
+      fx_event(g, &e);
+    }
+  }
   /* projectiles carry their glow */
   for (int i = 0; i < 8; i++) {
     const ft_proj *P = &g->proj[i];
