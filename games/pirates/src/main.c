@@ -109,6 +109,8 @@ static struct {
   int32_t hit_ticks[SHIPS], hit_amount[SHIPS];
   float hit_previous_hp[SHIPS];
   float canvas_weights[SHIPS];
+  float list_side[SHIPS];  /* render only: the side a damaged ship lists to (the side it was last hit on) */
+  int32_t smoke_tick[SHIPS]; /* render only: the tick of its last puff of damage smoke */
   float gpu_ms;
   cw_node post;
   int lever_sun_shadows, lever_scenery_detail;
@@ -698,6 +700,8 @@ static void reset_match(int mode, int joined_mask) {
   G.mode = mode; G.humans = humans; G.state = PLAYING; G.tick = 0; G.alert = 0;
   memset(G.cargo_notice_ticks,0,sizeof G.cargo_notice_ticks);
   memset(G.hit_ticks,0,sizeof G.hit_ticks);
+  G.label_overlaps_max=0;
+  memset(G.list_side,0,sizeof G.list_side);memset(G.smoke_tick,0,sizeof G.smoke_tick);
   G.time_left = mode == VOYAGE ? 60 * 12 * 60 : 60 * 6 * 60;
   G.quota = 10 + (humans > 0 ? humans - 1 : 0) * 7;
   G.voyage_stage=0;G.patrol_defeats=0;G.final_quota=0;
@@ -745,6 +749,10 @@ static void damage_ship(int target, int owner, int amount) {
   }
   G.hit_amount[target]+=(int)fminf(s->hp,(float)amount);
   G.hit_ticks[target]=75;
+  if (owner >= 0) { /* the ship lists toward the side the shot came from (render only) */
+    float ex = G.ships[owner].x - s->x, ez = G.ships[owner].z - s->z;
+    G.list_side[target] = ex * cw_cos(s->yaw) - ez * cw_sin(s->yaw) >= 0 ? 1.0f : -1.0f;
+  } else if (!G.list_side[target]) G.list_side[target] = target & 1 ? 1.0f : -1.0f;
   s->hp = fmaxf(0, s->hp - (float)amount);
   sound_play(S_HIT,s->x);
   if (owner >= 0 && owner < CAPTAINS) G.ships[owner].damage_done += amount;
@@ -1208,11 +1216,20 @@ static void sync_visuals(void) {
       cw_node3d_set_rotation(s->root,(t3_vec3){.2f*t,s->yaw,(i&1?1:-1)*1.1f*t});
       continue;
     }
-    cw_node3d_set_position(s->root, (t3_vec3){ s->x, w.height + 0.15f, s->z });
+    /* Damage shows on the hull: below full health a ship sits lower in the water (up to 0.4 m), lists toward the
+     * side it was hit on (up to 9 degrees) and dips its bow; under half its hull it trails dark smoke. */
+    float max_hp = i == 5 && G.mode == VOYAGE ? 75 + 25 * G.humans : 100 + 18 * s->hull;
+    float dmg = clampf(1 - s->hp / max_hp, 0, 1);
+    float list = (G.list_side[i] ? G.list_side[i] : 1) * 0.16f * dmg;
+    cw_node3d_set_position(s->root, (t3_vec3){ s->x, w.height + 0.15f - 0.4f * dmg, s->z });
     /* Resolve the surface slope into the ship's local axes before yawing. */
     float sy = cw_sin(s->yaw), cy = cw_cos(s->yaw);
-    cw_node3d_set_rotation(s->root, (t3_vec3){ -(w.normal.z * cy + w.normal.x * sy) * 0.65f,
-                                              s->yaw, (w.normal.x * cy - w.normal.z * sy) * 0.65f });
+    cw_node3d_set_rotation(s->root, (t3_vec3){ -(w.normal.z * cy + w.normal.x * sy) * 0.65f + 0.05f * dmg,
+                                              s->yaw, (w.normal.x * cy - w.normal.z * sy) * 0.65f + list });
+    if (dmg > 0.5f && G.state == PLAYING && G.tick - G.smoke_tick[i] >= (dmg > 0.75f ? 9 : 16)) {
+      G.smoke_tick[i] = G.tick;
+      damage_smoke(s->x - sy * 0.4f, w.height + 2.2f, s->z - cy * 0.4f);
+    }
     cw_node3d_set_rotation(s->flag,(t3_vec3){.12f*cw_sin((float)wt*3+i),.2f*cw_sin((float)wt*1.7f+i),0});
     G.canvas_weights[i]=s->canvas?.5f+.35f*cw_sin((float)wt*1.7f+i)+.12f*cw_sin((float)wt*3.1f+i*.7f):-1;
     if(s->canvas)s->canvas->morph_influences[0]=G.canvas_weights[i];
@@ -1850,12 +1867,20 @@ static void cmd_sink(int argc,const char **argv,cw_reply *r) {
   cw_reply_printf(r,"{\"ship\":%d,\"hp\":%.0f,\"respawn\":%d}",id,G.ships[id].hp,G.ships[id].respawn);
 }
 
+/* a test screen: ship i's hull, hit from the side it would be (pirates_hull <ship> <hull> [side -1|1]), for looking at how damage shows */
+static void cmd_hull(int argc,const char **argv,cw_reply *r) {
+  int id=argc>1?atoi(argv[1]):0;
+  if(id<0||id>=SHIPS||argc<3){cw_reply_error(r,"pirates_hull <ship 0..5> <hull> [side -1|1]");return;}
+  G.ships[id].hp=clampf((float)atof(argv[2]),1,200);G.list_side[id]=argc>3&&atoi(argv[3])<0?-1.0f:1.0f;
+  cw_reply_printf(r,"{\"ship\":%d,\"hp\":%.0f}",id,G.ships[id].hp);
+}
+
 static void cmd_effects(int argc,const char **argv,cw_reply *r) {
   (void)argc;(void)argv;
   cw_particles_stats stats;cw_particles_get_stats(cw_scene_app_tree(),&stats);
-  cw_reply_printf(r,"{\"systems\":%d,\"capacity\":%d,\"draw_calls\":%d,\"smoke_alive\":%d,\"flash_alive\":%d,\"sea_alive\":%d,\"wood_alive\":%d,\"dust_alive\":%d}",
+  cw_reply_printf(r,"{\"systems\":%d,\"capacity\":%d,\"draw_calls\":%d,\"smoke_alive\":%d,\"flash_alive\":%d,\"sea_alive\":%d,\"wood_alive\":%d,\"dust_alive\":%d,\"damage_smoke_alive\":%d}",
     stats.systems,stats.capacity,stats.draw_calls,cw_particles_alive(cannon_smoke),cw_particles_alive(cannon_flash),
-    cw_particles_alive(impact_particles[0]),cw_particles_alive(impact_particles[1]),cw_particles_alive(impact_particles[2]));
+    cw_particles_alive(impact_particles[0]),cw_particles_alive(impact_particles[1]),cw_particles_alive(impact_particles[2]),cw_particles_alive(damage_smoke_particles));
 }
 
 static void cmd_ai(int argc,const char **argv,cw_reply *r) {
@@ -2315,6 +2340,7 @@ static void init(void *user) {
   cw_debug_command("pirates_test_hull","Check shore approach, rotation, reverse escape and spawn clearance on both maps; resets match",cmd_hull_test);
   cw_debug_command("pirates_stock","pirates_stock <wood> <coin> <iron>: captain 0's stored cargo, for inspecting the harbor panel",cmd_stock);
   cw_debug_command("pirates_sink","Sink ship 0..5 through normal damage rules for visual inspection",cmd_sink);
+  cw_debug_command("pirates_hull","pirates_hull <ship> <hull> [side]: set a ship's hull, for looking at how damage shows",cmd_hull);
   cw_debug_command("pirates_effects","Read particle pool capacity, draw counts and active combat particles",cmd_effects);
   cw_debug_command("pirates_ai","Inspect a ship's steering waypoint and shoreline clearance",cmd_ai);
   cw_debug_command("pirates_test_escape","Check shoreline escape: first argument 1 starts live; second argument 1 selects P1 stop-and-turn case",cmd_escape_test);

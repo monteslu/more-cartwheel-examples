@@ -2,6 +2,7 @@
 #include "cartwheel/particles.h"
 static cw_node cannon_smoke;
 static cw_node cannon_flash;
+static cw_node damage_smoke_particles; /* a badly hit ship trails dark smoke: one shared system, a burst a puff */
 enum { IMPACT_WATER, IMPACT_WOOD, IMPACT_LAND };
 static cw_node impact_particles[3];
 static void impact_init(cw_node root) {
@@ -15,12 +16,12 @@ static void impact_init(cw_node root) {
     /* Sixteen simultaneous impacts share a single simulation and draw. */
     cw_node_set(n,"bursts",cw_val_int(16));
     cw_node_set(n,"amount",cw_val_int(16*(i==0?24:i==1?12:8)));
-    cw_node_set(n,"lifetime",cw_val_float(i==0?.8:i==1?.65:1.0));
+    cw_node_set(n,"lifetime",cw_val_float(i==0?1.1:i==1?.65:1.0));
     cw_node_set(n,"explosiveness",cw_val_float(1));
     cw_node_set(n,"emitting",cw_val_bool(false));
-    cw_node_set(n,"spread",cw_val_float(i==0?38:65));
-    cw_node_set(n,"speed_min",cw_val_float(i==0?3:i==1?2:.6));
-    cw_node_set(n,"speed_max",cw_val_float(i==0?6:i==1?4.5:1.8));
+    cw_node_set(n,"spread",cw_val_float(i==0?16:65));
+    cw_node_set(n,"speed_min",cw_val_float(i==0?5:i==1?2:.6));
+    cw_node_set(n,"speed_max",cw_val_float(i==0?9:i==1?4.5:1.8));
     cw_node_set(n,"gravity",cw_val_vec3(0,i==2?.3:-10,0));
     cw_node_set(n,"size",cw_val_float(i==0?.14:i==1?.22:.7));
     cw_node_set(n,"size_random",cw_val_float(.5));
@@ -43,6 +44,28 @@ static void impact_effect(int kind,float x,float y,float z,float dx,float dz) {
 }
 static void effects_init(cw_node root) {
   impact_init(root);
+  {
+    cw_node n=cw_node_new("GPUParticles3D","DamageSmoke");damage_smoke_particles=n;
+    cw_node_set(n,"bursts",cw_val_int(48));
+    cw_node_set(n,"amount",cw_val_int(48*5));
+    cw_node_set(n,"lifetime",cw_val_float(2.4));
+    cw_node_set(n,"explosiveness",cw_val_float(1));
+    cw_node_set(n,"one_shot",cw_val_bool(true));
+    cw_node_set(n,"emitting",cw_val_bool(false));
+    cw_node_set(n,"spread",cw_val_float(14));
+    cw_node_set(n,"speed_min",cw_val_float(.9));
+    cw_node_set(n,"speed_max",cw_val_float(1.6));
+    cw_node_set(n,"gravity",cw_val_vec3(.35,.3,.12));
+    cw_node_set(n,"size",cw_val_float(1.1));
+    cw_node_set(n,"size_random",cw_val_float(.4));
+    cw_node_set(n,"color_ramp",cw_val_string("0 0.16 0.13 0.11 0, 0.12 0.18 0.16 0.14 0.75, 1 0.36 0.35 0.34 0"));
+    cw_node_set(n,"size_curve",cw_val_string("0 0.5, 0.3 1.1, 1 2.4"));
+    cw_node_set(n,"draw_mode",cw_val_enum("BILLBOARD"));
+    cw_node_set(n,"blend",cw_val_enum("ALPHA"));
+    cw_node_set(n,"texture",cw_val_string("textures/cannon-smoke.png"));
+    cw_node_set(n,"hframes",cw_val_int(8));cw_node_set(n,"vframes",cw_val_int(8));
+    cw_node_add_child(root,n);
+  }
   {
     /* Keep overlapping broadsides from all captains in two shared draws.
      * 32 muzzle positions retain more smoke than the old 12-emitter pool. */
@@ -89,12 +112,16 @@ static void effects_reset(cw_node root) {
   /* Recreate only at match boundaries, never on a hit. This clears old GPU
    * burst slots as well as smoke when changing maps or restarting a round. */
   for(int i=0;i<3;i++)cw_node_free(impact_particles[i]);
-  cw_node_free(cannon_smoke);cw_node_free(cannon_flash);
+  cw_node_free(cannon_smoke);cw_node_free(cannon_flash);cw_node_free(damage_smoke_particles);
   effects_init(root);
 }
 static void cannon_effect(float x,float y,float z,float dx,float dz) {
   cw_particles_burst(cannon_smoke,(t3_vec3){x+dx*.35f,y+.6f,z+dz*.35f},(t3_vec3){dx,.4f,dz});
   cw_particles_burst(cannon_flash,(t3_vec3){x+dx*.9f,y+.8f,z+dz*.9f},(t3_vec3){0,1,0});
+}
+
+static void damage_smoke(float x,float y,float z) {
+  cw_particles_burst(damage_smoke_particles,(t3_vec3){x,y,z},(t3_vec3){0,1,0});
 }
 
 /* A small continuous ash plume gives the volcanic map a visible source. */
