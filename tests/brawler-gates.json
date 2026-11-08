@@ -560,12 +560,12 @@
       "game.camjit": 0,
       "cw.rumble": [
         4,
-        2,
-        120,
-        450,
-        70
+        0,
+        250,
+        750,
+        110
       ],
-      "game.hash": 1896799126,
+      "game.hash": 2501223219,
       "game.unfair": 0,
       "game.nan": 0
     },
@@ -588,7 +588,7 @@
   },
   {
     "name": "brawler-controls",
-    "note": "A fighter in a jump must not float. Player 1 is driven by an input script like a person (human 1): steps right, jumps, jump-kicks every other jump, lands, punches a three-hit combo, grabs and knees, forty times over (mostly jumps, a jump kick every fourth, a combo every sixth, a grab every ninth), with two thugs and a punk on him. game.air_max (player 1's longest time off the ground in frames, hit-stop included) stays near a jump's 46 frames and game.jumps counts the jumps. The control (legacyair 1) is v0.4.0's stagger, which had no gravity: a fighter jab-hit in mid jump hung in the air and walked on there (air_max 155 with this script; 78 now), so it fails.",
+    "note": "A fighter in a jump must not float. Player 1 is driven by an input script like a person (human 1): steps right, jumps, jump-kicks every other jump, lands, punches a three-hit combo, grabs and knees, forty times over (mostly jumps, a jump kick every fourth, a combo every sixth, a grab every ninth), with two thugs and a punk on him. game.air_max (player 1's longest time off the ground in frames, hit-stop included) stays near a jump's 46 frames and game.jumps counts the jumps. The control (legacyair 1) is v0.4.0's stagger, which had no gravity: a fighter jab-hit in mid jump hung in the air and walked on there (air_max 155 with this script; 62 now, after the 2026-11-08 street and hit-stop changes), so it fails.",
     "app": "brawler_auto",
     "frames": 2300,
     "input": "brawler-controls.json",
@@ -616,12 +616,12 @@
     "expect": {
       "game.unfair": 0,
       "game.nan": 0,
-      "game.ticks": 2223,
-      "game.air_max": 78,
-      "game.jumps": 21,
-      "game.hits": 9,
-      "game.kills": 5,
-      "game.hash": 820702351
+      "game.ticks": 2191,
+      "game.air_max": 62,
+      "game.jumps": 22,
+      "game.hits": 6,
+      "game.kills": 2,
+      "game.hash": 3883058704
     },
     "webgpu": {
       "hosts": [
@@ -666,10 +666,10 @@
       "game.unfair"
     ],
     "expect": {
-      "game.ticks": 395,
+      "game.ticks": 375,
       "game.kills": 1,
       "game.score": 710,
-      "game.hash": 4185956048,
+      "game.hash": 3876120168,
       "game.bowled": 2,
       "game.nan": 0,
       "game.unfair": 0
@@ -715,7 +715,7 @@
     ],
     "expect": {
       "game.grab": [
-        40,
+        32,
         1,
         228
       ],
@@ -886,7 +886,7 @@
       "game.nan"
     ],
     "expect": {
-      "game.mirrorz": 6736,
+      "game.mirrorz": 6765,
       "game.rings": 4,
       "game.nan": 0
     },
@@ -982,7 +982,7 @@
       "game.unfair": 0,
       "game.kills": 1,
       "game.score": 670,
-      "game.hash": 3011400347
+      "game.hash": 2294692888
     },
     "webgpu": {
       "hosts": [
@@ -1165,5 +1165,97 @@
     "name": "brawler-quality",
     "script": "tests/brawler-quality.mjs",
     "note": "a program for everything drawn at every quality on both backends, through a spread warm-up as a player gets it: waves and the boss of every stage, bodies down, every item, the creep's flash on every stage, from the title by real input. A scene not reached fails. Control: physical+map+rep+nmap+ao+rmap+mmap+skin+sheen+l2001+xcluster_csm out of the table must be reported and skip draws"
+  },
+  {
+    "name": "brawler-moves",
+    "note": "The combo toolbox (2026-11-08): two bots fight stage 1 and use it as a player would: run at a far enemy and kick into it, a kick after the second punch launches the body and the next blows juggle it, a turn onto someone behind is a backfist, a body on the ground in reach is stamped on, and the special's cost is won back by the blows that land after it. game.moves counts each that landed (dash attacks, backfists, launchers, juggle blows, stomps, tenths of health won back), game.combos the finished hit combos by length (1, 2, 3-4, 5-7, 8+), game.stopped the frames held by hit-stop (6 light, 10 heavy, 16 on a finisher or a kill). The control (legacymoves 1) takes the toolbox away: no move lands, so it fails.",
+    "app": "brawler_auto",
+    "frames": 2400,
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "vsGl": 0.005,
+      "note": "the same dual cart on romdev and Chromium against native WebGPU (state exact). vsGl 0.5 percent: GL and WebGPU draw the same picture (0.01 percent apart); the brick, asphalt and corrugated detail that differed by 4 to 10.6 percent was the engine lighting normal maps from the wrong side on WebGPU, fixed (findings/gl-webgpu-parity.md)"
+    },
+    "startCmds": [
+      "players 2"
+    ],
+    "controlStartCmds": [
+      "players 2",
+      "legacymoves 1"
+    ],
+    "fields": [
+      "game.ticks",
+      "game.moves",
+      "game.combos",
+      "game.stopped",
+      "game.hits",
+      "game.kills",
+      "game.hash",
+      "game.unfair",
+      "game.overlaps",
+      "game.nan",
+      "game.token_leak"
+    ],
+    "expect": {
+      "game.moves": [
+        0
+      ],
+      "game.combos": [
+        0
+      ],
+      "game.stopped": 0,
+      "game.hash": 0,
+      "game.unfair": 0,
+      "game.overlaps": 0,
+      "game.nan": 0,
+      "game.token_leak": 0
+    }
+  },
+  {
+    "name": "brawler-lane",
+    "note": "The lane assist (2026-11-08): one bot that misjudges depth by up to 0.8 m, as a person reading the picture might (botaim 0.8), and swings when level along the street. game.lane counts its blows thrown with an enemy within 1.5 m along the street and those that hit nobody (a lane miss): a blow aimed at an enemy 0.25 to 0.95 m off its lane steps across onto it during the wind-up. The control (legacylane 1) has no assist and misses more, so it fails.",
+    "app": "brawler_auto",
+    "frames": 2400,
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev",
+        "chromium"
+      ],
+      "vsGl": 0.005,
+      "note": "the same dual cart on romdev and Chromium against native WebGPU (state exact). vsGl 0.5 percent: GL and WebGPU draw the same picture (0.01 percent apart); the brick, asphalt and corrugated detail that differed by 4 to 10.6 percent was the engine lighting normal maps from the wrong side on WebGPU, fixed (findings/gl-webgpu-parity.md)"
+    },
+    "startCmds": [
+      "players 1",
+      "botaim 0.8"
+    ],
+    "controlStartCmds": [
+      "players 1",
+      "botaim 0.8",
+      "legacylane 1"
+    ],
+    "fields": [
+      "game.ticks",
+      "game.lane",
+      "game.hits",
+      "game.kills",
+      "game.hash",
+      "game.unfair",
+      "game.nan"
+    ],
+    "expect": {
+      "game.lane": [
+        0,
+        0
+      ],
+      "game.hits": 0,
+      "game.hash": 0,
+      "game.unfair": 0,
+      "game.nan": 0
+    }
   }
 ]

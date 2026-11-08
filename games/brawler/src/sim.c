@@ -527,7 +527,7 @@ void ent_hurt(ent *v, ent *a, float dmg, int knock, float fx) {
   bool boss = DEFS[v->def].boss || DEFS[v->def].mini;
   /* the combo toolbox: a body in the air off a launcher takes blows there (a juggle), one on the ground a stomp */
   bool juggled = v->st == S_FALL && v->juggle > 0 && a && a->player, stomped = v->st == S_DOWN && a && a->player && a->atk == A_STOMP;
-  bool launch = knock == 3 && !boss && !g_legacy_moves;
+  bool launch = knock == 3 && !boss && !g_legacy_moves && !juggled; /* a body already in the air is not launched again: three juggle blows and it comes down */
   int down_t = v->t;
   if (knock == 3) knock = boss || g_legacy_moves ? 1 : 2;
   if (juggled) knock = 2;
@@ -1078,11 +1078,11 @@ static void player_update(int pi, const inputs *in) {
     do_hits(e);
     if (e->t == ad->a1 && e->lane_near) { W.st.lane_press++; if (!e->landed) W.st.lane_miss++; } /* the lane-miss audit */
     if (e->t == ad->a0) sfx(SFX_WHIFF);
-    bool chain = e->chain_ok && e->t >= ad->a1 && (e->atk == A_PUNCH1 || e->atk == A_PUNCH2) && !e->weapon;
+    bool chain = e->chain_ok && e->t >= ad->a1 && (e->atk == A_PUNCH1 || e->atk == A_PUNCH2 || e->atk == A_LAUNCH) && !e->weapon;
     if (chain) {
-      akind k = e->atk == A_PUNCH1 ? A_PUNCH2 : e->chain_ok == 2 ? A_LAUNCH : A_FINISH;
+      akind k = e->atk == A_LAUNCH ? A_PUNCH1 : e->atk == A_PUNCH1 ? A_PUNCH2 : e->chain_ok == 2 ? A_LAUNCH : A_FINISH; /* after the launcher the combo starts again on the body in the air */
       start_attack(e, k);
-      e->combo = k == A_PUNCH2 ? 2 : 0;
+      e->combo = k == A_PUNCH2 ? 2 : k == A_PUNCH1 ? 1 : 0;
       break;
     }
     if (e->t >= ad->total) {
