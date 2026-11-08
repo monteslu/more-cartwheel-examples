@@ -53,10 +53,10 @@ const check = (name, ok, detail) => { results.push({ name, ok, detail }); consol
   check('camera', a[2] - a[1] >= 600, `speed camera ${a[1] / 100} to ${a[2] / 100} degrees`);
   check('camera control', c[2] - c[1] === 0 && c[2] === 6000, `classic ${c[1] / 100} to ${c[2] / 100} degrees`);
 }
-// finish: 12 m before the line at 3 s; the moment fires once and gives a medal
+// finish: 3 m before the line once racing; the moment fires once and gives a medal
 {
-  const a = run('finish', 420, ['race bunny_hill', '@320 tp finish 12'], { input: null }).s; // no presses: the results stay up
-  const c = run('finish-control', 420, ['race bunny_hill'], { input: null }).s;
+  const a = run('finish', 600, ['race bunny_hill', '@320 tp finish 3'], { input: null }).s; // no presses: the results stay up
+  const c = run('finish-control', 600, ['race bunny_hill'], { input: null }).s;
   check('finish', a['race.finish_events'] === 1 && a['race.medal'] === 3 && a['game.state'] === 8, `events ${a['race.finish_events']}, medal ${a['race.medal']}, state ${a['game.state']}`);
   check('finish control', c['race.finish_events'] === 0 && c['race.medal'] === 0, `events ${c['race.finish_events']}, medal ${c['race.medal']}`);
 }
