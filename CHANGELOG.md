@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.27.6
+
+- Engine v0.38.3 (from v0.38.1, and v0.36.1 before 0.27.5). The engine's grounding check judges a wall or a row of stands at its foot nearest the camera and leaves out what stands around the camera, instead of the middle of its box; cascaded sun shadows skip their lookups where no cascade weighs in (frames the same to the bit); a terrain obeys visible. From v0.37.0 and v0.38.0 the 2D renderer gains an HDR canvas, a post chain, soft shadows and global illumination, which the games do not turn on.
+- Every game has a program for everything it draws at every preset on GL and WebGPU with the new engine, and the quality range gates pass with the limits of 0.27.2.
+
 ## 0.27.5
 
 - Engine v0.38.1: every cart's manifest says which version it is. A release's carts carry the release's version (every cart said 0.1.0 before), and a cart built from any other commit says `<last tag>-dev.g<commit>`, so it is never taken for a release. The engine works the version out from the checkout on every build; `project.cwproj` no longer carries one. Engine v0.37.0 and v0.38.0 (the 2D renderer's HDR canvas, post chain, tiled lights and global illumination) come with it.
