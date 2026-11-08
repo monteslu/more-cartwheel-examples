@@ -7,6 +7,12 @@ Four fighters, three stages, a training mode that shows hitboxes and frame data.
 
 Run `fighter` (or `scripts/build.sh` then `build/native/.../fighter`). Pick Play, join with a pad (the south face button) or the keyboard (enter), choose a fighter (left / right) and a stage (up / down), lock in with kick (the south face button).
 
+Two seats and one of them never locks in (a second pad that joined and was put down): once the other player has locked in,
+the select screen waits 12 seconds, counting the last 6 down ("P2 has not locked in: the computer plays P2 in 5"), then
+the computer plays that seat with the fighter it shows. Any press on that seat's pad starts the wait again; back on the
+select screen every seat is its player's again. `sw seat_wait 1` (every cart) waits for ever instead, the control of
+`tests/fighter-idle-seat.mjs`.
+
 The camera never shakes: hits, throws, wall splats, knockdowns, supers and the KO are felt in each player's own pad (rumble; the computer's fighter has none).
 
 Three buttons: punch, kick and block. The stick (or d-pad) picks where a punch or kick goes.

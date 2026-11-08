@@ -29,6 +29,9 @@ static struct {
   ft_game sim;
   int state, players, stage, difficulty, training, show_boxes;
   int sel[2], ready[2], sel_stage;
+  /* a seat that does not lock in: ticks the other side has waited since it locked in, the sides the computer plays for
+   * that reason, and the test switch (sw seat_wait 1) that waits for ever, as the select screen once did */
+  int wait_t, cpu_seat[2], sw_seat_wait;
   int result_t;
   cw_node stage_node, camera;
   int tex_done;
@@ -210,6 +213,7 @@ static void unload_match(void) {
 static int shown_sel[3] = { -1, -1, -1 }; /* the fighters the select screen shows now */
 static void begin_match(void) {
   memset(G.d_ctl, 0, sizeof G.d_ctl);
+  G.wait_t = 0;
   shown_sel[0] = -1;
   G.sim.training = G.training;
   G.sim.dummy = T_STAND;
@@ -217,6 +221,7 @@ static void begin_match(void) {
   G.sim.cpu[1] = G.players < 2 || G.training == 2;
   G.sim.cpu_level[0] = 1;
   G.sim.cpu_level[1] = (uint8_t)G.difficulty;
+  for (int p = 0; p < 2; p++) if (G.cpu_seat[p]) { G.sim.cpu[p] = true; G.sim.cpu_level[p] = (uint8_t)G.difficulty; } /* a seat nobody chose for */
   int d0 = G.sel[0], d1 = G.sel[1];
 #ifdef FIGHTER_AUTOPILOT
   G.sim.cpu[0] = G.sim.cpu[1] = !G.training;
@@ -252,11 +257,14 @@ static void select_scene(void) {
   load_match();
   for (int i = 0; i < 2; i++) model_set_showcase(G.mdl[i], 0.9f);
 }
+/* back on the select screen: nobody locked in, every seat its player's again */
+static void seats_reset(void) { G.ready[0] = G.ready[1] = 0; G.cpu_seat[0] = G.cpu_seat[1] = 0; G.wait_t = 0; }
+
 static void start(int players, void *user) {
   (void)user;
   G.players = players;
   G.state = GS_SELECT;
-  G.ready[0] = G.ready[1] = 0;
+  seats_reset();
   shown_sel[0] = -1;
   select_scene();
 }
@@ -271,6 +279,17 @@ static int menu_pick(int p, int *v, int n) {
 /* menus: A (kick) or Start confirms, B (block) backs out, X (punch) switches the mode */
 static bool confirm(int p) { return cw_action_just_pressed(p, G.a_k) || cw_action_just_pressed(p, G.ui_start) || (p == 1 && cw_action_just_pressed(0, G.k_k)); }
 static bool back_out(int p) { return cw_action_just_pressed(p, G.a_g) || (p == 1 && cw_action_just_pressed(0, G.k_g)); }
+/* anything a player does on the select screen (player 2 on the keyboard is on pad 0's keys) */
+static bool select_touched(int p) {
+  const cw_action a[] = { G.a_left, G.a_right, G.a_up, G.a_down, G.a_p, G.a_k, G.a_g, G.ui_start };
+  for (size_t i = 0; i < sizeof a / sizeof a[0]; i++) if (cw_action_just_pressed(p, a[i])) return true;
+  return p == 1 && (cw_action_just_pressed(0, G.k_left) || cw_action_just_pressed(0, G.k_right) || cw_action_just_pressed(0, G.k_k) || cw_action_just_pressed(0, G.k_g));
+}
+/* Two seats, one locked in: the other gets SEAT_WAIT to choose (a countdown shows for the last SEAT_WARN), any press
+ * on its pad starts the wait again. A seat that joined and was never played does not hold the other player on this
+ * screen: the computer plays it, with the fighter it shows. */
+enum { SEAT_WAIT = 60 * 12, SEAT_WARN = 60 * 6 };
+static int seat_waiting(void) { return G.players > 1 && G.ready[0] != G.ready[1] ? (G.ready[0] ? 1 : 0) : -1; }
 
 static void update_select(void) {
   for (int p = 0; p < G.players && p < 2; p++) {
@@ -287,6 +306,9 @@ static void update_select(void) {
     }
     if (confirm(p)) { G.ready[p] = 1; sfx(SFX_ROUND, 0.6f, 1.0f); }
   }
+  int w = seat_waiting();
+  if (w < 0 || G.sw_seat_wait || select_touched(w)) G.wait_t = 0;
+  else if (++G.wait_t >= SEAT_WAIT) { G.cpu_seat[w] = 1; G.ready[w] = 1; G.wait_t = 0; sfx(SFX_ROUND, 0.6f, 1.0f); }
   select_scene();
   bool all = G.ready[0] && (G.players < 2 || G.ready[1]);
   if (all) {
@@ -349,7 +371,7 @@ static void fixed(void *u, double dt) {
   if (G.state == GS_RESULT) {
     G.result_t++;
     if (G.result_t > 40 && confirm(0)) begin_match();
-    else if (G.result_t > 40 && back_out(0)) { G.state = GS_SELECT; G.ready[0] = G.ready[1] = 0; shown_sel[0] = -1; }
+    else if (G.result_t > 40 && back_out(0)) { G.state = GS_SELECT; seats_reset(); shown_sel[0] = -1; }
 #if defined(FIGHTER_AUTOPILOT)
     if (G.result_t > 200 && !g_hold) { G.sel_stage = (G.sel_stage + 1) % STAGES; G.sel[0] = (G.sel[0] + 1) % 4; G.sel[1] = (G.sel[1] + 1) % 4; begin_match(); }
 #endif
@@ -360,7 +382,7 @@ static void fixed(void *u, double dt) {
     if (cw_action_just_pressed(0, G.tr_dummy)) { G.sim.dummy = (uint8_t)((G.sim.dummy + 1) % T_COUNT); sfx(SFX_BELL, 0.3f, 1.4f); }
     if (cw_action_just_pressed(0, G.tr_boxes)) G.show_boxes = !G.show_boxes;
     if (cw_action_just_pressed(0, G.tr_reset)) { ft_round_start(&G.sim); }
-    if (cw_action_just_pressed(0, G.tr_mode)) { G.state = GS_SELECT; G.ready[0] = G.ready[1] = 0; shown_sel[0] = -1; return; }
+    if (cw_action_just_pressed(0, G.tr_mode)) { G.state = GS_SELECT; seats_reset(); shown_sel[0] = -1; return; }
   }
   ft_input in[2] = { read_pad(0), G.players > 1 ? read_pad(1) : (ft_input){ 0 } };
   uint8_t was = G.sim.f[0].state, was_mv = G.sim.f[0].mv;
@@ -1024,6 +1046,16 @@ static void draw_select(float W, float H, float s) {
     if (p1) text(G.font_bold, "P1", x + 10 * s, y0 - tag_h, 18 * s, rgba(1, 0.5f, 0.4f, 1), CW_ALIGN_LEFT);
     if (p2) text(G.font_bold, "P2", x + cw_ - 10 * s, y0 - tag_h, 18 * s, rgba(0.4f, 0.7f, 1, 1), CW_ALIGN_RIGHT);
   }
+  int w = seat_waiting();
+  if (w >= 0 && !G.sw_seat_wait && G.wait_t > SEAT_WAIT - SEAT_WARN) { /* the seat that has not chosen: the countdown to the computer playing it */
+    char m[96];
+    int left = (SEAT_WAIT - G.wait_t + 59) / 60;
+    snprintf(m, sizeof m, "P%d has not locked in: the computer plays P%d in %d", w + 1, w + 1, left);
+    if (text_w(G.font_bold, m, 22 * s) > W - 48 * s) snprintf(m, sizeof m, "P%d: the computer plays in %d", w + 1, left);
+    float mw = text_w(G.font_bold, m, 22 * s), mh = 34 * s * grow(G.font_bold, 22 * s), my = floorf((band + y0 - tag_h) * 0.5f - mh * 0.5f);
+    cw_r2d_round_rect(cw_rect_make(W * 0.5f - mw * 0.5f - 18 * s, my, mw + 36 * s, mh), 10 * s, 8, rgba(0.06f, 0.07f, 0.1f, 0.88f));
+    text(G.font_bold, m, W * 0.5f, my + 5 * s, 22 * s, w ? rgba(0.5f, 0.75f, 1, 1) : rgba(1, 0.55f, 0.45f, 1), CW_ALIGN_CENTER);
+  }
   if (page == 1) ptext(G.font_ui, move, -1, W * 0.5f, y_btn, 16 * s, rgba(0.85f, 0.92f, 1, 1), CW_ALIGN_CENTER);
   else if (page >= 2) ptext(G.font_ui, spec_line[page - 2], -1, W * 0.5f, y_btn, 16 * s, rgba(1, 0.85f, 0.5f, 1), CW_ALIGN_CENTER);
   else ptext(G.font_ui, btn, -1, W * 0.5f, y_btn, 16 * s, rgba(1, 0.95f, 0.8f, 1), CW_ALIGN_CENTER);
@@ -1080,6 +1112,7 @@ static void players_changed(int players, void *u) {
   (void)u;
   G.players = players;
   G.ready[1] = 0;
+  G.cpu_seat[0] = G.cpu_seat[1] = 0; G.wait_t = 0;
 }
 static void shell_sound(cw_shell_sound s, void *u) {
   (void)u;
@@ -1103,7 +1136,7 @@ static void cmd_screen(int argc, const char **argv, cw_reply *r) {
     if (argc > 2) G.sel[0] = atoi(argv[2]) & 3;
     int b = argc > 3 ? atoi(argv[3]) & 3 : (G.sel[0] + 1) & 3;
     if (argc > 4) G.sel_stage = atoi(argv[4]) % STAGES;
-    G.players = 2; G.sel[1] = b; G.ready[0] = G.ready[1] = 0;
+    G.players = 2; G.sel[1] = b; seats_reset();
     shown_sel[0] = -1; G.state = GS_SELECT; select_scene();
   } else {
     int w = argc > 2 ? atoi(argv[2]) & 1 : 0;
@@ -1137,8 +1170,16 @@ static void cmd_bind(int argc, const char **argv, cw_reply *r) {
   cw_reply_printf(r, "ok");
 }
 
+/* the gates' switch: sw seat_wait 1 waits for ever for a seat that never locks in (the control of tests/fighter-idle-seat.mjs) */
+static void cmd_sw(int argc, const char **argv, cw_reply *r) {
+  if (argc < 3 || strcmp(argv[1], "seat_wait")) { cw_reply_error(r, "usage: sw seat_wait <0|1>"); return; }
+  G.sw_seat_wait = atoi(argv[2]) != 0;
+  cw_reply_printf(r, "{\"seat_wait\":%d}", G.sw_seat_wait);
+}
+
 static void init(void *u) {
   (void)u;
+  cw_debug_command("sw", "sw seat_wait <0|1>: test switch (the select screen waits for ever for a seat that never locks in, as before)", cmd_sw);
 #if defined(FIGHTER_AUTOPILOT) || defined(FIGHTER_SCRIPTED)
   cw_debug_command("cam", "cam <zoom> [who 0|1|2] [yaw]: close-up camera (zoom 0: normal)", cmd_cam);
   cw_debug_command("match", "match <stage 0-2> [p1] [p2]: start a match on a stage", cmd_match);
@@ -1188,6 +1229,7 @@ static void init(void *u) {
   cw_debug_i32("game.state", &G.d_state); cw_debug_i32("game.phase", &G.d_phase); cw_debug_i32("game.round", &G.d_round);
   cw_debug_field("sim.hp", G.d_hp, CW_DBG_I32, 2); cw_debug_field("sim.meter", G.d_meter, CW_DBG_I32, 2); cw_debug_field("sim.wins", G.d_wins, CW_DBG_I32, 2);
   cw_debug_field("sim.pos", G.d_pos, CW_DBG_I32, 4); cw_debug_field("sim.fstate", G.d_fstate, CW_DBG_I32, 2); cw_debug_field("sim.def", G.d_def, CW_DBG_I32, 2);
+  cw_debug_i32("seat.wait", &G.wait_t); cw_debug_field("seat.cpu", G.cpu_seat, CW_DBG_I32, 2); /* the select screen's wait for a seat, the seats the computer plays */
   cw_debug_field("sim.guard", G.d_guard, CW_DBG_I32, 2); cw_debug_field("sim.stats", G.d_stats, CW_DBG_I32, 6);
   cw_debug_field("ctl.p1", G.d_ctl, CW_DBG_I32, 10);
   cw_debug_u32("sim.hash", &G.d_hash); cw_debug_i32("sim.combo", &G.d_combo); cw_debug_i32("sim.adv", &G.d_adv); cw_debug_i32("ticks", &G.d_tick);
