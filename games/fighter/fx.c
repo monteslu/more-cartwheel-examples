@@ -260,7 +260,10 @@ static bool flash_ok(uint32_t tick) {
 }
 static void heavy_boom(t3_vec3 p, bool lit) {
   cw_node b = FX.hboom[FX.hbi++ % 3];
-  cw_node_set(b, "flash_energy", cw_val_float(lit ? 35 : 0));
+  /* never the explosion's own flash light: it jumps on and off in 8 frames, and with the blow's other lights it peaked twice
+   * per blow. The blow's light (light(): up over 3 frames, down over 15) is the one flash */
+  (void)lit;
+  cw_node_set(b, "flash_energy", cw_val_float(0));
   cw_node3d_set_position(b, p);
   cw_explosion_fire(b);
 }
@@ -342,9 +345,8 @@ void fx_event(const ft_game *g, const ft_event *e) {
       if (big) at(FX.embers[FX.emi++ % 2], p);
       if (big) heavy_boom(p, true);
     }
-    /* outside the budget: no light; a heavy blow's light is its explosion's flash (two lights peaking a few frames apart
-     * read as two flashes) */
-    if (lit && !big) light(p, light_hit ? 26 : 50, 1, light_hit ? 0.9f : 0.75f, light_hit ? 0.7f : 0.4f);
+    /* outside the budget: no light */
+    if (lit) light(p, big ? 70 : light_hit ? 26 : 50, 1, light_hit ? 0.9f : 0.75f, light_hit ? 0.7f : 0.4f);
     /* the one hit: short and sharp on the light motor, a heavy hit (a launcher, a knockdown) with some weight under it */
     rumble(who, big ? 0.35f : 0.05f + 0.03f * k, big ? 0.85f : 0.35f + 0.1f * k, big ? 140 : 70 + 15 * (int)k);
     rumble(other, big ? 0.15f : 0, big ? 0.5f : 0.2f + 0.06f * k, big ? 80 : 50);
