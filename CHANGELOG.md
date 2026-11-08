@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.28.0
+
+- Sky Fighter: nothing floats in any mission.
+  - A building stands only where the ground under its whole footprint (corners, centre and the ground between) lies within 2.5 m, on the lowest point. Coastal Scramble's town hung blocks off the cliff in the first view, because the slope was only tested along one axis at the centre.
+  - Time Warp's alpine village (every one of its 170 houses floated) stands on the valley sides on stone basements that reach into the ground.
+  - Barns, silos, farmhouses, workshops, the palace, ministries, churches, the bell tower, the fortress walls, the North Pole, the elf gun crews (their twin barrels now rest on a mount), the presents and the candy canes stand on the lowest ground under them, on a plinth where the ground falls away. Trees stand on the lowest ground under their trunks. A destroyed building's ruin reaches into the ground on a slope. The far city blocks stand on the distant land as it is drawn.
+  - Steel Tide's grey slabs, 5 m above the sea, are barges riding in it, and the rigs' legs reach below the wave troughs.
+  - Red Fortress's bridges have embankments from the deck ends down to the banks.
+- Crawler: a corridor is a line to mow. Light monsters die to one shot at low strength and a kill with damage to spare goes on through the line; deep floors are harder by numbers and spawners. A tileset's first floor is a breather, and a team starting there gets an elixir a player for each tileset passed by and two potions. Each floor ends on a tally card (kills, treasure, food, keys, the best of each). Heroes call out low health, shot food, a theft and more over their heads. The floor banner sits in the band where no hero stands. The rock round the maze is stone in the tileset's colour, the abyss's warm monsters have white-hot edges, the cathedral floor is darker and the Ranger's arrow sheds a streak.
+- Tests: `tests/skyfighter-grounding.mjs` checks every prop of every mission against the ground, the sea's wave troughs or a prop that carries it (native build, software GL); its control, the old district placement, must fail in Coastal Scramble and Steel Tide. `tests/crawler-mow.mjs` and `tests/crawler-banner.mjs`, each with a control that must fail.
+
 ## 0.27.7
 
 - A second pad that joins and is then put down no longer holds up the player who plays:
