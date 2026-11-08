@@ -324,7 +324,9 @@ void fx_event(const ft_game *g, const ft_event *e) {
     bool lit = flash_ok(g->tick); /* a light blow's small light counts too */
     int r = FX.ri++ % 4;
     if (light_hit || !lit) { /* no flash sprite: a small spray of sparks */
-      at(FX.lsparks[FX.lsi++ % 3], p);
+      cw_node ls = FX.lsparks[FX.lsi++ % 3];
+      cw_node_set(ls, "amount", cw_val_int(lit ? 14 : 8));
+      at(ls, p);
       cw_node_set(FX.ring[r], "amount", cw_val_int(light_hit ? 6 : 10));
     } else {
       int i = FX.si++ % 4;
@@ -333,9 +335,13 @@ void fx_event(const ft_game *g, const ft_event *e) {
       at(FX.flash_p[FX.fi++ % 4], p);
       cw_node_set(FX.ring[r], "amount", cw_val_int(big ? 18 : 10));
     }
-    at(FX.ring[r], p);
-    if (big) at(FX.embers[FX.emi++ % 2], p);
-    if (big) heavy_boom(p, lit);
+    /* outside the budget a blow is only its small spray: the ring, the embers and a heavy one's explosion (its burst and
+     * shockwave) are bright enough over a fighter to read as a flash of their own when blows land seven times a second */
+    if (lit) {
+      at(FX.ring[r], p);
+      if (big) at(FX.embers[FX.emi++ % 2], p);
+      if (big) heavy_boom(p, true);
+    }
     if (lit) light(p, big ? 90 : light_hit ? 26 : 50, 1, light_hit ? 0.9f : 0.75f, light_hit ? 0.7f : 0.4f); /* outside the budget: no light */
     /* the one hit: short and sharp on the light motor, a heavy hit (a launcher, a knockdown) with some weight under it */
     rumble(who, big ? 0.35f : 0.05f + 0.03f * k, big ? 0.85f : 0.35f + 0.1f * k, big ? 140 : 70 + 15 * (int)k);
