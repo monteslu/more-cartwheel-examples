@@ -6,7 +6,10 @@
  * In order: react to a strike it sees coming, punish a recovery in reach, then, when the other fighter keeps
  * repeating one thing, answer that thing (stay out of its range and hit the whiff, get inside a slow one, guard at
  * the height it has been hitting and punish the block). Otherwise it plays a general game.
- * Levels: 0 easy (late, guards at the wrong height often, no reading), 1 normal, 2 hard (sooner, reads a repeat sooner). */
+ * Levels: 0 easy (late, guards at the wrong height often, no reading), 1 normal, 2 hard (sooner, reads a repeat sooner).
+ * Easy is the first match a newcomer plays (the select screen opens on it until a first win): it is learning too. It
+ * guards seldom, punishes nothing, walks into shots and gives a lot of time. Against a person in round 1, easy and
+ * normal let go of a combo after two hits (the third press is never made), so a first round is never one long beating. */
 #include <stdlib.h>
 #include <string.h>
 
@@ -18,7 +21,7 @@
  * guard: percent chance a frame that a seen strike is guarded. lapse: one frame in this many it stops paying attention
  * for a second or so, which is when a person gets through. */
 static const struct { int react, read, punish_delay, punish, aa, wake_guard, parry, guard, lapse; } LV[3] = {
-  { 16, 9999, 14, 8, 0, 25, 0, 40, 1 },
+  { 24, 9999, 30, 0, 0, 8, 0, 14, 1 },
   { 15, 170, 9, 12, 12, 40, 8, 34, 80 },
   { 10, 110, 6, 40, 30, 80, 15, 60, 200 },
 };
@@ -204,7 +207,7 @@ static bool answer_habit(ft_game *g, int who, int fav, int dist, uint32_t r, ft_
   return true;
 }
 
-ft_input ft_ai(ft_game *g, int who) {
+static ft_input think(ft_game *g, int who) {
   ft_fighter *me = &g->f[who], *op = &g->f[1 - who];
   const ft_def *d = &g->roster->d[me->def];
   const ft_def *od = &g->roster->d[op->def];
@@ -233,6 +236,8 @@ ft_input ft_ai(ft_game *g, int who) {
   uint32_t r = rnd(g) % 100;
   bool free_ = ft_actionable(me);
   int fav = mem->lapse ? -1 : habit(g, who, lvl);
+  /* the soft first round (ft_ai): no move of several hits into someone already reeling */
+  bool soft = !g->cpu[1 - who] && g->round_no == 1 && lvl <= 1 && op->combo_hits > 0;
   /* guard: the opponent's strike is coming and it has seen it, LV.react frames in. Low strikes need a low guard; highs
    * pass over one, so a low guard is also fine against them; a mid is blocked either way. A block pressed in the last
    * frames before the hit is a parry, which it only does on purpose and only sometimes: otherwise a strike it saw too
@@ -270,9 +275,9 @@ ft_input ft_ai(ft_game *g, int who) {
     if (s >= 0 && walk) return raw_dir(6, me->facing, 0);
     if (s >= 0) { normal_slot(g, who, s); return none; }
   }
-  if (op->state == S_LAND && dist < reach_of(d, M_5P) && (int)r < LV[lvl].punish + 20) { normal(g, who, 5, B_P); return none; }
+  if (lvl >= 1 && op->state == S_LAND && dist < reach_of(d, M_5P) && (int)r < LV[lvl].punish + 20) { normal(g, who, 5, B_P); return none; }
   /* super when full */
-  if (me->meter >= FT_METER_MAX && dist < 3000 && (op->state == S_HIT || op->state == S_BLOCK || (lvl == 2 && r < 20))) {
+  if (!soft && me->meter >= FT_METER_MAX && dist < 3000 && (op->state == S_HIT || op->state == S_BLOCK || (lvl == 2 && r < 20))) {
     special(g, who, d, 3);
     return none;
   }
@@ -297,7 +302,7 @@ ft_input ft_ai(ft_game *g, int who) {
     if (answer_habit(g, who, fav, dist, r, &in)) return in;
   }
   /* the lower levels give you time */
-  if (lvl == 0 && r % 3 == 0) { hold(g, who, 5, 12, 0); return none; }
+  if (lvl == 0 && r % 3 == 0) { hold(g, who, r % 2 ? 5 : 4, 14, 0); return none; } /* easy: a lot of time to look, standing or backing off */
   if (lvl == 1 && r % 6 == 0) { hold(g, who, 5, 10, 0); return none; }
   bool op_low_guard = op->state == S_BLOCK && op->crouch_block, op_guard = op->state == S_BLOCK;
   /* it does not walk into a strike it can see starting, at normal and hard */
@@ -339,9 +344,20 @@ ft_input ft_ai(ft_game *g, int who) {
   if (r < 36) { normal(g, who, 8, B_P); return none; }
   if (r < 43) { normal(g, who, 8, B_K); return none; }
   if (r < 50) { normal(g, who, 5, B_K); return none; }
-  if (r < 58) { special(g, who, d, 2); return none; }
+  if (r < 58 && !soft) { special(g, who, d, 2); return none; }
   if (r < 64 && lvl >= 1) { push(g, who, 5, 2, B_P | B_K); return none; }
   if (r < 74) { hold(g, who, r & 1 ? 2 : 5, 14, B_G); return none; } /* hold a guard a moment */
   if (r < 84) return raw_dir(4, me->facing, 0);
   return none;
+}
+
+/* the soft first round: against a person (not another computer) in round 1, easy and normal make no attack press while
+ * the person is in a combo of two hits or more */
+ft_input ft_ai(ft_game *g, int who) {
+  ft_input in = think(g, who);
+  const ft_fighter *op = &g->f[1 - who];
+  int cap = g->cpu_level[who] ? 2 : 1; /* easy lets go after one: a press queued before that hit can still make it two */
+  for (int p = 0; p < 8; p++) if (g->proj[p].live && g->proj[p].owner == who) cap = 1; /* its shot still in the air is a hit to come */
+  if (!g->cpu[1 - who] && g->round_no == 1 && g->cpu_level[who] <= 1 && op->combo_hits >= cap) in.btn &= (uint16_t)~B_ATTACKS;
+  return in;
 }

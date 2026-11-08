@@ -28,6 +28,9 @@ static struct {
   ft_roster roster;
   ft_game sim;
   int state, players, stage, difficulty, training, show_boxes;
+  /* the computer's level: a session opens on Easy and steps up to Normal after the first win against it, until the
+   * player picks a level themselves (diff_picked). stepped_up: the result screen says so */
+  int diff_picked, stepped_up;
   int sel[2], ready[2], sel_stage;
   /* a seat that does not lock in: ticks the other side has waited since it locked in, the sides the computer plays for
    * that reason, and the test switch (sw seat_wait 1) that waits for ever, as the select screen once did */
@@ -302,7 +305,7 @@ static void update_select(void) {
       if (cw_action_just_pressed(0, G.a_up)) { G.sel_stage = (G.sel_stage + STAGES - 1) % STAGES; sfx(SFX_LAND, 0.4f, 1.3f); }
       if (cw_action_just_pressed(0, G.a_down)) { G.sel_stage = (G.sel_stage + 1) % STAGES; sfx(SFX_LAND, 0.4f, 1.3f); }
       if (cw_action_just_pressed(0, G.a_p)) { G.training = (G.training + 1) % 2; sfx(SFX_BELL, 0.3f, 1.2f); }
-      if (back_out(0) && G.players < 2) { G.difficulty = (G.difficulty + 1) % 3; sfx(SFX_BELL, 0.3f, 1.0f); }
+      if (back_out(0) && G.players < 2) { G.difficulty = (G.difficulty + 1) % 3; G.diff_picked = 1; sfx(SFX_BELL, 0.3f, 1.0f); }
     }
     if (confirm(p)) { G.ready[p] = 1; sfx(SFX_ROUND, 0.6f, 1.0f); }
   }
@@ -406,6 +409,10 @@ static void fixed(void *u, double dt) {
     else for (int i = 0; i < 2; i++) model_set_showcase(G.mdl[i], 0.9f);
     G.result_t = 0;
     if (SAVE && G.sim.match_winner >= 0) { SAVE->wins[G.sim.f[G.sim.match_winner].def & 3]++; SAVE->matches++; cw_shell_save_commit(); }
+    /* the first win against the easy computer: the next match is on Normal (the player can still pick Easy) */
+    G.stepped_up = 0;
+    int w = G.sim.match_winner;
+    if (w >= 0 && !G.sim.cpu[w] && G.sim.cpu[1 - w] && !G.training && !G.diff_picked && G.difficulty == 0) { G.difficulty = 1; G.stepped_up = 1; }
   }
   /* debug state */
   const ft_game *g = &G.sim;
@@ -1078,6 +1085,7 @@ static void draw_result(float W, float H, float s) {
   text(G.font_score, b, W * 0.5f, 14 * s, 60 * s, rgba(1, 0.9f, 0.4f, 1), CW_ALIGN_CENTER);
   snprintf(b, sizeof b, "%d - %d", g->f[0].wins, g->f[1].wins);
   text(G.font_bold, b, W * 0.5f, 14 * s + 64 * s * grow(G.font_score, 60 * s), 30 * s, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
+  if (G.stepped_up) text(G.font_ui, "The computer steps up to Normal", W * 0.5f, H - bot - 34 * s * grow(G.font_ui, 20 * s), 20 * s, rgba(1, 0.85f, 0.45f, 1), CW_ALIGN_CENTER);
   ptext(G.font_ui, hint, -1, W * 0.5f, hy, 22 * s, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
 }
 
@@ -1222,8 +1230,13 @@ static void init(void *u) {
   G.music_bus = cw_shell_music_bus();
   for (int i = 0; i < SFX_N; i++) G.sfx[i] = cw_sound_load(SFX_FILE[i], NULL);
   for (int i = 0; i < STAGES; i++) G.music[i] = cw_sound_load(MUSIC[i], &(cw_sound_desc){ .mode = CW_SOUND_STREAM });
-  G.difficulty = 1;
+#if defined(FIGHTER_AUTOPILOT) || defined(FIGHTER_SCRIPTED)
+  G.difficulty = 1; /* the gates' pins: the self-playing match and the computer that takes an idle seat play Normal */
+#else
+  G.difficulty = 0; /* a session opens on Easy (the first match is a newcomer's), Normal after the first win */
+#endif
   G.sel[0] = 0; G.sel[1] = 1;
+  cw_debug_i32("game.difficulty", &G.difficulty);
   cw_debug_i32("game.panel", &G.state); /* live on the select and result screens too (0 select, 1 match, 2 result), where game.state is not updated */
   cw_debug_i32("game.stage", &G.sel_stage);
   cw_debug_i32("game.state", &G.d_state); cw_debug_i32("game.phase", &G.d_phase); cw_debug_i32("game.round", &G.d_round);

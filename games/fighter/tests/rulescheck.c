@@ -1007,6 +1007,110 @@ static void check_ai(void) {
   verdict("AI", !hard_lost && !cell_lost && normal_lost * 2 < classes && hard_vs_good <= 0.90 && !early_normal);
 }
 
+/* ── NEWCOMER: the first match ───────────────────────────────────────── */
+
+/* A first-time player as people really play their first match: walks in, mashes punch and kick with whatever direction
+ * the thumb is on, tries the fireball motion now and then (sloppily: a frame or two per step), hops, holds block a
+ * moment when it remembers to, and never reacts to anything it sees. */
+static ft_input masher_input(ft_game *g, int who, bot *b) {
+  const ft_fighter *me = &g->f[who], *op = &g->f[1 - who];
+  const ft_def *d = &R.d[me->def];
+  if (g->phase != P_FIGHT) { b->qn = b->qi = 0; b->cool = 0; return NONE; }
+  if (b->qi < b->qn) { frame_in q = b->q[b->qi++]; return rel(me->facing, q.dir, q.btn); }
+  if (b->cool > 0) { b->cool--; return b->guard_on ? rel(me->facing, b->seen_t, 0) : NONE; }
+  int dist = abs(op->x - me->x);
+  uint32_t r = brnd(b) % 100;
+  b->guard_on = false;
+  if (dist > 1400 && r < 70) { b->guard_on = true; b->seen_t = 6; b->cool = (int16_t)(10 + brnd(b) % 25); return rel(me->facing, 6, 0); }
+  if (r < 45) { /* a mash: two to four presses of punch or kick, the thumb wherever it is */
+    static const uint8_t DIRS[6] = { 5, 5, 5, 6, 2, 8 };
+    int n = 2 + (int)(brnd(b) % 3), k = 0;
+    for (int i = 0; i < n && k < 15; i++) {
+      uint8_t dd = DIRS[brnd(b) % 6];
+      uint16_t bt = brnd(b) % 2 ? B_P : B_K;
+      b->q[k++] = (frame_in){ dd, bt };
+      int gap = 3 + (int)(brnd(b) % 6);
+      for (int j = 0; j < gap && k < 15; j++) b->q[k++] = (frame_in){ dd, 0 };
+    }
+    b->qn = (int8_t)k; b->qi = 0;
+    return NONE;
+  }
+  if (r < 55) { /* the fireball motion off the move list, a step every one or two frames */
+    const cw_motion *m = &d->mo[0];
+    int k = 0;
+    if (m->charge) for (int i = 0; i < 12 && k < 15; i++) b->q[k++] = (frame_in){ (uint8_t)m->steps[0], 0 };
+    for (int i = m->charge ? 1 : 0; i < m->count && k < 15; i++) {
+      bool last = i == m->count - 1;
+      int hold = 1 + (int)(brnd(b) % 2);
+      for (int j = 0; j < hold && k < 15; j++) b->q[k++] = (frame_in){ (uint8_t)m->steps[i], last && j == hold - 1 ? (d->mbtn[0] & B_P ? B_P : B_K) : 0 };
+    }
+    b->qn = (int8_t)k; b->qi = 0;
+    return NONE;
+  }
+  if (r < 63) { b->q[0] = (frame_in){ brnd(b) % 2 ? 9 : 8, 0 }; b->q[1] = (frame_in){ 5, 0 }; b->qn = 2; b->qi = 0; b->cool = 12; return NONE; } /* a hop */
+  if (r < 70) { for (int i = 0; i < 15; i++) b->q[i] = (frame_in){ 5, B_G }; b->qn = 15; b->qi = 0; return NONE; } /* holds block a moment */
+  if (r < 78) { b->guard_on = true; b->seen_t = 4; b->cool = (int16_t)(8 + brnd(b) % 16); return rel(me->facing, 4, 0); }
+  b->guard_on = true; b->seen_t = 6; b->cool = (int16_t)(6 + brnd(b) % 20);
+  return rel(me->facing, 6, 0);
+}
+
+/* The newcomer's first match: the masher against easy and normal, every pairing, both sides. The game opens on easy
+ * (the select screen's default until the first win), so easy must be winnable by mashing about half the time and give
+ * a hit inside ten seconds; normal is a step up a masher mostly loses. In round 1 the computer at either level does not
+ * run a combo past two hits on a person (it lets go and lets them see what happened). */
+static void check_newcomer(void) {
+  int seeds = opt_matches / 2000;
+  if (seeds < 2) seeds = 2;
+  static ft_game g;
+  double win[2] = { 0 };
+  int n[2] = { 0 }, combo_max[2] = { 0 }, over2[2] = { 0 }, hit_by_10s[2] = { 0 }, rounds1[2] = { 0 };
+  static int first_hit[2][4096];
+  int nf[2] = { 0 };
+  for (int lvl = 0; lvl < 2; lvl++)
+    for (int fa = 0; fa < R.n; fa++)
+      for (int fb = 0; fb < R.n; fb++)
+        for (int side = 0; side < 2; side++)
+          for (int k = 0; k < seeds; k++) {
+            uint32_t seed = (uint32_t)(lvl * 131 + fa * 37 + fb * 11 + side * 5) * 2654435761u + (uint32_t)k + 1;
+            int hum = side, cpu = 1 - side;
+            memset(&g, 0, sizeof g);
+            g.cpu[cpu] = true; g.cpu_level[cpu] = (uint8_t)lvl;
+            ft_game_start(&g, &R, side ? fb : fa, side ? fa : fb);
+            g.rng = seed * 2654435761u + 7;
+            bot b; memset(&b, 0, sizeof b); b.rng = seed * 40503u + 11; b.last_opmv = -1;
+            int guard = 0, fight_t = 0, first = -1, prev_hits = 0;
+            while (g.phase != P_MATCH_END && guard++ < 60 * 60 * 15) {
+              ft_input in[2] = { NONE, NONE };
+              in[hum] = masher_input(&g, hum, &b);
+              ft_step(&g, in);
+              if (g.round_no == 1 && g.phase == P_FIGHT) {
+                fight_t++;
+                if (first < 0 && g.f[cpu].combo_hits > prev_hits) first = fight_t;
+                prev_hits = g.f[cpu].combo_hits;
+                int c = g.f[hum].combo_hits;
+                if (c > combo_max[lvl]) combo_max[lvl] = c;
+              }
+              if (g.round_no == 1 && g.phase != P_FIGHT && fight_t && g.f[hum].combo_hits > 2) over2[lvl]++;
+            }
+            rounds1[lvl]++;
+            if (first >= 0 && first <= 600) hit_by_10s[lvl]++;
+            if (nf[lvl] < 4096) first_hit[lvl][nf[lvl]++] = first < 0 ? 99999 : first;
+            win[lvl] += g.match_winner == hum ? 1 : g.match_winner < 0 ? 0.5 : 0;
+            n[lvl]++;
+          }
+  printf("\nNEWCOMER the first match: a masher (walks in, mashes punch and kick, tries the fireball, hops, holds block now and then) against the computer, %d matches a level\n", n[0]);
+  double med[2];
+  for (int l = 0; l < 2; l++) {
+    int *a = first_hit[l], m = nf[l];
+    for (int i = 1; i < m; i++) for (int j = i; j > 0 && a[j] < a[j - 1]; j--) { int t = a[j]; a[j] = a[j - 1]; a[j - 1] = t; }
+    med[l] = m ? a[m / 2] / 60.0 : 99;
+    printf("  %-7s masher wins %5.1f%%   first landed hit: median %.1f s, within 10 s in %.0f%% of matches   longest computer combo on the masher in round 1: %d hits\n",
+           l ? "normal" : "easy", 100 * win[l] / n[l], med[l], 100.0 * hit_by_10s[l] / rounds1[l], combo_max[l]);
+  }
+  double we = win[0] / n[0], wn = win[1] / n[1];
+  verdict("NEWCOMER", we >= 0.40 && we <= 0.60 && wn >= 0.10 && wn <= 0.25 && med[0] < 10 && combo_max[0] <= 2 && combo_max[1] <= 2);
+}
+
 /* ── FI13: comebacks ─────────────────────────────────────────────────── */
 
 static void check_fi13(void) {
@@ -1203,6 +1307,7 @@ int main(int argc, char **argv) {
   if (run_check("FI10")) check_fi10();
   if (run_check("FI11")) check_fi11();
   if (run_check("AI")) check_ai();
+  if (run_check("NEWCOMER")) check_newcomer();
   if (run_check("FI13")) check_fi13();
   if (run_check("FI16")) check_fi16();
   printf("\nrulescheck: %d failed\n", failures);

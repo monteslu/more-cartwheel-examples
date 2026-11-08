@@ -30,7 +30,7 @@ if [ "$MODE" != controls ]; then
   done
   for p in "${pids[@]}"; do wait "$p" || status=1; done
   cat "$OUT"/fi9-*.log
-  for c in FI8 FI10 AI FI11 FI13 FI16; do "$OUT/rulescheck" "$MOVES" --only "$c" || status=1; done
+  for c in FI8 FI10 AI NEWCOMER FI11 FI13 FI16; do "$OUT/rulescheck" "$MOVES" --only "$c" || status=1; done
   # the rendered gates' pinned sim.hash, replayed with no window: did the rules move what they play?
   cc "${FLAGS[@]}" -I"$HERE" "$HERE/tests/gatereplay.c" "$HERE/sim.c" "$HERE/ai.c" "$ENGINE/src/input/motion.c" -o "$OUT/gatereplay" || exit 2
   node "$HERE/tests/gatereplay.mjs" "$OUT/gatereplay" "$MOVES" "$OUT" || status=1
@@ -69,6 +69,9 @@ if [ "$MODE" != checks ]; then
   # the computer as it was before it read anything, and the new one with its reading taken out
   control ai-old-computer AI 'classes hard loses to: [1-9]' ai.c 'BEGIN { $_old = `git -C "$ENV{RC_HERE}" show b7015c4:games/fighter/ai.c`; die "no old ai.c" unless $_old } $_ = $_old'
   control ai-no-reading AI 'classes hard loses to: [1-9]' ai.c 's/return a->score\[best\] >= LV\[lvl\]\.read \? best : -1;/return -1;/'
+  # the computer before the soft first match (easy as it was, no letting go of a combo on a person in round 1)
+  control newcomer-old-easy NEWCOMER 'masher wins|longest computer combo' ai.c 'BEGIN { $_old = `git -C "$ENV{RC_HERE}" show c257336:games/fighter/ai.c`; die "no old ai.c" unless $_old } $_ = $_old'
+  control newcomer-no-letting-go NEWCOMER 'round 1: [3-9]' ai.c 's/in\.btn &= \(uint16_t\)~B_ATTACKS;/;/'
   control fi13-first-hit-decides FI13 'reversed in the second' sim.c 's/D->hp -= dd;/D->hp -= dd * 12;/'
   control fi16-no-turning FI16 'facing away' sim.c 's/if \(dx > 0\) f->facing = 1; else if \(dx < 0\) f->facing = -1;\n    \}\n  \}\n  \/\* frame advantage/\n    }\n  }\n  \/* frame advantage/'
   control fi16-buffered-stale FI16 'came out facing away' sim.c 's/        face_other\(g, i\);\n//'
