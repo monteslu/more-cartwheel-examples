@@ -225,7 +225,7 @@ static t3_mesh *beam_mesh(float opacity) {
 static void beams_init(void) {
   t3_object *root = t3_group_new();
   for (int i = 0; i < 8; i++) {
-    FX.beam_glow[i] = beam_mesh(0.28f); t3_object_add(root, FX.beam_glow[i]);
+    FX.beam_glow[i] = beam_mesh(0.16f); t3_object_add(root, FX.beam_glow[i]);
     FX.beam_core[i] = beam_mesh(0.85f); t3_object_add(root, FX.beam_core[i]);
   }
   cw_node n = cw_node_new("Node3D", "Beams");
@@ -268,6 +268,12 @@ static void light(t3_vec3 p, float e, float cr, float cg, float cb) {
   FX.light_e[i] = e;
 }
 
+static const float PROJ_COL[4][3] = { { 1, 0.45f, 0.1f }, { 0.9f, 0.7f, 0.3f }, { 0.2f, 0.9f, 1 }, { 0.5f, 1, 0.3f } };
+static int beam_free(void) { /* a beam slot whose shot is not flying (the oldest fading one) */
+  int best = 7; float lo = 2;
+  for (int i = 0; i < 8; i++) if (!FX.beam_was[i] && FX.beam_a[i] < lo) { lo = FX.beam_a[i]; best = i; }
+  return best;
+}
 void fx_event(const ft_game *g, const ft_event *e) {
   if (e->type == EV_HIT || e->type == EV_BLOCK || e->type == EV_THROW || e->type == EV_WALL || e->type == EV_SUPER || e->type == EV_KO) fx_count_impact++;
   t3_vec3 p = { (float)e->x / 1000.0f, (float)e->y / 1000.0f, 0.15f };
@@ -276,6 +282,17 @@ void fx_event(const ft_game *g, const ft_event *e) {
   switch (e->type) {
   case EV_HIT: {
     fx_count_hit++;
+    { /* a beam super that hits point blank (the shot lands the tick it leaves the hands): its beam still flashes, hands to blow */
+      const ft_fighter *at = &g->f[other];
+      const ft_move *sm = &g->roster->d[at->def].mv[M_SUPER];
+      if (at->state == S_ATTACK && at->mv == M_SUPER && (sm->flags & FM_PROJ) && sm->psize > 0) {
+        int b = beam_free();
+        FX.beam_x0[b] = (float)at->x / 1000.0f + (float)at->facing * 0.35f; FX.beam_x1[b] = p.x;
+        FX.beam_y[b] = p.y; FX.beam_r[b] = (float)sm->psize / 1000.0f; FX.beam_a[b] = 1;
+        const float *c = PROJ_COL[at->def % 4];
+        FX.beam_c[b][0] = c[0], FX.beam_c[b][1] = c[1], FX.beam_c[b][2] = c[2];
+      }
+    }
     /* power: 0 light, 1 medium, 2 strong (by damage), 3 and up a knockdown or a launcher */
     bool big = e->power >= 3, light_hit = e->power == 0;
     int r = FX.ri++ % 4;
@@ -345,7 +362,6 @@ void fx_event(const ft_game *g, const ft_event *e) {
   (void)g;
 }
 
-static const float PROJ_COL[4][3] = { { 1, 0.45f, 0.1f }, { 0.9f, 0.7f, 0.3f }, { 0.2f, 0.9f, 1 }, { 0.5f, 1, 0.3f } };
 
 void fx_update(float dt) { (void)dt; }
 void fx_frame(const ft_game *g, float dt) {
@@ -381,7 +397,7 @@ void fx_frame(const ft_game *g, float dt) {
     } else FX.beam_a[i] = fmaxf(0, FX.beam_a[i] - dt * 4.0f);
     FX.beam_was[i] = live && big;
     /* the core thins as it fades; the glow stays wide */
-    beam_place(FX.beam_core[i], FX.beam_x0[i], FX.beam_x1[i], FX.beam_y[i], FX.beam_r[i] * 0.32f * (0.4f + 0.6f * FX.beam_a[i]), FX.beam_a[i], FX.beam_c[i], 2.2f);
+    beam_place(FX.beam_core[i], FX.beam_x0[i], FX.beam_x1[i], FX.beam_y[i], FX.beam_r[i] * 0.32f * (0.4f + 0.6f * FX.beam_a[i]), FX.beam_a[i], FX.beam_c[i], 1.6f);
     beam_place(FX.beam_glow[i], FX.beam_x0[i], FX.beam_x1[i], FX.beam_y[i], FX.beam_r[i] * 0.85f, FX.beam_a[i], FX.beam_c[i], 1.0f);
   }
   /* lights decay */

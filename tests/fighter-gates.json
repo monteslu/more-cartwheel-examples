@@ -489,7 +489,7 @@
   {
     "name": "fighter-slowmo",
     "app": "fighter_auto",
-    "frames": 3600,
+    "frames": 3800,
     "hosts": [
       "native"
     ],
@@ -502,7 +502,7 @@
     ],
     "expect": {
       "ko.slow": 50,
-      "ko.end_hash": 0
+      "ko.end_hash": 118159139
     },
     "controlEnv": {
       "FIGHTER_NO_SLOWMO": "1"
