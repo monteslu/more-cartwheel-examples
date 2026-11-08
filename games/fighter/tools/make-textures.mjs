@@ -66,7 +66,7 @@ function asphalt({ base = [0.2, 0.2, 0.21], wet = 0, seed = 1, stripe = false })
     }
   };
 }
-function slabs({ base = [0.5, 0.5, 0.48], n = 2, seed = 2, tint = [1, 1, 1] }) {
+function slabs({ base = [0.5, 0.5, 0.48], n = 2, seed = 2, tint = [1, 1, 1], vary = 0 }) {
   return (u, v, o) => {
     const sx = u * n, sy = v * n, fx = sx - Math.floor(sx), fy = sy - Math.floor(sy);
     const id = hash2(Math.floor(sx), Math.floor(sy), seed);
@@ -83,6 +83,20 @@ function slabs({ base = [0.5, 0.5, 0.48], n = 2, seed = 2, tint = [1, 1, 1] }) {
     o.h = g * 0.25 + (grain - 0.5) * 0.12 - joint * 0.9 - edge * 0.15;
     o.ro = clamp(0.8 - g * 0.1 + dirt * 0.1 + joint * 0.15, 0.3, 1);
     o.ao = 1 - joint * 0.55;
+    if (vary > 0) { // every slab its own: a warmer or cooler cast, a sheen of its own, some stained, some cracked, grime in the joints
+      const id2 = hash2(Math.floor(sx), Math.floor(sy), seed + 101), id3 = hash2(Math.floor(sx), Math.floor(sy), seed + 103);
+      const warm = (id2 - 0.5) * 0.16 * vary;
+      o.r *= 1 + warm; o.b *= 1 - warm;
+      o.ro = clamp(o.ro + (id3 - 0.5) * 0.22 * vary, 0.3, 1);
+      if (id3 > 0.86) { const st = smooth(0.35, 0.75, fbm(u, v, 9, 3, seed + 107)); mulc(o, 1 - 0.28 * vary * st); o.ro = lerp(o.ro, 0.62, st * 0.5); } // a stained slab
+      if (id2 > 0.9) { // a cracked one: a jagged line across it
+        const cx = fx - 0.5 + 0.12 * (fbm(u, v, 14, 3, seed + 109) - 0.5), d = Math.abs(cx * (0.6 + id3) + (fy - 0.5) * (id2 - 0.9) * 8);
+        const crack = 1 - smooth(0.004, 0.012, d);
+        mulc(o, 1 - crack * 0.6 * vary); o.h -= crack * 0.6; o.ao = Math.min(o.ao, 1 - crack * 0.5);
+      }
+      const grime = (1 - smooth(0.02, 0.14, e)) * smooth(0.35, 0.7, fbm(u, v, 7, 3, seed + 111));
+      mulc(o, 1 - grime * 0.22 * vary);
+    }
   };
 }
 function brick({ cols = [[0.55, 0.26, 0.2], [0.5, 0.22, 0.17], [0.42, 0.2, 0.17]], mortar = [0.4, 0.38, 0.35], seed = 3, rows = 12, nx = 4, soot = 0.4 }) {
@@ -596,7 +610,8 @@ const burst = (u, v, o) => {
 // ── the set ─────────────────────────────────────────────────────────────
 const jobs = {
   // rooftop at dusk
-  roof_deck: () => [bake(1024, slabs({ base: [0.5, 0.47, 0.44], n: 3, seed: 61, tint: [1.04, 1, 0.95] })), 1.8],
+  // nine slabs a side over three times the old span: the floor repeats every 5.4 m instead of 1.8, each slab its own
+  roof_deck: () => [bake(2048, slabs({ base: [0.5, 0.47, 0.44], n: 9, seed: 61, tint: [1.04, 1, 0.95], vary: 1 })), 5.4],
   roof_tar: () => [bake(512, asphalt({ base: [0.17, 0.165, 0.17], seed: 62, wet: 0.15 })), 2.0],
   concrete: () => [bake(512, plaster({ base: [0.52, 0.5, 0.47], seed: 63, stain: 0.45 })), 2.2],
   facade_dusk: () => [bake(1024, facade({ wall: brick({ seed: 64, rows: 24, nx: 8, soot: 0.45 }), seed: 64, lit: 0.42 })), 2.4],

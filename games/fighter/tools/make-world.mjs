@@ -33,7 +33,8 @@ const DEFS = {
   bulb: { set: null, emissive: [9, 6.5, 3.6] }, bulb_warm: { set: null, emissive: [6, 3.6, 1.6] }, red_light: { set: null, emissive: [12, 0.6, 0.4] },
   neon_pink: { set: null, emissive: [5, 0.7, 2.6] }, neon_cyan: { set: null, emissive: [0.5, 3.6, 4.8] }, neon_amber: { set: null, emissive: [5, 2.8, 0.5] }, neon_violet: { set: null, emissive: [2.2, 0.7, 5] },
   lantern_red: { set: null, tint: [0.6, 0.08, 0.05], emissive: [3.2, 0.7, 0.25] }, paper_lamp: { set: null, tint: [0.9, 0.8, 0.6], emissive: [3.2, 2.0, 0.9] },
-  screen_ad: { set: null, tint: [0.05, 0.02, 0.06], emissive: [0.7, 0.25, 1.0] }, screen_blue: { set: null, emissive: [0.5, 1.6, 2.8] }, vending: { set: null, tint: [0.05, 0.06, 0.08], emissive: [0.18, 0.26, 0.42] },
+  screen_ad: { set: null, tint: [0.05, 0.02, 0.06], emissive: [0.28, 0.08, 0.42] }, ad_can: { set: null, tint: [0.1, 0.03, 0.02], emissive: [2.6, 0.75, 0.18] },
+  ad_text: { set: null, tint: [0.1, 0.1, 0.1], emissive: [2.4, 2.2, 2.0] }, ad_band: { set: null, tint: [0.02, 0.06, 0.08], emissive: [0.2, 1.5, 2.2] }, screen_blue: { set: null, emissive: [0.5, 1.6, 2.8] }, vending: { set: null, tint: [0.05, 0.06, 0.08], emissive: [0.18, 0.26, 0.42] },
   glass_dark: { set: null, tint: [0.02, 0.025, 0.03], rough: 0.08, metal: 0 },
 };
 class Mats {
@@ -100,7 +101,7 @@ function acUnit(st, m, x, y, z, i) {
 function stage1() {
   const st = new Stage(), m = st.m;
   // the roof: pavers where we fight, tar beyond, a parapet with a rail at the far edge and at the sides
-  m.box('roof_deck', [0, -0.15, 0.5], [32, 0.3, 11], { uv: 1.8 });
+  m.box('roof_deck', [0, -0.15, 0.5], [32, 0.3, 11], { uv: 5.4 });
   m.box('roof_tar', [0, -0.16, -7.5], [32, 0.3, 5], { uv: 2 });
   m.box({ all: 'concrete', top: 'concrete_dark' }, [0, 0.5, -10.2], [32, 1.0, 0.4], { uv: 2 });
   for (const sx of [-1, 1]) m.box({ all: 'concrete', top: 'concrete_dark' }, [sx * 15.8, 0.5, -2.5], [0.4, 1.0, 15.8], { uv: 2 });
@@ -137,6 +138,14 @@ function stage1() {
   // a billboard on a near building, lit from below
   m.box('steel_dark', [14, 6, -24], [12, 6.5, 0.4], { uv: 1 });
   m.box('screen_ad', [14, 6, -23.78], [11.2, 5.7, 0.05], { uv: 1 });
+  // what it advertises (a drink): the can on the left, a headline and two lines of copy, a band along the foot
+  m.cyl('ad_can', [10.6, 5.9, -23.6], 0.95, 3.4, { n: 20, uv: 1 });
+  m.cyl('ad_text', [10.6, 7.62, -23.6], 0.8, 0.08, { n: 20, uv: 1 });
+  m.box('ad_text', [15.6, 7.55, -23.72], [5.4, 0.75, 0.04], { uv: 1 });
+  m.box('ad_text', [15.1, 6.45, -23.72], [4.4, 0.36, 0.04], { uv: 1 });
+  m.box('ad_text', [14.7, 5.75, -23.72], [3.6, 0.28, 0.04], { uv: 1 });
+  m.box('ad_band', [14, 3.7, -23.72], [11.2, 0.42, 0.04], { uv: 1 });
+  m.box('ad_can', [17.9, 4.75, -23.72], [1.6, 0.8, 0.04], { uv: 1 });
   for (const x of [9.5, 18.5]) m.box('steel_dark', [x, 1.5, -24.3], [0.4, 7, 0.4], { uv: 1 });
   st.write('stage1.glb');
 }
