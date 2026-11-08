@@ -311,6 +311,16 @@
     "note": "a minute of racing starts at least 90 sounds (55 before) (hull slaps, tricks, buoys, places); every course plays its own loop; the nearest rivals engines are placed in the world. Control: audio_old 1, only the sounds before this pass, falls short"
   },
   {
+    "name": "jetski-newcomer",
+    "script": "tests/jetski-newcomer.mjs",
+    "note": "a first race on the cart by the pad and the screen alone, GL and WebGPU: A starts the race and the rider steers past each mark on the side its chevron points to, passing the marks in 45 s with at most one missed. Control: the d-pad never touched does not race the marks"
+  },
+  {
+    "name": "jetski-flash",
+    "script": "tests/jetski-flash.mjs",
+    "note": "a rocket start, a turbo at top speed and the finish into the results, frame by frame on the cart: no ninth of the screen flashes more than twice in any second (WCAG 2.3.1 allows 3). Control: a quarter of the screen blinking at 5 Hz is caught"
+  },
+  {
     "name": "jetski-hud-words",
     "script": "tests/jetski-hud-words.mjs",
     "note": "words on the race screen on the cart, GL and WebGPU: restarting from the pause menu or starting a new race leaves no word from the last one, and the distance to the next buoy never meets a word in countdowns, wipeouts and big ramps on every course. Controls: pop_keep 1 keeps the word (a build without the reset failed the same way), label_old 1 meets words in the same rides"

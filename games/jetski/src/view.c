@@ -714,14 +714,21 @@ void view_tick(float dt) {
   if (first_tick && g_cam_cut) memcpy(G.cam_prev, G.cam, sizeof G.cam), memcpy(G.look_prev, G.look, sizeof G.look);
   /* over the line: the camera swings slowly round to the rider's side and front, low over the water, and holds the craft in the middle */
   if (c->finish > 0 && G.state == RACE_ON) {
+    /* the camera's place around the craft moves with the craft (it is doing 80 km/h) and swings toward the orbit's place
+     * from where it was at the start of this tick, not from the chase place worked out above */
     float ang = c->yaw + 1.2f + G.fin_t * 0.32f, sa, ca;
     cw_sincos(ang, &sa, &ca);
-    float ox = c->x + sa * 9.5f, oz = c->z + ca * 9.5f, oh = cw_water_height_at(G.water, ox, oz, G.wt);
-    float oy = fmaxf(oh + 1.6f, c->y + 1.9f), k = 1.0f - cw_exp(-dt * 1.8f);
-    G.cam[0] += (ox - G.cam[0]) * k, G.cam[1] += (oy - G.cam[1]) * k, G.cam[2] += (oz - G.cam[2]) * k;
+    float off[3] = { G.cam_prev[0] - c->px, G.cam_prev[1] - c->py, G.cam_prev[2] - c->pz };
+    float ox = c->x + sa * 11.0f, oz = c->z + ca * 11.0f, oh = cw_water_height_at(G.water, ox, oz, G.wt);
+    float want[3] = { sa * 11.0f, fmaxf(oh + 2.4f, c->y + 3.0f) - c->y, ca * 11.0f }, k = 1.0f - cw_exp(-dt * 0.9f); /* a slow swing: a fast pan across the low sun reads as a flash */
+    for (int i = 0; i < 3; i++) off[i] += (want[i] - off[i]) * k;
+    G.cam[0] = c->x + off[0], G.cam[1] = c->y + off[1], G.cam[2] = c->z + off[2];
     if (G.cam[1] < cw_water_height_at(G.water, G.cam[0], G.cam[2], G.wt) + 1.1f) G.cam[1] = cw_water_height_at(G.water, G.cam[0], G.cam[2], G.wt) + 1.1f;
-    float kl2 = 1.0f - cw_exp(-dt * 4.0f);
-    G.look[0] += (c->x - G.look[0]) * kl2, G.look[1] += (c->y + 1.0f - G.look[1]) * kl2, G.look[2] += (c->z - G.look[2]) * kl2;
+    /* never into a ramp: over its deck if it comes round over one */
+    { float deck; if (ramp_over(G.cam[0], G.cam[2], &deck) && G.cam[1] < deck + 2.5f) G.cam[1] = deck + 2.5f; }
+    /* the look rides with the craft too: its lag behind the craft closes, it never trails 20 m behind */
+    float kl2 = 1.0f - cw_exp(-dt * 4.0f), lo[3] = { G.look_prev[0] - c->px, G.look_prev[1] - c->py, G.look_prev[2] - c->pz };
+    G.look[0] = c->x + lo[0] * (1 - kl2), G.look[1] = c->y + lo[1] + (1.0f - lo[1]) * kl2, G.look[2] = c->z + lo[2] * (1 - kl2);
   }
   /* speed you can feel: the view widens from 56 degrees at a crawl to 72 at full speed, and a turbo opens it further */
   float sk = fminf(1.0f, fmaxf(0.0f, (c->speed - 6.0f) / 24.0f));

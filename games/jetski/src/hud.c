@@ -129,6 +129,7 @@ static void pointer(cw_vec2 p, float dx, float dy, float len, float half, cw_col
 
 /* The next buoy, always: over it with the way past it and how far, or at the screen's edge pointing to it when it is out of the picture. The next buoy can be
  * hidden behind a swell or a headland and this still says where it is */
+int g_hud_chevron; /* the way the next mark's chevron points: -1 pass it on the left, +1 on the right */
 static void next_mark(const craft *c, float w, float h, float u) {
   g_hud_ptr_mode = 0;
   if (G.state != RACE_ON && G.state != RACE_GRID) return;
@@ -139,6 +140,7 @@ static void next_mark(const craft *c, float w, float h, float u) {
   float dist = sqrtf((b[0] - c->x) * (b[0] - c->x) + (b[1] - c->z) * (b[1] - c->z));
   /* side +1: keep the buoy on your right: the chevron points to your way past it, left */
   float dir = b[2] > 0 ? -1.0f : 1.0f;
+  g_hud_chevron = (int)dir;
   cw_color col = b[2] > 0 ? cw_rgba(1, 0.25f, 0.12f, 0.97f) : cw_rgba(1, 0.8f, 0.1f, 0.97f);
   cw_vec2 p = { 0, 0 }, base = { 0, 0 };
   bool front = to_screen((t3_vec3){ b[0], top, b[1] }, w, h, &p);
@@ -368,7 +370,7 @@ static void hud_body(void) {
     }
   }
   if (g_map_on) minimap(c, h, u);
-  hud_neighbours(c, u, next_y);
+  if (c->finish <= 0) hud_neighbours(c, u, next_y);
   words_n = 0;
   hud_popups(w, h, u);
   /* misses so far: five and the race is over */
@@ -386,7 +388,7 @@ static void hud_body(void) {
   if (g_hud_wrong && g_buoy_style && c->out_t <= 0.2f && c->spill <= 0) word(big, "WRONG WAY", w * 0.5f, h * 0.2f, 76 * u, cw_rgba(1, 0.3f, 0.15f, 0.65f + 0.35f * sinf(G.clock * 9)));
   if (c->spill > 0) word(big, "WIPEOUT", w * 0.5f, h * 0.2f, 76 * u, cw_rgba(1, 1, 1, 0.9f));
   if (c->flash_miss > 0) word(big, "MISS", w * 0.5f, h * 0.2f, 76 * u, cw_rgba(1, 0.3f, 0.15f, c->flash_miss));
-  if (c->air && c->air_time > 0.5f) {
+  if (c->air && c->air_time > 0.5f && c->finish <= 0) {
     snprintf(buf, sizeof buf, "%.1f s", c->air_time);
     word(small, buf, w * 0.5f, h * 0.26f, 44 * u, gold);
   }
@@ -409,9 +411,9 @@ static void hud_body(void) {
     static const char *const FIN[] = { "FINISHED 1ST", "FINISHED 2ND", "FINISHED 3RD", "FINISHED 4TH", "FINISHED 5TH", "FINISHED 6TH" };
     float k = fminf(1.0f, G.fin_t / 0.5f);
     const char *s = g_mode == MODE_TIME_TRIAL ? "FINISHED" : FIN[c->place - 1 < 0 ? 0 : c->place - 1 > 5 ? 5 : c->place - 1];
-    word(big, s, w * 0.5f, h * 0.2f, 96 * u, c->place == 1 || g_mode == MODE_TIME_TRIAL ? cw_rgba(1.0f, 0.78f, 0.25f, k) : cw_rgba(1, 1, 1, k));
+    word(big, s, w * 0.5f, h * 0.12f, 96 * u, c->place == 1 || g_mode == MODE_TIME_TRIAL ? cw_rgba(1.0f, 0.78f, 0.25f, k) : cw_rgba(1, 1, 1, k));
     snprintf(buf, sizeof buf, "%d:%05.2f", (int)(c->finish / 60), c->finish - 60.0f * (float)(int)(c->finish / 60));
-    word(small, buf, w * 0.5f, h * 0.2f + 120 * u * grow(big, 96 * u), 48 * u, cw_rgba(1, 1, 1, 0.9f * k));
+    word(small, buf, w * 0.5f, h * 0.12f + 120 * u * grow(big, 96 * u), 48 * u, cw_rgba(1, 1, 1, 0.9f * k));
   }
   if (G.state == RACE_GRID) {
     int n = (int)ceilf(-G.clock);
@@ -422,7 +424,7 @@ static void hud_body(void) {
     word(big, "GO", w * 0.5f, h * 0.3f, 190 * u, gold);
   }
   g_hud_words_n = words_n;
-  next_mark(c, w, h, u);
+  if (c->finish <= 0) next_mark(c, w, h, u);
 }
 
 void hud_draw(void) {

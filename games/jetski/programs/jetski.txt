@@ -54,3 +54,9 @@ physical+senv+cc+l2000
 physical+skin+senv+sheen+eon+l2000+xrim
 physical+skin+senv+eon+l2000+xrim
 physical+skin+senv+cc+l2000+xrim
+physical+senv+l2000+xplain
+physical+skin+senv+sheen+eon+l2000+xplain_rim
+physical+skin+senv+eon+l2000+xplain_rim
+physical+skin+senv+l2000+xplain_rim
+physical+senv+l2000
+physical+skin+senv+l2000+xrim
