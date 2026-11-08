@@ -403,7 +403,7 @@ static void crowd_setup(void) {
   extern float level_length(void);
   float len = level_length();
   cw_nav_geom g = { 0 };
-  cw_nav_geom_add_box(&g, (t3_vec3){ len * 0.5f, -0.5f, 0 }, (t3_vec3){ len * 0.5f + 14, 0.5f, LANE_Z + 0.6f }, CW_NAV_AREA_WALK);
+  cw_nav_geom_add_box(&g, (t3_vec3){ len * 0.5f, -0.5f, 0 }, (t3_vec3){ len * 0.5f + 14, 0.5f, -JUKE_Z + 0.4f } /* past the far lane to the pavement: Arthur walks to his jukebox (the bodies are held to the lanes by arena_clamp) */, CW_NAV_AREA_WALK);
   cw_nav_config c = cw_nav_config_default();
   c.agent_radius = 0.3f;
   c.cell_size = 0.25f;
