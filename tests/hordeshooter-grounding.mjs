@@ -10,14 +10,25 @@
 // shadows, not run-to-run noise), and HORDE_DECK_OFF=1 (the crowd drawn at floor level) must sink some into the plate.
 //   node tests/hordeshooter-grounding.mjs [--build build/native] [--gpu gl|webgpu] [--quick]
 import { spawnSync } from 'node:child_process';
-import { readFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readImage } from '../deps/cartwheel-engine/tools/lib/png.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const ENGINE = join(ROOT, 'deps/cartwheel-engine');
+if (!process.env.CW_GPU_SUITE_INNER) { /* take the suite lock and the GPU sandbox (the test GPU, off the display), then run this file inside it */
+  const r = spawnSync('node', [join(ENGINE, 'tools/with-gpu-suite.mjs'), 'hordeshooter-grounding', 'node', fileURLToPath(import.meta.url), ...process.argv.slice(2)],
+    { stdio: 'inherit', env: { ...process.env, CW_GPU_SUITE_INNER: '1' } });
+  process.exit(r.status ?? 1);
+}
+const { wgpuPin, glPin, scrubDisplay } = await import(join(ENGINE, 'tools/lib/wgpu-pin.mjs'));
 const arg = (n, d) => { const i = process.argv.indexOf(n); return i > 0 ? process.argv[i + 1] : d; };
-const exe = join(resolve(ROOT, arg('--build', 'build/native')), 'games/hordeshooter/hordeshooter_auto');
+/* the app's binary as the build records it (its place differs between an SDK build and an engine-source build) */
+const appJson = join(resolve(ROOT, arg('--build', 'build/native')), 'apps/hordeshooter_auto.json');
+if (!existsSync(appJson)) { console.error(`no ${appJson}: build hordeshooter_auto first (scripts/build.sh hordeshooter_auto), or pass --build <dir>`); process.exit(2); }
+const exe = JSON.parse(readFileSync(appJson, 'utf8')).binary;
+if (!existsSync(exe)) { console.error(`no ${exe} (named by ${appJson}): rebuild hordeshooter_auto`); process.exit(2); }
 const GPU = arg('--gpu', 'gl');
 const OUT = join(ROOT, 'out/gate/hordeshooter-grounding');
 mkdirSync(OUT, { recursive: true });
@@ -26,8 +37,16 @@ function run(tag, frames, extra) {
   const png = join(OUT, `${tag}.png`), dump = join(OUT, `${tag}.json`);
   const env = { ...process.env, CW_GPU: GPU, SDL_AUDIODRIVER: 'dummy', CW_FRAMES: String(frames), CW_WARMUP_SPREAD: '0', CW_RENDER_SCALE: '1.5',
     CW_SCREENSHOT: png, CW_DEBUG_DUMP: dump, HORDE_NOHUD: '1', ...extra };
+  const pin = GPU === 'webgpu' ? wgpuPin() : null, gl = pin ? null : glPin();
+  if (pin) Object.assign(env, pin.env, { CW_GPU: 'webgpu' });
+  else if (gl) Object.assign(env, gl.env);
+  scrubDisplay(env);
   const p = spawnSync(exe, [], { env, encoding: 'utf8', timeout: 600e3, cwd: dirname(exe) });
-  if (p.status !== 0) { console.error(`${tag}: exit ${p.status}\n${(p.stderr || '').slice(-800)}`); process.exit(2); }
+  if (p.status !== 0) { /* a spawn error, a timeout or a signal named, not "exit null" */
+    const why = p.error ? p.error.message : p.signal ? `killed by ${p.signal}${p.signal === 'SIGTERM' ? ' (the 600 s timeout)' : ''}` : `exit ${p.status}`;
+    console.error(`${tag}: ${why}\n${(p.stderr || '').slice(-800)}`);
+    process.exit(2);
+  }
   return { j: JSON.parse(readFileSync(dump, 'utf8')), img: readImage(png) };
 }
 const lum = (img, x, y) => { const i = 4 * (y * img.w + x); return 0.2126 * img.rgba[i] + 0.7152 * img.rgba[i + 1] + 0.0722 * img.rgba[i + 2]; };

@@ -84,6 +84,7 @@ static struct {
   int32_t dev_hold; /* development (romdev, screenshots): 1 the bots stand where they are, 2 and hold their fire, so the horde reaches them */
   int32_t step_in_y0, step_in_y1, banner_y0, banner_y1;
   int32_t cards_shown;
+  int32_t end_y0, end_y1; /* the end screen's text block, rows on screen */
   int32_t slow; /* the solo slow-down is on (the cards are up) */
   /* the score chase (render side, from the sim's events): each kill raises a player's multiplier a little, a hit drops it
    * back to x1; points come in at the multiplier. And for the run's summary: the best multiplier, what downed each, the guns held */
@@ -333,6 +334,8 @@ static void init(void *u) {
   cw_debug_i32("hud.banner_y0", &G.banner_y0);
   cw_debug_i32("hud.banner_y1", &G.banner_y1);
   cw_debug_i32("hud.cards_shown", &G.cards_shown);
+  cw_debug_i32("hud.end_y0", &G.end_y0);
+  cw_debug_i32("hud.end_y1", &G.end_y1);
   cw_debug_i32("game.slow", &G.slow);
   cw_debug_field("score.mult100", G.mult100, CW_DBG_I32, MAXP);
   cw_debug_field("score.points", G.mscore, CW_DBG_I32, MAXP);
@@ -851,11 +854,10 @@ static void hud(void) {
     float t = (float)G.fade_t, a = t < DESCEND_TICKS ? t / (float)DESCEND_TICKS : 1.0f - (t - DESCEND_TICKS) / 45.0f;
     cw_r2d_rect(cw_rect_make(0, 0, cs.x, cs.y), rgba(0, 0, 0, cw_clampf(a, 0, 1)));
   }
-  if (G.S.state == ST_WON || G.S.state == ST_OVER) { /* the title, and under it as measured the line, wrapped to the screen */
+  if (G.S.state == ST_WON || G.S.state == ST_OVER) { /* the title, the line under it and a line a player, measured, on a panel sized to them */
     bool won = G.S.state == ST_WON;
-    cw_r2d_rect(cw_rect_make(cs.x * 0.04f, cs.y * (won ? 0.33f : 0.37f), cs.x * 0.92f, cs.y * 0.3f), rgba(0.02f, 0.02f, 0.03f, 0.62f)); /* the lines read over any crowd */
-    float y = cs.y * (won ? 0.36f : 0.4f), s2 = 18 * u;
-    y += text_wrapped(won ? "THE DESCENT IS DONE" : "OVERRUN", cx, y, cs.x * 0.94f, won ? 56 * u : 52 * u, won ? rgba(1, 0.85f, 0.35f, 1) : rgba(1, 0.3f, 0.25f, 1)).height;
+    const char *title = won ? "THE DESCENT IS DONE" : "OVERRUN";
+    float ts = won ? 56 * u : 52 * u, s2 = body(20 * u), ps = body(17 * u), wrap = cs.x * 0.88f;
     if (won) snprintf(b, sizeof b, "%d kills in %d minutes  -  a new run in a moment", G.S.killed_total, G.S.tick / 3600);
     else { /* the floor the team fell on, a wave back (never before its first), and the deepest the save has seen */
       int bl = 0;
@@ -863,21 +865,34 @@ static void hud(void) {
       snprintf(b, sizeof b, "%s again from wave %d in a moment  -  deepest: floor %d, wave %d", FLOOR_NAME[CW_CLAMP(G.S.level, 0, NLEVELS - 1)],
                G.S.level_wave > 1 ? G.S.level_wave - 1 : 1, bl + 1, G.best_wave - sim_level_first_wave(bl) + 1);
     }
-    float sy = fmaxf(y + 4 * u, cs.y * (won ? 0.5f : 0.52f));
-    sy += text_wrapped(b, cx, sy, cs.x * 0.9f, s2, rgba(1, 1, 1, 1)).height + 8 * u;
-    for (int i = 0; i < G.S.players; i++) { /* each player's line: what took them down (or the run's record when it is won) */
-      char l[200], guns[120] = "";
+    char lines[MAXP][200];
+    for (int i = 0; i < G.S.players && i < MAXP; i++) { /* each player's line: what took them down (or the run's record when it is won) */
+      char guns[120] = "";
       if (won) {
         for (int t = 0, n = 0; t < PU_KINDS; t++)
           if (G.guns[i] & (1u << t)) snprintf(guns + strlen(guns), sizeof guns - strlen(guns), "%s%s", n++ ? ", " : "  -  ", sim_power_name(t));
-        snprintf(l, sizeof l, "P%d  %d points  -  %d kills  -  best x%.1f%s", i + 1, G.mscore[i], G.S.p[i].kills, (double)G.best_mult[i], guns);
+        snprintf(lines[i], sizeof lines[i], "P%d  %d points  -  %d kills  -  best x%.1f%s", i + 1, G.mscore[i], G.S.p[i].kills, (double)G.best_mult[i], guns);
       } else {
         int k = G.downed_by[i];
         const char *by = k == EK_BOSS ? BOSS_NAME[CW_CLAMP(G.S.level, 0, NLEVELS - 1)] : k >= 0 && k < EK_KINDS ? sim_kind_name(k) : "a blast or the fire underfoot";
-        snprintf(l, sizeof l, "P%d  taken down by %s%s  -  best x%.1f  -  %d kills", i + 1, k >= 0 && k < EK_KINDS && k != EK_BOSS ? "a " : "", by, (double)G.best_mult[i], G.S.p[i].kills);
+        snprintf(lines[i], sizeof lines[i], "P%d  taken down by %s%s  -  best x%.1f  -  %d kills", i + 1, k >= 0 && k < EK_KINDS && k != EK_BOSS ? "a " : "", by, (double)G.best_mult[i], G.S.p[i].kills);
       }
-      sy += text_wrapped(l, cx, sy, cs.x * 0.9f, body(13 * u), rgba(0.55f + 0.45f * PC[i][0], 0.55f + 0.45f * PC[i][1], 0.55f + 0.45f * PC[i][2], 1)).height + 2 * u;
     }
+    /* measure it all, then the panel round it, centred down the screen (under the top corners' panels when it is tall) */
+    cw_text_style ms = tstyle(ts, rgba(1, 1, 1, 1));
+    ms.wrap_width = wrap;
+    float th = cw_font_measure(font, title, &ms).height;
+    ms.size = s2;
+    float lh = cw_font_measure(font, b, &ms).height, h = th + 6 * u + lh + 10 * u, ph[MAXP] = { 0 };
+    ms.size = ps;
+    for (int i = 0; i < G.S.players && i < MAXP; i++) ph[i] = cw_font_measure(font, lines[i], &ms).height, h += ph[i] + 4 * u;
+    float pad = 14 * u, y = fmaxf(cs.y * 0.5f - h * 0.5f, cs.y * 0.12f);
+    cw_r2d_rect(cw_rect_make(cs.x * 0.03f, y - pad, cs.x * 0.94f, h + 2 * pad), rgba(0.02f, 0.02f, 0.03f, 0.72f)); /* the lines read over any crowd */
+    y += text_wrapped(title, cx, y, wrap, ts, won ? rgba(1, 0.85f, 0.35f, 1) : rgba(1, 0.3f, 0.25f, 1)).height + 6 * u;
+    y += text_wrapped(b, cx, y, wrap, s2, rgba(1, 1, 1, 1)).height + 10 * u;
+    for (int i = 0; i < G.S.players && i < MAXP; i++)
+      y += text_wrapped(lines[i], cx, y, wrap, ps, rgba(0.6f + 0.4f * PC[i][0], 0.6f + 0.4f * PC[i][1], 0.6f + 0.4f * PC[i][2], 1)).height + 4 * u;
+    G.end_y0 = (int32_t)(y - h), G.end_y1 = (int32_t)y; /* the text check: the block on screen */
   }
   cw_r2d_end();
 }
