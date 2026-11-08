@@ -63,6 +63,7 @@ typedef struct {
   float nav_x, nav_z;
   int role, active, human, team, respawn, cooldown, ai_tick, protection;
   int idle; /* ticks since this captain's person last used a control (an autopilot sails it from IDLE_HELM) */
+  int engaged; /* Voyage: this captain banked once or fired first; until then the patrol and the merchant leave it be */
   int held[3], stored[3], bank, hull, sails, guns, damage_done, sinks;
   cw_node root, sail_b, flag, gun_left, gun_right, hull_upgrade;
   t3_mesh *canvas;
@@ -98,6 +99,9 @@ static struct {
   int32_t objective_notice_ticks;
   int32_t autopilot;  /* bit per captain: a person's ship that sails on its own while its controller is left alone */
   int32_t idle_stays; /* test switch (sw idle_stays 1): a captain left alone stays where it is, as it once did */
+  int32_t voyage_hunt; /* test switch (sw voyage_hunt 1): the patrol hunts a voyage captain from the start, as it once did */
+  int32_t labels_stack; /* test switch (sw labels_stack 1): every ship label at its ship, nothing kept clear */
+  int32_t label_overlaps, label_overlaps_max; /* annotation boxes over the sea that overlap: last frame, and the most since the match began */
   int32_t dbg_bank[CAPTAINS], dbg_held[CAPTAINS], dbg_hp[CAPTAINS], dbg_protection[CAPTAINS], dbg_cooldown[CAPTAINS], dbg_pos[CAPTAINS * 2];
   uint32_t hash, ripple_hash;
   char cargo_notice[CAPTAINS][80];
@@ -711,7 +715,7 @@ static void reset_match(int mode, int joined_mask) {
     s->human = 0;
 #endif
     s->team = mode == TEAMS ? i & 1 : i;
-    s->bank = s->hull = s->sails = s->guns = s->damage_done = s->sinks = 0; s->idle = 0;
+    s->bank = s->hull = s->sails = s->guns = s->damage_done = s->sinks = 0; s->idle = 0; s->engaged = 0;
     memset(s->stored, 0, sizeof s->stored);
     place_ship(i);
     cw_node_set(s->root, "visible", cw_val_bool(s->active));
@@ -810,9 +814,14 @@ static int can_hit(int owner, int target) {
     if (G.mode == TEAMS && G.ships[owner].team == G.ships[target].team) return 0;
   }
   if (owner == 5 && target == 4) return 0;
-  /* Home anchorages give captains room to bank, repair and learn controls. */
-  if(owner>=CAPTAINS && target<CAPTAINS &&
-     harbor_distance2(target,G.ships[target].x,G.ships[target].z)<49)return 0;
+  if (owner >= CAPTAINS && target < CAPTAINS) {
+    /* The voyage's first fight is one the captain starts: the patrol and the merchant leave a captain alone until it
+     * has banked once or fired first (sw voyage_hunt 1: the old rule, for the gate's control). */
+    if (G.mode == VOYAGE && !G.ships[target].engaged && !G.voyage_hunt) return 0;
+    /* Home anchorages give captains room to bank, repair and learn controls: 15 m in the voyage, 7 m in a race. */
+    float safe = G.mode == VOYAGE && !G.voyage_hunt ? 15 : 7;
+    if (harbor_distance2(target,G.ships[target].x,G.ships[target].z) < safe * safe) return 0;
+  }
   return 1;
 }
 
@@ -820,6 +829,7 @@ static void fire_ship(int id, int side) {
   ship *s = &G.ships[id];
   if (s->cooldown || s->respawn || !s->active) return;
   s->protection=0; /* Firing ends safe departure immediately. */
+  if (id < CAPTAINS) s->engaged = 1;
   float sy = cw_sin(s->yaw), cy = cw_cos(s->yaw);
   float sx = side * cy, sz = -side * sy;
   for (int n = -1; n <= 1; n++) {
@@ -930,6 +940,7 @@ static void bank_ship(int i) {
   int n = held_total(s);
   if (n) {
     s->bank += n;
+    s->engaged = 1;
     sound_play(S_BANK,s->x);
     for (int k = 0; k < 3; k++) { s->stored[k] += s->held[k]; s->held[k] = 0; }
     float before=s->hp;
@@ -1921,9 +1932,12 @@ static void cmd_salvage_test(int argc,const char **argv,cw_reply *r) {
 }
 
 static void cmd_sw(int argc, const char **argv, cw_reply *r) {
-  if (argc < 3 || strcmp(argv[1], "idle_stays")) { cw_reply_error(r, "usage: sw idle_stays <0|1>"); return; }
-  G.idle_stays = atoi(argv[2]) != 0;
-  cw_reply_printf(r, "{\"idle_stays\":%d}", G.idle_stays);
+  int32_t *sw = argc < 3 ? NULL : !strcmp(argv[1], "idle_stays") ? &G.idle_stays : !strcmp(argv[1], "voyage_hunt") ? &G.voyage_hunt :
+                !strcmp(argv[1], "labels_stack") ? &G.labels_stack : NULL;
+  if (!sw) { cw_reply_error(r, "usage: sw idle_stays|voyage_hunt|labels_stack <0|1>"); return; }
+  *sw = atoi(argv[2]) != 0;
+  if (sw == &G.labels_stack) G.label_overlaps_max = 0;
+  cw_reply_printf(r, "{\"idle_stays\":%d,\"voyage_hunt\":%d,\"labels_stack\":%d}", G.idle_stays, G.voyage_hunt, G.labels_stack);
 }
 
 static void cmd_voyage_test(int argc,const char **argv,cw_reply *r) {
@@ -2353,7 +2367,7 @@ static void init(void *user) {
   cw_debug_f32("pirates.gpu_ms", &G.gpu_ms);
   cw_debug_command("pirates_test_voyage","Test three voyage stages with 1..4 players; ends match",cmd_voyage_test);
   cw_debug_command("pirates_test_salvage","Run sinking, respawn and restart regression; resets match",cmd_salvage_test);
-  cw_debug_command("sw", "sw idle_stays <0|1>: test switch (a captain whose controller is left alone stays where it is, as it once did)", cmd_sw);
+  cw_debug_command("sw", "sw idle_stays|voyage_hunt|labels_stack <0|1>: test switches (an idle captain stays put; the patrol hunts a voyage captain from the start; ship labels drawn at their ships with nothing kept clear)", cmd_sw);
   cw_debug_command("pirates_match", "pirates_match <0 voyage, 1 race, 2 teams> <1..4 humans>", cmd_match);
   cw_debug_command("pirates_profile","Collect N continuous rendered frames before replying with perf; default 300, max 590",cmd_profile);
 #ifdef PIRATES_AUTO
