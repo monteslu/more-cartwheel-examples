@@ -49,6 +49,15 @@ firing ends that protection immediately. Salvage expires after 30 seconds.
 NPC ships leave captains alone within seven metres of their own pier end;
 other captains can still attack in competitive modes.
 
+While another captain is sailing, a captain whose controller is left alone for
+20 seconds sails on autopilot (its panel reads AUTOPILOT and its label P2 AUTO,
+for example) until any of its controls is used again; when every controller is
+put down, nobody sails. A controller that joined and was put down then banks
+cargo for the fleet and fights for its team instead of idling at its pier.
+`tests/pirates-idle-seat.mjs` sails a voyage through romdev with such a
+captain; its control (`sw idle_stays 1`, the captain staying put) must leave
+it with nothing banked.
+
 ## Modes and maps
 
 - **Cooperative Voyage:** supply the fleet, sink the patrol, then deliver a

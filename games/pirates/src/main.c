@@ -60,6 +60,7 @@ typedef struct {
   float prev_x, prev_z, prev_yaw;
   float nav_x, nav_z;
   int role, active, human, team, respawn, cooldown, ai_tick, protection;
+  int idle; /* ticks since this captain's person last used a control (an autopilot sails it from IDLE_HELM) */
   int held[3], stored[3], bank, hull, sails, guns, damage_done, sinks;
   cw_node root, sail_b, flag, gun_left, gun_right, hull_upgrade;
   t3_mesh *canvas;
@@ -93,6 +94,8 @@ static struct {
   int32_t state, mode, joined, humans, tick, time_left, quota, winner, alert, shots_fired, goods_taken;
   int32_t voyage_stage, patrol_defeats, final_quota, paused;
   int32_t objective_notice_ticks;
+  int32_t autopilot;  /* bit per captain: a person's ship that sails on its own while its controller is left alone */
+  int32_t idle_stays; /* test switch (sw idle_stays 1): a captain left alone stays where it is, as it once did */
   int32_t dbg_bank[CAPTAINS], dbg_held[CAPTAINS], dbg_hp[CAPTAINS], dbg_protection[CAPTAINS], dbg_cooldown[CAPTAINS], dbg_pos[CAPTAINS * 2];
   uint32_t hash, ripple_hash;
   char cargo_notice[CAPTAINS][80];
@@ -640,6 +643,10 @@ static void place_ship(int i) {
   memset(s->held, 0, sizeof s->held);
 }
 
+/* a captain whose controller is left alone this long sails on autopilot (the AI captain's helm) until any of its
+ * controls is used again, while another person is sailing: a pad that joined and was put down banks cargo for the
+ * fleet and fights for its team instead of holding them back from its pier (a voyage nobody plays does not play itself) */
+enum { IDLE_HELM = 60 * 20 };
 static void reset_match(int mode, int joined_mask) {
   G.paused=0;cw_tree_set_paused(cw_scene_app_tree(),false);
   effects_reset(G.world);
@@ -654,7 +661,7 @@ static void reset_match(int mode, int joined_mask) {
   G.objective_notice_ticks=mode==VOYAGE?240:0;
   eruption.warning=eruption.count=eruption.impacts=0;
   for(int i=0;i<ROCKFALLS;i++)cw_node_set(eruption.rocks[i],"visible",cw_val_bool(false));
-  G.winner = -1; G.shots_fired = 0; G.goods_taken = 0;
+  G.winner = -1; G.shots_fired = 0; G.goods_taken = 0; G.autopilot = 0;
   cw_rng_seed(&G.rng, 0x50495241u);
   for (int i = 0; i < SHIPS; i++) {
     ship *s = &G.ships[i];
@@ -665,7 +672,7 @@ static void reset_match(int mode, int joined_mask) {
     s->human = 0;
 #endif
     s->team = mode == TEAMS ? i & 1 : i;
-    s->bank = s->hull = s->sails = s->guns = s->damage_done = s->sinks = 0;
+    s->bank = s->hull = s->sails = s->guns = s->damage_done = s->sinks = 0; s->idle = 0;
     memset(s->stored, 0, sizeof s->stored);
     place_ship(i);
     cw_node_set(s->root, "visible", cw_val_bool(s->active));
@@ -1078,6 +1085,15 @@ static void fixed_update(void *user, double dt) {
   for(int i=0;i<CAPTAINS;i++)if(G.cargo_notice_ticks[i]>0)G.cargo_notice_ticks[i]--;
   for(int i=0;i<SHIPS;i++)if(G.hit_ticks[i]>0)G.hit_ticks[i]--;
   if(G.objective_notice_ticks>0)G.objective_notice_ticks--;
+  /* every person's idle time first, so the autopilot below sees them all from the same tick */
+  for (int i = 0; i < CAPTAINS; i++) {
+    ship *s = &G.ships[i]; if (!s->active || !s->human) continue;
+    bool touched = cw_input_axis(i, G.turn_l, G.turn_r) != 0 || cw_action_strength(i, G.sail_u) != 0 ||
+      cw_action_strength(i, G.sail_d) != 0 || cw_action_pressed(i, G.fire_l) || cw_action_pressed(i, G.fire_r) ||
+      cw_input_axis(i, G.aim_l, G.aim_r) != 0 || cw_action_pressed(i, G.dock) || cw_action_pressed(i, G.up_hull) ||
+      cw_action_pressed(i, G.up_sails) || cw_action_pressed(i, G.up_guns);
+    s->idle = touched ? 0 : s->idle + 1;
+  }
   for (int i = 0; i < SHIPS; i++) {
     ship *s = &G.ships[i]; if (!s->active) continue;
     float turn = 0, sail = 0; int fire = 0, dock = 0;
@@ -1090,6 +1106,10 @@ static void fixed_update(void *user, double dt) {
         fire = aim < -0.1f ? -1 : 1;
       }
       dock = cw_action_just_pressed(i, G.dock);
+      bool crewed = false; /* someone else is at a helm: when everyone has put their controller down, nobody sails */
+      for (int j = 0; j < CAPTAINS; j++) crewed = crewed || (j != i && G.ships[j].active && G.ships[j].human && G.ships[j].idle < IDLE_HELM);
+      if (s->idle >= IDLE_HELM && crewed && !G.idle_stays) { G.autopilot |= 1 << i; ai_input(i, &turn, &sail, &fire, &dock); }
+      else G.autopilot &= ~(1 << i);
     } else {
       ai_input(i, &turn, &sail, &fire, &dock);
     }
@@ -1097,7 +1117,7 @@ static void fixed_update(void *user, double dt) {
     if (fire) fire_ship(i, fire);
     if (i < CAPTAINS && !s->respawn) {
       if (dock) bank_ship(i);
-      if (s->human) {
+      if (s->human && !(G.autopilot & (1 << i))) {
         if (cw_action_just_pressed(i, G.up_hull)) upgrade_ship(i, 0);
         if (cw_action_just_pressed(i, G.up_sails)) upgrade_ship(i, 1);
         if (cw_action_just_pressed(i, G.up_guns)) upgrade_ship(i, 2);
@@ -1252,7 +1272,7 @@ static float captain_panels(float W, float H, float scale, bool draw) {
     /* the panel: who, hull and cargo, the hold */
     char r1[96], r2[96], r3[96];
     cw_color cargo_ink = CW_WHITE;
-    snprintf(r1, sizeof r1, "P%d %s     %d BANKED", i + 1, s->human ? "CAPTAIN" : "BOT", s->bank);
+    snprintf(r1, sizeof r1, "P%d %s     %d BANKED", i + 1, G.autopilot & (1 << i) ? "AUTOPILOT" : s->human ? "CAPTAIN" : "BOT", s->bank);
     snprintf(r2, sizeof r2, "HULL %d    CARGO %d / 6%s", (int)s->hp, held_total(s), s->respawn ? "    REPAIRING" : s->protection ? "    PROTECTED" : "");
     if (!s->respawn && held_total(s) == 6) { snprintf(r3, sizeof r3, "HOLD FULL: RETURN TO P%d HARBOR", i + 1); cargo_ink = cw_hex(0xffdf9dff); }
     else if (!s->respawn && G.cargo_notice_ticks[i] > 0) { snprintf(r3, sizeof r3, "%s", G.cargo_notice[i]); cargo_ink = cw_hex(0xa9f2c1ff); }
@@ -1564,7 +1584,7 @@ static void draw_hud(void) {
       p=t3_vec3_apply_mat4(p,&camera->projection_matrix);
       float ax=(p.x*.5f+.5f)*W,ay=(.5f-p.y*.5f)*H;
       int target=G.mode==VOYAGE&&G.voyage_stage==1&&i==5;
-      if(i<CAPTAINS)snprintf(label_text[i],sizeof label_text[i],"P%d",i+1);
+      if(i<CAPTAINS)snprintf(label_text[i],sizeof label_text[i],G.autopilot&(1<<i)?"P%d AUTO":"P%d",i+1);
       else snprintf(label_text[i],sizeof label_text[i],"%s",target?"TARGET: PATROL":i==4?"MERCHANT":"PATROL");
       cw_text_metrics lm=measure(label_text[i],lsize,0);
       float bar_half=(i<CAPTAINS?28:45)*scale;
@@ -1843,6 +1863,12 @@ static void cmd_salvage_test(int argc,const char **argv,cw_reply *r) {
     clean=clean&&g->active==(i<GOOD_SPAWNS)&&g->kind==i%3&&g->x==g->home_x&&g->z==g->home_z;
   }
   cw_reply_printf(r,"{\"manifest\":%d,\"retained\":%d,\"reset\":%d,\"salvage\":[%d,%d,%d]}",manifest,retained,clean,found[0],found[1],found[2]);
+}
+
+static void cmd_sw(int argc, const char **argv, cw_reply *r) {
+  if (argc < 3 || strcmp(argv[1], "idle_stays")) { cw_reply_error(r, "usage: sw idle_stays <0|1>"); return; }
+  G.idle_stays = atoi(argv[2]) != 0;
+  cw_reply_printf(r, "{\"idle_stays\":%d}", G.idle_stays);
 }
 
 static void cmd_voyage_test(int argc,const char **argv,cw_reply *r) {
@@ -2175,6 +2201,7 @@ static void init(void *user) {
   cw_debug_field("pirates.cooldown", G.dbg_cooldown, CW_DBG_I32, CAPTAINS);
   cw_debug_i32("pirates.mode", &G.mode);
   cw_debug_i32("pirates.humans", &G.humans);
+  cw_debug_i32("pirates.autopilot", &G.autopilot);
   cw_debug_i32("pirates.tick", &G.tick);
   cw_debug_i32("pirates.time", &G.time_left);
   cw_debug_i32("pirates.quota", &G.quota);
@@ -2206,6 +2233,7 @@ static void init(void *user) {
   cw_debug_f32("pirates.gpu_ms", &G.gpu_ms);
   cw_debug_command("pirates_test_voyage","Test three voyage stages with 1..4 players; ends match",cmd_voyage_test);
   cw_debug_command("pirates_test_salvage","Run sinking, respawn and restart regression; resets match",cmd_salvage_test);
+  cw_debug_command("sw", "sw idle_stays <0|1>: test switch (a captain whose controller is left alone stays where it is, as it once did)", cmd_sw);
   cw_debug_command("pirates_match", "pirates_match <0 voyage, 1 race, 2 teams> <1..4 humans>", cmd_match);
   cw_debug_command("pirates_profile","Collect N continuous rendered frames before replying with perf; default 300, max 590",cmd_profile);
 #ifdef PIRATES_AUTO
