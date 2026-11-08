@@ -80,7 +80,8 @@ typedef struct {
 
 typedef struct {
   float x, z, vx, vz;
-  int owner, life, active;
+  float aim_x, aim_z; /* the middle ball of a captain's broadside: where its landing ring was when it fired (test) */
+  int owner, life, active, aimed;
   cw_node node;
 } shot;
 
@@ -104,6 +105,9 @@ static struct {
   int32_t idle_stays; /* test switch (sw idle_stays 1): a captain left alone stays where it is, as it once did */
   int32_t voyage_hunt; /* test switch (sw voyage_hunt 1): the patrol hunts a voyage captain from the start, as it once did */
   int32_t labels_stack; /* test switch (sw labels_stack 1): every ship label at its ship, nothing kept clear */
+  int32_t flat_shots;   /* test switch (sw flat_shots 1): balls skim the water at 0.7 m as they once did */
+  float shot_peak;       /* the highest a ball has been drawn over the water since the match began (m) */
+  float shot_aim_error;  /* the farthest a captain's middle ball has splashed from its landing ring (m) */
   int32_t label_overlaps, label_overlaps_max; /* annotation boxes over the sea that overlap: last frame, and the most since the match began */
   int32_t dbg_bank[CAPTAINS], dbg_held[CAPTAINS], dbg_hp[CAPTAINS], dbg_protection[CAPTAINS], dbg_cooldown[CAPTAINS], dbg_pos[CAPTAINS * 2];
   uint32_t hash, ripple_hash;
@@ -728,6 +732,7 @@ static void reset_match(int mode, int joined_mask) {
   memset(G.cargo_notice_ticks,0,sizeof G.cargo_notice_ticks);
   memset(G.hit_ticks,0,sizeof G.hit_ticks);
   G.label_overlaps_max=0;
+  G.shot_peak=0;G.shot_aim_error=0;
   memset(G.list_side,0,sizeof G.list_side);memset(G.smoke_tick,0,sizeof G.smoke_tick);
   G.time_left = mode == VOYAGE ? 60 * 12 * 60 : 60 * 6 * 60;
   G.quota = 10 + (humans > 0 ? humans - 1 : 0) * 7;
@@ -860,6 +865,24 @@ static int can_hit(int owner, int target) {
   return 1;
 }
 
+/* A ball flies SHOT_LIFE ticks and lands in the sea at the end of them unless it hits a hull or the shore first. Its
+ * height is drawn as a parabola under gravity over that flight, from the gun deck (0.9 m) to the water, so a broadside
+ * reads as arcs whose splashes show the range. Render only: the simulation tracks the ball over the water as before. */
+enum { SHOT_LIFE = 105 };
+static float shot_arc_height(int life) {
+  const float g = 9.8f, deck = 0.9f, T = SHOT_LIFE / 60.0f;
+  const float vy = (0.5f * g * T * T - deck) / T;
+  float t = (SHOT_LIFE - life) / 60.0f;
+  return fmaxf(0, deck + vy * t - 0.5f * g * t * t);
+}
+/* where a captain's broadside on this side would splash down: the middle ball's landing point at its current speed */
+static void shot_landing(const ship *s, int side, float *x, float *z) {
+  float sy = cw_sin(s->yaw), cy = cw_cos(s->yaw), sx = side * cy, sz = -side * sy;
+  float T = SHOT_LIFE / 60.0f, v = 14.0f + s->guns * 1.5f;
+  *x = s->x + sx * 1.6f + (sx * v + sy * s->speed * 0.35f) * T;
+  *z = s->z + sz * 1.6f + (sz * v + cy * s->speed * 0.35f) * T;
+}
+
 static void fire_ship(int id, int side) {
   ship *s = &G.ships[id];
   if (s->cooldown || s->respawn || !s->active) return;
@@ -872,7 +895,9 @@ static void fire_ship(int id, int side) {
     for (int k = 0; k < SHOTS; k++) if (!G.shots[k].active) { slot = k; break; }
     if (slot < 0) break;
     shot *b = &G.shots[slot];
-    b->active = 1; b->owner = id; b->life = 105;
+    b->active = 1; b->owner = id; b->life = SHOT_LIFE;
+    b->aimed = id < CAPTAINS && n == 0;
+    if (b->aimed) shot_landing(s, side, &b->aim_x, &b->aim_z);
     b->x = s->x + sy * (float)n * 1.2f + sx * 1.6f;
     b->z = s->z + cy * (float)n * 1.2f + sz * 1.6f;
     b->vx = sx * (14.0f + s->guns * 1.5f) + sy * s->speed * 0.35f + sy * n * 0.8f;
@@ -1061,6 +1086,7 @@ static void step_shots(void) {
       else if(land) impact_effect(IMPACT_LAND,b->x,coast_height(b->x,b->z)+.15f,b->z,b->vx,b->vz);
       else {
         cw_water_splash(G.water, b->x, b->z, 0.7f, 0.12f, 0.3f);
+        if (b->aimed && b->life <= 0) G.shot_aim_error = fmaxf(G.shot_aim_error, sqrtf(dist2(b->x, b->z, b->aim_x, b->aim_z)));
         impact_effect(IMPACT_WATER,b->x,water_y+.1f,b->z,b->vx,b->vz);
       }
       b->active = 0; cw_node_set(b->node, "visible", cw_val_bool(false));
@@ -1290,7 +1316,9 @@ static void sync_visuals(void) {
   for (int i = 0; i < SHOTS; i++) if (G.shots[i].active) {
     shot *b = &G.shots[i];
     float h = cw_water_height_at(G.water, b->x, b->z, wt);
-    cw_node3d_set_position(b->node, (t3_vec3){ b->x, h + 0.7f, b->z });
+    float y = G.flat_shots ? 0.7f : shot_arc_height(b->life);
+    if (y > G.shot_peak) G.shot_peak = y;
+    cw_node3d_set_position(b->node, (t3_vec3){ b->x, h + y, b->z });
   }
 }
 
@@ -1824,6 +1852,28 @@ static void draw_hud(void) {
         }
       }
     }
+    /* Where each person's broadsides land, a small ring on the water each side (bright when the guns are loaded):
+     * the splash of a miss lands on it, so a captain learns to lead a moving ship. */
+    if(camera && G.state==PLAYING)for(int i=0;i<CAPTAINS;i++) {
+      ship *s=&G.ships[i];
+      if(!s->active||!s->human||s->respawn||(G.autopilot&(1<<i)))continue;
+      cw_color c=col(PLAYER_COLOR[i]);c.a=s->cooldown?.28f:.7f;
+      for(int side=-1;side<=1;side+=2) {
+        float lx,lz;shot_landing(s,side,&lx,&lz);
+        for(int j=0;j<16;j++) {
+          if(j%2)continue;
+          cw_vec2 points[2];
+          for(int e=0;e<2;e++) {
+            float a=(j+e)*2*PI/16;
+            t3_vec3 p={lx+1.3f*cw_cos(a),.1f,lz+1.3f*cw_sin(a)};
+            p=t3_vec3_apply_mat4(p,&camera->matrix_world_inverse);
+            p=t3_vec3_apply_mat4(p,&camera->projection_matrix);
+            points[e]=cw_v2((p.x*.5f+.5f)*W,(.5f-p.y*.5f)*H);
+          }
+          cw_r2d_line(points[0],points[1],2*scale,c);
+        }
+      }
+    }
     /* Draw every connector first so none can cross over another label. */
     if(camera)for(int i=0;i<SHIPS;i++)if(label_visible[i]&&
       fabsf(label_x[i]-anchor_x[i])+fabsf(label_y[i]-anchor_y[i])>4*scale) {
@@ -2065,10 +2115,11 @@ static void cmd_salvage_test(int argc,const char **argv,cw_reply *r) {
 
 static void cmd_sw(int argc, const char **argv, cw_reply *r) {
   int32_t *sw = argc < 3 ? NULL : !strcmp(argv[1], "idle_stays") ? &G.idle_stays : !strcmp(argv[1], "voyage_hunt") ? &G.voyage_hunt :
-                !strcmp(argv[1], "labels_stack") ? &G.labels_stack : NULL;
-  if (!sw) { cw_reply_error(r, "usage: sw idle_stays|voyage_hunt|labels_stack <0|1>"); return; }
+                !strcmp(argv[1], "labels_stack") ? &G.labels_stack : !strcmp(argv[1], "flat_shots") ? &G.flat_shots : NULL;
+  if (!sw) { cw_reply_error(r, "usage: sw idle_stays|voyage_hunt|labels_stack|flat_shots <0|1>"); return; }
   *sw = atoi(argv[2]) != 0;
   if (sw == &G.labels_stack) G.label_overlaps_max = 0;
+  if (sw == &G.flat_shots) G.shot_peak = 0;
   cw_reply_printf(r, "{\"idle_stays\":%d,\"voyage_hunt\":%d,\"labels_stack\":%d}", G.idle_stays, G.voyage_hunt, G.labels_stack);
 }
 
@@ -2487,6 +2538,8 @@ static void init(void *user) {
   cw_debug_i32("pirates.alert", &G.alert);
   cw_debug_i32("pirates.label_overlaps", &G.label_overlaps);
   cw_debug_i32("pirates.label_overlaps_max", &G.label_overlaps_max);
+  cw_debug_f32("pirates.shot_peak", &G.shot_peak);
+  cw_debug_f32("pirates.shot_aim_error", &G.shot_aim_error);
   cw_debug_field("pirates.cargo_notice_ticks",G.cargo_notice_ticks,CW_DBG_I32,CAPTAINS);
   cw_debug_field("pirates.hit_ticks",G.hit_ticks,CW_DBG_I32,SHIPS);
   cw_debug_field("pirates.hit_amount",G.hit_amount,CW_DBG_I32,SHIPS);
@@ -2502,7 +2555,7 @@ static void init(void *user) {
   cw_debug_f32("pirates.gpu_ms", &G.gpu_ms);
   cw_debug_command("pirates_test_voyage","Test three voyage stages with 1..4 players; ends match",cmd_voyage_test);
   cw_debug_command("pirates_test_salvage","Run sinking, respawn and restart regression; resets match",cmd_salvage_test);
-  cw_debug_command("sw", "sw idle_stays|voyage_hunt|labels_stack <0|1>: test switches (an idle captain stays put; the patrol hunts a voyage captain from the start; ship labels drawn at their ships with nothing kept clear)", cmd_sw);
+  cw_debug_command("sw", "sw idle_stays|voyage_hunt|labels_stack|flat_shots <0|1>: test switches (an idle captain stays put; the patrol hunts a voyage captain from the start; ship labels drawn at their ships with nothing kept clear; cannonballs skim the water)", cmd_sw);
   cw_debug_command("pirates_match", "pirates_match <0 voyage, 1 race, 2 teams> <1..4 humans>", cmd_match);
   cw_debug_command("pirates_profile","Collect N continuous rendered frames before replying with perf; default 300, max 590",cmd_profile);
 #ifdef PIRATES_AUTO
