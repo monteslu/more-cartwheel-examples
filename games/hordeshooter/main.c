@@ -731,7 +731,7 @@ static void hud(void) {
       cur = bottom ? cur - oh - 4 * u : cur + oh + 4 * u, wide = fmaxf(wide, ow);
       G.cards_shown++;
     }
-    if (p->down && G.S.players > 1) { /* alone, a fall is the end of the try: OVERRUN says it, no friend is coming */
+    if (p->down && G.S.players > 1 && G.S.state != ST_OVER) { /* alone, a fall is the end of the try: OVERRUN says it, no friend is coming */
       const char *dt = "DOWN: a friend can pull you up";
       float ds = body(12 * u);
       cw_text_metrics dm = measure(dt, ds);
@@ -853,6 +853,7 @@ static void hud(void) {
   }
   if (G.S.state == ST_WON || G.S.state == ST_OVER) { /* the title, and under it as measured the line, wrapped to the screen */
     bool won = G.S.state == ST_WON;
+    cw_r2d_rect(cw_rect_make(cs.x * 0.04f, cs.y * (won ? 0.33f : 0.37f), cs.x * 0.92f, cs.y * 0.3f), rgba(0.02f, 0.02f, 0.03f, 0.62f)); /* the lines read over any crowd */
     float y = cs.y * (won ? 0.36f : 0.4f), s2 = 18 * u;
     y += text_wrapped(won ? "THE DESCENT IS DONE" : "OVERRUN", cx, y, cs.x * 0.94f, won ? 56 * u : 52 * u, won ? rgba(1, 0.85f, 0.35f, 1) : rgba(1, 0.3f, 0.25f, 1)).height;
     if (won) snprintf(b, sizeof b, "%d kills in %d minutes  -  a new run in a moment", G.S.killed_total, G.S.tick / 3600);

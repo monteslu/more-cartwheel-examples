@@ -1057,7 +1057,7 @@ bool view_init_step(cw_node root, int *done, int *total) {
     { /* a rim in the team's colour along the soldier's silhouette: each player found by colour in a crowd of any hue (every preset) */
       cw_rim_light_desc rd = cw_rim_light_default();
       rd.color = lin(0.45f + 0.55f * PC[i][0], 0.45f + 0.55f * PC[i][1], 0.45f + 0.55f * PC[i][2]);
-      rd.strength = 2.2f, rd.power = 2.6f, rd.near = 6, rd.far = 20, rd.close = 0.3f;
+      rd.strength = 0.7f, rd.power = 4.0f, rd.near = 6, rd.far = 20, rd.close = 0.2f; /* a thin edge: more and the soldier reads as a ghost from the high camera */
       cw_rim_light_apply(bm, &rd);
     }
     t3_material *tm = glow(PC[i][0], PC[i][1], PC[i][2], 7);
@@ -1996,7 +1996,7 @@ void view_sync(const sim *s, float time) {
     cw_node3d_set_position(V.pl_light[i], (t3_vec3){ p->x, 2.4f, p->y });
     if (V.pl_mat[i]) V.pl_mat[i]->color = ground_light(p->x, p->y);
     shadow_at(p->x, p->y, 0.42f, 1.8f, 0.7f);
-    cw_node_set(V.pl_light[i], "energy", cw_val_float(p->down ? 8.0f : V_floor > 0 ? 40.0f : 22.0f)); /* brighter on the darker floors: the soldier always reads */
+    cw_node_set(V.pl_light[i], "energy", cw_val_float(p->down ? 8.0f : V_floor > 0 ? 40.0f : 32.0f)); /* brighter on the darker floors (and the yard under its lowered fill): the soldier always reads */
     if (V.shield[i]) V.shield[i]->base.visible = p->shield_t > 0 && !p->down && (p->shield_t > 90 || (p->shield_t / 6) & 1);
     cw_node3d_set_position(V.pn[i], (t3_vec3){ p->x, (p->down ? -0.6f : 0) + ground_y(p->x, p->y), p->y });
     cw_node3d_set_rotation(V.pn[i], (t3_vec3){ p->down ? 1.4f : 0, -p->aim + 1.5708f, 0 }); /* the model faces +Z */
@@ -2069,10 +2069,10 @@ void view_sync(const sim *s, float time) {
       bool on = p->active && !p->down;
       float ax = cw_cos(p->aim), az = cw_sin(p->aim), gy = ground_y(p->x, p->y);
       if (on) cw_splats_add(V.lamps, (t3_vec3){ p->x + ax * LAMP_LEN * 0.5f, gy, p->y + az * LAMP_LEN * 0.5f }, LAMP_LEN, LAMP_LEN * 0.95f, 1.5707963f - p->aim, 0,
-                            (t3_color){ 1.0f, 0.9f, 0.72f }, V_floor > 0 ? 0.42f : 0.5f);
+                            (t3_color){ 1.0f, 0.9f, 0.72f }, V_floor > 0 ? 0.32f : 0.36f);
       cw_node_set(V.pl_spot[i], "energy", cw_val_float(on && spots ? 26.0f : 0.0f));
       if (!on) continue;
-      cw_node3d_set_position(V.pl_spot[i], (t3_vec3){ p->x - ax * 0.3f, gy + 1.9f, p->y - az * 0.3f });
+      cw_node3d_set_position(V.pl_spot[i], (t3_vec3){ p->x + ax * 0.55f, gy + 1.5f, p->y + az * 0.55f }); /* ahead of the soldier: its own body stays out of the beam */
       cw_node3d_look_at(V.pl_spot[i], (t3_vec3){ p->x + ax * 7.0f, gy, p->y + az * 7.0f }, (t3_vec3){ 0, 1, 0 });
       for (int k = 0; k < 5; k++) { /* the brightness gate: points on the floor in the cone, and as far off to the side, on screen */
         float d = 2.5f + 1.2f * (float)k, su, sv;
