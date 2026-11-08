@@ -47,7 +47,6 @@ standard+instbig+map+rep+shadow+senv+l1001+xfoliage
 standard+instbig+map+rep+senv+l1001+xfoliage
 
 # Lit mesh impact marks under the scene sun and cascaded shadows.
-standard+map+trans+senv+l0001+xcsm_meshdecal
 standard+map+trans+shadow+senv+l1001+xmeshdecal
 standard+map+trans+senv+l1001+xmeshdecal
 standard+shadow+senv+ds+l1001+xwater
@@ -102,3 +101,4 @@ standard+trans+senv+ds+l0001+xcsm_plain_rim
 standard+trans+senv+ds+l0201+xcsm
 standard+trans+senv+ds+l0201+xcsm_rim
 standard+senv+ds+l0201+xwaterlow
+standard+map+trans+senv+l0201+xcsm_meshdecal
