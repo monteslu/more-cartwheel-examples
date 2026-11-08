@@ -243,7 +243,7 @@ static void beam_place(t3_mesh *m, float x0, float x1, float y, float r, float a
   m->materials[0]->color = (t3_color){ c[0] * k * a, c[1] * k * a, c[2] * k * a };
 }
 
-/* One flash budget shared by every blow's flash (its flash sprite, its big light, a heavy one's explosion flash) and the
+/* One flash budget shared by every blow's flash (its flash sprite, its light, a heavy one's explosion flash) and the
  * super's: a blow flashes only if nothing flashed in the last 24 ticks (at most 2.5 flashes a second however fast a combo
  * lands them, inside the three a second of WCAG 2.3.1 and the Harding test); within that it sparks and rings, a heavy one
  * bursts, without the flash. A super or a knockout always flashes, and starts the wait again. fx_flash_cap 0 (test switch sw flash_cap 0): every one flashes,
@@ -321,9 +321,9 @@ void fx_event(const ft_game *g, const ft_event *e) {
     bool big = e->power >= 3, light_hit = e->power == 0;
     /* the flash of a blow (its flash sprite, its big light, a heavy one's explosion flash) is in the shared budget: in a
      * fast combo only one blow in 24 ticks flashes, the rest spark without it */
-    bool lit = !light_hit && flash_ok(g->tick);
+    bool lit = flash_ok(g->tick); /* a light blow's small light counts too */
     int r = FX.ri++ % 4;
-    if (light_hit || !lit) {
+    if (light_hit || !lit) { /* no flash sprite: a small spray of sparks */
       at(FX.lsparks[FX.lsi++ % 3], p);
       cw_node_set(FX.ring[r], "amount", cw_val_int(light_hit ? 6 : 10));
     } else {
@@ -336,7 +336,7 @@ void fx_event(const ft_game *g, const ft_event *e) {
     at(FX.ring[r], p);
     if (big) at(FX.embers[FX.emi++ % 2], p);
     if (big) heavy_boom(p, lit);
-    light(p, !lit ? 26 : big ? 90 : 50, 1, lit ? 0.75f : 0.9f, lit ? 0.4f : 0.7f);
+    if (lit) light(p, big ? 90 : light_hit ? 26 : 50, 1, light_hit ? 0.9f : 0.75f, light_hit ? 0.7f : 0.4f); /* outside the budget: no light */
     /* the one hit: short and sharp on the light motor, a heavy hit (a launcher, a knockdown) with some weight under it */
     rumble(who, big ? 0.35f : 0.05f + 0.03f * k, big ? 0.85f : 0.35f + 0.1f * k, big ? 140 : 70 + 15 * (int)k);
     rumble(other, big ? 0.15f : 0, big ? 0.5f : 0.2f + 0.06f * k, big ? 80 : 50);
