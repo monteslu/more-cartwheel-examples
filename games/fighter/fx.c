@@ -247,7 +247,8 @@ static void beam_place(t3_mesh *m, float x0, float x1, float y, float r, float a
  * super's: a blow flashes only if nothing flashed in the last 30 ticks (at most 2 flashes a second however fast a combo
  * lands them, inside the three a second of WCAG 2.3.1 and the Harding test); within that it sparks and rings, a heavy one
  * bursts, without the flash. A super or a knockout always flashes, and starts the wait again. fx_flash_cap 0 (test switch sw flash_cap 0): every one flashes,
- * as before. fx_boom_every N (sw boom_every N): a heavy hit's effects every N ticks, the flash check's fast combo */
+ * as before. fx_boom_every N (sw boom_every N): a heavy hit's effects every N ticks, the flash check's fast combo (N < 0: flurries
+ * of five blows -N ticks apart, one every 40 ticks) */
 int fx_flash_cap = 1, fx_boom_every, fx_hitfx_off; /* fx_hitfx_off (sw hitfx_off <mask>): leave out a blow's sparks 1, flash sprite 2, ring 4, embers 8, explosion 16, light 32 (finding what flashes) */
 int32_t fx_flashes; /* debug fx.flashes: explosion flashes lit */
 static uint32_t flash_tick;
@@ -418,7 +419,10 @@ void fx_frame(const ft_game *g, float dt) {
   while (FX.seen < n) { fx_event(g, &g->ev[FX.seen & 63]); FX.seen++; }
   { /* the test switch's fast combo: a heavy blow's effects on player 2 every fx_boom_every ticks */
     static uint32_t last;
-    if (fx_boom_every > 0 && g->tick != last && g->tick % (uint32_t)fx_boom_every == 0) {
+    /* negative: flurries, a blow every -N ticks five times, a new flurry every 40 ticks */
+    bool fire = fx_boom_every > 0 ? g->tick % (uint32_t)fx_boom_every == 0
+              : fx_boom_every < 0 && g->tick % 40u < 5u * (uint32_t)-fx_boom_every && g->tick % (uint32_t)-fx_boom_every == 0;
+    if (fire && g->tick != last) {
       last = g->tick;
       ft_event e = { EV_HIT, 1, 3, 0, g->f[1].x, 1100, g->tick };
       fx_event(g, &e);
