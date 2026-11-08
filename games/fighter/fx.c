@@ -372,7 +372,8 @@ void fx_frame(const ft_game *g, float dt) {
     }
     /* the super's beam runs from where the shot left the hands to where its head is now */
     if (live && big) {
-      if (!FX.beam_was[i]) FX.beam_x0[i] = (float)P->x / 1000.0f - (float)(P->vx > 0 ? 1 : -1) * 0.15f;
+      /* from the owner's hands (a shot fired point blank still draws a beam to its head) */
+      if (!FX.beam_was[i]) FX.beam_x0[i] = (float)g->f[P->owner].x / 1000.0f + (float)(P->vx > 0 ? 1 : -1) * 0.35f;
       FX.beam_x1[i] = (float)P->x / 1000.0f; FX.beam_y[i] = (float)P->y / 1000.0f; FX.beam_r[i] = (float)P->size / 1000.0f;
       FX.beam_a[i] = 1;
       const float *c = PROJ_COL[g->f[P->owner].def % 4];
