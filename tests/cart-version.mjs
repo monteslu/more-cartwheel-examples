@@ -8,8 +8,12 @@
 // the tag without its v, else what the engine's rule gives this checkout
 // (<last tag>-dev.g<commit>). A tag build's version must be a release (no
 // prerelease part). The carts: <dir>/<game>.wasc for each game named, else
-// every .wasc in <dir> (default build/cart-wgpu/carts). Any other file in
-// <dir> (a release's native packages) must carry the version in its name.
+// every .wasc in <dir> (default build/cart-wgpu/carts). Only *.wasc files are
+// carts: anything else in <dir> (a smoke run's <game>.wasc.sav, a .tmp) is
+// ignored, except that a release's native packages (*.tar.gz, *.AppImage,
+// *.zip, *.apk) must carry the version in their names.
+// SELF-TEST: a scratch directory holding a cart, its .wasc.sav and a .tmp
+// passes, and the same with a package whose name lacks the version fails.
 // CONTROL that must fail: a copy of the first cart with its manifest set to
 // another version.
 import { spawnSync } from 'node:child_process';
@@ -37,24 +41,33 @@ let failed = 0;
 const fail = (m) => { failed++; console.log(`FAIL ${m}`); };
 if (tag && /[-+]/.test(expect)) fail(`tag ${tag}: ${expect} is not a release version`);
 
-const files = existsSync(dir) ? readdirSync(dir) : [];
-const carts = games.length ? games.map((g) => `${g}.wasc`) : files.filter((f) => f.endsWith('.wasc'));
-if (!carts.length) fail(`no carts in ${dir}`);
-/** each cart's manifest version (null: no cart or no manifest) */
-const versions = carts.map((c) => {
-  const r = spawnSync('unzip', ['-p', join(dir, c), 'manifest.json'], { encoding: 'utf8', maxBuffer: 1 << 24 });
-  try { return [c, r.status === 0 ? JSON.parse(r.stdout).version ?? '(none)' : null]; } catch { return [c, null]; }
-});
-for (const [c, v] of versions) {
-  if (v === null) fail(`${c}: no cart or no manifest.json in ${dir}`);
-  else if (v !== expect) fail(`${c}: manifest version ${v}, not ${expect}`);
-  else console.log(`ok   ${c.padEnd(24)} ${v}`);
+const PACKAGE = /\.(tar\.gz|AppImage|zip|apk)$/;
+/** a cart's manifest version (null: no cart or no manifest) */
+const manifestVersion = (file) => {
+  const r = spawnSync('unzip', ['-p', file, 'manifest.json'], { encoding: 'utf8', maxBuffer: 1 << 24 });
+  try { return r.status === 0 ? JSON.parse(r.stdout).version ?? '(none)' : null; } catch { return null; }
+};
+/** check one directory: its carts' manifests and its packages' names; returns [problems, lines, versions] */
+function checkDir(d, names, want) {
+  const problems = [], lines = [];
+  const files = existsSync(d) ? readdirSync(d) : [];
+  const carts = names.length ? names.map((g) => `${g}.wasc`) : files.filter((f) => f.endsWith('.wasc'));
+  if (!carts.length) problems.push(`no carts in ${d}`);
+  const versions = carts.map((c) => [c, manifestVersion(join(d, c))]);
+  for (const [c, v] of versions) {
+    if (v === null) problems.push(`${c}: no cart or no manifest.json in ${d}`);
+    else if (v !== want) problems.push(`${c}: manifest version ${v}, not ${want}`);
+    else lines.push(`ok   ${c.padEnd(24)} ${v}`);
+  }
+  for (const f of files.filter((f) => PACKAGE.test(f))) {
+    if (!f.includes(`-${want}-`) && !f.includes(`-${want}.`)) problems.push(`${f}: its name does not carry ${want}`);
+    else lines.push(`ok   ${f}`);
+  }
+  return [problems, lines, versions];
 }
-// a release's other files (native packages): the version in each name
-for (const f of files.filter((f) => !f.endsWith('.wasc'))) {
-  if (!f.includes(`-${expect}-`) && !f.includes(`-${expect}.`)) fail(`${f}: its name does not carry ${expect}`);
-  else console.log(`ok   ${f}`);
-}
+const [problems, lines, versions] = checkDir(dir, games, expect);
+lines.forEach((l) => console.log(l));
+problems.forEach(fail);
 // CONTROL: a copy of the first cart whose manifest says another version must be caught
 const first = versions.find(([, v]) => v !== null);
 if (first) {
@@ -71,6 +84,23 @@ if (first) {
   if (z.status !== 0) fail(`CONTROL: could not rewrite the copy's manifest (${z.stderr})`);
   else if (got === expect) fail(`CONTROL: ${first[0]} with its manifest set to ${m.version} passed`);
   else console.log(`ok   CONTROL: ${first[0]} with its manifest set to ${got} is caught`);
+}
+
+// SELF-TEST: leftovers beside the carts are ignored; a package without the version is not
+if (first) {
+  const st = join(ROOT, 'out', 'cart-version-selftest');
+  rmSync(st, { recursive: true, force: true });
+  mkdirSync(st, { recursive: true });
+  copyFileSync(join(dir, first[0]), join(st, first[0]));
+  writeFileSync(join(st, `${first[0]}.sav`), 'save data');
+  writeFileSync(join(st, `${first[0]}.tmp`), 'partial');
+  const [p1] = checkDir(st, [], first[1]);
+  if (p1.length) fail(`SELF-TEST: a cart with a .wasc.sav and a .tmp beside it failed: ${p1.join('; ')}`);
+  else console.log('ok   SELF-TEST: a .wasc.sav and a .tmp beside the carts are ignored');
+  writeFileSync(join(st, 'game-0.0.0-linux-x64.tar.gz'), '');
+  const [p2] = checkDir(st, [], first[1]);
+  if (p2.length !== 1) fail(`SELF-TEST: a package without the version gave ${p2.length} problems, not 1`);
+  else console.log('ok   SELF-TEST: a package whose name lacks the version is caught');
 }
 
 console.log(failed ? `${failed} failed` : `cart version: every cart is ${expect}`);
