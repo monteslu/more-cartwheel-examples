@@ -4,12 +4,14 @@
 // Control: ARENA_NO_KILLCAM=1 (the old dead view, lying on the floor looking nowhere) must fall under the bound.
 //   node tests/arenafps-killcam.mjs [--build build/native]
 import { spawnSync } from 'node:child_process';
-import { readFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const i = process.argv.indexOf('--build');
-const exe = join(resolve(ROOT, i > 0 ? process.argv[i + 1] : 'build/native'), 'games/arenafps/arenafps_auto');
+const BUILD = resolve(ROOT, i > 0 ? process.argv[i + 1] : 'build/native');
+/* an engine-source tree keeps the games under project/, an SDK tree at its top (as tools/pacing.mjs finds it) */
+const exe = [join(BUILD, 'project/games/arenafps/arenafps_auto'), join(BUILD, 'games/arenafps/arenafps_auto')].find(existsSync) ?? join(BUILD, 'games/arenafps/arenafps_auto');
 const out = join(ROOT, 'out/killcam');
 mkdirSync(out, { recursive: true });
 function run(tag, extra) {

@@ -2,12 +2,14 @@
 // nominal height is on the floor under it, in all three arenas. The control (ARENA_PROP_LIFT=1, the first prop lifted 0.5 m) must
 // fail, or the check could not see a floating prop. Run: node tests/arenafps-grounding.mjs [--build build/native]
 import { spawnSync } from 'node:child_process';
-import { readFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const i = process.argv.indexOf('--build');
-const exe = join(resolve(ROOT, i > 0 ? process.argv[i + 1] : 'build/native'), 'games/arenafps/arenafps_auto');
+const BUILD = resolve(ROOT, i > 0 ? process.argv[i + 1] : 'build/native');
+/* an engine-source tree keeps the games under project/, an SDK tree at its top (as tools/pacing.mjs finds it) */
+const exe = [join(BUILD, 'project/games/arenafps/arenafps_auto'), join(BUILD, 'games/arenafps/arenafps_auto')].find(existsSync) ?? join(BUILD, 'games/arenafps/arenafps_auto');
 const out = join(ROOT, 'out/grounding');
 mkdirSync(out, { recursive: true });
 function run(arena, extra) {
