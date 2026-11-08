@@ -348,8 +348,12 @@ void level_build(int stage) {
     /* the fog is back (B-PT19 took it out whole, the Foggy Docks too): volumetric where the preset asks for it (High and
        up: the accents scatter in it), and on Low and Very Low the engine draws it as plain height fog inside the tone
        mapping pass, at no cost of its own. A short grid: the street camera sees about 25 m */
-    cw_node_set(fog, "visible", cw_val_bool(true));
-    cw_node_set(fog, "volumetric", cw_val_bool(true));
+    const char *xp = "";
+#ifdef BRAWLER_AUTOPILOT
+    { const char *x = getenv("BRAWLER_EXP"); if (x) xp = x; } /* perf A/B: nofog (none, as B-PT19 left it), volfog (the light-shaft grid) */
+#endif
+    cw_node_set(fog, "visible", cw_val_bool(!strstr(xp, "nofog")));
+    cw_node_set(fog, "volumetric", cw_val_bool(strstr(xp, "volfog") != NULL));
     cw_node_set(fog, "volumetric_distance", cw_val_float(28));
     cw_node_set(post, "ssao", cw_val_bool(false)); /* the bake carries it (lm_apply) */
     cw_node_set(sun, "shadow_cascades", cw_val_int(2));
