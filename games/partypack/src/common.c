@@ -56,6 +56,31 @@ static cw_sound make(float secs, float hz0, float hz1, float gain, int wave, flo
   return cw_sound_from_pcm(pcm_buf, n, 1, RATE, NULL);
 }
 
+/* a crowd's ooh: a dozen voices on slightly different pitches singing an oo that falls, with breath in it; it swells
+ * in and fades out (no hard edge) */
+static cw_sound make_crowd(float secs) {
+  int n = (int)(secs * RATE);
+  memset(pcm_buf, 0, sizeof(float) * (size_t)n);
+  for (int v = 0; v < 12; v++) {
+    float hz0 = 150 + (float)((v * 37) % 160), drop = 0.72f + 0.04f * (float)(v % 3);
+    double ph = (double)v * 0.7;
+    for (int i = 0; i < n; i++) {
+      float t = (float)i / (float)n;
+      ph += TAU * hz0 * (1 - (1 - drop) * t) / RATE;
+      float x = sinf((float)ph) + 0.45f * sinf((float)ph * 2) + 0.12f * sinf((float)ph * 3); /* a round oo */
+      pcm_buf[i] += x * 0.045f;
+    }
+  }
+  float lp = 0;
+  for (int i = 0; i < n; i++) {
+    float t = (float)i / (float)n;
+    lp += (noise() - lp) * 0.08f; /* breath: soft low noise */
+    float env = t < 0.18f ? t / 0.18f : (1 - t) / 0.82f;
+    pcm_buf[i] = (pcm_buf[i] + lp * 0.35f) * env * env * 0.9f;
+  }
+  return cw_sound_from_pcm(pcm_buf, n, 1, RATE, NULL);
+}
+
 /* a looped bar pattern: notes are scale degrees, 0 = rest */
 static cw_sound make_music(float bpm, const int *notes, int count, float root, int bars, float gain, bool bass) {
   static const float scale[8] = { 0, 2, 4, 7, 9, 12, 14, 16 };
@@ -111,6 +136,7 @@ void sfx_init(void) {
   S[SFX_BOUNCE] = make(0.1f, 200, 500, 0.3f, 0, 0);
   S[SFX_BUZZ] = make(0.25f, 140, 120, 0.35f, 2, 0);
   S[SFX_POP] = make(0.08f, 900, 300, 0.35f, 0, 0.2f);
+  S[SFX_OOH] = make_crowd(1.3f);
   static const float notes[8] = { 261.63f, 293.66f, 329.63f, 392.0f, 440.0f, 523.25f, 587.33f, 659.25f };
   for (int i = 0; i < 8; i++) S[SFX_NOTE0 + i] = make(0.35f, notes[i], notes[i], 0.35f, 0, 0);
   static const int hub[16] = { 1, 0, 3, 0, 5, 0, 3, 0, 4, 0, 6, 0, 5, 0, 3, 2 };
@@ -195,6 +221,20 @@ void cam_offset_3d(cw_node cam, float px, float py, float pz) {
 static int hitstop;
 void fx_hitstop(int ticks) { fx_impact(); if (ticks > 10) ticks = 10; if (ticks > hitstop) hitstop = ticks; }
 int fx_hitstop_take(void) { int n = hitstop; hitstop = 0; return n; }
+static int slowmo;
+void fx_slowmo(int ticks) {
+#ifdef PP_AUTOPILOT
+  static int off = -1; /* PP_NO_SLOWMO=1: no fail moments (the check that they change no result) */
+  if (off < 0) off = getenv("PP_NO_SLOWMO") != NULL;
+  if (off) return;
+#endif
+  fx_impact();
+  if (ticks > 60) ticks = 60;
+  if (ticks > slowmo) slowmo = ticks;
+}
+int fx_slowmo_take(void) { int n = slowmo; slowmo = 0; return n; }
+cw_vec2 (*fx_map)(cw_vec2 stage_point);
+bool pp_set_on;
 
 static float frand(void) {
   fx_rng_state = fx_rng_state * 16807.0f;
@@ -206,10 +246,12 @@ void fx_reset(void) {
   memset(P, 0, sizeof P);
   memset(POP, 0, sizeof POP);
   hitstop = 0;
+  slowmo = 0;
   fx_rng_state = 7;
 }
 static part *np(void) { part *p = &P[part_next++ % NPART]; memset(p, 0, sizeof *p); return p; }
 void fx_burst(cw_vec2 pos, int n, cw_color c, float speed, float life, float size) {
+  if (fx_map) pos = fx_map(pos);
   for (int i = 0; i < n; i++) {
     part *p = np();
     float a = frand() * TAU, s = speed * (0.3f + frand() * 0.7f);
@@ -222,6 +264,7 @@ void fx_burst(cw_vec2 pos, int n, cw_color c, float speed, float life, float siz
   }
 }
 void fx_ring(cw_vec2 pos, float r0, float r1, float life, cw_color c) {
+  if (fx_map) pos = fx_map(pos);
   part *p = np();
   p->p = pos; p->size = r0; p->r1 = r1; p->life = p->max = life; p->c = c; p->kind = 1;
 }
@@ -238,6 +281,7 @@ void fx_confetti(cw_rect a, int n) {
   }
 }
 void fx_text(cw_vec2 pos, const char *s, cw_color c, float size) {
+  if (fx_map) pos = fx_map(pos);
   static int next;
   pop *o = &POP[next++ % NPOP];
   o->p = pos; o->life = 1.0f; o->c = c; o->size = size;
@@ -454,6 +498,53 @@ void ui_blob(cw_vec2 p, float r, int player, float lx, float ly, float squash, i
     cw_vec2 b = AT(128, 14);
     cw_r2d_line(b, cw_v2(b.x, b.y - 30 * S), 7 * S, cw_rgba(0.75f, 0.77f, 0.85f, 1));
     art_draw("antenna", cw_v2(b.x, b.y - 42 * S), cw_v2(38 * S, 38 * S), 0, (cw_color){ 0 });
-  }
+  } else if (pp_hat[pl] > HAT_NONE) ui_hat(AT(128, 22), r * sx, pp_hat[pl], PCOL[pl]);
 #undef AT
+}
+
+/* ── hats ──────────────────────────────────────────────────────────── */
+const char *HAT_NAME[HAT_N] = { "No hat", "Party hat", "Crown", "Top hat", "Flower", "Bow" };
+const int HAT_POINTS[HAT_N] = { 0, 4, 8, 12, 16, 20 };
+int pp_hat[NP];
+
+static void tri(cw_vec2 a, cw_vec2 b, cw_vec2 c, cw_color col) {
+  cw_vertex2d v[3] = { { a, { 0, 0 }, col }, { b, { 0, 0 }, col }, { c, { 0, 0 }, col } };
+  static const uint32_t idx[3] = { 0, 1, 2 };
+  cw_r2d_triangles((cw_texture){ 0 }, v, 3, idx, 3);
+}
+void ui_hat(cw_vec2 t, float r, int hat, cw_color tint) {
+  float k = r / 30.0f; /* drawn for a blob of radius 30 */
+  cw_color dark = cw_rgba(0.12f, 0.08f, 0.16f, 1), gold = cw_rgba(1, 0.8f, 0.22f, 1);
+  switch (hat) {
+  case HAT_CONE: { /* a striped cone with a pompom, leaning a little */
+    cw_vec2 tip = cw_v2(t.x + 4 * k, t.y - 30 * k);
+    tri(cw_v2(t.x - 12 * k, t.y + 2 * k), cw_v2(t.x + 12 * k, t.y + 2 * k), tip, col_mix(tint, cw_rgba(1, 1, 1, 1), 0.35f));
+    tri(cw_v2(t.x - 6 * k, t.y - 9 * k), cw_v2(t.x + 8 * k, t.y - 9 * k), cw_v2(t.x + 1 * k, t.y - 14 * k), gold);
+    cw_r2d_circle(tip, 5 * k, 10, cw_rgba(1, 1, 1, 1));
+    break;
+  }
+  case HAT_CROWN: {
+    cw_r2d_rect(cw_rect_make(t.x - 14 * k, t.y - 8 * k, 28 * k, 10 * k), gold);
+    for (int i = -1; i <= 1; i++) tri(cw_v2(t.x + (i * 10 - 5) * k, t.y - 7 * k), cw_v2(t.x + (i * 10 + 5) * k, t.y - 7 * k), cw_v2(t.x + i * 10 * k, t.y - (i ? 17 : 21) * k), gold);
+    cw_r2d_circle(cw_v2(t.x, t.y - 3 * k), 3 * k, 8, tint);
+    break;
+  }
+  case HAT_TOPHAT:
+    cw_r2d_rect(cw_rect_make(t.x - 17 * k, t.y - 3 * k, 34 * k, 5 * k), dark);
+    cw_r2d_rect(cw_rect_make(t.x - 11 * k, t.y - 25 * k, 22 * k, 23 * k), dark);
+    cw_r2d_rect(cw_rect_make(t.x - 11 * k, t.y - 9 * k, 22 * k, 5 * k), tint);
+    break;
+  case HAT_FLOWER:
+    for (int i = 0; i < 5; i++) { float a = TAU * (float)i / 5; cw_r2d_circle(cw_v2(t.x + 8 * k + cosf(a) * 7 * k, t.y - 6 * k + sinf(a) * 7 * k), 5 * k, 10, cw_rgba(1, 0.95f, 0.98f, 1)); }
+    cw_r2d_circle(cw_v2(t.x + 8 * k, t.y - 6 * k), 4.5f * k, 10, gold);
+    break;
+  case HAT_BOW: {
+    cw_color c = col_mix(tint, cw_rgba(1, 0.3f, 0.6f, 1), 0.6f);
+    tri(cw_v2(t.x, t.y - 4 * k), cw_v2(t.x - 16 * k, t.y - 13 * k), cw_v2(t.x - 16 * k, t.y + 5 * k), c);
+    tri(cw_v2(t.x, t.y - 4 * k), cw_v2(t.x + 16 * k, t.y - 13 * k), cw_v2(t.x + 16 * k, t.y + 5 * k), c);
+    cw_r2d_circle(cw_v2(t.x, t.y - 4 * k), 5 * k, 10, col_mix(c, dark, 0.3f));
+    break;
+  }
+  default: break;
+  }
 }

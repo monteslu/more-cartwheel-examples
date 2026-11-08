@@ -1,7 +1,7 @@
 /* Echo (2D, memory): watch a pattern of four coloured pads light up, then
  * play it back on your pad: each pad on the face button that sits where it
  * does (south, east, west, north), or the matching direction. One wrong
- * press and you are out. Every round adds a step; the last player standing, or the longest memory, wins.
+ * press and you are out (in the first three patterns one slip is forgiven: that player starts the pattern again). Every round adds a step; the last player standing, or the longest memory, wins.
  * A player who is out plays on as a ghost: every round they can play the
  * pattern too, and each full round earns a little bonus that only breaks ties
  * between players who went out on the same pattern (the score is the longest pattern played back) (it never beats a player
@@ -20,6 +20,7 @@ static struct {
   int last_sym[NP];
   int cpu_wait[NP];
   int msg;
+  int spare[NP]; /* a slip forgiven: each player has one for the first three patterns */
 } M;
 
 static const cw_color PAD_COL[4] = { { 0.3f, 0.8f, 0.4f, 1 }, { 0.9f, 0.3f, 0.3f, 1 }, { 0.3f, 0.5f, 0.95f, 1 }, { 0.95f, 0.8f, 0.25f, 1 } };
@@ -31,7 +32,7 @@ static void start(mg_ctx *c) {
   memset(&M, 0, sizeof M);
   for (int i = 0; i < MAXSEQ; i++) M.seq[i] = cw_rng_int(&c->rng, 0, 3);
   M.len = 3;
-  for (int p = 0; p < NP; p++) M.alive[p] = true;
+  for (int p = 0; p < NP; p++) M.alive[p] = true, M.spare[p] = 1;
   M.lit = -1;
 }
 
@@ -108,6 +109,11 @@ static void tick(mg_ctx *c) {
         M.prog[p]++;
         sfx(SFX_NOTE0 + NOTE_OF[s], c->human[p] ? 0.5f : 0.2f, 1);
         if (M.prog[p] >= M.len) { M.rounds[p]++; M.best[p] = M.len; c->score[p] = (float)M.best[p]; fx_text(cw_v2(250 + p * 260, 560), "done", PCOL[p], 30); }
+      } else if (M.spare[p] > 0 && M.len <= 5) { /* the first three patterns forgive one slip: start it again */
+        M.spare[p] = 0;
+        M.prog[p] = 0;
+        sfx(SFX_BUZZ, 0.4f, 1.3f);
+        fx_text(cw_v2(250 + p * 260, 560), "slip! again", PCOL[p], 30);
       } else {
         M.alive[p] = false;
         c->eliminated[p] = true;
@@ -204,9 +210,9 @@ static void draw(mg_ctx *c, float alpha, float t) {
 static void score_text(mg_ctx *c, int p, char *buf, int cap) { snprintf(buf, (size_t)cap, "best %d", (int)c->score[p]); }
 
 const mg_def mg_memory = {
-  .id = "echo", .name = "Echo", .tagline = "Repeat the pattern. One slip and you are out.",
-  .how = { "Press the pad's button, or flick " MOVE4 " toward it", "Watch the pads, then play it back", "Out? Play along as a ghost for a tie-break" },
+  .id = "echo", .name = "Echo", .tagline = "Repeat the pattern. Slip twice early, or once later, and you are out.",
+  .how = { "Press the pad's button, or flick " MOVE4 " toward it", "Watch the pads, then play it back", "One slip is forgiven in the first three. Out? Play along as a ghost" },
   .controls = MOVE4,
-  .kind = "2D", .scene = NULL, .seconds = 85, .unlock_points = 0, .higher_is_better = true,
+  .kind = "2D", .scene = NULL, .seconds = 85, .higher_is_better = true,
   .start = start, .tick = tick, .think = think, .draw = draw, .score_text = score_text,
 };

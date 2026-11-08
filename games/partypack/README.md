@@ -13,15 +13,21 @@ the south button, and the east button on the hub goes back to the title.
 
 After joining you get the hub:
 
-- **Party Tournament**: 4, 6 or 8 rounds. Each round is one mini-game picked
-  from the ones you have unlocked. First place moves five spaces on the board,
-  second three, third two, fourth one. The round before the last counts double
-  and the last one triple, every player 5 or more behind the leader gets an
-  underdog point, and the first player to land on a +2 space takes the bonus.
-  A tie on points goes to the most round wins, then to a draw. The player furthest
-  along when the rounds run out wins.
-- **Free Play**: pick any unlocked mini-game and play it on its own.
-- **Trophy Room**: party points, tournament wins per seat, best scores.
+- **Party Tournament**: 4, 6 or 8 rounds, each one mini-game from all eleven, on a board. After
+  each game every seat gets coins for its place (5, 3, 2, 1; the round before the last counts double and the last
+  one triple) and rolls a die (1 to 4) plus a bonus for its place (3, 2, 1, 0). Before anyone moves, the board
+  opens its shop: each person picks with left / right and confirms with the south button (Save, Boot: 3 more
+  spaces for 3 coins, Swap: trade places with the seat just ahead for 6, Double: your next game's coins count
+  twice for 4). Once one person has picked, the rest get 10 seconds. Then the tokens walk: passing the star with
+  10 coins buys it, and the star moves on to a few spaces in front of the seat furthest behind. Landing spaces give
+  3 coins, take 3 coins from the seat ahead in the standings, or swap places with a random seat. A seat behind the
+  leader gets an underdog coin and space. Most stars wins, then the furthest along, then the most rounds won, then
+  a draw. Every third round from the second is 2 vs 2: the leader and the last against the two between, each
+  team's two scores added, and both of the better team take first place. The end screen gives three awards from what happened, and the south button starts another tournament.
+- **Free Play**: pick any mini-game and play it on its own. All eleven are open from the start.
+- **Trophy Room**: party points, tournament wins per seat, best scores, hats.
+- **Hat**: party points (the lifetime total of the points people earn) unlock hats (a party hat at 4, a crown
+  at 8, a top hat at 12, a flower at 16, a bow at 20); each person turns their own with left / right on this row.
 - **Rounds** and **CPU Skill** (easy, medium, hard) are set on the menu.
 
 Every mini-game opens with a card (how to play, press the south button to be ready), a
@@ -34,21 +40,30 @@ waiting for every person) must stay on the card.
 
 ## Mini-games
 
-| Name | Kind | Idea | Unlock |
-|---|---|---|---|
-| Hurdle Dash | 2D | jump rocks, duck bars, three lives | open |
-| Echo | 2D | repeat a growing pattern on the four face buttons | open |
-| Stack Attack | 2D physics | crane and blocks, tallest standing tower | 4 points |
-| Blast Ring | 3D physics | bombs shove you, the ring shrinks | 8 points |
-| Beat Box | 2D rhythm | hit the notes as they land, in three lanes on the west, south and east buttons | 12 points |
-| Loop Racers | 3D racing | three laps, hazards on the short lane | 16 points |
-| Quick Quiz | 2D trivia | four answers in a diamond, one per face button | 20 points |
-| Raft Rush | 3D water | paddle a raft for floating buoys | open |
-| Sumo Push | 2D | shove everyone off the shrinking plate | open |
-| Coin Rush | 2D | grab the most coins, gold ones count three | open |
-| Tile Drop | 2D | the floor crumbles, be the last one standing | open |
+| Name | Kind | Idea |
+|---|---|---|
+| Hurdle Dash | 2D | jump rocks, duck bars, three lives |
+| Echo | 2D | repeat a growing pattern on the four face buttons |
+| Stack Attack | 2D physics, 3D set | crane and blocks, tallest standing tower |
+| Blast Ring | 3D physics | bombs shove you, the ring shrinks |
+| Beat Box | 2D rhythm | hit the notes as they land, in three lanes on the west, south and east buttons |
+| Loop Racers | 3D racing | three laps, hazards on the short lane |
+| Quick Quiz | 2D trivia | four answers in a diamond, one per face button |
+| Raft Rush | 3D water | paddle a raft for floating buoys |
+| Sumo Push | 2D rules, 3D set | shove everyone off the shrinking plate |
+| Coin Rush | 2D rules, 3D set | grab the most coins, gold ones count three |
+| Tile Drop | 2D rules, 3D set | the floor crumbles, be the last one standing |
 
-Party points are the lifetime total of the points people (not CPUs) earn.
+Sumo Push, Coin Rush, Tile Drop and Stack Attack keep their 2D rules (stage units, the same
+simulation) and are shown on 3D sets: a wooden plate in a pool inside a little stadium, a garden yard with
+coins standing on edge, glazed tiles on a steel lattice over a deep pool, four pillars under a crane rail. The set is built and moved from the 2D
+state in the game's draw, never in its tick, so a replay and the balance runs are what they were.
+
+A fall (a ring-out in Sumo Push or Blast Ring, a drop in Tile Drop) plays at half speed for a moment with a
+crowd's gasp: every other play tick is held, like a hit-stop, so the simulation is the same. Echo forgives one
+slip in its first three patterns. Quick Quiz draws from about 130 questions in nine categories. Each player's
+3D character has a rim light in their colour that shows from far away; Loop Racers' camera follows the pack.
+
 Everything is saved by the shell.
 
 ## Controls

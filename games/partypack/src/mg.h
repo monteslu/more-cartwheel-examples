@@ -75,8 +75,10 @@ typedef struct mg_def {
   const char *how[3];   /* control lines on the intro card, NULL-terminated: prompt markup, "{btn_south}: dash" */
   const char *kind;     /* "2D", "3D" (shown on the card) */
   const char *scene;    /* a 3D game's scene (assets/scenes/...); NULL = drawn in 2D over the hub scene */
+  const char *set;      /* a 2D game's 3D set (2.5D): the rules stay 2D in stage units and tick() never touches the
+                         * scene; draw() places the set's nodes from the 2D state (render only), so a replay, the
+                         * balance runs (no scene at all) and the sim hash are what they were in 2D */
   float seconds;        /* the clock; 0 = the game ends itself */
-  int unlock_points;    /* lifetime party points needed (0 = open from the start) */
   bool higher_is_better; /* ranking by score: true normally */
   bool team_pairs;      /* reserved */
   void (*start)(mg_ctx *c);                          /* the scene is loaded; reset everything */
@@ -101,6 +103,7 @@ extern const char *PNAME[NP];
 typedef enum {
   SFX_BLIP, SFX_SELECT, SFX_BACK, SFX_COIN, SFX_HIT, SFX_BOOM, SFX_JUMP, SFX_WIN, SFX_LOSE,
   SFX_TICK, SFX_GO, SFX_SPLASH, SFX_BOUNCE, SFX_BUZZ, SFX_POP,
+  SFX_OOH, /* a crowd gasps (a fall, a ring-out) */
   SFX_NOTE0, /* eight notes of a scale follow */
   SFX_N = SFX_NOTE0 + 8
 } sfx_id;
@@ -134,6 +137,15 @@ void cam_offset_3d(cw_node cam, float px, float py, float pz); /* the shake chec
 int fx_hitstop_take(void); /* the framework, after each play tick: the freeze asked for (0 none), and clears it */
 void fx_update(float dt);
 void fx_draw(void);
+/* a set game maps its 2D stage points to where they show on screen (the ground point under the camera), so the 2D
+ * bursts, rings and words its tick() spawns land on the 3D set; NULL (the 2D games): as given */
+extern cw_vec2 (*fx_map)(cw_vec2 stage_point);
+extern bool pp_set_on; /* the running game's 3D set is loaded (false in a balance run, which has no scene) */
+/* a fail moment: play runs at half speed for ticks (every other tick held, the clock too), as hit-stop does, so it is
+ * part of the simulation and a replay agrees; the per-tick results (the sim hash) are the same as without it */
+void fx_slowmo(int ticks);
+int fx_slowmo_take(void);
+float pp_anim_speed(void); /* 1, or about half while a fail moment plays: the looks (particles, a set's falls) slow with the play */
 
 /* drawing helpers (stage units) */
 void ui_text(const char *s, cw_vec2 p, float size, cw_color c, cw_text_align al);
@@ -157,8 +169,15 @@ void ui_pill(cw_rect r, cw_color c);
  * (-1: every seat, for a card all of them read); the glyphs follow each player's device and bindings */
 cw_vec2 ui_prompt(const char *s, int player, cw_vec2 p, float size, cw_color c, cw_text_align al);
 cw_vec2 ui_prompt_size(const char *s, int player, float size); /* the box ui_prompt would draw */
-/* the party character: a round blob with eyes. look: -1..1 gaze; squash 1 = normal; blink; hat 0 none */
+/* the party character: a round blob with eyes. look: -1..1 gaze; squash 1 = normal; a person's blob wears the hat its
+ * seat picked (pp_hat), a CPU's the stalk that marks it */
 void ui_blob(cw_vec2 p, float r, int player, float look_x, float look_y, float squash, int mood, bool cpu);
+/* hats: party points unlock them (every mini-game is open from the start); each person picks one on the menu */
+enum { HAT_NONE, HAT_CONE, HAT_CROWN, HAT_TOPHAT, HAT_FLOWER, HAT_BOW, HAT_N };
+extern const char *HAT_NAME[HAT_N];
+extern const int HAT_POINTS[HAT_N]; /* lifetime party points that unlock each */
+extern int pp_hat[NP];              /* each seat's hat (the framework sets it from the save) */
+void ui_hat(cw_vec2 top, float r, int hat, cw_color tint); /* a hat whose brim sits at top (the blob's crown), r: the blob's radius */
 cw_color col_mix(cw_color a, cw_color b, float t);
 cw_color col_a(cw_color c, float a);
 float ease_out(float t);
@@ -214,6 +233,10 @@ void n3_fx_tick(void);
 void n3_shockwave(t3_vec3 pos, float radius, float seconds, float strength);
 cw_node n3_glb(cw_node parent, const char *name, const char *path, bool cast); /* a model from models/ as a node */
 void n3_receive(cw_node n, bool on);
+void n3_rim(cw_node n, int p, const char *const *names); /* a rim light in seat p's colour on those materials (NULL: all) */
+cw_node n3_blob(cw_node parent, int p, bool cpu);  /* a party blob; its origin is where its feet stand */
+void n3_blob_pose(cw_node b, float x, float y, float z, float yaw, float squash);
+float n3_frame_dt(float *last);                   /* render seconds since the last call, at most 0.1 */
 cw_node n3_decal(const char *texture, t3_vec3 pos, float size, cw_color c, const char *blend); /* projected down, blend MIX MULTIPLY ADD */
 
 /* ── the 3D hub (hub.c): table, board tiles, tokens, trophy, podium ── */

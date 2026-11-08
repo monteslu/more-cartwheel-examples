@@ -190,6 +190,6 @@ const mg_def mg_beat = {
   .id = "beatbox", .name = "Beat Box", .tagline = "Hit the notes as they land on your line.",
   .how = { "Three lanes, left to right: {btn_west}  {btn_south}  {btn_east}", "Press as the note reaches the ring", "Perfect hits build a combo" },
   .controls = "{btn_west}  {btn_south}  {btn_east}",
-  .kind = "2D", .scene = NULL, .seconds = 0, .unlock_points = 12, .higher_is_better = true,
+  .kind = "2D", .scene = NULL, .seconds = 0, .higher_is_better = true,
   .start = start, .tick = tick, .think = think, .draw = draw, .score_text = score_text,
 };

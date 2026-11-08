@@ -15,8 +15,10 @@ static struct {
   uint32_t seed; /* this game's CPU noise */
 } S;
 
+static void build_set(mg_ctx *c);
 static void start(mg_ctx *c) {
   memset(&S, 0, sizeof S);
+  if (pp_set_on) build_set(c);
   S.seed = cw_rng_u32(&c->rng);
   S.radius = R0;
   S.alive = NP;
@@ -119,6 +121,7 @@ static void tick(mg_ctx *c) {
       fx_burst(cw_v2(b->x, b->y), 16, PCOL[i], 260, 0.7f, 8);
       fx_text(cw_v2(CX + dx * 0.9f, CY + dy * 0.9f), "OUT", PCOL[i], 36);
       fx_hitstop(5);
+      fx_slowmo(36); /* the fall plays at half speed: the moment everyone remembers */
       pp_rumble(c, i, 0.5f, 0.5f, 200); /* out of the ring */
     }
   }
@@ -187,27 +190,135 @@ static void think(mg_ctx *c, int p, mg_in *out) {
   }
 }
 
+/* ── the set: a lacquered wooden plate on a stone post in a pool, in a little stadium (2.5D: the rules above are
+ * the 2D ones, in stage units; 60 stage units are a metre) ── */
+#define WS (1.0f / 60.0f)
+#define WATER_Y -0.8f
+static struct {
+  cw_node plate, rim, mark, blob[NP], ring[NP];
+  bool was_alive[NP];
+  float fall_t[NP], fx[NP], fy[NP], fz[NP], fvx[NP], fvz[NP], fvy[NP], yaw[NP], last;
+  bool splashed[NP];
+} V;
+static cw_vec2 to_screen(cw_vec2 s) { return n3_project((t3_vec3){ (s.x - CX) * WS, 0, (s.y - CY) * WS }); }
+static void cam(void) { n3_camera(0, 7.4f, 7.0f, 0, -0.3f, 0.45f); }
+
+static void build_set(mg_ctx *c) {
+  memset(&V, 0, sizeof V);
+  cw_node lv = n3_level();
+  float r0 = R0 * WS;
+  V.rim = n3_prim(lv, "Rim", "CYLINDER", (t3_vec3){ 0, -0.17f, 0 }, (t3_vec3){ 2 * r0 + 0.24f, 0.3f, 2 * r0 + 0.24f }, (cw_color){ 0.75f, 0.2f, 0.12f, 1 });
+  cw_node_set(V.rim, "roughness", cw_val_float(0.45f));
+  V.plate = n3_prim(lv, "Plate", "CYLINDER", (t3_vec3){ 0, -0.14f, 0 }, (t3_vec3){ 2 * r0, 0.28f, 2 * r0 }, (cw_color){ 0.62f, 0.4f, 0.22f, 1 });
+  cw_node_set(V.plate, "roughness", cw_val_float(0.38f)); /* lacquered wood */
+  V.mark = n3_prim(lv, "Mark", "CYLINDER", (t3_vec3){ 0, 0.004f, 0 }, (t3_vec3){ 1.7f, 0.01f, 1.7f }, (cw_color){ 0.92f, 0.86f, 0.7f, 1 });
+  cw_node_set(V.mark, "cast_shadow", cw_val_bool(false));
+  for (int k = 0; k < 2; k++) { /* two start lines across the middle, as on a real ring */
+    cw_node l = n3_box(lv, "Line", (t3_vec3){ k ? 0.55f : -0.55f, 0.012f, 0 }, (t3_vec3){ 0.08f, 0.01f, 0.9f }, (cw_color){ 0.2f, 0.1f, 0.06f, 1 });
+    cw_node_set(l, "cast_shadow", cw_val_bool(false));
+  }
+  n3_prim(lv, "Post", "CYLINDER", (t3_vec3){ 0, -2.2f, 0 }, (t3_vec3){ 3.2f, 4, 3.2f }, (cw_color){ 0.42f, 0.42f, 0.45f, 1 });
+  n3_box(lv, "PoolFloor", (t3_vec3){ 0, -3.4f, 0 }, (t3_vec3){ 30, 0.4f, 24 }, (cw_color){ 0.2f, 0.42f, 0.5f, 1 });
+  /* the stadium: a ring of wall segments with a cap, two tiers of benches behind, banner lights on poles */
+  for (int k = 0; k < 32; k++) {
+    float a = TAU * (float)k / 32, rr = 9.6f;
+    cw_node w = n3_box(lv, "Wall", (t3_vec3){ cosf(a) * rr, -1.0f, sinf(a) * rr }, (t3_vec3){ 0.5f, 3.4f, 1.95f }, k % 2 ? (cw_color){ 0.85f, 0.82f, 0.76f, 1 } : (cw_color){ 0.78f, 0.74f, 0.68f, 1 });
+    n3_rot(w, 0, -a, 0);
+    cw_node cap = n3_box(lv, "Cap", (t3_vec3){ cosf(a) * rr, 0.75f, sinf(a) * rr }, (t3_vec3){ 0.7f, 0.12f, 2.0f }, (cw_color){ 0.55f, 0.16f, 0.14f, 1 });
+    n3_rot(cap, 0, -a, 0);
+    for (int tier = 0; tier < 2; tier++) {
+      float tr = rr + 1.4f + 1.6f * (float)tier;
+      cw_node bench = n3_box(lv, "Bench", (t3_vec3){ cosf(a) * tr, 0.3f + 0.8f * (float)tier, sinf(a) * tr }, (t3_vec3){ 1.5f, 0.6f + 1.6f * (float)tier, 2.4f + 0.4f * (float)tier }, (cw_color){ 0.3f + 0.05f * (float)tier, 0.32f, 0.42f, 1 });
+      n3_rot(bench, 0, -a, 0);
+      cw_node_set(bench, "cast_shadow", cw_val_bool(false));
+    }
+  }
+  for (int i = 0; i < NP; i++) {
+    float a = TAU * (float)i / NP + 0.7854f;
+    cw_node pole = n3_prim(lv, "Pole", "CYLINDER", (t3_vec3){ cosf(a) * 9.6f, 2.0f, sinf(a) * 9.6f }, (t3_vec3){ 0.16f, 2.6f, 0.16f }, (cw_color){ 0.3f, 0.3f, 0.32f, 1 });
+    (void)pole;
+    cw_node flag = n3_box(lv, "Banner", (t3_vec3){ cosf(a) * 9.6f, 2.6f, sinf(a) * 9.6f }, (t3_vec3){ 0.06f, 1.1f, 0.9f }, PCOL[i]);
+    n3_rot(flag, 0, -a, 0);
+    cw_node_set(flag, "roughness", cw_val_float(1)); /* cloth: matte */
+  }
+  for (int i = 0; i < NP; i++) {
+    V.blob[i] = n3_blob(lv, i, !c->human[i]);
+    V.ring[i] = n3_prim(lv, "SwimRing", "CYLINDER", (t3_vec3){ 0, WATER_Y, 0 }, (t3_vec3){ 1.15f, 0.26f, 1.15f }, PCOL[i]);
+    cw_node_set(V.ring[i], "roughness", cw_val_float(0.35f)); /* rubber */
+    cw_node_set(V.ring[i], "visible", cw_val_bool(false));
+    V.was_alive[i] = true;
+  }
+  cam();
+  fx_map = to_screen;
+}
+
 static void draw(mg_ctx *c, float alpha, float t) {
   (void)alpha;
-  ui_backdrop(t, cw_rgba(0.2f, 0.12f, 0.35f, 1), cw_rgba(0.06f, 0.05f, 0.15f, 1));
-  /* the plate: its edge, a warning band, and a floor that shows how far it has shrunk */
-  cw_r2d_circle(cw_v2(CX, CY + 26), R0 + 14, 48, cw_rgba(0, 0, 0, 0.3f));
-  cw_r2d_circle(cw_v2(CX, CY), S.radius + 10, 48, cw_rgba(0.95f, 0.45f, 0.3f, 1));
-  cw_r2d_circle(cw_v2(CX, CY), S.radius, 48, cw_rgba(0.28f, 0.22f, 0.45f, 1));
-  for (int k = 1; k < 4; k++) cw_r2d_circle_lines(cw_v2(CX, CY), S.radius * (float)k / 4.0f, 2, 40, cw_rgba(1, 1, 1, 0.07f));
-  if (c->tick > 420 && c->tick < 480 && (c->tick / 8) % 2 == 0) cw_r2d_circle_lines(cw_v2(CX, CY), S.radius - 6, 6, 48, cw_rgba(1, 0.4f, 0.3f, 0.8f));
+  if (!pp_set_on) return;
+  float dt = n3_frame_dt(&V.last) * pp_anim_speed();
+  cam();
+  n3_fx_tick();
+  float k = S.radius / R0;
+  n3_scale(V.plate, k, 1, k);
+  n3_scale(V.rim, (S.radius * WS * 2 + 0.24f) / (R0 * WS * 2 + 0.24f), 1, (S.radius * WS * 2 + 0.24f) / (R0 * WS * 2 + 0.24f));
+  /* the plate is about to shrink: its rim glows up and down, slow and smooth (about one swell a second) */
+  float warn = c->tick > 360 && c->tick < 480 ? 0.5f - 0.5f * cosf((float)(c->tick - 360) / 60.0f * TAU) : 0;
+  n3_emissive(V.rim, (cw_color){ 0.25f + 2.2f * warn, 0.05f + 0.4f * warn, 0.02f, 1 });
   for (int i = 0; i < NP; i++) {
     __typeof__(S.b[0]) *b = &S.b[i];
-    if (!b->alive) { /* the ghost at the rim */
-      float gx = CX + cosf(b->ang) * (S.radius + 44), gy = CY + sinf(b->ang) * (S.radius + 44);
-      ui_blob(cw_v2(gx, gy), 20, i, 0, 0, 1, b->gcd > 0 ? 3 : 1, !c->human[i]);
-      cw_r2d_circle_lines(cw_v2(gx, gy), 26, 2, 16, col_a(PCOL[i], b->gcd > 0 ? 0.3f : 0.9f));
+    float x = (b->x - CX) * WS, z = (b->y - CY) * WS;
+    if (b->alive) {
+      V.was_alive[i] = true;
+      if (b->fx * b->fx + b->fy * b->fy > 0.01f) {
+        float want = cw_atan2(b->fx, b->fy), d = want - V.yaw[i];
+        while (d > 3.14159f) d -= TAU;
+        while (d < -3.14159f) d += TAU;
+        V.yaw[i] += d * fminf(1, dt * 14);
+      }
+      float sq = b->dash > 0 ? 0.8f : 1 + 0.03f * sinf(t * 7 + (float)i);
+      n3_blob_pose(V.blob[i], x, 0, z, V.yaw[i], sq);
       continue;
     }
-    float sq = b->dash > 0 ? 0.8f : 1;
-    ui_blob(cw_v2(b->x, b->y), BR, i, b->fx, b->fy, sq, b->dash > 0 ? 2 : 0, !c->human[i]);
-    float rdy = 1 - (float)b->cd / 70.0f;
-    cw_r2d_rect(cw_rect_make(b->x - 22, b->y + BR + 8, 44 * rdy, 5), col_a(PCOL[i], rdy >= 1 ? 1.0f : 0.6f));
+    if (V.was_alive[i]) { /* just went over the edge: fly out, drop into the pool, splash (looks only) */
+      V.was_alive[i] = false;
+      float l = sqrtf(x * x + z * z) + 1e-4f;
+      V.fx[i] = x; V.fz[i] = z; V.fy[i] = 0;
+      V.fvx[i] = x / l * 2.6f; V.fvz[i] = z / l * 2.6f; V.fvy[i] = 2.2f;
+      V.fall_t[i] = 0; V.splashed[i] = false;
+      sfx(SFX_OOH, 0.55f, 1.0f + 0.06f * (float)i);
+    }
+    V.fall_t[i] += dt;
+    if (!V.splashed[i]) {
+      V.fvy[i] -= 14 * dt;
+      V.fx[i] += V.fvx[i] * dt; V.fz[i] += V.fvz[i] * dt; V.fy[i] += V.fvy[i] * dt;
+      n3_blob_pose(V.blob[i], V.fx[i], V.fy[i], V.fz[i], V.yaw[i] + V.fall_t[i] * 9, 1.15f);
+      if (V.fy[i] < WATER_Y - 0.3f) {
+        V.splashed[i] = true;
+        n3_fx("splash", (t3_vec3){ V.fx[i], WATER_Y, V.fz[i] }, 1.1f);
+        n3_decal("art/decal_foam.png", (t3_vec3){ V.fx[i], WATER_Y + 0.1f, V.fz[i] }, 2.2f, (cw_color){ 1, 1, 1, 0.8f }, "ADD");
+      }
+      continue;
+    }
+    /* a ghost: bobbing in its swim ring on the water at the rim */
+    float gx = cosf(b->ang) * (S.radius + 44) * WS, gz = sinf(b->ang) * (S.radius + 44) * WS;
+    float bob = 0.04f * sinf(t * 2.2f + (float)i);
+    cw_node_set(V.ring[i], "visible", cw_val_bool(true));
+    n3_pos(V.ring[i], gx, WATER_Y + bob, gz);
+    n3_blob_pose(V.blob[i], gx, WATER_Y + 0.02f + bob, gz, -b->ang - 1.5708f + 3.14159f, b->gcd > 0 ? 0.9f : 1);
+    n3_scale(V.blob[i], 0.75f, 0.75f, 0.75f);
+  }
+  /* the dash's recharge under each blob on the plate, and a ghost's bump ready ring (HUD) */
+  for (int i = 0; i < NP; i++) {
+    __typeof__(S.b[0]) *b = &S.b[i];
+    if (b->alive) {
+      cw_vec2 f = to_screen(cw_v2(b->x, b->y + BR * 0.6f));
+      float rdy = 1 - (float)b->cd / 70.0f;
+      cw_r2d_rect(cw_rect_make(f.x - 22, f.y + 6, 44, 6), cw_rgba(0, 0, 0, 0.45f));
+      cw_r2d_rect(cw_rect_make(f.x - 22, f.y + 6, 44 * rdy, 6), col_a(PCOL[i], rdy >= 1 ? 1.0f : 0.6f));
+    } else if (V.splashed[i]) {
+      cw_vec2 g = n3_project((t3_vec3){ cosf(b->ang) * (S.radius + 44) * WS, WATER_Y + 1.3f, sinf(b->ang) * (S.radius + 44) * WS });
+      cw_r2d_circle_lines(g, 12, 3, 16, col_a(PCOL[i], b->gcd > 0 ? 0.3f : 0.95f));
+    }
   }
 }
 
@@ -217,6 +328,6 @@ const mg_def mg_sumo = {
   .id = "sumo", .name = "Sumo Push", .tagline = "Shove everyone off the shrinking plate. Last blob on it wins.",
   .how = { MOVE4 ": move", "{btn_south}: dash and shove (then it recharges)", "Out? Slide your ghost round the rim, {btn_south} bumps them" },
   .controls = MOVE4 "  {btn_south}",
-  .kind = "2D", .scene = NULL, .seconds = 50, .unlock_points = 0, .higher_is_better = true,
+  .kind = "2D", .scene = NULL, .set = "scenes/sumo.cwscene", .seconds = 50, .higher_is_better = true,
   .start = start, .tick = tick, .think = think, .draw = draw, .score_text = score_text,
 };

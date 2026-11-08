@@ -66,6 +66,7 @@ static void make_kart(int i, bool cpu) {
   char mp[40];
   snprintf(mp, sizeof mp, "models/kart_%d.glb", i);
   cw_node body = n3_glb(k, "Body", mp, true);
+  { static const char *const PAINT[] = { "paint", NULL }; n3_rim(body, i, PAINT); }
   for (int w = 0; w < 4; w++) {
     cw_node wh = n3_glb(k, "Wheel", "models/wheel.glb", true);
     n3_pos(wh, (w % 2 ? 0.62f : -0.62f), 0.26f, (w < 2 ? 0.7f : -0.65f));
@@ -73,6 +74,7 @@ static void make_kart(int i, bool cpu) {
   }
   snprintf(mp, sizeof mp, "models/blob_%d.glb", i);
   cw_node dr = n3_glb(k, "Driver", mp, true);
+  { static const char *const BODY[] = { "body", NULL }; n3_rim(dr, i, BODY); }
   n3_pos(dr, 0, 0.98f, -0.12f); n3_scale(dr, 0.62f, 0.62f, 0.62f);
   cw_node face = n3_glb(k, "Face", "models/face.glb", false);
   n3_pos(face, 0, 0.98f, -0.12f); n3_scale(face, 0.62f, 0.62f, 0.62f);
@@ -81,6 +83,7 @@ static void make_kart(int i, bool cpu) {
   Rc.kart[i] = k; Rc.body[i] = body; Rc.face[i] = face;
 }
 
+static struct { float x, z, h, last; bool on; } CAMF; /* the follow camera (draw) */
 static void start(mg_ctx *c) {
   memset(&Rc, 0, sizeof Rc);
   n3_fx_reset();
@@ -106,6 +109,7 @@ static void start(mg_ctx *c) {
   }
   Rc.seed = cw_rng_u32(&c->rng);
   n3_camera(0, 36, 21, 0, 0, 0.8f);
+  memset(&CAMF, 0, sizeof CAMF);
 }
 
 static void tick(mg_ctx *c) {
@@ -215,8 +219,29 @@ static void think(mg_ctx *c, int p, mg_in *out) {
   }
 }
 
+/* The camera follows the pack (looks only, from the karts' positions): as low and close as keeps every kart in view
+ * with a margin, out to the whole oval when the field spreads, moving smoothly (never a jolt) */
+static void follow_cam(mg_ctx *c) {
+  float x0 = 1e9f, x1 = -1e9f, z0 = 1e9f, z1 = -1e9f;
+  for (int i = 0; i < NP; i++) {
+    t3_vec3 p = cw_node3d_position(Rc.kart[i]);
+    x0 = fminf(x0, p.x); x1 = fmaxf(x1, p.x); z0 = fminf(z0, p.z); z1 = fmaxf(z1, p.z);
+  }
+  float span = fmaxf(x1 - x0, (z1 - z0) * 1.9f);
+  float h = fclampf((span + 9) / 1.9f, 11, 36), x = (x0 + x1) * 0.5f, z = (z0 + z1) * 0.5f;
+  float lim = 1 - (h - 11) / 25; /* zoomed out all the way, the camera sits over the middle as it always did */
+  x *= lim; z *= lim;
+  float dt = n3_frame_dt(&CAMF.last);
+  (void)c;
+  if (!CAMF.on) { CAMF.on = true; CAMF.x = x; CAMF.z = z; CAMF.h = h; } /* the first frame: straight to it */
+  float k = 1 - expf(-dt * 2.2f);
+  CAMF.x += (x - CAMF.x) * k; CAMF.z += (z - CAMF.z) * k; CAMF.h += (h - CAMF.h) * k;
+  n3_camera(CAMF.x, CAMF.h, CAMF.z + CAMF.h * 0.56f, CAMF.x, 0, CAMF.z + 0.8f);
+}
+
 static void draw(mg_ctx *c, float alpha, float t) {
   (void)alpha; (void)t;
+  follow_cam(c);
   for (int i = 0; i < NP; i++) {
     t3_vec3 p = cw_node3d_position(Rc.kart[i]);
     cw_vec2 s = n3_project((t3_vec3){ p.x, p.y + 2.0f, p.z });
@@ -246,6 +271,6 @@ const mg_def mg_kart = {
   .id = "loop", .name = "Loop Racers", .tagline = "Three laps. The inside lane is short and full of traps.",
   .how = { MOVE_LR ": change lane", "{btn_south}: nitro burst (three of them)", "Blue pads boost, oil and barrels slow" },
   .controls = MOVE_LR "  {btn_south}",
-  .kind = "3D", .scene = "scenes/kart.cwscene", .seconds = 60, .unlock_points = 16, .higher_is_better = true,
+  .kind = "3D", .scene = "scenes/kart.cwscene", .seconds = 60, .higher_is_better = true,
   .start = start, .tick = tick, .think = think, .draw = draw, .score_text = score_text,
 };

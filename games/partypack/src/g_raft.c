@@ -34,6 +34,7 @@ static void make_raft(int i, float x, float z, bool cpu) {
   char mp[40];
   snprintf(mp, sizeof mp, "models/blob_%d.glb", i);
   cw_node rider = n3_glb(b, "Rider", mp, true);
+  { static const char *const BODY[] = { "body", NULL }; n3_rim(rider, i, BODY); }
   n3_pos(rider, 0.1f, 0.7f, 0.1f);
   n3_scale(rider, 0.9f, 0.9f, 0.9f);
   cw_node face = n3_glb(b, "Face", "models/face.glb", false);
@@ -182,6 +183,6 @@ const mg_def mg_raft = {
   .id = "raft", .name = "Raft Rush", .tagline = "Paddle for the buoys. Gold ones count three.",
   .how = { MOVE4 ": paddle", "{btn_south}: burst of speed", "Bump rivals off the buoys" },
   .controls = MOVE4 "  {btn_south}",
-  .kind = "3D", .scene = "scenes/raft.cwscene", .seconds = 45, .unlock_points = 0, .higher_is_better = true,
+  .kind = "3D", .scene = "scenes/raft.cwscene", .seconds = 45, .higher_is_better = true,
   .start = start, .tick = tick, .think = think, .draw = draw, .score_text = score_text,
 };

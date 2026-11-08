@@ -229,7 +229,7 @@ static void draw(mg_ctx *c, float alpha, float t) {
       bool blink = p->inv > 0 && (p->inv / 4) % 2 == 0;
       if (!blink || !p->alive) {
         float sq = p->duck ? 0.55f : p->y > 4 ? 1.18f : 1 + 0.06f * sinf(p->run * 0.05f);
-        float r = 26;
+        float r = 32; /* about 90 px tall at 1080p (it was 26: a 40 px runner) */
         float bodyy = gy - r * (p->duck ? 0.6f : 1.0f) - p->y;
         /* a soft contact shadow that shrinks as the runner jumps */
         float sk = 1 - fminf(p->y / 220.0f, 0.6f);
@@ -250,6 +250,6 @@ const mg_def mg_dodge = {
   .id = "hurdle", .name = "Hurdle Dash", .tagline = "Jump the rocks, duck the bars, last the longest.",
   .how = { "{btn_south}: jump (hold for a quick re-jump)", "{move_down} or {btn_east}: duck under the bars", "Out? {btn_south} throws a rock at the leader" },
   .controls = "{btn_south}  {move_down}",
-  .kind = "2D", .scene = NULL, .seconds = 45, .unlock_points = 0, .higher_is_better = true,
+  .kind = "2D", .scene = NULL, .seconds = 45, .higher_is_better = true,
   .start = start, .tick = tick, .think = think, .draw = draw, .score_text = score_text,
 };

@@ -37,3 +37,9 @@ standard+map+rep+nmap+ao+rmap+mmap+senv+l1400+xplain
 depth+xplain_gi
 standard+shadow+senv+l1300+s100+xplain_gi
 standard+map+rep+nmap+ao+rmap+mmap+shadow+senv+l1300+s100+xplain_gi
+depth+xplain_rim
+depth+xrim
+standard+shadow+senv+l1200+s100+xplain_rim
+standard+shadow+senv+l1200+s100+xrim
+standard+map+rep+nmap+ao+rmap+mmap+shadow+senv+l1800+s100+xplain_rim
+standard+map+rep+nmap+ao+rmap+mmap+shadow+senv+l1800+s100+xrim

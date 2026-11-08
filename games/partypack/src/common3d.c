@@ -2,6 +2,7 @@
  * camera, and project a world point onto the 2D stage for labels. */
 #include "mg.h"
 #include "cartwheel/resource.h"
+#include "cartwheel/rim_light.h"
 #include "three.h"
 
 static float CAM_P[3], CAM_T[3], CAM_FOV = 55;
@@ -205,4 +206,63 @@ void n3_receive(cw_node n, bool on) {
     if (x->type == T3_SKINNED_MESH || x->type == T3_MESH) { x->receive_shadow = on; if (!on) x->cast_shadow = false; }
     for (int i = 0; i < x->child_count && sp < 63; i++) stack[sp++] = x->children[i];
   }
+}
+
+/* a rim light in the seat's colour on a model's body materials (the ones named in names, NULL: every one): far away
+ * a player reads as an outline in their colour, up close it is faint. The glb's materials are shared by every
+ * instance of that file, and each seat has its own body file, so the rim is per seat. */
+void n3_rim(cw_node n, int p, const char *const *names) {
+  t3_object *o = cw_node3d_object(n);
+  if (!o) return;
+  cw_rim_light_desc d = cw_rim_light_default();
+  d.color = (t3_color){ PCOL[p & 3].r * 1.3f, PCOL[p & 3].g * 1.3f, PCOL[p & 3].b * 1.3f };
+  d.strength = 1.6f; d.power = 3.2f; d.near = 7; d.far = 22; d.close = 0.2f;
+  t3_object *stack[64]; int sp = 0; stack[sp++] = o;
+  while (sp) {
+    t3_object *x = stack[--sp];
+    if (x->type == T3_MESH || x->type == T3_SKINNED_MESH) {
+      t3_mesh *m = (t3_mesh *)x;
+      for (int i = 0; i < m->material_count; i++) {
+        bool want = !names;
+        for (int k = 0; names && names[k] && !want; k++) want = m->materials[i]->name && !strcmp(m->materials[i]->name, names[k]);
+        if (want) cw_rim_light_apply(m->materials[i], &d);
+      }
+    }
+    for (int i = 0; i < x->child_count && sp < 63; i++) stack[sp++] = x->children[i];
+  }
+}
+
+/* ── the sets of the 2D games (2.5D) ────────────────────────────────── */
+
+/* a party blob as a Node3D: the body in the seat's colour, the face, a CPU's stalk; its origin is where its feet
+ * stand (the body's lowest point sits on y = 0 of the node) */
+cw_node n3_blob(cw_node parent, int p, bool cpu) {
+  char nm[16], mp[32];
+  snprintf(nm, sizeof nm, "Blob%d", p);
+  cw_node root = cw_node_new("Node3D", nm);
+  cw_node_add_child(parent, root);
+  cw_node body = cw_node_new("Node3D", "Pose");
+  cw_node_add_child(root, body);
+  snprintf(mp, sizeof mp, "models/blob_%d.glb", p & 3);
+  cw_node bd = n3_glb(body, "Body", mp, true);
+  n3_pos(bd, 0, 0.54f, 0);
+  static const char *const BODY[] = { "body", NULL };
+  n3_rim(bd, p, BODY);
+  n3_pos(n3_glb(body, "Face", "models/face.glb", false), 0, 0.54f, 0);
+  if (cpu) n3_pos(n3_glb(body, "Stalk", "models/stalk.glb", true), 0, 0.54f, 0);
+  return root;
+}
+/* stand a blob: feet at (x, y, z), facing yaw (0 = toward the camera, +z), squash 1 normal (<1 flat and wide) */
+void n3_blob_pose(cw_node b, float x, float y, float z, float yaw, float squash) {
+  n3_pos(b, x, y, z);
+  n3_rot(b, 0, yaw, 0);
+  cw_node pose = cw_node_get(b, "Pose");
+  float w = 1 / sqrtf(squash > 0.2f ? squash : 0.2f);
+  n3_scale(pose, w, squash, w);
+}
+/* seconds since the last call (render time, at most 0.1): a set's animations run on it, never the rules */
+float n3_frame_dt(float *last) {
+  float now = (float)cw_time(), dt = *last > 0 ? now - *last : 1.0f / 60.0f;
+  *last = now;
+  return dt < 0 ? 0 : dt > 0.1f ? 0.1f : dt;
 }

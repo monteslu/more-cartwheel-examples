@@ -17,8 +17,10 @@ static struct {
   uint32_t seed; /* this game's CPU noise */
 } T;
 
+static void build_set(mg_ctx *c);
 static void start(mg_ctx *c) {
   memset(&T, 0, sizeof T);
+  if (pp_set_on) build_set(c);
   T.seed = cw_rng_u32(&c->rng);
   T.alive = NP;
   for (int i = 0; i < NP; i++) {
@@ -103,7 +105,7 @@ static void tick(mg_ctx *c) {
     p->y = fclampf(p->y + p->vy * dt, Y0 + 6, Y0 + TH * ROWS - 6);
     if (p->air == 0) {
       int r, cc;
-      if (!floor_at(p->x, p->y, &r, &cc)) { p->fall = 1; sfx(SFX_BUZZ, 0.4f, 0.6f); }
+      if (!floor_at(p->x, p->y, &r, &cc)) { p->fall = 1; sfx(SFX_BUZZ, 0.4f, 0.6f); fx_slowmo(30); /* the drop plays at half speed */ }
       else {
         if (++T.tile[r][cc].wear >= WEAR) crack(r, cc); /* standing wears a tile out */
       }
@@ -180,36 +182,116 @@ static void think(mg_ctx *c, int p, mg_in *out) {
   if (on && me->air == 0 && T.tile[r][cc].st == 1 && (h % 100) < (uint32_t)(20 + leap_pct[sk] / 3)) out->south = true; /* cracking under us: leap */
 }
 
-static void draw(mg_ctx *c, float alpha, float t) {
-  (void)alpha;
-  ui_backdrop(t, cw_rgba(0.05f, 0.03f, 0.12f, 1), cw_rgba(0.12f, 0.05f, 0.2f, 1));
+/* ── the set: glossy tiles resting on a steel lattice high over a deep pool; a tile that goes tips and falls (2.5D: the
+ * rules above are the 2D ones, in stage units; 60 stage units are a metre) ── */
+#define WS (1.0f / 60.0f)
+#define MX (X0 + TW * COLS * 0.5f)
+#define MY (Y0 + TH * ROWS * 0.5f)
+#define POOL_Y -9.0f
+static struct {
+  cw_node tile[ROWS][COLS], blob[NP], cursor[NP];
+  float fall[ROWS][COLS], fvy[ROWS][COLS]; /* a gone tile's drop: metres below the floor, and its speed */
+  int8_t shown_st[ROWS][COLS];
+  float last, yaw[NP], drop_y[NP], drop_v[NP], drop_x[NP], drop_z[NP];
+  bool splashed[NP];
+} V;
+static cw_vec2 to_screen(cw_vec2 s) { return n3_project((t3_vec3){ (s.x - MX) * WS, 0, (s.y - MY) * WS }); }
+static void cam(void) { n3_camera(0, 9.6f, 9.4f, 0, -0.6f, 0.9f); }
+static float tx_(int k) { return (X0 + TW * ((float)k + 0.5f) - MX) * WS; }
+static float tz_(int r) { return (Y0 + TH * ((float)r + 0.5f) - MY) * WS; }
+
+static void build_set(mg_ctx *c) {
+  memset(&V, 0, sizeof V);
+  cw_node lv = n3_level();
+  float w = TW * COLS * WS, d = TH * ROWS * WS;
   for (int r = 0; r < ROWS; r++)
     for (int k = 0; k < COLS; k++) {
-      float x = X0 + TW * (float)k, y = Y0 + TH * (float)r;
+      cw_node n = n3_box(lv, "Tile", (t3_vec3){ tx_(k), -0.12f, tz_(r) }, (t3_vec3){ TW * WS - 0.08f, 0.24f, TH * WS - 0.08f }, (cw_color){ 0.35f, 0.7f, 0.95f, 1 });
+      cw_node_set(n, "roughness", cw_val_float(0.25f)); /* glazed */
+      V.tile[r][k] = n;
+    }
+  /* the lattice the tiles rest on: beams under every seam, four columns down into the pool */
+  cw_color steel = { 0.32f, 0.33f, 0.37f, 1 };
+  for (int r = 0; r <= ROWS; r++) { cw_node bm = n3_box(lv, "BeamX", (t3_vec3){ 0, -0.32f, -d * 0.5f + d * (float)r / ROWS }, (t3_vec3){ w + 0.3f, 0.16f, 0.14f }, steel); cw_node_set(bm, "metalness", cw_val_float(0.8f)); cw_node_set(bm, "roughness", cw_val_float(0.45f)); }
+  for (int k = 0; k <= COLS; k++) { cw_node bm = n3_box(lv, "BeamZ", (t3_vec3){ -w * 0.5f + w * (float)k / COLS, -0.32f, 0 }, (t3_vec3){ 0.14f, 0.16f, d + 0.3f }, steel); cw_node_set(bm, "metalness", cw_val_float(0.8f)); cw_node_set(bm, "roughness", cw_val_float(0.45f)); }
+  for (int q = 0; q < 4; q++) {
+    float x = (q % 2 ? 1 : -1) * (w * 0.5f + 0.4f), z = (q < 2 ? -1 : 1) * (d * 0.5f + 0.4f);
+    n3_box(lv, "Column", (t3_vec3){ x, (POOL_Y - 0.4f) * 0.5f, z }, (t3_vec3){ 0.7f, -POOL_Y + 0.4f, 0.7f }, (cw_color){ 0.45f, 0.42f, 0.4f, 1 });
+    n3_prim(lv, "Lamp", "SPHERE", (t3_vec3){ x, 0.2f, z }, (t3_vec3){ 0.5f, 0.5f, 0.5f }, (cw_color){ 1, 0.9f, 0.7f, 1 });
+  }
+  n3_box(lv, "PoolFloor", (t3_vec3){ 0, POOL_Y - 3, 0 }, (t3_vec3){ 60, 0.5f, 40 }, (cw_color){ 0.1f, 0.25f, 0.32f, 1 });
+  for (int i = 0; i < NP; i++) {
+    V.blob[i] = n3_blob(lv, i, !c->human[i]);
+    V.cursor[i] = n3_decal("art/decal_ring.png", (t3_vec3){ 0, -50, 0 }, 1.1f, (cw_color){ PCOL[i].r * 2, PCOL[i].g * 2, PCOL[i].b * 2, 1 }, "ADD");
+    cw_node_set(V.cursor[i], "visible", cw_val_bool(false));
+  }
+  cam();
+  fx_map = to_screen;
+}
+
+static void draw(mg_ctx *c, float alpha, float t) {
+  (void)alpha;
+  if (!pp_set_on) return;
+  float dt = n3_frame_dt(&V.last) * pp_anim_speed();
+  cam();
+  n3_fx_tick();
+  for (int r = 0; r < ROWS; r++)
+    for (int k = 0; k < COLS; k++) {
+      cw_node n = V.tile[r][k];
       int st = T.tile[r][k].st;
-      if (st == 2) { cw_r2d_rect(cw_rect_make(x + 3, y + 3, TW - 6, TH - 6), cw_rgba(0.02f, 0.01f, 0.05f, 1)); continue; }
+      if (st == 2) { /* gone: it tips and drops into the pool (looks only) */
+        if (V.shown_st[r][k] != 2) { V.shown_st[r][k] = 2; V.fall[r][k] = 0; V.fvy[r][k] = 0; }
+        if (V.fall[r][k] > POOL_Y - 2) {
+          V.fvy[r][k] += 16 * dt;
+          V.fall[r][k] -= V.fvy[r][k] * dt;
+          float tip = fminf(1.4f, -V.fall[r][k] * 0.5f);
+          n3_pos(n, tx_(k), -0.12f + V.fall[r][k], tz_(r));
+          n3_rot(n, tip * ((r + k) % 2 ? 1 : -1), 0, tip * 0.6f);
+          if (V.fall[r][k] <= POOL_Y - 2) { cw_node_set(n, "visible", cw_val_bool(false)); n3_fx("splash", (t3_vec3){ tx_(k), POOL_Y, tz_(r) }, 0.9f); }
+        }
+        continue;
+      }
+      V.shown_st[r][k] = (int8_t)st;
       float wear = fminf((float)T.tile[r][k].wear / (float)WEAR, 1);
       cw_color top = col_mix(cw_rgba(0.35f, 0.7f, 0.95f, 1), cw_rgba(0.95f, 0.45f, 0.3f, 1), st == 1 ? 1.0f : wear * 0.8f);
-      /* a tile about to drop pulses brighter and darker (it used to jiggle sideways: nothing on screen shakes now) */
-      if (st == 1) top = col_mix(top, cw_rgba(1, 0.9f, 0.6f, 1), 0.35f + 0.35f * sinf((float)c->tick * 0.25f + (float)(r * 7 + k)));
-      cw_r2d_rect(cw_rect_make(x + 3, y + 9, TW - 6, TH - 6), col_mix(top, cw_rgba(0, 0, 0, 1), 0.5f));
-      cw_r2d_rect(cw_rect_make(x + 3, y + 3, TW - 6, TH - 6), top);
-      if (wear > 0.4f || st == 1) { /* cracks */
-        cw_r2d_line(cw_v2(x + 20, y + 14), cw_v2(x + 50, y + 40), 3, cw_rgba(0.1f, 0.05f, 0.1f, 0.8f));
-        cw_r2d_line(cw_v2(x + 50, y + 40), cw_v2(x + 78, y + 30), 3, cw_rgba(0.1f, 0.05f, 0.1f, 0.8f));
+      float glow = 0, wob = 0;
+      if (st == 1) { /* cracking: it glows up and down (slow and smooth) and rocks on the beams */
+        float ph = 0.5f - 0.5f * cosf((float)(42 - T.tile[r][k].t) / 42.0f * TAU * 1.0f);
+        glow = 0.15f + 0.6f * ph;
+        wob = sinf((float)T.tile[r][k].t * 0.55f) * 0.05f * (1 - (float)T.tile[r][k].t / 42.0f);
       }
+      n3_color(n, top);
+      n3_emissive(n, (cw_color){ glow, glow * 0.45f, glow * 0.2f, 1 });
+      n3_rot(n, wob, 0, wob * 0.7f);
     }
   for (int i = 0; i < NP; i++) {
     __typeof__(T.p[0]) *p = &T.p[i];
-    if (!p->alive) {
-      cw_r2d_circle_lines(cw_v2(p->gx, p->gy), 24, 4, 20, col_a(PCOL[i], p->gcd > 0 ? 0.35f : 1.0f));
-      ui_blob(cw_v2(p->gx, p->gy), 14, i, 0, 0, 1, p->gcd > 0 ? 3 : 1, !c->human[i]);
-      continue;
+    float x = (p->x - MX) * WS, z = (p->y - MY) * WS;
+    if (p->alive && p->fall == 0) {
+      V.drop_y[i] = 0; V.drop_v[i] = 0; V.splashed[i] = false;
+      if (p->vx * p->vx + p->vy * p->vy > 400) {
+        float want = cw_atan2(p->vx, p->vy), d = want - V.yaw[i];
+        while (d > 3.14159f) d -= TAU;
+        while (d < -3.14159f) d += TAU;
+        V.yaw[i] += d * fminf(1, dt * 14);
+      }
+      float lift = p->air > 0 ? sinf((float)p->air / 34.0f * 3.14159f) * 34 * WS : 0;
+      n3_blob_pose(V.blob[i], x, lift, z, V.yaw[i], p->air > 0 ? 1.12f : 1 + 0.03f * sinf(t * 7 + (float)i));
+    } else if (!V.splashed[i]) { /* through the floor: down into the pool, flailing (looks only) */
+      if (V.drop_y[i] == 0) { sfx(SFX_OOH, 0.5f, 1.0f + 0.06f * (float)i); V.drop_x[i] = x; V.drop_z[i] = z; V.drop_y[i] = -1e-4f; }
+      V.drop_v[i] += 14 * dt;
+      V.drop_y[i] -= V.drop_v[i] * dt;
+      n3_blob_pose(V.blob[i], V.drop_x[i], V.drop_y[i], V.drop_z[i], V.yaw[i] + V.drop_y[i] * 1.6f, 1.15f); /* where it went through */
+      if (V.drop_y[i] < POOL_Y) { V.splashed[i] = true; cw_node_set(V.blob[i], "visible", cw_val_bool(false)); n3_fx("splash", (t3_vec3){ V.drop_x[i], POOL_Y, V.drop_z[i] }, 1.2f); }
     }
-    float lift = p->air > 0 ? sinf((float)p->air / 34.0f * 3.14159f) * 34 : 0;
-    float s = p->fall > 0 ? fmaxf(0.2f, 1 - (float)p->fall / 50.0f) : 1;
-    if (p->fall == 0) cw_r2d_circle(cw_v2(p->x, p->y + 6), 20, 14, cw_rgba(0, 0, 0, 0.3f));
-    ui_blob(cw_v2(p->x, p->y - lift - 14), 22 * s, i, p->vx / 230.0f, p->vy / 230.0f, p->air > 0 ? 1.15f : 1, p->fall > 0 ? 2 : 0, !c->human[i]);
+    if (!p->alive) { /* the ghost's cursor: a ring of light on the floor */
+      cw_node_set(V.cursor[i], "visible", cw_val_bool(true));
+      n3_pos(V.cursor[i], (p->gx - MX) * WS, 0.1f, (p->gy - MY) * WS);
+      float k = p->gcd > 0 ? 0.6f : 2.0f;
+      cw_node_set(V.cursor[i], "color", cw_val_color(PCOL[i].r * k, PCOL[i].g * k, PCOL[i].b * k, 1));
+      cw_vec2 g = to_screen(cw_v2(p->gx, p->gy));
+      ui_blob(cw_v2(g.x, g.y - 34), 13, i, 0, 0, 1, p->gcd > 0 ? 3 : 1, !c->human[i]);
+    }
   }
 }
 
@@ -219,6 +301,6 @@ const mg_def mg_tiles = {
   .id = "tiles", .name = "Tile Drop", .tagline = "The floor crumbles. Keep moving and be the last one standing.",
   .how = { MOVE4 ": run, a tile you stand on cracks", "{btn_south}: hop a gap (a short flight)", "Out? Ghost cursor, {btn_south} cracks a tile under it" },
   .controls = MOVE4 "  {btn_south}",
-  .kind = "2D", .scene = NULL, .seconds = 50, .unlock_points = 0, .higher_is_better = true,
+  .kind = "2D", .scene = NULL, .set = "scenes/tiles.cwscene", .seconds = 50, .higher_is_better = true,
   .start = start, .tick = tick, .think = think, .draw = draw, .score_text = score_text,
 };

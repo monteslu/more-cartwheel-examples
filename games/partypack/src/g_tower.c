@@ -33,8 +33,10 @@ static float col_x(int p) { return 2.0f + 4.0f * (float)p; } /* metres */
 static float to_px_x(float m) { return m * PPM; }
 static float to_px_y(float m) { return GROUND_Y - m * PPM; }
 
+static void build_set(mg_ctx *c);
 static void start(mg_ctx *c) {
   memset(&T, 0, sizeof T);
+  if (pp_set_on) build_set(c);
   cw_world2d_def d = cw_world2d_default_def();
   d.gravity = cw_v2(0, -14);
   d.workers = 1;
@@ -173,51 +175,79 @@ static void block(cw_xform2 x, float w, float h, int p, cw_color tint) {
   art_draw(BLK[p], ctr, cw_v2(w * PPM, h * PPM), -atan2f(x.q.s, x.q.c), tint);
 }
 
-static void draw(mg_ctx *c, float alpha, float t) {
-  (void)alpha;
-  art_ambient = cw_rgba(0.5f, 0.52f, 0.62f, 1);
-  ui_grad(cw_rect_make(0, 0, STAGE_W, STAGE_H), cw_rgba(0.34f, 0.62f, 0.95f, 1), cw_rgba(0.9f, 0.94f, 1, 1));
-  bg_clouds(t, 40, 1.2f, 0.95f);
-  bg_ridge("ridge_far", t * 6, GROUND_Y, 230, cw_rgba(1, 1, 1, 1));
-  bg_ridge("ridge_mid", t * 12, GROUND_Y, 170, cw_rgba(1, 1, 1, 1));
-  bg_ridge("ridge_near", t * 22, GROUND_Y + 10, 110, cw_rgba(1, 1, 1, 1));
-  art_light(cw_v2(380, -200), 2400, cw_rgba(1, 0.94f, 0.82f, 1), 0.45f, false);
-  /* a lawn: lit rubber-track texture tinted green on dark earth */
-  ui_grad(cw_rect_make(0, GROUND_Y + 14, STAGE_W, STAGE_H - GROUND_Y - 14), cw_rgba(0.25f, 0.18f, 0.12f, 1), cw_rgba(0.1f, 0.08f, 0.07f, 1));
-  for (float x = 0; x < STAGE_W; x += 144) art_draw_ex("track", cw_v2(x, GROUND_Y - 10), cw_v2(145, 34), cw_v2(0, 0), 0, cw_rgba(0.45f, 0.95f, 0.5f, 1), false, false);
+/* ── the set: four lit stone pillars on a meadow, a crane rail across the sky, the blocks as solid painted wood
+ * (2.5D: the physics above stays 2D, in metres; the set is x - 8, y up, z 0) ── */
+static struct { cw_node blk[NP][MAXB], held[NP], claw[NP], bar[NP]; int held_shape[NP], held_rot[NP]; } V;
+static cw_vec2 to_screen(cw_vec2 s) { return n3_project((t3_vec3){ s.x / PPM - 8, (GROUND_Y - s.y) / PPM, 0 }); }
+static void cam(void) { n3_camera(0, 4.4f, 12.6f, 0, 2.9f, 0); }
+
+static void build_set(mg_ctx *c) {
+  (void)c;
+  memset(&V, 0, sizeof V);
+  cw_node lv = n3_level();
+  n3_box(lv, "Meadow", (t3_vec3){ 0, -1.75f, -6 }, (t3_vec3){ 80, 0.5f, 40 }, (cw_color){ 0.26f, 0.5f, 0.2f, 1 });
+  for (int k = 0; k < 9; k++) { /* hills behind */
+    float x = -24 + (float)k * 6.2f, h = 3 + (float)((k * 5) % 4);
+    cw_node hl = n3_prim(lv, "Hill", "SPHERE", (t3_vec3){ x, -1.6f, -16 - (float)(k % 3) * 3 }, (t3_vec3){ 12, h * 2, 8 }, (cw_color){ 0.22f + 0.03f * (float)(k % 2), 0.45f, 0.2f, 1 });
+    cw_node_set(hl, "cast_shadow", cw_val_bool(false));
+  }
+  cw_node rail = n3_box(lv, "Rail", (t3_vec3){ 0, 6.75f, -0.2f }, (t3_vec3){ 16.5f, 0.16f, 0.16f }, (cw_color){ 0.25f, 0.25f, 0.28f, 1 });
+  cw_node_set(rail, "metalness", cw_val_float(0.8f));
+  for (int q = 0; q < 2; q++) n3_box(lv, "RailPost", (t3_vec3){ q ? 8.3f : -8.3f, 2.5f, -0.2f }, (t3_vec3){ 0.2f, 8.5f, 0.2f }, (cw_color){ 0.25f, 0.25f, 0.28f, 1 });
   for (int p = 0; p < NP; p++) {
-    float px = to_px_x(col_x(p));
-    ui_grad(cw_rect_make(px - 160, 120, 320, GROUND_Y - 120), col_a(PCOL[p], 0.0f), col_a(PCOL[p], 0.14f));
-    art_light(cw_v2(px, 150), 420, col_mix(PCOL[p], cw_rgba(1, 1, 1, 1), 0.4f), 0.45f, false);
-    art_draw("shadow", cw_v2(px, GROUND_Y + 20), cw_v2(250, 36), 0, cw_rgba(1, 1, 1, 0.8f));
-    art_nine("tile", cw_rect_make(px - 112, GROUND_Y - 6, 224, 30), 24, 0.5f, col_mix(PCOL[p], cw_rgba(0.3f, 0.3f, 0.35f, 1), 0.4f));
-    /* height ruler */
-    for (int m = 1; m <= 6; m++) cw_r2d_line(cw_v2(px - 150, to_px_y((float)m)), cw_v2(px - 130, to_px_y((float)m)), 2, cw_rgba(0, 0, 0, 0.25f));
-    /* the crane rail and claw */
-    art_draw("post", cw_v2(px, 132), cw_v2(10, 300), 1.5708f, (cw_color){ 0 });
-    float cxp = px + to_px_x(T.cx[p]);
-    art_draw_ex("post", cw_v2(cxp, 134), cw_v2(6, 18), cw_v2(0.5f, 0), 0, (cw_color){ 0 }, false, false);
+    float x = col_x(p) - 8;
+    cw_node top = n3_box(lv, "Platform", (t3_vec3){ x, -0.25f, 0 }, (t3_vec3){ 2.7f, 0.5f, 1.2f }, col_mix(PCOL[p], cw_rgba(0.3f, 0.3f, 0.35f, 1), 0.4f));
+    cw_node_set(top, "roughness", cw_val_float(0.6f));
+    n3_box(lv, "Pillar", (t3_vec3){ x, -1.0f, 0 }, (t3_vec3){ 1.6f, 1.0f, 0.9f }, (cw_color){ 0.55f, 0.53f, 0.5f, 1 });
+    for (int m = 1; m <= 6; m++) { /* the height ruler: a tick a metre */
+      cw_node tk = n3_box(lv, "Tick", (t3_vec3){ x - 1.75f, (float)m, -0.3f }, (t3_vec3){ 0.25f, 0.03f, 0.03f }, (cw_color){ 0.15f, 0.15f, 0.18f, 1 });
+      cw_node_set(tk, "cast_shadow", cw_val_bool(false));
+    }
+    V.claw[p] = n3_box(lv, "Claw", (t3_vec3){ x, 6.55f, -0.2f }, (t3_vec3){ 0.5f, 0.3f, 0.5f }, (cw_color){ 0.95f, 0.75f, 0.2f, 1 });
+    V.bar[p] = n3_box(lv, "Best", (t3_vec3){ x, -5, 0.65f }, (t3_vec3){ 3.2f, 0.05f, 0.05f }, (cw_color){ 1, 0.85f, 0.3f, 1 });
+    n3_emissive(V.bar[p], (cw_color){ 1.2f, 0.9f, 0.25f, 1 });
+    cw_node_set(V.bar[p], "cast_shadow", cw_val_bool(false));
+    for (int i = 0; i < MAXB; i++) {
+      float k = 0.85f + 0.07f * (float)(i % 3);
+      V.blk[p][i] = n3_box(lv, "Block", (t3_vec3){ 0, -9, 0 }, (t3_vec3){ 1, 1, 0.9f }, col_mix(PCOL[p], cw_rgba(k, k, k, 1), 0.25f));
+      cw_node_set(V.blk[p][i], "roughness", cw_val_float(0.7f)); /* painted wood */
+      cw_node_set(V.blk[p][i], "visible", cw_val_bool(false));
+    }
+    V.held[p] = n3_box(lv, "Held", (t3_vec3){ 0, -9, 0 }, (t3_vec3){ 1, 1, 0.9f }, col_mix(PCOL[p], cw_rgba(1, 1, 1, 1), 0.35f));
+    V.held_shape[p] = -1;
+  }
+  cam();
+  fx_map = to_screen;
+}
+
+static void draw(mg_ctx *c, float alpha, float t) {
+  (void)t;
+  if (!pp_set_on) return;
+  cam();
+  for (int p = 0; p < NP; p++) {
+    float x0 = col_x(p) - 8;
+    n3_pos(V.claw[p], x0 + T.cx[p], 6.55f, -0.2f);
     if (T.dropped[p] < MAXB) {
       int s = T.next_shape[p][T.dropped[p]];
       float w = SHAPES[s].w, h = SHAPES[s].h;
       if (T.turned[p]) { float tt = w; w = h; h = tt; }
-      cw_color col = T.cooldown[p] > 0 ? cw_rgba(1, 1, 1, 0.35f) : (cw_color){ 0 };
-      art_draw(BLK[p], cw_v2(cxp, 150 + h * PPM * 0.5f), cw_v2(w * PPM, h * PPM), 0, col);
-      /* a drop guide */
-      cw_r2d_line(cw_v2(cxp, 150 + h * PPM), cw_v2(cxp, GROUND_Y - 4), 2, cw_rgba(1, 1, 1, 0.14f));
-    }
-    for (int i = 0; i < T.dropped[p]; i++) {
-      if (!T.blk[p][i].alive) continue;
+      if (V.held_shape[p] != s || V.held_rot[p] != (int)T.turned[p]) { V.held_shape[p] = s; V.held_rot[p] = T.turned[p]; cw_node_set(V.held[p], "size", cw_val_vec3(w, h, 0.9f)); }
+      cw_node_set(V.held[p], "visible", cw_val_bool(true));
+      n3_pos(V.held[p], x0 + T.cx[p], 6.4f - h * 0.5f, 0);
+      n3_emissive(V.held[p], T.cooldown[p] > 0 ? (cw_color){ 0, 0, 0, 1 } : (cw_color){ PCOL[p].r * 0.25f, PCOL[p].g * 0.25f, PCOL[p].b * 0.25f, 1 });
+    } else cw_node_set(V.held[p], "visible", cw_val_bool(false));
+    for (int i = 0; i < MAXB; i++) {
+      cw_node n = V.blk[p][i];
+      if (i >= T.dropped[p] || !T.blk[p][i].alive) { cw_node_set(n, "visible", cw_val_bool(false)); continue; }
       shape_t s = SHAPES[T.blk[p][i].shape];
       if (T.blk[p][i].rot) { float tt = s.w; s.w = s.h; s.h = tt; }
       cw_xform2 x = cw_body2d_interpolated(T.blk[p][i].body, alpha);
-      float k = 0.9f + 0.05f * (float)(i % 3);
-      block(x, s.w, s.h, p, cw_rgba(k, k, k, 1));
+      cw_node_set(n, "visible", cw_val_bool(true));
+      cw_node_set(n, "size", cw_val_vec3(s.w, s.h, 0.9f));
+      n3_pos(n, (float)x.p.x - 8, (float)x.p.y, 0);
+      n3_rot(n, 0, 0, atan2f(x.q.s, x.q.c));
     }
-    if (T.height_cm[p] > 0) {
-      float y = to_px_y((float)T.height_cm[p] / 100.0f);
-      cw_r2d_line(cw_v2(px - 130, y), cw_v2(px + 130, y), 3, cw_rgba(1, 0.9f, 0.3f, 0.9f));
-    }
+    if (T.height_cm[p] > 0) n3_pos(V.bar[p], x0, (float)T.height_cm[p] / 100.0f, 0.65f);
   }
   (void)c;
 }
@@ -228,6 +258,6 @@ const mg_def mg_tower = {
   .id = "stack", .name = "Stack Attack", .tagline = "Drop blocks, build the tallest tower that stands.",
   .how = { MOVE_LR ": move the crane", "{btn_south}: drop the block    {btn_east}: turn it", "Blocks that fall off are lost" },
   .controls = MOVE_LR "  {btn_south}  {btn_east}",
-  .kind = "2D physics", .scene = NULL, .seconds = 50, .unlock_points = 4, .higher_is_better = true,
+  .kind = "2D physics", .scene = NULL, .set = "scenes/stack.cwscene", .seconds = 50, .higher_is_better = true,
   .start = start, .tick = tick, .think = think, .draw = draw, .stop = stop, .score_text = score_text,
 };

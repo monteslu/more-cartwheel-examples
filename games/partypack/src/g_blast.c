@@ -9,7 +9,7 @@
 #define NBOMB 6
 static struct {
   cw_node ball[NP], face[NP], arena_shape, arena_top, edge[4], line[14];
-  bool alive[NP];
+  bool alive[NP], over[NP]; /* over: gone past the edge, on the way down */
   int dash_cd[NP], dash_fx[NP];
   float cur_x[NP], cur_z[NP]; /* a ghost bomber's marker */
   int call_cd[NP];
@@ -44,7 +44,7 @@ static void make_ball(int i, float x, float z, bool cpu) {
   cw_color c = PCOL[i];
   char mp[40];
   snprintf(mp, sizeof mp, "models/blob_%d.glb", i);
-  n3_glb(b, "Body", mp, true);
+  { static const char *const BODY[] = { "body", NULL }; n3_rim(n3_glb(b, "Body", mp, true), i, BODY); }
   cw_node face = n3_glb(b, "Face", "models/face.glb", false);
   if (cpu) n3_glb(b, "Stalk", "models/stalk.glb", true);
   (void)c;
@@ -255,6 +255,11 @@ static void tick(mg_ctx *c) {
     if (K.dash_fx[i] > 0) K.dash_fx[i]--;
     cw_node_set(K.ball[i], "linear_velocity", cw_val_vec3(vx, vy, vz));
     if (fabsf(vx) + fabsf(vz) > 0.8f) cw_node3d_set_rotation(K.face[i], (t3_vec3){ 0, cw_atan2(vx, vz), 0 });
+    if (!K.over[i] && p.y < 0.3f && (fabsf(p.x) > K.size * 0.5f || fabsf(p.z) > K.size * 0.5f)) {
+      K.over[i] = true; /* off the edge: the fall plays at half speed and the crowd gasps */
+      fx_slowmo(40);
+      sfx(SFX_OOH, 0.6f, 1.0f + 0.06f * (float)i);
+    }
     if (p.y < -3.0f) {
       K.alive[i] = false;
       K.cur_x[i] = fclampf(p.x, -K.size * 0.5f + 1, K.size * 0.5f - 1);
@@ -263,6 +268,7 @@ static void tick(mg_ctx *c) {
       c->eliminated[i] = true;
       c->score[i] = (float)c->tick;
       n3_fx("fire", (t3_vec3){ p.x, -7.6f, p.z }, 1.0f);
+      n3_fx("smoke", (t3_vec3){ p.x, -7.2f, p.z }, 1.6f); /* steam off the lava */
       n3_flash((t3_vec3){ p.x, -5, p.z }, (cw_color){ 1, 0.4f, 0.1f, 1 }, 120, 12);
       sfx(SFX_SPLASH, 0.8f, 0.7f);
       fx_hitstop(7); /* a knock-out: everything holds for a beat */
@@ -372,6 +378,6 @@ const mg_def mg_blast = {
   .id = "blast", .name = "Blast Ring", .tagline = "Bombs shove, the ring shrinks. Stay on.",
   .how = { MOVE4 ": roll", "{btn_south}: dash (knocks others hard)", "Out? Aim a marker, {btn_south} drops a bomb" },
   .controls = MOVE4 "  {btn_south}",
-  .kind = "3D", .scene = "scenes/blast.cwscene", .seconds = 60, .unlock_points = 8, .higher_is_better = true,
+  .kind = "3D", .scene = "scenes/blast.cwscene", .seconds = 60, .higher_is_better = true,
   .start = start, .tick = tick, .think = think, .draw = draw, .score_text = score_text,
 };

@@ -38,14 +38,17 @@ typedef struct save_data {
   int32_t tournaments;     /* tournaments finished */
   int32_t wins[NP];        /* tournaments won by seat */
   int32_t plays[MG_MAX];
-  float best[MG_MAX - 1];  /* best score per mini-game */
+  float best[MG_MAX - 1 - NP]; /* best score per mini-game */
+  int32_t hat[NP];         /* each seat's hat (HAT_*): the slots of best[11..14], which no game used (eleven games), so
+                            * an older save reads 0, no hat, and keeps its size and everything in it */
   int32_t rumble_off;      /* the Rumble setting, 1 off: the slot of best[MG_MAX - 1], which no game used (fewer than
                             * MG_MAX games), so an older save reads 0, on, and keeps its size and everything in it */
-  uint32_t unlocked;       /* bit per mini-game */
+  uint32_t unlocked;       /* bit per mini-game: every one is open from the start (party points unlock hats) */
   int32_t rounds_opt;      /* 0..2 -> 4, 6, 8 rounds */
   int32_t skill;           /* CPU skill 0..2 */
 } save_data;
 _Static_assert(sizeof(save_data) == 4 * (2 + NP + MG_MAX + MG_MAX + 3), "the save keeps its size: a new layout would reset it");
+_Static_assert(MG_MAX - 1 - NP >= 11, "best[] holds every mini-game");
 static save_data *SV;
 
 /* ── state ──────────────────────────────────────────────────────────── */
@@ -60,17 +63,31 @@ static struct {
   int32_t cur;                 /* mini-game now (index into MG_LIST) */
   int32_t points[NP];          /* tournament points */
   int32_t pos[NP], from[NP];   /* board cells now and at the round's start */
+  /* the board with decisions: after each mini-game every seat gets coins for its place and rolls (a die plus a bonus
+   * for its place), then picks from the shop before it moves; passing the star with enough coins buys it, and the
+   * star moves on. Most stars wins, then the furthest along. points[] is each seat's cell on the board. */
+  int32_t coins[NP], stars[NP], roll[NP], die[NP], pick[NP], picked[NP], dbl[NP], dbl_next[NP];
+  int32_t spent[NP], lasts[NP], best_die[NP], taken[NP]; /* the awards' stats: coins spent in the shop, last places, the best roll, coins taken */
+  int32_t award[3], award_p[3];  /* the final screen's three awards (kind, seat; -1 none) */
+  int32_t team[NP];             /* a 2 vs 2 round: each seat's team (0 or 1); -1 every seat for itself */
+  int32_t team_round;           /* this round is 2 vs 2 */
+  int32_t star_cell, phase, move_t0, decide_t; /* phase 0 decide (the shop), 1 moving; move_t0: st_ticks the move began */
   uint32_t star_taken;         /* star cells already claimed */
   int32_t round_pts[NP], place[NP];
   bool ready[NP];
   int32_t ready_wait;          /* ticks since the first person readied on the card; the rest are counted in at READY_WAIT */
   int32_t ready_left;          /* whole seconds the card still waits (debug), 0 when nobody has readied */
   int32_t ready_forever;       /* test switch (sw ready_forever 1): the card waits for every seat, as it once did */
+  int32_t shop_forever;        /* test switch (sw shop_forever 1): the board's shop waits for every person */
   mg_ctx c;
   int32_t serial;
   uint32_t hash;
-  bool scene3d;                /* a game's scene is loaded */
-  int32_t unlock_toast;        /* mini-game just unlocked (or -1) */
+  bool scene3d;                /* a game's scene (a 3D game's, or a 2D game's set) is loaded */
+  bool tree_sim;               /* the game's rules run in the scene (a 3D game): a hold pauses the tree */
+  int32_t slow;                /* ticks left of a fail moment's half speed (fx_slowmo) */
+  int32_t slow_shown;          /* debug game.slowmo: held ticks of half speed so far */
+  int32_t unlock_toast;        /* hat just unlocked by party points (or -1) */
+  int32_t hat_seat;            /* the seat whose hat the menu's Hat row shows (the last to change it) */
   int32_t winner;
   float clock;                 /* seconds, render time for animation */
   bool new_best;
@@ -97,6 +114,17 @@ cw_bus pp_sfx_bus(void) { return bus_sfx; }
 
 static const mg_def *cur_def(void) { return MG_LIST[G.cur]; }
 static bool is_unlocked(int i) { return (SV->unlocked >> i) & 1; }
+static bool hat_open(int h) { return SV->points_total >= HAT_POINTS[h]; }
+static void hats_sync(void) { for (int p = 0; p < NP; p++) pp_hat[p] = SV->hat[p] >= 0 && SV->hat[p] < HAT_N && hat_open(SV->hat[p]) ? SV->hat[p] : HAT_NONE; }
+/* the next open hat for seat p, dir +1 or -1 */
+static void hat_step(int p, int dir) {
+  int h = SV->hat[p];
+  for (int k = 0; k < HAT_N; k++) { h = (h + dir + HAT_N) % HAT_N; if (hat_open(h)) break; }
+  SV->hat[p] = h;
+  G.hat_seat = p;
+  hats_sync();
+  cw_shell_save_commit();
+}
 
 static int dbg_seen, dbg_mg_seen; /* debug fields game.seen, game.mg_seen: every state and every mini-game this run has been in, one bit each */
 /* the instructions card waits this long for the other people once one has readied, then the game starts with
@@ -124,6 +152,7 @@ static void apply_scope(void) {
 
 #ifdef PP_AUTOPILOT
 static int batch_total, batch_done; /* balance runs, see batch_run */
+int pp_batch_active(void);
 #define AUTO 1
 #else
 #define AUTO 0
@@ -157,7 +186,6 @@ static int board_cells(void);
 static void load_scene(const char *path) {
   G_hub_live = path == NULL;
 #ifdef PP_AUTOPILOT
-  extern int pp_batch_active(void);
   if (pp_batch_active()) return; /* a balance run has 2D games only: no scene to load */
 #endif
   if (!path) path = "scenes/hub.cwscene";
@@ -167,6 +195,7 @@ static void load_scene(const char *path) {
 
 /* ── mini-game lifecycle ────────────────────────────────────────────── */
 
+static bool ahead_of(int a, int b);
 static void begin_game(int idx) {
   G.cur = idx;
   dbg_mg_seen |= 1 << idx;
@@ -182,16 +211,33 @@ static void begin_game(int idx) {
     if (sk) for (int p = 0; p < NP && sk[2 * p]; p++) G.c.cpu_skill[p] = sk[2 * p] - '0'; }
 #endif
   G.c.round = G.round;
+  /* every third round from the second is 2 vs 2: the leader and the last against the two between (the pairs are as
+   * even as the standings allow); the two on the better team both take its place */
+  G.team_round = G.tournament && G.round % 3 == 1 && G.round < G.rounds - 1;
+  for (int p = 0; p < NP; p++) G.team[p] = -1;
+  if (G.team_round) {
+    int ord[NP] = { 0, 1, 2, 3 };
+    for (int i = 1; i < NP; i++) for (int j = i; j > 0 && ahead_of(ord[j], ord[j - 1]); j--) { int t = ord[j]; ord[j] = ord[j - 1]; ord[j - 1] = t; }
+    G.team[ord[0]] = 0; G.team[ord[3]] = 0; G.team[ord[1]] = 1; G.team[ord[2]] = 1;
+  }
   G.c.tick = 0;
   G.c.done = false;
   G.c.time_total = G.c.time_left = d->seconds;
   cw_rng_seed(&G.c.rng, 9000u + (uint32_t)G.serial * 7919u + (uint32_t)idx * 131u);
   G.serial++;
   fx_reset();
-  G.scene3d = d->scene != NULL;
+  G.tree_sim = d->scene != NULL;
+  const char *path = d->scene ? d->scene : d->set;
+  G.scene3d = path != NULL;
+  G.slow = 0;
+  fx_map = NULL;
   apply_scope();
   double t0 = cw_time();
-  load_scene(d->scene);
+  load_scene(path);
+  pp_set_on = d->set && !G_hub_live;
+#ifdef PP_AUTOPILOT
+  if (pp_batch_active()) pp_set_on = false;
+#endif
   G.load_ms = (float)((cw_time() - t0) * 1000.0);
   d->start(&G.c);
   G.start_ms = (float)((cw_time() - t0) * 1000.0) - G.load_ms;
@@ -203,8 +249,11 @@ static void begin_game(int idx) {
 }
 
 static void end_game_cleanup(void) {
-  if (G.hold > 0 && G.scene3d && cw_scene_app_tree()) cw_tree_set_paused(cw_scene_app_tree(), false);
+  if (G.hold > 0 && G.tree_sim && cw_scene_app_tree()) cw_tree_set_paused(cw_scene_app_tree(), false);
   G.hold = 0;
+  G.slow = 0;
+  fx_map = NULL;
+  pp_set_on = false;
   if (G.cur >= 0 && G.cur < MG_N && cur_def()->stop) cur_def()->stop(&G.c);
   if (G.scene3d) load_scene(NULL);
   G.scene3d = false;
@@ -216,18 +265,24 @@ static void end_game_cleanup(void) {
  * points behind the leader gets 1 more (the underdog point, 20% of the winner's 5, shown on the board). */
 static const int PLACE_PTS[4] = { 5, 3, 2, 1 };
 enum { UNDERDOG_GAP = 5 };
+/* the board's numbers: steps are a die (1 to 4) plus a bonus for the place; a star costs STAR_COST coins */
+static const int PLACE_STEPS[4] = { 3, 2, 1, 0 };
+enum { STAR_COST = 10, DECIDE_WAIT = 60 * 10 };
+enum { SHOP_SAVE, SHOP_BOOT, SHOP_SWAP, SHOP_DOUBLE, SHOP_N };
+static const char *const SHOP_NAME[SHOP_N] = { "Save", "Boot", "Swap", "Double" };
+static const char *const SHOP_WHAT[SHOP_N] = { "keep your coins", "+3 spaces", "trade places with the one ahead", "your next game's coins count twice" };
+static const int SHOP_COST[SHOP_N] = { 0, 3, 6, 4 };
 
 /* Board cells with an event. Each cell's event happens once, to the first seat that lands on it exactly. */
-enum { EV_NONE, EV_STAR, EV_STEAL, EV_SWAP, EV_UNDERDOG };
+enum { EV_NONE, EV_COIN, EV_STEAL, EV_SWAP, EV_UNDERDOG, EV_BUY, EV_BOOT, EV_SHOPSWAP, EV_DOUBLE, EV_MISS };
 static int board_cells(void) { return G.rounds * 5 + 10; }
 static int cell_kind(int cell) {
   if (cell <= 0) return EV_NONE;
-  if (cell % 7 == 5) return EV_STAR;
+  if (cell % 7 == 5) return EV_COIN;
   if (cell % 11 == 8) return EV_STEAL;
   if (cell % 13 == 10) return EV_SWAP;
   return EV_NONE;
 }
-static bool is_star(int cell) { return cell_kind(cell) == EV_STAR; }
 static bool cell_used(int cell) { return cell < 64 && ((G.ev_taken[0] >> cell) & 1); }
 static int per_row(void) { int n = board_cells() + 1; return n <= 40 ? 10 : (n + 3) / 4; }
 #define BOARD_PER_ROW per_row()
@@ -239,6 +294,15 @@ static bool is_double_round(int r) { return r >= G.rounds - 2; }
 static void rank_players(void) {
   const mg_def *d = cur_def();
   int idx[NP] = { 0, 1, 2, 3 };
+  if (G.team_round) { /* 2 vs 2: each team's two scores added; both of the better team share first, the others third */
+    float t[2] = { 0, 0 };
+    for (int p = 0; p < NP; p++) t[G.team[p]] += G.c.score[p];
+    bool a_wins = d->higher_is_better ? t[0] > t[1] : t[0] < t[1], tie = t[0] == t[1];
+    for (int p = 0; p < NP; p++) G.place[p] = tie ? 0 : (G.team[p] == 0) == a_wins ? 0 : 2;
+    int mult = G.round == G.rounds - 1 ? 3 : is_double_round(G.round) ? 2 : 1;
+    for (int p = 0; p < NP; p++) G.round_pts[p] = PLACE_PTS[G.place[p]] * mult;
+    return;
+  }
   for (int i = 1; i < NP; i++) /* stable insertion sort, best first */
     for (int j = i; j > 0; j--) {
       float a = G.c.score[idx[j - 1]], b = G.c.score[idx[j]];
@@ -260,39 +324,122 @@ static void ev_add(int kind, int p, int q, int amt) {
   if (G.nev < 16) G.ev[G.nev].kind = kind, G.ev[G.nev].p = p, G.ev[G.nev].q = q, G.ev[G.nev].amt = amt, G.nev++;
 }
 
-/* One round on the board: the round's points, the underdog point, then each seat's landing cell, best place first.
- * Everything here is deterministic (the seat order and the game's rng) and every step is told to the players. */
+/* the seat ahead on the tournament: more stars, then further along, then more round wins */
+static bool ahead_of(int a, int b) {
+  if (G.stars[a] != G.stars[b]) return G.stars[a] > G.stars[b];
+  if (G.points[a] != G.points[b]) return G.points[a] > G.points[b];
+  return G.round_wins[a] > G.round_wins[b];
+}
+static int standing_score(int p) { return G.stars[p] * 1000 + G.points[p]; } /* balance logs: one number per seat */
+
+/* the star's next cell: a few spaces in front of the seat furthest behind (a seat behind has the best chance at it) */
+static void place_star(cw_rng *r) {
+  int low = G.points[0];
+  for (int p = 1; p < NP; p++) if (G.points[p] < low) low = G.points[p];
+  int c = low + 4 + cw_rng_int(r, 0, 5), N = board_cells();
+  if (c > N - 1) c = N - 1 - cw_rng_int(r, 0, 3);
+  for (int p = 0; p < NP && c > 1; p++) if (G.points[p] == c) c--; /* never under a token */
+  G.star_cell = c < 2 ? 2 : c;
+}
+
+/* A CPU's pick from the shop (made the moment the board opens): a star in reach with a Boot comes first, then a Swap
+ * when far behind and rich, then Double when it can still afford the star after; otherwise it saves */
+static int cpu_pick(int p) {
+  int sk = G.c.cpu_skill[p] % 3, c = G.coins[p];
+  uint32_t h = hash_u32(0x5eedu + (uint32_t)G.serial * 13u, (uint32_t)(p * 31 + G.round));
+  if (sk == 0 && (h % 100) < 50) return SHOP_SAVE; /* an easy CPU often does nothing */
+  int to_star = G.star_cell - G.points[p];
+  if (c >= SHOP_COST[SHOP_BOOT] + STAR_COST && to_star > G.roll[p] && to_star <= G.roll[p] + 3) return SHOP_BOOT;
+  int ahead = -1;
+  for (int q = 0; q < NP; q++) if (q != p && G.points[q] > G.points[p] && (ahead < 0 || G.points[q] < G.points[ahead])) ahead = q;
+  if (ahead >= 0 && c >= SHOP_COST[SHOP_SWAP] && G.points[ahead] - G.points[p] >= 5 && (sk == 2 || (h % 100) < 40)) return SHOP_SWAP;
+  if (c >= SHOP_COST[SHOP_DOUBLE] + (sk == 2 ? STAR_COST : 0) && G.round < G.rounds - 1 && (h % 100) < 30 + 20 * sk) return SHOP_DOUBLE;
+  return SHOP_SAVE;
+}
+static bool can_buy(int p, int item) {
+  if (G.coins[p] < SHOP_COST[item]) return false;
+  if (item == SHOP_SWAP) { for (int q = 0; q < NP; q++) if (q != p && G.points[q] > G.points[p]) return true; return false; }
+  if (item == SHOP_DOUBLE) return G.round < G.rounds - 1; /* there is a next game */
+  return true;
+}
+
+/* After a mini-game: coins for the place (the round's points), the underdog coin and space, and each seat's roll. The
+ * board then opens on the shop (decide): every seat picks an item or saves, then they move (board_move). */
 static void board_round(void) {
   G.nev = 0;
   int leader = 0;
-  for (int p = 1; p < NP; p++) if (G.points[p] > G.points[leader]) leader = p;
-  int low = 0;
-  for (int p = 1; p < NP; p++) if (G.points[p] < G.points[low]) low = p;
+  for (int p = 1; p < NP; p++) if (ahead_of(p, leader)) leader = p;
   memset(G.underdog, 0, sizeof G.underdog);
-  for (int p = 0; p < NP; p++) {
-    G.from[p] = G.points[p];
-    G.points[p] += G.round_pts[p];
-    if (G.place[p] == 0) G.round_wins[p]++;
-  }
-  for (int p = 0; p < NP; p++)
-    if (G.from[p] <= G.from[leader] - UNDERDOG_GAP && G.place[p] != 0) { G.underdog[p] = 1; G.points[p] += 1; ev_add(EV_UNDERDOG, p, -1, 1); }
-  for (int p = 0; p < NP; p++) G.mid[p] = G.points[p];
-  int order[NP], k = 0;
-  (void)k;
-  for (int pl = 0; pl < NP; pl++) for (int j = 0; j < NP; j++) { int p = (j + G.round) % NP; if (G.place[p] == pl) order[k++] = p; } /* tied places: the seat that goes first rotates */
   cw_rng r;
   cw_rng_seed(&r, 31337u + (uint32_t)G.serial * 101u + (uint32_t)G.round);
+  for (int p = 0; p < NP; p++) {
+    G.from[p] = G.points[p];
+    G.coins[p] += G.round_pts[p] * (G.dbl[p] ? 2 : 1);
+    if (G.dbl[p]) ev_add(EV_DOUBLE, p, -1, G.round_pts[p]);
+    G.dbl[p] = 0;
+    if (G.place[p] == 0) G.round_wins[p]++;
+    G.die[p] = 1 + cw_rng_int(&r, 0, 3);
+    if (G.place[p] == NP - 1) G.lasts[p]++;
+    G.roll[p] = G.die[p] + PLACE_STEPS[G.place[p]];
+    if (G.roll[p] > G.best_die[p]) G.best_die[p] = G.roll[p];
+  }
+  for (int p = 0; p < NP; p++)
+    if (p != leader && G.place[p] != 0 && (G.stars[p] < G.stars[leader] || G.points[p] <= G.points[leader] - UNDERDOG_GAP)) {
+      G.underdog[p] = 1; G.coins[p] += 1; G.roll[p] += 1; ev_add(EV_UNDERDOG, p, -1, 1);
+    }
+  for (int p = 0; p < NP; p++) {
+    G.picked[p] = !G.human[p];
+    G.pick[p] = G.human[p] ? SHOP_SAVE : cpu_pick(p);
+  }
+  G.phase = 0;
+  G.decide_t = 0;
+  G.move_t0 = 1 << 30;
+}
+
+/* the shop is closed: the items, then each seat walks its roll, best place first; a seat that passes the star with
+ * the coins buys it (the star moves on), and the cell it lands on does its thing */
+static void board_move(void) {
+  int order[NP], k = 0;
+  for (int pl = 0; pl < NP; pl++) for (int j = 0; j < NP; j++) { int p = (j + G.round) % NP; if (G.place[p] == pl) order[k++] = p; } /* tied places: the seat that goes first rotates */
+  cw_rng r;
+  cw_rng_seed(&r, 7331u + (uint32_t)G.serial * 103u + (uint32_t)G.round);
+  int N = board_cells();
+  for (int i = 0; i < NP; i++) { /* the shop first, in the same order */
+    int p = order[i], it = G.pick[p];
+    if (!can_buy(p, it) || it == SHOP_SAVE) continue;
+    G.coins[p] -= SHOP_COST[it];
+    G.spent[p] += SHOP_COST[it];
+    if (it == SHOP_BOOT) { G.roll[p] += 3; ev_add(EV_BOOT, p, -1, 3); }
+    else if (it == SHOP_DOUBLE) { G.dbl_next[p] = 1; ev_add(EV_DOUBLE, p, -2, 0); }
+    else if (it == SHOP_SWAP) {
+      int ahead = -1;
+      for (int q = 0; q < NP; q++) if (q != p && G.points[q] > G.points[p] && (ahead < 0 || G.points[q] < G.points[ahead])) ahead = q;
+      if (ahead >= 0) { int t = G.points[p]; G.points[p] = G.points[ahead]; G.points[ahead] = t; G.from[p] = G.points[p]; G.from[ahead] = G.points[ahead]; ev_add(EV_SHOPSWAP, p, ahead, 0); }
+    }
+  }
+  for (int p = 0; p < NP; p++) { G.dbl[p] = G.dbl_next[p]; G.dbl_next[p] = 0; }
+  for (int i = 0; i < NP; i++) {
+    int p = order[i], start = G.points[p], end = start + G.roll[p];
+    if (end > N) end = N;
+    for (int c = start + 1; c <= end; c++)
+      if (c == G.star_cell) {
+        if (G.coins[p] >= STAR_COST) { G.coins[p] -= STAR_COST; G.stars[p]++; ev_add(EV_BUY, p, -1, STAR_COST); G.points[p] = end; place_star(&r); break; }
+        else ev_add(EV_MISS, p, -1, STAR_COST - G.coins[p]);
+      }
+    G.points[p] = end;
+  }
+  for (int p = 0; p < NP; p++) G.mid[p] = G.points[p];
   for (int i = 0; i < NP; i++) {
     int p = order[i], cell = G.points[p];
-    if (cell <= 0 || cell > board_cells()) continue;
+    if (cell <= 0 || cell > N) continue;
     int kind = cell_kind(cell);
     if (kind == EV_NONE || cell_used(cell)) continue;
     G.ev_taken[0] |= 1ull << cell;
-    if (kind == EV_STAR) { G.points[p] += 2; ev_add(EV_STAR, p, -1, 2); }
-    else if (kind == EV_STEAL) { /* take 2 from the seat just ahead of you; nothing when you lead */
+    if (kind == EV_COIN) { G.coins[p] += 3; ev_add(EV_COIN, p, -1, 3); }
+    else if (kind == EV_STEAL) { /* take 3 coins from the seat ahead in the standings; nothing when you lead */
       int ahead = -1;
-      for (int q = 0; q < NP; q++) if (q != p && G.points[q] > G.points[p] && (ahead < 0 || G.points[q] < G.points[ahead])) ahead = q;
-      if (ahead >= 0) { int t = G.points[ahead] >= 2 ? 2 : G.points[ahead]; G.points[ahead] -= t; G.points[p] += t; ev_add(EV_STEAL, p, ahead, t); }
+      for (int q = 0; q < NP; q++) if (q != p && ahead_of(q, p) && (ahead < 0 || ahead_of(ahead, q))) ahead = q;
+      if (ahead >= 0) { int t = G.coins[ahead] >= 3 ? 3 : G.coins[ahead]; G.coins[ahead] -= t; G.coins[p] += t; G.taken[p] += t; ev_add(EV_STEAL, p, ahead, t); }
       else ev_add(EV_STEAL, p, -1, 0);
     } else if (kind == EV_SWAP) { /* trade places with a random other seat */
       int q = cw_rng_int(&r, 0, NP - 2);
@@ -301,7 +448,9 @@ static void board_round(void) {
       ev_add(EV_SWAP, p, q, 0);
     }
   }
-  if (G.round < 16) for (int p = 0; p < NP; p++) G.hist[G.round][p] = G.points[p];
+  G.phase = 1;
+  G.move_t0 = G.st_ticks;
+  if (G.round - 1 < 16 && G.round > 0) for (int p = 0; p < NP; p++) G.hist[G.round - 1][p] = standing_score(p);
 }
 
 static void award_points(void) {
@@ -313,8 +462,9 @@ static void award_points(void) {
   for (int p = 0; p < NP; p++) if (G.human[p]) best = d->higher_is_better ? fmaxf(best, G.c.score[p]) : best;
   if (best > SV->best[G.cur]) { SV->best[G.cur] = best; G.new_best = G.humans > 0; }
   G.unlock_toast = -1;
-  for (int i = 0; i < MG_N; i++)
-    if (!is_unlocked(i) && SV->points_total >= MG_LIST[i]->unlock_points) { SV->unlocked |= 1u << i; G.unlock_toast = i; }
+  { int before = SV->points_total; /* a hat whose points this round passed */
+    for (int p = 0; p < NP; p++) if (G.human[p]) before -= G.round_pts[p];
+    for (int h = 1; h < HAT_N; h++) if (before < HAT_POINTS[h] && hat_open(h)) G.unlock_toast = h; }
   if (G.tournament) board_round();
   cw_shell_save_commit();
 }
@@ -347,7 +497,7 @@ static void new_order(void) {
     int m = 0;
     for (int k = 0; k < n; k++) {
       const mg_def *d = MG_LIST[pool[k]];
-      if (batch_total && d->scene) continue;
+      if (batch_total && d->scene) continue; /* a 2D game on a set plays its rules without the set */
       if (only && strcmp(d->id, only)) continue;
       pool[m++] = pool[k];
     }
@@ -380,25 +530,33 @@ static void start_tournament(void) {
   memset(G.mid, 0, sizeof G.mid);
   memset(G.round_wins, 0, sizeof G.round_wins);
   memset(G.ev_taken, 0, sizeof G.ev_taken);
+  memset(G.coins, 0, sizeof G.coins);
+  memset(G.spent, 0, sizeof G.spent); memset(G.lasts, 0, sizeof G.lasts); memset(G.best_die, 0, sizeof G.best_die); memset(G.taken, 0, sizeof G.taken);
+  memset(G.stars, 0, sizeof G.stars);
+  memset(G.dbl, 0, sizeof G.dbl);
+  memset(G.dbl_next, 0, sizeof G.dbl_next);
   G.nev = 0;
   G.tiebreak = NULL;
   G.star_taken = 0;
+  G.phase = 1;
+  G.move_t0 = 0;
   new_order();
+  { cw_rng r; cw_rng_seed(&r, 5150u + (uint32_t)SV->tournaments * 31u + (uint32_t)G.serial); G.star_cell = 6 + cw_rng_int(&r, 0, 3); }
   G.winner = -1;
   set_state(S_BOARD);
   sfx_music(1);
 }
 
 static void finish_tournament(void) {
-  /* first by points; a tie goes to the seat with more round wins, then to a draw from the tournament's seeded rng
-   * (never the seat number, which favoured seat 1); the screen says which one decided it */
-  int top = G.points[0];
-  for (int p = 1; p < NP; p++) if (G.points[p] > top) top = G.points[p];
+  /* first by stars, then by how far along; a tie on both goes to the seat with more round wins, then to a draw from
+   * the tournament's seeded rng (never the seat number, which favoured seat 1); the screen says which one decided it */
+  int top = standing_score(0);
+  for (int p = 1; p < NP; p++) if (standing_score(p) > top) top = standing_score(p);
   int cand[NP], nc = 0, most = -1;
-  for (int p = 0; p < NP; p++) if (G.points[p] == top && G.round_wins[p] > most) most = G.round_wins[p];
+  for (int p = 0; p < NP; p++) if (standing_score(p) == top && G.round_wins[p] > most) most = G.round_wins[p];
   bool tied_pts = false;
-  { int n = 0; for (int p = 0; p < NP; p++) n += G.points[p] == top; tied_pts = n > 1; }
-  for (int p = 0; p < NP; p++) if (G.points[p] == top && G.round_wins[p] == most) cand[nc++] = p;
+  { int n = 0; for (int p = 0; p < NP; p++) n += standing_score(p) == top; tied_pts = n > 1; }
+  for (int p = 0; p < NP; p++) if (standing_score(p) == top && G.round_wins[p] == most) cand[nc++] = p;
   G.tiebreak = NULL;
   int best = cand[0];
   if (nc > 1) {
@@ -408,10 +566,20 @@ static void finish_tournament(void) {
     G.tiebreak = "a draw";
   } else if (tied_pts) G.tiebreak = "most round wins";
   G.winner = best;
+  { /* three silly awards from what happened (a stat nobody scored gives no award) */
+    const int32_t *stat[5] = { G.spent, G.lasts, G.best_die, G.taken, G.round_wins };
+    int n = 0;
+    for (int k = 0; k < 5 && n < 3; k++) {
+      int who = -1, v = 0;
+      for (int p = 0; p < NP; p++) if (stat[k][p] > v) v = stat[k][p], who = p;
+      if (who >= 0 && (k != 4 || who != best)) { G.award[n] = k; G.award_p[n] = who; n++; }
+    }
+    for (; n < 3; n++) G.award_p[n] = -1;
+  }
 #ifdef PP_AUTOPILOT
   if (batch_total) {
     fprintf(stderr, "TOURN skills=%d%d%d%d rounds=%d winner=%d final=%d,%d,%d,%d after2=%d,%d,%d,%d wins=%d,%d,%d,%d tie=%s\n", G.c.cpu_skill[0], G.c.cpu_skill[1], G.c.cpu_skill[2],
-           G.c.cpu_skill[3], G.rounds, best, G.points[0], G.points[1], G.points[2], G.points[3], G.hist[1][0], G.hist[1][1], G.hist[1][2], G.hist[1][3],
+           G.c.cpu_skill[3], G.rounds, best, standing_score(0), standing_score(1), standing_score(2), standing_score(3), G.hist[1][0], G.hist[1][1], G.hist[1][2], G.hist[1][3],
            G.round_wins[0], G.round_wins[1], G.round_wins[2], G.round_wins[3], G.tiebreak ? G.tiebreak : "no");
     batch_done++;
   }
@@ -468,7 +636,7 @@ static void on_start(int players, void *user) {
   SV->rounds_opt = 0;
   { const char *b = getenv("PP_BATCH"); batch_total = b ? atoi(b) : 0; }
   { const char *r = getenv("PP_ROUNDS"); if (r) SV->rounds_opt = atoi(r); }
-  if (batch_total) for (int i = 0; i < MG_N; i++) if (MG_LIST[i]->scene) SV->unlocked &= ~(1u << i); /* 2D games only */
+  if (batch_total) for (int i = 0; i < MG_N; i++) if (MG_LIST[i]->scene) SV->unlocked &= ~(1u << i); /* 2D rules only (the sets are looks) */
   if (!getenv("PP_KEYART")) start_tournament(); /* development (key art): PP_KEYART stays on the hub, the four characters on the table */
   { const char *only = getenv("PP_GAME"); /* a single game on repeat, for screenshots and probes */
     if (only) for (int i = 0; i < MG_N; i++) if (!strcmp(MG_LIST[i]->id, only)) for (int k = 0; k < G.rounds; k++) G.order[k] = i; }
@@ -488,9 +656,16 @@ static void cmd_game(int argc, const char **argv, cw_reply *r) {
 #endif
 /* debug channel: test switches */
 static void cmd_sw(int argc, const char **argv, cw_reply *r) {
-  if (argc < 3 || strcmp(argv[1], "ready_forever")) { cw_reply_error(r, "usage: sw ready_forever <0|1>"); return; }
-  G.ready_forever = atoi(argv[2]) != 0;
-  cw_reply_printf(r, "{\"ready_forever\":%d}", G.ready_forever);
+  if (argc >= 3 && !strcmp(argv[1], "ready_forever")) {
+    G.ready_forever = atoi(argv[2]) != 0;
+    cw_reply_printf(r, "{\"ready_forever\":%d}", G.ready_forever);
+  } else if (argc >= 3 && !strcmp(argv[1], "shop_forever")) {
+    G.shop_forever = atoi(argv[2]) != 0;
+    cw_reply_printf(r, "{\"shop_forever\":%d}", G.shop_forever);
+  } else if (argc >= 3 && !strcmp(argv[1], "old_locks")) { /* control: the six games a fresh save once had open, the rest behind party points */
+    SV->unlocked = atoi(argv[2]) ? 0x723u : (1u << MG_N) - 1;
+    cw_reply_printf(r, "{\"unlocked\":%u}", SV->unlocked);
+  } else cw_reply_error(r, "usage: sw ready_forever|shop_forever|old_locks <0|1>");
 }
 static void on_quit(void *user) {
   (void)user;
@@ -505,7 +680,7 @@ static void on_quit(void *user) {
 static void hold_hook(cw_tree *t, double dt, void *user) {
   (void)dt, (void)user;
   if (G.hold <= 0 || cw_shell_screen_now() != CW_SHELL_PLAY || !cw_tree_paused(t)) return; /* the shell's own pause is not ours */
-  if (G.state != S_PLAY || !G.scene3d) { G.hold = 0; cw_tree_set_paused(t, false); return; } /* the game ended inside the freeze */
+  if (G.state != S_PLAY || !G.tree_sim) { G.hold = 0; cw_tree_set_paused(t, false); return; } /* the game ended inside the freeze */
   G.hitstop_shown++;
   if (--G.hold == 0) cw_tree_set_paused(t, false);
 }
@@ -569,7 +744,7 @@ static void read_inputs(void) {
 static void tick_play(void) {
   /* a big hit freezes play for a few ticks, the clock too; before the inputs are read, so a press made during the
    * freeze is still a fresh press on the first tick after it */
-  if (!G.scene3d && G.hold > 0) { G.hold--; G.hitstop_shown++; return; }
+  if (!G.tree_sim && G.hold > 0) { G.hold--; G.hitstop_shown++; return; }
   read_inputs();
   /* a knocked-out person is never left idle: south cheers (confetti and a note), and some games give ghosts a job */
   for (int p = 0; p < NP; p++)
@@ -581,7 +756,14 @@ static void tick_play(void) {
   const mg_def *d = cur_def();
   d->tick(&G.c);
   { int hs = fx_hitstop_take();
-    if (hs > 0) { G.hold = hs; if (G.scene3d) cw_tree_set_paused(cw_scene_app_tree(), true); } }
+    if (hs > 0) { G.hold = hs; if (G.tree_sim) cw_tree_set_paused(cw_scene_app_tree(), true); } }
+  { int sm = fx_slowmo_take(); /* a fail moment: every other tick held for a while (half speed), the same holds as a hit-stop */
+    if (sm > G.slow) G.slow = sm;
+    if (G.slow > 0 && --G.slow % 2 == 0 && G.hold == 0) {
+      G.hold = 1;
+      G.slow_shown++;
+      if (G.tree_sim) cw_tree_set_paused(cw_scene_app_tree(), true);
+    } }
   G.c.tick++;
   if (d->seconds > 0) {
     G.c.time_left -= 1.0f / 60.0f;
@@ -591,6 +773,7 @@ static void tick_play(void) {
   if (G.c.done) { sfx(SFX_GO, 1, 0.7f); set_state(S_FINISH); }
 }
 
+float pp_anim_speed(void) { return G.state == S_PLAY && G.slow > 0 ? 0.5f : 1.0f; }
 static void sim_step(void);
 static int trophy_scroll; /* the trophy room's list, scrolled by up / down when it does not fit (the screen only, no game state) */
 #ifdef PP_AUTOPILOT
@@ -652,11 +835,17 @@ static void sim_step(void) {
   switch (G.state) {
   case S_MENU: {
     int n = menu_nav();
-    const int items = 6;
+    const int items = 7;
     if (n == -2 || n == 2) { G.menu_item = (G.menu_item + (n > 0 ? 1 : items - 1)) % items; sfx(SFX_BLIP, 1, 1); }
     if ((n == -1 || n == 1) && G.menu_item == 3) { SV->rounds_opt = (SV->rounds_opt + (n > 0 ? 1 : 2)) % 3; sfx(SFX_BLIP, 1, 1); cw_shell_save_commit(); }
     if ((n == -1 || n == 1) && G.menu_item == 4) { SV->skill = (SV->skill + (n > 0 ? 1 : 2)) % 3; sfx(SFX_BLIP, 1, 1); cw_shell_save_commit(); }
     if ((n == -1 || n == 1) && G.menu_item == 5) toggle_rumble();
+    if (G.menu_item == 6) /* each person turns their own hat: left / right, or the confirm button */
+      for (int p = 0; p < NP; p++) {
+        if (!G.human[p]) continue;
+        int d = cw_action_just_pressed(p, u_left) ? -1 : cw_action_just_pressed(p, u_right) || cw_action_just_pressed(p, u_ok) || cw_action_just_pressed(p, a_south) ? 1 : 0;
+        if (d) { hat_step(p, d); sfx(SFX_BLIP, 1, 1.2f); }
+      }
     if (menu_back() && !AUTO) { sfx(SFX_BACK, 1, 1); on_quit(NULL); cw_shell_to_title(); break; } /* no pause menu on the panels */
     if (menu_ok()) {
       sfx(SFX_SELECT, 1, 1);
@@ -665,7 +854,7 @@ static void sim_step(void) {
       else if (G.menu_item == 2) set_state(S_TROPHY);
       else if (G.menu_item == 3) { SV->rounds_opt = (SV->rounds_opt + 1) % 3; cw_shell_save_commit(); }
       else if (G.menu_item == 4) { SV->skill = (SV->skill + 1) % 3; cw_shell_save_commit(); }
-      else toggle_rumble();
+      else if (G.menu_item == 5) toggle_rumble();
     }
     break;
   }
@@ -691,10 +880,28 @@ static void sim_step(void) {
     break;
   }
   case S_BOARD: {
-    bool done_anim = G.st_ticks > 150;
+    if (G.tournament && G.round > 0 && G.phase == 0) { /* the shop: each person picks with left / right and confirms */
+      bool all = true, any = false;
+      for (int p = 0; p < NP; p++) {
+        if (!G.human[p] || G.picked[p]) { all = all && G.picked[p]; continue; }
+        all = false;
+        int d = cw_action_just_pressed(p, u_left) || cw_action_just_pressed(p, a_left) ? -1 : cw_action_just_pressed(p, u_right) || cw_action_just_pressed(p, a_right) ? 1 : 0;
+        for (int k = 0; d && k < SHOP_N; k++) { G.pick[p] = (G.pick[p] + d + SHOP_N) % SHOP_N; if (can_buy(p, G.pick[p])) break; }
+        if (d) sfx(SFX_BLIP, 1, 1);
+        if (cw_action_just_pressed(p, a_south) || cw_action_just_pressed(p, u_ok) || menu_start(p)) { G.picked[p] = 1; any = true; sfx(G.pick[p] ? SFX_COIN : SFX_SELECT, 0.8f, 1.1f); }
+      }
+      (void)any;
+      for (int p = 0; p < NP && !G.shop_forever; p++) if (G.human[p] && G.picked[p]) { if (++G.decide_t > DECIDE_WAIT) all = true; break; } /* once one has picked, the rest get ten seconds */
+      if (G.st_ticks > 60 * 20 && !G.shop_forever) all = true; /* nobody touched anything: everyone saves */
+      if (all && G.st_ticks > 40) { for (int p = 0; p < NP; p++) if (!G.picked[p]) G.pick[p] = SHOP_SAVE; board_move(); sfx(SFX_GO, 0.6f, 1.2f); }
+      if (menu_back() && !AUTO) { sfx(SFX_BACK, 1, 1); end_game_cleanup(); to_menu(); }
+      break;
+    }
+    int mt = G.st_ticks - (G.tournament && G.round > 0 ? G.move_t0 : 0); /* ticks since the tokens set off */
+    bool done_anim = mt > 150;
     if (G.round >= G.rounds && G.tournament) {
-      if (G.st_ticks > 200 && (menu_ok() || AUTO)) finish_tournament();
-    } else if (done_anim && (menu_ok() || (AUTO && G.st_ticks > 220) || G.st_ticks > 60 * 14)) begin_game(G.order[G.round]);
+      if (mt > 200 && (menu_ok() || AUTO)) finish_tournament();
+    } else if (done_anim && (menu_ok() || (AUTO && mt > 220) || mt > 60 * 14)) begin_game(G.order[G.round]);
     if (menu_back() && !AUTO) { sfx(SFX_BACK, 1, 1); end_game_cleanup(); to_menu(); }
     break;
   }
@@ -722,7 +929,8 @@ static void sim_step(void) {
     if (G.st_ticks > 60 && (menu_ok() || (AUTO && G.st_ticks > 120) || G.st_ticks > 60 * 20)) after_results();
     break;
   case S_FINAL:
-    if (G.st_ticks > 120 && (menu_ok() || AUTO)) { end_game_cleanup(); to_menu(); if (AUTO) start_tournament(); }
+    if (G.st_ticks > 120 && (menu_ok() || AUTO)) { end_game_cleanup(); sfx(SFX_SELECT, 1, 1); start_tournament(); } /* one press: another tournament */
+    else if (G.st_ticks > 120 && menu_back()) { sfx(SFX_BACK, 1, 1); end_game_cleanup(); to_menu(); }
     break;
   }
 }
@@ -754,6 +962,20 @@ static void draw_strip(void) {
     char line[48] = "";
     if (d->score_text) d->score_text(&G.c, p, line, sizeof line);
     draw_chip(p, x0 + p * (cw_ + gap), 10, cw_, line, 1);
+    if (G.team_round) { /* the team letter on the chip's corner */
+      float cx = x0 + p * (cw_ + gap) + cw_ - 26, cy = 10 + ui_chip_h() * 0.5f;
+      cw_r2d_circle(cw_v2(cx, cy), 16, 16, G.team[p] ? cw_rgba(0.95f, 0.55f, 0.15f, 1) : cw_rgba(0.25f, 0.6f, 1, 1));
+      ui_text(G.team[p] ? "B" : "A", cw_v2(cx, cy - ui_line_h(22) * 0.5f), 22, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
+    }
+  }
+  if (G.team_round && (G.state == S_INTRO || G.state == S_COUNT)) { /* who is with whom, under the strip */
+    char t[96];
+    int a[2] = { -1, -1 }, b[2] = { -1, -1 };
+    for (int p = 0; p < NP; p++) { int *v = G.team[p] ? b : a; if (v[0] < 0) v[0] = p; else v[1] = p; }
+    snprintf(t, sizeof t, "2 vs 2: team A %s and %s, team B %s and %s (scores add up)", PNAME[a[0]], PNAME[a[1]], PNAME[b[0]], PNAME[b[1]]);
+    float w = ui_text_w(t, 24) + 40, y = 14 + ui_chip_h();
+    ui_pill(cw_rect_make(STAGE_W * 0.5f - w * 0.5f, y, w, ui_line_h(24) + 6), cw_rgba(0, 0, 0, 0.6f));
+    ui_text(t, cw_v2(STAGE_W * 0.5f, y + 3), 24, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
   }
   /* the clock: not under the shell's pause menu, whose title would sit on it at a large text size */
   if (d->seconds > 0 && G.state == S_PLAY && cw_shell_screen_now() == CW_SHELL_PLAY) {
@@ -808,12 +1030,14 @@ static float hint_lines(const char *const *parts, int n, float cx, float w, floa
 static void draw_menu(void) {
   ui_vignette(1.6f);
   ui_title("PARTY PACK", cw_v2(STAGE_W / 2, 24), 96, G.clock);
-  static const char *labels[6] = { "Party Tournament", "Free Play", "Trophy Room", "Rounds", "CPU Skill", "Rumble" };
+  static const char *labels[7] = { "Party Tournament", "Free Play", "Trophy Room", "Rounds", "CPU Skill", "Rumble", "Hat" };
   static const char *skills[3] = { "Easy", "Medium", "Hard" };
-  char vals[6][24] = { "", "", "", "", "", "" };
+  char vals[7][32] = { "", "", "", "", "", "", "" };
   snprintf(vals[3], sizeof vals[3], "< %d >", 4 + 2 * (SV->rounds_opt % 3));
   snprintf(vals[4], sizeof vals[4], "< %s >", skills[SV->skill % 3]);
   snprintf(vals[5], sizeof vals[5], "< %s >", SV->rumble_off ? "Off" : "On");
+  { int hs = G.human[G.hat_seat] ? G.hat_seat : 0; /* the hat of the person who turned it last */
+    snprintf(vals[6], sizeof vals[6], "< %s %s >", PNAME[hs], HAT_NAME[pp_hat[hs]]); }
   /* a pad with no seat joins with its south button (the shell's join press reads the pad itself, so the hint names that
    * input, not an action) */
   char who[48];
@@ -821,11 +1045,11 @@ static void draw_menu(void) {
   const char *parts[4] = { who, "new pad: {pad:south} joins", "{btn_north} join or leave", "{ui_back} title" };
   float hs = 26, ht = hint_lines(parts, 4, STAGE_W / 2, STAGE_W - 80, 668 + ui_line_h(hs) / ui_grow(hs), hs, cw_rgba(1, 1, 1, 0.85f));
   float g = ui_grow(34), rh = 54 * g, step = rh + 6 * g, w = 500;
-  for (int i = 0; i < 6; i++) w = fmaxf(w, 56 * g + ui_text_w(labels[i], 34) + (vals[i][0] ? 30 * g + ui_text_w(vals[i], 34) : 0));
+  for (int i = 0; i < 7; i++) w = fmaxf(w, 56 * g + ui_text_w(labels[i], 34) + (vals[i][0] ? 30 * g + ui_text_w(vals[i], 34) : 0));
   w = fminf(w, STAGE_W - 40);
-  float title_bottom = 24 + 120 * ui_grow(96), top = fmaxf(title_bottom + 12, fminf(300, ht - 12 - 6 * step + 6 * g));
-  int fit = (int)((ht - 12 - top + 6 * g) / step), first = scroll_first(6, fit < 1 ? 1 : fit, G.menu_item);
-  if (fit > 6) fit = 6;
+  float title_bottom = 24 + 120 * ui_grow(96), top = fmaxf(title_bottom + 12, fminf(300, ht - 12 - 7 * step + 6 * g));
+  int fit = (int)((ht - 12 - top + 6 * g) / step), first = scroll_first(7, fit < 1 ? 1 : fit, G.menu_item);
+  if (fit > 7) fit = 7;
   if (fit < 1) fit = 1;
   for (int k = 0; k < fit; k++) {
     int i = first + k;
@@ -837,7 +1061,7 @@ static void draw_menu(void) {
     if (vals[i][0]) ui_text(vals[i], cw_v2(r.x + r.w - 28 * g, r.y + 6 * g), 34, tc, CW_ALIGN_RIGHT);
   }
   if (first > 0) scroll_arrow(STAGE_W / 2, top - 4, -1, 12 * g);
-  if (first + fit < 6) scroll_arrow(STAGE_W / 2, top + fit * step - 6 * g + 4, 1, 12 * g);
+  if (first + fit < 7) scroll_arrow(STAGE_W / 2, top + fit * step - 6 * g + 4, 1, 12 * g);
 }
 
 static void draw_pick(void) {
@@ -851,8 +1075,7 @@ static void draw_pick(void) {
   float nh = 0, th = 0, ih = ui_line_h(22);
   for (int i = 0; i < MG_N; i++) {
     char info[48];
-    if (!is_unlocked(i)) snprintf(info, sizeof info, "needs %d party points", MG_LIST[i]->unlock_points);
-    else snprintf(info, sizeof info, "%s   best %g", MG_LIST[i]->kind, SV->best[i]);
+    snprintf(info, sizeof info, "%s   best %g", MG_LIST[i]->kind, SV->best[i]);
     ih = fmaxf(ih, ui_wrap_h(info, inner, 22));
     nh = fmaxf(nh, ui_wrap_h(MG_LIST[i]->name, inner, 36));
     th = fmaxf(th, ui_wrap_h(is_unlocked(i) ? MG_LIST[i]->tagline : "Locked", inner, 24));
@@ -886,8 +1109,7 @@ static void draw_pick(void) {
     y += nh + 4;
     if (!compact) { ui_text_wrap(lock ? "Locked" : d->tagline, cw_rect_make(r.x + 18, y, inner, th), 24, tc, CW_ALIGN_LEFT); y += th + 4; }
     char s[48];
-    if (lock) snprintf(s, sizeof s, "needs %d party points", d->unlock_points);
-    else snprintf(s, sizeof s, "%s   best %g", d->kind, SV->best[i]);
+    snprintf(s, sizeof s, "%s   best %g", d->kind, SV->best[i]);
     ui_text_wrap(s, cw_rect_make(r.x + 18, r.y + ch - pad - ih, inner, ih), 22, sel ? tc : cw_rgba(0.8f, 0.85f, 1, 0.9f), CW_ALIGN_LEFT);
     if (lock) cw_r2d_round_rect(r, 16, 8, cw_rgba(0, 0, 0, 0.45f));
   }
@@ -899,7 +1121,10 @@ static void draw_trophy(void) {
   ui_vignette(1.5f);
   ui_text("TROPHY ROOM", cw_v2(STAGE_W / 2, 24), 64, cw_rgba(1, 0.9f, 0.4f, 1), CW_ALIGN_CENTER);
   char s[200];
-  snprintf(s, sizeof s, "party points %d   tournaments %d", SV->points_total, SV->tournaments);
+  { int open = 0, next = -1;
+    for (int h = 1; h < HAT_N; h++) { if (hat_open(h)) open++; else if (next < 0) next = h; }
+    if (next > 0) snprintf(s, sizeof s, "party points %d   tournaments %d   hats %d of %d (next at %d)", SV->points_total, SV->tournaments, open, HAT_N - 1, HAT_POINTS[next]);
+    else snprintf(s, sizeof s, "party points %d   tournaments %d   every hat", SV->points_total, SV->tournaments); }
   float y = fmaxf(120, 24 + ui_line_h(64));
   ui_text(s, cw_v2(STAGE_W / 2, y), 34, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
   y += ui_line_h(34);
@@ -915,7 +1140,7 @@ static void draw_trophy(void) {
   float top = fmaxf(380, wins_bottom + 8), lh = fmaxf(42, ui_line_h(26) * 1.05f), widest = 0;
   char lines[MG_MAX][96];
   for (int i = 0; i < MG_N; i++) {
-    snprintf(lines[i], sizeof lines[i], "%s: %s  played %d  best %g", MG_LIST[i]->name, is_unlocked(i) ? "open" : "locked", SV->plays[i], SV->best[i]);
+    snprintf(lines[i], sizeof lines[i], "%s: played %d  best %g", MG_LIST[i]->name, SV->plays[i], SV->best[i]);
     widest = fmaxf(widest, ui_text_w(lines[i], 26));
   }
   int cols = widest <= 460 ? 2 : 1, rows = (MG_N + cols - 1) / cols;
@@ -938,48 +1163,78 @@ static void draw_trophy(void) {
 static void draw_board(void) {
   ui_vignette(1.2f);
   int N = board_cells();
-  char s[96];
+  char s[128];
+  bool deciding = G.tournament && G.round > 0 && G.phase == 0;
+  int mt = G.st_ticks - (G.tournament && G.round > 0 ? G.move_t0 : 0);
   if (G.round >= G.rounds) snprintf(s, sizeof s, "FINAL STANDINGS");
   else snprintf(s, sizeof s, "ROUND %d OF %d", G.round + 1, G.rounds);
   ui_text(s, cw_v2(STAGE_W / 2, 18), 58, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
   float y = fmaxf(96, 18 + ui_line_h(58));
   for (int i = 0; i <= N; i++) { /* labels on the special tiles: over the tile, growing upward */
     int kind = i == N ? EV_NONE : cell_used(i) ? EV_NONE : cell_kind(i);
-    if (i != N && kind == EV_NONE) continue;
+    bool star = G.tournament && i == G.star_cell;
+    if (i != N && kind == EV_NONE && !star) continue;
     cw_vec2 p = hub_cell_screen(i);
     if (i == N) ui_text_up("END", cw_v2(p.x, p.y - 30), 26, cw_rgba(1, 0.95f, 0.5f, 1), CW_ALIGN_CENTER);
-    else if (kind == EV_STAR) ui_text_up("+2", cw_v2(p.x, p.y - 30), 24, cw_rgba(1, 0.7f, 0.95f, 1), CW_ALIGN_CENTER);
+    else if (star) { snprintf(s, sizeof s, "STAR %d", STAR_COST); ui_text_up(s, cw_v2(p.x, p.y - 30), 24, cw_rgba(1, 0.85f, 0.3f, 1), CW_ALIGN_CENTER); }
+    else if (kind == EV_COIN) ui_text_up("+3", cw_v2(p.x, p.y - 30), 24, cw_rgba(1, 0.9f, 0.45f, 1), CW_ALIGN_CENTER);
     else if (kind == EV_STEAL) ui_text_up("TAKE", cw_v2(p.x, p.y - 28), 20, cw_rgba(1, 0.65f, 0.3f, 1), CW_ALIGN_CENTER);
     else if (kind == EV_SWAP) ui_text_up("SWAP", cw_v2(p.x, p.y - 28), 20, cw_rgba(0.4f, 0.95f, 0.9f, 1), CW_ALIGN_CENTER);
   }
   float chip_y = STAGE_H - 22 - ui_chip_h();
   for (int p = 0; p < NP; p++) {
-    snprintf(s, sizeof s, "%d", G.st_ticks < 110 ? G.mid[p] : G.points[p]);
+    snprintf(s, sizeof s, "%d star%s  %d coins", G.stars[p], G.stars[p] == 1 ? "" : "s", G.coins[p]);
     draw_chip(p, 70 + p * 285, chip_y, 270, s, 1);
+  }
+  if (deciding) { /* the shop: each seat's roll, and its pick over its chip */
+    snprintf(s, sizeof s, "Rolls are in. Shop before you move (a star costs %d coins)", STAR_COST);
+    ui_text_wrap(s, cw_rect_make(60, y, STAGE_W - 120, ui_wrap_h(s, STAGE_W - 120, 30)), 30, cw_rgba(1, 0.92f, 0.5f, 1), CW_ALIGN_CENTER);
+    y += ui_wrap_h(s, STAGE_W - 120, 30) + 6;
+    float lh = ui_line_h(22), top = chip_y - 8 - lh * 4;
+    for (int p = 0; p < NP; p++) {
+      float cx = 70 + p * 285 + 135;
+      int it = G.pick[p];
+      cw_r2d_round_rect(cw_rect_make(cx - 132, top - 6, 264, lh * 4 + 8), 10, 6, cw_rgba(0.05f, 0.05f, 0.14f, 0.82f));
+      snprintf(s, sizeof s, "rolled %d +%d = %d", G.die[p], G.roll[p] - G.die[p], G.roll[p]);
+      ui_text(s, cw_v2(cx, top), 22, PCOL[p], CW_ALIGN_CENTER);
+      snprintf(s, sizeof s, G.human[p] && !G.picked[p] ? "< %s %d >" : "%s %d", SHOP_NAME[it], SHOP_COST[it]);
+      if (it == SHOP_SAVE) snprintf(s, sizeof s, G.human[p] && !G.picked[p] ? "< Save >" : "Save");
+      ui_text(s, cw_v2(cx, top + lh), 22, can_buy(p, it) ? cw_rgba(1, 1, 1, 1) : cw_rgba(1, 0.5f, 0.5f, 1), CW_ALIGN_CENTER);
+      ui_text(SHOP_WHAT[it], cw_v2(cx, top + lh * 2), 18, cw_rgba(0.85f, 0.88f, 1, 0.9f), CW_ALIGN_CENTER);
+      if (G.human[p] && !G.picked[p]) ui_prompt("{btn_south} pick", p, cw_v2(cx, top + lh * 3), 20, cw_rgba(1, 1, 1, 0.6f + 0.4f * sinf(G.clock * 3)), CW_ALIGN_CENTER);
+      else ui_text(G.human[p] ? "ready" : "CPU picked", cw_v2(cx, top + lh * 3), 20, cw_rgba(0.6f, 1, 0.7f, 0.9f), CW_ALIGN_CENTER);
+    }
+    return;
   }
   /* the prompt over the chips */
   const char *pr = G.round < G.rounds ? "{ui_accept} play" : "{ui_accept} the final standings";
   float pr_y = fminf(580, chip_y - 10 - ui_prompt_size(pr, -1, 28).y);
   if (G.round < G.rounds) {
-    snprintf(s, sizeof s, !G.tournament || !is_double_round(G.round) ? "Next: %s" : G.round == G.rounds - 1 ? "Next: %s   (triple points)" : "Next: %s   (double points)", MG_LIST[G.order[G.round]]->name);
+    bool team_next = G.tournament && G.round % 3 == 1 && G.round < G.rounds - 1;
+    snprintf(s, sizeof s, team_next ? "Next: %s   (2 vs 2)" : !G.tournament || !is_double_round(G.round) ? "Next: %s" : G.round == G.rounds - 1 ? "Next: %s   (triple coins)" : "Next: %s   (double coins)", MG_LIST[G.order[G.round]]->name);
     ui_text(s, cw_v2(STAGE_W / 2, y), 40, cw_rgba(1, 0.92f, 0.5f, 1), CW_ALIGN_CENTER);
     y += ui_line_h(40);
-    if (G.st_ticks > 150) ui_prompt(pr, -1, cw_v2(STAGE_W / 2, pr_y), 28, cw_rgba(1, 1, 1, 0.5f + 0.5f * sinf(G.clock * 6)), CW_ALIGN_CENTER);
-  } else {
+    if (mt > 150) ui_prompt(pr, -1, cw_v2(STAGE_W / 2, pr_y), 28, cw_rgba(1, 1, 1, 0.5f + 0.5f * sinf(G.clock * 6)), CW_ALIGN_CENTER);
+  } else if (mt > 150) {
     ui_prompt(pr, -1, cw_v2(STAGE_W / 2, pr_y), 28, cw_rgba(1, 1, 1, 0.5f + 0.5f * sinf(G.clock * 6)), CW_ALIGN_CENTER);
   }
-  if (G.tournament && G.round > 0 && G.st_ticks > 110) { /* what the board did, in words: in two columns when one runs out of room */
-    char e[8][96];
+  if (G.tournament && G.round > 0 && mt > 40) { /* what the board did, in words: in two columns when one runs out of room */
+    char e[10][96];
     float ew = 0, step = 30 * ui_grow(22), top = fmaxf(140, y + 4);
-    int n = G.nev < 8 ? G.nev : 8;
+    int n = G.nev < 10 ? G.nev : 10;
     for (int i = 0; i < n; i++) {
-      int p = G.ev[i].p, q = G.ev[i].q;
-      if (G.ev[i].kind == EV_STAR) snprintf(e[i], sizeof e[i], "%s lands on a star: +2", PNAME[p]);
-      else if (G.ev[i].kind == EV_STEAL) {
-        if (q >= 0) snprintf(e[i], sizeof e[i], "%s takes %d from %s", PNAME[p], G.ev[i].amt, PNAME[q]);
+      int p = G.ev[i].p, q = G.ev[i].q, k = G.ev[i].kind;
+      if (k == EV_COIN) snprintf(e[i], sizeof e[i], "%s lands on +3 coins", PNAME[p]);
+      else if (k == EV_STEAL) {
+        if (q >= 0) snprintf(e[i], sizeof e[i], "%s takes %d coins from %s", PNAME[p], G.ev[i].amt, PNAME[q]);
         else snprintf(e[i], sizeof e[i], "%s lands on a take space: nobody is ahead", PNAME[p]);
-      } else if (G.ev[i].kind == EV_SWAP) snprintf(e[i], sizeof e[i], "%s swaps places with %s", PNAME[p], PNAME[q]);
-      else snprintf(e[i], sizeof e[i], "%s: underdog point, +1", PNAME[p]);
+      } else if (k == EV_SWAP) snprintf(e[i], sizeof e[i], "%s swaps places with %s", PNAME[p], PNAME[q]);
+      else if (k == EV_BUY) snprintf(e[i], sizeof e[i], "%s buys the STAR! It moves on", PNAME[p]);
+      else if (k == EV_MISS) snprintf(e[i], sizeof e[i], "%s passes the star, %d coins short", PNAME[p], G.ev[i].amt);
+      else if (k == EV_BOOT) snprintf(e[i], sizeof e[i], "%s buys a boot: +3 spaces", PNAME[p]);
+      else if (k == EV_SHOPSWAP) snprintf(e[i], sizeof e[i], "%s buys a swap and trades places with %s", PNAME[p], PNAME[q]);
+      else if (k == EV_DOUBLE) snprintf(e[i], sizeof e[i], q == -2 ? "%s buys a double for the next game" : "%s's double pays: +%d coins", PNAME[p], G.ev[i].amt);
+      else snprintf(e[i], sizeof e[i], "%s: underdog bonus, +1 coin and +1 space", PNAME[p]);
       ew = fmaxf(ew, ui_text_w(e[i], 22) + 24);
     }
     int per = (int)((pr_y - 6 - top) / step);
@@ -1141,7 +1396,7 @@ static void draw_results(void) {
   if (G.new_best) ui_text("New best!", cw_v2(STAGE_W / 2, y_best), 40, cw_rgba(1, 0.8f, 0.3f, 1), CW_ALIGN_CENTER);
   if (G.unlock_toast >= 0) {
     char s[96];
-    snprintf(s, sizeof s, "Unlocked: %s", MG_LIST[G.unlock_toast]->name);
+    snprintf(s, sizeof s, "New hat: %s (pick it on the menu)", HAT_NAME[G.unlock_toast]);
     ui_text(s, cw_v2(STAGE_W / 2, y_unlock), 40, cw_rgba(0.6f, 1, 0.9f, 1), CW_ALIGN_CENTER);
   }
   if (G.st_ticks > 60) ui_prompt("{ui_accept} next", -1, cw_v2(STAGE_W / 2, y_prompt), 26, cw_rgba(1, 1, 1, 0.5f + 0.5f * sinf(G.clock * 6)), CW_ALIGN_CENTER);
@@ -1154,7 +1409,7 @@ static void draw_final(void) {
   for (int i = 1; i < NP; i++)
     for (int j = i; j > 0; j--) {
       int a = order[j - 1], b = order[j];
-      if (G.points[b] > G.points[a] || (G.points[b] == G.points[a] && G.round_wins[b] > G.round_wins[a])) { order[j] = a; order[j - 1] = b; } else break;
+      if (ahead_of(b, a)) { order[j] = a; order[j - 1] = b; } else break;
     }
   /* the heading first: the labels over the podiums keep below it */
   float y = 118, hdr_bot = 20 + ui_line_h(64);
@@ -1167,7 +1422,7 @@ static void draw_final(void) {
   }
   if (G.tiebreak) {
     char tb[64];
-    snprintf(tb, sizeof tb, "Tied on points: decided by %s", G.tiebreak);
+    snprintf(tb, sizeof tb, "Tied on stars and spaces: decided by %s", G.tiebreak);
     ui_text(tb, cw_v2(STAGE_W / 2, fmaxf(182, y)), 26, cw_rgba(1, 1, 1, 0.85f), CW_ALIGN_CENTER);
     hdr_bot = fmaxf(182, y) + ui_line_h(26);
   }
@@ -1181,7 +1436,7 @@ static void draw_final(void) {
     int p = order[i];
     cw_vec2 sp = hub_podium_screen(i);
     L[i].p = p, L[i].x = sp.x, L[i].name = !G.human[p] ? "CPU" : PNAME[p];
-    snprintf(L[i].pts, sizeof L[i].pts, "%d pts", G.points[p]);
+    snprintf(L[i].pts, sizeof L[i].pts, "%d star%s", G.stars[p], G.stars[p] == 1 ? "" : "s");
     L[i].w = fmaxf(ui_text_w(L[i].pts, 32), ui_text_w(L[i].name, 28));
     float pts_top = sp.y - 32 * k + pts_h / ui_grow(32) - pts_h; /* the points' foot stays where it was at 100% */
     L[i].top = fmaxf(pts_top - name_h, hdr_bot + 6);
@@ -1196,7 +1451,24 @@ static void draw_final(void) {
     ui_text(L[i].name, cw_v2(L[i].x, L[i].top), 28, col_a(PCOL[L[i].p], k), CW_ALIGN_CENTER);
     ui_text(L[i].pts, cw_v2(L[i].x, L[i].top + name_h), 32, cw_rgba(1, 1, 1, k), CW_ALIGN_CENTER);
   }
-  const char *pr = "{ui_accept} back to the menu";
+  { /* the awards, down the left and right of the podium */
+    static const char *const AW[5] = { "Big Spender", "Never Gave Up", "Lucky Feet", "Pickpocket", "Most Games Won" };
+    static const char *const AWHY[5] = { "most coins spent in the shop", "most last places, still smiling", "the biggest roll", "most coins taken", "most mini-games won" };
+    float k2 = ease_out(((float)G.st_ticks - 70) / 30.0f), ay = fmaxf(260, 182 + ui_line_h(26) + 10);
+    for (int i = 0; i < 3; i++) {
+      int p = G.award_p[i];
+      if (p < 0) continue;
+      float x = i == 1 ? STAGE_W - 170 : 170, yy = ay + (i == 2 ? 2 : 0) * ui_line_h(30) * 1.4f;
+      if (i == 2) x = 170;
+      if (i == 2) yy = ay + ui_line_h(30) * 3.2f;
+      char t[64];
+      ui_text(AW[G.award[i]], cw_v2(x, yy), 30, col_a(cw_rgba(1, 0.85f, 0.35f, 1), k2), CW_ALIGN_CENTER);
+      snprintf(t, sizeof t, "%s", !G.human[p] ? "CPU" : PNAME[p]);
+      ui_text(t, cw_v2(x, yy + ui_line_h(30)), 26, col_a(PCOL[p], k2), CW_ALIGN_CENTER);
+      ui_text(AWHY[G.award[i]], cw_v2(x, yy + ui_line_h(30) + ui_line_h(26)), 18, col_a(cw_rgba(1, 1, 1, 0.8f), k2), CW_ALIGN_CENTER);
+    }
+  }
+  const char *pr = "{ui_accept} play again   {ui_back} menu";
   float ph = ui_prompt_size(pr, -1, 26).y;
   ui_prompt(pr, -1, cw_v2(STAGE_W / 2, 672 + ph / ui_grow(26) - ph), 26, cw_rgba(1, 1, 1, 0.5f + 0.5f * sinf(G.clock * 6)), CW_ALIGN_CENTER);
 }
@@ -1212,12 +1484,14 @@ static void hub_sync(float dt) {
   if (N != last_cells) { hub_cells(N); last_cells = N; last_mode = -1; }
   if (mode != last_mode) { hub_mode(mode); last_mode = mode; }
   if (mode == 1) {
-    for (int i = 0; i <= N; i++) hub_cell(i, i == N ? 2 : (cell_kind(i) == EV_STAR && !cell_used(i)) ? 1 : 0);
-    float t = ease_out((float)G.st_ticks / 100.0f), t2 = ease_out(((float)G.st_ticks - 110.0f) / 50.0f);
+    for (int i = 0; i <= N; i++) hub_cell(i, i == N ? 2 : (G.tournament && i == G.star_cell) ? 1 : 0);
+    int mt = G.st_ticks - G.move_t0;
+    float t = ease_out((float)mt / 100.0f), t2 = ease_out(((float)mt - 110.0f) / 50.0f);
     for (int p = 0; p < NP; p++) {
-      /* first the round's points, then what the cells did (stars, takes, swaps, the underdog point) */
+      /* the shop first (tokens wait), then the roll's walk, then what the cells did (coins, takes, swaps) */
       float cell = !(G.tournament && G.round > 0) ? (float)G.points[p]
-                 : G.st_ticks < 110 ? flerp((float)G.from[p], (float)G.mid[p], t) : flerp((float)G.mid[p], (float)G.points[p], t2);
+                 : G.phase == 0 ? (float)G.from[p]
+                 : mt < 110 ? flerp((float)G.from[p], (float)G.mid[p], t) : flerp((float)G.mid[p], (float)G.points[p], t2);
       if (cell > (float)N) cell = (float)N;
       hub_token(p, cell, 0);
     }
@@ -1226,7 +1500,7 @@ static void hub_sync(float dt) {
     for (int i = 1; i < NP; i++)
       for (int j = i; j > 0; j--) {
         int a = order[j - 1], b = order[j];
-        if (G.points[b] > G.points[a] || (G.points[b] == G.points[a] && G.round_wins[b] > G.round_wins[a])) { order[j] = a; order[j - 1] = b; } else break;
+        if (ahead_of(b, a)) { order[j] = a; order[j - 1] = b; } else break;
       }
     for (int i = 0; i < NP; i++) hub_podium_slot(order[i], i, ease_out(((float)G.st_ticks - 8.0f * (float)(3 - i)) / 40.0f));
   }
@@ -1247,7 +1521,7 @@ static void render(void *user, double alpha) {
 #endif
     cw_r2d_begin(&(cw_r2d_pass_desc){ .clear = !(over3d || G_hub_live), .clear_color = cw_rgba(0.05f, 0.05f, 0.1f, 1), .ambient = art_ambient });
     art_world(false);
-    if (G.state == S_RESULT || G.state == S_FINISH || G.state == S_PLAY || G.state == S_COUNT || G.state == S_INTRO) fx_update(sc == CW_SHELL_PLAY ? dt_ : 0);
+    if (G.state == S_RESULT || G.state == S_FINISH || G.state == S_PLAY || G.state == S_COUNT || G.state == S_INTRO) fx_update(sc == CW_SHELL_PLAY ? dt_ * pp_anim_speed() : 0);
     stage_begin();
     bool hud = cw_shell_hud_shown(); /* the game's own panels and banners: not under the shell's menus (the world stays) */
     if (art_clean) {
@@ -1323,13 +1597,14 @@ static void init(void *user) {
   register_games();
   SV = cw_shell_game_save();
   pp_rumble_off = SV->rumble_off != 0;
-  for (int i = 0; i < MG_N; i++) if (MG_LIST[i]->unlock_points == 0) SV->unlocked |= 1u << i;
+  SV->unlocked = (1u << MG_N) - 1; /* every mini-game is open from the start; party points unlock hats */
+  hats_sync();
   sfx_init();
   load_scene(NULL); /* the 3D hub behind the title and join screens */
 #ifdef PP_AUTOPILOT
   cw_debug_command("game", "game <id>: every round left on that game", cmd_game);
 #endif
-  cw_debug_command("sw", "sw ready_forever <0|1>: test switch (the instructions card waits for every person, as it once did)", cmd_sw);
+  cw_debug_command("sw", "sw ready_forever|shop_forever|old_locks <0|1>: test switches (the instructions card, or the board's shop, waits for every person; the old game locks)", cmd_sw);
   cw_debug_command("bind", "bind <action> <bindings>: replace an action's bindings (as the controls screen does)", cmd_bind);
   cw_debug_i32("game.state", &G.state);
   cw_debug_i32("game.round", &G.round);
@@ -1339,6 +1614,13 @@ static void init(void *user) {
   cw_debug_i32("game.tick", &G.c.tick);
   cw_debug_field("game.score", G.c.score, CW_DBG_F32, NP);
   cw_debug_field("game.points", G.points, CW_DBG_I32, NP);
+  cw_debug_field("game.coins", G.coins, CW_DBG_I32, NP);
+  cw_debug_field("game.stars", G.stars, CW_DBG_I32, NP);
+  cw_debug_field("game.pick", G.pick, CW_DBG_I32, NP);
+  cw_debug_i32("game.phase", &G.phase);
+  cw_debug_i32("game.star_cell", &G.star_cell);
+  cw_debug_field("game.team", G.team, CW_DBG_I32, NP);
+  cw_debug_field("game.awards", G.award_p, CW_DBG_I32, 3);
   cw_debug_u32("game.hash", &G.hash);
   cw_debug_i32("game.points_total", &SV->points_total);
   cw_debug_u32("game.unlocked", &SV->unlocked);
@@ -1348,6 +1630,7 @@ static void init(void *user) {
   cw_debug_i32("game.events", &G.nev);
   cw_debug_field("game.wins", G.round_wins, CW_DBG_I32, NP);
   cw_debug_i32("game.hitstops", &G.hitstop_shown);
+  cw_debug_i32("game.slowmo", &G.slow_shown);
   cw_debug_field("cam.offset", cam_offset_dbg, CW_DBG_I32, 3);
   cw_debug_field("rumble.sent", pp_rumble_sent, CW_DBG_I32, NP);
   cw_debug_field("beat.presses", beat_presses_dbg, CW_DBG_I32, 3);

@@ -1,0 +1,52 @@
+[scene format=1]
+
+; Coin Rush's set: a mown garden yard in hedges, trees behind, flower beds in front (built in g_coins.c; the rules
+; are 2D)
+[node name="Level" type="Node3D"]
+
+[node name="Post" parent="." type="PostProcess"]
+msaa = 4
+tonemap = ACES_FILMIC
+exposure = 1.0
+bloom = true
+bloom_intensity = 0.1
+bloom_threshold = 1.0
+grade = true
+lut = "luts/raft.cube"
+ssao = true
+ssao_radius = 0.8
+vignette = true
+vignette_intensity = 0.3
+aa = SMAA
+
+[node name="Sky" parent="." type="ProceduralSky"]
+sun = "../Sun"
+time_of_day = 11.0
+latitude = 35
+declination = 18
+north = 150
+sun_energy = 3.8
+environment = true
+
+[node name="Sun" parent="." type="DirectionalLight3D"]
+shadow = true
+shadow_extent = 16
+shadow_size = 2048
+
+[node name="Camera" parent="." type="Camera3D"]
+position = vec3(0, 10.4, 9.6)
+rotation = vec3(-0.8, 0, 0)
+fov = 50
+far = 200
+
+[node name="FillE" parent="." type="OmniLight3D"]
+position = vec3(11, 7, 6)
+color = color(0.8, 0.9, 1, 1)
+energy = 26
+range = 30
+
+[node name="FillW" parent="." type="OmniLight3D"]
+position = vec3(-11, 7, 6)
+color = color(1, 0.92, 0.8, 1)
+energy = 22
+range = 30
