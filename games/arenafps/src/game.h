@@ -86,6 +86,8 @@ void mb_color(mesh_build *b, int v, float r, float g, float bl);
 void mb_tri(mesh_build *b, int a, int c, int d);
 void mb_quad(mesh_build *b, int a, int c, int d, int e);
 t3_geometry *mb_finish(mesh_build *b);
+/* pull overlapping same-plane faces of builders bs[0..nb) apart by eps (the smaller one moves out): no depth fight between them */
+int mb_separate_coplanar(mesh_build *bs, int nb, float eps, int *left);
 void mb_add_geo(mesh_build *b, const t3_geometry *g, t3_vec3 pos, float yaw, t3_vec3 scale, const float rgb[3], float uv_scale);
 /* a baked CSG mesh (uvs in metres, one repeat per uv_m), tinted, its big faces split so the macro tint varies over them */
 struct cw_csg_mesh;
@@ -156,6 +158,7 @@ typedef struct arena {
   struct { t3_vec3 s, e; int tag; bool two; } links[MAX_LINKS];
   int nlinks;
   int nav_links, nav_links_connected; /* in the navmesh (0 on an engine without links) */
+  int coplanar_moved, coplanar_left; /* vertices moved apart by mb_separate_coplanar at the build, overlapping pairs left (0) */
   int prop_count, prop_floating; /* solid props, and those with nothing under them */
   int item_gap_mm;        /* the largest gap between an item's nominal height and the floor under it, before the drawn item is grounded */
 } arena;

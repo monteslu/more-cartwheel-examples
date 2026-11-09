@@ -3596,6 +3596,8 @@ static void init(void *user) {
   cw_debug_i32("items.gap_mm", &A.item_gap_mm);
   cw_debug_i32("props.count", &A.prop_count);
   cw_debug_i32("props.floating", &A.prop_floating);
+  cw_debug_i32("level.coplanar_left", &A.coplanar_left);   /* faces still sharing a plane with another after the build (0: no depth fight) */
+  cw_debug_i32("level.coplanar_moved", &A.coplanar_moved); /* vertices the build moved apart */
   cw_debug_i32("nav.links_connected", &A.nav_links_connected);
   cw_debug_i32("nav.link_paths", &G.path_links);
   cw_debug_i32("nav.link_jumps", &G.link_jumps);

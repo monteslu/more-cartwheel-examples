@@ -3,6 +3,8 @@
  * levels/<name>.lvl for what the game places itself. Here the baked meshes become the level's drawn meshes (one per surface
  * kind, with the dressing of that kind) and Box3D mesh shapes (collision, shots and the navmesh read the same triangles); the
  * outer shell and what hangs on it stay boxes. Each arena has its own palette, materials and mood. */
+#include <time.h>
+
 #include "cartwheel/csg.h"
 #include "game.h"
 #include "cartwheel/quality.h"
@@ -920,6 +922,15 @@ void arena_build(int id, cw_node world_root) {
     default: dress_terraces(p); break;
   }
   if (tune("skyline", 1) > 0.5f) { if (id == 0) skyline_foundry(); else skyline(id); } /* ARENA_T_skyline=0 (autopilot): the void, for before and after */
+  { /* faces laid flush on others (decks, trims, wall boxes sharing a face) 5 mm proud: no surface fights another for the depth test */
+    clock_t t0 = clock();
+    int left = 0, moved = 0;
+    /* ARENA_T_separate=0 (autopilot): left as built, the flash sweep's control */
+    for (int pass = 0; pass < 3 && (pass == 0 || left) && tune("separate", 1) > 0.5f; pass++) moved += mb_separate_coplanar(MB, K_KINDS, 0.005f, &left); /* (slivers a pass missed) */
+    cw_info("arena %s: %d vertices moved off shared planes in %.1f ms, %d pairs left", ARENA_INFO[id].name, moved, (double)(clock() - t0) * 1000.0 / CLOCKS_PER_SEC, left);
+    A.coplanar_moved = moved, A.coplanar_left = left;
+    if (left) cw_warn("arena %s: %d faces still share a plane after separating", ARENA_INFO[id].name, left);
+  }
   {
     for (int k = 0; k < K_KINDS; k++) {
       mesh_build *b = &MB[k];

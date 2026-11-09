@@ -693,6 +693,222 @@ void mb_quad(mesh_build *b, int a, int c, int d, int e) {
   mb_tri(b, a, c, d);
   mb_tri(b, a, d, e);
 }
+/* Overlapping faces in one plane facing the same way (a tread deck laid flush on a steel top, a hazard trim set flush in a
+ * wall, two wall boxes sharing a face) have no depth order: the depth test picks one or the other pixel by pixel, a little
+ * differently every frame the camera moves, so whole patches switch between the two surfaces' look (texture, tint, how the
+ * sun and the lamps light them) frame to frame. They are layered: in each plane, bigger faces first, a face that overlaps
+ * bigger ones sits one eps out along its normal past the highest of them (the level's detail proud of what it is set on: a
+ * trim on a deck on a floor is two layers). Returns the vertices moved; *left the overlapping pairs left after (0). */
+typedef struct cop_tri { float n[3], d, area, uv[3][2]; int b, t, ax; } cop_tri;
+static int cop_cmp(const void *pa, const void *pb) {
+  const cop_tri *x = pa, *y = pb;
+  for (int i = 0; i < 3; i++) {
+    long qa = lroundf(x->n[i] * 500), qb = lroundf(y->n[i] * 500);
+    if (qa != qb) return qa < qb ? -1 : 1;
+  }
+  long da = lroundf(x->d * 2000), db = lroundf(y->d * 2000); /* half a millimetre */
+  return da < db ? -1 : da > db;
+}
+static float cop_side(const float *o, const float *a, const float *p) { return (a[0] - o[0]) * (p[1] - o[1]) - (a[1] - o[1]) * (p[0] - o[0]); }
+/* p strictly inside triangle t (2D), by a margin */
+static bool cop_inside(const float *p, const float *t) { /* t: three 2D points */
+  float s = cop_side(t, t + 2, t + 4) > 0 ? 1.0f : -1.0f;
+  return cop_side(t, t + 2, p) * s > 1e-6f && cop_side(t + 2, t + 4, p) * s > 1e-6f && cop_side(t + 4, t, p) * s > 1e-6f;
+}
+static bool cop_overlap(const cop_tri *a, const cop_tri *b) {
+  static const float W[7][3] = { { 0.6f, 0.2f, 0.2f }, { 0.2f, 0.6f, 0.2f }, { 0.2f, 0.2f, 0.6f }, { 1 / 3.0f, 1 / 3.0f, 1 / 3.0f },
+                                 { 0.45f, 0.45f, 0.1f }, { 0.1f, 0.45f, 0.45f }, { 0.45f, 0.1f, 0.45f } };
+  for (int s = 0; s < 7; s++) {
+    float pa[2] = { 0, 0 }, pb[2] = { 0, 0 };
+    for (int j = 0; j < 3; j++) pa[0] += a->uv[j][0] * W[s][j], pa[1] += a->uv[j][1] * W[s][j], pb[0] += b->uv[j][0] * W[s][j], pb[1] += b->uv[j][1] * W[s][j];
+    if (cop_inside(pa, &b->uv[0][0]) || cop_inside(pb, &a->uv[0][0])) return true;
+  }
+  return false;
+}
+static int cop_collect(mesh_build *bs, int nb, cop_tri **out) {
+  int total = 0, n = 0;
+  for (int k = 0; k < nb; k++) total += bs[k].ni / 3;
+  cop_tri *T = malloc(sizeof *T * (size_t)(total ? total : 1));
+  if (!T) abort();
+  for (int k = 0; k < nb; k++)
+    for (int t = 0; t < bs[k].ni / 3; t++) {
+      const float *p[3];
+      for (int j = 0; j < 3; j++) p[j] = bs[k].pos + 3 * bs[k].idx[t * 3 + j];
+      float e1[3] = { p[1][0] - p[0][0], p[1][1] - p[0][1], p[1][2] - p[0][2] }, e2[3] = { p[2][0] - p[0][0], p[2][1] - p[0][1], p[2][2] - p[0][2] };
+      float c[3] = { e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0] };
+      float l = sqrtf(c[0] * c[0] + c[1] * c[1] + c[2] * c[2]);
+      if (l < 1e-8f) continue;
+      cop_tri *q = &T[n++];
+      q->b = k, q->t = t, q->area = l * 0.5f;
+      for (int i = 0; i < 3; i++) q->n[i] = c[i] / l;
+      q->d = q->n[0] * p[0][0] + q->n[1] * p[0][1] + q->n[2] * p[0][2];
+      int ax = fabsf(q->n[0]) > fabsf(q->n[1]) ? (fabsf(q->n[0]) > fabsf(q->n[2]) ? 0 : 2) : (fabsf(q->n[1]) > fabsf(q->n[2]) ? 1 : 2);
+      int a0 = ax == 0 ? 1 : 0, a1 = ax == 2 ? 1 : 2;
+      q->ax = ax;
+      for (int j = 0; j < 3; j++) q->uv[j][0] = p[j][a0], q->uv[j][1] = p[j][a1];
+    }
+  qsort(T, (size_t)n, sizeof *T, cop_cmp);
+  *out = T;
+  return n;
+}
+typedef struct cop_pair { int small, big; } cop_pair;
+static int cop_pair_cmp(const void *pa, const void *pb) {
+  const cop_pair *x = pa, *y = pb;
+  return x->small != y->small ? (x->small < y->small ? -1 : 1) : (x->big < y->big ? -1 : x->big > y->big);
+}
+typedef struct cop_cell { int64_t key; int tri; } cop_cell;
+static int cop_cell_cmp(const void *pa, const void *pb) {
+  const cop_cell *x = pa, *y = pb;
+  return x->key != y->key ? (x->key < y->key ? -1 : 1) : (x->tri < y->tri ? -1 : x->tri > y->tri);
+}
+/* bigger first; ties by builder and triangle (the same order on every host) */
+static bool cop_before(const cop_tri *x, const cop_tri *y) {
+  return x->area > y->area || (x->area == y->area && (x->b < y->b || (x->b == y->b && x->t < y->t)));
+}
+/* the overlapping pairs of one plane's faces T[g0..g1), found through a 2 m grid over the plane */
+static int cop_group_pairs(const cop_tri *T, int g0, int g1, const float (*box)[4], cop_pair **pairs, int *np, int *cap) {
+  const float cell = 2.0f;
+  int m = g1 - g0, nc = 0, cc = m * 4;
+  cop_cell *C = malloc(sizeof *C * (size_t)cc);
+  if (!C) abort();
+  for (int i = g0; i < g1; i++) {
+    int x0 = (int)floorf(box[i][0] / cell), x1 = (int)floorf(box[i][1] / cell), y0 = (int)floorf(box[i][2] / cell), y1 = (int)floorf(box[i][3] / cell);
+    for (int x = x0; x <= x1; x++)
+      for (int y = y0; y <= y1; y++) {
+        if (nc == cc) {
+          cc *= 2;
+          C = realloc(C, sizeof *C * (size_t)cc);
+          if (!C) abort();
+        }
+        C[nc++] = (cop_cell){ ((int64_t)(x + (1 << 20)) << 32) | (int64_t)(uint32_t)(y + (1 << 20)), i };
+      }
+  }
+  qsort(C, (size_t)nc, sizeof *C, cop_cell_cmp);
+  int found = 0;
+  for (int s = 0; s < nc;) {
+    int e = s + 1;
+    while (e < nc && C[e].key == C[s].key) e++;
+    for (int i = s; i < e; i++)
+      for (int j = i + 1; j < e; j++) {
+        int a = C[i].tri, c = C[j].tri;
+        if (box[a][1] <= box[c][0] || box[c][1] <= box[a][0] || box[a][3] <= box[c][2] || box[c][3] <= box[a][2]) continue;
+        /* the pair once: in the first cell both boxes cover */
+        int64_t kx = (int64_t)floorf(fmaxf(box[a][0], box[c][0]) / cell), ky = (int64_t)floorf(fmaxf(box[a][2], box[c][2]) / cell);
+        if (C[s].key != (((kx + (1 << 20)) << 32) | (int64_t)(uint32_t)(ky + (1 << 20)))) continue;
+        if (!cop_overlap(&T[a], &T[c])) continue;
+        if (*np == *cap) {
+          *cap = *cap ? *cap * 2 : 1024;
+          *pairs = realloc(*pairs, sizeof **pairs * (size_t)*cap);
+          if (!*pairs) abort();
+        }
+        (*pairs)[(*np)++] = cop_before(&T[a], &T[c]) ? (cop_pair){ c, a } : (cop_pair){ a, c };
+        found++;
+      }
+    s = e;
+  }
+  free(C);
+  return found;
+}
+static int cop_find_pairs(cop_tri *T, int n, float (*box)[4], cop_pair **pairs) {
+  int np = 0, cap = 0;
+  *pairs = NULL;
+  for (int i = 0; i < n; i++) {
+    box[i][0] = box[i][2] = 1e30f, box[i][1] = box[i][3] = -1e30f;
+    for (int j = 0; j < 3; j++) {
+      box[i][0] = fminf(box[i][0], T[i].uv[j][0]), box[i][1] = fmaxf(box[i][1], T[i].uv[j][0]);
+      box[i][2] = fminf(box[i][2], T[i].uv[j][1]), box[i][3] = fmaxf(box[i][3], T[i].uv[j][1]);
+    }
+  }
+  for (int g0 = 0; g0 < n;) {
+    int g1 = g0 + 1;
+    while (g1 < n && !cop_cmp(&T[g0], &T[g1])) g1++;
+    if (g1 - g0 > 1) cop_group_pairs(T, g0, g1, (const float(*)[4])box, pairs, &np, &cap);
+    g0 = g1;
+  }
+  return np;
+}
+static int cop_rank_cmp(const void *pa, const void *pb, void *ctx) {
+  const cop_tri *T = ctx;
+  int a = *(const int *)pa, b = *(const int *)pb;
+  return cop_before(&T[a], &T[b]) ? -1 : cop_before(&T[b], &T[a]) ? 1 : 0;
+}
+static const cop_tri *cop_sort_T;
+static int cop_rank_cmp_q(const void *pa, const void *pb) { return cop_rank_cmp(pa, pb, (void *)cop_sort_T); }
+
+int mb_separate_coplanar(mesh_build *bs, int nb, float eps, int *left) {
+  cop_tri *T;
+  int n = cop_collect(bs, nb, &T);
+  float(*box)[4] = malloc(sizeof *box * (size_t)(n ? n : 1));
+  int *layer = calloc((size_t)(n ? n : 1), sizeof *layer), *ord = malloc(sizeof *ord * (size_t)(n ? n : 1)),
+      *rank = malloc(sizeof *rank * (size_t)(n ? n : 1));
+  if (!box || !layer || !ord || !rank) abort();
+  cop_pair *P;
+  int np = cop_find_pairs(T, n, box, &P);
+  /* layers, bigger faces first: a face one past the highest layer of the bigger faces it overlaps */
+  for (int i = 0; i < n; i++) ord[i] = i;
+  cop_sort_T = T;
+  qsort(ord, (size_t)n, sizeof *ord, cop_rank_cmp_q);
+  for (int i = 0; i < n; i++) rank[ord[i]] = i;
+  /* pairs by the smaller face's rank: every bigger face's layer is known when the smaller one is reached */
+  for (int i = 0; i < np; i++) P[i].small = rank[P[i].small], P[i].big = rank[P[i].big];
+  qsort(P, (size_t)np, sizeof *P, cop_pair_cmp);
+  for (int i = 0; i < np; i++) {
+    int s = ord[P[i].small], b = ord[P[i].big];
+    if (layer[b] + 1 > layer[s]) layer[s] = layer[b] + 1;
+  }
+  /* move each layered face out along its own normal; a vertex it shares with a face of another layer is copied first */
+  int moved = 0;
+  float *at[64] = { 0 };
+  for (int k = 0; k < nb && k < 64; k++)
+    if (bs[k].nv) {
+      at[k] = malloc(sizeof(float) * (size_t)bs[k].nv);
+      if (!at[k]) abort();
+      for (int v = 0; v < bs[k].nv; v++) at[k][v] = -1;
+    }
+  for (int i = 0; i < n; i++) { /* the faces that stay claim their vertices at 0 */
+    if (layer[i] || T[i].b >= 64) continue;
+    for (int v = 0; v < 3; v++) at[T[i].b][bs[T[i].b].idx[T[i].t * 3 + v]] = 0;
+  }
+  for (int r = 0; r < n; r++) {
+    int i = ord[r];
+    if (!layer[i] || T[i].b >= 64) continue;
+    mesh_build *b = &bs[T[i].b];
+    float push = (float)layer[i] * eps;
+    for (int v = 0; v < 3; v++) {
+      uint32_t *ix = &b->idx[T[i].t * 3 + v];
+      float have = at[T[i].b][*ix];
+      if (have == push) continue;
+      if (have >= 0) { /* shared with a face at another depth: a copy of its own */
+        const float *Pp = b->pos + 3 * *ix, *Nn = b->nor + 3 * *ix, *U = b->uv + 2 * *ix, *Cc = b->col + 3 * *ix;
+        float p3[3] = { Pp[0], Pp[1], Pp[2] }, n3[3] = { Nn[0], Nn[1], Nn[2] }, u2[2] = { U[0], U[1] }, c3[3] = { Cc[0], Cc[1], Cc[2] };
+        int nv = mb_vert(b, (t3_vec3){ p3[0] - T[i].n[0] * have, p3[1] - T[i].n[1] * have, p3[2] - T[i].n[2] * have },
+                         (t3_vec3){ n3[0], n3[1], n3[2] }, u2[0], u2[1]);
+        float *C2 = b->col + 3 * nv;
+        C2[0] = c3[0], C2[1] = c3[1], C2[2] = c3[2];
+        at[T[i].b] = realloc(at[T[i].b], sizeof(float) * (size_t)b->cap_v);
+        if (!at[T[i].b]) abort();
+        at[T[i].b][nv] = 0;
+        ix = &b->idx[T[i].t * 3 + v]; /* (mb_vert may move the arrays, not idx) */
+        *ix = (uint32_t)nv;
+      }
+      float *Pv = b->pos + 3 * *ix;
+      Pv[0] += T[i].n[0] * push, Pv[1] += T[i].n[1] * push, Pv[2] += T[i].n[2] * push;
+      at[T[i].b][*ix] = push;
+      moved++;
+    }
+  }
+  for (int k = 0; k < nb && k < 64; k++) free(at[k]);
+  free(P), free(layer), free(ord), free(rank), free(box), free(T);
+  if (left) { /* the same search over the moved faces */
+    n = cop_collect(bs, nb, &T);
+    box = malloc(sizeof *box * (size_t)(n ? n : 1));
+    if (!box) abort();
+    *left = cop_find_pairs(T, n, box, &P);
+    free(P), free(box), free(T);
+  }
+  return moved;
+}
+
 t3_geometry *mb_finish(mesh_build *b) {
   t3_geometry *g = t3_geometry_new();
   t3_attribute *a;
