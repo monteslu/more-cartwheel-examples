@@ -402,13 +402,13 @@
     "expect": {
       "game.ticks": 900,
       "game.wave": 13,
-      "fx.booms": 112,
+      "fx.booms": 110,
       "view.cam_jerks": 0,
       "cw.rumble": [
-        175,
-        1,
-        318,
-        91,
+        184,
+        2,
+        394,
+        112,
         170
       ]
     },
@@ -725,20 +725,20 @@
       "game.ticks": 7800,
       "game.state": 0,
       "floor.level": 1,
-      "floor.boss_tick": 2573,
-      "floor.clear_tick": 2663,
-      "floor.hatch_tick": 2663,
-      "floor.descend_tick": 2912,
-      "floor.next_tick": 2972,
+      "floor.boss_tick": 1941,
+      "floor.clear_tick": 2031,
+      "floor.hatch_tick": 2031,
+      "floor.descend_tick": 2091,
+      "floor.next_tick": 2151,
       "floor.left_at_hatch": 0,
-      "game.enemies": 523,
+      "game.enemies": 516,
       "player.hp": [
         100,
         100,
         100,
         0
       ],
-      "game.hash": 840220152
+      "game.hash": 3876518761
     },
     "controlEnv": {
       "HORDE_WAVE": "5",
@@ -784,13 +784,13 @@
       "game.ticks": 3600,
       "game.state": 0,
       "floor.level": 1,
-      "floor.boss_tick": 91,
-      "floor.clear_tick": 181,
-      "floor.hatch_tick": 181,
-      "floor.descend_tick": 302,
-      "floor.next_tick": 362,
+      "floor.boss_tick": 122,
+      "floor.clear_tick": 212,
+      "floor.hatch_tick": 212,
+      "floor.descend_tick": 1112,
+      "floor.next_tick": 1172,
       "floor.left_at_hatch": 0,
-      "game.hash": 2449745043
+      "game.hash": 296276629
     },
     "controlEnv": {
       "HORDE_WAVE": "5",
@@ -830,13 +830,13 @@
       "game.ticks": 3600,
       "game.state": 0,
       "floor.level": 2,
-      "floor.boss_tick": 112,
-      "floor.clear_tick": 202,
-      "floor.hatch_tick": 202,
-      "floor.descend_tick": 1080,
-      "floor.next_tick": 1140,
+      "floor.boss_tick": 109,
+      "floor.clear_tick": 199,
+      "floor.hatch_tick": 199,
+      "floor.descend_tick": 1108,
+      "floor.next_tick": 1168,
       "floor.left_at_hatch": 0,
-      "game.hash": 3750209669
+      "game.hash": 2306625581
     },
     "controlEnv": {
       "HORDE_WAVE": "10",
@@ -876,13 +876,13 @@
       "game.ticks": 3600,
       "game.state": 0,
       "floor.level": 3,
-      "floor.boss_tick": 402,
-      "floor.clear_tick": 492,
-      "floor.hatch_tick": 492,
-      "floor.descend_tick": 1237,
-      "floor.next_tick": 1297,
+      "floor.boss_tick": 507,
+      "floor.clear_tick": 597,
+      "floor.hatch_tick": 597,
+      "floor.descend_tick": 1382,
+      "floor.next_tick": 1442,
       "floor.left_at_hatch": 0,
-      "game.hash": 2781999747
+      "game.hash": 872852657
     },
     "controlEnv": {
       "HORDE_WAVE": "15",
@@ -922,13 +922,13 @@
       "game.ticks": 3600,
       "game.state": 0,
       "floor.level": 4,
-      "floor.boss_tick": 105,
-      "floor.clear_tick": 195,
-      "floor.hatch_tick": 195,
-      "floor.descend_tick": 1035,
-      "floor.next_tick": 1095,
+      "floor.boss_tick": 209,
+      "floor.clear_tick": 299,
+      "floor.hatch_tick": 299,
+      "floor.descend_tick": 1192,
+      "floor.next_tick": 1252,
       "floor.left_at_hatch": 0,
-      "game.hash": 1121370986
+      "game.hash": 187208506
     },
     "controlEnv": {
       "HORDE_WAVE": "20",
@@ -968,13 +968,13 @@
       "game.ticks": 3600,
       "game.state": 0,
       "floor.level": 5,
-      "floor.boss_tick": 118,
-      "floor.clear_tick": 208,
-      "floor.hatch_tick": 208,
-      "floor.descend_tick": 1125,
-      "floor.next_tick": 1185,
+      "floor.boss_tick": 257,
+      "floor.clear_tick": 347,
+      "floor.hatch_tick": 347,
+      "floor.descend_tick": 1167,
+      "floor.next_tick": 1227,
       "floor.left_at_hatch": 0,
-      "game.hash": 1651720857
+      "game.hash": 3247538760
     },
     "controlEnv": {
       "HORDE_WAVE": "26",
@@ -1014,13 +1014,13 @@
       "game.ticks": 3600,
       "game.state": 0,
       "floor.level": 6,
-      "floor.boss_tick": 399,
-      "floor.clear_tick": 489,
-      "floor.hatch_tick": 489,
-      "floor.descend_tick": 653,
-      "floor.next_tick": 713,
+      "floor.boss_tick": 466,
+      "floor.clear_tick": 556,
+      "floor.hatch_tick": 556,
+      "floor.descend_tick": 1430,
+      "floor.next_tick": 1490,
       "floor.left_at_hatch": 0,
-      "game.hash": 1394804146
+      "game.hash": 3553184193
     },
     "controlEnv": {
       "HORDE_WAVE": "32",
@@ -1060,13 +1060,13 @@
       "game.ticks": 3600,
       "game.state": 0,
       "floor.level": 7,
-      "floor.boss_tick": 410,
-      "floor.clear_tick": 500,
-      "floor.hatch_tick": 500,
-      "floor.descend_tick": 1290,
-      "floor.next_tick": 1350,
+      "floor.boss_tick": 278,
+      "floor.clear_tick": 368,
+      "floor.hatch_tick": 368,
+      "floor.descend_tick": 1211,
+      "floor.next_tick": 1271,
       "floor.left_at_hatch": 0,
-      "game.hash": 2168996705
+      "game.hash": 3876456151
     },
     "controlEnv": {
       "HORDE_WAVE": "38",
@@ -1103,16 +1103,16 @@
       "game.hash"
     ],
     "expect": {
-      "game.ticks": 1900,
+      "game.ticks": 675,
       "game.state": 2,
       "floor.level": 7,
-      "floor.boss_tick": 440,
-      "floor.clear_tick": 530,
-      "floor.hatch_tick": 530,
-      "floor.descend_tick": 1337,
+      "floor.boss_tick": 409,
+      "floor.clear_tick": 499,
+      "floor.hatch_tick": 499,
+      "floor.descend_tick": 564,
       "floor.next_tick": 0,
       "floor.left_at_hatch": 0,
-      "game.hash": 3779425763
+      "game.hash": 3405174414
     },
     "controlEnv": {
       "HORDE_WAVE": "44",
