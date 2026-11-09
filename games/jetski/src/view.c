@@ -383,6 +383,97 @@ static void placed_apply(cw_node root) {
   }
 }
 
+/* Near-field markers: a line of small floats strung out from each buoy on its far side (the side a rider must not
+ * pass), orange and white, sitting in the moving water. A rider rounding a mark passes a few of them a few metres
+ * off, which is what gives 80 km/h its speed. Render only: the race never sees them. sw floats 0: none (the
+ * control). fx.near_floats counts floats that came within 15 m of the player. */
+#define FLOATS_MAX 256
+#define FLOATS_PER_MARK 7
+int g_floats = 1;
+int32_t g_near_floats;
+static t3_instanced_mesh *float_im[2];
+static cw_node float_node[2];
+static float float_at[FLOATS_MAX][3]; /* x, z, yaw */
+static int float_buoy[FLOATS_MAX], float_side_n[2], float_side_of[FLOATS_MAX], float_slot[FLOATS_MAX];
+static bool float_close[FLOATS_MAX];
+int float_count; /* floats on this course (fx.floats) */
+static bool float_spot_clear(float x, float z, float buoy_s) {
+  if (ground_at(x, z) > -0.8f) return false;
+  for (int r = 0; r < RAMPS; r++) { float dx = x - G.ramp_x[r], dz = z - G.ramp_z[r]; if (dx * dx + dz * dz < 18.0f * 18.0f) return false; }
+  /* clear of every other stretch of the course (a course that doubles back past this mark) */
+  for (int i = 0; i < TRACK_N; i++) {
+    float ds = fabsf((float)i / TRACK_N * COURSE_LEN - buoy_s);
+    if (ds > COURSE_LEN * 0.5f) ds = COURSE_LEN - ds;
+    if (ds < 50) continue;
+    float dx = x - TRACK[i][0], dz = z - TRACK[i][1];
+    if (dx * dx + dz * dz < 16.0f * 16.0f) return false;
+  }
+  for (int b = 0; b < BUOY_N; b++) { float dx = x - BUOYS[b][0], dz = z - BUOYS[b][1]; if (dx * dx + dz * dz < 2.5f * 2.5f) return false; }
+  return true;
+}
+static void floats_apply(cw_node root) {
+  for (int k = 0; k < 2; k++) if (cw_node_valid(float_node[k])) { cw_node_free(float_node[k]); float_node[k] = (cw_node){ 0 }; float_im[k] = NULL; }
+  float_count = 0;
+  float_side_n[0] = float_side_n[1] = 0;
+  for (int b = 0; b < BUOY_N; b++) {
+    const float *m = BUOYS[b];
+    float sx, sz, tx, tz;
+    track_at(m[3], &sx, &sz, &tx, &tz);
+    float tl = sqrtf(tx * tx + tz * tz) + 1e-6f;
+    tx /= tl, tz /= tl;
+    float ox = -tz * m[2], oz = tx * m[2]; /* the mark's far side (sw wrong_side puts a rider there) */
+    for (int k = 0; k < FLOATS_PER_MARK && float_count < FLOATS_MAX; k++) {
+      float d = 3.2f + 2.6f * (float)k, x = m[0] + ox * d, z = m[1] + oz * d;
+      if (!float_spot_clear(x, z, m[3])) break;
+      int c = k & 1;
+      float_at[float_count][0] = x, float_at[float_count][1] = z, float_at[float_count][2] = cw_atan2(ox, oz) + 0.4f * (float)k;
+      float_buoy[float_count] = b, float_side_of[float_count] = c, float_slot[float_count] = float_side_n[c]++;
+      float_close[float_count] = false;
+      float_count++;
+    }
+  }
+  static t3_geometry *geo;
+  static t3_material *mat[2];
+  if (!geo) {
+    geo = t3_sphere_geometry_new(0.27f, 14, 9);
+    mat[0] = t3_mesh_standard_material_new(0xf2581c), mat[1] = t3_mesh_standard_material_new(0xf1efe8);
+    for (int k = 0; k < 2; k++) mat[k]->roughness = 0.42f, mat[k]->metalness = 0; /* moulded plastic */
+  }
+  for (int k = 0; k < 2; k++) {
+    if (!float_side_n[k]) continue;
+    float_im[k] = t3_instanced_mesh_new(geo, mat[k], float_side_n[k]);
+    ((t3_object *)float_im[k])->receive_shadow = true;
+    t3_sphere big = { { 0, 0, 0 }, 4000 };
+    t3_instanced_mesh_set_bounding_sphere(float_im[k], &big);
+    float_node[k] = model_node(dry_parent(root), k ? "FloatsWhite" : "FloatsOrange", (t3_object *)float_im[k]);
+    t3_release(float_im[k]);
+  }
+}
+static void floats_sync(double wt) {
+  for (int i = 0; i < float_count; i++) {
+    t3_instanced_mesh *im = float_im[float_side_of[i]];
+    if (!im) continue;
+    float x = float_at[i][0], z = float_at[i][1];
+    bool on = g_floats && !g_buoy_hide && buoy_on(float_buoy[i]);
+    float k = on ? 1.0f : 0.0f;
+    float h = cw_water_height_at(G.water, x, z, wt);
+    t3_mat4 mat;
+    t3_mat4_compose(&mat, (t3_vec3){ x, h - 0.06f, z }, t3_quat_from_euler((t3_euler){ 0, float_at[i][2], 0, T3_YXZ }), (t3_vec3){ k, 0.7f * k, k });
+    t3_instanced_mesh_set_matrix_at(im, float_slot[i], &mat);
+  }
+  for (int k = 0; k < 2; k++) if (float_im[k] && float_im[k]->instance_matrix) float_im[k]->instance_matrix->version++; /* they ride the swell: new places every frame */
+}
+/* each tick: floats the player came within 15 m of */
+static void floats_count(void) {
+  const craft *p = &G.c[0];
+  for (int i = 0; i < float_count; i++) {
+    float dx = float_at[i][0] - p->x, dz = float_at[i][1] - p->z;
+    bool close = g_floats && !g_buoy_hide && buoy_on(float_buoy[i]) && dx * dx + dz * dz < 15.0f * 15.0f && G.state == RACE_ON;
+    if (close && !float_close[i]) g_near_floats++;
+    float_close[i] = close;
+  }
+}
+
 /* the marks and the look of the course in G.level */
 static void marks_apply(cw_node root) {
   if (cw_node_valid(landmark_n)) cw_node_free(landmark_n);
@@ -443,6 +534,7 @@ void view_course_apply(void) {
   placed_apply(root);
   props_apply(root);
   ramps_apply();
+  floats_apply(root);
   g_marks_stale = true;
 }
 
@@ -565,6 +657,7 @@ void view_init(void) {
     gate_n = model_node(root, "Gate", go);
     t3_release(go);
   }
+  floats_apply(root);
   fx_init(cw_node_get(root, "Fx"));
   rider_init();
 }
@@ -668,6 +761,7 @@ static bool attract_camera(float dt) {
 /* the fixed-tick camera: chases the human, its height smoothed so it rides over swells instead of through them */
 void view_tick(float dt) {
   rider_wet(dt);
+  floats_count();
   if (attract_camera(dt)) return;
   const craft *c = &G.c[0];
   memcpy(G.cam_prev, G.cam, sizeof G.cam);
@@ -822,6 +916,7 @@ void view_sync(double alpha) {
       float k = mark_scale[b] * mark_size();
       cw_node3d_set_scale(buoy_n[b], (t3_vec3){ k, k, k }); }
   }
+  floats_sync(wt);
   {
     float gx, gz, dx, dz;
     track_at(0, &gx, &gz, &dx, &dz);

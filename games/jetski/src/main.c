@@ -239,6 +239,7 @@ static void cmd_switch(int argc, const char **argv, cw_reply *r) {
     else if (!strcmp(argv[1], "autosteer")) g_autosteer = (int)v;
     else if (!strcmp(argv[1], "audio_old")) { extern int g_audio_old; g_audio_old = (int)v; }
     else if (!strcmp(argv[1], "waterline")) { extern int g_waterline; g_waterline = (int)v; }
+    else if (!strcmp(argv[1], "floats")) { extern int g_floats; g_floats = (int)v; }
     else if (!strcmp(argv[1], "spray_lit")) { extern int g_spray_lit; g_spray_lit = (int)v; }
     else if (!strcmp(argv[1], "finish_hold")) g_finish_hold = v;
     else if (!strcmp(argv[1], "fov_span")) { extern float g_fov_span; g_fov_span = v; }
@@ -486,6 +487,7 @@ static void init(void *user) {
   cw_debug_i32("p0.styles", &G.c[0].styles);
   cw_debug_f32("cam.roll", &G.cam_roll);
   { extern int g_waterline_stamps; cw_debug_i32("fx.waterline", &g_waterline_stamps); }
+  { extern int32_t g_near_floats; cw_debug_i32("fx.near_floats", &g_near_floats); extern int float_count; cw_debug_i32("fx.floats", &float_count); }
   { extern float g_spray_glow; cw_debug_f32("fx.spray_glow", &g_spray_glow); }
   cw_debug_i32("race.rocket", &G.rocket);
   cw_debug_f32("race.fin_t", &G.fin_t);

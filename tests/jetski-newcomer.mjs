@@ -1,7 +1,10 @@
 // A newcomer's first race, on the cart through romdev, GL and WebGPU, by the pad and the screen alone: from power-on A
 // starts the race, the throttle (A) goes down for the green light, and the rider steers by the d-pad past the next mark
 // on the side its chevron points to (the board and chevron over it; behind the camera, a hard turn). After
-// 45 s of racing the newcomer has passed the course's marks in order and kept up a race speed.
+// 45 s of racing the newcomer has passed the course's marks in order and kept up a race speed. The newcomer is a
+// person, not a perfect bot: it acts on what the screen showed 0.3 s before (reaction delay), its
+// idea of where to aim wanders by up to 7 % of the screen's width and jitters every look (aim error), and it holds a
+// turn a beat too long now and then (over-steer).
 // Control, which must fail: the same throttle with the d-pad never touched (a player who does not read the marks).
 //   node tests/jetski-newcomer.mjs [--gl] [--webgpu] [--cart <path>]
 import { mkdirSync } from 'node:fs';
@@ -43,16 +46,25 @@ async function run(backend, steer) {
   await pad({ south: true }); await step(4); await pad({}); await step(20);            /* the menu's first row: race */
   for (let f = 0; f < 400 && +(await rd('race.state')) !== RACE_ON; f += 10) await step(10); /* the countdown, hands off */
   const state = +(await rd('race.state'));
-  let topSpeed = 0, frames = 0;
+  let topSpeed = 0, frames = 0, seed = 0x1234567, drift = 0, hold = 0, held = null;
+  const rand = () => ((seed = (seed * 1103515245 + 12345) >>> 0) / 4294967296);
+  const seen = []; /* what the screen showed, oldest first: the newcomer acts on the look 18 frames old */
   while (frames < SECONDS * 60) {
-    const b = await rd('hud.buoy'), front = +b[2] === 1, way = +(await rd('hud.chevron'));
-    /* aim beside the mark on the chevron's side, by as much as the mark stands tall on screen (wider as it comes close) */
-    const x = +b[0] + way * Math.min(W * 0.3, 1.3 * Math.max(0, +b[3] - +b[1]));
+    const b = await rd('hud.buoy'), way = +(await rd('hud.chevron'));
+    seen.push({ b, way });
+    const { b: ob, way: oway } = seen.length > 3 ? seen.shift() : seen[0];
+    const front = +ob[2] === 1;
+    /* aim beside the mark on the chevron's side, by as much as the mark stands tall on screen (wider as it comes close),
+       off by a wandering error and a jitter */
+    drift = Math.max(-0.07, Math.min(0.07, drift + (rand() - 0.5) * 0.02));
+    const x = +ob[0] + oway * Math.min(W * 0.3, 1.3 * Math.max(0, +ob[3] - +ob[1])) + W * (drift + (rand() - 0.5) * 0.03);
     const p = { south: true };
     if (steer) {
-      if (!front) p.right = true;                 /* the mark is behind: turn round */
+      if (hold > 0 && held) { Object.assign(p, held); hold--; } /* a turn held a beat too long */
+      else if (!front) p.right = true;                 /* the mark is behind: turn round */
       else if (x < W * 0.46) p.left = true;
       else if (x > W * 0.54) p.right = true;
+      if ((p.left || p.right) && hold === 0 && rand() < 0.08) { held = { left: p.left, right: p.right }; hold = 2; }
     }
     await pad(p); await step(EVERY); frames += EVERY;
     if (frames % 60 === 0) topSpeed = Math.max(topSpeed, +(await rd('p0.speed')));

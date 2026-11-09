@@ -760,6 +760,7 @@ static void craft_tick(craft *c, int idx, float dt) {
 }
 
 void sim_reset(int state) {
+  { extern int32_t g_near_floats; g_near_floats = 0; }
   uint32_t tick = G.tick;
   int level = G.level;
   double wt_extra = G.wt_extra;
