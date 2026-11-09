@@ -1226,6 +1226,24 @@ void arena_mood(int id, cw_node env, cw_node sun, cw_node sky, cw_node fog, cw_n
   cw_node_set(sky, "environment", cw_val_bool(tune("skyenv", 1) > 0.5f));
   cw_node_set(fog, "volumetric_ambient", cw_val_float(tune("volamb", m->volamb)));
   cw_node_set(sun, "shadow", cw_val_bool(tune("sunshadow", 1) > 0.5f));
+  { /* the sun's shadow camera stands where the light does, looking along it, and draws only what lies past its near plane:
+     * at the origin (where the sun node was) every caster on the sun's side of a plane through the arena's middle was cut
+     * out of the map, and that half of the arena had no sun shadow. It stands out along the sun from the arena's middle,
+     * past every corner, and its square covers them all */
+    const float d2r = 3.14159265f / 180.0f;
+    float h = (tune("tod", m->tod) - 12) * 15 * d2r, lat = 35 * d2r, dec = m->decl * d2r; /* (sky.c sun_direction) */
+    float east = -cosf(dec) * sinf(h), north = sinf(dec) * cosf(lat) - cosf(dec) * cosf(h) * sinf(lat), up = sinf(dec) * sinf(lat) + cosf(dec) * cosf(h) * cosf(lat);
+    float so = sinf(m->north * d2r), co = cosf(m->north * d2r);
+    t3_vec3 s = { east * co - north * so, up, -east * so - north * co };
+    float sl = sqrtf(s.x * s.x + s.y * s.y + s.z * s.z);
+    s = (t3_vec3){ s.x / sl, s.y / sl, s.z / sl };
+    t3_vec3 c = v3scale(v3add(A.bounds_min, A.bounds_max), 0.5f), half = v3scale(v3sub(A.bounds_max, A.bounds_min), 0.5f);
+    float r = sqrtf(half.x * half.x + half.y * half.y + half.z * half.z);
+    /* ARENA_T_sunpos=0 (autopilot): the sun node left at the origin, for before and after */
+    if (tune("sunpos", 1) > 0.5f) cw_node3d_set_position(sun, v3add(c, v3scale(s, r + 20)));
+    cw_node_set(sun, "shadow_extent", cw_val_float(fmaxf(46, r + 1)));
+    cw_node_set(sun, "shadow_far", cw_val_float(2 * r + 60));
+  }
   cw_node_set(sky, "background", cw_val_bool(tune("skybg", 1) > 0.5f));
   cw_node_set(post, "ssao", cw_val_bool(tune("ssao", 1) > 0.5f));
   {
