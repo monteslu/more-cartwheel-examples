@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.29.1
+
+- Engine v0.38.9 (from v0.38.8). The shell's Settings page has no Screen shake row: no camera shakes, and hits, landings and blasts are felt in the pads.
+- Fighter: no strobing in a fast combo. Only one blow in 30 ticks lights up; the others throw a small spray of sparks with no light, at most one spray every 8 ticks, so a flurry no longer flickers. A hit's light swells up over about 5 frames and fades over about 20 instead of jumping on, and a heavy blow lights once instead of twice. Supers and the deciding knockout always light up, and a point-blank beam super still draws its beam, with a softer glow that no longer washes out the attacker. The flash sweep plays the beam super, the deciding knockout, flurries and a heavy blow every 8 ticks.
+- Fighter: a soft first match. A session opens against an Easy computer that seldom guards, punishes nothing and gives time, and it steps up to Normal after the first win; in round 1 against a person, Easy and Normal drop a combo before its third hit.
+- Fighter: hits look and feel their strength (a light hit is a small pale spray, a heavy one throws embers), and a knockdown spreads dust with a few dark grit chips that land. A super winds up with the camera moving in and the attacker's rim light in their colour, and a beam super starts at the attacker's hands. Strikes wind up, snap and follow through, hit reactions follow the height of the blow, each fighter has a second win pose and an idle rhythm of their own. The crowd answers as a ripple, the deciding knockout plays in slow motion, and a deciding round at low life gets tense music. The select screen has an arcade ladder and a random pick.
+- Fighter: the rooftop floor is nine slabs a side, each with its own cast and sheen, some stained and a few cracked, with grime in the joints, so it no longer repeats at fighting distance. The billboard shows an advertisement instead of a flat lilac panel.
+- Arena FPS: in team deathmatch the bots go looking for the other team after 12 s without an enemy in sight (the longest stretch without a kill on Foundry is 22 s, was 46). Grenades go off half a second after landing, hit harder close up, and the bots throw them more at a target that just went behind cover.
+- Tests: `tests/arenafps-newcomer.mjs` (from power-on through a first deathmatch and back to the setup by what the screen shows, with a pause and resume), `tests/fighter-newcomer.mjs`, fighter-crowd and fighter-slowmo, each with a control that must fail. arenafps-killcam and arenafps-grounding find the autopilot from the build's own record of it and name a tree without that build; hordeshooter-grounding does the same, takes the GPU suite lock, and names a timeout or a signal.
+
 ## 0.29.0
 
 - Engine v0.38.8 (from v0.38.3). Its explosion kit swells over a few frames instead of flashing on the first one.
