@@ -1592,10 +1592,15 @@ static void fixed_update(void *user, double dt) {
   }
   if(campaign_aircraft_collision(previous_position)){crash_aircraft();crash_camera(step);return;}
   float floor=fmaxf(0,terrain_height(G.px,G.pz));
-  /* PULL UP as soon as the ground is under 3 s away at this rate of descent (or 45 m below): a warning at 45 m alone
-   * came 0.2 s before impact in a dive, too late for anyone to answer. sw late_pull_up 1: 45 m alone, as before. */
-  { float sink=-flight.y*G.speed,above=G.py-floor;
-    G.warning=above<45||(!sw[SW_LATE_PULL_UP]&&sink>1&&above<400&&above/sink<3.0f)?1:0; }
+  /* PULL UP as soon as the flight path meets the ground inside 3 s (diving at it, or flying level into a rising
+   * hillside), or 45 m below: a warning at 45 m alone came 0.2 s before impact, too late for anyone to answer.
+   * sw late_pull_up 1: 45 m alone, as before. */
+  { bool ahead=false;
+    if(!sw[SW_LATE_PULL_UP])for(int k=1;k<=6&&!ahead;k++) {
+      float t=.5f*k,x=G.px+flight.x*G.speed*t,y=G.py+flight.y*G.speed*t,z=G.pz+flight.z*G.speed*t;
+      ahead=y<fmaxf(0,terrain_height(x,z))+20;
+    }
+    G.warning=G.py-floor<45||ahead?1:0; }
   if(G.py<floor+3){crash_aircraft();crash_camera(step);return;}
   follow_jet();update_lock(step);
   for(int i=0;i<2;i++) {

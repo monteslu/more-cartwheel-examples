@@ -1,7 +1,8 @@
 // A newcomer's first sorties, on the cart through romdev, by the pad and the screen alone. From power-on the d-pad
 // picks the mission on the title's grid and A (guns) starts it; then the pilot flies at the cue the HUD puts on
 // screen (the reticle on the selected target, the objective ahead, or the objective marker at the screen's edge),
-// holds the guns down when the sight is on it, taps the missile when the reticle says LOCK, pulls up on PULL UP and
+// holds the guns down when the sight is on it, taps the missile when the reticle says LOCK, pulls up wings level on
+// PULL UP (for a second after it goes out) and
 // drops flares on MISSILE INBOUND. The pilot is a person, not a perfect bot: it acts on what the screen showed 0.3 s
 // before (reaction delay), its aim wanders by up to 3 % of the screen and jitters every look (aim error), and it
 // overshoots, as a stick held a beat too long does.
@@ -56,7 +57,7 @@ async function sortie(backend, mission, seconds, done, fly, cmds = [], tag = '')
   const picked = +(await rd('mission.level'));
   await pad({ south: true }); await step(4); await pad({}); await step(30);
   const started = +(await rd('mission.state'));
-  let seed = 0x9e3779b9 ^ mission, driftX = 0, driftY = 0, over = 0, overX = 0, overY = 0, lastMissile = -999, lastFlare = -999;
+  let climb = 0, seed = 0x9e3779b9 ^ mission, driftX = 0, driftY = 0, over = 0, overX = 0, overY = 0, lastMissile = -999, lastFlare = -999;
   const rand = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
   const seen = [];
   let frames = 0, state = started, result = null;
@@ -70,7 +71,8 @@ async function sortie(backend, mission, seconds, done, fly, cmds = [], tag = '')
     const p = {};
     let lx = 0, ly = 0;
     if (fly) {
-      if (pullup) ly = -1;                                  /* PULL UP: climb */
+      if (pullup) climb = 10;                               /* PULL UP: climb, and keep climbing a second after it clears */
+      if (climb > 0) { ly = -1; climb--; }                 /* wings level (lx 0) while it climbs */
       else if (kind === 3) lx = ax < 0.5 ? -1 : 1;          /* the objective is off screen: bank round to its marker */
       else if (kind) { lx = clamp((ax - sx) / 0.10, -1, 1); ly = clamp((ay - sy) / 0.10, -1, 1); }
       if (over > 0) { lx = overX; ly = overY; over--; }     /* a stick held a beat too long */
@@ -81,7 +83,7 @@ async function sortie(backend, mission, seconds, done, fly, cmds = [], tag = '')
     }
     if ((kind === 1 || kind === 2) && Math.abs(ax - sx) < 0.03 && Math.abs(ay - sy) < 0.045) p.south = true; /* sight on it: guns */
     if (locked && frames - lastMissile > 70) { p.west = true; lastMissile = frames; }                        /* LOCK: missile */
-    if (incoming && frames - lastFlare > 90 && rand() < 0.7) { p.back = true; lastFlare = frames; }            /* MISSILE INBOUND: flares, most times */
+    if (incoming && frames - lastFlare > 90 && rand() < 0.7) { p.select = true; lastFlare = frames; }            /* MISSILE INBOUND: flares, most times */
     await pad(p); await step(EVERY); frames += EVERY;
     if (frames % 60 === 0) {
       state = +(await rd('mission.state'));
