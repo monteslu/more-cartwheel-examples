@@ -2,7 +2,7 @@
 // picks the mission on the title's grid and A (guns) starts it; then the pilot flies at the cue the HUD puts on
 // screen (the reticle on the selected target, the objective ahead, or the objective marker at the screen's edge),
 // holds the guns down when the sight is on it, taps the missile when the reticle says LOCK, pulls up wings level on
-// PULL UP (for a second after it goes out) and
+// PULL UP (a beat past it going out) and
 // drops flares on MISSILE INBOUND. The pilot is a person, not a perfect bot: it acts on what the screen showed 0.3 s
 // before (reaction delay), its aim wanders by up to 3 % of the screen and jitters every look (aim error), and it
 // overshoots, as a stick held a beat too long does.
@@ -39,7 +39,7 @@ const tool = async (name, args) => {
 const rd = async (n) => { const v = await tool('wasm', { op: 'read', name: n }); return v.values ?? v.value; };
 const step = (frames) => tool('frame', { op: 'step', frames });
 const pad = (p) => tool('input', { op: 'set', ports: [p] });
-const PLAY = 1, WIN = 3, LOST = 4, EVERY = 6, DELAY = 3; /* a look every 6 frames; the pilot acts on the look 3 back (0.3 s) */
+const PLAY = 1, WIN = 3, LOST = 4, /* (the win is read as the goal's count too: a held A on the results screen moves on) */ EVERY = 6, DELAY = 3; /* a look every 6 frames; the pilot acts on the look 3 back (0.3 s) */
 let fail = 0;
 const check = (name, ok, detail) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}: ${detail}`); if (!ok) fail++; };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -71,7 +71,7 @@ async function sortie(backend, mission, seconds, done, fly, cmds = [], tag = '')
     const p = {};
     let lx = 0, ly = 0;
     if (fly) {
-      if (pullup) climb = 10;                               /* PULL UP: climb, and keep climbing a second after it clears */
+      if (pullup) climb = 3;                                /* PULL UP: climb while it shows (and a beat after) */
       if (climb > 0) { ly = -1; climb--; }                 /* wings level (lx 0) while it climbs */
       else if (kind === 3) lx = ax < 0.5 ? -1 : 1;          /* the objective is off screen: bank round to its marker */
       else if (kind) { lx = clamp((ax - sx) / 0.10, -1, 1); ly = clamp((ay - sy) / 0.10, -1, 1); }
@@ -102,8 +102,8 @@ async function sortie(backend, mission, seconds, done, fly, cmds = [], tag = '')
   return r;
 }
 
-const fair = async () => { const b = +(await rd('mission.balloons')), s = +(await rd('mission.state')); return { ok: s === WIN, balloons: b, health: +(await rd('mission.health')) }; };
-const scramble = async () => { const k = +(await rd('mission.kills')), s = +(await rd('mission.state')); return { ok: s === WIN, kills: k, health: +(await rd('mission.health')) }; };
+const fair = async () => { const b = +(await rd('mission.balloons')), s = +(await rd('mission.state')); return { ok: s === WIN || b >= 12, balloons: b, health: +(await rd('mission.health')) }; };
+const scramble = async () => { const k = +(await rd('mission.kills')), s = +(await rd('mission.state')); return { ok: s === WIN || k >= 10, kills: k, health: +(await rd('mission.health')) }; };
 for (const backend of BACKENDS) {
   console.log(`--- ${backend}`);
   if (ONLY !== 'scramble') {

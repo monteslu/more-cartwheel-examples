@@ -70,5 +70,10 @@
     "name": "skyfighter-settings",
     "script": "tests/skyfighter-settings.mjs",
     "note": "The graphics row in Settings by real pad and pointer input, on the cart through romdev on GL and WebGPU: every preset reached in both directions with its word in the save, each one still there after a restart, a save holding Auto or a Custom word, then the native build across two runs on a save file. Controls: presses on the PITCH row must fail the walk, a cleared word must fail the restart, no save file must come back on the default."
+  },
+  {
+    "name": "skyfighter-newcomer",
+    "script": "tests/skyfighter-newcomer.mjs",
+    "note": "a newcomer's first sorties on the cart through romdev by the pad and the HUD alone, with a 0.3 s reaction delay, a wandering aim error and an over-steer now and then: Country Fair cleared (all twelve balloons) and Coastal Scramble cleared (ten interceptors). Controls: the stick never moved clears neither; the old rules (flying into a balloon ends the sortie, PULL UP only at 45 m) lose Country Fair"
   }
 ]
