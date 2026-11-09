@@ -1,15 +1,17 @@
-// A newcomer's first course, on the cart through romdev, GL and WebGPU, by the pad and the screen alone. From power-on
-// A takes the title's first row (the Cup), A on the Cup's card races its first course (Bunny Hill); the walk-in plays
-// hands off. Racing, the newcomer steers by what the view draws ahead (cue.trees, cue.herring: the trees and herring
-// in view, read from the debug fields the game draws them from), as a person does: a look every 100 ms, acted on 0.3 s
-// late, aimed with a hand that wanders (seeded noise of about a twentieth of the screen), now and
-// then a look away (no input for a moment). It heads for the nearest herring it sees, swerves from a tree it is about
-// to hit, and paddles (A) while the speedometer reads under 25 km/h. It must cross the finish line within one and a
-// half times par (60 s), take the results screen's prompt (A) back to the Cup's card, and on the way read the slope:
-// at least GOAL_HERRING herring taken (the trees it hits are printed: chasing a fish it sees runs it into some).
-// Control, which must fail: the same newcomer with the herring and the trees not drawn (hide items, hide trees: the
-// physics is unchanged, nothing on screen to read) falls short of that.
-//   node tests/tuxracer-newcomer.mjs [--gl] [--webgpu] [--cart <path>]
+// A newcomer's Cup, on the cart through romdev, GL and WebGPU, by the pad and the screen alone. From power-on A takes
+// the title's first row (the Cup), A on the Cup's card races its first course (Bunny Hill); the walk-in plays hands off.
+// Racing, the newcomer steers by what the view draws ahead (cue.trees, cue.herring: the trees and herring in view, read
+// from the debug fields the game draws them from), as a person does: a look every 100 ms, acted on 0.3 s late, aimed with
+// a hand that wanders (seeded noise of about a twentieth of the screen), now and then a look away (no input for a
+// moment). It heads for the nearest herring it sees, swerves from a tree it is about to hit, and paddles (A) while the
+// speedometer reads under 25 km/h. The results' prompt (A) goes back to the Cup's card, and the next attempt or race.
+// The goal: pass the Cup's first race (the game's own verdict, cup.won, against the requirements the card and the HUD
+// show) and find the second race open; then each later race passed within the Cup's lives. The card's requirements and
+// the HUD's count toward them are read too (cup.need_herring, cup.need_time).
+// Controls, which must fail: the original's rule for the Cup (opt cuprule original: every herring, near par), and the
+// same newcomer with the herring and trees not drawn (hide items, hide trees: nothing on screen to read).
+//   node tests/tuxracer-newcomer.mjs [--gl] [--webgpu] [--cart <path>] [--measure]   (--measure: each Cup race once, the
+//   numbers a requirement is set from, under the original's rule so nothing advances)
 import { mkdirSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -52,9 +54,8 @@ const rd = async (n) => { const v = await tool('wasm', { op: 'read', name: n });
 const step = (frames) => tool('frame', { op: 'step', frames });
 const pad = (p) => tool('input', { op: 'set', ports: [p] });
 const press = async (p) => { await pad(p); await step(4); await pad({}); await step(20); };
-const goal = (r) => r.over === 8 && r.finished === 1 && r.time <= PAR * 1.5 && r.herring >= GOAL_HERRING;
 const ST_TITLE = 0, ST_CUP = 2, ST_RACING = 6, ST_RACE_OVER = 8;
-const LOOK = 6, LATE = 18, RACE_S = 180, HERRING = 23, PAR = 40, GOAL_HERRING = 4; // LATE a multiple of LOOK: the look acted on is three looks old
+const LOOK = 6, LATE = 18, RACE_S = 180, LIVES = 4; // LATE a multiple of LOOK: the look acted on is three looks old
 let fail = 0;
 const check = (name, ok, detail) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}: ${detail}`); if (!ok) fail++; };
 
@@ -83,35 +84,46 @@ function aim(look) {
   return 500;
 }
 
-async function run(backend, cues) {
+const cmd = (t) => tool('wasm', { op: 'command', text: t });
+/** the cart's whole debug state in one call */
+const snap = async () => { const d = await tool('wasm', { op: 'debugState' }); return Object.fromEntries((d.fields || []).map((f) => [f.name, f.values ?? f.value])); };
+/** these buttons held for n frames, stepped in one call (none held: a plain step) */
+const hold = (buttons, n) => tool('input', { op: 'sequence', steps: [{ input: { ports: [Object.fromEntries(buttons.map((b) => [b, true]))] }, frames: n }] });
+async function load(backend) {
   const l = await tool('loadMedia', { platform: 'wasmcart', path: CART, gpuPower: process.env.CW_GPU_POWER || 'low-power', ...(backend === 'gl' ? { wgpu: false } : {}) });
   if (!l.loaded) { console.error(JSON.stringify(l).slice(0, 300)); await bye(3); }
   await step(240);
-  const r = { title: +(await rd('game.state')) };
-  await press({ south: true });                                              /* the title's first row: the Cup */
-  r.card = +(await rd('game.state'));
+  await cmd('cup 0');                                                        /* a first Cup: race 1, full lives (a fresh save) */
+}
+/** one race from the Cup's card: A, the walk-in, the newcomer at the wheel, the results, A back to the card */
+async function race(backend, cues, seed, tag) {
+  const r = { card: +(await rd('game.state')), race: +(await rd('cup.race')), need: +(await rd('cup.need_herring')) };
   await press({ south: true });                                              /* the card's prompt: race */
   for (let f = 0; f < 1800 && +(await rd('game.state')) !== ST_RACING; f += 30) await step(30); /* the walk-in, hands off */
   r.racing = +(await rd('game.state'));
-  if (!cues) { await tool('wasm', { op: 'command', text: 'hide items 1' }); await tool('wasm', { op: 'command', text: 'hide trees 1' }); }
-  const H = hand(backend === 'gl' ? 0x7a11 : 0x7a12), seen = [];
-  let frames = 0, state = r.racing, lapse = 0, slow = 0;
+  r.need = +(await rd('cup.need_herring')), r.limit = +(await rd('cup.need_time'));
+  await cmd(`hide items ${cues ? 0 : 1}`); await cmd(`hide trees ${cues ? 0 : 1}`);
+  const H = hand(seed), seen = [];
+  let frames = 0, state = r.racing, lapse = 0;
+  /* one decision every LOOK frames: one read of the cart's whole debug state, then the frames to the next decision stepped
+   * in one call with the buttons held over them (romdev gets ranges, never a request per frame) */
   while (frames < RACE_S * 60 && state === ST_RACING) {
-    seen.push({ trees: await rd('cue.trees'), herring: await rd('cue.herring') });
+    const s = await snap();
+    state = +s['game.state'];
+    if (state !== ST_RACING) break;
+    seen.push({ trees: s['cue.trees'], herring: s['cue.herring'] });
     const look = seen.length > LATE / LOOK ? seen[seen.length - 1 - LATE / LOOK] : null; /* acted on 0.3 s late */
-    const kmh = +(await rd('tux.speed')) * 3.6;
-    const p = {};
+    const kmh = +s['tux.speed'] * 3.6;
+    const b = [];
     if (lapse > 0) lapse--;
     else if (H.coin(0.04)) lapse = 3;                                        /* looked away for a moment */
     else if (look) {
       const x = aim(look) + H.noise() * 50;
-      if (x < 470) p.left = true; else if (x > 530) p.right = true;
+      if (x < 470) b.push('left'); else if (x > 530) b.push('right');
     }
-    if (kmh < 25) p.south = true;                                            /* the speedometer reads slow: paddle */
-    slow = kmh < 3 ? slow + LOOK : 0;
-    await pad(p); await step(LOOK); frames += LOOK;
-    if (frames % 60 === 0) state = +(await rd('game.state'));
-    if (frames === 1200) await tool('frame', { op: 'stepAndShot', frames: 1, path: join(OUT, `${backend}-${cues ? 'newcomer' : 'control'}-20s.png`) });
+    if (kmh < 25) b.push('south');                                           /* the speedometer reads slow: paddle */
+    await hold(b, LOOK); frames += LOOK;
+    if (frames === 1200 && tag) await tool('frame', { op: 'stepAndShot', frames: 1, path: join(OUT, `${backend}-${tag}-20s.png`) });
   }
   await pad({});
   r.over = +(await rd('game.state'));
@@ -119,27 +131,58 @@ async function run(backend, cues) {
   r.time = +(await rd('race.time'));
   r.herring = +(await rd('race.herring'));
   r.trees = +(await rd('race.tree_hits'))[0];
+  r.won = +(await rd('cup.won'));
   r.lives = +(await rd('cup.lives'));
   await step(60);
-  await tool('frame', { op: 'stepAndShot', frames: 1, path: join(OUT, `${backend}-${cues ? 'newcomer' : 'control'}-results.png`) });
+  if (tag) await tool('frame', { op: 'stepAndShot', frames: 1, path: join(OUT, `${backend}-${tag}-results.png`) });
   await press({ south: true });                                              /* the results' prompt: continue */
+  for (let f = 0; f < 120 && +(await rd("game.state")) !== ST_CUP; f += 30) await step(30);
   r.back = +(await rd('game.state'));
-  await tool('host', { op: 'shutdown' });
-  return r;
+  r.next = +(await rd('cup.race'));
+  const d = `race ${r.race + 1}: ${r.time.toFixed(1)} s (limit ${r.limit.toFixed(0)}), ${r.herring} herring (${r.need} needed), ${r.trees} trees, ${r.won ? 'passed' : 'not passed'}, ${r.lives} lives, next race ${r.next + 1}`;
+  console.log(`     ${backend} ${tag || ''} ${d}`);
+  return { ...r, d };
 }
+const seedOf = (backend, race, attempt) => (backend === 'gl' ? 0x7a11 : 0x7a12) + race * 977 + attempt * 131;
+const MEASURE = process.argv.includes('--measure');
 
 for (const backend of BACKENDS) {
   console.log(`--- ${backend}`);
-  const n = await run(backend, true);
-  check('power-on: the title, A opens the Cup, A races its first course', n.title === ST_TITLE && n.card === ST_CUP && n.racing === ST_RACING,
-    `states ${n.title}, ${n.card}, ${n.racing}`);
-  check('steering by what the view shows, the newcomer finishes the first course', n.over === ST_RACE_OVER && n.finished === 1,
-    `state ${n.over}, ${n.time.toFixed(1)} s, ${n.herring} of ${HERRING} herring, ${n.trees} trees hit, ${n.lives} lives left`);
-  check(`reading the slope: within ${PAR * 1.5} s, at least ${GOAL_HERRING} herring`, goal(n), `${n.time.toFixed(1)} s, ${n.herring} herring, ${n.trees} trees`);
-  check('A on the results goes back to the Cup', n.back === ST_CUP, `state ${n.back}`);
-  const c = await run(backend, false);
-  check('control: the herring and trees not drawn, the newcomer falls short', !goal(c),
-    `${c.herring} of ${HERRING} herring, ${c.trees} trees hit, state ${c.over}, ${c.time.toFixed(1)} s`);
+  if (MEASURE) {
+    await load(backend);
+    await cmd('opt cuprule original');
+    await press({ south: true });
+    for (let i = 0; i < 3; i++) for (let a = 0; a < 2; a++) { await cmd(`cup ${i}`); await step(10); await race(backend, true, seedOf(backend, i, a + 7), ''); }
+    await tool('host', { op: 'shutdown' });
+    continue;
+  }
+  await load(backend);
+  const title = +(await rd('game.state'));
+  await press({ south: true });                                              /* the title's first row: the Cup */
+  const card = +(await rd('game.state'));
+  check('power-on: the title, A opens the Cup', title === ST_TITLE && card === ST_CUP, `states ${title}, ${card}`);
+  const tries = [[], [], []];
+  for (let i = 0, a = 0; i < 3 && a < LIVES; a++) {
+    const r = await race(backend, true, seedOf(backend, i, a), `cup${i + 1}-try${a + 1}`);
+    tries[i].push(r);
+    if (r.over !== ST_RACE_OVER || r.back !== ST_CUP) break;
+    if (r.won) { i++; a = -1; if (i < 3 && r.next !== i) break; }
+    if (r.lives <= 0) break;
+  }
+  const one = tries[0];
+  check('the card and the HUD show what passes: herring needed and a time limit', one.length && one[0].need > 0 && one[0].limit > 0, one.length ? `${one[0].need} herring, ${one[0].limit} s` : 'no race');
+  check('the Cup\'s first race is passed by a first-timer, and the second race opens', one.some((r) => r.won === 1 && r.next === 1), one.map((r) => r.d).join('; '));
+  for (const i of [1, 2]) check(`Cup race ${i + 1} is passed within the Cup's lives`, tries[i].some((r) => r.won === 1), tries[i].map((r) => r.d).join('; ') || 'not reached');
+  await tool('host', { op: 'shutdown' });
+  /* controls: the original's rule; the cues not drawn */
+  for (const [name, setup, cues] of [['the original rule (every herring, near par)', 'opt cuprule original', true], ['the herring and trees not drawn', '', false]]) {
+    await load(backend);
+    if (setup) await cmd(setup);
+    await press({ south: true });
+    const r = await race(backend, cues, seedOf(backend, 0, 0), cues ? 'control-rule' : 'control-blind');
+    check(`control: ${name}, the first race is not passed`, r.won !== 1 && r.next === 0, r.d);
+    await tool('host', { op: 'shutdown' });
+  }
 }
 console.log(fail ? `${fail} FAILED` : 'all ok');
 await bye(fail ? 1 : 0);

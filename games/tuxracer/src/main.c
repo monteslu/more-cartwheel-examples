@@ -67,6 +67,16 @@ static void rumble_stop(void);
 typedef struct cup_race { char dir[64]; int herring[4]; float time[4]; int score[4]; bool mirrored, windy, snowing; int conditions; } cup_race;
 typedef struct cup_def { char name[64]; cup_race races[MAX_RACES]; int count; } cup_def;
 static const char *const COND_NAME[COND_COUNT] = { "Sunny", "Cloudy", "Night" };
+/* What the Cup asks to pass a race. The original asked for every herring on the course inside a time near par (Bunny
+ * Hill: all 23 in 35 s), which nobody racing a course for the first time meets: the Cup's first race could not be won.
+ * The Cup now asks for a share of the herring and a finish inside a limit set from first runs (tests/tuxracer-newcomer.mjs:
+ * a player steering by what the screen shows, with a late, wandering hand; on GL its first runs took Bunny Hill 3 to 8
+ * herring in 38 to 65 s, Twisty Slope 1 to 7 in 33 to 49 s, Bumpy Ride 3 to 9 in 22 to 41 s): a race to learn, not a
+ * wall. Practice keeps the original's numbers for its medals and scores. CUP_PASS[i] is the i-th race of the Cup:
+ * herring, seconds. */
+static const struct { int herring; float time; } CUP_PASS[] = { { 4, 60.0f }, { 2, 55.0f }, { 3, 45.0f } };
+static bool cup_rule_original; /* the original's requirements (opt cuprule original: the newcomer gate's control) */
+static void cup_need(int race, int *herring, float *time, int *score);
 
 static struct {
   cw_tree *tree;
@@ -135,6 +145,7 @@ static struct {
   int32_t ticks, dbg_state, dbg_finished, dbg_airborne, dbg_tree, dbg_contacts;
   float dbg_pos[3], dbg_vel[3], dbg_speed, dbg_fric;
   uint32_t phys_hash;
+  int32_t dbg_won;           /* the last Cup race passed (1) or not (0), -1 before one ends */
 } G;
 
 /* ── save data ───────────────────────────────────────────────────────── */
@@ -618,10 +629,19 @@ static void cmd_trick(int argc, const char **argv, cw_reply *r) {
   if (argc >= 4 && !strcmp(argv[1], "set")) TR.force_yaw = (float)atof(argv[2]), TR.force_pitch = (float)atof(argv[3]), TR.forced = true;
   cw_reply_printf(r, "{\"points\":%d,\"clean\":%d,\"bad\":%d,\"forced\":%d}", TR.points, TR.clean, TR.bad, TR.forced ? 1 : 0);
 }
+static void cmd_cup(int argc, const char **argv, cw_reply *r) {
+  if (argc < 2 || !G.ncups) { cw_reply_str(r, "usage: cup <race>"); return; }
+  int i = atoi(argv[1]);
+  if (i < 0 || i >= G.cups[0].count) { cw_reply_str(r, "no such race"); return; }
+  G.cup_idx = 0, G.race_idx = i, G.lives = INIT_NUM_LIVES;
+  SAVE.cup_race = i, SAVE.cup_lives = INIT_NUM_LIVES;
+  cw_reply_str(r, "ok");
+}
 static void cmd_opt(int argc, const char **argv, cw_reply *r) {
   if (argc < 3) { cw_reply_str(r, "usage: opt ghost on|off | opt camera speed|classic"); return; }
   if (!strcmp(argv[1], "ghost")) SAVE.opts = (uint8_t)(!strcmp(argv[2], "off") ? SAVE.opts | OPT_GHOST_OFF : SAVE.opts & ~OPT_GHOST_OFF);
   else if (!strcmp(argv[1], "camera")) SAVE.opts = (uint8_t)(!strcmp(argv[2], "classic") ? SAVE.opts | OPT_CLASSIC_CAMERA : SAVE.opts & ~OPT_CLASSIC_CAMERA);
+  else if (!strcmp(argv[1], "cuprule")) cup_rule_original = !strcmp(argv[2], "original");
   else if (!strcmp(argv[1], "tricks")) SAVE.opts = (uint8_t)(!strcmp(argv[2], "on") ? SAVE.opts | OPT_TRICKS : SAVE.opts & ~OPT_TRICKS);
   else { cw_reply_str(r, "unknown option"); return; }
   cw_reply_str(r, "ok");
@@ -680,6 +700,8 @@ static void load_race(void) {
   physics_place(&G.phys, (t3_vec3){ s.x, s.y + TUX_RADIUS, s.z }, false);
   fx_track_reset();
   G.race_time = 0, G.herring = 0, G.score = 0, G.finished = G.aborted = G.won = false, G.reset_ticks = 0;
+  if (G.mode == MODE_CUP) cup_need(G.race_idx, &G.herring_req, &G.time_req, &G.score_req); /* shown on the HUD from the start */
+  else G.herring_req = 0, G.time_req = 0, G.score_req = 0;
   G.key_time = G.nkeys ? G.keys[0].time : 0;
   G.intro_time = 0;
   view_reset(&G.view, VIEW_ABOVE);
@@ -787,6 +809,13 @@ static void apply_dof(void) {
   cw_node_set(G.post, "dof_near_blur", cw_val_float(0.6f));
 }
 
+/* this Cup race's requirements: the herring to take, the time to finish inside, the score to reach */
+static void cup_need(int race, int *herring, float *time, int *score) {
+  const cup_race *r = &G.cups[G.cup_idx].races[race];
+  *herring = r->herring[DIFFICULTY], *time = r->time[DIFFICULTY], *score = r->score[DIFFICULTY];
+  if (!cup_rule_original && race < (int)(sizeof CUP_PASS / sizeof CUP_PASS[0])) *herring = CUP_PASS[race].herring, *time = CUP_PASS[race].time, *score = 0;
+}
+
 static void race_over(bool aborted) {
   rumble_stop();
   G.phys.enabled = false;
@@ -795,8 +824,10 @@ static void race_over(bool aborted) {
   G.score = aborted ? 0 : (int)fmaxf(0, 100 * (par - G.race_time) + 200 * (float)G.herring) + (tricks_on() ? TR.points : 0);
   if (G.mode == MODE_CUP) {
     const cup_race *r = &G.cups[G.cup_idx].races[G.race_idx];
-    G.time_req = r->time[DIFFICULTY], G.herring_req = r->herring[DIFFICULTY], G.score_req = r->score[DIFFICULTY];
+    (void)r;
+    cup_need(G.race_idx, &G.herring_req, &G.time_req, &G.score_req);
     G.won = !aborted && G.race_time <= G.time_req && G.herring >= G.herring_req && G.score >= G.score_req;
+    G.dbg_won = G.won;
     if (!G.won) G.lives--;
   }
   /* best score (and its time and herring) per course; the cup's progress */
@@ -1258,6 +1289,11 @@ static void init(void *user) {
   cw_debug_i32("race.finished", &G.dbg_finished);
   cw_debug_i32("cup.lives", &G.lives);
   cw_debug_i32("cup.race", &G.race_idx);
+  G.dbg_won = -1;
+  cw_debug_i32("cup.won", &G.dbg_won);
+  cw_debug_i32("cup.need_herring", &G.herring_req);
+  cw_debug_f32("cup.need_time", &G.time_req);
+  cw_debug_command("cup", "cup <race>: the Cup's next race is this one, with full lives (tests)", cmd_cup);
   cw_debug_u32("phys.hash", &G.phys_hash);
   cw_debug_i32("phys.airborne", &G.dbg_airborne);
   cw_debug_i32("phys.tree", &G.dbg_tree);
@@ -1450,7 +1486,7 @@ static void draw_menu(const char *title, const char *const *items, int count, in
   /* the list starts lower by as much as the title grew with the text scale */
   float th = logo ? 0 : hud_measure(true, title, 64, 0).height, top = y0 + th - th * 64 / hud_drawn(true, 64);
   if (top + step * (float)(count - 1) + drawn * 1.0f <= bottom || card_w > size.x / 2 - 16) { /* stacked: the title over the list (which scrolls if it must) */
-    if (logo) hud_image("original/textures/menu_title.png", size.x / 2 - 192, 36, 384, 192); /* the original logo */
+    if (logo) hud_image("textures/logo.png", size.x / 2 - 192, 36, 384, 192); /* the original logo, redrawn at high resolution (tools/make-signs.mjs) */
     else hud_title(title, size.x / 2, 60, 64, (cw_color){ 1, 0.9f, 0.2f, 1 }, 1);
     draw_list(items, NULL, count, cursor, size.x / 2, top, bottom + step - drawn * 1.0f, 30, 48.0f / 30, 340, G.course_loaded);
     return;
@@ -1459,7 +1495,7 @@ static void draw_menu(const char *title, const char *const *items, int count, in
   float lx = size.x * 0.25f, rx = size.x * 0.75f, avail = bottom;
   if (logo) {
     float w = fminf(384, size.x / 2 - 32), h = w / 2;
-    hud_image("original/textures/menu_title.png", lx - w / 2, (size.y - h) / 2, w, h);
+    hud_image("textures/logo.png", lx - w / 2, (size.y - h) / 2, w, h);
   } else hud_text_box(true, title, 16, (size.y - hud_measure(true, title, 64, size.x / 2 - 32).height) / 2, size.x / 2 - 32, 64, (cw_color){ 1, 0.9f, 0.2f, 1 }, 1);
   float y = fmaxf(16 + pad, (avail - list_h) / 2 + pad);
   draw_list(items, NULL, count, cursor, rx, y, bottom + step - drawn * 1.0f, 30, 48.0f / 30, 340, G.course_loaded);
@@ -1567,7 +1603,7 @@ static void render(void *user, double alpha) {
       snprintf(r1, sizeof r1, "Text size:  < %s >", cw_text_scale_label());
       snprintf(r2, sizeof r2, "Text background:  < %s >", cw_text_backdrop_label());
       const char *const ITEMS[] = { "Graphics", r1, r2, SAVE.opts & OPT_CLASSIC_CAMERA ? "Camera:  < Classic >" : "Camera:  < Speed >", "Back" };
-      if (G.settings_from == ST_PAUSED) hud_draw(&G.phys, G.race_time, G.herring, G.mode == MODE_CUP ? G.lives : 0);
+      if (G.settings_from == ST_PAUSED) hud_draw(&G.phys, G.race_time, G.herring, G.mode == MODE_CUP ? G.lives : 0, G.mode == MODE_CUP ? G.herring_req : 0, G.mode == MODE_CUP ? G.time_req : 0);
       hud_begin();
       size = cw_r2d_canvas_size();
       if (G.settings_from == ST_PAUSED) hud_box(0, 0, size.x, size.y, (cw_color){ 0, 0, 0, 0.45f });
@@ -1654,10 +1690,13 @@ static void render(void *user, double alpha) {
           snprintf(rows[i], sizeof rows[i], "%d. %s", i + 1, ci ? ci->title : cup->races[i].dir);
           names[i] = rows[i];
         }
-        const cup_race *r = &cup->races[G.race_idx];
-        int m = (int)(r->time[DIFFICULTY] / 60), s = (int)r->time[DIFFICULTY] % 60, hs = (int)(r->time[DIFFICULTY] * 100) % 100;
+        int need_h, need_s;
+        float need_t;
+        cup_need(G.race_idx, &need_h, &need_t, &need_s);
+        int m = (int)(need_t / 60), s = (int)need_t % 60;
         char req[160], lives[32];
-        snprintf(req, sizeof req, "Requirements:  Time %02d:%02d.%02d   Herring %03d   Score %06d", m, s, hs, r->herring[DIFFICULTY], r->score[DIFFICULTY]);
+        if (need_s > 0) snprintf(req, sizeof req, "To pass: %d herring, finish inside %d:%02d, score %d", need_h, m, s, need_s);
+        else snprintf(req, sizeof req, "To pass: %d herring, finish inside %d:%02d", need_h, m, s);
         snprintf(lives, sizeof lives, "Lives: %d", G.lives);
         const char *keys = "{menu_accept} race    {menu_back} back";
         float card_w = 600;
@@ -1748,12 +1787,12 @@ static void render(void *user, double alpha) {
     }
     case ST_RACING:
       hud_chain(chain[0], (float)(G.race_ticks - chain_tick) / TICK_HZ);
-      if (!getenv("TUXRACER_NO_HUD")) hud_draw(&G.phys, G.race_time, G.herring, G.mode == MODE_CUP ? G.lives : 0); /* dev: key art without the HUD */
+      if (!getenv("TUXRACER_NO_HUD")) hud_draw(&G.phys, G.race_time, G.herring, G.mode == MODE_CUP ? G.lives : 0, G.mode == MODE_CUP ? G.herring_req : 0, G.mode == MODE_CUP ? G.time_req : 0); /* dev: key art without the HUD */
       if (tricks_on() && !getenv("TUXRACER_NO_HUD")) trick_hud();
       break;
     case ST_PAUSED: {
       const char *const ITEMS[] = { "Resume", "Settings", SAVE.rumble_off ? "Rumble: Off" : "Rumble: On", "Quit race" };
-      hud_draw(&G.phys, G.race_time, G.herring, G.mode == MODE_CUP ? G.lives : 0);
+      hud_draw(&G.phys, G.race_time, G.herring, G.mode == MODE_CUP ? G.lives : 0, G.mode == MODE_CUP ? G.herring_req : 0, G.mode == MODE_CUP ? G.time_req : 0);
       hud_begin();
       size = cw_r2d_canvas_size();
       hud_box(0, 0, size.x, size.y, (cw_color){ 0, 0, 0, 0.45f });
@@ -1762,16 +1801,25 @@ static void render(void *user, double alpha) {
       break;
     }
     case ST_RACE_OVER: {
-      hud_draw(&G.phys, G.race_time, G.herring, G.mode == MODE_CUP ? G.lives : 0);
+      hud_draw(&G.phys, G.race_time, G.herring, G.mode == MODE_CUP ? G.lives : 0, G.mode == MODE_CUP ? G.herring_req : 0, G.mode == MODE_CUP ? G.time_req : 0);
       hud_begin();
       size = cw_r2d_canvas_size();
-      char trick_msg[96];
+      char trick_msg[96], fail_msg[160] = "";
+      if (G.mode == MODE_CUP && !G.won && !G.aborted) { /* why it did not pass, in the requirements' own terms */
+        bool slow = G.race_time > G.time_req, few = G.herring < G.herring_req;
+        int tm = (int)(G.time_req / 60), ts = (int)G.time_req % 60;
+        if (slow && few) snprintf(fail_msg, sizeof fail_msg, "Not passed: %d of %d herring, and over the %d:%02d limit.", G.herring, G.herring_req, tm, ts);
+        else if (few) snprintf(fail_msg, sizeof fail_msg, "Not passed: %d of the %d herring needed.", G.herring, G.herring_req);
+        else if (slow) snprintf(fail_msg, sizeof fail_msg, "Not passed: over the %d:%02d limit.", tm, ts);
+        else snprintf(fail_msg, sizeof fail_msg, "Not passed: the score needed is %d.", G.score_req);
+        if (G.lives <= 0) snprintf(fail_msg + strlen(fail_msg), sizeof fail_msg - strlen(fail_msg), " Out of lives.");
+      }
       snprintf(trick_msg, sizeof trick_msg, "Tricks: %d points, %d clean landing%s, %d bad", TR.points, TR.clean, TR.clean == 1 ? "" : "s", TR.bad);
       const char *msg = G.aborted ? "Race aborted." : tricks_on() ? trick_msg :
         G.mode == MODE_PRACTICE ? (G.best_time_new == 2 ? "New best time! Your ghost races this run from now on." :
                                    G.best_time_new == 1 && ghost_wanted() ? "Your ghost will race this run next time." : G.new_best ? "You beat your best score!" : "") :
         G.won && G.race_idx + 1 >= G.cups[G.cup_idx].count ? "Congratulations! You won the cup!" : G.won ? "You advanced to the next race!" :
-        G.lives <= 0 ? "You didn't advance, and you're out of lives." : "You didn't advance.";
+        G.lives <= 0 ? (fail_msg[0] ? fail_msg : "You didn't advance, and you're out of lives.") : fail_msg[0] ? fail_msg : "You didn't advance.";
       int m = (int)(G.race_time / 60), s = (int)G.race_time % 60, hs = (int)(G.race_time * 100) % 100;
       char rows[3][48];
       snprintf(rows[0], sizeof rows[0], "Time: %02d:%02d.%02d", m, s, hs);

@@ -15,7 +15,7 @@ static cw_texture tex_herring, tex_life, tex_speed_mask, tex_energy_mask;
 void hud_init(void) {
   font_big = cw_font_load("fonts/TitanOne-Regular.ttf", NULL);
   font_small = cw_font_load("fonts/Fredoka-SemiBold.ttf", NULL);
-  tex_herring = cw_texture_load("original/textures/herringicon.png", NULL);
+  tex_herring = cw_texture_load("textures/herring-icon.png", NULL); /* the original icon redrawn (tools/make-signs.mjs) */
   tex_life = cw_texture_load("original/textures/tuxlife.png", NULL);
   tex_speed_mask = cw_texture_load("original/textures/gaugespeedmask.png", NULL);
   tex_energy_mask = cw_texture_load("original/textures/gaugeenergymask.png", NULL);
@@ -146,7 +146,7 @@ static int chain_n;
 static float chain_age;
 void hud_chain(int chain, float age) { chain_n = chain, chain_age = age; }
 float hud_top_bottom(void) { return hud_top; }
-void hud_draw(const tux_phys *p, float race_time, int herring, int lives) {
+void hud_draw(const tux_phys *p, float race_time, int herring, int lives, int herring_need, float time_limit) {
   hud_begin();
   cw_vec2 size = cw_r2d_canvas_size();
   char buf[64];
@@ -156,19 +156,25 @@ void hud_draw(const tux_phys *p, float race_time, int herring, int lives) {
   snprintf(buf, sizeof buf, "%02d:%02d:%02d", minutes, seconds, hundredths);
   float lh = hud_measure(false, "TIME", 17, 0).height, th = hud_measure(true, buf, 34, 0).height;
   float tw = fmaxf(236, hud_measure(true, "00:00:00", 34, 0).width + 32);
+  if (time_limit > 0) tw = fmaxf(tw, hud_measure(false, "TIME  (limit 0:00)", 17, 0).width + 32);
   float time_h = fmaxf(70, 14 + lh * 0.85f + th * 0.9f + 6 - 10);
   panel(12, 10, tw, time_h, 0.42f);
   hud_top = 10 + time_h;
-  hud_text("TIME", 28, 14, 17, (cw_color){ 1, 1, 1, 0.8f }, 0);
+  /* in the Cup the time card names the limit to finish inside (it turns orange once the clock passes it) */
+  char tl[40] = "TIME";
+  if (time_limit > 0) snprintf(tl, sizeof tl, "TIME  (limit %d:%02d)", (int)(time_limit / 60), (int)time_limit % 60);
+  hud_text(tl, 28, 14, 17, time_limit > 0 && race_time > time_limit ? (cw_color){ 1, 0.55f, 0.2f, 1 } : (cw_color){ 1, 1, 1, 0.8f }, 0);
   hud_title(buf, 28, 14 + lh * 0.85f, 34, yellow, 0);
-  snprintf(buf, sizeof buf, "%03d", herring);
+  /* in the Cup the herring card counts toward the herring needed (green once there) */
+  if (herring_need > 0) snprintf(buf, sizeof buf, "%d/%d", herring, herring_need);
+  else snprintf(buf, sizeof buf, "%03d", herring);
   cw_text_metrics hm = hud_measure(true, buf, 34, 0);
   float k = hud_drawn(true, 34) / 34, iw = 48 * k, ih = 30 * k;
   float hw = fmaxf(168, 12 + iw + 12 + hm.width + 14), hh = fmaxf(50, fmaxf(ih + 20, hm.height * 0.9f + 8));
   panel(size.x - 12 - hw, 10, hw, hh, 0.42f);
   hud_top = fmaxf(hud_top, 10 + hh);
   cw_r2d_sprite(&(cw_sprite){ .texture = tex_herring, .pos = { size.x - 12 - hw + 12, 10 + (hh - ih) * 0.5f }, .size = { iw, ih } });
-  hud_title(buf, size.x - 12 - hw + 24 + iw, 10 + (hh - hm.height * 0.9f) * 0.5f, 34, yellow, 0);
+  hud_title(buf, size.x - 12 - hw + 24 + iw, 10 + (hh - hm.height * 0.9f) * 0.5f, 34, herring_need > 0 && herring >= herring_need ? (cw_color){ 0.45f, 1, 0.45f, 1 } : yellow, 0);
   if (chain_n >= 2) { /* a chain of herring: "chain x3" beside the count, fading as the window to catch the next one closes */
     char cb[16];
     snprintf(cb, sizeof cb, "chain x%d", chain_n);

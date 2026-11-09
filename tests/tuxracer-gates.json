@@ -70,7 +70,7 @@
   {
     "name": "tuxracer-newcomer",
     "script": "tests/tuxracer-newcomer.mjs",
-    "note": "a first course on the cart by the pad and the screen alone, GL and WebGPU: from power-on A opens the Cup and races Bunny Hill; steering by the trees and herring the view draws (a look every 100 ms acted on 0.3 s late, a wandering aim, looks away), the newcomer finishes within 60 s with at least 4 herring, and A on the results goes back to the Cup. Control: the herring and trees not drawn (the physics unchanged) falls short"
+    "note": "the Cup by a newcomer on the cart, by the pad and the screen alone, GL and WebGPU: from power-on A opens the Cup and races its first course; steering by the trees and herring the view draws (a look every 100 ms acted on 0.3 s late, a wandering aim, looks away), the newcomer passes the first race by the requirements the card and the HUD show (herring needed, a time limit) and finds the second race open, then passes the second and third within the Cup's four lives. Controls: the original's rule (every herring near par, opt cuprule original) and the herring and trees not drawn each leave the first race not passed"
   },
   {
     "name": "tuxracer-tricks",

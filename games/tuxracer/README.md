@@ -45,8 +45,11 @@ Run `tuxracer` (from the repository root: `scripts/build.sh tuxracer`, then
 | Quit the race | | Q |
 | Menus: move, accept, back | d-pad or stick, A, B | arrows, Enter or Space, Escape |
 
-Score = 100 × (par − time) + 200 × herring, as in the original. In the Cup a race is won when the
-time, herring and score requirements are all met; a loss costs a life.
+Score = 100 × (par − time) + 200 × herring, as in the original. In the Cup a race is passed by taking the herring it
+asks for and finishing inside its time limit (Bunny Hill 4 herring inside 1:00, Twisty Slope 2 inside 0:55, Bumpy Ride
+3 inside 0:45, set from first runs at each course); the Cup's card shows them before the race, the HUD counts toward
+them during it, and the results say which one was missed. A miss costs a life. The original asked for every herring
+on the course near par, which a first run never meets; Practice keeps the original's numbers for its scores and medals.
 
 ## Layout
 
@@ -55,7 +58,7 @@ time, herring and score requirements are all met; a loss costs a life.
 | `src/` | the game: `main.c` (app, flow, conditions, post), `course.c` and `course_objects.c` (terrain, trees, items, gates), `tux.c` and `tux_skin.c` (the model: the original tux.tcl hierarchy, skinned as one surface), `physics.c` (the Box3D body and the ported force model), `view.c`, `hud.c`, `fx.c` (spray, snowfall, sparkles), `audio.c`, `textures.c` (snow, ice and rock layers; the slide trail), `skyring.c` (the mountain ring, cloud deck and aurora), `tree_mesh.c`, `item_mesh.c` |
 | `shaders/` | the game's own three.c shader parts (three.js TSL): snow surface detail, foliage wind, the flag, the cloud deck, the aurora, Tux's feathers; composed with the engine's lighting at run time |
 | `tools/convert.mjs` | the converter: the SGI `.rgb` decoder, a Tcl subset for `tux.tcl`, the course rasters to uniform height grids |
-| `tools/` (the rest) | the sky ring from the cube faces and a photograph, the sprig and cloud textures, the colour grades |
+| `tools/` (the rest) | the sky ring from the cube faces and a photograph, the sprig and cloud textures, the colour grades; `make-signs.mjs`: the start and finish banners, the title logo and the HUD herring redrawn at high resolution in the original designs, from the game's own fonts (`tools/lib/vec2d.mjs`) |
 | `scripts/fetch-tuxracer.sh` | fetches the original 0.61 source and data (sha256-pinned) into the repository's `deps/tuxracer`, for the converter |
 | `scripts/programs.sh` | regenerates the program tables with the shader parts |
 | `assets/` | what the converter wrote (courses, model, music, sounds, original textures) plus the generated sky, LUTs and sprig, the fonts, `roots.txt` (the pack manifest), `credits.txt` (the in-game credits) |

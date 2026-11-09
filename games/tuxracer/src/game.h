@@ -218,7 +218,7 @@ bool ghost_at(ghost_play *gp, const ghost_run *g, float ticks, ghost_pose *out);
 
 /* ── hud.c ───────────────────────────────────────────────────────────── */
 void hud_init(void);
-void hud_draw(const tux_phys *p, float race_time, int herring, int lives);
+void hud_draw(const tux_phys *p, float race_time, int herring, int lives, int herring_need, float time_limit); /* the needs: Cup, 0 elsewhere */
 void hud_chain(int chain, float age); /* the herring chain under the herring card (2 and up), fading over its window */
 float hud_top_bottom(void); /* how far down the last hud_draw's top cards reach: a card over the race goes below them */
 cw_font hud_font(void);
