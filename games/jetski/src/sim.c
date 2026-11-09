@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "cartwheel/debug.h"
 #include "cartwheel/input.h"
 #include "cartwheel/platform.h"
 #include "cartwheel/quality.h"
@@ -812,7 +813,7 @@ static void weather(void) {
   G.swell += (target - G.swell) * 0.004f;
   if (G.swell < DEF->swell[0]) G.swell = target;
 #ifdef JETSKI_AUTOPILOT
-  { const char *e = getenv("JETSKI_SWELL"); if (e) G.swell = (float)atof(e); }
+  { const char *e = cw_test_env("JETSKI_SWELL"); if (e) G.swell = (float)atof(e); } /* a gate switch, from frame 2 */
 #endif
   /* difficulty: the sea itself is bigger */
   static const float DIFF_SEA[3] = { 0.8f, 1.0f, 1.18f };

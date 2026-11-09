@@ -545,7 +545,7 @@ static void build_scene(void) {
       cw_node_set(f, "direction", cw_val_vec3(0, 1, 0));
       cw_node_set(f, "local_coords", cw_val_bool(false));
       cw_node3d_set_position(f, (t3_vec3){ tor[i][0], tor[i][1], tor[i][2] });
-      if (getenv("COOP_FLOAT_FIRE")) cw_node3d_set_position(f, (t3_vec3){ tor[i][0], tor[i][1] + 0.6f, 1.5f }); /* the fire gate's control (native): the old flame, in front of the playfield */
+      if (cw_test_env("COOP_FLOAT_FIRE")) cw_node3d_set_position(f, (t3_vec3){ tor[i][0], tor[i][1] + 0.6f, 1.5f }); /* the fire gate's control (native): the old flame, in front of the playfield */
       cw_node_set(f, "preprocess", cw_val_float(0.6f)); /* lit already when it comes into view */
       S.flame[i] = f;
       S.flame_on[i] = false;
@@ -1675,18 +1675,18 @@ static void start_match(int players, void *user) {
   save_t *sv = cw_shell_game_save();
   G.abilities = 0;
   G.level = sv->level < NLEVELS && sv->level >= 0 && !getenv("COOP_FRESH") ? sv->level : 0;
-  if (cfg_int("COOP_LEVEL", COOP_DEF_LEVEL) >= 0) G.level = cfg_int("COOP_LEVEL", COOP_DEF_LEVEL);
+  { const char *lv = cw_test_env("COOP_LEVEL"); int l = lv ? atoi(lv) : COOP_DEF_LEVEL; if (l >= 0) G.level = l; } /* a gate switch, from frame 2 */
   if (g_cmd_level >= 0 && g_cmd_level < NLEVELS) G.level = g_cmd_level;
   G.abilities = LEVELS[G.level].abilities;
   sim_reset(&G, players);
   memset(G.rumble, 0, sizeof G.rumble); /* nothing the attract mode asked for carries into the match */
-  g_cam_bug = getenv("COOP_CAM_BUG") != NULL; /* the camera gate's must-fail control (native only) */
+  g_cam_bug = cw_test_env("COOP_CAM_BUG") != NULL; /* the camera gate's must-fail control (a test switch: from frame 2, cw_test_env) */
   g_blink_bug = getenv("COOP_BLINK_BUG") != NULL; /* the blink gate's control (native only) */
-  g_coin_flat_bug = getenv("COOP_COIN_FLAT_BUG") != NULL; /* the coin gate's control (native only) */
+  g_coin_flat_bug = cw_test_env("COOP_COIN_FLAT_BUG") != NULL; /* the coin gate's control (from frame 2) */
   g_vanish_dbg = 0;
   g_hud_bug = getenv("COOP_HUD_BUG") != NULL; /* the rescue-tag gate's control (native only) */
-  g_sign_bug = getenv("COOP_SIGN_BUG") != NULL; /* the sign gate's control (native only) */
-  g_card_bug = getenv("COOP_CARD_BUG") != NULL; /* the card gate's control (native only) */
+  g_sign_bug = cw_test_env("COOP_SIGN_BUG") != NULL; /* the sign gate's control (from frame 2) */
+  g_card_bug = cw_test_env("COOP_CARD_BUG") != NULL; /* the card gate's control (from frame 2) */
   memset(g_card_dbg, 0, sizeof g_card_dbg);
   memset(g_cardfit_dbg, 0, sizeof g_cardfit_dbg);
   memset(g_bosswords_dbg, 0, sizeof g_bosswords_dbg);
@@ -1702,7 +1702,7 @@ static void start_match(int players, void *user) {
   g_boss_old = getenv("COOP_BOSS_OLD") != NULL; /* the boss rules gate's control: the one boss's walk and hop */
   { const char *t = getenv("COOP_BOSS_TELL"); g_boss_tell = t ? atoi(t) : 0; } /* the dodge gate's control: tells this short */
   g_bot_no_boss = getenv("COOP_BOT_NO_BOSS") != NULL; /* the arena gate: the bots stay at the end wall */
-  g_cam_nofloor = getenv("COOP_PIT_CAM_BUG") != NULL; /* the pit camera gate's control (native only) */
+  g_cam_nofloor = cw_test_env("COOP_PIT_CAM_BUG") != NULL; /* the pit camera gate's control (from frame 2) */
   if (sv->abilities && !getenv("COOP_FRESH")) G.abilities |= sv->abilities;
   if (sv->level == G.level) G.reached |= sv->reached;
   if (cfg_int("COOP_ABILITIES", COOP_DEF_ABILITIES) >= 0) G.abilities = (uint32_t)cfg_int("COOP_ABILITIES", COOP_DEF_ABILITIES);
@@ -2272,7 +2272,8 @@ static void init(void *user) {
   cw_debug_i32("g.marker_over", &g_marker_over_dbg);
   cur_mood = MOODS[0];
 #ifdef COOP_AUTOPILOT
-  G.level = getenv("COOP_LEVEL") ? atoi(getenv("COOP_LEVEL")) : 0;
+  G.level = 0; /* a match reads COOP_LEVEL (a gate switch) from frame 2, in start_match; the native dev tools below here */
+  if (getenv("COOP_MAP") || getenv("COOP_THINGS")) G.level = getenv("COOP_LEVEL") ? atoi(getenv("COOP_LEVEL")) : 0;
   g_bot_no_run = getenv("COOP_BOT_NO_RUN") != NULL;
   if (getenv("COOP_MAP")) print_map(atoi(getenv("COOP_MAP")));
   if (getenv("COOP_REACH_COUNT")) { printf("levels %d\n", NLEVELS); fflush(stdout); exit(0); }
@@ -2400,6 +2401,23 @@ static void next_level(void);
 static void music_tick(void);
 static void fixed_update(void *user, double dt) {
   (void)user;
+  /* the gates' switches are test switches, read the same on every host from frame 2 (cw_test_env: a cart host delivers
+   * a gate's environment then): the match the first frame started reads them again, and one the scene is built from
+   * (the level, the scenery, the flames, the coins, the near layer) starts it again, as the level command does */
+  { static bool seen;
+    if (!seen && cw_frame_index() > 0) {
+      seen = true;
+      g_cam_bug = cw_test_env("COOP_CAM_BUG") != NULL;
+      g_sign_bug = cw_test_env("COOP_SIGN_BUG") != NULL;
+      g_card_bug = cw_test_env("COOP_CARD_BUG") != NULL;
+      g_cam_nofloor = cw_test_env("COOP_PIT_CAM_BUG") != NULL;
+#ifdef COOP_AUTOPILOT
+      static const char *const SCENE_SW[] = { "COOP_LEVEL", "COOP_FLOAT_BUG", "COOP_FLOAT_FIRE", "COOP_COIN_FLAT_BUG", "COOP_NEAR_BUG" };
+      bool again = false;
+      for (size_t k = 0; k < sizeof SCENE_SW / sizeof SCENE_SW[0]; k++) again = again || cw_test_env(SCENE_SW[k]) != NULL;
+      if (again) cw_shell_start(G.nplayers > 0 ? G.nplayers : COOP_DEF_PLAYERS);
+#endif
+    } }
   bool run = cw_shell_update();
   g_state_dbg = (int)cw_shell_screen_now(); /* even when the shell owns the tick */
   if (!run) { rumble_stop_all(); return; } /* the menus and pause: the motors stop */
@@ -2777,7 +2795,7 @@ static void gore_death(int who, int cause, float x, float y) {
   grave_add(who, cause, x);
   g_gore_dbg[0]++;
   gib_owner = who;
-  if (getenv("COOP_NO_GORE")) return; /* the gag gate's control (native) */
+  if (cw_test_env("COOP_NO_GORE")) return; /* the gag gate's control (native) */
   static const char *const SEEN[] = { "oh no", "was that load-bearing?", "dibs on the coins", "i did not see anything", "he's fine", "that one was mine", "more room in the bubble",
                                       "tell my mum it was quick", "can i have your hat", "she had a family. of bees." };
   static const char *const SELF[] = { "i'm fine", "that part was spare", "i meant to", "put that on the form", "still got one good ear", "ow", "again" };

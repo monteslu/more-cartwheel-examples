@@ -1920,7 +1920,7 @@ void world_things_build(game *g) {
 /* ── the near layer: dark ground between the camera and the play, low in the frame, for depth. It hides the deep rock that is
  * the plainest thing in the picture and gives the eye something to look past. Its top stays well below the lowest ground
  * for a dozen columns either way, so in the camera's perspective it never covers a player. Everything on it stands on it. */
-static bool g_near_bug_on(void) { return getenv("COOP_NEAR_BUG") != NULL; }
+static bool g_near_bug_on(void) { return cw_test_env("COOP_NEAR_BUG") != NULL; } /* a gate switch, from frame 2 */
 static float near_top(const level *L, int x) {
   float low = 1e9f;
   for (int k = x - 14; k <= x + 14; k++) {
@@ -2517,7 +2517,7 @@ void world_backdrop(game *g) {
    * enough; a stretch with none (a cliff, a step, the edge of the layer) stays empty. */
   {
     mb back = { 0 }, backglow = { 0 };
-    bool float_bug = getenv("COOP_FLOAT_BUG") != NULL; /* the scenery check's must-fail control (native only) */
+    bool float_bug = cw_test_env("COOP_FLOAT_BUG") != NULL; /* the scenery check's must-fail control (from frame 2) */
     float px, py, pz;
 #define FIND(X, ROOM, Z0, ZS, RX, RZ, SLOPE) bd_find((float)(X), (float)(ROOM), (Z0), (ZS), (RX), (RZ), (SLOPE), &px, &py, &pz)
     for (int x = 4; x < (int)g_bx1[0] + 10 && x < WORLD_W; x += 4 + (int)(hh(x, 1, 170) * 4)) {

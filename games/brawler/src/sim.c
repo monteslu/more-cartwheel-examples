@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "cartwheel/debug.h"
 #include "cartwheel/anim.h"
 #include "cartwheel/ik.h"
 #include "cartwheel/input.h"
@@ -257,8 +258,8 @@ void char_attach(ent *e) {
   char_play(e, "idle", 0);
   /* placed and posed now, not in the next render: render runs after this frame's 3D, so a body taken from the pool here
      would be drawn once where the rig was left, in its bind pose (a new rig at the origin, the middle of the screen when a
-     stage starts). BRAWLER_SPAWN_BUG: the spawn gate's control */
-  if (!getenv("BRAWLER_SPAWN_BUG")) {
+     stage starts). BRAWLER_SPAWN_BUG: the spawn gate's control, a test switch from frame 2 (cw_test_env) */
+  if (!cw_test_env("BRAWLER_SPAWN_BUG")) {
     if (e->anim.id) cw_anim_player_seek(e->anim, 0, true);
     char_sync(e);
   }

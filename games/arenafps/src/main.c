@@ -13,6 +13,7 @@
  * game.hash, fighters.* (x, z, hp, score, alive per fighter), match.*,
  * nav.* (path queries, cost), views. */
 #include <stdlib.h>
+#include "cartwheel/debug.h"
 #include "cartwheel/aim.h"
 #include "cartwheel/anim.h"
 #include "cartwheel/ui.h"
@@ -803,9 +804,9 @@ static void do_fire(fighter *f, int idx) {
     float dp = (float)PAT[k][1] * 0.0005f, dy = (float)PAT[k][0] * 0.0005f;
     f->recoil_p = CW_MIN(f->recoil_p + dp, 0.03f), f->recoil_y = cw_clampf(f->recoil_y + dy, -0.01f, 0.01f);
     {
-      static int bug = -1;
-      if (bug < 0) bug = getenv("ARENA_RECOIL_BUG") && atoi(getenv("ARENA_RECOIL_BUG"));
-      if (bug) f->pitch += 0.006f;
+      static int bug = -1; /* a gate switch: read from frame 2 on every host (cw_test_env) */
+      if (bug < 0 && cw_frame_index() > 0) { const char *v = cw_test_env("ARENA_RECOIL_BUG"); bug = v && atoi(v); }
+      if (bug > 0) f->pitch += 0.006f;
     }
     f->recoil_n++;
   }
@@ -2511,9 +2512,9 @@ static void sync_nodes(void) {
     t3_vec3 right = v3norm(v3cross(d, v3(0, 1, 0))), up = v3cross(right, d);
     t3_vec3 at = e;
     {
-      static int bug = -1;
-      if (bug < 0) bug = getenv("ARENA_CAM_BUG") && atoi(getenv("ARENA_CAM_BUG"));
-      if (bug) at.y += 0.01f * cw_sin((float)G.ticks * 0.3f); /* the control: a 1 cm idle sway */
+      static int bug = -1; /* a gate switch: read from frame 2 on every host (cw_test_env) */
+      if (bug < 0 && cw_frame_index() > 0) { const char *v = cw_test_env("ARENA_CAM_BUG"); bug = v && atoi(v); }
+      if (bug > 0) at.y += 0.01f * cw_sin((float)G.ticks * 0.3f); /* the control: a 1 cm idle sway */
     }
     cw_node3d_set_position(G.cam[h], at);
     cw_node3d_look_at(G.cam[h], v3add(at, d), up);
