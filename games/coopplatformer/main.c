@@ -134,6 +134,7 @@ static int g_tags_dbg[2]; /* HUD rescue tags: frames with two or more, frames wh
 static bool g_hud_bug; /* COOP_HUD_BUG: the rescue-tag gate's control */
 static int g_sign_dbg[3]; /* signs: frames a panel was up, of them over a player's body, of them thinner than its distance asks */
 static bool g_sign_bug; /* COOP_SIGN_BUG: the sign gate's control */
+static int g_bosswords_dbg[2]; /* frames a boss's words were up, of them drawn over the boss (they move off it; sw words_bug 1 lets them) */
 static int g_cardfit_dbg[3]; /* the results card settled: frames up, of them running off the bottom of the screen, of them in two pages */
 static bool g_card_onepage; /* COOP_CARD_ONEPAGE: the fit gate's control */
 static int g_card_dbg[3]; /* the results card: frames up, of them with the portraits on the line above them, levels whose closing line takes two rows */
@@ -1665,6 +1666,9 @@ static int cfg_int(const char *env, int def) {
 #endif
 static void music_for_level(void);
 static void music_play(int track);
+static bool g_words_bug_sw; /* sw words_bug 1 */
+static int g_cmd_level = -1; /* "level <n> [players]" (autopilot builds): a cart host has no environment, so the boss gates
+                               * and sheets pick their level and seats over the debug channel */
 static void start_match(int players, void *user) {
   (void)user;
   g_attract = false;
@@ -1672,6 +1676,7 @@ static void start_match(int players, void *user) {
   G.abilities = 0;
   G.level = sv->level < NLEVELS && sv->level >= 0 && !getenv("COOP_FRESH") ? sv->level : 0;
   if (cfg_int("COOP_LEVEL", COOP_DEF_LEVEL) >= 0) G.level = cfg_int("COOP_LEVEL", COOP_DEF_LEVEL);
+  if (g_cmd_level >= 0 && g_cmd_level < NLEVELS) G.level = g_cmd_level;
   G.abilities = LEVELS[G.level].abilities;
   sim_reset(&G, players);
   memset(G.rumble, 0, sizeof G.rumble); /* nothing the attract mode asked for carries into the match */
@@ -1684,15 +1689,16 @@ static void start_match(int players, void *user) {
   g_card_bug = getenv("COOP_CARD_BUG") != NULL; /* the card gate's control (native only) */
   memset(g_card_dbg, 0, sizeof g_card_dbg);
   memset(g_cardfit_dbg, 0, sizeof g_cardfit_dbg);
+  memset(g_bosswords_dbg, 0, sizeof g_bosswords_dbg);
   memset(g_boss_dbg, 0, sizeof g_boss_dbg);
   memset(g_endwall_dbg, 0, sizeof g_endwall_dbg), memset(g_bossclip_dbg, 0, sizeof g_bossclip_dbg);
   memset(g_label_dbg, 0, sizeof g_label_dbg), memset(g_signmove_dbg, 0, sizeof g_signmove_dbg), memset(g_labelmove_dbg, 0, sizeof g_labelmove_dbg);
   memset(g_words_dbg, 0, sizeof g_words_dbg);
   g_cam_endwall_bug = getenv("COOP_ENDWALL_BUG") != NULL; /* the end wall gate's control (native only) */
   g_boss_clip_bug = getenv("COOP_BOSSCLIP_BUG") != NULL; /* the clip gate's control (native only) */
-  g_words_bug = getenv("COOP_WORDS_BUG") != NULL; /* the words gate's control (native only) */
+  g_words_bug = g_words_bug_sw || getenv("COOP_WORDS_BUG") != NULL; /* the words gate's control (or sw words_bug 1 on a cart host) */
   g_label_bug = getenv("COOP_LABEL_BUG") != NULL; /* the label gate's control (native only) */
-  g_card_onepage = getenv("COOP_CARD_ONEPAGE") != NULL;
+  g_card_onepage = g_card_onepage || getenv("COOP_CARD_ONEPAGE") != NULL; /* or sw card_onepage 1 */
   g_boss_old = getenv("COOP_BOSS_OLD") != NULL; /* the boss rules gate's control: the one boss's walk and hop */
   { const char *t = getenv("COOP_BOSS_TELL"); g_boss_tell = t ? atoi(t) : 0; } /* the dodge gate's control: tells this short */
   g_bot_no_boss = getenv("COOP_BOT_NO_BOSS") != NULL; /* the arena gate: the bots stay at the end wall */
@@ -2061,6 +2067,16 @@ static void soak(int ticks, int players) {
 #endif
 
 #ifdef COOP_AUTOPILOT
+/* "level <n> [players]": the match starts again on level n (a boss build: at the door of its arena) with that many seats */
+static void cmd_level(int argc, const char **argv, cw_reply *r) {
+  if (argc < 2) { cw_reply_error(r, "usage: level <n> [players]"); return; }
+  g_cmd_level = atoi(argv[1]);
+  int n = argc >= 3 ? atoi(argv[2]) : G.nplayers;
+  if (n < 1) n = 1;
+  if (n > 4) n = 4;
+  cw_shell_start(n);
+  cw_reply_printf(r, "{\"level\":%d,\"players\":%d}", g_cmd_level, n);
+}
 /* debug channel: "warp <column>" puts every player there, what dev.warp does on a host that cannot write a field (Chromium) */
 static void cmd_warp(int argc, const char **argv, cw_reply *r) {
   if (argc < 2) { cw_reply_error(r, "usage: warp <column>"); return; }
@@ -2070,7 +2086,17 @@ static void cmd_warp(int argc, const char **argv, cw_reply *r) {
 #endif
 /* the idle-seat gate's switch: "sw idle_anchor 1" makes a seat nobody plays hold the group back, as the game once did */
 static void cmd_sw(int argc, const char **argv, cw_reply *r) {
-  if (argc < 3 || strcmp(argv[1], "idle_anchor")) { cw_reply_error(r, "usage: sw idle_anchor <0|1>"); return; }
+  if (argc >= 3 && !strcmp(argv[1], "words_bug")) { /* the words gates' control on a cart host: words stack (at the next match start) */
+    g_words_bug_sw = atoi(argv[2]) != 0;
+    cw_reply_printf(r, "{\"words_bug\":%d}", g_words_bug_sw);
+    return;
+  }
+  if (argc >= 3 && !strcmp(argv[1], "card_onepage")) { /* the card-fit gate's control on a cart host: the one page */
+    g_card_onepage = atoi(argv[2]) != 0;
+    cw_reply_printf(r, "{\"card_onepage\":%d}", g_card_onepage);
+    return;
+  }
+  if (argc < 3 || strcmp(argv[1], "idle_anchor")) { cw_reply_error(r, "usage: sw idle_anchor <0|1> | sw card_onepage <0|1> | sw words_bug <0|1>"); return; }
   G.idle_anchor = atoi(argv[2]) != 0;
   cw_reply_printf(r, "{\"idle_anchor\":%d}", G.idle_anchor);
 }
@@ -2165,6 +2191,7 @@ static void init(void *user) {
   cw_debug_field("g.idle", g_idle_dbg, CW_DBG_I32, MAX_PLAYERS);
 #ifdef COOP_AUTOPILOT
   cw_debug_command("warp", "warp <column>: every player there, with every ability", cmd_warp);
+  cw_debug_command("level", "level <n> [players]: the match starts again on level n (a boss build: at its arena's door) with that many seats", cmd_level);
 #endif
   cw_debug_i32("g.state", &g_state_dbg);
   cw_debug_field("g.scenery", g_scenery_dbg, CW_DBG_I32, 2);
@@ -2213,6 +2240,7 @@ static void init(void *user) {
   cw_debug_field("g.bossgate", g_boss_dbg, CW_DBG_I32, 4);
   cw_debug_field("g.bossatk", G.boss_stats, CW_DBG_I32, 5);
   cw_debug_field("g.cardfit", g_cardfit_dbg, CW_DBG_I32, 3);
+  cw_debug_field("g.bosswords", g_bosswords_dbg, CW_DBG_I32, 2);
   cw_debug_field("g.wardrobe", g_wd_dbg, CW_DBG_I32, 8); /* open, coins to spend, spent, items bought (bits), seat 0 hat and scarf, seat 1 hat and scarf */
   cw_debug_command("wardrobe", "wardrobe open | wardrobe coins <n> | wardrobe <seat> <dir -1|0|1> <take 0|1>: the wardrobe on the results card, as the pads drive it", cmd_wardrobe); /* this level's boss: attacks begun, players hit by them, dodges, phase reached (0, 1), dazes */
   cw_debug_field("g.surface", g_surface_dbg, CW_DBG_I32, 3);
@@ -3324,12 +3352,26 @@ static void draw_boss_says(float W, float H, float s) {
           static const char *placed;
           static int slot, hold;
           const float cx = (W - lw) * 0.5f, ys[2] = { g_hud_bot + 6 * s, g_boss_top - 22 * s - lh };
+          /* the boss's own body: words over it hide who is talking (the low slot sits where a boss stands): moved off it below */
+          float blx = 0, bty = 0, brx = 0, bby = 0;
+          const float bsc = boss_scale(G.L.boss_kind);
+          bool bvis = project(e->x - 0.8f * bsc, e->y + 2.0f * bsc, 0, W, H, &blx, &bty) && project(e->x + 0.8f * bsc, e->y, 0, W, H, &brx, &bby);
           #define BOSS_WORDS_BLOCKED(i, pad) (label_on_marker(cx, ys[i], lw, lh, pad, W, H, s) || sign_over_player(cx, ys[i], lw, lh, 1.9f, pad, W, H) || box_hit(cx, ys[i], lw, lh, pad))
           if (placed != text_now) placed = text_now, hold = 0, slot = BOSS_WORDS_BLOCKED(0, 16 * s) && !BOSS_WORDS_BLOCKED(1, 16 * s) ? 1 : 0;
           if (hold > 0) hold--;
           if (hold == 0 && BOSS_WORDS_BLOCKED(slot, 8 * s) && !BOSS_WORDS_BLOCKED(!slot, 24 * s)) slot = !slot, hold = 45, g_labelmove_dbg[0]++;
           #undef BOSS_WORDS_BLOCKED
           x0 = cx, y0 = ys[slot];
+          if (!g_words_bug && bvis && brx > x0 && blx < x0 + lw && bby > y0 && bty < y0 + lh) {
+            /* still over the boss: beside it on the same line, or over its head, wherever nobody else is; failing those the
+             * words stay where they were rather than go unsaid */
+            const float cxs[3] = { blx - lw - 12 * s, brx + 12 * s, (blx + brx - lw) * 0.5f }, cys[3] = { y0, y0, fmaxf(g_hud_bot + 6 * s, bty - lh - 10 * s) };
+            for (int c = 0; c < 3; c++) {
+              float tx = fmaxf(8 * s, fminf(cxs[c], W - lw - 8 * s)), ty = cys[c];
+              bool over = brx > tx && blx < tx + lw && bby > ty && bty < ty + lh;
+              if (!over && !label_on_marker(tx, ty, lw, lh, 0, W, H, s) && !sign_over_player(tx, ty, lw, lh, 1.9f, 0, W, H) && !box_hit(tx, ty, lw, lh, 0)) { x0 = tx, y0 = ty; break; }
+            }
+          }
           if (label_on_marker(x0, y0, lw, lh, 0, W, H, s) || sign_over_player(x0, y0, lw, lh, 1.9f, 0, W, H) || box_hit(x0, y0, lw, lh, 0)) { /* both places taken this moment: not drawn, never on anyone or on other words */
             g_label_dbg[0]++;
             t += 1.0f / 60.0f; /* the words wait */
@@ -3338,6 +3380,13 @@ static void draw_boss_says(float W, float H, float s) {
         }
         g_label_dbg[0]++;
         if (label_on_marker(x0, y0, lw, lh, 0, W, H, s)) g_label_dbg[1]++;
+        { /* g.bosswords: frames the boss's words were up, of them over the boss itself */
+          const float bsc = boss_scale(G.L.boss_kind);
+          float lx, ty, rx, by;
+          g_bosswords_dbg[0]++;
+          if (project(e->x - 0.8f * bsc, e->y + 2.0f * bsc, 0, W, H, &lx, &ty) && project(e->x + 0.8f * bsc, e->y, 0, W, H, &rx, &by) &&
+              rx > x0 && lx < x0 + lw && by > y0 && ty < y0 + lh) g_bosswords_dbg[1]++;
+        }
         box_add(x0, y0, lw, lh);
         cw_r2d_round_rect(cw_rect_make(x0, y0, lw, lh), 8 * s, 8, cw_rgba(0.1f, 0.05f, 0.05f, 0.9f));
         cw_r2d_text(g_font, text_now, (cw_vec2){ x0 + 10 * s, y0 + 6 * s }, &(cw_text_style){ .size = 18 * s, .color = cw_rgba(1, 0.85f, 0.7f, 1) });
