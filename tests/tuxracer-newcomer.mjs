@@ -10,7 +10,7 @@
 // the HUD's count toward them are read too (cup.need_herring, cup.need_time).
 // Controls, which must fail: the original's rule for the Cup (opt cuprule original: every herring, near par), and the
 // same newcomer with the herring and trees not drawn (hide items, hide trees: nothing on screen to read).
-//   node tests/tuxracer-newcomer.mjs [--gl] [--webgpu] [--cart <path>] [--measure]   (--measure: each Cup race once, the
+//   node tests/tuxracer-newcomer.mjs [--gl] [--webgpu] [--cart <path>] [--no-controls | --controls-only] [--measure]   (--measure: each Cup race once, the
 //   numbers a requirement is set from, under the original's rule so nothing advances)
 import { mkdirSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
@@ -145,6 +145,8 @@ async function race(backend, cues, seed, tag) {
 }
 const seedOf = (backend, race, attempt) => (backend === 'gl' ? 0x7a11 : 0x7a12) + race * 977 + attempt * 131;
 const MEASURE = process.argv.includes('--measure');
+const FROM = +arg('--from', '0'); // --from 1: start the Cup at its second race (cup 1), for a job split in halves
+const PATH = !process.argv.includes('--controls-only'), CONTROLS = !process.argv.includes('--no-controls'); // a job's time limit: the two halves can run apart
 
 for (const backend of BACKENDS) {
   console.log(`--- ${backend}`);
@@ -156,13 +158,15 @@ for (const backend of BACKENDS) {
     await tool('host', { op: 'shutdown' });
     continue;
   }
+  if (PATH) {
   await load(backend);
+  if (FROM) await cmd(`cup ${FROM}`);                                      /* a half job: the Cup from this race */
   const title = +(await rd('game.state'));
   await press({ south: true });                                              /* the title's first row: the Cup */
   const card = +(await rd('game.state'));
   check('power-on: the title, A opens the Cup', title === ST_TITLE && card === ST_CUP, `states ${title}, ${card}`);
   const tries = [[], [], []];
-  for (let i = 0, a = 0; i < 3 && a < LIVES; a++) {
+  for (let i = FROM, a = 0; i < 3 && a < LIVES; a++) {
     const r = await race(backend, true, seedOf(backend, i, a), `cup${i + 1}-try${a + 1}`);
     tries[i].push(r);
     if (r.over !== ST_RACE_OVER || r.back !== ST_CUP) break;
@@ -170,12 +174,13 @@ for (const backend of BACKENDS) {
     if (r.lives <= 0) break;
   }
   const one = tries[0];
-  check('the card and the HUD show what passes: herring needed and a time limit', one.length && one[0].need > 0 && one[0].limit > 0, one.length ? `${one[0].need} herring, ${one[0].limit} s` : 'no race');
-  check('the Cup\'s first race is passed by a first-timer, and the second race opens', one.some((r) => r.won === 1 && r.next === 1), one.map((r) => r.d).join('; '));
-  for (const i of [1, 2]) check(`Cup race ${i + 1} is passed within the Cup's lives`, tries[i].some((r) => r.won === 1), tries[i].map((r) => r.d).join('; ') || 'not reached');
+  if (!FROM) check('the card and the HUD show what passes: herring needed and a time limit', one.length && one[0].need > 0 && one[0].limit > 0, one.length ? `${one[0].need} herring, ${one[0].limit} s` : 'no race');
+  if (!FROM) check('the Cup\'s first race is passed by a first-timer, and the second race opens', one.some((r) => r.won === 1 && r.next === 1), one.map((r) => r.d).join('; '));
+  for (const i of [1, 2].filter((i) => i >= FROM)) check(`Cup race ${i + 1} is passed within the Cup's lives`, tries[i].some((r) => r.won === 1), tries[i].map((r) => r.d).join('; ') || 'not reached');
   await tool('host', { op: 'shutdown' });
+  }
   /* controls: the original's rule; the cues not drawn */
-  for (const [name, setup, cues] of [['the original rule (every herring, near par)', 'opt cuprule original', true], ['the herring and trees not drawn', '', false]]) {
+  if (CONTROLS) for (const [name, setup, cues] of [['the original rule (every herring, near par)', 'opt cuprule original', true], ['the herring and trees not drawn', '', false]]) {
     await load(backend);
     if (setup) await cmd(setup);
     await press({ south: true });

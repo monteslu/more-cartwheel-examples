@@ -564,16 +564,18 @@ static int32_t chain[2], chain_tick; /* race.chain: the herring chain now, the l
  * brake flips him forward; a landing within TRICK_CLEAN degrees of whole turns pays for them, any other landing pays
  * nothing. Render and score only: the slide, the physics and the course are the original's either way (in the air the
  * steering and the brake do nothing to the physics), and the score of a run without tricks is the original's formula.
- * trick: [points this run, clean landings, bad landings, the last landing's points, yaw now, pitch now (degrees)] */
+ * trick: [points this run, clean landings, bad landings, the last landing's points, yaw now, pitch now, the most yaw and
+ * pitch of the last flight (degrees)] */
 #define TRICK_CLEAN 50.0f
 #define TRICK_SPIN_RATE 600.0f
 #define TRICK_FLIP_RATE 520.0f
-static struct { float yaw, pitch, vy, vp, settle, msg_t; int points, clean, bad, last, msg_bad; char msg[64]; int32_t dbg[6]; float force_yaw, force_pitch; bool forced; } TR;
+static struct { float yaw, pitch, vy, vp, settle, msg_t; int points, clean, bad, last, msg_bad; char msg[64]; int32_t dbg[8]; float force_yaw, force_pitch; bool forced; } TR;
 static bool tricks_on(void);
 static float whole_turn_off(float deg) { float r = fmodf(fabsf(deg), 360.0f); return fminf(r, 360.0f - r); }
 static void trick_reset(void) { float fy = TR.force_yaw, fp = TR.force_pitch; bool fo = TR.forced; memset(&TR, 0, sizeof TR); TR.force_yaw = fy, TR.force_pitch = fp, TR.forced = fo; }
 static void trick_tick(bool airborne, bool was_airborne, float turn, bool brake, float dt) {
   if (airborne) {
+    if (!was_airborne) TR.dbg[6] = TR.dbg[7] = 0; /* a new flight */
     if (TR.forced) TR.yaw = TR.force_yaw, TR.pitch = TR.force_pitch, TR.forced = false; /* dev: trick set */
     float ty = turn * TRICK_SPIN_RATE, tp = brake ? TRICK_FLIP_RATE : 0, k = fminf(1, dt * 10);
     TR.vy += (ty - TR.vy) * k, TR.vp += (tp - TR.vp) * k;
@@ -609,6 +611,7 @@ static void trick_tick(bool airborne, bool was_airborne, float turn, bool brake,
   TR.msg_t += dt;
   TR.dbg[0] = TR.points, TR.dbg[1] = TR.clean, TR.dbg[2] = TR.bad, TR.dbg[3] = TR.last;
   TR.dbg[4] = (int32_t)lrintf(TR.yaw), TR.dbg[5] = (int32_t)lrintf(TR.pitch);
+  if (airborne) TR.dbg[6] = (int32_t)fmaxf((float)TR.dbg[6], fabsf(TR.yaw)), TR.dbg[7] = (int32_t)fmaxf((float)TR.dbg[7], fabsf(TR.pitch));
 }
 static void speed_camera(float speed, float dt) {
   bool classic = SAVE.opts & OPT_CLASSIC_CAMERA;
@@ -1315,7 +1318,7 @@ static void init(void *user) {
   cw_debug_field("cue.herring", cues[1], CW_DBG_I32, CUE_N * 3);
   cw_debug_field("cue.flags", cues[2], CW_DBG_I32, CUE_N * 3);
   cw_debug_field("cue.n", cue_n, CW_DBG_I32, 3);
-  cw_debug_field("trick", TR.dbg, CW_DBG_I32, 6); /* trick mode: points, clean landings, bad landings, the last landing's points, yaw, pitch */
+  cw_debug_field("trick", TR.dbg, CW_DBG_I32, 8); /* trick mode: points, clean landings, bad landings, the last landing's points, yaw, pitch, the last flight's most yaw and pitch */
   cw_debug_command("trick", "trick set <yaw> <pitch>: the next time he is in the air he is turned that far (degrees), as if by the stick (tests)", cmd_trick);
 }
 

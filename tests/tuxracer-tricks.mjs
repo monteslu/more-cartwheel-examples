@@ -57,12 +57,12 @@ const trick = async () => (await rd('trick')).map(Number);
 async function jump(air, shot) {
   await pad({ west: true }); await step(20); await pad(air);
   let yaw = 0, pitch = 0;
-  for (let f = 0; f < 90; f += 3) {
-    await step(3);
-    const t = await trick();
-    yaw = Math.max(yaw, Math.abs(t[4])), pitch = Math.max(pitch, Math.abs(t[5]));
-    if (shot && f === 18) await tool('frame', { op: 'stepAndShot', frames: 1, path: shot });
-  }
+  /* the flight in two ranges (the frame for the sheet in between); the cart keeps the flight's most yaw and pitch */
+  await step(18);
+  if (shot) await tool('frame', { op: 'stepAndShot', frames: 1, path: shot });
+  await step(shot ? 71 : 72);
+  const t = await trick();
+  yaw = Math.abs(t[6]), pitch = Math.abs(t[7]);
   await pad({}); await step(30);
   return { yaw, pitch };
 }
