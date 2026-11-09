@@ -258,10 +258,55 @@ static void juke_show(void) {
   } else cw_node3d_set_position(juke_ring, (t3_vec3){ JUKE_X, -20, JUKE_Z });
 }
 
+/* ── the set pieces on screen (sim.c setpiece_tick decides them): the crane's falling crate, the roof's rolling barrel and
+   the marks on the street. The crate falls in the picture from above it (game gravity, 0.7 s, tumbling a little; its shadow
+   grows on the ring), the barrel rolls on its side. Nothing hangs in the air: the crate is out of sight until it falls */
+static cw_node sp_crate, sp_barrel;
+extern int g_sp_tell[2];
+static void sp_build(cw_node s, int stage) {
+  sp_crate = sp_barrel = (cw_node){ 0 };
+  if ((stage & 3) == 1) sp_crate = spawn_glb(s, "models/crate.glb", NULL, true);
+  if ((stage & 3) == 3) sp_barrel = spawn_glb(s, "models/barrel.glb", NULL, true);
+  if (sp_crate.id) cw_node_set(sp_crate, "visible", cw_val_bool(false));
+  if (sp_barrel.id) cw_node_set(sp_barrel, "visible", cw_val_bool(false));
+}
+static void sp_show(void) {
+  const struct setp *sp = &W.sp;
+  bool crate = false, barrel = false;
+  float k = 0;
+  if (sp->kind == 1) {
+    int T = g_sp_tell[0], fall = 44 < T ? 44 : T;
+    float u = (float)sp->t / (float)T;
+    k = sp->t < T ? 0.3f + 0.7f * u * u : 1.0f - (float)(sp->t - T) / 12.0f; /* the ring brightens as the crate comes, then goes */
+    fx_warn(8, sp->x, sp->z, 1.05f, 0.85f, k);
+    if (sp->t >= T - fall && sp->t < T && sp_crate.id) {
+      float tf = (float)(T - sp->t) / TPS; /* seconds still to fall */
+      crate = true;
+      cw_node3d_set_position(sp_crate, (t3_vec3){ sp->x, 0.45f + 9.0f * tf * tf, sp->z });
+      cw_node3d_set_rotation(sp_crate, (t3_vec3){ 0.35f * tf, 0.4f + 0.6f * tf, -0.25f * tf });
+    }
+  } else if (sp->kind == 2) {
+    int T = g_sp_tell[1];
+    float u = sp->t < T ? (float)sp->t / (float)T : 1.0f;
+    k = 0.3f + 0.7f * u * u;
+    float hw = view_halfw(sp->z, 0.4f) + 1.0f;
+    fx_warn(8, W.cam_x, sp->z, hw, 0.5f, k); /* the whole lane, across the picture */
+    if (sp->t > T && sp_barrel.id) {
+      barrel = true;
+      cw_node3d_set_position(sp_barrel, (t3_vec3){ sp->x, 0.355f, sp->z });
+      cw_node3d_set_rotation(sp_barrel, (t3_vec3){ 1.5708f, sp->x / 0.355f, 0 }); /* on its side, rolling */
+    }
+  }
+  if (sp->kind == 0) fx_warn(8, 0, 0, 0, 0, 0);
+  if (sp_crate.id) cw_node_set(sp_crate, "visible", cw_val_bool(crate));
+  if (sp_barrel.id) cw_node_set(sp_barrel, "visible", cw_val_bool(barrel));
+}
+
 void level_free(void) {
   if (stage_node.id && cw_node_valid(stage_node)) cw_node_free(stage_node);
   stage_node = (cw_node){ 0 };
   juke_node = juke_light = juke_ring = juke_wave = (cw_node){ 0 };
+  sp_crate = sp_barrel = (cw_node){ 0 };
   juke_gltf = NULL;
   memset(juke_mat, 0, sizeof juke_mat);
   for (int i = 0; i < nkept; i++) t3_release(kept[i]);
@@ -433,6 +478,7 @@ void level_build(int stage) {
   }
   g_mirror_z = (int)((acc_z[2] * CAM_Y + CAM_Z * acc_y[2]) / (CAM_Y + acc_y[2]) * 1000.0f + 0.5f);
   if ((stage & 3) == 1) juke_build(s); /* Arthur's jukebox */
+  sp_build(s, stage);
   level_props(s, stage, len, false);
   ncount = 0;
 }
@@ -485,6 +531,7 @@ static void lm_apply(void) {
 void level_update(void) {
   if (lm_pending) lm_apply();
   juke_show();
+  sp_show();
   if (!W.wave_spawned && W.cam_x >= W.lock_x - 0.4f) W.wave_spawned = 1;
   for (int i = 0; i < MAXPROP; i++) {
     prop_t *p = &W.prop[i];

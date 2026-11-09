@@ -229,7 +229,7 @@ void fx_init(void) {
 }
 
 /* danger rings: a red ring added to the street under a heavy attack (k is its brightness, 0 hides it) */
-enum { NWARN = 8 };
+enum { NWARN = 9 }; /* 0-7 enemies' heavy blows, 8 the set piece's mark */
 static cw_node warn[NWARN];
 static float warn_k[NWARN];
 void fx_warn(int slot, float x, float z, float sx, float sz, float k) {

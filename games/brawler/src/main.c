@@ -45,6 +45,7 @@ static int32_t d_juke[6];
 static int32_t d_wanker[6], d_creep[6], d_clones, d_blood[4]; /* the jukebox: uses, fighters knocked down by its shockwave, fighters who jumped it, playing, radius in cm, Arthur on his way to it */
 static float d_face[8]; /* the boss's expression weights (blink snarl shout wince ko grin effort grimace) */
 static int64_t run_ticks;
+static int32_t d_sp[5];
 static int32_t d_crew, d_lane[2], d_pick[2], d_pick_ready[MAXP], d_absent[MAXP]; /* fixed updates since the program started (status lines) */
 
 static void play_music(int stage) {
@@ -354,6 +355,11 @@ static void cmd_hero(int argc, const char **argv, cw_reply *r) { /* hero <seat 0
 static void cmd_legacymoves(int argc, const char **argv, cw_reply *r) { extern bool g_legacy_moves; g_legacy_moves = argc > 1 && atoi(argv[1]); cw_reply_printf(r, "{\"legacymoves\":%d}", g_legacy_moves); }
 static void cmd_botaim(int argc, const char **argv, cw_reply *r) { extern float g_bot_aim; g_bot_aim = argc > 1 ? (float)atof(argv[1]) : 0; cw_reply_printf(r, "{\"botaim\":%g}", g_bot_aim); }
 static void cmd_legacylane(int argc, const char **argv, cw_reply *r) { extern bool g_legacy_lane; g_legacy_lane = argc > 1 && atoi(argv[1]); cw_reply_printf(r, "{\"legacylane\":%d}", g_legacy_lane); }
+static void cmd_legacybounce(int argc, const char **argv, cw_reply *r) { extern bool g_legacy_bounce; g_legacy_bounce = argc > 1 && atoi(argv[1]); cw_reply_printf(r, "{\"legacybounce\":%d}", g_legacy_bounce); }
+static void cmd_legacyband(int argc, const char **argv, cw_reply *r) { extern bool g_legacy_band; g_legacy_band = argc > 1 && atoi(argv[1]); cw_reply_printf(r, "{\"legacyband\":%d}", g_legacy_band); }
+static void cmd_spmany(int argc, const char **argv, cw_reply *r) { extern bool g_sp_many; g_sp_many = argc > 1 && atoi(argv[1]); cw_reply_printf(r, "{\"spmany\":%d}", g_sp_many); }
+static void cmd_nosets(int argc, const char **argv, cw_reply *r) { extern bool g_no_sets; g_no_sets = argc > 1 && atoi(argv[1]); cw_reply_printf(r, "{\"nosets\":%d}", g_no_sets); }
+static void cmd_sptell(int argc, const char **argv, cw_reply *r) { extern int g_sp_tell[2]; if (argc > 1) g_sp_tell[0] = atoi(argv[1]), g_sp_tell[1] = argc > 2 ? atoi(argv[2]) : atoi(argv[1]); cw_reply_printf(r, "{\"sptell\":[%d,%d]}", g_sp_tell[0], g_sp_tell[1]); }
 static void cmd_legacyair(int argc, const char **argv, cw_reply *r) { extern bool g_legacy_air; g_legacy_air = argc > 1 && atoi(argv[1]); cw_reply_printf(r, "{\"legacyair\":%d}", g_legacy_air); }
 /* bots: walk to the nearest enemy and fight; grab, kick and jump now and then */
 static int bot_pick[MAXP] = { -1, -1, -1, -1 };
@@ -432,6 +438,20 @@ static void bot(int i, inputs *in) {
     if (!g_legacy_moves && v->st == S_FALL && v->juggle > 0 && near && W.tick % 5 == 0) in->atk = true; /* juggle it */
     if (e->st == S_IDLE && (W.tick + i * 31) % 233 == 0) in->jump = true;
   }
+  { extern int g_sp_tell[2]; /* the set pieces: seen 0.4 s after they are marked (a person's reaction), then got out of */
+    const struct setp *sp = &W.sp;
+    float ddx = e->x - sp->x, ddz = e->z - sp->z;
+    if (sp->kind == 1 && sp->t > 24 && sp->t < g_sp_tell[0] && (ddx / 1.4f) * (ddx / 1.4f) + (ddz / 1.15f) * (ddz / 1.15f) < 1.0f) {
+      in->mx = ddx > 0 ? 1 : -1, in->mz = fabsf(ddz) < 0.2f ? 0 : ddz > 0 ? 1 : -1;
+      in->atk = in->kick = in->grab = in->special = in->jump = false;
+    }
+    float ax = (sp->x - e->x) * (sp->vx > 0 ? -1.0f : 1.0f); /* how far ahead of this fighter the barrel is, coming its way */
+    if (sp->kind == 2 && sp->t > 24 && fabsf(ddz) < 0.8f && ax > 0.3f) { /* out of the marked lane; still in it with the barrel close: jump */
+      in->mz = e->z > LANE_Z - 0.9f ? -1 : e->z < -LANE_Z + 0.9f ? 1 : ddz >= 0 ? 1 : -1;
+      in->atk = in->kick = in->grab = in->special = false;
+      if (sp->t > g_sp_tell[1] && fabsf(ddz) < 0.55f && ax > 1.0f && ax < 2.0f && e->y < 0.05f) in->jump = true;
+    }
+  }
   if (W.juke.t > 0 && !(W.juke.mask & (1u << i))) { /* the jukebox ring is coming: jump it when it is close */
     float jx = e->x - JUKE_X, jz = e->z - JUKE_Z, d = sqrtf(jx * jx + jz * jz);
     if (d - W.juke.r < 0.9f && d - W.juke.r > 0.2f && !strcmp(inject(), "")) in->jump = true, in->atk = in->kick = in->grab = in->special = false;
@@ -501,7 +521,9 @@ static void init(void *user) {
   { extern int g_comb[2]; cw_debug_field("game.comb", g_comb, CW_DBG_I32, 2); } /* frames mid stroke of Arthur's comb, farthest the wrist was from its place on the hair, mm */
   cw_debug_i32("game.bowled", &d_bowled);
   cw_debug_field("game.moves", W.moves, CW_DBG_I32, 6); /* landed: dash attacks, backfists, launchers, juggle blows, stomps; tenths of health won back */
-  cw_debug_i32("game.stopped", &W.stopped); /* frames held by hit-stop this match */
+  cw_debug_i32("game.stopped", &W.stopped);
+  cw_debug_field("game.bounce", W.bounce, CW_DBG_I32, 3); /* wall bounces off the picture's edge or a prop, blows landed on a bounced body, props broken by one */
+  cw_debug_field("game.setpiece", d_sp, CW_DBG_I32, 5); /* set pieces this stage: dropped or rolled, fighters hit, enemies hit, fighters who got out of the way or jumped it, the one live now */
   cw_debug_field("game.combos", W.combos, CW_DBG_I32, 5); /* finished hit combos of 1, 2, 3-4, 5-7, 8+ */
   cw_debug_field("game.lane", d_lane, CW_DBG_I32, 2); /* fighters' blows thrown with an enemy within 1.5 m along the street this stage, and those that hit nobody */
   { extern int g_shield[5]; cw_debug_field("game.shield", g_shield, CW_DBG_I32, 5); } /* shields dropped, taken up, lowest and highest mm a lying one sat over the street, frames on a prop */       /* enemies knocked over by a thrown body this stage */
@@ -557,6 +579,11 @@ static void init(void *user) {
   cw_debug_command("legacymarker", "legacymarker <0|1>: the marker over the simulated spot (gate control only)", cmd_legacymarker);
   cw_debug_command("knockat", "knockat <tick>: everyone knocked down at that tick of the run", cmd_knockat);
   cw_debug_command("hero", "hero <seat> <def>: who a seat plays from the next start", cmd_hero);
+  cw_debug_command("legacybounce", "legacybounce <0|1>: a body knocked into the picture's edge or a prop stops against it (gate control only)", cmd_legacybounce);
+  cw_debug_command("legacyband", "legacyband <0|1>: the crowd may walk enemies off the street's depth band (gate control only)", cmd_legacyband);
+  cw_debug_command("spmany", "spmany <0|1>: set pieces every 1.7 s, no cap a wave (the set piece gate)", cmd_spmany);
+  cw_debug_command("nosets", "nosets <0|1>: no crane cargo on the docks, no rolling barrels on the roof", cmd_nosets);
+  cw_debug_command("sptell", "sptell <cargo> [barrel]: how many ticks the set pieces are marked before they act (84 and 72; the set piece gate's control shortens them)", cmd_sptell);
   cw_debug_command("legacymoves", "legacymoves <0|1>: no dash, backfist, launcher, juggle, stomp or refund (gate control only)", cmd_legacymoves);
   cw_debug_command("botaim", "botaim <m>: the bots misjudge depth by up to m and swing when level along the street", cmd_botaim);
   cw_debug_command("legacylane", "legacylane <0|1>: no lane assist (gate control only)", cmd_legacylane);
@@ -573,6 +600,7 @@ static void init(void *user) {
 static void publish(void) {
   d_crew = crew();
   d_lane[0] = W.st.lane_press, d_lane[1] = W.st.lane_miss;
+  d_sp[0] = W.sp.fired, d_sp[1] = W.sp.hit_p, d_sp[2] = W.sp.hit_e, d_sp[3] = W.sp.dodges, d_sp[4] = W.sp.kind;
   d_pick[0] = g_pick.on, d_pick[1] = g_pick.on ? g_pick.left : 0;
   for (int i = 0; i < MAXP; i++) d_pick_ready[i] = g_pick.ready[i], d_absent[i] = g_absent[i];
   d_ticks = W.tick, d_players = W.players, d_stage = W.stage, d_phase = W.phase, d_kills = W.kills, d_wave = W.wave;

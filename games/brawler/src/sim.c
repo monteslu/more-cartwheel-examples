@@ -16,6 +16,10 @@
 #include "game.h"
 
 world_t W;
+bool g_legacy_bounce; /* autopilot debug "legacybounce 1": a body knocked into the picture's edge or a prop stops against it (the bounce gate's control) */
+bool g_legacy_band; /* autopilot debug "legacyband 1": the crowd may walk enemies off the street's depth band (the docks gate's control) */
+bool g_sp_many; /* autopilot debug "spmany 1": set pieces every 1.7 s with no cap a wave (the set piece gate: enough of them to count) */
+bool g_no_sets; /* autopilot debug "nosets 1": no crane cargo, no rolling barrels (the set piece gate's control) */
 bool g_legacy_moves; /* autopilot debug "legacymoves 1": no dash, backfist, launcher, juggle, stomp or refund (the moves gate's control) */
 bool g_legacy_air; /* autopilot debug "legacyair 1": the v0.4.0 airborne stagger without gravity (the controls gate's control) */
 int g_heroes[MAXP] = { D_ROOK, D_MIKA, D_JET, D_DOLLY }; /* who each seat plays: the character select picks them (autopilot debug "hero <seat> <def>") */
@@ -536,6 +540,7 @@ void ent_hurt(ent *v, ent *a, float dmg, int knock, float fx) {
     if (a->atk == A_BACK) W.moves[1]++;
     if (launch) W.moves[2]++;
     if (juggled) W.moves[3]++;
+    if (juggled && v->bounced == 1) W.bounce[1]++;
     if (stomped) W.moves[4]++;
     if (a->refund > 0) { /* the special's cost comes back as the blows land (half of each, until it is all back) */
       float back = dmg * 0.5f < a->refund ? dmg * 0.5f : a->refund;
@@ -610,6 +615,7 @@ void ent_hurt(ent *v, ent *a, float dmg, int knock, float fx) {
   v->face = dir > 0 ? -1 : 1; /* turn toward the attacker */
   bool die = v->hp <= 0;
   if (die || knock >= 2 || (!boss && knock >= 1 && v->st == S_HIT)) {
+    if (!juggled) v->bounced = a && a->player && !v->player && !boss ? 0 : 2; /* a fighter's blow can bounce it off a wall */
     v->st = S_FALL, v->t = 0;
     v->vx = (float)dir * (die ? 4.5f : 3.4f);
     v->vy = die ? 5.5f : 4.5f;
@@ -836,6 +842,32 @@ static bool common_state(ent *e) {
     e->x += e->vx / TPS, e->y += e->vy / TPS;
     e->vy -= 18.0f / TPS * 1.0f;
     e->vx *= 0.985f;
+    /* the wall bounce: a body a fighter knocked flying into the picture's edge (the street's invisible wall: bodies stay in
+       the picture) or into a crate, barrel or bin comes back off it, up and toward the fighter, open to two more blows in the
+       air. Once a fall, never a boss */
+    if (!e->player && e->bounced == 0 && e->hp > 0 && !g_legacy_bounce && absf(e->vx) > 1.6f && e->y > 0.1f && e->ptimer >= 20) {
+      float s = e->vx > 0 ? 1.0f : -1.0f, hw = view_halfw(e->z, 1.0f) - 0.45f;
+      bool wall = (e->x - W.cam_x) * s >= hw - 0.03f;
+      int pi = -1;
+      for (int i = 0; i < MAXPROP && !wall; i++) {
+        const prop_t *p = &W.prop[i];
+        float ax = (p->x - e->x) * s;
+        if (p->used && ax > -0.05f && ax < 0.62f && absf(p->z - e->z) < 0.55f) { pi = i; break; }
+      }
+      if (wall || pi >= 0) {
+        e->bounced = 1;
+        e->vx = -e->vx * 0.55f;
+        if (e->vy < 3.4f) e->vy = 3.4f;
+        e->juggle = 2, e->invuln = 0;
+        W.bounce[0]++;
+        fx_dust(e->x + s * 0.3f, e->z, 1.0f);
+        fx_hit(e->x + s * 0.35f, e->y + 0.9f, e->z, 1, -(int)s);
+        sfx(SFX_THUD);
+        rumble(-1, 0.3f, 0.45f, 110);
+        if (W.hitstop < 6) W.hitstop = 6;
+        if (pi >= 0) { W.bounce[2]++; prop_hit(&W.prop[pi]); }
+      }
+    }
     if (e->y <= 0 && e->vy < 0) {
       e->y = 0;
       e->st = S_DOWN, e->t = 0, e->juggle = 0;
@@ -1533,6 +1565,8 @@ void sim_reset(int players, int stage) {
   W.phase = PH_INTRO, W.phase_t = 0;
   W.cam_x = 0, W.slow = 0;
   memset(&W.juke, 0, sizeof W.juke);
+  memset(&W.sp, 0, sizeof W.sp);
+  W.sp.wave = -1;
   W.juke.here = (stage & 3) == 1, W.juke.owner = -1; /* the docks have the jukebox */
   level_build(stage);
   crowd_setup();
@@ -1690,6 +1724,88 @@ static void spawn_from_queue(void) {
   }
 }
 
+/* ── the stage set pieces ───────────────────────────────────────────────
+   The docks (stage 2): from the second wave to the fourth the crane overhead drops cargo, up to three crates a wave: a ring
+   on the street marks the spot for 1.4 s (it grows brighter as the crate comes down; the crate is in the picture for its
+   last 0.45 s), then it bursts there and floors whoever stands in the ring, fighters and enemies alike: step out, or knock
+   enemies under it. Sometimes something useful is in it. The factory roof (stage 4): a runaway barrel rolls the length of
+   the picture down one depth lane, marked across the whole street for 1.2 s; anyone in the lane and on the ground goes
+   down, a jump clears it. Both are on screen before they act (the unfair audit checks every hit). */
+int g_sp_tell[2] = { 84, 72 }; /* the cargo's ring and the barrel's lane are up this long before they act (autopilot "sptell": the gate's control shortens them) */
+#define SP_TELL_CARGO g_sp_tell[0]
+#define SP_TELL_BARREL g_sp_tell[1]
+static void sp_hurt(ent *v, float x, float z) {
+  float src[2] = { x, z };
+  g_src = src;
+  v->face = v->x < x ? 1 : -1; /* thrown away from it */
+  ent_hurt(v, NULL, v->player ? 12 : 18, 2, 0);
+  g_src = NULL;
+}
+static bool sp_target(const ent *v) {
+  return alive(v) && !DEFS[v->def].boss && !DEFS[v->def].mini && (v->player || v->ptimer >= 20) && v->invuln <= 0 &&
+         !(v->st == S_DOWN || v->st == S_FALL || v->st == S_THROWN || v->st == S_GRABBED || v->st == S_GETUP) && on_screen(v->x, v->z, 0);
+}
+static bool in_cargo(const ent *v, float x, float z) { float dx = (v->x - x) / 1.05f, dz = (v->z - z) / 0.85f; return dx * dx + dz * dz < 1.0f && v->y < 1.2f; }
+static void setpiece_tick(void) {
+  struct setp *s = &W.sp;
+  bool on = W.phase == PH_PLAY && !g_no_sets && (W.stage == 1 || W.stage == 3) && W.wave >= 1 && W.wave <= 3 && W.wave_spawned;
+  if (s->kind == 0) {
+    if (!on) return;
+    if (s->wave != W.wave) s->wave = W.wave, s->n = 0, s->cd = 210; /* the first one 3.5 s into the wave */
+    if ((s->n >= 3 && !g_sp_many) || enemies_alive() == 0 || --s->cd > 0) return;
+    s->kind = W.stage == 1 ? 1 : 2, s->t = 0, s->mask = 0;
+    if (s->kind == 1) { /* on an enemy in the picture (the crane's man aims at the brawl), else a step in front of a fighter */
+      int c[MAXE], n = 0;
+      for (int i = 0; i < MAXE; i++) if (sp_target(&W.e[i])) c[n++] = i;
+      if (n) { const ent *v = &W.e[c[ri(0, n - 1)]]; s->x = v->x + rf(-0.5f, 0.5f), s->z = v->z + rf(-0.3f, 0.3f); }
+      else { const ent *p = &W.p[0]; s->x = p->x + (float)p->face * 1.5f, s->z = p->z; }
+      s->z = clampf(s->z, -LANE_Z + 0.2f, LANE_Z - 0.2f);
+      float hw = view_halfw(s->z, 1.0f) - 1.2f;
+      s->x = clampf(s->x, W.cam_x - hw, W.cam_x + hw);
+      for (int i = 0; i < MAXP; i++) if (sp_target(&W.p[i]) && in_cargo(&W.p[i], s->x, s->z)) s->mask |= 1u << i; /* under it when it was marked */
+    } else { /* down the lane a fighter stands in, from one end of the picture */
+      int c[MAXP], n = 0;
+      for (int i = 0; i < MAXP; i++) if (sp_target(&W.p[i])) c[n++] = i;
+      s->z = n ? W.p[c[ri(0, n - 1)]].z : 0;
+      s->z = clampf(s->z, -LANE_Z + 0.35f, LANE_Z - 0.35f);
+      float d = ri(0, 1) ? 1.0f : -1.0f;
+      s->x = W.cam_x + d * (view_halfw(s->z, 0.4f) + 1.0f), s->vx = -d * 7.0f;
+    }
+    return;
+  }
+  s->t++;
+  if (s->kind == 1) {
+    if (s->t == SP_TELL_CARGO) {
+      for (int i = 0; i < MAXP + MAXE; i++) {
+        ent *v = i < MAXP ? &W.p[i] : &W.e[i - MAXP];
+        if (!sp_target(v) || !in_cargo(v, s->x, s->z)) continue;
+        if (v->player) s->hit_p++; else s->hit_e++;
+        sp_hurt(v, s->x, s->z);
+      }
+      for (int i = 0; i < MAXP; i++) if ((s->mask >> i & 1) && alive(&W.p[i]) && !in_cargo(&W.p[i], s->x, s->z)) s->dodges++;
+      fx_debris(s->x, 0.6f, s->z, 0x6b4526);
+      fx_debris(s->x, 0.9f, s->z, 0x7a5430);
+      fx_dust(s->x, s->z, 2.4f);
+      sfx(SFX_SLAM), sfx(SFX_BREAK);
+      rumble(-1, 0.6f, 0.25f, 220);
+      int r = ri(0, 9), kind = r < 3 ? 0 : r < 5 ? 4 : r == 5 ? 2 : -1; /* an apple, a coin, a pipe, or nothing */
+      if (kind >= 0) for (int i = 0; i < MAXITEM; i++) if (!W.item[i].used) { W.item[i] = (item_t){ .used = true, .kind = kind, .x = s->x, .z = s->z, .y = 0.9f }; break; }
+    }
+    if (s->t >= SP_TELL_CARGO + 12) s->kind = 0, s->n++, s->fired++, s->cd = g_sp_many ? 100 : 300 + ri(0, 150);
+  } else {
+    if (s->t <= SP_TELL_BARREL) return;
+    s->x += s->vx / TPS;
+    for (int i = 0; i < MAXP + MAXE; i++) {
+      ent *v = i < MAXP ? &W.p[i] : &W.e[i - MAXP];
+      if (absf(v->x - s->x) > 0.5f || absf(v->z - s->z) > 0.5f || !sp_target(v)) continue;
+      if (v->y > 0.55f) { if (v->player && !(s->mask >> i & 1)) s->mask |= 1u << i, s->dodges++; continue; } /* jumped it */
+      if (v->player) s->hit_p++; else s->hit_e++;
+      sp_hurt(v, s->x - s->vx * 0.05f, s->z);
+    }
+    if ((s->x - W.cam_x) * (s->vx > 0 ? 1.0f : -1.0f) > view_halfw(s->z, 0.4f) + 1.5f) s->kind = 0, s->n++, s->fired++, s->cd = g_sp_many ? 100 : 300 + ri(0, 150);
+  }
+}
+
 void sim_tick(const inputs *in) {
   W.frames++;
   if (W.phase == PH_INTRO) { if (++W.phase_t > 150) { W.phase = PH_PLAY; W.phase_t = 0; } }
@@ -1738,13 +1854,17 @@ void sim_tick(const inputs *in) {
       ent *e = &W.e[i];
       if (e->used && e->agent && (e->st == S_WALK || e->st == S_IDLE)) {
         t3_vec3 p = cw_crowd_position(crowd, AG(e->agent));
-        e->x = p.x, e->z = p.z;
+        /* the street's depth band holds whoever the crowd moves (the navmesh reaches the pavement for Arthur's walk to the
+           jukebox): a thrower keeping its range walked onto the docks pavement, out of every fighter's reach, and the wave
+           never ended (two bots on the docks, 40 s without progress) */
+        e->x = p.x, e->z = e->def == D_ARTHUR || g_legacy_band ? p.z : clampf(p.z, -LANE_Z, LANE_Z);
       }
     }
   }
   for (int i = 0; i < MAXE; i++) if (W.e[i].used && W.e[i].fade) ent_remove(&W.e[i]);
   proj_update();
   juke_tick();
+  setpiece_tick();
   separate_bodies();
   items_update();
 

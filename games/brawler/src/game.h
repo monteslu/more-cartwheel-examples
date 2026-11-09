@@ -89,6 +89,7 @@ typedef struct ent {
   float hurtflash;
   int dash, tapdir, taptick, lastdir, back_face; /* a fighter's run: a double tap along the street (dash: ticks running) */
   int juggle; /* a launched body: blows it can still take in the air */
+  int bounced; /* a body a fighter knocked flying: 0 it can still bounce off the picture's edge or a prop, 1 it has, 2 it cannot (not a fighter's blow) */
   float refund; int refund_t; /* the special's cost a fighter can still win back by landing blows (shown green on its bar) */
   float squash; /* the struck body squashes on the hit frame and springs back (presentation, never hashed) */
   bool hitflag;
@@ -156,6 +157,10 @@ typedef struct world_t {
   struct creep { int spawned, flash, flash_hits, shrugged, healed, kills; } creep; /* the creep's (the gates read them) */ /* the wanker's moves (the gates read them) */
   int spawns; /* enemies spawned this match (looks.c: each spawn's look) */
   int stopped; /* frames held frozen by hit-stop (the hit feel gate) */
+  int bounce[3]; /* wall bounces: bodies that bounced off the picture's edge or a prop, blows landed on them after, props they broke */
+  /* the stage set pieces (the docks: the crane drops cargo on a ringed spot; the factory roof: a barrel rolls down a marked
+     lane, jump it): decided here on the fixed tick, level.c only shows them. kind 0 none, 1 cargo, 2 barrel */
+  struct setp { int kind, t, wave, n, cd, fired, hit_p, hit_e, dodges; float x, z, vx; uint32_t mask; } sp;
   int frames; /* sim_tick calls, hit-stop and slow-motion frames included (the stats' wall clock; never hashed) */
   /* the docks jukebox (stage 2, Arthur's arena): he thumps it, it plays his theme and a shockwave runs out along the
      floor (decided here, on the fixed tick; the lights, music and ring on screen only show it) */
