@@ -11,8 +11,8 @@ const args = process.argv.slice(2);
 let DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'assets', 'models'), EXPECT_FAIL = false;
 const names = [];
 for (let i = 0; i < args.length; i++) { if (args[i] === '--dir') DIR = args[++i]; else if (args[i] === '--expect-fail') EXPECT_FAIL = true; else names.push(args[i]); }
-const ALL = ['rook', 'mika', 'jet', 'dolly', 'thug', 'punk', 'runner', 'knifer', 'bruiser', 'thrower', 'guard', 'wanker', 'creep', 'foreman', 'matron', 'ringmaster', 'colossus', 'arthur'];
-const WOMEN = new Set(['mika', 'dolly', 'matron']), BIG = new Set(['bruiser', 'foreman', 'colossus', 'dolly', 'guard', 'wanker']);
+const ALL = ['rook', 'mika', 'jet', 'dolly', 'thug', 'punk', 'runner', 'knifer', 'bruiser', 'thrower', 'guard', 'heckler', 'creep', 'foreman', 'matron', 'ringmaster', 'colossus', 'arthur'];
+const WOMEN = new Set(['mika', 'dolly', 'matron']), BIG = new Set(['bruiser', 'foreman', 'colossus', 'dolly', 'guard', 'heckler']);
 
 function readGlb(path) {
   const b = readFileSync(path), jl = b.readUInt32LE(12), json = JSON.parse(b.subarray(20, 20 + jl).toString()), bin = b.subarray(20 + jl + 8);

@@ -38,6 +38,9 @@ const PARENT = { Hips: -1, Spine: 'Hips', Chest: 'Spine', Neck: 'Chest', Head: '
 const HAND_BONES = ['FingL1', 'FingL2', 'ThumbL', 'FingR1', 'FingR2', 'ThumbR'];
 const BI = Object.fromEntries(BONE_NAMES.map((n, i) => [n, i]));
 
+// the noise seeds of a face, its eyes and its hair come from the name, or from `seed` ([length, first char code]) to keep
+// a look fixed when a character is renamed
+const seedLen = (sp) => sp.seed?.[0] ?? sp.name.length, seedChar = (sp) => sp.seed?.[1] ?? sp.name.charCodeAt(0);
 /** per character bone translations (relative to the parent) */
 function skeleton(sp) {
   const sw = shoulder(sp), hw = sp.hw ?? 0.1, HS = headScale(sp), al = sp.armLen ?? 1, ll = sp.legLen ?? 1;
@@ -515,7 +518,7 @@ clip('thump', 1.0, false, keyed([
   [0.6, THUMP_HIT, 'in'], [0.68, merge(THUMP_HIT, { UpperArmR: { r: [-1.25, 0.15, -0.3] }, Spine: { r: [0.26, -0.05, 0.05] } }), 'out'], [0.76, THUMP_HIT, 'io'], [1.0, BOXER, 'io']]));
 
 // ── pose to rotation tracks ─────────────────────────────────────────────
-// the wanker's haymaker: a big looping right, wound up from the hip with the whole body turned away (the tell), thrown
+// the heckler's haymaker: a big looping right, wound up from the hip with the whole body turned away (the tell), thrown
 // round in an arc, then the follow-through carries him off balance and he has to catch himself (an opening)
 const HAY_BACK = G({ Hips: { p: [0, -0.1, -0.06], r: [0, 0.45, 0] }, Spine: { r: [0.05, -0.4, 0] }, Chest: { r: [-0.08, -0.6, 0] }, Head: { r: [-0.05, 0.4, 0] },
   UpperArmR: { r: [0.15, 0.35, -1.25] }, LowerArmR: { r: [-1.35, 0, 0] }, HandR: { r: [0.2, 0, 0] }, UpperArmL: { r: [-0.95, -0.2, 0.35] }, LowerArmL: { r: [-1.5, 0, 0] },
@@ -523,7 +526,7 @@ const HAY_BACK = G({ Hips: { p: [0, -0.1, -0.06], r: [0, 0.45, 0] }, Spine: { r:
 const HAY_HIT = G({ Hips: { p: [0, -0.12, 0.14], r: [0, -0.45, 0] }, Spine: { r: [0.25, 0.5, 0] }, Chest: { r: [0.15, 0.78, 0] }, Head: { r: [0.05, -0.45, 0] },
   UpperArmR: { r: [-1.5, -0.3, -0.6] }, LowerArmR: { r: [-0.55, 0, 0] }, UpperArmL: { r: [-0.3, 0, 0.65] }, LowerArmL: { r: [-1.0, 0, 0] },
   UpperLegL: { r: [-0.75, -0.1, 0.12] }, LowerLegL: { r: [0.7, 0, 0] }, UpperLegR: { r: [0.45, -0.25, -0.12] }, LowerLegR: { r: [0.25, 0, 0] }, FootR: { r: [0.4, 0.3, 0] } });
-// (the wanker's: B-PT18 a wild flail, not a strong man's punch: the arm nearly straight, the other arm windmilling for balance,
+// (the heckler's: B-PT18 a wild flail, not a strong man's punch: the arm nearly straight, the other arm windmilling for balance,
 // and the follow-through spins him round off balance)
 const HAY_OVER = merge(HAY_HIT, { Hips: { p: [0, -0.18, 0.22], r: [0.1, -0.95, 0.12] }, Spine: { r: [0.55, 0.8, 0.1] }, Chest: { r: [0.42, 1.2, 0.08] }, Head: { r: [0.35, -0.7, 0.2] },
   UpperArmR: { r: [-0.9, -0.95, 0.35] }, LowerArmR: { r: [-0.25, 0, 0] }, UpperArmL: { r: [-1.6, 0, 1.4] }, LowerArmL: { r: [-0.3, 0, 0] } });
@@ -533,7 +536,7 @@ clip('haymaker', 1.15, false, keyed([
   [0.5, HAY_HIT, 'out'],
   [0.6, HAY_OVER, 'io'],
   [0.85, merge(HAY_OVER, { UpperArmL: { r: [-2.4, 0, 1.0] }, UpperArmR: { r: [0.3, 0, -1.2] }, Head: { r: [0.15, -0.4, 0.25] }, Hips: { p: [0.05, -0.14, 0.18], r: [0.05, -1.2, 0.15] } }), 'io'],
-  [1.15, GUARD, 'io']]), ['wanker']);
+  [1.15, GUARD, 'io']]), ['heckler']);
 // the creep: a hunched lurching walk (one leg dragged), and the flash: he spreads his coat wide with both hands and lunges
 clip('lurch', 1.3, true, (t) => {
   const p = walkPose(t, 1.3, false), w = (t / 1.3) * PI * 2;
@@ -909,7 +912,7 @@ function build(sp) {
   // ── hair cards: ribbons of the alpha-tested strand texture (assets/textures/hair_card) grown along curves over the
   // scalp, lit with the outward normal of the hair mass (so they shade like hair, not flat planes), with real tangents for
   // the anisotropic highlight along the strands. Each style keeps a solid core under its cards so it reads at game distance.
-  let rs = sp.name.length * 977 + 13;
+  let rs = seedLen(sp) * 977 + 13;
   const rnd = () => { rs = (Math.imul(rs, 1664525) + 1013904223) >>> 0; return rs / 4294967296; };
   const hcC = [0, hc[1] - 0.02 * HS, hc[2]];
   const ell = (p) => Math.hypot(p[0] / R, (p[1] - hc[1]) / HY, (p[2] - hc[2]) / RZ); // 1 on the skull ellipsoid
@@ -950,9 +953,9 @@ function build(sp) {
   };
   const onHead = () => [[BI.Head, 1]];
   const slick = () => hairCap(m, 'hair', M, hairEdge, { bone: BI.Head, lift: 0.0022, cols: 26, rows: 9 });
-  if (hairCut === 'spiky') { scalp(1.05, 0.004, sp.name.length); clumps(3, 0.085 * HS, 0.03 * HS, 0.6, sp.name.length); }
+  if (hairCut === 'spiky') { scalp(1.05, 0.004, seedLen(sp)); clumps(3, 0.085 * HS, 0.03 * HS, 0.6, seedLen(sp)); }
   if (hairCut === 'crop' || hairCut === 'long') {
-    scalp(1.04, 0.003, sp.name.length);
+    scalp(1.04, 0.003, seedLen(sp));
     // short hair combed back: layered lying cards over the crown and the back (none low on the sides: the shell carries those)
     const n = hairCut === 'crop' ? 120 : 90;
     for (let i = 0; i < n; i++) {
@@ -1280,7 +1283,7 @@ function writeFace(sp) {
   const { M } = skeleton(sp), p = sp.paint ?? {};
   const skin = skinOf(sp.colors.skin), hair = hexRaw(sp.colors.hair), col = (h) => (h == null ? undefined : Array.isArray(h) ? h : hexRaw(h));
   const t = paintFace(M, {
-    seed: sp.name.length * 7 + sp.name.charCodeAt(0), skin, hair: col(p.beardColor) ?? hair, brow: col(p.browColor) ?? hair.map((c) => c * 0.75),
+    seed: seedLen(sp) * 7 + seedChar(sp), skin, hair: col(p.beardColor) ?? hair, brow: col(p.browColor) ?? hair.map((c) => c * 0.75),
     stubble: p.stubble ?? (sp.stubble ? 1 : 0), shadow: p.shadow ?? (sp.stubble ? 0.6 : 0), goatee: sp.goatee, chinstrap: p.chinstrap,
     frown: sp.frown, age: p.age ?? 0, freckles: p.freckles, ruddy: p.ruddy, lipstick: col(sp.lip), shadowCol: col(p.eyeShadow), shadowAmt: p.eyeShadowAmt,
     liner: p.liner, rouge: col(p.rouge), war: col(sp.war), scars: p.scars ?? (sp.scar ? [[0.3, 0.32, 0.5, -0.12, 0.012, true]] : []), tattoos: p.tattoos,
@@ -1288,7 +1291,7 @@ function writeFace(sp) {
     hairEdge: sp.hair === 'pompadour' ? pompEdge : ['crop', 'long', 'ponytail', 'bun', 'cap', 'capback', 'foamcap', 'hardhat', 'tophat', 'spiky'].includes(sp.hair) ? (a) => hairlineEdge(a, sp.hairlineH ?? 0.56, sp.recede ?? 0.08) : undefined, hairFade: sp.hair === 'pompadour' ? 0.14 : 0.09,
   }, 512);
   writeSet(TEX, 'face_' + sp.name, t, 2.2);
-  writeSet(TEX, 'eye_' + sp.name, paintEye(sp.eyes ? hexRaw(sp.eyes) : col(p.iris) ?? [0.3, 0.19, 0.1], 128, sp.name.length), 1.0);
+  writeSet(TEX, 'eye_' + sp.name, paintEye(sp.eyes ? hexRaw(sp.eyes) : col(p.iris) ?? [0.3, 0.19, 0.1], 128, seedLen(sp)), 1.0);
 }
 // The file carries the shading (glTF material extensions, read by the engine's glTF loading), so the game converts
 // nothing: ordinary cloth is matte with a soft grazing sheen and little specular; leather a thin clear coat; skin a
@@ -1346,7 +1349,7 @@ function materials(glb, sp) {
     P('cuff', 'cloth', 'fab_denim', { tint: c.cuff ?? c.pants, rough: 1, normal: 0.6 }), P('stubble', 'fur', 'fab_hair', { tint: c.hair.map((x, i) => x * 0.6 + c.skin[i] * 0.4), rough: 1 }),
     P('hat', sp.hatFab === 'knit' ? 'cloth' : 'cloth', fab(sp.hatFab ?? 'cloth'), { tint: c.hat ?? c.accent, rough: 1 }),
     P('band', 'cloth', 'fab_cloth', { tint: c.band ?? c.accent, rough: 1 }),
-    // the wanker cap: red twill with "Dumb" stitched on it, all in its own texture (tools/make-textures.mjs cap_logo)
+    // the heckler cap: red twill with "Dumb" stitched on it, all in its own texture (tools/make-textures.mjs cap_logo)
     // (only in the files that wear it: every listed material and its textures go into each glb)
     ...(sp.hair === 'foamcap' ? [P('capLogo', 'cloth', 'cap_logo', { tint: [1, 1, 1], rough: 1, normal: 0.8 })] : []),
     P('mask', 'cloth', 'fab_cloth', { tint: c.mask ?? c.accent, rough: 1 }), P('pad', 'leather', 'fab_leather', { tint: c.pad ?? c.accent, rough: 0.7 }),
@@ -1537,9 +1540,9 @@ export const SPECS = [
     frown: true, scale: 1.08, width: 1.35, chest: 1.1, sw: 0.235, hw: 0.11, arm: 1.25, leg: 1.0, head: 1.0, hand: 1.35, jaw: 1.25, neck: 1.2, hair: 'helmet', pads: true, padMat: 'metal', armor: true, gloves: true, boots: true, belt: true, kneepads: true,
     top: 'longsleeve', shirtFab: 'cloth', bottom: 'cargo', pantsFab: 'cloth',
     colors: { skin: 0xb88a64, shirt: 0x1c2638, pants: 0x232a36, shoes: 0x111111, hair: 0x202020, accent: 0xd0d8e0, metal: 0x3a4a64, helmet: 0x26324a, glove: 0x161616, belt: 0x0e0e0e, pad: 0x3a4a64 }, eyes: 0xa0c0ff },
-  // the wanker: a big soft-bellied man in a red foam-front cap that says "Dumb", a grimy stained tee, faded jeans and
+  // the heckler: a big soft-bellied man in a red foam-front cap that says "Dumb", a grimy stained tee, faded jeans and
   // work boots, a mullet and a scruffy moustache (a regular enemy: a wild haymaker and a shoulder charge)
-  { name: 'wanker', fig: { waist: 1 }, shoulders: 2.05, heads: 7.4, skull: { w: 1.02, h: 0.98, chinZ: 0.93, chin: 0.9, slope: 0.7 }, recede: 0.16, face: { noseW: 1.2, noseLen: 1.05, hook: 0.15, crook: 0.3, brow: 1.2, browThick: 0.06, eyeR: 0.155, socket: 1.1, jawAng: 1.1, chin: 1.0, jowl: 0.7, cheek: 0.95, naso: 1.1, lipU: 0.85, mw: 0.25 },
+  { name: 'heckler', seed: [6, 119], fig: { waist: 1 }, shoulders: 2.05, heads: 7.4, skull: { w: 1.02, h: 0.98, chinZ: 0.93, chin: 0.9, slope: 0.7 }, recede: 0.16, face: { noseW: 1.2, noseLen: 1.05, hook: 0.15, crook: 0.3, brow: 1.2, browThick: 0.06, eyeR: 0.155, socket: 1.1, jawAng: 1.1, chin: 1.0, jowl: 0.7, cheek: 0.95, naso: 1.1, lipU: 0.85, mw: 0.25 },
     paint: { age: 0.35, ruddy: 0.8, stubble: 0.85, shadow: 0.3, iris: [0.3, 0.38, 0.45], hairline: true, browColor: [0.3, 0.2, 0.12], beardColor: [0.34, 0.23, 0.13] },
     // B-PT18: a comic silhouette, not a brawler: slender arms, narrow sloping shoulders, a soft chest and a round belly
     stubble: true, frown: true, moustache: 'thick', scale: 1.04, width: 1.3, belly: 3.4, chest: 0.86, softChest: 0.24, armOut: 0.2, sw: 0.188, hw: 0.105, arm: 0.78, leg: 1.0, head: 1.08, hand: 1.15, jaw: 1.15, neck: 1.1,

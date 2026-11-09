@@ -417,7 +417,7 @@
 
 ## 0.12.8
 
-- Street Toughs: the wanker has a real beer gut: round, full from the ribs down to a fold
+- Street Toughs: the heckler has a real beer gut: round, full from the ribs down to a fold
   over his belt, with his T-shirt draped over it, a belly that bounces, and a cap that
   no longer hides his eyes.
 - Street Toughs: the men's tops are T-shirts with the sleeves cut off, not straps.
@@ -685,7 +685,7 @@ hordeshooter is an eight-floor descent.
   kicks, combos and grabs with human-like input.
 - brawler: faces that read from the game camera (a big man flinches with a
   sweat drop, a small one snarls, the creep beams with hearts), bright red
-  gore on the street and the fighters, a softer hit flash, the wanker out of
+  gore on the street and the fighters, a softer hit flash, the heckler out of
   shape (thin arms, a belly over his belt, the red cap always), lighter skin
   tones for him.
 - hordeshooter: the descent begins. The run is eight floors of five or six
@@ -703,7 +703,7 @@ hordeshooter is an eight-floor descent.
   step away dodges it. Slash streaks, blood and pad rumble on a hit. No
   measurable GPU cost.
 - brawler: Rook in a plain black tee instead of the leather jacket, so he no
-  longer reads like Arthur. The trucker is now the wanker.
+  longer reads like Arthur. The trucker is now the heckler.
 
 ## 0.4.0
 
@@ -720,7 +720,7 @@ All eight games on cartwheel-engine v0.23.1.
   The crowd is a neutral grey instead of mauve.
 - brawler: boss fights about a minute solo (they took two to three, and some
   never ended), every enemy his own skin tone and clothes, two new enemies
-  (the wanker in his red "Dumb" cap, the creep in the trench coat who enjoys
+  (the heckler in his red "Dumb" cap, the creep in the trench coat who enjoys
   being hit), blood and gore, faces that show fear, anger or delight when
   hit, Arthur's pompadour rebuilt. No camera shake: big hits rumble the pad.
 - fighter: held directions walk (diagonals too), one press of up jumps, up

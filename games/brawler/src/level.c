@@ -70,10 +70,10 @@ typedef struct wave_def { float lock; int n; int8_t def[10]; } wave_def;
 #define B D_BRUISER
 #define H D_THROWER
 #define G D_GUARD
-#define Y D_WANKER
+#define Y D_HECKLER
 #define C D_CREEP
 /* every stage has a rusher (runner), a ranged thrower, a shield guard and a heavy (bruiser) before its boss; the first
-   stage brings each new one on its own wave so a player meets it alone. The wanker (haymaker, shoulder barge) is in
+   stage brings each new one on its own wave so a player meets it alone. The heckler (haymaker, shoulder barge) is in
    every stage: first on the alley's second wave with thugs and a punk, then one or two a stage */
 static const wave_def STAGE1[] = {
   { 0, 3, { T, T, T } }, { 14, 4, { T, Y, P, T } }, { 28, 5, { T, P, R, H, C } },

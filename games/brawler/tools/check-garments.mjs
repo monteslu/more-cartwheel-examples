@@ -155,9 +155,9 @@ const COAT = { showsOpen: 0.9, showsClosed: 0.55, grip: 0.08, inLegs: 0.025 };
 const ONLY_COAT_OK = (a) => !a.includes('--no-coat');
 let bad = 0;
 const row = (n, o) => console.log(n.padEnd(11), Object.entries(o).map(([k, v]) => `${k} ${v.toFixed(3)}`).join('  '));
-// the bounds, metres in the model's units: a real gut on the wanker
+// the bounds, metres in the model's units: a real gut on the heckler
 {
-  const n = 'wanker', g = gut(n), off = [];
+  const n = 'heckler', g = gut(n), off = [];
   {
     if (g.depth < 0.1) off.push(`depth ${g.depth.toFixed(3)} under 0.1`);
     if (g.span < 0.17) off.push(`half height span ${g.span.toFixed(3)} under 0.17`);

@@ -109,7 +109,7 @@ typedef struct stage_t {
 
 extern const char_def DEFS[];
 extern const atk_data ATK[];
-enum { D_ROOK, D_MIKA, D_JET, D_THUG, D_PUNK, D_RUNNER, D_KNIFER, D_BRUISER, D_THROWER, D_GUARD, D_FOREMAN, D_MATRON, D_RINGMASTER, D_COLOSSUS, D_ARTHUR, D_WANKER, D_CREEP, D_DOLLY, D_COUNT };
+enum { D_ROOK, D_MIKA, D_JET, D_THUG, D_PUNK, D_RUNNER, D_KNIFER, D_BRUISER, D_THROWER, D_GUARD, D_FOREMAN, D_MATRON, D_RINGMASTER, D_COLOSSUS, D_ARTHUR, D_HECKLER, D_CREEP, D_DOLLY, D_COUNT };
 
 /* the match */
 typedef enum { PH_PLAY, PH_CLEAR, PH_OVER, PH_WIN, PH_INTRO } phase_t;
@@ -153,8 +153,8 @@ typedef struct world_t {
   int run_deaths; /* lives lost in the whole run */
   int moves[6]; /* the combo toolbox, landed: dash attacks, back attacks, launchers, juggle blows, blows on the downed, health won back */
   int combos[5]; /* finished hit combos by length: 1, 2, 3-4, 5-7, 8 and more */
-  struct wanker { int spawned, hay, hay_hits, barge, barge_hits, kills; } wanker;
-  struct creep { int spawned, flash, flash_hits, shrugged, healed, kills; } creep; /* the creep's (the gates read them) */ /* the wanker's moves (the gates read them) */
+  struct heckler { int spawned, hay, hay_hits, barge, barge_hits, kills; } heckler;
+  struct creep { int spawned, flash, flash_hits, shrugged, healed, kills; } creep; /* the creep's (the gates read them) */ /* the heckler's moves (the gates read them) */
   int spawns; /* enemies spawned this match (looks.c: each spawn's look) */
   int stopped; /* frames held frozen by hit-stop (the hit feel gate) */
   int bounce[3]; /* wall bounces: bodies that bounced off the picture's edge or a prop, blows landed on them after, props they broke */
