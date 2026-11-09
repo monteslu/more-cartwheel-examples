@@ -10,8 +10,12 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const i = process.argv.indexOf('--build');
 const BUILD = resolve(ROOT, i > 0 ? process.argv[i + 1] : 'build/native');
-/* an engine-source tree keeps the games under project/, an SDK tree at its top (as tools/pacing.mjs finds it) */
-const exe = [join(BUILD, 'project/games/arenafps/arenafps_auto'), join(BUILD, 'games/arenafps/arenafps_auto')].find(existsSync) ?? join(BUILD, 'games/arenafps/arenafps_auto');
+/* the autopilot's binary as the build records it (build/native/apps/arenafps_auto.json: an SDK build keeps it under games/, an
+ * engine-source build under project/games/); a tree without that build is named, not run (nice: No such file, exit 127) */
+const appJson = join(BUILD, 'apps/arenafps_auto.json');
+if (!existsSync(appJson)) { console.error(`no ${appJson}: build arenafps_auto first (scripts/build.sh arenafps_auto), or pass --build <dir>`); process.exit(2); }
+const exe = JSON.parse(readFileSync(appJson, 'utf8')).binary;
+if (!existsSync(exe)) { console.error(`no ${exe} (named by ${appJson}): rebuild arenafps_auto`); process.exit(2); }
 const out = join(ROOT, 'out/killcam');
 mkdirSync(out, { recursive: true });
 function run(tag, extra) {
