@@ -124,6 +124,7 @@ typedef struct pile { bool alive; float x, y; int rise; } pile;
 
 typedef struct sim {
   int tick, wave, wave_tick, players, state, state_ticks;
+  int crew; /* the seats the horde is sized for: every seat but those nobody has played for 20 s (the game sets it; sim_init: all) */
   int knock[2]; /* bullet hits and the push they gave in mm of knockback (the knockback gate) */
   int dash_stats[3]; /* small enemies a dash went through, dashes stopped by a big one, small ones a Boots + Armor dash bowled over */
   int level, level_wave; /* the floor (0..NLEVELS-1) and its wave (1..sim_level_waves); wave counts the run's waves */

@@ -439,7 +439,7 @@ static int spawn_enemy(sim *s, int kind, float x, float y) {
     e->hp = kind == EK_BOSS ? EK[kind].hp_base + (int)(EK[kind].hp_wave * w) : CW_MAX(1, (int)((float)EK[kind].hp_base * f + 0.5f));
   }
   /* more players, tougher enemies: 20% per extra player (more of them too), a boss 60% */
-  e->hp = (int)((float)e->hp * (1.0f + (kind == EK_BOSS ? 0.6f : 0.2f) * (float)(s->players > 1 ? s->players - 1 : 0)) + 0.5f);
+  e->hp = (int)((float)e->hp * (1.0f + (kind == EK_BOSS ? 0.6f : 0.2f) * (float)(s->crew > 1 ? s->crew - 1 : 0)) + 0.5f); /* (the crew: the seats that play, game.h) */
   if (kind == EK_BOSS) s->boss_maxhp = e->hp;
   e->face = rf(s) * 6.28f;
   e->atk = 0, e->atk_cd = 0, e->tgt = -1;
@@ -780,6 +780,7 @@ void sim_init(sim *s, int players, uint32_t seed, int start_wave) {
   memset(s, 0, sizeof *s);
   cw_rng_seed(&s->rng, seed);
   s->players = players;
+  s->crew = players;
   cw_nav_geom g = { 0 };
   cw_nav_geom_add_box(&g, (t3_vec3){ 0, -0.25f, 0 }, (t3_vec3){ HALF, 0.25f, HALF }, CW_NAV_AREA_WALK);
   cw_nav_config c = cw_nav_config_default();
@@ -1324,7 +1325,7 @@ static void spawn_director(sim *s) {
    * 2900 by 20, more with more players */
   {
     int w = dwave(s);
-    float k = 0.6f + 0.2f * (float)s->players;
+    float k = 0.6f + 0.2f * (float)s->crew;
     s->spawn_cap = CW_MIN((int)((float)(20 + 40 * (w - 1) + 6 * w * w) * k), 2900);
   }
   float cx, cy, hw, hh;
@@ -1573,7 +1574,7 @@ static void enemies_step(sim *s) {
   if (s->boss_alive && s->tick % 300 == 0)
     for (int i = 0; i < MAXE; i++)
       if (s->e[i].alive && s->e[i].kind == EK_BOSS) {
-        for (int k = 0; k < 3 + s->players; k++) {
+        for (int k = 0; k < 3 + s->crew; k++) {
           float a = rf(s) * 6.28f;
           spawn_enemy(s, EK_RUNNER, s->e[i].x + cw_cos(a) * 2.2f, s->e[i].y + cw_sin(a) * 2.2f);
         }

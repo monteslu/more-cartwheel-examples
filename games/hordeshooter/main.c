@@ -95,6 +95,20 @@ static struct {
   uint32_t guns[MAXP]; /* frames an upgrade choice's cards were drawn (a player's each) */ /* the hatch marker's label and the floor-clear banner, rows on screen (the text check) */
   t3_vec3 cam_p[2];
   int cam_n;
+  /* the seats that play: the tick each seat last touched its pad (a seat untouched for 20 s raises nothing: the horde
+   * is sized for the crew, sim.crew); sw idle_crew 1 sizes it for every seat as before; sw no_marker 1 draws no STEP IN
+   * marker (the newcomer gate's control) */
+  int touch[MAXP];
+  int32_t crew;
+  bool sw_idle_crew, sw_no_marker;
+  /* what the screen shows a newcomer (tests/hordeshooter-newcomer.mjs reads it), screen positions 0..1 (y down):
+   * 0 state, 1 floor, 2 the floor's wave, 3 4 player 1, 5 its health, 6 down, 7 its cards are up, 8 the STEP IN marker
+   * shows, 9 10 where, 11 a boss, 12 13 the boss (on screen), 14 the dash is ready, 15 16 player 1 in the world (metres:
+   * the ground going by), 17 enemies on screen, 18.. the 16 nearest on screen, then the 4 nearest pickups (-1 -1 none) */
+#define NC_ENEMIES 16
+#define NC_PICKS 4
+#define NC_LOOK (18 + 2 * NC_ENEMIES + 2 * NC_PICKS)
+  float look[NC_LOOK];
 } G;
 
 static cw_font font;
@@ -247,8 +261,16 @@ static void start(int players, void *u) {
   if (getenv("HORDE_POWER")) /* development (screenshots, surveys): every player starts holding power-up n, refreshed as it runs out */
     for (int i = 0; i < players; i++) sim_power_give(&G.S, i, atoi(getenv("HORDE_POWER")) % PU_KINDS);
   memset(G.level_flash, 0, sizeof G.level_flash);
+  for (int i = 0; i < MAXP; i++) G.touch[i] = 0;
+  G.crew = players;
   for (int i = 0; i < MAXP; i++)
     G.mult[i] = G.best_mult[i] = 1, G.mscore[i] = 0, G.mult100[i] = 100, G.downs[i] = 0, G.last_score[i] = 0, G.last_hurt[i] = -1, G.downed_by[i] = -1, G.guns[i] = 0;
+}
+
+static void cmd_sw(int argc, const char **argv, cw_reply *r) {
+  if (argc >= 3 && !strcmp(argv[1], "idle_crew")) { G.sw_idle_crew = atoi(argv[2]) != 0; cw_reply_printf(r, "{\"idle_crew\":%d}", G.sw_idle_crew); return; }
+  if (argc >= 3 && !strcmp(argv[1], "no_marker")) { G.sw_no_marker = atoi(argv[2]) != 0; cw_reply_printf(r, "{\"no_marker\":%d}", G.sw_no_marker); return; }
+  cw_reply_error(r, "usage: sw idle_crew <0|1> | sw no_marker <0|1>");
 }
 
 #ifdef HORDE_AUTOPILOT
@@ -308,6 +330,9 @@ static void init(void *u) {
   snd_music = synth(2.0f, 55, 55, 0.05f, 0.3f, 0.2f);
   G.best_wave = ((save_data *)cw_shell_game_save())->best_wave;
   cw_debug_i32("game.state", &G.state);
+  cw_debug_i32("game.crew", &G.crew); /* the seats the horde is sized for */
+  cw_debug_field("nc.look", G.look, CW_DBG_F32, NC_LOOK);
+  cw_debug_command("sw", "sw idle_crew <0|1>: the horde sized for every seat, a seat nobody plays too (the old rule); sw no_marker <0|1>: no STEP IN marker over the open hatch (test switches)", cmd_sw);
   cw_debug_i32("game.ticks", &G.ticks);
   cw_debug_i32("game.wave", &G.wave);
   cw_debug_i32("game.enemies", &G.enemies);
@@ -432,6 +457,7 @@ static void read_input(input in[MAXP]) {
     if (in[i].fire && cw_v2_length(a) < 0.25f) { /* fire toward the walking direction when not aiming */
       if (cw_v2_length(m) > 0.3f) in[i].ax = m.x, in[i].ay = m.y;
     }
+    if (cw_v2_length(m) > 0.2f || cw_v2_length(a) > 0.2f || in[i].fire || in[i].bomb || in[i].dash || in[i].pick) G.touch[i] = G.S.tick; /* this seat plays */
 #endif
   }
 }
@@ -442,10 +468,22 @@ static void fixed_update(void *u, double dt) {
   if (!G.in_match) return;
   input in[MAXP];
   read_input(in);
-  { /* alone, the yard slows to 30% while the level's cards are up (a choice to read, not a reflex); a pick goes through at once */
+  int solo = 0; /* the one seat that plays, when only one does */
+#ifndef HORDE_AUTOPILOT
+  { /* the crew: a seat nobody has touched for 20 s (a pad that joined and was put down) raises nothing; it is back the
+       moment it is touched. Bots always play, so the autopilot keeps every seat */
+    int n = 0;
+    for (int i = 0; i < G.S.players; i++)
+      if (G.S.tick - G.touch[i] < 60 * 20) { if (!n) solo = i; n++; }
+    G.S.crew = G.sw_idle_crew ? G.S.players : CW_MAX(n, 1);
+  }
+#endif
+  G.crew = G.S.crew;
+  { /* alone, the yard slows to 30% while the level's cards are up (a choice to read, not a reflex); a pick goes through at once
+       (alone: the only seat that plays, beside seats nobody plays) */
     static int acc;
-    G.slow = G.S.players == 1 && G.S.p[0].active && G.S.p[0].offer_ticks > 0 && G.S.state == ST_PLAY && !G.m_test;
-    if (G.slow && !in[0].pick) {
+    G.slow = G.S.crew == 1 && G.S.p[solo].active && G.S.p[solo].offer_ticks > 0 && G.S.state == ST_PLAY && !G.m_test;
+    if (G.slow && !in[solo].pick) {
       acc += 3;
       if (acc < 10) return;
       acc -= 10;
@@ -876,19 +914,25 @@ static void hud(void) {
     float bw = fminf(measure(ct, s).width, cs.x * 0.94f), bh = text_wrapped(ct, cx, y, cs.x * 0.94f, s, rgba(1, 0.8f, 0.4f, 1)).height;
     float su, sv; /* the marker: an arrow over the hatch pointing down at it, its label over the arrow */
     float bob = 0.3f * cw_sin((float)G.S.tick * 0.12f);
-    if (G.S.state == ST_HATCH && view_screen((t3_vec3){ 0, 3.2f + bob, 0 }, &su, &sv)) {
+    if (G.S.state == ST_HATCH && !G.sw_no_marker && view_screen((t3_vec3){ 0, 3.2f + bob, 0 }, &su, &sv)) {
       float ss = 18 * u, lw = measure("STEP IN", ss).width, lh = measure("STEP IN", ss).height;
       float x = cw_clampf(su, 0.05f, 0.95f) * cs.x, ty = cw_clampf(sv, 0.08f, 0.92f) * cs.y, dir = 1; /* dir 1: the arrow points down */
       /* where the label would sit over the banner (or off the top), the arrow comes up at the hatch from under it instead */
       bool clash = ty - 34 * u - lh < y + bh + 4 * u && ty - 6 * u > y - 4 * u && fabsf(x - cx) < bw * 0.5f + lw * 0.5f + 8 * u;
       if ((clash || ty - 34 * u - lh < 4 * u) && view_screen((t3_vec3){ 0, 0, 2.0f }, &su, &sv)) /* the hatch's near rim */
         x = cw_clampf(su, 0.05f, 0.95f) * cs.x, ty = cw_clampf(sv, 0.08f, 0.92f) * cs.y + (6 + 8 * bob) * u, dir = -1;
+      { /* held at the picture's edge (the hatch off screen): never over a corner's player panel and its lines */
+        float top = dir > 0 ? ty - 34 * u - lh : ty - 30 * u, half = fmaxf(lw * 0.5f, 16 * u);
+        float below = fmaxf(x - half < left_r ? left_b : 0, x + half > right_l ? right_b : 0);
+        if (below > 0 && top < below + 4 * u) ty += below + 4 * u - top;
+      }
       cw_vec2 tri[3] = { cw_v2(x - 16 * u, ty - dir * 30 * u), cw_v2(x + 16 * u, ty - dir * 30 * u), cw_v2(x, ty - dir * 6 * u) };
       cw_r2d_polygon(tri, 3, rgba(1, 0.72f, 0.28f, 1));
       cw_r2d_polygon_lines(tri, 3, 2 * u, rgba(0, 0, 0, 0.8f));
       text("STEP IN", x, dir > 0 ? ty - 34 * u - lh : ty + 34 * u, ss, rgba(1, 0.85f, 0.5f, 1), CW_ALIGN_CENTER);
       G.step_in_y0 = (int32_t)(dir > 0 ? ty - 34 * u - lh : ty + 34 * u), G.step_in_y1 = G.step_in_y0 + (int32_t)lh; /* the text check */
       G.banner_y0 = (int32_t)y, G.banner_y1 = (int32_t)(y + bh);
+      G.look[8] = 1, G.look[9] = x / cs.x, G.look[10] = (ty - dir * 18 * u) / cs.y; /* the newcomer gate: the marker where it is drawn (nc_look ran first this frame) */
     }
   }
 #undef CLEAR_Y
@@ -955,6 +999,47 @@ static void hud(void) {
   cw_r2d_end();
 }
 
+/* nc.look: what this frame shows player 1 (see G.look), for the newcomer gate; nothing in it the screen does not show */
+static void nc_look(void) {
+  const sim *s = &G.S;
+  const player *p = &s->p[0];
+  float *o = G.look, su, sv;
+  memset(o, 0, sizeof G.look);
+  o[0] = (float)s->state, o[1] = (float)s->level, o[2] = (float)s->level_wave;
+  if (view_screen((t3_vec3){ p->x, 1.0f, p->y }, &su, &sv)) o[3] = su, o[4] = sv;
+  o[5] = p->hp, o[6] = p->down, o[7] = p->offer_ticks > 0;
+  o[11] = s->boss_alive > 0, o[12] = o[13] = -1, o[14] = p->dash_cd == 0, o[15] = p->x, o[16] = p->y;
+  float bd[NC_ENEMIES];
+  int n = 0, on = 0;
+  for (int k = 0; k < NC_ENEMIES; k++) bd[k] = 1e9f, o[18 + 2 * k] = o[19 + 2 * k] = -1;
+  for (int i = 0; i < MAXE; i++) {
+    const enemy *e = &s->e[i];
+    if (!e->alive) continue;
+    float dx = e->x - p->x, dy = e->y - p->y, d = dx * dx + dy * dy;
+    if (d > 30 * 30 || !view_screen((t3_vec3){ e->x, 0.8f, e->y }, &su, &sv) || su < 0 || su > 1 || sv < 0 || sv > 1) continue;
+    on++;
+    if (e->kind == EK_BOSS) o[12] = su, o[13] = sv;
+    if (d >= bd[NC_ENEMIES - 1]) continue;
+    int k = n < NC_ENEMIES ? n++ : NC_ENEMIES - 1; /* kept nearest first */
+    while (k > 0 && bd[k - 1] > d) bd[k] = bd[k - 1], o[18 + 2 * k] = o[16 + 2 * k], o[19 + 2 * k] = o[17 + 2 * k], k--;
+    bd[k] = d, o[18 + 2 * k] = su, o[19 + 2 * k] = sv;
+  }
+  o[17] = (float)on;
+  float gd[NC_PICKS];
+  int m = 0;
+  const int g0 = 18 + 2 * NC_ENEMIES;
+  for (int k = 0; k < NC_PICKS; k++) gd[k] = 1e9f, o[g0 + 2 * k] = o[g0 + 1 + 2 * k] = -1;
+  for (int i = 0; i < MAXG; i++) {
+    const pickup *g = &s->g[i];
+    if (!g->alive) continue;
+    float dx = g->x - p->x, dy = g->y - p->y, d = dx * dx + dy * dy;
+    if (d >= gd[NC_PICKS - 1] || !view_screen((t3_vec3){ g->x, 0.3f, g->y }, &su, &sv) || su < 0 || su > 1 || sv < 0 || sv > 1) continue;
+    int k = m < NC_PICKS ? m++ : NC_PICKS - 1;
+    while (k > 0 && gd[k - 1] > d) gd[k] = gd[k - 1], o[g0 + 2 * k] = o[g0 + 2 * k - 2], o[g0 + 1 + 2 * k] = o[g0 + 2 * k - 1], k--;
+    gd[k] = d, o[g0 + 2 * k] = su, o[g0 + 1 + 2 * k] = sv;
+  }
+}
+
 static void render(void *u, double alpha) {
   (void)u, (void)alpha;
   cw_shell_screen sc = cw_shell_screen_now();
@@ -967,6 +1052,7 @@ static void render(void *u, double alpha) {
     int w, h;
     cw_window_size(&w, &h);
     view_camera(&G.S, G.camera, (float)w / (float)h, sx, sy); /* first: the horde is culled against this frame's view */
+    if (G.in_match) nc_look();
     {
       t3_vec3 p = cw_node3d_position(G.camera);
       if (G.cam_n >= 2) {
