@@ -19,7 +19,10 @@ walk-in intro, the speedometer and the energometer, best scores saved per course
 camera and rules are ported from the original source. Beside them, and never changing a race: the ghost of your
 fastest run on each course racing beside you in Practice (the Practice card's Ghost row turns it off), bronze, silver
 and gold medal times (the Cup's own times on its courses, the same shares of par elsewhere), a herring chain that
-climbs in pitch, and a speed camera that widens and closes in as you go (Settings, Camera: Classic is the original's).
+climbs in pitch, a speed camera that widens and closes in as you go (Settings, Camera: Classic is the original's), and a
+trick mode (the Practice card's Tricks row): in the air the stick spins Tux and brake flips him, and a landing within
+50 degrees of whole turns adds 150 a spin and 300 a flip to the score (half as much again for both in one jump). Trick
+mode never touches the slide or the physics, and without it the score is the original's formula.
 What is still open is in this README's last section.
 
 ## Playing
@@ -37,6 +40,7 @@ Run `tuxracer` (from the repository root: `scripts/build.sh tuxracer`, then
 | Jump (hold to charge, release to jump) | X (west) | E |
 | Reset to the last checkpoint | Back | Backspace |
 | Camera: behind / follow | left / right shoulder | 1 / 2 |
+| Trick mode, in the air: spin, flip | stick left / right, B (east) or down | left / right, down arrow |
 | Pause | Start | Escape |
 | Quit the race | | Q |
 | Menus: move, accept, back | d-pad or stick, A, B | arrows, Enter or Space, Escape |
