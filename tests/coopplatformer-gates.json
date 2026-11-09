@@ -1171,7 +1171,19 @@
       "g.won",
       "g.wardrobe"
     ],
-    "expect": {}
+    "expect": {
+      "g.won": 1,
+      "g.wardrobe": [
+        1,
+        90,
+        110,
+        1034,
+        1,
+        0,
+        3,
+        5
+      ]
+    }
   },
   {
     "name": "coopplatformer-save",
