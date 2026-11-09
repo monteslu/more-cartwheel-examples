@@ -30,6 +30,7 @@
 #define WAVES 6
 #define SHOT_LIGHTS 6
 #define LIGHTS 6
+#define RIBBONS 8 /* the thrown axes' and hammers' motion ribbons */
 
 static struct {
   bool ready;
@@ -38,6 +39,8 @@ static struct {
   int nb, ns, nw;
   /* burst pools */
   cw_node trail, trail_embers, trail_haze, streak, glint, axe_trail, hit, slash, dust, sparkle, wisp, spiral, coins, gore, frost, arc;
+  cw_node ribbon[RIBBONS]; /* a pale ribbon behind each thrown axe and hammer (Trail3D), following its flight */
+  int ribbon_b[RIBBONS], ribbon_age[RIBBONS], ribbon_fade[RIBBONS], ribbons_made; /* the bullet each follows (-1 none), its age last seen, frames left drawing in */
   cw_node shot_light[SHOT_LIGHTS], light[LIGHTS];
   cw_node motes; /* the air: dust, spores or embers drifting over the visible maze, in the tileset's colour */
   int motes_theme;
@@ -286,6 +289,8 @@ static cw_node omni(const char *name, float range) {
   return l;
 }
 
+bool g_ribbons = true; /* CRAWLER_NO_RIBBONS: the looks A/B */
+int g_ribbons_made; /* debug fx.ribbons: ribbons started (one a thrown axe or hammer) */
 void fx_free(void) { memset(&FX, 0, sizeof FX); }
 
 void fx_init(cw_node root) {
@@ -315,6 +320,19 @@ void fx_init(cw_node root) {
   FX.gore = bnode("Gore", GORE, 430, 32);
   FX.frost = bnode("Frost", FROST, 440, 16);
   FX.arc = bnode("Arc", ARC, 450, 24);
+  for (int i = 0; i < RIBBONS; i++) {
+    cw_node r = FX.ribbon[i] = cw_node_new("Trail3D", "WeaponRibbon");
+    cw_node_add_child(FX.root, r);
+    cw_node_set(r, "length", cw_val_int(10));
+    cw_node_set(r, "width", cw_val_float(0.42f));
+    cw_node_set(r, "energy", cw_val_float(1));
+    cw_node_set(r, "blend", cw_val_enum("ALPHA"));
+    cw_node_set(r, "color", cw_val_color(0.86f, 0.9f, 1.0f, 0.42f));
+    cw_node_set(r, "color_ramp", cw_val_string("0 1 1 1 0, 0.7 1 1 1 0.6, 1 1 1 1 1"));
+    cw_node_set(r, "emitting", cw_val_bool(false));
+    cw_node_set(r, "visible", cw_val_bool(false));
+    FX.ribbon_b[i] = -1;
+  }
   FX.motes = pnode(FX.root, "Motes", MOTES, 470);
   cw_node_set(FX.motes, "emitting", cw_val_bool(true));
   FX.motes_theme = -1;
@@ -508,6 +526,38 @@ void fx_tick(const sim *s, float time) {
     static int last_amount = -1;
     int amount = lvl >= 2 ? 220 : lvl >= 1 ? 140 : 80;
     if (amount != last_amount) last_amount = amount, cw_node_set(FX.motes, "amount", cw_val_int(amount));
+  }
+  /* the ribbons: one follows each axe and hammer in flight (a slot reused by a new throw is seen by its age starting
+   * again); a ribbon whose throw is over stops emitting and is hidden once its tail has drawn in (20 frames) */
+  for (int i = 0; i < RIBBONS; i++) {
+    int j = FX.ribbon_b[i];
+    if (FX.ribbon_fade[i] > 0) { if (--FX.ribbon_fade[i] == 0) cw_node_set(FX.ribbon[i], "visible", cw_val_bool(false)); continue; }
+    if (j < 0) continue;
+    const bullet *b = &s->b[j];
+    if (!b->alive || (b->kind != SK_AXE && b->kind != SK_HAMMER) || b->age < FX.ribbon_age[i]) {
+      cw_node_set(FX.ribbon[i], "emitting", cw_val_bool(false));
+      FX.ribbon_b[i] = -1, FX.ribbon_fade[i] = 20;
+      continue;
+    }
+    FX.ribbon_age[i] = b->age;
+    cw_node3d_set_position(FX.ribbon[i], (t3_vec3){ b->x, 1.0f, b->y });
+  }
+  for (int j = 0; j < MAXB && g_ribbons; j++) {
+    const bullet *b = &s->b[j];
+    if (!b->alive || (b->kind != SK_AXE && b->kind != SK_HAMMER)) continue;
+    bool has = false;
+    for (int i = 0; i < RIBBONS; i++) has |= FX.ribbon_b[i] == j;
+    if (has) continue;
+    for (int i = 0; i < RIBBONS; i++) {
+      if (FX.ribbon_b[i] >= 0 || FX.ribbon_fade[i] > 0) continue;
+      FX.ribbon_b[i] = j, FX.ribbon_age[i] = b->age;
+      cw_node3d_set_position(FX.ribbon[i], (t3_vec3){ b->x, 1.0f, b->y });
+      cw_node3d_snapshot(FX.ribbon[i]);
+      cw_node_set(FX.ribbon[i], "visible", cw_val_bool(true));
+      cw_node_set(FX.ribbon[i], "emitting", cw_val_bool(true));
+      FX.ribbons_made++, g_ribbons_made = FX.ribbons_made;
+      break;
+    }
   }
   for (int j = 0; j < MAXB; j++) {
     const bullet *b = &s->b[j];

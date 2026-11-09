@@ -114,6 +114,8 @@ static t3_material *mat_emissive(float r, float g, float b, float k) {
  * feet: the classic three-quarter cheat. The maze, the floor's rings and shadows never lean. Both are debug fields
  * (dev.tilt, dev.lean) for the comparison runs. */
 float g_tilt = 15.0f, g_lean = 15.0f;
+bool g_old_descent; /* CRAWLER_OLD_DESCENT: the cut to black with the heroes standing still (the descent's A/B) */
+int g_descents; /* frames a hero was drawn going down the stair (debug view.descent) */
 bool g_hide_rings; /* key-art captures (the autopilot builds): no team rings */
 static t3_quat lean_q(float yaw) {
   float l = g_lean * 3.14159265f / 180.0f;
@@ -700,6 +702,7 @@ static void sync_features(const sim *s, float time) {
     if (V.exit_glow) {
       put(V.exit_glow, ne, x, 0.0f, z, 0, 1);
       float p = 2.6f + 0.9f * cw_sin(time * 2.5f + (float)k);
+      if (s->state == ST_EXIT && !g_old_descent) p *= 1.0f + 1.2f * cw_clampf((float)s->state_ticks / 40.0f, 0, 1); /* the way down opens up: its light swells as the team goes */
       t3_instanced_mesh_set_color_at(V.exit_glow, ne, skip > 1 ? (t3_color){ 0.4f * p, 0.9f * p, 1.6f * p } : (t3_color){ 1.6f * p, 1.1f * p, 0.5f * p });
     }
     ne++;
@@ -868,7 +871,20 @@ static void sync_players(const sim *s, float time) {
     if (!p->down) shadow_at(p->x, p->y, 0.48f, 0.7f);
     float giant = p->charm[CH_GIANT] > 0 ? 1.5f : 1.0f;
     float blink = p->inv > 0 && p->stun <= 0 && (s->tick / 15) % 2 ? 0.0f : 1.0f; /* fresh back in: a slow blink (2 Hz, never a strobe) */
-    cw_node3d_set_position(V.pn[i], p->down ? (t3_vec3){ p->x, -0.5f, p->y } : pull(p->x, 0, p->y, PULL_HERO));
+    t3_vec3 at = p->down ? (t3_vec3){ p->x, -0.5f, p->y } : pull(p->x, 0, p->y, PULL_HERO);
+    if (s->state == ST_EXIT && p->at_exit && !g_old_descent) { /* the one who found the way steps onto the stair and goes down it as the picture fades */
+      int best = 0;
+      float bd = 1e9f;
+      for (int k = 0; k < s->m.nexit; k++) {
+        float dx = mz_wx(&s->m, s->m.exit[k][0]) - p->x, dz = mz_wz(&s->m, s->m.exit[k][1]) - p->y;
+        if (dx * dx + dz * dz < bd) bd = dx * dx + dz * dz, best = k;
+      }
+      float u = cw_clampf((float)s->state_ticks / 55.0f, 0, 1), w = cw_clampf(u * 2.0f, 0, 1);
+      if (s->m.nexit > 0) at.x += (mz_wx(&s->m, s->m.exit[best][0]) - p->x) * w, at.z += (mz_wz(&s->m, s->m.exit[best][1]) - p->y) * w;
+      at.y -= 1.8f * u * u;
+      g_descents++;
+    }
+    cw_node3d_set_position(V.pn[i], at);
     if (p->down) cw_node3d_set_rotation(V.pn[i], (t3_vec3){ 1.4f, -p->face + 1.5708f, 0 });
     else cw_node3d_set_quaternion(V.pn[i], lean_q(-p->face + 1.5708f));
     if (cw_node_valid(V.ring_node[i])) cw_node3d_set_position(V.ring_node[i], (t3_vec3){ p->x, 0, p->y }); /* the ring stays flat on the floor */

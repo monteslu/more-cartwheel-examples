@@ -188,6 +188,8 @@ static int first_floor(void) {
 static void begin_play(void) {
   sim_init(&G.S, G.players, G.cls, 4242);
   G.phase = PH_PLAY;
+  { extern bool g_ribbons; g_ribbons = getenv("CRAWLER_NO_RIBBONS") == NULL; }
+  { extern bool g_old_descent; g_old_descent = getenv("CRAWLER_OLD_DESCENT") != NULL; }
   G.S.old_mow = getenv("CRAWLER_OLD_MOW") != NULL; /* development (native): the rules before mowing, for comparison runs */
   G.floors_done = 0, G.over_ticks = 0;
   if (G.start_floor > 1) sim_head_start(&G.S, G.start_floor); /* the furthest-tileset offer: a fresh team gets that depth's elixirs */
@@ -288,6 +290,7 @@ static void init(void *u) {
   snd_call[CALL_CHARM] = synth(0.4f, 880, 1760, 0, 0.3f, 3);
   snd_call[CALL_ELIXIR] = synth(0.4f, 660, 1320, 0, 0.3f, 3);
   G.best_floor = ((save_data *)cw_shell_game_save())->best_floor;
+  { extern int g_ribbons_made, g_descents; cw_debug_i32("fx.ribbons", &g_ribbons_made); cw_debug_i32("view.descent", &g_descents); } /* motion ribbons started behind thrown axes and hammers */
   cw_debug_i32("game.state", &G.state);
   cw_debug_i32("game.floor", &G.floor);
   cw_debug_i32("game.ticks", &G.ticks);
