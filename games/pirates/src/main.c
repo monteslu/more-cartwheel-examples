@@ -683,7 +683,8 @@ static cw_node make_ship_model(int i) {
     s->canvas=find_canvas(model);
     /* each ship's canvas its own material (the sails tear by its own hull), cutting the shared hole mask */
     if (s->canvas && s->canvas->material_count) {
-      if (!G.hole_mask) G.hole_mask = build_hole_mask(s->canvas);
+      /* dev: PIRATES_NO_SAIL_HOLES=1 keeps the shared canvas (the cost of the holes, timed against it) */
+      if (!G.hole_mask && !getenv("PIRATES_NO_SAIL_HOLES")) G.hole_mask = build_hole_mask(s->canvas);
       if (G.hole_mask) {
         t3_material *own = t3_material_clone(s->canvas->materials[0]);
         t3_material_set_texture(own, T3_ALPHA_MAP, G.hole_mask);
