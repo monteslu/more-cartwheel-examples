@@ -1662,7 +1662,7 @@ static void separate_bodies(void) {
     }
     n++;
   }
-  for (int pass = 0; pass < 4; pass++) {
+  for (int pass = 0; pass < 8; pass++) { /* (8: a body bounced back off the edge can land on one lying there, two lying bodies pinned in the corner of the picture need more steps) */
     bool moved = false;
     for (int i = 0; i < n; i++) for (int j = i + 1; j < n; j++) {
       float ax, az;
