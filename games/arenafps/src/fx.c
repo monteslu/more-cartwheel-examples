@@ -363,9 +363,11 @@ void fx_explosion(t3_vec3 p, t3_vec3 n) {
   cw_node sp = cw_node_get(b, "Sparks"), db = cw_node_get(b, "Debris");
   if (cw_node_valid(sp)) cw_node_set(sp, "direction", cw_val_vec3(nn.x, nn.y, nn.z));
   if (cw_node_valid(db)) cw_node_set(db, "direction", cw_val_vec3(nn.x, nn.y + (floor ? 0 : 0.4f), nn.z));
-  /* no heat haze or shockwave distortion: High and Ultra fringe a distortion by colour, and the blast's haze and its air
-   * and ground rings swirled a view in rainbow colours (and smeared the enemy under the crosshair). "sw tune haze <k>" (or
-   * ARENA_T_haze) brings them back at k times the old strength (1: as before), for before and after */
+  /* no heat haze or shockwave distortion. Before engine v0.40.1 High and Ultra fringed a distortion by colour (the blast's
+   * haze and rings swirled a view in rainbow colours). With the colour fixed it still bends what is near a blast at the
+   * player's camera (a crate beside it melts, the floor grate waves, the held weapon smears) and at a third of the
+   * strength it barely shows: off. "sw tune haze <k>" (or ARENA_T_haze) brings them back at k times the old strength
+   * (1: as before), for before and after */
   {
     const float hk = arena_tune("haze", 0);
     static const char *const D[3] = { "Haze", "Wave", "WaveAir" };
