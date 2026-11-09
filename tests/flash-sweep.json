@@ -1,7 +1,7 @@
 [
-  { "name": "arenafps-match", "gate": "arenafps-match", "frames": 1200, "note": "bots fighting: rifles, scatterguns, rails, rockets, deaths and respawns", "knownFail": "cartwheel-engine: a moving omni light (a muzzle light, an explosion kit light) switches its lit area on and off frame to frame in four-view split screen (an engine fix is in progress)" },
+  { "name": "arenafps-match", "gate": "arenafps-match", "frames": 1200, "note": "bots fighting: rifles, scatterguns, rails, rockets, deaths and respawns" },
   { "name": "arenafps-recoil", "gate": "arenafps-recoil", "frames": 1000, "note": "a player's own rifle burst in first person: the muzzle light on the walls" },
-  { "name": "arenafps-coop", "gate": "arenafps-coop", "frames": 1800, "note": "co-op with spawn protection's shimmer", "knownFail": "cartwheel-engine: a moving omni light (a muzzle light, an explosion kit light) switches its lit area on and off frame to frame in four-view split screen (an engine fix is in progress)" },
+  { "name": "arenafps-coop", "gate": "arenafps-coop", "frames": 1800, "note": "co-op with spawn protection's shimmer", "knownFail": "arenafps: 5 flashes in a second in the first view (frame 409 on; 19 before faces sharing a plane were layered apart): a grenade blast in the face and the autopilot turning fast past sunlit walls and lamp-lit ceilings, not yet told apart" },
   { "name": "brawler-four", "gate": "brawler-four", "frames": 1500, "note": "four players: hits, throws, pickups" },
   { "name": "brawler-boss", "gate": "brawler-boss", "frames": 2400, "from": 600, "note": "a boss wave" },
   { "name": "coopplatformer-boss", "gate": "coopplatformer-boss", "frames": 700, "note": "the boss fight: its hurt glow" },
