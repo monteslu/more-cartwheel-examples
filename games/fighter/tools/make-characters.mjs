@@ -511,7 +511,7 @@ function build(sp) {
     }
     if (sp.pads) m.ellipsoid(sp.padMat ?? 'pad', [ax + sx * 0.035, ySh + 0.04, 0], 0.085 * (0.8 + 0.2 * W), 0.05, 0.095 * (0.8 + 0.2 * W), { weights: () => [[BI.Chest, 0.4], [BI['UpperArm' + (sx > 0 ? 'L' : 'R')], 0.6]], steps: 6, n: 16, e: 2.4 });
     if (sp.spikes) for (let i = 0; i < 3; i++) { const base = [ax + sx * (0.05 + 0.02 * i), ySh + 0.08 - 0.012 * i, -0.04 + 0.04 * i]; m.cone('buckle', base, add(base, [sx * 0.03, 0.05, 0]), 0.012, { weights: () => [[BI['UpperArm' + (sx > 0 ? 'L' : 'R')], 1]], n: 6 }); }
-    if (sp.bracers) m.loft('harness', ys(yWr + 0.02, yEl - 0.04, 0.02).reverse().map((y) => ringA(y, 1.03, 0.01)), { n: 18, weights: (k, P) => armW(P), tile: 0.3 });
+    if (sp.bracers) m.loft('harness', ys(yWr + 0.02, yEl - 0.04, 0.02).reverse().map((y) => ringA(y, 1.0, 0.005)), { n: 18, weights: (k, P) => armW(P), tile: 0.3 });
     if (sp.wristband) m.loft('band', [ringA(yWr + 0.05, 1.12, 0.008), ringA(yWr + 0.015, 1.12, 0.008)], { n: 16, weights: (k, P) => armW(P), tile: 0.3 });
     // the hand: a palm, four two-part fingers on the Fingers and Fingers2 bones and a thumb on its own bone, modelled open
     // (the game curls them into a fist); gloves cover the palm and the first finger joints, wraps tape the palm and knuckles
@@ -702,7 +702,7 @@ export const SPECS = [
     hair: 'spiky', headband: true, wraps: true, stubble: true, top: 'none', outer: true, outerKind: 'gi', outerFab: 'gi', openFront: 0.2, sleeves: 'three',
     bottom: 'gi', pantsFab: 'gi', obi: true, shoes: 'slipper',
     colors: { skin: 0xc68c62, outer: 0xe8e2d2, pants: 0xe2dccc, shoes: 0x2a1a14, hair: 0x1c1410, accent: 0xb3201a, band: 0xc0221a, belt: 0x141214, wrap: 0xe8e4da } },
-  { name: 'grit', face: { brow: 1.6, cheek: 1.2, width: 1.06, browThick: 1.3, browArch: 0.7, age: 0.8, lips: 0.9, chin: 1.25, eyeSize: 0.92, mouthW: 1.1 }, eyes: 0x4a5a6a, scale: 1.06, bulk: 1.38, shoulder: 1.25, width: 1.2, chest: 1.3, hips: 0.9, arm: 1.2, leg: 1.15, head: 1.0, hand: 1.18, jaw: 1.45, neck: 1.35, traps: 0.4, abs: 0.9,
+  { name: 'grit', face: { brow: 1.6, cheek: 1.2, width: 1.06, browThick: 1.3, browArch: 0.7, age: 0.8, lips: 0.9, chin: 1.25, eyeSize: 0.92, mouthW: 1.1 }, eyes: 0x4a5a6a, scale: 1.06, bulk: 1.38, shoulder: 1.25, width: 1.2, chest: 1.3, hips: 0.9, arm: 1.12, leg: 1.15, head: 1.0, hand: 1.18, jaw: 1.45, neck: 1.35, traps: 0.4, abs: 0.9,
     hair: 'none', goatee: true, stubble: true, scar: true, frown: true, top: 'none', harness: true, belt: true, champ: true, bottom: 'trunks', pantsFab: 'leather', kneepads: true, boots: true,
     bracers: true, wristband: true, gloves: true, fingerless: true,
     colors: { skin: 0xa8714c, pants: 0x2a2c34, shoes: 0x1a1612, hair: 0x2a1a10, accent: 0xe08a10, belt: 0x1e1814, metal: 0xc8a050, glove: 0x302822, pad: 0xd07a10, band: 0xe08a10, harness: 0x2a1e16 } },
