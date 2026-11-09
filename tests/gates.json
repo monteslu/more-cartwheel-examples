@@ -1165,5 +1165,10 @@
     "name": "hordeshooter-grounding",
     "script": "tests/hordeshooter-grounding.mjs",
     "note": "nothing floats: every prop of the yard and of each deeper floor has a dark band at its foot on Very Low and High (against the same frame with no contact shadows), and nothing of the crowd is drawn sunk into a closed hatch. Controls: two runs with no contact shadows find no dark foot; the crowd drawn at floor level sinks into the hatch"
+  },
+  {
+    "name": "hordeshooter-newcomer",
+    "script": "tests/hordeshooter-newcomer.mjs",
+    "note": "a newcomer plays the Yard on the cart through romdev, GL and WebGPU, from power-on by the pad and what the picture shows (nc.look: the enemies, boss, gems and power-ups inside the picture, the cards, the STEP IN marker), with a 0.3 s reaction delay, a wandering aim error of up to 12 degrees, steering jitter, a dash only some of the times it could and a second to read the cards: the boss falls and the player steps down to floor 2, alone and beside a second pad that joined and never plays (the horde sized for one, game.crew 1, and the yard slowed for the cards), with a pause and resume. Controls: with no STEP IN marker (sw no_marker 1) the way down is not found in 90 s; the old rule (sw idle_crew 1) sizes the horde for the idle seat (game.crew 2) and never slows."
   }
 ]
