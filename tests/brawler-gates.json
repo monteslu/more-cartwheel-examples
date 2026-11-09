@@ -1429,5 +1429,15 @@
       "game.unfair": 0,
       "game.nan": 0
     }
+  },
+  {
+    "name": "brawler-newcomer",
+    "script": "tests/brawler-newcomer.mjs",
+    "note": "a newcomer plays stage 1 on the cart through romdev, GL and WebGPU, from power-on by the pad and what the picture shows (nc.look: the enemies standing inside the picture, the GO arrow, food), with a 0.3 s reaction delay, a wandering misread of depth and distance, a person's mashing pace and late turns: STAGE CLEAR alone and beside a second pad that joined and never plays (counted out at the select), with a pause and resume. Control: the same person in a harder game (sw dmg 300) runs out of lives."
+  },
+  {
+    "name": "brawler-idle-seat",
+    "script": "tests/brawler-idle-seat.mjs",
+    "note": "a second pad that joined and never plays does not hold player 1 on the character select (counted down and left out, the waves sized for one). Control: sw pick_wait 1 waits for ever."
   }
 ]

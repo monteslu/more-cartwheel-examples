@@ -53,8 +53,11 @@ both on the built cart through romdev, on GL and on WebGPU:
   old wait or tether back) must fail.
 
 Pause, resume, retry and quit belong in one of the two. The existing ones show
-the shape: `tests/crawler-find-the-way.mjs` and `tests/arenafps-newcomer.mjs`
-(newcomer), and
+the shape: `tests/crawler-find-the-way.mjs`, `tests/arenafps-newcomer.mjs`,
+`tests/brawler-newcomer.mjs` and `tests/hordeshooter-newcomer.mjs` (newcomer:
+the player acts on what the screen showed 0.3 s before and aims and judges
+distance with a wandering error, as a person does; a bot that aims perfectly
+proves nothing about difficulty), and
 `tests/crawler-left-behind.mjs`, `tests/coopplatformer-idle-seat.mjs`,
 `tests/fighter-idle-seat.mjs`, `tests/partypack-idle-seat.mjs`,
 `tests/pirates-idle-seat.mjs` and `tests/arenafps-idle-seat.mjs` (idle seat).
