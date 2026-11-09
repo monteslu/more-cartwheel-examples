@@ -38,6 +38,13 @@ static float d_hp[MAXP], d_px[MAXP], d_cam;
 static int32_t d_py[MAXP], d_air_max, d_jumps; /* fighters' height (mm); player 1's longest time off the ground (frames); its jumps */
 static uint32_t d_hash;
 static float d_ex[8][4];
+/* what the screen shows a newcomer (tests/brawler-newcomer.mjs reads it): the phase, the select, player 1 (x, depth,
+   health, lives, state, facing), the GO arrow, the camera, the boss bar; the standing enemies inside the picture
+   (x, depth, state; 0 0 -1 for none); the items lying inside it (x, depth; kind -1 for none) */
+#define NC_LOOK (11 + 8 * 3 + 3 * 3)
+static float d_look[NC_LOOK];
+extern int g_sw_dmg;
+extern bool g_old_stage1;
 static int32_t d_states[MAXP];
 static int32_t d_spawn_checked, d_spawn_bad, d_spawn_unposed;
 static int32_t d_unfair, d_still, d_frozen, d_blocks, d_pickups, d_bphase, d_deaths, d_first, d_hits, d_nan, d_stall, d_proj, d_weapon, d_rigs, d_overlaps, d_bowled;
@@ -174,7 +181,9 @@ static void pick_update(void) {
 }
 static void cmd_sw(int argc, const char **argv, cw_reply *r) {
   if (argc >= 3 && !strcmp(argv[1], "pick_wait")) { sw_pick_wait = atoi(argv[2]) != 0; cw_reply_printf(r, "{\"pick_wait\":%d}", sw_pick_wait); return; }
-  cw_reply_error(r, "usage: sw pick_wait <0|1>");
+  if (argc >= 3 && !strcmp(argv[1], "dmg")) { g_sw_dmg = atoi(argv[2]) > 0 ? atoi(argv[2]) : 100; cw_reply_printf(r, "{\"dmg\":%d}", g_sw_dmg); return; }
+  if (argc >= 3 && !strcmp(argv[1], "old_stage1")) { g_old_stage1 = atoi(argv[2]) != 0; cw_reply_printf(r, "{\"old_stage1\":%d}", g_old_stage1); return; }
+  cw_reply_error(r, "usage: sw pick_wait <0|1> | sw dmg <percent> | sw old_stage1 <0|1>");
 }
 
 static void start(int players, void *user) {
@@ -494,7 +503,8 @@ static void init(void *user) {
   cw_debug_i32("pick.left", &d_pick[1]);         /* ticks the countdown has left, 0 none */
   cw_debug_field("seat.absent", d_absent, CW_DBG_I32, MAXP);
   cw_debug_i32("game.crew", &d_crew);             /* fighters the waves are sized for (absent seats raise nothing) */ /* seats that joined but never came in */
-  cw_debug_command("sw", "sw pick_wait <0|1>: test switch (the character select waits for every seat for ever)", cmd_sw);
+  cw_debug_command("sw", "sw pick_wait <0|1>: test switch (the character select waits for every seat for ever); sw dmg <percent>: blows on the fighters do this much of their damage (a harder game); sw old_stage1 <0|1>: the first stage as hard as the rest (the newcomer gate's controls)", cmd_sw);
+  cw_debug_field("nc.look", d_look, CW_DBG_F32, NC_LOOK);
   cw_debug_i32("spawn.checked", &d_spawn_checked);
   cw_debug_i32("spawn.bad", &d_spawn_bad);
   cw_debug_i32("spawn.unposed", &d_spawn_unposed);
@@ -629,6 +639,25 @@ static void publish(void) {
     if (W.p[0].used && W.p[0].y > 0.001f) { if (air == 0) d_jumps++; air++; } else air = 0;
     if (air > d_air_max) d_air_max = air; }
   for (int i = 0; i < MAXP; i++) d_hp[i] = W.p[i].used ? W.p[i].hp : 0, d_px[i] = W.p[i].x, d_states[i] = W.p[i].used ? (int)W.p[i].st : -1;
+  { const ent *p = &W.p[0];
+    float *o = d_look;
+    o[0] = (float)W.phase, o[1] = g_pick.on, o[2] = p->x, o[3] = p->z, o[4] = p->used ? p->hp : 0, o[5] = (float)p->lives, o[6] = p->used ? (float)p->st : -1;
+    o[7] = (float)p->face, o[8] = W.go_flash > 0, o[9] = W.cam_x, o[10] = W.boss_active;
+    int k = 0;
+    for (int i = 0; i < MAXE && k < 8; i++) {
+      const ent *e = &W.e[i];
+      if (!e->used || e->st == S_DEAD || !on_screen(e->x, e->z, 0)) continue;
+      o[11 + k * 3] = e->x, o[12 + k * 3] = e->z, o[13 + k * 3] = (float)e->st, k++;
+    }
+    for (; k < 8; k++) o[11 + k * 3] = o[12 + k * 3] = 0, o[13 + k * 3] = -1;
+    k = 0;
+    for (int i = 0; i < MAXITEM && k < 3; i++) {
+      const item_t *it = &W.item[i];
+      if (!it->used || !on_screen(it->x, it->z, 0)) continue;
+      o[35 + k * 3] = it->x, o[36 + k * 3] = it->z, o[37 + k * 3] = (float)it->kind, k++;
+    }
+    for (; k < 3; k++) o[35 + k * 3] = o[36 + k * 3] = 0, o[37 + k * 3] = -1;
+  }
 }
 
 static void sim_step(void);

@@ -433,6 +433,11 @@ static uint64_t agent_add(float x, float z, float speed, bool is_player) {
 static cw_crowd_agent AG(uint64_t id) { cw_crowd_agent a = { .id = id }; return a; }
 
 /* ── spawning ───────────────────────────────────────────────────────── */
+/* the first stage, where a newcomer learns the game: its crowd hits softer and its heavy has less to get through. sw
+   old_stage1 makes it as hard as the rest (the newcomer gate's control) */
+bool g_old_stage1;
+#define STAGE1_BLOWS 0.7f
+#define STAGE1_HEAVY 0.65f
 static void ent_init(ent *e, int def, bool player, float x, float z) {
   memset(e, 0, sizeof *e);
   e->used = true, e->player = player, e->def = def, e->x = x, e->z = z;
@@ -441,6 +446,7 @@ static void ent_init(ent *e, int def, bool player, float x, float z) {
      the crowd and the helpers to deal with, so the fight still ends a little sooner with four than alone) */
   float per = DEFS[def].boss ? 0.22f : 0.35f;
   e->hp = e->maxhp = DEFS[def].hp * (player ? 1.0f : 1.0f + per * (float)(crew() > 1 ? crew() - 1 : 0));
+  if (!player && W.stage == 0 && !g_old_stage1 && def == D_BRUISER) e->hp = e->maxhp = e->hp * STAGE1_HEAVY; /* (the first stage: see above) */
   e->st = S_IDLE, e->target = -1, e->victim = -1, e->holder = -1;
   e->cd = 40 + ri(0, 60);
   e->slot = ri(0, 9);
@@ -524,6 +530,7 @@ static bool guard_blocks(ent *v, const ent *a, int knock) {
   return true;
 }
 
+int g_sw_dmg = 100; /* sw dmg: percent of their damage blows on the fighters do (100 the game) */
 void ent_hurt(ent *v, ent *a, float dmg, int knock, float fx) {
   (void)fx;
   if (!alive(v) || v->invuln > 0) return;
@@ -569,6 +576,8 @@ void ent_hurt(ent *v, ent *a, float dmg, int knock, float fx) {
   }
   if (v->player && v->st == S_JUMP && knock < 2) knock = 1;
   if (v->def == D_HECKLER && knock == 1) knock = 2; /* out of shape (B-PT18): a stagger blow puts him on the floor */
+  if (v->player && a && !a->player && W.stage == 0 && !g_old_stage1) dmg *= STAGE1_BLOWS; /* the first stage's crowd hits softer (see ent_init) */
+  if (v->player && g_sw_dmg != 100) dmg *= (float)g_sw_dmg / 100.0f; /* sw dmg: a harder game (the newcomer gate's control) */
   v->hp -= dmg;
   if (DEFS[v->def].boss && v->phase < 2) { /* no phase is skipped: it cannot fall below the next one until that one began */
     float floor_hp = v->phase == 0 ? v->maxhp * 0.335f : 1.0f;
