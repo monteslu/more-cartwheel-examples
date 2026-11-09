@@ -16,6 +16,7 @@
 #include "mg.h"
 #include <stdlib.h>
 
+#include "cartwheel/debug.h"
 #include "cartwheel/platform.h"
 #include "cartwheel/project.h"
 #include "cartwheel/quality.h"
@@ -729,7 +730,7 @@ static void on_start(int players, void *user) {
   SV->unlocked = ~0u;
   SV->rounds_opt = 0;
   { const char *b = getenv("PP_BATCH"); batch_total = b ? atoi(b) : 0; }
-  { const char *r = getenv("PP_ROUNDS"); if (r) SV->rounds_opt = atoi(r); }
+  if (batch_total) { const char *r = getenv("PP_ROUNDS"); if (r) SV->rounds_opt = atoi(r); } /* a gate's PP_ROUNDS: fixed_update, from frame 2 */
   if (batch_total) for (int i = 0; i < MG_N; i++) if (MG_LIST[i]->scene) SV->unlocked &= ~(1u << i); /* 2D rules only (the sets are looks) */
   if (!getenv("PP_KEYART")) start_tournament(); /* development (key art): PP_KEYART stays on the hub, the four characters on the table */
   { const char *only = getenv("PP_GAME"); /* a single game on repeat, for screenshots and probes */
@@ -898,6 +899,16 @@ int pp_batch_active(void) { return batch_total != 0; }
 
 static void fixed_update(void *user, double dt) {
   (void)user, (void)dt;
+#ifdef PP_AUTOPILOT
+  /* PP_ROUNDS (0..2), a gate's length: a test switch read the same on every host from frame 2 (cw_test_env; a cart
+   * host delivers a gate's environment then), so the tournament starts again at that length there */
+  { static bool seen;
+    if (!seen && cw_frame_index() > 0) {
+      seen = true;
+      const char *r = batch_total ? NULL : cw_test_env("PP_ROUNDS");
+      if (r && atoi(r) != SV->rounds_opt && G.tournament) { SV->rounds_opt = atoi(r); start_tournament(); }
+    } }
+#endif
   /* the hub, the picker, the boards and the readying are panels, not play: Start confirms there (menu_ok), so the shell does
    * not see that press and does not pause; every other tick it runs as usual, and a pad that goes away frees its seat. The
    * countdown, the game and its finish pause as usual */
@@ -1283,7 +1294,8 @@ typedef struct { const char *t; float x, top, w, h, size; cw_color c; bool pill;
 static int32_t g_board_lab_dbg[2];
 /* a tile's tag grows with the text size up to half again (never under its 100% size): a row of ten tiles has no room
  * for ten words at twice the size, and the tags are short and bold over the tiles they name */
-static bool getenv_labels_old(void) { static int v = -1; if (v < 0) v = getenv("PP_LABELS_OLD") != NULL; return v; }
+/* PP_LABELS_OLD: the gate control, a test switch from frame 2 on every host (cw_test_env) */
+static bool getenv_labels_old(void) { static int v = -1; if (v < 0 && cw_frame_index() > 0) v = cw_test_env("PP_LABELS_OLD") != NULL; return v > 0; }
 static float lab_size(float size) { float g = ui_grow(size); return g > 1.5f && !getenv_labels_old() ? size * 1.5f / g : size; }
 static float lab_overlap(const board_label *a, const board_label *b, float pad) {
   float ox = fminf(a->x + a->w * 0.5f, b->x + b->w * 0.5f) - fmaxf(a->x - a->w * 0.5f, b->x - b->w * 0.5f) + pad;
