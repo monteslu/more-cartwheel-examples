@@ -42,6 +42,11 @@ typedef struct save_t {
   int32_t hats;     /* levels whose secrets were all found: each one better, in a sense, than the last */
   uint32_t hat_levels[2];
   uint8_t medals[32]; /* per level, bit k: big coin k + 1 has been taken there (the map counts them) */
+  /* the wardrobe (version 6): what the coins buy. Items 0-5 the hats, 6-11 scarf colours */
+  uint32_t bought;      /* bit k: item k bought */
+  int32_t spent;        /* coins spent there (to spend: every coin ever picked up, less these) */
+  int8_t wear_hat[4];   /* each seat's hat: 0 as issued by the secrets, k + 1 hat k, 7 none */
+  int8_t wear_scarf[4]; /* each seat's scarf: 0 its own colour, k + 1 colour k (items 6 + k) */
 } save_t;
 
 #define NTORCH 4
@@ -337,6 +342,17 @@ static t3_material *phys(uint32_t rgb, float rough, float metal) {
   m->metalness = metal;
   return m;
 }
+/* part() with a geometry made for it alone (released here) */
+static t3_mesh *partg(cw_node parent, t3_geometry *g, t3_material *m, float x, float y, float z, float sx, float sy, float sz) {
+  t3_mesh *me = part(parent, g, m, x, y, z, sx, sy, sz);
+  t3_release(g);
+  return me;
+}
+static void boss_kit(cw_node at, int kind);
+static void boss_shots_build(cw_node world, int kind, int biome);
+static cw_node g_shot_node[MAX_BSHOTS][4]; /* what a boss throws: one node per slot and kind (boss_shots_build) */
+static t3_mesh *g_shot_spin[MAX_BSHOTS][4];
+static cw_node g_daze_node;
 
 /* ── decals: one generated sheet (tools/gen-assets.mjs), 4 x 2 cells of 256 px, all MULTIPLY so the light stays right ── */
 enum { DC_DIRT, DC_SCORCH, DC_MOSS, DC_CRACK, DC_DAMP, DC_LEAVES, DC_SOOT, DC_CRAZE };
@@ -401,6 +417,13 @@ static void place_decals(const level *L) {
 #define HAT_Y 1.32f
 static bool hats_due;
 static void hats_apply(void);
+static const float *seat_scarf(int seat);
+static void wd_input(void);
+/* the wardrobe's state (the wardrobe section below) */
+static bool g_wd_open;
+static int g_wd_sel[MAX_PLAYERS], g_wd_idle, g_wd_msg[MAX_PLAYERS], g_wd_said[MAX_PLAYERS];
+static float g_wd_px[MAX_PLAYERS];
+static int g_wd_dbg[8]; /* open, coins to spend, coins spent, items bought (bits), seat 0's hat and scarf, seat 1's hat and scarf */
 static void gore_build(void);
 static void graves_reset(void);
 static bool project(float x, float y, float z, float W, float H, float *sx, float *sy);
@@ -584,12 +607,7 @@ static void build_scene(void) {
       /* one model, a different creature each time: a colour and something on its head */
       static const float TINT[5][3] = { { 0.75f, 0.55f, 0.95f }, { 1.3f, 1.05f, 0.45f }, { 1.3f, 0.5f, 0.4f }, { 0.6f, 0.75f, 1.0f }, { 0.35f, 0.3f, 0.35f } };
       rig_shade(S.erig[i], TINT[L->boss_kind]);
-      static const uint32_t HAT[5] = { 0x201018, 0xe8c040, 0xf2f2f2, 0x303848, 0xe8c040 };
-      t3_geometry *brim = t3_cylinder_geometry_new(0.62f, 0.62f, 0.07f, 16, 1, false), *crown = t3_cylinder_geometry_new(0.36f, 0.4f, 0.62f, 16, 1, false);
-      t3_material *hm = phys(HAT[L->boss_kind], 0.7f, L->boss_kind == 1 || L->boss_kind == 4 ? 0.9f : 0.0f);
-      part(S.emodel[i], brim, hm, 0, 1.66f, 0, 1, 1, 1)->base.cast_shadow = g_shadow_old;
-      part(S.emodel[i], crown, hm, 0, 2.0f, 0, 1, 1, 1)->base.cast_shadow = g_shadow_old;
-      t3_release(brim), t3_release(crown);
+      boss_kit(S.emodel[i], L->boss_kind);
     }
     S.eextra[i][0] = S.eextra[i][1] = NULL;
     if (e->kind >= EK_HOPPER && S.erig[i]) {
@@ -626,6 +644,8 @@ static void build_scene(void) {
     S.ephase[i] = (float)i * 1.7f;
     S.eflash[i] = 0;
   }
+  memset(g_shot_node, 0, sizeof g_shot_node), g_daze_node = (cw_node){ 0 };
+  if (L->boss_x > 0) boss_shots_build(S.world, L->boss_kind, L->biome[L->boss_x < WORLD_W ? L->boss_x : WORLD_W - 1]);
   /* moving platforms */
   for (int i = 0; i < L->nplat; i++) {
     int px = (int)L->plats[i].x0 < 0 ? 0 : (int)L->plats[i].x0 >= WORLD_W ? WORLD_W - 1 : (int)L->plats[i].x0;
@@ -633,7 +653,6 @@ static void build_scene(void) {
   }
   /* characters: skinned heroes, one headgear each (a marker that is not a colour) */
   t3_geometry *bub = t3_sphere_geometry_new(1.0f, 32, 20);
-  static const float ACCENT[MAX_PLAYERS][3] = { { 1.0f, 0.85f, 0.25f }, { 0.95f, 0.95f, 0.95f }, { 1.0f, 0.45f, 0.65f }, { 0.3f, 0.8f, 0.95f } };
   for (int i = 0; i < MAX_PLAYERS; i++) {
     if (cw_node_valid(S.pnode[i])) cw_node_free(S.pnode[i]);
     S.pnode[i] = make_node("Node3D", S.root, "Player");
@@ -644,7 +663,7 @@ static void build_scene(void) {
     if (S.prig[i]) {
       rig_attach(S.prig[i], S.pmodel[i]);
       float fur[3] = { PLAYER_RGB[i][0], PLAYER_RGB[i][1], PLAYER_RGB[i][2] };
-      rig_tint(S.prig[i], fur, ACCENT[i], i);
+      rig_tint(S.prig[i], fur, seat_scarf(i), i); /* its scarf: its own colour or the one it wears from the wardrobe */
       rig_cast_shadow(S.prig[i], g_shadow_old);
       /* a rim of the player's own colour, lightened, round the silhouette: the four read against the navy caves and the red
        * crater (its strength follows the region, sync_scene); every preset draws it */
@@ -1054,6 +1073,145 @@ static void blob_add(const game *g, float x, float y, float z, float size, bool 
   }
 }
 
+/* ── what each boss wears: the one golem model, dressed for its job (model space: y up, its face toward +z, head top
+ * at 1.66 m, shoulders at x 0.62, y 1.05; the cloth and paper matte, the metal metal) ── */
+static t3_mesh *kit_part(cw_node at, t3_geometry *g, t3_material *m, float x, float y, float z, float rx, float ry, float rz) {
+  t3_mesh *me = part(at, g, m, x, y, z, 1, 1, 1);
+  t3_object_set_rotation(me, rx, ry, rz);
+  me->base.cast_shadow = g_shadow_old;
+  t3_release(g);
+  return me;
+}
+static void boss_kit(cw_node at, int kind) {
+  const float H = 1.5707963f;
+  switch (kind) {
+    case 0: { /* the Landlord: a tall black hat, a gold monocle, a ring of keys at the hip */
+      t3_material *hat = phys(0x201018, 0.85f, 0.0f), *gold = phys(0xe0b048, 0.3f, 1.0f);
+      kit_part(at, t3_cylinder_geometry_new(0.62f, 0.62f, 0.07f, 16, 1, false), hat, 0, 1.66f, 0, 0, 0, 0);
+      kit_part(at, t3_cylinder_geometry_new(0.36f, 0.4f, 0.62f, 16, 1, false), hat, 0, 2.0f, 0, 0, 0, 0);
+      kit_part(at, t3_torus_geometry_new(0.075f, 0.014f, 6, 16, 6.2831853f), gold, 0.15f, 1.5f, 0.31f, 0, 0, 0);
+      kit_part(at, t3_cylinder_geometry_new(0.006f, 0.006f, 0.3f, 4, 1, false), gold, 0.22f, 1.33f, 0.31f, 0, 0, 0.35f); /* its chain */
+      kit_part(at, t3_torus_geometry_new(0.1f, 0.016f, 6, 16, 6.2831853f), gold, 0.5f, 0.55f, 0.36f, 0, 0, 0);
+      for (int k = 0; k < 3; k++) kit_part(at, t3_box_geometry_new(0.035f, 0.16f, 0.012f, 1, 1, 1), gold, 0.46f + 0.04f * (float)k, 0.42f, 0.37f, 0, 0, -0.3f + 0.3f * (float)k);
+      break;
+    }
+    case 1: { /* the Tax Golem: a green eyeshade on a band, a stack of forms on each shoulder tied with red tape */
+      t3_material *shade = phys(0x2f8f4a, 0.45f, 0.0f), *band = phys(0x1c2a20, 0.8f, 0.0f), *paper = phys(0xeeeae0, 0.95f, 0.0f), *tape = phys(0xc0302a, 0.9f, 0.0f);
+      kit_part(at, t3_torus_geometry_new(0.3f, 0.025f, 6, 20, 6.2831853f), band, 0, 1.58f, 0, H, 0, 0);
+      kit_part(at, t3_box_geometry_new(0.58f, 0.025f, 0.26f, 1, 1, 1), shade, 0, 1.6f, 0.36f, -0.25f, 0, 0);
+      for (int sd = -1; sd <= 1; sd += 2) {
+        kit_part(at, t3_box_geometry_new(0.34f, 0.3f, 0.3f, 1, 1, 1), paper, 0.62f * (float)sd, 1.4f, 0, 0, 0.12f * (float)sd, 0);
+        kit_part(at, t3_box_geometry_new(0.36f, 0.04f, 0.32f, 1, 1, 1), tape, 0.62f * (float)sd, 1.4f, 0, 0, 0.12f * (float)sd, 0);
+      }
+      break;
+    }
+    case 2: { /* the Lifeguard: a red and white ring round the waist, a whistle, dark glasses, a white visor */
+      t3_material *red = phys(0xd83a2e, 0.55f, 0.0f), *white = phys(0xf2f2f2, 0.6f, 0.0f), *black = phys(0x111114, 0.2f, 0.0f), *steel = phys(0xc8ccd4, 0.25f, 1.0f);
+      kit_part(at, t3_torus_geometry_new(0.6f, 0.11f, 8, 24, 6.2831853f), red, 0, 0.62f, 0, H, 0, 0);
+      for (int k = 0; k < 4; k++) {
+        float a = 0.785398f + 1.5707963f * (float)k;
+        kit_part(at, t3_cylinder_geometry_new(0.118f, 0.118f, 0.14f, 10, 1, false), white, 0.6f * sinf(a), 0.62f, 0.6f * cosf(a), 0, 0, 0);
+      }
+      kit_part(at, t3_box_geometry_new(0.46f, 0.09f, 0.04f, 1, 1, 1), black, 0, 1.5f, 0.31f, 0, 0, 0);
+      kit_part(at, t3_cylinder_geometry_new(0.05f, 0.05f, 0.13f, 8, 1, false), steel, 0.12f, 1.1f, 0.39f, 0, 0, H);
+      kit_part(at, t3_box_geometry_new(0.6f, 0.03f, 0.3f, 1, 1, 1), white, 0, 1.68f, 0.18f, -0.15f, 0, 0);
+      break;
+    }
+    case 3: { /* the Regional Manager: a red tie, black-framed glasses, a badge on a lanyard, no hat */
+      t3_material *tie = phys(0xb02a30, 0.9f, 0.0f), *frame = phys(0x15151a, 0.3f, 0.0f), *badge = phys(0xf0f0ea, 0.7f, 0.0f), *cord = phys(0x2a5ab0, 0.9f, 0.0f);
+      kit_part(at, t3_box_geometry_new(0.13f, 0.05f, 0.05f, 1, 1, 1), tie, 0, 1.13f, 0.37f, 0, 0, 0);
+      kit_part(at, t3_box_geometry_new(0.15f, 0.55f, 0.03f, 1, 1, 1), tie, 0, 0.82f, 0.37f, 0, 0, 0);
+      for (int sd = -1; sd <= 1; sd += 2) kit_part(at, t3_torus_geometry_new(0.075f, 0.014f, 6, 16, 6.2831853f), frame, 0.15f * (float)sd, 1.5f, 0.31f, 0, 0, 0);
+      kit_part(at, t3_box_geometry_new(0.15f, 0.02f, 0.02f, 1, 1, 1), frame, 0, 1.5f, 0.31f, 0, 0, 0);
+      kit_part(at, t3_box_geometry_new(0.15f, 0.19f, 0.02f, 1, 1, 1), badge, -0.28f, 0.78f, 0.37f, 0, 0, 0.1f);
+      kit_part(at, t3_cylinder_geometry_new(0.01f, 0.01f, 0.42f, 4, 1, false), cord, -0.2f, 0.98f, 0.37f, 0, 0, -0.35f);
+      break;
+    }
+    default: { /* the Founder: a gold crown, a heavy gold chain */
+      t3_material *gold = phys(0xe0b048, 0.25f, 1.0f);
+      kit_part(at, t3_cylinder_geometry_new(0.3f, 0.28f, 0.16f, 16, 1, true), gold, 0, 1.73f, 0, 0, 0, 0);
+      for (int k = 0; k < 6; k++) {
+        float a = 1.0471976f * (float)k;
+        kit_part(at, t3_cone_geometry_new(0.06f, 0.18f, 6, 1, false), gold, 0.29f * sinf(a), 1.89f, 0.29f * cosf(a), 0, 0, 0);
+      }
+      kit_part(at, t3_torus_geometry_new(0.33f, 0.035f, 6, 24, 6.2831853f), gold, 0, 1.12f, 0.08f, H - 0.35f, 0, 0);
+      break;
+    }
+  }
+}
+/* what a boss throws: one node per slot, the parts this boss's attacks use (sim.c shots_step moves them) */
+static void boss_shots_build(cw_node world, int kind, int biome) {
+  memset(g_shot_node, 0, sizeof g_shot_node), memset(g_shot_spin, 0, sizeof g_shot_spin);
+  static const uint32_t EARTH[BIOMES] = { 0x6b4a2f, 0x4a4a5a, 0x7a6a50, 0xb8c8d8, 0x3a2622 };
+  t3_material *earth = phys(EARTH[biome], 0.95f, 0.0f);
+  for (int n = 0; n < MAX_BSHOTS; n++) {
+    for (int sk = 0; sk < 4; sk++) {
+      static const int SHOT_OF[4] = { BA_LEAP, BA_RAIN, BA_ROLL, BA_THROW }; /* the attack that throws each kind */
+      if (!sim_boss_uses(kind, SHOT_OF[sk])) continue; /* this boss never throws it */
+      cw_node nd = g_shot_node[n][sk] = make_node("Node3D", world, "Shot");
+      cw_node_set(nd, "visible", cw_val_bool(false));
+      t3_mesh *m = NULL;
+      if (sk == SH_WAVE) { /* a ridge of the floor thrown up and running along it */
+        m = partg(nd, t3_cylinder_geometry_new(0.32f, 0.42f, 1.6f, 10, 1, false), earth, 0, 0, 0, 1, 0.55f, 1);
+        t3_object_set_rotation(m, 1.5707963f, 0, 0);
+      } else if (sk == SH_FALL && kind == 1) { /* a box of tax forms, taped */
+        m = partg(nd, t3_box_geometry_new(0.8f, 0.55f, 0.6f, 1, 1, 1), phys(0xc8b088, 0.95f, 0.0f), 0, 0.28f, 0, 1, 1, 1);
+        partg(nd, t3_box_geometry_new(0.82f, 0.08f, 0.62f, 1, 1, 1), phys(0xc0302a, 0.9f, 0.0f), 0, 0.3f, 0, 1, 1, 1);
+        partg(nd, t3_box_geometry_new(0.6f, 0.06f, 0.45f, 1, 1, 1), phys(0xeeeae0, 0.95f, 0.0f), 0, 0.58f, 0, 1, 1, 1); /* forms spilling over the top */
+      } else if (sk == SH_FALL) { /* a lava rock: dark crust, molten cracks */
+        t3_material *rock = phys(0x2a1a14, 0.9f, 0.0f);
+        rock->emissive = (t3_color){ 1.0f, 0.35f, 0.08f }, rock->emissive_intensity = 0.7f;
+        m = partg(nd, t3_dodecahedron_geometry_new(0.45f, 0), rock, 0, 0.42f, 0, 1, 0.85f, 1);
+      } else if (sk == SH_ROLL && kind == 2) { /* a life ring, red and white, rolling on its rim */
+        m = partg(nd, t3_torus_geometry_new(0.36f, 0.12f, 8, 22, 6.2831853f), phys(0xd83a2e, 0.55f, 0.0f), 0, 0.48f, 0, 1, 1, 1);
+      } else if (sk == SH_ROLL) { /* a water cooler bottle on its side */
+        t3_material *glass = phys(0x6aa8e0, 0.12f, 0.0f);
+        m = partg(nd, t3_cylinder_geometry_new(0.3f, 0.3f, 0.8f, 14, 1, false), glass, 0, 0.3f, 0, 1, 1, 1);
+        t3_object_set_rotation(m, 1.5707963f, 0, 0);
+      } else if (sk == SH_ARC && kind == 0) { /* a final notice: an envelope with a red stamp */
+        m = partg(nd, t3_box_geometry_new(0.5f, 0.04f, 0.32f, 1, 1, 1), phys(0xf0ece0, 0.95f, 0.0f), 0, 0, 0, 1, 1, 1);
+        partg(nd, t3_box_geometry_new(0.2f, 0.05f, 0.12f, 1, 1, 1), phys(0xc0302a, 0.9f, 0.0f), 0.1f, 0.01f, 0.05f, 1, 1, 1);
+      } else if (sk == SH_ARC) { /* a coffee mug */
+        m = partg(nd, t3_cylinder_geometry_new(0.13f, 0.12f, 0.24f, 12, 1, false), phys(0xf2f2ee, 0.4f, 0.0f), 0, 0, 0, 1, 1, 1);
+        partg(nd, t3_torus_geometry_new(0.07f, 0.022f, 6, 12, 6.2831853f), phys(0xf2f2ee, 0.4f, 0.0f), 0.15f, 0, 0, 1, 1, 1);
+      }
+      g_shot_spin[n][sk] = m;
+    }
+  }
+  /* stars round a dazed boss's head */
+  g_daze_node = make_node("Node3D", world, "Daze");
+  cw_node_set(g_daze_node, "visible", cw_val_bool(false));
+  t3_material *star = phys(0xffe070, 0.4f, 0.0f);
+  star->emissive = (t3_color){ 1.0f, 0.85f, 0.3f }, star->emissive_intensity = 1.2f;
+  for (int k = 0; k < 3; k++) partg(g_daze_node, t3_octahedron_geometry_new(0.11f, 0), star, 0.5f * sinf(2.094f * (float)k), 0, 0.5f * cosf(2.094f * (float)k), 1, 1, 1);
+}
+static void boss_shots_show(const game *g, float t) {
+  static bool was_alive[MAX_BSHOTS];
+  static int was_land[MAX_BSHOTS];
+  for (int n = 0; n < MAX_BSHOTS; n++) {
+    const bshot *s = &g->shots[n];
+    /* a wave thrown up, a fall landing: dirt flies (the pads feel it: sim_rumble_at) */
+    if (s->alive && !was_alive[n] && s->kind == SH_WAVE) burst(S.fx_debris, s->x, s->floor + 0.3f, 0);
+    if (s->alive && s->kind == SH_FALL && s->land_t >= 0 && (!was_alive[n] || was_land[n] < 0)) burst(S.fx_debris, s->x, s->floor + 0.3f, 0);
+    was_alive[n] = s->alive, was_land[n] = s->alive ? s->land_t : -1;
+    for (int sk = 0; sk < 4; sk++) {
+      cw_node nd = g_shot_node[n][sk];
+      if (!nd.id) continue;
+      bool on = s->alive && s->kind == sk && s->t >= 0 && !(sk == SH_FALL && s->t < sim_fall_warn());
+      cw_node_set(nd, "visible", cw_val_bool(on));
+      if (!on) continue;
+      float y = s->y, sq = 1;
+      if (sk == SH_WAVE) sq = 1.0f - (float)s->t / 60.0f; /* the ridge settles as it runs out */
+      cw_node3d_set_position(nd, (t3_vec3){ s->x, y, 0 });
+      cw_node3d_set_scale(nd, (t3_vec3){ 1, sk == SH_WAVE ? fmaxf(0.2f, sq) : 1, 1 });
+      t3_mesh *m = g_shot_spin[n][sk];
+      if (!m) continue;
+      if (sk == SH_ROLL) cw_node3d_set_rotation(nd, (t3_vec3){ 0, 0, -s->x / 0.48f });
+      else if (sk == SH_ARC) cw_node3d_set_rotation(nd, (t3_vec3){ t * 7.0f, 0, t * 5.0f });
+      else if (sk == SH_FALL && s->land_t < 0) cw_node3d_set_rotation(nd, (t3_vec3){ 0, (float)s->t * 0.05f, 0 });
+    }
+  }
+}
 static void coin_face_check(void);
 static void sync_scene(float alpha, float dt) {
   game *g = &G;
@@ -1261,6 +1419,21 @@ static void sync_scene(float alpha, float dt) {
         if (!e->alive) continue;
         blob_add(g, e->x, e->y, 0, e->kind == 2 ? 1.6f * boss_scale(L->boss_kind) : e->kind == 1 ? 0.8f : 0.95f, false);
       }
+      /* a boss's falling things shade their spot first, darker and wider as they come; a lobbed thing's shadow waits where
+       * it will land; what rolls and runs along the floor has its own */
+      if (!g_boss_old)
+        for (int n = 0; n < MAX_BSHOTS; n++) {
+          const bshot *s = &g->shots[n];
+          if (!s->alive || s->t < 0) continue;
+          if (s->kind == SH_FALL && s->land_t < 0) {
+            float u = fminf(1.0f, (float)s->t / (float)(sim_fall_warn() + 20));
+            blob_add(g, s->x, s->floor + 0.02f, 0, 0.7f + 1.0f * u, false);
+          } else if (s->kind == SH_ARC) {
+            float h = s->y - s->floor, tl = (s->vy + sqrtf(fmaxf(0.0f, s->vy * s->vy + 36.0f * h))) / 18.0f;
+            float lx = s->x + s->vx * tl, u = fminf(1.0f, (float)s->t / 40.0f);
+            blob_add(g, lx, s->floor + 0.02f, 0, 0.6f + 0.6f * u, false);
+          } else if (s->kind == SH_ROLL) blob_add(g, s->x, s->floor + 0.02f, 0, 0.9f, true);
+        }
     }
     cw_splats_end(S.blobs);
   }
@@ -1330,7 +1503,8 @@ static void sync_scene(float alpha, float dt) {
     float esq = 1.0f; /* the walker pose's squash: the new kinds use it */
     if (e->kind >= EK_HOPPER) enemy_look(i, e, dt, &esq);
     /* hurt: a glow that swells and fades, never a blink. Hits in a row hold it up instead of restarting it */
-    { float want = e->hurt > 0 ? fminf(1.0f, (float)e->hurt / 16.0f) : 0.0f;
+    { int hv = e->kind == EK_BOSS && !g_boss_old ? e->hurt - 35 : e->hurt; /* a boss shakes a stomp off for 75 ticks: the glow is the first 40's, as before */
+      float want = hv > 0 ? fminf(1.0f, (float)hv / 16.0f) : 0.0f;
       S.eflash[i] += (want - S.eflash[i]) * (1.0f - expf(-(want > S.eflash[i] ? 14.0f : 5.0f) * dt)); }
     float flash = 0.6f * S.eflash[i];
     S.ephase[i] += dt * (e->kind == 1 ? 16.0f : 11.0f);
@@ -1338,7 +1512,28 @@ static void sync_scene(float alpha, float dt) {
     else if (e->kind == 1) rig_pose_flyer(S.erig[i], S.ephase[i], S.time);
     else {
       rig_pose_boss(S.erig[i], S.time, 1.0f - (float)e->hp / 9.0f);
-      rig_glow(S.erig[i], 1.0f + 0.4f * sinf(S.time * 4) + (1.0f - (float)e->hp / 9.0f));
+      /* its next attack, shown: the pose builds through the tell and the core's glow swells with it (eased, never a blink) */
+      const boss_ai *bz = &g->bz;
+      float tell = 0, squash = 0;
+      if (!g_boss_old && bz->atk != BA_NONE) {
+        int T = bz->atk == BA_LEAP ? 40 : bz->atk == BA_RAIN ? 45 : bz->atk == BA_CHARGE ? 38 : bz->atk == BA_ROLL ? 32 : 28;
+        if (g_boss_tell > 0) T = g_boss_tell;
+        tell = bz->t < T ? (float)bz->t / (float)T : fmaxf(0.0f, 1.0f - (float)(bz->t - T) / 10.0f);
+        if (bz->atk == BA_CHARGE && bz->t >= T) tell = 1.0f; /* leaning in all the way along */
+        rig_pose_boss_tell(S.erig[i], bz->atk, tell);
+        if (bz->atk == BA_LEAP && bz->t < T) squash = tell;
+      }
+      if (!g_boss_old && bz->daze > 0) rig_pose_boss_daze(S.erig[i], S.time);
+      cw_node3d_set_scale(S.enode[i], (t3_vec3){ 1.0f + 0.12f * squash, 1.0f - 0.16f * squash, 1.0f + 0.12f * squash });
+      rig_glow(S.erig[i], 1.0f + 0.4f * sinf(S.time * 4) + (1.0f - (float)e->hp / 9.0f) + 1.6f * tell);
+      if (g_daze_node.id) {
+        bool dz = !g_boss_old && bz->daze > 0;
+        cw_node_set(g_daze_node, "visible", cw_val_bool(dz));
+        if (dz) {
+          cw_node3d_set_position(g_daze_node, (t3_vec3){ e->x, e->y + 1.85f * boss_scale(L->boss_kind), 0 });
+          cw_node3d_set_rotation(g_daze_node, (t3_vec3){ 0, S.time * 4.0f, 0 });
+        }
+      }
       if (!g_attract) { /* no arm in a wall: every pose drawn, measured against the rock at the shoulder's height and the hand's */
         float reach[2];
         rig_boss_reach(S.erig[i], S.eyaw[i], boss_scale(L->boss_kind), &reach[0], &reach[1]);
@@ -1359,6 +1554,7 @@ static void sync_scene(float alpha, float dt) {
     }
     rig_flash(S.erig[i], flash);
   }
+  if (!g_boss_old && g->L.boss_x > 0) boss_shots_show(g, S.time);
   /* the nearest few light sources to the camera */
   int pick[NTORCH], np = 0;
   for (int k = 0; k < S.nlight_src && np < 64; k++) {
@@ -1477,6 +1673,8 @@ static void start_match(int players, void *user) {
   g_boss_clip_bug = getenv("COOP_BOSSCLIP_BUG") != NULL; /* the clip gate's control (native only) */
   g_words_bug = getenv("COOP_WORDS_BUG") != NULL; /* the words gate's control (native only) */
   g_label_bug = getenv("COOP_LABEL_BUG") != NULL; /* the label gate's control (native only) */
+  g_boss_old = getenv("COOP_BOSS_OLD") != NULL; /* the boss rules gate's control: the one boss's walk and hop */
+  { const char *t = getenv("COOP_BOSS_TELL"); g_boss_tell = t ? atoi(t) : 0; } /* the dodge gate's control: tells this short */
   g_bot_no_boss = getenv("COOP_BOT_NO_BOSS") != NULL; /* the arena gate: the bots stay at the end wall */
   g_cam_nofloor = getenv("COOP_PIT_CAM_BUG") != NULL; /* the pit camera gate's control (native only) */
   if (sv->abilities && !getenv("COOP_FRESH")) G.abilities |= sv->abilities;
@@ -1882,23 +2080,27 @@ static uint32_t shell_sum(const uint8_t *b, size_t n) {
   for (size_t i = 16; i < n; i++) h = (h ^ b[i]) * 16777619u;
   return h;
 }
+/* (version 5, before the wardrobe, is carried forward the same way: its data is save_t up to `bought`) */
 static bool save_migrate_v4(void) {
   uint8_t *b = cw_shell_save_region();
   size_t n = cw_shell_save_region_size();
-  const size_t v4_size = offsetof(save_t, medals), game_at = 32;
+  const size_t v4_size = offsetof(save_t, medals), v5_size = offsetof(save_t, bought), game_at = 32;
   if (n != game_at + CW_SHELL_GAME_SAVE_MAX) return false; /* not the shell layout this was written for */
   uint32_t magic, size, sum;
   uint16_t ver, gver;
   memcpy(&magic, b, 4), memcpy(&ver, b + 4, 2), memcpy(&gver, b + 6, 2), memcpy(&size, b + 8, 4), memcpy(&sum, b + 12, 4);
-  if (magic != 0x4c485357u || ver != 1 || gver != 4 || size != v4_size || sum != shell_sum(b, n)) return false;
-  memset(b + game_at + v4_size, 0, sizeof(save_t) - v4_size); /* no big coins yet */
-  gver = 5, size = (uint32_t)sizeof(save_t);
+  if (magic != 0x4c485357u || ver != 1 || sum != shell_sum(b, n)) return false;
+  size_t old = gver == 4 && size == v4_size ? v4_size : gver == 5 && size == v5_size ? v5_size : 0;
+  if (!old) return false;
+  memset(b + game_at + old, 0, sizeof(save_t) - old); /* no big coins (version 4), nothing bought, everyone as before */
+  gver = 6, size = (uint32_t)sizeof(save_t);
   memcpy(b + 6, &gver, 2), memcpy(b + 8, &size, 4);
   sum = shell_sum(b, n);
   memcpy(b + 12, &sum, 4);
   return true;
 }
 
+static void cmd_wardrobe(int argc, const char **argv, cw_reply *r);
 static void init(void *user) {
   (void)user;
   /* touch: a stick and three buttons, made before the bindings that name them (ids 0 to 3, in this order) */
@@ -1920,10 +2122,10 @@ static void init(void *user) {
       fclose(fp);
       cw_info("coopplatformer: save fixture %s, %zu bytes", fx, got);
     }
-    if (!getenv("COOP_SAVE_NO_MIGRATE") && save_migrate_v4()) g_migrate_dbg[0] = 1, cw_info("coopplatformer: a version 4 save carried forward");
+    if (!getenv("COOP_SAVE_NO_MIGRATE") && save_migrate_v4()) g_migrate_dbg[0] = 1, cw_info("coopplatformer: an older save carried forward");
   }
   cw_shell_init(&(cw_shell_desc){ .title = "Co-op Platformer", .subtitle = "one to four players", .max_players = 4,
-                                  .game_save_size = sizeof(save_t), .game_save_version = 5, .start = start_match,
+                                  .game_save_size = sizeof(save_t), .game_save_version = 6, .start = start_match,
                                   .quit = quit_match, .sound = sound_hook, .draw_background = title_background });
   g_font = cw_ui_font_sans();
   audio_init();
@@ -1989,6 +2191,9 @@ static void init(void *user) {
   cw_debug_field("g.signmove", g_signmove_dbg, CW_DBG_I32, 2);
   cw_debug_field("g.labelmove", g_labelmove_dbg, CW_DBG_I32, 2);
   cw_debug_field("g.bossgate", g_boss_dbg, CW_DBG_I32, 4);
+  cw_debug_field("g.bossatk", G.boss_stats, CW_DBG_I32, 5);
+  cw_debug_field("g.wardrobe", g_wd_dbg, CW_DBG_I32, 8); /* open, coins to spend, spent, items bought (bits), seat 0 hat and scarf, seat 1 hat and scarf */
+  cw_debug_command("wardrobe", "wardrobe open | wardrobe coins <n> | wardrobe <seat> <dir -1|0|1> <take 0|1>: the wardrobe on the results card, as the pads drive it", cmd_wardrobe); /* this level's boss: attacks begun, players hit by them, dodges, phase reached (0, 1), dazes */
   cw_debug_field("g.surface", g_surface_dbg, CW_DBG_I32, 3);
   cw_debug_f32_array("g.jump", G.last_jump, 3); /* the last jump to land: distance, rise, speed at takeoff */
   cw_debug_f32("g.top_speed", &G.top_speed);
@@ -2227,8 +2432,11 @@ static void fixed_update(void *user, double dt) {
 #ifndef COOP_AUTOPILOT
     for (int i = 0; i < G.nplayers; i++) if (INPUT[i].jump_pressed) skip = true;
 #endif
-    if (G.tick - G.win_tick > 480 || (skip && G.tick - G.win_tick > 90)) next_level();
-  }
+    wd_input();
+    /* the wardrobe holds the card up while anyone uses it (20 s with nobody touching it closes it) */
+    if (g_wd_open) { if (skip || ++g_wd_idle > 1200) { g_wd_open = false; next_level(); } }
+    else if (G.tick - G.win_tick > 480 || (skip && G.tick - G.win_tick > 90)) next_level();
+  } else g_wd_open = false;
 }
 
 /* ── music: one track per world, a boss has its own, the title its own. Modules loop on their own with no seam ── */
@@ -2614,16 +2822,94 @@ static void gore_death(int who, int cause, float x, float y) {
   if (big) g_gore_dbg[1]++;
 }
 /* whatever is the newest, on everybody: each player in a different one of the set */
-static void hats_apply(void) {
+/* ── the wardrobe: what the coins are for. Between levels (the results card, {grab}) each player looks through the hats
+ * and the scarf colours, buys with the coins everyone has picked up so far, and wears what they like. Bought is
+ * everyone's; what is worn is each seat's own. The hats issued for finding every secret are in it already ── */
+static const char *const HAT_NAMES[6] = { "A TRAFFIC CONE", "A BUCKET", "A SMALLER BUCKET", "A VERY GOOD HAT", "A POT", "THE LANDLORD'S HAT" };
+static const char *const SCARF_NAMES[6] = { "A GOLD SCARF", "A WHITE SCARF", "A PINK SCARF", "A SKY BLUE SCARF", "A MOSS SCARF", "A PLUM SCARF" };
+static const float SCARF_RGB[6][3] = { { 1.0f, 0.85f, 0.25f }, { 0.95f, 0.95f, 0.95f }, { 1.0f, 0.45f, 0.65f }, { 0.3f, 0.8f, 0.95f }, { 0.45f, 0.72f, 0.25f }, { 0.62f, 0.38f, 0.85f } };
+static const int WD_PRICE[12] = { 40, 30, 25, 60, 35, 150, 20, 20, 20, 20, 20, 20 };
+enum { WD_ITEMS = 12 };
+static int wd_coins(void) {
+  const save_t *sv = cw_shell_game_save();
+  return sv->total_coins + (G.won ? G.coins_total : 0) - sv->spent; /* this level's coins join the rest when it ends */
+}
+static bool wd_owned(int seat, int k) {
+  const save_t *sv = cw_shell_game_save();
+  if (sv->bought >> k & 1) return true;
+  return k < 6 ? k < sv->hats : k - 6 == seat; /* hats issued for secrets, in order; each seat's own scarf colour */
+}
+/* the hat a seat wears (-1 none): its own pick, else the old rule (one of the issued ones, a different one per seat) */
+static int seat_hat(int seat) {
   const save_t *sv = cw_shell_game_save();
   int n = sv->hats > 6 ? 6 : sv->hats;
-  if (getenv("COOP_TEST_HATS")) n = atoi(getenv("COOP_TEST_HATS")); /* a look at them without earning them */
-  for (int i = 0; i < MAX_PLAYERS; i++)
+  if (getenv("COOP_TEST_HATS")) return (n = atoi(getenv("COOP_TEST_HATS"))) > 0 ? (n - 1 + seat * 2) % n : -1; /* a look at them without earning them */
+  int w = sv->wear_hat[seat & 3];
+  if (w == 7) return -1;
+  if (w > 0 && w <= 6) return w - 1;
+  return n > 0 ? (n - 1 + seat * 2) % n : -1;
+}
+static const float *seat_scarf(int seat) {
+  const save_t *sv = cw_shell_game_save();
+  int w = sv->wear_scarf[seat & 3];
+  return SCARF_RGB[w > 0 && w <= 6 ? w - 1 : seat & 3];
+}
+static void hats_apply(void) {
+  for (int i = 0; i < MAX_PLAYERS; i++) {
+    int on = seat_hat(i);
     for (int h = 0; h < 6; h++) {
-      bool on = n > 0 && h == (n - 1 + i * 2) % n;
-      if (S.hat[i][h][0]) S.hat[i][h][0]->base.visible = on;
-      if (S.hat[i][h][1]) S.hat[i][h][1]->base.visible = on;
+      if (S.hat[i][h][0]) S.hat[i][h][0]->base.visible = h == on;
+      if (S.hat[i][h][1]) S.hat[i][h][1]->base.visible = h == on;
     }
+  }
+}
+static void wd_dbg(void) {
+  const save_t *sv = cw_shell_game_save();
+  g_wd_dbg[0] = g_wd_open, g_wd_dbg[1] = wd_coins(), g_wd_dbg[2] = sv->spent, g_wd_dbg[3] = (int)sv->bought;
+  g_wd_dbg[4] = seat_hat(0), g_wd_dbg[5] = sv->wear_scarf[0], g_wd_dbg[6] = seat_hat(1), g_wd_dbg[7] = sv->wear_scarf[1];
+}
+/* a seat looks along the rail (dir) or takes what it is looking at (take): buys it if it can, then wears it (a hat it
+ * already wears comes off) */
+static void wd_act(int seat, int dir, bool take) {
+  save_t *sv = cw_shell_game_save();
+  if (seat < 0 || seat >= MAX_PLAYERS) return;
+  g_wd_idle = 0;
+  if (dir) g_wd_sel[seat] = (g_wd_sel[seat] + dir + WD_ITEMS) % WD_ITEMS, g_wd_msg[seat] = 0;
+  if (!take) { wd_dbg(); return; }
+  int k = g_wd_sel[seat];
+  if (!wd_owned(seat, k)) {
+    if (wd_coins() < WD_PRICE[k]) { g_wd_msg[seat] = 90, g_wd_said[seat] = 0; wd_dbg(); return; }
+    sv->bought |= 1u << k, sv->spent += WD_PRICE[k];
+    g_wd_msg[seat] = 90, g_wd_said[seat] = 1;
+    if (A.on) cw_audio_play(A.sfx[SFX_POWER], &(cw_play_desc){ .volume = 0.8f });
+  } else g_wd_msg[seat] = 0;
+  if (k < 6) sv->wear_hat[seat] = seat_hat(seat) == k ? 7 : (int8_t)(k + 1);
+  else sv->wear_scarf[seat] = (int8_t)(k - 6 + 1);
+  if (S.prig[seat]) rig_tint(S.prig[seat], PLAYER_RGB[seat], seat_scarf(seat), seat);
+  hats_apply();
+  cw_shell_save_commit();
+  wd_dbg();
+}
+/* the card's and the wardrobe's input, every tick of the card */
+static void wd_input(void) {
+#ifndef COOP_AUTOPILOT
+  for (int i = 0; i < G.nplayers; i++) {
+    const input_state *in = &INPUT[i];
+    int dir = in->x > 0.6f && g_wd_px[i] <= 0.6f ? 1 : in->x < -0.6f && g_wd_px[i] >= -0.6f ? -1 : 0;
+    g_wd_px[i] = in->x;
+    if (in->grab_pressed && !g_wd_open && G.tick - G.win_tick > 60) { g_wd_open = true, g_wd_idle = 0; continue; }
+    if (g_wd_open && (dir || in->grab_pressed)) wd_act(i, dir, in->grab_pressed);
+  }
+#endif
+  for (int i = 0; i < MAX_PLAYERS; i++) if (g_wd_msg[i] > 0) g_wd_msg[i]--;
+  wd_dbg();
+}
+static void cmd_wardrobe(int argc, const char **argv, cw_reply *r) {
+  if (argc >= 2 && !strcmp(argv[1], "open")) { if (G.won) g_wd_open = true, g_wd_idle = 0; }
+  else if (argc >= 3 && !strcmp(argv[1], "coins")) { save_t *sv = cw_shell_game_save(); sv->total_coins += atoi(argv[2]); } /* tests: coins picked up before */
+  else if (argc >= 4 && g_wd_open) wd_act(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]) != 0);
+  wd_dbg();
+  cw_reply_printf(r, "{\"open\":%d,\"coins\":%d,\"spent\":%d,\"bought\":%d}", g_wd_dbg[0], g_wd_dbg[1], g_wd_dbg[2], g_wd_dbg[3]);
 }
 static void grief_gag(int who, int victim) {
   if (victim < 0) { /* a throw: the one in the air has the last word */
@@ -2637,7 +2923,6 @@ static void grief_gag(int who, int victim) {
 
 /* on to the next level, or at the end of the last, back to the title */
 /* every secret coin of a level found: a hat is issued. Nobody asked */
-static const char *const HAT_NAMES[6] = { "A TRAFFIC CONE", "A BUCKET", "A SMALLER BUCKET", "A VERY GOOD HAT", "A POT", "THE LANDLORD'S HAT" };
 static int hat_new_t;
 static void hat_award(void) {
   save_t *sv = cw_shell_game_save();
@@ -2783,7 +3068,7 @@ static void heart(cw_vec2 c, float r, cw_color col) {
 }
 /* a player's face with its headgear: ears, an antenna, a sprout or horns (the marker that is not a colour) */
 static void portrait(cw_vec2 c, float r, int i, bool dim) {
-  cw_color fur = rgba3(PLAYER_RGB[i], dim ? 0.45f : 1), acc = i == 0 ? cw_rgba(1, 0.85f, 0.25f, 1) : i == 1 ? cw_rgba(0.95f, 0.95f, 0.95f, 1) : i == 2 ? cw_rgba(1, 0.45f, 0.65f, 1) : cw_rgba(0.3f, 0.8f, 0.95f, 1);
+  cw_color fur = rgba3(PLAYER_RGB[i], dim ? 0.45f : 1), acc = rgba3(seat_scarf(i), 1); /* its scarf colour, the wardrobe's if it wears one */
   if (dim) acc.a = 0.5f;
   if (i == 1) { /* antenna */
     cw_r2d_line((cw_vec2){ c.x, c.y - r * 0.8f }, (cw_vec2){ c.x, c.y - r * 1.5f }, r * 0.12f, acc);
@@ -2807,6 +3092,42 @@ static void portrait(cw_vec2 c, float r, int i, bool dim) {
   cw_r2d_circle((cw_vec2){ c.x + r * 0.35f, c.y - r * 0.1f }, r * 0.22f, 8, cw_rgba(1, 1, 1, 1));
   cw_r2d_circle((cw_vec2){ c.x - r * 0.3f, c.y - r * 0.08f }, r * 0.1f, 6, cw_rgba(0.05f, 0.05f, 0.1f, 1));
   cw_r2d_circle((cw_vec2){ c.x + r * 0.3f, c.y - r * 0.08f }, r * 0.1f, 6, cw_rgba(0.05f, 0.05f, 0.1f, 1));
+}
+/* the wardrobe over the results card: a column per player (its face in its scarf colour, what it is looking at, what that
+ * costs or that it is wearing it), the coins everyone has to spend, the buttons along the foot */
+static void coin_icon(cw_vec2 c, float r);
+static void wardrobe_draw(float W, float H, float s, float top, float h) {
+  panel(0, top, W, h, 0, cw_rgba(0.08f, 0.06f, 0.1f, 1), cw_rgba(0.02f, 0.02f, 0.04f, 1), cw_rgba(1, 0.8f, 0.3f, 0.7f));
+  float y = top + 10 * s;
+  text("THE WARDROBE", 0, y, 34 * s, cw_rgba(1, 0.85f, 0.3f, 1), CW_ALIGN_CENTER, W);
+  y += cw_font_measure(g_font, "M", &(cw_text_style){ .size = 34 * s }).height + 4 * s;
+  char ln[96];
+  snprintf(ln, sizeof ln, "coins to spend: %d", wd_coins());
+  text(ln, 0, y, 20 * s, cw_rgba(1, 0.95f, 0.75f, 1), CW_ALIGN_CENTER, W);
+  y += cw_font_measure(g_font, "M", &(cw_text_style){ .size = 20 * s }).height + 22 * s;
+  const char *foot = "{left|right} look     {grab} buy or wear     {jump} next level";
+  float foot_h = cw_prompt_text_size(g_font, foot, -1, 16 * s).y;
+  const int n = G.nplayers > 0 ? G.nplayers : 1;
+  const float col = fminf(230 * s, W * 0.94f / (float)n);
+  for (int i = 0; i < G.nplayers; i++) {
+    float cx = W * 0.5f + ((float)i - (float)(n - 1) * 0.5f) * col, yy = y;
+    portrait((cw_vec2){ cx, yy }, 18 * s, i, false);
+    yy += 26 * s;
+    int k = g_wd_sel[i];
+    const char *name = k < 6 ? HAT_NAMES[k] : SCARF_NAMES[k - 6];
+    text(name, cx - col * 0.48f, yy, 16 * s, rgba3(PLAYER_RGB[i], 1), CW_ALIGN_CENTER, col * 0.96f);
+    yy += cw_font_measure(g_font, name, &(cw_text_style){ .size = 16 * s, .wrap_width = col * 0.96f }).height + 2 * s;
+    bool wearing = k < 6 ? seat_hat(i) == k : seat_scarf(i) == SCARF_RGB[k - 6];
+    if (g_wd_msg[i] > 0) snprintf(ln, sizeof ln, g_wd_said[i] ? "bought it" : "not enough coins");
+    else if (wearing) snprintf(ln, sizeof ln, k < 6 ? "wearing it ({grab} take it off)" : "wearing it");
+    else if (wd_owned(i, k)) snprintf(ln, sizeof ln, "yours: {grab} wear it");
+    else snprintf(ln, sizeof ln, "%d coins: {grab} buy it", WD_PRICE[k]);
+    ptext(ln, cx - col * 0.48f, yy, 14 * s, wd_coins() < WD_PRICE[k] && !wd_owned(i, k) && g_wd_msg[i] == 0 ? cw_rgba(0.7f, 0.7f, 0.75f, 1) : cw_rgba(0.95f, 0.95f, 0.98f, 1), CW_ALIGN_CENTER, col * 0.96f);
+    yy += cw_prompt_text_size(g_font, ln, -1, 14 * s).y + 2 * s;
+    snprintf(ln, sizeof ln, "%d of %d", k + 1, WD_ITEMS);
+    text(ln, cx - col * 0.48f, yy, 13 * s, cw_rgba(0.75f, 0.75f, 0.8f, 1), CW_ALIGN_CENTER, col * 0.96f);
+  }
+  ptext(foot, 0, top + h - foot_h - 8 * s, 16 * s, cw_rgba(1, 0.92f, 0.7f, 1), CW_ALIGN_CENTER, W);
 }
 static void coin_icon(cw_vec2 c, float r) {
   cw_r2d_circle(c, r, 14, cw_rgba(0.75f, 0.5f, 0.1f, 1));
@@ -3570,7 +3891,11 @@ static void render(void *user, double alpha) {
       const float aw_h = awards[0] ? cw_font_measure(g_font, awards, &(cw_text_style){ .size = aw_size, .wrap_width = W * 0.9f }).height : 0;
       const float tally_h = g_tally_off ? 0 : 22 * s + 4 * tl_line + (awards[0] ? 8 * s + aw_h : 0);
       (void)aw_line;
-      float card_h = g_card_bug ? H * 0.42f : row_y[5] + H * 0.035f + tally_h;
+      /* the wardrobe's line along the card's foot */
+      char wdl[128];
+      snprintf(wdl, sizeof wdl, "{grab} the wardrobe: %d coins to spend     {jump} next level", wd_coins());
+      const float wd_h = g_card_bug ? 0 : cw_prompt_text_size(g_font, wdl, -1, 16 * s).y + 10 * s;
+      float card_h = g_card_bug ? H * 0.42f : row_y[5] + H * 0.035f + tally_h + wd_h;
       if (card_top + card_h > H - 4 * s) card_top = fmaxf(g_hud_bot + 4 * s, H - 4 * s - card_h); /* never over the player panels */
       for (int r = 0; r < 6; r++) row_y[r] += card_top;
       panel(0, card_top, W, card_h * k, 0, cw_rgba(0.1f, 0.08f, 0.02f, card_a), cw_rgba(0.02f, 0.02f, 0.03f, card_a), cw_rgba(1, 0.8f, 0.3f, 0.7f));
@@ -3609,6 +3934,8 @@ static void render(void *user, double alpha) {
           g_tally_dbg[0]++;
         }
         if (!g_tally_off && awards[0]) text(awards, W * 0.05f, row_y[5] + 22 * s + 4 * tl_line + 8 * s, aw_size, cw_rgba(1, 0.85f, 0.4f, 1), CW_ALIGN_CENTER, W * 0.9f), g_tally_dbg[1]++;
+        if (wd_h > 0) ptext(wdl, 0, card_top + card_h - wd_h + 2 * s, 16 * s, cw_rgba(1, 0.92f, 0.7f, 1), CW_ALIGN_CENTER, W);
+        if (g_wd_open) wardrobe_draw(W, H, s, card_top, card_h);
       }
     }
     if (g_map_open) { draw_map(W, H); g_map_seen_dbg = 1; }

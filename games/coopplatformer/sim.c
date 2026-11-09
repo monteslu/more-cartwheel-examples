@@ -75,6 +75,8 @@ void sim_reset(game *g, int players) {
   g->events = 0;
   g->boss_hp = 0;
   for (int k = 0; k < g->L.nenemies; k++) if (g->L.enemies[k].kind == 2) g->L.enemies[k].hp = 5 + g->L.boss_kind, g->boss_hp = g->L.enemies[k].hp;
+  memset(&g->bz, 0, sizeof g->bz), memset(g->shots, 0, sizeof g->shots), memset(g->boss_stats, 0, sizeof g->boss_stats);
+  g->bz.cd = 50; /* its first attack a moment after it wakes */
   memset(g->betrayals, 0, sizeof g->betrayals);
   g->things_hit = 0;
   g->fake_t = 0, g->mimic_bites = 0;
@@ -240,11 +242,245 @@ static void new_enemy_step(game *g, enemy *e, float dt) {
   }
 }
 
+/* ── the bosses: five fights, not one ─────────────────────────────────────────────────────────────────────────────────
+ * Each boss chases the nearest player and, every few seconds, stops to show what it is about to do (the tell: the stop is
+ * also the moment to jump on its head, and a stomp in the tell calls the attack off), then does it:
+ *   LEAP   it crouches, leaps at you and lands with a wave along the floor both ways (jump the wave)
+ *   RAIN   it raises its arms; things fall from above on spots shaded on the floor first (step out of the shade)
+ *   CHARGE it paws the floor, then runs flat out until a wall stops it, and stands dazed there (jump it, then stomp it)
+ *   ROLL   it sets something rolling along the floor at you; it comes back once off the far wall (jump it)
+ *   THROW  it winds up and lobs something at where you stand; its shadow grows where it will land (move)
+ * Each boss has its own list, and a longer one from half its health down (the second phase, quicker too). */
+bool g_boss_old;
+int g_boss_tell;
+static const int8_t BOSS_MENU[5][2][3] = {
+  { { BA_LEAP }, { BA_LEAP, BA_THROW } },                       /* the Landlord: comes down on you; then lobs final notices too */
+  { { BA_RAIN }, { BA_RAIN, BA_LEAP } },                        /* the Tax Golem: forms rain from the roof; then he stamps as well */
+  { { BA_CHARGE }, { BA_CHARGE, BA_ROLL } },                    /* the Lifeguard: charges into the wall; then rolls rings at you */
+  { { BA_ROLL }, { BA_ROLL, BA_THROW } },                       /* the Regional Manager: rolls water cooler bottles; then mugs */
+  { { BA_RAIN, BA_CHARGE }, { BA_RAIN, BA_CHARGE, BA_LEAP } },  /* the Founder: lava rocks and charges; then all of it */
+};
+static const int BOSS_TELL[BA_KINDS] = { 0, 40, 45, 38, 32, 28 };
+static int boss_tell(int a) { return g_boss_tell > 0 ? g_boss_tell : BOSS_TELL[a]; }
+static int fall_warn(void) { return g_boss_tell > 0 ? g_boss_tell : 54; }
+int sim_fall_warn(void) { return fall_warn(); }
+bool sim_boss_uses(int kind, int atk) {
+  for (int ph = 0; ph < 2; ph++) for (int m = 0; m < 3; m++) if (BOSS_MENU[kind % 5][ph][m] == atk) return true;
+  return false;
+}
+static bshot *shot_new(game *g, int kind, float x, float y, float vx, float vy, float floor_y, int t0) {
+  for (int i = 0; i < MAX_BSHOTS; i++)
+    if (!g->shots[i].alive) {
+      g->shots[i] = (bshot){ .alive = true, .kind = kind, .t = t0, .x = x, .y = y, .vx = vx, .vy = vy, .floor = floor_y, .land_t = -1 };
+      return &g->shots[i];
+    }
+  return NULL;
+}
+static void boss_end(game *g, int k) {
+  boss_ai *b = &g->bz;
+  b->atk = BA_NONE;
+  b->cd = b->phase ? 112 - 6 * k : 168 - 8 * k;
+}
+static bool boss_wall(const level *L, float x, float y) {
+  return world_solid(L, (int)floorf(x), (int)floorf(y + 0.3f)) || world_solid(L, (int)floorf(x), (int)floorf(y + 0.8f));
+}
+/* a stomp during the tell calls the attack off: hitting it when it stops is the reward for reading the tell */
+void sim_boss_stomped(game *g) {
+  boss_ai *b = &g->bz;
+  if (g_boss_old || b->atk == BA_NONE || b->t >= boss_tell(b->atk)) return;
+  b->atk = BA_NONE, b->cd = 70;
+}
+static void boss_step(game *g, enemy *e, float dt) {
+  const level *L = &g->L;
+  boss_ai *b = &g->bz;
+  int k = L->boss_kind, maxhp = 5 + k;
+  float half = boss_half(k), best = 1e9f, tx = 0;
+  int who = -1;
+  for (int i = 0; i < g->nplayers; i++) {
+    const player *p = &g->p[i];
+    if (!p->joined || !p->alive || p->bubble) continue;
+    float d = pos_x(p) - e->x;
+    if (d * d < best) best = d * d, tx = d, who = i;
+  }
+  bool awake = best <= 28 * 28; /* asleep until a player comes near */
+  int ph = e->hp * 2 <= maxhp ? 1 : 0;
+  if (ph > b->phase) { b->phase = ph, g->boss_stats[3] = ph; if (b->cd > 40) b->cd = 40; }
+  float sp = 0;
+  bool grounded = e->vy == 0;
+  if (b->daze > 0) b->daze--;
+  else if (b->atk == BA_NONE) {
+    if (awake) {
+      sp = (3.2f + 0.45f * (float)k) * (b->phase ? 1.25f : 1.0f);
+      if (who >= 0) e->dir = tx > 0 ? 1 : -1;
+      if (fabsf(tx) < 0.5f) sp = 0; /* under a player in the air: wait for it to come down */
+      if (--b->cd <= 0 && grounded) {
+        int n = 0;
+        while (n < 3 && BOSS_MENU[k][b->phase][n]) n++;
+        b->atk = BOSS_MENU[k][b->phase][b->n++ % n];
+        b->t = 0, b->dir = e->dir, b->floor = e->y, b->vx = 0;
+        b->tx = who >= 0 ? pos_x(&g->p[who]) : e->x;
+        g->boss_stats[0]++;
+      }
+    }
+  } else {
+    int T = boss_tell(b->atk);
+    b->t++;
+    switch (b->atk) {
+    case BA_LEAP:
+      if (b->t == T) {
+        e->vy = 13.0f + 0.4f * (float)k;
+        float d = (b->tx - e->x) / 0.9f;
+        b->vx = d > 9.0f ? 9.0f : d < -9.0f ? -9.0f : d;
+        grounded = false;
+      }
+      if (b->t > T) {
+        float nx = e->x + b->vx * dt;
+        if (!boss_wall(L, nx + (b->vx > 0 ? half : -half), e->y)) e->x = nx; else b->vx = 0;
+        if (grounded && b->t > T + 4) { /* down: the wave runs out both ways along the floor */
+          shot_new(g, SH_WAVE, e->x + half * 0.6f, e->y, 7.5f, 0, e->y, 0);
+          shot_new(g, SH_WAVE, e->x - half * 0.6f, e->y, -7.5f, 0, e->y, 0);
+          sim_rumble_at(g, e->x, e->y, 0.8f);
+          boss_end(g, k);
+        }
+      }
+      break;
+    case BA_RAIN:
+      if (b->t == T) { /* one over each player in the arena and more between them, never two on one spot */
+        float xs[8];
+        int n = 0, want = 3 + 2 * b->phase;
+        float lo = e->home_x - e->range + 1.0f, hi = e->home_x + e->range - 1.0f;
+        for (int i = 0; i < g->nplayers && n < want; i++) {
+          const player *p = &g->p[i];
+          if (!p->joined || !p->alive || p->bubble || pos_x(p) < lo || pos_x(p) > hi) continue;
+          xs[n++] = pos_x(p);
+        }
+        uint32_t h = (uint32_t)g->tick * 2654435761u ^ (uint32_t)k * 40503u;
+        for (int tries = 0; n < want && tries < 40; tries++) {
+          h ^= h >> 13, h *= 0x5bd1e995u, h ^= h >> 15;
+          float x = lo + (hi - lo) * (float)(h & 1023) / 1023.0f;
+          bool ok = true;
+          for (int j = 0; j < n; j++) if (fabsf(xs[j] - x) < 1.9f) ok = false;
+          if (ok) xs[n++] = x;
+        }
+        for (int j = 0; j < n; j++) shot_new(g, SH_FALL, xs[j], b->floor + 11.0f, 0, 0, b->floor, -10 * j);
+      }
+      if (b->t >= T + 20) boss_end(g, k);
+      break;
+    case BA_CHARGE:
+      if (b->t > T) {
+        e->dir = b->dir;
+        float nx = e->x + (float)b->dir * (9.5f + 0.6f * (float)k) * dt;
+        if (boss_wall(L, nx + (float)b->dir * half, e->y)) { /* into the wall: it stands there seeing stars */
+          b->daze = 96, g->boss_stats[4]++;
+          sim_rumble_at(g, e->x + (float)b->dir * half, e->y + 1.0f, 0.9f);
+          boss_end(g, k);
+        } else if (nx > e->home_x + e->range + 2.0f || nx < e->home_x - e->range - 2.0f || b->t > T + 150) { /* run out of room or breath: it stops, winded, a shorter daze */
+          b->daze = 64, g->boss_stats[4]++;
+          boss_end(g, k);
+        }
+        else e->x = nx;
+      }
+      break;
+    case BA_ROLL:
+      if (b->t == T) shot_new(g, SH_ROLL, e->x + (float)b->dir * (half + 0.3f), b->floor, (float)b->dir * (6.2f + 0.5f * (float)b->phase), 0, b->floor, 0);
+      if (b->t >= T + 14) boss_end(g, k);
+      break;
+    case BA_THROW:
+      if (b->t == T) {
+        float sx = e->x + (float)b->dir * 0.5f, sy = e->y + 2.6f, ft = 1.05f;
+        shot_new(g, SH_ARC, sx, sy, (b->tx - sx) / ft, (b->floor - sy) / ft + 9.0f * ft, b->floor, 0);
+      }
+      if (b->t >= T + 12) boss_end(g, k);
+      break;
+    default: boss_end(g, k);
+    }
+  }
+  if (sp > 0) {
+    float nx = e->x + (float)e->dir * sp * dt;
+    if (!boss_wall(L, nx + (float)e->dir * half, e->y) && nx <= e->home_x + e->range && nx >= e->home_x - e->range) e->x = nx;
+  }
+  e->vy -= 30.0f * dt;
+  float ny = e->y + e->vy * dt;
+  if (e->vy <= 0 && world_solid(L, (int)floorf(e->x), (int)floorf(ny - 0.01f))) {
+    ny = floorf(ny - 0.01f) + 1.0f;
+    if (e->vy < -6) sim_rumble_at(g, e->x, e->y, 0.5f);
+    e->vy = 0;
+  }
+  e->y = ny;
+}
+
+static void hurt_player(game *g, int i, float kx, int dmg, int cause);
+/* what the bosses threw: a wave, a fall, a roll, a lob. Jumping a wave or a roll, or standing clear of a fall, is a dodge */
+static void shots_step(game *g, float dt) {
+  const level *L = &g->L;
+  for (int n = 0; n < MAX_BSHOTS; n++) {
+    bshot *s = &g->shots[n];
+    if (!s->alive) continue;
+    s->t++;
+    if (s->t < 0) continue;
+    float sg = s->vx > 0 ? 1.0f : -1.0f;
+    switch (s->kind) {
+    case SH_WAVE:
+    case SH_ROLL: {
+      s->x += s->vx * dt;
+      if (boss_wall(L, s->x + sg * 0.45f, s->floor)) {
+        if (s->kind == SH_WAVE || ++s->bounces >= 2) { s->alive = false; continue; }
+        s->vx = -s->vx, sg = -sg;
+      }
+      if (s->kind == SH_WAVE && s->t > 54) { s->alive = false; continue; }
+      if (s->t > 420) { s->alive = false; continue; }
+      float reach = s->kind == SH_WAVE ? 0.45f : 0.55f, top = s->kind == SH_WAVE ? 0.4f : 0.8f;
+      for (int i = 0; i < g->nplayers; i++) {
+        const player *p = &g->p[i];
+        if (!p->joined || !p->alive || p->bubble) continue;
+        float dx = pos_x(p) - s->x, py = pos_y(p);
+        if (fabsf(dx) > reach + 0.15f || py > s->floor + 3.0f || py < s->floor - 0.5f) continue;
+        if (py < s->floor + top && fabsf(dx) < reach && p->invuln <= 0) { g->boss_stats[1]++; hurt_player(g, i, sg, 1, DIE_BOSS); }
+        else if (py >= s->floor + top && !(s->seen >> i & 1)) s->seen |= 1u << i, g->boss_stats[2]++;
+      }
+      break;
+    }
+    case SH_FALL:
+      if (s->land_t >= 0) { if (s->t > s->land_t + 26) s->alive = false; break; }
+      if (s->t < fall_warn()) break;
+      s->vy -= 30.0f * dt, s->y += s->vy * dt;
+      if (s->y <= s->floor) {
+        s->y = s->floor, s->land_t = s->t;
+        sim_rumble_at(g, s->x, s->floor, 0.45f);
+        for (int i = 0; i < g->nplayers; i++) {
+          const player *p = &g->p[i];
+          if (!p->joined || !p->alive || p->bubble) continue;
+          float dx = pos_x(p) - s->x, py = pos_y(p);
+          if (fabsf(dx) < 0.8f && py < s->floor + 1.8f && py > s->floor - 0.5f) { if (p->invuln <= 0) g->boss_stats[1]++; hurt_player(g, i, dx >= 0 ? 1.0f : -1.0f, 1, DIE_BOSS); }
+          else if (fabsf(dx) < 2.4f && fabsf(py - s->floor) < 2.0f) g->boss_stats[2]++;
+        }
+      }
+      break;
+    case SH_ARC:
+      s->x += s->vx * dt, s->vy -= 18.0f * dt, s->y += s->vy * dt;
+      for (int i = 0; i < g->nplayers; i++) {
+        const player *p = &g->p[i];
+        if (!p->joined || !p->alive || p->bubble) continue;
+        float dx = pos_x(p) - s->x, dy = pos_y(p) + 0.8f - s->y;
+        bool landed = s->y <= s->floor;
+        if ((fabsf(dx) < 0.45f && fabsf(dy) < 0.7f) || (landed && fabsf(dx) < 0.7f && pos_y(p) < s->floor + 1.5f && pos_y(p) > s->floor - 0.5f)) {
+          if (p->invuln <= 0) g->boss_stats[1]++;
+          hurt_player(g, i, dx >= 0 ? 1.0f : -1.0f, 1, DIE_BOSS);
+          s->alive = false;
+        }
+      }
+      if (s->alive && (s->y <= s->floor || boss_wall(L, s->x, s->y - 0.3f))) { s->alive = false; sim_rumble_at(g, s->x, s->floor, 0.25f); }
+      break;
+    }
+  }
+}
+
 static void enemy_step(game *g, enemy *e, float dt) {
   const level *L = &g->L;
   if (!e->alive) return;
   if (e->hurt > 0) e->hurt--;
   if (e->kind >= EK_HOPPER) { new_enemy_step(g, e, dt); return; }
+  if (e->kind == EK_BOSS && !g_boss_old) { boss_step(g, e, dt); return; }
   float half = e->kind == 2 ? (g_boss_clip_bug ? 1.0f : boss_half(L->boss_kind)) : 0.45f;
   float h = e->kind == 2 ? 2.0f : 0.9f;
   if (e->kind == 1) { /* flyer: a slow sine around its home */
@@ -956,6 +1192,7 @@ void sim_step(game *g, const input_state in[MAX_PLAYERS], float dt) {
     enemy *e = &L->enemies[k];
     if (!e->alive) continue;
     enemy_step(g, e, dt);
+    if (e->kind == EK_BOSS && !g_boss_old) shots_step(g, dt);
     float eh = e->kind == 2 ? 2.0f : 0.9f, ew = e->kind == 2 ? 1.1f : 0.5f;
     for (int i = 0; i < g->nplayers; i++) {
       player *p = &g->p[i];
@@ -978,7 +1215,7 @@ void sim_step(game *g, const input_state in[MAX_PLAYERS], float dt) {
       if (stomp && e->hurt == 0) {
         e->hp--;
         g->stomps[i]++;
-        e->hurt = 40;
+        e->hurt = e->kind == 2 && !g_boss_old ? 75 : 40; /* a boss shakes a stomp off for 1.25 s: long enough for its next attack to come round */
         p->pf.body.velocity.y = 12.0f;
         p->pf.air_jumps_left = p->pf.max_air_jumps;
         g->events |= EV_STOMP;
@@ -987,14 +1224,14 @@ void sim_step(game *g, const input_state in[MAX_PLAYERS], float dt) {
         g->hit_flash = 5;
         /* the stomper feels the hit (sharp); a boss hit, the boss going down and a small enemy's blast thud for everyone near */
         sim_rumble(g, i, e->kind == 2 ? 0.3f : 0.1f, e->kind == 2 ? 0.7f : 0.4f, e->kind == 2 ? 120 : 70);
-        if (e->kind == 2) g->boss_hp = e->hp, sim_rumble_at(g, e->x, e->y + 1.0f, e->hp <= 0 ? 1.0f : 0.6f);
+        if (e->kind == 2) g->boss_hp = e->hp, sim_rumble_at(g, e->x, e->y + 1.0f, e->hp <= 0 ? 1.0f : 0.6f), sim_boss_stomped(g);
         else if (e->hp <= 0) sim_rumble_at(g, e->x, e->y + 0.5f, 0.3f); /* the blast of a small enemy */
         if (e->hp <= 0) {
           e->alive = false;
           g->kills++;
           if (e->kind == 2 && !g->won) g->won = 1, g->win_tick = g->tick, g->events |= EV_WIN;
         }
-      } else if (e->hurt == 0 || e->kind != 2) {
+      } else if ((e->hurt == 0 || e->kind != 2) && !(e->kind == 2 && g->bz.daze > 0 && !g_boss_old)) { /* a dazed boss hurts nobody */
         hurt_player(g, i, dx >= 0 ? 1.0f : -1.0f, 1, e->kind == 2 ? DIE_BOSS : DIE_ENEMY);
       }
     }
@@ -1128,6 +1365,26 @@ void sim_bot_input(const game *g, int i, input_state *in) {
       in->x = fabsf(dx) < 0.3f ? 0.0f : dx > 0 ? 1.0f : -1.0f;
       in->jump_held = true;
       if (pf->body.on_floor && fabsf(dx) < 4.5f) in->jump_pressed = true;
+      /* what it throws, seen as a person sees it (a fifth of a second late): jump a wave or a roll coming this way, walk
+       * out from under a shaded spot, jump a charge */
+      if (!g_boss_old) {
+        for (int n = 0; n < MAX_BSHOTS; n++) {
+          const bshot *s = &g->shots[n];
+          if (!s->alive || s->t < 12) continue;
+          float sdx = s->x - x;
+          if ((s->kind == SH_WAVE || s->kind == SH_ROLL) && sdx * s->vx < 0 && fabsf(sdx) < 2.6f && fabsf(sdx) > 0.8f && y < s->floor + 0.6f) {
+            if (pf->body.on_floor) in->jump_pressed = true;
+            in->jump_held = true;
+            return;
+          }
+          if (s->kind == SH_FALL && s->land_t < 0 && fabsf(sdx) < 1.4f && fabsf(y - s->floor) < 2.0f) {
+            in->x = sdx > 0 ? -1.0f : 1.0f, in->jump_pressed = false;
+            return;
+          }
+        }
+        const boss_ai *b = &g->bz;
+        if (b->atk == BA_CHARGE && b->t > 14 && (x - e->x) * (float)b->dir > 0 && fabsf(dx) < 3.5f && pf->body.on_floor) in->jump_pressed = true;
+      }
       return;
     }
   /* stuck in one place for a few seconds: back up and take a run at it, as a person does */

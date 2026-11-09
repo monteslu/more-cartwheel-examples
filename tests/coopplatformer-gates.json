@@ -918,6 +918,193 @@
     "note": "the results card counts each player: coins, stomps, friends thrown and falls in a column under each portrait, and an awards line for whoever got the most of something (a clear winner only). g.tally is [columns drawn, frames the awards line was up]; g.cardgate as in coopplatformer-results-card. The control (COOP_TALLY_OFF, native) leaves the tally off: its g.tally must differ."
   },
   {
+    "name": "coopplatformer-boss-landlord",
+    "note": "The five bosses are five fights (2026-11-08): two bots with every ability at the door of the Landlord (leaps at a player and lands with a wave along the floor both ways; from half health he lobs final notices too). Every attack is shown before it acts (the boss stops and poses, its core glows up; falling things shade their spot, lobbed things their landing), and a stomp during that tell calls it off. g.bossatk: attacks begun, players hit by them, dodges (a jump over a wave or a roll, clear of a fall), the phase reached (1: half health), dazes. The bots see an attack a fifth of a second late, as a person would. The control (COOP_BOSS_OLD) is the one boss every world had: it walks and hops, nothing is counted, so it fails.",
+    "app": "coopplatformer_auto_boss",
+    "hosts": [
+      "native"
+    ],
+    "env": {
+      "COOP_LEVEL": "4"
+    },
+    "frames": 800,
+    "fields": [
+      "g.tick",
+      "g.bossatk",
+      "g.won",
+      "g.boss_hp",
+      "g.deaths",
+      "g.hash"
+    ],
+    "expect": {},
+    "controlEnv": {
+      "COOP_LEVEL": "4",
+      "COOP_BOSS_OLD": "1"
+    },
+    "controlFrames": 800,
+    "controlField": "g.bossatk"
+  },
+  {
+    "name": "coopplatformer-boss-tax-golem",
+    "note": "The five bosses are five fights (2026-11-08): two bots with every ability at the door of the Tax Golem (raises his arms; boxes of forms fall on spots shaded on the floor first; from half health he stamps a wave as well). Every attack is shown before it acts (the boss stops and poses, its core glows up; falling things shade their spot, lobbed things their landing), and a stomp during that tell calls it off. g.bossatk: attacks begun, players hit by them, dodges (a jump over a wave or a roll, clear of a fall), the phase reached (1: half health), dazes. The bots see an attack a fifth of a second late, as a person would. The control (COOP_BOSS_OLD) is the one boss every world had: it walks and hops, nothing is counted, so it fails.",
+    "app": "coopplatformer_auto_boss",
+    "hosts": [
+      "native"
+    ],
+    "env": {
+      "COOP_LEVEL": "9"
+    },
+    "frames": 800,
+    "fields": [
+      "g.tick",
+      "g.bossatk",
+      "g.won",
+      "g.boss_hp",
+      "g.deaths",
+      "g.hash"
+    ],
+    "expect": {},
+    "controlEnv": {
+      "COOP_LEVEL": "9",
+      "COOP_BOSS_OLD": "1"
+    },
+    "controlFrames": 800,
+    "controlField": "g.bossatk"
+  },
+  {
+    "name": "coopplatformer-boss-lifeguard",
+    "note": "The five bosses are five fights (2026-11-08): two bots with every ability at the door of the Lifeguard (paws the floor, then charges flat out until a wall or the end of the room stops him, and stands dazed; from half health he rolls life rings that come back once off the far wall). Every attack is shown before it acts (the boss stops and poses, its core glows up; falling things shade their spot, lobbed things their landing), and a stomp during that tell calls it off. g.bossatk: attacks begun, players hit by them, dodges (a jump over a wave or a roll, clear of a fall), the phase reached (1: half health), dazes. The bots see an attack a fifth of a second late, as a person would. The control (COOP_BOSS_OLD) is the one boss every world had: it walks and hops, nothing is counted, so it fails.",
+    "app": "coopplatformer_auto_boss",
+    "hosts": [
+      "native"
+    ],
+    "env": {
+      "COOP_LEVEL": "14"
+    },
+    "frames": 800,
+    "fields": [
+      "g.tick",
+      "g.bossatk",
+      "g.won",
+      "g.boss_hp",
+      "g.deaths",
+      "g.hash"
+    ],
+    "expect": {},
+    "controlEnv": {
+      "COOP_LEVEL": "14",
+      "COOP_BOSS_OLD": "1"
+    },
+    "controlFrames": 800,
+    "controlField": "g.bossatk"
+  },
+  {
+    "name": "coopplatformer-boss-manager",
+    "note": "The five bosses are five fights (2026-11-08): two bots with every ability at the door of the Regional Manager (rolls water cooler bottles along the floor; from half health he lobs mugs at where a player stands too). Every attack is shown before it acts (the boss stops and poses, its core glows up; falling things shade their spot, lobbed things their landing), and a stomp during that tell calls it off. g.bossatk: attacks begun, players hit by them, dodges (a jump over a wave or a roll, clear of a fall), the phase reached (1: half health), dazes. The bots see an attack a fifth of a second late, as a person would. The control (COOP_BOSS_OLD) is the one boss every world had: it walks and hops, nothing is counted, so it fails.",
+    "app": "coopplatformer_auto_boss",
+    "hosts": [
+      "native"
+    ],
+    "env": {
+      "COOP_LEVEL": "19"
+    },
+    "frames": 800,
+    "fields": [
+      "g.tick",
+      "g.bossatk",
+      "g.won",
+      "g.boss_hp",
+      "g.deaths",
+      "g.hash"
+    ],
+    "expect": {},
+    "controlEnv": {
+      "COOP_LEVEL": "19",
+      "COOP_BOSS_OLD": "1"
+    },
+    "controlFrames": 800,
+    "controlField": "g.bossatk"
+  },
+  {
+    "name": "coopplatformer-boss-founder",
+    "note": "The five bosses are five fights (2026-11-08): two bots with every ability at the door of the Founder (lava rocks on shaded spots and charges; from half health a leap and its wave too). Every attack is shown before it acts (the boss stops and poses, its core glows up; falling things shade their spot, lobbed things their landing), and a stomp during that tell calls it off. g.bossatk: attacks begun, players hit by them, dodges (a jump over a wave or a roll, clear of a fall), the phase reached (1: half health), dazes. The bots see an attack a fifth of a second late, as a person would. The control (COOP_BOSS_OLD) is the one boss every world had: it walks and hops, nothing is counted, so it fails.",
+    "app": "coopplatformer_auto_boss",
+    "hosts": [
+      "native"
+    ],
+    "env": {
+      "COOP_LEVEL": "24"
+    },
+    "frames": 1000,
+    "fields": [
+      "g.tick",
+      "g.bossatk",
+      "g.won",
+      "g.boss_hp",
+      "g.deaths",
+      "g.hash"
+    ],
+    "expect": {},
+    "controlEnv": {
+      "COOP_LEVEL": "24",
+      "COOP_BOSS_OLD": "1"
+    },
+    "controlFrames": 1000,
+    "controlField": "g.bossatk"
+  },
+  {
+    "name": "coopplatformer-boss-tells",
+    "note": "The tells are what make the bosses fair (2026-11-08): the Regional Manager's fight as above, the bots reacting a fifth of a second late; nobody is hit by what he rolls and throws (g.bossatk second number). The control shows every attack for 6 ticks only (COOP_BOSS_TELL=6): the same bots are hit and one falls, so it fails.",
+    "app": "coopplatformer_auto_boss",
+    "hosts": [
+      "native"
+    ],
+    "env": {
+      "COOP_LEVEL": "19"
+    },
+    "frames": 800,
+    "fields": [
+      "g.tick",
+      "g.bossatk",
+      "g.deaths"
+    ],
+    "expect": {},
+    "controlEnv": {
+      "COOP_LEVEL": "19",
+      "COOP_BOSS_TELL": "6"
+    },
+    "controlFrames": 800,
+    "controlField": "g.bossatk"
+  },
+  {
+    "name": "coopplatformer-wardrobe",
+    "note": "What the coins buy (2026-11-08): on the results card {grab} opens the wardrobe, where each player looks along the hats and the scarf colours ({left|right}), buys with every coin picked up so far and wears what they bought ({grab} again). Here two bots beat the first boss with 200 coins banked; on the card seat 1 buys and wears the bucket (30), seat 2 the very good hat (60) and then a moss scarf (20). g.wardrobe: open, coins left to spend, coins spent, items bought (bits), seat 1 hat and scarf, seat 2 hat and scarf. The control never opens the wardrobe: nothing is bought.",
+    "app": "coopplatformer_auto_boss",
+    "hosts": [
+      "native"
+    ],
+    "frames": 1000,
+    "startCmds": [
+      "@20 wardrobe coins 200",
+      "@800 wardrobe open",
+      "@805 wardrobe 0 1 1",
+      "@810 wardrobe 1 3 1",
+      "@815 wardrobe 1 7 1"
+    ],
+    "controlStartCmds": [
+      "@20 wardrobe coins 200",
+      "@805 wardrobe 0 1 1",
+      "@810 wardrobe 1 3 1",
+      "@815 wardrobe 1 7 1"
+    ],
+    "fields": [
+      "g.tick",
+      "g.won",
+      "g.wardrobe"
+    ],
+    "expect": {}
+  },
+  {
     "name": "coopplatformer-save",
     "script": "tests/coopplatformer-save.mjs",
     "note": "a save from version 4 (before the big coins) loads with its settings and progress: the stored block tests/coopplatformer-save-v4.dat keeps level, unlocked levels, coins, abilities, totals, hats, screen shake and music volume, and the big coins start empty. Control: with the migration off the shell starts over and the check must fail."

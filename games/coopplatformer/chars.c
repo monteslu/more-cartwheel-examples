@@ -323,6 +323,24 @@ void rig_boss_reach(const rig *r, float yaw, float sc, float *left, float *right
   }
   *left = lo * sc, *right = hi * sc;
 }
+/* a boss showing its next attack (the tell), u 0..1 through it: arms up for something falling, one arm back for a throw,
+ * leaning in with its arms back for a charge, a crouch for a leap (the node squashes too), a low swing for a roll */
+void rig_pose_boss_tell(rig *r, int atk, float u) {
+  float e = u < 0 ? 0 : u > 1 ? 1 : u;
+  e = e * e * (3 - 2 * e);
+  switch (atk) {
+    case BA_RAIN: rot(r, 3, AZ, 2.3f * e), rot(r, 4, AZ, -2.3f * e), rot(r, 2, AX, -0.25f * e); break;
+    case BA_THROW: rot(r, 4, AX, -2.4f * e), rot(r, 4, AZ, -0.4f * e), rot(r, 1, AY, 0.35f * e); break;
+    case BA_CHARGE: rot(r, 1, AX, 0.4f * e), rot(r, 3, AX, -0.9f * e), rot(r, 4, AX, -0.9f * e), rot(r, 2, AX, -0.3f * e); break;
+    case BA_LEAP: rot(r, 3, AZ, 0.6f * e), rot(r, 4, AZ, -0.6f * e), rot(r, 1, AX, 0.25f * e); break;
+    case BA_ROLL: rot(r, 3, AX, 1.1f * e), rot(r, 1, AX, 0.3f * e); break;
+  }
+}
+/* dazed after a charge into a wall: the head lolls, arms hang */
+void rig_pose_boss_daze(rig *r, float t) {
+  rot(r, 2, AZ, 0.35f * sinf(t * 3.0f)), rot(r, 2, AX, 0.25f);
+  rot(r, 1, AZ, 0.12f * sinf(t * 3.0f + 1.0f));
+}
 void rig_pose_boss(rig *r, float t, float rage) {
   rest(r);
   float b = sinf(t * 1.6f);

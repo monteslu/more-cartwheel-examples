@@ -130,6 +130,16 @@ typedef struct camera_rig {
   float vx, vy, vz;    /* follow velocity (a critically damped spring with bounded acceleration) */
 } camera_rig;
 
+/* The bosses' attacks (sim.c boss_step): each boss has its own two lists, the second from half its health down, and every
+ * attack is shown before it acts (the tell: the boss stands still, which is also the moment to jump on it) */
+enum { BA_NONE, BA_LEAP, BA_RAIN, BA_CHARGE, BA_ROLL, BA_THROW, BA_KINDS };
+/* what they throw: a wave along the floor (a leap's landing), something falling on a marked spot, something rolling along
+ * the floor, something lobbed at where a player stands */
+enum { SH_WAVE, SH_FALL, SH_ROLL, SH_ARC };
+#define MAX_BSHOTS 10
+typedef struct bshot { bool alive; int kind, t, bounces, land_t; float x, y, vx, vy, floor; uint8_t seen; } bshot;
+typedef struct boss_ai { int atk, t, cd, phase, n, daze, dir; float tx, vx, floor; } boss_ai;
+
 typedef struct game {
   level L;
   cw_world2d world;
@@ -172,6 +182,9 @@ typedef struct game {
   int ngrief_q;
   int things_hit;      /* landings on things: springs and cannons (a counter for tests) */
   int carried;         /* seats nobody plays carried to the group in a bubble (a counter for tests) */
+  boss_ai bz;          /* this level's boss: its attack, phase, daze */
+  bshot shots[MAX_BSHOTS];
+  int boss_stats[5];   /* attacks begun, players hit by them, dodges (a jump over a wave or a roll, out from under a fall), phase reached, dazes */
   bool idle_anchor;    /* the idle-seat gate's control (sw idle_anchor 1): a seat nobody plays holds the group back */
 } game;
 /* a seat whose pad has not been touched for five seconds holds nobody back: the camera and the group follow the players
@@ -206,6 +219,8 @@ void rig_pose_hero(rig *r, int anim, float ph, float t, float st, float wd, floa
 void rig_pose_walker(rig *r, float ph, float t, float squash);
 void rig_pose_flyer(rig *r, float ph, float t);
 void rig_pose_boss(rig *r, float t, float rage);
+void rig_pose_boss_tell(rig *r, int atk, float u); /* the attack about to come, u 0..1 through its tell */
+void rig_pose_boss_daze(rig *r, float t);
 /* how far the boss as posed reaches left and right of its centre, turned by yaw and scaled by sc: its arms and its hat */
 void rig_boss_reach(const rig *r, float yaw, float sc, float *left, float *right);
 /* the size of a boss: the model's scale, and the half width it keeps from a wall so that no arm reaches into one in any pose */
@@ -213,6 +228,11 @@ static inline float boss_scale(int kind) { return 1.2f + 0.14f * (float)kind; }
 static inline float boss_half(int kind) { return 1.45f * boss_scale(kind); }
 extern bool g_cam_endwall_bug; /* COOP_ENDWALL_BUG: the end wall gate's control */
 extern bool g_boss_clip_bug; /* COOP_BOSSCLIP_BUG: the clip gate's control */
+int sim_fall_warn(void); /* ticks a falling thing's spot is shaded before it drops */
+bool sim_boss_uses(int kind, int atk); /* does this boss ever make this attack */
+void sim_boss_stomped(game *g);
+extern bool g_boss_old; /* COOP_BOSS_OLD: every boss walks and hops as the one boss did (the boss rules gate's control) */
+extern int g_boss_tell; /* the ticks a boss's attacks are shown before they act (COOP_BOSS_TELL: the dodge gate's control shortens it) */
 extern bool g_bot_no_boss; /* COOP_BOT_NO_BOSS: bots that run for the end wall and let the boss come to them (the arena gate) */
 
 /* world.c */

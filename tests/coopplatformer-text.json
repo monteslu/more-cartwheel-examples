@@ -12,6 +12,7 @@
     { "name": "rescue", "app": "coopplatformer_auto4", "frames": 240, "env": {   "COOP_TEST_BUBBLES": "1" } },
     { "name": "graves", "app": "coopplatformer_auto_saw", "frames": 300 },
     { "name": "boss", "app": "coopplatformer_auto_boss", "frames": 400 },
-    { "name": "results", "app": "coopplatformer_auto_boss", "frames": 700 }
+    { "name": "results", "app": "coopplatformer_auto_boss", "frames": 700 },
+    { "name": "wardrobe", "app": "coopplatformer_auto_boss", "frames": 900, "startCmds": ["@20 wardrobe coins 200", "@800 wardrobe open", "@805 wardrobe 0 1 1", "@810 wardrobe 1 7 0"] }
   ]
 }
