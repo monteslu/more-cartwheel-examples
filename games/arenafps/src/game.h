@@ -37,6 +37,8 @@
 #define PLAYER_HT 1.8f
 
 typedef enum { MODE_DM, MODE_TDM, MODE_COOP, MODE_COUNT } game_mode;
+/* the match's rules (a party layer over any mode): one-shot rails, rockets only, low gravity, big heads */
+typedef enum { RULE_STANDARD, RULE_INSTAGIB, RULE_ROCKETS, RULE_LOWGRAV, RULE_BIGHEADS, RULE_COUNT } match_rule;
 /* power-ups: one spot per arena, a new one every 60 s (quad damage, haste, regeneration in turn), held for 20 s */
 enum { POW_NONE, POW_QUAD, POW_HASTE, POW_REGEN, POW_KINDS };
 typedef enum { ST_SETUP, ST_PLAY, ST_OVER } game_state;
@@ -138,6 +140,11 @@ typedef struct arena {
   t3_vec3 bounds_min, bounds_max;
   float kill_y;
   cw_node water;          /* Water3D of the Terraces pit (null elsewhere) */
+  cw_node probe, grid;    /* the reflection probe; the bounce light grid (in the tree from Medium up, arena_gi_quality) */
+#define MAX_LAMPS 48
+  cw_node lamps[MAX_LAMPS]; /* the ceiling lamps' lights and their reach as authored (arena_gi_quality scales it) */
+  float lamp_range[MAX_LAMPS];
+  int nlamps;
   float nav_build_ms;
   int nav_polys;
   float top;              /* the upper level: the roofs' walking height */
@@ -156,6 +163,7 @@ extern arena A;
 
 void arena_build(int id, cw_node world_root);
 void arena_free(void);
+void arena_gi_quality(void); /* the effects preset's level look: the bounce light grid (Medium and up), the ceiling lamps' reach */
 void arena_ground_check(void);
 void arena_mood(int id, cw_node env, cw_node sun, cw_node sky, cw_node fog, cw_node post);
 
@@ -192,6 +200,8 @@ typedef struct fighter {
   int cooldown;
   int dead_ticks, spawn_guard;
   int score, deaths, streak;
+  int best_streak, gren_kills, bash_kills, multi, last_kill_t, streak_was; /* the results' awards; frags close together (multi) */
+  struct t3_object *head; /* big heads: the rig's head bone (drawn only) */
   float bob;
   cw_node body;          /* the third-person body */
   cw_node light;         /* muzzle flash */

@@ -6,13 +6,15 @@ bots that find their way over a navigation mesh, jump pads, ledge jumps and drop
 
 ## Play
 
-- Title -> join (each pad presses South to join) -> pick the arena, the mode, the number of bots, how good the bots are (easy, normal, veteran, hard; normal is for someone new to the game), aim assist on or off and rumble on or off -> Start or fire to play, the east face button back to the title. The screens show each control with the engine's button prompts, drawn for the device each player holds.
+- Title -> join (each pad presses South to join) -> pick the arena, the mode, the number of bots, how good the bots are (easy, normal, veteran, hard; normal is for someone new to the game), aim assist on or off, rumble on or off and the rules -> Start or fire to play, the east face button back to the title. The screens show each control with the engine's button prompts, drawn for the device each player holds.
 - Move: left stick (keyboard: W A S D). Sprint: click the left stick (keyboard: left Shift), forward only, and firing
   ends it. Look: right stick (keyboard: arrow keys). Fire: right trigger or right shoulder (keyboard: J). Jump: South
   (keyboard: Space): high enough for a 1.2 m ledge. Next / previous weapon: North / West (keyboard: E / Q). Grenade: left
   shoulder or left trigger (keyboard: G): thrown in an arc, it bounces and goes off half a second after it lands (2.5 s at most); two
   at a spawn, one more with each ammo pickup, four at most. Bash: East (keyboard: F): a blow with the stock, close up.
 - Jump pads (glowing discs with rising sparks) throw you up onto the roofs.
+- Rules (a setup row, any mode): standard; instagib (everyone holds a rail with endless charge and one hit downs anyone; no pickups or power-ups); rockets only (endless rockets, the other weapons off the floor); low gravity (0.45 of the fall: higher, floatier jumps and grenades, jump pads land where they did); big heads (drawn only).
+- Callouts and awards: a frag within 3 s of the last is a double, triple or multi frag; three or more without dying are counted on screen, and the feed calls a run of five or ten and the frag that ends one. The results name the longest run, the most grenade frags and the most bashes.
 - Pause with Start in a match; on the setup and results panels Start confirms.
 - Power-ups (deathmatch and team deathmatch): a plinth in the middle of each arena gets quad damage (three times the damage), haste (30 percent faster, a third quicker on the trigger) or regeneration (health back up to 150), in turn: the first 30 s in, then 60 s after the last was taken. Everyone is told when one is up; the holder has it for 20 s or until downed and glows its colour, and the next one and its seconds show over the plinth.
 - When you are downed, your view turns to whoever downed you and follows them until you are back, with their name, the weapon, the distance and the health they had left.

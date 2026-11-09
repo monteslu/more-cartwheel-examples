@@ -39,6 +39,7 @@
 #define VM_SCALE 0.62f
 #define MAXP 24 /* rockets in flight */
 #define MAX_FEED 5
+#define SETUP_ROWS 7 /* arena, mode, bots, level, aim assist, rumble, rules (Start or fire begins from any row, as the panel's line says) */
 
 /* ── weapons ───────────────────────────────────────────────────────── */
 typedef struct weapon {
@@ -76,6 +77,9 @@ static char auto_note[96];
 static struct { t3_vec3 pos; bool present; int kind, next, timer; cw_node node, gem, ring, light, disc; } PW; /* the spot, and what is on it */
 
 static const char *MODE_NAME[MODE_COUNT] ={ "DEATHMATCH", "TEAM DEATHMATCH", "CO-OP WAVES" };
+static const char *RULE_NAME[RULE_COUNT] = { "STANDARD", "INSTAGIB", "ROCKETS ONLY", "LOW GRAVITY", "BIG HEADS" };
+/* low gravity: 0.45 of the fall, jumps a little softer (about 1.4 times as high) and jump pads scaled to land where they did */
+#define LOWG_K 0.45f
 static const char *TEAM_NAME[2] = { "RED", "BLUE" };
 static const float TEAM_RGB[2][3] = { { 1.0f, 0.25f, 0.2f }, { 0.25f, 0.5f, 1.0f } };
 
@@ -85,6 +89,8 @@ static struct game {
   cw_node cam[MAXH], vm[MAXH], vm_flash[MAXH], vm_wp[MAXH][NWEAP];
   game_state state;
   int mode, arena_id, bots_setting, bot_level, aim_assist, players, nf;
+  int awards;              /* awards on the results screen (drawn only) */
+  int rules;               /* match_rule: the party layer's rules for the next match (setup row) */
   int setup_row;
   fighter f[MAXF];
   proj pr[MAXP];
@@ -148,6 +154,7 @@ static struct game {
            int32_t eng, eng_gap_max, contact_ticks, spawns, unsafe_spawns; } st;
   cw_font font;
 } G;
+static float grav_k(void) { return G.rules == RULE_LOWGRAV ? LOWG_K : 1.0f; }
 
 static fighter *F(int i) { return &G.f[i]; }
 static bool hm_driving(const fighter *f);
@@ -260,6 +267,8 @@ static void give_loadout(fighter *f) {
   f->cooldown = 20;
   f->grenades = 2, f->gcool = 0, f->bash_cool = 0;
   f->bash_t = f->throw_t = 1000;
+  if (G.rules == RULE_INSTAGIB) f->have = 1 << 3, f->weapon = 3, f->ammo[0] = 0, f->ammo[3] = 99, f->grenades = 0; /* the rail only */
+  else if (G.rules == RULE_ROCKETS) f->have = 1 << 2, f->weapon = 2, f->ammo[0] = 0, f->ammo[2] = 99;
   f->power = POW_NONE, f->power_t = 0; /* a power-up goes with its holder */
 }
 
@@ -320,6 +329,7 @@ static void kill_fighter(fighter *v, fighter *k, int weapon) {
   v->dead_ticks = 0;
   v->deaths++;
   if (v->power != POW_NONE) pow_stats[3]++, v->power = POW_NONE, v->power_t = 0; /* a holder downed: the power-up is gone */
+  v->streak_was = v->streak;
   v->streak = 0;
   fx_spark(chest_pos(v), v3(0, 1, 0), 1);
   fx_play(SND_DIE, v->mv.position, 0.8f, 1);
@@ -341,6 +351,13 @@ static void kill_fighter(fighter *v, fighter *k, int weapon) {
     G.st.last_kill = G.ticks;
     k->score++;
     k->streak++;
+    k->best_streak = CW_MAX(k->best_streak, k->streak);
+    if (weapon == WK_GRENADE) k->gren_kills++;
+    if (weapon == WK_MELEE) k->bash_kills++;
+    k->multi = G.ticks - k->last_kill_t < 180 && k->last_kill_t > 0 ? k->multi + 1 : 1; /* frags within 3 s of each other */
+    k->last_kill_t = G.ticks;
+    if (v->streak_was >= 5) feed("%s ended %s's streak", k->name, v->name);
+    else if (k->streak == 5 || k->streak == 10) feed(k->streak == 5 ? "%s: five in a row" : "%s: ten in a row", k->name, "");
     if (k->human == 0) G.p1[4]++;
     if (v->human == 0 && k->human < 0) G.p1[5]++;
     if (k->human >= 0) {
@@ -391,6 +408,7 @@ static void damage(fighter *v, fighter *k, int dmg, t3_vec3 dir, float knock, in
   if (v->first_dmg_tick < 0) v->first_dmg_tick = G.ticks;
   if (k && !enemies(k, v) && k != v) return; /* no friendly fire */
   if (head) dmg = dmg * 3 / 2;
+  if (G.rules == RULE_INSTAGIB && weapon == 3 && k && k != v) dmg = 999, v->armor = 0; /* instagib: a rail hit downs anyone */
   if (k && k != v && k->power == POW_QUAD) dmg *= 3; /* quad damage (three times: four ended fights before they began) */
   if (k && k->human == 0 && k != v) G.p1[1]++, G.p1[2] += dmg;
   if (k && k != v && k->human < 0 && v->human >= 0) dmg = CW_MAX(1, (int)((float)dmg * LEVELS[G.bot_level].dmg_to_people + 0.5f)); /* bots hit people softer below HARD */
@@ -635,7 +653,7 @@ static void gren_tick(void) {
       continue;
     }
     if (!g->rest) {
-      g->v.y -= 20.0f * TICK_DT;
+      g->v.y -= 20.0f * grav_k() * TICK_DT;
       t3_vec3 np = v3add(g->p, v3scale(g->v, TICK_DT)), hp, hn;
       if (arena_ray(g->p, np, &hp, &hn)) {
         float vn = v3dot(g->v, hn);
@@ -705,6 +723,12 @@ static void blast(t3_vec3 at, t3_vec3 n, int owner_i, int max_dmg, float radius,
     float dist = v3len(d);
     if (dist > RADIUS) continue;
     float k = 1 - dist / RADIUS;
+    if (weapon == WK_GRENADE) {
+      /* a grenade: full force within 1.6 m (one at the feet reaches the chest), then a falloff that stays strong to about
+       * half the radius and fades at the edge, so one that lands by a wounded fighter finishes them */
+      float x = cw_clampf((dist - 1.6f) / (RADIUS - 1.6f), 0, 1);
+      k = 1 - x * x;
+    }
     if (dist > 0.8f && arena_ray(at, c, NULL, NULL)) k *= 0.4f; /* behind cover */
     int dmg = (int)((float)max_dmg * k);
     if (dmg < 4) continue;
@@ -732,7 +756,7 @@ static void do_fire(fighter *f, int idx) {
       if ((f->have >> k & 1) && f->ammo[k] > 0) { f->weapon = k; break; }
     return;
   }
-  f->ammo[f->weapon]--;
+  if (G.rules != RULE_INSTAGIB && G.rules != RULE_ROCKETS) f->ammo[f->weapon]--; /* the one-weapon rules never run dry */
   f->cooldown = f->power == POW_HASTE ? w->cooldown * 2 / 3 : w->cooldown; /* haste: a third quicker on the trigger */
   if (f->human == 0) G.p1[0]++;
   f->spawn_guard = 0; /* firing ends spawn protection */
@@ -809,7 +833,7 @@ static void move_fighter(fighter *f, float fwd, float strafe, bool jump, bool sp
       const pad *pd = &A.pads[i];
       float dx = f->mv.position.x - pd->pos.x, dz = f->mv.position.z - pd->pos.z, dy = f->mv.position.y - pd->pos.y;
       if (dx * dx + dz * dz > 0.9f * 0.9f || dy < -0.3f || dy > 0.6f) continue;
-      *vel = pd->vel;
+      *vel = G.rules == RULE_LOWGRAV ? v3scale(pd->vel, sqrtf(LOWG_K)) : pd->vel; /* the same arc, slower, under low gravity */
       f->launched = 12;
       /* a bot whose path crosses this pad: on to the landing */
       if (f->npath > 0 && f->pidx + 1 < f->npath && f->plink[f->pidx]) {
@@ -831,9 +855,9 @@ static void move_fighter(fighter *f, float fwd, float strafe, bool jump, bool sp
       vel->x *= ns, vel->z *= ns;
     }
     vel->y = 0;
-    if (jump) vel->y = JUMP;
+    if (jump) vel->y = G.rules == RULE_LOWGRAV ? JUMP * 0.8f : JUMP;
   } else {
-    vel->y -= GRAV * TICK_DT;
+    vel->y -= GRAV * grav_k() * TICK_DT;
   }
   float accel = ground ? GROUND_ACCEL : AIR_ACCEL;
   float cur = vel->x * wd.x + vel->z * wd.z;
@@ -1003,8 +1027,10 @@ static void bot_think(fighter *f, int idx) {
     }
     /* hunt: co-op bots (both sides) go after the nearest enemy, and any bot that has seen no enemy for 20 s (12 s in team
      * deathmatch, where half the fighters are friends and a big arena went quiet for 45 s) goes looking
-     * (the longest stretch without an encounter stays short); only health when hurt comes first */
-    if ((G.mode == MODE_COOP || f->alive_t - f->saw_t > (G.mode == MODE_TDM ? 12 : 20) * 60) && !(bi >= 0 && A.items[bi].kind == ITEM_HEALTH && f->hp < 50)) {
+     * (the longest stretch without an encounter stays short); and when nobody at all has scored for 20 s (two sides
+     * trading shots across a hall without closing), every bot pushes in. Only health when hurt comes first */
+    bool stall = G.ticks - G.st.last_kill > 20 * 60;
+    if ((G.mode == MODE_COOP || stall || f->alive_t - f->saw_t > (G.mode == MODE_TDM ? 12 : 20) * 60) && !(bi >= 0 && A.items[bi].kind == ITEM_HEALTH && f->hp < 50)) {
       float hd = 1e9f;
       int hi = -1;
       for (int i = 0; i < G.nf; i++) {
@@ -1162,8 +1188,11 @@ static void bot_tick(fighter *f, int idx) {
   else if (t && f->grenades > 0 && f->gcool == 0 && f->think == 1) {
     bool hid = !see && f->alive_t - f->saw_t < 45 && dist > 5 && dist < 18;
     bool open = see && f->react <= 0 && dist > 7 && dist < 18 && v3len(v3(t->mv.velocity.x, 0, t->mv.velocity.z)) < 2.0f;
+    /* a wounded target is the grenade's best use: one that ducked behind cover hurt (or stands hurt in the open) gets one
+     * most of the time, to finish the fight */
+    bool hurt = t->hp + CW_MIN(t->armor, t->hp) <= 70;
     int roll = cw_rng_int(&G.rng, 0, 99);
-    if ((hid && roll < 35) || (open && roll < 14)) {
+    if ((hid && roll < (hurt ? 60 : 35)) || (open && roll < (hurt ? 25 : 14))) {
       float miss = (1.2f - f->skill) * 2.5f, a = cw_rng_float(&G.rng) * 6.2831853f, sa, ca;
       cw_sincos(a, &sa, &ca);
       t3_vec3 from = eye_pos(f), lead = v3scale(v3(t->mv.velocity.x, 0, t->mv.velocity.z), cw_clampf(dist / 13.0f, 0.45f, 1.4f) * 0.8f * f->skill);
@@ -1231,6 +1260,13 @@ static void bot_tick(fighter *f, int idx) {
     t3_vec3 d = v3sub(f->mv.position, gr->p);
     float dd = sqrtf(d.x * d.x + d.z * d.z);
     if (dd > 5.5f || dd < 1e-3f) continue;
+    /* only one it can see in front of it (about 60 degrees either side, in the clear) or hear close by, as a person would:
+     * a fighter running away hurt does not see the one lobbed after it */
+    if (dd > 2.5f) {
+      float sy, cy;
+      cw_sincos(f->yaw, &sy, &cy);
+      if ((-sy * -d.x + -cy * -d.z) / dd < 0.5f || arena_ray(eye_pos(f), gr->p, NULL, NULL)) continue;
+    }
     float sy, cy, k = 2.0f * (5.5f - dd) / 5.5f + 0.8f;
     cw_sincos(f->yaw, &sy, &cy);
     float wx = d.x / dd * k, wz = d.z / dd * k;
@@ -1892,6 +1928,7 @@ static cw_node make_body(int team, fighter *f) {
     if (gl) {
       RIG[slot] = gl;
       cw_node3d_set_object(model, gl->scene);
+      f->head = G.rules == RULE_BIGHEADS ? t3_object_get_by_name(gl->scene, "head") : NULL; /* big heads: drawn only */
       set_cast(gl->scene);
       body_rim(f, gl->scene, true);
       for (int i = 0; i < gl->animation_count; i++) {
@@ -2172,6 +2209,19 @@ static void begin_match(void) {
   if (getenv("ARENA_NO_POWER")) PW.timer = 1 << 30; /* the power-up measure's control (before/after) */
 #endif
   memset(gren_stats, 0, sizeof gren_stats), memset(bash_stats, 0, sizeof bash_stats), memset(pow_stats, 0, sizeof pow_stats);
+  /* the rules: instagib clears the floor of pickups and power-ups (everyone holds the rail), rockets only clears the other
+   * weapons (health, armour and ammo with its grenade stay) */
+  for (int i = 0; i < A.nitems; i++) {
+    item *it = &A.items[i];
+    bool off = G.rules == RULE_INSTAGIB || (G.rules == RULE_ROCKETS && (it->kind == ITEM_SCATTER || it->kind == ITEM_ROCKET || it->kind == ITEM_RAIL));
+    if (!off) continue;
+    it->respawn = 1 << 30;
+    cw_node_set(it->node, "visible", cw_val_bool(false));
+    if (cw_node_valid(it->light)) cw_node_set(it->light, "energy", cw_val_float(0));
+    if (cw_node_valid(it->spot)) cw_node_set(it->spot, "visible", cw_val_bool(false));
+    if (cw_node_valid(it->spot_glow)) cw_node_set(it->spot_glow, "visible", cw_val_bool(false));
+  }
+  if (G.rules == RULE_INSTAGIB) PW.timer = 1 << 30;
   G.state = ST_PLAY;
 }
 
@@ -2341,6 +2391,7 @@ static void sync_nodes(void) {
         f->flinch *= 0.8f;
         if (f->flinch < 0.01f) f->flinch = 0;
       }
+      if (f->head) f->head->scale = (t3_vec3){ 2.1f, 2.1f, 2.1f };
       float spd = v3len(v3(f->mv.velocity.x, 0, f->mv.velocity.z));
       const char *want = !f->alive ? "die" : (spd > 1.2f && f->mv.on_floor ? "run" : "idle");
       if (cw_node_valid(f->anim) && want != f->clip) {
@@ -2575,8 +2626,8 @@ static void game_step(void) {
   seats_touched();
   if (G.state == ST_SETUP) {
     int h = 0;
-    if (cw_action_just_pressed(h, G.mv_f)) G.setup_row = (G.setup_row + 6) % 7, fx_play_ui(SND_CLICK, 0.4f);
-    if (cw_action_just_pressed(h, G.mv_b)) G.setup_row = (G.setup_row + 1) % 7, fx_play_ui(SND_CLICK, 0.4f);
+    if (cw_action_just_pressed(h, G.mv_f)) G.setup_row = (G.setup_row + SETUP_ROWS - 1) % SETUP_ROWS, fx_play_ui(SND_CLICK, 0.4f);
+    if (cw_action_just_pressed(h, G.mv_b)) G.setup_row = (G.setup_row + 1) % SETUP_ROWS, fx_play_ui(SND_CLICK, 0.4f);
     int dir = cw_action_just_pressed(h, G.mv_r) - cw_action_just_pressed(h, G.mv_l);
     if (dir) {
       fx_play_ui(SND_TICK, 0.5f);
@@ -2589,7 +2640,7 @@ static void game_step(void) {
         G.rumble_off = !G.rumble_off;
         if (G.rumble_off) rumble_stop_all();
         else rumble(h, 0.3f, 0.3f, 120); /* a taste of it */
-      }
+      } else if (G.setup_row == 6) G.rules = (G.rules + RULE_COUNT + dir) % RULE_COUNT;
     }
     if (cw_shell_join_press()) fx_play_ui(SND_CLICK, 0.6f); /* a pad with no seat: A takes one (players_changed) */
     if (cw_action_just_pressed(h, G.jump) || cw_action_just_pressed(h, G.fire) || any_start() || cw_shell_join_requested()) {
@@ -2827,7 +2878,11 @@ static void hud_view(int h) {
     cw_r2d_line(cw_v2(cx - d, cy - d), cw_v2(cx + d, cy + d), CW_MAX(3.0f, u * 0.2f), kc);
     cw_r2d_line(cw_v2(cx + d, cy - d), cw_v2(cx - d, cy + d), CW_MAX(3.0f, u * 0.2f), kc);
     char ks[40];
-    if (G.kill_streak[h] >= 2) snprintf(ks, sizeof ks, "FRAGGED %s  x%d", G.kill_name[h], G.kill_streak[h]);
+    /* a frag hard on the last one is called out (double, triple), and a run of them (three, five, ten without dying) */
+    static const char *MULTI[] = { "", "", "DOUBLE FRAG", "TRIPLE FRAG", "MULTI FRAG" };
+    const fighter *kf = F(h);
+    if (kf->multi >= 2) snprintf(ks, sizeof ks, "%s  %s", MULTI[CW_MIN(kf->multi, 4)], G.kill_name[h]);
+    else if (G.kill_streak[h] >= 3) snprintf(ks, sizeof ks, "FRAGGED %s  %d IN A ROW", G.kill_name[h], G.kill_streak[h]);
     else snprintf(ks, sizeof ks, "FRAGGED %s", G.kill_name[h]);
     float ky = cy + u * 2.6f, ksz = body(u * 1.2f);
     kill_bottom = ky + text(ks, r.x, ky, ksz, cw_rgba(1, 0.85f, 0.2f, a), CW_ALIGN_CENTER, r.w).height;
@@ -3113,8 +3168,8 @@ static void hud_setup(void) {
   ptext(hint, -1, 0, y, hs, cw_rgba(1, 1, 1, 0.8f), CW_ALIGN_CENTER, cs.x);
   y += cw_prompt_text_size(G.font, hint, -1, hs).y + u * 0.4f;
   char s[96];
-  const char *rows[7];
-  char r0[64], r1[64], r2[64], r3[64], r4[64], r5[64];
+  const char *rows[SETUP_ROWS];
+  char r0[64], r1[64], r2[64], r3[64], r4[64], r5[64], r6[64];
   snprintf(r0, sizeof r0, "<  %s  >", ARENA_INFO[G.arena_id].name);
   snprintf(r1, sizeof r1, "<  %s  >", MODE_NAME[G.mode]);
   if (G.mode == MODE_COOP) snprintf(r2, sizeof r2, "waves of bots");
@@ -3124,7 +3179,8 @@ static void hud_setup(void) {
   snprintf(r3, sizeof r3, "<  bots: %s  >", LEVEL[G.bot_level]);
   rows[0] = r0, rows[1] = r1, rows[2] = r2, snprintf(r4, sizeof r4, "<  aim assist: %s  >", G.aim_assist ? "ON" : "OFF");
   snprintf(r5, sizeof r5, "<  rumble: %s  >", G.rumble_off ? "OFF" : "ON");
-  rows[3] = r3, rows[4] = r4, rows[5] = r5, rows[6] = "START";
+  snprintf(r6, sizeof r6, "<  rules: %s  >", RULE_NAME[G.rules]);
+  rows[3] = r3, rows[4] = r4, rows[5] = r5, rows[6] = r6;
   /* the foot: the arena's line and the player count, from the bottom up */
   float fs = u * 0.9f, foot = cs.y - u * 0.5f;
   snprintf(s, sizeof s, "%d player%s", G.players, G.players == 1 ? "" : "s");
@@ -3132,27 +3188,27 @@ static void hud_setup(void) {
   float py = fminf(u * 15.9f, foot - ph), byy = fminf(u * 14.7f, py - bh);
   float rs = u * 1.3f, d = measure("Ag", rs, 0).height, step = fmaxf(u * 1.35f, d * 1.08f);
   float y0 = fmaxf(y, u * 5.2f), y1 = byy - u * 0.3f;
-  bool blurb = 7 * step <= y1 - y0; /* the arena's line gives way to the rows when they need its room */
+  bool blurb = SETUP_ROWS * step <= y1 - y0; /* the arena's line gives way to the rows when they need its room */
   if (!blurb) y1 = py - u * 0.3f;
-  if (7 * step > y1 - y0) { /* still short: smaller rows (down to 0.8 of the size) before any row scrolls out of sight, so a
+  if (SETUP_ROWS * step > y1 - y0) { /* still short: smaller rows (down to 0.8 of the size) before any row scrolls out of sight, so a
                              * newcomer sees the arena and mode rows on the panel's first frame */
-    float rs2 = fmaxf(u * 1.04f, rs * fminf(1.0f, (y1 - y0) / (7 * step))), d2 = measure("Ag", rs2, 0).height, step2 = fmaxf(u * 1.08f, d2 * 1.04f);
-    if (7 * step2 <= y1 - y0) rs = rs2, d = d2, step = step2;
+    float rs2 = fmaxf(u * 1.04f, rs * fminf(1.0f, (y1 - y0) / (SETUP_ROWS * step))), d2 = measure("Ag", rs2, 0).height, step2 = fmaxf(u * 1.08f, d2 * 1.04f);
+    if (SETUP_ROWS * step2 <= y1 - y0) rs = rs2, d = d2, step = step2;
   }
   text(s, cs.x * 0.03f, py, fs, cw_rgba(1, 1, 1, 0.7f), CW_ALIGN_CENTER, cs.x * 0.94f);
   if (blurb) text(ARENA_INFO[G.arena_id].blurb, cs.x * 0.03f, byy, fs, cw_rgba(1, 1, 1, 0.7f), CW_ALIGN_CENTER, cs.x * 0.94f);
-  int first = 0, count = 7;
-  if (7 * step > y1 - y0) { /* scroll: the selected row stays in view, a mark says there is more */
+  int first = 0, count = SETUP_ROWS;
+  if (SETUP_ROWS * step > y1 - y0) { /* scroll: the selected row stays in view, a mark says there is more */
     y0 += d * 0.4f;
     count = CW_MAX(1, (int)((y1 - y0 - d * 0.4f) / step));
-    first = CW_CLAMP(G.setup_row - count / 2, 0, 7 - count);
+    first = CW_CLAMP(G.setup_row - count / 2, 0, SETUP_ROWS - count);
   }
-  for (int i = first; i < first + count && i < 7; i++) {
+  for (int i = first; i < first + count && i < SETUP_ROWS; i++) {
     bool sel = i == G.setup_row;
     text(rows[i], 0, y0 + step * (float)(i - first), rs, sel ? cw_rgba(1, 0.9f, 0.3f, 1) : cw_rgba(1, 1, 1, 0.75f), CW_ALIGN_CENTER, cs.x);
   }
   if (first > 0) more_mark(cs.x * 0.5f, y0 - d * 0.25f, d, true);
-  if (first + count < 7) more_mark(cs.x * 0.5f, y0 + step * (float)count + d * 0.1f, d, false);
+  if (first + count < SETUP_ROWS) more_mark(cs.x * 0.5f, y0 + step * (float)count + d * 0.1f, d, false);
 }
 
 static void hud_over(void) {
@@ -3172,12 +3228,29 @@ static void hud_over(void) {
   float bs = u * 1.0f, d = measure("Ag", bs, 0).height, step = fmaxf(u * 1.25f, d * 1.05f), cs_ = u * 0.9f, ch = cw_prompt_text_size(G.font, cont, -1, cs_).y;
   /* the panel: the title, the board and the prompt, each measured; a board too long for the screen at this text size
    * pages through, a page every three seconds */
-  float top = cs.y * 0.18f, ty = cs.y * 0.22f, by = fmaxf(cs.y * 0.34f, ty + th + d * 0.3f), cy = fmaxf(cs.y * 0.74f, by + step * (float)n + d * 0.2f);
+  /* the awards under the board: the longest run of frags, the most grenade frags, the most bashes (each when someone has one) */
+  char aw[160] = "";
+  {
+    int bs_i = -1, gr_i = -1, ba_i = -1;
+    for (int k = 0; k < n; k++) {
+      fighter *f = F(order[k]);
+      if (f->best_streak >= 3 && (bs_i < 0 || f->best_streak > F(bs_i)->best_streak)) bs_i = order[k];
+      if (f->gren_kills > 0 && (gr_i < 0 || f->gren_kills > F(gr_i)->gren_kills)) gr_i = order[k];
+      if (f->bash_kills > 0 && (ba_i < 0 || f->bash_kills > F(ba_i)->bash_kills)) ba_i = order[k];
+    }
+    size_t o = 0;
+    if (bs_i >= 0) o += (size_t)snprintf(aw + o, sizeof aw - o, "LONGEST RUN %s %d", F(bs_i)->name, F(bs_i)->best_streak);
+    if (gr_i >= 0 && o < sizeof aw) o += (size_t)snprintf(aw + o, sizeof aw - o, "%sGRENADIER %s %d", o ? "    " : "", F(gr_i)->name, F(gr_i)->gren_kills);
+    if (ba_i >= 0 && o < sizeof aw) o += (size_t)snprintf(aw + o, sizeof aw - o, "%sBRAWLER %s %d", o ? "    " : "", F(ba_i)->name, F(ba_i)->bash_kills);
+    G.awards = (bs_i >= 0) + (gr_i >= 0) + (ba_i >= 0);
+  }
+  float ah = aw[0] ? measure(aw, cs_, cs.x * 0.94f).height + d * 0.3f : 0;
+  float top = cs.y * 0.18f, ty = cs.y * 0.22f, by = fmaxf(cs.y * 0.34f, ty + th + d * 0.3f), cy = fmaxf(cs.y * 0.74f, by + step * (float)n + d * 0.2f + ah);
   int per = n, pages = 1;
   if (cy + ch > cs.y - u * 0.3f) {
-    float room = cs.y - u * 0.3f - ch - d * 0.2f - by;
+    float room = cs.y - u * 0.3f - ch - d * 0.2f - by - ah;
     per = CW_MAX(1, (int)(room / step) - (n > (int)(room / step) ? 1 : 0)), pages = (n + per - 1) / per;
-    cy = by + step * (float)(per + (pages > 1)) + d * 0.2f;
+    cy = by + step * (float)(per + (pages > 1)) + d * 0.2f + ah;
   }
   float bottom = fmaxf(cs.y * 0.82f, cy + ch + u * 0.3f);
   cw_r2d_rect(cw_rect_make(0, top, cs.x, fminf(bottom, cs.y) - top), cw_rgba(0, 0, 0, 0.62f));
@@ -3192,6 +3265,7 @@ static void hud_over(void) {
     snprintf(s, sizeof s, "page %d of %d", page + 1, pages);
     text(s, 0, by + step * (float)per, bs, cw_rgba(1, 1, 1, 0.6f), CW_ALIGN_CENTER, cs.x);
   }
+  if (aw[0]) text(aw, cs.x * 0.03f, cy - ah, cs_, cw_rgba(1, 0.85f, 0.4f, 0.95f), CW_ALIGN_CENTER, cs.x * 0.94f);
   G.cue_over = G.over_ticks > 60 * 3 && !G.sw_no_cues;
   if (G.cue_over) ptext(cont, -1, 0, cy, cs_, cw_rgba(1, 1, 1, 0.8f), CW_ALIGN_CENTER, cs.x);
 }
@@ -3337,7 +3411,7 @@ static void start(int players, void *user) {
   (void)user;
   G.players = players;
   G.state = ST_SETUP;
-  G.setup_row = 6;
+  G.setup_row = SETUP_ROWS - 1; /* the last row (the gates' input scripts count rows from here) */
   for (int i = 0; i < MAXH; i++) cw_node_set(G.cam[i], "current", cw_val_bool(i == 0));
   build_world(G.arena_id);
   set_views();
@@ -3384,7 +3458,12 @@ static void quality_changed(cw_quality q, void *u) {
   tex_anisotropy(fx >= CW_QUALITY_MEDIUM ? 8 : fx == CW_QUALITY_LOW ? 4 : 2);
   /* Low and Very Low draw the arena after a depth prepass: its halls, roofs and girders stack several surfaces deep on
    * every pixel, and the prepass shades each pixel once (the same picture; from Medium up the scene as authored) */
-  if (cw_node_valid(G.post)) cw_node_set(G.post, "depth_prepass", cw_val_bool(fx <= CW_QUALITY_LOW));
+  arena_gi_quality();
+  bool prepass = fx <= CW_QUALITY_LOW;
+#ifdef ARENA_AUTOPILOT
+  if (getenv("ARENA_T_prepass")) prepass = atoi(getenv("ARENA_T_prepass")) != 0; /* measuring the prepass */
+#endif
+  if (cw_node_valid(G.post)) cw_node_set(G.post, "depth_prepass", cw_val_bool(prepass));
 }
 
 /* debug channel: "bind <action> <bindings>" replaces an action's bindings (the text form, "key:x, pad:north"): for checking
@@ -3496,6 +3575,8 @@ static void init(void *user) {
   cw_debug_i32("game.state", (int32_t *)&G.state);
   cw_debug_command("bind", "bind <action> <bindings>: replace an action's bindings", cmd_bind);
   cw_debug_i32("game.mode", &G.mode);
+  cw_debug_i32("game.rules", &G.rules);
+  cw_debug_i32("over.awards", &G.awards); /* awards drawn on the results */
   cw_debug_i32("game.arena", &G.arena_id);
   cw_debug_i32("game.players", &G.players);
   cw_debug_i32("game.ticks", &G.ticks);
@@ -3566,6 +3647,7 @@ static void init(void *user) {
   const char *e;
   if ((e = getenv("ARENA_ID"))) G.arena_id = CW_CLAMP(atoi(e), 0, ARENAS - 1);
   if ((e = getenv("ARENA_MODE"))) G.mode = CW_CLAMP(atoi(e), 0, MODE_COUNT - 1);
+  if ((e = getenv("ARENA_RULES"))) G.rules = CW_CLAMP(atoi(e), 0, RULE_COUNT - 1);
   if ((e = getenv("ARENA_BOTS"))) G.bots_setting = CW_CLAMP(atoi(e), -1, MAXF - 4);
   if ((e = getenv("ARENA_LEVEL"))) G.bot_level = CW_CLAMP(atoi(e), 0, BOT_LEVELS);
   if ((e = getenv("ARENA_NO_KILLCAM"))) G.sw_no_killcam = atoi(e) != 0; /* the killer cam gate's control */

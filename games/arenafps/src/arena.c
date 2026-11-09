@@ -5,6 +5,7 @@
  * outer shell and what hangs on it stay boxes. Each arena has its own palette, materials and mood. */
 #include "cartwheel/csg.h"
 #include "game.h"
+#include "cartwheel/quality.h"
 
 arena A;
 
@@ -56,6 +57,8 @@ static void body_box(t3_vec3 center, t3_vec3 size, t3_quat q) {
 
 enum { K_FLOOR, K_WALL, K_ACCENT, K_METAL, K_CRATE, K_LEAF, K_CLAD, K_TRIM, K_GRATE, K_WINDOW, K_GIRDER, K_PILLAR, K_PAINT, K_LAMP, K_KINDS };
 static float tune(const char *name, float def);
+#define LAMP_REACH_VL (tune("reach_vl", 0.55f))
+#define LAMP_REACH_LOW (tune("reach_low", 0.55f))
 /* the glow behind each arena's windows (linear) and the colour of its practical lamps (sRGB) */
 static const float WINDOW_GLOW[ARENAS][3] = { { 1.4f, 1.0f, 0.55f }, { 1.6f, 1.0f, 0.45f }, { 1.8f, 1.2f, 0.65f } };
 static const float LAMP_RGB[ARENAS][3] = { { 1.0f, 0.62f, 0.25f }, { 1.0f, 0.7f, 0.35f }, { 1.0f, 0.75f, 0.45f } };
@@ -285,13 +288,15 @@ static void trim(float x, float y0, float z, float sx, float sy, float sz, int k
 }
 
 /* an accent light: coloured, short range, cheap (no shadow) */
-static void accent_light(float x, float y, float z, float r, float g, float b, float energy, float range) {
+static cw_node accent_light(float x, float y, float z, float r, float g, float b, float energy, float range) {
+  if (tune("accent", 1) < 0.5f) return (cw_node){ 0 }; /* ARENA_T_accent=0 (autopilot): measuring the lights' cost */
   cw_node l = cw_node_new("OmniLight3D", "Accent");
   cw_node_set(l, "color", cw_val_color(r, g, b, 1));
   cw_node_set(l, "energy", cw_val_float(energy));
-  cw_node_set(l, "range", cw_val_float(range));
+  cw_node_set(l, "range", cw_val_float(range * tune("arange", 1)));
   cw_node3d_set_position(l, v3(x, y, z));
   cw_node_add_child(A.root, l);
+  return l;
 }
 
 /* a wall floodlight: bracket and hood from props, a glowing lens and a light; dir yaw faces into the arena */
@@ -302,7 +307,7 @@ static void floodlight(float x, float y, float z, float yaw, cw_color c, float e
   float fx = -sn * 0.68f, fz = -cs * 0.68f; /* the lens sits 0.68 m out along the lamp's front */
   cw_node lens = mesh_box(v3(x + fx, y + 0.1f, z + fz), v3(0.36f, 0.18f, 0.02f), c, (t3_quat){ 0, sinf(yaw * 0.5f), 0, cosf(yaw * 0.5f) }, 0.3f, false);
   cw_node_set(lens, "emissive", cw_val_color(c.r * 8, c.g * 8, c.b * 8, 1));
-  accent_light(x + fx * 1.5f, y - 0.2f, z + fz * 1.5f, c.r, c.g, c.b, energy, 15);
+  if (tune("flood", 1) > 0.5f) accent_light(x + fx * 1.5f, y - 0.2f, z + fz * 1.5f, c.r, c.g, c.b, energy, 15);
 }
 
 static void spawn_at(float x, float y, float z) {
@@ -389,7 +394,7 @@ static void wall_lamps(float half, float y, float every, float offset, float ene
       on_wall(&f, s, 0, y, 0.6f, 0.26f, 0.22f, K_METAL);
       on_wall(&f, s, 0.22f, y + 0.04f, 0.5f, 0.12f, 0.04f, K_LAMP);
       on_wall(&f, s, 0, y - 0.04f, 0.5f, 0.04f, 0.3f, K_LAMP);
-      accent_light(f.cx + f.tx * s + f.nx * 0.6f, y - 0.2f, f.cz + f.tz * s + f.nz * 0.6f, c[0], c[1], c[2], energy, range);
+      if (tune("walllamps", 1) > 0.5f) accent_light(f.cx + f.tx * s + f.nx * 0.6f, y - 0.2f, f.cz + f.tz * s + f.nz * 0.6f, c[0], c[1], c[2], energy, range);
     }
   }
 }
@@ -516,7 +521,8 @@ static void ceiling_lamp(float x, float y, float z, bool spawn) {
   const float *c = LAMP_RGB[A.id];
   trim(x, y - 0.12f, z, 1.3f, 0.12f, 0.5f, K_METAL, 0);
   trim(x, y - 0.15f, z, 1.1f, 0.03f, 0.34f, K_LAMP, 0);
-  accent_light(x, y - 0.6f, z, c[0], c[1], c[2], spawn ? 14 : 20, spawn ? 8 : 10);
+  cw_node l = tune("ceil", 1) > 0.5f ? accent_light(x, y - 0.6f, z, c[0], c[1], c[2], spawn ? 14 : 20, spawn ? 8 : 10) : (cw_node){ 0 };
+  if (cw_node_valid(l) && A.nlamps < MAX_LAMPS) A.lamps[A.nlamps] = l, A.lamp_range[A.nlamps++] = spawn ? 8 : 10;
 }
 
 /* a doorway's frame on both faces: two jambs and a lintel (axis 'x': the wall runs along z) */
@@ -564,7 +570,7 @@ static void pad_at(t3_vec3 p, t3_vec3 to) {
   cw_node_set(disc, "cast_shadow", cw_val_bool(false));
   cw_node3d_set_position(disc, v3(p.x, p.y + 0.14f, p.z));
   cw_node_add_child(A.root, disc);
-  accent_light(p.x, p.y + 0.8f, p.z, 0.4f, 0.8f, 1.0f, 18, 6);
+  if (tune("padl", 1) > 0.5f) accent_light(p.x, p.y + 0.8f, p.z, 0.4f, 0.8f, 1.0f, 18, 6);
   (void)c;
   cw_node ps = cw_node_new("GPUParticles3D", "PadLift");
   cw_node_set(ps, "amount", cw_val_int(24));
@@ -742,7 +748,7 @@ static void dress_courtyard(const palette *p) {
   floodlight(0, 6.4f, H - 0.2f, 0, p->accent, 90);
   floodlight(-H + 0.2f, 6.4f, 0, -1.5708f, p->accent, 90);
   floodlight(H - 0.2f, 6.4f, 0, 1.5708f, p->accent, 90);
-  accent_light(0, 3.5f, 0, 1.0f, 0.7f, 0.35f, 55, 16);
+  if (tune("centre", 1) > 0.5f) accent_light(0, 3.5f, 0, 1.0f, 0.7f, 0.35f, 55, 16);
   /* the houses: a cornice and a timber band round each roof, lit windows on the street faces between the doors */
   for (int i = 0; i < 4; i++) {
     float sx = (i & 1) ? 1 : -1, sz = (i & 2) ? 1 : -1;
@@ -959,7 +965,30 @@ void arena_build(int id, cw_node world_root) {
     cw_node_set(pr, "blend_distance", cw_val_float(2));
     cw_node_set(pr, "far", cw_val_float(150));
     cw_node_add_child(A.root, pr);
+    A.probe = pr;
   }
+  /* bounce light: a grid of light probes about 3 m apart over the arena, baked at load with one bounce, so a shaded street
+   * takes the warm light its sunlit floor throws back, corners and undersides darken and a coloured wall tints what is
+   * next to it. From Medium up (arena_gi_quality); there it takes over the probe's single ambient. Walls are thinner than
+   * the spacing, so a little light reaches through them (the grid has no visibility term): the probes sit between the
+   * floor and the roofs only. */
+  /* the courtyard only: its sunlit stone throws a strong warm bounce into the shaded streets; in the foundry's halls and on the
+   * terraces at dusk the grid on top of their flat ambient lit the shadowed walls evenly and flattened the rooms (sheets in the
+   * research notes), so they keep the probe's ambient */
+  if (A.id == 1 && tune("grid", 1) > 0.5f) {
+    t3_vec3 c = v3scale(v3add(A.bounds_min, A.bounds_max), 0.5f), s = v3sub(A.bounds_max, A.bounds_min);
+    float y0 = CW_MAX(A.bounds_min.y, -4.0f), h = A.top + 4.0f - y0;
+    cw_node g = cw_node_new("LightProbeGrid3D", "Bounce");
+    cw_node3d_set_position(g, v3(c.x, y0 + h * 0.5f, c.z));
+    cw_node_set(g, "size", cw_val_vec3(s.x, h, s.z));
+    cw_node_set(g, "probes", cw_val_vec3(CW_CLAMP((int)(s.x / 3.0f) + 1, 2, 32), CW_CLAMP((int)(h / 3.0f) + 1, 2, 32), CW_CLAMP((int)(s.z / 3.0f) + 1, 2, 32)));
+    cw_node_set(g, "bounces", cw_val_int(1));
+    cw_node_set(g, "bake_per_frame", cw_val_int(64));
+    cw_node_set(g, "far", cw_val_float(80));
+    cw_node_set(g, "intensity", cw_val_float(tune("grid_i", 1)));
+    A.grid = g;
+  }
+  arena_gi_quality(); /* the grid and the lamps' reach for the preset now */
   /* clouds: a sky plane high over the arena, added over the procedural sky and faded out well before the far plane */
   if (tune("clouds", 1) > 0.01f) {
     static const float CL[ARENAS][5] = { /* coverage, tint r g b (linear), height */
@@ -1032,6 +1061,7 @@ void arena_build(int id, cw_node world_root) {
       cw_node_add_child(A.root, glow);
       it->spot_glow = glow;
     }
+    if (tune("itemlight", 1) < 0.5f) continue;
     it->light = cw_node_new("OmniLight3D", "ItemLight");
     cw_node_set(it->light, "color", cw_val_color(c.r, c.g, c.b, 1));
     cw_node_set(it->light, "energy", cw_val_float(14));
@@ -1081,7 +1111,27 @@ void arena_build(int id, cw_node world_root) {
           st.build_ms, A.nav_links_connected, A.nav_links);
 }
 
+void arena_gi_quality(void) {
+  /* the ceiling lamps reach less far on Very Low and Low: they have no shadows, so most of a 10 m reach is light through the
+   * room's own walls onto the street outside, and on a weak GPU that spill was the biggest part of the scene's cost (the
+   * courtyard's sixteen lamps: 0.5 ms of 2.6 at Very Low). The room under each lamp stays lit */
+  int fx = cw_gfx_effective(CW_GFX_EFFECTS);
+  float reach = fx <= CW_QUALITY_VERY_LOW ? LAMP_REACH_VL : fx == CW_QUALITY_LOW ? LAMP_REACH_LOW : 1.0f;
+  /* the courtyard in morning sun: on Very Low and Low its arcade lamps are left dark (their pools hardly show by day; the
+   * lenses still glow) */
+  bool dark = fx <= CW_QUALITY_LOW && A.id == 1 && tune("daylamps", 0) < 0.5f;
+  for (int i = 0; i < A.nlamps; i++)
+    if (cw_node_valid(A.lamps[i])) cw_node_set(A.lamps[i], "range", cw_val_float(A.lamp_range[i] * reach)), cw_node_set(A.lamps[i], "visible", cw_val_bool(!dark));
+  if (!cw_node_valid(A.grid)) return;
+  bool on = cw_gfx_effective(CW_GFX_EFFECTS) >= CW_QUALITY_MEDIUM, in = cw_node_parent(A.grid).id != 0;
+  if (on && !in) cw_node_add_child(A.root, A.grid);
+  else if (!on && in) cw_node_remove_child(A.root, A.grid);
+  /* the grid gives the ambient where it is on; the probe's one capture where it is off */
+  if (cw_node_valid(A.probe)) cw_node_set(A.probe, "ambient", cw_val_bool(!on));
+}
+
 void arena_free(void) {
+  if (cw_node_valid(A.grid) && !cw_node_parent(A.grid).id) cw_node_free(A.grid); /* off (Low and Very Low): not in the tree */
   if (cw_navmesh_valid(A.nav)) cw_navmesh_free(A.nav);
   if (cw_world3d_valid(A.world)) cw_world3d_destroy(A.world); /* its shapes first, then the meshes they used */
   for (int i = 0; i < A.nmeshes; i++) cw_mesh3d_destroy(A.meshes[i]);
