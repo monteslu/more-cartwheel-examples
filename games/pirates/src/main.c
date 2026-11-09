@@ -2399,7 +2399,8 @@ static void cmd_route_test(int argc,const char **argv,cw_reply *r) {
   int region=nav_region[nav_nearest(s->x,s->z)];
   int fixture=nav_region[blocked->nav_cell]!=region&&nav_region[reachable->nav_cell]==region
       &&dist2(s->x,s->z,blocked->x,blocked->z)<dist2(s->x,s->z,reachable->x,reachable->z);
-  for(int t=0;t<1800 && !s->bank;t++) {
+  /* until every crate it holds and the reachable one are banked (it may bank what it holds as it passes its harbor first) */
+  for(int t=0;t<1800 && s->bank<3;t++) {
     G.tick++;float turn=0,sail=0;int fire=0,dock=0;
     ai_input(0,&turn,&sail,&fire,&dock);move_ship(0,turn,sail);step_goods();if(dock)bank_ship(0);
   }
