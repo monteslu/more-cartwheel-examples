@@ -313,7 +313,12 @@
   {
     "name": "jetski-newcomer",
     "script": "tests/jetski-newcomer.mjs",
-    "note": "a first race on the cart by the pad and the screen alone, GL and WebGPU: A starts the race and the rider steers past each mark on the side its chevron points to, passing the marks in 45 s with at most one missed. Control: the d-pad never touched does not race the marks"
+    "note": "a first race on the cart by the pad and the screen alone, GL and WebGPU: A starts the race and the rider steers past each mark on the side its chevron points to, with a 0.3 s reaction delay, a wandering aim error and now and then a turn held too long, passing the marks in 45 s with at most one missed. Control: the d-pad never touched does not race the marks"
+  },
+  {
+    "name": "jetski-near",
+    "script": "tests/jetski-near.mjs",
+    "note": "speed you can see: in the first minute of a race on every course the floats strung out from the marks bring at least 20 of them within 15 m of the player (native, software GL). Control: sw floats 0 brings none"
   },
   {
     "name": "jetski-flash",
