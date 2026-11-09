@@ -560,7 +560,7 @@ def make_sporeling():
     humanoid_rig(M, hz, 0.2, 0.2, 0.55, 0.3, 0.28, 0.3, 0.26, 0.13)
     stalk = (0.62, 0.58, 0.5); cap = (0.34, 0.07, 0.05); spot = (0.75, 0.7, 0.6); gill = (0.5, 2.8, 3.0); root = (0.36, 0.3, 0.24)
     tw = torso_weights(hz, 0.05, 0.25, 0.3, 0.5)
-    M.limb("spine", (0, 0, hz - 0.05), (0, 0, hz + 0.6), 0.3, 0.2, stalk, w=tw, seg=9, noise_amt=0.25)       # the fat stalk body
+    M.limb("spine", (0, 0, hz - 0.05), (0, 0, hz + 0.6), 0.3, 0.2, stalk, w=tw, seg=9, noise_amt=0.25)       # the thick stalk body
     M.ell("hips", (0, 0, hz), (0.3, 0.28, 0.2), stalk, seg=(9, 5), noise_amt=0.25)
     M.ell("head", (0, 0, hz + 0.8), (0.46, 0.46, 0.2), cap, seg=(12, 6), noise_amt=0.3)                   # the broad cap
     M.ell("head", (0, 0, hz + 0.7), (0.47, 0.47, 0.05), gill, seg=(12, 3), emissive=True)                  # glowing gills under it, their rim showing

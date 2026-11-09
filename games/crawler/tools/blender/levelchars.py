@@ -596,7 +596,7 @@ def make_sporeling():
     stalk = (0.36, 0.33, 0.28); cap = (0.22, 0.19, 0.18); green = (0.22, 0.88, 0.42); spore = (0.45, 2.6, 1.0)
     root = (0.24, 0.2, 0.16); gill = (0.12, 0.3, 0.18)
     tw = torso_weights(hz, 0.05, 0.25, 0.3, 0.5)
-    M.limb("spine", (0, 0, hz - 0.05), (0, 0, hz + 0.6), 0.3, 0.2, stalk, w=tw, seg=9, noise_amt=0.25)       # the fat stalk body
+    M.limb("spine", (0, 0, hz - 0.05), (0, 0, hz + 0.6), 0.3, 0.2, stalk, w=tw, seg=9, noise_amt=0.25)       # the thick stalk body
     M.ell("hips", (0, 0, hz), (0.3, 0.28, 0.2), stalk, seg=(9, 5), noise_amt=0.25)
     M.ell("head", (0, 0, hz + 0.8), (0.46, 0.46, 0.2), cap, seg=(12, 6), noise_amt=0.3)                   # the broad cap
     M.ell("head", (0, 0, hz + 0.72), (0.47, 0.47, 0.05), gill, seg=(12, 3))

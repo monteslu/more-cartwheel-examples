@@ -297,7 +297,7 @@ glowing spore pods, and pools of luminous water.
 - **Waves.** 1: 60 skitter, 40 sporeling. 2: 40 R, 60 sporeling. 3: 30 B, 30 slagborn, 40 sporeling.
   4: 40 skitter, 20 L, 40 sporeling. 5: 30 bonewalker, 30 R, 40 sporeling (a dense wave).
   6: the boss, 50 sporeling, 30 skitter, 20 B.
-- **New monster: the sporeling.** A waddling fungus creature about 1.2 m tall: a fat stalk body on two
+- **New monster: the sporeling.** A waddling fungus creature about 1.2 m tall: a thick stalk body on two
   stubby root legs, a broad spotted cap glowing cyan underneath, and thin root arms. It waddles with
   a lot of sway (0.9x runner speed). Its attack is a headbutt: the cap tilts back for 0.4 s, then
   slams forward. When it dies it bursts into a spore cloud that slows anything in it for 3 s. That

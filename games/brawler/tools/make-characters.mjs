@@ -730,7 +730,7 @@ function build(sp) {
     k += 0.08 * gauss(y - (yHip + 0.03), 0.06) * (gauss(wrapA(a - (BACK - 0.5)), 0.5) + gauss(wrapA(a - (BACK + 0.5)), 0.5)); // seat
     if (SACK) k += belly * 0.3 * gauss(y - (yS - 0.01), 0.1) * Math.pow(front, 2.5);
     k += 0.07 * gutAt(y, gutPeak) * (gutD / 0.13) * Math.pow(front, 2); // the gut's front is rounder than its flanks
-    // a soft chest on an out of shape man: fat that hangs a little, a short round underside and a long slope above, flowing into the gut (not a bust)
+    // a soft chest on an out of shape man: soft tissue that hangs a little, a short round underside and a long slope above, flowing into the gut (not a bust)
     if (softChest) k += softChest * gauss(y - (yC + 0.035), y < yC + 0.035 ? 0.04 : 0.09) * (gauss(wrapA(a - (FRONT - 0.62)), 0.5) + gauss(wrapA(a - (FRONT + 0.62)), 0.5));
     k += 0.05 * gauss(y - (yC + 0.03), 0.07) * Math.pow(Math.abs(c), 3); // lats
     k -= 0.025 * gauss(y - yC, 0.15) * gauss(wrapA(a - BACK), 0.18); // the spine groove

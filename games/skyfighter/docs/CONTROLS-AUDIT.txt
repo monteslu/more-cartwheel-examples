@@ -1,4 +1,4 @@
-SKY FIGHTER — CONTROLS AND AUDIO AUDIT
+SKY FIGHTER: CONTROLS AND AUDIO AUDIT
 
 Scope: keyboard and positional gamepad input in the real wasmcart runtime,
 weapon readiness, simultaneous actions, menu/state transitions and audio.

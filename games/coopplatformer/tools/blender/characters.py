@@ -278,7 +278,7 @@ def walker():
     export("walker")
 
 
-# ── flyer: a fat moth with big wings and one glowing eye ──
+# ── flyer: a round-bodied moth with big wings and one glowing eye ──
 def flyer():
     reset()
     fur = material("fur", (0.48, 0.25, 0.7), 0.6, 0.0)

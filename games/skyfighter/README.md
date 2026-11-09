@@ -29,7 +29,7 @@ Dense GPU-instanced settlements add farms, alpine villages, canyon compounds, ci
 |---|---|---|
 | Bank and pitch | Left stick / D-pad | Arrows / WASD |
 | Stunts: rolls / loops | Hold right shoulder + stick | Hold R + arrows/WASD; Q / E rolls |
-| Look around | Right stick | — |
+| Look around | Right stick | none |
 | Guns | South face button / right trigger | Space / Return |
 | Select mission on title | D-pad / left stick | Arrow keys / click mission |
 | Mission selection | Choose Mission Select | Choose Mission Select |
@@ -71,7 +71,7 @@ regenerated with `tools/programs.sh` after a run names a missing state.
 
 - [F-15 Eagle model](https://www.innerscene.com/tools/library/3d-parts/f-15-eagle-fighter-jet-e1d11142) by Innerscene, CC0.
 - [Aerial Rocks 02](https://polyhaven.com/a/aerial_rocks_02), [Aerial Grass Rock](https://polyhaven.com/a/aerial_grass_rock), [Snow 03](https://polyhaven.com/a/snow_03), [coast sand 01](https://polyhaven.com/a/coast_sand_01), [sand 03](https://polyhaven.com/a/sand_03), [factory wall](https://polyhaven.com/a/factory_wall), and [concrete wall 009](https://polyhaven.com/a/concrete_wall_009) from Poly Haven, CC0. `tools/build-terrain-layers.py` packs the terrain maps into engine layer textures.
-- Inland relief uses [Mapzen/Tilezen Terrain Tiles](https://registry.opendata.aws/terrain-tiles/), sampled near Grindelwald. Europe elevation data produced using Copernicus data and information funded by the European Union — EU-DEM layers. This is a fictional coast: the relief is translated, vertically scaled and graded around the airfield. `tools/fetch-alpine-height.py` produces the offline height data.
+- Inland relief uses [Mapzen/Tilezen Terrain Tiles](https://registry.opendata.aws/terrain-tiles/), sampled near Grindelwald. Europe elevation data produced using Copernicus data and information funded by the European Union - EU-DEM layers. This is a fictional coast: the relief is translated, vertically scaled and graded around the airfield. `tools/fetch-alpine-height.py` produces the offline height data.
 - Afterburner / flyby audio: excerpts of [F101 / T-9 Jet Engine Test Cell](https://commons.wikimedia.org/wiki/File:F101_-_T-9_Jet_Engine_Test_Cell.ogv), Timothy Kirchner / U.S. Air Force, public domain. Loops are filtered, normalized and crossfaded. Used for afterburner and close flybys. The continuous cruise/wind bed and default channel hiss are disabled.
 - Architectural facade atlas and runtime textures were generated with the built-in imagegen tool; source image and prompt: `assets/source-architecture/`. They supply red brick, pale palace stone, city stone and glass facades.
 - `assets/effects/billow.png` was generated for this project. The identical `.sprite` copy is packed verbatim for the particle PNG decoder.
@@ -130,7 +130,7 @@ Local profiling (20 steady frames, same Country Fair camera and deterministic in
 | One cell, manager culling off | 453 | 127.70 | 7.03 |
 | Four cells, culling on | 477 | 198.57 | 8.17 |
 | Sixteen cells, culling on | 573 | 246.01 | 9.87 |
-| Four cells, GL depth prepass on | 952 | 295.93 | — |
+| Four cells, GL depth prepass on | 952 | 295.93 | - |
 
 Both backends therefore keep the original unsplit batch count by default. Spatial subdivision and the corrected GL depth prepass remain available for future device-specific profiling, without imposing their measured overhead on normal gameplay. The complete figures are in `out/skyfighter-review/engine-upgrade/profile-report.json`.
 
