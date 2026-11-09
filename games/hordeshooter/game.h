@@ -55,6 +55,7 @@ typedef struct input { float mx, my, ax, ay; bool fire, bomb; int pick; /* 1..3 
 
 typedef struct player {
   bool active, down;
+  bool away; /* a seat nobody has played for 20 s (the game sets it): the team box, the camera and the tether leave it out, and it is carried along */
   float x, y, vx, vy, aim, hp;
   int cd, bomb_cd, inv, score, kills, level, xp, xp_next, down_ticks;
   /* upgrades */

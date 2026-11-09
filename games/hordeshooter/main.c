@@ -95,9 +95,9 @@ static struct {
   uint32_t guns[MAXP]; /* frames an upgrade choice's cards were drawn (a player's each) */ /* the hatch marker's label and the floor-clear banner, rows on screen (the text check) */
   t3_vec3 cam_p[2];
   int cam_n;
-  /* the seats that play: the tick each seat last touched its pad (a seat untouched for 20 s raises nothing: the horde
-   * is sized for the crew, sim.crew); sw idle_crew 1 sizes it for every seat as before; sw no_marker 1 draws no STEP IN
-   * marker (the newcomer gate's control) */
+  /* the seats that play: the tick each seat last touched its pad. A seat untouched for 20 s raises nothing (the horde
+   * is sized for the crew, sim.crew) and holds nobody back (player.away: out of the team box and the tether, carried
+   * along); sw idle_crew 1 brings the old rules back; sw no_marker 1 draws no STEP IN marker (the newcomer gate's controls) */
   int touch[MAXP];
   int32_t crew;
   bool sw_idle_crew, sw_no_marker;
@@ -332,7 +332,7 @@ static void init(void *u) {
   cw_debug_i32("game.state", &G.state);
   cw_debug_i32("game.crew", &G.crew); /* the seats the horde is sized for */
   cw_debug_field("nc.look", G.look, CW_DBG_F32, NC_LOOK);
-  cw_debug_command("sw", "sw idle_crew <0|1>: the horde sized for every seat, a seat nobody plays too (the old rule); sw no_marker <0|1>: no STEP IN marker over the open hatch (test switches)", cmd_sw);
+  cw_debug_command("sw", "sw idle_crew <0|1>: the old rules for a seat nobody plays (the horde sized for it, the team box and the tether held by it); sw no_marker <0|1>: no STEP IN marker over the open hatch (test switches)", cmd_sw);
   cw_debug_i32("game.ticks", &G.ticks);
   cw_debug_i32("game.wave", &G.wave);
   cw_debug_i32("game.enemies", &G.enemies);
@@ -476,6 +476,7 @@ static void fixed_update(void *u, double dt) {
     for (int i = 0; i < G.S.players; i++)
       if (G.S.tick - G.touch[i] < 60 * 20) { if (!n) solo = i; n++; }
     G.S.crew = G.sw_idle_crew ? G.S.players : CW_MAX(n, 1);
+    for (int i = 0; i < MAXP; i++) G.S.p[i].away = !G.sw_idle_crew && n > 0 && G.S.tick - G.touch[i] >= 60 * 20;
   }
 #endif
   G.crew = G.S.crew;

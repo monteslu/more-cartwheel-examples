@@ -1755,10 +1755,17 @@ void sim_team_box(const sim *s, float *cx, float *cy, float *hw, float *hh) {
   int n = 0;
   for (int i = 0; i < MAXP; i++) {
     const player *p = &s->p[i];
-    if (!p->active || p->down) continue;
+    if (!p->active || p->down || p->away) continue;
     x0 = CW_MIN(x0, p->x), x1 = CW_MAX(x1, p->x), y0 = CW_MIN(y0, p->y), y1 = CW_MAX(y1, p->y);
     n++;
   }
+  if (!n) /* nobody here plays: the living ones, away or not */
+    for (int i = 0; i < MAXP; i++) {
+      const player *p = &s->p[i];
+      if (!p->active || p->down) continue;
+      x0 = CW_MIN(x0, p->x), x1 = CW_MAX(x1, p->x), y0 = CW_MIN(y0, p->y), y1 = CW_MAX(y1, p->y);
+      n++;
+    }
   if (!n) {
     *cx = s->cam_x, *cy = s->cam_y, *hw = *hh = 4;
     return;
@@ -1941,16 +1948,23 @@ void sim_step(sim *s, const input in[MAXP]) {
     int n = 0;
     for (int i = 0; i < MAXP; i++) {
       const player *p = &s->p[i];
-      if (!p->active || p->down) continue;
+      if (!p->active || p->down || p->away) continue; /* a seat nobody plays anchors nothing */
       x0 = CW_MIN(x0, p->x), x1 = CW_MAX(x1, p->x), y0 = CW_MIN(y0, p->y), y1 = CW_MAX(y1, p->y), n++;
     }
     if (n > 1)
       for (int i = 0; i < MAXP; i++) {
         player *p = &s->p[i];
-        if (!p->active || p->down) continue;
+        if (!p->active || p->down || p->away) continue;
         float mx = (x0 + x1) * 0.5f, my = (y0 + y1) * 0.5f;
         if (x1 - x0 > 2 * TETHER_HW) p->x = cw_clampf(p->x, mx - TETHER_HW, mx + TETHER_HW);
         if (y1 - y0 > 2 * TETHER_HH) p->y = cw_clampf(p->y, my - TETHER_HH, my + TETHER_HH);
+      }
+    if (n > 0) /* and a seat nobody plays is carried along inside the view of the ones who do */
+      for (int i = 0; i < MAXP; i++) {
+        player *p = &s->p[i];
+        if (!p->active || p->down || !p->away) continue;
+        float hx = CW_MAX(TETHER_HW - (x1 - x0) * 0.5f, 0), hy = CW_MAX(TETHER_HH - (y1 - y0) * 0.5f, 0);
+        p->x = cw_clampf(p->x, x0 - hx, x1 + hx), p->y = cw_clampf(p->y, y0 - hy, y1 + hy);
       }
   }
   if (s->state == ST_PLAY && s->players > 0 && sim_alive_players(s) == 0) {
