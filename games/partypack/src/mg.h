@@ -252,6 +252,7 @@ void n3_pos(cw_node n, float x, float y, float z);
 void n3_rot(cw_node n, float rx, float ry, float rz);
 void n3_scale(cw_node n, float x, float y, float z);
 cw_vec2 n3_project(t3_vec3 world);      /* a world point on the stage (for labels over 3D) */
+cw_vec2 n3_project_from(t3_vec3 world, const float *cam_pos, const float *cam_target); /* as a camera there would show it */
 void n3_camera(float px, float py, float pz, float tx, float ty, float tz);
 /* one-shot effects (GPU particles and a light flash) that remove themselves */
 void n3_fx_reset(void);
@@ -276,6 +277,8 @@ void hub_token(int p, float cell, float hop);
 void hub_podium_slot(int p, int rank, float lift);
 cw_vec2 hub_cell_screen(int i);
 void hub_fork(int i, bool on);             /* the shortcut bridge of the fork at cell i (10k + 8) */
+int hub_ncells(void);                    /* the board length the hub is laid out for (-1: no hub) */
+void hub_board_fit(float want_top, float want_bottom, float above, float below); /* the board camera pulled back and moved until every row, with `above` px of words over the top row and `below` px of tile under the last, sits between the two lines */
 cw_vec2 hub_fork_screen(int i);            /* the bridge's middle on screen */
 void hub_token_cut(int p, int cut);        /* the token's walk crosses the bridge of fork `cut` (-1 none) */
 cw_vec2 hub_podium_screen(int rank);

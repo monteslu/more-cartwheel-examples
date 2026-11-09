@@ -38,7 +38,9 @@ void n3_camera(float px, float py, float pz, float tx, float ty, float tz) {
   cw_node3d_look_at(cam, (t3_vec3){ tx, ty, tz }, (t3_vec3){ 0, 1, 0 });
 }
 
-cw_vec2 n3_project(t3_vec3 w) {
+cw_vec2 n3_project(t3_vec3 w) { return n3_project_from(w, CAM_P, CAM_T); }
+/* a world point on the stage as a camera at p looking at t would show it (the board fits its camera with this) */
+cw_vec2 n3_project_from(t3_vec3 w, const float *CAM_P, const float *CAM_T) {
   float f[3] = { CAM_T[0] - CAM_P[0], CAM_T[1] - CAM_P[1], CAM_T[2] - CAM_P[2] };
   float fl = sqrtf(f[0] * f[0] + f[1] * f[1] + f[2] * f[2]);
   if (fl < 1e-4f) return cw_v2(-1000, -1000);

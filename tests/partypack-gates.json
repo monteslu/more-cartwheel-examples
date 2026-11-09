@@ -755,5 +755,113 @@
     "name": "partypack-quality",
     "script": "tests/partypack-quality.mjs",
     "note": "a program for everything drawn at every quality on both backends, through a spread warm-up as a player gets it: every mini-game for a whole round to its results, the board and a tournament to the final. A scene not reached fails. Control: the states of Blast Ring's eight lights out of the table"
+  },
+  {
+    "name": "partypack-board-labels-4",
+    "note": "The board's labels at twice the text size, 4 rounds (2026-11-09): the tile words (+3, TAKE, SWAP, STAR, END) and the SHORTCUT pills over the bridges are laid out from measured text so none overlaps another, the heading or the player strip, and the board camera fits every row and the END between the heading and the strip (a long board had its last rows under the strip). board.labels: labels drawn, pairs that overlap (or sit outside the band). The control (PP_LABELS_OLD=1) puts every label where it once went and the camera where it was: pairs overlap, so it fails.",
+    "app": "partypack_auto",
+    "assets": "games/partypack/assets",
+    "hosts": [
+      "native"
+    ],
+    "env": {
+      "PP_ROUNDS": "0"
+    },
+    "frames": 2400,
+    "startCmds": [
+      "text scale 2"
+    ],
+    "fields": [
+      "game.round",
+      "board.labels"
+    ],
+    "expect": {
+      "game.round": 1,
+      "board.labels": [
+        12,
+        0
+      ]
+    },
+    "controlEnv": {
+      "PP_ROUNDS": "0",
+      "PP_LABELS_OLD": "1"
+    },
+    "controlStartCmds": [
+      "text scale 2"
+    ],
+    "controlFrames": 2400,
+    "controlField": "board.labels"
+  },
+  {
+    "name": "partypack-board-labels-6",
+    "note": "The board's labels at twice the text size, 6 rounds (2026-11-09): the tile words (+3, TAKE, SWAP, STAR, END) and the SHORTCUT pills over the bridges are laid out from measured text so none overlaps another, the heading or the player strip, and the board camera fits every row and the END between the heading and the strip (a long board had its last rows under the strip). board.labels: labels drawn, pairs that overlap (or sit outside the band). The control (PP_LABELS_OLD=1) puts every label where it once went and the camera where it was: pairs overlap, so it fails.",
+    "app": "partypack_auto",
+    "assets": "games/partypack/assets",
+    "hosts": [
+      "native"
+    ],
+    "env": {
+      "PP_ROUNDS": "1"
+    },
+    "frames": 2400,
+    "startCmds": [
+      "text scale 2"
+    ],
+    "fields": [
+      "game.round",
+      "board.labels"
+    ],
+    "expect": {
+      "game.round": 1,
+      "board.labels": [
+        17,
+        0
+      ]
+    },
+    "controlEnv": {
+      "PP_ROUNDS": "1",
+      "PP_LABELS_OLD": "1"
+    },
+    "controlStartCmds": [
+      "text scale 2"
+    ],
+    "controlFrames": 2400,
+    "controlField": "board.labels"
+  },
+  {
+    "name": "partypack-board-labels-8",
+    "note": "The board's labels at twice the text size, 8 rounds (2026-11-09): the tile words (+3, TAKE, SWAP, STAR, END) and the SHORTCUT pills over the bridges are laid out from measured text so none overlaps another, the heading or the player strip, and the board camera fits every row and the END between the heading and the strip (a long board had its last rows under the strip). board.labels: labels drawn, pairs that overlap (or sit outside the band). The control (PP_LABELS_OLD=1) puts every label where it once went and the camera where it was: pairs overlap, so it fails.",
+    "app": "partypack_auto",
+    "assets": "games/partypack/assets",
+    "hosts": [
+      "native"
+    ],
+    "env": {
+      "PP_ROUNDS": "2"
+    },
+    "frames": 2400,
+    "startCmds": [
+      "text scale 2"
+    ],
+    "fields": [
+      "game.round",
+      "board.labels"
+    ],
+    "expect": {
+      "game.round": 1,
+      "board.labels": [
+        23,
+        0
+      ]
+    },
+    "controlEnv": {
+      "PP_ROUNDS": "2",
+      "PP_LABELS_OLD": "1"
+    },
+    "controlStartCmds": [
+      "text scale 2"
+    ],
+    "controlFrames": 2400,
+    "controlField": "board.labels"
   }
 ]

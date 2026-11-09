@@ -1053,13 +1053,16 @@ static cw_vec2 board_cell_pos(int i, int rows) {
   return cw_v2(gx, gy);
 }
 
-static void draw_chip(int p, float x, float y, float w, const char *line, float alpha) {
+static void draw_chip_named(int p, float x, float y, float w, const char *name, const char *line, float alpha);
+static void draw_chip(int p, float x, float y, float w, const char *line, float alpha) { draw_chip_named(p, x, y, w, NULL, line, alpha); }
+/* name NULL: the seat's name (CPU or the player's) */
+static void draw_chip_named(int p, float x, float y, float w, const char *name, const char *line, float alpha) {
   cw_color c = PCOL[p];
   bool out = G.c.eliminated[p];
   cw_rect r = cw_rect_make(x, y, w, ui_chip_h());
   ui_panel(r, cw_rgba(0.08f, 0.08f, 0.16f, 0.82f * alpha), col_a(c, out ? 0.2f : 0.9f));
   ui_blob(cw_v2(x + 30, y + ui_chip_h() * (31.0f / 58.0f)), 18, p, 0, 0, 1, out ? 3 : 0, !G.human[p]);
-  ui_text(!G.human[p] ? "CPU" : PNAME[p], cw_v2(x + 58, y + 3), 22, col_a(c, out ? 0.4f : 1), CW_ALIGN_LEFT);
+  ui_text(name ? name : !G.human[p] ? "CPU" : PNAME[p], cw_v2(x + 58, y + 3), 22, col_a(c, out ? 0.4f : 1), CW_ALIGN_LEFT);
   if (line && line[0]) ui_text(line, cw_v2(x + 58, y + 3 + 24 * ui_grow(22)), 26, cw_rgba(1, 1, 1, out ? 0.4f : 1), CW_ALIGN_LEFT);
 }
 
@@ -1271,6 +1274,91 @@ static void draw_trophy(void) {
   if (trophy_scroll + fit < rows) scroll_arrow(STAGE_W - 60, top + fit * lh - 12, 1, 12);
 }
 
+/* The board's labels: a word over each special tile (growing upward) and SHORTCUT on a pill over each bridge. Laid out
+ * from measured text so none overlaps another at any text size and on every board length: a tile's word that meets
+ * one already placed climbs over it; a bridge's pill takes the nearest spot along the gap between the rows where it
+ * meets no word. Debug board.labels: [labels drawn, pairs that overlap]; PP_LABELS_OLD=1 (the control) puts every
+ * label where it once went, whatever it covers. */
+typedef struct { const char *t; float x, top, w, h, size; cw_color c; bool pill; } board_label;
+static int32_t g_board_lab_dbg[2];
+/* a tile's tag grows with the text size up to half again (never under its 100% size): a row of ten tiles has no room
+ * for ten words at twice the size, and the tags are short and bold over the tiles they name */
+static bool getenv_labels_old(void) { static int v = -1; if (v < 0) v = getenv("PP_LABELS_OLD") != NULL; return v; }
+static float lab_size(float size) { float g = ui_grow(size); return g > 1.5f && !getenv_labels_old() ? size * 1.5f / g : size; }
+static float lab_overlap(const board_label *a, const board_label *b, float pad) {
+  float ox = fminf(a->x + a->w * 0.5f, b->x + b->w * 0.5f) - fmaxf(a->x - a->w * 0.5f, b->x - b->w * 0.5f) + pad;
+  float oy = fminf(a->top + a->h, b->top + b->h) - fmaxf(a->top, b->top) + pad;
+  return ox > 0 && oy > 0 ? ox * oy : 0;
+}
+/* the cheapest spot for label b near where it would go: meeting nothing placed (L[0..n)), inside the band between
+ * top and bottom (under the heading and the board's line of words, over the player strip), as near as it can */
+static void lab_place(board_label *b, const board_label *L, int n, float top, float bottom, bool up_only) {
+  const float x0 = b->x, t0 = b->top;
+  float best = 1e30f, bx = x0, bt = t0;
+  for (int dy = 0; dy < 8; dy++)
+    for (int st = 0; st <= 80; st++) {
+      static const float DY[8] = { 0, -0.5f, -1.0f, 0.3f, -1.5f, 0.6f, -2.0f, 0.9f };
+      if (up_only && DY[dy] > 0) continue;
+      float ddx = 6.0f * (float)((st + 1) / 2) * (st % 2 ? -1.0f : 1.0f), ddy = DY[dy] * b->h;
+      board_label c = *b;
+      c.x = x0 + ddx, c.top = t0 + ddy;
+      float ov = 0;
+      for (int k = 0; k < n; k++) ov += lab_overlap(&c, &L[k], 5);
+      ov += fmaxf(0, top - c.top) * c.w + fmaxf(0, c.top + c.h - bottom) * c.w; /* out of its band */
+      float cost = ov * 1000.0f + fabsf(ddx) + 1.5f * fabsf(ddy);
+      if (cost < best) best = cost, bx = c.x, bt = c.top;
+      if (best <= 0) break;
+    }
+  b->x = bx, b->top = bt;
+}
+static void board_labels(int N, float top, float bottom) {
+  const bool old = getenv_labels_old();
+  static char star_t[16];
+  board_label L[64];
+  int n = 0;
+  for (int i = 0; i <= N && n < 48; i++) { /* the tiles' words: over the tile, growing upward */
+    int kind = i == N ? EV_NONE : cell_used(i) ? EV_NONE : cell_kind(i);
+    bool star = G.tournament && i == G.star_cell;
+    if (i != N && kind == EV_NONE && !star) continue;
+    cw_vec2 p = hub_cell_screen(i);
+    board_label *b = &L[n];
+    if (i == N) *b = (board_label){ "END", 0, 30, 0, 0, 26, cw_rgba(1, 0.95f, 0.5f, 1), false };
+    else if (star) { snprintf(star_t, sizeof star_t, "STAR %d", STAR_COST); *b = (board_label){ star_t, 0, 30, 0, 0, 24, cw_rgba(1, 0.85f, 0.3f, 1), false }; }
+    else if (kind == EV_COIN) *b = (board_label){ "+3", 0, 30, 0, 0, 24, cw_rgba(1, 0.9f, 0.45f, 1), false };
+    else if (kind == EV_STEAL) *b = (board_label){ "TAKE", 0, 28, 0, 0, 20, cw_rgba(1, 0.65f, 0.3f, 1), false };
+    else if (kind == EV_SWAP) *b = (board_label){ "SWAP", 0, 28, 0, 0, 20, cw_rgba(0.4f, 0.95f, 0.9f, 1), false };
+    else continue;
+    const float foot = ui_line_h(b->size) / ui_grow(b->size); /* its height at 100%: the foot stays where it was */
+    b->size = lab_size(b->size);
+    b->w = ui_text_w(b->t, b->size), b->h = ui_line_h(b->size);
+    b->x = p.x, b->top = p.y - b->top + foot - b->h; /* as ui_text_up places it */
+    if (!old) lab_place(b, L, n, top, bottom, true);
+    n++;
+  }
+  for (int i = 1; i < N && n < 64; i++) if (is_fork(i)) { /* the bridges' pills */
+    cw_vec2 p = hub_fork_screen(i);
+    board_label *b = &L[n];
+    const float ps = lab_size(18);
+    *b = (board_label){ "SHORTCUT", p.x, 0, ui_text_w("SHORTCUT", ps) + 14, ui_line_h(ps) + 2, ps, cw_rgba(0.6f, 0.95f, 1, 1), true };
+    b->top = p.y - b->h * 0.5f;
+    if (!old) lab_place(b, L, n, top, bottom, false); /* the nearest spot along the gap that meets nothing placed */
+    n++;
+  }
+  int pairs = 0;
+  for (int a = 0; a < n; a++) {
+    for (int k = a + 1; k < n; k++) if (lab_overlap(&L[a], &L[k], 0) > 0) pairs++;
+    if (L[a].top < top - 0.5f || L[a].top + L[a].h > bottom + 0.5f) pairs++; /* under the heading or the player strip */
+  }
+  g_board_lab_dbg[0] = n, g_board_lab_dbg[1] = pairs;
+  for (int k = 0; k < n; k++) {
+    const board_label *b = &L[k];
+    if (b->pill) {
+      ui_pill(cw_rect_make(b->x - b->w * 0.5f, b->top, b->w, b->h), cw_rgba(0.04f, 0.06f, 0.1f, 0.78f));
+      ui_text(b->t, cw_v2(b->x, b->top + 1), b->size, b->c, CW_ALIGN_CENTER);
+    } else ui_text(b->t, cw_v2(b->x, b->top), b->size, b->c, CW_ALIGN_CENTER);
+  }
+}
+
 static void draw_board(void) {
   ui_vignette(1.2f);
   int N = board_cells();
@@ -1281,27 +1369,22 @@ static void draw_board(void) {
   else snprintf(s, sizeof s, "ROUND %d OF %d", G.round + 1, G.rounds);
   ui_text(s, cw_v2(STAGE_W / 2, 18), 58, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
   float y = fmaxf(96, 18 + ui_line_h(58));
-  for (int i = 0; i <= N; i++) { /* labels on the special tiles: over the tile, growing upward */
-    int kind = i == N ? EV_NONE : cell_used(i) ? EV_NONE : cell_kind(i);
-    bool star = G.tournament && i == G.star_cell;
-    if (i != N && kind == EV_NONE && !star) continue;
-    cw_vec2 p = hub_cell_screen(i);
-    if (i == N) ui_text_up("END", cw_v2(p.x, p.y - 30), 26, cw_rgba(1, 0.95f, 0.5f, 1), CW_ALIGN_CENTER);
-    else if (star) { snprintf(s, sizeof s, "STAR %d", STAR_COST); ui_text_up(s, cw_v2(p.x, p.y - 30), 24, cw_rgba(1, 0.85f, 0.3f, 1), CW_ALIGN_CENTER); }
-    else if (kind == EV_COIN) ui_text_up("+3", cw_v2(p.x, p.y - 30), 24, cw_rgba(1, 0.9f, 0.45f, 1), CW_ALIGN_CENTER);
-    else if (kind == EV_STEAL) ui_text_up("TAKE", cw_v2(p.x, p.y - 28), 20, cw_rgba(1, 0.65f, 0.3f, 1), CW_ALIGN_CENTER);
-    else if (kind == EV_SWAP) ui_text_up("SWAP", cw_v2(p.x, p.y - 28), 20, cw_rgba(0.4f, 0.95f, 0.9f, 1), CW_ALIGN_CENTER);
-  }
-  for (int i = 1; i < N; i++) if (is_fork(i)) { /* the bridges: a label in the gap */
-    cw_vec2 p = hub_fork_screen(i);
-    float w = ui_text_w("SHORTCUT", 18) + 14, h = ui_line_h(18) + 2;
-    ui_pill(cw_rect_make(p.x - w * 0.5f, p.y - h * 0.5f, w, h), cw_rgba(0.04f, 0.06f, 0.1f, 0.78f));
-    ui_text("SHORTCUT", cw_v2(p.x, p.y - ui_line_h(18) * 0.5f), 18, cw_rgba(0.6f, 0.95f, 1, 1), CW_ALIGN_CENTER);
-  }
   float chip_y = STAGE_H - 22 - ui_chip_h();
+  { /* the board between the heading (the next game and the line of what the board did under it) and the player strip */
+    float band_top = y + ui_line_h(40) + 30 * ui_grow(22) + 6; /* the same in the shop: the view never pumps */
+    float band_bot = chip_y - 6;
+    if (!getenv_labels_old()) hub_board_fit(band_top, band_bot, 30 + ui_line_h(24), 34);
+    board_labels(N, band_top, band_bot);
+  }
   for (int p = 0; p < NP; p++) {
     snprintf(s, sizeof s, "%d star%s  %d coin%s", G.stars[p], G.stars[p] == 1 ? "" : "s", G.coins[p], G.coins[p] == 1 ? "" : "s");
-    draw_chip(p, 70 + p * 285, chip_y, 270, s, 1);
+    if (ui_text_w(s, 26) <= 270 - 66) draw_chip(p, 70 + p * 285, chip_y, 270, s, 1);
+    else { /* a large text size: the stars on the name's line (the blob and its colour say whose), the coins under */
+      char st[32], co[32];
+      snprintf(st, sizeof st, "%d star%s", G.stars[p], G.stars[p] == 1 ? "" : "s");
+      snprintf(co, sizeof co, "%d coin%s", G.coins[p], G.coins[p] == 1 ? "" : "s");
+      draw_chip_named(p, 70 + p * 285, chip_y, 270, st, co, 1);
+    }
   }
   if (deciding) { /* the shop: each seat's roll, and its pick over its chip */
     snprintf(s, sizeof s, "Rolls are in. Shop before you move (a star costs %d coins)", STAR_COST);
@@ -1608,7 +1691,7 @@ static void hub_sync(float dt) {
   if (!last_live) { last_mode = -1; last_cells = -1; last_live = true; }
   int mode = G.state == S_BOARD ? 1 : G.state == S_FINAL ? 2 : 0;
   int N = board_cells();
-  if (N != last_cells) { hub_cells(N); last_cells = N; last_mode = -1; }
+  if (N != last_cells || hub_ncells() != N) { hub_cells(N); last_cells = N; last_mode = -1; } /* also after the hub was built again (a scene load): it starts at 20 cells */
   if (mode != last_mode) { hub_mode(mode); last_mode = mode; }
   if (mode == 1) {
     for (int i = 0; i <= N; i++) hub_cell(i, i == N ? 2 : (G.tournament && i == G.star_cell) ? 1 : 0);
@@ -1754,6 +1837,8 @@ static void init(void *user) {
   cw_debug_field("game.route", G.route, CW_DBG_I32, NP);
   cw_debug_field("game.cut", G.cut, CW_DBG_I32, NP);
   cw_debug_field("game.awards", G.award_p, CW_DBG_I32, 3);
+  { extern int32_t hub_fit_dbg[8]; cw_debug_field("board.fit", hub_fit_dbg, CW_DBG_I32, 8); } /* the board camera fitted to the band (hub_board_fit) */
+  cw_debug_field("board.labels", g_board_lab_dbg, CW_DBG_I32, 2); /* the board's labels: drawn, pairs overlapping (PP_LABELS_OLD=1 the control) */
   cw_debug_u32("game.hash", &G.hash);
   cw_debug_i32("game.points_total", &SV->points_total);
   cw_debug_u32("game.unlocked", &SV->unlocked);

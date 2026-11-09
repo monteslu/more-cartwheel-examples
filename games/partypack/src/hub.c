@@ -12,6 +12,7 @@ static struct {
   int cut[NP];                       /* the fork a token's walk crosses by its bridge (-1 none) */
   int mode, ncells, rows;
   float cam[6], cam_t[6];            /* position and target now / wanted */
+  float board_cam[6];                /* the board's own view before hub_board_fit pulls it back */
   float cell[NP], hop[NP], lift[NP]; /* token board cell, hop height, podium lift */
   float clock;
   bool cpu[NP];
@@ -66,6 +67,7 @@ void hub_build(int humans) {
   for (int i = 0; i < 6; i++) H.cam[i] = H.cam_t[i];
 }
 
+int hub_ncells(void) { return H.built ? H.ncells : -1; }
 /* the board's length: tiles are laid out for n cells plus the end */
 void hub_cells(int n) {
   if (!H.built) return;
@@ -117,6 +119,7 @@ void hub_mode(int mode) {
     float zc = (z0 + z1) * 0.5f, more = (float)(H.rows > 4 ? H.rows - 4 : 0);
     float c[6] = { 0, 20.0f + 4.5f * more, zc + 12.4f + 3.6f * more, 0, 0, zc - 0.1f + 0.5f * more };
     memcpy(H.cam_t, c, sizeof c);
+    memcpy(H.board_cam, c, sizeof c);
   }
   else if (mode == 2) { float c[6] = { 0, 3.2f, 8.2f, 0, 1.0f, 0 }; memcpy(H.cam_t, c, sizeof c); }
   else { float c[6] = { 0, 2.3f, 9.0f, 0, 1.1f, 0 }; memcpy(H.cam_t, c, sizeof c); }
@@ -134,6 +137,43 @@ void hub_cell(int i, int kind) {
 }
 void hub_token(int p, float cell, float hop) { if (H.built) { H.cell[p] = cell; H.hop[p] = hop; } }
 void hub_podium_slot(int p, int rank, float lift) { if (H.built) { H.podium_rank[p] = rank; H.lift[p] = lift; } }
+
+/* The board's camera: the view hub_mode set, moved along its line of sight (fit: back when the board does not fit, in
+ * when it has room to spare) and slid along the board (dz) until the top row's words and the last row's tiles (the
+ * END) fill the band between want_top and want_bottom, whatever the
+ * board's length and the text size (the player strip grows with it). Solved on the wanted view, not the eased one */
+int32_t hub_fit_dbg[8]; /* debug board.fit: the pull back and the slide (thousandths), the first try's overflow (px), calls */
+void hub_board_fit(float want_top, float want_bottom, float above, float below) {
+  hub_fit_dbg[3]++;
+  if (!H.built || H.mode != 1) return;
+  const float *b = H.board_cam;
+  float z0 = 1e9f, z1 = -1e9f;
+  for (int i = 0; i <= H.ncells; i++) { float xx, zz; cell_xz(i, &xx, &zz); z1 = fmaxf(z1, zz), z0 = fminf(z0, zz); }
+  float fit = 1, dz = 0;
+  for (int it = 0; it < 80; it++) {
+    float p[3], t[3] = { b[3], b[4], b[5] + dz };
+    p[0] = b[3] + (b[0] - b[3]) * fit, p[1] = b[4] + (b[1] - b[4]) * fit, p[2] = b[5] + dz + (b[2] - b[5]) * fit;
+    float top = 1e9f, bot = -1e9f, lft = 1e9f, rgt = -1e9f;
+    for (int e = -1; e <= 1; e += 2) { /* the corners of the board (the nearest row is the widest on screen) */
+      float xe = e * (640.0f - 130.0f + 60.0f) / 52.0f;
+      cw_vec2 a = n3_project_from((t3_vec3){ xe, 0.45f, z0 }, p, t), c = n3_project_from((t3_vec3){ xe, 0.15f, z1 }, p, t);
+      top = fminf(top, a.y - above), bot = fmaxf(bot, c.y + below);
+      lft = fminf(lft, fminf(a.x, c.x)), rgt = fmaxf(rgt, fmaxf(a.x, c.x));
+    }
+    const float side = 40.0f;
+    float over = fmaxf(0, want_top - top) + fmaxf(0, bot - want_bottom) + fmaxf(0, side - lft) + fmaxf(0, rgt - (STAGE_W - side));
+    float mid = (top + bot) * 0.5f - (want_top + want_bottom) * 0.5f;
+    float slack = fminf(fminf(top - want_top, want_bottom - bot), fminf(lft - side, STAGE_W - side - rgt));
+    if (it == 0) hub_fit_dbg[2] = (int32_t)over, hub_fit_dbg[4] = (int32_t)top, hub_fit_dbg[5] = (int32_t)bot, hub_fit_dbg[6] = (int32_t)want_bottom, hub_fit_dbg[7] = H.ncells;
+    if (over < 1 && slack < 16 && fabsf(mid) < 6) break; /* it fills the band, in its middle */
+    if (over >= 1) fit *= 1.0f + fminf(0.05f, over / 4000.0f);
+    else if (slack >= 16) fit *= 1.0f - fminf(0.04f, slack / 5000.0f); /* room to spare: closer, every row bigger */
+    dz += mid * 0.004f * fit; /* a board low on the screen: the camera backs off along it, the board rises */
+  }
+  H.cam_t[0] = b[3] + (b[0] - b[3]) * fit, H.cam_t[1] = b[4] + (b[1] - b[4]) * fit, H.cam_t[2] = b[5] + dz + (b[2] - b[5]) * fit;
+  H.cam_t[3] = b[3], H.cam_t[4] = b[4], H.cam_t[5] = b[5] + dz;
+  hub_fit_dbg[0] = (int32_t)(fit * 1000), hub_fit_dbg[1] = (int32_t)(dz * 1000);
+}
 
 cw_vec2 hub_cell_screen(int i) {
   float x, z;
