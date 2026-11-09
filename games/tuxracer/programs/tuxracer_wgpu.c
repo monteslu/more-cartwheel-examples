@@ -302,6 +302,46 @@ static const t3_gen_attribute a_depth_instbig_xrim[] = {
   { "nodeAttribute3", "vec4", 5, false },
 };
 
+/* ── depth+instbig+xterrain_csm_plain_snow ── */
+static const t3_bk_group_layout g_depth_instbig_xterrain_csm_plain_snow_terrainFrame = { "terrainFrame", 0, 128, 0, NULL, 0, NULL, 0 };
+static const t3_bk_group_layout g_depth_instbig_xterrain_csm_plain_snow_render = { "render", 1, 128, 0, NULL, 0, NULL, 0 };
+static const t3_bk_texture_layout t_depth_instbig_xterrain_csm_plain_snow_object[] = {
+  { "nodeUniform9", 1, T3_BK_SAMPLE_FLOAT, T3_BK_DIM_2D, true, false, false, "ext.terrainMacro", 0 },
+  { "nodeUniform15", 3, T3_BK_SAMPLE_FLOAT, T3_BK_DIM_2D, true, false, false, "ext.terrainNormals", 2 },
+  { "nodeUniform17", 4, T3_BK_SAMPLE_UINT, T3_BK_DIM_2D, false, false, false, "ext.terrainControl", 0 },
+  { "nodeUniform18", 6, T3_BK_SAMPLE_FLOAT, T3_BK_DIM_2D_ARRAY, true, false, false, "ext.terrainAlbedo", 5 },
+  { "nodeUniform21", 8, T3_BK_SAMPLE_FLOAT, T3_BK_DIM_2D_ARRAY, true, false, false, "ext.terrainLayerNormals", 7 },
+  { "nodeUniform5", 10, T3_BK_SAMPLE_UINT, T3_BK_DIM_2D, false, false, false, "ext.terrainHeights", 0 },
+};
+static const t3_bk_group_layout g_depth_instbig_xterrain_csm_plain_snow_object = { "object", 2, 80, 9, t_depth_instbig_xterrain_csm_plain_snow_object, 6, NULL, 0 };
+static const t3_bk_group_layout *const groups_depth_instbig_xterrain_csm_plain_snow[] = { &g_depth_instbig_xterrain_csm_plain_snow_terrainFrame, &g_depth_instbig_xterrain_csm_plain_snow_render, &g_depth_instbig_xterrain_csm_plain_snow_object };
+static const t3_gen_property p_depth_instbig_xterrain_csm_plain_snow[] = {
+  { "object.matrixWorld", 2, 0, 64, false },
+  { "ext.terrainCam", 0, 0, 16, false },
+  { "ext.terrainGrid", 0, 16, 16, false },
+  { "ext.terrainHeight", 0, 32, 16, false },
+  { "ext.terrainLod", 0, 48, 16, false },
+  { "ext.terrainFar", 0, 64, 16, false },
+  { "ext.terrainUv0", 0, 80, 16, false },
+  { "ext.terrainUv1", 0, 96, 16, false },
+  { "ext.terrainSlope", 0, 112, 16, false },
+  { "camera.projectionMatrix", 1, 0, 64, false },
+  { "camera.matrixWorldInverse", 1, 64, 64, false },
+};
+static const uint8_t kb_depth_instbig_xterrain_csm_plain_snow[] = {0x00, 0x00, 0x80, 0x3f };
+static const t3_gen_constant k_depth_instbig_xterrain_csm_plain_snow[] = {
+  { 2, 64, 4, kb_depth_instbig_xterrain_csm_plain_snow + 0 },
+};
+static const t3_gen_attribute a_depth_instbig_xterrain_csm_plain_snow[] = {
+  { "position", "vec3", 0, false },
+  { "normal", "vec3", 1, false },
+  { "uv", "vec2", 2, false },
+  { "nodeAttribute0", "vec4", 3, false },
+  { "nodeAttribute1", "vec4", 4, false },
+  { "nodeAttribute2", "vec4", 5, false },
+  { "nodeAttribute3", "vec4", 6, false },
+};
+
 /* ── depth+instbig+xterrain_csm_snow ── */
 static const t3_bk_group_layout g_depth_instbig_xterrain_csm_snow_terrainFrame = { "terrainFrame", 0, 128, 0, NULL, 0, NULL, 0 };
 static const t3_bk_group_layout g_depth_instbig_xterrain_csm_snow_render = { "render", 1, 128, 0, NULL, 0, NULL, 0 };
@@ -10254,6 +10294,7 @@ static const t3_gen_program programs[] = {
   { "depth+instbig+xcsm_rim", T3_GEN_DEPTH, 256ull, { 1, 0, 0, 0 }, "csm_rim", T3_GEN_WGPU, groups_depth_instbig_xcsm_rim, 2, p_depth_instbig_xcsm_rim, 3, a_depth_instbig_xcsm_rim, 6, k_depth_instbig_xcsm_rim, 1, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 8, 9 },
   { "depth+instbig+xfoliage", T3_GEN_DEPTH, 256ull, { 1, 0, 0, 0 }, "foliage", T3_GEN_WGPU, groups_depth_instbig_xfoliage, 2, p_depth_instbig_xfoliage, 5, a_depth_instbig_xfoliage, 6, k_depth_instbig_xfoliage, 1, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 10, 11 },
   { "depth+instbig+xrim", T3_GEN_DEPTH, 256ull, { 1, 0, 0, 0 }, "rim", T3_GEN_WGPU, groups_depth_instbig_xrim, 2, p_depth_instbig_xrim, 3, a_depth_instbig_xrim, 6, k_depth_instbig_xrim, 1, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 8, 9 },
+  { "depth+instbig+xterrain_csm_plain_snow", T3_GEN_DEPTH, 256ull, { 1, 0, 0, 0 }, "terrain_csm_plain_snow", T3_GEN_WGPU, groups_depth_instbig_xterrain_csm_plain_snow, 3, p_depth_instbig_xterrain_csm_plain_snow, 11, a_depth_instbig_xterrain_csm_plain_snow, 7, k_depth_instbig_xterrain_csm_plain_snow, 1, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 12, 13 },
   { "depth+instbig+xterrain_csm_snow", T3_GEN_DEPTH, 256ull, { 1, 0, 0, 0 }, "terrain_csm_snow", T3_GEN_WGPU, groups_depth_instbig_xterrain_csm_snow, 3, p_depth_instbig_xterrain_csm_snow, 11, a_depth_instbig_xterrain_csm_snow, 7, k_depth_instbig_xterrain_csm_snow, 1, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 12, 13 },
   { "depth+instbig+xterrain_snow", T3_GEN_DEPTH, 256ull, { 1, 0, 0, 0 }, "terrain_snow", T3_GEN_WGPU, groups_depth_instbig_xterrain_snow, 3, p_depth_instbig_xterrain_snow, 11, a_depth_instbig_xterrain_snow, 7, k_depth_instbig_xterrain_snow, 1, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 12, 13 },
   { "depth+instbig+xterrainlow_csm_plain_snow", T3_GEN_DEPTH, 256ull, { 1, 0, 0, 0 }, "terrainlow_csm_plain_snow", T3_GEN_WGPU, groups_depth_instbig_xterrainlow_csm_plain_snow, 3, p_depth_instbig_xterrainlow_csm_plain_snow, 11, a_depth_instbig_xterrainlow_csm_plain_snow, 7, k_depth_instbig_xterrainlow_csm_plain_snow, 1, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 12, 13 },
@@ -10360,4 +10401,4 @@ static const t3_gen_program programs[] = {
   { "standard+senv+l0001+xcsm", T3_GEN_STANDARD, 2097152ull, { 0, 0, 0, 1 }, "csm", T3_GEN_WGPU, groups_standard_senv_l0001_xcsm, 3, p_standard_senv_l0001_xcsm, 29, a_standard_senv_l0001_xcsm, 2, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 165, 166 },
   { "standard+senv+l0001+xcsm_plain", T3_GEN_STANDARD, 2097152ull, { 0, 0, 0, 1 }, "csm_plain", T3_GEN_WGPU, groups_standard_senv_l0001_xcsm_plain, 3, p_standard_senv_l0001_xcsm_plain, 29, a_standard_senv_l0001_xcsm_plain, 2, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 167, 168 },
 };
-const t3_gen_table tuxracer_wgpu = { programs, 119 };
+const t3_gen_table tuxracer_wgpu = { programs, 120 };

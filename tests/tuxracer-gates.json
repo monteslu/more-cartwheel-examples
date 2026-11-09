@@ -68,6 +68,11 @@
     "note": "a program for everything drawn at every quality on both backends, through a spread warm-up as a player gets it: every course, sunny, cloudy and by night, the title. A scene not reached fails. Control: a state the scene draws out of the table must be reported and skip draws"
   },
   {
+    "name": "tuxracer-programs",
+    "script": "tests/tuxracer-programs.mjs",
+    "note": "a program for every draw state over a whole run on the cart through romdev, GL and WebGPU: the title, races at every preset, the preset switched mid-race both ways and through every preset; fails on any state the cart logs with no program, any skipped draw and the red no-program banner in any kept frame. Control: the v0.29.1 release cart (--cart <it> --expect-fail) is caught (the High terrain's shadow state at Very Low after Ultra, Tux's feathers under the High probes after a switch)"
+  },
+  {
     "name": "tuxracer-newcomer",
     "script": "tests/tuxracer-newcomer.mjs",
     "note": "the Cup by a newcomer on the cart, by the pad and the screen alone, GL and WebGPU: from power-on A opens the Cup and races its first course; steering by the trees and herring the view draws (a look every 100 ms acted on 0.3 s late, a wandering aim, looks away), the newcomer passes the first race by the requirements the card and the HUD show (herring needed, a time limit) and finds the second race open, then passes the second and third within the Cup's four lives. Controls: the original's rule (every herring near par, opt cuprule original) and the herring and trees not drawn each leave the first race not passed"

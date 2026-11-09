@@ -125,3 +125,4 @@ physical+trans+senv+cc+l0001+xcsm_plain_gi
 physical+trans+senv+sheen+l0001+xcsm_plain_gi
 physical+vcol+trans+skin+senv+sheen+l0001+xcsm_feather_plain_gi
 physical+vcol+trans+skin+senv+sheen+l0001+xcsm_feather_gi
+depth+instbig+xterrain_csm_plain_snow
