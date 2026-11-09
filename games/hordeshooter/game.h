@@ -27,7 +27,7 @@ int sim_kind_by_name(const char *name); /* -1 when not a kind */
 enum { OK_CRATE, OK_BARREL, OK_WALL, OK_PILLAR, OK_KINDS };
 enum { EV_SHOT, EV_HIT, EV_KILL, EV_BOOM, EV_CRATE, EV_BARREL, EV_WALL, EV_GEM, EV_HURT, EV_LEVEL, EV_WAVE, EV_BOSS, EV_DOWN, EV_ROCKET, EV_POWER, EV_POWER_SPAWN, EV_SWIPE,
        EV_MELT, EV_CLEAR, EV_HATCH, EV_DESCEND, EV_FLOOR,
-       EV_CACHE, EV_ARC, EV_BOUNCE, EV_SHATTER, EV_BOSS_TELL, /* EV_ARC: a lightning jump (x y to z w; b 1 through water); EV_BOUNCE: a wheel glances; EV_SHATTER: a frozen one breaks */ EV_ACID, EV_LANCE, EV_SPIKES, EV_RISE, EV_BROOD, EV_DASH }; /* EV_DASH: a player dashed (a who, z w the heading) */ /* EV_BOSS_TELL: a boss begins an arena attack (a 1) or a summon (a 2);
+       EV_CACHE, EV_ARC, EV_BOUNCE, EV_SHATTER, EV_BOSS_TELL, /* EV_ARC: a lightning jump (x y to z w; b 1 through water); EV_BOUNCE: a wheel glances; EV_SHATTER: a frozen one breaks */ EV_ACID, EV_LANCE, EV_SPIKES, EV_RISE, EV_BROOD, EV_DASH, EV_BUMP }; /* EV_BUMP: a dash stopped against something big (a who) */ /* EV_DASH: a player dashed (a who, z w the heading) */ /* EV_BOSS_TELL: a boss begins an arena attack (a 1) or a summon (a 2);
        EV_ACID: a puddle of acid lands; EV_LANCE: a bone lance flies (z w its velocity); EV_SPIKES: a ring of spikes (z its radius);
        EV_RISE: a pile of bones stands up; EV_BROOD: a skitter dropped by the mother */ /* EV_MELT: one of the horde melting after its boss fell (a its kind); EV_CLEAR: the floor is clear;
        EV_HATCH: the hatch opens; EV_DESCEND: a player stepped in; EV_FLOOR: a new floor starts (a its index) */ /* EV_SWIPE: an enemy's strike (a kind, b 1 when it hit; z, w its facing) */
@@ -82,10 +82,11 @@ typedef struct enemy {
   int act, act_t, act_next, act_n; /* a floor boss's arena attack (1) or summon (2): ticks into it; ticks to the next; how many it has made
                                       (a bonewalker: risen once already when act_n is 1) */
   float x, y, kx, ky, face, speed;
+  int dash_tick; /* the tick a dash last went through it (it is shoved aside once a dash) */
   cw_crowd_agent agent;
 } enemy;
 
-typedef struct bullet { bool alive; uint8_t owner, kind, fx; float x, y, vx, vy, dmg; int life, pierce; } bullet;
+typedef struct bullet { bool alive; uint8_t owner, kind, fx; float x, y, vx, vy, dmg; int life, pierce; uint8_t knock; } bullet; /* knock: the gun's push in tenths of a round's */
 /* kind: 0 round, 1 rocket, 2 grenade, 3 rail, 4 flame, 6 stake, 7 mortar shell, 8 seeker, 9 wheel, 10 frost lance, 11 hellfire;
  * fx 1: explosive; for a wheel the bounces it has left */
 typedef struct mine { bool alive; uint8_t owner; float x, y; int arm; } mine;
@@ -123,6 +124,8 @@ typedef struct pile { bool alive; float x, y; int rise; } pile;
 
 typedef struct sim {
   int tick, wave, wave_tick, players, state, state_ticks;
+  int knock[2]; /* bullet hits and the push they gave in mm of knockback (the knockback gate) */
+  int dash_stats[3]; /* small enemies a dash went through, dashes stopped by a big one, small ones a Boots + Armor dash bowled over */
   int level, level_wave; /* the floor (0..NLEVELS-1) and its wave (1..sim_level_waves); wave counts the run's waves */
   int kills, killed_total, spawn_cap, boss_alive, boss_wave, boss_hp, boss_maxhp, boss_phase; /* phase: 0 walking, 1 winding up a charge, 2 charging */
   cw_rng rng;
@@ -190,6 +193,15 @@ void sim_free(sim *s);
 void sim_step(sim *s, const input in[MAXP]);
 int sim_alive_players(const sim *s);
 void horde_bot(const sim *s, int i, input *in); /* bot.c */
+extern bool g_old_knock;  /* HORDE_OLD_KNOCK: every gun pushes by its round's speed as before (the knockback gate's control) */
+extern bool g_old_dash;   /* HORDE_OLD_DASH: the dash goes through everything (the dash gate's control) */
+extern bool g_no_synergy; /* HORDE_NO_SYNERGY: upgrades never combine (the synergy gate's control) */
+/* upgrades that combine (sim_synergy bits): Piercing + Extra barrel fan the rounds out, Rockets + Bigger blasts burst into
+ * clusters, Boots + Armor make the dash bowl the small ones over */
+enum { SY_FAN = 1, SY_CLUSTER = 2, SY_BULLDOZE = 4 };
+int sim_synergy(const player *p);
+int sim_synergy_with(const player *p, int up); /* the synergies taking this upgrade would start */
+const char *sim_synergy_name(int bit);
 extern bool g_bot_dash; /* the bots use the dash (HORDE_BOT_DASH; off: they play as before it existed) */
 const char *sim_upgrade_name(int u);
 int sim_upgrade_level(const player *p, int u); /* that upgrade's level now (0 none) */
@@ -203,6 +215,7 @@ int horde_floors_load(sim *s, struct lb_level *levels); /* each floor's .cwlevel
 void sim_floor_apply(sim *s); /* after setting s->fl: lay out the current floor (its obstacles, spots) */
 /* the way to the open hatch from (x, y): a unit step round the walls (false when there is none) */
 bool sim_hatch_way(const sim *s, float x, float y, float *dx, float *dy);
+void sim_give_upgrade(sim *s, int pi, int u); /* tests: upgrade u (UP order) for player pi now */
 int sim_spawn(sim *s, int kind, float x, float y); /* tests: one enemy there; its slot or -1 */
 void sim_dev_kill_boss(sim *s); /* development: the floor's boss falls now (player 1 gets it) */
 int sim_melee_windup(int kind); /* the ticks of that kind's wind-up */

@@ -483,6 +483,20 @@ static void drop(sim *s, int kind, float x, float y) { drop_value(s, kind, x, y,
 
 /* each upgrade stops at a top level, so power grows on a curve a design can keep up with */
 static const int UP_MAX[9] = { 7, 4, 8, 4, 4, 5, 5, 5, 6 };
+bool g_old_knock, g_old_dash, g_no_synergy;
+int sim_synergy(const player *p) {
+  if (g_no_synergy) return 0;
+  return (p->pierce >= 1 && p->shots >= 1 ? SY_FAN : 0) | (p->rocket >= 1 && p->radius >= 1 ? SY_CLUSTER : 0) | (p->speed >= 1 && p->armor >= 1 ? SY_BULLDOZE : 0);
+}
+static int *up_slot(player *p, int u);
+int sim_synergy_with(const player *p, int up) {
+  if (g_no_synergy) return 0;
+  player q = *p;
+  int *lv = up_slot(&q, up);
+  if (*lv < UP_MAX[up % 9]) ++*lv;
+  return sim_synergy(&q) & ~sim_synergy(p);
+}
+const char *sim_synergy_name(int bit) { return bit == SY_FAN ? "a fan of rounds" : bit == SY_CLUSTER ? "cluster rockets" : bit == SY_BULLDOZE ? "the dash bowls runners over" : ""; }
 static int *up_slot(player *p, int u) {
   int *f[9] = { &p->rate, &p->shots, &p->dmg, &p->pierce, &p->rocket, &p->speed, &p->magnet, &p->radius, &p->armor };
   return f[u % 9];
@@ -498,6 +512,7 @@ static void apply_upgrade(sim *s, player *p, int pi, int u) {
   p->hp = CW_MIN(p->hp + 25, 100.0f);
   ev(s, EV_LEVEL, p->x, p->y, 0, 0, pi, u);
 }
+void sim_give_upgrade(sim *s, int pi, int u) { if (pi >= 0 && pi < MAXP && s->p[pi].active) apply_upgrade(s, &s->p[pi], pi, u); } /* tests: an upgrade without its offer */
 
 /* three different upgrades to choose from, none of them at its top level. The ladder's next one is
  * offered first, so a player who ignores the offer still grows; once nearly everything is maxed the
@@ -854,6 +869,15 @@ static void each_enemy(sim *s, float x, float y, float r, enemy_fn fn, void *u) 
 }
 
 typedef struct bullet_ctx { int b; bool stop; } bullet_ctx;
+/* a rocket bursts; with Rockets + Bigger blasts, three small ones go off round it a moment later */
+static void rocket_burst(sim *s, float x, float y, float r, float dmg, int owner) {
+  queue_boom(s, x, y, r, dmg, 0, owner, false);
+  if (!(sim_synergy(&s->p[owner]) & SY_CLUSTER)) return;
+  for (int k = 0; k < 3; k++) {
+    float a = 2.094f * (float)k + (float)(s->tick % 7) * 0.3f;
+    queue_boom(s, x + cw_cos(a) * r * 0.75f, y + cw_sin(a) * r * 0.75f, r * 0.6f, dmg * 0.5f, 10 + 4 * k, owner, false);
+  }
+}
 static void bullet_hit(sim *s, int i, void *u) {
   bullet_ctx *c = u;
   bullet *b = &s->b[c->b];
@@ -865,13 +889,16 @@ static void bullet_hit(sim *s, int i, void *u) {
   e->hp -= (int)(d + 0.5f);
   e->flash = 4;
   float k = e->kind == EK_BOSS ? 0.01f : 0.9f / (1.0f + (float)(CW_MIN(e->kind, EK_BOSS)) * 1.5f); /* a boss barely flinches (a team firing at it pushed it out of reach) */
-  e->kx += b->vx * 0.012f * k;
-  e->ky += b->vy * 0.012f * k;
+  float sl = cw_v2_length(cw_v2(b->vx, b->vy)), push = g_old_knock ? sl * 0.012f * k : 0.384f * (float)b->knock / 10.0f * k;
+  /* each gun its own push, along the shot: a round's 0.38, a shotgun pellet 2.4 times that, the rail and the stake a shove,
+   * the flame none (it was the shot's speed: the rail pushed twice a round, a pellet no more than one, the flame a third) */
+  if (sl > 0.01f) e->kx += b->vx / sl * push, e->ky += b->vy / sl * push;
+  s->knock[0]++, s->knock[1] += (int)(push * 1000.0f + 0.5f);
   ev(s, EV_HIT, b->x, b->y, b->vx, b->vy, e->kind, b->kind); /* b: what hit it (the frost lance's hits are cold) */
   if (e->hp <= 0) kill_enemy(s, i, b->owner, b->vx, b->vy);
   if (b->kind == 1 || b->kind == 2) { /* a rocket or a grenade bursts on the first thing it touches */
     if (b->kind == 2) queue_boom(s, b->x, b->y, 5.0f + (float)s->p[b->owner].radius * 0.5f, 30, 0, b->owner, true);
-    else queue_boom(s, b->x, b->y, 2.4f + (float)s->p[b->owner].radius * 0.5f, 3.0f + b->dmg * 2.0f, 0, b->owner, false);
+    else rocket_burst(s, b->x, b->y, 2.4f + (float)s->p[b->owner].radius * 0.5f, 3.0f + b->dmg * 2.0f, b->owner);
     b->alive = false;
     c->stop = true;
     return;
@@ -944,6 +971,41 @@ static void saw_hit(sim *s, int i, void *u) {
   if (e->hp <= 0) kill_enemy(s, i, c->owner, dx * 8, dy * 8);
 }
 
+/* a dash goes through the small ones (runners, skitters and their like are shoved aside, and with Boots + Armor bowled over)
+ * and stops against the big ones (a brute, a bloater, a slagborn, a boss: anything half a metre round or more), the player
+ * left touching it. Kept out of the hash's way: the shove is the enemy's knockback, the stop the player's place */
+typedef struct dash_ctx { int pi; bool stop; float sx, sy; } dash_ctx;
+static void dash_hit(sim *s, int k, void *u) {
+  dash_ctx *c = u;
+  player *p = &s->p[c->pi];
+  enemy *e = &s->e[k];
+  if (!e->alive) return;
+  float r = EK[e->kind].radius * (e->elite ? 1.4f : 1.0f), dx = e->x - p->x, dy = e->y - p->y, d = cw_v2_length(cw_v2(dx, dy)), reach = r + 0.42f;
+  if (d >= reach) return;
+  if (r >= 0.55f) { /* big: the dash ends against it */
+    if (c->stop) return;
+    c->stop = true;
+    float ux = d > 0.01f ? dx / d : p->dash_x, uy = d > 0.01f ? dy / d : p->dash_y;
+    c->sx = e->x - ux * reach, c->sy = e->y - uy * reach;
+    s->dash_stats[1]++;
+    return;
+  }
+  if (e->dash_tick >= s->tick - DASH_TICKS) return; /* this dash already went through it */
+  e->dash_tick = s->tick;
+  float side = dx * -p->dash_y + dy * p->dash_x >= 0 ? 1.0f : -1.0f; /* off the dash's line, to its nearer side */
+  e->kx += -p->dash_y * side * 0.28f, e->ky += p->dash_x * side * 0.28f;
+  s->dash_stats[0]++;
+  if (sim_synergy(p) & SY_BULLDOZE) {
+    e->hp -= 6 + p->dmg, e->flash = 4, s->dash_stats[2]++;
+    if (e->hp <= 0) kill_enemy(s, k, c->pi, p->dash_x * 20, p->dash_y * 20);
+  }
+}
+static void dash_bodies(sim *s, int i) {
+  player *p = &s->p[i];
+  dash_ctx c = { i, false, 0, 0 };
+  each_enemy(s, p->x, p->y, 2.6f, dash_hit, &c);
+  if (c.stop) p->x = c.sx, p->y = c.sy, p->dash_t = 0, p->vx *= 0.1f, p->vy *= 0.1f, ev(s, EV_BUMP, p->x, p->y, p->dash_x, p->dash_y, i, 0);
+}
 static void player_step(sim *s, int i, const input *in) {
   player *p = &s->p[i];
   if (!p->active) return;
@@ -971,6 +1033,7 @@ static void player_step(sim *s, int i, const input *in) {
   }
   p->x += p->vx / TICK;
   p->y += p->vy / TICK;
+  if (p->dash_t > 0 && !g_old_dash) dash_bodies(s, i);
   p->x = cw_clampf(p->x, -HALF + 0.6f, HALF - 0.6f);
   p->y = cw_clampf(p->y, -HALF + 0.6f, HALF - 0.6f);
   for (int k = 0; k < MAXO; k++) { /* push out of boxes */
@@ -1090,6 +1153,8 @@ static void player_step(sim *s, int i, const input *in) {
     if (w == PU_MORTAR) n = legend ? 3 : 1;    /* a cluster when legendary */
     if (w == PU_WHEEL || w == PU_HELLFIRE || w == PU_FROST || w == PU_STAKE) n = CW_MIN(n, w == PU_STAKE ? 2 : 1);
     float spread = w == PU_SHOTGUN ? 0.36f : w == PU_FLAME ? 0.3f : w == PU_SEEKER ? 0.7f : w == PU_MORTAR ? 0.18f : w == PU_MINIGUN ? 0.07f * (float)(n - 1) + 0.06f : 0.07f * (float)(n - 1) + 0.02f;
+    bool fan = w < 0 && (sim_synergy(p) & SY_FAN); /* Piercing + Extra barrel: the starting gun fires one round more, fanned out */
+    if (fan) n += 1, spread = 0.1f * (float)(n - 1) + 0.03f;
     bool rocket = (p->rocket > 0 && ((s->tick / period) % 4 == 0)) || w == PU_ROCKETS;
     for (int k = 0; k < n; k++) {
       int slot = -1;
@@ -1114,8 +1179,11 @@ static void player_step(sim *s, int i, const input *in) {
       if (kind == 9) dmg = (7.0f + (float)p->dmg) * rar, pierce = 99, life = 150; /* the wheel */
       if (kind == 10) dmg = (6.0f + (float)p->dmg) * rar, pierce = 12, life = 40;
       if (kind == 11) dmg = (1.0f + (float)CW_MIN(p->beam, 180) / 60.0f + 0.5f * (float)p->dmg) * rar, pierce = 6, life = 9; /* thicker and hotter the longer it burns */
+      if (fan && kind == 0) pierce++; /* the fan: every round goes through one more */
       s->b[slot] = (bullet){ true, (uint8_t)i, kind, (uint8_t)(kind == 9 ? 5 : p->pu_ammo_t > 0 && p->pu_ammo == PU_EXPLOSIVE && kind == 0 ? 1 : 0),
-                             p->x + cw_cos(p->aim) * 0.6f, p->y + cw_sin(p->aim) * 0.6f, cw_cos(a) * v, cw_sin(a) * v, dmg, life, pierce };
+                             p->x + cw_cos(p->aim) * 0.6f, p->y + cw_sin(p->aim) * 0.6f, cw_cos(a) * v, cw_sin(a) * v, dmg, life, pierce, 0 };
+      /* the push, in tenths of a round's: the minigun's light rounds less, the shotgun's pellets and the rail and stake more, fire none */
+      s->b[slot].knock = (uint8_t)(w == PU_SHOTGUN ? 24 : w == PU_MINIGUN ? 6 : kind == 3 ? 32 : kind == 4 || kind == 11 ? 0 : kind == 6 ? 22 : kind == 10 ? 5 : kind == 9 ? 15 : 10);
       ev(s, rk || kind == 7 || kind == 8 ? EV_ROCKET : EV_SHOT, s->b[slot].x, s->b[slot].y, s->b[slot].vx, s->b[slot].vy, i, 0);
     }
   fired:;
@@ -1196,7 +1264,7 @@ static void bullets_step(sim *s) {
     if (--b->life <= 0 || b->x < -HALF || b->x > HALF || b->y < -HALF || b->y > HALF) {
       if (b->kind == 7 && b->alive) queue_boom(s, b->x, b->y, 3.0f, b->dmg, 0, b->owner, true), add_zone(s, 3, b->x, b->y, 1.6f, 180); /* the shell lands */
       if (b->kind == 8 && b->alive) queue_boom(s, b->x, b->y, 1.8f, 6, 0, b->owner, false);
-      if (b->kind == 1 && b->alive) queue_boom(s, b->x, b->y, 2.4f, 8, 0, b->owner, false);
+      if (b->kind == 1 && b->alive) rocket_burst(s, b->x, b->y, 2.4f, 8, b->owner);
       if (b->kind == 2 && b->alive) queue_boom(s, b->x, b->y, 5.0f + (float)s->p[b->owner].radius * 0.5f, 30, 0, b->owner, true); /* the grenade lands */
       b->alive = false;
       continue;
@@ -1213,7 +1281,7 @@ static void bullets_step(sim *s) {
         break;
       }
       if (b->kind == 9) break;
-      if (b->kind == 1) queue_boom(s, b->x, b->y, 2.4f + (float)s->p[b->owner].radius * 0.5f, 3.0f + b->dmg * 2.0f, 0, b->owner, false);
+      if (b->kind == 1) rocket_burst(s, b->x, b->y, 2.4f + (float)s->p[b->owner].radius * 0.5f, 3.0f + b->dmg * 2.0f, b->owner);
       else if (b->kind == 2) queue_boom(s, b->x - b->vx / TICK, b->y - b->vy / TICK, 5.0f, 30, 0, b->owner, true);
       else hurt_obstacle(s, k, (int)b->dmg);
       b->alive = false;

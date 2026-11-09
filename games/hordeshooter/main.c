@@ -57,7 +57,7 @@ static struct {
   bool in_match, built;
   int players;
   int32_t state, ticks, wave, enemies, kills, alive_players, boss, best_wave;
-  int32_t hp[MAXP], level[MAXP], score[MAXP], pkills[MAXP], px[MAXP], py[MAXP];
+  int32_t hp[MAXP], level[MAXP], score[MAXP], pkills[MAXP], px[MAXP], py[MAXP], syn[MAXP];
   uint32_t hash;
   int banner_t, banner_kind, banner_n;
   float frame_ms;
@@ -74,6 +74,7 @@ static struct {
    * and per kind the ticks from an attack's start to its damage */
   int32_t m_attack_frames, m_strikes, m_hits, m_delay[EK_KINDS];
   int m_test, m_start[MAXE];
+  bool d_test; /* HORDE_DASH_TEST: the dash gate's scene and script */
   /* the floor gate: the floor (0..7), the ticks the boss's floor cleared, the hatch opened, a player stepped in
    * and the next floor started (0 until it happens), the enemies left when the hatch opened */
   int32_t floor_level, floor_boss_tick, floor_clear_tick, floor_hatch_tick, floor_descend_tick, floor_next_tick, floor_left_at_hatch;
@@ -222,6 +223,21 @@ static void start(int players, void *u) {
     sim_spawn(&G.S, EK_RUNNER, p->x + 6.0f, p->y);
     sim_spawn(&G.S, EK_BRUTE, p->x - 7.0f, p->y + 1.0f);
   }
+  if (getenv("HORDE_UPGRADES")) /* tests: every player starts with these upgrades ("3,1": Piercing and Extra barrel) */
+    for (const char *u = getenv("HORDE_UPGRADES"); *u; ) {
+      int k = atoi(u);
+      for (int i = 0; i < players; i++) sim_give_upgrade(&G.S, i, k);
+      while (*u && *u != ',') u++;
+      if (*u) u++;
+    }
+  G.d_test = getenv("HORDE_DASH_TEST") != NULL;
+  if (G.d_test) { /* the dash gate: one player, three runners to its right and a brute to its left; it dashes left into the
+                     brute, then right through the runners */
+    G.S.no_spawn = true, G.S.no_power = true;
+    const player *p = &G.S.p[0];
+    for (int k = 0; k < 3; k++) sim_spawn(&G.S, EK_RUNNER, p->x + 2.6f + 0.8f * (float)k, p->y + (k == 1 ? 0.25f : -0.2f));
+    sim_spawn(&G.S, EK_BRUTE, p->x - 4.0f, p->y);
+  }
   G.players = players;
   G.in_match = true;
   G.ticks = 0;
@@ -329,6 +345,12 @@ static void init(void *u) {
   if (getenv("HORDE_DECK_OFF")) g_deck_off = atoi(getenv("HORDE_DECK_OFF"));
   if (getenv("HORDE_CROWD_OFF")) g_crowd_off = atoi(getenv("HORDE_CROWD_OFF"));
   g_bot_dash = getenv("HORDE_BOT_DASH") && atoi(getenv("HORDE_BOT_DASH"));
+  g_old_knock = getenv("HORDE_OLD_KNOCK") && atoi(getenv("HORDE_OLD_KNOCK"));
+  g_old_dash = getenv("HORDE_OLD_DASH") && atoi(getenv("HORDE_OLD_DASH"));
+  g_no_synergy = getenv("HORDE_NO_SYNERGY") && atoi(getenv("HORDE_NO_SYNERGY"));
+  cw_debug_field("game.knock", G.S.knock, CW_DBG_I32, 2); /* bullet hits on enemies, and the knockback they gave, in mm */
+  cw_debug_field("game.dash", G.S.dash_stats, CW_DBG_I32, 3); /* small ones a dash went through, dashes a big one stopped, small ones bowled over (Boots + Armor) */
+  cw_debug_field("player.synergy", G.syn, CW_DBG_I32, MAXP); /* each player's combined upgrades (bits: 1 fan, 2 cluster rockets, 4 bowling dash) */
   if (getenv("HORDE_HOLD")) G.dev_hold = atoi(getenv("HORDE_HOLD")); /* dev.hold from the environment (screenshots, the grounding gate) */
   cw_debug_i32("hud.step_in_y1", &G.step_in_y1);
   cw_debug_i32("hud.banner_y0", &G.banner_y0);
@@ -373,6 +395,12 @@ static cw_vec2 aim_stick(cw_vec2 raw) {
 
 static void read_input(input in[MAXP]) {
   memset(in, 0, sizeof(input) * MAXP);
+  if (G.d_test) { /* dash left at tick 20 (into the brute), right at tick 110 (through the runners) */
+    int t = G.S.tick;
+    if (t >= 20 && t < 24) in[0].mx = -1, in[0].dash = t == 20;
+    if (t >= 110 && t < 114) in[0].mx = 1, in[0].dash = t == 110;
+    return;
+  }
   if (G.m_test) { /* stand still; the dodge control steps straight away from an enemy winding up at player 0 */
     const player *p = &G.S.p[0];
     float ax = 0, ay = 0; /* away from every enemy winding up at player 0 at once */
@@ -522,6 +550,7 @@ static void fixed_update(void *u, double dt) {
   G.hash = G.S.hash;
   for (int i = 0; i < MAXP; i++) {
     G.hp[i] = (int)G.S.p[i].hp, G.level[i] = G.S.p[i].level, G.score[i] = G.S.p[i].score, G.pkills[i] = G.S.p[i].kills;
+    G.syn[i] = G.S.p[i].active ? sim_synergy(&G.S.p[i]) : 0;
     G.px[i] = (int)(G.S.p[i].x * 100), G.py[i] = (int)(G.S.p[i].y * 100);
     if (G.S.p[i].level != before_level[i]) G.level_flash[i] = 150, G.level_up[i] = G.S.p[i].last_up;
     if (G.level_flash[i] > 0) G.level_flash[i]--;
@@ -652,6 +681,14 @@ static void upgrade_icon(int up, float cx, float cy, float r, cw_color c) {
 }
 static const char *const UP_EFFECT[9] = { "shoots faster", "+1 round a shot", "+1 damage a round", "through +1 more", "a rocket every 4th shot",
                                           "runs 10% faster", "pulls gems from farther", "blasts reach farther", "-8% melee damage" };
+/* a card's combination line: taking this upgrade starts a synergy with one already held */
+static bool synergy_line(const player *p, int up, char *out, size_t cap) {
+  int b = sim_synergy_with(p, up);
+  if (!b) return false;
+  int bit = b & SY_FAN ? SY_FAN : b & SY_CLUSTER ? SY_CLUSTER : SY_BULLDOZE;
+  snprintf(out, cap, "+ combines: %s", sim_synergy_name(bit));
+  return true;
+}
 /* the choice as three cards from (x, y) (the corner side: x the panel's outer edge, y its edge toward the middle), each its
  * picture, name, what it does and its level so far as dots, the button's glyph on its corner; the time left under them */
 static void upgrade_cards(int pi, const player *p, float x, float y, bool right, bool bottom, float u, float *ow, float *oh) {
@@ -662,6 +699,8 @@ static void upgrade_cards(int pi, const player *p, float x, float y, bool right,
     cw_text_style st = tstyle(es, rgba(1, 1, 1, 1));
     st.wrap_width = cwid - 2 * pad;
     float eh = cw_font_measure(font, UP_EFFECT[p->offer[k] % 9], &st).height;
+    char sy[64];
+    if (synergy_line(p, p->offer[k] % 9, sy, sizeof sy)) eh += cw_font_measure(font, sy, &st).height + 2 * u;
     st.size = ns;
     float nh = cw_font_measure(font, sim_upgrade_name(p->offer[k]), &st).height;
     h = fmaxf(h, pad + glyph * 0.4f + icon * 2 + 3 * u + nh + eh + 4 * u + dot * 2 + pad);
@@ -677,6 +716,8 @@ static void upgrade_cards(int pi, const player *p, float x, float y, bool right,
     yy += icon * 2 + 3 * u;
     yy += text_wrapped(sim_upgrade_name(up), cx + cwid * 0.5f, yy, cwid - 2 * pad, ns, rgba(1, 1, 1, 1)).height;
     yy += text_wrapped(UP_EFFECT[up], cx + cwid * 0.5f, yy, cwid - 2 * pad, es, rgba(0.82f, 0.9f, 0.95f, 1)).height + 4 * u;
+    char sy[64];
+    if (synergy_line(p, up, sy, sizeof sy)) yy += text_wrapped(sy, cx + cwid * 0.5f, yy - 2 * u, cwid - 2 * pad, es, rgba(1, 0.82f, 0.35f, 1)).height + 2 * u; /* what it combines into */
     float dw = (float)mx * dot * 2.6f, dx = cx + (cwid - dw) * 0.5f + dot * 1.3f;
     for (int d = 0; d < mx; d++) /* filled: the levels held; ringed: the next one this card gives; dim: the rest */
       if (d < lv) cw_r2d_circle(cw_v2(dx + (float)d * dot * 2.6f, cy + h - pad - dot), dot, 12, rgba(0.62f, 1, 0.86f, 1));

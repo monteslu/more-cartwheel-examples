@@ -556,13 +556,13 @@
     "expect": {
       "game.ticks": 480,
       "player.hp": [
-        82,
+        50,
         0,
         0,
         0
       ],
-      "melee.strikes": 6,
-      "melee.hits": 1
+      "melee.strikes": 9,
+      "melee.hits": 4
     },
     "controlEnv": {
       "HORDE_MELEE_TEST": "1",
@@ -573,7 +573,130 @@
     "hosts": [
       "native"
     ],
-    "note": "the dash: the same scene, the player waiting until each strike is three ticks away and then dashing out (HORDE_MELEE_DODGE=2): 6 strikes and 1 hit, 82 hp. The control (HORDE_MELEE_DODGE=3: the same late moment, a step and no dash) takes 11 hits of 14 strikes and ends on 1 hp: a step that late is too slow. Measured 2026-11-08 on native GL."
+    "note": "the dash: the same scene, the player waiting until each strike is three ticks away and then dashing out (HORDE_MELEE_DODGE=2): 9 strikes and 4 hits, 50 hp (it was 6 and 1, 82 hp, until the dash stopped against big bodies on 2026-11-08: twice here the way out runs into the brute, which now stops it, game.dash [0,2,0]). The control (HORDE_MELEE_DODGE=3: the same late moment, a step and no dash) takes 11 hits of 14 strikes and ends on 1 hp: a step that late is too slow. Measured 2026-11-08 on native GL."
+  },
+  {
+    "name": "hordeshooter-dash-through",
+    "note": "The dash and the crowd (2026-11-08): one player with three runners to its right and a brute walking in from its left (HORDE_DASH_TEST). It dashes left: the brute stops it dead, the player left touching it (anything half a metre round or more does: a brute, a bloater, a slagborn, a boss). Then it dashes right: through the runners, each shoved off the dash line to its nearer side. game.dash counts the small ones dashed through, the dashes a big one stopped and the small ones a Boots + Armor dash bowled over; player.x where it ended. The control (HORDE_OLD_DASH) goes through everything: nothing is counted and the first dash carries on past the brute, so it fails.",
+    "app": "hordeshooter_auto",
+    "frames": 200,
+    "env": {
+      "HORDE_DASH_TEST": "1",
+      "HORDE_PLAYERS": "1"
+    },
+    "fields": [
+      "game.ticks",
+      "game.dash",
+      "player.x",
+      "player.y",
+      "game.hash"
+    ],
+    "expect": {
+      "game.dash": [
+        2,
+        1,
+        0
+      ],
+      "player.x": [
+        466,
+        0,
+        0,
+        0
+      ],
+      "player.y": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "game.hash": 1253827877
+    },
+    "controlEnv": {
+      "HORDE_DASH_TEST": "1",
+      "HORDE_PLAYERS": "1",
+      "HORDE_OLD_DASH": "1"
+    },
+    "controlFrames": 200,
+    "controlField": "game.dash",
+    "hosts": [
+      "native"
+    ]
+  },
+  {
+    "name": "hordeshooter-synergy",
+    "note": "Upgrades that combine (2026-11-08): two bots that dash (HORDE_BOT_DASH) hold the yard for 15 s, each starting with Piercing, Extra barrel, Rockets, Bigger blasts, Boots and Armor (HORDE_UPGRADES). Piercing with Extra barrel fans the starting gun out wide and every round goes through one more; Rockets with Bigger blasts burst into three small blasts round each rocket; Boots with Armor make the dash bowl the small ones over. player.synergy holds each player's (bits 1, 2, 4); the upgrade card that would start one says so (+ combines: ...). The control (HORDE_NO_SYNERGY) never combines them: the same team kills fewer, so it fails.",
+    "app": "hordeshooter_auto",
+    "frames": 900,
+    "env": {
+      "HORDE_PLAYERS": "2",
+      "HORDE_BOT_DASH": "1",
+      "HORDE_UPGRADES": "3,1,4,7,5,8"
+    },
+    "fields": [
+      "game.ticks",
+      "player.synergy",
+      "game.kills",
+      "game.dash",
+      "game.hash"
+    ],
+    "expect": {
+      "player.synergy": [
+        7,
+        7,
+        0,
+        0
+      ],
+      "game.kills": 122,
+      "game.dash": [
+        0,
+        0,
+        0
+      ],
+      "game.hash": 1928576870
+    },
+    "controlEnv": {
+      "HORDE_PLAYERS": "2",
+      "HORDE_BOT_DASH": "1",
+      "HORDE_UPGRADES": "3,1,4,7,5,8",
+      "HORDE_NO_SYNERGY": "1"
+    },
+    "controlFrames": 900,
+    "controlField": "player.synergy",
+    "hosts": [
+      "native"
+    ]
+  },
+  {
+    "name": "hordeshooter-knock",
+    "note": "Each gun its own knockback (2026-11-08): two bots hold the yard with the shotgun. A hit pushes along the shot by the gun, not by the round's speed as before: the starting gun's rounds 0.38 m/s as they were, a shotgun pellet 2.4 times that (it was no more than a round), the minigun's light rounds 0.6, the rail and the stake a shove (3.2 and 2.2), the flamer and hellfire none (the flame used to push a third of a round). game.knock: bullet hits and the push they gave in mm. The starting gun pushes as it did, so hordeshooter-match keeps its hash. The control (HORDE_OLD_KNOCK) pushes by speed: the pellets push far less, so it fails.",
+    "app": "hordeshooter_auto",
+    "frames": 900,
+    "env": {
+      "HORDE_POWER": "0"
+    },
+    "fields": [
+      "game.ticks",
+      "game.knock",
+      "game.kills",
+      "game.hash"
+    ],
+    "expect": {
+      "game.knock": [
+        107,
+        88703
+      ],
+      "game.kills": 108,
+      "game.hash": 87218726
+    },
+    "controlEnv": {
+      "HORDE_POWER": "0",
+      "HORDE_OLD_KNOCK": "1"
+    },
+    "controlFrames": 900,
+    "controlField": "game.knock",
+    "hosts": [
+      "native"
+    ]
   },
   {
     "name": "hordeshooter-floor",

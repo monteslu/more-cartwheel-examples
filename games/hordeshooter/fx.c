@@ -649,6 +649,10 @@ void fx_events(sim *s) {
       cw_particles_burst(FX.dash, (t3_vec3){ at.x, 0.25f, at.z }, (t3_vec3){ -e->z, 0.1f, -e->w });
       rumble(e->a, 0.08f, 0.22f, 70);
       break;
+    case EV_BUMP: /* a dash stopped dead against something big: a thump on the pad and dust off the contact */
+      cw_particles_burst(FX.dash, (t3_vec3){ at.x + e->z * 0.4f, 0.4f, at.z + e->w * 0.4f }, (t3_vec3){ -e->z, 0.2f, -e->w });
+      rumble(e->a, 0.4f, 0.2f, 120);
+      break;
     case EV_LEVEL: cw_particles_burst(FX.level[0], (t3_vec3){ at.x, 0.3f, at.z }, (t3_vec3){ 0, 0, 0 }); break;
     case EV_POWER: /* taken: a ring of sparks and a flash in the power-up colour */
       cw_particles_burst(FX.level[0], (t3_vec3){ at.x, 0.3f, at.z }, (t3_vec3){ 0, 0, 0 });
