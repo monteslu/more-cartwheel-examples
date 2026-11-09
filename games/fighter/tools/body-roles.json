@@ -1,0 +1,16 @@
+{
+  "_note": "Each character's role for tools/body-ratios.mjs --check (limits in ROLES there): athletic builds throughout, Grit a power build.",
+  "bolt": "athlete",
+  "grit": "power",
+  "vex": "athlete",
+  "mara": "athleteF",
+  "crowd0": "everyday",
+  "crowd1": "athleteF",
+  "crowd2": "everyday",
+  "crowd3": "everyday",
+  "crowd4": "athleteF",
+  "crowd5": "everyday",
+  "crowd6": "everyday",
+  "crowd7": "athleteF",
+  "crowd8": "everyday"
+}

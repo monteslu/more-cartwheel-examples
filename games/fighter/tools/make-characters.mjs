@@ -136,6 +136,9 @@ function build(sp) {
     [yN + 0.0, 0.085, 0.068, -0.012, 2.4], [yN + 0.035, 0.064, 0.062, -0.01, 2.2]];
   for (let i = 1; i < PROF.length; i++) if (PROF[i][0] < PROF[i - 1][0] + 0.008) PROF[i][0] = PROF[i - 1][0] + 0.008; // the fighters' joints sit closer than the profile assumes
   const hipK = sp.hips ?? 1; for (const p of PROF) if (p[0] < yS) { p[1] *= hipK; }
+  // trapezius: a power build's traps slope from the neck to the shoulders (a strong neck) instead of a
+  // flat shoulder line with the neck standing on it as a post
+  const traps = sp.traps ?? 0; if (traps) { PROF[11][1] *= 1 + 0.6 * traps; PROF[11][2] *= 1 + 0.3 * traps; PROF[12][1] *= 1 + 0.45 * traps; PROF[12][2] *= 1 + 0.2 * traps; PROF[13][1] *= 1 + 0.25 * traps; }
   const prof = (y) => { // interpolate the profile at y
     let i = 0; while (i < PROF.length - 2 && PROF[i + 1][0] < y) i++;
     const A = PROF[i], Bq = PROF[i + 1], t = EASE.io(Math.max(0, Math.min(1, (y - A[0]) / (Bq[0] - A[0]))));
@@ -212,11 +215,15 @@ function build(sp) {
     const open = sp.openFront ?? 0.38, kind = sp.outerKind ?? 'jacket';
     const y0 = kind === 'gi' ? waist - 0.17 : kind === 'crop' ? yS + 0.07 : kind === 'vest' || kind === 'jacket' || kind === 'hivis' ? waist - 0.07 : waist - 0.02;
     const y1 = ySh + 0.04;
+    // the shoulder seam: over the chest the garment's body ends where the sleeve hangs from the shoulder joint; wider, it
+    // stood out past the sleeve as a padded ridge
+    const shoulderSeam = (r, y) => { const cap = sw + 0.012, t = ss(yC - 0.04, ySh - 0.06, y); if (r.ru > cap) r.ru = lerp(r.ru, cap, t); return r; };
     const of = [[y0 + 0.08, 0.02, 0.014, FRONT, 0.8], [yC - 0.05, 0.016, 0.02, FRONT - 0.9, 0.5], [yC - 0.02, 0.016, 0.02, FRONT + 0.9, 0.5], [y0 + 0.2, 0.012, 0.015, BACK, 1]];
     if (kind === 'gi') { // a wrapped jacket: closed at the belt, opening into a V up to the neck, skirt over the hips, a thick lapel band along the opening
       const gf = [...of, [waist + 0.03, 0.03, 0.012, null], [waist - 0.03, 0.025, 0.014, null], [yC + 0.02, 0.02, 0.02, FRONT + 1.4, 0.4], [yC + 0.02, 0.02, 0.02, FRONT - 1.4, 0.4]];
+      // the gi hangs from the shoulders and sits close under the belt: a hand's width of ease, not a padded shell
       const openAt = (y) => lerp(0.05, open, ss(waist, yC + 0.1, y)) + 0.1 * ss(yC + 0.05, yN, y);
-      const rr = ys(y0, ySh + 0.04).map((y) => { const yy = Math.max(y, PROF[1][0] + 0.02), skirt = ss(waist - 0.02, y0, y); const r = ringAt(yy, 1.12 + 0.12 * skirt, 1.15 + 0.12 * skirt, 0.026 + 0.012 * ss(yC, y0, y), torsoMod(yy, 0, gf)); r.c = [0, y, r.c[2]]; r.arc = [FRONT + openAt(y), FRONT - openAt(y) + PI * 2]; if (y < waist) { const lr = 0.078 * LG * (0.8 + 0.2 * W) * 1.1 + 0.045; r.ru = Math.max(r.ru, (hw + lr) * (1 + 0.12 * skirt)); r.rv = Math.max(r.rv, lr * 1.25 + 0.01); } return r; });
+      const rr = ys(y0, ySh + 0.04).map((y) => { const yy = Math.max(y, PROF[1][0] + 0.02), skirt = ss(waist - 0.02, y0, y); const r = ringAt(yy, 1.05 + 0.06 * skirt, 1.07 + 0.06 * skirt, 0.016 + 0.008 * ss(yC, y0, y), torsoMod(yy, 0, gf)); r.c = [0, y, r.c[2]]; shoulderSeam(r, y); r.arc = [FRONT + openAt(y), FRONT - openAt(y) + PI * 2]; if (y < waist) { const lr = 0.078 * LG * (0.8 + 0.2 * W) * 1.1 + 0.028; r.ru = Math.max(r.ru, (hw + lr) * (1 + 0.06 * skirt)); r.rv = Math.max(r.rv, lr * 1.15 + 0.01); } return r; });
       rr.push({ ...ringAt(yN + 0.005, 1.06, 1.06, 0.024), c: [0, yN + 0.005, prof(yN)[3] - 0.012], arc: [FRONT + openAt(yN) + 0.1, FRONT - openAt(yN) - 0.1 + PI * 2] });
       m.loft('outer', rr, { n: 40, weights: (k, P, a) => torsoW(P, a), tile: 0.5 });
       for (const side of [1, -1]) { // the lapels: a strip on each edge of the opening, standing a little proud
@@ -224,7 +231,7 @@ function build(sp) {
         m.loft('outer', lr, { n: 5, weights: (k, P, a) => torsoW(P, a), tile: 0.3 });
       }
     } else {
-    const rings = ys(y0, y1).map((y) => ringAt(y, 1.1, 1.13, 0.024 + 0.01 * ss(yC, y0, y), torsoMod(y, 0, of)));
+    const rings = ys(y0, y1).map((y) => shoulderSeam(ringAt(y, 1.08, 1.11, 0.02 + 0.01 * ss(yC, y0, y), torsoMod(y, 0, of)), y));
     rings.push({ ...ringAt(yN + 0.01, 1.02, 1.02, 0.02), c: [0, yN + 0.01, prof(yN)[3] - 0.01] });
     rings.push({ ...ringAt(yN + 0.055, 1.25, 1.25, 0.03), c: [0, yN + 0.055, prof(yN)[3] - 0.015] }); // the collar stands and rolls out
     m.loft('outer', rings, { n: 36, arc: [FRONT + open, FRONT - open + PI * 2], weights: (k, P, a) => torsoW(P, a), tile: 0.5 });
@@ -467,10 +474,13 @@ function build(sp) {
 
   // ── arms: deltoid, biceps and triceps, elbow, forearm, wrist; sleeves are a layer over them ──
   const armR = 0.05 * AR * (0.8 + 0.2 * W);
+  // the top of the arm (the deltoid's crown) meets the slope of the shoulder; higher, the arm's dome stood above the
+  // shoulder line as a ball (a puffed sleeve on a jacket or gi)
+  const ARM_TOP = 0.028;
   const sleeve = sp.sleeves ?? (top === 'longsleeve' || top === 'hoodie' ? 'long' : top === 'tee' ? 'short' : 'none');
   const outerSleeve = outer && (sp.outerKind ?? 'jacket') !== 'vest' && sp.outerKind !== 'hivis';
   const armRad = (y) => { // [radius side to side, radius front to back]
-    const top0 = ySh + 0.05, d = (top0 - y);
+    const top0 = ySh + ARM_TOP, d = (top0 - y);
     const k = lerp(0.25, 1.22, ss(0, 0.045, d)) // the shoulder cap
       + 0.12 * gauss(y - (ySh - 0.04), 0.04) // deltoid
       + lerp(0, -0.2, ss(ySh - 0.02, yEl + 0.02, y)) // down to the elbow
@@ -482,13 +492,13 @@ function build(sp) {
   for (const sx of [1, -1]) {
     const ax = sx * sw;
     const ringA = (y, k = 1, add = 0, fl = null) => { const [ru, rv] = armRad(y); return { c: [ax + sx * 0.008 * gauss(y - ySh, 0.05), y, 0.004], U: X, V: Z, ru: ru * k + add, rv: rv * k + add, e: 2.15, mod: fl ? (a) => armMod(y)(a) + folds(y, a, fl) : armMod(y) }; };
-    const yTop = ySh + 0.05, yWristEnd = yWr - 0.005;
+    const yTop = ySh + ARM_TOP, yWristEnd = yWr - 0.005;
     const sleeveEnd = sleeve === 'three' ? yEl - 0.09 : outerSleeve || sleeve === 'long' ? yWr + 0.03 : sleeve === 'short' ? ySh - 0.15 : yTop;
     const sFolds = [[yEl + 0.04, 0.05, 0.012, BACK, 0.9], [yEl - 0.0, 0.045, 0.012, FRONT, 0.6], [yEl - 0.035, 0.04, 0.012, BACK, 0.9], [yEl + 0.08, 0.03, 0.014, null], [yWr + 0.06, 0.035, 0.012, null]];
     const skinY = ys(yWristEnd, Math.min(yTop, sleeveEnd + 0.02), 0.02).reverse();
     if (skinY.length > 1) m.loft('skin', skinY.map((y) => ringA(y)), { n: 20, weights: (k, P) => armW(P), tile: 0.3 });
     if (sleeveEnd < yTop) {
-      const mat = outerSleeve ? 'outer' : shirtMat, th = outerSleeve ? 0.024 : 0.012;
+      const mat = outerSleeve ? 'outer' : shirtMat, th = outerSleeve ? 0.013 : 0.01;
       const yy = ys(sleeveEnd, yTop, 0.018).reverse();
       const rr = yy.map((y) => ringA(y, 1.06, th, sFolds));
       rr.push({ ...ringA(sleeveEnd, 1.08, th + 0.006), c: [ax, sleeveEnd - 0.005, 0.004] }); // the cuff
@@ -497,7 +507,7 @@ function build(sp) {
     }
     { // the deltoid: a rounded cap over the shoulder joint so the arm grows out of the torso instead of a flat ledge
       const dm = top === 'none' || top === 'tank' ? (outerSleeve ? 'outer' : 'skin') : outerSleeve ? 'outer' : shirtMat, th = dm === 'skin' ? 0 : dm === 'outer' ? 0.004 : 0.004;
-      m.ellipsoid(dm, [ax + sx * 0.012, ySh + 0.012, 0.004], armR * (dm === 'skin' ? 1.08 : 0.98) + th, 0.06 + th, armR * (dm === 'skin' ? 1.06 : 0.96) + th, { weights: (k, P) => { const t = ss(ySh + 0.07, ySh - 0.03, P[1]) * ss(sw - 0.06, sw + 0.03, Math.abs(P[0])); return [[BI.Chest, 1 - 0.7 * t], [BI['UpperArm' + (sx > 0 ? 'L' : 'R')], 0.7 * t]]; }, steps: 7, n: 16, e: 2.2 });
+      m.ellipsoid(dm, [ax + sx * 0.012, ySh - 0.002, 0.004], armR * (dm === 'skin' ? 1.04 : 0.96) + th, 0.052 + th, armR * (dm === 'skin' ? 1.06 : 0.96) + th, { weights: (k, P) => { const t = ss(ySh + 0.07, ySh - 0.03, P[1]) * ss(sw - 0.06, sw + 0.03, Math.abs(P[0])); return [[BI.Chest, 1 - 0.7 * t], [BI['UpperArm' + (sx > 0 ? 'L' : 'R')], 0.7 * t]]; }, steps: 7, n: 16, e: 2.2 });
     }
     if (sp.pads) m.ellipsoid(sp.padMat ?? 'pad', [ax + sx * 0.035, ySh + 0.04, 0], 0.085 * (0.8 + 0.2 * W), 0.05, 0.095 * (0.8 + 0.2 * W), { weights: () => [[BI.Chest, 0.4], [BI['UpperArm' + (sx > 0 ? 'L' : 'R')], 0.6]], steps: 6, n: 16, e: 2.4 });
     if (sp.spikes) for (let i = 0; i < 3; i++) { const base = [ax + sx * (0.05 + 0.02 * i), ySh + 0.08 - 0.012 * i, -0.04 + 0.04 * i]; m.cone('buckle', base, add(base, [sx * 0.03, 0.05, 0]), 0.012, { weights: () => [[BI['UpperArm' + (sx > 0 ? 'L' : 'R')], 1]], n: 6 }); }
@@ -539,11 +549,14 @@ function build(sp) {
     return [legR * k, legR * k * 1.04];
   };
   const legMod = (y, sx) => (a) => 1 + 0.07 * gauss(y - (yHip - 0.16), 0.08) * gauss(wrapA(a - (FRONT - sx * 0.4)), 0.7) + 0.08 * gauss(y - (yKn - 0.11), 0.06) * gauss(wrapA(a - BACK), 0.8) + 0.04 * gauss(y - (yHip - 0.12), 0.1) * gauss(wrapA(a - (sx > 0 ? 0 : PI)), 0.6);
-  const pantsEnd = bottom === 'shorts' ? yKn + 0.1 : bottom === 'none' ? yHip + 0.1 : sp.boots ? yAn + 0.2 : yAn + 0.075;
-  const loose = bottom === 'gi' ? 0.04 : bottom === 'cargo' ? 0.02 : bottom === 'tight' ? 0.004 : bottom === 'jeans' ? 0.014 : 0.02;
+  const pantsEnd = bottom === 'trunks' ? yHip - 0.16 : bottom === 'shorts' ? yKn + 0.1 : bottom === 'none' ? yHip + 0.1 : sp.boots ? yAn + 0.2 : yAn + 0.075;
+  const loose = bottom === 'gi' ? 0.022 : bottom === 'trunks' ? 0.003 : bottom === 'cargo' ? 0.02 : bottom === 'tight' ? 0.004 : bottom === 'jeans' ? 0.014 : 0.02;
   for (const sx of [1, -1]) {
     const lx = sx * hw;
-    const ringL = (y, k = 1, add = 0, fl = null) => { const [ru, rv] = legRad(y); return { c: [lx, y, 0.0], U: X, V: Z, ru: ru * k + add, rv: rv * k + add, e: 2.1, mod: fl ? (a) => legMod(y, sx)(a) + folds(y, a, fl) : legMod(y, sx) }; };
+    // the inner side of each leg stops 5 mm short of the midline (a soft cap): thighs that meet press flat against each
+    // other the way flesh and cloth do, instead of passing through and fusing into one column that reads as a skirt
+    const innerCap = (ru, m0) => (a) => { const m = m0(a), c = Math.cos(a), inw = -sx * Math.sign(c) * Math.pow(Math.abs(c), 2 / 2.1); if (inw <= 0) return m; const cap = (hw - 0.005) / (ru * inw); return m <= cap ? m : cap + (m - cap) * 0.15; };
+    const ringL = (y, k = 1, add = 0, fl = null) => { const [ru, rv] = legRad(y); const R = ru * k + add; return { c: [lx, y, 0.0], U: X, V: Z, ru: R, rv: rv * k + add, e: 2.1, mod: innerCap(R, fl ? (a) => legMod(y, sx)(a) + folds(y, a, fl) : legMod(y, sx)) }; };
     const yTop = yHip + 0.07;
     const pFolds = [[yKn + 0.05, 0.05, 0.014, BACK, 0.8], [yKn - 0.01, 0.04, 0.012, BACK, 0.8], [yKn + 0.02, 0.035, 0.014, FRONT, 0.5], [yHip - 0.06, 0.03, 0.015, FRONT + sx * 0.5, 0.5],
       [pantsEnd + 0.05, 0.05, 0.012, null], [pantsEnd + 0.1, 0.04, 0.012, null], [pantsEnd + 0.16, 0.03, 0.015, FRONT, 1]];
@@ -682,22 +695,22 @@ function emit(sp) {
 
 
 // The four fighters. scale, bulk and shoulder are the numbers the hitboxes were tuned with (height, hip width, shoulder
-// width); everything else is the look. Silhouette first: a gi with a headband and spiky hair, a huge bearded grappler
+// width); everything else is the look. Silhouette first: a gi with a headband and spiky hair, a broad, muscular grappler
 // in trunks and a harness, a lean runner in a cropped jacket with a mohawk, a long coat with a ponytail.
 export const SPECS = [
-  { name: 'bolt', face: { brow: 1.2, cheek: 1.1, browThick: 1.15, age: 0.25, lips: 0.95 }, eyes: 0x3a2412, scale: 1.0, bulk: 1.0, shoulder: 1.0, width: 1.08, chest: 1.08, arm: 1.12, leg: 1.06, head: 0.94, hand: 1.08, jaw: 1.15, abs: 1,
+  { name: 'bolt', face: { brow: 1.2, cheek: 1.1, browThick: 1.15, age: 0.25, lips: 0.95 }, eyes: 0x3a2412, scale: 1.0, bulk: 1.0, shoulder: 1.0, width: 1.08, chest: 1.08, arm: 0.9, leg: 0.95, head: 0.94, hand: 1.08, jaw: 1.15, abs: 1,
     hair: 'spiky', headband: true, wraps: true, stubble: true, top: 'none', outer: true, outerKind: 'gi', outerFab: 'gi', openFront: 0.2, sleeves: 'three',
     bottom: 'gi', pantsFab: 'gi', obi: true, shoes: 'slipper',
     colors: { skin: 0xc68c62, outer: 0xe8e2d2, pants: 0xe2dccc, shoes: 0x2a1a14, hair: 0x1c1410, accent: 0xb3201a, band: 0xc0221a, belt: 0x141214, wrap: 0xe8e4da } },
-  { name: 'grit', face: { brow: 1.6, cheek: 1.2, width: 1.06, browThick: 1.3, browArch: 0.7, age: 0.8, lips: 0.9, chin: 1.25, eyeSize: 0.92, mouthW: 1.1 }, eyes: 0x4a5a6a, scale: 1.06, bulk: 1.38, shoulder: 1.25, width: 1.6, chest: 1.2, belly: 0.75, arm: 1.55, leg: 1.3, head: 1.0, hand: 1.3, jaw: 1.45, neck: 1.5, abs: 0.4,
-    hair: 'none', goatee: true, stubble: true, scar: true, frown: true, top: 'none', harness: true, belt: true, champ: true, bottom: 'shorts', pantsFab: 'leather', kneepads: true, boots: true,
+  { name: 'grit', face: { brow: 1.6, cheek: 1.2, width: 1.06, browThick: 1.3, browArch: 0.7, age: 0.8, lips: 0.9, chin: 1.25, eyeSize: 0.92, mouthW: 1.1 }, eyes: 0x4a5a6a, scale: 1.06, bulk: 1.38, shoulder: 1.25, width: 1.2, chest: 1.3, hips: 0.9, arm: 1.2, leg: 1.15, head: 1.0, hand: 1.18, jaw: 1.45, neck: 1.35, traps: 0.4, abs: 0.9,
+    hair: 'none', goatee: true, stubble: true, scar: true, frown: true, top: 'none', harness: true, belt: true, champ: true, bottom: 'trunks', pantsFab: 'leather', kneepads: true, boots: true,
     bracers: true, wristband: true, gloves: true, fingerless: true,
     colors: { skin: 0xa8714c, pants: 0x2a2c34, shoes: 0x1a1612, hair: 0x2a1a10, accent: 0xe08a10, belt: 0x1e1814, metal: 0xc8a050, glove: 0x302822, pad: 0xd07a10, band: 0xe08a10, harness: 0x2a1e16 } },
-  { name: 'vex', face: { brow: 0.9, cheek: 1.25, length: 1.04, browThick: 0.8, lips: 1.15, eyeSize: 1.05 }, eyes: 0x2a1a0e, scale: 0.94, bulk: 0.82, shoulder: 0.9, width: 0.86, chest: 0.95, arm: 0.95, leg: 1.0, head: 0.93, hand: 1.0, jaw: 0.9, nose: 0.9, abs: 0.6,
+  { name: 'vex', face: { brow: 0.9, cheek: 1.25, length: 1.04, browThick: 0.8, lips: 1.15, eyeSize: 1.05 }, eyes: 0x2a1a0e, scale: 0.94, bulk: 0.82, shoulder: 0.9, width: 0.86, chest: 0.98, hips: 0.92, arm: 0.92, leg: 0.9, head: 0.93, hand: 1.0, jaw: 0.9, nose: 0.9, abs: 0.6,
     hair: 'mohawk', mohawk: 1.35, shades: true, shadesUp: true, top: 'tank', shirtFab: 'knit', outer: true, outerKind: 'crop', outerFab: 'leather', openFront: 0.5, sleeves: 'long',
     bottom: 'joggers', pantsFab: 'cloth', gloves: true, fingerless: true, belt: true, war: 0x20c0e0,
     colors: { skin: 0x9a6a48, shirt: 0x12141a, pants: 0x16181e, shoes: 0x1a1c22, hair: 0x30d8f0, roots: 0x101014, accent: 0x18c8e8, outer: 0x101216, glove: 0x18181c, band: 0x18c8e8, belt: 0x0e0e10, glow: [0.3, 2.2, 2.8] } },
-  { name: 'mara', face: { brow: 0.75, cheek: 1.2, width: 0.96, browThick: 0.7, browArch: 1.3, lips: 1.25, eyeSize: 1.08, chin: 0.85, mouthW: 0.95, makeup: { shadow: 0x5a4a3a, blush: 0xd07070 } }, scale: 0.97, bulk: 0.88, shoulder: 0.92, width: 0.86, chest: 0.92, bust: 1, hips: 1.08, arm: 0.88, leg: 1.0, head: 0.93, hand: 0.95, jaw: 0.72, nose: 0.8,
+  { name: 'mara', face: { brow: 0.75, cheek: 1.2, width: 0.96, browThick: 0.7, browArch: 1.3, lips: 1.25, eyeSize: 1.08, chin: 0.85, mouthW: 0.95, makeup: { shadow: 0x5a4a3a, blush: 0xd07070 } }, scale: 0.97, bulk: 0.88, shoulder: 0.92, width: 0.86, chest: 0.92, bust: 1, hips: 1.08, arm: 0.84, leg: 1.0, head: 0.93, hand: 0.95, jaw: 0.72, nose: 0.8,
     hair: 'ponytail', hairRoot: [0, 0.2, -0.1], hairB: [0, -0.13, -0.06], lip: 0xa03a48, top: 'tank', shirtFab: 'cloth', outer: true, outerKind: 'longcoat', outerFab: 'leather', openFront: 0.42,
     bottom: 'tight', pantsFab: 'leather', boots: true, gloves: true, belt: true, pads: true, padMat: 'metal', epaulette: true,
     colors: { skin: 0xe6b894, shirt: 0xd8b040, pants: 0x1c1e22, shoes: 0x2a1c14, hair: 0x7a2a14, accent: 0xe0b030, outer: 0x1f4a34, glove: 0x2a1c14, belt: 0x241810, metal: 0xd8b860, band: 0xe0b030 }, eyes: 0x2a6a3a },
@@ -705,9 +718,9 @@ export const SPECS = [
 // The crowd: low detail people (a third of the points) on the same skeleton, posed by the game (stage.c) to watch and cheer.
 const C = { lod: 0.4, scale: 1.0, bulk: 1.0, shoulder: 1.0 };
 export const CROWD = [
-  { ...C, name: 'crowd0', stubble: true, hair: 'beanie', hatFab: 'knit', top: 'hoodie', hood: true, bottom: 'jeans', width: 1.1, belly: 0.3, colors: { skin: 0xc0906a, shirt: 0x2a3a5a, pants: 0x34384a, shoes: 0x1c1c1c, hair: 0x1a1410, accent: 0x2a2a2a, hat: 0x8a2a1a, band: 0xd8d8d8 } },
+  { ...C, name: 'crowd0', stubble: true, hair: 'beanie', hatFab: 'knit', top: 'hoodie', hood: true, bottom: 'jeans', width: 1.1, colors: { skin: 0xc0906a, shirt: 0x2a3a5a, pants: 0x34384a, shoes: 0x1c1c1c, hair: 0x1a1410, accent: 0x2a2a2a, hat: 0x8a2a1a, band: 0xd8d8d8 } },
   { ...C, name: 'crowd1', scale: 0.96, shoulder: 0.92, bulk: 0.9, hair: 'ponytail', hairRoot: [0, 0.2, -0.1], hairB: [0, -0.13, -0.06], bust: 0.8, hips: 1.06, jaw: 0.75, top: 'tee', outer: true, outerKind: 'jacket', outerFab: 'denim', openFront: 0.4, bottom: 'tight', pantsFab: 'cloth', lip: 0xa04050, colors: { skin: 0xe8c0a0, shirt: 0xe8e0d0, pants: 0x1a1a22, shoes: 0xe0e0e0, hair: 0x3a2010, accent: 0x5070a0, outer: 0x5a7aa8 } },
-  { ...C, name: 'crowd2', scale: 1.03, bulk: 1.1, shoulder: 1.08, hair: 'capback', top: 'tee', bottom: 'cargo', pantsFab: 'cloth', width: 1.2, colors: { skin: 0x8a5838, shirt: 0xd8b020, pants: 0x55583a, shoes: 0x202020, hair: 0x101010, accent: 0x202020, hat: 0x1a1a1a } },
+  { ...C, name: 'crowd2', scale: 1.03, bulk: 1.1, shoulder: 1.08, arm: 0.9, hair: 'capback', top: 'tee', bottom: 'cargo', pantsFab: 'cloth', width: 1.2, colors: { skin: 0x8a5838, shirt: 0xd8b020, pants: 0x55583a, shoes: 0x202020, hair: 0x101010, accent: 0x202020, hat: 0x1a1a1a } },
   { ...C, name: 'crowd3', hair: 'crop', top: 'longsleeve', outer: true, outerKind: 'jacket', outerFab: 'leather', openFront: 0.35, bottom: 'jeans', beard: true, colors: { skin: 0xd8a882, shirt: 0x2a2a2a, pants: 0x2c4a80, shoes: 0x3b2618, hair: 0x5a3a20, accent: 0x202020, outer: 0x3a2418 } },
   { ...C, name: 'crowd4', scale: 0.95, shoulder: 0.9, bulk: 0.92, hair: 'long', hairRoot: [0, 0.08, -0.12], hairB: [0, -0.16, -0.02], bust: 0.9, hips: 1.08, jaw: 0.72, top: 'tank', bottom: 'jeans', lip: 0x902838, colors: { skin: 0x9a6a48, shirt: 0xc02858, pants: 0x202838, shoes: 0x101010, hair: 0x101010, accent: 0xc02858 } },
   { ...C, name: 'crowd5', scale: 1.05, bulk: 1.15, shoulder: 1.1, hair: 'mohawk', mohawk: 0.9, top: 'none', outer: true, outerKind: 'vest', outerFab: 'leather', openFront: 0.55, bottom: 'tight', pantsFab: 'cloth', boots: true, colors: { skin: 0xe0b890, shirt: 0x2a2a30, pants: 0x3a2a4a, shoes: 0x101010, hair: 0xd03060, accent: 0xa0a0b0, outer: 0x18181c } },
