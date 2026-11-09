@@ -823,7 +823,9 @@ function build(sp) {
     const y0 = kind === 'vest' || kind === 'jacket' || kind === 'hivis' ? waist - 0.07 : waist - 0.02;
     const y1 = ySh + 0.04;
     const of = [[y0 + 0.08, 0.02, 0.014, FRONT, 0.8], [yC - 0.05, 0.016, 0.02, FRONT - 0.9, 0.5], [yC - 0.02, 0.016, 0.02, FRONT + 0.9, 0.5], [y0 + 0.2, 0.012, 0.015, BACK, 1]];
-    const rings = ys(y0, y1).map((y) => ringAt(y, 1.1, 1.13, 0.024 + 0.01 * ss(yC, y0, y), torsoMod(y, 0, of)));
+    // a vest on bare skin lies on the body (worn over a shirt it stands off it by the shirt's thickness)
+    const bareVest = kind === 'vest' && (sp.top ?? 'tee') === 'none', ek = bareVest ? [1.05, 1.07, 0.012] : [1.1, 1.13, 0.024];
+    const rings = ys(y0, y1).map((y) => ringAt(y, ek[0], ek[1], ek[2] + 0.01 * ss(yC, y0, y), torsoMod(y, 0, of)));
     rings.push({ ...ringAt(yN + 0.01, 1.02, 1.02, 0.02), c: [0, yN + 0.01, prof(yN)[3] - 0.01] });
     rings.push({ ...ringAt(yN + 0.055, 1.25, 1.25, 0.03), c: [0, yN + 0.055, prof(yN)[3] - 0.015] }); // the collar stands and rolls out
     m.loft('outer', rings, { n: 36, arc: [FRONT + open, FRONT - open + PI * 2], weights: (k, P, a) => coatOpenW(torsoW(P, a), P, a), tile: 0.5 });
@@ -1231,7 +1233,10 @@ function build(sp) {
   const loose = bottom === 'cargo' ? 0.02 : bottom === 'tight' || bottom === 'briefs' ? 0.004 : bottom === 'jeans' ? 0.014 : 0.02;
   for (const sx of [1, -1]) {
     const lx = sx * hw; const sd = sx > 0 ? 'L' : 'R';
-    const ringL = (y, k = 1, add = 0, fl = null) => { const [ru, rv] = legRad(y); return { c: [lx, y, 0.0], U: X, V: Z, ru: ru * k + add, rv: rv * k + add, e: 2.1, mod: fl ? (a) => legMod(y, sx)(a) + folds(y, a, fl) : legMod(y, sx) }; };
+    // the inner side of each leg stops 5 mm short of the midline (a soft cap): thighs that meet press flat against each
+    // other the way flesh and cloth do, instead of passing through and fusing into one column that reads as short legs
+    const innerCap = (ru, m0) => (a) => { const m = m0(a), c = Math.cos(a), inw = -sx * Math.sign(c) * Math.pow(Math.abs(c), 2 / 2.1); if (inw <= 0) return m; const cap = (hw - 0.005) / (ru * inw); return m <= cap ? m : cap + (m - cap) * 0.15; };
+    const ringL = (y, k = 1, add = 0, fl = null) => { const [ru, rv] = legRad(y); const R = ru * k + add; return { c: [lx, y, 0.0], U: X, V: Z, ru: R, rv: rv * k + add, e: 2.1, mod: innerCap(R, fl ? (a) => legMod(y, sx)(a) + folds(y, a, fl) : legMod(y, sx)) }; };
     const yTop = yHip + 0.07;
     const pFolds = [[yKn + 0.05, 0.05, 0.014, BACK, 0.8], [yKn - 0.01, 0.04, 0.012, BACK, 0.8], [yKn + 0.02, 0.035, 0.014, FRONT, 0.5], [yHip - 0.06, 0.03, 0.015, FRONT + sx * 0.5, 0.5],
       [pantsEnd + 0.05, 0.05, 0.012, null], [pantsEnd + 0.1, 0.04, 0.012, null], [pantsEnd + 0.16, 0.03, 0.015, FRONT, 1]];
@@ -1490,20 +1495,20 @@ export const SPECS = [
   // in the look): broad shoulders, thick arms and leather work gloves, iron-grey hair in a bun under a bandana, coveralls
   // with the top half peeled down and the sleeves knotted at her waist over a plain ribbed tank
   { name: 'dolly', fig: { waist: 0.86, hip: 1.04, bust: 0.7 }, neckShort: 0.006, hairlineH: 0.64, shoulders: 2.45, heads: 7.3, skull: { w: 1.03, slope: 0.3, chin: 1.0 }, adam: false, face: { jawAng: 1.15, chin: 1.05, brow: 1.1, browThick: 0.052, noseW: 1.15, cheek: 1.2, lipU: 0.95, lipL: 1.05, mw: 0.25, tilt: 0.02, lidUp: 0.22, naso: 0.8 }, paint: { age: 0.45, iris: [0.2, 0.28, 0.32], hairline: true, freckles: 0.5, ruddy: 0.3, scars: [[-0.3, 0.3, -0.16, 0.2, 0.01, false]] },
-    scale: 1.13, width: 1.5, chest: 1.2, belly: 0.5, sw: 0.255, hw: 0.125, arm: 1.42, leg: 1.1, head: 1.03, hand: 1.42, jaw: 1.05, neck: 1.05, hair: 'bun', headband: true, boots: true, gloves: true, tiedSleeves: true,
+    scale: 1.13, width: 1.5, chest: 1.2, sw: 0.255, hw: 0.125, arm: 1.42, leg: 1.1, head: 1.03, hand: 1.42, jaw: 1.05, neck: 1.05, hair: 'bun', headband: true, boots: true, gloves: true, tiedSleeves: true,
     top: 'tank', shirtFab: 'cloth', bottom: 'cargo', pantsFab: 'cloth', temper: 'anger',
     colors: { skin: 0x8c5c3c, shirt: 0xb6b1a2, pants: 0x3f5a4c, shoes: 0x2a1c12, hair: 0x8f897e, accent: 0xc8601e, band: 0xc8601e, glove: 0x7a5a30, belt: 0x1a1510 } },
   { name: 'mika', fig: { waist: 0.76, hip: 1.12, bust: 0.75 }, neckShort: 0.014, hairlineH: 0.66, shoulders: 1.86, heads: 7.45, skull: { w: 0.96, h: 0.97, d: 0.96, slope: 0.22, chin: 0.85 }, adam: false, face: { eyeR: 0.17, noseLen: 0.85, noseW: 0.82, noseProj: 0.85, tipUp: 1, lipU: 1.2, lipL: 1.25, mw: 0.23, cheek: 1.25, jawAng: 0.6, chin: 0.8, chinW: 0.8, brow: 0.6, browThick: 0.04, browArch: 0.06, tilt: 0.08, socket: 0.9, naso: 0.4 }, paint: { freckles: 1, liner: 0.6, eyeShadow: [0.55, 0.36, 0.36], eyeShadowAmt: 0.3, iris: [0.25, 0.42, 0.22], hairline: true },
     scale: 0.97, width: 0.9, chest: 0.95, sw: 0.185, hw: 0.095, arm: 0.95, leg: 1.0, head: 1.14, hand: 1.25, jaw: 0.75, nose: 0.8, hair: 'ponytail', hairRoot: [0, 0.203, -0.1], hairB: [0, -0.13, -0.06], headband: true, wristband: true,
     top: 'tank', bottom: 'tight', pantsFab: 'cloth', lip: 0xb04a50,
     colors: { skin: 0xf0c4a0, shirt: 0xe89a20, pants: 0x262836, shoes: 0xe8e8e8, hair: 0x8a2d1a, accent: 0xd03040, band: 0xd03040 } },
-  { name: 'jet', shoulders: 2.25, heads: 7.5, skull: { w: 0.98, d: 1.0, occ: 1.04, chinZ: 1.02 }, recede: 0.02, face: { noseW: 1.35, noseLen: 0.95, noseProj: 0.85, lipU: 1.35, lipL: 1.4, mw: 0.27, browThick: 0.055, cheek: 1.1, jawAng: 1.1 }, paint: { chinstrap: true, browSlit: 1, beardColor: [0.07, 0.05, 0.04], iris: [0.16, 0.09, 0.05], scalp: 0.7 },
-    scale: 1.0, width: 1.05, sw: 0.205, arm: 1.12, leg: 1.05, head: 1.13, hand: 1.3, hair: 'mohawk', shades: true, wristband: true,
+  { name: 'jet', fig: { hip: 0.9 }, shoulders: 2.25, heads: 7.5, skull: { w: 0.98, d: 1.0, occ: 1.04, chinZ: 1.02 }, recede: 0.02, face: { noseW: 1.35, noseLen: 0.95, noseProj: 0.85, lipU: 1.35, lipL: 1.4, mw: 0.27, browThick: 0.055, cheek: 1.1, jawAng: 1.1 }, paint: { chinstrap: true, browSlit: 1, beardColor: [0.07, 0.05, 0.04], iris: [0.16, 0.09, 0.05], scalp: 0.7 },
+    scale: 1.0, width: 1.05, sw: 0.205, arm: 1.12, leg: 0.95, head: 1.13, hand: 1.3, hair: 'mohawk', shades: true, wristband: true,
     top: 'cutoff', bottom: 'cargo', pantsFab: 'cloth', shirtFab: 'knit', kneepads: true,
     colors: { skin: 0x8a5838, shirt: 0x2f9a72, pants: 0x55583a, shoes: 0xf0d030, hair: 0xe0e0e8, accent: 0xf0d030, band: 0xf0d030, pad: 0x202020 } },
   // enemies
   { name: 'thug', shoulders: 2.3, heads: 7.4, skull: { w: 1.02, h: 0.97, slope: 0.85, chin: 1.1, occ: 0.96 }, face: { noseW: 1.25, hook: 0.3, crook: 0.6, brow: 1.5, browThick: 0.07, eyeR: 0.16, socket: 1.25, jawAng: 1.4, chin: 1.1, jowl: 0.4, cheek: 0.8 }, paint: { age: 0.3, scars: [[-0.55, -0.05, -0.42, -0.35, 0.012, true]], tattoos: [{ kind: 'bars', x: -0.78, y: 0.12, s: 0.08 }], iris: [0.3, 0.24, 0.16] },
-    stubble: true, frown: true, scale: 1.02, width: 1.2, belly: 0.5, sw: 0.215, arm: 1.15, leg: 1.1, head: 1.1, jaw: 1.2, hair: 'beanie', hatFab: 'knit', hood: true,
+    stubble: true, frown: true, scale: 1.02, width: 1.2, sw: 0.215, arm: 1.15, leg: 1.1, head: 1.1, jaw: 1.2, hair: 'beanie', hatFab: 'knit', hood: true,
     top: 'hoodie', shirtFab: 'cloth', bottom: 'jeans', boots: false,
     colors: { skin: 0xc0906a, shirt: 0x5a2626, pants: 0x34384a, shoes: 0x1c1c1c, hair: 0x1a1410, accent: 0x2a2a2a, hat: 0x282828, band: 0xd8d8d8 } },
   { name: 'punk', shoulders: 2.1, heads: 7.6, skull: { w: 0.94, h: 1.03, temple: 0.94, cheek: 0.97, chin: 0.85 }, face: { noseLen: 1.05, noseW: 0.85, hook: 0.2, cheek: 1.2, hollow: 0.8, jawAng: 0.8, chin: 1.3, chinW: 0.7, brow: 0.9, browThick: 0.035, eyeR: 0.17, tilt: 0.1 }, paint: { liner: 1, browSparse: 0.3, scalp: 0.6, iris: [0.3, 0.38, 0.4], tattoos: [{ kind: 'tear', x: 0.37, y: -0.17, s: 0.05 }, { kind: 'star', x: -0.6, y: -0.18, s: 0.09 }, { kind: 'tribal', x: 0.78, y: 0.32, s: 0.16 }] }, piercings: [[0.12, -0.36, 0.022], [-0.55, 0.25, 0.018], [-0.47, 0.27, 0.018]], lipRing: true,
@@ -1518,8 +1523,8 @@ export const SPECS = [
     frown: true, scale: 1.0, width: 0.92, sw: 0.195, arm: 1.0, head: 1.1, jaw: 0.9, mask: true, hair: 'crop', boots: true,
     top: 'longsleeve', outer: true, outerKind: 'longcoat', outerFab: 'leather', openFront: 0.3, bottom: 'tight', pantsFab: 'cloth', gloves: false,
     colors: { skin: 0xc49470, shirt: 0x2a2a2a, pants: 0x1c2a1c, shoes: 0x101010, hair: 0x101010, accent: 0x505850, outer: 0x3a3a30, mask: 0x6a1a1a } },
-  { name: 'bruiser', fig: { waist: 0.97 }, shoulders: 2.6, heads: 7.25, skull: { w: 1.02, h: 0.97, slope: 0.9, chin: 1.15, occ: 0.95, temple: 0.97 }, face: { brow: 1.7, browThick: 0.075, eyeR: 0.15, socket: 1.35, noseW: 1.4, crook: -0.8, hook: 0.5, noseProj: 0.9, jawAng: 1.6, chin: 1.4, jowl: 0.3, cauli: 1, earOut: 1.3, cheek: 0.9, naso: 1.2 }, paint: { scalp: 1, age: 0.45, iris: [0.3, 0.25, 0.18], scars: [[0.3, 0.32, 0.5, -0.12, 0.012, true], [-0.2, 0.78, 0.15, 0.56, 0.014, true]], tattoos: [{ kind: 'cross', x: -0.84, y: 0.2, s: 0.1 }] },
-    stubble: true, scar: true, frown: true, goatee: true, scale: 1.24, width: 1.6, chest: 1.15, belly: 0.9, sw: 0.27, hw: 0.12, arm: 1.4, leg: 1.12, head: 1.05, hand: 1.45, jaw: 1.4, neck: 1.35, hair: 'none', belt: true, boots: true, wristband: true,
+  { name: 'bruiser', fig: { waist: 0.86, hip: 0.84 }, shoulders: 2.6, heads: 7.25, skull: { w: 1.02, h: 0.97, slope: 0.9, chin: 1.15, occ: 0.95, temple: 0.97 }, face: { brow: 1.7, browThick: 0.075, eyeR: 0.15, socket: 1.35, noseW: 1.4, crook: -0.8, hook: 0.5, noseProj: 0.9, jawAng: 1.6, chin: 1.4, jowl: 0.3, cauli: 1, earOut: 1.3, cheek: 0.9, naso: 1.2 }, paint: { scalp: 1, age: 0.45, iris: [0.3, 0.25, 0.18], scars: [[0.3, 0.32, 0.5, -0.12, 0.012, true], [-0.2, 0.78, 0.15, 0.56, 0.014, true]], tattoos: [{ kind: 'cross', x: -0.84, y: 0.2, s: 0.1 }] },
+    stubble: true, scar: true, frown: true, goatee: true, scale: 1.24, width: 1.6, chest: 1.3, sw: 0.27, hw: 0.12, arm: 1.55, leg: 1.0, head: 1.05, hand: 1.45, jaw: 1.4, neck: 1.35, hair: 'none', belt: true, boots: true, wristband: true,
     top: 'cutoff', shirtFab: 'cloth', bottom: 'cargo', pantsFab: 'cloth',
     colors: { skin: 0xb07a52, shirt: 0xd0ccb8, pants: 0x4a4430, shoes: 0x201810, hair: 0x281810, accent: 0x8a2a1a, belt: 0x141010, band: 0x101010 } },
   // the ranged thrower: tall and lean, forward cap, spiky hair under it, a sleeveless vest over a tee, shorts
@@ -1528,15 +1533,15 @@ export const SPECS = [
     top: 'tee', outer: true, outerKind: 'vest', outerFab: 'cloth', openFront: 0.4, sleeves: 'short', bottom: 'shorts', pantsFab: 'cloth',
     colors: { skin: 0xd09a70, shirt: 0xe0c040, pants: 0x3a4a2a, shoes: 0x6a6a6a, hair: 0x302010, accent: 0x50a030, outer: 0x2a3a20, hat: 0x50a030, band: 0xe0c040 } },
   // the guard: broad, riot helmet with a visor, armour plates and pads (the shield is a separate prop in the game)
-  { name: 'guard', shoulders: 2.45, heads: 7.35, skull: { w: 1.03, chin: 1.15 }, shield: true, face: { eyeR: 0.16, brow: 1.3, jawAng: 1.5, chin: 1.3, cleft: 1, noseW: 1.1, noseLen: 1.05, cheek: 0.9, lidUp: 0.26, mw: 0.24, lipU: 0.8, lipL: 0.9 }, paint: { shadow: 0.4, age: 0.25 },
-    frown: true, scale: 1.08, width: 1.35, chest: 1.1, sw: 0.235, hw: 0.11, arm: 1.25, leg: 1.15, head: 1.0, hand: 1.35, jaw: 1.25, neck: 1.2, hair: 'helmet', pads: true, padMat: 'metal', armor: true, gloves: true, boots: true, belt: true, kneepads: true,
+  { name: 'guard', fig: { hip: 0.86 }, shoulders: 2.45, heads: 7.35, skull: { w: 1.03, chin: 1.15 }, shield: true, face: { eyeR: 0.16, brow: 1.3, jawAng: 1.5, chin: 1.3, cleft: 1, noseW: 1.1, noseLen: 1.05, cheek: 0.9, lidUp: 0.26, mw: 0.24, lipU: 0.8, lipL: 0.9 }, paint: { shadow: 0.4, age: 0.25 },
+    frown: true, scale: 1.08, width: 1.35, chest: 1.1, sw: 0.235, hw: 0.11, arm: 1.25, leg: 1.0, head: 1.0, hand: 1.35, jaw: 1.25, neck: 1.2, hair: 'helmet', pads: true, padMat: 'metal', armor: true, gloves: true, boots: true, belt: true, kneepads: true,
     top: 'longsleeve', shirtFab: 'cloth', bottom: 'cargo', pantsFab: 'cloth',
     colors: { skin: 0xb88a64, shirt: 0x1c2638, pants: 0x232a36, shoes: 0x111111, hair: 0x202020, accent: 0xd0d8e0, metal: 0x3a4a64, helmet: 0x26324a, glove: 0x161616, belt: 0x0e0e0e, pad: 0x3a4a64 }, eyes: 0xa0c0ff },
   // the wanker: a big soft-bellied man in a red foam-front cap that says "Dumb", a grimy stained tee, faded jeans and
   // work boots, a mullet and a scruffy moustache (a regular enemy: a wild haymaker and a shoulder charge)
   { name: 'wanker', fig: { waist: 1 }, shoulders: 2.05, heads: 7.4, skull: { w: 1.02, h: 0.98, chinZ: 0.93, chin: 0.9, slope: 0.7 }, recede: 0.16, face: { noseW: 1.2, noseLen: 1.05, hook: 0.15, crook: 0.3, brow: 1.2, browThick: 0.06, eyeR: 0.155, socket: 1.1, jawAng: 1.1, chin: 1.0, jowl: 0.7, cheek: 0.95, naso: 1.1, lipU: 0.85, mw: 0.25 },
     paint: { age: 0.35, ruddy: 0.8, stubble: 0.85, shadow: 0.3, iris: [0.3, 0.38, 0.45], hairline: true, browColor: [0.3, 0.2, 0.12], beardColor: [0.34, 0.23, 0.13] },
-    // B-PT18: out of shape, not a brawler: skinny untoned arms, narrow sloping shoulders, a soft chest and a big round beer belly
+    // B-PT18: a comic silhouette, not a brawler: slender arms, narrow sloping shoulders, a soft chest and a round belly
     stubble: true, frown: true, moustache: 'thick', scale: 1.04, width: 1.3, belly: 3.4, chest: 0.86, softChest: 0.24, armOut: 0.2, sw: 0.188, hw: 0.105, arm: 0.78, leg: 1.0, head: 1.08, hand: 1.15, jaw: 1.15, neck: 1.1,
     hair: 'foamcap', boots: true, belt: true, top: 'tee', sleeves: 'short', shirtFab: 'dirty', shirtTile: 1.0, bottom: 'jeans', pantsFab: 'denim',
     colors: { skin: 0xd49a78, shirt: 0xf4f0e6, pants: 0x46607e, shoes: 0x4a3220, hair: 0x5a3c22, accent: 0x8a2a1a, belt: 0x3a2614 } },
@@ -1544,12 +1549,12 @@ export const SPECS = [
   // moustache and dark rings under the eyes; he enjoys being hit (a regular enemy)
   { name: 'creep', shoulders: 2.1, heads: 7.6, skull: { w: 0.96, h: 1.05, temple: 0.92, cheek: 0.96, chin: 0.8, chinZ: 0.96, slope: 0.2 }, face: { eyeR: 0.165, socket: 1.35, bags: 1.4, lidUp: 0.2, noseLen: 1.12, noseW: 0.9, hook: 0.35, cheek: 0.8, hollow: 0.9, jawAng: 0.75, chin: 0.85, chinW: 0.75, brow: 0.8, browThick: 0.03, browArch: 0.06, mw: 0.26, lipU: 0.7, lipL: 0.9 },
     paint: { age: 0.45, shadow: 0.2, iris: [0.32, 0.3, 0.22], eyeShadow: [0.5, 0.36, 0.38], eyeShadowAmt: 0.45, browColor: [0.25, 0.2, 0.16], beardColor: [0.2, 0.15, 0.12], ruddy: 0.15 },
-    moustache: 'pencil', scale: 1.0, width: 0.95, belly: 0.35, sw: 0.2, hw: 0.1, arm: 1.0, leg: 1.0, head: 1.12, hand: 1.3, jaw: 0.85, neck: 0.95,
+    moustache: 'pencil', scale: 1.0, width: 0.95, sw: 0.2, hw: 0.1, arm: 1.0, leg: 1.0, head: 1.12, hand: 1.3, jaw: 0.85, neck: 0.95,
     hair: 'fedora', boots: false, belt: false, tuck: true, top: 'longsleeve', shirtFab: 'cloth', outer: true, outerKind: 'longcoat', outerFab: 'cloth', openFront: 0.2, flashCoat: true, coatHem: 0.06, bottom: 'briefs', pantsFab: 'dirty',
     colors: { skin: 0xe6cbbf, shirt: 0xcfc8b4, pants: 0xf4efdc, shoes: 0x2a1e16, hair: 0x2e241c, accent: 0x5a4a34, outer: 0x8a7652, hat: 0x5c4a34, band: 0x2a2018, belt: 0x6a5a40 } },
   // bosses
-  { name: 'foreman', fig: { waist: 1 }, shoulders: 2.48, heads: 7.3, skull: { w: 1.0, h: 0.96, slope: 0.7, temple: 0.95, chin: 1.05 }, recede: 0.22, face: { noseW: 1.3, noseLen: 1.15, noseProj: 1.1, hook: 0.3, bags: 1.2, jowl: 1.0, naso: 1.6, brow: 1.3, browThick: 0.075, browArch: 0.03, cheek: 0.8, jawAng: 1.2, ear: 1.15, lidUp: 0.22 }, paint: { age: 1, ruddy: 0.6, stubble: 0.8, browColor: [0.55, 0.53, 0.5], beardColor: [0.42, 0.39, 0.35], iris: [0.35, 0.4, 0.45], hairline: true },
-    stubble: true, frown: true, moustache: 'thick', scale: 1.34, width: 1.6, belly: 1.0, chest: 1.1, sw: 0.25, hw: 0.11, arm: 1.4, leg: 1.12, head: 1.04, hand: 1.45, jaw: 1.35, neck: 1.3, hair: 'hardhat', boots: true, gloves: true, belt: true,
+  { name: 'foreman', fig: { waist: 0.88, hip: 0.86 }, shoulders: 2.48, heads: 7.3, skull: { w: 1.0, h: 0.96, slope: 0.7, temple: 0.95, chin: 1.05 }, recede: 0.22, face: { noseW: 1.3, noseLen: 1.15, noseProj: 1.1, hook: 0.3, bags: 1.2, jowl: 1.0, naso: 1.6, brow: 1.3, browThick: 0.075, browArch: 0.03, cheek: 0.8, jawAng: 1.2, ear: 1.15, lidUp: 0.22 }, paint: { age: 1, ruddy: 0.6, stubble: 0.8, browColor: [0.55, 0.53, 0.5], beardColor: [0.42, 0.39, 0.35], iris: [0.35, 0.4, 0.45], hairline: true },
+    stubble: true, frown: true, moustache: 'thick', scale: 1.34, width: 1.6, chest: 1.25, sw: 0.25, hw: 0.11, arm: 1.4, leg: 1.0, head: 1.04, hand: 1.45, jaw: 1.35, neck: 1.3, hair: 'hardhat', boots: true, gloves: true, belt: true,
     top: 'longsleeve', shirtFab: 'cloth', outer: true, outerKind: 'hivis', outerFab: 'cloth', openFront: 0.3, bottom: 'cargo', pantsFab: 'denim', kneepads: true,
     colors: { skin: 0xa8704a, shirt: 0x3a4a60, pants: 0x30343a, shoes: 0x3a2410, hair: 0x2a2a2a, accent: 0xe0b020, outer: 0xf08a10, helmet: 0xf0c020, glove: 0x8a6a40, belt: 0x141010, pad: 0x202020 } },
   { name: 'matron', fig: { waist: 0.78, hip: 1.1, bust: 0.7 }, neckShort: 0.01, shoulders: 1.86, heads: 7.5, skull: { w: 0.95, h: 1.02, temple: 0.93, cheek: 1.02, chin: 0.82, slope: 0.3 }, adam: false, face: { eyeR: 0.17, tilt: 0.12, noseLen: 1.1, noseW: 0.85, hook: 0.6, noseProj: 1.1, cheek: 1.4, hollow: 0.7, lipL: 1.05, mw: 0.24, jawAng: 0.8, chinW: 0.8, brow: 0.8, browThick: 0.035, browArch: 0.08, browTilt: 0.06, bags: 0.4, naso: 0.9 }, paint: { age: 0.55, liner: 0.9, eyeShadow: [0.32, 0.1, 0.35], eyeShadowAmt: 0.75, rouge: [0.7, 0.25, 0.3], mole: [-0.3, -0.48], browColor: [0.5, 0.5, 0.56], hairline: true },
@@ -1557,11 +1562,11 @@ export const SPECS = [
     top: 'longsleeve', shirtFab: 'cloth', outer: true, outerKind: 'longcoat', outerFab: 'leather', openFront: 0.35, bottom: 'tight', pantsFab: 'leather', hairRoot: [0, 0.08, -0.12], hairB: [0, -0.16, -0.02],
     colors: { skin: 0xe8c0a0, shirt: 0x2a1a2a, pants: 0x1a1a24, shoes: 0x500a28, hair: 0xd0d0e0, accent: 0xe0d060, outer: 0x6a1a5a, belt: 0x201018 }, eyes: 0xe02060 },
   { name: 'ringmaster', shoulders: 2.2, heads: 7.5, skull: { d: 1.03, chinZ: 1.05, slope: 0.4 }, recede: 0.18, face: { noseLen: 1.1, noseProj: 1.1, tipUp: -0.5, cheek: 1.2, jowl: 0.5, chin: 1.2, cleft: 0.4, browThick: 0.06, browArch: 0.08, browTilt: 0.04, lidUp: 0.26, mw: 0.26, naso: 1.2 }, paint: { age: 0.5, rouge: [0.75, 0.3, 0.3], ruddy: 0.3, shadow: 0.25, iris: [0.2, 0.3, 0.15], hairline: true },
-    scale: 1.14, width: 1.1, belly: 0.6, sw: 0.215, arm: 1.05, head: 1.12, jaw: 1.1, moustache: 'handlebar', hair: 'tophat', belt: false, boots: true, pads: true, padMat: 'buckle',
+    scale: 1.14, width: 1.1, sw: 0.215, arm: 1.05, head: 1.12, jaw: 1.1, moustache: 'handlebar', hair: 'tophat', belt: false, boots: true, pads: true, padMat: 'buckle',
     top: 'longsleeve', shirtFab: 'cloth', outer: true, outerKind: 'tailcoat', outerFab: 'cloth', openFront: 0.32, bottom: 'tight', pantsFab: 'cloth',
     colors: { skin: 0xe0b890, shirt: 0xf0ece0, pants: 0xe8e4d8, shoes: 0x0a0a0a, hair: 0x1a1a1a, accent: 0xe8c840, outer: 0xb01a28, hat: 0x141414, band: 0xb01a28 } },
-  { name: 'colossus', fig: { waist: 0.92 }, shoulders: 2.6, heads: 7.25, skull: { w: 1.0, h: 0.95, slope: 1, chin: 1.25, chinZ: 1.06, occ: 0.92 }, face: { brow: 2, browThick: 0.08, eyeR: 0.15, socket: 1.5, noseW: 1.3, crook: 0.5, jawAng: 2, chin: 1.6, chinW: 1.2, cheek: 1.3, ear: 0.9, cauli: 0.6, mw: 0.26, lipU: 0.8, lipL: 0.9 }, paint: { age: 0.4, browSparse: 0.6, scars: [[0.15, 0.42, 0.35, -0.3, 0.014, true], [-0.1, -0.45, -0.25, -0.75, 0.012, true], [-0.6, 0.1, -0.35, -0.2, 0.012, false]] }, glowEyes: true,
-    scar: true, frown: true, scale: 1.62, width: 1.7, chest: 1.2, sw: 0.27, hw: 0.115, arm: 1.5, leg: 1.15, head: 1.0, hand: 1.5, jaw: 1.5, neck: 1.5, hair: 'helmet', pads: true, padMat: 'metal', armor: true, bracers: true, gloves: true, boots: true, belt: true,
+  { name: 'colossus', fig: { waist: 0.9, hip: 0.88 }, shoulders: 2.6, heads: 7.25, skull: { w: 1.0, h: 0.95, slope: 1, chin: 1.25, chinZ: 1.06, occ: 0.92 }, face: { brow: 2, browThick: 0.08, eyeR: 0.15, socket: 1.5, noseW: 1.3, crook: 0.5, jawAng: 2, chin: 1.6, chinW: 1.2, cheek: 1.3, ear: 0.9, cauli: 0.6, mw: 0.26, lipU: 0.8, lipL: 0.9 }, paint: { age: 0.4, browSparse: 0.6, scars: [[0.15, 0.42, 0.35, -0.3, 0.014, true], [-0.1, -0.45, -0.25, -0.75, 0.012, true], [-0.6, 0.1, -0.35, -0.2, 0.012, false]] }, glowEyes: true,
+    scar: true, frown: true, scale: 1.62, width: 1.7, chest: 1.2, sw: 0.27, hw: 0.115, arm: 1.5, leg: 1.0, head: 1.0, hand: 1.5, jaw: 1.5, neck: 1.5, hair: 'helmet', pads: true, padMat: 'metal', armor: true, bracers: true, gloves: true, boots: true, belt: true,
     top: 'longsleeve', shirtFab: 'leather', bottom: 'cargo', pantsFab: 'leather',
     colors: { skin: 0x8a9696, shirt: 0x5a4030, pants: 0x3e3c40, shoes: 0x1a1612, hair: 0x6a7a8a, accent: 0x40c0d0, metal: 0xa0acb8, helmet: 0x8a96a2, glove: 0x4a3426, belt: 0x2a1c14, pad: 0x9aa6b2 }, eyes: 0x40e0ff },
   // Arthur: a 1950s greaser. Black leather jacket over a white tee, turned-up blue jeans over black boots, a tall glossy pompadour

@@ -1,0 +1,21 @@
+{
+  "_note": "Each character's role for ../fighter/tools/body-ratios.mjs --check (limits in ROLES there): athletic builds throughout; the big enemies and bosses power builds; the wanker a comic silhouette by design.",
+  "rook": "athlete",
+  "jet": "athlete",
+  "mika": "athleteF",
+  "dolly": "athleteF",
+  "thug": "everyday",
+  "punk": "athlete",
+  "runner": "athlete",
+  "knifer": "athlete",
+  "bruiser": "power",
+  "thrower": "athlete",
+  "guard": "power",
+  "wanker": "comic",
+  "creep": "everyday",
+  "foreman": "power",
+  "matron": "athleteF",
+  "ringmaster": "everyday",
+  "colossus": "power",
+  "arthur": "athlete"
+}
