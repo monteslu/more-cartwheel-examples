@@ -37,3 +37,6 @@ standard+senv+l2000+xplain
 basic+map+trans+instbig+icol
 standard+map+rep+morph+senv+morphn+ds+l2000
 standard+senv+ds+l2000+xwater
+standard+map+rep+amap+morph+senv+atest+morphn+ds+l2000+xplain
+standard+map+rep+amap+morph+senv+atest+morphn+ds+l2000
+standard+map+rep+amap+shadow+morph+senv+atest+morphn+ds+l2000+s100

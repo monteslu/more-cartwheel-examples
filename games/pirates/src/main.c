@@ -43,6 +43,16 @@ static float map_height(float x,float z) {return active_map?lagoon_height(x,z):c
 /* The wind blows the same way all match (toward this heading, radians, the ships' yaw convention): from the north
  * east on the Gilded Shoals, from the south west in Palm Lagoon */
 static float wind_to(void) { return active_map ? 2.3f : -0.8f; }
+static int32_t sw_no_wind;    /* test switch (sw no_wind 1): every heading sails at the same speed */
+static int32_t sw_wind_blind; /* test switch (sw wind_blind 1): the AI routes and picks cargo by distance, blind to the wind */
+/* Points of sail: a ship running before the wind makes its full speed, one with the wind on its beam a little more
+ * (the fastest point), and one beating into it barely seven tenths. (Beating never pays by tacking here: 40 degrees
+ * off the wind makes good 0.66 of full speed straight upwind, against 0.7 straight at it.) */
+static float wind_factor(float heading) {
+  if (sw_no_wind) return 1;
+  float c = cw_cos(heading - wind_to());
+  return 1.15f + 0.15f * c - 0.3f * c * c;
+}
 #define coast_height map_height
 #include "sound.h"
 #include "effects.h"
@@ -116,6 +126,11 @@ static struct {
   int32_t hit_ticks[SHIPS], hit_amount[SHIPS];
   float hit_previous_hp[SHIPS];
   float canvas_weights[SHIPS];
+  int32_t force_target; float force_tx, force_tz; /* the wind test: every AI captain sails for this point */
+  int32_t ai_good[SHIPS];   /* the cargo each AI captain last chose to sail for (-1: none), for the wind test */
+  float hole_cut[SHIPS];    /* render only: the sails' alpha test, how much of the torn canvas is cut away */
+  t3_texture *hole_mask;    /* the sails' holes: one mask in the canvas's UV space, cut deeper as the hull falls */
+  cw_node wind_streaks;     /* thin lines of wind over the sea (Low and up) */
   float list_side[SHIPS];  /* render only: the side a damaged ship lists to (the side it was last hit on) */
   int32_t smoke_tick[SHIPS]; /* render only: the tick of its last puff of damage smoke */
   float gpu_ms;
@@ -400,22 +415,44 @@ static int nav_nearest(float x,float z) {
   }
   return node;
 }
+/* The route is the quickest by sailing time, not the shortest: each step of the grid costs its length over the speed
+ * the wind gives that heading (wind_factor), so a captain goes round an island on the side where the wind is on its
+ * beam rather than the side where it must beat (Dijkstra from the goal back to the ship). sw wind_blind 1: every
+ * step costs its length, the old breadth-first route. */
 static void nav_waypoint(ship *s,float tx,float tz) {
-  static int next[NAV_N],queue[NAV_N];
+  static int next[NAV_N],heap[NAV_N * 8];
+  static float cost[NAV_N];
+  static unsigned char done[NAV_N];
+  float step[3][3];
+  for(int dz=-1;dz<=1;dz++)for(int dx=-1;dx<=1;dx++) {
+    float len=(dx&&dz)?1.41421356f:1.0f;
+    /* the ship sails from the cell (x+dx, z+dz) to (x, z): its heading is the step reversed */
+    step[dz+1][dx+1]=(sw_wind_blind==1||sw_wind_blind==2)?len:len/wind_factor(cw_atan2((float)-dx,(float)-dz));
+  }
   int start=nav_nearest(s->x,s->z),goal=nav_nearest(tx,tz);
-  for(int i=0;i<NAV_N;i++)next[i]=-1;
-  int head=0,tail=0;queue[tail++]=goal;next[goal]=goal;
-  while(head<tail && next[start]<0) {
-    int cur=queue[head++],x=cur%NAV_W,z=cur/NAV_W;
+  for(int i=0;i<NAV_N;i++){next[i]=-1;cost[i]=1e30f;done[i]=0;}
+  int heap_n=0;
+  #define HEAP_LESS(a,b) (cost[a]<cost[b]||(cost[a]==cost[b]&&(a)<(b)))
+  #define HEAP_PUSH(v) do{int k_=heap_n++;heap[k_]=(v);while(k_){int p_=(k_-1)/2;if(!HEAP_LESS(heap[k_],heap[p_]))break;int t_=heap[k_];heap[k_]=heap[p_];heap[p_]=t_;k_=p_;}}while(0)
+  cost[goal]=0;next[goal]=goal;HEAP_PUSH(goal);
+  while(heap_n && !done[start]) {
+    int cur=heap[0];heap[0]=heap[--heap_n];
+    for(int k=0;;) {int l=2*k+1,r=l+1,m=k;if(l<heap_n&&HEAP_LESS(heap[l],heap[m]))m=l;if(r<heap_n&&HEAP_LESS(heap[r],heap[m]))m=r;if(m==k)break;int t=heap[k];heap[k]=heap[m];heap[m]=t;k=m;}
+    if(done[cur])continue;
+    done[cur]=1;
+    int x=cur%NAV_W,z=cur/NAV_W;
     for(int dz=-1;dz<=1;dz++)for(int dx=-1;dx<=1;dx++) {
       if(!dx&&!dz)continue;
       int xx=x+dx,zz=z+dz;if(xx<0||xx>=NAV_W||zz<0||zz>=NAV_H)continue;
       int n=zz*NAV_W+xx;
-      if(!nav_open[n]||next[n]>=0)continue;
+      if(!nav_open[n]||done[n])continue;
       if(dx&&dz&&(!nav_open[z*NAV_W+xx]||!nav_open[zz*NAV_W+x]))continue;
-      next[n]=cur;queue[tail++]=n;
+      float c=cost[cur]+step[dz+1][dx+1];
+      if(c<cost[n]&&heap_n<NAV_N*8){cost[n]=c;next[n]=cur;HEAP_PUSH(n);}
     }
   }
+  #undef HEAP_PUSH
+  #undef HEAP_LESS
   int n=start;
   for(int step=0;step<3 && n!=goal && next[n]>=0;step++)n=next[n];
   s->nav_x=(n%NAV_W)-NAV_X_ORIGIN;s->nav_z=(n/NAV_W)-22;
@@ -552,6 +589,89 @@ static t3_mesh *find_canvas(t3_object *o) {
   return NULL;
 }
 
+/* The sails' holes, one RGBA mask in the canvas's own UV space (the galleon's atlas), made once from the canvas mesh:
+ * twelve holes in three groups of four, each centred on a point of the canvas picked by area. A texel's value is
+ * 0.10 + 0.26 * group + 0.26 * (its distance on the sail from the hole's centre / the hole's radius) inside a hole
+ * and 1 elsewhere, so a material alpha test of t cuts the first group's holes open as t passes 0.10, widens them to
+ * full size at 0.36, and so on: the sails tear further as the hull falls (sync_visuals sets t from the damage). The
+ * values grow smoothly across a hole, so filtering keeps the cut edge clean at any distance. */
+enum { HOLE_TEX = 512, HOLES = 12 };
+static t3_texture *build_hole_mask(t3_mesh *m) {
+  t3_geometry *g = m->geometry;
+  t3_attribute *pos = g ? g->attributes[T3_ATTR_POSITION] : NULL, *uv = g ? g->attributes[T3_ATTR_UV] : NULL;
+  if (!pos || !uv || pos->type != T3_FLOAT32 || uv->type != T3_FLOAT32 || pos->item_size < 3 || uv->item_size < 2) {
+    cw_warn("pirates: the sail canvas has no float positions and UVs; its sails will not tear");
+    return NULL;
+  }
+  const float *P = pos->array, *U = uv->array;
+  int tris = g->index ? g->index->count / 3 : pos->count / 3;
+  #define TRI_VERT(t, k) (g->index ? (g->index->type == T3_UINT16 ? ((const uint16_t *)g->index->array)[(t) * 3 + (k)] \
+                                                               : (int)((const uint32_t *)g->index->array)[(t) * 3 + (k)]) : (t) * 3 + (k))
+  float total = 0;
+  for (int t = 0; t < tris; t++) {
+    const float *a = P + TRI_VERT(t, 0) * pos->item_size, *b = P + TRI_VERT(t, 1) * pos->item_size, *c = P + TRI_VERT(t, 2) * pos->item_size;
+    float ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
+    float nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    total += 0.5f * sqrtf(nx * nx + ny * ny + nz * nz);
+  }
+  float hx[HOLES], hy[HOLES], hz[HOLES], hr[HOLES];
+  uint32_t seed = 0x5a11c0deu;
+  for (int h = 0; h < HOLES; h++) {
+    seed = seed * 1664525u + 1013904223u; float pick = (seed >> 8) / 16777216.0f * total;
+    seed = seed * 1664525u + 1013904223u; float r1 = (seed >> 8) / 16777216.0f;
+    seed = seed * 1664525u + 1013904223u; float r2 = (seed >> 8) / 16777216.0f;
+    seed = seed * 1664525u + 1013904223u; hr[h] = 0.32f + 0.30f * ((seed >> 8) / 16777216.0f) + 0.06f * (h / 4);
+    float acc = 0;
+    for (int t = 0; t < tris; t++) {
+      const float *a = P + TRI_VERT(t, 0) * pos->item_size, *b = P + TRI_VERT(t, 1) * pos->item_size, *c = P + TRI_VERT(t, 2) * pos->item_size;
+      float ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
+      float nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+      acc += 0.5f * sqrtf(nx * nx + ny * ny + nz * nz);
+      if (acc >= pick || t == tris - 1) {
+        if (r1 + r2 > 1) { r1 = 1 - r1; r2 = 1 - r2; }
+        hx[h] = a[0] + ux * r1 + vx * r2; hy[h] = a[1] + uy * r1 + vy * r2; hz[h] = a[2] + uz * r1 + vz * r2;
+        break;
+      }
+    }
+  }
+  uint8_t *px = malloc(HOLE_TEX * HOLE_TEX * 4);
+  if (!px) return NULL;
+  memset(px, 255, HOLE_TEX * HOLE_TEX * 4);
+  for (int t = 0; t < tris; t++) {
+    int vi[3] = { TRI_VERT(t, 0), TRI_VERT(t, 1), TRI_VERT(t, 2) };
+    float sx[3], sy[3];
+    for (int k = 0; k < 3; k++) { sx[k] = U[vi[k] * uv->item_size] * HOLE_TEX; sy[k] = U[vi[k] * uv->item_size + 1] * HOLE_TEX; }
+    float area = (sx[1] - sx[0]) * (sy[2] - sy[0]) - (sx[2] - sx[0]) * (sy[1] - sy[0]);
+    if (fabsf(area) < 1e-6f) continue;
+    int x0 = (int)floorf(fminf(sx[0], fminf(sx[1], sx[2]))) - 1, x1 = (int)ceilf(fmaxf(sx[0], fmaxf(sx[1], sx[2]))) + 1;
+    int y0 = (int)floorf(fminf(sy[0], fminf(sy[1], sy[2]))) - 1, y1 = (int)ceilf(fmaxf(sy[0], fmaxf(sy[1], sy[2]))) + 1;
+    for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) {
+      if (x < 0 || y < 0 || x >= HOLE_TEX || y >= HOLE_TEX) continue;
+      float cx = x + 0.5f, cy = y + 0.5f;
+      float w1 = ((sx[2] - sx[0]) * (cy - sy[0]) - (sy[2] - sy[0]) * (cx - sx[0])) / -area;
+      float w2 = ((sx[1] - sx[0]) * (cy - sy[0]) - (sy[1] - sy[0]) * (cx - sx[0])) / area;
+      float w0 = 1 - w1 - w2;
+      /* a texel's width outside the triangle still counts (filtering reads one texel past its edge) */
+      float slack = 1.5f / sqrtf(fabsf(area));
+      if (w0 < -slack || w1 < -slack || w2 < -slack) continue;
+      const float *a = P + vi[0] * pos->item_size, *b = P + vi[1] * pos->item_size, *c = P + vi[2] * pos->item_size;
+      float X = a[0] * w0 + b[0] * w1 + c[0] * w2, Y = a[1] * w0 + b[1] * w1 + c[1] * w2, Z = a[2] * w0 + b[2] * w1 + c[2] * w2;
+      float v = 1;
+      for (int h = 0; h < HOLES; h++) {
+        float d = sqrtf((X - hx[h]) * (X - hx[h]) + (Y - hy[h]) * (Y - hy[h]) + (Z - hz[h]) * (Z - hz[h]));
+        if (d < hr[h]) v = fminf(v, 0.10f + 0.26f * (h / 4) + 0.26f * d / hr[h]);
+      }
+      uint8_t q = (uint8_t)(v * 255 + 0.5f), *o = px + (y * HOLE_TEX + x) * 4;
+      if (q < o[0]) o[0] = o[1] = o[2] = o[3] = q;
+    }
+  }
+  #undef TRI_VERT
+  t3_texture *tex = t3_texture_new(HOLE_TEX, HOLE_TEX, px);
+  free(px);
+  if (tex) tex->flip_y = false; /* the glTF atlas's convention: row 0 at v = 0 */
+  return tex;
+}
+
 static cw_node make_ship_model(int i) {
   ship *s = &G.ships[i];
   cw_node n = cw_node_new("Node3D", i < CAPTAINS ? "Captain" : i == 4 ? "Merchant" : "Patrol");
@@ -561,6 +681,17 @@ static cw_node make_ship_model(int i) {
     model->quaternion = t3_quat_from_euler((t3_euler){0,PI,0,T3_YXZ});
     model_shadows(model);
     s->canvas=find_canvas(model);
+    /* each ship's canvas its own material (the sails tear by its own hull), cutting the shared hole mask */
+    if (s->canvas && s->canvas->material_count) {
+      if (!G.hole_mask) G.hole_mask = build_hole_mask(s->canvas);
+      if (G.hole_mask) {
+        t3_material *own = t3_material_clone(s->canvas->materials[0]);
+        t3_material_set_texture(own, T3_ALPHA_MAP, G.hole_mask);
+        own->alpha_test = 0.04f;
+        t3_release(s->canvas->materials[0]);
+        s->canvas->materials[0] = own;
+      }
+    }
     t3_object_add(cw_node3d_object(n), model);
     t3_release(model);
   }
@@ -647,6 +778,7 @@ static void build_map_scene(void) {
   cw_node_set(eruption.plume,"gravity",cw_val_vec3(.25f*cw_sin(wind_to()),.12f,.25f*cw_cos(wind_to()))); /* the ash drifts downwind */
   cw_node_set(eruption.plume,"visible",cw_val_bool(!active_map));
   cw_node_set(eruption.plume,"emitting",cw_val_bool(!active_map));
+  G.wind_streaks=wind_streaks_new(G.environment);
   for(int i=0;i<ROCKFALLS;i++) {
     cw_node n=cw_node_new("Node3D","VolcanicRock");cw_node_add_child(G.environment,n);
     t3_object *model=cw_gltf_instantiate(cw_res_load("res://models/rock0.glb",CW_RES_GLTF));
@@ -946,13 +1078,22 @@ static void ai_input(int id, float *turn, float *sail, int *fire, int *dock) {
   } else {
     float best = 1e9f; int found = -1;
     int region=nav_region[nav_nearest(s->x,s->z)];
+    /* the cargo that pays soonest: reached and carried home quickest by the wind (sw wind_blind: the nearest) */
     for (int k = 0; k < GOODS; k++) if (G.goods[k].active && nav_region[G.goods[k].nav_cell]==region) {
-      float d = dist2(s->x, s->z, G.goods[k].x, G.goods[k].z);
+      float gx = G.goods[k].x - s->x, gz = G.goods[k].z - s->z;
+      float d = gx * gx + gz * gz;
+      if (sw_wind_blind != 1 && sw_wind_blind != 3) {
+        /* the sail there and the sail home with it, each over the speed the wind gives its heading */
+        float hx = PORT_X[id] - G.goods[k].x, hz = PORT_Z[id] - G.goods[k].z;
+        d = sqrtf(d) / wind_factor(cw_atan2(gx, gz)) + sqrtf(hx * hx + hz * hz) / wind_factor(cw_atan2(hx, hz));
+      }
       if (d < best) { best = d; found = k; }
     }
+    G.ai_good[id] = found;
     if (found >= 0) tx = G.goods[found].x, tz = G.goods[found].z;
     else { tx=PORT_X[id];tz=PORT_Z[id]; }
   }
+  if (G.force_target) { tx = G.force_tx; tz = G.force_tz; }
   if(!active_map && eruption.warning)for(int k=0;k<ROCKFALLS;k++) {
     float dx=s->x-eruption.x[k],dz=s->z-eruption.z[k];
     float d=sqrtf(dx*dx+dz*dz);
@@ -1043,10 +1184,7 @@ static void move_ship(int i, float turn, float sail) {
   float max_speed = (i == 4 ? 4.1f : i == 5 ? 5.0f : 5.6f) + s->sails * 0.65f;
   float load = i < CAPTAINS ? held_total(s) * 0.08f : 0;
   max_speed -= load;
-  /* Points of sail: a ship running before the wind makes its full speed, one with the wind on its beam a little
-   * more (the fastest point), and one beating into it barely seven tenths */
-  float c = cw_cos(s->yaw - wind_to());
-  float wind = 1.15f + 0.15f * c - 0.3f * c * c;
+  float wind = wind_factor(s->yaw);
   float wanted = max_speed * clampf(sail, -0.35f, 1) * wind;
   s->speed += (wanted - s->speed) * (sail < 0 ? 0.045f : 0.02f);
   s->yaw = cw_wrap_angle(s->yaw + clampf(turn, -1, 1) * (0.021f + s->speed * 0.002f));
@@ -1247,7 +1385,8 @@ static void sync_visuals(void) {
   double wt = cw_water_time(G.water);
   for(int i=0;i<CAPTAINS;i++) {
     cw_node_set(G.harbor_flags[i],"visible",cw_val_bool(G.state==TITLE||G.ships[i].active));
-    cw_node3d_set_rotation(G.harbor_flags[i],(t3_vec3){.12f*cw_sin((float)wt*3+i),.2f*cw_sin((float)wt*1.7f+i),0});
+    /* every flag streams downwind (the standard's fly points along its +x) */
+    cw_node3d_set_rotation(G.harbor_flags[i],(t3_vec3){.12f*cw_sin((float)wt*3+i),wind_to()-PI/2-port_yaw(i)+.1f*cw_sin((float)wt*1.7f+i),0});
   }
   for(int i=0;i<ROCKFALLS;i++) {
     bool flying=!active_map && eruption.warning>0 && eruption.warning<=90;
@@ -1286,9 +1425,16 @@ static void sync_visuals(void) {
       G.smoke_tick[i] = G.tick;
       damage_smoke(s->x - sy * 0.4f, w.height + 2.2f, s->z - cy * 0.4f);
     }
-    cw_node3d_set_rotation(s->flag,(t3_vec3){.12f*cw_sin((float)wt*3+i),.2f*cw_sin((float)wt*1.7f+i),0});
-    G.canvas_weights[i]=s->canvas?.5f+.35f*cw_sin((float)wt*1.7f+i)+.12f*cw_sin((float)wt*3.1f+i*.7f):-1;
+    cw_node3d_set_rotation(s->flag,(t3_vec3){.12f*cw_sin((float)wt*3+i),cw_wrap_angle(wind_to()-PI/2-s->yaw)+.1f*cw_sin((float)wt*1.7f+i),0});
+    /* The sails fill with the wind they get: full and steady running or on a reach, slack and shivering when the ship
+     * beats into the wind (the canvas's one morph target is the wind-filled shape) */
+    float fill=sw_no_wind?1:clampf((cw_cos(s->yaw-wind_to())+1)/.9f,0,1);
+    G.canvas_weights[i]=s->canvas?.18f+.74f*fill+(.03f+.14f*(1-fill))*cw_sin((float)wt*(4.2f-1.6f*fill)+i)+.04f*cw_sin((float)wt*1.3f+i*.7f):-1;
     if(s->canvas)s->canvas->morph_influences[0]=G.canvas_weights[i];
+    /* Holes torn in the sails: none above 80 % hull, then the first few open and widen, more follow down to the last */
+    float cut=dmg<.2f?.04f:.12f+.78f*clampf((dmg-.2f)/.7f,0,1);
+    G.hole_cut[i]=cut;
+    if(s->canvas&&s->canvas->material_count&&s->canvas->materials[0]->alpha_test!=cut){s->canvas->materials[0]->alpha_test=cut;}
   }
   /* Very Low and Low: no sun shadow map, so each ship lays a soft blob shadow on the water, cast the way the sun
    * falls (its mast and sails reach about 3 m up), and nothing sails without a shadow */
@@ -2115,12 +2261,106 @@ static void cmd_salvage_test(int argc,const char **argv,cw_reply *r) {
 
 static void cmd_sw(int argc, const char **argv, cw_reply *r) {
   int32_t *sw = argc < 3 ? NULL : !strcmp(argv[1], "idle_stays") ? &G.idle_stays : !strcmp(argv[1], "voyage_hunt") ? &G.voyage_hunt :
-                !strcmp(argv[1], "labels_stack") ? &G.labels_stack : !strcmp(argv[1], "flat_shots") ? &G.flat_shots : NULL;
-  if (!sw) { cw_reply_error(r, "usage: sw idle_stays|voyage_hunt|labels_stack|flat_shots <0|1>"); return; }
-  *sw = atoi(argv[2]) != 0;
+                !strcmp(argv[1], "labels_stack") ? &G.labels_stack : !strcmp(argv[1], "flat_shots") ? &G.flat_shots :
+                !strcmp(argv[1], "no_wind") ? &sw_no_wind : !strcmp(argv[1], "wind_blind") ? &sw_wind_blind : NULL;
+  if (!sw) { cw_reply_error(r, "usage: sw idle_stays|voyage_hunt|labels_stack|flat_shots|no_wind|wind_blind <0|1>"); return; }
+  *sw = sw == &sw_wind_blind ? atoi(argv[2]) : atoi(argv[2]) != 0;
   if (sw == &G.labels_stack) G.label_overlaps_max = 0;
   if (sw == &G.flat_shots) G.shot_peak = 0;
   cw_reply_printf(r, "{\"idle_stays\":%d,\"voyage_hunt\":%d,\"labels_stack\":%d}", G.idle_stays, G.voyage_hunt, G.labels_stack);
+}
+
+/* The wind, measured: (1) a ship held in open water at full sail on eight headings round the wind, its steady speed
+ * on each (the points of sail); (2) an AI captain between two crates, the nearer one dead upwind and the other a
+ * little farther downwind: it must sail for the downwind one (sw wind_blind 1: the nearer); (3) an AI captain
+ * sailing between every pair of harbors, the ticks to arrive summed (sw wind_blind 1 routes by distance and must take
+ * longer). Resets the match. */
+static void cmd_wind_test(int argc,const char **argv,cw_reply *r) {
+  int near_down=argc>1&&atoi(argv[1])!=0; /* 1: the nearer crate downwind (9 m) and the other upwind (11 m) */
+  float dup=near_down?11:9,ddown=near_down?9:11;
+  reset_match(RACE,0);
+  for(int i=0;i<GOODS;i++){G.goods[i].active=0;G.goods[i].timer=-1;}
+  ship *s=&G.ships[0];
+  for(int i=1;i<SHIPS;i++)G.ships[i].active=0;
+  /* open water: the nav cell farthest from any shore */
+  int open=0;float far=1e9f;
+  for(int i=0;i<NAV_N;i++)if(nav_open[i]){
+    float x=i%NAV_W-NAV_X_ORIGIN,z=i/NAV_W-22,d=fmaxf(coast_distance(x,z),fmaxf(fabsf(x)-30,fabsf(z)-12));
+    if(d<far){far=d;open=i;}
+  }
+  float ox=open%NAV_W-NAV_X_ORIGIN,oz=open/NAV_W-22;
+  float speeds[8];
+  for(int k=0;k<8;k++) {
+    s->x=ox;s->z=oz;s->speed=0;s->yaw=cw_wrap_angle(wind_to()+k*PI/4);s->held[0]=s->held[1]=s->held[2]=0;s->sails=0;
+    for(int t=0;t<420;t++){float yaw=s->yaw;move_ship(0,0,1);s->x=ox;s->z=oz;s->yaw=yaw;}
+    speeds[k]=s->speed;
+  }
+  /* (2) the two crates: from a start in open water with open water 11 m upwind and downwind of it */
+  float ux=-cw_sin(wind_to()),uz=-cw_cos(wind_to());
+  float cx0=ox,cz0=oz,clear=1e9f;
+  int home_region=nav_region[nav_nearest(PORT_X[0]+cw_sin(port_yaw(0))*6,PORT_Z[0]+cw_cos(port_yaw(0))*6)];
+  for(int i=0;i<NAV_N;i++)if(nav_open[i]&&nav_region[i]==home_region) {
+    float x=i%NAV_W-NAV_X_ORIGIN,z=i/NAV_W-22;
+    if(nav_region[nav_nearest(x+ux*11,z+uz*11)]!=home_region||nav_region[nav_nearest(x-ux*11,z-uz*11)]!=home_region)continue;
+    float c=fmaxf(coast_distance(x,z),fmaxf(coast_distance(x+ux*11,z+uz*11),coast_distance(x-ux*11,z-uz*11)));
+    c=fmaxf(c,fmaxf(fabsf(x)-34,fabsf(z)-14));
+    if(fabsf(x+ux*11)>38||fabsf(z+uz*11)>18||fabsf(x-ux*11)>38||fabsf(z-uz*11)>18)continue;
+    if(c<clear){clear=c;cx0=x;cz0=z;}
+  }
+  ox=cx0;oz=cz0;
+  s->x=ox;s->z=oz;s->speed=0;s->yaw=wind_to();s->ai_tick=0;
+  good *up=&G.goods[0],*down=&G.goods[1];
+  up->x=ox+ux*dup;up->z=oz+uz*dup;down->x=ox-ux*ddown;down->z=oz-uz*ddown;
+  up->nav_cell=nav_nearest(up->x,up->z);down->nav_cell=nav_nearest(down->x,down->z);
+  up->active=down->active=1;
+  G.ai_good[0]=-1;
+  {float turn=0,sail=0;int fire=0,dock=0;ai_input(0,&turn,&sail,&fire,&dock);}
+  int picked=G.ai_good[0];
+  up->active=down->active=0;
+  /* each crate's real worth in time: the AI captain sailed from the same start to it, then home to its harbor's mouth */
+  int crate_ticks[2];
+  for(int k=0;k<2;k++) {
+    good *g=k?down:up;
+    s->x=ox;s->z=oz;s->speed=0;s->yaw=wind_to();s->ai_tick=0;
+    int hc=nav_nearest(PORT_X[0]+cw_sin(port_yaw(0))*6,PORT_Z[0]+cw_cos(port_yaw(0))*6); /* the harbor's mouth, on open water */
+    float hx=hc%NAV_W-NAV_X_ORIGIN,hz=hc/NAV_W-22;
+    int t=0,leg=0;
+    G.force_target=1;G.force_tx=g->x;G.force_tz=g->z;
+    for(;t<3600;t++) {
+      if(!leg&&dist2(s->x,s->z,g->x,g->z)<2.3f*2.3f){ /* within reach to take it aboard (step_goods) */leg=1;G.force_tx=hx;G.force_tz=hz;s->ai_tick=0;}
+      if(leg&&dist2(s->x,s->z,hx,hz)<9)break;
+      G.tick++;float turn=0,sail=0;int fire=0,dock=0;
+      ai_input(0,&turn,&sail,&fire,&dock);move_ship(0,turn,sail);
+    }
+    G.force_target=0;crate_ticks[k]=leg?t:-1; /* -1: never reached the crate */
+  }
+  /* (3) harbor to harbor: the AI's steering toward the other harbor's mouth, until within 3 m (at most 40 s a leg) */
+  int ticks=0,legs=0,stuck=0;char per[512];int pn=0;per[0]=0;
+  for(int a=0;a<CAPTAINS;a++)for(int b=0;b<CAPTAINS;b++)if(a!=b) {
+    float sx=PORT_X[a]+cw_sin(port_yaw(a))*6,sz=PORT_Z[a]+cw_cos(port_yaw(a))*6;
+    float tx=PORT_X[b]+cw_sin(port_yaw(b))*6,tz=PORT_Z[b]+cw_cos(port_yaw(b))*6;
+    int c=nav_nearest(sx,sz);s->x=c%NAV_W-NAV_X_ORIGIN;s->z=c/NAV_W-22;s->speed=0;s->ai_tick=0;
+    int c2=nav_nearest(tx,tz);tx=c2%NAV_W-NAV_X_ORIGIN;tz=c2/NAV_W-22;
+    if(nav_region[c]!=nav_region[c2])continue; /* no way by sea between these two harbors */
+    s->yaw=cw_atan2(tx-s->x,tz-s->z);
+    int t=0;
+    G.force_target=1;G.force_tx=tx;G.force_tz=tz;
+    for(;t<2400&&dist2(s->x,s->z,tx,tz)>9;t++) {
+      G.tick++;float turn=0,sail=0;int fire=0,dock=0;
+      ai_input(0,&turn,&sail,&fire,&dock);move_ship(0,turn,sail);
+    }
+    G.force_target=0;
+    if(t>=2400)stuck++;
+    ticks+=t;legs++;
+    if(pn<(int)sizeof per-8)pn+=snprintf(per+pn,sizeof per-pn,"%s%d",legs>1?",":"",t);
+  }
+  reset_match(VOYAGE,1);
+  cw_reply_printf(r,"{\"map\":%d,\"wind_to\":%.2f,\"speed_by_heading\":[%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f],"
+                  "\"running\":%.3f,\"beam\":%.3f,\"beating\":%.3f,\"nearer\":\"%s\",\"picked\":\"%s\",\"upwind_crate_ticks\":%d,\"downwind_crate_ticks\":%d,\"harbor_legs\":%d,\"harbor_ticks\":%d,\"stuck\":%d,\"legs\":[%s],"
+                  "\"no_wind\":%d,\"wind_blind\":%d}",
+                  active_map,wind_to(),speeds[0],speeds[1],speeds[2],speeds[3],speeds[4],speeds[5],speeds[6],speeds[7],
+                  speeds[0],.5f*(speeds[2]+speeds[6]),speeds[4],near_down?"downwind":"upwind",picked==1?"downwind":picked==0?"upwind":"none",crate_ticks[0],crate_ticks[1],legs,ticks,stuck,per,
+                  sw_no_wind,sw_wind_blind);
 }
 
 static void cmd_voyage_test(int argc,const char **argv,cw_reply *r) {
@@ -2285,7 +2525,8 @@ static void cmd_simulate(int argc,const char **argv,cw_reply *r) {
       cw_reply_printf(r,"%s{\"tick\":%d,\"bank\":%d,\"held\":%d,\"pos\":[%.3f,%.3f],\"waypoint\":[%.3f,%.3f],\"yaw\":%.3f,\"speed\":%.3f,\"shore\":%.3f,\"hp\":%.0f}",t>1800?",":"",G.tick,s->bank,held_total(s),s->x,s->z,s->nav_x,s->nav_z,s->yaw,s->speed,coast_distance(s->x,s->z),s->hp);
     }
   }
-  cw_reply_printf(r,"],\"hash\":%u,\"winner\":%d,\"state\":%d}",G.hash,G.winner,G.state);
+  int banked=0;for(int i=0;i<CAPTAINS;i++)banked+=G.ships[i].bank;
+  cw_reply_printf(r,"],\"hash\":%u,\"winner\":%d,\"state\":%d,\"banked_all\":%d,\"goods\":%d}",G.hash,G.winner,G.state,banked,G.goods_taken);
 }
 
 static void cmd_recovery_test(int argc,const char **argv,cw_reply *r) {
@@ -2451,6 +2692,8 @@ static void apply_graphics(void) {
   cw_node light = cw_node_get(G.world, "Sun");
   if (cw_node_valid(light)) cw_node_set(light, "shadow", cw_val_bool(sun || !G.lightmap));
   G.blob_shadows = !sun && G.lightmap;
+  bool streaks = cw_quality_get() > CW_QUALITY_VERY_LOW;
+  if (cw_node_valid(G.wind_streaks)) { cw_node_set(G.wind_streaks, "visible", cw_val_bool(streaks)); cw_node_set(G.wind_streaks, "emitting", cw_val_bool(streaks)); }
 }
 /* the text settings changed: keep them (0 graphics: those stay never chosen) */
 static void text_settings_save(void) {
@@ -2553,6 +2796,7 @@ static void init(void *user) {
   cw_debug_u32("pirates.hash", &G.hash);
   cw_debug_u32("pirates.ripples", &G.ripple_hash);
   cw_debug_f32("pirates.gpu_ms", &G.gpu_ms);
+  cw_debug_command("pirates_test_wind","pirates_test_wind [1: the nearer crate downwind]: speed by heading, the AI's choice of two crates against each one's measured time there and home, and harbor-to-harbor sailing; resets match",cmd_wind_test);
   cw_debug_command("pirates_test_voyage","Test three voyage stages with 1..4 players; ends match",cmd_voyage_test);
   cw_debug_command("pirates_test_salvage","Run sinking, respawn and restart regression; resets match",cmd_salvage_test);
   cw_debug_command("sw", "sw idle_stays|voyage_hunt|labels_stack|flat_shots <0|1>: test switches (an idle captain stays put; the patrol hunts a voyage captain from the start; ship labels drawn at their ships with nothing kept clear; cannonballs skim the water)", cmd_sw);

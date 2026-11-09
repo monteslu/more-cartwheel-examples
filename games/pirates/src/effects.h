@@ -55,7 +55,7 @@ static void effects_init(cw_node root) {
     cw_node_set(n,"spread",cw_val_float(14));
     cw_node_set(n,"speed_min",cw_val_float(.9));
     cw_node_set(n,"speed_max",cw_val_float(1.6));
-    cw_node_set(n,"gravity",cw_val_vec3(.35,.3,.12));
+    cw_node_set(n,"gravity",cw_val_vec3(.4f*cw_sin(wind_to()),.3,.4f*cw_cos(wind_to()))); /* drifts downwind */
     cw_node_set(n,"size",cw_val_float(1.1));
     cw_node_set(n,"size_random",cw_val_float(.4));
     cw_node_set(n,"color_ramp",cw_val_string("0 0.16 0.13 0.11 0, 0.12 0.18 0.16 0.14 0.75, 1 0.36 0.35 0.34 0"));
@@ -79,7 +79,7 @@ static void effects_init(cw_node root) {
     cw_node_set(n,"spread",cw_val_float(24));
     cw_node_set(n,"speed_min",cw_val_float(1.8));
     cw_node_set(n,"speed_max",cw_val_float(3.8));
-    cw_node_set(n,"gravity",cw_val_vec3(.2,.4,.1));
+    cw_node_set(n,"gravity",cw_val_vec3(.35f*cw_sin(wind_to()),.4,.35f*cw_cos(wind_to()))); /* drifts downwind */
     cw_node_set(n,"size",cw_val_float(1.3));
     cw_node_set(n,"size_random",cw_val_float(.4));
     cw_node_set(n,"color_ramp",cw_val_string("0 0.85 0.78 0.63 0.9, 0.2 0.72 0.70 0.65 0.8, 1 0.50 0.52 0.54 0"));
@@ -122,6 +122,33 @@ static void cannon_effect(float x,float y,float z,float dx,float dz) {
 
 static void damage_smoke(float x,float y,float z) {
   cw_particles_burst(damage_smoke_particles,(t3_vec3){x,y,z},(t3_vec3){0,1,0});
+}
+
+/* Thin lines of wind over the sea, running downwind across the whole map: the wind's direction read at a glance
+ * (Low and up; on Very Low the flags and sails show it). One system, one draw; 28 streaks alive at most. */
+static cw_node wind_streaks_new(cw_node parent) {
+  cw_node n=cw_node_new("GPUParticles3D","WindStreaks");
+  float wx=cw_sin(wind_to()),wz=cw_cos(wind_to());
+  cw_node_set(n,"amount",cw_val_int(28));
+  cw_node_set(n,"lifetime",cw_val_float(3.2));
+  cw_node_set(n,"lifetime_random",cw_val_float(.3));
+  cw_node_set(n,"emission_shape",cw_val_enum("BOX"));
+  cw_node_set(n,"emission_extents",cw_val_vec3(44,0,23));
+  cw_node_set(n,"direction",cw_val_vec3(wx,0,wz));
+  cw_node_set(n,"spread",cw_val_float(3));
+  cw_node_set(n,"speed_min",cw_val_float(5.5));
+  cw_node_set(n,"speed_max",cw_val_float(7.5));
+  cw_node_set(n,"gravity",cw_val_vec3(0,0,0));
+  cw_node_set(n,"size",cw_val_float(.09));
+  cw_node_set(n,"size_random",cw_val_float(.3));
+  cw_node_set(n,"draw_mode",cw_val_enum("STRETCHED"));
+  cw_node_set(n,"stretch",cw_val_float(.42));
+  cw_node_set(n,"blend",cw_val_enum("ALPHA"));
+  cw_node_set(n,"color_ramp",cw_val_string("0 0.95 0.97 1 0, 0.3 0.95 0.97 1 0.34, 0.7 0.95 0.97 1 0.34, 1 0.95 0.97 1 0"));
+  cw_node_set(n,"preprocess",cw_val_float(3.5));
+  cw_node_set(n,"emitting",cw_val_bool(true));
+  cw_node_add_child(parent,n);cw_node3d_set_position(n,(t3_vec3){0,1.4f,0});
+  return n;
 }
 
 /* A small continuous ash plume gives the volcanic map a visible source. */
