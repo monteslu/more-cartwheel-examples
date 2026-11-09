@@ -27,18 +27,24 @@ export async function apply({ TSL, THREE, mat, props, sentinel }) {
   const band = n(5, 0.03, 2.1).mul(0.6).add(n(13, 0.07, 7.7).mul(0.4)); // where curtains hang
   // a curtain is a folded sheet, not a row of bars: its lower edge rises and falls along the horizon (the folds), the
   // rays inside lean and bend with height (the sheet's sway), and the bright hem runs along that lower edge
-  const fold = n(6, 0.025, 4.4);
-  const base = float(0.04).add(fold.mul(0.16));                            // the lower edge wanders: folds up and down
+  // the sheet's foot follows a long slow S across the sky that drifts sideways (a few degrees in 3 s), with smaller folds on it
+  const nAt = (uu, freq, speed, off) => mix(vnoise(vec2(uu.mul(freq).add(t.mul(speed)), off)), vnoise(vec2(uu.sub(1).mul(freq).add(t.mul(speed)), off)), smoothstep(0.85, 1.0, uu));
+  const foldAt = (du) => nAt(u.add(du), 2.2, 0.012, 4.4).mul(0.6).add(nAt(u.add(du), 9, 0.04, 9.1).mul(0.4));
+  const fold = foldAt(0);
+  const base = float(0.03).add(fold.mul(0.34));                            // the lower edge wanders: folds up and down
+  // where the sheet turns toward the eye it is seen edge-on: a brighter knot running up the curtain at each fold
+  const turn = foldAt(0.004).sub(foldAt(-0.004)).abs().mul(60);
+  const knot = smoothstep(0.15, 0.9, turn).mul(0.9);
   const h = v.sub(base);
   const lower = smoothstep(0, 0.02, h);
   const falloff = exp(h.mul(-4.5)).mul(float(1).sub(smoothstep(0.55, 0.95, v))); // gone well before the band's top
   const hem = exp(h.mul(-28)).mul(0.9);                                     // the bright fold line at the foot
   const warp = n(4, 0.02, 1.7).sub(0.5).mul(0.05).add(n(11, 0.04, 6.2).sub(0.5).mul(0.015));
   const uw = u.add(warp.mul(float(1).add(h.mul(3))));                       // rays lean more the higher they climb
-  const ray1 = float(0.5).add(sin(uw.mul(900).add(t.mul(0.6))).mul(0.5));
-  const ray2 = float(0.5).add(sin(uw.mul(340).sub(t.mul(0.4))).mul(0.5));
-  const rayNoise = n(30, 0.06, 12.3); // some rays bright, some dim
-  const rays = float(0.45).add(ray1.mul(ray1).mul(0.3).mul(float(0.4).add(rayNoise))).add(ray2.mul(0.25)).add(hem);
+  // rays: soft streaks of uneven width and brightness drifting along the sheet (noise, not a regular comb of bars)
+  const ray1 = vnoise(vec2(uw.mul(240).add(t.mul(0.35)), t.mul(0.08)));
+  const ray2 = vnoise(vec2(uw.mul(620).sub(t.mul(0.5)), float(5.3).add(t.mul(0.1))));
+  const rays = float(0.45).add(ray1.mul(ray1).mul(0.7)).add(ray2.mul(0.15)).add(hem).add(knot);
   const flicker = float(0.85).add(sin(t.mul(1.7).add(u.mul(30))).mul(0.15));
   // curtains hang in a few places, dark sky between; one always hangs ahead, down the course (u 0), where the racer looks
   const du = u.sub(float(1).mul(u.greaterThan(0.5))).abs(); // azimuth distance from straight ahead, 0..0.5

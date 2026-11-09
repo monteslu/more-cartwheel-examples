@@ -167,3 +167,7 @@ sky/sunny_ring.png
 sky/clouds.png
 textures/sprig.png
 sky/snowdetail.png
+textures/start-banner.png
+textures/finish-banner.png
+textures/logo.png
+textures/herring-icon.png

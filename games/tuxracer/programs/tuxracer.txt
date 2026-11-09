@@ -115,3 +115,13 @@ physical+vcol+trans+skin+senv+sheen+l0001+xcsm_feather_skinshade_gi
 physical+senv+cc+l0001+xcsm_plain_gi
 physical+senv+sheen+l0001+xcsm_plain_gi
 physical+vcol+skin+senv+sheen+l0001+xcsm_feather_plain_gi
+basic+vcol+trans
+physical+vcol+instbig+senv+l0001+xcsm_plain_rim
+physical+vcol+instbig+senv+l0001+xcsm_rim
+standard+map+rep+senv+ds+l0001+xcsm
+standard+map+rep+senv+ds+l0001+xcsm_plain
+depth+skin+xcsm_feather_gi
+physical+trans+senv+cc+l0001+xcsm_plain_gi
+physical+trans+senv+sheen+l0001+xcsm_plain_gi
+physical+vcol+trans+skin+senv+sheen+l0001+xcsm_feather_plain_gi
+physical+vcol+trans+skin+senv+sheen+l0001+xcsm_feather_gi

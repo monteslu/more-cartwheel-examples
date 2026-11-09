@@ -37,6 +37,7 @@ static t3_geometry *finish(mesh_build *b) {
   return g;
 }
 
+static float smoothstep_f(float a, float b, float x) { float t = (x - a) / (b - a); t = t < 0 ? 0 : t > 1 ? 1 : t; return t * t * (3 - 2 * t); }
 static int vertc(mesh_build *b, t3_vec3 p, t3_vec3 n, float u, float v, float *col, float r, float g, float bl) {
   int i = vert(b, p, n, u, v);
   col[i * 3] = r, col[i * 3 + 1] = g, col[i * 3 + 2] = bl;
@@ -71,9 +72,13 @@ t3_geometry *item_mesh_fish(void) {
       t3_vec3 p = { x, 0.5f + cy * ry, sz * rz };
       t3_vec3 n = t3_vec3_normalize((t3_vec3){ 0, cy / ry, sz / rz });
       float up = cy * 0.5f + 0.5f;                  /* 1 back, 0 belly */
-      /* gold, the colour of a prize against the snow: a deep orange back, bright gold flanks, a pale gold belly */
-      float R = 0.95f + 0.05f * (1 - up), G = 0.38f + 0.45f * (1 - up), B = 0.04f + 0.16f * (1 - up) * (1 - up);
-      if (up < 0.25f) R = 1.0f, G = 0.88f, B = 0.5f;
+      /* gold, the colour of a prize against the snow: a dark bronze back, deep saturated gold flanks, a warm pale belly
+       * (linear; the tone map lifts and pales a bright gold, so the flanks sit low and saturated and the back is near
+       * brown: the fish reads by its gold body against a dark top line, not as a pale card) */
+      float back = smoothstep_f(0.55f, 0.9f, up), belly = 1 - smoothstep_f(0.08f, 0.3f, up);
+      float R = 0.86f, G = 0.35f, B = 0.0f;
+      R = R + (0.14f - R) * back, G = G + (0.05f - G) * back, B = B + (0.0f - B) * back;
+      R = R + (0.95f - R) * belly, G = G + (0.7f - G) * belly, B = B + (0.25f - B) * belly;
       float ex = x - 0.3f, ey = (cy * ry) - 0.06f, eye = ex * ex + ey * ey * 1.4f;
       if (eye < 0.0016f && fabsf(sz) > 0.5f) R = 0.02f, G = 0.02f, B = 0.03f;
       id[i][a] = vertc(&b, p, n, t, (float)a / NA, col, R, G, B);
@@ -86,7 +91,7 @@ t3_geometry *item_mesh_fish(void) {
       tri(&b, id[i][a], id[i + 1][a1], id[i][a1]);
     }
   /* fins: thin double-sided sheets, a deep orange */
-  const float FR = 0.95f, FG = 0.42f, FB = 0.06f;
+  const float FR = 0.8f, FG = 0.26f, FB = 0.0f;
   t3_vec3 zn = { 0, 0, 1 };
   int t0 = vertc(&b, (t3_vec3){ -0.38f, 0.5f, 0 }, zn, 0, 0, col, FR, FG, FB);
   int t1 = vertc(&b, (t3_vec3){ -0.5f, 0.5f + 0.2f, 0 }, zn, 0, 0, col, FR, FG, FB);
@@ -150,8 +155,8 @@ t3_geometry *item_mesh_flag(void) {
   return finish(&b);
 }
 
-/* a race gate: two poles and the banner between them, the original start / finish art cropped to its
- * banner (the top quarter of the image, between the painted poles). Unit: the gate's 9 x 6 m. */
+/* a race gate: two poles and the banner between them, the original start / finish banner redrawn at high
+ * resolution (textures/start-banner.png, finish-banner.png: tools/make-signs.mjs). Unit: the gate's 9 x 6 m. */
 t3_geometry *item_mesh_gate_poles(void) {
   enum { S = 10 };
   mesh_build b = { 0 };
@@ -179,7 +184,7 @@ t3_geometry *item_mesh_gate_banner(void) {
   enum { N = 12 };
   mesh_build b = { 0 };
   int id[3][N + 1];
-  const float U0 = 0.07f, U1 = 0.93f, V0 = 0.0f, V1 = 0.26f; /* the banner in start.png / finish.png */
+  const float U0 = 0.0f, U1 = 1.0f, V0 = 0.0f, V1 = 1.0f; /* the whole banner image */
   for (int j = 0; j <= 2; j++)
     for (int i = 0; i <= N; i++) {
       float u = (float)i / N, v = (float)j / 2;

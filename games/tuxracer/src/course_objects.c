@@ -58,6 +58,9 @@ static struct {
   t3_geometry *fish, *flag_card;      /* item_mesh.c: the herring, the flag's rippling card */
   t3_material *fish_mat;
   t3_object *gate[2];                 /* the start and finish gates: poles and a banner (item_mesh.c) */
+  t3_object *lamps[2];                /* night: a lamp post either side of each gate and the warm pool they throw on the snow */
+  t3_material *lamp_post_mat, *lamp_glass_mat, *lamp_pool_mat;
+  t3_geometry *lamp_post, *lamp_head;
   t3_geometry *gate_poles, *gate_banner;
   t3_material *pole_mat;
   float item_time;
@@ -70,6 +73,8 @@ static struct {
 } O;
 
 static bool night_mode; /* course_set_night: no trunk prints under moonlight */
+/* the herring drawn at three quarters of the original's 1 m card (the pickup keeps its size): a fish, not a board beside Tux */
+#define FISH_SCALE 0.75f
 
 /* t3_instanced_mesh_set_matrix_at only writes the array: the buffer is
  * re-uploaded when the attribute's version moves (three.js's needsUpdate) */
@@ -87,6 +92,100 @@ static t3_material *material(int type) {
   m->metalness = 0;
   O.mat[type] = m;
   return m;
+}
+
+/* a gate's banner: the redrawn cloth (tools/make-signs.mjs), matte */
+static t3_material *banner_mat[2];
+static t3_material *banner_material(int finish) {
+  if (banner_mat[finish]) return banner_mat[finish];
+  t3_material *m = t3_mesh_standard_material_new(0xffffff);
+  static cw_res res[2];
+  res[finish] = cw_res_load(finish ? "textures/finish-banner.png" : "textures/start-banner.png", CW_RES_TEXTURE);
+  t3_texture *t = cw_res_texture(res[finish]);
+  if (t) { t->anisotropy = 8; t3_material_set_map(m, t); }
+  m->side = T3_DOUBLE_SIDE;
+  m->roughness = 0.92f;
+  m->metalness = 0;
+  banner_mat[finish] = m;
+  return m;
+}
+
+/* Night lamps at a gate: two iron posts just outside the gate's poles, each with a lantern of warm glass (emissive:
+ * the bloom gives it its glow), and the pool of warm light they throw on the snow, a grid laid on the course's
+ * surface (no light: an additive glow by vertex colour, unlit, so it costs no lit-material state on any preset). */
+static t3_object *gate_lamps(const course *c, float gx, float gz, float half_w) {
+  if (!O.lamp_post) {
+    O.lamp_post = t3_cylinder_geometry_new(0.05f, 0.07f, 3.2f, 8, 1, false);
+    t3_mat4 up;
+    t3_mat4_compose(&up, (t3_vec3){ 0, 1.6f, 0 }, t3_quat_identity(), (t3_vec3){ 1, 1, 1 });
+    t3_geometry_apply_matrix4(O.lamp_post, &up);
+    O.lamp_head = t3_cylinder_geometry_new(0.13f, 0.17f, 0.42f, 8, 1, false);
+    t3_mat4_compose(&up, (t3_vec3){ 0, 3.35f, 0 }, t3_quat_identity(), (t3_vec3){ 1, 1, 1 });
+    t3_geometry_apply_matrix4(O.lamp_head, &up);
+    O.lamp_post_mat = t3_mesh_standard_material_new(0x23262c);
+    O.lamp_post_mat->roughness = 0.55f, O.lamp_post_mat->metalness = 0.6f;
+    O.lamp_glass_mat = t3_mesh_standard_material_new(0x3a2a18);
+    O.lamp_glass_mat->emissive = (t3_color){ 1.0f, 0.42f, 0.1f }; /* a deep warm colour: a bright pale one tone-maps to white */
+    O.lamp_glass_mat->emissive_intensity = 1.3f;
+    O.lamp_glass_mat->roughness = 0.4f;
+    O.lamp_pool_mat = t3_mesh_basic_material_new(0xffffff);
+    O.lamp_pool_mat->vertex_colors = true;
+    O.lamp_pool_mat->transparent = true;
+    O.lamp_pool_mat->depth_write = false;
+    O.lamp_pool_mat->blending = T3_ADDITIVE_BLENDING;
+  }
+  t3_object *grp = t3_group_new();
+  for (int s = 0; s < 2; s++) {
+    float lx = gx + (s ? half_w + 1.8f : -half_w - 1.8f), lz = gz;
+    float ly = course_height(c, lx, lz) - 0.15f; /* footed in the snow */
+    t3_mesh *post = t3_mesh_new(O.lamp_post, O.lamp_post_mat), *head = t3_mesh_new(O.lamp_head, O.lamp_glass_mat);
+    post->base.cast_shadow = post->base.receive_shadow = true;
+    head->base.cast_shadow = false;
+    t3_object_set_position((t3_object *)post, lx, ly, lz);
+    t3_object_set_position((t3_object *)head, lx, ly, lz);
+    t3_object_add(grp, post), t3_object_add(grp, head);
+    t3_release(post), t3_release(head);
+  }
+  /* the pool: a 20 x 12 m grid on the surface round the gate, brightest under each lamp, a soft warm falloff */
+  enum { NX = 24, NZ = 18 };
+  const float W = 20, D = 12;
+  float *p = malloc(sizeof(float) * 3 * (NX + 1) * (NZ + 1)), *col = malloc(sizeof(float) * 3 * (NX + 1) * (NZ + 1));
+  uint32_t *ix = malloc(sizeof(uint32_t) * 6 * NX * NZ);
+  int n = 0, k = 0;
+  for (int j = 0; j <= NZ; j++)
+    for (int i = 0; i <= NX; i++, n++) {
+      float x = gx - W / 2 + W * (float)i / NX, z = gz - D / 2 + D * (float)j / NZ;
+      p[n * 3] = x, p[n * 3 + 1] = course_height(c, x, z) + 0.04f, p[n * 3 + 2] = z;
+      float glow = 0;
+      for (int s = 0; s < 2; s++) {
+        float dx = x - (gx + (s ? half_w + 1.8f : -half_w - 1.8f)), dz = z - gz, d2 = dx * dx + dz * dz;
+        glow += 1.0f / (1.0f + d2 * 0.35f); /* inverse square from 3 m up, flattened */
+      }
+      float edge = fminf(fminf((float)i, (float)(NX - i)), fminf((float)j, (float)(NZ - j))) / 4.0f; /* fades to 0 at the grid's edge */
+      glow *= fminf(1, edge) * 0.6f;
+      col[n * 3] = glow * 1.0f, col[n * 3 + 1] = glow * 0.5f, col[n * 3 + 2] = glow * 0.18f;
+    }
+  for (int j = 0; j < NZ; j++)
+    for (int i = 0; i < NX; i++) {
+      uint32_t a = (uint32_t)(j * (NX + 1) + i), b = a + 1, d = a + NX + 1, e = d + 1;
+      ix[k++] = a, ix[k++] = d, ix[k++] = b, ix[k++] = b, ix[k++] = d, ix[k++] = e;
+    }
+  t3_geometry *g = t3_geometry_new();
+  t3_attribute *ap = t3_attribute_new(T3_FLOAT32, p, n, 3), *ac = t3_attribute_new(T3_FLOAT32, col, n, 3), *ai = t3_attribute_new(T3_UINT32, ix, k, 1);
+  t3_geometry_set_attribute(g, T3_ATTR_POSITION, ap);
+  t3_geometry_set_attribute(g, T3_ATTR_COLOR, ac);
+  t3_geometry_set_index(g, ai);
+  t3_release(ap), t3_release(ac), t3_release(ai);
+  free(p), free(col), free(ix);
+  t3_mesh *pool = t3_mesh_new(g, O.lamp_pool_mat);
+  t3_release(g);
+  pool->base.cast_shadow = pool->base.receive_shadow = false;
+  pool->base.render_order = 1;
+  t3_object_add(grp, pool);
+  t3_release(pool);
+  grp->visible = night_mode;
+  t3_object_add((t3_object *)O.scene, grp);
+  return grp;
 }
 
 static void load_poly(void) {
@@ -353,6 +452,16 @@ void course_build_objects(course *c, cw_tree *tree) {
     O.fish_mat->iridescence_ior = 1.4f;
     O.fish_mat->iridescence_thickness_range[0] = 150, O.fish_mat->iridescence_thickness_range[1] = 420;
     /* (no anisotropy: it needs tangents, and without them the fish became a screen-sized black triangle) */
+    { /* the colour is the vertex gold (the base no longer darkens it to orange), a half-metal sheen
+                          * without the white coat and the iridescence that washed it to cream, a faint warm glow */
+      O.fish_mat->color = (t3_color){ 1, 1, 1 };
+      O.fish_mat->metalness = 0.4f;
+      O.fish_mat->roughness = 0.35f;
+      O.fish_mat->clearcoat = 0;
+      O.fish_mat->iridescence = 0;
+      O.fish_mat->emissive = (t3_color){ 0.9f, 0.4f, 0.0f };
+      O.fish_mat->emissive_intensity = 0.1f;
+    }
   }
   if (!O.gate_poles) O.gate_poles = item_mesh_gate_poles();
   if (!O.gate_banner) O.gate_banner = item_mesh_gate_banner();
@@ -367,8 +476,7 @@ void course_build_objects(course *c, cw_tree *tree) {
     poles->base.cast_shadow = poles->base.receive_shadow = true;
     t3_object_add(grp, poles);
     t3_release(poles);
-    t3_material *bm = material(o->type);
-    bm->side = T3_DOUBLE_SIDE;
+    t3_material *bm = banner_material(g);
     t3_mesh *banner = t3_mesh_new(O.gate_banner, bm);
     banner->base.cast_shadow = banner->base.receive_shadow = true;
     t3_object_add(grp, banner);
@@ -380,6 +488,7 @@ void course_build_objects(course *c, cw_tree *tree) {
     t3_object_set_scale(grp, o->diam / 9.0f, o->height / 6.0f, 1);
     t3_object_add((t3_object *)O.scene, grp);
     O.gate[g] = grp;
+    if (!O.lamps[g]) O.lamps[g] = gate_lamps(c, o->x, gz, 4.25f * o->diam / 9.0f);
     per_kind[o->type]--; /* no card for it */
   }
   for (int kind = OBJ_TREE2 + 1; kind < OBJ_KINDS; kind++) {
@@ -496,9 +605,12 @@ void course_update_billboards(course *c, t3_vec3 eye) {
       float ph = (float)((i * 2654435761u) & 255) / 255.0f * 6.2831853f;
       yaw = O.item_time * 1.9f + ph;
       bob = cw_sin(O.item_time * 2.4f + ph) * 0.08f + 0.08f; /* a slow bob over the snow, never into it */
+      /* broadside to the eye, a slow swim to and fro: the fish's outline, not its nose, is what is seen */
+        yaw = atan2f(eye.x - o->x, eye.z - o->z) + cw_sin(O.item_time * 1.3f + ph) * 0.6f;
+
     } else yaw = atan2f(eye.x - o->x, eye.z - o->z);
     t3_mat4 m;
-    t3_mat4_compose(&m, (t3_vec3){ o->x, o->y + bob, o->z }, t3_quat_from_axis_angle((t3_vec3){ 0, 1, 0 }, yaw), (t3_vec3){ o->diam, o->height, o->type == OBJ_HERRING ? o->diam : 1 });
+    t3_mat4_compose(&m, (t3_vec3){ o->x, o->y + bob, o->z }, t3_quat_from_axis_angle((t3_vec3){ 0, 1, 0 }, yaw), (o->type == OBJ_HERRING ? t3_vec3_scale((t3_vec3){ o->diam, o->height, o->diam }, FISH_SCALE) : (t3_vec3){ o->diam, o->height, 1 }));
     t3_instanced_mesh_set_matrix_at(O.item_im[o->type], slot, &m);
   }
   for (int k = OBJ_TREE2 + 1; k < OBJ_KINDS; k++) instances_changed(O.item_im[k]);
@@ -565,6 +677,7 @@ void course_objects_show(const char *what, bool on) {
 void course_set_night(bool night) {
   night_mode = night;
   if (O.splats) O.splats->mesh.base.visible = !night; /* multiply blending cannot be softened: the print texture is dark */
+  for (int g = 0; g < 2; g++) if (O.lamps[g]) O.lamps[g]->visible = night;
 }
 
 void course_set_tree_coverage(bool on) {
@@ -581,6 +694,8 @@ void course_destroy_objects(course *c) {
     if (O.item_im[k]) { t3_object_remove((t3_object *)O.scene, O.item_im[k]); O.item_im[k] = NULL; }
   for (int g = 0; g < 2; g++)
     if (O.gate[g]) { t3_object_remove((t3_object *)O.scene, O.gate[g]); O.gate[g] = NULL; }
+  for (int g = 0; g < 2; g++)
+    if (O.lamps[g]) { t3_object_remove((t3_object *)O.scene, O.lamps[g]); O.lamps[g] = NULL; }
   for (int lod = 0; lod < 2; lod++)
     for (int v = 0; v < 2; v++) {
       for (int part = 0; part < 3; part++)
