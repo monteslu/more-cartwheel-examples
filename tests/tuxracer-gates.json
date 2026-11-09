@@ -66,5 +66,15 @@
     "name": "tuxracer-quality",
     "script": "tests/tuxracer-quality.mjs",
     "note": "a program for everything drawn at every quality on both backends, through a spread warm-up as a player gets it: every course, sunny, cloudy and by night, the title. A scene not reached fails. Control: a state the scene draws out of the table must be reported and skip draws"
+  },
+  {
+    "name": "tuxracer-newcomer",
+    "script": "tests/tuxracer-newcomer.mjs",
+    "note": "a first course on the cart by the pad and the screen alone, GL and WebGPU: from power-on A opens the Cup and races Bunny Hill; steering by the trees and herring the view draws (a look every 100 ms acted on 0.3 s late, a wandering aim, looks away), the newcomer finishes within 60 s with at least 4 herring and at most 6 trees hit, and A on the results goes back to the Cup. Control: the herring and trees not drawn (the physics unchanged) falls short"
+  },
+  {
+    "name": "tuxracer-tricks",
+    "script": "tests/tuxracer-tricks.mjs",
+    "note": "trick mode on the cart, GL and WebGPU: the stick held through a jump spins Tux, a whole spin lands for 150 and a whole flip for 300, a landing part way round pays nothing, and the run's score is the original formula plus the trick points. Control: trick mode off, the same jumps pay nothing and the score is the original formula"
   }
 ]
