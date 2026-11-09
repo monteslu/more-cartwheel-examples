@@ -163,6 +163,7 @@ static cw_node mk_boom(int i) {
   cw_node_set(trail, "texture", cw_val_string("textures/fx/smoke.png"));
   cw_node_set(trail, "hframes", cw_val_int(8));
   cw_node_set(trail, "vframes", cw_val_int(8));
+  /* (the haze and the two rings: strengths set as a blast fires, fx_explosion) */
   cw_node haze = part(b, "Haze", 30, 1.6f, 0.4f, "SPHERE", 0.9f, UP, 60, 0.8f, 2.4f, 0, 3.2f, "0 0.6, 1 1.5",
                       "0 1 1 1 0, 0.15 1 1 1 1, 1 1 1 1 0", 1, "DISTORT", s + 6);
   cw_node_set(haze, "distort_strength", cw_val_float(0.14));
@@ -362,6 +363,20 @@ void fx_explosion(t3_vec3 p, t3_vec3 n) {
   cw_node sp = cw_node_get(b, "Sparks"), db = cw_node_get(b, "Debris");
   if (cw_node_valid(sp)) cw_node_set(sp, "direction", cw_val_vec3(nn.x, nn.y, nn.z));
   if (cw_node_valid(db)) cw_node_set(db, "direction", cw_val_vec3(nn.x, nn.y + (floor ? 0 : 0.4f), nn.z));
+  /* no heat haze or shockwave distortion: High and Ultra fringe a distortion by colour, and the blast's haze and its air
+   * and ground rings swirled a view in rainbow colours (and smeared the enemy under the crosshair). "sw tune haze <k>" (or
+   * ARENA_T_haze) brings them back at k times the old strength (1: as before), for before and after */
+  {
+    const float hk = arena_tune("haze", 0);
+    static const char *const D[3] = { "Haze", "Wave", "WaveAir" };
+    static const float S[3] = { 0.14f, 0.5f, 0.8f };
+    for (int i = 0; i < 3; i++) {
+      cw_node d = cw_node_get(b, D[i]);
+      if (!cw_node_valid(d)) continue;
+      cw_node_set(d, i ? "strength" : "distort_strength", cw_val_float(S[i] * hk));
+      cw_node_set(d, "visible", cw_val_bool(hk > 0));
+    }
+  }
   cw_explosion_fire(b);
   if (!floor) {
     float s = 2.6f + cw_rng_float(&R) * 0.8f;

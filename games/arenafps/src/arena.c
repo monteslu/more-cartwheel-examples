@@ -1158,7 +1158,22 @@ bool arena_ray(t3_vec3 from, t3_vec3 to, t3_vec3 *point, t3_vec3 *normal) {
 }
 
 /* the level's mood: sky, sun, fog, grade. Autopilot builds read ARENA_T_<name> from the environment to try values without a rebuild. */
+float arena_tune(const char *name, float def) { return tune(name, def); }
+/* values set by the debug command "sw tune <name> <value>" (any build: the flash sweep's controls on a cart), ahead of
+ * ARENA_T_<name> (autopilot builds) */
+#define TUNE_SET_MAX 16
+static struct { char name[24]; float v; } TUNE_SET[TUNE_SET_MAX];
+static int tune_set_n;
+void arena_tune_set(const char *name, float v) {
+  for (int i = 0; i < tune_set_n; i++)
+    if (!strcmp(TUNE_SET[i].name, name)) { TUNE_SET[i].v = v; return; }
+  if (tune_set_n == TUNE_SET_MAX) return;
+  snprintf(TUNE_SET[tune_set_n].name, sizeof TUNE_SET[0].name, "%s", name);
+  TUNE_SET[tune_set_n++].v = v;
+}
 static float tune(const char *name, float def) {
+  for (int i = 0; i < tune_set_n; i++)
+    if (!strcmp(TUNE_SET[i].name, name)) return TUNE_SET[i].v;
 #ifdef ARENA_AUTOPILOT
   char key[48];
   snprintf(key, sizeof key, "ARENA_T_%s", name);

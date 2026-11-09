@@ -58,6 +58,7 @@ typedef struct proj {
   bool on;
   t3_vec3 p, v;
   int owner, life;
+  float glow; /* the rocket's light, swelling from 0 after the launch */
   cw_node node, light, trail;
 } proj;
 
@@ -109,6 +110,10 @@ static struct game {
   /* per human view feedback */
   float hit_marker[MAXH], dmg_flash[MAXH], dmg_dir[MAXH], kill_flash[MAXH];
   float dmg_want[MAXH]; /* what the hits ask of the damage tint: the tint swells toward it, a burst holds it up */
+  int dmg_hold[MAXH];    /* ticks the damage tint holds after the last hit */
+  int32_t fl_tint_flashes, fl_near_views; /* the flash meter (tint_meter, view_hook) */
+  float fl_tint_peak;
+  int sw_hurt_hz; /* sw hurt <hz>: the first seat's damage cue that many times a second, no damage (the tint meter's range) */
   int dmg_taken[MAXH], dmg_dealt[MAXH], kills_now[MAXH]; /* this tick's damage per person, for the rumble */
   int rumble_off;          /* Rumble OFF on the setup screen (for the session, like aim assist: a game save added now
                             * would reset the shell's saved settings once) */
@@ -183,6 +188,30 @@ static float bot_fov_override = -1; /* ARENA_BOT_FOV (autopilot): the cone for m
 /* the seats' stand-in in an autopilot build (tests, pacing): a pad player of middling skill, as if aim assist and the stick
  * curve were in play: 300 ms reactions, the stick's 3.6 rad/s turn, aim error 0.7 of a 0.5 skill bot's with assist on */
 static bool proxy(const fighter *f) { return AUTO && f->human >= 0; }
+/* the flash fixes on (default); ARENA_T_strobefix=0 (autopilot) turns them off as the flash sweep's control: the damage
+ * tint's old curve, bodies drawn however close to a view's camera, fighters free to stand inside each other */
+static bool strobefix(void) { return arena_tune("strobefix", 1) > 0.5f; }
+/* the game's own flash meter for its damage tint (debug fields fl.*, read over a range of frames): the tint's drawn
+ * opacity, a transition each time it turns round after moving 0.1 or more (WCAG 2.3.1's pair of opposing changes, red
+ * counted at any size the eye sees: 0.1 of the red's full opacity), a flash every two transitions, and the most flashes
+ * any seat's tint made in any one second. Measurement only: nothing reads it back */
+enum { FL_RING = 64 };
+static struct { float ext[MAXH]; int dir[MAXH]; int ring[MAXH][FL_RING]; int n[MAXH]; } FLM;
+static void tint_meter(int h) {
+  float a = G.dmg_flash[h] > 0.02f ? G.dmg_flash[h] * 0.45f : 0; /* as the edges draw it */
+  if (a > G.fl_tint_peak) G.fl_tint_peak = a;
+  int d = a > FLM.ext[h] ? 1 : a < FLM.ext[h] ? -1 : 0;
+  if (d == 0) return;
+  if (FLM.dir[h] == 0) FLM.dir[h] = d; /* the first move sets the way it is going */
+  if (d == FLM.dir[h]) { FLM.ext[h] = a; return; } /* further the same way: the extreme moves */
+  if (fabsf(a - FLM.ext[h]) < 0.1f) return;        /* back, but not yet far enough to count */
+  FLM.ring[h][FLM.n[h]++ % FL_RING] = G.steps; /* a transition: the extreme it left */
+  FLM.dir[h] = d;
+  FLM.ext[h] = a;
+  int win = 0, k = FLM.n[h] < FL_RING ? FLM.n[h] : FL_RING;
+  for (int j = 0; j < k; j++) win += G.steps - FLM.ring[h][j] < (int)(1.0f / TICK_DT);
+  if (win / 2 > G.fl_tint_flashes) G.fl_tint_flashes = win / 2;
+}
 
 /* ── helpers ───────────────────────────────────────────────────────── */
 
@@ -425,6 +454,7 @@ static void damage(fighter *v, fighter *k, int dmg, t3_vec3 dir, float knock, in
   v->hit_t = 0;
   if (v->human >= 0) {
     G.dmg_want[v->human] = 1;
+    G.dmg_hold[v->human] = 36;
     if (k) {
       t3_vec3 d = v3sub(k->mv.position, v->mv.position);
       G.dmg_dir[v->human] = cw_atan2(-d.x, -d.z) - v->yaw;
@@ -552,7 +582,10 @@ static void fire_rocket(fighter *f, int owner) {
     p->life = 60 * 5;
     cw_node_set(p->node, "visible", cw_val_bool(true));
     cw_node_set(p->trail, "emitting", cw_val_bool(true));
-    cw_node_set(p->light, "energy", cw_val_float(14));
+    /* the light swells over four ticks (rocket_tick): switched on at full at the barrel it lit a wall at arm's length from
+     * dark to bright in one frame */
+    p->glow = strobefix() ? 0.0f : 1.0f;
+    cw_node_set(p->light, "energy", cw_val_float(14 * p->glow));
     cw_node3d_set_position(p->node, p->p);
     return;
   }
@@ -870,7 +903,28 @@ static void move_fighter(fighter *f, float fwd, float strafe, bool jump, bool sp
   }
   bool was_air = !f->mv.on_floor;
   float vy0 = f->mv.velocity.y;
+  /* no fighter stands inside another (its body would fill that one's view from inside the near plane): two closer than
+   * MIN_SEP across, at heights that overlap, are each moved apart by half the shortfall this tick, through the mover (walls
+   * still hold), and the push is not kept in the velocity */
+  t3_vec3 push = { 0, 0, 0 };
+  if (f->alive && strobefix()) {
+    const float MIN_SEP = 1.1f;
+    for (int i = 0; i < G.nf; i++) {
+      const fighter *o = F(i);
+      if (o == f || !o->active || !o->alive) continue;
+      float dx = f->mv.position.x - o->mv.position.x, dz = f->mv.position.z - o->mv.position.z;
+      if (fabsf(f->mv.position.y - o->mv.position.y) > PLAYER_HT) continue;
+      float d2 = dx * dx + dz * dz;
+      if (d2 >= MIN_SEP * MIN_SEP) continue;
+      float d = sqrtf(d2);
+      if (d < 1e-4f) dx = (f < o) ? 1.0f : -1.0f, dz = 0, d = 1; /* one on top of the other: apart along x, by slot */
+      float k = (MIN_SEP - sqrtf(d2)) * 0.5f / TICK_DT / d;
+      push.x += dx * k, push.z += dz * k;
+    }
+    vel->x += push.x, vel->z += push.z;
+  }
   cw_mover3d_move(&f->mv, TICK_DT);
+  vel->x -= push.x, vel->z -= push.z;
   if (was_air && f->mv.on_floor && vy0 < -4.0f) { /* a landing: a thud, and a light bump in the pad (harder for a longer fall) */
     if (f->human >= 0) rumble_sent[3]++, rumble(f->human, CW_MIN(0.45f, 0.1f + (-vy0 - 4.0f) * 0.025f), 0, 60 + (int)CW_MIN(60.0f, (-vy0 - 4.0f) * 6.0f));
     if (f->human >= 0) fx_play_ui(SND_LAND, CW_MIN(0.7f, 0.25f - vy0 * 0.02f));
@@ -1197,7 +1251,9 @@ static void bot_tick(fighter *f, int idx) {
       cw_sincos(a, &sa, &ca);
       t3_vec3 from = eye_pos(f), lead = v3scale(v3(t->mv.velocity.x, 0, t->mv.velocity.z), cw_clampf(dist / 13.0f, 0.45f, 1.4f) * 0.8f * f->skill);
       t3_vec3 to = v3add(v3add(t->mv.position, lead), v3(sa * miss, 0.1f, ca * miss)); /* where it will be, about */
-      f->yaw = cw_atan2(-(to.x - from.x), -(to.z - from.z));
+      /* a bot faces the throw at once; a seat's stand-in (a pad player) cannot snap its view round, so it throws as it
+       * faces (the lob still goes where it aimed). ARENA_T_strobefix=0 (autopilot): the snap, the flash sweep's control */
+      if (!proxy(f) || !strobefix()) f->yaw = cw_atan2(-(to.x - from.x), -(to.z - from.z));
       throw_grenade(f, idx, lob_vel(from, to));
     }
   }
@@ -1849,6 +1905,7 @@ static void proj_tick(void) {
     cw_node3d_set_position(p->node, np);
     cw_node3d_look_at(p->node, v3add(np, p->v), v3(0, 1, 0));
     cw_node3d_set_position(p->light, np);
+    if (p->glow < 1) p->glow = fminf(1.0f, p->glow + 0.25f), cw_node_set(p->light, "energy", cw_val_float(14 * p->glow));
   }
 }
 
@@ -2187,6 +2244,7 @@ static void begin_match(void) {
   for (int h = 0; h < MAXH; h++) G.kc_who[h] = -1;
   memset(G.dmg_flash, 0, sizeof G.dmg_flash);
   memset(G.dmg_want, 0, sizeof G.dmg_want);
+  memset(G.dmg_hold, 0, sizeof G.dmg_hold);
   memset(G.aim, 0, sizeof G.aim);
   G.frag_limit = G.mode == MODE_TDM ? 40 : 25; /* about five minutes against bots at 4 fighters (FUN-RUBRIC FP17; 15 frags took 3 minutes) */
   G.time_limit = 60 * 60 * 8;
@@ -2512,8 +2570,19 @@ static void sync_nodes(void) {
       cw_node3d_set_rotation(G.vm_flash[h], v3(0, 0, (float)(fh >> 24) / 255.0f * 6.283f));
     }
     G.hit_marker[h] *= 0.9f;
-    /* the damage tint rises over about four frames and fades slowly; hits in a burst hold it, never a red blink */
-    G.dmg_flash[h] += (G.dmg_want[h] - G.dmg_flash[h]) * (G.dmg_want[h] > G.dmg_flash[h] ? 0.35f : 0.1f);
+    /* the damage tint is one envelope: it swells over about a quarter second when damage starts, holds while hits keep
+     * coming (each hit holds it 0.6 s more) and fades over two thirds of a second after the last one, so a swell and its
+     * fade take a second at the least whatever the hit rate: never a red pulse per hit (WCAG 2.3.1, at most three flashes a
+     * second). ARENA_T_strobefix=0 (autopilot): the old curve, rising in four frames at every hit, the flash sweep's control */
+    if (G.sw_hurt_hz > 0 && h == 0 && G.steps % CW_MAX(1, (int)(60 / G.sw_hurt_hz)) == 0) /* sw hurt: a hit's cue, no damage */
+      G.dmg_want[h] = 1, G.dmg_hold[h] = 36;
+    if (strobefix()) {
+      if (G.dmg_hold[h] > 0) G.dmg_hold[h]--;
+      float to = G.dmg_hold[h] > 0 ? 1.0f : 0.0f;
+      G.dmg_flash[h] = to > G.dmg_flash[h] ? fminf(to, G.dmg_flash[h] + 0.065f) : fmaxf(to, G.dmg_flash[h] - 0.025f);
+    } else
+      G.dmg_flash[h] += (G.dmg_want[h] - G.dmg_flash[h]) * (G.dmg_want[h] > G.dmg_flash[h] ? 0.35f : 0.1f);
+    tint_meter(h);
     G.dmg_want[h] *= 0.93f;
     G.kill_flash[h] *= 0.965f;
     G.head_marker[h] *= 0.93f;
@@ -2558,7 +2627,23 @@ static void view_hook(int view, void *u) {
   for (int h = 0; h < G.players; h++) set_obj_visible(G.vm[h], h == view && F(h)->alive);
   for (int i = 0; i < G.nf; i++) {
     fighter *f = F(i);
-    if (cw_node_valid(f->body)) set_obj_visible(f->body, i != view && (f->alive || f->dead_ticks <= 100));
+    bool show = i != view && (f->alive || f->dead_ticks <= 100);
+    /* a body (an enemy, a friend, a fallen one) whose middle is within about 0.6 m of this view's camera plus its own
+     * radius is not drawn in this view: from inside the near plane its parts fill the view and change every frame. Hidden
+     * under 1.0 m, back over 1.15 m, so one hovering at the edge does not blink */
+    static bool near[MAXH][MAXF];
+    if (show && view >= 0 && view < MAXH) {
+      const t3_mat4 *cm = cw_node3d_global_transform(G.cam[view]);
+      t3_vec3 c = v3(cm->e[12], cm->e[13], cm->e[14]), b = f->mv.position;
+      float dy = c.y < b.y ? b.y - c.y : c.y > b.y + PLAYER_HT ? c.y - b.y - PLAYER_HT : 0;
+      float dist = sqrtf((c.x - b.x) * (c.x - b.x) + (c.z - b.z) * (c.z - b.z) + dy * dy);
+      if (strobefix()) {
+        near[view][i] = near[view][i] ? dist < 1.15f : dist < 1.0f;
+        if (near[view][i]) show = false;
+      }
+      if (show && dist < 0.6f) G.fl_near_views++; /* the meter: a body drawn inside a view's near reach */
+    }
+    if (cw_node_valid(f->body)) set_obj_visible(f->body, show);
   }
 }
 
@@ -3471,6 +3556,16 @@ static void quality_changed(cw_quality q, void *u) {
 /* the gates' switch: sw idle_lives 1 (the control of tests/arenafps-idle-seat.mjs) */
 /* sw killcam 0: the old dead view, the control of tests/arenafps-killcam.mjs */
 static void cmd_sw(int argc, const char **argv, cw_reply *r) {
+  if (argc >= 4 && !strcmp(argv[1], "tune")) { /* sw tune <name> <value>: as ARENA_T_<name> (the next match's build reads the level's) */
+    arena_tune_set(argv[2], (float)atof(argv[3]));
+    cw_reply_printf(r, "{\"tune\":\"%s\",\"value\":%g}", argv[2], (double)arena_tune(argv[2], 0));
+    return;
+  }
+  if (argc >= 3 && !strcmp(argv[1], "hurt")) {
+    G.sw_hurt_hz = atoi(argv[2]);
+    cw_reply_printf(r, "{\"hurt_hz\":%d}", G.sw_hurt_hz);
+    return;
+  }
   if (argc >= 3 && !strcmp(argv[1], "cues")) {
     G.sw_no_cues = atoi(argv[2]) == 0;
     cw_reply_printf(r, "{\"cues\":%d}", !G.sw_no_cues);
@@ -3481,7 +3576,7 @@ static void cmd_sw(int argc, const char **argv, cw_reply *r) {
     cw_reply_printf(r, "{\"killcam\":%d}", !G.sw_no_killcam);
     return;
   }
-  if (argc < 3 || strcmp(argv[1], "idle_lives")) { cw_reply_error(r, "usage: sw idle_lives <0|1> | sw killcam <0|1> | sw cues <0|1>"); return; }
+  if (argc < 3 || strcmp(argv[1], "idle_lives")) { cw_reply_error(r, "usage: sw idle_lives <0|1> | sw killcam <0|1> | sw cues <0|1> | sw tune <name> <value> | sw hurt <hz>"); return; }
   G.sw_idle_lives = atoi(argv[2]) != 0;
   cw_reply_printf(r, "{\"idle_lives\":%d}", G.sw_idle_lives);
 }
@@ -3573,6 +3668,9 @@ static void init(void *user) {
   quality_changed(cw_quality_get(), NULL); /* the preset the engine started at */
   cw_quality_auto(true, 0);
   cw_debug_i32("game.state", (int32_t *)&G.state);
+  cw_debug_i32("fl.tint_flashes", &G.fl_tint_flashes); /* the most damage-tint flashes in one second, any seat */
+  cw_debug_f32("fl.tint_peak", &G.fl_tint_peak);       /* the tint's highest drawn opacity */
+  cw_debug_i32("fl.near_views", &G.fl_near_views);     /* view frames that drew a body within 0.6 m of the camera */
   cw_debug_command("bind", "bind <action> <bindings>: replace an action's bindings", cmd_bind);
   cw_debug_i32("game.mode", &G.mode);
   cw_debug_i32("game.rules", &G.rules);

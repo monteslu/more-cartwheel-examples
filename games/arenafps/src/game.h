@@ -86,6 +86,9 @@ void mb_color(mesh_build *b, int v, float r, float g, float bl);
 void mb_tri(mesh_build *b, int a, int c, int d);
 void mb_quad(mesh_build *b, int a, int c, int d, int e);
 t3_geometry *mb_finish(mesh_build *b);
+/* ARENA_T_<name> in an autopilot build, else def (arena.c) */
+float arena_tune(const char *name, float def);
+void arena_tune_set(const char *name, float v); /* (debug command sw tune) */
 /* pull overlapping same-plane faces of builders bs[0..nb) apart by eps (the smaller one moves out): no depth fight between them */
 int mb_separate_coplanar(mesh_build *bs, int nb, float eps, int *left);
 void mb_add_geo(mesh_build *b, const t3_geometry *g, t3_vec3 pos, float yaw, t3_vec3 scale, const float rgb[3], float uv_scale);
