@@ -66,7 +66,7 @@
   },
   {
     "name": "brawler-solo",
-    "note": "One bot (players 1) on stage 1: the crowd, the thrower and the token cap against a single fighter. Expects repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth (game.overlaps stays 0). Repinned 2026-10-29 (B-PT7..10): reach now grows with body girth, enemies are clamped inside the attack margin, the bots turn to face their target, the heckler joined the waves and boss health was cut; the looks and the blood are presentation and move nothing. Repinned for B-PT18: the heckler is lighter (50 hp, speed 2.0) and a stagger blow floors him. Repinned 2026-11-08 for the fun pass: a shallower street under a lower camera, the lane assist, hit-stop 6/10/16, the combo toolbox (the bots run, launch and juggle), staggered entrances, lighter Matron and Colossus.",
+    "note": "One bot (players 1) on stage 1: the crowd, the thrower and the token cap against a single fighter. Expects repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth (game.overlaps stays 0). Repinned 2026-10-29 (B-PT7..10): reach now grows with body girth, enemies are clamped inside the attack margin, the bots turn to face their target, the heckler joined the waves and boss health was cut; the looks and the blood are presentation and move nothing. Repinned for B-PT18: the heckler is lighter (50 hp, speed 2.0) and a stagger blow floors him. Repinned 2026-11-08 for the fun pass: a shallower street under a lower camera, the lane assist, hit-stop 6/10/16, the combo toolbox (the bots run, launch and juggle), staggered entrances, lighter Matron and Colossus. Repinned 2026-11-09 through romdev (GL and WebGPU agree) for the first stage a newcomer can win: its crowd hits at 70 percent and its bruiser has 65 percent of his health, so the bots live longer and the run takes another course.",
     "app": "brawler_auto",
     "frames": 1500,
     "startCmds": [
@@ -103,7 +103,7 @@
       "game.ticks": 1381,
       "game.kills": 6,
       "game.score": 3890,
-      "game.hash": 29797075,
+      "game.hash": 457038427,
       "game.wave": 1,
       "game.hits": 8,
       "game.first_hit": 240,
@@ -193,7 +193,7 @@
   },
   {
     "name": "brawler-boss",
-    "note": "Stage 1 boss wave with three bots: the boss goes through its three phases (game.boss_phase 2 reached) and the danger rings show on the street. Expects repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth (game.overlaps stays 0). Repinned 2026-10-29 (B-PT7..10): reach now grows with body girth, enemies are clamped inside the attack margin, the bots turn to face their target, the heckler joined the waves and boss health was cut; the looks and the blood are presentation and move nothing. Since then it runs with the bots at a fighter's real damage (botdmg 1, 3600 frames) so the Foreman fight lasts as it does for a player: the run ends in his last phase (game.boss_phase 2) still on stage 1 (game.stage 0). Repinned for the polish pass: three knees now really throw (a knee no longer ended only the first grab; the bots throw too), a thrown body bowls over enemies, a held body stands by the two bodies' size. Repinned 2026-11-08 for the fun pass: a shallower street under a lower camera, the lane assist, hit-stop 6/10/16, the combo toolbox (the bots run, launch and juggle), staggered entrances, lighter Matron and Colossus.",
+    "note": "Stage 1 boss wave with three bots: the boss goes through its three phases (game.boss_phase 2 reached) and the danger rings show on the street. Expects repinned when standing bodies were kept fully apart and the bots began to flank an enemy in depth (game.overlaps stays 0). Repinned 2026-10-29 (B-PT7..10): reach now grows with body girth, enemies are clamped inside the attack margin, the bots turn to face their target, the heckler joined the waves and boss health was cut; the looks and the blood are presentation and move nothing. Since then it runs with the bots at a fighter's real damage (botdmg 1, 3600 frames) so the Foreman fight lasts as it does for a player: the run ends in his last phase (game.boss_phase 2) still on stage 1 (game.stage 0). Repinned for the polish pass: three knees now really throw (a knee no longer ended only the first grab; the bots throw too), a thrown body bowls over enemies, a held body stands by the two bodies' size. Repinned 2026-11-08 for the fun pass: a shallower street under a lower camera, the lane assist, hit-stop 6/10/16, the combo toolbox (the bots run, launch and juggle), staggered entrances, lighter Matron and Colossus. Repinned 2026-11-09 through romdev (GL and WebGPU agree) for the first stage a newcomer can win: its crowd hits at 70 percent and its bruiser has 65 percent of his health, so the bots live longer and the run takes another course.",
     "app": "brawler_auto",
     "frames": 3600,
     "startCmds": [
@@ -233,10 +233,10 @@
       "game.overlaps"
     ],
     "expect": {
-      "game.ticks": 3088,
-      "game.kills": 3,
-      "game.score": 7090,
-      "game.hash": 243500318,
+      "game.ticks": 3079,
+      "game.kills": 2,
+      "game.score": 6390,
+      "game.hash": 578806275,
       "game.wave": 4,
       "game.deaths": 0,
       "game.unfair": 0,
@@ -375,7 +375,7 @@
   },
   {
     "name": "brawler-heckler",
-    "note": "Stage 1, wave 2 (thugs, a punk and the heckler) with two bots: the heckler winds up his haymaker (its wind-up shrugs off light blows) and lands it, barges along the lane, and is beaten. game.heckler is [hecklers spawned, haymakers, haymakers that landed, barges, barges that landed, hecklers killed]. Also the looks and the blood: game.clones (most pairs of one kind of enemy on the street that look the same on any frame) stays 0, fx.blood is [stains placed, droplet bursts, stains showing, same-shape stains on top of each other] and its last entry stays 0. The control freezes everyone, so nobody swings. rag.hash is left out of this gate: with the heckler knocked down out of his haymaker clip, the ragdoll started from that pose hashes 3232650868 natively and 3315670625 on every cart host (romdev, Chromium, romdev on GL alike), while the game state is equal on all of them: the presentation pose sampled natively and in the cart differs for that clip (findings/brawler.md, engine note 5). The other gates still compare rag.hash on every host. Repinned when the creep joined the wave after it (the run reaches it). Repinned for B-PT18: the heckler is lighter (50 hp, speed 2.0) and a stagger blow floors him. Repinned for the polish pass: three knees now really throw (a knee no longer ended only the first grab; the bots throw too), a thrown body bowls over enemies, a held body stands by the two bodies' size. Bots at half damage since they throw: at full damage he fell before his haymaker. Repinned for the polish pass (Dolly as the fourth fighter, a thrown body, the grab). Repinned 2026-11-08 for the fun pass: a shallower street under a lower camera, the lane assist, hit-stop 6/10/16, the combo toolbox (the bots run, launch and juggle), staggered entrances, lighter Matron and Colossus.",
+    "note": "Stage 1, wave 2 (thugs, a punk and the heckler) with two bots: the heckler winds up his haymaker (its wind-up shrugs off light blows) and lands it, barges along the lane, and is beaten. game.heckler is [hecklers spawned, haymakers, haymakers that landed, barges, barges that landed, hecklers killed]. Also the looks and the blood: game.clones (most pairs of one kind of enemy on the street that look the same on any frame) stays 0, fx.blood is [stains placed, droplet bursts, stains showing, same-shape stains on top of each other] and its last entry stays 0. The control freezes everyone, so nobody swings. rag.hash is left out of this gate: with the heckler knocked down out of his haymaker clip, the ragdoll started from that pose hashes 3232650868 natively and 3315670625 on every cart host (romdev, Chromium, romdev on GL alike), while the game state is equal on all of them: the presentation pose sampled natively and in the cart differs for that clip (findings/brawler.md, engine note 5). The other gates still compare rag.hash on every host. Repinned when the creep joined the wave after it (the run reaches it). Repinned for B-PT18: the heckler is lighter (50 hp, speed 2.0) and a stagger blow floors him. Repinned for the polish pass: three knees now really throw (a knee no longer ended only the first grab; the bots throw too), a thrown body bowls over enemies, a held body stands by the two bodies' size. Bots at half damage since they throw: at full damage he fell before his haymaker. Repinned for the polish pass (Dolly as the fourth fighter, a thrown body, the grab). Repinned 2026-11-08 for the fun pass: a shallower street under a lower camera, the lane assist, hit-stop 6/10/16, the combo toolbox (the bots run, launch and juggle), staggered entrances, lighter Matron and Colossus. Repinned 2026-11-09 through romdev (GL and WebGPU agree) for the first stage a newcomer can win: its crowd hits at 70 percent and its bruiser has 65 percent of his health, so the bots live longer and the run takes another course.",
     "app": "brawler_auto",
     "frames": 2400,
     "startCmds": [
@@ -415,10 +415,10 @@
       "game.nan": 0,
       "game.clones": 0,
       "game.overlaps": 0,
-      "game.ticks": 1874,
+      "game.ticks": 1862,
       "game.kills": 6,
-      "game.score": 4480,
-      "game.hash": 507335499,
+      "game.score": 4610,
+      "game.hash": 1435081438,
       "game.wave": 2,
       "game.deaths": 0,
       "game.heckler": [
@@ -430,12 +430,12 @@
         1
       ],
       "fx.blood": [
-        157,
-        66,
+        173,
+        67,
         48,
         0
       ],
-      "rag.made": 23,
+      "rag.made": 25,
       "rag.missed": 0
     },
     "webgpu": {
@@ -457,7 +457,7 @@
   },
   {
     "name": "brawler-creep",
-    "note": "Stage 1, wave 3 (where the creep first walks on) with two bots at real damage: the creep leans into light blows (no flinch, 2 health back each, never past full), throws his coat open and lunges, and is beaten. game.creep is [creeps spawned, coat flashes, flashes that landed, light blows he leaned into, health they gave him, killed]. game.clones stays 0. The control freezes everyone. Repinned for the polish pass: three knees now really throw (a knee no longer ended only the first grab; the bots throw too), a thrown body bowls over enemies, a held body stands by the two bodies' size. Bots at half damage since the bots can throw: at full damage they threw and killed the creep before his coat flash. Repinned 2026-11-08 for the fun pass: a shallower street under a lower camera, the lane assist, hit-stop 6/10/16, the combo toolbox (the bots run, launch and juggle), staggered entrances, lighter Matron and Colossus.",
+    "note": "Stage 1, wave 3 (where the creep first walks on) with two bots at real damage: the creep leans into light blows (no flinch, 2 health back each, never past full), throws his coat open and lunges, and is beaten. game.creep is [creeps spawned, coat flashes, flashes that landed, light blows he leaned into, health they gave him, killed]. game.clones stays 0. The control freezes everyone. Repinned for the polish pass: three knees now really throw (a knee no longer ended only the first grab; the bots throw too), a thrown body bowls over enemies, a held body stands by the two bodies' size. Bots at half damage since the bots can throw: at full damage they threw and killed the creep before his coat flash. Repinned 2026-11-08 for the fun pass: a shallower street under a lower camera, the lane assist, hit-stop 6/10/16, the combo toolbox (the bots run, launch and juggle), staggered entrances, lighter Matron and Colossus. Repinned 2026-11-09 through romdev (GL and WebGPU agree) for the first stage a newcomer can win: its crowd hits at 70 percent and its bruiser has 65 percent of his health, so the bots live longer and the run takes another course.",
     "app": "brawler_auto",
     "frames": 2400,
     "startCmds": [
@@ -497,27 +497,27 @@
       "game.nan": 0,
       "game.clones": 0,
       "game.overlaps": 0,
-      "game.ticks": 1826,
+      "game.ticks": 1852,
       "game.kills": 6,
-      "game.score": 4830,
-      "game.hash": 2292753390,
+      "game.score": 4930,
+      "game.hash": 2720557717,
       "game.wave": 2,
       "game.deaths": 0,
       "game.creep": [
         1,
+        3,
+        2,
         6,
-        4,
-        8,
-        14,
+        10,
         1
       ],
       "fx.blood": [
-        187,
-        68,
+        202,
+        71,
         48,
         0
       ],
-      "rag.made": 30,
+      "rag.made": 31,
       "rag.missed": 0
     },
     "webgpu": {
@@ -588,7 +588,7 @@
   },
   {
     "name": "brawler-controls",
-    "note": "A fighter in a jump must not float. Player 1 is driven by an input script like a person (human 1): steps right, jumps, jump-kicks every other jump, lands, punches a three-hit combo, grabs and knees, forty times over (mostly jumps, a jump kick every fourth, a combo every sixth, a grab every ninth), with two thugs and a punk on him. game.air_max (player 1's longest time off the ground in frames, hit-stop included) stays near a jump's 46 frames and game.jumps counts the jumps. The control (legacyair 1) is v0.4.0's stagger, which had no gravity: a fighter jab-hit in mid jump hung in the air and walked on there (air_max 155 with this script; 62 now, after the 2026-11-08 street and hit-stop changes), so it fails. Repinned 2026-11-08 for the fun pass: a shallower street under a lower camera, the lane assist, hit-stop 6/10/16, the combo toolbox (the bots run, launch and juggle), staggered entrances, lighter Matron and Colossus.",
+    "note": "A fighter in a jump must not float. Player 1 is driven by an input script like a person (human 1): steps right, jumps, jump-kicks every other jump, lands, punches a three-hit combo, grabs and knees, forty times over (mostly jumps, a jump kick every fourth, a combo every sixth, a grab every ninth), with two thugs and a punk on him. game.air_max (player 1's longest time off the ground in frames, hit-stop included) stays near a jump's 46 frames and game.jumps counts the jumps. The control (legacyair 1) is v0.4.0's stagger, which had no gravity: a fighter jab-hit in mid jump hung in the air and walked on there (air_max 155 with this script; 62 now, after the 2026-11-08 street and hit-stop changes), so it fails. Repinned 2026-11-08 for the fun pass: a shallower street under a lower camera, the lane assist, hit-stop 6/10/16, the combo toolbox (the bots run, launch and juggle), staggered entrances, lighter Matron and Colossus. Repinned 2026-11-09 through romdev (GL and WebGPU agree) for the first stage a newcomer can win: its crowd hits at 70 percent and its bruiser has 65 percent of his health, so the bots live longer and the run takes another course.",
     "app": "brawler_auto",
     "frames": 2300,
     "input": "brawler-controls.json",
@@ -621,7 +621,7 @@
       "game.jumps": 20,
       "game.hits": 8,
       "game.kills": 3,
-      "game.hash": 1388842219
+      "game.hash": 3764509995
     },
     "webgpu": {
       "hosts": [
@@ -1226,7 +1226,7 @@
   },
   {
     "name": "brawler-lane",
-    "note": "The lane assist (2026-11-08): one bot that misjudges depth by up to 0.8 m, as a person reading the picture might (botaim 0.8), and swings when level along the street. game.lane counts its blows thrown with an enemy within 1.5 m along the street and those that hit nobody (a lane miss): a blow aimed at an enemy 0.25 to 0.95 m off its lane steps across onto it during the wind-up. The control (legacylane 1) has no assist and misses more, so it fails.",
+    "note": "The lane assist (2026-11-08): one bot that misjudges depth by up to 0.8 m, as a person reading the picture might (botaim 0.8), and swings when level along the street. game.lane counts its blows thrown with an enemy within 1.5 m along the street and those that hit nobody (a lane miss): a blow aimed at an enemy 0.25 to 0.95 m off its lane steps across onto it during the wind-up. The control (legacylane 1) has no assist and misses more, so it fails. Repinned 2026-11-09 through romdev (GL and WebGPU agree) for the first stage a newcomer can win: its crowd hits at 70 percent and its bruiser has 65 percent of his health, so the bots live longer and the run takes another course.",
     "app": "brawler_auto",
     "frames": 2400,
     "webgpu": {
@@ -1258,11 +1258,11 @@
     ],
     "expect": {
       "game.lane": [
-        15,
+        13,
         0
       ],
-      "game.hits": 20,
-      "game.hash": 3588468229,
+      "game.hits": 19,
+      "game.hash": 184482107,
       "game.unfair": 0,
       "game.nan": 0
     }
