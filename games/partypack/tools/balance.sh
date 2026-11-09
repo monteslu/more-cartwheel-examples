@@ -9,8 +9,8 @@ N="${1:-120}"
 OUT="$ROOT/out/balance"
 mkdir -p "$OUT"
 export CW_PROJECT_ROOT="$ROOT"
-run() { # <name> <skills> <rounds option>
-  PP_BATCH="$N" PP_SKILLS="$2" PP_ROUNDS="${3:-0}" SDL_AUDIODRIVER=dummy \
+run() { # <name> <skills> <rounds option> [team rounds: PP_TEAMS, 1 every one 2 vs 2, 2 every one 1 vs 3]
+  PP_TEAMS="${4:-}" PP_BATCH="$N" PP_SKILLS="$2" PP_ROUNDS="${3:-0}" SDL_AUDIODRIVER=dummy \
     node "$ROOT/deps/cartwheel-engine/tools/run-cart.mjs" --host native --app partypack_auto --frames 4 --allow-skipped --log "$OUT/$1.log" > "$OUT/$1.out" 2>&1 || echo "run $1 exited $?"
 }
 run mid 1,1,1,1
@@ -19,3 +19,5 @@ run mixed 2,1,0,1
 run easy 0,0,0,0
 run hard 2,2,2,2
 run mid-long 1,1,1,1 2
+run teams-2v2 1,1,1,1 0 1
+run teams-1v3 1,1,1,1 0 2

@@ -342,6 +342,14 @@ function table() {
     m.cyl('wood_dark', [0, -1.3, 0], R * 0.55, 1.6, { n: 24, uv: 2 });
   });
 }
+function bridge() {
+  writeMesher('bridge', (m) => {
+    // the board's shortcut: a plank bridge lying on the felt between two rows, 1 m long (scaled to the gap), two
+    // runners on the table and five planks across them
+    for (const x of [-0.42, 0.42]) m.box('wood_dark', [x, 0.04, 0], [0.1, 0.08, 1.0], { uv: 0.5 });
+    for (let k = 0; k < 5; k++) m.box('wood', [0, 0.115, -0.4 + k * 0.2], [1.06, 0.07, 0.17], { uv: 1.06 });
+  });
+}
 function boardtile(name, tint, glow) {
   const glb = new Glb(), M = new Mats(glb), m = new Mesher();
   const mat = M.tinted('tile', 'boardtile', tint, 0.9, { ao: 1 });
@@ -399,7 +407,7 @@ if (MAIN) {
     buoy: () => { buoy('buoy_red', false); buoy('buoy_gold', true); },
     cliff: () => { cliff('cliff_ns', 56, 8, 4, 3); cliff('cliff_ew', 4, 8, 44, 7); }, // each wall runs past the other's outer face: the corners overlap, no seam
     track, kart: () => { for (let p = 0; p < 4; p++) kart(p); }, wheel, barrel,
-    table, tiles: () => { boardtile('tile_plain', [0.85, 0.9, 1].map(lin), null); boardtile('tile_star', [0.95, 0.5, 0.9].map(lin), [1, 0.45, 0.95].map(lin)); boardtile('tile_end', [1, 0.8, 0.2].map(lin), [1, 0.7, 0.1].map(lin)); },
+    table, bridge, tiles: () => { boardtile('tile_plain', [0.85, 0.9, 1].map(lin), null); boardtile('tile_star', [0.95, 0.5, 0.9].map(lin), [1, 0.45, 0.95].map(lin)); boardtile('tile_end', [1, 0.8, 0.2].map(lin), [1, 0.7, 0.1].map(lin)); },
     star, trophy, podium,
   };
   for (const [k, f] of Object.entries(jobs)) if (want(k)) f();

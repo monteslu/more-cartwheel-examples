@@ -68,3 +68,24 @@ const comeback = (cfgs) => {
 console.log(`\nPP7 last after round 2 wins the match: ${comeback(['mid', 'mid-long', 'mixed'])} (aim 15% to 30%); equal bots only (mid, mid-long): ${comeback(['mid', 'mid-long'])}`);
 const ties = tourns.filter((t) => t.tie !== 'no').length;
 console.log(`tie for first on points: ${pct(ties, tourns.length)} of tournaments (decided by round wins, then a seeded draw, shown on screen)`);
+
+// team rounds: how often each side wins, and the rule that teammates never knock each other
+const team = games.filter((g) => g.team && g.team !== '0');
+if (team.length) {
+  const by = {};
+  for (const g of team) {
+    const k = g.team === '2' ? '1 vs 3' : '2 vs 2';
+    const o = (by[k] ||= { n: 0, a: 0, knocks: 0 });
+    o.n++;
+    o.knocks += +g.mate_knocks;
+    const tm = nums(g.teams), pl = nums(g.places);
+    if (pl[tm.indexOf(0)] === 0) o.a++; /* team A (the one alone, in 1 vs 3) took first */
+  }
+  for (const [k, o] of Object.entries(by)) console.log(`team rounds ${k}: team A (${k === '1 vs 3' ? 'the leader alone' : 'leader + last'}) wins ${pct(o.a, o.n)} (n=${o.n}); dash knocks between teammates ${o.knocks}`);
+}
+// forks: how often a walk that meets a fork takes the shortcut
+const fk = tourns.filter((t) => t.forks !== undefined);
+if (fk.length) {
+  const met = fk.reduce((a, t) => a + +t.forks, 0), cut = fk.reduce((a, t) => a + +t.cuts, 0);
+  console.log(`forks: ${met} met, ${pct(cut, met)} cut across (${(met / fk.length).toFixed(1)} a tournament)`);
+}

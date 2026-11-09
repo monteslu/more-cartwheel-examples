@@ -180,6 +180,7 @@ models/blob_0.glb
 models/blob_1.glb
 models/blob_2.glb
 models/blob_3.glb
+models/bridge.glb
 models/buoy_gold.glb
 models/buoy_red.glb
 models/cliff_ew.glb

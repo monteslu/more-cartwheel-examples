@@ -4,10 +4,12 @@
  * the camera and animates. Looking only: nothing here changes a result. */
 #include "mg.h"
 
-#define MAXCELL 40
+#define MAXCELL 52 /* the longest board (8 rounds: 50 cells and the end) */
 static struct {
   bool built;
-  cw_node root, table, tile[MAXCELL], star[MAXCELL], endt[MAXCELL], tok[NP], face[NP], stalk[NP], trophy, podium;
+  cw_node root, table, tile[MAXCELL], star[MAXCELL], endt[MAXCELL], bridge[MAXCELL / 10 + 1], tok[NP], face[NP], stalk[NP], trophy, podium;
+  bool fork_on[MAXCELL / 10 + 1];
+  int cut[NP];                       /* the fork a token's walk crosses by its bridge (-1 none) */
   int mode, ncells, rows;
   float cam[6], cam_t[6];            /* position and target now / wanted */
   float cell[NP], hop[NP], lift[NP]; /* token board cell, hop height, podium lift */
@@ -51,6 +53,11 @@ void hub_build(int humans) {
     H.stalk[p] = n3_glb(lv, "Stalk", "models/stalk.glb", true);
     cw_node_set(H.stalk[p], "visible", cw_val_bool(H.cpu[p]));
   }
+  for (int k = 0; k <= MAXCELL / 10; k++) { /* the shortcuts: a plank bridge across the gap between two rows */
+    H.bridge[k] = n3_glb(lv, "Bridge", "models/bridge.glb", true);
+    cw_node_set(H.bridge[k], "visible", cw_val_bool(false));
+  }
+  for (int p = 0; p < NP; p++) H.cut[p] = -1;
   H.trophy = n3_glb(lv, "Trophy", "models/trophy.glb", true);
   H.podium = n3_glb(lv, "Podium", "models/podium.glb", true);
   cw_node_set(H.podium, "visible", cw_val_bool(false));
@@ -70,7 +77,28 @@ void hub_cells(int n) {
     cw_node v[3] = { H.tile[i], H.star[i], H.endt[i] };
     for (int k = 0; k < 3; k++) n3_pos(v[k], x, 0.15f, z);
   }
+  for (int k = 0; k <= MAXCELL / 10; k++) { /* a fork at cell 10k + 8: the bridge spans to cell 10k + 11, the next row */
+    float x0, z0, x1, z1;
+    cell_xz(10 * k + 8, &x0, &z0);
+    cell_xz(10 * k + 11, &x1, &z1);
+    float gap = fabsf(z1 - z0) - 1.4f; /* tile edge to tile edge; the ends tuck under the tiles */
+    n3_pos(H.bridge[k], (x0 + x1) * 0.5f, 0, (z0 + z1) * 0.5f);
+    n3_scale(H.bridge[k], 1, 1, (gap + 0.5f) / 1.0f);
+  }
 }
+/* fork at cell i on or off (only 10k + 8 cells have one) */
+void hub_fork(int i, bool on) {
+  if (!H.built || i % 10 != 8 || i / 10 > MAXCELL / 10) return;
+  H.fork_on[i / 10] = on;
+  cw_node_set(H.bridge[i / 10], "visible", cw_val_bool(H.mode == 1 && on));
+}
+cw_vec2 hub_fork_screen(int i) {
+  float x0, z0, x1, z1;
+  cell_xz(i, &x0, &z0);
+  cell_xz(i + 3, &x1, &z1);
+  return n3_project((t3_vec3){ (x0 + x1) * 0.5f, 0.15f, (z0 + z1) * 0.5f }); /* on the bridge */
+}
+void hub_token_cut(int p, int cut) { if (H.built) H.cut[p] = cut; }
 
 /* 0 stage (title, menu, pick, trophy), 1 board, 2 podium */
 void hub_mode(int mode) {
@@ -81,7 +109,15 @@ void hub_mode(int mode) {
     cw_node_set(H.star[i], "visible", cw_val_bool(false));
     cw_node_set(H.endt[i], "visible", cw_val_bool(false));
   }
-  if (mode == 1) { float c[6] = { 0, 20.0f, 13.5f, 0, 0, 1.0f }; memcpy(H.cam_t, c, sizeof c); }
+  for (int k = 0; k <= MAXCELL / 10; k++) cw_node_set(H.bridge[k], "visible", cw_val_bool(mode == 1 && H.fork_on[k]));
+  if (mode == 1) { /* over the board: higher and further back for a longer one, so every row and the END are in view */
+    float z0, z1, x;
+    cell_xz(0, &x, &z0);
+    cell_xz(H.ncells, &x, &z1);
+    float zc = (z0 + z1) * 0.5f, more = (float)(H.rows > 4 ? H.rows - 4 : 0);
+    float c[6] = { 0, 20.0f + 4.5f * more, zc + 12.4f + 3.6f * more, 0, 0, zc - 0.1f + 0.5f * more };
+    memcpy(H.cam_t, c, sizeof c);
+  }
   else if (mode == 2) { float c[6] = { 0, 3.2f, 8.2f, 0, 1.0f, 0 }; memcpy(H.cam_t, c, sizeof c); }
   else { float c[6] = { 0, 2.3f, 9.0f, 0, 1.1f, 0 }; memcpy(H.cam_t, c, sizeof c); }
   cw_node_set(H.podium, "visible", cw_val_bool(mode == 2));
@@ -128,9 +164,13 @@ void hub_update(float dt) {
       int c0 = (int)H.cell[p];
       if (c0 > H.ncells) c0 = H.ncells;
       int c1 = c0 + 1 > H.ncells ? H.ncells : c0 + 1;
-      float f = H.cell[p] - (float)c0, x0, z0, x1, z1;
+      float f = H.cell[p] - (float)c0, x0, z0, x1, z1, hopc = fabsf(sinf(H.cell[p] * 3.14159f));
+      int ct = H.cut[p];
+      if (ct >= 0 && H.cell[p] > (float)ct && H.cell[p] < (float)ct + 3) { /* across the bridge: one long hop, straight over */
+        c0 = ct; c1 = ct + 3; f = (H.cell[p] - (float)ct) / 3.0f; hopc = sinf(f * 3.14159f);
+      }
       cell_xz(c0, &x0, &z0); cell_xz(c1, &x1, &z1);
-      pos = (t3_vec3){ flerp(x0, x1, f) + ((float)p - 1.5f) * 0.42f, 0.62f + H.hop[p] + fabsf(sinf(H.cell[p] * 3.14159f)) * 0.5f, flerp(z0, z1, f) + ((float)p - 1.5f) * 0.12f };
+      pos = (t3_vec3){ flerp(x0, x1, f) + ((float)p - 1.5f) * 0.42f, 0.62f + H.hop[p] + hopc * 0.5f, flerp(z0, z1, f) + ((float)p - 1.5f) * 0.12f };
       yaw = cw_atan2(x1 - x0 + 0.001f, z1 - z0);
       if (f < 0.001f || f > 0.999f) yaw = sinf(H.clock + (float)p) * 0.3f;
     } else {

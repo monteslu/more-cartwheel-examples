@@ -78,7 +78,7 @@ static void tick(mg_ctx *c) {
   bool hit[NP][NP] = { { false } };
   for (int i = 0; i < NP; i++)
     for (int j = 0; j < NP; j++) {
-      if (i == j || C.p[i].dash == 0 || C.p[j].stun > 0) continue;
+      if (i == j || C.p[i].dash == 0 || C.p[j].stun > 0 || (pp_mates(c, i, j) && !pp_mates_knock)) continue; /* a teammate's dash passes by */
       float dx = C.p[j].x - C.p[i].x, dy = C.p[j].y - C.p[i].y, d = sqrtf(dx * dx + dy * dy);
       hit[i][j] = d < BR * 2 && d > 0.01f;
     }
@@ -87,11 +87,13 @@ static void tick(mg_ctx *c) {
       if (!hit[i][j]) continue;
       float dx = C.p[j].x - C.p[i].x, dy = C.p[j].y - C.p[i].y, d = sqrtf(dx * dx + dy * dy) + 0.001f;
       {
-        C.p[j].vx += dx / d * 380; C.p[j].vy += dy / d * 380;
-        C.p[j].stun = 24;
-        if (C.p[j].coins > 0) {
+        float g = pp_solo(c, j) ? 0.5f : 1.0f; /* the one alone (1 vs 3) is the heavier: half the knock, a shorter stun */
+        C.p[j].vx += dx / d * 380 * g; C.p[j].vy += dy / d * 380 * g;
+        C.p[j].stun = pp_solo(c, j) ? 12 : 24; /* the one alone shakes it off sooner (one knock a dash, never one a tick) */
+        if (pp_mates(c, i, j)) pp_mate_knocks++;
+        for (int k = pp_solo(c, i) ? 2 : 1; k > 0 && C.p[j].coins > 0; k--) { /* the one alone shakes two loose */
           C.p[j].coins--;
-          spawn(c, 1, C.p[j].x, C.p[j].y, dx / d * 160 + 40, dy / d * 160 - 40);
+          spawn(c, 1, C.p[j].x, C.p[j].y, dx / d * 160 + 40 - (float)k * 30, dy / d * 160 - 40);
         }
         fx_burst(cw_v2(C.p[j].x, C.p[j].y), 8, cw_rgba(1, 0.9f, 0.4f, 1), 200, 0.4f, 6);
         fx_hitstop(3);
@@ -126,7 +128,7 @@ static void tick(mg_ctx *c) {
       }
     }
   }
-  for (int i = 0; i < NP; i++) c->score[i] = (float)C.p[i].coins;
+  for (int i = 0; i < NP; i++) c->score[i] = (float)C.p[i].coins * (pp_solo(c, i) ? 1.5f : 1.0f); /* 1 vs 3: the one alone's coins count half again */
 }
 
 static void think(mg_ctx *c, int p, mg_in *out) {
@@ -140,6 +142,8 @@ static void think(mg_ctx *c, int p, mg_in *out) {
     float d = hypotf(C.c[k].x - C.p[p].x, C.c[k].y - C.p[p].y);
     float sc = (float)C.c[k].val * 140.0f - d + (float)((h + (uint32_t)k * 7u) % (uint32_t)(60 + greed[c->cpu_skill[p]] * 4));
     if (c->cpu_skill[p] == 0) sc -= (float)((h >> 5) % 90);
+    for (int q = 0; q < NP; q++) /* a team splits up: a coin nearer a teammate is the teammate's */
+      if (pp_mates(c, p, q) && hypotf(C.c[k].x - C.p[q].x, C.c[k].y - C.p[q].y) < d) { sc -= 120; break; }
     if (sc > bs) bs = sc, best = k;
   }
   if (best < 0) return;
@@ -149,7 +153,7 @@ static void think(mg_ctx *c, int p, mg_in *out) {
   /* a hard CPU also dashes into a rich neighbour that is close */
   if (c->cpu_skill[p] == 2 && C.p[p].cd == 0) {
     for (int q = 0; q < NP; q++) {
-      if (q == p || C.p[q].coins < 3) continue;
+      if (q == p || C.p[q].coins < 3 || pp_mates(c, p, q)) continue;
       float qx = C.p[q].x - C.p[p].x, qy = C.p[q].y - C.p[p].y, qd = sqrtf(qx * qx + qy * qy);
       if (qd < 90 && (h % 100) < 30) { out->x = qx / qd; out->y = qy / qd; out->south = true; }
     }
@@ -259,6 +263,8 @@ static void score_text(mg_ctx *c, int p, char *buf, int cap) { snprintf(buf, (si
 
 const mg_def mg_coins = {
   .id = "coins", .name = "Coin Rush", .tagline = "Grab the most coins. Gold ones are worth three.",
+  .solo_tip = "Alone? Beat two of the three. Your coins count half again",
+  .team_tip = "Teammates' dashes pass by: spread out and bump the others",
   .how = { MOVE4 ": run over coins to grab them", "{btn_south}: dash (it recharges)", "A dash that bumps a blob shakes a coin loose" },
   .controls = MOVE4 "  {btn_south}",
   .kind = "2D", .scene = NULL, .set = "scenes/coins.cwscene", .seconds = 35, .higher_is_better = true,

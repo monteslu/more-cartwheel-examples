@@ -5,7 +5,10 @@
 // ready, the seats still out see how long the card waits for them ("ready" and the seconds left) and the round
 // starts with everyone after 10 s.
 // The board of round 2 opens on its shop: once the person has picked, the seat still out gets 10 s, then everyone moves.
-// Controls: sw ready_forever 1 (the card waits for every person, as it once did) must keep the round from starting;
+// A fork: with P1's token put on a fork (sw place 0 8) during round 1, the round-2 shop shows the route ({ui_up|ui_down});
+// the person presses down for the shortcut, picks, and the token crosses the bridge (game.cut 8, past cell 11).
+// Controls: sw no_forks 1 (no forks: the route row never shows and the walk goes the long way);
+// sw ready_forever 1 (the card waits for every person, as it once did) must keep the round from starting;
 // sw shop_forever 1 (the shop waits for every person) must keep the board from moving.
 //   node tests/partypack-idle-seat.mjs [--gl] [--webgpu] [--cart <path>]
 import { mkdirSync } from 'node:fs';
@@ -41,7 +44,7 @@ const waitState = async (want, max) => { let f = 0, s; for (; f < max; f += 10) 
 
 // from the title: the seats join (P1, and P2 when idle), Start, Party Tournament, the board, ready on the card; P2
 // never touches its pad. P1 runs about while the round plays (any direction, as someone finding the controls).
-async function run(backend, tag, idle, pre, play = true) {
+async function run(backend, tag, idle, pre, play = true, fork = false) {
   const l = await tool('loadMedia', { platform: 'wasmcart', path: CART, gpuPower: 'low-power', ...(backend === 'gl' ? { wgpu: false } : {}) });
   if (!l.loaded) { console.error(JSON.stringify(l).slice(0, 300)); await bye(3); }
   await step(60);
@@ -63,6 +66,7 @@ async function run(backend, tag, idle, pre, play = true) {
   const r = { unlocked, humans, board: board.s === S_BOARD, intro: intro.s === S_INTRO, left, started: go.s >= S_COUNT, wait: 60 + go.f, results: false, round: 0 };
   if (!r.started || !play) return r;
   await waitState((s) => s === S_PLAY, 400);
+  if (fork) await tool('wasm', { op: 'command', text: 'sw place 0 8' }); /* P1 on the first fork before the board's rolls */
   const dirs = [[1, 0], [0, 1], [-1, 0], [0, -1]];
   let f = 0;
   for (; f < 60 * 120 && +(await rd('game.state')) < S_RESULT; f += 60) {
@@ -79,12 +83,17 @@ async function run(backend, tag, idle, pre, play = true) {
   /* the board's shop: the seat's roll and its pick over its chip, "pick" under it; P1 picks (south), the idle seat never does */
   await step(60);
   r.shop = +(await rd('game.phase')) === 0;
+  r.fork = (await rd('game.fork'))[0];
+  if (fork) { await press(0, 'down'); r.route = (await rd('game.route'))[0]; }
   await shot(`${backend}-${tag}-shop.png`);
   await press(0, 'south');
   let g = 0;
   for (; g < 60 * 14 && +(await rd('game.phase')) === 0; g += 10) await step(10);
   r.shopMoved = +(await rd('game.phase')) === 1;
   r.shopWait = g;
+  r.cut = (await rd('game.cut'))[0];
+  r.cell = (await rd('game.points'))[0];
+  if (fork) await step(110);
   await shot(`${backend}-${tag}-moved.png`);
   return r;
 }
@@ -105,6 +114,10 @@ for (const backend of BACKENDS) {
   check('a second seat nobody plays: the shop moves on within 10 s of the first pick', two.shop && two.shopMoved && two.shopWait > 60 * 8 && two.shopWait <= 60 * 10 + 30, `shop ${two.shop}, moved ${two.shopMoved} after ${two.shopWait} frames`);
   const ctl2 = await run(backend, 'shop-control', true, 'sw shop_forever 1');
   check('control: sw shop_forever 1, the idle seat holds the shop', ctl2.shop && !ctl2.shopMoved, `shop ${ctl2.shop}, moved ${ctl2.shopMoved} in ${ctl2.shopWait} frames`);
+  const fk = await run(backend, 'fork', false, null, true, true);
+  check('a fork: the shop shows the route, down picks the shortcut, the token crosses the bridge', fk.fork === 8 && fk.route === 1 && fk.cut === 8 && fk.cell >= 11, `fork ${fk.fork}, route ${fk.route}, cut ${fk.cut}, cell ${fk.cell}`);
+  const fkc = await run(backend, 'fork-control', false, 'sw no_forks 1', true, true);
+  check('control: sw no_forks 1, no route to pick and the walk goes the long way', !(fkc.fork === 8 && fkc.cut === 8), `fork ${fkc.fork}, route ${fkc.route}, cut ${fkc.cut}, cell ${fkc.cell}`);
   const ctl = await run(backend, 'control', true, 'sw ready_forever 1', false);
   check('control: sw ready_forever 1, the idle seat holds the card', ctl.humans === 2 && ctl.intro && !ctl.started && ctl.left === 0, `${ctl.humans} people, started ${ctl.started} in ${ctl.wait} frames, ${ctl.left} s shown`);
 }

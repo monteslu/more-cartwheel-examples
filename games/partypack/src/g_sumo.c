@@ -49,9 +49,10 @@ static void tick(mg_ctx *c) {
         fx_ring(cw_v2(gx, gy), 10, 90, 0.4f, col_a(PCOL[i], 0.9f));
         sfx(SFX_BOUNCE, 0.4f, 1.3f);
         for (int k = 0; k < NP; k++) {
-          if (!S.b[k].alive) continue;
+          if (!S.b[k].alive || pp_mates(c, i, k)) continue; /* a ghost never bumps its own teammate */
           float dx = S.b[k].x - gx, dy = S.b[k].y - gy, d = sqrtf(dx * dx + dy * dy);
-          if (d < 260 && d > 1) { S.b[k].vx += dx / d * 190; S.b[k].vy += dy / d * 190; }
+          float g = pp_solo(c, k) ? 0.6f : 1.0f; /* the one alone (1 vs 3) is the heavier */
+          if (d < 260 && d > 1) { S.b[k].vx += dx / d * 190 * g; S.b[k].vy += dy / d * 190 * g; }
         }
       }
       continue;
@@ -91,8 +92,14 @@ static void tick(mg_ctx *c) {
       a->x -= nx * over * 0.5f; a->y -= ny * over * 0.5f;
       b->x += nx * over * 0.5f; b->y += ny * over * 0.5f;
       float rel = (b->vx - a->vx) * nx + (b->vy - a->vy) * ny;
-      float ja = a->dash > 0 ? 420 : 0, jb = b->dash > 0 ? 420 : 0;
+      bool mates = pp_mates(c, i, j) && !pp_mates_knock; /* teammates bump like anyone, but a teammate's dash never knocks */
+      if (pp_mates(c, i, j) && !mates && (a->dash > 0 || b->dash > 0)) pp_mate_knocks++;
+      float ja = a->dash > 0 && !mates ? 420 : 0, jb = b->dash > 0 && !mates ? 420 : 0;
+      if (pp_solo(c, i)) ja *= 1.3f;
+      if (pp_solo(c, j)) jb *= 1.3f;
       float pa_ = (rel < 0 ? -rel * 0.9f : 0) + jb, pb_ = (rel < 0 ? -rel * 0.9f : 0) + ja;
+      if (pp_solo(c, i)) pa_ *= 0.6f; /* the one alone takes less of a knock */
+      if (pp_solo(c, j)) pb_ *= 0.6f;
       a->vx -= nx * pa_; a->vy -= ny * pa_;
       b->vx += nx * pb_; b->vy += ny * pb_;
       if (ja + jb > 0 || -rel > 200) {
@@ -127,8 +134,10 @@ static void tick(mg_ctx *c) {
   }
   /* the survivors' score ticks up while they are in, so the strip reads right; the last one standing gets a bonus */
   for (int i = 0; i < NP; i++) if (S.b[i].alive) c->score[i] = (float)(c->tick / 6);
-  if (S.alive <= 1) {
-    for (int i = 0; i < NP; i++) if (S.b[i].alive) c->score[i] += 5; /* the last one on: just ahead of the last to fall */
+  bool in[NP];
+  for (int i = 0; i < NP; i++) in[i] = S.b[i].alive;
+  if (pp_one_side_left(c, in)) { /* the last one on (or the last team): just ahead of the last to fall */
+    for (int i = 0; i < NP; i++) if (S.b[i].alive) c->score[i] += 5;
     c->done = true;
   }
 }
@@ -140,7 +149,7 @@ static void think(mg_ctx *c, int p, mg_in *out) {
   if (!me->alive) { /* ghost: circle round to the thickest crowd and bump now and then */
     /* the blob nearest round the rim from the ghost (the lowest seat used to be everyone's target) */
     float best = 0, bx = 0, bd = 1e9f;
-    for (int k = 0; k < NP; k++) if (S.b[k].alive) {
+    for (int k = 0; k < NP; k++) if (S.b[k].alive && !pp_mates(c, p, k)) {
       float a = atan2f(S.b[k].y - CY, S.b[k].x - CX), da = a - me->ang;
       while (da > 3.14159f) da -= TAU;
       while (da < -3.14159f) da += TAU;
@@ -162,7 +171,7 @@ static void think(mg_ctx *c, int p, mg_in *out) {
   int tgt = -1;
   float bd = 1e9f;
   for (int k = 0; k < NP; k++) {
-    if (k == p || !S.b[k].alive) continue;
+    if (k == p || !S.b[k].alive || pp_mates(c, p, k)) continue;
     /* nearest, with a little per-game noise so an exact tie (the square start) is not always the lower seat */
     float d = hypotf(S.b[k].x - me->x, S.b[k].y - me->y) + (float)(hash_u32(S.seed + (uint32_t)p * 13u, (uint32_t)k + (uint32_t)(c->tick / 120) * 7u) % 24u);
     if (c->cpu_skill[p] == 2) { /* a hard CPU goes for whoever is nearest the edge, within reach */
@@ -326,6 +335,8 @@ static void score_text(mg_ctx *c, int p, char *buf, int cap) { snprintf(buf, (si
 
 const mg_def mg_sumo = {
   .id = "sumo", .name = "Sumo Push", .tagline = "Shove everyone off the shrinking plate. Last blob on it wins.",
+  .solo_tip = "Alone? Outlast two of the three. You are heavy and hit harder",
+  .team_tip = "A teammate's dash never knocks you: shove the other side off",
   .how = { MOVE4 ": move", "{btn_south}: dash and shove (then it recharges)", "Out? Slide your ghost round the rim, {btn_south} bumps them" },
   .controls = MOVE4 "  {btn_south}",
   .kind = "2D", .scene = NULL, .set = "scenes/sumo.cwscene", .seconds = 50, .higher_is_better = true,

@@ -158,6 +158,12 @@ static void think(mg_ctx *c, int p, mg_in *out) {
     /* easy CPUs sometimes chase a farther one: a hash of the buoy and bot decides */
     uint32_t h = hash_u32(R.seed + (uint32_t)p, (uint32_t)k);
     if (c->cpu_skill[p] == 0 && (h % 3) == 0) d += 120;
+    for (int q = 0; q < NP; q++) { /* a team splits up: a buoy nearer a teammate is the teammate's */
+      if (!pp_mates(c, p, q)) continue;
+      t3_vec3 o = cw_node3d_position(R.raft[q]);
+      float ox = R.buoy[k].x - o.x, oz = R.buoy[k].z - o.z;
+      if (ox * ox + oz * oz < dx * dx + dz * dz) { d += 60; break; }
+    }
     if (d < bd) { bd = d; best = k; }
   }
   if (best < 0) return;
@@ -181,6 +187,7 @@ static void score_text(mg_ctx *c, int p, char *buf, int cap) { snprintf(buf, (si
 
 const mg_def mg_raft = {
   .id = "raft", .name = "Raft Rush", .tagline = "Paddle for the buoys. Gold ones count three.",
+  .team_tip = "Your buoys add up: split up",
   .how = { MOVE4 ": paddle", "{btn_south}: burst of speed", "Bump rivals off the buoys" },
   .controls = MOVE4 "  {btn_south}",
   .kind = "3D", .scene = "scenes/raft.cwscene", .seconds = 45, .higher_is_better = true,

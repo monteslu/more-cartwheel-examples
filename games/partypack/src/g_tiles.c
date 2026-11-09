@@ -112,8 +112,10 @@ static void tick(mg_ctx *c) {
     }
   }
   for (int i = 0; i < NP; i++) if (T.p[i].alive) c->score[i] = (float)(c->tick / 6);
-  if (T.alive <= 1) {
-    for (int i = 0; i < NP; i++) if (T.p[i].alive) c->score[i] += 5; /* the last one standing: just ahead of the one who fell last */
+  bool in[NP];
+  for (int i = 0; i < NP; i++) in[i] = T.p[i].alive;
+  if (pp_one_side_left(c, in)) { /* the last one standing (or the last team): just ahead of the one who fell last */
+    for (int i = 0; i < NP; i++) if (T.p[i].alive) c->score[i] += 5;
     c->done = true;
   }
 }
@@ -125,7 +127,7 @@ static void think(mg_ctx *c, int p, mg_in *out) {
   if (!me->alive) { /* ghost: crack a tile under the nearest blob */
     int tgt = -1;
     float bd = 1e9f;
-    for (int k = 0; k < NP; k++) if (T.p[k].alive) { float d = hypotf(T.p[k].x - me->gx, T.p[k].y - me->gy); if (d < bd) bd = d, tgt = k; }
+    for (int k = 0; k < NP; k++) if (T.p[k].alive && !pp_mates(c, p, k)) { float d = hypotf(T.p[k].x - me->gx, T.p[k].y - me->gy); if (d < bd) bd = d, tgt = k; }
     if (tgt >= 0) {
       float dx = T.p[tgt].x - me->gx, dy = T.p[tgt].y - me->gy, d = bd + 0.001f;
       out->x = dx / d; out->y = dy / d;
@@ -299,6 +301,7 @@ static void score_text(mg_ctx *c, int p, char *buf, int cap) { snprintf(buf, (si
 
 const mg_def mg_tiles = {
   .id = "tiles", .name = "Tile Drop", .tagline = "The floor crumbles. Keep moving and be the last one standing.",
+  .team_tip = "The last team standing wins",
   .how = { MOVE4 ": run, a tile you stand on cracks", "{btn_south}: hop a gap (a short flight)", "Out? Ghost cursor, {btn_south} cracks a tile under it" },
   .controls = MOVE4 "  {btn_south}",
   .kind = "2D", .scene = NULL, .set = "scenes/tiles.cwscene", .seconds = 50, .higher_is_better = true,

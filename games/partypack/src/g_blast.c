@@ -281,7 +281,7 @@ static void tick(mg_ctx *c) {
     alive++;
   }
   for (int i = 0; i < NP; i++) if (K.alive[i]) { cw_vec2 p = ball_xz(i); c->score[i] = 10000 - sqrtf(p.x * p.x + p.y * p.y) * 10; }
-  if (alive <= 1) {
+  if (alive <= 1 || pp_one_side_left(c, K.alive)) { /* the last bot (or the last team) on the ring */
     for (int i = 0; i < NP; i++) if (K.alive[i]) c->score[i] = 20000.0f;
     if (c->tick > 60) c->done = true;
   }
@@ -294,7 +294,7 @@ static void think(mg_ctx *c, int p, mg_in *out) {
   if (!K.alive[p]) { /* a CPU ghost steers its marker to a bot and calls the bomb when it is close */
     int best = -1; float bd = 1e9f;
     for (int i = 0; i < NP; i++) {
-      if (!K.alive[i]) continue;
+      if (!K.alive[i] || pp_mates(c, p, i)) continue;
       cw_vec2 q = ball_xz(i);
       float d = (q.x - K.cur_x[p]) * (q.x - K.cur_x[p]) + (q.y - K.cur_z[p]) * (q.y - K.cur_z[p]);
       if (d < bd) { bd = d; best = i; }
@@ -326,7 +326,7 @@ static void think(mg_ctx *c, int p, mg_in *out) {
   else {
     int best = -1; float bd = 1e9f;
     for (int i = 0; i < NP; i++) {
-      if (i == p || !K.alive[i]) continue;
+      if (i == p || !K.alive[i] || pp_mates(c, p, i)) continue;
       cw_vec2 q = ball_xz(i);
       float d = (q.x - me.x) * (q.x - me.x) + (q.y - me.y) * (q.y - me.y);
       if (d < bd) { bd = d; best = i; }
@@ -377,6 +377,7 @@ static void score_text(mg_ctx *c, int p, char *buf, int cap) {
 
 const mg_def mg_blast = {
   .id = "blast", .name = "Blast Ring", .tagline = "Bombs shove, the ring shrinks. Stay on.",
+  .team_tip = "The last team on the ring wins",
   .how = { MOVE4 ": roll", "{btn_south}: dash (knocks others hard)", "Out? Aim a marker, {btn_south} drops a bomb" },
   .controls = MOVE4 "  {btn_south}",
   .kind = "3D", .scene = "scenes/blast.cwscene", .seconds = 60, .higher_is_better = true,

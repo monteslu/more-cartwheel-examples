@@ -65,7 +65,29 @@ typedef struct mg_ctx {
   bool done;         /* set by the game to end early (the clock does it otherwise) */
   bool eliminated[NP]; /* drawn greyed in the strip (games that knock players out) */
   int round;         /* tournament round, 0-based (variants may use it) */
+  int team[NP];      /* a team round: each seat's team (0 or 1), -1 every seat for itself. The games' team rules:
+                      * teammates never knock each other (a dash, a ghost's bump), CPUs never go for a teammate, and a
+                      * last-standing game ends when only one team is left; the framework adds the scores up */
+  int team_mode;     /* 0 every seat for itself, 1 two against two, 2 one (team 0) against three (team 1) */
 } mg_ctx;
+
+/* seats a and b are teammates this round (never a seat with itself) */
+static inline bool pp_mates(const mg_ctx *c, int a, int b) { return a != b && c->team[a] >= 0 && c->team[a] == c->team[b]; }
+/* 1 vs 3: seat p is the one alone (the contact games make it the heavier: it takes half a knock and its dash hits
+ * harder, so three ganging up on it is a fight, not a formality) */
+static inline bool pp_solo(const mg_ctx *c, int p) { return c->team_mode == 2 && c->team[p] == 0; }
+/* a last-standing game is over: one seat left, or in a team round every seat still in is on one team */
+static inline bool pp_one_side_left(const mg_ctx *c, const bool alive[NP]) {
+  int n = 0, t = -2;
+  bool one = true;
+  for (int p = 0; p < NP; p++) {
+    if (!alive[p]) continue;
+    n++;
+    if (t == -2) t = c->team[p];
+    else if (c->team[p] < 0 || c->team[p] != t) one = false;
+  }
+  return n <= 1 || (one && t >= 0);
+}
 
 typedef struct mg_def {
   const char *id;       /* save key and debug name */
@@ -81,6 +103,8 @@ typedef struct mg_def {
   float seconds;        /* the clock; 0 = the game ends itself */
   bool higher_is_better; /* ranking by score: true normally */
   bool team_pairs;      /* reserved */
+  const char *solo_tip; /* 1 vs 3: what the one alone gets in this game, under the teams (NULL: nothing, beat two of the three) */
+  const char *team_tip; /* a team round's rule for this game, under the teams on the card (NULL: "Your scores add up") */
   void (*start)(mg_ctx *c);                          /* the scene is loaded; reset everything */
   void (*tick)(mg_ctx *c);                           /* one play tick */
   void (*think)(mg_ctx *c, int p, mg_in *out);       /* a CPU's input */
@@ -116,6 +140,10 @@ void sfx_music_stop(void);
  * CPU seat's); the view never shakes. Presentation only: nothing reads it back, so a replay is unchanged. A request on
  * top of one still running keeps the stronger of each motor and the longer time; the motors stop on their own. */
 void pp_rumble(const mg_ctx *c, int p, float low, float high, int ms);
+/* team rounds: dash knocks between teammates (the rules say none; test switch PP_MATES_KNOCK=1 in the autopilot
+ * build lets them knock again, the control of the team gate) */
+extern int pp_mate_knocks;
+extern bool pp_mates_knock;
 void pp_rumble_tick(void);     /* the framework, every tick: the rumble's clock */
 void pp_rumble_stop(void);     /* every pad's motors off now (out of play, Rumble turned off) */
 extern bool pp_rumble_off;     /* the menu's Rumble setting (saved) */
@@ -247,6 +275,9 @@ void hub_cell(int i, int kind);           /* a board cell: 0 plain, 1 star, 2 th
 void hub_token(int p, float cell, float hop);
 void hub_podium_slot(int p, int rank, float lift);
 cw_vec2 hub_cell_screen(int i);
+void hub_fork(int i, bool on);             /* the shortcut bridge of the fork at cell i (10k + 8) */
+cw_vec2 hub_fork_screen(int i);            /* the bridge's middle on screen */
+void hub_token_cut(int p, int cut);        /* the token's walk crosses the bridge of fork `cut` (-1 none) */
 cw_vec2 hub_podium_screen(int rank);
 void hub_update(float dt);
 

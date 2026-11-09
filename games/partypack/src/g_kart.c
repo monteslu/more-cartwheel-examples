@@ -17,7 +17,7 @@ static const float LTOT = 2 * SLEN + 2 * PI_ * RAD_;
 static struct {
   cw_node kart[NP], body[NP], face[NP], wheel[NP][4];
   float s[NP], d[NP], v[NP], dist[NP];
-  int lap[NP], finished[NP], nitro[NP], boost[NP], slow[NP], spin[NP], bump_t[NP];
+  int lap[NP], finished[NP], nitro[NP], boost[NP], slow[NP], spin[NP], bump_t[NP], draft_t[NP]; /* draft_t: ticks spent drafting a teammate */
   struct { float s, d; int kind; cw_node node; } haz[NHAZ];
   uint32_t seed;
   int finish_order;
@@ -127,6 +127,11 @@ static void tick(mg_ctx *c) {
     float vmax = 11.5f;
     if (Rc.boost[i] > 0) { Rc.boost[i]--; vmax = 18.0f; }
     if (Rc.slow[i] > 0) { Rc.slow[i]--; vmax = 4.5f; }
+    for (int j = 0; j < NP && !Rc.finished[i] && vmax < 13.0f && Rc.slow[i] == 0; j++) { /* a team round: tucked in behind a teammate, the kart drafts */
+      if (!pp_mates(c, i, j) || Rc.finished[j]) continue;
+      float rel = fmodf(Rc.s[j] - Rc.s[i] + LTOT * 8, LTOT);
+      if (rel > 1.9f && rel < 7.0f && fabsf(Rc.d[j] - Rc.d[i]) < 1.6f) { vmax = 13.0f; Rc.draft_t[i]++; }
+    }
     if (Rc.finished[i]) vmax = 0;
     if (in->psouth && Rc.nitro[i] > 0 && Rc.boost[i] == 0 && !Rc.finished[i]) {
       Rc.nitro[i]--; Rc.boost[i] = 70;
@@ -207,6 +212,13 @@ static void think(mg_ctx *c, int p, mg_in *out) {
       if (want < -TW * 0.5f + 1) want = Rc.haz[h].d + 2.2f;
     } else if (rel > 0 && rel < 9 && Rc.haz[h].kind == 2 && c->cpu_skill[p] > 0) want = Rc.haz[h].d;
   }
+  /* a team round: a CPU with a teammate just ahead tucks in behind it (unless a hazard is in that lane) */
+  if (c->cpu_skill[p] > 0 && want == -2.6f)
+    for (int j = 0; j < NP; j++) {
+      if (!pp_mates(c, p, j) || Rc.finished[j]) continue;
+      float rel = fmodf(Rc.s[j] - Rc.s[p] + LTOT * 8, LTOT);
+      if (rel > 1.9f && rel < 9.0f) { want = Rc.d[j]; break; }
+    }
   /* skill 0 wanders */
   if (c->cpu_skill[p] == 0) want += ((float)(hash_u32(Rc.seed + (uint32_t)p, (uint32_t)(c->tick / 50)) % 100) - 50.0f) / 25.0f;
   float dx = want - Rc.d[p];
@@ -269,6 +281,7 @@ static void score_text(mg_ctx *c, int p, char *buf, int cap) {
 
 const mg_def mg_kart = {
   .id = "loop", .name = "Loop Racers", .tagline = "Three laps. The inside lane is short and full of traps.",
+  .team_tip = "Tuck in behind your teammate to draft",
   .how = { MOVE_LR ": change lane", "{btn_south}: nitro burst (three of them)", "Blue pads boost, oil and barrels slow" },
   .controls = MOVE_LR "  {btn_south}",
   .kind = "3D", .scene = "scenes/kart.cwscene", .seconds = 60, .higher_is_better = true,
