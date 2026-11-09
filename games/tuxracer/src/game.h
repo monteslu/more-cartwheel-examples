@@ -179,6 +179,9 @@ void course_destroy_objects(course *c);
 void course_set_tree_coverage(bool on);
 void course_set_night(bool night); /* the trunk prints under moonlight */
 void course_objects_show(const char *what, bool on); /* "trees", "splats", "items", "all" */
+#define CUE_N 8
+/* the trees, herring and flags drawn ahead (screen thousandths: x, foot y, width), nearest first; n: how many of each */
+void course_cues(const course *c, t3_vec3 eye, t3_vec3 dir, t3_vec3 up, float fov_deg, float aspect, int32_t out[3][CUE_N * 3], int32_t n[3]);
 /* the terrain's quality tier (cartwheel/quality.h levels; -1 = follow the
  * graphics preset): a graphics lever, kept across course loads */
 void course_set_terrain_quality(int q);

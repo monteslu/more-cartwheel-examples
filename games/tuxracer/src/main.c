@@ -54,7 +54,7 @@ typedef struct save_data {
   /* version 3 from here on (a version 2 save, which ends above, still loads: no ghosts yet) */
   ghost_run ghosts[MAX_COURSES]; /* the fastest finished run per course */
 } save_data;
-enum { OPT_GHOST_OFF = 1, OPT_CLASSIC_CAMERA = 2 };
+enum { OPT_GHOST_OFF = 1, OPT_CLASSIC_CAMERA = 2, OPT_TRICKS = 4 };
 static save_data SAVE;
 #define SAVE_V1_SIZE (12 + 16 * MAX_COURSES + 12)
 #define SAVE_V2_SIZE (SAVE_V1_SIZE + 4)
@@ -435,6 +435,7 @@ static const char *ghost_key(const char *dir, bool mirrored) {
   return k;
 }
 static bool ghost_wanted(void) { return G.mode == MODE_PRACTICE && !(SAVE.opts & OPT_GHOST_OFF); }
+static bool tricks_on(void) { return G.mode == MODE_PRACTICE && (SAVE.opts & OPT_TRICKS); }
 
 /* the ghost's look: Tux in pale blue glass, no shadow (a thing that is not there casts none) */
 static void ghost_look(tux_model *m) {
@@ -543,8 +544,61 @@ static void cmd_ghost(int argc, const char **argv, cw_reply *r) {
  * 15 to 90 km/h, eased (a half-second time constant) so a bump or a tree hit never jerks it; after the finish it
  * eases back. Racing ticks only feed it a speed: the simulation never reads it. */
 static float cam_fov = 60, cam_k;
+/* what the view shows ahead (course_cues): the newcomer gate steers by it */
+static int32_t cues[3][CUE_N * 3], cue_n[3];
 static int32_t dbg_fov[3]; /* cam.fov: now, least and most this race (0.01 degree) */
 static int32_t chain[2], chain_tick; /* race.chain: the herring chain now, the longest this race */
+
+/* Trick mode (the Practice card's Tricks row; never in the Cup). In the air the stick spins Tux (left and right) and
+ * brake flips him forward; a landing within TRICK_CLEAN degrees of whole turns pays for them, any other landing pays
+ * nothing. Render and score only: the slide, the physics and the course are the original's either way (in the air the
+ * steering and the brake do nothing to the physics), and the score of a run without tricks is the original's formula.
+ * trick: [points this run, clean landings, bad landings, the last landing's points, yaw now, pitch now (degrees)] */
+#define TRICK_CLEAN 50.0f
+#define TRICK_SPIN_RATE 600.0f
+#define TRICK_FLIP_RATE 520.0f
+static struct { float yaw, pitch, vy, vp, settle, msg_t; int points, clean, bad, last, msg_bad; char msg[64]; int32_t dbg[6]; float force_yaw, force_pitch; bool forced; } TR;
+static bool tricks_on(void);
+static float whole_turn_off(float deg) { float r = fmodf(fabsf(deg), 360.0f); return fminf(r, 360.0f - r); }
+static void trick_reset(void) { float fy = TR.force_yaw, fp = TR.force_pitch; bool fo = TR.forced; memset(&TR, 0, sizeof TR); TR.force_yaw = fy, TR.force_pitch = fp, TR.forced = fo; }
+static void trick_tick(bool airborne, bool was_airborne, float turn, bool brake, float dt) {
+  if (airborne) {
+    if (TR.forced) TR.yaw = TR.force_yaw, TR.pitch = TR.force_pitch, TR.forced = false; /* dev: trick set */
+    float ty = turn * TRICK_SPIN_RATE, tp = brake ? TRICK_FLIP_RATE : 0, k = fminf(1, dt * 10);
+    TR.vy += (ty - TR.vy) * k, TR.vp += (tp - TR.vp) * k;
+    TR.yaw += TR.vy * dt, TR.pitch += TR.vp * dt;
+    TR.settle = 0;
+  } else if (was_airborne) {
+    /* the landing: whole turns within TRICK_CLEAN degrees pay; anything else is a bad landing */
+    int spins = (int)lroundf(fabsf(TR.yaw) / 360), flips = (int)lroundf(fabsf(TR.pitch) / 360);
+    bool tried = fabsf(TR.yaw) > 120 || fabsf(TR.pitch) > 120;
+    bool clean = whole_turn_off(TR.yaw) <= TRICK_CLEAN && whole_turn_off(TR.pitch) <= TRICK_CLEAN && spins + flips > 0;
+    if (clean) {
+      int pts = spins * 150 + flips * 300;
+      if (spins && flips) pts = pts * 3 / 2;
+      TR.points += pts, TR.clean++, TR.last = pts, TR.msg_bad = 0;
+      if (spins && flips) snprintf(TR.msg, sizeof TR.msg, "Flip and spin %d  +%d", spins * 360, pts);
+      else if (flips) snprintf(TR.msg, sizeof TR.msg, flips > 1 ? "Flip x%d  +%d" : "Flip  +%d", flips > 1 ? flips : pts, pts);
+      else snprintf(TR.msg, sizeof TR.msg, "Spin %d  +%d", spins * 360, pts);
+      TR.msg_t = 0;
+    } else if (tried) {
+      TR.bad++, TR.last = 0, TR.msg_bad = 1;
+      snprintf(TR.msg, sizeof TR.msg, "Bad landing");
+      TR.msg_t = 0;
+    }
+    /* what is left of the turn eases out: quickly after a clean landing, slower after a bad one (a tumble) */
+    TR.yaw -= 360.0f * roundf(TR.yaw / 360), TR.pitch -= 360.0f * roundf(TR.pitch / 360);
+    TR.vy = TR.vp = 0;
+    TR.settle = clean || !tried ? 0.12f : 0.4f;
+  } else if (TR.yaw != 0 || TR.pitch != 0) {
+    float k = fminf(1, dt / fmaxf(0.05f, TR.settle > 0 ? TR.settle * 0.35f : 0.05f));
+    TR.yaw -= TR.yaw * k, TR.pitch -= TR.pitch * k;
+    if (fabsf(TR.yaw) < 0.5f && fabsf(TR.pitch) < 0.5f) TR.yaw = TR.pitch = 0;
+  }
+  TR.msg_t += dt;
+  TR.dbg[0] = TR.points, TR.dbg[1] = TR.clean, TR.dbg[2] = TR.bad, TR.dbg[3] = TR.last;
+  TR.dbg[4] = (int32_t)lrintf(TR.yaw), TR.dbg[5] = (int32_t)lrintf(TR.pitch);
+}
 static void speed_camera(float speed, float dt) {
   bool classic = SAVE.opts & OPT_CLASSIC_CAMERA;
   float x = fmaxf(0, fminf(1, (speed - 4.0f) / 21.0f)), target = classic ? 0 : x * x * (3 - 2 * x);
@@ -560,10 +614,15 @@ static void speed_camera(float speed, float dt) {
 }
 
 /* opt <ghost|camera> <on|off|classic|speed>: the Practice ghost row and the Settings camera row, for tests */
+static void cmd_trick(int argc, const char **argv, cw_reply *r) {
+  if (argc >= 4 && !strcmp(argv[1], "set")) TR.force_yaw = (float)atof(argv[2]), TR.force_pitch = (float)atof(argv[3]), TR.forced = true;
+  cw_reply_printf(r, "{\"points\":%d,\"clean\":%d,\"bad\":%d,\"forced\":%d}", TR.points, TR.clean, TR.bad, TR.forced ? 1 : 0);
+}
 static void cmd_opt(int argc, const char **argv, cw_reply *r) {
   if (argc < 3) { cw_reply_str(r, "usage: opt ghost on|off | opt camera speed|classic"); return; }
   if (!strcmp(argv[1], "ghost")) SAVE.opts = (uint8_t)(!strcmp(argv[2], "off") ? SAVE.opts | OPT_GHOST_OFF : SAVE.opts & ~OPT_GHOST_OFF);
   else if (!strcmp(argv[1], "camera")) SAVE.opts = (uint8_t)(!strcmp(argv[2], "classic") ? SAVE.opts | OPT_CLASSIC_CAMERA : SAVE.opts & ~OPT_CLASSIC_CAMERA);
+  else if (!strcmp(argv[1], "tricks")) SAVE.opts = (uint8_t)(!strcmp(argv[2], "on") ? SAVE.opts | OPT_TRICKS : SAVE.opts & ~OPT_TRICKS);
   else { cw_reply_str(r, "unknown option"); return; }
   cw_reply_str(r, "ok");
 }
@@ -638,6 +697,7 @@ static void start_racing(void) {
   G.race_ticks = 0;
   cam_k = 0, dbg_fov[1] = dbg_fov[2] = 0;
   chain[0] = chain[1] = 0, chain_tick = 0;
+  trick_reset();
   speed_camera(0, 0);
   ghost_rec_begin(&G.rec, fnv(ghost_key(G.info->dir, G.mirrored), strlen(ghost_key(G.info->dir, G.mirrored))), G.phys.pos);
   rec_full[0][0] = G.phys.pos.x, rec_full[0][1] = G.phys.pos.y, rec_full[0][2] = G.phys.pos.z;
@@ -732,7 +792,7 @@ static void race_over(bool aborted) {
   G.phys.enabled = false;
   G.aborted = aborted;
   float par = G.mode == MODE_CUP ? G.cups[G.cup_idx].races[G.race_idx].time[0] : G.info->par; /* game_logic_util.c: the easy time is par */
-  G.score = aborted ? 0 : (int)fmaxf(0, 100 * (par - G.race_time) + 200 * (float)G.herring);
+  G.score = aborted ? 0 : (int)fmaxf(0, 100 * (par - G.race_time) + 200 * (float)G.herring) + (tricks_on() ? TR.points : 0);
   if (G.mode == MODE_CUP) {
     const cup_race *r = &G.cups[G.cup_idx].races[G.race_idx];
     G.time_req = r->time[DIFFICULTY], G.herring_req = r->herring[DIFFICULTY], G.score_req = r->score[DIFFICULTY];
@@ -744,7 +804,7 @@ static void race_over(bool aborted) {
   G.medal = 0, G.best_time_new = 0;
   if (!aborted) {
     best_entry *b = best_of(G.info->dir);
-    if (b && (b->score == 0 && b->time == 0 ? true : G.score > b->score)) { b->score = G.score, b->time = G.race_time, b->herring = G.herring; G.new_best = true; }
+    if (b && !tricks_on() && (b->score == 0 && b->time == 0 ? true : G.score > b->score)) { b->score = G.score, b->time = G.race_time, b->herring = G.herring; G.new_best = true; }
     /* the medal of this time, and the fastest run kept as the course's ghost */
     G.medal = medal_for(G.info, G.race_time);
     G.finish_events++;
@@ -805,6 +865,7 @@ static void racing_tick(float dt) {
     impacts++;
     rumble(fminf(1, fabsf(p->vel.y) * 0.12f + 0.2f), 0.2f, 140); /* the touchdown in the pad (a no-op without motors) */
   }
+  if (tricks_on()) trick_tick(p->airborne && !G.reset_ticks, G.was_airborne, turn, cw_action_pressed(0, G.a_brake), dt);
   G.was_airborne = p->airborne;
   G.squash_v += (-G.squash * 160 - G.squash_v * 14) * dt;
   G.squash += G.squash_v * dt;
@@ -851,6 +912,16 @@ static void place_tux(t3_vec3 body_pos) {
    * orientation itself steers the flap force, so it stays the original's) */
   float extra = (G.phys.braking ? 55.0f : 30.0f) * 0.35f * G.phys.turn_anim;
   t3_quat lean = t3_quat_multiply(G.phys.orientation, tr_quat_axis_angle((t3_vec3){ 0, 1, 0 }, TR_DEG(extra)));
+  if (TR.yaw != 0 || TR.pitch != 0) {
+    /* trick mode: a spin about the world's up and a flip about the level line across his travel (render only) */
+    t3_vec3 v = { G.phys.vel.x, 0, G.phys.vel.z };
+    t3_vec3 side = t3_vec3_length_sq(v) > 1e-6f ? t3_vec3_normalize(t3_vec3_cross(v, (t3_vec3){ 0, 1, 0 })) : (t3_vec3){ 1, 0, 0 };
+    t3_quat q = t3_quat_multiply(tr_quat_axis_angle((t3_vec3){ 0, 1, 0 }, TR_DEG(TR.yaw)), tr_quat_axis_angle(side, TR_DEG(-TR.pitch)));
+    lean = t3_quat_multiply(q, lean);
+    /* turning about his middle, not the model's root at his belly */
+    t3_vec3 mid = { 0, 0.35f, 0 }, off = t3_vec3_sub(mid, t3_vec3_apply_quat(mid, q));
+    at = t3_vec3_add(at, off);
+  }
   tux_set_transform(&G.tux, at, lean);
   tux_set_squash(&G.tux, G.squash);
   /* the contact shadow: on the surface under the belly, fading as he flies */
@@ -932,10 +1003,10 @@ static void title_tick(void) {
 }
 
 static void practice_tick(void) {
-  /* rows: course (left/right), conditions, wind, snow, mirror, ghost, Race, Back */
+  /* rows: course (left/right), conditions, wind, snow, mirror, ghost, tricks, Race, Back */
   int row = G.cursor;
-  if (cw_action_just_pressed(0, G.m_down)) row = (row + 1) % 8;
-  if (cw_action_just_pressed(0, G.m_up)) row = (row + 7) % 8;
+  if (cw_action_just_pressed(0, G.m_down)) row = (row + 1) % 9;
+  if (cw_action_just_pressed(0, G.m_up)) row = (row + 8) % 9;
   G.cursor = row;
   int d = (cw_action_just_pressed(0, G.m_right) ? 1 : 0) - (cw_action_just_pressed(0, G.m_left) ? 1 : 0);
   if (d && row == 0) G.practice_course = (G.practice_course + G.ncourses + d) % G.ncourses;
@@ -945,8 +1016,9 @@ static void practice_tick(void) {
   if (d && row == 4) G.practice_mirror = !G.practice_mirror;
   bool accept = cw_action_just_pressed(0, G.m_accept);
   if ((d || accept) && row == 5) { SAVE.opts ^= OPT_GHOST_OFF; save_write(); }
-  if (accept && (row == 6 || row == 0)) begin_loading(G.courses[G.practice_course].dir, G.practice_cond, G.practice_wind, G.practice_mirror, G.practice_snow);
-  if ((accept && row == 7) || cw_action_just_pressed(0, G.m_back)) { G.state = ST_TITLE; G.cursor = 1; }
+  if ((d || accept) && row == 6) { SAVE.opts ^= OPT_TRICKS; save_write(); }
+  if (accept && (row == 7 || row == 0)) begin_loading(G.courses[G.practice_course].dir, G.practice_cond, G.practice_wind, G.practice_mirror, G.practice_snow);
+  if ((accept && row == 8) || cw_action_just_pressed(0, G.m_back)) { G.state = ST_TITLE; G.cursor = 1; }
 }
 
 static void cup_tick(void) {
@@ -1004,7 +1076,7 @@ static void race_over_tick(float dt) {
   view_update(&G.view, &G.phys, &G.course, dt);
   if (G.over_time < 0.5f) return;
   if (cw_action_just_pressed(0, G.m_accept) || cw_action_just_pressed(0, G.m_back)) {
-    if (G.mode == MODE_PRACTICE) { G.state = ST_PRACTICE; G.cursor = 6; } /* on Race!: one press races again */
+    if (G.mode == MODE_PRACTICE) { G.state = ST_PRACTICE; G.cursor = 7; } /* on Race!: one press races again */
     else {
       const cup_def *cup = &G.cups[G.cup_idx];
       if (G.won && G.race_idx + 1 < cup->count) G.race_idx++;
@@ -1203,6 +1275,12 @@ static void init(void *user) {
   cw_debug_f32("dbg.alpha", &G.dbg_alpha);             /* render-time: the interpolation alpha */
   cw_debug_f32_array("dbg.body_r", G.dbg_body_r, 3);   /* render-time: the interpolated body position Tux is drawn at */
   cw_debug_f32_array("dbg.cam_r", G.dbg_cam_r, 6);     /* render-time: the camera position and direction */
+  cw_debug_field("cue.trees", cues[0], CW_DBG_I32, CUE_N * 3);   /* render-time: what the view shows ahead (course_cues) */
+  cw_debug_field("cue.herring", cues[1], CW_DBG_I32, CUE_N * 3);
+  cw_debug_field("cue.flags", cues[2], CW_DBG_I32, CUE_N * 3);
+  cw_debug_field("cue.n", cue_n, CW_DBG_I32, 3);
+  cw_debug_field("trick", TR.dbg, CW_DBG_I32, 6); /* trick mode: points, clean landings, bad landings, the last landing's points, yaw, pitch */
+  cw_debug_command("trick", "trick set <yaw> <pitch>: the next time he is in the air he is turned that far (degrees), as if by the stick (tests)", cmd_trick);
 }
 
 static void fixed_update(void *user, double ddt) {
@@ -1438,8 +1516,33 @@ static void pre_render_hook(cw_tree *t, double alpha, void *u) {
   cw_node3d_set_position(G.cam, pos);
   cw_node3d_look_at(G.cam, t3_vec3_add(pos, dir), up);
   offsetgate(pos, dir);
+  cw_vec2 csz = cw_r2d_canvas_size();
+  course_cues(&G.course, pos, dir, up, cam_fov, csz.y > 0 ? csz.x / csz.y : 16.0f / 9.0f, cues, cue_n);
   G.dbg_cam_r[0] = pos.x, G.dbg_cam_r[1] = pos.y, G.dbg_cam_r[2] = pos.z;
   G.dbg_cam_r[3] = dir.x, G.dbg_cam_r[4] = dir.y, G.dbg_cam_r[5] = dir.z;
+}
+
+/* trick mode's HUD: the points under the time card, the last landing's call in the middle of the sky (it swells in and
+ * fades over 1.6 s, never a blink), and the controls for the first seconds of a run */
+static void trick_hud(void) {
+  hud_begin();
+  cw_vec2 size = cw_r2d_canvas_size();
+  char buf[48];
+  snprintf(buf, sizeof buf, "TRICKS  %05d", TR.points);
+  cw_text_metrics m = hud_measure(true, buf, 26, 0);
+  float top = hud_top_bottom() + 6, w = fmaxf(236, m.width + 32), h = m.height * 0.9f + 18;
+  hud_panel(12, top, w, h, 0.42f);
+  hud_title(buf, 28, top + 9, 26, (cw_color){ 1, 0.9f, 0.2f, 1 }, 0);
+  if (TR.msg[0] && TR.msg_t < 1.6f) {
+    float t = TR.msg_t, in = fminf(1, t / 0.25f), out = t > 1.0f ? 1 - (t - 1.0f) / 0.6f : 1, a = fmaxf(0, fminf(in * in * (3 - 2 * in), out));
+    cw_color c = TR.msg_bad ? (cw_color){ 0.85f, 0.9f, 1, a } : (cw_color){ 1, 0.85f, 0.3f, a };
+    hud_title(TR.msg, size.x / 2, size.y * 0.22f, 38 + 6 * in, c, 1);
+  }
+  if (G.race_time < 7) {
+    float a = G.race_time < 5 ? 0.85f : 0.85f * (7 - G.race_time) / 2;
+    hud_prompt("In the air: {left} {right} spin   {brake} flip   land straight to score", size.x / 2, size.y - 64, 20, (cw_color){ 1, 1, 1, a }, 1);
+  }
+  hud_end();
 }
 
 static void render(void *user, double alpha) {
@@ -1481,19 +1584,20 @@ static void render(void *user, double alpha) {
       char preview[128];
       snprintf(preview, sizeof preview, "courses/%s/preview.png", c->dir);
       hud_title("Practice", size.x / 2, 40, 48, (cw_color){ 1, 0.9f, 0.2f, 1 }, 1);
-      const char *rows[8];
+      const char *rows[9];
       snprintf(buf, sizeof buf, "<  %s  >", c->title);
-      char r1[64], r2[64], r3[64], r4[64], r5[64];
+      char r1[64], r2[64], r3[64], r4[64], r5[64], r6[64];
       snprintf(r1, sizeof r1, "Conditions:  < %s >", COND_NAME[G.practice_cond]);
       snprintf(r2, sizeof r2, "Wind:  < %s >", G.practice_wind ? "On" : "Off");
       snprintf(r3, sizeof r3, "Snow:  < %s >", G.practice_snow ? "On" : "Off");
       snprintf(r4, sizeof r4, "Mirror:  < %s >", G.practice_mirror ? "On" : "Off");
       snprintf(r5, sizeof r5, "Ghost:  < %s >", SAVE.opts & OPT_GHOST_OFF ? "Off" : "On");
-      rows[0] = buf, rows[1] = r1, rows[2] = r2, rows[3] = r3, rows[4] = r4, rows[5] = r5, rows[6] = "Race!", rows[7] = "Back";
-      const float sizes[8] = { 30, 24, 24, 24, 24, 24, 24, 24 };
+      snprintf(r6, sizeof r6, "Tricks:  < %s >", SAVE.opts & OPT_TRICKS ? "On" : "Off");
+      rows[0] = buf, rows[1] = r1, rows[2] = r2, rows[3] = r3, rows[4] = r4, rows[5] = r5, rows[6] = r6, rows[7] = "Race!", rows[8] = "Back";
+      const float sizes[9] = { 30, 24, 24, 24, 24, 24, 24, 24, 24 };
       /* the card: the rows (they scroll when the text is large), the course's description, par and best under them */
       float card_w = 520;
-      for (int i = 0; i < 8; i++) card_w = fmaxf(card_w, hud_measure(true, rows[i], sizes[i], 0).width + 60);
+      for (int i = 0; i < 9; i++) card_w = fmaxf(card_w, hud_measure(true, rows[i], sizes[i], 0).width + 60);
       float cx = size.x / 2, right = size.x - 210; /* the preview's column */
       if (cx + card_w / 2 > right - 8) { card_w = fminf(card_w, right - 20); cx = fmaxf(12 + card_w / 2, right - 8 - card_w / 2); }
       float iw = card_w - 40, ix = cx - iw / 2;
@@ -1514,21 +1618,21 @@ static void render(void *user, double alpha) {
       float drawn = fmaxf(hud_drawn(true, 30), hud_drawn(true, 24)), step = drawn * pitch;
       float card_top = 40 + hud_measure(true, "Practice", 48, 0).height + 6;
       float info_h = hd + 6 + hp + (b ? 6 + hb : 0) + 12;
-      float card_bottom = fminf(size.y - 12, fmaxf(508, card_top + 16 + 8 * step + info_h));
+      float card_bottom = fminf(size.y - 12, fmaxf(508, card_top + 16 + 9 * step + info_h));
       hud_panel(cx - card_w / 2, card_top, card_w, card_bottom - card_top, 0.42f);
       hud_panel(size.x - 200, 100, 180, 180, 0.42f);
       hud_image(preview, size.x - 190, 110, 160, 160);
       float info_y = fmaxf(card_bottom - info_h, card_top + 16 + 42 * hud_drawn(true, 30) / 30 + 8);
       int fit = (int)floorf((info_y - 8 - (card_top + 16)) / step);
       if (fit < 1) fit = 1;
-      int first = list_first(8, G.cursor, fit), shown = 8 - first < fit ? 8 - first : fit;
+      int first = list_first(9, G.cursor, fit), shown = 9 - first < fit ? 9 - first : fit;
       for (int r = 0; r < shown; r++) {
         int i = first + r;
         hud_title(rows[i], cx, card_top + 16 + step * (float)r, sizes[i], i == G.cursor ? MENU_YELLOW : MENU_WHITE, 1);
       }
       float a = 9 * drawn / 30;
       if (first > 0) more_arrow(cx + card_w / 2 - 20 - a, card_top + 10, a, true);
-      if (first + shown < 8) more_arrow(cx + card_w / 2 - 20 - a, card_top + 16 + step * (float)shown - 8, a, false);
+      if (first + shown < 9) more_arrow(cx + card_w / 2 - 20 - a, card_top + 16 + step * (float)shown - 8, a, false);
       float y = info_y;
       if (hd > 0) y += hud_text_box(false, c->desc, ix, y, iw, 17, (cw_color){ 1, 1, 1, 0.85f }, 1) + 6;
       y += hud_text_box(false, par, ix, y, iw, 16, (cw_color){ 1, 1, 1, 0.6f }, 1) + 6;
@@ -1645,6 +1749,7 @@ static void render(void *user, double alpha) {
     case ST_RACING:
       hud_chain(chain[0], (float)(G.race_ticks - chain_tick) / TICK_HZ);
       if (!getenv("TUXRACER_NO_HUD")) hud_draw(&G.phys, G.race_time, G.herring, G.mode == MODE_CUP ? G.lives : 0); /* dev: key art without the HUD */
+      if (tricks_on() && !getenv("TUXRACER_NO_HUD")) trick_hud();
       break;
     case ST_PAUSED: {
       const char *const ITEMS[] = { "Resume", "Settings", SAVE.rumble_off ? "Rumble: Off" : "Rumble: On", "Quit race" };
@@ -1660,7 +1765,9 @@ static void render(void *user, double alpha) {
       hud_draw(&G.phys, G.race_time, G.herring, G.mode == MODE_CUP ? G.lives : 0);
       hud_begin();
       size = cw_r2d_canvas_size();
-      const char *msg = G.aborted ? "Race aborted." :
+      char trick_msg[96];
+      snprintf(trick_msg, sizeof trick_msg, "Tricks: %d points, %d clean landing%s, %d bad", TR.points, TR.clean, TR.clean == 1 ? "" : "s", TR.bad);
+      const char *msg = G.aborted ? "Race aborted." : tricks_on() ? trick_msg :
         G.mode == MODE_PRACTICE ? (G.best_time_new == 2 ? "New best time! Your ghost races this run from now on." :
                                    G.best_time_new == 1 && ghost_wanted() ? "Your ghost will race this run next time." : G.new_best ? "You beat your best score!" : "") :
         G.won && G.race_idx + 1 >= G.cups[G.cup_idx].count ? "Congratulations! You won the cup!" : G.won ? "You advanced to the next race!" :

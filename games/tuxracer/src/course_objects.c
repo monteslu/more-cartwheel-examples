@@ -602,3 +602,52 @@ void course_destroy_objects(course *c) {
   if (cw_body3d_valid(O.statics)) cw_body3d_destroy(O.statics);
   O.statics = (cw_body3d){ 0 };
 }
+
+/* What the player sees ahead, for the newcomer gate (tests/tuxracer-newcomer.mjs reads it as debug fields): the trees,
+ * herring and flags drawn in the view within 50 m, nearest first, each as its screen place in thousandths of the width
+ * and height (x of its middle, y of its foot) and its screen width in thousandths. Only what is drawn counts: a hidden
+ * group (the hide command) and a herring already taken are left out. */
+static bool group_shown(int type) {
+  if (type <= OBJ_TREE2) {
+    if (type == OBJ_TREE3) return O.trees[OBJ_TREE3][0] && O.trees[OBJ_TREE3][0]->mesh.base.visible;
+    if (type == OBJ_TREE1) return O.conifer[0][0][0] ? O.conifer[0][0][0]->mesh.base.visible : O.trees[OBJ_TREE1][0] && O.trees[OBJ_TREE1][0]->mesh.base.visible;
+    return O.barren[0][0] ? O.barren[0][0]->mesh.base.visible : O.trees[OBJ_TREE2][0] && O.trees[OBJ_TREE2][0]->mesh.base.visible;
+  }
+  return O.item_im[type] && O.item_im[type]->mesh.base.visible;
+}
+void course_cues(const course *c, t3_vec3 eye, t3_vec3 dir, t3_vec3 up, float fov_deg, float aspect, int32_t out[3][CUE_N * 3], int32_t n[3]) {
+  t3_vec3 f = t3_vec3_normalize(dir), r = t3_vec3_normalize(t3_vec3_cross(f, up)), u = t3_vec3_cross(r, f);
+  float ty = tanf(fov_deg * 0.5f * 0.017453292f), tx = ty * aspect;
+  float best[3][CUE_N];
+  for (int g = 0; g < 3; g++) {
+    n[g] = 0;
+    for (int i = 0; i < CUE_N * 3; i++) out[g][i] = -1;
+  }
+  bool shown[OBJ_KINDS];
+  for (int t = 0; t < OBJ_KINDS; t++) shown[t] = t == OBJ_FLOAT ? false : group_shown(t);
+  for (int i = 0; i < c->object_count; i++) {
+    const course_object *o = &c->objects[i];
+    int g = o->type <= OBJ_TREE2 ? 0 : o->type == OBJ_HERRING ? 1 : o->type == OBJ_FLAG ? 2 : -1;
+    if (g < 0 || !shown[o->type] || (g == 1 && o->collected)) continue;
+    float yc = g == 1 ? o->y + o->height * 0.5f : o->y;
+    t3_vec3 d = { o->x - eye.x, yc - eye.y, o->z - eye.z };
+    float z = t3_vec3_dot(d, f);
+    if (z < 1.0f || z > 50.0f) continue;
+    float sx = t3_vec3_dot(d, r) / (z * tx), sy = t3_vec3_dot(d, u) / (z * ty);
+    if (sx < -1.05f || sx > 1.05f || sy < -1.05f || sy > 1.05f) continue;
+    float w = o->diam / (z * tx) * 500.0f;
+    /* insertion into the nearest CUE_N */
+    int k = n[g] < CUE_N ? n[g]++ : CUE_N;
+    if (k == CUE_N) {
+      if (z >= best[g][CUE_N - 1]) continue;
+      k = CUE_N - 1;
+    }
+    while (k > 0 && best[g][k - 1] > z) {
+      best[g][k] = best[g][k - 1];
+      for (int j = 0; j < 3; j++) out[g][k * 3 + j] = out[g][(k - 1) * 3 + j];
+      k--;
+    }
+    best[g][k] = z;
+    out[g][k * 3] = (int32_t)lrintf((sx + 1) * 500), out[g][k * 3 + 1] = (int32_t)lrintf((1 - sy) * 500), out[g][k * 3 + 2] = (int32_t)lrintf(w);
+  }
+}
