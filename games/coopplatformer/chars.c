@@ -28,6 +28,7 @@ struct rig {
   int kind[16];             /* 0 other, 1 fur, 2 scarf, 3 accessory */
   int nmat;
   t3_object *acc[4];
+  float glow;               /* the glowing parts' pulse (rig_glow), 1 at rest */
 };
 
 /* ── quaternion helpers ───────────────────────────────────────────── */
@@ -86,6 +87,7 @@ rig *rig_load(int kind) {
     return NULL;
   }
   rig *r = calloc(1, sizeof *r);
+  if (r) r->glow = 1.0f;
   r->gltf = t3_gltf_parse(glb, len, NULL, NULL);
   free(glb);
   if (!r->gltf) {
@@ -156,25 +158,22 @@ void rig_shade(rig *r, const float k[3]) {
   }
 }
 
-/* white-hot flash on a hit: add to every material's emission, k in 0..1 */
+/* a hit's glow, k in 0..1: the body lit from within in its own colour (warmed a little), on top of the glowing parts'
+ * own light and their pulse (rig_glow). Never white: a stomped boss stays its colour and its silhouette */
 void rig_flash(rig *r, float k) {
+  if (k < 0) k = 0;
   for (int i = 0; i < r->nmat; i++) {
     t3_material *m = r->mats[i];
-    if (k > 0.01f) {
-      m->emissive = (t3_color){ 1, 0.95f, 0.85f };
-      m->emissive_intensity = r->emis_i[i] + 2.5f * k;
-    } else {
-      m->emissive = r->emis[i];
-      m->emissive_intensity = r->emis_i[i];
-    }
+    float g = r->emis_i[i] * (r->emis[i].r + r->emis[i].g + r->emis[i].b > 0.1f ? r->glow : 1.0f);
+    t3_color c = m->color;
+    m->emissive = (t3_color){ r->emis[i].r * g + k * (0.75f * c.r + 0.07f), r->emis[i].g * g + k * (0.75f * c.g + 0.035f),
+                              r->emis[i].b * g + k * (0.75f * c.b + 0.01f) };
+    m->emissive_intensity = 1.0f;
   }
 }
 
-/* the glowing parts (eyes, a core) pulse: every material that starts out emissive */
-void rig_glow(rig *r, float k) {
-  for (int i = 0; i < r->nmat; i++)
-    if (r->emis[i].r + r->emis[i].g + r->emis[i].b > 0.1f) r->mats[i]->emissive_intensity = r->emis_i[i] * k;
-}
+/* the glowing parts (eyes, a core) pulse: every material that starts out emissive (applied by rig_flash, every frame) */
+void rig_glow(rig *r, float k) { r->glow = k; }
 
 static const t3_vec3 AX = { 1, 0, 0 }, AY = { 0, 1, 0 }, AZ = { 0, 0, 1 };
 

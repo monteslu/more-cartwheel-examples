@@ -67,6 +67,7 @@ static struct {
   rig *erig[MAX_ENEMIES];
   t3_mesh *eextra[MAX_ENEMIES][2]; /* the new kinds' parts: a shell and its rim, a slider's spikes, a dropper's thread */
   float ephase[MAX_ENEMIES], eyaw[MAX_ENEMIES];
+  float eglow[MAX_ENEMIES]; /* a boss's core glow, eased: it swells through a tell and settles back over a third of a second */
   float eflash[MAX_ENEMIES]; /* a hit's glow: rises in about a tenth of a second, fades over half a second */
   cw_node coin_node[MAX_COINS];
   t3_mesh *coin_mesh[MAX_COINS];
@@ -133,6 +134,8 @@ static int g_tags_dbg[2]; /* HUD rescue tags: frames with two or more, frames wh
 static bool g_hud_bug; /* COOP_HUD_BUG: the rescue-tag gate's control */
 static int g_sign_dbg[3]; /* signs: frames a panel was up, of them over a player's body, of them thinner than its distance asks */
 static bool g_sign_bug; /* COOP_SIGN_BUG: the sign gate's control */
+static int g_cardfit_dbg[3]; /* the results card settled: frames up, of them running off the bottom of the screen, of them in two pages */
+static bool g_card_onepage; /* COOP_CARD_ONEPAGE: the fit gate's control */
 static int g_card_dbg[3]; /* the results card: frames up, of them with the portraits on the line above them, levels whose closing line takes two rows */
 static int g_endwall_dbg[3]; /* frames with a player in reach of a live boss, the most of the view's width the end wall took (in thousandths), frames it took over 12 percent */
 static int g_bossclip_dbg[3]; /* frames a boss was drawn, of them with an arm in a wall, the deepest (mm) */
@@ -604,10 +607,22 @@ static void build_scene(void) {
     if (S.erig[i]) rig_cast_shadow(S.erig[i], g_shadow_old); /* a contact blob grounds it (sync_scene) */
     float sc = e->kind == 2 ? boss_scale(L->boss_kind) : e->kind == 1 ? 0.85f : 0.95f;
     if (e->kind == 2 && S.erig[i]) {
-      /* one model, a different creature each time: a colour and something on its head */
-      static const float TINT[5][3] = { { 0.75f, 0.55f, 0.95f }, { 1.3f, 1.05f, 0.45f }, { 1.3f, 0.5f, 0.4f }, { 0.6f, 0.75f, 1.0f }, { 0.35f, 0.3f, 0.35f } };
+      /* one model, a different creature each time: its own colour (on the stone's dark red-brown: the Landlord plum, the Tax
+       * Golem drab olive, the Lifeguard sunburnt, the Manager a navy suit, the Founder slate against his lava) and its kit */
+      static const float TINT[5][3] = { { 0.55f, 0.45f, 1.15f }, { 0.95f, 2.1f, 1.45f }, { 1.45f, 1.1f, 0.5f }, { 0.26f, 0.75f, 1.6f }, { 0.48f, 1.1f, 1.7f } };
       rig_shade(S.erig[i], TINT[L->boss_kind]);
       boss_kit(S.emodel[i], L->boss_kind);
+      /* a rim in its own colour, lightened, as the heroes have: its silhouette reads in the dark caves and the crater */
+      if (!g_rim_off) {
+        static const float BRIM[BIOMES] = { 0.3f, 0.9f, 0.35f, 0.35f, 0.45f };
+        int bb = L->biome[L->boss_x < WORLD_W ? L->boss_x : WORLD_W - 1];
+        const float *t = TINT[L->boss_kind];
+        float m = fmaxf(t[0], fmaxf(t[1], t[2]));
+        cw_rim_light_desc rd = cw_rim_light_default();
+        rd.color = (t3_color){ 0.3f + 0.7f * t[0] / m, 0.3f + 0.7f * t[1] / m, 0.3f + 0.7f * t[2] / m };
+        rd.strength = BRIM[bb], rd.power = 2.6f, rd.near = 0, rd.far = 1, rd.close = 1;
+        rig_rim(S.erig[i], &rd);
+      }
     }
     S.eextra[i][0] = S.eextra[i][1] = NULL;
     if (e->kind >= EK_HOPPER && S.erig[i]) {
@@ -643,6 +658,7 @@ static void build_scene(void) {
     cw_node3d_set_scale(S.emodel[i], (t3_vec3){ sc, sc, sc });
     S.ephase[i] = (float)i * 1.7f;
     S.eflash[i] = 0;
+    S.eglow[i] = 1;
   }
   memset(g_shot_node, 0, sizeof g_shot_node), g_daze_node = (cw_node){ 0 };
   if (L->boss_x > 0) boss_shots_build(S.world, L->boss_kind, L->biome[L->boss_x < WORLD_W ? L->boss_x : WORLD_W - 1]);
@@ -1525,7 +1541,9 @@ static void sync_scene(float alpha, float dt) {
       }
       if (!g_boss_old && bz->daze > 0) rig_pose_boss_daze(S.erig[i], S.time);
       cw_node3d_set_scale(S.enode[i], (t3_vec3){ 1.0f + 0.12f * squash, 1.0f - 0.16f * squash, 1.0f + 0.12f * squash });
-      rig_glow(S.erig[i], 1.0f + 0.4f * sinf(S.time * 4) + (1.0f - (float)e->hp / 9.0f) + 1.6f * tell);
+      { float want = 1.0f + 0.12f * sinf(S.time * 2.5f) + 0.35f * (1.0f - (float)e->hp / 9.0f) + 0.8f * tell;
+        S.eglow[i] += (want - S.eglow[i]) * (1.0f - expf(-6.0f * dt));
+        rig_glow(S.erig[i], S.eglow[i]); }
       if (g_daze_node.id) {
         bool dz = !g_boss_old && bz->daze > 0;
         cw_node_set(g_daze_node, "visible", cw_val_bool(dz));
@@ -1665,6 +1683,7 @@ static void start_match(int players, void *user) {
   g_sign_bug = getenv("COOP_SIGN_BUG") != NULL; /* the sign gate's control (native only) */
   g_card_bug = getenv("COOP_CARD_BUG") != NULL; /* the card gate's control (native only) */
   memset(g_card_dbg, 0, sizeof g_card_dbg);
+  memset(g_cardfit_dbg, 0, sizeof g_cardfit_dbg);
   memset(g_boss_dbg, 0, sizeof g_boss_dbg);
   memset(g_endwall_dbg, 0, sizeof g_endwall_dbg), memset(g_bossclip_dbg, 0, sizeof g_bossclip_dbg);
   memset(g_label_dbg, 0, sizeof g_label_dbg), memset(g_signmove_dbg, 0, sizeof g_signmove_dbg), memset(g_labelmove_dbg, 0, sizeof g_labelmove_dbg);
@@ -1673,6 +1692,7 @@ static void start_match(int players, void *user) {
   g_boss_clip_bug = getenv("COOP_BOSSCLIP_BUG") != NULL; /* the clip gate's control (native only) */
   g_words_bug = getenv("COOP_WORDS_BUG") != NULL; /* the words gate's control (native only) */
   g_label_bug = getenv("COOP_LABEL_BUG") != NULL; /* the label gate's control (native only) */
+  g_card_onepage = getenv("COOP_CARD_ONEPAGE") != NULL;
   g_boss_old = getenv("COOP_BOSS_OLD") != NULL; /* the boss rules gate's control: the one boss's walk and hop */
   { const char *t = getenv("COOP_BOSS_TELL"); g_boss_tell = t ? atoi(t) : 0; } /* the dodge gate's control: tells this short */
   g_bot_no_boss = getenv("COOP_BOT_NO_BOSS") != NULL; /* the arena gate: the bots stay at the end wall */
@@ -2192,6 +2212,7 @@ static void init(void *user) {
   cw_debug_field("g.labelmove", g_labelmove_dbg, CW_DBG_I32, 2);
   cw_debug_field("g.bossgate", g_boss_dbg, CW_DBG_I32, 4);
   cw_debug_field("g.bossatk", G.boss_stats, CW_DBG_I32, 5);
+  cw_debug_field("g.cardfit", g_cardfit_dbg, CW_DBG_I32, 3);
   cw_debug_field("g.wardrobe", g_wd_dbg, CW_DBG_I32, 8); /* open, coins to spend, spent, items bought (bits), seat 0 hat and scarf, seat 1 hat and scarf */
   cw_debug_command("wardrobe", "wardrobe open | wardrobe coins <n> | wardrobe <seat> <dir -1|0|1> <take 0|1>: the wardrobe on the results card, as the pads drive it", cmd_wardrobe); /* this level's boss: attacks begun, players hit by them, dodges, phase reached (0, 1), dazes */
   cw_debug_field("g.surface", g_surface_dbg, CW_DBG_I32, 3);
@@ -3898,31 +3919,71 @@ static void render(void *user, double alpha) {
       snprintf(wdl, sizeof wdl, "{grab} the wardrobe: %d coins to spend     {jump} next level", wd_coins());
       const float wd_h = g_card_bug ? 0 : cw_prompt_text_size(g_font, wdl, -1, 16 * s).y + 10 * s;
       float card_h = g_card_bug ? H * 0.42f : row_y[5] + H * 0.035f + tally_h + wd_h;
+      /* a card taller than the room under the player panels (a big text size) shows in two pages that take turns every
+       * five seconds, the title on both: the words of the level, then the players' portraits, tally and awards.
+       * COOP_CARD_ONEPAGE=1 (native, the fit gate's control) keeps the one page that ran off the bottom */
+      const float room = H - 4 * s - (g_hud_bot + 4 * s);
+      int page = -1; /* -1: one page */
+      bool vis[6] = { true, true, true, true, true, true }; /* title, report, stats, closing line, friends, portraits and tally */
+      if (!g_card_bug && !g_card_onepage && card_h > room) {
+        /* in pages: the title on the first, then each part in turn, as many on a page as fit */
+        float bh[6];
+        bh[0] = cw_font_measure(g_font, title, &(cw_text_style){ .size = 46 * s, .wrap_width = W }).height;
+        bh[1] = cw_font_measure(g_font, rp, &(cw_text_style){ .size = 17 * s, .wrap_width = W * 0.84f }).height;
+        bh[2] = cw_font_measure(g_font, t, &(cw_text_style){ .size = 24 * s, .wrap_width = W }).height;
+        bh[3] = cw_font_measure(g_font, l, &(cw_text_style){ .size = 24 * s, .wrap_width = W * line_w }).height;
+        bh[4] = bet + thr > 0 ? cw_font_measure(g_font, gr, &(cw_text_style){ .size = 15 * s, .wrap_width = W * 0.84f }).height : 0;
+        bh[5] = 15 * s * 1.75f + 15 * s + tally_h;
+        const float gap = 8 * s, inner = room - wd_h - 2 * gap;
+        int pg[6], np = 0;
+        float used = 0, yy[6];
+        for (int r = 0; r < 6; r++) {
+          if (bh[r] <= 0) { pg[r] = -1; continue; }
+          if (used > 0 && used + gap + bh[r] > inner) np++, used = 0;
+          yy[r] = gap + used + (used > 0 ? gap : 0);
+          used += (used > 0 ? gap : 0) + bh[r];
+          pg[r] = np;
+        }
+        np++;
+        card_h = room;
+        int up = G.tick - G.win_tick - 40;
+        page = up < 0 ? 0 : (up / 300) % np;
+        for (int r = 0; r < 6; r++) {
+          vis[r] = pg[r] == page;
+          if (pg[r] >= 0) row_y[r] = r == 5 ? yy[r] + 15 * s * 1.75f : yy[r];
+        }
+      }
       if (card_top + card_h > H - 4 * s) card_top = fmaxf(g_hud_bot + 4 * s, H - 4 * s - card_h); /* never over the player panels */
+      /* the card comes up from the foot of the screen whole, words and all, easing in: never an empty slab */
+      const float card_rest = card_top; /* where it settles */
+      const float ease = g_card_bug ? 1.0f : k * k * (3.0f - 2.0f * k);
+      if (!g_card_bug) card_top += (1.0f - ease) * (H + 8 * s - card_top);
       for (int r = 0; r < 6; r++) row_y[r] += card_top;
-      panel(0, card_top, W, card_h * k, 0, cw_rgba(0.1f, 0.08f, 0.02f, card_a), cw_rgba(0.02f, 0.02f, 0.03f, card_a), cw_rgba(1, 0.8f, 0.3f, 0.7f));
-      if (k > 0.9f) {
-        text(title, 0, row_y[0], 46 * s, cw_rgba(1, 0.85f, 0.3f, 1), CW_ALIGN_CENTER, W);
+      panel(0, card_top, W, g_card_bug ? card_h * k : card_h, 0, cw_rgba(0.1f, 0.08f, 0.02f, card_a), cw_rgba(0.02f, 0.02f, 0.03f, card_a), cw_rgba(1, 0.8f, 0.3f, 0.7f));
+      const bool settled = k > 0.9f;
+      if (settled) { g_cardfit_dbg[0]++; if (card_rest + card_h > H + 0.5f) g_cardfit_dbg[1]++; if (page >= 0) g_cardfit_dbg[2]++; }
+      if (settled || !g_card_bug) {
+        if (vis[0]) text(title, 0, row_y[0], 46 * s, cw_rgba(1, 0.85f, 0.3f, 1), CW_ALIGN_CENTER, W);
         {
-          text(l, W * (1 - line_w) * 0.5f, row_y[3], 24 * s, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER, W * line_w);
+          if (vis[3]) text(l, W * (1 - line_w) * 0.5f, row_y[3], 24 * s, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER, W * line_w);
           /* no level's closing line may take two rows: the second would run into the line below it */
           float row = cw_font_measure(g_font, "M", &(cw_text_style){ .size = 24 * s }).height;
-          g_card_dbg[2] = 0;
-          for (int i = 0; i < NLEVELS; i++) {
+          if (settled) g_card_dbg[2] = 0;
+          for (int i = 0; i < NLEVELS && settled; i++) {
             char li[200];
             snprintf(li, sizeof li, LEVELS[i].line, 123, 124);
             if (cw_font_measure(g_font, li, &(cw_text_style){ .size = 24 * s, .wrap_width = W * line_w }).height > row * 1.5f) g_card_dbg[2]++;
           }
         }
-        text(rp, W * 0.08f, row_y[1], 17 * s, cw_rgba(1, 0.75f, 0.65f, 1), CW_ALIGN_CENTER, W * 0.84f);
-        if (bet + thr > 0) text(gr, W * 0.08f, row_y[4], 15 * s, cw_rgba(0.8f, 0.9f, 1, 1), CW_ALIGN_CENTER, W * 0.84f);
+        if (vis[1]) text(rp, W * 0.08f, row_y[1], 17 * s, cw_rgba(1, 0.75f, 0.65f, 1), CW_ALIGN_CENTER, W * 0.84f);
+        if (vis[4] && bet + thr > 0) text(gr, W * 0.08f, row_y[4], 15 * s, cw_rgba(0.8f, 0.9f, 1, 1), CW_ALIGN_CENTER, W * 0.84f);
         float stats_w = cw_font_measure(g_font, t, &(cw_text_style){ .size = 24 * s, .wrap_width = W }).width;
-        coin_icon((cw_vec2){ fmaxf(14 * s, fminf(W * 0.5f - 250 * s, W * 0.5f - stats_w * 0.5f - 18 * s)), row_y[2] + H * 0.025f * text_grow(24 * s) }, 11 * s);
-        text(t, 0, row_y[2], 24 * s, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER, W);
-        g_card_dbg[0]++;
-        if (row_y[5] - 15 * s * 1.75f < row_y[4] + cw_font_measure(g_font, "M", &(cw_text_style){ .size = 15 * s }).height) g_card_dbg[1]++;
+        if (vis[2]) coin_icon((cw_vec2){ fmaxf(14 * s, fminf(W * 0.5f - 250 * s, W * 0.5f - stats_w * 0.5f - 18 * s)), row_y[2] + H * 0.025f * text_grow(24 * s) }, 11 * s);
+        if (vis[2]) text(t, 0, row_y[2], 24 * s, cw_rgba(1, 1, 1, 1), CW_ALIGN_CENTER, W);
+        if (settled) g_card_dbg[0]++;
+        if (settled && page < 0 && row_y[5] - 15 * s * 1.75f < row_y[4] + cw_font_measure(g_font, "M", &(cw_text_style){ .size = 15 * s }).height) g_card_dbg[1]++;
         const float col = g_tally_off ? 64 * s : fminf(150 * s, W * 0.9f / (float)(G.nplayers > 0 ? G.nplayers : 1));
-        for (int i = 0; i < G.nplayers; i++) {
+        for (int i = 0; i < G.nplayers && vis[5]; i++) {
           float px = W * 0.5f + ((float)i - (float)(G.nplayers - 1) * 0.5f) * col;
           portrait((cw_vec2){ px, row_y[5] }, 15 * s, i, false);
           if (g_tally_off) continue;
@@ -3933,11 +3994,11 @@ static void render(void *user, double alpha) {
           snprintf(ln[2], sizeof ln[2], "thrown %d", G.throws[i]);
           snprintf(ln[3], sizeof ln[3], "falls %d", G.falls[i]);
           for (int r = 0; r < 4; r++) text(ln[r], px - col * 0.5f, row_y[5] + 22 * s + (float)r * tl_line, tl_size, r == 0 ? rgba3(PLAYER_RGB[i], 1) : cw_rgba(0.92f, 0.92f, 0.95f, 1), CW_ALIGN_CENTER, col);
-          g_tally_dbg[0]++;
+          if (settled) g_tally_dbg[0]++;
         }
-        if (!g_tally_off && awards[0]) text(awards, W * 0.05f, row_y[5] + 22 * s + 4 * tl_line + 8 * s, aw_size, cw_rgba(1, 0.85f, 0.4f, 1), CW_ALIGN_CENTER, W * 0.9f), g_tally_dbg[1]++;
+        if (vis[5] && !g_tally_off && awards[0]) { text(awards, W * 0.05f, row_y[5] + 22 * s + 4 * tl_line + 8 * s, aw_size, cw_rgba(1, 0.85f, 0.4f, 1), CW_ALIGN_CENTER, W * 0.9f); if (settled) g_tally_dbg[1]++; }
         if (wd_h > 0) ptext(wdl, 0, card_top + card_h - wd_h + 2 * s, 16 * s, cw_rgba(1, 0.92f, 0.7f, 1), CW_ALIGN_CENTER, W);
-        if (g_wd_open) wardrobe_draw(W, H, s, card_top, card_h);
+        if (g_wd_open && settled) wardrobe_draw(W, H, s, card_top, card_h);
       }
     }
     if (g_map_open) { draw_map(W, H); g_map_seen_dbg = 1; }

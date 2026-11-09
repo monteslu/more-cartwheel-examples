@@ -1204,5 +1204,45 @@
     "name": "coopplatformer-quality",
     "script": "tests/coopplatformer-quality.mjs",
     "note": "a program for everything drawn at every quality on both backends, through a spread warm-up as a player gets it: along the whole world, two and four players, the map, bubbles, each of the five bosses fought to its end (g.bossgate), from the title by real input. A scene not reached fails. Controls: a state the scene draws out of the table must be reported and skip draws, on a level and on a boss; a level with no boss must not count as a boss fight"
+  },
+  {
+    "name": "coopplatformer-card-fit",
+    "note": "The results card at twice the text size with four players (2026-11-09): it was taller than the room under the player panels and ran off the bottom of the screen. Now a card that does not fit shows in pages that take turns every five seconds (the title, the incident report, the counts and the closing line first, the portraits, the tally and the awards after), each inside the screen. g.cardfit: frames the card was settled, of them running off the bottom, of them in pages. The control (COOP_CARD_ONEPAGE, native) keeps the one page: every frame runs off, so it fails.",
+    "app": "coopplatformer_auto_boss",
+    "hosts": [
+      "native"
+    ],
+    "env": {
+      "COOP_LEVEL": "4",
+      "COOP_PLAYERS": "4"
+    },
+    "frames": 760,
+    "startCmds": [
+      "text scale 2"
+    ],
+    "fields": [
+      "g.tick",
+      "g.won",
+      "g.cardfit"
+    ],
+    "expect": {
+      "g.tick": 760,
+      "g.won": 1,
+      "g.cardfit": [
+        217,
+        0,
+        217
+      ]
+    },
+    "controlEnv": {
+      "COOP_LEVEL": "4",
+      "COOP_PLAYERS": "4",
+      "COOP_CARD_ONEPAGE": "1"
+    },
+    "controlStartCmds": [
+      "text scale 2"
+    ],
+    "controlFrames": 760,
+    "controlField": "g.cardfit"
   }
 ]
