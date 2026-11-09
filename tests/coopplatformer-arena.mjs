@@ -70,9 +70,10 @@ function cardSpread(png) {
 }
 for (const gpu of ['gl', 'webgpu']) for (const [level, name] of [[4, 'the Landlord'], [14, 'the Lifeguard']]) {
   const env = { COOP_LEVEL: String(level) };
-  const a = run(env, 720, gpu);
+  const frames = level === 14 ? 900 : 720; /* the Lifeguard's fight runs past 720 frames since the bosses fight back (2026-11-08) */
+  const a = run(env, frames, gpu);
   check(a.s['g.won'] === 1 && cardSpread(a.shot) <= 1, `${gpu}, ${name}: the card is solid (spread ${cardSpread(a.shot)} across its margins)`);
-  const b = run({ ...env, COOP_CARD_BUG: '1' }, 720, gpu);
+  const b = run({ ...env, COOP_CARD_BUG: '1' }, frames, gpu);
   check(cardSpread(b.shot) > 1, `control ${gpu}, ${name}: the old card shows the level through it (spread ${cardSpread(b.shot)})`);
 }
 rmSync(OUT, { recursive: true, force: true });

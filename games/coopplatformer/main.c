@@ -3097,6 +3097,8 @@ static void portrait(cw_vec2 c, float r, int i, bool dim) {
  * costs or that it is wearing it), the coins everyone has to spend, the buttons along the foot */
 static void coin_icon(cw_vec2 c, float r);
 static void wardrobe_draw(float W, float H, float s, float top, float h) {
+  (void)top, (void)h;
+  top = g_hud_bot + 4 * s, h = H - top - 4 * s; /* its own panel under the player panels, whatever the card's size (a big text size makes the card taller than the screen) */
   panel(0, top, W, h, 0, cw_rgba(0.08f, 0.06f, 0.1f, 1), cw_rgba(0.02f, 0.02f, 0.04f, 1), cw_rgba(1, 0.8f, 0.3f, 0.7f));
   float y = top + 10 * s;
   text("THE WARDROBE", 0, y, 34 * s, cw_rgba(1, 0.85f, 0.3f, 1), CW_ALIGN_CENTER, W);
@@ -3105,10 +3107,10 @@ static void wardrobe_draw(float W, float H, float s, float top, float h) {
   snprintf(ln, sizeof ln, "coins to spend: %d", wd_coins());
   text(ln, 0, y, 20 * s, cw_rgba(1, 0.95f, 0.75f, 1), CW_ALIGN_CENTER, W);
   y += cw_font_measure(g_font, "M", &(cw_text_style){ .size = 20 * s }).height + 22 * s;
-  const char *foot = "{left|right} look     {grab} buy or wear     {jump} next level";
+  const char *foot = "{left|right} look     {grab} buy, wear or take off     {jump} next level";
   float foot_h = cw_prompt_text_size(g_font, foot, -1, 16 * s).y;
   const int n = G.nplayers > 0 ? G.nplayers : 1;
-  const float col = fminf(230 * s, W * 0.94f / (float)n);
+  const float col = fminf(460 * s, W * 0.94f / (float)n);
   for (int i = 0; i < G.nplayers; i++) {
     float cx = W * 0.5f + ((float)i - (float)(n - 1) * 0.5f) * col, yy = y;
     portrait((cw_vec2){ cx, yy }, 18 * s, i, false);
@@ -3119,7 +3121,7 @@ static void wardrobe_draw(float W, float H, float s, float top, float h) {
     yy += cw_font_measure(g_font, name, &(cw_text_style){ .size = 16 * s, .wrap_width = col * 0.96f }).height + 2 * s;
     bool wearing = k < 6 ? seat_hat(i) == k : seat_scarf(i) == SCARF_RGB[k - 6];
     if (g_wd_msg[i] > 0) snprintf(ln, sizeof ln, g_wd_said[i] ? "bought it" : "not enough coins");
-    else if (wearing) snprintf(ln, sizeof ln, k < 6 ? "wearing it ({grab} take it off)" : "wearing it");
+    else if (wearing) snprintf(ln, sizeof ln, "wearing it");
     else if (wd_owned(i, k)) snprintf(ln, sizeof ln, "yours: {grab} wear it");
     else snprintf(ln, sizeof ln, "%d coins: {grab} buy it", WD_PRICE[k]);
     ptext(ln, cx - col * 0.48f, yy, 14 * s, wd_coins() < WD_PRICE[k] && !wd_owned(i, k) && g_wd_msg[i] == 0 ? cw_rgba(0.7f, 0.7f, 0.75f, 1) : cw_rgba(0.95f, 0.95f, 0.98f, 1), CW_ALIGN_CENTER, col * 0.96f);

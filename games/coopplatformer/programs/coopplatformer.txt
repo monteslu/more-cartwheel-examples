@@ -63,3 +63,5 @@ standard+shadow+skin+ds+l2801+s100+xrim
 physical+shadow+skin+ds+cc+l2801+s100+xrim
 standard+fog+shadow+skin+ds+l2801+s100+xrim
 physical+fog+shadow+skin+ds+cc+l2801+s100+xrim
+physical+fog+shadow+l2801+s100+xplain_rim
+physical+fog+shadow+l2801+s100+xrim

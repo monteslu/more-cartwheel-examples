@@ -301,7 +301,7 @@
       "g.kills": 1,
       "g.won": 1,
       "g.boss_hp": 0,
-      "g.hitstops": 8,
+      "g.hitstops": 7,
       "g.reached": 127,
       "g.camgate": [
         0,
@@ -310,19 +310,19 @@
         0
       ],
       "g.camoffset": [
-        237,
+        250,
         0,
         0
       ],
-      "g.impacts": 10,
+      "g.impacts": 11,
       "rumble.sent": [
-        14,
-        11,
+        17,
+        16,
         0,
         0
       ],
       "cw.rumble": [
-        25,
+        33,
         0,
         158,
         0,
@@ -334,9 +334,9 @@
       ],
       "g.bossgate": [
         1,
-        336,
+        422,
         5,
-        285
+        191
       ]
     },
     "note": "two bots from the arena door of the first boss with every ability: boss fight, hit-stops and the win, cross-host state. g.bossgate is [its kind + 1, frames it was alive in view, hits it took, frames drawn since it died]; the control (COOP_LEVEL, native) starts a level with no boss in it: its g.bossgate must differ. The frames end on the results card, before the next level: g.level says so. No shake: the drawn camera stays smooth through the whole fight, the boss leaps, hits and its death included (g.camgate: frames in motion, none over the bounds), and g.camoffset holds the drawn camera against the follow camera on the frames within half a second of each impact (none off by over 0.1 mm). The impacts are felt in the pads: rumble.sent counts the requests to each player, cw.rumble is the engine's last (the boss going down, pad 1).",
@@ -757,7 +757,7 @@
     "expect": {
       "g.tick": 620,
       "g.wordsgate": [
-        233,
+        373,
         0,
         0
       ]
@@ -788,7 +788,7 @@
       "g.tick": 700,
       "g.won": 1,
       "g.cardgate": [
-        248,
+        154,
         0,
         0
       ]
@@ -900,11 +900,11 @@
       "g.tick": 700,
       "g.won": 1,
       "g.tally": [
-        1244,
-        311
+        628,
+        157
       ],
       "g.cardgate": [
-        311,
+        157,
         0,
         0
       ]
@@ -936,7 +936,19 @@
       "g.deaths",
       "g.hash"
     ],
-    "expect": {},
+    "expect": {
+      "g.bossatk": [
+        3,
+        0,
+        2,
+        1,
+        0
+      ],
+      "g.won": 1,
+      "g.boss_hp": 0,
+      "g.deaths": 0,
+      "g.hash": 2206204967
+    },
     "controlEnv": {
       "COOP_LEVEL": "4",
       "COOP_BOSS_OLD": "1"
@@ -963,7 +975,19 @@
       "g.deaths",
       "g.hash"
     ],
-    "expect": {},
+    "expect": {
+      "g.bossatk": [
+        3,
+        1,
+        1,
+        1,
+        0
+      ],
+      "g.won": 1,
+      "g.boss_hp": 0,
+      "g.deaths": 0,
+      "g.hash": 919545040
+    },
     "controlEnv": {
       "COOP_LEVEL": "9",
       "COOP_BOSS_OLD": "1"
@@ -990,7 +1014,19 @@
       "g.deaths",
       "g.hash"
     ],
-    "expect": {},
+    "expect": {
+      "g.bossatk": [
+        5,
+        0,
+        0,
+        1,
+        2
+      ],
+      "g.won": 1,
+      "g.boss_hp": 0,
+      "g.deaths": 0,
+      "g.hash": 426230944
+    },
     "controlEnv": {
       "COOP_LEVEL": "14",
       "COOP_BOSS_OLD": "1"
@@ -1017,7 +1053,19 @@
       "g.deaths",
       "g.hash"
     ],
-    "expect": {},
+    "expect": {
+      "g.bossatk": [
+        6,
+        0,
+        2,
+        1,
+        0
+      ],
+      "g.won": 1,
+      "g.boss_hp": 0,
+      "g.deaths": 0,
+      "g.hash": 2782383186
+    },
     "controlEnv": {
       "COOP_LEVEL": "19",
       "COOP_BOSS_OLD": "1"
@@ -1044,7 +1092,19 @@
       "g.deaths",
       "g.hash"
     ],
-    "expect": {},
+    "expect": {
+      "g.bossatk": [
+        5,
+        0,
+        0,
+        1,
+        2
+      ],
+      "g.won": 1,
+      "g.boss_hp": 0,
+      "g.deaths": 0,
+      "g.hash": 3513009376
+    },
     "controlEnv": {
       "COOP_LEVEL": "24",
       "COOP_BOSS_OLD": "1"
@@ -1068,7 +1128,16 @@
       "g.bossatk",
       "g.deaths"
     ],
-    "expect": {},
+    "expect": {
+      "g.bossatk": [
+        6,
+        0,
+        2,
+        1,
+        0
+      ],
+      "g.deaths": 0
+    },
     "controlEnv": {
       "COOP_LEVEL": "19",
       "COOP_BOSS_TELL": "6"

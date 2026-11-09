@@ -294,7 +294,7 @@ static void boss_step(game *g, enemy *e, float dt) {
   const level *L = &g->L;
   boss_ai *b = &g->bz;
   int k = L->boss_kind, maxhp = 5 + k;
-  float half = boss_half(k), best = 1e9f, tx = 0;
+  float half = g_boss_clip_bug ? 1.0f : boss_half(k), best = 1e9f, tx = 0; /* (the clip gate's control: the old width) */
   int who = -1;
   for (int i = 0; i < g->nplayers; i++) {
     const player *p = &g->p[i];
