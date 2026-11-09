@@ -11,7 +11,8 @@
 //   flights     the interceptors come two at once (control: sw lone_bandits 1, one at a time)
 //   low pass    two seconds under 30 m over open water throws spray and pays a bonus (control: the same run at 60 m)
 //   clouds      on Very Low (no volumetric fog) the cumulus are in the sky as billboards, in the picture where the
-//               cloud is (control: sw no_cloud_cards 1, clear sky there); Medium keeps the volumes and no cards
+//               cloud is (control: sw no_cloud_cards 1, clear sky there); Medium keeps the volumes and no cards; a switch
+//               from High to Very Low in flight brings the cards (control: sw cards_by_fog_state 1, by the stale fog state)
 // Run: node tests/skyfighter-feel.mjs [--build build/native] [--jobs 3] [--only name,name]
 import { run, pool, OUT } from './lib/skyfighter-native.mjs';
 import { readImage } from './lib/skyfighter-pixels.mjs';
@@ -50,6 +51,8 @@ const legs = {
     ['verylow', { mission: 3, frames: 70, quality: 'verylow', hideHud: true, cmds: ['@60 sw cloud_view 2'], shot: 'feel-clouds-verylow.png' }],
     ['control', { mission: 3, frames: 70, quality: 'verylow', hideHud: true, cmds: ['@2 sw no_cloud_cards 1', '@60 sw cloud_view 2'], shot: 'feel-clouds-control.png' }],
     ['medium', { mission: 3, frames: 70, quality: 'medium', hideHud: true, cmds: ['@60 sw cloud_view 2'], shot: 'feel-clouds-medium.png' }],
+    ['switched', { mission: 3, frames: 70, quality: 'high', hideHud: true, cmds: ['@40 quality verylow', '@60 sw cloud_view 2'], shot: 'feel-clouds-switched.png' }],
+    ['switched-control', { mission: 3, frames: 70, quality: 'high', hideHud: true, cmds: ['@2 sw cards_by_fog_state 1', '@40 quality verylow', '@60 sw cloud_view 2'], shot: 'feel-clouds-switched-control.png' }],
   ],
 };
 const names = Object.keys(legs).filter((n) => !only || only.includes(n));
@@ -99,6 +102,9 @@ for (const n of names) {
     const v = cloudShare(r.verylow, 'feel-clouds-verylow.png'), c = cloudShare(r.control, 'feel-clouds-control.png'), m = cloudShare(r.medium, 'feel-clouds-medium.png');
     check('clouds on Very Low', r.verylow['feel.counts'][2] === 1 && v.share > 0.10, `cards ${r.verylow['feel.counts'][2]}, ${(v.share * 100).toFixed(0)}% cloud pixels at ${v.at.map((a) => a.toFixed(0))}`);
     check('clouds control (no cards on Very Low)', c.share < 0.05, `${(c.share * 100).toFixed(0)}% cloud pixels`);
+    const sw = cloudShare(r.switched, 'feel-clouds-switched.png'), swc = cloudShare(r['switched-control'], 'feel-clouds-switched-control.png');
+    check('clouds after switching High to Very Low in flight', r.switched['feel.counts'][2] === 1 && sw.share > 0.10, `cards ${r.switched['feel.counts'][2]}, ${(sw.share * 100).toFixed(0)}% cloud pixels`);
+    check('clouds switched control (cards by the stale fog state)', swc.share < 0.05, `cards ${r['switched-control']['feel.counts'][2]}, ${(swc.share * 100).toFixed(0)}% cloud pixels`);
     check('clouds on Medium (volumes, no cards)', r.medium['feel.counts'][2] === 0 && r.medium['cloud.active'] === 1 && m.share > 0.10, `cards ${r.medium['feel.counts'][2]}, fog ${r.medium['cloud.active']}, ${(m.share * 100).toFixed(0)}% cloud pixels`);
   }
 }

@@ -9,15 +9,15 @@
  * test hooks ("sw bandit_at <m>", "sw blasts <n>", "sw health <n>", "sw cloud_view <site>", "sw flicker <on> <off>"). */
 
 enum { SW_OBJECTIVE_NEAREST, SW_LOCK_FLICKER, SW_PLAIN_BANDITS, SW_OLD_BLASTS, SW_NO_DAMAGE_STATES, SW_NO_CLOUD_CARDS,
-       SW_LONE_BANDITS, SW_PLAIN_GUNS, SW_INSTANT_FLASH, SW_COUNT };
+       SW_LONE_BANDITS, SW_PLAIN_GUNS, SW_INSTANT_FLASH, SW_RAM_CRASH, SW_LATE_PULL_UP, SW_CARDS_BY_FOG_STATE, SW_COUNT };
 static const char *const sw_names[SW_COUNT] = { "objective_nearest", "lock_flicker", "plain_bandits", "old_blasts",
-  "no_damage_states", "no_cloud_cards", "lone_bandits", "plain_guns", "instant_flash" };
+  "no_damage_states", "no_cloud_cards", "lone_bandits", "plain_guns", "instant_flash", "ram_crash", "late_pull_up", "cards_by_fog_state" };
 static int32_t sw[SW_COUNT];
 
 #define KILLS 4
 #define CARD_PARTS 3
 #define DEBRIS 4
-#define LIGHTS 2 /* flash lights: none on Very Low, one on Low and Medium, two on High and Ultra (the "flash_lights" knob) */
+#define LIGHTS 2 /* flash lights: none on Very Low and Low, one on Medium, two on High and Ultra (the "flash_lights" knob: on Low one light made four blasts at once cost 2.3 ms against 1.3 ms on Medium) */
 #define FLASH_RISE .30f
 #define FLASH_FADE .65f
 typedef struct { t3_object *node; cw_node smoke; float x, y, z, vx, vy, vz, age; int active; } debris;
@@ -183,7 +183,7 @@ static void feel_make(void) {
     cw_node_add_child(cw_tree_root(G.tree), n);
   }
   F.cards_on = -1;
-  cw_debug_command("sw", "sw <objective_nearest|lock_flicker|plain_bandits|old_blasts|no_damage_states|no_cloud_cards|lone_bandits|plain_guns> <0|1>: "
+  cw_debug_command("sw", "sw <objective_nearest|lock_flicker|plain_bandits|old_blasts|no_damage_states|no_cloud_cards|lone_bandits|plain_guns|instant_flash|ram_crash|late_pull_up|cards_by_fog_state> <0|1>: "
     "test switches (1: that part as it was before); sw bandit_at <m> | blasts <n> | health <n> | cloud_view <site> | flicker <on> <off>: test hooks", sw_cmd);
   /* the gates' view, in three fields (the engine holds 512 debug fields and the game is near that):
    * feel.counts: flash rises, damage state, cloud cards, objective target, largest flight, most bandits at once, low
@@ -216,7 +216,7 @@ static void feel_kill(float x, float y, float z, float vx, float vy, float vz, f
   start_burst(F.fire[k], x, y, z); start_burst(F.core[k], x, y, z); start_burst(F.smoke[k], x, y + 4, z);
   cw_node3d_set_position(F.ripple[k], (t3_vec3){ x, y, z }); cw_shockwave_fire(F.ripple[k]);
   /* one rise a second at most: a kill inside a second of the last flash glows with its fire, without a new light */
-  int lights = (int)ceilf(LIGHTS * cw_quality_scale("flash_lights"));
+  int lights = (int)floorf(LIGHTS * cw_quality_scale("flash_lights") + 0.01f);
   if (F.since_rise >= 1 && lights > 0) {
     int l = F.next_light++ % (lights < LIGHTS ? lights : LIGHTS);
     if (F.rises) F.min_gap = fminf(F.min_gap, F.since_rise);
@@ -362,7 +362,9 @@ static void feel_update(float dt) {
     cw_node_set(F.hurt_smoke, "size", cw_val_float(hurt >= 2 ? 4.6f : 3.2f));
   }
   /* cumulus cards on the presets without volumetric fog */
-  int cards = !G.cloud_active && !sw[SW_NO_CLOUD_CARDS];
+  /* (by the effects tier too: switched to Very Low or Low in play, the engine's volumetric fog state still read
+   * "active" from the last grid it built, so the cards stayed off and the sky had no clouds at all) */
+  int cards = (!G.cloud_active || (!sw[SW_CARDS_BY_FOG_STATE] && cw_gfx_effective(CW_GFX_EFFECTS) <= CW_QUALITY_LOW)) && !sw[SW_NO_CLOUD_CARDS];
   if (cards != F.cards_on) {
     F.cards_on = cards;
     for (int i = 0; i < 8; i++) for (int p = 0; p < CARD_PARTS; p++) {

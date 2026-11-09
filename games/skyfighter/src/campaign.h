@@ -441,6 +441,15 @@ static bool campaign_aircraft_collision(t3_vec3 p) {
     float ry=a->kind==0?48:a->kind==1?38:a->kind==2?24:a->kind==4?48:55;
     float rz=a->kind==0?48:a->kind==1?110:a->kind==2?23:a->kind==4?26:545;
     if(segment_distance2((p.x-a->x)/rx,(p.y-a->y)/ry,(p.z-a->z)/rz,(G.px-a->x)/rx,(G.py-a->y)/ry,(G.pz-a->z)/rz,0,0,0)<1) {
+      /* Flying into a balloon or a blimp bursts it and costs a third of the airframe, as a mid-air collision with a
+       * bandit does; it no longer ends the sortie outright (a newcomer chasing the fair's balloons with the guns flew
+       * into one and lost the mission at once). Fortresses, shields and the big targets still stop a jet dead.
+       * sw ram_crash 1: every one a crash, as before. */
+      if(a->kind<=1&&!sw[SW_RAM_CRASH]) {
+        a->hull_hp=1;air_target_damage(ENEMIES+BUILDINGS+i*2,true);
+        G.health-=34;G.damage_want=1;RB.sent[1]++;rumble(.8f,.8f,300);
+        return G.health<=0;
+      }
       air_target_damage(ENEMIES+BUILDINGS+i*2,true);return true;
     }
   }

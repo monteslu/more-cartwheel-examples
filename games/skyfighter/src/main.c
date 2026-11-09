@@ -135,6 +135,11 @@ static void feel_spawn(int i);
 static void explode(float x, float y, float z);
 static void rumble(float low, float high, int ms);
 enum { TITLE, PLAY, PAUSED, WIN, LOST, SETTINGS, CRASH, CONTROLS, VICTORY };
+/* what the HUD put on screen this frame, for the newcomer gate (it flies by these alone), in shares of the screen:
+ * the gun sight x y; the cue the eye goes to: 0 none, 1 the reticle on the selected target, 2 the objective seen
+ * ahead, 3 the objective marker at the screen's edge; its x y; 1 when the reticle says LOCK; PULL UP shown;
+ * MISSILE INBOUND shown */
+static float hud_cue[8];
 static struct {cw_texture thumbnails[MISSIONS];cw_vec2 pointer;uint32_t previous_buttons;bool clicked;} menu_ui;
 static void menu_read_pointer(void);
 static void menu_load(void);
@@ -1450,7 +1455,7 @@ static void init(void *user) {
   G.music_gain=prefs.music_volume*.01f;G.sfx_gain=prefs.sfx_volume*.01f;
   cw_quality_restore(prefs.graphics);cw_text_scale_restore(prefs.text_size);prefs.reserved=0;cw_save_commit();
   cw_audio_open(48000,audio_fill,NULL);
-  cw_debug_i32("render.skipped",&G.skipped);cw_debug_i32("art.hide_hud",&art_hide_hud);
+  cw_debug_i32("render.skipped",&G.skipped);cw_debug_f32_array("hud.cues",hud_cue,8);cw_debug_i32("art.hide_hud",&art_hide_hud);
 #ifndef __wasm__
   { /* development (native key art captures; carts read no environment): SKY_ART_MISSION picks the title mission, SKY_ART_HIDE_HUD hides the HUD */
     const char *e=getenv("SKY_ART_MISSION");if(e)G.level=atoi(e)%MISSIONS;
@@ -1587,7 +1592,10 @@ static void fixed_update(void *user, double dt) {
   }
   if(campaign_aircraft_collision(previous_position)){crash_aircraft();crash_camera(step);return;}
   float floor=fmaxf(0,terrain_height(G.px,G.pz));
-  G.warning=G.py-floor<45?1:0;
+  /* PULL UP as soon as the ground is under 3 s away at this rate of descent (or 45 m below): a warning at 45 m alone
+   * came 0.2 s before impact in a dive, too late for anyone to answer. sw late_pull_up 1: 45 m alone, as before. */
+  { float sink=-flight.y*G.speed,above=G.py-floor;
+    G.warning=above<45||(!sw[SW_LATE_PULL_UP]&&sink>1&&above<400&&above/sink<3.0f)?1:0; }
   if(G.py<floor+3){crash_aircraft();crash_camera(step);return;}
   follow_jet();update_lock(step);
   for(int i=0;i<2;i++) {
@@ -1836,6 +1844,7 @@ static bool hud_project(float x,float y,float z,cw_vec2 *out) {
 }
 static bool mothership_menu(void); /* menus.h */
 static void hud(void) {
+  memset(hud_cue,0,sizeof hud_cue);
   if(G.state==VICTORY){cw_render3d_stats stats;cw_render3d_get_stats(G.tree,&stats);G.skipped=stats.skipped;return;}
   cw_color green=cw_hex(0xa6edbcdf),muted=cw_hex(0xadddc6a8),white=cw_hex(0xe3ece7ff);
   cw_color amber=cw_hex(0xffb366ff),red=cw_hex(0xff6655ff);
@@ -1880,7 +1889,7 @@ static void hud(void) {
   cw_vec2 sight={W*0.5f,H*0.44f};
   hud_project(G.px+sinf(G.heading)*cosf(G.pitch)*800,G.py+sinf(G.pitch)*800,
               G.pz-cosf(G.heading)*cosf(G.pitch)*800,&sight);
-  cw_r2d_circle_lines(sight,10,1,24,green);
+  cw_r2d_circle_lines(sight,10,1,24,green);hud_cue[0]=sight.x/W;hud_cue[1]=sight.y/H;
   cw_r2d_line((cw_vec2){sight.x-22,sight.y},(cw_vec2){sight.x-10,sight.y},1,green);
   cw_r2d_line((cw_vec2){sight.x+10,sight.y},(cw_vec2){sight.x+22,sight.y},1,green);
   cw_r2d_line((cw_vec2){sight.x,sight.y-18},(cw_vec2){sight.x,sight.y-10},1,green);
@@ -1896,11 +1905,11 @@ static void hud(void) {
       cw_r2d_line((cw_vec2){p.x+r,p.y-r},(cw_vec2){p.x+r,p.y+r},1,c);
       float dx=e->x-G.px,dz=e->z-G.pz;
       snprintf(buf,sizeof buf,"%s %.1f KM",locked?"LOCK":e->role==2?"ACE":"HOSTILE",sqrtf(dx*dx+dz*dz)*0.001f);
-      if(locked||i==G.lock_target)ctext(G.ui_font,buf,p.x,p.y+r+6,13,c);
+      if(locked||i==G.lock_target){ctext(G.ui_font,buf,p.x,p.y+r+6,13,c);hud_cue[2]=1;hud_cue[3]=p.x/W;hud_cue[4]=p.y/H;hud_cue[5]=locked;}
     }
     if(G.lock_target>=ENEMIES){float x,y,z;cw_vec2 p;
       if(target_position(G.lock_target,&x,&y,&z)&&hud_project(x,y,z,&p)) {
-        cw_r2d_circle_lines(p,20,1,4,amber);
+        cw_r2d_circle_lines(p,20,1,4,amber);hud_cue[2]=1;hud_cue[3]=p.x/W;hud_cue[4]=p.y/H;hud_cue[5]=G.lock_timer>0.6f;
         ctext(G.ui_font,G.lock_timer>0.6f?(G.lock_target>=ENEMIES+BUILDINGS?(G.level==4?(G.shields_left?"SHIELD GENERATOR":"CORE EXPOSED"):G.level==6?"SANTA LOCK":((G.lock_target-ENEMIES-BUILDINGS)%2?"BASKET LOCK":"ENVELOPE LOCK")):(fuel_depot(G.lock_target-ENEMIES)?"FUEL DEPOT LOCK":"GROUND LOCK")):"ACQUIRING",p.x,p.y+26,13,amber);
       }
     }
@@ -1927,12 +1936,13 @@ static void hud(void) {
     }
     cy=fmaxf(cy,top+28);
     if(G.incoming) {
+      hud_cue[7]=1;
       cy+=ptext(G.title_font,incoming_line,W*.5f-W,cy,20,red,2*W,CW_ALIGN_CENTER).y;
       m=ctext(G.ui_font,threat,W*.5f,cy,13,white);cy+=m.height+4;
       float x=W/2+sinf(G.threat_bearing)*210,y=H/2-cosf(G.threat_bearing)*135;
       cw_r2d_circle_lines((cw_vec2){x,y},9,2,3,red);
     }
-    if(G.warning>0)ctext(G.title_font,"PULL UP",W*.5f,fmaxf(cy,top+33),24,red);
+    if(G.warning>0){ctext(G.title_font,"PULL UP",W*.5f,fmaxf(cy,top+33),24,red);hud_cue[6]=1;}
     if(G.hit_flash>0)text(G.ui_font,"HIT",sight.x+25,sight.y+15,14,white,0,CW_ALIGN_LEFT);
     cw_vec2 rc={W-88,H-104};
     cw_r2d_circle(rc,48,48,cw_hex(0x05131799));
@@ -1961,11 +1971,12 @@ static void hud(void) {
       if(distance<450&&i%2)ctext(G.ui_font,label,p.x,p.y+12,13,muted);
     }
     if(objective) {
-      cw_vec2 marker;if(!hud_project(wx,wy,wz,&marker)){
+      cw_vec2 marker;if(hud_project(wx,wy,wz,&marker)){if(!hud_cue[2]){hud_cue[2]=2;hud_cue[3]=marker.x/W;hud_cue[4]=marker.y/H;}}else{
         float bearing=cw_wrap_angle(atan2f(wx-G.px,G.pz-wz)-G.heading);float sx=W*.5f+clampf(bearing/(PI*.5f),-1,1)*(W*.5f-55),sy=H*.30f;
         if(sx-70<left_right)sy=fmaxf(sy,left_bottom+20); /* under the top left block when it would reach it */
         float lx=clampf(sx,8+measure(G.ui_font,"OBJECTIVE",13,0).width*.5f,W-8-measure(G.ui_font,"OBJECTIVE",13,0).width*.5f); /* the captions kept on screen */
         cw_r2d_circle_lines((cw_vec2){sx,sy},14,2,4,amber);m=ctext(G.ui_font,"OBJECTIVE",lx,sy+20,13,amber);
+        if(!hud_cue[2]){hud_cue[2]=3;hud_cue[3]=sx/W;hud_cue[4]=sy/H;}
         if(fabsf(bearing)>PI*.65f)ctext(G.ui_font,"BEHIND",lx,sy+20+m.height,13,amber);
       }
       cw_vec2 rc={W-88,H-104};float dx=wx-G.px,dz=wz-G.pz,sn=sinf(G.heading),cs=cosf(G.heading);
