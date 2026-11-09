@@ -3,7 +3,7 @@
     "name": "pirates-race-replay",
     "app": "pirates_auto",
     "frames": 1500,
-    "note": "Dock-aware navigation and safe NPC harbor approaches. All 13 fields independently match native WebGPU and rendered romdev WebGPU and GL.",
+    "note": "Dock-aware navigation and safe NPC harbor approaches. All 13 fields independently match native WebGPU and rendered romdev WebGPU and GL. Values since the AI sails by the wind (routes by sailing time, cargo it can take home soonest), 2026-11-08: native and the cart on romdev agree at frame 1500.",
     "fields": [
       "pirates.state",
       "pirates.mode",
@@ -24,7 +24,7 @@
       "pirates.mode": 1,
       "pirates.tick": 1500,
       "pirates.bank": [
-        3,
+        6,
         5,
         0,
         1
@@ -32,28 +32,28 @@
       "pirates.held": [
         3,
         0,
-        5,
-        2
+        6,
+        3
       ],
       "pirates.hp": [
-        100,
-        50,
-        58,
-        71
+        92,
+        71,
+        54,
+        100
       ],
       "pirates.pos": [
-        -4183,
-        -350,
-        3829,
-        -1093,
-        3653,
-        -538,
-        747,
-        2100
+        -3025,
+        744,
+        3868,
+        -1099,
+        3500,
+        661,
+        1754,
+        1943
       ],
-      "pirates.hash": 235489335,
-      "pirates.shots": 120,
-      "pirates.goods": 19,
+      "pirates.hash": 2088525906,
+      "pirates.shots": 99,
+      "pirates.goods": 24,
       "pirates.eruptions": 1,
       "pirates.rock_impacts": 3,
       "render.skipped": 0
@@ -63,7 +63,7 @@
     "name": "pirates-race-full",
     "app": "pirates_auto",
     "frames": 21600,
-    "note": "Dock-aware navigation and safe NPC harbor approaches. All 13 fields independently match native WebGPU and rendered romdev WebGPU through a full six-minute race. All four AI captains bank cargo.",
+    "note": "Dock-aware navigation and safe NPC harbor approaches. All 13 fields independently match native WebGPU and rendered romdev WebGPU through a full six-minute race. All four AI captains bank cargo. Values since the AI sails by the wind, 2026-11-08.",
     "fields": [
       "pirates.state",
       "pirates.mode",
@@ -84,36 +84,36 @@
       "pirates.mode": 1,
       "pirates.tick": 21600,
       "pirates.bank": [
-        78,
-        73,
-        63,
-        59
+        110,
+        67,
+        6,
+        52
       ],
       "pirates.held": [
-        1,
-        1,
-        6,
+        0,
+        0,
+        0,
         1
       ],
       "pirates.hp": [
         100,
-        78,
-        30,
-        22
+        100,
+        57,
+        36
       ],
       "pirates.pos": [
-        -4001,
-        -691,
-        3043,
-        -517,
-        3253,
-        1648,
-        3198,
-        618
+        -3736,
+        -246,
+        3747,
+        -733,
+        -613,
+        1883,
+        3188,
+        513
       ],
-      "pirates.hash": 1347967832,
-      "pirates.shots": 1659,
-      "pirates.goods": 305,
+      "pirates.hash": 1432587640,
+      "pirates.shots": 1335,
+      "pirates.goods": 255,
       "pirates.eruptions": 12,
       "pirates.rock_impacts": 36,
       "render.skipped": 0
