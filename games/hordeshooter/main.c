@@ -280,6 +280,15 @@ static void cmd_wave(int argc, const char **argv, cw_reply *r) {
   start(G.players ? G.players : 2, NULL);
   cw_reply_printf(r, "{\"wave\":%d}", g_force_wave);
 }
+/* development (key art, the autopilot build): keyart <camera distance> [hud 0|1], what HORDE_CAM_DIST and HORDE_NOHUD
+ * do natively, for a cart (a cart has no environment before its first frame) */
+static int g_keyart_nohud;
+static void cmd_keyart(int argc, const char **argv, cw_reply *r) {
+  if (argc < 2) { cw_reply_error(r, "usage: keyart <camera distance> [hud 0|1]"); return; }
+  g_cam_dist = (float)atof(argv[1]);
+  g_keyart_nohud = argc > 2 && atoi(argv[2]) == 0;
+  cw_reply_printf(r, "{\"cam_dist\":%.2f,\"hud\":%d}", g_cam_dist, !g_keyart_nohud);
+}
 #endif
 
 /* the app's warm-up: the world, then a simulation to draw it with (start replaces it), so the shader phase after this
@@ -398,6 +407,7 @@ static void init(void *u) {
   cw_debug_field("melee.hit_delay", G.m_delay, CW_DBG_I32, EK_KINDS);
 #ifdef HORDE_AUTOPILOT
   cw_debug_command("wave", "wave <n>: start over at that wave of the run", cmd_wave);
+  cw_debug_command("keyart", "keyart <camera distance> [hud 0|1]: key art (the camera's distance, the HUD off)", cmd_keyart);
   if (getenv("HORDE_CAM_DIST")) g_cam_dist = (float)atof(getenv("HORDE_CAM_DIST")); /* development (key art): dev.cam_dist from the environment */
 #ifndef HORDE_AUTO_PLAYERS
 #define HORDE_AUTO_PLAYERS 2
@@ -1087,7 +1097,7 @@ static void render(void *u, double alpha) {
   }
   bool hud_on = true;
 #ifdef HORDE_AUTOPILOT
-  hud_on = !getenv("HORDE_NOHUD"); /* development (key art): the play view with no HUD */
+  hud_on = !getenv("HORDE_NOHUD") && !g_keyart_nohud; /* development (key art): the play view with no HUD */
 #endif
   if (hud_on && G.in_match && cw_shell_hud_shown()) { CW_PROFILE_SCOPE("horde.hud"); hud(); }
   cw_quality_auto_measure(sc == CW_SHELL_PLAY);

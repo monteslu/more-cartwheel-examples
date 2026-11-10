@@ -29,6 +29,10 @@
 #include "game.h"
 
 #ifdef ARENA_AUTOPILOT
+/* key art for a cart (the debug command keyart): what ARENA_CHASE and ARENA_NOHUD do natively, which a cart cannot
+ * read before its first frame */
+static char keyart_chase[64];
+static int keyart_nohud;
 #if defined(__GLIBC__)
 #include <malloc.h>
 #endif
@@ -2605,6 +2609,7 @@ static void sync_nodes(void) {
   }
   { /* ARENA_CHASE=i,fwd,right,up,lookh: view 1 from a spot in fighter i's own frame, looking at it (key art) */
     const char *v = getenv("ARENA_CHASE");
+    if (!v && keyart_chase[0]) v = keyart_chase;
     int i;
     float fw, rt, up, lh;
     if (v && sscanf(v, "%d,%f,%f,%f,%f", &i, &fw, &rt, &up, &lh) == 5 && i >= 0 && i < G.nf && cw_node_valid(F(i)->body)) {
@@ -3362,7 +3367,7 @@ static void render(void *user, double alpha) {
   cw_quality_auto_measure(sc == CW_SHELL_PLAY && G.state == ST_PLAY); /* Auto steps the preset down when play runs slow */
 #ifdef ARENA_AUTOPILOT
   { static int nohud = -1; if (nohud < 0) nohud = getenv("ARENA_NOHUD") != NULL; /* ARENA_NOHUD: no HUD at all (key art) */
-    if (nohud) { cw_shell_draw(); return; } }
+    if (nohud || keyart_nohud) { cw_shell_draw(); return; } }
 #endif
   if (sc == CW_SHELL_PLAY || sc == CW_SHELL_PAUSE) {
     cw_r2d_begin(NULL);
@@ -3510,6 +3515,14 @@ static void start(int players, void *user) {
 
 /* match [arena] [mode] [bots] [players]: argv[0] is the command's own name. A different player count restarts the shell
  * with that many seats (the views and HUD follow the shell's count). */
+#ifdef ARENA_AUTOPILOT
+static void cmd_keyart(int argc, const char **argv, cw_reply *r) {
+  if (argc < 2) { cw_reply_error(r, "usage: keyart <i,fwd,right,up,lookh> [hud 0|1] | keyart off"); return; }
+  if (!strcmp(argv[1], "off")) keyart_chase[0] = 0, keyart_nohud = 0;
+  else snprintf(keyart_chase, sizeof keyart_chase, "%s", argv[1]), keyart_nohud = argc > 2 && atoi(argv[2]) == 0;
+  cw_reply_printf(r, "{\"chase\":\"%s\",\"hud\":%d}", keyart_chase, !keyart_nohud);
+}
+#endif
 static void cmd_match(int argc, const char **argv, cw_reply *r) {
   if (argc > 1) G.arena_id = CW_CLAMP(atoi(argv[1]), 0, ARENAS - 1);
   if (argc > 2) G.mode = CW_CLAMP(atoi(argv[2]), 0, MODE_COUNT - 1);
@@ -3744,6 +3757,7 @@ static void init(void *user) {
   cw_debug_command("ptest", "ptest [on|off]: the playtest perception field (ptest) for a scripted human", cmd_ptest);
   cw_debug_field("ptest", ptest, CW_DBG_F32, PT_N);
 #ifdef ARENA_AUTOPILOT
+  cw_debug_command("keyart", "keyart <i,fwd,right,up,lookh> [hud 0|1] | keyart off: key art (view 1 from a spot in fighter i's frame, the HUD off)", cmd_keyart);
   /* the autopilot: ARENA_ID, ARENA_MODE, ARENA_BOTS, ARENA_PLAYERS choose the match (tests, benches) */
   const char *e;
   if ((e = getenv("ARENA_ID"))) G.arena_id = CW_CLAMP(atoi(e), 0, ARENAS - 1);

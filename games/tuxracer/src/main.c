@@ -782,6 +782,12 @@ static void intro_tick(float dt) {
   gy += getenv("TUXRACER_INTRO_FLOOR") ? (float)atof(getenv("TUXRACER_INTRO_FLOOR")) : 0.9f;
   if (eye.y < gy) eye.y = gy;
   t3_vec3 look = { pos.x, pos.y + 0.35f, pos.z };
+  { /* dev (key art): TUXRACER_KEYCAM holds the walk-in's camera at an offset from Tux too, aimed at an offset from him */
+    const char *kc = cw_test_env("TUXRACER_KEYCAM");
+    float k[6];
+    if (kc && sscanf(kc, "%f %f %f %f %f %f", &k[0], &k[1], &k[2], &k[3], &k[4], &k[5]) == 6)
+      eye = (t3_vec3){ pos.x + k[0], pos.y + k[1], pos.z + k[2] }, look = (t3_vec3){ pos.x + k[3], pos.y + k[4], pos.z + k[5] };
+  }
   G.view.pos = eye;
   G.view.dir = t3_vec3_normalize(t3_vec3_sub(look, eye));
   G.view.up = (t3_vec3){ 0, 1, 0 };
@@ -1539,7 +1545,7 @@ static void pre_render_hook(cw_tree *t, double alpha, void *u) {
     place_tux(bx.p);
     G.dbg_alpha = (float)alpha;
     G.dbg_body_r[0] = bx.p.x, G.dbg_body_r[1] = bx.p.y, G.dbg_body_r[2] = bx.p.z;
-    const char *kc = getenv("TUXRACER_KEYCAM"); /* dev: key art, the camera held at an offset from Tux, aimed at an offset from him */
+    const char *kc = cw_test_env("TUXRACER_KEYCAM"); /* dev: key art, the camera held at an offset from Tux, aimed at an offset from him */
     float k[6];
     if (kc && sscanf(kc, "%f %f %f %f %f %f", &k[0], &k[1], &k[2], &k[3], &k[4], &k[5]) == 6) {
       cw_node3d_set_position(G.cam, (t3_vec3){ bx.p.x + k[0], bx.p.y + k[1], bx.p.z + k[2] });
@@ -1783,15 +1789,15 @@ static void render(void *user, double alpha) {
       hud_begin();
       size = cw_r2d_canvas_size();
       float total = G.nkeys ? G.keys[G.nkeys - 1].time : 1, left = total - G.key_time;
-      float bar = size.y * 0.09f * (left < 0.5f ? left / 0.5f : 1);
+      float bar = cw_test_env("TUXRACER_NO_HUD") ? 0 : size.y * 0.09f * (left < 0.5f ? left / 0.5f : 1); /* dev: key art without the bars */
       if (bar > 0) { hud_box(0, 0, size.x, bar, (cw_color){ 0, 0, 0, 1 }); hud_box(0, size.y - bar, size.x, bar, (cw_color){ 0, 0, 0, 1 }); }
       hud_end();
       break;
     }
     case ST_RACING:
       hud_chain(chain[0], (float)(G.race_ticks - chain_tick) / TICK_HZ);
-      if (!getenv("TUXRACER_NO_HUD")) hud_draw(&G.phys, G.race_time, G.herring, G.mode == MODE_CUP ? G.lives : 0, G.mode == MODE_CUP ? G.herring_req : 0, G.mode == MODE_CUP ? G.time_req : 0); /* dev: key art without the HUD */
-      if (tricks_on() && !getenv("TUXRACER_NO_HUD")) trick_hud();
+      if (!cw_test_env("TUXRACER_NO_HUD")) hud_draw(&G.phys, G.race_time, G.herring, G.mode == MODE_CUP ? G.lives : 0, G.mode == MODE_CUP ? G.herring_req : 0, G.mode == MODE_CUP ? G.time_req : 0); /* dev: key art without the HUD */
+      if (tricks_on() && !cw_test_env("TUXRACER_NO_HUD")) trick_hud();
       break;
     case ST_PAUSED: {
       const char *const ITEMS[] = { "Resume", "Settings", SAVE.rumble_off ? "Rumble: Off" : "Rumble: On", "Quit race" };
