@@ -218,7 +218,7 @@ static void rider_pose_stand(int i, const craft *c, float steer, float by) {
   t3_quat qc = t3_quat_multiply(qs, euler(fwd * 0.25f, -steer * 0.08f, side * 0.3f));
   t3_vec3 hips_r = TO_R(hips);
   /* the pole: its bars where the hands reach, a little below the hips' height ahead of the rider (waist height standing) */
-  float hand_y = hips.y - 0.1f - 0.1f * crouch, th;
+  float hand_y = hips.y + 0.02f - 0.1f * crouch, th; /* the bars at hip height: the arms reach them down and forward */
   { float s = clampf((hand_y - POLE_PY) / POLE_LEN, -0.2f, 0.95f); th = lerpf2(0.12f, asinf(s), up); }
   th = th + (1.08f - th) * pk;
   th = th + (0.55f - th) * sk;

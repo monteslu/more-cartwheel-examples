@@ -1,6 +1,6 @@
 // The two craft, on the cart through romdev, GL and WebGPU. Every racer rides the type the menu picks: a sit-down
 // runabout or a stand-up (internal notes on the real ones: why the numbers are what they are).
-//   handling: from rest on open, calm water, the throttle held 8 s, then 5 s at full lock, then a press of the trick
+//   handling: from rest on open, calm water, the throttle held 8 s, then 5 s at full lock leaning back into the carve, then a press of the trick
 //     button and of the kick button on the water at speed. Each run is ONE input timeline request; the game keeps the
 //     measures (debug field trial: top speed, the time to plane, the turn's radius and speed). The stand-up must be
 //     slower on the straight, plane later, turn tighter, and do a submarine and a pole stand, which the sit-down cannot.
@@ -59,7 +59,7 @@ async function handling(backend, craft) {
   const w = (a, b, buttons) => ({ frame: f + a, until: f + b, buttons });
   await tool('input', { op: 'timeline', timeline: [
     w(0, 1380, ['south']),           /* throttle all the way */
-    w(480, 780, ['right']),          /* full lock, 5 s */
+    w(480, 780, ['right', 'down']),  /* full lock leaning back, a carve, 5 s */
     w(840, 843, ['west']),           /* the trick button, on the water (again in case a swell had it in the air) */
     w(880, 883, ['west']),
     w(990, 993, ['north']),          /* the kick button, on the water, likewise */

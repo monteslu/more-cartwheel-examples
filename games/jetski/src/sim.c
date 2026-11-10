@@ -24,7 +24,7 @@
 const hull_def HULLS[2] = {
   { .base_top = 21.5f, .meter_top = 1.55f, .thrust = 11.0f, .steer_k = 9.0f, .turn0 = 1.45f, .turn_v = 0.03f, .turn_lean = 0.85f, .roll0 = 0.2f, .roll_v = 0.009f,
     .grip = 1.0f, .slide_v = 8.5f, .slide_t = 0.9f, .spill_err = 2.1f, .trick_t = 0.72f, .plane_v = 8.0f, .sink_rest = 0.0f },
-  { .base_top = 19.6f, .meter_top = 1.4f, .thrust = 12.5f, .steer_k = 11.0f, .turn0 = 1.6f, .turn_v = 0.03f, .turn_lean = 1.5f, .roll0 = 0.3f, .roll_v = 0.013f,
+  { .base_top = 18.8f, .meter_top = 1.4f, .thrust = 12.5f, .steer_k = 11.0f, .turn0 = 1.6f, .turn_v = 0.03f, .turn_lean = 1.5f, .roll0 = 0.3f, .roll_v = 0.013f,
     .grip = 1.5f, .slide_v = 7.2f, .slide_t = 0.55f, .spill_err = 1.7f, .trick_t = 0.58f, .plane_v = 11.5f, .sink_rest = 0.1f },
 };
 int g_craft = CRAFT_SIT;
