@@ -34,9 +34,19 @@ export function client(name) {
     get frame() { return frame; },
     /** a fresh cart on a backend: frame 0 */
     async load(cart, backend) {
-      const l = await tool('loadMedia', { platform: 'wasmcart', path: cart, gpuPower: 'low-power', ...(backend === 'gl' ? { wgpu: false } : {}) });
-      if (!l.loaded) { console.error(JSON.stringify(l).slice(0, 300)); await bye(3); }
-      const s = await tool('frame', { op: 'step', frames: 1 });
+      /* a busy shared server can drop a host it has just loaded: load again, a few times, before calling it a failure */
+      let l, s;
+      for (let k = 0; ; k++) {
+        l = await tool('loadMedia', { platform: 'wasmcart', path: cart, gpuPower: 'low-power', ...(backend === 'gl' ? { wgpu: false } : {}) });
+        if (!l.loaded) { console.error(JSON.stringify(l).slice(0, 300)); await bye(3); }
+        const r = await fetch('http://127.0.0.1:7331/tool/frame', { method: 'POST', headers: H, body: JSON.stringify({ op: 'step', frames: 1 }) });
+        requests++;
+        s = await r.json().catch(() => ({ error: 'bad reply' }));
+        if (r.ok && !s?.error) break;
+        if (k >= 3) { console.error(`romdev frame after load: ${JSON.stringify(s).slice(0, 300)}`); await bye(3); }
+        console.log(`  (the host was dropped right after its load: loading again, ${k + 1})`);
+        await new Promise((res) => setTimeout(res, 3000));
+      }
       frame = s.frameCount ?? s.frame ?? 1;
       if (typeof frame !== 'number') { console.error('no frame count: ' + JSON.stringify(s).slice(0, 300)); await bye(3); }
       /* the cart's assets stream in under a loading screen: the game's own debug fields come once it has started */
