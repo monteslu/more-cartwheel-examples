@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.32.0
+
+- Engine v0.46.0 (from v0.44.2): the flash check and GPU timing run through romdev; a test's scripted finger taps on the frame it lands on a native run.
+- No strobing, through romdev: the flash sweep runs every entry on the built cart through romdev on GL and WebGPU side by side, with the engine's `flash-check --host romdev`: one `frame({op:'flash'})` call a run (the server steps the frames, filters each in linear light and applies the WCAG 2.3.1 / Harding rules with the 8 Hz strobe control), 232 requests for 64 runs. Every entry passes on both backends, and Arena's co-op control (the old stand-ins) still fails as it must. What the sweep found, and what changed so the flashes swell and fade:
+  - Arena: an enemy's rocket flying at a player grew from a dot to a white ball of glow filling that view and lit the wall beside it, three a second. A rocket near a view's eye now dims its light and shrinks its hot exhaust, a blast near one fires a quarter of its flash (the light, the flash sprite, the fire) at 3 m and all of it from 12 m, and a downed view sinks and turns at most 3.6 rad a second, easing in (it whipped from a wall to the open court in two frames).
+  - Co-op Platformer: near the founder, speech bubbles popped in, hopped to a clear place and blinked out, 4 flashes in a second over a sixth of the screen. A bubble now swells in over a fifth of a second, glides to its new place, and fades out where it stood when it has to wait.
+  - Horde: on a late floor three players firing fans of thick tracers into a crowd pulsed the middle of the screen at the fire rate, 5 flashes in a second and a regular 4.5 Hz flicker. A round is now a slim line of light grown from the muzzle that trails back about the distance between two volleys, with a small hot head, so a gun's volleys are a steady stream.
+- Tests: the killer cam gate counts from 64 dead ticks, once the slower turn is done.
+
 ## 0.31.3
 
 - Tests: the flash sweep runs on the built carts through romdev, GL and WebGPU, every frame of a stretch taken in one call. Arena's co-op stretch passes on both (it was marked as a known failure): the stand-ins that play the seats in the test build now turn the way a person on a pad does, easing the look stick in and out and staying on the enemy they fight, instead of swinging their views at full speed between two enemies and round every corner. The old stand-in is kept as a control that must still fail. The shipped games are unchanged.
