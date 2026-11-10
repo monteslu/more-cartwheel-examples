@@ -1,5 +1,6 @@
 name = Pirates
 app = pirates
+title = "Pirates"
 app_id = org.cartwheel.pirates
 render.width = 1920
 render.height = 1080

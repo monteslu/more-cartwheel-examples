@@ -1,6 +1,7 @@
 ; crawler's release builds: node <host sdk>/tools/cwexport.mjs --project games/crawler --preset <preset>
 name = "Crawler"
 app = "crawler"
+title = "Crawler"
 app_id = "org.cartwheel.crawler"
 export.linux-x64.platform = "linux-x64"
 export.linux-arm64.platform = "linux-arm64"

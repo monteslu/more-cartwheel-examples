@@ -1,6 +1,7 @@
 # The game's settings (cartwheel/project.h) and its export presets (cwexport).
 name = Arena
 app = arenafps
+title = "Arena"
 app_id = org.cartwheel.arenafps
 # gameplay actions; the menus' (ui_*, pause) come from the engine's shell
 input.move_left = key:a, pad:left, axis:lx-

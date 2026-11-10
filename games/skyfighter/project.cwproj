@@ -1,6 +1,7 @@
 ; skyfighter's release builds: node <host sdk>/tools/cwexport.mjs --project games/skyfighter --preset <preset>
 name = "skyfighter"
 app = "skyfighter"
+title = "Sky Fighter"
 app_id = "org.cartwheel.skyfighter"
 export.linux-x64.platform = "linux-x64"
 export.linux-arm64.platform = "linux-arm64"

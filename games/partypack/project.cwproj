@@ -1,6 +1,7 @@
 ; partypack's release builds: node <host sdk>/tools/cwexport.mjs --project games/partypack --preset <preset>
 name = "Party Pack"
 app = "partypack"
+title = "Party Pack"
 app_id = "org.cartwheel.partypack"
 export.linux-x64.platform = "linux-x64"
 export.linux-arm64.platform = "linux-arm64"

@@ -68,6 +68,9 @@ jobs:
       # every release cart carries its launcher art (games/<game>/art, project.cwproj art/description/author)
       - name: Cart art
         run: node tests/cart-art.mjs $GAMES
+      # the engine's art check (tools/check-art.mjs): a title, every picture whole and the shape wasmcart's SPEC asks
+      - name: Cart art (the engine's check-art)
+        run: node deps/cartwheel-engine/tools/check-art.mjs $(for g in $GAMES; do echo build/cart-wgpu/carts/$g.wasc; done)
       # every cart's manifest version is this build's: the tag on a v* tag (a release version), else this
       # checkout's <last tag>-dev.g<commit>; the control (a cart rewritten to another version) must fail
       - name: Cart version

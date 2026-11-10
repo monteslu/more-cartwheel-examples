@@ -1,5 +1,6 @@
 name = "jetski"
 app = "jetski"
+title = "Jetski"
 app_id = "org.cartwheel.jetski"
 render.width = 1920
 render.height = 1080

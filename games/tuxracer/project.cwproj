@@ -1,5 +1,6 @@
 name = Tux Racer
 app = tuxracer
+title = "Tux Racer"
 sources = src
 render.width = 960
 render.height = 540

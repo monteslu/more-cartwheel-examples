@@ -1,6 +1,7 @@
 ; coopplatformer's release builds: node <host sdk>/tools/cwexport.mjs --project games/coopplatformer --preset <preset>
 name = "coopplatformer"
 app = "coopplatformer"
+title = "Co-op Platformer"
 app_id = "org.cartwheel.coopplatformer"
 export.linux-x64.platform = "linux-x64"
 export.linux-arm64.platform = "linux-arm64"
