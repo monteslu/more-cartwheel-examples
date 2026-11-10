@@ -29,7 +29,8 @@
 #define RAMP_FOOT 50.0f     /* how far its piles reach under its top edge */
 static const char *const RIDER_NAMES[6] = { "You", "Marlin", "Kestrel", "Tide", "Juno", "Reef" };
 extern int g_difficulty; /* 0 easy, 1 normal, 2 hard */
-enum { MODE_CHAMPIONSHIP, MODE_TIME_TRIAL };
+enum { MODE_CHAMPIONSHIP, MODE_TIME_TRIAL, MODE_STUNT, MODE_ROAM, MODE_N }; /* stunt and free roam: the human alone, no buoys counted */
+#define MODE_ALONE (g_mode != MODE_CHAMPIONSHIP)
 extern int g_mode;
 /* the craft every racer rides, chosen from the menu: a sit-down runabout, or a stand-up (a narrow, light hull the rider
  * stands on, on a tray behind a hinged handlepole). internal-cartwheel/findings/jetski-standup.md has the real ones */
@@ -175,8 +176,8 @@ typedef struct craft {
 } craft;
 
 /* what happened to the human this tick: the HUD, the sounds, the rumble and the bursts all read this list, each from its own place in it */
-enum { EV_PASS, EV_TOP, EV_TRICK, EV_LAND, EV_MISS, EV_GAIN, EV_LOSE, EV_LAP, EV_FINAL, EV_WALL, EV_CRASH, EV_CHARGE, EV_TURBO, EV_ROCKET, EV_KINDS };
-typedef struct game_event { int kind; int a; float x, z; } game_event;
+enum { EV_PASS, EV_TOP, EV_TRICK, EV_LAND, EV_MISS, EV_GAIN, EV_LOSE, EV_LAP, EV_FINAL, EV_WALL, EV_CRASH, EV_CHARGE, EV_TURBO, EV_ROCKET, EV_TURBO_LOST, EV_WAVES, EV_COMBO, EV_KINDS };
+typedef struct game_event { int kind; int a; float x, z; int quiet; } game_event; /* quiet: the same mistake again soon after, answered softly or not at all (weather.c nag_quiet) */
 #define EV_RING 64
 void ev_push(int kind, int a, float x, float z);
 extern game_event g_ev[EV_RING];
@@ -322,4 +323,46 @@ void hud_draw(void);
 /* audio.c */
 void audio_init(void);
 void audio_tick(float dt);
+/* weather.c: the day's weather (it sets the sea, the wind, the water level and the look), the routes it opens and shuts,
+ * the shoals it shows, the course's big water event, stunt scoring and the championship's forecast */
+enum { WX_CALM, WX_CHOPPY, WX_STORM, WX_N };
+extern const char *const WX_NAMES[WX_N];
+int wx_now(void);                  /* this race's weather */
+int wx_usual(int level);           /* the weather a course was made in */
+void wx_set_race(int w);           /* -1: the course's usual */
+float wx_wave_k(int i);            /* amplitude of wave i against the course as made */
+float wx_steep_k(int i);           /* its steepness, held down while an event's waves are up */
+float wx_surge(void);              /* metres the mean level stands over the course as made */
+bool wx_rain(void);
+void wx_wind(float *x, float *z);  /* m/s */
+void wx_mask_base(const float *mask, int n);
+void wx_course_apply(void);        /* a course loaded: its shoals, its route's models */
+void wx_race_reset(void);
+void wx_tick(float dt);            /* from sim_tick, after the racers */
+void wx_look_tick(void);           /* from view_sync: the look follows the weather */
+void wx_ai(craft *c, int idx, float *ax, float *az);
+void wx_craft(craft *c);           /* from craft_tick: shoals, the route's gate or ramp */
+bool wx_in_route(const craft *c);  /* inside an open route: not out of the course */
+bool wx_route_open(void);
+const char *wx_route_line(void);   /* what the course card says of the route today */
+float wx_event_at(float x, float z); /* the event's waves here now, 0..1 */
+float wx_pace(void);               /* the rivals' pace: the championship ramps it day by day */
+extern int g_wx_force, g_route_force, g_event_on, g_nag_on, g_turbo_risk, g_spill_old, g_cup_day;
+extern float g_event_amp;
+typedef struct wx_probe { float wave_max, wave_min, sea_hs; int32_t route_through, route_shut_hits, ai_route, ai_shut_hits, shoal_hits, ai_shoal_hits, rocks_solid, rocks; int32_t event_on, event_hits, event_tick; float event_c, event_surf[RACERS]; float route[4]; } wx_probe;
+extern wx_probe g_wx;
+/* stunt mode */
+typedef struct stunt_state { int32_t score, pending, chain, best_chain, combos, tricks, banks, lost; float mult, window, lost_t, bank_t; int32_t last_bank; } stunt_state;
+extern stunt_state g_stunt;
+#define STUNT_TIME 120.0f
+void sim_solid_circle(craft *c, float x, float z, float r);
+void sim_craft_hit(craft *c, float nx, float nz);
+void sim_shortcut(craft *c, float s_out);
+int menu_unlocked(int level);
+const char *wx_event_line(void);
+void wx_debug(void);
+void wx_minimap_draw(float rx, float ry, float rw, float rh, float minx, float minz, float sc, float ox, float oy, float u);
+extern float g_wx_dome[3], g_wx_sun;
+extern int g_wx_look_key;
+void view_props_reset(void);
 #endif

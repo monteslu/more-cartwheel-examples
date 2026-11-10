@@ -85,7 +85,9 @@ void audio_tick(float dt) {
   /* wind past the helmet: nothing at a crawl, a roar at full speed and in the air */
   { float w = c->speed > 8 ? (c->speed - 8) / 24.0f : 0;
     w = w > 1.2f ? 1.2f : w;
-    cw_voice_set_volume(v_wind, quiet ? 0.0f : 0.32f * w * w + (c->air ? 0.12f : 0));
+    /* and the weather's own wind under it: a breath in a calm, a howl in a storm */
+    static const float GALE[WX_N] = { 0.0f, 0.05f, 0.2f };
+    cw_voice_set_volume(v_wind, quiet ? 0.0f : 0.32f * w * w + (c->air ? 0.12f : 0) + (G.state == RACE_ATTRACT ? 0 : GALE[wx_now()]));
     cw_voice_set_pitch(v_wind, 0.8f + 0.35f * (c->speed / 30.0f)); }
   /* the listener rides with the camera; the rivals nearest it are heard */
   { float fx = G.look[0] - G.cam[0], fy = G.look[1] - G.cam[1], fz = G.look[2] - G.cam[2], fl = sqrtf(fx * fx + fy * fy + fz * fz);
@@ -123,6 +125,9 @@ void audio_tick(float dt) {
       const game_event *e = &g_ev[read % EV_RING];
       if (!g_ev_on) continue;
       bool heard = true;
+      /* the same mistake again soon: softly the second time, not at all after (sim.c nag_quiet) */
+      if (e->quiet >= 2) continue;
+      float qv = e->quiet ? 0.4f : 1.0f;
       switch (e->kind) {
         case EV_PASS: shot(S_OK, 0.5f, 1.0f + 0.05f * (float)e->a); break;
         case EV_TOP: shot(S_TOP, 0.75f, 1.0f); break;
@@ -131,16 +136,19 @@ void audio_tick(float dt) {
           else { shot(S_WHOOSH, 0.7f, e->a == 4 ? 1.2f : 1.0f); shot(S_TOP, 0.5f, 1.25f); }
           break;
         case EV_LAND: if (e->a) shot(S_TOP, 0.5f, 0.85f); else shot(S_SMALL, 0.45f, 1.0f); break;
-        case EV_MISS: shot(S_MISS, 0.7f, 1.0f); break;
+        case EV_MISS: shot(S_MISS, 0.7f * qv, 1.0f); break;
         case EV_GAIN: shot(S_PASSBY, 0.6f, 1.0f); shot(S_OK, 0.5f, 1.5f); break;
         case EV_LOSE: shot(S_PASSBY, 0.4f, 0.8f); shot(S_MISS, 0.3f, 1.3f); break;
         case EV_LAP: shot(S_LAP, 0.7f, 1.0f); break;
         case EV_FINAL: shot(S_FINAL, 0.85f, 1.0f); break;
-        case EV_WALL: shot(S_SMALL, 0.6f, 0.7f); break;
-        case EV_CRASH: shot(S_BIG, 1.0f, 0.75f); break;
+        case EV_WALL: shot(S_SMALL, 0.6f * qv, 0.7f); break;
+        case EV_CRASH: shot(S_BIG, 1.0f * (e->quiet ? 0.6f : 1.0f), 0.75f); break;
         case EV_CHARGE: shot(S_TOP, 0.6f, 1.5f); break;
         case EV_TURBO: shot(S_BIG, 0.75f, 1.4f); shot(S_WHOOSH, 0.8f, 0.7f); break;
         case EV_ROCKET: shot(S_GO, 0.8f, 1.25f); shot(S_WHOOSH, 0.9f, 0.6f); break;
+        case EV_TURBO_LOST: shot(S_MISS, 0.5f * qv, 0.7f); break;
+        case EV_WAVES: shot(S_BIG, 0.9f, 0.45f); shot(S_WHOOSH, 0.7f, 0.4f); break;
+        case EV_COMBO: shot(S_TOP, 0.65f, 1.0f + 0.04f * fminf(10.0f, (float)e->a / 500.0f)); shot(S_STYLE, 0.5f, 1.2f); break;
         default: heard = false; break;
       }
       if (heard) g_fb[e->kind][1]++;

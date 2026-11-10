@@ -3,9 +3,28 @@
 A wave racing game in five places, each with its own water, land and light. Six riders race three laps. The water is the
 track: it moves, its swells throw you into the air, and on each course it changes as the race goes on.
 
-Status: five courses, two craft, a computer racer field, one player for now. The menu offers a championship (points by place over
-every course in turn) and a time trial (you alone on the course you choose, keeping your best time). Difficulty
-makes the sea bigger and adds buoys: every second one on Easy, three in four on Normal, all of them on Hard.
+Status: five courses in three weathers, two craft, a computer racer field, one player for now. The menu offers four modes:
+
+- Championship: a week of racing, one course a day, points by place. The week's forecast shows each day's weather before it starts, and each day you pick which of the courses left to race, so you can save a course for the day whose sea suits it. The first day races at the pace the courses always had, and the rivals get a little quicker each day after.
+- Time trial: you alone on the course and in the weather you choose, keeping your best time.
+- Stunt: two minutes alone on a course you have raced, scored on tricks. Tricks chained within three seconds of each other build a combo (the multiplier rises half a step a trick, up to four); a perfect landing and long air add to it, and a wipeout loses what the combo had not yet banked. The best score on each course is kept.
+- Free roam: a course you have raced to the line, alone, no buoys and no clock. Pause to leave.
+
+Difficulty makes the sea bigger and adds buoys: every second one on Easy, three in four on Normal, all of them on Hard.
+
+## Weather
+
+Every course runs calm, choppy or in a storm. The swell and the chop rise and fall with it, the wind blows harder, and the sea stands higher on the shore the rougher it is. A calm is glassy, mirroring the land and the sky, and shows the rocks and shoals by the line: they stand out of the water and they are solid. A rough sea covers them and you can ride over. A storm is dark, heavy water under a low sky, rain on the surface, spume blown off the crests and lightning that swells and fades. Each course has one way that only some seas allow, and the course card before the start says which today:
+
+- Crater Atoll: a short way through the reef past the lighthouse, awash in a chop or a storm, standing out of the water in a calm.
+- Cold Sound: the arch through the headland, opened by the falling tide in a calm or a chop; in a storm the surge fills it and it stays shut.
+- Red Reach: a red rock slab off the line, a jump once the flood is up to its foot (a storm).
+- Iron Quay: a sunken barge whose deck the swell washes up in a chop or a storm: ride it for a jump.
+- Gale Bank: a wreck's deck the storm runs up: ride it for a jump; in a calmer sea its foot stands clear of the water.
+
+The computer riders take an open way and keep off a shut one and off rocks that stand out of the water.
+
+Once a race each course sends a set of big waves through the pack: a cliff falling into the atoll's sea, rock breaking off the fjord wall, a flash flood down the river, a ship's wake rolling into the port, a rogue set on the open sea. The waves are in the water itself: a band of the sea where the swell stands up to 1.7 m higher moves across the course, and every craft rides it. The screen warns that it is coming, the minimap shows the band, and the pad rumbles under it; the camera never shakes.
 
 ## How to ride
 
@@ -20,8 +39,8 @@ makes the sea bigger and adds buoys: every second one on Easy, three in four on 
 
 Buoys mark the course: tall masts over the swell, each with a board whose arrow points the way past it. Pass each one on the side its colour and the arrow show: orange-red on your right, yellow on your
 left. The next one stands larger than the rest, and an arrow on screen sits over it with the distance, or at the screen's edge pointing to it when it is out of sight. Ride back along the course and the game says so. Each one passed lights an arrow and raises your top speed, five at most. Miss one and they all go out.
-At full power every clean buoy and every trick charges a turbo, up to three in hand, shown by the chips over the arrows. Five misses end your race, and the dots under the lap count show how many you have. So do five seconds away from the course,
-with a warning counting them down. Too much stick scrubs speed, and a long hard slide throws you off.
+At full power every clean buoy and every trick charges a turbo, up to three in hand, shown by the chips over the arrows. A turbo in hand is a risk: pass a buoy on its wrong side and the store empties (the chips flash red and the screen says TURBO LOST). Five misses end your race, and the dots under the lap count show how many you have. So do five seconds away from the course,
+with a warning counting them down. Too much stick scrubs speed, and a long hard slide throws you off. The game does not nag: the same mistake made again within a few seconds is answered quietly, and after that only by the miss dots.
 Big steel ramps stand on piles along each course, some on the racing line and some off it. They do not move: the sea comes and goes on their legs, the swell is held down around them, and the same approach gives the same jump, well over two seconds in the air, long enough for a trick. Each press of the trick button is one trick; land mid-trick and you are off the craft. From the side or behind a ramp is a wall.
 Four of the courses have a bigger ramp or two for far more air, close to three seconds. Push the stick forward in the air and the nose follows your line down: come down steep like that and you pierce the water, go under for a moment and come back up still going. Tail first, or dropping nose down off your line or straight down, throws you off. Landing straight keeps your speed and a long clean landing gives you a shove; nose down costs you most of it, and leaning
 back on the way in saves some. Start or Esc pauses, with restart and quit.

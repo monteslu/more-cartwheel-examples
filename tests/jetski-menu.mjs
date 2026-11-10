@@ -8,7 +8,7 @@ import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..'), OUT = join(ROOT, 'out/menu'), TOOL = join(ROOT, 'deps/cartwheel-engine/tools/run-cart.mjs');
 mkdirSync(OUT, { recursive: true });
-const P_MAIN = 1, P_CONTROLS = 2, P_AUDIO = 3, P_PAUSE = 5, P_RESULTS = 6, P_NONE = 0;
+const P_MAIN = 1, P_CONTROLS = 2, P_AUDIO = 3, P_PAUSE = 5, P_RESULTS = 6, P_FORECAST = 7, P_NONE = 0;
 const ATTRACT = 0, GRID = 1, ON = 2, DONE = 3;
 let n = 0;
 // tokens: a pad button, each tapped for 3 frames with 3 released after; 'w<N>' waits N frames; '!cmd' is not a tap
@@ -37,28 +37,40 @@ const pg = (s) => `page ${s['menu.page']} row ${s['menu.row']} state ${s['race.s
 const idle = run([]);
 check('the game opens on the menu over the attract loop', idle['menu.page'] === P_MAIN && idle['race.state'] === ATTRACT, pg(idle));
 // control: nothing pressed changes nothing
-const pad = run(['south']);
-check('pad: A starts the race', pad['menu.page'] === P_NONE && pad['race.state'] === GRID, pg(pad));
-const rows = run(['down', 'down', 'down', 'down', 'down']);
-check('down walks the rows, to Controls', rows['menu.row'] === 5, pg(rows));
+const fc = run(['south']);
+check('pad: A on Start shows the week\'s forecast', fc['menu.page'] === P_FORECAST && fc['cup.forecast'].length === 5 && fc['cup.forecast'][0] !== 2, pg(fc) + ` forecast ${fc['cup.forecast']}`);
+const pad = run(['south', 'south']);
+check('pad: A on a course starts the race', pad['menu.page'] === P_NONE && pad['race.state'] === GRID, pg(pad));
+const fcBack = run(['south', 'east']);
+check('the forecast: back returns to the menu', fcBack['menu.page'] === P_MAIN, pg(fcBack));
+const key = run(['k:return', 'k:return']);
+check('keyboard: Enter starts the race', key['menu.page'] === P_NONE && key['race.state'] === GRID, pg(key));
+const rows = run(['down', 'down', 'down', 'down', 'down', 'down']);
+check('down walks the rows, to Controls', rows['menu.row'] === 6, pg(rows));
 const wrap = run(['up']);
-check('up from the top wraps to the last row', wrap['menu.row'] === 7, pg(wrap));
-const ctl = run(['down', 'down', 'down', 'down', 'down', 'south']);
+check('up from the top wraps to the last row', wrap['menu.row'] === 8, pg(wrap));
+const ctl = run(['down', 'down', 'down', 'down', 'down', 'down', 'south']);
 check('Controls opens', ctl['menu.page'] === P_CONTROLS, pg(ctl));
-const ctlBack = run(['down', 'down', 'down', 'down', 'down', 'south', 'east']);
-check('Controls: back returns to the menu, on the row that opened it', ctlBack['menu.page'] === P_MAIN && ctlBack['menu.row'] === 5, pg(ctlBack));
-const au = run(['down', 'down', 'down', 'down', 'down', 'down', 'south']);
+const ctlBack = run(['down', 'down', 'down', 'down', 'down', 'down', 'south', 'east']);
+check('Controls: back returns to the menu, on the row that opened it', ctlBack['menu.page'] === P_MAIN && ctlBack['menu.row'] === 6, pg(ctlBack));
+check('Controls: Esc returns to the menu', run(['k:down', 'k:down', 'k:down', 'k:down', 'k:down', 'k:down', 'k:return', 'k:escape'])['menu.page'] === P_MAIN, 'escape');
+const au = run(['down', 'down', 'down', 'down', 'down', 'down', 'down', 'south']);
 check('Audio opens', au['menu.page'] === P_AUDIO, pg(au));
-check('Audio: back returns', run(['down', 'down', 'down', 'down', 'down', 'down', 'south', 'east'])['menu.page'] === P_MAIN, 'east');
+check('Audio: back returns', run(['down', 'down', 'down', 'down', 'down', 'down', 'down', 'south', 'east'])['menu.page'] === P_MAIN, 'east');
 const tt = run(['down', 'right']);
 check('Mode: right chooses time trial', tt['race.mode'] === 1, pg(tt));
-const dif = run(['down', 'down', 'down', 'right']);
+const modes = run(['down', 'right', 'right']), roam = run(['down', 'left']);
+check('Mode: on to stunt, and left from the championship to free roam', modes['race.mode'] === 2 && roam['race.mode'] === 3, `${modes['race.mode']}, ${roam['race.mode']}`);
+const wxr = run(['down', 'right', 'down', 'down', 'right']);
+check('Weather: right picks a weather for a time trial', wxr['menu.weather'] === 0, `weather ${wxr['menu.weather']}`);
+check('control: in a championship Weather follows the forecast', run(['down', 'down', 'down', 'right'])['menu.weather'] === -1, 'weather row, championship');
+const dif = run(['down', 'down', 'down', 'down', 'right']);
 check('Difficulty: right changes it', dif['race.difficulty'] !== idle['race.difficulty'], `${idle['race.difficulty']} to ${dif['race.difficulty']}`);
-const cr = run(['down', 'down', 'down', 'down', 'right']);
+const cr = run(['down', 'down', 'down', 'down', 'down', 'right']);
 check('Craft: right chooses the stand-up', cr['race.craft'] === 1 && idle['race.craft'] === 0, `craft ${idle['race.craft']} to ${cr['race.craft']}`);
 
 // pause, on the shell's clock: the race holds still
-const race = ['south', 'w300'];
+const race = ['south', 'south', 'w300'];
 const unpaused = run([...race, 'w30']), paused = run([...race, 'start', 'w30']);
 check('Start pauses', paused['menu.page'] === P_PAUSE, pg(paused));
 check('paused, the clock stands', paused['race.clock'] < unpaused['race.clock'] - 0.4, `${paused['race.clock'].toFixed(2)} s, running ${unpaused['race.clock'].toFixed(2)} s`);
@@ -80,8 +92,8 @@ const done = run(['w300'], { cmds: 'race;finish' }); // (the finish shows for 4.
 check('finishing shows the results', done['menu.page'] === P_RESULTS && done['race.state'] === DONE, pg(done));
 check('the championship pays every place', pts(done) === 26 && done['cup.race'] === 1, `points ${done['cup.points']} after ${done['cup.race']} race`);
 // (past the countdown: a race that had not finished would be running by now, not on its grid)
-const again = run(['w320', 'south', 'w20'], { cmds: 'race;finish' });
-check('from the results, A goes on to the next course of the championship, keeping the points', pts(again) === 26 && again['race.level'] === 1 && again['race.state'] === GRID, pg(again) + ` course ${again['race.level']} points ${again['cup.points']}`);
+const again = run(['w320', 'south', 'w20', 'south', 'w20'], { cmds: 'race;finish' });
+check('from the results, A goes to the forecast and A on its first row races the next course left, keeping the points', pts(again) === 26 && again['race.level'] === 1 && again['race.state'] === GRID, pg(again) + ` course ${again['race.level']} points ${again['cup.points']}`);
 
 // a time trial is the human alone, and keeps the best
 const alone = run(['down', 'right', 'up', 'south', 'w300']);

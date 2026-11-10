@@ -12,14 +12,17 @@
 #include "cartwheel/shell.h"
 #include "game.h"
 
-enum { P_NONE, P_MAIN, P_CONTROLS, P_AUDIO, P_GRAPHICS, P_PAUSE, P_RESULTS };
-typedef struct save_data { int32_t magic, level, difficulty, music, sfx, mode; float best[LEVELS]; int32_t craft; } save_data; /* (craft last: a save from before it reads 0, the sit-down) */
-_Static_assert(sizeof(save_data) <= 64, "the save region in cw_shell_desc");
+enum { P_NONE, P_MAIN, P_CONTROLS, P_AUDIO, P_GRAPHICS, P_PAUSE, P_RESULTS, P_FORECAST };
+typedef struct save_data { int32_t magic, level, difficulty, music, sfx, mode; float best[LEVELS]; int32_t craft, unlocked, weather; int32_t stunt_best[LEVELS]; } save_data;
+_Static_assert(sizeof(save_data) <= 128, "the save region in cw_shell_desc");
 #define SAVE_MAGIC 0x4a534b32
 static int page = P_MAIN, row, last_state = -1;
 /* the championship: every course in turn, points by place. A rider thrown out scores nothing */
 static const int POINTS[RACERS] = { 10, 6, 4, 3, 2, 1 };
 static int cup_points[RACERS], cup_race, new_best;
+/* the championship's week: a forecast for each day, and the player picks which course to race on which day */
+static int forecast[LEVELS], cup_used, cup_count, unlocked, weather_sel = -1, stunt_best[LEVELS];
+int menu_unlocked(int level) { return level == 0 || (unlocked & (1 << level)) != 0; }
 static int pending_level = -1, pending_race, pending_wait, saved_level = -1;
 static float best[LEVELS];
 static cw_action a_up, a_down, a_left, a_right, a_ok, a_back, a_pause;
@@ -35,6 +38,8 @@ static void store(void) {
   if (!s) return;
   s->magic = SAVE_MAGIC, s->level = G.level, s->difficulty = g_difficulty, s->music = music, s->sfx = sfx, s->mode = g_mode, s->craft = g_craft;
   memcpy(s->best, best, sizeof best);
+  s->unlocked = unlocked, s->weather = weather_sel;
+  memcpy(s->stunt_best, stunt_best, sizeof stunt_best);
   cw_shell_save_commit();
 }
 static void apply_audio(void) {
@@ -56,16 +61,19 @@ void menu_init(void) {
     if (s->level > 0 && s->level < LEVELS) { G.level = s->level; view_course_apply(); }
     if (s->difficulty >= 0 && s->difficulty < 3) g_difficulty = s->difficulty;
     music = s->music, sfx = s->sfx;
-    if (s->mode == MODE_CHAMPIONSHIP || s->mode == MODE_TIME_TRIAL) g_mode = s->mode;
+    if (s->mode >= 0 && s->mode < MODE_N) g_mode = s->mode;
     if (s->craft == CRAFT_SIT || s->craft == CRAFT_STAND) g_craft = s->craft;
     memcpy(best, s->best, sizeof best);
+    unlocked = s->unlocked, weather_sel = s->weather >= -1 && s->weather < WX_N ? s->weather : -1;
+    memcpy(stunt_best, s->stunt_best, sizeof stunt_best);
   }
   apply_audio();
 }
 
 static int page_rows(void) {
   switch (page) {
-  case P_MAIN: return 8;
+  case P_MAIN: return 9;
+  case P_FORECAST: { int n = 0; for (int l = 0; l < LEVELS; l++) if (!(cup_used & (1 << l))) n++; return n > 0 ? n : 1; }
   case P_AUDIO: return 5;
   case P_PAUSE: return 5;
   case P_RESULTS: return 2;
@@ -91,11 +99,16 @@ void menu_debug(void) {
   cw_debug_field("cup.points", cup_points, CW_DBG_I32, RACERS);
   cw_debug_f32("tt.best", &best[0]);
   cw_debug_i32("tt.new_best", &new_best);
+  cw_debug_field("cup.forecast", forecast, CW_DBG_I32, LEVELS);
+  cw_debug_i32("cup.used", &cup_used);
+  cw_debug_i32("menu.unlocked", &unlocked);
+  cw_debug_i32("menu.weather", &weather_sel);
+  cw_debug_field("stunt.best", stunt_best, CW_DBG_I32, LEVELS);
 }
 bool menu_active(void) { return page != P_NONE; }
 
 static const char *const DIFF[3] = { "Easy", "Normal", "Hard" };
-static const char *const MODES[2] = { "Championship", "Time trial" };
+static const char *const MODES[MODE_N] = { "Championship", "Time trial", "Stunt", "Free roam" };
 static const char *const CRAFTS[2] = { "Sit-down", "Stand-up" };
 
 static void start_race(void) {
@@ -107,22 +120,52 @@ static void go_course(int level, int race) {
   if (level == G.level) { if (race) start_race(); else sim_reset(RACE_ATTRACT); return; }
   pending_level = level, pending_race = race, pending_wait = 2;
 }
+/* a week's forecast: never a storm on the first day, always a calm and a storm in it (the same week for the same count of championships) */
+static void new_forecast(void) {
+  static const int WEEKS[4][LEVELS] = { { WX_CALM, WX_CHOPPY, WX_STORM, WX_CHOPPY, WX_STORM }, { WX_CHOPPY, WX_CALM, WX_STORM, WX_STORM, WX_CHOPPY },
+                                        { WX_CALM, WX_STORM, WX_CHOPPY, WX_CALM, WX_STORM }, { WX_CHOPPY, WX_STORM, WX_CALM, WX_CHOPPY, WX_STORM } };
+  memcpy(forecast, WEEKS[cup_count % 4], sizeof forecast);
+  cup_count++;
+}
+/* the remaining course on this row of the forecast page */
+static int forecast_course(int r) {
+  for (int l = 0; l < LEVELS; l++) if (!(cup_used & (1 << l)) && r-- == 0) return l;
+  return 0;
+}
 static void begin(void) {
   if (g_mode == MODE_CHAMPIONSHIP) {
-    memset(cup_points, 0, sizeof cup_points), cup_race = 0;
-    go_course(0, 1);
+    memset(cup_points, 0, sizeof cup_points), cup_race = 0, cup_used = 0;
+    new_forecast();
+    open_page(P_FORECAST);
     return;
   }
+  wx_set_race(weather_sel);
+  if ((g_mode == MODE_STUNT || g_mode == MODE_ROAM) && !menu_unlocked(G.level)) { go_course(0, 1); return; }
   start_race();
+}
+/* today's course chosen: raced in today's weather */
+static void race_today(int level) {
+  g_cup_day = cup_race;
+  wx_set_race(forecast[cup_race]);
+  cup_used |= 1 << level;
+  go_course(level, 1);
 }
 /* what the race just finished is worth */
 static void race_over(void) {
+  /* a course raced to the line opens the next one for stunts and free roam */
+  if (!G.c[0].dq && G.c[0].finish > 0 && G.level + 1 < LEVELS && !(unlocked & (1 << (G.level + 1)))) { unlocked |= 1 << (G.level + 1); store(); }
+  if (g_mode == MODE_STUNT) {
+    new_best = 0;
+    if (g_stunt.score > stunt_best[G.level]) stunt_best[G.level] = g_stunt.score, new_best = 1, store();
+    return;
+  }
   if (g_mode == MODE_TIME_TRIAL) {
     new_best = 0;
     float t = G.c[0].finish;
     if (!G.c[0].dq && t > 0 && (best[G.level] <= 0 || t < best[G.level])) best[G.level] = t, new_best = 1, store();
     return;
   }
+  cup_used |= 1 << G.level; /* raced: off the forecast page's list */
   int place = 0;
   for (int i = 0; i < RACERS; i++) {
     int who = G.order[i];
@@ -153,7 +196,7 @@ void menu_tick(float dt) {
   }
   if (page == P_GRAPHICS) {
     cw_quality_menu_update();
-    if (!cw_quality_menu_is_open()) back_up(7, 0);
+    if (!cw_quality_menu_is_open()) back_up(8, 0);
     return;
   }
   bool up = cw_action_just_pressed(0, a_up), down = cw_action_just_pressed(0, a_down), left = cw_action_just_pressed(0, a_left), right = cw_action_just_pressed(0, a_right);
@@ -165,20 +208,26 @@ void menu_tick(float dt) {
   { extern int g_menu_sfx; if (up || down || dx) g_menu_sfx = 1; if (ok) g_menu_sfx = 2; if (back) g_menu_sfx = 3; }
   switch (page) {
   case P_MAIN:
-    if (row == 1 && (dx || ok)) { g_mode = !g_mode; store(); }
-    if (row == 2 && g_mode == MODE_TIME_TRIAL && (dx || ok)) { int l = (G.level + LEVELS + (dx ? dx : 1)) % LEVELS; if (l != G.level) { go_course(l, 0); saved_level = l; } }
-    if (row == 3 && (dx || ok)) { g_difficulty = (g_difficulty + 3 + (dx ? dx : 1)) % 3; store(); }
+    if (row == 1 && (dx || ok)) { g_mode = (g_mode + MODE_N + (dx ? dx : 1)) % MODE_N; store(); }
+    /* a course: any in a time trial; stunts and free roam on the courses raced so far */
+    if (row == 2 && g_mode != MODE_CHAMPIONSHIP && (dx || ok)) {
+      int l = G.level, step = dx ? dx : 1;
+      for (int k = 0; k < LEVELS; k++) { l = (l + LEVELS + step) % LEVELS; if (g_mode == MODE_TIME_TRIAL || menu_unlocked(l)) break; }
+      if (l != G.level) { go_course(l, 0); saved_level = l; }
+    }
+    if (row == 3 && g_mode != MODE_CHAMPIONSHIP && (dx || ok)) { weather_sel = (weather_sel + 1 + WX_N + 1 + (dx ? dx : 1)) % (WX_N + 1) - 1; store(); }
+    if (row == 4 && (dx || ok)) { g_difficulty = (g_difficulty + 3 + (dx ? dx : 1)) % 3; store(); }
     /* the craft: every racer rides the one chosen, so the race stays even */
-    if (row == 4 && (dx || ok)) { g_craft = !g_craft; store(); }
+    if (row == 5 && (dx || ok)) { g_craft = !g_craft; store(); }
     if (ok) {
       if (row == 0) begin();
-      else if (row == 5) open_page(P_CONTROLS);
-      else if (row == 6) open_page(P_AUDIO);
-      else if (row == 7) { page = P_GRAPHICS; cw_quality_menu_open(); }
+      else if (row == 6) open_page(P_CONTROLS);
+      else if (row == 7) open_page(P_AUDIO);
+      else if (row == 8) { page = P_GRAPHICS; cw_quality_menu_open(); }
     }
     break;
   case P_CONTROLS:
-    if (ok || back) back_up(5, 2);
+    if (ok || back) back_up(6, 2);
     break;
   case P_AUDIO:
     if (row == 0 && dx) { music = music + dx < 0 ? 0 : music + dx > 10 ? 10 : music + dx; apply_audio(); store(); }
@@ -195,7 +244,7 @@ void menu_tick(float dt) {
       cw_text_backdrop_set((cw_text_backdrop)(ok ? (b + 1) % 3 : b + dx < 0 ? 0 : b + dx > 2 ? 2 : b + dx));
       store();
     }
-    if ((ok && row == 4) || back) back_up(6, 3);
+    if ((ok && row == 4) || back) back_up(7, 3);
     break;
   case P_PAUSE:
     if (back) { page = P_NONE; break; }
@@ -204,18 +253,22 @@ void menu_tick(float dt) {
       else if (row == 1) start_race();
       else if (row == 2) open_page(P_CONTROLS);
       else if (row == 3) open_page(P_AUDIO);
-      else { sim_reset(RACE_ATTRACT); open_page(P_MAIN); }
+      else { wx_set_race(-1); sim_reset(RACE_ATTRACT); open_page(P_MAIN); }
     }
+    break;
+  case P_FORECAST:
+    if (ok) race_today(forecast_course(row));
+    else if (back) { wx_set_race(-1); sim_reset(RACE_ATTRACT); open_page(P_MAIN); }
     break;
   case P_RESULTS:
     if (dx) row = (row + 1) % 2; /* the two choices can stand side by side (a large text size) */
     if (ok) {
       if (row == 0 && cup_done()) { begin(); }
-      else if (row == 0 && g_mode == MODE_CHAMPIONSHIP) go_course(cup_race, 1);
+      else if (row == 0 && g_mode == MODE_CHAMPIONSHIP) { sim_reset(RACE_ATTRACT); open_page(P_FORECAST); }
       else if (row == 0) start_race();
-      else { sim_reset(RACE_ATTRACT); open_page(P_MAIN); }
+      else { wx_set_race(-1); sim_reset(RACE_ATTRACT); open_page(P_MAIN); }
     }
-    else if (back) { sim_reset(RACE_ATTRACT); open_page(P_MAIN); }
+    else if (back) { wx_set_race(-1); sim_reset(RACE_ATTRACT); open_page(P_MAIN); }
     break;
   default: break;
   }
@@ -363,19 +416,24 @@ void menu_draw(void) {
     float top = title(px, h, u, attract);
     y = fmaxf(y, top + 24 * u);
     char course[48];
-    snprintf(course, sizeof course, "%s", g_mode == MODE_CHAMPIONSHIP ? "All, in turn" : DEF->name);
-    const row_def r[8] = { { "Start", NULL }, { "Mode", MODES[g_mode] }, { "Course", course }, { "Difficulty", DIFF[g_difficulty] }, { "Craft", CRAFTS[g_craft] }, { "Controls", NULL }, { "Audio and text", NULL }, { "Graphics", NULL } };
+    snprintf(course, sizeof course, "%s", g_mode == MODE_CHAMPIONSHIP ? "Your pick, day by day" : DEF->name);
+    char wx[48];
+    if (g_mode == MODE_CHAMPIONSHIP) snprintf(wx, sizeof wx, "By the forecast");
+    else if (weather_sel < 0) snprintf(wx, sizeof wx, "Usual (%s)", WX_NAMES[wx_usual(G.level)]);
+    else snprintf(wx, sizeof wx, "%s", WX_NAMES[weather_sel]);
+    const row_def r[9] = { { "Start", NULL }, { "Mode", MODES[g_mode] }, { "Course", course }, { "Weather", wx }, { "Difficulty", DIFF[g_difficulty] }, { "Craft", CRAFTS[g_craft] }, { "Controls", NULL }, { "Audio and text", NULL }, { "Graphics", NULL } };
     static const char *const parts[3] = { "{ui_up|ui_down} choose", "{ui_left|ui_right} change", "{ui_accept} accept" };
     float hs = 28 * u, ht = hint(parts, 3, px, w - px - margin, h - 40 * u, hs, dim);
-    float pw = row_width(r, 8, 560 * u, max_w), x = px + pw > w - margin ? w - margin - pw : px;
+    float pw = row_width(r, 9, 560 * u, max_w), x = px + pw > w - margin ? w - margin - pw : px;
     float best_h = 0;
-    bool show_best = g_mode == MODE_TIME_TRIAL && best[G.level] > 0;
+    bool show_best = (g_mode == MODE_TIME_TRIAL && best[G.level] > 0) || (g_mode == MODE_STUNT && stunt_best[G.level] > 0);
     if (show_best) best_h = measure(small, "Best", 30 * u).height + 4 * u;
-    float end = rows_draw(x, y, ht - 20 * u - best_h, pw, r, 8, row);
+    float end = rows_draw(x, y, ht - 20 * u - best_h, pw, r, 9, row);
     if (show_best) {
       char pre[48];
       snprintf(pre, sizeof pre, "Best on %s: ", DEF->name);
-      fmt_time(buf, sizeof buf, pre, best[G.level]);
+      if (g_mode == MODE_STUNT) snprintf(buf, sizeof buf, "%s%d points", pre, stunt_best[G.level]);
+      else fmt_time(buf, sizeof buf, pre, best[G.level]);
       text(small, buf, x + 6 * u, end + 4 * u + 10 * u, 30 * u, gold, 0);
     }
     break;
@@ -387,7 +445,7 @@ void menu_draw(void) {
       { { "Steer and lean", "{steer_left|steer_right}" }, { "Throttle", "{throttle}" }, { "Lean back: tighter carve", "{lean_back}" }, { "Lean back, then throw forward at a crest", "Jump higher" }, { "In the air: barrel roll", "{trick}" }, { "In the air, stick back or forward: flips", "{lean_back|lean_fwd} + {trick}" }, { "In the air: kick out", "{kick}" }, { "Pause", "{race_pause}" } },
       { { "Steer and lean: carve it tight", "{steer_left|steer_right}" }, { "Throttle: it planes at speed", "{throttle}" }, { "On the water: submarine", "{trick}" }, { "On the water: pole stand", "{kick}" }, { "In the air: barrel roll", "{trick}" }, { "In the air, stick back: back flip", "{lean_back} + {trick}" }, { "In the air, stick forward: flat spin", "{lean_fwd} + {trick}" }, { "In the air: superman", "{kick}" } } };
     const char *const (*L)[2] = LS[g_craft];
-    const char *FOOT = g_craft == CRAFT_STAND ? "Stand-up: quick and tight, slower on the straights, and easy to fall off. Pass each buoy on the side its arrow shows." : "Pass each buoy on the side its arrow shows: five in a row is your top speed. A miss loses them all.";
+    const char *FOOT = g_craft == CRAFT_STAND ? "Stand-up: quick and tight, slower on the straights, and easy to fall off. Pass each buoy on the side its arrow shows." : "Pass each buoy on the side its arrow shows: five in a row is your top speed. A wrong side loses them all, and empties any turbo you carry.";
     float ts = 34 * u, k = cw_text_drawn_size(small, ts) / ts, pad = 26 * u * k, lh = measure(small, "Ag", ts).height;
     float lw = 0, vw = 0, vh = lh;
     for (int i = 0; i < NL; i++) { lw = fmaxf(lw, measure(small, L[i][0], ts).width); cw_vec2 v = cw_prompt_text_size(small, L[i][1], -1, ts); vw = fmaxf(vw, v.x); vh = fmaxf(vh, v.y); }
@@ -434,11 +492,49 @@ void menu_draw(void) {
     rows_draw(w * 0.5f - pw * 0.5f, fmaxf(y, h * 0.2f + th + 12 * u), h - margin, pw, r, 5, row);
     break;
   }
+  case P_FORECAST: {
+    /* the week: every day's forecast across the top, today lit; under it the courses still to race, one to pick for today */
+    float th = text(big, "THE WEEK'S FORECAST", w * 0.5f, h * 0.08f, 64 * u, white, 0.5f), dy = h * 0.08f + th + 18 * u;
+    float cw_ = fminf(260 * u, (w - 2 * margin) / (float)LEVELS), x0 = w * 0.5f - cw_ * (float)LEVELS * 0.5f;
+    static const cw_color WXC[WX_N] = { { 0.6f, 0.95f, 1, 1 }, { 1, 1, 1, 1 }, { 1, 0.6f, 0.4f, 1 } };
+    float dh = 0;
+    for (int d = 0; d < LEVELS; d++) {
+      bool today = d == cup_race, past = d < cup_race;
+      cw_r2d_round_rect(cw_rect_make(x0 + (float)d * cw_ + 6 * u, dy, cw_ - 12 * u, 112 * u * cw_text_drawn_size(small, 30 * u) / (30 * u)), 10 * u, 8, today ? cw_rgba(0.98f, 0.58f, 0.14f, 0.85f) : cw_rgba(0.03f, 0.07f, 0.11f, past ? 0.35f : 0.65f));
+      snprintf(buf, sizeof buf, "Day %d", d + 1);
+      float a = past ? 0.45f : 1.0f;
+      float lh = text(small, buf, x0 + ((float)d + 0.5f) * cw_, dy + 8 * u, 30 * u, cw_rgba(1, 1, 1, a), 0.5f);
+      cw_color c = WXC[forecast[d]];
+      lh += text(big, WX_NAMES[forecast[d]], x0 + ((float)d + 0.5f) * cw_, dy + 10 * u + lh, 36 * u, today ? cw_rgba(0.04f, 0.04f, 0.05f, 1) : cw_rgba(c.r, c.g, c.b, a), 0.5f);
+      dh = fmaxf(dh, lh + 24 * u);
+    }
+    dy += dh + 16 * u;
+    snprintf(buf, sizeof buf, "Day %d: %s. Pick today's course", cup_race + 1, WX_NAMES[forecast[cup_race < LEVELS ? cup_race : 0]]);
+    dy += text(small, buf, w * 0.5f, dy, 36 * u, gold, 0.5f) + 12 * u;
+    row_def r[LEVELS];
+    int n = 0;
+    for (int l = 0; l < LEVELS; l++) if (!(cup_used & (1 << l))) r[n++] = (row_def){ COURSES[l]->name, NULL };
+    float pw = row_width(r, n, 560 * u, max_w);
+    float end = rows_draw(w * 0.5f - pw * 0.5f, dy, h - margin - 50 * u, pw, r, n, row);
+    /* what today's weather does on the course under the cursor */
+    { int l = forecast_course(row); int keep = G.level; G.level = l; int was = g_wx_force; g_wx_force = forecast[cup_race < LEVELS ? cup_race : 0];
+      text(small, wx_route_line(), w * 0.5f, end + 12 * u, 30 * u, dim, 0.5f);
+      g_wx_force = was; G.level = keep; }
+    break;
+  }
   case P_RESULTS: {
     static const char *const ord[] = { "1st", "2nd", "3rd", "4th", "5th", "6th" };
-    row_def r[2] = { { g_mode == MODE_TIME_TRIAL ? "Try again" : cup_done() ? "New championship" : "Next race", NULL }, { "Back to title", NULL } };
+    row_def r[2] = { { g_mode == MODE_TIME_TRIAL || g_mode == MODE_STUNT ? "Try again" : cup_done() ? "New championship" : "Next race", NULL }, { "Back to title", NULL } };
     float pw = row_width(r, 2, 560 * u, (max_w - 20 * u) * 0.5f), yy;
-    if (g_mode == MODE_TIME_TRIAL && !G.c[0].dq) {
+    if (g_mode == MODE_STUNT) {
+      snprintf(buf, sizeof buf, "%d", g_stunt.score);
+      yy = h * 0.14f + text(big, buf, w * 0.5f, h * 0.14f, 130 * u, gold, 0.5f);
+      yy = fmaxf(h * 0.3f, yy + 8 * u);
+      yy += text(small, new_best ? "A new high score on this course" : "Points", w * 0.5f, yy, 42 * u, white, 0.5f);
+      snprintf(buf, sizeof buf, "%d tricks, %d combos, longest chain %d", g_stunt.tricks, g_stunt.combos, g_stunt.best_chain);
+      yy += 6 * u + text(small, buf, w * 0.5f, yy + 6 * u, 34 * u, dim, 0.5f);
+      if (stunt_best[G.level] > 0) { snprintf(buf, sizeof buf, "High score %d", stunt_best[G.level]); yy += 6 * u + text(small, buf, w * 0.5f, yy + 6 * u, 34 * u, dim, 0.5f); }
+    } else if (g_mode == MODE_TIME_TRIAL && !G.c[0].dq) {
       float t = G.c[0].finish;
       fmt_time(buf, sizeof buf, "", t);
       yy = h * 0.14f + text(big, buf, w * 0.5f, h * 0.14f, 130 * u, gold, 0.5f);

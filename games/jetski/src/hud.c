@@ -107,6 +107,8 @@ static void minimap(const craft *c, float h, float u) {
     g_map_dots[i * 2] = p.x, g_map_dots[i * 2 + 1] = p.y;
     if (i > 0 && racer_on(i)) cw_r2d_circle(p, 4.2f * u, 10, cw_rgba(0.72f, 0.86f, 1, 0.8f));
   }
+  /* the event's set, a band across the map where it is now; the weather's route, green open, red shut */
+  wx_minimap_draw(r.x, r.y, r.w, r.h, minx, minz, sc, ox, oy, u);
   /* the next buoy over the rivals */
   const float *nb = BUOYS[c->next_buoy];
   cw_vec2 np = MAP_PT(nb[0], nb[1]);
@@ -226,14 +228,16 @@ static void pop_add(const char *t, cw_color col, bool big) {
   snprintf(pop[0].text, sizeof pop[0].text, "%s", t), pop[0].t = 0, pop[0].col = col, pop[0].big = big;
   g_hud_pops++, g_hud_pop_tick = (int)G.tick;
 }
-static float meter_pulse, chip_pulse;
+static float meter_pulse, chip_pulse, chip_lost, waves_t = -1, risk_tip = -1;
+static bool risk_told;
+int g_hud_lost, g_hud_waves, g_hud_quiet; /* for the gates: TURBO LOST shown, the event's warning shown, answers held back as nagging */
 static unsigned ev_read;
 /* a new race starts clean: words from the last one, and events it had not shown yet, do not hang over it */
 void hud_race_reset(void) {
   if (g_hud_pop_keep) return;
   for (int i = 0; i < 3; i++) pop[i].text[0] = 0;
   ev_read = g_ev_n;
-  meter_pulse = chip_pulse = 0;
+  meter_pulse = chip_pulse = 0, chip_lost = 0, waves_t = -1, risk_tip = -1, risk_told = false;
 }
 static void hud_events(float dt) {
   unsigned read = ev_read;
@@ -245,6 +249,7 @@ static void hud_events(float dt) {
     if (!g_ev_on) continue;
     char b[32] = { 0 };
     bool shown = true;
+    if (e->quiet) g_hud_quiet++;
     switch (e->kind) {
       case EV_PASS: meter_pulse = 1; shown = false; g_fb[e->kind][0]++; break;
       case EV_TOP: pop_add("MAX POWER", gold, true); meter_pulse = 1; break;
@@ -261,13 +266,18 @@ static void hud_events(float dt) {
       case EV_CHARGE: pop_add("TURBO READY", cyan, false); chip_pulse = 1; break;
       case EV_TURBO: pop_add("TURBO", cyan, true); chip_pulse = 1; break;
       case EV_ROCKET: pop_add("ROCKET START", gold, true); break;
+      case EV_TURBO_LOST: chip_lost = 1; if (e->quiet < 2) { pop_add("TURBO LOST: WRONG SIDE", red, e->quiet == 0); g_hud_lost++; } else shown = false; break;
+      case EV_WAVES: waves_t = 0; g_hud_waves++; break;
+      case EV_COMBO: snprintf(b, sizeof b, "+%d", e->a); pop_add(b, gold, true); break;
     }
     if (shown) g_fb[e->kind][0]++;
   }
   ev_read = read;
   g_hud_pop_n = 0;
   for (int i = 0; i < 3; i++) if (pop[i].text[0]) { pop[i].t += dt; if (pop[i].t > 1.5f) pop[i].text[0] = 0; else g_hud_pop_n++; }
-  meter_pulse = fmaxf(0, meter_pulse - dt * 3), chip_pulse = fmaxf(0, chip_pulse - dt * 2.5f);
+  meter_pulse = fmaxf(0, meter_pulse - dt * 3), chip_pulse = fmaxf(0, chip_pulse - dt * 2.5f), chip_lost = fmaxf(0, chip_lost - dt * 0.6f);
+  if (waves_t >= 0) { waves_t += dt; if (waves_t > 6) waves_t = -1; }
+  if (risk_tip >= 0) { risk_tip += dt; if (risk_tip > 5) risk_tip = -1; }
 }
 static void hud_popups(float w, float h, float u) {
   float y = h * 0.135f;
@@ -282,7 +292,7 @@ static void hud_popups(float w, float h, float u) {
 }
 /* who is just ahead and behind, and by how long: translucent, under the misses */
 static void hud_neighbours(const craft *c, float u, float y) {
-  if (g_mode == MODE_TIME_TRIAL || G.state != RACE_ON) return;
+  if (MODE_ALONE || G.state != RACE_ON) return;
   int me = -1;
   for (int i = 0; i < RACERS; i++) if (G.order[i] == 0) me = i;
   for (int k = me - 1; k <= me + 1; k += 2) {
@@ -355,18 +365,36 @@ static void hud_body(void) {
     float x = w - 372 * u + (float)i * 58 * u, y = h - 92 * u, fill = fminf(1, fmaxf(0, c->stock - (float)i));
     cw_r2d_round_rect(cw_rect_make(x, y, 46 * u, 15 * u), 7 * u, 6, cw_rgba(1, 1, 1, 0.14f));
     if (fill > 0) { float gl = fill >= 1 ? 0.92f + 0.08f * chip_pulse : 0.5f; cw_r2d_round_rect(cw_rect_make(x, y, 46 * u * fill, 15 * u), 7 * u, 6, cw_rgba(0.55f, 0.95f, 1, gl)); }
+    /* just lost to a wrong side: the empty chips glow red and fade */
+    if (chip_lost > 0) cw_r2d_round_rect(cw_rect_make(x, y, 46 * u, 15 * u), 7 * u, 6, cw_rgba(1, 0.3f, 0.15f, 0.85f * chip_lost));
+  }
+  /* the first turbo of a race: what risks it, once, by the chips */
+  if (c->stock >= 1 && !risk_told && !MODE_ALONE) { risk_told = true, risk_tip = 0; }
+  if (risk_tip >= 0) {
+    float a = fminf(1, risk_tip / 0.4f) * fminf(1, (5 - risk_tip) / 0.8f);
+    text(small, "A wrong-side mark empties your turbo", w - 372 * u + 3 * 58 * u - 12 * u, h - 92 * u - 40 * u * grow(small, 28 * u), 28 * u, cw_rgba(0.55f, 0.95f, 1, 0.9f * a), 1);
   }
   /* place and lap, top left */
   static const char *const ord[] = { "1st", "2nd", "3rd", "4th", "5th", "6th" };
   /* each line of the block under the one above, by how much the text scale grew that one */
   float lap_y;
-  if (g_mode == MODE_TIME_TRIAL) { text(big, "TIME TRIAL", 60 * u, 58 * u, 52 * u, white, 0); lap_y = 58 * u + 80 * u * grow(big, 52 * u); }
+  static const char *const MODE_LABEL[MODE_N] = { "", "TIME TRIAL", "STUNT", "FREE ROAM" };
+  if (MODE_ALONE) { text(big, MODE_LABEL[g_mode], 60 * u, 58 * u, 52 * u, white, 0); lap_y = 58 * u + 80 * u * grow(big, 52 * u); }
   else { int sp = c->shown_place > 0 ? c->shown_place : c->place; text(big, ord[sp - 1 < 0 ? 0 : sp - 1], 60 * u, 42 * u, 84 * u, white, 0); lap_y = 42 * u + 96 * u * grow(big, 84 * u); }
+  if (g_mode == MODE_STUNT) {
+    /* the score, the combo building, the time left */
+    snprintf(buf, sizeof buf, "%d", g_stunt.score);
+    text(big, buf, 62 * u, lap_y, 64 * u, gold, 0);
+    lap_y += 76 * u * grow(big, 64 * u);
+    if (g_stunt.pending > 0) { snprintf(buf, sizeof buf, "%d  x%.1f", g_stunt.pending, g_stunt.mult); word(big, buf, w * 0.5f, h * 0.27f, 58 * u, cw_rgba(0.55f, 0.95f, 1, 1)); }
+    if (g_stunt.lost_t > 0) word(big, "COMBO LOST", w * 0.5f, h * 0.27f, 52 * u, cw_rgba(1, 0.35f, 0.2f, fminf(1, g_stunt.lost_t)));
+  } else if (g_mode != MODE_ROAM) {
   snprintf(buf, sizeof buf, "LAP %d/%d", c->lap < 0 ? 1 : c->lap + 1 > LAPS ? LAPS : c->lap + 1, LAPS);
   text(small, buf, 62 * u, lap_y, 40 * u, dim, 0);
+  }
   float miss_y = lap_y + 58 * u * grow(small, 40 * u), next_y = miss_y + 24 * u + 16 * u * grow(small, 28 * u);
-  if (G.clock >= 0) {
-    float tm = c->finish > 0 ? c->finish : G.clock;
+  if (G.clock >= 0 && g_mode != MODE_ROAM) {
+    float tm = c->finish > 0 ? c->finish : g_mode == MODE_STUNT ? fmaxf(0, STUNT_TIME - G.clock) : G.clock;
     snprintf(buf, sizeof buf, "%d:%05.2f", (int)(tm / 60), tm - 60.0f * (float)(int)(tm / 60));
     text(small, buf, w - 60 * u, 48 * u, 44 * u, white, 1);
     float best = menu_best_time();
@@ -375,12 +403,14 @@ static void hud_body(void) {
       text(small, buf, w - 60 * u, 48 * u + 52 * u * grow(small, 44 * u), 34 * u, dim, 1);
     }
   }
+  /* the day's weather, small, under the clock */
+  { snprintf(buf, sizeof buf, "%s", WX_NAMES[wx_now()]); text(small, buf, w - 60 * u, 48 * u + (g_mode == MODE_TIME_TRIAL && menu_best_time() > 0 ? 100 : 56) * u * grow(small, 44 * u), 30 * u, dim, 1); }
   if (g_map_on) minimap(c, h, u);
   if (c->finish <= 0) hud_neighbours(c, u, next_y);
   words_n = 0;
   hud_popups(w, h, u);
   /* misses so far: five and the race is over */
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < 5 && g_mode != MODE_STUNT && g_mode != MODE_ROAM; i++) {
     float x = 62 * u + (float)i * 34 * u, y = miss_y;
     cw_r2d_round_rect(cw_rect_make(x, y, 24 * u, 24 * u), 12 * u, 8, i < c->misses ? cw_rgba(1, 0.25f, 0.12f, 0.95f) : cw_rgba(1, 1, 1, 0.2f));
   }
@@ -391,7 +421,18 @@ static void hud_body(void) {
   if (c->flash_short > 0) word(big, "THE SHORT WAY", w * 0.5f, h * 0.2f, 66 * u, cw_rgba(0.6f, 1, 0.9f, c->flash_short));
   if (DEF->hook.kind == 1 && hook_open() && G.clock - hook_seen < 5 && G.state == RACE_ON) word(small, "The tide has fallen: the arch is open", w * 0.5f, h * 0.14f, 40 * u, cw_rgba(0.6f, 1, 0.9f, 1));
   g_hud_wrong = wrong_way(c);
-  if (g_hud_wrong && g_buoy_style && c->out_t <= 0.2f && c->spill <= 0) word(big, "WRONG WAY", w * 0.5f, h * 0.2f, 76 * u, cw_rgba(1, 0.3f, 0.15f, 0.65f + 0.35f * sinf(G.clock * 9)));
+  /* said big for 4 s, then a quiet line while it lasts: the rider has heard it */
+  { static float wrong_for;
+    wrong_for = g_hud_wrong ? wrong_for + 1.0f / 60.0f : 0;
+    if (g_hud_wrong && g_buoy_style && c->out_t <= 0.2f && c->spill <= 0 && g_mode != MODE_ROAM && g_mode != MODE_STUNT) {
+      if (wrong_for < 4 || !g_nag_on) word(big, "WRONG WAY", w * 0.5f, h * 0.2f, 76 * u, cw_rgba(1, 0.3f, 0.15f, 0.65f + 0.35f * sinf(G.clock * 9)));
+      else text(small, "Wrong way: turn round", w * 0.5f, h * 0.2f, 34 * u, cw_rgba(1, 0.6f, 0.45f, 0.75f), 0.5f);
+    } }
+  if (waves_t >= 0) {
+    float a = fminf(1, waves_t / 0.5f) * fminf(1, (6 - waves_t) / 1.0f);
+    word(big, "BIG WAVES", w * 0.5f, h * 0.33f, 70 * u, cw_rgba(0.75f, 0.92f, 1, a));
+    word(small, wx_event_line(), w * 0.5f, h * 0.33f + 84 * u * grow(big, 70 * u), 34 * u, cw_rgba(1, 1, 1, 0.9f * a));
+  }
   if (c->spill > 0) word(big, "WIPEOUT", w * 0.5f, h * 0.2f, 76 * u, cw_rgba(1, 1, 1, 0.9f));
   if (c->flash_miss > 0) word(big, "MISS", w * 0.5f, h * 0.2f, 76 * u, cw_rgba(1, 0.3f, 0.15f, c->flash_miss));
   if (c->air && c->air_time > 0.5f && c->finish <= 0) {
@@ -406,10 +447,15 @@ static void hud_body(void) {
     const char *line = "";
     for (unsigned i = 0; i < sizeof LINE / sizeof LINE[0]; i++) if (!strcmp(DEF->id, LINE[i][0])) line = LINE[i][1];
     float cy = 46 * u; /* across the top, clear of the countdown, the craft and the next buoy */
-    cw_r2d_round_rect(cw_rect_make(w * 0.5f - 560 * u, cy - 16 * u, 1120 * u, (g_craft == CRAFT_STAND ? 244.0f : 196.0f) * u * grow(small, 34 * u)), 18 * u, 8, cw_rgba(0.02f, 0.05f, 0.09f, 0.55f * k));
+    cw_r2d_round_rect(cw_rect_make(w * 0.5f - 620 * u, cy - 16 * u, 1240 * u, (g_craft == CRAFT_STAND ? 290.0f : 242.0f) * u * grow(small, 34 * u)), 18 * u, 8, cw_rgba(0.02f, 0.05f, 0.09f, 0.55f * k));
     word(big, DEF->name, w * 0.5f, cy, 62 * u, cw_rgba(1, 1, 1, k));
     float y2 = cy + 76 * u * grow(big, 62 * u);
     word(small, line, w * 0.5f, y2, 34 * u, cw_rgba(1, 1, 1, 0.85f * k));
+    /* today: the weather, and what it does to the course's way through */
+    { char wl[160]; static const char *const SEA[WX_N] = { "glassy water, the rocks show", "a chop and a building swell", "big seas, wind and rain" };
+      snprintf(wl, sizeof wl, "%s: %s. %s", WX_NAMES[wx_now()], SEA[wx_now()], wx_route_line());
+      y2 += 46 * u * grow(small, 34 * u);
+      word(small, wl, w * 0.5f, y2, 30 * u, wx_route_open() ? cw_rgba(0.6f, 1, 0.9f, 0.9f * k) : cw_rgba(1, 0.85f, 0.6f, 0.9f * k)); }
     if (G.state == RACE_GRID && k > 0.5f) cw_prompt_text(small, "{throttle} on the last beat: a rocket start", 0, cw_v2(w * 0.5f, y2 + 50 * u * grow(small, 34 * u)), 30 * u, cw_rgba(1.0f, 0.82f, 0.4f, k), CW_ALIGN_CENTER);
     /* the stand-up's own tricks, said on the grid where there is time to read them */
     if (G.state == RACE_GRID && k > 0.5f && g_craft == CRAFT_STAND) cw_prompt_text(small, "Stand-up: {trick} on the water for a submarine, {kick} for a pole stand", 0, cw_v2(w * 0.5f, y2 + 92 * u * grow(small, 34 * u)), 30 * u, cw_rgba(0.55f, 0.95f, 1.0f, k), CW_ALIGN_CENTER);
@@ -418,8 +464,8 @@ static void hud_body(void) {
   if (c->finish > 0 && G.state == RACE_ON && !c->dq) {
     static const char *const FIN[] = { "FINISHED 1ST", "FINISHED 2ND", "FINISHED 3RD", "FINISHED 4TH", "FINISHED 5TH", "FINISHED 6TH" };
     float k = fminf(1.0f, G.fin_t / 0.5f);
-    const char *s = g_mode == MODE_TIME_TRIAL ? "FINISHED" : FIN[c->place - 1 < 0 ? 0 : c->place - 1 > 5 ? 5 : c->place - 1];
-    word(big, s, w * 0.5f, h * 0.12f, 96 * u, c->place == 1 || g_mode == MODE_TIME_TRIAL ? cw_rgba(1.0f, 0.78f, 0.25f, k) : cw_rgba(1, 1, 1, k));
+    const char *s = MODE_ALONE ? "FINISHED" : FIN[c->place - 1 < 0 ? 0 : c->place - 1 > 5 ? 5 : c->place - 1];
+    word(big, s, w * 0.5f, h * 0.12f, 96 * u, c->place == 1 || MODE_ALONE ? cw_rgba(1.0f, 0.78f, 0.25f, k) : cw_rgba(1, 1, 1, k));
     snprintf(buf, sizeof buf, "%d:%05.2f", (int)(c->finish / 60), c->finish - 60.0f * (float)(int)(c->finish / 60));
     word(small, buf, w * 0.5f, h * 0.12f + 120 * u * grow(big, 96 * u), 48 * u, cw_rgba(1, 1, 1, 0.9f * k));
   }
@@ -432,7 +478,7 @@ static void hud_body(void) {
     word(big, "GO", w * 0.5f, h * 0.3f, 190 * u, gold);
   }
   g_hud_words_n = words_n;
-  if (c->finish <= 0) next_mark(c, w, h, u);
+  if (c->finish <= 0 && g_mode != MODE_STUNT && g_mode != MODE_ROAM) next_mark(c, w, h, u);
 }
 
 void hud_draw(void) {

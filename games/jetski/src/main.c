@@ -364,9 +364,9 @@ static void cmd_craft(int argc, const char **argv, cw_reply *r) {
   if (argc > 1) g_craft = atoi(argv[1]) ? CRAFT_STAND : CRAFT_SIT;
   if (r) cw_reply_printf(r, "{\"craft\":%d}", g_craft);
 }
-/* mode <0 championship, 1 time trial> */
+/* mode <0 championship, 1 time trial, 2 stunt, 3 free roam> */
 static void cmd_mode(int argc, const char **argv, cw_reply *r) {
-  if (argc > 1) g_mode = atoi(argv[1]) ? MODE_TIME_TRIAL : MODE_CHAMPIONSHIP;
+  if (argc > 1) { int m = atoi(argv[1]); g_mode = m < 0 || m >= MODE_N ? MODE_CHAMPIONSHIP : m; }
   if (r) cw_reply_raw(r, "true");
 }
 
@@ -389,7 +389,7 @@ static void init(void *user) {
   a_left = cw_action_find("steer_left"), a_right = cw_action_find("steer_right");
   a_back = cw_action_find("lean_back"), a_fwd = cw_action_find("lean_fwd");
   a_throttle = cw_action_find("throttle"), a_trick = cw_action_find("trick"), a_turbo = cw_action_find("turbo"), a_kick = cw_action_find("kick");
-  cw_shell_init(&(cw_shell_desc){ .title = "jetski", .max_players = 1, .start = start, .game_save_size = 64 });
+  cw_shell_init(&(cw_shell_desc){ .title = "jetski", .max_players = 1, .start = start, .game_save_size = 128, .game_save_version = 1 });
   view_init();
   hud_init();
   audio_init();
@@ -615,7 +615,11 @@ static void init(void *user) {
   cw_debug_command("ramp_seesaw", "ramp_seesaw 1: decks tip with the swell, the jump gate's control", cmd_ramp_seesaw);
   cw_debug_command("ramp_lift", "ramp_lift <metres>: the control for the ramps' gap count", cmd_ramp_lift);
   cw_debug_command("ramp_where", "ramp_where <index>: where that ramp is now", cmd_ramp_where);
-  cw_debug_command("mode", "mode <0 championship, 1 time trial>", cmd_mode);
+  cw_debug_command("mode", "mode <0 championship, 1 time trial, 2 stunt, 3 free roam>", cmd_mode);
+  wx_debug();
+  { extern float g_top_now[RACERS]; cw_debug_f32_array("ai.top", g_top_now, RACERS); }
+  { extern float g_dome_seen[3]; cw_debug_f32_array("wx.dome", g_dome_seen, 3); cw_debug_f32_array("wx.dome_want", g_wx_dome, 3); }
+  { extern int g_hud_lost, g_hud_waves, g_hud_quiet; cw_debug_i32("hud.lost", &g_hud_lost); cw_debug_i32("hud.waves", &g_hud_waves); cw_debug_i32("hud.quiet", &g_hud_quiet); }
   cw_debug_command("finish", "finish: the human crosses the line now", cmd_finish);
   cw_debug_command("warp", "warp <metres>: every racer to that place on the course", cmd_warp);
 }

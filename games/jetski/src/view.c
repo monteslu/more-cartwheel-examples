@@ -524,11 +524,14 @@ static void props_apply(cw_node root) {
     if (!p || !cw_value_parse(d->props[i][2], p->type, &v) || !cw_node_set(n, d->props[i][1], v)) CW_FATAL("course %s: %s.%s = %s refused", d->id, d->props[i][0], d->props[i][1], d->props[i][2]);
   }
 }
+/* the course's own light and water, before the day's weather goes on top (weather.c) */
+void view_props_reset(void) { props_apply(cw_node_get(cw_tree_root(cw_scene_app_tree()), "Root")); }
 static void mask_apply(void) {
   size_t mb;
   float *mask = cw_asset_load(DEF->mask, &mb);
   if (!mask || mb != (size_t)DEF->mask_n * DEF->mask_n * 4) CW_FATAL("wave mask missing");
   cw_water_set_wave_mask(G.water, mask, DEF->mask_n, DEF->mask_n);
+  wx_mask_base(mask, DEF->mask_n); /* the event lifts the swell over this */
   free(mask);
 }
 static void sky_apply(void) {
@@ -554,6 +557,7 @@ void view_course_apply(void) {
   props_apply(root);
   ramps_apply();
   floats_apply(root);
+  wx_course_apply();
   g_marks_stale = true;
 }
 
@@ -696,6 +700,7 @@ void view_init(void) {
     t3_release(go);
   }
   floats_apply(root);
+  wx_course_apply();
   fx_init(cw_node_get(root, "Fx"));
   rider_init();
 }
@@ -964,6 +969,7 @@ static void stand_screen(t3_vec3 cp, t3_vec3 lp, float fov, float a) {
   if (seen < g_screen[1]) g_screen[1] = seen;
   g_screen[2] += 1;
 }
+float g_dome_seen[3];
 bool g_peek_on;
 float g_fov_span = 16.0f, g_cam_roll_max = 0.0785f; /* debug: fov_span 6, cam_roll 0 bring the old flat camera back (the speed gate control) */
 float g_peek[6];
@@ -1012,16 +1018,23 @@ void view_sync(double alpha) {
   }
   double wt = cw_water_time(G.water) + (a - 1.0f) * (1.0f / 60.0f);
   /* the squall: lightning lights the world and the sky; the beacon's lamp is seen through the rain on its rock */
+  /* the day's look (weather.c): set when the weather or the course changes */
+  wx_look_tick();
   { static float last_fill = -1;
     cw_node root = cw_node_get(cw_tree_root(cw_scene_app_tree()), "Root");
-    if (DEF->rain > 0) {
+    t3_mesh *dome = (t3_mesh *)sky_dome;
+    if (wx_rain()) {
       cw_node fill = cw_node_get(root, "Fill");
       float f = 1.5f + 7.0f * G.flash;
       if (f != last_fill) { cw_node_set(fill, "energy", cw_val_float(f)); last_fill = f; }
-      t3_mesh *dome = (t3_mesh *)sky_dome;
       float k = 1.0f + 2.5f * G.flash;
-      dome->materials[0]->color = (t3_color){ k, k, k * 1.08f };
-    } else if (last_fill >= 0) { last_fill = -1; ((t3_mesh *)sky_dome)->materials[0]->color = (t3_color){ 1, 1, 1 }; }
+      dome->materials[0]->color = (t3_color){ k * g_wx_dome[0], k * g_wx_dome[1], k * 1.08f * g_wx_dome[2] };
+    } else {
+      if (last_fill >= 0) { last_fill = -1; g_wx_look_key = -1; }
+      dome->materials[0]->color = (t3_color){ g_wx_dome[0], g_wx_dome[1], g_wx_dome[2] };
+    }
+    { static t3_color last_dome = { -1, -1, -1 }; t3_color dc = dome->materials[0]->color; if (dc.r != last_dome.r || dc.g != last_dome.g || dc.b != last_dome.b) { last_dome = dc; dome->materials[0]->version++; } g_dome_seen[0] = dc.r, g_dome_seen[1] = dc.g, g_dome_seen[2] = dc.b; }
+    if (sun_mat) sun_mat->color = (t3_color){ 42 * DEF->sun_disc * g_wx_sun, 28 * DEF->sun_disc * g_wx_sun, 13 * DEF->sun_disc * g_wx_sun };
   }
   if (DEF->hook.kind == 3 && cw_node_valid(hook_n)) {
     /* the tanker, always head on along its way, and the white water it pushes */

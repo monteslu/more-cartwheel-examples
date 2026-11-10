@@ -339,5 +339,15 @@
     "name": "jetski-craft-models",
     "script": "tests/jetski-craft-models.mjs",
     "note": "the craft models from their files: the sit-down's bow a raked beak (keel and sheer rising and convex, no dip in the foredeck, stem 20 to 30 deg), the stand-up's hood 0.45 m over its tray and its hull 0.3 m deep. Controls: the first sit-down bow and the first stand-up hull"
+  },
+  {
+    "name": "jetski-weather",
+    "script": "tests/jetski-weather.mjs",
+    "note": "the weather, on the cart through romdev, GL and WebGPU, one timeline a run: the wave height rises calm, choppy, storm; each course's weather route open in one weather and shut in another; the computer riders take an open route and keep off a shut one and off rocks a calm shows; the big water event's waves reach every racer; stunt mode scores a combo; a wrong-side mark empties the turbo on screen; repeated misses are not nagged; the rider holds on through a storm race; the championship's pace ramps by small steps; the weather's rocks and slabs stand on the bed. Each with its control"
+  },
+  {
+    "name": "jetski-weather-perf",
+    "script": "tests/jetski-weather-perf.mjs",
+    "note": "what the weather costs the GPU, through romdev frame({op:'timing'}): calm, storm and the big waves within 10 % (and 0.6 ms) of each course in its usual weather, GL and WebGPU. Control: 2 ms more must fail"
   }
 ]

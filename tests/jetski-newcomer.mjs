@@ -9,7 +9,8 @@
 // --craft stand picks the stand-up on the title menu first (Craft row, by the pad), --craft both races each; --finish
 // races the whole of the first course, three laps, and asks that it is finished inside 8 minutes on the sit-down and 10 on
 // the stand-up, and with both, the stand-up inside 25 % of the sit-down's time (the control runs until its race is over too).
-//   node tests/jetski-newcomer.mjs [--gl] [--webgpu] [--cart <path>] [--craft sit|stand|both] [--finish]
+// --weather 0|1|2 races in a calm, a chop or a storm.
+//   node tests/jetski-newcomer.mjs [--gl] [--webgpu] [--cart <path>] [--craft sit|stand|both] [--finish] [--weather n]
 import { ROMDEV_URL } from './lib/romdev-url.mjs';
 import { mkdirSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
@@ -20,7 +21,7 @@ const SESSION = process.env.JETSKI_SESSION || 'jetski-newcomer', AGENT = process
 const arg = (n, d) => { const i = process.argv.indexOf(n); return i > 0 ? process.argv[i + 1] : d; };
 const CART = resolve(arg('--cart', join(ROOT, 'build/cart-wgpu/carts/jetski.wasc')));
 const BACKENDS = process.argv.includes('--gl') ? ['gl'] : process.argv.includes('--webgpu') ? ['webgpu'] : ['gl', 'webgpu'];
-const CRAFTS = { sit: [false], stand: [true], both: [false, true] }[arg('--craft', 'sit')], FINISH = process.argv.includes('--finish');
+const CRAFTS = { sit: [false], stand: [true], both: [false, true] }[arg('--craft', 'sit')], FINISH = process.argv.includes('--finish'), WEATHER = arg('--weather', null);
 mkdirSync(OUT, { recursive: true });
 const H = { 'Content-Type': 'application/json', 'x-romdev-session': SESSION, 'x-romdev-agent': AGENT };
 // every exit tears this session's romdev host down, a failed run too
@@ -57,11 +58,15 @@ async function run(backend, steer, STAND) {
   const l = await tool('loadMedia', { platform: 'wasmcart', path: CART, gpuPower: 'low-power', ...(backend === 'gl' ? { wgpu: false } : {}) });
   if (!l.loaded) { console.error(JSON.stringify(l).slice(0, 300)); await bye(3); }
   await step(180);
+  for (let k = 0; k < 120 && +(await rd('cw.loading')) !== 0; k++) await step(30); /* the loading screen, on a slow host */
   const page0 = +(await rd('menu.page'));
+  /* --weather n: the day's weather, the one setup request (the course card puts it on the screen); the rest is the pad */
+  if (WEATHER !== null) await tool('wasm', { op: 'command', text: `weather ${WEATHER}` });
   /* the stand-up: down to the Craft row, right to change it, back up to Start, all by the pad as the menu shows */
-  if (STAND) for (const b of ['down', 'down', 'down', 'down', 'right', 'up', 'up', 'up', 'up']) { await hold(4, { [b]: true }); await hold(6, {}); }
+  if (STAND) for (const b of ['down', 'down', 'down', 'down', 'down', 'right', 'up', 'up', 'up', 'up', 'up']) { await hold(4, { [b]: true }); await hold(6, {}); }
   const craft = +(await rd('race.craft'));
-  await hold(4, { south: true }); await hold(20, {});            /* the menu's first row: race */
+  await hold(4, { south: true }); await hold(20, {});            /* the menu's first row: start, which shows the week's forecast */
+  await hold(4, { south: true }); await hold(20, {});            /* its first row: the first course, today */
   for (let f = 0; f < 400 && +(await rd('race.state')) !== RACE_ON; f += 10) await step(10); /* the countdown, hands off */
   const state = +(await rd('race.state'));
   let topSpeed = 0, frames = 0, seed = 0x1234567, drift = 0, over = 0, held = null;

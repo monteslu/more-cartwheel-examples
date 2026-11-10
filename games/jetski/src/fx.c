@@ -9,7 +9,7 @@
 #include "game.h"
 #define BUOY_AT(i) (BUOYS[i])
 
-static cw_node rain_n;
+static cw_node rain_n, spume, spume_fine;
 static cw_node tail[RACERS], mist[RACERS], side_spray, bursts, burst_mist, sheet[2], sheet_fine[2];
 
 static cw_node emitter(cw_node parent, const char *name, int amount, float life, float size, const char *ramp, const char *curve, int seed, bool stretched) {
@@ -73,6 +73,20 @@ void fx_init(cw_node parent) {
   cw_node_set(rain_n, "emission_radius", cw_val_float(24));
   cw_node_set(rain_n, "energy", cw_val_float(1));
   cw_node_set(rain_n, "spread", cw_val_float(180));
+  /* a storm's spume: foam and spray torn off the crests and carried downwind, low over the water around the view */
+  spume = emitter(parent, "Spume", 420, 1.4f, 0.75f, "0 1 1 1 0, 0.2 1 1 1 0.07, 0.7 1 1 1 0.04, 1 1 1 1 0", "0 0.5, 0.5 1, 1 2.2", 950, false);
+  cw_node_set(spume, "texture", cw_val_string("effects/mist.png"));
+  cw_node_set(spume, "emission_shape", cw_val_enum("BOX"));
+  cw_node_set(spume, "emission_extents", cw_val_vec3(34, 0.8f, 34));
+  cw_node_set(spume, "spread", cw_val_float(12));
+  cw_node_set(spume, "damping", cw_val_float(0.4f));
+  cw_node_set(spume, "soft_distance", cw_val_float(0.8f));
+  cw_node_set(spume, "camera_fade", cw_val_float(14));
+  spume_fine = emitter(parent, "SpumeFine", 1400, 1.0f, 0.012f, "0 1 1 1 0, 0.15 0.95 0.97 1 0.7, 1 0.9 0.95 1 0", NULL, 951, true);
+  cw_node_set(spume_fine, "emission_shape", cw_val_enum("BOX"));
+  cw_node_set(spume_fine, "emission_extents", cw_val_vec3(26, 0.5f, 26));
+  cw_node_set(spume_fine, "spread", cw_val_float(10));
+  cw_node_set(spume_fine, "camera_fade", cw_val_float(4));
   side_spray = emitter(parent, "Carve", 1000, 0.7f, 0.012f, "0 1 1 1 0.9, 0.6 0.95 0.97 1 0.6, 1 0.9 0.95 1 0", NULL, 300, true);
   cw_node_set(side_spray, "energy", cw_val_float(1.6f));
   cw_node_set(side_spray, "spread", cw_val_float(24));
@@ -107,9 +121,35 @@ void fx_init(cw_node parent) {
 static void rain_tick(void) {
   if (!cw_node_valid(rain_n)) return;
   static bool was;
-  bool on = DEF->rain > 0;
-  if (on != was) { cw_node_set(rain_n, "emitting", cw_val_bool(on)); was = on; }
-  if (on) cw_node3d_set_position(rain_n, (t3_vec3){ G.look[0] + (G.look[0] - G.cam[0]) * 1.2f - 4, G.cam[1] + 16, G.look[2] + (G.look[2] - G.cam[2]) * 1.2f + 3 });
+  static int wind_key = -1;
+  bool on = wx_rain();
+  if (on != was) { cw_node_set(rain_n, "emitting", cw_val_bool(on)); cw_node_set(spume, "emitting", cw_val_bool(on)); cw_node_set(spume_fine, "emitting", cw_val_bool(on)); was = on; }
+  float wxv, wzv;
+  wx_wind(&wxv, &wzv);
+  /* the wind slants the rain and carries the spray: set when the weather changes */
+  int key = G.level * 16 + wx_now();
+  if (key != wind_key) {
+    wind_key = key;
+    cw_node_set(rain_n, "gravity", cw_val_vec3(wxv * 0.6f, -46, wzv * 0.6f));
+    cw_value gv = cw_val_vec3(wxv * 0.12f, -9.8f, wzv * 0.12f);
+    for (int i = 0; i < RACERS; i++) cw_node_set(tail[i], "gravity", gv);
+    cw_node_set(side_spray, "gravity", gv);
+    float l = sqrtf(wxv * wxv + wzv * wzv) + 1e-3f;
+    cw_node_set(spume, "direction", cw_val_vec3(wxv / l, 0.12f, wzv / l));
+    cw_node_set(spume, "speed_min", cw_val_float(l * 0.35f)), cw_node_set(spume, "speed_max", cw_val_float(l * 0.6f));
+    cw_node_set(spume, "gravity", cw_val_vec3(0, -0.3f, 0));
+    cw_node_set(spume_fine, "direction", cw_val_vec3(wxv / l, 0.3f, wzv / l));
+    cw_node_set(spume_fine, "speed_min", cw_val_float(l * 0.5f)), cw_node_set(spume_fine, "speed_max", cw_val_float(l * 0.9f));
+    cw_node_set(spume_fine, "gravity", cw_val_vec3(0, -6, 0));
+  }
+  if (on) {
+    cw_node3d_set_position(rain_n, (t3_vec3){ G.look[0] + (G.look[0] - G.cam[0]) * 1.2f - 4, G.cam[1] + 16, G.look[2] + (G.look[2] - G.cam[2]) * 1.2f + 3 });
+    /* ahead of the camera, at the water: upwind a little, so it blows through the picture */
+    float fx = G.look[0] - G.cam[0], fz = G.look[2] - G.cam[2], fl = sqrtf(fx * fx + fz * fz) + 1e-3f, l = sqrtf(wxv * wxv + wzv * wzv) + 1e-3f;
+    float px = G.cam[0] + fx / fl * 40 - wxv / l * 14, pz = G.cam[2] + fz / fl * 40 - wzv / l * 14, h = cw_water_height_at(G.water, px, pz, G.wt);
+    cw_node3d_set_position(spume, (t3_vec3){ px, h + 0.6f, pz });
+    cw_node3d_set_position(spume_fine, (t3_vec3){ px, h + 0.4f, pz });
+  }
 }
 
 /* Spray lit by the sun. Particles draw unlit, so each frame the spray is tinted from where the sun stands against the
@@ -288,12 +328,20 @@ void fx_tick(float dt) {
     if (g_ev_n - read > EV_RING) read = g_ev_n - EV_RING;
     for (; read != g_ev_n; read++) {
       const game_event *e = &g_ev[read % EV_RING];
-      static const float rumble[EV_KINDS][3] = { [EV_PASS] = { 0.15f, 0.25f, 70 }, [EV_TOP] = { 0.5f, 0.7f, 220 }, [EV_TRICK] = { 0.3f, 0.5f, 140 }, [EV_MISS] = { 0.5f, 0.1f, 200 }, [EV_GAIN] = { 0.2f, 0.35f, 90 }, [EV_LOSE] = { 0.2f, 0.1f, 90 }, [EV_LAP] = { 0.25f, 0.3f, 120 }, [EV_FINAL] = { 0.4f, 0.5f, 240 }, [EV_WALL] = { 0.6f, 0.3f, 120 }, [EV_CRASH] = { 1, 0.8f, 420 }, [EV_CHARGE] = { 0.2f, 0.5f, 120 }, [EV_TURBO] = { 0.8f, 0.9f, 500 }, [EV_ROCKET] = { 0.7f, 0.9f, 350 } };
+      static const float rumble[EV_KINDS][3] = { [EV_PASS] = { 0.15f, 0.25f, 70 }, [EV_TOP] = { 0.5f, 0.7f, 220 }, [EV_TRICK] = { 0.3f, 0.5f, 140 }, [EV_MISS] = { 0.5f, 0.1f, 200 }, [EV_GAIN] = { 0.2f, 0.35f, 90 }, [EV_LOSE] = { 0.2f, 0.1f, 90 }, [EV_LAP] = { 0.25f, 0.3f, 120 }, [EV_FINAL] = { 0.4f, 0.5f, 240 }, [EV_WALL] = { 0.6f, 0.3f, 120 }, [EV_CRASH] = { 1, 0.8f, 420 }, [EV_CHARGE] = { 0.2f, 0.5f, 120 }, [EV_TURBO] = { 0.8f, 0.9f, 500 }, [EV_ROCKET] = { 0.7f, 0.9f, 350 }, [EV_TURBO_LOST] = { 0.35f, 0.1f, 220 }, [EV_WAVES] = { 0.45f, 0.15f, 700 }, [EV_COMBO] = { 0.3f, 0.6f, 160 } };
       if (!g_ev_on) continue;
+      if (e->quiet >= 2) continue; /* the same mistake a third time: the pad says nothing either */
       if (rumble[e->kind][2] > 0) { cw_input_rumble(0, rumble[e->kind][0], rumble[e->kind][1], (int)rumble[e->kind][2]); g_fb[e->kind][2]++; }
       if (e->kind == EV_PASS || e->kind == EV_TOP || e->kind == EV_CRASH || e->kind == EV_WALL || e->kind == EV_TURBO || e->kind == EV_ROCKET) {
         float h = cw_water_height_at(G.water, e->x, e->z, G.wt);
         cw_particles_burst(bursts, (t3_vec3){ e->x, h + 0.2f, e->z }, (t3_vec3){ 0, 1, 0 });
+        g_fb[e->kind][3]++;
+      }
+      if (e->kind == EV_WAVES) {
+        /* where the set starts: a column of white water, far off */
+        float h = cw_water_height_at(G.water, e->x, e->z, G.wt);
+        for (int k = 0; k < 4; k++) cw_particles_burst(bursts, (t3_vec3){ e->x + (float)k * 6 - 9, h + 0.5f, e->z }, (t3_vec3){ 0, 1, 0 });
+        cw_particles_burst(burst_mist, (t3_vec3){ e->x, h + 1, e->z }, (t3_vec3){ 0, 1, 0 });
         g_fb[e->kind][3]++;
       }
     } }
