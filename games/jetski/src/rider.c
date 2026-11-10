@@ -198,11 +198,11 @@ static void rider_pose_stand(int i, const craft *c, float steer, float by) {
   t3_vec3 af_st = V(0.19f, TRAY_Y + ANKLE_UP, -0.42f), ar_st = V(-0.19f, TRAY_Y + ANKLE_UP, -0.55f);
   /* the hips: over the feet, the knees a little bent (about 145 degrees), more as they soak a landing or the chop;
    * the torso leaned forward about 20 degrees */
-  t3_vec3 hips_st = V(lean_in - c->wobble * 0.3f, TRAY_Y + ANKLE_UP + 0.86f - crouch + g_stand_hips, -0.56f);
+  t3_vec3 hips_st = V(lean_in - c->wobble * 0.3f, TRAY_Y + ANKLE_UP + 0.86f - crouch, -0.56f);
   float fwd_st = 0.5f + 0.06f * speedk + 0.3f * crouch;
   /* the controls: 1 stiff and dead upright, 2 the deep crouch */
-  if (g_stand_old == 1) hips_st.y = TRAY_Y + ANKLE_UP + 0.93f + g_stand_hips, fwd_st = 0.04f;
-  if (g_stand_old == 2) hips_st = V(lean_in, TRAY_Y + ANKLE_UP + 0.56f - crouch + g_stand_hips, -0.72f), fwd_st = 1.0f + 0.1f * speedk;
+  if (g_stand_old == 1) hips_st.y = TRAY_Y + ANKLE_UP + 0.93f, fwd_st = 0.04f;
+  if (g_stand_old == 2) hips_st = V(lean_in, TRAY_Y + ANKLE_UP + 0.56f - crouch, -0.72f), fwd_st = 1.0f + 0.1f * speedk;
   t3_vec3 hips = vlerp(V(0, TRAY_Y + 0.52f, -0.66f), hips_st, up);
   hips = vlerp(hips, V(0, HOOD_Y + ANKLE_UP + 0.62f, HOOD_Z - 0.06f), pk);
   hips = vlerp(hips, V(0, 1.08f, -0.86f), sk);
@@ -231,15 +231,24 @@ static void rider_pose_stand(int i, const craft *c, float steer, float by) {
     grips[s] = TO_R(V(lx, POLE_PY + ly * ct - lz * st, POLE_PZ + ly * st + lz * ct));
   }
   /* arms nearly straight: a rider short of the bars goes to them with the whole body */
-  for (int pass = 0; pass < 2; pass++) {
+  /* (forward first, so the knees keep their bend; then down as well, when the bars are lower than the arms reach) */
+  for (int pass = 0; pass < 3; pass++) {
     t3_vec3 ch = vadd(vadd(hips_r, qrot(qh, V(0, 0.14f, 0))), qrot(qs, V(0, 0.2f, 0)));
     float worst = 0;
     t3_vec3 to = V(0, 0, 0);
     for (int s = 0; s < 2; s++) { float sg = s ? -1.0f : 1.0f; t3_vec3 sh = vadd(ch, qrot(qc, V(sg * 0.2f, 0.2f, 0))); t3_vec3 d = vsub(grips[s], sh); float l = vlen(d) - 0.535f; if (l > worst) worst = l; to = vadd(to, d); }
     if (worst <= 0 || off > 0) break;
-    to.y = 0; /* (forward, not down: the knees keep their bend) */
+    if (pass == 0) to.y = 0;
     hips_r = vadd(hips_r, vmul(vnorm(to), worst));
   }
+  /* and the legs are only so long: hips too far from a boot come down toward it (a rise of the hull lifts the body's spring) */
+  if (off <= 0 && sk < 0.01f) for (int s = 0; s < 2; s++) {
+    float sg = s ? -1.0f : 1.0f;
+    t3_vec3 hipj = vadd(hips_r, qrot(qh, V(sg * 0.1f, -0.06f, 0))), at = TO_R(vlerp(vlerp(V(sg * 0.12f, TRAY_Y + 0.1f, -0.95f), s ? ar_st : af_st, up), V(sg * 0.12f, HOOD_Y + ANKLE_UP, HOOD_Z + sg * 0.07f), pk));
+    t3_vec3 d = vsub(at, hipj); float l = vlen(d) - 0.865f;
+    if (l > 0) hips_r = vadd(hips_r, vmul(vnorm(d), l));
+  }
+  hips_r.y += g_stand_hips / kt; /* (the grounding gate's control: hips lifted past what the legs reach) */
   B[i][HIPS]->position = hips_r;
   B[i][HIPS]->quaternion = qh;
   B[i][SPINE]->quaternion = t3_quat_multiply(qinv(qh), qs);

@@ -31,7 +31,7 @@ back on the way in saves some. Start or Esc pauses, with restart and quit.
 The menu's Craft row picks what everyone rides, you and the computer racers alike, and the game remembers it.
 
 - Sit-down: a runabout you sit astride. Stable at any speed, the faster of the two on a straight, wider in a turn. In the air: barrel roll, back and front flips, a kick out.
-- Stand-up: a narrow, light hull you ride standing in a tray at the back, hands on a handlepole hinged at the bow that rides up and down with you. It sits low and rocks at a standstill (you kneel in the tray until it moves) and only planes at speed; it tops out lower but answers at once and turns far tighter, carved by leaning; a hard slide or a crooked landing throws you off sooner. Tricks of its own: on the water at speed the trick button drives the nose under for a submarine and the kick button puts you up on the hood for a pole stand; in the air a barrel roll, a back flip, a flat spin (stick forward) and a superman (kick), all quicker to turn than on a sit-down.
+- Stand-up: a short, chunky hull you ride on your feet in an open tray at the back, hands on a long handlepole hinged at the bow that rides up and down with you, your number on its hood. It sits low and rocks at a standstill (you kneel in the tray until it moves) and only planes at speed; it tops out lower but answers at once and turns far tighter, carved by leaning; a hard slide or a crooked landing throws you off sooner. Tricks of its own: on the water at speed the trick button drives the nose under for a submarine and the kick button puts you up on the hood for a pole stand; in the air a barrel roll, a back flip, a flat spin (stick forward) and a superman (kick), all quicker to turn than on a sit-down.
 
 | Pad | Keys | Stand-up only |
 |---|---|---|
@@ -52,7 +52,7 @@ A course is a definition in `courses/<id>.mjs`: track, ground, paint, wave mask,
 
 - The course comes from `tools/make-course.mjs`: heights, painted ground, the wave mask (the swell dies in the lagoon's
   shelter and on the shoals), palms, track and buoys. `tools/make-models.mjs` makes the craft, the rider, the buoys and the
-  palms. `tools/make-effects.mjs` paints the sky. `tools/make-audio.mjs` makes every sound and the music.
+  palms (`tools/standup-model.mjs` the stand-up, its number plates and decals included). `tools/make-effects.mjs` paints the sky. `tools/make-audio.mjs` makes every sound and the music.
 - Tall slopes go through `tools/cliff-forms.mjs` after a course's height function: spurs and gullies down the fall line, beds of harder rock standing out as ledges, a pass of water erosion, and a record of where water runs. A course's paint uses those to choose between several graded photo scans, so a wall has big masses, beds and wet streaks as well as near detail. `tests/jetski-cliff-structure.mjs` measures big shapes against fine grain from a distance.
 - The craft is four probes on the water (`src/sim.c`): the surface it rides is exactly the surface drawn, through
   `cw_water_sample_at`. A crest throws it up and the surface falling away leaves it in the air: no jump code.
