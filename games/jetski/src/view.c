@@ -817,7 +817,7 @@ void view_tick(float dt) {
   float back = 4.0f + c->speed * 0.035f, up = 1.6f + c->speed * 0.012f;
   /* the stand-up: low and close, straight behind, the hull under and ahead of the rider */
   float side_off = 0;
-  if (g_craft == CRAFT_STAND) back -= 0.6f, up += 0.1f;
+  if (g_craft == CRAFT_STAND) back -= 0.4f, up += 0.6f;
   /* a flip turns the whole craft over in front of the camera, and from straight behind it is only the hull's bottom. Swing out to the side for it, so craft and
    * rider are seen going round together in profile, and look at the craft */
   static float off;
@@ -902,7 +902,7 @@ void view_tick(float dt) {
  * shows: five points along it, each on the screen and clear of the rider's torso (a band 0.24 m either side of the hips to the
  * neck, in front of the point). g_screen: craft area / rider area, its lowest so far; share of the pole seen, its lowest so far;
  * frames measured; this frame's two */
-float g_screen[6] = { 1e9f, 1e9f, 0, 0, 0, 0 }; /* [5]: screen pixels (of 1080) a metre spans at the pole's middle, this frame */
+float g_screen[7] = { 1e9f, 1e9f, 0, 0, 0, 0, 0 }; /* [5]: screen pixels (of 1080) a metre spans at the pole's middle; [6]: the plate's numeral, pixels tall; both this frame */
 static bool to_screen(t3_vec3 p, t3_vec3 cp, t3_vec3 f, t3_vec3 r, t3_vec3 u, float k, float *sx, float *sy, float *depth) {
   t3_vec3 d = { p.x - cp.x, p.y - cp.y, p.z - cp.z };
   float z = d.x * f.x + d.y * f.y + d.z * f.z;
@@ -923,7 +923,7 @@ static void stand_screen(t3_vec3 cp, t3_vec3 lp, float fov, float a) {
   t3_vec3 at = { lerpf(c->px, c->x, a), lerpf(c->py, c->y, a), lerpf(c->pz, c->z, a) };
   #define W(px_, py_, pz_) cpt(q, at, px_, py_, pz_)
   /* the craft's outline: bow, the hood, the sides and the stern; the rider's: head, neck, hips, feet */
-  static const float OUTLINE[8][3] = { { 0, 0.72f, 1.25f }, { 0, 0.87f, 0.6f }, { 0.36f, 0.58f, 0.2f }, { -0.36f, 0.58f, 0.2f }, { 0.35f, 0.55f, -1.0f }, { -0.35f, 0.55f, -1.0f }, { 0.3f, 0.3f, 0.6f }, { -0.3f, 0.3f, 0.6f } };
+  static const float OUTLINE[8][3] = { { 0, 0.7f, 1.08f }, { 0, 0.98f, 0.5f }, { 0.36f, 0.58f, 0.1f }, { -0.36f, 0.58f, 0.1f }, { 0.35f, 0.55f, -0.95f }, { -0.35f, 0.55f, -0.95f }, { 0.3f, 0.3f, 0.5f }, { -0.3f, 0.3f, 0.5f } };
   float x0 = 9, x1 = -9, y0 = 9, y1 = -9, sx, sy, dz;
   for (int i = 0; i < 8; i++) if (to_screen(W(OUTLINE[i][0], OUTLINE[i][1] + STAND_LIFT, OUTLINE[i][2]), cp, f, r, u, k, &sx, &sy, &dz)) x0 = fminf(x0, sx), x1 = fmaxf(x1, sx), y0 = fminf(y0, sy), y1 = fmaxf(y1, sy);
   float craft_area = x1 > x0 ? (x1 - x0) * (y1 - y0) : 0;
@@ -942,7 +942,7 @@ static void stand_screen(t3_vec3 cp, t3_vec3 lp, float fov, float a) {
   /* the pole: from the pivot to the bars */
   float th = rider_pole[0], seen = 0;
   for (int s = 0; s < 5; s++) {
-    float t = 0.1f + 0.2f * (float)s, py = STAND_LIFT + 0.86f + 1.2f * t * sinf(th), pz = 0.94f - 1.2f * t * cosf(th);
+    float t = 0.1f + 0.2f * (float)s, py = STAND_LIFT + 0.94f + 1.06f * t * sinf(th), pz = 0.8f - 1.06f * t * cosf(th);
     if (!to_screen(W(0, py, pz), cp, f, r, u, k, &sx, &sy, &dz) || fabsf(sx) > 1 || fabsf(sy) > 1) continue;
     /* behind the torso? its distance on the screen from the hips-to-neck segment, against the torso's half-width there */
     float ax = tsx[0] * (16.0f / 9.0f), ay = tsy[0], bx = tsx[1] * (16.0f / 9.0f), by = tsy[1], px = sx * (16.0f / 9.0f), qy = sy;
@@ -953,6 +953,9 @@ static void stand_screen(t3_vec3 cp, t3_vec3 lp, float fov, float a) {
     if (!hidden) seen += 0.2f;
     if (s == 2) g_screen[5] = k * 540.0f / fmaxf(dz, 0.1f);
   }
+  /* the number plate's numeral (tools/standup-model.mjs PLATE_*: from 0.98 m at z -0.07, 0.3 m up a 40 degree face; the numeral is its middle 78 %) */
+  { float s0y, s1y, d0;
+    if (to_screen(W(0, STAND_LIFT + 0.981f + 0.3f * 0.11f * 0.643f, -0.07f + 0.3f * 0.11f * 0.766f), cp, f, r, u, k, &sx, &s0y, &d0) && to_screen(W(0, STAND_LIFT + 0.981f + 0.3f * 0.89f * 0.643f, -0.07f + 0.3f * 0.89f * 0.766f), cp, f, r, u, k, &sx, &s1y, &d0)) g_screen[6] = fabsf(s1y - s0y) * 540.0f; }
   #undef W
   float ratio = craft_area / rider_area;
   g_screen[3] = ratio, g_screen[4] = seen;

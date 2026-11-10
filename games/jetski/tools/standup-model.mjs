@@ -21,7 +21,10 @@ const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a
 const norm = (a) => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
 const frame = (d) => { const up = Math.abs(d[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0]; const u = norm(cross(d, up)); return [u, cross(u, d)]; };
 
-export const POLE_PIVOT = [0, 0.86, 0.94], POLE_LEN = 1.2, GRIP = 0.34, TRAY_FLOOR = 0.42;
+export const POLE_PIVOT = [0, 0.94, 0.8], POLE_LEN = 1.06, GRIP = 0.34, TRAY_FLOOR = 0.42;
+/* the number plate: a raised block on the hood just ahead of the tray, its face tilted back toward the rider and the chase
+ * camera: from (0, PLATE_Y, PLATE_Z) it rises PLATE_LEN forward at PLATE_TILT (src/view.c measures it on the screen) */
+export const PLATE_Z = -0.07, PLATE_LEN = 0.3, PLATE_TILT = 40, PLATE_W = 0.46;
 
 // ── PNG in memory ──
 function png(w, h, rgba) {
@@ -137,7 +140,7 @@ function merged(prims) {
 /** detail 1: the race model; 0.4: the distant one (fewer rings, no small parts) */
 function build(OUT, file, detail) {
   const P = new Plain(), plates = [];
-  const Z0 = -1.0, Z1 = 1.25, UT = (-0.22 - Z0) / (Z1 - Z0);
+  const Z0 = -0.95, Z1 = 1.08, UT = (-0.22 - Z0) / (Z1 - Z0); /* 2.03 m: short and chunky */
   const sec = (u) => {
     const bow = smooth(0.5, 1.0, u), sb = smooth(0.0, 0.03, u);
     const beam = (0.37 * (1 - Math.pow(bow, 1.35)) + 0.03) * lerp(0.94, 1, sb);
@@ -154,7 +157,7 @@ function build(OUT, file, detail) {
     for (let k = 0; k <= US; k++) { const s = sec(k / US), row = []; for (let j = 0; j <= NB; j++) { const t = j / NB * 2 - 1, a = Math.abs(t); row.push([t * s.beam * 1.035, lerp(s.keel, s.chine, Math.pow(a, 0.85)), s.z]); } R.push(row); }
     P.grid('panel', R, { flip: true }); P.grid('panel', R, { flip: false }); }
   // the deck: tray floor, its red sides up to the rails; the hood: a steep face, then a crowned top with rounded shoulders
-  const H = (u) => lerp(TRAY_FLOOR, 0.9, smooth(UT, UT + 0.07, u)) + 0.03 * smooth(UT + 0.07, 0.6, u) - 0.1 * smooth(0.78, 1, u);
+  const H = (u) => lerp(TRAY_FLOOR, 0.98, smooth(UT, UT + 0.08, u)) + 0.04 * smooth(UT + 0.08, 0.6, u) - 0.12 * smooth(0.78, 1, u);
   const deckPt = (u, t) => {
     const s = sec(u), a = Math.abs(t), rail = s.gun + 0.03 * smooth(0.82, 0.96, a);
     const inner = 1 - smooth(0.68, 0.84, a);
@@ -181,7 +184,16 @@ function build(OUT, file, detail) {
   // the splash decal on each flank of the hood: a patch over the surface, a few millimetres out, tinted per racer
   for (const sg of [-1, 1]) region('decal', 0.52, 0.93, sg * 0.45, sg * 1.0, Math.round(26 * detail) + 2, Math.max(4, Math.round(10 * detail)), { lift: [sg * 0.007, 0.005], flip: sg < 0, uv: (r, c) => [sg > 0 ? 1 - r : r, 1 - c] });
   // the number plate on the hood's top: six of them, the racer's shows
-  for (let n = 0; n < 6; n++) { const pp = new Plain(); const R = []; for (let k = 0; k <= 24; k++) { const u = lerp(0.52, 0.8, k / 24), row = []; for (let j = 0; j <= 16; j++) { const p = deckPt(u, lerp(-0.6, 0.6, j / 16)); row.push([p[0], p[1] + 0.012, p[2]]); } R.push(row); } pp.grid('plate', R, { uv: (r, c) => [(n + c) / 6, r] }); /* (its top toward the stern: it reads from ahead and from the side) */ plates.push(pp); }
+  // the number plate's block: its sides and top in the hood's white, its face the plate (the racer's number, read from behind)
+  const yAt = (z) => deckPt((z - Z0) / (Z1 - Z0), 0)[1];
+  const tilt = PLATE_TILT * Math.PI / 180, pz0 = PLATE_Z, py0 = yAt(PLATE_Z) + 0.01, pz1 = pz0 + PLATE_LEN * Math.cos(tilt), py1 = py0 + PLATE_LEN * Math.sin(tilt), hw2 = PLATE_W / 2;
+  PLATE_AT.y0 = py0, PLATE_AT.y1 = py1, PLATE_AT.z1 = pz1;
+  for (const sg of [-1, 1]) P.grid('hood', [[[sg * hw2, yAt(pz0) - 0.02, pz0], [sg * hw2, py0, pz0]], [[sg * hw2, yAt(pz1) - 0.02, pz1], [sg * hw2, py1, pz1]]], { flip: sg < 0 });
+  P.grid('hood', [[[-hw2, py1, pz1], [hw2, py1, pz1]], [[-hw2, yAt(pz1 + 0.12), pz1 + 0.12], [hw2, yAt(pz1 + 0.12), pz1 + 0.12]]], { flip: true });
+  /* and the number again on each shoulder of the hood, beside the rider's legs: from behind a rider standing over the middle hides the
+   * middle plate, these show past them (a patch over the hood's surface, read from behind and the side) */
+  const sideNum = (pp, n, sg) => { const R = []; const u0 = (0.0 - Z0) / (Z1 - Z0), u1 = (0.42 - Z0) / (Z1 - Z0); for (let k = 0; k <= 24; k++) { const uu = lerp(u0, u1, k / 24), row = []; for (let j = 0; j <= 20; j++) { const t = sg * lerp(0.5, 0.92, j / 20), p = deckPt(uu, t); row.push([p[0] + sg * 0.012, p[1] + 0.012, p[2]]); } R.push(row); } pp.grid('plate', R, { flip: sg < 0, uv: (r, c) => [(n + (sg > 0 ? 1 - c : c)) / 6, 1 - r] }); };
+  for (let n = 0; n < 6; n++) { const pp = new Plain(); pp.grid('plate', [[[-hw2, py0, pz0], [hw2, py0, pz0]], [[-hw2, py1, pz1], [hw2, py1, pz1]]], { uv: (r, c) => [(n + 1 - c) / 6, 1 - r] }); sideNum(pp, n, 1); sideNum(pp, n, -1); plates.push(pp); }
   // the stern: its face, the jet nozzle, the ride plate and the intake grate under the hull
   const s0 = sec(0);
   { const row0 = []; for (let j = 0; j <= 12; j++) row0.push(deckPt(0, j / 12 * 2 - 1)); const row1 = row0.map(([x, , z]) => { const ax = Math.abs(x / s0.beam); return [x, lerp(s0.chine, s0.keel, 1 - Math.pow(ax, 0.85)), z]; }); P.grid('transom', [row1, row0]); }
@@ -240,7 +252,8 @@ function build(OUT, file, detail) {
   g.write(join(OUT, file));
   return P.tris() + plates[0].tris() + pole.tris() + bars.tris();
 }
+export const PLATE_AT = {};
 export function buildStandup(OUT) {
   const hi = build(OUT, 'standup.glb', 1), lo = build(OUT, 'standup_lo.glb', 0.4);
-  console.log('standup', hi, 'tris; far', lo);
+  console.log('standup', hi, 'tris; far', lo, 'plate', JSON.stringify(PLATE_AT));
 }

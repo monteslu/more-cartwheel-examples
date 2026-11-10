@@ -165,14 +165,14 @@ void rider_pose(int i, const craft *c, float alpha) {
  * the bars. Everything is placed in the craft's frame and brought into the rider node's (scaled) frame. Sizes are
  * tools/standup-model.mjs's.
  * sw stand_old 1 (stiff and dead upright) and 2 (a deep crouch): the pose gate's controls */
-#define POLE_PY 0.86f
-#define POLE_PZ 0.94f
-#define POLE_LEN 1.2f
+#define POLE_PY 0.94f
+#define POLE_PZ 0.8f
+#define POLE_LEN 1.06f
 #define GRIP_X 0.34f
 #define TRAY_Y 0.42f
-#define HOOD_Y 0.87f   /* the pad on the hood's top, where a pole stand puts the feet */
-#define HOOD_Z 0.3f
-#define BOW_Z 1.25f
+#define HOOD_Y 1.02f   /* the pad on the hood's top, where a pole stand puts the feet */
+#define HOOD_Z 0.33f
+#define BOW_Z 1.08f
 #define ANKLE_UP 0.12f /* the ankle over the boot's sole */
 int g_stand_old;
 float g_pose[8]; /* racer 0 this frame: head top over the tray, front knee's angle (deg), torso's lean from upright (deg), hull ahead of the front foot (m) */
@@ -195,7 +195,7 @@ static void rider_pose_stand(int i, const craft *c, float steer, float by) {
   pk = smoothk(pk), sk = smoothk(sk);
   float lean_in = -steer * (0.16f + 0.06f * speedk); /* hips and shoulders to the inside of the carve */
   /* the feet: apart in the tray, the left a little ahead */
-  t3_vec3 af_st = V(0.15f, TRAY_Y + ANKLE_UP, -0.42f), ar_st = V(-0.15f, TRAY_Y + ANKLE_UP, -0.55f);
+  t3_vec3 af_st = V(0.19f, TRAY_Y + ANKLE_UP, -0.42f), ar_st = V(-0.19f, TRAY_Y + ANKLE_UP, -0.55f);
   /* the hips: over the feet, the knees a little bent (about 145 degrees), more as they soak a landing or the chop;
    * the torso leaned forward about 20 degrees */
   t3_vec3 hips_st = V(lean_in - c->wobble * 0.3f, TRAY_Y + ANKLE_UP + 0.86f - crouch + g_stand_hips, -0.56f);

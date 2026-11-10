@@ -69,3 +69,4 @@ standard+map+shadow+senv+l2000+s100+xplain
 standard+map+shadow+senv+atest+l2000+s100+xplain
 standard+map+senv+atest+l2000
 standard+map+senv+l2000
+standard+map+rep+senv+l2000

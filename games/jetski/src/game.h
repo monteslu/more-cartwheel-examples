@@ -258,7 +258,7 @@ extern float g_peek[6];
 extern float rider_torso[RACERS];
 extern float rider_foot_side[RACERS]; /* how far out to the side the further foot is, metres from the craft's middle */
 extern float rider_pole[RACERS], rider_scale[RACERS][2], rider_foot_gap[RACERS], rider_hands_gap[RACERS], rider_stand[RACERS], g_stand_hips;
-extern float rider_pts[RACERS][6][3], g_pose[8], g_screen[6]; /* the stand-up pose gate's measures (rider.c, view.c) */
+extern float rider_pts[RACERS][6][3], g_pose[8], g_screen[7]; /* the stand-up pose gate's measures (rider.c, view.c) */
 extern int g_stand_old;
 /* what the player's craft did in its latest flight, kept by the game so a check steps a whole ride in one request and
  * reads the measures once (debug fields fly.*): a flight starts on the first tick it has been in the air over 0.05 s
