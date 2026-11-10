@@ -129,6 +129,9 @@ static struct {
 } G;
 
 static int art_hide_hud; /* Developer capture switch; never stored in preferences. */
+/* dev aid (key art): the keyart command's camera, an offset from the jet along its heading (right, up, ahead in metres); a command, so it reaches a cart (the SKY_ART_* environment is native only) */
+static int keyart_on;
+static float keyart_side=22,keyart_up=6,keyart_ahead=30;
 /* feel.h */
 static void feel_reset(void);
 static void feel_spawn(int i);
@@ -375,6 +378,7 @@ static void paved_strip(t3_object *parent, float x0, float x1, float z0, float z
   t3_object_add(parent, strip); t3_release(g);
 }
 static void flight_material(t3_object *o, void *ctx) {
+  if(o->name&&(!strcmp(o->name,"F15_Landing_Gear")||!strcmp(o->name,"F15_Tires"))){o->visible=false;return;} /* every sortie flies: the gear is up (the model carries it down) */
   if(o->type!=T3_MESH)return;
   o->cast_shadow=o->receive_shadow=true;
   t3_mesh *m=(t3_mesh *)o;
@@ -940,6 +944,12 @@ static void follow_jet(void) {
 #endif
   cw_node3d_set_position(G.camera_node,(t3_vec3){G.px-f.x*back+up.x*lift,G.py-f.y*back+up.y*lift,G.pz-f.z*back+up.z*lift});
   cw_node3d_look_at(G.camera_node,(t3_vec3){G.px+f.x*170,G.py+f.y*170,G.pz+f.z*170},up);
+  if(keyart_on){ /* key art: the camera held beside, over and ahead of the jet along its heading, the horizon level, aimed at it */
+    t3_vec3 jf=t3_vec3_apply_quat((t3_vec3){0,0,-1},G.flight.attitude);
+    t3_vec3 fh=t3_vec3_normalize((t3_vec3){jf.x,0,jf.z}),rh=(t3_vec3){-fh.z,0,fh.x};
+    cw_node3d_set_position(G.camera_node,(t3_vec3){G.px+rh.x*keyart_side+fh.x*keyart_ahead,G.py+keyart_up,G.pz+rh.z*keyart_side+fh.z*keyart_ahead});
+    cw_node3d_look_at(G.camera_node,(t3_vec3){G.px,G.py,G.pz},(t3_vec3){0,1,0});
+  }
 }
 
 static void new_mission(void) {
@@ -1300,6 +1310,18 @@ static void cmd_preview(int argc, const char **argv, cw_reply *r) {
   if (argc > 1) menu_preview = !strcmp(argv[1], "win") ? 1 : !strcmp(argv[1], "mothership") ? 2 : !strcmp(argv[1], "lost") ? 3 : 0;
   cw_reply_printf(r, "{\"preview\":%d}", (int)menu_preview);
 }
+/* keyart <right> <up> <ahead> [hud 0|1] [hour] | keyart off: the camera held at that offset from the jet (metres, along its heading), aimed at it; hud 0 hides the HUD; an hour re-sets the sky's time of day (this sortie) */
+static void cmd_keyart(int argc, const char **argv, cw_reply *r) {
+  if (argc < 2) { cw_reply_error(r, "usage: keyart <right> <up> <ahead> [hud 0|1] [hour] | keyart off"); return; }
+  if (!strcmp(argv[1], "off")) keyart_on = art_hide_hud = 0;
+  else {
+    keyart_on = 1;
+    if (argc > 3) keyart_side = (float)atof(argv[1]), keyart_up = (float)atof(argv[2]), keyart_ahead = (float)atof(argv[3]);
+    art_hide_hud = argc > 4 && atoi(argv[4]) == 0;
+    if (argc > 5) cw_node_set(cw_node_get(cw_tree_root(G.tree), "Coast/Sky"), "time_of_day", cw_val_float((float)atof(argv[5])));
+  }
+  cw_reply_printf(r, "{\"on\":%d,\"hud\":%d}", keyart_on, !art_hide_hud);
+}
 static void cmd_bind(int argc, const char **argv, cw_reply *r) {
   if (argc < 3) { cw_reply_error(r, "bind <action> <bindings>"); return; }
   cw_action a = cw_action_find(argv[1]);
@@ -1353,6 +1375,7 @@ static void init(void *user) {
   cw_debug_i32("mission.state", &G.state);
   cw_debug_command("bind", "bind <action> <bindings>: replace an action's bindings", cmd_bind);
   cw_debug_command("preview", "preview win|mothership|lost|off: draw a results screen over the frame (render only)", cmd_preview);
+  cw_debug_command("keyart", "keyart <right> <up> <ahead> [hud 0|1] [hour] | keyart off: key art (the camera held at that offset from the jet along its heading, aimed at it; the HUD off; the sky's hour)", cmd_keyart);
   cw_debug_i32("mission.level",&G.level);cw_debug_i32("menu.row",&G.menu_row);cw_debug_f32_array("menu.pointer",&menu_ui.pointer.x,2);cw_debug_i32("mission.balloons",&G.balloon_kills);cw_debug_i32("mission.blimps",&G.blimp_kills);cw_debug_i32("mission.shields",&G.shields_left);
   cw_debug_f32("mission.elapsed",&G.mission_time);cw_debug_f32("mothership.explosion_age",&capital.age);cw_debug_i32("mothership.fragments",&capital.fragments);cw_debug_f32_array("mothership.fragment_position",&capital.chunks[0]->position.x,3);
   static char air_keys[AIR_TARGETS][7][40];
