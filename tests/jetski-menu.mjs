@@ -1,5 +1,6 @@
-// jetski's menus, by real input through the shell's actions: pad and keyboard, every page opened and backed out of, the race's
+// jetski's menus, by real input through the shell's actions on the pad (a keyboard is a fallback controller, not gated), every page opened and backed out of, the race's
 // pause with restart and quit, championship points and a time trial's best. The numbers come back from the game.
+// The cart runs through romdev (GL), the pad's taps held for their frames in ranged input requests.
 //   node tests/jetski-menu.mjs
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
@@ -10,21 +11,21 @@ mkdirSync(OUT, { recursive: true });
 const P_MAIN = 1, P_CONTROLS = 2, P_AUDIO = 3, P_PAUSE = 5, P_RESULTS = 6, P_NONE = 0;
 const ATTRACT = 0, GRID = 1, ON = 2, DONE = 3;
 let n = 0;
-// tokens: a pad button, 'k:<key>' a key; each tapped for 3 frames with 3 released after; 'w<N>' waits N frames; '!cmd' is not a tap
+// tokens: a pad button, each tapped for 3 frames with 3 released after; 'w<N>' waits N frames; '!cmd' is not a tap
 function run(tokens, { cmds = '' } = {}) {
   const tag = 'm' + n++, input = join(OUT, tag + '.input.json'), state = join(OUT, tag + '.json');
   const script = [];
   let f = 20;
   for (const t of tokens) {
     if (t[0] === 'w') { f += +t.slice(1); continue; }
-    script.push(t.startsWith('k:') ? { frame: f, keys: [t.slice(2)] } : { frame: f, buttons: [t] });
-    script.push({ frame: f + 3, buttons: [], keys: [] });
+    script.push({ frame: f, buttons: [t] });
+    script.push({ frame: f + 3, buttons: [] });
     f += 6;
   }
   writeFileSync(input, JSON.stringify(script));
-  const r = spawnSync('node', [TOOL, '--host', 'native', '--gpu', 'gl', '--app', 'jetski', '--frames', String(f + 6), '--input', input, '--state', state, '--shot', join(OUT, tag + '.png'), ...(cmds ? ['--start-cmds', cmds] : []), '--exe', process.env.JETSKI_EXE || join(ROOT, 'build/native/games/jetski/jetski')], {
+  const r = spawnSync('node', [TOOL, '--host', 'romdev', '--gpu', 'gl', '--app', 'jetski', '--frames', String(f + 6), '--input', input, '--state', state, '--shot', join(OUT, tag + '.png'), ...(cmds ? ['--start-cmds', cmds] : [])], {
     cwd: join(ROOT, 'deps/cartwheel-engine'), encoding: 'utf8', maxBuffer: 1 << 26,
-    env: { ...process.env, CW_PROJECT_ROOT: ROOT, LIBGL_ALWAYS_SOFTWARE: '1', LP_NUM_THREADS: '2', CW_TEST_GPU: 'software', JETSKI_SMALL: '1', SDL_AUDIODRIVER: 'dummy' },
+    env: { ...process.env, CW_PROJECT_ROOT: ROOT },
   });
   if (r.status !== 0) { console.error(r.stdout.slice(-400), r.stderr.slice(-600)); process.exit(3); }
   return JSON.parse(readFileSync(state, 'utf8'));
@@ -38,8 +39,6 @@ check('the game opens on the menu over the attract loop', idle['menu.page'] === 
 // control: nothing pressed changes nothing
 const pad = run(['south']);
 check('pad: A starts the race', pad['menu.page'] === P_NONE && pad['race.state'] === GRID, pg(pad));
-const key = run(['k:return']);
-check('keyboard: Enter starts the race', key['menu.page'] === P_NONE && key['race.state'] === GRID, pg(key));
 const rows = run(['down', 'down', 'down', 'down', 'down']);
 check('down walks the rows, to Controls', rows['menu.row'] === 5, pg(rows));
 const wrap = run(['up']);
@@ -48,7 +47,6 @@ const ctl = run(['down', 'down', 'down', 'down', 'down', 'south']);
 check('Controls opens', ctl['menu.page'] === P_CONTROLS, pg(ctl));
 const ctlBack = run(['down', 'down', 'down', 'down', 'down', 'south', 'east']);
 check('Controls: back returns to the menu, on the row that opened it', ctlBack['menu.page'] === P_MAIN && ctlBack['menu.row'] === 5, pg(ctlBack));
-check('Controls: Esc returns to the menu', run(['k:down', 'k:down', 'k:down', 'k:down', 'k:down', 'k:return', 'k:escape'])['menu.page'] === P_MAIN, 'escape');
 const au = run(['down', 'down', 'down', 'down', 'down', 'down', 'south']);
 check('Audio opens', au['menu.page'] === P_AUDIO, pg(au));
 check('Audio: back returns', run(['down', 'down', 'down', 'down', 'down', 'down', 'south', 'east'])['menu.page'] === P_MAIN, 'east');
@@ -66,7 +64,7 @@ check('Start pauses', paused['menu.page'] === P_PAUSE, pg(paused));
 check('paused, the clock stands', paused['race.clock'] < unpaused['race.clock'] - 0.4, `${paused['race.clock'].toFixed(2)} s, running ${unpaused['race.clock'].toFixed(2)} s`);
 const resume = run([...race, 'start', 'south']);
 check('Resume goes on', resume['menu.page'] === P_NONE && resume['race.state'] !== ATTRACT, pg(resume));
-check('Esc pauses and Esc goes back', run([...race, 'k:escape', 'k:escape'])['menu.page'] === P_NONE, 'escape twice');
+check('Start pauses and Start goes back', run([...race, 'start', 'start'])['menu.page'] === P_NONE, 'start twice');
 const restart = run([...race, 'start', 'down', 'south']);
 check('Restart race: the countdown again', restart['race.state'] === GRID && restart['race.clock'] < 0, pg(restart) + ` clock ${restart['race.clock'].toFixed(2)}`);
 const pausedCtl = run([...race, 'start', 'down', 'down', 'south', 'w30']);
