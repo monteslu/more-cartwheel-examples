@@ -1,7 +1,8 @@
 [
   { "name": "arenafps-match", "gate": "arenafps-match", "frames": 1200, "note": "bots fighting: rifles, scatterguns, rails, rockets, deaths and respawns" },
   { "name": "arenafps-recoil", "gate": "arenafps-recoil", "frames": 1000, "note": "a player's own rifle burst in first person: the muzzle light on the walls" },
-  { "name": "arenafps-coop", "gate": "arenafps-coop", "frames": 1800, "note": "co-op with spawn protection's shimmer", "knownFail": "arenafps: 4 to 6 flashes in a second remain after the layered faces (19 before), and they are neither a grenade blast (grenades off: 6) nor the stand-in turning faster than a thumb (2 rad/s cap: 6; aim that speeds up and slows down like a stick: 4 to 5): in close fights an enemy body stands inside the view's near plane and what fills the view switches frame to frame" },
+  { "name": "arenafps-coop", "gate": "arenafps-coop", "frames": 1800, "note": "co-op with spawn protection's shimmer: three views turning as pad players turn (the seats' stand-ins ease the look stick in and out and keep the enemy they fight)" },
+  { "name": "arenafps-coop-control", "gate": "arenafps-coop", "frames": 1800, "startCmds": ["sw tune strobefix 0", "match 1 2 0 3"], "mustFail": "the stand-ins turn at full rate from tick to tick and pick the nearest enemy at every think (with the other strobe fixes off): their views swing walls and sky through the same part of the screen four or five times a second" },
   { "name": "brawler-four", "gate": "brawler-four", "frames": 1500, "note": "four players: hits, throws, pickups" },
   { "name": "brawler-boss", "gate": "brawler-boss", "frames": 2400, "from": 600, "note": "a boss wave" },
   { "name": "coopplatformer-boss", "gate": "coopplatformer-boss", "frames": 700, "note": "the boss fight: its hurt glow" },

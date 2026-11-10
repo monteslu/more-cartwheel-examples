@@ -195,9 +195,9 @@
       "game.arena": 0,
       "game.players": 4,
       "views": 4,
-      "cam.offset": [756, 0, 0],
-      "rumble.sent": [22, 6, 5, 15, 9],
-      "cw.rumble": [55, 0, 120, 400, 55]
+      "cam.offset": [308, 0, 0],
+      "rumble.sent": [13, 7, 7, 16, 5],
+      "cw.rumble": [47, 0, 155, 0, 73]
     },
     "controlFrames": 1199,
     "webgpu": {
@@ -209,7 +209,7 @@
         "chromium"
       ]
     },
-    "note": "arenafps_auto: four seats (the AUTO bot count adds none) play Foundry deathmatch by themselves for 20 seconds. The simulation (movers, navmesh paths, shots, rockets, pickups) must give the same state on every host, so fighters.pos, scores and the state hash are compared exactly; pixels within the usual tolerance (particles, decals). Control: one frame short. WebGPU vs GL within 40 percent: at frame 1200 two of the four views face a wall at arm's length, and close-up texture detail (normal and roughness maps at that distance) differs between the backends (33 percent of pixels over 16 levels, 42 to 50 percent in those two views, 19 to 21 in the others, mean brightness equal: an engine finding in internal-cartwheel/findings/arenafps.md). No shake (2026-10-29): cam.offset is every view's camera as drawn against the eye and aim on the 575 ticks (655 before grenades and power-ups, 750 before their tuning, 755 before grenades finished fights, 2026-11-08) within half a second of a hit taken or a blast within 14 m; none is off by over 0.1 mm or 0.1 milliradian (a build with the old shake measured 575 of 581 off, up to 14 cm and radians summed). rumble.sent: blasts, hits taken, hits dealt and kills, landings, rocket and rail shots sent to the players' pads; cw.rumble the engine's last request. The gate pins High with a start command: Chromium is not a deterministic host, so Auto stays on there and since engine v0.27 it steps down on a loaded machine."
+    "note": "arenafps_auto: four seats (the AUTO bot count adds none) play Foundry deathmatch by themselves for 20 seconds. The simulation (movers, navmesh paths, shots, rockets, pickups) must give the same state on every host, so fighters.pos, scores and the state hash are compared exactly; pixels within the usual tolerance (particles, decals). Control: one frame short. WebGPU vs GL within 40 percent: at frame 1200 two of the four views face a wall at arm's length, and close-up texture detail (normal and roughness maps at that distance) differs between the backends (33 percent of pixels over 16 levels, 42 to 50 percent in those two views, 19 to 21 in the others, mean brightness equal: an engine finding in internal-cartwheel/findings/arenafps.md). No shake (2026-10-29): cam.offset is every view's camera as drawn against the eye and aim on the 575 ticks (655 before grenades and power-ups, 750 before their tuning, 755 before grenades finished fights, 2026-11-08) within half a second of a hit taken or a blast within 14 m (308 since the seats' stand-ins turn as a thumb on a stick does and keep their enemy, 2026-11-10); none is off by over 0.1 mm or 0.1 milliradian (a build with the old shake measured 575 of 581 off, up to 14 cm and radians summed). rumble.sent: blasts, hits taken, hits dealt and kills, landings, rocket and rail shots sent to the players' pads; cw.rumble the engine's last request. The gate pins High with a start command: Chromium is not a deterministic host, so Auto stays on there and since engine v0.27 it steps down on a loaded machine."
   },
   {
     "name": "arenafps-screenshot",
@@ -262,11 +262,11 @@
       "game.arena": 1,
       "game.players": 3,
       "game.ticks": 1799,
-      "game.hash": 1154831862,
+      "game.hash": 952449922,
       "match.nf": 13,
       "match.wave": 2,
-      "match.lives": 9,
-      "stats.kills": 16,
+      "match.lives": 7,
+      "stats.kills": 15,
       "views": 3
     },
     "controlStartCmds": ["match 1 2 0 2"
@@ -316,10 +316,10 @@
       "game.arena": 2,
       "game.players": 4,
       "game.ticks": 1799,
-      "game.hash": 1456702073,
+      "game.hash": 2642211159,
       "match.nf": 8,
       "match.wave": 0,
-      "stats.kills": 12,
+      "stats.kills": 11,
       "views": 4
     },
     "controlStartCmds": ["match 2 1 4 3"

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.31.3
+
+- Tests: the flash sweep runs on the built carts through romdev, GL and WebGPU, every frame of a stretch taken in one call. Arena's co-op stretch passes on both (it was marked as a known failure): the stand-ins that play the seats in the test build now turn the way a person on a pad does, easing the look stick in and out and staying on the enemy they fight, instead of swinging their views at full speed between two enemies and round every corner. The old stand-in is kept as a control that must still fail. The shipped games are unchanged.
+
 ## 0.31.2
 
 - Tux Racer: a new Tux. The same skeleton and moves (the walk-in, the belly slide, the tuck, the jump, the tree hits), with a smooth sculpted body over them in place of the blended spheres of the original model: a fit, streamlined racer with a matte blue-black back, a clean white front up to the chin, a defined head with expressive eyes, flat flippers, and an orange-yellow beak, legs and webbed feet. His feet stand on the snow in the walk-in and his belly rides on it as he slides (he no longer hovers a few centimetres up or sinks his toes in). New cover, icon, background and screenshots with him in them.

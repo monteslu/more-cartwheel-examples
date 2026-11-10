@@ -1015,7 +1015,12 @@ static void bot_think(fighter *f, int idx) {
     if (!o->active || !o->alive || !enemies(f, o) || o->spawn_guard > 0) continue; /* a fighter under spawn protection is left alone */
     t3_vec3 d = v3sub(o->mv.position, f->mv.position);
     float dist = v3len(d);
-    if (dist > 45 || dist > bd) continue;
+    if (dist > 45) continue;
+    /* a seat's stand-in stays on the enemy it is fighting while it can see it, as a person does, unless another comes
+     * in at well under its range: picking the nearest at every think swung its view between two enemies at full stick
+     * five times a second (the flash sweep's arenafps-coop). ARENA_T_strobefix=0 (autopilot): the nearest, the control */
+    if (i == f->target && proxy(f) && strobefix()) dist *= 0.6f;
+    if (dist > bd) continue;
     if (arena_ray(e, chest_pos(o), NULL, NULL)) continue;
     { /* noticing: in the vision cone (wider up close), or all round when just hit or hearing a shot; the current target is kept */
       float fov = bot_fov_override >= 0 ? bot_fov_override : LEVELS[G.bot_level].fov;
@@ -1181,6 +1186,39 @@ static void bot_weapon_choice(fighter *f, float dist) {
   if (want != f->weapon && f->cooldown < 10) f->weapon = want;
 }
 
+/* a turn toward an aim dy (yaw) and dp (pitch) radians away. A bot turns at its rate. A seat's stand-in holds a pad: it
+ * pushes the look stick by how far it has to go (full past about 15 degrees) through the game's own stick curve
+ * (dead zone, response, the held edge's boost), so its view eases in and out of a turn as a thumb does instead of
+ * starting, stopping and reversing at full speed from one tick to the next (that bang-bang view, two of them side by
+ * side in split screen, swung the walls and the sky through the same part of the screen five times a second: the flash
+ * sweep's arenafps-coop). ARENA_T_strobefix=0 (autopilot): the old full-rate turns, the flash sweep's control */
+static cw_aim_state proxy_aim[MAXH];
+static cw_vec2 proxy_thumb[MAXH];
+static int32_t DBG_SEAT[MAXH][2]; /* autopilot: a stand-in's branch this tick (1 retreat, 2 fight, 3 hold, 4 errand) and target */
+static void turn_by(fighter *f, float dy, float dp, float rate) {
+  if (proxy(f) && strobefix() && f->human < MAXH) {
+    const cw_aim_curve c = { .deadzone = 0.15f, .power = 1.8f, .yaw_rate = 3.6f, .pitch_rate = 2.4f, .ramp_seconds = 0.35f,
+                             .ramp_gain = 0.6f, .ramp_edge = 0.9f, .assist = 0 };
+    cw_vec2 want = cw_v2(-cw_clampf(dy * 3.8f, -1, 1), -cw_clampf(dp * 3.8f, -1, 1));
+    /* a thumb takes a few ticks to cross the stick: from one edge to the other in about an eighth of a second */
+    cw_vec2 *th = &proxy_thumb[f->human];
+    th->x += cw_clampf(want.x - th->x, -0.25f, 0.25f), th->y += cw_clampf(want.y - th->y, -0.25f, 0.25f);
+    cw_vec2 stick = *th;
+    float l = sqrtf(stick.x * stick.x + stick.y * stick.y);
+    if (l > 1) stick = cw_v2(stick.x / l, stick.y / l);
+    else if (l > 1e-4f) { /* past the dead zone from the first push, as a thumb that means to turn does */
+      float k = (0.15f + 0.85f * l) / l;
+      stick = cw_v2(stick.x * k, stick.y * k);
+    }
+    cw_vec2 t = cw_aim_step(&proxy_aim[f->human], &c, stick, TICK_DT, 0);
+    f->yaw -= fabsf(t.x) > fabsf(dy) ? -dy : t.x; /* never past the aim */
+    f->pitch -= fabsf(t.y) > fabsf(dp) ? -dp : t.y;
+    return;
+  }
+  f->yaw += cw_clampf(dy, -rate, rate);
+  f->pitch += cw_clampf(dp, -rate, rate);
+}
+
 static void bot_tick(fighter *f, int idx) {
   float fwd = 0, strafe = 0;
   bool jump = false;
@@ -1263,13 +1301,15 @@ static void bot_tick(fighter *f, int idx) {
     }
   }
   if (f->retreat > 0) f->retreat--;
+  if (proxy(f) && f->human < MAXH) DBG_SEAT[f->human][0] = see && f->retreat > 0 ? 1 : see ? 2 : f->hold > 0 ? 3 : 4, DBG_SEAT[f->human][1] = f->target;
   if (see && f->retreat > 0) {
     /* breaking off: run the path, firing only when the enemy happens to be in front */
     bot_follow(f, &fwd, &strafe, 1.0f);
     if (f->npath > 0 && f->pidx < f->npath) {
       t3_vec3 w = f->path[f->pidx];
       float ty = cw_atan2(-(w.x - f->mv.position.x), -(w.z - f->mv.position.z));
-      f->yaw += cw_clampf(cw_wrap_angle(ty - f->yaw), -5.0f * TICK_DT, 5.0f * TICK_DT);
+      if (proxy(f)) turn_by(f, cw_wrap_angle(ty - f->yaw), 0, 5.0f * TICK_DT);
+      else f->yaw += cw_clampf(cw_wrap_angle(ty - f->yaw), -5.0f * TICK_DT, 5.0f * TICK_DT);
     }
   } else if (see) {
     /* strafe while fighting, close or open the range */
@@ -1296,8 +1336,7 @@ static void bot_tick(fighter *f, int idx) {
     float ty = cw_atan2(-d.x, -d.z) + f->aim_err_yaw, tp = cw_atan2(d.y, hd) + f->aim_err_pitch;
     float rate = (proxy(f) ? 3.6f : LEVELS[G.bot_level].turn + f->skill * LEVELS[G.bot_level].turn_skill) * TICK_DT;
     float dy = cw_wrap_angle(ty - f->yaw), dp = tp - f->pitch;
-    f->yaw += cw_clampf(dy, -rate, rate);
-    f->pitch += cw_clampf(dp, -rate, rate);
+    turn_by(f, dy, dp, rate);
     if (f->react > 0) f->react--;
     else if (fabsf(dy) < 0.06f + (1 - f->skill) * 0.06f && f->cooldown == 0) do_fire(f, idx);
   } else if (f->hold > 0) {
@@ -1308,10 +1347,21 @@ static void bot_tick(fighter *f, int idx) {
     /* look where we go */
     if (f->npath > 0 && f->pidx < f->npath) {
       t3_vec3 w = f->path[f->pidx];
+      if (proxy(f) && strobefix()) { /* a person looks down the way, not at the next corner at their feet: the first point
+                                      * of the path 4 m off (the last one if none is), so passing a corner does not swing the view */
+        for (int k = f->pidx; k < f->npath; k++) {
+          w = f->path[k];
+          float wx = w.x - f->mv.position.x, wz = w.z - f->mv.position.z;
+          if (wx * wx + wz * wz > 16.0f) break;
+        }
+      }
       float ty = cw_atan2(-(w.x - f->mv.position.x), -(w.z - f->mv.position.z));
       float dy = cw_wrap_angle(ty - f->yaw), rate = 5.0f * TICK_DT;
-      f->yaw += cw_clampf(dy, -rate, rate);
-      f->pitch += cw_clampf(-f->pitch, -0.05f, 0.05f);
+      if (proxy(f) && strobefix()) turn_by(f, dy, -f->pitch, rate);
+      else {
+        f->yaw += cw_clampf(dy, -rate, rate);
+        f->pitch += cw_clampf(-f->pitch, -0.05f, 0.05f);
+      }
     }
   }
   /* a live grenade close by: get away from it (after a moment to notice) */
@@ -2251,6 +2301,8 @@ static void begin_match(void) {
   memset(G.dmg_want, 0, sizeof G.dmg_want);
   memset(G.dmg_hold, 0, sizeof G.dmg_hold);
   memset(G.aim, 0, sizeof G.aim);
+  memset(proxy_aim, 0, sizeof proxy_aim);
+  memset(proxy_thumb, 0, sizeof proxy_thumb);
   G.frag_limit = G.mode == MODE_TDM ? 40 : 25; /* about five minutes against bots at 4 fighters (FUN-RUBRIC FP17; 15 frags took 3 minutes) */
   G.time_limit = 60 * 60 * 8;
 #ifdef ARENA_AUTOPILOT
@@ -3758,6 +3810,14 @@ static void init(void *user) {
   cw_debug_field("ptest", ptest, CW_DBG_F32, PT_N);
 #ifdef ARENA_AUTOPILOT
   cw_debug_command("keyart", "keyart <i,fwd,right,up,lookh> [hud 0|1] | keyart off: key art (view 1 from a spot in fighter i's frame, the HUD off)", cmd_keyart);
+  { /* each view's camera as drawn (yaw, pitch, eye x and z), one scalar a field so a ranged read gets every frame */
+    static const char *const NY[] = { "view.yaw0", "view.yaw1", "view.yaw2", "view.yaw3" }, *const NP[] = { "view.pitch0", "view.pitch1", "view.pitch2", "view.pitch3" };
+    static const char *const NX[] = { "view.x0", "view.x1", "view.x2", "view.x3" }, *const NZ[] = { "view.z0", "view.z1", "view.z2", "view.z3" };
+    static const char *const NB[] = { "seat.branch0", "seat.branch1", "seat.branch2", "seat.branch3" }, *const NT[] = { "seat.target0", "seat.target1", "seat.target2", "seat.target3" };
+    for (int h = 0; h < MAXH; h++) cw_debug_i32(NB[h], &DBG_SEAT[h][0]), cw_debug_i32(NT[h], &DBG_SEAT[h][1]);
+    for (int h = 0; h < MAXH; h++)
+      cw_debug_f32(NY[h], &KC.yaw_now[h]), cw_debug_f32(NP[h], &KC.pitch_now[h]), cw_debug_f32(NX[h], &KC.eye[h].x), cw_debug_f32(NZ[h], &KC.eye[h].z);
+  }
   /* the autopilot: ARENA_ID, ARENA_MODE, ARENA_BOTS, ARENA_PLAYERS choose the match (tests, benches) */
   const char *e;
   if ((e = getenv("ARENA_ID"))) G.arena_id = CW_CLAMP(atoi(e), 0, ARENAS - 1);

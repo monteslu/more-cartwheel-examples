@@ -29,8 +29,10 @@ guide (`docs/guides/l10n-a11y.md`, "Flashes") has the thresholds and the recipes
 `tests/flash-sweep.mjs` holds it: each entry of `tests/flash-sweep.json` runs a stretch of a game's brightest play
 through romdev on GL and on WebGPU (the gate it names gives the app, input, start requests and environment) and checks
 every frame with the engine's `tools/flash-check.mjs --host romdev` (WCAG 2.3.1 / Harding flash and red-flash limits,
-and no regular flicker above 3 Hz): one romdev `frame({op:'flash'})` call a run, never a request per frame. Each
-entry's control, the same frames with an 8 Hz full-screen strobe over them, must fail. A new game adds entries for
+and no regular flicker above 3 Hz): one romdev `frame({op:'flash'})` call a run, never a request per frame;
+`--host native` runs the native build instead. Each entry's control, the same frames with an 8 Hz full-screen strobe
+over them, must fail; a `mustFail` entry is a game's own control (the old behaviour a fix replaced), whose run must
+still fail. A new game adds entries for
 its explosions, hits, weapons, pickups, weather, menus and transitions.
 
 ## Newcomer and idle-seat gates

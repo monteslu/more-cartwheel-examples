@@ -12,9 +12,11 @@
 //
 // An entry names a gate of tests/*gates*.json (its app, input script, start requests and environment) and how many
 // frames to check, or gives those itself: { "name", "gate" | "app", "frames", "from"?, "input"?, "startCmds"?, "env"?,
-// "gpu"?, "maxRise"?, "knownFail"? } (gpu: only that backend; maxRise: also bound the hardest two-frame rise, for a
-// moment that must swell, such as lightning; knownFail: a failure waiting on a fix outside this repository, reported as
-// KNOWN and not counted, and reported again when it starts to pass so the mark comes off).
+// "gpu"?, "maxRise"?, "knownFail"?, "mustFail"? } (gpu: only that backend; maxRise: also bound the hardest two-frame rise,
+// for a moment that must swell, such as lightning; knownFail: a failure waiting on a fix outside this repository,
+// reported as KNOWN and not counted, and reported again when it starts to pass so the mark comes off; mustFail: a
+// control of the game's own, the old behaviour a fix replaced, whose run must fail the flash rules on every backend,
+// with the strobe control failing too, or the entry it stands beside proves nothing).
 //   node tests/flash-sweep.mjs [name ...] [--gpu gl|webgpu] [--keep] [--engine DIR] [--host native]
 //     --keep: each run's frames stay in out/flash/<name>-<gpu>.cwfd; --engine: another engine checkout's tools (one
 //     being worked on); --host native: the native build instead (CW_FRAME_DUMP, one backend at a time, the GPU lock)
@@ -83,6 +85,14 @@ for (const e of entries) {
     const res = l.j && l.j.result;
     table.push({ name: e.name, gpu: l.gpu, ok: l.status === 0, flashes: res ? res.regions.flashes : null, red: res ? res.regionsRed.flashes : null,
       fields: res ? res.fields.flashes : null, controlFails: l.j && l.j.control ? l.j.control.failsAsItMust : null });
+    if (e.mustFail) {
+      /* the run itself must fail its bounds (not the run breaking, nor the strobe control going unseen) */
+      const runFailed = !!(l.j && l.j.problems && l.j.problems.length && l.j.control && l.j.control.failsAsItMust);
+      console.log(runFailed ? `ok   ${e.name} (${l.gpu}) fails as it must (${e.mustFail})` : `FAIL ${e.name} (${l.gpu}) did not fail its bounds: a control that must fail (${e.mustFail})`);
+      if (!runFailed) bad++;
+      table[table.length - 1].ok = runFailed, table[table.length - 1].mustFail = true;
+      continue;
+    }
     if (e.knownFail) {
       console.log(l.status !== 0 ? `KNOWN ${e.name} (${l.gpu}) fails, waiting on: ${e.knownFail}` : `NOTE ${e.name} (${l.gpu}) passes now: take its knownFail mark off`);
       if (l.status !== 0) known++;
@@ -92,7 +102,7 @@ for (const e of entries) {
   }
 }
 console.log('\nentry                              gpu     flashes/s  red  fields  control');
-for (const t of table) console.log(`${t.ok ? 'ok  ' : 'FAIL'} ${t.name.padEnd(30)} ${t.gpu.padEnd(7)} ${String(t.flashes ?? '-').padStart(9)} ${String(t.red ?? '-').padStart(4)} ${String(t.fields ?? '-').padStart(7)}  ${t.controlFails == null ? '-' : t.controlFails ? 'fails' : 'PASSED'}`);
+for (const t of table) console.log(`${t.ok ? 'ok  ' : 'FAIL'} ${(t.name + (t.mustFail ? ' (must fail)' : '')).padEnd(30)} ${t.gpu.padEnd(7)} ${String(t.flashes ?? '-').padStart(9)} ${String(t.red ?? '-').padStart(4)} ${String(t.fields ?? '-').padStart(7)}  ${t.controlFails == null ? '-' : t.controlFails ? 'fails' : 'PASSED'}`);
 if (host === 'romdev') console.log(`romdev requests: ${requests} for ${runs} runs`);
 console.log(bad ? `FAIL flash sweep: ${bad} of ${runs} runs` : `ok   flash sweep: ${runs - known} runs, none strobes, every control fails${known ? ` (${known} known failure(s) waiting on fixes elsewhere)` : ''}`);
 process.exit(bad ? 1 : 0);
