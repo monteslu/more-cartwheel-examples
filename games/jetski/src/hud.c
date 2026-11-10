@@ -72,6 +72,7 @@ static bool to_screen(t3_vec3 p, float w, float h, cw_vec2 *out) {
 
 int g_hud_ptr_mode, g_hud_wrong;
 float g_hud_ptr[2], g_hud_buoy[4];
+float g_nc_look[6]; /* what the screen shows the newcomer gate, in one read: the next mark (x, y, in front, base y), its chevron, the speed */
 int g_hud_mark = 1;
 float g_map_scale = 1;
 
@@ -146,6 +147,8 @@ static void next_mark(const craft *c, float w, float h, float u) {
   bool front = to_screen((t3_vec3){ b[0], top, b[1] }, w, h, &p);
   to_screen((t3_vec3){ b[0], s.height, b[1] }, w, h, &base);
   g_hud_buoy[0] = p.x, g_hud_buoy[1] = p.y, g_hud_buoy[2] = front ? 1 : 0, g_hud_buoy[3] = base.y;
+  for (int k = 0; k < 4; k++) g_nc_look[k] = g_hud_buoy[k];
+  g_nc_look[4] = dir, g_nc_look[5] = c->speed;
   if (!g_hud_mark) return;
   bool inside = front && p.x > 0 && p.x < w && p.y > 0 && p.y < h;
   if (!g_buoy_style) { /* what the game drew before: nothing unless it is in front of the camera, small far away */

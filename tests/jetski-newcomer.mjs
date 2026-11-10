@@ -24,7 +24,9 @@ const bye = async (code) => {
   process.exit(code);
 };
 for (const s of ['SIGTERM', 'SIGINT']) process.on(s, () => bye(130));
+let requests = 0; /* romdev requests, printed at the end */
 const tool = async (name, args) => {
+  requests++;
   const r = await fetch(`http://127.0.0.1:7331/tool/${name}`, { method: 'POST', headers: H, body: JSON.stringify(args) });
   const t = await r.text();
   let j; try { j = JSON.parse(t); } catch { j = t; }
@@ -34,7 +36,10 @@ const tool = async (name, args) => {
 const rd = async (n) => { const v = await tool('wasm', { op: 'read', name: n }); return v.values ?? v.value; };
 const step = (frames) => tool('frame', { op: 'step', frames });
 const pad = (p) => tool('input', { op: 'set', ports: [p] });
-const W = 1920, RACE_ON = 2, SECONDS = 45, EVERY = 6;
+const W = 1920, RACE_ON = 2, SECONDS = 45, EVERY = 9; /* a decision every 9 frames (150 ms) */
+/* one decision is one read (nc.look: the next mark on screen, its chevron, the speed) and one request that holds the pad
+   for the frames to the next decision and steps them */
+const act = (p, frames) => tool('input', { op: 'sequence', steps: [{ input: { ports: [p] }, frames }] });
 let fail = 0;
 const check = (name, ok, detail) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}: ${detail}`); if (!ok) fail++; };
 
@@ -48,11 +53,12 @@ async function run(backend, steer) {
   const state = +(await rd('race.state'));
   let topSpeed = 0, frames = 0, seed = 0x1234567, drift = 0, hold = 0, held = null;
   const rand = () => ((seed = (seed * 1103515245 + 12345) >>> 0) / 4294967296);
-  const seen = []; /* what the screen showed, oldest first: the newcomer acts on the look 18 frames old */
+  const seen = []; /* what the screen showed, oldest first */
   while (frames < SECONDS * 60) {
-    const b = await rd('hud.buoy'), way = +(await rd('hud.chevron'));
+    const look = (await rd('nc.look')).map(Number), b = look.slice(0, 4), way = look[4];
+    topSpeed = Math.max(topSpeed, look[5]);
     seen.push({ b, way });
-    const { b: ob, way: oway } = seen.length > 3 ? seen.shift() : seen[0];
+    const { b: ob, way: oway } = seen.length > 2 ? seen.shift() : seen[0]; /* the look 2 decisions (18 frames, 0.3 s) old */
     const front = +ob[2] === 1;
     /* aim beside the mark on the chevron's side, by as much as the mark stands tall on screen (wider as it comes close),
        off by a wandering error and a jitter */
@@ -66,8 +72,7 @@ async function run(backend, steer) {
       else if (x > W * 0.54) p.right = true;
       if ((p.left || p.right) && hold === 0 && rand() < 0.08) { held = { left: p.left, right: p.right }; hold = 2; }
     }
-    await pad(p); await step(EVERY); frames += EVERY;
-    if (frames % 60 === 0) topSpeed = Math.max(topSpeed, +(await rd('p0.speed')));
+    await act(p, EVERY); frames += EVERY;
   }
   await tool('frame', { op: 'stepAndShot', frames: 1, path: join(OUT, `${backend}-${steer ? 'newcomer' : 'control'}.png`) });
   await pad({});
@@ -86,5 +91,6 @@ for (const backend of BACKENDS) {
   check('control: the d-pad never touched, the marks are not raced', c.passes < n.passes / 2 || c.misses >= 2,
     `${c.passes} marks passed, ${c.misses} missed`);
 }
+console.log(`romdev requests: ${requests}`);
 console.log(fail ? `${fail} FAILED` : 'all ok');
 await bye(fail ? 1 : 0);

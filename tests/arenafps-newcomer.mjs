@@ -27,13 +27,15 @@ const CART = resolve(arg('--cart', join(ROOT, 'build/cart-wgpu/carts/arenafps.wa
 const MAX = 60 * +arg('--max-secs', 600);
 const BACKENDS = process.argv.includes('--gl') ? ['gl'] : process.argv.includes('--webgpu') ? ['webgpu'] : ['gl', 'webgpu'];
 mkdirSync(OUT, { recursive: true });
-const HDR = { 'Content-Type': 'application/json', 'x-romdev-session': SESSION, 'x-romdev-agent': 'arenafps-newcomer' };
+const HDR = { 'Content-Type': 'application/json', 'x-romdev-session': SESSION, 'x-romdev-agent': process.env.ROMDEV_AGENT || 'arenafps-newcomer' };
 // every exit tears this session's romdev host down, a failed run too: a host left loaded holds the server's memory
 const bye = async (code) => {
   try { await fetch(`${SERVER}/tool/host`, { method: 'POST', headers: HDR, body: '{"op":"shutdown"}', signal: AbortSignal.timeout(30000) }); } catch {}
   process.exit(code);
 };
+let requests = 0; /* romdev requests, printed at the end */
 const tool = async (name, args) => {
+  requests++;
   const r = await fetch(`${SERVER}/tool/${name}`, { method: 'POST', headers: HDR, body: JSON.stringify(args) });
   const t = await r.text();
   let j; try { j = JSON.parse(t); } catch { j = t; }
@@ -44,6 +46,9 @@ const rd = async (n) => { const v = await tool('wasm', { op: 'read', name: n });
 const one = async (n) => { const v = await rd(n); return Array.isArray(v) ? +v[0] : +v; };
 const step = (frames) => tool('frame', { op: 'step', frames });
 const pads = (p0 = {}) => tool('input', { op: 'set', ports: [p0] });
+/* one decision is one request: the input held for the frames until the next decision, stepped in the same call */
+const EVERY = 12; /* a decision every 12 frames (200 ms) */
+const act = (p0, frames, hold = frames) => tool('input', { op: 'sequence', steps: hold < frames ? [{ input: { ports: [p0] }, frames: hold }, { input: { ports: [{}] }, frames: frames - hold }] : [{ input: { ports: [p0] }, frames }] });
 const press = async (b) => { await pads({ [b]: true }); await step(4); await pads(); await step(14); };
 let fail = 0;
 const check = (name, ok, detail) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}: ${detail}`); if (!ok) fail++; };
@@ -71,8 +76,8 @@ async function run(backend, tag, pre) {
   let tgt = -1, seen = 0, offY = 0, offP = 0;
   seed = 0x5eed1; /* the same person in the run and its control */
   while (f < MAX) {
-    const st = await one('game.state');
-    if (st !== 1) { ended = f; break; }
+    let p = await rd('ptest'); /* one read a decision: ptest[0] is the game state */
+    if (p[0] !== 1) { ended = f; break; }
     if (!pauseDone && f > 60 * 40) { /* a pause and back: Start, the pause menu, back out of it */
       await press('start'); await step(20);
       r.paused = await one('game.ticks');
@@ -80,8 +85,8 @@ async function run(backend, tag, pre) {
       await press('east'); await step(30);
       r.resumed = (await one('game.ticks')) > r.paused ? 1 : 0;
       pauseDone = true;
+      p = await rd('ptest');
     }
-    const p = await rd('ptest');
     const alive = p[1] > 0.5, pos = [p[4], p[6]];
     const input = { axes: {} };
     if (alive) {
@@ -117,8 +122,8 @@ async function run(backend, tag, pre) {
       }
       last = pos;
     }
-    await pads(input); await step(10); f += 10;
-    if (f % 1800 === 0) console.log(`    ${backend} ${tag} ${f / 60}s frags ${p[11]} deaths ${p[18]} turned ${r.turned}`);
+    await act(input, EVERY); f += EVERY;
+    if (f % 1800 < EVERY) console.log(`    ${backend} ${tag} ${f / 60}s frags ${p[11]} deaths ${p[18]} turned ${r.turned}`);
   }
   await pads();
   r.ended = ended;
@@ -128,9 +133,9 @@ async function run(backend, tag, pre) {
   await tool('frame', { op: 'stepAndShot', frames: 1, path: join(OUT, `${backend}-${tag}-results.png`) });
   /* the results: wait for their prompt, then press what it names; nothing else */
   r.prompt = 0;
-  for (let w = 0; w < 60 * 12; w += 15) {
-    if (await one('cue.over')) { r.prompt = 1; await pads({ r: true, axes: { rt: 1 } }); await step(6); await pads(); await step(20); break; }
-    await step(15);
+  for (let w = 0; w < 60 * 12; w += 30) {
+    if (await one('cue.over')) { r.prompt = 1; await act({ r: true, axes: { rt: 1 } }, 26, 6); break; }
+    await step(30);
   }
   r.back = await one('game.state') === 0;
   await tool('frame', { op: 'stepAndShot', frames: 1, path: join(OUT, `${backend}-${tag}-after.png`) });
@@ -155,5 +160,6 @@ for (const backend of BACKENDS) {
   check('control: sw cues 0 leaves the player on the results with nothing to follow', c.ended >= 0 && c.prompt === 0 && !c.back && c.turned === 0,
     `prompt seen ${c.prompt}, back ${c.back}, turns toward a bar ${c.turned}, frags ${c.frags}`);
 }
+console.log(`romdev requests: ${requests}`);
 console.log(fail ? `${fail} FAILED` : 'all ok');
 await bye(fail ? 1 : 0);

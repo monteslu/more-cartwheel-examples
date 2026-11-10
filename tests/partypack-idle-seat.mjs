@@ -22,11 +22,13 @@ const BACKENDS = process.argv.includes('--gl') ? ['gl'] : process.argv.includes(
 mkdirSync(OUT, { recursive: true });
 // every exit tears this session's romdev host down, a failed run too: a host left loaded holds the server's memory
 const bye = async (code) => {
-  try { await fetch('http://127.0.0.1:7331/tool/host', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-romdev-session': SESSION }, body: '{"op":"shutdown"}', signal: AbortSignal.timeout(30000) }); } catch {}
+  try { await fetch('http://127.0.0.1:7331/tool/host', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-romdev-session': SESSION, 'x-romdev-agent': process.env.ROMDEV_AGENT || 'partypack-idle-seat' }, body: '{"op":"shutdown"}', signal: AbortSignal.timeout(30000) }); } catch {}
   process.exit(code);
 };
+let requests = 0; /* romdev requests, printed at the end */
 const tool = async (name, args) => {
-  const r = await fetch(`http://127.0.0.1:7331/tool/${name}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-romdev-session': SESSION }, body: JSON.stringify(args) });
+  requests++;
+  const r = await fetch(`http://127.0.0.1:7331/tool/${name}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-romdev-session': SESSION, 'x-romdev-agent': process.env.ROMDEV_AGENT || 'partypack-idle-seat' }, body: JSON.stringify(args) });
   const t = await r.text();
   let j; try { j = JSON.parse(t); } catch { j = t; }
   if (!r.ok || j?.error) { console.error(`romdev ${name}: ${t.slice(0, 400)}`); await bye(3); }
@@ -35,12 +37,14 @@ const tool = async (name, args) => {
 const rd = async (n) => { const v = await tool('wasm', { op: 'read', name: n }); return v.values ?? v.value; };
 const step = (frames) => tool('frame', { op: 'step', frames });
 const pads = (p0, p1 = {}) => tool('input', { op: 'set', ports: [p0, p1] });
-const press = async (port, b) => { const a = [{}, {}]; a[port] = { [b]: true }; await pads(...a); await step(4); await pads({}, {}); await step(8); };
+/* ranges, not loops: a press is one request (held 4 frames, let go for 8), a stretch of play one request per second */
+const seq = (...steps) => tool('input', { op: 'sequence', steps: steps.map(([p0, frames]) => ({ input: { ports: [p0, {}] }, frames })) });
+const press = (port, b) => { const a = [{}, {}]; a[port] = { [b]: true }; return tool('input', { op: 'sequence', steps: [{ input: { ports: a }, frames: 4 }, { input: { ports: [{}, {}] }, frames: 8 }] }); };
 const shot = (name) => tool('frame', { op: 'stepAndShot', frames: 1, path: join(OUT, name) });
 let fail = 0;
 const check = (name, ok, detail) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}: ${detail}`); if (!ok) fail++; };
 const S_BOARD = 3, S_INTRO = 4, S_COUNT = 5, S_PLAY = 6, S_RESULT = 8;
-const waitState = async (want, max) => { let f = 0, s; for (; f < max; f += 10) { s = +(await rd('game.state')); if (want(s)) break; await step(10); } return { s, f }; };
+const waitState = async (want, max) => { let f = 0, s; for (; f < max; f += 30) { s = +(await rd('game.state')); if (want(s)) break; await step(30); } return { s, f }; };
 
 // from the title: the seats join (P1, and P2 when idle), Start, Party Tournament, the board, ready on the card; P2
 // never touches its pad. P1 runs about while the round plays (any direction, as someone finding the controls).
@@ -71,7 +75,7 @@ async function run(backend, tag, idle, pre, play = true, fork = false) {
   let f = 0;
   for (; f < 60 * 120 && +(await rd('game.state')) < S_RESULT; f += 60) {
     const [x, y] = dirs[(f / 60) % 4];
-    await pads({ south: (f / 60) % 3 === 0, axes: { lx: x, ly: y } }, {}); await step(30); await pads({}, {}); await step(30);
+    await seq([{ south: (f / 60) % 3 === 0, axes: { lx: x, ly: y } }, 30], [{}, 30]);
   }
   await pads({}, {});
   r.results = +(await rd('game.state')) === S_RESULT;
@@ -88,7 +92,7 @@ async function run(backend, tag, idle, pre, play = true, fork = false) {
   await shot(`${backend}-${tag}-shop.png`);
   await press(0, 'south');
   let g = 0;
-  for (; g < 60 * 14 && +(await rd('game.phase')) === 0; g += 10) await step(10);
+  for (; g < 60 * 14 && +(await rd('game.phase')) === 0; g += 30) await step(30);
   r.shopMoved = +(await rd('game.phase')) === 1;
   r.shopWait = g;
   r.cut = (await rd('game.cut'))[0];
@@ -122,5 +126,6 @@ for (const backend of BACKENDS) {
   check('control: sw ready_forever 1, the idle seat holds the card', ctl.humans === 2 && ctl.intro && !ctl.started && ctl.left === 0, `${ctl.humans} people, started ${ctl.started} in ${ctl.wait} frames, ${ctl.left} s shown`);
 }
 await pads({}, {});
+console.log(`romdev requests: ${requests}`);
 console.log(fail ? `${fail} FAILED` : 'all ok');
 await bye(fail ? 1 : 0);

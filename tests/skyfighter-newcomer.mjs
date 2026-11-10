@@ -29,7 +29,9 @@ const bye = async (code) => {
   process.exit(code);
 };
 for (const s of ['SIGTERM', 'SIGINT']) process.on(s, () => bye(130));
+let requests = 0; /* romdev requests, printed at the end */
 const tool = async (name, args) => {
+  requests++;
   const r = await fetch(`http://127.0.0.1:7331/tool/${name}`, { method: 'POST', headers: H, body: JSON.stringify(args) });
   const t = await r.text();
   let j; try { j = JSON.parse(t); } catch { j = t; }
@@ -39,7 +41,10 @@ const tool = async (name, args) => {
 const rd = async (n) => { const v = await tool('wasm', { op: 'read', name: n }); return v.values ?? v.value; };
 const step = (frames) => tool('frame', { op: 'step', frames });
 const pad = (p) => tool('input', { op: 'set', ports: [p] });
-const PLAY = 1, WIN = 3, LOST = 4, /* (the win is read as the goal's count too: a held A on the results screen moves on) */ EVERY = 6, DELAY = 3; /* a look every 6 frames; the pilot acts on the look 3 back (0.3 s) */
+const PLAY = 1, WIN = 3, LOST = 4, /* (the win is read as the goal's count too: a held A on the results screen moves on) */ EVERY = 9, DELAY = 2; /* a look every 9 frames (150 ms); the pilot acts on the look 2 back (0.3 s) */
+/* one decision is one read (hud.cues) and one request that holds the stick for the frames to the next decision and steps
+   them; the mission's state and goal are read every 3 s */
+const act = (p, frames) => tool('input', { op: 'sequence', steps: [{ input: { ports: [p] }, frames }] });
 let fail = 0;
 const check = (name, ok, detail) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}: ${detail}`); if (!ok) fail++; };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -84,8 +89,8 @@ async function sortie(backend, mission, seconds, done, fly, cmds = [], tag = '')
     if ((kind === 1 || kind === 2) && Math.abs(ax - sx) < 0.03 && Math.abs(ay - sy) < 0.045) p.south = true; /* sight on it: guns */
     if (locked && frames - lastMissile > 70) { p.west = true; lastMissile = frames; }                        /* LOCK: missile */
     if (incoming && frames - lastFlare > 90 && rand() < 0.7) { p.select = true; lastFlare = frames; }            /* MISSILE INBOUND: flares, most times */
-    await pad(p); await step(EVERY); frames += EVERY;
-    if (frames % 60 === 0) {
+    await act(p, EVERY); frames += EVERY;
+    if (frames % 180 < EVERY) {
       state = +(await rd('mission.state'));
       result = await done();
       trace.push({ s: frames / 60, state, alt: +(await rd('jet.altitude')), cue: c.map((v) => +v.toFixed(3)), ...result });
@@ -123,5 +128,6 @@ for (const backend of BACKENDS) {
     check('Coastal Scramble control: the stick never moved, the scramble is not cleared', !c.ok, `${c.kills} bandits down in ${c.seconds.toFixed(0)} s, state ${c.state}`);
   }
 }
+console.log(`romdev requests: ${requests}`);
 console.log(fail ? `${fail} FAILED` : 'all ok');
 await bye(fail ? 1 : 0);

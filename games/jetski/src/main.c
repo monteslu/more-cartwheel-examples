@@ -529,6 +529,7 @@ static void init(void *user) {
   cw_debug_f32_array("hud.ptr", g_hud_ptr, 2);
   cw_debug_f32_array("hud.buoy", g_hud_buoy, 4);
   { extern int g_hud_chevron; cw_debug_i32("hud.chevron", &g_hud_chevron); }
+  { extern float g_nc_look[6]; cw_debug_f32_array("nc.look", g_nc_look, 6); } /* the newcomer gate: one read a decision */
   cw_debug_i32("hud.wrong", &g_hud_wrong);
   cw_debug_command("detile", "detile <0..1>: the land's side_detile live", cmd_detile);
   cw_debug_command("peek", "peek x y z ax ay az: hold the camera there", cmd_peek);
