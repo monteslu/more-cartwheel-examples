@@ -449,6 +449,7 @@ static void init(void *user) {
     cw_debug_f32("ground.foot_gap", &g_foot_gap_max); cw_debug_f32("ground.hands_gap", &g_hands_gap_max); cw_debug_i32("ground.pose_frames", &g_pose_frames); }
   cw_debug_f32("rider.pole", &rider_pole[0]);
   cw_debug_f32_array("stand.pose", g_pose, 4);
+  { extern float g_ride[4]; cw_debug_f32_array("p0.ride", g_ride, 4); }
   cw_debug_f32_array("stand.screen", g_screen, 7);
   cw_debug_f32("rider.stand", &rider_stand[0]);
   cw_debug_f32("p0.finish", &G.c[0].finish);

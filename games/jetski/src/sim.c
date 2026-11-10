@@ -24,10 +24,11 @@
 const hull_def HULLS[2] = {
   { .base_top = 21.5f, .meter_top = 1.55f, .thrust = 11.0f, .steer_k = 9.0f, .turn0 = 1.45f, .turn_v = 0.03f, .turn_lean = 0.85f, .roll0 = 0.2f, .roll_v = 0.009f,
     .grip = 1.0f, .slide_v = 8.5f, .slide_t = 0.9f, .spill_err = 2.1f, .trick_t = 0.72f, .plane_v = 8.0f, .sink_rest = 0.0f },
-  { .base_top = 18.6f, .meter_top = 1.35f, .thrust = 12.5f, .steer_k = 15.0f, .turn0 = 2.05f, .turn_v = 0.036f, .turn_lean = 1.05f, .roll0 = 0.3f, .roll_v = 0.013f,
-    .grip = 1.2f, .slide_v = 7.2f, .slide_t = 0.55f, .spill_err = 1.7f, .trick_t = 0.58f, .plane_v = 11.5f, .sink_rest = 0.1f },
+  { .base_top = 19.6f, .meter_top = 1.4f, .thrust = 12.5f, .steer_k = 11.0f, .turn0 = 1.6f, .turn_v = 0.03f, .turn_lean = 1.5f, .roll0 = 0.3f, .roll_v = 0.013f,
+    .grip = 1.5f, .slide_v = 7.2f, .slide_t = 0.55f, .spill_err = 1.7f, .trick_t = 0.58f, .plane_v = 11.5f, .sink_rest = 0.1f },
 };
 int g_craft = CRAFT_SIT;
+float g_ride[4];
 float g_hull_hi = -1e9f, g_hull_lo = 1e9f;
 int32_t g_hull_ticks;
 
@@ -846,6 +847,7 @@ void sim_reset(int state) {
   cw_node water = G.water, camera = G.camera, sun = G.sun, sky = G.sky, clouds = G.clouds, sun_node = G.sun_node;
   cw_terrain *land = G.land;
   hud_race_reset();
+  memset(g_ride, 0, sizeof g_ride);
   g_fly = (fly_probe){ .flights = g_fly.flights }; /* a new race: no flight yet (the count of flights goes on) */
   memset(&G, 0, sizeof G);
   G.tick = tick, G.water = water, G.camera = camera, G.sun = sun, G.sky = sky, G.clouds = clouds, G.sun_node = sun_node, G.land = land;
@@ -1154,6 +1156,15 @@ void sim_tick(float dt) {
   /* how close the nearest rival is, for the pack gate */
   if (G.state == RACE_ON) { float n = 1e9f; for (int i = 1; i < RACERS; i++) if (racer_on(i)) n = fminf(n, fabsf(G.c[i].dist - G.c[0].dist)); g_near = n; if (n < 1e8f) g_near_sum += n, g_near_n++; }
   if (g_hold_ticks > 0) g_hold_ticks--;
+  /* how the player's race goes (the newcomer gate's report): seconds off the plane on the water, seconds sliding (scrubbing
+   * speed), seconds from the green light to 10 m/s, seconds racing */
+  { const craft *h = &G.c[0];
+    if (G.state == RACE_ON && h->finish <= 0) {
+      g_ride[3] += dt;
+      if (!h->air && h->spill <= 0 && h->dive_t <= 0 && h->plane < 0.9f) g_ride[0] += dt;
+      if (!h->air && fabsf(h->slip) > 3.5f) g_ride[1] += dt;
+      if (g_ride[2] <= 0 && h->speed > 10) g_ride[2] = G.clock;
+    } }
   { craft *h = &G.c[0]; if (G.state == RACE_ON && h->speed < 3) { h->slow3_ticks++; if (h->slow3_ticks > h->slow_max) h->slow_max = h->slow3_ticks; } else h->slow3_ticks = 0; }
   G.ai_ramps = G.ai_big_ramps = G.ai_spills = G.ai_misses = G.ai_passes = G.ai_walls = 0;
   for (int i = 1; i < RACERS; i++) { craft *c = &G.c[i]; if (G.state == RACE_ON && c->speed < 2) { c->slow_ticks++; if (c->slow_ticks > G.ai_stuck) G.ai_stuck = c->slow_ticks; } else c->slow_ticks = 0; G.ai_ramps += c->ramps, G.ai_big_ramps += c->big_ramps, G.ai_spills += c->spills, G.ai_misses += c->misses, G.ai_passes += c->passes, G.ai_walls += c->wall_hits; }

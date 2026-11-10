@@ -6,9 +6,10 @@
 // idea of where to aim wanders by up to 7 % of the screen's width and jitters every look (aim error), and it holds a
 // turn a beat too long now and then (over-steer).
 // Control, which must fail: the same throttle with the d-pad never touched (a player who does not read the marks).
-// --craft stand picks the stand-up on the title menu first (Craft row, by the pad); --finish races the whole of the first
-// course, three laps, and asks that it is finished (the control then runs until its race is over too).
-//   node tests/jetski-newcomer.mjs [--gl] [--webgpu] [--cart <path>] [--craft stand] [--finish]
+// --craft stand picks the stand-up on the title menu first (Craft row, by the pad), --craft both races each; --finish
+// races the whole of the first course, three laps, and asks that it is finished inside 8 minutes on the sit-down and 10 on
+// the stand-up, and with both, the stand-up inside 25 % of the sit-down's time (the control runs until its race is over too).
+//   node tests/jetski-newcomer.mjs [--gl] [--webgpu] [--cart <path>] [--craft sit|stand|both] [--finish]
 import { mkdirSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -18,7 +19,7 @@ const SESSION = process.env.JETSKI_SESSION || 'jetski-newcomer', AGENT = process
 const arg = (n, d) => { const i = process.argv.indexOf(n); return i > 0 ? process.argv[i + 1] : d; };
 const CART = resolve(arg('--cart', join(ROOT, 'build/cart-wgpu/carts/jetski.wasc')));
 const BACKENDS = process.argv.includes('--gl') ? ['gl'] : process.argv.includes('--webgpu') ? ['webgpu'] : ['gl', 'webgpu'];
-const STAND = arg('--craft', 'sit') === 'stand', FINISH = process.argv.includes('--finish');
+const CRAFTS = { sit: [false], stand: [true], both: [false, true] }[arg('--craft', 'sit')], FINISH = process.argv.includes('--finish');
 mkdirSync(OUT, { recursive: true });
 const H = { 'Content-Type': 'application/json', 'x-romdev-session': SESSION, 'x-romdev-agent': AGENT };
 // every exit tears this session's romdev host down, a failed run too
@@ -41,14 +42,17 @@ const step = (frames) => tool('frame', { op: 'step', frames });
 const pad = (p) => tool('input', { op: 'set', ports: [p] });
 /* ranges, not loops: the pad held for a stretch of frames and those frames stepped, in one request */
 const hold = (frames, p) => tool('input', { op: 'sequence', steps: [{ input: { ports: [p] }, frames }] });
-const W = 1920, RACE_ON = 2, RACE_DONE = 3, SECONDS = FINISH ? 720 : 45, EVERY = 9; /* a decision every 9 frames (150 ms) */
+/* --finish: the first course within 8 minutes on the sit-down; the stand-up is slower on the straights, so 25 % more */
+const W = 1920, RACE_ON = 2, RACE_DONE = 3, LIMIT = (stand) => +arg('--seconds', 0) || (FINISH ? (stand ? 600 : 480) : 45), EVERY = 9; /* a decision every 9 frames (150 ms) */
 /* one decision is one read (nc.look: the next mark on screen, its chevron, the speed) and one request that holds the pad
    for the frames to the next decision and steps them */
 const act = (p, frames) => tool('input', { op: 'sequence', steps: [{ input: { ports: [p] }, frames }] });
 let fail = 0;
+const times = {};
 const check = (name, ok, detail) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}: ${detail}`); if (!ok) fail++; };
 
-async function run(backend, steer) {
+async function run(backend, steer, STAND) {
+  const SECONDS = LIMIT(STAND);
   const l = await tool('loadMedia', { platform: 'wasmcart', path: CART, gpuPower: 'low-power', ...(backend === 'gl' ? { wgpu: false } : {}) });
   if (!l.loaded) { console.error(JSON.stringify(l).slice(0, 300)); await bye(3); }
   await step(180);
@@ -85,23 +89,28 @@ async function run(backend, steer) {
   }
   await tool('frame', { op: 'stepAndShot', frames: 1, path: join(OUT, `${backend}-${STAND ? 'stand-' : ''}${steer ? 'newcomer' : 'control'}.png`) });
   await pad({});
-  const r = { page0, state, craft, passes: +(await rd('p0.passes')), misses: +(await rd('p0.misses')), spills: +(await rd('p0.spills')), top: topSpeed, finish: +(await rd('p0.finish')), dq: +(await rd('p0.dq')), place: +(await rd('p0.place')), frames };
+  const r = { page0, state, craft, passes: +(await rd('p0.passes')), misses: +(await rd('p0.misses')), spills: +(await rd('p0.spills')), top: topSpeed, finish: +(await rd('p0.finish')), dq: +(await rd('p0.dq')), place: +(await rd('p0.place')), frames, ride: (await rd('p0.ride')).map(Number), seconds: SECONDS, dist: +(await rd('p0.dist')) };
   await tool('host', { op: 'shutdown' });
   return r;
 }
 
-for (const backend of BACKENDS) {
-  console.log(`--- ${backend}`);
-  const n = await run(backend, true);
+for (const backend of BACKENDS) for (const STAND of CRAFTS) {
+  console.log(`--- ${backend}, ${STAND ? 'stand-up' : 'sit-down'}`);
+  const n = await run(backend, true, STAND);
+  const rd2 = n.ride;
+  console.log(`  the race (${n.dist.toFixed(0)} m in ${n.seconds} s): ${n.finish > 0 ? `finished in ${n.finish.toFixed(1)} s` : 'not finished'}, ${n.spills} falls, ${rd2[0].toFixed(1)} s off the plane, ${rd2[1].toFixed(1)} s sliding, 10 m/s ${rd2[2].toFixed(1)} s after the green light, ${n.misses} wrong-side marks`);
+  times[backend + (STAND ? '-stand' : '-sit')] = n.finish;
   check('power-on opens the menu, A starts the race', n.page0 === 1 && n.state === RACE_ON, `menu page ${n.page0}, race state ${n.state} after the countdown`);
   check('the craft the menu shows is the one raced', n.craft === (STAND ? 1 : 0), `craft ${n.craft}`);
   if (FINISH) check('the newcomer finishes the first course, three laps', n.finish > 0 && !n.dq, `finished in ${n.finish.toFixed(1)} s, place ${n.place}, ${n.passes} marks passed, ${n.misses} missed, ${n.spills} spills`);
   check('steering by the marks on screen, the newcomer races the course', n.passes >= 6 && n.misses <= 1 && n.top > 15,
-    `${n.passes} marks passed, ${n.misses} missed, ${n.spills} spills, top ${n.top.toFixed(1)} m/s in ${SECONDS} s`);
-  const c = await run(backend, false);
+    `${n.passes} marks passed, ${n.misses} missed, ${n.spills} spills, top ${n.top.toFixed(1)} m/s in ${n.seconds} s`);
+  const c = await run(backend, false, STAND);
   check('control: the d-pad never touched, the marks are not raced', (c.passes < n.passes / 2 || c.misses >= 2) && (!FINISH || !(c.finish > 0 && !c.dq)),
     `${c.passes} marks passed, ${c.misses} missed${FINISH ? `, finish ${c.finish.toFixed(1)}, out ${c.dq}` : ''}`);
 }
+for (const backend of BACKENDS) { const a = times[backend + '-sit'], b = times[backend + '-stand'];
+  if (FINISH && a > 0 && b > 0) check('the stand-up newcomer within 25 % of the sit-down one', b <= a * 1.25, `${b.toFixed(1)} s against ${a.toFixed(1)} s (${((b / a - 1) * 100).toFixed(0)} %)`); }
 console.log(`romdev requests: ${requests}`);
 console.log(fail ? `${fail} FAILED` : 'all ok');
 await bye(fail ? 1 : 0);
