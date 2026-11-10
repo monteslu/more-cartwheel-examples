@@ -103,7 +103,8 @@ for (const backend of BACKENDS) for (const STAND of CRAFTS) {
   check('power-on opens the menu, A starts the race', n.page0 === 1 && n.state === RACE_ON, `menu page ${n.page0}, race state ${n.state} after the countdown`);
   check('the craft the menu shows is the one raced', n.craft === (STAND ? 1 : 0), `craft ${n.craft}`);
   if (FINISH) check('the newcomer finishes the first course, three laps', n.finish > 0 && !n.dq, `finished in ${n.finish.toFixed(1)} s, place ${n.place}, ${n.passes} marks passed, ${n.misses} missed, ${n.spills} spills`);
-  check('steering by the marks on screen, the newcomer races the course', n.passes >= 6 && n.misses <= 1 && n.top > 15,
+  /* (a whole race may miss a few marks, as a person does: five end it, and finishing is checked above) */
+  check('steering by the marks on screen, the newcomer races the course', n.passes >= 6 && n.misses <= (FINISH ? 4 : 1) && n.top > 15,
     `${n.passes} marks passed, ${n.misses} missed, ${n.spills} spills, top ${n.top.toFixed(1)} m/s in ${n.seconds} s`);
   const c = await run(backend, false, STAND);
   check('control: the d-pad never touched, the marks are not raced', (c.passes < n.passes / 2 || c.misses >= 2) && (!FINISH || !(c.finish > 0 && !c.dq)),
