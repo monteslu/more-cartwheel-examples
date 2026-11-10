@@ -941,16 +941,17 @@ static void stand_screen(t3_vec3 cp, t3_vec3 lp, float fov, float a) {
   float rider_area = x1 > x0 ? (x1 - x0 + hw * 2 / (16.0f / 9.0f)) * (y1 - y0 + hw) : 1e-6f;
   /* the pole: from the pivot to the bars */
   float th = rider_pole[0], seen = 0;
-  for (int s = 0; s < 5; s++) {
-    float t = 0.1f + 0.2f * (float)s, py = STAND_LIFT + 0.94f + 1.06f * t * sinf(th), pz = 0.8f - 1.06f * t * cosf(th);
-    if (!to_screen(W(0, py, pz), cp, f, r, u, k, &sx, &sy, &dz) || fabsf(sx) > 1 || fabsf(sy) > 1) continue;
+  /* five points along the pole and its two grips (from straight behind the rider hides the pole's run; the bars show beside the hands) */
+  for (int s = 0; s < 7; s++) {
+    float t = s < 5 ? 0.1f + 0.2f * (float)s : 1.0f, py = STAND_LIFT + 0.94f + 1.06f * t * sinf(th), pz = 0.8f - 1.06f * t * cosf(th), px0 = s == 5 ? 0.34f : s == 6 ? -0.34f : 0.0f;
+    if (!to_screen(W(px0, py, pz), cp, f, r, u, k, &sx, &sy, &dz) || fabsf(sx) > 1 || fabsf(sy) > 1) continue;
     /* behind the torso? its distance on the screen from the hips-to-neck segment, against the torso's half-width there */
     float ax = tsx[0] * (16.0f / 9.0f), ay = tsy[0], bx = tsx[1] * (16.0f / 9.0f), by = tsy[1], px = sx * (16.0f / 9.0f), qy = sy;
     float ex = bx - ax, ey = by - ay, l2 = ex * ex + ey * ey + 1e-9f, h = ((px - ax) * ex + (qy - ay) * ey) / l2;
     h = h < 0 ? 0 : h > 1 ? 1 : h;
     float dx = px - (ax + ex * h), dy = qy - (ay + ey * h), dist = sqrtf(dx * dx + dy * dy);
     bool hidden = dist < hw && dz > tdz[0] - 0.3f;
-    if (!hidden) seen += 0.2f;
+    if (!hidden) seen += 1.0f / 7.0f;
     if (s == 2) g_screen[5] = k * 540.0f / fmaxf(dz, 0.1f);
   }
   /* the number plate's numeral (tools/standup-model.mjs PLATE_*: from 0.98 m at z -0.07, 0.3 m up a 40 degree face; the numeral is its middle 78 %) */

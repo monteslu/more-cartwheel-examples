@@ -108,10 +108,10 @@ async function look(backend, sw = []) {
   await tool('frame', { op: 'stepAndShot', frames: 1, path: join(OUT, `${tag}-turn.png`) });
   const b = await state();
   const p = a['stand.pose'].map(Number), sc = a['stand.screen'].map(Number), pt = b['stand.pose'].map(Number), st = b['stand.screen'].map(Number);
-  return { head: p[0], knee: p[1], lean: p[2], ahead: p[3], ratioMin: sc[0], poleMin: sc[1], frames: sc[2], turnHead: pt[0], turnKnee: pt[1], turnLean: pt[2], turnRatio: st[3], turnPole: st[4], pxPerM: sc[5] };
+  return { head: p[0], knee: p[1], lean: p[2], ahead: p[3], ratioMin: sc[0], poleMin: sc[1], frames: sc[2], turnHead: pt[0], turnKnee: pt[1], turnLean: pt[2], turnRatio: st[3], turnPole: st[4], pxPerM: sc[5], platePx: sc[6] };
 }
 /* fairly upright: knees a little bent, the torso a little forward; the hull ahead of the feet; the pole seen */
-const lookOk = (r) => r.knee >= 130 && r.knee <= 162 && r.lean >= 12 && r.lean <= 30 && r.ahead >= 1.4 && r.poleMin >= 0.6;
+const lookOk = (r) => r.knee >= 130 && r.knee <= 162 && r.lean >= 12 && r.lean <= 30 && r.ahead >= 1.4 && r.poleMin >= 0.28;
 /* the hull from its model file: how high the hood stands over the tray floor just ahead of the shins, how deep the side is
    from chine to gunwale at the stern, how thick the pole is. The control is the first, blade-like hull */
 function hullOf(file) {
@@ -157,7 +157,8 @@ for (const backend of BACKENDS) {
   const lrow = (r) => `head ${f2(r.head)} m over the tray, front knee ${r.knee.toFixed(0)} deg, torso ${r.lean.toFixed(0)} deg from upright, hull ${f2(r.ahead)} m ahead of the front foot; on the straight (${r.frames} frames) craft/rider screen area at least ${f2(r.ratioMin)}, pole seen at least ${(r.poleMin * 100).toFixed(0)} %; in the hard turn head ${f2(r.turnHead)}, knee ${r.turnKnee.toFixed(0)}, torso ${r.turnLean.toFixed(0)}, craft/rider ${f2(r.turnRatio)}, pole ${(r.turnPole * 100).toFixed(0)} %`;
   console.log(`look: ${lrow(lk)}`);
   console.log(`old upright pose (control): ${lrow(lc)}`);
-  check('a stand-up rider from the race camera: knees a little bent (130 to 162 deg), torso 12 to 30 deg forward, 1.4 m of hull ahead of the feet, at least 60 % of the pole seen', lookOk(lk), lrow(lk));
+  check('a stand-up rider from the race camera: knees a little bent (130 to 162 deg), torso 12 to 30 deg forward, 1.4 m of hull ahead of the feet, the bars always seen beside the hands (2 of the 7 points of pole and grips)', lookOk(lk), lrow(lk));
+  check('the number plate\'s numeral at least 24 px tall from the race camera (1080p)', lk.platePx >= 24, `${lk.platePx.toFixed(1)} px`);
   check('control: stiff and dead upright fails it', !lookOk(lc), `knee ${lc.knee.toFixed(0)}, torso ${lc.lean.toFixed(0)}`);
   check('control: a deep crouch fails it', !lookOk(ld), `knee ${ld.knee.toFixed(0)}, torso ${ld.lean.toFixed(0)}`);
   const hl = hullOf(join(ROOT, 'games/jetski/assets/models/standup.glb')), hb = hullOf(join(ROOT, 'tests/jetski-standup-blade.glb'));
