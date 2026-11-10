@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.31.1
+
+- Tux Racer: a new cover. Tux belly-slides down Bunny Hill toward you in the sun, big in the frame, with the snow spraying behind him and the pines along the slope, rendered from the game itself.
+
 ## 0.31.0
 
 - Engine v0.44.2 (from v0.42.0). The menus take touch: a tap works the title, pause, settings and graphics pages, and a tap on the join screen seats you and starts. While a game loads, its first frames draw the shadows and lights play draws instead of leaving out the sunlit parts of the scene (and a red "no program" warning up for good). In split screen the volumetric fog reads as on.
