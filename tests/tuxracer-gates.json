@@ -78,6 +78,11 @@
     "note": "the Cup by a newcomer on the cart, by the pad and the screen alone, GL and WebGPU: from power-on A opens the Cup and races its first course; steering by the trees and herring the view draws (a look every 100 ms acted on 0.3 s late, a wandering aim, looks away), the newcomer passes the first race by the requirements the card and the HUD show (herring needed, a time limit) and finds the second race open, then passes the second and third within the Cup's four lives. Controls: the original's rule (every herring near par, opt cuprule original) and the herring and trees not drawn each leave the first race not passed"
   },
   {
+    "name": "tuxracer-grounding",
+    "script": "tests/tuxracer-grounding.mjs",
+    "note": "Tux on the snow, on the cart through romdev, GL and WebGPU (debug tux.ground: the lowest of his soles' and belly's samples against the course under them, as drawn): walking in the lower sole on the snow (-15 to +8 mm), standing both soles (-15 to +15 mm), sliding the belly (median -40 to +40 mm, never below -80). Control: TUXRACER_TUX_LIFT=0.06, the model drawn 6 cm up, fails every check"
+  },
+  {
     "name": "tuxracer-tricks",
     "script": "tests/tuxracer-tricks.mjs",
     "note": "trick mode on the cart, GL and WebGPU: the stick held through a jump spins Tux, a whole spin lands for 150 and a whole flip for 300, a landing part way round pays nothing, and the run's score is the original formula plus the trick points. Control: trick mode off, the same jumps pay nothing and the score is the original formula"
