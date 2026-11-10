@@ -293,7 +293,7 @@
   {
     "name": "jetski-air",
     "script": "tests/jetski-air.mjs",
-    "note": "the air by the pad on the cart, GL and WebGPU, every tick: a big ramp gives 1.25 times the air of a normal one, a back flip turns the pitch one whole turn up and over and a front flip one whole turn nose first and both land, the kick puts a foot out to the side, nose down goes under and comes back up with no wipeout off big and normal ramps, tail first is a wipeout. Controls: the normal ramp against the big one, a barrel roll turns no pitch, no press keeps the foot in its well, dive 0 stays on top"
+    "note": "the air by the pad on the cart, GL and WebGPU, in ranged requests (the game keeps each flight's measures in its fly.* debug fields: the tick it started, its lowest point, the furthest foot, the first trick's turn; the stick is timed from the flight's first tick): a big ramp gives 1.25 times the air of a normal one, a back flip turns the pitch one whole turn up and over and a front flip one whole turn nose first and both land, the kick puts a foot out to the side, nose down goes under and comes back up with no wipeout off big and normal ramps, tail first is a wipeout. Controls: the normal ramp against the big one, a barrel roll turns no pitch, no press keeps the foot in its well, dive 0 stays on top"
   },
   {
     "name": "jetski-trick-mash",
@@ -328,6 +328,6 @@
   {
     "name": "jetski-hud-words",
     "script": "tests/jetski-hud-words.mjs",
-    "note": "words on the race screen on the cart, GL and WebGPU: restarting from the pause menu or starting a new race leaves no word from the last one, and the distance to the next buoy never meets a word in countdowns, wipeouts and big ramps on every course. Controls: pop_keep 1 keeps the word (a build without the reset failed the same way), label_old 1 meets words in the same rides"
+    "note": "words on the race screen on the cart, GL and WebGPU, in ranged requests (the game counts the frames the distance meets a word, hud.label_hits, and keeps the words put up, hud.pops and hud.pop_tick): restarting from the pause menu or starting a new race leaves no word from the last one, and the distance to the next buoy never meets a word in countdowns, wipeouts and big ramps on every course. Controls: pop_keep 1 keeps the word (a build without the reset failed the same way), label_old 1 meets words in the same rides"
   }
 ]

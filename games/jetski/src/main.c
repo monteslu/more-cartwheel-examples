@@ -502,6 +502,18 @@ static void init(void *user) {
   cw_debug_f32("p0.dive_under", &G.c[0].dive_under);
   cw_debug_f32("p0.legout", &G.c[0].legout);
   cw_debug_i32("hud.pop_n", &g_hud_pop_n);
+  cw_debug_i32("hud.pops", &g_hud_pops);
+  cw_debug_i32("hud.pop_tick", &g_hud_pop_tick);
+  /* the player's latest flight, kept by the game (game.h fly_probe): a check reads them once after a ranged run */
+  cw_debug_i32("fly.tick", &g_fly.tick);
+  cw_debug_i32("fly.flights", &g_fly.flights);
+  cw_debug_f32("fly.low", &g_fly.low);
+  cw_debug_f32("fly.foot", &g_fly.foot);
+  cw_debug_f32("fly.turn_pitch", &g_fly.turn_pitch);
+  cw_debug_f32("fly.turn_roll", &g_fly.turn_roll);
+  cw_debug_i32("fly.turning", &g_fly.turning);
+  cw_debug_i32("fly.down_ticks", &g_fly.down_ticks);
+  cw_debug_i32("fly.land_tick", &g_fly.land_tick);
   cw_debug_i32("hud.words_n", &g_hud_words_n);
   cw_debug_i32("hud.label_hits", &g_hud_label_hits);
   cw_debug_f32_array("hud.label", g_hud_label, 4);

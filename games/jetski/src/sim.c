@@ -771,6 +771,7 @@ void sim_reset(int state) {
   cw_node water = G.water, camera = G.camera, sun = G.sun, sky = G.sky, clouds = G.clouds, sun_node = G.sun_node;
   cw_terrain *land = G.land;
   hud_race_reset();
+  g_fly = (fly_probe){ .flights = g_fly.flights }; /* a new race: no flight yet (the count of flights goes on) */
   memset(&G, 0, sizeof G);
   G.tick = tick, G.water = water, G.camera = camera, G.sun = sun, G.sky = sky, G.clouds = clouds, G.sun_node = sun_node, G.land = land;
   G.state = state;
@@ -1070,4 +1071,29 @@ void sim_tick(float dt) {
     h = cw_hash32(&G.c[i].yaw, sizeof(float) * 3, h);
   }
   G.sim_hash = h;
+  fly_probe_tick();
+}
+
+/* the player's latest flight, measured every tick (game.h fly_probe) */
+fly_probe g_fly;
+void fly_probe_tick(void) {
+  const craft *c = &G.c[0];
+  fly_probe *f = &g_fly;
+  float h = c->y - c->surf;
+  if (c->air && c->air_time > 0.05f && h > 1.5f && (f->tick == 0 || f->land_tick != 0)) {
+    *f = (fly_probe){ .tick = (int32_t)G.tick, .flights = f->flights + 1, .low = h, .tricks0 = c->tricks, .last_pitch = c->pitch, .last_roll = c->roll };
+    return;
+  }
+  if (f->tick == 0) return;
+  if (h < f->low) f->low = h;
+  if (rider_foot_side[0] > f->foot) f->foot = rider_foot_side[0];
+  if (f->turning == 0 && c->in.trick && c->tricks == f->tricks0) f->turning = 1;
+  if (f->turning == 1) {
+    f->turn_pitch += wrap_pi(c->pitch - f->last_pitch), f->turn_roll += wrap_pi(c->roll - f->last_roll);
+    if (c->tricks > f->tricks0) f->turning = 2;
+  }
+  f->last_pitch = c->pitch, f->last_roll = c->roll;
+  if (c->air_time == 0 && !c->air && f->land_tick == 0) f->land_tick = (int32_t)G.tick;
+  if (c->air_time == 0 && c->dive_t <= 0) f->down_ticks++;
+  else f->down_ticks = 0;
 }

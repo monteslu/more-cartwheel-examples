@@ -41,6 +41,7 @@ typedef struct word_box { float x0, y0, x1, y1; } word_box;
 static word_box words[WORDS_MAX];
 static int words_n;
 int g_hud_label_old, g_hud_label_hits, g_hud_words_n, g_hud_pop_n, g_hud_pop_keep;
+int g_hud_pops, g_hud_pop_tick;
 float g_hud_label[4];
 static void word(cw_font f, const char *s, float cx, float y, float size, cw_color c) {
   cw_text_metrics m = text(f, s, cx, y, size, c, 0.5f);
@@ -223,6 +224,7 @@ static popup pop[3];
 static void pop_add(const char *t, cw_color col, bool big) {
   for (int i = 2; i > 0; i--) pop[i] = pop[i - 1];
   snprintf(pop[0].text, sizeof pop[0].text, "%s", t), pop[0].t = 0, pop[0].col = col, pop[0].big = big;
+  g_hud_pops++, g_hud_pop_tick = (int)G.tick;
 }
 static float meter_pulse, chip_pulse;
 static unsigned ev_read;

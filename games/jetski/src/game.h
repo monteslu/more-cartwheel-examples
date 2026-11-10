@@ -227,6 +227,23 @@ extern float g_peek[6];
 /* rider.c */
 extern float rider_torso[RACERS];
 extern float rider_foot_side[RACERS]; /* how far out to the side the further foot is, metres from the craft's middle */
+/* what the player's craft did in its latest flight, kept by the game so a check steps a whole ride in one request and
+ * reads the measures once (debug fields fly.*): a flight starts on the first tick it has been in the air over 0.05 s
+ * and is more than 1.5 m over the water, and its measures run until the next one starts */
+typedef struct fly_probe {
+  int32_t tick;              /* G.tick the flight started on (0: none yet) */
+  int32_t flights;           /* flights started */
+  float low;                 /* lowest the hull's middle has been against the surface since (m; under it is negative) */
+  float foot;                /* furthest out to the side a foot has been since (m) */
+  float turn_pitch, turn_roll; /* the turn of the first trick: from the tick its button went down to the tick it counted (rad) */
+  int32_t turning;           /* 0 no trick yet, 1 turning, 2 counted */
+  int32_t tricks0;           /* the craft's tricks when the flight started */
+  int32_t down_ticks;        /* ticks in a row back on top of the water (not in the air, not under after a dive) */
+  int32_t land_tick;         /* G.tick it first came down (0: still up) */
+  float last_pitch, last_roll;
+} fly_probe;
+extern fly_probe g_fly;
+void fly_probe_tick(void);
 void rider_init(void);
 void rider_pose(int i, const craft *c, float alpha);
 void rider_bind(int i, t3_object *rider);
@@ -249,6 +266,7 @@ void sim_place(float s);
 extern int g_cam_cut, g_cam_drawn_under;
 extern int g_fair, g_land_hist[21], g_dive_on;
 extern int g_hud_label_old, g_hud_label_hits, g_hud_words_n, g_hud_pop_n, g_hud_pop_keep;
+extern int g_hud_pops, g_hud_pop_tick; /* words put up on the race screen, and the G.tick of the latest */
 extern float g_hud_label[4];
 void hud_race_reset(void);
 extern float g_ram_last[3];

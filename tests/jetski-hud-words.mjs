@@ -8,36 +8,62 @@ import { mkdirSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readCourse, COURSE_IDS } from '../games/jetski/tools/course-read.mjs';
-// Not ranged yet: this check samples the craft every frame through romdev (a request or more a frame), which floods the
-// shared server. It stays off until the game keeps what it measures in its own debug fields (the lowest point, the turns,
-// the words' frames) and the check reads them once after a ranged run. CHECK_PER_FRAME=1 runs it anyway, on a romdev of
-// your own only.
-if (!process.env.CHECK_PER_FRAME) { console.error(`${process.argv[1]}: steps romdev a frame at a time; not run (see the note at the top)`); process.exit(2); }
+// The game keeps what the check counts (hud.label_hits: frames the distance's box met a word's; hud.pop_n, hud.pops and
+// hud.pop_tick: the words up, put up, and the tick of the latest; p0.air_time), so every ride is a few ranged requests:
+// a held pad and a stretch of frames in one input sequence, waits that look every 6 frames, and pictures every 40
+// frames while they are kept. The request count is printed.
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..'), SESSION = process.env.JETSKI_SESSION || 'jetski-words', OUT = join(ROOT, 'out/hud-words');
 const arg = (n, d) => { const i = process.argv.indexOf(n); return i > 0 ? process.argv[i + 1] : d; };
 const CART = resolve(arg('--cart', join(ROOT, 'build/cart-wgpu/carts/jetski.wasc'))), BACKENDS = process.argv.includes('--gl') ? ['gl'] : process.argv.includes('--webgpu') ? ['webgpu'] : ['gl', 'webgpu'], POP_ONLY = process.argv.includes('--pop-only');
 mkdirSync(OUT, { recursive: true });
+let calls = 0;
 const tool = async (name, args) => {
-  const r = await fetch(`http://127.0.0.1:7331/tool/${name}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-romdev-session': SESSION }, body: JSON.stringify(args) });
+  calls++;
+  const r = await fetch(`http://127.0.0.1:7331/tool/${name}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-romdev-session': SESSION, 'x-romdev-agent': process.env.CW_ROMDEV_AGENT || 'jetski-words' }, body: JSON.stringify(args) });
   const t = await r.text();
   let j; try { j = JSON.parse(t); } catch { j = t; }
-  if (!r.ok || j?.error) { console.error(`romdev ${name}: ${t.slice(0, 400)}`); process.exit(3); }
+  if (!r.ok || j?.error) { console.error(`romdev ${name}: ${t.slice(0, 400)}`); await bye(3); }
   return j;
 };
 const rd = async (n) => { const v = await tool('wasm', { op: 'read', name: n }); return v.values ?? v.value; };
-const cmd = (text) => tool('wasm', { op: 'command', text }), step = (frames) => tool('frame', { op: 'step', frames }), pad = (p) => tool('input', { op: 'set', ports: [p] });
-const press = async (b) => { await pad({ [b]: true }); await step(3); await pad({}); await step(3); };
+// every exit tears this session's romdev host down: a host left loaded holds the server's memory
+async function bye(code) {
+  try { await fetch('http://127.0.0.1:7331/tool/host', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-romdev-session': SESSION }, body: '{"op":"shutdown"}', signal: AbortSignal.timeout(30000) }); } catch {}
+  process.exit(code);
+}
+const cmd = (text) => tool('wasm', { op: 'command', text }), step = (frames) => tool('frame', { op: 'step', frames });
+/* ranges, not loops: each [pad, frames] held for its frames, the whole list in one request */
+const hold = (list) => tool('input', { op: 'sequence', steps: list.filter(([, n]) => n > 0).map(([p, frames]) => ({ input: { ports: [p] }, frames })) });
+const pad = (p) => hold([[p, 1]]);
+const press = (b) => hold([[{ [b]: true }, 3], [{}, 3]]);
+/** the named fields, in one request */
+const rdAll = async (names) => {
+  const st = await tool('wasm', { op: 'debugState' });
+  const o = {};
+  for (const f of st.fields || []) if (names.includes(f.name)) o[f.name] = +(f.values ?? f.value);
+  return o;
+};
+/** the gas held until the craft has been in the air 0.2 s (a look every 6 frames); the frames it took, or -1 */
+async function untilAir(p, cap) {
+  for (let f = 0; f < cap; f += 6) {
+    if ((await rdAll(['p0.air_time']))['p0.air_time'] > 0.2) return f;
+    await hold([[p, 6]]);
+  }
+  return -1;
+}
 let fail = 0;
 const check = (name, ok, detail) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}: ${detail}`); if (!ok) fail++; };
-// up a ramp to a finished trick, and the frame its word is up
+// up a ramp to a finished trick, and the frame its word is up: the gas to the flight, the trick (west with the stick
+// back for 6 ticks, the stick held to 30), then the gas until the trick's word is up, looking every 6 frames
 async function trick(lv, ramp) {
   await pad({}); await cmd(`course ${lv}`); await cmd('no_dq 1'); await cmd('swell 0.5'); await cmd('race'); await step(4); await cmd(`ramp ${ramp} 50`);
-  for (let f = 0, t = -1; f < 700; f++) {
-    const air = +(await rd('p0.air_time'));
-    if (t < 0 && air > 0.2) t = f;
-    await pad({ south: true, ...(t >= 0 && f - t < 6 ? { west: true, axes: { lx: 0, ly: 1 } } : t >= 0 && f - t < 30 ? { axes: { lx: 0, ly: 1 } } : {}) });
-    await step(1);
-    if (+(await rd('hud.pop_n')) > 0 && +(await rd('p0.tricks')) > 0) { await pad({}); return true; }
+  const air = await untilAir({ south: true }, 700);
+  if (air < 0) { await pad({}); return false; }
+  await hold([[{ south: true, west: true, axes: { lx: 0, ly: 1 } }, 6], [{ south: true, axes: { lx: 0, ly: 1 } }, 24]]);
+  for (let f = air + 30; f < 700; f += 6) {
+    const r = await rdAll(['hud.pop_n', 'p0.tricks']);
+    if (r['hud.pop_n'] > 0 && r['p0.tricks'] > 0) { await pad({}); return true; }
+    await hold([[{ south: true }, 6]]);
   }
   await pad({});
   return false;
@@ -58,7 +84,7 @@ async function popWords(backend, tag, lv, ramp, pre) {
 for (const backend of BACKENDS) {
   console.log(`--- ${backend}`);
   const l = await tool('loadMedia', { platform: 'wasmcart', path: CART, gpuPower: 'low-power', ...(backend === 'gl' ? { wgpu: false } : {}) });
-  if (!l.loaded) { console.error(JSON.stringify(l).slice(0, 300)); process.exit(3); }
+  if (!l.loaded) { console.error(JSON.stringify(l).slice(0, 300)); await bye(3); }
   await step(20);
   const lv0 = COURSE_IDS.indexOf('atoll'), big0 = readCourse('atoll').ramps.findIndex((r) => r[5] > 0);
   const on = await popWords(backend, 'fixed', lv0, big0);
@@ -78,30 +104,39 @@ for (const backend of BACKENDS) {
       const c = readCourse(id), lv = COURSE_IDS.indexOf(id), rs = c.ramps.map((r, i) => (r[5] > 0 ? i : -1)).filter((i) => i >= 0);
       if (!rs.length) { const q = c.ramps.findIndex((r) => r[4] < 1); if (q >= 0) rs.push(q); else rs.push(0); }
       const note = (what, d) => { hits += d; if (old) console.log(`     ${id} ${what}: ${d} frames`); };
-      const watch = async (what, n, each) => {
-        const before = +(await rd('hud.label_hits'));
-        for (let f = 0; f < n; f += 2) {
-          if (each) await each(f);
-          const h0 = +(await rd('hud.label_hits'));
-          if (old === 0 && (f % 40 === 0) && shots < 40) { await tool('frame', { op: 'stepAndShot', frames: 2, path: join(OUT, `${backend}-label-${id}-${what}-${f}.png`) }); shots++; } else await step(2);
-          if (old === 1 && +(await rd('hud.label_hits')) > h0 && oldShots < 6) { await tool('frame', { op: 'stepAndShot', frames: 1, path: join(OUT, `${backend}-label-old-${id}-${what}-${f}.png`) }); oldShots++; }
-          frames += 2;
+      // n frames with the pad p held: one request, or 40-frame stretches while pictures are kept (every 40 frames of the
+      // layout now, up to 40 in all; the old layout's first 6 frames on which its distance met a word)
+      const watch = async (what, n, p) => {
+        const before = (await rdAll(['hud.label_hits']))['hud.label_hits'];
+        for (let f = 0; f < n;) {
+          const chunk = (old === 0 && shots < 40) || (old === 1 && oldShots < 6) ? Math.min(40, n - f) : n - f;
+          const h0 = old === 1 && oldShots < 6 ? (await rdAll(['hud.label_hits']))['hud.label_hits'] : 0;
+          if (old === 0 && shots < 40) { await hold([[p, chunk - 2]]); await tool('frame', { op: 'stepAndShot', frames: 2, path: join(OUT, `${backend}-label-${id}-${what}-${f}.png`) }); shots++; } else await hold([[p, chunk]]);
+          if (old === 1 && oldShots < 6 && (await rdAll(['hud.label_hits']))['hud.label_hits'] > h0) { await tool('frame', { op: 'stepAndShot', frames: 1, path: join(OUT, `${backend}-label-old-${id}-${what}-${f}.png`) }); oldShots++; }
+          f += chunk, frames += chunk;
         }
-        note(what, +(await rd('hud.label_hits')) - before);
+        note(what, (await rdAll(['hud.label_hits']))['hud.label_hits'] - before);
       };
       const start = async (more) => { await pad({}); await cmd(`course ${lv}`); await cmd('no_dq 1'); await cmd('swell 0.5'); await cmd('race'); await step(4); if (more) await cmd(more); };
       // the countdown and GO, from the grid
-      await start(); await watch('countdown', 300);
+      await start(); await watch('countdown', 300, {});
       // wipeouts with the next buoy ahead: a fall tail first, from places along the course
-      for (const at of [150, 500, 900]) { await start(`go ${at}`); await step(4); await cmd('drop 1.2 14 15'); await watch(`wipeout-${at}`, 200, () => pad({ south: true, axes: { lx: 0, ly: 1 } })); }
+      for (const at of [150, 500, 900]) { await start(`go ${at}`); await step(4); await cmd('drop 1.2 14 15'); await watch(`wipeout-${at}`, 200, { south: true, axes: { lx: 0, ly: 1 } }); }
       // a big ramp, a kick and a tail first landing
+      // the run-up to 0.2 s of air counts as part of the ride: its frames are watched too
       for (const r of rs.slice(0, 1)) for (const way of ['kick', 'tail']) {
         await start(`ramp ${r} 50`);
-        let t = -1;
-        await watch(`ramp${r}-${way}`, 560, async (f) => {
-          const air = +(await rd('p0.air_time')); if (t < 0 && air > 0.2) t = f;
-          await pad({ south: true, ...(t >= 0 && way === 'tail' ? { axes: { lx: 0, ly: 1 } } : {}), ...(way === 'kick' && t >= 0 && f - t < 6 ? { north: true } : {}) });
-        });
+        const before = (await rdAll(['hud.label_hits']))['hud.label_hits'];
+        const t = await untilAir({ south: true }, 560);
+        const runUp = t < 0 ? 560 : t;
+        // the kick: 6 frames of it as soon as the look sees the air, counted with the run-up
+        if (t >= 0 && way === 'kick') await hold([[{ south: true, north: true }, 6]]);
+        const kicked = t >= 0 && way === 'kick' ? 6 : 0;
+        frames += runUp + kicked;
+        note(`ramp${r}-${way}-run-up`, (await rdAll(['hud.label_hits']))['hud.label_hits'] - before);
+        if (t < 0) continue;
+        if (way === 'kick') await watch(`ramp${r}-${way}`, 560 - runUp - kicked, { south: true });
+        else await watch(`ramp${r}-${way}`, 560 - runUp, { south: true, axes: { lx: 0, ly: 1 } });
       }
     }
     await pad({}); await cmd('sw label_old 0');
@@ -112,5 +147,6 @@ for (const backend of BACKENDS) {
   check('control: label_old 1 meets a word in the same rides', was.hits > 0, `${was.hits} frames of ${was.frames}`);
 }
 await pad({});
+console.log(`${calls} romdev requests`);
 console.log(fail ? `${fail} FAILED` : 'all ok');
-process.exit(fail ? 1 : 0);
+await bye(fail ? 1 : 0);
