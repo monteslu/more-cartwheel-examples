@@ -352,7 +352,7 @@ void fx_hole(t3_vec3 p, t3_vec3 n) {
   cw_node_add_child(ROOT, d);
 }
 
-void fx_explosion(t3_vec3 p, t3_vec3 n) {
+void fx_explosion(t3_vec3 p, t3_vec3 n, float light_k) {
   t3_vec3 nn = v3len(n) < 0.5f ? v3(0, 1, 0) : n;
   bool floor = nn.y > 0.7f;
   cw_node b = take(&P_BOOM, NULL);
@@ -379,6 +379,11 @@ void fx_explosion(t3_vec3 p, t3_vec3 n) {
       cw_node_set(d, "visible", cw_val_bool(hk > 0));
     }
   }
+  /* the hot parts (the flash light, the flash sprite, the fire) at light_k of full: a blast at a view's eye (main.c blast) */
+  cw_node_set(b, "flash_energy", cw_val_float(220 * light_k));
+  { cw_node fl = cw_node_get(b, "Flash"), fi = cw_node_get(b, "Fire");
+    if (cw_node_valid(fl)) cw_node_set(fl, "energy", cw_val_float(16 * light_k));
+    if (cw_node_valid(fi)) cw_node_set(fi, "energy", cw_val_float(1.6f * (0.5f + 0.5f * light_k))); }
   cw_explosion_fire(b);
   if (!floor) {
     float s = 2.6f + cw_rng_float(&R) * 0.8f;

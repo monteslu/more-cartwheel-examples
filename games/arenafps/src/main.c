@@ -743,7 +743,13 @@ static void bash(fighter *f, int idx) {
 }
 
 static void blast(t3_vec3 at, t3_vec3 n, int owner_i, int max_dmg, float radius, int weapon) {
-  fx_explosion(at, n);
+  /* a blast at a player's eye lights less: its flash light at full lit the wall a rocket hit at arm's length from dark to
+   * white and back, three rockets a second a strobe in that view (the flash sweep's match run, 4 flashes in a second).
+   * A quarter of the light within 3 m of an eye, full from 12 m */
+  float near_eye = 1e9f;
+  for (int h = 0; h < G.players; h++) near_eye = fminf(near_eye, v3len(v3sub(eye_pos(F(h)), at)));
+  float lk = CW_CLAMP((near_eye - 3.0f) / 9.0f, 0, 1);
+  fx_explosion(at, n, 0.25f + 0.75f * lk * lk * (3 - 2 * lk));
   for (int h = 0; h < G.players; h++) {
     float d = v3len(v3sub(eye_pos(F(h)), at));
     if (d >= 14.0f) continue;
@@ -1960,7 +1966,18 @@ static void proj_tick(void) {
     cw_node3d_set_position(p->node, np);
     cw_node3d_look_at(p->node, v3add(np, p->v), v3(0, 1, 0));
     cw_node3d_set_position(p->light, np);
-    if (p->glow < 1) p->glow = fminf(1.0f, p->glow + 0.25f), cw_node_set(p->light, "energy", cw_val_float(14 * p->glow));
+    /* the light swells over four ticks as it leaves the barrel, and a rocket near a view's eye dims and its hot exhaust
+     * shrinks (nothing within 1.5 m, whole from 6.5 m): one flying at a player grew from a dot to a white ball of glow
+     * filling that view and lit the wall beside it, three a second in the flash sweep's match run */
+    if (p->glow < 1) p->glow = fminf(1.0f, p->glow + 0.25f);
+    {
+      float de = 1e9f;
+      for (int h = 0; h < G.players; h++) de = fminf(de, v3len(v3sub(eye_pos(F(h)), np)));
+      float u = CW_CLAMP((de - 1.5f) / 5.0f, 0, 1), near = u * u * (3 - 2 * u);
+      cw_node_set(p->light, "energy", cw_val_float(14 * p->glow * near));
+      cw_node ex = cw_node_get(p->node, "Exhaust");
+      if (cw_node_valid(ex)) cw_node3d_set_scale(ex, v3(near, near, near));
+    }
   }
 }
 
@@ -2546,21 +2563,27 @@ static void sync_nodes(void) {
     /* the camera is the eye and the aim, nothing more: no shake, no view kick, no bob, dip or roll (the feel of a hit,
      * a blast, a landing or a heavy shot is in the pad: rumble); the gun's kick is the viewmodel's, below */
     float pitch = f->pitch, yaw = f->yaw;
+    /* a downed view never jumps or whips round: it sinks and turns at most 3.6 rad a second, easing in and out (it came
+     * round a third of the turn in its first frames, a view swung from a wall to the open court in two frames, a flash
+     * in the co-op sweep's worst second; a fall dropped and tilted the view in one frame) */
+    if (!f->alive && f->dead_ticks <= 1) KC.yaw[h] = f->yaw, KC.pitch[h] = f->pitch;
     if (!f->alive && (G.sw_no_killcam || G.kc_who[h] < 0)) { /* no killer (a fall, an own rocket): the view drops and tilts */
-      e.y = f->mv.position.y + 0.5f;
-      pitch = -0.5f;
+      float sink = CW_MIN(1.0f, (float)f->dead_ticks / 20.0f);
+      e.y = f->mv.position.y + EYE_H + (0.5f - EYE_H) * sink * sink * (3 - 2 * sink);
+      KC.pitch[h] += CW_CLAMP((-0.5f - KC.pitch[h]) * 0.14f, -0.06f, 0.06f);
+      pitch = KC.pitch[h];
     } else if (!f->alive) { /* the killer cam: the view sinks a little and turns to whoever downed this person, then follows them */
       const fighter *k = F(G.kc_who[h]);
       float sink = CW_MIN(1.0f, (float)f->dead_ticks / 20.0f);
       e.y = f->mv.position.y + EYE_H - 0.5f * sink * sink * (3 - 2 * sink);
       t3_vec3 to = v3sub(chest_pos(k), e);
       float want_y = cw_atan2(-to.x, -to.z), want_p = cw_atan2(to.y, sqrtf(to.x * to.x + to.z * to.z));
-      if (f->dead_ticks <= 1) KC.yaw[h] = f->yaw, KC.pitch[h] = f->pitch;
       float dy = want_y - KC.yaw[h];
       while (dy > 3.14159265f) dy -= 6.2831853f;
       while (dy < -3.14159265f) dy += 6.2831853f;
-      KC.yaw[h] += dy * 0.14f; /* about a third of a second to come round, then it stays on them */
-      KC.pitch[h] += (CW_CLAMP(want_p, -1.2f, 1.2f) - KC.pitch[h]) * 0.14f;
+      float ease = CW_MIN(1.0f, (float)f->dead_ticks / 12.0f); /* the turn speeds up over a fifth of a second */
+      KC.yaw[h] += CW_CLAMP(dy * 0.14f, -0.06f, 0.06f) * ease; /* half a turn in about a second, then it stays on them */
+      KC.pitch[h] += CW_CLAMP((CW_CLAMP(want_p, -1.2f, 1.2f) - KC.pitch[h]) * 0.14f, -0.06f, 0.06f) * ease;
       yaw = KC.yaw[h], pitch = KC.pitch[h];
     }
     KC.eye[h] = e, KC.yaw_now[h] = yaw, KC.pitch_now[h] = pitch;
@@ -2575,7 +2598,7 @@ static void sync_nodes(void) {
     cw_node3d_set_position(G.cam[h], at);
     cw_node3d_look_at(G.cam[h], v3add(at, d), up);
     if (h == 0 && G.state == ST_PLAY) camgate(f, at, d, up, false);
-    if (!f->alive && G.state == ST_PLAY && f->dead_ticks >= 24 && G.kc_who[h] >= 0) { /* the killer cam check (killcam) */
+    if (!f->alive && G.state == ST_PLAY && f->dead_ticks >= 64 && G.kc_who[h] >= 0) { /* the killer cam check (killcam), once the turn (at most about a second) is done */
       float sx, sy;
       killcam[0]++;
       if (kc_project(h, chest_pos(F(G.kc_who[h])), &sx, &sy)) killcam[1]++;

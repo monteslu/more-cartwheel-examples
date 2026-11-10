@@ -1,5 +1,5 @@
 // arenafps: a downed player sees who downed them (no GPU; software GL). Two seats play Foundry deathmatch with bots in the
-// autopilot build; on every dead tick after the view has turned (24 ticks) whose death has a killer, the killer's chest must
+// autopilot build; on every dead tick after the view has turned (64 ticks: it turns at most 3.6 rad a second) whose death has a killer, the killer's chest must
 // be inside that player's view on at least 90 percent of them (killcam = [those ticks, ticks with the killer in view]).
 // Control: ARENA_NO_KILLCAM=1 (the old dead view, lying on the floor looking nowhere) must fall under the bound.
 //   node tests/arenafps-killcam.mjs [--build build/native]

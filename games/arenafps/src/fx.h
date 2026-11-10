@@ -11,7 +11,7 @@ void fx_play(int snd, t3_vec3 at, float volume, float pitch);
 void fx_play_ui(int snd, float volume);
 void fx_spark(t3_vec3 p, t3_vec3 n, int kind); /* 0 world hit: sparks and dust, 1 body hit */
 void fx_hole(t3_vec3 p, t3_vec3 n);
-void fx_explosion(t3_vec3 p, t3_vec3 n);
+void fx_explosion(t3_vec3 p, t3_vec3 n, float light_k); /* light_k: the hot parts' share (flash light, flash sprite, fire; 1 full) */
 void fx_tracer(t3_vec3 a, t3_vec3 b, int kind); /* 0 bullet, 1 rail */
 void fx_casing(t3_vec3 p, t3_vec3 right, t3_vec3 up);
 #endif
