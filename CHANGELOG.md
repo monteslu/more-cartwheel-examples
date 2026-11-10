@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.32.1
+
+- Sky Fighter: a new cover rendered from the game through romdev: the jet pulling up and banking toward the camera over the fair, lit by the afternoon sun, a balloon and the fairground below it under a deep blue sky, a 720x1080 crop of the frame with the logo.
+- Sky Fighter: the jet and the bandits fly with the landing gear up (the model carried it down on every sortie).
+- Sky Fighter: a `keyart` debug command (the camera held at an offset from the jet along its heading, the HUD off, the sky's hour) for key art on a cart, where the SKY_ART_* environment does not reach.
+
 ## 0.32.0
 
 - Engine v0.46.0 (from v0.44.2): the flash check and GPU timing run through romdev; a test's scripted finger taps on the frame it lands on a native run.
