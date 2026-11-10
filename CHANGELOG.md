@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.31.2
+
+- Tux Racer: a new Tux. The same skeleton and moves (the walk-in, the belly slide, the tuck, the jump, the tree hits), with a smooth sculpted body over them in place of the blended spheres of the original model: a fit, streamlined racer with a matte blue-black back, a clean white front up to the chin, a defined head with expressive eyes, flat flippers, and an orange-yellow beak, legs and webbed feet. His feet stand on the snow in the walk-in and his belly rides on it as he slides (he no longer hovers a few centimetres up or sinks his toes in). New cover, icon, background and screenshots with him in them.
+- Tests: tuxracer-grounding holds his soles and belly on the snow on the cart, GL and WebGPU.
+
 ## 0.31.1
 
 - Tux Racer: a new cover. Tux belly-slides down Bunny Hill toward you in the sun, big in the frame, with the snow spraying behind him and the pines along the slope, rendered from the game itself.
