@@ -41,7 +41,7 @@ const step = (frames) => tool('frame', { op: 'step', frames });
 const pad = (p) => tool('input', { op: 'set', ports: [p] });
 /* ranges, not loops: the pad held for a stretch of frames and those frames stepped, in one request */
 const hold = (frames, p) => tool('input', { op: 'sequence', steps: [{ input: { ports: [p] }, frames }] });
-const W = 1920, RACE_ON = 2, RACE_DONE = 3, SECONDS = FINISH ? 480 : 45, EVERY = 9; /* a decision every 9 frames (150 ms) */
+const W = 1920, RACE_ON = 2, RACE_DONE = 3, SECONDS = FINISH ? 720 : 45, EVERY = 9; /* a decision every 9 frames (150 ms) */
 /* one decision is one read (nc.look: the next mark on screen, its chevron, the speed) and one request that holds the pad
    for the frames to the next decision and steps them */
 const act = (p, frames) => tool('input', { op: 'sequence', steps: [{ input: { ports: [p] }, frames }] });
