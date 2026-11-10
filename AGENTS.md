@@ -27,8 +27,9 @@ held up by a burst instead of restarting, and any blink is a soft pulse at 2 Hz 
 guide (`docs/guides/l10n-a11y.md`, "Flashes") has the thresholds and the recipes.
 
 `tests/flash-sweep.mjs` holds it: each entry of `tests/flash-sweep.json` runs a stretch of a game's brightest play
-natively (the gate it names gives the app, input and start requests) and checks every frame with the engine's
-`tools/flash-check.mjs` (WCAG 2.3.1 / Harding flash and red-flash limits, and no regular flicker above 3 Hz). Each
+through romdev on GL and on WebGPU (the gate it names gives the app, input, start requests and environment) and checks
+every frame with the engine's `tools/flash-check.mjs --host romdev` (WCAG 2.3.1 / Harding flash and red-flash limits,
+and no regular flicker above 3 Hz): one romdev `frame({op:'flash'})` call a run, never a request per frame. Each
 entry's control, the same frames with an 8 Hz full-screen strobe over them, must fail. A new game adds entries for
 its explosions, hits, weapons, pickups, weather, menus and transitions.
 

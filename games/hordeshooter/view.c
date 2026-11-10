@@ -1752,11 +1752,19 @@ void view_sync(const sim *s, float time) {
       touch(V.eb[k][f], true);
       V.st.enemies_drawn += cnt[k][f];
     }
-  /* bullets */
+  /* bullets. A round is a slim line of light that grows out of the muzzle over six frames and trails back to about the
+   * distance between two volleys (32 u/s, five volleys a second), with a small hot head. A gun's volleys are then a
+   * steady stream, not a dash of light at each shot: thick 1.3 m tracers with big heads, drawn whole on the frame they
+   * left the guns, pulsed the middle of the screen at the fire rate (the flash sweep's late-floor run: 5 flashes in a
+   * second and a regular 4.5 Hz flicker where three players fired fans into a crowd) */
+  static int16_t bage[MAXB], blife[MAXB];
   int nb = 0, nr = 0, ngr = 0, nrl = 0, nfl = 0, nwh = 0, nfr = 0, nbh = 0; /* nwh: the wheels' rings in flight */
   for (int i = 0; i < MAXB; i++) {
     const bullet *b = &s->b[i];
-    if (!b->alive) continue;
+    if (!b->alive) { bage[i] = -1; continue; }
+    if (bage[i] < 0 || b->life > blife[i]) bage[i] = 0; /* a new round in this slot */
+    else if (bage[i] < 1000) bage[i]++;
+    blife[i] = (int16_t)b->life;
     float yaw = cw_atan2(-b->vx, -b->vy);
     if (b->kind == 2) { /* a grenade in its arc */
       float t = 1.0f - (float)b->life / 36.0f;
@@ -1806,8 +1814,11 @@ void view_sync(const sim *s, float time) {
       t3_instanced_mesh_set_matrix_at(im, *c, &m);
     } else {
       float heavy = b->dmg > 2 ? 1.25f : 1.0f, vl = sqrtf(b->vx * b->vx + b->vy * b->vy) + 1e-4f; /* heavy rounds: fatter and longer */
-      put(im, *c, b->x, 0.9f, b->y, yaw, heavy, heavy, heavy + (b->dmg > 2 ? 0.3f : 0));
-      if (nbh < V.bullet_head->instance_matrix->count) put(V.bullet_head, nbh++, b->x + b->vx / vl * 0.62f * heavy, 0.9f, b->y + b->vy / vl * 0.62f * heavy, 0, heavy, heavy, heavy);
+      float g = fminf(1.0f, (float)bage[i] / 6.0f), grow = 0.2f + 0.8f * g * g * (3 - 2 * g);
+      float trail = fminf(7.0f, 1.3f + 32.0f * (float)bage[i] / 60.0f) / 1.3f, girth = heavy * grow * 0.35f, len = heavy * grow;
+      float back = 0.65f * len * (trail - 1.0f);
+      put(im, *c, b->x - b->vx / vl * back, 0.9f, b->y - b->vy / vl * back, yaw, girth, girth, len * trail);
+      if (nbh < V.bullet_head->instance_matrix->count) put(V.bullet_head, nbh++, b->x + b->vx / vl * 0.62f * len, 0.9f, b->y + b->vy / vl * 0.62f * len, 0, girth * 0.8f, girth * 0.8f, girth * 0.8f);
     }
     (*c)++;
   }

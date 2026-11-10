@@ -3412,10 +3412,16 @@ static void draw_boss_says(float W, float H, float s) {
     }
   }
 }
-/* who said what, over their head; the rest of the screen is not covered */
+/* who said what, over their head; the rest of the screen is not covered. A white bubble is a bright patch on a dark
+ * level, so it never switches: it swells in over a fifth of a second and fades out over 0.3 s, a bubble that has to
+ * move glides to its new place instead of hopping (a hop is a patch going out in one spot and on in another), and one
+ * that must wait for a clear place fades out where it was (the flash sweep caught bubbles near the founder popping in,
+ * hopping and blinking out, 4 flashes in a second over a sixth of the screen) */
 static void draw_says(float W, float H, float s) {
+  static float vis[6], at[6][2];
+  static bool placed[6];
   for (int i = 0; i < 6; i++) {
-    if (SAY[i].t <= 0) continue;
+    if (SAY[i].t <= 0) { vis[i] = 0, placed[i] = false; continue; }
     SAY[i].t -= 1.0f / 60.0f;
     const player *p = &G.p[SAY[i].who];
     float wx = p->bubble ? p->bubble_x : (float)p->pf.body.position.x, wy = p->bubble ? p->bubble_y : (float)p->pf.body.position.y;
@@ -3445,13 +3451,27 @@ static void draw_says(float W, float H, float s) {
     }
     if (box_hit(x0, y0, pw, ph, 0)) { /* no clear place this moment (large text, a crowded screen): it waits, never on other words */
       SAY[i].t += 1.0f / 60.0f;
+      if (vis[i] > 0 && placed[i]) { /* it fades out where it stood */
+        vis[i] = fmaxf(0, vis[i] - 1.0f / 18.0f);
+        cw_r2d_round_rect(cw_rect_make(at[i][0], at[i][1], pw, ph), 8 * s, 8, cw_rgba(1, 1, 1, 0.92f * a * vis[i]));
+        cw_r2d_text(g_font, SAY[i].text, (cw_vec2){ at[i][0] + 9 * s, at[i][1] + 5 * s }, &(cw_text_style){ .size = ts, .color = cw_rgba(0.1f, 0.1f, 0.14f, a * vis[i]) });
+      }
       continue;
     }
     g_label_dbg[2]++;
     if (label_on_marker(x0, y0, pw, ph, 0, W, H, s) || (!g_label_bug && sign_over_player(x0, y0, pw, ph, 1.9f, 0, W, H))) g_label_dbg[3]++;
     box_add(x0, y0, pw, ph);
+    bool there = x0 == hx && y0 == hy;
+    if (!placed[i]) at[i][0] = x0, at[i][1] = y0, placed[i] = true;
+    else { /* glide: a quarter of the way a frame, then settle */
+      at[i][0] += (x0 - at[i][0]) * 0.25f, at[i][1] += (y0 - at[i][1]) * 0.25f;
+      if (fabsf(x0 - at[i][0]) < 0.5f && fabsf(y0 - at[i][1]) < 0.5f) at[i][0] = x0, at[i][1] = y0;
+    }
+    x0 = at[i][0], y0 = at[i][1];
+    vis[i] = fminf(1, vis[i] + 1.0f / 12.0f);
+    a *= vis[i] * vis[i] * (3 - 2 * vis[i]);
     cw_r2d_round_rect(cw_rect_make(x0, y0, pw, ph), 8 * s, 8, cw_rgba(1, 1, 1, 0.92f * a));
-    if (x0 == hx && y0 == hy) { /* the tail only when it still points at the head */
+    if (there && x0 == hx && y0 == hy) { /* the tail only when it still points at the head */
       cw_vec2 tri[3] = { { sx - 5 * s, y0 + ph }, { sx + 5 * s, y0 + ph }, { sx, y0 + ph + 7 * s } };
       cw_r2d_polygon(tri, 3, cw_rgba(1, 1, 1, 0.92f * a));
     }

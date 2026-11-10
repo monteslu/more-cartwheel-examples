@@ -2,7 +2,7 @@
   {
     "name": "flash-sweep",
     "script": "tests/flash-sweep.mjs",
-    "note": "no game strobes: every entry of tests/flash-sweep.json (a stretch of each game's brightest play, natively on GL) checked frame by frame with the engine's tools/flash-check.mjs (WCAG 2.3.1 / Harding general and red flash limits, no regular flicker above 3 Hz); each entry's control, the same frames with an 8 Hz full-screen strobe laid over them, must fail"
+    "note": "no game strobes: every entry of tests/flash-sweep.json (a stretch of each game's brightest play, the built cart through romdev on GL and WebGPU, one frame({op:'flash'}) call a run) checked frame by frame with the engine's tools/flash-check.mjs (WCAG 2.3.1 / Harding general and red flash limits, no regular flicker above 3 Hz); each entry's control, the same frames with an 8 Hz full-screen strobe laid over them, must fail"
   },
   {
     "name": "hordeshooter-match",
