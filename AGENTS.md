@@ -27,9 +27,11 @@ held up by a burst instead of restarting, and any blink is a soft pulse at 2 Hz 
 guide (`docs/guides/l10n-a11y.md`, "Flashes") has the thresholds and the recipes.
 
 `tests/flash-sweep.mjs` holds it: each entry of `tests/flash-sweep.json` runs a stretch of a game's brightest play
-natively (the gate it names gives the app, input and start requests) and checks every frame with the engine's
-`tools/flash-check.mjs` (WCAG 2.3.1 / Harding flash and red-flash limits, and no regular flicker above 3 Hz). Each
-entry's control, the same frames with an 8 Hz full-screen strobe over them, must fail. A new game adds entries for
+on the built cart through romdev, GL and WebGPU, every frame of the stretch taken in one `frame({op:'record'})` call
+(the gate it names gives the app, input and start requests; `--host native` runs the native build instead), and checks
+every frame with the engine's flash rules (`tools/lib/flash.mjs`: WCAG 2.3.1 / Harding flash and red-flash limits,
+and no regular flicker above 3 Hz). Each entry's control, the same frames with an 8 Hz full-screen strobe over them,
+must fail; a `mustFail` entry is a game's own control (the old behaviour a fix replaced), which must still fail. A new game adds entries for
 its explosions, hits, weapons, pickups, weather, menus and transitions.
 
 ## Newcomer and idle-seat gates

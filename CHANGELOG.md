@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.31.2
+
+- Tests: the flash sweep runs on the built carts through romdev, GL and WebGPU, every frame of a stretch taken in one call. Arena's co-op stretch passes on both (it was marked as a known failure): the stand-ins that play the seats in the test build now turn the way a person on a pad does, easing the look stick in and out and staying on the enemy they fight, instead of swinging their views at full speed between two enemies and round every corner. The old stand-in is kept as a control that must still fail. The shipped games are unchanged.
+
 ## 0.31.1
 
 - Tux Racer: a new cover. Tux belly-slides down Bunny Hill toward you in the sun, big in the frame, with the snow spraying behind him and the pines along the slope, rendered from the game itself.
