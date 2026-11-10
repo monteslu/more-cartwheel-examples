@@ -107,7 +107,7 @@ for (const backend of BACKENDS) {
         if (tricks) for (let f = 20; f < 295; f += 12) holds.push([f, f + 3, 'west']);
         await R.run(300, holds);
       }
-      await R.run(240, [[0, 240, TH]]);
+      await R.run(420, [[0, 420, TH]]); /* (past the last trick's combo window: a stand-up's submarine counts when it surfaces) */
       return { score: await R.rd('stunt.score'), combos: await R.rd('stunt.combos'), chain: await R.rd('stunt.best_chain'), tricks: await R.rd('stunt.tricks'), pending: await R.rd('stunt.pending'), banks: await R.rd('stunt.banks'), lost: await R.rd('stunt.lost'), spills: await R.rd('p0.spills'), air: await R.rd('p0.air_time'), state: await R.rd('race.state'), clock: await R.rd('race.clock') };
     };
     const s = await stunt(true), c = await stunt(false);
