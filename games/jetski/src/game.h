@@ -31,6 +31,27 @@ static const char *const RIDER_NAMES[6] = { "You", "Marlin", "Kestrel", "Tide", 
 extern int g_difficulty; /* 0 easy, 1 normal, 2 hard */
 enum { MODE_CHAMPIONSHIP, MODE_TIME_TRIAL };
 extern int g_mode;
+/* the craft every racer rides, chosen from the menu: a sit-down runabout, or a stand-up (a narrow, light hull the rider
+ * stands on, on a tray behind a hinged handlepole). internal-cartwheel/findings/jetski-standup.md has the real ones */
+enum { CRAFT_SIT, CRAFT_STAND };
+extern int g_craft;
+typedef struct hull_def {
+  float base_top, meter_top, thrust; /* top speed at an empty meter and per arrow (m/s); the pump's push */
+  float steer_k;                      /* how fast the bars follow the stick (per second) */
+  float turn0, turn_v, turn_lean;     /* yaw rate: at rest, lost per m/s, gained leaning back (rad/s) */
+  float roll0, roll_v;                /* the lean into a carve: per unit of stick, and per m/s on top */
+  float grip;                         /* sideways grip, times the sit-down's */
+  float slide_v, slide_t;             /* a slide this fast (m/s) for this long (s) throws the rider */
+  float spill_err;                    /* a landing this far out of line throws the rider */
+  float trick_t;                      /* a roll, a flip or a spin, seconds */
+  float plane_v;                      /* up on the plane from about this speed (m/s) */
+  float sink_rest;                    /* off the plane the hull sits this much lower (m) */
+} hull_def;
+extern const hull_def HULLS[2];
+#define HULL (&HULLS[g_craft])
+/* a trick's kind: in the air 1 barrel roll, 2 back flip, 3 front flip (sit-down), 4 flat spin (stand-up) */
+#define SUB_T 1.0f    /* a submarine: seconds under */
+#define POLE_T 1.4f   /* a pole stand: seconds up on the hood */
 
 enum { RACE_ATTRACT, RACE_GRID, RACE_ON, RACE_DONE };
 
@@ -142,6 +163,15 @@ typedef struct craft {
   float style, style_side;        /* a hand off the bar: seconds left, which hand */
   int trick_wipes;                /* came down mid-trick */
   int styles;                     /* style moves: trick presses on hops too short for a trick */
+  /* the stand-up's own */
+  float plane;                    /* 0 off the plane (low in the water), 1 up on it */
+  float plane_at;                 /* G.clock it first came up on the plane in this race (0: not yet) */
+  float trick_yaw;                /* the heading a flat spin started from */
+  float pole_t;                   /* a pole stand: seconds left */
+  float wobble;                   /* the balance a stand-up rider keeps at a crawl: radians of roll now */
+  bool kick_held;
+  bool sub;                       /* this dive is a submarine, asked for on the water */
+  int subs, spins, supers, poles; /* stand-up tricks done */
 } craft;
 
 /* what happened to the human this tick: the HUD, the sounds, the rumble and the bursts all read this list, each from its own place in it */
@@ -227,6 +257,9 @@ extern float g_peek[6];
 /* rider.c */
 extern float rider_torso[RACERS];
 extern float rider_foot_side[RACERS]; /* how far out to the side the further foot is, metres from the craft's middle */
+extern float rider_pole[RACERS], rider_scale[RACERS][2], rider_foot_gap[RACERS], rider_hands_gap[RACERS], rider_stand[RACERS], g_stand_hips;
+extern float rider_pts[RACERS][6][3], g_pose[8], g_screen[6]; /* the stand-up pose gate's measures (rider.c, view.c) */
+extern int g_stand_old;
 /* what the player's craft did in its latest flight, kept by the game so a check steps a whole ride in one request and
  * reads the measures once (debug fields fly.*): a flight starts on the first tick it has been in the air over 0.05 s
  * and is more than 1.5 m over the water, and its measures run until the next one starts */

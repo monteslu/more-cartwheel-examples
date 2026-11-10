@@ -60,3 +60,12 @@ physical+skin+senv+eon+l2000+xplain_rim
 physical+skin+senv+l2000+xplain_rim
 physical+senv+l2000
 physical+skin+senv+l2000+xrim
+standard+map+rep+shadow+senv+l2000+s100
+standard+map+shadow+senv+atest+l2000+s100
+standard+map+shadow+senv+l2000+s100
+standard+map+rep+shadow+senv+l2000+s100+xplain
+physical+shadow+senv+cc+l2000+s100+xplain
+standard+map+shadow+senv+l2000+s100+xplain
+standard+map+shadow+senv+atest+l2000+s100+xplain
+standard+map+senv+atest+l2000
+standard+map+senv+l2000

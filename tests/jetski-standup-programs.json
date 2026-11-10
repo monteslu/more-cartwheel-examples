@@ -1,0 +1,4 @@
+[
+  { "name": "jetski-standup-race", "app": "jetski", "frames": 420, "startCmds": ["craft 1", "race"], "note": "the program survey's look at the stand-up field racing (tools/programs.mjs --carts jetski --gates --gates-file jetski-standup-programs.json)" },
+  { "name": "jetski-standup-attract", "app": "jetski", "frames": 240, "startCmds": ["craft 1"], "note": "and on the title's attract loop" }
+]

@@ -3,7 +3,7 @@
 A wave racing game in five places, each with its own water, land and light. Six riders race three laps. The water is the
 track: it moves, its swells throw you into the air, and on each course it changes as the race goes on.
 
-Status: five courses, one craft, a computer racer field, one player for now. The menu offers a championship (points by place over
+Status: five courses, two craft, a computer racer field, one player for now. The menu offers a championship (points by place over
 every course in turn) and a time trial (you alone on the course you choose, keeping your best time). Difficulty
 makes the sea bigger and adds buoys: every second one on Easy, three in four on Normal, all of them on Hard.
 
@@ -25,6 +25,18 @@ with a warning counting them down. Too much stick scrubs speed, and a long hard 
 Big steel ramps stand on piles along each course, some on the racing line and some off it. They do not move: the sea comes and goes on their legs, the swell is held down around them, and the same approach gives the same jump, well over two seconds in the air, long enough for a trick. Each press of the trick button is one trick; land mid-trick and you are off the craft. From the side or behind a ramp is a wall.
 Four of the courses have a bigger ramp or two for far more air, close to three seconds. Push the stick forward in the air and the nose follows your line down: come down steep like that and you pierce the water, go under for a moment and come back up still going. Tail first, or dropping nose down off your line or straight down, throws you off. Landing straight keeps your speed and a long clean landing gives you a shove; nose down costs you most of it, and leaning
 back on the way in saves some. Start or Esc pauses, with restart and quit.
+
+## The craft
+
+The menu's Craft row picks what everyone rides, you and the computer racers alike, and the game remembers it.
+
+- Sit-down: a runabout you sit astride. Stable at any speed, the faster of the two on a straight, wider in a turn. In the air: barrel roll, back and front flips, a kick out.
+- Stand-up: a narrow, light hull you ride standing in a tray at the back, hands on a handlepole hinged at the bow that rides up and down with you. It sits low and rocks at a standstill (you kneel in the tray until it moves) and only planes at speed; it tops out lower but answers at once and turns far tighter, carved by leaning; a hard slide or a crooked landing throws you off sooner. Tricks of its own: on the water at speed the trick button drives the nose under for a submarine and the kick button puts you up on the hood for a pole stand; in the air a barrel roll, a back flip, a flat spin (stick forward) and a superman (kick), all quicker to turn than on a sit-down.
+
+| Pad | Keys | Stand-up only |
+|---|---|---|
+| West face button | K | On the water at speed: submarine. In the air with the stick forward: flat spin |
+| North face button | I | On the water at speed: pole stand. In the air: superman |
 
 ## The courses
 

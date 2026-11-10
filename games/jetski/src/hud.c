@@ -248,7 +248,8 @@ static void hud_events(float dt) {
     switch (e->kind) {
       case EV_PASS: meter_pulse = 1; shown = false; g_fb[e->kind][0]++; break;
       case EV_TOP: pop_add("MAX POWER", gold, true); meter_pulse = 1; break;
-      case EV_TRICK: pop_add(e->a == 2 ? "BACK FLIP" : e->a == 3 ? "FRONT FLIP" : e->a == 4 ? "KICK OUT" : e->a == 5 ? "STYLE" : "BARREL ROLL", cyan, true); break;
+      case EV_TRICK: { static const char *const NAME[10] = { "BARREL ROLL", "BARREL ROLL", "BACK FLIP", "FRONT FLIP", "KICK OUT", "STYLE", "SUBMARINE", "FLAT SPIN", "SUPERMAN", "POLE STAND" };
+        pop_add(NAME[e->a < 0 || e->a > 9 ? 0 : e->a], cyan, true); break; }
       case EV_LAND: if (e->a == 2) pop_add("DIVE", cyan, true); else if (e->a) pop_add("PERFECT LANDING", green, false); else { shown = false; g_fb[e->kind][0]++; } break;
       case EV_MISS: shown = false; g_fb[e->kind][0]++; break; /* MISS has its own big word */
       case EV_GAIN: snprintf(b, sizeof b, "UP TO %s", ord[e->a - 1 < 0 ? 0 : e->a - 1 > 5 ? 5 : e->a - 1]); pop_add(b, green, false); break;
@@ -405,11 +406,13 @@ static void hud_body(void) {
     const char *line = "";
     for (unsigned i = 0; i < sizeof LINE / sizeof LINE[0]; i++) if (!strcmp(DEF->id, LINE[i][0])) line = LINE[i][1];
     float cy = 46 * u; /* across the top, clear of the countdown, the craft and the next buoy */
-    cw_r2d_round_rect(cw_rect_make(w * 0.5f - 560 * u, cy - 16 * u, 1120 * u, 196 * u * grow(small, 34 * u)), 18 * u, 8, cw_rgba(0.02f, 0.05f, 0.09f, 0.55f * k));
+    cw_r2d_round_rect(cw_rect_make(w * 0.5f - 560 * u, cy - 16 * u, 1120 * u, (g_craft == CRAFT_STAND ? 244.0f : 196.0f) * u * grow(small, 34 * u)), 18 * u, 8, cw_rgba(0.02f, 0.05f, 0.09f, 0.55f * k));
     word(big, DEF->name, w * 0.5f, cy, 62 * u, cw_rgba(1, 1, 1, k));
     float y2 = cy + 76 * u * grow(big, 62 * u);
     word(small, line, w * 0.5f, y2, 34 * u, cw_rgba(1, 1, 1, 0.85f * k));
     if (G.state == RACE_GRID && k > 0.5f) cw_prompt_text(small, "{throttle} on the last beat: a rocket start", 0, cw_v2(w * 0.5f, y2 + 50 * u * grow(small, 34 * u)), 30 * u, cw_rgba(1.0f, 0.82f, 0.4f, k), CW_ALIGN_CENTER);
+    /* the stand-up's own tricks, said on the grid where there is time to read them */
+    if (G.state == RACE_GRID && k > 0.5f && g_craft == CRAFT_STAND) cw_prompt_text(small, "Stand-up: {trick} on the water for a submarine, {kick} for a pole stand", 0, cw_v2(w * 0.5f, y2 + 92 * u * grow(small, 34 * u)), 30 * u, cw_rgba(0.55f, 0.95f, 1.0f, k), CW_ALIGN_CENTER);
   }
   /* over the line: the place, big, while the camera comes round */
   if (c->finish > 0 && G.state == RACE_ON && !c->dq) {

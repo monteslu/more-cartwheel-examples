@@ -329,5 +329,15 @@
     "name": "jetski-hud-words",
     "script": "tests/jetski-hud-words.mjs",
     "note": "words on the race screen on the cart, GL and WebGPU, in ranged requests (the game counts the frames the distance meets a word, hud.label_hits, and keeps the words put up, hud.pops and hud.pop_tick): restarting from the pause menu or starting a new race leaves no word from the last one, and the distance to the next buoy never meets a word in countdowns, wipeouts and big ramps on every course. Controls: pop_keep 1 keeps the word (a build without the reset failed the same way), label_old 1 meets words in the same rides"
+  },
+  {
+    "name": "jetski-standup",
+    "script": "tests/jetski-standup.mjs",
+    "note": "the two craft on the cart, GL and WebGPU, one input timeline a run: from rest on open calm water the stand-up is slower on the straight, planes later and turns far tighter, and only it does a submarine and a pole stand (with a rumble each); half a minute on the biggest sea keeps every boot on the tray and glove on its grip, the hull on the water and the chase camera free of shake. Controls: a run that never set the craft shows none of the differences, hips lifted 0.4 m, ride_top 0, cam_jitter 1. With --baseline (main's jetski_auto cart) the sit-down races to the same bits as before"
+  },
+  {
+    "name": "jetski-craft-models",
+    "script": "tests/jetski-craft-models.mjs",
+    "note": "the craft models from their files: the sit-down's bow a raked beak (keel and sheer rising and convex, no dip in the foredeck, stem 20 to 30 deg), the stand-up's hood 0.45 m over its tray and its hull 0.3 m deep. Controls: the first sit-down bow and the first stand-up hull"
   }
 ]

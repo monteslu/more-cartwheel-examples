@@ -113,7 +113,7 @@ controls and the power-up list).
 jetski, a wave racing game where the water is the track. Six riders race three laps through five places: a volcanic atoll at sunset, a
 granite fjord whose falling tide opens a shortcut, a river in a red canyon whose current carries you, a port at night with a tanker under way, and an open-sea
 squall whose swell keeps building. Swells throw you into the air and big
-steel ramps throw you further, long enough for a flip or a kick, with a few bigger ones for more air still. Come down nose first and you dive under and come back up. Every buoy you pass on the correct side raises your top speed: each stands tall over the water with an arrow pointing the way past, and an arrow on screen always shows where the next one is. A
+steel ramps throw you further, long enough for a flip or a kick, with a few bigger ones for more air still. Come down nose first and you dive under and come back up. Every buoy you pass on the correct side raises your top speed: each stands tall over the water with an arrow pointing the way past, and an arrow on screen always shows where the next one is. The whole field rides one kind of craft, picked on the menu: a sit-down runabout, stable and fast on the straights, or a stand-up, ridden on your feet behind a hinged handlepole, slower but quick and tight in the turns, easy to fall off, with tricks of its own (a submarine, a pole stand, a flat spin, a superman). A
 championship across them all or a time trial, one player and computer racers for now. See [its README](games/jetski/README.md).
 
 ### partypack

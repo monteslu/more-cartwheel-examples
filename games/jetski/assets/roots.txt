@@ -5,6 +5,8 @@ fonts/RussoOne-Regular.ttf
 fonts/Oswald-VF.ttf
 models/craft.glb
 models/rider.glb
+models/standup.glb
+models/standup_lo.glb
 models/buoy.glb
 models/mark_left.glb
 models/mark_right.glb

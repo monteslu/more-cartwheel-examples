@@ -6,7 +6,7 @@
 // darker side under 0.8, and a flash is a pair of opposing transitions. Bound: no block flashes more than twice in any
 // second (WCAG allows 3; the finish camera swinging past a bright mark is 2). The squall's lightning is left to its own check.
 // CONTROL, which must fail: the same frames with a quarter of the screen brightened on every other 6 frames (5 Hz).
-//   node tests/jetski-flash.mjs [--cart <path>]      draws the frames into out/jetski-flash, then measures
+//   [JETSKI_CRAFT=1] node tests/jetski-flash.mjs [--cart <path>]      draws the frames into out/jetski-flash, then measures
 //   node tests/jetski-flash.mjs --dir <d>           measures f<n>.png frames already in d
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
@@ -83,7 +83,8 @@ if (!dir) {
   const l = await tool('loadMedia', { platform: 'wasmcart', path: CART, gpuPower: 'low-power' });
   if (!l.loaded) { console.error(JSON.stringify(l).slice(0, 300)); await bye(3); }
   await tool('frame', { op: 'step', frames: 30 });
-  for (const c of ['course 2', 'no_dq 1', 'race']) await tool('wasm', { op: 'command', text: c });
+  /* JETSKI_CRAFT=1: the whole field on stand-ups */
+  for (const c of ['course 2', `craft ${process.env.JETSKI_CRAFT || 0}`, 'no_dq 1', 'race']) await tool('wasm', { op: 'command', text: c });
   let n = 0;
   const got = [];
   /* each frame is measured as it comes and only every 30th picture is kept (630 full frames would be about 2 GB) */

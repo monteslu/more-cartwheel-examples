@@ -19,6 +19,14 @@ int g_cam_cut = 1, g_cam_drawn_under;
 int g_buoy_style = 1; /* 0: the small buoy the course marks replaced, the control of the distance gate; sim and scoring do not see it */
 static float mark_scale[BUOY_MAX];
 static t3_object *bars_o[RACERS];
+/* each racer has both craft; the race's type shows (game.h g_craft). The stand-up's pole is hinged at the bow, its bars at the pole's end */
+static t3_object *sit_o[RACERS], *pole_o[RACERS][2], *sbars_o[RACERS][2];
+/* the meshes shown or hidden by the type: an object's flag hides it alone, not what hangs under it (the rider hangs under the craft) */
+static t3_object *sit_part[RACERS][2], *stand_part[RACERS][2][9]; /* the stand-up near and far: Hull, Pole, Bars, Plate1..6 */
+static int stand_lod[RACERS] = { -1, -1, -1, -1, -1, -1 };
+#define STAND_FAR 45.0f /* past this from the camera a rival's stand-up is the far model (standup_lo.glb) */
+#define STAND_LIFT 0.1f /* the stand-up and its rider stand this much higher in the craft's frame: it rides up on its rear third */
+static void set_visible(t3_object *o, bool v) { o->visible = v; for (int k = 0; k < o->child_count; k++) set_visible(o->children[k], v); } /* a part's own meshes (several materials: several meshes) */
 static t3_material *band_mat[2], *lamp_mat[2];
 static float buoy_phase[BUOY_MAX];
 static cw_node gate_n;
@@ -77,7 +85,16 @@ static void paint(t3_object *o, int team) {
       if (!mat || !mat->name) continue;
       const float *c = NULL;
       const struct rider_look *lk = &LOOK[team];
+      /* the stand-up's bold band along each side: a second colour that stands apart from the hood's */
+      static const float GRAPHIC[RACERS][3] = { { 0.1f, 0.22f, 0.7f }, { 1.0f, 0.82f, 0.1f }, { 0.08f, 0.12f, 0.45f }, { 0.95f, 0.95f, 0.92f }, { 0.1f, 0.85f, 0.85f }, { 0.9f, 0.15f, 0.12f } };
+      /* the splash decal on its hood: blues and purples, each its own */
+      static const float DECAL[RACERS][3] = { { 0.18f, 0.22f, 0.9f }, { 0.55f, 0.15f, 0.85f }, { 0.05f, 0.55f, 0.95f }, { 0.35f, 0.2f, 0.75f }, { 0.1f, 0.75f, 0.8f }, { 0.75f, 0.1f, 0.65f } };
+      /* and its hood: white, or a bright yellow on the white hull */
+      static const float HOOD[RACERS][3] = { { 0.93f, 0.93f, 0.9f }, { 0.93f, 0.93f, 0.9f }, { 0.93f, 0.93f, 0.9f }, { 0.93f, 0.93f, 0.9f }, { 0.93f, 0.93f, 0.9f }, { 1.0f, 0.8f, 0.08f } };
       if (!strcmp(mat->name, "deck")) c = TEAMS[team];
+      else if (!strcmp(mat->name, "graphic")) c = GRAPHIC[team];
+      else if (!strcmp(mat->name, "hood")) c = HOOD[team];
+      else if (!strcmp(mat->name, "decal")) c = DECAL[team];
       else if (!strcmp(mat->name, "vest") || !strcmp(mat->name, "accent")) c = TEAMS[team] + 3;
       else if (!strcmp(mat->name, "suit")) c = lk->suit;
       else if (!strcmp(mat->name, "helmet")) c = lk->helmet;
@@ -92,8 +109,10 @@ static void paint(t3_object *o, int team) {
       else if (!strcmp(mat->name, "suit")) cl->type = T3_MESH_PHYSICAL_MATERIAL, cl->roughness = 0.88f, cl->diffuse_roughness = 0.7f, cl->sheen = 0.35f, cl->sheen_roughness = 0.9f, cl->sheen_color = (t3_color){ c[0] * 2 + 0.05f, c[1] * 2 + 0.05f, c[2] * 2 + 0.05f };
       else if (!strcmp(mat->name, "vest") || !strcmp(mat->name, "accent")) cl->type = T3_MESH_PHYSICAL_MATERIAL, cl->roughness = 0.86f, cl->diffuse_roughness = 0.5f;
       else if (!strcmp(mat->name, "deck")) cl->type = T3_MESH_PHYSICAL_MATERIAL, cl->roughness = 0.35f, cl->clearcoat = 0.8f, cl->clearcoat_roughness = 0.1f; /* gelcoat over the paint */
+      else if (!strcmp(mat->name, "graphic")) cl->type = T3_MESH_PHYSICAL_MATERIAL, cl->roughness = 0.45f; /* a vinyl graphic on the gelcoat */
+      else if (!strcmp(mat->name, "hood")) cl->type = T3_MESH_PHYSICAL_MATERIAL, cl->roughness = 0.4f, cl->clearcoat = 0.5f, cl->clearcoat_roughness = 0.2f;
       if (o->type == T3_SKINNED_MESH && team < RACERS) { if (!strcmp(mat->name, "suit")) suit_mat[team] = cl; else if (!strcmp(mat->name, "vest")) vest_mat[team] = cl; else if (!strcmp(mat->name, "helmet")) helmet_mat[team] = cl; }
-      if (o->type == T3_MESH && team < RACERS && !strcmp(mat->name, "deck")) deck_mat[team] = cl;
+      if (o->type == T3_MESH && team < RACERS && !strcmp(mat->name, "deck") && !deck_mat[team]) deck_mat[team] = cl; /* (the sit-down's, painted first) */
       t3_retain(cl); t3_release(m->materials[k]); m->materials[k] = cl;
       t3_release(cl);
     }
@@ -602,6 +621,7 @@ void view_init(void) {
 
   cw_res craft_res = cw_res_load("res://models/craft.glb", CW_RES_GLTF);
   cw_res rider_res = cw_res_load("res://models/rider.glb", CW_RES_GLTF);
+  cw_res stand_res[2] = { cw_res_load("res://models/standup.glb", CW_RES_GLTF), cw_res_load("res://models/standup_lo.glb", CW_RES_GLTF) };
   cw_res buoy_res = cw_res_load("res://models/buoy.glb", CW_RES_GLTF);
   cw_res mark_left_res = cw_res_load("res://models/mark_left.glb", CW_RES_GLTF), mark_right_res = cw_res_load("res://models/mark_right.glb", CW_RES_GLTF);
   for (int i = 0; i < RACERS; i++) {
@@ -612,6 +632,24 @@ void view_init(void) {
     if (i == 0) shadows(co);
     craft_n[i] = model_node(dry_parent(root), name, co);
     bars_o[i] = t3_object_get_by_name(co, "Bars");
+    sit_o[i] = co;
+    sit_part[i][0] = t3_object_get_by_name(co, "Hull"), sit_part[i][1] = bars_o[i];
+    for (int l = 0; l < 2; l++) {
+      t3_object *so = cw_gltf_instantiate(stand_res[l]);
+      paint(so, i);
+      if (i == 0 || l == 0) shadows(so);
+      snprintf(name, sizeof name, "Stand%d%s", i, l ? "Far" : "");
+      cw_node sn = cw_node_new("Node3D", name);
+      cw_node_add_child(craft_n[i], sn);
+      cw_node3d_set_position(sn, (t3_vec3){ 0, STAND_LIFT, 0 });
+      cw_node3d_set_object(sn, so);
+      pole_o[i][l] = t3_object_get_by_name(so, "Pole"), sbars_o[i][l] = t3_object_get_by_name(so, "Bars");
+      stand_part[i][l][0] = t3_object_get_by_name(so, "Hull"), stand_part[i][l][1] = pole_o[i][l], stand_part[i][l][2] = sbars_o[i][l];
+      for (int n = 0; n < 6; n++) { char pn[12]; snprintf(pn, sizeof pn, "Plate%d", n + 1); stand_part[i][l][3 + n] = t3_object_get_by_name(so, pn); }
+      for (int k = 0; k < 9; k++) if (stand_part[i][l][k]) set_visible(stand_part[i][l][k], false);
+      t3_release(so);
+    }
+    rider_scale[i][0] = LOOK[i].broad, rider_scale[i][1] = LOOK[i].tall;
     snprintf(name, sizeof name, "Rider%d", i);
     rider_n[i] = cw_node_new("Node3D", name);
     cw_node_add_child(craft_n[i], rider_n[i]);
@@ -705,6 +743,9 @@ static float clear_of_swell(float x, float z, const craft *c) {
   return need;
 }
 int g_attract_clear = 1; /* debug: 0 is the control, a camera that ignores the swell */
+float g_cam_acc_max; /* the chase camera's worst acceleration while racing, m/s^2 */
+int32_t g_cam_flips, g_cam_ticks; /* ticks its acceleration (over 30 m/s^2) turned back on itself; ticks measured */
+int g_cam_jitter;    /* debug: 1 shakes the chase camera, the no-shake gate's control */
 
 static bool attract_camera(float dt) {
   if (G.state != RACE_ATTRACT) return false;
@@ -768,11 +809,15 @@ void view_tick(float dt) {
   memcpy(G.look_prev, G.look, sizeof G.look);
   G.cam_fov_prev = G.cam_fov;
   float sy, cy;
-  cw_sincos(c->yaw, &sy, &cy);
+  /* a flat spin turns the hull round under the camera: the camera keeps the heading it had */
+  cw_sincos(c->trick_kind == 4 ? c->trick_yaw : c->yaw, &sy, &cy);
   float vs = c->speed > 1 ? 1 : 0;
   float hx = vs ? c->vx / c->speed : sy, hz = vs ? c->vz / c->speed : cy;
   float bx = sy * 0.72f + hx * 0.28f, bz = cy * 0.72f + hz * 0.28f;
   float back = 4.0f + c->speed * 0.035f, up = 1.6f + c->speed * 0.012f;
+  /* the stand-up: low and close, straight behind, the hull under and ahead of the rider */
+  float side_off = 0;
+  if (g_craft == CRAFT_STAND) back -= 0.6f, up += 0.1f;
   /* a flip turns the whole craft over in front of the camera, and from straight behind it is only the hull's bottom. Swing out to the side for it, so craft and
    * rider are seen going round together in profile, and look at the craft */
   static float off;
@@ -781,7 +826,7 @@ void view_tick(float dt) {
     off += (want - off) * fminf(1.0f, dt * (want > off ? 6.0f : 1.5f));
     if (G.tick < 3) off = 0;
     back -= 1.0f * off, up += 0.4f * off; }
-  float wx = c->x - bx * back + cy * 7.0f * off, wz = c->z - bz * back - sy * 7.0f * off;
+  float wx = c->x - bx * back + cy * 7.0f * off - cy * side_off, wz = c->z - bz * back - sy * 7.0f * off + sy * side_off;
   float wh = cw_water_height_at(G.water, wx, wz, G.wt);
   /* up after a jump: the camera rises with the craft, so the air is seen and the craft stays in the picture */
   float rise = c->y - wh > 2.0f ? 0.97f : 0.45f;
@@ -804,6 +849,19 @@ void view_tick(float dt) {
   G.look[0] += (lx - G.look[0]) * kl;
   G.look[1] += (ly - G.look[1]) * kl;
   G.look[2] += (lz - G.look[2]) * kl;
+  /* no shake: the chase camera's acceleration, its worst while racing (the no-shake gate; sw cam_jitter 1 is its control, a camera that shakes) */
+  { static float p1[3], p2[3], lastacc[3], lasta; static uint32_t seen;
+    if (g_cam_jitter) { float j = (G.tick & 1) ? 0.12f : -0.12f; G.cam[0] += j, G.cam[1] -= j; }
+    if (G.state == RACE_ON && c->finish <= 0 && !first_tick && seen + 1 == G.tick) {
+      float a = 0, d[3], dot = 0; for (int k = 0; k < 3; k++) { d[k] = (G.cam[k] - 2 * p1[k] + p2[k]) / (dt * dt); a += d[k] * d[k]; dot += d[k] * lastacc[k]; }
+      a = sqrtf(a);
+      if (seen > 3 && a > g_cam_acc_max) g_cam_acc_max = a;
+      /* a shake is the camera thrown one way and straight back the next tick, over and over: count those reversals */
+      if (seen > 3 && a > 30 && lasta > 30 && dot < 0) g_cam_flips++;
+      if (seen > 3) g_cam_ticks++;
+      memcpy(lastacc, d, sizeof d), lasta = a;
+    }
+    memcpy(p2, p1, sizeof p1), memcpy(p1, G.cam, sizeof p1), seen = G.tick; }
   /* the first tick after a reset is a cut: nothing to draw between. From a zeroed last place, the frames between ticks put the camera near the world's origin, on some courses under the sea */
   if (first_tick && g_cam_cut) memcpy(G.cam_prev, G.cam, sizeof G.cam), memcpy(G.look_prev, G.look, sizeof G.look);
   /* over the line: the camera swings slowly round to the rider's side and front, low over the water, and holds the craft in the middle */
@@ -839,6 +897,69 @@ void view_tick(float dt) {
   cw_water_ripple_follow(G.water, c->x + sy * 34.0f, c->z + cy * 34.0f);
 }
 
+/* the stand-up from the race camera, racer 0 while racing (the pose gate): points of the hull and the rider put on the screen
+ * as the camera sees them. How much of the screen the craft's outline covers against the rider's, and how much of the pole
+ * shows: five points along it, each on the screen and clear of the rider's torso (a band 0.24 m either side of the hips to the
+ * neck, in front of the point). g_screen: craft area / rider area, its lowest so far; share of the pole seen, its lowest so far;
+ * frames measured; this frame's two */
+float g_screen[6] = { 1e9f, 1e9f, 0, 0, 0, 0 }; /* [5]: screen pixels (of 1080) a metre spans at the pole's middle, this frame */
+static bool to_screen(t3_vec3 p, t3_vec3 cp, t3_vec3 f, t3_vec3 r, t3_vec3 u, float k, float *sx, float *sy, float *depth) {
+  t3_vec3 d = { p.x - cp.x, p.y - cp.y, p.z - cp.z };
+  float z = d.x * f.x + d.y * f.y + d.z * f.z;
+  if (z < 0.05f) return false;
+  *sx = (d.x * r.x + d.y * r.y + d.z * r.z) / z * k / (16.0f / 9.0f), *sy = (d.x * u.x + d.y * u.y + d.z * u.z) / z * k, *depth = z;
+  return true;
+}
+static t3_vec3 cpt(t3_quat q, t3_vec3 at, float x, float y, float z) { t3_vec3 v = t3_vec3_apply_quat((t3_vec3){ x, y, z }, q); return (t3_vec3){ v.x + at.x, v.y + at.y, v.z + at.z }; }
+static void stand_screen(t3_vec3 cp, t3_vec3 lp, float fov, float a) {
+  const craft *c = &G.c[0];
+  if (g_craft != CRAFT_STAND || G.state != RACE_ON || g_peek_on || c->spill > 0 || c->dive_t > 0 || c->finish > 0) return;
+  t3_vec3 f = { lp.x - cp.x, lp.y - cp.y, lp.z - cp.z };
+  float fl = sqrtf(f.x * f.x + f.y * f.y + f.z * f.z); f.x /= fl, f.y /= fl, f.z /= fl;
+  t3_vec3 r = { -f.z, 0, f.x }; float rl = sqrtf(r.x * r.x + r.z * r.z); r.x /= rl, r.z /= rl;
+  t3_vec3 u = { r.y * f.z - r.z * f.y, r.z * f.x - r.x * f.z, r.x * f.y - r.y * f.x };
+  float k = 1.0f / tanf(fov * 0.5f * 3.14159265f / 180.0f);
+  t3_quat q = craft_quat(lerp_angle(c->pyaw, c->yaw, a), lerp_angle(c->ppitch, c->pitch, a), lerp_angle(c->proll, c->roll, a));
+  t3_vec3 at = { lerpf(c->px, c->x, a), lerpf(c->py, c->y, a), lerpf(c->pz, c->z, a) };
+  #define W(px_, py_, pz_) cpt(q, at, px_, py_, pz_)
+  /* the craft's outline: bow, the hood, the sides and the stern; the rider's: head, neck, hips, feet */
+  static const float OUTLINE[8][3] = { { 0, 0.72f, 1.25f }, { 0, 0.87f, 0.6f }, { 0.36f, 0.58f, 0.2f }, { -0.36f, 0.58f, 0.2f }, { 0.35f, 0.55f, -1.0f }, { -0.35f, 0.55f, -1.0f }, { 0.3f, 0.3f, 0.6f }, { -0.3f, 0.3f, 0.6f } };
+  float x0 = 9, x1 = -9, y0 = 9, y1 = -9, sx, sy, dz;
+  for (int i = 0; i < 8; i++) if (to_screen(W(OUTLINE[i][0], OUTLINE[i][1] + STAND_LIFT, OUTLINE[i][2]), cp, f, r, u, k, &sx, &sy, &dz)) x0 = fminf(x0, sx), x1 = fmaxf(x1, sx), y0 = fminf(y0, sy), y1 = fmaxf(y1, sy);
+  float craft_area = x1 > x0 ? (x1 - x0) * (y1 - y0) : 0;
+  x0 = 9, x1 = -9, y0 = 9, y1 = -9;
+  float tsx[2] = { 0 }, tsy[2] = { 0 }, tdz[2] = { 0 };
+  for (int i = 0; i < 5; i++) {
+    t3_vec3 p = W(rider_pts[0][i][0], rider_pts[0][i][1] + STAND_LIFT, rider_pts[0][i][2]);
+    if (!to_screen(p, cp, f, r, u, k, &sx, &sy, &dz)) continue;
+    x0 = fminf(x0, sx), x1 = fmaxf(x1, sx), y0 = fminf(y0, sy), y1 = fmaxf(y1, sy);
+    if (i == 1) tsx[1] = sx, tsy[1] = sy, tdz[1] = dz;
+    if (i == 2) tsx[0] = sx, tsy[0] = sy, tdz[0] = dz;
+  }
+  /* (the outline of joints is narrower than a body: widen it by the body's half-width at its depth) */
+  float hw = 0.22f * k / fmaxf(tdz[0], 0.1f);
+  float rider_area = x1 > x0 ? (x1 - x0 + hw * 2 / (16.0f / 9.0f)) * (y1 - y0 + hw) : 1e-6f;
+  /* the pole: from the pivot to the bars */
+  float th = rider_pole[0], seen = 0;
+  for (int s = 0; s < 5; s++) {
+    float t = 0.1f + 0.2f * (float)s, py = STAND_LIFT + 0.86f + 1.2f * t * sinf(th), pz = 0.94f - 1.2f * t * cosf(th);
+    if (!to_screen(W(0, py, pz), cp, f, r, u, k, &sx, &sy, &dz) || fabsf(sx) > 1 || fabsf(sy) > 1) continue;
+    /* behind the torso? its distance on the screen from the hips-to-neck segment, against the torso's half-width there */
+    float ax = tsx[0] * (16.0f / 9.0f), ay = tsy[0], bx = tsx[1] * (16.0f / 9.0f), by = tsy[1], px = sx * (16.0f / 9.0f), qy = sy;
+    float ex = bx - ax, ey = by - ay, l2 = ex * ex + ey * ey + 1e-9f, h = ((px - ax) * ex + (qy - ay) * ey) / l2;
+    h = h < 0 ? 0 : h > 1 ? 1 : h;
+    float dx = px - (ax + ex * h), dy = qy - (ay + ey * h), dist = sqrtf(dx * dx + dy * dy);
+    bool hidden = dist < hw && dz > tdz[0] - 0.3f;
+    if (!hidden) seen += 0.2f;
+    if (s == 2) g_screen[5] = k * 540.0f / fmaxf(dz, 0.1f);
+  }
+  #undef W
+  float ratio = craft_area / rider_area;
+  g_screen[3] = ratio, g_screen[4] = seen;
+  if (ratio < g_screen[0]) g_screen[0] = ratio;
+  if (seen < g_screen[1]) g_screen[1] = seen;
+  g_screen[2] += 1;
+}
 bool g_peek_on;
 float g_fov_span = 16.0f, g_cam_roll_max = 0.0785f; /* debug: fov_span 6, cam_roll 0 bring the old flat camera back (the speed gate control) */
 float g_peek[6];
@@ -865,7 +986,25 @@ void view_sync(double alpha) {
     if (bars_o[i]) {
       bars_o[i]->quaternion = t3_quat_from_euler((t3_euler){ 0, -c->steer * 0.42f, 0, T3_YXZ });
     }
+    bool stand = g_craft == CRAFT_STAND;
+    /* (each part's own flag: a hidden root alone left the sit-down's bars drawn) */
+    for (int k = 0; k < 2; k++) {
+      if (sit_part[i][k] && sit_part[i][k]->visible == stand) set_visible(sit_part[i][k], !stand);
+    }
+    /* the stand-up near or far (the player's always near), with this racer's number on its hood */
+    { float dx = c->x - G.cam[0], dz = c->z - G.cam[2];
+      int lod = !stand ? -1 : (i == 0 || dx * dx + dz * dz < STAND_FAR * STAND_FAR) ? 0 : 1;
+      if (lod != stand_lod[i]) {
+        stand_lod[i] = lod;
+        for (int l = 0; l < 2; l++) for (int k = 0; k < 9; k++) if (stand_part[i][l][k]) set_visible(stand_part[i][l][k], l == lod && (k < 3 || k - 3 == i));
+      } }
+    { t3_vec3 rp = { 0, stand ? STAND_LIFT : 0, 0 }; cw_node3d_set_position(rider_n[i], rp); }
     rider_pose(i, c, a);
+    /* the pole where the rider's hands put it (rider.c), the bars turned on it */
+    for (int l = 0; l < 2 && stand; l++) {
+      if (pole_o[i][l]) pole_o[i][l]->quaternion = t3_quat_from_euler((t3_euler){ rider_pole[i], 0, 0, T3_XYZ });
+      if (sbars_o[i][l]) sbars_o[i][l]->quaternion = t3_quat_from_euler((t3_euler){ 0, -c->steer * 0.42f, 0, T3_YXZ });
+    }
   }
   double wt = cw_water_time(G.water) + (a - 1.0f) * (1.0f / 60.0f);
   /* the squall: lightning lights the world and the sky; the beacon's lamp is seen through the rain on its rock */
@@ -953,4 +1092,5 @@ void view_sync(double alpha) {
     if (fl > 1e-3f && roll != 0) { float rx = -fz / fl, rz = fx / fl; upv = (t3_vec3){ rx * sinf(roll), cosf(roll), rz * sinf(roll) }; }
     cw_node3d_look_at(G.camera, lp, upv); }
   if (G.cam_fov > 1) cw_node_set(G.camera, "fov", cw_val_float(lerpf(G.cam_fov_prev > 1 ? G.cam_fov_prev : G.cam_fov, G.cam_fov, a)));
+  stand_screen(cp, lp, lerpf(G.cam_fov_prev > 1 ? G.cam_fov_prev : G.cam_fov, G.cam_fov, a), a);
 }

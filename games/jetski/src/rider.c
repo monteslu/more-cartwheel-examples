@@ -11,6 +11,14 @@ static const char *const NAMES[BONES] = { "Hips", "Spine", "Chest", "Neck", "Hea
 static t3_object *B[RACERS][BONES];
 float rider_torso[RACERS]; /* how far forward the upper body is thrown (radians, about): the rubric's measure */
 float rider_foot_side[RACERS];
+float rider_pole[RACERS];     /* the stand-up's handlepole: radians up from lying along the hood */
+float rider_scale[RACERS][2] = { { 1, 1 }, { 1, 1 }, { 1, 1 }, { 1, 1 }, { 1, 1 }, { 1, 1 } }; /* the rider node's scale across and up (view.c) */
+float rider_foot_gap[RACERS]; /* how far a boot ends from where it was asked to stand, metres (the tray, the hood) */
+float rider_hands_gap[RACERS];/* how far a glove ends from its grip */
+float rider_stand[RACERS];    /* a stand-up rider: 0 kneeling in the tray, 1 standing */
+float g_stand_hips;           /* debug: sw stand_hips <metres> lifts the standing hips, the grounding gate's control */
+float g_foot_gap_max, g_hands_gap_max; /* the worst of every racer's since the counts were cleared (sw ground_clear 1) */
+int32_t g_pose_frames;
 
 static t3_vec3 V(float x, float y, float z) { return (t3_vec3){ x, y, z }; }
 static float clampf(float v, float a, float b) { return v < a ? a : v > b ? b : v; }
@@ -57,6 +65,7 @@ static t3_vec3 joint(t3_vec3 a, t3_vec3 target, float l1, float l2, t3_vec3 pole
   return vadd(vadd(a, vmul(u, x)), vmul(vnorm(p), h));
 }
 
+static void rider_pose_stand(int i, const craft *c, float steer, float by);
 void rider_pose(int i, const craft *c, float alpha) {
   (void)alpha;
   if (!B[i][HIPS]) return;
@@ -71,6 +80,7 @@ void rider_pose(int i, const craft *c, float alpha) {
   sv[i] += ((c->steer - sx[i]) * 0.1f - sv[i] * 0.28f);
   sx[i] += sv[i];
   float steer = sx[i], lean = c->lean;
+  if (g_craft == CRAFT_STAND) { rider_pose_stand(i, c, steer, by[i]); return; }
   /* off the craft: the body hangs back from the hull, flat on the water, arms out, and climbs back on */
   float off = c->spill > 0 ? (c->spill > 1.5f ? (1.9f - c->spill) / 0.4f : c->spill > 0.4f ? 1.0f : c->spill / 0.4f) : 0;
   float crouch = c->kick * 0.26f + c->load * 0.16f - by[i];
@@ -144,4 +154,166 @@ void rider_pose(int i, const craft *c, float alpha) {
     B[i][sh]->quaternion = t3_quat_multiply(qinv(qt), qn);
     B[i][ft]->quaternion = t3_quat_multiply(qinv(qn), qbetween(V(0, 0, 1), vnorm(V(0, 0.05f, 1))));
   }
+}
+
+/* The stand-up rider: on their feet in the tray behind the handlepole, fairly upright. Feet apart (the left a little
+ * ahead), knees a little bent (about 145 degrees), the torso leaned forward about 20 degrees, the arms down and forward
+ * to the bars at hip height, the head up looking ahead. The pole is hinged at the bow and its angle follows the rider's
+ * hands, so it rises and falls with them and the knees. In a carve the hips and shoulders go to the inside of the turn (the
+ * hull is rolled onto its chine by the sim), and the knees take the chop. Kneeling in the tray only at a standstill. Tricks
+ * of its own: a pole stand up on the hood, and a superman in the air, feet off the tray and the body stretched out behind
+ * the bars. Everything is placed in the craft's frame and brought into the rider node's (scaled) frame. Sizes are
+ * tools/standup-model.mjs's.
+ * sw stand_old 1 (stiff and dead upright) and 2 (a deep crouch): the pose gate's controls */
+#define POLE_PY 0.86f
+#define POLE_PZ 0.94f
+#define POLE_LEN 1.2f
+#define GRIP_X 0.34f
+#define TRAY_Y 0.42f
+#define HOOD_Y 0.87f   /* the pad on the hood's top, where a pole stand puts the feet */
+#define HOOD_Z 0.3f
+#define BOW_Z 1.25f
+#define ANKLE_UP 0.12f /* the ankle over the boot's sole */
+int g_stand_old;
+float g_pose[8]; /* racer 0 this frame: head top over the tray, front knee's angle (deg), torso's lean from upright (deg), hull ahead of the front foot (m) */
+static float lerpf2(float a, float b, float t) { return a + (b - a) * t; }
+static float smoothk(float t) { t = clampf(t, 0, 1); return t * t * (3 - 2 * t); }
+static t3_vec3 vlerp(t3_vec3 a, t3_vec3 b, float t) { return V(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t); }
+float rider_pts[RACERS][6][3]; /* craft frame: head top, neck, hips, front ankle, rear ankle, bar middle (view.c's screen measure) */
+static void rider_pose_stand(int i, const craft *c, float steer, float by) {
+  float kb = rider_scale[i][0], kt = rider_scale[i][1];
+  #define TO_R(v) V((v).x / kb, (v).y / kt, (v).z / kb)
+  #define TO_C(v) V((v).x * kb, (v).y * kt, (v).z * kb)
+  float want = c->spill <= 0 && (c->speed > 2.5f || c->in.throttle > 0.3f || c->air || c->dive_t > 0) ? 1.0f : 0.0f;
+  rider_stand[i] += (want - rider_stand[i]) * (want > rider_stand[i] ? 0.07f : 0.04f);
+  float up = smoothk(rider_stand[i]);
+  float off = c->spill > 0 ? (c->spill > 1.5f ? (1.9f - c->spill) / 0.4f : c->spill > 0.4f ? 1.0f : c->spill / 0.4f) : 0;
+  float speedk = clampf(c->speed / 25.0f, 0, 1.2f);
+  float crouch = c->kick * 0.18f + c->load * 0.1f - by * 0.8f + 0.04f * (1.0f - c->plane);
+  float pk = c->pole_t > 0 ? clampf(sinf(3.14159265f * clampf(1.0f - c->pole_t / POLE_T, 0, 1)) * 1.7f, 0, 1) : 0;
+  float sk = c->legout > 0 ? clampf(sinf(3.14159265f * clampf(1.0f - c->legout / KICK_T, 0, 1)) * 1.7f, 0, 1) : 0;
+  pk = smoothk(pk), sk = smoothk(sk);
+  float lean_in = -steer * (0.16f + 0.06f * speedk); /* hips and shoulders to the inside of the carve */
+  /* the feet: apart in the tray, the left a little ahead */
+  t3_vec3 af_st = V(0.15f, TRAY_Y + ANKLE_UP, -0.42f), ar_st = V(-0.15f, TRAY_Y + ANKLE_UP, -0.55f);
+  /* the hips: over the feet, the knees a little bent (about 145 degrees), more as they soak a landing or the chop;
+   * the torso leaned forward about 20 degrees */
+  t3_vec3 hips_st = V(lean_in - c->wobble * 0.3f, TRAY_Y + ANKLE_UP + 0.86f - crouch + g_stand_hips, -0.56f);
+  float fwd_st = 0.5f + 0.06f * speedk + 0.3f * crouch;
+  /* the controls: 1 stiff and dead upright, 2 the deep crouch */
+  if (g_stand_old == 1) hips_st.y = TRAY_Y + ANKLE_UP + 0.93f + g_stand_hips, fwd_st = 0.04f;
+  if (g_stand_old == 2) hips_st = V(lean_in, TRAY_Y + ANKLE_UP + 0.56f - crouch + g_stand_hips, -0.72f), fwd_st = 1.0f + 0.1f * speedk;
+  t3_vec3 hips = vlerp(V(0, TRAY_Y + 0.52f, -0.66f), hips_st, up);
+  hips = vlerp(hips, V(0, HOOD_Y + ANKLE_UP + 0.62f, HOOD_Z - 0.06f), pk);
+  hips = vlerp(hips, V(0, 1.08f, -0.86f), sk);
+  hips = V(hips.x, hips.y - off * 0.5f, hips.z - off * 2.0f);
+  float fwd = lerpf2(0.3f, fwd_st, up);
+  fwd = fwd + (0.25f - fwd) * pk;
+  fwd = fwd + (1.45f - fwd) * sk;
+  fwd = fwd * (1.0f - off) - off * 1.45f;
+  rider_torso[i] = fwd;
+  float side = steer * 0.5f - c->wobble * 0.6f;
+  t3_quat qh = euler(fwd * 0.45f, -steer * 0.1f, side * 0.4f);
+  t3_quat qs = t3_quat_multiply(qh, euler(fwd * 0.3f, -steer * 0.08f, side * 0.3f));
+  t3_quat qc = t3_quat_multiply(qs, euler(fwd * 0.25f, -steer * 0.08f, side * 0.3f));
+  t3_vec3 hips_r = TO_R(hips);
+  /* the pole: its bars where the hands reach, a little below the hips' height ahead of the rider (waist height standing) */
+  float hand_y = hips.y - 0.1f - 0.1f * crouch, th;
+  { float s = clampf((hand_y - POLE_PY) / POLE_LEN, -0.2f, 0.95f); th = lerpf2(0.12f, asinf(s), up); }
+  th = th + (1.08f - th) * pk;
+  th = th + (0.55f - th) * sk;
+  th = clampf(th, 0.08f, 1.15f);
+  rider_pole[i] = th;
+  float st = sinf(th), ct = cosf(th), bar = -steer * 0.42f, sb = sinf(bar), cb = cosf(bar);
+  t3_vec3 grips[2];
+  for (int s = 0; s < 2; s++) {
+    float sg = s ? -1.0f : 1.0f, lx = sg * GRIP_X * cb, ly = 0.065f, lz = -sg * GRIP_X * sb - POLE_LEN;
+    grips[s] = TO_R(V(lx, POLE_PY + ly * ct - lz * st, POLE_PZ + ly * st + lz * ct));
+  }
+  /* arms nearly straight: a rider short of the bars goes to them with the whole body */
+  for (int pass = 0; pass < 2; pass++) {
+    t3_vec3 ch = vadd(vadd(hips_r, qrot(qh, V(0, 0.14f, 0))), qrot(qs, V(0, 0.2f, 0)));
+    float worst = 0;
+    t3_vec3 to = V(0, 0, 0);
+    for (int s = 0; s < 2; s++) { float sg = s ? -1.0f : 1.0f; t3_vec3 sh = vadd(ch, qrot(qc, V(sg * 0.2f, 0.2f, 0))); t3_vec3 d = vsub(grips[s], sh); float l = vlen(d) - 0.535f; if (l > worst) worst = l; to = vadd(to, d); }
+    if (worst <= 0 || off > 0) break;
+    to.y = 0; /* (forward, not down: the knees keep their bend) */
+    hips_r = vadd(hips_r, vmul(vnorm(to), worst));
+  }
+  B[i][HIPS]->position = hips_r;
+  B[i][HIPS]->quaternion = qh;
+  B[i][SPINE]->quaternion = t3_quat_multiply(qinv(qh), qs);
+  B[i][CHEST]->quaternion = t3_quat_multiply(qinv(qs), qc);
+  /* the head up, looking ahead past the bars (in a superman along the line of flight) */
+  t3_quat qhead = euler(0.15f - 0.15f * sk, -steer * 0.5f, 0);
+  B[i][NECK]->quaternion = t3_quat_multiply(qinv(qc), qc);
+  B[i][HEAD]->quaternion = t3_quat_multiply(qinv(qc), qhead);
+  t3_vec3 spine = vadd(hips_r, qrot(qh, V(0, 0.14f, 0)));
+  t3_vec3 chest = vadd(spine, qrot(qs, V(0, 0.2f, 0)));
+  rider_hands_gap[i] = 0;
+  for (int s = 0; s < 2; s++) {
+    float sg = s ? -1.0f : 1.0f;
+    int arm = s ? ARMR : ARML, fore = s ? FORER : FOREL, hand = s ? HANDR : HANDL;
+    t3_vec3 sh = vadd(chest, qrot(qc, V(sg * 0.2f, 0.2f, 0)));
+    t3_vec3 grip = grips[s];
+    if (off > 0) { t3_vec3 out = vadd(sh, V(sg * 0.5f, -0.04f, -0.05f)); grip = vlerp(grip, out, off); }
+    t3_vec3 elbow = joint(sh, grip, 0.29f, 0.26f, V(sg * 0.9f, -0.2f, -0.3f));
+    t3_vec3 d0 = V(sg, 0, 0);
+    t3_quat qa = qbetween(d0, vnorm(vsub(elbow, sh)));
+    t3_quat qf = qbetween(d0, vnorm(vsub(grip, elbow)));
+    B[i][arm]->quaternion = t3_quat_multiply(qinv(qc), qa);
+    B[i][fore]->quaternion = t3_quat_multiply(qinv(qa), qf);
+    B[i][hand]->quaternion = t3_quat_multiply(qinv(qf), qf);
+    if (off <= 0) { t3_vec3 reach = vadd(elbow, vmul(vnorm(vsub(grip, elbow)), 0.26f)); float g = vlen(vsub(reach, grip)) * kb; if (g > rider_hands_gap[i]) rider_hands_gap[i] = g; }
+  }
+  rider_foot_side[i] = 0;
+  rider_foot_gap[i] = 0;
+  t3_vec3 ank_c[2], knee_c[2], hip_c[2];
+  for (int s = 0; s < 2; s++) {
+    float sg = s ? -1.0f : 1.0f;
+    int thg = s ? THIGHR : THIGHL, shn = s ? SHINR : SHINL, ft = s ? FOOTR : FOOTL;
+    t3_vec3 hipj = vadd(hips_r, qrot(qh, V(sg * 0.1f, -0.06f, 0)));
+    t3_vec3 a_st = s ? ar_st : af_st;
+    t3_vec3 ank = vlerp(V(sg * 0.12f, TRAY_Y + 0.1f, -0.95f), a_st, up);
+    ank = vlerp(ank, V(sg * 0.12f, HOOD_Y + ANKLE_UP, HOOD_Z + sg * 0.07f), pk);
+    ank = vlerp(ank, V(sg * 0.17f, 1.16f, -1.72f), sk);
+    t3_vec3 target = ank;
+    t3_vec3 ankle = TO_R(ank);
+    if (off > 0) { t3_vec3 out = vadd(hipj, V(sg * 0.14f, 0.02f, 0.8f)); ankle = vlerp(ankle, out, off); }
+    if (fabsf(ankle.x) > rider_foot_side[i]) rider_foot_side[i] = fabsf(ankle.x);
+    /* the knee forward over the toes, a little out (bow-legged over the tray, never out over the rails) */
+    t3_vec3 knee = joint(hipj, ankle, 0.44f, 0.43f, vlerp(V(sg * 0.15f, -0.6f, 1), V(sg * 0.25f, 0.1f, 1), up));
+    t3_vec3 d0 = V(0, -1, 0);
+    t3_quat qt = qbetween(d0, vnorm(vsub(knee, hipj)));
+    t3_quat qn = qbetween(d0, vnorm(vsub(ankle, knee)));
+    B[i][thg]->quaternion = t3_quat_multiply(qinv(qh), qt);
+    B[i][shn]->quaternion = t3_quat_multiply(qinv(qt), qn);
+    t3_vec3 toe = vnorm(vlerp(V(0, -0.35f, -1), V(sg * 0.12f, 0.02f, 1), up));
+    toe = vnorm(vlerp(toe, V(0, 0.2f, -1), sk));
+    B[i][ft]->quaternion = t3_quat_multiply(qinv(qn), qbetween(V(0, 0, 1), toe));
+    t3_vec3 reach = vadd(knee, vmul(vnorm(vsub(ankle, knee)), 0.43f));
+    ank_c[s] = TO_C(reach), knee_c[s] = TO_C(knee), hip_c[s] = TO_C(hipj);
+    if (off <= 0 && sk < 0.01f) { float g = vlen(vsub(ank_c[s], target)); if (g > rider_foot_gap[i]) rider_foot_gap[i] = g; }
+  }
+  /* the pose's measures (the pose gate): the head's top, the front knee, the torso's lean, the hull ahead of the feet */
+  {
+    t3_vec3 neck = vadd(chest, qrot(qc, V(0, 0.27f, 0)));
+    t3_vec3 top = vadd(vadd(neck, qrot(qc, V(0, 0.1f, 0))), qrot(qhead, V(0, 0.2f, 0)));
+    t3_vec3 neck_c = TO_C(neck), top_c = TO_C(top), hips_c = TO_C(hips_r);
+    t3_vec3 a = vsub(hip_c[0], knee_c[0]), b = vsub(ank_c[0], knee_c[0]);
+    float knee_deg = acosf(clampf(vdot(a, b) / (vlen(a) * vlen(b) + 1e-6f), -1, 1)) * 57.29578f;
+    t3_vec3 tv = vsub(neck_c, hips_c);
+    float lean_deg = acosf(clampf(tv.y / (vlen(tv) + 1e-6f), -1, 1)) * 57.29578f;
+    float front_z = fmaxf(ank_c[0].z, ank_c[1].z);
+    float barm_y = POLE_PY + 0.065f * ct + POLE_LEN * st, barm_z = POLE_PZ + 0.065f * st - POLE_LEN * ct;
+    float *pts[6] = { rider_pts[i][0], rider_pts[i][1], rider_pts[i][2], rider_pts[i][3], rider_pts[i][4], rider_pts[i][5] };
+    t3_vec3 pv[6] = { top_c, neck_c, hips_c, ank_c[0], ank_c[1], V(0, barm_y, barm_z) };
+    for (int k = 0; k < 6; k++) pts[k][0] = pv[k].x, pts[k][1] = pv[k].y, pts[k][2] = pv[k].z;
+    if (i == 0) g_pose[0] = top_c.y - TRAY_Y, g_pose[1] = knee_deg, g_pose[2] = lean_deg, g_pose[3] = BOW_Z - front_z;
+  }
+  if (rider_foot_gap[i] > g_foot_gap_max) g_foot_gap_max = rider_foot_gap[i];
+  if (rider_hands_gap[i] > g_hands_gap_max) g_hands_gap_max = rider_hands_gap[i];
+  if (i == 0) g_pose_frames++;
+  #undef TO_R
+  #undef TO_C
 }

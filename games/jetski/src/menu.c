@@ -13,7 +13,7 @@
 #include "game.h"
 
 enum { P_NONE, P_MAIN, P_CONTROLS, P_AUDIO, P_GRAPHICS, P_PAUSE, P_RESULTS };
-typedef struct save_data { int32_t magic, level, difficulty, music, sfx, mode; float best[LEVELS]; } save_data;
+typedef struct save_data { int32_t magic, level, difficulty, music, sfx, mode; float best[LEVELS]; int32_t craft; } save_data; /* (craft last: a save from before it reads 0, the sit-down) */
 _Static_assert(sizeof(save_data) <= 64, "the save region in cw_shell_desc");
 #define SAVE_MAGIC 0x4a534b32
 static int page = P_MAIN, row, last_state = -1;
@@ -33,7 +33,7 @@ static save_data *save(void) { return (save_data *)cw_shell_game_save(); }
 static void store(void) {
   save_data *s = save();
   if (!s) return;
-  s->magic = SAVE_MAGIC, s->level = G.level, s->difficulty = g_difficulty, s->music = music, s->sfx = sfx, s->mode = g_mode;
+  s->magic = SAVE_MAGIC, s->level = G.level, s->difficulty = g_difficulty, s->music = music, s->sfx = sfx, s->mode = g_mode, s->craft = g_craft;
   memcpy(s->best, best, sizeof best);
   cw_shell_save_commit();
 }
@@ -57,6 +57,7 @@ void menu_init(void) {
     if (s->difficulty >= 0 && s->difficulty < 3) g_difficulty = s->difficulty;
     music = s->music, sfx = s->sfx;
     if (s->mode == MODE_CHAMPIONSHIP || s->mode == MODE_TIME_TRIAL) g_mode = s->mode;
+    if (s->craft == CRAFT_SIT || s->craft == CRAFT_STAND) g_craft = s->craft;
     memcpy(best, s->best, sizeof best);
   }
   apply_audio();
@@ -64,7 +65,7 @@ void menu_init(void) {
 
 static int page_rows(void) {
   switch (page) {
-  case P_MAIN: return 7;
+  case P_MAIN: return 8;
   case P_AUDIO: return 5;
   case P_PAUSE: return 5;
   case P_RESULTS: return 2;
@@ -95,6 +96,7 @@ bool menu_active(void) { return page != P_NONE; }
 
 static const char *const DIFF[3] = { "Easy", "Normal", "Hard" };
 static const char *const MODES[2] = { "Championship", "Time trial" };
+static const char *const CRAFTS[2] = { "Sit-down", "Stand-up" };
 
 static void start_race(void) {
   page = P_NONE;
@@ -151,7 +153,7 @@ void menu_tick(float dt) {
   }
   if (page == P_GRAPHICS) {
     cw_quality_menu_update();
-    if (!cw_quality_menu_is_open()) back_up(6, 0);
+    if (!cw_quality_menu_is_open()) back_up(7, 0);
     return;
   }
   bool up = cw_action_just_pressed(0, a_up), down = cw_action_just_pressed(0, a_down), left = cw_action_just_pressed(0, a_left), right = cw_action_just_pressed(0, a_right);
@@ -166,15 +168,17 @@ void menu_tick(float dt) {
     if (row == 1 && (dx || ok)) { g_mode = !g_mode; store(); }
     if (row == 2 && g_mode == MODE_TIME_TRIAL && (dx || ok)) { int l = (G.level + LEVELS + (dx ? dx : 1)) % LEVELS; if (l != G.level) { go_course(l, 0); saved_level = l; } }
     if (row == 3 && (dx || ok)) { g_difficulty = (g_difficulty + 3 + (dx ? dx : 1)) % 3; store(); }
+    /* the craft: every racer rides the one chosen, so the race stays even */
+    if (row == 4 && (dx || ok)) { g_craft = !g_craft; store(); }
     if (ok) {
       if (row == 0) begin();
-      else if (row == 4) open_page(P_CONTROLS);
-      else if (row == 5) open_page(P_AUDIO);
-      else if (row == 6) { page = P_GRAPHICS; cw_quality_menu_open(); }
+      else if (row == 5) open_page(P_CONTROLS);
+      else if (row == 6) open_page(P_AUDIO);
+      else if (row == 7) { page = P_GRAPHICS; cw_quality_menu_open(); }
     }
     break;
   case P_CONTROLS:
-    if (ok || back) back_up(4, 2);
+    if (ok || back) back_up(5, 2);
     break;
   case P_AUDIO:
     if (row == 0 && dx) { music = music + dx < 0 ? 0 : music + dx > 10 ? 10 : music + dx; apply_audio(); store(); }
@@ -191,7 +195,7 @@ void menu_tick(float dt) {
       cw_text_backdrop_set((cw_text_backdrop)(ok ? (b + 1) % 3 : b + dx < 0 ? 0 : b + dx > 2 ? 2 : b + dx));
       store();
     }
-    if ((ok && row == 4) || back) back_up(5, 3);
+    if ((ok && row == 4) || back) back_up(6, 3);
     break;
   case P_PAUSE:
     if (back) { page = P_NONE; break; }
@@ -360,14 +364,14 @@ void menu_draw(void) {
     y = fmaxf(y, top + 24 * u);
     char course[48];
     snprintf(course, sizeof course, "%s", g_mode == MODE_CHAMPIONSHIP ? "All, in turn" : DEF->name);
-    const row_def r[7] = { { "Start", NULL }, { "Mode", MODES[g_mode] }, { "Course", course }, { "Difficulty", DIFF[g_difficulty] }, { "Controls", NULL }, { "Audio and text", NULL }, { "Graphics", NULL } };
+    const row_def r[8] = { { "Start", NULL }, { "Mode", MODES[g_mode] }, { "Course", course }, { "Difficulty", DIFF[g_difficulty] }, { "Craft", CRAFTS[g_craft] }, { "Controls", NULL }, { "Audio and text", NULL }, { "Graphics", NULL } };
     static const char *const parts[3] = { "{ui_up|ui_down} choose", "{ui_left|ui_right} change", "{ui_accept} accept" };
     float hs = 28 * u, ht = hint(parts, 3, px, w - px - margin, h - 40 * u, hs, dim);
-    float pw = row_width(r, 7, 560 * u, max_w), x = px + pw > w - margin ? w - margin - pw : px;
+    float pw = row_width(r, 8, 560 * u, max_w), x = px + pw > w - margin ? w - margin - pw : px;
     float best_h = 0;
     bool show_best = g_mode == MODE_TIME_TRIAL && best[G.level] > 0;
     if (show_best) best_h = measure(small, "Best", 30 * u).height + 4 * u;
-    float end = rows_draw(x, y, ht - 20 * u - best_h, pw, r, 7, row);
+    float end = rows_draw(x, y, ht - 20 * u - best_h, pw, r, 8, row);
     if (show_best) {
       char pre[48];
       snprintf(pre, sizeof pre, "Best on %s: ", DEF->name);
@@ -377,11 +381,16 @@ void menu_draw(void) {
     break;
   }
   case P_CONTROLS: {
-    static const char *const L[][2] = { { "Steer and lean", "{steer_left|steer_right}" }, { "Throttle", "{throttle}" }, { "Lean back: tighter carve", "{lean_back}" }, { "Lean back, then throw forward at a crest", "Jump higher" }, { "In the air: barrel roll", "{trick}" }, { "In the air, stick back: back flip", "{lean_back} + {trick}" }, { "Pause", "{race_pause}" } };
-    static const char *const FOOT = "Pass each buoy on the side its arrow shows: five in a row is your top speed. A miss loses them all.";
+    /* the page for the craft chosen: the stand-up's tricks are its own */
+    enum { NL = 8 };
+    static const char *const LS[2][NL][2] = {
+      { { "Steer and lean", "{steer_left|steer_right}" }, { "Throttle", "{throttle}" }, { "Lean back: tighter carve", "{lean_back}" }, { "Lean back, then throw forward at a crest", "Jump higher" }, { "In the air: barrel roll", "{trick}" }, { "In the air, stick back or forward: flips", "{lean_back|lean_fwd} + {trick}" }, { "In the air: kick out", "{kick}" }, { "Pause", "{race_pause}" } },
+      { { "Steer and lean: carve it tight", "{steer_left|steer_right}" }, { "Throttle: it planes at speed", "{throttle}" }, { "On the water: submarine", "{trick}" }, { "On the water: pole stand", "{kick}" }, { "In the air: barrel roll", "{trick}" }, { "In the air, stick back: back flip", "{lean_back} + {trick}" }, { "In the air, stick forward: flat spin", "{lean_fwd} + {trick}" }, { "In the air: superman", "{kick}" } } };
+    const char *const (*L)[2] = LS[g_craft];
+    const char *FOOT = g_craft == CRAFT_STAND ? "Stand-up: quick and tight, slower on the straights, and easy to fall off. Pass each buoy on the side its arrow shows." : "Pass each buoy on the side its arrow shows: five in a row is your top speed. A miss loses them all.";
     float ts = 34 * u, k = cw_text_drawn_size(small, ts) / ts, pad = 26 * u * k, lh = measure(small, "Ag", ts).height;
     float lw = 0, vw = 0, vh = lh;
-    for (int i = 0; i < 7; i++) { lw = fmaxf(lw, measure(small, L[i][0], ts).width); cw_vec2 v = cw_prompt_text_size(small, L[i][1], -1, ts); vw = fmaxf(vw, v.x); vh = fmaxf(vh, v.y); }
+    for (int i = 0; i < NL; i++) { lw = fmaxf(lw, measure(small, L[i][0], ts).width); cw_vec2 v = cw_prompt_text_size(small, L[i][1], -1, ts); vw = fmaxf(vw, v.x); vh = fmaxf(vh, v.y); }
     float pw = fmaxf(980 * u, pad * 2 + lw + 40 * u * k + vw);
     bool two_lines = pw > max_w; /* too narrow for a label and its control side by side: the control goes under its label */
     if (two_lines) pw = max_w;
@@ -390,16 +399,16 @@ void menu_draw(void) {
     fs.wrap_width = pw - pad * 2;
     float foot_h = cw_font_measure(small, FOOT, &fs).height;
     /* taller than the screen: the rows close up (the font's line box has room to spare), never below the glyphs' own height */
-    { float rest = 20 * u * k + 7 * row2 + 10 * u * k + foot_h + 24 * u * k, room = (h - 2 * margin - rest) / 7;
+    { float rest = 20 * u * k + NL * row2 + 10 * u * k + foot_h + 24 * u * k, room = (h - 2 * margin - rest) / NL;
       if (step > room) step = fmaxf(room, fmaxf(lh * 0.8f, vh)); }
-    float ph = 20 * u * k + 7 * (step + row2) + 10 * u * k + foot_h + 24 * u * k;
+    float ph = 20 * u * k + NL * (step + row2) + 10 * u * k + foot_h + 24 * u * k;
     float x = px + pw > w - margin ? w - margin - pw : px;
     float py = fminf(y, h - margin - ph);
     if (py < margin) py = margin;
     if (attract && py >= title(px, h, u, false) + 12 * u) title(px, h, u, true);
     cw_r2d_round_rect(cw_rect_make(x, py, pw, ph), 10 * u, 8, cw_rgba(0.03f, 0.07f, 0.11f, 0.72f));
     float ry = py + 20 * u * k;
-    for (int i = 0; i < 7; i++) {
+    for (int i = 0; i < NL; i++) {
       text(small, L[i][0], x + pad, ry, ts, white, 0);
       ptext(small, L[i][1], x + pw - pad, two_lines ? ry + lh : ry, ts, cw_rgba(1.0f, 0.78f, 0.3f, 1), 1);
       ry += step + row2;

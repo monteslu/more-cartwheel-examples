@@ -235,6 +235,12 @@ static void cmd_switch(int argc, const char **argv, cw_reply *r) {
       c->vx = tx * 25, c->vz = tz * 25;
     }
     else if (!strcmp(argv[1], "dive")) g_dive_on = (int)v;
+    else if (!strcmp(argv[1], "stand_hips")) g_stand_hips = v;
+    else if (!strcmp(argv[1], "stand_old")) g_stand_old = (int)v;
+    else if (!strcmp(argv[1], "screen_clear")) g_screen[0] = g_screen[1] = 1e9f, g_screen[2] = 0;
+    else if (!strcmp(argv[1], "cam_jitter")) { extern int g_cam_jitter; g_cam_jitter = (int)v; }
+    else if (!strcmp(argv[1], "cam_acc_clear")) { extern float g_cam_acc_max; extern int32_t g_cam_flips, g_cam_ticks; g_cam_acc_max = 0, g_cam_flips = g_cam_ticks = 0; }
+    else if (!strcmp(argv[1], "ground_clear")) { extern float g_hull_hi, g_hull_lo, g_foot_gap_max, g_hands_gap_max; extern int32_t g_hull_ticks, g_pose_frames; g_hull_hi = -1e9f, g_hull_lo = 1e9f, g_hull_ticks = 0, g_foot_gap_max = g_hands_gap_max = 0, g_pose_frames = 0; }
     else if (!strcmp(argv[1], "trick_guard")) g_trick_guard = (int)v;
     else if (!strcmp(argv[1], "autosteer")) g_autosteer = (int)v;
     else if (!strcmp(argv[1], "audio_old")) { extern int g_audio_old; g_audio_old = (int)v; }
@@ -324,6 +330,40 @@ static void cmd_ramp_where(int argc, const char **argv, cw_reply *r) {
   cw_sincos(G.ramp_yaw[q], &sy, &cy);
   if (r) cw_reply_printf(r, "{\"n\":%d,\"x\":%.2f,\"z\":%.2f,\"top\":%.2f,\"sy\":%.3f,\"cy\":%.3f}", RAMPS, G.ramp_x[q], G.ramp_z[q], DEF->ramp_top, sy, cy);
 }
+/* trial [swell]: the human alone at rest on open water (no land within 160 m around, 260 m clear ahead), the sea held calm,
+ * the race running, its handling measures cleared: the craft gate's start (tests/jetski-standup.mjs) */
+int g_trial;
+float g_tr[8]; /* top speed on the straight, the clock at the first throttle, the turn's distance and heading change at full lock, its radius, its speed, the time to plane, turned yet */
+static void cmd_trial(int argc, const char **argv, cw_reply *r) {
+  menu_off();
+  g_mode = MODE_TIME_TRIAL, g_no_dq = 1;
+  g_swell_hold = argc > 1 ? (float)atof(argv[1]) : 0.05f;
+  sim_reset(RACE_ON);
+  int at = -1;
+  for (int i = 0; i < TRACK_N && at < 0; i += 2) {
+    float x = TRACK[i][0], z = TRACK[i][1], dx = TRACK[i][2], dz = TRACK[i][3];
+    bool ok = true;
+    for (int k = 0; k < 24 && ok; k++) { float s, c; cw_sincos((float)k * TAU / 24.0f, &s, &c); for (float d = 10; d <= 160 && ok; d += 15) if (ground_at(x + s * d, z + c * d) > -3.0f) ok = false; }
+    for (float d = 10; d <= 260 && ok; d += 10) if (ground_at(x + dx * d, z + dz * d) > -3.0f) ok = false;
+    if (ok) at = i;
+  }
+  if (at < 0) { cw_reply_error(r, "no open water on this course"); return; }
+  craft *c = &G.c[0];
+  c->x = c->px = TRACK[at][0], c->z = c->pz = TRACK[at][1];
+  c->y = c->py = cw_water_height_at(G.water, c->x, c->z, cw_water_time(G.water));
+  c->yaw = c->pyaw = cw_atan2(TRACK[at][2], TRACK[at][3]);
+  c->vx = c->vy = c->vz = 0, c->track_i = at, c->meter = 5;
+  G.clock = 0.001f;
+  G.cam[0] = 0, G.look[0] = 0;
+  g_trial = 1;
+  memset(g_tr, 0, sizeof g_tr);
+  if (r) cw_reply_printf(r, "{\"at\":%d}", at);
+}
+/* craft <0 sit-down, 1 stand-up>: every racer on that craft (not saved: the menu's choice is the player's) */
+static void cmd_craft(int argc, const char **argv, cw_reply *r) {
+  if (argc > 1) g_craft = atoi(argv[1]) ? CRAFT_STAND : CRAFT_SIT;
+  if (r) cw_reply_printf(r, "{\"craft\":%d}", g_craft);
+}
 /* mode <0 championship, 1 time trial> */
 static void cmd_mode(int argc, const char **argv, cw_reply *r) {
   if (argc > 1) g_mode = atoi(argv[1]) ? MODE_TIME_TRIAL : MODE_CHAMPIONSHIP;
@@ -357,6 +397,7 @@ static void init(void *user) {
 #ifdef JETSKI_AUTOPILOT
   menu_off();
   { const char *lv = getenv("JETSKI_LEVEL"); if (lv) menu_course(atoi(lv)); } /* the gates' run on another course */
+  { const char *cr = getenv("JETSKI_CRAFT"); if (cr) g_craft = atoi(cr) ? CRAFT_STAND : CRAFT_SIT; }
 #endif
   if (getenv("JETSKI_SMALL")) { /* sim checks: nothing costly on the software rasteriser */
     cw_node_set(G.water, "reflection", cw_val_bool(false));
@@ -389,6 +430,28 @@ static void init(void *user) {
   cw_debug_i32("p0.shortcuts", &G.c[0].shortcuts);
   cw_debug_i32("p0.shut_hits", &G.c[0].shut_hits);
   cw_debug_i32("race.mode", &g_mode);
+  cw_debug_i32("race.craft", &g_craft);
+  cw_debug_command("craft", "craft <0 sit-down, 1 stand-up>: every racer on that craft", cmd_craft);
+  cw_debug_command("trial", "trial [swell]: the human alone at rest on open water, the handling measures cleared", cmd_trial);
+  cw_debug_f32_array("trial", g_tr, 8);
+  { extern float g_cam_acc_max; extern int32_t g_cam_flips, g_cam_ticks; cw_debug_f32("cam.acc_max", &g_cam_acc_max); cw_debug_i32("cam.flips", &g_cam_flips); cw_debug_i32("cam.ticks", &g_cam_ticks); }
+  cw_debug_f32("p0.plane", &G.c[0].plane);
+  cw_debug_f32("p0.plane_at", &G.c[0].plane_at);
+  cw_debug_f32("p0.top", &G.c[0].top);
+  cw_debug_f32("p0.roll", &G.c[0].roll);
+  cw_debug_f32("p0.pole_t", &G.c[0].pole_t);
+  cw_debug_i32("p0.subs", &G.c[0].subs);
+  cw_debug_i32("p0.spins", &G.c[0].spins);
+  cw_debug_i32("p0.supers", &G.c[0].supers);
+  cw_debug_i32("p0.poles", &G.c[0].poles);
+  { extern float g_hull_hi, g_hull_lo, g_foot_gap_max, g_hands_gap_max; extern int32_t g_hull_ticks, g_pose_frames;
+    cw_debug_f32("ground.hull_hi", &g_hull_hi); cw_debug_f32("ground.hull_lo", &g_hull_lo); cw_debug_i32("ground.hull_ticks", &g_hull_ticks);
+    cw_debug_f32("ground.foot_gap", &g_foot_gap_max); cw_debug_f32("ground.hands_gap", &g_hands_gap_max); cw_debug_i32("ground.pose_frames", &g_pose_frames); }
+  cw_debug_f32("rider.pole", &rider_pole[0]);
+  cw_debug_f32_array("stand.pose", g_pose, 4);
+  cw_debug_f32_array("stand.screen", g_screen, 6);
+  cw_debug_f32("rider.stand", &rider_stand[0]);
+  cw_debug_f32("p0.finish", &G.c[0].finish);
   cw_debug_i32("race.difficulty", &g_difficulty);
   cw_debug_i32("cam.attract_under", &G.attract_under);
   cw_debug_i32("cam.attract_land", &G.attract_land);

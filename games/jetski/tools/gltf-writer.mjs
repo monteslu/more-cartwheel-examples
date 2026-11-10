@@ -42,6 +42,16 @@ export class Glb {
     this.texCache.set(key, this.textures.length - 1);
     return this.textures.length - 1;
   }
+  /** embed PNG bytes made in memory (a decal, a number plate); returns a texture index */
+  texBytes(name, bytes, clamp = false) {
+    const pad = (4 - (this.size % 4)) % 4;
+    if (pad) { this.chunks.push(new Uint8Array(pad)); this.size += pad; }
+    this.views.push({ buffer: 0, byteOffset: this.size, byteLength: bytes.length });
+    this.chunks.push(bytes); this.size += bytes.length;
+    this.images.push({ bufferView: this.views.length - 1, mimeType: 'image/png', name });
+    this.textures.push({ source: this.images.length - 1, sampler: clamp ? 1 : 0 });
+    return this.textures.length - 1;
+  }
   /** a PBR material from a texture set written by make-textures (dir/name_c.png, _n, _orm, _e) */
   pbr(name, dir, set, o = {}) {
     const m = { name, pbrMetallicRoughness: { baseColorFactor: [...(o.tint || [1, 1, 1]), o.alpha ?? 1], roughnessFactor: o.rough ?? 1, metallicFactor: o.metal ?? (set ? 1 : 0) } };

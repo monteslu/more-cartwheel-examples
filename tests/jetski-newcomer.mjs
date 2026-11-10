@@ -6,7 +6,9 @@
 // idea of where to aim wanders by up to 7 % of the screen's width and jitters every look (aim error), and it holds a
 // turn a beat too long now and then (over-steer).
 // Control, which must fail: the same throttle with the d-pad never touched (a player who does not read the marks).
-//   node tests/jetski-newcomer.mjs [--gl] [--webgpu] [--cart <path>]
+// --craft stand picks the stand-up on the title menu first (Craft row, by the pad); --finish races the whole of the first
+// course, three laps, and asks that it is finished (the control then runs until its race is over too).
+//   node tests/jetski-newcomer.mjs [--gl] [--webgpu] [--cart <path>] [--craft stand] [--finish]
 import { mkdirSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,6 +18,7 @@ const SESSION = process.env.JETSKI_SESSION || 'jetski-newcomer', AGENT = process
 const arg = (n, d) => { const i = process.argv.indexOf(n); return i > 0 ? process.argv[i + 1] : d; };
 const CART = resolve(arg('--cart', join(ROOT, 'build/cart-wgpu/carts/jetski.wasc')));
 const BACKENDS = process.argv.includes('--gl') ? ['gl'] : process.argv.includes('--webgpu') ? ['webgpu'] : ['gl', 'webgpu'];
+const STAND = arg('--craft', 'sit') === 'stand', FINISH = process.argv.includes('--finish');
 mkdirSync(OUT, { recursive: true });
 const H = { 'Content-Type': 'application/json', 'x-romdev-session': SESSION, 'x-romdev-agent': AGENT };
 // every exit tears this session's romdev host down, a failed run too
@@ -38,7 +41,7 @@ const step = (frames) => tool('frame', { op: 'step', frames });
 const pad = (p) => tool('input', { op: 'set', ports: [p] });
 /* ranges, not loops: the pad held for a stretch of frames and those frames stepped, in one request */
 const hold = (frames, p) => tool('input', { op: 'sequence', steps: [{ input: { ports: [p] }, frames }] });
-const W = 1920, RACE_ON = 2, SECONDS = 45, EVERY = 9; /* a decision every 9 frames (150 ms) */
+const W = 1920, RACE_ON = 2, RACE_DONE = 3, SECONDS = FINISH ? 480 : 45, EVERY = 9; /* a decision every 9 frames (150 ms) */
 /* one decision is one read (nc.look: the next mark on screen, its chevron, the speed) and one request that holds the pad
    for the frames to the next decision and steps them */
 const act = (p, frames) => tool('input', { op: 'sequence', steps: [{ input: { ports: [p] }, frames }] });
@@ -50,13 +53,17 @@ async function run(backend, steer) {
   if (!l.loaded) { console.error(JSON.stringify(l).slice(0, 300)); await bye(3); }
   await step(180);
   const page0 = +(await rd('menu.page'));
+  /* the stand-up: down to the Craft row, right to change it, back up to Start, all by the pad as the menu shows */
+  if (STAND) for (const b of ['down', 'down', 'down', 'down', 'right', 'up', 'up', 'up', 'up']) { await hold(4, { [b]: true }); await hold(6, {}); }
+  const craft = +(await rd('race.craft'));
   await hold(4, { south: true }); await hold(20, {});            /* the menu's first row: race */
   for (let f = 0; f < 400 && +(await rd('race.state')) !== RACE_ON; f += 10) await step(10); /* the countdown, hands off */
   const state = +(await rd('race.state'));
-  let topSpeed = 0, frames = 0, seed = 0x1234567, drift = 0, hold = 0, held = null;
+  let topSpeed = 0, frames = 0, seed = 0x1234567, drift = 0, over = 0, held = null;
   const rand = () => ((seed = (seed * 1103515245 + 12345) >>> 0) / 4294967296);
   const seen = []; /* what the screen showed, oldest first */
   while (frames < SECONDS * 60) {
+    if (FINISH && frames % 600 === 0 && +(await rd('race.state')) === RACE_DONE) break; /* over the line, or out */
     const look = (await rd('nc.look')).map(Number), b = look.slice(0, 4), way = look[4];
     topSpeed = Math.max(topSpeed, look[5]);
     seen.push({ b, way });
@@ -68,17 +75,17 @@ async function run(backend, steer) {
     const x = +ob[0] + oway * Math.min(W * 0.3, 1.3 * Math.max(0, +ob[3] - +ob[1])) + W * (drift + (rand() - 0.5) * 0.03);
     const p = { south: true };
     if (steer) {
-      if (hold > 0 && held) { Object.assign(p, held); hold--; } /* a turn held a beat too long */
+      if (over > 0 && held) { Object.assign(p, held); over--; } /* a turn held a beat too long */
       else if (!front) p.right = true;                 /* the mark is behind: turn round */
       else if (x < W * 0.46) p.left = true;
       else if (x > W * 0.54) p.right = true;
-      if ((p.left || p.right) && hold === 0 && rand() < 0.08) { held = { left: p.left, right: p.right }; hold = 2; }
+      if ((p.left || p.right) && over === 0 && rand() < 0.08) { held = { left: p.left, right: p.right }; over = 2; }
     }
     await act(p, EVERY); frames += EVERY;
   }
-  await tool('frame', { op: 'stepAndShot', frames: 1, path: join(OUT, `${backend}-${steer ? 'newcomer' : 'control'}.png`) });
+  await tool('frame', { op: 'stepAndShot', frames: 1, path: join(OUT, `${backend}-${STAND ? 'stand-' : ''}${steer ? 'newcomer' : 'control'}.png`) });
   await pad({});
-  const r = { page0, state, passes: +(await rd('p0.passes')), misses: +(await rd('p0.misses')), spills: +(await rd('p0.spills')), top: topSpeed };
+  const r = { page0, state, craft, passes: +(await rd('p0.passes')), misses: +(await rd('p0.misses')), spills: +(await rd('p0.spills')), top: topSpeed, finish: +(await rd('p0.finish')), dq: +(await rd('p0.dq')), place: +(await rd('p0.place')), frames };
   await tool('host', { op: 'shutdown' });
   return r;
 }
@@ -87,11 +94,13 @@ for (const backend of BACKENDS) {
   console.log(`--- ${backend}`);
   const n = await run(backend, true);
   check('power-on opens the menu, A starts the race', n.page0 === 1 && n.state === RACE_ON, `menu page ${n.page0}, race state ${n.state} after the countdown`);
+  check('the craft the menu shows is the one raced', n.craft === (STAND ? 1 : 0), `craft ${n.craft}`);
+  if (FINISH) check('the newcomer finishes the first course, three laps', n.finish > 0 && !n.dq, `finished in ${n.finish.toFixed(1)} s, place ${n.place}, ${n.passes} marks passed, ${n.misses} missed, ${n.spills} spills`);
   check('steering by the marks on screen, the newcomer races the course', n.passes >= 6 && n.misses <= 1 && n.top > 15,
     `${n.passes} marks passed, ${n.misses} missed, ${n.spills} spills, top ${n.top.toFixed(1)} m/s in ${SECONDS} s`);
   const c = await run(backend, false);
-  check('control: the d-pad never touched, the marks are not raced', c.passes < n.passes / 2 || c.misses >= 2,
-    `${c.passes} marks passed, ${c.misses} missed`);
+  check('control: the d-pad never touched, the marks are not raced', (c.passes < n.passes / 2 || c.misses >= 2) && (!FINISH || !(c.finish > 0 && !c.dq)),
+    `${c.passes} marks passed, ${c.misses} missed${FINISH ? `, finish ${c.finish.toFixed(1)}, out ${c.dq}` : ''}`);
 }
 console.log(`romdev requests: ${requests}`);
 console.log(fail ? `${fail} FAILED` : 'all ok');
