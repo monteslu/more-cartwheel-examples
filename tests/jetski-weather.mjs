@@ -97,8 +97,8 @@ for (const backend of BACKENDS) {
     R.check(`${backend} control: event_amp 0 lifts nothing`, !(lifted(c) >= 5), `up to ${c.surf.map(f2).join(' ')} m`);
   }
   if (ONLY.includes(5)) {
-    const stunt = async (tricks) => {
-      await fresh(backend, ['mode 2', 'course 0', 'weather 1', 'race', 'wxsw event 0']);
+    const stunt = async (tricks, craft = 0) => {
+      await fresh(backend, [`craft ${craft}`, 'mode 2', 'course 0', 'weather 1', 'race', 'wxsw event 0']);
       await R.run(240, [[0, 240, TH]]);
       /* three ramps one after another, each ridden at speed: the trick button tapped all the way (a press on the water does nothing) */
       for (let k = 0; k < 3; k++) {
@@ -113,6 +113,8 @@ for (const backend of BACKENDS) {
     const s = await stunt(true), c = await stunt(false);
     R.check(`${backend} stunt mode scores a combo`, s.combos >= 1 && s.score > 0, JSON.stringify(s));
     R.check(`${backend} control: no tricks, no combo`, !(c.combos >= 1), JSON.stringify(c));
+    const st = await stunt(true, 1);
+    R.check(`${backend} and on the stand-up`, st.combos >= 1 && st.score > 0, JSON.stringify(st));
   }
   if (ONLY.includes(6)) {
     const risk = async (on) => {
