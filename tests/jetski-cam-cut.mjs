@@ -27,7 +27,7 @@ async function nextRaces(cut) {
     for (let t = 0; t < 12 && +(await rd('race.level')) === lv0; t++) { await call('input', { op: 'press', button: 'south', frames: 3 }); for (let q = 0; q < 12 && +(await rd('race.level')) === lv0; q++) await call('frame', { op: 'step', frames: 1 }); }
     // how far the camera is from the craft the moment the next course's race is up
     let g = -1;
-    for (let t = 0; t < 40 && g < 0; t++) { if (+(await rd('race.state')) === 1) g = await gap(); else await call('frame', { op: 'step', frames: 1 }); }
+    for (let t = 0; t < 40 && g < 0; t++) { if (+(await rd('race.state')) === 1) g = await gap(); else await call('frame', { op: 'step', frames: 6 }); /* ranges: 6 frames a look */ }
     await call('frame', { op: 'step', frames: 6 });
     seen.push({ level: +(await rd('race.level')), state: +(await rd('race.state')), under: +(await rd('cam.drawn_under')) - before, gap: +g.toFixed(1) });
   }

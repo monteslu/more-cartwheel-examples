@@ -9,6 +9,11 @@ import { mkdirSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readCourse, COURSE_IDS } from '../games/jetski/tools/course-read.mjs';
+// Not ranged yet: this check samples the craft every frame through romdev (a request or more a frame), which floods the
+// shared server. It stays off until the game keeps what it measures in its own debug fields (the lowest point, the turns,
+// the words' frames) and the check reads them once after a ranged run. CHECK_PER_FRAME=1 runs it anyway, on a romdev of
+// your own only.
+if (!process.env.CHECK_PER_FRAME) { console.error(`${process.argv[1]}: steps romdev a frame at a time; not run (see the note at the top)`); process.exit(2); }
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..'), SESSION = process.env.JETSKI_SESSION || 'jetski-air', OUT = join(ROOT, 'out/air-gate');
 const arg = (n, d) => { const i = process.argv.indexOf(n); return i > 0 ? process.argv[i + 1] : d; };
 const CART = resolve(arg('--cart', join(ROOT, 'build/cart-wgpu/carts/jetski.wasc'))), BACKENDS = process.argv.includes('--gl') ? ['gl'] : process.argv.includes('--webgpu') ? ['webgpu'] : ['gl', 'webgpu'];

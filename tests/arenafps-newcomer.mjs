@@ -46,10 +46,12 @@ const rd = async (n) => { const v = await tool('wasm', { op: 'read', name: n });
 const one = async (n) => { const v = await rd(n); return Array.isArray(v) ? +v[0] : +v; };
 const step = (frames) => tool('frame', { op: 'step', frames });
 const pads = (p0 = {}) => tool('input', { op: 'set', ports: [p0] });
+/* ranges, not loops: the pad held for a stretch of frames and those frames stepped, in one request */
+const hold = (frames, p0 = {}) => tool('input', { op: 'sequence', steps: [{ input: { ports: [p0] }, frames }] });
 /* one decision is one request: the input held for the frames until the next decision, stepped in the same call */
 const EVERY = 12; /* a decision every 12 frames (200 ms) */
 const act = (p0, frames, hold = frames) => tool('input', { op: 'sequence', steps: hold < frames ? [{ input: { ports: [p0] }, frames: hold }, { input: { ports: [{}] }, frames: frames - hold }] : [{ input: { ports: [p0] }, frames }] });
-const press = async (b) => { await pads({ [b]: true }); await step(4); await pads(); await step(14); };
+const press = async (b) => { await hold(4, { [b]: true }); await hold(14); };
 let fail = 0;
 const check = (name, ok, detail) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}: ${detail}`); if (!ok) fail++; };
 const wrap = (a) => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; };
@@ -70,7 +72,7 @@ async function run(backend, tag, pre) {
   await press('start'); await step(40);  /* on to the setup panel */
   const r = { state0: await one('game.state'), mode: await one('game.mode'), arena: await one('game.arena'), turned: 0, fired: 0, stuck_turns: 0, paused: 0, resumed: 0 };
   /* the setup panel: its prompt says fire or Start to begin */
-  for (let i = 0; i < 6 && await one('game.state') !== 1; i++) { await pads({ r: true, axes: { rt: 1 } }); await step(4); await pads(); await step(20); }
+  for (let i = 0; i < 6 && await one('game.state') !== 1; i++) { await hold(4, { r: true, axes: { rt: 1 } }); await hold(20); }
   r.started = await one('game.state') === 1;
   let f = 0, last = null, still = 0, turn = 0, pauseDone = false, ended = -1;
   let tgt = -1, seen = 0, offY = 0, offP = 0;

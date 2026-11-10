@@ -32,7 +32,9 @@ const tool = async (name, args) => {
 const rd = async (n) => { const v = await tool('wasm', { op: 'read', name: n }); return v.values ?? v.value; };
 const step = (frames) => tool('frame', { op: 'step', frames });
 const pads = (p0, p1 = {}) => tool('input', { op: 'set', ports: [p0, p1] });
-const press = async (port, b) => { const a = [{}, {}]; a[port] = { [b]: true }; await pads(...a); await step(4); await pads({}, {}); await step(8); };
+/* ranges, not loops: the pad held for a stretch of frames and those frames stepped, in one request */
+const hold = (frames, p0, p1 = {}) => tool('input', { op: 'sequence', steps: [{ input: { ports: [p0, p1] }, frames }] });
+const press = async (port, b) => { const a = [{}, {}]; a[port] = { [b]: true }; await hold(4, ...a); await hold(8, {}, {}); };
 let fail = 0;
 const check = (name, ok, detail) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}: ${detail}`); if (!ok) fail++; };
 const WAIT = 60 * 20; /* player 1 waits this long after being ready (the idle seat's countdown is 6 s) */

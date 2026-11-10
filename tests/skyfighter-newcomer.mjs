@@ -41,6 +41,8 @@ const tool = async (name, args) => {
 const rd = async (n) => { const v = await tool('wasm', { op: 'read', name: n }); return v.values ?? v.value; };
 const step = (frames) => tool('frame', { op: 'step', frames });
 const pad = (p) => tool('input', { op: 'set', ports: [p] });
+/* ranges, not loops: the pad held for a stretch of frames and those frames stepped, in one request */
+const hold = (frames, p) => tool('input', { op: 'sequence', steps: [{ input: { ports: [p] }, frames }] });
 const PLAY = 1, WIN = 3, LOST = 4, /* (the win is read as the goal's count too: a held A on the results screen moves on) */ EVERY = 9, DELAY = 2; /* a look every 9 frames (150 ms); the pilot acts on the look 2 back (0.3 s) */
 /* one decision is one read (hud.cues) and one request that holds the stick for the frames to the next decision and steps
    them; the mission's state and goal are read every 3 s */
@@ -56,11 +58,11 @@ async function sortie(backend, mission, seconds, done, fly, cmds = [], tag = '')
   await step(120);
   const trace = [];
   /* the title's grid: back to the first tile, then right and down to the mission, then A */
-  for (let k = 0; k < 4; k++) { await pad({ up: true }); await step(4); await pad({}); await step(6); await pad({ left: true }); await step(4); await pad({}); await step(6); }
-  for (let k = 0; k < mission % 4; k++) { await pad({ right: true }); await step(4); await pad({}); await step(6); }
-  if (mission >= 4) { await pad({ down: true }); await step(4); await pad({}); await step(6); }
+  for (let k = 0; k < 4; k++) { await hold(4, { up: true }); await hold(6, {}); await hold(4, { left: true }); await hold(6, {}); }
+  for (let k = 0; k < mission % 4; k++) { await hold(4, { right: true }); await hold(6, {}); }
+  if (mission >= 4) { await hold(4, { down: true }); await hold(6, {}); }
   const picked = +(await rd('mission.level'));
-  await pad({ south: true }); await step(4); await pad({}); await step(30);
+  await hold(4, { south: true }); await hold(30, {});
   const started = +(await rd('mission.state'));
   let climb = 0, seed = 0x9e3779b9 ^ mission, driftX = 0, driftY = 0, over = 0, overX = 0, overY = 0, lastMissile = -999, lastFlare = -999;
   const rand = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);

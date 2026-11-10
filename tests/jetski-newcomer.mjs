@@ -36,6 +36,8 @@ const tool = async (name, args) => {
 const rd = async (n) => { const v = await tool('wasm', { op: 'read', name: n }); return v.values ?? v.value; };
 const step = (frames) => tool('frame', { op: 'step', frames });
 const pad = (p) => tool('input', { op: 'set', ports: [p] });
+/* ranges, not loops: the pad held for a stretch of frames and those frames stepped, in one request */
+const hold = (frames, p) => tool('input', { op: 'sequence', steps: [{ input: { ports: [p] }, frames }] });
 const W = 1920, RACE_ON = 2, SECONDS = 45, EVERY = 9; /* a decision every 9 frames (150 ms) */
 /* one decision is one read (nc.look: the next mark on screen, its chevron, the speed) and one request that holds the pad
    for the frames to the next decision and steps them */
@@ -48,7 +50,7 @@ async function run(backend, steer) {
   if (!l.loaded) { console.error(JSON.stringify(l).slice(0, 300)); await bye(3); }
   await step(180);
   const page0 = +(await rd('menu.page'));
-  await pad({ south: true }); await step(4); await pad({}); await step(20);            /* the menu's first row: race */
+  await hold(4, { south: true }); await hold(20, {});            /* the menu's first row: race */
   for (let f = 0; f < 400 && +(await rd('race.state')) !== RACE_ON; f += 10) await step(10); /* the countdown, hands off */
   const state = +(await rd('race.state'));
   let topSpeed = 0, frames = 0, seed = 0x1234567, drift = 0, hold = 0, held = null;

@@ -29,7 +29,10 @@ const tool = async (name, args) => {
 const rd = async (n) => { const v = await tool('wasm', { op: 'read', name: n }); return v.values ?? v.value; };
 const step = (frames) => tool('frame', { op: 'step', frames });
 const pad = (p) => tool('input', { op: 'set', ports: [p] });
-const press = async (b) => { await pad({ [b]: true }); await step(3); await pad({}); await step(6); };
+/* ranges, not loops: the pad held for a stretch of frames and those frames stepped, in one request */
+const dbg = async () => { const v = await tool('wasm', { op: 'debugState' }), o = {}; for (const f of v.fields) o[f.name] = f.values ?? f.value; return o; };
+const hold = (frames, p) => tool('input', { op: 'sequence', steps: [{ input: { ports: [p] }, frames }] });
+const press = async (b) => { await hold(3, { [b]: true }); await hold(6, {}); };
 let fail = 0;
 const check = (name, ok, detail) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}: ${detail}`); if (!ok) fail++; };
 
@@ -43,13 +46,12 @@ async function run(backend, tag, pre) {
   while (waited < 60 * 30 && !(first = +(await rd('guide.kind')))) { await step(30); waited += 30; } /* standing: the arrow comes */
   if (first) {
     await tool('frame', { op: 'stepAndShot', frames: 1, path: join(OUT, `${backend}-${tag}-arrow.png`) });
-    for (; frames < 60 * 90 && floor === 1; frames += 4) {
-      const k = +(await rd('guide.kind'));
-      if (k) {
-        const du = (+(await rd('guide.u')) - +(await rd('view.p1u'))) * 16, dv = (+(await rd('guide.v')) - +(await rd('view.p1v'))) * 9, d = Math.hypot(du, dv);
-        await pad(d > 1e-3 ? { axes: { lx: du / d, ly: dv / d } } : {});
-      } else await pad({});
-      await step(4);
+    /* a decision every 8 frames: one read (every debug field at once) and one request that holds the stick and steps */
+    for (; frames < 60 * 90 && floor === 1; frames += 8) {
+      const o = await dbg(), v = (n) => +[].concat(o[n])[0];
+      const k = v('guide.kind');
+      const du = (v('guide.u') - v('view.p1u')) * 16, dv = (v('guide.v') - v('view.p1v')) * 9, d = Math.hypot(du, dv);
+      await hold(8, k && d > 1e-3 ? { axes: { lx: du / d, ly: dv / d } } : {});
       if (+(await rd('game.state')) !== 0) { await pad({}); for (let f = 0; f < 240 && floor === 1; f += 10) { await step(10); floor = +(await rd('game.floor')); } }
     }
   }

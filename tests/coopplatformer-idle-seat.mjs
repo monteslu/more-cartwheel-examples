@@ -36,7 +36,9 @@ const tool = async (name, args) => {
 const rd = async (n) => { const v = await tool('wasm', { op: 'read', name: n }); return v.values ?? v.value; };
 const step = (frames) => tool('frame', { op: 'step', frames });
 const pads = (p0, p1 = {}) => tool('input', { op: 'set', ports: [p0, p1] });
-const press = async (port, b) => { const a = [{}, {}]; a[port] = { [b]: true }; await pads(...a); await step(3); await pads({}, {}); await step(8); };
+/* ranges, not loops: the pad held for a stretch of frames and those frames stepped, in one request */
+const hold = (frames, p0, p1 = {}) => tool('input', { op: 'sequence', steps: [{ input: { ports: [p0, p1] }, frames }] });
+const press = async (port, b) => { const a = [{}, {}]; a[port] = { [b]: true }; await hold(3, ...a); await hold(8, {}, {}); };
 let fail = 0;
 const check = (name, ok, detail) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}: ${detail}`); if (!ok) fail++; };
 
@@ -60,18 +62,18 @@ async function run(backend, tag, idle, pre) {
     if (maxx >= GOAL) break; /* a fall sends player 1 back to the last flag: how far they got is what counts */
     if (x > best + 0.3) best = x, stall = 0; else stall++;
     if (LIPS.some((l) => x > l - 1.2 && x < l + 0.3)) { /* at a lip: a running jump held for height */
-      await pads({ right: true, west: true, south: true }); await step(26);
-      await pads({ right: true, west: true }); await step(20);
+      await hold(26, { right: true, west: true, south: true });
+      await hold(20, { right: true, west: true });
       frames += 46; stall = 0; continue;
     }
     if (stall >= 2) {
-      await pads({ right: true, west: true }); await step(4);
-      await pads({ right: true, west: true, south: true }); await step(22);
-      await pads({ right: true, west: true }); await step(6);
+      await hold(4, { right: true, west: true });
+      await hold(22, { right: true, west: true, south: true });
+      await hold(6, { right: true, west: true });
       frames += 32; stall = 0;
     } else { /* run; in small steps coming up to a lip */
       const n = LIPS.some((l) => x > l - 8 && x < l) ? 2 : 15;
-      await pads({ right: true, west: true }); await step(n); frames += n;
+      await hold(n, { right: true, west: true }); frames += n;
     }
   }
   await pads({}, {});

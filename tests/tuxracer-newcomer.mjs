@@ -53,7 +53,7 @@ const tool = async (name, args) => {
 const rd = async (n) => { const v = await tool('wasm', { op: 'read', name: n }); return v.values ?? v.value; };
 const step = (frames) => tool('frame', { op: 'step', frames });
 const pad = (p) => tool('input', { op: 'set', ports: [p] });
-const press = async (p) => { await pad(p); await step(4); await pad({}); await step(20); };
+const press = (p) => tool('input', { op: 'sequence', steps: [{ input: { ports: [p] }, frames: 4 }, { input: { ports: [{}] }, frames: 20 }] });
 const ST_TITLE = 0, ST_CUP = 2, ST_RACING = 6, ST_RACE_OVER = 8;
 const LOOK = 6, LATE = 18, RACE_S = 180, LIVES = 4; // LATE a multiple of LOOK: the look acted on is three looks old
 let fail = 0;

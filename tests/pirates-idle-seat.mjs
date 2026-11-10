@@ -32,7 +32,9 @@ const tool = async (name, args) => {
 const rd = async (n) => { const v = await tool('wasm', { op: 'read', name: n }); return v.values ?? v.value; };
 const step = (frames) => tool('frame', { op: 'step', frames });
 const pads = (p0, p1 = {}) => tool('input', { op: 'set', ports: [p0, p1] });
-const press = async (port, b) => { const a = [{}, {}]; a[port] = { [b]: true }; await pads(...a); await step(4); await pads({}, {}); await step(8); };
+/* ranges, not loops: the pad held for a stretch of frames and those frames stepped, in one request */
+const hold = (frames, p0, p1 = {}) => tool('input', { op: 'sequence', steps: [{ input: { ports: [p0, p1] }, frames }] });
+const press = async (port, b) => { const a = [{}, {}]; a[port] = { [b]: true }; await hold(4, ...a); await hold(8, {}, {}); };
 let fail = 0;
 const check = (name, ok, detail) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}: ${detail}`); if (!ok) fail++; };
 
@@ -97,7 +99,7 @@ async function run(backend, tag, pre, budget) {
   r.p2Moved = Math.hypot(p2End[0] - p2Start[0], p2End[1] - p2Start[1]) / 100;
   await tool('frame', { op: 'stepAndShot', frames: 1, path: join(OUT, `${backend}-${tag}.png`) });
   /* the idle captain's person comes back: a touch of the stick takes the helm */
-  await pads({}, { axes: { lx: 0.6 } }); await step(6); await pads({}, {}); await step(4);
+  await hold(6, {}, { axes: { lx: 0.6 } }); await hold(4, {}, {});
   r.afterTouch = +(await rd('pirates.autopilot'));
   return r;
 }

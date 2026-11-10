@@ -31,7 +31,9 @@ const rd = async (n) => { const v = await tool('wasm', { op: 'read', name: n });
 const step = (frames) => tool('frame', { op: 'step', frames });
 /* both pads are always sent, so the second stays connected (a pad that goes away frees its seat) */
 const pads = (p0 = {}, p1 = {}) => tool('input', { op: 'set', ports: [p0, p1] });
-const press = async (port, b) => { const a = [{}, {}]; a[port] = { [b]: true }; await pads(...a); await step(4); await pads(); await step(12); };
+/* ranges, not loops: the pad held for a stretch of frames and those frames stepped, in one request */
+const hold = (frames, p0 = {}, p1 = {}) => tool('input', { op: 'sequence', steps: [{ input: { ports: [p0, p1] }, frames }] });
+const press = async (port, b) => { const a = [{}, {}]; a[port] = { [b]: true }; await hold(4, ...a); await hold(12); };
 let fail = 0;
 const check = (name, ok, detail) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}: ${detail}`); if (!ok) fail++; };
 const PLAY = 60 * 90;
@@ -49,7 +51,7 @@ async function run(backend, tag, pre) {
   await press(0, 'down');                  /* the mode row */
   await press(0, 'right'); await press(0, 'right'); /* CO-OP WAVES */
   const mode = +(await rd('game.mode'));
-  for (let i = 0; i < 8 && +(await rd('game.state')) !== 1; i++) { await pads({ r: true }); await step(4); await pads(); await step(20); }
+  for (let i = 0; i < 8 && +(await rd('game.state')) !== 1; i++) { await hold(4, { r: true }); await hold(20); }
   const state = +(await rd('game.state')), players = +(await rd('game.players')), lives0 = +(await rd('match.lives'));
   let shot = false, r = null;
   /* the match as it stands; one that ends (overrun) is read as it stood last, before a press could start the next */

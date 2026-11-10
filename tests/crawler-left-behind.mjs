@@ -29,7 +29,10 @@ const tool = async (name, args) => {
 const rd = async (n) => { const v = await tool('wasm', { op: 'read', name: n }); return v.values ?? v.value; };
 const step = (frames) => tool('frame', { op: 'step', frames });
 const pads = (p0, p1 = {}) => tool('input', { op: 'set', ports: [p0, p1] });
-const press = async (port, b) => { const a = [{}, {}]; a[port] = { [b]: true }; await pads(...a); await step(3); await pads({}, {}); await step(6); };
+/* ranges, not loops: the pad held for a stretch of frames and those frames stepped, in one request */
+const dbg = async () => { const v = await tool('wasm', { op: 'debugState' }), o = {}; for (const f of v.fields) o[f.name] = f.values ?? f.value; return o; };
+const hold = (frames, p0, p1 = {}) => tool('input', { op: 'sequence', steps: [{ input: { ports: [p0, p1] }, frames }] });
+const press = async (port, b) => { const a = [{}, {}]; a[port] = { [b]: true }; await hold(3, ...a); await hold(6, {}, {}); };
 let fail = 0;
 const check = (name, ok, detail) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}: ${detail}`); if (!ok) fail++; };
 
@@ -53,11 +56,12 @@ async function run(backend, tag, idle, pre) {
   const seats = (await rd('player.hp')).filter((h) => h > 0).length;
   let frames = 0, floor = 1;
   for (const [wx, wy] of ROUTE) {
-    for (let f = 0; f < 600; f += 2) {
-      const [tx, ty] = await tile(), dx = wx - tx, dy = wy - ty, d = Math.hypot(dx, dy);
-      if (d < 0.3 || (await rd('game.state')) !== 0) break;
-      await pads({ axes: { lx: dx / d, ly: dy / d } }, {});
-      await step(2); frames += 2;
+    /* a decision every 6 frames (100 ms): one read (every debug field at once) and one request that holds the stick and steps */
+    for (let f = 0; f < 600; f += 6) {
+      const o = await dbg(), tx = [].concat(o['player.x'])[0] / 200 + W / 2 - 0.5, ty = [].concat(o['player.y'])[0] / 200 + H / 2 - 0.5;
+      const dx = wx - tx, dy = wy - ty, d = Math.hypot(dx, dy);
+      if (d < 0.3 || +[].concat(o['game.state'])[0] !== 0) break;
+      await hold(6, { axes: { lx: dx / d, ly: dy / d } }, {}); frames += 6;
     }
     if ((await rd('game.state')) !== 0) break;
   }

@@ -36,7 +36,9 @@ const rd = async (n) => { const v = await tool('wasm', { op: 'read', name: n });
 const step = (frames) => tool('frame', { op: 'step', frames });
 const shot = (name) => tool('frame', { op: 'stepAndShot', frames: 1, path: join(OUT, name + '.png') });
 const pads = (p0, p1 = {}) => tool('input', { op: 'set', ports: [p0, p1] });
-const press = async (b, hold = 4, after = 8) => { await pads({ [b]: true }); await step(hold); await pads({}); await step(after); };
+/* ranges, not loops: the pad held for a stretch of frames and those frames stepped, in one request */
+const hold = (frames, p0, p1 = {}) => tool('input', { op: 'sequence', steps: [{ input: { ports: [p0, p1] }, frames }] });
+const press = async (b, hold = 4, after = 8) => { await hold(hold, { [b]: true }); await hold(after, {}); };
 let fail = 0;
 const check = (name, ok, detail) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}: ${detail}`); if (!ok) fail++; };
 
@@ -68,7 +70,7 @@ async function play(thumbs, limit = 60 * 150) {
     const pos = await rd('sim.pos'), phase = +(await rd('game.phase'));
     if (phase === 1 && fightAt < 0) fightAt = frames;
     const toward = pos[2] > pos[0] ? 'right' : 'left';
-    await pads(thumbs(toward)); await step(4); frames += 4;
+    await hold(4, thumbs(toward)); frames += 4;
     if (first < 0 && fightAt >= 0 && (await rd('sim.hp'))[1] < hp0) first = frames - fightAt;
   }
   await pads({});

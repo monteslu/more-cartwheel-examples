@@ -83,7 +83,7 @@ async function load(gpu) {
   if (r.gpu !== gpu) throw new Error(`the cart runs on ${r.gpu}, not ${gpu}`);
   if (gpu === 'webgpu') pin.check('romdev', r.gpuAdapter && (r.gpuAdapter.device || r.gpuAdapter.description));
   let s = await fields();
-  for (let n = 0; !(s['cw.tick'] > 0) && n < 2000; n++) { await step(1); s = await fields(); }
+  for (let n = 0; !(s['cw.tick'] > 0) && n < 200; n++) { await step(10); s = await fields(); } /* ranges, not loops: 10 frames a look */
   if (!(s['cw.tick'] > 0)) throw new Error('the cart never ticked');
   await step(20);
 }

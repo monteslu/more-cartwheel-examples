@@ -48,6 +48,8 @@ const rd = async (n) => { const v = await tool('wasm', { op: 'read', name: n });
 const cmd = (text) => tool('wasm', { op: 'command', text });
 const step = (frames) => tool('frame', { op: 'step', frames });
 const pad = (p) => tool('input', { op: 'set', ports: [p] });
+/* ranges, not loops: the pad held for a stretch of frames and those frames stepped, in one request */
+const hold = (frames, p) => tool('input', { op: 'sequence', steps: [{ input: { ports: [p] }, frames }] });
 const ST_RACING = 6, ST_RACE_OVER = 8, PAR = 40;
 let fail = 0;
 const check = (name, ok, detail) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}: ${detail}`); if (!ok) fail++; };
@@ -55,7 +57,7 @@ const trick = async () => (await rd('trick')).map(Number);
 
 /** a charged jump (X held a third of a second, let go), holding `air` through the flight; the most yaw and pitch drawn */
 async function jump(air, shot) {
-  await pad({ west: true }); await step(20); await pad(air);
+  await hold(20, { west: true }); await pad(air);
   let yaw = 0, pitch = 0;
   /* the flight in two ranges (the frame for the sheet in between); the cart keeps the flight's most yaw and pitch */
   await step(18);
@@ -63,7 +65,7 @@ async function jump(air, shot) {
   await step(shot ? 71 : 72);
   const t = await trick();
   yaw = Math.abs(t[6]), pitch = Math.abs(t[7]);
-  await pad({}); await step(30);
+  await hold(30, {});
   return { yaw, pitch };
 }
 
@@ -84,7 +86,7 @@ async function run(backend, tricks) {
   await cmd('trick set 200 0'); await jump({}); r.t3 = await trick();
   /* on to the line (placed 3 m before it: holding paddle alone runs him into a tree short of it), then the score */
   await cmd('tp finish 3');
-  for (let f = 0; f < 60 * 20 && +(await rd('game.state')) === ST_RACING; f += 60) { await pad({ south: true }); await step(60); }
+  for (let f = 0; f < 60 * 20 && +(await rd('game.state')) === ST_RACING; f += 60) { await hold(60, { south: true }); }
   await pad({});
   r.state = +(await rd('game.state'));
   r.score = +(await rd('race.score')), r.time = +(await rd('race.time')), r.herring = +(await rd('race.herring'));
