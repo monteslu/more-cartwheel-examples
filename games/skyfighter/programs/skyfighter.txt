@@ -102,3 +102,7 @@ standard+trans+senv+ds+l0201+xcsm
 standard+trans+senv+ds+l0201+xcsm_rim
 standard+senv+ds+l0201+xwaterlow
 standard+map+trans+senv+l0201+xcsm_meshdecal
+standard+map+rep+senv+ds+l0001+xcsm
+standard+map+rep+senv+ds+l0001+xcsm_plain
+standard+map+rep+shadow+senv+ds+l1001
+standard+map+rep+senv+ds+l0001+xcsm_rim

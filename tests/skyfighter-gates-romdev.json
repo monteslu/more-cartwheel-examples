@@ -1,0 +1,64 @@
+[
+  {
+    "name": "skyfighter-sortie-romdev",
+    "app": "skyfighter",
+    "frames": 360,
+    "input": "skyfighter-sortie.json",
+    "controlInput": "skyfighter-sortie-control.json",
+    "maxGt16": 0.06,
+    "fields": [
+      "jet.x",
+      "jet.z",
+      "jet.altitude",
+      "jet.heading",
+      "jet.pitch",
+      "jet.roll",
+      "jet.speed_mps",
+      "mission.elapsed",
+      "boost.active",
+      "defense.incoming"
+    ],
+    "hosts": [
+      "romdev"
+    ],
+    "note": "romdev copy of skyfighter-sortie: the dual cart on GL is the reference, the WebGPU leg against it"
+  },
+  {
+    "name": "skyfighter-crash-romdev",
+    "app": "skyfighter",
+    "frames": 600,
+    "input": "skyfighter-crash.json",
+    "controlInput": "skyfighter-sortie-control.json",
+    "maxGt16": 0.06,
+    "fields": [
+      "crash.age",
+      "cam.offset",
+      "rumble.sent",
+      "cw.rumble"
+    ],
+    "expect": {
+      "cam.offset": [
+        330,
+        0,
+        0
+      ],
+      "rumble.sent": [
+        1,
+        0,
+        1,
+        0
+      ],
+      "cw.rumble": [
+        2,
+        0,
+        1000,
+        700,
+        300
+      ]
+    },
+    "hosts": [
+      "romdev"
+    ],
+    "note": "romdev copy of skyfighter-crash: the dual cart on GL is the reference, the WebGPU leg against it"
+  }
+]

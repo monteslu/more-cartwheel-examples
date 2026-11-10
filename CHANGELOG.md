@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.32.2
+
+- Sky Fighter: the jet painted. The airframe wears a two-tone scheme (a deep slate upper side over a light grey underside, split along the fuselage) with a fin flash and a tail number on each fin, wingtip bands, a dark anti-glare panel ahead of the windscreen and a matte radome; the panel lines of the model show in the paint, in its roughness and in a normal map that sinks them a little; the nozzles are dark steel with the straw, violet and blue heat bands of a hot exhaust toward the lip, glossier than the paint; the canopy is tinted glass with a pilot under it (a helmet with its visor over a flight suit). The bandits wear their own paint: dark umber over grey with red markings and a red nose band, so they read as the other side. The wreck sections carry the same surfaces. The paint is made by `games/skyfighter/tools/build-jet-livery.mjs` from the model as downloaded (in `assets/source-models/`), painted in object space over the model's own UV layout.
+- Sky Fighter: the farmland under Country Fair is pasture and dry meadow in patches a few hundred metres across (a sixth terrain layer, the grass scan graded dry), so the land reads as fields from altitude instead of one green.
+- Sky Fighter: a new cover (the painted jet pulling up over the fair, the title as two lines sized like the other covers'), icon, background and screenshots, rendered from the game through romdev.
+- Sky Fighter builds against the engine the repository pins (v0.46.0); its program table carries the states the painted surfaces draw.
+
 ## 0.32.1
 
 - Sky Fighter: a new cover rendered from the game through romdev: the jet pulling up and banking toward the camera over the fair, lit by the afternoon sun, a balloon and the fairground below it under a deep blue sky, a 720x1080 crop of the frame with the logo.

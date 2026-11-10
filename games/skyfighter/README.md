@@ -81,7 +81,7 @@ regenerated with `tools/programs.sh` after a run names a missing state.
 
 ## Rebuilding derived assets
 
-`python3 tools/build-terrain-layers.py` downloads 4K Poly Haven sources and packs the runtime terrain layers. `python3 tools/build-wreck-parts.py` partitions the original F-15 triangles into independent sections and emits their collision bounds.
+`python3 tools/build-terrain-layers.py` downloads 4K Poly Haven sources and packs the runtime terrain layers. `python3 tools/build-wreck-parts.py` partitions the original F-15 triangles into independent sections and emits their collision bounds. `node tools/build-jet-livery.mjs` paints the jet: from the model as downloaded (`assets/source-models/`) it writes `assets/models/f15-eagle.glb` with the game's own surfaces (a two-tone paint with a fin flash, a tail number and wingtip bands, a dark radome and anti-glare panel, the source's panel lines in the colour, roughness and normal maps, heat-stained nozzle metal on a cylindrical unwrap, a tinted canopy) and the bandits' dark red-marked paint as `assets/textures/f15-hostile.jpg`; the wreck sections get the same nozzle coordinates. `--debug` writes side and top views of the paint under `out/skyfighter-livery/`. A pilot (helmet, visor and suit) sits under the canopy at load.
 
 Engine audio preparation (existing ffmpeg):
 

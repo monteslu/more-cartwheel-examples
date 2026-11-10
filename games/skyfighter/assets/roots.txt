@@ -38,3 +38,4 @@ textures/tree-oak-v1.jpg
 textures/tree-needles-v1.jpg
 textures/tree-snow-v1.jpg
 textures/farm-field-v1.jpg
+textures/f15-hostile.jpg

@@ -89,7 +89,7 @@ static struct {
   t3_material *wreck_old[10],*wreck_shared[10];
   t3_scene *scene;
   t3_camera *camera;
-  cw_res jet_asset, terrain_asset, water_asset, wall_asset, roof_asset;
+  cw_res jet_asset, hostile_paint, terrain_asset, water_asset, wall_asset, roof_asset;
   t3_texture *water_tex;
   t3_object *jet, *flame_idle[2], *flame_burn[2], *flame_core[2];
   t3_object *airfield;
@@ -264,7 +264,12 @@ static void paint_landscape(bool materials) {
     else if(y>130){base=3;over=1;blend=rock;}
     float snow=smooth01((y-820-140*cw_noise_2d(&G.noise,x+700,z-300)+dz*1.5f)/180);
     if(snow>0){base=rock>0.7f?1:3;over=4;blend=snow*(1-smooth01((slope-0.8f)/0.7f));}
-    if(G.map_style==1&&y>12){base=3;over=slope>.6f?1:0;blend=slope>.6f?rock:.10f+.08f*(1+cw_noise_2d(&G.noise,x+800,z));}
+    if(G.map_style==1&&y>12){
+      /* farmland: pasture and dry meadow in patches a few hundred metres across (two octaves of noise), so the land
+       * reads as fields from altitude instead of one green; rock where it is steep */
+      float meadow=smooth01((cw_noise_2d(&G.noise,x*.22f+900,z*.22f)*.65f+cw_noise_2d(&G.noise,x*.7f+300,z*.7f+700)*.35f+.15f)/.75f);
+      base=3;over=slope>.6f?1:5;blend=slope>.6f?rock:meadow*.9f;
+    }
     if(G.map_style==2){base=4;over=1;blend=smooth01((slope-.40f)/.70f)*.67f;
       /* Wind-scoured rock seams articulate the mountain faces at flight distance. */
       blend=fmaxf(blend,smooth01((.18f+cw_noise_2d(&G.noise,x+1700,z-900)-.7f)/.35f)*.28f);
@@ -283,8 +288,9 @@ static void paint_landscape(bool materials) {
   cw_terrain_set_control(G.terrain,0,0,nx,nz,ctl);
   free(h);free(ctl);
   if(!materials)return;
-  const char *names[]={"sand","rock","coast","grass","snow"};float means[5][3]={{0}},linear_lut[256];for(int i=0;i<256;i++)linear_lut[i]=powf(i/255.0f,2.2f)/(1024*1024);
-  for(int i=0;i<5;i++) {
+  /* six layers: the five scans, and the grass scan graded a second time as dry meadow (layer 5, the farmland's patches) */
+  const char *names[]={"sand","rock","coast","grass","snow","grass"};float means[6][3]={{0}},linear_lut[256];for(int i=0;i<256;i++)linear_lut[i]=powf(i/255.0f,2.2f)/(1024*1024);
+  for(int i=0;i<6;i++) {
     char path[96];size_t alen,nlen;
     snprintf(path,sizeof path,"terrain/%s-albedo.rgba",names[i]);
     uint8_t *a=cw_asset_load(path,&alen);
@@ -293,19 +299,19 @@ static void paint_landscape(bool materials) {
     if(!a||!n||alen!=1024*1024*4||nlen!=alen)CW_FATAL("Terrain layer failed to load");
     // Seasonal material tint: green vegetation and clean alpine snow.
     // Apply in the layer upload so the far-colour bake uses the same palette.
-    if(i==3||i==4)for(size_t k=0;k<alen;k+=4) {
-      const float grade[2][3]={{0.53f,0.81f,0.57f},{1.25f,1.31f,1.40f}};
-      for(int c=0;c<3;c++)a[k+c]=(uint8_t)clampf(a[k+c]*grade[i==4][c],0,255);
+    if(i>=3)for(size_t k=0;k<alen;k+=4) {
+      const float grade[3][3]={{0.53f,0.81f,0.57f},{1.25f,1.31f,1.40f},{0.78f,0.72f,0.44f}};
+      for(int c=0;c<3;c++)a[k+c]=(uint8_t)clampf(a[k+c]*grade[i-3][c],0,255);
     }
     if(G.map_style==3&&(i==0||i==1))for(size_t k=0;k<alen;k+=4){a[k]=(uint8_t)clampf(a[k]*1.2f,0,255);a[k+1]=(uint8_t)(a[k+1]*.63f);a[k+2]=(uint8_t)(a[k+2]*.42f);}
     if(G.map_style==2&&i==1)for(size_t k=0;k<alen;k+=4){a[k]=(uint8_t)(a[k]*.61f);a[k+1]=(uint8_t)(a[k+1]*.72f);a[k+2]=(uint8_t)(a[k+2]*.88f);}
     if(G.map_style==4&&i!=3)for(size_t k=0;k<alen;k+=4){float grey=a[k]*.2126f+a[k+1]*.7152f+a[k+2]*.0722f;a[k]=(uint8_t)(grey*.43f);a[k+1]=(uint8_t)(grey*.49f);a[k+2]=(uint8_t)(grey*.54f);}
     for(size_t k=0;k<alen;k+=4)for(int c=0;c<3;c++)means[i][c]+=linear_lut[a[k+c]];
-    cw_terrain_set_layer_pixels(G.terrain,i,a,n,1024,1024,i==1?0.018f:(i==3?0.045f:(i==4?0.2f:0.50f)));
+    cw_terrain_set_layer_pixels(G.terrain,i,a,n,1024,1024,i==1?0.018f:(i==3?0.045f:(i==4?0.2f:(i==5?0.06f:0.50f))));
     free(a);free(n);
   }
   int layer=G.map_style==1?3:G.map_style==3?0:G.map_style==4?1:4;
-  G.landscape_far_color=0;for(int c=0;c<3;c++){float v=means[layer][c];if(G.map_style==1)v=v*.82f+means[0][c]*.18f;G.landscape_far_color=(G.landscape_far_color<<8)|(uint32_t)clampf(powf(v,1/2.2f)*255,0,255);}
+  G.landscape_far_color=0;for(int c=0;c<3;c++){float v=means[layer][c];if(G.map_style==1)v=v*.6f+means[5][c]*.4f;G.landscape_far_color=(G.landscape_far_color<<8)|(uint32_t)clampf(powf(v,1/2.2f)*255,0,255);}
 }
 
 static t3_object *box(t3_object *parent, float x, float y, float z, float w, float h, float d,
@@ -385,14 +391,22 @@ static void flight_material(t3_object *o, void *ctx) {
   for(int i=0;i<m->material_count;i++) {
     t3_material *old=m->materials[i],*mat=t3_material_clone(old);
     m->materials[i]=mat;t3_release(old);
-    mat->roughness=clampf(mat->roughness,0.25f,0.8f);
-    if(ctx){mat->color.r*=0.30f;mat->color.g*=0.29f;mat->color.b*=0.28f;} /* hostile: dark charcoal paint, a silhouette against the haze (feel.h adds the warm edge and the exhaust) */
-    else if(mat->color.r+mat->color.g+mat->color.b>1.35f){
-      /* Player-only cloned paint: readable over snow, retaining the texture
-       * panel lines and the dark glass/cockpit/engine materials. */
-      mat->color.r*=.60f;mat->color.g*=.73f;mat->color.b*=.89f;
-    }
+    /* the model's surfaces as tools/build-jet-livery.mjs paints them (matte paint with its lines, a glossy tinted canopy,
+     * heat-stained nozzle metal); a bandit's airframe wears the hostile paint, dark with red markings, a silhouette against
+     * the haze (feel.h adds the warm edge and the exhaust) */
+    if(ctx&&mat->map&&o->name&&!strcmp(o->name,"F15_Airframe"))t3_material_set_map(mat,cw_res_texture(G.hostile_paint));
   }
+}
+/* the pilot under the canopy: a helmet with its visor over a flight suit, sat on the model's seat; a bandit, seen far
+ * off and at its coarse LOD, gets the helmet alone */
+static void seat_pilot(t3_object *airframe,bool hostile) {
+  t3_object *pilot=t3_group_new();pilot->name="F15_Pilot";
+  t3_material *helmet=t3_mesh_standard_material_new(hostile?0x3a3c3a:0xd9dad4);helmet->roughness=.35f;
+  t3_material *visor=t3_mesh_standard_material_new(0x121517);visor->roughness=.12f;visor->metalness=.3f;
+  if(!hostile){t3_material *suit=t3_mesh_standard_material_new(0x2b3127);suit->roughness=.95f;box(pilot,0,2.80f,3.62f,.46f,.42f,.34f,suit);}
+  sphere(pilot,0,3.0f,3.74f,.165f,helmet);
+  box(pilot,0,2.99f,3.9f,.26f,.11f,.06f,visor);
+  t3_object_add(airframe,pilot);
 }
 static void share_wreck_material(t3_object *o,void *ctx) {
   (void)ctx;if(o->type!=T3_MESH)return;t3_mesh *mesh=(t3_mesh *)o;
@@ -718,6 +732,8 @@ static void make_world(void) {
     t3_object_update_world_matrix(b->node,true,true);t3_object_traverse(b->node,building_collider,b);
   }
   G.jet_asset = cw_res_load("res://models/f15-eagle.glb", CW_RES_GLTF);
+  G.hostile_paint = cw_res_load("res://textures/f15-hostile.jpg", CW_RES_TEXTURE);
+  if (!cw_res_texture(G.hostile_paint)) CW_FATAL("Bandit paint failed to load");
   G.jet = t3_group_new();
   t3_object *airframe = cw_gltf_instantiate(G.jet_asset);
   if (!airframe) CW_FATAL("F-15 model failed to load");
@@ -725,6 +741,7 @@ static void make_world(void) {
   G.model_children = airframe->child_count;
   G.model_lods = cw_res_gltf(G.jet_asset)->lod_levels;
   t3_object_traverse(airframe,flight_material,NULL);
+  seat_pilot(airframe,false);
   t3_object_set_scale(airframe, 0.80f, 0.80f, 0.80f);
   t3_object_set_position(airframe, 0, -1.90f, 0);
   t3_object_set_rotation(airframe, 0, PI, 0);
@@ -736,6 +753,7 @@ static void make_world(void) {
     G.enemies[i].modern=other;
     G.enemy_triangles = cw_gltf_instance_set_lod(other, 2);
     t3_object_traverse(other,flight_material,(void *)1);
+    seat_pilot(other,true);
     t3_object_set_scale(other, 0.80f, 0.80f, 0.80f);
     t3_object_set_position(other, 0, -1.90f, 0);
     t3_object_set_rotation(other, 0, PI, 0);
