@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.31.0
+
+- Engine v0.44.2 (from v0.42.0). The menus take touch: a tap works the title, pause, settings and graphics pages, and a tap on the join screen seats you and starts. While a game loads, its first frames draw the shadows and lights play draws instead of leaving out the sunlit parts of the scene (and a red "no program" warning up for good). In split screen the volumetric fog reads as on.
+- Every game carries its name for launchers and frontends: Arena, Street Toughs, Co-op Platformer, Crawler, Fighter, Horde, Jetski, Party Pack, Pirates, Sky Fighter and Tux Racer.
+- New covers for Arena (a robot charging across the sunlit courtyard), Horde (a soldier firing up at the yard's boss) and Tux Racer (Tux on Bunny Hill), each rendered from the game itself.
+- Tests: every game's cart surveyed as a player's machine runs it (no seed, the warm-up under the loading screen, every graphics preset and switch, GL and WebGPU) finds no missing program. jetski-air and jetski-hud-words run again, a few requests a ride instead of one a frame: Jet ski keeps each flight's measures and the words it puts up in its own debug fields. CI checks every cart's launcher art with the engine's check-art. A keyart command in the Arena and Horde autopilot builds, and Tux Racer's key art switches, reach a cart.
+
 ## 0.30.0
 
 - Engine v0.42.0 (from v0.38.9, three.c v0.187.7). Terrain reads two cells for its tiling instead of three (Tux Racer, Jet ski and Sky Fighter draw their ground a little faster, with a slightly crisper surface), reflection probes capture at their own size and spread the work over frames, and a distortion no longer splits into rainbow colours.
