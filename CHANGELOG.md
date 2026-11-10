@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.34.0
+
+- Jet ski: weather. Every course runs calm, choppy or in a storm. The swell and the chop rise and fall with it, the wind blows harder (it slants the rain and carries the spray), and a rough sea stands higher on the shore. A calm is glassy and mirrors the land; a storm is dark, heavy water under a low sky, rain rings on the surface, spume blown off the crests and lightning that swells and fades.
+- Jet ski: a calm shows rocks and shoals by the line, and they are solid; a rough sea covers them. Each course has one way only some seas allow: a short way through the reef past Crater Atoll's lighthouse (awash in a chop or a storm), Cold Sound's arch (shut in a storm, the surge filling it), and on Red Reach, Iron Quay and Gale Bank a slab, a sunken barge and a wreck whose foot only a rough enough sea reaches, for a jump. The course card says which way today's weather opens. The computer riders take an open way and keep off a shut one and off rocks that show.
+- Jet ski: once a race a set of big waves comes through the pack (a cliff falling into the sea, rock breaking off the fjord wall, a flash flood, a ship's wake, a rogue set). The waves are in the water: a band of the sea where the swell stands up to 1.7 m higher crosses the course and every craft rides it. A warning on screen, the band on the minimap, a rumble under it; the camera never shakes.
+- Jet ski: Stunt mode (two minutes, tricks scored and chained into combos on either craft, the stand-up's submarine, pole stand, flat spin and superman included, a high score kept per course) and Free roam (no rivals, no buoys, no clock), on the courses you have raced to the line.
+- Jet ski: the championship is a week: the forecast shows each day's weather and you pick which course to race on which day. The first day races at the courses' own pace and the rivals get a little quicker each day after.
+- Jet ski: carrying a turbo past a buoy on its wrong side empties it; the chips flash red and the screen says TURBO LOST, and the first turbo of a race says what risks it.
+- Jet ski: fairer. A rider holds on through more: a longer slide, a rougher landing and a trick all but round no longer throw you off, and a knock from a rival puts you down less often. The same mistake again within a few seconds is answered softly, then only by the miss lights; WRONG WAY says it big for four seconds and then quietly.
+- Tests: jetski-weather on the cart through romdev, GL and WebGPU, one input timeline a run, each check with a control that must fail; jetski-weather-perf (romdev GPU timing); the newcomer gate can race in a given weather and goes through the week's forecast; the menu gate covers the forecast, Weather and Craft rows; flash-sweep entries for a storm, a calm and the big waves.
+
 ## 0.33.1
 
 - Tests: jetski-menu runs on the cart through romdev with the pad alone (a keyboard is a fallback controller, not gated), and the text check covers the stand-up's Controls page and grid.
