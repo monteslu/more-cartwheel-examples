@@ -7,8 +7,8 @@ on [cartwheel-engine](https://github.com/monteslu/cartwheel-engine). Tux Racer 0
 Jasmin F. Patry and Sunspire Studios (1999 to 2001) and released under the GNU General Public License
 version 2; its source and data are on [SourceForge](https://sourceforge.net/projects/tuxracer/). This
 game is the same idea rebuilt on the engine: Tux belly-slides down the original courses, collecting
-herring against the clock, with the original penguin model, music and sound effects converted from the
-GPL data, the sliding rebuilt on Box3D, and the look brought up to the engine's PBR terrain,
+herring against the clock, with the original penguin's skeleton and poses (a new sculpted body over them), music and sound
+effects converted from the GPL data, the sliding rebuilt on Box3D, and the look brought up to the engine's PBR terrain,
 procedural sky, cascaded sun shadows, GPU particles and post effects. It is GPL-2.0-or-later, see
 [LICENSE](LICENSE) and [CREDITS](CREDITS). Tux Racer is a trademark of Jasmin F. Patry.
 
@@ -55,8 +55,8 @@ on the course near par, which a first run never meets; Practice keeps the origin
 
 | Path | Contents |
 |---|---|
-| `src/` | the game: `main.c` (app, flow, conditions, post), `course.c` and `course_objects.c` (terrain, trees, items, gates), `tux.c` and `tux_skin.c` (the model: the original tux.tcl hierarchy, skinned as one surface), `physics.c` (the Box3D body and the ported force model), `view.c`, `hud.c`, `fx.c` (spray, snowfall, sparkles), `audio.c`, `textures.c` (snow, ice and rock layers; the slide trail), `skyring.c` (the mountain ring, cloud deck and aurora), `tree_mesh.c`, `item_mesh.c` |
-| `shaders/` | the game's own three.c shader parts (three.js TSL): snow surface detail, foliage wind, the flag, the cloud deck, the aurora, Tux's feathers; composed with the engine's lighting at run time |
+| `src/` | the game: `main.c` (app, flow, conditions, post), `course.c` and `course_objects.c` (terrain, trees, items, gates), `tux.c` and `tux_skin.c` (the model: the original tux.tcl skeleton and poses, with a sculpted body built at load from smooth-blended shapes and skinned to every joint, and glossy eyes on the head), `physics.c` (the Box3D body and the ported force model), `view.c`, `hud.c`, `fx.c` (spray, snowfall, sparkles), `audio.c`, `textures.c` (snow, ice and rock layers; the slide trail), `skyring.c` (the mountain ring, cloud deck and aurora), `tree_mesh.c`, `item_mesh.c` |
+| `shaders/` | the game's own three.c shader parts (three.js TSL): snow surface detail, foliage wind, the flag, the cloud deck, the aurora, the rim light on Tux's dark plumage; composed with the engine's lighting at run time |
 | `tools/convert.mjs` | the converter: the SGI `.rgb` decoder, a Tcl subset for `tux.tcl`, the course rasters to uniform height grids |
 | `tools/` (the rest) | the sky ring from the cube faces and a photograph, the sprig and cloud textures, the colour grades; `make-signs.mjs`: the start and finish banners, the title logo and the HUD herring redrawn at high resolution in the original designs, from the game's own fonts (`tools/lib/vec2d.mjs`) |
 | `scripts/fetch-tuxracer.sh` | fetches the original 0.61 source and data (sha256-pinned) into the repository's `deps/tuxracer`, for the converter |

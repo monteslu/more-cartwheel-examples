@@ -83,6 +83,7 @@ t3_quat tr_quat_from_basis(t3_vec3 x, t3_vec3 y, t3_vec3 z);
 enum { J_NECK, J_HEAD, J_TAIL, J_LSHOULDER, J_RSHOULDER, J_LHIP, J_RHIP, J_LKNEE, J_RKNEE, J_LANKLE, J_RANKLE, J_COUNT };
 #define TUX_MAX_NODES 128
 #define TUX_MAX_MATERIALS 8
+#define TUX_GROUND_PTS 48
 typedef struct tux_node {
   int parent, material;
   bool sphere, shadow;
@@ -96,13 +97,20 @@ typedef struct tux_model {
   int mat_count;
   t3_object *root;
   int joint[J_COUNT]; /* node index, -1 when the model lacks it */
-  t3_skinned_mesh *skin; /* tux_skin.c: the blended torso / neck / head */
+  t3_skinned_mesh *skin; /* tux_skin.c: the sculpted body, skinned to the joints */
   t3_material *skin_mat;
+  t3_mesh *eyes; /* tux_skin.c: on the head joint */
+  /* grounding samples (tux_ground_points): the soles in the ankles' space, the belly in the torso's */
+  float sole[2][TUX_GROUND_PTS][3], belly[TUX_GROUND_PTS][3];
+  int sole_n[2], belly_n;
+  t3_object *ground_bone[3];
 } tux_model;
 typedef struct tux_keyframe { float time, pos[3], yaw, pitch, l_shoulder, r_shoulder, l_hip, r_hip; } tux_keyframe;
 
 bool tux_load(tux_model *m, t3_scene *scene);
 bool tux_skin_build(tux_model *m); /* tux_skin.c */
+/* the grounding samples of a sole (0 left, 1 right) or the belly (2), in the world as posed now; their count */
+int tux_ground_points(tux_model *m, int part, t3_vec3 *out, int cap);
 void tux_unload(tux_model *m);
 void tux_set_transform(tux_model *m, t3_vec3 pos, t3_quat q);
 void tux_set_visible(tux_model *m, bool visible);

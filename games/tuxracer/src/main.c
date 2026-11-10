@@ -63,6 +63,11 @@ static void rumble(float low, float high, int ms);
 static int32_t cam_offset[3]; /* the shake check (pre_render_hook) */
 static int impacts, impact_frames; /* tree hits and touchdowns, for the shake check */
 static int32_t tree_hits[2]; /* debug race.tree_hits: tree hits, and the tick of the last */
+/* debug tux.ground: how far above the snow his left sole, right sole and belly are drawn (mm, the lowest of each part's
+ * samples against the course height under it), and the state it was measured in. Render-time, as drawn. */
+static int32_t tux_ground[4];
+/* the model lifted off the snow by TUXRACER_TUX_LIFT metres (render only): the grounding gate's control */
+static float tux_lift(void) { const char *v = cw_test_env("TUXRACER_TUX_LIFT"); return v ? (float)atof(v) : 0; }
 static void rumble_stop(void);
 typedef struct cup_race { char dir[64]; int herring[4]; float time[4]; int score[4]; bool mirrored, windy, snowing; int conditions; } cup_race;
 typedef struct cup_def { char name[64]; cup_race races[MAX_RACES]; int count; } cup_def;
@@ -504,6 +509,7 @@ static void ghost_draw(double alpha) {
   t3_quat q = tr_quat_from_basis(t3_vec3_cross(ny, nz), ny, nz);
   t3_vec3 at = t3_vec3_add(gp.pos, t3_vec3_scale(t3_vec3_apply_quat((t3_vec3){ 0, 0, 1 }, q), TUX_RADIUS));
   at.y += 0.33f; /* TUX_Y_CORRECTION_ON_STOMACH, as place_tux */
+  at = t3_vec3_add(at, t3_vec3_scale(t3_vec3_apply_quat((t3_vec3){ 0, 0, 1 }, q), 0.06f)); /* TUX_BELLY_SINK, as place_tux */
   tux_set_transform(&G.ghost_tux, at, q);
   /* he fades as he nears Tux: two penguins in one place read as one blur */
   float near = t3_vec3_length(t3_vec3_sub(gp.pos, G.phys.pos)), k = fmaxf(0, fminf(1, (near - 0.8f) / 2.2f));
@@ -734,6 +740,16 @@ static void start_racing(void) {
   if (cw_node_valid(G.probe)) cw_reflection_probe_update(G.probe); /* one capture of the course around the start */
 }
 
+static void measure_ground(void) {
+  t3_vec3 pts[TUX_GROUND_PTS];
+  for (int part = 0; part < 3; part++) {
+    int n = tux_ground_points(&G.tux, part, pts, TUX_GROUND_PTS);
+    float low = 1e9f;
+    for (int i = 0; i < n; i++) low = fminf(low, pts[i].y - course_height(&G.course, pts[i].x, pts[i].z));
+    tux_ground[part] = n ? (int32_t)lroundf(low * 1000) : INT32_MIN;
+  }
+  tux_ground[3] = G.state;
+}
 /* intro.c + keyframe.c: the walk-in; root yaw and pitch, shoulders and hips from the keys */
 static void intro_tick(float dt) {
   G.key_time += dt;
@@ -752,7 +768,7 @@ static void intro_tick(float dt) {
    * difference (the original walked 7 cm deep too) plus a hair so the soles sit on the snow */
   pos.y += course_height(c, pos.x, pos.z) + (0.525f - 0.455f) + 0.01f;
   t3_quat q = t3_quat_multiply(tr_quat_axis_angle((t3_vec3){ 0, 1, 0 }, TR_DEG(LERP(yaw))), tr_quat_axis_angle((t3_vec3){ 1, 0, 0 }, TR_DEG(LERP(pitch))));
-  tux_set_transform(&G.tux, pos, q);
+  tux_set_transform(&G.tux, (t3_vec3){ pos.x, pos.y + tux_lift(), pos.z }, q);
   tux_joint_reset(&G.tux, J_LSHOULDER);
   tux_joint_rotate(&G.tux, J_LSHOULDER, 'z', LERP(l_shoulder));
   tux_joint_reset(&G.tux, J_RSHOULDER);
@@ -766,6 +782,13 @@ static void intro_tick(float dt) {
   tux_joint_reset(&G.tux, J_HEAD);
   tux_joint_reset(&G.tux, J_TAIL);
 #undef LERP
+  measure_ground();
+  { /* the keyframes swing a leg back with its toes into the snow and flop him belly first below it: lift him (drawn only) so
+     * the lowest of his soles and belly is on the snow, never in it */
+    int low = tux_ground[0] < tux_ground[1] ? tux_ground[0] : tux_ground[1];
+    if (tux_ground[2] < low) low = tux_ground[2];
+    if (low < 0) { tux_set_transform(&G.tux, (t3_vec3){ pos.x, pos.y + tux_lift() - low * 0.001f, pos.z }, q); measure_ground(); }
+  }
   G.phys.pos = pos, G.phys.vel = (t3_vec3){ 0, 0, 0 }, G.phys.speed = 0;
   cw_body3d_set_transform(G.phys.body, cw_xform3_at(pos.x, pos.y + TUX_RADIUS, pos.z));
   view_update(&G.view, &G.phys, c, dt);
@@ -944,10 +967,14 @@ static void pose_tux(void) {
 }
 
 #define TUX_Y_CORRECTION_ON_STOMACH 0.33f /* phys_sim.c */
+#define TUX_BELLY_SINK 0.06f
 static void place_tux(t3_vec3 body_pos) {
   t3_vec3 into = t3_vec3_apply_quat((t3_vec3){ 0, 0, 1 }, G.phys.orientation);
   t3_vec3 at = t3_vec3_add(body_pos, t3_vec3_scale(into, TUX_RADIUS)); /* the surface point (the original's pos) */
   at.y += TUX_Y_CORRECTION_ON_STOMACH; /* phys_sim.c set_tux_pos: the model root rides 0.33 above it */
+  /* the sculpted belly reaches 0.27 below the root: drawn 6 cm further in, it rides on the snow instead of above it (render only) */
+  at = t3_vec3_add(at, t3_vec3_scale(into, TUX_BELLY_SINK));
+  at.y += tux_lift();
   /* the model leans a third further into turns than the physics orientation (render only: the
    * orientation itself steers the flap force, so it stays the original's) */
   float extra = (G.phys.braking ? 55.0f : 30.0f) * 0.35f * G.phys.turn_anim;
@@ -964,6 +991,7 @@ static void place_tux(t3_vec3 body_pos) {
   }
   tux_set_transform(&G.tux, at, lean);
   tux_set_squash(&G.tux, G.squash);
+  measure_ground();
   /* the contact shadow: on the surface under the belly, fading as he flies */
   bool show = G.course_loaded && G.state >= ST_INTRO && G.phys.dist_from_surface < 2.5f;
   cw_node_set(G.tux_shadow, "visible", cw_val_bool(show));
@@ -1309,6 +1337,7 @@ static void init(void *user) {
   cw_debug_field("cam.offset", cam_offset, CW_DBG_I32, 3);
   cw_debug_i32("rumble.sent", &RB.sent);
   cw_debug_field("race.tree_hits", tree_hits, CW_DBG_I32, 2);
+  cw_debug_field("tux.ground", tux_ground, CW_DBG_I32, 4);
   cw_debug_i32("phys.contacts", &G.dbg_contacts);
   cw_debug_i32("ticks", &G.ticks);
   cw_debug_field("ghost", G.dbg_ghost, CW_DBG_I32, 4);
