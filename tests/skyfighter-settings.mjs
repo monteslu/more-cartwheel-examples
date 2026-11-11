@@ -12,6 +12,7 @@
 // Controls that must fail: the same walk checker fed by presses on the PITCH row (the row with no presets, so nothing cycles),
 // and the same restart checker after the saved word is cleared (the cart must come back on its Medium default, not on the
 // preset picked). Run with --cart on a build of the old modulus to see the walk fail on High going to Low.
+import { ROMDEV_URL } from './lib/romdev-url.mjs';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -39,7 +40,7 @@ let failed = 0;
 const check = (name, ok, detail = '') => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${detail ? `: ${detail}` : ''}`); if (!ok) failed++; };
 
 async function call(tool, a) {
-  const res = await fetch(`http://127.0.0.1:7331/tool/${tool}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-romdev-session': SESSION }, body: JSON.stringify(a) });
+  const res = await fetch(`${ROMDEV_URL}/tool/${tool}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-romdev-session': SESSION }, body: JSON.stringify(a) });
   const t = await res.text();
   let b; try { b = JSON.parse(t); } catch { b = t; }
   if (!res.ok || (b && b.isError)) throw new Error(`${tool}: ${t.slice(0, 500)}`);

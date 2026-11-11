@@ -1,9 +1,10 @@
 // A whole race by held stick and throttle through romdev, reacting late like a modest person, no tricks: what the race gave. Works on any cart with the basic debug fields, so a released
 // cart can be measured the same way: held place changes, speed kept over each hop and ramp, buoys, mean and top speed, and the feedback counters where the cart has them.
 //   node games/jetski/tools/race-measure.mjs <cart> <course id> [--gl] [--turbo]
+import { ROMDEV_URL } from '../../../tests/lib/romdev-url.mjs';
 import { resolve } from 'node:path';
 import { readCourse, COURSE_IDS } from './course-read.mjs';
-const URL_ = 'http://127.0.0.1:7331/mcp', CART = resolve(process.argv[2]), ID = process.argv[3], GL = process.argv.includes('--gl'), TURBO = process.argv.includes('--turbo'), C = readCourse(ID), STEP = 6;
+const URL_ = ROMDEV_URL+'/mcp', CART = resolve(process.argv[2]), ID = process.argv[3], GL = process.argv.includes('--gl'), TURBO = process.argv.includes('--turbo'), C = readCourse(ID), STEP = 6;
 let sid = null, id = 1;
 async function rpc(method, params) {
   const headers = { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', 'x-romdev-session': process.env.JETSKI_SESSION || 'jetski' };

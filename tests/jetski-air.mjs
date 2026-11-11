@@ -9,6 +9,7 @@
 // ranged requests: the run-up looks every 6 frames for the flight to start, the stick from then on is one input sequence
 // timed from the flight's first tick, and the measures are read once at the end. The request count is printed.
 //   node tests/jetski-air.mjs [--gl] [--webgpu] [--cart <path>]
+import { ROMDEV_URL } from './lib/romdev-url.mjs';
 import { mkdirSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -21,7 +22,7 @@ mkdirSync(OUT, { recursive: true });
 let calls = 0;
 const tool = async (name, args) => {
   calls++;
-  const r = await fetch(`http://127.0.0.1:7331/tool/${name}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-romdev-session': SESSION, 'x-romdev-agent': process.env.CW_ROMDEV_AGENT || 'jetski-air' }, body: JSON.stringify(args) });
+  const r = await fetch(`${ROMDEV_URL}/tool/${name}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-romdev-session': SESSION, 'x-romdev-agent': process.env.CW_ROMDEV_AGENT || 'jetski-air' }, body: JSON.stringify(args) });
   const t = await r.text();
   let j; try { j = JSON.parse(t); } catch { j = t; }
   if (!r.ok || j?.error) { console.error(`romdev ${name}: ${t.slice(0, 400)}`); await bye(3); }
@@ -29,7 +30,7 @@ const tool = async (name, args) => {
 };
 // every exit tears this session's romdev host down: a host left loaded holds the server's memory
 async function bye(code) {
-  try { await fetch('http://127.0.0.1:7331/tool/host', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-romdev-session': SESSION }, body: '{"op":"shutdown"}', signal: AbortSignal.timeout(30000) }); } catch {}
+  try { await fetch(ROMDEV_URL+'/tool/host', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-romdev-session': SESSION }, body: '{"op":"shutdown"}', signal: AbortSignal.timeout(30000) }); } catch {}
   process.exit(code);
 }
 /** every named field in one request */

@@ -4,6 +4,7 @@
 //   The next buoy's distance never stands under a word: on every course the countdown, a big ramp with a trick and with a tail-first wipeout, and wipeouts along the course with the next buoy ahead, counting frames its box meets a word's box.
 //   Control: label_old 1 (the distance where it stood before) must meet a word in the same rides.
 //   node tests/jetski-hud-words.mjs [--gl] [--webgpu] [--cart <path>] [--pop-only]
+import { ROMDEV_URL } from './lib/romdev-url.mjs';
 import { mkdirSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,7 +20,7 @@ mkdirSync(OUT, { recursive: true });
 let calls = 0;
 const tool = async (name, args) => {
   calls++;
-  const r = await fetch(`http://127.0.0.1:7331/tool/${name}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-romdev-session': SESSION, 'x-romdev-agent': process.env.CW_ROMDEV_AGENT || 'jetski-words' }, body: JSON.stringify(args) });
+  const r = await fetch(`${ROMDEV_URL}/tool/${name}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-romdev-session': SESSION, 'x-romdev-agent': process.env.CW_ROMDEV_AGENT || 'jetski-words' }, body: JSON.stringify(args) });
   const t = await r.text();
   let j; try { j = JSON.parse(t); } catch { j = t; }
   if (!r.ok || j?.error) { console.error(`romdev ${name}: ${t.slice(0, 400)}`); await bye(3); }
@@ -28,7 +29,7 @@ const tool = async (name, args) => {
 const rd = async (n) => { const v = await tool('wasm', { op: 'read', name: n }); return v.values ?? v.value; };
 // every exit tears this session's romdev host down: a host left loaded holds the server's memory
 async function bye(code) {
-  try { await fetch('http://127.0.0.1:7331/tool/host', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-romdev-session': SESSION }, body: '{"op":"shutdown"}', signal: AbortSignal.timeout(30000) }); } catch {}
+  try { await fetch(ROMDEV_URL+'/tool/host', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-romdev-session': SESSION }, body: '{"op":"shutdown"}', signal: AbortSignal.timeout(30000) }); } catch {}
   process.exit(code);
 }
 const cmd = (text) => tool('wasm', { op: 'command', text }), step = (frames) => tool('frame', { op: 'step', frames });

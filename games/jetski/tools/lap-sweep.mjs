@@ -1,9 +1,10 @@
 // A course from the race camera: a computer rider (the _auto cart) rides it with the real camera, up to [frames], stopping when the race is over. Contact sheet pictures
 // at even steps, and every frame's camera against the last: how hard it jumps, how often the hull leaves the picture low, how far under the water it gets.
 //   node games/jetski/tools/lap-sweep.mjs <auto cart> <course index> <out dir> [frames] [--gl]
+import { ROMDEV_URL } from '../../../tests/lib/romdev-url.mjs';
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
-const URL_ = 'http://127.0.0.1:7331/mcp', CART = resolve(process.argv[2]), LEVEL = +process.argv[3], DIR = resolve(process.argv[4]), FRAMES = +process.argv[5] || 30000, GL = process.argv.includes('--gl');
+const URL_ = ROMDEV_URL+'/mcp', CART = resolve(process.argv[2]), LEVEL = +process.argv[3], DIR = resolve(process.argv[4]), FRAMES = +process.argv[5] || 30000, GL = process.argv.includes('--gl');
 const SESSION = process.env.JETSKI_SESSION || 'jetski';
 mkdirSync(DIR, { recursive: true });
 let sid = null, id = 1;

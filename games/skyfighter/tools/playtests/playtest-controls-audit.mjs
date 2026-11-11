@@ -1,9 +1,10 @@
+import { ROMDEV_URL } from '../../../../tests/lib/romdev-url.mjs';
 import assert from 'node:assert/strict';
 import {resolve} from 'node:path';
 import {mkdirSync,writeFileSync} from 'node:fs';
 const root=resolve(import.meta.dirname,'../..'),out=resolve(root,'../../out/skyfighter-review/controls-audit');mkdirSync(out,{recursive:true});
 const backend=process.env.SKY_AUDIT_BACKEND||'webgpu',report={backend,checks:[]},headers={'content-type':'application/json','x-romdev-session':'sky-fighter-controls-audit-'+backend};
-async function t(n,a){const r=await fetch('http://localhost:7331/tool/'+n,{method:'POST',headers,body:JSON.stringify(a)}),j=await r.json();if(!r.ok||j.error)throw Error(JSON.stringify(j));return j;}
+async function t(n,a){const r=await fetch(ROMDEV_URL+'/tool/'+n,{method:'POST',headers,body:JSON.stringify(a)}),j=await r.json();if(!r.ok||j.error)throw Error(JSON.stringify(j));return j;}
 const step=frames=>t('frame',{op:'step',frames}),input=p=>t('input',{op:'set',ports:[p]}),read=async name=>(await t('wasm',{op:'read',name})).value,write=(name,value)=>t('wasm',{op:'write',name,value});
 async function set(v){for(const[n,value]of Object.entries(v))await write(n,value);}
 async function pulse(b){await input({[b]:true});await step(1);await input({});await step(1);}

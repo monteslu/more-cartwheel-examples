@@ -1,8 +1,9 @@
 // A jump from the race camera, throttle held: from far off, on the approach, on the deck, in the air, the landing. Native-scale pictures.
 //   node games/jetski/tools/ramp-look.mjs <cart> <course> <ramp> <out dir> [--gl] [--tide=x] [--back=m]
+import { ROMDEV_URL } from '../../../tests/lib/romdev-url.mjs';
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
-const URL_ = 'http://127.0.0.1:7331/mcp', CART = resolve(process.argv[2]), LEVEL = +process.argv[3], RAMP = +process.argv[4], DIR = resolve(process.argv[5]), GL = process.argv.includes('--gl');
+const URL_ = ROMDEV_URL+'/mcp', CART = resolve(process.argv[2]), LEVEL = +process.argv[3], RAMP = +process.argv[4], DIR = resolve(process.argv[5]), GL = process.argv.includes('--gl');
 const opt = (k, d) => { const a = process.argv.find((x) => x.startsWith(`--${k}=`)); return a ? a.split('=')[1] : d; };
 const SESSION = process.env.JETSKI_SESSION || 'jetski-ramp-look';
 mkdirSync(DIR, { recursive: true });

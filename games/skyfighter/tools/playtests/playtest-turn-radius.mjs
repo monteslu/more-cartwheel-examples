@@ -1,6 +1,7 @@
+import { ROMDEV_URL } from '../../../../tests/lib/romdev-url.mjs';
 import{resolve}from'node:path';import{writeFileSync}from'node:fs';import assert from'node:assert/strict';
 const root=resolve(import.meta.dirname,'../..'),out=resolve(root,'../../out/skyfighter-review'),headers={'content-type':'application/json','x-romdev-session':'sky-fighter-tight-turn-review'};
-async function t(n,a){const r=await(await fetch('http://127.0.0.1:7331/tool/'+n,{method:'POST',headers,body:JSON.stringify(a)})).json();if(r.error)throw Error(JSON.stringify(r));return r;}
+async function t(n,a){const r=await(await fetch(ROMDEV_URL+'/tool/'+n,{method:'POST',headers,body:JSON.stringify(a)})).json();if(r.error)throw Error(JSON.stringify(r));return r;}
 const step=frames=>t('frame',{op:'step',frames}),input=p=>t('input',{op:'set',ports:[p]}),read=async name=>(await t('wasm',{op:'read',name})).value;
 const pos=async()=>[await read('jet.x'),await read('jet.z')];
 function circleRadius([a,b,c]){const d=(p,q)=>Math.hypot(p[0]-q[0],p[1]-q[1]);const area2=Math.abs((b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]));return d(a,b)*d(b,c)*d(c,a)/(2*area2);}

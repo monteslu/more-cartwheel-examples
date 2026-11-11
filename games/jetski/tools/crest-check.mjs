@@ -2,11 +2,12 @@
 // from the race camera, and counts near-black pixels on the water (rows from the horizon down). A build from before the
 // water's fix is the control: it must count thousands.
 //   node games/jetski/tools/crest-check.mjs <cart> <out dir> [--gl]
+import { ROMDEV_URL } from '../../../tests/lib/romdev-url.mjs';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { inflateSync } from 'node:zlib';
 
-const URL_ = 'http://127.0.0.1:7331/mcp';
+const URL_ = ROMDEV_URL+'/mcp';
 const CART = resolve(process.argv[2]), DIR = resolve(process.argv[3]), GL = process.argv.includes('--gl');
 const SESSION = process.env.JETSKI_SESSION || 'jetski';
 mkdirSync(DIR, { recursive: true });

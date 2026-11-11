@@ -1,12 +1,13 @@
 // The marks do not come through the water. Lime on the sea at one held moment of a championship race on Crater Atoll, on the cart through romdev, GL and WebGPU. On v0.14.0's WebGPU the marks' lit floats
 // reached the refraction and showed through rivals' wakes as patches of saturated lime (17,802 pixels, GL about 100). Control: that release must fail on WebGPU.
 //   node tests/jetski-refraction.mjs
+import { ROMDEV_URL } from './lib/romdev-url.mjs';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { inflateSync } from 'node:zlib';
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..'), OUT = join(ROOT, 'out/refraction'), U = 'http://127.0.0.1:7331/mcp', MAX = 1000;
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..'), OUT = join(ROOT, 'out/refraction'), U = ROMDEV_URL+'/mcp', MAX = 1000;
 mkdirSync(OUT, { recursive: true });
 const CONTROL = join(OUT, 'jetski.wasc');
 if (!existsSync(CONTROL)) { const r = spawnSync('gh', ['release', 'download', 'v0.14.0', '-R', 'monteslu/more-cartwheel-examples', '-p', 'jetski.wasc', '-D', OUT], { encoding: 'utf8' }); if (r.status) { console.error(r.stderr); process.exit(3); } }

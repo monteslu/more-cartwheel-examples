@@ -1,7 +1,8 @@
+import { ROMDEV_URL } from '../../../../tests/lib/romdev-url.mjs';
 import{resolve}from'node:path';import{writeFileSync}from'node:fs';import assert from'node:assert/strict';
 const root=resolve(import.meta.dirname,'../..'),out=resolve(root,'../../out/skyfighter-review');
 const headers={'content-type':'application/json','x-romdev-session':'sky-fighter-aerobatics'};
-async function t(n,a){const r=await(await fetch('http://127.0.0.1:7331/tool/'+n,{method:'POST',headers,body:JSON.stringify(a)})).json();if(r.error)throw Error(JSON.stringify(r));return r;}
+async function t(n,a){const r=await(await fetch(ROMDEV_URL+'/tool/'+n,{method:'POST',headers,body:JSON.stringify(a)})).json();if(r.error)throw Error(JSON.stringify(r));return r;}
 const step=frames=>t('frame',{op:'step',frames}),input=p=>t('input',{op:'set',ports:[p]}),read=name=>t('wasm',{op:'read',name}),write=(name,value)=>t('wasm',{op:'write',name,value});
 const shot=name=>t('frame',{op:'screenshot',scale:0.5,outputPath:resolve(out,name+'.png')});
 async function reset(){await input({});for(const[n,v]of Object.entries({'jet.x':1500,'jet.z':0,'jet.altitude':2500,'jet.heading':0,'jet.pitch':0,'jet.roll':0,'jet.yaw_rate':0,'jet.speed_mps':600,'mission.health':100}))await write(n,v);await step(2);}

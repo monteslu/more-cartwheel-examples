@@ -1,10 +1,11 @@
 // A ride off a big ramp by the pad through romdev, pictures every few frames from the race camera: what the stick and buttons do in the air, and how a dive looks. Reads what the game counted.
 //   node games/jetski/tools/air-look.mjs <cart> <course id> <out dir> [--gl] [--only=plain,backflip,frontflip,kick,dive,tail]
+import { ROMDEV_URL } from '../../../tests/lib/romdev-url.mjs';
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { readCourse, COURSE_IDS } from './course-read.mjs';
-const U = 'http://127.0.0.1:7331/mcp', CART = resolve(process.argv[2]), ID = process.argv[3], DIR = resolve(process.argv[4]), GL = process.argv.includes('--gl'), H = { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', 'x-romdev-session': process.env.JETSKI_SESSION || 'jetski' };
+const U = ROMDEV_URL+'/mcp', CART = resolve(process.argv[2]), ID = process.argv[3], DIR = resolve(process.argv[4]), GL = process.argv.includes('--gl'), H = { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', 'x-romdev-session': process.env.JETSKI_SESSION || 'jetski' };
 mkdirSync(DIR, { recursive: true });
 let sid = null, id = 1;
 async function rpc(m, p) { const h = { ...H }; if (sid) h['mcp-session-id'] = sid; const r = await fetch(U, { method: 'POST', headers: h, body: JSON.stringify({ jsonrpc: '2.0', id: id++, method: m, params: p }) }); if (!sid) sid = r.headers.get('mcp-session-id'); const t = await r.text(), l = t.split('\n').find((x) => x.startsWith('data:')); return JSON.parse(l ? l.slice(5) : t); }

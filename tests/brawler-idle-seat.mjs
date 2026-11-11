@@ -6,12 +6,13 @@
 // walks on and lands blows.
 // Control: sw pick_wait 1 (the select waits for every seat for ever) must leave player 1 on the select for the same frames.
 //   node tests/brawler-idle-seat.mjs [--gl] [--webgpu] [--cart <path>]
+import { ROMDEV_URL } from './lib/romdev-url.mjs';
 import { mkdirSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..'), SESSION = process.env.BRAWLER_SESSION || 'brawler-idle-seat', OUT = join(ROOT, 'out/brawler-idle-seat');
-const PORT = process.env.ROMDEV_PORT || '7331';
+
 const arg = (n, d) => { const i = process.argv.indexOf(n); return i > 0 ? process.argv[i + 1] : d; };
 const CART = resolve(arg('--cart', join(ROOT, 'build/cart-wgpu/carts/brawler.wasc')));
 const BACKENDS = process.argv.includes('--gl') ? ['gl'] : process.argv.includes('--webgpu') ? ['webgpu'] : ['gl', 'webgpu'];
@@ -19,11 +20,11 @@ const HDR = { 'Content-Type': 'application/json', 'x-romdev-session': SESSION, '
 mkdirSync(OUT, { recursive: true });
 // every exit tears this session's romdev host down, a failed run too: a host left loaded holds the server's memory
 const bye = async (code) => {
-  try { await fetch(`http://127.0.0.1:${PORT}/tool/host`, { method: 'POST', headers: HDR, body: '{"op":"shutdown"}', signal: AbortSignal.timeout(30000) }); } catch {}
+  try { await fetch(`${ROMDEV_URL}/tool/host`, { method: 'POST', headers: HDR, body: '{"op":"shutdown"}', signal: AbortSignal.timeout(30000) }); } catch {}
   process.exit(code);
 };
 const tool = async (name, args) => {
-  const r = await fetch(`http://127.0.0.1:${PORT}/tool/${name}`, { method: 'POST', headers: HDR, body: JSON.stringify(args) });
+  const r = await fetch(`${ROMDEV_URL}/tool/${name}`, { method: 'POST', headers: HDR, body: JSON.stringify(args) });
   const t = await r.text();
   let j; try { j = JSON.parse(t); } catch { j = t; }
   if (!r.ok || j?.error) { console.error(`romdev ${name}: ${t.slice(0, 400)}`); await bye(3); }

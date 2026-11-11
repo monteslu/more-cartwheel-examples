@@ -2,12 +2,13 @@
 // where the course's own line puts them, its rectangle a small share of the picture, and only a part of that rectangle changed by it, so the water reads through (spray keeps moving in a held moment, so nothing is judged outside the rectangle).
 // Controls: dots drawn 60 m off and a map three times the size must fail.
 //   node tests/jetski-minimap.mjs [--gl] [--webgpu] [--cart <path>]
+import { ROMDEV_URL } from './lib/romdev-url.mjs';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { inflateSync } from 'node:zlib';
 import { readCourse, COURSE_IDS } from '../games/jetski/tools/course-read.mjs';
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..'), URL_ = 'http://127.0.0.1:7331/mcp', SESSION = process.env.JETSKI_SESSION || 'jetski', OUT = join(ROOT, 'out/minimap');
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..'), URL_ = ROMDEV_URL+'/mcp', SESSION = process.env.JETSKI_SESSION || 'jetski', OUT = join(ROOT, 'out/minimap');
 const arg = (n, d) => { const i = process.argv.indexOf(n); return i > 0 ? process.argv[i + 1] : d; };
 const CART = resolve(arg('--cart', join(ROOT, 'build/cart-wgpu/carts/jetski.wasc'))), BACKENDS = process.argv.includes('--gl') ? ['gl'] : process.argv.includes('--webgpu') ? ['webgpu'] : ['gl', 'webgpu'];
 const MAX_AREA = 0.035, MAX_COVER = 0.4, MAX_DOT_PX = 1.5;

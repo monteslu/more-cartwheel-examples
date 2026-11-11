@@ -1,6 +1,7 @@
+import { ROMDEV_URL } from '../../../../tests/lib/romdev-url.mjs';
 import{resolve}from'node:path';import{mkdirSync,writeFileSync}from'node:fs';import{execFileSync}from'node:child_process';import assert from'node:assert/strict';
 const root=resolve(import.meta.dirname,'../..'),out=resolve(root,'../../out/skyfighter-review/cloud-stability');mkdirSync(out,{recursive:true});const headers={'content-type':'application/json','x-romdev-session':'sky-fighter-cloud-stability'};
-async function t(n,a){const r=await(await fetch('http://127.0.0.1:7331/tool/'+n,{method:'POST',headers,body:JSON.stringify(a)})).json();if(r.error)throw Error(JSON.stringify(r));return r;}
+async function t(n,a){const r=await(await fetch(ROMDEV_URL+'/tool/'+n,{method:'POST',headers,body:JSON.stringify(a)})).json();if(r.error)throw Error(JSON.stringify(r));return r;}
 for(const [name,path]of [['before','../../out/skyfighter-review/sky-before-cloud-fix.wasc'],['after','../../build/cart-wgpu/carts/skyfighter.wasc']]){
  await t('loadMedia',{platform:'wasmcart',path:resolve(root,path),deterministicSeed:17107,deterministicStepMs:1000/60});await t('frame',{op:'step',frames:25});
  for(const[field,value]of Object.entries({'jet.x':-65,'jet.altitude':650,'jet.z':-100,'jet.heading':0,'jet.pitch':0,'jet.roll':0}))await t('wasm',{op:'write',name:field,value});await t('frame',{op:'step',frames:60});

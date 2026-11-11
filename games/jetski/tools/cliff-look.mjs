@@ -1,10 +1,11 @@
 // The cliffs a rider sees on their left and right at speed, from the race camera on a real ride of the cart through romdev: a burst of pictures at each of the tallest
 // walls of a course, with the land hidden once so the crop can be cliff only (tools/cliff-measure.mjs).
 //   node games/jetski/tools/cliff-look.mjs <cart> <out dir> [--gl] [--courses=a,b] [--old]   (--old: a cart without the land mask commands' freeze: pictures only)
+import { ROMDEV_URL } from '../../../tests/lib/romdev-url.mjs';
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { readCourse, COURSE_IDS } from './course-read.mjs';
-const URL_ = 'http://127.0.0.1:7331/mcp', CART = resolve(process.argv[2]), DIR = resolve(process.argv[3]), GL = process.argv.includes('--gl'), OLD = process.argv.includes('--old');
+const URL_ = ROMDEV_URL+'/mcp', CART = resolve(process.argv[2]), DIR = resolve(process.argv[3]), GL = process.argv.includes('--gl'), OLD = process.argv.includes('--old');
 const SESSION = process.env.JETSKI_SESSION || 'jetski';
 const IDS = (process.argv.find((a) => a.startsWith('--courses='))?.slice(10) || COURSE_IDS.join(',')).split(',');
 mkdirSync(DIR, { recursive: true });

@@ -6,6 +6,7 @@
 //
 // Control that must fail: the same meter over the load's own first frames must see a frame over the target. A meter
 // that reports nothing there could not see a stall after the press either.
+import { ROMDEV_URL } from './lib/romdev-url.mjs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -15,7 +16,7 @@ const gpu = opt('--gpu', 'gl'), target = +opt('--target', 100);
 const games = argv.filter((a, i) => !a.startsWith('--') && !argv[i - 1]?.startsWith('--'));
 const session = `start-press-${process.pid}`;
 async function call(tool, a) {
-  const res = await fetch(`http://127.0.0.1:7331/tool/${tool}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-romdev-session': session }, body: JSON.stringify(a) });
+  const res = await fetch(`${ROMDEV_URL}/tool/${tool}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-romdev-session': session }, body: JSON.stringify(a) });
   const t = await res.text();
   let b; try { b = JSON.parse(t); } catch { b = t; }
   if (!res.ok || (b && b.isError)) throw new Error(`${tool}: ${t.slice(0, 400)}`);

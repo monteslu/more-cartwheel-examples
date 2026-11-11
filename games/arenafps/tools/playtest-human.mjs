@@ -8,6 +8,7 @@
 //        [--gl] [--shots dir] [--every 600] [--max-frames 30000] [--session name] [--server http://127.0.0.1:7331]
 //
 // Prints one line per 10 s of play (score, deaths, player 1's accuracy) and a final result line as JSON.
+import { ROMDEV_URL } from '../../../tests/lib/romdev-url.mjs';
 import { mkdirSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
 const has = (k) => process.argv.includes(k);
-const SERVER = arg('--server', 'http://127.0.0.1:7331');
+const SERVER = arg('--server', ROMDEV_URL);
 const SESSION = arg('--session', `arenafps-human-${process.pid}`);
 const human = arg('--human', 'casual'), arena = +arg('--arena', 0), level = +arg('--level', 1), assist = +arg('--assist', 1);
 const cart = resolve(arg('--cart', join(ROOT, 'build/cart-wgpu/carts/arenafps.wasc')));

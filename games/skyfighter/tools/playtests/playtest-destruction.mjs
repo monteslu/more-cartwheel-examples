@@ -1,7 +1,8 @@
+import { ROMDEV_URL } from '../../../../tests/lib/romdev-url.mjs';
 import {resolve} from 'node:path';import {mkdirSync,writeFileSync} from 'node:fs';import assert from 'node:assert/strict';
 const root=resolve(import.meta.dirname,'../..'),out=resolve(root,'../../out/skyfighter-review/destruction');mkdirSync(out,{recursive:true});
 const headers={'content-type':'application/json','x-romdev-session':'sky-fighter-santa-pole-mothership-breakup'};
-async function t(n,a){const r=await(await fetch('http://127.0.0.1:7331/tool/'+n,{method:'POST',headers,body:JSON.stringify(a)})).json();if(r.error)throw Error(JSON.stringify(r));return r;}
+async function t(n,a){const r=await(await fetch(ROMDEV_URL+'/tool/'+n,{method:'POST',headers,body:JSON.stringify(a)})).json();if(r.error)throw Error(JSON.stringify(r));return r;}
 const step=frames=>t('frame',{op:'step',frames}),input=p=>t('input',{op:'set',ports:[p]}),read=async name=>(await t('wasm',{op:'read',name})).value,arr=async name=>(await t('wasm',{op:'read',name})).values,write=(name,value)=>t('wasm',{op:'write',name,value});
 async function set(v){for(const[n,value]of Object.entries(v))await write(n,value);}
 async function shot(name){await t('frame',{op:'screenshot',scale:.6,outputPath:resolve(out,name+'.png')});}

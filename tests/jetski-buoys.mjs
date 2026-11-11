@@ -2,12 +2,13 @@
 // with the buoys and one without. What differs above the waterline is what of the buoy the eye gets: its height on screen, its area, how far it stands from what
 // is behind it. Control: buoy_style 0, the small buoy this replaced, must fail the same numbers. Pass side is on the board and in the HUD; scoring is not touched.
 //   node tests/jetski-buoys.mjs [--gl] [--webgpu] [--cart <path>] [--shots <dir>]
+import { ROMDEV_URL } from './lib/romdev-url.mjs';
 import { readFileSync, mkdirSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { inflateSync } from 'node:zlib';
 import { readCourse, COURSE_IDS } from '../games/jetski/tools/course-read.mjs';
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..'), URL_ = 'http://127.0.0.1:7331/mcp', SESSION = process.env.JETSKI_SESSION || 'jetski';
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..'), URL_ = ROMDEV_URL+'/mcp', SESSION = process.env.JETSKI_SESSION || 'jetski';
 const arg = (n, d) => { const i = process.argv.indexOf(n); return i > 0 ? process.argv[i + 1] : d; };
 const CART = resolve(arg('--cart', join(ROOT, 'build/cart-wgpu/carts/jetski.wasc'))), OUT = resolve(arg('--shots', join(ROOT, 'out/buoys')));
 const BACKENDS = process.argv.includes('--gl') ? ['gl'] : process.argv.includes('--webgpu') ? ['webgpu'] : ['gl', 'webgpu'];

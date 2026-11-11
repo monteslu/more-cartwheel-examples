@@ -1,8 +1,9 @@
 // Does play compile programs the warm-up left out? The count of compiled programs (debug field gpu.programs) right after the
 // warm-up and after each thing a race does for the first time. Anything over the first number is a stall in the player's hands.
 //   node games/jetski/tools/programs-check.mjs <cart> [--gl]
+import { ROMDEV_URL } from '../../../tests/lib/romdev-url.mjs';
 import { resolve } from 'node:path';
-const URL_ = 'http://127.0.0.1:7331/mcp', CART = resolve(process.argv[2]), GL = process.argv.includes('--gl');
+const URL_ = ROMDEV_URL+'/mcp', CART = resolve(process.argv[2]), GL = process.argv.includes('--gl');
 const SESSION = process.env.JETSKI_SESSION || 'jetski';
 let sid = null, id = 1;
 async function rpc(method, params) {

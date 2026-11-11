@@ -1,3 +1,4 @@
+import { ROMDEV_URL } from '../../../../tests/lib/romdev-url.mjs';
 import {resolve} from 'node:path';
 import {mkdirSync,writeFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
@@ -5,7 +6,7 @@ const root=resolve(import.meta.dirname,'../..');
 const out=resolve(root,'../../out/skyfighter-review');mkdirSync(out,{recursive:true});
 const session='sky-fighter-v12-review';
 async function tool(name,args){
-  const response=await fetch(`http://127.0.0.1:7331/tool/${name}`,{method:'POST',headers:{'content-type':'application/json','x-romdev-session':session},body:JSON.stringify(args)});
+  const response=await fetch(`${ROMDEV_URL}/tool/${name}`,{method:'POST',headers:{'content-type':'application/json','x-romdev-session':session},body:JSON.stringify(args)});
   const r=await response.json();if(!response.ok||r.error)throw new Error(`${name}: ${JSON.stringify(r)}`);return r;
 }
 const step=frames=>tool('frame',{op:'step',frames});

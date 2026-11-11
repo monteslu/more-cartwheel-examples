@@ -12,6 +12,7 @@
 // and the same pilot under the old rules (sw ram_crash 1: flying into a balloon ends the sortie; sw late_pull_up 1:
 // PULL UP only 45 m above the ground), the build a newcomer could not finish.
 //   node tests/skyfighter-newcomer.mjs [--gl] [--webgpu] [--cart <path>] [--only fair|scramble]
+import { ROMDEV_URL } from './lib/romdev-url.mjs';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,14 +26,14 @@ const ONLY = arg('--only', '');
 mkdirSync(OUT, { recursive: true });
 const H = { 'Content-Type': 'application/json', 'x-romdev-session': SESSION, 'x-romdev-agent': AGENT };
 const bye = async (code) => {
-  try { await fetch('http://127.0.0.1:7331/tool/host', { method: 'POST', headers: H, body: '{"op":"shutdown"}', signal: AbortSignal.timeout(30000) }); } catch {}
+  try { await fetch(ROMDEV_URL+'/tool/host', { method: 'POST', headers: H, body: '{"op":"shutdown"}', signal: AbortSignal.timeout(30000) }); } catch {}
   process.exit(code);
 };
 for (const s of ['SIGTERM', 'SIGINT']) process.on(s, () => bye(130));
 let requests = 0; /* romdev requests, printed at the end */
 const tool = async (name, args) => {
   requests++;
-  const r = await fetch(`http://127.0.0.1:7331/tool/${name}`, { method: 'POST', headers: H, body: JSON.stringify(args) });
+  const r = await fetch(`${ROMDEV_URL}/tool/${name}`, { method: 'POST', headers: H, body: JSON.stringify(args) });
   const t = await r.text();
   let j; try { j = JSON.parse(t); } catch { j = t; }
   if (!r.ok || j?.error) { console.error(`romdev ${name}: ${t.slice(0, 400)}`); await bye(3); }

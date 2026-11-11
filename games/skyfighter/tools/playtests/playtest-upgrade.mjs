@@ -1,3 +1,4 @@
+import { ROMDEV_URL } from '../../../../tests/lib/romdev-url.mjs';
 import {resolve} from 'node:path';
 import {mkdirSync,writeFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
@@ -5,7 +6,7 @@ const root=resolve(import.meta.dirname,'../..'),out=resolve(root,'../../out/skyf
 const report={},impactsOnly=!!process.env.SKY_UPGRADE_IMPACTS_ONLY;
 for(const wgpu of (process.env.SKY_UPGRADE_BACKEND?[process.env.SKY_UPGRADE_BACKEND==='webgpu']:[false,true])) {
  const backend=wgpu?'webgpu':'gl',headers={'content-type':'application/json','x-romdev-session':'sky-fighter-upgrade-'+backend};
- async function t(name,args){const response=await fetch('http://127.0.0.1:7331/tool/'+name,{method:'POST',headers,body:JSON.stringify(args)});const r=await response.json();if(!response.ok||r.error)throw Error(name+': '+JSON.stringify(r));return r;}
+ async function t(name,args){const response=await fetch(ROMDEV_URL+'/tool/'+name,{method:'POST',headers,body:JSON.stringify(args)});const r=await response.json();if(!response.ok||r.error)throw Error(name+': '+JSON.stringify(r));return r;}
  const step=frames=>t('frame',{op:'step',frames}),input=p=>t('input',{op:'set',ports:[p]}),read=async name=>(await t('wasm',{op:'read',name})).value,write=(name,value)=>t('wasm',{op:'write',name,value});
  async function pulse(button){await input({[button]:true});await step(2);await input({});await step(3);}
  async function set(v){for(const [name,value] of Object.entries(v))await write(name,value);}

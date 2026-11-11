@@ -12,6 +12,7 @@
 // same newcomer with the herring and trees not drawn (hide items, hide trees: nothing on screen to read).
 //   node tests/tuxracer-newcomer.mjs [--gl] [--webgpu] [--cart <path>] [--no-controls | --controls-only] [--measure]   (--measure: each Cup race once, the
 //   numbers a requirement is set from, under the original's rule so nothing advances)
+import { ROMDEV_URL } from './lib/romdev-url.mjs';
 import { mkdirSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -26,13 +27,13 @@ mkdirSync(OUT, { recursive: true });
 const H = { 'Content-Type': 'application/json', 'x-romdev-session': SESSION, 'x-romdev-agent': AGENT };
 // every exit tears this session's romdev host down, a failed run too
 const bye = async (code) => {
-  try { await fetch('http://127.0.0.1:7331/tool/host', { method: 'POST', headers: H, body: '{"op":"shutdown"}', signal: AbortSignal.timeout(30000) }); } catch {}
+  try { await fetch(ROMDEV_URL+'/tool/host', { method: 'POST', headers: H, body: '{"op":"shutdown"}', signal: AbortSignal.timeout(30000) }); } catch {}
   process.exit(code);
 };
 for (const s of ['SIGTERM', 'SIGINT']) process.on(s, () => bye(130));
 // (node:http, not fetch: fetch gives up on a reply that takes five minutes, and a busy GPU can take that long)
 const post = (name, body) => new Promise((ok, no) => {
-  const q = request(`http://127.0.0.1:7331/tool/${name}`, { method: 'POST', headers: H }, (res) => {
+  const q = request(`${ROMDEV_URL}/tool/${name}`, { method: 'POST', headers: H }, (res) => {
     let t = '';
     res.setEncoding('utf8');
     res.on('data', (c) => (t += c));

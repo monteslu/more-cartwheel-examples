@@ -1,13 +1,14 @@
 // Is anything floating? For a course, a held camera close by: where its scatter is densest, every kind of thing placed by hand, its ramps, its landmark and
 // hook, and the shore all the way round the course. Native-scale pictures and contact sheets to look at, pages of nine.
 //   node games/jetski/tools/grounding-sweep.mjs <cart> <course id> <out dir> [--gl] [--keep]
+import { ROMDEV_URL } from '../../../tests/lib/romdev-url.mjs';
 import { mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { readCourse, COURSE_IDS } from './course-read.mjs';
 const HERE = dirname(fileURLToPath(import.meta.url));
-const URL_ = 'http://127.0.0.1:7331/mcp', CART = resolve(process.argv[2]), ID = process.argv[3], DIR = resolve(process.argv[4]), GL = process.argv.includes('--gl');
+const URL_ = ROMDEV_URL+'/mcp', CART = resolve(process.argv[2]), ID = process.argv[3], DIR = resolve(process.argv[4]), GL = process.argv.includes('--gl');
 const SESSION = process.env.JETSKI_SESSION || 'jetski';
 const RAW = join(DIR, ID + '-raw');
 mkdirSync(RAW, { recursive: true });

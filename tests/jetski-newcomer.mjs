@@ -10,6 +10,7 @@
 // races the whole of the first course, three laps, and asks that it is finished inside 8 minutes on the sit-down and 10 on
 // the stand-up, and with both, the stand-up inside 25 % of the sit-down's time (the control runs until its race is over too).
 //   node tests/jetski-newcomer.mjs [--gl] [--webgpu] [--cart <path>] [--craft sit|stand|both] [--finish]
+import { ROMDEV_URL } from './lib/romdev-url.mjs';
 import { mkdirSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,14 +25,14 @@ mkdirSync(OUT, { recursive: true });
 const H = { 'Content-Type': 'application/json', 'x-romdev-session': SESSION, 'x-romdev-agent': AGENT };
 // every exit tears this session's romdev host down, a failed run too
 const bye = async (code) => {
-  try { await fetch('http://127.0.0.1:7331/tool/host', { method: 'POST', headers: H, body: '{"op":"shutdown"}', signal: AbortSignal.timeout(30000) }); } catch {}
+  try { await fetch(ROMDEV_URL+'/tool/host', { method: 'POST', headers: H, body: '{"op":"shutdown"}', signal: AbortSignal.timeout(30000) }); } catch {}
   process.exit(code);
 };
 for (const s of ['SIGTERM', 'SIGINT']) process.on(s, () => bye(130));
 let requests = 0; /* romdev requests, printed at the end */
 const tool = async (name, args) => {
   requests++;
-  const r = await fetch(`http://127.0.0.1:7331/tool/${name}`, { method: 'POST', headers: H, body: JSON.stringify(args) });
+  const r = await fetch(`${ROMDEV_URL}/tool/${name}`, { method: 'POST', headers: H, body: JSON.stringify(args) });
   const t = await r.text();
   let j; try { j = JSON.parse(t); } catch { j = t; }
   if (!r.ok || j?.error) { console.error(`romdev ${name}: ${t.slice(0, 400)}`); await bye(3); }

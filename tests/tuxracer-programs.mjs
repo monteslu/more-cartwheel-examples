@@ -6,6 +6,7 @@
 // counts the whole run), and on the red "no program" banner in the frames kept at each stretch's end.
 // Control: the release cart of v0.29.1 (--cart w3/rel.wasc or any cart) skipped Tux and the ghost after a switch.
 //   node tests/tuxracer-programs.mjs [--gl] [--webgpu] [--cart <path>] [--expect-fail]
+import { ROMDEV_URL } from './lib/romdev-url.mjs';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { resolve, dirname, join, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,10 +21,10 @@ const EXPECT_FAIL = process.argv.includes('--expect-fail'); // the control: this
 const SESSION = process.env.TUXRACER_SESSION || 'tuxracer-programs', AGENT = process.env.TUXRACER_AGENT || 'tuxracer-programs';
 mkdirSync(OUT, { recursive: true });
 const H = { 'Content-Type': 'application/json', 'x-romdev-session': SESSION, 'x-romdev-agent': AGENT };
-const bye = async (code) => { try { await fetch('http://127.0.0.1:7331/tool/host', { method: 'POST', headers: H, body: '{"op":"shutdown"}', signal: AbortSignal.timeout(30000) }); } catch {} process.exit(code); };
+const bye = async (code) => { try { await fetch(ROMDEV_URL+'/tool/host', { method: 'POST', headers: H, body: '{"op":"shutdown"}', signal: AbortSignal.timeout(30000) }); } catch {} process.exit(code); };
 for (const s of ['SIGTERM', 'SIGINT']) process.on(s, () => bye(130));
 const post = (name, body) => new Promise((ok, no) => {
-  const q = request(`http://127.0.0.1:7331/tool/${name}`, { method: 'POST', headers: H }, (res) => { let t = ''; res.setEncoding('utf8'); res.on('data', (c) => (t += c)); res.on('end', () => ok({ ok: res.statusCode === 200, t })); });
+  const q = request(`${ROMDEV_URL}/tool/${name}`, { method: 'POST', headers: H }, (res) => { let t = ''; res.setEncoding('utf8'); res.on('data', (c) => (t += c)); res.on('end', () => ok({ ok: res.statusCode === 200, t })); });
   q.on('error', no); q.end(body);
 });
 const tool = async (name, args) => {

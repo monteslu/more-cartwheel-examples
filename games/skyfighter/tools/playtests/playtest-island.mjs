@@ -1,9 +1,10 @@
+import { ROMDEV_URL } from '../../../../tests/lib/romdev-url.mjs';
 import {resolve} from 'node:path';
 import {mkdirSync,writeFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
 const root=resolve(import.meta.dirname,'../..'),out=resolve(root,'../../out/skyfighter-review/island');mkdirSync(out,{recursive:true});
 const headers={'content-type':'application/json','x-romdev-session':'sky-fighter-island-horizon'};
-async function t(n,a){const response=await fetch('http://127.0.0.1:7331/tool/'+n,{method:'POST',headers,body:JSON.stringify(a)});const r=await response.json();if(!response.ok||r.error)throw Error(JSON.stringify(r));return r;}
+async function t(n,a){const response=await fetch(ROMDEV_URL+'/tool/'+n,{method:'POST',headers,body:JSON.stringify(a)});const r=await response.json();if(!response.ok||r.error)throw Error(JSON.stringify(r));return r;}
 const step=frames=>t('frame',{op:'step',frames}),input=p=>t('input',{op:'set',ports:[p]}),read=async name=>(await t('wasm',{op:'read',name})).value;
 async function fixture(values){await input({});for(const [name,value] of Object.entries(values))await t('wasm',{op:'write',name,value});await step(24);}
 async function shot(name){await t('frame',{op:'screenshot',scale:.5,outputPath:resolve(out,name+'.png')});}

@@ -2,11 +2,12 @@
 // holds the throttle, aims for the correct side of each buoy, throws a trick in long air. Takes a shot at chosen moments.
 //   node games/jetski/tools/play-romdev.mjs <frames> <shot dir> [--wrong-side] [--course=<id>] [--gl] [--tricks] [--shots=f,f] [--burst=f]
 // --course: that course, by the menu's own start. --burst: eight frames in a row from there, to see it move. Reports how hard the camera moved
+import { ROMDEV_URL } from '../../../tests/lib/romdev-url.mjs';
 import { mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readCourse, COURSE_IDS } from './course-read.mjs';
-const HERE = dirname(fileURLToPath(import.meta.url)), URL_ = 'http://127.0.0.1:7331/mcp';
+const HERE = dirname(fileURLToPath(import.meta.url)), URL_ = ROMDEV_URL+'/mcp';
 const FRAMES = +process.argv[2] || 1200, DIR = resolve(process.argv[3] || 'out/play'), WRONG = process.argv.includes('--wrong-side');
 mkdirSync(DIR, { recursive: true });
 const COURSE = process.argv.find((v) => v.startsWith('--course='))?.slice(9) || 'atoll', C = readCourse(COURSE), B = C.buoys, T = C.track;

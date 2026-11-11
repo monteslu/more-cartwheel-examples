@@ -1,11 +1,12 @@
 // Cliffs from a held camera, the side_detile off and on, and how much each repeats (tools/cliff-measure.mjs). The off picture is the control: it
 // must read as a repeat.
 //   node games/jetski/tools/plaid-look.mjs <cart> <out dir> [--gl] [--released: a cart with no detile command]
+import { ROMDEV_URL } from '../../../tests/lib/romdev-url.mjs';
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { readCourse, COURSE_IDS } from './course-read.mjs';
 import { repeatShare } from './cliff-measure.mjs';
-const URL_ = 'http://127.0.0.1:7331/mcp', CART = resolve(process.argv[2]), DIR = resolve(process.argv[3]), GL = process.argv.includes('--gl'), RELEASED = process.argv.includes('--released');
+const URL_ = ROMDEV_URL+'/mcp', CART = resolve(process.argv[2]), DIR = resolve(process.argv[3]), GL = process.argv.includes('--gl'), RELEASED = process.argv.includes('--released');
 const SESSION = process.env.JETSKI_SESSION || 'jetski';
 mkdirSync(DIR, { recursive: true });
 let sid = null, id = 1;

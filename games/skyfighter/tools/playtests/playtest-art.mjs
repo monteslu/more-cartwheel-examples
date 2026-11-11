@@ -1,12 +1,13 @@
 // Matched deterministic art review, renderer safety and host CPU counters.
 // SKY_ART_BACKEND=gl SKY_ART_LEVELS=0,3,4 node scripts/playtest-art.mjs
+import { ROMDEV_URL } from '../../../../tests/lib/romdev-url.mjs';
 import {resolve} from 'node:path';
 import {mkdirSync,writeFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
 const root=resolve(import.meta.dirname,'../..'),out=resolve(root,'../../out/skyfighter-review/art');mkdirSync(out,{recursive:true});
 const backend=process.env.SKY_ART_BACKEND||'webgpu',levels=(process.env.SKY_ART_LEVELS||'0,1,2,3,4,5,6,7').split(',').map(Number),report=[];
 const headers={'content-type':'application/json','x-romdev-session':'sky-fighter-art-final-'+backend};
-async function t(n,a){const r=await fetch('http://localhost:7331/tool/'+n,{method:'POST',headers,body:JSON.stringify(a)}),j=await r.json();if(!r.ok||j.error)throw Error(JSON.stringify(j));return j;}
+async function t(n,a){const r=await fetch(ROMDEV_URL+'/tool/'+n,{method:'POST',headers,body:JSON.stringify(a)}),j=await r.json();if(!r.ok||j.error)throw Error(JSON.stringify(j));return j;}
 const step=frames=>t('frame',{op:'step',frames}),write=(name,value)=>t('wasm',{op:'write',name,value}),read=async name=>(await t('wasm',{op:'read',name})).value,input=p=>t('input',{op:'set',ports:[p]}),command=text=>t('wasm',{op:'command',text});
 for(const level of levels){
  await t('loadMedia',{platform:'wasmcart',path:resolve(root,'../../build/cart-wgpu/carts/skyfighter.wasc'),wgpu:backend==='webgpu',deterministicStepMs:16,deterministicSeed:17107});await step(25);

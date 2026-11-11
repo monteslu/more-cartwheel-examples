@@ -1,8 +1,9 @@
 // Beach the human with the debug command and drive off with a pad through romdev, like a person: throttle held, stick turned
 // for the water. Prints where the craft went. node beach-check.mjs [metres] [--idle]
+import { ROMDEV_URL } from '../../../tests/lib/romdev-url.mjs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-const HERE = dirname(fileURLToPath(import.meta.url)), URL_ = 'http://127.0.0.1:7331/mcp';
+const HERE = dirname(fileURLToPath(import.meta.url)), URL_ = ROMDEV_URL+'/mcp';
 let sid = null, id = 1;
 async function rpc(method, params) {
   const headers = { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', 'x-romdev-session': 'jetski' };

@@ -14,12 +14,13 @@
 // the yard never slows for the cards, and the idle soldier, standing where it stood, holds the team box and its
 // tether: the person cannot reach the open hatch in 2 minutes (the shipped soft lock this gate found).
 //   node tests/hordeshooter-newcomer.mjs [--gl] [--webgpu] [--cart <path>] [--no-control | --control-only] [--no-idle]
+import { ROMDEV_URL } from './lib/romdev-url.mjs';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..'), OUT = join(ROOT, 'out/hordeshooter-newcomer');
-const SESSION = process.env.HORDE_SESSION || `hordeshooter-newcomer-${process.pid}`, PORT = process.env.ROMDEV_PORT || '7331';
+const SESSION = process.env.HORDE_SESSION || `hordeshooter-newcomer-${process.pid}`;
 const arg = (n, d) => { const i = process.argv.indexOf(n); return i > 0 ? process.argv[i + 1] : d; };
 const CART = resolve(arg('--cart', join(ROOT, 'build/cart-wgpu/carts/hordeshooter.wasc')));
 const BACKENDS = process.argv.includes('--gl') ? ['gl'] : process.argv.includes('--webgpu') ? ['webgpu'] : ['gl', 'webgpu'];
@@ -28,7 +29,7 @@ mkdirSync(OUT, { recursive: true });
 const H = { 'Content-Type': 'application/json', 'x-romdev-session': SESSION, 'x-romdev-agent': 'hordeshooter-newcomer' };
 // every exit tears this session's romdev host down, a failed run too: a host left loaded holds the server's memory
 const bye = async (code) => {
-  try { await fetch(`http://127.0.0.1:${PORT}/tool/host`, { method: 'POST', headers: H, body: '{"op":"shutdown"}', signal: AbortSignal.timeout(30000) }); } catch {}
+  try { await fetch(`${ROMDEV_URL}/tool/host`, { method: 'POST', headers: H, body: '{"op":"shutdown"}', signal: AbortSignal.timeout(30000) }); } catch {}
   process.exit(code);
 };
 for (const s of ['SIGTERM', 'SIGINT']) process.on(s, () => bye(130));
@@ -36,7 +37,7 @@ for (const ev of ['unhandledRejection', 'uncaughtException']) process.on(ev, (e)
 let requests = 0; /* romdev requests this run (one decision is one input request and one read) */
 const tool = async (name, args) => {
   requests++;
-  const r = await fetch(`http://127.0.0.1:${PORT}/tool/${name}`, { method: 'POST', headers: H, body: JSON.stringify(args) });
+  const r = await fetch(`${ROMDEV_URL}/tool/${name}`, { method: 'POST', headers: H, body: JSON.stringify(args) });
   const t = await r.text();
   let j; try { j = JSON.parse(t); } catch { j = t; }
   if (!r.ok || j?.error) { console.error(`romdev ${name}: ${t.slice(0, 400)}`); await bye(3); }

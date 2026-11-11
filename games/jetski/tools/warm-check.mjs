@@ -2,8 +2,9 @@
 // then every frame of the attract loop and of the start of a race, naming the slow ones. Two loads in a row: does the second
 // compile less?
 //   node games/jetski/tools/warm-check.mjs <cart> [--gl]
+import { ROMDEV_URL } from '../../../tests/lib/romdev-url.mjs';
 import { resolve } from 'node:path';
-const URL_ = 'http://127.0.0.1:7331/mcp', CART = resolve(process.argv[2]), GL = process.argv.includes('--gl');
+const URL_ = ROMDEV_URL+'/mcp', CART = resolve(process.argv[2]), GL = process.argv.includes('--gl');
 const SESSION = process.env.JETSKI_SESSION || 'jetski';
 let sid = null, id = 1;
 async function rpc(method, params) {

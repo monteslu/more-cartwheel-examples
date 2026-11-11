@@ -1,10 +1,11 @@
 // The race camera in the biggest sea of each difficulty, on the open water of the course, throttle held: pictures every second
 // and a count of near-black pixels on the water, outside the rider's box. Same moments on any cart, so two carts compare.
 //   node games/jetski/tools/race-crests.mjs <cart> <out dir> [--gl]
+import { ROMDEV_URL } from '../../../tests/lib/romdev-url.mjs';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { inflateSync } from 'node:zlib';
-const URL_ = 'http://127.0.0.1:7331/mcp', CART = resolve(process.argv[2]), DIR = resolve(process.argv[3]), GL = process.argv.includes('--gl');
+const URL_ = ROMDEV_URL+'/mcp', CART = resolve(process.argv[2]), DIR = resolve(process.argv[3]), GL = process.argv.includes('--gl');
 const SESSION = process.env.JETSKI_SESSION || 'jetski';
 mkdirSync(DIR, { recursive: true });
 let sid = null, id = 1;

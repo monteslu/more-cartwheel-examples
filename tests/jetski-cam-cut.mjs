@@ -1,9 +1,10 @@
 // A race start never shows the camera under the sea. Race to the next course by the real flow through romdev on the cart: a race, the finish, the results page's own accept, the next course's first frames.
 // Counts the frames whose drawn camera is under the water. Control: cam_cut 0, the camera drawn between a zeroed place and its first, must show it.
 //   node tests/jetski-cam-cut.mjs [--gl]
+import { ROMDEV_URL } from './lib/romdev-url.mjs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..'), U = 'http://127.0.0.1:7331/mcp', H = { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', 'x-romdev-session': process.env.JETSKI_SESSION || 'jetski' };
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..'), U = ROMDEV_URL+'/mcp', H = { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', 'x-romdev-session': process.env.JETSKI_SESSION || 'jetski' };
 let sid = null, id = 1;
 async function rpc(m, p) { const h = { ...H }; if (sid) h['mcp-session-id'] = sid; const r = await fetch(U, { method: 'POST', headers: h, body: JSON.stringify({ jsonrpc: '2.0', id: id++, method: m, params: p }) }); if (!sid) sid = r.headers.get('mcp-session-id'); const t = await r.text(), l = t.split('\n').find((x) => x.startsWith('data:')); return JSON.parse(l ? l.slice(5) : t); }
 const call = async (n, a) => { const r = await rpc('tools/call', { name: n, arguments: a }); if (r.error || r.result?.isError) throw new Error(n + ' ' + JSON.stringify(r.error || r.result).slice(0, 300)); const c = r.result?.content?.[0]?.text; try { return JSON.parse(c); } catch { return c; } };

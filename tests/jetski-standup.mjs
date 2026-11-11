@@ -12,6 +12,7 @@
 //   rumble: the stand-up's tricks on the water answer on the pad (feedback counts), and nothing flashes: no new light.
 // Frames from the race camera are kept in out/jetski-standup to look at.
 //   node tests/jetski-standup.mjs [--gl] [--webgpu] [--cart <path>] [--baseline <main's jetski_auto.wasc>]
+import { ROMDEV_URL } from './lib/romdev-url.mjs';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,14 +25,14 @@ const OPEN = 4; /* Gale Bank: open sea */
 mkdirSync(OUT, { recursive: true });
 const H = { 'Content-Type': 'application/json', 'x-romdev-session': SESSION, 'x-romdev-agent': 'jetski-standup' };
 async function bye(code) {
-  try { await fetch('http://127.0.0.1:7331/tool/host', { method: 'POST', headers: H, body: '{"op":"shutdown"}', signal: AbortSignal.timeout(30000) }); } catch {}
+  try { await fetch(ROMDEV_URL+'/tool/host', { method: 'POST', headers: H, body: '{"op":"shutdown"}', signal: AbortSignal.timeout(30000) }); } catch {}
   process.exit(code);
 }
 for (const s of ['SIGTERM', 'SIGINT']) process.on(s, () => bye(130));
 let calls = 0;
 const tool = async (name, args) => {
   calls++;
-  const r = await fetch(`http://127.0.0.1:7331/tool/${name}`, { method: 'POST', headers: H, body: JSON.stringify(args) });
+  const r = await fetch(`${ROMDEV_URL}/tool/${name}`, { method: 'POST', headers: H, body: JSON.stringify(args) });
   const t = await r.text();
   let j; try { j = JSON.parse(t); } catch { j = t; }
   if (!r.ok || j?.error) { console.error(`romdev ${name}: ${t.slice(0, 400)}`); await bye(3); }

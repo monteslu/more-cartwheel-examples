@@ -16,12 +16,13 @@
 // screen with nothing to press.
 //   node tests/arenafps-newcomer.mjs [--gl] [--webgpu] [--cart <path>] [--max-secs 600] [--no-control | --control-only]
 // (a match is about 25 minutes of romdev time: one run per GPU job fits its hour)
+import { ROMDEV_URL } from './lib/romdev-url.mjs';
 import { mkdirSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..'), SESSION = process.env.ARENA_SESSION || 'arenafps-newcomer', OUT = join(ROOT, 'out/arenafps-newcomer');
-const SERVER = process.env.ROMDEV_URL || 'http://127.0.0.1:7331';
+const SERVER = process.env.ROMDEV_URL || ROMDEV_URL;
 const arg = (n, d) => { const i = process.argv.indexOf(n); return i > 0 ? process.argv[i + 1] : d; };
 const CART = resolve(arg('--cart', join(ROOT, 'build/cart-wgpu/carts/arenafps.wasc')));
 const MAX = 60 * +arg('--max-secs', 600);

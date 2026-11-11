@@ -1,6 +1,7 @@
+import { ROMDEV_URL } from '../../../../tests/lib/romdev-url.mjs';
 import{resolve}from'node:path';import{writeFileSync}from'node:fs';import assert from'node:assert/strict';
 const root=resolve(import.meta.dirname,'../..'),out=resolve(root,'../../out/skyfighter-review'),headers={'content-type':'application/json','x-romdev-session':'sky-fighter-attitude-recovery'};
-async function t(n,a){const r=await(await fetch('http://127.0.0.1:7331/tool/'+n,{method:'POST',headers,body:JSON.stringify(a)})).json();if(r.error)throw Error(JSON.stringify(r));return r;}
+async function t(n,a){const r=await(await fetch(ROMDEV_URL+'/tool/'+n,{method:'POST',headers,body:JSON.stringify(a)})).json();if(r.error)throw Error(JSON.stringify(r));return r;}
 const step=frames=>t('frame',{op:'step',frames}),input=p=>t('input',{op:'set',ports:[p]}),read=async name=>{const r=await t('wasm',{op:'read',name});return r.values??r.value;},write=(name,value)=>t('wasm',{op:'write',name,value});
 async function set(values){for(const[n,v]of Object.entries(values))await write(n,v);}
 async function safe(){assert.equal(await read('mission.state'),1,'aircraft must remain controllable in flight');assert((await read('jet.visual_forward')).every(Number.isFinite));assert((await read('jet.visual_up')).every(Number.isFinite));}

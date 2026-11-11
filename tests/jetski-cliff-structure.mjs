@@ -1,13 +1,14 @@
 // A rock wall seen from a distance has big shapes, not only an even fine grain: for held cameras on a course, the contrast of 24 to 96 px forms against the contrast under 5 px,
 // on rock pixels. The check cannot pass a repeated grain: a small tile cut from each picture and repeated over the rectangle must read low. It says nothing about beauty: look at the pictures.
 //   node tests/jetski-cliff-structure.mjs [cart] [--expect-low: this cart is the control, it must fail]: GL and WebGPU on the one cart, pictures in out/cliff-structure
+import { ROMDEV_URL } from './lib/romdev-url.mjs';
 import { mkdirSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { scaleShares } from '../games/jetski/tools/cliff-scale.mjs';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const { readImage } = await import(join(ROOT, 'deps/cartwheel-engine/tools/lib/png.mjs'));
-const URL_ = 'http://127.0.0.1:7331/mcp', args = process.argv.slice(2).filter((a) => !a.startsWith('--')), CART = resolve(args[0] || join(ROOT, 'build/cart-wgpu/carts/jetski.wasc')), DIR = join(ROOT, 'out/cliff-structure'), LOW = process.argv.includes('--expect-low');
+const URL_ = ROMDEV_URL+'/mcp', args = process.argv.slice(2).filter((a) => !a.startsWith('--')), CART = resolve(args[0] || join(ROOT, 'build/cart-wgpu/carts/jetski.wasc')), DIR = join(ROOT, 'out/cliff-structure'), LOW = process.argv.includes('--expect-low');
 const SESSION = process.env.JETSKI_SESSION || 'jetski-cliff';
 const FLOOR = { 0: 1.45, 1: 1.15 }; // between the cart before the rock faces and the rock faces: Crater Atoll 1.16 and 1.69, Cold Sound 0.96 and 1.25
 // course index: [camera x y z, look x y z, rectangle x y w h]

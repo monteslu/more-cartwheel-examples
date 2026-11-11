@@ -5,6 +5,7 @@
 // +15 mm); racing, paddling down the first slope, his belly is on the snow (the median -40 to +40 mm, never below -80).
 // Control: TUXRACER_TUX_LIFT=0.06 (the model drawn 6 cm up) must fail, or the check could not see a floating Tux.
 //   node tests/tuxracer-grounding.mjs [--gl] [--webgpu] [--cart <path>] [--no-control]
+import { ROMDEV_URL } from './lib/romdev-url.mjs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { request } from 'node:http';
@@ -18,7 +19,7 @@ const H = { 'Content-Type': 'application/json', 'x-romdev-session': SESSION, 'x-
 let calls = 0;
 const post = (name, body) => new Promise((ok, no) => {
   calls++;
-  const q = request(`http://127.0.0.1:7331/tool/${name}`, { method: 'POST', headers: H }, (res) => {
+  const q = request(`${ROMDEV_URL}/tool/${name}`, { method: 'POST', headers: H }, (res) => {
     let t = ''; res.setEncoding('utf8'); res.on('data', (c) => (t += c)); res.on('end', () => ok({ ok: res.statusCode === 200, t }));
   });
   q.on('error', no); q.end(body);

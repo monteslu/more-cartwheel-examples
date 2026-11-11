@@ -1,9 +1,10 @@
 // Look at a course through romdev from the race camera: a run of pictures at several places on it, and the numbers of the walk.
 // Every new course goes through this before anything else.
 //   node games/jetski/tools/course-look.mjs <cart> <course index> <out dir> [--gl] [--at=100,600,...]
+import { ROMDEV_URL } from '../../../tests/lib/romdev-url.mjs';
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
-const URL_ = 'http://127.0.0.1:7331/mcp', CART = resolve(process.argv[2]), LEVEL = +process.argv[3], DIR = resolve(process.argv[4]), GL = process.argv.includes('--gl');
+const URL_ = ROMDEV_URL+'/mcp', CART = resolve(process.argv[2]), LEVEL = +process.argv[3], DIR = resolve(process.argv[4]), GL = process.argv.includes('--gl');
 const SESSION = process.env.JETSKI_SESSION || 'jetski';
 const AT = (process.argv.find((a) => a.startsWith('--at='))?.slice(5) || '100,500,900,1300,1700,2100,2500,2900').split(',').map(Number);
 mkdirSync(DIR, { recursive: true });

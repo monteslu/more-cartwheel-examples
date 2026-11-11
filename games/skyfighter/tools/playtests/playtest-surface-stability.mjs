@@ -1,6 +1,7 @@
+import { ROMDEV_URL } from '../../../../tests/lib/romdev-url.mjs';
 import {resolve} from 'node:path';import {mkdirSync,writeFileSync} from 'node:fs';import {execFileSync} from 'node:child_process';import assert from 'node:assert/strict';
 const root=resolve(import.meta.dirname,'../..'),out=resolve(root,'../../out/skyfighter-review/surface-motion');mkdirSync(out,{recursive:true});const headers={'content-type':'application/json','x-romdev-session':'sky-fighter-surface-motion'};
-async function t(n,a){const res=await fetch('http://127.0.0.1:7331/tool/'+n,{method:'POST',headers,body:JSON.stringify(a)});const r=await res.json();if(!res.ok||r.error)throw Error(JSON.stringify(r));return r;}
+async function t(n,a){const res=await fetch(ROMDEV_URL+'/tool/'+n,{method:'POST',headers,body:JSON.stringify(a)});const r=await res.json();if(!res.ok||r.error)throw Error(JSON.stringify(r));return r;}
 for(const [label,path]of [['before','../../out/skyfighter-review/sky-before-stability-fix.wasc'],['after','../../build/cart-wgpu/carts/skyfighter.wasc']]){
  await t('loadMedia',{platform:'wasmcart',path:resolve(root,path),deterministicSeed:17107,deterministicStepMs:1000/60});await t('frame',{op:'step',frames:25});if(label==='after')await t('wasm',{op:'write',name:'mission.level',value:3});await t('input',{op:'set',ports:[{south:true}]});await t('frame',{op:'step',frames:2});await t('input',{op:'set',ports:[{}]});for(let i=0;i<7;i++)await t('wasm',{op:'write',name:`enemy.${i}.active`,value:0});await t('wasm',{op:'write',name:'mission.spawn',value:10000});
  for(const [name,value]of Object.entries({'jet.x':2300,'jet.z':500,'jet.altitude':200,'jet.heading':-Math.PI/2,'jet.pitch':0,'jet.roll':0}))await t('wasm',{op:'write',name,value});await t('frame',{op:'step',frames:60});
