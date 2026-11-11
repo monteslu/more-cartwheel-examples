@@ -1,9 +1,11 @@
-// The jetski weather gates' client for romdev (127.0.0.1:7331): the built cart only, each run one input({op:'timeline'})
+// The jetski weather gates' client for romdev (ROMDEV_URL, else ROMDEV_PORT on 127.0.0.1, else 127.0.0.1:7331): the built cart only, each run one input({op:'timeline'})
 // call (a whole schedule of held buttons, stepped in one request), debug commands and reads in between.
 import { mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+/** the romdev server: the pool sets ROMDEV_URL per job (each GPU of a host has its own) */
+export const ROMDEV = (process.env.ROMDEV_URL || `http://127.0.0.1:${process.env.ROMDEV_PORT || 7331}`).replace(/\/+$/, '').replace(/\/mcp$/, '');
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 export const arg = (n, d) => { const i = process.argv.indexOf(n); return i > 0 ? process.argv[i + 1] : d; };
 export const BACKENDS = process.argv.includes('--gl') ? ['gl'] : process.argv.includes('--webgpu') ? ['webgpu'] : ['gl', 'webgpu'];
@@ -15,7 +17,7 @@ export function client(name) {
   mkdirSync(OUT, { recursive: true });
   let requests = 0, frame = 0, fail = 0;
   const bye = async (code) => {
-    try { await fetch('http://127.0.0.1:7331/tool/host', { method: 'POST', headers: H, body: '{"op":"shutdown"}', signal: AbortSignal.timeout(30000) }); } catch {}
+    try { await fetch(`${ROMDEV}/tool/host`, { method: 'POST', headers: H, body: '{"op":"shutdown"}', signal: AbortSignal.timeout(30000) }); } catch {}
     console.log(`${name}: ${requests} romdev requests`);
     process.exit(code);
   };
@@ -23,7 +25,7 @@ export function client(name) {
   const tool = async (t, args) => {
     requests++;
     let r;
-    try { r = await fetch(`http://127.0.0.1:7331/tool/${t}`, { method: 'POST', headers: H, body: JSON.stringify(args) }); } catch (e) { console.error(`romdev ${t}: ${e.message}`); await bye(3); }
+    try { r = await fetch(`${ROMDEV}/tool/${t}`, { method: 'POST', headers: H, body: JSON.stringify(args) }); } catch (e) { console.error(`romdev ${t}: ${e.message}`); await bye(3); }
     const txt = await r.text();
     let j; try { j = JSON.parse(txt); } catch { j = txt; }
     if (!r.ok || j?.error) { console.error(`romdev ${t}: ${txt.slice(0, 500)}`); await bye(3); }
@@ -39,7 +41,7 @@ export function client(name) {
       for (let k = 0; ; k++) {
         l = await tool('loadMedia', { platform: 'wasmcart', path: cart, gpuPower: 'low-power', ...(backend === 'gl' ? { wgpu: false } : {}) });
         if (!l.loaded) { console.error(JSON.stringify(l).slice(0, 300)); await bye(3); }
-        const r = await fetch('http://127.0.0.1:7331/tool/frame', { method: 'POST', headers: H, body: JSON.stringify({ op: 'step', frames: 1 }) });
+        const r = await fetch(`${ROMDEV}/tool/frame`, { method: 'POST', headers: H, body: JSON.stringify({ op: 'step', frames: 1 }) });
         requests++;
         s = await r.json().catch(() => ({ error: 'bad reply' }));
         if (r.ok && !s?.error) break;
