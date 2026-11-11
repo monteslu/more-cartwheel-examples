@@ -4,8 +4,8 @@ import { mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-/** the romdev server: the pool sets ROMDEV_URL per job (each GPU of a host has its own) */
-export const ROMDEV = (process.env.ROMDEV_URL || `http://127.0.0.1:${process.env.ROMDEV_PORT || 7331}`).replace(/\/+$/, '').replace(/\/mcp$/, '');
+import { ROMDEV_URL } from './romdev-url.mjs';
+const ROMDEV = ROMDEV_URL; /* the pool sets it per job: each GPU of a host has its own romdev */
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 export const arg = (n, d) => { const i = process.argv.indexOf(n); return i > 0 ? process.argv[i + 1] : d; };
 export const BACKENDS = process.argv.includes('--gl') ? ['gl'] : process.argv.includes('--webgpu') ? ['webgpu'] : ['gl', 'webgpu'];
