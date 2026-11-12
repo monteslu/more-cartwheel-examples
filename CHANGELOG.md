@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.35.0
+
+- Jet ski: the water is see-through (engine 0.47.1). The craft, rider, ramps, marks, floats and hook draw in the water's refraction, so the stern and the rider's legs show tinted and blurred just under the surface and fade with depth, by about a metre, and weaker at night. A deck under the water no longer shows a foam band and the lime floats no longer glow on the sea.
+- Tests: jetski-water (a lit plate and the lowered craft at 0.1 to 1.2 m, day, dusk and night, GL and WebGPU, with controls) and jetski-water-ramp (the old release is the control); the lime gate now rides the start of a race through the wakes.
+
 ## 0.34.0
 
 - Jet ski: weather. Every course runs calm, choppy or in a storm. The swell and the chop rise and fall with it, the wind blows harder (it slants the rain and carries the spray), and a rough sea stands higher on the shore. A calm is glassy and mirrors the land; a storm is dark, heavy water under a low sky, rain rings on the surface, spume blown off the crests and lightning that swells and fades.
