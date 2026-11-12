@@ -349,5 +349,15 @@
     "name": "jetski-weather-perf",
     "script": "tests/jetski-weather-perf.mjs",
     "note": "what the weather costs the GPU, through romdev frame({op:'timing'}): calm, storm and the big waves within 10 % (and 0.6 ms) of each course in its usual weather, GL and WebGPU. Control: 2 ms more must fail"
+  },
+  {
+    "name": "jetski-water",
+    "script": "tests/jetski-water.mjs",
+    "note": "see-through water: on the cart through romdev, GL and WebGPU, both craft, day, dusk and night, the sim held still. A self-lit plate 0.1 to 1.2 m under the surface and the craft lowered by the same: what shows through just under the surface and fades with depth faster than the plain water, weaker at night and dusk. Controls: the plain water (see_through 0) does not fade like that; night with see_night 1 is not weak; the held moment is held"
+  },
+  {
+    "name": "jetski-water-ramp",
+    "script": "tests/jetski-water-ramp.mjs",
+    "note": "a ramp deck under the water shows no shoal foam band: bright foam pixels from a held camera above the deck low end, GL and WebGPU. Control: the cart of v0.12.3, whose decks were in the refraction, shows several times as many"
   }
 ]

@@ -163,6 +163,7 @@ static void dome_vertex(float u, float v, float *p) {
 static void quad_vertex(float u, float v, float *p) { p[0] = u - 0.5f, p[1] = 0.5f - v, p[2] = 0; }
 static cw_node model_node(cw_node parent, const char *name, t3_object *o);
 static cw_node dry_parent(cw_node root);
+static cw_node plate_n;
 /* a course's sky: its painted image on a material of its own */
 static t3_material *sky_material(const char *path) {
   t3_material *m = t3_mesh_basic_material_new(0xffffff);
@@ -346,7 +347,7 @@ static void ramps_init(cw_node root) {
       ((t3_object *)im)->cast_shadow = true, ((t3_object *)im)->receive_shadow = true;
       char name[24];
       snprintf(name, sizeof name, "RampPart%d", ramp_part_n);
-      /* (not in the refraction: under the water its deck would read as a shoal, with a hard edge of shore foam over it) */
+      /* (in the refraction like everything else: the water's see-through fade shows a deck under the surface softly, tests/jetski-water-ramp.mjs) */
       model_node(dry_parent(root), name, (t3_object *)im);
       t3_sphere everywhere = { { 0, 0, 0 }, 4000 };
       t3_instanced_mesh_set_bounding_sphere(im, &everywhere);
@@ -409,6 +410,8 @@ static void placed_apply(cw_node root) {
 #define FLOATS_MAX 256
 #define FLOATS_PER_MARK 7
 int g_floats = 1;
+float g_plate = -1; /* sw plate <depth>: a flat orange plate 7 m ahead of the human, this far under the surface, for the see-through gate (render only; -1: none) */
+float g_sink; /* sw sink <m>: the human's craft and rider drawn this far lower, for the see-through gate (render only) */
 int32_t g_near_floats;
 static t3_instanced_mesh *float_im[2];
 static cw_node float_node[2];
@@ -594,13 +597,12 @@ static void buoy_paint(t3_object *o, int side) {
   for (int i = 0; i < o->child_count; i++) buoy_paint(o->children[i], side);
 }
 
-/* what must not show in the water's refraction hangs under one node: the engine holds 16 hidden nodes and quietly ignores the rest, and this game has over 100 */
+/* the props (craft, ramps, buoys, floats, placed things) hang under one node; all of them draw in the water's refraction, so the hull and the rider's legs show through the surface */
 static cw_node dry_group;
 static cw_node dry_parent(cw_node root) {
   if (!cw_node_valid(dry_group)) {
-    dry_group = cw_node_new("Node3D", "NotInRefraction");
+    dry_group = cw_node_new("Node3D", "Props");
     cw_node_add_child(root, dry_group);
-    cw_water_refraction_hide(G.water, dry_group);
   }
   return dry_group;
 }
@@ -990,7 +992,7 @@ void view_sync(double alpha) {
     } }
   for (int i = 0; i < RACERS; i++) {
     const craft *c = &G.c[i];
-    t3_vec3 p = { lerpf(c->px, c->x, a), lerpf(c->py, c->y, a), lerpf(c->pz, c->z, a) };
+    t3_vec3 p = { lerpf(c->px, c->x, a), lerpf(c->py, c->y, a) - (i == 0 ? g_sink : 0.0f), lerpf(c->pz, c->z, a) };
     cw_node3d_set_position(craft_n[i], p);
     cw_node3d_set_quaternion(craft_n[i], craft_quat(lerp_angle(c->pyaw, c->yaw, a), lerp_angle(c->ppitch, c->pitch, a), lerp_angle(c->proll, c->roll, a)));
     if (bars_o[i]) {
@@ -1042,13 +1044,27 @@ void view_sync(double alpha) {
     cw_node3d_set_rotation(hook_n, (t3_vec3){ 0, cw_atan2(DEF->hook.dirx * G.tanker[2], DEF->hook.dirz * G.tanker[2]), 0 });
     cw_water_wake(G.water, G.tanker[0], G.tanker[1], DEF->hook.dirx * G.tanker[2] * DEF->hook.s_in, DEF->hook.dirz * G.tanker[2] * DEF->hook.s_in, 9.0f, 0.2f, 0.7f);
   }
-  /* a craft under the water must reach the refraction, or it vanishes at the surface */
-  { static bool out[RACERS];
+  if (g_plate >= 0 || cw_node_valid(plate_n)) {
+    static t3_object *plate;
     cw_node root = cw_node_get(cw_tree_root(cw_scene_app_tree()), "Root");
-    for (int i = 0; i < RACERS; i++) {
-      bool under = G.c[i].dive_t > 0;
-      if (under != out[i]) { out[i] = under; cw_node_reparent(craft_n[i], under ? root : dry_parent(root)); }
-    } }
+    if (!plate) {
+      t3_material *pm = t3_mesh_standard_material_new(0xff6a00);
+      pm->emissive = (t3_color){ 1.0f, 0.42f, 0.0f }; /* seen at night too */
+      t3_mesh *pq = t3_mesh_new(grid_geo(1, 1, quad_vertex), pm);
+      t3_release(pm);
+      pq->base.frustum_culled = false;
+      plate = (t3_object *)pq;
+      plate_n = model_node(dry_parent(root), "Plate", plate);
+    }
+    const craft *p = &G.c[0];
+    float sy, cy;
+    cw_sincos(p->yaw, &sy, &cy);
+    float px = p->x + sy * 7.0f, pz = p->z + cy * 7.0f;
+    cw_node3d_set_position(plate_n, (t3_vec3){ px, cw_water_height_at(G.water, px, pz, wt) - g_plate, pz });
+    cw_node3d_set_rotation(plate_n, (t3_vec3){ -1.5707963f, 0, 0 });
+    cw_node3d_set_scale(plate_n, (t3_vec3){ 8, 8, 1 });
+    cw_node_set(plate_n, "visible", cw_val_bool(g_plate >= 0));
+  }
   for (int b = 0; b < BUOY_N; b++) {
     cw_water_sample s;
     cw_water_sample_at(G.water, BUOYS[b][0], BUOYS[b][1], wt, &s);

@@ -1,0 +1,51 @@
+[
+  {
+    "name": "jetski-water-day",
+    "app": "jetski",
+    "frames": 240,
+    "startCmds": [
+      "course 1",
+      "trial 0.05",
+      "sw plate 0.5",
+      "sw sink 0.4"
+    ],
+    "note": "the program survey's look at the see-through water by day: a plate and the lowered craft under the surface (tests/jetski-water.mjs)"
+  },
+  {
+    "name": "jetski-water-dusk",
+    "app": "jetski",
+    "frames": 240,
+    "startCmds": [
+      "course 0",
+      "trial 0.05",
+      "sw plate 0.5",
+      "sw sink 0.4"
+    ],
+    "note": "the same at dusk"
+  },
+  {
+    "name": "jetski-water-night",
+    "app": "jetski",
+    "frames": 240,
+    "startCmds": [
+      "course 3",
+      "trial 0.05",
+      "sw plate 0.5",
+      "sw sink 0.4"
+    ],
+    "note": "the same at night"
+  },
+  {
+    "name": "jetski-water-standup",
+    "app": "jetski",
+    "frames": 240,
+    "startCmds": [
+      "course 3",
+      "craft 1",
+      "trial 0.05",
+      "sw plate 0.5",
+      "sw sink 0.4"
+    ],
+    "note": "the stand-up craft at night"
+  }
+]

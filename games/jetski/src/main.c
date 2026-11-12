@@ -245,6 +245,8 @@ static void cmd_switch(int argc, const char **argv, cw_reply *r) {
     else if (!strcmp(argv[1], "autosteer")) g_autosteer = (int)v;
     else if (!strcmp(argv[1], "audio_old")) { extern int g_audio_old; g_audio_old = (int)v; }
     else if (!strcmp(argv[1], "waterline")) { extern int g_waterline; g_waterline = (int)v; }
+    else if (!strcmp(argv[1], "plate")) { extern float g_plate; g_plate = v; }
+    else if (!strcmp(argv[1], "sink")) { extern float g_sink; g_sink = v; }
     else if (!strcmp(argv[1], "floats")) { extern int g_floats; g_floats = (int)v; }
     else if (!strcmp(argv[1], "spray_lit")) { extern int g_spray_lit; g_spray_lit = (int)v; }
     else if (!strcmp(argv[1], "finish_hold")) g_finish_hold = v;
@@ -584,6 +586,11 @@ static void init(void *user) {
   cw_debug_f32("p0.pitch", &G.c[0].pitch);
   cw_debug_f32("p0.roll", &G.c[0].roll);
   cw_debug_f32("p0.dive_t", &G.c[0].dive_t);
+  cw_debug_f32("p0.dive_len", &G.c[0].dive_len);
+  cw_debug_f32("p0.dive_depth", &G.c[0].dive_depth);
+  cw_debug_f32("p0.x", &G.c[0].x);
+  cw_debug_f32("p0.y", &G.c[0].y);
+  cw_debug_f32("p0.z", &G.c[0].z);
   cw_debug_f32("rider.foot_side", &rider_foot_side[0]);
   cw_debug_i32("ram.hits", &g_ram_hits);
   cw_debug_f32_array("ram.last", g_ram_last, 3);
