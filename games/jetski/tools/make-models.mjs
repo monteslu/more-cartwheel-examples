@@ -221,7 +221,10 @@ class Plain {
   const US = 36;
   // the sides, top to chine, so each band is its own colour: side panel, a stripe, lower side, then the V of the bottom with a strake
   const sidePt = (u, sg, f) => { const s = sec(u); return [sg * s.beam * lerp(1, 1.02, f), lerp(s.gun, s.chine, f), s.z + s.rake * (1 - f) * 0.5]; };
-  const band = (mat, f0, f1, flip) => { for (const sg of [-1, 1]) { const rows = []; for (let k = 0; k <= US; k++) { const u = k / US, row = []; for (let j = 0; j <= 3; j++) row.push(sidePt(u, sg, lerp(f0, f1, j / 3))); rows.push(row); } P.grid(mat, rows, { flip: sg > 0 ? !flip : flip }); } };
+  /* rows run bow-ward and columns down the side, so an unflipped grid faces +x: the port side (sg < 0) is flipped to face out,
+   * or its faces point into the hull, the renderer culls them and the far side shows through (tests/jetski-craft-faces.mjs) */
+  const band = (mat, f0, f1) => { for (const sg of [-1, 1]) { const rows = []; for (let k = 0; k <= US; k++) { const u = k / US, row = []; for (let j = 0; j <= 3; j++) row.push(sidePt(u, sg, lerp(f0, f1, j / 3))); rows.push(row); } P.grid(mat, rows, { flip: sg < 0 }); if (f0 < 0.4) P.grid(mat, rows, { flip: sg > 0 }); } };
+  /* (the bands down to the stripe both ways: over the stepped rear deck the gunwale stands up as a wall, seen from inside across the craft) */
   band('panel', 0, 0.32); band('stripe', 0.32, 0.46); band('panel', 0.46, 0.72); band('hull', 0.72, 1);
   // (seen from under it in a jump the bottom has to read as a hull: light planes, a red keel and dark strakes, no more colours than the deck has)
   { const pts = (s) => [[-s.beam * 1.02, s.chine], [-s.beam * 0.72, (s.chine * 2 + s.keel) / 3 - 0.012], [-s.beam * 0.68, (s.chine * 2 + s.keel) / 3], [-s.beam * 0.3, (s.chine + s.keel * 2) / 3 - 0.012], [-s.beam * 0.26, (s.chine + s.keel * 2) / 3], [0, s.keel], [s.beam * 0.26, (s.chine + s.keel * 2) / 3], [s.beam * 0.3, (s.chine + s.keel * 2) / 3 - 0.012], [s.beam * 0.68, (s.chine * 2 + s.keel) / 3], [s.beam * 0.72, (s.chine * 2 + s.keel) / 3 - 0.012], [s.beam * 1.02, s.chine]];
@@ -253,7 +256,8 @@ class Plain {
   { const row0 = []; for (let j = 0; j <= 12; j++) { const t = j / 12 * 2 - 1; const p = deckPt(0, t); row0.push(p); } const row1 = row0.map(([x, y, z]) => { const ax = Math.abs(x / s0.beam); return [x, lerp(s0.chine, s0.keel, 1 - ax), z]; }); P.grid('transom', [row1, row0]); }
   for (const sg of [-1, 1]) P.tube('lamp', [[sg * s0.beam * 0.72, s0.gun - 0.02, s0.z - 0.012], [sg * s0.beam * 0.72, s0.gun - 0.02, s0.z - 0.03]], 0.035, 10, { ratio: 0.5 });
   // ride plate, under the jet
-  P.grid('hull', [[[-0.17, -0.19, -1.72], [0.17, -0.19, -1.72]], [[-0.17, -0.2, -1.42], [0.17, -0.2, -1.42]]], { flip: false });
+  P.grid('hull', [[[-0.17, -0.19, -1.72], [0.17, -0.19, -1.72]], [[-0.17, -0.2, -1.42], [0.17, -0.2, -1.42]]], { flip: true });
+  P.grid('hull', [[[-0.17, -0.19, -1.72], [0.17, -0.19, -1.72]], [[-0.17, -0.2, -1.42], [0.17, -0.2, -1.42]]], { flip: false }); /* (both ways: it stands out past the stern) */
   P.tube('metal', [[0, -0.04, -1.5], [0, -0.04, -1.56]], 0.135, 18);
   P.tube('nozzle', [[0, -0.045, -1.54], [0, -0.05, -1.7]], (t) => lerp(0.115, 0.088, t), 18, { cap: false });
   P.tube('dark', [[0, -0.05, -1.66], [0, -0.05, -1.701]], 0.07, 16);
@@ -273,7 +277,10 @@ class Plain {
   const cowl = [];
   for (let k = 0; k <= 10; k++) { const t = k / 10, z = lerp(0.2, 0.72, t), row = []; for (let i = 0; i <= 12; i++) { const an = i / 12 * Math.PI; const w = 0.19 * (1 - 0.32 * t); row.push([Math.cos(an) * w, 0.52 + (0.27 * Math.pow(Math.sin(an), 0.7)) * (1 - 0.7 * t) - 0.02 * t, z]); } cowl.push(row); }
   P.grid('deck2', cowl, { flip: true });
-  P.grid('dark', [[[-0.1, 0.74, 0.27], [0.1, 0.74, 0.27]], [[-0.11, 0.79, 0.22], [0.11, 0.79, 0.22]]], { flip: false });
+  /* its open end toward the rider closed (both ways), or from behind the cowl is a shell with the water through it */
+  { const cap = [cowl[0], cowl[0].map(([, , z]) => [0, 0.52, z])]; P.grid('deck2', cap, { flip: true }); P.grid('deck2', cap, { flip: false }); }
+  P.grid('dark', [[[-0.1, 0.74, 0.27], [0.1, 0.74, 0.27]], [[-0.11, 0.79, 0.22], [0.11, 0.79, 0.22]]], { flip: true });
+  P.grid('dark', [[[-0.1, 0.74, 0.27], [0.1, 0.74, 0.27]], [[-0.11, 0.79, 0.22], [0.11, 0.79, 0.22]]], { flip: false }); /* (the instrument pod: a plate, both ways) */
   for (const sg of [-1, 1]) for (let k = 0; k < 3; k++) { const z = 0.3 + k * 0.08; P.grid('dark', [[[sg * 0.168, 0.56, z], [sg * 0.15, 0.62, z]], [[sg * 0.164, 0.56, z + 0.05], [sg * 0.146, 0.62, z + 0.05]]], { flip: sg > 0 }); }
   // mirrors on stalks either side of the cowl, and the glove box's lid outlined on the hood ahead of it
   for (const sg of [-1, 1]) { P.tube('dark', [[sg * 0.15, 0.66, 0.52], [sg * 0.26, 0.74, 0.5]], 0.011, 6); P.tube('dark', [[sg * 0.27, 0.745, 0.505], [sg * 0.27, 0.745, 0.47]], 0.05, 12, { ratio: 0.62 }); P.tube('metal', [[sg * 0.27, 0.745, 0.468], [sg * 0.27, 0.745, 0.466]], 0.046, 12, { ratio: 0.6 }); }

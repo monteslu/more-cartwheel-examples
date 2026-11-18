@@ -7,6 +7,7 @@ run() { n=$1; shift; echo "=== $n"; JETSKI_SESSION=jsg-$n "$@" > out/gate/$n.log
 G=${1:-a}
 if [ $G = a ]; then
 run craft-models node tests/jetski-craft-models.mjs
+run craft-faces node tests/jetski-craft-faces.mjs
 run su-gl node tests/jetski-standup.mjs --gl --baseline build/baseline/jetski_auto.wasc
 run su-wgpu node tests/jetski-standup.mjs --webgpu
 fi

@@ -120,7 +120,7 @@ class Plain {
       rows.push(row);
     }
     if (o.cap !== false) { rows.unshift(rows[0].map(() => pts[0])); rows.push(rows[rows.length - 1].map(() => pts[pts.length - 1])); }
-    this.grid(mat, rows, { wrap: true, flip: o.flip ?? true });
+    this.grid(mat, rows, { wrap: true, flip: o.flip ?? false }); /* (frame() and bar()'s frames turn the other way from charmesh's: unflipped faces out here) */
   }
   /** a bar along -z of a flattened oval section, from z0 to z1, half sizes hx, hy, middle at height yc */
   bar(mat, z0, z1, hx, hy, yc, n = 16) { this.tube(mat, [[0, yc, z0], [0, yc, z1]], 1, n, { frame: [[hx * 1.08, 0, 0], [0, hy * 1.08, 0]], phase: Math.PI / n }); }
@@ -149,8 +149,8 @@ function build(OUT, file, detail) {
   };
   const US = Math.round(96 * detail), NT = Math.max(8, Math.round(32 * detail));
   // the sides: gunwale stripe (racer's colour), white hull, chine
-  const sidePt = (u, sg, f) => { const s = sec(u); const bulge = Math.sin(f * Math.PI) * 0.018; return [sg * (s.beam * lerp(1, 1.035, f) + bulge), lerp(s.gun, s.chine, f), s.z]; };
-  const band = (mat, f0, f1, rows = 4) => { for (const sg of [-1, 1]) { const R = []; for (let k = 0; k <= US; k++) { const u = k / US, row = []; for (let j = 0; j <= rows; j++) row.push(sidePt(u, sg, lerp(f0, f1, j / rows))); R.push(row); } P.grid(mat, R, { flip: sg > 0 }); } };
+  const sidePt = (u, sg, f) => { const s = sec(u); const bulge = Math.sin(f * Math.PI) * 0.018; return [sg * (s.beam * lerp(1, 1.035, f) + bulge), lerp(s.gun + 0.03, s.chine, f), s.z]; }; /* (its top meets the deck's edge, which the rail lifts 3 cm over the gunwale: no slit under the rail) */
+  const band = (mat, f0, f1, rows = 4) => { for (const sg of [-1, 1]) { const R = []; for (let k = 0; k <= US; k++) { const u = k / US, row = []; for (let j = 0; j <= rows; j++) row.push(sidePt(u, sg, lerp(f0, f1, j / rows))); R.push(row); } P.grid(mat, R, { flip: sg < 0 }); } }; /* each side faces out (see make-models.mjs band) */
   band('deck', 0.0, 0.16, 2); band('panel', 0.16, 1.0, Math.max(3, Math.round(8 * detail)));
   // the V bottom (both faces: seen from beside the bow it must not vanish)
   { const NB = Math.max(4, Math.round(10 * detail)), R = [];
@@ -188,8 +188,8 @@ function build(OUT, file, detail) {
   const yAt = (z) => deckPt((z - Z0) / (Z1 - Z0), 0)[1];
   const tilt = PLATE_TILT * Math.PI / 180, pz0 = PLATE_Z, py0 = yAt(PLATE_Z) + 0.01, pz1 = pz0 + PLATE_LEN * Math.cos(tilt), py1 = py0 + PLATE_LEN * Math.sin(tilt), hw2 = PLATE_W / 2;
   PLATE_AT.y0 = py0, PLATE_AT.y1 = py1, PLATE_AT.z1 = pz1;
-  for (const sg of [-1, 1]) P.grid('hood', [[[sg * hw2, yAt(pz0) - 0.02, pz0], [sg * hw2, py0, pz0]], [[sg * hw2, yAt(pz1) - 0.02, pz1], [sg * hw2, py1, pz1]]], { flip: sg < 0 });
-  P.grid('hood', [[[-hw2, py1, pz1], [hw2, py1, pz1]], [[-hw2, yAt(pz1 + 0.12), pz1 + 0.12], [hw2, yAt(pz1 + 0.12), pz1 + 0.12]]], { flip: true });
+  for (const sg of [-1, 1]) P.grid('hood', [[[sg * hw2, yAt(pz0) - 0.02, pz0], [sg * hw2, py0, pz0]], [[sg * hw2, yAt(pz1) - 0.02, pz1], [sg * hw2, py1, pz1]]], { flip: sg > 0 });
+  P.grid('hood', [[[-hw2, py1, pz1], [hw2, py1, pz1]], [[-hw2, yAt(pz1 + 0.12), pz1 + 0.12], [hw2, yAt(pz1 + 0.12), pz1 + 0.12]]], { flip: false }); /* (block sides and front face out) */
   /* and the number again on each shoulder of the hood, beside the rider's legs: from behind a rider standing over the middle hides the
    * middle plate, these show past them (a patch over the hood's surface, read from behind and the side) */
   const sideNum = (pp, n, sg) => { const R = []; const u0 = (0.0 - Z0) / (Z1 - Z0), u1 = (0.42 - Z0) / (Z1 - Z0); for (let k = 0; k <= 24; k++) { const uu = lerp(u0, u1, k / 24), row = []; for (let j = 0; j <= 20; j++) { const t = sg * lerp(0.5, 0.92, j / 20), p = deckPt(uu, t); row.push([p[0] + sg * 0.012, p[1] + 0.012, p[2]]); } R.push(row); } pp.grid('plate', R, { flip: sg < 0, uv: (r, c) => [(n + (sg > 0 ? 1 - c : c)) / 6, 1 - r] }); };
