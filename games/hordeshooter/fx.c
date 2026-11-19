@@ -245,13 +245,14 @@ static const char *const FIREP[] = { "amount", "70", "lifetime", "1.1", "lifetim
 /* one pooled Explosion3D: its parts are children (parents before sub-emitters) */
 static cw_node boom_node(const char *name, bool big, int seed) {
   cw_node e = cw_node_new("Explosion3D", name);
-  cw_node_add_child(FX.root, e);
   cw_node_set(e, "autostart", cw_val_bool(false));
   cw_node_set(e, "duration", cw_val_float(big ? 4.0f : 2.4f));
   cw_node_set(e, "flash_energy", cw_val_float(big ? 170.0f : 45.0f));
   cw_node_set(e, "flash_range", cw_val_float(big ? 15.0f : 8.0f));
   cw_node_set(e, "flash_duration", cw_val_float(big ? 0.5f : 0.3f));
   cw_node_set(e, "scorch_texture", cw_val_string("fx/scorch.png"));
+  /* into the tree only now: it loads its scorch sheet as it enters, and the default sheet (scorch.png) is not packed */
+  cw_node_add_child(FX.root, e);
   cw_node_set(e, "scorch_size", cw_val_float(big ? 5.5f : 2.6f));
   cw_node_set(e, "scorch_time", cw_val_float(big ? 7.0f : 3.0f));
   cw_node_set(e, "scorch_life", cw_val_float(big ? 40.0f : 18.0f));

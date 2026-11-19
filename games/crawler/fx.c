@@ -233,13 +233,14 @@ static const char *const S_DEBRIS[] = { "amount", "6", "lifetime", "1.0", "explo
 
 static cw_node boom_node(const char *name, bool big, int seed) {
   cw_node e = cw_node_new("Explosion3D", name);
-  cw_node_add_child(FX.root, e);
   cw_node_set(e, "autostart", cw_val_bool(false));
   cw_node_set(e, "duration", cw_val_float(big ? 3.4f : 2.0f));
   cw_node_set(e, "flash_energy", cw_val_float(big ? 150.0f : 55.0f));
   cw_node_set(e, "flash_range", cw_val_float(big ? 13.0f : 7.0f));
   cw_node_set(e, "flash_duration", cw_val_float(big ? 0.45f : 0.28f));
   cw_node_set(e, "scorch_texture", cw_val_string("fx/scorch.png"));
+  /* into the tree only now: it loads its scorch sheet as it enters, and the default sheet (scorch.png) is not packed */
+  cw_node_add_child(FX.root, e);
   cw_node_set(e, "scorch_size", cw_val_float(big ? 4.5f : 1.8f));
   cw_node_set(e, "scorch_time", cw_val_float(big ? 6.0f : 2.5f));
   cw_node_set(e, "scorch_life", cw_val_float(big ? 30.0f : 14.0f));
