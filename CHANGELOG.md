@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.35.1
+
+0.35.0 published no release (its CI smoke test failed); this release carries it.
+
+- Jet ski: neither craft looks hollow any more. The hull's side panels faced into the hull on both sides, so from beside or three-quarters on the near side was not drawn and the far side's inside showed through; the stand-up's tubes, ride plate, instrument pod and number-plate block had the same fault, and a cowl and a 2 cm slit under the stand-up's rail were open. Every panel now faces out (the models are regenerated from their scripts). Test jetski-craft-faces: thousands of rays from round each craft must meet an outward face (under 1% through seams); the old models fail it (18 to 32%).
+- Crawler, Horde shooter: an explosion no longer looks for an image the game does not ship when it is set up, which logged an error (the CI smoke test failed on it).
+
 ## 0.35.0
 
 - Jet ski: the water is see-through (engine 0.47.1). The craft, rider, ramps, marks, floats and hook draw in the water's refraction, so the stern and the rider's legs show tinted and blurred just under the surface and fade with depth, by about a metre, and weaker at night. A deck under the water no longer shows a foam band and the lime floats no longer glow on the sea.
