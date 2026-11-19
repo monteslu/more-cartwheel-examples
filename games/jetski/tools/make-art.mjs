@@ -47,7 +47,7 @@ const SHOT_CLOCK = 21.39; // the first frame whose race clock reads 0:21.40
 // side metres either side of the line, run settle frames; the held camera in the leader's frame (metres ahead along its
 // travel, to its right, up from it) looking at a point lookBehind behind it (lookRight, lookUp); zoom: the lens, as the
 // share of the frame kept
-const COVER = { course: 0, clock: 6, swell: 1, warp: 1081, gap: 4, side: 2.2, settle: 20, zoom: 2, ahead: 13, right: 2.5, up: 3.2, lookBehind: 5, lookRight: 0.5, lookUp: 0.6, ...JSON.parse(arg('cover') || '{}') };
+const COVER = { course: 0, clock: 6, swell: 1, warp: 1081, gap: 3.5, side: 1.6, settle: 20, zoom: 2, ahead: 11, right: 2.7, up: 3.3, lookBehind: 3.5, lookRight: 1.4, lookUp: 1.0, ...JSON.parse(arg('cover') || '{}') };
 // the logo's place on the 1200 x 1800 cover (as the first cover had it)
 const LOGO = { x: 4, y: 13, w: 1176, h: 301 };
 const COVER_W = 1200, COVER_H = 1800;
@@ -213,9 +213,11 @@ if (EXPLORE) {
   mkdirSync(dir, { recursive: true });
   await load({ width: 1920 * COVER.zoom, height: 1080 * COVER.zoom }, 'JETSKI_NO_HUD=1');
   await coverRace(COVER, 0);
-  for (const warp of (arg('warps') || String(COVER.warp)).split(',').map(Number)) {
-    const png = join(dir, `cover-${warp}.png`);
-    const f = await coverFrame({ ...COVER, warp }, png, 1920 * COVER.zoom, 1080 * COVER.zoom);
+  // --variants=<json array of overrides over COVER>: each in turn at each warp
+  const variants = JSON.parse(arg('variants') || '[{}]');
+  for (const warp of (arg('warps') || String(COVER.warp)).split(',').map(Number)) for (const [vi, v] of variants.entries()) {
+    const png = join(dir, `cover-${warp}-${vi}.png`);
+    const f = await coverFrame({ ...COVER, warp, ...v }, png, 1920 * COVER.zoom, 1080 * COVER.zoom);
     const small = resize(readImage(png), 360, 540);
     writePng(png, small.w, small.h, small.rgba);
     console.log(`${png}: p0 ${f['p0.pos'].map((v) => v.toFixed(1))} dist ${f['p0.dist'].toFixed(1)} ${f['p1.dist'].toFixed(1)} ${f['p2.dist'].toFixed(1)} air ${f['p0.air_time']}`);
