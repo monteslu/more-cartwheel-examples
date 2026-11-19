@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.36.0
+
+- On a phone or tablet the wasmcart host now draws the on-screen pad, from each cart's manifest `controls`: the build
+  works it out from the game's bindings (its input.cfg or project), and Sky fighter, which binds in code, lists its
+  own. Co-op platformer no longer draws touch controls of its own in a cart; the host's pad replaces them.
+- Engine v0.50.4 (from v0.47.1): overlays and HUDs draw at the output's full size over a scaled scene, levels load
+  under the loading screen, the host draws every on-screen control, three.c 0.187.8 (distant ground no longer shows
+  holes on Metal), and an explosion's scorch sheet loads when the game names it. Every game builds and passes the
+  smoke, art, version and prompt checks; through romdev a finger in Co-op platformer reaches the game with no engine
+  controls drawn, and Jet ski's HUD stays crisp at Resolution 50%.
+
 ## 0.35.2
 
 - Jet ski: new store art (the cover and five screenshots) showing the solid craft; the old art showed the hollow hulls 0.35.1 fixed. The art is now made by a script from the self-playing cart (games/jetski/tools/make-art.mjs), so it can be made again whenever the game changes.

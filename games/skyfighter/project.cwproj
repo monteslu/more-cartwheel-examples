@@ -12,3 +12,5 @@ export.android-arm64.platform = "android-arm64"
 art = art
 description = "An arcade jet combat game with eight missions. Shoot balloons over farmland, clear interceptors off a coastal island, raid offshore oil rigs and bring down a giant mothership above a city."
 author = "Luis Montes"
+# the manifest's controls (the on-screen pad a host draws): the pad parts src/main.c binds (cw_action_bind_text), since this game has no input map to derive them from
+controls = dpad, a, b, x, y, l, r, start, select, left_stick, right_stick, left_trigger, right_trigger, r3
