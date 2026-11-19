@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.36.1
+
+0.36.0 published no release (its CI smoke test failed); this release carries it.
+
+- CI smoke test: a game still on its loading screen at 60 frames gets one run of 300. Since engine v0.49 the shader
+  warm-up shows as a progress bar over several frames, and on the software GPU CI uses Fighter was still at 70% at
+  frame 60. A game that stays blank fails as before.
+
 ## 0.36.0
 
 - On a phone or tablet the wasmcart host now draws the on-screen pad, from each cart's manifest `controls`: the build

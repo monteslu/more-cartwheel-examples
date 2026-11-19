@@ -47,22 +47,15 @@ function colours(file) {
   return { w, h, n: seen.size };
 }
 
-mkdirSync(OUT, { recursive: true });
-let failed = 0;
-for (const game of games.length ? games : ALL) {
-  // the self-playing cart where the game has one, else its own cart
-  const auto = join(CARTS, `${game}_auto.wasc`);
-  const cart = existsSync(auto) ? auto : join(CARTS, `${game}.wasc`), shot = join(OUT, `${game}.png`);
-  if (!existsSync(cart)) { console.error(`${game}: no ${cart}`); failed++; continue; }
-  const t0 = Date.now();
-  const r = spawnSync(PLAYER[0], [...PLAYER.slice(1), 'play', cart, '--frames', String(FRAMES), '--shot', shot],
+/** one run of the cart for `frames` frames: its problems, picture and output */
+function run(cart, shot, frames) {
+  const r = spawnSync(PLAYER[0], [...PLAYER.slice(1), 'play', cart, '--frames', String(frames), '--shot', shot],
     { encoding: 'utf8', timeout: +(process.env.CW_RUN_TIMEOUT_MS || 900000), maxBuffer: 64 << 20 });
-  const secs = ((Date.now() - t0) / 1000).toFixed(1);
   const out = `${r.stdout || ''}${r.stderr || ''}`;
   const problems = [];
   if (r.error || r.status !== 0) problems.push(r.error ? r.error.message : `exited ${r.status ?? r.signal}`);
   const ran = /ran (\d+) frames\s+(\d+)x(\d+)/.exec(r.stdout || '');
-  if (!ran || +ran[1] !== FRAMES) problems.push(`did not report ${FRAMES} frames`);
+  if (!ran || +ran[1] !== frames) problems.push(`did not report ${frames} frames`);
   if (!/render pipeline \(WebGPU\)/.test(out)) problems.push('did not start its WebGPU pipeline');
   if (/no program and are not drawn|\[error\]/.test(out)) problems.push('logged an error');
   let pic = null;
@@ -71,9 +64,29 @@ for (const game of games.length ? games : ALL) {
     if (ran && (pic.w !== +ran[2] || pic.h !== +ran[3])) problems.push(`picture ${pic.w}x${pic.h}, the cart ran at ${ran[2]}x${ran[3]}`);
     if (pic.n < 1000) problems.push(`picture has only ${pic.n} colours (blank or nearly)`);
   } else problems.push('wrote no picture');
+  return { problems, pic, out };
+}
+
+mkdirSync(OUT, { recursive: true });
+let failed = 0;
+for (const game of games.length ? games : ALL) {
+  // the self-playing cart where the game has one, else its own cart
+  const auto = join(CARTS, `${game}_auto.wasc`);
+  const cart = existsSync(auto) ? auto : join(CARTS, `${game}.wasc`), shot = join(OUT, `${game}.png`);
+  if (!existsSync(cart)) { console.error(`${game}: no ${cart}`); failed++; continue; }
+  const t0 = Date.now();
+  let frames = FRAMES, { problems, pic, out } = run(cart, shot, frames);
+  // a game still on its loading screen at FRAMES (since engine v0.49 the shader warm-up shows as a bar over several
+  // frames, and a software GPU is slow): when the picture is the only problem, one longer run; a blank game stays blank
+  if (problems.length === 1 && pic && pic.n < 1000) {
+    frames = FRAMES * 5;
+    ({ problems, pic, out } = run(cart, shot, frames));
+    if (!problems.length) console.log(`${game}: still loading at ${FRAMES} frames, so ran ${frames}`);
+  }
+  const secs = ((Date.now() - t0) / 1000).toFixed(1);
   if (problems.length) {
     failed++;
     console.error(`${game}: FAIL (${secs} s)\n  ${problems.join('\n  ')}\n${out.split('\n').filter((l) => !/\[debug\]/.test(l)).slice(-15).join('\n')}`);
-  } else console.log(`${game}: ok (${FRAMES} frames, ${pic.w}x${pic.h}, ${pic.n} colours, ${secs} s)`);
+  } else console.log(`${game}: ok (${frames} frames, ${pic.w}x${pic.h}, ${pic.n} colours, ${secs} s)`);
 }
 process.exit(failed ? 1 : 0);
