@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.35.2
+
+- Jet ski: new store art (the cover and five screenshots) showing the solid craft; the old art showed the hollow hulls 0.35.1 fixed. The art is now made by a script from the self-playing cart (games/jetski/tools/make-art.mjs), so it can be made again whenever the game changes.
+
 ## 0.35.1
 
 0.35.0 published no release (its CI smoke test failed); this release carries it.
