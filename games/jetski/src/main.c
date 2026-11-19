@@ -63,9 +63,15 @@ static void cmd_go(int argc, const char **argv, cw_reply *r) {
 }
 
 static void cmd_warp(int argc, const char **argv, cw_reply *r) {
-  /* warp <track metres>: every racer jumps there, for a look along the course */
+  /* warp <track metres> [gap] [side]: every racer jumps there, for a look along the course; gap and side (metres between
+   * racers along it, and either side of it) close the pack up for key art */
   if (argc < 2) { if (r) cw_reply_raw(r, "false"); return; }
+  extern float g_place_gap, g_place_side;
+  float gap = g_place_gap, side = g_place_side;
+  if (argc > 2) g_place_gap = (float)atof(argv[2]);
+  if (argc > 3) g_place_side = (float)atof(argv[3]);
   sim_place((float)atof(argv[1]));
+  g_place_gap = gap, g_place_side = side;
   if (r) cw_reply_raw(r, "true");
 }
 
@@ -628,7 +634,7 @@ static void init(void *user) {
   { extern float g_dome_seen[3]; cw_debug_f32_array("wx.dome", g_dome_seen, 3); cw_debug_f32_array("wx.dome_want", g_wx_dome, 3); }
   { extern int g_hud_lost, g_hud_waves, g_hud_quiet; cw_debug_i32("hud.lost", &g_hud_lost); cw_debug_i32("hud.waves", &g_hud_waves); cw_debug_i32("hud.quiet", &g_hud_quiet); }
   cw_debug_command("finish", "finish: the human crosses the line now", cmd_finish);
-  cw_debug_command("warp", "warp <metres>: every racer to that place on the course", cmd_warp);
+  cw_debug_command("warp", "warp <metres> [gap] [side]: every racer to that place on the course (gap, side: how close)", cmd_warp);
 }
 
 /* a text trace for the sim's CPU tests (tools/sim-check.mjs) */

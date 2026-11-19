@@ -1037,19 +1037,20 @@ void sim_ram_setup(int kind) {
 }
 
 /* every racer to a place on the course, at speed */
+float g_place_gap = 11.0f, g_place_side = 3.0f; /* debug (warp): metres between racers along the course, and either side of it */
 void sim_place(float s) {
   for (int i = 0; i < RACERS; i++) {
     craft *c = &G.c[i];
-    float x, z, dx, dz;
-    track_at(s - (float)(i * 11), &x, &z, &dx, &dz);
-    c->x = c->px = x + dz * (i % 2 ? 3.0f : -3.0f);
-    c->z = c->pz = z - dx * (i % 2 ? 3.0f : -3.0f);
+    float x, z, dx, dz, side = i % 2 ? g_place_side : -g_place_side;
+    track_at(s - (float)i * g_place_gap, &x, &z, &dx, &dz);
+    c->x = c->px = x + dz * side;
+    c->z = c->pz = z - dx * side;
     c->y = c->py = cw_water_height_at(G.water, c->x, c->z, cw_water_time(G.water));
     c->yaw = c->pyaw = cw_atan2(dx, dz);
     c->vx = dx * 22, c->vz = dz * 22, c->vy = 0;
     c->track_i = (int)(s / COURSE_LEN * (float)TRACK_N) % TRACK_N;
     if (c->track_i < 0) c->track_i += TRACK_N;
-    for (int b = 0; b < BUOY_N; b++) if (buoy_on(b) && BUOYS[b][3] > s - (float)(i * 11)) { c->next_buoy = b; break; }
+    for (int b = 0; b < BUOY_N; b++) if (buoy_on(b) && BUOYS[b][3] > s - (float)i * g_place_gap) { c->next_buoy = b; break; }
     c->lap = 0;
   }
   G.cam[0] = 0, G.look[0] = 0;
