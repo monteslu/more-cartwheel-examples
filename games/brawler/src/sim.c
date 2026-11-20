@@ -14,6 +14,7 @@
 #include "cartwheel/scene_file.h"
 #include "cartwheel/resource.h"
 #include "cartwheel/vfs.h"
+#include "cartwheel/skeleton.h"
 #include "game.h"
 
 world_t W;
@@ -88,6 +89,9 @@ static bool heavy_atk(int k) { return k == A_SLAM || k == A_SWING || k == A_BSPI
 
 /* ── character rigs: a pool per model, so a spawn never parses a glb twice ── */
 typedef struct rig { int def; bool busy; cw_node root, model, anim, wnode, wmodel, blob, shield; const t3_gltf *gltf; spring_rig sr; int wkind; cw_node gore[3];
+  /* the held prop rides the right hand: Skeleton3D under the model, a BoneAttachment3D on HandR and under it the grip (a
+     Node3D at the prop's fixed place in the fist), which holds the prop's model. grip_kind: the prop the grip is set for */
+  cw_node skel, hand, grip; int hand_bone, grip_kind; t3_vec3 grip_s;
   /* the guard's shield (presentation): on his left forearm, or loose (dropped when he is floored or grabbed: it falls flat
      on the street and he takes it up again when he is back on his feet). blend: frames into the fall or the pick-up */
   cw_node ik[2]; /* a fighter's arms: hands on the collar of the body he holds (TwoBoneIK3D, only while he holds one) */
@@ -162,7 +166,15 @@ static rig *rig_get(int def) {
   cw_node_add_child(r->root, r->model);
   cw_node_add_child(r->root, r->anim);
   cw_node_add_child(r->root, r->wnode);
-  cw_node_add_child(r->root, r->wmodel);
+  r->skel = cw_node_new("Skeleton3D", "Skeleton");
+  r->hand = cw_node_new("BoneAttachment3D", "Hand");
+  r->grip = cw_node_new("Node3D", "Grip");
+  cw_node_set(r->hand, "bone_name", cw_val_string("HandR"));
+  cw_node_add_child(r->model, r->skel);
+  cw_node_add_child(r->skel, r->hand);
+  cw_node_add_child(r->hand, r->grip);
+  cw_node_add_child(r->grip, r->wmodel);
+  r->hand_bone = -1, r->grip_kind = -1;
   cw_node_set(r->wmodel, "visible", cw_val_bool(false));
   cw_node3d_set_object(r->model, inst);
   looks_bind((int)(r - RIGS), def, inst); /* its own copies of the materials a spawn recolours (looks.c) */
@@ -2161,14 +2173,37 @@ static void hold_in_hand(ent *e, rig *r, int kind) {
   t3_vec3 off = qrot4(q, (t3_vec3){ 0, WGRIP7[kind] * (kind == 6 ? 1.6f : 1.0f), 0 });
   t3_vec3 pos = { grip.x - off.x, grip.y - off.y, grip.z - off.z };
   if (g_legacy_hold) { /* the old placement (the hold gate's control): upright, at the hand */
-    t3_vec3 w = cw_skeleton_bone_world(e->model, "HandR");
-    pos = (t3_vec3){ w.x, w.y - WGRIP7[kind], w.z }, q = (t3_quat){ 0, 0, 0, 1 };
+    pos = (t3_vec3){ hp.x, hp.y - WGRIP7[kind], hp.z }, q = (t3_quat){ 0, 0, 0, 1 };
   }
-  cw_node3d_set_position(r->wmodel, pos);
-  cw_node3d_set_quaternion(r->wmodel, q);
-  { float sc = kind == 6 ? 1.6f : 1.0f; cw_node3d_set_scale(r->wmodel, (t3_vec3){ sc, sc, sc }); } /* the comb is drawn big enough to read from the street camera */
-  if (e->player) { /* game.held: frames, how far from the fist its grip was at worst (mm), how many degrees the prop's axis turned over the run */
-    t3_vec3 gw = qrot4(q, (t3_vec3){ 0, WGRIP7[kind], 0 }), ax = qrot4(q, (t3_vec3){ 0, 1, 0 });
+  float sc = kind == 6 ? 1.6f : 1.0f; /* the comb is drawn big enough to read from the street camera */
+  t3_vec3 gs = { sc, sc, sc }; /* the prop's scale as placed (the hand bone's own scale included) */
+  /* the grip, in the hand bone's frame: the same place in the fist whatever the hand does, so it is set once per prop and
+     the attachment carries it, placed after animation and again before each frame's draw. The comb (it keeps its own
+     turn in the model) and the control are set every tick */
+  if (r->hand_bone < 0) r->hand_bone = cw_skeleton3d_find_bone(r->skel, "HandR");
+  t3_mat4 hm, him, want, local;
+  if (r->hand_bone >= 0 && (kind != r->grip_kind || kind == 6 || g_legacy_hold) && cw_skeleton3d_bone_model_transform(r->skel, r->hand_bone, &hm)) {
+    t3_mat4_compose(&want, pos, q, (t3_vec3){ sc, sc, sc });
+    t3_mat4_invert(&him, &hm);
+    t3_mat4_multiply(&local, &him, &want);
+    t3_vec3 lp, ls; t3_quat lq;
+    t3_mat4_decompose(&local, &lp, &lq, &ls);
+    cw_node3d_set_position(r->grip, lp);
+    cw_node3d_set_quaternion(r->grip, lq);
+    cw_node3d_set_scale(r->grip, ls);
+    r->grip_s = ls;
+    r->grip_kind = kind == 6 || g_legacy_hold ? -1 : kind;
+  }
+  if (e->player) { /* game.held: frames, how far from the fist its grip was at worst (mm), how many degrees the prop's axis turned over the run.
+                      Read from where the prop is (the attachment's grip in the model) against the fist this tick */
+    if (r->hand_bone >= 0 && cw_skeleton3d_bone_model_transform(r->skel, r->hand_bone, &hm)) {
+      t3_vec3 gp;
+      t3_mat4_compose(&local, cw_node3d_position(r->grip), cw_node3d_quaternion(r->grip), r->grip_s);
+      t3_mat4_multiply(&want, &hm, &local);
+      t3_mat4_decompose(&want, &gp, &q, &gs);
+      pos = gp;
+    }
+    t3_vec3 gw = qrot4(q, (t3_vec3){ 0, WGRIP7[kind] * gs.y, 0 }), ax = qrot4(q, (t3_vec3){ 0, 1, 0 });
     float dx = pos.x + gw.x - grip.x, dy = pos.y + gw.y - grip.y, dz = pos.z + gw.z - grip.z;
     int mm = (int)(sqrtf(dx * dx + dy * dy + dz * dz) * 1000.0f + 0.5f);
     if (mm > g_held[1]) g_held[1] = mm;
