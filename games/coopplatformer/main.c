@@ -2113,36 +2113,20 @@ static void cmd_bind(int argc, const char **argv, cw_reply *r) {
   cw_reply_printf(r, "ok");
 }
 
-/* A save from version 4 (before the big coins): the shell starts over on any other game version or size, settings and
- * all, so a version 4 save is carried forward here, before cw_shell_init reads it. Its game data is save_t up to
- * `medals`; the big coins start empty. Only a save whose shell header and checksum read exactly as the shell writes
- * them (magic, shell version 1, game version 4, that size, FNV-1a from the settings to the end) is touched: any other
- * block is left for the shell to judge. COOP_SAVE_FIXTURE (native) loads a save file in place of the stored one, as
- * the save gate does; COOP_SAVE_NO_MIGRATE is its control. */
+/* A save from version 4 (before the big coins) or 5 (before the wardrobe): the shell hands its game data to this hook
+ * (cw_shell_desc.game_save_migrate), which keeps it as save_t up to `medals` (version 4) or `bought` (version 5); the
+ * rest starts empty (no big coins, nothing bought, everyone as before). Any other old version or size starts over; the
+ * settings are kept either way. COOP_SAVE_FIXTURE (native) loads a save file in place of the stored one, as the save
+ * gate does; COOP_SAVE_NO_MIGRATE (its control) leaves the hook out. */
 static int g_migrate_dbg[9]; /* migrated, level, unlocked, coins, abilities, total deaths, hats, shake setting, music volume; then big coins taken, in g.migrate_coins */
 static int g_migrate_coins;
-static uint32_t shell_sum(const uint8_t *b, size_t n) {
-  uint32_t h = 2166136261u;
-  for (size_t i = 16; i < n; i++) h = (h ^ b[i]) * 16777619u;
-  return h;
-}
-/* (version 5, before the wardrobe, is carried forward the same way: its data is save_t up to `bought`) */
-static bool save_migrate_v4(void) {
-  uint8_t *b = cw_shell_save_region();
-  size_t n = cw_shell_save_region_size();
-  const size_t v4_size = offsetof(save_t, medals), v5_size = offsetof(save_t, bought), game_at = 32;
-  if (n != game_at + CW_SHELL_GAME_SAVE_MAX) return false; /* not the shell layout this was written for */
-  uint32_t magic, size, sum;
-  uint16_t ver, gver;
-  memcpy(&magic, b, 4), memcpy(&ver, b + 4, 2), memcpy(&gver, b + 6, 2), memcpy(&size, b + 8, 4), memcpy(&sum, b + 12, 4);
-  if (magic != 0x4c485357u || ver != 1 || sum != shell_sum(b, n)) return false;
-  size_t old = gver == 4 && size == v4_size ? v4_size : gver == 5 && size == v5_size ? v5_size : 0;
-  if (!old) return false;
-  memset(b + game_at + old, 0, sizeof(save_t) - old); /* no big coins (version 4), nothing bought, everyone as before */
-  gver = 6, size = (uint32_t)sizeof(save_t);
-  memcpy(b + 6, &gver, 2), memcpy(b + 8, &size, 4);
-  sum = shell_sum(b, n);
-  memcpy(b + 12, &sum, 4);
+static bool save_migrate(uint16_t old_version, const void *old, size_t old_size, void *out, size_t out_size, void *user) {
+  (void)user;
+  const size_t keep = old_version == 4 ? offsetof(save_t, medals) : old_version == 5 ? offsetof(save_t, bought) : 0;
+  if (!keep || old_size != keep || keep > out_size) return false;
+  memcpy(out, old, keep);
+  g_migrate_dbg[0] = 1;
+  cw_info("coopplatformer: a version %u save carried forward", (unsigned)old_version);
   return true;
 }
 
@@ -2168,10 +2152,10 @@ static void init(void *user) {
       fclose(fp);
       cw_info("coopplatformer: save fixture %s, %zu bytes", fx, got);
     }
-    if (!getenv("COOP_SAVE_NO_MIGRATE") && save_migrate_v4()) g_migrate_dbg[0] = 1, cw_info("coopplatformer: an older save carried forward");
   }
   cw_shell_init(&(cw_shell_desc){ .title = "Co-op Platformer", .subtitle = "one to four players", .max_players = 4,
-                                  .game_save_size = sizeof(save_t), .game_save_version = 6, .start = start_match,
+                                  .game_save_size = sizeof(save_t), .game_save_version = 6,
+                                  .game_save_migrate = getenv("COOP_SAVE_NO_MIGRATE") ? NULL : save_migrate, .start = start_match,
                                   .quit = quit_match, .sound = sound_hook, .draw_background = title_background });
   g_font = cw_ui_font_sans();
   audio_init();

@@ -1,9 +1,10 @@
 // coopplatformer: a save from version 4 (before the big coins) still loads. The stored block
 // tests/coopplatformer-save-v4.dat (tests/coopplatformer-save-v4-make.mjs) carries settings and progress that are not
-// the defaults; the game reads it (COOP_SAVE_FIXTURE) and carries it forward before the shell checks it. It must keep
+// the defaults; the game reads it (COOP_SAVE_FIXTURE) and the shell hands its game data to the game's migrate hook. It must keep
 // the level, the unlocked levels, coins, abilities, totals, hats, the screen shake setting and the music volume, and
-// start the big coins empty (the fixture has 0xff where they go). Control (COOP_SAVE_NO_MIGRATE): the shell starts
-// over, so every field is back to its default and the check must fail. Native, software GL, no GPU lock.
+// start the big coins empty (the fixture has 0xff where they go). Control (COOP_SAVE_NO_MIGRATE, no hook): the shell starts
+// the game data over (it keeps the settings), so the progress fields are back to their defaults and the check must fail.
+// Native, software GL, no GPU lock.
 //   node tests/coopplatformer-save.mjs
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync } from 'node:fs';
@@ -45,7 +46,7 @@ if (c.err) { console.log(`FAIL control: ${c.err}`); bad++; }
 else {
   const differs = !(same(c.m, WANT) && c.c === 0);
   if (!differs) bad++;
-  console.log(`${differs ? 'ok  ' : 'FAIL'} control: no migration, the shell starts over: g.migrate ${JSON.stringify(c.m)} (must differ)`);
+  console.log(`${differs ? 'ok  ' : 'FAIL'} control: no migrate hook, the game data starts over: g.migrate ${JSON.stringify(c.m)} (must differ)`);
 }
 rmSync(OUT, { recursive: true, force: true });
 console.log(bad ? `FAIL coopplatformer-save: ${bad}` : 'ok   coopplatformer-save');
