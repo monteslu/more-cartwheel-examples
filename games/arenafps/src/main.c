@@ -120,8 +120,7 @@ static struct game {
   float fl_tint_peak;
   int sw_hurt_hz; /* sw hurt <hz>: the first seat's damage cue that many times a second, no damage (the tint meter's range) */
   int dmg_taken[MAXH], dmg_dealt[MAXH], kills_now[MAXH]; /* this tick's damage per person, for the rumble */
-  int rumble_off;          /* Rumble OFF on the setup screen (for the session, like aim assist: a game save added now
-                            * would reset the shell's saved settings once) */
+  int rumble_off;          /* Rumble OFF on the setup screen; it and aim assist are kept in the game's save (arena_save) */
   char kill_name[MAXH][16];
   /* drawn only: who downed this person, a head shot's marker, the last pickup's line, the streak behind a frag */
   char killed_by[MAXH][16], pick_text[MAXH][28];
@@ -2786,6 +2785,20 @@ static void fixed_update(void *user, double dt) {
 #endif
 }
 
+/* The game's save (cw_shell_game_save): the setup screen's aim assist and rumble choices, kept across runs. Zero is
+ * the default (assist on, rumble on), so a save from before it existed, or none, reads as the defaults. */
+typedef struct { uint8_t assist_off, rumble_off, pad[2]; } arena_save;
+static void setup_load(void) {
+  const arena_save *sv = cw_shell_game_save();
+  G.aim_assist = !sv->assist_off;
+  G.rumble_off = sv->rumble_off != 0;
+}
+static void setup_store(void) {
+  arena_save *sv = cw_shell_game_save();
+  sv->assist_off = !G.aim_assist, sv->rumble_off = G.rumble_off != 0;
+  cw_shell_save_commit();
+}
+
 static void game_step(void) {
   RB.clock++; /* the rumble's clock: every game tick */
   G.steps++; /* every game tick since the start, across matches (soaks) */
@@ -2801,9 +2814,10 @@ static void game_step(void) {
       else if (G.setup_row == 1) G.mode = (G.mode + MODE_COUNT + dir) % MODE_COUNT;
       else if (G.setup_row == 2) G.bots_setting = CW_CLAMP(G.bots_setting + dir, -1, MAXF - 4);
       else if (G.setup_row == 3) G.bot_level = (G.bot_level + BOT_LEVELS + dir) % BOT_LEVELS;
-      else if (G.setup_row == 4) G.aim_assist = !G.aim_assist;
+      else if (G.setup_row == 4) G.aim_assist = !G.aim_assist, setup_store();
       else if (G.setup_row == 5) { /* rumble on or off */
         G.rumble_off = !G.rumble_off;
+        setup_store();
         if (G.rumble_off) rumble_stop_all();
         else rumble(h, 0.3f, 0.3f, 120); /* a taste of it */
       } else if (G.setup_row == 6) G.rules = (G.rules + RULE_COUNT + dir) % RULE_COUNT;
@@ -3699,8 +3713,9 @@ static void init(void *user) {
   G.mode = MODE_DM;
   G.bots_setting = -1; /* AUTO */
   G.bot_level = 1;
-  G.aim_assist = 1;
-  cw_shell_init(&(cw_shell_desc){ .title = "ARENA", .subtitle = "split screen shooter", .max_players = MAXH, .start = start, .sound = shell_sound, .players_changed = players_changed });
+  cw_shell_init(&(cw_shell_desc){ .title = "ARENA", .subtitle = "split screen shooter", .max_players = MAXH, .start = start, .sound = shell_sound, .players_changed = players_changed,
+                                  .game_save_size = sizeof(arena_save), .game_save_version = 1 });
+  setup_load();
   G.ui_back = cw_action_find("ui_back"), G.ui_pause = cw_action_find("pause");
   /* the persistent scene: environment, sun, post, lights, four cameras */
   G.env = cw_node_new("WorldEnvironment", "Env");
@@ -3762,6 +3777,8 @@ static void init(void *user) {
   cw_debug_i32("fl.near_views", &G.fl_near_views);     /* view frames that drew a body within 0.6 m of the camera */
   cw_debug_command("bind", "bind <action> <bindings>: replace an action's bindings", cmd_bind);
   cw_debug_i32("game.mode", &G.mode);
+  cw_debug_i32("game.aim_assist", &G.aim_assist); /* the setup's aim assist and rumble (the save gate reads them after a restart) */
+  cw_debug_i32("game.rumble_off", &G.rumble_off);
   cw_debug_i32("game.rules", &G.rules);
   cw_debug_i32("over.awards", &G.awards); /* awards drawn on the results */
   cw_debug_i32("game.arena", &G.arena_id);
