@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.38.0
+
+- Arena: the setup screen's aim assist and rumble choices are kept between sessions (they were for the session only).
+  Test arenafps-save: one run turns both off on the pad, the next run on its save reads them back; its control, a
+  fresh save, reads the defaults.
+- Sky fighter: every mission keeps its best rank, S, A, B or C by the airframe left at the end. The results panel
+  says the rank earned (and the best, when it is better) and the mission tiles show it beside CLEARED. The ranks live
+  in a slot of their own after the preferences, so the preferences keep their bytes and older saves load as they
+  were. Test skyfighter-ranks (native, on a save file of its own): clears with 40, 95 and 10 airframe rank B, S and
+  C, the best stays S, a restart reads it back; its control, a fresh save, reads none.
+- Brawler: a held weapon or the guard's baton rides the right hand through the engine's bone attachment, placed
+  after the animation and again just before each frame is drawn, so it is in the fist the same frame the hand
+  moves. The hold test reads the prop where the attachment puts it: 0 mm from the fist and 132 degrees over the
+  swings, as before; its control (the old upright prop) still fails.
+- Fighter, Brawler, Tux racer: motion blur. A kick, a thrown body or the snow streaming past blurs along its own
+  motion. It is off on Very Low and Low and while reduced motion is on. Fighter's shutter is 0.3: at 0.5 a flurry of
+  heavy blows smeared the hit sparks over enough of the screen for a fourth flash in a second.
+- Co-op platformer: a version 4 or 5 save is carried forward by the game shell's migrate hook instead of by
+  rewriting the shell's save header; the save test and its control pass as before.
+- Tux racer keeps TAA off: under the engine's TAA with object motion Tux's edges still change more from frame to
+  frame than under the anti-aliasing setting (10.0 against 6.5 levels a frame over 30 frames of a run).
+- Checks: the save tests above with their controls; brawler-hold and fighter-auto (native and romdev, each control
+  failing); the flash sweep for every Fighter, Brawler and Tux racer entry on GL and WebGPU (16 runs, none strobes,
+  each strobe control failing); the program survey for Fighter, Brawler, Tux racer, Arena, Sky fighter and Co-op
+  platformer, native and on the cart (no missing states); the smoke, art, version and prompt checks for every game.
+
 ## 0.37.0
 
 - Engine v0.53.4 (from v0.50.4). What it changes in these games:
