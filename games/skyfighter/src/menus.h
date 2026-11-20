@@ -57,6 +57,15 @@ static void action_labels(const char *labels[3]){
   labels[0]=paused?"RESUME":win?"NEXT MISSION":"RETRY MISSION";labels[1]=win?"REPLAY MISSION":"SETTINGS";labels[2]="MISSION SELECT";
 }
 typedef struct {cw_rect panel;float title_y,name_y,button_y,button_h,button_w,pitch,hint_y;bool split;} action_layout;
+/* the results panel's second line: the mission's name, and on a clear the rank it earned and the best so far */
+static const char *action_name(void){
+  static char line[160];const char *name=mission_name()+5;
+  if(G.state!=WIN||rank_last<1||rank_last>4)return name;
+  int best=G.level>=0&&G.level<MISSIONS?ranks.best[G.level]:0;
+  if(best>rank_last)snprintf(line,sizeof line,"%s   RANK %s (BEST %s)",name,RANK_NAME[rank_last],RANK_NAME[best]);
+  else snprintf(line,sizeof line,"%s   RANK %s",name,RANK_NAME[rank_last]);
+  return line;
+}
 static action_layout action_measure(void) {
   action_layout L;bool paused=G.state==PAUSED,win=G.state==WIN;const char *labels[3];action_labels(labels);
   float label_w=0;for(int i=0;i<3;i++)label_w=fmaxf(label_w,measure(G.ui_font,labels[i],21,0).width);
@@ -66,7 +75,7 @@ static action_layout action_measure(void) {
     return L;
   }
   const char *title=paused?"PAUSED":win?"MISSION CLEAR":"JET DOWN";
-  cw_text_metrics tm=measure(G.title_font,title,30,0),nm=measure(G.ui_font,mission_name()+5,18,0);
+  cw_text_metrics tm=measure(G.title_font,title,30,0),nm=measure(G.ui_font,action_name(),18,0);
   L.split=cw_prompt_text_size(G.ui_font,action_hint(paused,false),0,18).x>W-60;
   cw_vec2 hint=cw_prompt_text_size(G.ui_font,action_hint(paused,L.split),0,18);
   L.button_h=fmaxf(48,line_height(G.ui_font,21)+17);L.button_w=fmaxf(280,label_w+40);L.pitch=L.button_h+menu_gap(14);
@@ -244,9 +253,10 @@ static void draw_mission_menu(void) {
     char number[8];snprintf(number,sizeof number,"%02d",i+1);
     cw_text_metrics nm=measure(G.ui_font,number,15,0);
     cw_r2d_rect((cw_rect){r.x+5,r.y+5,nm.width+8,nm.height},cw_hex(0x0a172adf));text(G.ui_font,number,r.x+9,r.y+5,15,cw_hex(0xffd4a5ff),0,CW_ALIGN_LEFT);
-    if(prefs.progress&(1u<<i)){
-      cw_text_metrics cm=measure(G.ui_font,"CLEARED",13,0);float cx=r.x+r.w-6-cm.width-8;
-      cw_r2d_rect((cw_rect){cx,r.y+6,cm.width+8,cm.height},cw_hex(0x163d32ed));text(G.ui_font,"CLEARED",cx+4,r.y+6,13,cw_hex(0xa9f0bdff),0,CW_ALIGN_LEFT);
+    if(prefs.progress&(1u<<i)){ /* cleared, with the best rank once one is saved */
+      char badge[24];int best=ranks.best[i];snprintf(badge,sizeof badge,best>=1&&best<=4?"CLEARED %s":"CLEARED",RANK_NAME[best>=1&&best<=4?best:0]);
+      cw_text_metrics cm=measure(G.ui_font,badge,13,0);float cx=r.x+r.w-6-cm.width-8;
+      cw_r2d_rect((cw_rect){cx,r.y+6,cm.width+8,cm.height},cw_hex(0x163d32ed));text(G.ui_font,badge,cx+4,r.y+6,13,cw_hex(0xa9f0bdff),0,CW_ALIGN_LEFT);
     }
     float y=r.y+L.thumb_h+6;
     text(G.ui_font,mission_names[i],r.x+9,y,16,cw_hex(selected?0xffd0a1ff:0xf0f0eaff),190,CW_ALIGN_LEFT);
@@ -265,7 +275,7 @@ static void draw_action_menu(void) {
   const char *labels[3];action_labels(labels);
   cw_r2d_rect((cw_rect){0,0,W,H},cw_hex(0x061422b0));cw_r2d_rect(L.panel,cw_hex(0x0c2135f2));
   ctext(G.title_font,paused?"PAUSED":win?"MISSION CLEAR":"JET DOWN",W*.5f,L.title_y,30,cw_hex(0xffbc7aff));
-  ctext(G.ui_font,mission_name()+5,W*.5f,L.name_y,18,cw_hex(0xd4e3ebff));
+  ctext(G.ui_font,action_name(),W*.5f,L.name_y,18,cw_hex(0xd4e3ebff));
   for(int i=0;i<3;i++)menu_button(action_button(i),labels[i],i==G.menu_row);
   ptext(G.ui_font,action_hint(paused,L.split),0,L.hint_y,18,cw_hex(0xb5cbd8ff),W,CW_ALIGN_CENTER);
 }

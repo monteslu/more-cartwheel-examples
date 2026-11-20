@@ -21,6 +21,7 @@
 #include "cartwheel/quality.h"
 #include "cartwheel/pipeline.h"
 #include "cartwheel/math.h"
+#include "cartwheel/save.h"
 #include "cartwheel/particles.h"
 #include "cartwheel/physics3d.h"
 #include "cartwheel/environment.h"
@@ -59,7 +60,18 @@
  * its third byte, so an older save reads 0 there, the defaults */
 typedef struct { uint32_t magic; uint8_t invert_pitch : 1, rumble_off : 1, : 6; uint8_t expert_controls, music_volume, sfx_volume; uint32_t graphics; uint16_t progress; uint8_t text_size, reserved; } preferences;
 _Static_assert(sizeof(preferences) == 16, "the save keeps its size");
-static preferences prefs;
+/* The save: the 16-byte preferences where they always were, then a store of named slots (cartwheel/save.h) in the room
+ * after them, so what the game keeps can grow without touching the preferences. An older save is the preferences alone:
+ * the room reads zeros and the store starts empty. Slot "ranks": each mission's best rank (0 none yet, 1 C to 4 S). */
+typedef struct { preferences prefs; uint8_t slots[240]; } save_block;
+static save_block SAVE;
+#define prefs (SAVE.prefs)
+typedef struct { uint8_t best[MISSIONS]; } mission_ranks;
+#define RANKS_VERSION 1
+static cw_save_store rank_store;
+static mission_ranks ranks;
+static int32_t rank_last; /* the rank of the mission just cleared (0 none) */
+static const char *const RANK_NAME[5] = { "", "C", "B", "A", "S" };
 
 typedef struct { t3_object *node, *modern, *vintage, *sleigh, *propeller; float x, y, z, vx, vy, vz, heading, phase, maneuver_time, fire_cool, seeker; int active, hp, maneuver, role, burst, passed; } enemy;
 typedef struct { t3_object *node; cw_node trail; float x, y, z, vx, vy, vz, age, obscured, decoy[3]; int active, missile, target, tracer; } shot;
@@ -127,12 +139,22 @@ static struct {
   atomic_uint music_read,music_write;
   int32_t music_ready,music_underflows,music_played;
 } G;
+/* a cleared mission's rank, from the health it ended with: S with 90 or more, A 60, B 30, C below */
+static int rank_of_health(int health) { return health >= 90 ? 4 : health >= 60 ? 3 : health >= 30 ? 2 : 1; }
+static void rank_record(int level) {
+  rank_last = rank_of_health(G.health);
+  if (level >= 0 && level < MISSIONS && rank_last > ranks.best[level]) {
+    ranks.best[level] = (uint8_t)rank_last;
+    cw_save_write(&rank_store, "ranks", RANKS_VERSION, &ranks, sizeof ranks);
+  }
+}
 
 static int art_hide_hud; /* Developer capture switch; never stored in preferences. */
 /* dev aid (key art): the keyart command's camera, an offset from the jet along its heading (right, up, ahead in metres); a command, so it reaches a cart (the SKY_ART_* environment is native only) */
 static int keyart_on;
 static float keyart_side=22,keyart_up=6,keyart_ahead=30;
 /* feel.h */
+static void mission_won(void); /* campaign.h */
 static void feel_reset(void);
 static void feel_spawn(int i);
 static void explode(float x, float y, float z);
@@ -971,6 +993,7 @@ static void follow_jet(void) {
 }
 
 static void new_mission(void) {
+  rank_last = 0;
   if(G.state==WIN)G.level=(G.level+1)%MISSIONS;
   G.state = PLAY;G.menu_row=0;G.crash_age=0;G.impact_age=0;G.buildings_destroyed=0;G.impact_structure=-1;G.edge_timer=0;G.edge_armed=1;
   cw_node_set(G.jet_node,"visible",cw_val_bool(true));G.jet->visible=true;G.shockwave->visible=false;G.wreck_age=0;G.wreck_count=0;
@@ -1489,6 +1512,8 @@ static void init(void *user) {
     const char *names[]={"hp","x","y","z"};for(int j=0;j<4;j++)snprintf(building_keys[i][j],32,"building.%d.%s",i,names[j]);
     cw_debug_i32(building_keys[i][0],&G.buildings[i].hp);cw_debug_f32(building_keys[i][1],&G.buildings[i].x);cw_debug_f32(building_keys[i][2],&G.buildings[i].y);cw_debug_f32(building_keys[i][3],&G.buildings[i].z);
   }
+  cw_save_open(&rank_store,SAVE.slots,sizeof SAVE.slots,NULL,NULL);cw_save_read(&rank_store,"ranks",RANKS_VERSION,&ranks,sizeof ranks,NULL,NULL);
+  cw_debug_field("campaign.ranks",ranks.best,CW_DBG_U8,MISSIONS);cw_debug_i32("campaign.rank_last",&rank_last);
   cw_debug_field("campaign.progress",&prefs.progress,CW_DBG_U16,1);cw_debug_i32("map.style",&G.map_style);
   prefs.invert_pitch = !!prefs.invert_pitch;
   prefs.expert_controls=!!prefs.expert_controls;
@@ -2097,7 +2122,7 @@ static void render(void *user, double alpha) {
 cw_app_desc cw_main(int argc, char **argv) {
   (void)argc; (void)argv;
   static cw_app_desc base={ .title = "Sky Fighter", .width = W, .height = H,
-    .save = &prefs, .save_size = sizeof prefs, .touch_pointer=true,
+    .save = &SAVE, .save_size = sizeof SAVE, .touch_pointer=true,
     .init = init, .fixed_update = fixed_update, .render = render, .debug = true };
   return cw_scene_app("world.cwscene",&base);
 }

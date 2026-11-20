@@ -415,6 +415,10 @@ static void sw_cmd(int argc, const char **argv, cw_reply *r) {
     for (int i = 0; i < SW_COUNT; i++) if (!strcmp(argv[1], sw_names[i])) { sw[i] = atoi(argv[2]) != 0; cw_reply_printf(r, "{\"%s\":%d}", sw_names[i], (int)sw[i]); return; }
     if (!strcmp(argv[1], "bandit_at")) { bandit_ahead((float)atof(argv[2])); cw_reply_printf(r, "ok"); return; }
     if (!strcmp(argv[1], "health")) { G.health = atoi(argv[2]); cw_reply_printf(r, "ok"); return; }
+    if (!strcmp(argv[1], "win")) { /* sw win <health>: clear the mission being flown now with that much health (the ranks gate) */
+      if (G.state != PLAY) { cw_reply_error(r, "not flying"); return; }
+      G.health = atoi(argv[2]); mission_won(); cw_reply_printf(r, "{\"rank\":%d}", (int)rank_last); return;
+    }
     if (!strcmp(argv[1], "blasts")) {
       int n = atoi(argv[2]);
       t3_vec3 f = t3_vec3_apply_quat((t3_vec3){ 0, 0, -1 }, G.flight.attitude);

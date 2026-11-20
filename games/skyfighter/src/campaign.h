@@ -422,8 +422,10 @@ static void victory_camera(float dt) {
 }
 static void campaign_finish(void) {
   bool done=G.level==0?G.balloon_kills>=BALLOONS:G.level==1?G.kills>=8&&G.blimp_kills>=BLIMPS:G.level==2?G.fuel_depots>=4:G.level==3?G.kills>=10:G.level==4?G.air_targets[MOTHER].state==3:G.level==5?mission_ground_count(68,71)==4:G.level==6?mission_ground_count(84,86)==3&&G.air_targets[SANTA].state==3:mission_ground_count(88,91)==4;
-  if(done&&G.state==PLAY){G.state=(G.level==4||G.level==6)?VICTORY:WIN;victory_age=0;G.menu_row=0;G.mission_complete=1;prefs.progress|=1u<<G.level;cw_save_commit();G.score+=1000;G.audio_boost=0;G.audio_alert=0;notify("MISSION COMPLETE",6);}
+  if(done&&G.state==PLAY)mission_won();
 }
+/* the mission is cleared: its rank (from the health left) and the campaign's progress are saved */
+static void mission_won(void){G.state=(G.level==4||G.level==6)?VICTORY:WIN;victory_age=0;G.menu_row=0;G.mission_complete=1;prefs.progress|=1u<<G.level;rank_record(G.level);cw_save_commit();G.score+=1000;G.audio_boost=0;G.audio_alert=0;notify("MISSION COMPLETE",6);}
 
 static bool campaign_shield_hit(float ax,float ay,float az,float bx,float by,float bz) {
   air_target *a;float rx,ry,rz;

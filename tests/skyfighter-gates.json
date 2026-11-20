@@ -72,6 +72,11 @@
     "note": "The graphics row in Settings by real pad and pointer input, on the cart through romdev on GL and WebGPU: every preset reached in both directions with its word in the save, each one still there after a restart, a save holding Auto or a Custom word, then the native build across two runs on a save file. Controls: presses on the PITCH row must fail the walk, a cleared word must fail the restart, no save file must come back on the default."
   },
   {
+    "name": "skyfighter-ranks",
+    "script": "tests/skyfighter-ranks.mjs",
+    "note": "Each mission's best rank kept in the save store's ranks slot after the 16-byte preferences (native build, a save file of its own): clears with 40, 95 and 10 health rank B, S and C, the best stays S, a restart reads it back and the preferences' bytes are unchanged. Control: a fresh save reads no rank."
+  },
+  {
     "name": "skyfighter-newcomer",
     "script": "tests/skyfighter-newcomer.mjs",
     "note": "a newcomer's first sorties on the cart through romdev by the pad and the HUD alone, with a 0.3 s reaction delay, a wandering aim error and an over-steer now and then: Country Fair cleared (all twelve balloons) and Coastal Scramble cleared (ten interceptors). Controls: the stick never moved clears neither; the old rules (flying into a balloon ends the sortie, PULL UP only at 45 m) lose Country Fair"
