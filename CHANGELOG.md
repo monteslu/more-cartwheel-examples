@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.37.0
+
+- Engine v0.53.4 (from v0.50.4). What it changes in these games:
+  - Arena: the reflection probe and the light probe grid are lit by their own capture's light data under the
+    clustered lamps, so the probe-lit rooms look the same on GL and WebGPU (a Courtyard corridor at High: mean
+    difference between the backends 0.04 levels over the frame and 0.10 in the corridor, 0.28 and 0.26 before).
+  - Sky fighter: TAA follows each moving mesh's own motion, so the jet's edges no longer smear when it banks (the
+    chase view's jet in a turn is sharper: mean edge strength 3.04 against 2.91; GL and WebGPU the same picture).
+  - Tux racer: the program survey added three program states for the instanced snow terrain on Low and Very Low (two
+    shadow depth draws and one lit draw), so those draws are built ahead with the rest; a Very Low run looks as it did.
+  - Party pack: repeated props' shadows are cast in one instanced draw (one program state added by the survey).
+  - Every game on the game shell: a game save that changes size keeps the bytes both sizes have, and a changed save
+    version keeps the settings.
+- Checks that ran for this pin move: every game and its self-playing cart builds as a release cart; the program
+  survey for every game, native (every preset and the preset switches) and on its cart, on GL and WebGPU (run on
+  engine v0.53.2, whose engine source v0.53.4 shares; new states only in Tux racer and Party pack); the smoke, art,
+  version and prompt checks; through romdev on a hardware GPU, the probe-lit Arena corridor, Sky fighter's jet
+  banking under TAA and Tux on Very Low, each on GL and WebGPU against the 0.36.1 release carts, and a Fighter bout
+  and a Brawler street on GL and WebGPU, looked at in native-scale crops.
+
 ## 0.36.1
 
 0.36.0 published no release (its CI smoke test failed); this release carries it.

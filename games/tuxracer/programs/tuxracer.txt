@@ -173,3 +173,6 @@ physical+vcol+senv+l0001+xcsm_plain
 physical+vcol+senv+l0001+xcsm_plain_gi
 physical+vcol+trans+senv+l0001+xcsm_plain
 physical+vcol+trans+senv+l0001+xcsm_plain_gi
+depth+instbig+xterrainlow_csm_plain_snow_gi
+standard+instbig+senv+l0001+xterrainmin_csm_plain_snow_gi
+depth+instbig+xterrainmin_csm_plain_snow_gi
