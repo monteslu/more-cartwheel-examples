@@ -339,7 +339,9 @@ static void build_world(void) {
   cw_node_set(G.post, "ssr", cw_val_bool(true));          /* ice mirrors the sky cube and the trees */
   cw_node_set(G.post, "ssr_max_distance", cw_val_float(1.5f));
   cw_node_set(G.post, "ssr_intensity", cw_val_float(1));
-  cw_node_set(G.post, "taa", cw_val_bool(false));         /* the engine's TAA has no object velocity yet: Tux (the one thing the camera tracks) shimmered under the jitter; the AA setting (SMAA / FXAA) does the edges */
+  cw_node_set(G.post, "taa", cw_val_bool(false));         /* off: with object motion (engine v0.53) Tux, the one thing the camera tracks, still shimmers more under TAA than with the AA setting (SMAA / FXAA), which does the edges: over 30 frames of a run his edge pixels change 10.0 levels a frame under TAA against 6.5 without */
+  cw_node_set(G.post, "motion_blur", cw_val_bool(true));  /* the downhill: what streams past blurs along its motion (off on Very Low and Low, and with reduced motion) */
+  cw_node_set(G.post, "motion_blur_shutter", cw_val_float(0.4f));
   cw_node_set(G.post, "aa", cw_val_enum("NONE"));
   cw_node_set(G.post, "vignette", cw_val_bool(false)); /* the user's call: no darkened corners */
   G.tux_shadow = add(G.root, "Decal3D", "TuxShadow");
