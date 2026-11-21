@@ -78,4 +78,4 @@ Bots notice a new enemy inside a view cone (all round on hard), or when hit or w
 See the repository README: `scripts/fetch-deps.sh`, then `scripts/build.sh`.
 `arenafps_auto` is the same game with the bots playing every seat (ARENA_ID, ARENA_MODE, ARENA_BOTS,
 ARENA_PLAYERS choose the match): the tests and benchmarks run it.
-`tests/arenafps-split-bench.mjs` measures the cost of one to four views. `tools/playtest-human.mjs` plays the scripted human through romdev's pad on the cart.
+`tests/arenafps-split-bench.mjs` measures the cost of one to four views. Split screen draws every view in one pass: each player's gun is on a layer only that player's camera draws, and each body says which views draw it (not its own player's, not one whose camera it is right up against). `tests/arenafps-onepass.mjs` holds the one pass on every arena at two and four players against the old per-view hook's picture (`sw view_hook 1`), and `tests/arenafps-onepass-timing.mjs` times the two. `tools/playtest-human.mjs` plays the scripted human through romdev's pad on the cart.

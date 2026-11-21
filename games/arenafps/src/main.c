@@ -118,6 +118,7 @@ static struct game {
   int dmg_hold[MAXH];    /* ticks the damage tint holds after the last hit */
   int32_t fl_tint_flashes, fl_near_views; /* the flash meter (tint_meter, view_hook) */
   float fl_tint_peak;
+  int sw_view_hook; /* sw view_hook 1: the old shared gun layer and view hook (drawn view by view), the other side of the one-pass tests */
   int sw_hurt_hz; /* sw hurt <hz>: the first seat's damage cue that many times a second, no damage (the tint meter's range) */
   int dmg_taken[MAXH], dmg_dealt[MAXH], kills_now[MAXH]; /* this tick's damage per person, for the rumble */
   int rumble_off;          /* Rumble OFF on the setup screen; it and aim assist are kept in the game's save (arena_save) */
@@ -2274,6 +2275,9 @@ static void set_views(void) {
 }
 
 static void view_hook(int view, void *u);
+static void views_mode(void);
+static bool view_hook_on(void);
+static void view_masks(void);
 
 /* soak measurements (autopilot only): the C heap in use at the start of each match, after its arena is built (glibc hosts;
  * 0 elsewhere). tools/soak.mjs compares the same arena and mode a few cycles apart */
@@ -2667,6 +2671,9 @@ static void sync_nodes(void) {
     G.head_marker[h] *= 0.93f;
     G.pick_t[h] *= 0.985f;
   }
+  views_mode();
+  if (G.views >= 2 && !view_hook_on()) /* each gun is drawn only by its own camera (vm_layer): shown while its player lives */
+    for (int h = 0; h < MAXH; h++) cw_node_set(G.vm[h], "visible", cw_val_bool(h < G.players && F(h)->alive));
 #ifdef ARENA_AUTOPILOT
   if (getenv("ARENA_TOPDOWN")) { /* ARENA_TOPDOWN: view 1 looks straight down on the arena (layout checks) */
     cw_node3d_set_position(G.cam[0], v3(0, 62, 0.01f));
@@ -2695,34 +2702,80 @@ static void sync_nodes(void) {
     }
   }
 #endif
+  view_masks();
 }
 
-/* the view hook: each view shows its own gun and hides its own body */
+/* What each split screen view draws. Player h's gun is on a layer of its own (vm_layer), which only camera h draws as
+ * its viewmodel; each body says which views draw it (cw_node3d_set_views): never its own player's view, and not a view
+ * whose camera it is right up against. That keeps the frame in one pass. sw view_hook 1 (or ARENA_T_view_hook=1) brings
+ * back the old way, one shared gun layer and a view hook that shows and hides before each view (drawn view by view):
+ * the picture and timing tests' other side */
+static uint32_t vm_layer(int h) { return 1u << (4 + h); }
+static bool view_hook_on(void) { return G.sw_view_hook || arena_tune("view_hook", 0) > 0.5f; }
+/* a body (an enemy, a friend, a fallen one) whose middle is within about 0.6 m of a view's camera plus its own radius is
+ * not drawn in that view: from inside the near plane its parts fill the view and change every frame. Hidden under 1.0 m,
+ * back over 1.15 m, so one hovering at the edge does not blink */
+static bool near_cam[MAXH][MAXF];
+static bool body_near(int view, int i) {
+  const fighter *f = F(i);
+  const t3_mat4 *cm = cw_node3d_global_transform(G.cam[view]);
+  t3_vec3 c = v3(cm->e[12], cm->e[13], cm->e[14]), b = f->mv.position;
+  float dy = c.y < b.y ? b.y - c.y : c.y > b.y + PLAYER_HT ? c.y - b.y - PLAYER_HT : 0;
+  float dist = sqrtf((c.x - b.x) * (c.x - b.x) + (c.z - b.z) * (c.z - b.z) + dy * dy);
+  if (strobefix()) near_cam[view][i] = near_cam[view][i] ? dist < 1.15f : dist < 1.0f;
+  bool hide = strobefix() && near_cam[view][i];
+  if (!hide && dist < 0.6f) G.fl_near_views++; /* the meter: a body drawn inside a view's near reach */
+  return hide;
+}
+/* the masks, once a tick after the cameras are placed (sync_nodes) */
+static void view_masks(void) {
+  if (view_hook_on()) return;
+  int nv = CW_MIN(G.views, MAXH);
+  bool shift = arena_tune("mask_shift", 0) > 0.5f; /* sw tune mask_shift 1: each body's mask a view over (tests/arenafps-onepass.mjs's control) */
+  for (int i = 0; i < G.nf; i++) {
+    fighter *f = F(i);
+    if (!cw_node_valid(f->body)) continue;
+    uint32_t m = CW_VIEWS_ALL;
+    if (nv >= 2) {
+      if (i < G.players && i < nv) m &= ~(1u << i); /* a player's own body: never in its own view */
+      if (f->alive || f->dead_ticks <= 100)
+        for (int v = 0; v < nv; v++) if (v != i && body_near(v, i)) m &= ~(1u << v);
+    }
+    if (shift && nv >= 2) m = ((m << 1) | (m >> (nv - 1))) & ((1u << nv) - 1);
+    cw_node3d_set_views(f->body, m);
+  }
+}
+/* the guns' layers and the cameras' viewmodel layers for the way chosen, and the hook (set when it changes) */
+static void views_mode(void) {
+  static int on = -1;
+  bool hook = view_hook_on();
+  if (on == (int)hook) return;
+  on = hook;
+  for (int h = 0; h < MAXH; h++) {
+    uint32_t l = hook ? 2u : vm_layer(h);
+    cw_node_set(G.vm[h], "layers", cw_val_int((int32_t)l));
+    cw_node_set(G.vm_flash[h], "layers", cw_val_int((int32_t)l));
+#ifdef ARENA_AUTOPILOT
+    if (getenv("ARENA_T_vm") && atoi(getenv("ARENA_T_vm")) == 0) l = 0;
+#endif
+    cw_node_set(G.cam[h], "viewmodel_layers", cw_val_int((int32_t)l));
+  }
+  if (hook) for (int i = 0; i < MAXF; i++) if (cw_node_valid(F(i)->body)) cw_node3d_set_views(F(i)->body, CW_VIEWS_ALL);
+  cw_pipeline_set_view_hook(cw_pipeline_of(G.tree), hook ? view_hook : NULL, NULL);
+}
 static void set_obj_visible(cw_node n, bool v) {
   t3_object *o = cw_node3d_object(n);
   if (o) o->visible = v; /* the hook runs after the tree's pre-render: set the drawn object itself */
 }
+/* the old way (sw view_hook 1): before each view, its own gun shown and the others hidden, its own body and those
+ * against its camera hidden */
 static void view_hook(int view, void *u) {
   (void)u;
   for (int h = 0; h < G.players; h++) set_obj_visible(G.vm[h], h == view && F(h)->alive);
   for (int i = 0; i < G.nf; i++) {
     fighter *f = F(i);
     bool show = i != view && (f->alive || f->dead_ticks <= 100);
-    /* a body (an enemy, a friend, a fallen one) whose middle is within about 0.6 m of this view's camera plus its own
-     * radius is not drawn in this view: from inside the near plane its parts fill the view and change every frame. Hidden
-     * under 1.0 m, back over 1.15 m, so one hovering at the edge does not blink */
-    static bool near[MAXH][MAXF];
-    if (show && view >= 0 && view < MAXH) {
-      const t3_mat4 *cm = cw_node3d_global_transform(G.cam[view]);
-      t3_vec3 c = v3(cm->e[12], cm->e[13], cm->e[14]), b = f->mv.position;
-      float dy = c.y < b.y ? b.y - c.y : c.y > b.y + PLAYER_HT ? c.y - b.y - PLAYER_HT : 0;
-      float dist = sqrtf((c.x - b.x) * (c.x - b.x) + (c.z - b.z) * (c.z - b.z) + dy * dy);
-      if (strobefix()) {
-        near[view][i] = near[view][i] ? dist < 1.15f : dist < 1.0f;
-        if (near[view][i]) show = false;
-      }
-      if (show && dist < 0.6f) G.fl_near_views++; /* the meter: a body drawn inside a view's near reach */
-    }
+    if (show && view >= 0 && view < MAXH && body_near(view, i)) show = false;
     if (cw_node_valid(f->body)) set_obj_visible(f->body, show);
   }
 }
@@ -3474,12 +3527,12 @@ static void render(void *user, double alpha) {
 /* ── start, init ───────────────────────────────────────────────────── */
 
 /* the glTF objects of a viewmodel sit on the viewmodel layer, never cast shadows (own body shadow would look wrong) and are never culled by their own bounds */
-static void set_vm_layers(t3_object *o) {
-  o->layers = 2;
+static void set_vm_layers(t3_object *o, uint32_t layer) {
+  o->layers = layer;
   o->cast_shadow = false;
   o->receive_shadow = false; /* the gun hangs at the eye: a sun shadow across it reads as a black slab */
   o->frustum_culled = false;
-  for (int i = 0; i < o->child_count; i++) set_vm_layers(o->children[i]);
+  for (int i = 0; i < o->child_count; i++) set_vm_layers(o->children[i], layer);
 }
 
 /* the guns' materials get the arena's worn maps by name (the glb's uvs are box projected in gun metres): chipped paint on the
@@ -3513,7 +3566,7 @@ static void vm_textures(t3_object *o) {
 static void make_viewmodels(void) {
   for (int h = 0; h < MAXH; h++) {
     G.vm[h] = cw_node_new("Node3D", "VM");
-    cw_node_set(G.vm[h], "layers", cw_val_int(2));
+    cw_node_set(G.vm[h], "layers", cw_val_int((int32_t)vm_layer(h))); /* player h's gun: only camera h draws it (views_mode) */
     cw_node_add_child(G.cam[h], G.vm[h]);
     for (int w = 0; w < NWEAP; w++) {
       cw_node g = cw_node_new("Node3D", "Weapon");
@@ -3529,7 +3582,7 @@ static void make_viewmodels(void) {
       if (!gl) { cw_error("arenafps: %s missing", path); continue; }
       cw_node3d_set_object(g, gl->scene);
       cw_node3d_set_scale(g, v3(VM_SCALE, VM_SCALE, VM_SCALE));
-      set_vm_layers(gl->scene);
+      set_vm_layers(gl->scene, vm_layer(h));
       vm_textures(gl->scene);
     }
     { /* the muzzle flash: a star sprite in the gun's own layer, additive and over-bright so the bloom picks it up, a new turn and size each shot */
@@ -3553,9 +3606,9 @@ static void make_viewmodels(void) {
         fm->side = T3_DOUBLE_SIDE;
       }
       t3_mesh *fq = t3_mesh_new(fg, fm);
-      set_vm_layers(&fq->base);
+      set_vm_layers(&fq->base, vm_layer(h));
       G.vm_flash[h] = cw_node_new("MeshInstance3D", "Flash");
-      cw_node_set(G.vm_flash[h], "layers", cw_val_int(2));
+      cw_node_set(G.vm_flash[h], "layers", cw_val_int((int32_t)vm_layer(h)));
       cw_node_set(G.vm_flash[h], "visible", cw_val_bool(false));
       cw_node_add_child(G.vm[h], G.vm_flash[h]);
       cw_mesh3d_set_procedural(G.vm_flash[h], fq);
@@ -3679,7 +3732,13 @@ static void cmd_sw(int argc, const char **argv, cw_reply *r) {
     cw_reply_printf(r, "{\"killcam\":%d}", !G.sw_no_killcam);
     return;
   }
-  if (argc < 3 || strcmp(argv[1], "idle_lives")) { cw_reply_error(r, "usage: sw idle_lives <0|1> | sw killcam <0|1> | sw cues <0|1> | sw tune <name> <value> | sw hurt <hz>"); return; }
+  if (argc >= 3 && !strcmp(argv[1], "view_hook")) {
+    G.sw_view_hook = atoi(argv[2]) != 0;
+    views_mode();
+    cw_reply_printf(r, "{\"view_hook\":%d}", G.sw_view_hook);
+    return;
+  }
+  if (argc < 3 || strcmp(argv[1], "idle_lives")) { cw_reply_error(r, "usage: sw idle_lives <0|1> | sw killcam <0|1> | sw cues <0|1> | sw view_hook <0|1> | sw tune <name> <value> | sw hurt <hz>"); return; }
   G.sw_idle_lives = atoi(argv[2]) != 0;
   cw_reply_printf(r, "{\"idle_lives\":%d}", G.sw_idle_lives);
 }
@@ -3755,11 +3814,7 @@ static void init(void *user) {
     cw_node_set(G.cam[h], "fov", cw_val_float(78));
     cw_node_set(G.cam[h], "near", cw_val_float(0.08));
     cw_node_set(G.cam[h], "far", cw_val_float(220));
-#ifdef ARENA_AUTOPILOT
-    cw_node_set(G.cam[h], "viewmodel_layers", cw_val_int(getenv("ARENA_T_vm") && atoi(getenv("ARENA_T_vm")) == 0 ? 0 : 2));
-#else
-    cw_node_set(G.cam[h], "viewmodel_layers", cw_val_int(2));
-#endif
+    /* viewmodel_layers: views_mode (camera h draws its own player's gun layer; ARENA_T_vm=0, autopilot: none) */
     cw_node_set(G.cam[h], "viewmodel_fov", cw_val_float(52));
     cw_node_add_child(G.root, G.cam[h]);
   }
@@ -3767,7 +3822,7 @@ static void init(void *user) {
   make_viewmodels();
   build_world(G.arena_id); /* the join screen shows the arena, not an empty room */
   overview_cams();
-  cw_pipeline_set_view_hook(cw_pipeline_of(G.tree), view_hook, NULL);
+  views_mode(); /* per-player gun layers and body masks (or, with sw view_hook 1, the old view hook) */
   cw_quality_on_change(quality_changed, NULL);
   quality_changed(cw_quality_get(), NULL); /* the preset the engine started at */
   cw_quality_auto(true, 0);
