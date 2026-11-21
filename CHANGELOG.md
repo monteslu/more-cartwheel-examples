@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.39.0
+
+- Engine v0.57.2 (from v0.53.4). What it changes in these games:
+  - Arena: split screen draws every view in one pass. Each player's gun is on a layer only that player's camera
+    draws, and each body says which views draw it (not its own player's view, not a view whose camera it is right up
+    against), so the frame no longer goes back to drawing each view on its own. The picture is the one the old per-view
+    drawing gave (`sw view_hook 1` still brings that back for comparison). Wall time a frame on a host that waits for
+    each frame (a Radeon 890M, High, the Terraces arena, the median of five interleaved rounds):
+
+    | backend | players | each view on its own | one pass | change |
+    |---|---|---|---|---|
+    | GL | 2 | 19.03 ms | 18.07 ms | -5.0% |
+    | GL | 4 | 20.65 ms | 19.72 ms | -4.5% |
+    | WebGPU | 2 | 21.11 ms | 19.93 ms | -5.6% |
+    | WebGPU | 4 | 22.20 ms | 21.95 ms | -1.1% |
+
+  - Sky fighter: its program tables are regenerated, as the engine's water surface now reads the view's rectangle
+    (the other games with water had theirs regenerated already).
+  - Native builds hold the GPU at most two frames behind the game, as a swap chain does.
+- Checks: every game and its self-playing carts build as release carts; the program survey for every game, native
+  (every preset and the preset switches, on GL and WebGPU) and on its cart (GL and WebGPU): no missing states; every
+  table with a water surface regenerated (Arena, Pirates, Co-op platformer, Party pack, Jet ski, Sky fighter and its
+  sample table); tests/arenafps-onepass.mjs on GL and WebGPU at two and four players on all three arenas: one pass on
+  every sampled frame (23 of 23 a run), the same match as the per-view run (game.hash) and within 0.3% of its
+  picture at frames 900 and 1500 (worst 0.026%; Terraces at two players 0.0013% and 0.0009% on GL, 0.0006% and
+  0.0007% on WebGPU), its control (each body's mask a view over) failing at 49% to 62%;
+  tests/arenafps-onepass-timing.mjs --detail (the table above); the flash sweep for every Arena entry, Sky fighter's
+  sortie, the Jet ski race and the Pirates race on GL and WebGPU (none strobes, each strobe control and the Arena
+  co-op control failing); the smoke, art, version and prompt checks for every game; through romdev on the 890M, a
+  four-player match joined and played on four pads and a two-player Terraces match, looked at in native-scale crops
+  (each view shows only its own gun and no body of its own player, the water reflects each view's own scene).
+
 ## 0.38.0
 
 - Arena: the setup screen's aim assist and rumble choices are kept between sessions (they were for the session only).
