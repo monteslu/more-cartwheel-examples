@@ -3,7 +3,7 @@
 // drawn on its own), interleaved over rounds in the same match, at two and four players, GL and WebGPU, High. Run it
 // on a RELEASE cart (RELEASE=1 scripts/build.sh arenafps_auto). Prints the GPU, its clock, the machine's load and
 // whether another session's GPU work overlapped (contention), and each variant's median of the rounds' mean wall ms.
-//   node tests/arenafps-onepass-timing.mjs [--gl] [--webgpu] [--players 2,4] [--arena 2] [--rounds 5] [--cart <path>]
+//   node tests/arenafps-onepass-timing.mjs [--gl] [--webgpu] [--players 2,4] [--arena 2] [--rounds 5] [--detail] [--cart <path>]
 import { ROMDEV_URL } from './lib/romdev-url.mjs';
 import { loadavg } from 'node:os';
 import { resolve, dirname, join } from 'node:path';
@@ -16,6 +16,7 @@ const BACKENDS = process.argv.includes('--gl') ? ['gl'] : process.argv.includes(
 const PLAYERS = arg('--players', '2,4').split(',').map(Number);
 const ARENA = +arg('--arena', '2');
 const ROUNDS = +arg('--rounds', '5');
+const DETAIL = process.argv.includes('--detail'); // also masks drawn view by view, and (WebGPU) the one pass with its views submitted together
 const post = async (session, name, args) => {
   const r = await fetch(`${ROMDEV_URL}/tool/${name}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-romdev-session': session, 'x-romdev-agent': 'arenafps-onepass-timing' }, body: JSON.stringify(args), signal: AbortSignal.timeout(1200000) });
   const t = await r.text();
@@ -36,8 +37,12 @@ for (const backend of BACKENDS) {
       await post(session, 'wasm', { op: 'command', text: 'quality high' });
       await post(session, 'frame', { op: 'step', frames: 400 }); // into the match
       const variants = [
-        { name: 'view hook (each view on its own)', commands: ['sw view_hook 1'] },
-        { name: 'one pass (masks, gun layers)', commands: ['sw view_hook 0'] },
+        { name: 'view hook (each view on its own)', commands: ['sw view_hook 1', 'pipeline views_array 1', 'pipeline views_submit 1'] },
+        { name: 'one pass (masks, gun layers)', commands: ['sw view_hook 0', 'pipeline views_array 1', 'pipeline views_submit 1'] },
+        ...(DETAIL ? [
+          { name: 'masks, each view on its own', commands: ['sw view_hook 0', 'pipeline views_array 0', 'pipeline views_submit 1'] },
+          ...(backend === 'webgpu' ? [{ name: 'one pass, views submitted together', commands: ['sw view_hook 0', 'pipeline views_array 1', 'pipeline views_submit 0'] }] : []),
+        ] : []),
       ];
       const load = loadavg()[0];
       const t = await post(session, 'frame', { op: 'timing', frames: 240, warmup: 60, window: 120, rounds: ROUNDS, variants, maxSeconds: 900 });
