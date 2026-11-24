@@ -344,3 +344,9 @@ depth+instbig+xcsm_foliage_plain_gi
 standard+map+rep+instbig+senv+atest+ds+l0001+xcsm_foliage_gi
 standard+map+rep+instbig+senv+atest+ds+l0001+xcsm_foliage_plain_gi
 standard+map+rep+instbig+senv+atest+ds+l0001+xfoliage_gibuf
+depth+instbig+xcsm_foliage_plain
+physical+vcol+trans+skin+senv+eon+l0001+xcsm_feather_hfog
+physical+vcol+trans+skin+senv+eon+l0001+xcsm_feather_hfog_plain
+physical+vcol+trans+skin+senv+eon+l0001+xcsm_feather_hfog_skinshade_gi
+standard+map+rep+instbig+senv+atest+ds+l0001+xcsm_foliage
+standard+map+rep+instbig+senv+atest+ds+l0001+xcsm_foliage_plain
