@@ -137,7 +137,8 @@ function controlBuild(game, app, state, tables, outDir) {
  * @param {string} g.game       games/<game>
  * @param {string[]} g.tables   its program tables (programs/<table>.txt)
  * @param {object[]} g.scenes   { name, app, frames, cmds?, env?, input?, reach?, show?, presets?, mustNotReach? (a control: its reach must fail, and a run that reaches it does) }
- * @param {object|object[]} g.control    { state, scene (a scene's name), gpu?, quality? }: a state that scene draws at that preset; several when one scene can not speak for the rest
+ * @param {object|object[]} g.control    { state, scene (a scene's name), gpu?, quality?, expect? (the state reported missing when `state` is a table entry
+ *   that covers the drawn one, say more point lights of a kind: the drawn state's name) }: a state that scene draws at that preset; several when one scene can not speak for the rest
  * @param {string[]} [g.qualities] the presets
  */
 export function sweep({ game, tables, scenes, control, qualities = QUALITIES }) {
@@ -173,7 +174,8 @@ export function sweep({ game, tables, scenes, control, qualities = QUALITIES }) 
     for (const gpu of k.gpu ? [k.gpu] : gpus) {
       const q = k.quality || 'low';
       const r = runScene(OUT, sc, gpu, q, exe);
-      const ok = !r.failed && r.missing.includes(state) && r.skipped > 0;
+      const want = opt('--control-state') ? state : k.expect || state; // a table entry that covers the drawn state (more lights of a kind) is reported under the drawn state's name
+      const ok = !r.failed && r.missing.includes(want) && r.skipped > 0;
       console.log(`${ok ? 'ok  ' : 'FAIL'} control ${gpu} ${q} ${sc.name}, ${state} out of the table: must report it and skip draws: ${r.failed || `missing [${r.missing.join(' ')}] skipped ${r.skipped}`}`);
       if (!ok) fail++;
     }
