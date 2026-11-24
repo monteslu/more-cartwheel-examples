@@ -4,7 +4,11 @@
 // Facing is +Z in the model, +X is the character's left. Rotation values in the poses are offsets from the rest pose
 // (arms and legs hang along -Y): -x swings a limb forward, +z on the left side (+x) lifts it out sideways, +x on the
 // spine leans forward, +x on a lower leg bends the knee, -x on a lower arm bends the elbow.
-// Bones the clips never key (HairA, HairB, CoatL, CoatR, Belly) are driven at run time by the game's spring code.
+// Bones the clips never key (HairA, HairB, CoatL, CoatR, Belly) are driven at run time: the hair and a tailcoat's or the
+// creep's coat tails by the engine's SpringBone3D (the tails end in CoatL_end and CoatR_end), the belly by the game's
+// spring code. A long coat (not the creep's) hangs on its own bone chains instead (Skirt<chain>_<bone>, five chains of
+// three bones from the hips to the hem, each ending in an _end bone) that SpringBone3D moves in skirt mode: its cloth is
+// weighted across the two nearest chains and down along them, nothing on the thighs.
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,7 +27,7 @@ mkdirSync(OUT, { recursive: true });
 
 // ── the skeleton: names and parents are fixed; translations come from each character's proportions ──
 const COAT_BONES = ['L', 'R'].flatMap((sd) => ['Upper', 'Waist', 'Skirt', 'Grip', 'Hem'].map((n) => 'Coat' + n + sd));
-const bonesOf = (sp) => BONE_NAMES.filter((n) => sp.flashCoat || !COAT_BONES.includes(n));
+const bonesOf = (sp) => [...BONE_NAMES.filter((n) => sp.flashCoat || !COAT_BONES.includes(n)), ...(SKIRT_AT.has(sp.name) ? SKIRT_NAMES : sp.flashCoat || sp.outerKind === 'tailcoat' ? TAIL_ENDS : [])];
 const BONE_NAMES = ['Hips', 'Spine', 'Chest', 'Neck', 'Head', 'UpperArmL', 'LowerArmL', 'HandL', 'UpperArmR', 'LowerArmR', 'HandR',
   'UpperLegL', 'LowerLegL', 'FootL', 'UpperLegR', 'LowerLegR', 'FootR', 'Belly', 'HairA', 'HairB', 'CoatL', 'CoatR',
   // the face (expressions; the game blinks the lids) and the hands (two finger bones curl all four fingers, and the thumb)
@@ -36,7 +40,20 @@ const PARENT = { Hips: -1, Spine: 'Hips', Chest: 'Spine', Neck: 'Chest', Head: '
   ...Object.fromEntries(FACE_BONES.map((n) => [n, 'Head'])), FingL1: 'HandL', FingL2: 'FingL1', ThumbL: 'HandL', FingR1: 'HandR', FingR2: 'FingR1', ThumbR: 'HandR',
   CoatUpperL: 'Chest', CoatWaistL: 'Hips', CoatSkirtL: 'UpperLegL', CoatGripL: 'UpperLegL', CoatHemL: 'UpperLegL', CoatUpperR: 'Chest', CoatWaistR: 'Hips', CoatSkirtR: 'UpperLegR', CoatGripR: 'UpperLegR', CoatHemR: 'UpperLegR' };
 const HAND_BONES = ['FingL1', 'FingL2', 'ThumbL', 'FingR1', 'FingR2', 'ThumbR'];
-const BI = Object.fromEntries(BONE_NAMES.map((n, i) => [n, i]));
+// the coat tails' tips (a single-bone chain needs its end bone), and a long coat's skirt chains: chain 0 is one front edge,
+// round the back to chain SKIRT_CHAINS - 1 at the other; after every other bone, so no joint number moves
+const TAIL_ENDS = ['CoatL_end', 'CoatR_end'];
+export const SKIRT_CHAINS = 5, SKIRT_BONES = 3;
+const SKIRT_NAMES = [];
+for (let i = 0; i < SKIRT_CHAINS; i++) for (let j = 0; j <= SKIRT_BONES; j++) {
+  const n = 'Skirt' + i + (j < SKIRT_BONES ? '_' + j : '_end');
+  PARENT[n] = j ? SKIRT_NAMES[SKIRT_NAMES.length - 1] : 'Hips';
+  SKIRT_NAMES.push(n);
+}
+PARENT.CoatL_end = 'CoatL'; PARENT.CoatR_end = 'CoatR';
+const BI = Object.fromEntries([...BONE_NAMES, ...TAIL_ENDS].map((n, i) => [n, i]));
+const SKIRT_AT = new Map(); // character name -> each skirt bone's place (build() measures the coat)
+const skirtBI = (n) => BONE_NAMES.length - COAT_BONES.length + SKIRT_NAMES.indexOf(n); // its joint number: a skirted figure has no creep's coat bones, and its chains stand where the tail ends would
 
 // the noise seeds of a face, its eyes and its hair come from the name, or from `seed` ([length, first char code]) to keep
 // a look fixed when a character is renamed
@@ -71,6 +88,8 @@ function skeleton(sp) {
     world['Fing' + sd + '1'] = h.k1; world['Fing' + sd + '2'] = h.k2; world['Thumb' + sd] = h.tb;
   }
   for (const n of BONE_NAMES) if (!T[n]) T[n] = sub(world[n], world[PARENT[n]]);
+  for (const sd of ['L', 'R']) { world['Coat' + sd + '_end'] = add(world['Coat' + sd], [0, -0.36, -0.02]); T['Coat' + sd + '_end'] = [0, -0.36, -0.02]; } // the tails' length (the old spring's)
+  if (SKIRT_AT.has(sp.name)) for (const [n, p] of Object.entries(SKIRT_AT.get(sp.name))) { world[n] = p; T[n] = sub(p, world[PARENT[n]]); }
   return { T, world, M };
 }
 
@@ -837,7 +856,31 @@ function build(sp) {
       const yb = kind === 'tailcoat' ? yKn + 0.02 : yKn + (sp.coatHem ?? -0.1);
       const rr = ys(yb, waist - 0.01, 0.03).reverse().map((y) => { const t = ss(waist, yb, y); const r = ringAt(Math.max(y, PROF[1][0]), 1.12 + 0.18 * t, 1.18 + 0.2 * t, 0.03 + 0.035 * t, torsoMod(Math.max(y, PROF[1][0]), 0, [[y, 0, 1, null]])); r.c = [0, y, r.c[2] - (sp.flashCoat ? 0.03 : 0.01) * t]; if (sp.flashCoat) r.rv += 0.012 * t; /* his hangs off the seat, clear of bare calves */ r.ru = Math.max(r.ru, prof(yHip)[1] * bw * 1.12 + 0.03 + 0.06 * t); r.rv = Math.max(r.rv, prof(yHip)[2] * bd * 1.15 + 0.03 + 0.05 * t); r.mod = (a) => 1 + 0.03 * Math.sin(a * 7 + y * 9) * t; return r; });
       if (kind === 'tailcoat') { m.loft('outer', rr, { n: 12, arc: [BACK + 0.06, BACK + 1.6], weights: (k, P) => tailW(P, 'L'), tile: 0.5 }); m.loft('outer', rr, { n: 12, arc: [BACK - 1.6, BACK - 0.06], weights: (k, P) => tailW(P, 'R'), tile: 0.5 }); }
-      else { const lap = sp.flashCoat ? 0.05 : 0.15; /* his skirt all but meets in front: the briefs are the flash's to show */ m.loft('outer', rr, { n: 18, arc: [FRONT + open + lap, FRONT + PI - 0.03], weights: (k, P, a) => coatOpenW(tailW(P, 'R'), P, a), tile: 0.5 }); m.loft('outer', rr, { n: 18, arc: [FRONT + PI + 0.03, FRONT + 2 * PI - open - lap], weights: (k, P, a) => coatOpenW(tailW(P, 'L'), P, a), tile: 0.5 }); }
+      else if (sp.flashCoat) { const lap = 0.05; /* his skirt all but meets in front: the briefs are the flash's to show */ m.loft('outer', rr, { n: 18, arc: [FRONT + open + lap, FRONT + PI - 0.03], weights: (k, P, a) => coatOpenW(tailW(P, 'R'), P, a), tile: 0.5 }); m.loft('outer', rr, { n: 18, arc: [FRONT + PI + 0.03, FRONT + 2 * PI - open - lap], weights: (k, P, a) => coatOpenW(tailW(P, 'L'), P, a), tile: 0.5 }); }
+      else { // the skirt on its chains: roots 6 cm above the hip joints and 3 cm out from the cloth (clear of the thighs' reach), joints down the cloth to the hem
+        const lap = 0.15, aS = FRONT + open + lap, aE = FRONT + 2 * PI - open - lap, NC = SKIRT_CHAINS, NB = SKIRT_BONES;
+        const yR = Math.min(waist - 0.02, yHip + 0.06), ringOf = (y) => rr.reduce((b, r) => (Math.abs(r.c[1] - y) < Math.abs(b.c[1] - y) ? r : b));
+        const on = (r, a, out) => { const e = r.e ?? 2, mm = r.mod ? r.mod(a) : 1, sx = Math.sign(Math.cos(a)) * Math.pow(Math.abs(Math.cos(a)), 2 / e), sz = Math.sign(Math.sin(a)) * Math.pow(Math.abs(Math.sin(a)), 2 / e);
+          return [r.c[0] + (r.ru * mm + out) * sx, r.c[1], r.c[2] + (r.rv * mm + out) * sz]; };
+        const at = {};
+        for (let i = 0; i < NC; i++) {
+          const a = aS + ((aE - aS) * i) / (NC - 1);
+          for (let j = 0; j <= NB; j++) { const y = yR + ((yb - yR) * j) / NB, p = on(ringOf(y), a, j ? 0.005 : 0.03); at['Skirt' + i + (j < NB ? '_' + j : '_end')] = [p[0], y, p[2]]; }
+        }
+        SKIRT_AT.set(sp.name, at);
+        const skirtW = (P, a) => { // across between the two nearest chains by angle, down along the bone the vertex lies on
+          let t = (((a - aS) % (2 * PI)) + 2 * PI) % (2 * PI); t = Math.min(NC - 1, Math.max(0, (t / (aE - aS)) * (NC - 1)));
+          const i = Math.min(NC - 2, Math.floor(t)), u = t - i, v = Math.min(NB - 1e-4, ((yR - P[1]) / (yR - yb)) * NB);
+          let down; // [bone index (-1: the hips), weight]
+          if (v <= 0) { const h = ss(0, -0.5, v * 3); down = [[-1, 0.5 + 0.5 * h], [0, 0.5 - 0.5 * h]]; }
+          else { const j = Math.floor(v), fr = v - j; down = fr >= 0.5 ? [[j, 1]] : [[j - 1, 0.5 - fr], [j, 0.5 + fr]]; }
+          const w = [];
+          for (const [c, k] of [[i, 1 - u], [i + 1, u]]) for (const [j, d] of down) if (k * d > 0) w.push([j < 0 ? BI.Hips : skirtBI('Skirt' + c + '_' + j), k * d]);
+          return w;
+        };
+        m.loft('outer', rr, { n: 18, arc: [aS, FRONT + PI - 0.03], weights: (k, P, a) => skirtW(P, a), tile: 0.5 });
+        m.loft('outer', rr, { n: 18, arc: [FRONT + PI + 0.03, aE], weights: (k, P, a) => skirtW(P, a), tile: 0.5 });
+      }
     }
   }
   if (sp.armor) { // a chest plate and a back plate
@@ -1418,7 +1461,7 @@ function emit(sp) {
   writeFace(sp);
   const mats = materials(glb, sp);
   const { m: g, world } = build(sp);
-  const { T, M } = skeleton(sp);
+  const { T, M, world: bindAt } = skeleton(sp); // after build(): a long coat's skirt bones are placed from its cloth
   const FR = M.H.R; // expression offsets are in head units
   // two skinned mesh nodes: Face (the head surface with its lids and ears, the lash rims: the expression morph targets) and
   // Body (the rest). A morphed mesh draws on its own and reads every target per vertex, so only the head carries them.
@@ -1429,11 +1472,11 @@ function emit(sp) {
     const gname = [...g.groups].find(([, x]) => x === gg)[0];
     if (HEAD_GROUPS.includes(gname)) { gg.targets = names.map((n) => targets[n][gname]); head.push([gg, mi]); } else if (HAIR_GROUPS.includes(gname)) hairCards.push([gg, mi]); else body.push([gg, mi]);
   }
-  const BONES = bonesOf(sp);
+  const BONES = bonesOf(sp), JI = Object.fromEntries(BONES.map((n, i) => [n, i]));
   const jointNodes = BONES.map((n) => glb.node({ name: n, translation: T[n] }));
-  BONES.forEach((n, i) => { if (PARENT[n] !== -1) (glb.nodes[jointNodes[BI[PARENT[n]]]].children ||= []).push(jointNodes[i]); });
+  BONES.forEach((n, i) => { if (PARENT[n] !== -1) (glb.nodes[jointNodes[JI[PARENT[n]]]].children ||= []).push(jointNodes[i]); });
   const ibm = new Float32Array(BONES.length * 16);
-  BONES.forEach((n, i) => { const w = world[n]; ibm.set([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -w[0], -w[1], -w[2], 1], i * 16); });
+  BONES.forEach((n, i) => { const w = bindAt[n]; ibm.set([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -w[0], -w[1], -w[2], 1], i * 16); });
   glb.skins.push({ name: 'Armature', inverseBindMatrices: glb.acc(ibm, 'MAT4', 5126, 0), joints: jointNodes, skeleton: jointNodes[0] });
   const meshNodes = [glb.node({ name: 'Body', mesh: glb.mesh(sp.name + '_body', body), skin: 0 }), glb.node({ name: 'Face', mesh: glb.mesh(sp.name + '_head', head, null, names), skin: 0 })];
   if (hairCards.length) meshNodes.push(glb.node({ name: 'Hair', mesh: glb.mesh(sp.name + '_hair', hairCards), skin: 0 })); // its own mesh: alpha-tested cards cast no shadow (the game turns that off by this name)

@@ -250,7 +250,7 @@ void looks_bind(int rig, int def, t3_object *inst);
 void looks_apply(int rig, uint32_t look);
 void looks_reset(void);
 int looks_clones(void); /* pairs of enemies of one kind on the street that look the same (0 always) */
-enum { SB_MAX = 5 };
+enum { SB_MAX = 1 }; /* the belly (hair and coats: SpringBone3D, sim.c rig_springs) */
 typedef struct spring_bone { t3_object *bone; t3_vec3 rest, tip, T, V, G; bool live; } spring_bone;
 typedef struct spring_rig { t3_object *scene; spring_bone b[SB_MAX]; } spring_rig;
 void sb_bind(spring_rig *s, t3_object *scene);

@@ -1,10 +1,9 @@
-/* brawler: secondary motion (spring bones) and faces (expression morph targets).
+/* brawler: the belly's spring and faces (expression morph targets).
  *
- * Spring bones: hair, coat tails and bellies hang on bones no clip keys (HairA, HairB, CoatL, CoatR, Belly). Each fixed
- * tick, after the animation wrote the pose, a bone's tip is a point mass in world space pulled toward where the animated
- * parent would carry it (stiffness, damping, gravity), kept at the bone's length and inside a cone around the animated
- * direction; the bone is then turned (or for a belly, moved) to follow it. Running, turning, landing and hits make it swing.
- * Written generically (bones by name, any model under a Node3D) so the engine can take it as a skeleton modifier later.
+ * The belly hangs on a bone no clip keys (Belly). Each fixed tick, after the animation wrote the pose, its tip is a point
+ * mass in world space pulled toward where the animated parent would carry it (stiffness, damping), and the bone moves a
+ * few centimetres with it: stops, turns, landings and hits make it wobble. Hair, coat tails and long coats are the
+ * engine's SpringBone3D (sim.c, rig_springs), which turns bones; this one moves its bone, which SpringBone3D does not.
  * Only + - * / and sqrt: the same on every host.
  *
  * Shading comes from the glb itself (glTF material extensions and skin shading in extras, read by the engine's glTF
@@ -61,10 +60,6 @@ static xf model_xf(const t3_object *o, const t3_object *root) {
 
 typedef struct spring_def { const char *bone; float tip[3]; float stiff, damp, grav, cone; bool move; } spring_def;
 static const spring_def SDEF[SB_MAX] = {
-  { "HairA", { 0, -0.15f, -0.03f }, 70, 7, 4.0f, 0.75f, false },
-  { "HairB", { 0, -0.15f, 0 }, 55, 6, 5.0f, 0.9f, false },
-  { "CoatL", { 0, -0.36f, -0.02f }, 110, 9, 3.0f, 0.6f, false },
-  { "CoatR", { 0, -0.36f, -0.02f }, 110, 9, 3.0f, 0.6f, false },
   { "Belly", { 0, 0, 0.12f }, 400, 14, 0, 0, true }, /* over 3 Hz: at 260 the 2.5 Hz bounce sat close to the 2 Hz stride */
 };
 

@@ -95,6 +95,7 @@ typedef struct rig { int def; bool busy; cw_node root, model, anim, wnode, wmode
   /* the guard's shield (presentation): on his left forearm, or loose (dropped when he is floored or grabbed: it falls flat
      on the street and he takes it up again when he is back on his feet). blend: frames into the fall or the pick-up */
   cw_node ik[2]; /* a fighter's arms: hands on the collar of the body he holds (TwoBoneIK3D, only while he holds one) */
+  cw_node hair, coat; /* SpringBone3D: the hair (HairA to HairB); a long coat's skirt or a coat's two tails */
   bool sloose, spick; int sblend; t3_vec3 sp0, sp1; t3_quat sq0, sq1; } rig;
 /* one glTF resource per model: every rig is an instance (cw_gltf_instantiate) sharing its geometry, textures and
    clips, so a crowd of one kind costs a skeleton each, not a parsed glb each */
@@ -134,6 +135,68 @@ int temper_of(int def) {
       [D_RINGMASTER] = FACE_FEAR, [D_COLOSSUS] = FACE_FEAR, [D_ARTHUR] = FACE_FEAR, [D_HECKLER] = FACE_FEAR, [D_CREEP] = FACE_BLISS, [D_DOLLY] = FACE_ANGER };
   return def >= 0 && def < D_COUNT ? TEMPER[def] : FACE_PLAIN;
 }
+/* ── secondary motion: the engine's SpringBone3D (cartwheel/ik.h), children of the model ── */
+static cw_node sb_add(cw_node parent, const char *type, const char *name) { cw_node n = cw_node_new(type, name); cw_node_add_child(parent, n); return n; }
+static void sb_chain(cw_node sb, const char *name, const char *root, const char *end, float stiff, float damp, float grav, float radius, float max_angle) {
+  cw_node c = sb_add(sb, "SpringBoneChain3D", name);
+  cw_node_set(c, "root_bone", cw_val_string(root));
+  cw_node_set(c, "end_bone", cw_val_string(end));
+  cw_node_set(c, "stiffness", cw_val_float(stiff));
+  cw_node_set(c, "damping", cw_val_float(damp));
+  cw_node_set(c, "gravity_strength", cw_val_float(grav));
+  cw_node_set(c, "radius", cw_val_float(radius));
+  cw_node_set(c, "max_angle", cw_val_float(max_angle));
+}
+/* a shape on a bone: offsets in metres along the model's own axes from the bone's origin (y up, z forward) */
+static void sb_shape(cw_node sb, const char *name, const char *bone, float r, t3_vec3 a, t3_vec3 b, bool capsule) {
+  cw_node c = sb_add(sb, "SpringBoneCollision3D", name);
+  cw_node_set(c, "bone", cw_val_string(bone));
+  cw_node_set(c, "shape", cw_val_enum(capsule ? "CAPSULE" : "SPHERE"));
+  cw_node_set(c, "radius", cw_val_float(r));
+  cw_node_set(c, "offset", cw_val_vec3(a.x, a.y, a.z));
+  if (capsule) cw_node_set(c, "tail", cw_val_vec3(b.x, b.y, b.z));
+}
+static t3_vec3 sb_scaled(t3_object *inst, const char *bone, float s) { t3_object *b = t3_object_get_by_name(inst, bone); t3_vec3 p = b ? b->position : (t3_vec3){ 0, 0, 0 }; return (t3_vec3){ p.x * s, p.y * s, p.z * s }; }
+static void sb_legs(cw_node sb, t3_object *inst, float s) { /* thighs, shins and feet, a little fatter than the mesh (the hips bone scales the body) */
+  for (int k = 0; k < 2; k++) {
+    const char *thigh = k ? "UpperLegR" : "UpperLegL", *shin = k ? "LowerLegR" : "LowerLegL", *foot = k ? "FootR" : "FootL";
+    sb_shape(sb, k ? "ThighR" : "ThighL", thigh, 0.085f * s, (t3_vec3){ 0, -0.06f * s, 0 }, sb_scaled(inst, shin, s), true);
+    sb_shape(sb, k ? "ShinR" : "ShinL", shin, 0.07f * s, (t3_vec3){ 0, -0.02f * s, 0 }, sb_scaled(inst, foot, s), true);
+    sb_shape(sb, k ? "FootR" : "FootL", foot, 0.05f * s, (t3_vec3){ 0, -0.01f * s, -0.02f * s }, (t3_vec3){ 0, -0.055f * s, 0.155f * s }, true);
+  }
+}
+/* the hair swings off the head and stays out of the skull, the neck and the back; a long coat (Skirt0..Skirt4,
+ * tools/make-characters.mjs) is one garment open at the front kept outside the legs; a tailcoat's tails and the creep's
+ * coat swing on CoatL and CoatR, also outside the legs. Kicks and lunges are long: the skirt may stretch to twice its
+ * hang (skirt_stretch 1), and it hangs plumb when a lunge pitches the hips (skirt_hang 1, the default). */
+static void rig_springs(rig *r, t3_object *inst) {
+  t3_object *hips = t3_object_get_by_name(inst, "Hips");
+  float s = hips ? hips->scale.x : 1;
+  if (t3_object_get_by_name(inst, "HairB")) {
+    cw_node sb = r->hair = sb_add(r->model, "SpringBone3D", "Hair");
+    sb_chain(sb, "Tail", "HairA", "HairB", 90, 12, 4, 0.02f, 1.2f);
+    sb_shape(sb, "Skull", "Head", 0.1f * s, (t3_vec3){ 0, 0.11f * s, 0.01f * s }, (t3_vec3){ 0 }, false);
+    sb_shape(sb, "Neck", "Neck", 0.06f * s, (t3_vec3){ 0, 0, 0 }, sb_scaled(inst, "Head", s), true);
+    sb_shape(sb, "Back", "Chest", 0.11f * s, (t3_vec3){ 0, 0, -0.01f * s }, (t3_vec3){ 0, 0.17f * s, -0.01f * s }, true);
+  }
+  if (t3_object_get_by_name(inst, "Skirt0_0")) {
+    cw_node sb = r->coat = sb_add(r->model, "SpringBone3D", "Skirt");
+    cw_node_set(sb, "skirt", cw_val_enum("OPEN"));
+    cw_node_set(sb, "skirt_stretch", cw_val_float(1));
+    char root[16], end[16], nm[16];
+    for (int i = 0; i < 5; i++) {
+      snprintf(root, sizeof root, "Skirt%d_0", i), snprintf(end, sizeof end, "Skirt%d_2", i), snprintf(nm, sizeof nm, "Panel%d", i);
+      sb_chain(sb, nm, root, end, 240, 6, 2, 0.025f, 2);
+    }
+    sb_legs(sb, inst, s);
+  } else if (t3_object_get_by_name(inst, "CoatL_end")) {
+    cw_node sb = r->coat = sb_add(r->model, "SpringBone3D", "Tails");
+    sb_chain(sb, "TailL", "CoatL", "CoatL", 110, 12, 3, 0.03f, 0.6f);
+    sb_chain(sb, "TailR", "CoatR", "CoatR", 110, 12, 3, 0.03f, 0.6f);
+    sb_legs(sb, inst, s);
+  }
+}
+
 static rig *rig_get(int def) {
   for (int i = 0; i < rig_n; i++)
     if (!RIGS[i].busy && RIGS[i].def == def) { RIGS[i].busy = true; return &RIGS[i]; }
@@ -218,6 +281,7 @@ static rig *rig_get(int def) {
     t3_object *o = cw_gltf_instantiate(SHIELD_RES);
     if (o) { set_shadows(o); cw_node3d_set_object(r->shield, o); t3_release(o); }
   }
+  rig_springs(r, inst);
   r->busy = true;
   return r;
 }
@@ -265,6 +329,8 @@ void char_attach(ent *e) {
   cw_node_set(e->root, "visible", cw_val_bool(true));
   cw_node_set(e->anim, "speed_scale", cw_val_float(1));
   sb_reset(&r->sr);
+  if (r->hair.id) cw_spring_bone3d_reset(r->hair);
+  if (r->coat.id) cw_spring_bone3d_reset(r->coat);
   for (int k = 0; k < 3; k++) { if (r->gore[k].id && cw_node_valid(r->gore[k])) cw_node_free(r->gore[k]); r->gore[k] = (cw_node){ 0 }; } /* a fresh face for the next one */
   r->sloose = false, r->spick = false, r->sblend = 10; /* the shield back on his arm */
   char_play(e, "idle", 0);
@@ -340,6 +406,14 @@ void chars_secondary(void) {
       face_express(sr, e->clipname, u);
     }
     for (int k = 0; k < SB_MAX; k++) if (sr->b[k].bone) g_spring_motion += fabsf(sr->b[k].V.x) + fabsf(sr->b[k].V.y) + fabsf(sr->b[k].V.z);
+    const rig *rg = &RIGS[rig_of[i]];
+    cw_node sbs[2] = { rg->hair, rg->coat };
+    for (int k = 0; k < 2; k++) /* and how far each SpringBone3D chain's tip hangs from its animated place */
+      for (int c = 0; sbs[k].id && c < cw_node_child_count(sbs[k]); c++) {
+        cw_value d;
+        cw_node ch = cw_node_child(sbs[k], c);
+        if (cw_node_is(ch, "SpringBoneChain3D") && cw_node_get_prop(ch, "tip_distance", &d)) g_spring_motion += d.f;
+      }
   }
 }
 /* a hit shakes the hair, tails and belly away from the attacker */
@@ -2333,7 +2407,7 @@ bool debug_flash(int ei) {
   start_attack(e, A_FLASH);
   return true;
 }
-/* a spring bone's own motion, nothing of the clip in it: a belly's offset from its rest in its parent's frame, or how far a coat tail or the hair has swung */
+/* the belly spring's own motion, nothing of the clip in it: its offset from its rest in its parent's frame */
 bool debug_spring(int ei, const char *name, float out[4], int *def, const char **clip) {
   ent *e = ei < MAXP ? &W.p[ei] : &W.e[(ei - MAXP) % MAXE];
   if (!e->used || !e->root.id) return false;
