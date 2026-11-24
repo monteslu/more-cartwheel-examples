@@ -649,10 +649,11 @@ static void cmd_cup(int argc, const char **argv, cw_reply *r) {
   cw_reply_str(r, "ok");
 }
 static void cmd_opt(int argc, const char **argv, cw_reply *r) {
-  if (argc < 3) { cw_reply_str(r, "usage: opt ghost on|off | opt camera speed|classic"); return; }
+  if (argc < 3) { cw_reply_str(r, "usage: opt ghost on|off | opt camera speed|classic | opt cardwind on|off"); return; }
   if (!strcmp(argv[1], "ghost")) SAVE.opts = (uint8_t)(!strcmp(argv[2], "off") ? SAVE.opts | OPT_GHOST_OFF : SAVE.opts & ~OPT_GHOST_OFF);
   else if (!strcmp(argv[1], "camera")) SAVE.opts = (uint8_t)(!strcmp(argv[2], "classic") ? SAVE.opts | OPT_CLASSIC_CAMERA : SAVE.opts & ~OPT_CLASSIC_CAMERA);
   else if (!strcmp(argv[1], "cuprule")) cup_rule_original = !strcmp(argv[2], "original");
+  else if (!strcmp(argv[1], "cardwind")) { extern int g_card_wind; g_card_wind = strcmp(argv[2], "off") != 0; }
   else if (!strcmp(argv[1], "tricks")) SAVE.opts = (uint8_t)(!strcmp(argv[2], "on") ? SAVE.opts | OPT_TRICKS : SAVE.opts & ~OPT_TRICKS);
   else { cw_reply_str(r, "unknown option"); return; }
   cw_reply_str(r, "ok");

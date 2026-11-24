@@ -16,6 +16,7 @@
 #include <string.h>
 
 #include "cartwheel/core.h"
+#include "cartwheel/foliage.h"
 #include "cartwheel/rim_light.h"
 #include "cartwheel/math.h"
 #include "cartwheel/physics_nodes.h"
@@ -51,9 +52,8 @@ static struct {
   t3_instanced_mesh *splats;      /* a soft print of trodden snow under every trunk (buttprint.png) */
   t3_geometry *flat;
   t3_material *splat_mat;
-  float *tree_phase;              /* per tree: a sway phase */
   int tree_count;
-  float sway_t;
+  int card_wind;                  /* the wind last given the card trees: -1 none yet, 0 calm, 1 windy */
   t3_instanced_mesh *item_im[OBJ_KINDS]; /* the items of one kind: one instanced mesh (one draw per pass, not one per item) */
   t3_geometry *fish, *flag_card;      /* item_mesh.c: the herring, the flag's rippling card */
   t3_material *fish_mat;
@@ -418,7 +418,7 @@ void course_build_objects(course *c, cw_tree *tree) {
     t3_object_add((t3_object *)O.scene, O.splats);
   }
   int splat_n = 0;
-  O.tree_phase = cw_calloc((size_t)(O.tree_count ? O.tree_count : 1), sizeof *O.tree_phase, CW_MEM_GAME);
+  O.card_wind = -1;
   O.item_count = c->object_count;
   O.item_slot = cw_calloc((size_t)(c->object_count ? c->object_count : 1), sizeof *O.item_slot, CW_MEM_GAME);
   O.solid_slot = cw_calloc((size_t)(c->object_count ? c->object_count : 1), sizeof *O.solid_slot, CW_MEM_GAME);
@@ -508,7 +508,6 @@ void course_build_objects(course *c, cw_tree *tree) {
     t3_vec3 pos = { o->x, o->y, o->z };
     if (o->type <= OBJ_TREE2) {
       int n = filled[o->type]++;
-      O.tree_phase[n + (o->type == OBJ_TREE1 ? per_type[0] : o->type == OBJ_TREE2 ? per_type[0] + per_type[1] : 0)] = (float)((i * 2654435761u) & 1023) / 1024.0f * 6.2831853f;
       if (O.trees[o->type][0]) {
         t3_mat4 m;
         t3_mat4_compose(&m, pos, t3_quat_identity(), (t3_vec3){ o->diam, o->height, o->diam });
@@ -550,7 +549,12 @@ void course_build_objects(course *c, cw_tree *tree) {
 }
 
 /* per tick: the solid trees' wind clock and LOD (near meshes within LOD_NEAR of the eye, with
- * hysteresis), and a gentle CPU sway of the shrub cards about their base (render only) */
+ * hysteresis); the card trees (the shrub's crossed cards, and the conifer and birch cards where the solid
+ * trees are off) sway in the engine's GPU wind (cartwheel/foliage.h): a breath on a calm course, a
+ * stronger lean along +x (the original's wind) with gusts crossing the slope on a windy one. The
+ * card is 1 tall; the lean is in card widths (an instance's scale scales it), about the old sway's
+ * 1 and 2.6 degrees at the top. */
+int g_card_wind = 1;
 #define LOD_NEAR 70.0f
 #define LOD_FAR 85.0f
 void course_trees_update(course *c, float dt, bool windy, t3_vec3 eye) {
@@ -569,28 +573,20 @@ void course_trees_update(course *c, float dt, bool windy, t3_vec3 eye) {
     }
     if (O.lod_dirty) { solid_rebuild(c); O.lod_dirty = false; }
   }
-  O.sway_t += dt;
-  int idx[3] = { 0, 0, 0 }, base[3] = { 0, 0, 0 };
-  int per_type[3] = { 0, 0, 0 };
-  for (int i = 0; i < c->object_count; i++) if (c->objects[i].type <= OBJ_TREE2) per_type[c->objects[i].type]++;
-  base[1] = per_type[0], base[2] = per_type[0] + per_type[1];
-  float amp = windy ? 0.045f : 0.018f;
-  t3_quat turned = t3_quat_from_axis_angle((t3_vec3){ 0, 1, 0 }, TR_DEG(90));
-  for (int i = 0; i < c->object_count; i++) {
-    course_object *o = &c->objects[i];
-    if (o->type > OBJ_TREE2 || !O.trees[o->type][0]) continue;
-    int n = idx[o->type]++;
-    float ph = O.tree_phase[base[o->type] + n];
-    float ax = cw_sin(O.sway_t * 1.1f + ph) * amp, az = cw_sin(O.sway_t * 0.7f + ph * 1.7f) * amp * 0.6f;
-    t3_quat lean = t3_quat_multiply(t3_quat_from_axis_angle((t3_vec3){ 1, 0, 0 }, ax), t3_quat_from_axis_angle((t3_vec3){ 0, 0, 1 }, az));
-    t3_vec3 pos = { o->x, o->y, o->z };
-    t3_mat4 m;
-    t3_mat4_compose(&m, pos, lean, (t3_vec3){ o->diam, o->height, o->diam });
-    t3_instanced_mesh_set_matrix_at(O.trees[o->type][0], n, &m);
-    t3_mat4_compose(&m, pos, t3_quat_multiply(lean, turned), (t3_vec3){ o->diam, o->height, o->diam });
-    t3_instanced_mesh_set_matrix_at(O.trees[o->type][1], n, &m);
+  if (!g_card_wind) { /* opt cardwind off: the cards stand still (the wind check's control) */
+    if (O.card_wind != -2) for (int t = 0; t < 3; t++) if (O.mat[t]) cw_foliage_remove(O.mat[t]);
+    O.card_wind = -2;
+  } else if (O.card_wind != (int)windy) {
+    O.card_wind = windy;
+    cw_foliage_desc d = cw_foliage_default();
+    d.height = 1;
+    d.wind.strength = windy ? 0.05f : 0.02f;
+    d.wind.frequency = windy ? 0.55f : 0.35f;
+    d.wind.direction[0] = 1, d.wind.direction[1] = 0;
+    d.wind.gust = windy ? 0.6f : 0.3f;
+    d.wind.gust_scale = 20;
+    for (int t = 0; t < 3; t++) if (O.mat[t]) cw_foliage_apply(O.mat[t], &d);
   }
-  for (int t = 0; t < 3; t++) for (int k = 0; k < 2; k++) instances_changed(O.trees[t][k]);
 }
 
 /* flags face the camera (about y); the herring, a solid now, turn slowly and bob; banners keep their normal (0, 0, 1) */
@@ -710,8 +706,6 @@ void course_destroy_objects(course *c) {
   cw_free(O.item_slot);
   O.item_slot = NULL;
   O.item_count = 0;
-  cw_free(O.tree_phase);
-  O.tree_phase = NULL;
   O.tree_count = 0;
   if (O.splats) { t3_object_remove((t3_object *)O.scene, O.splats); O.splats = NULL; }
   if (cw_body3d_valid(O.statics)) cw_body3d_destroy(O.statics);
