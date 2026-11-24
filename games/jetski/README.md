@@ -76,6 +76,7 @@ A course is a definition in `courses/<id>.mjs`: track, ground, paint, wave mask,
 - The craft is four probes on the water (`src/sim.c`): the surface it rides is exactly the surface drawn, through
   `cw_water_sample_at`. A crest throws it up and the surface falling away leaves it in the air: no jump code.
 - The rider (`src/rider.c`) has no animation clips. Every bone is posed each frame from what the craft is doing.
+- The palms, pines and shrubs lean and sway in the weather's wind on the GPU (the engine's foliage wind, `src/view.c`): a breath in a calm, a sway in a chop, a hard lean with gusts running through the grove in a storm.
 
 `jetski_auto` is the same game with a computer rider, for gates and screenshots.
 
