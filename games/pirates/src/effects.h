@@ -1,6 +1,15 @@
 /* Bounded visual pool, following the arena example's particle workflow. */
 #include "cartwheel/particles.h"
 static cw_node cannon_smoke;
+/* The smoke flipbook (8 x 8 frames of a puff lit from above, growing as it rises): every puff starts within about 18
+ * degrees of upright on screen, so the light on it stays on top and its billow rises; a full random turn (the engine
+ * default) lit puffs from the side and below and laid the growing plume over sideways. */
+static void smoke_flipbook(cw_node n) {
+  cw_node_set(n,"texture",cw_val_string("textures/cannon-smoke.png"));
+  cw_node_set(n,"hframes",cw_val_int(8));cw_node_set(n,"vframes",cw_val_int(8));
+  cw_node_set(n,"angle",cw_val_float(0));
+  cw_node_set(n,"angle_random",cw_val_float(.1f));
+}
 static cw_node cannon_flash;
 static cw_node damage_smoke_particles; /* a badly hit ship trails dark smoke: one shared system, a burst a puff */
 enum { IMPACT_WATER, IMPACT_WOOD, IMPACT_LAND };
@@ -31,8 +40,7 @@ static void impact_init(cw_node root) {
     cw_node_set(n,"color_ramp",cw_val_string(colors[i]));
     cw_node_set(n,"size_curve",cw_val_string(i==2?"0 0.5, 0.4 1.2, 1 2":"0 1, 0.7 0.8, 1 0.25"));
     if(i==2) {
-      cw_node_set(n,"texture",cw_val_string("textures/cannon-smoke.png"));
-      cw_node_set(n,"hframes",cw_val_int(8));cw_node_set(n,"vframes",cw_val_int(8));
+      smoke_flipbook(n);
     }
     cw_node_add_child(root,n);
   }
@@ -62,8 +70,7 @@ static void effects_init(cw_node root) {
     cw_node_set(n,"size_curve",cw_val_string("0 0.5, 0.3 1.1, 1 2.4"));
     cw_node_set(n,"draw_mode",cw_val_enum("BILLBOARD"));
     cw_node_set(n,"blend",cw_val_enum("ALPHA"));
-    cw_node_set(n,"texture",cw_val_string("textures/cannon-smoke.png"));
-    cw_node_set(n,"hframes",cw_val_int(8));cw_node_set(n,"vframes",cw_val_int(8));
+    smoke_flipbook(n);
     cw_node_add_child(root,n);
   }
   {
@@ -86,8 +93,7 @@ static void effects_init(cw_node root) {
     cw_node_set(n,"size_curve",cw_val_string("0 0.55, 0.2 1.1, 1 1.8"));
     cw_node_set(n,"draw_mode",cw_val_enum("BILLBOARD"));
     cw_node_set(n,"blend",cw_val_enum("ALPHA"));
-    cw_node_set(n,"texture",cw_val_string("textures/cannon-smoke.png"));
-    cw_node_set(n,"hframes",cw_val_int(8));cw_node_set(n,"vframes",cw_val_int(8));
+    smoke_flipbook(n);
     cw_node_add_child(root,n);
     cw_node flash=cw_node_new("GPUParticles3D","CannonFlash");cannon_flash=flash;
     cw_node_set(flash,"bursts",cw_val_int(32));
@@ -167,8 +173,7 @@ static cw_node volcano_plume(cw_node parent) {
   cw_node_set(n,"size_curve",cw_val_string("0 0.4, 0.4 1.1, 1 2.2"));
   cw_node_set(n,"draw_mode",cw_val_enum("BILLBOARD"));
   cw_node_set(n,"blend",cw_val_enum("ALPHA"));
-  cw_node_set(n,"texture",cw_val_string("textures/cannon-smoke.png"));
-  cw_node_set(n,"hframes",cw_val_int(8));cw_node_set(n,"vframes",cw_val_int(8));
+  smoke_flipbook(n);
   cw_node_set(n,"emitting",cw_val_bool(true));
   cw_node_add_child(parent,n);cw_node3d_set_position(n,(t3_vec3){25,5.3f,-10});
   return n;
