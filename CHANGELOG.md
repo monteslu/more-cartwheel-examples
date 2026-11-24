@@ -12,11 +12,20 @@
   - A split screen drawn in one pass (Arena) draws each view's spot and omni shadows from that view's own casters.
 - AGENTS.md says how to regenerate the program tables on a pin move (the SDK's tools/programs.mjs, a few tables at a
   time).
-
 - Sky fighter: its own tree shading part (crown sway, flutter, leaf gaps, back light) is now named `forest`
   (`shaders/forest.mjs`), so it no longer shares a name with the engine's built-in `foliage` part (cartwheel-engine
   v0.71.0 and later). The picture is unchanged: Country Fair 300 frames into the sortie is the same to the pixel on GL
   and on WebGPU before and after.
+- Sky fighter: the tree crowns sway in the engine's foliage wind (cartwheel/foliage.h) instead of the game's own: each
+  crown leans with the square of its height, in gusts that travel over the forest as fronts 70 m apart, and its shadow
+  moves with it. The crowns' leaf gaps, darker interior and back light stay the game's own part. The debug field
+  `forest.wind_scale` scales the wind (0 stills it).
+- Horde: the pause menu has Restart run (the run from floor 1, wave 1, with the same players). The flames of a burning
+  barrel stand upright as they rise (each flame starts upright on screen and leans only a little), where they were
+  turned every which way and read as round blobs.
+- Party pack: the pause menu of a mini-game has the game's own rows: Play it again and Pick another game in Free Play,
+  Leave the tournament (back to the hub) in a tournament. `tests/pause-items.mjs` takes each by the pad on the cart, on
+  GL and WebGPU, with a control that must fail.
 
 ## 0.39.0
 

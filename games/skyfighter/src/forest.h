@@ -1,6 +1,10 @@
 /* Solid tree geometry with instancing, species variation and GPU wind.
- * All crowns and individual silhouette leaves have depth: no billboards. */
+ * All crowns and individual silhouette leaves have depth: no billboards. The crowns' leaf gaps, interior shade and
+ * back light are the game's own shading part (shaders/forest.mjs); the wind is the engine's foliage part
+ * (cartwheel/foliage.h): each crown leans with the square of its height, in gusts that travel over the forest, and
+ * its shadow moves with it. */
 #include "tree-meshes.h"
+#include "cartwheel/foliage.h"
 #include "cartwheel/shading.h"
 static t3_geometry *forest_geometry[2][8][2];
 static t3_material *forest_bark,*forest_leaf[4][2];
@@ -11,9 +15,21 @@ struct tree_placement {float x,y,z,h,sx,sz,angle,tint;int model,lod,cell;};
 static struct forest_batch {struct tree_placement *trees;int count;t3_instanced_mesh *mesh[16][2][8][2];t3_sphere bounds[16];} forests[8];
 static void forest_lod_update(void);
 static t3_renderer *forest_renderer;
-static void forest_uniforms(t3_extension_ctx *ctx,void *user){(void)user;t3_extension_set_uniform(ctx,"forestTime",&forest_clock,1);}
+static void forest_uniforms(t3_extension_ctx *ctx,void *user){(void)ctx;(void)user;}
+/* The crowns' wind: a tree is one unit tall in its mesh (scaled 9 to 39 m per instance, which scales the lean), so the
+ * top of a 30 m crown leans about 0.25 m downwind, swaying every four seconds, half of it in gusts 70 m apart. */
+static float forest_wind_scale=1,forest_wind_applied=1; /* debug field forest.wind_scale: 0 stills the crowns (a test's control) */
+static int32_t forest_wind_materials;
+static cw_foliage_desc forest_wind(void) {
+  cw_foliage_desc d=cw_foliage_default();
+  d.wind=(cw_wind){.strength=.0085f*forest_wind_scale,.frequency=.25f,.direction={1,.35f},.gust=.5f,.gust_scale=70};
+  d.height=1;
+  return d;
+}
 static void forest_frame(float dt) {
-  if(G.state!=PAUSED)forest_clock+=dt;
+  (void)dt;forest_clock=cw_foliage_time();
+  if(forest_wind_scale!=forest_wind_applied&&forest_bark){forest_wind_applied=forest_wind_scale;cw_foliage_desc wind=forest_wind();for(int i=0;i<4;i++)for(int k=0;k<2;k++)cw_foliage_apply(forest_leaf[i][k],&wind);}
+  forest_wind_materials=cw_foliage_count();
   if(G.state==PLAY&&G.ticks%12==0)forest_lod_update();
   t3_renderer *r=cw_render3d_renderer(G.tree);
   if(r&&r!=forest_renderer){forest_renderer=r;cw_shading_part(r,"forest",forest_uniforms,NULL);cw_shading_part_batching(r,"forest",true);}
@@ -26,6 +42,7 @@ static void forest_setup(void) {
   for(int species=0;species<4;species++)for(int snowy=0;snowy<2;snowy++){
     t3_material *m=forest_leaf[species][snowy]=campaign_mat(snowy?0xffffff:species==1?0xa4b87c:species<2?0x96ad72:0xa3b69a,0);m->roughness=.9f;
     t3_material_set_map(m,maps[snowy?3:species<2?1:2]);cw_shading_add(m,"forest");
+    cw_foliage_desc wind=forest_wind();cw_foliage_apply(m,&wind);
   }
   for(int lod=0;lod<2;lod++)for(int model=0;model<8;model++)for(int part=0;part<2;part++){
     const struct tree_mesh_data *d=&tree_data[lod*16+model*2+part];t3_geometry *g=forest_geometry[lod][model][part]=t3_geometry_new();
@@ -33,7 +50,7 @@ static void forest_setup(void) {
     t3_geometry_set_attribute(g,T3_ATTR_POSITION,p);t3_geometry_set_attribute(g,T3_ATTR_NORMAL,n);t3_geometry_set_attribute(g,T3_ATTR_UV,uv);t3_geometry_set_index(g,ix);t3_release(p);t3_release(n);t3_release(uv);t3_release(ix);
   }
   static const char *names[]={"forest.oak","forest.birch","forest.spruce","forest.pine"};for(int i=0;i<4;i++)cw_debug_f32_array(names[i],forest_samples[i],4);cw_debug_f32_array("forest.height_range",forest_height_range,2);
-  cw_debug_i32("forest.trees",&forest_count);cw_debug_i32("forest.species",&forest_species);cw_debug_f32("forest.wind_time",&forest_clock);cw_debug_i32("forest.near",&forest_near_count);cw_debug_i32("forest.far",&forest_far_count);cw_debug_i32("forest.triangles",&forest_triangles);
+  cw_debug_i32("forest.trees",&forest_count);cw_debug_i32("forest.species",&forest_species);cw_debug_f32("forest.wind_time",&forest_clock);cw_debug_f32("forest.wind_scale",&forest_wind_scale);cw_debug_i32("forest.wind_materials",&forest_wind_materials);cw_debug_i32("forest.near",&forest_near_count);cw_debug_i32("forest.far",&forest_far_count);cw_debug_i32("forest.triangles",&forest_triangles);
 }
 /* The trunk's foot: the widest reach of the bark's lowest hundredth (either LOD), for a tree one unit tall. A tree stands on
  * the lowest ground under that foot, sunk 20 cm, so its downhill side never shows a gap on a slope. */
