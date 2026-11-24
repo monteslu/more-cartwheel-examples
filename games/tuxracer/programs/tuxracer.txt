@@ -177,3 +177,30 @@ depth+instbig+xterrainlow_csm_plain_snow_gi
 standard+instbig+senv+l0001+xterrainmin_csm_plain_snow_gi
 depth+instbig+xterrainmin_csm_plain_snow_gi
 depth+instbig+xterrain_csm_plain_snow_gi
+# fog over transparents and near-ground terrain parts (engine v0.70.1, v0.71.0): states the v0.77.0 cart sweeps found
+basic+map+trans+rep+ds+xhfog
+basic+vcol+trans+xhfog
+# fog over transparents (engine v0.70.1): the fogged twin of each transparent state
+standard+map+trans+rep+instbig+l0001+xcsm_hfog
+standard+map+trans+rep+instbig+senv+l0001+xcsm_hfog
+basic+map+trans+rep+xhfog
+basic+map+trans+xhfog
+basic+trans+ds+xhfog_aurora
+basic+trans+ds+xhfog_clouds
+physical+trans+senv+cc+l0001+xcsm_hfog_plain
+physical+trans+senv+sheen+l0001+xcsm_hfog_plain
+physical+vcol+trans+skin+senv+eon+l0001+xcsm_hfog_feather_plain
+physical+trans+senv+cc+l0001+xcsm_hfog
+physical+trans+senv+sheen+l0001+xcsm_hfog
+physical+vcol+trans+skin+senv+eon+l0001+xcsm_hfog_feather
+physical+trans+senv+cc+l0001+xcsm_hfog_gi
+physical+trans+senv+sheen+l0001+xcsm_hfog_gi
+physical+vcol+trans+skin+senv+eon+l0001+xcsm_hfog_feather_skinshade_gi
+physical+trans+senv+cc+l0001+xcsm_hfog_plain_gi
+physical+trans+senv+sheen+l0001+xcsm_hfog_plain_gi
+physical+vcol+trans+skin+senv+eon+l0001+xcsm_hfog_feather_plain_gi
+physical+vcol+trans+skin+senv+eon+l0001+xcsm_hfog_feather_gi
+physical+vcol+trans+senv+l0001+xcsm_hfog
+physical+vcol+trans+senv+l0001+xcsm_hfog_gi
+physical+vcol+trans+senv+l0001+xcsm_hfog_plain
+physical+vcol+trans+senv+l0001+xcsm_hfog_plain_gi

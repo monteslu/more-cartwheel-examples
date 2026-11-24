@@ -106,3 +106,22 @@ standard+map+rep+senv+ds+l0001+xcsm
 standard+map+rep+senv+ds+l0001+xcsm_plain
 standard+map+rep+shadow+senv+ds+l1001
 standard+map+rep+senv+ds+l0001+xcsm_rim
+standard+map+rep+senv+ds+l0001+xcsm_plain_rim
+# fog over transparents and near-ground terrain parts (engine v0.70.1, v0.71.0): states the v0.77.0 cart sweeps found
+depth+xcsm_hfog
+basic+trans+xhfog
+depth+xcsm_hfog_plain
+standard+trans+senv+ds+l0001+xcsm_hfog_plain
+basic+trans+ds+xhfog
+depth+xcsm_hfog_plain_rim
+standard+trans+senv+ds+l0001+xcsm_hfog_plain_rim
+depth+xcsm_hfog_rim
+# fog over transparents (engine v0.70.1): the fogged twin of each transparent state
+standard+trans+shadow+senv+ds+l1001+xhfog
+standard+trans+senv+ds+l1001+xhfog
+standard+map+trans+shadow+senv+l1001+xhfog_meshdecal
+standard+map+trans+senv+l1001+xhfog_meshdecal
+standard+trans+shadow+senv+ds+l1001+xhfog_plain
+standard+trans+senv+ds+l0201+xcsm_hfog
+standard+trans+senv+ds+l0201+xcsm_hfog_rim
+standard+map+trans+senv+l0201+xcsm_hfog_meshdecal

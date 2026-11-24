@@ -51,3 +51,14 @@ standard+nmap+rmap+senv+ds+l1000+xcluster_plain_gi
 standard+map+rep+nmap+rmap+senv+ds+l1000+xcluster_plain_gi
 standard+map+trans+senv+l1001+xcluster_meshdecal_plain_gi
 standard+map+trans+shadow+senv+l1001+xcluster_meshdecal_plain_gi
+# fog over transparents (engine v0.70.1): transparent and additive materials drawn after the height fog
+basic+map+vcol+trans+rep+ds+xhfog
+standard+map+trans+shadow+senv+l1001+xcluster_hfog_meshdecal_gi
+basic+map+trans+ds+xhfog
+# fog over transparents (engine v0.70.1): the fogged twin of each transparent state
+standard+map+trans+senv+l1001+xcluster_hfog_meshdecal_gi
+standard+map+trans+shadow+skin+senv+l1001+xcluster_hfog_meshdecal_gi
+standard+map+trans+shadow+senv+l1001+xcluster_hfog_meshdecal
+standard+map+trans+senv+l1001+xcluster_hfog_meshdecal
+standard+map+trans+senv+l1001+xcluster_hfog_meshdecal_plain_gi
+standard+map+trans+shadow+senv+l1001+xcluster_hfog_meshdecal_plain_gi

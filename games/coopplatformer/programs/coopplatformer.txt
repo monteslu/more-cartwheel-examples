@@ -67,3 +67,15 @@ physical+fog+shadow+l2801+s100+xplain_rim
 physical+fog+shadow+l2801+s100+xrim
 physical+shadow+l2801+s100+xrim
 physical+shadow+l2801+s100+xplain_rim
+# fog over transparents and near-ground terrain parts (engine v0.70.1, v0.71.0): states the v0.77.0 cart sweeps found
+basic+map+trans+xhfog
+basic+vcol+trans+ds+xhfog
+basic+map+trans+instbig+icol+xhfog
+depth+instbig+xplain
+physical+vcol+trans+nmap+shadow+ds+l2801+s100+xhfog_plain
+physical+fog+trans+shadow+l2801+s100+xhfog_plain
+physical+vcol+fog+trans+nmap+shadow+ds+l2801+s100+xhfog_plain
+# fog over transparents (engine v0.70.1): the fogged twin of each transparent state
+physical+vcol+fog+trans+nmap+shadow+ds+l2801+s100+xhfog
+physical+fog+trans+shadow+l2801+s100+xhfog
+physical+vcol+trans+nmap+shadow+ds+l2801+s100+xhfog

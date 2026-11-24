@@ -70,7 +70,13 @@ readable. A new game is not done until both gates pass.
 The repository pins one engine release. When you move the pin, change the engine
 commit and every SDK line (with its sha256) in `scripts/deps.lock`, run
 `scripts/fetch-deps.sh`, and re-run every gate of every game you touch: a new
-engine can change what a frame looks like.
+engine can change what a frame looks like. A release that changes a shader
+extension restamps every program table, and configure stops on a stale one:
+regenerate them with the SDK's own tool (the one that matches the SDK you build
+with), a few tables at a time (several at once on a fresh SDK race unpacking
+three.js), and commit the `_gl.c` and `_wgpu.c` it writes, the level viewers'
+tables (`games/*/tools/levelview/programs`) included:
+`node deps/cartwheel-sdk/linux-x64/tools/programs.mjs --table games/<game>/programs/<game>.txt [--table ...]`.
 
 ## Showing controls
 

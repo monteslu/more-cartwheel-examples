@@ -70,3 +70,10 @@ standard+map+shadow+senv+atest+l2000+s100+xplain
 standard+map+senv+atest+l2000
 standard+map+senv+l2000
 standard+map+rep+senv+l2000
+# fog over transparents and near-ground terrain parts (engine v0.70.1, v0.71.0): states the v0.77.0 cart sweeps found
+depth+instbig+xterrainfx
+depth+instbig+xterrainfxlow
+depth+instbig+xterrainfxmin_plain
+standard+instbig+shadow+senv+l2000+s100+xterrainfx
+standard+instbig+shadow+senv+l2000+s100+xterrainfxlow
+standard+instbig+shadow+senv+l2000+s100+xterrainfxmin_plain

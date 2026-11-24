@@ -107,3 +107,13 @@ standard+map+rep+nmap+ao+rmap+mmap+l2001+xcluster_csm_plain
 standard+map+rep+nmap+ao+rmap+mmap+lmap+c1lmap+l2001+xcluster_csm_plain
 standard+map+rep+nmap+ao+rmap+mmap+skin+l2001+xcluster_csm_plain
 standard+map+trans+rep+l2001+xcluster_csm_plain
+# fog over transparents (engine v0.70.1): found by the v0.77.0 quality sweep
+standard+map+trans+rep+l2001+xcluster_csm_hfog_plain
+# fog over transparents (engine v0.70.1): the fogged twin of each transparent state
+standard+map+trans+rep+l2001+xcluster_csm_hfog
+standard+map+trans+rep+l3001+xcluster_hfog
+standard+map+trans+skin+l2001+xcluster_csm_hfog_meshdecal
+standard+map+trans+skin+l3001+xcluster_hfog_meshdecal
+standard+map+trans+l2001+xcluster_csm_hfog_meshdecal
+standard+map+trans+l3001+xcluster_hfog_meshdecal
+standard+map+trans+rep+l3001+xcluster_hfog_plain
