@@ -765,7 +765,16 @@ static float sea_patches(int x, int z) {
  * the islands as well as on the sea, gusts running over a grove along it. Set after the light is baked onto them (the
  * baked shadows stay; the sway is small, about 12 cm at a palm's crown). The leans are in model units (a palm model is
  * 9.2 tall, drawn at about a third of that; the undergrowth model 0.84, drawn about 1.3 times). */
+static int32_t sw_still_plants; /* sw still_plants 1: no wind on the plants (the control of the sway check and its cost) */
+static void foliage_off(t3_object *o) {
+  if(o->type==T3_MESH)for(int i=0;i<((t3_mesh *)o)->material_count;i++)cw_foliage_remove(((t3_mesh *)o)->materials[i]);
+  for(int i=0;i<o->child_count;i++)foliage_off(o->children[i]);
+}
 static void scenery_sway(void) {
+  if(sw_still_plants) {
+    for(int i=0;i<cw_node_child_count(G.environment);i++)foliage_off(cw_node3d_object(cw_node_child(G.environment,i)));
+    return;
+  }
   cw_foliage_desc palm=cw_foliage_default(),bush=cw_foliage_default();
   palm.wind.direction[0]=bush.wind.direction[0]=cw_sin(wind_to());
   palm.wind.direction[1]=bush.wind.direction[1]=cw_cos(wind_to());
@@ -2282,11 +2291,12 @@ static void cmd_salvage_test(int argc,const char **argv,cw_reply *r) {
 static void cmd_sw(int argc, const char **argv, cw_reply *r) {
   int32_t *sw = argc < 3 ? NULL : !strcmp(argv[1], "idle_stays") ? &G.idle_stays : !strcmp(argv[1], "voyage_hunt") ? &G.voyage_hunt :
                 !strcmp(argv[1], "labels_stack") ? &G.labels_stack : !strcmp(argv[1], "flat_shots") ? &G.flat_shots :
-                !strcmp(argv[1], "no_wind") ? &sw_no_wind : !strcmp(argv[1], "wind_blind") ? &sw_wind_blind : NULL;
-  if (!sw) { cw_reply_error(r, "usage: sw idle_stays|voyage_hunt|labels_stack|flat_shots|no_wind|wind_blind <0|1>"); return; }
+                !strcmp(argv[1], "no_wind") ? &sw_no_wind : !strcmp(argv[1], "wind_blind") ? &sw_wind_blind : !strcmp(argv[1], "still_plants") ? &sw_still_plants : NULL;
+  if (!sw) { cw_reply_error(r, "usage: sw idle_stays|voyage_hunt|labels_stack|flat_shots|no_wind|wind_blind|still_plants <0|1>"); return; }
   *sw = sw == &sw_wind_blind ? atoi(argv[2]) : atoi(argv[2]) != 0;
   if (sw == &G.labels_stack) G.label_overlaps_max = 0;
   if (sw == &G.flat_shots) G.shot_peak = 0;
+  if (sw == &sw_still_plants) scenery_sway();
   cw_reply_printf(r, "{\"idle_stays\":%d,\"voyage_hunt\":%d,\"labels_stack\":%d}", G.idle_stays, G.voyage_hunt, G.labels_stack);
 }
 
