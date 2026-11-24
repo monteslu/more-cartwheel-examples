@@ -52,21 +52,21 @@ static const t3_gen_attribute a_basic_trans_ds[] = {
   { "position", "vec3", 0, false },
 };
 
-/* ── depth+instbig+xcsm_foliage ── */
-static const t3_bk_group_layout g_depth_instbig_xcsm_foliage_render = { "render", 0, 128, 0, NULL, 0, NULL, 0 };
-static const t3_bk_group_layout g_depth_instbig_xcsm_foliage_object = { "object", 1, 80, 0, NULL, 0, NULL, 0 };
-static const t3_bk_group_layout *const groups_depth_instbig_xcsm_foliage[] = { &g_depth_instbig_xcsm_foliage_render, &g_depth_instbig_xcsm_foliage_object };
-static const t3_gen_property p_depth_instbig_xcsm_foliage[] = {
+/* ── depth+instbig+xcsm_forest ── */
+static const t3_bk_group_layout g_depth_instbig_xcsm_forest_render = { "render", 0, 128, 0, NULL, 0, NULL, 0 };
+static const t3_bk_group_layout g_depth_instbig_xcsm_forest_object = { "object", 1, 80, 0, NULL, 0, NULL, 0 };
+static const t3_bk_group_layout *const groups_depth_instbig_xcsm_forest[] = { &g_depth_instbig_xcsm_forest_render, &g_depth_instbig_xcsm_forest_object };
+static const t3_gen_property p_depth_instbig_xcsm_forest[] = {
   { "object.matrixWorld", 1, 16, 64, false },
   { "ext.forestTime", 1, 0, 4, false },
   { "camera.projectionMatrix", 0, 0, 64, false },
   { "camera.matrixWorldInverse", 0, 64, 64, false },
 };
-static const uint8_t kb_depth_instbig_xcsm_foliage[] = {0x00, 0x00, 0x80, 0x3f };
-static const t3_gen_constant k_depth_instbig_xcsm_foliage[] = {
-  { 1, 4, 4, kb_depth_instbig_xcsm_foliage + 0 },
+static const uint8_t kb_depth_instbig_xcsm_forest[] = {0x00, 0x00, 0x80, 0x3f };
+static const t3_gen_constant k_depth_instbig_xcsm_forest[] = {
+  { 1, 4, 4, kb_depth_instbig_xcsm_forest + 0 },
 };
-static const t3_gen_attribute a_depth_instbig_xcsm_foliage[] = {
+static const t3_gen_attribute a_depth_instbig_xcsm_forest[] = {
   { "position", "vec3", 0, false },
   { "normal", "vec3", 1, false },
   { "nodeAttribute0", "vec4", 2, false },
@@ -75,21 +75,21 @@ static const t3_gen_attribute a_depth_instbig_xcsm_foliage[] = {
   { "nodeAttribute3", "vec4", 5, false },
 };
 
-/* ── depth+instbig+xcsm_foliage_plain ── */
-static const t3_bk_group_layout g_depth_instbig_xcsm_foliage_plain_render = { "render", 0, 128, 0, NULL, 0, NULL, 0 };
-static const t3_bk_group_layout g_depth_instbig_xcsm_foliage_plain_object = { "object", 1, 80, 0, NULL, 0, NULL, 0 };
-static const t3_bk_group_layout *const groups_depth_instbig_xcsm_foliage_plain[] = { &g_depth_instbig_xcsm_foliage_plain_render, &g_depth_instbig_xcsm_foliage_plain_object };
-static const t3_gen_property p_depth_instbig_xcsm_foliage_plain[] = {
+/* ── depth+instbig+xcsm_forest_plain ── */
+static const t3_bk_group_layout g_depth_instbig_xcsm_forest_plain_render = { "render", 0, 128, 0, NULL, 0, NULL, 0 };
+static const t3_bk_group_layout g_depth_instbig_xcsm_forest_plain_object = { "object", 1, 80, 0, NULL, 0, NULL, 0 };
+static const t3_bk_group_layout *const groups_depth_instbig_xcsm_forest_plain[] = { &g_depth_instbig_xcsm_forest_plain_render, &g_depth_instbig_xcsm_forest_plain_object };
+static const t3_gen_property p_depth_instbig_xcsm_forest_plain[] = {
   { "object.matrixWorld", 1, 16, 64, false },
   { "ext.forestTime", 1, 0, 4, false },
   { "camera.projectionMatrix", 0, 0, 64, false },
   { "camera.matrixWorldInverse", 0, 64, 64, false },
 };
-static const uint8_t kb_depth_instbig_xcsm_foliage_plain[] = {0x00, 0x00, 0x80, 0x3f };
-static const t3_gen_constant k_depth_instbig_xcsm_foliage_plain[] = {
-  { 1, 4, 4, kb_depth_instbig_xcsm_foliage_plain + 0 },
+static const uint8_t kb_depth_instbig_xcsm_forest_plain[] = {0x00, 0x00, 0x80, 0x3f };
+static const t3_gen_constant k_depth_instbig_xcsm_forest_plain[] = {
+  { 1, 4, 4, kb_depth_instbig_xcsm_forest_plain + 0 },
 };
-static const t3_gen_attribute a_depth_instbig_xcsm_foliage_plain[] = {
+static const t3_gen_attribute a_depth_instbig_xcsm_forest_plain[] = {
   { "position", "vec3", 0, false },
   { "normal", "vec3", 1, false },
   { "nodeAttribute0", "vec4", 2, false },
@@ -120,21 +120,21 @@ static const t3_gen_attribute a_depth_instbig_xcsm_plain[] = {
   { "nodeAttribute3", "vec4", 5, false },
 };
 
-/* ── depth+instbig+xfoliage ── */
-static const t3_bk_group_layout g_depth_instbig_xfoliage_render = { "render", 0, 128, 0, NULL, 0, NULL, 0 };
-static const t3_bk_group_layout g_depth_instbig_xfoliage_object = { "object", 1, 80, 0, NULL, 0, NULL, 0 };
-static const t3_bk_group_layout *const groups_depth_instbig_xfoliage[] = { &g_depth_instbig_xfoliage_render, &g_depth_instbig_xfoliage_object };
-static const t3_gen_property p_depth_instbig_xfoliage[] = {
+/* ── depth+instbig+xforest ── */
+static const t3_bk_group_layout g_depth_instbig_xforest_render = { "render", 0, 128, 0, NULL, 0, NULL, 0 };
+static const t3_bk_group_layout g_depth_instbig_xforest_object = { "object", 1, 80, 0, NULL, 0, NULL, 0 };
+static const t3_bk_group_layout *const groups_depth_instbig_xforest[] = { &g_depth_instbig_xforest_render, &g_depth_instbig_xforest_object };
+static const t3_gen_property p_depth_instbig_xforest[] = {
   { "object.matrixWorld", 1, 16, 64, false },
   { "ext.forestTime", 1, 0, 4, false },
   { "camera.projectionMatrix", 0, 0, 64, false },
   { "camera.matrixWorldInverse", 0, 64, 64, false },
 };
-static const uint8_t kb_depth_instbig_xfoliage[] = {0x00, 0x00, 0x80, 0x3f };
-static const t3_gen_constant k_depth_instbig_xfoliage[] = {
-  { 1, 4, 4, kb_depth_instbig_xfoliage + 0 },
+static const uint8_t kb_depth_instbig_xforest[] = {0x00, 0x00, 0x80, 0x3f };
+static const t3_gen_constant k_depth_instbig_xforest[] = {
+  { 1, 4, 4, kb_depth_instbig_xforest + 0 },
 };
-static const t3_gen_attribute a_depth_instbig_xfoliage[] = {
+static const t3_gen_attribute a_depth_instbig_xforest[] = {
   { "position", "vec3", 0, false },
   { "normal", "vec3", 1, false },
   { "nodeAttribute0", "vec4", 2, false },
@@ -184,39 +184,39 @@ static const t3_gen_attribute a_depth_instbig_xterrainlow_csm[] = {
   { "nodeAttribute3", "vec4", 6, false },
 };
 
-/* ── depth+xcsm_foliage ── */
-static const t3_bk_group_layout g_depth_xcsm_foliage_render = { "render", 0, 128, 0, NULL, 0, NULL, 0 };
-static const t3_bk_group_layout g_depth_xcsm_foliage_object = { "object", 1, 80, 0, NULL, 0, NULL, 0 };
-static const t3_bk_group_layout *const groups_depth_xcsm_foliage[] = { &g_depth_xcsm_foliage_render, &g_depth_xcsm_foliage_object };
-static const t3_gen_property p_depth_xcsm_foliage[] = {
+/* ── depth+xcsm_forest ── */
+static const t3_bk_group_layout g_depth_xcsm_forest_render = { "render", 0, 128, 0, NULL, 0, NULL, 0 };
+static const t3_bk_group_layout g_depth_xcsm_forest_object = { "object", 1, 80, 0, NULL, 0, NULL, 0 };
+static const t3_bk_group_layout *const groups_depth_xcsm_forest[] = { &g_depth_xcsm_forest_render, &g_depth_xcsm_forest_object };
+static const t3_gen_property p_depth_xcsm_forest[] = {
   { "object.matrixWorld", 1, 16, 64, false },
   { "ext.forestTime", 1, 0, 4, false },
   { "camera.projectionMatrix", 0, 0, 64, false },
   { "camera.matrixWorldInverse", 0, 64, 64, false },
 };
-static const uint8_t kb_depth_xcsm_foliage[] = {0x00, 0x00, 0x80, 0x3f };
-static const t3_gen_constant k_depth_xcsm_foliage[] = {
-  { 1, 4, 4, kb_depth_xcsm_foliage + 0 },
+static const uint8_t kb_depth_xcsm_forest[] = {0x00, 0x00, 0x80, 0x3f };
+static const t3_gen_constant k_depth_xcsm_forest[] = {
+  { 1, 4, 4, kb_depth_xcsm_forest + 0 },
 };
-static const t3_gen_attribute a_depth_xcsm_foliage[] = {
+static const t3_gen_attribute a_depth_xcsm_forest[] = {
   { "position", "vec3", 0, false },
 };
 
-/* ── depth+xcsm_foliage_plain ── */
-static const t3_bk_group_layout g_depth_xcsm_foliage_plain_render = { "render", 0, 128, 0, NULL, 0, NULL, 0 };
-static const t3_bk_group_layout g_depth_xcsm_foliage_plain_object = { "object", 1, 80, 0, NULL, 0, NULL, 0 };
-static const t3_bk_group_layout *const groups_depth_xcsm_foliage_plain[] = { &g_depth_xcsm_foliage_plain_render, &g_depth_xcsm_foliage_plain_object };
-static const t3_gen_property p_depth_xcsm_foliage_plain[] = {
+/* ── depth+xcsm_forest_plain ── */
+static const t3_bk_group_layout g_depth_xcsm_forest_plain_render = { "render", 0, 128, 0, NULL, 0, NULL, 0 };
+static const t3_bk_group_layout g_depth_xcsm_forest_plain_object = { "object", 1, 80, 0, NULL, 0, NULL, 0 };
+static const t3_bk_group_layout *const groups_depth_xcsm_forest_plain[] = { &g_depth_xcsm_forest_plain_render, &g_depth_xcsm_forest_plain_object };
+static const t3_gen_property p_depth_xcsm_forest_plain[] = {
   { "object.matrixWorld", 1, 16, 64, false },
   { "ext.forestTime", 1, 0, 4, false },
   { "camera.projectionMatrix", 0, 0, 64, false },
   { "camera.matrixWorldInverse", 0, 64, 64, false },
 };
-static const uint8_t kb_depth_xcsm_foliage_plain[] = {0x00, 0x00, 0x80, 0x3f };
-static const t3_gen_constant k_depth_xcsm_foliage_plain[] = {
-  { 1, 4, 4, kb_depth_xcsm_foliage_plain + 0 },
+static const uint8_t kb_depth_xcsm_forest_plain[] = {0x00, 0x00, 0x80, 0x3f };
+static const t3_gen_constant k_depth_xcsm_forest_plain[] = {
+  { 1, 4, 4, kb_depth_xcsm_forest_plain + 0 },
 };
-static const t3_gen_attribute a_depth_xcsm_foliage_plain[] = {
+static const t3_gen_attribute a_depth_xcsm_forest_plain[] = {
   { "position", "vec3", 0, false },
 };
 
@@ -271,21 +271,21 @@ static const t3_gen_attribute a_depth_xcsm_rim[] = {
   { "position", "vec3", 0, false },
 };
 
-/* ── depth+xfoliage ── */
-static const t3_bk_group_layout g_depth_xfoliage_render = { "render", 0, 128, 0, NULL, 0, NULL, 0 };
-static const t3_bk_group_layout g_depth_xfoliage_object = { "object", 1, 80, 0, NULL, 0, NULL, 0 };
-static const t3_bk_group_layout *const groups_depth_xfoliage[] = { &g_depth_xfoliage_render, &g_depth_xfoliage_object };
-static const t3_gen_property p_depth_xfoliage[] = {
+/* ── depth+xforest ── */
+static const t3_bk_group_layout g_depth_xforest_render = { "render", 0, 128, 0, NULL, 0, NULL, 0 };
+static const t3_bk_group_layout g_depth_xforest_object = { "object", 1, 80, 0, NULL, 0, NULL, 0 };
+static const t3_bk_group_layout *const groups_depth_xforest[] = { &g_depth_xforest_render, &g_depth_xforest_object };
+static const t3_gen_property p_depth_xforest[] = {
   { "object.matrixWorld", 1, 16, 64, false },
   { "ext.forestTime", 1, 0, 4, false },
   { "camera.projectionMatrix", 0, 0, 64, false },
   { "camera.matrixWorldInverse", 0, 64, 64, false },
 };
-static const uint8_t kb_depth_xfoliage[] = {0x00, 0x00, 0x80, 0x3f };
-static const t3_gen_constant k_depth_xfoliage[] = {
-  { 1, 4, 4, kb_depth_xfoliage + 0 },
+static const uint8_t kb_depth_xforest[] = {0x00, 0x00, 0x80, 0x3f };
+static const t3_gen_constant k_depth_xforest[] = {
+  { 1, 4, 4, kb_depth_xforest + 0 },
 };
-static const t3_gen_attribute a_depth_xfoliage[] = {
+static const t3_gen_attribute a_depth_xforest[] = {
   { "position", "vec3", 0, false },
 };
 
@@ -350,16 +350,16 @@ static const t3_gen_attribute a_standard_instbig_icol_map_rep_senv_l1001[] = {
   { "instanceColor", "vec3", 7, true },
 };
 
-/* ── standard+instbig+icol+map+rep+senv+l1001+xfoliage ── */
-static const t3_bk_group_layout g_standard_instbig_icol_map_rep_senv_l1001_xfoliage_render = { "render", 0, 304, 0, NULL, 0, NULL, 0 };
-static const t3_bk_texture_layout t_standard_instbig_icol_map_rep_senv_l1001_xfoliage_object[] = {
+/* ── standard+instbig+icol+map+rep+senv+l1001+xforest ── */
+static const t3_bk_group_layout g_standard_instbig_icol_map_rep_senv_l1001_xforest_render = { "render", 0, 304, 0, NULL, 0, NULL, 0 };
+static const t3_bk_texture_layout t_standard_instbig_icol_map_rep_senv_l1001_xforest_object[] = {
   { "nodeUniform7", 2, T3_BK_SAMPLE_FLOAT, T3_BK_DIM_2D, true, false, false, "map", 1 },
   { "nodeUniform17", 4, T3_BK_SAMPLE_FLOAT, T3_BK_DIM_2D, true, false, false, "dfg_lut", 3 },
   { "nodeUniform26", 6, T3_BK_SAMPLE_FLOAT, T3_BK_DIM_CUBE, true, false, false, "environment", 5 },
 };
-static const t3_bk_group_layout g_standard_instbig_icol_map_rep_senv_l1001_xfoliage_object = { "object", 1, 304, 0, t_standard_instbig_icol_map_rep_senv_l1001_xfoliage_object, 3, NULL, 0 };
-static const t3_bk_group_layout *const groups_standard_instbig_icol_map_rep_senv_l1001_xfoliage[] = { &g_standard_instbig_icol_map_rep_senv_l1001_xfoliage_render, &g_standard_instbig_icol_map_rep_senv_l1001_xfoliage_object };
-static const t3_gen_property p_standard_instbig_icol_map_rep_senv_l1001_xfoliage[] = {
+static const t3_bk_group_layout g_standard_instbig_icol_map_rep_senv_l1001_xforest_object = { "object", 1, 304, 0, t_standard_instbig_icol_map_rep_senv_l1001_xforest_object, 3, NULL, 0 };
+static const t3_bk_group_layout *const groups_standard_instbig_icol_map_rep_senv_l1001_xforest[] = { &g_standard_instbig_icol_map_rep_senv_l1001_xforest_render, &g_standard_instbig_icol_map_rep_senv_l1001_xforest_object };
+static const t3_gen_property p_standard_instbig_icol_map_rep_senv_l1001_xforest[] = {
   { "material.color", 1, 16, 12, false },
   { "material.opacity", 1, 80, 4, false },
   { "material.emissive", 1, 144, 12, false },
@@ -384,7 +384,7 @@ static const t3_gen_property p_standard_instbig_icol_map_rep_senv_l1001_xfoliage
   { "scene.environmentRotation", 1, 224, 64, false },
   { "camera.projectionMatrix", 0, 0, 64, false },
 };
-static const t3_gen_attribute a_standard_instbig_icol_map_rep_senv_l1001_xfoliage[] = {
+static const t3_gen_attribute a_standard_instbig_icol_map_rep_senv_l1001_xforest[] = {
   { "position", "vec3", 0, false },
   { "normal", "vec3", 1, false },
   { "uv", "vec2", 2, false },
@@ -446,17 +446,17 @@ static const t3_gen_attribute a_standard_instbig_icol_map_rep_shadow_senv_l1001[
   { "instanceColor", "vec3", 7, true },
 };
 
-/* ── standard+instbig+icol+map+rep+shadow+senv+l1001+xfoliage ── */
-static const t3_bk_group_layout g_standard_instbig_icol_map_rep_shadow_senv_l1001_xfoliage_render = { "render", 0, 400, 0, NULL, 0, NULL, 0 };
-static const t3_bk_texture_layout t_standard_instbig_icol_map_rep_shadow_senv_l1001_xfoliage_object[] = {
+/* ── standard+instbig+icol+map+rep+shadow+senv+l1001+xforest ── */
+static const t3_bk_group_layout g_standard_instbig_icol_map_rep_shadow_senv_l1001_xforest_render = { "render", 0, 400, 0, NULL, 0, NULL, 0 };
+static const t3_bk_texture_layout t_standard_instbig_icol_map_rep_shadow_senv_l1001_xforest_object[] = {
   { "nodeUniform7", 2, T3_BK_SAMPLE_FLOAT, T3_BK_DIM_2D, true, false, false, "map", 1 },
   { "nodeUniform17", 4, T3_BK_SAMPLE_FLOAT, T3_BK_DIM_2D, true, false, false, "dfg_lut", 3 },
   { "nodeUniform26", 6, T3_BK_SAMPLE_DEPTH, T3_BK_DIM_2D, true, true, false, "shadow:directional[0]", 5 },
   { "nodeUniform33", 8, T3_BK_SAMPLE_FLOAT, T3_BK_DIM_CUBE, true, false, false, "environment", 7 },
 };
-static const t3_bk_group_layout g_standard_instbig_icol_map_rep_shadow_senv_l1001_xfoliage_object = { "object", 1, 304, 0, t_standard_instbig_icol_map_rep_shadow_senv_l1001_xfoliage_object, 4, NULL, 0 };
-static const t3_bk_group_layout *const groups_standard_instbig_icol_map_rep_shadow_senv_l1001_xfoliage[] = { &g_standard_instbig_icol_map_rep_shadow_senv_l1001_xfoliage_render, &g_standard_instbig_icol_map_rep_shadow_senv_l1001_xfoliage_object };
-static const t3_gen_property p_standard_instbig_icol_map_rep_shadow_senv_l1001_xfoliage[] = {
+static const t3_bk_group_layout g_standard_instbig_icol_map_rep_shadow_senv_l1001_xforest_object = { "object", 1, 304, 0, t_standard_instbig_icol_map_rep_shadow_senv_l1001_xforest_object, 4, NULL, 0 };
+static const t3_bk_group_layout *const groups_standard_instbig_icol_map_rep_shadow_senv_l1001_xforest[] = { &g_standard_instbig_icol_map_rep_shadow_senv_l1001_xforest_render, &g_standard_instbig_icol_map_rep_shadow_senv_l1001_xforest_object };
+static const t3_gen_property p_standard_instbig_icol_map_rep_shadow_senv_l1001_xforest[] = {
   { "material.color", 1, 16, 12, false },
   { "material.opacity", 1, 80, 4, false },
   { "material.emissive", 1, 144, 12, false },
@@ -487,7 +487,7 @@ static const t3_gen_property p_standard_instbig_icol_map_rep_shadow_senv_l1001_x
   { "camera.projectionMatrix", 0, 0, 64, false },
   { "directional[0].shadow.matrix", 0, 304, 64, false },
 };
-static const t3_gen_attribute a_standard_instbig_icol_map_rep_shadow_senv_l1001_xfoliage[] = {
+static const t3_gen_attribute a_standard_instbig_icol_map_rep_shadow_senv_l1001_xforest[] = {
   { "position", "vec3", 0, false },
   { "normal", "vec3", 1, false },
   { "uv", "vec2", 2, false },
@@ -587,18 +587,18 @@ static const t3_gen_attribute a_standard_instbig_icol_shadow_senv_l1001[] = {
   { "instanceColor", "vec3", 6, true },
 };
 
-/* ── standard+instbig+map+rep+senv+l0001+xcsm_foliage ── */
-static const t3_bk_group_layout g_standard_instbig_map_rep_senv_l0001_xcsm_foliage_render = { "render", 0, 256, 0, NULL, 0, NULL, 0 };
-static const t3_bk_group_layout g_standard_instbig_map_rep_senv_l0001_xcsm_foliage_lightingFrame = { "lightingFrame", 1, 352, 0, NULL, 0, NULL, 0 };
-static const t3_bk_texture_layout t_standard_instbig_map_rep_senv_l0001_xcsm_foliage_object[] = {
+/* ── standard+instbig+map+rep+senv+l0001+xcsm_forest ── */
+static const t3_bk_group_layout g_standard_instbig_map_rep_senv_l0001_xcsm_forest_render = { "render", 0, 256, 0, NULL, 0, NULL, 0 };
+static const t3_bk_group_layout g_standard_instbig_map_rep_senv_l0001_xcsm_forest_lightingFrame = { "lightingFrame", 1, 352, 0, NULL, 0, NULL, 0 };
+static const t3_bk_texture_layout t_standard_instbig_map_rep_senv_l0001_xcsm_forest_object[] = {
   { "nodeUniform6", 2, T3_BK_SAMPLE_FLOAT, T3_BK_DIM_2D, true, false, false, "map", 1 },
   { "nodeUniform16", 4, T3_BK_SAMPLE_FLOAT, T3_BK_DIM_2D, true, false, false, "dfg_lut", 3 },
   { "nodeUniform31", 6, T3_BK_SAMPLE_DEPTH, T3_BK_DIM_2D, true, true, false, "ext.csmMap", 5 },
   { "nodeUniform34", 8, T3_BK_SAMPLE_FLOAT, T3_BK_DIM_CUBE, true, false, false, "environment", 7 },
 };
-static const t3_bk_group_layout g_standard_instbig_map_rep_senv_l0001_xcsm_foliage_object = { "object", 2, 320, 0, t_standard_instbig_map_rep_senv_l0001_xcsm_foliage_object, 4, NULL, 0 };
-static const t3_bk_group_layout *const groups_standard_instbig_map_rep_senv_l0001_xcsm_foliage[] = { &g_standard_instbig_map_rep_senv_l0001_xcsm_foliage_render, &g_standard_instbig_map_rep_senv_l0001_xcsm_foliage_lightingFrame, &g_standard_instbig_map_rep_senv_l0001_xcsm_foliage_object };
-static const t3_gen_property p_standard_instbig_map_rep_senv_l0001_xcsm_foliage[] = {
+static const t3_bk_group_layout g_standard_instbig_map_rep_senv_l0001_xcsm_forest_object = { "object", 2, 320, 0, t_standard_instbig_map_rep_senv_l0001_xcsm_forest_object, 4, NULL, 0 };
+static const t3_bk_group_layout *const groups_standard_instbig_map_rep_senv_l0001_xcsm_forest[] = { &g_standard_instbig_map_rep_senv_l0001_xcsm_forest_render, &g_standard_instbig_map_rep_senv_l0001_xcsm_forest_lightingFrame, &g_standard_instbig_map_rep_senv_l0001_xcsm_forest_object };
+static const t3_gen_property p_standard_instbig_map_rep_senv_l0001_xcsm_forest[] = {
   { "material.color", 2, 16, 12, false },
   { "material.opacity", 2, 80, 4, false },
   { "material.emissive", 2, 144, 12, false },
@@ -631,7 +631,7 @@ static const t3_gen_property p_standard_instbig_map_rep_senv_l0001_xcsm_foliage[
   { "scene.environmentRotation", 2, 240, 64, false },
   { "camera.projectionMatrix", 0, 0, 64, false },
 };
-static const t3_gen_attribute a_standard_instbig_map_rep_senv_l0001_xcsm_foliage[] = {
+static const t3_gen_attribute a_standard_instbig_map_rep_senv_l0001_xcsm_forest[] = {
   { "position", "vec3", 0, false },
   { "normal", "vec3", 1, false },
   { "uv", "vec2", 2, false },
@@ -684,16 +684,16 @@ static const t3_gen_attribute a_standard_instbig_map_rep_senv_l1001[] = {
   { "nodeAttribute3", "vec4", 6, false },
 };
 
-/* ── standard+instbig+map+rep+senv+l1001+xfoliage ── */
-static const t3_bk_group_layout g_standard_instbig_map_rep_senv_l1001_xfoliage_render = { "render", 0, 304, 0, NULL, 0, NULL, 0 };
-static const t3_bk_texture_layout t_standard_instbig_map_rep_senv_l1001_xfoliage_object[] = {
+/* ── standard+instbig+map+rep+senv+l1001+xforest ── */
+static const t3_bk_group_layout g_standard_instbig_map_rep_senv_l1001_xforest_render = { "render", 0, 304, 0, NULL, 0, NULL, 0 };
+static const t3_bk_texture_layout t_standard_instbig_map_rep_senv_l1001_xforest_object[] = {
   { "nodeUniform6", 2, T3_BK_SAMPLE_FLOAT, T3_BK_DIM_2D, true, false, false, "map", 1 },
   { "nodeUniform16", 4, T3_BK_SAMPLE_FLOAT, T3_BK_DIM_2D, true, false, false, "dfg_lut", 3 },
   { "nodeUniform25", 6, T3_BK_SAMPLE_FLOAT, T3_BK_DIM_CUBE, true, false, false, "environment", 5 },
 };
-static const t3_bk_group_layout g_standard_instbig_map_rep_senv_l1001_xfoliage_object = { "object", 1, 304, 0, t_standard_instbig_map_rep_senv_l1001_xfoliage_object, 3, NULL, 0 };
-static const t3_bk_group_layout *const groups_standard_instbig_map_rep_senv_l1001_xfoliage[] = { &g_standard_instbig_map_rep_senv_l1001_xfoliage_render, &g_standard_instbig_map_rep_senv_l1001_xfoliage_object };
-static const t3_gen_property p_standard_instbig_map_rep_senv_l1001_xfoliage[] = {
+static const t3_bk_group_layout g_standard_instbig_map_rep_senv_l1001_xforest_object = { "object", 1, 304, 0, t_standard_instbig_map_rep_senv_l1001_xforest_object, 3, NULL, 0 };
+static const t3_bk_group_layout *const groups_standard_instbig_map_rep_senv_l1001_xforest[] = { &g_standard_instbig_map_rep_senv_l1001_xforest_render, &g_standard_instbig_map_rep_senv_l1001_xforest_object };
+static const t3_gen_property p_standard_instbig_map_rep_senv_l1001_xforest[] = {
   { "material.color", 1, 16, 12, false },
   { "material.opacity", 1, 80, 4, false },
   { "material.emissive", 1, 144, 12, false },
@@ -718,7 +718,7 @@ static const t3_gen_property p_standard_instbig_map_rep_senv_l1001_xfoliage[] = 
   { "scene.environmentRotation", 1, 224, 64, false },
   { "camera.projectionMatrix", 0, 0, 64, false },
 };
-static const t3_gen_attribute a_standard_instbig_map_rep_senv_l1001_xfoliage[] = {
+static const t3_gen_attribute a_standard_instbig_map_rep_senv_l1001_xforest[] = {
   { "position", "vec3", 0, false },
   { "normal", "vec3", 1, false },
   { "uv", "vec2", 2, false },
@@ -778,17 +778,17 @@ static const t3_gen_attribute a_standard_instbig_map_rep_shadow_senv_l1001[] = {
   { "nodeAttribute3", "vec4", 6, false },
 };
 
-/* ── standard+instbig+map+rep+shadow+senv+l1001+xfoliage ── */
-static const t3_bk_group_layout g_standard_instbig_map_rep_shadow_senv_l1001_xfoliage_render = { "render", 0, 400, 0, NULL, 0, NULL, 0 };
-static const t3_bk_texture_layout t_standard_instbig_map_rep_shadow_senv_l1001_xfoliage_object[] = {
+/* ── standard+instbig+map+rep+shadow+senv+l1001+xforest ── */
+static const t3_bk_group_layout g_standard_instbig_map_rep_shadow_senv_l1001_xforest_render = { "render", 0, 400, 0, NULL, 0, NULL, 0 };
+static const t3_bk_texture_layout t_standard_instbig_map_rep_shadow_senv_l1001_xforest_object[] = {
   { "nodeUniform6", 2, T3_BK_SAMPLE_FLOAT, T3_BK_DIM_2D, true, false, false, "map", 1 },
   { "nodeUniform16", 4, T3_BK_SAMPLE_FLOAT, T3_BK_DIM_2D, true, false, false, "dfg_lut", 3 },
   { "nodeUniform25", 6, T3_BK_SAMPLE_DEPTH, T3_BK_DIM_2D, true, true, false, "shadow:directional[0]", 5 },
   { "nodeUniform32", 8, T3_BK_SAMPLE_FLOAT, T3_BK_DIM_CUBE, true, false, false, "environment", 7 },
 };
-static const t3_bk_group_layout g_standard_instbig_map_rep_shadow_senv_l1001_xfoliage_object = { "object", 1, 304, 0, t_standard_instbig_map_rep_shadow_senv_l1001_xfoliage_object, 4, NULL, 0 };
-static const t3_bk_group_layout *const groups_standard_instbig_map_rep_shadow_senv_l1001_xfoliage[] = { &g_standard_instbig_map_rep_shadow_senv_l1001_xfoliage_render, &g_standard_instbig_map_rep_shadow_senv_l1001_xfoliage_object };
-static const t3_gen_property p_standard_instbig_map_rep_shadow_senv_l1001_xfoliage[] = {
+static const t3_bk_group_layout g_standard_instbig_map_rep_shadow_senv_l1001_xforest_object = { "object", 1, 304, 0, t_standard_instbig_map_rep_shadow_senv_l1001_xforest_object, 4, NULL, 0 };
+static const t3_bk_group_layout *const groups_standard_instbig_map_rep_shadow_senv_l1001_xforest[] = { &g_standard_instbig_map_rep_shadow_senv_l1001_xforest_render, &g_standard_instbig_map_rep_shadow_senv_l1001_xforest_object };
+static const t3_gen_property p_standard_instbig_map_rep_shadow_senv_l1001_xforest[] = {
   { "material.color", 1, 16, 12, false },
   { "material.opacity", 1, 80, 4, false },
   { "material.emissive", 1, 144, 12, false },
@@ -819,7 +819,7 @@ static const t3_gen_property p_standard_instbig_map_rep_shadow_senv_l1001_xfolia
   { "camera.projectionMatrix", 0, 0, 64, false },
   { "directional[0].shadow.matrix", 0, 304, 64, false },
 };
-static const t3_gen_attribute a_standard_instbig_map_rep_shadow_senv_l1001_xfoliage[] = {
+static const t3_gen_attribute a_standard_instbig_map_rep_shadow_senv_l1001_xforest[] = {
   { "position", "vec3", 0, false },
   { "normal", "vec3", 1, false },
   { "uv", "vec2", 2, false },
@@ -1734,17 +1734,17 @@ static const t3_gen_attribute a_standard_instbig_shadow_senv_l1001_xterrainmin_p
   { "nodeAttribute3", "vec4", 6, false },
 };
 
-/* ── standard+map+rep+instbig+senv+icol+l0001+xcsm_foliage_plain ── */
-static const t3_bk_group_layout g_standard_map_rep_instbig_senv_icol_l0001_xcsm_foliage_plain_render = { "render", 0, 256, 0, NULL, 0, NULL, 0 };
-static const t3_bk_group_layout g_standard_map_rep_instbig_senv_icol_l0001_xcsm_foliage_plain_lightingFrame = { "lightingFrame", 1, 352, 0, NULL, 0, NULL, 0 };
-static const t3_bk_texture_layout t_standard_map_rep_instbig_senv_icol_l0001_xcsm_foliage_plain_object[] = {
+/* ── standard+map+rep+instbig+senv+icol+l0001+xcsm_forest_plain ── */
+static const t3_bk_group_layout g_standard_map_rep_instbig_senv_icol_l0001_xcsm_forest_plain_render = { "render", 0, 256, 0, NULL, 0, NULL, 0 };
+static const t3_bk_group_layout g_standard_map_rep_instbig_senv_icol_l0001_xcsm_forest_plain_lightingFrame = { "lightingFrame", 1, 352, 0, NULL, 0, NULL, 0 };
+static const t3_bk_texture_layout t_standard_map_rep_instbig_senv_icol_l0001_xcsm_forest_plain_object[] = {
   { "nodeUniform7", 2, T3_BK_SAMPLE_FLOAT, T3_BK_DIM_2D, true, false, false, "map", 1 },
   { "nodeUniform31", 4, T3_BK_SAMPLE_DEPTH, T3_BK_DIM_2D, true, true, false, "ext.csmMap", 3 },
   { "nodeUniform34", 6, T3_BK_SAMPLE_FLOAT, T3_BK_DIM_CUBE, true, false, false, "environment", 5 },
 };
-static const t3_bk_group_layout g_standard_map_rep_instbig_senv_icol_l0001_xcsm_foliage_plain_object = { "object", 2, 320, 0, t_standard_map_rep_instbig_senv_icol_l0001_xcsm_foliage_plain_object, 3, NULL, 0 };
-static const t3_bk_group_layout *const groups_standard_map_rep_instbig_senv_icol_l0001_xcsm_foliage_plain[] = { &g_standard_map_rep_instbig_senv_icol_l0001_xcsm_foliage_plain_render, &g_standard_map_rep_instbig_senv_icol_l0001_xcsm_foliage_plain_lightingFrame, &g_standard_map_rep_instbig_senv_icol_l0001_xcsm_foliage_plain_object };
-static const t3_gen_property p_standard_map_rep_instbig_senv_icol_l0001_xcsm_foliage_plain[] = {
+static const t3_bk_group_layout g_standard_map_rep_instbig_senv_icol_l0001_xcsm_forest_plain_object = { "object", 2, 320, 0, t_standard_map_rep_instbig_senv_icol_l0001_xcsm_forest_plain_object, 3, NULL, 0 };
+static const t3_bk_group_layout *const groups_standard_map_rep_instbig_senv_icol_l0001_xcsm_forest_plain[] = { &g_standard_map_rep_instbig_senv_icol_l0001_xcsm_forest_plain_render, &g_standard_map_rep_instbig_senv_icol_l0001_xcsm_forest_plain_lightingFrame, &g_standard_map_rep_instbig_senv_icol_l0001_xcsm_forest_plain_object };
+static const t3_gen_property p_standard_map_rep_instbig_senv_icol_l0001_xcsm_forest_plain[] = {
   { "material.color", 2, 16, 12, false },
   { "material.opacity", 2, 80, 4, false },
   { "material.emissive", 2, 144, 12, false },
@@ -1777,7 +1777,7 @@ static const t3_gen_property p_standard_map_rep_instbig_senv_icol_l0001_xcsm_fol
   { "scene.environmentRotation", 2, 240, 64, false },
   { "camera.projectionMatrix", 0, 0, 64, false },
 };
-static const t3_gen_attribute a_standard_map_rep_instbig_senv_icol_l0001_xcsm_foliage_plain[] = {
+static const t3_gen_attribute a_standard_map_rep_instbig_senv_icol_l0001_xcsm_forest_plain[] = {
   { "position", "vec3", 0, false },
   { "normal", "vec3", 1, false },
   { "uv", "vec2", 2, false },
@@ -1903,18 +1903,18 @@ static const t3_gen_attribute a_standard_map_rep_instbig_senv_icol_l0201_xcsm[] 
   { "instanceColor", "vec3", 7, true },
 };
 
-/* ── standard+map+rep+instbig+senv+icol+l0201+xcsm_foliage ── */
-static const t3_bk_group_layout g_standard_map_rep_instbig_senv_icol_l0201_xcsm_foliage_render = { "render", 0, 352, 0, NULL, 0, NULL, 0 };
-static const t3_bk_group_layout g_standard_map_rep_instbig_senv_icol_l0201_xcsm_foliage_lightingFrame = { "lightingFrame", 1, 352, 0, NULL, 0, NULL, 0 };
-static const t3_bk_texture_layout t_standard_map_rep_instbig_senv_icol_l0201_xcsm_foliage_object[] = {
+/* ── standard+map+rep+instbig+senv+icol+l0201+xcsm_forest ── */
+static const t3_bk_group_layout g_standard_map_rep_instbig_senv_icol_l0201_xcsm_forest_render = { "render", 0, 352, 0, NULL, 0, NULL, 0 };
+static const t3_bk_group_layout g_standard_map_rep_instbig_senv_icol_l0201_xcsm_forest_lightingFrame = { "lightingFrame", 1, 352, 0, NULL, 0, NULL, 0 };
+static const t3_bk_texture_layout t_standard_map_rep_instbig_senv_icol_l0201_xcsm_forest_object[] = {
   { "nodeUniform7", 2, T3_BK_SAMPLE_FLOAT, T3_BK_DIM_2D, true, false, false, "map", 1 },
   { "nodeUniform17", 4, T3_BK_SAMPLE_FLOAT, T3_BK_DIM_2D, true, false, false, "dfg_lut", 3 },
   { "nodeUniform40", 6, T3_BK_SAMPLE_DEPTH, T3_BK_DIM_2D, true, true, false, "ext.csmMap", 5 },
   { "nodeUniform43", 8, T3_BK_SAMPLE_FLOAT, T3_BK_DIM_CUBE, true, false, false, "environment", 7 },
 };
-static const t3_bk_group_layout g_standard_map_rep_instbig_senv_icol_l0201_xcsm_foliage_object = { "object", 2, 320, 0, t_standard_map_rep_instbig_senv_icol_l0201_xcsm_foliage_object, 4, NULL, 0 };
-static const t3_bk_group_layout *const groups_standard_map_rep_instbig_senv_icol_l0201_xcsm_foliage[] = { &g_standard_map_rep_instbig_senv_icol_l0201_xcsm_foliage_render, &g_standard_map_rep_instbig_senv_icol_l0201_xcsm_foliage_lightingFrame, &g_standard_map_rep_instbig_senv_icol_l0201_xcsm_foliage_object };
-static const t3_gen_property p_standard_map_rep_instbig_senv_icol_l0201_xcsm_foliage[] = {
+static const t3_bk_group_layout g_standard_map_rep_instbig_senv_icol_l0201_xcsm_forest_object = { "object", 2, 320, 0, t_standard_map_rep_instbig_senv_icol_l0201_xcsm_forest_object, 4, NULL, 0 };
+static const t3_bk_group_layout *const groups_standard_map_rep_instbig_senv_icol_l0201_xcsm_forest[] = { &g_standard_map_rep_instbig_senv_icol_l0201_xcsm_forest_render, &g_standard_map_rep_instbig_senv_icol_l0201_xcsm_forest_lightingFrame, &g_standard_map_rep_instbig_senv_icol_l0201_xcsm_forest_object };
+static const t3_gen_property p_standard_map_rep_instbig_senv_icol_l0201_xcsm_forest[] = {
   { "material.color", 2, 16, 12, false },
   { "material.opacity", 2, 80, 4, false },
   { "material.emissive", 2, 144, 12, false },
@@ -1955,7 +1955,7 @@ static const t3_gen_property p_standard_map_rep_instbig_senv_icol_l0201_xcsm_fol
   { "scene.environmentRotation", 2, 240, 64, false },
   { "camera.projectionMatrix", 0, 0, 64, false },
 };
-static const t3_gen_attribute a_standard_map_rep_instbig_senv_icol_l0201_xcsm_foliage[] = {
+static const t3_gen_attribute a_standard_map_rep_instbig_senv_icol_l0201_xcsm_forest[] = {
   { "position", "vec3", 0, false },
   { "normal", "vec3", 1, false },
   { "uv", "vec2", 2, false },
@@ -2620,17 +2620,17 @@ static const t3_gen_attribute a_standard_map_rep_senv_ds_l0001_xcsm_rim[] = {
   { "position", "vec3", 2, false },
 };
 
-/* ── standard+map+rep+senv+l0001+xcsm_foliage_plain ── */
-static const t3_bk_group_layout g_standard_map_rep_senv_l0001_xcsm_foliage_plain_render = { "render", 0, 256, 0, NULL, 0, NULL, 0 };
-static const t3_bk_group_layout g_standard_map_rep_senv_l0001_xcsm_foliage_plain_lightingFrame = { "lightingFrame", 1, 352, 0, NULL, 0, NULL, 0 };
-static const t3_bk_texture_layout t_standard_map_rep_senv_l0001_xcsm_foliage_plain_object[] = {
+/* ── standard+map+rep+senv+l0001+xcsm_forest_plain ── */
+static const t3_bk_group_layout g_standard_map_rep_senv_l0001_xcsm_forest_plain_render = { "render", 0, 256, 0, NULL, 0, NULL, 0 };
+static const t3_bk_group_layout g_standard_map_rep_senv_l0001_xcsm_forest_plain_lightingFrame = { "lightingFrame", 1, 352, 0, NULL, 0, NULL, 0 };
+static const t3_bk_texture_layout t_standard_map_rep_senv_l0001_xcsm_forest_plain_object[] = {
   { "nodeUniform2", 2, T3_BK_SAMPLE_FLOAT, T3_BK_DIM_2D, true, false, false, "map", 1 },
   { "nodeUniform26", 4, T3_BK_SAMPLE_DEPTH, T3_BK_DIM_2D, true, true, false, "ext.csmMap", 3 },
   { "nodeUniform29", 6, T3_BK_SAMPLE_FLOAT, T3_BK_DIM_CUBE, true, false, false, "environment", 5 },
 };
-static const t3_bk_group_layout g_standard_map_rep_senv_l0001_xcsm_foliage_plain_object = { "object", 2, 320, 0, t_standard_map_rep_senv_l0001_xcsm_foliage_plain_object, 3, NULL, 0 };
-static const t3_bk_group_layout *const groups_standard_map_rep_senv_l0001_xcsm_foliage_plain[] = { &g_standard_map_rep_senv_l0001_xcsm_foliage_plain_render, &g_standard_map_rep_senv_l0001_xcsm_foliage_plain_lightingFrame, &g_standard_map_rep_senv_l0001_xcsm_foliage_plain_object };
-static const t3_gen_property p_standard_map_rep_senv_l0001_xcsm_foliage_plain[] = {
+static const t3_bk_group_layout g_standard_map_rep_senv_l0001_xcsm_forest_plain_object = { "object", 2, 320, 0, t_standard_map_rep_senv_l0001_xcsm_forest_plain_object, 3, NULL, 0 };
+static const t3_bk_group_layout *const groups_standard_map_rep_senv_l0001_xcsm_forest_plain[] = { &g_standard_map_rep_senv_l0001_xcsm_forest_plain_render, &g_standard_map_rep_senv_l0001_xcsm_forest_plain_lightingFrame, &g_standard_map_rep_senv_l0001_xcsm_forest_plain_object };
+static const t3_gen_property p_standard_map_rep_senv_l0001_xcsm_forest_plain[] = {
   { "material.color", 2, 16, 12, false },
   { "material.opacity", 2, 80, 4, false },
   { "material.emissive", 2, 144, 12, false },
@@ -2663,7 +2663,7 @@ static const t3_gen_property p_standard_map_rep_senv_l0001_xcsm_foliage_plain[] 
   { "scene.environmentRotation", 2, 240, 64, false },
   { "camera.projectionMatrix", 0, 0, 64, false },
 };
-static const t3_gen_attribute a_standard_map_rep_senv_l0001_xcsm_foliage_plain[] = {
+static const t3_gen_attribute a_standard_map_rep_senv_l0001_xcsm_forest_plain[] = {
   { "position", "vec3", 0, false },
   { "uv", "vec2", 1, false },
   { "normal", "vec3", 2, false },
@@ -2774,18 +2774,18 @@ static const t3_gen_attribute a_standard_map_rep_senv_l0201_xcsm[] = {
   { "position", "vec3", 2, false },
 };
 
-/* ── standard+map+rep+senv+l0201+xcsm_foliage ── */
-static const t3_bk_group_layout g_standard_map_rep_senv_l0201_xcsm_foliage_render = { "render", 0, 352, 0, NULL, 0, NULL, 0 };
-static const t3_bk_group_layout g_standard_map_rep_senv_l0201_xcsm_foliage_lightingFrame = { "lightingFrame", 1, 352, 0, NULL, 0, NULL, 0 };
-static const t3_bk_texture_layout t_standard_map_rep_senv_l0201_xcsm_foliage_object[] = {
+/* ── standard+map+rep+senv+l0201+xcsm_forest ── */
+static const t3_bk_group_layout g_standard_map_rep_senv_l0201_xcsm_forest_render = { "render", 0, 352, 0, NULL, 0, NULL, 0 };
+static const t3_bk_group_layout g_standard_map_rep_senv_l0201_xcsm_forest_lightingFrame = { "lightingFrame", 1, 352, 0, NULL, 0, NULL, 0 };
+static const t3_bk_texture_layout t_standard_map_rep_senv_l0201_xcsm_forest_object[] = {
   { "nodeUniform2", 2, T3_BK_SAMPLE_FLOAT, T3_BK_DIM_2D, true, false, false, "map", 1 },
   { "nodeUniform12", 4, T3_BK_SAMPLE_FLOAT, T3_BK_DIM_2D, true, false, false, "dfg_lut", 3 },
   { "nodeUniform35", 6, T3_BK_SAMPLE_DEPTH, T3_BK_DIM_2D, true, true, false, "ext.csmMap", 5 },
   { "nodeUniform38", 8, T3_BK_SAMPLE_FLOAT, T3_BK_DIM_CUBE, true, false, false, "environment", 7 },
 };
-static const t3_bk_group_layout g_standard_map_rep_senv_l0201_xcsm_foliage_object = { "object", 2, 320, 0, t_standard_map_rep_senv_l0201_xcsm_foliage_object, 4, NULL, 0 };
-static const t3_bk_group_layout *const groups_standard_map_rep_senv_l0201_xcsm_foliage[] = { &g_standard_map_rep_senv_l0201_xcsm_foliage_render, &g_standard_map_rep_senv_l0201_xcsm_foliage_lightingFrame, &g_standard_map_rep_senv_l0201_xcsm_foliage_object };
-static const t3_gen_property p_standard_map_rep_senv_l0201_xcsm_foliage[] = {
+static const t3_bk_group_layout g_standard_map_rep_senv_l0201_xcsm_forest_object = { "object", 2, 320, 0, t_standard_map_rep_senv_l0201_xcsm_forest_object, 4, NULL, 0 };
+static const t3_bk_group_layout *const groups_standard_map_rep_senv_l0201_xcsm_forest[] = { &g_standard_map_rep_senv_l0201_xcsm_forest_render, &g_standard_map_rep_senv_l0201_xcsm_forest_lightingFrame, &g_standard_map_rep_senv_l0201_xcsm_forest_object };
+static const t3_gen_property p_standard_map_rep_senv_l0201_xcsm_forest[] = {
   { "material.color", 2, 16, 12, false },
   { "material.opacity", 2, 80, 4, false },
   { "material.emissive", 2, 144, 12, false },
@@ -2826,22 +2826,22 @@ static const t3_gen_property p_standard_map_rep_senv_l0201_xcsm_foliage[] = {
   { "scene.environmentRotation", 2, 240, 64, false },
   { "camera.projectionMatrix", 0, 0, 64, false },
 };
-static const t3_gen_attribute a_standard_map_rep_senv_l0201_xcsm_foliage[] = {
+static const t3_gen_attribute a_standard_map_rep_senv_l0201_xcsm_forest[] = {
   { "position", "vec3", 0, false },
   { "uv", "vec2", 1, false },
   { "normal", "vec3", 2, false },
 };
 
-/* ── standard+map+rep+senv+l1001+xfoliage ── */
-static const t3_bk_group_layout g_standard_map_rep_senv_l1001_xfoliage_render = { "render", 0, 304, 0, NULL, 0, NULL, 0 };
-static const t3_bk_texture_layout t_standard_map_rep_senv_l1001_xfoliage_object[] = {
+/* ── standard+map+rep+senv+l1001+xforest ── */
+static const t3_bk_group_layout g_standard_map_rep_senv_l1001_xforest_render = { "render", 0, 304, 0, NULL, 0, NULL, 0 };
+static const t3_bk_texture_layout t_standard_map_rep_senv_l1001_xforest_object[] = {
   { "nodeUniform2", 2, T3_BK_SAMPLE_FLOAT, T3_BK_DIM_2D, true, false, false, "map", 1 },
   { "nodeUniform12", 4, T3_BK_SAMPLE_FLOAT, T3_BK_DIM_2D, true, false, false, "dfg_lut", 3 },
   { "nodeUniform21", 6, T3_BK_SAMPLE_FLOAT, T3_BK_DIM_CUBE, true, false, false, "environment", 5 },
 };
-static const t3_bk_group_layout g_standard_map_rep_senv_l1001_xfoliage_object = { "object", 1, 304, 0, t_standard_map_rep_senv_l1001_xfoliage_object, 3, NULL, 0 };
-static const t3_bk_group_layout *const groups_standard_map_rep_senv_l1001_xfoliage[] = { &g_standard_map_rep_senv_l1001_xfoliage_render, &g_standard_map_rep_senv_l1001_xfoliage_object };
-static const t3_gen_property p_standard_map_rep_senv_l1001_xfoliage[] = {
+static const t3_bk_group_layout g_standard_map_rep_senv_l1001_xforest_object = { "object", 1, 304, 0, t_standard_map_rep_senv_l1001_xforest_object, 3, NULL, 0 };
+static const t3_bk_group_layout *const groups_standard_map_rep_senv_l1001_xforest[] = { &g_standard_map_rep_senv_l1001_xforest_render, &g_standard_map_rep_senv_l1001_xforest_object };
+static const t3_gen_property p_standard_map_rep_senv_l1001_xforest[] = {
   { "material.color", 1, 16, 12, false },
   { "material.opacity", 1, 80, 4, false },
   { "material.emissive", 1, 144, 12, false },
@@ -2866,7 +2866,7 @@ static const t3_gen_property p_standard_map_rep_senv_l1001_xfoliage[] = {
   { "scene.environmentRotation", 1, 224, 64, false },
   { "camera.projectionMatrix", 0, 0, 64, false },
 };
-static const t3_gen_attribute a_standard_map_rep_senv_l1001_xfoliage[] = {
+static const t3_gen_attribute a_standard_map_rep_senv_l1001_xforest[] = {
   { "position", "vec3", 0, false },
   { "uv", "vec2", 1, false },
   { "normal", "vec3", 2, false },
@@ -2964,17 +2964,17 @@ static const t3_gen_attribute a_standard_map_rep_shadow_senv_l1001[] = {
   { "position", "vec3", 2, false },
 };
 
-/* ── standard+map+rep+shadow+senv+l1001+xfoliage ── */
-static const t3_bk_group_layout g_standard_map_rep_shadow_senv_l1001_xfoliage_render = { "render", 0, 400, 0, NULL, 0, NULL, 0 };
-static const t3_bk_texture_layout t_standard_map_rep_shadow_senv_l1001_xfoliage_object[] = {
+/* ── standard+map+rep+shadow+senv+l1001+xforest ── */
+static const t3_bk_group_layout g_standard_map_rep_shadow_senv_l1001_xforest_render = { "render", 0, 400, 0, NULL, 0, NULL, 0 };
+static const t3_bk_texture_layout t_standard_map_rep_shadow_senv_l1001_xforest_object[] = {
   { "nodeUniform2", 2, T3_BK_SAMPLE_FLOAT, T3_BK_DIM_2D, true, false, false, "map", 1 },
   { "nodeUniform12", 4, T3_BK_SAMPLE_FLOAT, T3_BK_DIM_2D, true, false, false, "dfg_lut", 3 },
   { "nodeUniform21", 6, T3_BK_SAMPLE_DEPTH, T3_BK_DIM_2D, true, true, false, "shadow:directional[0]", 5 },
   { "nodeUniform28", 8, T3_BK_SAMPLE_FLOAT, T3_BK_DIM_CUBE, true, false, false, "environment", 7 },
 };
-static const t3_bk_group_layout g_standard_map_rep_shadow_senv_l1001_xfoliage_object = { "object", 1, 304, 0, t_standard_map_rep_shadow_senv_l1001_xfoliage_object, 4, NULL, 0 };
-static const t3_bk_group_layout *const groups_standard_map_rep_shadow_senv_l1001_xfoliage[] = { &g_standard_map_rep_shadow_senv_l1001_xfoliage_render, &g_standard_map_rep_shadow_senv_l1001_xfoliage_object };
-static const t3_gen_property p_standard_map_rep_shadow_senv_l1001_xfoliage[] = {
+static const t3_bk_group_layout g_standard_map_rep_shadow_senv_l1001_xforest_object = { "object", 1, 304, 0, t_standard_map_rep_shadow_senv_l1001_xforest_object, 4, NULL, 0 };
+static const t3_bk_group_layout *const groups_standard_map_rep_shadow_senv_l1001_xforest[] = { &g_standard_map_rep_shadow_senv_l1001_xforest_render, &g_standard_map_rep_shadow_senv_l1001_xforest_object };
+static const t3_gen_property p_standard_map_rep_shadow_senv_l1001_xforest[] = {
   { "material.color", 1, 16, 12, false },
   { "material.opacity", 1, 80, 4, false },
   { "material.emissive", 1, 144, 12, false },
@@ -3005,7 +3005,7 @@ static const t3_gen_property p_standard_map_rep_shadow_senv_l1001_xfoliage[] = {
   { "camera.projectionMatrix", 0, 0, 64, false },
   { "directional[0].shadow.matrix", 0, 304, 64, false },
 };
-static const t3_gen_attribute a_standard_map_rep_shadow_senv_l1001_xfoliage[] = {
+static const t3_gen_attribute a_standard_map_rep_shadow_senv_l1001_xforest[] = {
   { "position", "vec3", 0, false },
   { "uv", "vec2", 1, false },
   { "normal", "vec3", 2, false },
@@ -8478,29 +8478,29 @@ static const t3_gen_program programs[] = {
   { "basic+ds", T3_GEN_BASIC, 4398046511104ull, { 0, 0, 0, 0 }, NULL, T3_GEN_WGPU, groups_basic_ds, 2, p_basic_ds, 5, a_basic_ds, 1, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 0, 1, 0 },
   { "basic+trans", T3_GEN_BASIC, 16ull, { 0, 0, 0, 0 }, NULL, T3_GEN_WGPU, groups_basic_trans, 2, p_basic_trans, 5, a_basic_trans, 1, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 0, 2, 0 },
   { "basic+trans+ds", T3_GEN_BASIC, 4398046511120ull, { 0, 0, 0, 0 }, NULL, T3_GEN_WGPU, groups_basic_trans_ds, 2, p_basic_trans_ds, 5, a_basic_trans_ds, 1, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 0, 2, 0 },
-  { "depth+instbig+xcsm_foliage", T3_GEN_DEPTH, 256ull, { 1, 0, 0, 0 }, "csm_foliage", T3_GEN_WGPU, groups_depth_instbig_xcsm_foliage, 2, p_depth_instbig_xcsm_foliage, 4, a_depth_instbig_xcsm_foliage, 6, k_depth_instbig_xcsm_foliage, 1, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 3, 4, 0 },
-  { "depth+instbig+xcsm_foliage_plain", T3_GEN_DEPTH, 256ull, { 1, 0, 0, 0 }, "csm_foliage_plain", T3_GEN_WGPU, groups_depth_instbig_xcsm_foliage_plain, 2, p_depth_instbig_xcsm_foliage_plain, 4, a_depth_instbig_xcsm_foliage_plain, 6, k_depth_instbig_xcsm_foliage_plain, 1, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 3, 4, 0 },
+  { "depth+instbig+xcsm_forest", T3_GEN_DEPTH, 256ull, { 1, 0, 0, 0 }, "csm_forest", T3_GEN_WGPU, groups_depth_instbig_xcsm_forest, 2, p_depth_instbig_xcsm_forest, 4, a_depth_instbig_xcsm_forest, 6, k_depth_instbig_xcsm_forest, 1, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 3, 4, 0 },
+  { "depth+instbig+xcsm_forest_plain", T3_GEN_DEPTH, 256ull, { 1, 0, 0, 0 }, "csm_forest_plain", T3_GEN_WGPU, groups_depth_instbig_xcsm_forest_plain, 2, p_depth_instbig_xcsm_forest_plain, 4, a_depth_instbig_xcsm_forest_plain, 6, k_depth_instbig_xcsm_forest_plain, 1, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 3, 4, 0 },
   { "depth+instbig+xcsm_plain", T3_GEN_DEPTH, 256ull, { 1, 0, 0, 0 }, "csm_plain", T3_GEN_WGPU, groups_depth_instbig_xcsm_plain, 2, p_depth_instbig_xcsm_plain, 3, a_depth_instbig_xcsm_plain, 6, k_depth_instbig_xcsm_plain, 1, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 5, 6, 0 },
-  { "depth+instbig+xfoliage", T3_GEN_DEPTH, 256ull, { 1, 0, 0, 0 }, "foliage", T3_GEN_WGPU, groups_depth_instbig_xfoliage, 2, p_depth_instbig_xfoliage, 4, a_depth_instbig_xfoliage, 6, k_depth_instbig_xfoliage, 1, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 3, 4, 0 },
+  { "depth+instbig+xforest", T3_GEN_DEPTH, 256ull, { 1, 0, 0, 0 }, "forest", T3_GEN_WGPU, groups_depth_instbig_xforest, 2, p_depth_instbig_xforest, 4, a_depth_instbig_xforest, 6, k_depth_instbig_xforest, 1, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 3, 4, 0 },
   { "depth+instbig+xterrainlow_csm", T3_GEN_DEPTH, 256ull, { 1, 0, 0, 0 }, "terrainlow_csm", T3_GEN_WGPU, groups_depth_instbig_xterrainlow_csm, 3, p_depth_instbig_xterrainlow_csm, 11, a_depth_instbig_xterrainlow_csm, 7, k_depth_instbig_xterrainlow_csm, 1, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 7, 8, 0 },
-  { "depth+xcsm_foliage", T3_GEN_DEPTH, 0ull, { 1, 0, 0, 0 }, "csm_foliage", T3_GEN_WGPU, groups_depth_xcsm_foliage, 2, p_depth_xcsm_foliage, 4, a_depth_xcsm_foliage, 1, k_depth_xcsm_foliage, 1, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 9, 10, 0 },
-  { "depth+xcsm_foliage_plain", T3_GEN_DEPTH, 0ull, { 1, 0, 0, 0 }, "csm_foliage_plain", T3_GEN_WGPU, groups_depth_xcsm_foliage_plain, 2, p_depth_xcsm_foliage_plain, 4, a_depth_xcsm_foliage_plain, 1, k_depth_xcsm_foliage_plain, 1, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 9, 10, 0 },
+  { "depth+xcsm_forest", T3_GEN_DEPTH, 0ull, { 1, 0, 0, 0 }, "csm_forest", T3_GEN_WGPU, groups_depth_xcsm_forest, 2, p_depth_xcsm_forest, 4, a_depth_xcsm_forest, 1, k_depth_xcsm_forest, 1, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 9, 10, 0 },
+  { "depth+xcsm_forest_plain", T3_GEN_DEPTH, 0ull, { 1, 0, 0, 0 }, "csm_forest_plain", T3_GEN_WGPU, groups_depth_xcsm_forest_plain, 2, p_depth_xcsm_forest_plain, 4, a_depth_xcsm_forest_plain, 1, k_depth_xcsm_forest_plain, 1, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 9, 10, 0 },
   { "depth+xcsm_plain", T3_GEN_DEPTH, 0ull, { 1, 0, 0, 0 }, "csm_plain", T3_GEN_WGPU, groups_depth_xcsm_plain, 2, p_depth_xcsm_plain, 3, a_depth_xcsm_plain, 1, k_depth_xcsm_plain, 1, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 11, 12, 0 },
   { "depth+xcsm_plain_rim", T3_GEN_DEPTH, 0ull, { 1, 0, 0, 0 }, "csm_plain_rim", T3_GEN_WGPU, groups_depth_xcsm_plain_rim, 2, p_depth_xcsm_plain_rim, 3, a_depth_xcsm_plain_rim, 1, k_depth_xcsm_plain_rim, 1, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 11, 12, 0 },
   { "depth+xcsm_rim", T3_GEN_DEPTH, 0ull, { 1, 0, 0, 0 }, "csm_rim", T3_GEN_WGPU, groups_depth_xcsm_rim, 2, p_depth_xcsm_rim, 3, a_depth_xcsm_rim, 1, k_depth_xcsm_rim, 1, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 11, 12, 0 },
-  { "depth+xfoliage", T3_GEN_DEPTH, 0ull, { 1, 0, 0, 0 }, "foliage", T3_GEN_WGPU, groups_depth_xfoliage, 2, p_depth_xfoliage, 4, a_depth_xfoliage, 1, k_depth_xfoliage, 1, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 9, 10, 0 },
+  { "depth+xforest", T3_GEN_DEPTH, 0ull, { 1, 0, 0, 0 }, "forest", T3_GEN_WGPU, groups_depth_xforest, 2, p_depth_xforest, 4, a_depth_xforest, 1, k_depth_xforest, 1, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 9, 10, 0 },
   { "depth+xplain", T3_GEN_DEPTH, 0ull, { 1, 0, 0, 0 }, "plain", T3_GEN_WGPU, groups_depth_xplain, 2, p_depth_xplain, 3, a_depth_xplain, 1, k_depth_xplain, 1, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 11, 12, 0 },
   { "standard+instbig+icol+map+rep+senv+l1001", T3_GEN_STANDARD, 35184374186305ull, { 1, 0, 0, 1 }, NULL, T3_GEN_WGPU, groups_standard_instbig_icol_map_rep_senv_l1001, 2, p_standard_instbig_icol_map_rep_senv_l1001, 22, a_standard_instbig_icol_map_rep_senv_l1001, 8, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 13, 14, 0 },
-  { "standard+instbig+icol+map+rep+senv+l1001+xfoliage", T3_GEN_STANDARD, 35184374186305ull, { 1, 0, 0, 1 }, "foliage", T3_GEN_WGPU, groups_standard_instbig_icol_map_rep_senv_l1001_xfoliage, 2, p_standard_instbig_icol_map_rep_senv_l1001_xfoliage, 23, a_standard_instbig_icol_map_rep_senv_l1001_xfoliage, 8, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 15, 16, 0 },
+  { "standard+instbig+icol+map+rep+senv+l1001+xforest", T3_GEN_STANDARD, 35184374186305ull, { 1, 0, 0, 1 }, "forest", T3_GEN_WGPU, groups_standard_instbig_icol_map_rep_senv_l1001_xforest, 2, p_standard_instbig_icol_map_rep_senv_l1001_xforest, 23, a_standard_instbig_icol_map_rep_senv_l1001_xforest, 8, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 15, 16, 0 },
   { "standard+instbig+icol+map+rep+shadow+senv+l1001", T3_GEN_STANDARD, 35184374317377ull, { 1, 0, 0, 1 }, NULL, T3_GEN_WGPU, groups_standard_instbig_icol_map_rep_shadow_senv_l1001, 2, p_standard_instbig_icol_map_rep_shadow_senv_l1001, 28, a_standard_instbig_icol_map_rep_shadow_senv_l1001, 8, NULL, 0, { 0, 0, 0 }, { 1, 0, 0 }, NULL, NULL, &text, 17, 18, 0 },
-  { "standard+instbig+icol+map+rep+shadow+senv+l1001+xfoliage", T3_GEN_STANDARD, 35184374317377ull, { 1, 0, 0, 1 }, "foliage", T3_GEN_WGPU, groups_standard_instbig_icol_map_rep_shadow_senv_l1001_xfoliage, 2, p_standard_instbig_icol_map_rep_shadow_senv_l1001_xfoliage, 29, a_standard_instbig_icol_map_rep_shadow_senv_l1001_xfoliage, 8, NULL, 0, { 0, 0, 0 }, { 1, 0, 0 }, NULL, NULL, &text, 19, 20, 0 },
+  { "standard+instbig+icol+map+rep+shadow+senv+l1001+xforest", T3_GEN_STANDARD, 35184374317377ull, { 1, 0, 0, 1 }, "forest", T3_GEN_WGPU, groups_standard_instbig_icol_map_rep_shadow_senv_l1001_xforest, 2, p_standard_instbig_icol_map_rep_shadow_senv_l1001_xforest, 29, a_standard_instbig_icol_map_rep_shadow_senv_l1001_xforest, 8, NULL, 0, { 0, 0, 0 }, { 1, 0, 0 }, NULL, NULL, &text, 19, 20, 0 },
   { "standard+instbig+icol+senv+l1001", T3_GEN_STANDARD, 35184374186240ull, { 1, 0, 0, 1 }, NULL, T3_GEN_WGPU, groups_standard_instbig_icol_senv_l1001, 2, p_standard_instbig_icol_senv_l1001, 21, a_standard_instbig_icol_senv_l1001, 7, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 21, 22, 0 },
   { "standard+instbig+icol+shadow+senv+l1001", T3_GEN_STANDARD, 35184374317312ull, { 1, 0, 0, 1 }, NULL, T3_GEN_WGPU, groups_standard_instbig_icol_shadow_senv_l1001, 2, p_standard_instbig_icol_shadow_senv_l1001, 27, a_standard_instbig_icol_shadow_senv_l1001, 7, NULL, 0, { 0, 0, 0 }, { 1, 0, 0 }, NULL, NULL, &text, 23, 24, 0 },
-  { "standard+instbig+map+rep+senv+l0001+xcsm_foliage", T3_GEN_STANDARD, 2097473ull, { 0, 0, 0, 1 }, "csm_foliage", T3_GEN_WGPU, groups_standard_instbig_map_rep_senv_l0001_xcsm_foliage, 3, p_standard_instbig_map_rep_senv_l0001_xcsm_foliage, 31, a_standard_instbig_map_rep_senv_l0001_xcsm_foliage, 7, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 25, 26, 0 },
+  { "standard+instbig+map+rep+senv+l0001+xcsm_forest", T3_GEN_STANDARD, 2097473ull, { 0, 0, 0, 1 }, "csm_forest", T3_GEN_WGPU, groups_standard_instbig_map_rep_senv_l0001_xcsm_forest, 3, p_standard_instbig_map_rep_senv_l0001_xcsm_forest, 31, a_standard_instbig_map_rep_senv_l0001_xcsm_forest, 7, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 25, 26, 0 },
   { "standard+instbig+map+rep+senv+l1001", T3_GEN_STANDARD, 2097473ull, { 1, 0, 0, 1 }, NULL, T3_GEN_WGPU, groups_standard_instbig_map_rep_senv_l1001, 2, p_standard_instbig_map_rep_senv_l1001, 22, a_standard_instbig_map_rep_senv_l1001, 7, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 27, 28, 0 },
-  { "standard+instbig+map+rep+senv+l1001+xfoliage", T3_GEN_STANDARD, 2097473ull, { 1, 0, 0, 1 }, "foliage", T3_GEN_WGPU, groups_standard_instbig_map_rep_senv_l1001_xfoliage, 2, p_standard_instbig_map_rep_senv_l1001_xfoliage, 23, a_standard_instbig_map_rep_senv_l1001_xfoliage, 7, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 29, 30, 0 },
+  { "standard+instbig+map+rep+senv+l1001+xforest", T3_GEN_STANDARD, 2097473ull, { 1, 0, 0, 1 }, "forest", T3_GEN_WGPU, groups_standard_instbig_map_rep_senv_l1001_xforest, 2, p_standard_instbig_map_rep_senv_l1001_xforest, 23, a_standard_instbig_map_rep_senv_l1001_xforest, 7, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 29, 30, 0 },
   { "standard+instbig+map+rep+shadow+senv+l1001", T3_GEN_STANDARD, 2228545ull, { 1, 0, 0, 1 }, NULL, T3_GEN_WGPU, groups_standard_instbig_map_rep_shadow_senv_l1001, 2, p_standard_instbig_map_rep_shadow_senv_l1001, 28, a_standard_instbig_map_rep_shadow_senv_l1001, 7, NULL, 0, { 0, 0, 0 }, { 1, 0, 0 }, NULL, NULL, &text, 31, 32, 0 },
-  { "standard+instbig+map+rep+shadow+senv+l1001+xfoliage", T3_GEN_STANDARD, 2228545ull, { 1, 0, 0, 1 }, "foliage", T3_GEN_WGPU, groups_standard_instbig_map_rep_shadow_senv_l1001_xfoliage, 2, p_standard_instbig_map_rep_shadow_senv_l1001_xfoliage, 29, a_standard_instbig_map_rep_shadow_senv_l1001_xfoliage, 7, NULL, 0, { 0, 0, 0 }, { 1, 0, 0 }, NULL, NULL, &text, 33, 34, 0 },
+  { "standard+instbig+map+rep+shadow+senv+l1001+xforest", T3_GEN_STANDARD, 2228545ull, { 1, 0, 0, 1 }, "forest", T3_GEN_WGPU, groups_standard_instbig_map_rep_shadow_senv_l1001_xforest, 2, p_standard_instbig_map_rep_shadow_senv_l1001_xforest, 29, a_standard_instbig_map_rep_shadow_senv_l1001_xforest, 7, NULL, 0, { 0, 0, 0 }, { 1, 0, 0 }, NULL, NULL, &text, 33, 34, 0 },
   { "standard+instbig+senv+icol+l0001+xcsm_plain", T3_GEN_STANDARD, 35184374186240ull, { 0, 0, 0, 1 }, "csm_plain", T3_GEN_WGPU, groups_standard_instbig_senv_icol_l0001_xcsm_plain, 3, p_standard_instbig_senv_icol_l0001_xcsm_plain, 29, a_standard_instbig_senv_icol_l0001_xcsm_plain, 7, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 35, 36, 0 },
   { "standard+instbig+senv+icol+l0201+xcsm", T3_GEN_STANDARD, 35184374186240ull, { 0, 2, 0, 1 }, "csm", T3_GEN_WGPU, groups_standard_instbig_senv_icol_l0201_xcsm, 3, p_standard_instbig_senv_icol_l0201_xcsm, 37, a_standard_instbig_senv_icol_l0201_xcsm, 7, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 37, 38, 0 },
   { "standard+instbig+senv+l0001+xcsm", T3_GEN_STANDARD, 2097408ull, { 0, 0, 0, 1 }, "csm", T3_GEN_WGPU, groups_standard_instbig_senv_l0001_xcsm, 3, p_standard_instbig_senv_l0001_xcsm, 29, a_standard_instbig_senv_l0001_xcsm, 6, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 39, 40, 0 },
@@ -8517,10 +8517,10 @@ static const t3_gen_program programs[] = {
   { "standard+instbig+shadow+senv+l1001", T3_GEN_STANDARD, 2228480ull, { 1, 0, 0, 1 }, NULL, T3_GEN_WGPU, groups_standard_instbig_shadow_senv_l1001, 2, p_standard_instbig_shadow_senv_l1001, 27, a_standard_instbig_shadow_senv_l1001, 6, NULL, 0, { 0, 0, 0 }, { 1, 0, 0 }, NULL, NULL, &text, 59, 60, 0 },
   { "standard+instbig+shadow+senv+l1001+xterrainfar_plain", T3_GEN_STANDARD, 2228480ull, { 1, 0, 0, 1 }, "terrainfar_plain", T3_GEN_WGPU, groups_standard_instbig_shadow_senv_l1001_xterrainfar_plain, 3, p_standard_instbig_shadow_senv_l1001_xterrainfar_plain, 32, a_standard_instbig_shadow_senv_l1001_xterrainfar_plain, 7, NULL, 0, { 0, 0, 0 }, { 1, 0, 0 }, NULL, NULL, &text, 61, 62, 0 },
   { "standard+instbig+shadow+senv+l1001+xterrainmin_plain", T3_GEN_STANDARD, 2228480ull, { 1, 0, 0, 1 }, "terrainmin_plain", T3_GEN_WGPU, groups_standard_instbig_shadow_senv_l1001_xterrainmin_plain, 3, p_standard_instbig_shadow_senv_l1001_xterrainmin_plain, 35, a_standard_instbig_shadow_senv_l1001_xterrainmin_plain, 7, NULL, 0, { 0, 0, 0 }, { 1, 0, 0 }, NULL, NULL, &text, 63, 64, 0 },
-  { "standard+map+rep+instbig+senv+icol+l0001+xcsm_foliage_plain", T3_GEN_STANDARD, 35184374186305ull, { 0, 0, 0, 1 }, "csm_foliage_plain", T3_GEN_WGPU, groups_standard_map_rep_instbig_senv_icol_l0001_xcsm_foliage_plain, 3, p_standard_map_rep_instbig_senv_icol_l0001_xcsm_foliage_plain, 31, a_standard_map_rep_instbig_senv_icol_l0001_xcsm_foliage_plain, 8, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 65, 66, 0 },
+  { "standard+map+rep+instbig+senv+icol+l0001+xcsm_forest_plain", T3_GEN_STANDARD, 35184374186305ull, { 0, 0, 0, 1 }, "csm_forest_plain", T3_GEN_WGPU, groups_standard_map_rep_instbig_senv_icol_l0001_xcsm_forest_plain, 3, p_standard_map_rep_instbig_senv_icol_l0001_xcsm_forest_plain, 31, a_standard_map_rep_instbig_senv_icol_l0001_xcsm_forest_plain, 8, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 65, 66, 0 },
   { "standard+map+rep+instbig+senv+icol+l0001+xcsm_plain", T3_GEN_STANDARD, 35184374186305ull, { 0, 0, 0, 1 }, "csm_plain", T3_GEN_WGPU, groups_standard_map_rep_instbig_senv_icol_l0001_xcsm_plain, 3, p_standard_map_rep_instbig_senv_icol_l0001_xcsm_plain, 30, a_standard_map_rep_instbig_senv_icol_l0001_xcsm_plain, 8, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 67, 68, 0 },
   { "standard+map+rep+instbig+senv+icol+l0201+xcsm", T3_GEN_STANDARD, 35184374186305ull, { 0, 2, 0, 1 }, "csm", T3_GEN_WGPU, groups_standard_map_rep_instbig_senv_icol_l0201_xcsm, 3, p_standard_map_rep_instbig_senv_icol_l0201_xcsm, 38, a_standard_map_rep_instbig_senv_icol_l0201_xcsm, 8, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 69, 70, 0 },
-  { "standard+map+rep+instbig+senv+icol+l0201+xcsm_foliage", T3_GEN_STANDARD, 35184374186305ull, { 0, 2, 0, 1 }, "csm_foliage", T3_GEN_WGPU, groups_standard_map_rep_instbig_senv_icol_l0201_xcsm_foliage, 3, p_standard_map_rep_instbig_senv_icol_l0201_xcsm_foliage, 39, a_standard_map_rep_instbig_senv_icol_l0201_xcsm_foliage, 8, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 71, 72, 0 },
+  { "standard+map+rep+instbig+senv+icol+l0201+xcsm_forest", T3_GEN_STANDARD, 35184374186305ull, { 0, 2, 0, 1 }, "csm_forest", T3_GEN_WGPU, groups_standard_map_rep_instbig_senv_icol_l0201_xcsm_forest, 3, p_standard_map_rep_instbig_senv_icol_l0201_xcsm_forest, 39, a_standard_map_rep_instbig_senv_icol_l0201_xcsm_forest, 8, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 71, 72, 0 },
   { "standard+map+rep+instbig+senv+l0001+xcsm_plain", T3_GEN_STANDARD, 2097473ull, { 0, 0, 0, 1 }, "csm_plain", T3_GEN_WGPU, groups_standard_map_rep_instbig_senv_l0001_xcsm_plain, 3, p_standard_map_rep_instbig_senv_l0001_xcsm_plain, 30, a_standard_map_rep_instbig_senv_l0001_xcsm_plain, 7, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 73, 74, 0 },
   { "standard+map+rep+instbig+senv+l0201+xcsm", T3_GEN_STANDARD, 2097473ull, { 0, 2, 0, 1 }, "csm", T3_GEN_WGPU, groups_standard_map_rep_instbig_senv_l0201_xcsm, 3, p_standard_map_rep_instbig_senv_l0201_xcsm, 38, a_standard_map_rep_instbig_senv_l0201_xcsm, 7, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 75, 76, 0 },
   { "standard+map+rep+nmap+rmap+mmap+senv+ds+l0001+xcsm_plain", T3_GEN_STANDARD, 4398048621121ull, { 0, 0, 0, 1 }, "csm_plain", T3_GEN_WGPU, groups_standard_map_rep_nmap_rmap_mmap_senv_ds_l0001_xcsm_plain, 3, p_standard_map_rep_nmap_rmap_mmap_senv_ds_l0001_xcsm_plain, 34, a_standard_map_rep_nmap_rmap_mmap_senv_ds_l0001_xcsm_plain, 3, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 77, 78, 0 },
@@ -8533,14 +8533,14 @@ static const t3_gen_program programs[] = {
   { "standard+map+rep+senv+ds+l0001+xcsm", T3_GEN_STANDARD, 4398048608321ull, { 0, 0, 0, 1 }, "csm", T3_GEN_WGPU, groups_standard_map_rep_senv_ds_l0001_xcsm, 3, p_standard_map_rep_senv_ds_l0001_xcsm, 30, a_standard_map_rep_senv_ds_l0001_xcsm, 3, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 91, 92, 0 },
   { "standard+map+rep+senv+ds+l0001+xcsm_plain", T3_GEN_STANDARD, 4398048608321ull, { 0, 0, 0, 1 }, "csm_plain", T3_GEN_WGPU, groups_standard_map_rep_senv_ds_l0001_xcsm_plain, 3, p_standard_map_rep_senv_ds_l0001_xcsm_plain, 30, a_standard_map_rep_senv_ds_l0001_xcsm_plain, 3, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 93, 94, 0 },
   { "standard+map+rep+senv+ds+l0001+xcsm_rim", T3_GEN_STANDARD, 4398048608321ull, { 0, 0, 0, 1 }, "csm_rim", T3_GEN_WGPU, groups_standard_map_rep_senv_ds_l0001_xcsm_rim, 3, p_standard_map_rep_senv_ds_l0001_xcsm_rim, 32, a_standard_map_rep_senv_ds_l0001_xcsm_rim, 3, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 95, 96, 0 },
-  { "standard+map+rep+senv+l0001+xcsm_foliage_plain", T3_GEN_STANDARD, 2097217ull, { 0, 0, 0, 1 }, "csm_foliage_plain", T3_GEN_WGPU, groups_standard_map_rep_senv_l0001_xcsm_foliage_plain, 3, p_standard_map_rep_senv_l0001_xcsm_foliage_plain, 31, a_standard_map_rep_senv_l0001_xcsm_foliage_plain, 3, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 97, 98, 0 },
+  { "standard+map+rep+senv+l0001+xcsm_forest_plain", T3_GEN_STANDARD, 2097217ull, { 0, 0, 0, 1 }, "csm_forest_plain", T3_GEN_WGPU, groups_standard_map_rep_senv_l0001_xcsm_forest_plain, 3, p_standard_map_rep_senv_l0001_xcsm_forest_plain, 31, a_standard_map_rep_senv_l0001_xcsm_forest_plain, 3, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 97, 98, 0 },
   { "standard+map+rep+senv+l0001+xcsm_plain", T3_GEN_STANDARD, 2097217ull, { 0, 0, 0, 1 }, "csm_plain", T3_GEN_WGPU, groups_standard_map_rep_senv_l0001_xcsm_plain, 3, p_standard_map_rep_senv_l0001_xcsm_plain, 30, a_standard_map_rep_senv_l0001_xcsm_plain, 3, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 93, 99, 0 },
   { "standard+map+rep+senv+l0201+xcsm", T3_GEN_STANDARD, 2097217ull, { 0, 2, 0, 1 }, "csm", T3_GEN_WGPU, groups_standard_map_rep_senv_l0201_xcsm, 3, p_standard_map_rep_senv_l0201_xcsm, 38, a_standard_map_rep_senv_l0201_xcsm, 3, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 100, 101, 0 },
-  { "standard+map+rep+senv+l0201+xcsm_foliage", T3_GEN_STANDARD, 2097217ull, { 0, 2, 0, 1 }, "csm_foliage", T3_GEN_WGPU, groups_standard_map_rep_senv_l0201_xcsm_foliage, 3, p_standard_map_rep_senv_l0201_xcsm_foliage, 39, a_standard_map_rep_senv_l0201_xcsm_foliage, 3, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 102, 103, 0 },
-  { "standard+map+rep+senv+l1001+xfoliage", T3_GEN_STANDARD, 2097217ull, { 1, 0, 0, 1 }, "foliage", T3_GEN_WGPU, groups_standard_map_rep_senv_l1001_xfoliage, 2, p_standard_map_rep_senv_l1001_xfoliage, 23, a_standard_map_rep_senv_l1001_xfoliage, 3, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 104, 105, 0 },
+  { "standard+map+rep+senv+l0201+xcsm_forest", T3_GEN_STANDARD, 2097217ull, { 0, 2, 0, 1 }, "csm_forest", T3_GEN_WGPU, groups_standard_map_rep_senv_l0201_xcsm_forest, 3, p_standard_map_rep_senv_l0201_xcsm_forest, 39, a_standard_map_rep_senv_l0201_xcsm_forest, 3, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 102, 103, 0 },
+  { "standard+map+rep+senv+l1001+xforest", T3_GEN_STANDARD, 2097217ull, { 1, 0, 0, 1 }, "forest", T3_GEN_WGPU, groups_standard_map_rep_senv_l1001_xforest, 2, p_standard_map_rep_senv_l1001_xforest, 23, a_standard_map_rep_senv_l1001_xforest, 3, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 104, 105, 0 },
   { "standard+map+rep+shadow+senv+ds+l1001", T3_GEN_STANDARD, 4398048739393ull, { 1, 0, 0, 1 }, NULL, T3_GEN_WGPU, groups_standard_map_rep_shadow_senv_ds_l1001, 2, p_standard_map_rep_shadow_senv_ds_l1001, 28, a_standard_map_rep_shadow_senv_ds_l1001, 3, NULL, 0, { 0, 0, 0 }, { 1, 0, 0 }, NULL, NULL, &text, 106, 107, 0 },
   { "standard+map+rep+shadow+senv+l1001", T3_GEN_STANDARD, 2228289ull, { 1, 0, 0, 1 }, NULL, T3_GEN_WGPU, groups_standard_map_rep_shadow_senv_l1001, 2, p_standard_map_rep_shadow_senv_l1001, 28, a_standard_map_rep_shadow_senv_l1001, 3, NULL, 0, { 0, 0, 0 }, { 1, 0, 0 }, NULL, NULL, &text, 106, 108, 0 },
-  { "standard+map+rep+shadow+senv+l1001+xfoliage", T3_GEN_STANDARD, 2228289ull, { 1, 0, 0, 1 }, "foliage", T3_GEN_WGPU, groups_standard_map_rep_shadow_senv_l1001_xfoliage, 2, p_standard_map_rep_shadow_senv_l1001_xfoliage, 29, a_standard_map_rep_shadow_senv_l1001_xfoliage, 3, NULL, 0, { 0, 0, 0 }, { 1, 0, 0 }, NULL, NULL, &text, 109, 110, 0 },
+  { "standard+map+rep+shadow+senv+l1001+xforest", T3_GEN_STANDARD, 2228289ull, { 1, 0, 0, 1 }, "forest", T3_GEN_WGPU, groups_standard_map_rep_shadow_senv_l1001_xforest, 2, p_standard_map_rep_shadow_senv_l1001_xforest, 29, a_standard_map_rep_shadow_senv_l1001_xforest, 3, NULL, 0, { 0, 0, 0 }, { 1, 0, 0 }, NULL, NULL, &text, 109, 110, 0 },
   { "standard+map+rep+shadow+senv+l1001+xplain", T3_GEN_STANDARD, 2228289ull, { 1, 0, 0, 1 }, "plain", T3_GEN_WGPU, groups_standard_map_rep_shadow_senv_l1001_xplain, 2, p_standard_map_rep_shadow_senv_l1001_xplain, 28, a_standard_map_rep_shadow_senv_l1001_xplain, 3, NULL, 0, { 0, 0, 0 }, { 1, 0, 0 }, NULL, NULL, &text, 111, 112, 0 },
   { "standard+map+trans+senv+l0201+xcsm_meshdecal", T3_GEN_STANDARD, 2097169ull, { 0, 2, 0, 1 }, "csm_meshdecal", T3_GEN_WGPU, groups_standard_map_trans_senv_l0201_xcsm_meshdecal, 3, p_standard_map_trans_senv_l0201_xcsm_meshdecal, 38, a_standard_map_trans_senv_l0201_xcsm_meshdecal, 4, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 113, 114, 0 },
   { "standard+map+trans+senv+l1001+xmeshdecal", T3_GEN_STANDARD, 2097169ull, { 1, 0, 0, 1 }, "meshdecal", T3_GEN_WGPU, groups_standard_map_trans_senv_l1001_xmeshdecal, 2, p_standard_map_trans_senv_l1001_xmeshdecal, 22, a_standard_map_trans_senv_l1001_xmeshdecal, 4, NULL, 0, { 0, 0, 0 }, { 0, 0, 0 }, NULL, NULL, &text, 115, 116, 0 },

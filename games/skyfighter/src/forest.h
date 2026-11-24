@@ -16,7 +16,7 @@ static void forest_frame(float dt) {
   if(G.state!=PAUSED)forest_clock+=dt;
   if(G.state==PLAY&&G.ticks%12==0)forest_lod_update();
   t3_renderer *r=cw_render3d_renderer(G.tree);
-  if(r&&r!=forest_renderer){forest_renderer=r;cw_shading_part(r,"foliage",forest_uniforms,NULL);cw_shading_part_batching(r,"foliage",true);}
+  if(r&&r!=forest_renderer){forest_renderer=r;cw_shading_part(r,"forest",forest_uniforms,NULL);cw_shading_part_batching(r,"forest",true);}
 }
 static void forest_setup(void) {
   forest_frame(0);if(forest_bark)return;
@@ -25,7 +25,7 @@ static void forest_setup(void) {
   forest_bark=campaign_mat(0x8b8171,0);forest_bark->roughness=.94f;t3_material_set_map(forest_bark,maps[0]);
   for(int species=0;species<4;species++)for(int snowy=0;snowy<2;snowy++){
     t3_material *m=forest_leaf[species][snowy]=campaign_mat(snowy?0xffffff:species==1?0xa4b87c:species<2?0x96ad72:0xa3b69a,0);m->roughness=.9f;
-    t3_material_set_map(m,maps[snowy?3:species<2?1:2]);cw_shading_add(m,"foliage");
+    t3_material_set_map(m,maps[snowy?3:species<2?1:2]);cw_shading_add(m,"forest");
   }
   for(int lod=0;lod<2;lod++)for(int model=0;model<8;model++)for(int part=0;part<2;part++){
     const struct tree_mesh_data *d=&tree_data[lod*16+model*2+part];t3_geometry *g=forest_geometry[lod][model][part]=t3_geometry_new();

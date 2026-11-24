@@ -1,6 +1,6 @@
 // Small coherent crown motion plus local flutter, captured for WebGPU and GL.
 // Geometry stays fully three-dimensional; no camera-facing tree cards.
-export const name='foliage';
+export const name='forest';
 export async function apply({TSL,mat,props,sentinel,kind}){
  const {uniform,float,vec3,positionLocal,normalLocal,normalWorld,instanceIndex,sin,cos,clamp,pow,max,dot,materialColor,materialEmissive,materialOpacity,texture,uv,smoothstep}=TSL;
  const seed=sentinel(),time=uniform(seed).setName('forestTime');props['ext.forestTime']={kind:'f32',value:[seed]};

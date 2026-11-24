@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.40.0
+
+- Sky fighter: its own tree shading part (crown sway, flutter, leaf gaps, back light) is now named `forest`
+  (`shaders/forest.mjs`), so it no longer shares a name with the engine's built-in `foliage` part (cartwheel-engine
+  v0.71.0 and later). The picture is unchanged: Country Fair 300 frames into the sortie is the same to the pixel on GL
+  and on WebGPU before and after.
+
 ## 0.39.0
 
 - Engine v0.57.2 (from v0.53.4). What it changes in these games:
