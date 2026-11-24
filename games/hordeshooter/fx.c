@@ -239,7 +239,9 @@ static const char *const FIREP[] = { "amount", "70", "lifetime", "1.1", "lifetim
   "emission_shape", "SPHERE", "emission_radius", "0.9", "direction", "vec3(0, 1, 0)", "spread", "25", "speed_min", "0.8", "speed_max", "2.6",
   "gravity", "vec3(0, 3, 0)", "damping", "1", "size", "0.9", "size_random", "0.4", "size_curve", "\"0 0.5, 0.3 1, 1 0.1\"",
   "color_ramp", "\"0 1 0.8 0.4 1, 0.3 1 0.45 0.08 0.9, 1 0.3 0.04 0.02 0\"", "energy", "2.2", "blend", "ADD",
-  "texture", "\"fx/fire.png\"", "motion_texture", "\"fx/fire_mv.png\"", "hframes", "8", "vframes", "8", "spin", "0.6",
+  "texture", "\"fx/fire.png\"", "motion_texture", "\"fx/fire_mv.png\"", "hframes", "8", "vframes", "8",
+  /* the flipbook's tongues stand upright on screen (start angle 0, no random turn) and lean only a little as they rise */
+  "angle", "0", "angle_random", "0", "spin", "0.12",
   "turbulence", "1.4", "turbulence_scale", "0.5", NULL };
 
 /* one pooled Explosion3D: its parts are children (parents before sub-emitters) */

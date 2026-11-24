@@ -16,6 +16,9 @@ player on screen.
 | take upgrade 1 / 2 / 3 | 1 / 2 / 3 | X / Y / B |
 | pause | Escape | Start |
 
+The pause menu's Restart run starts the run over from floor 1, wave 1, with the
+same players.
+
 Players 2 to 4 use pads 2 to 4. Join on the title screen.
 
 - Kill things, grab the gems they drop (cyan; a richer gem is bigger and green,

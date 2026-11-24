@@ -267,10 +267,23 @@ static void start(int players, void *u) {
     G.mult[i] = G.best_mult[i] = 1, G.mscore[i] = 0, G.mult100[i] = 100, G.downs[i] = 0, G.last_score[i] = 0, G.last_hurt[i] = -1, G.downed_by[i] = -1, G.guns[i] = 0;
 }
 
+/* the pause menu's own item: the run from its start (floor 1, wave 1, no upgrades), with the same seats. sw no_restart 1
+ * (a test switch) makes the item do nothing: the pause gate's control */
+static bool g_sw_no_restart;
+static int32_t g_restarts;
+static void pause_item(int index, void *u) {
+  (void)u;
+  if (index != 0 || g_sw_no_restart) return;
+  g_force_wave = 0;
+  start(G.players, NULL);
+  g_restarts++;
+}
+
 static void cmd_sw(int argc, const char **argv, cw_reply *r) {
   if (argc >= 3 && !strcmp(argv[1], "idle_crew")) { G.sw_idle_crew = atoi(argv[2]) != 0; cw_reply_printf(r, "{\"idle_crew\":%d}", G.sw_idle_crew); return; }
   if (argc >= 3 && !strcmp(argv[1], "no_marker")) { G.sw_no_marker = atoi(argv[2]) != 0; cw_reply_printf(r, "{\"no_marker\":%d}", G.sw_no_marker); return; }
-  cw_reply_error(r, "usage: sw idle_crew <0|1> | sw no_marker <0|1>");
+  if (argc >= 3 && !strcmp(argv[1], "no_restart")) { g_sw_no_restart = atoi(argv[2]) != 0; cw_reply_printf(r, "{\"no_restart\":%d}", g_sw_no_restart); return; }
+  cw_reply_error(r, "usage: sw idle_crew <0|1> | sw no_marker <0|1> | sw no_restart <0|1>");
 }
 
 #ifdef HORDE_AUTOPILOT
@@ -314,6 +327,7 @@ static void init(void *u) {
   G.pick[0] = cw_action_find("pick1"), G.pick[1] = cw_action_find("pick2"), G.pick[2] = cw_action_find("pick3");
   cw_shell_init(&(cw_shell_desc){ .title = "HORDE", .subtitle = "hold the yard together", .max_players = MAXP,
                                   .game_save_size = sizeof(save_data), .game_save_version = 1, .start = start,
+                                  .pause_items = { "Restart run" }, .pause_item = pause_item,
                                   .sound = shell_sound, .screen_changed = shell_screen });
   font = cw_ui_font_sans();
   cw_quality_full_resolution(true); /* no preset and no Auto step draws the yard below the output size: no upscaling */
@@ -343,6 +357,7 @@ static void init(void *u) {
   cw_debug_field("nc.look", G.look, CW_DBG_F32, NC_LOOK);
   cw_debug_command("sw", "sw idle_crew <0|1>: the old rules for a seat nobody plays (the horde sized for it, the team box and the tether held by it); sw no_marker <0|1>: no STEP IN marker over the open hatch (test switches)", cmd_sw);
   cw_debug_i32("game.ticks", &G.ticks);
+  cw_debug_i32("game.restarts", &g_restarts); /* runs started over from the pause menu */
   cw_debug_i32("game.wave", &G.wave);
   cw_debug_i32("game.enemies", &G.enemies);
   cw_debug_i32("game.kills", &G.kills);
