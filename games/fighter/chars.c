@@ -5,13 +5,16 @@
  * what you see is exactly what the rules do (startup winds up, active frames hold the strike, recovery returns). The
  * skeleton's joint positions are the table the hitboxes were drawn against (the generator uses the same numbers), so
  * the training overlay still lines up with fists and feet. Hands close into fists or open (grabs, palm thrusts, hurt and
- * knockdown) through the finger bones. Hair, headband tails, coat skirts and bellies swing on springs (secondary.c).
+ * knockdown) through the finger bones. Hair and headband tails swing on the engine's SpringBone3D, kept off the head,
+ * neck and shoulders by shapes on those bones; a long coat's skirt hangs on five bone chains that a second SpringBone3D
+ * moves in skirt mode, kept outside the legs (model_springs). Bellies wobble on a spring of the game's own (secondary.c).
  * Everything here only reads the sim; nothing feeds back. */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
 
+#include "cartwheel/ik.h"
 #include "cartwheel/morph.h"
 
 #include "cartwheel/resource.h"
@@ -56,6 +59,8 @@ struct fighter_model {
   t3_vec3 hips_rest;
   float cur[JN][3], root_off[3], yaw, tilt, fist[2], claw[2];
   spring_rig springs;
+  cw_node hair, skirt; /* SpringBone3D modifiers under the model's node (cartwheel/ik.h), none when the model has no such bones */
+  float hang;         /* the skirt's skirt_hang as last set */
   int last_state, last_stun;
   bool inited;
 };
@@ -79,6 +84,63 @@ bool models_preload(void) {
     if (!cw_res_gltf(RES[d])) { cw_error("fighter: %s did not load", path); return false; }
   }
   return true;
+}
+
+/* ── secondary motion: the engine's SpringBone3D ───────────────────────── */
+static cw_node sb_add(cw_node parent, const char *type, const char *name) { cw_node n = cw_node_new(type, name); cw_node_add_child(parent, n); return n; }
+static void sb_chain(cw_node sb, const char *name, const char *root, const char *end, float stiff, float damp, float grav, float radius, float max_angle) {
+  cw_node c = sb_add(sb, "SpringBoneChain3D", name);
+  cw_node_set(c, "root_bone", cw_val_string(root));
+  cw_node_set(c, "end_bone", cw_val_string(end));
+  cw_node_set(c, "stiffness", cw_val_float(stiff));
+  cw_node_set(c, "damping", cw_val_float(damp));
+  cw_node_set(c, "gravity_strength", cw_val_float(grav));
+  cw_node_set(c, "radius", cw_val_float(radius));
+  cw_node_set(c, "max_angle", cw_val_float(max_angle));
+}
+/* a shape on a bone, offsets in metres along the model's own axes from the bone's origin (y up, z forward) */
+static void sb_shape(cw_node sb, const char *name, const char *bone, float r, t3_vec3 a, const t3_vec3 *tail) {
+  cw_node c = sb_add(sb, "SpringBoneCollision3D", name);
+  cw_node_set(c, "bone", cw_val_string(bone));
+  cw_node_set(c, "shape", cw_val_enum(tail ? "CAPSULE" : "SPHERE"));
+  cw_node_set(c, "radius", cw_val_float(r));
+  cw_node_set(c, "offset", cw_val_vec3(a.x, a.y, a.z));
+  if (tail) cw_node_set(c, "tail", cw_val_vec3(tail->x, tail->y, tail->z));
+}
+static t3_vec3 bone_off(t3_object *root, const char *name) { t3_object *b = t3_object_get_by_name(root, name); return b ? b->position : (t3_vec3){ 0, 0, 0 }; }
+/* hair (HairA to HairB: a ponytail, spiky hair, a headband's tails) swings off the head and stays out of the head, neck
+ * and shoulders; a long coat's skirt (Skirt0..Skirt4, tools/make-characters.mjs) is one garment open at the front,
+ * kept outside the thighs, shins and feet. The stance is wide and the kicks long, so the skirt may stretch to twice its
+ * hang (skirt_stretch 1); a lunge pitching the hips does not stand it out in front (skirt_hang 1, the default), and a
+ * body on its back lets it lie along the legs (model_pose eases skirt_hang to 0 as the hips tip over: hung plumb, the
+ * coat of a body lying on the floor would hang straight down through it). */
+static void model_springs(fighter_model *m) {
+  float sc = m->sp->scale;
+  if (t3_object_get_by_name(m->root, "HairB")) {
+    cw_node sb = m->hair = sb_add(m->node, "SpringBone3D", "Hair");
+    sb_chain(sb, "Tail", "HairA", "HairB", 130, 16, 4, 0.02f, 0.9f); /* near critical damping and a 50 degree swing: a blow that snaps the head does not stand the tail on end */
+    t3_vec3 neck = bone_off(m->root, "Head"), sh = { 0, 0.15f * sc, -0.02f * sc };
+    sb_shape(sb, "Skull", "Head", 0.105f * sc, (t3_vec3){ 0, 0.1f * sc, 0.01f * sc }, NULL);
+    sb_shape(sb, "Neck", "Neck", 0.055f * sc, (t3_vec3){ 0, 0, 0 }, &neck);
+    sb_shape(sb, "Back", "Chest", 0.11f * sc * m->sp->bulk, (t3_vec3){ 0, 0, -0.02f * sc }, &sh);
+  }
+  if (t3_object_get_by_name(m->root, "Skirt0_0")) {
+    cw_node sb = m->skirt = sb_add(m->node, "SpringBone3D", "Skirt");
+    cw_node_set(sb, "skirt", cw_val_enum("OPEN"));
+    cw_node_set(sb, "skirt_stretch", cw_val_float(1));
+    char root[16], end[16], nm[16];
+    for (int i = 0; i < 5; i++) {
+      snprintf(root, sizeof root, "Skirt%d_0", i), snprintf(end, sizeof end, "Skirt%d_2", i), snprintf(nm, sizeof nm, "Panel%d", i);
+      sb_chain(sb, nm, root, end, 240, 6, 2, 0.025f, 2);
+    }
+    for (int s = 0; s < 2; s++) {
+      const char *thigh = s ? "UpperLegR" : "UpperLegL", *shin = s ? "LowerLegR" : "LowerLegL", *foot = s ? "FootR" : "FootL";
+      t3_vec3 knee = bone_off(m->root, shin), ankle = bone_off(m->root, foot), toe = { 0, -0.05f * sc, 0.15f * sc };
+      sb_shape(sb, s ? "ThighR" : "ThighL", thigh, 0.085f * sc, (t3_vec3){ 0, -0.06f * sc, 0 }, &knee);
+      sb_shape(sb, s ? "ShinR" : "ShinL", shin, 0.07f * sc, (t3_vec3){ 0, -0.02f * sc, 0 }, &ankle);
+      sb_shape(sb, s ? "FootR" : "FootL", foot, 0.05f * sc, (t3_vec3){ 0, -0.01f * sc, -0.02f * sc }, &toe);
+    }
+  }
 }
 
 fighter_model *model_new(int def, cw_node parent) {
@@ -109,6 +171,8 @@ fighter_model *model_new(int def, cw_node parent) {
   cw_node3d_set_object(m->node, m->root);
   t3_release(m->root); /* the node holds it */
   cw_node_set(m->node, "interpolate", cw_val_bool(false));
+  m->hang = 1;
+  model_springs(m);
   return m;
 }
 
@@ -124,6 +188,8 @@ void model_reset(fighter_model *m) {
   m->showcase = 0;
   m->last_state = 0; m->last_stun = 0;
   sb_reset(&m->springs);
+  if (cw_node_valid(m->hair)) cw_spring_bone3d_reset(m->hair);
+  if (cw_node_valid(m->skirt)) cw_spring_bone3d_reset(m->skirt);
 }
 /* the node's visible flag (the scene tree writes it to the object every frame: setting the object alone does nothing) */
 void model_set_visible(fighter_model *m, bool v) { if (m) { cw_node_set(m->node, "visible", cw_val_bool(v)); m->root->visible = v; } }
@@ -136,7 +202,21 @@ t3_vec3 model_joint(fighter_model *m, int j) {
   const t3_mat4 *w = &m->bones[MAP[j]]->matrix_world;
   return (t3_vec3){ w->e[12], w->e[13], w->e[14] };
 }
-float model_spring_speed(const fighter_model *m) { return m ? sb_speed(&m->springs) : 0; }
+/* how far the springs hang from the animated pose (every chain's tip, metres) and the belly's speed: a probe sees them move */
+float model_spring_speed(const fighter_model *m) {
+  if (!m) return 0;
+  float v = sb_speed(&m->springs);
+  cw_node sbs[2] = { m->hair, m->skirt };
+  for (int k = 0; k < 2; k++) {
+    if (!cw_node_valid(sbs[k])) continue;
+    for (int i = 0; i < cw_node_child_count(sbs[k]); i++) {
+      cw_node c = cw_node_child(sbs[k], i);
+      cw_value d;
+      if (cw_node_is(c, "SpringBoneChain3D") && cw_node_get_prop(c, "tip_distance", &d)) v += d.f;
+    }
+  }
+  return v;
+}
 
 /* ── poses ───────────────────────────────────────────────────────────── */
 
@@ -535,7 +615,7 @@ void model_pose(fighter_model *m, const ft_game *g, int who, float dt) {
   t3_vec3 pos = { (float)f->x / 1000.0f, (float)f->y / 1000.0f, 0 };
   cw_node3d_set_quaternion(m->node, yq);
   cw_node3d_set_position(m->node, pos);
-  /* secondary motion: a hit jolts hair, tails and belly away from the attacker; then the springs follow the pose */
+  /* the belly: a hit jolts it away from the attacker, then it follows the pose (hair and coat: model_springs) */
   if (first) sb_reset(&m->springs);
   bool hurt = f->state == S_HIT || f->state == S_AIRHIT;
   if (hurt && (m->last_state != f->state || f->stun > m->last_stun)) {
@@ -545,4 +625,11 @@ void model_pose(fighter_model *m, const ft_game *g, int who, float dt) {
   m->last_state = f->state;
   m->last_stun = f->stun;
   sb_step(&m->springs, pos, face + m->yaw, dt);
+  if (cw_node_valid(m->skirt)) { /* plumb while the hips stand, along the legs as the body goes down (knockdowns, sweeps) */
+    const t3_mat4 *hw = &m->bones[HIPS]->matrix_world;
+    float sy = sqrtf(hw->e[4] * hw->e[4] + hw->e[5] * hw->e[5] + hw->e[6] * hw->e[6]);
+    float up = sy > 1e-6f ? hw->e[5] / sy : 1, hang = cw_clampf((up - 0.55f) / 0.3f, 0, 1);
+    hang = hang * hang * (3 - 2 * hang);
+    if (fabsf(hang - m->hang) > 0.01f || (hang != m->hang && (hang == 0 || hang == 1))) { cw_node_set(m->skirt, "skirt_hang", cw_val_float(hang)); m->hang = hang; }
+  }
 }

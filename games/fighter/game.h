@@ -27,8 +27,8 @@ void tex_free_all(void);
 extern uint32_t tex_hash;
 t3_color lin(float r, float g, float b); /* screen colour to linear */
 
-/* secondary.c: spring bones (hair, headband tails, coat skirts, belly) and character shading */
-enum { SB_MAX = 5 };
+/* secondary.c: the belly's spring and character shading (hair and coat skirts: the engine's SpringBone3D, chars.c) */
+enum { SB_MAX = 1 };
 typedef struct spring_bone { t3_object *bone; t3_vec3 rest, tip, T, V; bool live; } spring_bone;
 typedef struct spring_rig { t3_object *scene; spring_bone b[SB_MAX]; } spring_rig;
 void sb_bind(spring_rig *s, t3_object *scene);

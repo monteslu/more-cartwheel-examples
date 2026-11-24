@@ -1,10 +1,9 @@
 /* fighter: secondary motion and character shading (from the brawler game's, adapted: any yaw, a speed probe).
  *
- * Spring bones: hair, coat tails and bellies hang on bones no clip keys (HairA, HairB, CoatL, CoatR, Belly). Each fixed
- * tick, after the animation wrote the pose, a bone's tip is a point mass in world space pulled toward where the animated
- * parent would carry it (stiffness, damping, gravity), kept at the bone's length and inside a cone around the animated
- * direction; the bone is then turned (or for a belly, moved) to follow it. Running, turning, landing and hits make it swing.
- * Written generically (bones by name, any model under a Node3D) so the engine can take it as a skeleton modifier later.
+ * The belly's spring: a belly hangs on a bone no pose keys (Belly). Each frame, after the pose, the bone's tip is a point
+ * mass in world space pulled toward where the animated parent would carry it (stiffness, damping), and the bone moves a
+ * few centimetres with it: stops, turns, landings and hits make it wobble. Hair and coat skirts are the engine's
+ * SpringBone3D (chars.c, model_springs), which turns bones; this one moves its bone, which SpringBone3D does not.
  * Only + - * / and sqrt: the same on every host.
  *
  * Shading: skin shading on the skin materials (the rest of the shading comes from the glb). */
@@ -60,10 +59,6 @@ static xf model_xf(const t3_object *o, const t3_object *root) {
 
 typedef struct spring_def { const char *bone; float tip[3]; float stiff, damp, grav, cone; bool move; } spring_def;
 static const spring_def SDEF[SB_MAX] = {
-  { "HairA", { 0, -0.15f, -0.03f }, 70, 7, 4.0f, 0.75f, false },
-  { "HairB", { 0, -0.15f, 0 }, 55, 6, 5.0f, 0.9f, false },
-  { "CoatL", { 0, -0.36f, -0.02f }, 110, 9, 3.0f, 0.6f, false },
-  { "CoatR", { 0, -0.36f, -0.02f }, 110, 9, 3.0f, 0.6f, false },
   { "Belly", { 0, 0, 0.12f }, 260, 9, 0, 0, true },
 };
 
