@@ -96,6 +96,7 @@ typedef struct rig { int def; bool busy; cw_node root, model, anim, wnode, wmode
      on the street and he takes it up again when he is back on his feet). blend: frames into the fall or the pick-up */
   cw_node ik[2]; /* a fighter's arms: hands on the collar of the body he holds (TwoBoneIK3D, only while he holds one) */
   cw_node hair, coat; /* SpringBone3D: the hair (HairA to HairB); a long coat's skirt or a coat's two tails */
+  bool skirt; float hang; t3_object *hips; /* a long coat in skirt mode: its skirt_hang as last set, and the hips bone it reads */
   bool sloose, spick; int sblend; t3_vec3 sp0, sp1; t3_quat sq0, sq1; } rig;
 /* one glTF resource per model: every rig is an instance (cw_gltf_instantiate) sharing its geometry, textures and
    clips, so a crowd of one kind costs a skeleton each, not a parsed glb each */
@@ -168,7 +169,9 @@ static void sb_legs(cw_node sb, t3_object *inst, float s) { /* thighs, shins and
 /* the hair swings off the head and stays out of the skull, the neck and the back; a long coat (Skirt0..Skirt4,
  * tools/make-characters.mjs) is one garment open at the front kept outside the legs; a tailcoat's tails and the creep's
  * coat swing on CoatL and CoatR, also outside the legs. Kicks and lunges are long: the skirt may stretch to twice its
- * hang (skirt_stretch 1), and it hangs plumb when a lunge pitches the hips (skirt_hang 1, the default). */
+ * hang (skirt_stretch 1), and it hangs plumb when a lunge pitches the hips (skirt_hang 1, the default); a body knocked
+ * flat lets it lie along the legs (chars_secondary eases skirt_hang to 0 as the hips tip over: hung plumb, the coat of a
+ * body on the street would hang straight down through it). */
 static void rig_springs(rig *r, t3_object *inst) {
   t3_object *hips = t3_object_get_by_name(inst, "Hips");
   float s = hips ? hips->scale.x : 1;
@@ -181,12 +184,13 @@ static void rig_springs(rig *r, t3_object *inst) {
   }
   if (t3_object_get_by_name(inst, "Skirt0_0")) {
     cw_node sb = r->coat = sb_add(r->model, "SpringBone3D", "Skirt");
+    r->skirt = true, r->hang = 1, r->hips = hips;
     cw_node_set(sb, "skirt", cw_val_enum("OPEN"));
     cw_node_set(sb, "skirt_stretch", cw_val_float(1));
     char root[16], end[16], nm[16];
     for (int i = 0; i < 5; i++) {
       snprintf(root, sizeof root, "Skirt%d_0", i), snprintf(end, sizeof end, "Skirt%d_2", i), snprintf(nm, sizeof nm, "Panel%d", i);
-      sb_chain(sb, nm, root, end, 240, 6, 2, 0.025f, 2);
+      sb_chain(sb, nm, root, end, 240, 6, 2, 0.025f, 1.1f); /* a panel swings at most 63 degrees off its hang: a body turning as it gets up does not throw the skirt over its hips */
     }
     sb_legs(sb, inst, s);
   } else if (t3_object_get_by_name(inst, "CoatL_end")) {
@@ -406,7 +410,14 @@ void chars_secondary(void) {
       face_express(sr, e->clipname, u);
     }
     for (int k = 0; k < SB_MAX; k++) if (sr->b[k].bone) g_spring_motion += fabsf(sr->b[k].V.x) + fabsf(sr->b[k].V.y) + fabsf(sr->b[k].V.z);
-    const rig *rg = &RIGS[rig_of[i]];
+    rig *rg = &RIGS[rig_of[i]];
+    if (rg->skirt && rg->hips) { /* plumb while the hips stand, along the legs as the body goes down */
+      const t3_mat4 *hw = &rg->hips->matrix_world;
+      float sy = sqrtf(hw->e[4] * hw->e[4] + hw->e[5] * hw->e[5] + hw->e[6] * hw->e[6]);
+      float up = sy > 1e-6f ? hw->e[5] / sy : 1, hang = cw_clampf((up - 0.55f) / 0.3f, 0, 1);
+      hang = hang * hang * (3 - 2 * hang);
+      if (fabsf(hang - rg->hang) > 0.01f || (hang != rg->hang && (hang == 0 || hang == 1))) { cw_node_set(rg->coat, "skirt_hang", cw_val_float(hang)); rg->hang = hang; }
+    }
     cw_node sbs[2] = { rg->hair, rg->coat };
     for (int k = 0; k < 2; k++) /* and how far each SpringBone3D chain's tip hangs from its animated place */
       for (int c = 0; sbs[k].id && c < cw_node_child_count(sbs[k]); c++) {

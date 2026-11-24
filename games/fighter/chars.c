@@ -131,7 +131,7 @@ static void model_springs(fighter_model *m) {
     char root[16], end[16], nm[16];
     for (int i = 0; i < 5; i++) {
       snprintf(root, sizeof root, "Skirt%d_0", i), snprintf(end, sizeof end, "Skirt%d_2", i), snprintf(nm, sizeof nm, "Panel%d", i);
-      sb_chain(sb, nm, root, end, 240, 6, 2, 0.025f, 2);
+      sb_chain(sb, nm, root, end, 240, 6, 2, 0.025f, 1.1f); /* a panel swings at most 63 degrees off its hang: a body turning as it gets up does not throw the skirt over its hips */
     }
     for (int s = 0; s < 2; s++) {
       const char *thigh = s ? "UpperLegR" : "UpperLegL", *shin = s ? "LowerLegR" : "LowerLegL", *foot = s ? "FootR" : "FootL";
