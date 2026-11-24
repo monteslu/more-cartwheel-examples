@@ -12,6 +12,18 @@
     and the join screen's CPU and hot seats are there for games to use; no game here turns them on yet.
 - Arena: a rocket blast's flames start upright (the particles' start angle within 15 degrees of upright, engine v0.70.1), so the fire rises in tongues instead of a ball of flame tilted every way. The jump pads' lift sparks rise from the pad's face: the emitter's box was set under a name no particle node has, so they rose from a 2 m cube round the pad.
 - Tests: arenafps-fx (the cart through romdev, GL and WebGPU: every blast's fire starts upright while its smoke keeps any angle, every pad's sparks come from a flat box, and frames of a match for a look; control: a build from before the change fails both).
+- Jet ski: the palms, pines and shrubs lean and sway in the weather's wind (the engine's foliage wind): a breath in a
+  calm, a sway in a chop, a hard lean with gusts running through the grove in a storm (`sw sway 0` holds them still).
+  It costs 0.12 to 0.18 ms of GPU a frame on Crater Atoll (a Radeon RX 7600, GL and WebGPU).
+- Pirates: the palms and the undergrowth sway downwind, so the sailing wind shows on the islands too, gusts running
+  over a grove along it (`sw still_plants 1` holds them still). Each puff of cannon smoke, a damaged ship's smoke,
+  shore dust and the volcano's ash starts within 18 degrees of upright (the engine's particle start angle), so the
+  smoke flipbook, lit from above, no longer turns on its side or upside down.
+- Tux racer: the card trees sway in the engine's GPU wind instead of a CPU pass that rewrote and re-sent every card's
+  instance matrices each tick, about as far as before, with gusts crossing the slope on a windy course
+  (`opt cardwind off` holds them still).
+- tests/plants-wind.mjs: the plants move on the carts (GL and WebGPU through romdev), each game's plants held still
+  as the control that must fail the same bar.
 
 ## 0.40.0
 
