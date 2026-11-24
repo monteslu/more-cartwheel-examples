@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "cartwheel/environment.h"
+#include "cartwheel/foliage.h"
 #include "cartwheel/platform.h"
 #include "cartwheel/quality.h"
 #include "cartwheel/render3d.h"
@@ -214,8 +215,61 @@ static void clouds_init(void) {
   cw_node3d_set_object(G.sun_node, sun_sprite);
 }
 
+/* Plants that move in the wind: the palms, pines and shrubs of a course lean downwind on the GPU (cartwheel/foliage.h),
+ * a breath in a calm, a sway in a chop and a hard lean with gusts running through the grove in a storm. The wind is the
+ * weather's (wx_wind), set on their materials when the course or the weather changes. A plant leans by a share of its
+ * own height (the tallest of its parts, so the fronds and the trunk bend as one); a pine is stiffer than a palm. */
+#define SWAY_MATS 24
+static struct { t3_material *m; float height, stiff; } sway[SWAY_MATS];
+static int sway_n, sway_key = -1;
+static float sway_kind(const char *model) {
+  if (strstr(model, "/palm.")) return 1.0f; /* the models by path: res://models/palm.glb */
+  if (strstr(model, "/shrub.")) return 0.8f;
+  if (strstr(model, "/pine.")) return 0.45f;
+  return 0; /* rocks, cactus, hoodoos, driftwood: they stand */
+}
+static void sway_add(t3_material **mats, t3_geometry **geos, int parts, float stiff) {
+  float top = 0;
+  for (int p = 0; p < parts; p++) {
+    cw_foliage_desc d = cw_foliage_default();
+    if (!mats[p] || !cw_foliage_apply_mesh(mats[p], geos[p], &d)) continue;
+    cw_foliage_get(mats[p], &d);
+    if (d.height > top) top = d.height;
+  }
+  for (int p = 0; p < parts; p++) {
+    if (!mats[p] || !cw_foliage_get(mats[p], NULL)) continue;
+    int k = 0;
+    while (k < sway_n && sway[k].m != mats[p]) k++;
+    if (k == SWAY_MATS) continue;
+    if (k == sway_n) sway_n++;
+    sway[k].m = mats[p], sway[k].height = top, sway[k].stiff = stiff;
+  }
+  sway_key = -1;
+}
+/* every frame, cheap: values are set only when the course or the weather changed */
+static void sway_tick(void) {
+  int key = G.level * 16 + wx_now();
+  if (key == sway_key || !sway_n) return;
+  sway_key = key;
+  static const float LEAN[WX_N] = { 0.012f, 0.035f, 0.08f }, FREQ[WX_N] = { 0.3f, 0.45f, 0.7f }, GUST[WX_N] = { 0.3f, 0.5f, 0.7f };
+  float wxv, wzv;
+  wx_wind(&wxv, &wzv);
+  float l = sqrtf(wxv * wxv + wzv * wzv) + 1e-4f;
+  int w = wx_now();
+  for (int k = 0; k < sway_n; k++) {
+    cw_foliage_desc d = cw_foliage_default();
+    d.height = sway[k].height;
+    d.wind.strength = LEAN[w] * sway[k].stiff * sway[k].height;
+    d.wind.frequency = FREQ[w];
+    d.wind.direction[0] = wxv / l, d.wind.direction[1] = wzv / l;
+    d.wind.gust = GUST[w];
+    d.wind.gust_scale = 40;
+    cw_foliage_apply(sway[k].m, &d);
+  }
+}
+
 /* a scatter layer from a model and a density map; every instance stands in the ground it is placed on */
-static void scatter_add(const char *model, const char *far_model, const char *map, float density, float smin, float smax, float range, uint32_t seed, bool tilt, float sink) {
+static void scatter_add(const char *model, const char *far_model, const char *map, float density, float smin, float smax, float range, uint32_t seed, bool tilt, float sink, float stiff) {
   cw_res res = cw_res_load(model, CW_RES_GLTF);
   t3_object *po = cw_gltf_instantiate(res);
   if (!po) return;
@@ -267,6 +321,7 @@ static void scatter_add(const char *model, const char *far_model, const char *ma
   s.seed = seed;
   s.sink = sink;
   s.align_to_normal = tilt;
+  if (stiff > 0) sway_add(s.material[0], s.geometry[0], parts, stiff);
   cw_terrain_scatter_add(G.land, &s);
   cw_scatter_def_release(&s);
   free(dm);
@@ -313,7 +368,7 @@ static void land_init(cw_node root) {
   }
   for (int i = 0; i < d->scatter_n; i++) {
     const course_scatter *s = &d->scatter[i];
-    scatter_add(s->model, s->far_model, s->map, s->density, s->smin, s->smax, s->range, s->seed, s->sink, s->tilt);
+    scatter_add(s->model, s->far_model, s->map, s->density, s->smin, s->smax, s->range, s->seed, s->sink, s->tilt, sway_kind(s->model));
   }
 }
 
@@ -808,6 +863,7 @@ static bool attract_camera(float dt) {
 
 /* the fixed-tick camera: chases the human, its height smoothed so it rides over swells instead of through them */
 void view_tick(float dt) {
+  sway_tick();
   rider_wet(dt);
   floats_count();
   if (attract_camera(dt)) return;
