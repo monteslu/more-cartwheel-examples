@@ -9,7 +9,9 @@ mini-game can be played by four CPUs on their own.
 The title, player join, pause and settings screens are the engine's game
 shell: each pad joins with its bottom (south) face button. Start pauses a game;
 on the hub, the boards and the other panels between games it confirms, like
-the south button, and the east button on the hub goes back to the title.
+the south button, and the east button on the hub goes back to the title. The
+pause menu of a Free Play game also offers Play it again and Pick another game;
+in a tournament it offers Leave the tournament (back to the hub).
 
 After joining you get the hub:
 

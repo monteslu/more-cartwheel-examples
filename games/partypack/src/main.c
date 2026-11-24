@@ -203,6 +203,7 @@ static void load_scene(const char *path) {
 
 static bool ahead_of(int a, int b);
 static int team_mode_now(void);
+static void pause_items_for_game(void);
 static void begin_game(int idx) {
   G.cur = idx;
   dbg_mg_seen |= 1 << idx;
@@ -261,6 +262,7 @@ static void begin_game(int idx) {
   G.ready_wait = 0, G.ready_left = 0;
   set_state(S_INTRO);
   sfx_music(1);
+  pause_items_for_game();
 }
 
 static void end_game_cleanup(void) {
@@ -693,6 +695,26 @@ static void to_menu(void) {
   sfx_music(1);
 }
 
+/* The pause menu's own items while a mini-game plays: in Free Play the same game again or another one from the list,
+ * in a tournament leaving it for the menu. sw no_pause_items 1 (a test switch) leaves the shell's own three items:
+ * the pause gate's control. */
+static bool sw_no_pause_items;
+static int32_t pause_picks; /* items chosen from the pause menu (debug field game.pause_picks) */
+static void pause_items_for_game(void) {
+  static const char *const free_play[2] = { "Play it again", "Pick another game" }, *const tour[2] = { "Leave the tournament", NULL };
+  static const char *const none[2] = { NULL, NULL };
+  cw_shell_set_pause_items(sw_no_pause_items ? none : G.tournament ? tour : free_play);
+}
+static void on_pause_item(int index, void *user) {
+  (void)user;
+  pause_picks++;
+  int game = G.cur;
+  end_game_cleanup();
+  if (G.tournament) { to_menu(); return; }
+  if (index == 0) begin_game(game);
+  else { set_state(S_PICK); sfx_music(1); }
+}
+
 static void after_results(void) {
   end_game_cleanup();
   if (G.tournament) {
@@ -770,7 +792,10 @@ static void cmd_sw(int argc, const char **argv, cw_reply *r) {
   } else if (argc >= 3 && !strcmp(argv[1], "mates_knock")) { /* control: teammates' dashes knock again */
     pp_mates_knock = atoi(argv[2]) != 0;
     cw_reply_printf(r, "{\"mates_knock\":%d}", pp_mates_knock);
-  } else cw_reply_error(r, "usage: sw ready_forever|shop_forever|old_locks|no_forks|mates_knock <0|1>, sw place <seat> <cell>");
+  } else if (argc >= 3 && !strcmp(argv[1], "no_pause_items")) { /* control: the pause menu without the game's own items */
+    sw_no_pause_items = atoi(argv[2]) != 0;
+    cw_reply_printf(r, "{\"no_pause_items\":%d}", sw_no_pause_items);
+  } else cw_reply_error(r, "usage: sw ready_forever|shop_forever|old_locks|no_forks|mates_knock|no_pause_items <0|1>, sw place <seat> <cell>");
 }
 static void on_quit(void *user) {
   (void)user;
@@ -1807,6 +1832,7 @@ static void init(void *user) {
     .game_save_version = 1,
     .start = on_start,
     .quit = on_quit,
+    .pause_item = on_pause_item,
     .sound = on_sound,
     .screen_changed = on_screen,
     .draw_background = on_background,
@@ -1831,6 +1857,7 @@ static void init(void *user) {
   cw_debug_command("sw", "sw ready_forever|shop_forever|old_locks|no_forks|mates_knock <0|1>, sw place <seat> <cell>: test switches (the instructions card, or the board's shop, waits for every person; the old game locks; a board without forks; teammates' dashes knock; a token put on a cell)", cmd_sw);
   cw_debug_command("bind", "bind <action> <bindings>: replace an action's bindings (as the controls screen does)", cmd_bind);
   cw_debug_i32("game.state", &G.state);
+  cw_debug_i32("game.pause_picks", &pause_picks);
   cw_debug_i32("game.round", &G.round);
   cw_debug_i32("game.mg", &G.cur);
   cw_debug_i32("game.seen", &dbg_seen);
