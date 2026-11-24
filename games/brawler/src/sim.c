@@ -172,10 +172,17 @@ static void sb_legs(cw_node sb, t3_object *inst, float s) { /* thighs, shins and
  * hang (skirt_stretch 1), and it hangs plumb when a lunge pitches the hips (skirt_hang 1, the default); a body knocked
  * flat lets it lie along the legs (chars_secondary eases skirt_hang to 0 as the hips tip over: hung plumb, the coat of a
  * body on the street would hang straight down through it). */
+/* the models whose hair is skinned to HairA and HairB (tools/make-characters.mjs: ponytails, long hair, a bun, mohawks); the
+ * rest keep short hair, a cap or a helmet on the head bone, and a chain there would move nothing at about 30 us a body */
+static bool hair_swings(const char *model) {
+  static const char *const LONG[] = { "dolly", "heckler", "jet", "matron", "mika", "punk" };
+  for (size_t i = 0; i < sizeof LONG / sizeof *LONG; i++) if (!strcmp(model, LONG[i])) return true;
+  return false;
+}
 static void rig_springs(rig *r, t3_object *inst) {
   t3_object *hips = t3_object_get_by_name(inst, "Hips");
   float s = hips ? hips->scale.x : 1;
-  if (t3_object_get_by_name(inst, "HairB")) {
+  if (hair_swings(DEFS[r->def].model) && t3_object_get_by_name(inst, "HairB")) {
     cw_node sb = r->hair = sb_add(r->model, "SpringBone3D", "Hair");
     sb_chain(sb, "Tail", "HairA", "HairB", 90, 12, 4, 0.02f, 1.2f);
     sb_shape(sb, "Skull", "Head", 0.1f * s, (t3_vec3){ 0, 0.11f * s, 0.01f * s }, (t3_vec3){ 0 }, false);

@@ -116,7 +116,8 @@ static t3_vec3 bone_off(t3_object *root, const char *name) { t3_object *b = t3_o
  * coat of a body lying on the floor would hang straight down through it). */
 static void model_springs(fighter_model *m) {
   float sc = m->sp->scale;
-  if (t3_object_get_by_name(m->root, "HairB")) {
+  /* Grit's hair is short (nothing is skinned to HairA or HairB): a chain there would move nothing */
+  if (strcmp(m->sp->name, "grit") && t3_object_get_by_name(m->root, "HairB")) {
     cw_node sb = m->hair = sb_add(m->node, "SpringBone3D", "Hair");
     sb_chain(sb, "Tail", "HairA", "HairB", 130, 16, 4, 0.02f, 0.9f); /* near critical damping and a 50 degree swing: a blow that snaps the head does not stand the tail on end */
     t3_vec3 neck = bone_off(m->root, "Head"), sh = { 0, 0.15f * sc, -0.02f * sc };
