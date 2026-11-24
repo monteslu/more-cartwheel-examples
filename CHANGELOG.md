@@ -2,6 +2,17 @@
 
 ## 0.40.0
 
+- Engine v0.77.0 (from v0.57.2). What it changes in these games:
+  - Every program table is regenerated: each now carries a stamp of the extension sources it was made from, and the
+    build stops on a stale one. Height and volumetric fog now fall on transparent and additive materials at their own
+    distance (glass, smoke, flames, decals in Arena, Brawler, Co-op platformer, Sky fighter and Tux racer), and Jet
+    ski's terrain draws with the engine's near-ground parts: the program states these draw with are added to their
+    tables, found by each game's quality sweep (every preset and scene, GL and WebGPU) and by cart sweeps.
+  - The join screen centres two or three seats.
+  - A split screen drawn in one pass (Arena) draws each view's spot and omni shadows from that view's own casters.
+- AGENTS.md says how to regenerate the program tables on a pin move (the SDK's tools/programs.mjs, a few tables at a
+  time).
+
 - Sky fighter: its own tree shading part (crown sway, flutter, leaf gaps, back light) is now named `forest`
   (`shaders/forest.mjs`), so it no longer shares a name with the engine's built-in `foliage` part (cartwheel-engine
   v0.71.0 and later). The picture is unchanged: Country Fair 300 frames into the sortie is the same to the pixel on GL
