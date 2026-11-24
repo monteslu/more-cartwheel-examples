@@ -222,6 +222,7 @@ static void clouds_init(void) {
 #define SWAY_MATS 24
 static struct { t3_material *m; float height, stiff; } sway[SWAY_MATS];
 static int sway_n, sway_key = -1;
+int g_sway = 1; /* sw sway 0: no wind on the plants (the control of the wind check and its cost) */
 static float sway_kind(const char *model) {
   if (strstr(model, "/palm.")) return 1.0f; /* the models by path: res://models/palm.glb */
   if (strstr(model, "/shrub.")) return 0.8f;
@@ -248,9 +249,13 @@ static void sway_add(t3_material **mats, t3_geometry **geos, int parts, float st
 }
 /* every frame, cheap: values are set only when the course or the weather changed */
 static void sway_tick(void) {
-  int key = G.level * 16 + wx_now();
+  int key = g_sway ? G.level * 16 + wx_now() : -2;
   if (key == sway_key || !sway_n) return;
   sway_key = key;
+  if (!g_sway) {
+    for (int k = 0; k < sway_n; k++) cw_foliage_remove(sway[k].m);
+    return;
+  }
   static const float LEAN[WX_N] = { 0.012f, 0.035f, 0.08f }, FREQ[WX_N] = { 0.3f, 0.45f, 0.7f }, GUST[WX_N] = { 0.3f, 0.5f, 0.7f };
   float wxv, wzv;
   wx_wind(&wxv, &wzv);

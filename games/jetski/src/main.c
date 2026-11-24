@@ -234,6 +234,7 @@ static void cmd_switch(int argc, const char **argv, cw_reply *r) {
     else if (!strcmp(argv[1], "ram")) g_ram_on = (int)v;
     else if (!strcmp(argv[1], "ram_setup")) sim_ram_setup((int)v);
     else if (!strcmp(argv[1], "cam_cut")) g_cam_cut = (int)v;
+    else if (!strcmp(argv[1], "sway")) { extern int g_sway; g_sway = (int)v; } /* sw sway 0: the plants stand still, the wind gate's control */
     else if (!strcmp(argv[1], "wrong_side")) { /* the human just past the next buoy on its wrong side, for the feedback gate */
       craft *c = &G.c[0]; const float *b = BUOYS[c->next_buoy]; float sx, sz, tx, tz;
       track_at(b[3], &sx, &sz, &tx, &tz);
