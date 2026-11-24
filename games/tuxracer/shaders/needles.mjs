@@ -1,12 +1,13 @@
-// The "foliage" shading part on the solid trees' leaf material (sky-mesa's
-// spruce meshes with its snow-dusted needle texture, assets/textures/tree-snow-v1.jpg):
+// The "needles" shading part on the solid trees' leaf material (sky-mesa's spruce meshes with
+// its snow-dusted needle texture, assets/textures/tree-snow-v1.jpg; named apart from the engine's
+// own "foliage" part, cartwheel/foliage.h, from engine v0.71.0):
 // a coherent crown sway plus a local flutter in the vertex stage (GPU wind:
 // the instance matrices never change for it), photographic dark gaps cut
 // through the needle surface, and a restrained translucency so sunlit
 // backs are not black. After sky-mesa's shaders/foliage.mjs.
 //   ext.forestTime  f32: seconds
 //   ext.forestWind  f32: sway scale (1 calm, more on a windy race)
-export const name = 'foliage';
+export const name = 'needles';
 export async function apply({ TSL, mat, props, sentinel, kind }) {
   const { uniform, float, vec3, mix, positionLocal, normalWorld, instanceIndex, sin, cos, clamp, pow, max, dot, materialColor, materialEmissive, materialOpacity, texture, uv, smoothstep } = TSL;
   const seed = sentinel(), time = uniform(seed).setName('forestTime');

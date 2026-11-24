@@ -179,7 +179,7 @@ t3_geometry *item_mesh_fish(void); /* item_mesh.c */
 t3_geometry *item_mesh_flag(void);
 t3_geometry *item_mesh_fish_card(void);
 t3_geometry *item_mesh_gate_poles(void);
-t3_geometry *item_mesh_gate_banner(void);                         /* register the "foliage" part's hook */
+t3_geometry *item_mesh_gate_banner(void);                         /* register the "needles" part's hook */
 int course_collect(course *c, t3_vec3 pos);           /* herring collected at pos this tick */
 t3_vec3 course_reset_point(const course *c, t3_vec3 pos); /* the reset point just uphill (reset.c) */
 bool course_finished(const course *c, t3_vec3 pos);

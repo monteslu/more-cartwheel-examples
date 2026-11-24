@@ -5,8 +5,8 @@
  * the enhancement phase's: the conifer (tree1) and the barren tree (tree2)
  * are solid meshes (assets/model/trees.bin: sky-mesa's spruce with its
  * snow-dusted needle texture, and its leafless birch; tools/extract-trees.mjs),
- * instanced per branching variant and LOD, swaying on the GPU (the "foliage"
- * shading part, shaders/foliage.mjs). The shrub (tree3) keeps the original's
+ * instanced per branching variant and LOD, swaying on the GPU (the "needles"
+ * shading part, shaders/needles.mjs). The shrub (tree3) keeps the original's
  * two crossed cards of its texture. */
 #include "game.h"
 
@@ -201,8 +201,8 @@ static void load_poly(void) {
   free(txt);
 }
 
-/* the "foliage" part's values (GPU wind) for every draw of the leaf material */
-static void foliage_fill(t3_extension_ctx *ctx, void *u) {
+/* the "needles" part's values (GPU wind) for every draw of the leaf material */
+static void needles_fill(t3_extension_ctx *ctx, void *u) {
   (void)u;
   t3_extension_set_uniform(ctx, "forestTime", &O.wind_time, 1);
   t3_extension_set_uniform(ctx, "forestWind", &O.wind_scale, 1);
@@ -217,8 +217,8 @@ static void flag_fill(t3_extension_ctx *ctx, void *u) {
 void course_trees_renderer(t3_renderer *r) {
   if (!r || r == O.renderer) return;
   O.renderer = r;
-  cw_shading_part(r, "foliage", foliage_fill, NULL);
-  cw_shading_part_batching(r, "foliage", true);
+  cw_shading_part(r, "needles", needles_fill, NULL);
+  cw_shading_part_batching(r, "needles", true);
   cw_shading_part(r, "flag", flag_fill, NULL);
   cw_shading_part_batching(r, "flag", true);
 }
@@ -278,7 +278,7 @@ static bool load_tree_meshes(void) {
   O.leaf_mat->roughness = 0.9f;
   O.leaf_mat->metalness = 0;
   if (snow) t3_material_set_map(O.leaf_mat, snow);
-  cw_shading_add(O.leaf_mat, "foliage");
+  cw_shading_add(O.leaf_mat, "needles");
   static cw_res sprig_res;
   sprig_res = cw_res_load("textures/sprig.png", CW_RES_TEXTURE);
   t3_texture *sprig = cw_res_texture(sprig_res);
@@ -288,7 +288,7 @@ static bool load_tree_meshes(void) {
   O.card_mat->side = T3_DOUBLE_SIDE;
   O.card_mat->roughness = 0.9f;
   O.card_mat->metalness = 0;
-  cw_shading_add(O.card_mat, "foliage");
+  cw_shading_add(O.card_mat, "needles");
   for (int lod = 0; lod < 2; lod++)
     for (int v = 0; v < 2; v++) O.tree_cards[lod][v] = tree_mesh_cards(v, lod);
   return true;
