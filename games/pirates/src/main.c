@@ -10,6 +10,7 @@
 
 #include "cartwheel/debug.h"
 #include "cartwheel/core.h"
+#include "cartwheel/foliage.h"
 #include "cartwheel/input.h"
 #include "cartwheel/lightmap.h"
 #include "cartwheel/splats.h"
@@ -760,6 +761,23 @@ static float sea_patches(int x, int z) {
   return n * n * (3 - 2 * n);
 }
 
+/* The palms and the undergrowth lean downwind and sway (cartwheel/foliage.h, on the GPU): the sailing wind seen on
+ * the islands as well as on the sea, gusts running over a grove along it. Set after the light is baked onto them (the
+ * baked shadows stay; the sway is small, about 12 cm at a palm's crown). The leans are in model units (a palm model is
+ * 9.2 tall, drawn at about a third of that; the undergrowth model 0.84, drawn about 1.3 times). */
+static void scenery_sway(void) {
+  cw_foliage_desc palm=cw_foliage_default(),bush=cw_foliage_default();
+  palm.wind.direction[0]=bush.wind.direction[0]=cw_sin(wind_to());
+  palm.wind.direction[1]=bush.wind.direction[1]=cw_cos(wind_to());
+  palm.height=9.2f;palm.wind.strength=.35f;palm.wind.frequency=.4f;palm.wind.gust=.5f;palm.wind.gust_scale=14;
+  bush.height=.84f;bush.wind.strength=.06f;bush.wind.frequency=.6f;bush.wind.gust=.5f;bush.wind.gust_scale=14;
+  for(int i=0;i<cw_node_child_count(G.environment);i++) {
+    cw_node n=cw_node_child(G.environment,i);const char *name=cw_node_name(n);
+    if(!strcmp(name,"Palm"))cw_foliage_apply_tree(cw_node3d_object(n),&palm);
+    else if(!strcmp(name,"Undergrowth"))cw_foliage_apply_tree(cw_node3d_object(n),&bush);
+  }
+}
+
 static void apply_graphics(void);
 static void build_map_scene(void);
 static void build_map(void) { build_map_scene(); apply_graphics(); }
@@ -793,6 +811,7 @@ static void build_map_scene(void) {
   cw_lightmap_free(G.lightmap);G.lightmap=NULL;
   if(!G.no_lightmap)G.lightmap=cw_lightmap_load(active_map?"lightmaps/lagoon.cwlm":"lightmaps/shoals.cwlm");
   if(G.lightmap)cw_lightmap_apply_shaded(cw_scene_app_tree(),G.world,G.lightmap,1,CW_LIGHTMAP_BAKED);
+  scenery_sway();
   /* The water rectangle is 144 x 108 metres. Ease the ocean swells down
    * over the last eight metres of shallow water; CPU buoyancy shares it. */
   float *shelter=malloc(145*109*sizeof(float));

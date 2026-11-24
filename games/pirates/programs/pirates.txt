@@ -51,3 +51,7 @@ standard+map+vcol+rep+senv+ds+l2000
 standard+map+vcol+rep+senv+ds+l2000+xplain
 standard+map+vcol+rep+shadow+senv+ds+l2000+s100+xplain
 standard+shadow+senv+ds+l2000+s100+xwaterlow
+standard+instbig+senv+ds+l2000+xfoliage
+standard+instbig+senv+ds+l2000+xfoliage_plain
+standard+instbig+shadow+senv+ds+l2000+s100+xfoliage
+standard+shadow+senv+ds+l2000+s100+xfoliage
