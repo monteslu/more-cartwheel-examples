@@ -348,7 +348,9 @@ static void hud_standings(const craft *c, float u, float y) {
   static float row_y[RACERS], glow[RACERS]; static int last_slot[RACERS]; static uint32_t seen_tick;
   g_hud_rows = 0;
   if (MODE_ALONE || (G.state != RACE_ON && G.state != RACE_GRID)) return;
-  bool fresh = G.tick < seen_tick || G.tick - seen_tick > 30; /* a new race or a jump: rows go straight to their places */
+  static bool init;
+  bool fresh = !init || G.tick < seen_tick || G.tick - seen_tick > 30; /* a new race or a jump: rows go straight to their places */
+  init = true;
   seen_tick = G.tick;
   /* the order shown changes only once the race's order has held for 0.7 s, so two riders side by side do not shuffle */
   static int shown[RACERS], held; 

@@ -773,7 +773,7 @@ void view_init(void) {
     for (int k = 0; k < RAMP_MAX; k++) {
       char name[24];
       snprintf(name, sizeof name, "Ring%d", k);
-      t3_geometry *g = t3_torus_geometry_new(2.8f, 0.16f, 10, 40, 6.2831853f);
+      t3_geometry *g = t3_torus_geometry_new(4.5f, 0.32f, 10, 48, 6.2831853f);
       t3_mesh *m = t3_mesh_new(g, ring_mat);
       ring_n[k] = model_node(dry_parent(root), name, (t3_object *)m);
       t3_release(m); t3_release(g);
@@ -915,6 +915,9 @@ void view_tick(float dt) {
   /* low and close, in the spray: the speed shows in the water and the set streaming past, the field of view widening
      with speed. sw cam_old 1: the old higher, farther chase (the camera gate's control) */
   float back = g_cam_old ? 4.0f + c->speed * 0.035f : 2.9f + c->speed * 0.025f, up = g_cam_old ? 1.6f + c->speed * 0.012f : 1.05f + c->speed * 0.014f;
+  /* at a standstill (the grid, a restart) it stands back as it did, so the rider does not fill the way ahead; it closes in
+     as the speed comes up */
+  if (!g_cam_old) { float k = fminf(1.0f, c->speed / 18.0f); back = 3.8f + (back - 3.8f) * k, up = 1.5f + (up - 1.5f) * k; }
   /* the stand-up: low and close, straight behind, the hull under and ahead of the rider */
   float side_off = 0;
   if (g_craft == CRAFT_STAND) back -= 0.4f, up += 0.6f;

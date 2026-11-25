@@ -1,6 +1,6 @@
 // Stunt rings, on the CPU with a software GL: in stunt mode a ring stands over each ramp's jump, at the peak of the arc a
 // rider's usual speed off its lip takes, and flying through one pays 600 into the combo. The seat lined up with a ramp
-// (ramp_try) flies through its ring, on two ramps of Crater Atoll. Control: wxsw rings 0 (no rings) passes none.
+// (ramp_try) flies through its ring, on two ramps of Crater Atoll (the second and third). Control: wxsw rings 0 (no rings) passes none.
 //   node tests/jetski-rings.mjs
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -20,7 +20,7 @@ function run(cmds, frames, tag) {
 let fail = 0;
 const check = (name, ok, detail) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}: ${detail}`); if (!ok) fail++; };
 let passed = 0, rings = 0;
-for (const r of [0, 1]) {
+for (const r of [1, 2]) {
   const s = run(`mode 2;course 0;race;ramp_try ${r}`, 600, `ramp${r}`);
   rings = s['stunt.rings']; passed += s['stunt.rings_passed'];
   console.log(`  ramp ${r}: ${s['stunt.rings_passed']} rings flown through, ${s['p0.ramps'] ?? '?'} ramps, score ${s['stunt.score']}`);

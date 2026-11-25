@@ -615,7 +615,7 @@ static void event_tick(float dt) {
 }
 
 /* ── stunt mode: rings on the arcs the ramps throw, each worth points and a place in the combo ── */
-#define RING_R 2.8f
+#define RING_R 4.5f
 #define RING_PTS 600
 float g_ring[RAMP_MAX][4];   /* x, y, z, yaw of the ring over each ramp's jump (view.c draws them in stunt mode) */
 int g_ring_n, g_rings_on = 1; /* wxsw rings 0: none, the ring gate's control */
@@ -631,7 +631,7 @@ static void rings_place(void) {
     float a = atanf(ramp_slope(r)), v = 22.0f, vy = v * sinf(a), t = vy / 9.8f, d = v * cosf(a) * t;
     float lx = DEF->ramps[r][0] + sy * ramp_hl(r), lz = DEF->ramps[r][1] + cy * ramp_hl(r);
     float *g = g_ring[g_ring_n++];
-    g[0] = lx + sy * d, g[1] = ramp_top_at(r) + vy * vy / (2 * 9.8f), g[2] = lz + cy * d, g[3] = DEF->ramps[r][2];
+    g[0] = lx + sy * d, g[1] = ramp_top_at(r) + vy * vy / (2 * 9.8f) + 1.5f /* (where the hull's middle passes, over the lip's line: measured) */, g[2] = lz + cy * d, g[3] = DEF->ramps[r][2];
   }
   for (int k = 0; k < RAMP_MAX; k++) ring_side[k] = 0, g_ring_glow[k] = 0;
 }

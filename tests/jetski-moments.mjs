@@ -37,7 +37,7 @@ const s = arr(st['hud.stamp']), s0 = arr(st0['hud.stamp']);
 check('a turbo is stamped big across the picture', s[0] >= 150 && s[1] > 0.5 && +st['hud.stamps'] >= 1, `type ${f2(s[0])} px at 1080p, alpha ${f2(s[1])}, ${st['hud.stamps']} stamped`);
 check('control: stamp_on 0 (the old popup) fails the size bound', !(s0[0] >= 150), `type ${f2(s0[0])} px`);
 // the music steps back under a stamp: at least 4 dB down (volume 0.5 to 0.32 or less), and not with music_lift 0
-const mu = (st['audio.music'] || [1, 1]).map(Number), mu0 = (run('sw music_lift 0;' + TURBO, 26, 'music-off.png')['audio.music'] || [1, 1]).map(Number);
+const mu = (st['audio.music_mix'] || [1, 1]).map(Number), mu0 = (run('sw music_lift 0;' + TURBO, 26, 'music-off.png')['audio.music_mix'] || [1, 1]).map(Number);
 check('the music steps back under the turbo stamp', mu[1] <= 0.32, `volume ${f2(mu[1])} (0.5 at rest)`);
 check('control: music_lift 0 does not step back', !(mu0[1] <= 0.32), `volume ${f2(mu0[1])}`);
 // the standings: every rider down the left in race order (control: standings 0, the old two neighbours, draws no column)
