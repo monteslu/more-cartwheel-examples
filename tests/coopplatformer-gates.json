@@ -542,12 +542,13 @@
       "g.top_speed": 9.857443809509277
     },
     "tol": 0.001,
+    "env": { "CW_TEST_TOUCH_CONTROLS": "1" },
     "webgpu": {
       "vsGl": 0.005,
       "maxArea": 0.005,
       "note": "the same frame on both backends"
     },
-    "note": "touch still plays it: the stick, a held RUN button and the jump button give the same running jump as the pad. The control lets go of RUN: its g.jump must differ. Speed 9.86 not 11.5: this stick is pushed to about 0.86 of its throw, and a run scales with the stick.",
+    "note": "touch still plays it: the stick, a held RUN button and the jump button give the same running jump as the pad. The control lets go of RUN: its g.jump must differ. Speed 9.86 not 11.5: this stick is pushed to about 0.86 of its throw, and a run scales with the stick. In a cart the host draws the on-screen pad and the engine's touch controls are off (engine v0.50.0 on), so the gate keeps them on with CW_TEST_TOUCH_CONTROLS=1, as the engine's own touch gates do.",
     "controlField": "g.jump"
   },
   {

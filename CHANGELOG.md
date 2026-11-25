@@ -2,6 +2,14 @@
 
 ## 0.41.0
 
+- Engine v0.83.1 (from v0.78.2). What it changes in these games:
+  - Every program table regenerated with the new SDK comes out the same as before (no shader extension changed), the
+    build checks each table's stamp, and the cart survey of every game finds no state a table lacks.
+  - The input hash covers eight players now (`CW_INPUT_MAX_PLAYERS` is 8), so every game's `input.hash` differs from
+    v0.78's for the same input. No gate here stores one; each game's replay gate still plays the same match to the
+    same game state on every host.
+  - The engine's new modules (game-tree search, story, speech, cinematic director, 3D picking, hex grids, cursors)
+    and the join screen's CPU and hot seats are there for games to use; no game here turns them on yet.
 - Arena: a rocket blast's flames start upright (the particles' start angle within 15 degrees of upright, engine v0.70.1), so the fire rises in tongues instead of a ball of flame tilted every way. The jump pads' lift sparks rise from the pad's face: the emitter's box was set under a name no particle node has, so they rose from a 2 m cube round the pad.
 - Tests: arenafps-fx (the cart through romdev, GL and WebGPU: every blast's fire starts upright while its smoke keeps any angle, every pad's sparks come from a flat box, and frames of a match for a look; control: a build from before the change fails both).
 
