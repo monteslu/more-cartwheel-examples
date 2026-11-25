@@ -2,12 +2,18 @@
 
 ## 0.40.0
 
-- Engine v0.77.0 (from v0.57.2). What it changes in these games:
-  - Every program table is regenerated: each now carries a stamp of the extension sources it was made from, and the
-    build stops on a stale one. Height and volumetric fog now fall on transparent and additive materials at their own
-    distance (glass, smoke, flames, decals in Arena, Brawler, Co-op platformer, Sky fighter and Tux racer), and Jet
-    ski's terrain draws with the engine's near-ground parts: the program states these draw with are added to their
-    tables, found by each game's quality sweep (every preset and scene, GL and WebGPU) and by cart sweeps.
+- Engine v0.78.2 (from v0.57.2). What it changes in these games:
+  - Every program table is regenerated with its variant closure: each surveyed material in every environment
+    surveyed for its kind (fog, received shadows, the scene's environment map, the lighting parts each preset uses) at
+    the most lights seen, so a preset switched in play or a level with other fog draws everything. The tables grew
+    (Fighter 277 to 854 states, Brawler 116 to 387, Sky fighter 114 to 410, Tux racer 196 to 329), and each carries a
+    stamp of the extension sources it was made from: the build stops on a stale one. The cart survey of every game
+    (each preset from the start and each switch both ways, GL and WebGPU) finds no state a table lacks. Sky fighter's
+    copy of the engine samples' table says `# closure: off`.
+  - Height and volumetric fog now fall on transparent and additive materials at their own distance (glass, smoke,
+    flames, decals in Arena, Brawler, Co-op platformer, Fighter's training stage, Sky fighter and Tux racer).
+  - Jet ski's terrain takes each texel's own painted uv rotation, as it did before engine v0.71.0 (blending rotations
+    across texels is now the terrain option `uv_blend`, off by default).
   - The join screen centres two or three seats.
   - A split screen drawn in one pass (Arena) draws each view's spot and omni shadows from that view's own casters.
 - Fighter: hair and Mara's long coat move with the engine's spring bones (SpringBone3D). Ponytails, spiky hair and
