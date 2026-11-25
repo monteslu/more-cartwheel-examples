@@ -585,7 +585,7 @@ static void pad_at(t3_vec3 p, t3_vec3 to) {
   cw_node_set(ps, "gravity", cw_val_vec3(0, 0, 0));
   cw_node_set(ps, "size", cw_val_float(0.05));
   cw_node_set(ps, "emission_shape", cw_val_enum("BOX"));
-  cw_node_set(ps, "emission_box", cw_val_vec3(0.6f, 0.02f, 0.6f));
+  cw_node_set(ps, "emission_extents", cw_val_vec3(0.6f, 0.02f, 0.6f)); /* the pad's flat face (the property was misnamed emission_box, which no node has: the lift rose from a 2 m cube, half sizes 1) */
   cw_node_set(ps, "color_ramp", cw_val_string("0 0.5 0.9 1 0, 0.2 0.5 0.9 1 1, 1 0.3 0.6 1 0"));
   cw_node_set(ps, "energy", cw_val_float(4));
   cw_node_set(ps, "draw_mode", cw_val_enum("BILLBOARD"));

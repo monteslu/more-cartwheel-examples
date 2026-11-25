@@ -132,6 +132,7 @@ static cw_node mk_boom(int i) {
   cw_node_set(fire, "vframes", cw_val_int(8));
   cw_node_set(fire, "damping", cw_val_float(2.2));
   cw_node_set(fire, "spin", cw_val_float(0.25));
+  cw_node_set(fire, "angle_random", cw_val_float(0.08)); /* the flipbook's tongues start upright (within 15 degrees), not at any angle */
   cw_node_set(fire, "soft_distance", cw_val_float(0.6));
   cw_node smoke = part(b, "Smoke", 12, 2.6f, 0.6f, "SPHERE", 0.7f, UP, 70, 0.6f, 2.4f, 0.9f, 3.8f, "0 0.45, 0.3 1, 1 1.5",
                        "0 1 0.9 0.8 0, 0.08 0.7 0.66 0.6 0.9, 0.45 0.34 0.33 0.32 0.7, 1 0.28 0.28 0.29 0", 1, "ALPHA", s + 2);
