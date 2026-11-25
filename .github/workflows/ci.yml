@@ -53,6 +53,9 @@ jobs:
       # controls are shown with the engine's button prompts (cartwheel/prompt.h), never a maker's button names
       - name: Check prompts
         run: for g in $PROMPT_GAMES; do node deps/cartwheel-engine/tools/check-prompts.mjs games/$g || exit 1; done
+      # jetski's race radio: the committed story is its script's (the engine's story compiler)
+      - name: Check jetski's radio story
+        run: node deps/cartwheel-engine/tools/story-compile.mjs games/jetski/story/radio.story -o games/jetski/assets/radio.cwstory --check
       # crawler's floors: every one reachable with its keys, nothing in a wall, every prop grounded, its bake present and
       # current, and cleared by the bots in the native soak build; the controls (floors broken on purpose) must each fail
       - name: Check crawler's floors
