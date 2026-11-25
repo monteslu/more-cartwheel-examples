@@ -22,6 +22,11 @@ static const int POINTS[RACERS] = { 10, 6, 4, 3, 2, 1 };
 static int cup_points[RACERS], cup_race, new_best;
 /* the championship's week: a forecast for each day, and the player picks which course to race on which day */
 static int forecast[LEVELS], cup_used, cup_count, unlocked, weather_sel = -1, stunt_best[LEVELS];
+/* stunt medals on every course: bronze, silver and gold scores, shown on the results and by the course's best */
+static const int MEDAL[3] = { 10000, 25000, 45000 };
+static const char *const MEDAL_NAME[4] = { "", "Bronze", "Silver", "Gold" };
+int32_t g_stunt_medal; /* the medal the run just finished earned, 0 none (stunt.medal) */
+static int medal_of(int score) { int m = 0; for (int k = 0; k < 3; k++) if (score >= MEDAL[k]) m = k + 1; return m; }
 int menu_unlocked(int level) { return level == 0 || (unlocked & (1 << level)) != 0; }
 static int pending_level = -1, pending_race, pending_wait, saved_level = -1;
 static float best[LEVELS];
@@ -108,6 +113,7 @@ void menu_debug(void) {
   cw_debug_i32("menu.unlocked", &unlocked);
   cw_debug_i32("menu.weather", &weather_sel);
   cw_debug_field("stunt.best", stunt_best, CW_DBG_I32, LEVELS);
+  cw_debug_i32("stunt.medal", &g_stunt_medal);
 }
 bool menu_active(void) { return page != P_NONE; }
 
@@ -161,6 +167,7 @@ static void race_over(void) {
   if (!G.c[0].dq && G.c[0].finish > 0 && G.level + 1 < LEVELS && !(unlocked & (1 << (G.level + 1)))) { unlocked |= 1 << (G.level + 1); store(); }
   if (g_mode == MODE_STUNT) {
     new_best = 0;
+    g_stunt_medal = medal_of(g_stunt.score);
     if (g_stunt.score > stunt_best[G.level]) stunt_best[G.level] = g_stunt.score, new_best = 1, store();
     return;
   }
@@ -463,7 +470,7 @@ void menu_draw(void) {
     if (show_best) {
       char pre[48];
       snprintf(pre, sizeof pre, "Best on %s: ", DEF->name);
-      if (g_mode == MODE_STUNT) snprintf(buf, sizeof buf, "%s%d points", pre, stunt_best[G.level]);
+      if (g_mode == MODE_STUNT) { int m = medal_of(stunt_best[G.level]); snprintf(buf, sizeof buf, "%s%d points%s%s", pre, stunt_best[G.level], m ? ", " : "", m ? MEDAL_NAME[m] : ""); }
       else fmt_time(buf, sizeof buf, pre, best[G.level]);
       text(small, buf, x + 6 * u, end + 4 * u + 10 * u, 30 * u, gold, 0);
     }
@@ -567,6 +574,11 @@ void menu_draw(void) {
       snprintf(buf, sizeof buf, "%d tricks, %d combos, longest chain %d", g_stunt.tricks, g_stunt.combos, g_stunt.best_chain);
       yy += 6 * u + text(small, buf, w * 0.5f, yy + 6 * u, 34 * u, dim, 0.5f);
       if (stunt_best[G.level] > 0) { snprintf(buf, sizeof buf, "High score %d", stunt_best[G.level]); yy += 6 * u + text(small, buf, w * 0.5f, yy + 6 * u, 34 * u, dim, 0.5f); }
+      /* the medal this run earned, or how far the next one is */
+      { int m = medal_of(g_stunt.score);
+        if (m) snprintf(buf, sizeof buf, "%s medal", MEDAL_NAME[m]); else snprintf(buf, sizeof buf, "Bronze at %d", MEDAL[0]);
+        if (m && m < 3) { size_t l = strlen(buf); snprintf(buf + l, sizeof buf - l, "   (%s at %d)", MEDAL_NAME[m + 1], MEDAL[m]); }
+        yy += 10 * u + text(small, buf, w * 0.5f, yy + 10 * u, 40 * u, m == 3 ? gold : white, 0.5f); }
     } else if (g_mode == MODE_TIME_TRIAL && !G.c[0].dq) {
       float t = G.c[0].finish;
       fmt_time(buf, sizeof buf, "", t);

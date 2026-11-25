@@ -1,6 +1,7 @@
 // Stunt rings, on the CPU with a software GL: in stunt mode a ring stands over each ramp's jump, at the peak of the arc a
 // rider's usual speed off its lip takes, and flying through one pays 600 into the combo. The seat lined up with a ramp
 // (ramp_try) flies through its ring, on two ramps of Crater Atoll (the second and third). Control: wxsw rings 0 (no rings) passes none.
+// Medals: bronze, silver and gold at 10000, 25000 and 45000 points on every course, on the results and by the best.
 //   node tests/jetski-rings.mjs
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -29,5 +30,8 @@ const off = run('wxsw rings 0;mode 2;course 0;race;ramp_try 0', 600, 'ramp0-off'
 check('stunt mode puts a ring over every ramp', rings >= 2, `${rings} rings`);
 check('lined up with two ramps, the seat flies through their rings', passed >= 2, `${passed} rings flown through`);
 check('control: rings 0, none', off['stunt.rings'] === 0 && off['stunt.rings_passed'] === 0, `${off['stunt.rings']} rings, ${off['stunt.rings_passed']} through`);
+// medals: a 30000 run is silver, a 5000 run earns none (the results page says which and how far the next is)
+const silver = run('mode 2;course 0;race;wxsw stunt_set 30000;finish', 320, 'silver'), none = run('mode 2;course 0;race;wxsw stunt_set 5000;finish', 320, 'none');
+check('a stunt run earns its medal on the results', silver['stunt.medal'] === 2 && none['stunt.medal'] === 0 && silver['menu.page'] === 6, `30000: medal ${silver['stunt.medal']} (page ${silver['menu.page']}), 5000: medal ${none['stunt.medal']}`);
 console.log(fail ? `${fail} FAILED` : 'all ok');
 process.exit(fail ? 1 : 0);

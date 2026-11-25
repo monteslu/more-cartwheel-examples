@@ -834,6 +834,7 @@ static void cmd_wxsw(int argc, const char **argv, cw_reply *r) {
     else if (!strcmp(argv[1], "cup_day")) g_cup_day = (int)v;
     else if (!strcmp(argv[1], "trick_repeat")) g_trick_repeat = (int)v;
     else if (!strcmp(argv[1], "rings")) { g_rings_on = (int)v; rings_place(); }
+    else if (!strcmp(argv[1], "stunt_set")) g_stunt.score = (int)v; /* (the medal gate: a run's score) */
   }
   if (r) cw_reply_raw(r, "true");
 }

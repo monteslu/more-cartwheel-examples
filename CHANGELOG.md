@@ -61,7 +61,8 @@
   - The spray is thicker and whiter. Rain and the spray of a hard landing bead on the camera's lens and run off.
   - Close shaves past a mark and ten clean marks in a row pay into the turbo. 1.7 s in a rival's slipstream gives
     3 % more top speed.
-  - In stunt mode a gold ring hangs over each ramp's jump, and the same trick again pays less.
+  - In stunt mode a gold ring hangs over each ramp's jump, and the same trick again pays less. Bronze, silver and gold
+    medals at 10000, 25000 and 45000 points on every course.
   - Fixed: two riders over the line within a second of each other could be put in the wrong order. Their finish
     times were compared at float precision near ten million.
 - Tests: jetski-moments, jetski-camera (through romdev, GL and WebGPU), jetski-steer, jetski-deep, jetski-cast,
