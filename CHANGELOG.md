@@ -10,6 +10,15 @@
     tables, found by each game's quality sweep (every preset and scene, GL and WebGPU) and by cart sweeps.
   - The join screen centres two or three seats.
   - A split screen drawn in one pass (Arena) draws each view's spot and omni shadows from that view's own casters.
+- Fighter: hair and Mara's long coat move with the engine's spring bones (SpringBone3D). Ponytails, spiky hair and
+  headband tails swing off the head, kept out of the skull, the neck and the back. The coat hangs on five bone chains
+  from the hips that the engine moves as one garment open at the front (skirt mode): it swings and settles as she
+  steps, lunges and stops, stays outside her thighs, shins and feet (it used to stretch with each thigh), and lies
+  along her legs when she is knocked down. Bellies keep their own small wobble.
+- Brawler: the same for long hair (Mika's ponytail no longer streams out flat behind her as she runs; it trails, sways
+  and settles), the Matron's and the Knifer's long coats (skirt mode) and the Ringmaster's and the Creep's coat tails
+  (kept outside the legs). A body knocked flat has its coat lie along its legs, and no panel swings more than 63
+  degrees off its hang, so a body turning as it gets up keeps its coat over its hips.
 - AGENTS.md says how to regenerate the program tables on a pin move (the SDK's tools/programs.mjs, a few tables at a
   time).
 - Sky fighter: its own tree shading part (crown sway, flutter, leaf gaps, back light) is now named `forest`
