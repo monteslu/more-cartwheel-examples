@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "cartwheel/math.h"
+#include "cartwheel/render2d.h"
 #include "cartwheel/scene.h"
 #include "cartwheel/terrain.h"
 #include "cartwheel/water.h"
@@ -271,6 +272,14 @@ extern int g_attract_clear;
 extern float g_fov_span, g_cam_roll_max; /* debug: fov_span, cam_roll */
 void view_init(void);
 void view_sync(double alpha);
+/* radio.c: the race radio (crew chief news, rivals' calls), its volume, the music duck under it, its subtitles */
+void radio_init(void);
+void radio_tick(float dt);
+void radio_race_reset(void);
+void radio_volume(float v);
+float radio_duck(void);
+void radio_draw(cw_font f);
+extern int g_radio_vol;
 void view_repaint(void);          /* seats painted in their riders' colours again (the human picked a rider) */
 const float *view_team(int i);     /* a racer's colours: deck rgb, vest rgb */
 void view_course_apply(void);    /* G.level changed: land, sea, sky and marks for that course */

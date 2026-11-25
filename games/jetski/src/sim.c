@@ -937,6 +937,7 @@ void sim_reset(int state) {
   cw_node water = G.water, camera = G.camera, sun = G.sun, sky = G.sky, clouds = G.clouds, sun_node = G.sun_node;
   cw_terrain *land = G.land;
   hud_race_reset();
+  radio_race_reset();
   memset(g_ride, 0, sizeof g_ride);
   memset(g_verb_n, 0, sizeof g_verb_n);
   g_assist_ticks = 0;

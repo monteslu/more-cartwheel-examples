@@ -13,7 +13,7 @@
 #include "game.h"
 
 enum { P_NONE, P_MAIN, P_CONTROLS, P_AUDIO, P_GRAPHICS, P_PAUSE, P_RESULTS, P_FORECAST };
-typedef struct save_data { int32_t magic, level, difficulty, music, sfx, mode; float best[LEVELS]; int32_t craft, unlocked, weather; int32_t stunt_best[LEVELS]; int32_t rider, assist; } save_data;
+typedef struct save_data { int32_t magic, level, difficulty, music, sfx, mode; float best[LEVELS]; int32_t craft, unlocked, weather; int32_t stunt_best[LEVELS]; int32_t rider, assist, radio; } save_data;
 _Static_assert(sizeof(save_data) <= 128, "the save region in cw_shell_desc");
 #define SAVE_MAGIC 0x4a534b32
 static int page = P_MAIN, row, last_state = -1;
@@ -36,7 +36,7 @@ static save_data *save(void) { return (save_data *)cw_shell_game_save(); }
 static void store(void) {
   save_data *s = save();
   if (!s) return;
-  s->magic = SAVE_MAGIC, s->level = G.level, s->difficulty = g_difficulty, s->music = music, s->sfx = sfx, s->mode = g_mode, s->craft = g_craft, s->rider = g_rider, s->assist = g_assist;
+  s->magic = SAVE_MAGIC, s->level = G.level, s->difficulty = g_difficulty, s->music = music, s->sfx = sfx, s->mode = g_mode, s->craft = g_craft, s->rider = g_rider, s->assist = g_assist, s->radio = g_radio_vol + 1;
   memcpy(s->best, best, sizeof best);
   s->unlocked = unlocked, s->weather = weather_sel;
   memcpy(s->stunt_best, stunt_best, sizeof stunt_best);
@@ -45,6 +45,7 @@ static void store(void) {
 static void apply_audio(void) {
   cw_bus_set_volume(cw_shell_music_bus(), (float)music / 10.0f);
   cw_bus_set_volume(cw_shell_sfx_bus(), (float)sfx / 10.0f);
+  radio_volume((float)g_radio_vol / 10.0f);
 }
 
 void menu_init(void) {
@@ -65,6 +66,7 @@ void menu_init(void) {
     if (s->craft == CRAFT_SIT || s->craft == CRAFT_STAND) g_craft = s->craft;
     if (s->rider > 0 && s->rider < RACERS) { g_rider = s->rider; view_repaint(); }
     g_assist = s->assist == 1;
+    if (s->radio >= 1 && s->radio <= 11) g_radio_vol = s->radio - 1; /* (0 in an older save: the default) */
     memcpy(best, s->best, sizeof best);
     unlocked = s->unlocked, weather_sel = s->weather >= -1 && s->weather < WX_N ? s->weather : -1;
     memcpy(stunt_best, s->stunt_best, sizeof stunt_best);
@@ -76,7 +78,7 @@ static int page_rows(void) {
   switch (page) {
   case P_MAIN: return 11;
   case P_FORECAST: { int n = 0; for (int l = 0; l < LEVELS; l++) if (!(cup_used & (1 << l))) n++; return n > 0 ? n : 1; }
-  case P_AUDIO: return 5;
+  case P_AUDIO: return 6;
   case P_PAUSE: return 5;
   case P_RESULTS: return 2;
   default: return 1;
@@ -255,7 +257,9 @@ void menu_tick(float dt) {
       cw_text_backdrop_set((cw_text_backdrop)(ok ? (b + 1) % 3 : b + dx < 0 ? 0 : b + dx > 2 ? 2 : b + dx));
       store();
     }
-    if ((ok && row == 4) || back) back_up(9, 3);
+    /* the race radio: the crew and the riders' voices, 0 is off (their words still show) */
+    if (row == 4 && dx) { g_radio_vol = g_radio_vol + dx < 0 ? 0 : g_radio_vol + dx > 10 ? 10 : g_radio_vol + dx; apply_audio(); store(); }
+    if ((ok && row == 5) || back) back_up(9, 3);
     break;
   case P_PAUSE:
     if (back) { page = P_NONE; break; }
@@ -505,11 +509,13 @@ void menu_draw(void) {
     char m[8], s[8];
     snprintf(m, sizeof m, "%d", music);
     snprintf(s, sizeof s, "%d", sfx);
-    const row_def r[5] = { { "Music", m }, { "Effects", s }, { "Text size", cw_text_scale_label() }, { "Text background", cw_text_backdrop_label() }, { "Back", NULL } };
+    char rv[8];
+    if (g_radio_vol) snprintf(rv, sizeof rv, "%d", g_radio_vol); else snprintf(rv, sizeof rv, "Off");
+    const row_def r[6] = { { "Music", m }, { "Effects", s }, { "Text size", cw_text_scale_label() }, { "Text background", cw_text_backdrop_label() }, { "Race radio", rv }, { "Back", NULL } };
     float top = title(px, h, u, attract);
     if (attract) y = fmaxf(y, top + 24 * u);
-    float pw = row_width(r, 5, 560 * u, max_w), x = px + pw > w - margin ? w - margin - pw : px;
-    rows_draw(x, y, h - margin, pw, r, 5, row);
+    float pw = row_width(r, 6, 560 * u, max_w), x = px + pw > w - margin ? w - margin - pw : px;
+    rows_draw(x, y, h - margin, pw, r, 6, row);
     break;
   }
   case P_PAUSE: {

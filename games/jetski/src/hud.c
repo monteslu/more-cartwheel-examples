@@ -612,6 +612,7 @@ void hud_draw(void) {
   { extern int g_lens_on; void lens_draw(void); extern float g_lens[3]; if (g_lens_on && G.state != RACE_ATTRACT && g_lens[0] > 0) { cw_r2d_use_layer(1); lens_draw(); } }
   cw_r2d_use_layer(2);
   hud_body();
+  if (G.state == RACE_ON) radio_draw(small);
   menu_draw();
   cw_r2d_end();
 }

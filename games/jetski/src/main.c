@@ -243,6 +243,7 @@ static void cmd_switch(int argc, const char **argv, cw_reply *r) {
     else if (!strcmp(argv[1], "rider_stats")) g_rider_stats = (int)v;
     else if (!strcmp(argv[1], "lens")) { extern int g_lens_on; g_lens_on = (int)v; }
     else if (!strcmp(argv[1], "verbs")) { extern int g_verbs; g_verbs = (int)v; }
+    else if (!strcmp(argv[1], "radio_gap")) { extern float g_radio_gap; g_radio_gap = v; }
     else if (!strcmp(argv[1], "assist")) g_assist = (int)v;
     else if (!strcmp(argv[1], "rider")) { g_rider = ((int)v % RACERS + RACERS) % RACERS; view_repaint(); }
     else if (!strcmp(argv[1], "livery_old")) { extern int g_livery_old; g_livery_old = (int)v; }
@@ -425,6 +426,7 @@ static void init(void *user) {
   view_init();
   hud_init();
   audio_init();
+  radio_init();
   menu_init();
 #ifdef JETSKI_AUTOPILOT
   menu_off();
@@ -500,7 +502,7 @@ static void init(void *user) {
   cw_debug_f32_array("p0.vel", &G.c[0].vx, 3);
   cw_debug_f32("p0.yaw", &G.c[0].yaw);
   cw_debug_f32("p0.steer", &G.c[0].steer); /* the bars, after the stick's curve and their lag */
-  { extern int32_t g_yaw_flips; extern float g_yaw_rate_max; cw_debug_i32("p0.yaw_flips", &g_yaw_flips); { extern float g_draft; cw_debug_f32("p0.draft", &g_draft); } { extern float g_cam_eye[4]; cw_debug_f32_array("cam.eye", g_cam_eye, 4); } { extern float g_rider_k[RACERS][4]; cw_debug_f32_array("rider.k", &g_rider_k[0][0], RACERS * 4); cw_debug_i32("rider.pick", &g_rider); } { extern float g_lens[3]; cw_debug_f32_array("lens", g_lens, 3); } { extern int32_t g_verb_n[3]; cw_debug_field("p0.verbs", g_verb_n, CW_DBG_I32, 3); } { extern int32_t g_assist_ticks; cw_debug_i32("p0.assist_ticks", &g_assist_ticks); cw_debug_i32("menu.assist", &g_assist); } { extern float g_music_state[2]; cw_debug_f32_array("audio.music_mix", g_music_state, 2); } { extern int32_t g_hud_rows, g_hud_order[RACERS], g_grid[RACERS]; cw_debug_i32("hud.rows", &g_hud_rows); cw_debug_field("hud.order", g_hud_order, CW_DBG_I32, RACERS); cw_debug_field("race.grid", g_grid, CW_DBG_I32, RACERS); cw_debug_field("race.order", G.order, CW_DBG_I32, RACERS); } { extern float g_lean_tip_t; extern int g_lean_told; cw_debug_f32("hud.lean_tip", &g_lean_tip_t); cw_debug_i32("hud.lean_told", &g_lean_told); } cw_debug_f32("p0.yaw_rate_max", &g_yaw_rate_max); }
+  { extern int32_t g_yaw_flips; extern float g_yaw_rate_max; cw_debug_i32("p0.yaw_flips", &g_yaw_flips); { extern float g_draft; cw_debug_f32("p0.draft", &g_draft); } { extern float g_cam_eye[4]; cw_debug_f32_array("cam.eye", g_cam_eye, 4); } { extern float g_rider_k[RACERS][4]; cw_debug_f32_array("rider.k", &g_rider_k[0][0], RACERS * 4); cw_debug_i32("rider.pick", &g_rider); } { extern float g_lens[3]; cw_debug_f32_array("lens", g_lens, 3); } { extern float g_radio[5]; cw_debug_f32_array("radio", g_radio, 5); } { extern int32_t g_verb_n[3]; cw_debug_field("p0.verbs", g_verb_n, CW_DBG_I32, 3); } { extern int32_t g_assist_ticks; cw_debug_i32("p0.assist_ticks", &g_assist_ticks); cw_debug_i32("menu.assist", &g_assist); } { extern float g_music_state[2]; cw_debug_f32_array("audio.music_mix", g_music_state, 2); } { extern int32_t g_hud_rows, g_hud_order[RACERS], g_grid[RACERS]; cw_debug_i32("hud.rows", &g_hud_rows); cw_debug_field("hud.order", g_hud_order, CW_DBG_I32, RACERS); cw_debug_field("race.grid", g_grid, CW_DBG_I32, RACERS); cw_debug_field("race.order", G.order, CW_DBG_I32, RACERS); } { extern float g_lean_tip_t; extern int g_lean_told; cw_debug_f32("hud.lean_tip", &g_lean_tip_t); cw_debug_i32("hud.lean_told", &g_lean_told); } cw_debug_f32("p0.yaw_rate_max", &g_yaw_rate_max); }
   cw_debug_f32("p0.speed", &G.c[0].speed);
   cw_debug_f32("p0.surf", &G.c[0].surf);
   cw_debug_f32("p0.air_time", &G.c[0].air_time);
@@ -712,6 +714,7 @@ static void fixed_update(void *user, double dt) {
   view_tick((float)dt);
   fx_tick((float)dt);
   { void lens_tick(float); lens_tick((float)dt); }
+  radio_tick((float)dt);
   audio_tick((float)dt);
   float ms = (float)((cw_time() - t0) * 1000.0);
   perf[0] += (ms - perf[0]) * 0.02f; /* the game's own fixed tick, averaged */

@@ -11,3 +11,6 @@ Terrain surface scans from Poly Haven, CC0: coast sand 01, sand 03, Aerial Rocks
   tools/make-course.mjs grades them (from art/scans and games/skyfighter/assets/terrain) into this world's palette.
 
 Fonts: Russo One and Oswald, SIL Open Font License (assets/fonts/*-OFL.txt).
+
+Race radio voices: Kokoro-82M (hexgrad/Kokoro-82M, Apache-2.0) and its voices, run by kokoro-js (Apache-2.0) through the
+engine's tools/speech-bake.mjs from story/radio.story (assets/radio.cwstory, assets/radio.cwspeech).

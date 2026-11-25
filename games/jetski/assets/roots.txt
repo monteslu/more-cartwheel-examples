@@ -152,3 +152,5 @@ course/storm/pale2-albedo.rgba
 course/storm/pale2-normal.rgba
 course/storm/stormwet-albedo.rgba
 course/storm/stormwet-normal.rgba
+radio.cwstory
+radio.cwspeech

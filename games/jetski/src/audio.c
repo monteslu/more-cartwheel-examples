@@ -84,7 +84,7 @@ void audio_tick(float dt) {
     lift += (want - lift) * fminf(1.0f, dt * 0.8f);
     g_music_duck_t -= dt;
     duck += ((g_music_lift && g_music_duck_t > 0 ? 1.0f : 0.0f) - duck) * fminf(1.0f, dt * (g_music_duck_t > 0 ? 12.0f : 2.5f));
-    g_music_state[0] = lift, g_music_state[1] = 0.5f * (1.0f - 0.45f * duck);
+    g_music_state[0] = lift, g_music_state[1] = 0.5f * (1.0f - 0.45f * duck) * radio_duck(); /* (and under the radio's voice) */
     if (v_music.id) { cw_voice_set_tempo(v_music, lift); cw_voice_set_volume(v_music, g_music_state[1]); } }
   float target = c->air ? 1.15f : 0.45f + 0.75f * (c->speed / 30.0f);
   target += 0.2f * c->in.throttle;
