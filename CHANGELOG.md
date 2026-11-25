@@ -38,6 +38,36 @@
   (`opt cardwind off` holds them still).
 - tests/plants-wind.mjs: the plants move on the carts (GL and WebGPU through romdev), each game's plants held still
   as the control that must fail the same bar.
+- Jet ski, a pass over the whole race:
+  - The start: a rev gauge under the count. Green at the light is a rocket start. Held from the first beat it runs
+    into the red, and the pump bogs for a moment at the light.
+  - The race's big moments are stamped across the picture: a lap, the last lap, a turbo, a trick, a combo, ten clean
+    marks in a row. Each stamp swells in and fades, one at a time, and the music steps back under it. Over the line
+    the top three throw their arms up and the rest drop their shoulders.
+  - The standings run down the left: every rider in order, in their colours, with the gap to you. A rider who
+    changes place glows once.
+  - A championship race lines up by the last race's finish, and the grid says where you start.
+  - Six riders: Cruz, Marlin, Kestrel, Tide, Juno and Reef. Each has their own colours, build and ratings
+    (acceleration, top speed, handling, tricks, weight) that change the ride. Pick one on the menu's Rider row.
+  - The race radio: the crew chief of your rider speaks only on news (big waves coming, the last lap, a rival closing,
+    the lead, the day's short way open), and the other riders call out a pass. The voices are Kokoro-82M, baked ahead
+    of time with the engine's speech tool. Every line also shows as a subtitle. Audio: Race radio sets the volume,
+    and 0 is off.
+  - Steering assist (menu): the computer steers the racing line while the stick is let go.
+  - The stick steers from a small dead zone and squares what is past it, so a nudge stays small.
+  - A craft settles into the water off the plane and rises onto it at speed. The first nose-down landing that costs
+    you speed says how to save the next one.
+  - The chase camera sits lower and closer at speed, and eases back to hold a long flight.
+  - The spray is thicker and whiter. Rain and the spray of a hard landing bead on the camera's lens and run off.
+  - Close shaves past a mark and ten clean marks in a row pay into the turbo. 1.7 s in a rival's slipstream gives
+    3 % more top speed.
+  - In stunt mode a gold ring hangs over each ramp's jump, and the same trick again pays less.
+  - Fixed: two riders over the line within a second of each other could be put in the wrong order. Their finish
+    times were compared at float precision near ten million.
+- Tests: jetski-moments, jetski-camera (through romdev, GL and WebGPU), jetski-steer, jetski-deep, jetski-cast,
+  jetski-trick-value, jetski-rings and jetski-radio. Each has a control that must fail. jetski-finish, jetski-handling,
+  jetski-menu and jetski-newcomer (--assist) cover the start, the verbs, the landing tip, the Rider, Steering assist
+  and Race radio rows, and the grid by result.
 
 ## 0.40.0
 

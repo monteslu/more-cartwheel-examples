@@ -244,6 +244,7 @@ static void cmd_switch(int argc, const char **argv, cw_reply *r) {
     else if (!strcmp(argv[1], "lens")) { extern int g_lens_on; g_lens_on = (int)v; }
     else if (!strcmp(argv[1], "verbs")) { extern int g_verbs; g_verbs = (int)v; }
     else if (!strcmp(argv[1], "radio_gap")) { extern float g_radio_gap; g_radio_gap = v; }
+    else if (!strcmp(argv[1], "radio_news")) { if (v >= 3) ev_push(EV_LOSE, G.c[0].place, G.c[0].x, G.c[0].z); else if (v >= 2) ev_push(EV_GAIN, 1, G.c[0].x, G.c[0].z); else { ev_push(EV_FINAL, LAPS, G.c[0].x, G.c[0].z); ev_push(EV_WAVES, 0, G.c[0].x, G.c[0].z); ev_push(EV_LOSE, 2, G.c[0].x, G.c[0].z); } } /* news for the radio gate: 1 three pieces at once, 2 the lead, 3 a rival passing */
     else if (!strcmp(argv[1], "assist")) g_assist = (int)v;
     else if (!strcmp(argv[1], "rider")) { g_rider = ((int)v % RACERS + RACERS) % RACERS; view_repaint(); }
     else if (!strcmp(argv[1], "livery_old")) { extern int g_livery_old; g_livery_old = (int)v; }

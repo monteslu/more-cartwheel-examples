@@ -47,6 +47,14 @@ static bool say(const char *pool) {
 static void crew(const char *what) { char p[48]; snprintf(p, sizeof p, "%s_crew.%s", WHO[rider_of(0)], what); say(p); }
 static void rival(int seat, const char *what) { if (seat <= 0 || seat >= RACERS) return; char p[48]; snprintf(p, sizeof p, "%s.%s", WHO[rider_of(seat)], what); if (say(p)) g_radio[4] += 1; }
 
+/* the rider just behind you (+1) or just ahead (-1) in the race's order; at either end, the one on the other side */
+static int neighbour(int dir) {
+  int k = 0;
+  for (int i = 0; i < RACERS; i++) if (G.order[i] == 0) k = i;
+  int j = k + dir;
+  if (j < 0 || j >= RACERS) j = k - dir;
+  return j >= 0 && j < RACERS ? G.order[j] : -1;
+}
 void radio_tick(float dt) {
   if (!st) return;
   cw_story_tick(st, dt);
@@ -62,8 +70,8 @@ void radio_tick(float dt) {
       case EV_WAVES: crew("waves"); break;
       case EV_FINAL: crew("lastlap"); break;
       /* a held place changed: up means you passed the rider now behind you, down that the rider now ahead passed you */
-      case EV_GAIN: if (e->a == 1) crew("lead"); else rival(G.order[e->a < RACERS ? e->a : RACERS - 1], "passed"); break;
-      case EV_LOSE: rival(G.order[e->a - 2 >= 0 ? e->a - 2 : 0], "passes"); break;
+      case EV_GAIN: if (e->a == 1) crew("lead"); else rival(neighbour(1), "passed"); break;
+      case EV_LOSE: rival(neighbour(-1), "passes"); break;
       default: break;
     }
   }
