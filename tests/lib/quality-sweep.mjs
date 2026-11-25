@@ -9,7 +9,8 @@
 // that says it was there, and a run that did not get there fails.
 //
 // The control: the game's table is compiled again with one state removed and linked into a scratch binary in out/, and that
-// run must report that state and skip draws. A gate that could not see a missing state fails on this.
+// run must report that state and skip its draws, or (engine v0.78.0 on) draw them with the nearest program that covers
+// them (cw.three.covered), which the engine reports as loudly. A gate that could not see a missing state fails on this.
 //
 //   node tests/<game>-quality.mjs [--gpu gl|webgpu] [--quality low,medium] [--scene <regex>] [--no-control] [--control-only] [--step-all] [--all] [--shard i/n] [--control-state <state>]
 //                                 [--json <file>]
@@ -175,8 +176,9 @@ export function sweep({ game, tables, scenes, control, qualities = QUALITIES }) 
       const q = k.quality || 'low';
       const r = runScene(OUT, sc, gpu, q, exe);
       const want = opt('--control-state') ? state : k.expect || state; // a table entry that covers the drawn state (more lights of a kind) is reported under the drawn state's name
-      const ok = !r.failed && r.missing.includes(want) && r.skipped > 0;
-      console.log(`${ok ? 'ok  ' : 'FAIL'} control ${gpu} ${q} ${sc.name}, ${state} out of the table: must report it and skip draws: ${r.failed || `missing [${r.missing.join(' ')}] skipped ${r.skipped}`}`);
+      const covered = (r.state && r.state['cw.three.covered']) || 0;
+      const ok = !r.failed && r.missing.includes(want) && (r.skipped > 0 || covered > 0);
+      console.log(`${ok ? 'ok  ' : 'FAIL'} control ${gpu} ${q} ${sc.name}, ${state} out of the table: must report it and skip or cover its draws: ${r.failed || `missing [${r.missing.join(' ')}] skipped ${r.skipped} covered ${covered}`}`);
       if (!ok) fail++;
     }
     rmSync(dir, { recursive: true, force: true });
