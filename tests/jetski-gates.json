@@ -394,5 +394,15 @@
     "name": "jetski-trick-value",
     "script": "tests/jetski-trick-value.mjs",
     "note": "stunt scoring: the same trick twice pays at most 80 % of two in full, two different ones over twice the first (control: wxsw trick_repeat 0)"
+  },
+  {
+    "name": "jetski-rings",
+    "script": "tests/jetski-rings.mjs",
+    "note": "stunt mode puts a ring over each ramp at the top of the arc; lined up with two ramps the seat flies through both (control: wxsw rings 0)"
+  },
+  {
+    "name": "jetski-radio",
+    "script": "tests/jetski-radio.mjs",
+    "note": "the race radio: at least three lines in a race, 8 s or more apart, never the same twice running, every one shown as a subtitle; news twice 4 s apart is one line (control: radio_gap 0 says more); a rival passing calls it out"
   }
 ]
