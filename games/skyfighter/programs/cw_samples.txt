@@ -1,4 +1,6 @@
 # r186 program states for cw_samples (cmake/programs.cmake; tools/programs.mjs adds what runs lack)
+# a copy of the engine samples' table, kept as the engine has it: no variant closure
+# closure: off
 standard+l1101
 standard+shadow+l1101+s100
 standard+map+rep+skin+l1001

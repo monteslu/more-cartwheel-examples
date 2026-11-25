@@ -18,3 +18,9 @@ basic+instbig+fog2+bs+icol
 standard+vcol+instbig+fog2+icol+l2001+xcluster_plain
 standard+map+vcol+rep+fog2+l2001+xcluster_plain
 standard+vcol+fog2+l2001+xcluster_plain_rim
+# closure (tools/programs.mjs): 5 state(s), the surveyed materials in the environments surveyed for their class
+basic+map+trans+instbig+fog2+icol
+basic+trans
+basic+vcol+trans+instbig+ds+icol
+standard+vcol+fog2+l2001+xcluster_plain
+standard+vcol+instbig+fog2+icol+l2001+xcluster_plain_rim

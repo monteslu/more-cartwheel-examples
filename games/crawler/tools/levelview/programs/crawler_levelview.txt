@@ -6,3 +6,5 @@ standard+vcol+instbig+fog2+icol+l2001
 basic+vcol+instbig+fog2+icol
 basic+map+vcol+rep+lmap+fog2+c1lmap
 standard+map+vcol+rep+fog2+l2001
+# closure (tools/programs.mjs): 1 state(s), the surveyed materials in the environments surveyed for their class
+standard+vcol+instbig+fog2+icol+l2001+xplain
