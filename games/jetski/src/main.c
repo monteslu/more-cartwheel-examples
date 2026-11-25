@@ -235,14 +235,15 @@ static void cmd_switch(int argc, const char **argv, cw_reply *r) {
     else if (!strcmp(argv[1], "rev_bog")) g_rev_bog = (int)v;
     else if (!strcmp(argv[1], "steer_curve")) g_steer_curve = (int)v;
     else if (!strcmp(argv[1], "deep")) { extern int g_deep; g_deep = (int)v; }
-    else if (!strcmp(argv[1], "lean_save")) { extern int g_lean_save; g_lean_save = (int)v; }
     else if (!strcmp(argv[1], "standings")) { extern int g_standings_on; g_standings_on = (int)v; }
     else if (!strcmp(argv[1], "cam_old")) { extern int g_cam_old; g_cam_old = (int)v; }
-    else if (!strcmp(argv[1], "pass_cue")) { extern int g_pass_cue; g_pass_cue = (int)v; }
+    else if (!strcmp(argv[1], "cam_air")) { extern int g_cam_air; g_cam_air = (int)v; }
+    else if (!strcmp(argv[1], "music_lift")) { extern int g_music_lift; g_music_lift = (int)v; }
     else if (!strcmp(argv[1], "spray_thick")) { extern int g_spray_thick; g_spray_thick = (int)v; }
     else if (!strcmp(argv[1], "rider_stats")) g_rider_stats = (int)v;
     else if (!strcmp(argv[1], "lens")) { extern int g_lens_on; g_lens_on = (int)v; }
     else if (!strcmp(argv[1], "verbs")) { extern int g_verbs; g_verbs = (int)v; }
+    else if (!strcmp(argv[1], "assist")) g_assist = (int)v;
     else if (!strcmp(argv[1], "rider")) { g_rider = ((int)v % RACERS + RACERS) % RACERS; view_repaint(); }
     else if (!strcmp(argv[1], "livery_old")) { extern int g_livery_old; g_livery_old = (int)v; }
     else if (!strcmp(argv[1], "grid_order")) { extern int g_grid_on; g_grid_on = (int)v; }
@@ -498,7 +499,8 @@ static void init(void *user) {
   cw_debug_f32_array("p0.pos", &G.c[0].x, 3);
   cw_debug_f32_array("p0.vel", &G.c[0].vx, 3);
   cw_debug_f32("p0.yaw", &G.c[0].yaw);
-  { extern int32_t g_yaw_flips; extern float g_yaw_rate_max; cw_debug_i32("p0.yaw_flips", &g_yaw_flips); { extern float g_draft; cw_debug_f32("p0.draft", &g_draft); } { extern float g_cam_eye[3]; cw_debug_f32_array("cam.eye", g_cam_eye, 3); } { extern float g_rider_k[RACERS][4]; cw_debug_f32_array("rider.k", &g_rider_k[0][0], RACERS * 4); cw_debug_i32("rider.pick", &g_rider); } { extern float g_lens[3]; cw_debug_f32_array("lens", g_lens, 3); } { extern int32_t g_verb_n[3]; cw_debug_field("p0.verbs", g_verb_n, CW_DBG_I32, 3); } { extern int32_t g_hud_rows, g_hud_order[RACERS], g_grid[RACERS]; cw_debug_i32("hud.rows", &g_hud_rows); cw_debug_field("hud.order", g_hud_order, CW_DBG_I32, RACERS); cw_debug_field("race.grid", g_grid, CW_DBG_I32, RACERS); cw_debug_field("race.order", G.order, CW_DBG_I32, RACERS); } { extern float g_lean_tip_t; extern int g_lean_told; cw_debug_f32("hud.lean_tip", &g_lean_tip_t); cw_debug_i32("hud.lean_told", &g_lean_told); } cw_debug_f32("p0.yaw_rate_max", &g_yaw_rate_max); }
+  cw_debug_f32("p0.steer", &G.c[0].steer); /* the bars, after the stick's curve and their lag */
+  { extern int32_t g_yaw_flips; extern float g_yaw_rate_max; cw_debug_i32("p0.yaw_flips", &g_yaw_flips); { extern float g_draft; cw_debug_f32("p0.draft", &g_draft); } { extern float g_cam_eye[4]; cw_debug_f32_array("cam.eye", g_cam_eye, 4); } { extern float g_rider_k[RACERS][4]; cw_debug_f32_array("rider.k", &g_rider_k[0][0], RACERS * 4); cw_debug_i32("rider.pick", &g_rider); } { extern float g_lens[3]; cw_debug_f32_array("lens", g_lens, 3); } { extern int32_t g_verb_n[3]; cw_debug_field("p0.verbs", g_verb_n, CW_DBG_I32, 3); } { extern int32_t g_assist_ticks; cw_debug_i32("p0.assist_ticks", &g_assist_ticks); cw_debug_i32("menu.assist", &g_assist); } { extern float g_music_state[2]; cw_debug_f32_array("audio.music", g_music_state, 2); } { extern int32_t g_hud_rows, g_hud_order[RACERS], g_grid[RACERS]; cw_debug_i32("hud.rows", &g_hud_rows); cw_debug_field("hud.order", g_hud_order, CW_DBG_I32, RACERS); cw_debug_field("race.grid", g_grid, CW_DBG_I32, RACERS); cw_debug_field("race.order", G.order, CW_DBG_I32, RACERS); } { extern float g_lean_tip_t; extern int g_lean_told; cw_debug_f32("hud.lean_tip", &g_lean_tip_t); cw_debug_i32("hud.lean_told", &g_lean_told); } cw_debug_f32("p0.yaw_rate_max", &g_yaw_rate_max); }
   cw_debug_f32("p0.speed", &G.c[0].speed);
   cw_debug_f32("p0.surf", &G.c[0].surf);
   cw_debug_f32("p0.air_time", &G.c[0].air_time);

@@ -373,7 +373,7 @@
   {
     "name": "jetski-camera",
     "script": "tests/jetski-camera.mjs",
-    "note": "the chase camera low and close at race speed and never under the water (control: cam_old 1); thick spray, 1.5x the bright water of the thin spray in the same frame (control: spray_thick 0); drops on the lens after a hard landing that clear within 2.5 s and keep off the middle (control: lens 0)"
+    "note": "on the cart through romdev, GL and WebGPU: the chase camera nearer and lower than the old chase at race speed and never under the water (control: cam_old 1); thick spray, 1.5x the bright water of the thin spray in the same frame (control: spray_thick 0); drops on the lens after a hard landing that clear within 2.5 s and keep off the middle (control: lens 0)"
   },
   {
     "name": "jetski-steer",

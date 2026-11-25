@@ -28,7 +28,7 @@ static void spawn(float big) {
     float x = rnd(), y = rnd() * 0.9f;
     /* the middle third, where the course is, takes few */
     if (x > 0.3f && x < 0.7f && y > 0.28f && y < 0.72f && (rnd() < 0.75f || centre_cover() > 0.08f)) return;
-    D[i] = (drop){ x, y, (0.006f + 0.012f * rnd()) * (1.0f + big), 0, 1.2f + 1.4f * rnd(), 0, 0 };
+    D[i] = (drop){ x, y, (0.014f + 0.02f * rnd()) * (1.0f + big), 0, 1.2f + 1.4f * rnd(), 0, 0 };
     g_lens[2] += 1;
     return;
   }
@@ -84,11 +84,11 @@ void lens_draw(void) {
       float px = cx + ca * r + ux * (along < 0 ? along * r * (stretch - 1.0f) : 0);
       float py = cy + sa * r + uy * (along < 0 ? along * r * (stretch - 1.0f) : 0);
       float su = d->x - ca * d->r * 3.0f * 9.0f / 16.0f, sv = d->y - sa * d->r * 3.0f;
-      v[k + 1] = (cw_vertex2d){ { px, py }, { su, sv }, cw_rgba(0.55f, 0.6f, 0.66f, 0.9f * fade) }; /* the rim: darker */
+      v[k + 1] = (cw_vertex2d){ { px, py }, { su, sv }, cw_rgba(0.35f, 0.4f, 0.46f, 0.95f * fade) }; /* the rim: darker */
       idx[k * 3] = 0, idx[k * 3 + 1] = (uint32_t)(k + 1), idx[k * 3 + 2] = (uint32_t)((k + 1) % SEG + 1);
     }
     cw_r2d_triangles(scr, v, SEG + 1, idx, SEG * 3);
     /* the glint of the light behind the camera, high on the drop */
-    cw_r2d_circle(cw_v2(cx - r * 0.35f, cy - r * 0.4f), r * 0.22f, 8, cw_rgba(1, 1, 1, 0.55f * fade));
+    cw_r2d_circle(cw_v2(cx - r * 0.35f, cy - r * 0.4f), r * 0.14f, 8, cw_rgba(1, 1, 1, 0.6f * fade));
   }
 }

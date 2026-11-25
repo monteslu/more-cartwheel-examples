@@ -7,7 +7,7 @@ Status: five courses in three weathers, two craft, a computer racer field, one p
 
 - Championship: a week of racing, one course a day, points by place. The week's forecast shows each day's weather before it starts, and each day you pick which of the courses left to race, so you can save a course for the day whose sea suits it. The first day races at the pace the courses always had, and the rivals get a little quicker each day after. Each race after the first lines up by the last one's finish, the winner at the front; the grid says where you start.
 - Time trial: you alone on the course and in the weather you choose, keeping your best time.
-- Stunt: two minutes alone on a course you have raced, scored on tricks. Tricks chained within three seconds of each other build a combo (the multiplier rises half a step a trick, up to four); a perfect landing and long air add to it, and a wipeout loses what the combo had not yet banked. The same trick again within your last five pays half as much each time, so a varied run scores best. The best score on each course is kept.
+- Stunt: two minutes alone on a course you have raced, scored on tricks. Tricks chained within three seconds of each other build a combo (the multiplier rises half a step a trick, up to four); a perfect landing and long air add to it, and a wipeout loses what the combo had not yet banked. The same trick again within your last five pays half as much each time, so a varied run scores best. A gold ring hangs over each ramp's jump at the top of its arc: fly through it for 600 more in the combo. The best score on each course is kept.
 - Free roam: a course you have raced to the line, alone, no buoys and no clock. Pause to leave.
 
 Difficulty makes the sea bigger and adds buoys: every second one on Easy, three in four on Normal, all of them on Hard.
@@ -38,7 +38,7 @@ Once a race each course sends a set of big waves through the pack: a cliff falli
 | Right shoulder | L | Fire a turbo, when you have one |
 
 Buoys mark the course: tall masts over the swell, each with a board whose arrow points the way past it. Pass each one on the side its colour and the arrow show: orange-red on your right, yellow on your
-left. The next one stands larger than the rest, and an arrow on screen stands over the water on the side to pass it, with the distance, or at the screen's edge pointing to it when it is out of sight. Ride back along the course and the game says so. Each one passed lights an arrow and raises your top speed, five at most. Miss one and they all go out.
+left. The next one stands larger than the rest, and an arrow on screen sits over it with the distance, or at the screen's edge pointing to it when it is out of sight. Ride back along the course and the game says so. Each one passed lights an arrow and raises your top speed, five at most. Miss one and they all go out.
 At full power every clean buoy and every trick charges a turbo, up to three in hand, shown by the chips over the arrows. A turbo in hand is a risk: pass a buoy on its wrong side and the store empties (the chips flash red and the screen says TURBO LOST). Five misses end your race, and the dots under the lap count show how many you have. So do five seconds away from the course,
 with a warning counting them down. Too much stick scrubs speed, and a long hard slide throws you off. The game does not nag: the same mistake made again within a few seconds is answered quietly, and after that only by the miss dots.
 Big steel ramps stand on piles along each course, some on the racing line and some off it. They do not move: the sea comes and goes on their legs, the swell is held down around them, and the same approach gives the same jump, well over two seconds in the air, long enough for a trick. Each press of the trick button is one trick; land mid-trick and you are off the craft. From the side or behind a ramp is a wall.
@@ -53,6 +53,9 @@ small correction stays small, and the d-pad is full on or off. A craft settles i
 onto it at speed. The race's big moments (a lap, the last lap, a turbo, a trick) are stamped across the picture and fade,
 one at a time, and over the line the top three throw their arms up. The standings run down the left, every rider in
 order with their colours and the gap to you. Rain and the spray of a hard landing bead on the camera's lens and run off.
+The menu's Steering assist lets the computer steer the racing line while the stick is let go; your own steering
+always wins. Close shaves past a mark, ten clean marks in a row and a slipstream behind a rival each pay into your turbo
+or your speed.
 
 ## The riders
 

@@ -4,7 +4,7 @@
 // trick_repeat 0 (every repeat in full) fails the first bound.
 //   node tests/jetski-trick-value.mjs
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..'), OUT = join(ROOT, 'out/trick-value'), TOOL = join(ROOT, 'deps/cartwheel-engine/tools/run-cart.mjs');
@@ -12,11 +12,11 @@ const EXE = process.env.JETSKI_EXE || join(ROOT, 'build/native/games/jetski/jets
 mkdirSync(OUT, { recursive: true });
 writeFileSync(join(OUT, 'i.json'), '[]');
 const cmds = ['stunt_score 1', 'stunt_score 1 1', 'stunt_score 1 2', 'wxsw trick_repeat 0', 'stunt_score 1 1'];
-const r = spawnSync('node', [TOOL, '--host', 'native', '--gpu', 'gl', '--app', 'jetski', '--frames', '6', '--input', join(OUT, 'i.json'), '--state', join(OUT, 's.json'), '--shot', join(OUT, 's.png'), '--start-cmds', cmds.join(';'), '--exe', EXE],
+const r = spawnSync('node', [TOOL, '--host', 'native', '--gpu', 'gl', '--app', 'jetski', '--frames', '12', '--input', join(OUT, 'i.json'), '--state', join(OUT, 's.json'), '--shot', join(OUT, 's.png'), '--start-cmds', cmds.join(';'), '--exe', EXE],
   { cwd: join(ROOT, 'deps/cartwheel-engine'), encoding: 'utf8', maxBuffer: 1 << 26, env: { ...process.env, CW_PROJECT_ROOT: ROOT, LIBGL_ALWAYS_SOFTWARE: '1', LP_NUM_THREADS: '2', CW_TEST_GPU: 'software', CW_WGPU_ADAPTER: 'llvmpipe', JETSKI_SMALL: '1', SDL_AUDIODRIVER: 'dummy' } });
 if (r.status !== 0) { console.error(r.stdout.slice(-400), r.stderr.slice(-600)); process.exit(3); }
-const got = [...(r.stdout + r.stderr).matchAll(/start cmd: stunt_score [0-9 ]+ -> (\d+)/g)].map((m) => +m[1]);
-if (got.length !== 4) { console.error('replies: ' + got); process.exit(3); }
+const got = JSON.parse(readFileSync(join(OUT, 's.json'), 'utf8'))['stunt.probe'].map(Number).filter((v) => v > 0);
+if (got.length !== 4) { console.error('scores: ' + got); process.exit(3); }
 const [one, twice, two, twice0] = got;
 let fail = 0;
 const check = (name, ok, detail) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}: ${detail}`); if (!ok) fail++; };

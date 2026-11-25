@@ -35,6 +35,9 @@ int g_event_on = 1;    /* debug: event 0, no event */
 float g_event_amp = 1.7f; /* metres the event's set stands over the swell (event_amp 0: the band without waves, its gate's control) */
 int g_cup_day;         /* the championship's day, 0.. */
 static int last_tricks[5], last_n; /* the last five tricks, newest first (stunt scoring's repeat discount) */
+static void rings_place(void);
+static float g_ring_miss[3];
+int32_t g_rings_passed; /* rings flown through this stunt run */
 wx_probe g_wx;
 stunt_state g_stunt;
 static int race_wx = -1;
@@ -367,6 +370,8 @@ void wx_race_reset(void) {
   memset(&g_stunt, 0, sizeof g_stunt);
   g_stunt.mult = 1;
   last_n = 0;
+  g_rings_passed = 0;
+  rings_place();
   st_read = g_ev_n;
 }
 
@@ -609,6 +614,27 @@ static void event_tick(float dt) {
   }
 }
 
+/* ── stunt mode: rings on the arcs the ramps throw, each worth points and a place in the combo ── */
+#define RING_R 2.8f
+#define RING_PTS 600
+float g_ring[RAMP_MAX][4];   /* x, y, z, yaw of the ring over each ramp's jump (view.c draws them in stunt mode) */
+int g_ring_n, g_rings_on = 1; /* wxsw rings 0: none, the ring gate's control */
+
+float g_ring_glow[RAMP_MAX]; /* a ring just flown through glows and fades */
+static float ring_side[RAMP_MAX];
+/* where a jump off each ramp peaks: off its lip at a rider's usual 22 m/s along the deck's slope */
+static void rings_place(void) {
+  g_ring_n = 0;
+  if (!g_rings_on || g_mode != MODE_STUNT) return;
+  for (int r = 0; r < RAMPS && g_ring_n < RAMP_MAX; r++) {
+    float sy, cy; cw_sincos(DEF->ramps[r][2], &sy, &cy);
+    float a = atanf(ramp_slope(r)), v = 22.0f, vy = v * sinf(a), t = vy / 9.8f, d = v * cosf(a) * t;
+    float lx = DEF->ramps[r][0] + sy * ramp_hl(r), lz = DEF->ramps[r][1] + cy * ramp_hl(r);
+    float *g = g_ring[g_ring_n++];
+    g[0] = lx + sy * d, g[1] = ramp_top_at(r) + vy * vy / (2 * 9.8f), g[2] = lz + cy * d, g[3] = DEF->ramps[r][2];
+  }
+  for (int k = 0; k < RAMP_MAX; k++) ring_side[k] = 0, g_ring_glow[k] = 0;
+}
 /* ── stunt mode: tricks scored, chained into combos ── */
 static int trick_points(int a) {
   /* sit-down: 1 barrel roll, 2 back flip, 3 front flip, 4 kick out, 5 a hand off the bar; stand-up: 6 submarine, 7 flat spin,
@@ -660,6 +686,16 @@ static void stunt_tick(float dt) {
   if ((!h->air || h->air_time < 0.35f) && g_stunt.pending > 0) { g_stunt.window -= dt; if (g_stunt.window <= 0) stunt_bank(); }
   if (g_stunt.lost_t > 0) g_stunt.lost_t -= dt;
   if (g_stunt.bank_t > 0) g_stunt.bank_t -= dt;
+  /* through a ring: the hull crosses its plane inside it */
+  for (int k = 0; k < g_ring_n; k++) {
+    const float *g = g_ring[k]; float sy, cy; cw_sincos(g[3], &sy, &cy);
+    float dx = h->x - g[0], dz = h->z - g[2], along = dx * sy + dz * cy, lat = dx * cy - dz * sy, up = h->y - g[1];
+    float side = along > 0 ? 1.0f : -1.0f;
+    if (ring_side[k] != 0 && side != ring_side[k] && fabsf(lat) < 15.0f) g_ring_miss[0] = lat, g_ring_miss[1] = up, g_ring_miss[2] = (float)k; /* where the hull crossed the ring's plane (its gate's tuning) */
+    if (ring_side[k] != 0 && side != ring_side[k] && lat * lat + up * up < RING_R * RING_R) { g_rings_passed++; g_ring_glow[k] = 1; stunt_add(RING_PTS); ev_push(EV_HOOP, RING_PTS, g[0], g[2]); }
+    ring_side[k] = side;
+    g_ring_glow[k] = fmaxf(0, g_ring_glow[k] - dt);
+  }
   if (G.clock >= STUNT_TIME) { stunt_bank(); G.state = RACE_DONE; G.c[0].finish = G.clock; }
 }
 
@@ -797,9 +833,11 @@ static void cmd_wxsw(int argc, const char **argv, cw_reply *r) {
     else if (!strcmp(argv[1], "spill_old")) g_spill_old = (int)v;
     else if (!strcmp(argv[1], "cup_day")) g_cup_day = (int)v;
     else if (!strcmp(argv[1], "trick_repeat")) g_trick_repeat = (int)v;
+    else if (!strcmp(argv[1], "rings")) { g_rings_on = (int)v; rings_place(); }
   }
   if (r) cw_reply_raw(r, "true");
 }
+static int32_t g_stunt_probe[8], g_stunt_probe_n;
 /* stunt_score <kind> ...: tricks scored as one flight's combo, from a clean slate, the banked score in the reply */
 static void cmd_stunt_score(int argc, const char **argv, cw_reply *r) {
   memset(&g_stunt, 0, sizeof g_stunt), g_stunt.mult = 1, last_n = 0;
@@ -807,6 +845,7 @@ static void cmd_stunt_score(int argc, const char **argv, cw_reply *r) {
   int pending = g_stunt.pending; float mult = g_stunt.mult;
   int pts = (int)((float)pending * mult + 0.5f);
   memset(&g_stunt, 0, sizeof g_stunt), g_stunt.mult = 1, last_n = 0;
+  if (g_stunt_probe_n < 8) g_stunt_probe[g_stunt_probe_n++] = pts; /* (each answer kept in order, for the gate's state read) */
   if (r) cw_reply_printf(r, "%d", pts);
 }
 /* the course's rocks, against the ground and the sea: the grounding gate's part (lift: its control) */
@@ -849,6 +888,8 @@ void wx_debug(void) {
   cw_debug_i32("wx.shoal_hits", &g_wx.shoal_hits);
   cw_debug_i32("wx.ai_shoal_hits", &g_wx.ai_shoal_hits);
   cw_debug_i32("wx.rocks", &g_wx.rocks);
+  cw_debug_i32("stunt.rings", &g_ring_n);
+  cw_debug_i32("stunt.rings_passed", &g_rings_passed);
   cw_debug_i32("wx.rocks_solid", &g_wx.rocks_solid);
   cw_debug_i32("wx.event_on", &g_wx.event_on);
   cw_debug_i32("wx.event_hits", &g_wx.event_hits);
@@ -858,6 +899,8 @@ void wx_debug(void) {
   cw_debug_f32_array("wx.route", g_wx.route, 4);
   cw_debug_field("wx.phase", phase, CW_DBG_I32, RACERS);
   cw_debug_i32("stunt.score", &g_stunt.score);
+  cw_debug_field("stunt.probe", g_stunt_probe, CW_DBG_I32, 8);
+  cw_debug_f32_array("stunt.ring_miss", g_ring_miss, 3);
   cw_debug_i32("stunt.pending", &g_stunt.pending);
   cw_debug_i32("stunt.chain", &g_stunt.chain);
   cw_debug_i32("stunt.best_chain", &g_stunt.best_chain);

@@ -42,6 +42,7 @@ extern int g_difficulty; /* 0 easy, 1 normal, 2 hard */
 enum { MODE_CHAMPIONSHIP, MODE_TIME_TRIAL, MODE_STUNT, MODE_ROAM, MODE_N }; /* stunt and free roam: the human alone, no buoys counted */
 #define MODE_ALONE (g_mode != MODE_CHAMPIONSHIP)
 extern int g_mode;
+extern int g_assist;          /* the menu's Assist: the computer steers while the stick is let go */
 extern int32_t g_grid[RACERS];   /* racer i starts in slot g_grid[i]: a championship lines up by the last finish */
 /* the craft every racer rides, chosen from the menu: a sit-down runabout, or a stand-up (a narrow, light hull the rider
  * stands on, on a tray behind a hinged handlepole). internal-cartwheel/findings/jetski-standup.md has the real ones */
@@ -190,7 +191,7 @@ typedef struct craft {
 } craft;
 
 /* what happened to the human this tick: the HUD, the sounds, the rumble and the bursts all read this list, each from its own place in it */
-enum { EV_PASS, EV_TOP, EV_TRICK, EV_LAND, EV_MISS, EV_GAIN, EV_LOSE, EV_LAP, EV_FINAL, EV_WALL, EV_CRASH, EV_CHARGE, EV_TURBO, EV_ROCKET, EV_TURBO_LOST, EV_WAVES, EV_COMBO, EV_BOG, EV_SHAVE, EV_STREAK, EV_DRAFT, EV_KINDS };
+enum { EV_PASS, EV_TOP, EV_TRICK, EV_LAND, EV_MISS, EV_GAIN, EV_LOSE, EV_LAP, EV_FINAL, EV_WALL, EV_CRASH, EV_CHARGE, EV_TURBO, EV_ROCKET, EV_TURBO_LOST, EV_WAVES, EV_COMBO, EV_BOG, EV_SHAVE, EV_STREAK, EV_DRAFT, EV_HOOP, EV_KINDS };
 typedef struct game_event { int kind; int a; float x, z; int quiet; } game_event; /* quiet: the same mistake again soon after, answered softly or not at all (weather.c nag_quiet) */
 #define EV_RING 64
 void ev_push(int kind, int a, float x, float z);

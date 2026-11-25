@@ -22,6 +22,9 @@ static cw_res res[S_N];
 static cw_sound snd[S_N];
 static cw_voice v_engine, v_hull, v_wind, v_music, v_rival[RIVAL_VOICES];
 static int music_level = -1;
+int g_music_lift = 1;
+float g_music_state[2] = { 1, 0.5f }; /* the music's pitch and volume now (the audio gate) */
+static float g_music_duck_t;
 static float rev, hiss, rival_rev[RACERS], slap_cool;
 static int last_count = 99, last_state = -1;
 static bool was_air;
@@ -74,6 +77,15 @@ void audio_tick(float dt) {
     g_music_on = music_index(G.level);
     v_music = cw_audio_play(snd[S_MUSIC0 + g_music_on], &(cw_play_desc){ .loop = true, .fade_in = 2.0f, .volume = 0.5f, .bus = cw_shell_music_bus() });
   }
+  /* the music speeds up a little on the last lap (its pitch kept) and steps back under the race's big moments (a stamp), then comes back:
+     sw music_lift 0, neither (the gate's control) */
+  { static float lift = 1, duck = 0;
+    float want = g_music_lift && G.state == RACE_ON && c->lap == LAPS - 1 && c->finish <= 0 ? 1.06f : 1.0f;
+    lift += (want - lift) * fminf(1.0f, dt * 0.8f);
+    g_music_duck_t -= dt;
+    duck += ((g_music_lift && g_music_duck_t > 0 ? 1.0f : 0.0f) - duck) * fminf(1.0f, dt * (g_music_duck_t > 0 ? 12.0f : 2.5f));
+    g_music_state[0] = lift, g_music_state[1] = 0.5f * (1.0f - 0.45f * duck);
+    if (v_music.id) { cw_voice_set_tempo(v_music, lift); cw_voice_set_volume(v_music, g_music_state[1]); } }
   float target = c->air ? 1.15f : 0.45f + 0.75f * (c->speed / 30.0f);
   target += 0.2f * c->in.throttle;
   rev += (target - rev) * (dt * (c->air ? 6.0f : 3.0f));
@@ -124,6 +136,7 @@ void audio_tick(float dt) {
     for (; read != g_ev_n; read++) {
       const game_event *e = &g_ev[read % EV_RING];
       if (!g_ev_on) continue;
+      if (e->kind == EV_LAP || e->kind == EV_FINAL || e->kind == EV_TURBO || e->kind == EV_ROCKET || e->kind == EV_STREAK || e->kind == EV_TOP) g_music_duck_t = 0.7f;
       bool heard = true;
       /* the same mistake again soon: softly the second time, not at all after (sim.c nag_quiet) */
       if (e->quiet >= 2) continue;
@@ -150,6 +163,7 @@ void audio_tick(float dt) {
         case EV_SHAVE: shot(S_WHOOSH, 0.55f, 1.3f); break;
         case EV_STREAK: shot(S_TOP, 0.7f, 1.2f); shot(S_STYLE, 0.5f, 1.1f); break;
         case EV_DRAFT: shot(S_WHOOSH, 0.45f, 0.8f); break;
+        case EV_HOOP: shot(S_OK, 0.7f, 1.4f); shot(S_TOP, 0.5f, 1.3f); break;
         case EV_TURBO_LOST: shot(S_MISS, 0.5f * qv, 0.7f); break;
         case EV_WAVES: shot(S_BIG, 0.9f, 0.45f); shot(S_WHOOSH, 0.7f, 0.4f); break;
         case EV_COMBO: shot(S_TOP, 0.65f, 1.0f + 0.04f * fminf(10.0f, (float)e->a / 500.0f)); shot(S_STYLE, 0.5f, 1.2f); break;

@@ -22,8 +22,8 @@ let fail = 0;
 const check = (name, ok, detail) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}: ${detail}`); if (!ok) fail++; };
 const f2 = (v) => (+v).toFixed(3);
 const spread = (pre, craft, tag) => {
-  const rest = run(`${pre}craft ${craft};trial`, 150, [], `rest-${tag}.png`);
-  const fast = run(`${pre}craft ${craft};trial`, 360, [{ frame: 2, buttons: ['south'] }], `fast-${tag}.png`);
+  const rest = run(`${pre}craft ${craft};course 4;trial`, 150, [], `rest-${tag}.png`);
+  const fast = run(`${pre}craft ${craft};course 4;trial`, 360, [{ frame: 2, buttons: ['south'] }], `fast-${tag}.png`);
   return { rest: +rest['p0.draft'], fast: +fast['p0.draft'], speed: +fast['p0.speed'], d: +rest['p0.draft'] - +fast['p0.draft'] };
 };
 const sit = spread('', 0, 'sit'), sit0 = spread('sw deep 0;', 0, 'sit-off'), stand = spread('', 1, 'stand');

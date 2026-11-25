@@ -13,7 +13,7 @@
 #include "game.h"
 
 enum { P_NONE, P_MAIN, P_CONTROLS, P_AUDIO, P_GRAPHICS, P_PAUSE, P_RESULTS, P_FORECAST };
-typedef struct save_data { int32_t magic, level, difficulty, music, sfx, mode; float best[LEVELS]; int32_t craft, unlocked, weather; int32_t stunt_best[LEVELS]; int32_t rider; } save_data;
+typedef struct save_data { int32_t magic, level, difficulty, music, sfx, mode; float best[LEVELS]; int32_t craft, unlocked, weather; int32_t stunt_best[LEVELS]; int32_t rider, assist; } save_data;
 _Static_assert(sizeof(save_data) <= 128, "the save region in cw_shell_desc");
 #define SAVE_MAGIC 0x4a534b32
 static int page = P_MAIN, row, last_state = -1;
@@ -36,7 +36,7 @@ static save_data *save(void) { return (save_data *)cw_shell_game_save(); }
 static void store(void) {
   save_data *s = save();
   if (!s) return;
-  s->magic = SAVE_MAGIC, s->level = G.level, s->difficulty = g_difficulty, s->music = music, s->sfx = sfx, s->mode = g_mode, s->craft = g_craft, s->rider = g_rider;
+  s->magic = SAVE_MAGIC, s->level = G.level, s->difficulty = g_difficulty, s->music = music, s->sfx = sfx, s->mode = g_mode, s->craft = g_craft, s->rider = g_rider, s->assist = g_assist;
   memcpy(s->best, best, sizeof best);
   s->unlocked = unlocked, s->weather = weather_sel;
   memcpy(s->stunt_best, stunt_best, sizeof stunt_best);
@@ -64,6 +64,7 @@ void menu_init(void) {
     if (s->mode >= 0 && s->mode < MODE_N) g_mode = s->mode;
     if (s->craft == CRAFT_SIT || s->craft == CRAFT_STAND) g_craft = s->craft;
     if (s->rider > 0 && s->rider < RACERS) { g_rider = s->rider; view_repaint(); }
+    g_assist = s->assist == 1;
     memcpy(best, s->best, sizeof best);
     unlocked = s->unlocked, weather_sel = s->weather >= -1 && s->weather < WX_N ? s->weather : -1;
     memcpy(stunt_best, s->stunt_best, sizeof stunt_best);
@@ -73,7 +74,7 @@ void menu_init(void) {
 
 static int page_rows(void) {
   switch (page) {
-  case P_MAIN: return 10;
+  case P_MAIN: return 11;
   case P_FORECAST: { int n = 0; for (int l = 0; l < LEVELS; l++) if (!(cup_used & (1 << l))) n++; return n > 0 ? n : 1; }
   case P_AUDIO: return 5;
   case P_PAUSE: return 5;
@@ -202,7 +203,7 @@ void menu_tick(float dt) {
   }
   if (page == P_GRAPHICS) {
     cw_quality_menu_update();
-    if (!cw_quality_menu_is_open()) back_up(9, 0);
+    if (!cw_quality_menu_is_open()) back_up(10, 0);
     return;
   }
   bool up = cw_action_just_pressed(0, a_up), down = cw_action_just_pressed(0, a_down), left = cw_action_just_pressed(0, a_left), right = cw_action_just_pressed(0, a_right);
@@ -227,15 +228,17 @@ void menu_tick(float dt) {
     if (row == 5 && (dx || ok)) { g_craft = !g_craft; store(); }
     /* the rider: who you are, and what they are good at (their bars beside the menu) */
     if (row == 6 && (dx || ok)) { g_rider = (g_rider + RACERS + (dx ? dx : 1)) % RACERS; view_repaint(); store(); }
+    /* the assist: the computer steers while the stick is let go (a first race, a younger player) */
+    if (row == 7 && (dx || ok)) { g_assist = !g_assist; store(); }
     if (ok) {
       if (row == 0) begin();
-      else if (row == 7) open_page(P_CONTROLS);
-      else if (row == 8) open_page(P_AUDIO);
-      else if (row == 9) { page = P_GRAPHICS; cw_quality_menu_open(); }
+      else if (row == 8) open_page(P_CONTROLS);
+      else if (row == 9) open_page(P_AUDIO);
+      else if (row == 10) { page = P_GRAPHICS; cw_quality_menu_open(); }
     }
     break;
   case P_CONTROLS:
-    if (ok || back) back_up(7, 2);
+    if (ok || back) back_up(8, 2);
     break;
   case P_AUDIO:
     if (row == 0 && dx) { music = music + dx < 0 ? 0 : music + dx > 10 ? 10 : music + dx; apply_audio(); store(); }
@@ -252,7 +255,7 @@ void menu_tick(float dt) {
       cw_text_backdrop_set((cw_text_backdrop)(ok ? (b + 1) % 3 : b + dx < 0 ? 0 : b + dx > 2 ? 2 : b + dx));
       store();
     }
-    if ((ok && row == 4) || back) back_up(8, 3);
+    if ((ok && row == 4) || back) back_up(9, 3);
     break;
   case P_PAUSE:
     if (back) { page = P_NONE; break; }
@@ -429,14 +432,14 @@ void menu_draw(void) {
     if (g_mode == MODE_CHAMPIONSHIP) snprintf(wx, sizeof wx, "By the forecast");
     else if (weather_sel < 0) snprintf(wx, sizeof wx, "Usual (%s)", WX_NAMES[wx_usual(G.level)]);
     else snprintf(wx, sizeof wx, "%s", WX_NAMES[weather_sel]);
-    const row_def r[10] = { { "Start", NULL }, { "Mode", MODES[g_mode] }, { "Course", course }, { "Weather", wx }, { "Difficulty", DIFF[g_difficulty] }, { "Craft", CRAFTS[g_craft] }, { "Rider", CAST[g_rider] }, { "Controls", NULL }, { "Audio and text", NULL }, { "Graphics", NULL } };
+    const row_def r[11] = { { "Start", NULL }, { "Mode", MODES[g_mode] }, { "Course", course }, { "Weather", wx }, { "Difficulty", DIFF[g_difficulty] }, { "Craft", CRAFTS[g_craft] }, { "Rider", CAST[g_rider] }, { "Steering assist", g_assist ? "On" : "Off" }, { "Controls", NULL }, { "Audio and text", NULL }, { "Graphics", NULL } };
     static const char *const parts[3] = { "{ui_up|ui_down} choose", "{ui_left|ui_right} change", "{ui_accept} accept" };
     float hs = 28 * u, ht = hint(parts, 3, px, w - px - margin, h - 40 * u, hs, dim);
-    float pw = row_width(r, 10, 560 * u, max_w), x = px + pw > w - margin ? w - margin - pw : px;
+    float pw = row_width(r, 11, 560 * u, max_w), x = px + pw > w - margin ? w - margin - pw : px;
     float best_h = 0;
     bool show_best = (g_mode == MODE_TIME_TRIAL && best[G.level] > 0) || (g_mode == MODE_STUNT && stunt_best[G.level] > 0);
     if (show_best) best_h = measure(small, "Best", 30 * u).height + 4 * u;
-    float end = rows_draw(x, y, ht - 20 * u - best_h, pw, r, 10, row);
+    float end = rows_draw(x, y, ht - 20 * u - best_h, pw, r, 11, row);
     /* on the Rider row: their ratings as bars, beside the menu */
     if (row == 6) {
       static const char *const STAT[5] = { "Acceleration", "Top speed", "Handling", "Tricks", "Weight" };

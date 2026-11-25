@@ -25,7 +25,7 @@ let fail = 0;
 const check = (name, ok, detail) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}: ${detail}`); if (!ok) fail++; };
 // the bars, as the game draws them (game.h RIDER_STATS): accel, top, handling, tricks, weight
 const BARS = [[3, 3, 3, 3, 3], [2, 5, 2, 3, 3], [5, 2, 4, 2, 2], [2, 4, 2, 2, 5], [3, 2, 3, 5, 2], [4, 2, 5, 2, 2]];
-const ride = (pre) => BARS.map((_, r) => { const s = run(`${pre}sw rider ${r};trial 0.05`, 720, `r${r}${pre ? '-off' : ''}`); return { top: +s.trial[0], plane: +s.trial[6] }; });
+const ride = (pre) => BARS.map((_, r) => { const s = run(`${pre}sw rider ${r};course 4;trial 0.05`, 720, `r${r}${pre ? '-off' : ''}`); return { top: +s.trial[0], plane: +s.trial[6] }; });
 const now = ride(''), off = ride('sw rider_stats 0;');
 const spread = (a) => Math.max(...a) / Math.min(...a) - 1;
 /* ranks agree: any rider with more bars is not slower (ties in bars may land either way) */

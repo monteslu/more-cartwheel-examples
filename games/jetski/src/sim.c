@@ -41,12 +41,13 @@ game_event g_ev[EV_RING];
 unsigned g_ev_n;
 int g_ev_on = 1, g_turbo_on = 1, g_fb[EV_KINDS][4];
 int g_verbs = 1;
-int32_t g_verb_n[3]; /* close shaves, streak bonuses, slipstreams the human took this race */
+int g_assist;            /* the menu's Assist: 1 the computer steers while the stick is let go */
+int32_t g_assist_ticks;  /* ticks it steered this race */
+int32_t g_verb_n[3]; /* close shaves and streak bonuses the human took, slipstreams any racer took, this race */
 int g_rev_bog = 1;
 /* the human's weave: times the yaw rate changed sign at over 0.08 rad/s (a sway, not noise), and the fastest it turned */
 int32_t g_yaw_flips;
 int g_deep = 1;
-int g_lean_save = 1;
 /* the grid: racer i starts in slot g_grid[i] (0 the front). A championship's next race lines up by the last one's finish
  * (menu.c); any other race by seat. sw grid_order 0: always by seat, the gate's control */
 int32_t g_grid[RACERS] = { 0, 1, 2, 3, 4, 5 };
@@ -571,7 +572,7 @@ static void craft_tick(craft *c, int idx, float dt) {
       float dx = r->x - c->x, dz = r->z - c->z, ahead = dx * sy0 + dz * cy0, side = dx * cy0 - dz * sy0;
       in = ahead > 2.0f && ahead < 14.0f && fabsf(side) < 2.5f;
     }
-    if (in) { c->draft_t += dt; if (c->human && c->draft_t >= 1.7f && c->draft_t - dt < 1.7f) { g_verb_n[2]++; ev_push(EV_DRAFT, 0, c->x, c->z); } }
+    if (in) { c->draft_t += dt; if (c->draft_t >= 1.7f && c->draft_t - dt < 1.7f) { g_verb_n[2]++; if (c->human) ev_push(EV_DRAFT, 0, c->x, c->z); } }
     else c->draft_t = 0;
     if (c->draft_t >= 1.7f) top *= 1.03f;
   } else c->draft_t = 0;
@@ -786,9 +787,8 @@ static void craft_tick(craft *c, int idx, float dt) {
       /* flat keeps the speed, nose down plunges and loses it; weight back on the way in saves some of it. A trick not finished
        * or a landing far out of line throws the rider. A clean long one pays into the meter */
       float nose = wrap_pi(pitch_t - c->pitch); /* + : nose below the water's line */
-      /* weight back saves a nose-down landing: more the further down the nose (g_lean_save 0: the old small help, the gate's control) */
       float back = clampf(c->in.lean, 0, 1);
-      float e2 = err + (nose > 0 ? nose * 0.9f : 0) - (nose > 0 ? back * (g_lean_save ? 0.35f + 0.9f * nose : 0.35f) : 0.0f);
+      float e2 = err + (nose > 0 ? nose * 0.9f : 0) - 0.35f * back * (nose > 0 ? 1.0f : 0.0f);
       e2 = e2 < 0 ? 0 : e2;
       float keep = e2 < 0.12f ? 1.0f : 1.0f - clampf((e2 - 0.12f) * 0.42f, 0, 0.65f);
       /* a hop the sea threw at you, with nothing asked of the craft, costs next to nothing: the water is the track, not the thing to avoid. A dive you asked for or a long fall still pays */
@@ -939,6 +939,7 @@ void sim_reset(int state) {
   hud_race_reset();
   memset(g_ride, 0, sizeof g_ride);
   memset(g_verb_n, 0, sizeof g_verb_n);
+  g_assist_ticks = 0;
   wx_race_reset();
   g_fly = (fly_probe){ .flights = g_fly.flights }; /* a new race: no flight yet (the count of flights goes on) */
   memset(&G, 0, sizeof G);
@@ -1169,6 +1170,11 @@ void sim_tick(float dt) {
     if (ai) computer(c, i);
     /* autosteer 1: the computer steers the human seat and the pad keeps its trick button, for the trick gate */
     else if (g_autosteer && c->human) { bool t = c->in.trick; computer(c, i); c->in.trick = t; }
+    /* the steering assist (menu): with the stick let go, the computer's line steers you, gently; your own stick always wins */
+    else if (g_assist && c->human && G.state == RACE_ON && fabsf(c->in.steer) < 0.15f) {
+      craft_input keep = c->in; computer(c, i);
+      float s = c->in.steer * 0.85f; c->in = keep; c->in.steer = s; g_assist_ticks++;
+    }
     if (c->human && G.state == RACE_GRID) { if (c->in.throttle > 0.5f) { if (G.rocket_at > 0) G.rocket_at = G.clock; } else G.rocket_at = 1; }
     if (!go) c->in.throttle = 0;
     craft_tick(c, i, dt);
@@ -1196,10 +1202,10 @@ void sim_tick(float dt) {
   for (int i = 0; i < RACERS; i++) G.order[i] = i;
   for (int a = 1; a < RACERS; a++) {
     int v = G.order[a], b = a;
-    float dv = G.c[v].finish > 0 ? 1e7f - G.c[v].finish : G.c[v].dist;
+    float dv = G.c[v].finish > 0 ? 1e6f - G.c[v].finish : G.c[v].dist;
     while (b > 0) {
       int u = G.order[b - 1];
-      float du = G.c[u].finish > 0 ? 1e7f - G.c[u].finish : G.c[u].dist;
+      float du = G.c[u].finish > 0 ? 1e6f - G.c[u].finish : G.c[u].dist;
       if (du >= dv) break;
       G.order[b] = u;
       b--;

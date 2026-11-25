@@ -138,7 +138,6 @@ static void pointer(cw_vec2 p, float dx, float dy, float len, float half, cw_col
 /* The next buoy, always: over it with the way past it and how far, or at the screen's edge pointing to it when it is out of the picture. The next buoy can be
  * hidden behind a swell or a headland and this still says where it is */
 int g_hud_chevron; /* the way the next mark's chevron points: -1 pass it on the left, +1 on the right */
-int g_pass_cue = 1;
 static void next_mark(const craft *c, float w, float h, float u) {
   g_hud_ptr_mode = 0;
   if (G.state != RACE_ON && G.state != RACE_GRID) return;
@@ -156,15 +155,6 @@ static void next_mark(const craft *c, float w, float h, float u) {
   to_screen((t3_vec3){ b[0], s.height, b[1] }, w, h, &base);
   g_hud_buoy[0] = p.x, g_hud_buoy[1] = p.y, g_hud_buoy[2] = front ? 1 : 0, g_hud_buoy[3] = base.y;
   for (int k = 0; k < 4; k++) g_nc_look[k] = g_hud_buoy[k];
-  /* the way past it: the chevron stands over the water 6 m out on the side to pass, not on the mark, so from far off it
-     already shows where to steer (a newcomer aimed at the mark itself and slid by on its wrong side). sw pass_cue 0: on
-     the mark, the gate's control */
-  if (g_pass_cue) {
-    float sx, sz, tx, tz; track_at(b[3], &sx, &sz, &tx, &tz);
-    float px = b[0] + b[2] * tz * 6.0f, pz = b[1] - b[2] * tx * 6.0f;
-    cw_vec2 q = { 0, 0 };
-    if (to_screen((t3_vec3){ px, top, pz }, w, h, &q) == front) p.x = q.x, g_nc_look[0] = q.x; /* (at the mark's top height, so the label and its size stay the mark's) */
-  }
   g_nc_look[4] = dir, g_nc_look[5] = c->speed;
   if (!g_hud_mark) return;
   bool inside = front && p.x > 0 && p.x < w && p.y > 0 && p.y < h;
@@ -306,6 +296,7 @@ static void hud_events(float dt) {
       case EV_SHAVE: pop_add("CLOSE SHAVE", cyan, false); chip_pulse = 1; break;
       case EV_STREAK: snprintf(b, sizeof b, "%d IN A ROW", e->a); stamp_add(b, gold); chip_pulse = 1; break;
       case EV_DRAFT: pop_add("SLIPSTREAM", green, false); break;
+      case EV_HOOP: snprintf(b, sizeof b, "RING +%d", e->a); pop_add(b, gold, true); break;
       case EV_TURBO_LOST: chip_lost = 1; if (e->quiet < 2) { pop_add("TURBO LOST: WRONG SIDE", red, e->quiet == 0); g_hud_lost++; } else shown = false; break;
       case EV_WAVES: waves_t = 0; g_hud_waves++; break;
       case EV_COMBO: snprintf(b, sizeof b, "+%d", e->a); stamp_add(b, gold); break;
@@ -359,9 +350,14 @@ static void hud_standings(const craft *c, float u, float y) {
   if (MODE_ALONE || (G.state != RACE_ON && G.state != RACE_GRID)) return;
   bool fresh = G.tick < seen_tick || G.tick - seen_tick > 30; /* a new race or a jump: rows go straight to their places */
   seen_tick = G.tick;
+  /* the order shown changes only once the race's order has held for 0.7 s, so two riders side by side do not shuffle */
+  static int shown[RACERS], held; 
+  if (fresh) { memcpy(shown, G.order, sizeof shown); held = 0; }
+  else if (memcmp(shown, G.order, sizeof shown)) { if (++held > 42) { memcpy(shown, G.order, sizeof shown); held = 0; } }
+  else held = 0;
   float rh = 34 * u * grow(small, 26 * u);
   for (int k = 0; k < RACERS; k++) {
-    int who = G.order[k];
+    int who = shown[k];
     if (!racer_on(who)) continue;
     if (fresh) row_y[who] = (float)k, glow[who] = 0, last_slot[who] = k;
     if (last_slot[who] != k) { glow[who] = 1, last_slot[who] = k; }

@@ -44,17 +44,19 @@ check('pad: A on a course starts the race', pad['menu.page'] === P_NONE && pad['
 const fcBack = run(['south', 'east']);
 check('the forecast: back returns to the menu', fcBack['menu.page'] === P_MAIN, pg(fcBack));
 const D6 = ['down', 'down', 'down', 'down', 'down', 'down'];
-const rows = run([...D6, 'down']);
-check('down walks the rows, to Controls', rows['menu.row'] === 7, pg(rows));
+const rows = run([...D6, 'down', 'down']);
+check('down walks the rows, to Controls', rows['menu.row'] === 8, pg(rows));
 const wrap = run(['up']);
-check('up from the top wraps to the last row', wrap['menu.row'] === 9, pg(wrap));
-const ctl = run([...D6, 'down', 'south']);
+check('up from the top wraps to the last row', wrap['menu.row'] === 10, pg(wrap));
+const ctl = run([...D6, 'down', 'down', 'south']);
 check('Controls opens', ctl['menu.page'] === P_CONTROLS, pg(ctl));
-const ctlBack = run([...D6, 'down', 'south', 'east']);
-check('Controls: back returns to the menu, on the row that opened it', ctlBack['menu.page'] === P_MAIN && ctlBack['menu.row'] === 7, pg(ctlBack));
-const au = run([...D6, 'down', 'down', 'south']);
+const ctlBack = run([...D6, 'down', 'down', 'south', 'east']);
+check('Controls: back returns to the menu, on the row that opened it', ctlBack['menu.page'] === P_MAIN && ctlBack['menu.row'] === 8, pg(ctlBack));
+const au = run([...D6, 'down', 'down', 'down', 'south']);
 check('Audio opens', au['menu.page'] === P_AUDIO, pg(au));
-check('Audio: back returns', run([...D6, 'down', 'down', 'south', 'east'])['menu.page'] === P_MAIN, 'east');
+check('Audio: back returns', run([...D6, 'down', 'down', 'down', 'south', 'east'])['menu.page'] === P_MAIN, 'east');
+const assist = run([...D6, 'down', 'right']);
+check('the Steering assist row: right turns it on (control: untouched it is off)', assist['menu.assist'] === 1 && rows['menu.assist'] === 0, `assist ${assist['menu.assist']}, untouched ${rows['menu.assist']}`);
 // the Rider row: right picks the next rider, by the pad (control: nothing pressed keeps the first)
 const rider = run([...D6, 'right']), rider0 = run([...D6]);
 check('the Rider row: right picks the next rider', rider['rider.pick'] === 1 && rider0['rider.pick'] === 0, `picked ${rider['rider.pick']}, untouched ${rider0['rider.pick']}`);

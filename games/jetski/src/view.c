@@ -29,12 +29,14 @@ static int stand_lod[RACERS] = { -1, -1, -1, -1, -1, -1 };
 #define STAND_FAR 45.0f /* past this from the camera a rival's stand-up is the far model (standup_lo.glb) */
 #define STAND_LIFT 0.1f /* the stand-up and its rider stand this much higher in the craft's frame: it rides up on its rear third */
 static void set_visible(t3_object *o, bool v) { o->visible = v; for (int k = 0; k < o->child_count; k++) set_visible(o->children[k], v); } /* a part's own meshes (several materials: several meshes) */
-static t3_material *band_mat[2], *lamp_mat[2];
+static t3_material *band_mat[2], *lamp_mat[2], *ring_mat;
+static cw_node ring_n[RAMP_MAX];
 static float buoy_phase[BUOY_MAX];
 static cw_node gate_n;
 
 int g_cam_old;          /* sw cam_old 1: the old chase camera */
-float g_cam_eye[3];     /* the chase camera: metres behind the craft, over the water, at this speed */
+float g_cam_eye[4];     /* the chase camera: metres behind the craft, over the water, at this speed; how far back it eased for a long flight */
+int g_cam_air = 1;      /* sw cam_air 0: no easing back in a long flight */
 static const float TEAMS[RACERS][6] = {
   /* deck, vest */
   { 0.88f, 0.1f, 0.06f, 0.92f, 0.34f, 0.05f },
@@ -763,6 +765,21 @@ void view_init(void) {
     mark_scale[b] = 0.72f;
     buoy_phase[b] = (float)b * 1.7f;
   }
+  /* stunt mode's rings: a gold hoop over each ramp's jump, lit like the buoys' bands */
+  if (band_mat[0]) {
+    ring_mat = t3_material_clone(band_mat[0]);
+    ring_mat->color = (t3_color){ 1.0f, 0.78f, 0.2f };
+    ring_mat->emissive = (t3_color){ 1.2f, 0.85f, 0.2f };
+    for (int k = 0; k < RAMP_MAX; k++) {
+      char name[24];
+      snprintf(name, sizeof name, "Ring%d", k);
+      t3_geometry *g = t3_torus_geometry_new(2.8f, 0.16f, 10, 40, 6.2831853f);
+      t3_mesh *m = t3_mesh_new(g, ring_mat);
+      ring_n[k] = model_node(dry_parent(root), name, (t3_object *)m);
+      t3_release(m); t3_release(g);
+      cw_node_set(ring_n[k], "visible", cw_val_bool(false));
+    }
+  }
   ramps_init(root);
   /* the lighthouse stands on the islet's top, the gate floats on the line */
   {
@@ -897,7 +914,7 @@ void view_tick(float dt) {
   float bx = sy * 0.72f + hx * 0.28f, bz = cy * 0.72f + hz * 0.28f;
   /* low and close, in the spray: the speed shows in the water and the set streaming past, the field of view widening
      with speed. sw cam_old 1: the old higher, farther chase (the camera gate's control) */
-  float back = g_cam_old ? 4.0f + c->speed * 0.035f : 3.3f + c->speed * 0.03f, up = g_cam_old ? 1.6f + c->speed * 0.012f : 1.05f + c->speed * 0.014f;
+  float back = g_cam_old ? 4.0f + c->speed * 0.035f : 2.9f + c->speed * 0.025f, up = g_cam_old ? 1.6f + c->speed * 0.012f : 1.05f + c->speed * 0.014f;
   /* the stand-up: low and close, straight behind, the hull under and ahead of the rider */
   float side_off = 0;
   if (g_craft == CRAFT_STAND) back -= 0.4f, up += 0.6f;
@@ -909,6 +926,15 @@ void view_tick(float dt) {
     off += (want - off) * fminf(1.0f, dt * (want > off ? 6.0f : 1.5f));
     if (G.tick < 3) off = 0;
     back -= 1.0f * off, up += 0.4f * off; }
+  /* a long flight: the camera eases back and up to hold the arc and the water under it, and comes back in as the craft
+     falls toward the water, so the landing is framed as the ride is (sw cam_air 0: the old framing, the gate's control) */
+  { static float air_k;
+    float clear = c->y - cw_water_height_at(G.water, c->x, c->z, G.wt);
+    float want = g_cam_air && c->air && c->air_time > 0.6f && !(c->vy < 0 && clear < 3.0f) ? 1.0f : 0.0f;
+    air_k += (want - air_k) * fminf(1.0f, dt * (want > air_k ? 2.5f : 4.0f));
+    if (G.tick < 3) air_k = 0;
+    back += 1.6f * air_k, up += 0.7f * air_k;
+    g_cam_eye[3] = air_k; }
   float wx = c->x - bx * back + cy * 7.0f * off - cy * side_off, wz = c->z - bz * back - sy * 7.0f * off + sy * side_off;
   float wh = cw_water_height_at(G.water, wx, wz, G.wt);
   /* up after a jump: the camera rises with the craft, so the air is seen and the craft stays in the picture */
@@ -1055,6 +1081,18 @@ float g_fov_span = 16.0f, g_cam_roll_max = 0.0785f; /* debug: fov_span 6, cam_ro
 float g_peek[6];
 void view_sync(double alpha) {
   float a = (float)alpha;
+  /* stunt rings: shown in stunt mode only, standing across the jump's line; one flown through glows green and fades */
+  { extern float g_ring[RAMP_MAX][4], g_ring_glow[RAMP_MAX]; extern int g_ring_n;
+    for (int k = 0; k < RAMP_MAX; k++) {
+      if (!cw_node_valid(ring_n[k])) continue;
+      bool on = g_mode == MODE_STUNT && k < g_ring_n && G.state != RACE_ATTRACT;
+      cw_node_set(ring_n[k], "visible", cw_val_bool(on));
+      if (!on) continue;
+      cw_node3d_set_position(ring_n[k], (t3_vec3){ g_ring[k][0], g_ring[k][1], g_ring[k][2] });
+      cw_node3d_set_rotation(ring_n[k], (t3_vec3){ 0, g_ring[k][3], 0 });
+    }
+    float gl = 0; for (int k = 0; k < g_ring_n; k++) gl = fmaxf(gl, g_ring_glow[k]);
+    if (ring_mat) { float s = gl * gl * (3 - 2 * gl); ring_mat->emissive = (t3_color){ 1.2f - 0.9f * s, 0.85f + 0.5f * s, 0.2f + 0.2f * s }; } }
   /* a frame can come before the first tick after a reset, with no camera place at all: find it now */
   if (g_cam_cut && G.cam[0] == 0 && cw_node_valid(G.water)) view_tick(1.0f / 60.0f);
   /* who is on the water, and which buoys count */
