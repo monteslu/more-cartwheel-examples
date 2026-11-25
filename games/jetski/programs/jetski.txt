@@ -114,3 +114,8 @@ standard+instbig+shadow+senv+ds+l2000+s100+xfoliage
 standard+instbig+shadow+senv+ds+l2000+s100+xfoliage_plain
 standard+instbig+shadow+senv+l2000+s100+xfoliage
 standard+instbig+shadow+senv+l2000+s100+xfoliage_plain
+# closure (tools/programs.mjs): 4 state(s), the surveyed materials in the environments surveyed for their class
+standard+instbig+senv+ds+l2000+xfoliage
+standard+instbig+senv+ds+l2000+xfoliage_plain
+standard+instbig+senv+l2000+xfoliage
+standard+instbig+senv+l2000+xfoliage_plain
