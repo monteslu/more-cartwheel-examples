@@ -23,7 +23,7 @@
  * turn faster, and it sits low and wobbles until it is up on the plane */
 const hull_def HULLS[2] = {
   { .base_top = 21.5f, .meter_top = 1.55f, .thrust = 11.0f, .steer_k = 9.0f, .turn0 = 1.45f, .turn_v = 0.03f, .turn_lean = 0.85f, .roll0 = 0.2f, .roll_v = 0.009f,
-    .grip = 1.0f, .slide_v = 8.5f, .slide_t = 0.9f, .spill_err = 2.1f, .trick_t = 0.72f, .plane_v = 8.0f, .sink_rest = 0.0f },
+    .grip = 1.0f, .slide_v = 8.5f, .slide_t = 0.9f, .spill_err = 2.1f, .trick_t = 0.72f, .plane_v = 8.0f, .sink_rest = 0.16f },
   { .base_top = 18.8f, .meter_top = 1.4f, .thrust = 12.5f, .steer_k = 11.0f, .turn0 = 1.6f, .turn_v = 0.03f, .turn_lean = 1.5f, .roll0 = 0.3f, .roll_v = 0.013f,
     .grip = 1.5f, .slide_v = 7.2f, .slide_t = 0.55f, .spill_err = 1.7f, .trick_t = 0.58f, .plane_v = 11.5f, .sink_rest = 0.1f },
 };
@@ -40,6 +40,19 @@ int g_no_dq;
 game_event g_ev[EV_RING];
 unsigned g_ev_n;
 int g_ev_on = 1, g_turbo_on = 1, g_fb[EV_KINDS][4];
+int g_verbs = 1;
+int32_t g_verb_n[3]; /* close shaves, streak bonuses, slipstreams the human took this race */
+int g_rev_bog = 1;
+/* the human's weave: times the yaw rate changed sign at over 0.08 rad/s (a sway, not noise), and the fastest it turned */
+int32_t g_yaw_flips;
+int g_deep = 1;
+int g_lean_save = 1;
+/* the grid: racer i starts in slot g_grid[i] (0 the front). A championship's next race lines up by the last one's finish
+ * (menu.c); any other race by seat. sw grid_order 0: always by seat, the gate's control */
+int32_t g_grid[RACERS] = { 0, 1, 2, 3, 4, 5 };
+int g_grid_on = 1;
+float g_draft; /* the human hull's middle under the surface, metres, eased over about half a second (the deep-water gate) */
+float g_yaw_rate_max;
 float g_pack = 1;
 float g_ram_last[3];
 int g_dive_on = 1;
@@ -101,6 +114,7 @@ static void ram(craft *a, craft *b, float nx, float nz, float closing, int i, in
     float roll = (float)((h >> (k * 12)) & 4095u) / 4096.0f;
     g_ram_last[1 + k] = flank;
     if (g_craft == CRAFT_STAND) p *= 1.25f; /* a rider standing goes over sooner */
+    if (g_rider_stats) p *= 1.0f - 0.12f * (RIDER_STATS[rider_of(k ? j : i)].weight - 3); /* a heavy rider holds on, a light one goes over */
     if (roll < p) {
       c[k]->spill = 1.9f, c[k]->spills++, c[k]->big_slide = true, c[k]->crashed = true;
       c[k]->vx *= 0.7f, c[k]->vz *= 0.7f;
@@ -184,11 +198,18 @@ static void buoys(craft *c) {
     }
     if (c->meter < 5) c->meter++;
     c->passes++;
+    /* the racing verbs: a mark taken close pays a little turbo, every tenth clean mark in a row a whole one (sw verbs 0: none) */
+    if (g_verbs && c->human && c->finish <= 0) {
+      c->streak++;
+      if (lat < 3.0f) { g_verb_n[0]++; c->stock = fminf(3, c->stock + 0.2f); ev_push(EV_SHAVE, 0, b[0], b[1]); }
+      if (c->streak % 10 == 0) { g_verb_n[1]++; c->stock = fminf(3, c->stock + 1.0f); ev_push(EV_STREAK, c->streak, b[0], b[1]); }
+    }
     c->flash_ok = 1;
     c->ok_tick = c->next_buoy + 1;
   } else {
     c->meter = 0;
     c->misses++;
+    c->streak = 0;
     /* the risk of carrying a turbo through a mark: the wrong side of it empties the store */
     bool lost = g_turbo_risk && c->stock > 0.01f;
     if (lost) c->stock = 0;
@@ -446,10 +467,18 @@ static void tanker_craft(craft *c, float dt) {
   c->wake_on = true;
 }
 
+int g_rider, g_rider_stats = 1;
+float g_rider_k[RACERS][4]; /* each seat's multipliers this race: pump, top speed, turn, trick speed (the cast gate) */
 static void craft_tick(craft *c, int idx, float dt) {
   c->px = c->x, c->py = c->y, c->pz = c->z, c->pyaw = c->yaw, c->ppitch = c->pitch, c->proll = c->roll;
   c->bump = false, c->crashed = false;
   const hull_def *H = HULL;
+  /* the rider's ratings: a 5 against a 3 is a pump 14 % stronger, a top speed 6 % higher, a turn 14 % quicker, a trick
+     16 % faster; weight is in the bumps (ram). Every rider's ratings add to the same, so each wins somewhere */
+  const rider_stats *RS = &RIDER_STATS[g_rider_stats ? rider_of(idx) : 0];
+  float k_acc = 1 + 0.07f * (RS->accel - 3), k_top = 1 + 0.03f * (RS->top - 3), k_turn = 1 + 0.07f * (RS->handling - 3), k_trick = 1 + 0.08f * (RS->tricks - 3);
+  float thrust = H->thrust * k_acc, trick_t = H->trick_t / k_trick;
+  g_rider_k[idx][0] = k_acc, g_rider_k[idx][1] = k_top, g_rider_k[idx][2] = k_turn, g_rider_k[idx][3] = k_trick;
   bool stand = g_craft == CRAFT_STAND;
   if (c->dive_t > 0) c->in.trick = false, c->in_kick = false;
   if (c->ram_cool > 0) c->ram_cool--;
@@ -466,6 +495,16 @@ static void craft_tick(craft *c, int idx, float dt) {
   c->kick_held = c->in_kick;
   if (c->pole_t > 0) c->in.steer *= 0.4f; /* up on the hood: a light hand on the bars */
   c->steer += (c->in.steer - c->steer) * clampf(dt * H->steer_k, 0, 1);
+  if (c->human && dt > 0) {
+    static float last_yaw, last_sign; float d = c->yaw - last_yaw;
+    while (d > 3.14159265f) d -= 6.2831853f;
+    while (d < -3.14159265f) d += 6.2831853f;
+    float rate = d / dt; last_yaw = c->yaw;
+    if (fabsf(rate) < 20.0f) {
+      if (fabsf(rate) > g_yaw_rate_max) g_yaw_rate_max = fabsf(rate);
+      if (fabsf(rate) > 0.08f) { float sg = rate > 0 ? 1.0f : -1.0f; if (last_sign != 0 && sg != last_sign) g_yaw_flips++; last_sign = sg; }
+    }
+  }
   c->lean += (c->in.lean - c->lean) * clampf(dt * 6, 0, 1);
   float sy, cy;
   cw_sincos(c->yaw, &sy, &cy);
@@ -488,9 +527,10 @@ static void craft_tick(craft *c, int idx, float dt) {
   /* the rise of the surface itself, seen from the moving craft */
   float rel_vy = c->vy - s.velocity.y;
   float ay = -G_ACC;
-  /* off the plane a stand-up rides deep: the spring holds it lower */
-  float sink = stand ? H->sink_rest * (1.0f - c->plane) : 0.0f;
-  if (!c->air) ay += (SPRING * clampf(stand ? under - sink : under, -0.1f, 1.1f)) - DAMP * rel_vy * c->wet;
+  /* off the plane a craft rides deep, settled into the water, and rises onto it as it planes: the spring holds it lower.
+     sw deep 0: the sit-down rides on top at every speed, as it did (the deep-water gate's control) */
+  float sink = (stand || g_deep) ? H->sink_rest * (1.0f - c->plane) : 0.0f;
+  if (!c->air) ay += (SPRING * clampf(under - sink, -0.1f, 1.1f)) - DAMP * rel_vy * c->wet;
   /* horizontal: thrust along the hull when the pump is under, drag against the water */
   float wvx = s.velocity.x * 0.6f, wvz = s.velocity.z * 0.6f;
   /* a river: the water itself is moving, fast in midstream, slack at the banks */
@@ -503,7 +543,7 @@ static void craft_tick(craft *c, int idx, float dt) {
   }
   float ux = c->vx - wvx, uz = c->vz - wvz;
   float vf = ux * fx + uz * fz, vl = ux * rx + uz * rz;
-  c->top = H->base_top + H->meter_top * (float)c->meter + c->boost * 3.5f;
+  c->top = H->base_top * k_top + H->meter_top * (float)c->meter + c->boost * 3.5f;
   /* on the plane: from 60 % of the hull's planing speed to all of it, eased (on the sit-down only a measure) */
   { float want = clampf((vf - H->plane_v * 0.6f) / (H->plane_v * 0.4f), 0, 1);
     if (c->air) want = c->plane;
@@ -519,12 +559,27 @@ static void craft_tick(craft *c, int idx, float dt) {
   /* a turbo: a shove along the hull, then a raised ceiling for it to run off under */
   if (c->in_turbo && g_turbo_on && c->stock >= 1 && c->turbo_t <= 0 && !c->air && c->spill <= 0) { c->stock -= 1, c->turbo_t = 0.3f, c->turbo_hold = 1.8f, c->turbos++; if (c->human) ev_push(EV_TURBO, (int)c->stock, c->x, c->z); }
   if (c->turbo_t > 0) { c->turbo_t -= dt; vf += 23.5f * dt; }
+  if (c->bog_t > 0) c->bog_t -= dt;
   if (c->turbo_hold > 0) { c->turbo_hold -= dt; top += 7.0f * clampf(c->turbo_hold / 0.6f, 0, 1); } /* a small, bounded pull toward the human */
+  /* a slipstream: tucked in behind a rival (within 14 m, inside a 2.5 m lane, both on the water) for 1.7 s, the ceiling
+     rises 3 % while it lasts (sw verbs 0: no slipstream) */
+  if (g_verbs && !c->air) {
+    bool in = false; float sy0, cy0; cw_sincos(c->yaw, &sy0, &cy0);
+    for (int o = 0; o < RACERS && !in; o++) {
+      const craft *r = &G.c[o];
+      if (r == c || !racer_on(o) || r->air) continue;
+      float dx = r->x - c->x, dz = r->z - c->z, ahead = dx * sy0 + dz * cy0, side = dx * cy0 - dz * sy0;
+      in = ahead > 2.0f && ahead < 14.0f && fabsf(side) < 2.5f;
+    }
+    if (in) { c->draft_t += dt; if (c->human && c->draft_t >= 1.7f && c->draft_t - dt < 1.7f) { g_verb_n[2]++; ev_push(EV_DRAFT, 0, c->x, c->z); } }
+    else c->draft_t = 0;
+    if (c->draft_t >= 1.7f) top *= 1.03f;
+  } else c->draft_t = 0;
   g_top_now[idx] = top; /* the ceiling each craft runs under this tick (debug ai.top) */
-  float drag = H->thrust / (top * top);
+  float drag = thrust / (top * top);
   float af = 0;
   if (!c->air) {
-    af += H->thrust * c->in.throttle * (land ? 0.8f : c->wet > 0.2f ? 1.0f : 0.3f);
+    af += thrust * c->in.throttle * (land ? 0.8f : c->wet > 0.2f ? 1.0f : 0.3f) * (c->bog_t > 0 ? 0.3f : 1.0f);
     if (stand) af -= 0.6f * (1.0f - c->plane) * vf; /* off the plane: pushing water, not skimming it */
     af -= drag * vf * fabsf(vf) * (0.35f + 0.65f * c->wet) * (1.0f + 0.5f * c->lean * fabsf(c->steer));
     if (c->in.throttle < 0.1f) af -= 0.8f * vf * 0.25f;
@@ -561,7 +616,7 @@ static void craft_tick(craft *c, int idx, float dt) {
   /* turning: the hull yaws with the stick; less at speed, more when leaned back */
   float sp = sqrtf(c->vx * c->vx + c->vz * c->vz);
   c->speed = sp;
-  float rate = H->turn0 - H->turn_v * sp + H->turn_lean * clampf(c->lean, 0, 1);
+  float rate = (H->turn0 - H->turn_v * sp + H->turn_lean * clampf(c->lean, 0, 1)) * k_turn;
   /* a hull on sand pivots only as it moves: steering turns its path, it does not spin on the spot */
   if (land) rate = 0.25f + clampf(sp * 0.45f, 0, 1.1f);
   if (c->air) rate *= 0.35f;
@@ -626,7 +681,7 @@ static void craft_tick(craft *c, int idx, float dt) {
      * never throws the rider */
     if (c->trick_kind == 0 && c->in.trick && !c->trick_held && c->air_time > 0.08f) {
       float below = fmaxf(c->surf, ground_at(c->x, c->z)), h = c->y - below, left = (c->vy + sqrtf(fmaxf(c->vy * c->vy + 2 * G_ACC * fmaxf(h, 0), 0))) / G_ACC;
-      if (!g_trick_guard || left >= H->trick_t + 0.06f) {
+      if (!g_trick_guard || left >= trick_t + 0.06f) {
         /* the stick picks: back for a back flip, forward for a front flip (a flat spin on a stand-up), else a barrel roll */
         c->trick_kind = c->in.lean > 0.4f ? 2 : c->in.lean < -0.4f ? (stand ? 4 : 3) : 1;
         c->trick_yaw = c->yaw;
@@ -643,11 +698,11 @@ static void craft_tick(craft *c, int idx, float dt) {
     }
     if (c->trick_kind) {
       c->trick_t += dt;
-      float speed = TAU / H->trick_t;
+      float speed = TAU / trick_t;
       if (c->trick_kind == 1) c->roll += c->trick_dir * speed * dt;
-      else if (c->trick_kind == 4) c->yaw = wrap_pi(c->trick_yaw - c->trick_dir * TAU * clampf(c->trick_t / H->trick_t, 0, 1)); /* flat round, the way the stick points */
+      else if (c->trick_kind == 4) c->yaw = wrap_pi(c->trick_yaw - c->trick_dir * TAU * clampf(c->trick_t / trick_t, 0, 1)); /* flat round, the way the stick points */
       else c->pitch += (c->trick_kind == 3 ? -speed : speed) * dt;
-      if (c->trick_t >= H->trick_t) {
+      if (c->trick_t >= trick_t) {
         /* round and square again */
         if (c->trick_kind == 1) c->roll = 0, c->rr = 0;
         else if (c->trick_kind == 4) c->yaw = c->trick_yaw, c->spins++;
@@ -674,6 +729,7 @@ static void craft_tick(craft *c, int idx, float dt) {
     if (c->vy < s.velocity.y) c->vy = s.velocity.y;
   }
   if (hm - c->y > c->sink_max) c->sink_max = hm - c->y;
+  if (c->human && !c->air) g_draft += ((hm - c->y) - g_draft) * clampf(dt * 2.0f, 0, 1);
   /* the hull on the water: how far its middle stands over or under the surface on every tick it rides the water (not
    * flying, diving or beached), the worst of every racer (the grounding gate) */
   if (!c->air && c->dive_t <= 0 && !land && c->spill <= 0 && was_air == c->air) { float d = c->y - hm; if (d > g_hull_hi) g_hull_hi = d; if (d < g_hull_lo) g_hull_lo = d; g_hull_ticks++; }
@@ -730,14 +786,16 @@ static void craft_tick(craft *c, int idx, float dt) {
       /* flat keeps the speed, nose down plunges and loses it; weight back on the way in saves some of it. A trick not finished
        * or a landing far out of line throws the rider. A clean long one pays into the meter */
       float nose = wrap_pi(pitch_t - c->pitch); /* + : nose below the water's line */
-      float e2 = err + (nose > 0 ? nose * 0.9f : 0) - 0.35f * clampf(c->in.lean, 0, 1) * (nose > 0 ? 1.0f : 0.0f);
+      /* weight back saves a nose-down landing: more the further down the nose (g_lean_save 0: the old small help, the gate's control) */
+      float back = clampf(c->in.lean, 0, 1);
+      float e2 = err + (nose > 0 ? nose * 0.9f : 0) - (nose > 0 ? back * (g_lean_save ? 0.35f + 0.9f * nose : 0.35f) : 0.0f);
       e2 = e2 < 0 ? 0 : e2;
       float keep = e2 < 0.12f ? 1.0f : 1.0f - clampf((e2 - 0.12f) * 0.42f, 0, 0.65f);
       /* a hop the sea threw at you, with nothing asked of the craft, costs next to nothing: the water is the track, not the thing to avoid. A dive you asked for or a long fall still pays */
       if (g_fair && !c->trick_kind && c->in.lean > -0.3f && e2 < 1.2f && nose < 0.55f) { float floor_keep = c->air_time < 1.0f ? 0.97f : 0.95f; if (keep < floor_keep) keep = floor_keep; }
       if (nose > 0.3f) c->vy -= nose * 3.0f, c->y -= nose * 0.25f;
       /* a trick all but round lands as a rough landing, not a throw (spill_old 1: any unfinished trick throws) */
-      if (c->trick_kind && !g_spill_old && c->trick_t >= H->trick_t * 0.82f) { if (c->trick_kind == 1) c->roll = 0, c->rr = 0; else if (c->trick_kind == 4) c->yaw = c->trick_yaw; else c->pitch = pitch_t, c->pr = 0; c->trick_kind = 0; keep = fminf(keep, 0.7f); e2 = 0.5f; }
+      if (c->trick_kind && !g_spill_old && c->trick_t >= trick_t * 0.82f) { if (c->trick_kind == 1) c->roll = 0, c->rr = 0; else if (c->trick_kind == 4) c->yaw = c->trick_yaw; else c->pitch = pitch_t, c->pr = 0; c->trick_kind = 0; keep = fminf(keep, 0.7f); e2 = 0.5f; }
       if (c->trick_kind) c->trick_wipes++;
       if (c->trick_kind || e2 > H->spill_err + (g_spill_old ? 0.0f : 0.35f)) keep = 0.35f, c->trick_kind = 0, c->spill = 1.9f, c->spills++;
       if (c->legout > 0.12f) keep *= 0.85f, c->legout = 0, c->leg_paid = true; /* came down with a foot out */
@@ -746,7 +804,8 @@ static void craft_tick(craft *c, int idx, float dt) {
       if (c->human && c->air_time > 0.2f) g_land_hist[(int)(clampf(keep, 0, 1) * 20.0f)]++;
       bool clean = e2 < 0.25f && c->air_time > 0.6f;
       if (clean) { c->boost = 1; if (c->meter < 5) c->meter++; c->flash_ok = 1; }
-      if (c->human) ev_push(EV_LAND, clean ? 1 : 0, c->x, c->z);
+      /* 3: a nose-down landing that cost speed with the weight forward, the cue for the lean tip */
+      if (c->human) ev_push(EV_LAND, clean ? 1 : (nose > 0.3f && keep < 0.75f && back < 0.3f && c->spill <= 0) ? 3 : 0, c->x, c->z);
       c->pitch = wrap_pi(c->pitch), c->roll = wrap_pi(c->roll);
       c->pr *= 0.25f, c->rr *= 0.25f;
     }
@@ -879,6 +938,7 @@ void sim_reset(int state) {
   cw_terrain *land = G.land;
   hud_race_reset();
   memset(g_ride, 0, sizeof g_ride);
+  memset(g_verb_n, 0, sizeof g_verb_n);
   wx_race_reset();
   g_fly = (fly_probe){ .flights = g_fly.flights }; /* a new race: no flight yet (the count of flights goes on) */
   memset(&G, 0, sizeof G);
@@ -893,7 +953,8 @@ void sim_reset(int state) {
   float yaw = cw_atan2(START_DX, START_DZ);
   for (int i = 0; i < RACERS; i++) {
     craft *c = &G.c[i];
-    int row = i / 2, col = i % 2;
+    int slot = g_grid_on && g_mode == MODE_CHAMPIONSHIP && state == RACE_GRID ? g_grid[i] : i;
+    int row = slot / 2, col = slot % 2;
     float back = 6.0f + 9.0f * (float)row + (col ? 3.0f : 0), side = col ? 4.5f : -4.5f;
     c->x = START_X - START_DX * back + START_DZ * side;
     c->z = START_Z - START_DZ * back - START_DX * side;
@@ -906,8 +967,8 @@ void sim_reset(int state) {
     c->track_i = TRACK_N - 3;
     c->dist = -back;
     c->lap = -1; /* behind the line: its first crossing begins lap one */
-    c->place = i + 1;
-    G.order[i] = i;
+    c->place = slot + 1;
+    G.order[slot] = i;
     /* a time trial: the others stay home, out of the world */
     if (!racer_on(i)) { c->x = c->px = 3000.0f + 40.0f * (float)i, c->z = c->pz = 3000.0f; c->y = c->py = -60.0f; c->dist = -1e6f; }
   }
@@ -1091,7 +1152,9 @@ void sim_tick(float dt) {
     G.state = RACE_ON;
     /* a rocket start: the throttle down in the last beat of the countdown and still down at the green light. Held from the start of the count, it is a plain start */
     { craft *h = &G.c[0];
-      if (h->in.throttle > 0.5f && G.rocket_at < 0 && G.rocket_at >= -ROCKET_WINDOW) { h->turbo_t = 0.35f, h->turbo_hold = 1.0f; G.rocket = 1; ev_push(EV_ROCKET, 0, h->x, h->z); } }
+      if (h->in.throttle > 0.5f && G.rocket_at < 0 && G.rocket_at >= -ROCKET_WINDOW) { h->turbo_t = 0.35f, h->turbo_hold = 1.0f; G.rocket = 1; ev_push(EV_ROCKET, 0, h->x, h->z); }
+      /* held through the count past the gauge's red: the pump cavitates and the craft bogs for a moment. Let go and press again to clear it */
+      else if (g_rev_bog && h->in.throttle > 0.5f && G.rocket_at < -REV_OVER) { h->bog_t = BOG_TIME; G.bog = 1; ev_push(EV_BOG, 0, h->x, h->z); } }
     cw_log(CW_LOG_INFO, "jetski: course %s, green light, graphics %s", DEF->name, cw_quality_name(cw_quality_get()));
   }
   for (int i = 0; i < RACERS; i++) {

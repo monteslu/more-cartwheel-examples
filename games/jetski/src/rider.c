@@ -65,6 +65,23 @@ static t3_vec3 joint(t3_vec3 a, t3_vec3 target, float l1, float l2, t3_vec3 pole
   return vadd(vadd(a, vmul(u, x)), vmul(vnorm(p), h));
 }
 
+/* Over the line: the top three throw both arms up, the rest let the head and shoulders drop. Eased in over 0.6 s after
+ * the line, never in a spill. sw pose_on 0: no pose, the finish gate's control */
+int g_pose_on = 1;
+float g_finish_pose[4]; /* racer 0: seconds since its line, its place, the higher glove over the head's top (m), the pose's weight 0..1 */
+static float finish_pose(const craft *c, int *cheer) {
+  *cheer = c->place <= 3;
+  if (!g_pose_on || c->finish <= 0 || c->spill > 0 || c->dq || G.state == RACE_ATTRACT) return 0;
+  float t = clampf((G.clock - c->finish) / 0.6f, 0, 1);
+  return t * t * (3 - 2 * t);
+}
+/* the glove where the arm from sh toward grip ends (the arm is 0.29 + 0.26 m) */
+static t3_vec3 hand_at(t3_vec3 sh, t3_vec3 grip) { t3_vec3 d = vsub(grip, sh); float l = vlen(d); return l > 0.548f ? vadd(sh, vmul(d, 0.548f / l)) : grip; }
+static void finish_measure(int i, const craft *c, float cel, t3_vec3 top, const t3_vec3 hands[2]) {
+  if (i != 0) return;
+  g_finish_pose[0] = c->finish > 0 ? G.clock - c->finish : -1, g_finish_pose[1] = (float)c->place;
+  g_finish_pose[2] = fmaxf(hands[0].y, hands[1].y) - top.y, g_finish_pose[3] = cel;
+}
 static void rider_pose_stand(int i, const craft *c, float steer, float by);
 void rider_pose(int i, const craft *c, float alpha) {
   (void)alpha;
@@ -84,6 +101,7 @@ void rider_pose(int i, const craft *c, float alpha) {
   /* off the craft: the body hangs back from the hull, flat on the water, arms out, and climbs back on */
   float off = c->spill > 0 ? (c->spill > 1.5f ? (1.9f - c->spill) / 0.4f : c->spill > 0.4f ? 1.0f : c->spill / 0.4f) : 0;
   float crouch = c->kick * 0.26f + c->load * 0.16f - by[i];
+  int cheer; float cel = finish_pose(c, &cheer), slump = cheer ? 0 : cel;
   float stand = c->air ? 0.08f : 0.0f;
   float speedk = c->speed / 28.0f;
   /* a riding crouch, not a seat: knees bent, weight over the bars, hips out over the side in a turn, back with the pull */
@@ -93,7 +111,7 @@ void rider_pose(int i, const craft *c, float alpha) {
   t3_vec3 hips = V(hx, hy - off * 0.5f, hz - off * 2.3f);
   /* the upper body leans into the corner and over the bars, more when it hunts for speed */
   /* off the craft he lies back on the water: flat, on his back, feet toward the hull */
-  float fwd = (0.78f + 0.2f * speedk - 0.42f * (lean > 0 ? lean : 0) + 0.25f * c->kick - by[i] * 1.2f) * (1.0f - off) - off * 1.45f;
+  float fwd = (0.78f + 0.2f * speedk - 0.42f * (lean > 0 ? lean : 0) + 0.25f * c->kick - by[i] * 1.2f + 0.35f * slump - 0.45f * (cheer ? cel : 0)) * (1.0f - off) - off * 1.45f;
   rider_torso[i] = fwd;
   float side = steer * 0.34f;
   t3_quat qh = euler(fwd * 0.45f, -steer * 0.15f, side * 0.4f);
@@ -104,7 +122,7 @@ void rider_pose(int i, const craft *c, float alpha) {
   B[i][SPINE]->quaternion = t3_quat_multiply(qinv(qh), qs);
   B[i][CHEST]->quaternion = t3_quat_multiply(qinv(qs), qc);
   /* the head stays level and looks through the turn */
-  t3_quat qhead = euler(0.1f - (fwd * 0.2f), -steer * 0.55f, 0);
+  t3_quat qhead = euler(0.1f - (fwd * 0.2f) + 0.55f * slump - 0.2f * (cheer ? cel : 0), -steer * 0.55f, 0);
   B[i][NECK]->quaternion = t3_quat_multiply(qinv(qc), qc);
   B[i][HEAD]->quaternion = t3_quat_multiply(qinv(qc), qhead);
   /* world (craft frame) joints from the bones' bind offsets */
@@ -113,6 +131,7 @@ void rider_pose(int i, const craft *c, float alpha) {
   /* arms to the grips (they turn with the bars) */
   float bar = steer * 0.42f;
   float bs = sinf(bar), bc = cosf(bar);
+  t3_vec3 hands_m[2];
   for (int s = 0; s < 2; s++) {
     float sg = s ? -1.0f : 1.0f;
     int arm = s ? ARMR : ARML, fore = s ? FORER : FOREL, hand = s ? HANDR : HANDL;
@@ -126,6 +145,8 @@ void rider_pose(int i, const craft *c, float alpha) {
       t3_vec3 up = vadd(sh, V(sg * 0.42f, 0.38f, -0.12f));
       grip = V(grip.x + (up.x - grip.x) * k, grip.y + (up.y - grip.y) * k, grip.z + (up.z - grip.z) * k);
     }
+    if (cheer && cel > 0 && off <= 0) { t3_vec3 up = vadd(sh, V(sg * 0.2f, 0.48f, 0.06f)); grip = V(grip.x + (up.x - grip.x) * cel, grip.y + (up.y - grip.y) * cel, grip.z + (up.z - grip.z) * cel); }
+    hands_m[s] = hand_at(sh, grip);
     t3_vec3 elbow = joint(sh, grip, 0.29f, 0.26f, V(sg * 0.95f, 0.15f, -0.25f));
     t3_vec3 d0 = V(sg, 0, 0);
     t3_quat qa = qbetween(d0, vnorm(vsub(elbow, sh)));
@@ -154,6 +175,7 @@ void rider_pose(int i, const craft *c, float alpha) {
     B[i][sh]->quaternion = t3_quat_multiply(qinv(qt), qn);
     B[i][ft]->quaternion = t3_quat_multiply(qinv(qn), qbetween(V(0, 0, 1), vnorm(V(0, 0.05f, 1))));
   }
+  { t3_vec3 neck = vadd(chest, qrot(qc, V(0, 0.27f, 0))); finish_measure(i, c, cel, vadd(vadd(neck, qrot(qc, V(0, 0.1f, 0))), qrot(qhead, V(0, 0.2f, 0))), hands_m); }
 }
 
 /* The stand-up rider: on their feet in the tray behind the handlepole, fairly upright. Feet apart (the left a little
@@ -207,7 +229,8 @@ static void rider_pose_stand(int i, const craft *c, float steer, float by) {
   hips = vlerp(hips, V(0, HOOD_Y + ANKLE_UP + 0.62f, HOOD_Z - 0.06f), pk);
   hips = vlerp(hips, V(0, 1.08f, -0.86f), sk);
   hips = V(hips.x, hips.y - off * 0.5f, hips.z - off * 2.0f);
-  float fwd = lerpf2(0.3f, fwd_st, up);
+  int cheer; float cel = finish_pose(c, &cheer), slump = cheer ? 0 : cel;
+  float fwd = lerpf2(0.3f, fwd_st, up) + 0.3f * slump - 0.25f * (cheer ? cel : 0);
   fwd = fwd + (0.25f - fwd) * pk;
   fwd = fwd + (1.45f - fwd) * sk;
   fwd = fwd * (1.0f - off) - off * 1.45f;
@@ -254,18 +277,21 @@ static void rider_pose_stand(int i, const craft *c, float steer, float by) {
   B[i][SPINE]->quaternion = t3_quat_multiply(qinv(qh), qs);
   B[i][CHEST]->quaternion = t3_quat_multiply(qinv(qs), qc);
   /* the head up, looking ahead past the bars (in a superman along the line of flight) */
-  t3_quat qhead = euler(0.15f - 0.15f * sk, -steer * 0.5f, 0);
+  t3_quat qhead = euler(0.15f - 0.15f * sk + 0.55f * slump - 0.2f * (cheer ? cel : 0), -steer * 0.5f, 0);
   B[i][NECK]->quaternion = t3_quat_multiply(qinv(qc), qc);
   B[i][HEAD]->quaternion = t3_quat_multiply(qinv(qc), qhead);
   t3_vec3 spine = vadd(hips_r, qrot(qh, V(0, 0.14f, 0)));
   t3_vec3 chest = vadd(spine, qrot(qs, V(0, 0.2f, 0)));
   rider_hands_gap[i] = 0;
+  t3_vec3 hands_m[2];
   for (int s = 0; s < 2; s++) {
     float sg = s ? -1.0f : 1.0f;
     int arm = s ? ARMR : ARML, fore = s ? FORER : FOREL, hand = s ? HANDR : HANDL;
     t3_vec3 sh = vadd(chest, qrot(qc, V(sg * 0.2f, 0.2f, 0)));
     t3_vec3 grip = grips[s];
     if (off > 0) { t3_vec3 out = vadd(sh, V(sg * 0.5f, -0.04f, -0.05f)); grip = vlerp(grip, out, off); }
+    if (cheer && cel > 0 && off <= 0) grip = vlerp(grip, vadd(sh, V(sg * 0.2f, 0.48f, 0.06f)), cel);
+    hands_m[s] = TO_C(hand_at(sh, grip));
     t3_vec3 elbow = joint(sh, grip, 0.29f, 0.26f, V(sg * 0.9f, -0.2f, -0.3f));
     t3_vec3 d0 = V(sg, 0, 0);
     t3_quat qa = qbetween(d0, vnorm(vsub(elbow, sh)));
@@ -319,6 +345,7 @@ static void rider_pose_stand(int i, const craft *c, float steer, float by) {
     t3_vec3 pv[6] = { top_c, neck_c, hips_c, ank_c[0], ank_c[1], V(0, barm_y, barm_z) };
     for (int k = 0; k < 6; k++) pts[k][0] = pv[k].x, pts[k][1] = pv[k].y, pts[k][2] = pv[k].z;
     if (i == 0) g_pose[0] = top_c.y - TRAY_Y, g_pose[1] = knee_deg, g_pose[2] = lean_deg, g_pose[3] = BOW_Z - front_z;
+    finish_measure(i, c, cel, top_c, hands_m);
   }
   if (rider_foot_gap[i] > g_foot_gap_max) g_foot_gap_max = rider_foot_gap[i];
   if (rider_hands_gap[i] > g_hands_gap_max) g_hands_gap_max = rider_hands_gap[i];

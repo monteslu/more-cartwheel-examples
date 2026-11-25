@@ -43,17 +43,21 @@ const pad = run(['south', 'south']);
 check('pad: A on a course starts the race', pad['menu.page'] === P_NONE && pad['race.state'] === GRID, pg(pad));
 const fcBack = run(['south', 'east']);
 check('the forecast: back returns to the menu', fcBack['menu.page'] === P_MAIN, pg(fcBack));
-const rows = run(['down', 'down', 'down', 'down', 'down', 'down']);
-check('down walks the rows, to Controls', rows['menu.row'] === 6, pg(rows));
+const D6 = ['down', 'down', 'down', 'down', 'down', 'down'];
+const rows = run([...D6, 'down']);
+check('down walks the rows, to Controls', rows['menu.row'] === 7, pg(rows));
 const wrap = run(['up']);
-check('up from the top wraps to the last row', wrap['menu.row'] === 8, pg(wrap));
-const ctl = run(['down', 'down', 'down', 'down', 'down', 'down', 'south']);
+check('up from the top wraps to the last row', wrap['menu.row'] === 9, pg(wrap));
+const ctl = run([...D6, 'down', 'south']);
 check('Controls opens', ctl['menu.page'] === P_CONTROLS, pg(ctl));
-const ctlBack = run(['down', 'down', 'down', 'down', 'down', 'down', 'south', 'east']);
-check('Controls: back returns to the menu, on the row that opened it', ctlBack['menu.page'] === P_MAIN && ctlBack['menu.row'] === 6, pg(ctlBack));
-const au = run(['down', 'down', 'down', 'down', 'down', 'down', 'down', 'south']);
+const ctlBack = run([...D6, 'down', 'south', 'east']);
+check('Controls: back returns to the menu, on the row that opened it', ctlBack['menu.page'] === P_MAIN && ctlBack['menu.row'] === 7, pg(ctlBack));
+const au = run([...D6, 'down', 'down', 'south']);
 check('Audio opens', au['menu.page'] === P_AUDIO, pg(au));
-check('Audio: back returns', run(['down', 'down', 'down', 'down', 'down', 'down', 'down', 'south', 'east'])['menu.page'] === P_MAIN, 'east');
+check('Audio: back returns', run([...D6, 'down', 'down', 'south', 'east'])['menu.page'] === P_MAIN, 'east');
+// the Rider row: right picks the next rider, by the pad (control: nothing pressed keeps the first)
+const rider = run([...D6, 'right']), rider0 = run([...D6]);
+check('the Rider row: right picks the next rider', rider['rider.pick'] === 1 && rider0['rider.pick'] === 0, `picked ${rider['rider.pick']}, untouched ${rider0['rider.pick']}`);
 const tt = run(['down', 'right']);
 check('Mode: right chooses time trial', tt['race.mode'] === 1, pg(tt));
 const modes = run(['down', 'right', 'right']), roam = run(['down', 'left']);
@@ -91,6 +95,10 @@ check('the championship pays every place', pts(done) === 26 && done['cup.race'] 
 // (past the countdown: a race that had not finished would be running by now, not on its grid)
 const again = run(['w320', 'south', 'w20', 'south', 'w20'], { cmds: 'race;finish' });
 check('from the results, A goes to the forecast and A on its first row races the next course left, keeping the points', pts(again) === 26 && again['race.level'] === 1 && again['race.state'] === GRID, pg(again) + ` course ${again['race.level']} points ${again['cup.points']}`);
+// the next race's grid is the last one's finish: fourth over the line, fourth on the next grid (control: grid_order 0, by seat)
+const grid4 = run(['w320', 'south', 'w20', 'south', 'w20'], { cmds: 'race;finish 4' }), grid40 = run(['w320', 'south', 'w20', 'south', 'w20'], { cmds: 'sw grid_order 0;race;finish 4' });
+check('a championship race lines up by the last finish: fourth, then fourth on the grid', grid4['race.state'] === GRID && grid4['race.grid'][0] === 3 && grid4['p0.place'] === 4 && grid4['race.order'][3] === 0, `grid ${grid4['race.grid']}, the seat ${grid4['p0.place']}th, order ${grid4['race.order']}`);
+check('control: grid_order 0 lines up by seat (fails the bound)', !(grid40['p0.place'] === 4), `the seat ${grid40['p0.place']}th`);
 
 // a time trial is the human alone, and keeps the best
 const alone = run(['down', 'right', 'up', 'south', 'w300']);

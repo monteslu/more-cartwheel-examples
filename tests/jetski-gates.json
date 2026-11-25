@@ -364,5 +364,35 @@
     "name": "jetski-water-ramp",
     "script": "tests/jetski-water-ramp.mjs",
     "note": "a ramp deck under the water shows no shoal foam band: bright foam pixels from a held camera above the deck low end, GL and WebGPU. Control: the cart of v0.12.3, whose decks were in the refraction, shows several times as many"
+  },
+  {
+    "name": "jetski-moments",
+    "script": "tests/jetski-moments.mjs",
+    "note": "the race's big moments on the CPU: a turbo stamped across the picture at 150 px (control: stamp_on 0, the old popup); the standings column in race order (control: standings 0); over the line the top three throw their gloves over the helmet and the rest drop their shoulders, sit-down and stand-up (control: pose_on 0)"
+  },
+  {
+    "name": "jetski-camera",
+    "script": "tests/jetski-camera.mjs",
+    "note": "the chase camera low and close at race speed and never under the water (control: cam_old 1); thick spray, 1.5x the bright water of the thin spray in the same frame (control: spray_thick 0); drops on the lens after a hard landing that clear within 2.5 s and keep off the middle (control: lens 0)"
+  },
+  {
+    "name": "jetski-steer",
+    "script": "tests/jetski-steer.mjs",
+    "note": "the stick eases in: six tenths of it turns at most 45 % as hard as all of it (control: steer_curve 0); one correction then hands off, the turn changes direction at most once in 3 s"
+  },
+  {
+    "name": "jetski-deep",
+    "script": "tests/jetski-deep.mjs",
+    "note": "deep water: the sit-down rides 0.12 m deeper at rest than at full speed, the stand-up deeper still (control: deep 0)"
+  },
+  {
+    "name": "jetski-cast",
+    "script": "tests/jetski-cast.mjs",
+    "note": "the six riders' ratings change the ride: top speeds rank as the top-speed bars and spread at least 5 %, the time to the plane ranks as the acceleration bars (control: rider_stats 0)"
+  },
+  {
+    "name": "jetski-trick-value",
+    "script": "tests/jetski-trick-value.mjs",
+    "note": "stunt scoring: the same trick twice pays at most 80 % of two in full, two different ones over twice the first (control: wxsw trick_repeat 0)"
   }
 ]

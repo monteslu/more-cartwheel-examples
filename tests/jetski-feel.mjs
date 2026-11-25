@@ -18,7 +18,7 @@ function run(app, cmds, ticks, simx = 12, buttons = [TH]) {
   const state = join(OUT, 's.json'), input = join(OUT, 'i.json');
   writeFileSync(input, JSON.stringify(typeof buttons[0] === 'string' ? [{ frame: 4, buttons }] : buttons));
   const r = spawnSync('node', [TOOL, '--host', 'native', '--gpu', 'gl', '--app', app, '--frames', String(Math.ceil(ticks / (simx + 1)) + 4), '--input', input, '--state', state, '--shot', join(OUT, 's.png'), '--start-cmds', cmds, '--exe', join(ROOT, 'build/native/games/jetski', app)],
-    { cwd: join(ROOT, 'deps/cartwheel-engine'), encoding: 'utf8', maxBuffer: 1 << 26, env: { ...process.env, CW_PROJECT_ROOT: ROOT, LIBGL_ALWAYS_SOFTWARE: '1', LP_NUM_THREADS: '2', CW_TEST_GPU: 'software', JETSKI_SMALL: '1', JETSKI_SIMX: String(simx), SDL_AUDIODRIVER: 'dummy', CW_RUN_TIMEOUT_MS: '280000' } });
+    { cwd: join(ROOT, 'deps/cartwheel-engine'), encoding: 'utf8', maxBuffer: 1 << 26, env: { ...process.env, CW_PROJECT_ROOT: ROOT, LIBGL_ALWAYS_SOFTWARE: '1', LP_NUM_THREADS: '2', CW_TEST_GPU: 'software', CW_WGPU_ADAPTER: 'llvmpipe', JETSKI_SMALL: '1', JETSKI_SIMX: String(simx), SDL_AUDIODRIVER: 'dummy', CW_RUN_TIMEOUT_MS: '280000' } });
   if (r.status !== 0) { console.error(r.stdout.slice(-300), r.stderr.slice(-400)); process.exit(3); }
   return JSON.parse(readFileSync(state, 'utf8'));
 }

@@ -11,7 +11,7 @@ const C = ['Crater Atoll', 'Cold Sound', 'Red Reach', 'Iron Quay', 'Gale Bank'],
 function run(lv, ticks) {
   const state = join(OUT, `r${lv}.json`), frames = Math.ceil(ticks / (SIMX + 1)) + 4;
   const r = spawnSync('node', [TOOL, '--host', 'native', '--gpu', 'gl', '--app', 'jetski_auto', '--frames', String(frames), '--state', state, '--shot', join(OUT, `r${lv}.png`), '--start-cmds', `course ${lv};no_dq 1;race`, '--exe', join(ROOT, 'build/native/games/jetski/jetski_auto')],
-    { cwd: join(ROOT, 'deps/cartwheel-engine'), encoding: 'utf8', maxBuffer: 1 << 26, env: { ...process.env, CW_PROJECT_ROOT: ROOT, LIBGL_ALWAYS_SOFTWARE: '1', LP_NUM_THREADS: '2', CW_TEST_GPU: 'software', JETSKI_SMALL: '1', JETSKI_SIMX: String(SIMX), SDL_AUDIODRIVER: 'dummy', CW_RUN_TIMEOUT_MS: '280000' } });
+    { cwd: join(ROOT, 'deps/cartwheel-engine'), encoding: 'utf8', maxBuffer: 1 << 26, env: { ...process.env, CW_PROJECT_ROOT: ROOT, LIBGL_ALWAYS_SOFTWARE: '1', LP_NUM_THREADS: '2', CW_TEST_GPU: 'software', CW_WGPU_ADAPTER: 'llvmpipe', JETSKI_SMALL: '1', JETSKI_SIMX: String(SIMX), SDL_AUDIODRIVER: 'dummy', CW_RUN_TIMEOUT_MS: '280000' } });
   if (r.status !== 0) { console.error(r.stdout.slice(-400), r.stderr.slice(-600)); process.exit(3); }
   return JSON.parse(readFileSync(state, 'utf8'));
 }

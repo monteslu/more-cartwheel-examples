@@ -27,11 +27,22 @@
 #define DIVE_FLOOR 1.0f     /* a diving hull stays this far over the bed */
 #define RAMP_SLOPE 0.36f
 #define RAMP_FOOT 50.0f     /* how far its piles reach under its top edge */
-static const char *const RIDER_NAMES[6] = { "You", "Marlin", "Kestrel", "Tide", "Juno", "Reef" };
+/* the cast: six riders, each rated 1..5 (accel, top speed, handling, tricks, weight; every rider's ratings add to 15).
+ * The human picks one on the title menu and rides in seat 0; the rider who would have had seat 0 takes the picked one's
+ * seat. Seat names: "You" for seat 0, the rider's name otherwise */
+static const char *const CAST[6] = { "Cruz", "Marlin", "Kestrel", "Tide", "Juno", "Reef" };
+typedef struct rider_stats { float accel, top, handling, tricks, weight; } rider_stats;
+static const rider_stats RIDER_STATS[6] = { { 3, 3, 3, 3, 3 }, { 2, 5, 2, 3, 3 }, { 5, 2, 4, 2, 2 }, { 2, 4, 2, 2, 5 }, { 3, 2, 3, 5, 2 }, { 4, 2, 5, 2, 2 } };
+extern int g_rider;       /* the human's rider, 0..5 */
+extern int g_rider_stats; /* sw rider_stats 0: every rider rides the same (3s), the cast gate's control */
+static inline int rider_of(int seat) { return seat == 0 ? g_rider : seat == g_rider ? 0 : seat; }
+static inline const char *seat_name(int seat) { return seat == 0 ? "You" : CAST[rider_of(seat)]; }
+
 extern int g_difficulty; /* 0 easy, 1 normal, 2 hard */
 enum { MODE_CHAMPIONSHIP, MODE_TIME_TRIAL, MODE_STUNT, MODE_ROAM, MODE_N }; /* stunt and free roam: the human alone, no buoys counted */
 #define MODE_ALONE (g_mode != MODE_CHAMPIONSHIP)
 extern int g_mode;
+extern int32_t g_grid[RACERS];   /* racer i starts in slot g_grid[i]: a championship lines up by the last finish */
 /* the craft every racer rides, chosen from the menu: a sit-down runabout, or a stand-up (a narrow, light hull the rider
  * stands on, on a tray behind a hinged handlepole). internal-cartwheel/findings/jetski-standup.md has the real ones */
 enum { CRAFT_SIT, CRAFT_STAND };
@@ -119,7 +130,10 @@ typedef struct craft {
   float skill;                    /* computer racers */
   float stock;                    /* turbos in hand, 0..3 */
   float turbo_t, turbo_hold;      /* the shove now, then the raised ceiling after it */
+  float bog_t;                    /* an over-revved start: seconds of the pump cavitating, thrust cut */
   int turbos;                     /* fired */
+  int streak;                     /* clean passes in a row */
+  float draft_t;                  /* seconds in a rival's slipstream */
   int shown_place, want_place, place_ticks; /* the place a person is told: only once it has held */
   int place_changes;              /* held changes of place */
   int slow3_ticks, slow_max;      /* under 3 m/s, throttle or not */
@@ -176,7 +190,7 @@ typedef struct craft {
 } craft;
 
 /* what happened to the human this tick: the HUD, the sounds, the rumble and the bursts all read this list, each from its own place in it */
-enum { EV_PASS, EV_TOP, EV_TRICK, EV_LAND, EV_MISS, EV_GAIN, EV_LOSE, EV_LAP, EV_FINAL, EV_WALL, EV_CRASH, EV_CHARGE, EV_TURBO, EV_ROCKET, EV_TURBO_LOST, EV_WAVES, EV_COMBO, EV_KINDS };
+enum { EV_PASS, EV_TOP, EV_TRICK, EV_LAND, EV_MISS, EV_GAIN, EV_LOSE, EV_LAP, EV_FINAL, EV_WALL, EV_CRASH, EV_CHARGE, EV_TURBO, EV_ROCKET, EV_TURBO_LOST, EV_WAVES, EV_COMBO, EV_BOG, EV_SHAVE, EV_STREAK, EV_DRAFT, EV_KINDS };
 typedef struct game_event { int kind; int a; float x, z; int quiet; } game_event; /* quiet: the same mistake again soon after, answered softly or not at all (weather.c nag_quiet) */
 #define EV_RING 64
 void ev_push(int kind, int a, float x, float z);
@@ -187,6 +201,10 @@ extern int g_fb[EV_KINDS][4];      /* how each kind was answered: popups, sounds
 extern int g_turbo_on;             /* turbo_on 0: the turbo gate's control */
 extern int g_autosteer;            /* autosteer 1: the computer steers the human seat, the pad keeps its trick button */
 #define ROCKET_WINDOW 0.6f /* the throttle down in the last this many seconds of the countdown and held: a rocket start */
+#define REV_OVER 1.1f      /* held longer than this at the green light: over-revved, the pump bogs (the rev gauge's red) */
+#define REV_SCALE 1.6f     /* the rev gauge's full sweep, seconds held */
+#define BOG_TIME 0.8f      /* seconds an over-revved start cavitates */
+extern int g_rev_bog;              /* rev_bog 0: no bog-down on an over-revved start, the start gate's control */
 #define FINISH_HOLD 4.5f   /* seconds of the finish before the results, or 3 once every rival is in */
 extern float g_finish_hold;        /* debug: finish_hold 0, the results at once (the finish gate control) */
 extern int g_trick_guard;          /* trick_guard 0: a trick on any hop, the trick gate's control */
@@ -222,6 +240,7 @@ typedef struct game {
   int32_t attract_under, attract_land, attract_blocked, attract_hidden; /* ticks the attract camera was under water, in land, had land in its view of the craft, or a crest over the hull */
   float rocket_at;  /* the clock when the human's throttle went down on the grid and stayed down; positive: not down */
   int32_t rocket;   /* the human got a rocket start */
+  int32_t bog;      /* the human over-revved on the grid and bogged at the green light */
   float fin_t;      /* seconds since the human crossed the line: the finish is shown before the results */
   float done_after; /* fin_t when the results came up */
   int32_t real_finishes; /* rivals over the line under their own power before the results, not given a time by their pace */
@@ -251,6 +270,8 @@ extern int g_attract_clear;
 extern float g_fov_span, g_cam_roll_max; /* debug: fov_span, cam_roll */
 void view_init(void);
 void view_sync(double alpha);
+void view_repaint(void);          /* seats painted in their riders' colours again (the human picked a rider) */
+const float *view_team(int i);     /* a racer's colours: deck rgb, vest rgb */
 void view_course_apply(void);    /* G.level changed: land, sea, sky and marks for that course */
 void view_tick(float dt);
 extern bool g_peek_on;  /* debug: peek holds the camera, for the grounding sweep */

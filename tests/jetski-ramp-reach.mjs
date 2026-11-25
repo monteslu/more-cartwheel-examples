@@ -15,7 +15,7 @@ function run(lv, r, aside, look, at = '') {
   const state = join(OUT, `t${lv}.json`), input = join(OUT, 'in.json');
   writeFileSync(input, JSON.stringify([]));
   const p = spawnSync('node', [TOOL, '--host', 'native', '--gpu', 'gl', '--app', 'jetski', '--frames', String(Math.ceil(TICKS / (SIMX + 1)) + 4), '--state', state, '--shot', join(OUT, `t${lv}.png`), '--start-cmds', `course ${lv};difficulty 2;swell 1;no_dq 1;race;ramp_try ${r} ${aside} ${look} ${at}`, '--exe', join(ROOT, 'build/native/games/jetski/jetski')],
-    { cwd: join(ROOT, 'deps/cartwheel-engine'), encoding: 'utf8', maxBuffer: 1 << 26, env: { ...process.env, CW_PROJECT_ROOT: ROOT, LIBGL_ALWAYS_SOFTWARE: '1', LP_NUM_THREADS: '2', CW_TEST_GPU: 'software', JETSKI_SMALL: '1', JETSKI_SIMX: String(SIMX), SDL_AUDIODRIVER: 'dummy', CW_RUN_TIMEOUT_MS: '60000' } });
+    { cwd: join(ROOT, 'deps/cartwheel-engine'), encoding: 'utf8', maxBuffer: 1 << 26, env: { ...process.env, CW_PROJECT_ROOT: ROOT, LIBGL_ALWAYS_SOFTWARE: '1', LP_NUM_THREADS: '2', CW_TEST_GPU: 'software', CW_WGPU_ADAPTER: 'llvmpipe', JETSKI_SMALL: '1', JETSKI_SIMX: String(SIMX), SDL_AUDIODRIVER: 'dummy', CW_RUN_TIMEOUT_MS: '60000' } });
   if (p.status !== 0) { console.error(p.stdout.slice(-300), p.stderr.slice(-400)); process.exit(3); }
   const st = JSON.parse(readFileSync(state, 'utf8'));
   run.detail = `hit ${st['try.hit']}, from buoy ${st['try.prev']}, missed next-after ${st['try.missed']}`;

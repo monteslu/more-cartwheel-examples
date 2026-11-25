@@ -34,6 +34,7 @@ int g_route_force = -1; /* debug: route_force 1 every route open, 0 every route 
 int g_event_on = 1;    /* debug: event 0, no event */
 float g_event_amp = 1.7f; /* metres the event's set stands over the swell (event_amp 0: the band without waves, its gate's control) */
 int g_cup_day;         /* the championship's day, 0.. */
+static int last_tricks[5], last_n; /* the last five tricks, newest first (stunt scoring's repeat discount) */
 wx_probe g_wx;
 stunt_state g_stunt;
 static int race_wx = -1;
@@ -365,6 +366,7 @@ void wx_race_reset(void) {
   g_wx.rocks = (int32_t)keep_rocks, g_wx.wave_min = 1e9f, g_wx.wave_max = -1e9f;
   memset(&g_stunt, 0, sizeof g_stunt);
   g_stunt.mult = 1;
+  last_n = 0;
   st_read = g_ev_n;
 }
 
@@ -613,6 +615,17 @@ static int trick_points(int a) {
    * 8 superman, 9 pole stand (sim.c) */
   switch (a) { case 1: return 300; case 2: case 3: return 500; case 4: return 150; case 5: return 80; case 6: return 400; case 7: return 450; case 8: return 250; case 9: return 350; default: return 250; }
 }
+/* the same trick again pays less: each time it is among the last five, half as much (a quarter at least), so a varied run
+ * outscores the one trick over and over. wxsw trick_repeat 0: every repeat pays in full, the gate's control */
+int g_trick_repeat = 1;
+
+static int trick_value(int kind) {
+  int pts = trick_points(kind), same = 0;
+  for (int k = 0; k < last_n && k < 5; k++) same += last_tricks[k] == kind;
+  if (g_trick_repeat) for (int k = 0; k < same; k++) pts = pts / 2 < trick_points(kind) / 4 ? trick_points(kind) / 4 : pts / 2;
+  memmove(last_tricks + 1, last_tricks, sizeof last_tricks[0] * 4), last_tricks[0] = kind, last_n++;
+  return pts;
+}
 static void stunt_add(int pts) {
   g_stunt.chain++, g_stunt.tricks++;
   g_stunt.pending += pts;
@@ -635,7 +648,7 @@ static void stunt_tick(float dt) {
   if (g_ev_n - st_read > EV_RING) st_read = g_ev_n - EV_RING;
   for (; st_read != g_ev_n; st_read++) {
     const game_event *e = &g_ev[st_read % EV_RING];
-    if (e->kind == EV_TRICK) stunt_add(trick_points(e->a));
+    if (e->kind == EV_TRICK) stunt_add(trick_value(e->a));
     else if (e->kind == EV_LAND && e->a == 1 && g_stunt.chain > 0) g_stunt.pending += 100, g_stunt.window = 3.0f;
     else if (e->kind == EV_LAND && e->a == 2) stunt_add(350);
     else if (e->kind == EV_CRASH && g_stunt.pending > 0) { g_stunt.lost++, g_stunt.pending = 0, g_stunt.chain = 0, g_stunt.mult = 1, g_stunt.lost_t = 1.6f; }
@@ -783,8 +796,18 @@ static void cmd_wxsw(int argc, const char **argv, cw_reply *r) {
     else if (!strcmp(argv[1], "turbo_risk")) g_turbo_risk = (int)v;
     else if (!strcmp(argv[1], "spill_old")) g_spill_old = (int)v;
     else if (!strcmp(argv[1], "cup_day")) g_cup_day = (int)v;
+    else if (!strcmp(argv[1], "trick_repeat")) g_trick_repeat = (int)v;
   }
   if (r) cw_reply_raw(r, "true");
+}
+/* stunt_score <kind> ...: tricks scored as one flight's combo, from a clean slate, the banked score in the reply */
+static void cmd_stunt_score(int argc, const char **argv, cw_reply *r) {
+  memset(&g_stunt, 0, sizeof g_stunt), g_stunt.mult = 1, last_n = 0;
+  for (int k = 1; k < argc; k++) stunt_add(trick_value(atoi(argv[k])));
+  int pending = g_stunt.pending; float mult = g_stunt.mult;
+  int pts = (int)((float)pending * mult + 0.5f);
+  memset(&g_stunt, 0, sizeof g_stunt), g_stunt.mult = 1, last_n = 0;
+  if (r) cw_reply_printf(r, "%d", pts);
 }
 /* the course's rocks, against the ground and the sea: the grounding gate's part (lift: its control) */
 static void cmd_wx_ground(int argc, const char **argv, cw_reply *r) {
@@ -814,6 +837,7 @@ void wx_debug(void) {
   cw_debug_command("event", "event: the course's big waves now", cmd_event);
   cw_debug_command("wx_route", "wx_route [back]: lined up with the course's weather route", cmd_route);
   cw_debug_command("wxsw", "wxsw <route_force|event|event_amp|nag|turbo_risk|spill_old|cup_day> <v>", cmd_wxsw);
+  cw_debug_command("stunt_score", "stunt_score <kind> ...: these tricks as one combo, banked, on a clean slate (the trick-value gate)", cmd_stunt_score);
   cw_debug_command("wx_ground", "wx_ground [lift]: the weather's rocks and slab against the ground", cmd_wx_ground);
   cw_debug_f32("wx.wave_max", &g_wx.wave_max);
   cw_debug_f32("wx.wave_min", &g_wx.wave_min);

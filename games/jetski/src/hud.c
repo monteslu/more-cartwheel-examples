@@ -21,6 +21,9 @@ static void cw_r2d_triangle(cw_vec2 a, cw_vec2 b, cw_vec2 c, cw_color col) {
 void hud_init(void) {
   big = cw_font_load("fonts/RussoOne-Regular.ttf", NULL);
   small = cw_font_load("fonts/Oswald-VF.ttf", NULL);
+  /* layer 1: the drops on the lens, reading the picture under them; the HUD and menus over them on layer 2 */
+  cw_r2d_layer_set(1, &(cw_r2d_layer_desc){ .screen_read = true });
+  cw_r2d_layer_set(2, &(cw_r2d_layer_desc){ 0 });
 }
 
 /* Text is placed by its measured size: at the player's text scale (cartwheel/render2d.h "text size") each block grows
@@ -41,6 +44,7 @@ typedef struct word_box { float x0, y0, x1, y1; } word_box;
 static word_box words[WORDS_MAX];
 static int words_n;
 int g_hud_label_old, g_hud_label_hits, g_hud_words_n, g_hud_pop_n, g_hud_pop_keep;
+float g_hud_rev = -1; /* the rev gauge's sweep as drawn this frame, 0..1; -1: not drawn */
 int g_hud_pops, g_hud_pop_tick;
 float g_hud_label[4];
 static void word(cw_font f, const char *s, float cx, float y, float size, cw_color c) {
@@ -134,6 +138,7 @@ static void pointer(cw_vec2 p, float dx, float dy, float len, float half, cw_col
 /* The next buoy, always: over it with the way past it and how far, or at the screen's edge pointing to it when it is out of the picture. The next buoy can be
  * hidden behind a swell or a headland and this still says where it is */
 int g_hud_chevron; /* the way the next mark's chevron points: -1 pass it on the left, +1 on the right */
+int g_pass_cue = 1;
 static void next_mark(const craft *c, float w, float h, float u) {
   g_hud_ptr_mode = 0;
   if (G.state != RACE_ON && G.state != RACE_GRID) return;
@@ -151,6 +156,15 @@ static void next_mark(const craft *c, float w, float h, float u) {
   to_screen((t3_vec3){ b[0], s.height, b[1] }, w, h, &base);
   g_hud_buoy[0] = p.x, g_hud_buoy[1] = p.y, g_hud_buoy[2] = front ? 1 : 0, g_hud_buoy[3] = base.y;
   for (int k = 0; k < 4; k++) g_nc_look[k] = g_hud_buoy[k];
+  /* the way past it: the chevron stands over the water 6 m out on the side to pass, not on the mark, so from far off it
+     already shows where to steer (a newcomer aimed at the mark itself and slid by on its wrong side). sw pass_cue 0: on
+     the mark, the gate's control */
+  if (g_pass_cue) {
+    float sx, sz, tx, tz; track_at(b[3], &sx, &sz, &tx, &tz);
+    float px = b[0] + b[2] * tz * 6.0f, pz = b[1] - b[2] * tx * 6.0f;
+    cw_vec2 q = { 0, 0 };
+    if (to_screen((t3_vec3){ px, top, pz }, w, h, &q) == front) p.x = q.x, g_nc_look[0] = q.x; /* (at the mark's top height, so the label and its size stay the mark's) */
+  }
   g_nc_look[4] = dir, g_nc_look[5] = c->speed;
   if (!g_hud_mark) return;
   bool inside = front && p.x > 0 && p.x < w && p.y > 0 && p.y < h;
@@ -228,7 +242,28 @@ static void pop_add(const char *t, cw_color col, bool big) {
   snprintf(pop[0].text, sizeof pop[0].text, "%s", t), pop[0].t = 0, pop[0].col = col, pop[0].big = big;
   g_hud_pops++, g_hud_pop_tick = (int)G.tick;
 }
-static float meter_pulse, chip_pulse, chip_lost, waves_t = -1, risk_tip = -1;
+/* Stamps: the race's big moments (a lap, the last lap, a turbo, a trick landed, a combo) in big type across the middle
+ * of the picture, one at a time: it swells in from 1.3x to its size over a quarter second, holds, and fades. Never a blink:
+ * the next waits until this one has faded (at most one a 1.3 s), and a queue of three keeps the latest moments. */
+#define ST_LIFE 1.3f
+#define ST_SIZE 150.0f
+typedef struct stamp { char text[32]; cw_color col; } stamp;
+static stamp st_q[3], st_now;
+static int st_qn;
+static float st_t = -1;
+int g_stamp_on = 1;                 /* stamp_on 0: the moments as the old small popups, the stamp gate's control */
+int g_hud_stamps;                   /* stamps put up this race */
+float g_hud_stamp[3];               /* the stamp up now: drawn size in 1080p pixels, alpha, swell */
+static void pop_add(const char *t, cw_color col, bool big);
+static void stamp_add(const char *t, cw_color col) {
+  if (!g_stamp_on) { pop_add(t, col, true); return; }
+  if (st_qn == 3) { memmove(st_q, st_q + 1, sizeof st_q[0] * 2); st_qn = 2; } /* the latest moments matter most */
+  snprintf(st_q[st_qn].text, sizeof st_q[0].text, "%s", t), st_q[st_qn].col = col, st_qn++;
+  g_hud_stamps++, g_hud_pops++, g_hud_pop_tick = (int)G.tick;
+}
+static float meter_pulse, chip_pulse, chip_lost, waves_t = -1, risk_tip = -1, lean_tip = -1;
+int g_lean_told;   /* the landing tip has been shown (once a session); hud.lean_tip: seconds it has been up, -1 none */
+float g_lean_tip_t = -1;
 static bool risk_told;
 int g_hud_lost, g_hud_waves, g_hud_quiet; /* for the gates: TURBO LOST shown, the event's warning shown, answers held back as nagging */
 static unsigned ev_read;
@@ -236,6 +271,7 @@ static unsigned ev_read;
 void hud_race_reset(void) {
   if (g_hud_pop_keep) return;
   for (int i = 0; i < 3; i++) pop[i].text[0] = 0;
+  st_qn = 0, st_t = -1, g_hud_stamps = 0;
   ev_read = g_ev_n;
   meter_pulse = chip_pulse = 0, chip_lost = 0, waves_t = -1, risk_tip = -1, risk_told = false;
 }
@@ -252,32 +288,53 @@ static void hud_events(float dt) {
     if (e->quiet) g_hud_quiet++;
     switch (e->kind) {
       case EV_PASS: meter_pulse = 1; shown = false; g_fb[e->kind][0]++; break;
-      case EV_TOP: pop_add("MAX POWER", gold, true); meter_pulse = 1; break;
+      case EV_TOP: stamp_add("MAX POWER", gold); meter_pulse = 1; break;
       case EV_TRICK: { static const char *const NAME[10] = { "BARREL ROLL", "BARREL ROLL", "BACK FLIP", "FRONT FLIP", "KICK OUT", "STYLE", "SUBMARINE", "FLAT SPIN", "SUPERMAN", "POLE STAND" };
-        pop_add(NAME[e->a < 0 || e->a > 9 ? 0 : e->a], cyan, true); break; }
-      case EV_LAND: if (e->a == 2) pop_add("DIVE", cyan, true); else if (e->a) pop_add("PERFECT LANDING", green, false); else { shown = false; g_fb[e->kind][0]++; } break;
+        stamp_add(NAME[e->a < 0 || e->a > 9 ? 0 : e->a], cyan); break; }
+      case EV_LAND: if (e->a == 2) pop_add("DIVE", cyan, true); else if (e->a == 1) pop_add("PERFECT LANDING", green, false); else { shown = false; g_fb[e->kind][0]++; if (e->a == 3 && !g_lean_told) g_lean_told = 1, lean_tip = 0; } break;
       case EV_MISS: shown = false; g_fb[e->kind][0]++; break; /* MISS has its own big word */
       case EV_GAIN: snprintf(b, sizeof b, "UP TO %s", ord[e->a - 1 < 0 ? 0 : e->a - 1 > 5 ? 5 : e->a - 1]); pop_add(b, green, false); break;
       case EV_LOSE: snprintf(b, sizeof b, "DOWN TO %s", ord[e->a - 1 < 0 ? 0 : e->a - 1 > 5 ? 5 : e->a - 1]); pop_add(b, red, false); break;
-      case EV_LAP: snprintf(b, sizeof b, "LAP %d", e->a); pop_add(b, white, true); break;
-      case EV_FINAL: pop_add("FINAL LAP", gold, true); break;
+      case EV_LAP: snprintf(b, sizeof b, "LAP %d", e->a); stamp_add(b, white); break;
+      case EV_FINAL: stamp_add("FINAL LAP", gold); break;
       case EV_WALL: shown = false; g_fb[e->kind][0]++; break;
       case EV_CRASH: shown = false; g_fb[e->kind][0]++; break; /* WIPEOUT has its own */
       case EV_CHARGE: pop_add("TURBO READY", cyan, false); chip_pulse = 1; break;
-      case EV_TURBO: pop_add("TURBO", cyan, true); chip_pulse = 1; break;
+      case EV_TURBO: stamp_add("TURBO", cyan); chip_pulse = 1; break;
       case EV_ROCKET: pop_add("ROCKET START", gold, true); break;
+      case EV_BOG: pop_add("BOGGED DOWN: OVER-REVVED", red, true); break;
+      case EV_SHAVE: pop_add("CLOSE SHAVE", cyan, false); chip_pulse = 1; break;
+      case EV_STREAK: snprintf(b, sizeof b, "%d IN A ROW", e->a); stamp_add(b, gold); chip_pulse = 1; break;
+      case EV_DRAFT: pop_add("SLIPSTREAM", green, false); break;
       case EV_TURBO_LOST: chip_lost = 1; if (e->quiet < 2) { pop_add("TURBO LOST: WRONG SIDE", red, e->quiet == 0); g_hud_lost++; } else shown = false; break;
       case EV_WAVES: waves_t = 0; g_hud_waves++; break;
-      case EV_COMBO: snprintf(b, sizeof b, "+%d", e->a); pop_add(b, gold, true); break;
+      case EV_COMBO: snprintf(b, sizeof b, "+%d", e->a); stamp_add(b, gold); break;
     }
     if (shown) g_fb[e->kind][0]++;
   }
   ev_read = read;
   g_hud_pop_n = 0;
   for (int i = 0; i < 3; i++) if (pop[i].text[0]) { pop[i].t += dt; if (pop[i].t > 1.5f) pop[i].text[0] = 0; else g_hud_pop_n++; }
+  if (st_t >= 0) { st_t += dt; if (st_t > ST_LIFE) st_t = -1; }
+  if (st_t < 0 && st_qn) { st_now = st_q[0]; memmove(st_q, st_q + 1, sizeof st_q[0] * 2); st_qn--; st_t = 0; }
+  if (st_t >= 0) g_hud_pop_n++;
   meter_pulse = fmaxf(0, meter_pulse - dt * 3), chip_pulse = fmaxf(0, chip_pulse - dt * 2.5f), chip_lost = fmaxf(0, chip_lost - dt * 0.6f);
   if (waves_t >= 0) { waves_t += dt; if (waves_t > 6) waves_t = -1; }
   if (risk_tip >= 0) { risk_tip += dt; if (risk_tip > 5) risk_tip = -1; }
+  if (lean_tip >= 0) { lean_tip += dt; if (lean_tip > 5) lean_tip = -1; }
+  g_lean_tip_t = lean_tip;
+}
+static float smooth01(float t) { t = t < 0 ? 0 : t > 1 ? 1 : t; return t * t * (3 - 2 * t); }
+static void hud_stamp(float w, float h, float u) {
+  g_hud_stamp[0] = g_hud_stamp[1] = g_hud_stamp[2] = 0;
+  if (st_t < 0) return;
+  float swell = 1.0f + 0.3f * (1.0f - smooth01(st_t / 0.25f));
+  float a = smooth01(st_t / 0.12f) * (1.0f - smooth01((st_t - (ST_LIFE - 0.55f)) / 0.55f)) * 0.94f;
+  float size = ST_SIZE * u * swell;
+  /* a soft dark shadow under the type, so it reads on bright spray and white sky alike */
+  text(big, st_now.text, w * 0.5f + 5 * u, h * 0.34f + 6 * u, size, cw_rgba(0.0f, 0.03f, 0.08f, 0.45f * a), 0.5f);
+  word(big, st_now.text, w * 0.5f, h * 0.34f, size, cw_rgba(st_now.col.r, st_now.col.g, st_now.col.b, a));
+  g_hud_stamp[0] = cw_text_drawn_size(big, size) / u, g_hud_stamp[1] = a, g_hud_stamp[2] = swell;
 }
 static void hud_popups(float w, float h, float u) {
   float y = h * 0.135f;
@@ -291,8 +348,42 @@ static void hud_popups(float w, float h, float u) {
   }
 }
 /* who is just ahead and behind, and by how long: translucent, under the misses */
+/* The standings: every rider down the left in race order, each with their colours, and the gap to you. Rows slide to
+ * their new place over a third of a second, and a rider who changes place glows once and fades (never a blink).
+ * sw standings 0: the old two neighbours only, the gate's control */
+int g_standings_on = 1;
+int32_t g_hud_rows, g_hud_order[RACERS]; /* rows drawn this frame, and who is on each row (racer index) */
+static void hud_standings(const craft *c, float u, float y) {
+  static float row_y[RACERS], glow[RACERS]; static int last_slot[RACERS]; static uint32_t seen_tick;
+  g_hud_rows = 0;
+  if (MODE_ALONE || (G.state != RACE_ON && G.state != RACE_GRID)) return;
+  bool fresh = G.tick < seen_tick || G.tick - seen_tick > 30; /* a new race or a jump: rows go straight to their places */
+  seen_tick = G.tick;
+  float rh = 34 * u * grow(small, 26 * u);
+  for (int k = 0; k < RACERS; k++) {
+    int who = G.order[k];
+    if (!racer_on(who)) continue;
+    if (fresh) row_y[who] = (float)k, glow[who] = 0, last_slot[who] = k;
+    if (last_slot[who] != k) { glow[who] = 1, last_slot[who] = k; }
+    row_y[who] += ((float)k - row_y[who]) * 0.2f;
+    glow[who] = fmaxf(0, glow[who] - 1.0f / 50.0f);
+    const float *tc = view_team(who);
+    float yy = y + row_y[who] * rh, a = who == 0 ? 0.95f : 0.7f;
+    float gl = glow[who] * glow[who] * (3 - 2 * glow[who]);
+    if (who == 0 || gl > 0) cw_r2d_round_rect(cw_rect_make(54 * u, yy - 3 * u, 300 * u, rh - 2 * u), 6 * u, 6, cw_rgba(1, 1, 1, (who == 0 ? 0.12f : 0) + 0.25f * gl));
+    char b[48];
+    snprintf(b, sizeof b, "%d", k + 1);
+    text(small, b, 62 * u, yy, 26 * u, cw_rgba(1, 1, 1, a), 0);
+    cw_r2d_round_rect(cw_rect_make(92 * u, yy + 4 * u, 22 * u, rh - 14 * u), 4 * u, 4, cw_rgba(tc[0], tc[1], tc[2], 0.95f));
+    if (who == 0 || G.state != RACE_ON || c->finish > 0) snprintf(b, sizeof b, "%s", seat_name(who));
+    else { float gap = (G.c[who].dist - c->dist) / fmaxf(c->speed, 8.0f); snprintf(b, sizeof b, "%s  %s%.1f", seat_name(who), gap > 0 ? "-" : "+", fabsf(gap)); }
+    text(small, b, 124 * u, yy, 26 * u, who == 0 ? cw_rgba(1.0f, 0.86f, 0.4f, a) : cw_rgba(1, 1, 1, a), 0);
+    g_hud_order[g_hud_rows++] = who;
+  }
+}
 static void hud_neighbours(const craft *c, float u, float y) {
   if (MODE_ALONE || G.state != RACE_ON) return;
+  if (g_standings_on) { hud_standings(c, u, y); return; }
   int me = -1;
   for (int i = 0; i < RACERS; i++) if (G.order[i] == 0) me = i;
   for (int k = me - 1; k <= me + 1; k += 2) {
@@ -301,7 +392,7 @@ static void hud_neighbours(const craft *c, float u, float y) {
     if (!racer_on(G.order[k])) continue;
     float gap = fabsf(o->dist - c->dist) / fmaxf(c->speed, 8.0f);
     char b[40];
-    snprintf(b, sizeof b, "%s  %s%.1f", RIDER_NAMES[G.order[k]], k < me ? "-" : "+", gap);
+    snprintf(b, sizeof b, "%s  %s%.1f", seat_name(G.order[k]), k < me ? "-" : "+", gap);
     text(small, b, 62 * u, y, 28 * u, cw_rgba(1, 1, 1, 0.62f), 0);
     y += 32 * u * grow(small, 28 * u);
   }
@@ -372,7 +463,13 @@ static void hud_body(void) {
   if (c->stock >= 1 && !risk_told && !MODE_ALONE) { risk_told = true, risk_tip = 0; }
   if (risk_tip >= 0) {
     float a = fminf(1, risk_tip / 0.4f) * fminf(1, (5 - risk_tip) / 0.8f);
-    text(small, "A wrong-side mark empties your turbo", w - 372 * u + 3 * 58 * u - 12 * u, h - 92 * u - 40 * u * grow(small, 28 * u), 28 * u, cw_rgba(0.55f, 0.95f, 1, 0.9f * a), 1);
+    /* over the speed, not across it */
+    text(small, "A wrong-side mark empties your turbo", w - 60 * u, h - 186 * u - 44 * u * grow(small, 28 * u), 28 * u, cw_rgba(0.55f, 0.95f, 1, 0.9f * a), 1);
+  }
+  /* the first nose-down landing that cost speed: how to save the next one, once a session, low in the middle */
+  if (lean_tip >= 0) {
+    float a = fminf(1, lean_tip / 0.4f) * fminf(1, (5 - lean_tip) / 0.8f);
+    cw_prompt_text(small, "Nose down lands hard: hold {lean_back} as you come down", 0, cw_v2(w * 0.5f, h * 0.7f), 32 * u, cw_rgba(0.55f, 0.95f, 1, 0.95f * a), CW_ALIGN_CENTER);
   }
   /* place and lap, top left */
   static const char *const ord[] = { "1st", "2nd", "3rd", "4th", "5th", "6th" };
@@ -406,9 +503,10 @@ static void hud_body(void) {
   /* the day's weather, small, under the clock */
   { snprintf(buf, sizeof buf, "%s", WX_NAMES[wx_now()]); text(small, buf, w - 60 * u, 48 * u + (g_mode == MODE_TIME_TRIAL && menu_best_time() > 0 ? 100 : 56) * u * grow(small, 44 * u), 30 * u, dim, 1); }
   if (g_map_on) minimap(c, h, u);
-  if (c->finish <= 0) hud_neighbours(c, u, next_y);
+  if (c->finish <= 0 || g_standings_on) hud_neighbours(c, u, next_y);
   words_n = 0;
   hud_popups(w, h, u);
+  hud_stamp(w, h, u);
   /* misses so far: five and the race is over */
   for (int i = 0; i < 5 && g_mode != MODE_STUNT && g_mode != MODE_ROAM; i++) {
     float x = 62 * u + (float)i * 34 * u, y = miss_y;
@@ -456,7 +554,7 @@ static void hud_body(void) {
       snprintf(wl, sizeof wl, "%s: %s. %s", WX_NAMES[wx_now()], SEA[wx_now()], wx_route_line());
       y2 += 46 * u * grow(small, 34 * u);
       word(small, wl, w * 0.5f, y2, 30 * u, wx_route_open() ? cw_rgba(0.6f, 1, 0.9f, 0.9f * k) : cw_rgba(1, 0.85f, 0.6f, 0.9f * k)); }
-    if (G.state == RACE_GRID && k > 0.5f) cw_prompt_text(small, "{throttle} on the last beat: a rocket start", 0, cw_v2(w * 0.5f, y2 + 50 * u * grow(small, 34 * u)), 30 * u, cw_rgba(1.0f, 0.82f, 0.4f, k), CW_ALIGN_CENTER);
+    if (G.state == RACE_GRID && k > 0.5f) cw_prompt_text(small, "{throttle} on the last beat: a rocket start. Held too long, it bogs", 0, cw_v2(w * 0.5f, y2 + 50 * u * grow(small, 34 * u)), 30 * u, cw_rgba(1.0f, 0.82f, 0.4f, k), CW_ALIGN_CENTER);
     /* the stand-up's own tricks, said on the grid where there is time to read them */
     if (G.state == RACE_GRID && k > 0.5f && g_craft == CRAFT_STAND) cw_prompt_text(small, "Stand-up: {trick} on the water for a submarine, {kick} for a pole stand", 0, cw_v2(w * 0.5f, y2 + 92 * u * grow(small, 34 * u)), 30 * u, cw_rgba(0.55f, 0.95f, 1.0f, k), CW_ALIGN_CENTER);
   }
@@ -465,9 +563,11 @@ static void hud_body(void) {
     static const char *const FIN[] = { "FINISHED 1ST", "FINISHED 2ND", "FINISHED 3RD", "FINISHED 4TH", "FINISHED 5TH", "FINISHED 6TH" };
     float k = fminf(1.0f, G.fin_t / 0.5f);
     const char *s = MODE_ALONE ? "FINISHED" : FIN[c->place - 1 < 0 ? 0 : c->place - 1 > 5 ? 5 : c->place - 1];
-    word(big, s, w * 0.5f, h * 0.12f, 96 * u, c->place == 1 || MODE_ALONE ? cw_rgba(1.0f, 0.78f, 0.25f, k) : cw_rgba(1, 1, 1, k));
+    /* stamped: it swells in over a quarter second and stays while the camera comes round */
+    float fs = (g_stamp_on ? 128.0f * (1.0f + 0.3f * (1.0f - smooth01(G.fin_t / 0.25f))) : 96.0f) * u;
+    word(big, s, w * 0.5f, h * 0.12f, fs, c->place == 1 || MODE_ALONE ? cw_rgba(1.0f, 0.78f, 0.25f, k) : cw_rgba(1, 1, 1, k));
     snprintf(buf, sizeof buf, "%d:%05.2f", (int)(c->finish / 60), c->finish - 60.0f * (float)(int)(c->finish / 60));
-    word(small, buf, w * 0.5f, h * 0.12f + 120 * u * grow(big, 96 * u), 48 * u, cw_rgba(1, 1, 1, 0.9f * k));
+    word(small, buf, w * 0.5f, h * 0.12f + cw_text_drawn_size(big, fs) * 1.25f, 48 * u, cw_rgba(1, 1, 1, 0.9f * k));
   }
   if (G.state == RACE_GRID) {
     int n = (int)ceilf(-G.clock);
@@ -476,6 +576,31 @@ static void hud_body(void) {
     if (G.clock < 0) word(big, buf, w * 0.5f, h * 0.3f, 190 * u, white);
   } else if (G.state == RACE_ON && G.clock < 1.2f) {
     word(big, "GO", w * 0.5f, h * 0.3f, 190 * u, gold);
+  }
+  /* the rev gauge under the count: how long the throttle has been down sweeps it. Green at the light is a rocket start,
+     amber a plain one, red over-revs the pump and it bogs at the light; let go and press again to bring it back */
+  g_hud_rev = -1;
+  if (G.state == RACE_GRID && G.clock > -3.2f && c->human) {
+    float held = G.rocket_at < 0 ? G.clock - G.rocket_at : 0, f = fminf(1.0f, held / REV_SCALE);
+    float bw = 560 * u, bh = 28 * u, bx = w * 0.5f - bw * 0.5f, by = h * 0.3f + 236 * u;
+    float g1 = ROCKET_WINDOW / REV_SCALE, a1 = REV_OVER / REV_SCALE;
+    cw_r2d_round_rect(cw_rect_make(bx - 8 * u, by - 8 * u, bw + 16 * u, bh + 16 * u), 12 * u, 8, cw_rgba(0.02f, 0.05f, 0.09f, 0.62f));
+    cw_r2d_rect(cw_rect_make(bx, by, bw * g1, bh), cw_rgba(0.25f, 0.85f, 0.4f, 0.32f));
+    cw_r2d_rect(cw_rect_make(bx + bw * g1, by, bw * (a1 - g1), bh), cw_rgba(1.0f, 0.75f, 0.2f, 0.28f));
+    cw_r2d_rect(cw_rect_make(bx + bw * a1, by, bw * (1 - a1), bh), cw_rgba(1.0f, 0.25f, 0.15f, 0.32f));
+    cw_color fc = held > REV_OVER ? cw_rgba(1.0f, 0.3f, 0.18f, 0.95f) : held > ROCKET_WINDOW ? cw_rgba(1.0f, 0.78f, 0.25f, 0.95f) : cw_rgba(0.35f, 1.0f, 0.5f, 0.95f);
+    if (f > 0) cw_r2d_rect(cw_rect_make(bx, by, bw * f, bh), fc);
+    cw_r2d_rect(cw_rect_make(bx + bw * f - 2 * u, by - 6 * u, 4 * u, bh + 12 * u), cw_rgba(1, 1, 1, 0.95f));
+    const char *say = held > REV_OVER ? "OVER-REVVING: let go and press again" : held > ROCKET_WINDOW ? "too soon: a plain start" : held > 0 ? "hold it: green at the light is a rocket start" : "REV";
+    word(small, say, w * 0.5f, by + bh + 18 * u, 30 * u, held > REV_OVER ? cw_rgba(1.0f, 0.45f, 0.3f, 1) : cw_rgba(1, 1, 1, 0.9f));
+    g_hud_rev = f;
+    /* where you line up: a championship's grid is the last race's finish */
+    if (g_mode == MODE_CHAMPIONSHIP) {
+      static const char *const ORD[] = { "1st", "2nd", "3rd", "4th", "5th", "6th" };
+      char gb[64]; int s = c->place - 1 < 0 ? 0 : c->place - 1 > 5 ? 5 : c->place - 1;
+      snprintf(gb, sizeof gb, "You start %s on the grid", ORD[s]);
+      word(small, gb, w * 0.5f, by - 58 * u, 30 * u, cw_rgba(1, 1, 1, 0.85f));
+    }
   }
   g_hud_words_n = words_n;
   if (c->finish <= 0 && g_mode != MODE_STUNT && g_mode != MODE_ROAM) next_mark(c, w, h, u);
@@ -486,6 +611,8 @@ void hud_draw(void) {
   if (getenv("JETSKI_NO_HUD")) return; /* key art: the picture alone */
 #endif
   cw_r2d_begin(NULL);
+  { extern int g_lens_on; void lens_draw(void); extern float g_lens[3]; if (g_lens_on && G.state != RACE_ATTRACT && g_lens[0] > 0) { cw_r2d_use_layer(1); lens_draw(); } }
+  cw_r2d_use_layer(2);
   hud_body();
   menu_draw();
   cw_r2d_end();

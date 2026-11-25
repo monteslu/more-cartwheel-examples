@@ -119,10 +119,14 @@ static void cmd_beach(int argc, const char **argv, cw_reply *r) {
   if (r) cw_reply_raw(r, "false");
 }
 
-/* finish: the human crosses the line now, for the results pages' gate */
+/* finish [place]: the human crosses the line now, for the results pages' gate; with a place, the rivals before it are
+ * already over (the finish pose gate's slow finisher) */
 static void cmd_finish(int argc, const char **argv, cw_reply *r) {
-  (void)argc, (void)argv;
-  if (G.state == RACE_GRID || G.state == RACE_ON) { G.state = RACE_ON; G.c[0].lap = LAPS, G.c[0].finish = G.clock > 1 ? G.clock : 1; }
+  int place = argc > 1 ? atoi(argv[1]) : 1;
+  if (G.state == RACE_GRID || G.state == RACE_ON) {
+    G.state = RACE_ON; G.c[0].lap = LAPS, G.c[0].finish = G.clock > 1 ? G.clock : 1;
+    for (int i = 1; i < place && i < RACERS; i++) G.c[i].lap = LAPS, G.c[i].finish = G.c[0].finish * (0.5f + 0.08f * (float)i); /* (before the seat, and over zero) */
+  }
   if (r) cw_reply_raw(r, "true");
 }
 
@@ -221,12 +225,30 @@ static void cmd_fair(int argc, const char **argv, cw_reply *r) {
 }
 /* gates' switches */
 int g_force_turbo;
+int g_steer_curve = 1;
 static void cmd_switch(int argc, const char **argv, cw_reply *r) {
   /* sw <name> <value>: ev_on, turbo_on, pack, stock, turbo */
   if (argc > 2) {
     float v = (float)atof(argv[2]);
     if (!strcmp(argv[1], "ev_on")) g_ev_on = (int)v;
     else if (!strcmp(argv[1], "turbo_on")) g_turbo_on = (int)v;
+    else if (!strcmp(argv[1], "rev_bog")) g_rev_bog = (int)v;
+    else if (!strcmp(argv[1], "steer_curve")) g_steer_curve = (int)v;
+    else if (!strcmp(argv[1], "deep")) { extern int g_deep; g_deep = (int)v; }
+    else if (!strcmp(argv[1], "lean_save")) { extern int g_lean_save; g_lean_save = (int)v; }
+    else if (!strcmp(argv[1], "standings")) { extern int g_standings_on; g_standings_on = (int)v; }
+    else if (!strcmp(argv[1], "cam_old")) { extern int g_cam_old; g_cam_old = (int)v; }
+    else if (!strcmp(argv[1], "pass_cue")) { extern int g_pass_cue; g_pass_cue = (int)v; }
+    else if (!strcmp(argv[1], "spray_thick")) { extern int g_spray_thick; g_spray_thick = (int)v; }
+    else if (!strcmp(argv[1], "rider_stats")) g_rider_stats = (int)v;
+    else if (!strcmp(argv[1], "lens")) { extern int g_lens_on; g_lens_on = (int)v; }
+    else if (!strcmp(argv[1], "verbs")) { extern int g_verbs; g_verbs = (int)v; }
+    else if (!strcmp(argv[1], "rider")) { g_rider = ((int)v % RACERS + RACERS) % RACERS; view_repaint(); }
+    else if (!strcmp(argv[1], "livery_old")) { extern int g_livery_old; g_livery_old = (int)v; }
+    else if (!strcmp(argv[1], "grid_order")) { extern int g_grid_on; g_grid_on = (int)v; }
+    else if (!strcmp(argv[1], "yaw_clear")) { extern int32_t g_yaw_flips; extern float g_yaw_rate_max; g_yaw_flips = 0, g_yaw_rate_max = 0; }
+    else if (!strcmp(argv[1], "stamp_on")) { extern int g_stamp_on; g_stamp_on = (int)v; }
+    else if (!strcmp(argv[1], "pose_on")) { extern int g_pose_on; g_pose_on = (int)v; }
     else if (!strcmp(argv[1], "pack")) g_pack = v;
     else if (!strcmp(argv[1], "stock")) G.c[0].stock = v;
     else if (!strcmp(argv[1], "meter")) G.c[0].meter = (int)v;
@@ -476,6 +498,7 @@ static void init(void *user) {
   cw_debug_f32_array("p0.pos", &G.c[0].x, 3);
   cw_debug_f32_array("p0.vel", &G.c[0].vx, 3);
   cw_debug_f32("p0.yaw", &G.c[0].yaw);
+  { extern int32_t g_yaw_flips; extern float g_yaw_rate_max; cw_debug_i32("p0.yaw_flips", &g_yaw_flips); { extern float g_draft; cw_debug_f32("p0.draft", &g_draft); } { extern float g_cam_eye[3]; cw_debug_f32_array("cam.eye", g_cam_eye, 3); } { extern float g_rider_k[RACERS][4]; cw_debug_f32_array("rider.k", &g_rider_k[0][0], RACERS * 4); cw_debug_i32("rider.pick", &g_rider); } { extern float g_lens[3]; cw_debug_f32_array("lens", g_lens, 3); } { extern int32_t g_verb_n[3]; cw_debug_field("p0.verbs", g_verb_n, CW_DBG_I32, 3); } { extern int32_t g_hud_rows, g_hud_order[RACERS], g_grid[RACERS]; cw_debug_i32("hud.rows", &g_hud_rows); cw_debug_field("hud.order", g_hud_order, CW_DBG_I32, RACERS); cw_debug_field("race.grid", g_grid, CW_DBG_I32, RACERS); cw_debug_field("race.order", G.order, CW_DBG_I32, RACERS); } { extern float g_lean_tip_t; extern int g_lean_told; cw_debug_f32("hud.lean_tip", &g_lean_tip_t); cw_debug_i32("hud.lean_told", &g_lean_told); } cw_debug_f32("p0.yaw_rate_max", &g_yaw_rate_max); }
   cw_debug_f32("p0.speed", &G.c[0].speed);
   cw_debug_f32("p0.surf", &G.c[0].surf);
   cw_debug_f32("p0.air_time", &G.c[0].air_time);
@@ -563,6 +586,10 @@ static void init(void *user) {
   { extern int32_t g_near_floats; cw_debug_i32("fx.near_floats", &g_near_floats); extern int float_count; cw_debug_i32("fx.floats", &float_count); }
   { extern float g_spray_glow; cw_debug_f32("fx.spray_glow", &g_spray_glow); }
   cw_debug_i32("race.rocket", &G.rocket);
+  cw_debug_i32("race.bog", &G.bog);
+  { extern float g_hud_rev; cw_debug_f32("hud.rev", &g_hud_rev); }
+  { extern int g_hud_stamps; extern float g_hud_stamp[3]; cw_debug_i32("hud.stamps", &g_hud_stamps); cw_debug_f32_array("hud.stamp", g_hud_stamp, 3); }
+  { extern float g_finish_pose[4]; cw_debug_f32_array("p0.finish_pose", g_finish_pose, 4); }
   cw_debug_f32("race.fin_t", &G.fin_t);
   cw_debug_f32("race.done_after", &G.done_after);
   cw_debug_i32("race.real_finishes", &G.real_finishes);
@@ -657,7 +684,9 @@ static void fixed_update(void *user, double dt) {
   (void)user;
   if (!cw_shell_update()) return;
   craft *c = &G.c[0];
-  c->in.steer = cw_input_axis(0, a_left, a_right);
+  /* the stick eases in: half over, a quarter of the turn (a squared response), so a nudge corrects without a twitch; the
+     d-pad and the keys are full on or off and unchanged. sw steer_curve 0: the stick straight through, the gate's control */
+  { float s = cw_input_axis(0, a_left, a_right); c->in.steer = g_steer_curve ? s * fabsf(s) : s; }
   c->in.lean = cw_action_strength(0, a_back) - cw_action_strength(0, a_fwd);
   c->in.throttle = cw_action_strength(0, a_throttle);
   c->in.trick = cw_action_pressed(0, a_trick);
@@ -680,6 +709,7 @@ static void fixed_update(void *user, double dt) {
   sim_tick((float)dt);
   view_tick((float)dt);
   fx_tick((float)dt);
+  { void lens_tick(float); lens_tick((float)dt); }
   audio_tick((float)dt);
   float ms = (float)((cw_time() - t0) * 1000.0);
   perf[0] += (ms - perf[0]) * 0.02f; /* the game's own fixed tick, averaged */

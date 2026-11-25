@@ -16,7 +16,7 @@ function run(cmds, buttons, ticks) {
   const frames = Math.ceil(ticks / (SIMX + 1)) + 4;
   const r = spawnSync('node', [TOOL, '--host', 'native', '--gpu', 'gl', '--app', 'jetski', '--frames', String(frames), '--input', input, '--state', state, '--shot', join(OUT, tag + '.png'), '--start-cmds', cmds, '--exe', process.env.JETSKI_EXE || join(ROOT, 'build/native/games/jetski/jetski')], {
     cwd: join(ROOT, 'deps/cartwheel-engine'), encoding: 'utf8', maxBuffer: 1 << 26,
-    env: { ...process.env, CW_PROJECT_ROOT: ROOT, LIBGL_ALWAYS_SOFTWARE: '1', LP_NUM_THREADS: '2', CW_TEST_GPU: 'software', JETSKI_SMALL: '1', JETSKI_SIMX: String(SIMX), SDL_AUDIODRIVER: 'dummy' },
+    env: { ...process.env, CW_PROJECT_ROOT: ROOT, LIBGL_ALWAYS_SOFTWARE: '1', LP_NUM_THREADS: '2', CW_TEST_GPU: 'software', CW_WGPU_ADAPTER: 'llvmpipe', JETSKI_SMALL: '1', JETSKI_SIMX: String(SIMX), SDL_AUDIODRIVER: 'dummy' },
   });
   if (r.status !== 0) { console.error(r.stdout.slice(-400), r.stderr.slice(-600)); process.exit(3); }
   return JSON.parse(readFileSync(state, 'utf8'));
@@ -39,6 +39,12 @@ const flat = run(S + ';drop 0.1 2.5 22', [TH], 150), nose = run(S + ';drop -0.7 
 check('JS15 flat landing keeps its speed', flat['p0.land_keep'] >= 0.95, `kept ${f2(flat['p0.land_keep'])}`);
 check('JS15 nose-down landing loses speed', nose['p0.land_keep'] <= 0.85, `kept ${f2(nose['p0.land_keep'])}`);
 check('JS15 weight back helps', noseBack['p0.land_keep'] > nose['p0.land_keep'], `kept ${f2(noseBack['p0.land_keep'])} against ${f2(nose['p0.land_keep'])}`);
+// the landing save: weight back keeps at least 0.85 of the speed where weight forward keeps at most 0.6, and the first costly
+// nose-down landing puts up the tip once (none after a saved one). Control: lean_save 0 (the old small help) fails the 0.85
+const noseBack0 = run(S + ';sw lean_save 0;drop -0.7 2.5 22', [TH, 'down'], 150);
+check('weight back saves a nose-down landing', noseBack['p0.land_keep'] >= 0.85 && nose['p0.land_keep'] <= 0.6, `kept ${f2(noseBack['p0.land_keep'])} leaning back, ${f2(nose['p0.land_keep'])} without`);
+check('control: lean_save 0 fails the save', !(noseBack0['p0.land_keep'] >= 0.85), `kept ${f2(noseBack0['p0.land_keep'])} leaning back`);
+check('the landing tip shows after a costly nose-down landing, not after a saved one', nose['hud.lean_told'] === 1 && noseBack['hud.lean_told'] === 0, `told ${nose['hud.lean_told']} (up ${f2(nose['hud.lean_tip'])} s), after a saved landing ${noseBack['hud.lean_told']}`);
 const crash = run(S + ';drop -2.6 3 22', [TH], 90), after = run(S + ';drop -2.6 3 22', [TH], 90 + 200);
 check('JS13 a wild landing spills', crash['p0.spills'] >= 1 && crash['p0.spill'] > 0, `spills ${crash['p0.spills']}, ${f2(crash['p0.spill'])} s left`);
 check('JS13 back in control under 3 s', after['p0.spill'] <= 0 && after['p0.speed'] > 8, `${after['p0.spills']} spills, ${f2(after['p0.spill'])} s left, ${f2(after['p0.speed'])} m/s 3.3 s later`);
@@ -68,7 +74,7 @@ for (const [lv, name] of [[0, 'Crater Atoll'], [1, 'Cold Sound'], [2, 'Red Reach
 // nothing floats: the numbers come back through the game's own check of every scatter instance
 for (const [lv, name] of [[0, 'Crater Atoll'], [1, 'Cold Sound'], [2, 'Red Reach'], [3, 'Iron Quay'], [4, 'Gale Bank']]) {
   const exe = process.env.JETSKI_EXE || join(ROOT, 'build/native/games/jetski/jetski');
-  const out = (lift) => { const f = join(OUT, 'ground' + lv + lift + '.json'); const r = spawnSync('node', [TOOL, '--host', 'native', '--gpu', 'gl', '--app', 'jetski', '--frames', '6', '--state', f, '--shot', f + '.png', '--start-cmds', `course ${lv};grounding ${lift}`, '--exe', exe], { cwd: join(ROOT, 'deps/cartwheel-engine'), encoding: 'utf8', maxBuffer: 1 << 26, env: { ...process.env, CW_PROJECT_ROOT: ROOT, LIBGL_ALWAYS_SOFTWARE: '1', LP_NUM_THREADS: '2', CW_TEST_GPU: 'software', JETSKI_SMALL: '1', SDL_AUDIODRIVER: 'dummy' } }); return JSON.parse(readFileSync(f, 'utf8')); };
+  const out = (lift) => { const f = join(OUT, 'ground' + lv + lift + '.json'); const r = spawnSync('node', [TOOL, '--host', 'native', '--gpu', 'gl', '--app', 'jetski', '--frames', '6', '--state', f, '--shot', f + '.png', '--start-cmds', `course ${lv};grounding ${lift}`, '--exe', exe], { cwd: join(ROOT, 'deps/cartwheel-engine'), encoding: 'utf8', maxBuffer: 1 << 26, env: { ...process.env, CW_PROJECT_ROOT: ROOT, LIBGL_ALWAYS_SOFTWARE: '1', LP_NUM_THREADS: '2', CW_TEST_GPU: 'software', CW_WGPU_ADAPTER: 'llvmpipe', JETSKI_SMALL: '1', SDL_AUDIODRIVER: 'dummy' } }); return JSON.parse(readFileSync(f, 'utf8')); };
   const ok = out(0), lifted = out(0.6);
   check(`${name}: nothing hangs in the air`, ok['ground.gaps'] === 0 && (ok['ground.total'] > 2000 || lv >= 3), `${ok['ground.total']} instances, ${ok['ground.gaps']} with a gap, worst ${f2(ok['ground.worst'])} m`);
   if (lv < 3) check(`${name} control: lifted 0.6 m, the check sees it`, lifted['ground.gaps'] > Math.min(200, ok['ground.total'] * 0.05), `${lifted['ground.gaps']} with a gap`);

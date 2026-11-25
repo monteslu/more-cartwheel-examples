@@ -229,9 +229,30 @@ static void waterline_foam(void) {
   }
 }
 
+/* Thick white water: the rooster tail's droplets bigger and nearly opaque, its mist and the hull's side sheets twice as
+ * dense, so the spray reads as a white plume, not a sprinkle. Set when the switch changes. sw spray_thick 0: the old thin
+ * spray, the spray gate's control */
+int g_spray_thick = 1;
+static void spray_weight(void) {
+  static int applied = -1;
+  if (applied == g_spray_thick) return;
+  applied = g_spray_thick;
+  bool t = g_spray_thick != 0;
+  for (int i = 0; i < RACERS; i++) {
+    cw_node_set(tail[i], "size", cw_val_float(t ? 0.02f : 0.013f));
+    cw_node_set(tail[i], "color_ramp", cw_val_string(t ? "0 1 1 1 1, 0.55 0.97 0.98 1 0.88, 1 0.92 0.96 1 0" : "0 1 1 1 0.95, 0.5 0.95 0.97 1 0.7, 1 0.9 0.95 1 0"));
+    cw_node_set(mist[i], "size", cw_val_float(t ? 1.25f : 0.9f));
+    cw_node_set(mist[i], "color_ramp", cw_val_string(t ? "0 1 1 1 0, 0.12 1 1 1 0.3, 1 1 1 1 0" : "0 1 1 1 0, 0.12 1 1 1 0.16, 1 1 1 1 0"));
+  }
+  for (int s = 0; s < 2; s++) {
+    cw_node_set(sheet[s], "color_ramp", cw_val_string(t ? "0 1 1 1 0, 0.15 1 1 1 0.18, 0.6 1 1 1 0.1, 1 1 1 1 0" : "0 1 1 1 0, 0.15 1 1 1 0.09, 0.6 1 1 1 0.05, 1 1 1 1 0"));
+    cw_node_set(sheet_fine[s], "size", cw_val_float(t ? 0.024f : 0.017f));
+  }
+}
 void fx_tick(float dt) {
   rain_tick();
   spray_light();
+  spray_weight();
   (void)dt;
   for (int i = 0; i < RACERS; i++) {
     craft *c = &G.c[i];
@@ -328,7 +349,7 @@ void fx_tick(float dt) {
     if (g_ev_n - read > EV_RING) read = g_ev_n - EV_RING;
     for (; read != g_ev_n; read++) {
       const game_event *e = &g_ev[read % EV_RING];
-      static const float rumble[EV_KINDS][3] = { [EV_PASS] = { 0.15f, 0.25f, 70 }, [EV_TOP] = { 0.5f, 0.7f, 220 }, [EV_TRICK] = { 0.3f, 0.5f, 140 }, [EV_MISS] = { 0.5f, 0.1f, 200 }, [EV_GAIN] = { 0.2f, 0.35f, 90 }, [EV_LOSE] = { 0.2f, 0.1f, 90 }, [EV_LAP] = { 0.25f, 0.3f, 120 }, [EV_FINAL] = { 0.4f, 0.5f, 240 }, [EV_WALL] = { 0.6f, 0.3f, 120 }, [EV_CRASH] = { 1, 0.8f, 420 }, [EV_CHARGE] = { 0.2f, 0.5f, 120 }, [EV_TURBO] = { 0.8f, 0.9f, 500 }, [EV_ROCKET] = { 0.7f, 0.9f, 350 }, [EV_TURBO_LOST] = { 0.35f, 0.1f, 220 }, [EV_WAVES] = { 0.45f, 0.15f, 700 }, [EV_COMBO] = { 0.3f, 0.6f, 160 } };
+      static const float rumble[EV_KINDS][3] = { [EV_PASS] = { 0.15f, 0.25f, 70 }, [EV_TOP] = { 0.5f, 0.7f, 220 }, [EV_TRICK] = { 0.3f, 0.5f, 140 }, [EV_MISS] = { 0.5f, 0.1f, 200 }, [EV_GAIN] = { 0.2f, 0.35f, 90 }, [EV_LOSE] = { 0.2f, 0.1f, 90 }, [EV_LAP] = { 0.25f, 0.3f, 120 }, [EV_FINAL] = { 0.4f, 0.5f, 240 }, [EV_WALL] = { 0.6f, 0.3f, 120 }, [EV_CRASH] = { 1, 0.8f, 420 }, [EV_CHARGE] = { 0.2f, 0.5f, 120 }, [EV_TURBO] = { 0.8f, 0.9f, 500 }, [EV_ROCKET] = { 0.7f, 0.9f, 350 }, [EV_TURBO_LOST] = { 0.35f, 0.1f, 220 }, [EV_WAVES] = { 0.45f, 0.15f, 700 }, [EV_COMBO] = { 0.3f, 0.6f, 160 }, [EV_BOG] = { 0.55f, 0.1f, 450 }, [EV_SHAVE] = { 0.15f, 0.35f, 80 }, [EV_STREAK] = { 0.4f, 0.6f, 220 }, [EV_DRAFT] = { 0.1f, 0.25f, 120 } };
       if (!g_ev_on) continue;
       if (e->quiet >= 2) continue; /* the same mistake a third time: the pad says nothing either */
       if (rumble[e->kind][2] > 0) { cw_input_rumble(0, rumble[e->kind][0], rumble[e->kind][1], (int)rumble[e->kind][2]); g_fb[e->kind][2]++; }

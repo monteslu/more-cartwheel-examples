@@ -21,7 +21,8 @@ int g_buoy_style = 1; /* 0: the small buoy the course marks replaced, the contro
 static float mark_scale[BUOY_MAX];
 static t3_object *bars_o[RACERS];
 /* each racer has both craft; the race's type shows (game.h g_craft). The stand-up's pole is hinged at the bow, its bars at the pole's end */
-static t3_object *sit_o[RACERS], *pole_o[RACERS][2], *sbars_o[RACERS][2];
+static int painted_as[RACERS];
+static t3_object *sit_o[RACERS], *pole_o[RACERS][2], *sbars_o[RACERS][2], *stand_o[RACERS][2], *rider_o[RACERS];
 /* the meshes shown or hidden by the type: an object's flag hides it alone, not what hangs under it (the rider hangs under the craft) */
 static t3_object *sit_part[RACERS][2], *stand_part[RACERS][2][9]; /* the stand-up near and far: Hull, Pole, Bars, Plate1..6 */
 static int stand_lod[RACERS] = { -1, -1, -1, -1, -1, -1 };
@@ -32,6 +33,8 @@ static t3_material *band_mat[2], *lamp_mat[2];
 static float buoy_phase[BUOY_MAX];
 static cw_node gate_n;
 
+int g_cam_old;          /* sw cam_old 1: the old chase camera */
+float g_cam_eye[3];     /* the chase camera: metres behind the craft, over the water, at this speed */
 static const float TEAMS[RACERS][6] = {
   /* deck, vest */
   { 0.88f, 0.1f, 0.06f, 0.92f, 0.34f, 0.05f },
@@ -58,6 +61,11 @@ static const struct rider_look { float suit[3], helmet[3], skin[3], hair[3]; boo
   { { 0.13f, 0.13f, 0.14f }, { 0.9f, 0.2f, 0.1f }, { 0.13f, 0.08f, 0.055f }, { 0.01f, 0.01f, 0.01f }, false, false, 1.03f, 1.06f },
 };
 static t3_material *suit_mat[RACERS], *vest_mat[RACERS], *helmet_mat[RACERS], *deck_mat[RACERS];
+/* bold suits in each team's colour, so a rider reads at 50 m against the sea (matte knit all the same). sw livery_old 1:
+ * the old near-black suits, the livery gate's control (read at the next course load) */
+int g_livery_old;
+static const float SUIT_BOLD[RACERS][3] = { { 0.46f, 0.05f, 0.03f }, { 0.03f, 0.15f, 0.48f }, { 0.55f, 0.4f, 0.02f }, { 0.03f, 0.34f, 0.14f }, { 0.32f, 0.04f, 0.4f }, { 0.6f, 0.22f, 0.02f } };
+static const float *suit_of(int i) { return g_livery_old ? LOOK[i].suit : SUIT_BOLD[i]; }
 static float wetness[RACERS];
 /* spray soaks the rider: the suit and vest darken as they take water and dry over some seconds (they stay matte); the
  * helmet's clear coat goes on only from Medium up */
@@ -71,14 +79,16 @@ static void rider_wet(float dt) {
     wetness[i] = fminf(1.0f, wetness[i] + soak) - dt / 9.0f;
     wetness[i] = fmaxf(0.0f, wetness[i]);
     float k = 1.0f - 0.35f * wetness[i];
-    const struct rider_look *lk = &LOOK[i];
-    if (suit_mat[i]) suit_mat[i]->color = (t3_color){ lk->suit[0] * k, lk->suit[1] * k, lk->suit[2] * k };
-    if (vest_mat[i]) vest_mat[i]->color = (t3_color){ TEAMS[i][3] * k, TEAMS[i][4] * k, TEAMS[i][5] * k };
+    int team = rider_of(i);
+    if (suit_mat[i]) { const float *su = suit_of(team); suit_mat[i]->color = (t3_color){ su[0] * k, su[1] * k, su[2] * k }; }
+    if (vest_mat[i]) vest_mat[i]->color = (t3_color){ TEAMS[team][3] * k, TEAMS[team][4] * k, TEAMS[team][5] * k };
     if (helmet_mat[i] && (helmet_mat[i]->clearcoat > 0) != coat) { helmet_mat[i]->clearcoat = coat ? 1.0f : 0.0f; helmet_mat[i]->version++; }
     if (deck_mat[i] && (deck_mat[i]->clearcoat > 0) != coat) { deck_mat[i]->clearcoat = coat ? 0.8f : 0.0f; deck_mat[i]->version++; }
   }
 }
-static void paint(t3_object *o, int team) {
+/* a seat's models in its rider's colours (the human picks a rider: seat 0 wears theirs). Materials are kept by seat */
+static void paint(t3_object *o, int seat) {
+  int team = rider_of(seat);
   if ((o->type == T3_MESH || o->type == T3_SKINNED_MESH)) {
     t3_mesh *m = (t3_mesh *)o;
     for (int k = 0; k < m->material_count; k++) {
@@ -97,7 +107,7 @@ static void paint(t3_object *o, int team) {
       else if (!strcmp(mat->name, "hood")) c = HOOD[team];
       else if (!strcmp(mat->name, "decal")) c = DECAL[team];
       else if (!strcmp(mat->name, "vest") || !strcmp(mat->name, "accent")) c = TEAMS[team] + 3;
-      else if (!strcmp(mat->name, "suit")) c = lk->suit;
+      else if (!strcmp(mat->name, "suit")) c = suit_of(team);
       else if (!strcmp(mat->name, "helmet")) c = lk->helmet;
       else if (!strcmp(mat->name, "skin")) { c = lk->skin; o->visible = !lk->sleeves; }
       else if (!strcmp(mat->name, "hair")) { c = lk->hair; o->visible = lk->ponytail; }
@@ -112,13 +122,13 @@ static void paint(t3_object *o, int team) {
       else if (!strcmp(mat->name, "deck")) cl->type = T3_MESH_PHYSICAL_MATERIAL, cl->roughness = 0.35f, cl->clearcoat = 0.8f, cl->clearcoat_roughness = 0.1f; /* gelcoat over the paint */
       else if (!strcmp(mat->name, "graphic")) cl->type = T3_MESH_PHYSICAL_MATERIAL, cl->roughness = 0.45f; /* a vinyl graphic on the gelcoat */
       else if (!strcmp(mat->name, "hood")) cl->type = T3_MESH_PHYSICAL_MATERIAL, cl->roughness = 0.4f, cl->clearcoat = 0.5f, cl->clearcoat_roughness = 0.2f;
-      if (o->type == T3_SKINNED_MESH && team < RACERS) { if (!strcmp(mat->name, "suit")) suit_mat[team] = cl; else if (!strcmp(mat->name, "vest")) vest_mat[team] = cl; else if (!strcmp(mat->name, "helmet")) helmet_mat[team] = cl; }
-      if (o->type == T3_MESH && team < RACERS && !strcmp(mat->name, "deck") && !deck_mat[team]) deck_mat[team] = cl; /* (the sit-down's, painted first) */
+      if (o->type == T3_SKINNED_MESH && seat < RACERS) { if (!strcmp(mat->name, "suit")) suit_mat[seat] = cl; else if (!strcmp(mat->name, "vest")) vest_mat[seat] = cl; else if (!strcmp(mat->name, "helmet")) helmet_mat[seat] = cl; }
+      if (o->type == T3_MESH && seat < RACERS && !strcmp(mat->name, "deck") && !deck_mat[seat]) deck_mat[seat] = cl; /* (the sit-down's, painted first) */
       t3_retain(cl); t3_release(m->materials[k]); m->materials[k] = cl;
       t3_release(cl);
     }
   }
-  for (int i = 0; i < o->child_count; i++) paint(o->children[i], team);
+  for (int i = 0; i < o->child_count; i++) paint(o->children[i], seat);
 }
 
 /* The evening sky: one painted dome around the camera (the ProceduralSky still gives the sun's direction, the sun's colour
@@ -703,6 +713,7 @@ void view_init(void) {
     for (int l = 0; l < 2; l++) {
       t3_object *so = cw_gltf_instantiate(stand_res[l]);
       paint(so, i);
+      stand_o[i][l] = so;
       if (i == 0 || l == 0) shadows(so);
       snprintf(name, sizeof name, "Stand%d%s", i, l ? "Far" : "");
       cw_node sn = cw_node_new("Node3D", name);
@@ -715,13 +726,15 @@ void view_init(void) {
       for (int k = 0; k < 9; k++) if (stand_part[i][l][k]) set_visible(stand_part[i][l][k], false);
       t3_release(so);
     }
-    rider_scale[i][0] = LOOK[i].broad, rider_scale[i][1] = LOOK[i].tall;
+    rider_scale[i][0] = LOOK[rider_of(i)].broad, rider_scale[i][1] = LOOK[rider_of(i)].tall;
     snprintf(name, sizeof name, "Rider%d", i);
     rider_n[i] = cw_node_new("Node3D", name);
     cw_node_add_child(craft_n[i], rider_n[i]);
-    cw_node3d_set_scale(rider_n[i], (t3_vec3){ LOOK[i].broad, LOOK[i].tall, LOOK[i].broad });
+    cw_node3d_set_scale(rider_n[i], (t3_vec3){ rider_scale[i][0], rider_scale[i][1], rider_scale[i][0] });
     t3_object *ro = cw_gltf_instantiate(rider_res);
     paint(ro, i);
+    rider_o[i] = ro;
+    painted_as[i] = rider_of(i);
     if (i == 0) shadows(ro);
     cw_node3d_set_object(rider_n[i], ro);
     rider_bind(i, ro);
@@ -882,7 +895,9 @@ void view_tick(float dt) {
   float vs = c->speed > 1 ? 1 : 0;
   float hx = vs ? c->vx / c->speed : sy, hz = vs ? c->vz / c->speed : cy;
   float bx = sy * 0.72f + hx * 0.28f, bz = cy * 0.72f + hz * 0.28f;
-  float back = 4.0f + c->speed * 0.035f, up = 1.6f + c->speed * 0.012f;
+  /* low and close, in the spray: the speed shows in the water and the set streaming past, the field of view widening
+     with speed. sw cam_old 1: the old higher, farther chase (the camera gate's control) */
+  float back = g_cam_old ? 4.0f + c->speed * 0.035f : 3.3f + c->speed * 0.03f, up = g_cam_old ? 1.6f + c->speed * 0.012f : 1.05f + c->speed * 0.014f;
   /* the stand-up: low and close, straight behind, the hull under and ahead of the rider */
   float side_off = 0;
   if (g_craft == CRAFT_STAND) back -= 0.4f, up += 0.6f;
@@ -911,6 +926,8 @@ void view_tick(float dt) {
   { float deck; if (ramp_over(G.cam[0], G.cam[2], &deck) && G.cam[1] < deck + 1.4f) G.cam[1] = deck + 1.4f; }
   /* the rubric's check: the chase camera at its own x, z is never under the water */
   if (G.cam[1] < cw_water_height_at(G.water, G.cam[0], G.cam[2], G.wt)) G.cam_under++;
+  /* the camera's place behind the craft, for its gate: metres back along the ground, and over the water under it */
+  { float dx = G.cam[0] - c->x, dz = G.cam[2] - c->z; g_cam_eye[0] = sqrtf(dx * dx + dz * dz), g_cam_eye[1] = G.cam[1] - cw_water_height_at(G.water, G.cam[0], G.cam[2], G.wt), g_cam_eye[2] = c->speed; }
   float lx = c->x + sy * 7.0f * (1.0f - 0.8f * off), lz = c->z + cy * 7.0f * (1.0f - 0.8f * off), ly = (c->y - wh > 2.0f ? c->y : c->y * 0.7f + cw_water_height_at(G.water, lx, lz, G.wt) * 0.3f) + 1.0f;
   float kl = 1.0f - cw_exp(-dt * 8.0f);
   if (G.tick < 3 || G.look[0] == 0) kl = 1;
@@ -1187,4 +1204,19 @@ void view_sync(double alpha) {
     cw_node3d_look_at(G.camera, lp, upv); }
   if (G.cam_fov > 1) cw_node_set(G.camera, "fov", cw_val_float(lerpf(G.cam_fov_prev > 1 ? G.cam_fov_prev : G.cam_fov, G.cam_fov, a)));
   stand_screen(cp, lp, lerpf(G.cam_fov_prev > 1 ? G.cam_fov_prev : G.cam_fov, G.cam_fov, a), a);
+}
+/* a racer's colours (deck, then vest), for the standings */
+const float *view_team(int i) { return TEAMS[rider_of(i < 0 || i >= RACERS ? 0 : i)]; }
+/* the human picked another rider: every seat whose rider changed is painted and sized again */
+void view_repaint(void) {
+  for (int i = 0; i < RACERS; i++) {
+    if (painted_as[i] == rider_of(i) || !rider_o[i]) continue;
+    deck_mat[i] = NULL;
+    if (sit_o[i]) paint(sit_o[i], i);
+    for (int l = 0; l < 2; l++) if (stand_o[i][l]) paint(stand_o[i][l], i);
+    paint(rider_o[i], i);
+    rider_scale[i][0] = LOOK[rider_of(i)].broad, rider_scale[i][1] = LOOK[rider_of(i)].tall;
+    cw_node3d_set_scale(rider_n[i], (t3_vec3){ rider_scale[i][0], rider_scale[i][1], rider_scale[i][0] });
+    painted_as[i] = rider_of(i);
+  }
 }

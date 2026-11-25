@@ -5,9 +5,9 @@ track: it moves, its swells throw you into the air, and on each course it change
 
 Status: five courses in three weathers, two craft, a computer racer field, one player for now. The menu offers four modes:
 
-- Championship: a week of racing, one course a day, points by place. The week's forecast shows each day's weather before it starts, and each day you pick which of the courses left to race, so you can save a course for the day whose sea suits it. The first day races at the pace the courses always had, and the rivals get a little quicker each day after.
+- Championship: a week of racing, one course a day, points by place. The week's forecast shows each day's weather before it starts, and each day you pick which of the courses left to race, so you can save a course for the day whose sea suits it. The first day races at the pace the courses always had, and the rivals get a little quicker each day after. Each race after the first lines up by the last one's finish, the winner at the front; the grid says where you start.
 - Time trial: you alone on the course and in the weather you choose, keeping your best time.
-- Stunt: two minutes alone on a course you have raced, scored on tricks. Tricks chained within three seconds of each other build a combo (the multiplier rises half a step a trick, up to four); a perfect landing and long air add to it, and a wipeout loses what the combo had not yet banked. The best score on each course is kept.
+- Stunt: two minutes alone on a course you have raced, scored on tricks. Tricks chained within three seconds of each other build a combo (the multiplier rises half a step a trick, up to four); a perfect landing and long air add to it, and a wipeout loses what the combo had not yet banked. The same trick again within your last five pays half as much each time, so a varied run scores best. The best score on each course is kept.
 - Free roam: a course you have raced to the line, alone, no buoys and no clock. Pause to leave.
 
 Difficulty makes the sea bigger and adds buoys: every second one on Easy, three in four on Normal, all of them on Hard.
@@ -38,12 +38,29 @@ Once a race each course sends a set of big waves through the pack: a cliff falli
 | Right shoulder | L | Fire a turbo, when you have one |
 
 Buoys mark the course: tall masts over the swell, each with a board whose arrow points the way past it. Pass each one on the side its colour and the arrow show: orange-red on your right, yellow on your
-left. The next one stands larger than the rest, and an arrow on screen sits over it with the distance, or at the screen's edge pointing to it when it is out of sight. Ride back along the course and the game says so. Each one passed lights an arrow and raises your top speed, five at most. Miss one and they all go out.
+left. The next one stands larger than the rest, and an arrow on screen stands over the water on the side to pass it, with the distance, or at the screen's edge pointing to it when it is out of sight. Ride back along the course and the game says so. Each one passed lights an arrow and raises your top speed, five at most. Miss one and they all go out.
 At full power every clean buoy and every trick charges a turbo, up to three in hand, shown by the chips over the arrows. A turbo in hand is a risk: pass a buoy on its wrong side and the store empties (the chips flash red and the screen says TURBO LOST). Five misses end your race, and the dots under the lap count show how many you have. So do five seconds away from the course,
 with a warning counting them down. Too much stick scrubs speed, and a long hard slide throws you off. The game does not nag: the same mistake made again within a few seconds is answered quietly, and after that only by the miss dots.
 Big steel ramps stand on piles along each course, some on the racing line and some off it. They do not move: the sea comes and goes on their legs, the swell is held down around them, and the same approach gives the same jump, well over two seconds in the air, long enough for a trick. Each press of the trick button is one trick; land mid-trick and you are off the craft. From the side or behind a ramp is a wall.
 Four of the courses have a bigger ramp or two for far more air, close to three seconds. Push the stick forward in the air and the nose follows your line down: come down steep like that and you pierce the water, go under for a moment and come back up still going. Tail first, or dropping nose down off your line or straight down, throws you off. Landing straight keeps your speed and a long clean landing gives you a shove; nose down costs you most of it, and leaning
 back on the way in saves some. Start or Esc pauses, with restart and quit.
+
+On the grid a rev gauge under the count fills while the throttle is down. Press it so the gauge is still green at the
+light and you get a rocket start; held from the first beat it runs into the red and the pump bogs for a moment at the
+light (let go and press again to clear it). Lean back as you come down nose first and you keep most of your speed; the
+first time a landing like that costs you, the screen says so. The stick eases in: half over turns a quarter as hard, so a
+small correction stays small, and the d-pad is full on or off. A craft settles into the water off the plane and rises
+onto it at speed. The race's big moments (a lap, the last lap, a turbo, a trick) are stamped across the picture and fade,
+one at a time, and over the line the top three throw their arms up. The standings run down the left, every rider in
+order with their colours and the gap to you. Rain and the spray of a hard landing bead on the camera's lens and run off.
+
+## The riders
+
+The menu's Rider row picks who you are, from six: Cruz, Marlin, Kestrel, Tide, Juno and Reef, each in their own colours
+and build, with bars for acceleration, top speed, handling, tricks and weight. The ratings change the ride: more
+acceleration is a stronger pump, top speed a higher ceiling, handling a quicker turn, tricks a faster rotation, and a
+heavy rider holds on through a bump a light one goes over in. Every rider's bars add to the same, so each wins somewhere.
+The other five race against you.
 
 ## The craft
 

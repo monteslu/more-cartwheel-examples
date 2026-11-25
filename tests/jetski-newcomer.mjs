@@ -9,7 +9,10 @@
 // --craft stand picks the stand-up on the title menu first (Craft row, by the pad), --craft both races each; --finish
 // races the whole of the first course, three laps, and asks that it is finished inside 8 minutes on the sit-down and 10 on
 // the stand-up, and with both, the stand-up inside 25 % of the sit-down's time (the control runs until its race is over too).
-// --weather 0|1|2 races in a calm, a chop or a storm.
+// --weather 0|1|2 races in a calm, a chop or a storm. --cmd '<debug command>' sends one setup command first (for example
+// 'sw pass_cue 0', the chevron back on the mark: the wrong-side bound's control, which must fail it).
+// A whole race (--finish) may pass at most one mark on its wrong side: the chevron stands over the water on the side to
+// pass, so a newcomer steers for that point from far off.
 //   node tests/jetski-newcomer.mjs [--gl] [--webgpu] [--cart <path>] [--craft sit|stand|both] [--finish] [--weather n]
 import { ROMDEV_URL } from './lib/romdev-url.mjs';
 import { mkdirSync } from 'node:fs';
@@ -62,6 +65,7 @@ async function run(backend, steer, STAND) {
   const page0 = +(await rd('menu.page'));
   /* --weather n: the day's weather, the one setup request (the course card puts it on the screen); the rest is the pad */
   if (WEATHER !== null) await tool('wasm', { op: 'command', text: `weather ${WEATHER}` });
+  if (arg('--cmd', null)) await tool('wasm', { op: 'command', text: arg('--cmd', null) });
   /* the stand-up: down to the Craft row, right to change it, back up to Start, all by the pad as the menu shows */
   if (STAND) for (const b of ['down', 'down', 'down', 'down', 'down', 'right', 'up', 'up', 'up', 'up', 'up']) { await hold(4, { [b]: true }); await hold(6, {}); }
   const craft = +(await rd('race.craft'));
@@ -110,7 +114,7 @@ for (const backend of BACKENDS) for (const STAND of CRAFTS) {
   check('the craft the menu shows is the one raced', n.craft === (STAND ? 1 : 0), `craft ${n.craft}`);
   if (FINISH) check('the newcomer finishes the first course, three laps', n.finish > 0 && !n.dq, `finished in ${n.finish.toFixed(1)} s, place ${n.place}, ${n.passes} marks passed, ${n.misses} missed, ${n.spills} spills`);
   /* (a whole race may miss a few marks, as a person does: five end it, and finishing is checked above) */
-  check('steering by the marks on screen, the newcomer races the course', n.passes >= 6 && n.misses <= (FINISH ? 4 : 1) && n.top > 15,
+  check('steering by the marks on screen, the newcomer races the course', n.passes >= 6 && n.misses <= 1 && n.top > 15,
     `${n.passes} marks passed, ${n.misses} missed, ${n.spills} spills, top ${n.top.toFixed(1)} m/s in ${n.seconds} s`);
   const c = await run(backend, false, STAND);
   check('control: the d-pad never touched, the marks are not raced', (c.passes < n.passes / 2 || c.misses >= 2) && (!FINISH || !(c.finish > 0 && !c.dq)),

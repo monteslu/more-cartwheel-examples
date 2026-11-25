@@ -135,7 +135,7 @@ void audio_tick(float dt) {
           if (e->a == 5) shot(S_STYLE, 0.5f, 1.0f);
           else { shot(S_WHOOSH, 0.7f, e->a == 4 ? 1.2f : 1.0f); shot(S_TOP, 0.5f, 1.25f); }
           break;
-        case EV_LAND: if (e->a) shot(S_TOP, 0.5f, 0.85f); else shot(S_SMALL, 0.45f, 1.0f); break;
+        case EV_LAND: if (e->a == 1 || e->a == 2) shot(S_TOP, 0.5f, 0.85f); else shot(S_SMALL, 0.45f, 1.0f); break;
         case EV_MISS: shot(S_MISS, 0.7f * qv, 1.0f); break;
         case EV_GAIN: shot(S_PASSBY, 0.6f, 1.0f); shot(S_OK, 0.5f, 1.5f); break;
         case EV_LOSE: shot(S_PASSBY, 0.4f, 0.8f); shot(S_MISS, 0.3f, 1.3f); break;
@@ -146,6 +146,10 @@ void audio_tick(float dt) {
         case EV_CHARGE: shot(S_TOP, 0.6f, 1.5f); break;
         case EV_TURBO: shot(S_BIG, 0.75f, 1.4f); shot(S_WHOOSH, 0.8f, 0.7f); break;
         case EV_ROCKET: shot(S_GO, 0.8f, 1.25f); shot(S_WHOOSH, 0.9f, 0.6f); break;
+        case EV_BOG: shot(S_SLAP, 0.6f, 0.55f); shot(S_MISS, 0.4f, 0.6f); break; /* the pump gulping air, a low splutter */
+        case EV_SHAVE: shot(S_WHOOSH, 0.55f, 1.3f); break;
+        case EV_STREAK: shot(S_TOP, 0.7f, 1.2f); shot(S_STYLE, 0.5f, 1.1f); break;
+        case EV_DRAFT: shot(S_WHOOSH, 0.45f, 0.8f); break;
         case EV_TURBO_LOST: shot(S_MISS, 0.5f * qv, 0.7f); break;
         case EV_WAVES: shot(S_BIG, 0.9f, 0.45f); shot(S_WHOOSH, 0.7f, 0.4f); break;
         case EV_COMBO: shot(S_TOP, 0.65f, 1.0f + 0.04f * fminf(10.0f, (float)e->a / 500.0f)); shot(S_STYLE, 0.5f, 1.2f); break;
