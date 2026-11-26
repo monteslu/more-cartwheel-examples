@@ -3,6 +3,7 @@
 //   levels/<name>.cwscene   CSG shapes (cartwheel/csg.h): one root per surface kind, rooms and doors cut out of solid
 //                           blocks, roof slabs with stair holes, parapets, decks, landings and ledges
 //   levels/<name>.lvl       what the game places itself: spawns, items, stairs, jump pads, lamps, door frames, props
+//   (and the Battle map, open country on a height field: tools/battle-map.mjs)
 // then bakes the scene with the engine's cwcsg tool (levels/<name>_<root>.cwcsg) and prints a flow report per arena
 // (FUN-RUBRIC FP11: loops, dead ends, how far each spawn is from the power items).
 //
@@ -15,6 +16,7 @@ import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { battle } from './battle-map.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const GAME = join(HERE, '..');
@@ -497,6 +499,15 @@ for (const L of [foundry(), courtyard(), terraces()]) {
   if (CWCSG) {
     if (!existsSync(CWCSG)) throw new Error('no cwcsg at ' + CWCSG);
     const res = execFileSync(CWCSG, [join(OUT, L.name + '.cwscene'), '--assets', OUT, ...(CHECK ? ['--check'] : []), '-q'], { encoding: 'utf8' });
+    if (res.trim()) console.log(res.trim());
+  }
+}
+{ // the Battle map: open country on a height field (tools/battle-map.mjs)
+  const rep = battle(OUT);
+  console.log(JSON.stringify(rep));
+  ok &&= rep.pass;
+  if (CWCSG) {
+    const res = execFileSync(CWCSG, [join(OUT, 'battle.cwscene'), '--assets', OUT, ...(CHECK ? ['--check'] : []), '-q'], { encoding: 'utf8' });
     if (res.trim()) console.log(res.trim());
   }
 }

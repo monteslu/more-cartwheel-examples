@@ -39,6 +39,14 @@ levels/terraces_x_accent.cwcsg
 levels/terraces_x_clad.cwcsg
 levels/terraces_x_pillar.cwcsg
 levels/terraces_x_wall.cwcsg
+levels/battle.lvl
+levels/battle_grass.cwcsg
+levels/battle_dirt.cwcsg
+levels/battle_gravel.cwcsg
+levels/battle_rings.cwcsg
+levels/battle_ruins.cwcsg
+levels/battle_cover.cwcsg
+levels/battle_edge.cwcsg
 textures/fx/fire.png
 textures/fx/fire_mv.png
 textures/fx/smoke.png

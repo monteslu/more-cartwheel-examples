@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.43.0
+
+- Arena shooter: Farmlands, a map for the Battle mode. Open country about 240 m across: five command posts 60 to 90 m
+  apart (each a gravel pad with a painted capture ring and a flag pole, low walls round it, a ruined farm building
+  behind), dirt lanes between them with concrete walls, barriers, crates and barrels for cover every 11 to 15 m, low
+  hills between the lanes to break the long sight lines, and a stone field wall round the edge with the country rising
+  behind it. The ground is the level's own mesh (grass, dirt and gravel, written by tools/make-levels.mjs), so the
+  bots' navigation mesh, the collision and the picture are the same triangles. The posts (place, ring radius, home
+  side) are `post` lines in levels/battle.lvl for the mode to read.
+- Tools: arenafps battle-check (games/arenafps/tools/battle-check.mjs): nothing on Farmlands floats (control: the
+  first prop lifted 0.5 m must be caught), every command post reaches every other over the game's own navigation mesh
+  (arenafps_navcheck; control: one post walled in must cut its four pairs), and the lanes' flow report; battle-shots
+  takes eye-height pictures of the map on GL and WebGPU.
+
 ## 0.42.0
 
 - Jet ski, a pass over the whole race:

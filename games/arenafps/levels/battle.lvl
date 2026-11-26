@@ -1,0 +1,102 @@
+# battle: written by tools/make-levels.mjs (tools/battle-map.mjs), do not edit
+half 120
+top 4.1
+storey 3.6
+csg battle_grass.cwcsg leaf
+csg battle_dirt.cwcsg floor
+csg battle_gravel.cwcsg clad
+csg battle_rings.cwcsg trim
+csg battle_ruins.cwcsg wall
+csg battle_cover.cwcsg accent
+csg battle_edge.cwcsg pillar
+post 0 FARM -80 -2.527 20 8 0
+post 1 RELAY -30 0.395 -54 8 -1
+post 2 CROSSROADS 0 2.681 0 8 -1
+post 3 DEPOT 30 1.201 54 8 -1
+post 4 QUARRY 80 0.473 -20 8 1
+block accent -80 -2.777 20 1.0 0.5 1.0
+block metal -80 -2.277 20 0.14 8.5 0.14
+block accent -30 0.145 -54 1.0 0.5 1.0
+block metal -30 0.645 -54 0.14 8.5 0.14
+block accent 0 2.431 0 1.0 0.5 1.0
+block metal 0 2.931 0 0.14 8.5 0.14
+block accent 30 0.951 54 1.0 0.5 1.0
+block metal 30 1.451 54 0.14 8.5 0.14
+block accent 80 0.223 -20 1.0 0.5 1.0
+block metal 80 0.723 -20 0.14 8.5 0.14
+spawn -93.336 -1.82 17.332
+spawn -92.982 -1.669 24.052
+spawn -89.45 -1.82 29.78
+spawn -28.85 0.992 -67.551
+spawn -35.488 1.112 -66.444
+spawn -40.782 0.988 -62.289
+spawn 6.52 2.667 -11.935
+spawn 0 2.653 -13.6
+spawn -6.52 2.668 -11.935
+spawn 28.85 1.01 67.551
+spawn 35.488 0.958 66.444
+spawn 40.782 1.012 62.289
+spawn 93.336 0.465 -17.332
+spawn 92.982 0.452 -24.052
+spawn 89.45 0.465 -29.78
+item health -80.536 -2.527 23.155
+item ammo -82.235 -2.527 17.71
+item health -33.195 0.395 -54.177
+item ammo -27.976 0.395 -56.479
+item health -2.852 2.681 -1.452
+item ammo 2.852 2.681 -1.452
+item health 33.195 1.201 54.177
+item ammo 27.976 1.201 56.479
+item health 80.536 0.473 -23.155
+item ammo 82.235 0.473 -17.71
+item rocket 0 2.619 -9.5
+item rail -20.5 0.395 -54
+item rail 20.5 1.201 54
+item armor 0 2.681 9.5
+item scatter -39.5 0.395 -54
+item scatter 39.5 1.201 54
+crates -76.819 24.487 0.617 -2.527
+barrels -74.368 18.242 -2.527
+crates -79.927 13.7 3.13 -2.527
+crates -34.1 -50.334 -0.841 0.395
+barrels -27.619 -48.602 0.395
+crates -23.732 -54.637 1.672 0.395
+crates -5.231 1.7 -1.257 2.681
+barrels 0 5.9 2.681
+crates 5.992 1.947 1.257 2.681
+crates 34.1 50.334 2.3 1.201
+barrels 27.619 48.602 1.201
+crates 23.732 54.637 4.814 1.201
+crates 76.819 -24.487 3.758 0.473
+barrels 74.368 -18.242 0.473
+crates 79.927 -13.7 6.272 0.473
+prop jersey -56.178 -2.845 -4.727 3.768 1 2.0 0.8 0.6
+prop jersey -54.834 -2.845 -6.716 4.468 1 2.0 0.8 0.6
+crates -57.383 -23.187 2.847 -0.508
+barrels -41.925 -28.423 -1.762
+prop jersey -58.558 -2.76 19.425 3.037 1 2.0 0.8 0.6
+prop jersey -56.23 -2.76 18.843 3.737 1 2.0 0.8 0.6
+crates -48.554 7.694 2.116 -2.851
+barrels -31.454 11.706 0.009
+crates -15.577 -39.052 0.807 -0.466
+barrels -16.991 -21.937 0.21
+barrels 5.395 21.176 1.123
+prop jersey 33.109 0.618 -4.515 3.037 1 2.0 0.8 0.6
+prop jersey 35.438 0.618 -5.097 3.737 1 2.0 0.8 0.6
+crates 44.645 -17.202 2.116 1.003
+barrels 59.327 -9.217 1.01
+prop jersey 46.215 2.849 39.371 3.768 1 2.0 0.8 0.6
+prop jersey 47.558 2.849 37.383 4.468 1 2.0 0.8 0.6
+crates 45.469 22.129 2.847 1.965
+barrels 60.847 15.284 2.062
+crates -8.16 -52.061 1.571 -1.5
+barrels 1.767 -38.931 0.005
+prop jersey 23.741 2.013 -31.759 2.492 1 2.0 0.8 0.6
+prop jersey 26.034 2.013 -31.05 3.192 1 2.0 0.8 0.6
+crates 41.403 -37.497 1.571 0.542
+barrels 51.183 -25.269 -0.037
+barrels -59.701 30.85 -2.379
+prop jersey -37.564 0.145 37.405 2.492 1 2.0 0.8 0.6
+prop jersey -35.271 0.145 38.114 3.192 1 2.0 0.8 0.6
+crates -23.371 33.474 1.571 0.727
+barrels -10.763 46.175 -0.105

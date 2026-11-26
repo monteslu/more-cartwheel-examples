@@ -1,0 +1,1360 @@
+[scene format=1]
+
+[node name="Level" type="Node3D"]
+
+[node name="Ruins" parent="." type="CSGCombiner3D"]
+bake_file = "battle_ruins.cwcsg"
+
+[node name="Ruin0" parent="Ruins" type="CSGCombiner3D"]
+position = vec3(-99.092, 0, 25.959)
+rotation = vec3(0, -1.268, 0)
+
+[node name="B0" parent="Ruins/Ruin0" type="CSGBox3D"]
+position = vec3(0, -0.319, 0)
+size = vec3(9, 4, 7)
+
+[node name="B1" parent="Ruins/Ruin0" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(0, 0.481, 0)
+size = vec3(8, 4.4, 6)
+
+[node name="B2" parent="Ruins/Ruin0" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-1.62, -0.419, -3.5)
+size = vec3(1.8, 2.6, 1.4)
+
+[node name="B3" parent="Ruins/Ruin0" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(2.52, -0.119, -3.5)
+size = vec3(1.3, 1.1, 1.4)
+
+[node name="B4" parent="Ruins/Ruin0" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-4.5, -0.119, 0)
+size = vec3(1.4, 1.1, 1.4)
+
+[node name="B5" parent="Ruins/Ruin0" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(1.62, -0.419, 3.5)
+size = vec3(1.8, 2.6, 1.4)
+
+[node name="B6" parent="Ruins/Ruin0" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-2.52, -0.119, 3.5)
+size = vec3(1.3, 1.1, 1.4)
+
+[node name="B7" parent="Ruins/Ruin0" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(4.5, -0.119, 0)
+size = vec3(1.4, 1.1, 1.4)
+
+[node name="B8" parent="Ruins/Ruin0" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-1.368, 1.227, 3.5)
+rotation = vec3(0, -0.078, 0)
+size = vec3(1.202, 2.108, 1.4)
+
+[node name="B9" parent="Ruins/Ruin0" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(4.39, 1.355, -3.5)
+rotation = vec3(0, 0.098, 0)
+size = vec3(2.054, 1.851, 1.4)
+
+[node name="B10" parent="Ruins/Ruin0" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-4.333, 1.614, 3.5)
+rotation = vec3(0, 0.036, 0)
+size = vec3(2.08, 1.333, 1.4)
+
+[node name="B11" parent="Ruins/Ruin0" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-0.927, 1.643, 3.5)
+rotation = vec3(0, -0.031, 0)
+size = vec3(2.059, 1.276, 1.4)
+
+[node name="B12" parent="Ruins/Ruin0" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-1.162, 1.528, 3.5)
+rotation = vec3(0, -0.184, 0)
+size = vec3(1.859, 1.506, 1.4)
+
+[node name="B13" parent="Ruins/Ruin0" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(4.5, 0.781, -3.5)
+rotation = vec3(0, 0.6, 0)
+size = vec3(3.2, 2.4, 3.2)
+
+[node name="Slab0" parent="Ruins/Ruin0" type="CSGBox3D"]
+position = vec3(-2.9, 0.831, 0)
+size = vec3(3.2, 0.3, 6.8)
+
+[node name="Ruin1" parent="Ruins" type="CSGCombiner3D"]
+position = vec3(-38.07, 0, -72.299)
+rotation = vec3(0, -2.726, 0)
+
+[node name="B14" parent="Ruins/Ruin1" type="CSGBox3D"]
+position = vec3(0, 2.462, 0)
+size = vec3(9, 4, 7)
+
+[node name="B15" parent="Ruins/Ruin1" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(0, 3.262, 0)
+size = vec3(8, 4.4, 6)
+
+[node name="B16" parent="Ruins/Ruin1" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-1.62, 2.362, -3.5)
+size = vec3(1.8, 2.6, 1.4)
+
+[node name="B17" parent="Ruins/Ruin1" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(2.52, 2.662, -3.5)
+size = vec3(1.3, 1.1, 1.4)
+
+[node name="B18" parent="Ruins/Ruin1" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-4.5, 2.662, 0)
+size = vec3(1.4, 1.1, 1.4)
+
+[node name="B19" parent="Ruins/Ruin1" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(1.62, 2.362, 3.5)
+size = vec3(1.8, 2.6, 1.4)
+
+[node name="B20" parent="Ruins/Ruin1" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-2.52, 2.662, 3.5)
+size = vec3(1.3, 1.1, 1.4)
+
+[node name="B21" parent="Ruins/Ruin1" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(4.5, 2.662, 0)
+size = vec3(1.4, 1.1, 1.4)
+
+[node name="B22" parent="Ruins/Ruin1" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-1.365, 4.213, -3.5)
+rotation = vec3(0, 0.188, 0)
+size = vec3(1.284, 1.698, 1.4)
+
+[node name="B23" parent="Ruins/Ruin1" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(2.119, 4.191, -3.5)
+rotation = vec3(0, 0.121, 0)
+size = vec3(3.173, 1.742, 1.4)
+
+[node name="B24" parent="Ruins/Ruin1" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-0.25, 4.41, -3.5)
+rotation = vec3(0, 0.127, 0)
+size = vec3(1.974, 1.303, 1.4)
+
+[node name="B25" parent="Ruins/Ruin1" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(3.268, 4.414, -3.5)
+rotation = vec3(0, -0.077, 0)
+size = vec3(2.716, 1.295, 1.4)
+
+[node name="B26" parent="Ruins/Ruin1" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-3.942, 3.873, 3.5)
+rotation = vec3(0, -0.137, 0)
+size = vec3(2.017, 2.377, 1.4)
+
+[node name="B27" parent="Ruins/Ruin1" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(4.5, 3.562, -3.5)
+rotation = vec3(0, 0.6, 0)
+size = vec3(3.2, 2.4, 3.2)
+
+[node name="Slab1" parent="Ruins/Ruin1" type="CSGBox3D"]
+position = vec3(-2.9, 3.612, 0)
+size = vec3(3.2, 0.3, 6.8)
+
+[node name="Ruin2" parent="Ruins" type="CSGCombiner3D"]
+position = vec3(0, 0, -20)
+rotation = vec3(0, -3.142, 0)
+
+[node name="B28" parent="Ruins/Ruin2" type="CSGBox3D"]
+position = vec3(0, 4.003, 0)
+size = vec3(9, 4, 7)
+
+[node name="B29" parent="Ruins/Ruin2" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(0, 4.803, 0)
+size = vec3(8, 4.4, 6)
+
+[node name="B30" parent="Ruins/Ruin2" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-1.62, 3.903, -3.5)
+size = vec3(1.8, 2.6, 1.4)
+
+[node name="B31" parent="Ruins/Ruin2" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(2.52, 4.203, -3.5)
+size = vec3(1.3, 1.1, 1.4)
+
+[node name="B32" parent="Ruins/Ruin2" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-4.5, 4.203, 0)
+size = vec3(1.4, 1.1, 1.4)
+
+[node name="B33" parent="Ruins/Ruin2" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(1.62, 3.903, 3.5)
+size = vec3(1.8, 2.6, 1.4)
+
+[node name="B34" parent="Ruins/Ruin2" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-2.52, 4.203, 3.5)
+size = vec3(1.3, 1.1, 1.4)
+
+[node name="B35" parent="Ruins/Ruin2" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(4.5, 4.203, 0)
+size = vec3(1.4, 1.1, 1.4)
+
+[node name="B36" parent="Ruins/Ruin2" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-1.361, 5.959, -3.5)
+rotation = vec3(0, 0.055, 0)
+size = vec3(1.365, 1.288, 1.4)
+
+[node name="B37" parent="Ruins/Ruin2" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-0.151, 5.786, 3.5)
+rotation = vec3(0, 0.144, 0)
+size = vec3(2.092, 1.633, 1.4)
+
+[node name="B38" parent="Ruins/Ruin2" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(3.834, 5.966, -3.5)
+rotation = vec3(0, -0.182, 0)
+size = vec3(1.868, 1.273, 1.4)
+
+[node name="B39" parent="Ruins/Ruin2" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-1.537, 5.945, -3.5)
+rotation = vec3(0, -0.122, 0)
+size = vec3(3.373, 1.315, 1.4)
+
+[node name="B40" parent="Ruins/Ruin2" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(2.277, 5.628, -3.5)
+rotation = vec3(0, -0.09, 0)
+size = vec3(2.175, 1.948, 1.4)
+
+[node name="B41" parent="Ruins/Ruin2" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(4.5, 5.103, -3.5)
+rotation = vec3(0, 0.6, 0)
+size = vec3(3.2, 2.4, 3.2)
+
+[node name="Slab2" parent="Ruins/Ruin2" type="CSGBox3D"]
+position = vec3(-2.9, 5.153, 0)
+size = vec3(3.2, 0.3, 6.8)
+
+[node name="Ruin3" parent="Ruins" type="CSGCombiner3D"]
+position = vec3(38.07, 0, 72.299)
+rotation = vec3(0, 0.415, 0)
+
+[node name="B42" parent="Ruins/Ruin3" type="CSGBox3D"]
+position = vec3(0, 2.308, 0)
+size = vec3(9, 4, 7)
+
+[node name="B43" parent="Ruins/Ruin3" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(0, 3.108, 0)
+size = vec3(8, 4.4, 6)
+
+[node name="B44" parent="Ruins/Ruin3" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-1.62, 2.208, -3.5)
+size = vec3(1.8, 2.6, 1.4)
+
+[node name="B45" parent="Ruins/Ruin3" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(2.52, 2.508, -3.5)
+size = vec3(1.3, 1.1, 1.4)
+
+[node name="B46" parent="Ruins/Ruin3" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-4.5, 2.508, 0)
+size = vec3(1.4, 1.1, 1.4)
+
+[node name="B47" parent="Ruins/Ruin3" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(1.62, 2.208, 3.5)
+size = vec3(1.8, 2.6, 1.4)
+
+[node name="B48" parent="Ruins/Ruin3" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-2.52, 2.508, 3.5)
+size = vec3(1.3, 1.1, 1.4)
+
+[node name="B49" parent="Ruins/Ruin3" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(4.5, 2.508, 0)
+size = vec3(1.4, 1.1, 1.4)
+
+[node name="B50" parent="Ruins/Ruin3" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-1.358, 3.819, -3.5)
+rotation = vec3(0, -0.078, 0)
+size = vec3(1.447, 2.178, 1.4)
+
+[node name="B51" parent="Ruins/Ruin3" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-2.422, 4.146, -3.5)
+rotation = vec3(0, 0.167, 0)
+size = vec3(3.211, 1.524, 1.4)
+
+[node name="B52" parent="Ruins/Ruin3" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-1.083, 4.286, 3.5)
+rotation = vec3(0, -0.09, 0)
+size = vec3(1.762, 1.243, 1.4)
+
+[node name="B53" parent="Ruins/Ruin3" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(2.658, 4.24, -3.5)
+rotation = vec3(0, -0.167, 0)
+size = vec3(1.83, 1.335, 1.4)
+
+[node name="B54" parent="Ruins/Ruin3" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-0.503, 4.148, 3.5)
+rotation = vec3(0, -0.043, 0)
+size = vec3(2.332, 1.52, 1.4)
+
+[node name="B55" parent="Ruins/Ruin3" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(4.5, 3.408, -3.5)
+rotation = vec3(0, 0.6, 0)
+size = vec3(3.2, 2.4, 3.2)
+
+[node name="Slab3" parent="Ruins/Ruin3" type="CSGBox3D"]
+position = vec3(-2.9, 3.458, 0)
+size = vec3(3.2, 0.3, 6.8)
+
+[node name="Ruin4" parent="Ruins" type="CSGCombiner3D"]
+position = vec3(99.092, 0, -25.959)
+rotation = vec3(0, 1.873, 0)
+
+[node name="B56" parent="Ruins/Ruin4" type="CSGBox3D"]
+position = vec3(0, 1.802, 0)
+size = vec3(9, 4, 7)
+
+[node name="B57" parent="Ruins/Ruin4" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(0, 2.602, 0)
+size = vec3(8, 4.4, 6)
+
+[node name="B58" parent="Ruins/Ruin4" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-1.62, 1.702, -3.5)
+size = vec3(1.8, 2.6, 1.4)
+
+[node name="B59" parent="Ruins/Ruin4" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(2.52, 2.002, -3.5)
+size = vec3(1.3, 1.1, 1.4)
+
+[node name="B60" parent="Ruins/Ruin4" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-4.5, 2.002, 0)
+size = vec3(1.4, 1.1, 1.4)
+
+[node name="B61" parent="Ruins/Ruin4" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(1.62, 1.702, 3.5)
+size = vec3(1.8, 2.6, 1.4)
+
+[node name="B62" parent="Ruins/Ruin4" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-2.52, 2.002, 3.5)
+size = vec3(1.3, 1.1, 1.4)
+
+[node name="B63" parent="Ruins/Ruin4" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(4.5, 2.002, 0)
+size = vec3(1.4, 1.1, 1.4)
+
+[node name="B64" parent="Ruins/Ruin4" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-1.354, 3.518, -3.5)
+rotation = vec3(0, 0.188, 0)
+size = vec3(1.528, 1.768, 1.4)
+
+[node name="B65" parent="Ruins/Ruin4" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(4.308, 3.695, 3.5)
+rotation = vec3(0, 0.19, 0)
+size = vec3(2.13, 1.415, 1.4)
+
+[node name="B66" parent="Ruins/Ruin4" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(3.001, 3.796, -3.5)
+rotation = vec3(0, 0.001, 0)
+size = vec3(1.656, 1.213, 1.4)
+
+[node name="B67" parent="Ruins/Ruin4" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-2.147, 3.725, 3.5)
+rotation = vec3(0, 0.188, 0)
+size = vec3(2.487, 1.355, 1.4)
+
+[node name="B68" parent="Ruins/Ruin4" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-3.283, 3.207, -3.5)
+rotation = vec3(0, 0.004, 0)
+size = vec3(2.49, 2.391, 1.4)
+
+[node name="B69" parent="Ruins/Ruin4" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(4.5, 2.902, -3.5)
+rotation = vec3(0, 0.6, 0)
+size = vec3(3.2, 2.4, 3.2)
+
+[node name="Slab4" parent="Ruins/Ruin4" type="CSGBox3D"]
+position = vec3(-2.9, 2.952, 0)
+size = vec3(3.2, 0.3, 6.8)
+
+[node name="Ruin16" parent="Ruins" type="CSGCombiner3D"]
+position = vec3(28.839, 0, -49.42)
+rotation = vec3(0, 1.271, 0)
+
+[node name="B70" parent="Ruins/Ruin16" type="CSGBox3D"]
+position = vec3(0, 2.308, 0)
+size = vec3(8, 3.6, 6)
+
+[node name="B71" parent="Ruins/Ruin16" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(0, 3.108, 0)
+size = vec3(7, 4, 5)
+
+[node name="B72" parent="Ruins/Ruin16" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-1.44, 2.408, -3)
+size = vec3(1.8, 2.6, 1.4)
+
+[node name="B73" parent="Ruins/Ruin16" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(2.24, 2.708, -3)
+size = vec3(1.3, 1.1, 1.4)
+
+[node name="B74" parent="Ruins/Ruin16" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-4, 2.708, 0)
+size = vec3(1.4, 1.1, 1.4)
+
+[node name="B75" parent="Ruins/Ruin16" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(1.44, 2.408, 3)
+size = vec3(1.8, 2.6, 1.4)
+
+[node name="B76" parent="Ruins/Ruin16" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-2.24, 2.708, 3)
+size = vec3(1.3, 1.1, 1.4)
+
+[node name="B77" parent="Ruins/Ruin16" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(4, 2.708, 0)
+size = vec3(1.4, 1.1, 1.4)
+
+[node name="B78" parent="Ruins/Ruin16" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-1.167, 3.683, -3)
+rotation = vec3(0, 0.187, 0)
+size = vec3(2.505, 2.05, 1.4)
+
+[node name="B79" parent="Ruins/Ruin16" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(3.609, 4.004, 3)
+rotation = vec3(0, 0.066, 0)
+size = vec3(2.361, 1.407, 1.4)
+
+[node name="B80" parent="Ruins/Ruin16" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-1.775, 3.632, 3)
+rotation = vec3(0, -0.103, 0)
+size = vec3(2.584, 2.152, 1.4)
+
+[node name="B81" parent="Ruins/Ruin16" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(2.836, 3.912, -3)
+rotation = vec3(0, 0.044, 0)
+size = vec3(1.569, 1.592, 1.4)
+
+[node name="B82" parent="Ruins/Ruin16" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-0.574, 4.134, 3)
+rotation = vec3(0, 0.167, 0)
+size = vec3(2.183, 1.147, 1.4)
+
+[node name="B83" parent="Ruins/Ruin16" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(4, 3.208, -3)
+rotation = vec3(0, 0.6, 0)
+size = vec3(3.2, 2.4, 3.2)
+
+[node name="Slab16" parent="Ruins/Ruin16" type="CSGBox3D"]
+position = vec3(-2.4, 3.258, 0)
+size = vec3(3.2, 0.3, 5.8)
+
+[node name="Ruin17" parent="Ruins" type="CSGCombiner3D"]
+position = vec3(-21.161, 0, 24.58)
+rotation = vec3(0, 1.271, 0)
+
+[node name="B84" parent="Ruins/Ruin17" type="CSGBox3D"]
+position = vec3(0, 2.454, 0)
+size = vec3(8, 4.293, 6)
+
+[node name="B85" parent="Ruins/Ruin17" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(0, 3.601, 0)
+size = vec3(7, 4, 5)
+
+[node name="B86" parent="Ruins/Ruin17" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-1.44, 2.901, -3)
+size = vec3(1.8, 2.6, 1.4)
+
+[node name="B87" parent="Ruins/Ruin17" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(2.24, 3.201, -3)
+size = vec3(1.3, 1.1, 1.4)
+
+[node name="B88" parent="Ruins/Ruin17" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-4, 3.201, 0)
+size = vec3(1.4, 1.1, 1.4)
+
+[node name="B89" parent="Ruins/Ruin17" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(1.44, 2.901, 3)
+size = vec3(1.8, 2.6, 1.4)
+
+[node name="B90" parent="Ruins/Ruin17" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-2.24, 3.201, 3)
+size = vec3(1.3, 1.1, 1.4)
+
+[node name="B91" parent="Ruins/Ruin17" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(4, 3.201, 0)
+size = vec3(1.4, 1.1, 1.4)
+
+[node name="B92" parent="Ruins/Ruin17" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-1.164, 4.381, -3)
+rotation = vec3(0, 0.054, 0)
+size = vec3(2.587, 1.64, 1.4)
+
+[node name="B93" parent="Ruins/Ruin17" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(1.591, 4.552, -3)
+rotation = vec3(0, 0.089, 0)
+size = vec3(1.28, 1.298, 1.4)
+
+[node name="B94" parent="Ruins/Ruin17" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(1.855, 4.14, -3)
+rotation = vec3(0, -0.012, 0)
+size = vec3(2.478, 2.122, 1.4)
+
+[node name="B95" parent="Ruins/Ruin17" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-1.435, 4.395, 3)
+rotation = vec3(0, -0.001, 0)
+size = vec3(2.226, 1.611, 1.4)
+
+[node name="B96" parent="Ruins/Ruin17" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(-3.045, 4.192, 3)
+rotation = vec3(0, -0.186, 0)
+size = vec3(2.341, 2.018, 1.4)
+
+[node name="B97" parent="Ruins/Ruin17" type="CSGBox3D"]
+operation = SUBTRACTION
+position = vec3(4, 3.701, -3)
+rotation = vec3(0, 0.6, 0)
+size = vec3(3.2, 2.4, 3.2)
+
+[node name="Slab17" parent="Ruins/Ruin17" type="CSGBox3D"]
+position = vec3(-2.4, 3.751, 0)
+size = vec3(3.2, 0.3, 5.8)
+
+[node name="Cover" parent="." type="CSGCombiner3D"]
+bake_file = "battle_cover.cwcsg"
+
+[node name="B98" parent="Cover" type="CSGBox3D"]
+position = vec3(-85.339, -2.202, 30.185)
+rotation = vec3(0, -0.483, 0)
+size = vec3(5.5, 1.65, 0.45)
+
+[node name="B99" parent="Cover" type="CSGBox3D"]
+position = vec3(-69.815, -2.202, 25.339)
+rotation = vec3(0, 1.088, 0)
+size = vec3(5.5, 1.65, 0.45)
+
+[node name="B100" parent="Cover" type="CSGBox3D"]
+position = vec3(-74.661, -2.202, 9.815)
+rotation = vec3(0, 2.659, 0)
+size = vec3(5.5, 1.65, 0.45)
+
+[node name="B101" parent="Cover" type="CSGBox3D"]
+position = vec3(-90.185, -2.202, 14.661)
+rotation = vec3(0, 4.23, 0)
+size = vec3(5.5, 1.65, 0.45)
+
+[node name="B102" parent="Cover" type="CSGBox3D"]
+position = vec3(-40.722, 0.72, -58.159)
+rotation = vec3(0, -1.941, 0)
+size = vec3(5.5, 1.65, 0.45)
+
+[node name="B103" parent="Cover" type="CSGBox3D"]
+position = vec3(-34.159, 0.72, -43.278)
+rotation = vec3(0, -0.37, 0)
+size = vec3(5.5, 1.65, 0.45)
+
+[node name="B104" parent="Cover" type="CSGBox3D"]
+position = vec3(-19.278, 0.72, -49.841)
+rotation = vec3(0, 1.201, 0)
+size = vec3(5.5, 1.65, 0.45)
+
+[node name="B105" parent="Cover" type="CSGBox3D"]
+position = vec3(-25.841, 0.72, -64.722)
+rotation = vec3(0, 2.772, 0)
+size = vec3(5.5, 1.65, 0.45)
+
+[node name="B106" parent="Cover" type="CSGBox3D"]
+position = vec3(-8.132, 2.981, -8.132)
+rotation = vec3(0, -2.356, 0)
+size = vec3(5.5, 1.7, 0.45)
+
+[node name="B107" parent="Cover" type="CSGBox3D"]
+position = vec3(-8.132, 3.006, 8.132)
+rotation = vec3(0, -0.785, 0)
+size = vec3(5.5, 1.65, 0.45)
+
+[node name="B108" parent="Cover" type="CSGBox3D"]
+position = vec3(8.132, 3.006, 8.132)
+rotation = vec3(0, 0.785, 0)
+size = vec3(5.5, 1.65, 0.45)
+
+[node name="B109" parent="Cover" type="CSGBox3D"]
+position = vec3(8.132, 2.981, -8.132)
+rotation = vec3(0, 2.356, 0)
+size = vec3(5.5, 1.7, 0.45)
+
+[node name="B110" parent="Cover" type="CSGBox3D"]
+position = vec3(40.722, 1.431, 58.159)
+rotation = vec3(0, 1.201, 0)
+size = vec3(5.5, 1.839, 0.45)
+
+[node name="B111" parent="Cover" type="CSGBox3D"]
+position = vec3(34.159, 1.526, 43.278)
+rotation = vec3(0, 2.772, 0)
+size = vec3(5.5, 1.65, 0.45)
+
+[node name="B112" parent="Cover" type="CSGBox3D"]
+position = vec3(19.278, 1.526, 49.841)
+rotation = vec3(0, 4.342, 0)
+size = vec3(5.5, 1.65, 0.45)
+
+[node name="B113" parent="Cover" type="CSGBox3D"]
+position = vec3(25.841, 1.431, 64.722)
+rotation = vec3(0, 5.913, 0)
+size = vec3(5.5, 1.839, 0.45)
+
+[node name="B114" parent="Cover" type="CSGBox3D"]
+position = vec3(85.339, 0.775, -30.185)
+rotation = vec3(0, 2.659, 0)
+size = vec3(5.5, 1.695, 0.45)
+
+[node name="B115" parent="Cover" type="CSGBox3D"]
+position = vec3(69.815, 0.798, -25.339)
+rotation = vec3(0, 4.23, 0)
+size = vec3(5.5, 1.65, 0.45)
+
+[node name="B116" parent="Cover" type="CSGBox3D"]
+position = vec3(74.661, 0.798, -9.815)
+rotation = vec3(0, 5.8, 0)
+size = vec3(5.5, 1.65, 0.45)
+
+[node name="B117" parent="Cover" type="CSGBox3D"]
+position = vec3(90.185, 0.775, -14.661)
+rotation = vec3(0, 7.371, 0)
+size = vec3(5.5, 1.696, 0.45)
+
+[node name="B118" parent="Cover" type="CSGBox3D"]
+position = vec3(-71.823, -2.199, 0.419)
+rotation = vec3(0, 1.447, 0)
+size = vec3(4.2, 1.7, 0.5)
+
+[node name="B119" parent="Cover" type="CSGBox3D"]
+position = vec3(-42.353, -1.562, -27.046)
+rotation = vec3(0, 4.118, 0)
+size = vec3(2.6, 1.4, 0.5)
+
+[node name="B120" parent="Cover" type="CSGBox3D"]
+position = vec3(-32.415, 0.209, 12.321)
+rotation = vec3(0, 3.387, 0)
+size = vec3(2.6, 1.4, 0.5)
+
+[node name="B121" parent="Cover" type="CSGBox3D"]
+position = vec3(-22.279, 0.756, -0.265)
+rotation = vec3(0, 0.716, 0)
+size = vec3(4.2, 1.7, 0.5)
+
+[node name="B122" parent="Cover" type="CSGBox3D"]
+position = vec3(-17.322, 0.41, -22.774)
+rotation = vec3(0, 2.078, 0)
+size = vec3(2.6, 1.4, 0.5)
+
+[node name="B123" parent="Cover" type="CSGBox3D"]
+position = vec3(5.064, 1.323, 20.339)
+rotation = vec3(0, 2.078, 0)
+size = vec3(2.6, 1.4, 0.5)
+
+[node name="B124" parent="Cover" type="CSGBox3D"]
+position = vec3(19.146, 1.062, 26.718)
+rotation = vec3(0, -0.593, 0)
+size = vec3(4.2, 1.7, 0.5)
+
+[node name="B125" parent="Cover" type="CSGBox3D"]
+position = vec3(20.921, 2.047, -9.744)
+rotation = vec3(0, 0.716, 0)
+size = vec3(4.2, 1.702, 0.5)
+
+[node name="B126" parent="Cover" type="CSGBox3D"]
+position = vec3(58.366, 1.21, -8.602)
+rotation = vec3(0, 3.387, 0)
+size = vec3(2.6, 1.4, 0.5)
+
+[node name="B127" parent="Cover" type="CSGBox3D"]
+position = vec3(60.419, 2.262, 16.661)
+rotation = vec3(0, 4.118, 0)
+size = vec3(2.6, 1.4, 0.5)
+
+[node name="B128" parent="Cover" type="CSGBox3D"]
+position = vec3(60.937, 2.345, 1.664)
+rotation = vec3(0, 1.447, 0)
+size = vec3(4.2, 1.7, 0.5)
+
+[node name="B129" parent="Cover" type="CSGBox3D"]
+position = vec3(0.825, 0.205, -39.015)
+rotation = vec3(0, 2.842, 0)
+size = vec3(2.6, 1.4, 0.5)
+
+[node name="B130" parent="Cover" type="CSGBox3D"]
+position = vec3(14.732, 1.387, -46.034)
+rotation = vec3(0, 0.171, 0)
+size = vec3(4.2, 1.701, 0.5)
+
+[node name="B131" parent="Cover" type="CSGBox3D"]
+position = vec3(50.241, 0.163, -25.353)
+rotation = vec3(0, 2.842, 0)
+size = vec3(2.6, 1.4, 0.5)
+
+[node name="B132" parent="Cover" type="CSGBox3D"]
+position = vec3(-60.643, -2.179, 30.766)
+rotation = vec3(0, 2.842, 0)
+size = vec3(2.6, 1.4, 0.5)
+
+[node name="B133" parent="Cover" type="CSGBox3D"]
+position = vec3(-45.755, -1.189, 26.699)
+rotation = vec3(0, 0.171, 0)
+size = vec3(4.2, 1.7, 0.5)
+
+[node name="B134" parent="Cover" type="CSGBox3D"]
+position = vec3(-11.705, 0.095, 46.091)
+rotation = vec3(0, 2.842, 0)
+size = vec3(2.6, 1.4, 0.5)
+
+[node name="B135" parent="Cover" type="CSGBox3D"]
+position = vec3(5.295, 0.949, 41.031)
+rotation = vec3(0, 0.171, 0)
+size = vec3(4.2, 1.701, 0.5)
+
+[node name="Edge" parent="." type="CSGCombiner3D"]
+bake_file = "battle_edge.cwcsg"
+
+[node name="B136" parent="Edge" type="CSGBox3D"]
+position = vec3(-108, 8.98, -105)
+size = vec3(0.8, 4.783, 6.02)
+
+[node name="B137" parent="Edge" type="CSGBox3D"]
+position = vec3(-105, 6.727, -108)
+size = vec3(6.02, 6.522, 0.8)
+
+[node name="B138" parent="Edge" type="CSGBox3D"]
+position = vec3(-108, 7.12, -99)
+size = vec3(0.8, 7.594, 6.02)
+
+[node name="B139" parent="Edge" type="CSGBox3D"]
+position = vec3(-99, 4.248, -108)
+size = vec3(6.02, 5.236, 0.8)
+
+[node name="B140" parent="Edge" type="CSGBox3D"]
+position = vec3(-108, 4.261, -93)
+size = vec3(0.8, 4.926, 6.02)
+
+[node name="B141" parent="Edge" type="CSGBox3D"]
+position = vec3(-93, 4.15, -108)
+size = vec3(6.02, 5.04, 0.8)
+
+[node name="B142" parent="Edge" type="CSGBox3D"]
+position = vec3(-108, 6.24, -87)
+size = vec3(0.8, 7.255, 6.02)
+
+[node name="B143" parent="Edge" type="CSGBox3D"]
+position = vec3(-87, 6.862, -108)
+size = vec3(6.02, 7.185, 0.8)
+
+[node name="B144" parent="Edge" type="CSGBox3D"]
+position = vec3(-108, 9.278, -81)
+size = vec3(0.8, 5.621, 6.02)
+
+[node name="B145" parent="Edge" type="CSGBox3D"]
+position = vec3(-81, 9.994, -108)
+size = vec3(6.02, 5.879, 0.8)
+
+[node name="B146" parent="Edge" type="CSGBox3D"]
+position = vec3(-108, 8.985, -75)
+size = vec3(0.8, 6.208, 6.02)
+
+[node name="B147" parent="Edge" type="CSGBox3D"]
+position = vec3(-75, 10.932, -108)
+size = vec3(6.02, 4.004, 0.8)
+
+[node name="B148" parent="Edge" type="CSGBox3D"]
+position = vec3(-108, 5.045, -69)
+size = vec3(0.8, 8.472, 6.02)
+
+[node name="B149" parent="Edge" type="CSGBox3D"]
+position = vec3(-69, 10.208, -108)
+size = vec3(6.02, 4.244, 0.8)
+
+[node name="B150" parent="Edge" type="CSGBox3D"]
+position = vec3(-108, 1.682, -63)
+size = vec3(0.8, 5.054, 6.02)
+
+[node name="B151" parent="Edge" type="CSGBox3D"]
+position = vec3(-63, 9.082, -108)
+size = vec3(6.02, 4.807, 0.8)
+
+[node name="B152" parent="Edge" type="CSGBox3D"]
+position = vec3(-108, 1.561, -57)
+size = vec3(0.8, 4.812, 6.02)
+
+[node name="B153" parent="Edge" type="CSGBox3D"]
+position = vec3(-57, 7.121, -108)
+size = vec3(6.02, 5.915, 0.8)
+
+[node name="B154" parent="Edge" type="CSGBox3D"]
+position = vec3(-108, 2.436, -51)
+size = vec3(0.8, 3.74, 6.02)
+
+[node name="B155" parent="Edge" type="CSGBox3D"]
+position = vec3(-51, 4.358, -108)
+size = vec3(6.02, 6.411, 0.8)
+
+[node name="B156" parent="Edge" type="CSGBox3D"]
+position = vec3(-108, 2.33, -45)
+size = vec3(0.8, 3.828, 6.02)
+
+[node name="B157" parent="Edge" type="CSGBox3D"]
+position = vec3(-45, 2.49, -108)
+size = vec3(6.02, 4.125, 0.8)
+
+[node name="B158" parent="Edge" type="CSGBox3D"]
+position = vec3(-108, 2.796, -39)
+size = vec3(0.8, 4.759, 6.02)
+
+[node name="B159" parent="Edge" type="CSGBox3D"]
+position = vec3(-39, 3.766, -108)
+size = vec3(6.02, 6.146, 0.8)
+
+[node name="B160" parent="Edge" type="CSGBox3D"]
+position = vec3(-108, 4.666, -33)
+size = vec3(0.8, 5.781, 6.02)
+
+[node name="B161" parent="Edge" type="CSGBox3D"]
+position = vec3(-33, 6.654, -108)
+size = vec3(6.02, 6.431, 0.8)
+
+[node name="B162" parent="Edge" type="CSGBox3D"]
+position = vec3(-108, 6.204, -27)
+size = vec3(0.8, 4.094, 6.02)
+
+[node name="B163" parent="Edge" type="CSGBox3D"]
+position = vec3(-27, 8.479, -108)
+size = vec3(6.02, 4.019, 0.8)
+
+[node name="B164" parent="Edge" type="CSGBox3D"]
+position = vec3(-108, 6.045, -21)
+size = vec3(0.8, 4.412, 6.02)
+
+[node name="B165" parent="Edge" type="CSGBox3D"]
+position = vec3(-21, 6.735, -108)
+size = vec3(6.02, 6.766, 0.8)
+
+[node name="B166" parent="Edge" type="CSGBox3D"]
+position = vec3(-108, 5.348, -15)
+size = vec3(0.8, 3.781, 6.02)
+
+[node name="B167" parent="Edge" type="CSGBox3D"]
+position = vec3(-15, 4.181, -108)
+size = vec3(6.02, 5.142, 0.8)
+
+[node name="B168" parent="Edge" type="CSGBox3D"]
+position = vec3(-108, 5.115, -9)
+size = vec3(0.8, 3.484, 6.02)
+
+[node name="B169" parent="Edge" type="CSGBox3D"]
+position = vec3(-9, 4.038, -108)
+size = vec3(6.02, 4.856, 0.8)
+
+[node name="B170" parent="Edge" type="CSGBox3D"]
+position = vec3(-108, 4.992, -3)
+size = vec3(0.8, 3.768, 6.02)
+
+[node name="B171" parent="Edge" type="CSGBox3D"]
+position = vec3(-3, 4.123, -108)
+size = vec3(6.02, 4.686, 0.8)
+
+[node name="B172" parent="Edge" type="CSGBox3D"]
+position = vec3(-108, 3.939, 3)
+size = vec3(0.8, 5.137, 6.02)
+
+[node name="B173" parent="Edge" type="CSGBox3D"]
+position = vec3(3, 1.635, -108)
+size = vec3(6.02, 7.091, 0.8)
+
+[node name="B174" parent="Edge" type="CSGBox3D"]
+position = vec3(-108, 2.139, 9)
+size = vec3(0.8, 5.262, 6.02)
+
+[node name="B175" parent="Edge" type="CSGBox3D"]
+position = vec3(9, -0.93, -108)
+size = vec3(6.02, 4.838, 0.8)
+
+[node name="B176" parent="Edge" type="CSGBox3D"]
+position = vec3(-108, 0.612, 15)
+size = vec3(0.8, 4.592, 6.02)
+
+[node name="B177" parent="Edge" type="CSGBox3D"]
+position = vec3(15, -1.698, -108)
+size = vec3(6.02, 3.498, 0.8)
+
+[node name="B178" parent="Edge" type="CSGBox3D"]
+position = vec3(-108, -0.361, 21)
+size = vec3(0.8, 4.154, 6.02)
+
+[node name="B179" parent="Edge" type="CSGBox3D"]
+position = vec3(21, -0.907, -108)
+size = vec3(6.02, 5.026, 0.8)
+
+[node name="B180" parent="Edge" type="CSGBox3D"]
+position = vec3(-108, -0.656, 27)
+size = vec3(0.8, 3.564, 6.02)
+
+[node name="B181" parent="Edge" type="CSGBox3D"]
+position = vec3(27, 0.2, -108)
+size = vec3(6.02, 3.988, 0.8)
+
+[node name="B182" parent="Edge" type="CSGBox3D"]
+position = vec3(-108, 0.233, 33)
+size = vec3(0.8, 5.014, 6.02)
+
+[node name="B183" parent="Edge" type="CSGBox3D"]
+position = vec3(33, -0.119, -108)
+size = vec3(6.02, 4.592, 0.8)
+
+[node name="B184" parent="Edge" type="CSGBox3D"]
+position = vec3(-108, 2.771, 39)
+size = vec3(0.8, 6.863, 6.02)
+
+[node name="B185" parent="Edge" type="CSGBox3D"]
+position = vec3(39, -0.623, -108)
+size = vec3(6.02, 3.949, 0.8)
+
+[node name="B186" parent="Edge" type="CSGBox3D"]
+position = vec3(-108, 5.845, 45)
+size = vec3(0.8, 6.085, 6.02)
+
+[node name="B187" parent="Edge" type="CSGBox3D"]
+position = vec3(45, 0.46, -108)
+size = vec3(6.02, 5.016, 0.8)
+
+[node name="B188" parent="Edge" type="CSGBox3D"]
+position = vec3(-108, 6.432, 51)
+size = vec3(0.8, 4.91, 6.02)
+
+[node name="B189" parent="Edge" type="CSGBox3D"]
+position = vec3(51, 1.703, -108)
+size = vec3(6.02, 4.271, 0.8)
+
+[node name="B190" parent="Edge" type="CSGBox3D"]
+position = vec3(-108, 4.661, 57)
+size = vec3(0.8, 5.432, 6.02)
+
+[node name="B191" parent="Edge" type="CSGBox3D"]
+position = vec3(57, 2.711, -108)
+size = vec3(6.02, 4.545, 0.8)
+
+[node name="B192" parent="Edge" type="CSGBox3D"]
+position = vec3(-108, 4.322, 63)
+size = vec3(0.8, 4.753, 6.02)
+
+[node name="B193" parent="Edge" type="CSGBox3D"]
+position = vec3(63, 3.844, -108)
+size = vec3(6.02, 4.521, 0.8)
+
+[node name="B194" parent="Edge" type="CSGBox3D"]
+position = vec3(-108, 5.422, 69)
+size = vec3(0.8, 4.246, 6.02)
+
+[node name="B195" parent="Edge" type="CSGBox3D"]
+position = vec3(69, 4.908, -108)
+size = vec3(6.02, 4.409, 0.8)
+
+[node name="B196" parent="Edge" type="CSGBox3D"]
+position = vec3(-108, 4.833, 75)
+size = vec3(0.8, 5.423, 6.02)
+
+[node name="B197" parent="Edge" type="CSGBox3D"]
+position = vec3(75, 5.531, -108)
+size = vec3(6.02, 3.637, 0.8)
+
+[node name="B198" parent="Edge" type="CSGBox3D"]
+position = vec3(-108, 2.522, 81)
+size = vec3(0.8, 5.999, 6.02)
+
+[node name="B199" parent="Edge" type="CSGBox3D"]
+position = vec3(81, 5.191, -108)
+size = vec3(6.02, 4.106, 0.8)
+
+[node name="B200" parent="Edge" type="CSGBox3D"]
+position = vec3(-108, 0.988, 87)
+size = vec3(0.8, 3.869, 6.02)
+
+[node name="B201" parent="Edge" type="CSGBox3D"]
+position = vec3(87, 4.981, -108)
+size = vec3(6.02, 3.687, 0.8)
+
+[node name="B202" parent="Edge" type="CSGBox3D"]
+position = vec3(-108, 2.03, 93)
+size = vec3(0.8, 5.479, 6.02)
+
+[node name="B203" parent="Edge" type="CSGBox3D"]
+position = vec3(93, 5.703, -108)
+size = vec3(6.02, 4.558, 0.8)
+
+[node name="B204" parent="Edge" type="CSGBox3D"]
+position = vec3(-108, 4.395, 99)
+size = vec3(0.8, 6.051, 6.02)
+
+[node name="B205" parent="Edge" type="CSGBox3D"]
+position = vec3(99, 6.475, -108)
+size = vec3(6.02, 3.786, 0.8)
+
+[node name="B206" parent="Edge" type="CSGBox3D"]
+position = vec3(-108, 6.748, 105)
+size = vec3(0.8, 5.456, 6.02)
+
+[node name="B207" parent="Edge" type="CSGBox3D"]
+position = vec3(105, 5.222, -108)
+size = vec3(6.02, 5.604, 0.8)
+
+[node name="B208" parent="Edge" type="CSGBox3D"]
+position = vec3(108, 3.657, -105)
+size = vec3(0.8, 4.325, 6.02)
+
+[node name="B209" parent="Edge" type="CSGBox3D"]
+position = vec3(-105, 7.322, 108)
+size = vec3(6.02, 4.308, 0.8)
+
+[node name="B210" parent="Edge" type="CSGBox3D"]
+position = vec3(108, 2.427, -99)
+size = vec3(0.8, 4.935, 6.02)
+
+[node name="B211" parent="Edge" type="CSGBox3D"]
+position = vec3(-99, 5.941, 108)
+size = vec3(6.02, 5.255, 0.8)
+
+[node name="B212" parent="Edge" type="CSGBox3D"]
+position = vec3(108, 1.417, -93)
+size = vec3(0.8, 3.885, 6.02)
+
+[node name="B213" parent="Edge" type="CSGBox3D"]
+position = vec3(-93, 4.474, 108)
+size = vec3(6.02, 4.478, 0.8)
+
+[node name="B214" parent="Edge" type="CSGBox3D"]
+position = vec3(108, 1.533, -87)
+size = vec3(0.8, 4.117, 6.02)
+
+[node name="B215" parent="Edge" type="CSGBox3D"]
+position = vec3(-87, 4.578, 108)
+size = vec3(6.02, 4.685, 0.8)
+
+[node name="B216" parent="Edge" type="CSGBox3D"]
+position = vec3(108, 2.312, -81)
+size = vec3(0.8, 4.24, 6.02)
+
+[node name="B217" parent="Edge" type="CSGBox3D"]
+position = vec3(-81, 6.103, 108)
+size = vec3(6.02, 5.163, 0.8)
+
+[node name="B218" parent="Edge" type="CSGBox3D"]
+position = vec3(108, 2.424, -75)
+size = vec3(0.8, 4.015, 6.02)
+
+[node name="B219" parent="Edge" type="CSGBox3D"]
+position = vec3(-75, 6.997, 108)
+size = vec3(6.02, 3.831, 0.8)
+
+[node name="B220" parent="Edge" type="CSGBox3D"]
+position = vec3(108, 2.52, -69)
+size = vec3(0.8, 4.278, 6.02)
+
+[node name="B221" parent="Edge" type="CSGBox3D"]
+position = vec3(-69, 5.803, 108)
+size = vec3(6.02, 5.358, 0.8)
+
+[node name="B222" parent="Edge" type="CSGBox3D"]
+position = vec3(108, 4.304, -63)
+size = vec3(0.8, 6.089, 6.02)
+
+[node name="B223" parent="Edge" type="CSGBox3D"]
+position = vec3(-63, 4.447, 108)
+size = vec3(6.02, 4.152, 0.8)
+
+[node name="B224" parent="Edge" type="CSGBox3D"]
+position = vec3(108, 6.008, -57)
+size = vec3(0.8, 4.119, 6.02)
+
+[node name="B225" parent="Edge" type="CSGBox3D"]
+position = vec3(-57, 5.109, 108)
+size = vec3(6.02, 5.192, 0.8)
+
+[node name="B226" parent="Edge" type="CSGBox3D"]
+position = vec3(108, 5.051, -51)
+size = vec3(0.8, 5.805, 6.02)
+
+[node name="B227" parent="Edge" type="CSGBox3D"]
+position = vec3(-51, 6.338, 108)
+size = vec3(6.02, 4.066, 0.8)
+
+[node name="B228" parent="Edge" type="CSGBox3D"]
+position = vec3(108, 2.71, -45)
+size = vec3(0.8, 5.678, 6.02)
+
+[node name="B229" parent="Edge" type="CSGBox3D"]
+position = vec3(-45, 6.828, 108)
+size = vec3(6.02, 3.716, 0.8)
+
+[node name="B230" parent="Edge" type="CSGBox3D"]
+position = vec3(108, 1.324, -39)
+size = vec3(0.8, 3.894, 6.02)
+
+[node name="B231" parent="Edge" type="CSGBox3D"]
+position = vec3(-39, 7.007, 108)
+size = vec3(6.02, 3.442, 0.8)
+
+[node name="B232" parent="Edge" type="CSGBox3D"]
+position = vec3(108, 1.152, -33)
+size = vec3(0.8, 3.549, 6.02)
+
+[node name="B233" parent="Edge" type="CSGBox3D"]
+position = vec3(-33, 6.345, 108)
+size = vec3(6.02, 4.767, 0.8)
+
+[node name="B234" parent="Edge" type="CSGBox3D"]
+position = vec3(108, 1.247, -27)
+size = vec3(0.8, 3.442, 6.02)
+
+[node name="B235" parent="Edge" type="CSGBox3D"]
+position = vec3(-27, 4.202, 108)
+size = vec3(6.02, 6.317, 0.8)
+
+[node name="B236" parent="Edge" type="CSGBox3D"]
+position = vec3(108, 0.968, -21)
+size = vec3(0.8, 3.98, 6.02)
+
+[node name="B237" parent="Edge" type="CSGBox3D"]
+position = vec3(-21, 1.588, 108)
+size = vec3(6.02, 5.712, 0.8)
+
+[node name="B238" parent="Edge" type="CSGBox3D"]
+position = vec3(108, 1.427, -15)
+size = vec3(0.8, 4.996, 6.02)
+
+[node name="B239" parent="Edge" type="CSGBox3D"]
+position = vec3(-15, 0.373, 108)
+size = vec3(6.02, 3.897, 0.8)
+
+[node name="B240" parent="Edge" type="CSGBox3D"]
+position = vec3(108, 4.275, -9)
+size = vec3(0.8, 7.501, 6.02)
+
+[node name="B241" parent="Edge" type="CSGBox3D"]
+position = vec3(-9, 2.041, 108)
+size = vec3(6.02, 6.238, 0.8)
+
+[node name="B242" parent="Edge" type="CSGBox3D"]
+position = vec3(108, 6.893, -3)
+size = vec3(0.8, 4.536, 6.02)
+
+[node name="B243" parent="Edge" type="CSGBox3D"]
+position = vec3(-3, 5.198, 108)
+size = vec3(6.02, 6.876, 0.8)
+
+[node name="B244" parent="Edge" type="CSGBox3D"]
+position = vec3(108, 5.266, 3)
+size = vec3(0.8, 7.376, 6.02)
+
+[node name="B245" parent="Edge" type="CSGBox3D"]
+position = vec3(3, 7.394, 108)
+size = vec3(6.02, 4.317, 0.8)
+
+[node name="B246" parent="Edge" type="CSGBox3D"]
+position = vec3(108, 1.362, 9)
+size = vec3(0.8, 7.232, 6.02)
+
+[node name="B247" parent="Edge" type="CSGBox3D"]
+position = vec3(9, 6.678, 108)
+size = vec3(6.02, 5.748, 0.8)
+
+[node name="B248" parent="Edge" type="CSGBox3D"]
+position = vec3(108, -0.841, 15)
+size = vec3(0.8, 3.974, 6.02)
+
+[node name="B249" parent="Edge" type="CSGBox3D"]
+position = vec3(15, 4.273, 108)
+size = vec3(6.02, 5.862, 0.8)
+
+[node name="B250" parent="Edge" type="CSGBox3D"]
+position = vec3(108, -1.516, 21)
+size = vec3(0.8, 4.175, 6.02)
+
+[node name="B251" parent="Edge" type="CSGBox3D"]
+position = vec3(21, 3.339, 108)
+size = vec3(6.02, 3.994, 0.8)
+
+[node name="B252" parent="Edge" type="CSGBox3D"]
+position = vec3(108, -2.104, 27)
+size = vec3(0.8, 3.8, 6.02)
+
+[node name="B253" parent="Edge" type="CSGBox3D"]
+position = vec3(27, 4.318, 108)
+size = vec3(6.02, 4.765, 0.8)
+
+[node name="B254" parent="Edge" type="CSGBox3D"]
+position = vec3(108, -2.059, 33)
+size = vec3(0.8, 3.891, 6.02)
+
+[node name="B255" parent="Edge" type="CSGBox3D"]
+position = vec3(33, 4.924, 108)
+size = vec3(6.02, 3.7, 0.8)
+
+[node name="B256" parent="Edge" type="CSGBox3D"]
+position = vec3(108, -1.17, 39)
+size = vec3(0.8, 4.686, 6.02)
+
+[node name="B257" parent="Edge" type="CSGBox3D"]
+position = vec3(39, 4.073, 108)
+size = vec3(6.02, 4.803, 0.8)
+
+[node name="B258" parent="Edge" type="CSGBox3D"]
+position = vec3(108, -0.112, 45)
+size = vec3(0.8, 4.23, 6.02)
+
+[node name="B259" parent="Edge" type="CSGBox3D"]
+position = vec3(45, 2.851, 108)
+size = vec3(6.02, 4.442, 0.8)
+
+[node name="B260" parent="Edge" type="CSGBox3D"]
+position = vec3(108, 0.386, 51)
+size = vec3(0.8, 3.565, 6.02)
+
+[node name="B261" parent="Edge" type="CSGBox3D"]
+position = vec3(51, 2.063, 108)
+size = vec3(6.02, 3.933, 0.8)
+
+[node name="B262" parent="Edge" type="CSGBox3D"]
+position = vec3(108, 0.765, 57)
+size = vec3(0.8, 3.994, 6.02)
+
+[node name="B263" parent="Edge" type="CSGBox3D"]
+position = vec3(57, 1.305, 108)
+size = vec3(6.02, 4.382, 0.8)
+
+[node name="B264" parent="Edge" type="CSGBox3D"]
+position = vec3(108, 1.621, 63)
+size = vec3(0.8, 4.517, 6.02)
+
+[node name="B265" parent="Edge" type="CSGBox3D"]
+position = vec3(63, 0.339, 108)
+size = vec3(6.02, 4.35, 0.8)
+
+[node name="B266" parent="Edge" type="CSGBox3D"]
+position = vec3(108, 3.775, 69)
+size = vec3(0.8, 6.59, 6.02)
+
+[node name="B267" parent="Edge" type="CSGBox3D"]
+position = vec3(69, 0.297, 108)
+size = vec3(6.02, 4.266, 0.8)
+
+[node name="B268" parent="Edge" type="CSGBox3D"]
+position = vec3(108, 7.162, 75)
+size = vec3(0.8, 6.983, 6.02)
+
+[node name="B269" parent="Edge" type="CSGBox3D"]
+position = vec3(75, 1.595, 108)
+size = vec3(6.02, 5.13, 0.8)
+
+[node name="B270" parent="Edge" type="CSGBox3D"]
+position = vec3(108, 9.905, 81)
+size = vec3(0.8, 5.304, 6.02)
+
+[node name="B271" parent="Edge" type="CSGBox3D"]
+position = vec3(81, 2.777, 108)
+size = vec3(6.02, 4.035, 0.8)
+
+[node name="B272" parent="Edge" type="CSGBox3D"]
+position = vec3(108, 10.279, 87)
+size = vec3(0.8, 4.556, 6.02)
+
+[node name="B273" parent="Edge" type="CSGBox3D"]
+position = vec3(87, 4.478, 108)
+size = vec3(6.02, 6.167, 0.8)
+
+[node name="B274" parent="Edge" type="CSGBox3D"]
+position = vec3(108, 8.463, 93)
+size = vec3(0.8, 5.877, 6.02)
+
+[node name="B275" parent="Edge" type="CSGBox3D"]
+position = vec3(93, 8.118, 108)
+size = vec3(6.02, 7.913, 0.8)
+
+[node name="B276" parent="Edge" type="CSGBox3D"]
+position = vec3(108, 7.032, 99)
+size = vec3(0.8, 3.786, 6.02)
+
+[node name="B277" parent="Edge" type="CSGBox3D"]
+position = vec3(99, 11.047, 108)
+size = vec3(6.02, 4.745, 0.8)
+
+[node name="B278" parent="Edge" type="CSGBox3D"]
+position = vec3(108, 7.564, 105)
+size = vec3(0.8, 4.467, 6.02)
+
+[node name="B279" parent="Edge" type="CSGBox3D"]
+position = vec3(105, 9.892, 108)
+size = vec3(6.02, 6.988, 0.8)
+
