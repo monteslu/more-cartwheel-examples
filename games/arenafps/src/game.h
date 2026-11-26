@@ -130,7 +130,8 @@ typedef struct pad {
 typedef struct arena_info {
   const char *name, *blurb;
 } arena_info;
-#define ARENAS 3
+#define ARENAS 4
+#define ARENA_BATTLE 3 /* FARMLANDS, the open-country map with command posts (levels/battle.lvl: its "post" lines) */
 extern const arena_info ARENA_INFO[ARENAS];
 
 typedef struct arena {

@@ -16,6 +16,7 @@ const arena_info ARENA_INFO[ARENAS] = {
   { "FOUNDRY", "a core hall, side halls, a ring corridor and the roofs over it all" },
   { "COURTYARD", "four houses, streets, a plaza, bridges from roof to roof" },
   { "TERRACES", "a flooded pit, ledges, tunnels and the terrace above" },
+  { "FARMLANDS", "open country: five command posts, ruined farms and lanes over low hills" },
 };
 
 typedef struct palette {
@@ -32,6 +33,8 @@ static palette PAL[ARENAS] = {
     { 0.3f, 0.45f, 0.75f, 1 }, { 0.7f, 0.72f, 0.75f, 1 }, 4.5f, 0.55f, { -1.0f, -0.5f, 0 }, { 1, 0.95f, 0.85f, 1 } },
   { { 0.25f, 0.33f, 0.28f, 1 }, { 0.4f, 0.42f, 0.46f, 1 }, { 0.9f, 0.9f, 0.2f, 1 }, { 0.2f, 0.4f, 0.5f, 1 },
     { 0.12f, 0.15f, 0.3f, 1 }, { 0.4f, 0.3f, 0.35f, 1 }, 2.6f, 0.45f, { -0.55f, 0.9f, 0 }, { 1, 0.6f, 0.4f, 1 } },
+  { { 0.32f, 0.33f, 0.24f, 1 }, { 0.55f, 0.52f, 0.47f, 1 }, { 0.95f, 0.75f, 0.2f, 1 }, { 0.4f, 0.42f, 0.38f, 1 },
+    { 0.3f, 0.46f, 0.75f, 1 }, { 0.68f, 0.72f, 0.78f, 1 }, 4.5f, 0.55f, { -0.8f, 0.4f, 0 }, { 1, 0.95f, 0.86f, 1 } },
 };
 
 static cw_node mesh_box(t3_vec3 center, t3_vec3 size, cw_color c, t3_quat q, float rough, bool shadow) {
@@ -63,8 +66,8 @@ static float tune(const char *name, float def);
 #define LAMP_REACH_VL (tune("reach_vl", 0.55f))
 #define LAMP_REACH_LOW (tune("reach_low", 0.55f))
 /* the glow behind each arena's windows (linear) and the colour of its practical lamps (sRGB) */
-static const float WINDOW_GLOW[ARENAS][3] = { { 1.4f, 1.0f, 0.55f }, { 1.6f, 1.0f, 0.45f }, { 1.8f, 1.2f, 0.65f } };
-static const float LAMP_RGB[ARENAS][3] = { { 1.0f, 0.62f, 0.25f }, { 1.0f, 0.7f, 0.35f }, { 1.0f, 0.75f, 0.45f } };
+static const float WINDOW_GLOW[ARENAS][3] = { { 1.4f, 1.0f, 0.55f }, { 1.6f, 1.0f, 0.45f }, { 1.8f, 1.2f, 0.65f }, { 1.6f, 1.0f, 0.45f } };
+static const float LAMP_RGB[ARENAS][3] = { { 1.0f, 0.62f, 0.25f }, { 1.0f, 0.7f, 0.35f }, { 1.0f, 0.75f, 0.45f }, { 1.0f, 0.7f, 0.35f } };
 static mesh_build MB[K_KINDS];
 static float TINT[K_KINDS][3];
 
@@ -117,6 +120,23 @@ static const kmat KMAT[ARENAS][K_KINDS] = {
     [K_WINDOW] = { TEX_WINDOWS, 3, 1, 0, 0.5f, { 0.12f, 0.12f, 0.13f } },
     [K_GIRDER] = { TEX_PANEL_STEEL, 4, 0.9f, 0.2f, 0.6f, { 1, 1, 1 } },
     [K_PILLAR] = { TEX_FORMED, 4, 1, 0, 1, { 0.85f, 0.85f, 0.85f } },
+    [K_PAINT] = { TEX_PAINT, 1, 1, 0, 1, { 1, 1, 1 } },
+    [K_LAMP] = { TEX_GLASS, 1, 1, 0, 0.3f, { 1, 1, 1 } },
+  },
+  { /* FARMLANDS (the Battle map): grass fields, churned dirt lanes, gravel at the posts, stone ruins and field walls,
+     * cast concrete cover, painted capture rings (the ground is the level's own meshes: levels/battle_*.cwcsg) */
+    [K_FLOOR] = { TEX_DIRT, 6.5f, 4, 0, 1, { 0.95f, 0.92f, 0.88f } }, /* roughness x4: the map's wet patches stay matte */
+    [K_WALL] = { TEX_BLOCKS, 4, 1, 0, 1, { 0.92f, 0.9f, 0.86f } },
+    [K_ACCENT] = { TEX_FORMED, 4, 1, 0, 1, { 0.9f, 0.9f, 0.88f } },
+    [K_METAL] = { TEX_STEEL, 2, 0.9f, 0.85f, 1, { 0.5f, 0.5f, 0.52f } },
+    [K_CRATE] = { TEX_WOOD, 4, 1, 0, 1, { 1, 0.9f, 0.75f } },
+    [K_LEAF] = { TEX_GRASS, 4, 1, 0, 2, { 0.78f, 0.84f, 0.66f } },
+    [K_CLAD] = { TEX_GRAVEL, 3, 1, 0, 1, { 1, 1, 1 } },
+    [K_TRIM] = { TEX_PAINT, 1, 1, 0, 1, { 0.92f, 0.9f, 0.85f } },
+    [K_GRATE] = { TEX_GRATE, 1, 1, 0.7f, 1, { 1, 1, 1 } },
+    [K_WINDOW] = { TEX_WINDOWS, 2, 1, 0, 0.5f, { 0.12f, 0.12f, 0.13f } },
+    [K_GIRDER] = { TEX_WOOD, 4, 1, 0, 1, { 0.6f, 0.45f, 0.35f } },
+    [K_PILLAR] = { TEX_BLOCKS, 4, 1, 0, 1, { 0.8f, 0.78f, 0.74f } },
     [K_PAINT] = { TEX_PAINT, 1, 1, 0, 1, { 1, 1, 1 } },
     [K_LAMP] = { TEX_GLASS, 1, 1, 0, 0.3f, { 1, 1, 1 } },
   },
@@ -617,7 +637,7 @@ static void bridge_rails(float x0, float z0, float x1, float z1, float y) {
 }
 
 static bool load_layout(int id) {
-  static const char *FILE[ARENAS] = { "foundry", "courtyard", "terraces" };
+  static const char *FILE[ARENAS] = { "foundry", "courtyard", "terraces", "battle" };
   char path[64];
   snprintf(path, sizeof path, "levels/%s.lvl", FILE[id]);
   size_t len = 0;
@@ -920,9 +940,10 @@ void arena_build(int id, cw_node world_root) {
   switch (id) {
     case 0: dress_foundry(p); break;
     case 1: dress_courtyard(p); break;
-    default: dress_terraces(p); break;
+    case 2: dress_terraces(p); break;
+    default: break; /* the Battle map: no shell, its ground, field wall and berm are level pieces */
   }
-  if (tune("skyline", 1) > 0.5f) { if (id == 0) skyline_foundry(); else skyline(id); } /* ARENA_T_skyline=0 (autopilot): the void, for before and after */
+  if (tune("skyline", 1) > 0.5f && id < ARENA_BATTLE) { if (id == 0) skyline_foundry(); else skyline(id); } /* ARENA_T_skyline=0 (autopilot): the void, for before and after */
   { /* faces laid flush on others (decks, trims, wall boxes sharing a face) 5 mm proud: no surface fights another for the depth test */
     clock_t t0 = clock();
     int left = 0, moved = 0;
@@ -1004,7 +1025,7 @@ void arena_build(int id, cw_node world_root) {
   /* clouds: a sky plane high over the arena, added over the procedural sky and faded out well before the far plane */
   if (tune("clouds", 1) > 0.01f) {
     static const float CL[ARENAS][5] = { /* coverage, tint r g b (linear), height */
-      { 0.42f, 1.9f, 1.7f, 1.45f, 70 }, { 0.32f, 2.0f, 2.0f, 2.05f, 80 }, { 0.55f, 1.5f, 0.7f, 0.55f, 60 } };
+      { 0.42f, 1.9f, 1.7f, 1.45f, 70 }, { 0.32f, 2.0f, 2.0f, 2.05f, 80 }, { 0.55f, 1.5f, 0.7f, 0.55f, 60 }, { 0.38f, 2.0f, 2.0f, 2.05f, 110 } };
     const float *cl = CL[id];
     mesh_build g = { 0 };
     const int cells = 24;
@@ -1207,6 +1228,8 @@ static const mood MOODS[ARENAS] = {
   { 9.6f, 20, 130, 4.6f, 1.1f, 0.6f, 1.0f, 0.1f, 0.0015f, 0.1f, 0.35f, { 0.45f, 0.5f, 0.58f, 1 }, -0.15f, 0.25f, 1.8f, 0, "luts/courtyard.cube", 0.3f, 0 },
   /* TERRACES: dusk, a low red sun, violet haze, the lamps coming on over wet slate */
   { 17.5f, 10, 250, 3.6f, 1.0f, 1.2f, 1.1f, 0.3f, 0.004f, 0.1f, 0.6f, { 0.2f, 0.16f, 0.24f, 1 }, 0.1f, 0.4f, 1.4f, 1, "luts/terraces.cube", 0.15f, 1 },
+  /* FARMLANDS: late morning over open country, a light haze that pales the far hills */
+  { 10.5f, 18, 60, 4.5f, 1.05f, 0.7f, 1.0f, 0.32f, 0.0022f, 0.05f, 0.4f, { 0.55f, 0.6f, 0.66f, 1 }, -0.15f, 0.25f, 1.8f, 0, "luts/courtyard.cube", 0.3f, 0 },
 };
 
 void arena_mood(int id, cw_node env, cw_node sun, cw_node sky, cw_node fog, cw_node post) {
