@@ -28,6 +28,7 @@
 #include "fx.h"
 #include "game.h"
 #include "soldier.h"
+#include "crowd.h"
 
 #ifdef ARENA_AUTOPILOT
 /* key art for a cart (the debug command keyart): what ARENA_CHASE and ARENA_NOHUD do natively, which a cart cannot
@@ -2033,6 +2034,7 @@ static cw_node make_body(int team, fighter *f) {
 static void clear_world(void) {
   if (cw_node_valid(G.world)) {
     fx_reset();
+    crowd_reset();
     cw_node_free(G.world);
     soldier_free_all();
   }
@@ -2522,6 +2524,7 @@ static void sync_nodes(void) {
     int ne = 0;
     for (int h = 0; h < G.players && h < MAXH; h++) eyes[ne++] = eye_pos(F(h));
     soldier_tick(G.f, G.nf, eyes, ne, G.views < 2);
+    crowd_tick(G.world, eyes, ne); /* the background battle (the Battle mode; off otherwise) */
   }
   if (G.views < 2 && G.nf > 0) { /* no view hook with one view: this player's own gun, not own body */
     if (cw_node_valid(F(0)->body)) cw_node_set(F(0)->body, "visible", cw_val_bool(false));

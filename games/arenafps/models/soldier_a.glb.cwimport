@@ -5,5 +5,6 @@
 retarget.source = anim/ual.glb
 retarget.fps = 30
 retarget.plant = walk_f walk_fl walk_fr walk_l walk_r walk_b walk_bl walk_br walk_bl90 walk_br90
-# coarser index buffers for soldiers far off (cw_gltf_instance_auto_lod picks one by its error on screen)
-mesh.lods = 0.5 0.25 0.12
+# coarser index buffers for soldiers far off (soldier.c: the quarter past 15 m, the eighth past 50 m); the last, a
+# twenty-fifth, is the background battle's figures (crowd.c bakes still poses from it)
+mesh.lods = 0.5 0.25 0.12 0.04

@@ -4,6 +4,7 @@
 //        [--players 1,2,3,4] [--gpus gl,webgpu] [--res 1920x1080] [--end 1200] [--window 600]
 //        [--runs 5] [--pairs 7] [--shots dir] [--json out/arenafps-split-bench.json]
 //        [--exes a,b]   A/B: these derby binaries instead of the build's, runs interleaved
+//   ARENA_BENCH_CMDS: debug commands before the measure ("quality high": a preset held, not Auto)
 //
 // Run it through with-gpu-suite.mjs (the GPU suite lock, the test GPU, no
 // desktop). Each round runs every player count twice: a clean run for the
@@ -58,7 +59,7 @@ for (const e of EXES) if (!existsSync(e)) { console.error(`no native arenafps_au
 async function run(exe, n, gpu, timed, shot) {
   const dir = tempDir(OUT, 'arenafps-split-bench-');
   const env = { ...process.env, CW_FRAMES: String(END), SDL_AUDIODRIVER: 'dummy', ARENA_PLAYERS: String(n), ARENA_ID: process.env.ARENA_ID || '0', ARENA_MODE: process.env.ARENA_MODE || '0', ARENA_BOTS: process.env.ARENA_BOTS || '4', ARENA_RES: RES,
-    CW_DEBUG_CMDS: `perf ${WINDOW};pipeline`, CW_WGPU_VALIDATION: '0' };
+    CW_DEBUG_CMDS: `${process.env.ARENA_BENCH_CMDS ? process.env.ARENA_BENCH_CMDS + ';' : ''}perf ${WINDOW};pipeline`, CW_WGPU_VALIDATION: '0' };
   if (timed) env.CW_GPU_TIMERS = '1';
   if (shot) { mkdirSync(resolve(SHOTS), { recursive: true }); env.CW_SCREENSHOT = join(resolve(SHOTS), `arenafps-${n}p-${gpu}${EXES.length > 1 ? '-' + EXES.indexOf(exe) : ''}.png`); }
   const pin = gpu === 'webgpu' ? wgpuPin() : null, gl = pin ? null : glPin();

@@ -43,6 +43,17 @@
   jetski-camera the new one; jetski-water-ramp leaves the standings column out of its foam count; jetski-minimap turns the lens drops
   and the thick spray off, so only the map differs between its two pictures; jetski-weather's stunt check turns the
   rings off, so its no-tricks control scores nothing.
+- Arena shooter, for the Battle mode:
+  - A cheaper far soldier: past 15 m a body draws the model's quarter mesh (about 2,500 triangles), past 50 m its
+    eighth. Near by the picture is the same as before.
+  - A background battle out of reach (src/crowd.c), behind a switch the Battle mode turns on, off everywhere else. Two
+    lines of soldiers fight past the walls: on the courtyard's valley slopes, and along the terraces' streets. They
+    run up, stand to fire, fall and come back. Muzzle flashes and tracers cross between the lines, with a blast far
+    off now and then. Every flash swells and fades. A low rumble of the fight plays under it all. The figures are
+    still poses baked once from the soldier's coarsest mesh, drawn instanced, so the whole battle is about 14 draws.
+- Tests: arenafps-battle (native, GL and WebGPU: the soldier 5 m off matches the build before, and its control, the
+  far mesh at 5 m, must differ; the background battle from a player's eye looking out at each zone, off and on) and
+  arenafps-battle-cost (what the battle costs at one view on High, off against on, in 890M units on a pool lane).
 
 ## 0.41.0
 

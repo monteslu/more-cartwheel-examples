@@ -652,8 +652,22 @@ static void tick_body(int i, fighter *f, body *b, const t3_vec3 *eyes, int neyes
   }
   bool sh = lod <= 1;
   if (sh != b->shadow) set_cast(b->inst, sh), b->shadow = sh;
-  int ml = lod;
-  if (ml != b->mesh_lod) cw_gltf_instance_set_lod(b->inst, ml), b->mesh_lod = ml;
+  /* the mesh: the full one near by, past 15 m the packer's quarter (about 2,500 triangles: models/soldier_*.glb.cwimport),
+   * past 50 m its eighth; one primitive and one material, so a body costs one colour draw (and one shadow draw near by) */
+  int ml = dist < 15 ? 0 : dist < 50 ? 2 : 3;
+#ifdef ARENA_AUTOPILOT
+  { /* ARENA_SOLDIER_LOD=n: every body at mesh level n (the same-picture check's control: the far mesh at 5 m) */
+    static int force = -2;
+    if (force == -2) force = getenv("ARENA_SOLDIER_LOD") ? atoi(getenv("ARENA_SOLDIER_LOD")) : -1;
+    if (force >= 0) ml = force;
+  }
+#endif
+  if (ml != b->mesh_lod) {
+    int tris = cw_gltf_instance_set_lod(b->inst, ml);
+    b->mesh_lod = ml;
+    static int told[8];
+    if (ml >= 0 && ml < 8 && !told[ml]) told[ml] = 1, cw_info("arenafps: soldier mesh level %d draws %d triangles", ml, tris);
+  }
   SOLDIER_ST.lod[lod]++;
   mrec_note(i, f, b);
   /* the body's own frame: its front (-Z at yaw 0) and its left */

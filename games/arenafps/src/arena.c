@@ -7,6 +7,7 @@
 
 #include "cartwheel/csg.h"
 #include "game.h"
+#include "crowd.h"
 #include "cartwheel/quality.h"
 
 arena A;
@@ -1723,6 +1724,27 @@ static void sk_city_build(void) {
           sk_box(&f, 0, 0, 0.18f, 0.18f, -0.5f, 5.6f, pole, false);
           sk_glow_box(x, 5.6f, z, 0.3f, GLOW_WARM);
         }
+}
+
+/* the ground past the walls for the background battle (crowd.c): the courtyard's valley and slopes clear of its houses
+ * and trees, the terraces' streets clear of the blocks and the lamp posts; none at the foundry (its works stand in
+ * the dark) nor with the skyline off */
+bool arena_outside_ground(float x, float z, float clear, float *y) {
+  if (tune("skyline", 1) <= 0.5f || SK.id != A.id) return false;
+  float r2 = x * x + z * z;
+  if (r2 > 165.0f * 165.0f || (fabsf(x) < 38 && fabsf(z) < 38)) return false;
+  if (A.id == 1) {
+    if (clear >= 0 && !sk_free(x, z, clear)) return false;
+    *y = sk_hill(x, z);
+    return true;
+  }
+  if (A.id == 2) {
+    float gx = fabsf(x - roundf(x / 30) * 30), gz = fabsf(z - roundf(z / 30) * 30), c = clear < 0 ? 0 : clear;
+    if (gx > 2.7f - c && gz > 2.7f - c) return false; /* inside a block */
+    *y = sk_city(x, z);
+    return true;
+  }
+  return false;
 }
 
 static void skyline(int id) {
