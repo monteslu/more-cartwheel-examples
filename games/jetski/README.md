@@ -49,7 +49,7 @@ On the grid a rev gauge under the count fills while the throttle is down. Press 
 light and you get a rocket start; held from the first beat it runs into the red and the pump bogs for a moment at the
 light (let go and press again to clear it). Lean back as you come down nose first and you keep most of your speed; the
 first time a landing like that costs you, the screen says so. The stick eases in: half over turns a quarter as hard, so a
-small correction stays small, and the d-pad is full on or off. A craft settles into the water off the plane and rises
+small correction stays small, and the d-pad is full on or off. Your craft settles into the water off the plane and rises
 onto it at speed. The race's big moments (a lap, the last lap, a turbo, a trick) are stamped across the picture and fade,
 one at a time, and over the line the top three throw their arms up. The standings run down the left, every rider in
 order with their colours and the gap to you. Rain and the spray of a hard landing bead on the camera's lens and run off.

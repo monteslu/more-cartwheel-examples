@@ -12,14 +12,16 @@
     changes place glows once.
   - A championship race lines up by the last race's finish, and the grid says where you start.
   - Six riders: Cruz, Marlin, Kestrel, Tide, Juno and Reef. Each has their own colours, build and ratings
-    (acceleration, top speed, handling, tricks, weight) that change the ride. Pick one on the menu's Rider row.
+    (acceleration, top speed, handling, tricks, weight) that change the ride. Pick one on the menu's Rider row. The
+    ratings, deep water and the slipstream are the player's: the computer riders race as they did, so the pack stays
+    a race.
   - The race radio: the crew chief of your rider speaks only on news (big waves coming, the last lap, a rival closing,
     the lead, the day's short way open), and the other riders call out a pass. The voices are Kokoro-82M, baked ahead
     of time with the engine's speech tool. Every line also shows as a subtitle. Audio: Race radio sets the volume,
     and 0 is off.
   - Steering assist (menu): the computer steers the racing line while the stick is let go.
   - The stick steers from a small dead zone and squares what is past it, so a nudge stays small.
-  - A craft settles into the water off the plane and rises onto it at speed. The first nose-down landing that costs
+  - Your craft settles into the water off the plane and rises onto it at speed. The first nose-down landing that costs
     you speed says how to save the next one.
   - The chase camera sits lower and closer at speed, and eases back to hold a long flight.
   - The spray is thicker and whiter. Rain and the spray of a hard landing bead on the camera's lens and run off.
@@ -30,18 +32,16 @@
     3 % more top speed.
   - In stunt mode a gold ring hangs over each ramp's jump, and the same trick again pays less. Bronze, silver and gold
     medals at 10000, 25000 and 45000 points on every course.
-  - A computer rider rated low for handling eases off the throttle through a sharp turn at speed instead of running
-    wide into a wall or a quay.
   - Fixed: two riders over the line within a second of each other could be put in the wrong order. Their finish
     times were compared at float precision near ten million.
 - Tests: jetski-moments, jetski-camera (through romdev, GL and WebGPU), jetski-steer, jetski-deep, jetski-cast,
   jetski-trick-value, jetski-rings, jetski-radio and jetski-life. Each has a control that must fail. jetski-finish, jetski-handling,
   jetski-menu and jetski-newcomer (--assist) cover the start, the verbs, the landing tip, the Rider, Steering assist
   and Race radio rows, and the grid by result.
-- Tests: jetski-races counts a rider as stuck only while riding (the seconds after a spill are the spill's);
-  jetski-water measures the water from the old chase camera (sw cam_old 1), as its bounds were set, and jetski-camera
+- Tests: jetski-water measures the water from the old chase camera (sw cam_old 1), as its bounds were set, and jetski-camera
   the new one; jetski-water-ramp leaves the standings column out of its foam count; jetski-minimap turns the lens drops
-  and the thick spray off, so only the map differs between its two pictures; jetski-weather's stunt check turns the rings off, so its no-tricks control scores nothing.
+  and the thick spray off, so only the map differs between its two pictures; jetski-weather's stunt check turns the
+  rings off, so its no-tricks control scores nothing.
 
 ## 0.41.0
 

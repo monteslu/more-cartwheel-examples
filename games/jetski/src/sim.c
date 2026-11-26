@@ -115,7 +115,7 @@ static void ram(craft *a, craft *b, float nx, float nz, float closing, int i, in
     float roll = (float)((h >> (k * 12)) & 4095u) / 4096.0f;
     g_ram_last[1 + k] = flank;
     if (g_craft == CRAFT_STAND) p *= 1.25f; /* a rider standing goes over sooner */
-    if (g_rider_stats) p *= 1.0f - 0.12f * (RIDER_STATS[rider_of(k ? j : i)].weight - 3); /* a heavy rider holds on, a light one goes over */
+    if (g_rider_stats) p *= 1.0f - 0.12f * (c[k]->human ? 1.0f : 0.0f) * (RIDER_STATS[rider_of(k ? j : i)].weight - 3); /* a heavy rider holds on, a light one goes over */
     if (roll < p) {
       c[k]->spill = 1.9f, c[k]->spills++, c[k]->big_slide = true, c[k]->crashed = true;
       c[k]->vx *= 0.7f, c[k]->vz *= 0.7f;
@@ -287,10 +287,7 @@ static void computer(craft *c, int idx) {
    * as a dive), or it comes down tail first */
   c->in.lean = fabsf(err) > 0.55f && !(c->air && c->pitch > 0.45f) ? 1.0f : 0.0f;
   if (c->air && c->air_time > 0.6f && c->vy < 0 && c->y - c->surf < -c->vy * 0.8f) c->in.lean = c->pitch > 0.35f ? -0.29f : 0.0f;
-  /* a rider who turns slowly (handling under 3) eases off through a sharp turn at speed, as a person on that craft would,
-     rather than running wide into a wall or a quay */
-  { int h = g_rider_stats ? RIDER_STATS[rider_of(idx)].handling : 3;
-    c->in.throttle = h < 3 && fabsf(err) > 0.7f && c->speed > 13.0f ? 0.55f : 1.0f; }
+  c->in.throttle = 1;
   c->in.trick = false;
 }
 
@@ -471,7 +468,6 @@ static void tanker_craft(craft *c, float dt) {
   c->wake_on = true;
 }
 
-float g_stuck_at[8]; /* the rival stuck longest: its seat, where (x, z), how far round the course, its speed, the tanker (x, z), the rival's spill */
 int g_rider, g_rider_stats = 1;
 float g_rider_k[RACERS][4]; /* each seat's multipliers this race: pump, top speed, turn, trick speed (the cast gate) */
 static void craft_tick(craft *c, int idx, float dt) {
@@ -481,7 +477,9 @@ static void craft_tick(craft *c, int idx, float dt) {
   /* the rider's ratings: a 5 against a 3 is a pump 14 % stronger, a top speed 6 % higher, a turn 14 % quicker, a trick
      16 % faster; weight is in the bumps (ram). Every rider's ratings add to the same, so each wins somewhere */
   const rider_stats *RS = &RIDER_STATS[g_rider_stats ? rider_of(idx) : 0];
-  float k_acc = 1 + 0.07f * (RS->accel - 3), k_top = 1 + 0.03f * (RS->top - 3), k_turn = 1 + 0.07f * (RS->handling - 3), k_trick = 1 + 0.08f * (RS->tricks - 3);
+  /* the ratings are the player's rider's: the computer riders race as they always have, so the pack stays a race */
+  const float rk = c->human ? 1.0f : 0.0f;
+  float k_acc = 1 + 0.07f * rk * (RS->accel - 3), k_top = 1 + 0.03f * rk * (RS->top - 3), k_turn = 1 + 0.07f * rk * (RS->handling - 3), k_trick = 1 + 0.08f * rk * (RS->tricks - 3);
   float thrust = H->thrust * k_acc, trick_t = H->trick_t / k_trick;
   g_rider_k[idx][0] = k_acc, g_rider_k[idx][1] = k_top, g_rider_k[idx][2] = k_turn, g_rider_k[idx][3] = k_trick;
   bool stand = g_craft == CRAFT_STAND;
@@ -532,9 +530,10 @@ static void craft_tick(craft *c, int idx, float dt) {
   /* the rise of the surface itself, seen from the moving craft */
   float rel_vy = c->vy - s.velocity.y;
   float ay = -G_ACC;
-  /* off the plane a craft rides deep, settled into the water, and rises onto it as it planes: the spring holds it lower.
+  /* off the plane the player's craft rides deep, settled into the water, and rises onto it as it planes: the spring holds it
+     lower (the computer riders ride on top as they always have).
      sw deep 0: the sit-down rides on top at every speed, as it did (the deep-water gate's control) */
-  float sink = (stand || g_deep) ? H->sink_rest * (1.0f - c->plane) : 0.0f;
+  float sink = (stand || (g_deep && c->human)) ? H->sink_rest * (1.0f - c->plane) : 0.0f;
   if (!c->air) ay += (SPRING * clampf(under - sink, -0.1f, 1.1f)) - DAMP * rel_vy * c->wet;
   /* horizontal: thrust along the hull when the pump is under, drag against the water */
   float wvx = s.velocity.x * 0.6f, wvz = s.velocity.z * 0.6f;
@@ -568,7 +567,7 @@ static void craft_tick(craft *c, int idx, float dt) {
   if (c->turbo_hold > 0) { c->turbo_hold -= dt; top += 7.0f * clampf(c->turbo_hold / 0.6f, 0, 1); } /* a small, bounded pull toward the human */
   /* a slipstream: tucked in behind a rival (within 14 m, inside a 2.5 m lane, both on the water) for 1.7 s, the ceiling
      rises 3 % while it lasts (sw verbs 0: no slipstream) */
-  if (g_verbs && !c->air) {
+  if (g_verbs && !c->air && c->human) {
     bool in = false; float sy0, cy0; cw_sincos(c->yaw, &sy0, &cy0);
     for (int o = 0; o < RACERS && !in; o++) {
       const craft *r = &G.c[o];
@@ -1278,8 +1277,7 @@ void sim_tick(float dt) {
     } }
   { craft *h = &G.c[0]; if (G.state == RACE_ON && h->speed < 3) { h->slow3_ticks++; if (h->slow3_ticks > h->slow_max) h->slow_max = h->slow3_ticks; } else h->slow3_ticks = 0; }
   G.ai_ramps = G.ai_big_ramps = G.ai_spills = G.ai_misses = G.ai_passes = G.ai_walls = 0;
-  for (int i = 1; i < RACERS; i++) { craft *c = &G.c[i]; /* stuck: under 2 m/s while riding (the seconds after a spill, the rider climbing back on, are not stuck) */
-    if (G.state == RACE_ON && c->speed < 2 && c->spill <= 0) { c->slow_ticks++; if (c->slow_ticks > G.ai_stuck) { extern float g_stuck_at[8]; G.ai_stuck = c->slow_ticks; g_stuck_at[0] = (float)i, g_stuck_at[1] = c->x, g_stuck_at[2] = c->z, g_stuck_at[3] = c->dist, g_stuck_at[4] = c->speed, g_stuck_at[5] = G.tanker[0], g_stuck_at[6] = G.tanker[1], g_stuck_at[7] = c->spill; } } else c->slow_ticks = 0; G.ai_ramps += c->ramps, G.ai_big_ramps += c->big_ramps, G.ai_spills += c->spills, G.ai_misses += c->misses, G.ai_passes += c->passes, G.ai_walls += c->wall_hits; }
+  for (int i = 1; i < RACERS; i++) { craft *c = &G.c[i]; if (G.state == RACE_ON && c->speed < 2) { c->slow_ticks++; if (c->slow_ticks > G.ai_stuck) G.ai_stuck = c->slow_ticks; } else c->slow_ticks = 0; G.ai_ramps += c->ramps, G.ai_big_ramps += c->big_ramps, G.ai_spills += c->spills, G.ai_misses += c->misses, G.ai_passes += c->passes, G.ai_walls += c->wall_hits; }
   uint32_t h = G.tick;
   for (int i = 0; i < RACERS; i++) {
     h = cw_hash32(&G.c[i].x, sizeof(float) * 6, h);

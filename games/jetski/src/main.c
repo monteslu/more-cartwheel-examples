@@ -555,7 +555,6 @@ static void init(void *user) {
   cw_debug_i32("hook.wake_rides", &G.wake_rides);
   cw_debug_f32_array("hook.tanker", G.tanker, 3);
   cw_debug_i32("ai.stuck", &G.ai_stuck);
-  { extern float g_stuck_at[8]; cw_debug_f32_array("ai.stuck_at", g_stuck_at, 8); }
   cw_debug_i32("ai.ramps", &G.ai_ramps);
   cw_debug_i32("ai.big_ramps", &G.ai_big_ramps);
   cw_debug_i32("ai.spills", &G.ai_spills);
