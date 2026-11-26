@@ -22,6 +22,25 @@ bots that find their way over a navigation mesh, jump pads, ledge jumps and drop
 Modes
 - Deathmatch: everyone for themselves, first to 25 frags or the best score after eight minutes.
 - Team deathmatch: red against blue, first team to 40.
+- Battle (working name): the players' side (blue) against a bot army (red), up to 16 soldiers a side on the field
+  with one player, 12 with two, 8 with three or four (three quarters of that on Low graphics, half on Very Low). Each
+  side has a pool of reinforcements (100, 150, 200 or 300 on the setup's second row; 200 by default) that counts the
+  respawns left: a point goes each time a soldier comes back onto the field, never when one dies, and the opening
+  wave is free. Foundry, Courtyard and Terraces have three command posts: a home post a side, which cannot be taken, and one in the middle; Farmlands has five (its level file places them).
+  Stand in a post's ring with no enemy in it to take it: a held post goes neutral first, then it is yours (two
+  soldiers take it half again as fast, three or more twice as fast). You respawn at a post your side holds (the
+  d-pad picks which while you are down); bots go for the nearest post their side does not hold and hold what they
+  own. A side loses a point every 3 s while the other holds more than half the posts. At 0 nobody of that side
+  respawns: the soldiers still standing fight on (the last stand, "LAST STAND: 3 left" with a pip a soldier), and
+  the side loses only when its last soldier is down. A side in its last stand with 3 or fewer left is shown to the
+  other side every 10 s (a soft pulse where they were). If you are downed while your side has no reinforcements, you
+  take over the nearest teammate bot (the shoulders pick another while you are down; the view moves to it over
+  0.8 s); with none left you watch a teammate. Holding every post for 20 s empties the other side's pool. After 20
+  minutes the side with more reinforcements plus soldiers alive wins. The HUD shows both sides' reinforcements and
+  soldiers alive, the posts under the clock, and a marker on the post to take, hold or defend.
+  `sw count_rule reference` (the count taken at each death, a side losing at 0 with soldiers still standing) and
+  `sw takeover 0` are the controls of `tests/arenafps-laststand.mjs` and `tests/arenafps-takeover.mjs`; the debug
+  command `battle` sets pools and the field for tests.
 - Co-op waves: the players hold the arena against six waves of bots, with a shared pool of lives. A wave is bigger and tougher each time and bigger again for every extra player; between waves everyone heals a little and the rifle is topped up, and the next wave is counted down on screen. A seat nobody plays (a pad
   that joined and was put down: nothing touched on it for 20 seconds) sits out: once it is downed it does not come back
   on a shared life and its view says "press any button to come back in", and the next waves are sized for the people

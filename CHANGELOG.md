@@ -2,6 +2,18 @@
 
 ## 0.43.0
 
+- Arena: a new mode, Battle (working name). Your side against a bot army, up to 16 soldiers a side on the field
+  with one player (12 with two, 8 with three or four; fewer on Low and Very Low graphics), each side with a pool of
+  reinforcements (200 by default; 100, 150 or 300 on the setup panel). The pool counts the respawns left: a point
+  goes when a soldier comes back onto the field, not when one dies. At 0 nobody of that side respawns, the soldiers
+  still standing fight on in a last stand, and the side loses only when its last soldier is down. Three command
+  posts on each of the older arenas (a home post a side and one in the middle), five on Farmlands: stand in a ring to take it, respawn at a post your
+  side holds, and a side bleeds a point every 3 s while the other holds more than half the posts. A player downed
+  with no reinforcements left takes over the nearest teammate bot, the view moving to it over 0.8 s with no cut; the
+  shoulders pick another. The last few of a side in its last stand are shown to the other side every 10 s. The HUD
+  shows both sides' reinforcements and soldiers alive, the posts, and a marker on the post to take, hold or defend.
+- Arena: up to 64 fighters (was 16); the other modes keep their old counts.
+- Tests: arenafps-laststand and arenafps-takeover, each with a control that must fail.
 - Arena shooter: Farmlands, a map for the Battle mode. Open country about 240 m across: five command posts 60 to 90 m
   apart (each a gravel pad with a painted capture ring and a flag pole, low walls round it, a ruined farm building
   behind), dirt lanes between them with concrete walls, barriers, crates and barrels for cover every 11 to 15 m, low

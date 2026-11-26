@@ -30,13 +30,14 @@
 
 #define TICK_DT (1.0f / 60.0f)
 #define MAXH 4          /* humans */
-#define MAXF 16         /* fighters: humans + bots */
+#define MAXF 64         /* fighters: humans + bots (Battle fills up to all of them) */
+#define MAXF_CLASSIC 16 /* the other modes keep their old cap: bots on the setup row, co-op wave sizes */
 #define NWEAP 4
 #define EYE_H 1.6f
 #define PLAYER_R 0.4f
 #define PLAYER_HT 1.8f
 
-typedef enum { MODE_DM, MODE_TDM, MODE_COOP, MODE_COUNT } game_mode;
+typedef enum { MODE_DM, MODE_TDM, MODE_COOP, MODE_BATTLE, MODE_COUNT } game_mode; /* Battle: two sides, reinforcement pools, command posts (main.c, "Battle") */
 /* the match's rules (a party layer over any mode): one-shot rails, rockets only, low gravity, big heads */
 typedef enum { RULE_STANDARD, RULE_INSTAGIB, RULE_ROCKETS, RULE_LOWGRAV, RULE_BIGHEADS, RULE_COUNT } match_rule;
 /* power-ups: one spot per arena, a new one every 60 s (quad damage, haste, regeneration in turn), held for 20 s */
@@ -246,7 +247,7 @@ typedef struct fighter {
   t3_vec3 hunt;          /* where the enemy it hunts was */
   /* playtest measurements (not part of the simulation) */
   int since_spawn, first_dmg_tick, seen_cool, last_enc_tick;
-  uint32_t spawn_seen_by; /* enemies that could see the spawn point, or stood within 15 m of it, at the moment of spawning */
+  uint64_t spawn_seen_by; /* enemies that could see the spawn point, or stood within 15 m of it, at the moment of spawning */
   int alive_t, last_sight_t, last_eng_t; /* alive time (ticks) and when an enemy was last in sight / an encounter last began */
 } fighter;
 

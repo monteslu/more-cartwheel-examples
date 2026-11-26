@@ -1157,6 +1157,16 @@
     "note": "a downed player's view turns to whoever downed them and follows them until the respawn: on 90 percent or more of the dead ticks (after the turn) the killer's chest is inside that player's view (software GL, two seats and four bots on Foundry). Control: ARENA_NO_KILLCAM=1, the old view on the floor, must fall under it"
   },
   {
+    "name": "arenafps-laststand",
+    "script": "tests/arenafps-laststand.mjs",
+    "note": "Battle: the reinforcement pool counts respawns left, and at 0 the soldiers still standing fight on: with red set to 3 reinforcements and 8 on the field, red reads 0 with soldiers alive for 300 ticks or more and the battle ends on the tick its last soldier goes down (software GL, the autopilot). Control: ARENA_COUNT_RULE=reference (the count taken at each death, a side losing at 0 with soldiers standing) ends it on the tick the count hits 0 and must fail"
+  },
+  {
+    "name": "arenafps-takeover",
+    "script": "tests/arenafps-takeover.mjs",
+    "note": "Battle: a person downed with no reinforcements left takes over the nearest teammate bot: the real game from the title by pad 0 (the mode row to BATTLE), blue at 0 with 2 on the field against 10, seat 0 downed; afterwards seat 0 plays the other soldier, blue has 1 alive, the battle is on, the held stick walks the soldier forward, the view turned no faster than 3.6 rad/s, sat at the soldier's eye after the handover, and no camera frame was offset (software GL). Control: ARENA_TAKEOVER=0 (the person only watches) must fail the seat check"
+  },
+  {
     "name": "arenafps-save",
     "script": "tests/arenafps-save.mjs",
     "note": "the setup screen's aim assist and rumble choices survive a restart: one run turns both off on the pad, the next run on its save reads them back (software GL). Control: a fresh save reads the defaults and the check must fail"
