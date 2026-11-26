@@ -11,7 +11,7 @@ bots that find their way over a navigation mesh, jump pads, ledge jumps and drop
   ends it. Look: right stick (keyboard: arrow keys). Fire: right trigger or right shoulder (keyboard: J). Jump: South
   (keyboard: Space): high enough for a 1.2 m ledge. Next / previous weapon: North / West (keyboard: E / Q). Grenade: left
   shoulder or left trigger (keyboard: G): thrown in an arc, it bounces and goes off half a second after it lands (2.5 s at most); two
-  at a spawn, one more with each ammo pickup, four at most. Bash: East (keyboard: F): a blow with the stock, close up.
+  at a spawn, one more with each ammo pickup, four at most. Bash: East (keyboard: F): a blow with the stock, close up. In Battle, Back (keyboard: C) calls squads to the post the marker names.
 - Jump pads (glowing discs with rising sparks) throw you up onto the roofs.
 - Rules (a setup row, any mode): standard; instagib (everyone holds a rail with endless charge and one hit downs anyone; no pickups or power-ups); rockets only (endless rockets, the other weapons off the floor); low gravity (0.45 of the fall: higher, floatier jumps and grenades, jump pads land where they did); big heads (drawn only).
 - Callouts and awards: a frag within 3 s of the last is a double, triple or multi frag; three or more without dying are counted on screen, and the feed calls a run of five or ten and the frag that ends one. The results name the longest run, the most grenade frags and the most bashes.
@@ -91,6 +91,8 @@ is built for Farmlands.
   empties the other side's pool and starts its last stand.
 - Reveal: a side in its last stand with 3 or fewer left is shown to the other side every 10 s, a soft pulse where each
   one was (it swells and fades).
+- Calling squads: the marker on the post to take or defend offers the call (Back on a pad, C on a keyboard): your
+  squad and the next one go there for 30 s ("SQUADS TO THE CROSSROADS"), and your own squad follows you on the way.
 - Squads: each side has a commander that every 2 s sends its squads of four to the posts worth taking or defending
   (one of its own with an enemy in it first, then neutral ones, then the enemy's), two squads to the first. Members
   follow their leader in a loose wedge until it nears the post. With every post held, squads hold them and every third

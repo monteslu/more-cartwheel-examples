@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.43.4
+
+- Arena, Battle: the call. The marker on the post to take or defend offers it (Back on a pad, C on a keyboard): your
+  squad and the next one go to that post for 30 s, a call across the screen names it and the marker counts the
+  squads in. Your own squad already follows you.
+
 ## 0.43.3
 
 - Arena, Battle: one player's battle runs at its full 16 soldiers a side with the simulation's CPU time about

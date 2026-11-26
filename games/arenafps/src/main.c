@@ -137,7 +137,7 @@ static struct game {
   int kill_streak[MAXH];
   cw_aim_state aim[MAXH];
   /* actions */
-  cw_action mv_l, mv_r, mv_f, mv_b, lk_l, lk_r, lk_u, lk_d, fire, jump, w_next, w_prev, sprint, grenade, melee, ui_start, ui_back, ui_pause;
+  cw_action mv_l, mv_r, mv_f, mv_b, lk_l, lk_r, lk_u, lk_d, fire, jump, w_next, w_prev, sprint, grenade, melee, call, ui_start, ui_back, ui_pause;
   /* nav cost */
   int path_requests, path_done;
   int path_links, link_jumps;  /* link waypoints in the paths bots took; jumps bots made up ledges */
@@ -322,6 +322,8 @@ static struct battle {
   int squad_post[2][MAXF / 4]; /* the post each squad is sent to (battle_command, every 2 s) */
   int command_t;
   uint32_t seed;          /* ARENA_BATTLE_SEED (a test switch): another battle from the same start */
+  int call_post[2], call_t[2], call_squad[2]; /* a player's call: the post, ticks left (30 s), the caller's squad */
+  int32_t calls;          /* calls made (debug battle.calls) */
   int32_t p1[2];          /* seat 0's soldier: ticks in the ring of the post the objective marker names, and arrivals there (the newcomer gate) */
   bool p1_in[MAX_POSTS];
 } BT;
@@ -334,6 +336,7 @@ static fighter *SF(int h) { return F(SEAT[h]); }
 static struct { int phase, cand[4], ncand, pick, t, watch; t3_vec3 from, cam; float yaw, pitch; } TK[MAXH];
 static bool battle_bot_goal(fighter *f, int idx, t3_vec3 *g);
 static int battle_objective(int s, t3_vec3 from, const char **what);
+static void battle_player_call(const fighter *f);
 static float tk_start[3]; /* debug tk.start: the soldier taken over, at the handover: x, z, yaw */
 static float tk_after[4]; /* debug tk.after: 1.5 s after the handover: the seat 0 soldier's x, z, blue alive, the battle still on (1) */
 static int32_t tk_stats[6]; /* debug tk.stats: handovers, the view's fastest turn in a transition (milliradians a second), the
@@ -1629,7 +1632,7 @@ static void bot_tick(fighter *f, int idx) {
  * here feeds the simulation (its own random stream; synchronous path queries do not touch the bots' request queue). */
 #define PT_HEAD 32
 #define PT_OBJ (PT_HEAD + MAXF * 4) /* Battle: the objective marker as drawn: shown, its bearing, distance, inside its ring */
-#define PT_N (PT_OBJ + 4)
+#define PT_N (PT_OBJ + 5) /* (PT_OBJ + 4: the call prompt is shown) */
 static float ptest[PT_N];
 static struct { bool on; float obj_r; t3_vec3 goal, obj, path[32]; uint32_t links[32]; int n, idx, repath, lastitem; uint32_t rng; } PT;
 typedef struct hm_profile { float react_min, react_span, tau, noise, perc, fire_tol, strafe_p; bool jumps, swaps, sprints; } hm_profile;
@@ -1639,7 +1642,7 @@ static const hm_profile HM_PROF[3] = {
   { 24, 14, 0.42f, 0.45f, 0.075f, 4.0f, 0.3f, false, false, false }, /* newcomer: sprays early and wide, misses most of its shots, the check that casual's near-perfect trigger discipline does not flatter the tuning */
 };
 static struct { int kind; /* 0 off, 1 casual, 2 skilled */ int tgt, react_until, burst, strafe_t, strafe_dir, dmg_t, swap_cool;
-                float ey, ep; bool strafing; float out[8]; bool drive; int lost_t; } HM;
+                float ey, ep; bool strafing; float out[8]; bool drive; int lost_t; bool call; } HM;
 static float pt_rand(void) { PT.rng = PT.rng * 1664525u + 1013904223u; return (float)(PT.rng >> 8) / 16777216.0f; }
 static void ptest_goal(const fighter *f) {
   /* the nearest useful item that is there (weapons not held, health when hurt, armour), else a random point */
@@ -1711,6 +1714,7 @@ static void ptest_update(void) {
       t3_vec3 d2 = v3sub(BT.posts[oi].pos, f->mv.position);
       ptest[PT_OBJ] = 1, ptest[PT_OBJ + 1] = cw_wrap_angle(cw_atan2(-d2.x, -d2.z) - f->yaw), ptest[PT_OBJ + 2] = sqrtf(d2.x * d2.x + d2.z * d2.z);
       ptest[PT_OBJ + 3] = ptest[PT_OBJ + 2] < BT.posts[oi].r;
+      ptest[PT_OBJ + 4] = BT.call_t[f->team & 1] == 0 && G.call >= 0;
       PT.obj = BT.posts[oi].pos;
       PT.obj_r = BT.posts[oi].r;
     }
@@ -1799,6 +1803,7 @@ static float hm_stick(float w, float full) {
 static void hm_decide(void) {
   float *o = HM.out;
   memset(o, 0, sizeof HM.out);
+  HM.call = ptest[PT_OBJ + 4] > 0.5f; /* a call offered on screen: pressed */
   if (!HM.kind || !ptest[1]) { HM.tgt = -1; return; }
   const hm_profile *P = &HM_PROF[HM.kind - 1];
   int t = G.ticks;
@@ -1953,6 +1958,12 @@ static void human_tick(fighter *f, int idx) {
   if (drive ? b_next : cw_action_just_pressed(h, G.w_next)) {
     for (int k = 1; k <= NWEAP; k++) { int n = (f->weapon + k) % NWEAP; if ((f->have >> n & 1)) { f->weapon = n; break; } }
     fx_play_ui(SND_CLICK, 0.4f);
+  }
+  { /* Battle: the call button (the scripted human presses it while the marker's prompt offers it) */
+    static bool was_call;
+    bool c = drive ? HM.call && !was_call : G.call >= 0 && cw_action_just_pressed(h, G.call);
+    if (drive) was_call = HM.call;
+    if (battle() && c) battle_player_call(f);
   }
   if (cw_action_just_pressed(h, G.w_prev)) {
     for (int k = 1; k <= NWEAP; k++) { int n = (f->weapon + NWEAP - k) % NWEAP; if ((f->have >> n & 1)) { f->weapon = n; break; } }
@@ -2594,6 +2605,8 @@ static void battle_begin(void) {
   memset(BT.p1_in, 0, sizeof BT.p1_in);
   BT.command_t = 0;
   for (int s = 0; s < 2; s++) for (int q = 0; q < MAXF / 4; q++) BT.squad_post[s][q] = -1;
+  for (int s = 0; s < 2; s++) BT.call_post[s] = -1, BT.call_t[s] = 0;
+  BT.calls = 0;
   memset(TK, 0, sizeof TK);
   memset(tk_stats, 0, sizeof tk_stats);
   memset(tk_start, 0, sizeof tk_start), memset(tk_after, 0, sizeof tk_after);
@@ -2634,12 +2647,29 @@ static void battle_command(void) {
       for (int q = 0; q < nsq && q < MAXF / 4; q++)
         BT.squad_post[s][q] = (q % 3 == 2 && enemy_home >= 0) || nh == 0 ? enemy_home : held[q % nh];
     }
+    if (BT.call_t[s] > 0 && BT.call_post[s] >= 0) { /* a player's call: its own squad and the next ones go where it said */
+      int n = CW_MIN(nsq, MAXF / 4), want = CW_CLAMP((int)arena_tune("call_squads", 2), 1, n);
+      for (int k = 0; k < want; k++) BT.squad_post[s][(CW_CLAMP(BT.call_squad[s], 0, n - 1) + k) % n] = BT.call_post[s];
+    }
   }
+}
+/* a player calls (the call button): its squad and the next go to the post its marker names, for 30 s */
+static void battle_player_call(const fighter *f) {
+  int s = f->team & 1;
+  const char *what = "";
+  int pi = battle_objective(s, f->mv.position, &what);
+  if (pi < 0 || BT.call_t[s] > 0) return;
+  BT.call_post[s] = pi, BT.call_t[s] = 60 * 30, BT.call_squad[s] = f->squad, BT.command_t = 0, BT.calls++;
+  char line[48];
+  snprintf(line, sizeof line, "SQUADS TO THE %s", BT.posts[pi].name);
+  battle_call(line);
+  fx_play_ui(SND_CLICK, 0.7f);
 }
 /* the rules each tick: who is alive, capture, bleed, holding every post, the last stand, the reveal pings */
 static void battle_tick(void) {
   for (int s = 0; s < 2; s++) BT.alive[s] = 0;
   for (int i = 0; i < G.nf; i++) if (F(i)->active && F(i)->alive) BT.alive[F(i)->team & 1]++;
+  for (int s = 0; s < 2; s++) if (BT.call_t[s] > 0) BT.call_t[s]--;
   if (--BT.command_t <= 0) BT.command_t = 120, battle_command();
   int held[2] = { 0, 0 };
   for (int pi = 0; pi < BT.nposts; pi++) {
@@ -3917,6 +3947,14 @@ static void hud_battle(int h, const fighter *f, cw_rect r, float u, float *top_l
     float ts = body(u * 0.8f), tw = measure(s, ts, 0).width;
     float tx = CW_CLAMP(sx - tw * 0.5f, r.x + u * 0.3f, r.x + r.w - tw - u * 0.3f);
     text(s, tx, sy + m * 1.3f, ts, cw_rgba(1, 1, 1, 0.92f), CW_ALIGN_LEFT, 0);
+    { /* the call: send your squad and the next one there */
+      float y2 = sy + m * 1.3f + measure(s, ts, 0).height;
+      if (BT.call_t[me] == 0 && G.call >= 0) ptext("{call} send squads", h, tx, y2, ts * 0.9f, cw_rgba(1, 1, 1, 0.85f), CW_ALIGN_LEFT, 0);
+      else if (BT.call_t[me] > 0 && BT.call_post[me] == oi) {
+        snprintf(s, sizeof s, "squads coming  %d s", (BT.call_t[me] + 59) / 60);
+        text(s, tx, y2, ts * 0.9f, cw_rgba(0.75f, 1, 0.8f, 0.9f), CW_ALIGN_LEFT, 0);
+      }
+    }
   }
   /* the reveal: where the hidden last few of the other side were at the last ping, a pulse that swells and fades */
   if (BT.ping_side == !me && BT.ping_t < 150) {
@@ -4713,6 +4751,7 @@ static void init(void *user) {
   G.w_next = cw_action_find("weapon_next"), G.w_prev = cw_action_find("weapon_prev");
   G.sprint = cw_action_find("sprint");
   G.grenade = cw_action_find("grenade"), G.melee = cw_action_find("melee");
+  G.call = cw_action_find("call"); /* Battle: send squads to the post the marker names */
   G.font = cw_ui_font_sans();
   G.arena_id = 0;
   G.mode = MODE_DM;
@@ -4863,6 +4902,7 @@ static void init(void *user) {
   cw_debug_field("battle.zero_tick", BT.zero_tick, CW_DBG_I32, 2); /* the tick a side had nobody and nothing left */
   cw_debug_i32("battle.end_tick", &BT.end_tick);
   cw_debug_i32("battle.reveals", &BT.reveals);
+  cw_debug_i32("battle.calls", &BT.calls);
   cw_debug_field("battle.p1", BT.p1, CW_DBG_I32, 2);
   cw_debug_field("battle.bleeds", BT.bleeds, CW_DBG_I32, 2);
   cw_debug_field("battle.spent", BT.spent, CW_DBG_I32, 2);
