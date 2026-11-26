@@ -22,7 +22,7 @@ const rows = [];
 for (let r = 0; r < ROUNDS; r++)
   for (const on of ['0', '1']) {
     const json = join(OUT, `r${r}-${on}.json`);
-    const env = { ...process.env, ARENA_BATTLE_BG: on, ARENA_ID: '1', ARENA_MODE: '1', ARENA_BOTS: '0', ARENA_BENCH_CMDS: 'quality high' };
+    const env = { ...process.env, ARENA_BATTLE_BG: on, ARENA_ID: '1', ARENA_MODE: '1', ARENA_BOTS: '0', CW_QUALITY: 'high' };
     if (VIEW) env.ARENA_VIEW = VIEW;
     const res = spawnSync('node', ['tests/arenafps-split-bench.mjs', '--players', '1', '--gpus', GPUS.join(','), '--runs', '3', '--end', '900', '--window', '480', '--json', json], { cwd: ROOT, env, stdio: ['ignore', 'inherit', 'inherit'] });
     if (res.status) { console.error(`bench failed (${res.status})`); process.exit(res.status || 1); }

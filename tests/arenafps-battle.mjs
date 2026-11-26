@@ -4,9 +4,9 @@
 //
 //   soldier   the same picture at 5 m: a camera 5 m in front of a bot (ARENA_CHASE), the build before against this one,
 //             must match; the control (ARENA_SOLDIER_LOD=2, the far mesh at 5 m) must differ
-//   battle    the background battle from a player's eye on the upper floor at the arena's edge, looking out at each of
-//             its zones, with it off (the before) and on; on must draw figures (debug field crowd.figures) and change
-//             the picture past the walls, off must draw none of it
+//   battle    the background battle on Courtyard from a player's eye on the roof across the arena, looking out over the
+//             far wall at each of its zones, with it off (the before) and on: on must change the picture there, and no
+//             draw may lack its program (the engine's red banner fails the run)
 // Pictures land in --out; the pass or fail of each check is printed, and the exit status is 1 on any failure.
 import { spawn } from 'node:child_process';
 import { mkdirSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -33,7 +33,7 @@ const OLD = opt('old', '') && resolve(opt('old', ''));
 
 async function run(exe, gpu, extra, frames, shot) {
   const env = { ...process.env, CW_FRAMES: String(frames), SDL_AUDIODRIVER: 'dummy', ARENA_PLAYERS: extra.ARENA_PLAYERS || '1', ARENA_RES: '1920x1080', CW_WGPU_VALIDATION: '0',
-    ARENA_NOHUD: '1', CW_DEBUG_CMDS: 'perf 60;pipeline', ...extra };
+    ARENA_NOHUD: '1', CW_QUALITY: 'high', CW_WARMUP_SPREAD: '0', CW_DEBUG_CMDS: 'perf 60;pipeline', ...extra };
   if (shot) env.CW_SCREENSHOT = shot;
   const pin = gpu === 'webgpu' ? wgpuPin() : null, gl = pin ? null : glPin();
   if (pin) Object.assign(env, pin.env, { CW_GPU: 'webgpu' });
@@ -79,21 +79,22 @@ for (const gpu of GPUS) {
     check(c.comparable && c.gt2 > 0, `${gpu} control (the far mesh at 5 m) differs: ${(100 * (c.gt2 || 0)).toFixed(3)}% of pixels off by more than 2, areas ${(100 * (ca.share || 0)).toFixed(3)}%`);
   }
   if (ONLY.includes('battle')) {
-    for (const id of ['1', '2']) {
+    for (const id of ['1']) {
       // where the zones are: a short run that logs them
       const probe = await run(NEW, gpu, { ARENA_ID: id, ARENA_MODE: '1', ARENA_BOTS: '4', ARENA_BATTLE_BG: '1' }, 30, '');
       const zones = [...probe.stderr.matchAll(/crowd: zone (\d+) at (-?\d+) (-?\d+)/g)].map((m) => ({ k: +m[1], x: +m[2], z: +m[3] }));
       check(zones.length > 0, `${gpu} arena ${id}: ${zones.length} zones (${zones.map((z) => `${z.x},${z.z}`).join(' ')})`);
       const half = id === '1' ? 30 : 26;
       for (const z of zones.slice(0, 2)) {
-        const r = Math.hypot(z.x, z.z), ex = (z.x / r) * half * 0.85, ez = (z.z / r) * half * 0.85, ey = 5.2;
-        const yaw = Math.atan2(-(z.x - ex), -(z.z - ez)), pitch = Math.atan2(-ey, r - half * 0.85) * 0.6;
+        const r = Math.hypot(z.x, z.z), ex = -(z.x / r) * 15, ez = -(z.z / r) * 15, ey = 5.5;
+        const yaw = Math.atan2(-(z.x - ex), -(z.z - ez)), pitch = 0.035;
         const view = `${ex.toFixed(2)},${ey},${ez.toFixed(2)},${yaw.toFixed(4)},${pitch.toFixed(4)}`;
         const pics = {};
         for (const on of ['0', '1']) {
           const f = join(OUT, `battle-a${id}-z${z.k}-${on === '1' ? 'on' : 'off'}-${gpu}.png`);
           const res = await run(NEW, gpu, { ARENA_ID: id, ARENA_MODE: '1', ARENA_BOTS: '0', ARENA_BATTLE_BG: on, ARENA_VIEW: view }, 420, f);
           pics[on] = f;
+          check(!/have no program/.test(res.stderr), `${gpu} arena ${id} zone ${z.k} battle ${on === '1' ? 'on' : 'off'}: every draw has its program`);
           summary.push({ gpu, case: `battle-a${id}-z${z.k}-${on}`, view, draws: res.perf.draw_calls ?? res.pipe.draw_calls, tris: res.perf.triangles ?? res.pipe.triangles });
         }
         const d = diffAreas(readImage(pics['0']), readImage(pics['1']), { level: 10, size: 2 });

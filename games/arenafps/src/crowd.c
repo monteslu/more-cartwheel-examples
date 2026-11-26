@@ -238,12 +238,13 @@ static bool spot(const zone *z, int s, float back, float *x, float *zz, float *y
   return false;
 }
 
-/* the zones: where the level has open ground past the walls. Tried on a circle of bearings and distances; a zone needs
+/* the zones: where the level has open ground past the walls, high enough to show over them (the courtyard's slopes; a
+ * flat city hides its streets behind the walls, so the terraces get the far blasts and the sound only). Tried on a circle of bearings and distances; a zone needs
  * most of its sample points on open ground */
 static void zones_make(void) {
   C.nzone = 0;
   for (int k = 0; k < 64 && C.nzone < 4; k++) {
-    float a = (float)k * 2.39996f, r = 62 + (float)(k % 5) * 12, sa, ca;
+    float a = (float)k * 2.39996f, r = 96 + (float)(k % 5) * 11, sa, ca;
     cw_sincos(a, &sa, &ca);
     zone z = { .c = { sa * r, 0, ca * r }, .gap = 11, .depth = 10, .width = 12 };
     /* the sides face each other across the bearing (the line runs out from the arena), so both show from inside */
@@ -266,6 +267,8 @@ static void zones_make(void) {
       if (open * 10 < total * 7) continue;
       z = st;
     }
+    /* seen from the roofs over the walls: the ground there must stand well above the arena's roof line */
+    if (!arena_outside_ground(z.c.x, z.c.z, -1, &y) || y < 7) continue;
     bool near = false;
     for (int q = 0; q < C.nzone; q++) { t3_vec3 d = v3sub(C.zn[q].c, z.c); near |= v3dot(d, d) < 55 * 55; }
     if (near) continue;
