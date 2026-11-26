@@ -17,7 +17,7 @@ const ROUNDS = +opt('rounds', '3');
 const VIEW = opt('view', '');
 const OUT = join(ROOT, 'out/arenafps-battle-cost');
 mkdirSync(OUT, { recursive: true });
-const slope = (gpu) => { const v = parseFloat(process.env[`CW_GPU_TIMING_SCALE_${gpu === 'gl' ? 'GL' : 'WEBGPU'}`] || ''); return v > 0 ? v : null; };
+const slope = (gpu) => { try { const v = JSON.parse(process.env[`CW_GPU_TIMING_SCALE_${gpu === 'gl' ? 'GL' : 'WEBGPU'}`] || 'null'); return v && v.b > 0 ? v.b : null; } catch { return null; } }; // {a, b, ...}: lane ms = a + b x 890M ms
 const rows = [];
 for (let r = 0; r < ROUNDS; r++)
   for (const on of ['0', '1']) {
