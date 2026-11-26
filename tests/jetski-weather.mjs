@@ -171,10 +171,12 @@ for (const backend of BACKENDS) {
       }
       return pace;
     };
-    const ramps = (pace) => pace.slice(1).every((p, i) => p / pace[i] - 1 > 0 && p / pace[i] - 1 < 0.03);
+    /* a step of the ramp is a rise of 0.4 % to 3 %: the field stands on the grid a few frames earlier or later from one
+       load to the next (the cart streams its assets in wall time), so the same day reads a hair apart, never 0.4 % */
+    const ramps = (pace) => pace.slice(1).every((p, i) => p / pace[i] - 1 > 0.004 && p / pace[i] - 1 < 0.03);
     const pace = await paceOn([0, 2, 4]), flat = await paceOn([0, 0, 0]);
-    R.check(`${backend} the championship's pace ramps smoothly`, ramps(pace), `the rivals' top speed on days 1, 3 and 5: ${pace.map((p) => p.toFixed(2)).join(', ')} m/s`);
-    R.check(`${backend} control: day 1 three times does not ramp`, !ramps(flat), flat.map((p) => p.toFixed(2)).join(', '));
+    R.check(`${backend} the championship's pace ramps smoothly`, ramps(pace), `the rivals' top speed on days 1, 3 and 5: ${pace.map((p) => p.toFixed(3)).join(', ')} m/s`);
+    R.check(`${backend} control: day 1 three times does not ramp`, !ramps(flat), flat.map((p) => p.toFixed(4)).join(', '));
   }
   if (ONLY.includes(10)) {
     let worst = -1e9, gaps = 0, cgaps = 0;
