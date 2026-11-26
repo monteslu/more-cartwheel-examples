@@ -12,6 +12,20 @@
     and the join screen's CPU and hot seats are there for games to use; no game here turns them on yet.
 - Arena: a rocket blast's flames start upright (the particles' start angle within 15 degrees of upright, engine v0.70.1), so the fire rises in tongues instead of a ball of flame tilted every way. The jump pads' lift sparks rise from the pad's face: the emitter's box was set under a name no particle node has, so they rose from a 2 m cube round the pad.
 - Tests: arenafps-fx (the cart through romdev, GL and WebGPU: every blast's fire starts upright while its smoke keeps any angle, every pad's sparks come from a flat box, and frames of a match for a look; control: a build from before the change fails both).
+- Arena: the soldiers move on captured motion. A 65 bone humanoid skeleton under the same kit (helmet, plates, pack,
+  rifle), one mesh and one material, animated from Quaternius' Universal Animation Library 1 and 2 (CC0, named in
+  CREDITS): eight directions of walk and sprint (the strafes, backs and diagonals made from the library's motion),
+  jump and landing, hits from the front, back, sides and to the head, a left handed grenade throw and the fall, with
+  the arms solved onto a shouldered rifle for the hold, the recoil, the reload (on a weapon change) and the rifle jab.
+  An animation tree blends the locomotion at the clips' own ground speeds, layers the arms over the legs so a soldier
+  runs and shoots at once, turns the spine, chest and head onto the aim line, places the feet on stairs and ramps,
+  and drops the dead as ragdolls. Animation detail falls with distance (update rate, foot placement, aim, fingers,
+  shadows and mesh LODs), for crowds.
+- Tests: arenafps-motion (bots and a pad stand-in through romdev, GL and WebGPU: planted feet do not skate at the
+  clips' ground speed, the strafe and back clips play when strafing and backing, the rifle's bore lies on the shot
+  direction, planted ankles keep to uneven ground; control: the build before, which fails every check),
+  arenafps-anim-frames (play-camera frame sequences: spectator, chase, first person, four-player split screen) and
+  arenafps-anim-cost (the cost per soldier at 1, 8 and 32 soldiers and in split screen against the build before).
 - Jet ski: the palms, pines and shrubs lean and sway in the weather's wind (the engine's foliage wind): a breath in a
   calm, a sway in a chop, a hard lean with gusts running through the grove in a storm (`sw sway 0` holds them still).
   It costs 0.12 to 0.18 ms of GPU a frame on Crater Atoll (a Radeon RX 7600, GL and WebGPU).
