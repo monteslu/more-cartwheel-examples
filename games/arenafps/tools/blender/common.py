@@ -144,7 +144,7 @@ def args():
     return a[a.index('--') + 1:] if '--' in a else []
 
 
-def render_sheet(path, objs, views, res=(900, 700), size=2.2, center=(0, 0, 1)):
+def render_sheet(path, objs, views, res=(900, 700), size=2.2, center=(0, 0, 1), color="MATERIAL"):
     """A quick workbench render of several camera views of the scene for checking (not shipped)."""
     sc = bpy.context.scene
     try:
@@ -152,7 +152,7 @@ def render_sheet(path, objs, views, res=(900, 700), size=2.2, center=(0, 0, 1)):
     except TypeError:
         pass
     sc.display.shading.light = 'STUDIO'
-    sc.display.shading.color_type = 'MATERIAL'
+    sc.display.shading.color_type = color
     sc.render.resolution_x, sc.render.resolution_y = res
     sc.render.image_settings.file_format = 'PNG'
     cam = bpy.data.objects.new('cam', bpy.data.cameras.new('cam'))

@@ -62,10 +62,20 @@ Bots notice a new enemy inside a view cone (all round on hard), or when hit or w
 
 ## How it is made (the look)
 
-- Fighters are one skinned mesh on a 15 bone rig with idle, run and die clips; the four weapons are first person models with
-  gloved hands that sway, bob, kick and drop in when drawn; arena props (crates, barrels, barriers, columns, planters, pipes,
-  vents, floodlights) are merged into the level meshes per material. All of it is modelled by the Blender scripts in
-  `tools/blender/` (`tools/blender/build.sh soldier.py`, `weapons.py`, `props.py`: headless Blender 5.2) and shipped as glTF in `models/`.
+- Fighters are one skinned mesh and one material (a small palette texture) on a 65 bone humanoid skeleton, moving on
+  captured motion: the CC0 Universal Animation Library's walk, sprint, jumps, hits, throw and fall, turned and mirrored
+  into eight directions of locomotion, a left handed grenade throw and hits from every side, with the arms solved onto a
+  shouldered rifle (`tools/fetch-anims.sh`, `tools/blender/anims.py`), retargeted onto each soldier when the cart is
+  packed (`models/soldier_*.glb.cwimport`, planted feet). `src/soldier.c` plays them through an AnimationTree: a 2D
+  blend space of locomotion at the clips' own ground speeds, the arms on the rifle layered over the legs (it runs and
+  shoots at once), one-shots for the recoil, the jump and landing, the reload (a weapon change), the bash, the throw and
+  the hits by direction; the spine, chest and head turn the rifle onto the aim line, the feet are placed on stairs and
+  ramps, and the dead fall as ragdolls. Animation detail falls with distance (update rate, feet, aim, fingers, shadows,
+  mesh LODs). `tests/arenafps-motion.mjs` measures it from the bones.
+- The four weapons are first person models with gloved hands that sway, bob, kick and drop in when drawn; arena props
+  (crates, barrels, barriers, columns, planters, pipes, vents, floodlights) are merged into the level meshes per material.
+  They and the soldiers' kit are modelled by the Blender scripts in `tools/blender/` (`soldier.py`, `weapons.py`,
+  `props.py`: headless Blender 5) and shipped as glTF in `models/`.
 - Each arena has its own light design: a sun with cascaded shadows, coloured accent and floodlight lights, height fog with
   light shafts, a colour grade (`tools/make-luts.mjs`), bloom, ambient occlusion and reflections.
 - Rocket blasts use the engine's explosion tools: a shockwave ring and heat haze that bend the picture, fire, smoke, embers and

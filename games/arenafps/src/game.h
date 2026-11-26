@@ -199,6 +199,8 @@ typedef struct fighter {
   int power, power_t;      /* the power-up held (POW_*) and its ticks left */
   /* presentation only (never read by the simulation) */
   float flinch;            /* a hit throws the body back for a moment */
+  t3_vec3 hit_dir;         /* the last blow's way, its length its weight (0..1.5): the hit reaction and the fall */
+  bool hit_head;           /* the last blow was to the head */
   int hp, armor;
   int weapon;
   int ammo[NWEAP];
@@ -212,8 +214,8 @@ typedef struct fighter {
   cw_node body;          /* the third-person body */
   cw_node light;         /* muzzle flash */
   cw_node leg[2];        /* unused (the skinned rig animates itself) */
-  cw_node anim;          /* AnimationPlayer of the skinned body */
-  const char *clip;      /* the clip playing: idle, run, die */
+  cw_node anim;          /* AnimationPlayer of the skinned body (an AnimationTree drives it: soldier.c) */
+  const char *clip;      /* unused (soldier.c) */
   int flash;
   float mglow, mpeak;    /* the muzzle light's level (0..1) and energy: it swells on a shot and fades */
   int mhold;             /* ticks the muzzle light is held up (a burst keeps it there) */

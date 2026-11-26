@@ -27,6 +27,7 @@
 #endif
 #include "fx.h"
 #include "game.h"
+#include "soldier.h"
 
 #ifdef ARENA_AUTOPILOT
 /* key art for a cart (the debug command keyart): what ARENA_CHASE and ARENA_NOHUD do natively, which a cart cannot
@@ -456,6 +457,8 @@ static void damage(fighter *v, fighter *k, int dmg, t3_vec3 dir, float knock, in
     v->mv.velocity = v3add(v->mv.velocity, v3(dir.x * kk, dir.y * kk * 0.6f + (v->mv.on_floor ? kk * 0.3f : 0), dir.z * kk));
   }
   v->flinch = CW_MIN(1.0f, v->flinch + 0.35f + (float)dmg * 0.02f); /* the body is thrown back a moment (drawn only) */
+  /* drawn only: the blow's way and weight for the body's hit reaction and its fall (soldier.c) */
+  v->hit_dir = v3scale(v3norm(dir), CW_MIN(1.5f, (knock > 0 ? knock : 1) * (float)dmg / 60.0f)), v->hit_head = head;
   v->hit_t = 0;
   if (v->human >= 0) {
     G.dmg_want[v->human] = 1;
@@ -1985,30 +1988,13 @@ static void proj_tick(void) {
 
 static const char *BOT_NAMES[] = { "Ash", "Brick", "Cinder", "Dune", "Ember", "Flint", "Gale", "Husk", "Iron", "Jolt", "Knox", "Lark", "Moss", "Nox", "Onyx", "Pike" };
 
-/* the skinned fighter (assets/models/soldier_*.glb, tools/blender/soldier.py): one mesh on a 15 bone rig, clips idle, run and die */
-static t3_gltf *RIG[MAXF]; /* each fighter's own copy (its own materials: a rim in its colour) */
-static void *soldier_bytes[2];
-static size_t soldier_len[2];
-
-static void rig_free(int slot) {
-  if (!RIG[slot]) return;
-#if HAVE_RIM
-  cw_rim_light_remove_tree(RIG[slot]->scene); /* the rim holds its materials: let them go with the model */
-#endif
-  t3_release(RIG[slot]);
-  RIG[slot] = NULL;
-}
-
-static void set_cast(t3_object *o) {
-  if (o->type == T3_SKINNED_MESH || o->type == T3_MESH) o->cast_shadow = true, o->receive_shadow = true, o->frustum_culled = false;
-  for (int i = 0; i < o->child_count; i++) set_cast(o->children[i]);
-}
-
+/* the skinned fighter: soldier.c (models/soldier_*.glb on the full humanoid skeleton, its clips retargeted from
+ * anim/ual.glb; an AnimationTree, the aim, the feet, ragdolls). soldier_a is the blue one, soldier_b the red one */
 /* the rim on a fighter's body (cartwheel/rim_light.h): its side's colour, fading in from 8 m so a fighter 30 m off reads
  * as a red or blue outline and one close by is not painted over (deathmatch: everyone is an enemy, red). While spawn
  * protected it shimmers pale blue at every distance. Applying again is a uniform change, so the shimmer pulses per tick */
-static void body_rim(const fighter *f, t3_object *scene, bool force) {
-  if (!scene || !HAVE_RIM) return;
+static void body_rim(const fighter *f, t3_material *mat, bool force) {
+  if (!mat || !HAVE_RIM) return;
 #if HAVE_RIM
 #ifdef ARENA_AUTOPILOT
   if (getenv("ARENA_NO_RIM")) return; /* measuring the rim's cost */
@@ -2031,55 +2017,24 @@ static void body_rim(const fighter *f, t3_object *scene, bool force) {
     d.color = (t3_color){ 0.55f, 0.85f, 1.0f };
     d.strength = 1.2f + 2.4f * k, d.power = 1.6f, d.close = 1.0f;
   }
-  cw_rim_light_apply_tree(scene, &d);
+  cw_rim_light_apply(mat, &d);
 #else
-  (void)f, (void)force;
+  (void)f, (void)force, (void)mat;
 #endif
 }
 
 static cw_node make_body(int team, fighter *f) {
-  int variant = (team & 1) ? 0 : 1; /* soldier_a is the blue one, soldier_b the red one */
-  if (!soldier_bytes[variant]) {
-    char path[48];
-    snprintf(path, sizeof path, "models/soldier_%c.glb", variant ? 'b' : 'a');
-    soldier_bytes[variant] = cw_asset_load(path, &soldier_len[variant]);
-  }
-  cw_node b = cw_node_new("Node3D", "Body");
-  cw_node model = cw_node_new("Node3D", "Model");
-  cw_node anim = cw_node_new("AnimationPlayer", "Anim");
-  cw_node_add_child(b, model);
-  cw_node_add_child(b, anim);
-  cw_node_add_child(G.world, b);
-  int slot = (int)(f - G.f);
-  if (RIG[slot]) rig_free(slot); /* a co-op wave reuses the seat of a bot whose body is gone */
-  if (soldier_bytes[variant]) {
-    t3_gltf *gl = t3_gltf_parse(soldier_bytes[variant], soldier_len[variant], NULL, NULL);
-    if (gl) {
-      RIG[slot] = gl;
-      cw_node3d_set_object(model, gl->scene);
-      f->head = G.rules == RULE_BIGHEADS ? t3_object_get_by_name(gl->scene, "head") : NULL; /* big heads: drawn only */
-      set_cast(gl->scene);
-      body_rim(f, gl->scene, true);
-      for (int i = 0; i < gl->animation_count; i++) {
-        cw_anim a = cw_anim_from_t3_clip(gl->animations[i], "Model");
-        cw_anim_set_stored(a, false);
-        cw_anim_set_loop(a, gl->animations[i]->name && gl->animations[i]->name[0] == 'd' ? CW_LOOP_NONE : CW_LOOP_LINEAR);
-        cw_anim_player_add(anim, gl->animations[i]->name, a);
-        cw_anim_release(a);
-      }
-      cw_anim_player_play(anim, "idle", 0);
-    }
-  }
-  f->anim = anim;
+  soldier_make(f, (int)(f - G.f), (team & 1) ? 0 : 1, G.world, G.rules == RULE_BIGHEADS);
+  body_rim(f, soldier_material((int)(f - G.f)), true);
   f->clip = "idle";
-  return b;
+  return f->body;
 }
 
 static void clear_world(void) {
   if (cw_node_valid(G.world)) {
     fx_reset();
     cw_node_free(G.world);
-    for (int i = 0; i < MAXF; i++) rig_free(i);
+    soldier_free_all();
   }
   arena_free();
   memset(G.f, 0, sizeof G.f);
@@ -2216,10 +2171,11 @@ static void setup_fighters(void) {
     md.radius = PLAYER_R;
     md.height = PLAYER_HT;
     md.step_height = 0.45f;
+    md.mask = ~(1u << 2); /* never the ragdolls (soldier.c: their layer) */
     cw_mover3d_init(&f->mv, A.world, &md, v3(0, 0, 0));
     f->target = -1;
     f->goal = v3(0, -1000, 0);
-    f->body = make_body(G.mode == MODE_DM ? i : f->team, f);
+    make_body(G.mode == MODE_DM ? i : f->team, f);
     f->light = cw_node_new("OmniLight3D", "Muzzle");
     cw_node_set(f->light, "color", cw_val_color(1, 0.75f, 0.4f, 1));
     cw_node_set(f->light, "energy", cw_val_float(0));
@@ -2253,7 +2209,7 @@ static void spawn_wave(void) {
     md.step_height = 0.45f;
     cw_mover3d_init(&f->mv, A.world, &md, v3(0, 0, 0));
     f->goal = v3(0, -1000, 0);
-    f->body = make_body(1, f);
+    make_body(1, f);
     f->light = cw_node_new("OmniLight3D", "Muzzle");
     cw_node_set(f->light, "color", cw_val_color(1, 0.75f, 0.4f, 1));
     cw_node_set(f->light, "energy", cw_val_float(0));
@@ -2338,6 +2294,13 @@ static void begin_match(void) {
     cw_node_set(A.water, "refraction", cw_val_bool(rich));
   }
   setup_fighters();
+#ifdef ARENA_AUTOPILOT
+  { /* ARENA_CROWD=n: n more soldiers running circles round the spawn points, the players held still looking at them
+     * (tests/arenafps-anim-cost.mjs: what n soldiers on screen cost) */
+    const char *e = getenv("ARENA_CROWD");
+    if (e) soldier_crowd(atoi(e), G.world, A.spawns, A.nspawns);
+  }
+#endif
   power_place();
   if (G.mode == MODE_COOP) PW.timer = 1 << 30; /* co-op: no power-ups (a wave bot with quad damage is no fun for anyone) */
 #ifdef ARENA_AUTOPILOT
@@ -2385,7 +2348,7 @@ static void check_rules(void) {
         F(i)->active = false;
         if (cw_node_valid(F(i)->body)) cw_node_free(F(i)->body);
         F(i)->body = (cw_node){ 0 };
-        rig_free(i);
+        soldier_free(i);
       }
     }
     if (alive_humans == 0 && G.lives <= 0) end_match(-1);
@@ -2513,31 +2476,39 @@ static void muzzle_place(fighter *f) {
 }
 
 static void sync_nodes(void) {
+#ifdef ARENA_AUTOPILOT
+  { /* the bench crowd: the players stand at a spawn point each, looking at the middle of the others */
+    static int crowd = -1;
+    if (crowd < 0) crowd = getenv("ARENA_CROWD") != NULL;
+    if (crowd && A.nspawns > 0 && G.state == ST_PLAY) {
+      t3_vec3 mid = { 0, 0, 0 };
+      for (int s = 0; s < A.nspawns; s++) mid = v3add(mid, A.spawns[s]);
+      mid = v3scale(mid, 1.0f / (float)A.nspawns);
+      for (int h = 0; h < G.players; h++) {
+        fighter *f = F(h);
+        t3_vec3 at = A.spawns[(h * 5) % A.nspawns], d = v3sub(mid, at);
+        f->mv.position = at, f->mv.velocity = v3(0, 0, 0);
+        f->yaw = cw_atan2(-d.x, -d.z), f->pitch = -0.08f;
+      }
+    }
+  }
+#endif
   for (int i = 0; i < G.nf; i++) {
     fighter *f = F(i);
     if (!f->active) continue;
     if (cw_node_valid(f->body)) {
       cw_node3d_set_position(f->body, f->mv.position);
-      { /* facing, and thrown back a moment by a hit: a lean about the body's own side axis (yaw, then the lean) */
-        float sy, cy, sl, cl;
+      { /* facing (a hit's reaction is the body's own clip now: soldier.c) */
+        float sy, cy;
         cw_sincos(f->yaw * 0.5f, &sy, &cy);
-        cw_sincos(f->flinch * 0.32f * 0.5f, &sl, &cl);
-        cw_node3d_set_quaternion(f->body, (t3_quat){ cy * sl, sy * cl, -sy * sl, cy * cl });
+        cw_node3d_set_quaternion(f->body, (t3_quat){ 0, sy, 0, cy });
         f->flinch *= 0.8f;
         if (f->flinch < 0.01f) f->flinch = 0;
       }
       if (f->head) f->head->scale = (t3_vec3){ 2.1f, 2.1f, 2.1f };
-      float spd = v3len(v3(f->mv.velocity.x, 0, f->mv.velocity.z));
-      const char *want = !f->alive ? "die" : (spd > 1.2f && f->mv.on_floor ? "run" : "idle");
-      if (cw_node_valid(f->anim) && want != f->clip) {
-        f->clip = want;
-        cw_anim_player_play(f->anim, want, want[0] == 'd' ? 0.05f : 0.15f);
-        if (want[0] == 'd') cw_anim_player_seek(f->anim, 0, false);
-      }
-      if (cw_node_valid(f->anim)) cw_node_set(f->anim, "speed_scale", cw_val_float(want[0] == 'r' ? CW_CLAMP(spd / 6.0f, 0.6f, 1.5f) : 1.0f));
       if (!f->alive && f->dead_ticks > 100) cw_node_set(f->body, "visible", cw_val_bool(false));
     }
-    if (RIG[i]) body_rim(f, RIG[i]->scene, false);
+    body_rim(f, soldier_material(i), false);
     if (f->flash > 0) f->flash--;
     /* the muzzle light's envelope: up in about three ticks while held (9 ticks after each shot), then a fade of about
      * a fifth of a second; under rapid fire it stays up, a steady glow, never a 10 Hz blink */
@@ -2545,6 +2516,12 @@ static void sync_nodes(void) {
     else f->mglow = f->mglow > 0.01f ? f->mglow * 0.8f : 0.0f;
     if (cw_node_valid(f->light) && f->mglow > 0) muzzle_place(f);
     if (cw_node_valid(f->light)) cw_node_set(f->light, "energy", cw_val_float(f->alive ? f->mglow * f->mpeak * f->mnear : 0));
+  }
+  { /* the bodies' animation, detail by distance from the nearest player's eye */
+    t3_vec3 eyes[MAXH];
+    int ne = 0;
+    for (int h = 0; h < G.players && h < MAXH; h++) eyes[ne++] = eye_pos(F(h));
+    soldier_tick(G.f, G.nf, eyes, ne, G.views < 2);
   }
   if (G.views < 2 && G.nf > 0) { /* no view hook with one view: this player's own gun, not own body */
     if (cw_node_valid(F(0)->body)) cw_node_set(F(0)->body, "visible", cw_val_bool(false));
@@ -3832,6 +3809,13 @@ static void init(void *user) {
   cw_debug_i32("fl.near_views", &G.fl_near_views);     /* view frames that drew a body within 0.6 m of the camera */
   cw_debug_command("bind", "bind <action> <bindings>: replace an action's bindings", cmd_bind);
   cw_debug_i32("game.mode", &G.mode);
+  cw_debug_i32("soldier.bodies", &SOLDIER_ST.bodies);     /* bodies made */
+  cw_debug_i32("soldier.animated", &SOLDIER_ST.animated); /* trees stepped this tick (one no view sees is not) */
+  cw_debug_i32("soldier.ragdolls", &SOLDIER_ST.ragdolls); /* falling bodies */
+  cw_debug_i32("soldier.lod0", &SOLDIER_ST.lod[0]);       /* bodies by detail: full, every 2nd tick, masked, far */
+  cw_debug_i32("soldier.lod1", &SOLDIER_ST.lod[1]);
+  cw_debug_i32("soldier.lod2", &SOLDIER_ST.lod[2]);
+  cw_debug_i32("soldier.lod3", &SOLDIER_ST.lod[3]);
   cw_debug_i32("game.aim_assist", &G.aim_assist); /* the setup's aim assist and rumble (the save gate reads them after a restart) */
   cw_debug_i32("game.rumble_off", &G.rumble_off);
   cw_debug_i32("game.rules", &G.rules);

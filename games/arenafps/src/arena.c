@@ -1151,7 +1151,8 @@ void arena_free(void) {
 
 bool arena_ray(t3_vec3 from, t3_vec3 to, t3_vec3 *point, t3_vec3 *normal) {
   cw_ray_hit3d h;
-  if (!cw_world3d_raycast(A.world, from, v3sub(to, from), NULL, &h) || !h.shape.id) return false;
+  cw_phys_filter fl = cw_phys_filter_layers(~(1u << 2)); /* the level, never a ragdoll (soldier.c: their layer) */
+  if (!cw_world3d_raycast(A.world, from, v3sub(to, from), &fl, &h) || !h.shape.id) return false;
   if (point) *point = h.point;
   if (normal) *normal = h.normal;
   return true;

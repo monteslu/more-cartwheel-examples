@@ -1,0 +1,270 @@
+diff --git a/games/arenafps/src/crowd_old.c b/games/arenafps/src/crowd_old.c
+new file mode 100644
+index 0000000..e1a9ee6
+--- /dev/null
++++ b/games/arenafps/src/crowd_old.c
+@@ -0,0 +1,73 @@
++/* arenafps (the build before, for tests/arenafps-anim-cost.mjs): ARENA_CROWD=n soldiers as this build draws its
++ * fighters (each body its own parsed glTF, an AnimationPlayer playing idle or run with the old speed rule), running
++ * the same circles round the spawn points as soldier.c's bench crowd, so the two builds' cost per soldier compare. */
++#include "game.h"
++#include "cartwheel/anim.h"
++
++#define CROWD_MAX 48
++static struct { cw_node body, anim; t3_gltf *gl; t3_vec3 c; float r, w, phase; int face; const char *clip; } CR[CROWD_MAX];
++static int crowd_n, crowd_t;
++static void *bytes[2];
++static size_t len[2];
++static void cast(t3_object *o) {
++  if (o->type == T3_SKINNED_MESH || o->type == T3_MESH) o->cast_shadow = true, o->receive_shadow = true, o->frustum_culled = false;
++  for (int i = 0; i < o->child_count; i++) cast(o->children[i]);
++}
++void crowd_old_make(int n, cw_node world, const t3_vec3 *centres, int ncentres) {
++  crowd_n = CW_CLAMP(n, 0, CROWD_MAX);
++  for (int k = 0; k < crowd_n && ncentres > 0; k++) {
++    int v = k & 1;
++    if (!bytes[v]) bytes[v] = cw_asset_load(v ? "models/soldier_b.glb" : "models/soldier_a.glb", &len[v]);
++    CR[k].body = cw_node_new("Node3D", "Body");
++    cw_node model = cw_node_new("Node3D", "Model");
++    CR[k].anim = cw_node_new("AnimationPlayer", "Anim");
++    cw_node_add_child(CR[k].body, model);
++    cw_node_add_child(CR[k].body, CR[k].anim);
++    cw_node_add_child(world, CR[k].body);
++    t3_gltf *gl = t3_gltf_parse(bytes[v], len[v], NULL, NULL);
++    CR[k].gl = gl;
++    if (gl) {
++      cw_node3d_set_object(model, gl->scene);
++      cast(gl->scene);
++      for (int i = 0; i < gl->animation_count; i++) {
++        cw_anim a = cw_anim_from_t3_clip(gl->animations[i], "Model");
++        cw_anim_set_stored(a, false);
++        cw_anim_set_loop(a, gl->animations[i]->name && gl->animations[i]->name[0] == 'd' ? CW_LOOP_NONE : CW_LOOP_LINEAR);
++        cw_anim_player_add(CR[k].anim, gl->animations[i]->name, a);
++        cw_anim_release(a);
++      }
++      cw_anim_player_play(CR[k].anim, "idle", 0);
++    }
++    CR[k].clip = "idle";
++    CR[k].c = centres[k % ncentres];
++    CR[k].r = 3.0f + (float)(k % 3);
++    CR[k].w = (k % 4 == 3) ? 0 : (k % 4 == 2 ? 0.45f : 1.4f) * (k & 1 ? 1 : -1);
++    CR[k].phase = (float)k * 1.7f;
++    CR[k].face = k % 3;
++  }
++}
++void crowd_old_tick(void) {
++  crowd_t++;
++  for (int k = 0; k < crowd_n; k++) {
++    if (!CR[k].gl) continue;
++    float a = CR[k].phase + CR[k].w * (float)crowd_t * TICK_DT, sa, ca;
++    cw_sincos(a, &sa, &ca);
++    t3_vec3 p = v3add(CR[k].c, v3(ca * CR[k].r, 0, sa * CR[k].r)), hp;
++    if (arena_ray(v3add(p, v3(0, 2, 0)), v3add(p, v3(0, -4, 0)), &hp, NULL)) p.y = hp.y;
++    t3_vec3 vel = v3scale(v3(-sa, 0, ca), CR[k].w * CR[k].r);
++    float yaw = CR[k].face == 0 ? cw_atan2(-vel.x, -vel.z) : CR[k].face == 1 ? cw_atan2(ca, sa) : cw_atan2(-ca, -sa);
++    if (CR[k].w == 0) yaw = a;
++    float sy, cy;
++    cw_sincos(yaw * 0.5f, &sy, &cy);
++    cw_node3d_set_position(CR[k].body, p);
++    cw_node3d_set_quaternion(CR[k].body, (t3_quat){ 0, sy, 0, cy });
++    float spd = v3len(vel);
++    const char *want = spd > 1.2f ? "run" : "idle";
++    if (want != CR[k].clip) CR[k].clip = want, cw_anim_player_play(CR[k].anim, want, 0.15f);
++    cw_node_set(CR[k].anim, "speed_scale", cw_val_float(want[0] == 'r' ? CW_CLAMP(spd / 6.0f, 0.6f, 1.5f) : 1.0f));
++  }
++}
++void crowd_old_free(void) {
++  for (int k = 0; k < crowd_n; k++) if (CR[k].gl) t3_release(CR[k].gl), CR[k].gl = NULL;
++  crowd_n = 0;
++}
+diff --git a/games/arenafps/src/main.c b/games/arenafps/src/main.c
+index 866a2b7..7f302f8 100644
+--- a/games/arenafps/src/main.c
++++ b/games/arenafps/src/main.c
+@@ -2075,11 +2075,19 @@ static cw_node make_body(int team, fighter *f) {
+   return b;
+ }
+ 
++/* the motion test's control (tests/arenafps-anim-control.patch): the rig's model, and the recorder */
++struct t3_object *arena_rig_scene(int slot) { return RIG[slot] ? RIG[slot]->scene : NULL; }
++void motionrec_tick(fighter *fs, int nf);
++void crowd_old_make(int n, cw_node world, const t3_vec3 *centres, int ncentres);
++void crowd_old_tick(void);
++void crowd_old_free(void);
++
+ static void clear_world(void) {
+   if (cw_node_valid(G.world)) {
+     fx_reset();
+     cw_node_free(G.world);
+     for (int i = 0; i < MAXF; i++) rig_free(i);
++    crowd_old_free();
+   }
+   arena_free();
+   memset(G.f, 0, sizeof G.f);
+@@ -2338,6 +2346,9 @@ static void begin_match(void) {
+     cw_node_set(A.water, "refraction", cw_val_bool(rich));
+   }
+   setup_fighters();
++#ifdef ARENA_AUTOPILOT
++  { const char *e = getenv("ARENA_CROWD"); if (e) crowd_old_make(atoi(e), G.world, A.spawns, A.nspawns); }
++#endif
+   power_place();
+   if (G.mode == MODE_COOP) PW.timer = 1 << 30; /* co-op: no power-ups (a wave bot with quad damage is no fun for anyone) */
+ #ifdef ARENA_AUTOPILOT
+@@ -2513,6 +2524,25 @@ static void muzzle_place(fighter *f) {
+ }
+ 
+ static void sync_nodes(void) {
++  motionrec_tick(G.f, G.nf);
++#ifdef ARENA_AUTOPILOT
++  { /* the bench crowd (tests/arenafps-anim-cost.mjs): the players stand at a spawn point each, looking at the middle */
++    static int crowd = -1;
++    if (crowd < 0) crowd = getenv("ARENA_CROWD") != NULL;
++    if (crowd && A.nspawns > 0 && G.state == ST_PLAY) {
++      t3_vec3 mid = { 0, 0, 0 };
++      for (int s = 0; s < A.nspawns; s++) mid = v3add(mid, A.spawns[s]);
++      mid = v3scale(mid, 1.0f / (float)A.nspawns);
++      for (int h = 0; h < G.players; h++) {
++        fighter *f = F(h);
++        t3_vec3 at = A.spawns[(h * 5) % A.nspawns], d = v3sub(mid, at);
++        f->mv.position = at, f->mv.velocity = v3(0, 0, 0);
++        f->yaw = cw_atan2(-d.x, -d.z), f->pitch = -0.08f;
++      }
++    }
++    if (crowd) crowd_old_tick();
++  }
++#endif
+   for (int i = 0; i < G.nf; i++) {
+     fighter *f = F(i);
+     if (!f->active) continue;
+diff --git a/games/arenafps/src/motionrec.c b/games/arenafps/src/motionrec.c
+new file mode 100644
+index 0000000..1e9b1c8
+--- /dev/null
++++ b/games/arenafps/src/motionrec.c
+@@ -0,0 +1,125 @@
++/* arenafps (the control for tests/arenafps-motion.mjs): the same motion recorder as soldier.c's, on the hand-keyed
++ * 15 bone rig and its three clips, so the motion test measures the build before the captured motion. The old rig's
++ * bones stand in for the new one's: hips for the pelvis, chest for spine_03, the forearms for the hands; the feet for
++ * the toes; the rifle's stock and muzzle are points rigid on the right forearm, where tools/blender/soldier.py put
++ * them (the bore along the model's -z at rest). */
++#include "game.h"
++#include "cartwheel/ik.h"
++
++struct t3_object *arena_rig_scene(int slot);
++static const char *const NB[] = { "pelvis", "foot_l", "foot_r", "ball_l", "ball_r", "spine_03", "Head", "hand_l", "hand_r", "rifle", "muzzle" };
++static const char *const OLD[] = { "hips", "foot_l", "foot_r", "foot_l", "foot_r", "chest", "head", "fore_l", "fore_r", "fore_r", "fore_r" };
++#define NBN 11
++#define RMAX 9600
++static const float ANKLE = 0.10f;
++typedef struct { int tick, slot, alive, floor, lod; float x, y, z, yaw, pitch, vx, vz, back; char clip[12]; float w, ground[2]; float p[NBN][3]; } row;
++typedef struct { int alive, floor; t3_vec3 pos, vel; float yaw, pitch; const char *clip; bool set; } st;
++static row *R;
++static int rn, rwant, rtick, ns, slots[4], bound_of[4] = { -1, -1, -1, -1 }, idx[4][NBN];
++static st prev[4];
++static cw_pose P[4];
++static t3_vec3 local_off[4][2];
++
++static t3_vec3 qrot(t3_quat q, t3_vec3 v) {
++  t3_vec3 u = { q.x, q.y, q.z }, t = v3scale(v3cross(u, v), 2);
++  return v3add(v3add(v, v3scale(t, q.w)), v3cross(u, t));
++}
++static t3_mat4 m2w(t3_vec3 at, float yaw) {
++  t3_mat4 m;
++  float s, c;
++  cw_sincos(yaw * 0.5f, &s, &c);
++  t3_mat4_compose(&m, at, (t3_quat){ 0, s, 0, c }, (t3_vec3){ 1, 1, 1 });
++  return m;
++}
++static void cmd(int argc, const char **argv, cw_reply *rp) {
++  if (argc >= 2 && !strcmp(argv[1], "rec")) {
++    rwant = argc >= 3 ? CW_CLAMP(atoi(argv[2]), 1, RMAX) : 600;
++    ns = 0;
++    for (int k = 3; k < argc && ns < 4; k++) slots[ns++] = CW_CLAMP(atoi(argv[k]), 0, MAXF - 1);
++    if (!ns) slots[ns++] = 0;
++    for (int k = 0; k < 4; k++) prev[k].set = false;
++    if (!R) R = (row *)calloc(RMAX, sizeof *R);
++    rn = 0;
++    cw_reply_printf(rp, "{\"recording\":%d,\"slots\":%d}", rwant, ns);
++    return;
++  }
++  if (argc >= 2 && !strcmp(argv[1], "info")) {
++    cw_reply_printf(rp, "{\"rows\":%d,\"want\":%d,\"ankle\":%.4f,\"bones\":[", rn, rwant, (double)ANKLE);
++    for (int b = 0; b < NBN; b++) cw_reply_printf(rp, "%s\"%s\"", b ? "," : "", NB[b]);
++    cw_reply_printf(rp, "]}");
++    return;
++  }
++  if (argc >= 4 && !strcmp(argv[1], "get")) {
++    int from = CW_CLAMP(atoi(argv[2]), 0, rn), n = CW_CLAMP(atoi(argv[3]), 0, rn - from);
++    cw_reply_printf(rp, "[");
++    for (int k = 0; k < n; k++) {
++      const row *w = &R[from + k];
++      cw_reply_printf(rp, "%s[%d,%d,%d,%d,%d,%.4f,%.4f,%.4f,%.5f,%.5f,%.4f,%.4f,%.3f,\"%s\",%.3f,%.4f,%.4f", k ? "," : "", w->tick, w->slot, w->alive, w->floor,
++                      w->lod, w->x, w->y, w->z, w->yaw, w->pitch, w->vx, w->vz, w->back, w->clip, w->w, w->ground[0], w->ground[1]);
++      for (int b = 0; b < NBN; b++) cw_reply_printf(rp, ",%.4f,%.4f,%.4f", w->p[b][0], w->p[b][1], w->p[b][2]);
++      cw_reply_printf(rp, "]");
++    }
++    cw_reply_printf(rp, "]");
++    return;
++  }
++  cw_reply_error(rp, "motion rec <ticks> [slot ...] | motion info | motion get <from> <n>");
++}
++
++void motionrec_tick(fighter *fs, int nf) {
++  static bool reg;
++  if (!reg) cw_debug_command("motion", "motion rec <ticks> [slot ...] | info | get <from> <n>: the motion recorder (control)", cmd), reg = true;
++  rtick++;
++  for (int s = 0; s < ns && R && rn < rwant; s++) {
++    int slot = slots[s];
++    t3_object *sc = arena_rig_scene(slot);
++    if (!sc || !prev[s].set) continue;
++    if (bound_of[s] != slot) {
++      if (bound_of[s] >= 0) cw_pose_free(&P[s]);
++      bound_of[s] = -1;
++      if (!cw_pose_bind(&P[s], sc)) continue;
++      bound_of[s] = slot;
++      for (int k = 0; k < NBN; k++) idx[s][k] = cw_pose_find(&P[s], OLD[k]);
++      /* the rifle's stock and muzzle in the right forearm's frame, from the rest pose (a fresh copy of the model) */
++      size_t len = 0;
++      void *bytes = cw_asset_load("models/soldier_a.glb", &len);
++      t3_gltf *gl = bytes ? t3_gltf_parse(bytes, len, NULL, NULL) : NULL;
++      cw_pose rp = { 0 };
++      if (!gl || !cw_pose_bind(&rp, gl->scene)) continue;
++      cw_pose_update_model(&rp);
++      int fr = cw_pose_find(&rp, "fore_r");
++      t3_vec3 pr = cw_pose_model_position(&rp, fr);
++      t3_quat qr = cw_pose_model_rotation(&rp, fr), qi = { -qr.x, -qr.y, -qr.z, qr.w };
++      cw_pose_free(&rp);
++      t3_release(gl);
++      free(bytes);
++      const t3_vec3 stock = { -0.04f, 1.365f, 0.0f }, muzzle = { -0.04f, 1.365f, -0.97f };
++      local_off[s][0] = qrot(qi, v3sub(stock, pr));
++      local_off[s][1] = qrot(qi, v3sub(muzzle, pr));
++    }
++    cw_pose_capture(&P[s]);
++    cw_pose_update_model(&P[s]);
++    const st *m = &prev[s];
++    row *w = &R[rn++];
++    w->tick = rtick, w->slot = slot, w->alive = m->alive, w->floor = m->floor, w->lod = 0;
++    w->x = m->pos.x, w->y = m->pos.y, w->z = m->pos.z, w->yaw = m->yaw, w->pitch = m->pitch, w->vx = m->vel.x, w->vz = m->vel.z, w->back = 0;
++    snprintf(w->clip, sizeof w->clip, "%s", m->clip ? m->clip : "");
++    w->w = 1;
++    t3_mat4 mw = m2w(m->pos, m->yaw);
++    for (int k = 0; k < NBN; k++) {
++      t3_vec3 p = idx[s][k] >= 0 ? cw_pose_model_position(&P[s], idx[s][k]) : (t3_vec3){ 0 };
++      if (k >= 9) p = v3add(p, qrot(cw_pose_model_rotation(&P[s], idx[s][k]), local_off[s][k - 9]));
++      t3_vec3 q = t3_vec3_apply_mat4(p, &mw);
++      w->p[k][0] = q.x, w->p[k][1] = q.y, w->p[k][2] = q.z;
++    }
++    for (int k = 0; k < 2; k++) {
++      t3_vec3 a = { w->p[1 + k][0], w->p[1 + k][1], w->p[1 + k][2] }, hp;
++      w->ground[k] = arena_ray(v3add(a, v3(0, 0.6f, 0)), v3add(a, v3(0, -1.5f, 0)), &hp, NULL) ? hp.y : -1000.0f;
++    }
++  }
++  for (int s = 0; s < ns; s++) {
++    int slot = slots[s];
++    if (slot >= nf) continue;
++    const fighter *f = &fs[slot];
++    prev[s] = (st){ f->alive, f->mv.on_floor, f->mv.position, f->mv.velocity, f->yaw, f->pitch, f->clip, true };
++  }
++}

@@ -1,15 +1,16 @@
 arenafps (working title) credits
 
-Everything in this game is made by its own code:
+Everything in this game is made by its own code, but for the fighters' body and motion below:
   - textures (concrete, gravel, grass, paint, steel, wood): procedural PBR sets (albedo, normal, roughness,
     occlusion) generated at load by src/gfx.c, the same generators as cartwheel-examples' demolition derby
     game (MIT, https://github.com/monteslu/cartwheel-examples),
   - sounds: synthesised at start from sine and noise in src/fx.c,
-  - models: the fighters (skinned, 15 bones, clips idle / run / die), the four first person weapons with gloved
-    hands, the six pickups and the arena props (crates, barrels, barriers, columns, planters, pipes, vents, floodlights, consoles)
-    are modelled and rigged by our own Blender scripts in tools/blender/ (soldier.py, weapons.py, pickups.py, props.py,
-    run with tools/blender/build.sh, headless Blender 5.2) and exported as glTF into models/. Blender itself is
-    only the authoring tool (GPL); the exported models are our own work under this game's licence,
+  - models: the fighters' kit (helmet, visor, plates, pouches, pack, boots, the rifle), the four first person weapons
+    with gloved hands, the six pickups and the arena props (crates, barrels, barriers, columns, planters, pipes, vents,
+    floodlights, consoles) are modelled and rigged by our own Blender scripts in tools/blender/ (soldier.py, weapons.py,
+    pickups.py, props.py, run with tools/blender/build.sh and tools/fetch-anims.sh, headless Blender 5) and exported as
+    glTF into models/. Blender itself is only the authoring tool (GPL); the exported models are our own work under this
+    game's licence,
   - level geometry: tools/make-levels.mjs lays the rooms, walls, roofs and doors out as CSG shapes in levels/*.cwscene and
     the engine's cwcsg tool bakes them into levels/*.cwcsg; stairs, trim and the outer shell are boxes built in code,
   - colour grades: tools/make-luts.mjs writes the three .cube LUTs in luts/,
@@ -18,7 +19,29 @@ Everything in this game is made by its own code:
     tools/fx/bake-flipbooks.mjs (procedural, CC0, listed in the engine NOTICE),
   - HUD and menus: the engine's shell and its built-in UI font.
 
+Fighters' body and motion: from CC0 libraries
+  sources     Quaternius, "Universal Animation Library" (Standard, free) and "Universal Animation Library 2" (Standard,
+              free), CC0 1.0 Universal (public domain dedication):
+                https://quaternius.com/packs/universalanimationlibrary.html
+                https://opengameart.org/content/universal-animation-library
+                https://opengameart.org/content/universal-animation-library-2
+                https://creativecommons.org/publicdomain/zero/1.0/
+              The libraries' licence notes are in tools/blender/cc0/ual (LICENSE-ual1.txt, LICENSE-ual2.txt); the files
+              are fetched and checked by tools/fetch-anims.sh. CC0 asks for nothing; the credit is given anyway.
+  body        the first library's mannequin and its 65 bone skeleton (decimated), worn under the kit as the fabric suit
+              (tools/blender/soldier.py)
+  motion      tools/blender/anims.py (run headless in Blender) picks the clips the game plays (the stand, the walk, the
+              sprint, the jump, the landing, the chest and head hits, the overhand throw, the fall), cuts and joins
+              them, and makes the clips the libraries lack from their motion: the walk and the sprint turned at the
+              hips 45 and 90 degrees with the chest kept forward and run backwards (eight directions), the throw
+              mirrored onto the left arm, the chest hit turned to come from behind and either side; the arms on the
+              rifle (the hold, the recoil, the reload, the rifle jab, the rifle lowered for a throw) are solved there on
+              the rig. The result is anim/ual.glb (with the mannequin to carry the rig); the engine's packer retargets
+              it onto each soldier (models/soldier_*.glb.cwimport).
+
 Fonts: the engine's built-in UI font; its licence is in the cartwheel-engine NOTICE (open font licence).
+
+Third-party assets: the CC0 body and motion sources above.
 
 Engine libraries: see the cartwheel-engine NOTICE (three.c, Box3D, Recast and Detour (zlib), RVO2 (Apache-2.0),
 miniaudio and the rest).
