@@ -26,8 +26,9 @@
   - The chase camera sits lower and closer at speed, and eases back to hold a long flight.
   - The spray is thicker and whiter. Rain and the spray of a hard landing bead on the camera's lens and run off.
   - Schools of fish swim just under the clear water beside the line; a craft coming close scatters them and half the
-    school leaps clear, one after another, each with a ring where it breaks the surface; gulls on the beaches
-    near the line (or afloat where there is none) lift off as the racers go by, wheel overhead and settle again. None of it touches the race.
+    school leaps clear, one after another, each with a ring where it breaks the surface. Gulls on the beaches near the
+    line (or afloat where there is none) lift off as the racers go by, wheel overhead and settle again. None of it
+    touches the race (`sw life 0` takes it away).
   - Close shaves past a mark and ten clean marks in a row pay into the turbo. 1.7 s in a rival's slipstream gives
     3 % more top speed.
   - In stunt mode a gold ring hangs over each ramp's jump, and the same trick again pays less. Bronze, silver and gold
@@ -35,11 +36,11 @@
   - Fixed: two riders over the line within a second of each other could be put in the wrong order. Their finish
     times were compared at float precision near ten million.
 - Tests: jetski-moments, jetski-camera (through romdev, GL and WebGPU), jetski-steer, jetski-deep, jetski-cast,
-  jetski-trick-value, jetski-rings, jetski-radio and jetski-life. Each has a control that must fail. jetski-finish, jetski-handling,
-  jetski-menu and jetski-newcomer (--assist) cover the start, the verbs, the landing tip, the Rider, Steering assist
+  jetski-trick-value, jetski-rings, jetski-radio and jetski-life. Each has a control that must fail. jetski-finish,
+  jetski-handling, jetski-menu and jetski-newcomer (--assist) cover the start, the verbs, the landing tip, the Rider, Steering assist
   and Race radio rows, and the grid by result.
-- Tests: jetski-water measures the water from the old chase camera (sw cam_old 1), as its bounds were set, and jetski-camera
-  the new one; jetski-water-ramp leaves the standings column out of its foam count; jetski-minimap turns the lens drops
+- Tests: jetski-water measures the water from the old chase camera (sw cam_old 1), as its bounds were set, and
+  jetski-camera the new one; jetski-water-ramp leaves the standings column out of its foam count; jetski-minimap turns the lens drops
   and the thick spray off, so only the map differs between its two pictures; jetski-weather's stunt check turns the
   rings off, so its no-tricks control scores nothing.
 
@@ -55,6 +56,20 @@
     and the join screen's CPU and hot seats are there for games to use; no game here turns them on yet.
 - Arena: a rocket blast's flames start upright (the particles' start angle within 15 degrees of upright, engine v0.70.1), so the fire rises in tongues instead of a ball of flame tilted every way. The jump pads' lift sparks rise from the pad's face: the emitter's box was set under a name no particle node has, so they rose from a 2 m cube round the pad.
 - Tests: arenafps-fx (the cart through romdev, GL and WebGPU: every blast's fire starts upright while its smoke keeps any angle, every pad's sparks come from a flat box, and frames of a match for a look; control: a build from before the change fails both).
+- Arena: the soldiers move on captured motion. A 65 bone humanoid skeleton under the same kit (helmet, plates, pack,
+  rifle), one mesh and one material, animated from Quaternius' Universal Animation Library 1 and 2 (CC0, named in
+  CREDITS): eight directions of walk and sprint (the strafes, backs and diagonals made from the library's motion),
+  jump and landing, hits from the front, back, sides and to the head, a left handed grenade throw and the fall, with
+  the arms solved onto a shouldered rifle for the hold, the recoil, the reload (on a weapon change) and the rifle jab.
+  An animation tree blends the locomotion at the clips' own ground speeds, layers the arms over the legs so a soldier
+  runs and shoots at once, turns the spine, chest and head onto the aim line, places the feet on stairs and ramps,
+  and drops the dead as ragdolls. Animation detail falls with distance (update rate, foot placement, aim, fingers,
+  shadows and mesh LODs), for crowds.
+- Tests: arenafps-motion (bots and a pad stand-in through romdev, GL and WebGPU: planted feet do not skate at the
+  clips' ground speed, the strafe and back clips play when strafing and backing, the rifle's bore lies on the shot
+  direction, planted ankles keep to uneven ground; control: the build before, which fails every check),
+  arenafps-anim-frames (play-camera frame sequences: spectator, chase, first person, four-player split screen) and
+  arenafps-anim-cost (the cost per soldier at 1, 8 and 32 soldiers and in split screen against the build before).
 - Jet ski: the palms, pines and shrubs lean and sway in the weather's wind (the engine's foliage wind): a breath in a
   calm, a sway in a chop, a hard lean with gusts running through the grove in a storm (`sw sway 0` holds them still).
   It costs 0.12 to 0.18 ms of GPU a frame on Crater Atoll (a Radeon RX 7600, GL and WebGPU).
