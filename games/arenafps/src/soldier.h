@@ -18,6 +18,7 @@ struct t3_material *soldier_material(int slot); /* its own material (the rim goe
 /* what the bodies cost and how detailed they are, last tick (debug fields) */
 typedef struct soldier_stats {
   int32_t bodies, animated, ragdolls, lod[4];
+  int32_t us[3]; /* autopilot: microseconds summed since the start: the ragdoll world step, the bodies, the background figures */
 } soldier_stats;
 extern soldier_stats SOLDIER_ST;
 #endif

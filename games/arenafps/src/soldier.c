@@ -131,6 +131,7 @@ typedef struct body {
   cw_ragdoll *rd;
   int rd_t;
   bool still;
+  float acc; /* time not yet given to the tree (it is advanced every divisor-th tick, with all of it) */
 } body;
 #define CROWD_MAX 48
 static body B[MAXF + CROWD_MAX]; /* the fighters' bodies, then the bench crowd's */
@@ -627,6 +628,7 @@ static void crowd_tick(const t3_vec3 *eyes, int neyes) {
 }
 
 /* one body a tick: i its slot, f the fighter (or a crowd stand-in) it shows */
+static bool crowded; /* more than 16 fighters (a battle): the animation's level of detail steps down sooner */
 static void tick_body(int i, fighter *f, body *b, const t3_vec3 *eyes, int neyes, bool own_hidden) {
   /* the nearest eye that can see it */
   float d2 = 1e9f;
@@ -643,7 +645,8 @@ static void tick_body(int i, fighter *f, body *b, const t3_vec3 *eyes, int neyes
   int lod = dist < 14 ? 0 : dist < 30 ? 1 : dist < 50 ? 2 : 3;
   b->lod = lod;
   b->divisor = seen ? cw_anim_lod_divisor(dist, 14) : 8;
-  cw_animtree_set_update_divisor(b->tree, b->divisor);
+  if (crowded && seen) b->divisor = dist < 8 ? 1 : dist < 16 ? 2 : dist < 30 ? 4 : dist < 60 ? 8 : 16; /* a battle's crowd: each tree costs about 0.15 ms an update */
+  cw_animtree_set_update_divisor(b->tree, crowded ? 1 : b->divisor); /* (a crowd: kept by hand below) */
   bool far = lod >= 2;
   if (far != b->masked) {
     b->masked = far;
@@ -737,11 +740,21 @@ static void tick_body(int i, fighter *f, body *b, const t3_vec3 *eyes, int neyes
   b->act = floor ? 0 : b->act + 1;
   b->was_floor = floor;
   cw_node t = b->tree;
-  cw_animtree_set_param(t, "mx", b->bx);
-  cw_animtree_set_param(t, "my", b->by);
-  cw_animtree_set_param(t, "back", b->back);
-  cw_animtree_set_param(t, "air", f->alive && b->air_t > 8 ? 1 : 0);
-  cw_animtree_set_param(t, "rate", b->rate);
+  /* the tree is advanced here, outside the fixed phase, where its own update divisor does not apply: the level of
+   * detail is kept by hand, every divisor-th tick (staggered by slot) with all the time since. Between its updates a
+   * body only follows the rules' events (a shot, a hit, a throw); its parameters and its aim and feet are set on the
+   * ticks it updates (each set is a lookup by name, about 0.1 ms a body a tick with them all) */
+  b->acc += TICK_DT;
+  bool adv = seen && (!crowded || b->divisor <= 1 || (mrec_tick + i) % b->divisor == 0); /* (the other modes as they were: every tick) */
+  float dt_since = b->acc;
+  if (!seen) b->acc = fminf(b->acc, 0.5f);
+  if (adv) {
+    cw_animtree_set_param(t, "mx", b->bx);
+    cw_animtree_set_param(t, "my", b->by);
+    cw_animtree_set_param(t, "back", b->back);
+    cw_animtree_set_param(t, "air", f->alive && b->air_t > 8 ? 1 : 0);
+    cw_animtree_set_param(t, "rate", b->rate);
+  }
   { /* the leans: into a turn by its sideways pull (speed x turn rate), forward into a start and back into a stop, each
      * held over a fraction of a second (a lean, not each step's sway) */
     float dy = f->yaw - b->last_yaw;
@@ -752,12 +765,14 @@ static void tick_body(int i, fighter *f, body *b, const t3_vec3 *eyes, int neyes
     float ws = moving ? CW_CLAMP(dy / TICK_DT * sp / 10.0f, -1, 1) : 0, wf = moving ? CW_CLAMP(acc / 20.0f, -1, 1) : 0;
     b->lean_s += (ws - b->lean_s) * 0.12f, b->lean_f += (wf - b->lean_f) * 0.1f;
     b->last_yaw = f->yaw, b->last_speed = sp;
-    cw_animtree_set_param(t, "lean_l", fmaxf(0, b->lean_s));
-    cw_animtree_set_param(t, "lean_r", fmaxf(0, -b->lean_s));
-    cw_animtree_set_param(t, "lean_fw", fmaxf(0, b->lean_f));
-    cw_animtree_set_param(t, "lean_bk", fmaxf(0, -b->lean_f));
+    if (adv) {
+      cw_animtree_set_param(t, "lean_l", fmaxf(0, b->lean_s));
+      cw_animtree_set_param(t, "lean_r", fmaxf(0, -b->lean_s));
+      cw_animtree_set_param(t, "lean_fw", fmaxf(0, b->lean_f));
+      cw_animtree_set_param(t, "lean_bk", fmaxf(0, -b->lean_f));
+    }
   }
-  cw_animtree_set_param(t, "armed", f->alive ? 1 : 0);
+  if (adv) cw_animtree_set_param(t, "armed", f->alive ? 1 : 0);
   /* the actions, from the rules' own state */
   float look_want = f->alive ? 1 : 0;
   if (f->alive) {
@@ -782,14 +797,14 @@ static void tick_body(int i, fighter *f, body *b, const t3_vec3 *eyes, int neyes
     }
   } else b->kick = 0;
   b->last_weapon = f->weapon, b->last_mhold = f->mhold, b->last_hit_t = f->hit_t, b->last_throw_t = f->throw_t, b->last_bash_t = f->bash_t;
-  cw_animtree_set_param(t, "kick", CW_CLAMP(b->kick, 0, 1));
+  if (adv) cw_animtree_set_param(t, "kick", CW_CLAMP(b->kick, 0, 1));
   /* the aim: the spine and the chest turn the rifle onto the aim line, the head looks along it */
   b->look_w += (look_want - b->look_w) * 0.15f;
   bool aim = f->alive && lod <= 2;
   t3_vec3 e = v3add(f->mv.position, v3(0, EYE_H, 0)), d = look_dir(f->yaw, f->pitch);
   t3_vec3 tp = v3add(e, v3scale(d, 30));
   static const float SHARE[4] = { 0.25f, 0.4f, 1.0f, 1.0f };
-  for (int q = 0; q < 4; q++) {
+  for (int q = 0; q < 4 && adv; q++) {
     cw_node_set(b->look[q], "active", cw_val_bool(aim));
     cw_node_set(b->look[q], "target_position", cw_val_vec3(tp.x, tp.y, tp.z));
     cw_node_set(b->look[q], "influence", cw_val_float(CW_CLAMP(b->look_w, 0, 1) * SHARE[q]));
@@ -797,19 +812,36 @@ static void tick_body(int i, fighter *f, body *b, const t3_vec3 *eyes, int neyes
   /* the feet: placed while it stands or runs on the ground near by, eased in and out */
   bool plant = f->alive && floor && lod <= 1;
   b->feet_w += ((plant ? 1.0f : 0.0f) - b->feet_w) * 0.2f;
-  cw_node_set(b->feet, "active", cw_val_bool(b->feet_w > 0.01f));
-  cw_node_set(b->feet, "influence", cw_val_float(CW_CLAMP(b->feet_w, 0, 1)));
-  if (seen) cw_animtree_advance(t, TICK_DT), SOLDIER_ST.animated++;
+  if (adv) {
+    cw_node_set(b->feet, "active", cw_val_bool(b->feet_w > 0.01f));
+    cw_node_set(b->feet, "influence", cw_val_float(CW_CLAMP(b->feet_w, 0, 1)));
+  }
+  if (adv) cw_animtree_advance(t, dt_since), b->acc = 0, SOLDIER_ST.animated++;
 }
 
+#ifdef ARENA_AUTOPILOT
+#include <time.h>
+static double sol_now(void) { struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9; }
+#else
+static double sol_now(void) { return 0; }
+#endif
 void soldier_tick(fighter *fs, int nf, const t3_vec3 *eyes, int neyes, bool own_hidden) {
   static bool cmd;
   if (!cmd) cw_debug_command("motion", "motion rec <ticks> [slot ...] | info | get <from> <n>: the soldiers' motion recorder (tests/arenafps-motion.mjs)", cmd_motion), cmd = true;
   mrec_tick++;
   mrec_take();
+  int32_t us[3];
+  memcpy(us, SOLDIER_ST.us, sizeof us);
   memset(&SOLDIER_ST, 0, sizeof SOLDIER_ST);
+  memcpy(SOLDIER_ST.us, us, sizeof us);
+  crowded = nf > 16;
+  double t0 = sol_now();
   if (rag_live > 0) cw_world3d_step(A.world, TICK_DT); /* only the ragdolls move in the level's world */
+  double t1 = sol_now();
   for (int i = 0; i < nf; i++)
     if (fs[i].active && B[i].made && B[i].inst) tick_body(i, &fs[i], &B[i], eyes, neyes, own_hidden);
+  double t2 = sol_now();
   crowd_tick(eyes, neyes);
+  double t3 = sol_now();
+  SOLDIER_ST.us[0] += (int32_t)((t1 - t0) * 1e6), SOLDIER_ST.us[1] += (int32_t)((t2 - t1) * 1e6), SOLDIER_ST.us[2] += (int32_t)((t3 - t2) * 1e6);
 }

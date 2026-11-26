@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.43.3
+
+- Arena, Battle: one player's battle runs at its full 16 soldiers a side with the simulation's CPU time about
+  halved (8 ms to under 4 ms a tick on the test machine). With more than 16 fighters on the field a soldier's
+  animation updates less often the farther it is from every player (every tick under 8 m, down to every 16th past
+  60 m), and its aim and feet are set only when it updates; bots look for targets nearest first and check their line
+  of sight every third tick; muzzle lights fade out 35 to 45 m from every player. The other modes are unchanged.
+- Arena, Battle: your side's bots fight a little better than the setup's bot level (a third of the way to the next
+  level up), so on normal a newcomer's side wins most battles; the level sets the enemy army.
+
 ## 0.43.2
 
 - Arena: the first-person gun kicks on an envelope that swells while the shots keep coming and eases back, instead of

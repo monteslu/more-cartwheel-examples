@@ -95,6 +95,8 @@ is built for Farmlands.
   (one of its own with an enemy in it first, then neutral ones, then the enemy's), two squads to the first. Members
   follow their leader in a loose wedge until it nears the post. With every post held, squads hold them and every third
   squad presses on the enemy's home.
+- Difficulty: the setup's bot level is the enemy army's; your side's bots fight a third of the way to the next level
+  up, so on normal a newcomer's side wins most battles.
 - Time: after 20 minutes the side with more reinforcements plus soldiers alive wins.
 - The HUD shows both sides' reinforcements and soldiers alive (an arrow by a side that is bleeding), the posts under
   the clock, and a marker on the post to take, hold or defend, with its distance; past the walls a background battle

@@ -168,6 +168,19 @@ static struct game {
 } G;
 static float grav_k(void) { return G.rules == RULE_LOWGRAV ? LOWG_K : 1.0f; }
 
+/* autopilot: where a tick's time goes (debug prof.us: microseconds summed per section since the match began: nav, fighters,
+ * shots and pickups, rules, sync, bodies, background battle) */
+#ifdef ARENA_AUTOPILOT
+static double prof_t[10];
+static int32_t prof_us[8];
+#include <time.h>
+static double prof_now(void) { struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9; } /* the wall clock (cw_time is the run's fixed clock) */
+#define PROF_AT(k) do { prof_t[k] = prof_now(); if ((k) == 1) prof_us[0] += (int32_t)((prof_t[1] - prof_t[0]) * 1e6); if ((k) == 2) prof_us[1] += (int32_t)((prof_t[2] - prof_t[1]) * 1e6); \
+  if ((k) == 3) prof_us[2] += (int32_t)((prof_t[3] - prof_t[2]) * 1e6); if ((k) == 4) prof_us[3] += (int32_t)((prof_t[4] - prof_t[3]) * 1e6); if ((k) == 6) prof_us[4] += (int32_t)((prof_t[6] - prof_t[5]) * 1e6); \
+  if ((k) == 8) prof_us[5] += (int32_t)((prof_t[8] - prof_t[7]) * 1e6); if ((k) == 9) prof_us[6] += (int32_t)((prof_t[9] - prof_t[8]) * 1e6); if ((k) == 1) prof_us[7]++; } while (0)
+#else
+#define PROF_AT(k) ((void)0)
+#endif
 static fighter *F(int i) { return &G.f[i]; }
 static bool battle(void) { return G.mode == MODE_BATTLE; }
 static bool hm_driving(const fighter *f);
@@ -196,6 +209,25 @@ static float bot_fov_override = -1; /* ARENA_BOT_FOV (autopilot): the cone for m
 /* the seats' stand-in in an autopilot build (tests, pacing): a pad player of middling skill, as if aim assist and the stick
  * curve were in play: 300 ms reactions, the stick's 3.6 rad/s turn, aim error 0.7 of a 0.5 skill bot's with assist on */
 static bool proxy(const fighter *f) { return AUTO && f->human >= 0; }
+/* the level a bot fights at: the setup's, but in a battle the players' own side fights at veteran on any level below
+ * it, so the setup's level is the enemy army's and a newcomer's side can win on normal */
+static const bot_level_def *LV(const fighter *f) {
+  if (G.mode == MODE_BATTLE && (f->team & 1) == 0 && f->human < 0 && G.bot_level < 3) {
+    static bot_level_def ally;
+    static int made = -1;
+    if (made != G.bot_level) { /* a step of the way to the next level up (ARENA_T_battle_ally, autopilot: how far) */
+      const bot_level_def *a = &LEVELS[G.bot_level], *b = &LEVELS[G.bot_level + 1];
+      float k = arena_tune("battle_ally", 0.3f); /* 0.3: a scripted newcomer's side won 7 of 10 short battles on normal (0: 6, 0.6 and 1: 10) */
+      ally = *a;
+      ally.skill_mul += (b->skill_mul - a->skill_mul) * k, ally.skill_add += (b->skill_add - a->skill_add) * k;
+      ally.react += (b->react - a->react) * k, ally.react_span += (b->react_span - a->react_span) * k;
+      ally.turn += (b->turn - a->turn) * k, ally.turn_skill += (b->turn_skill - a->turn_skill) * k, ally.err += (b->err - a->err) * k;
+      made = G.bot_level;
+    }
+    return &ally;
+  }
+  return &LEVELS[G.bot_level];
+}
 /* the flash fixes on (default); ARENA_T_strobefix=0 (autopilot) turns them off as the flash sweep's control: the damage
  * tint's old curve, bodies drawn however close to a view's camera, fighters free to stand inside each other */
 static bool strobefix(void) { return arena_tune("strobefix", 1) > 0.5f; }
@@ -289,6 +321,7 @@ static struct battle {
   int32_t d_pool[2], d_alive[2], d_owner[MAX_POSTS];
   int squad_post[2][MAXF / 4]; /* the post each squad is sent to (battle_command, every 2 s) */
   int command_t;
+  uint32_t seed;          /* ARENA_BATTLE_SEED (a test switch): another battle from the same start */
   int32_t p1[2];          /* seat 0's soldier: ticks in the ring of the post the objective marker names, and arrivals there (the newcomer gate) */
   bool p1_in[MAX_POSTS];
 } BT;
@@ -1153,7 +1186,30 @@ static void bot_think(fighter *f, int idx) {
   int best = -1;
   float bd = 1e9f;
   t3_vec3 e = eye_pos(f);
-  for (int i = 0; i < G.nf; i++) {
+  if (battle()) { /* the same choice, cheaper with many fighters: the cheap tests first, then rays nearest first until one is clear */
+    int cand[MAXF], nc = 0;
+    float cd[MAXF];
+    for (int i = 0; i < G.nf; i++) {
+      fighter *o = F(i);
+      if (!o->active || !o->alive || !enemies(f, o) || o->spawn_guard > 0) continue;
+      t3_vec3 d = v3sub(o->mv.position, f->mv.position);
+      float dist = v3len(d);
+      if (dist > 45) continue;
+      if (i == f->target && proxy(f) && strobefix()) dist *= 0.6f;
+      float fov = bot_fov_override >= 0 ? bot_fov_override : (*LV(f)).fov;
+      if (i != f->target && fov < 180 && f->hit_t > 120 && !(o->recoil_t < 30 && dist < 30)) {
+        float half = fov * 0.0174533f;
+        if (dist < 6) half = CW_MAX(half, 1.5708f);
+        if (fabsf(cw_wrap_angle(cw_atan2(-d.x, -d.z) - f->yaw)) > half) continue;
+      }
+      int k = nc++;
+      while (k > 0 && cd[k - 1] > dist) cd[k] = cd[k - 1], cand[k] = cand[k - 1], k--;
+      cd[k] = dist, cand[k] = i;
+    }
+    for (int k = 0; k < nc; k++)
+      if (!arena_ray(e, chest_pos(F(cand[k])), NULL, NULL)) { best = cand[k], bd = cd[k]; break; }
+  }
+  for (int i = 0; i < G.nf && !battle(); i++) {
     fighter *o = F(i);
     if (!o->active || !o->alive || !enemies(f, o) || o->spawn_guard > 0) continue; /* a fighter under spawn protection is left alone */
     t3_vec3 d = v3sub(o->mv.position, f->mv.position);
@@ -1166,7 +1222,7 @@ static void bot_think(fighter *f, int idx) {
     if (dist > bd) continue;
     if (arena_ray(e, chest_pos(o), NULL, NULL)) continue;
     { /* noticing: in the vision cone (wider up close), or all round when just hit or hearing a shot; the current target is kept */
-      float fov = bot_fov_override >= 0 ? bot_fov_override : LEVELS[G.bot_level].fov;
+      float fov = bot_fov_override >= 0 ? bot_fov_override : (*LV(f)).fov;
       if (i != f->target && fov < 180 && f->hit_t > 120 && !(o->recoil_t < 30 && dist < 30)) {
         float half = fov * 0.0174533f;
         if (dist < 6) half = CW_MAX(half, 1.5708f);
@@ -1177,10 +1233,10 @@ static void bot_think(fighter *f, int idx) {
     bd = dist, best = i;
   }
   if (best >= 0) {
-    if (f->target != best || (!LEVELS[G.bot_level].legacy && f->alive_t - f->saw_t > 30)) { /* a new enemy, or one back in sight after half a second hidden */
-      const bot_level_def *L = &LEVELS[G.bot_level];
+    if (f->target != best || (!(*LV(f)).legacy && f->alive_t - f->saw_t > 30)) { /* a new enemy, or one back in sight after half a second hidden */
+      const bot_level_def *L = LV(f);
       f->react = proxy(f) ? 18 : (int)(L->react + (1 - f->skill) * L->react_span);
-      if (F(best)->since_spawn < 180 && !LEVELS[G.bot_level].legacy) f->react += 12; /* a fighter that has just respawned gets a moment */
+      if (F(best)->since_spawn < 180 && !(*LV(f)).legacy) f->react += 12; /* a fighter that has just respawned gets a moment */
     }
     f->target = best;
     f->saw_t = f->alive_t;
@@ -1418,7 +1474,8 @@ static void bot_tick(fighter *f, int idx) {
   if (t) {
     t3_vec3 e = eye_pos(f);
     aim_at = chest_pos(t);
-    see = !arena_ray(e, aim_at, NULL, NULL);
+    if (battle() && f->see_tgt == f->target && (G.ticks + idx) % 3) see = f->see_c; /* (a battle: the ray every third tick) */
+    else see = !arena_ray(e, aim_at, NULL, NULL), f->see_c = see, f->see_tgt = f->target;
     dist = v3len(v3sub(t->mv.position, f->mv.position));
     if (see) {
       bot_weapon_choice(f, dist);
@@ -1479,13 +1536,13 @@ static void bot_tick(fighter *f, int idx) {
     if (G.ticks % 24 == idx % 24) {
       /* the error grows with distance and with the target's and the bot's own speed (a person misses movers more) */
       float tsp = v3len(v3(t->mv.velocity.x, 0, t->mv.velocity.z)), osp = v3len(v3(f->mv.velocity.x, 0, f->mv.velocity.z));
-      float e = (1 - f->skill * 0.8f) * (proxy(f) ? (G.aim_assist ? 0.7f : 1.0f) : LEVELS[G.bot_level].err);
-      if (!LEVELS[G.bot_level].legacy || proxy(f)) e *= 1 + dist * 0.02f + tsp * 0.08f + osp * 0.05f;
+      float e = (1 - f->skill * 0.8f) * (proxy(f) ? (G.aim_assist ? 0.7f : 1.0f) : (*LV(f)).err);
+      if (!(*LV(f)).legacy || proxy(f)) e *= 1 + dist * 0.02f + tsp * 0.08f + osp * 0.05f;
       f->aim_err_yaw = cw_rng_range(&G.rng, -1, 1) * e * 0.06f;
       f->aim_err_pitch = cw_rng_range(&G.rng, -1, 1) * e * 0.04f;
     }
     float ty = cw_atan2(-d.x, -d.z) + f->aim_err_yaw, tp = cw_atan2(d.y, hd) + f->aim_err_pitch;
-    float rate = (proxy(f) ? 3.6f : LEVELS[G.bot_level].turn + f->skill * LEVELS[G.bot_level].turn_skill) * TICK_DT;
+    float rate = (proxy(f) ? 3.6f : (*LV(f)).turn + f->skill * (*LV(f)).turn_skill) * TICK_DT;
     float dy = cw_wrap_angle(ty - f->yaw), dp = tp - f->pitch;
     turn_by(f, dy, dp, rate);
     if (f->react > 0) f->react--;
@@ -2326,6 +2383,7 @@ static void setup_fighters(void) {
     if (battle()) f->team = i < BT.live[0] ? 0 : 1;
     if (battle()) f->squad = (f->team ? i - BT.live[0] : i) / 4;
     f->skill = i < G.players ? 0.5f : bot_skill(0.35f + 0.5f * (float)((i * 37) % 10) / 10.0f); /* seats: a person (or the autopilot's stand-in) */
+    if (i >= G.players && LV(f) != &LEVELS[G.bot_level]) f->skill = CW_MIN(0.95f, LV(f)->skill_add + (0.35f + 0.5f * (float)((i * 37) % 10) / 10.0f) * LV(f)->skill_mul); /* (the players' side in a battle) */
     f->personality = f->human >= 0 ? 0 : (i * 2 + G.arena_id) % 3;
     if (f->human >= 0) snprintf(f->name, sizeof f->name, "P%d", i + 1);
     else if (i < 16) snprintf(f->name, sizeof f->name, "%s", BOT_NAMES[i % 16]);
@@ -2424,7 +2482,7 @@ static int battle_live(void) {
   return CW_MAX(n, G.players + 1);
 }
 static void post_look(post *p) {
-  float k = p->meter, a = fabsf(k);
+  float k = G.sw_no_cues ? 0 : p->meter, a = fabsf(k); /* sw cues 0: no side colours on the posts */
   const float *c = k < 0 ? BSIDE_RGB[0] : BSIDE_RGB[1];
   float r = 0.75f + (c[0] - 0.75f) * a, g = 0.75f + (c[1] - 0.75f) * a, b = 0.75f + (c[2] - 0.75f) * a; /* white when neutral */
   if (fabsf(p->drawn - k) < 0.01f && p->drawn > -5) return;
@@ -2773,6 +2831,7 @@ static void begin_match(void) {
   build_world(G.arena_id);
   soak_note();
   cw_rng_seed(&G.rng, 0xA2E4A + (uint32_t)G.arena_id * 977u + (uint32_t)G.mode);
+  if (battle() && BT.seed) cw_rng_seed(&G.rng, 0xA2E4A + (uint32_t)G.arena_id * 977u + (uint32_t)G.mode + BT.seed * 2654435761u);
   G.ticks = 0;
   G.match_ticks = 0;
   G.over_ticks = 0;
@@ -3164,6 +3223,7 @@ static void battle_switches(void) {
   bool restart = false;
   if ((e = cw_test_env("ARENA_BATTLE_LIVE")) && atoi(e) > 0 && CW_CLAMP(atoi(e), 2, MAXF / 2) != BT.live[0]) restart = true;
   if ((e = cw_test_env("ARENA_BATTLE_POOL")) && atoi(e) >= 0 && atoi(e) != BT.pool_start) restart = true;
+  if ((e = cw_test_env("ARENA_BATTLE_SEED")) && atoi(e) > 0) BT.seed = (uint32_t)atoi(e), restart = true;
   if (restart) begin_match(), set_views();
 }
 static void battle_script(void) { /* ARENA_BATTLE_AT: commands on match ticks */
@@ -3220,15 +3280,21 @@ static void sync_nodes(void) {
      * a fifth of a second; under rapid fire it stays up, a steady glow, never a 10 Hz blink */
     if (f->mhold > 0) f->mhold--, f->mglow += (1.0f - f->mglow) * 0.4f;
     else f->mglow = f->mglow > 0.01f ? f->mglow * 0.8f : 0.0f;
-    if (cw_node_valid(f->light) && f->mglow > 0) muzzle_place(f);
-    if (cw_node_valid(f->light)) cw_node_set(f->light, "energy", cw_val_float(f->alive ? f->mglow * f->mpeak * f->mnear : 0));
+    float far_k = 1; /* a battle: a muzzle light fades out from 35 to 45 m off every player (it lights nothing they see there, and its rays cost) */
+    if (battle()) {
+      float dmin = 1e9f;
+      for (int h = 0; h < G.players; h++) dmin = fminf(dmin, v3len(v3sub(SF(h)->mv.position, f->mv.position)));
+      far_k = CW_CLAMP((45 - dmin) / 10, 0, 1);
+    }
+    if (cw_node_valid(f->light) && f->mglow > 0 && far_k > 0) muzzle_place(f);
+    if (cw_node_valid(f->light)) cw_node_set(f->light, "energy", cw_val_float(f->alive ? f->mglow * f->mpeak * f->mnear * far_k : 0));
   }
   { /* the bodies' animation, detail by distance from the nearest player's eye */
     t3_vec3 eyes[MAXH];
     int ne = 0;
     for (int h = 0; h < G.players && h < MAXH; h++) eyes[ne++] = eye_pos(SF(h));
-    soldier_tick(G.f, G.nf, eyes, ne, G.views < 2);
-    crowd_tick(G.world, eyes, ne); /* the background battle (the Battle mode; off otherwise) */
+    PROF_AT(7); soldier_tick(G.f, G.nf, eyes, ne, G.views < 2);
+    PROF_AT(8); crowd_tick(G.world, eyes, ne); PROF_AT(9); /* the background battle (the Battle mode; off otherwise) */
   }
   if (G.views < 2 && G.nf > 0) { /* no view hook with one view: this player's own gun, not own body */
     if (cw_node_valid(SF(0)->body)) cw_node_set(SF(0)->body, "visible", cw_val_bool(false));
@@ -3634,7 +3700,7 @@ static void game_step(void) {
   G.match_ticks++;
   if (battle()) battle_switches(), battle_script();
   /* the path budget: oldest requests first, a few a tick */
-  cw_nav_tick(A.nav, 3, 700);
+  PROF_AT(0); cw_nav_tick(A.nav, 3, 700); PROF_AT(1);
   for (int i = 0; i < G.nf; i++) {
     fighter *f = F(i);
     if (!f->active) continue;
@@ -3716,11 +3782,11 @@ static void game_step(void) {
       else fx_play(SND_STEP, f->mv.position, f->sprint ? 0.9f : 0.65f, pitch);
     }
   }
-  proj_tick();
+  PROF_AT(2); proj_tick();
   gren_tick();
   item_tick();
   power_tick();
-  check_rules();
+  PROF_AT(3); check_rules(); PROF_AT(4);
   for (int h = 0; h < G.players; h++) { /* this tick's hits in the pad: taken (sharp, by how much), dealt (a big one or a kill) */
     if (G.dmg_taken[h] >= 15) rumble_sent[1]++, rumble(h, CW_MIN(0.4f, (float)G.dmg_taken[h] * 0.004f), CW_MIN(1, 0.35f + (float)G.dmg_taken[h] * 0.006f), CW_MIN(160, 70 + G.dmg_taken[h]));
     if (G.kills_now[h] || G.dmg_dealt[h] >= 40) rumble_sent[2]++;
@@ -3730,7 +3796,7 @@ static void game_step(void) {
   }
   fx_tick();
   for (int i = 0; i < MAX_FEED; i++) if (G.feed[i].ticks > 0) G.feed[i].ticks--;
-  sync_nodes();
+  PROF_AT(5); sync_nodes(); PROF_AT(6);
   for (int i = 0; i < MAXF; i++) {
     const fighter *f = F(i);
     G.d_score[i] = f->score, G.d_hp[i] = f->hp, G.d_deaths[i] = f->deaths, G.d_weapon[i] = f->weapon, G.d_alive[i] = f->active && f->alive;
@@ -3794,6 +3860,7 @@ static int battle_objective(int s, t3_vec3 from, const char **what) {
   return best;
 }
 static void hud_battle(int h, const fighter *f, cw_rect r, float u, float *top_left, float *top_mid) {
+  if (G.sw_no_cues) return; /* sw cues 0 (the newcomer gate's control): no pools, posts or marker */
   int me = f->team & 1;
   char s[64];
   for (int k = 0; k < 2; k++) { /* the two sides */
@@ -4715,6 +4782,7 @@ static void init(void *user) {
   cw_debug_i32("soldier.bodies", &SOLDIER_ST.bodies);     /* bodies made */
   cw_debug_i32("soldier.animated", &SOLDIER_ST.animated); /* trees stepped this tick (one no view sees is not) */
   cw_debug_i32("soldier.ragdolls", &SOLDIER_ST.ragdolls); /* falling bodies */
+  cw_debug_field("soldier.us", SOLDIER_ST.us, CW_DBG_I32, 3); /* autopilot: microseconds in the ragdoll step, the bodies, the bench crowd */
   cw_debug_i32("soldier.lod0", &SOLDIER_ST.lod[0]);       /* bodies by detail: full, every 2nd tick, masked, far */
   cw_debug_i32("soldier.lod1", &SOLDIER_ST.lod[1]);
   cw_debug_i32("soldier.lod2", &SOLDIER_ST.lod[2]);
@@ -4800,6 +4868,9 @@ static void init(void *user) {
   cw_debug_field("battle.spent", BT.spent, CW_DBG_I32, 2);
   cw_debug_field("seat.fighter", SEAT, CW_DBG_I32, MAXH);
   cw_debug_field("tk.stats", tk_stats, CW_DBG_I32, 6);
+#ifdef ARENA_AUTOPILOT
+  cw_debug_field("prof.us", prof_us, CW_DBG_I32, 8); /* the last field: ticks */
+#endif
   cw_debug_field("tk.start", tk_start, CW_DBG_F32, 3);
   cw_debug_field("tk.after", tk_after, CW_DBG_F32, 4);
   cw_debug_command("battle", "battle pool <side> <n> | alive <side> <n> | down <i> | downseat <seat>: Battle test commands", cmd_battle);
