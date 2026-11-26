@@ -19,16 +19,19 @@
 #define LIFT_R 38.0f    /* a craft this near a flock lifts it */
 
 int g_life_on = 1;
-/* schools placed, flocks placed, scatters, lift-offs, schools passed within 20 m by the player, the deepest bed under a school */
-float g_life[6];
+float g_fish_lift; /* sw fish_lift <m>: the schools raised by that much, for a look at the fish themselves */
+/* schools placed, flocks placed, scatters, lift-offs, schools passed within 20 m by the player, the deepest bed under a
+   school, fish clear of the water in the last frame drawn */
+float g_life[7];
 
-typedef struct school { float x, z, bed, r, phase, scatter, ax, az, s; bool near, by; } school; /* by: the player within reach of it now */
+typedef struct school { float x, z, bed, r, phase, scatter, ax, az, s, st; bool near, by; } school; /* st: seconds since it was startled (-1: calm) */ /* by: the player within reach of it now */
 typedef struct flock { float x, z, y, dir, t, s; int state; bool armed, afloat; } flock; /* afloat: resting on the sea where no beach is near */ /* state 0 resting, 1 lifting and wheeling, 2 coming down */
 static school S[SCHOOLS];
 static flock F[FLOCKS];
 static int school_n, flock_n;
 static float fish_k[SCHOOLS][FISH][4]; /* each fish: its angle on the ring, radius, height, size */
 static float gull_k[FLOCKS][GULLS][4]; /* each gull: its spot round the flock's middle (x, z), its turn, its flap phase */
+static bool fish_up[SCHOOLS][FISH]; /* clear of the water last frame: a leap leaving or entering it splashes */
 static t3_instanced_mesh *fish_im, *gull_im, *wing_im;
 static cw_node life_n;
 static float prev_x, prev_z;
@@ -144,7 +147,7 @@ static void place(void) {
       for (int b = 0; b < BUOY_N && !clash; b++) { float ex = x - BUOYS[b][0], ez = z - BUOYS[b][1]; clash = ex * ex + ez * ez < 4.0f * 4.0f; }
       if (clash) continue;
       school *sc = &S[school_n];
-      *sc = (school){ x, z, bed, 1.4f + 0.9f * h01(lv, (uint32_t)k, 77), h01(lv, (uint32_t)k, 78) * 6.2832f, 0, 0, 0, s, false };
+      *sc = (school){ x, z, bed, 1.4f + 0.9f * h01(lv, (uint32_t)k, 77), h01(lv, (uint32_t)k, 78) * 6.2832f, 0, 0, 0, s, -1, false };
       for (int f = 0; f < FISH; f++) {
         fish_k[school_n][f][0] = (float)f / FISH * 6.2832f + 0.3f * h01(lv, (uint32_t)k, 100u + (uint32_t)f);
         fish_k[school_n][f][1] = 0.55f + 0.45f * h01(lv, (uint32_t)k, 200u + (uint32_t)f);
@@ -220,13 +223,13 @@ float life_track_s(int k) {
 bool life_here(int k, float ahead) {
   const craft *c = &G.c[0];
   float sy = sinf(c->yaw), cy = cosf(c->yaw), x = c->x + sy * ahead - cy * 3.5f, z = c->z + cy * ahead + sy * 3.5f;
-  if (k >= 0 && k < school_n) { S[k].x = x, S[k].z = z, S[k].bed = fminf(S[k].bed, -3.0f), S[k].scatter = 0; return true; }
+  if (k >= 0 && k < school_n) { S[k].x = x, S[k].z = z, S[k].bed = fminf(S[k].bed, -3.0f), S[k].scatter = 0, S[k].st = -1; return true; }
   if (k >= 100 && k - 100 < flock_n) { flock *fl = &F[k - 100]; fl->x = x, fl->z = z, fl->y = 0, fl->afloat = true, fl->state = 0, fl->armed = true; return true; }
   return false;
 }
 
 void life_reset(void) {
-  for (int k = 0; k < school_n; k++) S[k].scatter = 0, S[k].near = S[k].by = false;
+  for (int k = 0; k < school_n; k++) S[k].scatter = 0, S[k].st = -1, S[k].near = S[k].by = false;
   for (int k = 0; k < flock_n; k++) F[k].state = 0, F[k].t = 0, F[k].armed = true;
   g_life[2] = g_life[3] = g_life[4] = 0;
   have_prev = false;
@@ -281,12 +284,13 @@ void life_tick(float dt) {
     school *sc = &S[k];
     sc->phase += dt * (0.5f + 1.6f * sc->scatter);
     if (sc->scatter > 0) sc->scatter = fmaxf(0.0f, sc->scatter - dt / 3.5f);
+    if (sc->st >= 0) { sc->st += dt; if (sc->st > 3.0f) sc->st = -1; }
     bool fresh = sc->scatter < 0.15f;
     for (int i = 0; i < RACERS; i++) {
       const craft *c = &G.c[i];
       float bx = c->x, bz = c->z, d2 = i == 0 ? seg_d2(sc->x, sc->z, ax, az, bx, bz) : (sc->x - bx) * (sc->x - bx) + (sc->z - bz) * (sc->z - bz);
       if (d2 < SCATTER_R * SCATTER_R && c->speed > 3 && !c->air) {
-        if (fresh) { sc->ax = c->x, sc->az = c->z; fresh = false; }
+        if (fresh) { sc->ax = c->x, sc->az = c->z, sc->st = 0; fresh = false; }
         sc->scatter = 1;
       }
       if (i == 0) {
@@ -322,9 +326,10 @@ void life_sync(double wt) {
   if (!g_life_on) return;
   if (fish_im) {
     int n = 0;
+    g_life[6] = 0;
     for (int k = 0; k < school_n; k++) {
       const school *sc = &S[k];
-      float surf = cw_water_height_at(G.water, sc->x, sc->z, wt), mid = surf - 0.34f; /* just under: the see-through water shows what is in its top half metre */
+      float surf = cw_water_height_at(G.water, sc->x, sc->z, wt), mid = surf - 0.22f + g_fish_lift; /* just under: the see-through water shows what is in its top half metre */
       float e = sc->scatter * sc->scatter * (3 - 2 * sc->scatter); /* eased: a burst out, a slow drift back */
       for (int f = 0; f < FISH; f++) {
         const float *q = fish_k[k][f];
@@ -334,11 +339,23 @@ void life_sync(double wt) {
         float ox = x - sc->ax, oz = z - sc->az, ol = sqrtf(ox * ox + oz * oz) + 1e-3f;
         x += ox / ol * 5.5f * e * q[1], z += oz / ol * 5.5f * e * q[1], y -= 0.35f * e;
         y = fmaxf(y, sc->bed + 0.3f);
+        /* startled: half the school leaps clear of the water one after another, nose up then down, in the first second
+           and a half after it is startled (what you see of a school from a racing craft: the water itself hides fish a few
+           metres off) */
+        float pitch = 0;
+        if (sc->st >= 0 && !(f & 1)) {
+          float u = (sc->st - 0.09f * (float)(f / 2)) / 0.55f;
+          if (u > 0 && u < 1) { y = fmaxf(y, surf - 0.2f) + 1.1f * q[1] * sinf(3.14159f * u); pitch = -0.9f * cosf(3.14159f * u); }
+        }
         /* heading along the ring (anticlockwise), turned out when fleeing, with a swimming wag */
         float yaw = turn_to(cw_atan2(-sinf(a), cosf(a)), cw_atan2(ox, oz), e) + 0.18f * sinf(sc->phase * 9.0f + (float)f);
         float s = q[3];
+        bool up = y > surf + 0.05f;
+        if (up) g_life[6] += 1;
+        if (up != fish_up[k][f]) cw_water_splash(G.water, x, z, 0.3f + 0.25f * q[1], 0.02f, 0.55f); /* the ring and foam where it breaks the surface */
+        fish_up[k][f] = up;
         t3_mat4 m;
-        t3_mat4_compose(&m, (t3_vec3){ x, y, z }, t3_quat_from_euler((t3_euler){ 0, yaw, 0, T3_YXZ }), (t3_vec3){ s, s, s });
+        t3_mat4_compose(&m, (t3_vec3){ x, y, z }, t3_quat_from_euler((t3_euler){ pitch, yaw, 0, T3_YXZ }), (t3_vec3){ s, s, s });
         t3_instanced_mesh_set_matrix_at(fish_im, n++, &m);
       }
     }

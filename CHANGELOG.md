@@ -23,7 +23,8 @@
     you speed says how to save the next one.
   - The chase camera sits lower and closer at speed, and eases back to hold a long flight.
   - The spray is thicker and whiter. Rain and the spray of a hard landing bead on the camera's lens and run off.
-  - Schools of fish swim under the clear water beside the line and scatter from a passing craft; gulls on the beaches
+  - Schools of fish swim just under the clear water beside the line; a craft coming close scatters them and half the
+    school leaps clear, one after another, each with a ring where it breaks the surface; gulls on the beaches
     near the line (or afloat where there is none) lift off as the racers go by, wheel overhead and settle again. None of it touches the race.
   - Close shaves past a mark and ten clean marks in a row pay into the turbo. 1.7 s in a rival's slipstream gives
     3 % more top speed.
@@ -39,7 +40,8 @@
   and Race radio rows, and the grid by result.
 - Tests: jetski-races counts a rider as stuck only while riding (the seconds after a spill are the spill's);
   jetski-water measures the water from the old chase camera (sw cam_old 1), as its bounds were set, and jetski-camera
-  the new one; jetski-weather's stunt check turns the rings off, so its no-tricks control scores nothing.
+  the new one; jetski-water-ramp leaves the standings column out of its foam count; jetski-minimap turns the lens drops
+  and the thick spray off, so only the map differs between its two pictures; jetski-weather's stunt check turns the rings off, so its no-tricks control scores nothing.
 
 ## 0.41.0
 

@@ -17,7 +17,7 @@ const arg = (n, d) => { const i = process.argv.indexOf(n); return i > 0 ? proces
 const CART = resolve(arg('--cart', join(ROOT, 'build/cart-wgpu/carts/jetski.wasc')));
 const CONTROL = resolve(arg('--control', join(ROOT, 'build/control/v0.12.3/jetski.wasc')));
 const BACKENDS = process.argv.includes('--gl') ? ['gl'] : process.argv.includes('--webgpu') ? ['webgpu'] : ['gl', 'webgpu'];
-const BOX = { x0: 100, x1: 1700, y0: 260, y1: 900 }, GO = { x0: 800, x1: 1120, y0: 330, y1: 520 }; /* clear of the HUD */
+const BOX = { x0: 100, x1: 1700, y0: 260, y1: 900 }, GO = { x0: 800, x1: 1120, y0: 330, y1: 520 }, STAND = { x0: 40, x1: 380, y0: 230, y1: 460 }; /* clear of the HUD (STAND: the standings column down the left) */
 const MAX_NEW = 4000, RATIO = 3; /* pixels, and how many times the control must show */
 mkdirSync(OUT, { recursive: true });
 if (!existsSync(CONTROL)) { mkdirSync(dirname(CONTROL), { recursive: true }); const r = spawnSync('gh', ['release', 'download', 'v0.12.3', '-R', 'monteslu/more-cartwheel-examples', '-p', 'jetski.wasc', '-D', dirname(CONTROL)], { encoding: 'utf8' }); if (r.status) { console.error(r.stderr); process.exit(3); } }
@@ -54,7 +54,7 @@ async function foam(cart, backend, tag) {
     await tool('frame', { op: 'stepAndShot', frames: 2, path });
     const im = readImage(path);
     let n = 0;
-    for (let y = BOX.y0; y < BOX.y1; y++) for (let xx = BOX.x0; xx < BOX.x1; xx++) { if (xx >= GO.x0 && xx < GO.x1 && y >= GO.y0 && y < GO.y1) continue; const k = (y * im.w + xx) * 4; if (im.rgba[k] > 150 && im.rgba[k + 1] > 150 && im.rgba[k + 2] > 150) n++; }
+    for (let y = BOX.y0; y < BOX.y1; y++) for (let xx = BOX.x0; xx < BOX.x1; xx++) { if (xx >= GO.x0 && xx < GO.x1 && y >= GO.y0 && y < GO.y1) continue; if (xx >= STAND.x0 && xx < STAND.x1 && y >= STAND.y0 && y < STAND.y1) continue; const k = (y * im.w + xx) * 4; if (im.rgba[k] > 150 && im.rgba[k + 1] > 150 && im.rgba[k + 2] > 150) n++; }
     out[name] = n;
   }
   return out;

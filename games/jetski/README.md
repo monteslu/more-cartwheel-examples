@@ -57,8 +57,8 @@ The menu's Steering assist lets the computer steer the racing line while the sti
 always wins. Close shaves past a mark, ten clean marks in a row and a slipstream behind a rival each pay into your turbo
 or your speed.
 
-Schools of fish swim under the clear water beside the line and scatter from a craft that comes close, then gather
-again behind it. Gulls rest on the beaches near the line, or on the water where there is no beach, lift off as the racers pass, wheel overhead and come back
+Schools of fish swim just under the clear water beside the line. A craft that comes close scatters them, half the
+school leaps clear one after another, and they gather again behind it. Gulls rest on the beaches near the line, or on the water where there is no beach, lift off as the racers pass, wheel overhead and come back
 down (`sw life 0` takes them all away). None of them is in the way or changes the race.
 
 ## The riders

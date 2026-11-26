@@ -75,6 +75,9 @@ async function moment(c, level, s, tag, map, mode = 0) {
 for (const backend of BACKENDS) {
   await call('loadMedia', { platform: 'wasmcart', path: CART, gpuPower: 'low-power', ...(backend === 'gl' ? { wgpu: false } : {}) });
   await call('frame', { op: 'step', frames: 30 });
+  /* the map against the same picture without it: the lens drops (which refract the map under them) and the thick spray (whose
+     particles fly on between the two pictures) are off, as the old thin spray was, so what changes is the map */
+  await cmd('sw lens 0'); await cmd('sw spray_thick 0');
   for (const cid of COURSE_IDS) {
     const c = readCourse(cid), level = COURSE_IDS.indexOf(cid);
     // a championship and a time trial, which has no rivals: the map is in both
