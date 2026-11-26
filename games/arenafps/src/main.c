@@ -3345,7 +3345,13 @@ static void sync_nodes(void) {
     spd = f->mv.on_floor ? CW_MIN(1, spd) : 0;
     bobph[h] += 0.16f * (0.3f + spd);
     float bx = cw_sin(bobph[h]) * 0.012f * spd, by = -fabsf(cw_cos(bobph[h])) * 0.014f * spd + cw_sin(bobph[h] * 0.5f) * 0.0025f;
-    float kick = rec * (f->weapon == 2 ? 1.5f : f->weapon == 3 ? 1.2f : 1.0f);
+    /* the kick is an envelope like the muzzle light's: it swells over about three ticks while the shots keep coming (held
+     * 9 ticks after each) and eases back over about a third of a second, with a fifth of the old per-shot snap on top for
+     * the feel. The full snap every shot threw the dark gun across the bright floor and back ten times a second, 7 flashes
+     * a second in the lower right (the flash sweep's arenafps-battle). ARENA_T_strobefix=0 (autopilot): the old snap */
+    static float vkick[MAXH];
+    vkick[h] = f->mhold > 0 && f->alive ? vkick[h] + (1.0f - vkick[h]) * 0.35f : vkick[h] * 0.88f;
+    float kick = (strobefix() ? 0.8f * vkick[h] + 0.2f * rec : rec) * (f->weapon == 2 ? 1.5f : f->weapon == 3 ? 1.2f : 1.0f);
     /* in a tall half width view the gun comes in toward the middle, or it leaves the view and the sleeve fills the corner */
     cw_rect vmr = cw_shell_player_rect(h);
     float vm_x = 0.2f * cw_clampf((vmr.h > 1 ? vmr.w / vmr.h : 1.78f) / 1.78f, 0.45f, 1.0f);

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.43.2
+
+- Arena: the first-person gun kicks on an envelope that swells while the shots keep coming and eases back, instead of
+  snapping back and forth with every shot (the pulse rifle swept the dark gun across a bright floor 7 times a second).
+
 ## 0.43.1
 
 - Arena, Battle: each side has a commander that sends its squads of four to the posts worth taking or defending
