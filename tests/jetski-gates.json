@@ -404,5 +404,10 @@
     "name": "jetski-radio",
     "script": "tests/jetski-radio.mjs",
     "note": "the race radio: at least three lines in a race, 8 s or more apart, never the same twice running, every one shown as a subtitle; news twice 4 s apart is one line (control: radio_gap 0 says more); a rival passing calls it out"
+  },
+  {
+    "name": "jetski-life",
+    "script": "tests/jetski-life.mjs",
+    "note": "life in the water: in the first minute of a race on every course the player passes at least 3 schools of fish within 20 m and scatters at least 2; gulls near the line (on a beach or afloat) on at least 4 courses lift off as the racers pass (control: sw life 0)"
   }
 ]

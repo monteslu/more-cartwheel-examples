@@ -23,16 +23,23 @@
     you speed says how to save the next one.
   - The chase camera sits lower and closer at speed, and eases back to hold a long flight.
   - The spray is thicker and whiter. Rain and the spray of a hard landing bead on the camera's lens and run off.
+  - Schools of fish swim under the clear water beside the line and scatter from a passing craft; gulls on the beaches
+    near the line (or afloat where there is none) lift off as the racers go by, wheel overhead and settle again. None of it touches the race.
   - Close shaves past a mark and ten clean marks in a row pay into the turbo. 1.7 s in a rival's slipstream gives
     3 % more top speed.
   - In stunt mode a gold ring hangs over each ramp's jump, and the same trick again pays less. Bronze, silver and gold
     medals at 10000, 25000 and 45000 points on every course.
+  - A computer rider rated low for handling eases off the throttle through a sharp turn at speed instead of running
+    wide into a wall or a quay.
   - Fixed: two riders over the line within a second of each other could be put in the wrong order. Their finish
     times were compared at float precision near ten million.
 - Tests: jetski-moments, jetski-camera (through romdev, GL and WebGPU), jetski-steer, jetski-deep, jetski-cast,
-  jetski-trick-value, jetski-rings and jetski-radio. Each has a control that must fail. jetski-finish, jetski-handling,
+  jetski-trick-value, jetski-rings, jetski-radio and jetski-life. Each has a control that must fail. jetski-finish, jetski-handling,
   jetski-menu and jetski-newcomer (--assist) cover the start, the verbs, the landing tip, the Rider, Steering assist
   and Race radio rows, and the grid by result.
+- Tests: jetski-races counts a rider as stuck only while riding (the seconds after a spill are the spill's);
+  jetski-water measures the water from the old chase camera (sw cam_old 1), as its bounds were set, and jetski-camera
+  the new one; jetski-weather's stunt check turns the rings off, so its no-tricks control scores nothing.
 
 ## 0.41.0
 

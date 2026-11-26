@@ -287,7 +287,10 @@ static void computer(craft *c, int idx) {
    * as a dive), or it comes down tail first */
   c->in.lean = fabsf(err) > 0.55f && !(c->air && c->pitch > 0.45f) ? 1.0f : 0.0f;
   if (c->air && c->air_time > 0.6f && c->vy < 0 && c->y - c->surf < -c->vy * 0.8f) c->in.lean = c->pitch > 0.35f ? -0.29f : 0.0f;
-  c->in.throttle = 1;
+  /* a rider who turns slowly (handling under 3) eases off through a sharp turn at speed, as a person on that craft would,
+     rather than running wide into a wall or a quay */
+  { int h = g_rider_stats ? RIDER_STATS[rider_of(idx)].handling : 3;
+    c->in.throttle = h < 3 && fabsf(err) > 0.7f && c->speed > 13.0f ? 0.55f : 1.0f; }
   c->in.trick = false;
 }
 
@@ -468,6 +471,7 @@ static void tanker_craft(craft *c, float dt) {
   c->wake_on = true;
 }
 
+float g_stuck_at[8]; /* the rival stuck longest: its seat, where (x, z), how far round the course, its speed, the tanker (x, z), the rival's spill */
 int g_rider, g_rider_stats = 1;
 float g_rider_k[RACERS][4]; /* each seat's multipliers this race: pump, top speed, turn, trick speed (the cast gate) */
 static void craft_tick(craft *c, int idx, float dt) {
@@ -938,6 +942,7 @@ void sim_reset(int state) {
   cw_terrain *land = G.land;
   hud_race_reset();
   radio_race_reset();
+  life_reset();
   memset(g_ride, 0, sizeof g_ride);
   memset(g_verb_n, 0, sizeof g_verb_n);
   g_assist_ticks = 0;
@@ -1273,7 +1278,8 @@ void sim_tick(float dt) {
     } }
   { craft *h = &G.c[0]; if (G.state == RACE_ON && h->speed < 3) { h->slow3_ticks++; if (h->slow3_ticks > h->slow_max) h->slow_max = h->slow3_ticks; } else h->slow3_ticks = 0; }
   G.ai_ramps = G.ai_big_ramps = G.ai_spills = G.ai_misses = G.ai_passes = G.ai_walls = 0;
-  for (int i = 1; i < RACERS; i++) { craft *c = &G.c[i]; if (G.state == RACE_ON && c->speed < 2) { c->slow_ticks++; if (c->slow_ticks > G.ai_stuck) G.ai_stuck = c->slow_ticks; } else c->slow_ticks = 0; G.ai_ramps += c->ramps, G.ai_big_ramps += c->big_ramps, G.ai_spills += c->spills, G.ai_misses += c->misses, G.ai_passes += c->passes, G.ai_walls += c->wall_hits; }
+  for (int i = 1; i < RACERS; i++) { craft *c = &G.c[i]; /* stuck: under 2 m/s while riding (the seconds after a spill, the rider climbing back on, are not stuck) */
+    if (G.state == RACE_ON && c->speed < 2 && c->spill <= 0) { c->slow_ticks++; if (c->slow_ticks > G.ai_stuck) { extern float g_stuck_at[8]; G.ai_stuck = c->slow_ticks; g_stuck_at[0] = (float)i, g_stuck_at[1] = c->x, g_stuck_at[2] = c->z, g_stuck_at[3] = c->dist, g_stuck_at[4] = c->speed, g_stuck_at[5] = G.tanker[0], g_stuck_at[6] = G.tanker[1], g_stuck_at[7] = c->spill; } } else c->slow_ticks = 0; G.ai_ramps += c->ramps, G.ai_big_ramps += c->big_ramps, G.ai_spills += c->spills, G.ai_misses += c->misses, G.ai_passes += c->passes, G.ai_walls += c->wall_hits; }
   uint32_t h = G.tick;
   for (int i = 0; i < RACERS; i++) {
     h = cw_hash32(&G.c[i].x, sizeof(float) * 6, h);

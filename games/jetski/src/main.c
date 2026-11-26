@@ -62,6 +62,24 @@ static void cmd_go(int argc, const char **argv, cw_reply *r) {
   if (r) cw_reply_raw(r, "true");
 }
 
+/* go_life <school> [before]: the race at speed, the given metres (40) before that school of fish (a flock: 100 + its number) */
+static void cmd_go_life(int argc, const char **argv, cw_reply *r) {
+  float s = argc > 1 ? life_track_s(atoi(argv[1])) : -1, before = argc > 2 ? (float)atof(argv[2]) : 40;
+  if (s < 0) { if (r) cw_reply_raw(r, "false"); return; }
+  s -= before;
+  if (s < 0) s += COURSE_LEN;
+  char buf[32];
+  snprintf(buf, sizeof buf, "%.1f", s);
+  const char *av[2] = { "go", buf };
+  cmd_go(2, av, r);
+}
+
+/* life_here <school> [metres]: that school of fish (100 + n: a flock of gulls, afloat) moved just ahead of the craft, for a look */
+static void cmd_life_here(int argc, const char **argv, cw_reply *r) {
+  bool ok = argc > 1 && life_here(atoi(argv[1]), argc > 2 ? (float)atof(argv[2]) : 9.0f);
+  if (r) cw_reply_raw(r, ok ? "true" : "false");
+}
+
 static void cmd_warp(int argc, const char **argv, cw_reply *r) {
   /* warp <track metres> [gap] [side]: every racer jumps there, for a look along the course; gap and side (metres between
    * racers along it, and either side of it) close the pack up for key art */
@@ -241,6 +259,7 @@ static void cmd_switch(int argc, const char **argv, cw_reply *r) {
     else if (!strcmp(argv[1], "music_lift")) { extern int g_music_lift; g_music_lift = (int)v; }
     else if (!strcmp(argv[1], "spray_thick")) { extern int g_spray_thick; g_spray_thick = (int)v; }
     else if (!strcmp(argv[1], "rider_stats")) g_rider_stats = (int)v;
+    else if (!strcmp(argv[1], "life")) { extern int g_life_on; g_life_on = (int)v; if (cw_node_valid(G.water)) view_course_apply(); }
     else if (!strcmp(argv[1], "lens")) { extern int g_lens_on; g_lens_on = (int)v; }
     else if (!strcmp(argv[1], "verbs")) { extern int g_verbs; g_verbs = (int)v; }
     else if (!strcmp(argv[1], "radio_gap")) { extern float g_radio_gap; g_radio_gap = v; }
@@ -503,7 +522,7 @@ static void init(void *user) {
   cw_debug_f32_array("p0.vel", &G.c[0].vx, 3);
   cw_debug_f32("p0.yaw", &G.c[0].yaw);
   cw_debug_f32("p0.steer", &G.c[0].steer); /* the bars, after the stick's curve and their lag */
-  { extern int32_t g_yaw_flips; extern float g_yaw_rate_max; cw_debug_i32("p0.yaw_flips", &g_yaw_flips); { extern float g_draft; cw_debug_f32("p0.draft", &g_draft); } { extern float g_cam_eye[4]; cw_debug_f32_array("cam.eye", g_cam_eye, 4); } { extern float g_rider_k[RACERS][4]; cw_debug_f32_array("rider.k", &g_rider_k[0][0], RACERS * 4); cw_debug_i32("rider.pick", &g_rider); } { extern float g_lens[3]; cw_debug_f32_array("lens", g_lens, 3); } { extern float g_radio[5]; cw_debug_f32_array("radio", g_radio, 5); } { extern int32_t g_verb_n[3]; cw_debug_field("p0.verbs", g_verb_n, CW_DBG_I32, 3); } { extern int32_t g_assist_ticks; cw_debug_i32("p0.assist_ticks", &g_assist_ticks); cw_debug_i32("menu.assist", &g_assist); } { extern float g_music_state[2]; cw_debug_f32_array("audio.music_mix", g_music_state, 2); } { extern int32_t g_hud_rows, g_hud_order[RACERS], g_grid[RACERS]; cw_debug_i32("hud.rows", &g_hud_rows); cw_debug_field("hud.order", g_hud_order, CW_DBG_I32, RACERS); cw_debug_field("race.grid", g_grid, CW_DBG_I32, RACERS); cw_debug_field("race.order", G.order, CW_DBG_I32, RACERS); } { extern float g_lean_tip_t; extern int g_lean_told; cw_debug_f32("hud.lean_tip", &g_lean_tip_t); cw_debug_i32("hud.lean_told", &g_lean_told); } cw_debug_f32("p0.yaw_rate_max", &g_yaw_rate_max); }
+  { extern int32_t g_yaw_flips; extern float g_yaw_rate_max; cw_debug_i32("p0.yaw_flips", &g_yaw_flips); { extern float g_draft; cw_debug_f32("p0.draft", &g_draft); } { extern float g_cam_eye[4]; cw_debug_f32_array("cam.eye", g_cam_eye, 4); } { extern float g_rider_k[RACERS][4]; cw_debug_f32_array("rider.k", &g_rider_k[0][0], RACERS * 4); cw_debug_i32("rider.pick", &g_rider); } { extern float g_lens[3]; cw_debug_f32_array("lens", g_lens, 3); } { extern float g_life[6]; cw_debug_f32_array("life", g_life, 6); } { extern float g_radio[5]; cw_debug_f32_array("radio", g_radio, 5); } { extern int32_t g_verb_n[3]; cw_debug_field("p0.verbs", g_verb_n, CW_DBG_I32, 3); } { extern int32_t g_assist_ticks; cw_debug_i32("p0.assist_ticks", &g_assist_ticks); cw_debug_i32("menu.assist", &g_assist); } { extern float g_music_state[2]; cw_debug_f32_array("audio.music_mix", g_music_state, 2); } { extern int32_t g_hud_rows, g_hud_order[RACERS], g_grid[RACERS]; cw_debug_i32("hud.rows", &g_hud_rows); cw_debug_field("hud.order", g_hud_order, CW_DBG_I32, RACERS); cw_debug_field("race.grid", g_grid, CW_DBG_I32, RACERS); cw_debug_field("race.order", G.order, CW_DBG_I32, RACERS); } { extern float g_lean_tip_t; extern int g_lean_told; cw_debug_f32("hud.lean_tip", &g_lean_tip_t); cw_debug_i32("hud.lean_told", &g_lean_told); } cw_debug_f32("p0.yaw_rate_max", &g_yaw_rate_max); }
   cw_debug_f32("p0.speed", &G.c[0].speed);
   cw_debug_f32("p0.surf", &G.c[0].surf);
   cw_debug_f32("p0.air_time", &G.c[0].air_time);
@@ -535,6 +554,7 @@ static void init(void *user) {
   cw_debug_i32("hook.wake_rides", &G.wake_rides);
   cw_debug_f32_array("hook.tanker", G.tanker, 3);
   cw_debug_i32("ai.stuck", &G.ai_stuck);
+  { extern float g_stuck_at[8]; cw_debug_f32_array("ai.stuck_at", g_stuck_at, 8); }
   cw_debug_i32("ai.ramps", &G.ai_ramps);
   cw_debug_i32("ai.big_ramps", &G.ai_big_ramps);
   cw_debug_i32("ai.spills", &G.ai_spills);
@@ -558,6 +578,8 @@ static void init(void *user) {
   cw_debug_command("beach", "beach <metres>: the human on the sand beside the course there, nose inland", cmd_beach);
   cw_debug_command("drop", "drop <pitch> <height> <speed>", cmd_drop);
   cw_debug_command("go", "go <metres>: the race running at speed there", cmd_go);
+  cw_debug_command("life_here", "life_here <school> [metres ahead]: a school of fish (100 + n: a flock of gulls) just ahead of the craft, for a look", cmd_life_here);
+  cw_debug_command("go_life", "go_life <school> [metres before]: the race at speed just before a school of fish (100 + n: a flock of gulls)", cmd_go_life);
   cw_debug_command("race", "start a race", cmd_race);
   cw_debug_command("cam_clear", "cam_clear 0: the attract camera ignores the swell", cmd_cam_clear);
   cw_debug_command("swell", "swell <0..1>: hold the sea at that size (0: let it build)", cmd_swell);
@@ -715,6 +737,7 @@ static void fixed_update(void *user, double dt) {
   view_tick((float)dt);
   fx_tick((float)dt);
   { void lens_tick(float); lens_tick((float)dt); }
+  life_tick((float)dt);
   radio_tick((float)dt);
   audio_tick((float)dt);
   float ms = (float)((cw_time() - t0) * 1000.0);

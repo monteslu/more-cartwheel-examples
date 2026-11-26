@@ -632,6 +632,7 @@ void view_course_apply(void) {
   props_apply(root);
   ramps_apply();
   floats_apply(root);
+  life_course_apply(root);
   wx_course_apply();
   g_marks_stale = true;
 }
@@ -792,6 +793,7 @@ void view_init(void) {
     t3_release(go);
   }
   floats_apply(root);
+  life_course_apply(root);
   wx_course_apply();
   fx_init(cw_node_get(root, "Fx"));
   rider_init();
@@ -1208,6 +1210,7 @@ void view_sync(double alpha) {
       cw_node3d_set_scale(buoy_n[b], (t3_vec3){ k, k, k }); }
   }
   floats_sync(wt);
+  life_sync(wt);
   {
     float gx, gz, dx, dz;
     track_at(0, &gx, &gz, &dx, &dz);

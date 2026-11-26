@@ -98,7 +98,8 @@ for (const backend of BACKENDS) {
   }
   if (ONLY.includes(5)) {
     const stunt = async (tricks, craft = 0) => {
-      await fresh(backend, [`craft ${craft}`, 'mode 2', 'course 0', 'weather 1', 'race', 'wxsw event 0']);
+      /* (no rings: a ring flown through pays into the combo too; jetski-rings measures those) */
+      await fresh(backend, [`craft ${craft}`, 'mode 2', 'wxsw rings 0', 'course 0', 'weather 1', 'race', 'wxsw event 0']);
       await R.run(240, [[0, 240, TH]]);
       /* three ramps one after another, each ridden at speed: the trick button tapped all the way (a press on the water does nothing) */
       for (let k = 0; k < 3; k++) {

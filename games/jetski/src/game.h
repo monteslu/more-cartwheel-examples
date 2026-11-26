@@ -282,6 +282,12 @@ void radio_draw(cw_font f);
 extern int g_radio_vol;
 void view_repaint(void);          /* seats painted in their riders' colours again (the human picked a rider) */
 const float *view_team(int i);     /* a racer's colours: deck rgb, vest rgb */
+void life_course_apply(cw_node root); /* life.c: fish and gulls placed for the course */
+void life_reset(void);
+float life_track_s(int k);
+bool life_here(int k, float ahead);
+void life_tick(float dt);
+void life_sync(double wt);
 void view_course_apply(void);    /* G.level changed: land, sea, sky and marks for that course */
 void view_tick(float dt);
 extern bool g_peek_on;  /* debug: peek holds the camera, for the grounding sweep */

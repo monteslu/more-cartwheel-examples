@@ -58,6 +58,8 @@ async function scene(backend, craft, tod, course) {
   if (!l.loaded) { console.error(JSON.stringify(l).slice(0, 300)); await bye(3); }
   await tool('frame', { op: 'step', frames: 20 });
   await cmd(`course ${course}`); await tool('frame', { op: 'step', frames: 30 });
+  /* the chase camera as these bounds were set from (sw cam_old 1): this check measures the water, jetski-camera the camera */
+  await cmd('sw cam_old 1');
   await cmd(`craft ${craft}`); await cmd('trial 0.05');
   await tool('frame', { op: 'step', frames: 90 });
   await cmd('buoy_shot 1 1 1'); /* the sim held still: the same moment for every picture */

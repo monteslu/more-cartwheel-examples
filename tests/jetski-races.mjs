@@ -20,7 +20,7 @@ const check = (name, ok, detail) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${nam
 for (let lv = 0; lv < C.length; lv++) {
   const s = run(lv, 36000);
   check(`${C[lv]}: the race is run`, s['race.state'] === 3 && s['ai.passes'] > 200, `state ${s['race.state']}, clock ${(+s['race.clock']).toFixed(0)} s, ${s['ai.passes']} buoys passed by the rivals, the seat ${s['p0.passes']} and ${s['p0.misses']} missed`);
-  check(`${C[lv]}: nobody stuck`, s['ai.stuck'] < STUCK_TICKS, `longest under 2 m/s ${s['ai.stuck']} ticks, against walls ${s['ai.walls']} ticks`);
+  check(`${C[lv]}: nobody stuck`, s['ai.stuck'] < STUCK_TICKS, `longest under 2 m/s while riding ${s['ai.stuck']} ticks, against walls ${s['ai.walls']} ticks`);
   check(`${C[lv]}: rivals miss no more buoys`, s['ai.misses'] <= BEFORE[lv] + 2, `${s['ai.misses']}, before ${BEFORE[lv]}, ramps taken ${s['ai.ramps']}, big ones ${s['ai.big_ramps']}`);
   if (BIG[lv]) check(`${C[lv]}: rivals take the big ramps`, s['ai.big_ramps'] >= 1, `${s['ai.big_ramps']} times`);
 }
