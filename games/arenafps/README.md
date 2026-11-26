@@ -104,7 +104,7 @@ is built for Farmlands.
   the clock, and a marker on the post to take, hold or defend, with its distance; past the walls a background battle
   thins as a side loses.
 - Tests: `tests/arenafps-laststand.mjs` (control `sw count_rule reference`: the count taken at each death, a side
-  losing at 0 with soldiers still standing), `tests/arenafps-takeover.mjs` (control `sw takeover 0`). The debug command `battle` sets pools and the field.
+  losing at 0 with soldiers still standing), `tests/arenafps-takeover.mjs` (control `sw takeover 0`) and `tests/arenafps-battle-newcomer.mjs` (a scripted newcomer led by the marker and the call wins 14 of 20 on Easy; control `sw cues 0`). The debug command `battle` sets pools and the field.
 
 ## How it is made (the look)
 

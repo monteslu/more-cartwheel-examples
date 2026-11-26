@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.43.5
+
+- Tests: arenafps-battle-newcomer. A scripted newcomer (late reactions, wide aim) plays Battle on Farmlands by the
+  screen's cues alone: it walks where the objective marker points, presses the call it offers and fights what it
+  sees. On Easy its side must win at least 14 of 20 short battles (17 measured); on normal with both sides' bots even
+  it must win at least twice as often with the cues as without (10 against 2). The control, cues off (no marker, call
+  prompt, post colours, pools or damage bar), must win at most 5 of 20. The legs can run on separate machines.
+- Arena, Battle: with the cues off (sw cues 0) the posts show no side colours and the HUD no pools or posts.
+
 ## 0.43.4
 
 - Arena, Battle: the call. The marker on the post to take or defend offers it (Back on a pad, C on a keyboard): your

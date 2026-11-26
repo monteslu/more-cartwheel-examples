@@ -1167,6 +1167,11 @@
     "note": "Battle: a person downed with no reinforcements left takes over the nearest teammate bot: the real game from the title by pad 0 (the mode row to BATTLE), blue at 0 with 2 on the field against 10, seat 0 downed; afterwards seat 0 plays the other soldier, blue has 1 alive, the battle is on, the held stick walks the soldier forward, the view turned no faster than 3.6 rad/s, sat at the soldier's eye after the handover, and no camera frame was offset (software GL). Control: ARENA_TAKEOVER=0 (the person only watches) must fail the seat check"
   },
   {
+    "name": "arenafps-battle-newcomer",
+    "script": "tests/arenafps-battle-newcomer.mjs",
+    "note": "Battle on Farmlands from the screen's cues (software GL, the autopilot): the scripted newcomer (late reactions, wide aim, the game's stick curve) walks where the objective marker points, presses the call it offers and fights what it sees. Twenty short battles a leg. On Easy, the game as it ships, its side must win at least 14. On normal with both sides' bots even it must win at least twice as often with the cues as without. Control, a leg that must fail: ARENA_NO_CUES=1 (no marker or call prompt, no post colours, no pools, no damage bar, as sw cues 0) at even strength must win at most 5 of 20. The legs run on separate machines with --leg and are judged together with --judge"
+  },
+  {
     "name": "arenafps-save",
     "script": "tests/arenafps-save.mjs",
     "note": "the setup screen's aim assist and rumble choices survive a restart: one run turns both off on the pad, the next run on its save reads them back (software GL). Control: a fresh save reads the defaults and the check must fail"
