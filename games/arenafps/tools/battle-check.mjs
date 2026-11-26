@@ -4,6 +4,8 @@
 //               and item 0.5 m and must be seen
 //   navigation  every command post reaches every other over the game's navmesh (arenafps_navcheck, built from the
 //               game's arena code); control NAVCHECK_SEAL=0 walls the first post in and must cut its four pairs
+//   outside     the ground past the field wall that the background battle (src/crowd.c) stands on is the collision
+//               ground under it; control NAVCHECK_GROUND_LIFT=0.3 lifts the answer and must be caught
 //   flow        tools/make-levels.mjs's report for the map (posts 60 to 90 m apart on their lanes, loops, no dead ends)
 // Run: node games/arenafps/tools/battle-check.mjs [--build build/native]   (needs arenafps_auto and arenafps_navcheck)
 import { spawnSync } from 'node:child_process';
@@ -44,7 +46,8 @@ function nav(extra) {
   const p = spawnSync('nice', ['-n', '10', exeOf('arenafps_navcheck')], { env: { ...ENV, NAVCHECK_ARENA: '3', ...extra }, encoding: 'utf8', timeout: 300e3 });
   const line = (p.stdout || '').split('\n').find((l) => l.startsWith('{"arena"'));
   if (!line) { console.error(`navcheck: exit ${p.status}, no report\n${(p.stderr || '').slice(-800)}`); process.exit(2); }
-  return JSON.parse(line);
+  const g = (p.stdout || '').split('\n').find((l) => l.startsWith('{"outside_samples"'));
+  return { ...JSON.parse(line), ...(g ? JSON.parse(g) : {}) };
 }
 const n = nav({});
 console.log(`navigation: ${n.whole} of ${n.pairs} post pairs joined (${n.posts} posts, ${n.polys} polys, navmesh ${n.nav_ms} ms, longest walk ${n.longest_walk_m} m)`);
@@ -54,6 +57,13 @@ const nc = nav({ NAVCHECK_SEAL: '0' });
 const cut = nc.pairs_detail.filter((d) => !d.ok);
 console.log(`navigation control (post ${n.pairs_detail[0]?.a} walled in): ${nc.whole} of ${nc.pairs} joined, cut: ${cut.map((d) => d.a + '-' + d.b).join(' ')}`);
 if (cut.length < 4 || nc.whole === nc.pairs) bad++, console.error('FAIL: the navigation control did not fail');
+
+// the background battle's ground past the field wall: the height it is given is the ground under it (no figure floats)
+console.log(`outside ground: ${n.outside_samples} samples past the field wall, largest gap to the collision ground ${n.outside_err_m} m`);
+if (!(n.outside_samples > 100) || !(n.outside_err_m < 0.02)) bad++, console.error('FAIL outside ground');
+const ol = nav({ NAVCHECK_GROUND_LIFT: '0.3' });
+console.log(`outside ground control (answer lifted 0.3 m): largest gap ${ol.outside_err_m} m`);
+if (!(ol.outside_err_m >= 0.25)) bad++, console.error('FAIL: the outside ground control did not fail');
 
 const { battle } = await import('./battle-map.mjs');
 const fr = battle(join(GAME, 'levels'), false);

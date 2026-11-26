@@ -74,7 +74,7 @@ export function battle(OUT, write = true) {
     const e = Math.max(Math.abs(x), Math.abs(z)) - 109;
     const far = 0.5 * Math.sin(x * 0.05 + 1) * Math.sin(z * 0.043) + 0.5;
     // past the field wall the country rises in long grassy slopes (under 30 degrees: the ground's top-down texture holds)
-    return e > 0 ? (0.42 * e + 5 * smooth(0, 26, e) + 3 * Math.sin(x * 0.045 + z * 0.03) * smooth(4, 20, e)) * (0.8 + 0.4 * far) : 0;
+    return e > 0 ? (0.55 * e + 8 * smooth(0, 24, e) + 2 * Math.sin(x * 0.045 + z * 0.03) * smooth(10, 24, e)) * (0.85 + 0.3 * far) : 0;
   };
   const raw = (x, z) => base(x, z) + hillAt(x, z) + edgeAt(x, z);
 
@@ -193,7 +193,7 @@ export function battle(OUT, write = true) {
         const slope = Math.hypot(sx, sz) / (2 * B.spacing), pd = postD(x, z);
         let k = 'grass';
         if (pd < B.ring + 1.6 + n2 * 1.2) k = 'gravel';
-        else if (laneD(x, z) < 0.9 + 1.8 * n + 0.8 * n2 || pd < 11 + 2.5 * n + n2 || slope > 1.2) k = 'dirt'; // (the hills' sides stay grass: only bare banks steeper than 50 degrees show dirt)
+        else if (laneD(x, z) < 0.9 + 1.8 * n + 0.8 * n2 || pd < 11 + 2.5 * n + n2) k = 'dirt'; // (the hills' and the berm's sides stay grass)
         surf[k].push(tri);
       }
   const meshFile = (name, tris) => {

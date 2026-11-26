@@ -511,6 +511,32 @@ static int item_named(const char *s) {
 
 /* a baked CSG mesh: drawn in its kind's material (merged with that kind's other pieces) and a static Box3D mesh shape, so
  * shots, movement and the navmesh see exactly the drawn walls */
+/* Farmlands' ground (levels/battle_grass, _dirt, _gravel: tools/battle-map.mjs) is a grid of 1.25 m from -140 m, each quad
+ * split from its (i, j + 1) corner to its (i + 1, j); its heights are kept as the pieces load, so the ground past the field
+ * wall answers arena_outside_ground on the very triangles that are drawn (the background battle stands on them) */
+#define BG_N 225
+#define BG_ORG (-140.0f)
+#define BG_SP 1.25f
+static float BG_H[BG_N * BG_N];
+static bool bg_have;
+static void bg_grid(const char *file, const cw_csg_mesh *m) {
+  if (A.id != ARENA_BATTLE || strncmp(file, "battle_", 7) || !(strstr(file, "grass") || strstr(file, "dirt") || strstr(file, "gravel"))) return;
+  for (uint32_t v = 0; v < m->vertex_count; v++) {
+    float gx = (m->positions[v * 3] - BG_ORG) / BG_SP, gz = (m->positions[v * 3 + 2] - BG_ORG) / BG_SP;
+    int i = (int)lroundf(gx), j = (int)lroundf(gz);
+    if (i < 0 || j < 0 || i >= BG_N || j >= BG_N || fabsf(gx - (float)i) > 0.01f || fabsf(gz - (float)j) > 0.01f) continue;
+    BG_H[j * BG_N + i] = m->positions[v * 3 + 1];
+  }
+  bg_have = true;
+}
+static float bg_height(float x, float z) {
+  float gx = (x - BG_ORG) / BG_SP, gz = (z - BG_ORG) / BG_SP;
+  int i = CW_CLAMP((int)floorf(gx), 0, BG_N - 2), j = CW_CLAMP((int)floorf(gz), 0, BG_N - 2);
+  float u = gx - (float)i, v = gz - (float)j;
+  float h00 = BG_H[j * BG_N + i], h10 = BG_H[j * BG_N + i + 1], h01 = BG_H[(j + 1) * BG_N + i], h11 = BG_H[(j + 1) * BG_N + i + 1];
+  return u + v <= 1 ? h00 + u * (h10 - h00) + v * (h01 - h00) : h11 + (1 - u) * (h01 - h11) + (1 - v) * (h10 - h11);
+}
+
 static void csg_piece(const char *file, int kind) {
   char path[96];
   snprintf(path, sizeof path, "levels/%s", file);
@@ -523,6 +549,7 @@ static void csg_piece(const char *file, int kind) {
     return;
   }
   mb_csg(&MB[kind], &m, KM[kind].uvm, TINT[kind]);
+  bg_grid(file, &m);
   if (A.nmeshes < (int)(sizeof A.meshes / sizeof *A.meshes) && m.index_count >= 3) {
     t3_vec3 *v = malloc(sizeof(t3_vec3) * m.vertex_count);
     for (uint32_t i = 0; i < m.vertex_count; i++) v[i] = v3(m.positions[i * 3], m.positions[i * 3 + 1], m.positions[i * 3 + 2]);
@@ -918,6 +945,7 @@ static void arena_release_mesh(t3_mesh *mesh) {
 
 void arena_build(int id, cw_node world_root) {
   nstand = 0;
+  bg_have = false;
   memset(&A, 0, sizeof A);
   A.id = id;
   A.root = world_root;
@@ -1752,7 +1780,23 @@ static void sk_city_build(void) {
 /* the ground past the walls for the background battle (crowd.c): the courtyard's valley and slopes clear of its houses
  * and trees, the terraces' streets clear of the blocks and the lamp posts; none at the foundry (its works stand in
  * the dark) nor with the skyline off */
+/* Farmlands' ground for the background battle: the slopes past its field wall (at 108 m, 0.8 m thick), as bands along each
+ * side, inside the ground's edge (140 m): x0 z0 x1 z1. The corners are left out (both walls would hide them) */
+static const float BATTLE_OUTSIDE[][4] = {
+  { -136, -104, -112, 104 }, { 112, -104, 136, 104 }, /* west, east */
+  { -104, -136, 104, -112 }, { -104, 112, 104, 136 }, /* north, south */
+};
+
 bool arena_outside_ground(float x, float z, float clear, float *y) {
+  if (A.id == ARENA_BATTLE) {
+    if (!bg_have || tune("skyline", 1) <= 0.5f) return false;
+    float c = clear < 0 ? 0 : clear;
+    for (size_t k = 0; k < sizeof BATTLE_OUTSIDE / sizeof *BATTLE_OUTSIDE; k++) {
+      const float *b = BATTLE_OUTSIDE[k];
+      if (x > b[0] + c && x < b[2] - c && z > b[1] + c && z < b[3] - c) { *y = bg_height(x, z); return true; }
+    }
+    return false;
+  }
   if (tune("skyline", 1) <= 0.5f || SK.id != A.id) return false;
   float r2 = x * x + z * z;
   if (r2 > 165.0f * 165.0f || (fabsf(x) < 38 && fabsf(z) < 38)) return false;

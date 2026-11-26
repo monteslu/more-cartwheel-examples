@@ -25,6 +25,11 @@
   first prop lifted 0.5 m must be caught), every command post reaches every other over the game's own navigation mesh
   (arenafps_navcheck; control: one post walled in must cut its four pairs), and the lanes' flow report; battle-shots
   takes eye-height pictures of the map on GL and WebGPU.
+- Arena shooter: the background battle fights on Farmlands too, on the grassy slopes past its field wall (four zones,
+  west, north and south, standing on the same ground the map draws). The slopes there rise a little higher, so the
+  figures show over the wall from the lanes. battle-check now also checks that ground (2,070 samples, no gap to the
+  collision ground; control: the answer lifted 0.3 m must be caught), and battle-shots takes `--env` and `--tag` for
+  before and after pictures.
 - Arena shooter, for the Battle mode:
   - A cheaper far soldier: past 15 m a body draws the model's quarter mesh (about 2,500 triangles), past 50 m its
     eighth. Near by the picture is the same as before.

@@ -1,6 +1,7 @@
 /* arenafps_navcheck: can a bot walk from every command post to every other? Builds a map with the game's own arena code
  * (src/arena.c: the same level pieces, props, collision and navmesh the game builds), then asks the navmesh for a path
- * between every pair of posts from levels/<map>.lvl and prints one JSON line:
+ * between every pair of posts from levels/<map>.lvl, and checks the ground the background battle stands on past the field
+ * wall (arena_outside_ground) against the collision ground under it. Prints two JSON lines; the posts':
  *   {"arena":3,"posts":5,"pairs":10,"whole":10,"polys":...,"worst_m":...,"pairs_detail":[...]}
  * A pair counts when the path is whole (not partial) and ends within 1.5 m of the far post. The control,
  * NAVCHECK_SEAL=<post>, stands a closed wall round that post (inside its ring, 2 m high) and builds the navmesh again
@@ -9,8 +10,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #include "../src/game.h"
+#include "../src/crowd.h"
 
 #define MAXP 8
 static struct { char name[16]; t3_vec3 p; float r; } P[MAXP];
@@ -96,6 +99,23 @@ static void run(void *user) {
                              P[a].name, P[b].name, good ? "true" : "false", (double)len, n);
       if (dl >= sizeof detail) dl = sizeof detail - 1;
     }
+  /* the ground past the field wall that the background battle stands on (arena_outside_ground): at every sample there it
+   * must be the collision ground under it, so no figure floats or sinks. NAVCHECK_GROUND_LIFT=<m> (the control) adds that
+   * much to the answer and must be caught */
+  int out_n = 0;
+  float out_err = 0, lift = (e = getenv("NAVCHECK_GROUND_LIFT")) ? (float)atof(e) : 0;
+  cw_world3d_step(A.world, 1.0f / 60);
+  for (float x = -139; x < 139; x += 3)
+    for (float z = -139; z < 139; z += 3) {
+      float y;
+      if (!arena_outside_ground(x, z, -1, &y)) continue;
+      y += lift;
+      t3_vec3 hit;
+      out_n++;
+      float err = arena_ray(v3(x, y + 30, z), v3(x, y - 30, z), &hit, NULL) ? fabsf(hit.y - y) : 99;
+      if (err > out_err) out_err = err;
+    }
+  printf("{\"outside_samples\":%d,\"outside_err_m\":%.4f}\n", out_n, (double)out_err);
   printf("{\"arena\":%d,\"posts\":%d,\"pairs\":%d,\"whole\":%d,\"polys\":%d,\"nav_ms\":%.1f,\"seal\":%d,\"longest_walk_m\":%.1f,\"pairs_detail\":[%s]}\n",
          id, np, pairs, whole, A.nav_polys, (double)A.nav_build_ms, seal, (double)worst, detail);
   fflush(stdout);
