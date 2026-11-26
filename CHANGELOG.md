@@ -36,6 +36,12 @@
 - Tests: arenafps-battle (native, GL and WebGPU: the soldier 5 m off matches the build before, and its control, the
   far mesh at 5 m, must differ; the background battle from a player's eye looking out at each zone, off and on) and
   arenafps-battle-cost (what the battle costs at one view on High, off against on, in 890M units on a pool lane).
+- Jet ski: when the computer drives your seat (the autopilot used by the race checks, `sw autosteer 1`, the attract
+  loop) it rides as it always did: your rider's ratings, deep water, the slipstream's pull and the over-rev bog of a
+  throttle held from the first beat are for a player at the pad. With them, the autopilot bogged at every start and
+  the rivals around it raced differently (on Gale Bank they missed 8 marks in a race, one more than the race check
+  allows).
+
 
 ## 0.42.0
 

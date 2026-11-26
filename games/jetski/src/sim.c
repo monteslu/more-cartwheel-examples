@@ -75,6 +75,16 @@ static int nag_quiet(int kind) {
 }
 void ev_push(int kind, int a, float x, float z) { int q = nag_quiet(kind); game_event *e = &g_ev[g_ev_n++ % EV_RING]; e->kind = kind, e->a = a, e->x = x, e->z = z, e->quiet = q; }
 int g_autosteer;
+/* the human seat driven by the computer (the autopilot build, sw autosteer 1, the attract loop): it rides as it
+   always did: the player's own rider (ratings, deep water, slipstream) and the over-rev bog of a throttle held from the
+   first beat are for a player at the pad, so the computer in that seat races the field as before */
+static bool seat_driven(void) {
+#ifdef JETSKI_AUTOPILOT
+  return true;
+#else
+  return g_autosteer || G.state == RACE_ATTRACT;
+#endif
+}
 float g_finish_hold = FINISH_HOLD;
 float g_finish_times[RACERS]; /* every racer's time when the results came up */
 int g_trick_guard = 1; /* trick_guard 0: a press on any hop starts a trick, the trick gate's control */
@@ -115,7 +125,7 @@ static void ram(craft *a, craft *b, float nx, float nz, float closing, int i, in
     float roll = (float)((h >> (k * 12)) & 4095u) / 4096.0f;
     g_ram_last[1 + k] = flank;
     if (g_craft == CRAFT_STAND) p *= 1.25f; /* a rider standing goes over sooner */
-    if (g_rider_stats) p *= 1.0f - 0.12f * (c[k]->human ? 1.0f : 0.0f) * (RIDER_STATS[rider_of(k ? j : i)].weight - 3); /* a heavy rider holds on, a light one goes over */
+    if (g_rider_stats) p *= 1.0f - 0.12f * (c[k]->human && !seat_driven() ? 1.0f : 0.0f) * (RIDER_STATS[rider_of(k ? j : i)].weight - 3); /* a heavy rider holds on, a light one goes over */
     if (roll < p) {
       c[k]->spill = 1.9f, c[k]->spills++, c[k]->big_slide = true, c[k]->crashed = true;
       c[k]->vx *= 0.7f, c[k]->vz *= 0.7f;
@@ -478,7 +488,7 @@ static void craft_tick(craft *c, int idx, float dt) {
      16 % faster; weight is in the bumps (ram). Every rider's ratings add to the same, so each wins somewhere */
   const rider_stats *RS = &RIDER_STATS[g_rider_stats ? rider_of(idx) : 0];
   /* the ratings are the player's rider's: the computer riders race as they always have, so the pack stays a race */
-  const float rk = c->human ? 1.0f : 0.0f;
+  const float rk = c->human && !seat_driven() ? 1.0f : 0.0f;
   float k_acc = 1 + 0.07f * rk * (RS->accel - 3), k_top = 1 + 0.03f * rk * (RS->top - 3), k_turn = 1 + 0.07f * rk * (RS->handling - 3), k_trick = 1 + 0.08f * rk * (RS->tricks - 3);
   float thrust = H->thrust * k_acc, trick_t = H->trick_t / k_trick;
   g_rider_k[idx][0] = k_acc, g_rider_k[idx][1] = k_top, g_rider_k[idx][2] = k_turn, g_rider_k[idx][3] = k_trick;
@@ -533,7 +543,7 @@ static void craft_tick(craft *c, int idx, float dt) {
   /* off the plane the player's craft rides deep, settled into the water, and rises onto it as it planes: the spring holds it
      lower (the computer riders ride on top as they always have).
      sw deep 0: the sit-down rides on top at every speed, as it did (the deep-water gate's control) */
-  float sink = (stand || (g_deep && c->human)) ? H->sink_rest * (1.0f - c->plane) : 0.0f;
+  float sink = (stand || (g_deep && c->human && !seat_driven())) ? H->sink_rest * (1.0f - c->plane) : 0.0f;
   if (!c->air) ay += (SPRING * clampf(under - sink, -0.1f, 1.1f)) - DAMP * rel_vy * c->wet;
   /* horizontal: thrust along the hull when the pump is under, drag against the water */
   float wvx = s.velocity.x * 0.6f, wvz = s.velocity.z * 0.6f;
@@ -567,7 +577,7 @@ static void craft_tick(craft *c, int idx, float dt) {
   if (c->turbo_hold > 0) { c->turbo_hold -= dt; top += 7.0f * clampf(c->turbo_hold / 0.6f, 0, 1); } /* a small, bounded pull toward the human */
   /* a slipstream: tucked in behind a rival (within 14 m, inside a 2.5 m lane, both on the water) for 1.7 s, the ceiling
      rises 3 % while it lasts (sw verbs 0: no slipstream) */
-  if (g_verbs && !c->air && c->human) {
+  if (g_verbs && !c->air) {
     bool in = false; float sy0, cy0; cw_sincos(c->yaw, &sy0, &cy0);
     for (int o = 0; o < RACERS && !in; o++) {
       const craft *r = &G.c[o];
@@ -577,7 +587,7 @@ static void craft_tick(craft *c, int idx, float dt) {
     }
     if (in) { c->draft_t += dt; if (c->draft_t >= 1.7f && c->draft_t - dt < 1.7f) { g_verb_n[2]++; if (c->human) ev_push(EV_DRAFT, 0, c->x, c->z); } }
     else c->draft_t = 0;
-    if (c->draft_t >= 1.7f) top *= 1.03f;
+    if (c->draft_t >= 1.7f && c->human && !seat_driven()) top *= 1.03f; /* (any racer's is counted; only a player's pays: the computer riders race as before) */
   } else c->draft_t = 0;
   g_top_now[idx] = top; /* the ceiling each craft runs under this tick (debug ai.top) */
   float drag = thrust / (top * top);
@@ -1160,7 +1170,7 @@ void sim_tick(float dt) {
     { craft *h = &G.c[0];
       if (h->in.throttle > 0.5f && G.rocket_at < 0 && G.rocket_at >= -ROCKET_WINDOW) { h->turbo_t = 0.35f, h->turbo_hold = 1.0f; G.rocket = 1; ev_push(EV_ROCKET, 0, h->x, h->z); }
       /* held through the count past the gauge's red: the pump cavitates and the craft bogs for a moment. Let go and press again to clear it */
-      else if (g_rev_bog && h->in.throttle > 0.5f && G.rocket_at < -REV_OVER) { h->bog_t = BOG_TIME; G.bog = 1; ev_push(EV_BOG, 0, h->x, h->z); } }
+      else if (g_rev_bog && h->in.throttle > 0.5f && G.rocket_at < -REV_OVER && !seat_driven()) { h->bog_t = BOG_TIME; G.bog = 1; ev_push(EV_BOG, 0, h->x, h->z); } }
     cw_log(CW_LOG_INFO, "jetski: course %s, green light, graphics %s", DEF->name, cw_quality_name(cw_quality_get()));
   }
   for (int i = 0; i < RACERS; i++) {
