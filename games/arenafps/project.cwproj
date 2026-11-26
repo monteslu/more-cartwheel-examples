@@ -32,5 +32,5 @@ export.macos-arm64.platform = macos
 export.android-arm64.platform = android-arm64
 # launcher art and credits, packed into the cart (art/art.json)
 art = art
-description = "A split screen arena shooter for one to four players and bots: rockets, rails and scatter guns across a foundry, a sunlit courtyard and terraces at dusk."
+description = "A split screen arena shooter for one to four players and bots: rockets, rails and scatter guns across a foundry, a sunlit courtyard, terraces at dusk and open farmland, in matches or a battle of two armies over command posts."
 author = "Luis Montes"

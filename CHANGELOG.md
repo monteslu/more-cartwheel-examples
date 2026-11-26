@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.43.1
+
+- Arena, Battle: each side has a commander that sends its squads of four to the posts worth taking or defending
+  (one of its own with an enemy in it first, then neutral ones, then the enemy's), two squads to the first; squad
+  members follow their leader in a loose wedge until it nears the post, so the army moves in groups across Farmlands
+  instead of every bot running to the nearest post. With every post held, squads hold them and every third presses
+  on the enemy's home. Nobody respawns at a capture post with an enemy within 20 m. Bots over 60 m from every player
+  think a third as often, and the pacing measures no longer cast their rays in a battle. On Farmlands soldiers come
+  back at the level's own spawn points round a post.
+- Arena: the README describes Battle (the pool, the last stand, taking over, posts, bleed, reveal, live counts,
+  squads) and lists Farmlands; the launcher description names both.
+
 ## 0.43.0
 
 - Arena: a new mode, Battle (working name). Your side against a bot army, up to 16 soldiers a side on the field

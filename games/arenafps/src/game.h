@@ -194,6 +194,7 @@ typedef struct fighter {
   bool sprint;             /* running flat out (forward, not firing) */
   bool sprint_want;        /* bots: wants to sprint (set by its brain) */
   int personality;         /* bots: 0 balanced, 1 rusher, 2 holder (keeps high ground and power items) */
+  int squad;               /* Battle: its squad of four on its side (main.c, battle_command) */
   int hit_t;               /* ticks since it was last hit */
   int grenades, gcool;     /* grenades carried, ticks before the next throw */
   int bash_cool;           /* ticks before the next melee bash */

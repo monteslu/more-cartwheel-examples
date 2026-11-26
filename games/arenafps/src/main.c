@@ -287,6 +287,10 @@ static struct battle {
   char banner[48];
   int spawn_post[MAXH];   /* the post each person respawns at (-1: the one nearest the fight) */
   int32_t d_pool[2], d_alive[2], d_owner[MAX_POSTS];
+  int squad_post[2][MAXF / 4]; /* the post each squad is sent to (battle_command, every 2 s) */
+  int command_t;
+  int32_t p1[2];          /* seat 0's soldier: ticks in the ring of the post the objective marker names, and arrivals there (the newcomer gate) */
+  bool p1_in[MAX_POSTS];
 } BT;
 /* each seat's soldier: seat h plays fighter SEAT[h] (h until a takeover hands it another) */
 static int SEAT[MAXH] = { 0, 1, 2, 3 };
@@ -296,6 +300,7 @@ static fighter *SF(int h) { return F(SEAT[h]); }
  * to the new soldier's eyes (0.8 s, eased, a turn of at most 3.6 rad/s), 3 out of bodies: watching a teammate */
 static struct { int phase, cand[4], ncand, pick, t, watch; t3_vec3 from, cam; float yaw, pitch; } TK[MAXH];
 static bool battle_bot_goal(fighter *f, int idx, t3_vec3 *g);
+static int battle_objective(int s, t3_vec3 from, const char **what);
 static float tk_start[3]; /* debug tk.start: the soldier taken over, at the handover: x, z, yaw */
 static float tk_after[4]; /* debug tk.after: 1.5 s after the handover: the seat 0 soldier's x, z, blue alive, the battle still on (1) */
 static int32_t tk_stats[6]; /* debug tk.stats: handovers, the view's fastest turn in a transition (milliradians a second), the
@@ -308,6 +313,10 @@ static int post_front(int s) {
   for (int i = 0; i < BT.nposts; i++) {
     const post *p = &BT.posts[i];
     if (p->owner != s || (p->home < 0 && (p->push == !s || p->push == 2))) continue; /* never into a ring the enemy stands in */
+    bool near = false; /* nor beside an enemy: a capture post with one within 20 m is no place to come back */
+    for (int k = 0; k < G.nf && p->home < 0 && !near; k++)
+      near = F(k)->active && F(k)->alive && (F(k)->team & 1) != s && v3len(v3sub(F(k)->mv.position, p->pos)) < 20;
+    if (near) continue;
     float d = 1e8f;
     for (int j = 0; j < BT.nposts; j++)
       if (BT.posts[j].owner != s) d = fminf(d, v3len(v3sub(BT.posts[j].pos, p->pos)));
@@ -342,6 +351,21 @@ static t3_vec3 battle_spawn_point(const fighter *f) {
   int pi = f->human >= 0 && f->human < MAXH ? BT.spawn_post[f->human] : -1;
   if (pi < 0 || pi >= BT.nposts || BT.posts[pi].owner != f->team) pi = post_front(f->team);
   if (pi < 0) for (int i = 0; i < BT.nposts; i++) if (BT.posts[i].home == f->team) pi = i;
+  if (pi >= 0 && A.id == ARENA_BATTLE) { /* the battle map places its own spawn points round each post: a free one of them */
+    const post *p = &BT.posts[pi];
+    int c[MAX_SPAWNS], n = 0;
+    for (int s = 0; s < A.nspawns; s++) {
+      t3_vec3 d = v3sub(A.spawns[s], p->pos);
+      if (d.x * d.x + d.z * d.z > p->r * 3 * p->r * 3) continue;
+      bool taken = false;
+      for (int i = 0; i < G.nf && !taken; i++) {
+        const fighter *o = F(i);
+        taken = o->active && o->alive && v3len(v3sub(o->mv.position, A.spawns[s])) < 1.5f;
+      }
+      if (!taken) c[n++] = s;
+    }
+    if (n > 0) return A.spawns[c[cw_rng_int(&G.rng, 0, n - 1)]];
+  }
   return pi >= 0 ? post_spot(pi, &G.rng) : A.spawns[0];
 }
 
@@ -1346,6 +1370,11 @@ static void bot_tick(fighter *f, int idx) {
   bool jump = false;
   if (--f->think <= 0) {
     f->think = 10 + (idx & 3);
+    if (battle()) { /* a bot over 60 m from every player thinks a third as often (nobody sees it pick its moment) */
+      bool far = true;
+      for (int h = 0; h < G.players && far; h++) far = v3len(v3sub(SF(h)->mv.position, f->mv.position)) > 60;
+      if (far) f->think = 30 + (idx & 3);
+    }
     bot_think(f, idx);
   }
   /* no new path in the air or halfway across a link (a path planned from mid-air starts wherever the air is over, and
@@ -1542,9 +1571,10 @@ static void bot_tick(fighter *f, int idx) {
  * route (a person knows the map; the script is about aim, reactions and fights, not finding the way). Read only: nothing
  * here feeds the simulation (its own random stream; synchronous path queries do not touch the bots' request queue). */
 #define PT_HEAD 32
-#define PT_N (PT_HEAD + MAXF * 4)
+#define PT_OBJ (PT_HEAD + MAXF * 4) /* Battle: the objective marker as drawn: shown, its bearing, distance, inside its ring */
+#define PT_N (PT_OBJ + 4)
 static float ptest[PT_N];
-static struct { bool on; t3_vec3 goal, path[32]; uint32_t links[32]; int n, idx, repath, lastitem; uint32_t rng; } PT;
+static struct { bool on; float obj_r; t3_vec3 goal, obj, path[32]; uint32_t links[32]; int n, idx, repath, lastitem; uint32_t rng; } PT;
 typedef struct hm_profile { float react_min, react_span, tau, noise, perc, fire_tol, strafe_p; bool jumps, swaps, sprints; } hm_profile;
 static const hm_profile HM_PROF[3] = {
   { 20, 11, 0.32f, 0.25f, 0.030f, 1.8f, 0.5f, false, false, false }, /* casual */
@@ -1617,6 +1647,17 @@ static void ptest_update(void) {
     float hd = sqrtf(rel.x * rel.x + rel.z * rel.z);
     s[0] = 1, s[1] = cw_wrap_angle(cw_atan2(-rel.x, -rel.z) - f->yaw), s[2] = cw_atan2(rel.y, hd) - f->pitch, s[3] = dist;
   }
+  if (battle() && !G.sw_no_cues && f->alive) { /* the objective marker, as the HUD draws it */
+    const char *what = "";
+    int oi = battle_objective(f->team & 1, f->mv.position, &what);
+    if (oi >= 0) {
+      t3_vec3 d2 = v3sub(BT.posts[oi].pos, f->mv.position);
+      ptest[PT_OBJ] = 1, ptest[PT_OBJ + 1] = cw_wrap_angle(cw_atan2(-d2.x, -d2.z) - f->yaw), ptest[PT_OBJ + 2] = sqrtf(d2.x * d2.x + d2.z * d2.z);
+      ptest[PT_OBJ + 3] = ptest[PT_OBJ + 2] < BT.posts[oi].r;
+      PT.obj = BT.posts[oi].pos;
+      PT.obj_r = BT.posts[oi].r;
+    }
+  }
   ptest_route(f);
   if (HM.kind && G.ticks % 6 == 0) hm_decide();
   memcpy(&ptest[24], HM.out, sizeof HM.out);
@@ -1639,6 +1680,10 @@ static void ptest_update(void) {
 static void ptest_route(fighter *f) {
   /* the route */
   if (!f->alive) { PT.n = 0; return; }
+  if (battle() && ptest[PT_OBJ] > 0.5f) { /* in a battle the walk goes where the objective marker points */
+    if (ptest[PT_OBJ + 2] < PT.obj_r * 0.5f) { PT.n = 0; return; } /* in the ring: stand and hold */
+    if (v3len(v3sub(PT.obj, PT.goal)) > 2) PT.goal = PT.obj, PT.repath = 0, PT.n = PT.n ? PT.n : 1, PT.idx = 1;
+  }
   bool reached = PT.n > 0 && v3len(v3sub(PT.goal, f->mv.position)) < 1.5f;
   if (PT.n == 0 || reached || --PT.repath <= 0) {
     if (PT.n == 0 || reached || PT.goal.y < -100) ptest_goal(f);
@@ -2279,6 +2324,7 @@ static void setup_fighters(void) {
     f->team = G.mode == MODE_DM ? i : (G.mode == MODE_COOP ? (i < G.players ? 0 : 1) : i % 2);
     if (G.mode == MODE_TDM) f->team = i % 2;
     if (battle()) f->team = i < BT.live[0] ? 0 : 1;
+    if (battle()) f->squad = (f->team ? i - BT.live[0] : i) / 4;
     f->skill = i < G.players ? 0.5f : bot_skill(0.35f + 0.5f * (float)((i * 37) % 10) / 10.0f); /* seats: a person (or the autopilot's stand-in) */
     f->personality = f->human >= 0 ? 0 : (i * 2 + G.arena_id) % 3;
     if (f->human >= 0) snprintf(f->name, sizeof f->name, "P%d", i + 1);
@@ -2486,15 +2532,57 @@ static void battle_begin(void) {
   BT.bleed_t = 180, BT.end_tick = -1, BT.reveal_t = 600, BT.reveals = 0, BT.ping_t = 1 << 20, BT.ping_side = -1, BT.banner_t = 0;
   for (int h = 0; h < MAXH; h++) SEAT[h] = h, BT.spawn_post[h] = -1;
   BT.pool_start = pool;
+  BT.p1[0] = BT.p1[1] = 0;
+  memset(BT.p1_in, 0, sizeof BT.p1_in);
+  BT.command_t = 0;
+  for (int s = 0; s < 2; s++) for (int q = 0; q < MAXF / 4; q++) BT.squad_post[s][q] = -1;
   memset(TK, 0, sizeof TK);
   memset(tk_stats, 0, sizeof tk_stats);
   memset(tk_start, 0, sizeof tk_start), memset(tk_after, 0, sizeof tk_after);
 }
 static void battle_call(const char *s) { snprintf(BT.banner, sizeof BT.banner, "%s", s); BT.banner_t = 60 * 4; }
+/* the commander of each side, every 2 s: the posts worth sending a squad to, in order (one of its own with an enemy
+ * in the ring first, then neutral ones, then the enemy's, nearer its home first), the first one twice; squad k takes
+ * the k-th of that list, round again. With every post that can be taken held, squads hold them and every third
+ * presses on the enemy's home */
+static void battle_command(void) {
+  for (int s = 0; s < 2; s++) {
+    int home = -1, cand[MAX_POSTS * 2], nc = 0;
+    float key[MAX_POSTS];
+    for (int i = 0; i < BT.nposts; i++) if (BT.posts[i].home == s) home = i;
+    t3_vec3 base = home >= 0 ? BT.posts[home].pos : v3(0, 0, 0);
+    for (int i = 0; i < BT.nposts; i++) {
+      const post *p = &BT.posts[i];
+      if (p->home >= 0) continue;
+      int pri = p->owner == s ? (p->push == !s || p->push == 2 ? 0 : -1) : p->owner < 0 ? 1 : 2;
+      if (pri < 0) continue;
+      float k = (float)pri * 1000.0f + v3len(v3sub(p->pos, base));
+      int j = nc++;
+      while (j > 0 && key[j - 1] > k) key[j] = key[j - 1], cand[j] = cand[j - 1], j--;
+      key[j] = k, cand[j] = i;
+    }
+    int nsq = (BT.live[s] + 3) / 4;
+    if (nc > 0) {
+      int list[MAX_POSTS * 2], nl = 0;
+      list[nl++] = cand[0];
+      for (int j = 0; j < nc; j++) list[nl++] = cand[j];
+      for (int q = 0; q < nsq && q < MAXF / 4; q++) BT.squad_post[s][q] = list[q % nl];
+    } else {
+      int held[MAX_POSTS], nh = 0, enemy_home = -1;
+      for (int i = 0; i < BT.nposts; i++) {
+        if (BT.posts[i].owner == s && BT.posts[i].home < 0) held[nh++] = i;
+        if (BT.posts[i].home == !s) enemy_home = i;
+      }
+      for (int q = 0; q < nsq && q < MAXF / 4; q++)
+        BT.squad_post[s][q] = (q % 3 == 2 && enemy_home >= 0) || nh == 0 ? enemy_home : held[q % nh];
+    }
+  }
+}
 /* the rules each tick: who is alive, capture, bleed, holding every post, the last stand, the reveal pings */
 static void battle_tick(void) {
   for (int s = 0; s < 2; s++) BT.alive[s] = 0;
   for (int i = 0; i < G.nf; i++) if (F(i)->active && F(i)->alive) BT.alive[F(i)->team & 1]++;
+  if (--BT.command_t <= 0) BT.command_t = 120, battle_command();
   int held[2] = { 0, 0 };
   for (int pi = 0; pi < BT.nposts; pi++) {
     post *p = &BT.posts[pi];
@@ -2507,6 +2595,19 @@ static void battle_tick(void) {
         if (dx * dx + dz * dz <= p->r * p->r && fabsf(dy) < 2.5f) n[f->team & 1]++;
       }
       p->push = n[0] && n[1] ? 2 : n[0] ? 0 : n[1] ? 1 : -1;
+      bool p1in = false;
+      if (G.players > 0) {
+        const fighter *s0 = SF(0);
+        float dx = s0->mv.position.x - p->pos.x, dz = s0->mv.position.z - p->pos.z;
+        p1in = s0->alive && dx * dx + dz * dz <= p->r * p->r && fabsf(s0->mv.position.y - p->pos.y) < 2.5f;
+        { /* the measure: in the ring of the post the objective marker names (to take or to defend), not just any ring */
+          const char *w = "";
+          bool named = p1in && battle_objective(s0->team & 1, s0->mv.position, &w) == pi && strcmp(w, "HOLD") != 0;
+          BT.p1[0] += named;
+          if (named && !BT.p1_in[pi]) BT.p1[1]++; /* an arrival: it walked into the ring of the post the marker names */
+          BT.p1_in[pi] = named;
+        }
+      }
       if (p->push == 0 || p->push == 1) {
         int s = p->push, c = n[s];
         float rate = (c >= 3 ? 2.0f : c == 2 ? 1.5f : 1.0f) / CAP_TICKS, want = s ? 1.0f : -1.0f;
@@ -2636,18 +2737,29 @@ static bool battle_bot_goal(fighter *f, int idx, t3_vec3 *g) {
   int best = -1;
   float bd = 1e9f;
   bool last = BT.pool[s] == 0;
-  for (int i = 0; i < BT.nposts; i++) {
-    const post *p = &BT.posts[i];
-    float d = v3len(v3sub(p->pos, f->mv.position));
-    bool want = last ? p->owner == s : (p->home < 0 && (p->owner != s || p->push == !s || p->push == 2));
-    if (want && d < bd) bd = d, best = i;
+  if (last) { /* its own last stand: regroup at the nearest post its side holds */
+    for (int i = 0; i < BT.nposts; i++) {
+      float d = v3len(v3sub(BT.posts[i].pos, f->mv.position));
+      if (BT.posts[i].owner == s && d < bd) bd = d, best = i;
+    }
+  } else best = BT.squad_post[s][CW_CLAMP(f->squad, 0, MAXF / 4 - 1)]; /* where the commander sent its squad */
+  if (best < 0 || best >= BT.nposts) return false;
+  if (!last) { /* the squad moves together: away from the post, members follow their leader in a loose wedge */
+    const fighter *lead = NULL;
+    for (int i = 0; i < G.nf && !lead; i++) {
+      const fighter *o = F(i);
+      if (o->active && o->alive && (o->team & 1) == s && o->squad == f->squad && (o->human >= 0 || i < idx)) lead = o;
+    }
+    for (int i = 0; i < G.nf && !lead; i++) if (F(i)->active && F(i)->alive && (F(i)->team & 1) == s && F(i)->squad == f->squad) lead = F(i);
+    const post *tp = &BT.posts[best];
+    if (lead && lead != f && v3len(v3sub(lead->mv.position, tp->pos)) > tp->r * 2.5f && v3len(v3sub(lead->mv.position, f->mv.position)) > 6) {
+      t3_vec3 fw = v3norm(v3sub(tp->pos, lead->mv.position)), rt = v3(-fw.z, 0, fw.x), q;
+      float side = (idx & 1) ? 1.0f : -1.0f;
+      t3_vec3 c = v3add(lead->mv.position, v3add(v3scale(fw, -2.5f), v3scale(rt, side * 2.5f)));
+      *g = cw_nav_nearest(A.nav, c, NULL, &q) ? q : lead->mv.position;
+      return true;
+    }
   }
-  if (best < 0 && !last && idx % 3 == 0) { /* every post that can be taken is ours: a third of the side presses on the enemy's home */
-    for (int i = 0; i < BT.nposts; i++) if (BT.posts[i].home == !s) best = i;
-  }
-  if (best < 0) /* every post that can be taken is ours: hold them (each bot its own, by slot) */
-    for (int i = 0, k = 0; i < BT.nposts; i++) if (BT.posts[i].owner == s && BT.posts[i].home < 0) { if (best < 0 || (idx + k) % 2 == 0) best = i; k++; }
-  if (best < 0) return false;
   /* a spot of its own in the ring, by slot (squads spread over the ring instead of piling on the pole) */
   const post *p = &BT.posts[best];
   float sa, ca, r = 1.0f + (float)(idx % 3) * 1.3f;
@@ -3048,6 +3160,7 @@ static void battle_switches(void) {
   const char *e;
   if ((e = cw_test_env("ARENA_COUNT_RULE"))) BT.sw_reference = !strcmp(e, "reference");
   if ((e = cw_test_env("ARENA_TAKEOVER"))) BT.sw_no_takeover = atoi(e) == 0;
+  if ((e = cw_test_env("ARENA_NO_CUES"))) G.sw_no_cues = atoi(e) != 0; /* the newcomer gate's control (as sw cues 0) */
   bool restart = false;
   if ((e = cw_test_env("ARENA_BATTLE_LIVE")) && atoi(e) > 0 && CW_CLAMP(atoi(e), 2, MAXF / 2) != BT.live[0]) restart = true;
   if ((e = cw_test_env("ARENA_BATTLE_POOL")) && atoi(e) >= 0 && atoi(e) != BT.pool_start) restart = true;
@@ -3550,7 +3663,7 @@ static void game_step(void) {
     }
     if (f->recoil_t > 20) f->recoil_n = 0;
     G.st.fighter_ticks++;
-    if ((G.ticks + i) % 10 == 0) { /* measurement: encounters and contact time */
+    if (!battle() && (G.ticks + i) % 10 == 0) { /* measurement: encounters and contact time (the pacing tools; not in a battle, where its rays cost a millisecond a tick) */
       t3_vec3 e = eye_pos(f);
       bool sees = false;
       for (int j = 0; j < G.nf && !sees; j++) {
@@ -3569,7 +3682,7 @@ static void game_step(void) {
       }
     }
     if (f->seen_cool > 0) f->seen_cool--;
-    else if ((G.ticks + i) % 10 == 0) {
+    else if (!battle() && (G.ticks + i) % 10 == 0) {
       t3_vec3 e = eye_pos(f);
       for (int j = 0; j < G.nf; j++) {
         const fighter *o = F(j);
@@ -4676,6 +4789,7 @@ static void init(void *user) {
   cw_debug_field("battle.zero_tick", BT.zero_tick, CW_DBG_I32, 2); /* the tick a side had nobody and nothing left */
   cw_debug_i32("battle.end_tick", &BT.end_tick);
   cw_debug_i32("battle.reveals", &BT.reveals);
+  cw_debug_field("battle.p1", BT.p1, CW_DBG_I32, 2);
   cw_debug_field("battle.bleeds", BT.bleeds, CW_DBG_I32, 2);
   cw_debug_field("battle.spent", BT.spent, CW_DBG_I32, 2);
   cw_debug_field("seat.fighter", SEAT, CW_DBG_I32, MAXH);

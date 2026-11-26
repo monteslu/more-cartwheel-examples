@@ -22,25 +22,7 @@ bots that find their way over a navigation mesh, jump pads, ledge jumps and drop
 Modes
 - Deathmatch: everyone for themselves, first to 25 frags or the best score after eight minutes.
 - Team deathmatch: red against blue, first team to 40.
-- Battle (working name): the players' side (blue) against a bot army (red), up to 16 soldiers a side on the field
-  with one player, 12 with two, 8 with three or four (three quarters of that on Low graphics, half on Very Low). Each
-  side has a pool of reinforcements (100, 150, 200 or 300 on the setup's second row; 200 by default) that counts the
-  respawns left: a point goes each time a soldier comes back onto the field, never when one dies, and the opening
-  wave is free. Foundry, Courtyard and Terraces have three command posts: a home post a side, which cannot be taken, and one in the middle; Farmlands has five (its level file places them).
-  Stand in a post's ring with no enemy in it to take it: a held post goes neutral first, then it is yours (two
-  soldiers take it half again as fast, three or more twice as fast). You respawn at a post your side holds (the
-  d-pad picks which while you are down); bots go for the nearest post their side does not hold and hold what they
-  own. A side loses a point every 3 s while the other holds more than half the posts. At 0 nobody of that side
-  respawns: the soldiers still standing fight on (the last stand, "LAST STAND: 3 left" with a pip a soldier), and
-  the side loses only when its last soldier is down. A side in its last stand with 3 or fewer left is shown to the
-  other side every 10 s (a soft pulse where they were). If you are downed while your side has no reinforcements, you
-  take over the nearest teammate bot (the shoulders pick another while you are down; the view moves to it over
-  0.8 s); with none left you watch a teammate. Holding every post for 20 s empties the other side's pool. After 20
-  minutes the side with more reinforcements plus soldiers alive wins. The HUD shows both sides' reinforcements and
-  soldiers alive, the posts under the clock, and a marker on the post to take, hold or defend.
-  `sw count_rule reference` (the count taken at each death, a side losing at 0 with soldiers still standing) and
-  `sw takeover 0` are the controls of `tests/arenafps-laststand.mjs` and `tests/arenafps-takeover.mjs`; the debug
-  command `battle` sets pools and the field for tests.
+- Battle (working name): two armies, reinforcement pools and command posts; see Battle below.
 - Co-op waves: the players hold the arena against six waves of bots, with a shared pool of lives. A wave is bigger and tougher each time and bigger again for every extra player; between waves everyone heals a little and the rifle is topped up, and the next wave is counted down on screen. A seat nobody plays (a pad
   that joined and was put down: nothing touched on it for 20 seconds) sits out: once it is downed it does not come back
   on a shared life and its view says "press any button to come back in", and the next waves are sized for the people
@@ -69,6 +51,8 @@ or more ways out):
   to roof over the streets.
 - Terraces: a flooded pit with an island, ledges 1.2 m up its walls, tunnels under the terrace to a gallery and spawn
   rooms whose stairs come up through the terrace floor.
+- Farmlands (for Battle): open country about 240 m across, five command posts 60 to 90 m apart, dirt lanes with cover,
+  ruined farms, low hills between the lanes and a field wall round the edge.
 The layouts are data: tools/make-levels.mjs writes levels/*.cwscene (CSG shapes), bakes them with the engine's cwcsg
 tool into levels/*.cwcsg and checks their flow (loops, dead ends, how far spawns are from the power items).
 
@@ -78,6 +62,45 @@ The HUD shows the time left and the frag leader, and enemies carry a rim of thei
 Aim assist (on by default, for pads): the view slows a little over an enemy, drifts gently toward one close to the crosshair while you aim or move, and a shot that only just misses an enemy in clear sight bends onto the edge of the body. Never through a wall, never a snap.
 
 Bots notice a new enemy inside a view cone (all round on hard), or when hit or when a shot goes off within 30 m; they take a moment to react. The levels are tuned against a scripted pad player (`tools/human-matches.mjs`, reaction time and noisy stick aim through the game's own look curve): a casual player wins or nearly wins most matches on normal, a skilled one is pushed on hard.
+
+## Battle
+
+Battle (a working name) is the big mode: the players' side (blue) against a bot army (red). It plays on any arena and
+is built for Farmlands.
+
+- On the field: up to 16 soldiers a side with one player, 12 with two, 8 with three or four. Low graphics takes three
+  quarters of that and Very Low half, so the graphics preset sets the count.
+- Reinforcements: each side has a pool (100, 150, 200 or 300 on the setup's second row; 200 by default) that counts
+  the respawns left. A point goes each time a soldier comes back onto the field, never when one dies, and the opening
+  wave is free.
+- The last stand: at 0 nobody of that side respawns. The soldiers still standing fight on, the HUD block reads
+  "LAST STAND: 3 left" with a pip a soldier, and the side loses only when its last soldier is down. Bots of a side in
+  its last stand regroup at a post they hold and never run; the other side hunts them down.
+- Taking over: if you are downed while your side has no reinforcements, you take over the nearest teammate bot (one
+  hit in the last second counts as 15 m further). While you are down the panel shows who and their health, and the
+  shoulders pick another. The view rises off your body and moves to the new soldier's eyes over 0.8 s, turning no
+  faster than 3.6 rad/s, with no cut; the soldier keeps fighting until you arrive, then has 2 s of spawn guard, ended
+  by its first shot. With no bot left you watch a teammate ("OUT: watching ..."), the shoulders change who.
+- Command posts: Foundry, Courtyard and Terraces have three (a home post a side, which cannot be taken, and one in the
+  middle); Farmlands has five, from its level file. Stand in a post's ring with no enemy in it to take it: a held
+  post goes neutral first, then it is yours; two soldiers take it half again as fast, three or more twice as fast.
+- Respawning: at a post your side holds, the one nearest the fight by default (the d-pad picks another while you are
+  down); never at a capture post with an enemy in its ring or within 20 m. On Farmlands soldiers come back at the
+  level's spawn points round the post.
+- Bleed: a side loses a point every 3 s while the other holds more than half the posts. Holding every post for 20 s
+  empties the other side's pool and starts its last stand.
+- Reveal: a side in its last stand with 3 or fewer left is shown to the other side every 10 s, a soft pulse where each
+  one was (it swells and fades).
+- Squads: each side has a commander that every 2 s sends its squads of four to the posts worth taking or defending
+  (one of its own with an enemy in it first, then neutral ones, then the enemy's), two squads to the first. Members
+  follow their leader in a loose wedge until it nears the post. With every post held, squads hold them and every third
+  squad presses on the enemy's home.
+- Time: after 20 minutes the side with more reinforcements plus soldiers alive wins.
+- The HUD shows both sides' reinforcements and soldiers alive (an arrow by a side that is bleeding), the posts under
+  the clock, and a marker on the post to take, hold or defend, with its distance; past the walls a background battle
+  thins as a side loses.
+- Tests: `tests/arenafps-laststand.mjs` (control `sw count_rule reference`: the count taken at each death, a side
+  losing at 0 with soldiers still standing), `tests/arenafps-takeover.mjs` (control `sw takeover 0`). The debug command `battle` sets pools and the field.
 
 ## How it is made (the look)
 
