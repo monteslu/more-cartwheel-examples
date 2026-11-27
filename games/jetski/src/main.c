@@ -274,6 +274,10 @@ static void cmd_switch(int argc, const char **argv, cw_reply *r) {
     else if (!strcmp(argv[1], "yaw_clear")) { extern int32_t g_yaw_flips; extern float g_yaw_rate_max; g_yaw_flips = 0, g_yaw_rate_max = 0; }
     else if (!strcmp(argv[1], "stamp_on")) { extern int g_stamp_on; g_stamp_on = (int)v; }
     else if (!strcmp(argv[1], "podium")) g_podium_use = (int)v;
+    else if (!strcmp(argv[1], "fish_hide")) { extern int g_fish_hide; g_fish_hide = (int)v; }
+    else if (!strcmp(argv[1], "ai_rated")) { extern int g_ai_rated; g_ai_rated = (int)v; }
+    else if (!strcmp(argv[1], "ai_deep_turn")) { extern int g_ai_deep_turn; g_ai_deep_turn = (int)v; }
+    else if (!strcmp(argv[1], "fish_old")) { extern int g_fish_old; g_fish_old = (int)v; if (cw_node_valid(G.water)) view_course_apply(); }
     else if (!strcmp(argv[1], "ramp_marks")) { extern int g_ramp_marks; g_ramp_marks = (int)v; { void view_ramps_refresh(void); view_ramps_refresh(); } }
     else if (!strcmp(argv[1], "ramp_skin")) { extern int g_ramp_skin; g_ramp_skin = (int)v; { void view_ramps_refresh(void); view_ramps_refresh(); } }
     else if (!strcmp(argv[1], "freeze")) g_freeze = (int)v;
@@ -578,6 +582,8 @@ static void init(void *user) {
   cw_debug_i32("hook.wake_rides", &G.wake_rides);
   cw_debug_f32_array("hook.tanker", G.tanker, 3);
   cw_debug_i32("ai.stuck", &G.ai_stuck);
+  { extern float g_ai_draft_max; cw_debug_f32("ai.draft_max", &g_ai_draft_max); }
+  { extern float g_stuck_at[8]; cw_debug_f32_array("ai.stuck_at", g_stuck_at, 8); }
   cw_debug_i32("ai.ramps", &G.ai_ramps);
   cw_debug_i32("ai.big_ramps", &G.ai_big_ramps);
   cw_debug_i32("ai.spills", &G.ai_spills);

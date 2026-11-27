@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.48.0
+
+- jetski: the computer riders ride on their own ratings and in deep water. Each rival's pump, top speed, trick speed
+  and (at a little over half the weight) turn come from its rider's bars, and off the plane it settles into the water
+  as the player's craft does. A rival working hard round keeps its hull up until it straightens; one caught against
+  the tanker's hull or before its bow drives straight out to the side, and one heading round its stern aims inside the
+  wake's arms, not on the crest; a rival crawling along the wake's crest is no longer thrown up tick after tick. The
+  races' stuck count leaves out a rider thrown off and climbing back on, and says where the longest stop was. Away
+  from the player the pack's pull evens out a rival's top speed rating, so the field stays a race; the scripted
+  meetings of the collision gate ride on even ratings.
+- jetski: fish you can see. The schools are larger and gold, their backs just in the surface (under it, at a racing
+  camera's low angle, the sea's mirror hid them), and a feeding school flips now and then, leaving a ring and a
+  fleck of white.
+- Tests: jetski-rivals (every rival on its rider's ratings, a slow rival settled at least 0.3 m in; control sw
+  ai_rated 0), jetski-fish-see (a school 12 m ahead from the race camera on the atoll, the fjord and the port, GL and
+  WebGPU: at least 3000 changed pixels and 1.4 times the old school; control sw fish_old 1); jetski-races takes
+  --courses; jetski-landing-fair pools a second race on a course with under five landings (the river).
+
 ## 0.47.0
 
 - jetski: every course has its own set built up to the line. Crater Atoll: thatched overwater huts on stilts along the

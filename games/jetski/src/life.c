@@ -19,6 +19,8 @@
 #define LIFT_R 38.0f    /* a craft this near a flock lifts it */
 
 int g_life_on = 1;
+int g_fish_old;
+int g_fish_hide; /* sw fish_hide 1: the schools not drawn (the visibility gate's picture pairs) */
 float g_fish_lift; /* sw fish_lift <m>: the schools raised by that much, for a look at the fish themselves */
 /* schools placed, flocks placed, scatters, lift-offs, schools passed within 20 m by the player, the deepest bed under a
    school, fish clear of the water in the last frame drawn */
@@ -247,6 +249,12 @@ void life_course_apply(cw_node root) {
   if (!fg) {
     fg = rings_geo(FISH_ROWS, FISH_AROUND, fish_pt), gg = rings_geo(GULL_ROWS, GULL_AROUND, gull_pt), wg = wing_geo();
     fm = t3_mesh_standard_material_new(0x26363e), fm->roughness = 0.4f, fm->metalness = 0.2f; /* dark backs: what shows from above, against the sand */
+  }
+  /* the look by the switch: bright schools by default (gold and silver, a sheen), the old dark backs with fish_old */
+  if (g_fish_old) fm->color = (t3_color){ 0.019f, 0.037f, 0.047f }, fm->roughness = 0.4f, fm->metalness = 0.2f, fm->emissive = (t3_color){ 0, 0, 0 };
+  else fm->color = (t3_color){ 0.95f, 0.72f, 0.16f }, fm->roughness = 0.3f, fm->metalness = 0.35f, fm->emissive = (t3_color){ 0.12f, 0.08f, 0.01f };
+  fm->version++;
+  {
     gm = t3_mesh_standard_material_new(0xeeeeea), gm->roughness = 0.85f, gm->metalness = 0;    /* feathers: matte */
     wm = t3_mesh_standard_material_new(0x9da5ad), wm->roughness = 0.85f, wm->metalness = 0;
   }
@@ -285,6 +293,15 @@ void life_tick(float dt) {
     sc->phase += dt * (0.5f + 1.6f * sc->scatter);
     if (sc->scatter > 0) sc->scatter = fmaxf(0.0f, sc->scatter - dt / 3.5f);
     if (sc->st >= 0) { sc->st += dt; if (sc->st > 3.0f) sc->st = -1; }
+    /* a school feeding at the surface: now and then a fish flips and leaves a ring and a fleck of white, so a school
+       reads from a racing craft's low camera, where the sea's mirror hides what is under it (presentation only) */
+    if (!g_fish_old && sc->scatter < 0.15f) {
+      uint32_t t = (uint32_t)(G.tick / 9u) + (uint32_t)k * 7u;
+      if (G.tick % 9u == (uint32_t)k % 9u) {
+        float a = h01(t, (uint32_t)k, 11) * 6.2832f, r = sc->r * (0.3f + 0.7f * h01(t, (uint32_t)k, 12));
+        cw_water_splash(G.water, sc->x + cosf(a) * r, sc->z + sinf(a) * r, 0.7f, 0.06f, 1.0f);
+      }
+    }
     bool fresh = sc->scatter < 0.15f;
     for (int i = 0; i < RACERS; i++) {
       const craft *c = &G.c[i];
@@ -329,7 +346,7 @@ void life_sync(double wt) {
     g_life[6] = 0;
     for (int k = 0; k < school_n; k++) {
       const school *sc = &S[k];
-      float surf = cw_water_height_at(G.water, sc->x, sc->z, wt), mid = surf - 0.22f + g_fish_lift; /* just under: the see-through water shows what is in its top half metre */
+      float surf = cw_water_height_at(G.water, sc->x, sc->z, wt), mid = surf - (g_fish_old ? 0.22f : 0.03f) + g_fish_lift; /* (their backs just in the surface: under it, at a racing camera's low angle, the sea's mirror hides them) */ /* just under: the see-through water shows what is in its top half metre */
       float e = sc->scatter * sc->scatter * (3 - 2 * sc->scatter); /* eased: a burst out, a slow drift back */
       for (int f = 0; f < FISH; f++) {
         const float *q = fish_k[k][f];
@@ -349,7 +366,7 @@ void life_sync(double wt) {
         }
         /* heading along the ring (anticlockwise), turned out when fleeing, with a swimming wag */
         float yaw = turn_to(cw_atan2(-sinf(a), cosf(a)), cw_atan2(ox, oz), e) + 0.18f * sinf(sc->phase * 9.0f + (float)f);
-        float s = q[3];
+        float s = q[3] * (g_fish_old ? 1.0f : 2.0f);
         bool up = y > surf + 0.05f;
         if (up) g_life[6] += 1;
         if (up != fish_up[k][f]) cw_water_splash(G.water, x, z, 0.3f + 0.25f * q[1], 0.02f, 0.55f); /* the ring and foam where it breaks the surface */
@@ -359,6 +376,7 @@ void life_sync(double wt) {
         t3_instanced_mesh_set_matrix_at(fish_im, n++, &m);
       }
     }
+    fish_im->count = g_fish_hide ? 0 : n;
     if (fish_im->instance_matrix) fish_im->instance_matrix->version++;
   }
   if (gull_im && wing_im) {

@@ -19,7 +19,11 @@ const stats = (h) => { const n = h.reduce((a, b) => a + b, 0); let seen = 0, med
 let fail = 0;
 const check = (name, ok, detail) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}: ${detail}`); if (!ok) fail++; };
 for (let lv = 0; lv < C.length; lv++) {
-  const a = stats(run('jetski_auto', `course ${lv};no_dq 1;swell 1;race`, 16000)['land.hist']);
+  /* a course with few hops (the river: its sea is small) races a second time on Hard and the landings are pooled, so the
+     bound is judged on at least five */
+  let h = run('jetski_auto', `course ${lv};no_dq 1;swell 1;race`, 16000)['land.hist'].map(Number);
+  if (h.reduce((x, y) => x + y, 0) < 5) { const h2 = run('jetski_auto', `course ${lv};difficulty 2;no_dq 1;swell 1;race`, 16000)['land.hist'].map(Number); h = h.map((v, i) => v + h2[i]); }
+  const a = stats(h);
   check(`${C[lv]}: landings are fair`, a.n >= 5 && a.med >= 0.95 && (a.low < 0.05 || a.low * a.n <= 1), `${a.n} landings, median in the ${a.med.toFixed(2)} band, ${(a.low * 100).toFixed(1)}% under 0.9, mean ${a.mean.toFixed(2)}`);
   if (lv < 2) { const b = stats(run('jetski_auto', `fair 0;course ${lv};no_dq 1;swell 1;race`, 16000)['land.hist']); check(`${C[lv]} control: fair 0 fails`, b.low >= 0.05, `${b.n} landings, ${(b.low * 100).toFixed(1)}% under 0.9, mean ${b.mean.toFixed(2)}`); }
 }

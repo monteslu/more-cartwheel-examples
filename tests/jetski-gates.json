@@ -406,6 +406,11 @@
     "note": "the six riders' ratings change the ride: top speeds rank as the top-speed bars and spread at least 5 %, the time to the plane ranks as the acceleration bars (control: rider_stats 0)"
   },
   {
+    "name": "jetski-rivals",
+    "script": "tests/jetski-rivals.mjs",
+    "note": "the computer riders on the CPU with a software GL: every rival rides on its rider's ratings and a slow rival settles at least 0.3 m into the water. Control: sw ai_rated 0, even ratings and on top"
+  },
+  {
     "name": "jetski-trick-value",
     "script": "tests/jetski-trick-value.mjs",
     "note": "stunt scoring: the same trick twice pays at most 80 % of two in full, two different ones over twice the first (control: wxsw trick_repeat 0)"
@@ -424,5 +429,10 @@
     "name": "jetski-life",
     "script": "tests/jetski-life.mjs",
     "note": "life in the water: in the first minute of a race on every course the player passes at least 3 schools of fish within 20 m and scatters at least 2; gulls near the line (on a beach or afloat) on at least 4 courses lift off as the racers pass (control: sw life 0)"
+  },
+  {
+    "name": "jetski-fish-see",
+    "script": "tests/jetski-fish-see.mjs",
+    "note": "fish you can see from the race camera, GL and WebGPU on the atoll, the fjord and the port: a school 12 m ahead, picture pairs with and without it: at least 3000 changed pixels and 1.4 times the old school. Control: sw fish_old 1"
   }
 ]

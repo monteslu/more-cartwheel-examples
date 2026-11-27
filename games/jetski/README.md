@@ -59,7 +59,7 @@ The menu's Steering assist lets the computer steer the racing line while the sti
 always wins. Close shaves past a mark, ten clean marks in a row and a slipstream behind a rival each pay into your turbo
 or your speed.
 
-Schools of fish swim just under the clear water beside the line. A craft that comes close scatters them, half the
+Schools of gold fish swim with their backs in the surface beside the line, and now and then one flips and rings the water. A craft that comes close scatters them, half the
 school leaps clear one after another, and they gather again behind it. Gulls rest on the beaches near the line, or on the water where there is no beach, lift off as the racers pass, wheel overhead and come back
 down (`sw life 0` takes them all away). None of them is in the way or changes the race.
 
@@ -69,7 +69,7 @@ The menu's Rider row picks who you are, from six: Cruz, Marlin, Kestrel, Tide, J
 and build, with bars for acceleration, top speed, handling, tricks and weight. The ratings change the ride: more
 acceleration is a stronger pump, top speed a higher ceiling, handling a quicker turn, tricks a faster rotation, and a
 heavy rider holds on through a bump a light one goes over in. Every rider's bars add to the same, so each wins somewhere.
-The other five race against you.
+The other five race against you, each on their own ratings.
 
 ## The craft
 
