@@ -336,6 +336,19 @@
     "note": "Team deathmatch in the Terraces (water), four players and four bots, 30 s. Control: three players."
   },
   {
+    "name": "arenafps-pointblank",
+    "app": "arenafps_auto",
+    "frames": 660,
+    "env": { "ARENA_ID": "0", "ARENA_MODE": "0", "ARENA_BOTS": "0", "ARENA_PLAYERS": "1" },
+    "startCmds": ["pointblank 2.5 0.15"],
+    "maxGt16": 0.08,
+    "fields": ["game.state", "game.mode", "game.arena", "game.players", "game.ticks", "game.hash", "pb.shots"],
+    "expect": { "game.state": 1, "game.mode": 0, "game.arena": 0, "game.players": 1, "game.ticks": 660, "game.hash": 3813659184, "pb.shots": 15 },
+    "controlFrames": 600,
+    "webgpu": { "vsGl": 0.4, "maxGt16": 0.08, "hosts": ["native", "romdev"] },
+    "note": "the flash sweep's close blast (its arenafps-pointblank entries): one player alone in the Foundry stands 2.5 m from the nearest wall to its spawn (the autopilot's pointblank command), faces it a little above level and holds the rocket launcher's trigger for 11 seconds with its health kept full, so every rocket bursts at the wall with the fireball, the smoke, the flash light and the damage tint filling the view. pb.shots counts the rockets. Control: 60 frames short (fewer rockets)."
+  },
+  {
     "name": "arenafps-recoil",
     "app": "arenafps",
     "frames": 1000,

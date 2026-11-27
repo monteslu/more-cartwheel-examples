@@ -353,7 +353,7 @@ void fx_hole(t3_vec3 p, t3_vec3 n) {
   cw_node_add_child(ROOT, d);
 }
 
-void fx_explosion(t3_vec3 p, t3_vec3 n, float light_k) {
+void fx_explosion(t3_vec3 p, t3_vec3 n, float light_k, bool soft) {
   t3_vec3 nn = v3len(n) < 0.5f ? v3(0, 1, 0) : n;
   bool floor = nn.y > 0.7f;
   cw_node b = take(&P_BOOM, NULL);
@@ -380,11 +380,24 @@ void fx_explosion(t3_vec3 p, t3_vec3 n, float light_k) {
       cw_node_set(d, "visible", cw_val_bool(hk > 0));
     }
   }
-  /* the hot parts (the flash light, the flash sprite, the fire) at light_k of full: a blast at a view's eye (main.c blast) */
-  cw_node_set(b, "flash_energy", cw_val_float(220 * light_k));
+  /* the hot parts (the flash light, the flash sprite, the fire) at light_k of full: a blast at a view's eye (main.c blast).
+   * soft (main.c blastfix, the default): a blast near an eye is one long, gentle swell. Its flash light is lower (0.15 of full
+   * within 3 m, not 0.25), whiter (warm white, not orange: a wall lit orange went deep red as the light faded, a red flash
+   * of its own) and longer (it rises over 0.3 s and dies by 1.2 s, not 0.08 and 0.4), so rockets bursting a second apart
+   * at a wall a few metres off keep the room lit between them instead of lighting it and letting it go dark again with
+   * each one; and smoke that reaches the lens thins out (camera_fade) instead of laying a grey veil over the view between
+   * the flash and the fire. All of it eases out by 12 m: a blast farther off looks as before. The flash sweep's
+   * arenafps-pointblank measures it; ARENA_T_blastfix=0 (autopilot) is its control */
+  const float w = soft ? CW_CLAMP((1 - light_k) / 0.75f, 0, 1) : 0;
+  cw_node_set(b, "flash_energy", cw_val_float(220 * (light_k - 0.1f * w)));
+  cw_node_set(b, "flash_color", cw_val_color(1, 0.62f + 0.3f * w, 0.3f + 0.45f * w, 1));
+  cw_node_set(b, "flash_duration", cw_val_float(0.4f + 0.8f * w));
+  cw_node_set(b, "flash_rise", cw_val_float(0.08f + 0.22f * w));
   { cw_node fl = cw_node_get(b, "Flash"), fi = cw_node_get(b, "Fire");
     if (cw_node_valid(fl)) cw_node_set(fl, "energy", cw_val_float(16 * light_k));
     if (cw_node_valid(fi)) cw_node_set(fi, "energy", cw_val_float(1.6f * (0.5f + 0.5f * light_k))); }
+  { static const char *const SM[2] = { "Smoke", "DebrisTrail" };
+    for (int i = 0; i < 2; i++) { cw_node sm = cw_node_get(b, SM[i]); if (cw_node_valid(sm)) cw_node_set(sm, "camera_fade", cw_val_float(soft ? 1.5f : 0)); } }
   cw_explosion_fire(b);
   if (!floor) {
     float s = 2.6f + cw_rng_float(&R) * 0.8f;

@@ -231,6 +231,8 @@ static const bot_level_def *LV(const fighter *f) {
 /* the flash fixes on (default); ARENA_T_strobefix=0 (autopilot) turns them off as the flash sweep's control: the damage
  * tint's old curve, bodies drawn however close to a view's camera, fighters free to stand inside each other */
 static bool strobefix(void) { return arena_tune("strobefix", 1) > 0.5f; }
+/* the close blast fixes on (default); ARENA_T_blastfix=0 (autopilot) turns them off: the flash sweep arenafps-pointblank control */
+static bool blastfix(void) { return arena_tune("blastfix", 1) > 0.5f; }
 /* the game's own flash meter for its damage tint (debug fields fl.*, read over a range of frames): the tint's drawn
  * opacity, a transition each time it turns round after moving 0.1 or more (WCAG 2.3.1's pair of opposing changes, red
  * counted at any size the eye sees: 0.1 of the red's full opacity), a flash every two transitions, and the most flashes
@@ -632,7 +634,7 @@ static void damage(fighter *v, fighter *k, int dmg, t3_vec3 dir, float knock, in
   v->hit_t = 0;
   if (v->human >= 0) {
     G.dmg_want[v->human] = 1;
-    G.dmg_hold[v->human] = 36;
+    G.dmg_hold[v->human] = blastfix() ? 54 : 36; /* (sync_nodes: the tint's envelope) */
     if (k) {
       t3_vec3 d = v3sub(k->mv.position, v->mv.position);
       G.dmg_dir[v->human] = cw_atan2(-d.x, -d.z) - v->yaw;
@@ -760,6 +762,10 @@ static void fire_rocket(fighter *f, int owner) {
     p->life = 60 * 5;
     cw_node_set(p->node, "visible", cw_val_bool(true));
     cw_node_set(p->trail, "emitting", cw_val_bool(true));
+    /* the trail's first puffs are born a hand's width from the shooter's eye: each a grey veil over the whole view for the
+     * few ticks before the rocket burst at a wall a few metres off, a dark flash between the launch and the blast. They thin
+     * out within 1.2 m of a camera (ARENA_T_blastfix=0: the old veil) */
+    cw_node_set(p->trail, "camera_fade", cw_val_float(blastfix() ? 1.2f : 0.0f));
     /* the light swells over four ticks (rocket_tick): switched on at full at the barrel it lit a wall at arm's length from
      * dark to bright in one frame */
     p->glow = strobefix() ? 0.0f : 1.0f;
@@ -922,7 +928,7 @@ static void blast(t3_vec3 at, t3_vec3 n, int owner_i, int max_dmg, float radius,
   float near_eye = 1e9f;
   for (int h = 0; h < G.players; h++) near_eye = fminf(near_eye, v3len(v3sub(eye_pos(SF(h)), at)));
   float lk = CW_CLAMP((near_eye - 3.0f) / 9.0f, 0, 1);
-  fx_explosion(at, n, 0.25f + 0.75f * lk * lk * (3 - 2 * lk));
+  fx_explosion(at, n, 0.25f + 0.75f * lk * lk * (3 - 2 * lk), blastfix());
   for (int h = 0; h < G.players; h++) {
     float d = v3len(v3sub(eye_pos(SF(h)), at));
     if (d >= 14.0f) continue;
@@ -1023,6 +1029,10 @@ static void do_fire(fighter *f, int idx) {
     f->mpeak = fmaxf(f->mhold > 0 ? f->mpeak : 0, f->weapon == 1 ? 16 : 9);
     f->mhold = 9;
     if (f->mglow < 0.05f) f->mreach = 0, f->mnear = 0.5f; /* a fresh shot: the light is placed from the barrel out (muzzle_place) */
+    /* a rocket's launch light starts where it settles: carried out from the barrel it lit the gun at the launch, left it dark
+     * as it moved off and the blast lit it again, two flashes a shot on the gun when the rocket burst a few metres off (the
+     * flash sweep's arenafps-pointblank, 4 a second there). ARENA_T_blastfix=0 (autopilot): from the barrel, the control */
+    if (w->kind == 1 && blastfix()) f->mreach = 0.9f;
   }
 }
 
@@ -3521,9 +3531,11 @@ static void sync_nodes(void) {
     }
     G.hit_marker[h] *= 0.9f;
     /* the damage tint is one envelope: it swells over about a quarter second when damage starts, holds while hits keep
-     * coming (each hit holds it 0.6 s more) and fades over two thirds of a second after the last one, so a swell and its
-     * fade take a second at the least whatever the hit rate: never a red pulse per hit (WCAG 2.3.1, at most three flashes a
-     * second). ARENA_T_strobefix=0 (autopilot): the old curve, rising in four frames at every hit, the flash sweep's control */
+     * coming (each hit holds it 0.9 s more: 0.6 s, which ARENA_T_blastfix=0 brings back, let it sag and swell again at every
+     * rocket, scatter or rail hit, a red pulse a hit at the screen's edge) and fades over two thirds of a second after the
+     * last one, so a swell and its fade take a second at the least whatever the hit rate: never a red pulse per hit (WCAG
+     * 2.3.1, at most three flashes a second). ARENA_T_strobefix=0 (autopilot): the old curve, rising in four frames at
+     * every hit, the flash sweep's control */
     if (G.sw_hurt_hz > 0 && h == 0 && G.steps % CW_MAX(1, (int)(60 / G.sw_hurt_hz)) == 0) /* sw hurt: a hit's cue, no damage */
       G.dmg_want[h] = 1, G.dmg_hold[h] = 36;
     if (strobefix()) {
@@ -3719,6 +3731,36 @@ static void setup_store(void) {
   cw_shell_save_commit();
 }
 
+#ifdef ARENA_AUTOPILOT
+/* pointblank <metres> [pitch]: the flash sweep's close blast (arenafps-pointblank). Seat 0 stands <metres> from the nearest
+ * wall around where it spawned, faces it and holds the rocket launcher's trigger, its health kept full: every rocket bursts
+ * at the wall with the fireball and smoke filling the view. pointblank 0 ends it. Never in a shipped build */
+static struct { float dist, pitch; bool set; t3_vec3 at; float yaw; int32_t shots; } PB;
+static void pb_tick(fighter *f, int idx) {
+  if (!f->alive) return;
+  if (!PB.set) {
+    t3_vec3 eye = eye_pos(f);
+    float best = 1e9f;
+    for (int k = 0; k < 32; k++) {
+      float sa, ca, yaw = (float)k * 6.2831853f / 32.0f;
+      cw_sincos(yaw, &sa, &ca);
+      t3_vec3 dir = v3(-sa, 0, -ca), hit, n;
+      if (!arena_ray(eye, v3add(eye, v3scale(dir, 25)), &hit, &n) || fabsf(n.y) > 0.3f) continue;
+      float d = v3len(v3sub(hit, eye));
+      if (d < PB.dist + 0.4f || d >= best) continue;
+      best = d, PB.yaw = yaw, PB.at = v3add(f->mv.position, v3scale(dir, d - PB.dist));
+    }
+    if (best > 1e8f) return; /* no wall in reach of this spot: the next tick tries again */
+    PB.set = true;
+  }
+  cw_mover3d_teleport(&f->mv, PB.at);
+  f->mv.velocity = v3(0, 0, 0);
+  f->yaw = PB.yaw, f->pitch = PB.pitch;
+  f->hp = 100, f->spawn_guard = 0;
+  f->have |= 1 << 2, f->weapon = 2, f->ammo[2] = W[2].max_ammo;
+  if (f->cooldown <= 0) PB.shots++, do_fire(f, idx);
+}
+#endif
 static void game_step(void) {
   RB.clock++; /* the rumble's clock: every game tick */
   G.steps++; /* every game tick since the start, across matches (soaks) */
@@ -3851,6 +3893,10 @@ static void game_step(void) {
       }
     }
     float yaw0 = f->yaw, pitch0 = f->pitch;
+#ifdef ARENA_AUTOPILOT
+    if (PB.dist > 0 && i == SEAT[0]) pb_tick(f, i);
+    else
+#endif
     if (is_bot(f)) bot_tick(f, i);
     else human_tick(f, i);
     if (battle() && tk_target(i)) { /* a person's view is on its way to this soldier: it turns no faster than 2.4 rad/s, so the view (3.6) arrives */
@@ -4691,6 +4737,12 @@ static void cmd_keyart(int argc, const char **argv, cw_reply *r) {
   else snprintf(keyart_chase, sizeof keyart_chase, "%s", argv[1]), keyart_nohud = argc > 2 && atoi(argv[2]) == 0;
   cw_reply_printf(r, "{\"chase\":\"%s\",\"hud\":%d}", keyart_chase, !keyart_nohud);
 }
+static void cmd_pointblank(int argc, const char **argv, cw_reply *r) {
+  PB.dist = argc > 1 ? (float)atof(argv[1]) : 1.0f;
+  PB.pitch = argc > 2 ? (float)atof(argv[2]) : 0.0f;
+  PB.set = false;
+  cw_reply_printf(r, "{\"dist\":%g,\"pitch\":%g}", (double)PB.dist, (double)PB.pitch);
+}
 #endif
 static void cmd_match(int argc, const char **argv, cw_reply *r) {
   if (argc > 1) G.arena_id = CW_CLAMP(atoi(argv[1]), 0, ARENAS - 1);
@@ -4971,6 +5023,8 @@ static void init(void *user) {
   cw_debug_command("ptest", "ptest [on|off]: the playtest perception field (ptest) for a scripted human", cmd_ptest);
   cw_debug_field("ptest", ptest, CW_DBG_F32, PT_N);
 #ifdef ARENA_AUTOPILOT
+  cw_debug_command("pointblank", "pointblank <metres> [pitch] | pointblank 0: seat 0 fires rockets at the nearest wall from <metres> (the flash sweep close blast)", cmd_pointblank);
+  cw_debug_i32("pb.shots", &PB.shots);
   cw_debug_command("keyart", "keyart <i,fwd,right,up,lookh> [hud 0|1] | keyart off: key art (view 1 from a spot in fighter i's frame, the HUD off)", cmd_keyart);
   { /* each view's camera as drawn (yaw, pitch, eye x and z), one scalar a field so a ranged read gets every frame */
     static const char *const NY[] = { "view.yaw0", "view.yaw1", "view.yaw2", "view.yaw3" }, *const NP[] = { "view.pitch0", "view.pitch1", "view.pitch2", "view.pitch3" };

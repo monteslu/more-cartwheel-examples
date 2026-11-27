@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.48.1
+
+- Arena: a rocket burst a few metres off in a room no longer flickers. Fired into a wall 2 to 3 m away, each blast lit
+  and darkened the view more than once (the launch light carried out from the barrel lit the gun and then left it, the
+  rocket trail's first puffs laid a grey veil over the view, the orange flash light reddened the wall as it faded, and
+  the damage tint sagged and swelled again between rockets): 4 flashes and 5 red flashes a second with the launcher
+  held down. Now a blast near a player's eye is one long, gentle swell: its flash light is lower and warm white, rises
+  over 0.3 s and dies by 1.2 s, smoke and the rocket trail thin out as they reach the lens, a rocket's launch light
+  starts where it settles, and the damage tint holds 0.9 s after each hit (was 0.6). Blasts from 12 m out look as
+  before. 3 flashes a second, 2 red, on GL and WebGPU.
+- Tests: the flash sweep's arenafps-pointblank (the autopilot's new pointblank command: one player 2.5 m from a
+  Foundry wall holding the rocket launcher's trigger) with its control arenafps-pointblank-control (sw tune blastfix 0,
+  the old behaviour, which must fail); the gate arenafps-pointblank pins that run.
+
 ## 0.48.0
 
 - jetski: the computer riders ride on their own ratings and in deep water. Each rival's pump, top speed, trick speed
