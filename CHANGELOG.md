@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.45.1
+
+- Arena, Courtyard: bots can get onto the plinth in the middle of the plaza (the rocket's). It stands higher than a
+  step, so the navmesh left its top an island and a bot sent for the rocket stopped at the foot of it and turned on
+  the spot; now four jump links lead up from its sides and back down.
+- Arena, autopilot: the seats' stand-ins keep their view steadier, so the flash sweep's arenafps-battle passes
+  (3 flashes a second, the bound; it was a known failure at 5). A stand-in keeps its face off the walls (a wall within
+  1.5 m of the eye pushes it away), pushes the look stick no more than 0.8 of the way (2.2 rad/s, short of the held
+  edge's boost), keeps looking where it was when the only path point left is at its feet, and keeps its eyes on an
+  enemy that went out of sight for three quarters of a second before looking down its path again. The gates
+  arenafps-match, arenafps-coop and arenafps-tdm are pinned again.
+
 ## 0.45.0
 
 - jetski: two players on one screen. The title menu's Players row (a championship) sets 2: the screen splits side by

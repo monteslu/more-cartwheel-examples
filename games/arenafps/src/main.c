@@ -1415,6 +1415,12 @@ static void turn_by(fighter *f, float dy, float dp, float rate) {
       float k = (0.15f + 0.85f * l) / l;
       stick = cw_v2(stick.x * k, stick.y * k);
     }
+    /* and it pushes the stick at most 0.8 of the way (2.2 rad/s), short of the edge and its boost: at the edge a
+     * long turn ran up to 5.8 rad/s, and a view sweeping past near walls that fast swung bright stone and shade through the
+     * same part of the screen four or five times a second (the flash sweep's arenafps-battle). ARENA_T_seat_stick
+     * (autopilot): the reach */
+    float reach = arena_tune("seat_stick", 0.8f), sl = sqrtf(stick.x * stick.x + stick.y * stick.y);
+    if (sl > reach) stick = cw_v2(stick.x * reach / sl, stick.y * reach / sl);
     cw_vec2 t = cw_aim_step(&proxy_aim[f->human], &c, stick, TICK_DT, 0);
     f->yaw -= fabsf(t.x) > fabsf(dy) ? -dy : t.x; /* never past the aim */
     f->pitch -= fabsf(t.y) > fabsf(dp) ? -dp : t.y;
@@ -1422,6 +1428,21 @@ static void turn_by(fighter *f, float dy, float dp, float rate) {
   }
   f->yaw += cw_clampf(dy, -rate, rate);
   f->pitch += cw_clampf(dp, -rate, rate);
+}
+
+/* a seat's stand-in keeps its eyes on an enemy that has just gone out of sight (behind a column, round a corner), as a
+ * person does, for three quarters of a second, before it looks down its path again. Without this, a fight beside cover,
+ * the enemy in sight one moment and not the next, switched its view between the enemy and the way ahead several times a
+ * second (a near wall swinging in and out of the screen: the flash sweep's arenafps-battle) */
+static struct { int t, who; t3_vec3 p; } seat_seen[MAXH];
+static bool seat_track(const fighter *f) {
+  if (!proxy(f) || !strobefix() || f->human >= MAXH || f->target < 0 || seat_seen[f->human].who != f->target) return false;
+  return G.ticks - seat_seen[f->human].t < 45 && F(f->target)->alive;
+}
+static void seat_look_seen(fighter *f) {
+  t3_vec3 d = v3sub(seat_seen[f->human].p, eye_pos(f));
+  float ty = cw_atan2(-d.x, -d.z), tp = cw_atan2(d.y, sqrtf(d.x * d.x + d.z * d.z));
+  turn_by(f, cw_wrap_angle(ty - f->yaw), tp - f->pitch, 0);
 }
 
 static void bot_tick(fighter *f, int idx) {
@@ -1512,6 +1533,7 @@ static void bot_tick(fighter *f, int idx) {
     }
   }
   if (f->retreat > 0) f->retreat--;
+  if (proxy(f) && f->human < MAXH && see) seat_seen[f->human].t = G.ticks, seat_seen[f->human].who = f->target, seat_seen[f->human].p = aim_at;
   if (proxy(f) && f->human < MAXH) DBG_SEAT[f->human][0] = see && f->retreat > 0 ? 1 : see ? 2 : f->hold > 0 ? 3 : 4, DBG_SEAT[f->human][1] = f->target;
   if (see && f->retreat > 0) {
     /* breaking off: run the path, firing only when the enemy happens to be in front */
@@ -1552,11 +1574,13 @@ static void bot_tick(fighter *f, int idx) {
     else if (fabsf(dy) < 0.06f + (1 - f->skill) * 0.06f && f->cooldown == 0) do_fire(f, idx);
   } else if (f->hold > 0) {
     f->hold--;
-    f->yaw += 1.2f * TICK_DT * ((idx & 1) ? 1 : -1);
+    if (seat_track(f)) seat_look_seen(f);
+    else f->yaw += 1.2f * TICK_DT * ((idx & 1) ? 1 : -1);
   } else {
     bot_follow(f, &fwd, &strafe, 1.0f);
     /* look where we go */
-    if (f->npath > 0 && f->pidx < f->npath) {
+    if (seat_track(f)) seat_look_seen(f);
+    else if (f->npath > 0 && f->pidx < f->npath) {
       t3_vec3 w = f->path[f->pidx];
       if (proxy(f) && strobefix()) { /* a person looks down the way, not at the next corner at their feet: the first point
                                       * of the path 4 m off (the last one if none is), so passing a corner does not swing the view */
@@ -1568,8 +1592,14 @@ static void bot_tick(fighter *f, int idx) {
       }
       float ty = cw_atan2(-(w.x - f->mv.position.x), -(w.z - f->mv.position.z));
       float dy = cw_wrap_angle(ty - f->yaw), rate = 5.0f * TICK_DT;
-      if (proxy(f) && strobefix()) turn_by(f, dy, -f->pitch, rate);
-      else {
+      if (proxy(f) && strobefix()) {
+        /* nothing down the way but the path's end within a step or two (arrived, or the end of a path that stops short of
+         * its goal): a person keeps looking where they were. Turning toward a point at the feet swings the view round and
+         * back at full stick as the body shuffles over it */
+        float wx = w.x - f->mv.position.x, wz = w.z - f->mv.position.z;
+        if (wx * wx + wz * wz < 1.5f * 1.5f) dy = 0;
+        turn_by(f, dy, -f->pitch, rate);
+      } else {
         f->yaw += cw_clampf(dy, -rate, rate);
         f->pitch += cw_clampf(-f->pitch, -0.05f, 0.05f);
       }
@@ -1619,6 +1649,27 @@ static void bot_tick(fighter *f, int idx) {
     if (moved < 0.5f && f->npath > 0 && !see) { jump = true; f->repath = 0; f->stuck++; }
     f->last_pos = f->mv.position;
     if (f->stuck > 3) { f->stuck = 0; f->goal = v3(0, -1000, 0); f->think = 0; }
+  }
+  /* a seat's stand-in keeps its face off the walls, as a person does: a wall within reach of the eye pushes it away. A
+   * view a hand's width from a wall magnifies every step and turn (the stones and their shade sweep the screen, and the
+   * gun's light flares on them), a flash at the fire rate; the flash sweep's arenafps-battle saw it fight a soldier with
+   * its nose on a column. ARENA_T_seat_wall (autopilot): the reach in metres, 0 off */
+  if (proxy(f) && strobefix()) {
+    float reach = arena_tune("seat_wall", 1.5f);
+    t3_vec3 e = eye_pos(f), push = v3(0, 0, 0);
+    for (int k = 0; k < 8 && reach > 0; k++) {
+      float s, c, a = (float)k * (CW_PI / 4);
+      cw_sincos(a, &s, &c);
+      t3_vec3 hp;
+      if (arena_ray(e, v3add(e, v3(s * reach, 0, c * reach)), &hp, NULL)) {
+        float near = 1 - v3len(v3sub(hp, e)) / reach;
+        push = v3add(push, v3(-s * near, 0, -c * near));
+      }
+    }
+    float sy, cy;
+    cw_sincos(f->yaw, &sy, &cy);
+    fwd += (-sy * push.x - cy * push.z) * 1.5f;
+    strafe += (cy * push.x - sy * push.z) * 1.5f;
   }
   if (f->link_jump) jump = true, G.link_jumps++;
   f->link_jump = false;
@@ -2865,6 +2916,7 @@ static void begin_match(void) {
   G.ticks = 0;
   G.match_ticks = 0;
   G.over_ticks = 0;
+  for (int h = 0; h < MAXH; h++) seat_seen[h].who = -1;
   G.hash = 0;
   G.winner = -1;
   G.st.last_kill = 0;
@@ -3122,6 +3174,7 @@ static void tk_handover(int h, fighter *old, int bi) {
   memset(&G.aim[h], 0, sizeof G.aim[h]);
   memset(&proxy_aim[h], 0, sizeof proxy_aim[h]);
   proxy_thumb[h] = cw_v2(0, 0);
+  seat_seen[h].who = -1;
   G.dmg_flash[h] = G.dmg_want[h] = 0, G.dmg_hold[h] = 0;
   G.killed_by[h][0] = 0, G.kc_who[h] = -1;
   KC.yaw[h] = b->yaw, KC.pitch[h] = b->pitch;

@@ -158,6 +158,13 @@ function courtyard() {
   open(L, 'outer', [24, -24, 30, 24]);
   // the plaza: a low plinth with the rocket on it, four columns; baffles at the street mouths break the long lanes
   extra(L, 'accent', [-3, -3, 3, 3], 0, 0.8, 'plinth');
+  // navigation links: a jump onto the plinth from each side (and back down), from 1 m out from the face to 1 m in on the
+  // top (it stands higher than a step, so without them the navmesh leaves its top an island and a bot sent for the rocket
+  // stops at the foot of it); east and west clear of the jump pads
+  for (const s of [-1, 1]) {
+    L.links.push({ s: [0, 0, s * 4], e: [0, 0.8, s * 2], kind: 'jump', two: 1 });
+    L.links.push({ s: [s * 4, 0, -1], e: [s * 2, 0.8, -1], kind: 'jump', two: 1 });
+  }
   for (const [sx, sz] of QUADS) extra(L, 'pillar', mir([4.4, 4.4, 5.4, 5.4], sx, sz), 0, 4.2, 'column');
   extra(L, 'wall', [-6, -21.2, -1.5, -20.6], 0, 2.6, 'baffle');
   extra(L, 'wall', [1.5, 20.6, 6, 21.2], 0, 2.6, 'baffle');
