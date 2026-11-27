@@ -73,7 +73,9 @@ static int nag_quiet(int kind) {
   rep[kind] = again ? rep[kind] + 1 : 0;
   return g_nag_on ? rep[kind] : 0;
 }
-void ev_push(int kind, int a, float x, float z) { int q = nag_quiet(kind); game_event *e = &g_ev[g_ev_n++ % EV_RING]; e->kind = kind, e->a = a, e->x = x, e->z = z, e->quiet = q; }
+int g_ev_seat;
+int g_players = 1, g_seat_cpu[2];
+void ev_push(int kind, int a, float x, float z) { int q = nag_quiet(kind); game_event *e = &g_ev[g_ev_n++ % EV_RING]; e->kind = kind, e->a = a, e->x = x, e->z = z, e->quiet = q, e->seat = g_ev_seat; }
 int g_autosteer;
 /* the human seat driven by the computer (the autopilot build, sw autosteer 1, the attract loop): it rides as it
    always did: the player's own rider (ratings, deep water, slipstream) and the over-rev bog of a throttle held from the
@@ -966,7 +968,9 @@ void sim_reset(int state) {
   ramps_place();
   memcpy(G.cam, keep_cam, sizeof keep_cam);
   G.clock = state == RACE_GRID ? -3.6f : 0;
-  G.rocket_at = 1;
+  G.rocket_at = 1, G.rocket_at2 = 1;
+  g_seat_cpu[1] = 0;
+  view_race_reset();
   float yaw = cw_atan2(START_DX, START_DZ);
   for (int i = 0; i < RACERS; i++) {
     craft *c = &G.c[i];
@@ -978,7 +982,7 @@ void sim_reset(int state) {
     c->y = 0.1f;
     c->yaw = yaw;
     c->px = c->x, c->pz = c->z, c->py = c->y, c->pyaw = c->yaw;
-    c->human = i == 0;
+    c->human = i == 0 || (i == 1 && PLAYERS == 2);
     static const float skills[RACERS] = { 1.0f, 0.975f, 0.955f, 0.99f, 0.945f, 0.965f };
     c->skill = skills[i];
     c->track_i = TRACK_N - 3;
@@ -1168,16 +1172,19 @@ void sim_tick(float dt) {
   if (G.state == RACE_GRID && G.clock >= 0) {
     G.state = RACE_ON;
     /* a rocket start: the throttle down in the last beat of the countdown and still down at the green light. Held from the start of the count, it is a plain start */
-    { craft *h = &G.c[0];
-      if (h->in.throttle > 0.5f && G.rocket_at < 0 && G.rocket_at >= -ROCKET_WINDOW) { h->turbo_t = 0.35f, h->turbo_hold = 1.0f; G.rocket = 1; ev_push(EV_ROCKET, 0, h->x, h->z); }
+    for (int p = 0; p < PLAYERS; p++) { craft *h = &G.c[p]; float ra = p ? G.rocket_at2 : G.rocket_at;
+      g_ev_seat = p;
+      if (h->in.throttle > 0.5f && ra < 0 && ra >= -ROCKET_WINDOW) { h->turbo_t = 0.35f, h->turbo_hold = 1.0f; if (!p) G.rocket = 1; ev_push(EV_ROCKET, 0, h->x, h->z); }
       /* held through the count past the gauge's red: the pump cavitates and the craft bogs for a moment. Let go and press again to clear it */
-      else if (g_rev_bog && h->in.throttle > 0.5f && G.rocket_at < -REV_OVER && !seat_driven()) { h->bog_t = BOG_TIME; G.bog = 1; ev_push(EV_BOG, 0, h->x, h->z); } }
+      else if (g_rev_bog && h->in.throttle > 0.5f && ra < -REV_OVER && !seat_driven()) { h->bog_t = BOG_TIME; if (!p) G.bog = 1; ev_push(EV_BOG, 0, h->x, h->z); } }
+    g_ev_seat = 0;
     cw_log(CW_LOG_INFO, "jetski: course %s, green light, graphics %s", DEF->name, cw_quality_name(cw_quality_get()));
   }
   for (int i = 0; i < RACERS; i++) {
     craft *c = &G.c[i];
     if (!racer_on(i) || g_podium_on) continue; /* on the podium the craft are parked (podium.c) */
-    bool ai = !c->human || G.state == RACE_ATTRACT || g_try_ramp >= 0;
+    g_ev_seat = i;
+    bool ai = !c->human || G.state == RACE_ATTRACT || g_try_ramp >= 0 || (i == 1 && g_seat_cpu[1]);
     if (g_ram_setup > 0 && i < 2) ai = false, c->in.steer = 0, c->in.lean = 0, c->in.throttle = 1, c->in.trick = false;
 #ifdef JETSKI_AUTOPILOT
     ai = true;
@@ -1191,7 +1198,7 @@ void sim_tick(float dt) {
       craft_input keep = c->in; computer(c, i);
       float s = c->in.steer * 0.85f; c->in = keep; c->in.steer = s; g_assist_ticks++;
     }
-    if (c->human && G.state == RACE_GRID) { if (c->in.throttle > 0.5f) { if (G.rocket_at > 0) G.rocket_at = G.clock; } else G.rocket_at = 1; }
+    if (c->human && G.state == RACE_GRID) { float *ra = i ? &G.rocket_at2 : &G.rocket_at; if (c->in.throttle > 0.5f) { if (*ra > 0) *ra = G.clock; } else *ra = 1; }
     if (!go) c->in.throttle = 0;
     craft_tick(c, i, dt);
     c->ok_tick = 0;
@@ -1201,6 +1208,7 @@ void sim_tick(float dt) {
       if (G.state == RACE_ON) out_of_bounds(c, dt);
     }
   }
+  g_ev_seat = 0;
   podium_tick();
   /* craft shoulder each other aside, they do not pass through */
   for (int i = 0; i < RACERS && !g_podium_on; i++)
@@ -1230,19 +1238,24 @@ void sim_tick(float dt) {
     G.order[b] = v;
   }
   /* a place a person is told about has held for three quarters of a second */
-  { craft *h = &G.c[0];
+  for (int p = 0; p < PLAYERS; p++) { craft *h = &G.c[p];
+    g_ev_seat = p;
     int now = h->place;
     if (h->shown_place == 0) h->shown_place = h->want_place = now;
     if (now != h->want_place) g_raw_flips++, h->want_place = now, h->place_ticks = 0; else if (h->place_ticks < 1000) h->place_ticks++;
     if (h->want_place != h->shown_place && h->place_ticks >= g_place_hold) { ev_push(h->want_place < h->shown_place ? EV_GAIN : EV_LOSE, h->want_place, h->x, h->z); h->shown_place = h->want_place; h->place_changes++; } }
+  g_ev_seat = 0;
   for (int i = 0; i < RACERS; i++) G.c[G.order[i]].place = i + 1;
   /* over the line: a few seconds of the finish while the rivals race on for their own times, then the results */
-  bool over = G.c[0].dq;
-  if (G.state == RACE_ON && G.c[0].finish > 0 && !over) {
+  /* with two players: over once both are in (or out), or half a minute after the first was over the line; the other then
+   * gets the time their pace would have made, as the rivals do */
+  bool over = true, any_in = false, all_in = true;
+  for (int p = 0; p < PLAYERS; p++) { const craft *h = &G.c[p]; if (!h->dq) over = false; if (h->finish > 0 && !h->dq) any_in = true; if (h->finish <= 0 && !h->dq) all_in = false; }
+  if (G.state == RACE_ON && any_in && !over) {
     G.fin_t += dt;
     bool all = true;
     for (int i = 1; i < RACERS; i++) if (racer_on(i) && G.c[i].finish <= 0) all = false;
-    over = G.fin_t >= g_finish_hold || (all && G.fin_t >= fminf(3.0f, g_finish_hold));
+    over = (all_in && (G.fin_t >= g_finish_hold || (all && G.fin_t >= fminf(3.0f, g_finish_hold)))) || G.fin_t >= 30.0f;
   }
   if (G.state == RACE_ON && over) {
     G.state = RACE_DONE;

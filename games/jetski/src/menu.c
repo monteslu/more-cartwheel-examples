@@ -13,7 +13,7 @@
 #include "game.h"
 
 enum { P_NONE, P_MAIN, P_CONTROLS, P_AUDIO, P_GRAPHICS, P_PAUSE, P_RESULTS, P_FORECAST, P_PODIUM };
-typedef struct save_data { int32_t magic, level, difficulty, music, sfx, mode; float best[LEVELS]; int32_t craft, unlocked, weather; int32_t stunt_best[LEVELS]; int32_t rider, assist, radio; } save_data;
+typedef struct save_data { int32_t magic, level, difficulty, music, sfx, mode; float best[LEVELS]; int32_t craft, unlocked, weather; int32_t stunt_best[LEVELS]; int32_t rider, assist, radio, players; } save_data;
 _Static_assert(sizeof(save_data) <= 128, "the save region in cw_shell_desc");
 #define SAVE_MAGIC 0x4a534b32
 static int page = P_MAIN, row, last_state = -1;
@@ -41,7 +41,7 @@ static save_data *save(void) { return (save_data *)cw_shell_game_save(); }
 static void store(void) {
   save_data *s = save();
   if (!s) return;
-  s->magic = SAVE_MAGIC, s->level = G.level, s->difficulty = g_difficulty, s->music = music, s->sfx = sfx, s->mode = g_mode, s->craft = g_craft, s->rider = g_rider, s->assist = g_assist, s->radio = g_radio_vol + 1;
+  s->magic = SAVE_MAGIC, s->level = G.level, s->difficulty = g_difficulty, s->music = music, s->sfx = sfx, s->mode = g_mode, s->craft = g_craft, s->rider = g_rider, s->assist = g_assist, s->radio = g_radio_vol + 1, s->players = g_players;
   memcpy(s->best, best, sizeof best);
   s->unlocked = unlocked, s->weather = weather_sel;
   memcpy(s->stunt_best, stunt_best, sizeof stunt_best);
@@ -71,6 +71,7 @@ void menu_init(void) {
     if (s->craft == CRAFT_SIT || s->craft == CRAFT_STAND) g_craft = s->craft;
     if (s->rider > 0 && s->rider < RACERS) { g_rider = s->rider; view_repaint(); }
     g_assist = s->assist == 1;
+    g_players = s->players == 2 ? 2 : 1;
     if (s->radio >= 1 && s->radio <= 11) g_radio_vol = s->radio - 1; /* (0 in an older save: the default) */
     memcpy(best, s->best, sizeof best);
     unlocked = s->unlocked, weather_sel = s->weather >= -1 && s->weather < WX_N ? s->weather : -1;
@@ -81,7 +82,7 @@ void menu_init(void) {
 
 static int page_rows(void) {
   switch (page) {
-  case P_MAIN: return 11;
+  case P_MAIN: return 12;
   case P_FORECAST: { int n = 0; for (int l = 0; l < LEVELS; l++) if (!(cup_used & (1 << l))) n++; return n > 0 ? n : 1; }
   case P_AUDIO: return 6;
   case P_PAUSE: return 5;
@@ -209,7 +210,7 @@ void menu_tick(float dt) {
   if (G.state == RACE_ATTRACT && last_state != RACE_ATTRACT && page == P_NONE) open_page(P_MAIN);
   last_state = G.state;
   if (page == P_NONE) {
-    if (a_pause >= 0 && cw_action_just_pressed(0, a_pause) && (G.state == RACE_ON || G.state == RACE_GRID)) open_page(P_PAUSE);
+    if (a_pause >= 0 && (cw_action_just_pressed(0, a_pause) || (PLAYERS == 2 && cw_action_just_pressed(1, a_pause))) && (G.state == RACE_ON || G.state == RACE_GRID)) open_page(P_PAUSE);
     return;
   }
   if (page == P_GRAPHICS) {
@@ -218,7 +219,7 @@ void menu_tick(float dt) {
     return;
   }
   bool up = cw_action_just_pressed(0, a_up), down = cw_action_just_pressed(0, a_down), left = cw_action_just_pressed(0, a_left), right = cw_action_just_pressed(0, a_right);
-  bool ok = cw_action_just_pressed(0, a_ok), back = cw_action_just_pressed(0, a_back) || (a_pause >= 0 && cw_action_just_pressed(0, a_pause) && page == P_PAUSE);
+  bool ok = cw_action_just_pressed(0, a_ok), back = cw_action_just_pressed(0, a_back) || (a_pause >= 0 && page == P_PAUSE && (cw_action_just_pressed(0, a_pause) || (PLAYERS == 2 && cw_action_just_pressed(1, a_pause))));
   int n = page_rows();
   if (up) row = (row + n - 1) % n;
   if (down) row = (row + 1) % n;
@@ -241,6 +242,8 @@ void menu_tick(float dt) {
     if (row == 6 && (dx || ok)) { g_rider = (g_rider + RACERS + (dx ? dx : 1)) % RACERS; view_repaint(); store(); }
     /* the assist: the computer steers while the stick is let go (a first race, a younger player) */
     if (row == 7 && (dx || ok)) { g_assist = !g_assist; store(); }
+    /* two players race a championship, the second on the second pad, the screen split in two */
+    if (row == 11 && g_mode == MODE_CHAMPIONSHIP && (dx || ok)) { g_players = 3 - g_players; store(); }
     if (ok) {
       if (row == 0) begin();
       else if (row == 8) open_page(P_CONTROLS);
@@ -449,14 +452,14 @@ void menu_draw(void) {
     if (g_mode == MODE_CHAMPIONSHIP) snprintf(wx, sizeof wx, "By the forecast");
     else if (weather_sel < 0) snprintf(wx, sizeof wx, "Usual (%s)", WX_NAMES[wx_usual(G.level)]);
     else snprintf(wx, sizeof wx, "%s", WX_NAMES[weather_sel]);
-    const row_def r[11] = { { "Start", NULL }, { "Mode", MODES[g_mode] }, { "Course", course }, { "Weather", wx }, { "Difficulty", DIFF[g_difficulty] }, { "Craft", CRAFTS[g_craft] }, { "Rider", CAST[g_rider] }, { "Steering assist", g_assist ? "On" : "Off" }, { "Controls", NULL }, { "Audio and text", NULL }, { "Graphics", NULL } };
+    const row_def r[12] = { { "Start", NULL }, { "Mode", MODES[g_mode] }, { "Course", course }, { "Weather", wx }, { "Difficulty", DIFF[g_difficulty] }, { "Craft", CRAFTS[g_craft] }, { "Rider", CAST[g_rider] }, { "Steering assist", g_assist ? "On" : "Off" }, { "Controls", NULL }, { "Audio and text", NULL }, { "Graphics", NULL }, { "Players", g_mode != MODE_CHAMPIONSHIP ? "1 (2 race a championship)" : g_players == 2 ? "2: split screen" : "1" } };
     static const char *const parts[3] = { "{ui_up|ui_down} choose", "{ui_left|ui_right} change", "{ui_accept} accept" };
     float hs = 28 * u, ht = hint(parts, 3, px, w - px - margin, h - 40 * u, hs, dim);
-    float pw = row_width(r, 11, 560 * u, max_w), x = px + pw > w - margin ? w - margin - pw : px;
+    float pw = row_width(r, 12, 560 * u, max_w), x = px + pw > w - margin ? w - margin - pw : px;
     float best_h = 0;
     bool show_best = (g_mode == MODE_TIME_TRIAL && best[G.level] > 0) || (g_mode == MODE_STUNT && stunt_best[G.level] > 0);
     if (show_best) best_h = measure(small, "Best", 30 * u).height + 4 * u;
-    float end = rows_draw(x, y, ht - 20 * u - best_h, pw, r, 11, row);
+    float end = rows_draw(x, y, ht - 20 * u - best_h, pw, r, 12, row);
     /* on the Rider row: their ratings as bars, beside the menu */
     if (row == 6) {
       static const char *const STAT[5] = { "Acceleration", "Top speed", "Handling", "Tricks", "Weight" };
@@ -593,7 +596,12 @@ void menu_draw(void) {
       yy += text(small, new_best ? "A new best on this course" : "Not your best", w * 0.5f, yy, 42 * u, white, 0.5f);
       if (best[G.level] > 0) { fmt_time(buf, sizeof buf, "Best ", best[G.level]); yy = fmaxf(h * 0.37f, yy + 4 * u); yy += text(small, buf, w * 0.5f, yy, 36 * u, dim, 0.5f); }
     } else {
-      if (G.c[0].dq) yy = h * 0.11f + text(big, G.c[0].dq == 1 ? "FIVE MISSES" : "LEFT THE COURSE", w * 0.5f, h * 0.11f, 90 * u, cw_rgba(1, 0.4f, 0.15f, 1), 0.5f);
+      if (PLAYERS == 2) {
+        /* two players: both places across the top, an out rider said so */
+        const char *p1 = G.c[0].dq ? "out" : ord[G.c[0].place - 1 < 0 ? 0 : G.c[0].place - 1], *p2 = G.c[1].dq ? "out" : ord[G.c[1].place - 1 < 0 ? 0 : G.c[1].place - 1];
+        snprintf(buf, sizeof buf, "P1 %s    P2 %s", p1, p2);
+        yy = h * 0.09f + text(big, buf, w * 0.5f, h * 0.09f, 104 * u, gold, 0.5f);
+      } else if (G.c[0].dq) yy = h * 0.11f + text(big, G.c[0].dq == 1 ? "FIVE MISSES" : "LEFT THE COURSE", w * 0.5f, h * 0.11f, 90 * u, cw_rgba(1, 0.4f, 0.15f, 1), 0.5f);
       else yy = h * 0.09f + text(big, ord[G.c[0].place - 1 < 0 ? 0 : G.c[0].place - 1], w * 0.5f, h * 0.09f, 130 * u, gold, 0.5f);
       /* the race's order, each rider's time, and the championship's points so far: columns as wide as their widest entry */
       if (g_mode == MODE_CHAMPIONSHIP) {
@@ -624,7 +632,7 @@ void menu_draw(void) {
       if (cup_done()) {
         int top = 0;
         for (int i = 1; i < RACERS; i++) if (cup_points[i] > cup_points[top]) top = i;
-        snprintf(buf, sizeof buf, top == 0 ? "You win the championship" : "%s wins the championship", seat_name(top));
+        snprintf(buf, sizeof buf, top == 0 && PLAYERS == 1 ? "You win the championship" : "%s wins the championship", seat_name(top));
         yy = fmaxf(h * 0.54f, yy + 8 * u);
         yy += text(small, buf, w * 0.5f, yy, 40 * u, white, 0.5f);
       }

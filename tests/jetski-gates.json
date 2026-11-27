@@ -78,6 +78,11 @@
     "note": "the podium after a championship race on every course, GL and WebGPU on the cart: the first three parked on the judges' pier in order, arms up, names over them, the pad on to the results and the forecast; grounding as drawn (each hull on its tier within 3 cm, piles in the bed, the deck dry, the camera over open water). Controls: sw podium_lift 0.4 fails the bound, sw podium 0 goes straight to the results"
   },
   {
+    "name": "jetski-split",
+    "script": "tests/jetski-split.mjs",
+    "note": "two players on a split screen, GL and WebGPU on the cart, by the pads alone: Players 2 from the title, both pads ride, a second pad let go for 6 s is ridden by the computer and takes it back, the second pad pauses, the race closes at most 30 s after the first player's line to the podium and results. Controls: sw p2_idle_cpu 0 leaves the idle seat on the grid; one player draws one view"
+  },
+  {
     "name": "jetski-sound",
     "app": "jetski_auto",
     "frames": 600,

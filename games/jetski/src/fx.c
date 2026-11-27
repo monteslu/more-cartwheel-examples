@@ -330,7 +330,7 @@ void fx_tick(float dt) {
       t3_vec3 at = { c->x, c->surf + 0.1f, c->z };
       cw_particles_burst(bursts, at, (t3_vec3){ 0, 1, 0 });
       cw_water_splash(G.water, c->x, c->z, 2.0f, 0.3f, 1.0f);
-      if (i == 0) cw_input_rumble(0, 0.8f, 0.6f, 260);
+      if (i == 0 || (i == 1 && PLAYERS == 2)) cw_input_rumble(i, 0.8f, 0.6f, 260);
       c->big_slide = false;
     }
     if (c->big_splash) {
@@ -340,9 +340,9 @@ void fx_tick(float dt) {
       for (int b = 0; b < crowns; b++) cw_particles_burst(bursts, (t3_vec3){ at.x + (float)b * 0.5f - 0.5f, at.y, at.z }, (t3_vec3){ 0, 1, 0 });
       if (c->kick > 0.3f) cw_particles_burst(burst_mist, at, (t3_vec3){ 0, 1, 0 });
       cw_water_splash(G.water, c->x, c->z, 1.6f + 2.4f * c->kick, 0.2f + 0.4f * c->kick, 1.0f);
-      if (i == 0) cw_input_rumble(0, 0.35f + 0.6f * c->kick, 0.2f + 0.4f * c->kick, 180 + (int)(240 * c->kick));
+      if (i == 0 || (i == 1 && PLAYERS == 2)) cw_input_rumble(i, 0.35f + 0.6f * c->kick, 0.2f + 0.4f * c->kick, 180 + (int)(240 * c->kick));
     }
-    if (c->bump && i == 0 && g_ev_on) cw_input_rumble(0, 0.8f, 0.5f, 120);
+    if (c->bump && (i == 0 || (i == 1 && PLAYERS == 2)) && g_ev_on) cw_input_rumble(i, 0.8f, 0.5f, 120);
   }
   /* the event list: a rumble and a burst for what the human just did */
   { static unsigned read;
@@ -352,7 +352,7 @@ void fx_tick(float dt) {
       static const float rumble[EV_KINDS][3] = { [EV_PASS] = { 0.15f, 0.25f, 70 }, [EV_TOP] = { 0.5f, 0.7f, 220 }, [EV_TRICK] = { 0.3f, 0.5f, 140 }, [EV_MISS] = { 0.5f, 0.1f, 200 }, [EV_GAIN] = { 0.2f, 0.35f, 90 }, [EV_LOSE] = { 0.2f, 0.1f, 90 }, [EV_LAP] = { 0.25f, 0.3f, 120 }, [EV_FINAL] = { 0.4f, 0.5f, 240 }, [EV_WALL] = { 0.6f, 0.3f, 120 }, [EV_CRASH] = { 1, 0.8f, 420 }, [EV_CHARGE] = { 0.2f, 0.5f, 120 }, [EV_TURBO] = { 0.8f, 0.9f, 500 }, [EV_ROCKET] = { 0.7f, 0.9f, 350 }, [EV_TURBO_LOST] = { 0.35f, 0.1f, 220 }, [EV_WAVES] = { 0.45f, 0.15f, 700 }, [EV_COMBO] = { 0.3f, 0.6f, 160 }, [EV_BOG] = { 0.55f, 0.1f, 450 }, [EV_SHAVE] = { 0.15f, 0.35f, 80 }, [EV_STREAK] = { 0.4f, 0.6f, 220 }, [EV_DRAFT] = { 0.1f, 0.25f, 120 }, [EV_HOOP] = { 0.25f, 0.55f, 140 } };
       if (!g_ev_on) continue;
       if (e->quiet >= 2) continue; /* the same mistake a third time: the pad says nothing either */
-      if (rumble[e->kind][2] > 0) { cw_input_rumble(0, rumble[e->kind][0], rumble[e->kind][1], (int)rumble[e->kind][2]); g_fb[e->kind][2]++; }
+      if (rumble[e->kind][2] > 0) { cw_input_rumble(e->seat, rumble[e->kind][0], rumble[e->kind][1], (int)rumble[e->kind][2]); g_fb[e->kind][2]++; }
       if (e->kind == EV_PASS || e->kind == EV_TOP || e->kind == EV_CRASH || e->kind == EV_WALL || e->kind == EV_TURBO || e->kind == EV_ROCKET) {
         float h = cw_water_height_at(G.water, e->x, e->z, G.wt);
         cw_particles_burst(bursts, (t3_vec3){ e->x, h + 0.2f, e->z }, (t3_vec3){ 0, 1, 0 });

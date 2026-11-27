@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.45.0
+
+- jetski: two players on one screen. The title menu's Players row (a championship) sets 2: the screen splits side by
+  side, each player chased by their own camera with their own HUD (place, lap, standings, the next mark, the minimap,
+  stamps and words), the second on the second pad, which also pauses. A second pad that is let go for 6 s in a race is
+  ridden by the computer (its view says so) until it presses again, and the race closes at most 30 s after the first
+  player is over the line, so an idle seat never holds the race up. Rumble goes to the pad whose rider it was. With two
+  players the race radio and the lens drops are off, and the ripples on the water follow the two together while they
+  are close, otherwise the one ahead. Tests: jetski-split (the pads alone from power-on, both riding, the idle seat
+  taken over and taken back, a pause from the second pad, the race closing to the podium and results; controls sw
+  p2_idle_cpu 0 and one player), jetski-feature-perf --case split.
+
 ## 0.44.0
 
 - jetski: the podium. Every championship race ends on a judges' pier beside the finish: the first three park on its

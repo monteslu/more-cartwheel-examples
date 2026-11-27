@@ -6,6 +6,7 @@
 
 #include "cartwheel/environment.h"
 #include "cartwheel/foliage.h"
+#include "cartwheel/pipeline.h"
 #include "cartwheel/platform.h"
 #include "cartwheel/quality.h"
 #include "cartwheel/render3d.h"
@@ -900,13 +901,24 @@ static bool attract_camera(float dt) {
 }
 
 /* the fixed-tick camera: chases the human, its height smoothed so it rides over swells instead of through them */
-void view_tick(float dt) {
-  sway_tick();
-  rider_wet(dt);
-  floats_count();
-  if (attract_camera(dt)) return;
-  if (podium_camera(dt)) return;
-  const craft *c = &G.c[0];
+/* split screen: the second player's chase camera is kept here and swapped into G's camera fields while it is worked on
+ * and placed, so one chase serves both seats */
+typedef struct cam_save { float cam[3], cam_prev[3], look[3], look_prev[3], fov, fov_prev, roll, roll_prev; } cam_save;
+static cam_save cam_p2;
+static cw_node cam2_n;
+static void cam_swap(cam_save *s) {
+  cam_save t = *s;
+  memcpy(s->cam, G.cam, sizeof G.cam), memcpy(s->cam_prev, G.cam_prev, sizeof G.cam), memcpy(s->look, G.look, sizeof G.cam), memcpy(s->look_prev, G.look_prev, sizeof G.cam);
+  s->fov = G.cam_fov, s->fov_prev = G.cam_fov_prev, s->roll = G.cam_roll, s->roll_prev = G.cam_roll_prev;
+  memcpy(G.cam, t.cam, sizeof G.cam), memcpy(G.cam_prev, t.cam_prev, sizeof G.cam), memcpy(G.look, t.look, sizeof G.cam), memcpy(G.look_prev, t.look_prev, sizeof G.cam);
+  G.cam_fov = t.fov, G.cam_fov_prev = t.fov_prev, G.cam_roll = t.roll, G.cam_roll_prev = t.roll_prev;
+}
+void view_race_reset(void) { memset(&cam_p2, 0, sizeof cam_p2); }
+cw_node view_camera(int seat) { return seat == 1 && cw_node_valid(cam2_n) ? cam2_n : G.camera; }
+/* where a seat's chase camera looks ahead to (the ripples live there) */
+static float look_ahead[2][2];
+static void chase(int seat, float dt) {
+  const craft *c = &G.c[seat];
   memcpy(G.cam_prev, G.cam, sizeof G.cam);
   memcpy(G.look_prev, G.look, sizeof G.look);
   G.cam_fov_prev = G.cam_fov;
@@ -927,21 +939,24 @@ void view_tick(float dt) {
   if (g_craft == CRAFT_STAND) back -= 0.4f, up += 0.6f;
   /* a flip turns the whole craft over in front of the camera, and from straight behind it is only the hull's bottom. Swing out to the side for it, so craft and
    * rider are seen going round together in profile, and look at the craft */
-  static float off;
+  static float off_s[2];
+  float off = off_s[seat];
   {
     float want = c->air && (c->trick_kind == 2 || c->trick_kind == 3) ? 1.0f : 0.0f;
     off += (want - off) * fminf(1.0f, dt * (want > off ? 6.0f : 1.5f));
     if (G.tick < 3) off = 0;
+    off_s[seat] = off;
     back -= 1.0f * off, up += 0.4f * off; }
   /* a long flight: the camera eases back and up to hold the arc and the water under it, and comes back in as the craft
      falls toward the water, so the landing is framed as the ride is (sw cam_air 0: the old framing, the gate's control) */
-  { static float air_k;
+  { static float air_ks[2]; float air_k = air_ks[seat];
     float clear = c->y - cw_water_height_at(G.water, c->x, c->z, G.wt);
     float want = g_cam_air && c->air && c->air_time > 0.6f && !(c->vy < 0 && clear < 3.0f) ? 1.0f : 0.0f;
     air_k += (want - air_k) * fminf(1.0f, dt * (want > air_k ? 2.5f : 4.0f));
     if (G.tick < 3) air_k = 0;
+    air_ks[seat] = air_k;
     back += 1.6f * air_k, up += 0.7f * air_k;
-    g_cam_eye[3] = air_k; }
+    if (seat == 0) g_cam_eye[3] = air_k; }
   float wx = c->x - bx * back + cy * 7.0f * off - cy * side_off, wz = c->z - bz * back - sy * 7.0f * off + sy * side_off;
   float wh = cw_water_height_at(G.water, wx, wz, G.wt);
   /* up after a jump: the camera rises with the craft, so the air is seen and the craft stays in the picture */
@@ -958,7 +973,8 @@ void view_tick(float dt) {
   /* and never through a ramp's deck */
   { float deck; if (ramp_over(G.cam[0], G.cam[2], &deck) && G.cam[1] < deck + 1.4f) G.cam[1] = deck + 1.4f; }
   /* the rubric's check: the chase camera at its own x, z is never under the water */
-  if (G.cam[1] < cw_water_height_at(G.water, G.cam[0], G.cam[2], G.wt)) G.cam_under++;
+  if (seat == 0 && G.cam[1] < cw_water_height_at(G.water, G.cam[0], G.cam[2], G.wt)) G.cam_under++;
+  if (seat == 0)
   /* the camera's place behind the craft, for its gate: metres back along the ground, and over the water under it */
   { float dx = G.cam[0] - c->x, dz = G.cam[2] - c->z; g_cam_eye[0] = sqrtf(dx * dx + dz * dz), g_cam_eye[1] = G.cam[1] - cw_water_height_at(G.water, G.cam[0], G.cam[2], G.wt), g_cam_eye[2] = c->speed; }
   float lx = c->x + sy * 7.0f * (1.0f - 0.8f * off), lz = c->z + cy * 7.0f * (1.0f - 0.8f * off), ly = (c->y - wh > 2.0f ? c->y : c->y * 0.7f + cw_water_height_at(G.water, lx, lz, G.wt) * 0.3f) + 1.0f;
@@ -968,7 +984,7 @@ void view_tick(float dt) {
   G.look[1] += (ly - G.look[1]) * kl;
   G.look[2] += (lz - G.look[2]) * kl;
   /* no shake: the chase camera's acceleration, its worst while racing (the no-shake gate; sw cam_jitter 1 is its control, a camera that shakes) */
-  { static float p1[3], p2[3], lastacc[3], lasta; static uint32_t seen;
+  if (seat == 0) { static float p1[3], p2[3], lastacc[3], lasta; static uint32_t seen;
     if (g_cam_jitter) { float j = (G.tick & 1) ? 0.12f : -0.12f; G.cam[0] += j, G.cam[1] -= j; }
     if (G.state == RACE_ON && c->finish <= 0 && !first_tick && seen + 1 == G.tick) {
       float a = 0, d[3], dot = 0; for (int k = 0; k < 3; k++) { d[k] = (G.cam[k] - 2 * p1[k] + p2[k]) / (dt * dt); a += d[k] * d[k]; dot += d[k] * lastacc[k]; }
@@ -986,7 +1002,8 @@ void view_tick(float dt) {
   if (c->finish > 0 && G.state == RACE_ON) {
     /* the camera's place around the craft moves with the craft (it is doing 80 km/h) and swings toward the orbit's place
      * from where it was at the start of this tick, not from the chase place worked out above */
-    float ang = c->yaw + 1.2f + G.fin_t * 0.32f, sa, ca;
+    float fin_t = seat == 0 ? G.fin_t : G.clock - c->finish;
+    float ang = c->yaw + 1.2f + fin_t * 0.32f, sa, ca;
     cw_sincos(ang, &sa, &ca);
     float off[3] = { G.cam_prev[0] - c->px, G.cam_prev[1] - c->py, G.cam_prev[2] - c->pz };
     float ox = c->x + sa * 11.0f, oz = c->z + ca * 11.0f, oh = cw_water_height_at(G.water, ox, oz, G.wt);
@@ -1011,8 +1028,24 @@ void view_tick(float dt) {
     want = fmaxf(-g_cam_roll_max, fminf(g_cam_roll_max, want));
     G.cam_roll += (want - G.cam_roll) * (1.0f - cw_exp(-dt * 2.5f));
     if (G.tick < 3 || first_tick) G.cam_roll = G.cam_roll_prev = 0; }
-  /* the ripples live around where the player looks */
-  cw_water_ripple_follow(G.water, c->x + sy * 34.0f, c->z + cy * 34.0f);
+  look_ahead[seat][0] = c->x + sy * 34.0f, look_ahead[seat][1] = c->z + cy * 34.0f;
+}
+int32_t g_ripple_seat, g_views = 1; /* split screen: whose look the ripples follow (-1 both, between them) */
+void view_tick(float dt) {
+  sway_tick();
+  rider_wet(dt);
+  floats_count();
+  if (attract_camera(dt)) return;
+  if (podium_camera(dt)) return;
+  chase(0, dt);
+  if (!SPLIT) { cw_water_ripple_follow(G.water, look_ahead[0][0], look_ahead[0][1]); g_ripple_seat = 0; return; }
+  cam_swap(&cam_p2);
+  chase(1, dt);
+  cam_swap(&cam_p2);
+  /* one ripple field (125 m): between the two players while it holds both, otherwise around the one ahead in the race */
+  float dx = look_ahead[1][0] - look_ahead[0][0], dz = look_ahead[1][1] - look_ahead[0][1];
+  if (dx * dx + dz * dz < 70.0f * 70.0f) { cw_water_ripple_follow(G.water, (look_ahead[0][0] + look_ahead[1][0]) * 0.5f, (look_ahead[0][1] + look_ahead[1][1]) * 0.5f); g_ripple_seat = -1; }
+  else { int s = G.c[1].dist > G.c[0].dist ? 1 : 0; cw_water_ripple_follow(G.water, look_ahead[s][0], look_ahead[s][1]); g_ripple_seat = s; }
 }
 
 /* the stand-up from the race camera, racer 0 while racing (the pose gate): points of the hull and the rider put on the screen
@@ -1157,8 +1190,9 @@ void view_sync(double alpha) {
       if (sit_part[i][k] && sit_part[i][k]->visible == stand) set_visible(sit_part[i][k], !stand);
     }
     /* the stand-up near or far (the player's always near), with this racer's number on its hood */
-    { float dx = c->x - G.cam[0], dz = c->z - G.cam[2];
-      int lod = !stand ? -1 : (i == 0 || dx * dx + dz * dz < STAND_FAR * STAND_FAR) ? 0 : 1;
+    { float dx = c->x - G.cam[0], dz = c->z - G.cam[2], d2 = dx * dx + dz * dz;
+      if (SPLIT) { float ex = c->x - cam_p2.cam[0], ez = c->z - cam_p2.cam[2]; d2 = fminf(d2, ex * ex + ez * ez); }
+      int lod = !stand ? -1 : (i == 0 || (i == 1 && SPLIT) || d2 < STAND_FAR * STAND_FAR) ? 0 : 1;
       if (lod != stand_lod[i]) {
         stand_lod[i] = lod;
         for (int l = 0; l < 2; l++) for (int k = 0; k < 9; k++) if (stand_part[i][l][k]) set_visible(stand_part[i][l][k], l == lod && (k < 3 || k - 3 == i));
@@ -1237,7 +1271,7 @@ void view_sync(double alpha) {
       cw_node3d_set_quaternion(buoy_n[b], t3_quat_multiply(level, t3_quat_from_euler((t3_euler){ 0, cw_atan2(dx, dz), 0, T3_YXZ }))); }
     if (!g_buoy_style) cw_node3d_set_quaternion(buoy_old_n[b], tilt);
     /* the next one stands full size, the ones after it smaller */
-    { float want = b == G.c[0].next_buoy ? 1.0f : 0.72f;
+    { float want = b == G.c[0].next_buoy || (SPLIT && b == G.c[1].next_buoy) ? 1.0f : 0.72f;
       mark_scale[b] += (want - mark_scale[b]) * 0.1f;
       float k = mark_scale[b] * mark_size();
       cw_node3d_set_scale(buoy_n[b], (t3_vec3){ k, k, k }); }
@@ -1281,6 +1315,37 @@ void view_sync(double alpha) {
     cw_node3d_look_at(G.camera, lp, upv); }
   if (G.cam_fov > 1) cw_node_set(G.camera, "fov", cw_val_float(lerpf(G.cam_fov_prev > 1 ? G.cam_fov_prev : G.cam_fov, G.cam_fov, a)));
   stand_screen(cp, lp, lerpf(G.cam_fov_prev > 1 ? G.cam_fov_prev : G.cam_fov, G.cam_fov, a), a);
+  /* split screen: the second player's camera beside the first (the pipeline draws one view each, side by side) */
+  { static int views = 1;
+    int want = SPLIT ? 2 : 1;
+    { extern int32_t g_views; g_views = want; }
+    if (want == 2 && !cw_node_valid(cam2_n)) {
+      cw_node root = cw_node_get(cw_tree_root(cw_scene_app_tree()), "Root");
+      cam2_n = cw_node_new("Camera3D", "Camera2");
+      cw_node_add_child(root, cam2_n);
+      cw_value v;
+      if (cw_node_get_prop(G.camera, "near", &v)) cw_node_set(cam2_n, "near", v);
+      if (cw_node_get_prop(G.camera, "far", &v)) cw_node_set(cam2_n, "far", v);
+    }
+    if (want != views) {
+      cw_pipeline *pl = cw_pipeline_of(cw_scene_app_tree());
+      if (want == 2) { cw_node cams[2] = { G.camera, cam2_n }; cw_pipeline_split(pl, cams, 2); cw_pipeline_set_views_shared_post(pl, true); }
+      else { cw_pipeline_set_views(pl, NULL, 0); cw_pipeline_set_views_shared_post(pl, false); cw_node_set(G.camera, "current", cw_val_bool(true)); }
+      views = want;
+    }
+    if (want == 2) {
+      cam_swap(&cam_p2);
+      t3_vec3 c2 = { lerpf(G.cam_prev[0], G.cam[0], a), lerpf(G.cam_prev[1], G.cam[1], a), lerpf(G.cam_prev[2], G.cam[2], a) };
+      t3_vec3 l2 = { lerpf(G.look_prev[0], G.look[0], a), lerpf(G.look_prev[1], G.look[1], a), lerpf(G.look_prev[2], G.look[2], a) };
+      { float h = cw_water_height_at(G.water, c2.x, c2.z, G.wt); if (g_cam_cut && c2.y < h + 0.8f) c2.y = h + 0.8f; }
+      float roll = lerpf(G.cam_roll_prev, G.cam_roll, a), fx = l2.x - c2.x, fz = l2.z - c2.z, fl = sqrtf(fx * fx + fz * fz);
+      t3_vec3 upv = { 0, 1, 0 };
+      if (fl > 1e-3f && roll != 0) { float rx = -fz / fl, rz = fx / fl; upv = (t3_vec3){ rx * sinf(roll), cosf(roll), rz * sinf(roll) }; }
+      cw_node3d_set_position(cam2_n, c2);
+      cw_node3d_look_at(cam2_n, l2, upv);
+      if (G.cam_fov > 1) cw_node_set(cam2_n, "fov", cw_val_float(lerpf(G.cam_fov_prev > 1 ? G.cam_fov_prev : G.cam_fov, G.cam_fov, a)));
+      cam_swap(&cam_p2);
+    } }
 }
 /* a racer's colours (deck, then vest), for the standings */
 const float *view_team(int i) { return TEAMS[rider_of(i < 0 || i >= RACERS ? 0 : i)]; }

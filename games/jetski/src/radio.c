@@ -60,7 +60,7 @@ void radio_tick(float dt) {
   cw_story_tick(st, dt);
   if (sp) cw_speech_tick(sp, dt);
   since += dt;
-  if (G.state != RACE_ON || MODE_ALONE || G.c[0].finish > 0) { ev_read = g_ev_n; return; }
+  if (G.state != RACE_ON || MODE_ALONE || PLAYERS == 2 || G.c[0].finish > 0) { /* (two players: no radio, it speaks to one) */ ev_read = g_ev_n; return; }
   race_t += dt;
   const craft *h = &G.c[0];
   if (g_ev_n - ev_read > EV_RING) ev_read = g_ev_n - EV_RING;

@@ -17,6 +17,8 @@
 #include "game.h"
 
 static float perf[7], sun_dbg[3];
+extern float g_p2_idle; /* seconds the second pad has been let go in a race */
+extern int g_p2_idle_cpu;
 static int32_t ground_total, ground_gaps;
 static float ground_worst;
 static int32_t gpu_programs; /* programs compiled so far: if this grows during play, the warm-up missed them */
@@ -272,6 +274,8 @@ static void cmd_switch(int argc, const char **argv, cw_reply *r) {
     else if (!strcmp(argv[1], "yaw_clear")) { extern int32_t g_yaw_flips; extern float g_yaw_rate_max; g_yaw_flips = 0, g_yaw_rate_max = 0; }
     else if (!strcmp(argv[1], "stamp_on")) { extern int g_stamp_on; g_stamp_on = (int)v; }
     else if (!strcmp(argv[1], "podium")) g_podium_use = (int)v;
+    else if (!strcmp(argv[1], "players")) g_players = v >= 2 ? 2 : 1;
+    else if (!strcmp(argv[1], "p2_idle_cpu")) g_p2_idle_cpu = (int)v;
     else if (!strcmp(argv[1], "podium_lift")) g_podium_lift = v;
     else if (!strcmp(argv[1], "pose_on")) { extern int g_pose_on; g_pose_on = (int)v; }
     else if (!strcmp(argv[1], "pack")) g_pack = v;
@@ -487,6 +491,18 @@ static void init(void *user) {
   cw_debug_i32("p0.shortcuts", &G.c[0].shortcuts);
   cw_debug_i32("p0.shut_hits", &G.c[0].shut_hits);
   cw_debug_i32("race.mode", &g_mode);
+  cw_debug_i32("race.players", &g_players);
+  cw_debug_field("race.seat_cpu", g_seat_cpu, CW_DBG_I32, 2);
+  cw_debug_f32("p1.idle", &g_p2_idle);
+  cw_debug_f32("p1.speed", &G.c[1].speed);
+  cw_debug_i32("p1.lap", &G.c[1].lap);
+  cw_debug_i32("p1.passes", &G.c[1].passes);
+  cw_debug_i32("p1.misses", &G.c[1].misses);
+  cw_debug_f32("p1.finish", &G.c[1].finish);
+  cw_debug_i32("p1.place", &G.c[1].place);
+  cw_debug_i32("p1.next_buoy", &G.c[1].next_buoy);
+  cw_debug_i32("p1.dq", &G.c[1].dq);
+  { extern int32_t g_ripple_seat, g_views; cw_debug_i32("view.ripple_seat", &g_ripple_seat); cw_debug_i32("view.views", &g_views); }
   cw_debug_i32("race.craft", &g_craft);
   cw_debug_command("craft", "craft <0 sit-down, 1 stand-up>: every racer on that craft", cmd_craft);
   cw_debug_command("trial", "trial [swell]: the human alone at rest on open water, the handling measures cleared", cmd_trial);
@@ -710,9 +726,28 @@ static void trace_line(void) {
   printf(" | %.3f %.3f\n", G.swell, air);
 }
 
+float g_p2_idle;
+int g_p2_idle_cpu = 1;
 static void fixed_update(void *user, double dt) {
   (void)user;
   if (!cw_shell_update()) return;
+  /* the second player: their pad on seat 1. Let go for 6 s in a race and the computer rides for them (the screen
+     says so); any press on that pad takes it back. sw p2_idle_cpu 0: no takeover (the idle-seat gate's control) */
+  if (PLAYERS == 2) {
+    /* the second seat reads the second pad (the shell started with one player and left it none) */
+    if (cw_input_player_pad(1) != 1) cw_input_assign(1, 1, 0);
+    craft *c2 = &G.c[1];
+    float s2 = cw_input_axis(1, a_left, a_right);
+    c2->in.steer = g_steer_curve ? s2 * fabsf(s2) : s2;
+    c2->in.lean = cw_action_strength(1, a_back) - cw_action_strength(1, a_fwd);
+    c2->in.throttle = cw_action_strength(1, a_throttle);
+    c2->in.trick = cw_action_pressed(1, a_trick);
+    c2->in_turbo = cw_action_pressed(1, a_turbo);
+    c2->in_kick = cw_action_pressed(1, a_kick);
+    bool touched = fabsf(s2) > 0.2f || fabsf(c2->in.lean) > 0.2f || c2->in.throttle > 0.2f || c2->in.trick || c2->in_turbo || c2->in_kick;
+    if (touched) g_p2_idle = 0, g_seat_cpu[1] = 0;
+    else if (G.state == RACE_ON && c2->finish <= 0) { g_p2_idle += (float)dt; if (g_p2_idle > 6.0f && g_p2_idle_cpu) g_seat_cpu[1] = 1; }
+  } else g_seat_cpu[1] = 0, g_p2_idle = 0;
   craft *c = &G.c[0];
   /* the stick eases in: half over, a quarter of the turn (a squared response), so a nudge corrects without a twitch; the
      d-pad and the keys are full on or off and unchanged. sw steer_curve 0: the stick straight through, the gate's control */

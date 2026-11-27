@@ -47,7 +47,7 @@ const D6 = ['down', 'down', 'down', 'down', 'down', 'down'];
 const rows = run([...D6, 'down', 'down']);
 check('down walks the rows, to Controls', rows['menu.row'] === 8, pg(rows));
 const wrap = run(['up']);
-check('up from the top wraps to the last row', wrap['menu.row'] === 10, pg(wrap));
+check('up from the top wraps to the last row', wrap['menu.row'] === 11, pg(wrap));
 const ctl = run([...D6, 'down', 'down', 'south']);
 check('Controls opens', ctl['menu.page'] === P_CONTROLS, pg(ctl));
 const ctlBack = run([...D6, 'down', 'down', 'south', 'east']);

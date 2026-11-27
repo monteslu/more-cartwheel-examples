@@ -5,13 +5,47 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "cartwheel/pipeline.h"
 #include "cartwheel/platform.h"
 #include "cartwheel/prompt.h"
 #include "cartwheel/render2d.h"
 #include "cartwheel/render3d.h"
+#include "cartwheel/scene_file.h"
 #include "game.h"
 
 static cw_font big, small;
+/* Split screen: each player's HUD in their own view, with its own words, stamps, pulses and standings. The state a
+ * seat's HUD keeps between frames lives here; S is the seat being drawn (hseat) */
+typedef struct popup { char text[32]; float t; cw_color col; bool big; } popup;
+typedef struct stamp { char text[32]; cw_color col; } stamp;
+typedef struct hud_seat {
+  popup pop[3];
+  stamp st_q[3], st_now;
+  int st_qn;
+  float st_t;
+  float meter_pulse, chip_pulse, chip_lost, waves_t, risk_tip, lean_tip;
+  bool risk_told;
+  unsigned ev_read;
+  float row_y[RACERS], glow[RACERS]; int last_slot[RACERS], shown[RACERS], held; uint32_t seen_tick; bool st_init;
+  float ww_since, ww_last, wrong_for, hook_seen; bool was_open;
+  float speedlines;
+} hud_seat;
+static hud_seat HS[2] = { { .st_t = -1, .waves_t = -1, .risk_tip = -1, .lean_tip = -1 }, { .st_t = -1, .waves_t = -1, .risk_tip = -1, .lean_tip = -1 } };
+static hud_seat *S = &HS[0];
+static int hseat; /* the seat whose HUD is being drawn */
+#define pop (S->pop)
+#define st_q (S->st_q)
+#define st_now (S->st_now)
+#define st_qn (S->st_qn)
+#define st_t (S->st_t)
+#define meter_pulse (S->meter_pulse)
+#define chip_pulse (S->chip_pulse)
+#define chip_lost (S->chip_lost)
+#define waves_t (S->waves_t)
+#define risk_tip (S->risk_tip)
+#define lean_tip (S->lean_tip)
+#define risk_told (S->risk_told)
+#define ev_read (S->ev_read)
 static void cw_r2d_triangle(cw_vec2 a, cw_vec2 b, cw_vec2 c, cw_color col) {
   cw_vertex2d v[3] = { { a, { 0, 0 }, col }, { b, { 0, 0 }, col }, { c, { 0, 0 }, col } };
   static const uint32_t idx[3] = { 0, 1, 2 };
@@ -65,7 +99,7 @@ static bool word_hit(float x0, float y0, float x1, float y1, float *below) {
 }
 
 static bool to_screen(t3_vec3 p, float w, float h, cw_vec2 *out) {
-  t3_camera *cam = cw_camera3d_t3(G.camera);
+  t3_camera *cam = cw_camera3d_t3(view_camera(hseat));
   if (!cam) return false;
   t3_vec3 v = t3_vec3_apply_mat4(p, &cam->matrix_world_inverse);
   if (v.z > -1) return false;
@@ -109,7 +143,7 @@ static void minimap(const craft *c, float h, float u) {
     const craft *k = &G.c[i];
     cw_vec2 p = MAP_PT(k->x + (g_map_skew ? 60.0f : 0), k->z);
     g_map_dots[i * 2] = p.x, g_map_dots[i * 2 + 1] = p.y;
-    if (i > 0 && racer_on(i)) cw_r2d_circle(p, 4.2f * u, 10, cw_rgba(0.72f, 0.86f, 1, 0.8f));
+    if (i != hseat && racer_on(i)) cw_r2d_circle(p, 4.2f * u, 10, i < PLAYERS ? cw_rgba(1.0f, 0.86f, 0.4f, 0.95f) : cw_rgba(0.72f, 0.86f, 1, 0.8f)); /* the other player gold */
   }
   /* the event's set, a band across the map where it is now; the weather's route, green open, red shut */
   wx_minimap_draw(r.x, r.y, r.w, r.h, minx, minz, sc, ox, oy, u);
@@ -121,7 +155,7 @@ static void minimap(const craft *c, float h, float u) {
   cw_r2d_circle(np, 4.4f * u, 12, nc);
   cw_r2d_circle_lines(np, 8 * u, 1.6f * u, 14, cw_rgba(nc.r, nc.g, nc.b, 0.75f));
   /* you: an arrow the way the craft points */
-  cw_vec2 me = cw_v2(g_map_dots[0], g_map_dots[1]);
+  cw_vec2 me = cw_v2(g_map_dots[hseat * 2], g_map_dots[hseat * 2 + 1]);
   float sy = sinf(c->yaw), cy = cosf(c->yaw), L = 11 * u, W = 6.5f * u;
   cw_r2d_triangle(cw_v2(me.x + sy * (L + 2 * u), me.y + cy * (L + 2 * u)), cw_v2(me.x - sy * (L * 0.6f + 2 * u) + cy * (W + 2 * u), me.y - cy * (L * 0.6f + 2 * u) - sy * (W + 2 * u)), cw_v2(me.x - sy * (L * 0.6f + 2 * u) - cy * (W + 2 * u), me.y - cy * (L * 0.6f + 2 * u) + sy * (W + 2 * u)), cw_rgba(0, 0, 0, 0.55f));
   cw_r2d_triangle(cw_v2(me.x + sy * L, me.y + cy * L), cw_v2(me.x - sy * L * 0.6f + cy * W, me.y - cy * L * 0.6f - sy * W), cw_v2(me.x - sy * L * 0.6f - cy * W, me.y - cy * L * 0.6f + sy * W), cw_rgba(1, 1, 1, 1));
@@ -186,7 +220,7 @@ static void next_mark(const craft *c, float w, float h, float u) {
     return;
   }
   /* out of the picture: from the middle of the screen toward it, stopped at the edge. Behind the camera the projection turns over, so read the way from the camera's own axes */
-  t3_camera *cam = cw_camera3d_t3(G.camera);
+  t3_camera *cam = cw_camera3d_t3(view_camera(hseat));
   t3_vec3 v = t3_vec3_apply_mat4((t3_vec3){ b[0], top, b[1] }, &cam->matrix_world_inverse);
   float dx = v.x, dy = -v.y;
   if (fabsf(dx) < 0.001f && fabsf(dy) < 0.001f) dx = 1;
@@ -213,20 +247,17 @@ static void next_mark(const craft *c, float w, float h, float u) {
 
 /* Going back along the course, at speed, for over a second. The game's own opinion of the course never changes for it */
 static bool wrong_way(const craft *c) {
-  static float since, last;
-  float dt = G.clock - last;
-  last = G.clock;
-  if (G.state != RACE_ON || dt <= 0 || dt > 0.5f) { since = 0; return false; }
+  float dt = G.clock - S->ww_last;
+  S->ww_last = G.clock;
+  if (G.state != RACE_ON || dt <= 0 || dt > 0.5f) { S->ww_since = 0; return false; }
   const float *a = TRACK[c->track_i], *n = TRACK[(c->track_i + 2) % TRACK_N];
   float tx = n[0] - a[0], tz = n[1] - a[1], l = sqrtf(tx * tx + tz * tz) + 1e-3f, sp = sqrtf(c->vx * c->vx + c->vz * c->vz);
   bool back = sp > 4 && (c->vx * tx + c->vz * tz) / (l * sp) < -0.35f;
-  since = back ? since + dt : 0;
-  return since > 1.0f;
+  S->ww_since = back ? S->ww_since + dt : 0;
+  return S->ww_since > 1.0f;
 }
 
 /* Popups: three at most, under the top of the picture, easing in and fading: what you just did, in words */
-typedef struct popup { char text[32]; float t; cw_color col; bool big; } popup;
-static popup pop[3];
 static void pop_add(const char *t, cw_color col, bool big) {
   for (int i = 2; i > 0; i--) pop[i] = pop[i - 1];
   snprintf(pop[0].text, sizeof pop[0].text, "%s", t), pop[0].t = 0, pop[0].col = col, pop[0].big = big;
@@ -237,10 +268,6 @@ static void pop_add(const char *t, cw_color col, bool big) {
  * the next waits until this one has faded (at most one a 1.3 s), and a queue of three keeps the latest moments. */
 #define ST_LIFE 1.3f
 #define ST_SIZE 150.0f
-typedef struct stamp { char text[32]; cw_color col; } stamp;
-static stamp st_q[3], st_now;
-static int st_qn;
-static float st_t = -1;
 int g_stamp_on = 1;                 /* stamp_on 0: the moments as the old small popups, the stamp gate's control */
 int g_hud_stamps;                   /* stamps put up this race */
 float g_hud_stamp[3];               /* the stamp up now: drawn size in 1080p pixels, alpha, swell */
@@ -251,19 +278,18 @@ static void stamp_add(const char *t, cw_color col) {
   snprintf(st_q[st_qn].text, sizeof st_q[0].text, "%s", t), st_q[st_qn].col = col, st_qn++;
   g_hud_stamps++, g_hud_pops++, g_hud_pop_tick = (int)G.tick;
 }
-static float meter_pulse, chip_pulse, chip_lost, waves_t = -1, risk_tip = -1, lean_tip = -1;
 int g_lean_told;   /* the landing tip has been shown (once a session); hud.lean_tip: seconds it has been up, -1 none */
 float g_lean_tip_t = -1;
-static bool risk_told;
 int g_hud_lost, g_hud_waves, g_hud_quiet; /* for the gates: TURBO LOST shown, the event's warning shown, answers held back as nagging */
-static unsigned ev_read;
 /* a new race starts clean: words from the last one, and events it had not shown yet, do not hang over it */
 void hud_race_reset(void) {
   if (g_hud_pop_keep) return;
+  for (int q = 1; q >= 0; q--) { S = &HS[q];
   for (int i = 0; i < 3; i++) pop[i].text[0] = 0;
   st_qn = 0, st_t = -1, g_hud_stamps = 0;
   ev_read = g_ev_n;
   meter_pulse = chip_pulse = 0, chip_lost = 0, waves_t = -1, risk_tip = -1, risk_told = false;
+  }
 }
 static void hud_events(float dt) {
   unsigned read = ev_read;
@@ -272,7 +298,7 @@ static void hud_events(float dt) {
   if (g_ev_n - read > EV_RING) read = g_ev_n - EV_RING;
   for (; read != g_ev_n; read++) {
     const game_event *e = &g_ev[read % EV_RING];
-    if (!g_ev_on) continue;
+    if (!g_ev_on || e->seat != hseat) continue;
     char b[32] = { 0 };
     bool shown = true;
     if (e->quiet) g_hud_quiet++;
@@ -313,7 +339,7 @@ static void hud_events(float dt) {
   if (waves_t >= 0) { waves_t += dt; if (waves_t > 6) waves_t = -1; }
   if (risk_tip >= 0) { risk_tip += dt; if (risk_tip > 5) risk_tip = -1; }
   if (lean_tip >= 0) { lean_tip += dt; if (lean_tip > 5) lean_tip = -1; }
-  g_lean_tip_t = lean_tip;
+  if (hseat == 0) g_lean_tip_t = lean_tip;
 }
 static float smooth01(float t) { t = t < 0 ? 0 : t > 1 ? 1 : t; return t * t * (3 - 2 * t); }
 static void hud_stamp(float w, float h, float u) {
@@ -345,18 +371,17 @@ static void hud_popups(float w, float h, float u) {
 int g_standings_on = 1;
 int32_t g_hud_rows, g_hud_order[RACERS]; /* rows drawn this frame, and who is on each row (racer index) */
 static void hud_standings(const craft *c, float u, float y) {
-  static float row_y[RACERS], glow[RACERS]; static int last_slot[RACERS]; static uint32_t seen_tick;
+  float *row_y = S->row_y, *glow = S->glow; int *last_slot = S->last_slot;
   g_hud_rows = 0;
   if (MODE_ALONE || (G.state != RACE_ON && G.state != RACE_GRID)) return;
-  static bool init;
-  bool fresh = !init || G.tick < seen_tick || G.tick - seen_tick > 30; /* a new race or a jump: rows go straight to their places */
-  init = true;
-  seen_tick = G.tick;
+  bool fresh = !S->st_init || G.tick < S->seen_tick || G.tick - S->seen_tick > 30; /* a new race or a jump: rows go straight to their places */
+  S->st_init = true;
+  S->seen_tick = G.tick;
   /* the order shown changes only once the race's order has held for 0.7 s, so two riders side by side do not shuffle */
-  static int shown[RACERS], held; 
-  if (fresh) { memcpy(shown, G.order, sizeof shown); held = 0; }
-  else if (memcmp(shown, G.order, sizeof shown)) { if (++held > 42) { memcpy(shown, G.order, sizeof shown); held = 0; } }
-  else held = 0;
+  int *shown = S->shown;
+  if (fresh) { memcpy(shown, G.order, sizeof S->shown); S->held = 0; }
+  else if (memcmp(shown, G.order, sizeof S->shown)) { if (++S->held > 42) { memcpy(shown, G.order, sizeof S->shown); S->held = 0; } }
+  else S->held = 0;
   float rh = 34 * u * grow(small, 26 * u);
   for (int k = 0; k < RACERS; k++) {
     int who = shown[k];
@@ -366,16 +391,16 @@ static void hud_standings(const craft *c, float u, float y) {
     row_y[who] += ((float)k - row_y[who]) * 0.2f;
     glow[who] = fmaxf(0, glow[who] - 1.0f / 50.0f);
     const float *tc = view_team(who);
-    float yy = y + row_y[who] * rh, a = who == 0 ? 0.95f : 0.7f;
+    float yy = y + row_y[who] * rh, a = who == hseat ? 0.95f : 0.7f;
     float gl = glow[who] * glow[who] * (3 - 2 * glow[who]);
-    if (who == 0 || gl > 0) cw_r2d_round_rect(cw_rect_make(54 * u, yy - 3 * u, 300 * u, rh - 2 * u), 6 * u, 6, cw_rgba(1, 1, 1, (who == 0 ? 0.12f : 0) + 0.25f * gl));
+    if (who == hseat || gl > 0) cw_r2d_round_rect(cw_rect_make(54 * u, yy - 3 * u, 300 * u, rh - 2 * u), 6 * u, 6, cw_rgba(1, 1, 1, (who == hseat ? 0.12f : 0) + 0.25f * gl));
     char b[48];
     snprintf(b, sizeof b, "%d", k + 1);
     text(small, b, 62 * u, yy, 26 * u, cw_rgba(1, 1, 1, a), 0);
     cw_r2d_round_rect(cw_rect_make(92 * u, yy + 4 * u, 22 * u, rh - 14 * u), 4 * u, 4, cw_rgba(tc[0], tc[1], tc[2], 0.95f));
-    if (who == 0 || G.state != RACE_ON || c->finish > 0) snprintf(b, sizeof b, "%s", seat_name(who));
+    if (who == hseat || G.state != RACE_ON || c->finish > 0) snprintf(b, sizeof b, "%s", seat_name(who));
     else { float gap = (G.c[who].dist - c->dist) / fmaxf(c->speed, 8.0f); snprintf(b, sizeof b, "%s  %s%.1f", seat_name(who), gap > 0 ? "-" : "+", fabsf(gap)); }
-    text(small, b, 124 * u, yy, 26 * u, who == 0 ? cw_rgba(1.0f, 0.86f, 0.4f, a) : cw_rgba(1, 1, 1, a), 0);
+    text(small, b, 124 * u, yy, 26 * u, who == hseat ? cw_rgba(1.0f, 0.86f, 0.4f, a) : cw_rgba(1, 1, 1, a), 0);
     g_hud_order[g_hud_rows++] = who;
   }
 }
@@ -383,7 +408,7 @@ static void hud_neighbours(const craft *c, float u, float y) {
   if (MODE_ALONE || G.state != RACE_ON) return;
   if (g_standings_on) { hud_standings(c, u, y); return; }
   int me = -1;
-  for (int i = 0; i < RACERS; i++) if (G.order[i] == 0) me = i;
+  for (int i = 0; i < RACERS; i++) if (G.order[i] == hseat) me = i;
   for (int k = me - 1; k <= me + 1; k += 2) {
     if (k < 0 || k >= RACERS) continue;
     const craft *o = &G.c[G.order[k]];
@@ -406,32 +431,33 @@ static void hud_speedlines(const craft *c, float w, float h, float u) {
     want = fminf(1.0f, fmaxf(0.0f, (c->speed / c->top - 0.72f) / 0.25f)) * 0.75f;
     if (c->turbo_hold > 0) want = fminf(1.0f, want + 0.45f * fminf(1.0f, c->turbo_hold / 0.6f));
   }
-  g_speedlines += (want - g_speedlines) * (want > g_speedlines ? 0.08f : 0.04f);
-  if (g_speedlines < 0.02f) return;
+  S->speedlines += (want - S->speedlines) * (want > S->speedlines ? 0.08f : 0.04f);
+  if (hseat == 0) g_speedlines = S->speedlines;
+  float sl = S->speedlines;
+  if (sl < 0.02f) return;
   float cx = w * 0.5f, cy = h * 0.46f, R = sqrtf(cx * cx + cy * cy);
   for (int i = 0; i < 28; i++) {
     uint32_t k = (uint32_t)i * 2654435761u;
     float ang = (float)i / 28.0f * TAU + (float)((k >> 8) & 255) / 255.0f * 0.2f, rate = 1.6f + (float)((k >> 16) & 255) / 255.0f * 1.2f;
     float p = G.clock * rate + (float)((k >> 4) & 255) / 255.0f;
     p -= floorf(p);
-    float r0 = R * (0.5f + 0.42f * p), len = R * (0.08f + 0.1f * g_speedlines), a = g_speedlines * 0.3f * sinf(3.14159265f * p);
+    float r0 = R * (0.5f + 0.42f * p), len = R * (0.08f + 0.1f * sl), a = sl * 0.3f * sinf(3.14159265f * p);
     float dx = cosf(ang), dy = sinf(ang), nx = -dy, ny = dx, wd = 2.4f * u * (0.6f + p);
     cw_vec2 a0 = cw_v2(cx + dx * r0, cy + dy * r0), a1 = cw_v2(cx + dx * (r0 + len) + nx * wd, cy + dy * (r0 + len) + ny * wd), a2 = cw_v2(cx + dx * (r0 + len) - nx * wd, cy + dy * (r0 + len) - ny * wd);
     cw_r2d_triangle(a0, a1, a2, cw_rgba(0.92f, 0.97f, 1.0f, a));
   }
 }
 
-static void hud_body(void) {
-  cw_vec2 sz = cw_r2d_canvas_size();
-  float w = sz.x, h = sz.y, u = h / 1080.0f;
-  const craft *c = &G.c[0];
+/* one seat's HUD in a w by h picture (the whole canvas, or that seat's view): its sizes follow the height, held to
+ * the width of a view half as wide as it is tall */
+static void hud_body(float w, float h) {
+  float u = fminf(h / 1080.0f, w / 1440.0f);
+  const craft *c = &G.c[hseat];
   cw_color white = cw_rgba(1, 1, 1, 0.96f), gold = cw_rgba(1.0f, 0.78f, 0.25f, 1), dim = cw_rgba(1, 1, 1, 0.7f);
   char buf[64];
-  static float hook_seen;
-  static bool was_open;
-  { bool op = hook_open(); if (op && !was_open) hook_seen = G.clock; was_open = op; }
+  { bool op = hook_open(); if (op && !S->was_open) S->hook_seen = G.clock; S->was_open = op; }
   hud_events(1.0f / 60.0f);
-  if (G.state == RACE_ATTRACT || G.state == RACE_DONE) { g_speedlines = 0; return; } /* the results page has it all */
+  if (G.state == RACE_ATTRACT || G.state == RACE_DONE) { S->speedlines = 0; if (hseat == 0) g_speedlines = 0; return; } /* the results page has it all */
   hud_speedlines(c, w, h, u);
   /* speed, bottom right */
   snprintf(buf, sizeof buf, "%d", (int)(c->speed * 3.6f + 0.5f));
@@ -467,7 +493,7 @@ static void hud_body(void) {
   /* the first nose-down landing that cost speed: how to save the next one, once a session, low in the middle */
   if (lean_tip >= 0) {
     float a = fminf(1, lean_tip / 0.4f) * fminf(1, (5 - lean_tip) / 0.8f);
-    cw_prompt_text(small, "Nose down lands hard: hold {lean_back} as you come down", 0, cw_v2(w * 0.5f, h * 0.7f), 32 * u, cw_rgba(0.55f, 0.95f, 1, 0.95f * a), CW_ALIGN_CENTER);
+    cw_prompt_text(small, "Nose down lands hard: hold {lean_back} as you come down", hseat, cw_v2(w * 0.5f, h * 0.7f), 32 * u, cw_rgba(0.55f, 0.95f, 1, 0.95f * a), CW_ALIGN_CENTER);
   }
   /* place and lap, top left */
   static const char *const ord[] = { "1st", "2nd", "3rd", "4th", "5th", "6th" };
@@ -515,13 +541,13 @@ static void hud_body(void) {
     word(big, buf, w * 0.5f, h * 0.2f, 54 * u, cw_rgba(1, 0.4f, 0.15f, 1));
   }
   if (c->flash_short > 0) word(big, "THE SHORT WAY", w * 0.5f, h * 0.2f, 66 * u, cw_rgba(0.6f, 1, 0.9f, c->flash_short));
-  if (DEF->hook.kind == 1 && hook_open() && G.clock - hook_seen < 5 && G.state == RACE_ON) word(small, "The tide has fallen: the arch is open", w * 0.5f, h * 0.14f, 40 * u, cw_rgba(0.6f, 1, 0.9f, 1));
-  g_hud_wrong = wrong_way(c);
+  if (DEF->hook.kind == 1 && hook_open() && G.clock - S->hook_seen < 5 && G.state == RACE_ON) word(small, "The tide has fallen: the arch is open", w * 0.5f, h * 0.14f, 40 * u, cw_rgba(0.6f, 1, 0.9f, 1));
+  { int ww = wrong_way(c); if (hseat == 0) g_hud_wrong = ww; }
   /* said big for 4 s, then a quiet line while it lasts: the rider has heard it */
-  { static float wrong_for;
-    wrong_for = g_hud_wrong ? wrong_for + 1.0f / 60.0f : 0;
-    if (g_hud_wrong && g_buoy_style && c->out_t <= 0.2f && c->spill <= 0 && g_mode != MODE_ROAM && g_mode != MODE_STUNT) {
-      if (wrong_for < 4 || !g_nag_on) word(big, "WRONG WAY", w * 0.5f, h * 0.2f, 76 * u, cw_rgba(1, 0.3f, 0.15f, 0.65f + 0.35f * sinf(G.clock * 9)));
+  { bool wrong = S->ww_since > 1.0f;
+    S->wrong_for = wrong ? S->wrong_for + 1.0f / 60.0f : 0;
+    if (wrong && g_buoy_style && c->out_t <= 0.2f && c->spill <= 0 && g_mode != MODE_ROAM && g_mode != MODE_STUNT) {
+      if (S->wrong_for < 4 || !g_nag_on) word(big, "WRONG WAY", w * 0.5f, h * 0.2f, 76 * u, cw_rgba(1, 0.3f, 0.15f, 0.65f + 0.35f * sinf(G.clock * 9)));
       else text(small, "Wrong way: turn round", w * 0.5f, h * 0.2f, 34 * u, cw_rgba(1, 0.6f, 0.45f, 0.75f), 0.5f);
     } }
   if (waves_t >= 0) {
@@ -552,17 +578,18 @@ static void hud_body(void) {
       snprintf(wl, sizeof wl, "%s: %s. %s", WX_NAMES[wx_now()], SEA[wx_now()], wx_route_line());
       y2 += 46 * u * grow(small, 34 * u);
       word(small, wl, w * 0.5f, y2, 30 * u, wx_route_open() ? cw_rgba(0.6f, 1, 0.9f, 0.9f * k) : cw_rgba(1, 0.85f, 0.6f, 0.9f * k)); }
-    if (G.state == RACE_GRID && k > 0.5f) cw_prompt_text(small, "{throttle} on the last beat: a rocket start. Held too long, it bogs", 0, cw_v2(w * 0.5f, y2 + 50 * u * grow(small, 34 * u)), 30 * u, cw_rgba(1.0f, 0.82f, 0.4f, k), CW_ALIGN_CENTER);
+    if (G.state == RACE_GRID && k > 0.5f) cw_prompt_text(small, "{throttle} on the last beat: a rocket start. Held too long, it bogs", hseat, cw_v2(w * 0.5f, y2 + 50 * u * grow(small, 34 * u)), 30 * u, cw_rgba(1.0f, 0.82f, 0.4f, k), CW_ALIGN_CENTER);
     /* the stand-up's own tricks, said on the grid where there is time to read them */
-    if (G.state == RACE_GRID && k > 0.5f && g_craft == CRAFT_STAND) cw_prompt_text(small, "Stand-up: {trick} on the water for a submarine, {kick} for a pole stand", 0, cw_v2(w * 0.5f, y2 + 92 * u * grow(small, 34 * u)), 30 * u, cw_rgba(0.55f, 0.95f, 1.0f, k), CW_ALIGN_CENTER);
+    if (G.state == RACE_GRID && k > 0.5f && g_craft == CRAFT_STAND) cw_prompt_text(small, "Stand-up: {trick} on the water for a submarine, {kick} for a pole stand", hseat, cw_v2(w * 0.5f, y2 + 92 * u * grow(small, 34 * u)), 30 * u, cw_rgba(0.55f, 0.95f, 1.0f, k), CW_ALIGN_CENTER);
   }
   /* over the line: the place, big, while the camera comes round */
   if (c->finish > 0 && G.state == RACE_ON && !c->dq) {
     static const char *const FIN[] = { "FINISHED 1ST", "FINISHED 2ND", "FINISHED 3RD", "FINISHED 4TH", "FINISHED 5TH", "FINISHED 6TH" };
-    float k = fminf(1.0f, G.fin_t / 0.5f);
+    float fin_t = hseat == 0 ? G.fin_t : G.clock - c->finish;
+    float k = fminf(1.0f, fin_t / 0.5f);
     const char *s = MODE_ALONE ? "FINISHED" : FIN[c->place - 1 < 0 ? 0 : c->place - 1 > 5 ? 5 : c->place - 1];
     /* stamped: it swells in over a quarter second and stays while the camera comes round */
-    float fs = (g_stamp_on ? 128.0f * (1.0f + 0.3f * (1.0f - smooth01(G.fin_t / 0.25f))) : 96.0f) * u;
+    float fs = (g_stamp_on ? 128.0f * (1.0f + 0.3f * (1.0f - smooth01(fin_t / 0.25f))) : 96.0f) * u;
     word(big, s, w * 0.5f, h * 0.12f, fs, c->place == 1 || MODE_ALONE ? cw_rgba(1.0f, 0.78f, 0.25f, k) : cw_rgba(1, 1, 1, k));
     snprintf(buf, sizeof buf, "%d:%05.2f", (int)(c->finish / 60), c->finish - 60.0f * (float)(int)(c->finish / 60));
     word(small, buf, w * 0.5f, h * 0.12f + cw_text_drawn_size(big, fs) * 1.25f, 48 * u, cw_rgba(1, 1, 1, 0.9f * k));
@@ -577,9 +604,9 @@ static void hud_body(void) {
   }
   /* the rev gauge under the count: how long the throttle has been down sweeps it. Green at the light is a rocket start,
      amber a plain one, red over-revs the pump and it bogs at the light; let go and press again to bring it back */
-  g_hud_rev = -1;
+  if (hseat == 0) g_hud_rev = -1;
   if (G.state == RACE_GRID && G.clock > -3.2f && c->human) {
-    float held = G.rocket_at < 0 ? G.clock - G.rocket_at : 0, f = fminf(1.0f, held / REV_SCALE);
+    float ra = hseat ? G.rocket_at2 : G.rocket_at, held = ra < 0 ? G.clock - ra : 0, f = fminf(1.0f, held / REV_SCALE);
     float bw = 560 * u, bh = 28 * u, bx = w * 0.5f - bw * 0.5f, by = h * 0.3f + 236 * u;
     float g1 = ROCKET_WINDOW / REV_SCALE, a1 = REV_OVER / REV_SCALE;
     cw_r2d_round_rect(cw_rect_make(bx - 8 * u, by - 8 * u, bw + 16 * u, bh + 16 * u), 12 * u, 8, cw_rgba(0.02f, 0.05f, 0.09f, 0.62f));
@@ -591,12 +618,12 @@ static void hud_body(void) {
     cw_r2d_rect(cw_rect_make(bx + bw * f - 2 * u, by - 6 * u, 4 * u, bh + 12 * u), cw_rgba(1, 1, 1, 0.95f));
     const char *say = held > REV_OVER ? "OVER-REVVING: let go and press again" : held > ROCKET_WINDOW ? "too soon: a plain start" : held > 0 ? "hold it: green at the light is a rocket start" : "REV";
     word(small, say, w * 0.5f, by + bh + 18 * u, 30 * u, held > REV_OVER ? cw_rgba(1.0f, 0.45f, 0.3f, 1) : cw_rgba(1, 1, 1, 0.9f));
-    g_hud_rev = f;
+    if (hseat == 0) g_hud_rev = f;
     /* where you line up: a championship's grid is the last race's finish */
     if (g_mode == MODE_CHAMPIONSHIP) {
       static const char *const ORD[] = { "1st", "2nd", "3rd", "4th", "5th", "6th" };
       char gb[64]; int s = c->place - 1 < 0 ? 0 : c->place - 1 > 5 ? 5 : c->place - 1;
-      snprintf(gb, sizeof gb, "You start %s on the grid", ORD[s]);
+      snprintf(gb, sizeof gb, PLAYERS == 2 ? "%s starts %s on the grid" : "You start %s on the grid", PLAYERS == 2 ? seat_name(hseat) : ORD[s], ORD[s]);
       word(small, gb, w * 0.5f, by - 58 * u, 30 * u, cw_rgba(1, 1, 1, 0.85f));
     }
   }
@@ -609,10 +636,37 @@ void hud_draw(void) {
   if (getenv("JETSKI_NO_HUD")) return; /* key art: the picture alone */
 #endif
   cw_r2d_begin(NULL);
-  { extern int g_lens_on; void lens_draw(void); extern float g_lens[3]; if (g_lens_on && G.state != RACE_ATTRACT && g_lens[0] > 0) { cw_r2d_use_layer(1); lens_draw(); } }
-  cw_r2d_use_layer(2);
-  hud_body();
-  if (G.state == RACE_ON) radio_draw(small);
+  cw_vec2 sz = cw_r2d_canvas_size();
+  const cw_view *v = NULL;
+  int nv = SPLIT ? cw_pipeline_views(cw_pipeline_of(cw_scene_app_tree()), &v) : 0;
+  if (nv < 2) {
+    { extern int g_lens_on; void lens_draw(void); extern float g_lens[3]; if (g_lens_on && G.state != RACE_ATTRACT && g_lens[0] > 0) { cw_r2d_use_layer(1); lens_draw(); } }
+    cw_r2d_use_layer(2);
+    S = &HS[0], hseat = 0;
+    hud_body(sz.x, sz.y);
+    if (G.state == RACE_ON) radio_draw(small);
+  } else {
+    /* split screen: each player's HUD in their own view (the second first, so the gates' fields end up the first's), and a
+       dark seam between the two pictures */
+    cw_r2d_use_layer(2);
+    for (int p = 1; p >= 0; p--) {
+      cw_rect r = cw_rect_make(v[p].x * sz.x, v[p].y * sz.y, v[p].w * sz.x, v[p].h * sz.y);
+      cw_r2d_push_clip(r);
+      cw_xform2d m = cw_xform2d_identity();
+      m.tx = r.x, m.ty = r.y;
+      cw_r2d_set_transform(&m);
+      S = &HS[p], hseat = p;
+      hud_body(r.w, r.h);
+      /* whose view: the player's tag in the top middle */
+      { float u = fminf(r.h / 1080.0f, r.w / 1440.0f); text(big, p ? "P2" : "P1", r.w * 0.5f, 14 * u, 44 * u, p ? cw_rgba(0.55f, 0.95f, 1, 0.9f) : cw_rgba(1.0f, 0.78f, 0.25f, 0.9f), 0.5f); }
+      if (p == 1 && g_seat_cpu[1]) { float u = fminf(r.h / 1080.0f, r.w / 1440.0f); cw_prompt_text(small, "The computer is riding for P2: {throttle} to take over", 1, cw_v2(r.w * 0.5f, r.h * 0.62f), 30 * u, cw_rgba(1, 1, 1, 0.92f), CW_ALIGN_CENTER); }
+      cw_r2d_set_transform(NULL);
+      cw_r2d_pop_clip();
+    }
+    float sx = v[1].x * sz.x;
+    cw_r2d_rect(cw_rect_make(sx - 3, 0, 6, sz.y), cw_rgba(0.01f, 0.02f, 0.04f, 0.9f));
+    S = &HS[0], hseat = 0;
+  }
   menu_draw();
   cw_r2d_end();
 }

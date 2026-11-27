@@ -3,12 +3,14 @@
 A wave racing game in five places, each with its own water, land and light. Six riders race three laps. The water is the
 track: it moves, its swells throw you into the air, and on each course it changes as the race goes on.
 
-Status: five courses in three weathers, two craft, a computer racer field, one player for now. The menu offers four modes:
+Status: five courses in three weathers, two craft, a computer racer field, one or two players. The menu offers four modes:
 
 - Championship: a week of racing, one course a day, points by place. The week's forecast shows each day's weather before it starts, and each day you pick which of the courses left to race, so you can save a course for the day whose sea suits it. The first day races at the pace the courses always had, and the rivals get a little quicker each day after. Each race after the first lines up by the last one's finish, the winner at the front; the grid says where you start. Every race ends on the podium: a judges' pier beside the finish where the first three park on its tiers with their arms up, before the results.
 - Time trial: you alone on the course and in the weather you choose, keeping your best time.
 - Stunt: two minutes alone on a course you have raced, scored on tricks. Tricks chained within three seconds of each other build a combo (the multiplier rises half a step a trick, up to four); a perfect landing and long air add to it, and a wipeout loses what the combo had not yet banked. The same trick again within your last five pays half as much each time, so a varied run scores best. A gold ring hangs over each ramp's jump at the top of its arc: fly through it for 600 more in the combo. Bronze, silver and gold medals come at 10000, 25000 and 45000 points. The best score on each course is kept, with its medal.
 - Free roam: a course you have raced to the line, alone, no buoys and no clock. Pause to leave.
+
+Two players race a championship on a split screen (Players on the title menu): the second rides on the second pad, each sees their own view and HUD, and a second pad left alone for 6 s in a race is ridden by the computer until it presses again. With two players there is no race radio and no lens drops.
 
 Difficulty makes the sea bigger and adds buoys: every second one on Easy, three in four on Normal, all of them on Hard.
 

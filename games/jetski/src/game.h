@@ -37,12 +37,17 @@ static const rider_stats RIDER_STATS[6] = { { 3, 3, 3, 3, 3 }, { 2, 5, 2, 3, 3 }
 extern int g_rider;       /* the human's rider, 0..5 */
 extern int g_rider_stats; /* sw rider_stats 0: every rider rides the same (3s), the cast gate's control */
 static inline int rider_of(int seat) { return seat == 0 ? g_rider : seat == g_rider ? 0 : seat; }
-static inline const char *seat_name(int seat) { return seat == 0 ? "You" : CAST[rider_of(seat)]; }
+/* two players (the menu's Players row, a championship only): seat 1 is the second pad's, and the screen splits in two */
+extern int g_players;
+extern int g_mode;
+#define PLAYERS (g_mode == 0 ? g_players : 1)
+static inline const char *seat_name(int seat) { return PLAYERS == 2 && seat < 2 ? (seat ? "P2" : "P1") : seat == 0 ? "You" : CAST[rider_of(seat)]; }
+/* the second seat let go: after a few seconds of no input in a race the computer rides it until that pad presses again */
+extern int g_seat_cpu[2];
 
 extern int g_difficulty; /* 0 easy, 1 normal, 2 hard */
 enum { MODE_CHAMPIONSHIP, MODE_TIME_TRIAL, MODE_STUNT, MODE_ROAM, MODE_N }; /* stunt and free roam: the human alone, no buoys counted */
 #define MODE_ALONE (g_mode != MODE_CHAMPIONSHIP)
-extern int g_mode;
 extern int g_assist;          /* the menu's Assist: the computer steers while the stick is let go */
 extern int32_t g_grid[RACERS];   /* racer i starts in slot g_grid[i]: a championship lines up by the last finish */
 /* the craft every racer rides, chosen from the menu: a sit-down runabout, or a stand-up (a narrow, light hull the rider
@@ -193,9 +198,10 @@ typedef struct craft {
 
 /* what happened to the human this tick: the HUD, the sounds, the rumble and the bursts all read this list, each from its own place in it */
 enum { EV_PASS, EV_TOP, EV_TRICK, EV_LAND, EV_MISS, EV_GAIN, EV_LOSE, EV_LAP, EV_FINAL, EV_WALL, EV_CRASH, EV_CHARGE, EV_TURBO, EV_ROCKET, EV_TURBO_LOST, EV_WAVES, EV_COMBO, EV_BOG, EV_SHAVE, EV_STREAK, EV_DRAFT, EV_HOOP, EV_KINDS };
-typedef struct game_event { int kind; int a; float x, z; int quiet; } game_event; /* quiet: the same mistake again soon after, answered softly or not at all (weather.c nag_quiet) */
+typedef struct game_event { int kind; int a; float x, z; int quiet; int seat; } game_event; /* seat: whose it was (sim.c g_ev_seat) */ /* quiet: the same mistake again soon after, answered softly or not at all (weather.c nag_quiet) */
 #define EV_RING 64
 void ev_push(int kind, int a, float x, float z);
+extern int g_ev_seat; /* the seat ev_push files an event under: the racer being worked on, 0 outside them */
 extern game_event g_ev[EV_RING];
 extern unsigned g_ev_n;
 extern int g_ev_on;                /* ev_on 0: nothing answers, the feedback gate's control */
@@ -240,6 +246,7 @@ typedef struct game {
   float ramp_gap_max, ramp_entry_min, ramp_lip_min, ramp_foot_ground_max; /* worst of each, metres */
   int32_t cam_under; /* ticks the chase camera spent under the surface */
   int32_t attract_under, attract_land, attract_blocked, attract_hidden; /* ticks the attract camera was under water, in land, had land in its view of the craft, or a crest over the hull */
+  float rocket_at2; /* the same for the second player */
   float rocket_at;  /* the clock when the human's throttle went down on the grid and stayed down; positive: not down */
   int32_t rocket;   /* the human got a rocket start */
   int32_t bog;      /* the human over-revved on the grid and bogged at the green light */
@@ -402,6 +409,9 @@ void wx_minimap_draw(float rx, float ry, float rw, float rh, float minx, float m
 extern float g_wx_dome[3], g_wx_sun;
 extern int g_wx_look_key;
 void view_props_reset(void);
+#define SPLIT (PLAYERS == 2 && G.state != RACE_ATTRACT && !g_podium_on)
+void view_race_reset(void);
+cw_node view_camera(int seat); /* the camera that seat's view is drawn from */
 /* podium.c: the podium after a championship race (the first three parked on a judges' pier, the camera round its front) */
 extern int g_podium_on, g_podium_use;
 extern float g_podium_lift;
