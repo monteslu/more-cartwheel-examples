@@ -11,6 +11,8 @@ models/buoy.glb
 models/mark_left.glb
 models/mark_right.glb
 models/ramp.glb
+models/ramp_marks.glb
+textures/ramp-deck-wood.png
 models/palm.glb
 models/rock0.glb
 models/rock1.glb

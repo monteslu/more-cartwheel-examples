@@ -364,6 +364,38 @@ buildStandup(OUT);
   g.materials[mi.deck].pbrMetallicRoughness.baseColorTexture = { index: g.tex(join(OUT, '../textures/ramp-deck.png')) };
   g.sceneNodes.push(g.node({ name: 'Ramp', mesh: g.mesh('ramp', P.prims(mi)) }));
   g.write(join(OUT, 'ramp.glb'));
+  // the jump's marks, read from far down the course: a mast on each side girder at the lip, outboard of the deck so
+  // nothing stands over a craft's flight, a chequered board facing the way in, an amber lamp on top. They stand on the
+  // girders (no foot in the air), and are their own model so the jump-reading gate can take them away (sw ramp_marks 0)
+  {
+    const M = new Plain(), z0 = HL - 1.2, foot = deckY(z0) + 1.1, BW = 3.0, BH = 2.4, top = 7.4;
+    const box = (m, x0, x1, y0, y1, za, zb) => {
+      const q = (a, b, c, d) => M.grid(m, [[a, b], [d, c]], { flip: false });
+      q([x0, y1, za], [x1, y1, za], [x1, y1, zb], [x0, y1, zb]); q([x1, y0, za], [x0, y0, za], [x0, y1, za], [x1, y1, za]);
+      q([x0, y0, zb], [x1, y0, zb], [x1, y1, zb], [x0, y1, zb]); q([x0, y0, za], [x0, y0, zb], [x0, y1, zb], [x0, y1, za]); q([x1, y0, zb], [x1, y0, za], [x1, y1, za], [x1, y1, zb]);
+    };
+    for (const s of [-1, 1]) {
+      const mx = s * (HW + 0.75);
+      M.tube('mast', [[mx, foot - 0.3, z0], [mx, top, z0]], 0.16, 8);
+      // a foot plate bolted to the girder's top, the mast's base in it
+      box('mast', mx - 0.45, mx + 0.45, foot - 0.05, foot + 0.12, z0 - 0.45, z0 + 0.45);
+      // the board outboard of the mast, chequered 4 by 3, its face to the way in (-z), a dark frame round it
+      const bx0 = s > 0 ? mx + 0.2 : mx - 0.2 - BW, by0 = top - 1.0 - BH;
+      box('frame', bx0 - 0.08, bx0 + BW + 0.08, by0 - 0.08, by0 + BH + 0.08, z0 - 0.02, z0 + 0.1);
+      for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) box((i + j) % 2 ? 'black' : 'white', bx0 + i * BW / 4, bx0 + (i + 1) * BW / 4, by0 + j * BH / 3, by0 + (j + 1) * BH / 3, z0 - 0.08, z0 - 0.02);
+      // two arms from the mast to the board
+      for (const y of [by0 + 0.3, by0 + BH - 0.3]) M.tube('mast', [[mx, y, z0 + 0.04], [s > 0 ? bx0 + 0.1 : bx0 + BW - 0.1, y, z0 + 0.04]], 0.07, 6);
+      // the lamp on top, and a yellow band round the mast under the board, the colour of a jump
+      M.tube('lamp', [[mx, top, z0], [mx, top + 0.5, z0]], 0.3, 10);
+      M.tube('band', [[mx, by0 - 1.4, z0], [mx, by0 - 0.2, z0]], 0.2, 8);
+    }
+    const g = new Glb();
+    const cols = { mast: [[0.2, 0.2, 0.21], 0.6, 0.4], frame: [[0.05, 0.05, 0.05], 0.7, 0], white: [[0.92, 0.92, 0.9], 0.55, 0], black: [[0.03, 0.03, 0.035], 0.55, 0], band: [[0.95, 0.72, 0.05], 0.5, 0], lamp: [[1.0, 0.62, 0.12], 0.4, 0, [2.2, 1.3, 0.25]] };
+    const mi = {};
+    for (const [k, [rgb, rough, metal, em]] of Object.entries(cols)) { mi[k] = g.material(k, rough, metal, em ?? null); g.materials[mi[k]].pbrMetallicRoughness.baseColorFactor = [...rgb, 1]; g.materials[mi[k]].doubleSided = true; }
+    g.sceneNodes.push(g.node({ name: 'RampMarks', mesh: g.mesh('ramp_marks', M.prims(mi)) }));
+    g.write(join(OUT, 'ramp_marks.glb'));
+  }
   console.log('ramp', P.tris(), 'tris');
 }
 

@@ -391,10 +391,30 @@ static void land_init(cw_node root) {
 }
 
 /* the ramps: every part of the model instanced over the course's ramps. They stand still, so this runs when a course loads */
-#define RAMP_PARTS 12 /* one per material */
+#define RAMP_PARTS 20 /* one per material: the ramp's, then its marks' */
 static t3_instanced_mesh *ramp_parts[RAMP_PARTS];
+static cw_node ramp_nodes[RAMP_PARTS];
 static int ramp_part_n;
+/* the jump's marks (ramp_marks.glb: masts at the lip with chequered boards and a lamp) are the parts from this one on;
+ * sw ramp_marks 0 hides them (the jump-reading gate's control) */
+static int ramp_mark_from = RAMP_PARTS;
+int g_ramp_marks = 1, g_ramps_hide;
+/* a ramp's deck by the place: timber on the courses whose ramps are slipways and jetties, painted steel elsewhere. sw
+ * ramp_skin <-1 the course's, 0 steel, 1 timber> */
+int g_ramp_skin = -1;
+static t3_material *ramp_deck_mat;
+static t3_texture *deck_tex[2];
+static void ramps_skin(void) {
+  static const char *const TIMBER[] = { "atoll", "sound", "canyon" };
+  int k = 0;
+  for (unsigned i = 0; i < sizeof TIMBER / sizeof TIMBER[0]; i++) if (!strcmp(DEF->id, TIMBER[i])) k = 1;
+  if (g_ramp_skin >= 0) k = g_ramp_skin;
+  if (ramp_deck_mat && deck_tex[k] && ramp_deck_mat->map != deck_tex[k]) { t3_material_set_map(ramp_deck_mat, deck_tex[k]); ramp_deck_mat->version++; }
+  for (int p = 0; p < ramp_part_n; p++) if (cw_node_valid(ramp_nodes[p])) cw_node_set(ramp_nodes[p], "visible", cw_val_bool(!g_ramps_hide && (p < ramp_mark_from || g_ramp_marks != 0)));
+}
+void view_ramps_refresh(void) { ramps_skin(); }
 static void ramps_apply(void) {
+  ramps_skin();
   for (int p = 0; p < ramp_part_n; p++) {
     t3_instanced_mesh *im = ramp_parts[p];
     im->count = RAMPS;
@@ -408,7 +428,10 @@ static void ramps_apply(void) {
   }
 }
 static void ramps_init(cw_node root) {
-  t3_object *src = cw_gltf_instantiate(cw_res_load("res://models/ramp.glb", CW_RES_GLTF));
+  static const char *const FILES[2] = { "res://models/ramp.glb", "res://models/ramp_marks.glb" };
+  for (int fi = 0; fi < 2; fi++) {
+  if (fi == 1) ramp_mark_from = ramp_part_n;
+  t3_object *src = cw_gltf_instantiate(cw_res_load(FILES[fi], CW_RES_GLTF));
   t3_object *stack[16];
   int sp = 0;
   stack[sp++] = src;
@@ -421,15 +444,21 @@ static void ramps_init(cw_node root) {
       char name[24];
       snprintf(name, sizeof name, "RampPart%d", ramp_part_n);
       /* (in the refraction like everything else: the water's see-through fade shows a deck under the surface softly, tests/jetski-water-ramp.mjs) */
-      model_node(dry_parent(root), name, (t3_object *)im);
+      ramp_nodes[ramp_part_n] = model_node(dry_parent(root), name, (t3_object *)im);
       t3_sphere everywhere = { { 0, 0, 0 }, 4000 };
       t3_instanced_mesh_set_bounding_sphere(im, &everywhere);
+      if (fi == 0 && m->materials[0]->name && !strcmp(m->materials[0]->name, "deck")) ramp_deck_mat = m->materials[0];
       ramp_parts[ramp_part_n++] = im;
       t3_release(im);
     }
     for (int i = 0; i < o->child_count && sp < 16; i++) stack[sp++] = o->children[i];
   }
   t3_release(src);
+  }
+  /* both decks loaded with the game, so a course change reads nothing off the disk */
+  if (ramp_deck_mat) { deck_tex[0] = ramp_deck_mat->map; if (deck_tex[0]) t3_retain(deck_tex[0]); }
+  deck_tex[1] = cw_res_texture(cw_res_load("res://textures/ramp-deck-wood.png", CW_RES_TEXTURE));
+  if (deck_tex[1]) { t3_retain(deck_tex[1]); if (deck_tex[0]) { deck_tex[1]->wrap_s = deck_tex[0]->wrap_s, deck_tex[1]->wrap_t = deck_tex[0]->wrap_t; } deck_tex[1]->color_space = T3_SRGB_COLOR_SPACE; }
   ramps_apply();
 }
 

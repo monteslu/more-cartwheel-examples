@@ -274,6 +274,11 @@ static void cmd_switch(int argc, const char **argv, cw_reply *r) {
     else if (!strcmp(argv[1], "yaw_clear")) { extern int32_t g_yaw_flips; extern float g_yaw_rate_max; g_yaw_flips = 0, g_yaw_rate_max = 0; }
     else if (!strcmp(argv[1], "stamp_on")) { extern int g_stamp_on; g_stamp_on = (int)v; }
     else if (!strcmp(argv[1], "podium")) g_podium_use = (int)v;
+    else if (!strcmp(argv[1], "ramp_marks")) { extern int g_ramp_marks; g_ramp_marks = (int)v; { void view_ramps_refresh(void); view_ramps_refresh(); } }
+    else if (!strcmp(argv[1], "ramp_skin")) { extern int g_ramp_skin; g_ramp_skin = (int)v; { void view_ramps_refresh(void); view_ramps_refresh(); } }
+    else if (!strcmp(argv[1], "freeze")) g_freeze = (int)v;
+    else if (!strcmp(argv[1], "hud")) { extern int g_hud_on; g_hud_on = (int)v; }
+    else if (!strcmp(argv[1], "ramps_hide")) { extern int g_ramps_hide; g_ramps_hide = (int)v; { void view_ramps_refresh(void); view_ramps_refresh(); } }
     else if (!strcmp(argv[1], "players")) g_players = v >= 2 ? 2 : 1;
     else if (!strcmp(argv[1], "p2_idle_cpu")) g_p2_idle_cpu = (int)v;
     else if (!strcmp(argv[1], "podium_lift")) g_podium_lift = v;
@@ -388,7 +393,7 @@ static void cmd_ramp_where(int argc, const char **argv, cw_reply *r) {
   int q = argc > 1 ? atoi(argv[1]) % RAMP_MAX : 0;
   float sy, cy;
   cw_sincos(G.ramp_yaw[q], &sy, &cy);
-  if (r) cw_reply_printf(r, "{\"n\":%d,\"x\":%.2f,\"z\":%.2f,\"top\":%.2f,\"sy\":%.3f,\"cy\":%.3f}", RAMPS, G.ramp_x[q], G.ramp_z[q], DEF->ramp_top, sy, cy);
+  if (r) cw_reply_printf(r, "{\"n\":%d,\"x\":%.2f,\"z\":%.2f,\"top\":%.2f,\"sy\":%.3f,\"cy\":%.3f,\"s\":%.1f}", RAMPS, G.ramp_x[q], G.ramp_z[q], DEF->ramp_top, sy, cy, q < RAMPS ? DEF->ramps[q][3] : 0.0f);
 }
 /* trial [swell]: the human alone at rest on open water (no land within 160 m around, 260 m clear ahead), the sea held calm,
  * the race running, its handling measures cleared: the craft gate's start (tests/jetski-standup.mjs) */

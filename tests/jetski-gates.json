@@ -125,6 +125,11 @@
     "note": "the ramps stand: no pile's foot over the water, the low end always under, the top always clear, at the biggest sea of every difficulty on both courses and both ends of Cold Sound's tide (control: lifted 60 m); the same jump at any moment of the sea (control: decks that tip); computer riders take them, land them and lose no more than 5 points of buoys (control: no one goes for a ramp)"
   },
   {
+    "name": "jetski-ramp-read",
+    "script": "tests/jetski-ramp-read.mjs",
+    "note": "jumps that read from far down the course, GL and WebGPU on the cart: a held camera on the course 100 m and 150 m before a ramp on every course, picture pairs with the ramps shown and hidden: the ramp at least 500 changed pixels, its lip marks at least 50 pixels more. Control: sw ramp_marks 0, the old ramp"
+  },
+  {
     "name": "jetski-placed",
     "script": "tests/jetski-placed.mjs",
     "note": "everything placed by hand stands on something: a building's whole foot on the ground, what stands in the sea under its lowest water; control: lifted 0.6 m. It failed on 40 of Iron Quay's cranes, lamps and containers hung over the quay's edge"

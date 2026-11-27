@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.46.0
+
+- jetski: jumps that read from far down the course. Every ramp carries two masts on its side girders at the lip,
+  outboard of the deck, each with a chequered board facing the way in, a yellow band and an amber lamp on top; the deck's
+  chevrons are amber and worn less. The ramps belong to their places: timber slipway decks on Crater Atoll, Cold Sound
+  and Red Reach, painted steel in the port and on the open sea. Tests: jetski-ramp-read (a held camera on the course
+  100 m and 150 m before a ramp, GL and WebGPU on every course: the ramp at least 500 changed pixels against the ramps
+  hidden, the marks at least 50 more; the control is the old ramp, sw ramp_marks 0); debug switches sw ramp_marks,
+  ramp_skin, ramps_hide, freeze and hud; ramp_where reports the ramp's place along the course.
+
 ## 0.45.2
 
 - Engine v0.85.0 (from v0.83.1).

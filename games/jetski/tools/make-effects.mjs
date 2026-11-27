@@ -165,7 +165,8 @@ paintSky('textures/sky-sound.png', {
     // where hulls run the paint is worn through
     const wear = smooth(0.3, 0.72, (1 - smooth(0.05, 0.55, Math.abs(c))) * 0.75 + 0.5 * fine + 0.25 * grit - 0.1);
     const keep = 1 - wear * 0.85;
-    col = mix(col, [0.74, 0.71, 0.6], chev * keep * 0.8);
+    // (amber, worn less than the rest: the way up reads from far down the course)
+    col = mix(col, [0.95, 0.7, 0.08], chev * (0.55 + 0.45 * keep) * 0.92);
     col = mix(col, stripe ? [0.86, 0.36, 0.05] : [0.78, 0.74, 0.62], lip * (0.5 + 0.5 * keep));
     // scuffs: dark streaks along the run, thick up the middle
     const streak = fbm(X * 7, Z * 0.25, 3, 305), sc = smooth(0.56, 0.72, streak) * (1 - smooth(0.25, 0.8, Math.abs(c)));
@@ -192,4 +193,35 @@ paintSky('textures/sky-sound.png', {
     b[q + 3] = 255;
   }
   save('textures/ramp-deck.png', W, H, b);
+}
+
+// a ramp's timber deck (the courses whose ramps are slipways and jetties: src/view.c RAMP_SKIN): planks across the run,
+// weathered grey-brown, the same amber chevrons up the middle and the striped lip, nail heads in rows on the joists
+{
+  const W = 1024, H = 2048, b = new Uint8Array(W * H * 4);
+  const mix = (A, B, t) => [lerp(A[0], B[0], t), lerp(A[1], B[1], t), lerp(A[2], B[2], t)];
+  const PL = 0.32, JOIST = 2.25;
+  for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
+    const X = (i + 0.5) / W * 18, Z = (j + 0.5) / H * 40, c = (X - 9) / 9;
+    const pk = Math.floor(Z / PL), fz = Z / PL - pk, shift = hash(pk, 3, 501) * 6, seg = Math.floor((X + shift) / 6), fx = ((X + shift) / 6) - seg;
+    const tone = 0.6 + 0.3 * hash(pk, seg, 502), grain = fbm(X * 0.6 + pk * 7.1, Z * 9, 4, 503), knot = smooth(0.8, 0.86, fbm(X * 1.7, Z * 1.7 + pk, 3, 504));
+    let col = mix([0.34, 0.24, 0.15], [0.52, 0.38, 0.25], grain).map((v) => v * tone * (1 - 0.35 * knot));
+    // grey where the sun and the salt have had it, along the edges of the run
+    col = mix(col, [0.48, 0.46, 0.42], 0.3 * smooth(0.35, 0.95, Math.abs(c)) * fbm(X * 0.3, Z * 0.3, 3, 505));
+    // gaps between planks and at their butt joints
+    const gap = 1 - smooth(0.0, 0.05, Math.min(fz, 1 - fz)) * smooth(0.0, 0.008, Math.min(fx, 1 - fx));
+    col = mix(col, [0.03, 0.025, 0.02], gap * 0.9);
+    // nails on the joists
+    const jx = ((X + JOIST / 2) % JOIST) - JOIST / 2, nail = 1 - smooth(0.025, 0.04, Math.hypot(jx, (fz - 0.5) * PL * 0.6));
+    col = col.map((v) => v * (1 - 0.6 * nail));
+    // the chevrons and the lip, painted on
+    const zc = ((Z + Math.abs(c) * 7) % 7), chev = Z > 8 && Z < 31 ? smooth(1.0, 1.15, zc) * (1 - smooth(2.1, 2.25, zc)) * (1 - smooth(0.36, 0.4, Math.abs(c))) : 0;
+    const lip = smooth(33.9, 34, Z), stripe = ((X + Z) % 3) < 1.5, worn = 0.75 + 0.25 * fbm(X * 3, Z * 3, 3, 506);
+    col = mix(col, [0.95, 0.7, 0.08], chev * worn * (1 - gap));
+    col = mix(col, stripe ? [0.86, 0.36, 0.05] : [0.85, 0.82, 0.74], lip * worn * (1 - gap));
+    const q = (i + j * W) * 4;
+    for (let k = 0; k < 3; k++) b[q + k] = Math.round(clamp(Math.pow(clamp(col[k]), 1 / 2.2)) * 255);
+    b[q + 3] = 255;
+  }
+  save('textures/ramp-deck-wood.png', W, H, b);
 }

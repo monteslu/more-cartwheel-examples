@@ -631,7 +631,9 @@ static void hud_body(float w, float h) {
   if (c->finish <= 0 && g_mode != MODE_STUNT && g_mode != MODE_ROAM) next_mark(c, w, h, u);
 }
 
+int g_hud_on = 1; /* sw hud 0: no HUD and no menus (held-camera pictures) */
 void hud_draw(void) {
+  if (!g_hud_on) return;
 #ifdef JETSKI_AUTOPILOT
   if (getenv("JETSKI_NO_HUD")) return; /* key art: the picture alone */
 #endif
