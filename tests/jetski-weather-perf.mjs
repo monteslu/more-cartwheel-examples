@@ -19,7 +19,7 @@ for (const gpu of BACKENDS) for (const c of COURSES) {
     /* a run another process shared the GPU with is run again, up to three times; the quietest counts */
     let best = Infinity;
     for (let k = 0; k < 3; k++) {
-      const t = await romdevTiming({ cart: CART, gpu, commands: ['quality high', `course ${c}`, ...extra, 'race', 'sw autosteer 1', 'no_dq 1', 'wxsw event 0', 'go 900', ...after], warmup: 420, frames: 120, window: 120 });
+      const t = await romdevTiming({ cart: CART, gpu, commands: ['quality high', `course ${c}`, ...extra, 'race', 'sw autosteer 1', 'no_dq 1', 'wxsw event 0', c === 0 ? 'go 750' : 'go 900', ...after], warmup: 420, frames: 120, window: 120 });
       best = Math.min(best, t.gpuMs.mean);
       if (!t.contention?.noisy) break;
       console.log(`  (noisy run, again: ${(t.contention.reasons || []).join('; ').slice(0, 120)})`);

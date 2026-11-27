@@ -9,6 +9,7 @@
 // drawn two views and the one-player run one (view.views, read in the runs).
 //   waterline the waterline part and the players' foam skirts against the race without them (sw wl_part 0, sw skirt 0): under
 //           0.6 ms on the reference GPU; two views with them under 16.7 ms; control: a cost 2 ms higher must fail
+// The race runs from 900 m in (750 m on Crater Atoll, whose 900 m mark lies in its stilts) and must be a clean run (p0.spills 0).
 //   node tests/jetski-feature-perf.mjs --case podium|split|waterline [--gl] [--webgpu] [--courses 0,3]
 import { join } from 'node:path';
 import { ROOT, BACKENDS, arg } from './lib/jetski-romdev.mjs';
@@ -24,13 +25,17 @@ const f2 = (v) => (+v).toFixed(2);
 const ref = (gpu, ms) => { const s = timingScale(gpu); return s && s.b ? (ms - (s.a || 0)) / s.b : ms; };
 /* the views the pipeline drew, read back from the run's debug fields (view.views) */
 const viewsOf = (t) => { const m = JSON.stringify(t).match(/"view\.views"[^0-9]*([0-9]+)/); return m ? +m[1] : -1; };
-let lastViews = -1;
+let lastViews = -1, lastSpills = 0;
+/* where the timed race runs: 900 m in, at speed, except on Crater Atoll, whose 900 m mark lies in the stilts of the set built
+ * up to the line (the craft starts in them and wipes out): 750 m there, a clean run through the same water */
+const goAt = (c) => (c === 0 ? 'go 750' : 'go 900');
+const spillsOf = (t) => { const m = JSON.stringify(t).match(/"p0\.spills"[^0-9]*([0-9]+)/); return m ? +m[1] : -1; };
 const time = async (gpu, commands, warmup = 420) => {
   let best = Infinity;
   for (let k = 0; k < 3; k++) {
-    const t = await romdevTiming({ cart: CART, gpu, commands: ['quality high', ...commands], warmup, frames: 120, window: 120, debugFields: ['view.views'] });
+    const t = await romdevTiming({ cart: CART, gpu, commands: ['quality high', ...commands], warmup, frames: 120, window: 120, debugFields: ['view.views', 'p0.spills'] });
     best = Math.min(best, t.gpuMs.mean);
-    lastViews = viewsOf(t);
+    lastViews = viewsOf(t), lastSpills = spillsOf(t);
     if (!t.contention?.noisy) break;
     console.log(`  (noisy run, again: ${(t.contention.reasons || []).join('; ').slice(0, 120)})`);
   }
@@ -38,9 +43,10 @@ const time = async (gpu, commands, warmup = 420) => {
 };
 const over = (base, t) => t > base * 1.1 && t - base > 0.6;
 for (const gpu of BACKENDS) for (const c of COURSES) {
-  const race = await time(gpu, [`course ${c}`, 'mode 0', 'sw players 1', 'race', 'sw autosteer 1', 'no_dq 1', 'wxsw event 0', 'go 900']);
+  const race = await time(gpu, [`course ${c}`, 'mode 0', 'sw players 1', 'race', 'sw autosteer 1', 'no_dq 1', 'wxsw event 0', goAt(c)]);
+  check(`${gpu} course ${c}: the baseline race is a clean run`, lastSpills === 0, `${lastSpills} wipeouts in it (0)`);
   if (CASE === 'podium') {
-    const pod = await time(gpu, [`course ${c}`, 'mode 0', 'sw players 1', 'race', 'no_dq 1', 'wxsw event 0', 'go 900', 'finish'], 620);
+    const pod = await time(gpu, [`course ${c}`, 'mode 0', 'sw players 1', 'race', 'no_dq 1', 'wxsw event 0', goAt(c), 'finish'], 620);
     check(`${gpu} course ${c}: the podium costs no more than the race`, !over(race, pod), `race ${f2(race)} ms, podium ${f2(pod)} ms (reference GPU: ${f2(ref(gpu, race))}, ${f2(ref(gpu, pod))})`);
     /* control: the bound itself, a podium 2 ms over the race's budget must fail it */
     const ctl = Math.max(race * 1.1, race + 0.6) + 2;
@@ -48,15 +54,15 @@ for (const gpu of BACKENDS) for (const c of COURSES) {
   } else if (CASE === 'waterline') {
     /* where the water meets the racers (the waterline part on every craft and rider, the players' foam skirts): the race
      * with them against the race without them, under 0.6 ms on the reference GPU; then two views with them under 16.7 ms */
-    const bare = await time(gpu, [`course ${c}`, 'mode 0', 'sw players 1', 'sw wl_part 0', 'sw skirt 0', 'race', 'sw autosteer 1', 'no_dq 1', 'wxsw event 0', 'go 900']);
+    const bare = await time(gpu, [`course ${c}`, 'mode 0', 'sw players 1', 'sw wl_part 0', 'sw skirt 0', 'race', 'sw autosteer 1', 'no_dq 1', 'wxsw event 0', goAt(c)]);
     const cost = ref(gpu, race) - ref(gpu, bare);
     check(`${gpu} course ${c}: the waterline and skirt cost under 0.6 ms`, cost < 0.6, `with ${f2(race)} ms, without ${f2(bare)} ms (reference GPU: ${f2(ref(gpu, race))}, ${f2(ref(gpu, bare))}: ${f2(cost)} ms)`);
     check(`${gpu} course ${c}: control, a cost 2 ms higher must fail`, !(cost + 2 < 0.6), `${f2(cost + 2)} ms`);
-    const two = await time(gpu, [`course ${c}`, 'mode 0', 'sw players 2', 'race', 'sw autosteer 1', 'no_dq 1', 'wxsw event 0', 'go 900']);
+    const two = await time(gpu, [`course ${c}`, 'mode 0', 'sw players 2', 'race', 'sw autosteer 1', 'no_dq 1', 'wxsw event 0', goAt(c)]);
     check(`${gpu} course ${c}: two views with them at 60 frames a second on the reference GPU`, ref(gpu, two) < 16.7 && lastViews === 2, `${f2(two)} ms raw, ${f2(ref(gpu, two))} ms reference, ${lastViews} views`);
   } else if (CASE === 'split') {
     const oneViews = lastViews;
-    const two = await time(gpu, [`course ${c}`, 'mode 0', 'sw players 2', 'race', 'sw autosteer 1', 'no_dq 1', 'wxsw event 0', 'go 900']);
+    const two = await time(gpu, [`course ${c}`, 'mode 0', 'sw players 2', 'race', 'sw autosteer 1', 'no_dq 1', 'wxsw event 0', goAt(c)]);
     const r1 = ref(gpu, race), r2 = ref(gpu, two);
     check(`${gpu} course ${c}: two views at 60 frames a second on the reference GPU`, r2 < 16.7, `one view ${f2(race)} ms, two ${f2(two)} ms (reference GPU: ${f2(r1)}, ${f2(r2)}; ${f2(two / race)}x)`);
     /* the run measured what it says: two views drawn in it, one in the single player's (the control) */
