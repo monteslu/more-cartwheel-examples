@@ -120,6 +120,8 @@ standard+instbig+senv+ds+l2000+xfoliage_plain
 standard+instbig+senv+l2000+xfoliage
 standard+instbig+senv+l2000+xfoliage_plain
 # surveyed (tools/programs.mjs): 13 state(s) the runs drew
+standard+skin+senv+l2000+xrim_waterline
+standard+shadow+skin+senv+l2000+s100+xrim_waterline
 depth+skin+xrim_waterline
 depth+xwaterline
 physical+shadow+skin+senv+sheen+eon+l2000+s100+xrim_waterline
@@ -147,3 +149,6 @@ physical+skin+senv+sheen+eon+l2000+xplain_rim_waterline
 physical+skin+senv+sheen+eon+l2000+xrim_waterline
 standard+senv+l2000+xplain_waterline
 standard+senv+l2000+xwaterline
+# closure (tools/programs.mjs): 2 state(s), the surveyed materials in the environments surveyed for their class
+standard+shadow+skin+senv+l2000+s100+xplain_rim_waterline
+standard+skin+senv+l2000+xplain_rim_waterline
