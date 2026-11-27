@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.45.2
+
+- Engine v0.85.0 (from v0.83.1).
+- Arena: the soldiers' animation trees run in the engine's fixed phase with an update divisor for their level of
+  detail (in a battle every tick within 8 m, down to every 16th past 60 m; in the other modes every tick within 14 m),
+  instead of being stepped by hand from the game's own tick, so the aim and foot placement solve once a tick instead
+  of twice. A body nobody sees, ragdolled or lying still hardly runs its tree. A 32-fighter Battle's simulation
+  measured 3.37 ms a tick against 3.52 (the aim and foot solves 0.20 ms against 0.32), with the same game state.
+
 ## 0.45.1
 
 - Arena, Courtyard: bots can get onto the plinth in the middle of the plaza (the rocket's). It stands higher than a

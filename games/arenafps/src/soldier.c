@@ -131,7 +131,7 @@ typedef struct body {
   cw_ragdoll *rd;
   int rd_t;
   bool still;
-  float acc; /* time not yet given to the tree (it is advanced every divisor-th tick, with all of it) */
+  uint32_t dticks; /* the tree's FIXED-phase calls under a divisor above 1: which tick it evaluates on (as the engine counts them) */
 } body;
 #define CROWD_MAX 48
 static body B[MAXF + CROWD_MAX]; /* the fighters' bodies, then the bench crowd's */
@@ -300,7 +300,7 @@ static void tree_make(body *b, int v) {
   b->tree = cw_node_new("AnimationTree", "Tree");
   cw_node_add_child(cw_node_parent(b->anim), b->tree);
   cw_node_set(b->tree, "player", cw_val_string("../Anim"));
-  cw_node_set(b->tree, "process", cw_val_enum("MANUAL"));
+  cw_node_set(b->tree, "process", cw_val_enum("FIXED")); /* advanced by the engine's fixed phase, divisor and all (IK solves once a tick) */
   cw_node t = b->tree;
   cw_blend_id lf = cw_animtree_blend2d(t, "mx", "my"), lb = cw_animtree_blend2d(t, "mx", "my");
   cw_animtree_blend2d_add(t, lf, b->idle[0] = clipnode(t, "idle"), 0, 0);
@@ -644,9 +644,18 @@ static void tick_body(int i, fighter *f, body *b, const t3_vec3 *eyes, int neyes
   /* detail by distance */
   int lod = dist < 14 ? 0 : dist < 30 ? 1 : dist < 50 ? 2 : 3;
   b->lod = lod;
-  b->divisor = seen ? cw_anim_lod_divisor(dist, 14) : 8;
-  if (crowded && seen) b->divisor = dist < 8 ? 1 : dist < 16 ? 2 : dist < 30 ? 4 : dist < 60 ? 8 : 16; /* a battle's crowd: each tree costs about 0.15 ms an update */
-  cw_animtree_set_update_divisor(b->tree, crowded ? 1 : b->divisor); /* (a crowd: kept by hand below) */
+  /* the tree's level of detail: its update divisor (the engine's FIXED phase evaluates it every divisor-th tick with all the
+   * time since); a battle's crowd steps down sooner (each tree costs about 0.15 ms an update); a body nobody sees, ragdolled
+   * or lying still hardly runs its tree at all (the pose comes from elsewhere) */
+  b->divisor = seen ? cw_anim_lod_divisor(dist, 14) : 64;
+  if (crowded && seen) b->divisor = dist < 8 ? 1 : dist < 16 ? 2 : dist < 30 ? 4 : dist < 60 ? 8 : 16;
+  if (b->rd || b->still) b->divisor = 64;
+  cw_animtree_set_update_divisor(b->tree, b->divisor);
+  /* whether the tree evaluates in the next fixed phase (the one that reads what is set here): the engine runs it when its
+   * count of calls under a divisor, plus the tree's slot, is a multiple of the divisor. Its parameters, aim and feet are set
+   * only for that tick (each set is a lookup by name, about 0.1 ms a body a tick with them all); a set between is kept */
+  bool adv = b->divisor <= 1 || (b->dticks + (uint32_t)(b->tree.id & 0xffff)) % (uint32_t)b->divisor == 0;
+  if (b->divisor > 1) b->dticks++;
   bool far = lod >= 2;
   if (far != b->masked) {
     b->masked = far;
@@ -740,14 +749,6 @@ static void tick_body(int i, fighter *f, body *b, const t3_vec3 *eyes, int neyes
   b->act = floor ? 0 : b->act + 1;
   b->was_floor = floor;
   cw_node t = b->tree;
-  /* the tree is advanced here, outside the fixed phase, where its own update divisor does not apply: the level of
-   * detail is kept by hand, every divisor-th tick (staggered by slot) with all the time since. Between its updates a
-   * body only follows the rules' events (a shot, a hit, a throw); its parameters and its aim and feet are set on the
-   * ticks it updates (each set is a lookup by name, about 0.1 ms a body a tick with them all) */
-  b->acc += TICK_DT;
-  bool adv = seen && (!crowded || b->divisor <= 1 || (mrec_tick + i) % b->divisor == 0); /* (the other modes as they were: every tick) */
-  float dt_since = b->acc;
-  if (!seen) b->acc = fminf(b->acc, 0.5f);
   if (adv) {
     cw_animtree_set_param(t, "mx", b->bx);
     cw_animtree_set_param(t, "my", b->by);
@@ -816,7 +817,7 @@ static void tick_body(int i, fighter *f, body *b, const t3_vec3 *eyes, int neyes
     cw_node_set(b->feet, "active", cw_val_bool(b->feet_w > 0.01f));
     cw_node_set(b->feet, "influence", cw_val_float(CW_CLAMP(b->feet_w, 0, 1)));
   }
-  if (adv) cw_animtree_advance(t, dt_since), b->acc = 0, SOLDIER_ST.animated++;
+  if (adv) SOLDIER_ST.animated++;
 }
 
 #ifdef ARENA_AUTOPILOT
