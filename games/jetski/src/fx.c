@@ -13,7 +13,7 @@ static cw_node rain_n, spume, spume_fine;
 static cw_node tail[RACERS], mist[RACERS], side_spray, bursts, burst_mist, sheet[2], sheet_fine[2];
 /* the white water along a hull's waterline: a thin strip of soft foam that hugs the hull where it meets the water, broad
  * and bright at speed (the contact hidden under aerated water), a narrow lace at a crawl. The players' craft (seats 0 and 1).
- * sw skirt 0: none (the waterline gate's control) */
+ * sw skirt 0: none (the hull-wet gate's control) */
 static cw_node skirt[2];
 int g_skirt = 1;
 int32_t g_skirt_alive; /* the human's skirt particles alive now (debug fx.skirt_alive) */

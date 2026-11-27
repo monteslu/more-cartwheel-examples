@@ -406,8 +406,8 @@
     "note": "the sit-down floats on its own model: on the plane the water runs along its chines (-0.2 to -0.02 m on the model, under the footwells), at rest it settles with the footwells dry (-0.05 to +0.08 m). Control: sw sit_lift 0, the old float with the footwells under the water at speed"
   },
   {
-    "name": "jetski-waterline",
-    "script": "tests/jetski-waterline.mjs",
+    "name": "jetski-hull-wet",
+    "script": "tests/jetski-hull-wet.mjs",
     "note": "where the water meets the racers, GL and WebGPU on the cart, held moments: the hull at rest from its side shows the waterline part (wet band, meniscus line) against sw wl_part 0, and at speed the foam skirt adds white water round the hull against sw skirt 0; controls: the same switches shot twice stay under the noise bound"
   },
   {

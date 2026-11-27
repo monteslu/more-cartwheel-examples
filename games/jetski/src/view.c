@@ -38,7 +38,7 @@ static float buoy_phase[BUOY_MAX];
 static cw_node gate_n;
 
 int g_cam_old;          /* sw cam_old 1: the old chase camera */
-float g_cam_side;       /* sw cam_side <metres>: a held side look at the hull (the waterline gate) */
+float g_cam_side;       /* sw cam_side <metres>: a held side look at the hull (the hull-wet gate) */
 float g_cam_eye[4];     /* the chase camera: metres behind the craft, over the water, at this speed; how far back it eased for a long flight */
 int g_cam_air = 1;      /* sw cam_air 0: no easing back in a long flight */
 static const float TEAMS[RACERS][6] = {
@@ -77,7 +77,7 @@ static float wetness[RACERS];
  * high-water mark the suit and vest darken (matte: cloth never shines), skin, paint and gelcoat take a wet gloss with
  * beaded drops, the contact gets a thin line of sky light, and what is under the surface shows caustics through it.
  * Spray soaks it all (the old whole-suit darkening is now the part's soak, drying over 9 s as before). sw wl_part 0: no
- * part, the suit and vest darkened by colour as before (the waterline gate's control, from the next tick) */
+ * part, the suit and vest darkened by colour as before (the hull-wet gate's control, from the next tick) */
 int g_wl_part = 1;
 static cw_waterline *wl[RACERS];
 static const struct wl_look { const char *name; cw_waterline_look look; } WL_LOOK[] = {
@@ -1108,7 +1108,7 @@ static void chase(int seat, float dt) {
     G.look[0] = c->x + lo[0] * (1 - kl2), G.look[1] = c->y + lo[1] + (1.0f - lo[1]) * kl2, G.look[2] = c->z + lo[2] * (1 - kl2);
   }
   /* sw cam_side <metres>: a held look at the hull's waterline from its right side, that far out and 0.5 m over the water,
-   * moving with the craft (the waterline gate's pictures; 0: the chase) */
+   * moving with the craft (the hull-wet gate's pictures; 0: the chase) */
   if (g_cam_side > 0 && seat == 0) {
     float s2, c2;
     cw_sincos(c->yaw, &s2, &c2);
