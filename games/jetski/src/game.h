@@ -402,4 +402,15 @@ void wx_minimap_draw(float rx, float ry, float rw, float rh, float minx, float m
 extern float g_wx_dome[3], g_wx_sun;
 extern int g_wx_look_key;
 void view_props_reset(void);
+/* podium.c: the podium after a championship race (the first three parked on a judges' pier, the camera round its front) */
+extern int g_podium_on, g_podium_use;
+extern float g_podium_lift;
+void podium_init(cw_node parent);
+bool podium_begin(void);
+void podium_end(void);
+bool podium_shows(int i);
+void podium_tick(void);
+bool podium_camera(float dt);
+void podium_measure(float (*hull_low)(int));
+void podium_draw(cw_font big, cw_font small, float w, float h);
 #endif

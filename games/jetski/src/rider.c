@@ -71,6 +71,7 @@ int g_pose_on = 1;
 float g_finish_pose[4]; /* racer 0: seconds since its line, its place, the higher glove over the head's top (m), the pose's weight 0..1 */
 static float finish_pose(const craft *c, int *cheer) {
   *cheer = c->place <= 3;
+  if (g_podium_on && g_pose_on) return 1; /* on the podium: the first three cheer, held */
   if (!g_pose_on || c->finish <= 0 || c->spill > 0 || c->dq || G.state == RACE_ATTRACT) return 0;
   float t = clampf((G.clock - c->finish) / 0.6f, 0, 1);
   return t * t * (3 - 2 * t);

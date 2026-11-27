@@ -271,6 +271,8 @@ static void cmd_switch(int argc, const char **argv, cw_reply *r) {
     else if (!strcmp(argv[1], "grid_order")) { extern int g_grid_on; g_grid_on = (int)v; }
     else if (!strcmp(argv[1], "yaw_clear")) { extern int32_t g_yaw_flips; extern float g_yaw_rate_max; g_yaw_flips = 0, g_yaw_rate_max = 0; }
     else if (!strcmp(argv[1], "stamp_on")) { extern int g_stamp_on; g_stamp_on = (int)v; }
+    else if (!strcmp(argv[1], "podium")) g_podium_use = (int)v;
+    else if (!strcmp(argv[1], "podium_lift")) g_podium_lift = v;
     else if (!strcmp(argv[1], "pose_on")) { extern int g_pose_on; g_pose_on = (int)v; }
     else if (!strcmp(argv[1], "pack")) g_pack = v;
     else if (!strcmp(argv[1], "stock")) G.c[0].stock = v;
@@ -617,6 +619,7 @@ static void init(void *user) {
   { extern float g_hud_rev; cw_debug_f32("hud.rev", &g_hud_rev); }
   { extern int g_hud_stamps; extern float g_hud_stamp[3]; cw_debug_i32("hud.stamps", &g_hud_stamps); cw_debug_f32_array("hud.stamp", g_hud_stamp, 3); }
   { extern float g_finish_pose[4]; cw_debug_f32_array("p0.finish_pose", g_finish_pose, 4); }
+  { extern float g_podium_site[4], g_podium_meas[6], g_podium_label[3][2]; extern int32_t g_podium_who[3]; cw_debug_i32("podium.on", &g_podium_on); cw_debug_f32_array("podium.site", g_podium_site, 4); cw_debug_f32_array("podium.meas", g_podium_meas, 6); cw_debug_field("podium.who", g_podium_who, CW_DBG_I32, 3); cw_debug_f32_array("podium.label", &g_podium_label[0][0], 6); extern int32_t g_podium_why[5]; cw_debug_field("podium.why", g_podium_why, CW_DBG_I32, 5); }
   cw_debug_f32("race.fin_t", &G.fin_t);
   cw_debug_f32("race.done_after", &G.done_after);
   cw_debug_i32("race.real_finishes", &G.real_finishes);

@@ -8,7 +8,7 @@ import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..'), OUT = join(ROOT, 'out/menu'), TOOL = join(ROOT, 'deps/cartwheel-engine/tools/run-cart.mjs');
 mkdirSync(OUT, { recursive: true });
-const P_MAIN = 1, P_CONTROLS = 2, P_AUDIO = 3, P_PAUSE = 5, P_RESULTS = 6, P_FORECAST = 7, P_NONE = 0;
+const P_MAIN = 1, P_CONTROLS = 2, P_AUDIO = 3, P_PAUSE = 5, P_RESULTS = 6, P_FORECAST = 7, P_PODIUM = 8, P_NONE = 0;
 const ATTRACT = 0, GRID = 1, ON = 2, DONE = 3;
 let n = 0;
 // tokens: a pad button, each tapped for 3 frames with 3 released after; 'w<N>' waits N frames; '!cmd' is not a tap
@@ -92,13 +92,15 @@ const unfinished = run(race);
 const pts = (s) => s['cup.points'].reduce((a, b) => a + b, 0);
 check('control: a race not finished pays nothing', pts(unfinished) === 0, `points ${unfinished['cup.points']}`);
 const done = run(['w300'], { cmds: 'race;finish' }); // (the finish shows for 4.5 s before the results)
-check('finishing shows the results', done['menu.page'] === P_RESULTS && done['race.state'] === DONE, pg(done));
+check('finishing a championship race shows the podium', done['menu.page'] === P_PODIUM && done['podium.on'] === 1 && done['race.state'] === DONE, pg(done));
+const res = run(['w300', 'south', 'w10'], { cmds: 'race;finish' });
+check('from the podium, A shows the results', res['menu.page'] === P_RESULTS && res['race.state'] === DONE, pg(res));
 check('the championship pays every place', pts(done) === 26 && done['cup.race'] === 1, `points ${done['cup.points']} after ${done['cup.race']} race`);
 // (past the countdown: a race that had not finished would be running by now, not on its grid)
-const again = run(['w320', 'south', 'w20', 'south', 'w20'], { cmds: 'race;finish' });
-check('from the results, A goes to the forecast and A on its first row races the next course left, keeping the points', pts(again) === 26 && again['race.level'] === 1 && again['race.state'] === GRID, pg(again) + ` course ${again['race.level']} points ${again['cup.points']}`);
+const again = run(['w320', 'south', 'w20', 'south', 'w20', 'south', 'w20'], { cmds: 'race;finish' });
+check('from the podium and the results, A goes to the forecast and A on its first row races the next course left, keeping the points', pts(again) === 26 && again['race.level'] === 1 && again['race.state'] === GRID, pg(again) + ` course ${again['race.level']} points ${again['cup.points']}`);
 // the next race's grid is the last one's finish: fourth over the line, fourth on the next grid (control: grid_order 0, by seat)
-const grid4 = run(['w320', 'south', 'w20', 'south', 'w20'], { cmds: 'race;finish 4' }), grid40 = run(['w320', 'south', 'w20', 'south', 'w20'], { cmds: 'sw grid_order 0;race;finish 4' });
+const grid4 = run(['w320', 'south', 'w20', 'south', 'w20', 'south', 'w20'], { cmds: 'race;finish 4' }), grid40 = run(['w320', 'south', 'w20', 'south', 'w20', 'south', 'w20'], { cmds: 'sw grid_order 0;race;finish 4' });
 check('a championship race lines up by the last finish: fourth, then fourth on the grid', grid4['race.state'] === GRID && grid4['race.grid'][0] === 3 && grid4['p0.place'] === 4 && grid4['race.order'][3] === 0, `grid ${grid4['race.grid']}, the seat ${grid4['p0.place']}th, order ${grid4['race.order']}`);
 check('control: grid_order 0 lines up by seat (fails the bound)', !(grid40['p0.place'] === 4), `the seat ${grid40['p0.place']}th`);
 

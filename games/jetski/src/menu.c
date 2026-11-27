@@ -12,7 +12,7 @@
 #include "cartwheel/shell.h"
 #include "game.h"
 
-enum { P_NONE, P_MAIN, P_CONTROLS, P_AUDIO, P_GRAPHICS, P_PAUSE, P_RESULTS, P_FORECAST };
+enum { P_NONE, P_MAIN, P_CONTROLS, P_AUDIO, P_GRAPHICS, P_PAUSE, P_RESULTS, P_FORECAST, P_PODIUM };
 typedef struct save_data { int32_t magic, level, difficulty, music, sfx, mode; float best[LEVELS]; int32_t craft, unlocked, weather; int32_t stunt_best[LEVELS]; int32_t rider, assist, radio; } save_data;
 _Static_assert(sizeof(save_data) <= 128, "the save region in cw_shell_desc");
 #define SAVE_MAGIC 0x4a534b32
@@ -86,6 +86,7 @@ static int page_rows(void) {
   case P_AUDIO: return 6;
   case P_PAUSE: return 5;
   case P_RESULTS: return 2;
+  case P_PODIUM: return 1;
   default: return 1;
   }
 }
@@ -99,7 +100,7 @@ static void back_up(int row_main, int row_pause) {
 void menu_off(void) { page = P_NONE; }
 void menu_course(int level) { if (level >= 0 && level < LEVELS && level != G.level) { G.level = level; view_course_apply(); } }
 /* the race holds still under every page opened from the pause */
-bool menu_blocks_sim(void) { return page != P_NONE && page != P_RESULTS && G.state != RACE_ATTRACT; }
+bool menu_blocks_sim(void) { return page != P_NONE && page != P_RESULTS && page != P_PODIUM && G.state != RACE_ATTRACT; }
 float menu_best_time(void) { return best[G.level]; }
 void menu_debug(void) {
   cw_debug_i32("menu.page", &page);
@@ -203,7 +204,8 @@ void menu_tick(float dt) {
     if (pending_race) start_race(); else sim_reset(RACE_ATTRACT);
     return;
   }
-  if (G.state == RACE_DONE && last_state != RACE_DONE) { race_over(); open_page(P_RESULTS); }
+  /* a championship race ends on the podium (the first three, the camera round them), then the results */
+  if (G.state == RACE_DONE && last_state != RACE_DONE) { race_over(); open_page(podium_begin() ? P_PODIUM : P_RESULTS); }
   if (G.state == RACE_ATTRACT && last_state != RACE_ATTRACT && page == P_NONE) open_page(P_MAIN);
   last_state = G.state;
   if (page == P_NONE) {
@@ -281,6 +283,9 @@ void menu_tick(float dt) {
   case P_FORECAST:
     if (ok) race_today(forecast_course(row));
     else if (back) { wx_set_race(-1); sim_reset(RACE_ATTRACT); open_page(P_MAIN); }
+    break;
+  case P_PODIUM:
+    if (ok || back) open_page(P_RESULTS); /* the podium stays behind the results */
     break;
   case P_RESULTS:
     if (dx) row = (row + 1) % 2; /* the two choices can stand side by side (a large text size) */
@@ -433,6 +438,7 @@ void menu_draw(void) {
   /* the widest a page may grow: the screen less a margin, the left margin shrinking first */
   float margin = 30 * u, max_w = w - 2 * margin;
   if (page == P_PAUSE || ((page == P_AUDIO || page == P_CONTROLS) && !attract) || page == P_RESULTS) cw_r2d_rect(cw_rect_make(0, 0, w, h), cw_rgba(0, 0.02f, 0.05f, 0.42f));
+  if (page == P_PODIUM) { podium_draw(big, small, w, h); return; }
   switch (page) {
   case P_MAIN: {
     float top = title(px, h, u, attract);

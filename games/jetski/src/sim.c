@@ -940,6 +940,7 @@ static void craft_tick(craft *c, int idx, float dt) {
 }
 
 void sim_reset(int state) {
+  podium_end();
   { extern int32_t g_near_floats; g_near_floats = 0; }
   uint32_t tick = G.tick;
   int level = G.level;
@@ -1175,7 +1176,7 @@ void sim_tick(float dt) {
   }
   for (int i = 0; i < RACERS; i++) {
     craft *c = &G.c[i];
-    if (!racer_on(i)) continue;
+    if (!racer_on(i) || g_podium_on) continue; /* on the podium the craft are parked (podium.c) */
     bool ai = !c->human || G.state == RACE_ATTRACT || g_try_ramp >= 0;
     if (g_ram_setup > 0 && i < 2) ai = false, c->in.steer = 0, c->in.lean = 0, c->in.throttle = 1, c->in.trick = false;
 #ifdef JETSKI_AUTOPILOT
@@ -1200,8 +1201,9 @@ void sim_tick(float dt) {
       if (G.state == RACE_ON) out_of_bounds(c, dt);
     }
   }
+  podium_tick();
   /* craft shoulder each other aside, they do not pass through */
-  for (int i = 0; i < RACERS; i++)
+  for (int i = 0; i < RACERS && !g_podium_on; i++)
     for (int j = i + 1; j < RACERS; j++) {
       craft *a = &G.c[i], *b = &G.c[j];
       float dx = b->x - a->x, dz = b->z - a->z, d2 = dx * dx + dz * dz;

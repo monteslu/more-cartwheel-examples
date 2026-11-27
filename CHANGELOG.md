@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.44.0
+
+- jetski: the podium. Every championship race ends on a judges' pier beside the finish: the first three park on its
+  three tiers (first in the middle and highest, second on the left, third on the right) with their arms up, their
+  places and names over them, while the camera swings slowly round the front. The pier stands on piles in the bed,
+  its deck over the highest water the next 40 s bring. Accept (or back) goes on to the results, the podium behind
+  them. Tests: jetski-podium checks it on every course on GL and WebGPU, including the grounding as drawn (each hull
+  within 3 cm of its tier, piles in the bed, the deck dry, the camera over open water); sw podium_lift 0.4 must fail
+  it. jetski-menu goes through the podium.
+
 ## 0.43.5
 
 - Tests: arenafps-battle-newcomer. A scripted newcomer (late reactions, wide aim) plays Battle on Farmlands by the

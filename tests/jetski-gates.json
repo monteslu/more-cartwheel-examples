@@ -73,6 +73,11 @@
     "note": "the menus by real input, pad and keyboard: every page and back, pause with restart and quit, championship points, a time trial alone; controls: nothing finished pays nothing, a championship keeps its rivals"
   },
   {
+    "name": "jetski-podium",
+    "script": "tests/jetski-podium.mjs",
+    "note": "the podium after a championship race on every course, GL and WebGPU on the cart: the first three parked on the judges' pier in order, arms up, names over them, the pad on to the results and the forecast; grounding as drawn (each hull on its tier within 3 cm, piles in the bed, the deck dry, the camera over open water). Controls: sw podium_lift 0.4 fails the bound, sw podium 0 goes straight to the results"
+  },
+  {
     "name": "jetski-sound",
     "app": "jetski_auto",
     "frames": 600,

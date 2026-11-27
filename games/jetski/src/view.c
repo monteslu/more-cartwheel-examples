@@ -793,6 +793,7 @@ void view_init(void) {
     t3_release(go);
   }
   floats_apply(root);
+  podium_init(dry_parent(root));
   life_course_apply(root);
   wx_course_apply();
   fx_init(cw_node_get(root, "Fx"));
@@ -904,6 +905,7 @@ void view_tick(float dt) {
   rider_wet(dt);
   floats_count();
   if (attract_camera(dt)) return;
+  if (podium_camera(dt)) return;
   const craft *c = &G.c[0];
   memcpy(G.cam_prev, G.cam, sizeof G.cam);
   memcpy(G.look_prev, G.look, sizeof G.look);
@@ -1082,6 +1084,36 @@ static void stand_screen(t3_vec3 cp, t3_vec3 lp, float fov, float a) {
 }
 float g_dome_seen[3];
 bool g_peek_on;
+/* the lowest point of racer i's hull as drawn (world metres, the craft level, as parked): the hull part's meshes' bounds
+ * through the model's own local matrices, under the craft's place */
+static void low_of(t3_object *o, const t3_mat4 *m, const t3_object *part, bool inside, float *low) {
+  inside = inside || o == part;
+  if (inside && o->visible && (o->type == T3_MESH || o->type == T3_SKINNED_MESH) && ((t3_mesh *)o)->geometry) {
+    t3_geometry *g = ((t3_mesh *)o)->geometry;
+    if (!g->has_bounding_box) t3_geometry_compute_bounding_box(g);
+    t3_box3 b = g->bounding_box;
+    for (int k = 0; k < 8; k++) { t3_vec3 p = { k & 1 ? b.max.x : b.min.x, k & 2 ? b.max.y : b.min.y, k & 4 ? b.max.z : b.min.z }; p = t3_vec3_apply_mat4(p, m); if (p.y < *low) *low = p.y; }
+  }
+  for (int k = 0; k < o->child_count; k++) {
+    t3_object *ch = o->children[k];
+    t3_mat4 l, mc;
+    t3_mat4_compose(&l, ch->position, ch->quaternion, ch->scale);
+    t3_mat4_multiply(&mc, m, &l);
+    low_of(ch, &mc, part, inside, low);
+  }
+}
+static float view_hull_low(int i) {
+  bool stand = g_craft == CRAFT_STAND;
+  t3_object *root = stand ? stand_o[i][0] : sit_o[i], *part = stand ? stand_part[i][0][0] : sit_part[i][0];
+  if (!root || !part) return -1e9f;
+  t3_mat4 id;
+  t3_mat4_compose(&id, (t3_vec3){ 0, 0, 0 }, (t3_quat){ 0, 0, 0, 1 }, (t3_vec3){ 1, 1, 1 });
+  float low = 1e9f;
+  low_of(root, &id, part, false, &low);
+  if (low > 1e8f) return -1e9f;
+  const craft *c = &G.c[i];
+  return c->y + (stand ? STAND_LIFT : 0.0f) + low;
+}
 float g_fov_span = 16.0f, g_cam_roll_max = 0.0785f; /* debug: fov_span 6, cam_roll 0 bring the old flat camera back (the speed gate control) */
 float g_peek[6];
 void view_sync(double alpha) {
@@ -1102,10 +1134,10 @@ void view_sync(double alpha) {
   if (g_cam_cut && G.cam[0] == 0 && cw_node_valid(G.water)) view_tick(1.0f / 60.0f);
   /* who is on the water, and which buoys count */
   { static int shown = -1;
-    int now = g_difficulty * 2 + (racer_on(1) ? 1 : 0) + g_buoy_style * 16 + g_buoy_hide * 32;
+    int now = g_difficulty * 2 + (racer_on(1) ? 1 : 0) + g_buoy_style * 16 + g_buoy_hide * 32 + g_podium_on * 64;
     if (now != shown || g_marks_stale) {
       shown = now, g_marks_stale = false;
-      for (int i = 0; i < RACERS; i++) cw_node_set(craft_n[i], "visible", cw_val_bool(racer_on(i)));
+      for (int i = 0; i < RACERS; i++) cw_node_set(craft_n[i], "visible", cw_val_bool(racer_on(i) && podium_shows(i)));
       for (int b = 0; b < BUOY_MAX; b++) {
         cw_node_set(buoy_n[b], "visible", cw_val_bool(!g_buoy_hide && g_buoy_style && b < BUOY_N && buoy_on(b)));
         cw_node_set(buoy_old_n[b], "visible", cw_val_bool(!g_buoy_hide && !g_buoy_style && b < BUOY_N && buoy_on(b)));
@@ -1139,6 +1171,7 @@ void view_sync(double alpha) {
       if (sbars_o[i][l]) sbars_o[i][l]->quaternion = t3_quat_from_euler((t3_euler){ 0, -c->steer * 0.42f, 0, T3_YXZ });
     }
   }
+  podium_measure(view_hull_low);
   double wt = cw_water_time(G.water) + (a - 1.0f) * (1.0f / 60.0f);
   /* the squall: lightning lights the world and the sky; the beacon's lamp is seen through the rain on its rock */
   /* the day's look (weather.c): set when the weather or the course changes */
