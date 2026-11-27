@@ -85,11 +85,11 @@ The menu's Craft row picks what everyone rides, you and the computer racers alik
 
 ## The courses
 
-- Crater Atoll: a warm evening on a volcanic atoll: out of a pale lagoon, through a gap in the reef, open swell round the sea stacks and back in over the north pass. The sea builds and the tide comes in.
-- Red Reach: noon on a river in a red sandstone canyon, round a mesa, cactus and fallen rock on its banks. The current runs one way down the valley: fast with it, a slog against it in midstream, slack at the banks.
+- Crater Atoll: a warm evening on a volcanic atoll, thatched huts on stilts along the lagoon and a jetty by the line home: out of a pale lagoon, through a gap in the reef, open swell round the sea stacks and back in over the north pass. The sea builds and the tide comes in.
+- Red Reach: noon on a river in a red sandstone canyon, under an old timber trestle, round a mesa, cactus and fallen rock on its banks. The current runs one way down the valley: fast with it, a slog against it in midstream, slack at the banks.
 - Iron Quay: a working port at night, cranes, stacked containers and lit windows on black water. A tanker under way crosses the course and its wake throws you.
 - Gale Bank: a squall on the open sea, rain and lightning, a rig and wrecks. The swell starts big and keeps building, so the last lap is the biggest water in the game.
-- Cold Sound: a grey morning in a granite fjord, open to the ocean at its west end. The tide falls through the race: while it stands high a drowned arch shuts the cut through the headland, and once there is room under it, it is the short way home.
+- Cold Sound: a grey morning in a granite fjord, open to the ocean at its west end, red boathouses on stilts and fish racks along its shore. The tide falls through the race: while it stands high a drowned arch shuts the cut through the headland, and once there is room under it, it is the short way home.
 
 A course is a definition in `courses/<id>.mjs`: track, ground, paint, wave mask, scatter, ramps, sea, tide, light and sky, and its hook. `tools/course-lib.mjs` says what each part does. To add one: write the definition, add it to `LEVEL_ORDER` in `tools/make-course.mjs` and raise `LEVELS` in `src/game.h`, then run `tools/make-course.mjs` and rebuild. `tools/course-look.mjs` shows it from the race camera, and `tests/jetski-handling.mjs` checks the computer riders get round it.
 

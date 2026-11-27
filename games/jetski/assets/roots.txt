@@ -76,6 +76,14 @@ models/block3.glb
 models/boulder0.glb
 models/boulder1.glb
 models/boulder2.glb
+radio.cwstory
+radio.cwspeech
+models/hut.glb
+models/jetty.glb
+models/boathouse.glb
+models/rack.glb
+models/bent.glb
+models/span.glb
 course/atoll/heights.r16
 course/atoll/control.u32
 course/atoll/wavemask.f32
@@ -154,5 +162,3 @@ course/storm/pale2-albedo.rgba
 course/storm/pale2-normal.rgba
 course/storm/stormwet-albedo.rgba
 course/storm/stormwet-normal.rgba
-radio.cwstory
-radio.cwspeech

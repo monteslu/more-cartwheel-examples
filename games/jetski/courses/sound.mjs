@@ -68,6 +68,31 @@ return {
     ['rock1', 'boulders', 0.2, 0.5, 2.0, 700, 180, true, 0.9],
     ['rock2', 'boulders', 0.15, 0.8, 3.4, 700, 181, true, 0.9],
   ],
+  placed_models: ['boathouse','rack'],
+  // what stands in the water beside the line: each thing tried along a stretch until its whole footprint is over a bed
+  // 1.5 to 34 m down (its legs run to 40 m), turned to face the course; solid, so the craft go round it
+  placed({ ground, pointAt, LEN }) {
+    const out = [];
+    // (the ramps' places: kept 80 m clear, so the ramps the course always had stay where they were, with room to land)
+    const RAMPS_AT = [[-389.73,288.92],[-137.52,356.48],[113.37,214.44],[283.46,193.77],[419.49,-212.37],[96.80,-242.52],[-91.47,-309.42],[-100.66,-331.70],[-264.74,-366.72],[-525.34,-284.28],[-727.82,-128.06],[-671.73,113.29]];
+    // (and no nearer any other stretch of the course than to its own: a bend must not bring the line past it)
+    const LINE = []; for (let s = 0; s < LEN; s += 4) LINE.push(pointAt(s));
+    const clearOfLine = (x, z) => Math.min(...LINE.map((p) => Math.hypot(p.x - x, p.z - z)));
+    const fits = (x, z, r) => { for (let k = 0; k <= 8; k++) { const a = k * Math.PI / 4, q = k < 8 ? r : 0, g = ground(x + Math.cos(a) * q, z + Math.sin(a) * q); if (g > -1.5 || g < -34) return false; } return true; };
+    const put = (model, s0, span, side, off, r, solid, face) => {
+      for (let t = 0; t < 40; t++) {
+        const s = ((s0 + (t % 2 ? 1 : -1) * Math.ceil(t / 2) * span / 20) % LEN + LEN) % LEN, p = pointAt(s);
+        const x = p.x - p.dz * side * off, z = p.z + p.dx * side * off;
+        if (!fits(x, z, r) || clearOfLine(x, z) < off - 2 || RAMPS_AT.some(([a, b]) => Math.hypot(a - x, b - z) < 80) || out.some((q) => Math.hypot(q.x - x, q.z - z) < r + 12)) continue;
+        out.push({ model, x, z, yaw: face ? Math.atan2(side * p.dz, -side * p.dx) : Math.atan2(p.dx, p.dz), scale: 1, solid, floats: true });
+        return;
+      }
+    };
+    // red boathouses on stilts along the fjord, doors to the water, and fish racks in the shallows between them
+    for (let k = 0; k < 5; k++) put('boathouse', LEN * (0.1 + k * 0.18), LEN * 0.06, k % 2 ? -1 : 1, 46, 7.5, [7, 4.5], true);
+    for (let k = 0; k < 4; k++) put('rack', LEN * (0.19 + k * 0.18), LEN * 0.05, k % 2 ? 1 : -1, 46, 6, [5.5, 2], false);
+    return out;
+  },
   grades: [
     ['shingle', 'coast', [0.42, 0.44, 0.48], 0.2],
     ['tiderock', 'rock', [0.24, 0.28, 0.26], 0.1],

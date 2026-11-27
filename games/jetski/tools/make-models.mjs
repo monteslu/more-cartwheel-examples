@@ -886,3 +886,90 @@ for (let v = 0; v < 3; v++) {
   g.sceneNodes.push(g.node({ name: 'Shrub', mesh: g.mesh('shrub', P.prims(mi)) }));
   g.write(join(OUT, 'shrub.glb'));
 }
+
+// ── the courses' own sets, built up to the line: overwater huts and a jetty on the atoll's lagoon, boathouses and drying
+// racks in the fjord, a timber trestle over the canyon's river. Everything stands in the water on legs that run down
+// past any bed they are placed over (tests/jetski-placed.mjs: each leg's foot under the bed, y 0 the rest level) ──
+{
+  const box = (P, m, x0, x1, y0, y1, z0, z1) => {
+    const q = (a, b, c, d) => P.grid(m, [[a, b], [d, c]], { flip: false });
+    q([x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]); q([x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0]);
+    q([x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]); q([x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0]); q([x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1]);
+    q([x0, y0, z1], [x1, y0, z1], [x1, y0, z0], [x0, y0, z0]);
+  };
+  const write = (name, P, cols) => {
+    const g = new Glb(), mi = {};
+    for (const [k, [rgb, rough, metal, em]] of Object.entries(cols)) { mi[k] = g.material(k, rough, metal ?? 0, em ?? null); g.materials[mi[k]].pbrMetallicRoughness.baseColorFactor = [...rgb, 1]; g.materials[mi[k]].doubleSided = true; }
+    g.sceneNodes.push(g.node({ name, mesh: g.mesh(name, P.prims(mi)) }));
+    g.write(join(OUT, name + '.glb'));
+    console.log(name, P.tris(), 'tris');
+  };
+  const LEG = -40; // every leg's foot: under any bed the sets are placed over (placed only where the bed is above -36)
+  const timber = [0.36, 0.26, 0.17], dark = [0.2, 0.15, 0.1];
+  { // an overwater hut: a deck on stilts, timber walls with a door and windows, a steep thatched hip roof; forward +z faces the course
+    const P = new Plain(), D = 2.2;
+    for (const x of [-3.2, 0, 3.2]) for (const z of [-3.2, 0, 3.2]) P.tube('post', [[x, LEG, z], [x, D, z]], 0.17, 7);
+    box(P, 'deck', -4.2, 4.2, D, D + 0.25, -4.2, 5.6); // a veranda in front
+    for (const x of [-4.1, 4.1]) { P.tube('post', [[x, D + 0.25, 5.5], [x, D + 1.2, 5.5]], 0.06, 5); }
+    P.tube('post', [[-4.1, D + 1.2, 5.5], [4.1, D + 1.2, 5.5]], 0.05, 5);
+    box(P, 'wall', -3.3, 3.3, D + 0.25, D + 2.9, -3.3, -3.12); box(P, 'wall', -3.3, -3.12, D + 0.25, D + 2.9, -3.3, 3.3); box(P, 'wall', 3.12, 3.3, D + 0.25, D + 2.9, -3.3, 3.3);
+    box(P, 'wall', -3.3, -0.6, D + 0.25, D + 2.9, 3.12, 3.3); box(P, 'wall', 0.6, 3.3, D + 0.25, D + 2.9, 3.12, 3.3); box(P, 'wall', -0.6, 0.6, D + 2.2, D + 2.9, 3.12, 3.3);
+    box(P, 'shade', -0.6, 0.6, D + 0.25, D + 2.2, 3.05, 3.12); // the doorway's dark
+    for (const x of [-2.1, 2.1]) box(P, 'shade', x - 0.55, x + 0.55, D + 1.3, D + 2.2, 3.3, 3.34);
+    const R0 = D + 2.9, eave = 4.3, peak = R0 + 3.4; // the thatch: four faces up to a short ridge, thick at the eaves
+    P.grid('thatch', [[[-eave, R0 - 0.3, -eave], [eave, R0 - 0.3, -eave]], [[-0.8, peak, -0.2], [0.8, peak, -0.2]]], { flip: true });
+    P.grid('thatch', [[[eave, R0 - 0.3, eave], [-eave, R0 - 0.3, eave]], [[0.8, peak, 0.2], [-0.8, peak, 0.2]]], { flip: true });
+    P.grid('thatch', [[[-eave, R0 - 0.3, eave], [-eave, R0 - 0.3, -eave]], [[-0.8, peak, 0.2], [-0.8, peak, -0.2]]], { flip: true });
+    P.grid('thatch', [[[eave, R0 - 0.3, -eave], [eave, R0 - 0.3, eave]], [[0.8, peak, -0.2], [0.8, peak, 0.2]]], { flip: true });
+    write('hut', P, { post: [dark, 0.85], deck: [timber, 0.85], wall: [[0.62, 0.5, 0.36], 0.9], shade: [[0.06, 0.05, 0.04], 0.95], thatch: [[0.58, 0.47, 0.27], 0.95] });
+  }
+  { // a jetty: a boardwalk 3 m wide and 24 m long along +z on piles, a rail of posts, a lamp at its end
+    const P = new Plain(), D = 1.6, L = 12;
+    box(P, 'deck', -1.5, 1.5, D, D + 0.22, -L, L);
+    for (let z = -L + 1; z <= L - 1; z += 4) for (const x of [-1.3, 1.3]) { P.tube('post', [[x, LEG, z], [x, D, z]], 0.16, 7); P.tube('post', [[x, D + 0.22, z], [x, D + 1.1, z]], 0.07, 5); }
+    for (const x of [-1.3, 1.3]) P.tube('post', [[x, D + 1.1, -L + 1], [x, D + 1.1, L - 1]], 0.05, 5);
+    P.tube('post', [[1.3, D + 1.1, L - 1], [1.3, D + 3.4, L - 1]], 0.07, 6);
+    P.tube('lamp', [[1.3, D + 3.4, L - 1], [1.3, D + 3.75, L - 1]], 0.2, 8);
+    write('jetty', P, { post: [dark, 0.85], deck: [timber, 0.85], lamp: [[1.0, 0.75, 0.4], 0.5, 0, [1.6, 1.1, 0.5]] });
+  }
+  { // a fjord boathouse: a red board shed on stilts with a white-trimmed gable, its doors to the water facing +z
+    const P = new Plain(), D = 1.8, W = 4, L = 6, E = 3.0, R = 5.4;
+    for (const x of [-W, 0, W]) for (const z of [-L, 0, L]) P.tube('post', [[x, LEG, z], [x, D, z]], 0.2, 7);
+    box(P, 'deck', -W - 0.3, W + 0.3, D, D + 0.25, -L - 0.3, L + 0.3);
+    box(P, 'wall', -W, -W + 0.18, D + 0.25, D + E, -L, L); box(P, 'wall', W - 0.18, W, D + 0.25, D + E, -L, L); box(P, 'wall', -W, W, D + 0.25, D + E, -L, -L + 0.18);
+    box(P, 'wall', -W, -1.6, D + 0.25, D + E, L - 0.18, L); box(P, 'wall', 1.6, W, D + 0.25, D + E, L - 0.18, L);
+    box(P, 'shade', -1.6, 1.6, D + 0.25, D + E - 0.2, L - 0.3, L - 0.18);
+    for (const z of [-L, L]) P.grid('wall', z > 0 ? [[[-W, D + E, z], [W, D + E, z]], [[0, D + R, z], [0, D + R, z]]] : [[[W, D + E, z], [-W, D + E, z]], [[0, D + R, z], [0, D + R, z]]], { flip: false });
+    P.grid('roof', [[[-W - 0.5, D + E - 0.35, -L - 0.5], [-W - 0.5, D + E - 0.35, L + 0.5]], [[0, D + R + 0.2, -L - 0.5], [0, D + R + 0.2, L + 0.5]]], { flip: true });
+    P.grid('roof', [[[W + 0.5, D + E - 0.35, L + 0.5], [W + 0.5, D + E - 0.35, -L - 0.5]], [[0, D + R + 0.2, L + 0.5], [0, D + R + 0.2, -L - 0.5]]], { flip: true });
+    for (const s of [-1, 1]) P.tube('trim', [[s * (W + 0.5), D + E - 0.3, L + 0.55], [0, D + R + 0.25, L + 0.55]], 0.09, 5);
+    write('boathouse', P, { post: [dark, 0.85], deck: [timber, 0.85], wall: [[0.55, 0.1, 0.07], 0.85], shade: [[0.05, 0.04, 0.04], 0.95], roof: [[0.16, 0.17, 0.18], 0.8], trim: [[0.88, 0.87, 0.82], 0.7] });
+  }
+  { // a fish drying rack: an A-frame of poles 10 m long on a low trestle in the shallows, rows of fish hung on it
+    const P = new Plain(), D = 1.2, L = 5, H = 4.2;
+    for (const z of [-L, -L / 3, L / 3, L]) { P.tube('pole', [[-1.6, LEG, z], [-1.6, D, z]], 0.13, 6); P.tube('pole', [[1.6, LEG, z], [1.6, D, z]], 0.13, 6); P.tube('pole', [[-1.6, D, z], [0, D + H, z]], 0.09, 6); P.tube('pole', [[1.6, D, z], [0, D + H, z]], 0.09, 6); P.tube('pole', [[-1.6, D, z], [1.6, D, z]], 0.08, 6); }
+    P.tube('pole', [[0, D + H, -L], [0, D + H, L]], 0.08, 6);
+    for (const y of [D + 1.4, D + 2.6]) for (const s of [-1, 1]) {
+      const x = s * 1.6 * (1 - (y - D) / H);
+      P.tube('pole', [[x, y, -L], [x, y, L]], 0.05, 5);
+      for (let z = -L + 0.4; z <= L - 0.4; z += 0.5) P.tube('fish', [[x, y - 0.05, z], [x, y - 0.75, z]], (t) => 0.07 * Math.sin(Math.PI * Math.min(1, t * 1.2)) + 0.01, 5);
+    }
+    write('rack', P, { pole: [[0.33, 0.29, 0.24], 0.9], fish: [[0.5, 0.45, 0.36], 0.9] });
+  }
+  { // a canyon trestle's bent: a timber tower of four legs, braced, from under the river to the bridge deck 16 m up, a cap beam
+    const P = new Plain(), TOP = 16;
+    for (const x of [-3.4, 3.4]) for (const z of [-1.2, 1.2]) P.tube('beam', [[x * 1.25, LEG, z], [x, TOP, z]], 0.24, 6);
+    for (let y = 1; y + 3.5 <= TOP; y += 3.5) for (const z of [-1.2, 1.2]) { P.tube('beam', [[-3.4 * 1.25 + y * 0.004, y, z], [3.4 * 1.25 - y * 0.004, y + 3.5, z]], 0.1, 5); P.tube('beam', [[3.4 * 1.25, y, z], [-3.4 * 1.25, y + 3.5, z]], 0.1, 5); }
+    box(P, 'beam', -4.4, 4.4, TOP, TOP + 0.5, -1.6, 1.6);
+    write('bent', P, { beam: [[0.3, 0.22, 0.15], 0.9] });
+  }
+  { // the trestle's span: a timber deck with rails and its stringers, 60 m between two bents (along +z), at 16.5 m
+    const P = new Plain(), Y = 16.5, L = 30;
+    box(P, 'deck', -3.2, 3.2, Y, Y + 0.35, -L, L);
+    for (const x of [-2.4, 0, 2.4]) box(P, 'beam', x - 0.25, x + 0.25, Y - 1.2, Y, -L, L);
+    for (let z = -L; z <= L; z += 2.5) for (const x of [-3, 3]) P.tube('beam', [[x, Y + 0.35, z], [x, Y + 1.3, z]], 0.08, 5);
+    for (const x of [-3, 3]) box(P, 'beam', x - 0.07, x + 0.07, Y + 1.2, Y + 1.36, -L, L);
+    for (const x of [-0.75, 0.75]) box(P, 'rail', x - 0.06, x + 0.06, Y + 0.35, Y + 0.5, -L, L);
+    write('span', P, { deck: [[0.34, 0.26, 0.18], 0.9], beam: [[0.3, 0.22, 0.15], 0.9], rail: [[0.3, 0.3, 0.3], 0.5, 0.6] });
+  }
+}

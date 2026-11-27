@@ -103,6 +103,31 @@ return {
     ['rock2', 'rocks', 0.03, 0.7, 3.2, 700, 81, true, 0.35],
   ],
   // the CC0 scans graded into this place's palette: layer, scan, rgb, the texture's scale
+  placed_models: ['hut','jetty'],
+  // what stands in the water beside the line: each thing tried along a stretch until its whole footprint is over a bed
+  // 1.5 to 34 m down (its legs run to 40 m), turned to face the course; solid, so the craft go round it
+  placed({ ground, pointAt, LEN }) {
+    const out = [];
+    // (the ramps' places: kept 80 m clear, so the ramps the course always had stay where they were, with room to land)
+    const RAMPS_AT = [[63.65,165.30],[195.93,76.54],[439.96,7.87],[452.44,28.55],[643.83,-96.42],[659.93,-350.69],[422.78,-420.89],[254.33,-415.87],[66.57,-260.52],[-223.00,-103.00],[-138.91,129.52]];
+    // (and no nearer any other stretch of the course than to its own: a bend must not bring the line past it)
+    const LINE = []; for (let s = 0; s < LEN; s += 4) LINE.push(pointAt(s));
+    const clearOfLine = (x, z) => Math.min(...LINE.map((p) => Math.hypot(p.x - x, p.z - z)));
+    const fits = (x, z, r) => { for (let k = 0; k <= 8; k++) { const a = k * Math.PI / 4, q = k < 8 ? r : 0, g = ground(x + Math.cos(a) * q, z + Math.sin(a) * q); if (g > -1.5 || g < -34) return false; } return true; };
+    const put = (model, s0, span, side, off, r, solid, face) => {
+      for (let t = 0; t < 40; t++) {
+        const s = ((s0 + (t % 2 ? 1 : -1) * Math.ceil(t / 2) * span / 20) % LEN + LEN) % LEN, p = pointAt(s);
+        const x = p.x - p.dz * side * off, z = p.z + p.dx * side * off;
+        if (!fits(x, z, r) || clearOfLine(x, z) < off - 2 || RAMPS_AT.some(([a, b]) => Math.hypot(a - x, b - z) < 80) || out.some((q) => Math.hypot(q.x - x, q.z - z) < r + 12)) continue;
+        out.push({ model, x, z, yaw: face ? Math.atan2(side * p.dz, -side * p.dx) : Math.atan2(p.dx, p.dz), scale: 1, solid, floats: true });
+        return;
+      }
+    };
+    // overwater huts along the lagoon, their verandas to the course, and a jetty by the line home
+    for (let k = 0; k < 6; k++) put('hut', LEN * (0.08 + k * 0.15), LEN * 0.06, k % 2 ? 1 : -1, 34, 6, [5, 5], true);
+    put('jetty', LEN * 0.95, LEN * 0.04, 1, 24, 13, [12.5, 2], false);
+    return out;
+  },
   grades: [
     ['sand', 'sand', [1.28, 1.2, 1.02], 0.16],
     ['coast', 'coast', [0.72, 0.66, 0.56], 0.22],

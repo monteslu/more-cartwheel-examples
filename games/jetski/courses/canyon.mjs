@@ -59,6 +59,27 @@ return {
     ['boulder1', 'boulders', 0.07, 0.5, 2.0, 700, 281, true, 0.25],
     ['boulder2', 'boulders', 0.055, 0.7, 3.4, 700, 282, true, 0.25],
   ],
+  placed_models: ['bent','span'],
+  // what stands in the water beside the line: each thing tried along a stretch until its whole footprint is over a bed
+  // 1.5 to 34 m down (its legs run to 40 m), turned to face the course; solid, so the craft go round it
+  placed({ ground, pointAt, LEN }) {
+    const out = [];
+    const fits = (x, z, r) => { for (let k = 0; k <= 8; k++) { const a = k * Math.PI / 4, q = k < 8 ? r : 0, g = ground(x + Math.cos(a) * q, z + Math.sin(a) * q); if (g > -1.5 || g < -34) return false; } return true; };
+    const put = (model, s0, span, side, off, r, solid, turn = 0) => {
+      for (let t = 0; t < 40; t++) {
+        const s = ((s0 + (t % 2 ? 1 : -1) * Math.ceil(t / 2) * span / 20) % LEN + LEN) % LEN, p = pointAt(s);
+        const x = p.x - p.dz * side * off, z = p.z + p.dx * side * off;
+        if (!fits(x, z, r) || out.some((q) => Math.hypot(q.x - x, q.z - z) < r + 12)) continue;
+        out.push({ model, x, z, yaw: Math.atan2(-side * p.dz, side * p.dx) * 0 + Math.atan2(p.dx, p.dz) + turn, scale: 1, solid, floats: true });
+        return;
+      }
+    };
+    // an old timber trestle across the river, high over the line, where no ramp sends a rider up under it: a bent on each side, the span between them
+    { const p = pointAt(LEN * 0.17), yaw = Math.atan2(p.dx, p.dz) + Math.PI / 2;
+      for (const side of [-1, 1]) out.push({ model: 'bent', x: p.x - p.dz * side * 30, z: p.z + p.dx * side * 30, yaw, scale: 1, solid: [2, 5], floats: true });
+      out.push({ model: 'span', x: p.x, z: p.z, yaw, scale: 1, solid: null, floats: true }); }
+    return out;
+  },
   grades: [
     ['riversand', 'sand', [1.3, 1.05, 0.78], 0.15],
     ['silt', 'coast', [0.62, 0.46, 0.33], 0.2],

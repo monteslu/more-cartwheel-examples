@@ -308,9 +308,17 @@ static const float sound_ramps[][6] = { /* x, z, yaw, s, how far off the racing 
 {-727.82f,-128.06f,-0.4801f,2868.9f,0.0f,0.0f},
 {-671.73f,113.29f,0.8070f,3156.0f,20.0f,0.0f}
 };
-static const char *const sound_models[] = { NULL };
+static const char *const sound_models[] = { "res://models/boathouse.glb", "res://models/rack.glb" };
 static const float sound_placed[][8] = { /* model, x, z, yaw, scale, solid half length, half width, floats */
-{0,0,0,0,0,0,0,0}
+{0,-312.35f,375.51f,2.9649f,1.000f,7,4.5,1},
+{0,215.58f,147.08f,0.0739f,1.000f,7,4.5,1},
+{0,526.35f,-181.79f,-0.8127f,1.000f,7,4.5,1},
+{0,-38.39f,-240.52f,2.7241f,1.000f,7,4.5,1},
+{0,-471.17f,-374.63f,0.2625f,1.000f,7,4.5,1},
+{1,-27.00f,267.15f,1.8669f,1.000f,5.5,2,1},
+{1,558.58f,145.58f,2.4438f,1.000f,5.5,2,1},
+{1,230.62f,-116.05f,-1.3358f,1.000f,5.5,2,1},
+{1,-341.54f,-393.76f,-1.5351f,1.000f,5.5,2,1}
 };
 static const course_scatter sound_scatter[] = {
 { "res://models/pine.glb", "res://models/pine_far.glb", "course/sound/pines.u8", 0.03f, 0.7f, 1.5f, 800.0f, 177, false, 0.1f },
@@ -348,7 +356,7 @@ static const char *const sound_props[][3] = {
 static const course_def sound_course = {
   .id = "sound", .name = "Cold Sound", .quads = 896, .spacing = 2.0f, .minh = -48.0f, .maxh = 170.0f, .len = 3268.00f,
   .track_n = 256, .track = sound_track, .buoy_n = 35, .buoys = sound_buoys, .ramp_n = 12, .ramps = sound_ramps, .ramp_top = 6.5f,
-  .scatter_n = 4, .scatter = sound_scatter, .model_n = 0, .models = sound_models, .placed_n = 0, .placed = sound_placed, .prop_n = 25, .props = sound_props,
+  .scatter_n = 4, .scatter = sound_scatter, .model_n = 2, .models = sound_models, .placed_n = 9, .placed = sound_placed, .prop_n = 25, .props = sound_props,
   .layer_n = 6, .layer = { "course/sound/shingle", "course/sound/tiderock", "course/sound/granite", "course/sound/moss", "course/sound/darkgranite", "course/sound/wetgranite" }, .layer_uv = { 0.2f, 0.1f, 0.035f, 0.09f, 0.022f, 0.03f },
   .heights = "course/sound/heights.r16", .control = "course/sound/control.u32", .mask = "course/sound/wavemask.f32", .mask_n = 256, .map_n = 448, .sky = "res://textures/sky-sound.png",
   .landmark = NULL, .landmark_at = { 0.00f, -100.40f, 0.00f },

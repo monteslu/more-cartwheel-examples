@@ -312,9 +312,11 @@ static const float canyon_ramps[][6] = { /* x, z, yaw, s, how far off the racing
 {-465.86f,-270.84f,2.3194f,3586.9f,-2.0f,0.0f},
 {-466.32f,-294.94f,2.3156f,3602.9f,16.0f,0.0f}
 };
-static const char *const canyon_models[] = { NULL };
+static const char *const canyon_models[] = { "res://models/bent.glb", "res://models/span.glb" };
 static const float canyon_placed[][8] = { /* model, x, z, yaw, scale, solid half length, half width, floats */
-{0,0,0,0,0,0,0,0}
+{0,75.02f,-333.62f,3.2337f,1.000f,2,5,1},
+{0,80.54f,-273.88f,3.2337f,1.000f,2,5,1},
+{1,77.78f,-303.75f,3.2337f,1.000f,0,0,1}
 };
 static const course_scatter canyon_scatter[] = {
 { "res://models/cactus.glb", NULL, "course/canyon/cactus.u8", 0.065f, 0.7f, 1.4f, 650.0f, 277, false, 0.08f },
@@ -354,7 +356,7 @@ static const char *const canyon_props[][3] = {
 static const course_def canyon_course = {
   .id = "canyon", .name = "Red Reach", .quads = 896, .spacing = 2.0f, .minh = -48.0f, .maxh = 170.0f, .len = 3578.19f,
   .track_n = 256, .track = canyon_track, .buoy_n = 42, .buoys = canyon_buoys, .ramp_n = 9, .ramps = canyon_ramps, .ramp_top = 5.0f,
-  .scatter_n = 6, .scatter = canyon_scatter, .model_n = 0, .models = canyon_models, .placed_n = 0, .placed = canyon_placed, .prop_n = 25, .props = canyon_props,
+  .scatter_n = 6, .scatter = canyon_scatter, .model_n = 2, .models = canyon_models, .placed_n = 3, .placed = canyon_placed, .prop_n = 25, .props = canyon_props,
   .layer_n = 6, .layer = { "course/canyon/riversand", "course/canyon/silt", "course/canyon/sandstone", "course/canyon/capstone", "course/canyon/deepred", "course/canyon/varnish" }, .layer_uv = { 0.15f, 0.2f, 0.055f, 0.07f, 0.06f, 0.07f },
   .heights = "course/canyon/heights.r16", .control = "course/canyon/control.u32", .mask = "course/canyon/wavemask.f32", .mask_n = 256, .map_n = 448, .sky = "res://textures/sky-canyon.png",
   .landmark = NULL, .landmark_at = { 0.00f, -100.40f, 0.00f },

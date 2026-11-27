@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.47.0
+
+- jetski: every course has its own set built up to the line. Crater Atoll: thatched overwater huts on stilts along the
+  lagoon, their verandas to the course, and a timber jetty by the line home. Cold Sound: red boathouses on stilts with
+  their doors to the water, and fish drying racks in the shallows. Red Reach: an old timber trestle across the river,
+  16 m over the line where no ramp sends a rider up under it. Iron Quay and Gale Bank keep their port and open-sea sets.
+  Everything stands on legs into the bed and is solid; the ramps and marks are where they were. Tests: jetski-placed
+  checks each legged set reaches the bed (control: lifted 45 m) and the trestle's span rests on its bents' caps.
+
 ## 0.46.0
 
 - jetski: jumps that read from far down the course. Every ramp carries two masts on its side girders at the lip,
