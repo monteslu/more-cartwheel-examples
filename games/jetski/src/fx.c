@@ -11,6 +11,12 @@
 
 static cw_node rain_n, spume, spume_fine;
 static cw_node tail[RACERS], mist[RACERS], side_spray, bursts, burst_mist, sheet[2], sheet_fine[2];
+/* the white water along a hull's waterline: a thin strip of soft foam that hugs the hull where it meets the water, broad
+ * and bright at speed (the contact hidden under aerated water), a narrow lace at a crawl. The players' craft (seats 0 and 1).
+ * sw skirt 0: none (the waterline gate's control) */
+static cw_node skirt[2];
+int g_skirt = 1;
+int32_t g_skirt_alive; /* the human's skirt particles alive now (debug fx.skirt_alive) */
 
 static cw_node emitter(cw_node parent, const char *name, int amount, float life, float size, const char *ramp, const char *curve, int seed, bool stretched) {
   cw_node n = cw_node_new("GPUParticles3D", name);
@@ -87,6 +93,20 @@ void fx_init(cw_node parent) {
   cw_node_set(spume_fine, "emission_extents", cw_val_vec3(26, 0.5f, 26));
   cw_node_set(spume_fine, "spread", cw_val_float(10));
   cw_node_set(spume_fine, "camera_fade", cw_val_float(4));
+  for (int s = 0; s < 2; s++) {
+    skirt[s] = emitter(parent, s ? "SkirtB" : "SkirtA", 150, 0.5f, 0.2f, "0 1 1 1 0, 0.12 1 1 1 0.44, 0.55 0.97 0.99 1 0.26, 1 0.95 0.98 1 0", "0 0.45, 0.25 1, 1 1.35", 660 + s, false);
+    cw_node_set(skirt[s], "texture", cw_val_string("effects/mist.png"));
+    cw_node_set(skirt[s], "local_coords", cw_val_bool(true));
+    cw_node_set(skirt[s], "emission_shape", cw_val_enum("BOX"));
+    cw_node_set(skirt[s], "emission_extents", cw_val_vec3(0.56f, 0.02f, 1.3f));
+    cw_node_set(skirt[s], "soft_distance", cw_val_float(0.12f));
+    cw_node_set(skirt[s], "camera_fade", cw_val_float(1.5f));
+    cw_node_set(skirt[s], "gravity", cw_val_vec3(0, -0.4f, 0));
+    cw_node_set(skirt[s], "direction", cw_val_vec3(0, 1, 0));
+    cw_node_set(skirt[s], "spread", cw_val_float(80));
+    cw_node_set(skirt[s], "speed_min", cw_val_float(0.05f));
+    cw_node_set(skirt[s], "speed_max", cw_val_float(0.3f));
+  }
   side_spray = emitter(parent, "Carve", 1000, 0.7f, 0.012f, "0 1 1 1 0.9, 0.6 0.95 0.97 1 0.6, 1 0.9 0.95 1 0", NULL, 300, true);
   cw_node_set(side_spray, "energy", cw_val_float(1.6f));
   cw_node_set(side_spray, "spread", cw_val_float(24));
@@ -274,6 +294,16 @@ void fx_tick(float dt) {
     cw_node_set(mist[i], "direction", cw_val_vec3(c->vx * 0.05f, 0.6f, c->vz * 0.05f));
     cw_node_set(mist[i], "speed_min", cw_val_float(0.5f + 2 * k));
     cw_node_set(mist[i], "speed_max", cw_val_float(1 + 4 * k));
+    if (i < 2) {
+      /* the skirt rides with the hull at the water (local: it moves with the craft, not left behind as a wake), wider and
+       * brighter with speed: a lace 15 cm out at a crawl, a white band of about 0.6 m on the plane */
+      bool own = i == 0 || PLAYERS == 2;
+      cw_node3d_set_position(skirt[i], (t3_vec3){ c->x - sy * 0.1f, c->surf + 0.01f, c->z - cy * 0.1f });
+      cw_node3d_set_rotation(skirt[i], (t3_vec3){ 0, c->yaw, 0 });
+      cw_node_set(skirt[i], "emitting", cw_val_bool(g_skirt && own && wet && v > 0.8f && c->spill <= 0));
+      cw_node_set(skirt[i], "size", cw_val_float(0.16f + 0.42f * fminf(k, 1.2f)));
+      if (i == 0) { cw_value al; g_skirt_alive = cw_node_get_prop(skirt[0], "alive", &al) ? (int32_t)al.i : -1; }
+    }
     if (i == 0) {
       /* both flanks, all the time at speed: the outside one higher in a turn */
       for (int fl = 0; fl < 2; fl++) {
@@ -367,4 +397,8 @@ void fx_tick(float dt) {
       }
     } }
   waterline_foam();
+}
+/* held still (sw freeze 1): the skirts follow their switch, so a picture pair differs by them */
+void fx_frozen(void) {
+  for (int s = 0; s < 2; s++) if (!g_skirt) cw_node_set(skirt[s], "emitting", cw_val_bool(false));
 }

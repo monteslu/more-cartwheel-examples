@@ -7,7 +7,9 @@
 // On a lane with a timing scale the reference-GPU numbers are printed beside the raw ones. Control: a podium
 // 2 ms past the race's budget must fail (the arithmetic, as jetski-weather-perf does); the split run must have
 // drawn two views and the one-player run one (view.views, read in the runs).
-//   node tests/jetski-feature-perf.mjs --case podium|split [--gl] [--webgpu] [--courses 0,3]
+//   waterline the waterline part and the players' foam skirts against the race without them (sw wl_part 0, sw skirt 0): under
+//           0.6 ms on the reference GPU; two views with them under 16.7 ms; control: a cost 2 ms higher must fail
+//   node tests/jetski-feature-perf.mjs --case podium|split|waterline [--gl] [--webgpu] [--courses 0,3]
 import { join } from 'node:path';
 import { ROOT, BACKENDS, arg } from './lib/jetski-romdev.mjs';
 import { romdevTiming, timingScale } from '../deps/cartwheel-engine/tools/lib/romdev-timing.mjs';
@@ -43,6 +45,15 @@ for (const gpu of BACKENDS) for (const c of COURSES) {
     /* control: the bound itself, a podium 2 ms over the race's budget must fail it */
     const ctl = Math.max(race * 1.1, race + 0.6) + 2;
     check(`${gpu} course ${c}: control, a podium 2 ms past the budget must fail`, over(race, ctl), `${f2(ctl)} against ${f2(race)}`);
+  } else if (CASE === 'waterline') {
+    /* where the water meets the racers (the waterline part on every craft and rider, the players' foam skirts): the race
+     * with them against the race without them, under 0.6 ms on the reference GPU; then two views with them under 16.7 ms */
+    const bare = await time(gpu, [`course ${c}`, 'mode 0', 'sw players 1', 'sw wl_part 0', 'sw skirt 0', 'race', 'sw autosteer 1', 'no_dq 1', 'wxsw event 0', 'go 900']);
+    const cost = ref(gpu, race) - ref(gpu, bare);
+    check(`${gpu} course ${c}: the waterline and skirt cost under 0.6 ms`, cost < 0.6, `with ${f2(race)} ms, without ${f2(bare)} ms (reference GPU: ${f2(ref(gpu, race))}, ${f2(ref(gpu, bare))}: ${f2(cost)} ms)`);
+    check(`${gpu} course ${c}: control, a cost 2 ms higher must fail`, !(cost + 2 < 0.6), `${f2(cost + 2)} ms`);
+    const two = await time(gpu, [`course ${c}`, 'mode 0', 'sw players 2', 'race', 'sw autosteer 1', 'no_dq 1', 'wxsw event 0', 'go 900']);
+    check(`${gpu} course ${c}: two views with them at 60 frames a second on the reference GPU`, ref(gpu, two) < 16.7 && lastViews === 2, `${f2(two)} ms raw, ${f2(ref(gpu, two))} ms reference, ${lastViews} views`);
   } else if (CASE === 'split') {
     const oneViews = lastViews;
     const two = await time(gpu, [`course ${c}`, 'mode 0', 'sw players 2', 'race', 'sw autosteer 1', 'no_dq 1', 'wxsw event 0', 'go 900']);

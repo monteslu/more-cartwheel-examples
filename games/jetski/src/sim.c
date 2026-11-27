@@ -23,7 +23,7 @@
  * turn faster, and it sits low and wobbles until it is up on the plane */
 const hull_def HULLS[2] = {
   { .base_top = 21.5f, .meter_top = 1.55f, .thrust = 11.0f, .steer_k = 9.0f, .turn0 = 1.45f, .turn_v = 0.03f, .turn_lean = 0.85f, .roll0 = 0.2f, .roll_v = 0.009f,
-    .grip = 1.0f, .slide_v = 8.5f, .slide_t = 0.9f, .spill_err = 2.1f, .trick_t = 0.72f, .plane_v = 8.0f, .sink_rest = 0.16f },
+    .grip = 1.0f, .slide_v = 8.5f, .slide_t = 0.9f, .spill_err = 2.1f, .trick_t = 0.72f, .plane_v = 8.0f, .sink_rest = 0.175f },
   { .base_top = 18.8f, .meter_top = 1.4f, .thrust = 12.5f, .steer_k = 11.0f, .turn0 = 1.6f, .turn_v = 0.03f, .turn_lean = 1.5f, .roll0 = 0.3f, .roll_v = 0.013f,
     .grip = 1.5f, .slide_v = 7.2f, .slide_t = 0.55f, .spill_err = 1.7f, .trick_t = 0.58f, .plane_v = 11.5f, .sink_rest = 0.1f },
 };
@@ -48,6 +48,16 @@ int g_rev_bog = 1;
 /* the human's weave: times the yaw rate changed sign at over 0.08 rad/s (a sway, not noise), and the fastest it turned */
 int32_t g_yaw_flips;
 int g_deep = 1;
+/* The sit-down floats on its own model. Its waterline is y = 0 in craft.glb (keel -0.2, chines -0.09, footwells +0.13), but the
+ * spring settles the craft origin 0.21 m under the surface plus the off-plane sink (the stand-up's frame, whose keel sits
+ * at +0.16): the footwells ran 10 cm under the water at full speed and the rider's boots in it at rest. The spring now
+ * floats the sit-down SIT_LIFT higher: on the plane the water runs along its chines, at rest it sits 6 cm over its waterline
+ * mark. Ramps and sand already rest its keel on them (c->y = surface + 0.22). sw sit_lift 0: the old float (the draft
+ * gate's control) */
+#define SIT_LIFT 0.31f
+int g_sit_lift = 1;
+float g_keel[1]; /* the human's water height over its craft's origin (in the model's frame: 0 is the sit-down's waterline mark), eased like g_draft (the draft gate) */
+static float sit_lift(void) { return g_craft != CRAFT_STAND && g_sit_lift ? SIT_LIFT : 0.0f; }
 /* the grid: racer i starts in slot g_grid[i] (0 the front). A championship's next race lines up by the last one's finish
  * (menu.c); any other race by seat. sw grid_order 0: always by seat, the gate's control */
 int32_t g_grid[RACERS] = { 0, 1, 2, 3, 4, 5 };
@@ -306,7 +316,7 @@ static void computer(craft *c, int idx) {
   /* leaning back carves, in the air too, but it lifts the nose: in the air only while the nose is low, and for the last of a long jump ease it back down (not so far
    * as a dive), or it comes down tail first */
   c->in.lean = fabsf(err) > 0.55f && !(c->air && c->pitch > 0.45f) ? 1.0f : 0.0f;
-  if (c->air && c->air_time > 0.6f && c->vy < 0 && c->y - c->surf < -c->vy * 0.8f) c->in.lean = c->pitch > 0.35f ? -0.29f : 0.0f;
+  if (c->air && c->air_time > 0.6f && c->vy < 0 && c->y - sit_lift() - c->surf < -c->vy * 0.8f) c->in.lean = c->pitch > 0.35f ? -0.29f : 0.0f;
   c->in.throttle = 1;
   c->in.trick = false;
 }
@@ -545,7 +555,8 @@ static void craft_tick(craft *c, int idx, float dt) {
   float hq = cw_water_height_at(G.water, c->x + rx * 0.55f, c->z + rz * 0.55f, G.wt);
   float hm = (s.height * 2 + hb + hs + hp + hq) / 6;
   c->surf = s.height;
-  float under = hm - c->y;
+  const float lift = sit_lift();
+  float under = hm - c->y + lift; /* (the depth of the point the spring floats: the origin, less the lift) */
   bool was_air = c->air;
   c->wet = clampf((under + 0.08f) / 0.26f, 0, 1);
   /* on the sand the hull is not in the air: it rests on the ground, and the rider can still drive it off */
@@ -695,7 +706,7 @@ static void craft_tick(craft *c, int idx, float dt) {
     else if (!c->trick_kind) c->pr += ((0.1f - c->pitch) * 2.2f - c->pr * 1.8f + c->in.lean * 2.6f) * dt;
     c->rr += (-c->roll * 2.4f + c->steer * 1.5f - c->rr * 1.6f) * dt;
     /* nearly down, nothing asked: the hull settles to the slope it is about to meet, as a rider would let it. The sea's slope is not your mistake */
-    if (g_fair && !c->trick_kind && fabsf(c->in.lean) < 0.3f && c->vy < 0 && c->y - hs < -c->vy * 0.3f + 0.3f && fabsf(wrap_pi(pitch_t - c->pitch)) < 0.6f) {
+    if (g_fair && !c->trick_kind && fabsf(c->in.lean) < 0.3f && c->vy < 0 && c->y - sit_lift() - hs < -c->vy * 0.3f + 0.3f && fabsf(wrap_pi(pitch_t - c->pitch)) < 0.6f) {
       c->pr += ((pitch_t - c->pitch) * 40.0f - c->pr * 8.0f) * dt;
       c->rr += ((roll_t - c->roll) * 30.0f - c->rr * 8.0f) * dt;
     }
@@ -716,7 +727,7 @@ static void craft_tick(craft *c, int idx, float dt) {
      * this climb. A press on a hop too short for it is a hand off the bar instead, a small style move that pays a little and
      * never throws the rider */
     if (c->trick_kind == 0 && c->in.trick && !c->trick_held && c->air_time > 0.08f) {
-      float below = fmaxf(c->surf, ground_at(c->x, c->z)), h = c->y - below, left = (c->vy + sqrtf(fmaxf(c->vy * c->vy + 2 * G_ACC * fmaxf(h, 0), 0))) / G_ACC;
+      float below = fmaxf(c->surf, ground_at(c->x, c->z)), h = c->y - sit_lift() - below, left = (c->vy + sqrtf(fmaxf(c->vy * c->vy + 2 * G_ACC * fmaxf(h, 0), 0))) / G_ACC;
       if (!g_trick_guard || left >= trick_t + 0.06f) {
         /* the stick picks: back for a back flip, forward for a front flip (a flat spin on a stand-up), else a barrel roll */
         c->trick_kind = c->in.lean > 0.4f ? 2 : c->in.lean < -0.4f ? (stand ? 4 : 3) : 1;
@@ -760,17 +771,17 @@ static void craft_tick(craft *c, int idx, float dt) {
   c->x += c->vx * dt, c->y += c->vy * dt, c->z += c->vz * dt;
   /* a hull floats: climbing a big face at speed the spring alone lets it lag under the surface, and it vanishes from under its
    * rider. It stays on top, rising at the water's rate */
-  if (g_ride_top && hm - c->y > MAX_SINK + sink && !land) {
-    if (c->dive_t <= 0) c->y = hm - MAX_SINK - sink;
+  if (g_ride_top && hm - c->y + lift > MAX_SINK + sink && !land) {
+    if (c->dive_t <= 0) c->y = hm - MAX_SINK - sink + lift;
     if (c->vy < s.velocity.y) c->vy = s.velocity.y;
   }
-  if (hm - c->y > c->sink_max) c->sink_max = hm - c->y;
-  if (c->human && !c->air) g_draft += ((hm - c->y) - g_draft) * clampf(dt * 2.0f, 0, 1);
+  if (hm - c->y + lift > c->sink_max) c->sink_max = hm - c->y + lift;
+  if (c->human && !c->air) g_draft += ((hm - c->y + lift) - g_draft) * clampf(dt * 2.0f, 0, 1), g_keel[0] += ((hm - c->y) - g_keel[0]) * clampf(dt * 2.0f, 0, 1);
   /* every seat's draft the same way, and the deepest a slow computer rider has sat (the rival gate: rated riders settle off the plane) */
-  if (!c->air) { g_drafts[idx] += ((hm - c->y) - g_drafts[idx]) * clampf(dt * 2.0f, 0, 1); if (!c->human && c->speed < 4.0f && G.state == RACE_ON && g_drafts[idx] > g_ai_draft_max) g_ai_draft_max = g_drafts[idx]; }
+  if (!c->air) { g_drafts[idx] += ((hm - c->y + lift) - g_drafts[idx]) * clampf(dt * 2.0f, 0, 1); if (!c->human && c->speed < 4.0f && G.state == RACE_ON && g_drafts[idx] > g_ai_draft_max) g_ai_draft_max = g_drafts[idx]; }
   /* the hull on the water: how far its middle stands over or under the surface on every tick it rides the water (not
    * flying, diving or beached), the worst of every racer (the grounding gate) */
-  if (!c->air && c->dive_t <= 0 && !land && c->spill <= 0 && was_air == c->air) { float d = c->y - hm; if (d > g_hull_hi) g_hull_hi = d; if (d < g_hull_lo) g_hull_lo = d; g_hull_ticks++; }
+  if (!c->air && c->dive_t <= 0 && !land && c->spill <= 0 && was_air == c->air) { float d = c->y - lift - hm; if (d > g_hull_hi) g_hull_hi = d; if (d < g_hull_lo) g_hull_lo = d; g_hull_ticks++; }
   if (c->air_time > c->air_max) c->air_max = c->air_time;
   { bool was_on = c->on_ramp;
     c->on_ramp = false;
@@ -1340,7 +1351,7 @@ fly_probe g_fly;
 void fly_probe_tick(void) {
   const craft *c = &G.c[0];
   fly_probe *f = &g_fly;
-  float h = c->y - c->surf;
+  float h = c->y - sit_lift() - c->surf;
   if (c->air && c->air_time > 0.05f && h > 1.5f && (f->tick == 0 || f->land_tick != 0)) {
     *f = (fly_probe){ .tick = (int32_t)G.tick, .flights = f->flights + 1, .low = h, .tricks0 = c->tricks, .last_pitch = c->pitch, .last_roll = c->roll };
     return;

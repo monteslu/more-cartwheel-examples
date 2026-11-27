@@ -13,6 +13,7 @@
 #include "cartwheel/resource.h"
 #include "cartwheel/rim_light.h"
 #include "cartwheel/scene_file.h"
+#include "cartwheel/waterline.h"
 #include "game.h"
 
 static cw_node craft_n[RACERS], rider_n[RACERS], buoy_n[BUOY_MAX], buoy_old_n[BUOY_MAX];
@@ -37,6 +38,7 @@ static float buoy_phase[BUOY_MAX];
 static cw_node gate_n;
 
 int g_cam_old;          /* sw cam_old 1: the old chase camera */
+float g_cam_side;       /* sw cam_side <metres>: a held side look at the hull (the waterline gate) */
 float g_cam_eye[4];     /* the chase camera: metres behind the craft, over the water, at this speed; how far back it eased for a long flight */
 int g_cam_air = 1;      /* sw cam_air 0: no easing back in a long flight */
 static const float TEAMS[RACERS][6] = {
@@ -71,15 +73,73 @@ int g_livery_old;
 static const float SUIT_BOLD[RACERS][3] = { { 0.46f, 0.05f, 0.03f }, { 0.03f, 0.15f, 0.48f }, { 0.55f, 0.4f, 0.02f }, { 0.03f, 0.34f, 0.14f }, { 0.32f, 0.04f, 0.4f }, { 0.6f, 0.22f, 0.02f } };
 static const float *suit_of(int i) { return g_livery_old ? LOOK[i].suit : SUIT_BOLD[i]; }
 static float wetness[RACERS];
+/* Where the water meets each racer (cartwheel/waterline.h): one waterline for a seat's craft and rider. Under the water's
+ * high-water mark the suit and vest darken (matte: cloth never shines), skin, paint and gelcoat take a wet gloss with
+ * beaded drops, the contact gets a thin line of sky light, and what is under the surface shows caustics through it.
+ * Spray soaks it all (the old whole-suit darkening is now the part's soak, drying over 9 s as before). sw wl_part 0: no
+ * part, the suit and vest darkened by colour as before (the waterline gate's control, from the next tick) */
+int g_wl_part = 1;
+static cw_waterline *wl[RACERS];
+static const struct wl_look { const char *name; cw_waterline_look look; } WL_LOOK[] = {
+  { "suit", { 0.5f, 0 } }, { "vest", { 0.4f, 0 } }, { "accent", { 0.4f, 0 } }, { "skin", { 0.12f, 0.4f } }, { "helmet", { 0, 0.3f } },
+  { "deck", { 0, 0.6f } }, { "hull", { 0, 0.5f } }, { "panel", { 0, 0.6f } }, { "graphic", { 0, 0.5f } }, { "hood", { 0, 0.6f } },
+  { "decal", { 0, 0.6f } }, { "dark", { 0.05f, 0.3f } }, { "trim", { 0, 0.4f } }, { "rubber", { 0.05f, 0.3f } }, { "mat", { 0.3f, 0 } },
+};
+/* a seat's models wear its waterline; a material the seats share (the hull's sides from the glTF) gets a copy of its own first */
+static void wl_wear(t3_object *o, int i) {
+  if (!o || !wl[i]) return;
+  if (o->type == T3_MESH || o->type == T3_SKINNED_MESH) {
+    t3_mesh *m = (t3_mesh *)o;
+    for (int k = 0; k < m->material_count; k++) {
+      t3_material *mat = m->materials[k];
+      if (!mat || !mat->name || (mat->type != T3_MESH_STANDARD_MATERIAL && mat->type != T3_MESH_PHYSICAL_MATERIAL)) continue;
+      const struct wl_look *lk = NULL;
+      for (size_t j = 0; j < sizeof WL_LOOK / sizeof WL_LOOK[0]; j++) if (!strcmp(WL_LOOK[j].name, mat->name)) lk = &WL_LOOK[j];
+      if (!lk) continue;
+      cw_waterline *own = NULL;
+      if (cw_waterline_get(mat, &own, NULL) && own == wl[i]) continue;
+      if (mat->_refs > 1) { /* (the seats share it: this seat's own copy) */
+        t3_material *cl = t3_material_clone(mat);
+        t3_release(m->materials[k]);
+        m->materials[k] = mat = cl;
+      }
+      cw_waterline_apply(wl[i], mat, &lk->look);
+    }
+  }
+  for (int k = 0; k < o->child_count; k++) wl_wear(o->children[k], i);
+}
+/* the part on or off with the switch (from the first tick: models exist by then) */
+static void wl_sync(void) {
+  for (int i = 0; i < RACERS; i++) {
+    if (!g_wl_part && wl[i]) cw_waterline_free(wl[i]), wl[i] = NULL;
+    if (g_wl_part && !wl[i] && rider_o[i]) {
+      /* (the mark falls 3 cm a second: a rider dunked to the chest is dry of it in under a minute, the soak sooner) */
+      cw_waterline_desc d = cw_waterline_default();
+      d.fall_rate = 0.03f;
+      wl[i] = cw_waterline_new(&d);
+      wl_wear(sit_o[i], i), wl_wear(rider_o[i], i);
+      for (int l = 0; l < 2; l++) wl_wear(stand_o[i][l], i);
+    }
+  }
+}
+/* held still (sw freeze 1): the part still follows its switch, so a picture pair differs by it alone */
+void view_frozen(void) { wl_sync(); }
 /* spray soaks the rider: the suit and vest darken as they take water and dry over some seconds (they stay matte); the
  * helmet's clear coat goes on only from Medium up */
 static void rider_wet(float dt) {
   bool coat = cw_quality_get() >= CW_QUALITY_MEDIUM;
+  wl_sync();
+  { cw_sky_state sk; cw_sky_get_state(cw_scene_app_tree(), &sk); if (sk.active) cw_waterline_set_sun(sk.sun_direction); }
   for (int i = 0; i < RACERS; i++) {
     const craft *c = &G.c[i];
     float soak = c->big_splash ? 0.6f : 0.0f;
     if (!c->air && c->wet > 0.15f && c->speed > 8) soak += dt * 0.25f * (c->speed / 28.0f);
     if (c->spill > 0 || c->dive_t > 0) soak = 1;
+    if (wl[i]) {
+      cw_waterline_soak(wl[i], soak);
+      cw_waterline_update(wl[i], G.water, (t3_vec3){ c->x, c->y, c->z }, 1.4f, dt);
+      soak = 0, wetness[i] = 0; /* (the part darkens the cloth: the colour stays) */
+    }
     wetness[i] = fminf(1.0f, wetness[i] + soak) - dt / 9.0f;
     wetness[i] = fmaxf(0.0f, wetness[i]);
     float k = 1.0f - 0.35f * wetness[i];
@@ -1047,6 +1107,16 @@ static void chase(int seat, float dt) {
     float kl2 = 1.0f - cw_exp(-dt * 4.0f), lo[3] = { G.look_prev[0] - c->px, G.look_prev[1] - c->py, G.look_prev[2] - c->pz };
     G.look[0] = c->x + lo[0] * (1 - kl2), G.look[1] = c->y + lo[1] + (1.0f - lo[1]) * kl2, G.look[2] = c->z + lo[2] * (1 - kl2);
   }
+  /* sw cam_side <metres>: a held look at the hull's waterline from its right side, that far out and 0.5 m over the water,
+   * moving with the craft (the waterline gate's pictures; 0: the chase) */
+  if (g_cam_side > 0 && seat == 0) {
+    float s2, c2;
+    cw_sincos(c->yaw, &s2, &c2);
+    float ex = c->x - c2 * g_cam_side + s2 * 0.3f, ez = c->z + s2 * g_cam_side + c2 * 0.3f;
+    G.cam[0] = ex, G.cam[1] = cw_water_height_at(G.water, ex, ez, G.wt) + 0.5f, G.cam[2] = ez;
+    G.look[0] = c->x, G.look[1] = c->surf, G.look[2] = c->z;
+    memcpy(G.cam_prev, G.cam, sizeof G.cam), memcpy(G.look_prev, G.look, sizeof G.look);
+  }
   /* speed you can feel: the view widens from 56 degrees at a crawl to 72 at full speed, and a turbo opens it further */
   float sk = fminf(1.0f, fmaxf(0.0f, (c->speed - 6.0f) / 24.0f));
   float fov = c->finish > 0 && G.state == RACE_ON ? 50.0f : 56.0f + g_fov_span * sk * (2.0f - sk) * 0.5f + g_fov_span * 0.5f * sk + (c->turbo_hold > 0 ? 6.0f * fminf(1.0f, c->turbo_hold / 0.6f) : 0);
@@ -1384,9 +1454,16 @@ void view_repaint(void) {
   for (int i = 0; i < RACERS; i++) {
     if (painted_as[i] == rider_of(i) || !rider_o[i]) continue;
     deck_mat[i] = NULL;
+    /* (the waterline comes off the old paint and goes on the new) */
+    if (sit_o[i]) cw_waterline_remove_tree(sit_o[i]);
+    for (int l = 0; l < 2; l++) if (stand_o[i][l]) cw_waterline_remove_tree(stand_o[i][l]);
+    cw_waterline_remove_tree(rider_o[i]);
     if (sit_o[i]) paint(sit_o[i], i);
     for (int l = 0; l < 2; l++) if (stand_o[i][l]) paint(stand_o[i][l], i);
     paint(rider_o[i], i);
+    if (sit_o[i]) wl_wear(sit_o[i], i);
+    for (int l = 0; l < 2; l++) if (stand_o[i][l]) wl_wear(stand_o[i][l], i);
+    wl_wear(rider_o[i], i);
     rider_scale[i][0] = LOOK[rider_of(i)].broad, rider_scale[i][1] = LOOK[rider_of(i)].tall;
     cw_node3d_set_scale(rider_n[i], (t3_vec3){ rider_scale[i][0], rider_scale[i][1], rider_scale[i][0] });
     painted_as[i] = rider_of(i);
