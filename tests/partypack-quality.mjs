@@ -13,5 +13,8 @@ sweep({
     { name: 'hub by input', app: 'partypack', frames: 420, input: mash(240, 330, 30, ['start']), reach: { 'game.state': (v) => v < 4 }, show: ['game.state', 'shell.screen'] },
     { name: 'title to the board by input', app: 'partypack', frames: 900, input: mash(240, 700, 30, ['start']), reach: { 'game.state': (v) => v >= 3 }, show: ['game.state', 'game.round', 'game.mg', 'shell.screen'] },
   ],
-  control: { state: 'standard+shadow+senv+l1800+s100', scene: 'blast' },
+  // (the control takes out both table entries that can draw Blast Ring's eight-light state: its own and the one with a
+  // point light more, which covers it exactly; with the second left in, the state draws through it and nothing is
+  // reported, so a control naming the first alone could not fail)
+  control: { state: ['standard+shadow+senv+l1800+s100', 'standard+shadow+senv+l1801+s100'], expect: 'standard+shadow+senv+l1800+s100', scene: 'blast' },
 });
