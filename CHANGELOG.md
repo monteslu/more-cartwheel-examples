@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.51.0
+
+- deps: cartwheel-engine v0.89.0 (from v0.87.0, so v0.88.0 too: a GL skinned crowd's main-thread millisecond back, GL
+  particles without transform feedback): collars, a ring of bubbles on the water beside what stands in it; the reflection meets
+  what stands in the water on a swell (and no longer goes black from a trough); foam floats over a hull riding low instead
+  of leaving a dark slab; at Ultra the water's refraction is the whole view. Every water game's program tables drawn again
+  (arenafps, coopplatformer, jetski, partypack, pirates, skyfighter).
+- jetski: collars where the ramp legs and the buoys stand in the water and along a moving hull (none at rest, where the
+  hull shows through the water at its side), kept on the player's craft.
+- tests: jetski-water's night check measures the light's share on the same course and water (the night as it ships
+  against the same night with the light ignored), for both craft; day is another course with other water.
+
 ## 0.50.0
 
 - jetski: where the water meets the racers. Every craft and rider wears the engine's waterline part: under a high-water
