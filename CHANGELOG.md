@@ -16,7 +16,8 @@
   jetski-draft (the water on the sit-down's model at rest and at speed; control sw sit_lift 0), jetski-feature-perf
   --case waterline (the part and skirt under 0.6 ms on the reference GPU, split screen under 16.7 ms). The perf
   baselines run from 750 m on Crater Atoll (900 m started the craft in the stilts of its set) and check the run was
-  clean. sw cam_side for a held side look at the hull.
+  clean. sw drop counts its height from the point the hull floats on; jetski-camera compares the spray alone (the skirt
+  off in both runs). sw cam_side for a held side look at the hull.
 
 ## 0.49.0
 
