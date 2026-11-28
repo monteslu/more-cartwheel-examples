@@ -13,7 +13,7 @@ static cw_node rain_n, spume, spume_fine;
 static cw_node tail[RACERS], mist[RACERS], side_spray, bursts, burst_mist, sheet[2], sheet_fine[2];
 /* the white water along a hull's waterline: a thin strip of soft foam that hugs the hull where it meets the water, broad
  * and bright at speed (the contact hidden under aerated water), a narrow lace at a crawl. The players' craft (seats 0 and 1).
- * sw skirt 0: none (the hull-wet gate's control) */
+ * sw skirt 0: none (the hull-wet gate's control); sw skirt 2: full white at any speed, at rest too (its coverage control) */
 static cw_node skirt[2];
 int g_skirt = 1;
 int32_t g_skirt_alive; /* the human's skirt particles alive now (debug fx.skirt_alive) */
@@ -296,12 +296,17 @@ void fx_tick(float dt) {
     cw_node_set(mist[i], "speed_max", cw_val_float(1 + 4 * k));
     if (i < 2) {
       /* the skirt rides with the hull at the water (local: it moves with the craft, not left behind as a wake), wider and
-       * brighter with speed: a lace 15 cm out at a crawl, a white band of about 0.6 m on the plane */
+       * brighter with speed: a white band of about 0.6 m on the plane */
       bool own = i == 0 || PLAYERS == 2;
       cw_node3d_set_position(skirt[i], (t3_vec3){ c->x - sy * 0.1f, c->surf + 0.01f, c->z - cy * 0.1f });
       cw_node3d_set_rotation(skirt[i], (t3_vec3){ 0, c->yaw, 0 });
-      cw_node_set(skirt[i], "emitting", cw_val_bool(g_skirt && own && wet && v > 0.8f && c->spill <= 0));
-      cw_node_set(skirt[i], "size", cw_val_float(0.16f + 0.42f * fminf(k, 1.2f)));
+      /* only white water a planing hull really throws: nothing at rest or a crawl, where the hull and legs read through the
+       * clear water at the line, faint from 7 m/s and full from 18 (sw skirt 2: full white at any speed, the coverage
+       * check's control) */
+      float wv = g_skirt == 2 ? 1.0f : cw_smoothstep(7.0f, 18.0f, v);
+      cw_node_set(skirt[i], "emitting", cw_val_bool(g_skirt && own && wet && c->spill <= 0 && wv > 0.0f));
+      cw_node_set(skirt[i], "color", cw_val_color(1, 1, 1, wv));
+      cw_node_set(skirt[i], "size", cw_val_float(0.2f + 0.4f * fminf(k, 1.2f)));
       if (i == 0) { cw_value al; g_skirt_alive = cw_node_get_prop(skirt[0], "alive", &al) ? (int32_t)al.i : -1; }
     }
     if (i == 0) {

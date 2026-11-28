@@ -6,6 +6,8 @@
 //            1000 of the hull's pixels by more than 18 levels against the same moment without it (sw wl_part 0), and 3 x what
 //            two shots with it differ by (the sea's ripples keep moving in a held moment). CONTROL: two more shots with the
 //            part must not pass that bound
+//   foam     with every foam on, the contact band at rest is at most 3 % white water (the reference photos show none at
+//            rest). CONTROL: sw skirt 2 (the skirt at full white at any speed) floods it
 //   speed    the race at speed (go 600), chase camera: the foam skirt along the human's hull is alive (fx.skirt_alive, at
 //            least 30 particles; the pictures are kept to look at). CONTROL: sw skirt 0 has none
 //   node tests/jetski-hull-wet.mjs [--gl] [--webgpu] [--course 0]
@@ -26,6 +28,9 @@ async function shot(gpu, tag, frames = 2) {
 const sat = (p, i) => Math.max(p.rgba[i], p.rgba[i + 1], p.rgba[i + 2]) - Math.min(p.rgba[i], p.rgba[i + 1], p.rgba[i + 2]);
 const box = (a, b) => { let n = 0; for (let y = 525; y < 650; y++) for (let x = 420; x < 1520; x++) { const i = (y * a.w + x) * 4; if (sat(a, i) > 40 && sat(b, i) > 40) continue; const d = Math.abs(a.rgba[i] - b.rgba[i]) + Math.abs(a.rgba[i + 1] - b.rgba[i + 1]) + Math.abs(a.rgba[i + 2] - b.rgba[i + 2]); if (d > 18) n++; } return n; };
 const shows = (d, noise) => d >= 1000 && d >= 3 * noise;
+/* the share of the contact band that is white water (every channel at 200 or more): at rest the reference photos show none
+ * (a calm hull's reflection meets it, jt2; an ankle in swash a 1 to 3 px rim, pd3), so at most 3 % */
+const foam = (a) => { let n = 0, t = 0; for (let y = 525; y < 650; y++) for (let x = 420; x < 1520; x++) { const i = (y * a.w + x) * 4; t++; if (Math.min(a.rgba[i], a.rgba[i + 1], a.rgba[i + 2]) >= 200) n++; } return n / t; };
 for (const gpu of BACKENDS) {
   await C.load(CART, gpu);
   for (const s of ['quality high', `course ${course}`, 'mode 0', 'sw players 1', 'race', 'sw cam_side 3.2', 'sw hud 0']) await C.cmd(s);
@@ -37,6 +42,12 @@ for (const gpu of BACKENDS) {
   const d = box(on, off), noise = box(on, on2), noise2 = box(on2, on3);
   C.check(`${gpu} rest: the waterline shows along the hull's contact with the water`, shows(d, noise), `${d} hull pixels changed against the part off (>= 1000 and >= 3 x the ${noise} of two shots with it)`);
   C.check(`${gpu} rest: control, two more shots with the part do not pass that bound`, !shows(noise2, noise), `${noise2} against ${noise}`);
+  /* foam never hides the waterline: with every foam on (skirt, wakes, ripples) the contact band at rest is clear water */
+  const fr = foam(on);
+  C.check(`${gpu} rest: the contact band is not covered by foam`, fr <= 0.03, `${(fr * 100).toFixed(2)} % white (<= 3 %)`);
+  await C.cmd('sw wl_part 1'); await C.cmd('sw skirt 2'); await C.cmd('sw freeze 0');
+  const flood = foam(await shot(gpu, 'rest-flood', 60));
+  C.check(`${gpu} rest: control, a skirt at full white at rest (sw skirt 2) floods it`, flood > 0.03, `${(flood * 100).toFixed(2)} % white`);
 
   for (const skirt of [1, 0]) {
     await C.load(CART, gpu);
