@@ -76,8 +76,9 @@ for (const backend of BACKENDS) {
   const now = await ride(backend, [], 240, 'cam'), old = await ride(backend, ['sw cam_old 1'], 240, 'cam-old');
   check(`${backend}: at race speed the camera sits nearer and lower`, now.eye[2] > 18 && now.eye[0] <= 0.85 * old.eye[0] && now.eye[1] <= 0.85 * old.eye[1] && now.under === 0,
     `${f2(now.eye[0])} m behind and ${f2(now.eye[1])} m over the water at ${f2(now.eye[2])} m/s; the old chase ${f2(old.eye[0])} m and ${f2(old.eye[1])} m; ${now.under} ticks under`);
-  const thin = await ride(backend, ['sw spray_thick 0'], 240, 'spray-thin');
-  const bt = bright(now.path), bn = bright(thin.path);
+  /* (the spray alone: the foam skirt along the hull, white in both, is left out of both) */
+  const thick = await ride(backend, ['sw skirt 0'], 240, 'spray-thick'), thin = await ride(backend, ['sw skirt 0', 'sw spray_thick 0'], 240, 'spray-thin');
+  const bt = bright(thick.path), bn = bright(thin.path);
   check(`${backend}: thick white spray, at least 1.5x the thin spray's bright water`, bt >= 1.5 * bn && bn > 0, `${bt} bright pixels against ${bn} (${(bt / Math.max(1, bn)).toFixed(2)}x)`);
   const land = await ride(backend, [], 75, 'lens', ['drop 0.05 4 24']), after = await ride(backend, [], 225, 'lens-after', ['drop 0.05 4 24']), off = await ride(backend, ['sw lens 0'], 75, 'lens-off', ['drop 0.05 4 24']);
   check(`${backend}: a hard landing beads drops on the lens, clear of the middle`, land.lens[0] >= 4 && land.lens[1] <= 0.15, `${land.lens[0]} drops, ${(100 * land.lens[1]).toFixed(1)} % of the middle third`);
