@@ -987,6 +987,7 @@ static bool attract_camera(float dt) {
   if (cut) memcpy(G.cam_prev, G.cam, sizeof G.cam), memcpy(G.look_prev, G.look, sizeof G.look);
   G.cam_fov_prev = G.cam_fov = shot == 3 ? 44.0f : 56.0f;
   cw_water_ripple_follow(G.water, c->x + sy * 20.0f, c->z + cy * 20.0f);
+  cw_water_collar_follow(G.water, c->x, c->z);
   return true;
 }
 
@@ -1138,6 +1139,8 @@ void view_tick(float dt) {
   if (attract_camera(dt)) return;
   if (podium_camera(dt)) return;
   chase(0, dt);
+  /* the collar layer round the first player's craft itself */
+  cw_water_collar_follow(G.water, G.c[0].x, G.c[0].z);
   if (!SPLIT) { cw_water_ripple_follow(G.water, look_ahead[0][0], look_ahead[0][1]); g_ripple_seat = 0; return; }
   cam_swap(&cam_p2);
   chase(1, dt);

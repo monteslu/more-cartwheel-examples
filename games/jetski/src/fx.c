@@ -236,6 +236,7 @@ static void waterline_foam(void) {
       float top = ramp_top_at(r) + ((PZ[a] - RAMP_HALF_LEN_N) * RAMP_SLOPE - 0.5f) * sv;
       if (top < w.height) continue; /* this leg is under its part of the deck below the water */
       cw_water_splash(G.water, wx, wz, 0.95f * s, 0.0f, 0.1f + 0.12f * fminf(1.0f, fabsf(w.velocity.y)));
+      cw_water_collar(G.water, wx, wz, 0.18f * s, 0, 0, 0.7f);
       g_waterline_stamps++;
     }
   }
@@ -245,6 +246,7 @@ static void waterline_foam(void) {
     cw_water_sample w;
     cw_water_sample_at(G.water, BUOYS[b][0], BUOYS[b][1], G.wt, &w);
     cw_water_splash(G.water, BUOYS[b][0], BUOYS[b][1], 1.1f, 0.0f, 0.08f + 0.12f * fminf(1.0f, fabsf(w.velocity.y)));
+    cw_water_collar(G.water, BUOYS[b][0], BUOYS[b][1], 0.5f, 0, 0, 0.7f);
     g_waterline_stamps++;
   }
 }
@@ -358,6 +360,12 @@ void fx_tick(float dt) {
       cw_water_wake(G.water, c->x + rx * 0.6f + sy * 0.3f, c->z + rz * 0.6f + cy * 0.3f, c->vx, c->vz, 0.34f, 0.035f * k, 0.6f * k);
       cw_water_wake(G.water, c->x - rx * 0.6f + sy * 0.3f, c->z - rz * 0.6f + cy * 0.3f, c->vx, c->vz, 0.34f, 0.035f * k, 0.6f * k);
     }
+    /* the hull's collar: the ring of bubbles a moving hull pushes up along its sides, three rings along it, thickest
+     * at the bow, from walking pace up (a hull at rest has none: the water at its side shows the hull through it); the
+     * collar layer is round the first player, so others' fall outside it */
+    if (g_waterline && !c->air && c->wet > 0.15f && v > 1.0f)
+      for (int r = -1; r <= 1; r++)
+        cw_water_collar(G.water, c->x + sy * 0.85f * (float)r, c->z + cy * 0.85f * (float)r, 0.5f, c->vx, c->vz, 0.9f * fminf(1.0f, (v - 1.0f) / 6.0f));
     /* a ring on the water at each buoy passed cleanly: the water keeps the score */
     if (c->ok_tick > 0 && c->human) {
       const float *b = BUOY_AT(c->ok_tick - 1);
