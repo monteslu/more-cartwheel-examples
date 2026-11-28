@@ -16,6 +16,7 @@
 #include "game.h"
 
 static cw_node craft_n[RACERS], rider_n[RACERS], buoy_n[BUOY_MAX], buoy_old_n[BUOY_MAX];
+int g_craft_hide; /* sw craft_hide 1: the player's craft and rider not drawn (the waterline gate's pictures of the water alone) */
 int g_buoy_hide;
 int g_cam_cut = 1, g_cam_drawn_under;
 int g_buoy_style = 1; /* 0: the small buoy the course marks replaced, the control of the distance gate; sim and scoring do not see it */
@@ -1196,10 +1197,10 @@ void view_sync(double alpha) {
   if (g_cam_cut && G.cam[0] == 0 && cw_node_valid(G.water)) view_tick(1.0f / 60.0f);
   /* who is on the water, and which buoys count */
   { static int shown = -1;
-    int now = g_difficulty * 2 + (racer_on(1) ? 1 : 0) + g_buoy_style * 16 + g_buoy_hide * 32 + g_podium_on * 64;
+    int now = g_difficulty * 2 + (racer_on(1) ? 1 : 0) + g_buoy_style * 16 + g_buoy_hide * 32 + g_podium_on * 64 + g_craft_hide * 128;
     if (now != shown || g_marks_stale) {
       shown = now, g_marks_stale = false;
-      for (int i = 0; i < RACERS; i++) cw_node_set(craft_n[i], "visible", cw_val_bool(racer_on(i) && podium_shows(i)));
+      for (int i = 0; i < RACERS; i++) cw_node_set(craft_n[i], "visible", cw_val_bool(racer_on(i) && podium_shows(i) && !(i == 0 && g_craft_hide)));
       for (int b = 0; b < BUOY_MAX; b++) {
         cw_node_set(buoy_n[b], "visible", cw_val_bool(!g_buoy_hide && g_buoy_style && b < BUOY_N && buoy_on(b)));
         cw_node_set(buoy_old_n[b], "visible", cw_val_bool(!g_buoy_hide && !g_buoy_style && b < BUOY_N && buoy_on(b)));

@@ -331,6 +331,7 @@ static const char *const storm_props[][3] = {
 { "Water", "deep_color", "color(0.022, 0.05, 0.065, 1)" },
 { "Water", "color", "color(0.8, 0.86, 0.9, 1)" },
 { "Water", "clarity", "3" },
+{ "Water", "see_through", "0.1" },
 { "Water", "murk", "1.4" },
 { "Water", "distortion", "0.2" },
 { "Water", "normal_scale", "0.5" },
@@ -346,7 +347,7 @@ static const char *const storm_props[][3] = {
 static const course_def storm_course = {
   .id = "storm", .name = "Gale Bank", .quads = 896, .spacing = 2.0f, .minh = -48.0f, .maxh = 170.0f, .len = 3706.56f,
   .track_n = 256, .track = storm_track, .buoy_n = 35, .buoys = storm_buoys, .ramp_n = 8, .ramps = storm_ramps, .ramp_top = 6.5f,
-  .scatter_n = 0, .scatter = storm_scatter, .model_n = 3, .models = storm_models, .placed_n = 6, .placed = storm_placed, .prop_n = 25, .props = storm_props,
+  .scatter_n = 0, .scatter = storm_scatter, .model_n = 3, .models = storm_models, .placed_n = 6, .placed = storm_placed, .prop_n = 26, .props = storm_props,
   .layer_n = 5, .layer = { "course/storm/blackrock", "course/storm/weed", "course/storm/palerock", "course/storm/pale2", "course/storm/stormwet" }, .layer_uv = { 0.07f, 0.15f, 0.05f, 0.06f, 0.07f },
   .heights = "course/storm/heights.r16", .control = "course/storm/control.u32", .mask = "course/storm/wavemask.f32", .mask_n = 256, .map_n = 448, .sky = "res://textures/sky-storm.png",
   .landmark = NULL, .landmark_at = { 0.00f, -100.40f, 0.00f },

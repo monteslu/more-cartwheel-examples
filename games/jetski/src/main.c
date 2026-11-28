@@ -274,6 +274,8 @@ static void cmd_switch(int argc, const char **argv, cw_reply *r) {
     else if (!strcmp(argv[1], "yaw_clear")) { extern int32_t g_yaw_flips; extern float g_yaw_rate_max; g_yaw_flips = 0, g_yaw_rate_max = 0; }
     else if (!strcmp(argv[1], "stamp_on")) { extern int g_stamp_on; g_stamp_on = (int)v; }
     else if (!strcmp(argv[1], "podium")) g_podium_use = (int)v;
+    else if (!strcmp(argv[1], "water_hide")) cw_node_set(G.water, "visible", cw_val_bool(v == 0)); /* (the waterline gate's picture pairs) */
+    else if (!strcmp(argv[1], "craft_hide")) { extern int g_craft_hide; g_craft_hide = (int)v; }
     else if (!strcmp(argv[1], "fish_hide")) { extern int g_fish_hide; g_fish_hide = (int)v; }
     else if (!strcmp(argv[1], "ai_rated")) { extern int g_ai_rated; g_ai_rated = (int)v; }
     else if (!strcmp(argv[1], "ai_deep_turn")) { extern int g_ai_deep_turn; g_ai_deep_turn = (int)v; }

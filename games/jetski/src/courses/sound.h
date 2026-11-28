@@ -341,6 +341,7 @@ static const char *const sound_props[][3] = {
 { "Water", "deep_color", "color(0.03, 0.08, 0.13, 1)" },
 { "Water", "color", "color(0.86, 0.92, 0.95, 1)" },
 { "Water", "clarity", "4" },
+{ "Water", "see_through", "0.15" },
 { "Water", "murk", "1.2" },
 { "Water", "distortion", "0.16" },
 { "Water", "normal_scale", "0.3" },
@@ -356,7 +357,7 @@ static const char *const sound_props[][3] = {
 static const course_def sound_course = {
   .id = "sound", .name = "Cold Sound", .quads = 896, .spacing = 2.0f, .minh = -48.0f, .maxh = 170.0f, .len = 3268.00f,
   .track_n = 256, .track = sound_track, .buoy_n = 35, .buoys = sound_buoys, .ramp_n = 12, .ramps = sound_ramps, .ramp_top = 6.5f,
-  .scatter_n = 4, .scatter = sound_scatter, .model_n = 2, .models = sound_models, .placed_n = 9, .placed = sound_placed, .prop_n = 25, .props = sound_props,
+  .scatter_n = 4, .scatter = sound_scatter, .model_n = 2, .models = sound_models, .placed_n = 9, .placed = sound_placed, .prop_n = 26, .props = sound_props,
   .layer_n = 6, .layer = { "course/sound/shingle", "course/sound/tiderock", "course/sound/granite", "course/sound/moss", "course/sound/darkgranite", "course/sound/wetgranite" }, .layer_uv = { 0.2f, 0.1f, 0.035f, 0.09f, 0.022f, 0.03f },
   .heights = "course/sound/heights.r16", .control = "course/sound/control.u32", .mask = "course/sound/wavemask.f32", .mask_n = 256, .map_n = 448, .sky = "res://textures/sky-sound.png",
   .landmark = NULL, .landmark_at = { 0.00f, -100.40f, 0.00f },

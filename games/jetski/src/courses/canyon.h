@@ -341,6 +341,7 @@ static const char *const canyon_props[][3] = {
 { "Water", "deep_color", "color(0.06, 0.13, 0.09, 1)" },
 { "Water", "color", "color(0.95, 0.92, 0.82, 1)" },
 { "Water", "clarity", "2.5" },
+{ "Water", "see_through", "0.08" },
 { "Water", "murk", "1.6" },
 { "Water", "distortion", "0.16" },
 { "Water", "normal_scale", "0.42" },
@@ -356,7 +357,7 @@ static const char *const canyon_props[][3] = {
 static const course_def canyon_course = {
   .id = "canyon", .name = "Red Reach", .quads = 896, .spacing = 2.0f, .minh = -48.0f, .maxh = 170.0f, .len = 3578.19f,
   .track_n = 256, .track = canyon_track, .buoy_n = 42, .buoys = canyon_buoys, .ramp_n = 9, .ramps = canyon_ramps, .ramp_top = 5.0f,
-  .scatter_n = 6, .scatter = canyon_scatter, .model_n = 2, .models = canyon_models, .placed_n = 3, .placed = canyon_placed, .prop_n = 25, .props = canyon_props,
+  .scatter_n = 6, .scatter = canyon_scatter, .model_n = 2, .models = canyon_models, .placed_n = 3, .placed = canyon_placed, .prop_n = 26, .props = canyon_props,
   .layer_n = 6, .layer = { "course/canyon/riversand", "course/canyon/silt", "course/canyon/sandstone", "course/canyon/capstone", "course/canyon/deepred", "course/canyon/varnish" }, .layer_uv = { 0.15f, 0.2f, 0.055f, 0.07f, 0.06f, 0.07f },
   .heights = "course/canyon/heights.r16", .control = "course/canyon/control.u32", .mask = "course/canyon/wavemask.f32", .mask_n = 256, .map_n = 448, .sky = "res://textures/sky-canyon.png",
   .landmark = NULL, .landmark_at = { 0.00f, -100.40f, 0.00f },

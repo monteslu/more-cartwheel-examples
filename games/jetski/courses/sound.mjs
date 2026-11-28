@@ -119,7 +119,7 @@ return {
     ['Fill', 'energy', '2.4'], ['Fill', 'rotation', 'vec3(-0.55, -2.2, 0)'], ['Fill', 'color', 'color(0.72, 0.78, 0.92, 1)'],
     ['Post', 'exposure', '1.0'], ['Post', 'bloom_intensity', '0.05'],
     ['Water', 'shallow_color', 'color(0.1, 0.34, 0.36, 1)'], ['Water', 'deep_color', 'color(0.03, 0.08, 0.13, 1)'],
-    ['Water', 'color', 'color(0.86, 0.92, 0.95, 1)'], ['Water', 'clarity', '4'], ['Water', 'murk', '1.2'],
+    ['Water', 'color', 'color(0.86, 0.92, 0.95, 1)'], ['Water', 'clarity', '4'], ['Water', 'see_through', '0.15'], ['Water', 'murk', '1.2'],
     // (ripples strong enough to break up a mirrored skyline: at less, its edge lies on the water as a hard patch)
     ['Water', 'distortion', '0.16'], ['Water', 'normal_scale', '0.3'], ['Water', 'detail', '0.9'], ['Water', 'flow_speed', '0.035'], ['Water', 'flow_direction', 'vec2(1, 0)'], ['Water', 'crest_foam', '1'], ['Water', 'crest_light', '0.3'], ['Water', 'scatter', '0.5'], ['Water', 'glint', '0.5'], ['Water', 'shore_foam', '2'],
   ],

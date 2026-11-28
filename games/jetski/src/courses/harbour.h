@@ -1269,6 +1269,7 @@ static const char *const harbour_props[][3] = {
 { "Water", "deep_color", "color(0.006, 0.012, 0.02, 1)" },
 { "Water", "color", "color(0.95, 0.95, 1, 1)" },
 { "Water", "clarity", "2" },
+{ "Water", "see_through", "0.07" },
 { "Water", "murk", "1" },
 { "Water", "distortion", "0.1" },
 { "Water", "normal_scale", "0.3" },
@@ -1284,7 +1285,7 @@ static const char *const harbour_props[][3] = {
 static const course_def harbour_course = {
   .id = "harbour", .name = "Iron Quay", .quads = 896, .spacing = 2.0f, .minh = -48.0f, .maxh = 170.0f, .len = 3301.56f,
   .track_n = 256, .track = harbour_track, .buoy_n = 35, .buoys = harbour_buoys, .ramp_n = 10, .ramps = harbour_ramps, .ramp_top = 5.0f,
-  .scatter_n = 0, .scatter = harbour_scatter, .model_n = 8, .models = harbour_models, .placed_n = 942, .placed = harbour_placed, .prop_n = 25, .props = harbour_props,
+  .scatter_n = 0, .scatter = harbour_scatter, .model_n = 8, .models = harbour_models, .placed_n = 942, .placed = harbour_placed, .prop_n = 26, .props = harbour_props,
   .layer_n = 4, .layer = { "course/harbour/concrete", "course/harbour/quayfoot", "course/harbour/stone", "course/harbour/tarmac" }, .layer_uv = { 0.06f, 0.12f, 0.09f, 0.1f },
   .heights = "course/harbour/heights.r16", .control = "course/harbour/control.u32", .mask = "course/harbour/wavemask.f32", .mask_n = 256, .map_n = 448, .sky = "res://textures/sky-harbour.png",
   .landmark = NULL, .landmark_at = { 0.00f, -100.40f, 0.00f },

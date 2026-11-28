@@ -104,7 +104,7 @@ return {
     ['Fill', 'energy', '1.2'], ['Fill', 'rotation', 'vec3(-0.4, 2.2, 0)'], ['Fill', 'color', 'color(0.95, 0.62, 0.42, 1)'],
     ['Post', 'exposure', '0.9'], ['Post', 'bloom_intensity', '0.05'],
     ['Water', 'shallow_color', 'color(0.26, 0.34, 0.16, 1)'], ['Water', 'deep_color', 'color(0.06, 0.13, 0.09, 1)'],
-    ['Water', 'color', 'color(0.95, 0.92, 0.82, 1)'], ['Water', 'clarity', '2.5'], ['Water', 'murk', '1.6'],
+    ['Water', 'color', 'color(0.95, 0.92, 0.82, 1)'], ['Water', 'clarity', '2.5'], ['Water', 'see_through', '0.08'], ['Water', 'murk', '1.6'],
     ['Water', 'distortion', '0.16'], ['Water', 'normal_scale', '0.42'], ['Water', 'detail', '1'],
     ['Water', 'flow_speed', '0.18'], ['Water', 'flow_direction', 'vec2(1, 0)'],
     ['Water', 'crest_foam', '0.5'], ['Water', 'crest_light', '0.2'], ['Water', 'scatter', '0.4'], ['Water', 'glint', '1.6'], ['Water', 'shore_foam', '1.2'],

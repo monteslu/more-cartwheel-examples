@@ -434,5 +434,10 @@
     "name": "jetski-fish-see",
     "script": "tests/jetski-fish-see.mjs",
     "note": "fish you can see from the race camera, GL and WebGPU on the atoll, the fjord and the port: a school 12 m ahead, picture pairs with and without it: at least 3000 changed pixels and 1.4 times the old school. Control: sw fish_old 1"
+  },
+  {
+    "name": "jetski-waterline",
+    "script": "tests/jetski-waterline.mjs",
+    "note": "where the craft and rider meet the water, at rest on a swell (sunk so the shins cross), four held moments on Crater Atoll and the harbour, GL and WebGPU through romdev: 2 cm under the line at least 0.6 (atoll) and 0.25 (the murky harbour at dusk) of what is there shows, from pictures with the water and the craft each hidden; control: the engine water before v0.87 (CW_TEST_WATER_CONTACT=old, CW_TEST_WATER_REST_CLIP=1) misses it at some moment"
   }
 ]

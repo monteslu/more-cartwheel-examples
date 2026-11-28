@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.49.0
+
+- Engine v0.87.0: where things go into the water, the line is the water's, not a cut. A rider's legs and a craft's hull
+  carry on under the surface in their own colour and fade with the water over them, on a crest as in a trough; foam
+  and lace stand back over them at the line; at dusk Iron Quay still shows a leg going in. Every game with water
+  (jetski, arenafps, coopplatformer, partypack, pirates, skyfighter) has its program tables drawn again for it.
+- jetski: each course's water sets how far you see into it (see_through): Crater Atoll's clear lagoon 0.5 m, Cold
+  Sound 0.15, Gale Bank 0.1, Red Reach's river 0.08, Iron Quay's harbour 0.07.
+- Tests: jetski-waterline (the craft and rider at rest on a swell, four held moments on Crater Atoll and Iron Quay,
+  GL and WebGPU: 2 cm under the line at least 0.6 and 0.25 of them shows, from pictures with the water and the craft
+  each hidden; control: the engine's water before v0.87.0, which cuts them off); switches sw water_hide, sw craft_hide.
+- Tests: skyfighter-quality's control takes out both table entries that cover Low's building draw (on this engine the
+  shadowed-sun entry covers it as well), so it fails as it must again; the quality sweep's control can take out a list.
+
 ## 0.48.1
 
 - Arena: a rocket burst a few metres off in a room no longer flickers. Fired into a wall 2 to 3 m away, each blast lit

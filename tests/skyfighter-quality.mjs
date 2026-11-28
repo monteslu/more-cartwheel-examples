@@ -12,5 +12,7 @@ const mission = (i) => {
 sweep({
   game: 'skyfighter', tables: ['skyfighter', 'cw_samples', 'terrain_demo'],
   scenes: [...[0, 1, 2, 3, 4, 5, 6, 7].map(mission), { name: 'crash', app: 'skyfighter', frames: 1200, input: [{ frame: 240, buttons: ['south'] }, { frame: 243 }, { frame: 300, buttons: ['down'] }], reach: { 'crash.age': (v) => v > 1 }, show: ['mission.state', 'mission.level', 'mission.ticks', 'crash.age'] }, { name: 'title', app: 'skyfighter', frames: 300, reach: { 'mission.state': 0 }, show: ['mission.state', 'mission.level'] }],
-  control: { state: 'standard+map+rep+nmap+rmap+mmap+senv+ds+l0201+xcsm', expect: 'standard+map+rep+nmap+rmap+mmap+senv+ds+l0001+xcsm', scene: 'mission 0' },
+  // (the control takes out both table entries that cover Low's building draw: on the engine v0.87.0 pin the l1201 entry
+  // covers it as well as l0201, and taking out l0201 alone left it drawn)
+  control: { state: ['standard+map+rep+nmap+rmap+mmap+senv+ds+l0201+xcsm', 'standard+map+rep+nmap+rmap+mmap+senv+ds+l1201+xcsm'], expect: 'standard+map+rep+nmap+rmap+mmap+senv+ds+l0001+xcsm', scene: 'mission 0' },
 });

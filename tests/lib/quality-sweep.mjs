@@ -98,8 +98,10 @@ function controlBuild(game, app, state, tables, outDir) {
       const src = join(ROOT, `games/${game}/programs/${t}_${suffix}.c`);
       let c = readFileSync(src, 'utf8');
       const rows = c.split('\n');
-      // '*': the lit rows out, to list what a scene draws (--control-state '*' with a control that then fails)
-      const out = rows.filter((l) => (state === '*' ? /^  \{ "(standard|physical)/.test(l) : l.startsWith(`  { "${state}", `)));
+      // '*': the lit rows out, to list what a scene draws (--control-state '*' with a control that then fails); a list:
+      // every row it names out (each entry that covers the drawn state: one with more lights, one with a shadowed sun)
+      const names = [].concat(state);
+      const out = rows.filter((l) => (state === '*' ? /^  \{ "(standard|physical)/.test(l) : names.some((n) => l.startsWith(`  { "${n}", `))));
       if (out.length) {
         c = rows.filter((l) => !out.includes(l)).join('\n').replace(new RegExp(`(const t3_gen_table ${t}_${suffix} = \\{ programs, )(\\d+)( \\})`), (_, a, n, b) => `${a}${+n - out.length}${b}`);
         removed++;
@@ -120,7 +122,7 @@ function controlBuild(game, app, state, tables, outDir) {
     if (r.status !== 0) throw new Error(`control: ar failed: ${r.stderr}`);
     libs.push([t, lib]);
   }
-  if (!removed) throw new Error(`control: ${state} is in no table of ${game} (${tables.join(', ')})`);
+  if (!removed) throw new Error(`control: ${[].concat(state).join(' + ')} is in no table of ${game} (${tables.join(', ')})`);
   const exe = join(outDir, basename(target));
   let link = cmds.filter((l) => l.includes(` -o ${target} `)).pop();
   if (!link) throw new Error(`control: no link command for ${target}`);
@@ -170,7 +172,7 @@ export function sweep({ game, tables, scenes, control, qualities = QUALITIES }) 
   if (control && !argv.includes('--no-control')) for (const k of [].concat(control)) {
     const sc = scenes.find((s) => s.name === k.scene);
     const dir = join(OUT, 'control');
-    const state = opt('--control-state') || k.state;
+    const state = opt('--control-state') || k.state, stateName = [].concat(state).join(' + ');
     const exe = controlBuild(game, sc.app, state, tables, dir);
     for (const gpu of k.gpu ? [k.gpu] : gpus) {
       const q = k.quality || 'low';
@@ -178,7 +180,7 @@ export function sweep({ game, tables, scenes, control, qualities = QUALITIES }) 
       const want = opt('--control-state') ? state : k.expect || state; // a table entry that covers the drawn state (more lights of a kind) is reported under the drawn state's name
       const covered = (r.state && r.state['cw.three.covered']) || 0;
       const ok = !r.failed && r.missing.includes(want) && (r.skipped > 0 || covered > 0);
-      console.log(`${ok ? 'ok  ' : 'FAIL'} control ${gpu} ${q} ${sc.name}, ${state} out of the table: must report it and skip or cover its draws: ${r.failed || `missing [${r.missing.join(' ')}] skipped ${r.skipped} covered ${covered}`}`);
+      console.log(`${ok ? 'ok  ' : 'FAIL'} control ${gpu} ${q} ${sc.name}, ${stateName} out of the table: must report it and skip or cover its draws: ${r.failed || `missing [${r.missing.join(' ')}] skipped ${r.skipped} covered ${covered}`}`);
       if (!ok) fail++;
     }
     rmSync(dir, { recursive: true, force: true });
