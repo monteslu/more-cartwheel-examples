@@ -57,7 +57,7 @@ int g_deep = 1;
 #define SIT_LIFT 0.31f
 int g_sit_lift = 1;
 float g_keel[1]; /* the human's water height over its craft's origin (in the model's frame: 0 is the sit-down's waterline mark), eased like g_draft (the draft gate) */
-static float sit_lift(void) { return g_craft != CRAFT_STAND && g_sit_lift ? SIT_LIFT : 0.0f; }
+float sit_lift(void) { return g_craft != CRAFT_STAND && g_sit_lift ? SIT_LIFT : 0.0f; }
 /* the grid: racer i starts in slot g_grid[i] (0 the front). A championship's next race lines up by the last one's finish
  * (menu.c); any other race by seat. sw grid_order 0: always by seat, the gate's control */
 int32_t g_grid[RACERS] = { 0, 1, 2, 3, 4, 5 };

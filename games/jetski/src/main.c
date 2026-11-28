@@ -49,7 +49,8 @@ static void cmd_drop(int argc, const char **argv, cw_reply *r) {
   cw_sincos(c->yaw, &sy, &cy);
   float v = argc > 3 ? (float)atof(argv[3]) : 22;
   c->pitch = c->ppitch = argc > 1 ? (float)atof(argv[1]) : 0;
-  c->y = c->py = c->surf + (argc > 2 ? (float)atof(argv[2]) : 2);
+  { float sit_lift(void); /* (the height over the water of the point the hull floats on, as before the sit-down floated on its own model) */
+    c->y = c->py = c->surf + sit_lift() + (argc > 2 ? (float)atof(argv[2]) : 2); }
   c->vx = sy * v, c->vz = cy * v, c->vy = 0, c->pr = 0, c->rr = 0, c->roll = 0, c->air_time = 0.5f, c->air = true;
   if (r) cw_reply_raw(r, "true");
 }
