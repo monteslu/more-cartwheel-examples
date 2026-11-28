@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.50.0
+
+- jetski: where the water meets the racers. Every craft and rider wears the engine's waterline part: under a high-water
+  mark that rises with the water and falls back, the suit and vest darken (matte: cloth never shines), skin and gelcoat
+  take a wet gloss with beaded drops, a thin line of sky light sits on the contact, and the part under the surface carries
+  the caustics the water's floor shows. Spray soaks the rider through the part now (it still dries over 9 s).
+- jetski: the sit-down floats on its own model. Its footwells ran under the water at speed and the rider's boots in it at
+  rest; on the plane the water now runs along the chines, and at rest it settles with dry footwells (the deep-water feel
+  is kept, a little deeper at rest).
+- jetski: white water along the players' hulls at speed only: a thin skirt of foam that hugs the hull on the plane and
+  is gone at rest or a crawl, so the hull and legs read through the clear water at the line.
+- Tests: jetski-hull-wet (GL and WebGPU: the hull at rest from its side with and without the part, held still; the
+  contact band at rest at most 3 % white water, control sw skirt 2; the skirt alive at speed, control sw skirt 0),
+  jetski-draft (the water on the sit-down's model at rest and at speed; control sw sit_lift 0), jetski-feature-perf
+  --case waterline (the part and skirt under 0.6 ms on the reference GPU, split screen under 16.7 ms). The perf
+  baselines run from 750 m on Crater Atoll (900 m started the craft in the stilts of its set) and check the run was
+  clean. sw cam_side for a held side look at the hull.
+
 ## 0.49.0
 
 - Engine v0.87.0: where things go into the water, the line is the water's, not a cut. A rider's legs and a craft's hull

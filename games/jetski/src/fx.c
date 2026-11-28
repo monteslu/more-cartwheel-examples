@@ -298,7 +298,8 @@ void fx_tick(float dt) {
       /* the skirt rides with the hull at the water (local: it moves with the craft, not left behind as a wake), wider and
        * brighter with speed: a white band of about 0.6 m on the plane */
       bool own = i == 0 || PLAYERS == 2;
-      cw_node3d_set_position(skirt[i], (t3_vec3){ c->x - sy * 0.1f, c->surf + 0.01f, c->z - cy * 0.1f });
+      /* (sw skirt 2 also lifts it 12 cm, out of its soft fade into the surface: a layer that does cover the contact) */
+      cw_node3d_set_position(skirt[i], (t3_vec3){ c->x - sy * 0.1f, c->surf + (g_skirt == 2 ? 0.12f : 0.01f), c->z - cy * 0.1f });
       cw_node3d_set_rotation(skirt[i], (t3_vec3){ 0, c->yaw, 0 });
       /* only white water a planing hull really throws: nothing at rest or a crawl, where the hull and legs read through the
        * clear water at the line, faint from 7 m/s and full from 18 (sw skirt 2: full white at any speed, the coverage
@@ -306,7 +307,8 @@ void fx_tick(float dt) {
       float wv = g_skirt == 2 ? 1.0f : cw_smoothstep(7.0f, 18.0f, v);
       cw_node_set(skirt[i], "emitting", cw_val_bool(g_skirt && own && wet && c->spill <= 0 && wv > 0.0f));
       cw_node_set(skirt[i], "color", cw_val_color(1, 1, 1, wv));
-      cw_node_set(skirt[i], "size", cw_val_float(0.2f + 0.4f * fminf(k, 1.2f)));
+      cw_node_set(skirt[i], "size", cw_val_float(g_skirt == 2 ? 0.5f : 0.2f + 0.4f * fminf(k, 1.2f)));
+      cw_node_set(skirt[i], "energy", cw_val_float(g_skirt == 2 ? 3.0f : 1.0f));
       if (i == 0) { cw_value al; g_skirt_alive = cw_node_get_prop(skirt[0], "alive", &al) ? (int32_t)al.i : -1; }
     }
     if (i == 0) {
